@@ -3,12 +3,18 @@ import {DeviceIntegrityManager} from '../deviceIntegrityModule';
 import {mmkvPublic} from '../../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../../constants/mmkvKeys';
 
+// Type the mock helpers (not part of real JailMonkey API)
+const mockJailMonkey = JailMonkey as typeof JailMonkey & {
+  __setJailbroken: (v: boolean) => void;
+  __reset: () => void;
+};
+
 describe('DeviceIntegrityManager', () => {
   let manager: DeviceIntegrityManager;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    JailMonkey.__reset();
+    mockJailMonkey.__reset();
     mmkvPublic.remove(MMKV_KEYS.SECURITY_JAILBREAK_DETECTED);
     manager = new DeviceIntegrityManager();
   });
@@ -19,19 +25,19 @@ describe('DeviceIntegrityManager', () => {
   });
 
   it('detects jailbroken device', () => {
-    JailMonkey.__setJailbroken(true);
+    mockJailMonkey.__setJailbroken(true);
     manager.checkDeviceIntegrity();
     expect(manager.isCompromised()).toBe(true);
   });
 
   it('stores jailbreak flag in MMKV (SECURITY_JAILBREAK_DETECTED)', () => {
-    JailMonkey.__setJailbroken(true);
+    mockJailMonkey.__setJailbroken(true);
     manager.checkDeviceIntegrity();
     expect(mmkvPublic.getString(MMKV_KEYS.SECURITY_JAILBREAK_DETECTED)).toBe('true');
   });
 
   it('does NOT block — only warns (app continues after check)', () => {
-    JailMonkey.__setJailbroken(true);
+    mockJailMonkey.__setJailbroken(true);
     expect(() => manager.checkDeviceIntegrity()).not.toThrow();
     expect(manager.isCompromised()).toBe(true);
   });
@@ -44,7 +50,7 @@ describe('DeviceIntegrityManager', () => {
   });
 
   it('provides warning message when compromised', () => {
-    JailMonkey.__setJailbroken(true);
+    mockJailMonkey.__setJailbroken(true);
     manager.checkDeviceIntegrity();
     expect(manager.getWarningMessage()).toBe(
       'Your device appears to be compromised. Your wallet keys may be at risk. Biometric authentication has been disabled for security.',
