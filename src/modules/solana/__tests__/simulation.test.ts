@@ -2,8 +2,7 @@ import {Connection, VersionedTransaction, MessageV0} from '@solana/web3.js';
 import {simulateTransaction} from '../simulation';
 
 function makeTx(): VersionedTransaction {
-  const msg = new MessageV0({recentBlockhash: 'test-blockhash', instructions: []});
-  return new VersionedTransaction(msg);
+  return new VersionedTransaction({});
 }
 
 describe('simulateTransaction', () => {

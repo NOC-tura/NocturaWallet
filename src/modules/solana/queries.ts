@@ -1,4 +1,7 @@
-import {Connection, PublicKey, TOKEN_PROGRAM_ID} from '@solana/web3.js';
+import {Connection, PublicKey} from '@solana/web3.js';
+
+// TOKEN_PROGRAM_ID constant — matches @solana/web3.js export
+const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 import type {TokenAccount, ParsedTransaction} from './types';
 
 export async function getBalance(
@@ -18,7 +21,7 @@ export async function getTokenAccounts(
   });
 
   return response.value.map(item => {
-    const info = (item.account.data as {parsed: {info: {
+    const info = (item.account.data as unknown as {parsed: {info: {
       mint: string;
       owner: string;
       tokenAmount: {amount: string; decimals: number};

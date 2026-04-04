@@ -30,10 +30,10 @@ export async function simulateTransaction(
 
     if (err === null) {
       const result: SimulationResult = {success: true};
-      if (logs !== undefined) {
+      if (logs != null) {
         result.logs = logs;
       }
-      if (unitsConsumed !== undefined) {
+      if (unitsConsumed != null) {
         result.unitsConsumed = unitsConsumed;
       }
       return result;
@@ -42,7 +42,7 @@ export async function simulateTransaction(
     return {
       success: false,
       error: mapSimulationError(err),
-      logs: logs ?? [],
+      logs: logs ?? undefined,
     };
   } catch {
     return {
