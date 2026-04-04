@@ -281,8 +281,8 @@ export class VersionedTransaction {
   serialize(): Uint8Array {
     // Deterministic mock serialization — real bytes not required in tests
     const payload = JSON.stringify({
-      recentBlockhash: this.message.recentBlockhash,
-      instructionCount: this.message.instructions.length,
+      recentBlockhash: this.message?.recentBlockhash ?? 'mock-blockhash',
+      instructionCount: this.message?.instructions?.length ?? 0,
     });
     return new TextEncoder().encode(payload);
   }
