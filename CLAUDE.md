@@ -42,7 +42,7 @@ cd android && ./gradlew assembleDebug  # Build Android debug APK
 | Navigation | React Navigation v7 (native-stack + bottom-tabs) |
 | Styling | NativeWind v4 (Tailwind CSS for React Native) |
 | Animations | React Native Reanimated v3 |
-| Solana | @solana/web3.js >= 1.95.8 (locked — 1.95.6/1.95.7 had supply chain incident) |
+| Solana | @solana/web3.js >= 1.95.8 + @anchor-lang/core (Anchor 1.0.0, NOT @coral-xyz/anchor) |
 | Key Derivation | @scure/bip32 (Ed25519 only) + micro-key-producer/bls.js (EIP-2333 for BLS12-381) |
 | Crypto | @noble/curves, @noble/hashes, poseidon-lite (ZK hashing) |
 | ZK Proofs | @callstack/polygen (AOT WASM) + hosted prover fallback |
