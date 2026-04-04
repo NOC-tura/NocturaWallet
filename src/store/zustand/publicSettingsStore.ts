@@ -10,6 +10,7 @@ interface PublicSettingsState {
   amoledMode: boolean;
   hapticsEnabled: boolean;
   explorer: 'solscan' | 'solanaexplorer' | 'solanafm';
+  analyticsOptOut: boolean;
 
   setHideBalances: (v: boolean) => void;
   setHideZeroBalanceTokens: (v: boolean) => void;
@@ -18,6 +19,7 @@ interface PublicSettingsState {
   setAmoledMode: (v: boolean) => void;
   setHapticsEnabled: (v: boolean) => void;
   setExplorer: (v: 'solscan' | 'solanaexplorer' | 'solanafm') => void;
+  setAnalyticsOptOut: (v: boolean) => void;
   reset: () => void;
 }
 
@@ -29,6 +31,7 @@ const DEFAULTS = {
   amoledMode: false,
   hapticsEnabled: true,
   explorer: 'solscan' as const,
+  analyticsOptOut: false,
 };
 
 export const usePublicSettingsStore = create<PublicSettingsState>()(
@@ -42,6 +45,7 @@ export const usePublicSettingsStore = create<PublicSettingsState>()(
       setAmoledMode: (v: boolean) => set({amoledMode: v}),
       setHapticsEnabled: (v: boolean) => set({hapticsEnabled: v}),
       setExplorer: (v: 'solscan' | 'solanaexplorer' | 'solanafm') => set({explorer: v}),
+      setAnalyticsOptOut: (v: boolean) => set({analyticsOptOut: v}),
       reset: () => set(DEFAULTS),
     }),
     {

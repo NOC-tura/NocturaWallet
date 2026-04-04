@@ -38,7 +38,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       sessionExpiresAt: null,
     }),
 
-  touchActivity: () => set({lastActiveAt: Date.now()}),
+  touchActivity: () => {
+    const now = Date.now();
+    set({
+      lastActiveAt: now,
+      sessionExpiresAt: now + DEFAULT_TIMEOUT_MINUTES * 60 * 1000,
+    });
+  },
 
   isExpired: () => {
     const {sessionExpiresAt} = get();

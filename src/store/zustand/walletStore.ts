@@ -14,7 +14,9 @@ interface TokenMetadata {
 
 interface WalletState {
   publicKey: string | null;
-  pkShielded: string | null;
+  // BLS12-381 G1 compressed (48 bytes). Re-derived from native on each session unlock.
+  // Not persisted — excluded via partialize. Use hex encoding for bridge transport.
+  pkShielded: Uint8Array | null;
   solBalance: string;
   nocBalance: string;
   tokenBalances: Record<string, string>;
@@ -25,7 +27,7 @@ interface WalletState {
   lastSyncedAt: number | null;
 
   setPublicKey: (pk: string) => void;
-  setPkShielded: (pk: string) => void;
+  setPkShielded: (pk: Uint8Array) => void;
   updateBalances: (sol: string, noc: string, tokens: Record<string, string>) => void;
   updateShieldedBalance: (mint: string, balance: string) => void;
   setNocUsdPrice: (price: number) => void;
@@ -51,7 +53,7 @@ export const useWalletStore = create<WalletState>()(
     set => ({
       ...DEFAULTS,
       setPublicKey: (pk: string) => set({publicKey: pk}),
-      setPkShielded: (pk: string) => set({pkShielded: pk}),
+      setPkShielded: (pk: Uint8Array) => set({pkShielded: pk}),
       updateBalances: (sol, noc, tokens) =>
         set({solBalance: sol, nocBalance: noc, tokenBalances: tokens, lastSyncedAt: Date.now()}),
       updateShieldedBalance: (mint, balance) =>
@@ -63,6 +65,7 @@ export const useWalletStore = create<WalletState>()(
     {
       name: 'noctura-wallet',
       storage: createJSONStorage(() => mmkvSecureStorage),
+      partialize: ({pkShielded, ...rest}) => rest,
     },
   ),
 );

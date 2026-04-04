@@ -9,7 +9,12 @@ export const mmkvSecureStorage: StateStorage = {
   },
   setItem: (name: string, value: string) => {
     const store = mmkvSecure();
-    if (!store) return;
+    if (!store) {
+      if (__DEV__) {
+        console.warn(`mmkvSecureStorage.setItem('${name}') called before secure MMKV initialized`);
+      }
+      return;
+    }
     store.set(name, value);
   },
   removeItem: (name: string) => {
