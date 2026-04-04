@@ -2,7 +2,12 @@ import {Connection, VersionedTransaction, MessageV0} from '@solana/web3.js';
 import {simulateTransaction} from '../simulation';
 
 function makeTx(): VersionedTransaction {
-  return new VersionedTransaction({});
+  const msg = MessageV0.compile({
+    payerKey: new (require('@solana/web3.js').PublicKey)('test-payer'),
+    recentBlockhash: 'test',
+    instructions: [],
+  });
+  return new VersionedTransaction(msg);
 }
 
 describe('simulateTransaction', () => {
