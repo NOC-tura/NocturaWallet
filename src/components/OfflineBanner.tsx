@@ -1,6 +1,10 @@
 import React from 'react';
 import {View, Text, StyleSheet} from 'react-native';
 
+// Dashboard integration: this banner is mutually exclusive with BackupReminderBanner.
+// Priority order: BackupReminder > Offline > AppUpdate (never show two simultaneously).
+// The parent Dashboard component handles this logic — see .instructions.md lines 2962-2986.
+
 interface OfflineBannerProps {
   isOnline: boolean;
   lastSyncedAt: number | null;
