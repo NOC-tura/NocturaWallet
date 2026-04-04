@@ -460,4 +460,19 @@ export class Connection {
       value: 5000,
     }),
   );
+
+  getSignaturesForAddress = jest.fn(
+    async (
+      _address: PublicKey,
+      _options?: {limit?: number; before?: string; until?: string},
+    ): Promise<
+      Array<{
+        signature: string;
+        slot: number;
+        blockTime: number | null;
+        confirmationStatus: string | null;
+        err: unknown;
+      }>
+    > => [],
+  );
 }

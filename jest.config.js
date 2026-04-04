@@ -13,6 +13,8 @@ module.exports = {
     // Route all @solana/web3.js imports to the manual mock so native bindings
     // (secp256k1, ed25519) are never loaded in the Jest/Node environment.
     '^@solana/web3\\.js$': '<rootDir>/__mocks__/@solana/web3.js',
+    // react-native-config uses ESM syntax that Jest cannot parse; use a CJS mock.
+    '^react-native-config$': '<rootDir>/__mocks__/react-native-config.ts',
   },
   transformIgnorePatterns: [
     'node_modules/(?!(react-native|@react-native|@react-navigation|nativewind|react-native-css-interop|@scure/bip39|@scure/base|@scure/bip32|@noble/hashes|@noble/curves|@noble/ciphers|micro-key-producer|@solana/web3\\.js)/)',
