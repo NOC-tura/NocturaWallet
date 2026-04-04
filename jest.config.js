@@ -3,8 +3,10 @@ module.exports = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '\\.css$': '<rootDir>/__mocks__/fileMock.js',
+    '^@noble/curves/(.+)\\.js$': '<rootDir>/node_modules/@noble/curves/$1.js',
+    '^@noble/curves/(.+)$': '<rootDir>/node_modules/@noble/curves/$1',
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(react-native|@react-native|@react-navigation|nativewind|react-native-css-interop|@scure/bip39|@scure/base|@noble/hashes|@noble/curves)/)',
+    'node_modules/(?!(react-native|@react-native|@react-navigation|nativewind|react-native-css-interop|@scure/bip39|@scure/base|@scure/bip32|@noble/hashes|@noble/curves)/)',
   ],
 };
