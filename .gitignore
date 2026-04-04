@@ -80,3 +80,5 @@ yarn-error.log
 # Environment variables
 .env*
 !.env.example
+BUILD_PLAN.md
+.instructions.md
