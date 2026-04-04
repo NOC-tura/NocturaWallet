@@ -13,11 +13,11 @@ Privacy-first mobile wallet for Solana with shielded transactions, zero-knowledg
 
 ## Tech Stack
 
-- React Native 0.84.1
-- Solana Web3.js 2.x
-- snarkjs (Groth16 ZK proofs)
-- Reown AppKit (WalletConnect)
-- Zustand + MMKV
+- React Native 0.84.1 (New Architecture / Fabric / Hermes)
+- @solana/web3.js >= 1.95.8 (v1.x — migrate to @solana/kit when Anchor supports it)
+- Groth16/BN254 ZK proofs via @callstack/polygen AOT + hosted prover
+- BLST (Supranational) for native BLS12-381 signing
+- Zustand + MMKV + NativeWind v4
 
 ## License
 
