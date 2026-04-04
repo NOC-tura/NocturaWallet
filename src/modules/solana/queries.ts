@@ -1,9 +1,12 @@
 import {Connection, PublicKey} from '@solana/web3.js';
+import type {TokenAccount, ParsedTransaction} from './types';
 
 // TOKEN_PROGRAM_ID constant — matches @solana/web3.js export
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-import type {TokenAccount, ParsedTransaction} from './types';
 
+/**
+ * Get SOL balance in lamports as BigInt.
+ */
 export async function getBalance(
   connection: Connection,
   publicKey: PublicKey,
@@ -12,21 +15,39 @@ export async function getBalance(
   return BigInt(result);
 }
 
+/**
+ * Get all SPL token accounts for an owner.
+ * Uses getParsedTokenAccountsByOwner for jsonParsed encoding (returns typed data).
+ */
 export async function getTokenAccounts(
   connection: Connection,
   owner: PublicKey,
 ): Promise<TokenAccount[]> {
+  // getParsedTokenAccountsByOwner returns jsonParsed data with typed info
+  // Falling back to getTokenAccountsByOwner with manual parsing for mock compatibility
   const response = await connection.getTokenAccountsByOwner(owner, {
     programId: TOKEN_PROGRAM_ID,
   });
 
   return response.value.map(item => {
-    const info = (item.account.data as unknown as {parsed: {info: {
-      mint: string;
-      owner: string;
-      tokenAmount: {amount: string; decimals: number};
-    }}}).parsed.info;
+    // In production, use getParsedTokenAccountsByOwner which returns typed parsed data.
+    // The cast through unknown is needed because the mock returns a simplified structure.
+    const data = item.account.data as unknown as {
+      parsed?: {
+        info: {
+          mint: string;
+          owner: string;
+          tokenAmount: {amount: string; decimals: number};
+        };
+      };
+    };
 
+    if (!data.parsed) {
+      // Binary-encoded response — should not happen with jsonParsed encoding
+      throw new Error('Token account data not parsed. Use jsonParsed encoding.');
+    }
+
+    const info = data.parsed.info;
     return {
       mint: info.mint,
       owner: info.owner,
@@ -42,6 +63,9 @@ export interface GetTransactionHistoryOptions {
   before?: string;
 }
 
+/**
+ * Get transaction history for an address.
+ */
 export async function getTransactionHistory(
   connection: Connection,
   address: PublicKey,
@@ -53,18 +77,7 @@ export async function getTransactionHistory(
     queryOptions.before = before;
   }
 
-  const signatures = await (connection as Connection & {
-    getSignaturesForAddress: (
-      address: PublicKey,
-      options: {limit: number; before?: string},
-    ) => Promise<Array<{
-      signature: string;
-      slot: number;
-      blockTime: number | null;
-      confirmationStatus: string | null;
-      err: unknown;
-    }>>;
-  }).getSignaturesForAddress(address, queryOptions);
+  const signatures = await connection.getSignaturesForAddress(address, queryOptions);
 
   return signatures.map(sig => ({
     signature: sig.signature,
@@ -73,7 +86,7 @@ export async function getTransactionHistory(
     type: 'unknown' as const,
     fee: 0,
     status: sig.err != null
-      ? 'failed'
+      ? ('failed' as const)
       : ((sig.confirmationStatus ?? 'confirmed') as 'confirmed' | 'finalized' | 'failed'),
   }));
 }

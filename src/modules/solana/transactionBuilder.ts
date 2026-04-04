@@ -36,7 +36,7 @@ export async function buildTransferTx(
     SystemProgram.transfer({
       fromPubkey: sender,
       toPubkey: new PublicKey(NOCTURA_FEE_TREASURY),
-      lamports: Number(TRANSPARENT_FEES.transferMarkup),
+      lamports: TRANSPARENT_FEES.transferMarkup,
     }),
   );
 
@@ -70,7 +70,7 @@ export async function buildSPLTransferTx(
     SystemProgram.transfer({
       fromPubkey: sender,
       toPubkey: new PublicKey(NOCTURA_FEE_TREASURY),
-      lamports: Number(TRANSPARENT_FEES.transferMarkup),
+      lamports: TRANSPARENT_FEES.transferMarkup,
     }),
   );
 
