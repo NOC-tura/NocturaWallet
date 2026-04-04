@@ -390,7 +390,7 @@ Expected: FAIL — cannot find module '../mnemonicUtils'
 
 Create `src/modules/keyDerivation/mnemonicUtils.ts`:
 ```typescript
-import {generateMnemonic as generate, validateMnemonic as validate, mnemonicToSeedSync} from '@scure/bip39';
+import {generateMnemonic as generate, validateMnemonic as validate, mnemonicToSeed as mnemonicToSeedAsync} from '@scure/bip39';
 import {wordlist} from '@scure/bip39/wordlists/english';
 
 /**
@@ -413,10 +413,10 @@ export function validateMnemonic(mnemonic: string): boolean {
 /**
  * Derive a 512-bit (64-byte) seed from a mnemonic via PBKDF2-HMAC-SHA512.
  * No passphrase — standard BIP-39 derivation.
+ * Uses the async version to avoid blocking the JS thread on low-end devices.
  */
 export async function mnemonicToSeed(mnemonic: string): Promise<Uint8Array> {
-  // mnemonicToSeedSync uses PBKDF2 with 2048 iterations (BIP-39 standard)
-  return mnemonicToSeedSync(mnemonic);
+  return mnemonicToSeedAsync(mnemonic, wordlist);
 }
 ```
 
@@ -481,13 +481,11 @@ describe('transparent key derivation (Ed25519 BIP-44)', () => {
     expect(Buffer.from(kp1.secretKey).equals(Buffer.from(kp2.secretKey))).toBe(true);
   });
 
-  it('uses path m/44\'/501\'/0\'/0\'', () => {
-    // Verify the derived key matches what Solana wallets produce for this path.
-    // The "abandon...about" 12-word mnemonic with Solana BIP-44 path should produce
-    // a known public key. This is the standard Solana derivation test.
+  it('matches pinned test vector for m/44\'/501\'/0\'/0\'', () => {
+    // Known-answer test: "abandon...about" mnemonic → Solana BIP-44 path → deterministic pubkey
     const keypair = deriveTransparentKeypair(seed);
-    // Public key should be non-zero and unique to this seed+path
-    expect(keypair.publicKey.some(b => b !== 0)).toBe(true);
+    const pubkeyHex = Buffer.from(keypair.publicKey).toString('hex');
+    expect(pubkeyHex).toBe('382aaa068581d37e9851a0711fc43750f8b6688dd3855a98a4a6b7dabc60a426');
   });
 
   it('different seeds produce different keys', async () => {
@@ -513,6 +511,7 @@ Create `src/modules/keyDerivation/transparent.ts`:
 import {HDKey} from '@scure/bip32';
 import {ed25519} from '@noble/curves/ed25519';
 import {TRANSPARENT_PATH} from './paths';
+import {zeroize} from '../session/zeroize';
 
 interface TransparentKeypair {
   publicKey: Uint8Array; // 32 bytes
@@ -539,6 +538,9 @@ export function deriveTransparentKeypair(seed: Uint8Array): TransparentKeypair {
   const secretKey = new Uint8Array(64);
   secretKey.set(derived.privateKey, 0);
   secretKey.set(publicKey, 32);
+
+  // Zeroize intermediate private key from BIP-32 derivation
+  zeroize(derived.privateKey);
 
   return {publicKey, secretKey};
 }
@@ -592,6 +594,12 @@ describe('shielded key derivation (BLS12-381 EIP-2333)', () => {
       const vk1 = deriveShieldedViewKey(seed);
       const vk2 = deriveShieldedViewKey(seed);
       expect(Buffer.from(vk1).equals(Buffer.from(vk2))).toBe(true);
+    });
+
+    it('matches pinned test vector for m/12381/371/2/0', () => {
+      const viewKey = deriveShieldedViewKey(seed);
+      const hex = Buffer.from(viewKey).toString('hex');
+      expect(hex).toBe('30171f354d910bcd87d1a0573900419e17e04c1015c4aa6ea127be66fdccd6dc');
     });
 
     it('different seeds produce different view keys', async () => {
@@ -973,6 +981,8 @@ Create `src/modules/keychain/__tests__/keychainModule.test.ts`:
 import {KeychainManager} from '../keychainModule';
 import Keychain from 'react-native-keychain';
 
+jest.setTimeout(60_000); // PIN tests involve PBKDF2 600K iterations
+
 const mockKeychain = Keychain as typeof Keychain & {__reset: () => void};
 
 describe('KeychainManager', () => {
@@ -1124,6 +1134,13 @@ export class KeychainManager {
     await Keychain.resetGenericPassword({service: SERVICE_VIEW_KEY});
     await Keychain.resetGenericPassword({service: SERVICE_PIN_HASH});
     await Keychain.resetGenericPassword({service: SERVICE_PIN_SALT});
+    // Also wipe native-stored seed if native module is available
+    try {
+      const {NocturaKeyBridge} = require('./nativeBridge');
+      await NocturaKeyBridge.deleteSeed();
+    } catch {
+      // Native module not available yet — safe to ignore during development
+    }
   }
 
   async setupPin(pin: string): Promise<void> {
@@ -1142,6 +1159,8 @@ export class KeychainManager {
     );
   }
 
+  // Spec defines isPinConfigured(): boolean (sync), but keychain reads are inherently async.
+  // Justified deviation: async is required on both iOS and Android.
   async isPinConfigured(): Promise<boolean> {
     const result = await Keychain.getGenericPassword({service: SERVICE_PIN_HASH});
     return result !== false;
@@ -1314,22 +1333,42 @@ export async function pinnedFetch(
     mergedHeaders['Content-Type'] = 'application/json';
   }
 
-  const response = await SSLPinning.fetch(url, {
-    method,
-    headers: mergedHeaders,
-    body,
-    sslPinning: {
-      certs: SSL_PINS,
-    },
-    timeoutInterval: 10_000,
-  });
+  try {
+    const response = await SSLPinning.fetch(url, {
+      method,
+      headers: mergedHeaders,
+      body,
+      sslPinning: {
+        certs: SSL_PINS,
+      },
+      timeoutInterval: 10_000,
+    });
 
-  return {
-    status: response.status,
-    headers: response.headers as Record<string, string>,
-    json: async () => response.json(),
-    text: async () => response.text(),
-  };
+    return {
+      status: response.status,
+      headers: response.headers as Record<string, string>,
+      json: async () => response.json(),
+      text: async () => response.text(),
+    };
+  } catch (error) {
+    // SSL pin mismatch or network error → E032 (PROVER_UNAVAILABLE)
+    // Without pinning: MITM could replace ZK circuit inputs → false proofs
+    throw new SSLPinningError(
+      'SSL certificate pinning failed',
+      error instanceof Error ? error : new Error(String(error)),
+    );
+  }
+}
+
+export class SSLPinningError extends Error {
+  readonly code = 'E032';
+  readonly cause: Error;
+
+  constructor(message: string, cause: Error) {
+    super(message);
+    this.name = 'SSLPinningError';
+    this.cause = cause;
+  }
 }
 ```
 
@@ -1497,10 +1536,16 @@ export class SessionManager {
   }
 
   /**
-   * Check if an active session exists.
+   * Check if an active, non-expired session exists.
+   * Auto-locks if the timeout has passed (defense-in-depth).
    */
   isActive(): boolean {
-    return this.keypair !== null;
+    if (!this.keypair) return false;
+    if (Date.now() >= this.expiresAt) {
+      this.lock();
+      return false;
+    }
+    return true;
   }
 
   /**
