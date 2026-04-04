@@ -33,6 +33,7 @@ interface GeoCheckResponse {
  *
  * transparentAllowed is ALWAYS true — only shielded features are gated.
  */
+/** @internal Exported for testing. Use `geoFenceManager` singleton in application code. */
 export class GeoFenceManager {
   private kycCountry: string | null;
 

@@ -8,9 +8,12 @@ export class DeviceIntegrityManager {
       const jailbroken = JailMonkey.isJailBroken();
       if (jailbroken) {
         mmkvPublic.set(MMKV_KEYS.SECURITY_JAILBREAK_DETECTED, 'true');
+      } else {
+        // Clear flag if device is no longer jailbroken (e.g., un-rooted after dev work)
+        mmkvPublic.remove(MMKV_KEYS.SECURITY_JAILBREAK_DETECTED);
       }
     } catch {
-      // jail-monkey not available — fail open
+      // jail-monkey not available — fail open, don't change flag
     }
   }
 
@@ -20,6 +23,6 @@ export class DeviceIntegrityManager {
 
   getWarningMessage(): string | null {
     if (!this.isCompromised()) return null;
-    return 'Your device appears to be compromised. Your wallet keys may be at risk. Biometric authentication has been disabled for security.';
+    return 'Your device may be compromised. Your wallet keys may be at risk.';
   }
 }

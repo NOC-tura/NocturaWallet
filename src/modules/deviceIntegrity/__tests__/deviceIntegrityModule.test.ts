@@ -53,7 +53,7 @@ describe('DeviceIntegrityManager', () => {
     mockJailMonkey.__setJailbroken(true);
     manager.checkDeviceIntegrity();
     expect(manager.getWarningMessage()).toBe(
-      'Your device appears to be compromised. Your wallet keys may be at risk. Biometric authentication has been disabled for security.',
+      'Your device may be compromised. Your wallet keys may be at risk.',
     );
   });
 
