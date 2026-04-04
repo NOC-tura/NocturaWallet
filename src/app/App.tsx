@@ -1,15 +1,13 @@
 import React from 'react';
-import {View, Text, StyleSheet} from 'react-native';
+import {StatusBar} from 'react-native';
+import {AppProviders} from './AppProviders';
+import {RootNavigator} from './Navigator';
 
 export default function App() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.text}>Noctura Wallet</Text>
-    </View>
+    <AppProviders>
+      <StatusBar barStyle="light-content" backgroundColor="#0C0C14" />
+      <RootNavigator />
+    </AppProviders>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0C0C14'},
-  text: {color: '#FFFFFF', fontSize: 18},
-});
