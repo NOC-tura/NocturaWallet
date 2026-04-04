@@ -7,6 +7,8 @@ module.exports = {
     '^@noble/curves/(.+)$': '<rootDir>/node_modules/@noble/curves/$1',
     '^@noble/ciphers/(.+)\\.js$': '<rootDir>/node_modules/@noble/ciphers/$1.js',
     '^@noble/ciphers/(.+)$': '<rootDir>/node_modules/@noble/ciphers/$1',
+    '^@noble/hashes/(.+)\\.js$': '<rootDir>/node_modules/@noble/hashes/$1.js',
+    '^@noble/hashes/(.+)$': '<rootDir>/node_modules/@noble/hashes/$1',
     '^micro-key-producer/bls\\.js$': '<rootDir>/node_modules/micro-key-producer/bls.js',
   },
   transformIgnorePatterns: [
