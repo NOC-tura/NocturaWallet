@@ -58,14 +58,29 @@ describe('pinnedFetch', () => {
     );
   });
 
-  it('throws SSLPinningError with E032 code on pin failure', async () => {
-    (SSLPinning.fetch as jest.Mock).mockRejectedValueOnce(new Error('SSL pinning verification failed'));
+  it('throws SSLPinningError with E032 code on SSL pin failure', async () => {
+    (SSLPinning.fetch as jest.Mock).mockRejectedValueOnce(
+      new Error('SSL certificate pinning verification failed'),
+    );
     try {
       await pinnedFetch('https://api.noc-tura.io/v1/health');
       fail('Should have thrown');
     } catch (err) {
       expect(err).toBeInstanceOf(SSLPinningError);
       expect((err as SSLPinningError).code).toBe('E032');
+    }
+  });
+
+  it('re-throws network errors without wrapping as E032', async () => {
+    (SSLPinning.fetch as jest.Mock).mockRejectedValueOnce(
+      new Error('Network request failed'),
+    );
+    try {
+      await pinnedFetch('https://api.noc-tura.io/v1/health');
+      fail('Should have thrown');
+    } catch (err) {
+      expect(err).not.toBeInstanceOf(SSLPinningError);
+      expect((err as Error).message).toBe('Network request failed');
     }
   });
 });

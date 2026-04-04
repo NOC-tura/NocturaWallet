@@ -19,6 +19,11 @@ const KEYCHAIN_OPTIONS = {
  *   - PIN hash + salt (for PIN fallback unlock)
  *
  * For shielded signing (sk_spend), see nativeBridge.ts — never stored in JS.
+ *
+ * Current: react-native-keychain provides OS-level encryption (iOS Keychain / Android Keystore).
+ * Upgrade path: When native BLST modules are integrated, seed storage will use P-256 ECDH
+ * envelope encryption via iOS Secure Enclave / Android StrongBox for an additional layer
+ * (P-256 key in SE produces AES-256-GCM key → encrypt seed). See .instructions.md lines 62-67.
  */
 export class KeychainManager {
   async storeSeed(mnemonic: string): Promise<void> {

@@ -70,9 +70,18 @@ export async function pinnedFetch(
       text: async () => response.text(),
     };
   } catch (error) {
-    throw new SSLPinningError(
-      'SSL certificate pinning failed',
-      error instanceof Error ? error : new Error(String(error)),
-    );
+    const cause = error instanceof Error ? error : new Error(String(error));
+    const message = cause.message.toLowerCase();
+    // Differentiate SSL pin failures from network errors
+    if (
+      message.includes('ssl') ||
+      message.includes('pin') ||
+      message.includes('certificate') ||
+      message.includes('trust')
+    ) {
+      throw new SSLPinningError('SSL certificate pinning failed', cause);
+    }
+    // Re-throw transport errors (timeout, DNS, etc.) without wrapping as E032
+    throw cause;
   }
 }
