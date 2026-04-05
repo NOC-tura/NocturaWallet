@@ -8,6 +8,16 @@ jest.mock('../../sslPinning/pinnedFetch', () => ({
   pinnedFetch: jest.fn(),
 }));
 
+// ProofQueue uses mmkvSecure (encrypted storage). In tests, route it to the
+// always-available mmkvPublic mock so no initSecureMmkv call is needed.
+jest.mock('../../../store/mmkv/instances', () => {
+  const actual = jest.requireActual('../../../store/mmkv/instances') as Record<string, unknown>;
+  return {
+    ...actual,
+    mmkvSecure: () => actual.mmkvPublic,
+  };
+});
+
 import {pinnedFetch} from '../../sslPinning/pinnedFetch';
 import {ZkProverModule} from '../zkProverModule';
 import {ProofQueue} from '../proofQueue';

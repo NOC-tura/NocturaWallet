@@ -1,6 +1,22 @@
-import {mmkvPublic} from '../../store/mmkv/instances';
+import {mmkvSecure} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {ProofJob, ProofJobStatus, ProofType, ZKProof} from './types';
+
+// ---- Secure storage accessor ---------------------------------------------
+
+/**
+ * Proof queue stores witness data (nullifiers, merkle paths, amounts) which is
+ * privacy-sensitive. Uses mmkvSecure (encrypted) rather than getStorage().
+ * Proof generation only happens post-onboarding, so mmkvSecure is always
+ * initialized by the time the queue is used.
+ */
+function getStorage() {
+  const store = mmkvSecure();
+  if (!store) {
+    throw new Error('ProofQueue requires mmkvSecure — wallet must be onboarded');
+  }
+  return store;
+}
 
 // ---- ID generation -------------------------------------------------------
 
@@ -11,7 +27,7 @@ function generateId(): string {
 // ---- Persistence ---------------------------------------------------------
 
 function loadQueue(): ProofJob[] {
-  const raw = mmkvPublic.getString(MMKV_KEYS.PROOF_QUEUE);
+  const raw = getStorage().getString(MMKV_KEYS.PROOF_QUEUE);
   if (!raw) return [];
   try {
     return JSON.parse(raw) as ProofJob[];
@@ -21,7 +37,7 @@ function loadQueue(): ProofJob[] {
 }
 
 function saveQueue(jobs: ProofJob[]): void {
-  mmkvPublic.set(MMKV_KEYS.PROOF_QUEUE, JSON.stringify(jobs));
+  getStorage().set(MMKV_KEYS.PROOF_QUEUE, JSON.stringify(jobs));
 }
 
 /** Jobs older than this are auto-expired by expireStaleEntries(). */
@@ -32,7 +48,7 @@ export const PROOF_STALE_TIMEOUT_MS = 10 * 60 * 1_000;
 /**
  * MMKV-persistent proof job queue.
  *
- * All mutations are written to mmkvPublic synchronously so that no job is
+ * All mutations are written to getStorage() synchronously so that no job is
  * lost on app crash.  The queue is intentionally simple (array of jobs) —
  * no concurrent worker; jobs are processed one at a time by zkProverModule.
  */

@@ -28,6 +28,11 @@ export const FEE_DISTRIBUTION = {
     stakers: 0.3,
     burn: 0.1,
   },
+  privateSwap: {
+    treasury: 0.6,
+    stakers: 0.3,
+    burn: 0.1,
+  },
   transparent: {
     treasury: 0.7,
     stakers: 0.2,

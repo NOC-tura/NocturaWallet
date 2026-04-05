@@ -122,6 +122,12 @@ describe('FeeEngineManager', () => {
     expect(Math.abs(sum - 1.0)).toBeLessThan(1e-10);
   });
 
+  it('FEE_DISTRIBUTION.privateSwap sums to 1.0', () => {
+    const dist = FEE_DISTRIBUTION.privateSwap;
+    const sum = dist.treasury + dist.stakers + dist.burn;
+    expect(Math.abs(sum - 1.0)).toBeLessThan(1e-10);
+  });
+
   it('FEE_DISTRIBUTION.transparent sums to 1.0', () => {
     const dist = FEE_DISTRIBUTION.transparent;
     const sum = dist.treasury + dist.stakers + dist.burn;

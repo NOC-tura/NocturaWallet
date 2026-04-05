@@ -69,10 +69,8 @@ async function proveHosted(
   return {
     proofType,
     proofData: data.proofData,
-    publicInputs: {
-      root: witness.merklePath.length > 0
-        ? witness.merklePath[witness.merklePath.length - 1]!
-        : '',
+    publicInputs: data.publicInputs ?? {
+      root: '',
       nullifier: witness.nullifier,
       amount: witness.amount,
       recipientAddress: witness.recipientAddress,

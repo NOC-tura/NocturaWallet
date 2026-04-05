@@ -68,6 +68,8 @@ export interface ProofJob {
 export interface HostedProverResponse {
   success: boolean;
   proofData?: string;
+  /** Public inputs as computed by the prover (root, nullifier, etc.). */
+  publicInputs?: ProofPublicInputs;
   error?: string;
 }
 
