@@ -6,6 +6,19 @@ import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {makePlaceholder} from '../screens/PlaceholderScreen';
 import {SplashScreen} from '../screens/SplashScreen';
 import {UnlockScreen} from '../screens/UnlockScreen';
+import {WelcomeScreen} from '../screens/onboarding/WelcomeScreen';
+import {SecurityIntroScreen} from '../screens/onboarding/SecurityIntroScreen';
+import {CreateWalletScreen} from '../screens/onboarding/CreateWalletScreen';
+import {SeedPhraseScreen} from '../screens/onboarding/SeedPhraseScreen';
+import {ConfirmSeedScreen} from '../screens/onboarding/ConfirmSeedScreen';
+import {ImportSeedScreen} from '../screens/onboarding/ImportSeedScreen';
+import {SyncWalletScreen} from '../screens/onboarding/SyncWalletScreen';
+import {SetPinScreen} from '../screens/onboarding/SetPinScreen';
+import {BiometricSetupScreen} from '../screens/onboarding/BiometricSetupScreen';
+import {SuccessScreen} from '../screens/onboarding/SuccessScreen';
+import {PresaleScreen} from '../screens/PresaleScreen';
+import {PrivacyExplainerScreen} from '../screens/PrivacyExplainerScreen';
+import {OnboardingProvider, useOnboarding} from '../contexts/OnboardingContext';
 import type {
   RootStackParamList,
   OnboardingStackParamList,
@@ -16,17 +29,6 @@ import type {
 } from '../types/navigation';
 
 // Screen placeholders (replaced in later implementation steps)
-const WelcomeScreen = makePlaceholder('Welcome');
-const SecurityIntroScreen = makePlaceholder('SecurityIntro');
-const CreateWalletScreen = makePlaceholder('CreateWallet');
-const SeedPhraseScreen = makePlaceholder('SeedPhrase');
-const ConfirmSeedScreen = makePlaceholder('ConfirmSeed');
-const ImportSeedScreen = makePlaceholder('ImportSeed');
-const SyncWalletScreen = makePlaceholder('SyncWallet');
-const SetPinScreen = makePlaceholder('SetPin');
-const BiometricSetupScreen = makePlaceholder('BiometricSetup');
-const SuccessScreen = makePlaceholder('Success');
-const PresaleScreen = makePlaceholder('Presale');
 const DashboardScreen = makePlaceholder('Dashboard');
 const StakingScreen = makePlaceholder('Staking');
 const ReferralScreen = makePlaceholder('Referral');
@@ -46,7 +48,6 @@ const ShieldedBalanceScreen = makePlaceholder('ShieldedBalance');
 const DepositScreen = makePlaceholder('Deposit');
 const ShieldedTransferScreen = makePlaceholder('ShieldedTransfer');
 const WithdrawScreen = makePlaceholder('Withdraw');
-const PrivacyExplainerScreen = makePlaceholder('PrivacyExplainer');
 const AppUpdateModalScreen = makePlaceholder('AppUpdateModal');
 
 // Wrapper components that wire screens to navigation
@@ -75,6 +76,147 @@ function UnlockScreenNav() {
   );
 }
 
+// Onboarding screen wrappers — navigation wired in subsequent integration step
+function WelcomeScreenNav() {
+  const {setIsImport} = useOnboarding();
+  const navigation = useNavigation<NativeStackNavigationProp<OnboardingStackParamList>>();
+  return (
+    <WelcomeScreen
+      onCreate={() => {
+        setIsImport(false);
+        navigation.navigate('SecurityIntro');
+      }}
+      onImport={() => {
+        setIsImport(true);
+        navigation.navigate('SecurityIntro'); // Import also requires SecurityIntro (App Store compliance)
+      }}
+    />
+  );
+}
+
+function SecurityIntroScreenNav() {
+  const {isImport} = useOnboarding();
+  const navigation = useNavigation<NativeStackNavigationProp<OnboardingStackParamList>>();
+  return (
+    <SecurityIntroScreen
+      onContinue={() =>
+        navigation.navigate(isImport ? 'ImportSeed' : 'CreateWallet')
+      }
+    />
+  );
+}
+
+function CreateWalletScreenNav() {
+  const {setMnemonic} = useOnboarding();
+  const navigation = useNavigation<NativeStackNavigationProp<OnboardingStackParamList>>();
+  return (
+    <CreateWalletScreen
+      onMnemonicGenerated={mnemonic => {
+        setMnemonic(mnemonic);
+        navigation.navigate('SeedPhrase');
+      }}
+    />
+  );
+}
+
+function SeedPhraseScreenNav() {
+  const {mnemonic} = useOnboarding();
+  const navigation = useNavigation<NativeStackNavigationProp<OnboardingStackParamList>>();
+  return (
+    <SeedPhraseScreen
+      mnemonic={mnemonic ?? ''}
+      onConfirm={() => navigation.navigate('ConfirmSeed')}
+    />
+  );
+}
+
+function ConfirmSeedScreenNav() {
+  const {mnemonic} = useOnboarding();
+  const navigation = useNavigation<NativeStackNavigationProp<OnboardingStackParamList>>();
+  return (
+    <ConfirmSeedScreen
+      mnemonic={mnemonic ?? ''}
+      onSuccess={() => navigation.navigate('SyncWallet')}
+      onBackToSeed={() => navigation.navigate('SeedPhrase')}
+    />
+  );
+}
+
+function ImportSeedScreenNav() {
+  const {setMnemonic} = useOnboarding();
+  const navigation = useNavigation<NativeStackNavigationProp<OnboardingStackParamList>>();
+  return (
+    <ImportSeedScreen
+      onMnemonicValidated={mnemonic => {
+        setMnemonic(mnemonic);
+        navigation.navigate('SyncWallet');
+      }}
+    />
+  );
+}
+
+function SyncWalletScreenNav() {
+  const {mnemonic} = useOnboarding();
+  const navigation = useNavigation<NativeStackNavigationProp<OnboardingStackParamList>>();
+  return (
+    <SyncWalletScreen
+      mnemonic={mnemonic ?? ''}
+      onSyncComplete={() => navigation.navigate('SetPin')}
+    />
+  );
+}
+
+function SetPinScreenNav() {
+  const navigation = useNavigation<NativeStackNavigationProp<OnboardingStackParamList>>();
+  return <SetPinScreen onPinSet={() => navigation.navigate('BiometricSetup')} />;
+}
+
+function BiometricSetupScreenNav() {
+  const navigation = useNavigation<NativeStackNavigationProp<OnboardingStackParamList>>();
+  return (
+    <BiometricSetupScreen
+      onEnable={() => navigation.navigate('Success')}
+      onSkip={() => navigation.navigate('Success')}
+    />
+  );
+}
+
+function SuccessScreenNav() {
+  const {mnemonic, clearMnemonic} = useOnboarding();
+  const navigation = useNavigation<NativeStackNavigationProp<OnboardingStackParamList>>();
+  return (
+    <SuccessScreen
+      mnemonic={mnemonic ?? ''}
+      onComplete={() => {
+        clearMnemonic();
+        navigation.navigate('Presale');
+      }}
+    />
+  );
+}
+
+function PresaleScreenOnboarding() {
+  // Use root navigator to escape OnboardingStack → MainTabs
+  const rootNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const goToMainTabs = () => rootNavigation.replace('MainTabs');
+  return (
+    <PresaleScreen
+      isOnboarding
+      onSkip={goToMainTabs}
+      onComplete={goToMainTabs}
+    />
+  );
+}
+
+function PresaleScreenDashboard() {
+  return <PresaleScreen onSkip={() => {}} onComplete={() => {}} />;
+}
+
+function PrivacyExplainerScreenNav() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  return <PrivacyExplainerScreen onDismiss={() => navigation.goBack()} />;
+}
+
 const defaultScreenOptions = {
   headerShown: false,
   animation: 'slide_from_right' as const,
@@ -94,19 +236,21 @@ const modalScreenOptions = {
 const OnboardingNav = createNativeStackNavigator<OnboardingStackParamList>();
 function OnboardingStack() {
   return (
-    <OnboardingNav.Navigator screenOptions={defaultScreenOptions}>
-      <OnboardingNav.Screen name="Welcome" component={WelcomeScreen} />
-      <OnboardingNav.Screen name="SecurityIntro" component={SecurityIntroScreen} />
-      <OnboardingNav.Screen name="CreateWallet" component={CreateWalletScreen} />
-      <OnboardingNav.Screen name="SeedPhrase" component={SeedPhraseScreen} />
-      <OnboardingNav.Screen name="ConfirmSeed" component={ConfirmSeedScreen} />
-      <OnboardingNav.Screen name="ImportSeed" component={ImportSeedScreen} />
-      <OnboardingNav.Screen name="SyncWallet" component={SyncWalletScreen} />
-      <OnboardingNav.Screen name="SetPin" component={SetPinScreen} />
-      <OnboardingNav.Screen name="BiometricSetup" component={BiometricSetupScreen} />
-      <OnboardingNav.Screen name="Success" component={SuccessScreen} />
-      <OnboardingNav.Screen name="Presale" component={PresaleScreen} />
-    </OnboardingNav.Navigator>
+    <OnboardingProvider>
+      <OnboardingNav.Navigator screenOptions={defaultScreenOptions}>
+        <OnboardingNav.Screen name="Welcome" component={WelcomeScreenNav} />
+        <OnboardingNav.Screen name="SecurityIntro" component={SecurityIntroScreenNav} />
+        <OnboardingNav.Screen name="CreateWallet" component={CreateWalletScreenNav} />
+        <OnboardingNav.Screen name="SeedPhrase" component={SeedPhraseScreenNav} />
+        <OnboardingNav.Screen name="ConfirmSeed" component={ConfirmSeedScreenNav} />
+        <OnboardingNav.Screen name="ImportSeed" component={ImportSeedScreenNav} />
+        <OnboardingNav.Screen name="SyncWallet" component={SyncWalletScreenNav} />
+        <OnboardingNav.Screen name="SetPin" component={SetPinScreenNav} />
+        <OnboardingNav.Screen name="BiometricSetup" component={BiometricSetupScreenNav} />
+        <OnboardingNav.Screen name="Success" component={SuccessScreenNav} />
+        <OnboardingNav.Screen name="Presale" component={PresaleScreenOnboarding} />
+      </OnboardingNav.Navigator>
+    </OnboardingProvider>
   );
 }
 
@@ -116,7 +260,7 @@ function DashboardStack() {
   return (
     <DashboardNav.Navigator screenOptions={defaultScreenOptions}>
       <DashboardNav.Screen name="Dashboard" component={DashboardScreen} />
-      <DashboardNav.Screen name="Presale" component={PresaleScreen} />
+      <DashboardNav.Screen name="Presale" component={PresaleScreenDashboard} />
       <DashboardNav.Screen name="Staking" component={StakingScreen} />
       <DashboardNav.Screen name="Referral" component={ReferralScreen} />
     </DashboardNav.Navigator>
@@ -188,7 +332,7 @@ export function RootNavigator() {
       <RootNav.Screen name="Deposit" component={DepositScreen} options={modalScreenOptions} />
       <RootNav.Screen name="ShieldedTransfer" component={ShieldedTransferScreen} options={modalScreenOptions} />
       <RootNav.Screen name="Withdraw" component={WithdrawScreen} options={modalScreenOptions} />
-      <RootNav.Screen name="PrivacyExplainer" component={PrivacyExplainerScreen} options={modalScreenOptions} />
+      <RootNav.Screen name="PrivacyExplainer" component={PrivacyExplainerScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="AppUpdateModal" component={AppUpdateModalScreen} options={{...modalScreenOptions, gestureEnabled: false}} />
     </RootNav.Navigator>
   );
