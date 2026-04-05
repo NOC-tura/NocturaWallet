@@ -6,83 +6,116 @@ import {
   Text,
   TouchableOpacity,
   View,
+  ScrollView,
 } from 'react-native';
 
 interface ReceiveScreenProps {
   address: string;
 }
 
+// Token selector items — all share the same Solana address
+const TOKEN_OPTIONS = ['SOL', 'NOC', 'USDC', 'USDT'] as const;
+
+/**
+ * Transparent receive screen.
+ * QR code + copyable address + 30s clipboard auto-clear + share.
+ * Token selector shows that the same address works for all SPL tokens.
+ */
 export function ReceiveScreen({address}: ReceiveScreenProps) {
   const [copied, setCopied] = useState(false);
+  const [selectedToken, setSelectedToken] = useState<string>('SOL');
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
-      if (clearTimerRef.current) {
-        clearTimeout(clearTimerRef.current);
-      }
+      if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
     };
   }, []);
 
   const handleCopy = useCallback(() => {
     Clipboard.setString(address);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
 
-    // Auto-clear clipboard after 30s for security
-    if (clearTimerRef.current) {
-      clearTimeout(clearTimerRef.current);
-    }
+    // "Copied!" feedback for 2s
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = setTimeout(() => setCopied(false), 2000);
+
+    // Auto-clear clipboard after 30s for security (matches seed phrase timing)
+    if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
     clearTimerRef.current = setTimeout(() => {
       Clipboard.setString('');
     }, 30_000);
   }, [address]);
 
-  const handleShare = useCallback(() => {
-    Share.share({message: address, title: 'My Solana Address'});
+  const handleShare = useCallback(async () => {
+    try {
+      await Share.share({message: address, title: 'My Solana Address'});
+    } catch {
+      // User cancelled or share failed — no action needed
+    }
   }, [address]);
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}>
       <Text style={styles.header}>Receive</Text>
 
+      {/* QR Code area */}
       <View testID="qr-area" style={styles.qrArea}>
         <Text style={styles.qrPlaceholder}>{address}</Text>
       </View>
 
+      {/* Full address (monospace, selectable) */}
       <Text selectable style={styles.address}>
         {address}
       </Text>
 
-      <TouchableOpacity style={styles.button} onPress={handleCopy}>
-        <Text style={styles.buttonText}>{copied ? 'Copied!' : 'Copy'}</Text>
+      {/* Copy button */}
+      <TouchableOpacity style={styles.copyButton} onPress={handleCopy}>
+        <Text style={styles.copyButtonText}>
+          {copied ? 'Copied!' : 'Copy'}
+        </Text>
       </TouchableOpacity>
 
+      {/* Token selector — same address for all */}
+      <View style={styles.tokenSelector}>
+        {TOKEN_OPTIONS.map(token => (
+          <TouchableOpacity
+            key={token}
+            style={[
+              styles.tokenPill,
+              selectedToken === token && styles.tokenPillActive,
+            ]}
+            onPress={() => setSelectedToken(token)}>
+            <Text
+              style={[
+                styles.tokenPillText,
+                selectedToken === token && styles.tokenPillTextActive,
+              ]}>
+              {token}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
       <Text style={styles.note}>
         Your address works for all SPL tokens on Solana
       </Text>
 
-      <TouchableOpacity style={styles.button} onPress={handleShare}>
-        <Text style={styles.buttonText}>Share</Text>
+      {/* Share button */}
+      <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
+        <Text style={styles.shareButtonText}>Share</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0C0C14',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 48,
-  },
-  header: {
-    color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 32,
-  },
+  container: {flex: 1, backgroundColor: '#0C0C14'},
+  contentContainer: {alignItems: 'center', paddingHorizontal: 24, paddingTop: 48, paddingBottom: 40},
+  header: {color: '#FFFFFF', fontSize: 24, fontWeight: '700', marginBottom: 32},
   qrArea: {
     width: 220,
     height: 220,
@@ -107,24 +140,51 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 24,
   },
-  button: {
+  copyButton: {
     backgroundColor: '#6C47FF',
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 40,
-    marginBottom: 16,
+    marginBottom: 24,
     minWidth: 160,
     alignItems: 'center',
   },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+  copyButtonText: {color: '#FFFFFF', fontSize: 16, fontWeight: '600'},
+  tokenSelector: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  tokenPill: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  tokenPillActive: {
+    backgroundColor: '#6C47FF',
+  },
+  tokenPillText: {
+    fontSize: 13,
     fontWeight: '600',
+    color: 'rgba(255,255,255,0.45)',
+  },
+  tokenPillTextActive: {
+    color: '#FFFFFF',
   },
   note: {
     color: 'rgba(255,255,255,0.45)',
-    fontSize: 13,
+    fontSize: 12,
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: 24,
   },
+  shareButton: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 40,
+    minWidth: 160,
+    alignItems: 'center',
+  },
+  shareButtonText: {color: '#FFFFFF', fontSize: 16, fontWeight: '600'},
 });
