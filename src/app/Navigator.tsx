@@ -23,6 +23,8 @@ import {PresaleScreen} from '../screens/PresaleScreen';
 import {PrivacyExplainerScreen} from '../screens/PrivacyExplainerScreen';
 import {StakingScreen} from '../screens/staking/StakingScreen';
 import {OnboardingProvider, useOnboarding} from '../contexts/OnboardingContext';
+import {useWalletStore} from '../store/zustand/walletStore';
+import {ReceiveScreen} from '../screens/transparent/ReceiveScreen';
 import type {
   RootStackParamList,
   OnboardingStackParamList,
@@ -35,7 +37,6 @@ import type {
 // Screen placeholders (replaced in later implementation steps)
 const ReferralScreen = makePlaceholder('Referral');
 const TransactionDetailScreen = makePlaceholder('TransactionDetail');
-const ReceiveScreen = makePlaceholder('Receive');
 const SettingsScreen = makePlaceholder('Settings');
 const SecuritySettingsScreen = makePlaceholder('SecuritySettings');
 const ChangePinScreen = makePlaceholder('ChangePin');
@@ -216,6 +217,11 @@ function StakingScreenNav() {
   return <StakingScreen />;
 }
 
+function ReceiveScreenNav() {
+  const publicKey = useWalletStore().publicKey;
+  return <ReceiveScreen address={publicKey ?? ''} />;
+}
+
 function PresaleScreenDashboard() {
   return <PresaleScreen onSkip={() => {}} onComplete={() => {}} />;
 }
@@ -347,7 +353,7 @@ function MainTabs() {
       }}>
       <Tabs.Screen name="HomeTab" component={DashboardStack} options={{title: 'Home'}} />
       <Tabs.Screen name="SendTab" component={SendStack} options={{title: 'Send'}} />
-      <Tabs.Screen name="ReceiveTab" component={ReceiveScreen} options={{title: 'Receive'}} />
+      <Tabs.Screen name="ReceiveTab" component={ReceiveScreenNav} options={{title: 'Receive'}} />
       <Tabs.Screen name="SettingsTab" component={SettingsStack} options={{title: 'Settings'}} />
     </Tabs.Navigator>
   );
