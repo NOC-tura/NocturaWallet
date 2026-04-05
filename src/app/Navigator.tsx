@@ -19,6 +19,7 @@ import {BiometricSetupScreen} from '../screens/onboarding/BiometricSetupScreen';
 import {SuccessScreen} from '../screens/onboarding/SuccessScreen';
 import {PresaleScreen} from '../screens/PresaleScreen';
 import {PrivacyExplainerScreen} from '../screens/PrivacyExplainerScreen';
+import {StakingScreen} from '../screens/staking/StakingScreen';
 import {OnboardingProvider, useOnboarding} from '../contexts/OnboardingContext';
 import type {
   RootStackParamList,
@@ -30,7 +31,6 @@ import type {
 } from '../types/navigation';
 
 // Screen placeholders (replaced in later implementation steps)
-const StakingScreen = makePlaceholder('Staking');
 const ReferralScreen = makePlaceholder('Referral');
 const SendScreen = makePlaceholder('Send');
 const TransactionStatusScreen = makePlaceholder('TransactionStatus');
@@ -212,6 +212,10 @@ function DashboardScreenNav() {
   return <DashboardScreen />;
 }
 
+function StakingScreenNav() {
+  return <StakingScreen />;
+}
+
 function PresaleScreenDashboard() {
   return <PresaleScreen onSkip={() => {}} onComplete={() => {}} />;
 }
@@ -265,7 +269,7 @@ function DashboardStack() {
     <DashboardNav.Navigator screenOptions={defaultScreenOptions}>
       <DashboardNav.Screen name="Dashboard" component={DashboardScreenNav} />
       <DashboardNav.Screen name="Presale" component={PresaleScreenDashboard} />
-      <DashboardNav.Screen name="Staking" component={StakingScreen} />
+      <DashboardNav.Screen name="Staking" component={StakingScreenNav} />
       <DashboardNav.Screen name="Referral" component={ReferralScreen} />
     </DashboardNav.Navigator>
   );
