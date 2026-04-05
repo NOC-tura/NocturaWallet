@@ -14,14 +14,14 @@ describe('BackupManager', () => {
     expect(backup.isCloudBackupEnabled()).toBe(false);
   });
 
-  it('enableCloudBackup sets BACKUP_CLOUD_ENABLED flag in MMKV', () => {
-    backup.enableCloudBackup();
+  it('enableCloudBackup sets BACKUP_CLOUD_ENABLED flag in MMKV', async () => {
+    await backup.enableCloudBackup();
     expect(mmkvPublic.getString(MMKV_KEYS.BACKUP_CLOUD_ENABLED)).toBe('true');
   });
 
-  it('disableCloudBackup clears BACKUP_CLOUD_ENABLED flag', () => {
-    backup.enableCloudBackup();
-    backup.disableCloudBackup();
+  it('disableCloudBackup clears BACKUP_CLOUD_ENABLED flag', async () => {
+    await backup.enableCloudBackup();
+    await backup.disableCloudBackup();
     expect(mmkvPublic.getString(MMKV_KEYS.BACKUP_CLOUD_ENABLED)).toBeUndefined();
   });
 
@@ -29,7 +29,8 @@ describe('BackupManager', () => {
     expect(backup.lastCloudBackupAt()).toBeNull();
   });
 
-  it('performCloudBackup updates BACKUP_LAST_AT timestamp', async () => {
+  it('performCloudBackup updates BACKUP_LAST_AT when enabled', async () => {
+    await backup.enableCloudBackup();
     const before = Date.now();
     await backup.performCloudBackup();
     const ts = backup.lastCloudBackupAt();
@@ -37,27 +38,44 @@ describe('BackupManager', () => {
     expect(ts!).toBeGreaterThanOrEqual(before);
   });
 
-  it('exportToFile returns a Uint8Array (encrypted data)', async () => {
-    const data = await backup.exportToFile('test-password');
-    expect(data).toBeInstanceOf(Uint8Array);
-    expect(data.length).toBeGreaterThan(0);
+  it('performCloudBackup does nothing when disabled', async () => {
+    await backup.performCloudBackup();
+    expect(backup.lastCloudBackupAt()).toBeNull();
   });
 
-  it('importFromFile returns a RestoreResult', async () => {
-    const exported = await backup.exportToFile('test-password');
-    const result = await backup.importFromFile(exported, 'test-password');
-    expect(result).toHaveProperty('notesRestored');
-    expect(result).toHaveProperty('tokensFound');
-    expect(result).toHaveProperty('transparentBalanceFound');
-    expect(result).toHaveProperty('shieldedBalanceRestored');
+  it('exportToFile returns encrypted Uint8Array with magic header', async () => {
+    const data = await backup.exportToFile('test-password');
+    expect(data).toBeInstanceOf(Uint8Array);
+    const header = new TextDecoder().decode(data.slice(0, 17));
+    expect(header).toBe('NOCTURA_BACKUP_V1');
+  });
+
+  it('export → import round-trip succeeds with correct password', async () => {
+    const exported = await backup.exportToFile('my-password');
+    const result = await backup.importFromFile(exported, 'my-password');
+    expect(result.notesRestored).toBe(0);
+    expect(result.tokensFound).toEqual([]);
+    expect(result.shieldedBalanceRestored).toBe('0');
+  });
+
+  it('importFromFile throws on wrong password', async () => {
+    const exported = await backup.exportToFile('correct-password');
+    await expect(backup.importFromFile(exported, 'wrong-password')).rejects.toThrow(
+      /wrong password|corrupted/i,
+    );
+  });
+
+  it('importFromFile throws on invalid file format', async () => {
+    const garbage = new Uint8Array([1, 2, 3, 4, 5]);
+    await expect(backup.importFromFile(garbage, 'password')).rejects.toThrow(
+      /invalid backup/i,
+    );
   });
 
   it('getBackupIdentifier returns SHA-256 hash (not raw publicKey)', () => {
     const publicKeyHex = 'deadbeef01234567';
     const identifier = backup.getBackupIdentifier(publicKeyHex);
-    // Must be a 64-char hex string (SHA-256 = 32 bytes = 64 hex chars)
     expect(identifier).toMatch(/^[0-9a-f]{64}$/);
-    // Must NOT equal the raw input
     expect(identifier).not.toBe(publicKeyHex);
   });
 });

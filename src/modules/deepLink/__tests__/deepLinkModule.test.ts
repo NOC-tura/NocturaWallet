@@ -55,6 +55,13 @@ describe('DeepLinkManager', () => {
     expect(action!.reason).toMatch(/security/i);
   });
 
+  it('rejects mnemonic param on ANY path (not just import)', () => {
+    const action = manager.handleLink('noctura://pay?to=addr&mnemonic=word1+word2');
+    expect(action).not.toBeNull();
+    expect(action!.type).toBe('rejected');
+    expect(action!.reason).toMatch(/security/i);
+  });
+
   it('returns null for empty string', () => {
     const action = manager.handleLink('');
     expect(action).toBeNull();

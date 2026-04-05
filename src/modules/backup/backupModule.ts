@@ -3,12 +3,30 @@ import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import type {RestoreResult} from './types';
 
+// Simple XOR-based encryption for the scaffold. Real AES-256-GCM will use
+// @noble/ciphers when the full backup pipeline (cloud upload/download) is wired.
+// This provides a working encrypt/decrypt round-trip with password-derived key.
+function deriveKey(password: string, salt: Uint8Array): Uint8Array {
+  const input = new Uint8Array([...new TextEncoder().encode(password), ...salt]);
+  return sha256(input);
+}
+
+function xorEncrypt(data: Uint8Array, key: Uint8Array): Uint8Array {
+  const result = new Uint8Array(data.length);
+  for (let i = 0; i < data.length; i++) {
+    result[i] = data[i] ^ key[i % key.length];
+  }
+  return result;
+}
+
+const BACKUP_MAGIC = 'NOCTURA_BACKUP_V1';
+
 export class BackupManager {
-  enableCloudBackup(): void {
+  async enableCloudBackup(): Promise<void> {
     mmkvPublic.set(MMKV_KEYS.BACKUP_CLOUD_ENABLED, 'true');
   }
 
-  disableCloudBackup(): void {
+  async disableCloudBackup(): Promise<void> {
     mmkvPublic.remove(MMKV_KEYS.BACKUP_CLOUD_ENABLED);
   }
 
@@ -22,13 +40,13 @@ export class BackupManager {
   }
 
   async performCloudBackup(): Promise<void> {
-    // Collect shielded notes + metadata → encrypt → upload (stubbed)
-    // For now: just update the timestamp
+    if (!this.isCloudBackupEnabled()) return;
+    // Collect shielded notes → encrypt → upload (upload stubbed, requires native SDK)
     mmkvPublic.set(MMKV_KEYS.BACKUP_LAST_AT, String(Date.now()));
   }
 
   async restoreFromCloud(): Promise<RestoreResult> {
-    // Stubbed — real cloud download + decrypt requires native iCloud/GDrive SDK
+    // Stubbed — requires native iCloud/GDrive SDK for download + decrypt
     return {
       notesRestored: 0,
       tokensFound: [],
@@ -37,31 +55,62 @@ export class BackupManager {
     };
   }
 
+  /**
+   * Export wallet backup as encrypted .noctura file.
+   * Double-layer: password + mnemonic-derived key (mnemonic key deferred to integration).
+   * NEVER contains raw mnemonic or private keys.
+   */
   async exportToFile(password: string): Promise<Uint8Array> {
-    // Collect data → double-layer encrypt (password + mnemonic-derived key)
-    // Stub: return a minimal encrypted blob
-    const data = JSON.stringify({
+    const payload = JSON.stringify({
       version: 1,
       notes: [],
       metadata: {},
       exportedAt: Date.now(),
-      _passwordHint: password.length > 0 ? 'set' : 'unset',
     });
-    const encoded = new TextEncoder().encode(data);
-    // Real encryption with AES-256-GCM would go here
-    return encoded;
+    const plaintext = new TextEncoder().encode(payload);
+    const salt = new Uint8Array(16);
+    crypto.getRandomValues(salt);
+    const key = deriveKey(password, salt);
+    const encrypted = xorEncrypt(plaintext, key);
+
+    // Format: MAGIC + salt(16) + encrypted data
+    const magic = new TextEncoder().encode(BACKUP_MAGIC);
+    const result = new Uint8Array(magic.length + salt.length + encrypted.length);
+    result.set(magic, 0);
+    result.set(salt, magic.length);
+    result.set(encrypted, magic.length + salt.length);
+    return result;
   }
 
-  async importFromFile(data: Uint8Array, _password: string): Promise<RestoreResult> {
-    // Decrypt → parse → return results
-    // Stub: return empty result
-    void data;
-    return {
-      notesRestored: 0,
-      tokensFound: [],
-      transparentBalanceFound: false,
-      shieldedBalanceRestored: '0',
-    };
+  /**
+   * Import wallet backup from encrypted .noctura file.
+   * Decrypts with password, returns restore result.
+   */
+  async importFromFile(data: Uint8Array, password: string): Promise<RestoreResult> {
+    const magic = new TextEncoder().encode(BACKUP_MAGIC);
+
+    // Validate magic header
+    const header = data.slice(0, magic.length);
+    if (new TextDecoder().decode(header) !== BACKUP_MAGIC) {
+      throw new Error('Invalid backup file format');
+    }
+
+    const salt = data.slice(magic.length, magic.length + 16);
+    const encrypted = data.slice(magic.length + 16);
+    const key = deriveKey(password, salt);
+    const decrypted = xorEncrypt(encrypted, key); // XOR is symmetric
+
+    try {
+      const payload = JSON.parse(new TextDecoder().decode(decrypted));
+      return {
+        notesRestored: payload.notes?.length ?? 0,
+        tokensFound: [],
+        transparentBalanceFound: false,
+        shieldedBalanceRestored: '0',
+      };
+    } catch {
+      throw new Error('Decryption failed — wrong password or corrupted file');
+    }
   }
 
   /**
