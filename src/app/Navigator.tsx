@@ -1,7 +1,11 @@
 import React from 'react';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
+import {useNavigation} from '@react-navigation/native';
+import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {makePlaceholder} from '../screens/PlaceholderScreen';
+import {SplashScreen} from '../screens/SplashScreen';
+import {UnlockScreen} from '../screens/UnlockScreen';
 import type {
   RootStackParamList,
   OnboardingStackParamList,
@@ -12,8 +16,6 @@ import type {
 } from '../types/navigation';
 
 // Screen placeholders (replaced in later implementation steps)
-const SplashScreen = makePlaceholder('Splash');
-const UnlockScreen = makePlaceholder('Unlock');
 const WelcomeScreen = makePlaceholder('Welcome');
 const SecurityIntroScreen = makePlaceholder('SecurityIntro');
 const CreateWalletScreen = makePlaceholder('CreateWallet');
@@ -46,6 +48,32 @@ const ShieldedTransferScreen = makePlaceholder('ShieldedTransfer');
 const WithdrawScreen = makePlaceholder('Withdraw');
 const PrivacyExplainerScreen = makePlaceholder('PrivacyExplainer');
 const AppUpdateModalScreen = makePlaceholder('AppUpdateModal');
+
+// Wrapper components that wire screens to navigation
+function SplashScreenNav() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  return (
+    <SplashScreen
+      onRouteResolved={route => {
+        if (route === 'Unlock') {
+          navigation.replace('Unlock', {reason: 'app_foreground'});
+        } else {
+          navigation.replace(route as 'Onboarding' | 'MainTabs');
+        }
+      }}
+    />
+  );
+}
+
+function UnlockScreenNav() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  return (
+    <UnlockScreen
+      onUnlock={() => navigation.replace('MainTabs')}
+      onRestore={() => navigation.replace('Onboarding')}
+    />
+  );
+}
 
 const defaultScreenOptions = {
   headerShown: false,
@@ -151,8 +179,8 @@ const RootNav = createNativeStackNavigator<RootStackParamList>();
 export function RootNavigator() {
   return (
     <RootNav.Navigator screenOptions={defaultScreenOptions}>
-      <RootNav.Screen name="Splash" component={SplashScreen} />
-      <RootNav.Screen name="Unlock" component={UnlockScreen} />
+      <RootNav.Screen name="Splash" component={SplashScreenNav} />
+      <RootNav.Screen name="Unlock" component={UnlockScreenNav} />
       <RootNav.Screen name="Onboarding" component={OnboardingStack} />
       <RootNav.Screen name="MainTabs" component={MainTabs} />
       <RootNav.Screen name="TransactionHistory" component={TransactionHistoryScreen} options={modalScreenOptions} />
