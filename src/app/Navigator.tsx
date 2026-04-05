@@ -1,11 +1,12 @@
 import React from 'react';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
-import {useNavigation} from '@react-navigation/native';
+import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {makePlaceholder} from '../screens/PlaceholderScreen';
 import {DashboardScreen} from '../screens/dashboard/DashboardScreen';
 import {SendScreen as SendScreenImpl} from '../screens/transparent/SendScreen';
+import {TransactionStatusScreen} from '../screens/transparent/TransactionStatusScreen';
 import {SplashScreen} from '../screens/SplashScreen';
 import {UnlockScreen} from '../screens/UnlockScreen';
 import {WelcomeScreen} from '../screens/onboarding/WelcomeScreen';
@@ -33,7 +34,6 @@ import type {
 
 // Screen placeholders (replaced in later implementation steps)
 const ReferralScreen = makePlaceholder('Referral');
-const TransactionStatusScreen = makePlaceholder('TransactionStatus');
 const TransactionDetailScreen = makePlaceholder('TransactionDetail');
 const ReceiveScreen = makePlaceholder('Receive');
 const SettingsScreen = makePlaceholder('Settings');
@@ -236,6 +236,22 @@ function SendScreenNav() {
   );
 }
 
+function TransactionStatusScreenNav() {
+  const route = useRoute();
+  const navigation = useNavigation();
+  const params = route.params as {signature: string; amount: string; recipient: string; token: string};
+  return (
+    <TransactionStatusScreen
+      signature={params.signature}
+      amount={params.amount}
+      recipient={params.recipient}
+      token={params.token}
+      onDashboard={() => navigation.getParent()?.navigate('HomeTab')}
+      onRetry={() => navigation.goBack()}
+    />
+  );
+}
+
 const defaultScreenOptions = {
   headerShown: false,
   animation: 'slide_from_right' as const,
@@ -292,7 +308,7 @@ function SendStack() {
   return (
     <SendNav.Navigator screenOptions={defaultScreenOptions}>
       <SendNav.Screen name="Send" component={SendScreenNav} />
-      <SendNav.Screen name="TransactionStatus" component={TransactionStatusScreen} />
+      <SendNav.Screen name="TransactionStatus" component={TransactionStatusScreenNav} />
       <SendNav.Screen name="TransactionDetail" component={TransactionDetailScreen} />
     </SendNav.Navigator>
   );
