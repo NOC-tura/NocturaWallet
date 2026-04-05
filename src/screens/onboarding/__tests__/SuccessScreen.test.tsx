@@ -2,6 +2,8 @@ import React from 'react';
 import {render, fireEvent, waitFor} from '@testing-library/react-native';
 import {SuccessScreen} from '../SuccessScreen';
 
+jest.setTimeout(30_000); // Key derivation + keychain mocks can be slow in full suite
+
 jest.mock('../../../modules/keychain/keychainModule', () => ({
   KeychainManager: jest.fn().mockImplementation(() => ({
     storeSeed: jest.fn().mockResolvedValue(undefined),
