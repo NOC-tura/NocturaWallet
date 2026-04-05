@@ -11,6 +11,7 @@ import {
 import {getExplorerUrl} from '../../utils/explorerUrl';
 import {formatAddress} from '../../utils/formatAddress';
 import {getConnection} from '../../modules/solana/connection';
+import {ERROR_CODES} from '../../constants/errors';
 
 export interface TransactionStatusScreenProps {
   signature: string;
@@ -54,7 +55,15 @@ export function TransactionStatusScreen({
           }
           if (result?.value?.err) {
             setTxState('failed');
-            setErrorMessage('Transaction was rejected by the network');
+            // Map RPC error to user-friendly message from ERROR_CODES
+            const errStr = JSON.stringify(result.value.err);
+            if (errStr.includes('InsufficientFunds')) {
+              setErrorMessage(ERROR_CODES.INSUFFICIENT_SOL.message);
+            } else if (errStr.includes('AccountNotFound')) {
+              setErrorMessage(ERROR_CODES.INVALID_ADDRESS.message);
+            } else {
+              setErrorMessage(ERROR_CODES.TX_SEND_FAILED.message);
+            }
             return;
           }
         } catch {
@@ -85,7 +94,7 @@ export function TransactionStatusScreen({
         style={styles.container}
         contentContainerStyle={styles.contentContainer}>
         <View style={styles.iconCircleSuccess}>
-          <Text style={styles.iconText}>✓</Text>
+          <Text style={styles.iconTextSuccess}>✓</Text>
         </View>
         <Text style={styles.titleSuccess}>Sent!</Text>
         <Text style={styles.subtitle}>
@@ -93,6 +102,9 @@ export function TransactionStatusScreen({
         </Text>
         <TouchableOpacity onPress={handleViewOnSolscan} activeOpacity={0.75}>
           <Text style={styles.linkAccent}>View on Solscan →</Text>
+        </TouchableOpacity>
+        <TouchableOpacity activeOpacity={0.75} style={styles.addContactButton}>
+          <Text style={styles.addContactText}>+ Add to contacts</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.primaryButton}
@@ -110,7 +122,7 @@ export function TransactionStatusScreen({
         style={styles.container}
         contentContainerStyle={styles.contentContainer}>
         <View style={styles.iconCircleFailed}>
-          <Text style={styles.iconText}>✗</Text>
+          <Text style={styles.iconTextFailed}>✗</Text>
         </View>
         <Text style={styles.titleFailed}>Transaction failed</Text>
         {errorMessage ? (
@@ -140,7 +152,7 @@ export function TransactionStatusScreen({
         style={styles.container}
         contentContainerStyle={styles.contentContainer}>
         <View style={styles.iconCircleTimeout}>
-          <Text style={styles.iconTextLarge}>⚠</Text>
+          <Text style={styles.iconTextTimeout}>⚠</Text>
         </View>
         <Text style={styles.titleTimeout}>Transaction status unknown</Text>
         <Text style={styles.subtitle}>
@@ -281,15 +293,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconText: {
+  iconTextSuccess: {
     fontSize: 48,
-    color: 'inherit',
+    color: '#4ADE80',
     lineHeight: 56,
   },
-  iconTextLarge: {
+  iconTextFailed: {
+    fontSize: 48,
+    color: '#F87171',
+    lineHeight: 56,
+  },
+  iconTextTimeout: {
     fontSize: 36,
+    color: '#FBBF24',
     lineHeight: 44,
   },
+  addContactButton: {marginTop: 12, padding: 8},
+  addContactText: {fontSize: 14, color: '#6C47FF', fontWeight: '600'},
   errorMessage: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.65)',
