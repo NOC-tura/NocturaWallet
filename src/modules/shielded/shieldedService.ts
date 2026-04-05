@@ -1,4 +1,5 @@
 import {API_BASE} from '../../constants/programs';
+import {ERROR_CODES} from '../../constants/errors';
 import {pinnedFetch} from '../sslPinning/pinnedFetch';
 import {zkProver} from '../zkProver/zkProverModule';
 import {feeEngine} from '../fees/feeEngine';
@@ -155,6 +156,9 @@ async function consolidateNotes(
     witness.amount = batchTotal.toString();
 
     const proof = await zkProver.prove('transfer', witness);
+    witness.noteSecret = '';
+    witness.nullifier = '';
+    witness.merklePath = [];
     const txSig = await submitToRelayer(proof);
     // Mark all batch notes spent
     markSpent(
@@ -203,7 +207,14 @@ export async function deposit(
     noteSecret: zeroPad,
   };
 
+  if (fee > params.amount) {
+    throw new Error(ERROR_CODES.INSUFFICIENT_NOC_FEE.message);
+  }
+
   const proof = await zkProver.prove('deposit', witness);
+  witness.noteSecret = '';
+  witness.nullifier = '';
+  witness.merklePath = [];
   const txSignature = await submitToRelayer(proof);
 
   // Record the resulting note in the shielded note store
@@ -266,6 +277,9 @@ export async function transfer(
   );
 
   const proof = await zkProver.prove('transfer', witness);
+  witness.noteSecret = '';
+  witness.nullifier = '';
+  witness.merklePath = [];
   const txSignature = await submitToRelayer(proof);
 
   markSpent(
@@ -308,6 +322,9 @@ export async function withdraw(
   const witness = buildWitnessForNote(primaryNote, config.treeDepth);
 
   const proof = await zkProver.prove('withdraw', witness);
+  witness.noteSecret = '';
+  witness.nullifier = '';
+  witness.merklePath = [];
   const txSignature = await submitToRelayer(proof);
 
   markSpent(

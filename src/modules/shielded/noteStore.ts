@@ -69,6 +69,11 @@ export function addNote(note: ShieldedNote): void {
   saveNotes(note.mint, notes);
 }
 
+/**
+ * Mark notes as spent by their nullifiers.
+ * Note: spec defines markSpent(nullifiers[]) but we require mint to avoid
+ * scanning all mints. Callers always know the mint from the transaction context.
+ */
 export function markSpent(mint: string, nullifiers: string[]): void {
   const nullifierSet = new Set(nullifiers);
   const notes = loadNotes(mint);

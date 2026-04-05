@@ -1,4 +1,4 @@
-import React, {useState, useCallback} from 'react';
+import React, {useState, useCallback, useRef} from 'react';
 import {View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import {withdraw} from '../../modules/shielded/shieldedService';
@@ -13,6 +13,8 @@ const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 export function WithdrawScreen(): React.JSX.Element {
   const navigation = useNavigation();
 
+  const lastTapRef = useRef(0);
+
   const [step, setStep] = useState<ShieldedScreenStep>('input');
   const [destination, setDestination] = useState<string>('');
   const [amount, setAmount] = useState<string>('');
@@ -25,7 +27,18 @@ export function WithdrawScreen(): React.JSX.Element {
   const canConfirm = isValidDestination && parsedAmount > 0n;
   const feeInfo = feeEngine.getFeeDisplayInfo('crossModeWithdraw');
 
+  const handleReviewTap = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 500) return;
+    lastTapRef.current = now;
+    if (!canConfirm) return;
+    setStep('confirm');
+  }, [canConfirm]);
+
   const handleConfirm = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 500) return;
+    lastTapRef.current = now;
     if (!canConfirm) {
       return;
     }
@@ -42,6 +55,10 @@ export function WithdrawScreen(): React.JSX.Element {
       setStep('error');
     }
   }, [canConfirm, parsedAmount, destination]);
+
+  const handleBack = useCallback(() => {
+    setStep('input');
+  }, []);
 
   const handleTryAgain = useCallback(() => {
     setStep('input');
@@ -72,6 +89,47 @@ export function WithdrawScreen(): React.JSX.Element {
         <TouchableOpacity style={styles.primaryButton} onPress={handleTryAgain}>
           <Text style={styles.primaryButtonText}>Try again</Text>
         </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (step === 'confirm') {
+    return (
+      <View style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <Text testID="screen-title" style={styles.title}>
+            Confirm withdrawal
+          </Text>
+
+          <View testID="confirm-summary" style={styles.summaryCard}>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Amount</Text>
+              <Text style={styles.summaryValue}>{amount}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Destination</Text>
+              <Text style={styles.summaryValue} numberOfLines={1} ellipsizeMode="middle">
+                {destination}
+              </Text>
+            </View>
+          </View>
+
+          <FeeDisplayRow feeInfo={feeInfo} />
+
+          <TouchableOpacity
+            testID="confirm-button"
+            style={styles.primaryButton}
+            onPress={handleConfirm}>
+            <Text style={styles.primaryButtonText}>Confirm</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            testID="back-button"
+            style={styles.secondaryButton}
+            onPress={handleBack}>
+            <Text style={styles.secondaryButtonText}>Back</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </View>
     );
   }
@@ -121,7 +179,7 @@ export function WithdrawScreen(): React.JSX.Element {
         <TouchableOpacity
           testID="confirm-button"
           style={[styles.primaryButton, !canConfirm && styles.disabledButton]}
-          onPress={handleConfirm}
+          onPress={handleReviewTap}
           disabled={!canConfirm}>
           <Text style={styles.primaryButtonText}>Confirm</Text>
         </TouchableOpacity>
@@ -180,12 +238,45 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 16,
   },
+  summaryCard: {
+    backgroundColor: '#1A1A2E',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+    padding: 16,
+    marginBottom: 16,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  summaryLabel: {
+    color: '#888',
+    fontSize: 14,
+  },
+  summaryValue: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '500',
+    flexShrink: 1,
+    textAlign: 'right',
+    marginLeft: 8,
+  },
   primaryButton: {
     backgroundColor: '#6C47FF',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
     marginTop: 24,
+  },
+  secondaryButton: {
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#333',
   },
   disabledButton: {
     opacity: 0.5,
@@ -194,6 +285,11 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  secondaryButtonText: {
+    color: '#888',
+    fontSize: 16,
+    fontWeight: '500',
   },
   successIcon: {
     fontSize: 64,

@@ -1,4 +1,4 @@
-import React, {useState, useCallback} from 'react';
+import React, {useState, useCallback, useRef} from 'react';
 import {View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import {useWalletStore} from '../../store/zustand/walletStore';
@@ -17,6 +17,8 @@ export function DepositScreen(): React.JSX.Element {
   const {publicKey, tokens} = useWalletStore();
   const {merkleLeafCount} = useShieldedStore();
 
+  const lastTapRef = useRef(0);
+
   const [step, setStep] = useState<ShieldedScreenStep>('input');
   const [selectedMint, setSelectedMint] = useState<string>(
     tokens[0]?.mint ?? '',
@@ -33,7 +35,18 @@ export function DepositScreen(): React.JSX.Element {
   const showPrivacyMeter =
     shouldRepeatWarning(merkleLeafCount) && !privacyDismissed;
 
+  const handleReviewTap = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 500) return;
+    lastTapRef.current = now;
+    if (!canConfirm || publicKey === null) return;
+    setStep('confirm');
+  }, [canConfirm, publicKey]);
+
   const handleConfirm = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 500) return;
+    lastTapRef.current = now;
     if (!canConfirm || publicKey === null) {
       return;
     }
@@ -50,6 +63,10 @@ export function DepositScreen(): React.JSX.Element {
       setStep('error');
     }
   }, [canConfirm, publicKey, selectedMint, parsedAmount]);
+
+  const handleBack = useCallback(() => {
+    setStep('input');
+  }, []);
 
   const handleTryAgain = useCallback(() => {
     setStep('input');
@@ -80,6 +97,49 @@ export function DepositScreen(): React.JSX.Element {
         <TouchableOpacity style={styles.primaryButton} onPress={handleTryAgain}>
           <Text style={styles.primaryButtonText}>Try again</Text>
         </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (step === 'confirm') {
+    return (
+      <View style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <Text testID="screen-title" style={styles.title}>
+            Confirm deposit
+          </Text>
+
+          <View testID="confirm-summary" style={styles.summaryCard}>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Token</Text>
+              <Text style={styles.summaryValue}>{selectedMint}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Amount</Text>
+              <Text style={styles.summaryValue}>{amount}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Destination</Text>
+              <Text style={styles.summaryValue}>Private balance</Text>
+            </View>
+          </View>
+
+          <FeeDisplayRow feeInfo={feeInfo} />
+
+          <TouchableOpacity
+            testID="confirm-button"
+            style={styles.primaryButton}
+            onPress={handleConfirm}>
+            <Text style={styles.primaryButtonText}>Confirm</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            testID="back-button"
+            style={styles.secondaryButton}
+            onPress={handleBack}>
+            <Text style={styles.secondaryButtonText}>Back</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </View>
     );
   }
@@ -126,7 +186,7 @@ export function DepositScreen(): React.JSX.Element {
         <TouchableOpacity
           testID="confirm-button"
           style={[styles.primaryButton, !canConfirm && styles.disabledButton]}
-          onPress={handleConfirm}
+          onPress={handleReviewTap}
           disabled={!canConfirm}>
           <Text style={styles.primaryButtonText}>Confirm</Text>
         </TouchableOpacity>
@@ -172,12 +232,45 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 16,
   },
+  summaryCard: {
+    backgroundColor: '#1A1A2E',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+    padding: 16,
+    marginBottom: 16,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  summaryLabel: {
+    color: '#888',
+    fontSize: 14,
+  },
+  summaryValue: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '500',
+    flexShrink: 1,
+    textAlign: 'right',
+    marginLeft: 8,
+  },
   primaryButton: {
     backgroundColor: '#6C47FF',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
     marginTop: 24,
+  },
+  secondaryButton: {
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#333',
   },
   disabledButton: {
     opacity: 0.5,
@@ -186,6 +279,11 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  secondaryButtonText: {
+    color: '#888',
+    fontSize: 16,
+    fontWeight: '500',
   },
   successIcon: {
     fontSize: 64,
