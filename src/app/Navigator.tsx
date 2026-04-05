@@ -4,6 +4,7 @@ import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {makePlaceholder} from '../screens/PlaceholderScreen';
+import {DashboardScreen} from '../screens/dashboard/DashboardScreen';
 import {SplashScreen} from '../screens/SplashScreen';
 import {UnlockScreen} from '../screens/UnlockScreen';
 import {WelcomeScreen} from '../screens/onboarding/WelcomeScreen';
@@ -29,7 +30,6 @@ import type {
 } from '../types/navigation';
 
 // Screen placeholders (replaced in later implementation steps)
-const DashboardScreen = makePlaceholder('Dashboard');
 const StakingScreen = makePlaceholder('Staking');
 const ReferralScreen = makePlaceholder('Referral');
 const SendScreen = makePlaceholder('Send');
@@ -208,6 +208,10 @@ function PresaleScreenOnboarding() {
   );
 }
 
+function DashboardScreenNav() {
+  return <DashboardScreen />;
+}
+
 function PresaleScreenDashboard() {
   return <PresaleScreen onSkip={() => {}} onComplete={() => {}} />;
 }
@@ -259,7 +263,7 @@ const DashboardNav = createNativeStackNavigator<DashboardStackParamList>();
 function DashboardStack() {
   return (
     <DashboardNav.Navigator screenOptions={defaultScreenOptions}>
-      <DashboardNav.Screen name="Dashboard" component={DashboardScreen} />
+      <DashboardNav.Screen name="Dashboard" component={DashboardScreenNav} />
       <DashboardNav.Screen name="Presale" component={PresaleScreenDashboard} />
       <DashboardNav.Screen name="Staking" component={StakingScreen} />
       <DashboardNav.Screen name="Referral" component={ReferralScreen} />
