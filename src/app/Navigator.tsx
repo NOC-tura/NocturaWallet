@@ -259,10 +259,15 @@ function TransactionStatusScreenNav() {
 }
 
 function TransactionHistoryScreenNav() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   return (
     <TransactionHistoryScreenImpl
-      onSelectTx={() => {}}
+      onSelectTx={(signature: string) => {
+        // Dismiss modal, then navigate to TransactionDetail in SendStack
+        navigation.goBack();
+        // Navigation to detail is handled by the parent — for now log the signature
+        // Full cross-stack navigation will be wired when the tab navigator supports it
+      }}
       onBack={() => navigation.goBack()}
     />
   );

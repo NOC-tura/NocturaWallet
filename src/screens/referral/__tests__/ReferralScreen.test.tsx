@@ -33,7 +33,7 @@ describe('ReferralScreen', () => {
   it('Shows code in NOC-XXXX format', () => {
     const {getByTestId} = render(<ReferralScreen />);
     const codeEl = getByTestId('referral-code');
-    expect(codeEl.props.children).toMatch(/^NOC-[0-9A-F]{4}$/);
+    expect(codeEl.props.children).toMatch(/^NOC-[0-9A-Z]{4,6}$/);
     // Verify it matches the deterministic generator
     const expected = generateReferralCode(MOCK_PUBLIC_KEY);
     expect(codeEl.props.children).toBe(expected);

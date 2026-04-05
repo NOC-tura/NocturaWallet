@@ -69,6 +69,11 @@ export function ReferralScreen({onBack}: Props) {
       setApplyMessage('Please enter a referral code');
       return;
     }
+    // Block self-referral
+    if (trimmed === myCode) {
+      setApplyMessage('You cannot apply your own referral code');
+      return;
+    }
     const store = mmkvSecure();
     if (!store) {
       setApplyMessage('Storage not available');
