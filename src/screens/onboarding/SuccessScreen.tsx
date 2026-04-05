@@ -18,6 +18,7 @@ const keychainManager = new KeychainManager();
 
 export function SuccessScreen({mnemonic, onComplete}: SuccessScreenProps) {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleEnterWallet = async () => {
     setLoading(true);
@@ -53,7 +54,7 @@ export function SuccessScreen({mnemonic, onComplete}: SuccessScreenProps) {
       onComplete();
     } catch (error) {
       setLoading(false);
-      // Error handling — should not happen in normal flow
+      setError('Could not save wallet. Please try again.');
     }
   };
 
@@ -64,6 +65,8 @@ export function SuccessScreen({mnemonic, onComplete}: SuccessScreenProps) {
       </View>
 
       <Text style={styles.title}>Wallet created!</Text>
+
+      {error && <Text style={styles.errorText}>{error}</Text>}
 
       <TouchableOpacity
         style={[styles.ctaButton, loading && styles.ctaButtonDisabled]}
@@ -83,6 +86,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 32,
   },
+  errorText: {fontSize: 13, color: '#F87171', textAlign: 'center', marginBottom: 16},
   iconContainer: {
     width: 80,
     height: 80,

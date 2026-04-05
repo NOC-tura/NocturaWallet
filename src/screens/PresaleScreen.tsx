@@ -74,7 +74,7 @@ function PresaleClaim({
   referralBonusTokens: string;
 }) {
   const totalRaw = BigInt(tokensPurchased) + BigInt(referralBonusTokens);
-  const totalDisplay = totalRaw.toLocaleString();
+  const totalDisplay = totalRaw.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
   return (
     <View style={styles.container}>
@@ -85,7 +85,7 @@ function PresaleClaim({
         <Text style={styles.allocationValue}>{totalDisplay} NOC</Text>
         {BigInt(referralBonusTokens) > 0n && (
           <Text style={styles.allocationBonus}>
-            Includes {BigInt(referralBonusTokens).toLocaleString()} referral bonus
+            Includes {BigInt(referralBonusTokens).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')} referral bonus
           </Text>
         )}
       </View>

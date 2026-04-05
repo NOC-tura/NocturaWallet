@@ -88,15 +88,22 @@ function WelcomeScreenNav() {
       }}
       onImport={() => {
         setIsImport(true);
-        navigation.navigate('ImportSeed');
+        navigation.navigate('SecurityIntro'); // Import also requires SecurityIntro (App Store compliance)
       }}
     />
   );
 }
 
 function SecurityIntroScreenNav() {
+  const {isImport} = useOnboarding();
   const navigation = useNavigation<NativeStackNavigationProp<OnboardingStackParamList>>();
-  return <SecurityIntroScreen onContinue={() => navigation.navigate('CreateWallet')} />;
+  return (
+    <SecurityIntroScreen
+      onContinue={() =>
+        navigation.navigate(isImport ? 'ImportSeed' : 'CreateWallet')
+      }
+    />
+  );
 }
 
 function CreateWalletScreenNav() {
@@ -189,14 +196,14 @@ function SuccessScreenNav() {
 }
 
 function PresaleScreenOnboarding() {
-  const navigation = useNavigation<NativeStackNavigationProp<OnboardingStackParamList>>();
-  // After onboarding presale, navigation to MainTabs is handled via RootStack reset
-  // For now, stub with empty callbacks — full wiring in integration step
+  // Use root navigator to escape OnboardingStack → MainTabs
+  const rootNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const goToMainTabs = () => rootNavigation.replace('MainTabs');
   return (
     <PresaleScreen
       isOnboarding
-      onSkip={() => {}}
-      onComplete={() => {}}
+      onSkip={goToMainTabs}
+      onComplete={goToMainTabs}
     />
   );
 }
