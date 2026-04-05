@@ -12,10 +12,26 @@ import {RewardCalculator} from '../../components/RewardCalculator';
 import {StakingPositionCard} from '../../components/StakingPositionCard';
 import {StakingUnlockRow} from '../../components/StakingUnlockRow';
 import {usePresaleStore} from '../../store/zustand/presaleStore';
-import {useWalletStore} from '../../store/zustand/walletStore';
 import {STAKING_TIERS} from '../../modules/staking/stakingService';
-import type {StakingTier} from '../../modules/staking/types';
-import type {StakingPosition} from '../../modules/staking/types';
+import type {StakingTier, StakingPosition} from '../../modules/staking/types';
+
+/**
+ * Convert user-entered NOC amount (e.g., "1000") to lamports string.
+ * NOC has 9 decimals. Returns '0' for invalid input.
+ */
+function nocToLamports(input: string): string {
+  try {
+    const cleaned = input.replace(/[^0-9.]/g, '');
+    if (!cleaned || cleaned === '.') return '0';
+    const parts = cleaned.split('.');
+    const whole = parts[0] || '0';
+    const frac = (parts[1] || '').padEnd(9, '0').slice(0, 9);
+    const lamports = BigInt(whole) * 1_000_000_000n + BigInt(frac);
+    return lamports.toString();
+  } catch {
+    return '0';
+  }
+}
 
 interface StakingScreenProps {
   onBack?: () => void;
@@ -26,7 +42,7 @@ export function StakingScreen({onBack}: StakingScreenProps) {
   const [amount, setAmount] = useState('');
 
   const {isZeroFeeEligible} = usePresaleStore();
-  const {nocBalance, publicKey} = useWalletStore();
+  // useWalletStore — will be used for balance validation when staking tx is wired
 
   // No live position in this implementation — position comes from on-chain in a later step
   const position: StakingPosition | null = null;
@@ -84,7 +100,7 @@ export function StakingScreen({onBack}: StakingScreenProps) {
 
         {/* Reward calculator */}
         <View style={styles.rewardCalcWrapper}>
-          <RewardCalculator amount={amount || '0'} tierId={selectedTier} />
+          <RewardCalculator amount={nocToLamports(amount || '0')} tierId={selectedTier} />
         </View>
 
         {/* Presale buyer badge */}
@@ -104,7 +120,11 @@ export function StakingScreen({onBack}: StakingScreenProps) {
         </View>
 
         {/* CTA */}
-        <TouchableOpacity style={styles.ctaButton} activeOpacity={0.85}>
+        <TouchableOpacity
+          style={[styles.ctaButton, !amount && styles.ctaButtonDisabled]}
+          activeOpacity={0.85}
+          disabled={!amount}
+          onPress={() => {/* Staking tx wired in Anchor integration step */}}>
           <Text style={styles.ctaText}>STAKE NOC</Text>
         </TouchableOpacity>
       </View>
@@ -211,6 +231,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 12,
     elevation: 8,
+  },
+  ctaButtonDisabled: {
+    opacity: 0.5,
   },
   ctaText: {
     fontSize: 16,

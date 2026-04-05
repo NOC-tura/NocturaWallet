@@ -17,20 +17,12 @@ function formatUnlockDate(timestamp: number): string {
   });
 }
 
-function formatDisplayAmount(lamports: string): string {
-  const noc = parseFloat(lamports) / 1e9;
-  return noc.toLocaleString('en-US', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 3,
-  });
-}
-
 export function StakingPositionCard({
   position,
   onClaimRewards,
   onExtendLock,
 }: StakingPositionCardProps) {
-  const displayAmount = formatDisplayAmount(position.stakedAmount);
+  const displayAmount = formatStakingAmount(position.stakedAmount);
   const displayRewards = formatStakingAmount(position.accruedRewards);
   const unlockDate = formatUnlockDate(position.unlockAt);
 
