@@ -5,6 +5,7 @@ import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {makePlaceholder} from '../screens/PlaceholderScreen';
 import {DashboardScreen} from '../screens/dashboard/DashboardScreen';
+import {SendScreen as SendScreenImpl} from '../screens/transparent/SendScreen';
 import {SplashScreen} from '../screens/SplashScreen';
 import {UnlockScreen} from '../screens/UnlockScreen';
 import {WelcomeScreen} from '../screens/onboarding/WelcomeScreen';
@@ -32,7 +33,6 @@ import type {
 
 // Screen placeholders (replaced in later implementation steps)
 const ReferralScreen = makePlaceholder('Referral');
-const SendScreen = makePlaceholder('Send');
 const TransactionStatusScreen = makePlaceholder('TransactionStatus');
 const TransactionDetailScreen = makePlaceholder('TransactionDetail');
 const ReceiveScreen = makePlaceholder('Receive');
@@ -225,6 +225,17 @@ function PrivacyExplainerScreenNav() {
   return <PrivacyExplainerScreen onDismiss={() => navigation.goBack()} />;
 }
 
+function SendScreenNav() {
+  const navigation = useNavigation<NativeStackNavigationProp<SendStackParamList>>();
+  return (
+    <SendScreenImpl
+      onTransactionSent={params => {
+        navigation.navigate('TransactionStatus', params);
+      }}
+    />
+  );
+}
+
 const defaultScreenOptions = {
   headerShown: false,
   animation: 'slide_from_right' as const,
@@ -280,7 +291,7 @@ const SendNav = createNativeStackNavigator<SendStackParamList>();
 function SendStack() {
   return (
     <SendNav.Navigator screenOptions={defaultScreenOptions}>
-      <SendNav.Screen name="Send" component={SendScreen} />
+      <SendNav.Screen name="Send" component={SendScreenNav} />
       <SendNav.Screen name="TransactionStatus" component={TransactionStatusScreen} />
       <SendNav.Screen name="TransactionDetail" component={TransactionDetailScreen} />
     </SendNav.Navigator>
