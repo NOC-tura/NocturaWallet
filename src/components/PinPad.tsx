@@ -42,14 +42,10 @@ export function PinPad({onComplete, maxLength, error, disabled}: PinPadProps) {
         const next = [...prev, digit];
 
         if (next.length === maxLength) {
-          // Use setTimeout(0) so the state update (filling the last dot)
-          // renders before we call onComplete and the parent resets / shows error.
           const pinString = next.join('');
-          setTimeout(() => {
-            onComplete(pinString);
-          }, 0);
-          // Reset to empty after completing
-          return [];
+          // Fire onComplete on next tick so the filled dots can render briefly
+          setTimeout(() => onComplete(pinString), 0);
+          return []; // Reset immediately for next entry
         }
 
         return next;

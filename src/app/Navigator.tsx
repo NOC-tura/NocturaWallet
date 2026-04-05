@@ -1,6 +1,8 @@
 import React from 'react';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
+import {useNavigation} from '@react-navigation/native';
+import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {makePlaceholder} from '../screens/PlaceholderScreen';
 import {SplashScreen} from '../screens/SplashScreen';
 import {UnlockScreen} from '../screens/UnlockScreen';
@@ -47,13 +49,30 @@ const WithdrawScreen = makePlaceholder('Withdraw');
 const PrivacyExplainerScreen = makePlaceholder('PrivacyExplainer');
 const AppUpdateModalScreen = makePlaceholder('AppUpdateModal');
 
-// Wrapper components for real screens (match navigator's expected type)
+// Wrapper components that wire screens to navigation
 function SplashScreenNav() {
-  return <SplashScreen />;
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  return (
+    <SplashScreen
+      onRouteResolved={route => {
+        if (route === 'Unlock') {
+          navigation.replace('Unlock', {reason: 'app_foreground'});
+        } else {
+          navigation.replace(route as 'Onboarding' | 'MainTabs');
+        }
+      }}
+    />
+  );
 }
 
 function UnlockScreenNav() {
-  return <UnlockScreen onUnlock={() => {}} onRestore={() => {}} />;
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  return (
+    <UnlockScreen
+      onUnlock={() => navigation.replace('MainTabs')}
+      onRestore={() => navigation.replace('Onboarding')}
+    />
+  );
 }
 
 const defaultScreenOptions = {

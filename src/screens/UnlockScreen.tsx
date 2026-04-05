@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
+import Keychain from 'react-native-keychain';
 import {PinPad} from '../components/PinPad';
 import {KeychainManager} from '../modules/keychain/keychainModule';
 
@@ -41,7 +42,30 @@ export function UnlockScreen({
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Biometric auto-trigger on mount (spec lines 2936-2949)
   useEffect(() => {
+    const attemptBiometric = async () => {
+      try {
+        // In production, this would call react-native-keychain's biometric prompt.
+        // The KeychainManager.retrieveSeed() requires biometric auth on the native side.
+        // For now, we attempt to check if biometric is available and fall back to PIN.
+        const supported = await Keychain.getSupportedBiometryType();
+        if (!supported) {
+          // E041: Biometric not enrolled → directly show PIN pad
+          setShowPinPad(true);
+          return;
+        }
+        // Biometric is supported — in production, this triggers the native prompt.
+        // On success: onUnlock() would be called.
+        // On failure: fall back to PIN option.
+        // For scaffold, we show the biometric area and let user choose PIN.
+      } catch {
+        // E040: Biometric failed → show PIN option
+        setShowPinPad(false); // Keep biometric view but user can tap "Use PIN instead"
+      }
+    };
+    attemptBiometric();
+
     return () => {
       if (cooldownRef.current) clearInterval(cooldownRef.current);
     };
@@ -88,6 +112,7 @@ export function UnlockScreen({
 
   return (
     <View style={styles.container}>
+      <Text style={styles.title}>Welcome back</Text>
       {walletAddress ? (
         <Text style={styles.address}>{truncateAddress(walletAddress)}</Text>
       ) : null}
@@ -137,6 +162,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
   },
+  title: {fontSize: 18, fontWeight: '700', color: '#FFFFFF', marginBottom: 4},
   address: {
     fontSize: 13,
     color: 'rgba(255,255,255,0.4)',
