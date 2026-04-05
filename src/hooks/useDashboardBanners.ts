@@ -13,7 +13,10 @@ interface DashboardBanners {
 
 export function useDashboardBanners(updateAvailable: boolean = false): DashboardBanners {
   const {isOnline} = useNetworkStatus();
-  const [dismissed, setDismissed] = useState(false);
+  // Initialize from MMKV so dismiss persists across re-mounts within same session
+  const [dismissed, setDismissed] = useState(
+    () => mmkvPublic.getString(MMKV_KEYS.BACKUP_DISMISSED_SESSION) === 'true',
+  );
 
   // Backup needed check
   const onboardingCompleted = mmkvPublic.getString(MMKV_KEYS.ONBOARDING_COMPLETED) === 'true';

@@ -70,7 +70,7 @@ export function QuickActions({
         <Pressable style={styles.modalOverlay} onPress={() => setSwapModalVisible(false)}>
           <Pressable style={styles.modalCard} onPress={() => {}}>
             <Text style={styles.modalTitle}>Token Swap — Coming Soon</Text>
-            <Text style={styles.modalBody}>Available in Phase 4.</Text>
+            <Text style={styles.modalBody}>Swap between tokens directly in your wallet. Available in Phase 4.</Text>
             <TouchableOpacity
               style={styles.modalButton}
               onPress={() => setSwapModalVisible(false)}

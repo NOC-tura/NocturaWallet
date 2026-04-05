@@ -27,7 +27,7 @@ interface DashboardScreenProps {
 
 export function DashboardScreen({onSend, onReceive, onStake, onBackup}: DashboardScreenProps) {
   const [refreshing, setRefreshing] = useState(false);
-  const {publicKey, solBalance, nocBalance, totalUsdValue, nocUsdPrice, tokens} = useWalletStore();
+  const {publicKey, solBalance, nocBalance, totalUsdValue, nocUsdPrice, tokens, tokenBalances} = useWalletStore();
   const {mode, setMode} = useShieldedStore();
   const {hideBalances} = useSettings();
   const {isOnline, lastOnlineAt} = useNetworkStatus();
@@ -45,9 +45,7 @@ export function DashboardScreen({onSend, onReceive, onStake, onBackup}: Dashboar
     }
   }, [publicKey]);
 
-  const sortedTokens = tokenManager.sortTokens(
-    tokens.map(t => ({...t, balance: '0', usdValue: 0}))
-  );
+  const sortedTokens = tokenManager.sortTokens(tokens);
 
   return (
     <View style={styles.container}>
@@ -110,7 +108,7 @@ export function DashboardScreen({onSend, onReceive, onStake, onBackup}: Dashboar
             key={token.mint}
             symbol={token.symbol}
             name={token.name}
-            balance={token.balance}
+            balance={tokenBalances[token.mint] ?? '0'}
             trust={token.trust}
             isPinned={token.mint === tokens[0]?.mint}
           />

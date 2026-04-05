@@ -29,8 +29,14 @@ export function BalanceCard({
   hidden,
   mode,
 }: BalanceCardProps) {
-  const solUsd = parseFloat(solBalance) * (totalUsdValue / (parseFloat(solBalance) + parseFloat(nocBalance) * nocUsdPrice) * parseFloat(solBalance));
-  const nocUsd = parseFloat(nocBalance) * nocUsdPrice;
+  // NOC USD = nocBalance (lamports as string) converted to display units * price
+  // Note: balances are stored as lamport strings (BigInt). For USD display,
+  // we convert to float only at the UI layer (cardinal rule: BigInt for storage, float for display).
+  const nocLamports = parseFloat(nocBalance) || 0;
+  const nocDisplay = nocLamports / 1e9; // 9 decimals
+  const nocUsd = nocDisplay * nocUsdPrice;
+  // SOL USD = total portfolio minus NOC USD (avoids needing a separate SOL price prop)
+  const solUsd = Math.max(0, totalUsdValue - nocUsd);
 
   return (
     <View style={[styles.container, mode === 'shielded' && styles.shieldedContainer]}>
