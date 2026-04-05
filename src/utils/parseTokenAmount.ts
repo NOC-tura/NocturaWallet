@@ -8,11 +8,11 @@ export function parseTokenAmount(input: string, decimals: number): bigint {
   const fracPart = parts[1] || '';
   if (fracPart.length > decimals) throw new Error(`Too many decimal places (max ${decimals})`);
   const paddedFrac = fracPart.padEnd(decimals, '0');
-  return BigInt(wholePart) * BigInt(10 ** decimals) + BigInt(paddedFrac);
+  return BigInt(wholePart) * 10n ** BigInt(decimals) + BigInt(paddedFrac);
 }
 
 export function formatTokenAmount(amount: bigint, decimals: number): string {
-  const divisor = BigInt(10 ** decimals);
+  const divisor = 10n ** BigInt(decimals);
   const whole = amount / divisor;
   const remainder = amount % divisor;
   if (remainder === 0n) return whole.toString();

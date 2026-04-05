@@ -39,8 +39,19 @@ try {
 // Fee constants (lamports)
 const BASE_FEE_LAMPORTS = 5_000n;
 const NOCTURA_MARKUP_LAMPORTS = 20_000n;
-const TOTAL_NETWORK_FEE_LAMPORTS = BASE_FEE_LAMPORTS + NOCTURA_MARKUP_LAMPORTS;
 const ATA_CREATION_FEE_LAMPORTS = 2_039_280n; // 0.00203928 SOL (rent-exempt minimum)
+
+// Priority fee estimates (microlamports → converted to lamports for display)
+// These are approximate — real values come from getPriorityFee() at review time
+const PRIORITY_FEE_LAMPORTS: Record<PriorityLevel, bigint> = {
+  normal: 0n, // base fee only
+  fast: 100_000n, // ~0.0001 SOL
+  urgent: 1_000_000n, // ~0.001 SOL
+};
+
+function getTotalNetworkFee(level: PriorityLevel): bigint {
+  return BASE_FEE_LAMPORTS + NOCTURA_MARKUP_LAMPORTS + PRIORITY_FEE_LAMPORTS[level];
+}
 
 const SOL_DECIMALS = 9;
 const SOL_MINT = 'native';
@@ -122,7 +133,7 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
 
   const handleMaxAmount = useCallback(() => {
     if (selectedMint === SOL_MINT) {
-      const available = selectedBalance - TOTAL_NETWORK_FEE_LAMPORTS;
+      const available = selectedBalance - getTotalNetworkFee(priorityLevel);
       const safeAmount = available > 0n ? available : 0n;
       setAmount(formatTokenAmount(safeAmount, SOL_DECIMALS));
     } else {
@@ -236,7 +247,7 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
   }, [simulationPassed, sending, amount, recipient, selectedToken.symbol, onTransactionSent]);
 
   const networkFeeDisplay = useMemo(() => {
-    const feeSOL = formatTokenAmount(TOTAL_NETWORK_FEE_LAMPORTS, SOL_DECIMALS);
+    const feeSOL = formatTokenAmount(getTotalNetworkFee(priorityLevel), SOL_DECIMALS);
     return `${feeSOL} SOL`;
   }, []);
 
