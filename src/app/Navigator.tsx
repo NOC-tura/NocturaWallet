@@ -25,6 +25,9 @@ import {StakingScreen} from '../screens/staking/StakingScreen';
 import {OnboardingProvider, useOnboarding} from '../contexts/OnboardingContext';
 import {useWalletStore} from '../store/zustand/walletStore';
 import {ReceiveScreen} from '../screens/transparent/ReceiveScreen';
+import {TransactionHistoryScreen as TransactionHistoryScreenImpl} from '../screens/transparent/TransactionHistoryScreen';
+import {TransactionDetailScreen as TransactionDetailScreenImpl} from '../screens/transparent/TransactionDetailScreen';
+import {ReferralScreen as ReferralScreenImpl} from '../screens/referral/ReferralScreen';
 import type {
   RootStackParamList,
   OnboardingStackParamList,
@@ -35,8 +38,6 @@ import type {
 } from '../types/navigation';
 
 // Screen placeholders (replaced in later implementation steps)
-const ReferralScreen = makePlaceholder('Referral');
-const TransactionDetailScreen = makePlaceholder('TransactionDetail');
 const SettingsScreen = makePlaceholder('Settings');
 const SecuritySettingsScreen = makePlaceholder('SecuritySettings');
 const ChangePinScreen = makePlaceholder('ChangePin');
@@ -44,7 +45,6 @@ const ExportViewKeyScreen = makePlaceholder('ExportViewKey');
 const BackupSettingsScreen = makePlaceholder('BackupSettings');
 const NotificationSettingsScreen = makePlaceholder('NotificationSettings');
 const WipeWalletScreen = makePlaceholder('WipeWallet');
-const TransactionHistoryScreen = makePlaceholder('TransactionHistory');
 const ShieldedBalanceScreen = makePlaceholder('ShieldedBalance');
 const DepositScreen = makePlaceholder('Deposit');
 const ShieldedTransferScreen = makePlaceholder('ShieldedTransfer');
@@ -258,6 +258,37 @@ function TransactionStatusScreenNav() {
   );
 }
 
+function TransactionHistoryScreenNav() {
+  const navigation = useNavigation();
+  return (
+    <TransactionHistoryScreenImpl
+      onSelectTx={() => {}}
+      onBack={() => navigation.goBack()}
+    />
+  );
+}
+
+function TransactionDetailScreenNav() {
+  const navigation = useNavigation();
+  const route = useRoute();
+  const params = route.params as {signature: string};
+  return (
+    <TransactionDetailScreenImpl
+      signature={params.signature}
+      onBack={() => navigation.goBack()}
+    />
+  );
+}
+
+function ReferralScreenNav() {
+  const navigation = useNavigation();
+  return (
+    <ReferralScreenImpl
+      onBack={() => navigation.goBack()}
+    />
+  );
+}
+
 const defaultScreenOptions = {
   headerShown: false,
   animation: 'slide_from_right' as const,
@@ -303,7 +334,7 @@ function DashboardStack() {
       <DashboardNav.Screen name="Dashboard" component={DashboardScreenNav} />
       <DashboardNav.Screen name="Presale" component={PresaleScreenDashboard} />
       <DashboardNav.Screen name="Staking" component={StakingScreenNav} />
-      <DashboardNav.Screen name="Referral" component={ReferralScreen} />
+      <DashboardNav.Screen name="Referral" component={ReferralScreenNav} />
     </DashboardNav.Navigator>
   );
 }
@@ -315,7 +346,7 @@ function SendStack() {
     <SendNav.Navigator screenOptions={defaultScreenOptions}>
       <SendNav.Screen name="Send" component={SendScreenNav} />
       <SendNav.Screen name="TransactionStatus" component={TransactionStatusScreenNav} />
-      <SendNav.Screen name="TransactionDetail" component={TransactionDetailScreen} />
+      <SendNav.Screen name="TransactionDetail" component={TransactionDetailScreenNav} />
     </SendNav.Navigator>
   );
 }
@@ -368,7 +399,7 @@ export function RootNavigator() {
       <RootNav.Screen name="Unlock" component={UnlockScreenNav} />
       <RootNav.Screen name="Onboarding" component={OnboardingStack} />
       <RootNav.Screen name="MainTabs" component={MainTabs} />
-      <RootNav.Screen name="TransactionHistory" component={TransactionHistoryScreen} options={modalScreenOptions} />
+      <RootNav.Screen name="TransactionHistory" component={TransactionHistoryScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="ShieldedBalance" component={ShieldedBalanceScreen} options={modalScreenOptions} />
       <RootNav.Screen name="Deposit" component={DepositScreen} options={modalScreenOptions} />
       <RootNav.Screen name="ShieldedTransfer" component={ShieldedTransferScreen} options={modalScreenOptions} />
