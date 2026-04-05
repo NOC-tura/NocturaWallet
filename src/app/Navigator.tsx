@@ -46,9 +46,9 @@ const BackupSettingsScreen = makePlaceholder('BackupSettings');
 const NotificationSettingsScreen = makePlaceholder('NotificationSettings');
 const WipeWalletScreen = makePlaceholder('WipeWallet');
 const ShieldedBalanceScreen = makePlaceholder('ShieldedBalance');
-const DepositScreen = makePlaceholder('Deposit');
-const ShieldedTransferScreen = makePlaceholder('ShieldedTransfer');
-const WithdrawScreen = makePlaceholder('Withdraw');
+import {DepositScreen} from '../screens/shielded/DepositScreen';
+import {ShieldedTransferScreen} from '../screens/shielded/ShieldedTransferScreen';
+import {WithdrawScreen} from '../screens/shielded/WithdrawScreen';
 const AppUpdateModalScreen = makePlaceholder('AppUpdateModal');
 
 // Wrapper components that wire screens to navigation
