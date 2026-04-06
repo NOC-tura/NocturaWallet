@@ -113,3 +113,5 @@ export class KeychainManager {
     await this.setupPin(newPin);
   }
 }
+
+export const keychainManager = new KeychainManager();
