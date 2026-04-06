@@ -12,6 +12,7 @@ import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {useSecureSettingsStore} from '../../store/zustand/secureSettingsStore';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
+import {sessionManager} from '../../modules/session/sessionModule';
 
 type RootStackParamList = {
   ChangePin: undefined;
@@ -102,7 +103,13 @@ export function SecuritySettingsScreen() {
             Auto-lock after: {sessionTimeoutMinutes} min
           </Text>
         </View>
-        <TimeoutSlider value={sessionTimeoutMinutes} onChange={setSessionTimeoutMinutes} />
+        <TimeoutSlider
+          value={sessionTimeoutMinutes}
+          onChange={useCallback((value: number) => {
+            sessionManager.setTimeoutMinutes(value);
+            setSessionTimeoutMinutes(value);
+          }, [setSessionTimeoutMinutes])}
+        />
       </View>
 
       {/* ── Auto-lock ─────────────────────────────────────────────────── */}

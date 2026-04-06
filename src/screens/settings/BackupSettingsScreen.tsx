@@ -7,6 +7,8 @@ import {
   ScrollView,
   StyleSheet,
   Alert,
+  Modal,
+  TextInput,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import {BackupManager} from '../../modules/backup/backupModule';
@@ -27,6 +29,8 @@ export function BackupSettingsScreen() {
   );
   const [forceLoading, setForceLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [exportPassword, setExportPassword] = useState('');
 
   useEffect(() => {
     setCloudEnabled(backupManager.isCloudBackupEnabled());
@@ -63,37 +67,36 @@ export function BackupSettingsScreen() {
     }
   }, [forceLoading]);
 
-  const handleExportEncrypted = useCallback(async () => {
+  const handleExportEncrypted = useCallback(() => {
     if (exportLoading) return;
+    setExportPassword('');
+    setShowPasswordModal(true);
+  }, [exportLoading]);
+
+  const handleExportConfirm = useCallback(async () => {
+    if (!exportPassword) {
+      setShowPasswordModal(false);
+      return;
+    }
+    setShowPasswordModal(false);
     setExportLoading(true);
     try {
-      // Prompt for password via Alert — deep native share sheet wired in integration step
-      Alert.prompt(
-        'Set Backup Password',
-        'Enter a password to encrypt your backup file.',
-        async (password: string | undefined) => {
-          if (!password) {
-            setExportLoading(false);
-            return;
-          }
-          try {
-            await backupManager.exportToFile(password);
-            Alert.alert(
-              'Exported',
-              'Encrypted backup ready. Share it via the system sheet.',
-            );
-          } catch {
-            Alert.alert('Error', 'Export failed. Please try again.');
-          } finally {
-            setExportLoading(false);
-          }
-        },
-        'secure-text',
+      await backupManager.exportToFile(exportPassword);
+      Alert.alert(
+        'Exported',
+        'Encrypted backup ready. Share it via the system sheet.',
       );
     } catch {
+      Alert.alert('Error', 'Export failed. Please try again.');
+    } finally {
       setExportLoading(false);
     }
-  }, [exportLoading]);
+  }, [exportPassword]);
+
+  const handleExportCancel = useCallback(() => {
+    setShowPasswordModal(false);
+    setExportPassword('');
+  }, []);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -159,6 +162,48 @@ export function BackupSettingsScreen() {
         activeOpacity={0.7}>
         <Text style={styles.doneText}>Done</Text>
       </TouchableOpacity>
+
+      <Modal
+        testID="password-modal"
+        visible={showPasswordModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleExportCancel}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Set Backup Password</Text>
+            <Text style={styles.modalSubtitle}>
+              Enter a password to encrypt your backup file.
+            </Text>
+            <TextInput
+              testID="password-input"
+              style={styles.modalInput}
+              secureTextEntry
+              placeholder="Password"
+              placeholderTextColor="#888"
+              value={exportPassword}
+              onChangeText={setExportPassword}
+              autoFocus
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                testID="modal-cancel"
+                style={styles.modalBtn}
+                onPress={handleExportCancel}
+                activeOpacity={0.7}>
+                <Text style={styles.modalBtnTextCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="modal-export"
+                style={[styles.modalBtn, styles.modalBtnPrimary]}
+                onPress={handleExportConfirm}
+                activeOpacity={0.7}>
+                <Text style={styles.modalBtnTextPrimary}>Export</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -232,5 +277,62 @@ const styles = StyleSheet.create({
   doneText: {
     fontSize: 15,
     color: '#888888',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalBox: {
+    width: '85%',
+    backgroundColor: '#1E1E2E',
+    borderRadius: 12,
+    padding: 20,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: '#888888',
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  modalInput: {
+    backgroundColor: '#0C0C14',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#333',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: '#FFFFFF',
+    marginBottom: 16,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  modalBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  modalBtnPrimary: {
+    backgroundColor: '#6C47FF',
+  },
+  modalBtnTextCancel: {
+    fontSize: 15,
+    color: '#888888',
+  },
+  modalBtnTextPrimary: {
+    fontSize: 15,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
 });

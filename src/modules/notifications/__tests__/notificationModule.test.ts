@@ -106,6 +106,7 @@ describe('NotificationManager', () => {
   });
 
   it('registerToken includes platform field', async () => {
+    mockState.notifIncomingTx = true;
     await manager.registerToken();
 
     expect(pinnedFetch).toHaveBeenCalledTimes(1);

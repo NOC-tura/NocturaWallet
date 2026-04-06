@@ -41,6 +41,8 @@ const STORE_KEYS: Record<
 };
 
 export class NotificationManager {
+  private deviceToken: string | null = null;
+
   /**
    * Requests OS-level notification permission.
    * Returns true when permission is granted or already held.
@@ -85,7 +87,8 @@ export class NotificationManager {
    */
   async registerToken(): Promise<void> {
     const enabledTypes = this.getEnabledTypes();
-    const token = Platform.OS;
+    if (enabledTypes.length === 0) return;
+    const token = this.deviceToken ?? 'stub-device-token';
 
     await pinnedFetch(`${API_BASE}/v1/notifications/register`, {
       method: 'POST',
@@ -105,7 +108,7 @@ export class NotificationManager {
    * Body: { token }
    */
   async unregisterToken(): Promise<void> {
-    const token = Platform.OS;
+    const token = this.deviceToken ?? 'stub-device-token';
 
     await pinnedFetch(`${API_BASE}/v1/notifications/unregister`, {
       method: 'DELETE',

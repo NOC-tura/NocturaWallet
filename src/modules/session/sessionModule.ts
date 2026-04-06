@@ -88,3 +88,5 @@ export class SessionManager {
     this.timeoutMs = minutes * 60 * 1000;
   }
 }
+
+export const sessionManager = new SessionManager();
