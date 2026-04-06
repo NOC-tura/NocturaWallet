@@ -6,6 +6,7 @@ interface PinPadProps {
   maxLength: number;
   error?: string | null;
   disabled?: boolean;
+  testID?: string;
 }
 
 // Layout: [1,2,3], [4,5,6], [7,8,9], ['',0,'⌫']
@@ -22,7 +23,7 @@ const KEYPAD_ROWS: (string | number)[][] = [
  * Tracks digits internally and calls onComplete when maxLength is reached.
  * Resets internal state after onComplete fires.
  */
-export function PinPad({onComplete, maxLength, error, disabled}: PinPadProps) {
+export function PinPad({onComplete, maxLength, error, disabled, testID}: PinPadProps) {
   const [digits, setDigits] = useState<string[]>([]);
 
   const handleKey = useCallback(
@@ -57,7 +58,7 @@ export function PinPad({onComplete, maxLength, error, disabled}: PinPadProps) {
   const filledCount = digits.length;
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} testID={testID}>
       {/* Dot indicators */}
       <View style={styles.dotsRow}>
         {Array.from({length: maxLength}).map((_, i) => {
