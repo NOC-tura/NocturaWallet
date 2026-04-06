@@ -38,13 +38,13 @@ import type {
 } from '../types/navigation';
 
 // Screen placeholders (replaced in later implementation steps)
-const SettingsScreen = makePlaceholder('Settings');
-const SecuritySettingsScreen = makePlaceholder('SecuritySettings');
-const ChangePinScreen = makePlaceholder('ChangePin');
-const ExportViewKeyScreen = makePlaceholder('ExportViewKey');
-const BackupSettingsScreen = makePlaceholder('BackupSettings');
-const NotificationSettingsScreen = makePlaceholder('NotificationSettings');
-const WipeWalletScreen = makePlaceholder('WipeWallet');
+import {SettingsScreen} from '../screens/settings/SettingsScreen';
+import {SecuritySettingsScreen} from '../screens/settings/SecuritySettingsScreen';
+import {ChangePinScreen} from '../screens/settings/ChangePinScreen';
+import {ExportViewKeyScreen} from '../screens/settings/ExportViewKeyScreen';
+import {BackupSettingsScreen} from '../screens/settings/BackupSettingsScreen';
+import {NotificationSettingsScreen} from '../screens/settings/NotificationSettingsScreen';
+import {WipeWalletScreen} from '../screens/settings/WipeWalletScreen';
 const ShieldedBalanceScreen = makePlaceholder('ShieldedBalance');
 import {DepositScreen} from '../screens/shielded/DepositScreen';
 import {ShieldedTransferScreen} from '../screens/shielded/ShieldedTransferScreen';
