@@ -14,19 +14,40 @@ import {
   MERKLE_FETCH_BATCH_SIZE,
 } from './types';
 
+// ---- BN254 field validation ------------------------------------------------
+
+/**
+ * BN254 (alt_bn128) scalar field prime.
+ * All Poseidon inputs MUST be valid field elements (< this prime).
+ * Inputs >= F would be silently reduced by poseidon-lite, producing
+ * a hash that differs from what the on-chain circuit computes with
+ * explicit range checking.
+ */
+export const BN254_FIELD_PRIME = BigInt(
+  '21888242871839275222246405745257275088548364400416034343698204186575808495617',
+);
+
+function toFieldElement(hex: string): bigint {
+  const bn = BigInt('0x' + hex.padStart(64, '0'));
+  if (bn >= BN254_FIELD_PRIME) {
+    throw new Error(`Merkle: value is not a valid BN254 field element (>= F): 0x${hex.slice(0, 8)}...`);
+  }
+  return bn;
+}
+
 // ---- Minimal in-memory Merkle tree (Poseidon) ---------------------------
 
 /**
- * Hash two 32-byte hex values using Poseidon(left, right).
- * Inputs are converted from hex to BigInt for the Poseidon field.
- * Output is the BigInt result converted back to a 64-char hex string.
- * Both inputs are zero-padded to 64 chars before conversion to ensure
- * consistent field element representation (little-endian not applicable
- * here — values are treated as canonical field elements, big-endian read).
+ * Hash two 32-byte hex values using Poseidon2(left, right).
+ * Inputs are validated as BN254 field elements before hashing.
+ * Output is always a valid field element (< F) as a 64-char hex string.
+ *
+ * ZERO_LEAF = 0 in the field. Must match the on-chain program's zero-leaf
+ * constant at PROGRAM_ID 6nTTJwtDuxjv8C1JMsajYQapmPAGrC3QF1w5nu9LXJvt.
  */
 function hashPair(left: string, right: string): string {
-  const leftBn = BigInt('0x' + left.padStart(64, '0'));
-  const rightBn = BigInt('0x' + right.padStart(64, '0'));
+  const leftBn = toFieldElement(left);
+  const rightBn = toFieldElement(right);
   const result = poseidon2([leftBn, rightBn]);
   return result.toString(16).padStart(64, '0');
 }
