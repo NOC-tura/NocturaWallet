@@ -52,6 +52,8 @@ jobs:
       - run: npm audit --omit=dev --audit-level=critical || true
 
   detox-ios:
+    # Enable when Detox is added to package.json and iOS build is configured
+    if: false
     needs: [lint, typecheck, unit-tests, audit]
     runs-on: macos-latest
     steps:
