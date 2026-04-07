@@ -1,5 +1,6 @@
-import React, {useState} from 'react';
+import React, {useRef, useState} from 'react';
 import {
+  Animated,
   View,
   Text,
   TouchableOpacity,
@@ -47,8 +48,21 @@ export function ConfirmSeedScreen({
   const [shuffledWords] = useState<string[]>(() => shuffle(words));
 
   const [selectedWords, setSelectedWords] = useState<string[]>([]);
+  const [confirmedIndices, setConfirmedIndices] = useState<Set<number>>(new Set());
   const [failureCount, setFailureCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
+
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+
+  const triggerShake = () => {
+    Animated.sequence([
+      Animated.timing(shakeAnim, {toValue: -10, duration: 50, useNativeDriver: true}),
+      Animated.timing(shakeAnim, {toValue: 10, duration: 50, useNativeDriver: true}),
+      Animated.timing(shakeAnim, {toValue: -10, duration: 50, useNativeDriver: true}),
+      Animated.timing(shakeAnim, {toValue: 10, duration: 50, useNativeDriver: true}),
+      Animated.timing(shakeAnim, {toValue: 0, duration: 50, useNativeDriver: true}),
+    ]).start();
+  };
 
   const requiredWords = chosenIndices.map(i => words[i]);
 
@@ -56,12 +70,16 @@ export function ConfirmSeedScreen({
   const positionLabels = chosenIndices.map(i => `#${i + 1}`).join(', ');
   const instructionText = `Select word ${positionLabels}`;
 
-  const handleWordPress = (word: string) => {
+  const handleWordPress = (word: string, flatIdx: number) => {
     const nextSelected = [...selectedWords, word];
     const step = selectedWords.length; // 0-based index of the word we're currently verifying
     const expectedWord = requiredWords[step];
 
     if (word === expectedWord) {
+      const nextConfirmed = new Set(confirmedIndices);
+      nextConfirmed.add(flatIdx);
+      setConfirmedIndices(nextConfirmed);
+
       if (nextSelected.length === 3) {
         // All 3 correct
         mmkvPublic.set(MMKV_KEYS.ONBOARDING_SEED_CONFIRMED, 'true');
@@ -75,7 +93,9 @@ export function ConfirmSeedScreen({
       const newFailures = failureCount + 1;
       setFailureCount(newFailures);
       setSelectedWords([]);
+      setConfirmedIndices(new Set());
       setError('Incorrect — try again');
+      triggerShake();
 
       if (newFailures >= 3) {
         onBackToSeed();
@@ -98,22 +118,29 @@ export function ConfirmSeedScreen({
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
       <Text style={styles.instruction}>{instructionText}</Text>
-      <Text style={styles.progress}>{progressLabel}</Text>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <Animated.View style={{transform: [{translateX: shakeAnim}]}}>
+        <Text style={styles.progress}>{progressLabel}</Text>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+      </Animated.View>
 
       <View style={styles.grid}>
         {rows.map((row, rowIdx) => (
           <View key={rowIdx} style={styles.row}>
-            {row.map(({word, flatIdx}) => (
-              <TouchableOpacity
-                key={flatIdx}
-                testID={`word-cell-${flatIdx}`}
-                style={styles.wordCell}
-                onPress={() => handleWordPress(word)}>
-                <Text style={styles.wordText}>{word}</Text>
-              </TouchableOpacity>
-            ))}
+            {row.map(({word, flatIdx}) => {
+              const isConfirmed = confirmedIndices.has(flatIdx);
+              return (
+                <TouchableOpacity
+                  key={flatIdx}
+                  testID={`word-cell-${flatIdx}`}
+                  style={[styles.wordCell, isConfirmed && styles.wordCellConfirmed]}
+                  onPress={() => handleWordPress(word, flatIdx)}>
+                  <Text style={[styles.wordText, isConfirmed && styles.wordTextConfirmed]}>
+                    {word}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         ))}
       </View>
@@ -171,9 +198,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 48,
   },
+  wordCellConfirmed: {
+    backgroundColor: '#1B2D1B',
+    borderColor: '#44FF44',
+  },
   wordText: {
     fontSize: 13,
     color: '#FFFFFF',
     fontWeight: '500',
+  },
+  wordTextConfirmed: {
+    color: '#44FF44',
   },
 });

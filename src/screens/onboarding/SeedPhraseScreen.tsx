@@ -1,5 +1,7 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {
+  Alert,
+  Clipboard,
   View,
   Text,
   TouchableOpacity,
@@ -26,11 +28,16 @@ const WARNINGS = [
 export function SeedPhraseScreen({mnemonic, onConfirm}: SeedPhraseScreenProps) {
   const words = mnemonic.trim().split(/\s+/);
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
+  const clipboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     securityManager.enableSecureScreen();
     return () => {
       securityManager.disableSecureScreen();
+      if (clipboardTimerRef.current !== null) {
+        clearTimeout(clipboardTimerRef.current);
+        Clipboard.setString('');
+      }
     };
   }, []);
 
@@ -44,6 +51,21 @@ export function SeedPhraseScreen({mnemonic, onConfirm}: SeedPhraseScreenProps) {
       }
       return next;
     });
+  };
+
+  const handleCopyToClipboard = () => {
+    Clipboard.setString(mnemonic);
+    Alert.alert(
+      'Recovery phrase copied',
+      'It will be cleared from clipboard in 30 seconds.',
+    );
+    if (clipboardTimerRef.current !== null) {
+      clearTimeout(clipboardTimerRef.current);
+    }
+    clipboardTimerRef.current = setTimeout(() => {
+      Clipboard.setString('');
+      clipboardTimerRef.current = null;
+    }, 30_000);
   };
 
   const handleConfirm = () => {
@@ -93,6 +115,13 @@ export function SeedPhraseScreen({mnemonic, onConfirm}: SeedPhraseScreenProps) {
           </View>
         ))}
       </View>
+
+      <TouchableOpacity
+        testID="copy-seed-button"
+        style={styles.copyButton}
+        onPress={handleCopyToClipboard}>
+        <Text style={styles.copyButtonText}>Copy to clipboard</Text>
+      </TouchableOpacity>
 
       <TouchableOpacity style={styles.ctaButton} onPress={handleConfirm}>
         <Text style={styles.ctaButtonText}>I've written them down</Text>
@@ -149,6 +178,19 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '500',
     letterSpacing: 0.5,
+  },
+  copyButton: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#6C47FF',
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  copyButtonText: {
+    color: '#6C47FF',
+    fontSize: 15,
+    fontWeight: '600',
   },
   ctaButton: {
     backgroundColor: '#6C47FF',
