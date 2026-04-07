@@ -1,5 +1,5 @@
 import React from 'react';
-import {View, Text} from 'react-native';
+import {View, Text, StyleSheet} from 'react-native';
 import type {FeeDisplayInfo} from '../modules/fees/types';
 
 interface FeeDisplayRowProps {
@@ -8,12 +8,12 @@ interface FeeDisplayRowProps {
 
 export function FeeDisplayRow({feeInfo}: FeeDisplayRowProps) {
   return (
-    <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8}} testID="fee-display-row">
-      <Text style={{color: '#888', fontSize: 14}}>Fee</Text>
-      <View style={{flexDirection: 'row', alignItems: 'center'}}>
-        <Text style={{color: '#FFF', fontSize: 14}} testID="fee-label">{feeInfo.label}</Text>
+    <View style={styles.row} testID="fee-display-row">
+      <Text style={styles.label}>Fee</Text>
+      <View style={styles.valueRow}>
+        <Text style={styles.value} testID="fee-label">{feeInfo.label}</Text>
         {feeInfo.discountLabel ? (
-          <Text style={{color: '#44FF44', fontSize: 12, marginLeft: 8}} testID="fee-discount">
+          <Text style={styles.discount} testID="fee-discount">
             ({feeInfo.discountLabel})
           </Text>
         ) : null}
@@ -21,3 +21,29 @@ export function FeeDisplayRow({feeInfo}: FeeDisplayRowProps) {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  label: {
+    color: '#888',
+    fontSize: 14,
+  },
+  valueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  value: {
+    color: '#FFF',
+    fontSize: 14,
+  },
+  discount: {
+    color: '#44FF44',
+    fontSize: 12,
+    marginLeft: 8,
+  },
+});

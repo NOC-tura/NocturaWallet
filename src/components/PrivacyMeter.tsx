@@ -1,5 +1,5 @@
 import React from 'react';
-import {View, Text, TouchableOpacity} from 'react-native';
+import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
 import {getPrivacyLevel} from '../modules/shielded/privacyMeter';
 
 interface PrivacyMeterProps {
@@ -21,15 +21,38 @@ export function PrivacyMeter({leafCount, isFirstDeposit, onDismiss}: PrivacyMete
 
   return (
     <View
-      style={{backgroundColor: scheme.bg, borderWidth: 1, borderColor: scheme.border, borderRadius: 12, padding: 12, marginBottom: 16}}
+      style={[styles.container, {backgroundColor: scheme.bg, borderColor: scheme.border}]}
       testID="privacy-meter"
     >
-      <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
-        <Text style={{color: scheme.text, fontSize: 14, flex: 1}}>{message}</Text>
+      <View style={styles.row}>
+        <Text style={[styles.message, {color: scheme.text}]}>{message}</Text>
         <TouchableOpacity onPress={onDismiss} testID="privacy-meter-dismiss" accessibilityLabel="Dismiss privacy warning">
-          <Text style={{color: '#888', fontSize: 18, paddingLeft: 8}}>✕</Text>
+          <Text style={styles.dismissButton}>✕</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  message: {
+    fontSize: 14,
+    flex: 1,
+  },
+  dismissButton: {
+    color: '#888',
+    fontSize: 18,
+    paddingLeft: 8,
+  },
+});

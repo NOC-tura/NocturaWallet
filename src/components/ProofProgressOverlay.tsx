@@ -1,5 +1,5 @@
 import React from 'react';
-import {View, Text, ActivityIndicator, Modal} from 'react-native';
+import {View, Text, ActivityIndicator, Modal, StyleSheet} from 'react-native';
 import type {ConsolidationProgress} from '../modules/shielded/types';
 
 interface ProofProgressOverlayProps {
@@ -15,12 +15,27 @@ export function ProofProgressOverlay({visible, message = 'Securing transaction..
 
   return (
     <Modal visible={visible} transparent animationType="fade" testID="proof-overlay">
-      <View style={{flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.85)', justifyContent: 'center', alignItems: 'center'}}>
+      <View style={styles.backdrop}>
         <ActivityIndicator size="large" color="#FFFFFF" />
-        <Text style={{color: '#FFFFFF', fontSize: 16, marginTop: 24, textAlign: 'center'}} testID="proof-overlay-message">
+        <Text style={styles.messageText} testID="proof-overlay-message">
           {displayMessage}
         </Text>
       </View>
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  messageText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    marginTop: 24,
+    textAlign: 'center',
+  },
+});
