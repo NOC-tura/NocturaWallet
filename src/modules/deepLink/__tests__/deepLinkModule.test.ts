@@ -72,6 +72,27 @@ describe('DeepLinkManager', () => {
     expect(action).toBeNull();
   });
 
+  it('handles universal link https://noc-tura.io/wallet/pay as noctura://pay', () => {
+    const action = manager.handleLink('https://noc-tura.io/wallet/pay?to=addr&amount=5&token=NOC');
+    expect(action).not.toBeNull();
+    expect(action!.type).toBe('pay');
+    expect(action!.params.to).toBe('addr');
+    expect(action!.params.amount).toBe('5');
+  });
+
+  it('handles universal link https://noc-tura.io/wallet/receive', () => {
+    const action = manager.handleLink('https://noc-tura.io/wallet/receive');
+    expect(action).not.toBeNull();
+    expect(action!.type).toBe('receive');
+  });
+
+  it('handles universal link https://noc-tura.io/wallet/stake', () => {
+    const action = manager.handleLink('https://noc-tura.io/wallet/stake?tier=365');
+    expect(action).not.toBeNull();
+    expect(action!.type).toBe('stake');
+    expect(action!.params.tier).toBe('365');
+  });
+
   it('fires onAction callback when handleLink produces an action', () => {
     const cb = jest.fn();
     manager.onAction(cb);

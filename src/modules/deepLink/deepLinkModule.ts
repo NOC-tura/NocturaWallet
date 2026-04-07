@@ -14,13 +14,26 @@ export class DeepLinkManager {
     if (!url || typeof url !== 'string') return null;
     const trimmed = url.trim();
 
-    // Referral universal link
-    if (trimmed.startsWith('https://noc-tura.io/ref/')) {
-      const code = trimmed.replace('https://noc-tura.io/ref/', '');
-      if (!code) return null;
-      const action: DeepLinkAction = {type: 'referral', params: {code}};
-      this.dispatch(action);
-      return action;
+    // Universal links: https://noc-tura.io/...
+    if (trimmed.startsWith('https://noc-tura.io/')) {
+      const path = trimmed.replace('https://noc-tura.io/', '');
+
+      // Referral: https://noc-tura.io/ref/<code>
+      if (path.startsWith('ref/')) {
+        const code = path.replace('ref/', '');
+        if (!code) return null;
+        const action: DeepLinkAction = {type: 'referral', params: {code}};
+        this.dispatch(action);
+        return action;
+      }
+
+      // Wallet links: https://noc-tura.io/wallet/pay?to=...
+      if (path.startsWith('wallet/')) {
+        const walletPath = path.replace('wallet/', '');
+        return this.handleLink(`noctura://${walletPath}`);
+      }
+
+      return null;
     }
 
     // Must be noctura:// scheme
