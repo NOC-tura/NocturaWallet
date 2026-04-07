@@ -1,5 +1,5 @@
 import React from 'react';
-import {render, fireEvent, waitFor} from '@testing-library/react-native';
+import {render, fireEvent} from '@testing-library/react-native';
 import {SendScreen} from '../SendScreen';
 
 jest.mock('../../../modules/solana/simulation', () => ({
@@ -54,11 +54,6 @@ describe('SendScreen', () => {
 
   it('Review button is disabled when fields are empty', () => {
     const {getByText} = render(<SendScreen />);
-    const reviewButton = getByText('Review').parent;
-    // The button itself is the parent TouchableOpacity — check it has disabled style
-    // or the accessible prop. We check via accessibilityState or disabled prop.
-    // Since we render a TouchableOpacity with disabled={true}, the element's
-    // parent chain should reflect this. We rely on querying the button wrapper.
     const button = getByText('Review');
     expect(button).toBeTruthy();
     // Verify disabled state: button should be disabled when no recipient or amount

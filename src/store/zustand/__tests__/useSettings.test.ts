@@ -1,5 +1,4 @@
 import {usePublicSettingsStore} from '../publicSettingsStore';
-import {useSecureSettingsStore} from '../secureSettingsStore';
 import {useSettings} from '../useSettings';
 import {renderHook, act} from '@testing-library/react-native';
 

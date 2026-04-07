@@ -65,7 +65,7 @@ export const useWalletStore = create<WalletState>()(
     {
       name: 'noctura-wallet',
       storage: createJSONStorage(() => mmkvSecureStorage),
-      partialize: ({pkShielded, ...rest}) => rest,
+      partialize: ({pkShielded: _pkShielded, ...rest}) => rest,
     },
   ),
 );
