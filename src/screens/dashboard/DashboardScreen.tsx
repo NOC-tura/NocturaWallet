@@ -23,9 +23,10 @@ interface DashboardScreenProps {
   onReceive?: () => void;
   onStake?: () => void;
   onBackup?: () => void;
+  onFirstShieldedToggle?: () => void;
 }
 
-export function DashboardScreen({onSend, onReceive, onStake, onBackup}: DashboardScreenProps) {
+export function DashboardScreen({onSend, onReceive, onStake, onBackup, onFirstShieldedToggle}: DashboardScreenProps) {
   const [refreshing, setRefreshing] = useState(false);
   const {publicKey, solBalance, nocBalance, totalUsdValue, nocUsdPrice, tokens, tokenBalances} = useWalletStore();
   const {mode, setMode} = useShieldedStore();
@@ -62,7 +63,11 @@ export function DashboardScreen({onSend, onReceive, onStake, onBackup}: Dashboar
         <WalletChip address={publicKey ?? ''} onCopy={handleCopyAddress} />
 
         {/* 2. ModeToggle */}
-        <ModeToggle mode={mode} onToggle={() => setMode(mode === 'transparent' ? 'shielded' : 'transparent')} />
+        <ModeToggle
+          mode={mode}
+          onToggle={() => setMode(mode === 'transparent' ? 'shielded' : 'transparent')}
+          onFirstShieldedToggle={onFirstShieldedToggle}
+        />
 
         {/* 3-5. Conditional banners (priority: backup > offline > update) */}
         {showBackupBanner && (

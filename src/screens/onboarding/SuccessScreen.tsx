@@ -1,5 +1,11 @@
 import React, {useState} from 'react';
-import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+} from 'react-native';
 import {KeychainManager} from '../../modules/keychain/keychainModule';
 import {mnemonicToSeed} from '../../modules/keyDerivation/mnemonicUtils';
 import {deriveTransparentKeypair} from '../../modules/keyDerivation/transparent';
@@ -19,6 +25,27 @@ const keychainManager = new KeychainManager();
 export function SuccessScreen({mnemonic, onComplete}: SuccessScreenProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Referral section state
+  const alreadyApplied = mmkvPublic.getBoolean(MMKV_KEYS.REFERRAL_ONBOARDING_CODE_APPLIED) === true;
+  const [referralExpanded, setReferralExpanded] = useState(false);
+  const [referralCode, setReferralCode] = useState('');
+  const [referralMessage, setReferralMessage] = useState<string | null>(null);
+  const [referralApplied, setReferralApplied] = useState(alreadyApplied);
+
+  function handleApplyReferral() {
+    const trimmed = referralCode.trim().toUpperCase();
+    if (!trimmed) {
+      setReferralMessage('Please enter a referral code');
+      return;
+    }
+    mmkvPublic.set(MMKV_KEYS.REFERRAL_ONBOARDING_CODE_APPLIED, true);
+    // Store the code value in public MMKV (migrated to secure store post-wallet-init)
+    mmkvPublic.set('v1_referral.onboardingCode', trimmed);
+    setReferralApplied(true);
+    setReferralMessage(`Code ${trimmed} applied!`);
+    setReferralCode('');
+  }
 
   const handleEnterWallet = async () => {
     setLoading(true);
@@ -68,6 +95,61 @@ export function SuccessScreen({mnemonic, onComplete}: SuccessScreenProps) {
 
       {error && <Text style={styles.errorText}>{error}</Text>}
 
+      {/* Referral code section — one-time, only shown if not already applied */}
+      {!referralApplied && (
+        <View style={styles.referralSection}>
+          {!referralExpanded ? (
+            <TouchableOpacity
+              testID="referral-expand-button"
+              onPress={() => setReferralExpanded(true)}
+              style={styles.referralExpandBtn}>
+              <Text style={styles.referralExpandText}>Have a referral code?</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.referralInputContainer}>
+              <TextInput
+                testID="referral-input-onboarding"
+                style={styles.referralInput}
+                value={referralCode}
+                onChangeText={setReferralCode}
+                placeholder="Enter referral code"
+                placeholderTextColor="#6b7280"
+                autoCapitalize="characters"
+                autoCorrect={false}
+              />
+              <TouchableOpacity
+                testID="apply-referral-onboarding"
+                style={styles.applyBtn}
+                onPress={handleApplyReferral}>
+                <Text style={styles.applyBtnText}>Apply</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {referralMessage && (
+            <Text
+              testID="referral-message-onboarding"
+              style={[
+                styles.referralMessage,
+                referralMessage.includes('applied') && styles.referralMessageSuccess,
+              ]}>
+              {referralMessage}
+            </Text>
+          )}
+        </View>
+      )}
+
+      {referralApplied && !referralMessage && (
+        <Text style={styles.referralAlreadyApplied}>Referral code applied</Text>
+      )}
+
+      {referralApplied && referralMessage && (
+        <Text
+          testID="referral-message-onboarding"
+          style={styles.referralMessageSuccess}>
+          {referralMessage}
+        </Text>
+      )}
+
       <TouchableOpacity
         testID="enter-wallet-button"
         style={[styles.ctaButton, loading && styles.ctaButtonDisabled]}
@@ -107,7 +189,64 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     textAlign: 'center',
-    marginBottom: 48,
+    marginBottom: 32,
+  },
+  referralSection: {
+    width: '100%',
+    marginBottom: 24,
+    alignItems: 'center',
+  },
+  referralExpandBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  referralExpandText: {
+    color: '#A78BFA',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  referralInputContainer: {
+    width: '100%',
+    gap: 10,
+  },
+  referralInput: {
+    width: '100%',
+    backgroundColor: '#1A1A2E',
+    color: '#FFFFFF',
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(108,71,255,0.3)',
+  },
+  applyBtn: {
+    width: '100%',
+    backgroundColor: '#6C47FF',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  applyBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  referralMessage: {
+    color: '#F87171',
+    fontSize: 13,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  referralMessageSuccess: {
+    color: '#22C55E',
+    fontSize: 13,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  referralAlreadyApplied: {
+    color: '#9ca3af',
+    fontSize: 13,
+    marginBottom: 16,
   },
   ctaButton: {
     width: '100%',

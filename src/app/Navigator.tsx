@@ -24,6 +24,7 @@ import {PrivacyExplainerScreen} from '../screens/PrivacyExplainerScreen';
 import {StakingScreen} from '../screens/staking/StakingScreen';
 import {OnboardingProvider, useOnboarding} from '../contexts/OnboardingContext';
 import {useWalletStore} from '../store/zustand/walletStore';
+import {useShieldedStore} from '../store/zustand/shieldedStore';
 import {ReceiveScreen} from '../screens/transparent/ReceiveScreen';
 import {TransactionHistoryScreen as TransactionHistoryScreenImpl} from '../screens/transparent/TransactionHistoryScreen';
 import {TransactionDetailScreen as TransactionDetailScreenImpl} from '../screens/transparent/TransactionDetailScreen';
@@ -210,7 +211,12 @@ function PresaleScreenOnboarding() {
 }
 
 function DashboardScreenNav() {
-  return <DashboardScreen />;
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  return (
+    <DashboardScreen
+      onFirstShieldedToggle={() => navigation.navigate('PrivacyExplainer')}
+    />
+  );
 }
 
 function StakingScreenNav() {
@@ -228,7 +234,15 @@ function PresaleScreenDashboard() {
 
 function PrivacyExplainerScreenNav() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  return <PrivacyExplainerScreen onDismiss={() => navigation.goBack()} />;
+  const setMode = useShieldedStore(s => s.setMode);
+  return (
+    <PrivacyExplainerScreen
+      onDismiss={() => {
+        setMode('shielded');
+        navigation.goBack();
+      }}
+    />
+  );
 }
 
 function SendScreenNav() {

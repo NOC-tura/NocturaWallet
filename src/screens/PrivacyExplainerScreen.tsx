@@ -1,5 +1,9 @@
 import React from 'react';
-import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
+import {View, Text, TouchableOpacity, StyleSheet, Linking} from 'react-native';
+import {mmkvPublic} from '../store/mmkv/instances';
+import {MMKV_KEYS} from '../constants/mmkvKeys';
+
+const PRIVACY_URL = 'https://noc-tura.io/privacy';
 
 interface PrivacyExplainerScreenProps {
   onDismiss: () => void;
@@ -12,6 +16,15 @@ const BULLETS = [
 ];
 
 export function PrivacyExplainerScreen({onDismiss}: PrivacyExplainerScreenProps) {
+  function handleGotIt() {
+    mmkvPublic.set(MMKV_KEYS.PRIVACY_EXPLAINER_SHOWN, true);
+    onDismiss();
+  }
+
+  function handleLearnMore() {
+    void Linking.openURL(PRIVACY_URL);
+  }
+
   return (
     <View style={styles.container}>
       <Text style={styles.heading}>🔒 Privacy Mode</Text>
@@ -33,8 +46,18 @@ export function PrivacyExplainerScreen({onDismiss}: PrivacyExplainerScreenProps)
         </Text>
       </View>
 
-      <TouchableOpacity style={styles.ctaButton} onPress={onDismiss}>
+      <TouchableOpacity
+        testID="got-it-button"
+        style={styles.ctaButton}
+        onPress={handleGotIt}>
         <Text style={styles.ctaButtonText}>Got it →</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        testID="learn-more-button"
+        style={styles.learnMoreButton}
+        onPress={handleLearnMore}>
+        <Text style={styles.learnMoreButtonText}>Learn more</Text>
       </TouchableOpacity>
     </View>
   );
@@ -103,10 +126,23 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
+    marginBottom: 12,
   },
   ctaButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  learnMoreButton: {
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(108,71,255,0.4)',
+  },
+  learnMoreButtonText: {
+    color: '#A78BFA',
+    fontSize: 15,
+    fontWeight: '500',
   },
 });

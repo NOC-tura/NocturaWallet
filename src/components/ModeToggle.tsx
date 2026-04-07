@@ -1,12 +1,27 @@
 import React from 'react';
 import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
+import {mmkvPublic} from '../store/mmkv/instances';
+import {MMKV_KEYS} from '../constants/mmkvKeys';
 
 interface ModeToggleProps {
   mode: 'transparent' | 'shielded';
   onToggle: () => void;
+  /** Called instead of onToggle the very first time the user taps "Private",
+   *  before the privacy explainer has been acknowledged. */
+  onFirstShieldedToggle?: () => void;
 }
 
-export function ModeToggle({mode, onToggle}: ModeToggleProps) {
+export function ModeToggle({mode, onToggle, onFirstShieldedToggle}: ModeToggleProps) {
+  function handleShieldedPress() {
+    if (mode === 'shielded') return; // already active — no-op
+    const explainerShown = mmkvPublic.getBoolean(MMKV_KEYS.PRIVACY_EXPLAINER_SHOWN);
+    if (!explainerShown && onFirstShieldedToggle) {
+      onFirstShieldedToggle();
+    } else {
+      onToggle();
+    }
+  }
+
   return (
     <View style={styles.container}>
       <TouchableOpacity
@@ -20,7 +35,7 @@ export function ModeToggle({mode, onToggle}: ModeToggleProps) {
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.segment, mode === 'shielded' && styles.activeSegment]}
-        onPress={mode !== 'shielded' ? onToggle : undefined}
+        onPress={handleShieldedPress}
         activeOpacity={0.8}
         accessibilityLabel="Switch to private mode">
         <Text style={[styles.label, mode === 'shielded' && styles.activeLabel]}>

@@ -26,6 +26,7 @@ jest.mock('../../../store/mmkv/instances', () => ({
   mmkvPublic: {
     set: jest.fn(),
     getString: jest.fn(),
+    getBoolean: jest.fn().mockReturnValue(false),
   },
   mmkvSecure: jest.fn().mockReturnValue(null),
   initSecureMmkv: jest.fn(),

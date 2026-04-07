@@ -67,6 +67,12 @@ export const MMKV_KEYS = {
   REFERRAL_CODE_APPLIED: 'v1_referral.appliedCode',
   REFERRAL_REWARDS_TOTAL: 'v1_referral.totalRewards',
 
+  // ─── Referral [P] onboarding-time entry (before secure store is ready) ─
+  REFERRAL_ONBOARDING_CODE_APPLIED: 'v1_referral.onboardingApplied',
+
+  // ─── Privacy Explainer [P] ─────────────────────────────────────────
+  PRIVACY_EXPLAINER_SHOWN: 'v1_privacy.explainerShown',
+
   // ─── Security [P] ──────────────────────────────────────────────────
   SECURITY_JAILBREAK_DETECTED: 'v1_security.jailbreakDetected',
   SECURITY_BIOMETRIC_ENABLED: 'v1_security.biometricEnabled',
