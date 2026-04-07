@@ -1,5 +1,23 @@
 jest.mock('../../sslPinning/pinnedFetch', () => ({pinnedFetch: jest.fn()}));
 
+// Use no-cooldown limiters so sequential calls in tests don't wait 3s/5s.
+jest.mock('../../solana/rpcLimiter', () => {
+  const {RateLimiter} = jest.requireActual<typeof import('../../solana/rateLimiter')>('../../solana/rateLimiter');
+  const rpcLimiter = new RateLimiter({maxConcurrent: 10, maxRetries: 3, baseDelayMs: 1000});
+  const proveLimiter = new RateLimiter({maxConcurrent: 1, maxRetries: 1, baseDelayMs: 1000});
+  const relayerLimiter = new RateLimiter({maxConcurrent: 1, maxRetries: 1, baseDelayMs: 1000});
+  return {
+    rpcLimiter,
+    proveLimiter,
+    relayerLimiter,
+    _resetRateLimitersForTest: () => {
+      rpcLimiter.reset();
+      proveLimiter.reset();
+      relayerLimiter.reset();
+    },
+  };
+});
+
 jest.mock('../../../store/mmkv/instances', () => {
   const actual = jest.requireActual('../../../store/mmkv/instances') as Record<string, unknown>;
   return {...actual, mmkvSecure: () => actual.mmkvPublic};
@@ -10,6 +28,7 @@ jest.mock('../../../store/zustand/presaleStore', () => ({
 }));
 
 import {pinnedFetch} from '../../sslPinning/pinnedFetch';
+import {_resetRateLimitersForTest} from '../../solana/rpcLimiter';
 import {
   fetchCircuitConfig,
   _resetConfigCache,
@@ -85,6 +104,7 @@ beforeEach(() => {
   _resetConfigCache();
   clearMint(MINT);
   mockPinnedFetch.mockReset();
+  _resetRateLimitersForTest();
 });
 
 // ---------------------------------------------------------------------------

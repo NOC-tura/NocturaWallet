@@ -1,6 +1,7 @@
 import {API_BASE} from '../../constants/programs';
 import {ERROR_CODES} from '../../constants/errors';
 import {pinnedFetch} from '../sslPinning/pinnedFetch';
+import {relayerLimiter} from '../solana/rpcLimiter';
 import {zkProver} from '../zkProver/zkProverModule';
 import {feeEngine} from '../fees/feeEngine';
 import {
@@ -49,15 +50,22 @@ export async function fetchCircuitConfig(): Promise<CircuitConfig> {
 
 // ---- Relayer -------------------------------------------------------------------
 
+// Monotonically-increasing counter used to produce unique rate-limiter keys
+// so sequential relayer submissions are never deduplicated.
+let _relayCallId = 0;
+
 /**
  * Submit a proof to the relayer.
  * Returns the on-chain transaction signature.
  */
 export async function submitToRelayer(proof: ZKProof): Promise<string> {
-  const resp = await pinnedFetch(`${API_BASE}/v1/relayer/submit`, {
-    method: 'POST',
-    body: JSON.stringify(proof),
-  });
+  const callKey = `relayer:submit:${++_relayCallId}`;
+  const resp = await relayerLimiter.execute(callKey, () =>
+    pinnedFetch(`${API_BASE}/v1/relayer/submit`, {
+      method: 'POST',
+      body: JSON.stringify(proof),
+    }),
+  );
 
   if (resp.status !== 200) {
     throw new Error(`Relayer returned HTTP ${resp.status}`);

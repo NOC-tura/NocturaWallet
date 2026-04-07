@@ -1,4 +1,5 @@
 import {Connection, PublicKey} from '@solana/web3.js';
+import {rpcLimiter} from './rpcLimiter';
 import type {TokenAccount, ParsedTransaction} from './types';
 
 // TOKEN_PROGRAM_ID constant — matches @solana/web3.js export
@@ -11,8 +12,10 @@ export async function getBalance(
   connection: Connection,
   publicKey: PublicKey,
 ): Promise<bigint> {
-  const result = await connection.getBalance(publicKey);
-  return BigInt(result);
+  return rpcLimiter.execute(`getBalance:${publicKey.toBase58()}`, async () => {
+    const result = await connection.getBalance(publicKey);
+    return BigInt(result);
+  });
 }
 
 /**
@@ -23,38 +26,40 @@ export async function getTokenAccounts(
   connection: Connection,
   owner: PublicKey,
 ): Promise<TokenAccount[]> {
-  // getParsedTokenAccountsByOwner returns jsonParsed data with typed info
-  // Falling back to getTokenAccountsByOwner with manual parsing for mock compatibility
-  const response = await connection.getTokenAccountsByOwner(owner, {
-    programId: TOKEN_PROGRAM_ID,
-  });
+  return rpcLimiter.execute(`getTokenAccounts:${owner.toBase58()}`, async () => {
+    // getParsedTokenAccountsByOwner returns jsonParsed data with typed info
+    // Falling back to getTokenAccountsByOwner with manual parsing for mock compatibility
+    const response = await connection.getTokenAccountsByOwner(owner, {
+      programId: TOKEN_PROGRAM_ID,
+    });
 
-  return response.value.map(item => {
-    // In production, use getParsedTokenAccountsByOwner which returns typed parsed data.
-    // The cast through unknown is needed because the mock returns a simplified structure.
-    const data = item.account.data as unknown as {
-      parsed?: {
-        info: {
-          mint: string;
-          owner: string;
-          tokenAmount: {amount: string; decimals: number};
+    return response.value.map(item => {
+      // In production, use getParsedTokenAccountsByOwner which returns typed parsed data.
+      // The cast through unknown is needed because the mock returns a simplified structure.
+      const data = item.account.data as unknown as {
+        parsed?: {
+          info: {
+            mint: string;
+            owner: string;
+            tokenAmount: {amount: string; decimals: number};
+          };
         };
       };
-    };
 
-    if (!data.parsed) {
-      // Binary-encoded response — should not happen with jsonParsed encoding
-      throw new Error('Token account data not parsed. Use jsonParsed encoding.');
-    }
+      if (!data.parsed) {
+        // Binary-encoded response — should not happen with jsonParsed encoding
+        throw new Error('Token account data not parsed. Use jsonParsed encoding.');
+      }
 
-    const info = data.parsed.info;
-    return {
-      mint: info.mint,
-      owner: info.owner,
-      amount: info.tokenAmount.amount,
-      decimals: info.tokenAmount.decimals,
-      address: item.pubkey.toBase58(),
-    };
+      const info = data.parsed.info;
+      return {
+        mint: info.mint,
+        owner: info.owner,
+        amount: info.tokenAmount.amount,
+        decimals: info.tokenAmount.decimals,
+        address: item.pubkey.toBase58(),
+      };
+    });
   });
 }
 
@@ -72,21 +77,28 @@ export async function getTransactionHistory(
   options: GetTransactionHistoryOptions,
 ): Promise<ParsedTransaction[]> {
   const {limit, before} = options;
-  const queryOptions: {limit: number; before?: string} = {limit};
-  if (before !== undefined) {
-    queryOptions.before = before;
-  }
+  // Include 'before' cursor in key so paginated calls are not deduplicated
+  const cursorKey = before ?? 'head';
+  return rpcLimiter.execute(
+    `getTransactionHistory:${address.toBase58()}:${limit}:${cursorKey}`,
+    async () => {
+      const queryOptions: {limit: number; before?: string} = {limit};
+      if (before !== undefined) {
+        queryOptions.before = before;
+      }
 
-  const signatures = await connection.getSignaturesForAddress(address, queryOptions);
+      const signatures = await connection.getSignaturesForAddress(address, queryOptions);
 
-  return signatures.map(sig => ({
-    signature: sig.signature,
-    slot: sig.slot,
-    timestamp: sig.blockTime ?? null,
-    type: 'unknown' as const,
-    fee: 0,
-    status: sig.err != null
-      ? ('failed' as const)
-      : ((sig.confirmationStatus ?? 'confirmed') as 'confirmed' | 'finalized' | 'failed'),
-  }));
+      return signatures.map(sig => ({
+        signature: sig.signature,
+        slot: sig.slot,
+        timestamp: sig.blockTime ?? null,
+        type: 'unknown' as const,
+        fee: 0,
+        status: sig.err != null
+          ? ('failed' as const)
+          : ((sig.confirmationStatus ?? 'confirmed') as 'confirmed' | 'finalized' | 'failed'),
+      }));
+    },
+  );
 }

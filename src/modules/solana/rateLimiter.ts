@@ -91,6 +91,18 @@ export class RateLimiter {
     throw lastError;
   }
 
+  /**
+   * Reset all in-flight tracking and cooldown state.
+   * Intended for use in tests only — clears active count, queue, inflight map,
+   * and lastCompleted timestamp so cooldown delays don't bleed between test cases.
+   */
+  reset(): void {
+    this.active = 0;
+    this.queue = [];
+    this.inflight.clear();
+    this.lastCompleted = 0;
+  }
+
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }

@@ -1,5 +1,6 @@
 import {API_BASE} from '../../constants/programs';
 import {pinnedFetch} from '../sslPinning/pinnedFetch';
+import {proveLimiter} from '../solana/rpcLimiter';
 import {localProver} from './localProver';
 import {proofQueue} from './proofQueue';
 import {
@@ -46,16 +47,23 @@ function zeroizeWitness(witness: ProofWitness): void {
 
 // ---- Hosted prover -------------------------------------------------------
 
+// Monotonically-increasing counter used to produce unique rate-limiter keys
+// so sequential proof requests are never deduplicated.
+let _proveCallId = 0;
+
 async function proveHosted(
   proofType: ProofType,
   witness: ProofWitness,
 ): Promise<ZKProof> {
   const safeParams = sanitiseWitnessForHosted(witness);
+  const callKey = `prove:${proofType}:${++_proveCallId}`;
 
-  const resp = await pinnedFetch(`${API_BASE}/zk/prove`, {
-    method: 'POST',
-    body: JSON.stringify({proofType, params: safeParams}),
-  });
+  const resp = await proveLimiter.execute(callKey, () =>
+    pinnedFetch(`${API_BASE}/zk/prove`, {
+      method: 'POST',
+      body: JSON.stringify({proofType, params: safeParams}),
+    }),
+  );
 
   if (resp.status !== 200) {
     throw new Error(`Hosted prover returned HTTP ${resp.status}`);

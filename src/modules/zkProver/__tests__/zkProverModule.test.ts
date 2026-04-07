@@ -8,6 +8,24 @@ jest.mock('../../sslPinning/pinnedFetch', () => ({
   pinnedFetch: jest.fn(),
 }));
 
+// Use no-cooldown limiters so sequential calls in tests don't wait 3s/5s.
+jest.mock('../../solana/rpcLimiter', () => {
+  const {RateLimiter} = jest.requireActual<typeof import('../../solana/rateLimiter')>('../../solana/rateLimiter');
+  const rpcLimiter = new RateLimiter({maxConcurrent: 10, maxRetries: 3, baseDelayMs: 1000});
+  const proveLimiter = new RateLimiter({maxConcurrent: 1, maxRetries: 1, baseDelayMs: 1000});
+  const relayerLimiter = new RateLimiter({maxConcurrent: 1, maxRetries: 1, baseDelayMs: 1000});
+  return {
+    rpcLimiter,
+    proveLimiter,
+    relayerLimiter,
+    _resetRateLimitersForTest: () => {
+      rpcLimiter.reset();
+      proveLimiter.reset();
+      relayerLimiter.reset();
+    },
+  };
+});
+
 // ProofQueue uses mmkvSecure (encrypted storage). In tests, route it to the
 // always-available mmkvPublic mock so no initSecureMmkv call is needed.
 jest.mock('../../../store/mmkv/instances', () => {
@@ -19,6 +37,7 @@ jest.mock('../../../store/mmkv/instances', () => {
 });
 
 import {pinnedFetch} from '../../sslPinning/pinnedFetch';
+import {_resetRateLimitersForTest} from '../../solana/rpcLimiter';
 import {ZkProverModule} from '../zkProverModule';
 import {ProofQueue} from '../proofQueue';
 import {ProverUnavailableError} from '../types';
@@ -56,6 +75,7 @@ describe('ZkProverModule', () => {
     queue = new ProofQueue();
     queue.clear();
     jest.clearAllMocks();
+    _resetRateLimitersForTest();
   });
 
   it('returns ZKProof when hosted prover succeeds', async () => {
