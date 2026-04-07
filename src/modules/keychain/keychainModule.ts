@@ -1,5 +1,6 @@
 import Keychain from 'react-native-keychain';
 import {hashPin, verifyPin as verifyPinHash, generateSalt} from './pinManager';
+import {checkCooldown, recordFailedAttempt, resetAttempts} from './pinLockout';
 
 const SERVICE_SEED = 'noctura.seed';
 const SERVICE_VIEW_KEY = 'noctura.viewKey';
@@ -95,7 +96,18 @@ export class KeychainManager {
     return result !== false;
   }
 
+  /**
+   * Verify PIN with cooldown enforcement.
+   * Throws if in cooldown. Resets counter on success.
+   * Returns { valid, shouldWipeSession } — caller decides wipe action.
+   */
   async verifyPin(pin: string): Promise<boolean> {
+    const cooldown = checkCooldown();
+    if (cooldown.blocked) {
+      const secs = Math.ceil(cooldown.remainingMs / 1000);
+      throw new Error(`Too many incorrect attempts. Try again in ${secs}s`);
+    }
+
     const saltResult = await Keychain.getGenericPassword({service: SERVICE_PIN_SALT});
     const hashResult = await Keychain.getGenericPassword({service: SERVICE_PIN_HASH});
 
@@ -104,7 +116,18 @@ export class KeychainManager {
     const salt = new Uint8Array(Buffer.from(saltResult.password, 'hex'));
     const storedHash = new Uint8Array(Buffer.from(hashResult.password, 'hex'));
 
-    return verifyPinHash(pin, salt, storedHash);
+    const valid = await verifyPinHash(pin, salt, storedHash);
+
+    if (valid) {
+      resetAttempts();
+    } else {
+      const result = recordFailedAttempt();
+      if (result.shouldWipeSession) {
+        // Caller (UnlockScreen) should lock session on receiving false + checking attempt count
+      }
+    }
+
+    return valid;
   }
 
   async changePin(oldPin: string, newPin: string): Promise<void> {
