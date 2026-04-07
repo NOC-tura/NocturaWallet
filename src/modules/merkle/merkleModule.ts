@@ -1,3 +1,4 @@
+import {poseidon2} from 'poseidon-lite';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {API_BASE} from '../../constants/programs';
@@ -13,26 +14,21 @@ import {
   MERKLE_FETCH_BATCH_SIZE,
 } from './types';
 
-// ---- Minimal in-memory Merkle tree (Poseidon placeholder) ---------------
+// ---- Minimal in-memory Merkle tree (Poseidon) ---------------------------
 
 /**
- * In tests and production stub we use SHA-256 via node/subtle crypto as a
- * stand-in until the real Poseidon hasher is wired.  The hash function is
- * swappable — only the sync logic is under test.
+ * Hash two 32-byte hex values using Poseidon(left, right).
+ * Inputs are converted from hex to BigInt for the Poseidon field.
+ * Output is the BigInt result converted back to a 64-char hex string.
+ * Both inputs are zero-padded to 64 chars before conversion to ensure
+ * consistent field element representation (little-endian not applicable
+ * here — values are treated as canonical field elements, big-endian read).
  */
 function hashPair(left: string, right: string): string {
-  // Deterministic combination: concat hex strings and hash-like fold.
-  // Replace with Poseidon(left, right) when available.
-  const combined = left.padStart(64, '0') + right.padStart(64, '0');
-  // Simple XOR fold to 32-byte hex string (placeholder, not cryptographically
-  // meaningful — prod implementation will use poseidon2).
-  let result = '';
-  for (let i = 0; i < 64; i++) {
-    const a = parseInt(combined[i] ?? '0', 16);
-    const b = parseInt(combined[i + 64] ?? '0', 16);
-    result += ((a ^ b) & 0xf).toString(16);
-  }
-  return result.padStart(64, '0');
+  const leftBn = BigInt('0x' + left.padStart(64, '0'));
+  const rightBn = BigInt('0x' + right.padStart(64, '0'));
+  const result = poseidon2([leftBn, rightBn]);
+  return result.toString(16).padStart(64, '0');
 }
 
 const ZERO_LEAF = '0'.repeat(64);
@@ -182,8 +178,11 @@ export class MerkleModule {
       // Recompute root
       const localRoot = computeMerkleRoot(updatedLeaves);
 
-      // Verify against anchor root (only when we have synced leaves and anchor provides a root)
-      const rootVerified = anchorRoot === '' || localRoot === anchorRoot;
+      // Verify against anchor root.
+      // Empty anchor with zero new leaves is valid: the tree doesn't exist yet on-chain.
+      // Empty anchor WITH new leaves is suspicious and must be rejected.
+      const rootVerified =
+        (anchorRoot === '' && allNewLeaves.length === 0) || localRoot === anchorRoot;
 
       if (!rootVerified) {
         throw new MerkleRootMismatchError(localRoot, anchorRoot);

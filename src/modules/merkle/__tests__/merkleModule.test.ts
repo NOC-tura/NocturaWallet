@@ -25,7 +25,6 @@ function mockResponse(data: unknown) {
 }
 
 const TREE_ADDRESS = 'MockTreeAddress111111111111111111111111';
-const ANCHOR_ROOT = '0'.repeat(64);
 
 function makeLeaves(count: number, offset = 0) {
   return Array.from({length: count}, (_, i) => ({
@@ -51,11 +50,12 @@ describe('MerkleModule', () => {
   });
 
   it('sync returns newLeaves=0 when server returns empty leaves', async () => {
+    // anchorRoot: '' represents no tree on-chain yet — valid when leaves is also empty.
     mockPinnedFetch.mockReturnValueOnce(
       mockResponse({
         leaves: [],
         treeAddress: TREE_ADDRESS,
-        anchorRoot: ANCHOR_ROOT,
+        anchorRoot: '',
         totalLeaves: 0,
       }),
     );

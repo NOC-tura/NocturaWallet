@@ -18,6 +18,6 @@ module.exports = {
   },
   testPathIgnorePatterns: ['/node_modules/', '<rootDir>/e2e/'],
   transformIgnorePatterns: [
-    'node_modules/(?!(react-native|@react-native|@react-navigation|nativewind|react-native-css-interop|@scure/bip39|@scure/base|@scure/bip32|@noble/hashes|@noble/curves|@noble/ciphers|micro-key-producer|@solana/web3\\.js)/)',
+    'node_modules/(?!(react-native|@react-native|@react-navigation|nativewind|react-native-css-interop|@scure/bip39|@scure/base|@scure/bip32|@noble/hashes|@noble/curves|@noble/ciphers|micro-key-producer|@solana/web3\\.js|poseidon-lite)/)',
   ],
 };

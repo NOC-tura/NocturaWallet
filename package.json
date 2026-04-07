@@ -25,6 +25,7 @@
     "jail-monkey": "^2.8.5",
     "micro-key-producer": "^0.8.5",
     "nativewind": "^4.2.3",
+    "poseidon-lite": "^0.3.0",
     "react": "19.2.3",
     "react-native": "0.84.1",
     "react-native-config": "^1.6.1",
