@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import {TokenSelector} from '../../components/TokenSelector';
 import {PriorityFeeToggle} from '../../components/PriorityFeeToggle';
@@ -160,6 +161,19 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
     }
   }, [recipient]);
 
+  const handleQrScan = useCallback(() => {
+    // Stub: when react-native-vision-camera is integrated, this opens the camera.
+    // The scanned string is passed through validateRecipientInput() to handle:
+    //   - Solana address (Base58) → set recipient
+    //   - Solana Pay URI (solana:...) → parse and autofill
+    //   - Noctura shielded (noc1...) → redirect to Shielded Transfer
+    //   - Invalid → show error
+    Alert.alert(
+      'QR Scanner',
+      'Camera module not yet integrated. Paste the address instead.',
+    );
+  }, []);
+
   const canReview = useMemo(() => {
     if (!recipient.trim() || !amount.trim()) return false;
     const validation = validateRecipientInput(recipient);
@@ -296,21 +310,31 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
         {/* Recipient */}
         <View style={styles.section}>
           <Text style={styles.label}>Recipient</Text>
-          <TextInput
-            testID="recipient-input"
-            style={[styles.input, recipientError ? styles.inputError : null]}
-            placeholder="Recipient address"
-            placeholderTextColor="rgba(255,255,255,0.3)"
-            value={recipient}
-            onChangeText={text => {
-              setRecipient(text);
-              if (recipientError) setRecipientError('');
-            }}
-            onBlur={handleRecipientBlur}
-            autoCapitalize="none"
-            autoCorrect={false}
-            accessibilityLabel="Recipient address"
-          />
+          <View style={styles.recipientRow}>
+            <TextInput
+              testID="recipient-input"
+              style={[styles.input, styles.recipientInput, recipientError ? styles.inputError : null]}
+              placeholder="Recipient address"
+              placeholderTextColor="rgba(255,255,255,0.3)"
+              value={recipient}
+              onChangeText={text => {
+                setRecipient(text);
+                if (recipientError) setRecipientError('');
+              }}
+              onBlur={handleRecipientBlur}
+              autoCapitalize="none"
+              autoCorrect={false}
+              accessibilityLabel="Recipient address"
+            />
+            <TouchableOpacity
+              onPress={handleQrScan}
+              style={styles.qrButton}
+              testID="qr-scan-button"
+              accessibilityLabel="Scan QR code"
+            >
+              <Text style={styles.qrButtonText}>📷</Text>
+            </TouchableOpacity>
+          </View>
           {recipientError ? (
             <Text style={styles.errorText}>{recipientError}</Text>
           ) : null}
@@ -421,6 +445,25 @@ const styles = StyleSheet.create({
   },
   inputError: {
     borderColor: '#F87171',
+  },
+  recipientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  recipientInput: {
+    flex: 1,
+  },
+  qrButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: 'rgba(108,71,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qrButtonText: {
+    fontSize: 20,
   },
   errorText: {
     fontSize: 12,
