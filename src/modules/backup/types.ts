@@ -3,6 +3,8 @@ export interface RestoreResult {
   tokensFound: string[];
   transparentBalanceFound: boolean;
   shieldedBalanceRestored: string; // BigInt as string
+  /** Backup file format version. V1 = weak SHA-256 KDF, V2 = PBKDF2-SHA512 600K. */
+  formatVersion: 1 | 2;
 }
 
 export interface BackupMetadata {

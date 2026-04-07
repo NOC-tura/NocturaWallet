@@ -9,7 +9,8 @@ import type {RestoreResult} from './types';
 
 /**
  * KDF iterations for PBKDF2-SHA512.
- * 600 000 rounds per OWASP 2023 recommendation for SHA-512.
+ * OWASP 2023 minimum for SHA-512 is 210,000; we use 600,000 (the SHA-256
+ * recommendation) for extra margin given SHA-512's lower per-round cost.
  */
 const BACKUP_KDF_ITERATIONS = 600_000;
 
@@ -80,6 +81,7 @@ export class BackupManager {
       tokensFound: [],
       transparentBalanceFound: false,
       shieldedBalanceRestored: '0',
+      formatVersion: 2,
     };
   }
 
@@ -123,12 +125,15 @@ export class BackupManager {
 
     let key: Uint8Array;
     let magicLen: number;
+    let detectedVersion: 1 | 2;
 
     if (headerV2 === BACKUP_MAGIC) {
+      detectedVersion = 2;
       magicLen = magicV2.length;
       const salt = data.slice(magicLen, magicLen + 16);
       key = await deriveKey(password, salt);
     } else if (headerV1 === BACKUP_MAGIC_V1) {
+      detectedVersion = 1;
       magicLen = magicV1.length;
       const salt = data.slice(magicLen, magicLen + 16);
       // Legacy V1: single SHA-256 pass — no key stretching
@@ -150,6 +155,7 @@ export class BackupManager {
         tokensFound: [],
         transparentBalanceFound: false,
         shieldedBalanceRestored: '0',
+        formatVersion: detectedVersion,
       };
     } catch {
       throw new Error('Decryption failed — wrong password or corrupted file');
