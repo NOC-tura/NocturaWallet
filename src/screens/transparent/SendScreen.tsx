@@ -1,4 +1,4 @@
-import React, {useState, useCallback, useMemo} from 'react';
+import React, {useState, useCallback, useMemo, useRef} from 'react';
 import {
   View,
   Text,
@@ -96,6 +96,9 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
     () => availableTokens.map(t => ({mint: t.mint, symbol: t.symbol})),
     [availableTokens],
   );
+
+  // Debounce ref — cardinal rule #6: 500ms minimum on send/sign buttons
+  const lastTapRef = useRef(0);
 
   // Step 1: input / Step 2: confirm
   const [step, setStep] = useState<'input' | 'confirm'>('input');
@@ -214,6 +217,9 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
   }, [recipient, amount, selectedToken.decimals]);
 
   const handleReview = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 500) return;
+    lastTapRef.current = now;
     if (!canReview) return;
 
     setReviewing(true);
@@ -253,6 +259,9 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
   }, [canReview, selectedMint]);
 
   const handleConfirm = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 500) return;
+    lastTapRef.current = now;
     if (!simulationPassed || sending) return;
     setSending(true);
 
