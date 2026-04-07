@@ -1,22 +1,37 @@
 import {sha256} from '@noble/hashes/sha2.js';
+import {gcm} from '@noble/ciphers/aes.js';
+import {randomBytes} from '@noble/ciphers/utils.js';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import type {RestoreResult} from './types';
 
-// Simple XOR-based encryption for the scaffold. Real AES-256-GCM will use
-// @noble/ciphers when the full backup pipeline (cloud upload/download) is wired.
-// This provides a working encrypt/decrypt round-trip with password-derived key.
+/**
+ * Derive a 256-bit AES key from password + salt using SHA-256.
+ * Production upgrade path: replace with PBKDF2 or Argon2 for key stretching.
+ */
 function deriveKey(password: string, salt: Uint8Array): Uint8Array {
   const input = new Uint8Array([...new TextEncoder().encode(password), ...salt]);
   return sha256(input);
 }
 
-function xorEncrypt(data: Uint8Array, key: Uint8Array): Uint8Array {
-  const result = new Uint8Array(data.length);
-  for (let i = 0; i < data.length; i++) {
-    result[i] = data[i] ^ key[i % key.length];
-  }
+/** AES-256-GCM encrypt. Returns nonce(12) + ciphertext + tag(16). */
+function aesEncrypt(plaintext: Uint8Array, key: Uint8Array): Uint8Array {
+  const nonce = randomBytes(12);
+  const cipher = gcm(key, nonce);
+  const ciphertext = cipher.encrypt(plaintext);
+  // Prepend nonce so decryptor can extract it
+  const result = new Uint8Array(nonce.length + ciphertext.length);
+  result.set(nonce, 0);
+  result.set(ciphertext, nonce.length);
   return result;
+}
+
+/** AES-256-GCM decrypt. Expects nonce(12) + ciphertext + tag(16). */
+function aesDecrypt(data: Uint8Array, key: Uint8Array): Uint8Array {
+  const nonce = data.slice(0, 12);
+  const ciphertext = data.slice(12);
+  const cipher = gcm(key, nonce);
+  return cipher.decrypt(ciphertext);
 }
 
 const BACKUP_MAGIC = 'NOCTURA_BACKUP_V1';
@@ -68,12 +83,11 @@ export class BackupManager {
       exportedAt: Date.now(),
     });
     const plaintext = new TextEncoder().encode(payload);
-    const salt = new Uint8Array(16);
-    crypto.getRandomValues(salt);
+    const salt = randomBytes(16);
     const key = deriveKey(password, salt);
-    const encrypted = xorEncrypt(plaintext, key);
+    const encrypted = aesEncrypt(plaintext, key);
 
-    // Format: MAGIC + salt(16) + encrypted data
+    // Format: MAGIC(17) + salt(16) + nonce(12) + ciphertext + tag(16)
     const magic = new TextEncoder().encode(BACKUP_MAGIC);
     const result = new Uint8Array(magic.length + salt.length + encrypted.length);
     result.set(magic, 0);
@@ -98,9 +112,9 @@ export class BackupManager {
     const salt = data.slice(magic.length, magic.length + 16);
     const encrypted = data.slice(magic.length + 16);
     const key = deriveKey(password, salt);
-    const decrypted = xorEncrypt(encrypted, key); // XOR is symmetric
 
     try {
+      const decrypted = aesDecrypt(encrypted, key);
       const payload = JSON.parse(new TextDecoder().decode(decrypted));
       return {
         notesRestored: payload.notes?.length ?? 0,
