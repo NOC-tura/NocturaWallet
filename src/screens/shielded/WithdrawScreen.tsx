@@ -1,4 +1,4 @@
-import React, {useState, useCallback, useRef} from 'react';
+import React, {useState, useCallback, useEffect, useRef} from 'react';
 import {View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import {withdraw} from '../../modules/shielded/shieldedService';
@@ -8,11 +8,19 @@ import {ProofProgressOverlay} from '../../components/ProofProgressOverlay';
 import {NOC_MINT} from '../../constants/programs';
 import type {ShieldedScreenStep} from '../../modules/shielded/types';
 import {parseTokenAmount} from '../../utils/parseTokenAmount';
+import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
+
+const securityManager = new ScreenSecurityManager();
 
 const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 export function WithdrawScreen(): React.JSX.Element {
   const navigation = useNavigation();
+
+  useEffect(() => {
+    securityManager.enableSecureScreen();
+    return () => { void securityManager.disableSecureScreen(); };
+  }, []);
 
   const lastTapRef = useRef(0);
 

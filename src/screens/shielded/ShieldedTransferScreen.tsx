@@ -1,10 +1,13 @@
-import React, {useState, useCallback, useRef} from 'react';
+import React, {useState, useCallback, useEffect, useRef} from 'react';
 import {View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet} from 'react-native';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {RouteProp} from '@react-navigation/native';
 import type {RootStackParamList} from '../../types/navigation';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
+import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
+
+const securityManager = new ScreenSecurityManager();
 import {transfer} from '../../modules/shielded/shieldedService';
 import {shouldRepeatWarning} from '../../modules/shielded/privacyMeter';
 import {isValidShieldedAddress} from '../../modules/shielded/shieldedAddressCodec';
@@ -22,6 +25,11 @@ export function ShieldedTransferScreen(): React.JSX.Element {
   const route = useRoute<RouteProp<RootStackParamList, 'ShieldedTransfer'>>();
   const {tokens} = useWalletStore();
   const {merkleLeafCount} = useShieldedStore();
+
+  useEffect(() => {
+    securityManager.enableSecureScreen();
+    return () => { void securityManager.disableSecureScreen(); };
+  }, []);
 
   const lastTapRef = useRef(0);
 

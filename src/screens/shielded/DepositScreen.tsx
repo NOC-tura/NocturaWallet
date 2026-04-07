@@ -1,8 +1,11 @@
-import React, {useState, useCallback, useRef} from 'react';
+import React, {useState, useCallback, useEffect, useRef} from 'react';
 import {View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
+import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
+
+const securityManager = new ScreenSecurityManager();
 import {deposit} from '../../modules/shielded/shieldedService';
 import {shouldRepeatWarning} from '../../modules/shielded/privacyMeter';
 import {feeEngine} from '../../modules/fees/feeEngine';
@@ -17,6 +20,12 @@ export function DepositScreen(): React.JSX.Element {
   const navigation = useNavigation();
   const {publicKey, tokens} = useWalletStore();
   const {merkleLeafCount} = useShieldedStore();
+
+  // Block screenshots on Android (FLAG_SECURE) — shielded amounts are private
+  useEffect(() => {
+    securityManager.enableSecureScreen();
+    return () => { void securityManager.disableSecureScreen(); };
+  }, []);
 
   const lastTapRef = useRef(0);
 
