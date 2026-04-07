@@ -26,7 +26,10 @@ jest.mock('../../../store/zustand/useSettings', () => ({
 }));
 
 jest.mock('../../../store/zustand/walletStore', () => ({
-  useWalletStore: jest.fn().mockReturnValue({publicKey: 'ABC123def456'}),
+  useWalletStore: Object.assign(
+    jest.fn().mockReturnValue({publicKey: 'ABC123def456'}),
+    {getState: jest.fn().mockReturnValue({nocUsdPrice: 0, setNocUsdPrice: jest.fn()})},
+  ),
 }));
 
 jest.mock('@react-navigation/native', () => ({

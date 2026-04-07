@@ -16,6 +16,13 @@ jest.mock('../../../store/zustand/presaleStore', () => ({
   },
 }));
 
+// Mock walletStore (for nocUsdPrice in getFeeDisplayInfo)
+jest.mock('../../../store/zustand/walletStore', () => ({
+  useWalletStore: {
+    getState: jest.fn(() => ({nocUsdPrice: 0, setNocUsdPrice: jest.fn()})),
+  },
+}));
+
 import {usePresaleStore} from '../../../store/zustand/presaleStore';
 import {FeeEngineManager, FEE_DISTRIBUTION} from '../feeEngine';
 import {SHIELDED_FEES} from '../../../constants/programs';
@@ -138,5 +145,38 @@ describe('FeeEngineManager', () => {
 
   it('SHIELDED_FEES.privateTransfer === 500_000n', () => {
     expect(SHIELDED_FEES.privateTransfer).toBe(500_000n);
+  });
+
+  // ---- feeToUsd ----
+
+  it('feeToUsd converts lamports to USD string', () => {
+    const {feeToUsd} = require('../feeEngine');
+    // 500_000 lamports = 0.0005 NOC, at $2.00/NOC = $0.001
+    const result = feeToUsd(500_000n, 2.0);
+    expect(result).toBe('$0.0010');
+  });
+
+  it('feeToUsd returns null when price is 0', () => {
+    const {feeToUsd} = require('../feeEngine');
+    expect(feeToUsd(500_000n, 0)).toBeNull();
+  });
+
+  // ---- getFeeDisplayInfo usdLabel ----
+
+  it('getFeeDisplayInfo includes usdLabel when price available', () => {
+    mockStore({tgeStatus: 'claimable', isZeroFeeEligible: false});
+    // Set nocUsdPrice in walletStore mock
+    const walletStore = require('../../../store/zustand/walletStore');
+    walletStore.useWalletStore.getState.mockReturnValue({nocUsdPrice: 2.0});
+
+    const info = engine.getFeeDisplayInfo('privateTransfer', 0);
+    expect(info.usdLabel).not.toBeNull();
+    expect(info.usdLabel).toMatch(/^\$/);
+  });
+
+  it('getFeeDisplayInfo usdLabel is null when pre-TGE (fee is 0)', () => {
+    mockStore({tgeStatus: 'pre_tge'});
+    const info = engine.getFeeDisplayInfo('privateTransfer', 0);
+    expect(info.usdLabel).toBeNull();
   });
 });

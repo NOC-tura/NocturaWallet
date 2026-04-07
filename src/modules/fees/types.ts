@@ -12,6 +12,8 @@ export interface FeeDisplayInfo {
   amount: bigint;
   /** Human-readable string, e.g. "0.0005 NOC" or "Free (until TGE)" */
   label: string;
+  /** USD equivalent, e.g. "$0.0012" or null if price unavailable */
+  usdLabel: string | null;
   /** Applied discount fraction, 0 if none */
   discountFraction: number;
   /** Display text for the discount, e.g. "10% staking discount" or null */

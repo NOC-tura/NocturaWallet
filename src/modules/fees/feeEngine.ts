@@ -1,11 +1,66 @@
 import {SystemProgram, PublicKey} from '@solana/web3.js';
-import {SHIELDED_FEES, TRANSPARENT_FEES, NOCTURA_FEE_TREASURY} from '../../constants/programs';
+import {SHIELDED_FEES, TRANSPARENT_FEES, NOCTURA_FEE_TREASURY, NOC_MINT} from '../../constants/programs';
 import {usePresaleStore} from '../../store/zustand/presaleStore';
+import {useWalletStore} from '../../store/zustand/walletStore';
 import {FeeDisplayInfo, FEE_DISTRIBUTION, FeeType} from './types';
 
 // NOC has 9 decimals; 1 NOC = 1_000_000_000 lamports
 const NOC_DECIMALS = 9;
 const LAMPORTS_PER_NOC = BigInt(10 ** NOC_DECIMALS);
+
+// ---- NOC USD price (Jupiter Price API v2) --------------------------------
+
+const JUPITER_PRICE_URL = `https://api.jup.ag/price/v2?ids=${NOC_MINT}`;
+const PRICE_CACHE_TTL_MS = 60_000; // 60 seconds
+
+let _cachedPrice: number = 0;
+let _cachedPriceAt: number = 0;
+
+/**
+ * Fetch NOC/USD price from Jupiter Price API. Cached for 60 seconds.
+ * Returns 0 on failure (never throws — fee display degrades gracefully).
+ */
+export async function getNocUsdPrice(): Promise<number> {
+  const now = Date.now();
+  if (_cachedPrice > 0 && now - _cachedPriceAt < PRICE_CACHE_TTL_MS) {
+    return _cachedPrice;
+  }
+
+  try {
+    const resp = await fetch(JUPITER_PRICE_URL);
+    if (resp.ok) {
+      const data = await resp.json();
+      const price = data?.data?.[NOC_MINT]?.price;
+      if (typeof price === 'number' && price > 0) {
+        _cachedPrice = price;
+        _cachedPriceAt = now;
+        useWalletStore.getState().setNocUsdPrice(price);
+        return price;
+      }
+    }
+  } catch {
+    // Non-critical — return cached or 0
+  }
+
+  return _cachedPrice;
+}
+
+/**
+ * Convert a NOC lamport amount to a formatted USD string.
+ * Returns null if price is unavailable.
+ */
+export function feeToUsd(nocLamports: bigint, nocUsdPrice: number): string | null {
+  if (nocUsdPrice <= 0) return null;
+  const nocAmount = Number(nocLamports) / Number(LAMPORTS_PER_NOC);
+  const usd = nocAmount * nocUsdPrice;
+  return `$${usd.toFixed(usd < 0.01 ? 4 : 2)}`;
+}
+
+/** Reset price cache (for testing). */
+export function _resetPriceCache(): void {
+  _cachedPrice = 0;
+  _cachedPriceAt = 0;
+}
 
 /**
  * Apply a staking discount to a fee.
@@ -77,7 +132,10 @@ export class FeeEngineManager {
       discountLabel = `${pct}% staking discount`;
     }
 
-    return {amount, label, discountFraction: stakingDiscount, discountLabel};
+    const nocUsdPrice = useWalletStore.getState().nocUsdPrice;
+    const usdLabel = amount > 0n ? feeToUsd(amount, nocUsdPrice) : null;
+
+    return {amount, label, usdLabel, discountFraction: stakingDiscount, discountLabel};
   }
 
   /**

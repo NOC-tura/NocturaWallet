@@ -14,10 +14,13 @@ jest.mock('../../../store/zustand/presaleStore', () => ({
   ),
 }));
 jest.mock('../../../store/zustand/walletStore', () => ({
-  useWalletStore: jest.fn().mockReturnValue({
-    publicKey: 'TestPubkey1111111111111111111111111111111111',
-    tokens: [{mint: 'NOC_MINT', symbol: 'NOC'}],
-  }),
+  useWalletStore: Object.assign(
+    jest.fn().mockReturnValue({
+      publicKey: 'TestPubkey1111111111111111111111111111111111',
+      tokens: [{mint: 'NOC_MINT', symbol: 'NOC'}],
+    }),
+    {getState: jest.fn().mockReturnValue({nocUsdPrice: 0, setNocUsdPrice: jest.fn()})},
+  ),
 }));
 jest.mock('../../../store/zustand/shieldedStore', () => ({
   useShieldedStore: jest.fn().mockReturnValue({merkleLeafCount: 50}),
