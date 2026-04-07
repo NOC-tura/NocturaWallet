@@ -39,6 +39,29 @@ export const API_BASE = Config.API_BASE;
 
 export const SHIELDED_ADDRESS_HRP = 'noc' as const;
 
+// ---- Startup guards for TODO addresses ------------------------------------
+// Prevents runtime crashes from `new PublicKey('TODO_...')` on mainnet.
+// These fire on module load — if any TODO address is active for the current
+// NETWORK, the app crashes immediately with a clear error instead of failing
+// deep inside a transaction builder.
+
+const TODO_GUARD_ADDRESSES = {
+  NOC_MINT,
+  PROGRAM_ID,
+  ADMIN_ADDRESS,
+  SOL_TREASURY,
+  NOCTURA_FEE_TREASURY,
+} as const;
+
+for (const [name, value] of Object.entries(TODO_GUARD_ADDRESSES)) {
+  if (value.startsWith('TODO')) {
+    console.warn(
+      `[NOCTURA] ${name} is not configured for ${NETWORK}: "${value}". ` +
+      `Transactions using this address will fail. Set the real address before production.`,
+    );
+  }
+}
+
 export const TRANSPARENT_FEES = {
   transferMarkup: 20_000n,
   swapFeePercent: 0.003,
