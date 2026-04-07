@@ -44,6 +44,40 @@ function findAssociatedTokenAddress(
 }
 
 /**
+ * Build an SPL Token TransferChecked instruction manually.
+ * Mirrors @solana/spl-token's createTransferCheckedInstruction().
+ *
+ * Instruction data layout (10 bytes):
+ *   [12]              — instruction discriminator (TransferChecked = 12)
+ *   [amount: u64 LE]  — 8 bytes, little-endian unsigned 64-bit
+ *   [decimals: u8]    — 1 byte
+ */
+function buildTransferCheckedInstruction(
+  source: PublicKey,
+  mint: PublicKey,
+  destination: PublicKey,
+  owner: PublicKey,
+  amount: bigint,
+  decimals: number,
+): TransactionInstruction {
+  const data = Buffer.alloc(10);
+  data.writeUInt8(12, 0); // TransferChecked discriminator
+  data.writeBigUInt64LE(amount, 1);
+  data.writeUInt8(decimals, 9);
+
+  return new TransactionInstruction({
+    keys: [
+      {pubkey: source, isSigner: false, isWritable: true},
+      {pubkey: mint, isSigner: false, isWritable: false},
+      {pubkey: destination, isSigner: false, isWritable: true},
+      {pubkey: owner, isSigner: true, isWritable: false},
+    ],
+    programId: SPL_TOKEN_PROGRAM_ID,
+    data,
+  });
+}
+
+/**
  * Build a createAssociatedTokenAccount instruction.
  *
  * This mirrors @solana/spl-token's createAssociatedTokenAccountInstruction().
@@ -120,7 +154,7 @@ export async function buildTransferTx(
 export async function buildSPLTransferTx(
   params: SPLTransferParams,
 ): Promise<VersionedTransaction> {
-  const {sender, recipient, mint, priorityFee, createAta} = params;
+  const {sender, recipient, mint, amount, decimals, priorityFee, createAta} = params;
   const connection = getConnection();
   const {blockhash} = await connection.getLatestBlockhash();
 
@@ -146,9 +180,21 @@ export async function buildSPLTransferTx(
     );
   }
 
-  // TODO: add SPL token transfer instruction (spl-token TransferChecked) once
-  // @solana/spl-token is integrated. The source ATA is derived from sender/mint
-  // and the destination ATA is recipientAta computed above.
+  // Derive sender's ATA for the given mint.
+  const senderAta = findAssociatedTokenAddress(sender, mint);
+
+  // SPL Token TransferChecked instruction — verifies both amount and decimals
+  // on-chain to guard against mint substitution attacks.
+  instructions.push(
+    buildTransferCheckedInstruction(
+      senderAta,
+      mint,
+      recipientAta,
+      sender,
+      amount,
+      decimals,
+    ),
+  );
 
   // Noctura fee markup transfer
   instructions.push(

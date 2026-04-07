@@ -1,5 +1,21 @@
 import {PublicKey, SystemProgram, ComputeBudgetProgram} from '@solana/web3.js';
+import type {VersionedTransaction} from '@solana/web3.js';
 import {buildTransferTx, buildSPLTransferTx} from '../transactionBuilder';
+
+/**
+ * Helper to extract instructions from a VersionedTransaction in tests.
+ *
+ * The production type for VersionedTransaction.message is VersionedMessage
+ * which does not expose `.instructions`.  The Jest mock uses MessageV0 which
+ * does.  Casting through `unknown` lets us access the mock property without
+ * suppressing broader type checking.
+ */
+function txInstructions(
+  tx: VersionedTransaction,
+): Array<{data: Uint8Array; programId: unknown; keys: unknown[]}> {
+  return (tx.message as unknown as {instructions: Array<{data: Uint8Array; programId: unknown; keys: unknown[]}>})
+    .instructions;
+}
 
 jest.mock('../connection', () => ({
   getConnection: () => ({
@@ -95,5 +111,77 @@ describe('buildSPLTransferTx', () => {
 
     expect(tx).toBeDefined();
     expect(tx.message).toBeDefined();
+  });
+
+  it('includes a TransferChecked instruction with discriminator byte 12', async () => {
+    const tx = await buildSPLTransferTx({
+      sender,
+      recipient,
+      mint,
+      amount: 1_000_000_000n,
+      decimals: 9,
+    });
+
+    // Instructions: [TransferChecked, fee markup SystemProgram.transfer]
+    const instructions = txInstructions(tx);
+    expect(instructions.length).toBeGreaterThanOrEqual(2);
+
+    // The TransferChecked instruction is the first non-priority-fee instruction.
+    // Without createAta and without priorityFee it is index 0.
+    const transferCheckedIx = instructions[0];
+    expect(transferCheckedIx).toBeDefined();
+    expect(transferCheckedIx.data[0]).toBe(12); // discriminator
+  });
+
+  it('encodes amount and decimals correctly in the instruction data', async () => {
+    const amount = 500_000_000n;
+    const decimals = 6;
+
+    const tx = await buildSPLTransferTx({
+      sender,
+      recipient,
+      mint,
+      amount,
+      decimals,
+    });
+
+    const transferCheckedIx = txInstructions(tx)[0];
+    const data = Buffer.from(transferCheckedIx.data);
+
+    // Byte 0: discriminator = 12
+    expect(data.readUInt8(0)).toBe(12);
+    // Bytes 1-8: amount as u64 LE
+    expect(data.readBigUInt64LE(1)).toBe(amount);
+    // Byte 9: decimals
+    expect(data.readUInt8(9)).toBe(decimals);
+  });
+
+  it('includes the ATA creation instruction when createAta is true', async () => {
+    const tx = await buildSPLTransferTx({
+      sender,
+      recipient,
+      mint,
+      amount: 1_000_000_000n,
+      decimals: 9,
+      createAta: true,
+    });
+
+    // Instructions: [createAta, TransferChecked, fee markup]
+    expect(txInstructions(tx).length).toBe(3);
+  });
+
+  it('includes priority fee instruction when priorityFee is specified', async () => {
+    await buildSPLTransferTx({
+      sender,
+      recipient,
+      mint,
+      amount: 1_000_000_000n,
+      decimals: 9,
+      priorityFee: 5000,
+    });
+
+    expect(ComputeBudgetProgram.setComputeUnitPrice).toHaveBeenCalledWith({
+      microLamports: 5000,
+    });
   });
 });
