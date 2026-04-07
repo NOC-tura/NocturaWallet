@@ -1,6 +1,6 @@
 import {renderHook, act} from '@testing-library/react-native';
 import NetInfo from '@react-native-community/netinfo';
-import {useNetworkStatus} from '../useNetworkStatus';
+import {useNetworkStatus, onReconnect} from '../useNetworkStatus';
 
 // Access mock helpers
 const mockNetInfo = NetInfo as typeof NetInfo & {
@@ -76,5 +76,37 @@ describe('useNetworkStatus', () => {
       mockNetInfo.__setMockState({isConnected: false});
     });
     // No error thrown = success
+  });
+
+  it('forceSync refreshes network state', async () => {
+    const {result} = renderHook(() => useNetworkStatus());
+    expect(result.current.forceSync).toBeDefined();
+    await act(async () => {
+      await result.current.forceSync();
+    });
+    expect(result.current.isOnline).toBe(true);
+  });
+
+  it('fires reconnect listeners when going from offline to online', () => {
+    const listener = jest.fn();
+    const unsub = onReconnect(listener);
+
+    const {result} = renderHook(() => useNetworkStatus());
+
+    // Go offline
+    act(() => {
+      mockNetInfo.__setMockState({isConnected: false, isInternetReachable: false});
+    });
+    expect(result.current.isOnline).toBe(false);
+    expect(listener).not.toHaveBeenCalled();
+
+    // Come back online — should trigger listener
+    act(() => {
+      mockNetInfo.__setMockState({isConnected: true, isInternetReachable: true});
+    });
+    expect(result.current.isOnline).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    unsub();
   });
 });
