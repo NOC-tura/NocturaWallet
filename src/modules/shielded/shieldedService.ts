@@ -18,8 +18,9 @@ import type {
   ShieldedTransferParams,
   ShieldedTxResult,
   WithdrawParams,
+  WitnessProvider,
 } from './types';
-import type {ZKProof} from '../zkProver/types';
+import type {ProofWitness, ZKProof} from '../zkProver/types';
 
 // ---- In-memory cache for circuit config ----------------------------------------
 
@@ -75,31 +76,37 @@ export async function submitToRelayer(proof: ZKProof): Promise<string> {
   return data.txSignature;
 }
 
-// ---- Witness helpers -----------------------------------------------------------
+// ---- Witness provider (injectable for testing) ---------------------------------
+
+let _witnessProvider: WitnessProvider | null = null;
 
 /**
- * Build a stub witness for a single note.
- * Real witness construction requires Merkle paths from the Merkle module
- * (not yet wired). Placeholders are filled with zeros.
- *
- * SECURITY: noteSecret is a stub — real implementation will derive from
- * sk_view via a deterministic PRF once the Merkle module is available.
+ * Set the witness provider. Must be called before any shielded operation.
+ * In production: wired to MerkleModule + native BLST bridge.
+ * In tests: set to a mock provider that returns test-safe witnesses.
  */
-function buildWitnessForNote(
+export function setWitnessProvider(provider: WitnessProvider | null): void {
+  _witnessProvider = provider;
+}
+
+/**
+ * Build a witness for a shielded note.
+ * Throws if no provider is configured — prevents silently using zero witnesses
+ * that would produce invalid ZK proofs.
+ */
+async function buildWitness(
   note: ShieldedNote,
   treeDepth: number,
   recipientAddress?: string,
-): Parameters<typeof zkProver.prove>[1] {
-  const zeroPad = '0'.repeat(64);
-  return {
-    noteCommitment: note.commitment,
-    merklePath: Array.from({length: treeDepth}, () => zeroPad),
-    merklePathIndices: Array.from({length: treeDepth}, () => 0),
-    nullifier: note.nullifier,
-    amount: note.amount.toString(),
-    recipientAddress,
-    noteSecret: zeroPad,
-  };
+): Promise<ProofWitness> {
+  if (!_witnessProvider) {
+    throw new Error(
+      'Shielded operations require a witness provider. ' +
+      'Native BLST module and Merkle sync must be configured before ' +
+      'deposit/transfer/withdraw. See docs/NATIVE_INTEGRATION_TODO.md.',
+    );
+  }
+  return _witnessProvider.buildWitness(note, treeDepth, recipientAddress);
 }
 
 // ---- Note factory for results --------------------------------------------------
@@ -158,7 +165,7 @@ async function consolidateNotes(
 
     const batchTotal = batch.reduce((sum, n) => sum + n.amount, 0n);
     const primaryNote = batch[0]!;
-    const witness = buildWitnessForNote(primaryNote, treeDepth);
+    const witness = await buildWitness(primaryNote, treeDepth);
     // Override amount to be the consolidated total for the batch
     witness.amount = batchTotal.toString();
 
@@ -202,21 +209,22 @@ export async function deposit(
   const fee = feeEngine.getEffectiveFee('crossModeDeposit', stakingDiscount);
   const config = await fetchCircuitConfig();
 
-  // Build a stub commitment/nullifier for the deposit note
-  const zeroPad = '0'.repeat(64);
-  const witness = {
-    noteCommitment: zeroPad,
-    merklePath: Array.from({length: config.treeDepth}, () => zeroPad),
-    merklePathIndices: Array.from({length: config.treeDepth}, () => 0),
-    nullifier: zeroPad,
-    amount: params.amount.toString(),
-    recipientAddress: params.senderPubkey,
-    noteSecret: zeroPad,
-  };
-
   if (fee > params.amount) {
     throw new Error(ERROR_CODES.INSUFFICIENT_NOC_FEE.message);
   }
+
+  // Build a synthetic note for the deposit (no pre-existing note to spend).
+  // The witness provider supplies real commitment/nullifier/noteSecret.
+  const depositNote: ShieldedNote = {
+    commitment: '0'.repeat(64),
+    nullifier: '0'.repeat(64),
+    mint: params.mint,
+    amount: params.amount,
+    index: 0,
+    spent: false,
+    createdAt: Date.now(),
+  };
+  const witness = await buildWitness(depositNote, config.treeDepth, params.senderPubkey);
 
   const proof = await zkProver.prove('deposit', witness);
   witness.noteSecret = '';
@@ -277,7 +285,7 @@ export async function transfer(
 
   const inputTotal = selected.reduce((sum, n) => sum + n.amount, 0n);
   const primaryNote = selected[0]!;
-  const witness = buildWitnessForNote(
+  const witness = await buildWitness(
     primaryNote,
     config.treeDepth,
     params.recipientAddress,
@@ -326,7 +334,7 @@ export async function withdraw(
   const inputTotal = selected.reduce((sum, n) => sum + n.amount, 0n);
 
   const primaryNote = selected[0]!;
-  const witness = buildWitnessForNote(primaryNote, config.treeDepth);
+  const witness = await buildWitness(primaryNote, config.treeDepth);
 
   const proof = await zkProver.prove('withdraw', witness);
   witness.noteSecret = '';

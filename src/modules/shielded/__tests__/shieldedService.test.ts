@@ -36,10 +36,25 @@ import {
   deposit,
   transfer,
   withdraw,
+  setWitnessProvider,
 } from '../shieldedService';
 import {addNote, clearMint, getNotes, getBalance} from '../noteStore';
 import {encodeShieldedAddress} from '../shieldedAddressCodec';
-import type {ShieldedNote} from '../types';
+import type {ShieldedNote, WitnessProvider} from '../types';
+
+const mockWitnessProvider: WitnessProvider = {
+  async buildWitness(note, treeDepth, recipientAddress) {
+    return {
+      noteCommitment: note.commitment,
+      merklePath: Array.from({length: treeDepth}, () => '0'.repeat(64)),
+      merklePathIndices: Array.from({length: treeDepth}, () => 0),
+      nullifier: note.nullifier,
+      amount: note.amount.toString(),
+      recipientAddress,
+      noteSecret: 'mock-secret-for-testing'.padEnd(64, '0'),
+    };
+  },
+};
 
 const mockPinnedFetch = pinnedFetch as jest.MockedFunction<typeof pinnedFetch>;
 
@@ -101,6 +116,7 @@ function configResponse() {
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
+  setWitnessProvider(mockWitnessProvider);
   _resetConfigCache();
   clearMint(MINT);
   mockPinnedFetch.mockReset();
@@ -299,5 +315,15 @@ describe('shieldedService', () => {
         senderPubkey: 'SenderPubkey1111111111111111111111111111111',
       }),
     ).rejects.toThrow();
+  });
+
+  // 9. deposit — throws when no witness provider is configured
+  it('deposit throws when no witness provider is configured', async () => {
+    setWitnessProvider(null);
+    // Provide circuit config so the guard is reached; no prover/relayer needed
+    mockPinnedFetch.mockReturnValueOnce(configResponse());
+    await expect(
+      deposit({mint: MINT, amount: 1_000_000n, senderPubkey: 'sender1'}),
+    ).rejects.toThrow('witness provider');
   });
 });

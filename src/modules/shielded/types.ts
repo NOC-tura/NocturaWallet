@@ -63,3 +63,28 @@ export type ConsolidationProgress = {
 };
 
 export type ShieldedScreenStep = 'input' | 'confirm' | 'consolidating' | 'proving' | 'success' | 'error';
+
+/**
+ * Provides real witness data for ZK proof generation.
+ * Implementation requires:
+ * - MerkleModule for Merkle paths
+ * - Native BLST bridge for noteSecret derivation from sk_view
+ *
+ * Until both are available, the provider is null and shielded
+ * operations throw rather than silently using zero witnesses.
+ */
+export interface WitnessProvider {
+  buildWitness(
+    note: ShieldedNote,
+    treeDepth: number,
+    recipientAddress?: string,
+  ): Promise<{
+    noteCommitment: string;
+    merklePath: string[];
+    merklePathIndices: number[];
+    nullifier: string;
+    amount: string;
+    recipientAddress?: string;
+    noteSecret: string;
+  }>;
+}
