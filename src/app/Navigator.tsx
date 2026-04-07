@@ -262,7 +262,7 @@ function TransactionHistoryScreenNav() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   return (
     <TransactionHistoryScreenImpl
-      onSelectTx={(signature: string) => {
+      onSelectTx={(_signature: string) => {
         // Dismiss modal, then navigate to TransactionDetail in SendStack
         navigation.goBack();
         // Navigation to detail is handled by the parent — for now log the signature

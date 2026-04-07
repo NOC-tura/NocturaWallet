@@ -10,7 +10,7 @@ jest.mock('../../sslPinning/pinnedFetch', () => ({
 
 import {pinnedFetch} from '../../sslPinning/pinnedFetch';
 import {MerkleModule, computeMerkleRoot} from '../merkleModule';
-import {MerkleRootMismatchError, MerkleSyncError, MERKLE_TREE_DEPTH} from '../types';
+import {MerkleRootMismatchError, MerkleSyncError} from '../types';
 
 const mockPinnedFetch = pinnedFetch as jest.Mock;
 

@@ -148,7 +148,6 @@ export class MerkleModule {
     try {
       // Paginate until we have caught up
       let from = state.nextLeafIndex;
-      let fetchedAny = false;
 
       do {
         const url = `${API_BASE}/merkle/leaves?from=${from}&limit=${MERKLE_FETCH_BATCH_SIZE}`;
@@ -162,7 +161,6 @@ export class MerkleModule {
         if (data.leaves.length > 0) {
           allNewLeaves = allNewLeaves.concat(data.leaves);
           from += data.leaves.length;
-          fetchedAny = true;
         }
 
         // Stop if this batch is smaller than the limit (we've caught up)

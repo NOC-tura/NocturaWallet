@@ -182,7 +182,7 @@ export const ComputeBudgetProgram = {
   programId: new PublicKey('ComputeBudget111111111111111111111111111111'),
 
   setComputeUnitPrice: jest.fn(
-    (params: {microLamports: number | bigint}): ITransactionInstruction => ({
+    (_params: {microLamports: number | bigint}): ITransactionInstruction => ({
       programId: new PublicKey('ComputeBudget111111111111111111111111111111'),
       keys: [],
       data: new Uint8Array([3, ...new Array(8).fill(0)]),
@@ -190,7 +190,7 @@ export const ComputeBudgetProgram = {
   ),
 
   setComputeUnitLimit: jest.fn(
-    (params: {units: number}): ITransactionInstruction => ({
+    (_params: {units: number}): ITransactionInstruction => ({
       programId: new PublicKey('ComputeBudget111111111111111111111111111111'),
       keys: [],
       data: new Uint8Array([2, ...new Array(4).fill(0)]),
@@ -287,7 +287,7 @@ export class VersionedTransaction {
     return new TextEncoder().encode(payload);
   }
 
-  static deserialize = jest.fn((bytes: Uint8Array) => {
+  static deserialize = jest.fn((_bytes: Uint8Array) => {
     const msg = new MessageV0({
       recentBlockhash: 'deserialized-mock-blockhash',
       instructions: [],

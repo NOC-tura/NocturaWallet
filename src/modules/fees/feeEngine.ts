@@ -111,6 +111,7 @@ export class FeeEngineManager {
       case 'transferMarkup':
         return TRANSPARENT_FEES.transferMarkup;
       default: {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const _exhaustive: never = feeType;
         return 0n;
       }

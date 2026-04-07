@@ -19,7 +19,7 @@ jest.mock('../../../store/zustand/presaleStore', () => ({
 import {usePresaleStore} from '../../../store/zustand/presaleStore';
 import {FeeEngineManager, FEE_DISTRIBUTION} from '../feeEngine';
 import {SHIELDED_FEES} from '../../../constants/programs';
-import {SystemProgram, PublicKey} from '@solana/web3.js';
+import {PublicKey} from '@solana/web3.js';
 
 const mockGetState = usePresaleStore.getState as jest.Mock;
 
