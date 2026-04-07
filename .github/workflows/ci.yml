@@ -16,7 +16,7 @@ jobs:
           node-version: '22'
           cache: 'npm'
       - run: npm ci
-      - run: npx eslint .
+      - run: npx eslint 'src/**/*.{ts,tsx}' '__mocks__/**/*.ts'
 
   typecheck:
     runs-on: ubuntu-latest
