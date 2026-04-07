@@ -103,7 +103,7 @@ export class ZkProverModule {
         const proof = await proveHosted(proofType, witness);
         zeroizeWitness(witness);
         return proof;
-      } catch (hostedErr) {
+      } catch {
         // Hosted failed, try local
       }
 
@@ -113,7 +113,7 @@ export class ZkProverModule {
           const proof = await localProver.prove(proofType, witness);
           zeroizeWitness(witness);
           return proof;
-        } catch (localErr) {
+        } catch {
           // Local failed, fall through to queue
         }
       }

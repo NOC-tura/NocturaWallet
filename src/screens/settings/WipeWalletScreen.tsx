@@ -52,7 +52,7 @@ export function WipeWalletScreen() {
         index: 0,
         routes: [{name: 'Onboarding'}],
       });
-    } catch (err) {
+    } catch {
       setWiping(false);
       Alert.alert(
         'Wipe failed',

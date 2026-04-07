@@ -15,7 +15,6 @@ import {PriorityFeeToggle} from '../../components/PriorityFeeToggle';
 import {ConfirmationSheet} from '../../components/ConfirmationSheet';
 import {validateRecipientInput} from '../../utils/validateAddress';
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
-import {formatAddress} from '../../utils/formatAddress';
 import {useWalletStore} from '../../store/zustand/walletStore';
 
 // Lazy imports — wrapped in try/catch to survive test environments without full native mocks
@@ -139,7 +138,7 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
     } else {
       setAmount(formatTokenAmount(selectedBalance, selectedToken.decimals));
     }
-  }, [selectedMint, selectedBalance, selectedToken.decimals]);
+  }, [selectedMint, selectedBalance, selectedToken.decimals, priorityLevel]);
 
   const handleRecipientBlur = useCallback(() => {
     if (!recipient) {
@@ -249,7 +248,7 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
   const networkFeeDisplay = useMemo(() => {
     const feeSOL = formatTokenAmount(getTotalNetworkFee(priorityLevel), SOL_DECIMALS);
     return `${feeSOL} SOL`;
-  }, []);
+  }, [priorityLevel]);
 
   const accountCreationDisplay = needsAta
     ? `~${formatTokenAmount(ATA_CREATION_FEE_LAMPORTS, SOL_DECIMALS)} SOL`

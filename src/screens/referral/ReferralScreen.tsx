@@ -12,7 +12,7 @@ import {
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {usePresaleStore} from '../../store/zustand/presaleStore';
 import {generateReferralCode} from '../../utils/generateReferralCode';
-import {mmkvSecure, initSecureMmkv} from '../../store/mmkv/instances';
+import {mmkvSecure} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 
 interface Props {

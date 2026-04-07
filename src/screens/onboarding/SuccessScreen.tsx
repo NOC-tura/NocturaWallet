@@ -52,7 +52,7 @@ export function SuccessScreen({mnemonic, onComplete}: SuccessScreenProps) {
 
       // 9. Navigate to next screen
       onComplete();
-    } catch (error) {
+    } catch {
       setLoading(false);
       setError('Could not save wallet. Please try again.');
     }

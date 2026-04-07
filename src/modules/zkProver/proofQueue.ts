@@ -1,6 +1,6 @@
 import {mmkvSecure} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
-import {ProofJob, ProofJobStatus, ProofType, ZKProof} from './types';
+import {ProofJob, ProofType, ZKProof} from './types';
 
 // ---- Secure storage accessor ---------------------------------------------
 

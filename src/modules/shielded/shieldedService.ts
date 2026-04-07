@@ -4,7 +4,6 @@ import {pinnedFetch} from '../sslPinning/pinnedFetch';
 import {zkProver} from '../zkProver/zkProverModule';
 import {feeEngine} from '../fees/feeEngine';
 import {
-  getNotes,
   selectNotes,
   addNote,
   markSpent,

@@ -38,7 +38,7 @@ export function UnlockScreen({
 }: UnlockScreenProps) {
   const [showPinPad, setShowPinPad] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
-  const [attempts, setAttempts] = useState(0);
+  const [_attempts, setAttempts] = useState(0);
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
