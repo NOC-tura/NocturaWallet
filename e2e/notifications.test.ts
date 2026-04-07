@@ -6,6 +6,8 @@ describe('Notification Settings', () => {
   });
 
   it('has 4 notification toggles', async () => {
+    await element(by.text('Settings')).tap();
+    await element(by.text('Notification Settings')).tap();
     await expect(element(by.id('toggle-incoming_tx'))).toBeVisible();
     await expect(element(by.id('toggle-staking_reward'))).toBeVisible();
     await expect(element(by.id('toggle-tx_confirmed'))).toBeVisible();

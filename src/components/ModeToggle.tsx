@@ -12,7 +12,8 @@ export function ModeToggle({mode, onToggle}: ModeToggleProps) {
       <TouchableOpacity
         style={[styles.segment, mode === 'transparent' && styles.activeSegment]}
         onPress={mode !== 'transparent' ? onToggle : undefined}
-        activeOpacity={0.8}>
+        activeOpacity={0.8}
+        accessibilityLabel="Switch to transparent mode">
         <Text style={[styles.label, mode === 'transparent' && styles.activeLabel]}>
           Transparent
         </Text>
@@ -20,7 +21,8 @@ export function ModeToggle({mode, onToggle}: ModeToggleProps) {
       <TouchableOpacity
         style={[styles.segment, mode === 'shielded' && styles.activeSegment]}
         onPress={mode !== 'shielded' ? onToggle : undefined}
-        activeOpacity={0.8}>
+        activeOpacity={0.8}
+        accessibilityLabel="Switch to private mode">
         <Text style={[styles.label, mode === 'shielded' && styles.activeLabel]}>
           Private
         </Text>

@@ -49,7 +49,7 @@ jobs:
           node-version: '22'
           cache: 'npm'
       - run: npm ci
-      - run: npm audit --production --audit-level=high
+      - run: npm audit --omit=dev --audit-level=high
 
   detox-ios:
     needs: [lint, typecheck, unit-tests, audit]

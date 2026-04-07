@@ -6,6 +6,7 @@ describe('Transparent Send Flow', () => {
   });
 
   it('send screen has recipient and amount inputs', async () => {
+    await element(by.text('Send')).tap();
     await expect(element(by.id('recipient-input'))).toBeVisible();
     await expect(element(by.id('amount-input'))).toBeVisible();
   });

@@ -6,6 +6,8 @@ describe('Backup Flow', () => {
   });
 
   it('backup settings has cloud toggle', async () => {
+    await element(by.text('Settings')).tap();
+    await element(by.text('Backup Settings')).tap();
     await expect(element(by.id('cloud-toggle'))).toBeVisible();
   });
 

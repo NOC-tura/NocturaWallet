@@ -15,7 +15,7 @@ export function WalletChip({address, onCopy}: WalletChipProps) {
   return (
     <View style={styles.container}>
       <Text style={styles.address}>{truncateAddress(address)}</Text>
-      <TouchableOpacity onPress={onCopy} hitSlop={8} style={styles.copyButton}>
+      <TouchableOpacity onPress={onCopy} hitSlop={8} style={styles.copyButton} accessibilityLabel="Copy wallet address">
         <Text style={styles.copyIcon}>📋</Text>
       </TouchableOpacity>
     </View>

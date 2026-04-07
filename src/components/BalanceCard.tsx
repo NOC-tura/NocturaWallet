@@ -68,12 +68,13 @@ export function BalanceCard({
 
       <View style={styles.row}>
         <Text style={styles.totalLabel}>Total Portfolio</Text>
-        <Text
-          style={styles.totalValue}
+        <View
           accessibilityElementsHidden={hidden}
           importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}>
-          {hidden ? MASK : formatUsd(totalUsdValue)}
-        </Text>
+          <Text style={styles.totalValue}>
+            {hidden ? MASK : formatUsd(totalUsdValue)}
+          </Text>
+        </View>
       </View>
     </View>
   );

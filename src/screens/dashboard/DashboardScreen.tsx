@@ -111,6 +111,7 @@ export function DashboardScreen({onSend, onReceive, onStake, onBackup}: Dashboar
             balance={tokenBalances[token.mint] ?? '0'}
             trust={token.trust}
             isPinned={token.mint === tokens[0]?.mint}
+            hidden={hideBalances}
           />
         ))}
 

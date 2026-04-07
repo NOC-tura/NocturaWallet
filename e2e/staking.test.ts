@@ -6,6 +6,7 @@ describe('Staking Flow', () => {
   });
 
   it('staking screen renders', async () => {
+    await element(by.text('Stake')).tap();
     await expect(element(by.id('staking-screen'))).toBeVisible();
   });
 });
