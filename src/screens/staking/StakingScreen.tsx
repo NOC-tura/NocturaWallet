@@ -54,6 +54,7 @@ export function StakingScreen({onBack}: StakingScreenProps) {
 
   return (
     <ScrollView
+      testID="staking-screen"
       style={styles.container}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled">

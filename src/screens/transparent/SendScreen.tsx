@@ -297,6 +297,7 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
         <View style={styles.section}>
           <Text style={styles.label}>Recipient</Text>
           <TextInput
+            testID="recipient-input"
             style={[styles.input, recipientError ? styles.inputError : null]}
             placeholder="Recipient address"
             placeholderTextColor="rgba(255,255,255,0.3)"
@@ -329,6 +330,7 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
           <Text style={styles.label}>Amount</Text>
           <View style={styles.amountRow}>
             <TextInput
+              testID="amount-input"
               style={[styles.input, styles.amountInput]}
               placeholder="Amount"
               placeholderTextColor="rgba(255,255,255,0.3)"
@@ -357,6 +359,7 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
 
         {/* Review button */}
         <TouchableOpacity
+          testID="review-button"
           style={[styles.reviewButton, (!canReview || reviewing) && styles.reviewButtonDisabled]}
           onPress={handleReview}
           disabled={!canReview || reviewing}

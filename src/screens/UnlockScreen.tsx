@@ -111,7 +111,7 @@ export function UnlockScreen({
   const isCoolingDown = cooldownRemaining > 0;
 
   return (
-    <View style={styles.container}>
+    <View testID="unlock-screen" style={styles.container}>
       <Text style={styles.title}>Welcome back</Text>
       {walletAddress ? (
         <Text style={styles.address}>{truncateAddress(walletAddress)}</Text>

@@ -69,6 +69,7 @@ export function SuccessScreen({mnemonic, onComplete}: SuccessScreenProps) {
       {error && <Text style={styles.errorText}>{error}</Text>}
 
       <TouchableOpacity
+        testID="enter-wallet-button"
         style={[styles.ctaButton, loading && styles.ctaButtonDisabled]}
         onPress={handleEnterWallet}
         disabled={loading}>

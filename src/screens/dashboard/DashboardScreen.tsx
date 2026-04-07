@@ -48,7 +48,7 @@ export function DashboardScreen({onSend, onReceive, onStake, onBackup}: Dashboar
   const sortedTokens = tokenManager.sortTokens(tokens);
 
   return (
-    <View style={styles.container}>
+    <View testID="dashboard-screen" style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0C0C14" />
 
       <ScrollView

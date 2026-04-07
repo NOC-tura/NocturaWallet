@@ -14,11 +14,11 @@ export function WelcomeScreen({onCreate, onImport}: WelcomeScreenProps) {
       <Text style={styles.subtitle}>Your private Solana wallet</Text>
 
       <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.primaryButton} onPress={onCreate}>
+        <TouchableOpacity testID="create-wallet-button" style={styles.primaryButton} onPress={onCreate}>
           <Text style={styles.primaryButtonText}>Create new wallet</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.ghostButton} onPress={onImport}>
+        <TouchableOpacity testID="import-wallet-button" style={styles.ghostButton} onPress={onImport}>
           <Text style={styles.ghostButtonText}>Import existing wallet</Text>
         </TouchableOpacity>
       </View>

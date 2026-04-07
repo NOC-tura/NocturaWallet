@@ -34,7 +34,7 @@ export function SetPinScreen({onPinSet}: SetPinScreenProps) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>
+      <Text testID="pin-title" style={styles.title}>
         {isConfirmStep ? 'Confirm PIN' : 'Create PIN'}
       </Text>
       <Text style={styles.subtitle}>

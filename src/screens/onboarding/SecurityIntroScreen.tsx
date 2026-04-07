@@ -45,7 +45,7 @@ export function SecurityIntroScreen({onContinue}: SecurityIntroScreenProps) {
         ))}
       </View>
 
-      <TouchableOpacity style={styles.checkboxRow} onPress={handleCheckbox}>
+      <TouchableOpacity testID="security-ack-checkbox" style={styles.checkboxRow} onPress={handleCheckbox}>
         <View style={[styles.checkbox, acknowledged && styles.checkboxChecked]}>
           {acknowledged && <Text style={styles.checkmark}>✓</Text>}
         </View>
