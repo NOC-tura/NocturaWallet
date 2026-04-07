@@ -15,6 +15,9 @@ import {useNetworkStatus} from '../../hooks/useNetworkStatus';
 import {useDashboardBanners} from '../../hooks/useDashboardBanners';
 import {forceSync} from '../../modules/backgroundSync/backgroundSyncModule';
 import {TokenManager} from '../../modules/tokens/tokenModule';
+import {NOC_MINT} from '../../constants/programs';
+import {getTierById, formatStakingAmount} from '../../modules/staking/stakingService';
+import type {StakingPosition} from '../../modules/staking/types';
 
 const tokenManager = new TokenManager();
 
@@ -24,9 +27,11 @@ interface DashboardScreenProps {
   onStake?: () => void;
   onBackup?: () => void;
   onFirstShieldedToggle?: () => void;
+  /** Active staking position (if any). Passed from Navigator or fetched upstream. */
+  stakingPosition?: StakingPosition | null;
 }
 
-export function DashboardScreen({onSend, onReceive, onStake, onBackup, onFirstShieldedToggle}: DashboardScreenProps) {
+export function DashboardScreen({onSend, onReceive, onStake, onBackup, onFirstShieldedToggle, stakingPosition}: DashboardScreenProps) {
   const [refreshing, setRefreshing] = useState(false);
   const {publicKey, solBalance, nocBalance, totalUsdValue, nocUsdPrice, tokens, tokenBalances} = useWalletStore();
   const {mode, setMode} = useShieldedStore();
@@ -108,17 +113,24 @@ export function DashboardScreen({onSend, onReceive, onStake, onBackup, onFirstSh
           <Text style={styles.sectionTitle}>Tokens</Text>
         </View>
 
-        {sortedTokens.map(token => (
-          <TokenRow
-            key={token.mint}
-            symbol={token.symbol}
-            name={token.name}
-            balance={tokenBalances[token.mint] ?? '0'}
-            trust={token.trust}
-            isPinned={token.mint === tokens[0]?.mint}
-            hidden={hideBalances}
-          />
-        ))}
+        {sortedTokens.map(token => {
+          const isNoc = token.mint === NOC_MINT;
+          const tier = isNoc && stakingPosition ? getTierById(stakingPosition.tier) : undefined;
+          return (
+            <TokenRow
+              key={token.mint}
+              symbol={token.symbol}
+              name={token.name}
+              balance={tokenBalances[token.mint] ?? '0'}
+              trust={token.trust}
+              isPinned={token.mint === tokens[0]?.mint}
+              hidden={hideBalances}
+              stakedAmount={isNoc && stakingPosition ? formatStakingAmount(stakingPosition.stakedAmount) : undefined}
+              stakingTierLabel={tier?.label}
+              unlockAt={isNoc && stakingPosition ? stakingPosition.unlockAt : undefined}
+            />
+          );
+        })}
 
       </ScrollView>
     </View>

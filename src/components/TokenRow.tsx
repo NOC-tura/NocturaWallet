@@ -9,6 +9,10 @@ interface TokenRowProps {
   trust: 'core' | 'verified' | 'unknown';
   isPinned?: boolean;
   hidden?: boolean;
+  /** Staking info — shown below balance for NOC token */
+  stakedAmount?: string;
+  stakingTierLabel?: string;
+  unlockAt?: number;
 }
 
 function formatUsd(value: number): string {
@@ -20,7 +24,15 @@ function formatUsd(value: number): string {
   });
 }
 
-export function TokenRow({symbol, name, balance, usdValue, trust, isPinned, hidden = false}: TokenRowProps) {
+function formatUnlockTime(unlockAt: number): string {
+  const remaining = unlockAt - Date.now();
+  if (remaining <= 0) return 'Unlocked';
+  const days = Math.ceil(remaining / (1000 * 60 * 60 * 24));
+  if (days === 1) return '1 day left';
+  return `${days} days left`;
+}
+
+export function TokenRow({symbol, name, balance, usdValue, trust, isPinned, hidden = false, stakedAmount, stakingTierLabel, unlockAt}: TokenRowProps) {
   return (
     <View style={styles.container}>
       <View style={styles.iconCircle}>
@@ -49,6 +61,19 @@ export function TokenRow({symbol, name, balance, usdValue, trust, isPinned, hidd
         <Text style={styles.balance}>{balance}</Text>
         {usdValue !== undefined && (
           <Text style={styles.usd}>{formatUsd(usdValue)}</Text>
+        )}
+        {stakedAmount && !hidden && (
+          <Text style={styles.stakingInfo} testID="staking-info">
+            Staked: {stakedAmount}{stakingTierLabel ? ` (${stakingTierLabel})` : ''}
+          </Text>
+        )}
+        {unlockAt !== undefined && !hidden && (
+          <Text
+            style={[styles.unlockInfo, unlockAt - Date.now() <= 7 * 24 * 60 * 60 * 1000 && styles.unlockSoon]}
+            testID="unlock-info"
+          >
+            {formatUnlockTime(unlockAt)}
+          </Text>
         )}
       </View>
     </View>
@@ -126,5 +151,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(255,255,255,0.45)',
     marginTop: 2,
+  },
+  stakingInfo: {
+    fontSize: 11,
+    color: '#6C47FF',
+    marginTop: 3,
+    fontWeight: '500',
+  },
+  unlockInfo: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.35)',
+    marginTop: 1,
+  },
+  unlockSoon: {
+    color: '#FBBF24',
   },
 });
