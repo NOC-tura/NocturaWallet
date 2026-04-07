@@ -60,6 +60,14 @@ function buildTransferCheckedInstruction(
   amount: bigint,
   decimals: number,
 ): TransactionInstruction {
+  const MAX_U64 = 18_446_744_073_709_551_615n;
+  if (amount < 0n || amount > MAX_U64) {
+    throw new Error(`TransferChecked: amount out of u64 range: ${amount}`);
+  }
+  if (decimals < 0 || decimals > 9 || decimals !== Math.floor(decimals)) {
+    throw new Error(`TransferChecked: invalid decimals: ${decimals}`);
+  }
+
   const data = Buffer.alloc(10);
   data.writeUInt8(12, 0); // TransferChecked discriminator
   data.writeBigUInt64LE(amount, 1);

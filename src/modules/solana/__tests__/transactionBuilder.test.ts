@@ -131,6 +131,11 @@ describe('buildSPLTransferTx', () => {
     const transferCheckedIx = instructions[0];
     expect(transferCheckedIx).toBeDefined();
     expect(transferCheckedIx.data[0]).toBe(12); // discriminator
+    // Verify programId is SPL Token Program
+    const programId = transferCheckedIx.programId as {toBase58?: () => string};
+    if (programId.toBase58) {
+      expect(programId.toBase58()).toBe('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+    }
   });
 
   it('encodes amount and decimals correctly in the instruction data', async () => {
