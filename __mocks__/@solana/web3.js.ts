@@ -135,6 +135,26 @@ interface ITransactionInstruction {
 }
 
 // ---------------------------------------------------------------------------
+// TransactionInstruction
+// ---------------------------------------------------------------------------
+
+export class TransactionInstruction implements ITransactionInstruction {
+  readonly programId: PublicKey;
+  readonly keys: Array<{pubkey: PublicKey; isSigner: boolean; isWritable: boolean}>;
+  readonly data: Uint8Array;
+
+  constructor(opts: {
+    programId: PublicKey;
+    keys: Array<{pubkey: PublicKey; isSigner: boolean; isWritable: boolean}>;
+    data: Uint8Array | Buffer;
+  }) {
+    this.programId = opts.programId;
+    this.keys = opts.keys;
+    this.data = opts.data instanceof Uint8Array ? opts.data : new Uint8Array(opts.data);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // SystemProgram
 // ---------------------------------------------------------------------------
 

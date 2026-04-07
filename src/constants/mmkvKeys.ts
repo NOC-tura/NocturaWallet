@@ -81,6 +81,10 @@ export const MMKV_KEYS = {
   PRESALE_ALLOCATION_CACHED: 'v1_presale.allocationCached',
   PRESALE_TGE_STATUS: 'v1_presale.tgeStatus',
 
+  // ─── Tokens [P] ─────────────────────────────────────────────────────
+  JUPITER_VERIFIED_LIST: 'v1_tokens.jupiterVerified',
+  JUPITER_VERIFIED_AT: 'v1_tokens.jupiterVerifiedAt',
+
   // ─── Schema version [P] (no v1_ prefix — migration metadata) ───────
   SCHEMA_VERSION: 'schema_version',
 } as const;
