@@ -10,6 +10,7 @@ import {KeychainManager} from '../../modules/keychain/keychainModule';
 import {mnemonicToSeed} from '../../modules/keyDerivation/mnemonicUtils';
 import {deriveTransparentKeypair} from '../../modules/keyDerivation/transparent';
 import {deriveShieldedViewKey} from '../../modules/keyDerivation/shielded';
+import {PublicKey} from '@solana/web3.js';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
@@ -58,8 +59,7 @@ export function SuccessScreen({mnemonic, onComplete}: SuccessScreenProps) {
 
       // 3. Derive Ed25519 keypair
       const keypair = deriveTransparentKeypair(seed);
-      const publicKeyBase58 = Buffer.from(keypair.publicKey).toString('hex');
-      // Note: In production, use bs58 encoding. Hex is used for scaffold.
+      const publicKeyBase58 = new PublicKey(keypair.publicKey).toBase58();
 
       // 4. Derive BLS12-381 view key
       const viewKey = deriveShieldedViewKey(seed);
