@@ -11,6 +11,7 @@ import {FeeDisplayRow} from '../../components/FeeDisplayRow';
 import {ProofProgressOverlay} from '../../components/ProofProgressOverlay';
 import {TokenSelector} from '../../components/TokenSelector';
 import type {ShieldedScreenStep} from '../../modules/shielded/types';
+import {parseTokenAmount} from '../../utils/parseTokenAmount';
 
 export function DepositScreen(): React.JSX.Element {
   const navigation = useNavigation();
@@ -27,9 +28,13 @@ export function DepositScreen(): React.JSX.Element {
   const [privacyDismissed, setPrivacyDismissed] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  const parsedAmount: bigint = BigInt(
-    Math.round(parseFloat(amount || '0') * 1e9),
-  );
+  const parsedAmount: bigint = (() => {
+    try {
+      return parseTokenAmount(amount || '0', 9);
+    } catch {
+      return 0n;
+    }
+  })();
   const canConfirm = parsedAmount > 0n;
   const feeInfo = feeEngine.getFeeDisplayInfo('crossModeDeposit');
   const showPrivacyMeter =

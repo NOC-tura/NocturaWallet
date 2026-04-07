@@ -15,6 +15,7 @@ import {ProofProgressOverlay} from '../../components/ProofProgressOverlay';
 import {ShieldedAddressInput} from '../../components/ShieldedAddressInput';
 import {TokenSelector} from '../../components/TokenSelector';
 import type {ShieldedScreenStep, ConsolidationProgress} from '../../modules/shielded/types';
+import {parseTokenAmount} from '../../utils/parseTokenAmount';
 
 export function ShieldedTransferScreen(): React.JSX.Element {
   const navigation = useNavigation();
@@ -37,9 +38,13 @@ export function ShieldedTransferScreen(): React.JSX.Element {
   const [consolidationProgress, setConsolidationProgress] =
     useState<ConsolidationProgress | undefined>(undefined);
 
-  const parsedAmount: bigint = BigInt(
-    Math.round(parseFloat(amount || '0') * 1e9),
-  );
+  const parsedAmount: bigint = (() => {
+    try {
+      return parseTokenAmount(amount || '0', 9);
+    } catch {
+      return 0n;
+    }
+  })();
   const canConfirm = isValidShieldedAddress(recipient) && parsedAmount > 0n;
   const feeInfo = feeEngine.getFeeDisplayInfo('privateTransfer');
   const showPrivacyMeter =

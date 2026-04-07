@@ -7,6 +7,7 @@ import {FeeDisplayRow} from '../../components/FeeDisplayRow';
 import {ProofProgressOverlay} from '../../components/ProofProgressOverlay';
 import {NOC_MINT} from '../../constants/programs';
 import type {ShieldedScreenStep} from '../../modules/shielded/types';
+import {parseTokenAmount} from '../../utils/parseTokenAmount';
 
 const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
@@ -20,9 +21,13 @@ export function WithdrawScreen(): React.JSX.Element {
   const [amount, setAmount] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  const parsedAmount: bigint = BigInt(
-    Math.round(parseFloat(amount || '0') * 1e9),
-  );
+  const parsedAmount: bigint = (() => {
+    try {
+      return parseTokenAmount(amount || '0', 9);
+    } catch {
+      return 0n;
+    }
+  })();
   const isValidDestination = SOLANA_ADDRESS_REGEX.test(destination);
   const canConfirm = isValidDestination && parsedAmount > 0n;
   const feeInfo = feeEngine.getFeeDisplayInfo('crossModeWithdraw');
