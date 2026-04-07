@@ -26,7 +26,8 @@ export function TokenSelector({tokens, selected, onSelect}: TokenSelectorProps) 
               key={token.mint}
               style={[styles.pill, isSelected && styles.pillSelected]}
               onPress={() => onSelect(token.mint)}
-              activeOpacity={0.75}>
+              activeOpacity={0.75}
+              accessibilityLabel={`Select ${token.symbol}`}>
               <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>
                 {token.symbol}
               </Text>

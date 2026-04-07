@@ -34,8 +34,9 @@ export function ShieldedAddressInput({value, onChange, error}: ShieldedAddressIn
           autoCapitalize="none"
           autoCorrect={false}
           testID="shielded-address-input"
+          accessibilityLabel="Recipient shielded address"
         />
-        <TouchableOpacity onPress={handlePaste} testID="paste-button">
+        <TouchableOpacity onPress={handlePaste} testID="paste-button" accessibilityLabel="Paste address">
           <Text style={{color: '#6C63FF', fontSize: 14}}>Paste</Text>
         </TouchableOpacity>
       </View>

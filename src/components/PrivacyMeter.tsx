@@ -26,7 +26,7 @@ export function PrivacyMeter({leafCount, isFirstDeposit, onDismiss}: PrivacyMete
     >
       <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
         <Text style={{color: scheme.text, fontSize: 14, flex: 1}}>{message}</Text>
-        <TouchableOpacity onPress={onDismiss} testID="privacy-meter-dismiss">
+        <TouchableOpacity onPress={onDismiss} testID="privacy-meter-dismiss" accessibilityLabel="Dismiss privacy warning">
           <Text style={{color: '#888', fontSize: 18, paddingLeft: 8}}>✕</Text>
         </TouchableOpacity>
       </View>

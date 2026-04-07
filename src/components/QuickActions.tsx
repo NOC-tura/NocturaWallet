@@ -30,7 +30,8 @@ export function QuickActions({
           style={[styles.button, isOffline && styles.disabledButton]}
           onPress={isOffline ? undefined : onSend}
           activeOpacity={isOffline ? 1 : 0.7}
-          disabled={isOffline}>
+          disabled={isOffline}
+          accessibilityLabel="Send">
           <Text style={styles.buttonIcon}>↑</Text>
           <Text style={[styles.buttonLabel, isOffline && styles.disabledLabel]}>
             Send
@@ -40,7 +41,8 @@ export function QuickActions({
         <TouchableOpacity
           style={styles.button}
           onPress={onReceive}
-          activeOpacity={0.7}>
+          activeOpacity={0.7}
+          accessibilityLabel="Receive">
           <Text style={styles.buttonIcon}>↓</Text>
           <Text style={styles.buttonLabel}>Receive</Text>
         </TouchableOpacity>
@@ -48,7 +50,8 @@ export function QuickActions({
         <TouchableOpacity
           style={styles.button}
           onPress={onStake}
-          activeOpacity={0.7}>
+          activeOpacity={0.7}
+          accessibilityLabel="Stake">
           <Text style={styles.buttonIcon}>⚡</Text>
           <Text style={styles.buttonLabel}>Stake</Text>
         </TouchableOpacity>
@@ -56,7 +59,8 @@ export function QuickActions({
         <TouchableOpacity
           style={[styles.button, styles.swapButton]}
           onPress={() => setSwapModalVisible(true)}
-          activeOpacity={0.7}>
+          activeOpacity={0.7}
+          accessibilityLabel="Swap">
           <Text style={styles.buttonIcon}>🔒</Text>
           <Text style={styles.buttonLabel}>Swap</Text>
         </TouchableOpacity>
@@ -74,7 +78,8 @@ export function QuickActions({
             <TouchableOpacity
               style={styles.modalButton}
               onPress={() => setSwapModalVisible(false)}
-              activeOpacity={0.8}>
+              activeOpacity={0.8}
+              accessibilityLabel="Got it">
               <Text style={styles.modalButtonText}>Got it</Text>
             </TouchableOpacity>
           </Pressable>

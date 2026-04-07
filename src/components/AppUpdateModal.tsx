@@ -43,7 +43,7 @@ export function AppUpdateModal({visible, storeUrl, message}: AppUpdateModalProps
             A new version of Noctura Wallet is required to continue.
           </Text>
         )}
-        <TouchableOpacity style={styles.button} onPress={handleUpdate}>
+        <TouchableOpacity style={styles.button} onPress={handleUpdate} accessibilityLabel="Update app">
           <Text style={styles.buttonText}>Update now</Text>
         </TouchableOpacity>
       </View>

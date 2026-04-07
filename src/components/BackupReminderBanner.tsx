@@ -18,7 +18,7 @@ export function BackupReminderBanner({
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.content} onPress={onBackup} activeOpacity={0.7}>
+      <TouchableOpacity style={styles.content} onPress={onBackup} activeOpacity={0.7} accessibilityLabel="Back up now">
         <View style={styles.row}>
           <Text style={styles.icon}>⚠️</Text>
           <View style={styles.textContainer}>

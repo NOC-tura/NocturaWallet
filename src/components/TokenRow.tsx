@@ -8,6 +8,7 @@ interface TokenRowProps {
   usdValue?: number;
   trust: 'core' | 'verified' | 'unknown';
   isPinned?: boolean;
+  hidden?: boolean;
 }
 
 function formatUsd(value: number): string {
@@ -19,7 +20,7 @@ function formatUsd(value: number): string {
   });
 }
 
-export function TokenRow({symbol, name, balance, usdValue, trust, isPinned}: TokenRowProps) {
+export function TokenRow({symbol, name, balance, usdValue, trust, isPinned, hidden = false}: TokenRowProps) {
   return (
     <View style={styles.container}>
       <View style={styles.iconCircle}>
@@ -41,7 +42,10 @@ export function TokenRow({symbol, name, balance, usdValue, trust, isPinned}: Tok
         </View>
       </View>
 
-      <View style={styles.valueGroup}>
+      <View
+        style={styles.valueGroup}
+        accessibilityElementsHidden={hidden}
+        importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}>
         <Text style={styles.balance}>{balance}</Text>
         {usdValue !== undefined && (
           <Text style={styles.usd}>{formatUsd(usdValue)}</Text>

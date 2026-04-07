@@ -27,7 +27,8 @@ export function AppUpdateBanner({visible, storeUrl, onDismiss}: AppUpdateBannerP
         testID="app-update-banner-dismiss"
         onPress={onDismiss}
         style={styles.dismissButton}
-        hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
+        hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
+        accessibilityLabel="Dismiss update banner">
         <Text style={styles.dismissText}>✕</Text>
       </TouchableOpacity>
     </View>

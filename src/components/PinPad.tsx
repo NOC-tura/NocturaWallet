@@ -87,13 +87,15 @@ export function PinPad({onComplete, maxLength, error, disabled, testID}: PinPadP
           <View key={rowIdx} style={styles.row}>
             {row.map((key, colIdx) => {
               const isEmpty = key === '';
+              const isBackspace = key === '⌫';
               return (
                 <TouchableOpacity
                   key={colIdx}
                   style={[styles.keyButton, isEmpty && styles.keyButtonHidden]}
                   onPress={() => !isEmpty && handleKey(key)}
                   disabled={disabled || isEmpty}
-                  activeOpacity={0.6}>
+                  activeOpacity={0.6}
+                  accessibilityLabel={isBackspace ? 'Delete' : isEmpty ? undefined : `Key ${key}`}>
                   <Text style={styles.keyText}>{String(key)}</Text>
                 </TouchableOpacity>
               );

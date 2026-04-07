@@ -53,7 +53,8 @@ export function ConfirmationSheet({
         <TouchableOpacity
           style={styles.cancelButton}
           onPress={onCancel}
-          activeOpacity={0.75}>
+          activeOpacity={0.75}
+          accessibilityLabel="Cancel transaction">
           <Text style={styles.cancelText}>Cancel</Text>
         </TouchableOpacity>
 
@@ -61,7 +62,8 @@ export function ConfirmationSheet({
           style={[styles.confirmButton, isDisabled && styles.confirmButtonDisabled]}
           onPress={onConfirm}
           disabled={isDisabled}
-          activeOpacity={0.75}>
+          activeOpacity={0.75}
+          accessibilityLabel="Confirm transaction">
           {loading ? (
             <ActivityIndicator color="#FFFFFF" size="small" />
           ) : (

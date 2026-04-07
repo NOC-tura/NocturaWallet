@@ -42,7 +42,10 @@ export function BalanceCard({
     <View style={[styles.container, mode === 'shielded' && styles.shieldedContainer]}>
       <View style={styles.row}>
         <Text style={styles.symbol}>SOL</Text>
-        <View style={styles.valueGroup}>
+        <View
+          style={styles.valueGroup}
+          accessibilityElementsHidden={hidden}
+          importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}>
           <Text style={styles.balance}>{hidden ? MASK : solBalance}</Text>
           <Text style={styles.usd}>{hidden ? MASK : formatUsd(solUsd)}</Text>
         </View>
@@ -52,7 +55,10 @@ export function BalanceCard({
 
       <View style={styles.row}>
         <Text style={styles.symbol}>NOC</Text>
-        <View style={styles.valueGroup}>
+        <View
+          style={styles.valueGroup}
+          accessibilityElementsHidden={hidden}
+          importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}>
           <Text style={styles.balance}>{hidden ? MASK : nocBalance}</Text>
           <Text style={styles.usd}>{hidden ? MASK : formatUsd(nocUsd)}</Text>
         </View>
@@ -62,7 +68,10 @@ export function BalanceCard({
 
       <View style={styles.row}>
         <Text style={styles.totalLabel}>Total Portfolio</Text>
-        <Text style={styles.totalValue}>
+        <Text
+          style={styles.totalValue}
+          accessibilityElementsHidden={hidden}
+          importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}>
           {hidden ? MASK : formatUsd(totalUsdValue)}
         </Text>
       </View>
