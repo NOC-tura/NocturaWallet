@@ -65,11 +65,15 @@ export function BalanceCard({
 
   const effectiveHidden = hidden && !tempRevealed;
 
-  // NOC USD = nocBalance (lamports as string) converted to display units * price
-  // Note: balances are stored as lamport strings (BigInt). For USD display,
-  // we convert to float only at the UI layer (cardinal rule: BigInt for storage, float for display).
-  const nocLamports = parseFloat(nocBalance) || 0;
-  const nocDisplay = nocLamports / 1e9; // 9 decimals
+  // NOC USD = nocBalance (lamports as string) → BigInt → display units → USD
+  // Cardinal rule: BigInt for storage/math, float only at final display conversion.
+  // Uses BigInt division for the integer part and remainder for decimals to avoid
+  // precision loss that parseFloat causes above ~9007 SOL / ~9M NOC.
+  const nocLamportsBn = (() => { try { return BigInt(nocBalance || '0'); } catch { return 0n; } })();
+  const NOC_DECIMALS_BN = 1_000_000_000n; // 10^9
+  const nocWhole = Number(nocLamportsBn / NOC_DECIMALS_BN);
+  const nocFrac = Number(nocLamportsBn % NOC_DECIMALS_BN) / 1e9;
+  const nocDisplay = nocWhole + nocFrac;
   const nocUsd = nocDisplay * nocUsdPrice;
   // SOL USD = total portfolio minus NOC USD (avoids needing a separate SOL price prop)
   const solUsd = Math.max(0, totalUsdValue - nocUsd);
