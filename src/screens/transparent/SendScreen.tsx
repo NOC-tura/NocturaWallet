@@ -263,7 +263,8 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => setStep('input')}
-          activeOpacity={0.75}>
+          activeOpacity={0.75}
+          accessibilityLabel="Back">
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
 
@@ -309,6 +310,7 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
             onBlur={handleRecipientBlur}
             autoCapitalize="none"
             autoCorrect={false}
+            accessibilityLabel="Recipient address"
           />
           {recipientError ? (
             <Text style={styles.errorText}>{recipientError}</Text>
@@ -337,11 +339,13 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
               value={amount}
               onChangeText={setAmount}
               keyboardType="decimal-pad"
+              accessibilityLabel="Amount"
             />
             <TouchableOpacity
               style={styles.maxButton}
               onPress={handleMaxAmount}
-              activeOpacity={0.75}>
+              activeOpacity={0.75}
+              accessibilityLabel="Max amount">
               <Text style={styles.maxButtonText}>MAX</Text>
             </TouchableOpacity>
           </View>
@@ -363,7 +367,8 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
           style={[styles.reviewButton, (!canReview || reviewing) && styles.reviewButtonDisabled]}
           onPress={handleReview}
           disabled={!canReview || reviewing}
-          activeOpacity={0.75}>
+          activeOpacity={0.75}
+          accessibilityLabel="Review transaction">
           {reviewing ? (
             <ActivityIndicator color="#FFFFFF" size="small" />
           ) : (

@@ -116,7 +116,7 @@ export function ShieldedTransferScreen(): React.JSX.Element {
       <View style={styles.centered}>
         <Text style={styles.successIcon}>✓</Text>
         <Text style={styles.successText}>Transfer sent privately</Text>
-        <TouchableOpacity style={styles.primaryButton} onPress={handleDone}>
+        <TouchableOpacity style={styles.primaryButton} onPress={handleDone} accessibilityLabel="Done">
           <Text style={styles.primaryButtonText}>Done</Text>
         </TouchableOpacity>
       </View>
@@ -128,7 +128,7 @@ export function ShieldedTransferScreen(): React.JSX.Element {
       <View style={styles.centered}>
         <Text style={styles.errorIcon}>✗</Text>
         <Text style={styles.errorText}>{errorMessage}</Text>
-        <TouchableOpacity style={styles.primaryButton} onPress={handleTryAgain}>
+        <TouchableOpacity style={styles.primaryButton} onPress={handleTryAgain} accessibilityLabel="Try again">
           <Text style={styles.primaryButtonText}>Try again</Text>
         </TouchableOpacity>
       </View>
@@ -171,14 +171,16 @@ export function ShieldedTransferScreen(): React.JSX.Element {
           <TouchableOpacity
             testID="confirm-button"
             style={styles.primaryButton}
-            onPress={handleConfirm}>
+            onPress={handleConfirm}
+            accessibilityLabel="Confirm transfer">
             <Text style={styles.primaryButtonText}>Confirm</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             testID="back-button"
             style={styles.secondaryButton}
-            onPress={handleBack}>
+            onPress={handleBack}
+            accessibilityLabel="Back">
             <Text style={styles.secondaryButtonText}>Back</Text>
           </TouchableOpacity>
         </ScrollView>
@@ -227,6 +229,7 @@ export function ShieldedTransferScreen(): React.JSX.Element {
           placeholder="0.00"
           placeholderTextColor="#555"
           keyboardType="decimal-pad"
+          accessibilityLabel="Amount"
         />
 
         <Text style={styles.label}>Memo</Text>
@@ -237,6 +240,7 @@ export function ShieldedTransferScreen(): React.JSX.Element {
           onChangeText={setMemo}
           placeholder="Add a note..."
           placeholderTextColor="#555"
+          accessibilityLabel="Memo"
         />
 
         <Text testID="change-note" style={styles.changeNote}>
@@ -249,7 +253,8 @@ export function ShieldedTransferScreen(): React.JSX.Element {
           testID="confirm-button"
           style={[styles.primaryButton, !canConfirm && styles.disabledButton]}
           onPress={handleReviewTap}
-          disabled={!canConfirm}>
+          disabled={!canConfirm}
+          accessibilityLabel="Review transfer">
           <Text style={styles.primaryButtonText}>Confirm</Text>
         </TouchableOpacity>
       </ScrollView>

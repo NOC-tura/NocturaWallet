@@ -69,13 +69,15 @@ export function ExportViewKeyScreen() {
           testID="copy-button"
           style={styles.button}
           onPress={handleCopy}
-          activeOpacity={0.7}>
+          activeOpacity={0.7}
+          accessibilityLabel="Copy view key to clipboard">
           <Text style={styles.buttonText}>Copy to Clipboard</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
-          activeOpacity={0.7}>
+          activeOpacity={0.7}
+          accessibilityLabel="Done">
           <Text style={styles.backButtonText}>Done</Text>
         </TouchableOpacity>
       </View>
@@ -99,7 +101,8 @@ export function ExportViewKeyScreen() {
         style={[styles.button, loading && styles.buttonDisabled]}
         onPress={handleExport}
         disabled={loading}
-        activeOpacity={0.7}>
+        activeOpacity={0.7}
+        accessibilityLabel="Export view key">
         <Text style={styles.buttonText}>
           {loading ? 'Authenticating…' : 'Export View Key'}
         </Text>
@@ -107,7 +110,8 @@ export function ExportViewKeyScreen() {
       <TouchableOpacity
         style={styles.backButton}
         onPress={() => navigation.goBack()}
-        activeOpacity={0.7}>
+        activeOpacity={0.7}
+        accessibilityLabel="Cancel">
         <Text style={styles.backButtonText}>Cancel</Text>
       </TouchableOpacity>
     </View>

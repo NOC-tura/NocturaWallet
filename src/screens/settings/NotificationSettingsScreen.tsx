@@ -78,6 +78,7 @@ export function NotificationSettingsScreen() {
                 }}
                 thumbColor="#6C47FF"
                 trackColor={{false: '#333', true: '#6C47FF55'}}
+                accessibilityLabel={`Toggle ${row.label.toLowerCase()}`}
               />
             </View>
           </View>

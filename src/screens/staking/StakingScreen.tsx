@@ -61,7 +61,7 @@ export function StakingScreen({onBack}: StakingScreenProps) {
       {/* Header */}
       <View style={styles.header}>
         {onBack ? (
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
+          <TouchableOpacity onPress={onBack} style={styles.backButton} accessibilityLabel="Back">
             <Text style={styles.backText}>{'←'}</Text>
           </TouchableOpacity>
         ) : null}
@@ -94,6 +94,7 @@ export function StakingScreen({onBack}: StakingScreenProps) {
           keyboardType="numeric"
           value={amount}
           onChangeText={setAmount}
+          accessibilityLabel="Stake amount"
         />
 
         {/* Tier selector */}
@@ -125,7 +126,8 @@ export function StakingScreen({onBack}: StakingScreenProps) {
           style={[styles.ctaButton, !amount && styles.ctaButtonDisabled]}
           activeOpacity={0.85}
           disabled={!amount}
-          onPress={() => {/* Staking tx wired in Anchor integration step */}}>
+          onPress={() => {/* Staking tx wired in Anchor integration step */}}
+          accessibilityLabel="Stake NOC">
           <Text style={styles.ctaText}>STAKE NOC</Text>
         </TouchableOpacity>
       </View>

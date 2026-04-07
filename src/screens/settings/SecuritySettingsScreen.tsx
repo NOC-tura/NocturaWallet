@@ -42,11 +42,11 @@ function TimeoutSlider({
 
   return (
     <View style={styles.sliderRow} testID="timeout-slider">
-      <TouchableOpacity onPress={decrement} style={styles.sliderBtn} activeOpacity={0.7}>
+      <TouchableOpacity onPress={decrement} style={styles.sliderBtn} activeOpacity={0.7} accessibilityLabel="Decrease timeout">
         <Text style={styles.sliderBtnText}>{'−'}</Text>
       </TouchableOpacity>
       <Text style={styles.sliderValue}>{value} min</Text>
-      <TouchableOpacity onPress={increment} style={styles.sliderBtn} activeOpacity={0.7}>
+      <TouchableOpacity onPress={increment} style={styles.sliderBtn} activeOpacity={0.7} accessibilityLabel="Increase timeout">
         <Text style={styles.sliderBtnText}>{'+'}</Text>
       </TouchableOpacity>
     </View>
@@ -91,6 +91,7 @@ export function SecuritySettingsScreen() {
             onValueChange={setBiometricEnabled}
             thumbColor="#6C47FF"
             trackColor={{false: '#333', true: '#6C47FF55'}}
+            accessibilityLabel="Toggle biometric"
           />
         </View>
       </View>
@@ -123,6 +124,7 @@ export function SecuritySettingsScreen() {
             onValueChange={setAutoLockOnBackground}
             thumbColor="#6C47FF"
             trackColor={{false: '#333', true: '#6C47FF55'}}
+            accessibilityLabel="Toggle auto-lock on background"
           />
         </View>
       </View>
@@ -134,7 +136,8 @@ export function SecuritySettingsScreen() {
           testID="change-pin-button"
           style={styles.navRow}
           onPress={() => navigation.navigate('ChangePin')}
-          activeOpacity={0.7}>
+          activeOpacity={0.7}
+          accessibilityLabel="Change PIN">
           <Text style={styles.rowLabel}>Change PIN</Text>
           <Text style={styles.chevron}>{'›'}</Text>
         </TouchableOpacity>

@@ -111,6 +111,7 @@ export function BackupSettingsScreen() {
             onValueChange={handleCloudToggle}
             thumbColor="#6C47FF"
             trackColor={{false: '#333', true: '#6C47FF55'}}
+            accessibilityLabel="Toggle cloud backup"
           />
         </View>
         <View style={styles.row}>
@@ -129,7 +130,8 @@ export function BackupSettingsScreen() {
           style={[styles.actionRow, forceLoading && styles.rowDisabled]}
           onPress={handleForceBackup}
           disabled={forceLoading}
-          activeOpacity={0.7}>
+          activeOpacity={0.7}
+          accessibilityLabel="Force backup now">
           <Text style={styles.rowLabel}>
             {forceLoading ? 'Backing up…' : 'Force Backup Now'}
           </Text>
@@ -140,7 +142,8 @@ export function BackupSettingsScreen() {
           style={[styles.actionRow, exportLoading && styles.rowDisabled]}
           onPress={handleExportEncrypted}
           disabled={exportLoading}
-          activeOpacity={0.7}>
+          activeOpacity={0.7}
+          accessibilityLabel="Export encrypted backup">
           <Text style={styles.rowLabel}>
             {exportLoading ? 'Exporting…' : 'Export Encrypted Backup'}
           </Text>
@@ -159,7 +162,8 @@ export function BackupSettingsScreen() {
       <TouchableOpacity
         style={styles.doneButton}
         onPress={() => navigation.goBack()}
-        activeOpacity={0.7}>
+        activeOpacity={0.7}
+        accessibilityLabel="Done">
         <Text style={styles.doneText}>Done</Text>
       </TouchableOpacity>
 
@@ -184,20 +188,23 @@ export function BackupSettingsScreen() {
               value={exportPassword}
               onChangeText={setExportPassword}
               autoFocus
+              accessibilityLabel="Backup password"
             />
             <View style={styles.modalActions}>
               <TouchableOpacity
                 testID="modal-cancel"
                 style={styles.modalBtn}
                 onPress={handleExportCancel}
-                activeOpacity={0.7}>
+                activeOpacity={0.7}
+                accessibilityLabel="Cancel export">
                 <Text style={styles.modalBtnTextCancel}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 testID="modal-export"
                 style={[styles.modalBtn, styles.modalBtnPrimary]}
                 onPress={handleExportConfirm}
-                activeOpacity={0.7}>
+                activeOpacity={0.7}
+                accessibilityLabel="Confirm export">
                 <Text style={styles.modalBtnTextPrimary}>Export</Text>
               </TouchableOpacity>
             </View>

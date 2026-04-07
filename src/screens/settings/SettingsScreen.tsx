@@ -51,7 +51,7 @@ function SettingsRow({
 
 function NavRow({label, onPress, danger}: {label: string; onPress: () => void; danger?: boolean}) {
   return (
-    <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7} accessibilityLabel={label}>
       <Text style={[styles.rowLabel, danger && styles.dangerText]}>{label}</Text>
       <Text style={[styles.chevron, danger && styles.dangerText]}>{'›'}</Text>
     </TouchableOpacity>
@@ -101,6 +101,7 @@ export function SettingsScreen() {
           onValueChange={setBiometricEnabled}
           thumbColor="#6C47FF"
           trackColor={{false: '#333', true: '#6C47FF55'}}
+          accessibilityLabel="Toggle biometric"
         />
       </SettingsRow>
 
@@ -112,6 +113,7 @@ export function SettingsScreen() {
           onValueChange={setAutoLockOnBackground}
           thumbColor="#6C47FF"
           trackColor={{false: '#333', true: '#6C47FF55'}}
+          accessibilityLabel="Toggle auto-lock on background"
         />
       </SettingsRow>
 
@@ -156,6 +158,7 @@ export function SettingsScreen() {
           onValueChange={setAmoledMode}
           thumbColor="#6C47FF"
           trackColor={{false: '#333', true: '#6C47FF55'}}
+          accessibilityLabel="Toggle AMOLED mode"
         />
       </SettingsRow>
       <SettingsRow label="Haptics">
@@ -164,13 +167,14 @@ export function SettingsScreen() {
           onValueChange={setHapticsEnabled}
           thumbColor="#6C47FF"
           trackColor={{false: '#333', true: '#6C47FF55'}}
+          accessibilityLabel="Toggle haptics"
         />
       </SettingsRow>
 
       {/* ── Storage ───────────────────────────────────────────────────── */}
       <SectionHeader title="Storage" testID="section-storage" />
       <SettingsRow label="Data version: v1" />
-      <TouchableOpacity style={styles.buttonRow} onPress={handleClearCache} activeOpacity={0.7}>
+      <TouchableOpacity style={styles.buttonRow} onPress={handleClearCache} activeOpacity={0.7} accessibilityLabel="Clear cache">
         <Text style={styles.buttonText}>Clear Cache</Text>
       </TouchableOpacity>
 
@@ -196,6 +200,7 @@ export function SettingsScreen() {
           onValueChange={setHideBalances}
           thumbColor="#6C47FF"
           trackColor={{false: '#333', true: '#6C47FF55'}}
+          accessibilityLabel="Toggle hide balances"
         />
       </SettingsRow>
       <SettingsRow label="Hide Zero-Balance Tokens">
@@ -204,6 +209,7 @@ export function SettingsScreen() {
           onValueChange={setHideZeroBalanceTokens}
           thumbColor="#6C47FF"
           trackColor={{false: '#333', true: '#6C47FF55'}}
+          accessibilityLabel="Toggle hide zero-balance tokens"
         />
       </SettingsRow>
 

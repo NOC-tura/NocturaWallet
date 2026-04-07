@@ -74,7 +74,7 @@ export function ReceiveScreen({address}: ReceiveScreenProps) {
       </Text>
 
       {/* Copy button */}
-      <TouchableOpacity style={styles.copyButton} onPress={handleCopy}>
+      <TouchableOpacity style={styles.copyButton} onPress={handleCopy} accessibilityLabel="Copy address">
         <Text style={styles.copyButtonText}>
           {copied ? 'Copied!' : 'Copy'}
         </Text>
@@ -89,7 +89,8 @@ export function ReceiveScreen({address}: ReceiveScreenProps) {
               styles.tokenPill,
               selectedToken === token && styles.tokenPillActive,
             ]}
-            onPress={() => setSelectedToken(token)}>
+            onPress={() => setSelectedToken(token)}
+            accessibilityLabel={`Select ${token}`}>
             <Text
               style={[
                 styles.tokenPillText,
@@ -105,7 +106,7 @@ export function ReceiveScreen({address}: ReceiveScreenProps) {
       </Text>
 
       {/* Share button */}
-      <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
+      <TouchableOpacity style={styles.shareButton} onPress={handleShare} accessibilityLabel="Share address">
         <Text style={styles.shareButtonText}>Share</Text>
       </TouchableOpacity>
     </ScrollView>

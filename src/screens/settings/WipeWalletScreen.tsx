@@ -98,6 +98,7 @@ export function WipeWalletScreen() {
           autoCapitalize="characters"
           autoCorrect={false}
           editable={!wiping}
+          accessibilityLabel="Type DELETE to confirm"
         />
 
         <TouchableOpacity
@@ -107,7 +108,8 @@ export function WipeWalletScreen() {
             void handleWipe();
           }}
           disabled={!canWipe}
-          activeOpacity={0.8}>
+          activeOpacity={0.8}
+          accessibilityLabel="Wipe wallet">
           <Text style={styles.wipeButtonText}>
             {wiping ? 'Wiping…' : 'Wipe Wallet'}
           </Text>
