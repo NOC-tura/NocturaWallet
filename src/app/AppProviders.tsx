@@ -5,6 +5,7 @@ import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {NavigationContainer} from '@react-navigation/native';
 import {deepLinkConfig} from './deepLinkConfig';
+import {navigationRef} from './navigationRef';
 import '../global.css';
 
 const queryClient = new QueryClient({
@@ -22,7 +23,7 @@ export function AppProviders({children}: {children: React.ReactNode}) {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          <NavigationContainer linking={deepLinkConfig}>
+          <NavigationContainer ref={navigationRef} linking={deepLinkConfig}>
             {children}
           </NavigationContainer>
         </QueryClientProvider>

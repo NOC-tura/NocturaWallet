@@ -1,6 +1,12 @@
 import {create} from 'zustand';
+import {useSecureSettingsStore} from './secureSettingsStore';
 
 const DEFAULT_TIMEOUT_MINUTES = 5;
+
+function getTimeoutMs(): number {
+  const minutes = useSecureSettingsStore.getState().sessionTimeoutMinutes;
+  return (minutes > 0 ? minutes : DEFAULT_TIMEOUT_MINUTES) * 60 * 1000;
+}
 
 interface SessionState {
   isUnlocked: boolean;
@@ -26,7 +32,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       isUnlocked: true,
       unlockedAt: now,
       lastActiveAt: now,
-      sessionExpiresAt: now + DEFAULT_TIMEOUT_MINUTES * 60 * 1000,
+      sessionExpiresAt: now + getTimeoutMs(),
     });
   },
 
@@ -42,7 +48,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const now = Date.now();
     set({
       lastActiveAt: now,
-      sessionExpiresAt: now + DEFAULT_TIMEOUT_MINUTES * 60 * 1000,
+      sessionExpiresAt: now + getTimeoutMs(),
     });
   },
 
