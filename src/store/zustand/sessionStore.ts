@@ -1,5 +1,6 @@
 import {create} from 'zustand';
 import {useSecureSettingsStore} from './secureSettingsStore';
+import {sessionManager} from '../../modules/session/sessionModule';
 
 const DEFAULT_TIMEOUT_MINUTES = 5;
 
@@ -36,13 +37,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     });
   },
 
-  lock: () =>
+  lock: () => {
+    sessionManager.lock(); // Zeroizes in-memory keypair (Ed25519 private key)
     set({
       isUnlocked: false,
       unlockedAt: null,
       lastActiveAt: null,
       sessionExpiresAt: null,
-    }),
+    });
+  },
 
   touchActivity: () => {
     const now = Date.now();
