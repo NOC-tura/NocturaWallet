@@ -6,37 +6,44 @@ import {mmkvSecure, onSecureMmkvReady} from './instances';
  * Replayed in order when the secure store becomes available.
  * This prevents silent data loss during early app lifecycle
  * (e.g., presaleStore mutations during onboarding).
+ *
+ * Uses a Map for deduplication — only the latest write per key is kept,
+ * preventing unbounded memory growth from repeated Zustand persist calls.
  */
-type QueuedWrite = {type: 'set'; name: string; value: string} | {type: 'remove'; name: string};
-const pendingWrites: QueuedWrite[] = [];
+const pendingWrites = new Map<string, {type: 'set'; value: string} | {type: 'remove'}>();
 let replayRegistered = false;
 
 function ensureReplayRegistered(): void {
   if (replayRegistered) return;
   replayRegistered = true;
   onSecureMmkvReady(store => {
-    for (const op of pendingWrites) {
+    for (const [name, op] of pendingWrites) {
       if (op.type === 'set') {
-        store.set(op.name, op.value);
+        store.set(name, op.value);
       } else {
-        store.remove(op.name);
+        store.remove(name);
       }
     }
-    pendingWrites.length = 0;
+    pendingWrites.clear();
   });
 }
 
 export const mmkvSecureStorage: StateStorage = {
   getItem: (name: string) => {
     const store = mmkvSecure();
-    if (!store) return null;
-    return store.getString(name) ?? null;
+    if (store) return store.getString(name) ?? null;
+    // Return the most recent queued value if not yet persisted
+    const pending = pendingWrites.get(name);
+    if (pending) {
+      return pending.type === 'set' ? pending.value : null;
+    }
+    return null;
   },
   setItem: (name: string, value: string) => {
     const store = mmkvSecure();
     if (!store) {
-      // Queue the write for replay when secure MMKV initializes
-      pendingWrites.push({type: 'set', name, value});
+      // Queue (deduplicated by key — last write wins)
+      pendingWrites.set(name, {type: 'set', value});
       ensureReplayRegistered();
       return;
     }
@@ -45,10 +52,16 @@ export const mmkvSecureStorage: StateStorage = {
   removeItem: (name: string) => {
     const store = mmkvSecure();
     if (!store) {
-      pendingWrites.push({type: 'remove', name});
+      pendingWrites.set(name, {type: 'remove'});
       ensureReplayRegistered();
       return;
     }
     store.remove(name);
   },
 };
+
+/** Reset queue state for testing. */
+export function _resetSecureAdapterForTest(): void {
+  pendingWrites.clear();
+  replayRegistered = false;
+}
