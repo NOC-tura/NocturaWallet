@@ -1,4 +1,4 @@
-import React, {useCallback, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,19 @@ export function ExportViewKeyScreen() {
   const [step, setStep] = useState<Step>('warning');
   const [viewKeyEncoded, setViewKeyEncoded] = useState('');
   const [loading, setLoading] = useState(false);
+  const clipboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear clipboard on unmount (security: view key should not persist)
+  useEffect(() => {
+    return () => {
+      if (clipboardTimerRef.current) {
+        clearTimeout(clipboardTimerRef.current);
+      }
+      if (viewKeyEncoded) {
+        Clipboard.setString('');
+      }
+    };
+  }, [viewKeyEncoded]);
 
   const handleExport = useCallback(async () => {
     if (loading) return;
@@ -57,6 +70,14 @@ export function ExportViewKeyScreen() {
 
   const handleCopy = useCallback(() => {
     Clipboard.setString(viewKeyEncoded);
+    // Auto-clear clipboard after 30 seconds (matches seed phrase timing)
+    if (clipboardTimerRef.current) {
+      clearTimeout(clipboardTimerRef.current);
+    }
+    clipboardTimerRef.current = setTimeout(() => {
+      Clipboard.setString('');
+      clipboardTimerRef.current = null;
+    }, 30_000);
   }, [viewKeyEncoded]);
 
   if (step === 'display') {
