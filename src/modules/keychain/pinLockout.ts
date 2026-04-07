@@ -1,6 +1,5 @@
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
-import {ERROR_CODES} from '../../constants/errors';
 
 /** After this many consecutive failures, enforce cooldown. */
 const LOCKOUT_THRESHOLD = 5;

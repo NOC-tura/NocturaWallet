@@ -1,6 +1,5 @@
 import {
   getAttemptCount,
-  getCooldownUntil,
   checkCooldown,
   recordFailedAttempt,
   resetAttempts,
