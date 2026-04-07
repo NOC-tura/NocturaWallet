@@ -169,10 +169,14 @@ async function consolidateNotes(
     // Override amount to be the consolidated total for the batch
     witness.amount = batchTotal.toString();
 
-    const proof = await zkProver.prove('transfer', witness);
-    witness.noteSecret = '';
-    witness.nullifier = '';
-    witness.merklePath = [];
+    let proof;
+    try {
+      proof = await zkProver.prove('transfer', witness);
+    } finally {
+      witness.noteSecret = '';
+      witness.nullifier = '';
+      witness.merklePath = [];
+    }
     const txSig = await submitToRelayer(proof);
     // Mark all batch notes spent
     markSpent(
@@ -226,10 +230,14 @@ export async function deposit(
   };
   const witness = await buildWitness(depositNote, config.treeDepth, params.senderPubkey);
 
-  const proof = await zkProver.prove('deposit', witness);
-  witness.noteSecret = '';
-  witness.nullifier = '';
-  witness.merklePath = [];
+  let proof;
+  try {
+    proof = await zkProver.prove('deposit', witness);
+  } finally {
+    witness.noteSecret = '';
+    witness.nullifier = '';
+    witness.merklePath = [];
+  }
   const txSignature = await submitToRelayer(proof);
 
   // Record the resulting note in the shielded note store
@@ -291,10 +299,14 @@ export async function transfer(
     params.recipientAddress,
   );
 
-  const proof = await zkProver.prove('transfer', witness);
-  witness.noteSecret = '';
-  witness.nullifier = '';
-  witness.merklePath = [];
+  let proof;
+  try {
+    proof = await zkProver.prove('transfer', witness);
+  } finally {
+    witness.noteSecret = '';
+    witness.nullifier = '';
+    witness.merklePath = [];
+  }
   const txSignature = await submitToRelayer(proof);
 
   markSpent(
@@ -336,10 +348,14 @@ export async function withdraw(
   const primaryNote = selected[0]!;
   const witness = await buildWitness(primaryNote, config.treeDepth);
 
-  const proof = await zkProver.prove('withdraw', witness);
-  witness.noteSecret = '';
-  witness.nullifier = '';
-  witness.merklePath = [];
+  let proof;
+  try {
+    proof = await zkProver.prove('withdraw', witness);
+  } finally {
+    witness.noteSecret = '';
+    witness.nullifier = '';
+    witness.merklePath = [];
+  }
   const txSignature = await submitToRelayer(proof);
 
   markSpent(
