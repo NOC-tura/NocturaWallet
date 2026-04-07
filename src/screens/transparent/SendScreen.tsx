@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  FlatList,
 } from 'react-native';
 import {TokenSelector} from '../../components/TokenSelector';
 import {PriorityFeeToggle} from '../../components/PriorityFeeToggle';
@@ -17,6 +18,9 @@ import {ConfirmationSheet} from '../../components/ConfirmationSheet';
 import {validateRecipientInput} from '../../utils/validateAddress';
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
 import {useWalletStore} from '../../store/zustand/walletStore';
+import {addressBook} from '../../modules/addressBook/addressBookModule';
+import type {Contact} from '../../modules/addressBook/types';
+import {formatAddress} from '../../utils/formatAddress';
 
 // Lazy imports — wrapped in try/catch to survive test environments without full native mocks
 let getConnection: (() => import('@solana/web3.js').Connection) | null = null;
@@ -99,6 +103,7 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
   // Input state
   const [recipient, setRecipient] = useState('');
   const [recipientError, setRecipientError] = useState('');
+  const [suggestions, setSuggestions] = useState<Contact[]>([]);
   const [selectedMint, setSelectedMint] = useState(SOL_MINT);
   const [amount, setAmount] = useState('');
   const [priorityLevel, setPriorityLevel] = useState<PriorityLevel>('normal');
@@ -140,6 +145,27 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
       setAmount(formatTokenAmount(selectedBalance, selectedToken.decimals));
     }
   }, [selectedMint, selectedBalance, selectedToken.decimals, priorityLevel]);
+
+  const handleRecipientChange = useCallback((text: string) => {
+    setRecipient(text);
+    if (recipientError) setRecipientError('');
+    if (text.trim().length >= 1) {
+      try {
+        const matches = addressBook.findByName(text).slice(0, 3);
+        setSuggestions(matches);
+      } catch {
+        setSuggestions([]);
+      }
+    } else {
+      setSuggestions([]);
+    }
+  }, [recipientError]);
+
+  const handleSelectSuggestion = useCallback((contact: Contact) => {
+    setRecipient(contact.address);
+    setSuggestions([]);
+    setRecipientError('');
+  }, []);
 
   const handleRecipientBlur = useCallback(() => {
     if (!recipient) {
@@ -254,6 +280,41 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
         recipient,
         token: selectedToken.symbol,
       });
+
+      // Prompt to add recipient to address book if not already saved
+      try {
+        const existing = addressBook.findByAddress(recipient);
+        if (!existing) {
+          const defaultName = formatAddress(recipient);
+          Alert.alert(
+            'Add to contacts?',
+            `Save ${defaultName} to your address book?`,
+            [
+              {
+                text: 'Skip',
+                style: 'cancel',
+              },
+              {
+                text: 'Save',
+                onPress: () => {
+                  try {
+                    addressBook.addContact({
+                      name: defaultName,
+                      address: recipient,
+                      addressType: 'transparent',
+                      lastUsedAt: Date.now(),
+                    });
+                  } catch {
+                    // non-critical, ignore
+                  }
+                },
+              },
+            ],
+          );
+        }
+      } catch {
+        // non-critical — ignore address book errors
+      }
     } finally {
       setSending(false);
     }
@@ -317,10 +378,7 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
               placeholder="Recipient address"
               placeholderTextColor="rgba(255,255,255,0.3)"
               value={recipient}
-              onChangeText={text => {
-                setRecipient(text);
-                if (recipientError) setRecipientError('');
-              }}
+              onChangeText={handleRecipientChange}
               onBlur={handleRecipientBlur}
               autoCapitalize="none"
               autoCorrect={false}
@@ -335,6 +393,28 @@ export function SendScreen({onTransactionSent}: SendScreenProps) {
               <Text style={styles.qrButtonText}>📷</Text>
             </TouchableOpacity>
           </View>
+          {suggestions.length > 0 && (
+            <View style={styles.suggestionsContainer}>
+              <FlatList
+                data={suggestions}
+                keyExtractor={item => item.id}
+                renderItem={({item}) => (
+                  <TouchableOpacity
+                    testID="address-suggestion"
+                    style={styles.suggestionItem}
+                    onPress={() => handleSelectSuggestion(item)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.suggestionName}>{item.name}</Text>
+                    <Text style={styles.suggestionAddress}>
+                      {formatAddress(item.address)}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                scrollEnabled={false}
+              />
+            </View>
+          )}
           {recipientError ? (
             <Text style={styles.errorText}>{recipientError}</Text>
           ) : null}
@@ -469,6 +549,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#F87171',
     marginTop: 6,
+  },
+  suggestionsContainer: {
+    backgroundColor: '#1A1A2E',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(108,71,255,0.3)',
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  suggestionItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  suggestionName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  suggestionAddress: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.45)',
+    marginTop: 2,
   },
   amountRow: {
     flexDirection: 'row',

@@ -91,6 +91,34 @@ export class AddressBookManager {
     this.store().set(key, JSON.stringify(updated));
     return updated;
   }
+
+  exportContacts(): string {
+    const contacts = this.getContacts();
+    return JSON.stringify(contacts);
+  }
+
+  importContacts(data: string): number {
+    const imported = JSON.parse(data) as Contact[];
+    let count = 0;
+    for (const contact of imported) {
+      if (!this.findByAddress(contact.address)) {
+        const store = this.store();
+        const saved: Contact = {
+          id: contact.id ?? (Date.now().toString(36) + Math.random().toString(36).slice(2)),
+          name: contact.name,
+          address: contact.address,
+          addressType: contact.addressType,
+          memo: contact.memo,
+          lastUsedAt: contact.lastUsedAt,
+          createdAt: contact.createdAt ?? Date.now(),
+        };
+        const key = MMKV_KEYS.ADDRESS_BOOK_PREFIX + saved.id;
+        store.set(key, JSON.stringify(saved));
+        count++;
+      }
+    }
+    return count;
+  }
 }
 
 export const addressBook = new AddressBookManager();

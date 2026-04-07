@@ -151,6 +151,15 @@ export function ReferralScreen({onBack}: Props) {
             <Text style={styles.statValue}>{rewardsDisplay} NOC</Text>
           </View>
         </View>
+        <View style={styles.pendingBox} testID="pending-rewards">
+          <Text style={styles.pendingLabel}>Pending rewards</Text>
+          <Text style={styles.pendingValue}>
+            {referralBonusTokens !== '0' ? referralBonusTokens : '0'} NOC
+          </Text>
+          <Text style={styles.pendingNote}>
+            Unlock after 90 days from referral date
+          </Text>
+        </View>
       </View>
 
       {/* APPLY CODE */}
@@ -267,4 +276,28 @@ const styles = StyleSheet.create({
   applyMessage: {color: '#ef4444', fontSize: 13, marginTop: 8},
   applyMessageSuccess: {color: '#10b981'},
   appliedText: {color: '#9ca3af', fontSize: 14},
+  pendingBox: {
+    marginTop: 12,
+    backgroundColor: '#0d0d0d',
+    borderRadius: 10,
+    padding: 14,
+  },
+  pendingLabel: {
+    color: '#6b7280',
+    fontSize: 12,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  pendingValue: {
+    color: '#f59e0b',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  pendingNote: {
+    color: '#6b7280',
+    fontSize: 12,
+    marginTop: 4,
+  },
 });

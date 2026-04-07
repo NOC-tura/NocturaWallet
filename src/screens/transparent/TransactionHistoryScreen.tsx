@@ -11,6 +11,7 @@ import {useWalletStore} from '../../store/zustand/walletStore';
 import {useTransactionHistory} from '../../hooks/useSolanaQueries';
 import {formatAddress} from '../../utils/formatAddress';
 import type {ParsedTransaction} from '../../modules/solana/types';
+import {parseTokenAmount} from '../../utils/parseTokenAmount';
 
 type FilterTab = 'All' | 'Sent' | 'Received' | 'Shielded' | 'Staking';
 
@@ -49,16 +50,40 @@ function statusLabel(status: ParsedTransaction['status']) {
 interface TransactionRowProps {
   tx: ParsedTransaction;
   publicKey: string | null;
+  nocUsdPrice: number;
   onPress: () => void;
 }
 
-function TransactionRow({tx, publicKey, onPress}: TransactionRowProps) {
+/**
+ * Approximates USD value for a tx amount string (e.g. "1.5 SOL" or "100 NOC").
+ * Uses current nocUsdPrice as a rough estimate — not historical price.
+ * Returns null if the amount cannot be parsed.
+ */
+function approximateUsd(amount: string | undefined | null, nocUsdPrice: number): string | null {
+  if (!amount || nocUsdPrice <= 0) return null;
+  // Extract the numeric portion before any space
+  const numStr = amount.split(' ')[0];
+  if (!numStr) return null;
+  try {
+    // Parse to lamports equivalent using 9 decimals as a proxy
+    const lamports = parseTokenAmount(numStr, 9);
+    const tokenUnits = Number(lamports) / 1e9;
+    const usd = tokenUnits * nocUsdPrice;
+    if (!isFinite(usd) || usd <= 0) return null;
+    return `≈ $${usd.toFixed(2)}`;
+  } catch {
+    return null;
+  }
+}
+
+function TransactionRow({tx, publicKey, nocUsdPrice, onPress}: TransactionRowProps) {
   const isSent = tx.from === publicKey;
   const icon = isSent ? '↑' : '↓';
   const counterparty = isSent ? tx.to : tx.from;
   const dateStr = tx.timestamp
     ? new Date(tx.timestamp * 1000).toLocaleString()
     : '—';
+  const usdApprox = approximateUsd(tx.amount, nocUsdPrice);
 
   return (
     <TouchableOpacity
@@ -78,6 +103,9 @@ function TransactionRow({tx, publicKey, onPress}: TransactionRowProps) {
         {tx.amount != null && (
           <Text style={styles.rowAmount}>{tx.amount}</Text>
         )}
+        {usdApprox != null && (
+          <Text style={styles.rowUsd}>{usdApprox}</Text>
+        )}
         <View style={[styles.badge, statusBadgeStyle(tx.status)]}>
           <Text style={styles.badgeText}>{statusLabel(tx.status)}</Text>
         </View>
@@ -89,6 +117,7 @@ function TransactionRow({tx, publicKey, onPress}: TransactionRowProps) {
 export function TransactionHistoryScreen({onSelectTx, onBack}: Props) {
   const [activeFilter, setActiveFilter] = useState<FilterTab>('All');
   const publicKey = useWalletStore(s => s.publicKey);
+  const nocUsdPrice = useWalletStore(s => s.nocUsdPrice);
   const {data: transactions = []} = useTransactionHistory(publicKey);
 
   const filtered = React.useMemo(() => {
@@ -150,6 +179,7 @@ export function TransactionHistoryScreen({onSelectTx, onBack}: Props) {
           <TransactionRow
             tx={item}
             publicKey={publicKey}
+            nocUsdPrice={nocUsdPrice}
             onPress={() => onSelectTx(item.signature)}
           />
         )}
@@ -197,6 +227,7 @@ const styles = StyleSheet.create({
   rowDate: {color: '#6b7280', fontSize: 12, marginTop: 2},
   rowRight: {alignItems: 'flex-end', gap: 4},
   rowAmount: {color: '#ffffff', fontSize: 14, fontWeight: '600'},
+  rowUsd: {color: '#6b7280', fontSize: 11, marginTop: 1},
   badge: {paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4},
   badgeGreen: {backgroundColor: '#065f46'},
   badgeAmber: {backgroundColor: '#92400e'},
