@@ -27,7 +27,14 @@ export function ExportViewKeyScreen() {
     if (loading) return;
     setLoading(true);
     try {
-      const result = await Keychain.getGenericPassword({service: VIEW_KEY_SERVICE});
+      const result = await Keychain.getGenericPassword({
+        service: VIEW_KEY_SERVICE,
+        authenticationPrompt: {
+          title: 'Authenticate to export view key',
+          subtitle: 'Biometric verification required',
+          cancel: 'Cancel',
+        },
+      });
       if (!result) {
         Alert.alert('Error', 'View key not found. Please set up your wallet first.');
         return;

@@ -14,7 +14,7 @@ export interface NotificationPayload {
 }
 
 export const NOTIFICATION_MESSAGES: Record<NotificationType, string> = {
-  incoming_tx: 'You received tokens',
+  incoming_tx: 'You received NOC tokens',
   staking_reward: 'Your staking rewards are ready to claim',
   tx_confirmed: 'Transaction confirmed',
   security_alert: 'Security alert — please check your wallet',

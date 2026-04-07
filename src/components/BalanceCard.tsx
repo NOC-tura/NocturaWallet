@@ -1,5 +1,5 @@
-import React from 'react';
-import {View, Text, StyleSheet} from 'react-native';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
+import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
 
 interface BalanceCardProps {
   solBalance: string;
@@ -29,6 +29,42 @@ export function BalanceCard({
   hidden,
   mode,
 }: BalanceCardProps) {
+  const [tempRevealed, setTempRevealed] = useState(false);
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleReveal = useCallback(() => {
+    if (!hidden) return;
+    setTempRevealed(true);
+    if (revealTimerRef.current !== null) {
+      clearTimeout(revealTimerRef.current);
+    }
+    revealTimerRef.current = setTimeout(() => {
+      setTempRevealed(false);
+      revealTimerRef.current = null;
+    }, 5000);
+  }, [hidden]);
+
+  useEffect(() => {
+    return () => {
+      if (revealTimerRef.current !== null) {
+        clearTimeout(revealTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Reset temp reveal when hidden prop changes back to false
+  useEffect(() => {
+    if (!hidden) {
+      setTempRevealed(false);
+      if (revealTimerRef.current !== null) {
+        clearTimeout(revealTimerRef.current);
+        revealTimerRef.current = null;
+      }
+    }
+  }, [hidden]);
+
+  const effectiveHidden = hidden && !tempRevealed;
+
   // NOC USD = nocBalance (lamports as string) converted to display units * price
   // Note: balances are stored as lamport strings (BigInt). For USD display,
   // we convert to float only at the UI layer (cardinal rule: BigInt for storage, float for display).
@@ -42,39 +78,57 @@ export function BalanceCard({
     <View style={[styles.container, mode === 'shielded' && styles.shieldedContainer]}>
       <View style={styles.row}>
         <Text style={styles.symbol}>SOL</Text>
-        <View
-          style={styles.valueGroup}
-          accessibilityElementsHidden={hidden}
-          importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}>
-          <Text style={styles.balance}>{hidden ? MASK : solBalance}</Text>
-          <Text style={styles.usd}>{hidden ? MASK : formatUsd(solUsd)}</Text>
-        </View>
+        <TouchableOpacity
+          onPress={handleReveal}
+          disabled={!hidden}
+          activeOpacity={hidden ? 0.7 : 1}
+          accessibilityLabel="Tap to reveal balance">
+          <View
+            style={styles.valueGroup}
+            accessibilityElementsHidden={effectiveHidden}
+            importantForAccessibility={effectiveHidden ? 'no-hide-descendants' : 'auto'}>
+            <Text style={styles.balance}>{effectiveHidden ? MASK : solBalance}</Text>
+            <Text style={styles.usd}>{effectiveHidden ? MASK : formatUsd(solUsd)}</Text>
+          </View>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.divider} />
 
       <View style={styles.row}>
         <Text style={styles.symbol}>NOC</Text>
-        <View
-          style={styles.valueGroup}
-          accessibilityElementsHidden={hidden}
-          importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}>
-          <Text style={styles.balance}>{hidden ? MASK : nocBalance}</Text>
-          <Text style={styles.usd}>{hidden ? MASK : formatUsd(nocUsd)}</Text>
-        </View>
+        <TouchableOpacity
+          onPress={handleReveal}
+          disabled={!hidden}
+          activeOpacity={hidden ? 0.7 : 1}
+          accessibilityLabel="Tap to reveal balance">
+          <View
+            style={styles.valueGroup}
+            accessibilityElementsHidden={effectiveHidden}
+            importantForAccessibility={effectiveHidden ? 'no-hide-descendants' : 'auto'}>
+            <Text style={styles.balance}>{effectiveHidden ? MASK : nocBalance}</Text>
+            <Text style={styles.usd}>{effectiveHidden ? MASK : formatUsd(nocUsd)}</Text>
+          </View>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.divider} />
 
       <View style={styles.row}>
         <Text style={styles.totalLabel}>Total Portfolio</Text>
-        <View
-          accessibilityElementsHidden={hidden}
-          importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}>
-          <Text style={styles.totalValue}>
-            {hidden ? MASK : formatUsd(totalUsdValue)}
-          </Text>
-        </View>
+        <TouchableOpacity
+          onPress={handleReveal}
+          disabled={!hidden}
+          activeOpacity={hidden ? 0.7 : 1}
+          accessibilityLabel="Tap to reveal balance">
+          <View
+            accessibilityElementsHidden={effectiveHidden}
+            importantForAccessibility={effectiveHidden ? 'no-hide-descendants' : 'auto'}>
+            <Text style={styles.totalValue}>
+              {effectiveHidden ? MASK : formatUsd(totalUsdValue)}
+            </Text>
+          </View>
+        </TouchableOpacity>
       </View>
     </View>
   );

@@ -1,5 +1,5 @@
-import React from 'react';
-import {View, Text, StyleSheet} from 'react-native';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
+import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
 
 interface TokenRowProps {
   symbol: string;
@@ -33,6 +33,43 @@ function formatUnlockTime(unlockAt: number): string {
 }
 
 export function TokenRow({symbol, name, balance, usdValue, trust, isPinned, hidden = false, stakedAmount, stakingTierLabel, unlockAt}: TokenRowProps) {
+  const [tempRevealed, setTempRevealed] = useState(false);
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleReveal = useCallback(() => {
+    if (!hidden) return;
+    setTempRevealed(true);
+    if (revealTimerRef.current !== null) {
+      clearTimeout(revealTimerRef.current);
+    }
+    revealTimerRef.current = setTimeout(() => {
+      setTempRevealed(false);
+      revealTimerRef.current = null;
+    }, 5000);
+  }, [hidden]);
+
+  useEffect(() => {
+    return () => {
+      if (revealTimerRef.current !== null) {
+        clearTimeout(revealTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hidden) {
+      setTempRevealed(false);
+      if (revealTimerRef.current !== null) {
+        clearTimeout(revealTimerRef.current);
+        revealTimerRef.current = null;
+      }
+    }
+  }, [hidden]);
+
+  const effectiveHidden = hidden && !tempRevealed;
+
+  const MASK = '•••••';
+
   return (
     <View style={styles.container}>
       <View style={styles.iconCircle}>
@@ -54,28 +91,34 @@ export function TokenRow({symbol, name, balance, usdValue, trust, isPinned, hidd
         </View>
       </View>
 
-      <View
-        style={styles.valueGroup}
-        accessibilityElementsHidden={hidden}
-        importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}>
-        <Text style={styles.balance}>{balance}</Text>
-        {usdValue !== undefined && (
-          <Text style={styles.usd}>{formatUsd(usdValue)}</Text>
-        )}
-        {stakedAmount && !hidden && (
-          <Text style={styles.stakingInfo} testID="staking-info">
-            Staked: {stakedAmount}{stakingTierLabel ? ` (${stakingTierLabel})` : ''}
-          </Text>
-        )}
-        {unlockAt !== undefined && !hidden && (
-          <Text
-            style={[styles.unlockInfo, unlockAt - Date.now() <= 7 * 24 * 60 * 60 * 1000 && styles.unlockSoon]}
-            testID="unlock-info"
-          >
-            {formatUnlockTime(unlockAt)}
-          </Text>
-        )}
-      </View>
+      <TouchableOpacity
+        onPress={handleReveal}
+        disabled={!hidden}
+        activeOpacity={hidden ? 0.7 : 1}
+        accessibilityLabel="Tap to reveal balance">
+        <View
+          style={styles.valueGroup}
+          accessibilityElementsHidden={effectiveHidden}
+          importantForAccessibility={effectiveHidden ? 'no-hide-descendants' : 'auto'}>
+          <Text style={styles.balance}>{effectiveHidden ? MASK : balance}</Text>
+          {usdValue !== undefined && (
+            <Text style={styles.usd}>{effectiveHidden ? MASK : formatUsd(usdValue)}</Text>
+          )}
+          {stakedAmount && !effectiveHidden && (
+            <Text style={styles.stakingInfo} testID="staking-info">
+              Staked: {stakedAmount}{stakingTierLabel ? ` (${stakingTierLabel})` : ''}
+            </Text>
+          )}
+          {unlockAt !== undefined && !effectiveHidden && (
+            <Text
+              style={[styles.unlockInfo, unlockAt - Date.now() <= 7 * 24 * 60 * 60 * 1000 && styles.unlockSoon]}
+              testID="unlock-info"
+            >
+              {formatUnlockTime(unlockAt)}
+            </Text>
+          )}
+        </View>
+      </TouchableOpacity>
     </View>
   );
 }
