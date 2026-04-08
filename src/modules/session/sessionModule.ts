@@ -59,6 +59,7 @@ export class SessionManager {
    * Returns null if session is not active.
    */
   getKeypair(): Uint8Array | null {
+    if (!this.isActive()) return null;
     return this.keypair;
   }
 
