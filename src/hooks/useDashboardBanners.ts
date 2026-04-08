@@ -7,11 +7,13 @@ interface DashboardBanners {
   showBackupBanner: boolean;
   showOfflineBanner: boolean;
   showUpdateBanner: boolean;
+  updateStoreUrl: string;
   canDismissBackup: boolean;
   dismissBackup: () => void;
+  dismissUpdate: () => void;
 }
 
-export function useDashboardBanners(updateAvailable: boolean = false): DashboardBanners {
+export function useDashboardBanners(): DashboardBanners {
   const {isOnline} = useNetworkStatus();
   // Initialize from MMKV so dismiss persists across re-mounts within same session
   const [dismissed, setDismissed] = useState(
@@ -34,10 +36,19 @@ export function useDashboardBanners(updateAvailable: boolean = false): Dashboard
     mmkvPublic.set(MMKV_KEYS.BACKUP_DISMISSED_COUNT, String(dismissCount + 1));
   }, [dismissCount]);
 
+  // App update state — derived from MMKV (set by versionCheck module)
+  const [updateDismissed, setUpdateDismissed] = useState(false);
+  const updateStoreUrl = mmkvPublic.getString(MMKV_KEYS.APP_UPDATE_STORE_URL) ?? '';
+  const updateAvailable = updateStoreUrl.length > 0 && !updateDismissed;
+
+  const dismissUpdate = useCallback(() => {
+    setUpdateDismissed(true);
+  }, []);
+
   // Priority: backup > offline > update (never 2 simultaneously)
   const showBackupBanner = backupNeeded && !dismissed;
   const showOfflineBanner = !isOnline && !showBackupBanner;
   const showUpdateBanner = updateAvailable && !showBackupBanner && !showOfflineBanner;
 
-  return {showBackupBanner, showOfflineBanner, showUpdateBanner, canDismissBackup, dismissBackup};
+  return {showBackupBanner, showOfflineBanner, showUpdateBanner, updateStoreUrl, canDismissBackup, dismissBackup, dismissUpdate};
 }

@@ -37,7 +37,7 @@ export function DashboardScreen({onSend, onReceive, onStake, onBackup, onFirstSh
   const {mode, setMode} = useShieldedStore();
   const {hideBalances} = useSettings();
   const {isOnline, lastOnlineAt} = useNetworkStatus();
-  const {showBackupBanner, showOfflineBanner, showUpdateBanner, canDismissBackup, dismissBackup} = useDashboardBanners();
+  const {showBackupBanner, showOfflineBanner, showUpdateBanner, updateStoreUrl, canDismissBackup, dismissBackup, dismissUpdate} = useDashboardBanners();
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -86,9 +86,9 @@ export function DashboardScreen({onSend, onReceive, onStake, onBackup, onFirstSh
         {showOfflineBanner && (
           <OfflineBanner isOnline={false} lastSyncedAt={lastOnlineAt} />
         )}
-        {showUpdateBanner && (
-          <AppUpdateBanner visible={true} storeUrl="" onDismiss={() => {}} />
-        )}
+        {showUpdateBanner && updateStoreUrl ? (
+          <AppUpdateBanner visible={true} storeUrl={updateStoreUrl} onDismiss={dismissUpdate} />
+        ) : null}
 
         {/* 6. BalanceCard */}
         <BalanceCard
