@@ -29,6 +29,18 @@ function sanitiseWitnessForHosted(
 
 /**
  * Zeroize mutable witness fields after use to reduce secret residency.
+ *
+ * LIMITATION: JavaScript strings are immutable — assigning '\x00' to a property
+ * creates a NEW string but does NOT overwrite the original string's memory in the
+ * V8/Hermes heap. The original value persists until garbage collected.
+ * This is BEST-EFFORT only. On a jailbroken device, a heap dump could recover
+ * the original values between assignment and GC.
+ *
+ * For truly sensitive data (keypairs, seeds), use Uint8Array + zeroize() from
+ * src/modules/session/zeroize.ts which overwrites the buffer in-place.
+ * When the WitnessProvider is wired to use Uint8Array for noteSecret and
+ * merklePath entries, this function should be updated accordingly.
+ *
  * Works on a plain object copy — caller must not use the witness after this.
  */
 function zeroizeWitness(witness: ProofWitness): void {
