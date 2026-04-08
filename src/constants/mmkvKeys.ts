@@ -70,6 +70,7 @@ export const MMKV_KEYS = {
 
   // ─── Referral [P] onboarding-time entry (before secure store is ready) ─
   REFERRAL_ONBOARDING_CODE_APPLIED: 'v1_referral.onboardingApplied',
+  REFERRAL_ONBOARDING_CODE_VALUE: 'v1_referral.onboardingCode',
 
   // ─── Privacy Explainer [P] ─────────────────────────────────────────
   PRIVACY_EXPLAINER_SHOWN: 'v1_privacy.explainerShown',

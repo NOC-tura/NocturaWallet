@@ -42,7 +42,7 @@ export function SuccessScreen({mnemonic, onComplete}: SuccessScreenProps) {
     }
     mmkvPublic.set(MMKV_KEYS.REFERRAL_ONBOARDING_CODE_APPLIED, true);
     // Store the code value in public MMKV (migrated to secure store post-wallet-init)
-    mmkvPublic.set('v1_referral.onboardingCode', trimmed);
+    mmkvPublic.set(MMKV_KEYS.REFERRAL_ONBOARDING_CODE_VALUE, trimmed);
     setReferralApplied(true);
     setReferralMessage(`Code ${trimmed} applied!`);
     setReferralCode('');
