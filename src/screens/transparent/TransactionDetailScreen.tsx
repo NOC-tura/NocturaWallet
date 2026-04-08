@@ -6,8 +6,8 @@ import {
   ScrollView,
   Linking,
   StyleSheet,
-  Clipboard,
 } from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import {useTransactionHistory} from '../../hooks/useSolanaQueries';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {getExplorerUrl} from '../../utils/explorerUrl';

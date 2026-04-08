@@ -1,5 +1,6 @@
 import React, {useCallback, useState} from 'react';
-import {View, TextInput, Text, TouchableOpacity, Clipboard, StyleSheet} from 'react-native';
+import {View, TextInput, Text, TouchableOpacity, StyleSheet} from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import {isValidShieldedAddress} from '../modules/shielded/shieldedAddressCodec';
 
 interface ShieldedAddressInputProps {

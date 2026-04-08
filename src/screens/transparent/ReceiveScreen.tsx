@@ -1,6 +1,5 @@
 import React, {useCallback, useRef, useState, useEffect} from 'react';
 import {
-  Clipboard,
   Share,
   StyleSheet,
   Text,
@@ -8,6 +7,7 @@ import {
   View,
   ScrollView,
 } from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 
 interface ReceiveScreenProps {
   address: string;

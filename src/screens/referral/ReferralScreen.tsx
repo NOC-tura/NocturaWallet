@@ -5,10 +5,10 @@ import {
   TextInput,
   TouchableOpacity,
   Share,
-  Clipboard,
   StyleSheet,
   Alert,
 } from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {usePresaleStore} from '../../store/zustand/presaleStore';
 import {generateReferralCode} from '../../utils/generateReferralCode';

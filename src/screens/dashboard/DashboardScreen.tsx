@@ -1,5 +1,6 @@
 import React, {useState, useCallback} from 'react';
 import {View, ScrollView, RefreshControl, StatusBar, Text, StyleSheet} from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import {WalletChip} from '../../components/WalletChip';
 import {ModeToggle} from '../../components/ModeToggle';
 import {BackupReminderBanner} from '../../components/BackupReminderBanner';
@@ -47,7 +48,7 @@ export function DashboardScreen({onSend, onReceive, onStake, onBackup, onFirstSh
 
   const handleCopyAddress = useCallback(() => {
     if (publicKey) {
-      // Clipboard.setString(publicKey); // Uncomment when @react-native-clipboard installed
+      Clipboard.setString(publicKey);
     }
   }, [publicKey]);
 

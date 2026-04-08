@@ -1,13 +1,13 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {
   Alert,
-  Clipboard,
   View,
   Text,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
 } from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';

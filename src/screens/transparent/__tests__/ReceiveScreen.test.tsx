@@ -1,20 +1,15 @@
 import React from 'react';
 import {render, fireEvent} from '@testing-library/react-native';
-import {Clipboard, Share} from 'react-native';
+import {Share} from 'react-native';
 import {ReceiveScreen} from '../ReceiveScreen';
 
 const MOCK_ADDRESS = '7EYnhQoR9YM3N7UoaKRoA44Uy8JeaZV3qyouov87awMs';
 
-jest.mock('react-native', () => {
-  const RN = jest.requireActual('react-native');
-  RN.Clipboard = {
-    setString: jest.fn(),
-  };
-  RN.Share = {
-    share: jest.fn().mockResolvedValue({action: 'sharedAction'}),
-  };
-  return RN;
-});
+jest.mock('@react-native-clipboard/clipboard', () => ({
+  setString: jest.fn(),
+  getString: jest.fn().mockResolvedValue(''),
+}));
+import Clipboard from '@react-native-clipboard/clipboard';
 
 describe('ReceiveScreen', () => {
   beforeEach(() => {

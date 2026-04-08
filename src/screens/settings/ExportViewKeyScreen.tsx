@@ -3,10 +3,10 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Clipboard,
   StyleSheet,
   Alert,
 } from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import {useNavigation} from '@react-navigation/native';
 import * as Keychain from 'react-native-keychain';
 import {bech32m} from '@scure/base';
