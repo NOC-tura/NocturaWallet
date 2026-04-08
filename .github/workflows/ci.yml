@@ -57,7 +57,7 @@ jobs:
           node-version: '22'
           cache: 'npm'
       - run: npm ci
-      - run: npm audit --omit=dev --audit-level=critical || true
+      - run: npm audit --omit=dev --audit-level=critical
 
   detox-ios:
     # Enable when Detox is added to package.json and iOS build is configured
