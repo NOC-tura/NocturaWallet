@@ -1,3 +1,5 @@
+import type {ProofWitness} from '../zkProver/types';
+
 export interface ShieldedNote {
   commitment: string;
   nullifier: string;
@@ -74,17 +76,18 @@ export type ShieldedScreenStep = 'input' | 'confirm' | 'consolidating' | 'provin
  * operations throw rather than silently using zero witnesses.
  */
 export interface WitnessProvider {
+  /**
+   * Build a witness for ZK proof generation.
+   *
+   * For deposit: note.commitment and note.nullifier are sentinel zeros —
+   * the provider MUST derive real values (not echo them through).
+   *
+   * For transfer/withdraw: note contains the actual commitment/nullifier
+   * from the note store.
+   */
   buildWitness(
     note: ShieldedNote,
     treeDepth: number,
     recipientAddress?: string,
-  ): Promise<{
-    noteCommitment: string;
-    merklePath: string[];
-    merklePathIndices: number[];
-    nullifier: string;
-    amount: string;
-    recipientAddress?: string;
-    noteSecret: string;
-  }>;
+  ): Promise<ProofWitness>;
 }
