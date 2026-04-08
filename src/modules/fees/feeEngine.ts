@@ -66,12 +66,14 @@ export function _resetPriceCache(): void {
  * Apply a staking discount to a fee.
  * Uses BigInt arithmetic — never floats.
  * discount is a fraction in [0, 1], e.g. 0.1 for 10%.
+ *
+ * Conversion: discount (float 0-1) → integer percent (0-100) → BigInt division.
+ * Example: 0.3 → 30 → fee - (fee * 30n) / 100n = 70% of original fee.
  */
 function applyDiscount(fee: bigint, discount: number): bigint {
   if (discount <= 0) return fee;
-  // Convert discount to integer basis points (hundredths of a percent) to avoid float drift
-  const discountBps = BigInt(Math.round(discount * 100));
-  return fee - (fee * discountBps) / 100n;
+  const discountPercent = BigInt(Math.round(discount * 100));
+  return fee - (fee * discountPercent) / 100n;
 }
 
 /**
