@@ -6,6 +6,17 @@ function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
+/** Validate a parsed object has the minimum required Contact fields. */
+function isValidContactEntry(entry: unknown): entry is {name: string; address: string; addressType: string; memo?: string; lastUsedAt?: number; createdAt?: number} {
+  if (typeof entry !== 'object' || entry === null) return false;
+  const e = entry as Record<string, unknown>;
+  if (typeof e.name !== 'string' || !e.name.trim()) return false;
+  if (typeof e.address !== 'string' || !e.address.trim()) return false;
+  if (typeof e.addressType !== 'string') return false;
+  if (e.addressType !== 'transparent' && e.addressType !== 'shielded') return false;
+  return true;
+}
+
 export class AddressBookManager {
   private store() {
     const s = mmkvSecure();
@@ -97,25 +108,40 @@ export class AddressBookManager {
     return JSON.stringify(contacts);
   }
 
+  /**
+   * Import contacts from JSON data.
+   * Validates each entry against the Contact schema — rejects malformed entries.
+   * Deduplicates by address. Max 1000 contacts per import.
+   */
   importContacts(data: string): number {
-    const imported = JSON.parse(data) as Contact[];
+    const raw = JSON.parse(data) as unknown;
+    if (!Array.isArray(raw)) {
+      throw new Error('Import data must be a JSON array');
+    }
+    const MAX_IMPORT = 1000;
+    if (raw.length > MAX_IMPORT) {
+      throw new Error(`Import exceeds maximum of ${MAX_IMPORT} contacts`);
+    }
+
+    const store = this.store();
     let count = 0;
-    for (const contact of imported) {
-      if (!this.findByAddress(contact.address)) {
-        const store = this.store();
-        const saved: Contact = {
-          id: contact.id ?? (Date.now().toString(36) + Math.random().toString(36).slice(2)),
-          name: contact.name,
-          address: contact.address,
-          addressType: contact.addressType,
-          memo: contact.memo,
-          lastUsedAt: contact.lastUsedAt,
-          createdAt: contact.createdAt ?? Date.now(),
-        };
-        const key = MMKV_KEYS.ADDRESS_BOOK_PREFIX + saved.id;
-        store.set(key, JSON.stringify(saved));
-        count++;
-      }
+
+    for (const entry of raw) {
+      if (!isValidContactEntry(entry)) continue; // skip malformed
+      if (this.findByAddress(entry.address)) continue; // skip duplicate
+
+      const saved: Contact = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+        name: String(entry.name),
+        address: String(entry.address),
+        addressType: entry.addressType === 'shielded' ? 'shielded' : 'transparent',
+        memo: typeof entry.memo === 'string' ? entry.memo : undefined,
+        lastUsedAt: typeof entry.lastUsedAt === 'number' ? entry.lastUsedAt : undefined,
+        createdAt: typeof entry.createdAt === 'number' ? entry.createdAt : Date.now(),
+      };
+      const key = MMKV_KEYS.ADDRESS_BOOK_PREFIX + saved.id;
+      store.set(key, JSON.stringify(saved));
+      count++;
     }
     return count;
   }
