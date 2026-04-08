@@ -57,6 +57,7 @@ export function ChangePinScreen() {
       setError(null);
       try {
         await keychainManager.changePin(currentPinRef.current, newPin);
+        currentPinRef.current = ''; // Clear old PIN from memory
         navigation.goBack();
       } finally {
         setLoading(false);
