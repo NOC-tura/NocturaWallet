@@ -280,11 +280,17 @@ function TransactionHistoryScreenNav() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   return (
     <TransactionHistoryScreenImpl
-      onSelectTx={(_signature: string) => {
-        // Dismiss modal, then navigate to TransactionDetail in SendStack
+      onSelectTx={(signature: string) => {
+        // Dismiss the modal first, then navigate into SendTab > TransactionDetail
         navigation.goBack();
-        // Navigation to detail is handled by the parent — for now log the signature
-        // Full cross-stack navigation will be wired when the tab navigator supports it
+        // Use setTimeout to let the modal dismiss animation complete before
+        // navigating into the nested stack (avoids navigation race)
+        setTimeout(() => {
+          navigation.navigate('MainTabs', {
+            screen: 'SendTab',
+            params: {screen: 'TransactionDetail', params: {signature}},
+          } as never);
+        }, 100);
       }}
       onBack={() => navigation.goBack()}
     />
