@@ -43,6 +43,11 @@ const STORE_KEYS: Record<
 export class NotificationManager {
   private deviceToken: string | null = null;
 
+  /** Set the device push token (called by native push SDK after registration). */
+  setDeviceToken(token: string): void {
+    this.deviceToken = token;
+  }
+
   /**
    * Requests OS-level notification permission.
    * Returns true when permission is granted or already held.
@@ -88,7 +93,8 @@ export class NotificationManager {
   async registerToken(): Promise<void> {
     const enabledTypes = this.getEnabledTypes();
     if (enabledTypes.length === 0) return;
-    const token = this.deviceToken ?? 'stub-device-token';
+    if (!this.deviceToken) return; // No real push token — don't pollute backend with stubs
+    const token = this.deviceToken;
 
     await pinnedFetch(`${API_BASE}/v1/notifications/register`, {
       method: 'POST',
@@ -108,7 +114,8 @@ export class NotificationManager {
    * Body: { token }
    */
   async unregisterToken(): Promise<void> {
-    const token = this.deviceToken ?? 'stub-device-token';
+    if (!this.deviceToken) return; // No real push token — nothing to unregister
+    const token = this.deviceToken;
 
     await pinnedFetch(`${API_BASE}/v1/notifications/unregister`, {
       method: 'DELETE',

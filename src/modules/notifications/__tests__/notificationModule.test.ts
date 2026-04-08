@@ -79,6 +79,7 @@ describe('NotificationManager', () => {
   });
 
   it('registerToken POSTs with enabled types', async () => {
+    manager.setDeviceToken('test-device-token-123');
     mockState.notifIncomingTx = true;
     mockState.notifStakingReward = true;
 
@@ -97,6 +98,7 @@ describe('NotificationManager', () => {
   });
 
   it('unregisterToken DELETEs', async () => {
+    manager.setDeviceToken('test-device-token-123');
     await manager.unregisterToken();
 
     expect(pinnedFetch).toHaveBeenCalledTimes(1);
@@ -106,6 +108,7 @@ describe('NotificationManager', () => {
   });
 
   it('registerToken includes platform field', async () => {
+    manager.setDeviceToken('test-device-token-123');
     mockState.notifIncomingTx = true;
     await manager.registerToken();
 
