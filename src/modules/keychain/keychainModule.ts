@@ -31,11 +31,19 @@ export class KeychainManager {
     await Keychain.setGenericPassword('seed', mnemonic, {
       ...KEYCHAIN_OPTIONS,
       service: SERVICE_SEED,
+      accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_ANY_OR_DEVICE_PASSCODE,
     });
   }
 
   async retrieveSeed(): Promise<string> {
-    const result = await Keychain.getGenericPassword({service: SERVICE_SEED});
+    const result = await Keychain.getGenericPassword({
+      service: SERVICE_SEED,
+      authenticationPrompt: {
+        title: 'Authenticate to access wallet',
+        subtitle: 'Biometric or device passcode required',
+        cancel: 'Cancel',
+      },
+    });
     if (!result) throw new Error('No seed found in keychain');
     return result.password;
   }
