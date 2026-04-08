@@ -3,7 +3,6 @@ import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import {makePlaceholder} from '../screens/PlaceholderScreen';
 import {DashboardScreen} from '../screens/dashboard/DashboardScreen';
 import {SendScreen as SendScreenImpl} from '../screens/transparent/SendScreen';
 import {TransactionStatusScreen} from '../screens/transparent/TransactionStatusScreen';
@@ -46,11 +45,11 @@ import {ExportViewKeyScreen} from '../screens/settings/ExportViewKeyScreen';
 import {BackupSettingsScreen} from '../screens/settings/BackupSettingsScreen';
 import {NotificationSettingsScreen} from '../screens/settings/NotificationSettingsScreen';
 import {WipeWalletScreen} from '../screens/settings/WipeWalletScreen';
-const ShieldedBalanceScreen = makePlaceholder('ShieldedBalance');
+import {ShieldedBalanceScreen} from '../screens/shielded/ShieldedBalanceScreen';
 import {DepositScreen} from '../screens/shielded/DepositScreen';
 import {ShieldedTransferScreen} from '../screens/shielded/ShieldedTransferScreen';
 import {WithdrawScreen} from '../screens/shielded/WithdrawScreen';
-const AppUpdateModalScreen = makePlaceholder('AppUpdateModal');
+import {AppUpdateModal} from '../components/AppUpdateModal';
 
 // Wrapper components that wire screens to navigation
 function SplashScreenNav() {
@@ -319,6 +318,14 @@ function ReferralScreenNav() {
   );
 }
 
+function AppUpdateModalScreenNav() {
+  const route = useRoute();
+  const raw = (route.params ?? {}) as Record<string, unknown>;
+  const storeUrl = typeof raw.storeUrl === 'string' ? raw.storeUrl : '';
+  const message = typeof raw.message === 'string' ? raw.message : undefined;
+  return <AppUpdateModal visible={true} storeUrl={storeUrl} message={message} />;
+}
+
 const defaultScreenOptions = {
   headerShown: false,
   animation: 'slide_from_right' as const,
@@ -435,7 +442,7 @@ export function RootNavigator() {
       <RootNav.Screen name="ShieldedTransfer" component={ShieldedTransferScreen} options={modalScreenOptions} />
       <RootNav.Screen name="Withdraw" component={WithdrawScreen} options={modalScreenOptions} />
       <RootNav.Screen name="PrivacyExplainer" component={PrivacyExplainerScreenNav} options={modalScreenOptions} />
-      <RootNav.Screen name="AppUpdateModal" component={AppUpdateModalScreen} options={{...modalScreenOptions, gestureEnabled: false}} />
+      <RootNav.Screen name="AppUpdateModal" component={AppUpdateModalScreenNav} options={{...modalScreenOptions, gestureEnabled: false}} />
     </RootNav.Navigator>
   );
 }
