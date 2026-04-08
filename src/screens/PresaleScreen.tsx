@@ -4,6 +4,7 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import {usePresaleStore} from '../store/zustand/presaleStore';
 
@@ -49,7 +50,7 @@ function PresaleActive({
         <Text style={styles.priceHint}>On-chain price loads after Anchor IDL integration</Text>
       </View>
 
-      <TouchableOpacity style={styles.primaryButton} onPress={onComplete}>
+      <TouchableOpacity style={styles.primaryButton} onPress={() => Alert.alert('Coming Soon', 'Presale purchase will be available after on-chain program integration.')}>
         <Text style={styles.primaryButtonText}>Buy NOC</Text>
       </TouchableOpacity>
 
@@ -109,10 +110,10 @@ function PresaleClaimed({onSkip, onComplete}: {onSkip: () => void; onComplete: (
       <Text style={styles.claimedTitle}>Your NOC tokens are in your wallet</Text>
 
       <View style={styles.quickActionsRow}>
-        <TouchableOpacity style={styles.quickActionButton} onPress={() => {}}>
+        <TouchableOpacity style={styles.quickActionButton} onPress={() => Alert.alert('Coming Soon', 'Staking will be available after on-chain program integration.')}>
           <Text style={styles.quickActionText}>Stake</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.quickActionButton} onPress={() => {}}>
+        <TouchableOpacity style={styles.quickActionButton} onPress={() => Alert.alert('Coming Soon', 'Send will be available from the Dashboard.')}>
           <Text style={styles.quickActionText}>Send</Text>
         </TouchableOpacity>
         <TouchableOpacity

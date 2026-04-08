@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import {TierSelector} from '../../components/TierSelector';
 import {RewardCalculator} from '../../components/RewardCalculator';
@@ -126,7 +127,7 @@ export function StakingScreen({onBack}: StakingScreenProps) {
           style={[styles.ctaButton, !amount && styles.ctaButtonDisabled]}
           activeOpacity={0.85}
           disabled={!amount}
-          onPress={() => {/* Staking tx wired in Anchor integration step */}}
+          onPress={() => Alert.alert('Coming Soon', 'Staking will be available after on-chain program integration.')}
           accessibilityLabel="Stake NOC">
           <Text style={styles.ctaText}>STAKE NOC</Text>
         </TouchableOpacity>
