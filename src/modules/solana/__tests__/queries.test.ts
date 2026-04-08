@@ -49,7 +49,7 @@ describe('getTokenAccounts', () => {
       },
     };
 
-    (connection.getTokenAccountsByOwner as jest.Mock).mockResolvedValueOnce({
+    (connection.getParsedTokenAccountsByOwner as jest.Mock).mockResolvedValueOnce({
       value: [mockAccount],
     });
 
@@ -67,7 +67,7 @@ describe('getTokenAccounts', () => {
     const connection = new Connection('https://api.mainnet-beta.solana.com');
     const owner = new PublicKey('So11111111111111111111111111111111111111112');
 
-    (connection.getTokenAccountsByOwner as jest.Mock).mockResolvedValueOnce({
+    (connection.getParsedTokenAccountsByOwner as jest.Mock).mockResolvedValueOnce({
       value: [],
     });
 

@@ -445,6 +445,14 @@ export class Connection {
     ) => ({value: []}),
   );
 
+  getParsedTokenAccountsByOwner = jest.fn(
+    async (
+      _ownerAddress: PublicKey,
+      _filter: unknown,
+      _commitment?: unknown,
+    ) => ({value: []}),
+  );
+
   getTokenAccountBalance = jest.fn(
     async (_tokenAddress: PublicKey, _commitment?: unknown) => ({
       value: {amount: '0', decimals: 9, uiAmount: 0, uiAmountString: '0'},

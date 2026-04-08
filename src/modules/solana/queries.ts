@@ -27,31 +27,18 @@ export async function getTokenAccounts(
   owner: PublicKey,
 ): Promise<TokenAccount[]> {
   return rpcLimiter.execute(`getTokenAccounts:${owner.toBase58()}`, async () => {
-    // getParsedTokenAccountsByOwner returns jsonParsed data with typed info
-    // Falling back to getTokenAccountsByOwner with manual parsing for mock compatibility
-    const response = await connection.getTokenAccountsByOwner(owner, {
+    // getParsedTokenAccountsByOwner returns jsonParsed data with typed info,
+    // avoiding manual binary decoding of SPL Token account layout.
+    const response = await connection.getParsedTokenAccountsByOwner(owner, {
       programId: TOKEN_PROGRAM_ID,
     });
 
     return response.value.map(item => {
-      // In production, use getParsedTokenAccountsByOwner which returns typed parsed data.
-      // The cast through unknown is needed because the mock returns a simplified structure.
-      const data = item.account.data as unknown as {
-        parsed?: {
-          info: {
-            mint: string;
-            owner: string;
-            tokenAmount: {amount: string; decimals: number};
-          };
-        };
+      const info = item.account.data.parsed.info as {
+        mint: string;
+        owner: string;
+        tokenAmount: {amount: string; decimals: number};
       };
-
-      if (!data.parsed) {
-        // Binary-encoded response — should not happen with jsonParsed encoding
-        throw new Error('Token account data not parsed. Use jsonParsed encoding.');
-      }
-
-      const info = data.parsed.info;
       return {
         mint: info.mint,
         owner: info.owner,
