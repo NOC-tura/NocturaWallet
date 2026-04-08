@@ -17,6 +17,7 @@ export const MMKV_KEYS = {
   APP_FORCE_UPDATE_REQUIRED: 'v1_app.forcedUpdateRequired',
   APP_LAST_VERSION_CHECK: 'v1_app.lastVersionCheck',
   APP_UPDATE_STORE_URL: 'v1_app.updateStoreUrl',
+  APP_PENDING_DEEP_LINK: 'v1_app.pendingDeepLink',
 
   // ─── Backup [P] dismiss state, [S] config ───────────────────────────
   BACKUP_CLOUD_ENABLED: 'v1_backup.cloudEnabled',
