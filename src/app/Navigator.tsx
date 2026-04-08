@@ -259,13 +259,17 @@ function SendScreenNav() {
 function TransactionStatusScreenNav() {
   const route = useRoute();
   const navigation = useNavigation();
-  const params = route.params as {signature: string; amount: string; recipient: string; token: string};
+  const raw = (route.params ?? {}) as Record<string, unknown>;
+  const signature = typeof raw.signature === 'string' ? raw.signature : '';
+  const amount = typeof raw.amount === 'string' ? raw.amount : '0';
+  const recipient = typeof raw.recipient === 'string' ? raw.recipient : '';
+  const token = typeof raw.token === 'string' ? raw.token : 'SOL';
   return (
     <TransactionStatusScreen
-      signature={params.signature}
-      amount={params.amount}
-      recipient={params.recipient}
-      token={params.token}
+      signature={signature}
+      amount={amount}
+      recipient={recipient}
+      token={token}
       onDashboard={() => navigation.getParent()?.navigate('HomeTab')}
       onRetry={() => navigation.goBack()}
     />
@@ -290,10 +294,11 @@ function TransactionHistoryScreenNav() {
 function TransactionDetailScreenNav() {
   const navigation = useNavigation();
   const route = useRoute();
-  const params = route.params as {signature: string};
+  const raw = (route.params ?? {}) as Record<string, unknown>;
+  const signature = typeof raw.signature === 'string' ? raw.signature : '';
   return (
     <TransactionDetailScreenImpl
-      signature={params.signature}
+      signature={signature}
       onBack={() => navigation.goBack()}
     />
   );
