@@ -30,6 +30,15 @@ jest.mock('../../../store/mmkv/instances', () => ({
   },
   mmkvSecure: jest.fn().mockReturnValue(null),
   initSecureMmkv: jest.fn(),
+  onSecureMmkvReady: jest.fn(),
+}));
+
+// Mock walletStore to avoid persist side effects
+jest.mock('../../../store/zustand/walletStore', () => ({
+  useWalletStore: Object.assign(
+    jest.fn().mockReturnValue({publicKey: null, tokens: []}),
+    {getState: jest.fn().mockReturnValue({setPublicKey: jest.fn(), setPkShielded: jest.fn()})},
+  ),
 }));
 
 const TEST_MNEMONIC =
