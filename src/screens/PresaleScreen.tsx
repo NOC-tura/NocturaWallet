@@ -18,7 +18,7 @@ interface PresaleScreenProps {
 
 function PresaleActive({
   onSkip,
-  onComplete,
+  onComplete: _onComplete,
   isOnboarding,
   currentStage,
 }: {
