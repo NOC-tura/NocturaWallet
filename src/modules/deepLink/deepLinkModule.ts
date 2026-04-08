@@ -49,8 +49,10 @@ export class DeepLinkManager {
       });
     }
 
-    // SECURITY: reject mnemonic in URL
-    if (pathPart === 'import' || params.mnemonic) {
+    // SECURITY: reject any key material in URL
+    const FORBIDDEN_PARAMS = ['mnemonic', 'seed', 'private_key', 'secret_key', 'sk_spend', 'privateKey', 'secretKey'];
+    const hasForbiddenParam = FORBIDDEN_PARAMS.some(p => params[p] !== undefined);
+    if (pathPart === 'import' || hasForbiddenParam) {
       const action: DeepLinkAction = {
         type: 'rejected',
         params: {},
