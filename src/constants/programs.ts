@@ -40,10 +40,15 @@ export const API_BASE = Config.API_BASE;
 export const SHIELDED_ADDRESS_HRP = 'noc' as const;
 
 // ---- Startup guards for TODO addresses ------------------------------------
-// Prevents runtime crashes from `new PublicKey('TODO_...')` on mainnet.
+// Prevents runtime crashes from `new PublicKey('TODO_...')`.
 // These fire on module load — if any TODO address is active for the current
-// NETWORK, the app crashes immediately with a clear error instead of failing
-// deep inside a transaction builder.
+// NETWORK, a warning is logged so developers know transactions will fail.
+//
+// DEVNET: All 5 addresses are TODO. To populate, deploy the Phase 1 programs
+// to devnet and copy the resulting program ID, mint, admin, treasury, and fee
+// treasury addresses here. See Phase 1 repo deployment instructions.
+//
+// MAINNET: Only NOCTURA_FEE_TREASURY is TODO (Squads multisig pending).
 
 const TODO_GUARD_ADDRESSES = {
   NOC_MINT,
