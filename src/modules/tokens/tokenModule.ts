@@ -199,7 +199,7 @@ export async function buildCloseAccountsTx(
   // Filter out any account whose mint is in CORE_MINTS (never close NOC ATA, etc.)
   const eligible = accounts.filter(acc => {
     const mint = mintByAccount.get(acc.toBase58());
-    if (mint === undefined) return true; // unknown mint — allow closing
+    if (mint === undefined) return false; // unknown mint — don't close (could have non-zero balance)
     return !CORE_MINTS.has(mint);
   });
 
