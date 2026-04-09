@@ -6,6 +6,10 @@
     "paths": {
       "@/*": ["src/*"]
     },
+    // TypeScript 6.0.2 — upgraded to match VS Code workspace version.
+    // baseUrl is deprecated in TS 6.0; ignoreDeprecations silences the warning.
+    // If stability issues arise, pin to "typescript": "~5.8" in package.json
+    // and change this to "5.0". All tests pass on 6.0.2 as of 2026-04-09.
     "ignoreDeprecations": "6.0"
   },
   "include": ["**/*.ts", "**/*.tsx", "nativewind-env.d.ts"],
