@@ -1,4 +1,4 @@
-import React, {useState, useCallback} from 'react';
+import React, {useState, useCallback, useMemo} from 'react';
 import {View, FlatList, RefreshControl, StatusBar, Text, StyleSheet} from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import {WalletChip} from '../../components/WalletChip';
@@ -52,7 +52,7 @@ export function DashboardScreen({onSend, onReceive, onStake, onBackup, onFirstSh
     }
   }, [publicKey]);
 
-  const sortedTokens = tokenManager.sortTokens(tokens);
+  const sortedTokens = useMemo(() => tokenManager.sortTokens(tokens), [tokens]);
 
   const listHeader = (
     <>
