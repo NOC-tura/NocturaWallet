@@ -24,7 +24,8 @@ export function PriorityFeeToggle({level, onSelect}: PriorityFeeToggleProps) {
             key={item.value}
             style={[styles.pill, isSelected && styles.pillSelected]}
             onPress={() => onSelect(item.value)}
-            activeOpacity={0.75}>
+            activeOpacity={0.75}
+            accessibilityLabel={`${item.label} priority fee`}>
             <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>
               {item.label}
             </Text>
