@@ -68,10 +68,18 @@ for (const [name, value] of Object.entries(TODO_GUARD_ADDRESSES)) {
 }
 
 export const TRANSPARENT_FEES = {
+  /** Fixed SOL markup added to every transparent transfer (lamports, BigInt). */
   transferMarkup: 20_000n,
-  swapFeePercent: 0.003,
-  gaslessSwapFeePercent: 0.004,
-  crossChainFeePercent: 0.001,
+  /**
+   * Percentage-based fees below are Phase 4 (not active in v1).
+   * These are PERCENTAGE CONSTANTS (not lamport amounts) — float is acceptable
+   * here because they represent ratios, not monetary values.
+   * When fee calculation uses these, convert to BigInt basis points:
+   *   const feeLamports = (amount * BigInt(Math.round(percent * 10000))) / 10000n;
+   */
+  swapFeePercent: 0.003,       // 0.3%
+  gaslessSwapFeePercent: 0.004, // 0.4%
+  crossChainFeePercent: 0.001, // 0.1%
 } as const;
 
 export const SHIELDED_FEES = {
