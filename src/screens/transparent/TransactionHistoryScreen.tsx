@@ -56,16 +56,18 @@ interface TransactionRowProps {
 
 /**
  * Approximates USD value for a tx amount string (e.g. "1.5 SOL" or "100 NOC").
- * Uses current nocUsdPrice as a rough estimate — not historical price.
- * Returns null if the amount cannot be parsed.
+ * Only applies nocUsdPrice to NOC amounts — returns null for other tokens
+ * since we don't have their USD price data in the store.
  */
 function approximateUsd(amount: string | undefined | null, nocUsdPrice: number): string | null {
   if (!amount || nocUsdPrice <= 0) return null;
-  // Extract the numeric portion before any space
-  const numStr = amount.split(' ')[0];
+  const parts = amount.split(' ');
+  const numStr = parts[0];
+  const token = parts[1]?.toUpperCase();
   if (!numStr) return null;
+  // Only show USD for NOC — other tokens need their own price feeds
+  if (token && token !== 'NOC') return null;
   try {
-    // Parse to lamports equivalent using 9 decimals as a proxy
     const lamports = parseTokenAmount(numStr, 9);
     const tokenUnits = Number(lamports) / 1e9;
     const usd = tokenUnits * nocUsdPrice;
