@@ -2,6 +2,7 @@ import {getConnection} from '../solana/connection';
 import {getBalance, getTokenAccounts} from '../solana/queries';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {PublicKey} from '@solana/web3.js';
+import {NOC_MINT} from '../../constants/programs';
 
 export interface SyncResult {
   success: boolean;
@@ -28,7 +29,12 @@ export async function forceSync(): Promise<SyncResult> {
       ? Object.fromEntries(tokenAccounts.value.map(t => [t.mint, t.amount]))
       : useWalletStore.getState().tokenBalances;
 
-    useWalletStore.getState().updateBalances(sol, useWalletStore.getState().nocBalance, tokens);
+    // Extract NOC balance from token accounts (if available), otherwise keep existing
+    const nocBalance = tokenAccounts.status === 'fulfilled'
+      ? (tokenAccounts.value.find(t => t.mint === NOC_MINT)?.amount ?? useWalletStore.getState().nocBalance)
+      : useWalletStore.getState().nocBalance;
+
+    useWalletStore.getState().updateBalances(sol, nocBalance, tokens);
 
     return {
       success: true,
