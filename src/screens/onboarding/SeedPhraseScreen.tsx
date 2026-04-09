@@ -73,12 +73,14 @@ export function SeedPhraseScreen({mnemonic, onConfirm}: SeedPhraseScreenProps) {
     onConfirm();
   };
 
-  // Build 8 rows × 3 columns (up to 24 words)
+  // Build rows × 3 columns — dynamic row count based on word count (12 or 24)
+  const COLS = 3;
+  const rowCount = Math.ceil(words.length / COLS);
   const rows: number[][] = [];
-  for (let row = 0; row < 8; row++) {
+  for (let row = 0; row < rowCount; row++) {
     const cols: number[] = [];
-    for (let col = 0; col < 3; col++) {
-      const idx = row * 3 + col;
+    for (let col = 0; col < COLS; col++) {
+      const idx = row * COLS + col;
       if (idx < words.length) {
         cols.push(idx);
       }
