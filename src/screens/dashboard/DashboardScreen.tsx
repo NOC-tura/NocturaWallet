@@ -1,5 +1,5 @@
 import React, {useState, useCallback} from 'react';
-import {View, ScrollView, RefreshControl, StatusBar, Text, StyleSheet} from 'react-native';
+import {View, FlatList, RefreshControl, StatusBar, Text, StyleSheet} from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import {WalletChip} from '../../components/WalletChip';
 import {ModeToggle} from '../../components/ModeToggle';
@@ -54,72 +54,77 @@ export function DashboardScreen({onSend, onReceive, onStake, onBackup, onFirstSh
 
   const sortedTokens = tokenManager.sortTokens(tokens);
 
+  const listHeader = (
+    <>
+      {/* 1. WalletChip */}
+      <WalletChip address={publicKey ?? ''} onCopy={handleCopyAddress} />
+
+      {/* 2. ModeToggle */}
+      <ModeToggle
+        mode={mode}
+        onToggle={() => setMode(mode === 'transparent' ? 'shielded' : 'transparent')}
+        onFirstShieldedToggle={onFirstShieldedToggle}
+      />
+
+      {/* 3-5. Conditional banners (priority: backup > offline > update) */}
+      {showBackupBanner && (
+        <BackupReminderBanner
+          visible={true}
+          onBackup={onBackup ?? (() => {})}
+          onDismiss={dismissBackup}
+          canDismiss={canDismissBackup}
+        />
+      )}
+      {showOfflineBanner && (
+        <OfflineBanner isOnline={false} lastSyncedAt={lastOnlineAt} />
+      )}
+      {showUpdateBanner && updateStoreUrl ? (
+        <AppUpdateBanner visible={true} storeUrl={updateStoreUrl} onDismiss={dismissUpdate} />
+      ) : null}
+
+      {/* 6. BalanceCard */}
+      <BalanceCard
+        solBalance={solBalance}
+        nocBalance={nocBalance}
+        totalUsdValue={totalUsdValue}
+        nocUsdPrice={nocUsdPrice}
+        hidden={hideBalances}
+        mode={mode}
+      />
+
+      {/* 7. QuickActions */}
+      <QuickActions
+        onSend={onSend ?? (() => {})}
+        onReceive={onReceive ?? (() => {})}
+        onStake={onStake ?? (() => {})}
+        isOffline={!isOnline}
+      />
+
+      {/* 8. Tokens section header */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Tokens</Text>
+      </View>
+    </>
+  );
+
   return (
     <View testID="dashboard-screen" style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0C0C14" />
 
-      <ScrollView
+      <FlatList
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6C47FF" />
-        }>
-
-        {/* 1. WalletChip */}
-        <WalletChip address={publicKey ?? ''} onCopy={handleCopyAddress} />
-
-        {/* 2. ModeToggle */}
-        <ModeToggle
-          mode={mode}
-          onToggle={() => setMode(mode === 'transparent' ? 'shielded' : 'transparent')}
-          onFirstShieldedToggle={onFirstShieldedToggle}
-        />
-
-        {/* 3-5. Conditional banners (priority: backup > offline > update) */}
-        {showBackupBanner && (
-          <BackupReminderBanner
-            visible={true}
-            onBackup={onBackup ?? (() => {})}
-            onDismiss={dismissBackup}
-            canDismiss={canDismissBackup}
-          />
-        )}
-        {showOfflineBanner && (
-          <OfflineBanner isOnline={false} lastSyncedAt={lastOnlineAt} />
-        )}
-        {showUpdateBanner && updateStoreUrl ? (
-          <AppUpdateBanner visible={true} storeUrl={updateStoreUrl} onDismiss={dismissUpdate} />
-        ) : null}
-
-        {/* 6. BalanceCard */}
-        <BalanceCard
-          solBalance={solBalance}
-          nocBalance={nocBalance}
-          totalUsdValue={totalUsdValue}
-          nocUsdPrice={nocUsdPrice}
-          hidden={hideBalances}
-          mode={mode}
-        />
-
-        {/* 7. QuickActions */}
-        <QuickActions
-          onSend={onSend ?? (() => {})}
-          onReceive={onReceive ?? (() => {})}
-          onStake={onStake ?? (() => {})}
-          isOffline={!isOnline}
-        />
-
-        {/* 8. Tokens section */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Tokens</Text>
-        </View>
-
-        {sortedTokens.map(token => {
+        }
+        data={sortedTokens}
+        keyExtractor={item => item.mint}
+        ListHeaderComponent={listHeader}
+        renderItem={({item: token}) => {
           const isNoc = token.mint === NOC_MINT;
           const tier = isNoc && stakingPosition ? getTierById(stakingPosition.tier) : undefined;
           return (
             <TokenRow
-              key={token.mint}
               symbol={token.symbol}
               name={token.name}
               balance={tokenBalances[token.mint] ?? '0'}
@@ -131,9 +136,8 @@ export function DashboardScreen({onSend, onReceive, onStake, onBackup, onFirstSh
               unlockAt={isNoc && stakingPosition ? stakingPosition.unlockAt : undefined}
             />
           );
-        })}
-
-      </ScrollView>
+        }}
+      />
     </View>
   );
 }
