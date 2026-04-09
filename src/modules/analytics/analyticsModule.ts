@@ -44,10 +44,17 @@ export class AnalyticsManager {
 
     for (let i = 0; i < toSend.length; i += BATCH_SIZE) {
       const batch = toSend.slice(i, i + BATCH_SIZE);
-      await pinnedFetch(`${API_BASE}/v1/analytics/event`, {
-        method: 'POST',
-        body: JSON.stringify({events: batch}),
-      });
+      try {
+        await pinnedFetch(`${API_BASE}/v1/analytics/event`, {
+          method: 'POST',
+          body: JSON.stringify({events: batch}),
+        });
+      } catch {
+        // Re-add unsent events (this batch + remaining) back to queue for retry
+        const unsent = toSend.slice(i);
+        this._queue.unshift(...unsent);
+        return;
+      }
     }
   }
 
