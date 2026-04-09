@@ -1,13 +1,16 @@
 import {by, device, element, expect} from 'detox';
+import {navigateToSettings} from './helpers';
 
 describe('Backup Flow', () => {
   beforeAll(async () => {
     await device.launchApp({newInstance: true});
   });
 
+  beforeEach(async () => {
+    await navigateToSettings('Backup Settings');
+  });
+
   it('backup settings has cloud toggle', async () => {
-    await element(by.text('Settings')).tap();
-    await element(by.text('Backup Settings')).tap();
     await expect(element(by.id('cloud-toggle'))).toBeVisible();
   });
 

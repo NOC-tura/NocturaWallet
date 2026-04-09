@@ -1,8 +1,11 @@
 import {by, device, element, expect} from 'detox';
+import {waitForDashboard} from './helpers';
 
 describe('Session Lock', () => {
   beforeAll(async () => {
     await device.launchApp({newInstance: true});
+    // Requires existing wallet — run onboarding E2E first or pre-seed keychain
+    await waitForDashboard();
   });
 
   it('shows unlock screen after background/foreground', async () => {
