@@ -83,11 +83,14 @@ export async function signAndSend(
         confirmationStatus: confirmationStatus as SignAndSendResult['confirmationStatus'],
       };
     } catch (error) {
+      // Match only blockhash-expiry-specific errors — not generic "not confirmed"
+      // which could come from simulation failures or other non-retryable causes.
       const isExpiry =
         error instanceof Error &&
-        (error.message.includes('expired') ||
-          error.message.includes('Block height exceeded') ||
-          error.message.includes('not confirmed'));
+        (error.message.includes('Blockhash not found') ||
+          error.message.toLowerCase().includes('block height exceeded') ||
+          error.message.includes('BlockheightExceeded') ||
+          error.message.includes('expired'));
 
       if (isExpiry && attempt < maxRetries) {
         // Retry with new blockhash — loop continues
