@@ -50,10 +50,11 @@ export function TransactionStatusScreen({
             result?.value?.confirmationStatus === 'confirmed' ||
             result?.value?.confirmationStatus === 'finalized'
           ) {
-            setTxState('success');
+            if (!cancelled) setTxState('success');
             return;
           }
           if (result?.value?.err) {
+            if (cancelled) return;
             setTxState('failed');
             // Map RPC error to user-friendly message from ERROR_CODES
             const errStr = JSON.stringify(result.value.err);
