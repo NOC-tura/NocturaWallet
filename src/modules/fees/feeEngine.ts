@@ -47,12 +47,15 @@ export async function getNocUsdPrice(): Promise<number> {
 
 /**
  * Convert a NOC lamport amount to a formatted USD string.
+ * Uses BigInt division for the integer part to avoid precision loss
+ * on amounts above ~9M NOC (Number.MAX_SAFE_INTEGER / 10^9).
  * Returns null if price is unavailable.
  */
 export function feeToUsd(nocLamports: bigint, nocUsdPrice: number): string | null {
   if (nocUsdPrice <= 0) return null;
-  const nocAmount = Number(nocLamports) / Number(LAMPORTS_PER_NOC);
-  const usd = nocAmount * nocUsdPrice;
+  const whole = Number(nocLamports / LAMPORTS_PER_NOC);
+  const frac = Number(nocLamports % LAMPORTS_PER_NOC) / 1e9;
+  const usd = (whole + frac) * nocUsdPrice;
   return `$${usd.toFixed(usd < 0.01 ? 4 : 2)}`;
 }
 
