@@ -71,6 +71,7 @@ export function ConfirmSeedScreen({
   const instructionText = `Select word ${positionLabels}`;
 
   const handleWordPress = (word: string, flatIdx: number) => {
+    if (confirmedIndices.has(flatIdx)) return; // Already confirmed — ignore
     const nextSelected = [...selectedWords, word];
     const step = selectedWords.length; // 0-based index of the word we're currently verifying
     const expectedWord = requiredWords[step];
@@ -134,7 +135,8 @@ export function ConfirmSeedScreen({
                   key={flatIdx}
                   testID={`word-cell-${flatIdx}`}
                   style={[styles.wordCell, isConfirmed && styles.wordCellConfirmed]}
-                  onPress={() => handleWordPress(word, flatIdx)}>
+                  onPress={() => handleWordPress(word, flatIdx)}
+                  disabled={isConfirmed}>
                   <Text style={[styles.wordText, isConfirmed && styles.wordTextConfirmed]}>
                     {word}
                   </Text>

@@ -73,11 +73,17 @@ describe('ConfirmSeedScreen', () => {
     // indices are 1-based; words array is 0-based
     const words = TEST_MNEMONIC.split(' ');
 
-    // Tap each required word in order — use getAllByText and pick [0] to handle duplicates
+    // Tap each required word in order. For duplicate words (e.g., "abandon" x11),
+    // pick the first non-confirmed match by iterating past already-pressed elements.
+    const pressedElements = new Set<number>();
     indices.forEach(pos => {
       const word = words[pos - 1];
       const matches = getAllByText(word);
-      fireEvent.press(matches[0]);
+      // Find first match we haven't pressed yet
+      let idx = 0;
+      while (pressedElements.has(idx) && idx < matches.length) idx++;
+      pressedElements.add(idx);
+      fireEvent.press(matches[idx] ?? matches[0]);
     });
 
     expect(onSuccess).toHaveBeenCalledTimes(1);
