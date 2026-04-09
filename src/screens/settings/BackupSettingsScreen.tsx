@@ -74,8 +74,8 @@ export function BackupSettingsScreen() {
   }, [exportLoading]);
 
   const handleExportConfirm = useCallback(async () => {
-    if (!exportPassword) {
-      setShowPasswordModal(false);
+    if (exportPassword.length < 8) {
+      Alert.alert('Weak Password', 'Password must be at least 8 characters.');
       return;
     }
     setShowPasswordModal(false);
