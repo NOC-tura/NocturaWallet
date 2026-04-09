@@ -341,6 +341,16 @@ const modalScreenOptions = {
   headerShown: false,
 };
 
+/** Modal options with a visible header + close button (for Android which lacks swipe-to-dismiss). */
+const modalWithCloseOptions = {
+  ...modalScreenOptions,
+  headerShown: true,
+  headerStyle: {backgroundColor: '#0C0C14'},
+  headerTintColor: '#FFFFFF',
+  headerTitle: '',
+  headerBackVisible: false,
+};
+
 // Onboarding Stack
 const OnboardingNav = createNativeStackNavigator<OnboardingStackParamList>();
 function OnboardingStack() {
@@ -438,9 +448,9 @@ export function RootNavigator() {
       <RootNav.Screen name="MainTabs" component={MainTabs} />
       <RootNav.Screen name="TransactionHistory" component={TransactionHistoryScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="ShieldedBalance" component={ShieldedBalanceScreen} options={modalScreenOptions} />
-      <RootNav.Screen name="Deposit" component={DepositScreen} options={modalScreenOptions} />
-      <RootNav.Screen name="ShieldedTransfer" component={ShieldedTransferScreen} options={modalScreenOptions} />
-      <RootNav.Screen name="Withdraw" component={WithdrawScreen} options={modalScreenOptions} />
+      <RootNav.Screen name="Deposit" component={DepositScreen} options={modalWithCloseOptions} />
+      <RootNav.Screen name="ShieldedTransfer" component={ShieldedTransferScreen} options={modalWithCloseOptions} />
+      <RootNav.Screen name="Withdraw" component={WithdrawScreen} options={modalWithCloseOptions} />
       <RootNav.Screen name="PrivacyExplainer" component={PrivacyExplainerScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="AppUpdateModal" component={AppUpdateModalScreenNav} options={{...modalScreenOptions, gestureEnabled: false}} />
     </RootNav.Navigator>
