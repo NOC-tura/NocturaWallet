@@ -86,7 +86,7 @@ export function TransactionStatusScreen({
       : signature;
 
   const handleViewOnSolscan = () => {
-    Linking.openURL(explorerUrl);
+    Linking.openURL(explorerUrl).catch(() => {});
   };
 
   if (txState === 'success') {
