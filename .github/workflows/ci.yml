@@ -44,7 +44,7 @@ jobs:
           node-version: '22'
           cache: 'npm'
       - run: npm ci
-      - run: npx jest --no-coverage --forceExit
+      - run: npx jest --coverage --forceExit
 
   audit:
     runs-on: ubuntu-latest

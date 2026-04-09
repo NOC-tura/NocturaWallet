@@ -17,6 +17,11 @@ module.exports = {
     '^react-native-config$': '<rootDir>/__mocks__/react-native-config.ts',
   },
   testPathIgnorePatterns: ['/node_modules/', '<rootDir>/e2e/'],
+  coverageThreshold: {
+    global: {
+      lines: 60,
+    },
+  },
   transformIgnorePatterns: [
     'node_modules/(?!(react-native|@react-native|@react-navigation|nativewind|react-native-css-interop|@scure/bip39|@scure/base|@scure/bip32|@noble/hashes|@noble/curves|@noble/ciphers|micro-key-producer|@solana/web3\\.js|poseidon-lite)/)',
   ],
