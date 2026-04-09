@@ -22,9 +22,9 @@ export function decodeShieldedAddress(address: string): Uint8Array {
       throw new Error(`Wrong data length: expected ${SHIELDED_PK_BYTES}, got ${bytes.length}`);
     }
     return Uint8Array.from(bytes);
-  } catch {
-    const err = ERROR_CODES.INVALID_SHIELDED_ADDR;
-    throw new Error(err.message);
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    throw new Error(`${ERROR_CODES.INVALID_SHIELDED_ADDR.message}: ${detail}`);
   }
 }
 
