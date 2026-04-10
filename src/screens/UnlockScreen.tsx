@@ -39,6 +39,7 @@ export function UnlockScreen({
   const [showPinPad, setShowPinPad] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
   const [_attempts, setAttempts] = useState(0);
+  const [pinResetKey, setPinResetKey] = useState(0);
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -104,6 +105,7 @@ export function UnlockScreen({
       } else {
         setPinError('Incorrect PIN. Try again.');
       }
+      setPinResetKey(k => k + 1);
       return newAttempts;
     });
   };
@@ -142,6 +144,7 @@ export function UnlockScreen({
               maxLength={PIN_LENGTH}
               error={pinError}
               disabled={isCoolingDown}
+              resetKey={pinResetKey}
             />
           )}
         </View>

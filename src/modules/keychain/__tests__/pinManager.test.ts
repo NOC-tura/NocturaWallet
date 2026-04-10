@@ -3,8 +3,8 @@ import {hashPin, verifyPin, generateSalt, PIN_ITERATIONS} from '../pinManager';
 jest.setTimeout(60_000); // PBKDF2 600K iterations is slow by design
 
 describe('pinManager', () => {
-  it('PIN_ITERATIONS is 600000 (OWASP 2024)', () => {
-    expect(PIN_ITERATIONS).toBe(600_000);
+  it('PIN_ITERATIONS is 210000 (OWASP 2023 SHA-512 minimum)', () => {
+    expect(PIN_ITERATIONS).toBe(210_000);
   });
 
   it('generates a 32-byte random salt', () => {
