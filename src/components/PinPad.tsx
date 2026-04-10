@@ -1,4 +1,4 @@
-import React, {useState, useCallback, useEffect, useRef} from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
 
 interface PinPadProps {
@@ -19,68 +19,52 @@ const KEYPAD_ROWS: (string | number)[][] = [
 
 export function PinPad({onComplete, maxLength, error, disabled, testID, resetKey}: PinPadProps) {
   const [digits, setDigits] = useState<string[]>([]);
-  const processingRef = useRef(false);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
+  const firedRef = useRef(false);
 
   // Reset when parent signals step change
   useEffect(() => {
     setDigits([]);
-    processingRef.current = false;
+    firedRef.current = false;
   }, [resetKey]);
 
-  // Detect when digits reach maxLength → fire onComplete after brief delay
-  useEffect(() => {
-    if (digits.length !== maxLength || processingRef.current) return;
-    processingRef.current = true;
-    const pin = digits.join('');
-    const timer = setTimeout(() => {
-      setDigits([]);
-      processingRef.current = false;
+  const handleKey = (key: string | number) => {
+    if (disabled || firedRef.current) return;
+
+    if (key === '⌫') {
+      setDigits(prev => prev.slice(0, -1));
+      return;
+    }
+    if (key === '') return;
+
+    const next = [...digits, String(key)];
+    if (next.length > maxLength) return;
+
+    setDigits(next);
+
+    if (next.length === maxLength) {
+      firedRef.current = true;
+      const pin = next.join('');
+      // Call synchronously — parent handles everything
       onCompleteRef.current(pin);
-    }, 150);
-    return () => {
-      clearTimeout(timer);
-      processingRef.current = false;
-    };
-  }, [digits, maxLength]);
-
-  const handleKey = useCallback(
-    (key: string | number) => {
-      if (disabled || processingRef.current) return;
-
-      if (key === '⌫') {
-        setDigits(prev => prev.slice(0, -1));
-        return;
-      }
-      if (key === '') return;
-
-      setDigits(prev => {
-        if (prev.length >= maxLength) return prev;
-        return [...prev, String(key)];
-      });
-    },
-    [disabled, maxLength],
-  );
+    }
+  };
 
   return (
     <View style={styles.container} testID={testID}>
       <View style={styles.dotsRow}>
-        {Array.from({length: maxLength}).map((_, i) => {
-          const filled = i < digits.length;
-          const hasError = Boolean(error);
-          return (
-            <View
-              key={i}
-              testID="pin-dot"
-              style={[
-                styles.dot,
-                filled && styles.dotFilled,
-                filled && hasError && styles.dotError,
-              ]}
-            />
-          );
-        })}
+        {Array.from({length: maxLength}).map((_, i) => (
+          <View
+            key={i}
+            testID="pin-dot"
+            style={[
+              styles.dot,
+              i < digits.length && styles.dotFilled,
+              i < digits.length && error ? styles.dotError : null,
+            ]}
+          />
+        ))}
       </View>
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -96,7 +80,7 @@ export function PinPad({onComplete, maxLength, error, disabled, testID, resetKey
                   key={colIdx}
                   style={[styles.keyButton, isEmpty && styles.keyButtonHidden]}
                   onPress={() => !isEmpty && handleKey(key)}
-                  disabled={disabled || isEmpty}
+                  disabled={disabled || isEmpty || firedRef.current}
                   activeOpacity={0.6}
                   accessibilityLabel={isBackspace ? 'Delete' : isEmpty ? undefined : `Key ${key}`}>
                   <Text style={styles.keyText}>{String(key)}</Text>
