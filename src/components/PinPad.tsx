@@ -19,31 +19,35 @@ const KEYPAD_ROWS: (string | number)[][] = [
 
 export function PinPad({onComplete, maxLength, error, disabled, testID, resetKey}: PinPadProps) {
   const [digits, setDigits] = useState<string[]>([]);
-  const [pendingPin, setPendingPin] = useState<string | null>(null);
+  const processingRef = useRef(false);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
 
   // Reset when parent signals step change
   useEffect(() => {
     setDigits([]);
-    setPendingPin(null);
+    processingRef.current = false;
   }, [resetKey]);
 
-  // When PIN is complete: show filled dots briefly, then reset and fire callback
+  // Detect when digits reach maxLength → fire onComplete after brief delay
   useEffect(() => {
-    if (!pendingPin) return;
+    if (digits.length !== maxLength || processingRef.current) return;
+    processingRef.current = true;
+    const pin = digits.join('');
     const timer = setTimeout(() => {
-      const pin = pendingPin;
       setDigits([]);
-      setPendingPin(null);
+      processingRef.current = false;
       onCompleteRef.current(pin);
     }, 150);
-    return () => clearTimeout(timer);
-  }, [pendingPin]);
+    return () => {
+      clearTimeout(timer);
+      processingRef.current = false;
+    };
+  }, [digits, maxLength]);
 
   const handleKey = useCallback(
     (key: string | number) => {
-      if (disabled || pendingPin) return;
+      if (disabled || processingRef.current) return;
 
       if (key === '⌫') {
         setDigits(prev => prev.slice(0, -1));
@@ -53,14 +57,10 @@ export function PinPad({onComplete, maxLength, error, disabled, testID, resetKey
 
       setDigits(prev => {
         if (prev.length >= maxLength) return prev;
-        const next = [...prev, String(key)];
-        if (next.length === maxLength) {
-          setPendingPin(next.join(''));
-        }
-        return next;
+        return [...prev, String(key)];
       });
     },
-    [disabled, maxLength, pendingPin],
+    [disabled, maxLength],
   );
 
   return (
@@ -96,7 +96,7 @@ export function PinPad({onComplete, maxLength, error, disabled, testID, resetKey
                   key={colIdx}
                   style={[styles.keyButton, isEmpty && styles.keyButtonHidden]}
                   onPress={() => !isEmpty && handleKey(key)}
-                  disabled={disabled || isEmpty || Boolean(pendingPin)}
+                  disabled={disabled || isEmpty}
                   activeOpacity={0.6}
                   accessibilityLabel={isBackspace ? 'Delete' : isEmpty ? undefined : `Key ${key}`}>
                   <Text style={styles.keyText}>{String(key)}</Text>
