@@ -75,8 +75,10 @@ describe('UnlockScreen', () => {
           const buttons = getAllByText(digit);
           fireEvent.press(buttons[0]);
         });
-        // Flush the setTimeout(0) inside PinPad that triggers onComplete
-        await new Promise(resolve => setTimeout(resolve, 10));
+      });
+      // Flush the setTimeout(200ms) inside PinPad that triggers onComplete + reset
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 500));
       });
     };
 
