@@ -3,10 +3,11 @@ import {sha512} from '@noble/hashes/sha2.js';
 
 /**
  * PBKDF2-HMAC-SHA512 iteration count.
- * 600,000 = OWASP 2024 recommendation for PBKDF2-SHA512.
- * 6-digit PIN = 1M combinations → iterations MUST be high.
+ * OWASP 2023: minimum 210,000 for SHA-512 (600,000 is for SHA-256).
+ * Pure JS on mobile (Hermes) is ~100x slower than native crypto.subtle.
+ * 210K SHA-512 on mobile ≈ 5-10s (acceptable for PIN setup, not per-unlock).
  */
-export const PIN_ITERATIONS = 600_000;
+export const PIN_ITERATIONS = 210_000;
 
 /** Output key length in bytes (SHA-512 output = 64 bytes) */
 const KEY_LENGTH = 64;
