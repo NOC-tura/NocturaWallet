@@ -13,6 +13,7 @@ export function SetPinScreen({onPinSet}: SetPinScreenProps) {
   const [firstPin, setFirstPin] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
   const onPinSetRef = useRef(onPinSet);
   onPinSetRef.current = onPinSet;
 
@@ -24,6 +25,7 @@ export function SetPinScreen({onPinSet}: SetPinScreenProps) {
     if (!isConfirmStep) {
       setFirstPin(pin);
       setError(null);
+      setResetKey(k => k + 1); // Reset PinPad for confirm step
     } else {
       if (pin === firstPin) {
         setSaving(true);
@@ -39,6 +41,7 @@ export function SetPinScreen({onPinSet}: SetPinScreenProps) {
       } else {
         setError("PINs don't match — try again");
         setFirstPin(null);
+        setResetKey(k => k + 1); // Reset PinPad for retry
       }
     }
   };
@@ -67,6 +70,7 @@ export function SetPinScreen({onPinSet}: SetPinScreenProps) {
         maxLength={6}
         onComplete={handlePinComplete}
         error={error}
+        resetKey={resetKey}
       />
     </View>
   );

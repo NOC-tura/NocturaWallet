@@ -1,4 +1,4 @@
-import React, {useState, useCallback} from 'react';
+import React, {useState, useCallback, useEffect, useRef} from 'react';
 import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
 
 interface PinPadProps {
@@ -7,9 +7,10 @@ interface PinPadProps {
   error?: string | null;
   disabled?: boolean;
   testID?: string;
+  /** Increment this to force reset the PIN input (e.g., after step change). */
+  resetKey?: number;
 }
 
-// Layout: [1,2,3], [4,5,6], [7,8,9], ['',0,'⌫']
 const KEYPAD_ROWS: (string | number)[][] = [
   [1, 2, 3],
   [4, 5, 6],
@@ -17,14 +18,15 @@ const KEYPAD_ROWS: (string | number)[][] = [
   ['', 0, '⌫'],
 ];
 
-/**
- * Custom numeric keypad for PIN entry.
- * Does NOT use system keyboard — prevents keylogger interception.
- * Tracks digits internally and calls onComplete when maxLength is reached.
- * Resets internal state after onComplete fires.
- */
-export function PinPad({onComplete, maxLength, error, disabled, testID}: PinPadProps) {
+export function PinPad({onComplete, maxLength, error, disabled, testID, resetKey}: PinPadProps) {
   const [digits, setDigits] = useState<string[]>([]);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
+  // Reset digits when resetKey changes (parent signals step change)
+  useEffect(() => {
+    setDigits([]);
+  }, [resetKey]);
 
   const handleKey = useCallback(
     (key: string | number) => {
@@ -40,26 +42,27 @@ export function PinPad({onComplete, maxLength, error, disabled, testID}: PinPadP
       const digit = String(key);
 
       setDigits(prev => {
+        if (prev.length >= maxLength) return prev; // Already full
         const next = [...prev, digit];
 
         if (next.length === maxLength) {
           const pinString = next.join('');
-          // Fire onComplete on next tick so the filled dots can render briefly
-          setTimeout(() => onComplete(pinString), 0);
-          return []; // Reset immediately for next entry
+          // Fire onComplete via ref on next tick so filled dots render briefly
+          setTimeout(() => {
+            onCompleteRef.current(pinString);
+          }, 100);
         }
 
         return next;
       });
     },
-    [disabled, maxLength, onComplete],
+    [disabled, maxLength],
   );
 
   const filledCount = digits.length;
 
   return (
     <View style={styles.container} testID={testID}>
-      {/* Dot indicators */}
       <View style={styles.dotsRow}>
         {Array.from({length: maxLength}).map((_, i) => {
           const filled = i < filledCount;
@@ -78,10 +81,8 @@ export function PinPad({onComplete, maxLength, error, disabled, testID}: PinPadP
         })}
       </View>
 
-      {/* Error message */}
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-      {/* Keypad */}
       <View style={styles.keypad}>
         {KEYPAD_ROWS.map((row, rowIdx) => (
           <View key={rowIdx} style={styles.row}>
