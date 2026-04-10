@@ -34,11 +34,13 @@
     "react-native-get-random-values": "^2.0.0",
     "react-native-keychain": "^10.0.0",
     "react-native-mmkv": "^4.3.0",
+    "react-native-nitro-modules": "^0.35.4",
     "react-native-reanimated": "^4.3.0",
     "react-native-safe-area-context": "^5.5.2",
     "react-native-screens": "^4.24.0",
     "react-native-ssl-pinning": "^1.6.0",
     "react-native-url-polyfill": "^3.0.0",
+    "react-native-worklets": "^0.8.1",
     "tailwind-merge": "^3.5.0",
     "text-encoding": "^0.7.0",
     "zustand": "^5.0.12"
