@@ -2,6 +2,20 @@ import Keychain from 'react-native-keychain';
 import {hashPin, verifyPin as verifyPinHash, generateSalt} from './pinManager';
 import {checkCooldown, recordFailedAttempt, resetAttempts} from './pinLockout';
 
+/** Convert Uint8Array to hex string without Buffer (not available in RN prod bundle). */
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Convert hex string to Uint8Array without Buffer. */
+function fromHex(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+  }
+  return bytes;
+}
+
 const SERVICE_SEED = 'noctura.seed';
 const SERVICE_VIEW_KEY = 'noctura.viewKey';
 const SERVICE_PIN_HASH = 'noctura.pinHash';
@@ -54,7 +68,7 @@ export class KeychainManager {
   }
 
   async storeViewKey(viewKey: Uint8Array): Promise<void> {
-    const hex = Buffer.from(viewKey).toString('hex');
+    const hex = toHex(viewKey);
     await Keychain.setGenericPassword('viewKey', hex, {
       ...KEYCHAIN_OPTIONS,
       service: SERVICE_VIEW_KEY,
@@ -64,7 +78,7 @@ export class KeychainManager {
   async retrieveViewKey(): Promise<Uint8Array> {
     const result = await Keychain.getGenericPassword({service: SERVICE_VIEW_KEY});
     if (!result) throw new Error('No view key found in keychain');
-    return new Uint8Array(Buffer.from(result.password, 'hex'));
+    return fromHex(result.password);
   }
 
   async wipeKeys(): Promise<void> {
@@ -87,12 +101,12 @@ export class KeychainManager {
 
     await Keychain.setGenericPassword(
       'pinSalt',
-      Buffer.from(salt).toString('hex'),
+      toHex(salt),
       {...KEYCHAIN_OPTIONS, service: SERVICE_PIN_SALT},
     );
     await Keychain.setGenericPassword(
       'pinHash',
-      Buffer.from(hash).toString('hex'),
+      toHex(hash),
       {...KEYCHAIN_OPTIONS, service: SERVICE_PIN_HASH},
     );
   }
@@ -121,8 +135,8 @@ export class KeychainManager {
 
     if (!saltResult || !hashResult) return false;
 
-    const salt = new Uint8Array(Buffer.from(saltResult.password, 'hex'));
-    const storedHash = new Uint8Array(Buffer.from(hashResult.password, 'hex'));
+    const salt = fromHex(saltResult.password);
+    const storedHash = fromHex(hashResult.password);
 
     const valid = await verifyPinHash(pin, salt, storedHash);
 
