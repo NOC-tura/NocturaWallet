@@ -1,5 +1,5 @@
-import React, {useState} from 'react';
-import {View, Text, StyleSheet} from 'react-native';
+import React, {useState, useRef} from 'react';
+import {View, Text, ActivityIndicator, StyleSheet, Alert} from 'react-native';
 import {PinPad} from '../../components/PinPad';
 import {KeychainManager} from '../../modules/keychain/keychainModule';
 
@@ -12,25 +12,45 @@ const keychainManager = new KeychainManager();
 export function SetPinScreen({onPinSet}: SetPinScreenProps) {
   const [firstPin, setFirstPin] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const onPinSetRef = useRef(onPinSet);
+  onPinSetRef.current = onPinSet;
 
   const isConfirmStep = firstPin !== null;
 
   const handlePinComplete = async (pin: string) => {
+    if (saving) return;
+
     if (!isConfirmStep) {
-      // Step 1: store the first entry
       setFirstPin(pin);
       setError(null);
     } else {
-      // Step 2: verify match
       if (pin === firstPin) {
-        await keychainManager.setupPin(pin);
-        onPinSet();
+        setSaving(true);
+        try {
+          await keychainManager.setupPin(pin);
+          onPinSetRef.current();
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Unknown error';
+          Alert.alert('Error', `Failed to save PIN: ${msg}`);
+          setFirstPin(null);
+          setSaving(false);
+        }
       } else {
         setError("PINs don't match — try again");
         setFirstPin(null);
       }
     }
   };
+
+  if (saving) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Securing your wallet...</Text>
+        <ActivityIndicator color="#6C47FF" size="large" style={styles.loader} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -71,5 +91,8 @@ const styles = StyleSheet.create({
     color: '#6C6C80',
     textAlign: 'center',
     marginBottom: 32,
+  },
+  loader: {
+    marginTop: 32,
   },
 });
