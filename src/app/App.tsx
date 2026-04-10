@@ -7,7 +7,6 @@ import {navigationRef} from './navigationRef';
 
 function AppContent() {
   const handleSessionExpired = useCallback(() => {
-    // Navigate to Unlock screen when session expires
     if (navigationRef.current?.isReady()) {
       navigationRef.current.reset({
         index: 0,

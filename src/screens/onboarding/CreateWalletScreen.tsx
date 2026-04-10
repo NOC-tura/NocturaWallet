@@ -1,4 +1,4 @@
-import React, {useEffect} from 'react';
+import React, {useEffect, useRef} from 'react';
 import {View, Text, ActivityIndicator, StyleSheet} from 'react-native';
 import {generateMnemonic} from '../../modules/keyDerivation/mnemonicUtils';
 
@@ -7,10 +7,16 @@ interface CreateWalletScreenProps {
 }
 
 export function CreateWalletScreen({onMnemonicGenerated}: CreateWalletScreenProps) {
+  const callbackRef = useRef(onMnemonicGenerated);
+  callbackRef.current = onMnemonicGenerated;
+  const calledRef = useRef(false);
+
   useEffect(() => {
+    if (calledRef.current) return; // Prevent double-fire (StrictMode)
+    calledRef.current = true;
     const mnemonic = generateMnemonic();
-    onMnemonicGenerated(mnemonic);
-  }, [onMnemonicGenerated]);
+    callbackRef.current(mnemonic);
+  }, []);
 
   return (
     <View style={styles.container}>
