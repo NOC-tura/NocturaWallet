@@ -7,7 +7,6 @@ interface PinPadProps {
   error?: string | null;
   disabled?: boolean;
   testID?: string;
-  /** Increment this to force reset the PIN input (e.g., after step change). */
   resetKey?: number;
 }
 
@@ -20,53 +19,55 @@ const KEYPAD_ROWS: (string | number)[][] = [
 
 export function PinPad({onComplete, maxLength, error, disabled, testID, resetKey}: PinPadProps) {
   const [digits, setDigits] = useState<string[]>([]);
+  const [pendingPin, setPendingPin] = useState<string | null>(null);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
 
-  // Reset digits when resetKey changes (parent signals step change)
+  // Reset when parent signals step change
   useEffect(() => {
     setDigits([]);
+    setPendingPin(null);
   }, [resetKey]);
+
+  // When PIN is complete: show filled dots briefly, then reset and fire callback
+  useEffect(() => {
+    if (!pendingPin) return;
+    const timer = setTimeout(() => {
+      const pin = pendingPin;
+      setDigits([]);
+      setPendingPin(null);
+      onCompleteRef.current(pin);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [pendingPin]);
 
   const handleKey = useCallback(
     (key: string | number) => {
-      if (disabled) return;
+      if (disabled || pendingPin) return;
 
       if (key === '⌫') {
         setDigits(prev => prev.slice(0, -1));
         return;
       }
-
       if (key === '') return;
 
-      const digit = String(key);
-
       setDigits(prev => {
-        if (prev.length >= maxLength) return prev; // Already full
-        const next = [...prev, digit];
-
+        if (prev.length >= maxLength) return prev;
+        const next = [...prev, String(key)];
         if (next.length === maxLength) {
-          const pinString = next.join('');
-          // Show filled dots briefly, then reset and fire callback
-          setTimeout(() => {
-            setDigits([]);
-            onCompleteRef.current(pinString);
-          }, 200);
+          setPendingPin(next.join(''));
         }
-
         return next;
       });
     },
-    [disabled, maxLength],
+    [disabled, maxLength, pendingPin],
   );
-
-  const filledCount = digits.length;
 
   return (
     <View style={styles.container} testID={testID}>
       <View style={styles.dotsRow}>
         {Array.from({length: maxLength}).map((_, i) => {
-          const filled = i < filledCount;
+          const filled = i < digits.length;
           const hasError = Boolean(error);
           return (
             <View
@@ -95,7 +96,7 @@ export function PinPad({onComplete, maxLength, error, disabled, testID, resetKey
                   key={colIdx}
                   style={[styles.keyButton, isEmpty && styles.keyButtonHidden]}
                   onPress={() => !isEmpty && handleKey(key)}
-                  disabled={disabled || isEmpty}
+                  disabled={disabled || isEmpty || Boolean(pendingPin)}
                   activeOpacity={0.6}
                   accessibilityLabel={isBackspace ? 'Delete' : isEmpty ? undefined : `Key ${key}`}>
                   <Text style={styles.keyText}>{String(key)}</Text>
@@ -110,59 +111,21 @@ export function PinPad({onComplete, maxLength, error, disabled, testID, resetKey
 }
 
 const styles = StyleSheet.create({
-  container: {
-    alignItems: 'center',
-    paddingVertical: 16,
-  },
-  dotsRow: {
-    flexDirection: 'row',
-    marginBottom: 12,
-    gap: 14,
-  },
+  container: {alignItems: 'center', paddingVertical: 16},
+  dotsRow: {flexDirection: 'row', marginBottom: 12, gap: 14},
   dot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.3)',
-    backgroundColor: 'transparent',
+    width: 14, height: 14, borderRadius: 7,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)', backgroundColor: 'transparent',
   },
-  dotFilled: {
-    backgroundColor: '#6C47FF',
-    borderColor: '#6C47FF',
-  },
-  dotError: {
-    backgroundColor: '#F87171',
-    borderColor: '#F87171',
-  },
-  errorText: {
-    fontSize: 13,
-    color: '#F87171',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  keypad: {
-    marginTop: 8,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
+  dotFilled: {backgroundColor: '#6C47FF', borderColor: '#6C47FF'},
+  dotError: {backgroundColor: '#F87171', borderColor: '#F87171'},
+  errorText: {fontSize: 13, color: '#F87171', marginBottom: 12, textAlign: 'center'},
+  keypad: {marginTop: 8},
+  row: {flexDirection: 'row', justifyContent: 'center'},
   keyButton: {
-    width: 80,
-    height: 80,
-    margin: 6,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 80, height: 80, margin: 6, borderRadius: 40,
+    backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center',
   },
-  keyButtonHidden: {
-    backgroundColor: 'transparent',
-  },
-  keyText: {
-    fontSize: 24,
-    fontWeight: '400',
-    color: '#FFFFFF',
-  },
+  keyButtonHidden: {backgroundColor: 'transparent'},
+  keyText: {fontSize: 24, fontWeight: '400', color: '#FFFFFF'},
 });
