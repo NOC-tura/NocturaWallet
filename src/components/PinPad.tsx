@@ -47,10 +47,11 @@ export function PinPad({onComplete, maxLength, error, disabled, testID, resetKey
 
         if (next.length === maxLength) {
           const pinString = next.join('');
-          // Fire onComplete via ref on next tick so filled dots render briefly
+          // Show filled dots briefly, then reset and fire callback
           setTimeout(() => {
+            setDigits([]);
             onCompleteRef.current(pinString);
-          }, 100);
+          }, 200);
         }
 
         return next;
