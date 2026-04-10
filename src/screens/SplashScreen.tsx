@@ -42,6 +42,10 @@ interface SplashScreenProps {
  */
 export function SplashScreen({onRouteResolved, onForceUpdate}: SplashScreenProps) {
   const [resolving, setResolving] = useState(true);
+  const onRouteResolvedRef = React.useRef(onRouteResolved);
+  const onForceUpdateRef = React.useRef(onForceUpdate);
+  onRouteResolvedRef.current = onRouteResolved;
+  onForceUpdateRef.current = onForceUpdate;
 
   useEffect(() => {
     const resolve = async () => {
@@ -55,7 +59,7 @@ export function SplashScreen({onRouteResolved, onForceUpdate}: SplashScreenProps
 
         if (versionResult.status === 'update_required') {
           mmkvPublic.set(MMKV_KEYS.APP_FORCE_UPDATE_REQUIRED, 'true');
-          onForceUpdate?.(versionResult);
+          onForceUpdateRef.current?.(versionResult);
           setResolving(false);
           return;
         }
@@ -65,7 +69,7 @@ export function SplashScreen({onRouteResolved, onForceUpdate}: SplashScreenProps
         // Previously flagged force update — re-check in case user updated
         const versionResult = await checkAppVersion();
         if (versionResult.status === 'update_required') {
-          onForceUpdate?.(versionResult);
+          onForceUpdateRef.current?.(versionResult);
           setResolving(false);
           return;
         }
@@ -75,13 +79,13 @@ export function SplashScreen({onRouteResolved, onForceUpdate}: SplashScreenProps
 
       const route = await resolveSplashRoute();
       setResolving(false);
-      onRouteResolved?.(route);
+      onRouteResolvedRef.current?.(route);
     };
 
     // Ensure minimum display for branding
     const timer = setTimeout(resolve, 500);
     return () => clearTimeout(timer);
-  }, [onRouteResolved, onForceUpdate]);
+  }, []); // Stable — callbacks accessed via refs
 
   return (
     <View style={styles.container}>
