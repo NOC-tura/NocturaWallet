@@ -29,15 +29,19 @@ export function SetPinScreen({onPinSet}: SetPinScreenProps) {
     } else {
       if (pin === firstPin) {
         setSaving(true);
-        try {
-          await keychainManager.setupPin(pin);
-          onPinSetRef.current();
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : 'Unknown error';
-          Alert.alert('Error', `Failed to save PIN: ${msg}`);
-          setFirstPin(null);
-          setSaving(false);
-        }
+        // Let React render the "Securing..." screen before starting heavy PBKDF2
+        setTimeout(async () => {
+          try {
+            await keychainManager.setupPin(pin);
+            onPinSetRef.current();
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : 'Unknown error';
+            Alert.alert('Error', `Failed to save PIN: ${msg}`);
+            setFirstPin(null);
+            setSaving(false);
+            setResetKey(k => k + 1);
+          }
+        }, 100);
       } else {
         setError("PINs don't match — try again");
         setFirstPin(null);
