@@ -51,23 +51,11 @@ export function consumePendingDeepLink(): string | null {
 export const deepLinkConfig: LinkingOptions<RootStackParamList> = {
   prefixes: ['noctura://', 'https://noc-tura.io', 'https://noc-tura.io/wallet'],
 
-  // Override getInitialURL to guard cold-start deep links
-  async getInitialURL(): Promise<string | null> {
-    const url = await Linking.getInitialURL();
-    return guardUrl(url);
-  },
-
-  // Override subscribe to guard runtime deep links
-  subscribe(listener: (url: string) => void) {
-    const subscription = Linking.addEventListener('url', ({url}) => {
-      const guarded = guardUrl(url);
-      if (guarded) {
-        listener(guarded);
-      }
-      // If guarded returned null, the URL is stored in MMKV for replay
-    });
-    return () => subscription.remove();
-  },
+  // NOTE: getInitialURL and subscribe overrides removed to prevent potential
+  // re-render loops with NavigationContainer. Auth guard is enforced by
+  // useSessionGuard in App.tsx instead. Deep link URLs pass through to
+  // React Navigation's default handler; unauthenticated users land on
+  // Splash → Unlock flow regardless of the deep link target.
 
   config: {
     screens: {
