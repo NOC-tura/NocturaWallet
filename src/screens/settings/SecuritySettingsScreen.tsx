@@ -83,7 +83,10 @@ export function SecuritySettingsScreen() {
       {/* ── Biometric ────────────────────────────────────────────────── */}
       <View style={styles.section}>
         <Text style={styles.sectionHeader}>Biometric Unlock</Text>
-        <View style={styles.row}>
+        <TouchableOpacity
+          style={styles.row}
+          activeOpacity={0.7}
+          onPress={() => setBiometricEnabled(!biometricEnabled)}>
           <Text style={styles.rowLabel}>Enable biometric authentication</Text>
           <Switch
             testID="biometric-toggle"
@@ -93,7 +96,7 @@ export function SecuritySettingsScreen() {
             trackColor={{false: '#333', true: '#6C47FF55'}}
             accessibilityLabel="Toggle biometric"
           />
-        </View>
+        </TouchableOpacity>
       </View>
 
       {/* ── Session Timeout ───────────────────────────────────────────── */}
