@@ -13,12 +13,13 @@ describe('PinPad', () => {
     }
   });
 
-  it('renders delete button (⌫)', () => {
-    const {getByText} = render(
+  it('renders delete button (Lucide Delete icon · a11y label "Delete")', () => {
+    const {getByLabelText} = render(
       <PinPad onComplete={jest.fn()} maxLength={6} />,
     );
-
-    expect(getByText('⌫')).toBeTruthy();
+    // Phase 3 PinKeypad replaced the "⌫" glyph with a Lucide Delete SVG icon.
+    // Query by accessibilityLabel which the Pressable wrapper sets to "Delete".
+    expect(getByLabelText('Delete')).toBeTruthy();
   });
 
   it("calls onComplete when maxLength digits entered (enter '123456' → onComplete('123456'))", async () => {

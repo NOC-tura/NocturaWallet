@@ -1,6 +1,19 @@
 import React from 'react';
 import {render, fireEvent, waitFor} from '@testing-library/react-native';
+import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {SuccessScreen} from '../SuccessScreen';
+
+function withSafeArea(node: React.ReactElement) {
+  return (
+    <SafeAreaProvider
+      initialMetrics={{
+        insets: {top: 0, bottom: 0, left: 0, right: 0},
+        frame: {x: 0, y: 0, width: 0, height: 0},
+      }}>
+      {node}
+    </SafeAreaProvider>
+  );
+}
 
 jest.setTimeout(30_000); // Key derivation + keychain mocks can be slow in full suite
 
@@ -53,27 +66,31 @@ describe('SuccessScreen', () => {
 
   it('shows "Wallet created" text', () => {
     const {getByText} = render(
-      <SuccessScreen mnemonic={TEST_MNEMONIC} onComplete={onComplete} />,
+      withSafeArea(<SuccessScreen mnemonic={TEST_MNEMONIC} onComplete={onComplete} />),
     );
     expect(getByText('Wallet created')).toBeTruthy();
   });
 
   it('shows "Open wallet" CTA', () => {
     const {getByText} = render(
-      <SuccessScreen mnemonic={TEST_MNEMONIC} onComplete={onComplete} />,
+      withSafeArea(<SuccessScreen mnemonic={TEST_MNEMONIC} onComplete={onComplete} />),
     );
     expect(getByText('Open wallet')).toBeTruthy();
   });
 
   it('on CTA press, calls onComplete after async operations', async () => {
-    const {getByText} = render(
-      <SuccessScreen mnemonic={TEST_MNEMONIC} onComplete={onComplete} />,
+    const {getByTestId} = render(
+      withSafeArea(<SuccessScreen mnemonic={TEST_MNEMONIC} onComplete={onComplete} />),
     );
-    // CTA is disabled until key derivation completes — wait for address to be derived
+    // CTA starts disabled (publicKeyBase58 null) and enables after async key
+    // derivation completes. Wait for the accessibilityState.disabled === false
+    // before pressing — fireEvent.press on a disabled Pressable is a no-op
+    // (Button primitive short-circuits onPress when disabled).
     await waitFor(() => {
-      const cta = getByText('Open wallet');
-      fireEvent.press(cta);
+      const cta = getByTestId('enter-wallet-button');
+      expect(cta.props.accessibilityState?.disabled).toBe(false);
     });
+    fireEvent.press(getByTestId('enter-wallet-button'));
     await waitFor(() => {
       expect(onComplete).toHaveBeenCalledTimes(1);
     });
