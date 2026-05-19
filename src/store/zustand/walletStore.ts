@@ -1,6 +1,6 @@
 import {create} from 'zustand';
 import {persist, createJSONStorage} from 'zustand/middleware';
-import {mmkvSecureStorage} from '../mmkv/secureAdapter';
+import {mmkvPublicStorage} from '../mmkv/publicAdapter';
 
 interface TokenMetadata {
   mint: string;
@@ -64,7 +64,15 @@ export const useWalletStore = create<WalletState>()(
     }),
     {
       name: 'noctura-wallet',
-      storage: createJSONStorage(() => mmkvSecureStorage),
+      // Persists to mmkvPublic — publicKey is a public Solana address (no
+      // privacy concern) and balances are queryable on any block explorer.
+      // The actually-sensitive material (seed, PIN hash, view key) lives in
+      // react-native-keychain (Android Keystore-backed). Earlier draft used
+      // mmkvSecureStorage but initSecureMmkv() was never wired anywhere, so
+      // all persist writes went to a dead queue and publicKey was lost on
+      // every cold start. Encrypted MMKV can be re-enabled later once a
+      // proper encryption-key derivation lands at app-unlock time.
+      storage: createJSONStorage(() => mmkvPublicStorage),
       partialize: ({pkShielded: _pkShielded, ...rest}) => rest,
     },
   ),

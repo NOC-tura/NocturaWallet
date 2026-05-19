@@ -1,7 +1,19 @@
 import React from 'react';
-import {View, Text, TouchableOpacity, StyleSheet, Linking} from 'react-native';
+import {View, Pressable, Linking} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
+import {ShieldCheck, ArrowRight} from 'lucide-react-native';
+import {Text, Button} from '../components/ui';
 import {mmkvPublic} from '../store/mmkv/instances';
 import {MMKV_KEYS} from '../constants/mmkvKeys';
+
+/**
+ * Privacy Mode explainer — modal shown the first time the user toggles to
+ * Shielded mode on the dashboard. Sets PRIVACY_EXPLAINER_SHOWN flag so it
+ * never fires again; subsequent toggles flip mode directly.
+ *
+ * Phase 3 chrome: ShieldCheck hero ring on mint tint, UI Button primitives,
+ * design tokens throughout.
+ */
 
 const PRIVACY_URL = 'https://noc-tura.io/privacy';
 
@@ -26,123 +38,71 @@ export function PrivacyExplainerScreen({onDismiss}: PrivacyExplainerScreenProps)
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.heading}>🔒 Privacy Mode</Text>
-
-      <View style={styles.bulletsContainer}>
-        {BULLETS.map((bullet, idx) => (
-          <View key={idx} style={styles.bulletRow}>
-            <Text style={styles.bulletDot}>•</Text>
-            <Text style={styles.bulletText}>{bullet}</Text>
+    <SafeAreaView
+      edges={['top', 'bottom', 'left', 'right']}
+      className="flex-1 bg-bg-base">
+      <View className="flex-1 px-6 justify-center">
+        {/* Hero ring · mint tint with ShieldCheck */}
+        <View className="items-center mb-8">
+          <View className="w-24 h-24 rounded-full bg-[rgba(91,227,194,0.14)] items-center justify-center">
+            <ShieldCheck size={44} color="#5BE3C2" strokeWidth={1.75} />
           </View>
-        ))}
+        </View>
+
+        {/* Title + body */}
+        <View className="items-center mb-7">
+          <Text variant="h1" className="text-center mb-2">
+            Privacy mode
+          </Text>
+          <Text variant="body" className="text-center text-fg-secondary max-w-sm">
+            Shielded sends use ZK proofs so your balance and history stay private.
+          </Text>
+        </View>
+
+        {/* Bullet list */}
+        <View className="gap-3 mb-6">
+          {BULLETS.map(bullet => (
+            <View key={bullet} className="flex-row items-start gap-3">
+              <View className="w-1.5 h-1.5 rounded-pill bg-accent-shielded mt-2" />
+              <Text variant="body" className="flex-1 text-fg-primary">
+                {bullet}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        {/* How it works card */}
+        <View className="bg-bg-surface-1 rounded-lg p-4 mb-8 border-l-2 border-l-accent-shielded">
+          <Text variant="overline" className="mb-2">
+            How it works
+          </Text>
+          <Text variant="body-sm" className="text-fg-secondary">
+            Your funds are protected using zero-knowledge cryptography — the
+            same tech used by leading privacy protocols.
+          </Text>
+        </View>
       </View>
 
-      <View style={styles.howItWorksCard}>
-        <Text style={styles.howItWorksLabel}>How it works:</Text>
-        <Text style={styles.howItWorksBody}>
-          Your funds are protected using zero-knowledge cryptography — the same
-          tech used by leading privacy protocols.
-        </Text>
+      {/* Sticky CTAs */}
+      <View className="px-6 pb-8 gap-3">
+        <Pressable
+          onPress={handleGotIt}
+          accessibilityRole="button"
+          accessibilityLabel="Got it"
+          testID="got-it-button"
+          className="min-h-touch-rec rounded-pill bg-accent-shielded items-center justify-center flex-row gap-2 active:opacity-90">
+          <Text variant="body-lg" className="font-geist-semibold text-bg-base">
+            Got it
+          </Text>
+          <ArrowRight size={18} color="#0A0A0A" strokeWidth={2} />
+        </Pressable>
+        <Button
+          label="Learn more"
+          variant="tertiary"
+          onPress={handleLearnMore}
+          testID="learn-more-button"
+        />
       </View>
-
-      <TouchableOpacity
-        testID="got-it-button"
-        style={styles.ctaButton}
-        onPress={handleGotIt}>
-        <Text style={styles.ctaButtonText}>Got it →</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        testID="learn-more-button"
-        style={styles.learnMoreButton}
-        onPress={handleLearnMore}>
-        <Text style={styles.learnMoreButtonText}>Learn more</Text>
-      </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0C0C14',
-    paddingHorizontal: 28,
-    paddingTop: 60,
-    paddingBottom: 40,
-    justifyContent: 'center',
-  },
-  heading: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    marginBottom: 36,
-  },
-  bulletsContainer: {
-    gap: 16,
-    marginBottom: 32,
-  },
-  bulletRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  bulletDot: {
-    fontSize: 20,
-    color: '#6C47FF',
-    lineHeight: 24,
-  },
-  bulletText: {
-    fontSize: 16,
-    color: '#FFFFFF',
-    lineHeight: 24,
-    flex: 1,
-    fontWeight: '500',
-  },
-  howItWorksCard: {
-    backgroundColor: '#1A1A2E',
-    borderRadius: 12,
-    padding: 18,
-    marginBottom: 40,
-    borderLeftWidth: 3,
-    borderLeftColor: '#6C47FF',
-  },
-  howItWorksLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#9999B3',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 8,
-  },
-  howItWorksBody: {
-    fontSize: 14,
-    color: '#C8C8E0',
-    lineHeight: 21,
-  },
-  ctaButton: {
-    backgroundColor: '#6C47FF',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  ctaButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  learnMoreButton: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(108,71,255,0.4)',
-  },
-  learnMoreButtonText: {
-    color: '#A78BFA',
-    fontSize: 15,
-    fontWeight: '500',
-  },
-});

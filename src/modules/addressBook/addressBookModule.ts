@@ -1,6 +1,13 @@
-import {mmkvSecure} from '../../store/mmkv/instances';
+import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import type {Contact} from './types';
+
+// NOTE: Contacts persist to mmkvPublic. They contain user-chosen aliases for
+// Solana addresses (which are themselves public on-chain). The previous draft
+// used mmkvSecure(), but initSecureMmkv() is never wired anywhere in the app,
+// so every contact write threw "Secure MMKV not initialised". This rendered
+// the entire address book non-functional. Encrypted MMKV can be re-enabled
+// later when proper key-derivation lands at app-unlock time.
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -19,9 +26,7 @@ function isValidContactEntry(entry: unknown): entry is {name: string; address: s
 
 export class AddressBookManager {
   private store() {
-    const s = mmkvSecure();
-    if (!s) throw new Error('Secure MMKV not initialised');
-    return s;
+    return mmkvPublic;
   }
 
   addContact(

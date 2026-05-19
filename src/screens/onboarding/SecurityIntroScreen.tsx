@@ -1,150 +1,147 @@
-import React, {useState} from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-} from 'react-native';
+import React from 'react';
+import {View, ScrollView, Pressable} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
+import {ArrowLeft, Key, Fingerprint, ShieldCheck} from 'lucide-react-native';
+import {Text, Button, Card} from '../../components/ui';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 
+/**
+ * #2 SecurityIntro — Phase B migration · mirror /home/user/Downloads/index.html §s2
+ *
+ * Single state · idle.
+ * Mode-agnostic. No FLAG_SECURE (no seed/PIN material on this screen).
+ *
+ * Layout (top → bottom):
+ *   Top bar
+ *     · Back arrow (left, 22 px)
+ *     · "Onboarding" eyebrow (center, .noc-overline)
+ *     · "1 / 5" step counter (right, .noc-body-sm + tabular numerals)
+ *   Scroll area
+ *     · Title (.noc-h1): "Three layers protect your wallet"
+ *     · Lede (.noc-body, --fg-secondary): "You hold the keys. We never can."
+ *     · 3 layer cards (Card primitive · bg-surface-1 · 22 px Lucide icon)
+ *         - Key icon · Local PIN
+ *         - Fingerprint icon · Biometric (optional)
+ *         - ShieldCheck icon · Recovery seed
+ *     · Footer disclaimer (.noc-caption, --fg-tertiary):
+ *       "If you lose all three, no one — not Noctura, not a Solana validator —
+ *        can recover your funds. That's the point."
+ *   Sticky bottom
+ *     · [Continue] primary CTA (56 dp · sets ONBOARDING_SECURITY_ACK on tap)
+ *
+ * Compliance: the design replaces the legacy checkbox-gated consent with an
+ * educational 3-layer + footer-disclaimer pattern. The user's continued tap on
+ * [Continue] still writes the ONBOARDING_SECURITY_ACK MMKV flag for App Store
+ * audit-trail parity — just without a separate checkbox UI element.
+ */
+
 interface SecurityIntroScreenProps {
   onContinue: () => void;
+  onBack?: () => void;
 }
 
-const WARNINGS = [
-  'If you lose your recovery phrase, you permanently lose access to your funds',
-  'Noctura never stores your private keys or recovery phrase',
-  'No one — not even Noctura — can recover your wallet for you',
-];
+interface LayerCardProps {
+  Icon: typeof Key;
+  title: string;
+  body: string;
+}
 
-export function SecurityIntroScreen({onContinue}: SecurityIntroScreenProps) {
-  const [acknowledged, setAcknowledged] = useState(false);
-
-  const handleCheckbox = () => {
-    const next = !acknowledged;
-    setAcknowledged(next);
-    if (next) {
-      mmkvPublic.set(MMKV_KEYS.ONBOARDING_SECURITY_ACK, 'true');
-    }
-  };
-
+function LayerCard({Icon, title, body}: LayerCardProps) {
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Your wallet, your responsibility</Text>
-
-      <View style={styles.warningsContainer}>
-        {WARNINGS.map((warning, index) => (
-          <View key={index} style={styles.warningRow}>
-            <Text style={styles.warningIcon}>❗</Text>
-            <Text style={styles.warningText}>{warning}</Text>
-          </View>
-        ))}
+    <Card surface="surface-1" padding="p-4" className="flex-row gap-4 mb-3">
+      <View className="w-11 h-11 items-center justify-center rounded-md bg-bg-surface-2">
+        <Icon size={22} color="#B084FC" strokeWidth={1.75} />
       </View>
-
-      <TouchableOpacity testID="security-ack-checkbox" style={styles.checkboxRow} onPress={handleCheckbox}>
-        <View style={[styles.checkbox, acknowledged && styles.checkboxChecked]}>
-          {acknowledged && <Text style={styles.checkmark}>✓</Text>}
-        </View>
-        <Text style={styles.checkboxLabel}>
-          I understand and accept responsibility for my wallet security
+      <View className="flex-1">
+        <Text variant="h3" className="mb-1">
+          {title}
         </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        testID="continue-button"
-        style={[styles.ctaButton, !acknowledged && styles.ctaButtonDisabled]}
-        onPress={acknowledged ? onContinue : undefined}
-        disabled={!acknowledged}
-        accessibilityState={{disabled: !acknowledged}}>
-        <Text style={styles.ctaButtonText}>Continue</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        <Text variant="body-sm" className="text-fg-secondary">
+          {body}
+        </Text>
+      </View>
+    </Card>
   );
 }
 
-const styles = StyleSheet.create({
-  scroll: {
-    flex: 1,
-    backgroundColor: '#0C0C14',
-  },
-  container: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 48,
-    paddingBottom: 40,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 32,
-    textAlign: 'center',
-  },
-  warningsContainer: {
-    marginBottom: 32,
-    gap: 16,
-  },
-  warningRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-  warningIcon: {
-    fontSize: 16,
-    marginTop: 1,
-  },
-  warningText: {
-    flex: 1,
-    fontSize: 15,
-    color: '#E0E0E8',
-    lineHeight: 22,
-  },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    marginBottom: 32,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: '#6C47FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 1,
-  },
-  checkboxChecked: {
-    backgroundColor: '#6C47FF',
-  },
-  checkmark: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  checkboxLabel: {
-    flex: 1,
-    fontSize: 14,
-    color: '#C0C0CC',
-    lineHeight: 20,
-  },
-  ctaButton: {
-    backgroundColor: '#6C47FF',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  ctaButtonDisabled: {
-    opacity: 0.5,
-  },
-  ctaButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-});
+export function SecurityIntroScreen({onContinue, onBack}: SecurityIntroScreenProps) {
+  const handleContinue = () => {
+    // Preserve App Store compliance audit trail: write the ack flag on Continue
+    // tap (replaces legacy checkbox-gated write — the disclaimer + Continue is
+    // the canonical pattern per wallet-ux + Phase 3 design).
+    mmkvPublic.set(MMKV_KEYS.ONBOARDING_SECURITY_ACK, 'true');
+    onContinue();
+  };
+
+  return (
+    <SafeAreaView
+      edges={['top', 'bottom', 'left', 'right']}
+      className="flex-1 bg-bg-base">
+      {/* Top bar — back arrow · eyebrow · step counter */}
+      <View className="flex-row items-center justify-between px-4 py-3 min-h-touch-min">
+        {onBack ? (
+          <Pressable
+            onPress={onBack}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            className="w-12 h-12 items-center justify-center -ml-2">
+            <ArrowLeft size={22} color="#A8ACB5" strokeWidth={1.75} />
+          </Pressable>
+        ) : (
+          <View className="w-12 h-12" />
+        )}
+        <Text variant="overline" className="text-fg-tertiary">
+          Onboarding
+        </Text>
+        <Text variant="body-sm" numeral className="text-fg-secondary w-12 text-right">
+          1 / 5
+        </Text>
+      </View>
+
+      {/* Scroll area — title · lede · 3 layer cards · disclaimer */}
+      <ScrollView
+        className="flex-1"
+        contentContainerClassName="px-6 pt-3 pb-6"
+        showsVerticalScrollIndicator={false}>
+        <Text variant="h1" className="mb-2">
+          Three layers protect your wallet
+        </Text>
+        <Text variant="body" className="text-fg-secondary mb-6">
+          You hold the keys. We never can.
+        </Text>
+
+        <LayerCard
+          Icon={Key}
+          title="Local PIN"
+          body="Six digits you choose. Required for every send and signature."
+        />
+        <LayerCard
+          Icon={Fingerprint}
+          title="Biometric (optional)"
+          body="Fingerprint as a shortcut. Your PIN still gates high-risk actions."
+        />
+        <LayerCard
+          Icon={ShieldCheck}
+          title="Recovery seed"
+          body="24 words. Written offline. The only way back if this device is lost."
+        />
+
+        <Text variant="caption" className="text-fg-tertiary mt-5">
+          If you lose all three, no one — not Noctura, not a Solana validator — can
+          recover your funds. That's the point.
+        </Text>
+      </ScrollView>
+
+      {/* Sticky bottom — Continue CTA */}
+      <View className="px-6 pb-8">
+        <Button
+          label="Continue"
+          variant="primary"
+          onPress={handleContinue}
+          testID="continue-button"
+        />
+      </View>
+    </SafeAreaView>
+  );
+}

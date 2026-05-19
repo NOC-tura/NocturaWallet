@@ -1,8 +1,20 @@
 export type RootStackParamList = {
   Splash: undefined;
   Unlock: {reason?: 'session_expired' | 'app_foreground' | 'manual_lock'};
+  UnlockSend: {
+    amount: string;
+    ticker: string;
+    recipient: string;
+    networkFee?: string;
+  };
   Onboarding: undefined;
   MainTabs: undefined;
+  SendModal: undefined; // Send flow as root-level modal (was tab)
+  ReceiveModal: undefined; // Receive as root-level modal (was tab)
+  ScanModal: undefined; // QR scanner (#14)
+  NotificationsModal: undefined; // Notifications inbox (#29)
+  AddressBookModal: undefined; // Saved contacts (#15)
+  ShieldUnshieldModal: {direction?: 'private' | 'public'}; // SOL ↔ vault (#16)
   TransactionHistory: undefined;
   ShieldedBalance: undefined;
   Deposit: {token?: string};
@@ -56,7 +68,7 @@ export type SettingsStackParamList = {
 
 export type MainTabsParamList = {
   HomeTab: undefined;
-  SendTab: undefined;
-  ReceiveTab: undefined;
-  SettingsTab: undefined;
+  PortfolioTab: undefined;
+  NftsTab: undefined;
+  ProfileTab: undefined;
 };

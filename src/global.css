@@ -1,3 +1,60 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Noctura Wallet · semantic .noc-* shortcut classes
+ *
+ * Mirror of design system classes from /home/user/Downloads/index.html
+ * (Phase 3 final state) so code can use the same class names the design
+ * uses — read class names directly from the HTML mockups.
+ *
+ * Each .noc-* class composes Tailwind atomic utilities via @apply, so the
+ * runtime cost is identical to writing utilities directly. Two paths are
+ * equivalent:
+ *   <Text className="noc-h1" />
+ *   <Text className="font-geist text-h1 text-fg-primary" />
+ *
+ * Geist + Geist Mono fonts ship in Phase A Task 2; until then, the
+ * fallback chain in tailwind.config.js fontFamily ensures the app
+ * remains functional with system fonts.
+ *
+ * Numeral / mono modifiers are additive — stack with balance classes:
+ *   <Text className="noc-balance-xl noc-numeral" />     // hero balance, tabular-aligned
+ *   <Text className="noc-mono noc-body-sm" />           // address, mono + tabular slashed-zero
+ *
+ * font-variant-numeric maps to React Native fontVariant prop via NativeWind v4
+ * (RN supports 'tabular-nums' and 'slashed-zero' fontVariant values natively).
+ */
+
+@layer components {
+  /* ── Type scale · semantic shortcuts (mirror index.html DS) ─────────────── */
+  .noc-display    { @apply font-geist text-display text-fg-primary; }
+  .noc-h1         { @apply font-geist text-h1 text-fg-primary; }
+  .noc-h1-compact { @apply font-geist text-h1-compact text-fg-primary; }  /* DS v0.2.1 */
+  .noc-h2         { @apply font-geist text-h2 text-fg-primary; }
+  .noc-h3         { @apply font-geist text-h3 text-fg-primary; }
+  .noc-body-lg    { @apply font-geist text-body-lg text-fg-primary; }
+  .noc-body       { @apply font-geist text-body text-fg-primary; }
+  .noc-body-sm    { @apply font-geist text-body-sm text-fg-primary; }
+  .noc-caption    { @apply font-geist text-caption text-fg-secondary; }
+  .noc-overline   { @apply font-geist text-overline text-fg-tertiary uppercase; }
+
+  /* ── Balance / financial tier (compose with .noc-numeral) ─────────────── */
+  .noc-balance-xl { @apply font-geist text-balance-xl text-fg-primary; }
+  .noc-balance-lg { @apply font-geist text-balance-lg text-fg-primary; }
+  .noc-balance-md { @apply font-geist text-balance-md text-fg-primary; }
+
+  /* ── Numeral / mono additive modifiers ─────────────────────────────────
+   * NativeWind v4 maps font-variant-numeric to RN fontVariant array.
+   * tabular-nums = vertical column alignment on financial values.
+   *
+   * NOTE on slashed-zero: RN's FontVariant type does NOT include slashed-zero
+   * (web-only CSS feature). Geist Mono's default '0' is non-slashed but
+   * monospace-distinct enough for address legibility. CSS keeps the rule for
+   * future web targets; on RN runtime only tabular-nums is applied.
+   * Reference: https://reactnative.dev/docs/text-style-props#fontvariant
+   */
+  .noc-numeral { font-variant-numeric: tabular-nums; }
+  .noc-mono    { @apply font-geist-mono; font-variant-numeric: tabular-nums; }
+}

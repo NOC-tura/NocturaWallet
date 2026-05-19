@@ -1,4 +1,4 @@
-import {initSecureMmkv, mmkvSecure} from '../../../store/mmkv/instances';
+import {mmkvPublic} from '../../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../../constants/mmkvKeys';
 import {AddressBookManager} from '../addressBookModule';
 
@@ -6,10 +6,10 @@ describe('AddressBookManager', () => {
   let manager: AddressBookManager;
 
   beforeEach(() => {
-    // Ensure a fresh secure store for each test
-    initSecureMmkv('test-key');
-    // Clear all data
-    mmkvSecure()!.clearAll();
+    // Address book persists to mmkvPublic (initSecureMmkv was never wired in
+    // production code, so the secure backend was dead and contacts couldn't
+    // be saved). Clear public store before each test.
+    mmkvPublic.clearAll();
     manager = new AddressBookManager();
   });
 
@@ -108,12 +108,11 @@ describe('AddressBookManager', () => {
       address: 'graceAddress',
       addressType: 'shielded',
     });
-    const store = mmkvSecure()!;
-    const keys = store.getAllKeys();
+    const keys = mmkvPublic.getAllKeys();
     const contactKey = MMKV_KEYS.ADDRESS_BOOK_PREFIX + contact.id;
     expect(keys).toContain(contactKey);
 
-    const raw = store.getString(contactKey);
+    const raw = mmkvPublic.getString(contactKey);
     expect(raw).toBeTruthy();
     const parsed = JSON.parse(raw!);
     expect(parsed.name).toBe('Grace');

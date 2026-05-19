@@ -50,6 +50,16 @@ import {DepositScreen} from '../screens/shielded/DepositScreen';
 import {ShieldedTransferScreen} from '../screens/shielded/ShieldedTransferScreen';
 import {WithdrawScreen} from '../screens/shielded/WithdrawScreen';
 import {AppUpdateModal} from '../components/AppUpdateModal';
+import {approveAuth, cancelAuth} from '../modules/session/pendingAuth';
+import {Home, PieChart, Grid3x3, User} from 'lucide-react-native';
+import {PortfolioScreen} from '../screens/portfolio/PortfolioScreen';
+import {NftsScreen} from '../screens/nfts/NftsScreen';
+import {NotificationsScreen} from '../screens/notifications/NotificationsScreen';
+import {ScanScreen} from '../screens/scan/ScanScreen';
+import {AddressBookScreen} from '../screens/addressBook/AddressBookScreen';
+import {selectContact, cancelContactSelection} from '../modules/session/pendingContactSelect';
+import {ShieldUnshieldScreen} from '../screens/shielded/ShieldUnshieldScreen';
+import {Alert} from 'react-native';
 
 // Wrapper components that wire screens to navigation
 function SplashScreenNav() {
@@ -73,6 +83,34 @@ function UnlockScreenNav() {
     <UnlockScreen
       onUnlock={() => navigation.replace('MainTabs')}
       onRestore={() => navigation.replace('Onboarding')}
+    />
+  );
+}
+
+function UnlockSendScreenNav() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute();
+  const raw = (route.params ?? {}) as Record<string, unknown>;
+  const amount = typeof raw.amount === 'string' ? raw.amount : '0';
+  const ticker = typeof raw.ticker === 'string' ? raw.ticker : 'SOL';
+  const recipient = typeof raw.recipient === 'string' ? raw.recipient : '';
+  const networkFee = typeof raw.networkFee === 'string' ? raw.networkFee : undefined;
+
+  return (
+    <UnlockScreen
+      onUnlock={() => {
+        approveAuth();
+        navigation.goBack();
+      }}
+      onCancel={() => {
+        cancelAuth();
+        navigation.goBack();
+      }}
+      onRestore={() => {
+        cancelAuth();
+        navigation.replace('Onboarding');
+      }}
+      sendIntent={{amount, ticker, recipient, networkFee}}
     />
   );
 }
@@ -103,6 +141,7 @@ function SecurityIntroScreenNav() {
       onContinue={() =>
         navigation.navigate(isImport ? 'ImportSeed' : 'CreateWallet')
       }
+      onBack={navigation.canGoBack() ? () => navigation.goBack() : undefined}
     />
   );
 }
@@ -139,6 +178,7 @@ function ConfirmSeedScreenNav() {
       mnemonic={mnemonic ?? ''}
       onSuccess={() => navigation.navigate('SyncWallet')}
       onBackToSeed={() => navigation.navigate('SeedPhrase')}
+      onBack={navigation.canGoBack() ? () => navigation.goBack() : undefined}
     />
   );
 }
@@ -152,6 +192,7 @@ function ImportSeedScreenNav() {
         setMnemonic(mnemonic);
         navigation.navigate('SyncWallet');
       }}
+      onBack={navigation.canGoBack() ? () => navigation.goBack() : undefined}
     />
   );
 }
@@ -169,7 +210,12 @@ function SyncWalletScreenNav() {
 
 function SetPinScreenNav() {
   const navigation = useNavigation<NativeStackNavigationProp<OnboardingStackParamList>>();
-  return <SetPinScreen onPinSet={() => navigation.navigate('BiometricSetup')} />;
+  return (
+    <SetPinScreen
+      onPinSet={() => navigation.navigate('BiometricSetup')}
+      onBack={navigation.canGoBack() ? () => navigation.goBack() : undefined}
+    />
+  );
 }
 
 function BiometricSetupScreenNav() {
@@ -178,6 +224,7 @@ function BiometricSetupScreenNav() {
     <BiometricSetupScreen
       onEnable={() => navigation.navigate('Success')}
       onSkip={() => navigation.navigate('Success')}
+      onBack={navigation.canGoBack() ? () => navigation.goBack() : undefined}
     />
   );
 }
@@ -210,10 +257,68 @@ function PresaleScreenOnboarding() {
 }
 
 function DashboardScreenNav() {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const dashNav = useNavigation<NativeStackNavigationProp<DashboardStackParamList>>();
+  const tabNav = useNavigation();
   return (
     <DashboardScreen
-      onFirstShieldedToggle={() => navigation.navigate('PrivacyExplainer')}
+      onSend={() => rootNav.navigate('SendModal')}
+      onReceive={() => rootNav.navigate('ReceiveModal')}
+      onShield={() => rootNav.navigate('ShieldUnshieldModal', {direction: 'private'})}
+      onBuy={() => dashNav.navigate('Presale')}
+      onScan={() => rootNav.navigate('ScanModal')}
+      onNotifications={() => rootNav.navigate('NotificationsModal')}
+      onProfileTap={() => tabNav.getParent()?.navigate('ProfileTab' as never)}
+      onPresale={() => dashNav.navigate('Presale')}
+      onFirstShieldedToggle={() => rootNav.navigate('PrivacyExplainer')}
+    />
+  );
+}
+
+function ScanScreenNav() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  return <ScanScreen onBack={() => navigation.goBack()} />;
+}
+
+function NotificationsScreenNav() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  return <NotificationsScreen onBack={() => navigation.goBack()} />;
+}
+
+function ShieldUnshieldScreenNav() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute();
+  const raw = (route.params ?? {}) as Record<string, unknown>;
+  const direction = raw.direction === 'public' ? 'public' : 'private';
+  return (
+    <ShieldUnshieldScreen
+      onBack={() => navigation.goBack()}
+      initialDirection={direction}
+    />
+  );
+}
+
+function AddressBookScreenNav() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  return (
+    <AddressBookScreen
+      onBack={() => {
+        // Cancel any pending contact selection on backwards dismiss
+        cancelContactSelection();
+        navigation.goBack();
+      }}
+      onSelect={contact => {
+        selectContact(contact);
+        navigation.goBack();
+      }}
+      onAddContact={() => {
+        // Add-contact sheet is deferred per design baseline — show guidance.
+        Alert.alert(
+          'Add contact',
+          'Contact creation flow is coming. For now, send to an address — Noctura will offer to save it after the transaction confirms.',
+          [{text: 'OK'}],
+        );
+      }}
     />
   );
 }
@@ -224,7 +329,22 @@ function StakingScreenNav() {
 
 function ReceiveScreenNav() {
   const publicKey = useWalletStore().publicKey;
-  return <ReceiveScreen address={publicKey ?? ''} />;
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  // Defense-in-depth: fall back to mmkvPublic if walletStore hasn't hydrated
+  // the publicKey yet (e.g., cold launch into Receive deeplink before zustand
+  // rehydrate completes).
+  const fallback =
+    publicKey ??
+    require('../store/mmkv/instances').mmkvPublic.getString(
+      require('../constants/mmkvKeys').MMKV_KEYS.WALLET_PUBLIC_KEY,
+    ) ??
+    '';
+  return (
+    <ReceiveScreen
+      address={fallback}
+      onBack={() => navigation.goBack()}
+    />
+  );
 }
 
 function PresaleScreenDashboard() {
@@ -246,17 +366,20 @@ function PrivacyExplainerScreenNav() {
 
 function SendScreenNav() {
   const navigation = useNavigation<NativeStackNavigationProp<SendStackParamList>>();
+  const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   return (
     <SendScreenImpl
       onTransactionSent={params => {
         navigation.navigate('TransactionStatus', params);
       }}
+      onBack={() => rootNav.goBack()}
     />
   );
 }
 
 function TransactionStatusScreenNav() {
   const route = useRoute();
+  const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const navigation = useNavigation();
   const raw = (route.params ?? {}) as Record<string, unknown>;
   const signature = typeof raw.signature === 'string' ? raw.signature : '';
@@ -269,7 +392,12 @@ function TransactionStatusScreenNav() {
       amount={amount}
       recipient={recipient}
       token={token}
-      onDashboard={() => navigation.getParent()?.navigate('HomeTab')}
+      onDashboard={() => {
+        // Dismiss SendModal stack then ensure Home tab is active. Passing
+        // {screen: 'HomeTab'} prevents landing on whichever tab was last
+        // selected before the user opened Send.
+        rootNav.navigate('MainTabs', {screen: 'HomeTab'} as never);
+      }}
       onRetry={() => navigation.goBack()}
     />
   );
@@ -280,14 +408,12 @@ function TransactionHistoryScreenNav() {
   return (
     <TransactionHistoryScreenImpl
       onSelectTx={(signature: string) => {
-        // Dismiss the modal first, then navigate into SendTab > TransactionDetail
+        // Dismiss the modal first, then navigate into SendModal > TransactionDetail
         navigation.goBack();
-        // Use setTimeout to let the modal dismiss animation complete before
-        // navigating into the nested stack (avoids navigation race)
         setTimeout(() => {
-          navigation.navigate('MainTabs', {
-            screen: 'SendTab',
-            params: {screen: 'TransactionDetail', params: {signature}},
+          navigation.navigate('SendModal', {
+            screen: 'TransactionDetail',
+            params: {signature},
           } as never);
         }, 100);
       }}
@@ -414,7 +540,13 @@ function SettingsStack() {
   );
 }
 
-// Main Tabs (4 tabs)
+// Main Tabs (4 tabs) · Phase 3 chrome · per /home/user/Downloads/index.html §s11
+// Design baseline: Home · Portfolio · NFTs · Profile (NOT Home/Send/Receive/Settings).
+// Send and Receive are now root-level modal routes triggered from Dashboard quick
+// actions, not bottom-tab destinations. Settings lives inside ProfileTab.
+//
+// Visual: 80dp bar, bg-base background, bg-surface-2 hairline border-top,
+// fg-tertiary inactive, accent-transparent (violet) active, 11px Geist labels.
 const Tabs = createBottomTabNavigator<MainTabsParamList>();
 function MainTabs() {
   return (
@@ -422,17 +554,52 @@ function MainTabs() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#0C0C14',
-          borderTopColor: 'rgba(255,255,255,0.06)',
+          backgroundColor: '#0A0A0A',
+          borderTopColor: '#17171A',
+          borderTopWidth: 1,
           height: 80,
+          paddingTop: 6,
+          paddingBottom: 12,
         },
-        tabBarActiveTintColor: '#6C47FF',
-        tabBarInactiveTintColor: 'rgba(255,255,255,0.35)',
+        tabBarActiveTintColor: '#B084FC',
+        tabBarInactiveTintColor: '#6E727A',
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '500',
+        },
       }}>
-      <Tabs.Screen name="HomeTab" component={DashboardStack} options={{title: 'Home'}} />
-      <Tabs.Screen name="SendTab" component={SendStack} options={{title: 'Send'}} />
-      <Tabs.Screen name="ReceiveTab" component={ReceiveScreenNav} options={{title: 'Receive'}} />
-      <Tabs.Screen name="SettingsTab" component={SettingsStack} options={{title: 'Settings'}} />
+      <Tabs.Screen
+        name="HomeTab"
+        component={DashboardStack}
+        options={{
+          title: 'Home',
+          tabBarIcon: ({color}) => <Home size={22} color={color} strokeWidth={1.75} />,
+        }}
+      />
+      <Tabs.Screen
+        name="PortfolioTab"
+        component={PortfolioScreen}
+        options={{
+          title: 'Portfolio',
+          tabBarIcon: ({color}) => <PieChart size={22} color={color} strokeWidth={1.75} />,
+        }}
+      />
+      <Tabs.Screen
+        name="NftsTab"
+        component={NftsScreen}
+        options={{
+          title: 'NFTs',
+          tabBarIcon: ({color}) => <Grid3x3 size={22} color={color} strokeWidth={1.75} />,
+        }}
+      />
+      <Tabs.Screen
+        name="ProfileTab"
+        component={SettingsStack}
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({color}) => <User size={22} color={color} strokeWidth={1.75} />,
+        }}
+      />
     </Tabs.Navigator>
   );
 }
@@ -444,8 +611,15 @@ export function RootNavigator() {
     <RootNav.Navigator screenOptions={defaultScreenOptions}>
       <RootNav.Screen name="Splash" component={SplashScreenNav} />
       <RootNav.Screen name="Unlock" component={UnlockScreenNav} />
+      <RootNav.Screen name="UnlockSend" component={UnlockSendScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="Onboarding" component={OnboardingStack} />
       <RootNav.Screen name="MainTabs" component={MainTabs} />
+      <RootNav.Screen name="SendModal" component={SendStack} options={modalScreenOptions} />
+      <RootNav.Screen name="ReceiveModal" component={ReceiveScreenNav} options={modalScreenOptions} />
+      <RootNav.Screen name="ScanModal" component={ScanScreenNav} options={modalScreenOptions} />
+      <RootNav.Screen name="NotificationsModal" component={NotificationsScreenNav} options={modalScreenOptions} />
+      <RootNav.Screen name="AddressBookModal" component={AddressBookScreenNav} options={modalScreenOptions} />
+      <RootNav.Screen name="ShieldUnshieldModal" component={ShieldUnshieldScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="TransactionHistory" component={TransactionHistoryScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="ShieldedBalance" component={ShieldedBalanceScreen} options={modalScreenOptions} />
       <RootNav.Screen name="Deposit" component={DepositScreen} options={modalWithCloseOptions} />

@@ -20,6 +20,7 @@ const SERVICE_SEED = 'noctura.seed';
 const SERVICE_VIEW_KEY = 'noctura.viewKey';
 const SERVICE_PIN_HASH = 'noctura.pinHash';
 const SERVICE_PIN_SALT = 'noctura.pinSalt';
+const SERVICE_BIOMETRIC_TEST = 'noctura.biometricTest';
 
 const KEYCHAIN_OPTIONS = {
   accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
@@ -65,6 +66,46 @@ export class KeychainManager {
   async hasWallet(): Promise<boolean> {
     const result = await Keychain.getGenericPassword({service: SERVICE_SEED});
     return result !== false;
+  }
+
+  /**
+   * Trigger native BiometricPrompt as a verification step during onboarding,
+   * BEFORE the actual seed is stored. Used by BiometricSetupScreen so the user
+   * confirms biometry works on their device. The seed itself is stored later
+   * by SuccessScreen under BIOMETRY_ANY_OR_DEVICE_PASSCODE access control.
+   *
+   * Flow:
+   *   1. Write a sentinel value with biometric access control
+   *   2. Immediately retrieve it — this fires the native BiometricPrompt
+   *   3. Clean up the sentinel regardless of outcome
+   *
+   * Returns true on auth success, false on user cancel / sensor failure / lockout.
+   */
+  async testBiometric(): Promise<boolean> {
+    try {
+      await Keychain.setGenericPassword('biometric-test', 'ok', {
+        ...KEYCHAIN_OPTIONS,
+        service: SERVICE_BIOMETRIC_TEST,
+        accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_ANY_OR_DEVICE_PASSCODE,
+      });
+      const result = await Keychain.getGenericPassword({
+        service: SERVICE_BIOMETRIC_TEST,
+        authenticationPrompt: {
+          title: 'Confirm fingerprint',
+          subtitle: 'Touch the sensor to enable biometric unlock',
+          cancel: 'Cancel',
+        },
+      });
+      return result !== false;
+    } catch {
+      return false;
+    } finally {
+      try {
+        await Keychain.resetGenericPassword({service: SERVICE_BIOMETRIC_TEST});
+      } catch {
+        // best-effort cleanup
+      }
+    }
   }
 
   async storeViewKey(viewKey: Uint8Array): Promise<void> {
