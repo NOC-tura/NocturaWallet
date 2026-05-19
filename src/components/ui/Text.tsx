@@ -1,5 +1,5 @@
 import React from 'react';
-import {Text as RNText, TextProps as RNTextProps} from 'react-native';
+import {Text as RNText, TextProps as RNTextProps, StyleProp, TextStyle} from 'react-native';
 import {cn} from '../../utils/cn';
 
 /**
@@ -48,7 +48,7 @@ const VARIANT_CLASSES: Record<TextVariant, string> = {
   'balance-md':  'font-geist text-balance-md text-fg-primary',
 };
 
-interface TextProps extends Omit<RNTextProps, 'style'> {
+interface TextProps extends RNTextProps {
   variant?: TextVariant;
   /**
    * Apply `font-variant-numeric: tabular-nums` for vertical column alignment.
@@ -93,6 +93,7 @@ export function Text({
   numeral = false,
   mono = false,
   className,
+  style,
   ...rest
 }: TextProps) {
   // mono overrides variant's font-family; build class chain accordingly
@@ -101,11 +102,12 @@ export function Text({
   const merged = cn(variantClass, monoClass, className);
   const fontVariant = fontVariantFor(numeral, mono);
 
-  return (
-    <RNText
-      className={merged}
-      style={fontVariant ? {fontVariant} : undefined}
-      {...rest}
-    />
-  );
+  // Merge fontVariant (numeral/mono modifiers) with caller-provided style.
+  // Caller's style wins for overlapping properties — variant gives the default,
+  // style can override for one-off cases (e.g. monogram logo letterSpacing).
+  const mergedStyle: StyleProp<TextStyle> = fontVariant
+    ? [{fontVariant}, style as StyleProp<TextStyle>]
+    : (style as StyleProp<TextStyle>);
+
+  return <RNText className={merged} style={mergedStyle} {...rest} />;
 }

@@ -51,25 +51,29 @@ describe('SuccessScreen', () => {
     jest.clearAllMocks();
   });
 
-  it('shows "Wallet created!" text', () => {
+  it('shows "Wallet created" text', () => {
     const {getByText} = render(
       <SuccessScreen mnemonic={TEST_MNEMONIC} onComplete={onComplete} />,
     );
-    expect(getByText('Wallet created!')).toBeTruthy();
+    expect(getByText('Wallet created')).toBeTruthy();
   });
 
-  it('shows "Enter wallet" CTA', () => {
+  it('shows "Open wallet" CTA', () => {
     const {getByText} = render(
       <SuccessScreen mnemonic={TEST_MNEMONIC} onComplete={onComplete} />,
     );
-    expect(getByText('Enter wallet')).toBeTruthy();
+    expect(getByText('Open wallet')).toBeTruthy();
   });
 
   it('on CTA press, calls onComplete after async operations', async () => {
     const {getByText} = render(
       <SuccessScreen mnemonic={TEST_MNEMONIC} onComplete={onComplete} />,
     );
-    fireEvent.press(getByText('Enter wallet'));
+    // CTA is disabled until key derivation completes — wait for address to be derived
+    await waitFor(() => {
+      const cta = getByText('Open wallet');
+      fireEvent.press(cta);
+    });
     await waitFor(() => {
       expect(onComplete).toHaveBeenCalledTimes(1);
     });

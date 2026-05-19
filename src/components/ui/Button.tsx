@@ -46,7 +46,9 @@ interface ButtonProps extends Omit<PressableProps, 'children' | 'style'> {
   className?: string;
 }
 
-const HEIGHT_CLASS = 'h-touch-rec'; // 56 dp
+// Use min-h-touch-rec because tailwind.config.js declares minHeight (not height)
+// for touch tokens. Buttons can grow taller for long labels but never below 56 dp.
+const HEIGHT_CLASS = 'min-h-touch-rec'; // 56 dp minimum
 
 function variantClasses(
   variant: ButtonVariant,
