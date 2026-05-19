@@ -185,13 +185,17 @@ export function ReceiveScreen({address, onBack}: ReceiveScreenProps) {
       className="flex-1 bg-bg-base">
       {/* Top bar */}
       <View className="flex-row items-center px-4 py-3 min-h-touch-min">
-        <Pressable
-          onPress={onBack}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          className="w-12 h-12 items-center justify-center -ml-2">
-          <ArrowLeft size={22} color="#A8ACB5" strokeWidth={1.75} />
-        </Pressable>
+        {onBack ? (
+          <Pressable
+            onPress={onBack}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            className="w-12 h-12 items-center justify-center -ml-2">
+            <ArrowLeft size={22} color="#A8ACB5" strokeWidth={1.75} />
+          </Pressable>
+        ) : (
+          <View className="w-12 h-12 -ml-2" />
+        )}
         <Text variant="h1" className="ml-1 flex-1">
           Receive
         </Text>

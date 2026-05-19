@@ -29,18 +29,23 @@ const NativeScreenSecurity = NativeModules.NocturaScreenSecurity as
  *
  * ════════════════════════════════════════════════════════════════════════════
  */
-const DEV_DISABLE_SECURE_SCREEN = true;
+// Hard-gated to __DEV__ — production builds (where __DEV__ is false at compile
+// time via dead-code elimination) ALWAYS enforce FLAG_SECURE. The escape hatch
+// is purely for dev builds where screenshots help iterate on sensitive surfaces.
+//
+// Defense-in-depth: the constant + __DEV__ guard means even a misconfigured
+// debug-flavor production build can't silently disable screenshot blocking
+// (release bundles strip __DEV__ branches entirely).
+const DEV_DISABLE_SECURE_SCREEN = __DEV__;
 
 export class ScreenSecurityManager {
   async enableSecureScreen(): Promise<void> {
     if (DEV_DISABLE_SECURE_SCREEN) {
       // Dev escape hatch · log so it's visible in Metro logs during development
-      if (__DEV__) {
-        console.warn(
-          '[ScreenSecurityManager] DEV_DISABLE_SECURE_SCREEN is true · FLAG_SECURE NOT applied · ' +
-            'screenshots ALLOWED on sensitive surfaces. Flip to false before production.',
-        );
-      }
+      console.warn(
+        '[ScreenSecurityManager] __DEV__ build · FLAG_SECURE NOT applied · ' +
+          'screenshots ALLOWED on sensitive surfaces. Production builds always enforce.',
+      );
       return;
     }
     if (Platform.OS === 'android' && NativeScreenSecurity) {

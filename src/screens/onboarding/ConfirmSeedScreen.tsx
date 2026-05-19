@@ -2,8 +2,8 @@ import React, {useEffect, useRef, useState, useCallback} from 'react';
 import {View, ScrollView, Pressable, Animated, Vibration} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {wordlist} from '@scure/bip39/wordlists/english.js';
-import {ArrowLeft, ShieldCheck, AlertCircle, Check} from 'lucide-react-native';
-import {Text, Button, Card} from '../../components/ui';
+import {ArrowLeft, AlertCircle, Check} from 'lucide-react-native';
+import {Text, Button} from '../../components/ui';
 import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
@@ -42,7 +42,6 @@ type ConfirmState = 'empty' | 'partial' | 'wrong' | 'success';
 const SLOT_COUNT = 3;
 const POOL_SIZE = 9;
 const DISTRACTOR_COUNT = POOL_SIZE - SLOT_COUNT; // 6
-const SHAKE_DURATION_MS = 320;
 const AUTO_RESET_MS = 700;
 const MAX_FAILURES = 3;
 

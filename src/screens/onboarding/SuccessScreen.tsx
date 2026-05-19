@@ -336,7 +336,7 @@ export function SuccessScreen({mnemonic, onComplete}: SuccessScreenProps) {
           variant="primary"
           onPress={handleOpenWallet}
           loading={persisting}
-          disabled={!publicKeyBase58 && !deriveError}
+          disabled={!publicKeyBase58}
           testID="enter-wallet-button"
         />
       </View>

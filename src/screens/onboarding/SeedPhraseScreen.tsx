@@ -76,12 +76,17 @@ export function SeedPhraseScreen({mnemonic, onConfirm}: SeedPhraseScreenProps) {
   // FLAG_SECURE lifecycle — engage at modal mount (BEFORE seed grid renders)
   // so there's no flash-frame between modal dismiss and seed mount that could
   // be screenshot-able. Per Round 2a F-block contract.
+  //
+  // clearTimers is stable (useCallback with empty deps), so reading it via
+  // ref-free closure here is safe — but ESLint's exhaustive-deps doesn't see
+  // through useCallback identity guarantees, hence the disable.
   useEffect(() => {
     securityManager.enableSecureScreen();
     return () => {
       securityManager.disableSecureScreen();
       clearTimers();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const clearTimers = useCallback(() => {

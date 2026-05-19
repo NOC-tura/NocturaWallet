@@ -393,8 +393,10 @@ function TransactionStatusScreenNav() {
       recipient={recipient}
       token={token}
       onDashboard={() => {
-        // Dismiss SendModal stack then ensure Home tab is active
-        rootNav.navigate('MainTabs');
+        // Dismiss SendModal stack then ensure Home tab is active. Passing
+        // {screen: 'HomeTab'} prevents landing on whichever tab was last
+        // selected before the user opened Send.
+        rootNav.navigate('MainTabs', {screen: 'HomeTab'} as never);
       }}
       onRetry={() => navigation.goBack()}
     />

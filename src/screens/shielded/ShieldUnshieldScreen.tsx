@@ -61,6 +61,18 @@ function formatNumber(n: number, decimals = 4): string {
   });
 }
 
+/**
+ * Plain ungrouped string for TextInput state — `parseFloat` stops at the
+ * thousands separator, so values like "1,234.5" parse as 1 instead of 1234.5,
+ * silently breaking validation + netReceived math. Use `formatNumber()` only
+ * for display labels (Available balance, fiat estimate, summary line).
+ */
+function toInputString(n: number, decimals = 4): string {
+  if (!Number.isFinite(n) || n === 0) return '0';
+  // Trim trailing zeros for cleaner UX, but keep at least one decimal if rounding
+  return n.toFixed(decimals).replace(/\.?0+$/, '');
+}
+
 function parseAmount(s: string): number {
   const n = parseFloat(s);
   return Number.isFinite(n) ? n : 0;
@@ -99,7 +111,9 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
 
   const handleMax = useCallback(() => {
     if (sourceBalance <= 0) return;
-    setAmount(formatNumber(Math.max(0, sourceBalance - parseFloat(TOTAL_FEE_SOL)), 4));
+    // Use ungrouped numeric string — `formatNumber` adds thousands separators
+    // which parseFloat then stops at, breaking downstream validation.
+    setAmount(toInputString(Math.max(0, sourceBalance - parseFloat(TOTAL_FEE_SOL)), 4));
   }, [sourceBalance]);
 
   const handleSwitchDirection = useCallback((d: Direction) => {
