@@ -20,21 +20,24 @@ export const deepLinkConfig: LinkingOptions<RootStackParamList> = {
               Referral: 'referral',
             },
           },
-          SendTab: {
-            screens: {
-              Send: {
-                path: 'pay',
-                parse: {
-                  to: (to: string) => to,
-                  amount: (amount: string) => amount,
-                  token: (token: string) => token,
-                },
-              },
-            },
-          },
-          ReceiveTab: 'receive',
+          PortfolioTab: 'portfolio',
+          NftsTab: 'nfts',
+          ProfileTab: 'profile',
         },
       },
+      SendModal: {
+        screens: {
+          Send: {
+            path: 'pay',
+            parse: {
+              to: (to: string) => to,
+              amount: (amount: string) => amount,
+              token: (token: string) => token,
+            },
+          },
+        },
+      },
+      ReceiveModal: 'receive',
       Deposit: 'deposit',
       ShieldedTransfer: 'transfer',
       Withdraw: 'withdraw',

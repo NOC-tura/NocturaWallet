@@ -24,5 +24,5 @@ export const NOTIFICATION_ROUTES: Record<NotificationType, string> = {
   incoming_tx: 'MainTabs',
   staking_reward: 'Staking',
   tx_confirmed: 'TransactionHistory',
-  security_alert: 'SettingsTab',
+  security_alert: 'ProfileTab',
 };

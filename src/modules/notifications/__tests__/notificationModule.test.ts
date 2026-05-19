@@ -130,13 +130,13 @@ describe('NotificationManager', () => {
     setNavigationRef(null);
   });
 
-  it('handleNotification routes security_alert to SettingsTab', () => {
+  it('handleNotification routes security_alert to ProfileTab', () => {
     const mockNavigate = jest.fn();
     setNavigationRef({navigate: mockNavigate});
 
     manager.handleNotification({type: 'security_alert'});
 
-    expect(mockNavigate).toHaveBeenCalledWith('SettingsTab');
+    expect(mockNavigate).toHaveBeenCalledWith('ProfileTab');
 
     setNavigationRef(null);
   });
