@@ -9,11 +9,14 @@ export interface SyncResult {
   solBalance?: string;
   tokenCount?: number;
   timestamp: number;
+  error?: string;
 }
 
 export async function forceSync(): Promise<SyncResult> {
   const publicKey = useWalletStore.getState().publicKey;
-  if (!publicKey) return {success: false, timestamp: Date.now()};
+  if (!publicKey) {
+    return {success: false, timestamp: Date.now(), error: 'No wallet loaded'};
+  }
 
   try {
     const connection = getConnection();
@@ -23,6 +26,18 @@ export async function forceSync(): Promise<SyncResult> {
       getBalance(connection, pk),
       getTokenAccounts(connection, pk),
     ]);
+
+    // If BOTH calls fail, surface the underlying RPC error so the UI can show
+    // something actionable (rate limit / wrong cluster / network down).
+    if (solBalance.status === 'rejected' && tokenAccounts.status === 'rejected') {
+      const reason = solBalance.reason instanceof Error
+        ? solBalance.reason.message
+        : String(solBalance.reason);
+      if (__DEV__) {
+        console.warn('[forceSync] both RPC calls failed:', reason);
+      }
+      return {success: false, timestamp: Date.now(), error: reason};
+    }
 
     const sol = solBalance.status === 'fulfilled' ? solBalance.value.toString() : useWalletStore.getState().solBalance;
     const tokens = tokenAccounts.status === 'fulfilled'
@@ -42,8 +57,12 @@ export async function forceSync(): Promise<SyncResult> {
       tokenCount: tokenAccounts.status === 'fulfilled' ? tokenAccounts.value.length : 0,
       timestamp: Date.now(),
     };
-  } catch {
-    return {success: false, timestamp: Date.now()};
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (__DEV__) {
+      console.warn('[forceSync] threw:', msg);
+    }
+    return {success: false, timestamp: Date.now(), error: msg};
   }
 }
 

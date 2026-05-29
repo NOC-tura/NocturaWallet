@@ -32,6 +32,7 @@ describe('backgroundSyncModule', () => {
       expect(result).toMatchObject<Partial<SyncResult>>({
         success: false,
         timestamp: expect.any(Number),
+        error: 'No wallet loaded',
       });
     });
 
@@ -94,6 +95,19 @@ describe('backgroundSyncModule', () => {
       expect(result.success).toBe(false);
       expect(result.timestamp).toBeGreaterThan(0);
       expect(result.solBalance).toBeUndefined();
+      expect(result.error).toBe('Connection failed');
+    });
+
+    it('surfaces RPC error when both balance + token calls fail', async () => {
+      useWalletStore.getState().setPublicKey(TEST_PUBLIC_KEY);
+
+      mockGetBalance.mockRejectedValue(new Error('429 Too Many Requests'));
+      mockGetTokenAccounts.mockRejectedValue(new Error('429 Too Many Requests'));
+
+      const result = await forceSync();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('429 Too Many Requests');
     });
   });
 
