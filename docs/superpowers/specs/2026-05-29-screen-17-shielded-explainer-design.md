@@ -2,9 +2,9 @@
 
 ## Overview
 
-First-run education screen shown the first time the user toggles Shielded mode on the Dashboard. Renders only when MMKV flag `v1_shielded_explained !== true`; on Continue tap, sets the flag and navigates directly to ShieldUnshield (#16). Mirrors the design in `/home/user/Downloads/index.html` §s17 (lines 8033–8186) 1:1.
+First-run education screen shown the first time the user toggles Shielded mode on the Dashboard. Renders only when MMKV flag `v1_shielded_explained !== true`; on Continue tap, sets the flag and navigates directly to ShieldUnshield (#16). Mirrors the §s17 design from the canonical wallet design HTML maintained outside this repository. All visual, copy, and behavioral specifics from that source are reproduced verbatim below — no external file access is required to implement against this spec.
 
-This work also retires the existing generic `PrivacyExplainerScreen.tsx` (which used different copy, layout, and MMKV key naming) — that file is deleted as part of this work, per CLAUDE.md guidance on not leaving deprecated shims.
+The implementation defined by this spec also retires the existing generic `PrivacyExplainerScreen.tsx` (which used different copy, layout, and MMKV key naming) — that file is deleted as part of the implementation work, per CLAUDE.md guidance on not leaving deprecated shims. **Scope note:** this spec doc has been merged ahead of the implementation; the file deletion and screen rewrite land in a follow-up PR that executes the plan in `docs/superpowers/plans/2026-05-29-screen-17-shielded-explainer.md`.
 
 ---
 
