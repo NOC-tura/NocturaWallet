@@ -23,7 +23,6 @@ import {ShieldedExplainerScreen} from '../screens/shielded/ShieldedExplainerScre
 import {StakingScreen} from '../screens/staking/StakingScreen';
 import {OnboardingProvider, useOnboarding} from '../contexts/OnboardingContext';
 import {useWalletStore} from '../store/zustand/walletStore';
-import {useShieldedStore} from '../store/zustand/shieldedStore';
 import {ReceiveScreen} from '../screens/transparent/ReceiveScreen';
 import {TransactionHistoryScreen as TransactionHistoryScreenImpl} from '../screens/transparent/TransactionHistoryScreen';
 import {TransactionDetailScreen as TransactionDetailScreenImpl} from '../screens/transparent/TransactionDetailScreen';
