@@ -27,12 +27,20 @@ export async function forceSync(): Promise<SyncResult> {
       getTokenAccounts(connection, pk),
     ]);
 
-    // If BOTH calls fail, surface the underlying RPC error so the UI can show
-    // something actionable (rate limit / wrong cluster / network down).
+    // If BOTH calls fail, surface BOTH underlying reasons so the UI shows the
+    // full picture (rate limit / wrong cluster / network down can manifest
+    // differently on the two endpoints). Dedup when identical.
     if (solBalance.status === 'rejected' && tokenAccounts.status === 'rejected') {
-      const reason = solBalance.reason instanceof Error
+      const solReason = solBalance.reason instanceof Error
         ? solBalance.reason.message
         : String(solBalance.reason);
+      const tokenReason = tokenAccounts.reason instanceof Error
+        ? tokenAccounts.reason.message
+        : String(tokenAccounts.reason);
+      const reason =
+        solReason === tokenReason
+          ? solReason
+          : `sol: ${solReason}; tokens: ${tokenReason}`;
       if (__DEV__) {
         console.warn('[forceSync] both RPC calls failed:', reason);
       }

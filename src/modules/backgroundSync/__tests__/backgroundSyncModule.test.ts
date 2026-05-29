@@ -98,7 +98,7 @@ describe('backgroundSyncModule', () => {
       expect(result.error).toBe('Connection failed');
     });
 
-    it('surfaces RPC error when both balance + token calls fail', async () => {
+    it('surfaces deduplicated RPC error when both fail with the same reason', async () => {
       useWalletStore.getState().setPublicKey(TEST_PUBLIC_KEY);
 
       mockGetBalance.mockRejectedValue(new Error('429 Too Many Requests'));
@@ -108,6 +108,18 @@ describe('backgroundSyncModule', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('429 Too Many Requests');
+    });
+
+    it('concatenates BOTH RPC error reasons when they differ', async () => {
+      useWalletStore.getState().setPublicKey(TEST_PUBLIC_KEY);
+
+      mockGetBalance.mockRejectedValue(new Error('429 Too Many Requests'));
+      mockGetTokenAccounts.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      const result = await forceSync();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('sol: 429 Too Many Requests; tokens: ECONNREFUSED');
     });
   });
 
