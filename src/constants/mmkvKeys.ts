@@ -74,8 +74,7 @@ export const MMKV_KEYS = {
   REFERRAL_ONBOARDING_CODE_APPLIED: 'v1_referral.onboardingApplied',
   REFERRAL_ONBOARDING_CODE_VALUE: 'v1_referral.onboardingCode',
 
-  // ─── Privacy Explainer [P] ─────────────────────────────────────────
-  PRIVACY_EXPLAINER_SHOWN: 'v1_privacy.explainerShown',
+  // ─── Shielded Explainer [P] ────────────────────────────────────────
   SHIELDED_EXPLAINED: 'v1_shielded_explained',
 
   // ─── Security [P] ──────────────────────────────────────────────────
