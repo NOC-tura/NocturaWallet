@@ -1,4 +1,4 @@
-import React, {useCallback, useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   View,
   FlatList,
@@ -7,6 +7,9 @@ import {
   StatusBar,
   Vibration,
   Image,
+  Alert,
+  AppState,
+  type AppStateStatus,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {
@@ -33,6 +36,7 @@ import {useAccentColor} from '../../hooks/useAccent';
 import {forceSync} from '../../modules/backgroundSync/backgroundSyncModule';
 import {TokenManager} from '../../modules/tokens/tokenModule';
 import {NOC_MINT} from '../../constants/programs';
+import {formatBalanceForDisplay} from '../../utils/parseTokenAmount';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {cn} from '../../utils/cn';
@@ -94,16 +98,8 @@ function formatUsd(value: number): {whole: string; cents: string} {
   return {whole, cents: `.${c ?? '00'}`};
 }
 
-function formatTokenAmount(raw: string, decimals = 4): string {
-  const num = Number(raw);
-  if (!Number.isFinite(num)) return '0';
-  if (num === 0) return '0';
-  if (num < 0.0001) return num.toExponential(2);
-  return num.toLocaleString('en-US', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: decimals,
-  });
-}
+const SOL_DECIMALS = 9;
+const NOC_DECIMALS = 9;
 
 function getAddressInitial(address?: string | null): string {
   if (!address || address.length === 0) return 'N';
@@ -132,15 +128,63 @@ export function DashboardScreen({
   const accentColor = useAccentColor();
 
   const [refreshing, setRefreshing] = useState(false);
+  const syncingRef = useRef(false);
+
+  // Single sync entry point so mount, AppState, polling, and pull-to-refresh
+  // share one in-flight guard (avoids hammering the RPC if several triggers
+  // fire close together — common with public devnet RPC rate limits).
+  const runSync = useCallback(async (opts: {showErrors: boolean}) => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
+    try {
+      const result = await forceSync();
+      if (!result.success && opts.showErrors) {
+        Alert.alert(
+          'Could not refresh balance',
+          result.error
+            ? `RPC error: ${result.error}\n\nIf the funds are visible on a block explorer but not here, the bundle may be pointing at the wrong cluster.`
+            : 'Unknown error. Try again in a moment.',
+        );
+      }
+    } finally {
+      syncingRef.current = false;
+    }
+  }, []);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await forceSync();
+      await runSync({showErrors: true});
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [runSync]);
+
+  // 1. Sync once on mount (cold start / login → see latest balance immediately).
+  // 2. Sync whenever the app returns to foreground (user funded the wallet from
+  //    a faucet / another wallet while ours was backgrounded).
+  // 3. Light polling every 60 s while Dashboard is mounted — public devnet RPC
+  //    is rate-limited, so longer than typical to stay under the threshold.
+  useEffect(() => {
+    if (!publicKey) return;
+    runSync({showErrors: false});
+
+    const onAppStateChange = (state: AppStateStatus) => {
+      if (state === 'active') {
+        runSync({showErrors: false});
+      }
+    };
+    const sub = AppState.addEventListener('change', onAppStateChange);
+
+    const interval = setInterval(() => {
+      runSync({showErrors: false});
+    }, 60_000);
+
+    return () => {
+      sub.remove();
+      clearInterval(interval);
+    };
+  }, [publicKey, runSync]);
 
   const handleToggleBalance = useCallback(() => {
     Vibration.vibrate(15);
@@ -254,6 +298,7 @@ export function DashboardScreen({
               symbol={token.symbol}
               name={token.name}
               balance={balance}
+              decimals={token.decimals}
               hidden={hideBalances}
               mode={mode}
               isNoc={isNoc}
@@ -458,13 +503,13 @@ function DashboardHeader({
           {/* Sub-balance · SOL + NOC */}
           <View className="flex-row items-center gap-3">
             <SubBalanceCell
-              amount={hidden ? '••••' : formatTokenAmount(solBalance)}
+              amount={hidden ? '••••' : formatBalanceForDisplay(solBalance, SOL_DECIMALS)}
               ticker="SOL"
               hidden={hidden}
             />
             <View className="w-1 h-1 rounded-pill bg-fg-tertiary" />
             <SubBalanceCell
-              amount={hidden ? '••••' : formatTokenAmount(nocBalance)}
+              amount={hidden ? '••••' : formatBalanceForDisplay(nocBalance, NOC_DECIMALS)}
               ticker="NOC"
               hidden={hidden}
             />
@@ -637,6 +682,7 @@ interface TokenListRowProps {
   symbol: string;
   name: string;
   balance: string;
+  decimals: number;
   hidden: boolean;
   mode: 'transparent' | 'shielded';
   isNoc: boolean;
@@ -647,13 +693,16 @@ function TokenListRow({
   symbol,
   name,
   balance,
+  decimals,
   hidden,
   mode,
   isNoc,
   onPress,
 }: TokenListRowProps) {
   const isShielded = mode === 'shielded';
-  const formattedBalance = hidden ? '•••••• ' + symbol : `${formatTokenAmount(balance)} ${symbol}`;
+  const formattedBalance = hidden
+    ? '•••••• ' + symbol
+    : `${formatBalanceForDisplay(balance, decimals)} ${symbol}`;
   return (
     <Pressable
       onPress={onPress}
