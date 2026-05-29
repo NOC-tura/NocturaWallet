@@ -1,6 +1,11 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
+// react-native-config: generates BuildConfig fields from .env so Config.* is
+// non-undefined in JS. Without this line, all `import Config from 'react-native-config'`
+// values are undefined → src/modules/solana/connection.ts silently falls back
+// to the mainnet RPC, which made every devnet getBalance return 0.
+apply from: project(':react-native-config').projectDir.getPath() + "/dotenv.gradle"
 
 /**
  * This is the configuration block to customize your React Native Android app.
