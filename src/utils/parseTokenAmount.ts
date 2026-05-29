@@ -35,14 +35,54 @@ export function formatBalanceForDisplay(
   }
   if (big === 0n) return '0';
 
-  const num = Number(big) / Math.pow(10, decimals);
-  const threshold = Math.pow(10, -maxDisplayDecimals);
-  if (num > 0 && num < threshold) {
-    return num.toExponential(2);
+  // Sub-display threshold: when value < 10^-maxDisplayDecimals, render as
+  // scientific so users see the magnitude. Skip when maxDisplayDecimals===0
+  // (caller asked for integer-only display) or when decimals <= maxDisplay
+  // (no fractional truncation needed).
+  if (maxDisplayDecimals > 0 && decimals > maxDisplayDecimals) {
+    const subThreshold = 10n ** BigInt(decimals - maxDisplayDecimals);
+    if (big < subThreshold) {
+      // value < 10^-maxDisplayDecimals — small enough that Number conversion
+      // is lossless for the leading digits we display.
+      return (Number(big) / Math.pow(10, decimals)).toExponential(2);
+    }
   }
 
-  return num.toLocaleString('en-US', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: maxDisplayDecimals,
-  });
+  // Stay in bigint until the very end so balances above Number.MAX_SAFE_INTEGER
+  // (e.g. whole-token treasury holdings on 9-decimal tokens) stay exact.
+  const divisor = 10n ** BigInt(decimals);
+  const whole = big / divisor;
+  const remainder = big % divisor;
+
+  if (remainder === 0n || maxDisplayDecimals === 0) {
+    // maxDisplayDecimals===0 case: round-half-up the fractional part into whole.
+    if (maxDisplayDecimals === 0 && remainder >= divisor / 2n) {
+      return (whole + 1n).toLocaleString('en-US');
+    }
+    return whole.toLocaleString('en-US');
+  }
+
+  // Round fractional to maxDisplayDecimals using bigint division (round-half-up).
+  const shift = decimals - maxDisplayDecimals;
+  let fracBig: bigint;
+  if (shift > 0) {
+    const shiftBy = 10n ** BigInt(shift);
+    fracBig = (remainder + shiftBy / 2n) / shiftBy;
+  } else if (shift === 0) {
+    fracBig = remainder;
+  } else {
+    fracBig = remainder * 10n ** BigInt(-shift);
+  }
+
+  // Rounding may overflow into whole (e.g. 1.99995 → carry → 2).
+  const maxFrac = 10n ** BigInt(maxDisplayDecimals);
+  if (fracBig >= maxFrac) {
+    return (whole + 1n).toLocaleString('en-US');
+  }
+
+  let fracStr = fracBig.toString().padStart(maxDisplayDecimals, '0');
+  fracStr = fracStr.replace(/0+$/, '');
+  if (fracStr === '') return whole.toLocaleString('en-US');
+
+  return `${whole.toLocaleString('en-US')}.${fracStr}`;
 }
