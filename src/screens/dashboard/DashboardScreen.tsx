@@ -176,8 +176,14 @@ export function DashboardScreen({
     };
     const sub = AppState.addEventListener('change', onAppStateChange);
 
+    // Skip polling when the app is backgrounded — saves battery + avoids
+    // hitting the public devnet RPC rate limit while invisible. AppState
+    // 'active' listener above already re-syncs on resume, so we don't miss
+    // an update.
     const interval = setInterval(() => {
-      runSync({showErrors: false});
+      if (AppState.currentState === 'active') {
+        runSync({showErrors: false});
+      }
     }, 60_000);
 
     return () => {
