@@ -21,6 +21,7 @@ export type RootStackParamList = {
   ShieldedTransfer: {recipient?: string};
   Withdraw: undefined;
   PrivacyExplainer: undefined;
+  ShieldedExplainer: undefined;
   AppUpdateModal: {storeUrl: string; message?: string};
 };
 

@@ -76,6 +76,7 @@ export const MMKV_KEYS = {
 
   // ─── Privacy Explainer [P] ─────────────────────────────────────────
   PRIVACY_EXPLAINER_SHOWN: 'v1_privacy.explainerShown',
+  SHIELDED_EXPLAINED: 'v1_shielded_explained',
 
   // ─── Security [P] ──────────────────────────────────────────────────
   SECURITY_JAILBREAK_DETECTED: 'v1_security.jailbreakDetected',
