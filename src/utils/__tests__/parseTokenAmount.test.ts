@@ -1,4 +1,8 @@
-import {parseTokenAmount, formatTokenAmount} from '../parseTokenAmount';
+import {
+  parseTokenAmount,
+  formatTokenAmount,
+  formatBalanceForDisplay,
+} from '../parseTokenAmount';
 
 describe('parseTokenAmount', () => {
   it("parses whole number '1' with 9 decimals", () => {
@@ -57,5 +61,43 @@ describe('formatTokenAmount', () => {
 
   it('formats USDC 1_500_000n with 6 decimals to "1.5"', () => {
     expect(formatTokenAmount(1_500_000n, 6)).toBe('1.5');
+  });
+});
+
+describe('formatBalanceForDisplay', () => {
+  it("formats 5 SOL (raw '5000000000', 9 decimals) as '5'", () => {
+    expect(formatBalanceForDisplay('5000000000', 9)).toBe('5');
+  });
+
+  it("formats 5.5 SOL ('5500000000', 9) as '5.5'", () => {
+    expect(formatBalanceForDisplay('5500000000', 9)).toBe('5.5');
+  });
+
+  it("rounds to maxDecimals (default 4) for '1234567890' / 9 → '1.2346'", () => {
+    expect(formatBalanceForDisplay('1234567890', 9)).toBe('1.2346');
+  });
+
+  it("returns '0' for raw '0'", () => {
+    expect(formatBalanceForDisplay('0', 9)).toBe('0');
+  });
+
+  it("returns '0' for empty string", () => {
+    expect(formatBalanceForDisplay('', 9)).toBe('0');
+  });
+
+  it("uses thousand separators for large balances: '10000000000000' / 9 → '10,000'", () => {
+    expect(formatBalanceForDisplay('10000000000000', 9)).toBe('10,000');
+  });
+
+  it("formats USDC '1500000' / 6 as '1.5'", () => {
+    expect(formatBalanceForDisplay('1500000', 6)).toBe('1.5');
+  });
+
+  it("uses scientific notation for sub-display amounts: '100' / 9 (1e-7) → '1.00e-7'", () => {
+    expect(formatBalanceForDisplay('100', 9)).toBe('1.00e-7');
+  });
+
+  it('respects custom maxDecimals override', () => {
+    expect(formatBalanceForDisplay('1234567890', 9, 2)).toBe('1.23');
   });
 });

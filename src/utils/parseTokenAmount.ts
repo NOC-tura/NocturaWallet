@@ -20,3 +20,29 @@ export function formatTokenAmount(amount: bigint, decimals: number): string {
   remStr = remStr.replace(/0+$/, '');
   return `${whole}.${remStr}`;
 }
+
+export function formatBalanceForDisplay(
+  raw: string,
+  decimals: number,
+  maxDisplayDecimals = 4,
+): string {
+  if (!raw || raw.trim() === '') return '0';
+  let big: bigint;
+  try {
+    big = BigInt(raw);
+  } catch {
+    return '0';
+  }
+  if (big === 0n) return '0';
+
+  const num = Number(big) / Math.pow(10, decimals);
+  const threshold = Math.pow(10, -maxDisplayDecimals);
+  if (num > 0 && num < threshold) {
+    return num.toExponential(2);
+  }
+
+  return num.toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: maxDisplayDecimals,
+  });
+}
