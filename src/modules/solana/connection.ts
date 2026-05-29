@@ -29,6 +29,16 @@ export function getConnection(): Connection {
   if (!_connection) {
     const endpoint = RPC_ENDPOINT || FALLBACK_RPC;
     const wsEndpoint = RPC_WEBSOCKET || FALLBACK_WS;
+    // If RPC_ENDPOINT didn't make it through react-native-config (missing .env
+    // in the bundle, build cache, etc.) we silently fall back to MAINNET. In a
+    // devnet bundle that means every getBalance returns 0 for a devnet-only
+    // address — surface it loudly so this doesn't waste another debugging cycle.
+    if (!RPC_ENDPOINT) {
+      console.warn(
+        '[connection] RPC_ENDPOINT is empty — falling back to ' + FALLBACK_RPC +
+          '. Check .env / react-native-config bundling.',
+      );
+    }
     _connection = new Connection(endpoint, {
       commitment: COMMITMENT,
       confirmTransactionInitialTimeout: 60_000,
