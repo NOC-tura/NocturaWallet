@@ -277,6 +277,7 @@ export function ZkProofScreen({navigation, route}: Props) {
   // flow is state-triggered (user tapped Proceed in the sheet), not
   // param-triggered, so re-firing on a stale params reference would
   // cancel an in-flight hosted proof for no reason.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.kind]);
 
   // Android hardware back — confirm during proof, otherwise dismiss/close sheet
