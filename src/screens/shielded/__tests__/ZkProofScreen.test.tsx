@@ -80,6 +80,19 @@ describe('ZkProofScreen', () => {
     expect(getByText('Proving')).toBeTruthy();
   });
 
+  it('advances through building → proving → verifying when chain stays pending', () => {
+    mockProve.mockReturnValue(new Promise(() => {}));
+    const {getByText} = render(<ZkProofScreen navigation={navigation} route={route} />);
+    act(() => {
+      jest.advanceTimersByTime(2100); // end of building → proving
+    });
+    expect(getByText('Proving')).toBeTruthy();
+    act(() => {
+      jest.advanceTimersByTime(3100); // end of proving → verifying
+    });
+    expect(getByText('Verify locally')).toBeTruthy();
+  });
+
   it('fast-forwards to ready when chain succeeds during building', async () => {
     mockProve.mockResolvedValue(mockProof);
     const {getByText} = render(<ZkProofScreen navigation={navigation} route={route} />);
@@ -197,6 +210,11 @@ describe('ZkProofScreen', () => {
       'Transaction simulation (#19) not yet wired — returning to dashboard.',
       expect.any(Array),
     );
+    // Verify pressing OK in the Alert calls navigation.popToTop
+    const alertCall = (Alert.alert as jest.Mock).mock.calls[0];
+    const buttons = alertCall[2] as Array<{text: string; onPress?: () => void}>;
+    buttons[0].onPress?.();
+    expect(mockPopToTop).toHaveBeenCalled();
   });
 
   it('hosted attempt failure shows hostedBanner on failed state', async () => {
@@ -216,7 +234,7 @@ describe('ZkProofScreen', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(getByText(/Hosted prover also failed.*hosted 503/)).toBeTruthy();
+    expect(getByText('Hosted prover also failed: hosted 503')).toBeTruthy();
   });
 
   it('tap back × mid-proof shows confirm dialog', () => {
@@ -231,6 +249,12 @@ describe('ZkProofScreen', () => {
       'Your transaction will not be sent.',
       expect.any(Array),
     );
+    // Verify tapping "Cancel" in the confirm dialog dismisses the screen
+    const alertCall = (Alert.alert as jest.Mock).mock.calls[0];
+    const buttons = alertCall[2] as Array<{text: string; onPress?: () => void}>;
+    const cancelBtn = buttons.find(b => b.text === 'Cancel');
+    cancelBtn?.onPress?.();
+    expect(mockGoBack).toHaveBeenCalled();
   });
 
   it('tap back × from failed state calls navigation.goBack directly', async () => {
