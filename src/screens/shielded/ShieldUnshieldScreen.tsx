@@ -1,10 +1,14 @@
 import React, {useCallback, useMemo, useState} from 'react';
-import {View, Pressable, TextInput, ScrollView, Alert, Image} from 'react-native';
+import {View, Pressable, TextInput, ScrollView, Image} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {ArrowLeft, ShieldCheck, Eye, AlertTriangle, Shield} from 'lucide-react-native';
+import {useNavigation} from '@react-navigation/native';
+import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {Text} from '../../components/ui';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {cn} from '../../utils/cn';
+import {parseTokenAmount} from '../../utils/parseTokenAmount';
+import type {RootStackParamList} from '../../types/navigation';
 
 const SOLANA_LOGO = require('../../assets/tokens/solana-sol-logo.png');
 
@@ -79,6 +83,7 @@ function parseAmount(s: string): number {
 }
 
 export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldScreenProps) {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const {solBalance, shieldedBalances} = useWalletStore();
   const [direction, setDirection] = useState<Direction>(initialDirection ?? 'private');
   const [amount, setAmount] = useState('');
@@ -124,16 +129,13 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
 
   const handleSubmit = useCallback(() => {
     if (insufficient || !hasAmount) return;
-    Alert.alert(
-      direction === 'private' ? 'Shield SOL' : 'Unshield SOL',
-      `ZK proof generation flow (#18) is not yet wired — this is a visual preview. ${
-        direction === 'private'
-          ? `Will shield ${formatNumber(netReceived, 5)} SOL into your private vault.`
-          : `Will unshield ${formatNumber(netReceived, 5)} SOL back to your transparent address.`
-      }`,
-      [{text: 'OK'}],
-    );
-  }, [insufficient, hasAmount, direction, netReceived]);
+    const rawAmount = parseTokenAmount(amount, 9).toString();
+    navigation.navigate('ZkProofModal', {
+      direction,
+      amount: rawAmount,
+      recipient: undefined,
+    });
+  }, [insufficient, hasAmount, direction, amount, navigation]);
 
   const canSubmit = hasAmount && !insufficient;
 
