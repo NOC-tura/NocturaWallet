@@ -108,9 +108,9 @@ export function ConfirmSeedScreen({
 
   // FLAG_SECURE on mount (seed words present in pool as distractor pool)
   useEffect(() => {
-    securityManager.enableSecureScreen();
+    void securityManager.enableSecureScreen();
     return () => {
-      securityManager.disableSecureScreen();
+      void securityManager.disableSecureScreen();
       if (resetTimerRef.current) {
         clearTimeout(resetTimerRef.current);
       }

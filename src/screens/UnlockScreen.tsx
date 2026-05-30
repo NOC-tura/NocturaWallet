@@ -108,9 +108,9 @@ export function UnlockScreen({
 
   // FLAG_SECURE while PIN digits are in scope
   useEffect(() => {
-    securityManager.enableSecureScreen();
+    void securityManager.enableSecureScreen();
     return () => {
-      securityManager.disableSecureScreen();
+      void securityManager.disableSecureScreen();
       if (cooldownRef.current) clearInterval(cooldownRef.current);
     };
   }, []);
