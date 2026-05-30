@@ -62,7 +62,9 @@ export function ShieldedExplainerScreen({navigation}: Props) {
         <Text variant="overline" className="text-fg-tertiary">1 / 1</Text>
       </View>
 
-      <ScrollView contentContainerStyle={{paddingHorizontal: 20, paddingBottom: 24}}>
+      <ScrollView
+        style={{flex: 1}}
+        contentContainerStyle={{paddingHorizontal: 20, paddingBottom: 24}}>
         <VaultHero />
         <Text variant="h1" className="mb-3 mt-6">
           Private SOL, three steps.
@@ -86,15 +88,18 @@ export function ShieldedExplainerScreen({navigation}: Props) {
           title="Send privately"
           body="Settled on Solana with the proof attached. Validators verify the proof; nobody — not even Noctura — sees the recipient or the amount."
         />
-
-        {/* Footer note */}
-        <View className="flex-row items-center gap-2 mt-4">
-          <ShieldCheck size={14} color={ACCENT} strokeWidth={1.75} />
-          <Text variant="body-sm" className="text-accent-shielded">
-            Screenshots disabled across this flow.
-          </Text>
-        </View>
       </ScrollView>
+
+      {/* Footer note — pulled OUT of scroll so the trust signal is always
+          visible above the CTAs, even on devices where step bodies overflow.
+          Spec HTML nested it inside .scroll, but UX-wise the assurance about
+          screenshots should not require scrolling to read. */}
+      <View className="flex-row items-center gap-2 px-5 mb-3">
+        <ShieldCheck size={14} color={ACCENT} strokeWidth={1.75} />
+        <Text variant="body-sm" className="text-accent-shielded">
+          Screenshots disabled across this flow.
+        </Text>
+      </View>
 
       {/* Sticky bar */}
       <View className="px-5 pb-4 gap-3">
