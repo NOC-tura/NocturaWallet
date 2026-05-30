@@ -20,6 +20,7 @@ import {BiometricSetupScreen} from '../screens/onboarding/BiometricSetupScreen';
 import {SuccessScreen} from '../screens/onboarding/SuccessScreen';
 import {PresaleScreen} from '../screens/PresaleScreen';
 import {ShieldedExplainerScreen} from '../screens/shielded/ShieldedExplainerScreen';
+import {ZkProofScreen} from '../screens/shielded/ZkProofScreen';
 import {StakingScreen} from '../screens/staking/StakingScreen';
 import {OnboardingProvider, useOnboarding} from '../contexts/OnboardingContext';
 import {useWalletStore} from '../store/zustand/walletStore';
@@ -356,6 +357,12 @@ function ShieldedExplainerScreenNav(
   return <ShieldedExplainerScreen {...props} />;
 }
 
+function ZkProofScreenNav(
+  props: NativeStackScreenProps<RootStackParamList, 'ZkProofModal'>,
+) {
+  return <ZkProofScreen {...props} />;
+}
+
 function SendScreenNav() {
   const navigation = useNavigation<NativeStackNavigationProp<SendStackParamList>>();
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -618,6 +625,7 @@ export function RootNavigator() {
       <RootNav.Screen name="ShieldedTransfer" component={ShieldedTransferScreen} options={modalWithCloseOptions} />
       <RootNav.Screen name="Withdraw" component={WithdrawScreen} options={modalWithCloseOptions} />
       <RootNav.Screen name="ShieldedExplainer" component={ShieldedExplainerScreenNav} options={modalScreenOptions} />
+      <RootNav.Screen name="ZkProofModal" component={ZkProofScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="AppUpdateModal" component={AppUpdateModalScreenNav} options={{...modalScreenOptions, gestureEnabled: false}} />
     </RootNav.Navigator>
   );
