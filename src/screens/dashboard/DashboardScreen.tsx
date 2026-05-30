@@ -200,11 +200,11 @@ export function DashboardScreen({
   const handleModeToggle = useCallback(
     (target: 'transparent' | 'shielded') => {
       if (target === mode) return;
-      // First shielded toggle fires the privacy explainer modal (which sets
-      // PRIVACY_EXPLAINER_SHOWN + setMode('shielded') on dismiss). Once the
-      // user has seen the explainer, toggle mode directly with no detour.
+      // First shielded toggle fires the explainer screen (#17), which sets
+      // SHIELDED_EXPLAINED on Continue and navigates to ShieldUnshield (#16).
+      // Once the user has seen it, the toggle flips mode directly.
       if (target === 'shielded') {
-        const seen = mmkvPublic.getBoolean(MMKV_KEYS.PRIVACY_EXPLAINER_SHOWN) === true;
+        const seen = mmkvPublic.getBoolean(MMKV_KEYS.SHIELDED_EXPLAINED) === true;
         if (!seen && onFirstShieldedToggle) {
           onFirstShieldedToggle();
           return;

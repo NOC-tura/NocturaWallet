@@ -2,7 +2,7 @@ import React from 'react';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {useNavigation, useRoute} from '@react-navigation/native';
-import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import type {NativeStackNavigationProp, NativeStackScreenProps} from '@react-navigation/native-stack';
 import {DashboardScreen} from '../screens/dashboard/DashboardScreen';
 import {SendScreen as SendScreenImpl} from '../screens/transparent/SendScreen';
 import {TransactionStatusScreen} from '../screens/transparent/TransactionStatusScreen';
@@ -19,11 +19,10 @@ import {SetPinScreen} from '../screens/onboarding/SetPinScreen';
 import {BiometricSetupScreen} from '../screens/onboarding/BiometricSetupScreen';
 import {SuccessScreen} from '../screens/onboarding/SuccessScreen';
 import {PresaleScreen} from '../screens/PresaleScreen';
-import {PrivacyExplainerScreen} from '../screens/PrivacyExplainerScreen';
+import {ShieldedExplainerScreen} from '../screens/shielded/ShieldedExplainerScreen';
 import {StakingScreen} from '../screens/staking/StakingScreen';
 import {OnboardingProvider, useOnboarding} from '../contexts/OnboardingContext';
 import {useWalletStore} from '../store/zustand/walletStore';
-import {useShieldedStore} from '../store/zustand/shieldedStore';
 import {ReceiveScreen} from '../screens/transparent/ReceiveScreen';
 import {TransactionHistoryScreen as TransactionHistoryScreenImpl} from '../screens/transparent/TransactionHistoryScreen';
 import {TransactionDetailScreen as TransactionDetailScreenImpl} from '../screens/transparent/TransactionDetailScreen';
@@ -270,7 +269,7 @@ function DashboardScreenNav() {
       onNotifications={() => rootNav.navigate('NotificationsModal')}
       onProfileTap={() => tabNav.getParent()?.navigate('ProfileTab' as never)}
       onPresale={() => dashNav.navigate('Presale')}
-      onFirstShieldedToggle={() => rootNav.navigate('PrivacyExplainer')}
+      onFirstShieldedToggle={() => rootNav.navigate('ShieldedExplainer')}
     />
   );
 }
@@ -351,17 +350,10 @@ function PresaleScreenDashboard() {
   return <PresaleScreen onSkip={() => {}} onComplete={() => {}} />;
 }
 
-function PrivacyExplainerScreenNav() {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const setMode = useShieldedStore(s => s.setMode);
-  return (
-    <PrivacyExplainerScreen
-      onDismiss={() => {
-        setMode('shielded');
-        navigation.goBack();
-      }}
-    />
-  );
+function ShieldedExplainerScreenNav(
+  props: NativeStackScreenProps<RootStackParamList, 'ShieldedExplainer'>,
+) {
+  return <ShieldedExplainerScreen {...props} />;
 }
 
 function SendScreenNav() {
@@ -625,7 +617,7 @@ export function RootNavigator() {
       <RootNav.Screen name="Deposit" component={DepositScreen} options={modalWithCloseOptions} />
       <RootNav.Screen name="ShieldedTransfer" component={ShieldedTransferScreen} options={modalWithCloseOptions} />
       <RootNav.Screen name="Withdraw" component={WithdrawScreen} options={modalWithCloseOptions} />
-      <RootNav.Screen name="PrivacyExplainer" component={PrivacyExplainerScreenNav} options={modalScreenOptions} />
+      <RootNav.Screen name="ShieldedExplainer" component={ShieldedExplainerScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="AppUpdateModal" component={AppUpdateModalScreenNav} options={{...modalScreenOptions, gestureEnabled: false}} />
     </RootNav.Navigator>
   );
