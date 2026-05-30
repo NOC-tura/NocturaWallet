@@ -128,8 +128,8 @@ Modal (state 7, transparent overlay):
 | idle | `Preparing proof` | `Securely generating a zero-knowledge proof of ownership for this transfer. Stays on-device.` |
 | building | `Building witness` | `Loading commitment tree and constructing the witness. About 4 seconds.` |
 | proving | `Proving` | `Running the Plonk prover. About 6 seconds.` |
-| verifying | `Verify locally` | `Sanity-checking the proof on-device before broadcast.` |
-| ready | `Ready` | `Proof generated. Submitting to the network.` |
+| verifying | `Verifying` | `Sanity-checking the proof on-device before broadcast.` *(spec rev: was "Verify locally"; renamed during impl to avoid collision with stage row title "Verify locally" — stage rows already render this string, so the hero needs a distinct token. Also restores the present-participle pattern used by "Building witness" / "Proving".)* |
+| ready | `Proof ready` | `Proof generated. Submitting to the network.` *(spec rev: was "Ready"; same collision reasoning — stage 4 row title is "Ready". The success Alert already uses "Proof ready" so this is consistent.)* |
 | failed | `Couldn't generate proof` | `<reason>` (e.g. `Local prover ran out of memory.`) |
 | hosted-proving | `Generating on hosted prover` | `Connecting to the Noctura proving service.` |
 
