@@ -18,7 +18,7 @@ Mirrors §s18 from the canonical wallet design HTML maintained outside this repo
 | Create | `src/screens/shielded/__tests__/ZkProofScreen.test.tsx` | Unit tests covering all 7 states + transitions + chain mock integration |
 | Modify | `src/types/navigation.d.ts` | Add route `ZkProofModal: {direction: 'private' \| 'public'; amount: string; recipient?: string}` |
 | Modify | `src/app/Navigator.tsx` | Register route + screen wrapper |
-| Modify | `src/screens/shielded/ShieldUnshieldScreen.tsx` | Replace placeholder `Alert` CTA with `navigation.replace('ZkProofModal', {...})` |
+| Modify | `src/screens/shielded/ShieldUnshieldScreen.tsx` | Replace placeholder `Alert` CTA with `navigation.navigate('ZkProofModal', {...})` |
 
 No new npm dependencies.
 

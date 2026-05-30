@@ -625,7 +625,11 @@ export function RootNavigator() {
       <RootNav.Screen name="ShieldedTransfer" component={ShieldedTransferScreen} options={modalWithCloseOptions} />
       <RootNav.Screen name="Withdraw" component={WithdrawScreen} options={modalWithCloseOptions} />
       <RootNav.Screen name="ShieldedExplainer" component={ShieldedExplainerScreenNav} options={modalScreenOptions} />
-      <RootNav.Screen name="ZkProofModal" component={ZkProofScreenNav} options={modalScreenOptions} />
+      <RootNav.Screen
+        name="ZkProofModal"
+        component={ZkProofScreenNav}
+        options={{...modalScreenOptions, gestureEnabled: false}}
+      />
       <RootNav.Screen name="AppUpdateModal" component={AppUpdateModalScreenNav} options={{...modalScreenOptions, gestureEnabled: false}} />
     </RootNav.Navigator>
   );

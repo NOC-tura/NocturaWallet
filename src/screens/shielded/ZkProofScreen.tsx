@@ -227,8 +227,13 @@ export function ZkProofScreen({navigation, route}: Props) {
   // Polling fallback — if chain still hasn't returned when verifying ends,
   // poll every 200ms until it does. Rare in practice (would mean total
   // animation time of 7s elapsed without hosted/local resolving).
+  //
+  // Gated on pct === 100 so the chain race rule (min 2 s visible per stage)
+  // is preserved. Previously the polling ran throughout the 2 s animation
+  // and could early-skip it when chain succeeded mid-stage.
   useEffect(() => {
     if (state.kind !== 'verifying') return;
+    if (state.pct < 100) return; // wait for animation to elapse
     const interval = setInterval(() => {
       const result = chainResultRef.current;
       if (result.kind === 'success') {
@@ -240,7 +245,8 @@ export function ZkProofScreen({navigation, route}: Props) {
       }
     }, 200);
     return () => clearInterval(interval);
-  }, [state.kind]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.kind, 'pct' in state ? state.pct : 0]);
 
   // Ready → 400ms hold → Alert → popToTop
   useEffect(() => {
@@ -482,6 +488,16 @@ export function ZkProofScreen({navigation, route}: Props) {
             <Text variant="body-sm" className="text-accent-shielded mb-4">
               By proceeding you opt in to a one-time hosted proof. You'll be asked again on the next failure.
             </Text>
+            <Pressable
+              testID="cancel-hosted-button"
+              onPress={handleCloseSheet}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel hosted proof"
+              className="h-12 rounded-pill bg-bg-surface-2 items-center justify-center active:opacity-90 mb-3 border border-bg-surface-3">
+              <Text variant="body-lg" className="font-geist-semibold text-fg-primary">
+                Cancel
+              </Text>
+            </Pressable>
             <Pressable
               testID="proceed-hosted-button"
               onPress={handleProceedHosted}

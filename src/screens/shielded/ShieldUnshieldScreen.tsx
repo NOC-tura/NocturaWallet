@@ -130,7 +130,14 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
 
   const handleSubmit = useCallback(() => {
     if (insufficient || !hasAmount) return;
-    const rawAmount = parseTokenAmount(amount, 9).toString();
+    let rawAmount: string;
+    try {
+      rawAmount = parseTokenAmount(amount, 9).toString();
+    } catch {
+      // Malformed input that slipped past parseFloat-based validators
+      // (e.g. "1e3", "1abc"). Stay on the form; user will re-enter.
+      return;
+    }
     navigation.navigate('ZkProofModal', {
       direction,
       amount: rawAmount,
