@@ -125,12 +125,22 @@ export function ZkProofScreen({navigation, route}: Props) {
   const chainResultRef = useRef<ChainResult>({kind: 'pending'});
   const [retryCounter, setRetryCounter] = useState(0);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [isProceeding, setIsProceeding] = useState(false);
+  const guardTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
 
   // FLAG_SECURE on mount, off on unmount
   useEffect(() => {
     void securityManager.enableSecureScreen();
     return () => {
       void securityManager.disableSecureScreen();
+    };
+  }, []);
+
+  // Clear all pending guard timers on unmount to prevent setState-on-unmounted warnings.
+  useEffect(() => {
+    return () => {
+      guardTimersRef.current.forEach(clearTimeout);
+      guardTimersRef.current = [];
     };
   }, []);
 
@@ -312,7 +322,8 @@ export function ZkProofScreen({navigation, route}: Props) {
     setIsRetrying(true);
     setRetryCounter(c => c + 1);
     dispatch({type: 'RESET'});
-    setTimeout(() => setIsRetrying(false), 500);
+    const t = setTimeout(() => setIsRetrying(false), 500);
+    guardTimersRef.current.push(t);
   }
 
   function handleOpenSheet() {
@@ -324,7 +335,11 @@ export function ZkProofScreen({navigation, route}: Props) {
   }
 
   function handleProceedHosted() {
+    if (isProceeding) return;
+    setIsProceeding(true);
     dispatch({type: 'START_HOSTED'});
+    const t = setTimeout(() => setIsProceeding(false), 500);
+    guardTimersRef.current.push(t);
   }
 
   const stages = computeStages(state);
@@ -470,9 +485,10 @@ export function ZkProofScreen({navigation, route}: Props) {
             <Pressable
               testID="proceed-hosted-button"
               onPress={handleProceedHosted}
+              disabled={isProceeding}
               accessibilityRole="button"
               accessibilityLabel="Proceed with hosted proof"
-              className="h-14 rounded-pill bg-accent-shielded items-center justify-center active:opacity-90">
+              className={`h-14 rounded-pill ${isProceeding ? 'bg-accent-shielded opacity-60' : 'bg-accent-shielded'} items-center justify-center active:opacity-90`}>
               <Text variant="body-lg" className="font-geist-semibold text-bg-base">
                 Proceed with hosted proof
               </Text>

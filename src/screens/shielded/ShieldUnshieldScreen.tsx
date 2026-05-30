@@ -37,10 +37,11 @@ const SOLANA_LOGO = require('../../assets/tokens/solana-sol-logo.png');
  *   - Network fee:  ~0.00012 SOL
  *   - ZK proof fee: ~0.0021 SOL
  *
- * On Shield/Unshield CTA → Alert (ZK proof flow #18 not yet wired). Downstream
- * path will be: #16 (here) → #17 (explainer, first-run only) → #18 (zk-proof
- * progress) → #19 (tx-simulate) → #20 (tx-confirm) → #10 (unlock-send re-auth
- * if amount > 5%) → broadcast → #21 (tx-status).
+ * On Shield/Unshield CTA → navigation.navigate('ZkProofModal', {direction,
+ * amount, recipient?}) — #16 → #18 directly. #17 (shielded-explainer) is
+ * gated separately at the Dashboard's first Shielded toggle, NOT in this
+ * CTA flow. #18 success destination is currently a placeholder Alert →
+ * popToTop until #19 (tx-simulate) lands in a future PR.
  *
  * No FLAG_SECURE on this screen (no PIN entry); re-auth lifts at #20 → #10.
  */
