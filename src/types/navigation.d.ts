@@ -21,6 +21,11 @@ export type RootStackParamList = {
   ShieldedTransfer: {recipient?: string};
   Withdraw: undefined;
   ShieldedExplainer: undefined;
+  ZkProofModal: {
+    direction: 'private' | 'public';
+    amount: string;
+    recipient?: string;
+  };
   AppUpdateModal: {storeUrl: string; message?: string};
 };
 
