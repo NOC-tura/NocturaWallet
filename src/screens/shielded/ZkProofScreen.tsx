@@ -124,6 +124,7 @@ export function ZkProofScreen({navigation, route}: Props) {
   const [state, dispatch] = useReducer(reducer, {kind: 'idle'} as ZkUiState);
   const chainResultRef = useRef<ChainResult>({kind: 'pending'});
   const [retryCounter, setRetryCounter] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   // FLAG_SECURE on mount, off on unmount
   useEffect(() => {
@@ -272,7 +273,11 @@ export function ZkProofScreen({navigation, route}: Props) {
     return () => {
       cancelled = true;
     };
-  }, [state.kind, route.params]);
+  // Note: route.params is intentionally NOT in deps. The hosted-proving
+  // flow is state-triggered (user tapped Proceed in the sheet), not
+  // param-triggered, so re-firing on a stale params reference would
+  // cancel an in-flight hosted proof for no reason.
+  }, [state.kind]);
 
   // Android hardware back — confirm during proof, otherwise dismiss/close sheet
   const handleBack = useCallback(() => {
@@ -302,8 +307,11 @@ export function ZkProofScreen({navigation, route}: Props) {
   }, [handleBack]);
 
   function handleRetryLocal() {
+    if (isRetrying) return;
+    setIsRetrying(true);
     setRetryCounter(c => c + 1);
     dispatch({type: 'RESET'});
+    setTimeout(() => setIsRetrying(false), 500);
   }
 
   function handleOpenSheet() {
@@ -384,15 +392,18 @@ export function ZkProofScreen({navigation, route}: Props) {
           ))}
         </View>
 
-        {/* "Local prover slow?" link — visible during active stages */}
+        {/* "Local prover slow?" hint — visible during active stages. Static
+            informational text per spec §G (out of scope: tap action deferred
+            to v0.3 docs WebView, same as #17 Learn more). Rendered as View
+            (not Pressable) so accessibility doesn't falsely promise an action. */}
         {state.kind === 'building' ||
         state.kind === 'proving' ||
         state.kind === 'verifying' ? (
-          <Pressable className="mt-4 self-center">
-            <Text variant="body-sm" className="text-accent-shielded underline">
+          <View className="mt-4 self-center">
+            <Text variant="body-sm" className="text-accent-shielded">
               Local prover slow?
             </Text>
-          </Pressable>
+          </View>
         ) : null}
       </ScrollView>
 
@@ -410,9 +421,10 @@ export function ZkProofScreen({navigation, route}: Props) {
           <Pressable
             testID="retry-local-button"
             onPress={handleRetryLocal}
+            disabled={isRetrying}
             accessibilityRole="button"
             accessibilityLabel="Retry locally"
-            className="h-14 rounded-pill bg-accent-shielded items-center justify-center active:opacity-90">
+            className={`h-14 rounded-pill ${isRetrying ? 'bg-accent-shielded opacity-60' : 'bg-accent-shielded'} items-center justify-center active:opacity-90`}>
             <Text variant="body-lg" className="font-geist-semibold text-bg-base">
               Retry locally
             </Text>
@@ -663,6 +675,15 @@ function computeStages(
   }
   // failed or sheet
   const failure = state.kind === 'failed' ? state : state.savedFailure;
+  // Hosted-proving failures: no local stages ran, so show all 4 as pending
+  // with stage 4 marked errored. The hostedBanner above the stages list
+  // already explains what happened — no need to falsely imply local progress.
+  if (failure.hostedBanner) {
+    return ([1, 2, 3, 4] as StageNum[]).map(n => {
+      if (n === 4) return row(n, 'errored', 'hosted attempt · failed', '!');
+      return row(n, 'pending', '— · pending', '·');
+    });
+  }
   return ([1, 2, 3, 4] as StageNum[]).map(n => {
     if (n < failure.erroredStage) return row(n, 'done', 'done', '✓');
     if (n === failure.erroredStage) return row(n, 'errored', `error · ${failure.reason}`, '!');
