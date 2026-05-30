@@ -24,7 +24,7 @@ export function ShieldedExplainerScreen({navigation}: Props) {
   // no secrets, but the copy is too literal to leave the flag off — PR #4
   // Copilot review caught the inconsistency.
   useEffect(() => {
-    securityManager.enableSecureScreen();
+    void securityManager.enableSecureScreen();
     return () => {
       void securityManager.disableSecureScreen();
     };
