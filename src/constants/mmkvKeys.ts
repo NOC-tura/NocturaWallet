@@ -75,7 +75,7 @@ export const MMKV_KEYS = {
   REFERRAL_ONBOARDING_CODE_VALUE: 'v1_referral.onboardingCode',
 
   // ─── Shielded Explainer [P] ────────────────────────────────────────
-  SHIELDED_EXPLAINED: 'v1_shielded_explained',
+  SHIELDED_EXPLAINED: 'v1_shielded.explained',
 
   // ─── Security [P] ──────────────────────────────────────────────────
   SECURITY_JAILBREAK_DETECTED: 'v1_security.jailbreakDetected',
