@@ -19,6 +19,12 @@ beforeEach(() => {
   jest.spyOn(Linking, 'openURL').mockImplementation(() => Promise.resolve());
 });
 
+afterEach(() => {
+  // Restore Linking.openURL (and any other spies) so the mock does not leak
+  // into other test files that may share the module instance.
+  jest.restoreAllMocks();
+});
+
 describe('ShieldedExplainerScreen', () => {
   it('renders H1, all 3 step titles, and footer note', () => {
     const {getByText} = render(<ShieldedExplainerScreen navigation={navigation} route={route} />);

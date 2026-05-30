@@ -2,7 +2,7 @@
 
 ## Overview
 
-First-run education screen shown the first time the user toggles Shielded mode on the Dashboard. Renders only when MMKV flag `v1_shielded_explained !== true`; on Continue tap, sets the flag and navigates directly to ShieldUnshield (#16). Mirrors the §s17 design from the canonical wallet design HTML maintained outside this repository. All visual, copy, and behavioral specifics from that source are reproduced verbatim below — no external file access is required to implement against this spec.
+First-run education screen shown the first time the user toggles Shielded mode on the Dashboard. Renders only when MMKV flag `v1_shielded.explained !== true`; on Continue tap, sets the flag and navigates directly to ShieldUnshield (#16). Mirrors the §s17 design from the canonical wallet design HTML maintained outside this repository. All visual, copy, and behavioral specifics from that source are reproduced verbatim below — no external file access is required to implement against this spec.
 
 The implementation defined by this spec also retires the existing generic `PrivacyExplainerScreen.tsx` (which used different copy, layout, and MMKV key naming) — that file is deleted as part of the implementation work, per CLAUDE.md guidance on not leaving deprecated shims. **Scope note:** this spec doc has been merged ahead of the implementation; the file deletion and screen rewrite land in a follow-up PR that executes the plan in `docs/superpowers/plans/2026-05-29-screen-17-shielded-explainer.md`.
 
@@ -117,7 +117,7 @@ Lives inline (used only on this screen — no `components/` extraction).
 
 ### `src/constants/mmkvKeys.ts`
 
-- Replace existing `PRIVACY_EXPLAINER_SHOWN: 'v1_privacy.explainerShown'` with `SHIELDED_EXPLAINED: 'v1_shielded_explained'`
+- Replace existing `PRIVACY_EXPLAINER_SHOWN: 'v1_privacy.explainerShown'` with `SHIELDED_EXPLAINED: 'v1_shielded.explained'`
 - **Delete** the old constant entirely (no `// deprecated` shim — per CLAUDE.md *"If you are certain that something is unused, you can delete it completely"*)
 
 ### Migration impact
@@ -135,7 +135,7 @@ Test cases (each with RED → GREEN cycle, no implementation before failing test
 1. **renders all spec copy** — H1 "Private SOL, three steps.", all 3 step titles, footer "Screenshots disabled across this flow."
 2. **renders Continue + Learn more CTAs**
 3. **renders close × button**
-4. **tap Continue writes MMKV flag** — assert `mmkvPublic.getBoolean('v1_shielded_explained') === true` after tap (real MMKV instance, not callback spy — see decision below)
+4. **tap Continue writes MMKV flag** — assert `mmkvPublic.getBoolean('v1_shielded.explained') === true` after tap (real MMKV instance, not callback spy — see decision below)
 5. **tap Continue sets shielded mode** — assert `useShieldedStore.getState().mode === 'shielded'` after tap
 6. **tap Continue navigates to ShieldUnshield** — assert mocked navigation `replace('ShieldUnshield')` was called
 7. **tap close × does NOT write MMKV flag** — assert flag is still `false`/undefined after tap
@@ -173,7 +173,7 @@ WCAG contrast already verified in spec (D) Caption AA audit:
 - In-app WebView for "Learn more" link — placeholder external `Linking.openURL` for now (deferred to v0.3 per spec line 8161)
 - Vault hero Lottie / animated entrance — pure CSS-equivalent static render only
 - Material You dynamic accent disabling — default RN behavior already does not pull system accent
-- FLAG_SECURE on this screen — `NO` per spec (no secrets shown; "Screenshots disabled" footer previews #18 behavior, not this screen's)
+- ~~FLAG_SECURE on this screen — `NO` per spec (no secrets shown; "Screenshots disabled" footer previews #18 behavior, not this screen's)~~ **Updated post-merge (PR #4 review):** FLAG_SECURE is enabled on mount via `ScreenSecurityManager`. The original spec rationale ("no secrets") is technically true, but Copilot flagged that the footer copy creates a literal expectation the user is entitled to trust. Enabling the flag on a no-secrets screen is harmless and makes the copy honest.
 
 ---
 
