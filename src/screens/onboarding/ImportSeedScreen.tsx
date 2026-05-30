@@ -104,9 +104,9 @@ export function ImportSeedScreen({onMnemonicValidated, onBack}: ImportSeedScreen
   const lastInputLenRef = useRef(0);
 
   useEffect(() => {
-    securityManager.enableSecureScreen();
+    void securityManager.enableSecureScreen();
     return () => {
-      securityManager.disableSecureScreen();
+      void securityManager.disableSecureScreen();
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       if (pasteToastTimerRef.current) clearTimeout(pasteToastTimerRef.current);
