@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useEffect} from 'react';
 import {View, Pressable, Linking, ScrollView} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import Svg, {Defs, Pattern, Rect, ClipPath, Circle, Line} from 'react-native-svg';
@@ -8,14 +8,28 @@ import {Text, Button} from '../../components/ui';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
+import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
 import type {RootStackParamList} from '../../types/navigation';
 
 const PRIVACY_URL = 'https://noc-tura.io/privacy';
 const ACCENT = '#5BE3C2';
 
+const securityManager = new ScreenSecurityManager();
+
 type Props = NativeStackScreenProps<RootStackParamList, 'ShieldedExplainer'>;
 
 export function ShieldedExplainerScreen({navigation}: Props) {
+  // FLAG_SECURE on mount so the footer "Screenshots disabled across this flow."
+  // matches actual behavior. Spec (D) originally said NO since the screen has
+  // no secrets, but the copy is too literal to leave the flag off — PR #4
+  // Copilot review caught the inconsistency.
+  useEffect(() => {
+    securityManager.enableSecureScreen();
+    return () => {
+      void securityManager.disableSecureScreen();
+    };
+  }, []);
+
   function handleContinue() {
     mmkvPublic.set(MMKV_KEYS.SHIELDED_EXPLAINED, true);
     useShieldedStore.getState().setMode('shielded');
