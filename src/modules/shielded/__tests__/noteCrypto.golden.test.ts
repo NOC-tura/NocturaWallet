@@ -8,7 +8,7 @@ import {
   noteCommitment,
   nullifier,
 } from '../noteCrypto';
-import {computeMerkleRoot} from '../../merkle/merkleModule';
+import {computeMerkleRoot, BN254_FIELD_PRIME} from '../../merkle/merkleModule';
 
 const GOLDEN_PATH = path.join(
   __dirname,
@@ -42,6 +42,22 @@ function buildVectors() {
     noteSecret,
   });
 
+  // Deterministic non-generator pk (clearly not key material): byte i = (i*7+3) mod 256.
+  const pseudoPk = Uint8Array.from({length: 48}, (_unused, i) => (i * 7 + 3) % 256);
+  const pseudoPkHex = Buffer.from(pseudoPk).toString('hex');
+  const pseudoPkHash = pkRecipientHash(pseudoPk);
+
+  // Field boundary F-1 encoded big-endian into 32 bytes.
+  const feMinus1 = BN254_FIELD_PRIME - 1n;
+  const feMinus1Bytes = new Uint8Array(32);
+  let tmp = feMinus1;
+  for (let i = 31; i >= 0; i--) {
+    feMinus1Bytes[i] = Number(tmp % 256n);
+    tmp = tmp / 256n;
+  }
+  const feMinus1Hex = Buffer.from(feMinus1Bytes).toString('hex');
+  const feMinus1Roundtrip = bytesToBigIntBE(feMinus1Bytes);
+
   return {
     _meta: {
       scheme: 'noctura-zk-encoding-v1',
@@ -52,6 +68,7 @@ function buildVectors() {
     },
     pkRecipientHash: [
       {name: 'g1_generator', pk: G1_GEN_HEX, output: pkHash.toString()},
+      {name: 'pseudo_random', pk: pseudoPkHex, output: pseudoPkHash.toString()},
     ],
     mintHash: [
       {name: 'NOC_MINT', mint_hex: Buffer.from(nocMint).toString('hex'), output: mintH.toString()},
@@ -83,6 +100,13 @@ function buildVectors() {
           commitment.toString(16).padStart(64, '0'),
           pkHash.toString(16).padStart(64, '0'),
         ]),
+      },
+    ],
+    fieldBoundary: [
+      {
+        name: 'F_minus_1',
+        be_hex: feMinus1Hex,
+        value: feMinus1Roundtrip.toString(),
       },
     ],
   };
