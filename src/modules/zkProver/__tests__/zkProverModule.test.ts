@@ -42,6 +42,7 @@ import {ZkProverModule} from '../zkProverModule';
 import {ProofQueue} from '../proofQueue';
 import {ProverUnavailableError} from '../types';
 import type {ProofWitness} from '../types';
+import {API_BASE} from '../../../constants/programs';
 
 const mockPinnedFetch = pinnedFetch as jest.Mock;
 
@@ -160,6 +161,28 @@ describe('ZkProverModule', () => {
     const updated = queue.getAll().find(j => j.id === job.id)!;
     expect(updated.status).toBe('failed');
     expect(updated.lastError).toBe('Max attempts (3) exceeded');
+  });
+
+  it('posts proofs to `${API_BASE}/zk/prove` (API_BASE already carries /v1, so no extra /v1)', async () => {
+    mockPinnedFetch.mockReturnValueOnce(
+      mockResponse(200, {
+        success: true,
+        proofData: 'AAAA',
+        publicInputs: {root: '', nullifier: '', amount: '0'},
+      }),
+    );
+
+    await module.prove('deposit', {
+      noteCommitment: '0',
+      merklePath: [],
+      merklePathIndices: [],
+      nullifier: '0',
+      amount: '0',
+      noteSecret: 's',
+    });
+
+    const url = (mockPinnedFetch.mock.calls[0] as [string, unknown])[0];
+    expect(url).toBe(`${API_BASE}/zk/prove`);
   });
 
   it('processQueue marks jobs done when hosted succeeds on retry', async () => {
