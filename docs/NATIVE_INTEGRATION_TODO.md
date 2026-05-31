@@ -30,11 +30,9 @@ Potem implementiraj:
    - `mint_bytes mod BN254_ORDER` — modular reduction
    - BN254_ORDER = `21888242871839275222246405745257275088548364400416034343698204186575808495617`
 
-4. **Zamenjaj XOR placeholder** v `src/modules/merkle/merkleModule.ts` (line 23-36)
-   - Trenutno: XOR fold (ni kriptografsko varen)
-   - Zamenjaj z: `Poseidon(left, right)` z enakimi parametri kot circuit
+4. ~~**Zamenjaj XOR placeholder** v `src/modules/merkle/merkleModule.ts`~~ **OPRAVLJENO** — Merkle node hash že uporablja `poseidon2(left, right)` z `ZERO_LEAF = 0` (globina 20). Edina zahteva: circuit mora matchat `poseidon2` (brez domain taga) pri isti globini.
 
-**KRITIČNO:** Parametri MORAJO matchat deployed circuit. Napačni parametri = neveljavni proofs.
+**KRITIČNO (posodobljeno 2026-05-31):** Denarnica je kanonična — circuit MORA matchat NAŠO spec (`docs/zk-contract/zk-witness-encoding-contract.md` + `golden-vectors.json`). Ob deployu naredi round-trip verify proti golden vektorjem. Glej tudi `docs/superpowers/specs/2026-05-31-zk-witness-encoding-contract-design.md`.
 
 **Verify:** `wallet_commitment === circuit_verification` round-trip test
 

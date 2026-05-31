@@ -74,7 +74,7 @@ export interface HostedProverResponse {
 }
 
 export class ProverUnavailableError extends Error {
-  readonly code = 'E060';
+  readonly code = 'E032';
   constructor(message = 'No prover available') {
     super(message);
     this.name = 'ProverUnavailableError';
@@ -82,7 +82,7 @@ export class ProverUnavailableError extends Error {
 }
 
 export class ProofGenerationError extends Error {
-  readonly code = 'E061';
+  readonly code = 'E030';
   readonly cause: Error;
   constructor(message: string, cause: Error) {
     super(message);

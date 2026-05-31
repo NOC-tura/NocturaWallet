@@ -1,0 +1,72 @@
+{
+  "_meta": {
+    "scheme": "noctura-zk-encoding-v1",
+    "field": "BN254",
+    "endianness": "big",
+    "domains": {
+      "commitment": "0x01",
+      "nullifier": "0x02",
+      "pkRecipient": "0x05"
+    },
+    "note": "Field elements are decimal strings; byte arrays are lowercase hex."
+  },
+  "pkRecipientHash": [
+    {
+      "name": "g1_generator",
+      "pk": "97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+      "output": "15616110417374123920810519715085913550770004554180003467880313304632643802671"
+    },
+    {
+      "name": "pseudo_random",
+      "pk": "030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c",
+      "output": "564996716655712737496887711122203332967667735281975056873628630555907516595"
+    }
+  ],
+  "mintHash": [
+    {
+      "name": "NOC_MINT",
+      "mint_hex": "95dd47970992b85ae218fbb573a3ccf12cfe1b93cb10d4788adeb74549864ce1",
+      "output": "2120853120655625795941943576971174942999046937243843271409329444584836975838"
+    },
+    {
+      "name": "all_ff_over_F",
+      "mint_hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "output": "6350874878119819312338956282401532410528162663560392320966563075034087161850"
+    }
+  ],
+  "noteCommitment": [
+    {
+      "name": "representative",
+      "pkRecipientHash": "15616110417374123920810519715085913550770004554180003467880313304632643802671",
+      "amount": "1000000000",
+      "mintHash": "2120853120655625795941943576971174942999046937243843271409329444584836975838",
+      "noteSecret": "12345678901234567890",
+      "output": "12616215241406504088266863708796392158806576577856853960830103596174110701914"
+    }
+  ],
+  "nullifier": [
+    {
+      "name": "leaf_7",
+      "noteSecret": "12345678901234567890",
+      "leafIndex": 7,
+      "output": "18249512087821436308542941396393681939863223470320003520821457184562595056672"
+    }
+  ],
+  "merkle": [
+    {
+      "name": "root_of_two_leaves",
+      "leaves": [
+        "1be48657b7dcdeb433a3734b8cfd217d21e26c5f7eafff77d36f8ef2e92d395a",
+        "228667c01970fa56350101a894105ad52a5f39caf4b3c4c263f0823e4fd7d62f"
+      ],
+      "root": "0bf8e67b335caf22435aab49fd2bf1d3e28cce67193fe7a589411e29f899a996"
+    }
+  ],
+  "fieldBoundary": [
+    {
+      "name": "F_minus_1",
+      "be_hex": "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000",
+      "value": "21888242871839275222246405745257275088548364400416034343698204186575808495616"
+    }
+  ]
+}

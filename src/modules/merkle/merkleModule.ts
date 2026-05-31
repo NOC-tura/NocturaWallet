@@ -3,6 +3,7 @@ import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {API_BASE} from '../../constants/programs';
 import {pinnedFetch} from '../sslPinning/pinnedFetch';
+import {toFieldElement} from './field';
 import {
   MerkleState,
   MerkleLeaf,
@@ -15,25 +16,10 @@ import {
 } from './types';
 
 // ---- BN254 field validation ------------------------------------------------
-
-/**
- * BN254 (alt_bn128) scalar field prime.
- * All Poseidon inputs MUST be valid field elements (< this prime).
- * Inputs >= F would be silently reduced by poseidon-lite, producing
- * a hash that differs from what the on-chain circuit computes with
- * explicit range checking.
- */
-export const BN254_FIELD_PRIME = BigInt(
-  '21888242871839275222246405745257275088548364400416034343698204186575808495617',
-);
-
-function toFieldElement(hex: string): bigint {
-  const bn = BigInt('0x' + hex.padStart(64, '0'));
-  if (bn >= BN254_FIELD_PRIME) {
-    throw new Error(`Merkle: value is not a valid BN254 field element (>= F): 0x${hex.slice(0, 8)}...`);
-  }
-  return bn;
-}
+// BN254_FIELD_PRIME and toFieldElement now live in the side-effect-free
+// ./field module. Re-exported here for backward compatibility with existing
+// importers (tests, merkle consumers).
+export {BN254_FIELD_PRIME, toFieldElement} from './field';
 
 // ---- Minimal in-memory Merkle tree (Poseidon) ---------------------------
 

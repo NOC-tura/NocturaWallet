@@ -40,8 +40,9 @@ import {pinnedFetch} from '../../sslPinning/pinnedFetch';
 import {_resetRateLimitersForTest} from '../../solana/rpcLimiter';
 import {ZkProverModule} from '../zkProverModule';
 import {ProofQueue} from '../proofQueue';
-import {ProverUnavailableError} from '../types';
+import {ProverUnavailableError, ProofGenerationError} from '../types';
 import type {ProofWitness} from '../types';
+import {API_BASE} from '../../../constants/programs';
 
 const mockPinnedFetch = pinnedFetch as jest.Mock;
 
@@ -162,6 +163,28 @@ describe('ZkProverModule', () => {
     expect(updated.lastError).toBe('Max attempts (3) exceeded');
   });
 
+  it('posts proofs to `${API_BASE}/zk/prove` (API_BASE already carries /v1, so no extra /v1)', async () => {
+    mockPinnedFetch.mockReturnValueOnce(
+      mockResponse(200, {
+        success: true,
+        proofData: 'AAAA',
+        publicInputs: {root: '', nullifier: '', amount: '0'},
+      }),
+    );
+
+    await module.prove('deposit', {
+      noteCommitment: '0',
+      merklePath: [],
+      merklePathIndices: [],
+      nullifier: '0',
+      amount: '0',
+      noteSecret: 's',
+    });
+
+    const url = (mockPinnedFetch.mock.calls[0] as [string, unknown])[0];
+    expect(url).toBe(`${API_BASE}/zk/prove`);
+  });
+
   it('processQueue marks jobs done when hosted succeeds on retry', async () => {
     // Pre-populate queue with a pending job
     queue.enqueue('deposit', JSON.stringify({
@@ -182,5 +205,14 @@ describe('ZkProverModule', () => {
     const jobs = queue.getAll();
     expect(jobs[0]!.status).toBe('done');
     expect(jobs[0]!.result?.proofData).toBe('retried-proof');
+  });
+});
+
+describe('ZK error codes do not collide with backup codes', () => {
+  it('ProverUnavailableError uses E032', () => {
+    expect(new ProverUnavailableError().code).toBe('E032');
+  });
+  it('ProofGenerationError uses E030', () => {
+    expect(new ProofGenerationError('x', new Error('y')).code).toBe('E030');
   });
 });
