@@ -1,10 +1,10 @@
 import {poseidon3, poseidon5} from 'poseidon-lite';
-import {BN254_FIELD_PRIME} from '../merkle/merkleModule';
+import {BN254_FIELD_PRIME} from '../merkle/field';
 
 // ---- Domain separators (first input to each Poseidon) --------------------
-// 0x01 = note commitment, 0x02 = nullifier, 0x05 = pk_recipient hash.
+// 0x01 = note commitment (poseidon5), 0x02 = nullifier (poseidon3),
+// 0x05 = pk_recipient hash (poseidon3).
 // Merkle node hashes are intentionally UNTAGGED (poseidon2) — already shipped.
-// DOMAIN_COMMITMENT / DOMAIN_NULLIFIER and poseidon5 are added in Tasks 4–5.
 const DOMAIN_PK = 0x05n;
 
 const PK_G1_BYTES = 48;

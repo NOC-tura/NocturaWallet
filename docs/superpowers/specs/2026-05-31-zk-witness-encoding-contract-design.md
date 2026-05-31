@@ -12,7 +12,7 @@
 Section III (Phase B, mock-functional shielded UX) is content-complete. Real proof
 generation is blocked on three external deliverables:
 
-1. **Backend prover service** — `POST {API_BASE}/v1/zk/prove` (does not exist yet)
+1. **Backend prover service** — `POST {API_BASE}/zk/prove` (full route `.../v1/zk/prove`, since `API_BASE` already carries `/v1`; does not exist yet)
 2. **Polygen WASM local prover** — `localProver` is the only pure stub (`supported: false`)
 3. **Circuit spec** — the root dependency; the backend, the local prover, and the
    client witness construction must all agree on identical field-encoding and Poseidon

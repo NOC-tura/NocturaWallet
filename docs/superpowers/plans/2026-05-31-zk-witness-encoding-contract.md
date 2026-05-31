@@ -678,70 +678,54 @@ git commit -m "feat(zk): golden-vector contract + drift guard"
 
 ---
 
-## Task 8: Normalize hosted-prover path to `/v1/zk/prove`
+## Task 8: Pin prove URL to `${API_BASE}/zk/prove` (regression test)
+
+> **CORRECTED (do not "normalize" to `/v1/zk/prove`).** `API_BASE` already includes the
+> `/v1` prefix in every environment (`.env*` all set `API_BASE=…/v1`; test mock
+> `https://api.noc-tura.io/v1`). So `${API_BASE}/zk/prove` already resolves to the full
+> route `…/v1/zk/prove` — the original code is correct. Adding `/v1` here would produce a
+> double `/v1/v1/zk/prove`. This task therefore KEEPS the source and only adds a
+> regression test pinning the URL. See `docs/zk-contract/zk-witness-encoding-contract.md`.
 
 **Files:**
-- Modify: `src/modules/zkProver/zkProverModule.ts:74`
+- Test only: `src/modules/zkProver/__tests__/zkProverModule.test.ts` (source unchanged)
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Add a regression test**
 
-Append to `src/modules/zkProver/__tests__/zkProverModule.test.ts` (inside the existing
-describe, or a new one — adapt the mock to the file's existing `pinnedFetch` mock style):
+Append to `src/modules/zkProver/__tests__/zkProverModule.test.ts`, reusing the file's
+existing `pinnedFetch` mock + response helper. Import `API_BASE` (already includes `/v1`)
+and assert the FULL URL:
 
 ```ts
-import {pinnedFetch} from '../../sslPinning/pinnedFetch';
-jest.mock('../../sslPinning/pinnedFetch');
+import {API_BASE} from '../../constants/programs';
 
-it('posts proofs to the /v1/zk/prove endpoint', async () => {
-  const mock = pinnedFetch as jest.MockedFunction<typeof pinnedFetch>;
-  mock.mockResolvedValue({
-    status: 200,
-    json: async () => ({success: true, proofData: 'AAAA', publicInputs: {root: '', nullifier: '', amount: '0'}}),
-  } as Awaited<ReturnType<typeof pinnedFetch>>);
-
-  const {zkProver} = require('../zkProverModule');
+it('posts proofs to `${API_BASE}/zk/prove` (API_BASE already carries /v1)', async () => {
+  // arrange the existing pinnedFetch mock to resolve a successful HostedProverResponse
   await zkProver.prove('deposit', {
     noteCommitment: '0', merklePath: [], merklePathIndices: [],
     nullifier: '0', amount: '0', noteSecret: 's',
   });
-
-  const url = mock.mock.calls[0][0] as string;
-  expect(url.endsWith('/v1/zk/prove')).toBe(true);
+  const url = (mockPinnedFetch.mock.calls[0] as [string, unknown])[0];
+  expect(url).toBe(`${API_BASE}/zk/prove`);
 });
 ```
 
-> If the existing test file already mocks `pinnedFetch` differently, reuse that mock and
-> only add the `url.endsWith('/v1/zk/prove')` assertion against the recorded call.
+This pins the correct URL and FAILS if anyone re-adds `/v1` (making it `/v1/v1/...`).
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Verify RED/GREEN integrity**
 
-Run: `npx jest --testPathPattern=zkProverModule -t "/v1/zk/prove"`
-Expected: FAIL — URL ends with `/zk/prove`, not `/v1/zk/prove`.
-
-- [ ] **Step 3: Apply the fix**
-
-In `src/modules/zkProver/zkProverModule.ts:74`, change:
-
-```ts
-    pinnedFetch(`${API_BASE}/zk/prove`, {
-```
-
-to:
-
-```ts
-    pinnedFetch(`${API_BASE}/v1/zk/prove`, {
-```
-
-- [ ] **Step 4: Run test to verify it passes**
+Temporarily add `/v1` to the source line in `zkProverModule.ts`; the test must FAIL
+(`…/v1/v1/zk/prove` ≠ `…/v1/zk/prove`). Revert so the source stays
+`` `${API_BASE}/zk/prove` `` and the test is GREEN.
 
 Run: `npx jest --testPathPattern=zkProverModule`
-Expected: PASS (new assertion + existing suite green).
+Expected: PASS (new test + existing suite green).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add src/modules/zkProver/zkProverModule.ts src/modules/zkProver/__tests__/zkProverModule.test.ts
-git commit -m "fix(zk): normalize hosted prover path to /v1/zk/prove"
+git add src/modules/zkProver/__tests__/zkProverModule.test.ts
+git commit -m "test(zk): pin prove URL to \${API_BASE}/zk/prove (API_BASE already includes /v1)"
 ```
 
 ---
