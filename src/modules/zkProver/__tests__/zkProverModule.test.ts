@@ -40,7 +40,7 @@ import {pinnedFetch} from '../../sslPinning/pinnedFetch';
 import {_resetRateLimitersForTest} from '../../solana/rpcLimiter';
 import {ZkProverModule} from '../zkProverModule';
 import {ProofQueue} from '../proofQueue';
-import {ProverUnavailableError} from '../types';
+import {ProverUnavailableError, ProofGenerationError} from '../types';
 import type {ProofWitness} from '../types';
 import {API_BASE} from '../../../constants/programs';
 
@@ -205,5 +205,14 @@ describe('ZkProverModule', () => {
     const jobs = queue.getAll();
     expect(jobs[0]!.status).toBe('done');
     expect(jobs[0]!.result?.proofData).toBe('retried-proof');
+  });
+});
+
+describe('ZK error codes do not collide with backup codes', () => {
+  it('ProverUnavailableError uses E032', () => {
+    expect(new ProverUnavailableError().code).toBe('E032');
+  });
+  it('ProofGenerationError uses E030', () => {
+    expect(new ProofGenerationError('x', new Error('y')).code).toBe('E030');
   });
 });
