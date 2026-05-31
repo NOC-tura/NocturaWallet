@@ -1,6 +1,10 @@
 import {bytesToBigIntBE, mintHash, noteCommitment, nullifier, pkRecipientHash} from '../noteCrypto';
 import {base58} from '@scure/base';
 import {BN254_FIELD_PRIME} from '../../merkle/merkleModule';
+import {
+  encodeShieldedAddress,
+  decodeShieldedAddress,
+} from '../shieldedAddressCodec';
 
 // BLS12-381 G1 generator, compressed (48 bytes / 96 hex chars).
 const G1_GEN_HEX =
@@ -107,5 +111,15 @@ describe('nullifier', () => {
     expect(() =>
       nullifier({noteSecret: BN254_FIELD_PRIME, leafIndex: 0}),
     ).toThrow(/not a valid BN254 field element/);
+  });
+});
+
+describe('pkRecipientHash <-> shielded address round-trip', () => {
+  it('hashes the decoded address bytes identically to the raw G1 bytes', () => {
+    const raw = hexToBytes(G1_GEN_HEX);
+    const addr = encodeShieldedAddress(raw);
+    expect(addr.startsWith('noc1')).toBe(true);
+    const decoded = decodeShieldedAddress(addr);
+    expect(pkRecipientHash(decoded)).toBe(pkRecipientHash(raw));
   });
 });
