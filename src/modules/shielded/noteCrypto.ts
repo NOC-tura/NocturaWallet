@@ -1,4 +1,4 @@
-import {poseidon3} from 'poseidon-lite';
+import {poseidon3, poseidon5} from 'poseidon-lite';
 import {BN254_FIELD_PRIME} from '../merkle/merkleModule';
 
 // ---- Domain separators (first input to each Poseidon) --------------------
@@ -55,4 +55,31 @@ export function mintHash(mint: Uint8Array): bigint {
     throw new Error(`mintHash: expected 32 bytes, got ${mint.length}`);
   }
   return bytesToBigIntBE(mint) % BN254_FIELD_PRIME;
+}
+
+const DOMAIN_COMMITMENT = 0x01n;
+
+export interface NoteCommitmentInput {
+  /** Output of pkRecipientHash (already a field element). */
+  pkRecipientHash: bigint;
+  /** Amount in lamports (field element, < 2^64 << F). */
+  amount: bigint;
+  /** Output of mintHash (already reduced into the field). */
+  mintHash: bigint;
+  /** Blinding secret derived from sk_view (native); field element. */
+  noteSecret: bigint;
+}
+
+/**
+ * Note commitment: poseidon5(0x01, pkRecipientHash, amount, mintHash, noteSecret).
+ * All inputs are validated as canonical field elements first.
+ */
+export function noteCommitment(input: NoteCommitmentInput): bigint {
+  return poseidon5([
+    DOMAIN_COMMITMENT,
+    assertField(input.pkRecipientHash, 'pkRecipientHash'),
+    assertField(input.amount, 'amount'),
+    assertField(input.mintHash, 'mintHash'),
+    assertField(input.noteSecret, 'noteSecret'),
+  ]);
 }

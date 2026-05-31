@@ -1,4 +1,4 @@
-import {bytesToBigIntBE, mintHash, pkRecipientHash} from '../noteCrypto';
+import {bytesToBigIntBE, mintHash, noteCommitment, pkRecipientHash} from '../noteCrypto';
 import {base58} from '@scure/base';
 import {BN254_FIELD_PRIME} from '../../merkle/merkleModule';
 
@@ -62,5 +62,30 @@ describe('mintHash', () => {
     // eslint-disable-next-line no-bitwise
     const expected = ((1n << 256n) - 1n) % BN254_FIELD_PRIME;
     expect(h).toBe(expected);
+  });
+});
+
+describe('noteCommitment', () => {
+  const base = {
+    pkRecipientHash: 111n,
+    amount: 1_000_000_000n,
+    mintHash: 222n,
+    noteSecret: 333n,
+  };
+
+  it('is deterministic', () => {
+    expect(noteCommitment(base)).toBe(noteCommitment({...base}));
+  });
+
+  it('changes when any input changes', () => {
+    const c0 = noteCommitment(base);
+    expect(noteCommitment({...base, amount: base.amount + 1n})).not.toBe(c0);
+    expect(noteCommitment({...base, noteSecret: 334n})).not.toBe(c0);
+  });
+
+  it('rejects a noteSecret outside the field', () => {
+    expect(() =>
+      noteCommitment({...base, noteSecret: BN254_FIELD_PRIME}),
+    ).toThrow(/not a valid BN254 field element/);
   });
 });
