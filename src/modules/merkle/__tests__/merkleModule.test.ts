@@ -9,7 +9,7 @@ jest.mock('../../sslPinning/pinnedFetch', () => ({
 }));
 
 import {pinnedFetch} from '../../sslPinning/pinnedFetch';
-import {MerkleModule, computeMerkleRoot} from '../merkleModule';
+import {MerkleModule, computeMerkleRoot, toFieldElement, BN254_FIELD_PRIME} from '../merkleModule';
 import {MerkleRootMismatchError, MerkleSyncError} from '../types';
 
 const mockPinnedFetch = pinnedFetch as jest.Mock;
@@ -205,5 +205,16 @@ describe('MerkleModule', () => {
     // We verify the root is deterministic and not zero
     expect(root).toHaveLength(64);
     expect(root).not.toBe('0'.repeat(64));
+  });
+});
+
+describe('toFieldElement (exported)', () => {
+  it('parses a big-endian hex string to a field element', () => {
+    expect(toFieldElement('0a')).toBe(10n);
+  });
+
+  it('rejects a value >= BN254_FIELD_PRIME', () => {
+    const overF = BN254_FIELD_PRIME.toString(16);
+    expect(() => toFieldElement(overF)).toThrow(/not a valid BN254 field element/);
   });
 });

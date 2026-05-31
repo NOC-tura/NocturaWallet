@@ -27,7 +27,7 @@ export const BN254_FIELD_PRIME = BigInt(
   '21888242871839275222246405745257275088548364400416034343698204186575808495617',
 );
 
-function toFieldElement(hex: string): bigint {
+export function toFieldElement(hex: string): bigint {
   const bn = BigInt('0x' + hex.padStart(64, '0'));
   if (bn >= BN254_FIELD_PRIME) {
     throw new Error(`Merkle: value is not a valid BN254 field element (>= F): 0x${hex.slice(0, 8)}...`);
