@@ -1,4 +1,6 @@
-import {bytesToBigIntBE, pkRecipientHash} from '../noteCrypto';
+import {bytesToBigIntBE, mintHash, pkRecipientHash} from '../noteCrypto';
+import {base58} from '@scure/base';
+import {BN254_FIELD_PRIME} from '../../merkle/merkleModule';
 
 // BLS12-381 G1 generator, compressed (48 bytes / 96 hex chars).
 const G1_GEN_HEX =
@@ -37,5 +39,28 @@ describe('pkRecipientHash', () => {
     const pk = hexToBytes(G1_GEN_HEX);
     const hi = bytesToBigIntBE(pk.subarray(0, 24));
     expect(hi.toString(16).startsWith('97')).toBe(true);
+  });
+});
+
+describe('mintHash', () => {
+  it('throws on wrong length', () => {
+    expect(() => mintHash(new Uint8Array(31))).toThrow(/32 bytes/);
+  });
+
+  it('reduces NOC_MINT into the field', () => {
+    const mint = base58.decode('B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW');
+    expect(mint.length).toBe(32);
+    const h = mintHash(mint);
+    expect(h).toBeGreaterThanOrEqual(0n);
+    expect(h).toBeLessThan(BN254_FIELD_PRIME);
+  });
+
+  it('reduces an all-0xFF mint (value > F) below F', () => {
+    const allFf = new Uint8Array(32).fill(0xff);
+    const h = mintHash(allFf);
+    expect(h).toBeLessThan(BN254_FIELD_PRIME);
+    // eslint-disable-next-line no-bitwise
+    const expected = ((1n << 256n) - 1n) % BN254_FIELD_PRIME;
+    expect(h).toBe(expected);
   });
 });

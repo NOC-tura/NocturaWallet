@@ -42,3 +42,17 @@ export function pkRecipientHash(pkG1: Uint8Array): bigint {
   const pkLo = bytesToBigIntBE(pkG1.subarray(24, 48));
   return poseidon3([DOMAIN_PK, pkHi, pkLo]);
 }
+
+const MINT_BYTES = 32;
+
+/**
+ * Hash a 32-byte Solana mint pubkey to a field element.
+ * Big-endian -> BigInt -> mod F. Plain modular reduction (no Poseidon):
+ * 32 bytes may exceed F, so reduction is mandatory.
+ */
+export function mintHash(mint: Uint8Array): bigint {
+  if (mint.length !== MINT_BYTES) {
+    throw new Error(`mintHash: expected 32 bytes, got ${mint.length}`);
+  }
+  return bytesToBigIntBE(mint) % BN254_FIELD_PRIME;
+}
