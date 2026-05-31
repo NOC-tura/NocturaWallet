@@ -172,9 +172,19 @@ The contract specifies exact encoding of every field in `params` (merklePath = h
 strings, amount = decimal string, merklePathIndices = ints) and `publicInputs` (field
 elements = decimal strings).
 
-**Path normalization:** `zkProverModule.ts` currently posts to `/zk/prove` while the
-other two endpoints use `/v1/`. Normalize to **`/v1/zk/prove`**. The backend does not
-exist yet, so this is a free, one-line fix that removes the inconsistency permanently.
+**Path note (CORRECTED during implementation):** The original premise here — "normalize
+prove to `/v1/zk/prove`" — was **wrong**. `API_BASE` already includes the `/v1` prefix in
+every environment (`.env*` all set `API_BASE=…/v1`; test mock `https://api.noc-tura.io/v1`).
+So the client builds the prove URL as `` `${API_BASE}/zk/prove` `` (no extra `/v1`), which
+resolves to the full server route `…/v1/zk/prove`. The original code was already correct;
+implementation kept it and added a regression test pinning `` `${API_BASE}/zk/prove` ``.
+
+**New finding (out of scope, tracked separately):** 11 call sites build URLs as
+`` `${API_BASE}/v1/…` ``, which — because `API_BASE` already ends in `/v1` — produce a
+double `/v1/v1/…`. Affected modules: geoFence, solana/relayer, analytics,
+shielded/shieldedService (config + relayer submit), notifications, tokens,
+appUpdate/versionCheck. Latent (backend not live). Only `merkle` and `zkProver` were
+correct. This is a separate cleanup, not part of the encoding contract.
 
 ---
 
