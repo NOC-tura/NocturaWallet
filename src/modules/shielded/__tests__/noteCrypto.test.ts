@@ -1,4 +1,4 @@
-import {bytesToBigIntBE, mintHash, noteCommitment, pkRecipientHash} from '../noteCrypto';
+import {bytesToBigIntBE, mintHash, noteCommitment, nullifier, pkRecipientHash} from '../noteCrypto';
 import {base58} from '@scure/base';
 import {BN254_FIELD_PRIME} from '../../merkle/merkleModule';
 
@@ -86,6 +86,26 @@ describe('noteCommitment', () => {
   it('rejects a noteSecret outside the field', () => {
     expect(() =>
       noteCommitment({...base, noteSecret: BN254_FIELD_PRIME}),
+    ).toThrow(/not a valid BN254 field element/);
+  });
+});
+
+describe('nullifier', () => {
+  it('is deterministic for the same secret + index', () => {
+    const a = nullifier({noteSecret: 333n, leafIndex: 7});
+    const b = nullifier({noteSecret: 333n, leafIndex: 7n});
+    expect(a).toBe(b);
+  });
+
+  it('differs across leaf positions (binds to tree position)', () => {
+    expect(nullifier({noteSecret: 333n, leafIndex: 7})).not.toBe(
+      nullifier({noteSecret: 333n, leafIndex: 8}),
+    );
+  });
+
+  it('rejects a noteSecret outside the field', () => {
+    expect(() =>
+      nullifier({noteSecret: BN254_FIELD_PRIME, leafIndex: 0}),
     ).toThrow(/not a valid BN254 field element/);
   });
 });

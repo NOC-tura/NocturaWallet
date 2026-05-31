@@ -83,3 +83,26 @@ export function noteCommitment(input: NoteCommitmentInput): bigint {
     assertField(input.noteSecret, 'noteSecret'),
   ]);
 }
+
+const DOMAIN_NULLIFIER = 0x02n;
+
+export interface NullifierInput {
+  /** Blinding secret derived from sk_view (native); field element. */
+  noteSecret: bigint;
+  /** Position of the note's commitment leaf in the Merkle tree. */
+  leafIndex: number | bigint;
+}
+
+/**
+ * Nullifier: poseidon3(0x02, noteSecret, leafIndex).
+ * JS-computable from view material, enabling spent-note detection during scan.
+ * Spend AUTHORIZATION is separate (ZK proof + native BLS sk_spend signature);
+ * the nullifier is only the uniqueness tag bound to the note's tree position.
+ */
+export function nullifier(input: NullifierInput): bigint {
+  return poseidon3([
+    DOMAIN_NULLIFIER,
+    assertField(input.noteSecret, 'noteSecret'),
+    assertField(BigInt(input.leafIndex), 'leafIndex'),
+  ]);
+}
