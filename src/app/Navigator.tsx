@@ -28,6 +28,7 @@ import {ReceiveScreen} from '../screens/transparent/ReceiveScreen';
 import {TransactionHistoryScreen as TransactionHistoryScreenImpl} from '../screens/transparent/TransactionHistoryScreen';
 import {TransactionDetailScreen as TransactionDetailScreenImpl} from '../screens/transparent/TransactionDetailScreen';
 import {ReferralScreen as ReferralScreenImpl} from '../screens/referral/ReferralScreen';
+import {isShieldedEnabled} from '../constants/features';
 import type {
   RootStackParamList,
   OnboardingStackParamList,
@@ -264,13 +265,21 @@ function DashboardScreenNav() {
     <DashboardScreen
       onSend={() => rootNav.navigate('SendModal')}
       onReceive={() => rootNav.navigate('ReceiveModal')}
-      onShield={() => rootNav.navigate('ShieldUnshieldModal', {direction: 'private'})}
+      onShield={() => {
+        if (isShieldedEnabled()) {
+          rootNav.navigate('ShieldUnshieldModal', {direction: 'private'});
+        }
+      }}
       onBuy={() => dashNav.navigate('Presale')}
       onScan={() => rootNav.navigate('ScanModal')}
       onNotifications={() => rootNav.navigate('NotificationsModal')}
       onProfileTap={() => tabNav.getParent()?.navigate('ProfileTab' as never)}
       onPresale={() => dashNav.navigate('Presale')}
-      onFirstShieldedToggle={() => rootNav.navigate('ShieldedExplainer')}
+      onFirstShieldedToggle={() => {
+        if (isShieldedEnabled()) {
+          rootNav.navigate('ShieldedExplainer');
+        }
+      }}
     />
   );
 }
