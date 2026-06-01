@@ -17,8 +17,10 @@
 
 | File | Responsibility |
 |------|----------------|
-| `src/constants/features.ts` (create) | `FEATURES` flag + `isShieldedEnabled()` + `SHIELDED_ROUTES`/`isShieldedRoute()` |
-| `src/constants/__tests__/features.test.ts` (create) | Unit tests for the flag + helpers |
+| `src/constants/features.ts` (create) | `FEATURES` flag + `isShieldedEnabled()` |
+| `src/constants/__tests__/features.test.ts` (create) | Unit test for the flag default |
+| `src/app/deepLinkConfig.ts` (modify) | Gate shielded deep-link paths (`deposit`/`transfer`/`withdraw`) behind `isShieldedEnabled()` |
+| `src/app/__tests__/deepLinkConfig.test.ts` (create) | Assert shielded deep links absent when gated |
 | `src/screens/dashboard/DashboardScreen.tsx` (modify) | Export `ModeButton`; add `comingSoon` prop; gate `handleModeToggle` |
 | `src/screens/dashboard/__tests__/ModeButton.test.tsx` (create) | `ModeButton` coming-soon behavior |
 | `src/app/Navigator.tsx` (modify) | Defensive guard on `onShield` / `onFirstShieldedToggle` |
@@ -38,33 +40,19 @@
 
 Create `src/constants/__tests__/features.test.ts`:
 
+> **As-shipped note (post-review):** the original plan also added `SHIELDED_ROUTES` /
+> `isShieldedRoute()` helpers. The final review found them unused (dead code, with a
+> `'ZkProof'` vs `'ZkProofModal'` name bug), so they were removed; deep-link gating
+> (see the deep-link task below) covers route-level gating instead. The snippets below
+> reflect the **shipped** `features.ts` (only `FEATURES` + `isShieldedEnabled`).
+
 ```ts
-import {FEATURES, isShieldedEnabled, SHIELDED_ROUTES, isShieldedRoute} from '../features';
+import {FEATURES, isShieldedEnabled} from '../features';
 
 describe('features flag', () => {
   it('shielded is disabled in v1', () => {
     expect(FEATURES.shielded).toBe(false);
     expect(isShieldedEnabled()).toBe(false);
-  });
-
-  it('identifies shielded routes', () => {
-    expect(isShieldedRoute('ZkProof')).toBe(true);
-    expect(isShieldedRoute('ShieldedExplainer')).toBe(true);
-    expect(isShieldedRoute('ShieldUnshieldModal')).toBe(true);
-  });
-
-  it('does not flag transparent routes as shielded', () => {
-    expect(isShieldedRoute('Dashboard')).toBe(false);
-    expect(isShieldedRoute('Send')).toBe(false);
-  });
-
-  it('SHIELDED_ROUTES covers the full shielded set', () => {
-    for (const r of [
-      'ShieldedExplainer', 'ShieldedBalance', 'ShieldedTransfer',
-      'ShieldUnshield', 'ShieldUnshieldModal', 'Deposit', 'Withdraw', 'ZkProof',
-    ]) {
-      expect(SHIELDED_ROUTES).toContain(r);
-    }
   });
 });
 ```
@@ -96,31 +84,12 @@ export const FEATURES = {
 export function isShieldedEnabled(): boolean {
   return FEATURES.shielded;
 }
-
-/** Root-stack route names that belong to shielded mode. */
-export const SHIELDED_ROUTES = [
-  'ShieldedExplainer',
-  'ShieldedBalance',
-  'ShieldedTransfer',
-  'ShieldUnshield',
-  'ShieldUnshieldModal',
-  'Deposit',
-  'Withdraw',
-  'ZkProof',
-] as const;
-
-export type ShieldedRoute = (typeof SHIELDED_ROUTES)[number];
-
-/** True if the given route name is a shielded route (gated by FEATURES.shielded). */
-export function isShieldedRoute(name: string): boolean {
-  return (SHIELDED_ROUTES as readonly string[]).includes(name);
-}
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx jest --testPathPattern=features.test`
-Expected: PASS (4 tests).
+Expected: PASS (1 test — the flag default).
 
 - [ ] **Step 5: Type-check + lint**
 

@@ -94,7 +94,7 @@ The user runs these on the phone with the delivered APK (built on mainnet env fr
 ## 7. Testing & "Done"
 
 **Agent-side (CI-verifiable this session):**
-- Gating: component/unit test that `FEATURES.shielded=false` renders the disabled "coming soon" toggle and shielded routes are unreachable (guard test). Existing ~566 tests stay green; `tsc` + `eslint` clean.
+- Gating: unit tests covering the `FEATURES.shielded=false` default, the disabled "Shielded · soon" toggle (`ModeButton` does not fire `onPress` when `comingSoon`), and deep-link gating (`deepLinkConfig` exposes no `Deposit`/`ShieldedTransfer`/`Withdraw` paths when gated). Existing tests stay green; `tsc` + `eslint` clean. (UI/nav/settings guards are verified on-device per the runbook.)
 - A signed `app-release.apk` is produced and placed in `/home/user/Downloads/` (or, if the sandbox can't build, code committed + build runbook for the user).
 - Runbook committed.
 
