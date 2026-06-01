@@ -12,6 +12,7 @@ import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {useSettings} from '../../store/zustand/useSettings';
 import {useWalletStore} from '../../store/zustand/walletStore';
+import {isShieldedEnabled} from '../../constants/features';
 
 type RootStackParamList = {
   SecuritySettings: undefined;
@@ -185,7 +186,9 @@ export function SettingsScreen() {
           {publicKey ? truncateAddress(publicKey) : '—'}
         </Text>
       </SettingsRow>
-      <NavRow label="Export View Key" onPress={() => navigation.navigate('ExportViewKey')} />
+      {isShieldedEnabled() ? (
+        <NavRow label="Export View Key" onPress={() => navigation.navigate('ExportViewKey')} />
+      ) : null}
       <NavRow
         label="Wipe Wallet"
         onPress={() => navigation.navigate('WipeWallet')}

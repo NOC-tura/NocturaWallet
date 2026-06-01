@@ -36,6 +36,7 @@ import {useAccentColor} from '../../hooks/useAccent';
 import {forceSync} from '../../modules/backgroundSync/backgroundSyncModule';
 import {TokenManager} from '../../modules/tokens/tokenModule';
 import {NOC_MINT} from '../../constants/programs';
+import {isShieldedEnabled} from '../../constants/features';
 import {formatBalanceForDisplay} from '../../utils/parseTokenAmount';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
@@ -199,6 +200,8 @@ export function DashboardScreen({
 
   const handleModeToggle = useCallback(
     (target: 'transparent' | 'shielded') => {
+      // Shielded is gated out of this build (FEATURES.shielded === false).
+      if (target === 'shielded' && !isShieldedEnabled()) return;
       if (target === mode) return;
       // First shielded toggle fires the explainer screen (#17), which sets
       // SHIELDED_EXPLAINED on Continue and navigates to ShieldUnshield (#16).
@@ -423,6 +426,7 @@ function DashboardHeader({
             mode="shielded"
             onPress={() => onModeToggle('shielded')}
             withShieldIcon
+            comingSoon={!isShieldedEnabled()}
           />
         </View>
       </View>
@@ -591,20 +595,24 @@ interface ModeButtonProps {
   mode: 'transparent' | 'shielded';
   onPress: () => void;
   withShieldIcon?: boolean;
+  /** Render as a disabled "· soon" teaser (feature gated out of this build). */
+  comingSoon?: boolean;
 }
 
-function ModeButton({label, isActive, mode, onPress, withShieldIcon}: ModeButtonProps) {
+export function ModeButton({label, isActive, mode, onPress, withShieldIcon, comingSoon}: ModeButtonProps) {
   const activeBg = mode === 'shielded' ? 'bg-accent-shielded' : 'bg-accent-transparent';
   const activeText = 'text-bg-base';
   const inactiveText = 'text-fg-secondary';
   return (
     <Pressable
-      onPress={onPress}
+      onPress={comingSoon ? undefined : onPress}
+      disabled={comingSoon}
       accessibilityRole="tab"
-      accessibilityState={{selected: isActive}}
+      accessibilityState={{selected: isActive, disabled: !!comingSoon}}
       className={cn(
         'flex-1 flex-row items-center justify-center gap-2 py-2 rounded-pill',
         isActive && activeBg,
+        comingSoon && 'opacity-50',
       )}>
       {withShieldIcon ? (
         <Shield
@@ -619,7 +627,7 @@ function ModeButton({label, isActive, mode, onPress, withShieldIcon}: ModeButton
           'font-geist-semibold',
           isActive ? activeText : inactiveText,
         )}>
-        {label}
+        {comingSoon ? `${label} · soon` : label}
       </Text>
     </Pressable>
   );

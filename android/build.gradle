@@ -19,3 +19,26 @@ buildscript {
 }
 
 apply plugin: "com.facebook.react.rootproject"
+
+// Force stale RN library modules (e.g. react-native-ssl-pinning, which pins
+// compileSdk 30 / buildTools 28.0.3) to compile against the app's SDK. Without
+// this, AAPT fails with "resource android:attr/lStar not found" because lStar
+// is an API 31+ attribute referenced by modern androidx but absent from SDK 30.
+subprojects { subproject ->
+    def forceSdk = {
+        if (subproject.hasProperty("android")) {
+            subproject.android {
+                compileSdkVersion rootProject.ext.compileSdkVersion
+                buildToolsVersion rootProject.ext.buildToolsVersion
+            }
+        }
+    }
+    // Some subprojects are already evaluated by the time this runs (RN
+    // autolinking / rootproject plugin); afterEvaluate would then throw.
+    // Apply directly if already evaluated, otherwise defer.
+    if (subproject.state.executed) {
+        forceSdk()
+    } else {
+        subproject.afterEvaluate { forceSdk() }
+    }
+}
