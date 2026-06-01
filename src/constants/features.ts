@@ -15,22 +15,3 @@ export const FEATURES = {
 export function isShieldedEnabled(): boolean {
   return FEATURES.shielded;
 }
-
-/** Root-stack route names that belong to shielded mode. */
-export const SHIELDED_ROUTES = [
-  'ShieldedExplainer',
-  'ShieldedBalance',
-  'ShieldedTransfer',
-  'ShieldUnshield',
-  'ShieldUnshieldModal',
-  'Deposit',
-  'Withdraw',
-  'ZkProof',
-] as const;
-
-export type ShieldedRoute = (typeof SHIELDED_ROUTES)[number];
-
-/** True if the given route name is a shielded route (gated by FEATURES.shielded). */
-export function isShieldedRoute(name: string): boolean {
-  return (SHIELDED_ROUTES as readonly string[]).includes(name);
-}
