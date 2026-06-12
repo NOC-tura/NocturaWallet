@@ -27,6 +27,7 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import {Text, Button} from '../../components/ui';
 import {ConfirmationSheet} from '../../components/ConfirmationSheet';
 import {validateRecipientInput} from '../../utils/validateAddress';
+import {PublicKey} from '@solana/web3.js';
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {addressBook} from '../../modules/addressBook/addressBookModule';
@@ -52,6 +53,12 @@ let simulateTransaction:
 let buildTransferTx:
   | ((params: unknown) => Promise<import('@solana/web3.js').VersionedTransaction>)
   | null = null;
+let sendTransparentTransfer:
+  | typeof import('../../modules/solana/sendTransaction').sendTransparentTransfer
+  | null = null;
+let loadTransparentScheme:
+  | typeof import('../../modules/keyDerivation/derivationScheme').loadTransparentScheme
+  | null = null;
 
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -60,6 +67,10 @@ try {
   simulateTransaction = require('../../modules/solana/simulation').simulateTransaction;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   buildTransferTx = require('../../modules/solana/transactionBuilder').buildTransferTx;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  sendTransparentTransfer = require('../../modules/solana/sendTransaction').sendTransparentTransfer;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  loadTransparentScheme = require('../../modules/keyDerivation/derivationScheme').loadTransparentScheme;
 } catch {
   // Modules unavailable in test/stub environment — no-op
 }
@@ -424,17 +435,48 @@ export function SendScreen({onTransactionSent, onBack}: SendScreenProps) {
         return;
       }
 
-      let signature = 'mock_signature';
-
-      if (getConnection && buildTransferTx) {
-        try {
-          const connection = getConnection();
-          await buildTransferTx({} as unknown);
-          void connection;
-          signature = `tx_${Date.now()}`;
-        } catch {
-          signature = `tx_${Date.now()}`;
+      let signature: string;
+      try {
+        if (!sendTransparentTransfer || !loadTransparentScheme) {
+          throw new Error('Send module unavailable');
         }
+        const scheme = loadTransparentScheme();
+        const recipientPk = new PublicKey(recipient);
+        // Priority tiers are expressed as a target lamport amount; convert to a
+        // per-compute-unit price (microLamports) for setComputeUnitPrice over the
+        // standard 200k CU budget. normal=0, fast≈75k µLam/CU, urgent≈250k µLam/CU.
+        const priorityLamports = PRIORITY_FEE_LAMPORTS[priorityLevel];
+        const priorityFee = Number((priorityLamports * 1_000_000n) / 200_000n);
+
+        if (selectedMint === SOL_MINT) {
+          const lamports = parseTokenAmount(amount, SOL_DECIMALS);
+          const res = await sendTransparentTransfer({
+            kind: 'sol',
+            recipient: recipientPk,
+            lamports,
+            priorityFee,
+            scheme,
+          });
+          signature = res.signature;
+        } else {
+          const splAmount = parseTokenAmount(amount, selectedToken.decimals);
+          const res = await sendTransparentTransfer({
+            kind: 'spl',
+            recipient: recipientPk,
+            mint: new PublicKey(selectedMint),
+            amount: splAmount,
+            decimals: selectedToken.decimals,
+            createAta: needsAta,
+            priorityFee,
+            scheme,
+          });
+          signature = res.signature;
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Transaction failed';
+        Alert.alert('Send failed', msg);
+        setSending(false);
+        return;
       }
 
       onTransactionSent?.({
@@ -478,7 +520,10 @@ export function SendScreen({onTransactionSent, onBack}: SendScreenProps) {
     sending,
     amount,
     recipient,
+    selectedMint,
     selectedToken.symbol,
+    selectedToken.decimals,
+    needsAta,
     onTransactionSent,
     rootNav,
     priorityLevel,
