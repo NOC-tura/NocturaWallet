@@ -1,3 +1,5 @@
+import type {TransferIntent} from './transfer';
+
 export type RootStackParamList = {
   Splash: undefined;
   Unlock: {reason?: 'session_expired' | 'app_foreground' | 'manual_lock'};
@@ -53,6 +55,8 @@ export type DashboardStackParamList = {
 
 export type SendStackParamList = {
   Send: undefined;
+  TxSimulate: {intent: TransferIntent};
+  TxConfirm: {intent: TransferIntent};
   TransactionStatus: {
     signature: string;
     amount: string;
