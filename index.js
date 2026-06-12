@@ -2,6 +2,7 @@
 import 'react-native-get-random-values'; // 1. crypto.getRandomValues()
 import 'react-native-url-polyfill/auto'; // 2. URL API
 import 'text-encoding'; // 3. TextEncoder / TextDecoder (Hermes lacks these)
+import './globalBuffer'; // 4. global Buffer — @solana/web3.js tx (de)serialization
 import {AppRegistry} from 'react-native';
 import App from './src/app/App';
 import {name as appName} from './app.json';
