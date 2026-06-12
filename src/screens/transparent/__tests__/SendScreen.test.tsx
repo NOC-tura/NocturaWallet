@@ -32,27 +32,27 @@ jest.mock('../../../store/zustand/walletStore', () => ({
 // Skip until rewrite lands.
 describe.skip('SendScreen', () => {
   it('shows recipient input field', () => {
-    const {getByPlaceholderText} = render(<SendScreen />);
+    const {getByPlaceholderText} = render(<SendScreen onReview={jest.fn()} />);
     expect(getByPlaceholderText(/recipient|address/i)).toBeTruthy();
   });
 
   it('shows amount input field', () => {
-    const {getByPlaceholderText} = render(<SendScreen />);
+    const {getByPlaceholderText} = render(<SendScreen onReview={jest.fn()} />);
     expect(getByPlaceholderText(/amount/i)).toBeTruthy();
   });
 
   it('shows token selector', () => {
-    const {getByText} = render(<SendScreen />);
+    const {getByText} = render(<SendScreen onReview={jest.fn()} />);
     expect(getByText('SOL')).toBeTruthy();
   });
 
   it('shows Review button', () => {
-    const {getByText} = render(<SendScreen />);
+    const {getByText} = render(<SendScreen onReview={jest.fn()} />);
     expect(getByText('Review')).toBeTruthy();
   });
 
   it('shows error when address is invalid', async () => {
-    const {getByPlaceholderText, findByText} = render(<SendScreen />);
+    const {getByPlaceholderText, findByText} = render(<SendScreen onReview={jest.fn()} />);
     const recipientInput = getByPlaceholderText(/recipient|address/i);
     fireEvent.changeText(recipientInput, 'abc');
     fireEvent(recipientInput, 'blur');
@@ -61,7 +61,7 @@ describe.skip('SendScreen', () => {
   });
 
   it('Review button is disabled when fields are empty', () => {
-    const {getByText} = render(<SendScreen />);
+    const {getByText} = render(<SendScreen onReview={jest.fn()} />);
     const button = getByText('Review');
     expect(button).toBeTruthy();
     // Verify disabled state: button should be disabled when no recipient or amount

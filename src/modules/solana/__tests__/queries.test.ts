@@ -1,5 +1,5 @@
 import {Connection, PublicKey} from '@solana/web3.js';
-import {getBalance, getTokenAccounts, getTransactionHistory} from '../queries';
+import {getBalance, getTokenAccounts, getTransactionHistory, getAccountInfo} from '../queries';
 
 describe('getBalance', () => {
   it('returns bigint (not number)', async () => {
@@ -128,5 +128,21 @@ describe('getTransactionHistory', () => {
       limit: 5,
       before: 'some-signature',
     });
+  });
+});
+
+describe('getAccountInfo', () => {
+  it('returns executable=true when the account is a program', async () => {
+    const connection = {
+      getAccountInfo: jest.fn(async () => ({executable: true})),
+    } as never;
+    const res = await getAccountInfo(connection, {toBase58: () => 'P'} as never);
+    expect(res).toEqual({exists: true, executable: true});
+  });
+
+  it('returns exists=false when the account is missing', async () => {
+    const connection = {getAccountInfo: jest.fn(async () => null)} as never;
+    const res = await getAccountInfo(connection, {toBase58: () => 'X'} as never);
+    expect(res).toEqual({exists: false, executable: false});
   });
 });
