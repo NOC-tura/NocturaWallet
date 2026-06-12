@@ -51,7 +51,10 @@ let simulateTransaction:
     ) => Promise<{success: boolean; error?: {code: string; message: string; action: string}}>)
   | null = null;
 let buildTransferTx:
-  | ((params: unknown) => Promise<import('@solana/web3.js').VersionedTransaction>)
+  | typeof import('../../modules/solana/transactionBuilder').buildTransferTx
+  | null = null;
+let buildSPLTransferTx:
+  | typeof import('../../modules/solana/transactionBuilder').buildSPLTransferTx
   | null = null;
 let sendTransparentTransfer:
   | typeof import('../../modules/solana/sendTransaction').sendTransparentTransfer
@@ -67,6 +70,8 @@ try {
   simulateTransaction = require('../../modules/solana/simulation').simulateTransaction;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   buildTransferTx = require('../../modules/solana/transactionBuilder').buildTransferTx;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  buildSPLTransferTx = require('../../modules/solana/transactionBuilder').buildSPLTransferTx;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   sendTransparentTransfer = require('../../modules/solana/sendTransaction').sendTransparentTransfer;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -196,6 +201,7 @@ export function SendScreen({onTransactionSent, onBack}: SendScreenProps) {
 
   const [reviewing, setReviewing] = useState(false);
   const [simulationPassed, setSimulationPassed] = useState(false);
+  const [simError, setSimError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [needsAta, setNeedsAta] = useState(false);
 
@@ -379,42 +385,82 @@ export function SendScreen({onTransactionSent, onBack}: SendScreenProps) {
 
     setReviewing(true);
     setSimulationPassed(false);
+    setSimError(null);
     setNeedsAta(false);
 
     try {
-      if (selectedMint !== SOL_MINT) {
-        setNeedsAta(true);
-      }
+      const isSpl = selectedMint !== SOL_MINT;
+      setNeedsAta(isSpl);
 
       let simPassed = false;
-      if (getConnection && simulateTransaction && buildTransferTx) {
+      let simErrorMsg: string | null = null;
+      if (
+        getConnection &&
+        simulateTransaction &&
+        buildTransferTx &&
+        buildSPLTransferTx &&
+        publicKey
+      ) {
         try {
           const connection = getConnection();
-          const tx = await buildTransferTx({} as unknown);
-          const result = await simulateTransaction(
-            connection,
-            tx as import('@solana/web3.js').VersionedTransaction,
+          const sender = new PublicKey(publicKey);
+          const recipientPk = new PublicKey(recipient);
+          // Same priority-fee conversion as the broadcast path.
+          const priorityFee = Number(
+            (PRIORITY_FEE_LAMPORTS[priorityLevel] * 1_000_000n) / 200_000n,
           );
+          const tx = isSpl
+            ? await buildSPLTransferTx({
+                sender,
+                recipient: recipientPk,
+                mint: new PublicKey(selectedMint),
+                amount: parseTokenAmount(amount, selectedToken.decimals),
+                decimals: selectedToken.decimals,
+                createAta: isSpl,
+                priorityFee,
+              })
+            : await buildTransferTx({
+                sender,
+                recipient: recipientPk,
+                lamports: parseTokenAmount(amount, SOL_DECIMALS),
+                priorityFee,
+              });
+          const result = await simulateTransaction(connection, tx);
           simPassed = result.success;
-        } catch {
+          if (!simPassed) {
+            simErrorMsg =
+              result.error?.action ?? result.error?.message ?? null;
+          }
+        } catch (err) {
           simPassed = false;
+          simErrorMsg = err instanceof Error ? err.message : null;
         }
       } else {
+        // Native/build modules unavailable (test/stub env) — don't block.
         simPassed = true;
       }
 
       setSimulationPassed(simPassed);
+      setSimError(simErrorMsg);
       setStep('confirm');
     } finally {
       setReviewing(false);
     }
-  }, [canReview, selectedMint]);
+  }, [
+    canReview,
+    selectedMint,
+    publicKey,
+    recipient,
+    amount,
+    selectedToken.decimals,
+    priorityLevel,
+  ]);
 
-  const handleConfirm = useCallback(async () => {
+  const handleConfirm = useCallback(async (allowUnsimulated = false) => {
     const now = Date.now();
     if (now - lastTapRef.current < 500) return;
     lastTapRef.current = now;
-    if (!simulationPassed || sending) return;
+    if ((!simulationPassed && !allowUnsimulated) || sending) return;
     setSending(true);
 
     try {
@@ -529,6 +575,12 @@ export function SendScreen({onTransactionSent, onBack}: SendScreenProps) {
     priorityLevel,
   ]);
 
+  // "Continue anyway" — broadcast despite a failed/unavailable simulation
+  // (per design: simulation can false-negative on RPC drop).
+  const handleContinueAnyway = useCallback(() => {
+    void handleConfirm(true);
+  }, [handleConfirm]);
+
   const networkFeeDisplay = useMemo(() => {
     const feeSOL = formatTokenAmount(getTotalNetworkFee(priorityLevel), SOL_DECIMALS);
     return `${feeSOL} SOL`;
@@ -565,8 +617,12 @@ export function SendScreen({onTransactionSent, onBack}: SendScreenProps) {
             networkFee={networkFeeDisplay}
             accountCreation={accountCreationDisplay}
             simulationPassed={simulationPassed}
+            simulationError={simError}
+            retrying={reviewing}
             loading={sending}
-            onConfirm={handleConfirm}
+            onConfirm={() => handleConfirm()}
+            onRetry={handleReview}
+            onContinueAnyway={handleContinueAnyway}
             onCancel={() => setStep('input')}
           />
         </ScrollView>
