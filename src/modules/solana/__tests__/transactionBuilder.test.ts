@@ -1,6 +1,11 @@
 import {PublicKey, SystemProgram, ComputeBudgetProgram} from '@solana/web3.js';
 import type {VersionedTransaction} from '@solana/web3.js';
-import {buildTransferTx, buildSPLTransferTx} from '../transactionBuilder';
+import {
+  buildTransferTx,
+  buildSPLTransferTx,
+  buildTransferInstructions,
+  buildSPLTransferInstructions,
+} from '../transactionBuilder';
 
 /**
  * Helper to extract instructions from a VersionedTransaction in tests.
@@ -188,5 +193,39 @@ describe('buildSPLTransferTx', () => {
     expect(ComputeBudgetProgram.setComputeUnitPrice).toHaveBeenCalledWith({
       microLamports: 5000,
     });
+  });
+});
+
+describe('instruction builders', () => {
+  const A = new PublicKey('HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk');
+  const B = new PublicKey('EHqmfkN89RJ7Y33CXM6uCzhVeuywHoJXZZLszBHHZy7o');
+  const MINT = new PublicKey('B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW');
+
+  it('SOL transfer yields transfer + fee-markup instructions', () => {
+    const ix = buildTransferInstructions({sender: A, recipient: B, lamports: 1_000n});
+    // recipient transfer + Noctura fee markup transfer = 2 (no priority fee)
+    expect(ix.length).toBe(2);
+  });
+
+  it('priority fee prepends a compute-budget instruction', () => {
+    const ix = buildTransferInstructions({
+      sender: A,
+      recipient: B,
+      lamports: 1_000n,
+      priorityFee: 15_000,
+    });
+    expect(ix.length).toBe(3);
+  });
+
+  it('SPL transfer with createAta yields ata + transfer + fee-markup', () => {
+    const ix = buildSPLTransferInstructions({
+      sender: A,
+      recipient: B,
+      mint: MINT,
+      amount: 1_000n,
+      decimals: 9,
+      createAta: true,
+    });
+    expect(ix.length).toBe(3);
   });
 });
