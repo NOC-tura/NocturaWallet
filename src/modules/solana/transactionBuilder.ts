@@ -119,14 +119,16 @@ function buildCreateAtaInstruction(
   });
 }
 
-export async function buildTransferTx(
+/**
+ * Build the instruction list for a native SOL transfer: optional priority fee,
+ * the recipient transfer, and the Noctura fee-markup transfer. Exposed so
+ * signAndSend can rebuild the transaction with a fresh blockhash per retry.
+ */
+export function buildTransferInstructions(
   params: TransferParams,
-): Promise<VersionedTransaction> {
+): TransactionInstruction[] {
   const {sender, recipient, lamports, priorityFee} = params;
-  const connection = getConnection();
-  const {blockhash} = await connection.getLatestBlockhash();
-
-  const instructions = [];
+  const instructions: TransactionInstruction[] = [];
 
   if (priorityFee !== undefined) {
     instructions.push(
@@ -150,21 +152,33 @@ export async function buildTransferTx(
     }),
   );
 
+  return instructions;
+}
+
+export async function buildTransferTx(
+  params: TransferParams,
+): Promise<VersionedTransaction> {
+  const connection = getConnection();
+  const {blockhash} = await connection.getLatestBlockhash();
+
   const message = new TransactionMessage({
-    payerKey: sender,
+    payerKey: params.sender,
     recentBlockhash: blockhash,
-    instructions,
+    instructions: buildTransferInstructions(params),
   }).compileToV0Message();
 
   return new VersionedTransaction(message);
 }
 
-export async function buildSPLTransferTx(
+/**
+ * Build the instruction list for an SPL token transfer: optional priority fee,
+ * optional recipient ATA creation, the TransferChecked, and the Noctura
+ * fee-markup transfer. Exposed so signAndSend can rebuild per retry.
+ */
+export function buildSPLTransferInstructions(
   params: SPLTransferParams,
-): Promise<VersionedTransaction> {
+): TransactionInstruction[] {
   const {sender, recipient, mint, amount, decimals, priorityFee, createAta} = params;
-  const connection = getConnection();
-  const {blockhash} = await connection.getLatestBlockhash();
 
   const instructions: TransactionInstruction[] = [];
 
@@ -213,10 +227,19 @@ export async function buildSPLTransferTx(
     }),
   );
 
+  return instructions;
+}
+
+export async function buildSPLTransferTx(
+  params: SPLTransferParams,
+): Promise<VersionedTransaction> {
+  const connection = getConnection();
+  const {blockhash} = await connection.getLatestBlockhash();
+
   const message = new TransactionMessage({
-    payerKey: sender,
+    payerKey: params.sender,
     recentBlockhash: blockhash,
-    instructions,
+    instructions: buildSPLTransferInstructions(params),
   }).compileToV0Message();
 
   return new VersionedTransaction(message);

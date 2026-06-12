@@ -10,9 +10,17 @@ interface ConfirmationSheetProps {
   networkFee: string;
   accountCreation?: string;
   simulationPassed: boolean;
+  /** Real reason the dry-run failed, surfaced instead of a generic message. */
+  simulationError?: string | null;
+  /** True while a re-simulation is in flight (Retry button spinner). */
+  retrying?: boolean;
   loading: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Re-run the simulation (shown only on the failed state). */
+  onRetry?: () => void;
+  /** Broadcast despite a failed simulation (shown only on the failed state). */
+  onContinueAnyway?: () => void;
 }
 
 export function ConfirmationSheet({
@@ -23,12 +31,14 @@ export function ConfirmationSheet({
   networkFee,
   accountCreation,
   simulationPassed,
+  simulationError,
+  retrying = false,
   loading,
   onConfirm,
   onCancel,
+  onRetry,
+  onContinueAnyway,
 }: ConfirmationSheetProps) {
-  const isDisabled = !simulationPassed || loading;
-
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Confirm Transaction</Text>
@@ -43,34 +53,76 @@ export function ConfirmationSheet({
         )}
       </View>
 
-      {!simulationPassed && (
-        <Text style={styles.simulationError}>
-          Transaction simulation failed. Please check your balance and try again.
-        </Text>
+      {simulationPassed ? (
+        // ── Simulation passed · standard confirm ───────────────────────────
+        <View style={styles.buttons}>
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={onCancel}
+            activeOpacity={0.75}
+            accessibilityLabel="Cancel transaction">
+            <Text style={styles.cancelText}>Cancel</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.confirmButton, loading && styles.confirmButtonDisabled]}
+            onPress={onConfirm}
+            disabled={loading}
+            activeOpacity={0.75}
+            accessibilityLabel="Confirm transaction">
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Text style={styles.confirmText}>Confirm &amp; Send</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : (
+        // ── Simulation failed · Retry / Continue anyway / Cancel ───────────
+        <>
+          <Text style={styles.simulationError}>
+            {simulationError
+              ? `Simulation failed: ${simulationError}`
+              : "The network couldn't dry-run this transaction. Retry, or continue anyway."}
+          </Text>
+
+          <View style={styles.stackedButtons}>
+            <TouchableOpacity
+              style={[styles.confirmButton, retrying && styles.confirmButtonDisabled]}
+              onPress={onRetry}
+              disabled={retrying || loading}
+              activeOpacity={0.75}
+              accessibilityLabel="Retry simulation">
+              {retrying ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.confirmText}>Retry simulation</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.warningButton}
+              onPress={onContinueAnyway}
+              disabled={loading}
+              activeOpacity={0.75}
+              accessibilityLabel="Continue anyway">
+              {loading ? (
+                <ActivityIndicator color="#F59E0B" size="small" />
+              ) : (
+                <Text style={styles.warningText}>Continue anyway</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.ghostButton}
+              onPress={onCancel}
+              activeOpacity={0.75}
+              accessibilityLabel="Cancel transaction">
+              <Text style={styles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </>
       )}
-
-      <View style={styles.buttons}>
-        <TouchableOpacity
-          style={styles.cancelButton}
-          onPress={onCancel}
-          activeOpacity={0.75}
-          accessibilityLabel="Cancel transaction">
-          <Text style={styles.cancelText}>Cancel</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.confirmButton, isDisabled && styles.confirmButtonDisabled]}
-          onPress={onConfirm}
-          disabled={isDisabled}
-          activeOpacity={0.75}
-          accessibilityLabel="Confirm transaction">
-          {loading ? (
-            <ActivityIndicator color="#FFFFFF" size="small" />
-          ) : (
-            <Text style={styles.confirmText}>Confirm &amp; Send</Text>
-          )}
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
@@ -144,11 +196,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
   },
+  stackedButtons: {
+    gap: 10,
+  },
   cancelButton: {
     flex: 1,
     borderRadius: 14,
     paddingVertical: 14,
     backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+  },
+  ghostButton: {
+    borderRadius: 14,
+    paddingVertical: 14,
     alignItems: 'center',
   },
   cancelText: {
@@ -170,5 +230,18 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  warningButton: {
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.5)',
+    backgroundColor: 'rgba(245,158,11,0.10)',
+  },
+  warningText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#F59E0B',
   },
 });

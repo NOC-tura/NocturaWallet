@@ -27,6 +27,7 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import {Text, Button} from '../../components/ui';
 import {ConfirmationSheet} from '../../components/ConfirmationSheet';
 import {validateRecipientInput} from '../../utils/validateAddress';
+import {PublicKey} from '@solana/web3.js';
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {addressBook} from '../../modules/addressBook/addressBookModule';
@@ -50,7 +51,16 @@ let simulateTransaction:
     ) => Promise<{success: boolean; error?: {code: string; message: string; action: string}}>)
   | null = null;
 let buildTransferTx:
-  | ((params: unknown) => Promise<import('@solana/web3.js').VersionedTransaction>)
+  | typeof import('../../modules/solana/transactionBuilder').buildTransferTx
+  | null = null;
+let buildSPLTransferTx:
+  | typeof import('../../modules/solana/transactionBuilder').buildSPLTransferTx
+  | null = null;
+let sendTransparentTransfer:
+  | typeof import('../../modules/solana/sendTransaction').sendTransparentTransfer
+  | null = null;
+let loadTransparentScheme:
+  | typeof import('../../modules/keyDerivation/derivationScheme').loadTransparentScheme
   | null = null;
 
 try {
@@ -60,6 +70,12 @@ try {
   simulateTransaction = require('../../modules/solana/simulation').simulateTransaction;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   buildTransferTx = require('../../modules/solana/transactionBuilder').buildTransferTx;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  buildSPLTransferTx = require('../../modules/solana/transactionBuilder').buildSPLTransferTx;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  sendTransparentTransfer = require('../../modules/solana/sendTransaction').sendTransparentTransfer;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  loadTransparentScheme = require('../../modules/keyDerivation/derivationScheme').loadTransparentScheme;
 } catch {
   // Modules unavailable in test/stub environment — no-op
 }
@@ -185,6 +201,7 @@ export function SendScreen({onTransactionSent, onBack}: SendScreenProps) {
 
   const [reviewing, setReviewing] = useState(false);
   const [simulationPassed, setSimulationPassed] = useState(false);
+  const [simError, setSimError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [needsAta, setNeedsAta] = useState(false);
 
@@ -368,42 +385,82 @@ export function SendScreen({onTransactionSent, onBack}: SendScreenProps) {
 
     setReviewing(true);
     setSimulationPassed(false);
+    setSimError(null);
     setNeedsAta(false);
 
     try {
-      if (selectedMint !== SOL_MINT) {
-        setNeedsAta(true);
-      }
+      const isSpl = selectedMint !== SOL_MINT;
+      setNeedsAta(isSpl);
 
       let simPassed = false;
-      if (getConnection && simulateTransaction && buildTransferTx) {
+      let simErrorMsg: string | null = null;
+      if (
+        getConnection &&
+        simulateTransaction &&
+        buildTransferTx &&
+        buildSPLTransferTx &&
+        publicKey
+      ) {
         try {
           const connection = getConnection();
-          const tx = await buildTransferTx({} as unknown);
-          const result = await simulateTransaction(
-            connection,
-            tx as import('@solana/web3.js').VersionedTransaction,
+          const sender = new PublicKey(publicKey);
+          const recipientPk = new PublicKey(recipient);
+          // Same priority-fee conversion as the broadcast path.
+          const priorityFee = Number(
+            (PRIORITY_FEE_LAMPORTS[priorityLevel] * 1_000_000n) / 200_000n,
           );
+          const tx = isSpl
+            ? await buildSPLTransferTx({
+                sender,
+                recipient: recipientPk,
+                mint: new PublicKey(selectedMint),
+                amount: parseTokenAmount(amount, selectedToken.decimals),
+                decimals: selectedToken.decimals,
+                createAta: isSpl,
+                priorityFee,
+              })
+            : await buildTransferTx({
+                sender,
+                recipient: recipientPk,
+                lamports: parseTokenAmount(amount, SOL_DECIMALS),
+                priorityFee,
+              });
+          const result = await simulateTransaction(connection, tx);
           simPassed = result.success;
-        } catch {
+          if (!simPassed) {
+            simErrorMsg =
+              result.error?.action ?? result.error?.message ?? null;
+          }
+        } catch (err) {
           simPassed = false;
+          simErrorMsg = err instanceof Error ? err.message : null;
         }
       } else {
+        // Native/build modules unavailable (test/stub env) — don't block.
         simPassed = true;
       }
 
       setSimulationPassed(simPassed);
+      setSimError(simErrorMsg);
       setStep('confirm');
     } finally {
       setReviewing(false);
     }
-  }, [canReview, selectedMint]);
+  }, [
+    canReview,
+    selectedMint,
+    publicKey,
+    recipient,
+    amount,
+    selectedToken.decimals,
+    priorityLevel,
+  ]);
 
-  const handleConfirm = useCallback(async () => {
+  const handleConfirm = useCallback(async (allowUnsimulated = false) => {
     const now = Date.now();
     if (now - lastTapRef.current < 500) return;
     lastTapRef.current = now;
-    if (!simulationPassed || sending) return;
+    if ((!simulationPassed && !allowUnsimulated) || sending) return;
     setSending(true);
 
     try {
@@ -424,17 +481,48 @@ export function SendScreen({onTransactionSent, onBack}: SendScreenProps) {
         return;
       }
 
-      let signature = 'mock_signature';
-
-      if (getConnection && buildTransferTx) {
-        try {
-          const connection = getConnection();
-          await buildTransferTx({} as unknown);
-          void connection;
-          signature = `tx_${Date.now()}`;
-        } catch {
-          signature = `tx_${Date.now()}`;
+      let signature: string;
+      try {
+        if (!sendTransparentTransfer || !loadTransparentScheme) {
+          throw new Error('Send module unavailable');
         }
+        const scheme = loadTransparentScheme();
+        const recipientPk = new PublicKey(recipient);
+        // Priority tiers are expressed as a target lamport amount; convert to a
+        // per-compute-unit price (microLamports) for setComputeUnitPrice over the
+        // standard 200k CU budget. normal=0, fast≈75k µLam/CU, urgent≈250k µLam/CU.
+        const priorityLamports = PRIORITY_FEE_LAMPORTS[priorityLevel];
+        const priorityFee = Number((priorityLamports * 1_000_000n) / 200_000n);
+
+        if (selectedMint === SOL_MINT) {
+          const lamports = parseTokenAmount(amount, SOL_DECIMALS);
+          const res = await sendTransparentTransfer({
+            kind: 'sol',
+            recipient: recipientPk,
+            lamports,
+            priorityFee,
+            scheme,
+          });
+          signature = res.signature;
+        } else {
+          const splAmount = parseTokenAmount(amount, selectedToken.decimals);
+          const res = await sendTransparentTransfer({
+            kind: 'spl',
+            recipient: recipientPk,
+            mint: new PublicKey(selectedMint),
+            amount: splAmount,
+            decimals: selectedToken.decimals,
+            createAta: needsAta,
+            priorityFee,
+            scheme,
+          });
+          signature = res.signature;
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Transaction failed';
+        Alert.alert('Send failed', msg);
+        setSending(false);
+        return;
       }
 
       onTransactionSent?.({
@@ -478,11 +566,20 @@ export function SendScreen({onTransactionSent, onBack}: SendScreenProps) {
     sending,
     amount,
     recipient,
+    selectedMint,
     selectedToken.symbol,
+    selectedToken.decimals,
+    needsAta,
     onTransactionSent,
     rootNav,
     priorityLevel,
   ]);
+
+  // "Continue anyway" — broadcast despite a failed/unavailable simulation
+  // (per design: simulation can false-negative on RPC drop).
+  const handleContinueAnyway = useCallback(() => {
+    void handleConfirm(true);
+  }, [handleConfirm]);
 
   const networkFeeDisplay = useMemo(() => {
     const feeSOL = formatTokenAmount(getTotalNetworkFee(priorityLevel), SOL_DECIMALS);
@@ -520,8 +617,12 @@ export function SendScreen({onTransactionSent, onBack}: SendScreenProps) {
             networkFee={networkFeeDisplay}
             accountCreation={accountCreationDisplay}
             simulationPassed={simulationPassed}
+            simulationError={simError}
+            retrying={reviewing}
             loading={sending}
-            onConfirm={handleConfirm}
+            onConfirm={() => handleConfirm()}
+            onRetry={handleReview}
+            onContinueAnyway={handleContinueAnyway}
             onCancel={() => setStep('input')}
           />
         </ScrollView>

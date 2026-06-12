@@ -85,6 +85,7 @@ These must load before any other imports:
 1. `react-native-get-random-values` — crypto.getRandomValues()
 2. `react-native-url-polyfill/auto` — URL API
 3. `text-encoding` — TextEncoder / TextDecoder
+4. `./globalBuffer` — sets `global.Buffer` (Hermes lacks it; @solana/web3.js needs it for tx (de)serialization). Side-effect module, NOT an inline `global.Buffer =` in index.js (that runs after App's import side effects).
 
 ## Cardinal Rules
 
