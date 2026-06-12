@@ -2,9 +2,12 @@ import React from 'react';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {useNavigation, useRoute} from '@react-navigation/native';
+import type {RouteProp} from '@react-navigation/native';
 import type {NativeStackNavigationProp, NativeStackScreenProps} from '@react-navigation/native-stack';
 import {DashboardScreen} from '../screens/dashboard/DashboardScreen';
 import {SendScreen as SendScreenImpl} from '../screens/transparent/SendScreen';
+import {TxSimulateScreen} from '../screens/transparent/TxSimulateScreen';
+import {TxConfirmScreen} from '../screens/transparent/TxConfirmScreen';
 import {TransactionStatusScreen} from '../screens/transparent/TransactionStatusScreen';
 import {SplashScreen} from '../screens/SplashScreen';
 import {UnlockScreen} from '../screens/UnlockScreen';
@@ -395,10 +398,32 @@ function SendScreenNav() {
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   return (
     <SendScreenImpl
-      onTransactionSent={params => {
-        navigation.navigate('TransactionStatus', params);
-      }}
+      onReview={intent => navigation.navigate('TxSimulate', {intent})}
       onBack={() => rootNav.goBack()}
+    />
+  );
+}
+
+function TxSimulateScreenNav() {
+  const navigation = useNavigation<NativeStackNavigationProp<SendStackParamList>>();
+  const route = useRoute<RouteProp<SendStackParamList, 'TxSimulate'>>();
+  return (
+    <TxSimulateScreen
+      intent={route.params.intent}
+      onContinue={intent => navigation.navigate('TxConfirm', {intent})}
+      onCancel={() => navigation.goBack()}
+    />
+  );
+}
+
+function TxConfirmScreenNav() {
+  const navigation = useNavigation<NativeStackNavigationProp<SendStackParamList>>();
+  const route = useRoute<RouteProp<SendStackParamList, 'TxConfirm'>>();
+  return (
+    <TxConfirmScreen
+      intent={route.params.intent}
+      onSent={params => navigation.navigate('TransactionStatus', params)}
+      onCancel={() => navigation.goBack()}
     />
   );
 }
@@ -545,6 +570,8 @@ function SendStack() {
   return (
     <SendNav.Navigator screenOptions={defaultScreenOptions}>
       <SendNav.Screen name="Send" component={SendScreenNav} />
+      <SendNav.Screen name="TxSimulate" component={TxSimulateScreenNav} />
+      <SendNav.Screen name="TxConfirm" component={TxConfirmScreenNav} />
       <SendNav.Screen name="TransactionStatus" component={TransactionStatusScreenNav} />
       <SendNav.Screen name="TransactionDetail" component={TransactionDetailScreenNav} />
     </SendNav.Navigator>
