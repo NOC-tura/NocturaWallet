@@ -24,16 +24,13 @@ import {
   BookUser,
 } from 'lucide-react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
-import {Text, Button} from '../../components/ui';
-import {ConfirmationSheet} from '../../components/ConfirmationSheet';
+import {Text} from '../../components/ui';
 import {validateRecipientInput} from '../../utils/validateAddress';
-import {PublicKey} from '@solana/web3.js';
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {addressBook} from '../../modules/addressBook/addressBookModule';
 import type {Contact} from '../../modules/addressBook/types';
 import {formatAddress} from '../../utils/formatAddress';
-import {awaitUserAuth} from '../../modules/session/pendingAuth';
 import {awaitContactSelection} from '../../modules/session/pendingContactSelect';
 import type {RootStackParamList} from '../../types/navigation';
 import {NOC_MINT, NOC_DECIMALS} from '../../constants/programs';
@@ -41,44 +38,6 @@ import {cn} from '../../utils/cn';
 
 const SOLANA_LOGO = require('../../assets/tokens/solana-sol-logo.png');
 const NOC_LOGO = require('../../assets/tokens/noc-logo.png');
-
-// Lazy imports — wrapped in try/catch to survive test environments without full native mocks
-let getConnection: (() => import('@solana/web3.js').Connection) | null = null;
-let simulateTransaction:
-  | ((
-      connection: import('@solana/web3.js').Connection,
-      tx: import('@solana/web3.js').VersionedTransaction,
-    ) => Promise<{success: boolean; error?: {code: string; message: string; action: string}}>)
-  | null = null;
-let buildTransferTx:
-  | typeof import('../../modules/solana/transactionBuilder').buildTransferTx
-  | null = null;
-let buildSPLTransferTx:
-  | typeof import('../../modules/solana/transactionBuilder').buildSPLTransferTx
-  | null = null;
-let sendTransparentTransfer:
-  | typeof import('../../modules/solana/sendTransaction').sendTransparentTransfer
-  | null = null;
-let loadTransparentScheme:
-  | typeof import('../../modules/keyDerivation/derivationScheme').loadTransparentScheme
-  | null = null;
-
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  getConnection = require('../../modules/solana/connection').getConnection;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  simulateTransaction = require('../../modules/solana/simulation').simulateTransaction;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  buildTransferTx = require('../../modules/solana/transactionBuilder').buildTransferTx;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  buildSPLTransferTx = require('../../modules/solana/transactionBuilder').buildSPLTransferTx;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  sendTransparentTransfer = require('../../modules/solana/sendTransaction').sendTransparentTransfer;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  loadTransparentScheme = require('../../modules/keyDerivation/derivationScheme').loadTransparentScheme;
-} catch {
-  // Modules unavailable in test/stub environment — no-op
-}
 
 // ── Fee constants (lamports) ────────────────────────────────────────────────
 //
@@ -105,7 +64,6 @@ try {
 // user. (Earlier draft had a 20,000-lamport markup; design baseline shows no
 // markup in the fee row, so we match design.)
 const BASE_FEE_LAMPORTS = 5_000n;
-const ATA_CREATION_FEE_LAMPORTS = 2_039_280n; // 0.00203928 SOL rent-exempt minimum
 
 const PRIORITY_FEE_LAMPORTS: Record<PriorityLevel, bigint> = {
   normal: 0n,
@@ -131,30 +89,20 @@ interface TokenInfo {
 const SOL_TOKEN: TokenInfo = {mint: SOL_MINT, symbol: 'SOL', decimals: SOL_DECIMALS};
 
 export interface SendScreenProps {
-  onTransactionSent?: (params: {
-    signature: string;
-    amount: string;
-    recipient: string;
-    token: string;
-  }) => void;
+  onReview: (intent: import('../../types/transfer').TransferIntent) => void;
   onBack?: () => void;
 }
 
 /**
- * #12 Send — Phase B migration · mirror /home/user/Downloads/index.html §s12
+ * #12 Send — input form only.
  *
- * Two-step flow:
- *   1. Input step: token chip · recipient · amount · priority · fee preview
- *   2. Confirm step: ConfirmationSheet (uses existing primitive)
- *
- * On Confirm CTA → opens UnlockSend modal (#10) for PIN/biometric re-auth →
- * broadcasts via signAndSend → routes to TransactionStatus.
+ * Collects token, recipient, amount, priority; validates; then calls
+ * onReview(intent) to hand off to TxSimulateScreen (#19) → TxConfirmScreen (#20).
  *
  * Visual states implemented:
  *   - idle (empty form)
  *   - invalid-recipient (red border + helper)
  *   - insufficient-balance (red amount + helper)
- *   - fee-loading (skeleton during simulation)
  *
  * Deferred (separate migrations):
  *   - Shielded variant (#12.2 — privacy meter + ZK fee row)
@@ -162,8 +110,8 @@ export interface SendScreenProps {
  *   - QR scanner integration (#14 still placeholder)
  *   - Bottom-sheet token picker (currently cycles on tap)
  */
-export function SendScreen({onTransactionSent, onBack}: SendScreenProps) {
-  const {publicKey, solBalance, tokens: storeTokens, tokenBalances} = useWalletStore();
+export function SendScreen({onReview, onBack}: SendScreenProps) {
+  const {solBalance, tokens: storeTokens, tokenBalances} = useWalletStore();
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   // Default token list: ALWAYS include SOL + NOC even if not in the dynamic
@@ -190,20 +138,12 @@ export function SendScreen({onTransactionSent, onBack}: SendScreenProps) {
   // Debounce ref — cardinal rule #6: 500ms minimum on send/sign buttons
   const lastTapRef = useRef(0);
 
-  const [step, setStep] = useState<'input' | 'confirm'>('input');
-
   const [recipient, setRecipient] = useState('');
   const [recipientError, setRecipientError] = useState('');
   const [suggestions, setSuggestions] = useState<Contact[]>([]);
   const [selectedMint, setSelectedMint] = useState(SOL_MINT);
   const [amount, setAmount] = useState('');
   const [priorityLevel, setPriorityLevel] = useState<PriorityLevel>('normal');
-
-  const [reviewing, setReviewing] = useState(false);
-  const [simulationPassed, setSimulationPassed] = useState(false);
-  const [simError, setSimError] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
-  const [needsAta, setNeedsAta] = useState(false);
 
   const selectedToken = useMemo(
     () => availableTokens.find(t => t.mint === selectedMint) ?? SOL_TOKEN,
@@ -377,258 +317,27 @@ export function SendScreen({onTransactionSent, onBack}: SendScreenProps) {
     return true;
   }, [recipient, amount, selectedToken.decimals, insufficientBalance]);
 
-  const handleReview = useCallback(async () => {
+  const handleReview = useCallback(() => {
     const now = Date.now();
     if (now - lastTapRef.current < 500) return;
     lastTapRef.current = now;
     if (!canReview) return;
-
-    setReviewing(true);
-    setSimulationPassed(false);
-    setSimError(null);
-    setNeedsAta(false);
-
-    try {
-      const isSpl = selectedMint !== SOL_MINT;
-      setNeedsAta(isSpl);
-
-      let simPassed = false;
-      let simErrorMsg: string | null = null;
-      if (
-        getConnection &&
-        simulateTransaction &&
-        buildTransferTx &&
-        buildSPLTransferTx &&
-        publicKey
-      ) {
-        try {
-          const connection = getConnection();
-          const sender = new PublicKey(publicKey);
-          const recipientPk = new PublicKey(recipient);
-          // Same priority-fee conversion as the broadcast path.
-          const priorityFee = Number(
-            (PRIORITY_FEE_LAMPORTS[priorityLevel] * 1_000_000n) / 200_000n,
-          );
-          const tx = isSpl
-            ? await buildSPLTransferTx({
-                sender,
-                recipient: recipientPk,
-                mint: new PublicKey(selectedMint),
-                amount: parseTokenAmount(amount, selectedToken.decimals),
-                decimals: selectedToken.decimals,
-                createAta: isSpl,
-                priorityFee,
-              })
-            : await buildTransferTx({
-                sender,
-                recipient: recipientPk,
-                lamports: parseTokenAmount(amount, SOL_DECIMALS),
-                priorityFee,
-              });
-          const result = await simulateTransaction(connection, tx);
-          simPassed = result.success;
-          if (!simPassed) {
-            simErrorMsg =
-              result.error?.action ?? result.error?.message ?? null;
-          }
-        } catch (err) {
-          simPassed = false;
-          simErrorMsg = err instanceof Error ? err.message : null;
-        }
-      } else {
-        // Native/build modules unavailable (test/stub env) — don't block.
-        simPassed = true;
-      }
-
-      setSimulationPassed(simPassed);
-      setSimError(simErrorMsg);
-      setStep('confirm');
-    } finally {
-      setReviewing(false);
-    }
-  }, [
-    canReview,
-    selectedMint,
-    publicKey,
-    recipient,
-    amount,
-    selectedToken.decimals,
-    priorityLevel,
-  ]);
-
-  const handleConfirm = useCallback(async (allowUnsimulated = false) => {
-    const now = Date.now();
-    if (now - lastTapRef.current < 500) return;
-    lastTapRef.current = now;
-    if ((!simulationPassed && !allowUnsimulated) || sending) return;
-    setSending(true);
-
-    try {
-      const feeSOL = formatTokenAmount(
-        getTotalNetworkFee(priorityLevel),
-        SOL_DECIMALS,
-      );
-      const authPromise = awaitUserAuth();
-      rootNav.navigate('UnlockSend', {
-        amount,
-        ticker: selectedToken.symbol,
-        recipient,
-        networkFee: `${feeSOL} SOL`,
-      });
-      const approved = await authPromise;
-      if (!approved) {
-        setSending(false);
-        return;
-      }
-
-      let signature: string;
-      try {
-        if (!sendTransparentTransfer || !loadTransparentScheme) {
-          throw new Error('Send module unavailable');
-        }
-        const scheme = loadTransparentScheme();
-        const recipientPk = new PublicKey(recipient);
-        // Priority tiers are expressed as a target lamport amount; convert to a
-        // per-compute-unit price (microLamports) for setComputeUnitPrice over the
-        // standard 200k CU budget. normal=0, fast≈75k µLam/CU, urgent≈250k µLam/CU.
-        const priorityLamports = PRIORITY_FEE_LAMPORTS[priorityLevel];
-        const priorityFee = Number((priorityLamports * 1_000_000n) / 200_000n);
-
-        if (selectedMint === SOL_MINT) {
-          const lamports = parseTokenAmount(amount, SOL_DECIMALS);
-          const res = await sendTransparentTransfer({
-            kind: 'sol',
-            recipient: recipientPk,
-            lamports,
-            priorityFee,
-            scheme,
-          });
-          signature = res.signature;
-        } else {
-          const splAmount = parseTokenAmount(amount, selectedToken.decimals);
-          const res = await sendTransparentTransfer({
-            kind: 'spl',
-            recipient: recipientPk,
-            mint: new PublicKey(selectedMint),
-            amount: splAmount,
-            decimals: selectedToken.decimals,
-            createAta: needsAta,
-            priorityFee,
-            scheme,
-          });
-          signature = res.signature;
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Transaction failed';
-        Alert.alert('Send failed', msg);
-        setSending(false);
-        return;
-      }
-
-      onTransactionSent?.({
-        signature,
-        amount,
-        recipient,
-        token: selectedToken.symbol,
-      });
-
-      try {
-        const existing = addressBook.findByAddress(recipient);
-        if (!existing) {
-          const defaultName = formatAddress(recipient);
-          Alert.alert('Add to contacts?', `Save ${defaultName} to your address book?`, [
-            {text: 'Skip', style: 'cancel'},
-            {
-              text: 'Save',
-              onPress: () => {
-                try {
-                  addressBook.addContact({
-                    name: defaultName,
-                    address: recipient,
-                    addressType: 'transparent',
-                    lastUsedAt: Date.now(),
-                  });
-                } catch {
-                  // non-critical
-                }
-              },
-            },
-          ]);
-        }
-      } catch {
-        // non-critical
-      }
-    } finally {
-      setSending(false);
-    }
-  }, [
-    simulationPassed,
-    sending,
-    amount,
-    recipient,
-    selectedMint,
-    selectedToken.symbol,
-    selectedToken.decimals,
-    needsAta,
-    onTransactionSent,
-    rootNav,
-    priorityLevel,
-  ]);
-
-  // "Continue anyway" — broadcast despite a failed/unavailable simulation
-  // (per design: simulation can false-negative on RPC drop).
-  const handleContinueAnyway = useCallback(() => {
-    void handleConfirm(true);
-  }, [handleConfirm]);
+    onReview({
+      mode: 'transparent',
+      recipient,
+      amount,
+      tokenMint: selectedMint,
+      tokenSymbol: selectedToken.symbol,
+      decimals: selectedToken.decimals,
+      priorityLevel,
+      createAta: selectedMint !== SOL_MINT,
+    });
+  }, [canReview, recipient, amount, selectedMint, selectedToken.symbol, selectedToken.decimals, priorityLevel, onReview]);
 
   const networkFeeDisplay = useMemo(() => {
     const feeSOL = formatTokenAmount(getTotalNetworkFee(priorityLevel), SOL_DECIMALS);
     return `${feeSOL} SOL`;
   }, [priorityLevel]);
-
-  const accountCreationDisplay = needsAta
-    ? `~${formatTokenAmount(ATA_CREATION_FEE_LAMPORTS, SOL_DECIMALS)} SOL`
-    : undefined;
-
-  // Confirm step uses existing ConfirmationSheet primitive
-  if (step === 'confirm') {
-    return (
-      <SafeAreaView
-        edges={['top', 'left', 'right']}
-        className="flex-1 bg-bg-base">
-        <View className="flex-row items-center px-4 py-3 min-h-touch-min">
-          <Pressable
-            onPress={() => setStep('input')}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            className="w-12 h-12 items-center justify-center -ml-2">
-            <ArrowLeft size={22} color="#A8ACB5" strokeWidth={1.75} />
-          </Pressable>
-          <Text variant="h2" className="ml-1 flex-1">
-            Review send
-          </Text>
-        </View>
-        <ScrollView contentContainerClassName="p-5 pb-12">
-          <ConfirmationSheet
-            from={publicKey ?? ''}
-            to={recipient}
-            amount={amount}
-            tokenSymbol={selectedToken.symbol}
-            networkFee={networkFeeDisplay}
-            accountCreation={accountCreationDisplay}
-            simulationPassed={simulationPassed}
-            simulationError={simError}
-            retrying={reviewing}
-            loading={sending}
-            onConfirm={() => handleConfirm()}
-            onRetry={handleReview}
-            onContinueAnyway={handleContinueAnyway}
-            onCancel={() => setStep('input')}
-          />
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
 
   const validation = recipient ? validateRecipientInput(recipient) : null;
   const validRecipient =
@@ -905,44 +614,34 @@ export function SendScreen({onTransactionSent, onBack}: SendScreenProps) {
 
         {/* Sticky CTA */}
         <View className="px-6 pb-8 pt-2 bg-bg-base border-t border-bg-surface-2">
-          {reviewing ? (
-            <Button
-              label="Estimating fee…"
-              variant="primary"
-              loading
-              onPress={() => {}}
-              disabled
-            />
-          ) : (
-            <Pressable
-              onPress={handleReview}
-              disabled={!canReview}
-              accessibilityRole="button"
-              testID="review-button"
-              accessibilityLabel={`Send ${selectedToken.symbol}`}
+          <Pressable
+            onPress={handleReview}
+            disabled={!canReview}
+            accessibilityRole="button"
+            testID="review-button"
+            accessibilityLabel={`Send ${selectedToken.symbol}`}
+            className={cn(
+              'min-h-touch-rec rounded-pill items-center justify-center flex-row gap-2',
+              canReview ? 'bg-accent-transparent active:opacity-90' : 'bg-bg-surface-3',
+            )}>
+            {!canReview && recipient && amount ? (
+              <Lock
+                size={18}
+                color={canReview ? '#0A0A0A' : '#6E727A'}
+                strokeWidth={2}
+              />
+            ) : null}
+            <Text
+              variant="body-lg"
               className={cn(
-                'min-h-touch-rec rounded-pill items-center justify-center flex-row gap-2',
-                canReview ? 'bg-accent-transparent active:opacity-90' : 'bg-bg-surface-3',
+                'font-geist-semibold',
+                canReview ? 'text-bg-base' : 'text-fg-disabled',
               )}>
-              {!canReview && recipient && amount ? (
-                <Lock
-                  size={18}
-                  color={canReview ? '#0A0A0A' : '#6E727A'}
-                  strokeWidth={2}
-                />
-              ) : null}
-              <Text
-                variant="body-lg"
-                className={cn(
-                  'font-geist-semibold',
-                  canReview ? 'text-bg-base' : 'text-fg-disabled',
-                )}>
-                {amount.trim() && canReview
-                  ? `Send ${amount} ${selectedToken.symbol}`
-                  : `Send ${selectedToken.symbol}`}
-              </Text>
-            </Pressable>
-          )}
+              {amount.trim() && canReview
+                ? `Send ${amount} ${selectedToken.symbol}`
+                : `Send ${selectedToken.symbol}`}
+            </Text>
+          </Pressable>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
