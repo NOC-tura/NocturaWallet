@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {View, Pressable, ScrollView, ActivityIndicator} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {
@@ -85,6 +85,9 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
   const [simState, setSimState] = useState<SimState>('simulating');
   const [retryCount, setRetryCount] = useState(0);
 
+  // Debounce ref — cardinal rule #6: 500ms minimum on flow-advancing CTAs
+  const lastTapRef = useRef(0);
+
   // Accent text class derived from intent.mode prop (not global store), since
   // this screen is passed the intent directly and may be used in either flow.
   const accentText =
@@ -100,22 +103,45 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
     setSimState('simulating');
 
     const run = async () => {
+      // Capture module references as local consts so TypeScript can narrow them.
+      const _getConnection = getConnection;
+      const _simulateTransaction = simulateTransaction;
+      const _buildTransferTx = buildTransferTx;
+      const _buildSPLTransferTx = buildSPLTransferTx;
+      const _deriveTransferChecks = deriveTransferChecks;
+
+      const modulesLoaded =
+        !!_getConnection &&
+        !!_simulateTransaction &&
+        !!_buildTransferTx &&
+        !!_buildSPLTransferTx &&
+        !!_deriveTransferChecks;
+
+      if (modulesLoaded && !publicKey) {
+        // Modules are present but wallet is not loaded — this is a real error,
+        // not a test/stub env. Do NOT fall through to the best-effort stub path.
+        if (cancelled) return;
+        setSimState({kind: 'failed', reason: 'Wallet not loaded'});
+        return;
+      }
+
       if (
-        getConnection &&
-        simulateTransaction &&
-        buildTransferTx &&
-        buildSPLTransferTx &&
-        deriveTransferChecks &&
-        publicKey
+        modulesLoaded &&
+        publicKey &&
+        _getConnection &&
+        _simulateTransaction &&
+        _buildTransferTx &&
+        _buildSPLTransferTx &&
+        _deriveTransferChecks
       ) {
         try {
-          const connection = getConnection();
+          const connection = _getConnection();
           const sender = new PublicKey(publicKey);
           const recipientPk = new PublicKey(intent.recipient);
           const isSpl = intent.tokenMint !== 'native';
 
           const tx = isSpl
-            ? await buildSPLTransferTx({
+            ? await _buildSPLTransferTx({
                 sender,
                 recipient: recipientPk,
                 mint: new PublicKey(intent.tokenMint),
@@ -124,27 +150,30 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
                 createAta: intent.createAta,
                 priorityFee,
               })
-            : await buildTransferTx({
+            : await _buildTransferTx({
                 sender,
                 recipient: recipientPk,
                 lamports: parseTokenAmount(intent.amount, SOL_DECIMALS),
                 priorityFee,
               });
 
-          const result = await simulateTransaction(connection, tx);
+          const result = await _simulateTransaction(connection, tx);
           if (cancelled) return;
 
           if (result.success) {
-            const checks = await deriveTransferChecks(recipientPk);
+            const checks = await _deriveTransferChecks(recipientPk);
             if (cancelled) return;
 
             // Compute balance delta strings
-            const amountLamports = parseTokenAmount(intent.amount, intent.decimals);
             const isSolTransfer = intent.tokenMint === 'native';
+            // Fix #3: always use SOL_DECIMALS for the native transfer amount so
+            // the "After" figure is correct regardless of what intent.decimals says.
+            const amountLamports = isSolTransfer
+              ? parseTokenAmount(intent.amount, SOL_DECIMALS)
+              : parseTokenAmount(intent.amount, intent.decimals);
 
-            const sendingStr = isSolTransfer
-              ? `${intent.amount} ${intent.tokenSymbol}`
-              : `${intent.amount} ${intent.tokenSymbol}`;
+            // Fix #4: sending string is identical for SOL and SPL — collapse.
+            const sendingStr = `${intent.amount} ${intent.tokenSymbol}`;
 
             const feeStr = formatTokenAmount(BASE_FEE_LAMPORTS, SOL_DECIMALS) + ' SOL';
             const priorityStr =
@@ -188,7 +217,9 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
           setSimState({kind: 'failed', reason});
         }
       } else {
-        // Modules unavailable (test/stub env) — set ready with best-effort delta
+        // Modules absent (test/stub env only) — set ready with best-effort delta.
+        // NOTE: this branch is intentionally unreachable in production because the
+        // modulesLoaded && !publicKey guard above handles the wallet-not-loaded case.
         if (cancelled) return;
         let solBalanceBn: bigint;
         try {
@@ -199,7 +230,10 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
         const isSolTransfer = intent.tokenMint === 'native';
         let amountLamports = 0n;
         try {
-          amountLamports = parseTokenAmount(intent.amount, intent.decimals);
+          // Fix #3: use SOL_DECIMALS for native so the "After" figure is correct.
+          amountLamports = isSolTransfer
+            ? parseTokenAmount(intent.amount, SOL_DECIMALS)
+            : parseTokenAmount(intent.amount, intent.decimals);
         } catch {
           amountLamports = 0n;
         }
@@ -233,7 +267,25 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
     };
   }, [retryCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Debounced handlers — cardinal rule #6: 500ms tap guard ──────────────────
+  const handleContinue = () => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 500) return;
+    lastTapRef.current = now;
+    onContinue(intent);
+  };
+
+  const handleContinueAnyway = () => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 500) return;
+    lastTapRef.current = now;
+    onContinue(intent);
+  };
+
   const handleRetry = () => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 500) return;
+    lastTapRef.current = now;
     setRetryCount(c => c + 1);
   };
 
@@ -398,7 +450,7 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
         ) : typeof simState === 'object' && simState.kind === 'ready' ? (
           <>
             <Pressable
-              onPress={() => onContinue(intent)}
+              onPress={handleContinue}
               accessibilityRole="button"
               accessibilityLabel="Continue to confirm"
               testID="tx-simulate-continue"
@@ -429,7 +481,7 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
               testID="tx-simulate-retry"
             />
             <Pressable
-              onPress={() => onContinue(intent)}
+              onPress={handleContinueAnyway}
               accessibilityRole="button"
               accessibilityLabel="Continue anyway"
               testID="tx-simulate-continue"
