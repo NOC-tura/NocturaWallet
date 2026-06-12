@@ -29,9 +29,11 @@ export const SOL_TREASURY = IS_DEVNET
   ? 'TODO_DEVNET_TREASURY'
   : '6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd';
 
+// Currently the project main wallet (same as ADMIN_ADDRESS). Move to a Squads
+// multisig before scaling — only this literal changes, no other code.
 export const NOCTURA_FEE_TREASURY = IS_DEVNET
   ? 'TODO_DEVNET_FEE_TREASURY'
-  : 'TODO_MAINNET_FEE_TREASURY';
+  : 'KnZ5bRuaCb3JEAYgt9CJ69eWQ7i5dp5cASbTmLj39qr';
 
 export const RPC_ENDPOINT = Config.HELIUS_RPC_URL;
 export const RPC_WEBSOCKET = Config.HELIUS_WS_URL;
