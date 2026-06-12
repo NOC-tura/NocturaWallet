@@ -35,6 +35,9 @@ jest.mock('../../../modules/keyDerivation/transparent', () => ({
 jest.mock('../../../modules/keyDerivation/shielded', () => ({
   deriveShieldedViewKey: jest.fn().mockReturnValue(new Uint8Array(32)),
 }));
+jest.mock('../../../modules/keyDerivation/derivationScheme', () => ({
+  storeTransparentScheme: jest.fn(),
+}));
 jest.mock('../../../store/mmkv/instances', () => ({
   mmkvPublic: {
     set: jest.fn(),
@@ -66,21 +69,21 @@ describe('SuccessScreen', () => {
 
   it('shows "Wallet created" text', () => {
     const {getByText} = render(
-      withSafeArea(<SuccessScreen mnemonic={TEST_MNEMONIC} onComplete={onComplete} />),
+      withSafeArea(<SuccessScreen mnemonic={TEST_MNEMONIC} scheme={{kind: 'slip10', account: 0}} onComplete={onComplete} />),
     );
     expect(getByText('Wallet created')).toBeTruthy();
   });
 
   it('shows "Open wallet" CTA', () => {
     const {getByText} = render(
-      withSafeArea(<SuccessScreen mnemonic={TEST_MNEMONIC} onComplete={onComplete} />),
+      withSafeArea(<SuccessScreen mnemonic={TEST_MNEMONIC} scheme={{kind: 'slip10', account: 0}} onComplete={onComplete} />),
     );
     expect(getByText('Open wallet')).toBeTruthy();
   });
 
   it('on CTA press, calls onComplete after async operations', async () => {
     const {getByTestId} = render(
-      withSafeArea(<SuccessScreen mnemonic={TEST_MNEMONIC} onComplete={onComplete} />),
+      withSafeArea(<SuccessScreen mnemonic={TEST_MNEMONIC} scheme={{kind: 'slip10', account: 0}} onComplete={onComplete} />),
     );
     // CTA starts disabled (publicKeyBase58 null) and enables after async key
     // derivation completes. Wait for the accessibilityState.disabled === false

@@ -215,11 +215,12 @@ function SelectAccountScreenNav() {
 }
 
 function SyncWalletScreenNav() {
-  const {mnemonic} = useOnboarding();
+  const {mnemonic, scheme} = useOnboarding();
   const navigation = useNavigation<NativeStackNavigationProp<OnboardingStackParamList>>();
   return (
     <SyncWalletScreen
       mnemonic={mnemonic ?? ''}
+      scheme={scheme}
       onSyncComplete={() => navigation.navigate('SetPin')}
     />
   );
@@ -247,11 +248,12 @@ function BiometricSetupScreenNav() {
 }
 
 function SuccessScreenNav() {
-  const {mnemonic, clearMnemonic} = useOnboarding();
+  const {mnemonic, scheme, clearMnemonic} = useOnboarding();
   const navigation = useNavigation<NativeStackNavigationProp<OnboardingStackParamList>>();
   return (
     <SuccessScreen
       mnemonic={mnemonic ?? ''}
+      scheme={scheme}
       onComplete={() => {
         clearMnemonic();
         navigation.navigate('Presale');

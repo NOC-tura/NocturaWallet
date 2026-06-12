@@ -14,7 +14,11 @@ import {PublicKey} from '@solana/web3.js';
 import {Text, Button, Card} from '../../components/ui';
 import {KeychainManager} from '../../modules/keychain/keychainModule';
 import {mnemonicToSeed} from '../../modules/keyDerivation/mnemonicUtils';
-import {deriveTransparentKeypair} from '../../modules/keyDerivation/transparent';
+import {
+  deriveTransparentKeypair,
+  type TransparentScheme,
+} from '../../modules/keyDerivation/transparent';
+import {storeTransparentScheme} from '../../modules/keyDerivation/derivationScheme';
 import {deriveShieldedViewKey} from '../../modules/keyDerivation/shielded';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {mmkvPublic} from '../../store/mmkv/instances';
@@ -57,6 +61,7 @@ import {zeroize} from '../../modules/session/zeroize';
 
 interface SuccessScreenProps {
   mnemonic: string;
+  scheme: TransparentScheme;
   onComplete: () => void;
 }
 
@@ -64,7 +69,7 @@ const keychainManager = new KeychainManager();
 const CLIPBOARD_CLEAR_MS = 30_000;
 const COPIED_TOAST_MS = 2_000;
 
-export function SuccessScreen({mnemonic, onComplete}: SuccessScreenProps) {
+export function SuccessScreen({mnemonic, scheme, onComplete}: SuccessScreenProps) {
   const [publicKeyBase58, setPublicKeyBase58] = useState<string | null>(null);
   const [deriveError, setDeriveError] = useState<string | null>(null);
   const [persisting, setPersisting] = useState(false);
@@ -91,7 +96,7 @@ export function SuccessScreen({mnemonic, onComplete}: SuccessScreenProps) {
     const derive = async () => {
       try {
         const seed = await mnemonicToSeed(mnemonic);
-        const keypair = deriveTransparentKeypair(seed);
+        const keypair = deriveTransparentKeypair(seed, scheme);
         const viewKey = deriveShieldedViewKey(seed);
         zeroize(seed);
         zeroize(keypair.secretKey);
@@ -113,7 +118,7 @@ export function SuccessScreen({mnemonic, onComplete}: SuccessScreenProps) {
       if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
       if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
     };
-  }, [mnemonic]);
+  }, [mnemonic, scheme]);
 
   const handleCopy = useCallback(() => {
     if (!publicKeyBase58) return;
@@ -154,6 +159,7 @@ export function SuccessScreen({mnemonic, onComplete}: SuccessScreenProps) {
       await keychainManager.storeSeed(mnemonic);
       await keychainManager.storeViewKey(viewKeyRef.current);
       useWalletStore.getState().setPublicKey(publicKeyBase58);
+      storeTransparentScheme(scheme);
       mmkvPublic.set(MMKV_KEYS.WALLET_EXISTS, 'true');
       mmkvPublic.set(MMKV_KEYS.ONBOARDING_COMPLETED, 'true');
       // Defense-in-depth: write publicKey directly to mmkvPublic as a backup

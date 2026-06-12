@@ -5,7 +5,10 @@ import {PublicKey} from '@solana/web3.js';
 import {Check, ArrowRight, Circle, Sparkles} from 'lucide-react-native';
 import {Text} from '../../components/ui';
 import {mnemonicToSeed} from '../../modules/keyDerivation/mnemonicUtils';
-import {deriveTransparentKeypair} from '../../modules/keyDerivation/transparent';
+import {
+  deriveTransparentKeypair,
+  type TransparentScheme,
+} from '../../modules/keyDerivation/transparent';
 import {getConnection} from '../../modules/solana/connection';
 import {getBalance, getTokenAccounts} from '../../modules/solana/queries';
 import {zeroize} from '../../modules/session/zeroize';
@@ -30,6 +33,7 @@ import {cn} from '../../utils/cn';
 
 interface SyncWalletScreenProps {
   mnemonic: string;
+  scheme: TransparentScheme;
   onSyncComplete: () => void;
 }
 
@@ -58,7 +62,7 @@ function buildSteps(currentStep: number): Step[] {
   }));
 }
 
-export function SyncWalletScreen({mnemonic, onSyncComplete}: SyncWalletScreenProps) {
+export function SyncWalletScreen({mnemonic, scheme, onSyncComplete}: SyncWalletScreenProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const completedRef = useRef(false);
 
@@ -85,7 +89,7 @@ export function SyncWalletScreen({mnemonic, onSyncComplete}: SyncWalletScreenPro
       let publicKeyBytes: Uint8Array | null = null;
       try {
         const seed = await mnemonicToSeed(mnemonic);
-        const keypair = deriveTransparentKeypair(seed);
+        const keypair = deriveTransparentKeypair(seed, scheme);
         publicKeyBytes = keypair.publicKey;
         zeroize(keypair.secretKey);
         zeroize(seed);
@@ -143,7 +147,7 @@ export function SyncWalletScreen({mnemonic, onSyncComplete}: SyncWalletScreenPro
       clearTimeout(hardTimeout);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mnemonic]);
+  }, [mnemonic, scheme]);
 
   const steps = buildSteps(currentStep);
 
