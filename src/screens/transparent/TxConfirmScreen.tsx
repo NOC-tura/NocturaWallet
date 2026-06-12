@@ -60,8 +60,8 @@ export function TxConfirmScreen({intent, onSent, onCancel}: TxConfirmScreenProps
     const existing = addressBook.findByAddress(intent.recipient);
     isFirstTimeRecipient = existing == null;
   } catch {
-    // addressBook may be absent in test envs — treat as first-time for safety
-    isFirstTimeRecipient = false;
+    // addressBook lookup failed — show the first-time callout (cautious default)
+    isFirstTimeRecipient = true;
   }
 
   const priorityLamports = PRIORITY_FEE_LAMPORTS[intent.priorityLevel];
