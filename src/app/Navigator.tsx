@@ -14,6 +14,7 @@ import {CreateWalletScreen} from '../screens/onboarding/CreateWalletScreen';
 import {SeedPhraseScreen} from '../screens/onboarding/SeedPhraseScreen';
 import {ConfirmSeedScreen} from '../screens/onboarding/ConfirmSeedScreen';
 import {ImportSeedScreen} from '../screens/onboarding/ImportSeedScreen';
+import {SelectAccountScreen} from '../screens/onboarding/SelectAccountScreen';
 import {SyncWalletScreen} from '../screens/onboarding/SyncWalletScreen';
 import {SetPinScreen} from '../screens/onboarding/SetPinScreen';
 import {BiometricSetupScreen} from '../screens/onboarding/BiometricSetupScreen';
@@ -191,6 +192,21 @@ function ImportSeedScreenNav() {
     <ImportSeedScreen
       onMnemonicValidated={mnemonic => {
         setMnemonic(mnemonic);
+        navigation.navigate('SelectAccount');
+      }}
+      onBack={navigation.canGoBack() ? () => navigation.goBack() : undefined}
+    />
+  );
+}
+
+function SelectAccountScreenNav() {
+  const {mnemonic, setScheme} = useOnboarding();
+  const navigation = useNavigation<NativeStackNavigationProp<OnboardingStackParamList>>();
+  return (
+    <SelectAccountScreen
+      mnemonic={mnemonic ?? ''}
+      onSelect={scheme => {
+        setScheme(scheme);
         navigation.navigate('SyncWallet');
       }}
       onBack={navigation.canGoBack() ? () => navigation.goBack() : undefined}
@@ -497,6 +513,7 @@ function OnboardingStack() {
         <OnboardingNav.Screen name="SeedPhrase" component={SeedPhraseScreenNav} />
         <OnboardingNav.Screen name="ConfirmSeed" component={ConfirmSeedScreenNav} />
         <OnboardingNav.Screen name="ImportSeed" component={ImportSeedScreenNav} />
+        <OnboardingNav.Screen name="SelectAccount" component={SelectAccountScreenNav} />
         <OnboardingNav.Screen name="SyncWallet" component={SyncWalletScreenNav} />
         <OnboardingNav.Screen name="SetPin" component={SetPinScreenNav} />
         <OnboardingNav.Screen name="BiometricSetup" component={BiometricSetupScreenNav} />

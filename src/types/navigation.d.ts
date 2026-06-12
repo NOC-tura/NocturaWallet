@@ -36,6 +36,7 @@ export type OnboardingStackParamList = {
   SeedPhrase: undefined;
   ConfirmSeed: undefined;
   ImportSeed: undefined;
+  SelectAccount: undefined;
   SyncWallet: undefined;
   SetPin: undefined;
   BiometricSetup: undefined;
