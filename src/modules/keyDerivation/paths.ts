@@ -1,7 +1,7 @@
 /**
  * Key derivation paths — IMMUTABLE. Changing these breaks all existing wallets.
  *
- * Transparent (Ed25519): standard Solana BIP-44 via @scure/bip32
+ * Transparent (Ed25519): standard Solana BIP-44 via SLIP-0010 (micro-key-producer/slip10)
  * Shielded (BLS12-381): Noctura EIP-2333 via micro-key-producer/bls.js
  *   - Coin type 371 is an internal Noctura convention (not registered in SLIP-0044)
  *   - EIP-2333 indices are implicitly hardened (no apostrophes)
@@ -11,7 +11,7 @@
  *    The path constant is exported for documentation only.
  */
 
-// Ed25519 — @scure/bip32
+// Ed25519 — SLIP-0010 (micro-key-producer/slip10) · Phantom/Solflare-compatible
 export const TRANSPARENT_PATH = "m/44'/501'/0'/0'" as const;
 
 // BLS12-381 — micro-key-producer/bls.js (EIP-2333)

@@ -28,6 +28,7 @@ export const MMKV_KEYS = {
   // ─── Wallet [P] exists flag, [S] balance caches ─────────────────────
   WALLET_EXISTS: 'v1_wallet.exists',
   WALLET_PUBLIC_KEY: 'v1_wallet.publicKey',
+  WALLET_TRANSPARENT_DERIVATION: 'v1_wallet.transparentDerivation',
   WALLET_SHIELDED_BALANCE_CACHE: 'v1_wallet.shieldedBalanceCache',
   WALLET_IS_ZERO_FEE_ELIGIBLE: 'v1_wallet.isZeroFeeEligible',
 
