@@ -89,3 +89,22 @@ export async function getTransactionHistory(
     },
   );
 }
+
+export interface AccountInfoSummary {
+  exists: boolean;
+  executable: boolean;
+}
+
+/**
+ * Minimal account lookup — whether an address exists on-chain and whether it is
+ * an executable (program) account. Used by the simulation risk checks.
+ */
+export async function getAccountInfo(
+  connection: Connection,
+  publicKey: PublicKey,
+): Promise<AccountInfoSummary> {
+  return rpcLimiter.execute(`getAccountInfo:${publicKey.toBase58()}`, async () => {
+    const info = await connection.getAccountInfo(publicKey);
+    return {exists: info != null, executable: info?.executable === true};
+  });
+}
