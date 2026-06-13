@@ -1,4 +1,4 @@
-import {Keypair, PublicKey} from '@solana/web3.js';
+import {Keypair, PublicKey, TransactionMessage, VersionedTransaction} from '@solana/web3.js';
 import {getConnection} from './connection';
 import {signAndSend} from './signAndSend';
 import {
@@ -77,6 +77,61 @@ export async function sendTransparentTransfer(
       {payer: sender, instructions},
       [signer],
     );
+  } finally {
+    zeroize(secretKey);
+  }
+}
+
+/**
+ * Retrieve the seed (biometric / passcode gated), derive the signer with the
+ * given scheme, build the transfer instructions, sign, and broadcast via sendRawTransaction.
+ *
+ * Returns the signature without waiting for confirmation. The 64-byte secret key
+ * is zeroized in a finally block so it never outlives the broadcast.
+ */
+export async function submitTransparentTransfer(
+  params: SendTransparentParams,
+): Promise<{signature: string}> {
+  const mnemonic = await keychainManager.retrieveSeed();
+  const seed = await mnemonicToSeed(mnemonic);
+  const {secretKey} = deriveTransparentKeypair(seed, params.scheme);
+  zeroize(seed);
+  try {
+    const signer = Keypair.fromSecretKey(secretKey);
+    const sender = signer.publicKey;
+    const priorityFee = params.priorityFee > 0 ? params.priorityFee : undefined;
+    const instructions =
+      params.kind === 'sol'
+        ? buildTransferInstructions({
+            sender,
+            recipient: params.recipient,
+            lamports: params.lamports,
+            priorityFee,
+          })
+        : buildSPLTransferInstructions({
+            sender,
+            recipient: params.recipient,
+            mint: params.mint,
+            amount: params.amount,
+            decimals: params.decimals,
+            createAta: params.createAta,
+            priorityFee,
+          });
+
+    const connection = getConnection();
+    const {blockhash} = await connection.getLatestBlockhash();
+    const message = new TransactionMessage({
+      payerKey: sender,
+      recentBlockhash: blockhash,
+      instructions,
+    }).compileToV0Message();
+    const tx = new VersionedTransaction(message);
+    tx.sign([signer]);
+    const signature = await connection.sendRawTransaction(tx.serialize(), {
+      skipPreflight: true,
+      maxRetries: 0,
+    });
+    return {signature};
   } finally {
     zeroize(secretKey);
   }
