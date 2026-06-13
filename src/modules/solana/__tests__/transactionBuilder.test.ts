@@ -228,4 +228,12 @@ describe('instruction builders', () => {
     });
     expect(ix.length).toBe(3);
   });
+
+  it('prepends a setComputeUnitLimit when computeUnitLimit is given', () => {
+    const ix = buildTransferInstructions({
+      sender: A, recipient: B, lamports: 1_000n, priorityFee: 15_000, computeUnitLimit: 450,
+    });
+    // priority-price + compute-limit + recipient transfer + fee markup = 4
+    expect(ix.length).toBe(4);
+  });
 });

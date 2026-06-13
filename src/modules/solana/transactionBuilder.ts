@@ -127,8 +127,14 @@ function buildCreateAtaInstruction(
 export function buildTransferInstructions(
   params: TransferParams,
 ): TransactionInstruction[] {
-  const {sender, recipient, lamports, priorityFee} = params;
+  const {sender, recipient, lamports, priorityFee, computeUnitLimit} = params;
   const instructions: TransactionInstruction[] = [];
+
+  if (computeUnitLimit !== undefined) {
+    instructions.push(
+      ComputeBudgetProgram.setComputeUnitLimit({units: computeUnitLimit}),
+    );
+  }
 
   if (priorityFee !== undefined) {
     instructions.push(
@@ -178,9 +184,15 @@ export async function buildTransferTx(
 export function buildSPLTransferInstructions(
   params: SPLTransferParams,
 ): TransactionInstruction[] {
-  const {sender, recipient, mint, amount, decimals, priorityFee, createAta} = params;
+  const {sender, recipient, mint, amount, decimals, priorityFee, computeUnitLimit, createAta} = params;
 
   const instructions: TransactionInstruction[] = [];
+
+  if (computeUnitLimit !== undefined) {
+    instructions.push(
+      ComputeBudgetProgram.setComputeUnitLimit({units: computeUnitLimit}),
+    );
+  }
 
   if (priorityFee !== undefined) {
     instructions.push(
