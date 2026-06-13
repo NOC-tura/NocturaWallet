@@ -42,7 +42,7 @@ const keychainManager = new KeychainManager();
  */
 export async function submitTransparentTransfer(
   params: SendTransparentParams,
-): Promise<{signature: string}> {
+): Promise<{signature: string; lastValidBlockHeight: number}> {
   const mnemonic = await keychainManager.retrieveSeed();
   const seed = await mnemonicToSeed(mnemonic);
   const {secretKey} = deriveTransparentKeypair(seed, params.scheme);
@@ -51,6 +51,8 @@ export async function submitTransparentTransfer(
     const signer = Keypair.fromSecretKey(secretKey);
     const sender = signer.publicKey;
     const priorityFee = params.priorityFee > 0 ? params.priorityFee : undefined;
+    const computeUnitLimit =
+      params.kind === 'sol' ? 450 : params.createAta ? 65_000 : 40_000;
     const instructions =
       params.kind === 'sol'
         ? buildTransferInstructions({
@@ -58,6 +60,7 @@ export async function submitTransparentTransfer(
             recipient: params.recipient,
             lamports: params.lamports,
             priorityFee,
+            computeUnitLimit,
           })
         : buildSPLTransferInstructions({
             sender,
@@ -67,10 +70,11 @@ export async function submitTransparentTransfer(
             decimals: params.decimals,
             createAta: params.createAta,
             priorityFee,
+            computeUnitLimit,
           });
 
     const connection = getConnection();
-    const {blockhash} = await connection.getLatestBlockhash();
+    const {blockhash, lastValidBlockHeight} = await connection.getLatestBlockhash();
     const message = new TransactionMessage({
       payerKey: sender,
       recentBlockhash: blockhash,
@@ -82,7 +86,7 @@ export async function submitTransparentTransfer(
       skipPreflight: true,
       maxRetries: 0,
     });
-    return {signature};
+    return {signature, lastValidBlockHeight};
   } finally {
     zeroize(secretKey);
   }

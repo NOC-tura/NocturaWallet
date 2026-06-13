@@ -5,7 +5,7 @@ import {SafeAreaProvider} from 'react-native-safe-area-context';
 // ── Module mocks (jest.mock is hoisted above all imports) ─────────────────────
 
 jest.mock('../../../modules/solana/sendTransaction', () => ({
-  submitTransparentTransfer: jest.fn().mockResolvedValue({signature: 'S'}),
+  submitTransparentTransfer: jest.fn().mockResolvedValue({signature: 'S', lastValidBlockHeight: 1}),
 }));
 
 jest.mock('../../../modules/keyDerivation/derivationScheme', () => ({
@@ -73,7 +73,7 @@ beforeEach(() => {
 });
 
 it('success path: renders "Sent successfully" and tx-status-done', async () => {
-  mockSubmit.mockResolvedValueOnce({signature: 'S'});
+  mockSubmit.mockResolvedValueOnce({signature: 'S', lastValidBlockHeight: 1});
 
   const {getByText, getByTestId} = render(
     withSafeArea(

@@ -27,6 +27,7 @@ describe('submitTransparentTransfer', () => {
       scheme: {kind: 'cli'},
     });
     expect(res.signature).toBe('SIG_ABC');
+    expect(res.lastValidBlockHeight).toBe(1);
     expect(mockSendRawTransaction).toHaveBeenCalledTimes(1);
   });
 });
