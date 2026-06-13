@@ -167,7 +167,7 @@ export function TransactionStatusScreen({
         if (cancelled) return;
         setSignature(result.signature);
         setStage('broadcasting');
-        poll(result.signature);
+        void poll(result.signature);
       } catch (e) {
         if (!cancelled) {
           setErrorMessage(e instanceof Error ? e.message : 'Transaction failed');
