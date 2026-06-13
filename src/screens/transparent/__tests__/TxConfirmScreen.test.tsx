@@ -89,7 +89,7 @@ const intent = {
 it('renders the confirm header', () => {
   const {getByText} = render(
     withSafeArea(
-      <TxConfirmScreen intent={intent} onSent={jest.fn()} onCancel={jest.fn()} />,
+      <TxConfirmScreen intent={intent} onBroadcast={jest.fn()} onCancel={jest.fn()} />,
     ),
   );
   expect(getByText('Confirm')).toBeTruthy();
@@ -98,7 +98,7 @@ it('renders the confirm header', () => {
 it('headline text matches /Send 0\\.001 SOL to/', () => {
   const {getByText} = render(
     withSafeArea(
-      <TxConfirmScreen intent={intent} onSent={jest.fn()} onCancel={jest.fn()} />,
+      <TxConfirmScreen intent={intent} onBroadcast={jest.fn()} onCancel={jest.fn()} />,
     ),
   );
   // Headline contains "Send 0.001 SOL to <formatted address>"
@@ -108,7 +108,7 @@ it('headline text matches /Send 0\\.001 SOL to/', () => {
 it('renders the send and cancel buttons', () => {
   const {getByTestId} = render(
     withSafeArea(
-      <TxConfirmScreen intent={intent} onSent={jest.fn()} onCancel={jest.fn()} />,
+      <TxConfirmScreen intent={intent} onBroadcast={jest.fn()} onCancel={jest.fn()} />,
     ),
   );
   expect(getByTestId('tx-confirm-send')).toBeTruthy();
@@ -119,7 +119,7 @@ it('calls onCancel when Cancel button is pressed', () => {
   const onCancel = jest.fn();
   const {getByTestId} = render(
     withSafeArea(
-      <TxConfirmScreen intent={intent} onSent={jest.fn()} onCancel={onCancel} />,
+      <TxConfirmScreen intent={intent} onBroadcast={jest.fn()} onCancel={onCancel} />,
     ),
   );
   const cancelBtn = getByTestId('tx-confirm-cancel');
@@ -130,7 +130,7 @@ it('calls onCancel when Cancel button is pressed', () => {
 it('shows detail rows for network, fee, priority, from, to', () => {
   const {getByText} = render(
     withSafeArea(
-      <TxConfirmScreen intent={intent} onSent={jest.fn()} onCancel={jest.fn()} />,
+      <TxConfirmScreen intent={intent} onBroadcast={jest.fn()} onCancel={jest.fn()} />,
     ),
   );
   expect(getByText('Network')).toBeTruthy();
@@ -158,7 +158,7 @@ it('shows high-value card and disables send when amount > 5% of balance', () => 
 
   const {getByTestId} = render(
     withSafeArea(
-      <TxConfirmScreen intent={highValueIntent} onSent={jest.fn()} onCancel={jest.fn()} />,
+      <TxConfirmScreen intent={highValueIntent} onBroadcast={jest.fn()} onCancel={jest.fn()} />,
     ),
   );
 
@@ -181,7 +181,7 @@ it('enables send after typing CONFIRM in the typed-confirm input', () => {
 
   const {getByTestId} = render(
     withSafeArea(
-      <TxConfirmScreen intent={highValueIntent} onSent={jest.fn()} onCancel={jest.fn()} />,
+      <TxConfirmScreen intent={highValueIntent} onBroadcast={jest.fn()} onCancel={jest.fn()} />,
     ),
   );
 
@@ -205,7 +205,7 @@ it('does not show high-value card for a small transfer', () => {
 
   const {queryByTestId, getByTestId} = render(
     withSafeArea(
-      <TxConfirmScreen intent={intent} onSent={jest.fn()} onCancel={jest.fn()} />,
+      <TxConfirmScreen intent={intent} onBroadcast={jest.fn()} onCancel={jest.fn()} />,
     ),
   );
 
@@ -226,7 +226,7 @@ it('shows add-contact prompt when recipient is not in address book', () => {
 
   const {getByTestId} = render(
     withSafeArea(
-      <TxConfirmScreen intent={intent} onSent={jest.fn()} onCancel={jest.fn()} />,
+      <TxConfirmScreen intent={intent} onBroadcast={jest.fn()} onCancel={jest.fn()} />,
     ),
   );
 
@@ -243,7 +243,7 @@ it('hides the first-time prompt after pressing Skip', () => {
 
   const {getByTestId, queryByTestId} = render(
     withSafeArea(
-      <TxConfirmScreen intent={intent} onSent={jest.fn()} onCancel={jest.fn()} />,
+      <TxConfirmScreen intent={intent} onBroadcast={jest.fn()} onCancel={jest.fn()} />,
     ),
   );
 
@@ -262,7 +262,7 @@ it('hides the first-time prompt after pressing Add', () => {
 
   const {getByTestId, queryByTestId} = render(
     withSafeArea(
-      <TxConfirmScreen intent={intent} onSent={jest.fn()} onCancel={jest.fn()} />,
+      <TxConfirmScreen intent={intent} onBroadcast={jest.fn()} onCancel={jest.fn()} />,
     ),
   );
 

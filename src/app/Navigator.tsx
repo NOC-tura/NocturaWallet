@@ -422,34 +422,29 @@ function TxConfirmScreenNav() {
   return (
     <TxConfirmScreen
       intent={route.params.intent}
-      onSent={params => navigation.navigate('TransactionStatus', params)}
+      onBroadcast={intent => navigation.navigate('TransactionStatus', {intent})}
       onCancel={() => navigation.goBack()}
     />
   );
 }
 
 function TransactionStatusScreenNav() {
-  const route = useRoute();
+  const route = useRoute<RouteProp<SendStackParamList, 'TransactionStatus'>>();
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const navigation = useNavigation();
-  const raw = (route.params ?? {}) as Record<string, unknown>;
-  const signature = typeof raw.signature === 'string' ? raw.signature : '';
-  const amount = typeof raw.amount === 'string' ? raw.amount : '0';
-  const recipient = typeof raw.recipient === 'string' ? raw.recipient : '';
-  const token = typeof raw.token === 'string' ? raw.token : 'SOL';
+  const sendNav = useNavigation<NativeStackNavigationProp<SendStackParamList>>();
   return (
     <TransactionStatusScreen
-      signature={signature}
-      amount={amount}
-      recipient={recipient}
-      token={token}
+      intent={route.params.intent}
       onDashboard={() => {
         // Dismiss SendModal stack then ensure Home tab is active. Passing
         // {screen: 'HomeTab'} prevents landing on whichever tab was last
         // selected before the user opened Send.
         rootNav.navigate('MainTabs', {screen: 'HomeTab'} as never);
       }}
-      onRetry={() => navigation.goBack()}
+      onViewDetails={sig => {
+        // Navigate to TransactionDetail if it exists in the SendStack
+        sendNav.navigate('TransactionDetail', {signature: sig});
+      }}
     />
   );
 }
