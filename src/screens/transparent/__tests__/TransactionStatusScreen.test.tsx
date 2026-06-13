@@ -129,20 +129,16 @@ it('failure path: renders "Transaction failed" and tx-status-retry when submitTr
 it('expiry → resubmit: calls submitTransparentTransfer a second time when blockhash expires', async () => {
   // First submit resolves with a low lastValidBlockHeight (10).
   // getBlockHeight returns 100 (> 10) so the expiry check fires.
-  // getSignatureStatus always returns pending so the loop keeps running.
+  // getSignatureStatus stays pending so the blockhash "expires" → resubmit.
   // Second submit resolves with a higher lastValidBlockHeight (20).
-  // getSignatureStatus then returns confirmed so the loop exits cleanly.
   mockSubmit
     .mockResolvedValueOnce({signature: 'S1', lastValidBlockHeight: 10})
     .mockResolvedValueOnce({signature: 'S2', lastValidBlockHeight: 20});
 
-  mockGetSignatureStatus
-    // First 10 polls (S1): return pending
-    .mockResolvedValue({value: null});
-
+  mockGetSignatureStatus.mockResolvedValue({value: null});
   mockGetBlockHeight.mockResolvedValue(100);
 
-  render(
+  const {unmount} = render(
     withSafeArea(
       <TransactionStatusScreen
         intent={intent}
@@ -159,4 +155,7 @@ it('expiry → resubmit: calls submitTransparentTransfer a second time when bloc
     },
     {timeout: 10_000},
   );
+
+  // Unmount so the poll loop's `cancelled` cleanup stops it — no dangling timer.
+  unmount();
 }, 15_000);
