@@ -4,19 +4,29 @@ import {SafeAreaProvider} from 'react-native-safe-area-context';
 
 // ── Module mocks (jest.mock is hoisted above all imports) ─────────────────────
 
+jest.mock('../../../modules/solana/priorityFee', () => ({
+  estimatePriorityFee: jest.fn().mockResolvedValue(10_000),
+}));
+
 jest.mock('../../../modules/solana/sendTransaction', () => ({
-  submitTransparentTransfer: jest.fn().mockResolvedValue({signature: 'S', lastValidBlockHeight: 1}),
+  submitTransparentTransfer: jest.fn().mockResolvedValue({signature: 'S', lastValidBlockHeight: 1000}),
 }));
 
 jest.mock('../../../modules/keyDerivation/derivationScheme', () => ({
   loadTransparentScheme: jest.fn(() => ({kind: 'slip10', account: 0})),
 }));
 
+// Default connection mock: getBlockHeight returns 0 (≤ lastValidBlockHeight=1000)
+// so no expiry is triggered in success/failed tests.
+const mockGetSignatureStatus = jest.fn().mockResolvedValue({
+  value: {confirmationStatus: 'confirmed', slot: 42},
+});
+const mockGetBlockHeight = jest.fn().mockResolvedValue(0);
+
 jest.mock('../../../modules/solana/connection', () => ({
   getConnection: () => ({
-    getSignatureStatus: jest.fn().mockResolvedValue({
-      value: {confirmationStatus: 'confirmed', slot: 42},
-    }),
+    getSignatureStatus: mockGetSignatureStatus,
+    getBlockHeight: mockGetBlockHeight,
   }),
 }));
 
@@ -70,10 +80,15 @@ const intent = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Re-apply defaults after clearAllMocks
+  mockGetSignatureStatus.mockResolvedValue({
+    value: {confirmationStatus: 'confirmed', slot: 42},
+  });
+  mockGetBlockHeight.mockResolvedValue(0);
 });
 
 it('success path: renders "Sent successfully" and tx-status-done', async () => {
-  mockSubmit.mockResolvedValueOnce({signature: 'S', lastValidBlockHeight: 1});
+  mockSubmit.mockResolvedValueOnce({signature: 'S', lastValidBlockHeight: 1000});
 
   const {getByText, getByTestId} = render(
     withSafeArea(
@@ -110,3 +125,38 @@ it('failure path: renders "Transaction failed" and tx-status-retry when submitTr
 
   expect(getByTestId('tx-status-retry')).toBeTruthy();
 });
+
+it('expiry → resubmit: calls submitTransparentTransfer a second time when blockhash expires', async () => {
+  // First submit resolves with a low lastValidBlockHeight (10).
+  // getBlockHeight returns 100 (> 10) so the expiry check fires.
+  // getSignatureStatus always returns pending so the loop keeps running.
+  // Second submit resolves with a higher lastValidBlockHeight (20).
+  // getSignatureStatus then returns confirmed so the loop exits cleanly.
+  mockSubmit
+    .mockResolvedValueOnce({signature: 'S1', lastValidBlockHeight: 10})
+    .mockResolvedValueOnce({signature: 'S2', lastValidBlockHeight: 20});
+
+  mockGetSignatureStatus
+    // First 10 polls (S1): return pending
+    .mockResolvedValue({value: null});
+
+  mockGetBlockHeight.mockResolvedValue(100);
+
+  render(
+    withSafeArea(
+      <TransactionStatusScreen
+        intent={intent}
+        onDashboard={jest.fn()}
+      />,
+    ),
+  );
+
+  // The expiry check fires at i % 10 === 0, i.e. after 10 × 500 ms = 5 s of poll ticks.
+  // We wait up to 10 s (real timers) for the second call to happen.
+  await waitFor(
+    () => {
+      expect(mockSubmit).toHaveBeenCalledTimes(2);
+    },
+    {timeout: 10_000},
+  );
+}, 15_000);

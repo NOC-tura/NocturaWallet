@@ -16,12 +16,8 @@ import type {TransferIntent} from '../../types/transfer';
 
 // ── In-file constants ─────────────────────────────────────────────────────────
 const BASE_FEE_LAMPORTS = 5_000n;
-const PRIORITY_FEE_LAMPORTS: Record<'normal' | 'fast' | 'urgent', bigint> = {
-  normal: 0n,
-  fast: 15_000n,
-  urgent: 50_000n,
-};
 const SOL_DECIMALS = 9;
+const MAX_ATTEMPTS = 3;
 
 // ── Lazy imports — wrapped in try/catch so Jest/stub envs don't crash ─────────
 let submitTransparentTransfer:
@@ -33,6 +29,9 @@ let loadTransparentScheme:
 let getConnection:
   | typeof import('../../modules/solana/connection').getConnection
   | null = null;
+let estimatePriorityFee:
+  | typeof import('../../modules/solana/priorityFee').estimatePriorityFee
+  | null = null;
 
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -41,6 +40,8 @@ try {
   loadTransparentScheme = require('../../modules/keyDerivation/derivationScheme').loadTransparentScheme;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   getConnection = require('../../modules/solana/connection').getConnection;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  estimatePriorityFee = require('../../modules/solana/priorityFee').estimatePriorityFee;
 } catch {
   // Modules unavailable in test/stub environment — no-op
 }
@@ -54,6 +55,17 @@ export interface TransactionStatusScreenProps {
   onViewDetails?: (signature: string) => void;
 }
 
+// ── Private helpers ───────────────────────────────────────────────────────────
+function mapErr(err: unknown): string {
+  const errStr = JSON.stringify(err);
+  if (errStr.includes('InsufficientFunds')) {
+    return ERROR_CODES.INSUFFICIENT_SOL.message;
+  } else if (errStr.includes('AccountNotFound')) {
+    return ERROR_CODES.INVALID_ADDRESS.message;
+  }
+  return ERROR_CODES.TX_SEND_FAILED.message;
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export function TransactionStatusScreen({
   intent,
@@ -65,6 +77,7 @@ export function TransactionStatusScreen({
   const [slot, setSlot] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [priorityFeeUsed, setPriorityFeeUsed] = useState(0);
 
   // Keep a ref to the latest signature for use inside the async poll closure
   const signatureRef = useRef<string | null>(null);
@@ -73,76 +86,22 @@ export function TransactionStatusScreen({
   useEffect(() => {
     let cancelled = false;
 
-    const poll = async (sig: string) => {
-      if (!getConnection) return;
-      const startMs = Date.now();
-      let stuckSet = false;
-
-      while (!cancelled) {
-        await new Promise(r => setTimeout(r, 500));
-        if (cancelled) return;
-
-        try {
-          const conn = getConnection();
-          const r = await conn.getSignatureStatus(sig);
-
-          if (cancelled) return;
-
-          const status = r?.value?.confirmationStatus;
-          if (status === 'confirmed' || status === 'finalized') {
-            setSlot(r?.value?.slot ?? null);
-            setStage('success');
-            return;
-          }
-
-          if (r?.value?.err) {
-            const errStr = JSON.stringify(r.value.err);
-            let msg: string;
-            if (errStr.includes('InsufficientFunds')) {
-              msg = ERROR_CODES.INSUFFICIENT_SOL.message;
-            } else if (errStr.includes('AccountNotFound')) {
-              msg = ERROR_CODES.INVALID_ADDRESS.message;
-            } else {
-              msg = ERROR_CODES.TX_SEND_FAILED.message;
-            }
-            setErrorMessage(msg);
-            setStage('failed');
-            return;
-          }
-
-          // Check for stuck (>= 90 s elapsed) without resolution
-          if (!stuckSet && Date.now() - startMs >= 90_000) {
-            stuckSet = true;
-            setStage('stuck');
-            // Keep polling — a later confirmation still flips to success
-          }
-        } catch {
-          // RPC hiccup — continue polling
-        }
-      }
-    };
-
     const run = async () => {
       setStage('submitting');
       setErrorMessage(null);
 
-      // Guard: in stub/test env all three may be null — exit gracefully
+      // Guard: in stub/test env all required modules may be null — exit gracefully
       if (!submitTransparentTransfer || !loadTransparentScheme || !getConnection) {
         return;
       }
 
       const scheme = loadTransparentScheme();
 
-      // Priority fee: convert lamport target to microLamports/CU over 200k CU budget
-      const priorityFee = Number(
-        (PRIORITY_FEE_LAMPORTS[intent.priorityLevel] * 1_000_000n) / 200_000n,
-      );
-
       // Import PublicKey lazily inline to avoid top-level crash in test env
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const {PublicKey} = require('@solana/web3.js') as typeof import('@solana/web3.js');
 
-      const params =
+      const buildParams = (priorityFee: number) =>
         intent.tokenMint === 'native'
           ? {
               kind: 'sol' as const,
@@ -162,16 +121,102 @@ export function TransactionStatusScreen({
               scheme,
             };
 
+      const attemptSubmit = async () => {
+        const fee = estimatePriorityFee
+          ? await estimatePriorityFee(getConnection!(), intent.priorityLevel)
+          : 0;
+        setPriorityFeeUsed(fee);
+        return submitTransparentTransfer!(buildParams(fee));
+      };
+
+      let attempt = 1;
+      let result: {signature: string; lastValidBlockHeight: number};
+
       try {
-        const result = await submitTransparentTransfer(params);
-        if (cancelled) return;
-        setSignature(result.signature);
-        setStage('broadcasting');
-        void poll(result.signature);
+        result = await attemptSubmit();
       } catch (e) {
         if (!cancelled) {
           setErrorMessage(e instanceof Error ? e.message : 'Transaction failed');
           setStage('failed');
+        }
+        return;
+      }
+
+      if (cancelled) return;
+      setSignature(result.signature);
+      setStage('broadcasting');
+
+      let sig = result.signature;
+      let lastValidBlockHeight = result.lastValidBlockHeight;
+      let attemptStartMs = Date.now();
+      let stuckSet = false;
+      let i = 0;
+
+      while (!cancelled) {
+        await new Promise(r => setTimeout(r, 500));
+        if (cancelled) return;
+        i++;
+
+        try {
+          const r = await getConnection!().getSignatureStatus(sig);
+          if (cancelled) return;
+          const st = r?.value?.confirmationStatus;
+          if (st === 'confirmed' || st === 'finalized') {
+            setSlot(r?.value?.slot ?? null);
+            setStage('success');
+            return;
+          }
+          if (r?.value?.err) {
+            setErrorMessage(mapErr(r.value.err));
+            setStage('failed');
+            return;
+          }
+        } catch {
+          // status hiccup — continue
+        }
+
+        // Expiry check every ~10 iterations (~5 s)
+        if (i % 10 === 0) {
+          try {
+            const h = await getConnection!().getBlockHeight();
+            if (!cancelled && h > lastValidBlockHeight) {
+              if (attempt < MAX_ATTEMPTS) {
+                attempt++;
+                let resubmitResult: {signature: string; lastValidBlockHeight: number};
+                try {
+                  resubmitResult = await attemptSubmit();
+                } catch (e) {
+                  if (!cancelled) {
+                    setErrorMessage(e instanceof Error ? e.message : 'Transaction failed');
+                    setStage('failed');
+                  }
+                  return;
+                }
+                if (cancelled) return;
+                sig = resubmitResult.signature;
+                lastValidBlockHeight = resubmitResult.lastValidBlockHeight;
+                setSignature(sig);
+                setStage('broadcasting');
+                attemptStartMs = Date.now();
+                stuckSet = false;
+                i = 0;
+                continue;
+              } else {
+                setErrorMessage(
+                  "Transaction expired — the network didn't include it in time. Tap Retry.",
+                );
+                setStage('failed');
+                return;
+              }
+            }
+          } catch {
+            // block-height hiccup — skip this check
+          }
+        }
+
+        if (!stuckSet && Date.now() - attemptStartMs >= 90_000) {
+          stuckSet = true;
+          setStage('stuck');
         }
       }
     };
@@ -196,8 +241,11 @@ export function TransactionStatusScreen({
     Linking.openURL(getExplorerUrl(signature)).catch(() => {});
   };
 
-  const totalFee = BASE_FEE_LAMPORTS + PRIORITY_FEE_LAMPORTS[intent.priorityLevel];
-  const feeDisplay = `${formatTokenAmount(totalFee, SOL_DECIMALS)} SOL`;
+  // Dynamic fee display: base fee + compute budget cost using actual CU limit
+  const CU_LIMIT =
+    intent.tokenMint === 'native' ? 450 : intent.createAta ? 65_000 : 40_000;
+  const computeFeeLamports = BigInt(Math.ceil((priorityFeeUsed * CU_LIMIT) / 1_000_000));
+  const feePaid = `${formatTokenAmount(BASE_FEE_LAMPORTS + computeFeeLamports, SOL_DECIMALS)} SOL`;
 
   // ── Render: submitting / broadcasting ────────────────────────────────────
   if (stage === 'submitting' || stage === 'broadcasting') {
@@ -257,7 +305,7 @@ export function TransactionStatusScreen({
         <View style={styles.metaCard}>
           <MetaRow label="Tx hash" value={truncatedSig} />
           <MetaRow label="Slot" value={slot != null ? String(slot) : '—'} />
-          <MetaRow label="Fee paid" value={feeDisplay} />
+          <MetaRow label="Fee paid" value={feePaid} />
         </View>
 
         <TouchableOpacity
@@ -350,7 +398,7 @@ export function TransactionStatusScreen({
   );
 }
 
-// ── Private helpers ───────────────────────────────────────────────────────────
+// ── Private sub-components ────────────────────────────────────────────────────
 function MetaRow({label, value}: {label: string; value: string}) {
   return (
     <View style={styles.metaRow}>
