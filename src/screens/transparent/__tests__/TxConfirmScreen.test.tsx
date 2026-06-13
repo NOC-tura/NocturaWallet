@@ -4,9 +4,7 @@ import {SafeAreaProvider} from 'react-native-safe-area-context';
 
 // ── Module mocks (jest.mock is hoisted above all imports) ─────────────────────
 
-jest.mock('../../../modules/solana/sendTransaction', () => ({
-  sendTransparentTransfer: jest.fn().mockResolvedValue({signature: 'sig123'}),
-}));
+jest.mock('../../../modules/solana/sendTransaction', () => ({}));
 
 jest.mock('../../../modules/keyDerivation/derivationScheme', () => ({
   loadTransparentScheme: jest.fn().mockReturnValue({kind: 'slip10', account: 0}),

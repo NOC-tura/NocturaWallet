@@ -1,11 +1,9 @@
 import {Keypair, PublicKey, TransactionMessage, VersionedTransaction} from '@solana/web3.js';
 import {getConnection} from './connection';
-import {signAndSend} from './signAndSend';
 import {
   buildTransferInstructions,
   buildSPLTransferInstructions,
 } from './transactionBuilder';
-import type {SignAndSendResult} from './types';
 import {KeychainManager} from '../keychain/keychainModule';
 import {mnemonicToSeed} from '../keyDerivation/mnemonicUtils';
 import {
@@ -34,53 +32,6 @@ export type SendTransparentParams =
     };
 
 const keychainManager = new KeychainManager();
-
-/**
- * Retrieve the seed (biometric / passcode gated), derive the signer with the
- * given scheme, build the transfer instructions, and broadcast via signAndSend.
- *
- * The 64-byte secret key is zeroized in a finally block so it never outlives
- * the broadcast.
- */
-export async function sendTransparentTransfer(
-  params: SendTransparentParams,
-): Promise<SignAndSendResult> {
-  const mnemonic = await keychainManager.retrieveSeed();
-  const seed = await mnemonicToSeed(mnemonic);
-  const {secretKey} = deriveTransparentKeypair(seed, params.scheme);
-  zeroize(seed);
-  try {
-    const signer = Keypair.fromSecretKey(secretKey);
-    const sender = signer.publicKey;
-    const priorityFee = params.priorityFee > 0 ? params.priorityFee : undefined;
-
-    const instructions =
-      params.kind === 'sol'
-        ? buildTransferInstructions({
-            sender,
-            recipient: params.recipient,
-            lamports: params.lamports,
-            priorityFee,
-          })
-        : buildSPLTransferInstructions({
-            sender,
-            recipient: params.recipient,
-            mint: params.mint,
-            amount: params.amount,
-            decimals: params.decimals,
-            createAta: params.createAta,
-            priorityFee,
-          });
-
-    return await signAndSend(
-      getConnection(),
-      {payer: sender, instructions},
-      [signer],
-    );
-  } finally {
-    zeroize(secretKey);
-  }
-}
 
 /**
  * Retrieve the seed (biometric / passcode gated), derive the signer with the
