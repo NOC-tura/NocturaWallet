@@ -8,6 +8,15 @@ Noctura Wallet is a privacy-first, dual-mode (Transparent + Shielded) Solana mob
 
 The codebase is currently at scaffold stage — the RN project is initialized but `src/` and application code have not been created yet. The full architectural specification lives in `.instructions.md` (4,300+ lines).
 
+## Design — Source of Truth (BINDING)
+
+**The canonical wallet design is the user's own file `/home/user/Downloads/index.html`** (Pixel-9 mockups, per-screen states, DS class map, navigation, Android notes), with per-screen specs in `/home/user/Downloads/screen.md`. Screens are numbered (`#NN`).
+
+- **Build every screen to match `index.html` faithfully** — not a simplified approximation. The user made this design; the code's job is to realize it.
+- Before building/changing a screen, read its `screen.md` section AND its `index.html` mockup; enumerate ALL states/features in the design.
+- If you must scope something down or defer it (e.g. gated shielded, a sub-feature), say so **explicitly and loudly** — never silently omit design elements.
+- The user designs; Claude writes the code to that design.
+
 ## Common Commands
 
 ```bash

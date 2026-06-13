@@ -160,15 +160,17 @@ export function TransactionStatusScreen({
         try {
           const r = await getConnection!().getSignatureStatus(sig);
           if (cancelled) return;
+          // A landed-but-failed tx has BOTH confirmationStatus AND err — check
+          // err FIRST so an on-chain failure is never reported as success.
+          if (r?.value?.err) {
+            setErrorMessage(mapErr(r.value.err));
+            setStage('failed');
+            return;
+          }
           const st = r?.value?.confirmationStatus;
           if (st === 'confirmed' || st === 'finalized') {
             setSlot(r?.value?.slot ?? null);
             setStage('success');
-            return;
-          }
-          if (r?.value?.err) {
-            setErrorMessage(mapErr(r.value.err));
-            setStage('failed');
             return;
           }
         } catch {
@@ -243,7 +245,7 @@ export function TransactionStatusScreen({
 
   // Dynamic fee display: base fee + compute budget cost using actual CU limit
   const CU_LIMIT =
-    intent.tokenMint === 'native' ? 450 : intent.createAta ? 65_000 : 40_000;
+    intent.tokenMint === 'native' ? 1_000 : intent.createAta ? 65_000 : 40_000;
   const computeFeeLamports = BigInt(Math.ceil((priorityFeeUsed * CU_LIMIT) / 1_000_000));
   const feePaid = `${formatTokenAmount(BASE_FEE_LAMPORTS + computeFeeLamports, SOL_DECIMALS)} SOL`;
 

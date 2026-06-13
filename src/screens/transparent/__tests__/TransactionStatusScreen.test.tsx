@@ -107,6 +107,30 @@ it('success path: renders "Sent successfully" and tx-status-done', async () => {
   expect(getByTestId('tx-status-done')).toBeTruthy();
 });
 
+it('landed-but-failed: a confirmed tx WITH err renders "Transaction failed", not success', async () => {
+  mockSubmit.mockResolvedValueOnce({signature: 'S', lastValidBlockHeight: 1000});
+  // On-chain failure: the tx is confirmed AND carries an err (e.g. CU exceeded).
+  mockGetSignatureStatus.mockResolvedValue({
+    value: {
+      confirmationStatus: 'confirmed',
+      slot: 42,
+      err: {InstructionError: [3, 'ComputationalBudgetExceeded']},
+    },
+  });
+
+  const {getByText, getByTestId, queryByText} = render(
+    withSafeArea(
+      <TransactionStatusScreen intent={intent} onDashboard={jest.fn()} />,
+    ),
+  );
+
+  await waitFor(() => {
+    expect(getByText('Transaction failed')).toBeTruthy();
+  });
+  expect(getByTestId('tx-status-retry')).toBeTruthy();
+  expect(queryByText('Sent successfully')).toBeNull();
+});
+
 it('failure path: renders "Transaction failed" and tx-status-retry when submitTransparentTransfer rejects', async () => {
   mockSubmit.mockRejectedValueOnce(new Error('Insufficient funds'));
 

@@ -51,8 +51,11 @@ export async function submitTransparentTransfer(
     const signer = Keypair.fromSecretKey(secretKey);
     const sender = signer.publicKey;
     const priorityFee = params.priorityFee > 0 ? params.priorityFee : undefined;
+    // SOL transfer = 2 SystemProgram.transfer (recipient + Noctura fee markup)
+    // + 2 ComputeBudget ix ≈ 600 CU; 450 was too tight (ComputationalBudgetExceeded
+    // observed on-chain). 1_000 gives margin while keeping the priority fee tiny.
     const computeUnitLimit =
-      params.kind === 'sol' ? 450 : params.createAta ? 65_000 : 40_000;
+      params.kind === 'sol' ? 1_000 : params.createAta ? 65_000 : 40_000;
     const instructions =
       params.kind === 'sol'
         ? buildTransferInstructions({
