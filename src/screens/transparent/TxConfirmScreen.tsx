@@ -1,7 +1,7 @@
 import React, {useState, useCallback, useRef} from 'react';
-import {View, Pressable, ScrollView, Alert} from 'react-native';
+import {View, Pressable, ScrollView, Alert, TextInput, StyleSheet} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {ArrowLeft, AlertTriangle} from 'lucide-react-native';
+import {ArrowLeft} from 'lucide-react-native';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {PublicKey} from '@solana/web3.js';
@@ -13,6 +13,11 @@ import {useWalletStore} from '../../store/zustand/walletStore';
 import {awaitUserAuth} from '../../modules/session/pendingAuth';
 import type {RootStackParamList} from '../../types/navigation';
 import type {TransferIntent} from '../../types/transfer';
+import {
+  isHighValueTransfer,
+  formatChecksumParts,
+  TYPED_CONFIRM_SENTINEL,
+} from '../../modules/solana/transferRisk';
 
 // ── Fee constants (lamports) ──────────────────────────────────────────────────
 const BASE_FEE_LAMPORTS = 5_000n;
@@ -40,6 +45,15 @@ try {
   // Modules unavailable in test/stub environment — no-op
 }
 
+// ── Module-scope helpers ──────────────────────────────────────────────────────
+function safeBigInt(v: string | undefined): bigint {
+  try {
+    return v ? BigInt(v) : 0n;
+  } catch {
+    return 0n;
+  }
+}
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 interface TxConfirmScreenProps {
   intent: TransferIntent;
@@ -48,11 +62,20 @@ interface TxConfirmScreenProps {
 }
 
 export function TxConfirmScreen({intent, onSent, onCancel}: TxConfirmScreenProps) {
-  const {publicKey} = useWalletStore();
+  const {publicKey, solBalance, tokenBalances} = useWalletStore();
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   const [sending, setSending] = useState(false);
+  const [typedConfirm, setTypedConfirm] = useState('');
+  const [firstTimeDismissed, setFirstTimeDismissed] = useState(false);
   const lastTapRef = useRef(0);
+
+  const {highValue, percentOfBalance} = isHighValueTransfer(intent, {
+    solBalance: safeBigInt(solBalance),
+    tokenBalances: Object.fromEntries(
+      Object.entries(tokenBalances).map(([k, v]) => [k, safeBigInt(v)]),
+    ),
+  });
 
   // Resolve whether recipient is a new contact (for the warning callout)
   let isFirstTimeRecipient = false;
@@ -65,6 +88,8 @@ export function TxConfirmScreen({intent, onSent, onCancel}: TxConfirmScreenProps
   }
 
   const priorityLamports = PRIORITY_FEE_LAMPORTS[intent.priorityLevel];
+
+  const sendDisabled = sending || (highValue && typedConfirm !== TYPED_CONFIRM_SENTINEL);
 
   const handleSend = useCallback(async () => {
     const now = Date.now();
@@ -192,7 +217,8 @@ export function TxConfirmScreen({intent, onSent, onCancel}: TxConfirmScreenProps
       <ScrollView contentContainerClassName="p-5 pb-4" keyboardShouldPersistTaps="handled">
         {/* Headline */}
         <Text variant="h1" className="mb-6">
-          {`Send ${intent.amount} ${intent.tokenSymbol} to ${formatAddress(intent.recipient)}`}
+          {`Send ${intent.amount} ${intent.tokenSymbol} to `}
+          <ChecksumAddress address={intent.recipient} />
         </Text>
 
         {/* Detail rows */}
@@ -207,19 +233,66 @@ export function TxConfirmScreen({intent, onSent, onCancel}: TxConfirmScreenProps
             value={`${formatTokenAmount(priorityLamports, SOL_DECIMALS)} SOL`}
           />
           <DetailRow label="From" value={formatAddress(publicKey ?? '')} />
-          <DetailRow label="To" value={formatAddress(intent.recipient)} />
+          {/* To row rendered inline to use ChecksumAddress */}
+          <View className="flex-row items-center justify-between">
+            <Text variant="body-sm" className="text-fg-secondary">
+              To
+            </Text>
+            <ChecksumAddress address={intent.recipient} style={styles.toValue} />
+          </View>
         </Card>
 
         {/* First-time-recipient warning callout */}
-        {isFirstTimeRecipient && (
-          <Card
-            surface="surface-2"
-            className="mb-4 flex-row gap-3 items-start border border-warning">
-            <AlertTriangle size={18} color="#F59E0B" strokeWidth={1.75} className="mt-0.5" />
-            <Text variant="body-sm" className="flex-1 text-fg-secondary">
+        {isFirstTimeRecipient && !firstTimeDismissed && (
+          <View style={styles.firstTimeCard}>
+            <Text style={styles.firstTimeText}>
               This address is not in your contacts. Double-check before sending.
             </Text>
-          </Card>
+            <View style={styles.inlineRow}>
+              <Pressable
+                testID="tx-confirm-add-contact"
+                onPress={() => {
+                  try {
+                    addressBook.addContact({
+                      name: formatAddress(intent.recipient),
+                      address: intent.recipient,
+                      addressType: 'transparent',
+                      lastUsedAt: Date.now(),
+                    });
+                  } catch {
+                    // non-critical
+                  }
+                  setFirstTimeDismissed(true);
+                }}>
+                <Text style={styles.addLink}>Add</Text>
+              </Pressable>
+              <Pressable
+                testID="tx-confirm-skip-contact"
+                onPress={() => setFirstTimeDismissed(true)}>
+                <Text style={styles.skipLink}>Skip</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        {/* High-value typed-confirm gate */}
+        {highValue && (
+          <View style={styles.highValueCard} testID="tx-confirm-highvalue">
+            <Text style={styles.highValueHead}>High-value transfer</Text>
+            <Text style={styles.highValueBody}>
+              This sends {percentOfBalance}% of your balance. Type {TYPED_CONFIRM_SENTINEL} to proceed.
+            </Text>
+            <TextInput
+              testID="tx-confirm-typed-input"
+              value={typedConfirm}
+              onChangeText={setTypedConfirm}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              placeholder={TYPED_CONFIRM_SENTINEL}
+              placeholderTextColor="#6E727A"
+              style={styles.typedInput}
+            />
+          </View>
         )}
       </ScrollView>
 
@@ -229,7 +302,7 @@ export function TxConfirmScreen({intent, onSent, onCancel}: TxConfirmScreenProps
           label={`Send ${intent.amount} ${intent.tokenSymbol}`}
           variant="primary"
           loading={sending}
-          disabled={sending}
+          disabled={sendDisabled}
           testID="tx-confirm-send"
           onPress={() => {
             void handleSend();
@@ -247,7 +320,7 @@ export function TxConfirmScreen({intent, onSent, onCancel}: TxConfirmScreenProps
   );
 }
 
-// ── Private helper ────────────────────────────────────────────────────────────
+// ── Private helpers ───────────────────────────────────────────────────────────
 function DetailRow({label, value}: {label: string; value: string}) {
   return (
     <View className="flex-row items-center justify-between">
@@ -260,3 +333,53 @@ function DetailRow({label, value}: {label: string; value: string}) {
     </View>
   );
 }
+
+function ChecksumAddress({address, style}: {address: string; style?: object}) {
+  const {head, tail} = formatChecksumParts(address);
+  if (!tail) return <Text style={style}>{head}</Text>;
+  return (
+    <Text style={style}>
+      <Text style={styles.ckAccent}>{head}</Text>
+      <Text>…</Text>
+      <Text style={styles.ckAccent}>{tail}</Text>
+    </Text>
+  );
+}
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+const styles = StyleSheet.create({
+  toValue: {fontSize: 13, color: '#E7E9EE', fontWeight: '500'},
+  ckAccent: {color: '#B084FC', fontWeight: '700'},
+  firstTimeCard: {
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    backgroundColor: 'rgba(245,158,11,0.10)',
+    borderLeftWidth: 2,
+    borderLeftColor: '#F59E0B',
+  },
+  firstTimeText: {fontSize: 13, color: '#E7E9EE', lineHeight: 18},
+  inlineRow: {flexDirection: 'row', gap: 20, marginTop: 10},
+  addLink: {fontSize: 14, fontWeight: '700', color: '#B084FC'},
+  skipLink: {fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.6)'},
+  highValueCard: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    backgroundColor: 'rgba(248,113,113,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(248,113,113,0.5)',
+  },
+  highValueHead: {fontSize: 13, fontWeight: '700', color: '#F87171'},
+  highValueBody: {fontSize: 13, color: '#E7E9EE', lineHeight: 18, marginTop: 4},
+  typedInput: {
+    marginTop: 12,
+    height: 48,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    color: '#FFFFFF',
+    fontWeight: '700',
+    letterSpacing: 2,
+  },
+});

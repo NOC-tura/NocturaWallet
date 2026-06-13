@@ -26,6 +26,8 @@ jest.mock('../../../modules/addressBook/addressBookModule', () => ({
 jest.mock('../../../store/zustand/walletStore', () => ({
   useWalletStore: jest.fn().mockReturnValue({
     publicKey: 'So11111111111111111111111111111111111111112',
+    solBalance: '10000000000',
+    tokenBalances: {},
   }),
 }));
 
@@ -50,6 +52,12 @@ jest.mock('../../../store/mmkv/instances', () => ({
 // Import after all mocks are registered so the lazy require() block inside the
 // component module sees the mocked versions.
 import {TxConfirmScreen} from '../TxConfirmScreen';
+import {useWalletStore} from '../../../store/zustand/walletStore';
+import {addressBook} from '../../../modules/addressBook/addressBookModule';
+
+// Typed aliases for jest.Mock calls — avoids TS2352 cast errors.
+const mockUseWalletStore = jest.mocked(useWalletStore);
+const mockFindByAddress = jest.mocked(addressBook.findByAddress);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -131,4 +139,134 @@ it('shows detail rows for network, fee, priority, from, to', () => {
   expect(getByText('Priority')).toBeTruthy();
   expect(getByText('From')).toBeTruthy();
   expect(getByText('To')).toBeTruthy();
+});
+
+// ── High-value gate tests ─────────────────────────────────────────────────────
+
+it('shows high-value card and disables send when amount > 5% of balance', () => {
+  // solBalance '1000000000' = 1 SOL (1e9 lamports), amount '0.5' = 5e8 lamports = 50%
+  mockUseWalletStore.mockReturnValue({
+    publicKey: 'So11111111111111111111111111111111111111112',
+    solBalance: '1000000000',
+    tokenBalances: {},
+  });
+
+  const highValueIntent = {
+    ...intent,
+    amount: '0.5',
+  };
+
+  const {getByTestId} = render(
+    withSafeArea(
+      <TxConfirmScreen intent={highValueIntent} onSent={jest.fn()} onCancel={jest.fn()} />,
+    ),
+  );
+
+  expect(getByTestId('tx-confirm-highvalue')).toBeTruthy();
+  const sendBtn = getByTestId('tx-confirm-send');
+  expect(sendBtn.props.accessibilityState?.disabled).toBe(true);
+});
+
+it('enables send after typing CONFIRM in the typed-confirm input', () => {
+  mockUseWalletStore.mockReturnValue({
+    publicKey: 'So11111111111111111111111111111111111111112',
+    solBalance: '1000000000',
+    tokenBalances: {},
+  });
+
+  const highValueIntent = {
+    ...intent,
+    amount: '0.5',
+  };
+
+  const {getByTestId} = render(
+    withSafeArea(
+      <TxConfirmScreen intent={highValueIntent} onSent={jest.fn()} onCancel={jest.fn()} />,
+    ),
+  );
+
+  // Send is disabled before typing
+  expect(getByTestId('tx-confirm-send').props.accessibilityState?.disabled).toBe(true);
+
+  // Type the sentinel
+  fireEvent.changeText(getByTestId('tx-confirm-typed-input'), 'CONFIRM');
+
+  // Send is now enabled
+  expect(getByTestId('tx-confirm-send').props.accessibilityState?.disabled).toBe(false);
+});
+
+it('does not show high-value card for a small transfer', () => {
+  // solBalance '10000000000' = 10 SOL, amount '0.001' = tiny fraction
+  mockUseWalletStore.mockReturnValue({
+    publicKey: 'So11111111111111111111111111111111111111112',
+    solBalance: '10000000000',
+    tokenBalances: {},
+  });
+
+  const {queryByTestId, getByTestId} = render(
+    withSafeArea(
+      <TxConfirmScreen intent={intent} onSent={jest.fn()} onCancel={jest.fn()} />,
+    ),
+  );
+
+  expect(queryByTestId('tx-confirm-highvalue')).toBeNull();
+  // Send button should be enabled (not disabled)
+  expect(getByTestId('tx-confirm-send').props.accessibilityState?.disabled).toBe(false);
+});
+
+// ── First-time recipient tests ────────────────────────────────────────────────
+
+it('shows add-contact prompt when recipient is not in address book', () => {
+  mockUseWalletStore.mockReturnValue({
+    publicKey: 'So11111111111111111111111111111111111111112',
+    solBalance: '10000000000',
+    tokenBalances: {},
+  });
+  mockFindByAddress.mockReturnValue(null);
+
+  const {getByTestId} = render(
+    withSafeArea(
+      <TxConfirmScreen intent={intent} onSent={jest.fn()} onCancel={jest.fn()} />,
+    ),
+  );
+
+  expect(getByTestId('tx-confirm-add-contact')).toBeTruthy();
+});
+
+it('hides the first-time prompt after pressing Skip', () => {
+  mockUseWalletStore.mockReturnValue({
+    publicKey: 'So11111111111111111111111111111111111111112',
+    solBalance: '10000000000',
+    tokenBalances: {},
+  });
+  mockFindByAddress.mockReturnValue(null);
+
+  const {getByTestId, queryByTestId} = render(
+    withSafeArea(
+      <TxConfirmScreen intent={intent} onSent={jest.fn()} onCancel={jest.fn()} />,
+    ),
+  );
+
+  expect(getByTestId('tx-confirm-add-contact')).toBeTruthy();
+  fireEvent.press(getByTestId('tx-confirm-skip-contact'));
+  expect(queryByTestId('tx-confirm-add-contact')).toBeNull();
+});
+
+it('hides the first-time prompt after pressing Add', () => {
+  mockUseWalletStore.mockReturnValue({
+    publicKey: 'So11111111111111111111111111111111111111112',
+    solBalance: '10000000000',
+    tokenBalances: {},
+  });
+  mockFindByAddress.mockReturnValue(null);
+
+  const {getByTestId, queryByTestId} = render(
+    withSafeArea(
+      <TxConfirmScreen intent={intent} onSent={jest.fn()} onCancel={jest.fn()} />,
+    ),
+  );
+
+  expect(getByTestId('tx-confirm-add-contact')).toBeTruthy();
+  fireEvent.press(getByTestId('tx-confirm-add-contact'));
+  expect(queryByTestId('tx-confirm-add-contact')).toBeNull();
 });
