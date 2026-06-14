@@ -1,13 +1,16 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {
   View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
+  Pressable,
   ActivityIndicator,
   Linking,
   ScrollView,
 } from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
+import Clipboard from '@react-native-clipboard/clipboard';
+import {Check, X, AlertTriangle, Copy} from 'lucide-react-native';
+import {Text, Button} from '../../components/ui';
+import {cn} from '../../utils/cn';
 import {getExplorerUrl} from '../../utils/explorerUrl';
 import {formatAddress} from '../../utils/formatAddress';
 import {ERROR_CODES} from '../../constants/errors';
@@ -238,372 +241,219 @@ export function TransactionStatusScreen({
       ? `${signature.slice(0, 8)}...${signature.slice(-8)}`
       : (signature ?? '');
 
-  const handleViewOnSolscan = () => {
-    if (!signature) return;
-    Linking.openURL(getExplorerUrl(signature)).catch(() => {});
-  };
-
   // Dynamic fee display: base fee + compute budget cost using actual CU limit
   const CU_LIMIT =
     intent.tokenMint === 'native' ? 1_000 : intent.createAta ? 65_000 : 40_000;
   const computeFeeLamports = BigInt(Math.ceil((priorityFeeUsed * CU_LIMIT) / 1_000_000));
   const feePaid = `${formatTokenAmount(BASE_FEE_LAMPORTS + computeFeeLamports, SOL_DECIMALS)} SOL`;
 
-  // ── Render: submitting / broadcasting ────────────────────────────────────
-  if (stage === 'submitting' || stage === 'broadcasting') {
-    return (
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}>
-        <ActivityIndicator color="#6C47FF" size="large" style={styles.spinner} />
-        <Text style={styles.titlePending}>Broadcasting transaction…</Text>
-        <Text style={styles.subtitleMuted}>
-          Submitted to Solana mainnet · waiting for first confirmation
-        </Text>
+  // ── Per-stage copy ─────────────────────────────────────────────────────────
+  const COPY: Record<Stage, {label: string; sub: string; warn?: boolean}> = {
+    submitting:   {label: 'Broadcasting transaction…', sub: 'Submitted to Solana mainnet · waiting for first confirmation'},
+    broadcasting: {label: 'Broadcasting transaction…', sub: 'Submitted to Solana mainnet · waiting for first confirmation'},
+    success:      {label: 'Sent successfully', sub: 'Confirmed on Solana mainnet'},
+    failed:       {label: 'Transaction failed', sub: errorMessage ?? 'The transaction did not go through.'},
+    stuck:        {label: 'Taking longer than usual', sub: 'Network is congested · the tx is in the mempool but hasn\'t been included yet', warn: true},
+  };
+  const copy = COPY[stage];
 
-        {/* Amount card */}
-        <View style={styles.amountCard}>
-          <Text style={styles.amountText}>
-            {intent.amount} {intent.tokenSymbol}
-          </Text>
-          <Text style={styles.amountSub}>To {formatAddress(intent.recipient)}</Text>
-        </View>
+  // ── Copy helper ────────────────────────────────────────────────────────────
+  const handleCopySig = () => {
+    if (!signature) return;
+    try {
+      Clipboard.setString(signature);
+      setTimeout(() => Clipboard.setString(''), 30_000);
+    } catch {
+      // clipboard unavailable — no-op
+    }
+  };
 
-        {/* Tx hash row — appears once we have a signature */}
-        {signature ? (
-          <>
-            <Text style={styles.txHash}>{truncatedSig}</Text>
-            <TouchableOpacity onPress={handleViewOnSolscan} activeOpacity={0.75}>
-              <Text style={styles.link}>View on Solscan →</Text>
-            </TouchableOpacity>
-          </>
-        ) : null}
-
-        <Text style={styles.hint}>Don't close the app · this usually takes 8–12 s</Text>
-      </ScrollView>
-    );
-  }
-
-  // ── Render: success ───────────────────────────────────────────────────────
-  if (stage === 'success') {
-    return (
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}>
-        <View style={styles.iconCircleSuccess}>
-          <Text style={styles.iconTextSuccess}>✓</Text>
-        </View>
-        <Text style={styles.titleSuccess}>Sent successfully</Text>
-
-        {/* Amount card */}
-        <View style={styles.amountCard}>
-          <Text style={styles.amountText}>
-            {intent.amount} {intent.tokenSymbol}
-          </Text>
-          <Text style={styles.amountSub}>To {formatAddress(intent.recipient)}</Text>
-        </View>
-
-        {/* Meta rows */}
-        <View style={styles.metaCard}>
-          <MetaRow label="Tx hash" value={truncatedSig} />
-          <MetaRow label="Slot" value={slot != null ? String(slot) : '—'} />
-          <MetaRow label="Fee paid" value={feePaid} />
-        </View>
-
-        <TouchableOpacity
-          testID="tx-status-details"
-          style={styles.ghostButton}
-          onPress={() => {
-            if (onViewDetails && signature) {
-              onViewDetails(signature);
-            } else {
-              handleViewOnSolscan();
-            }
-          }}
-          activeOpacity={0.75}>
-          <Text style={styles.ghostButtonText}>View details</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          testID="tx-status-done"
-          style={styles.primaryButton}
-          onPress={onDashboard}
-          activeOpacity={0.75}>
-          <Text style={styles.primaryButtonText}>Done</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    );
-  }
-
-  // ── Render: failed ────────────────────────────────────────────────────────
-  if (stage === 'failed') {
-    return (
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}>
-        <View style={styles.iconCircleFailed}>
-          <Text style={styles.iconTextFailed}>✗</Text>
-        </View>
-        <Text style={styles.titleFailed}>Transaction failed</Text>
-        {errorMessage ? (
-          <Text style={styles.errorMessage}>{errorMessage}</Text>
-        ) : null}
-
-        <TouchableOpacity
-          testID="tx-status-retry"
-          style={styles.primaryButton}
-          onPress={() => setRetryCount(c => c + 1)}
-          activeOpacity={0.75}>
-          <Text style={styles.primaryButtonText}>Retry</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          testID="tx-status-done"
-          style={styles.ghostButton}
-          onPress={onDashboard}
-          activeOpacity={0.75}>
-          <Text style={styles.ghostButtonText}>Done</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    );
-  }
-
-  // ── Render: stuck ─────────────────────────────────────────────────────────
+  // ── Single return ──────────────────────────────────────────────────────────
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}>
-      <View style={styles.iconCircleTimeout}>
-        <Text style={styles.iconTextTimeout}>⚠</Text>
+    <SafeAreaView className="flex-1 bg-bg-base">
+      {/* Top bar */}
+      <View className="flex-row items-center px-4 py-3">
+        <View className="flex-1" />
+        {stage === 'success' ? (
+          <View className="px-2 py-0.5 rounded-pill bg-[rgba(63,214,139,0.16)]">
+            <Text variant="overline" className="text-success">
+              CONFIRMED
+            </Text>
+          </View>
+        ) : stage === 'stuck' ? (
+          <View className="px-2 py-0.5 rounded-pill bg-[rgba(242,181,59,0.16)]">
+            <Text variant="overline" className="text-warning">
+              SLOW
+            </Text>
+          </View>
+        ) : null}
       </View>
-      <Text style={styles.titleTimeout}>Taking longer than usual</Text>
-      <Text style={styles.subtitle}>
-        Network is congested · the tx is in the mempool but hasn't been included yet
-      </Text>
-      {signature ? (
-        <>
-          <Text style={styles.txHash}>{truncatedSig}</Text>
-          <TouchableOpacity onPress={handleViewOnSolscan} activeOpacity={0.75}>
-            <Text style={styles.linkAccent}>View on Solscan →</Text>
-          </TouchableOpacity>
-        </>
-      ) : null}
 
-      <TouchableOpacity
-        testID="tx-status-done"
-        style={styles.primaryButton}
-        onPress={onDashboard}
-        activeOpacity={0.75}>
-        <Text style={styles.primaryButtonText}>Done</Text>
-      </TouchableOpacity>
-    </ScrollView>
+      <ScrollView contentContainerClassName="flex-grow items-center px-5 pb-8">
+        {/* Hero */}
+        <View className="items-center justify-center py-8 gap-5 w-full">
+          <StatusRing stage={stage} />
+          <Text variant="h1" className="text-center">
+            {copy.label}
+          </Text>
+          <Text
+            variant="body-sm"
+            className={cn('text-center', copy.warn ? 'text-warning' : 'text-fg-secondary')}
+            style={{maxWidth: 300}}>
+            {copy.sub}
+          </Text>
+        </View>
+
+        {/* Amount card */}
+        <View className="w-full bg-bg-surface-1 rounded-2xl p-5 items-center gap-3 mt-2">
+          <Text variant="overline" className="text-fg-tertiary">
+            Amount
+          </Text>
+          <View className="flex-row items-baseline gap-2">
+            <Text className="text-fg-primary font-geist-semibold" style={{fontSize: 28}}>
+              {intent.amount}
+            </Text>
+            <Text variant="body" className="text-fg-secondary">
+              {intent.tokenSymbol}
+            </Text>
+          </View>
+          <Text variant="caption" className="text-fg-tertiary">
+            To {formatAddress(intent.recipient)}
+          </Text>
+        </View>
+
+        {/* Meta grid — only when we have a signature */}
+        {signature ? (
+          <View className="w-full bg-bg-surface-1 rounded-lg px-5 mt-3">
+            <MetaRow label="Tx hash" value={truncatedSig} mono onCopy={handleCopySig} />
+            <MetaRow label="Slot" value={slot != null ? String(slot) : '—'} mono />
+            <MetaRow label="Fee paid" value={feePaid} />
+          </View>
+        ) : null}
+
+        <View className="flex-1" />
+      </ScrollView>
+
+      {/* Sticky footer */}
+      <View className="px-6 pb-2 pt-2 gap-2">
+        {(stage === 'submitting' || stage === 'broadcasting') ? (
+          <>
+            <Button label="Broadcasting…" variant="primary" disabled onPress={() => {}} />
+            <Text variant="caption" className="text-fg-tertiary text-center">
+              Don't close the app · this usually takes 8–12 s
+            </Text>
+          </>
+        ) : stage === 'success' ? (
+          <View className="flex-row gap-2">
+            <View className="flex-1">
+              <Button
+                label="View details"
+                variant="secondary"
+                testID="tx-status-details"
+                onPress={() => {
+                  if (onViewDetails && signature) {
+                    onViewDetails(signature);
+                  } else if (signature) {
+                    Linking.openURL(getExplorerUrl(signature)).catch(() => {});
+                  }
+                }}
+              />
+            </View>
+            <View className="flex-1">
+              <Button
+                label="Done"
+                variant="primary"
+                testID="tx-status-done"
+                onPress={onDashboard}
+              />
+            </View>
+          </View>
+        ) : stage === 'failed' ? (
+          <>
+            <Button
+              label="Retry"
+              variant="primary"
+              testID="tx-status-retry"
+              onPress={() => setRetryCount(c => c + 1)}
+            />
+            <Button
+              label="Done"
+              variant="secondary"
+              testID="tx-status-done"
+              onPress={onDashboard}
+            />
+          </>
+        ) : (
+          /* stuck */
+          <>
+            <Pressable
+              onPress={() => {
+                if (signature) {
+                  Linking.openURL(getExplorerUrl(signature)).catch(() => {});
+                }
+              }}>
+              <Text className="text-accent-transparent text-center">
+                View on Solscan →
+              </Text>
+            </Pressable>
+            <Button
+              label="Done"
+              variant="primary"
+              testID="tx-status-done"
+              onPress={onDashboard}
+            />
+          </>
+        )}
+      </View>
+    </SafeAreaView>
   );
 }
 
-// ── Private sub-components ────────────────────────────────────────────────────
-function MetaRow({label, value}: {label: string; value: string}) {
+// ── StatusRing sub-component ──────────────────────────────────────────────────
+function StatusRing({stage}: {stage: Stage}) {
+  if (stage === 'success') return (
+    <View className="w-32 h-32 rounded-full items-center justify-center border-2 border-success bg-[rgba(63,214,139,0.12)]">
+      <Check size={56} color="#3FD68B" strokeWidth={2} />
+    </View>
+  );
+  if (stage === 'failed') return (
+    <View className="w-32 h-32 rounded-full items-center justify-center border-2 border-danger bg-[rgba(248,113,113,0.10)]">
+      <X size={56} color="#F87171" strokeWidth={2} />
+    </View>
+  );
+  if (stage === 'stuck') return (
+    <View className="w-32 h-32 rounded-full items-center justify-center bg-[rgba(242,181,59,0.08)]" style={{borderWidth: 1.5, borderColor: '#F2B53B', borderStyle: 'dashed'}}>
+      <AlertTriangle size={52} color="#F2B53B" strokeWidth={1.75} />
+    </View>
+  );
   return (
-    <View style={styles.metaRow}>
-      <Text style={styles.metaLabel}>{label}</Text>
-      <Text style={styles.metaValue}>{value}</Text>
+    <View className="w-32 h-32 rounded-full items-center justify-center border border-[rgba(176,132,252,0.35)]">
+      <ActivityIndicator size="large" color="#B084FC" />
     </View>
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0C0C14',
-  },
-  contentContainer: {
-    padding: 24,
-    paddingTop: 60,
-    alignItems: 'center',
-  },
-  spinner: {
-    marginBottom: 24,
-  },
-  titlePending: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 8,
-  },
-  titleSuccess: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#4ADE80',
-    marginBottom: 8,
-    marginTop: 16,
-  },
-  titleFailed: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#F87171',
-    marginBottom: 8,
-    marginTop: 16,
-  },
-  titleTimeout: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FBBF24',
-    marginBottom: 8,
-    marginTop: 16,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.65)',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  subtitleMuted: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.45)',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  txHash: {
-    fontFamily: 'monospace',
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.5)',
-    marginBottom: 8,
-  },
-  link: {
-    fontSize: 14,
-    color: '#6C47FF',
-    marginBottom: 8,
-  },
-  linkAccent: {
-    fontSize: 14,
-    color: '#A78BFA',
-    marginBottom: 24,
-  },
-  hint: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.35)',
-    marginTop: 16,
-    textAlign: 'center',
-  },
-  amountCard: {
-    width: '100%',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 14,
-    padding: 16,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  amountText: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 4,
-  },
-  amountSub: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.55)',
-  },
-  metaCard: {
-    width: '100%',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 20,
-    gap: 10,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  metaLabel: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.5)',
-  },
-  metaValue: {
-    fontSize: 13,
-    color: '#E7E9EE',
-    fontWeight: '500',
-    fontFamily: 'monospace',
-  },
-  iconCircleSuccess: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(74,222,128,0.15)',
-    borderWidth: 2,
-    borderColor: '#4ADE80',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconCircleFailed: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(248,113,113,0.15)',
-    borderWidth: 2,
-    borderColor: '#F87171',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconCircleTimeout: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(251,191,36,0.15)',
-    borderWidth: 2,
-    borderColor: '#FBBF24',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconTextSuccess: {
-    fontSize: 48,
-    color: '#4ADE80',
-    lineHeight: 56,
-  },
-  iconTextFailed: {
-    fontSize: 48,
-    color: '#F87171',
-    lineHeight: 56,
-  },
-  iconTextTimeout: {
-    fontSize: 36,
-    color: '#FBBF24',
-    lineHeight: 44,
-  },
-  errorMessage: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.65)',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  primaryButton: {
-    backgroundColor: '#6C47FF',
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    alignItems: 'center',
-    width: '100%',
-    marginTop: 12,
-  },
-  primaryButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  ghostButton: {
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    alignItems: 'center',
-    width: '100%',
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
-  ghostButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.65)',
-  },
-});
+// ── MetaRow sub-component ─────────────────────────────────────────────────────
+function MetaRow({label, value, mono, onCopy}: {label: string; value: string; mono?: boolean; onCopy?: () => void}) {
+  return (
+    <View className="flex-row items-center gap-3 py-3 border-t border-bg-surface-3">
+      <Text variant="overline" className="text-fg-tertiary w-[76px]">
+        {label}
+      </Text>
+      <Text
+        variant="body-sm"
+        className={cn('flex-1 text-fg-primary', mono && 'font-geist-mono text-fg-secondary')}
+        numberOfLines={1}>
+        {value}
+      </Text>
+      {onCopy ? (
+        <Pressable
+          onPress={onCopy}
+          className="w-8 h-8 rounded-sm items-center justify-center bg-bg-surface-2"
+          accessibilityLabel={`Copy ${label}`}>
+          <Copy size={14} color="#A8ACB5" strokeWidth={1.75} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
