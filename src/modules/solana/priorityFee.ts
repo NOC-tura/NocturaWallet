@@ -7,9 +7,9 @@ const PERCENTILE: Record<PriorityLevel, number> = {normal: 50, fast: 75, urgent:
 /** Minimum micro-lamports/CU per tier — guarantees non-zero priority when the
  *  network is quiet (a 0-fee tx can still be dropped). */
 const FLOOR: Record<PriorityLevel, number> = {
-  normal: 10_000,
-  fast: 50_000,
-  urgent: 150_000,
+  normal: 50_000,
+  fast: 150_000,
+  urgent: 500_000,
 };
 
 function percentile(sortedAsc: number[], p: number): number {

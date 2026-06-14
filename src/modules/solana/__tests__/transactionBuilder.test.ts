@@ -236,4 +236,146 @@ describe('instruction builders', () => {
     // priority-price + compute-limit + recipient transfer + fee markup = 4
     expect(ix.length).toBe(4);
   });
+
+  // The TransferChecked instruction is the 10-byte one whose first byte is the
+  // discriminator 12. Layout: [12][amount u64 little-endian (8 bytes)][decimals u8].
+  const findTransferChecked = (ixs: {data: Uint8Array}[]) =>
+    ixs.find(ix => ix.data.length === 10 && ix.data[0] === 12);
+
+  it('encodes the TransferChecked u64 amount as little-endian bytes', () => {
+    const ix = buildSPLTransferInstructions({
+      sender: A, recipient: B, mint: MINT, amount: 500_000_000n, decimals: 9, createAta: false,
+    });
+    const tc = findTransferChecked(ix);
+    expect(tc).toBeDefined();
+    // 500_000_000 = 0x1DCD6500 → LE: 00 65 CD 1D 00 00 00 00
+    expect([...tc!.data]).toEqual([12, 0x00, 0x65, 0xcd, 0x1d, 0, 0, 0, 0, 9]);
+  });
+
+  it('uses the provided sourceTokenAccount as the TransferChecked source', () => {
+    // A wallet may hold the mint in a non-canonical account; the transfer must
+    // spend from THAT account, not the derived ATA.
+    const source = new PublicKey('FpV5mr137k3GfLJqqWnZer12v2KxZfEEQzxXb6sJLABU');
+    const ix = buildSPLTransferInstructions({
+      sender: A, recipient: B, mint: MINT, amount: 1_000n, decimals: 9, createAta: false,
+      sourceTokenAccount: source,
+    });
+    const tc = findTransferChecked(ix) as {keys: {pubkey: PublicKey}[]} | undefined;
+    expect(tc).toBeDefined();
+    // TransferChecked keys: [source, mint, destination, owner] → keys[0] is the source.
+    expect(tc!.keys[0].pubkey.toBase58()).toBe(source.toBase58());
+  });
+
+  it('falls back to the canonical sender ATA when no sourceTokenAccount is given', () => {
+    const ix = buildSPLTransferInstructions({
+      sender: A, recipient: B, mint: MINT, amount: 1_000n, decimals: 9, createAta: false,
+    });
+    const tc = findTransferChecked(ix) as {keys: {pubkey: PublicKey}[]} | undefined;
+    expect(tc!.keys[0].pubkey.toBase58()).toBe(findAssociatedTokenAddress(A, MINT).toBase58());
+  });
+
+  it('builds the TransferChecked without Buffer.writeBigUInt64LE (Hermes polyfill lacks it)', () => {
+    // The Hermes Buffer polyfill (buffer@5.7.1) has no writeBigUInt64LE. Simulate
+    // that environment by removing the method, then confirm the amount is still
+    // encoded correctly via manual little-endian byte writes.
+    type BufProto = {writeBigUInt64LE?: (value: bigint, offset?: number) => number};
+    const proto = Buffer.prototype as unknown as BufProto;
+    const original = proto.writeBigUInt64LE;
+    proto.writeBigUInt64LE = undefined;
+    try {
+      const ix = buildSPLTransferInstructions({
+        sender: A, recipient: B, mint: MINT, amount: 1n, decimals: 0, createAta: false,
+      });
+      const tc = findTransferChecked(ix);
+      expect(tc).toBeDefined();
+      expect([...tc!.data]).toEqual([12, 1, 0, 0, 0, 0, 0, 0, 0, 0]);
+    } finally {
+      proto.writeBigUInt64LE = original;
+    }
+  });
+});
+
+// ── resolveCreateAta ──────────────────────────────────────────────────────────
+import {resolveCreateAta, findAssociatedTokenAddress, resolveSourceTokenAccount} from '../transactionBuilder';
+import {getAccountInfo} from '../queries';
+
+jest.mock('../queries', () => ({
+  getAccountInfo: jest.fn(),
+}));
+
+const mockGetAccountInfo = getAccountInfo as jest.MockedFunction<typeof getAccountInfo>;
+
+describe('resolveCreateAta', () => {
+  const recipient = new PublicKey('So11111111111111111111111111111111111111112');
+  const mint = new PublicKey('TokenAccountAddr111111111111111111111111111');
+  const fakeConn = {} as never; // getAccountInfo is mocked, connection unused
+
+  it('returns false when the recipient ATA already exists (no creation needed)', async () => {
+    mockGetAccountInfo.mockResolvedValue({exists: true, executable: false});
+    expect(await resolveCreateAta(fakeConn, recipient, mint)).toBe(false);
+  });
+
+  it('returns true when the recipient ATA does not exist (must be created)', async () => {
+    mockGetAccountInfo.mockResolvedValue({exists: false, executable: false});
+    expect(await resolveCreateAta(fakeConn, recipient, mint)).toBe(true);
+  });
+
+  it('checks the canonical ATA address for the recipient + mint', async () => {
+    mockGetAccountInfo.mockResolvedValue({exists: true, executable: false});
+    await resolveCreateAta(fakeConn, recipient, mint);
+    const expectedAta = findAssociatedTokenAddress(recipient, mint);
+    expect(mockGetAccountInfo).toHaveBeenCalledWith(fakeConn, expectedAta);
+  });
+});
+
+// ── resolveSourceTokenAccount ─────────────────────────────────────────────────
+describe('resolveSourceTokenAccount', () => {
+  const owner = new PublicKey('So11111111111111111111111111111111111111112');
+  const mint = new PublicKey('B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW');
+  const a1 = new PublicKey('4G8U5nQtNciNaEL7Zimb4DhqeanDMevXp7MLtFvUojwF');
+  const a2 = new PublicKey('FpV5mr137k3GfLJqqWnZer12v2KxZfEEQzxXb6sJLABU');
+
+  const connWith = (accts: {pubkey: PublicKey; amount: string}[]) =>
+    ({
+      getParsedTokenAccountsByOwner: jest.fn(async () => ({
+        value: accts.map(a => ({
+          pubkey: a.pubkey,
+          account: {data: {parsed: {info: {tokenAmount: {amount: a.amount}}}}},
+        })),
+      })),
+    }) as never;
+
+  it('returns the largest-balance account for the mint (handles non-canonical accounts)', async () => {
+    const conn = connWith([
+      {pubkey: a1, amount: '5'},
+      {pubkey: a2, amount: '13399619'},
+    ]);
+    const result = await resolveSourceTokenAccount(conn, owner, mint);
+    expect(result?.toBase58()).toBe(a2.toBase58());
+  });
+
+  it('returns null when the owner holds no account for the mint', async () => {
+    expect(await resolveSourceTokenAccount(connWith([]), owner, mint)).toBeNull();
+  });
+});
+
+// ── createAta uses the real Associated Token Account program ──────────────────
+describe('Associated Token Account program id', () => {
+  it('builds the create-ATA instruction against the canonical ATA program', () => {
+    // The create-ATA instruction has an empty data payload. Its programId MUST
+    // be the real ATA program; a typo'd id (the bug that broke every SPL send
+    // with on-chain ProgramAccountNotFound → "Check the address") would not
+    // exist on-chain. Verified against mainnet.
+    const A = new PublicKey('HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk');
+    const B = new PublicKey('EHqmfkN89RJ7Y33CXM6uCzhVeuywHoJXZZLszBHHZy7o');
+    const MINT = new PublicKey('B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW');
+    const ix = buildSPLTransferInstructions({
+      sender: A, recipient: B, mint: MINT, amount: 1_000n, decimals: 9, createAta: true,
+    });
+    const createAtaIx = ix.find(i => i.data.length === 0);
+    expect(createAtaIx).toBeDefined();
+    expect(createAtaIx!.programId.toBase58()).toBe(
+      'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
+    );
+  });
 });

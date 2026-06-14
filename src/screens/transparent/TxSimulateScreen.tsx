@@ -31,6 +31,12 @@ let buildTransferTx:
 let buildSPLTransferTx:
   | typeof import('../../modules/solana/transactionBuilder').buildSPLTransferTx
   | null = null;
+let resolveCreateAta:
+  | typeof import('../../modules/solana/transactionBuilder').resolveCreateAta
+  | null = null;
+let resolveSourceTokenAccount:
+  | typeof import('../../modules/solana/transactionBuilder').resolveSourceTokenAccount
+  | null = null;
 let deriveTransferChecks:
   | ((recipient: PublicKey) => Promise<TransferCheck[]>)
   | null = null;
@@ -44,6 +50,8 @@ try {
   buildTransferTx = require('../../modules/solana/transactionBuilder').buildTransferTx;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   buildSPLTransferTx = require('../../modules/solana/transactionBuilder').buildSPLTransferTx;
+  resolveCreateAta = require('../../modules/solana/transactionBuilder').resolveCreateAta;
+  resolveSourceTokenAccount = require('../../modules/solana/transactionBuilder').resolveSourceTokenAccount;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   deriveTransferChecks = require('../../modules/solana/simulationChecks').deriveTransferChecks;
 } catch {
@@ -84,6 +92,7 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
 
   const [simState, setSimState] = useState<SimState>('simulating');
   const [retryCount, setRetryCount] = useState(0);
+  const [resolvedCreateAta, setResolvedCreateAta] = useState(intent.createAta);
 
   // Debounce ref — cardinal rule #6: 500ms minimum on flow-advancing CTAs
   const lastTapRef = useRef(0);
@@ -140,6 +149,42 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
           const recipientPk = new PublicKey(intent.recipient);
           const isSpl = intent.tokenMint !== 'native';
 
+          let effectiveCreateAta = intent.createAta;
+          if (isSpl && resolveCreateAta) {
+            try {
+              effectiveCreateAta = await resolveCreateAta(
+                connection,
+                recipientPk,
+                new PublicKey(intent.tokenMint),
+              );
+            } catch {
+              // RPC blip — keep the optimistic intent.createAta; the simulation
+              // below will surface any resulting problem.
+              effectiveCreateAta = intent.createAta;
+            }
+            if (cancelled) return;
+            setResolvedCreateAta(effectiveCreateAta);
+          }
+
+          // Resolve the actual source token account: this wallet may hold the
+          // mint in a non-canonical account (not its ATA). Without this the
+          // simulation references a non-existent ATA → AccountNotFound.
+          let effectiveSource: PublicKey | undefined;
+          if (isSpl && resolveSourceTokenAccount) {
+            try {
+              const src = await resolveSourceTokenAccount(
+                connection,
+                sender,
+                new PublicKey(intent.tokenMint),
+              );
+              effectiveSource = src ?? undefined;
+            } catch {
+              // RPC blip — fall back to the canonical ATA in the builder.
+              effectiveSource = undefined;
+            }
+            if (cancelled) return;
+          }
+
           const tx = isSpl
             ? await _buildSPLTransferTx({
                 sender,
@@ -147,7 +192,8 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
                 mint: new PublicKey(intent.tokenMint),
                 amount: parseTokenAmount(intent.amount, intent.decimals),
                 decimals: intent.decimals,
-                createAta: intent.createAta,
+                createAta: effectiveCreateAta,
+                sourceTokenAccount: effectiveSource,
                 priorityFee,
               })
             : await _buildTransferTx({
@@ -272,14 +318,14 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
     const now = Date.now();
     if (now - lastTapRef.current < 500) return;
     lastTapRef.current = now;
-    onContinue(intent);
+    onContinue({...intent, createAta: resolvedCreateAta});
   };
 
   const handleContinueAnyway = () => {
     const now = Date.now();
     if (now - lastTapRef.current < 500) return;
     lastTapRef.current = now;
-    onContinue(intent);
+    onContinue({...intent, createAta: resolvedCreateAta});
   };
 
   const handleRetry = () => {

@@ -10,9 +10,9 @@ function conn(fees: number[]) {
 
 describe('estimatePriorityFee', () => {
   it('returns the floor when recent fees are all zero', async () => {
-    expect(await estimatePriorityFee(conn([0, 0, 0, 0]), 'normal')).toBe(10_000);
-    expect(await estimatePriorityFee(conn([0, 0, 0, 0]), 'fast')).toBe(50_000);
-    expect(await estimatePriorityFee(conn([0, 0, 0, 0]), 'urgent')).toBe(150_000);
+    expect(await estimatePriorityFee(conn([0, 0, 0, 0]), 'normal')).toBe(50_000);
+    expect(await estimatePriorityFee(conn([0, 0, 0, 0]), 'fast')).toBe(150_000);
+    expect(await estimatePriorityFee(conn([0, 0, 0, 0]), 'urgent')).toBe(500_000);
   });
 
   it('returns the network percentile when it exceeds the floor', async () => {
@@ -22,6 +22,6 @@ describe('estimatePriorityFee', () => {
 
   it('falls back to the floor on RPC error', async () => {
     const c = {getRecentPrioritizationFees: jest.fn(async () => { throw new Error('rpc'); })} as never;
-    expect(await estimatePriorityFee(c, 'fast')).toBe(50_000);
+    expect(await estimatePriorityFee(c, 'fast')).toBe(150_000);
   });
 });

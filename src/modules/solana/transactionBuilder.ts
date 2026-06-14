@@ -6,7 +6,9 @@ import {
   TransactionInstruction,
   VersionedTransaction,
 } from '@solana/web3.js';
+import type {Connection} from '@solana/web3.js';
 import {getConnection} from './connection';
+import {getAccountInfo} from './queries';
 import {NOCTURA_FEE_TREASURY, TRANSPARENT_FEES} from '../../constants/programs';
 import type {TransferParams, SPLTransferParams} from './types';
 
@@ -16,7 +18,7 @@ const SPL_TOKEN_PROGRAM_ID = new PublicKey(
 );
 // SPL Associated Token Account program ID
 const SPL_ATA_PROGRAM_ID = new PublicKey(
-  'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bRS',
+  'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
 );
 
 /**
@@ -28,7 +30,7 @@ const SPL_ATA_PROGRAM_ID = new PublicKey(
  *
  * This mirrors @solana/spl-token's getAssociatedTokenAddress().
  */
-function findAssociatedTokenAddress(
+export function findAssociatedTokenAddress(
   walletAddress: PublicKey,
   mintAddress: PublicKey,
 ): PublicKey {
@@ -41,6 +43,49 @@ function findAssociatedTokenAddress(
     SPL_ATA_PROGRAM_ID,
   );
   return ata;
+}
+
+/**
+ * Resolve whether a recipient needs their Associated Token Account created for
+ * `mint`. Returns true ONLY when the ATA does not yet exist on-chain — sending
+ * to a recipient who already holds the token must NOT prepend a create-ATA
+ * instruction (it fails with "account already in use"). Falls through to the
+ * caller's optimistic default only on RPC error (handled by the caller).
+ */
+export async function resolveCreateAta(
+  connection: Connection,
+  recipient: PublicKey,
+  mint: PublicKey,
+): Promise<boolean> {
+  const ata = findAssociatedTokenAddress(recipient, mint);
+  const info = await getAccountInfo(connection, ata);
+  return !info.exists;
+}
+
+/**
+ * Resolve the sender's source token account for `mint`. A wallet may hold a
+ * token in a NON-canonical token account (not its ATA) — using the derived ATA
+ * as the transfer source then fails on-chain with AccountNotFound. Returns the
+ * owned account with the largest balance for the mint, or null when the owner
+ * holds no account for it.
+ */
+export async function resolveSourceTokenAccount(
+  connection: Connection,
+  owner: PublicKey,
+  mint: PublicKey,
+): Promise<PublicKey | null> {
+  const response = await connection.getParsedTokenAccountsByOwner(owner, {mint});
+  let best: {pubkey: PublicKey; amount: bigint} | null = null;
+  for (const {pubkey, account} of response.value) {
+    const parsed = account.data.parsed as {
+      info?: {tokenAmount?: {amount?: string}};
+    };
+    const amount = BigInt(parsed.info?.tokenAmount?.amount ?? '0');
+    if (best === null || amount > best.amount) {
+      best = {pubkey, amount};
+    }
+  }
+  return best === null ? null : best.pubkey;
 }
 
 /**
@@ -70,7 +115,15 @@ function buildTransferCheckedInstruction(
 
   const data = Buffer.alloc(10);
   data.writeUInt8(12, 0); // TransferChecked discriminator
-  data.writeBigUInt64LE(amount, 1);
+  // Encode the u64 amount as little-endian. We do NOT use Buffer.writeBigUInt64LE:
+  // the Hermes Buffer polyfill (buffer@5.7.1) does not implement the BigInt
+  // accessors, so calling it throws "undefined is not a function" on-device.
+  // writeUInt8 + BigInt shifts are available in Hermes.
+  let remaining = amount;
+  for (let i = 0; i < 8; i++) {
+    data.writeUInt8(Number(remaining & 0xffn), 1 + i);
+    remaining >>= 8n;
+  }
   data.writeUInt8(decimals, 9);
 
   return new TransactionInstruction({
@@ -184,7 +237,7 @@ export async function buildTransferTx(
 export function buildSPLTransferInstructions(
   params: SPLTransferParams,
 ): TransactionInstruction[] {
-  const {sender, recipient, mint, amount, decimals, priorityFee, computeUnitLimit, createAta} = params;
+  const {sender, recipient, mint, amount, decimals, priorityFee, computeUnitLimit, createAta, sourceTokenAccount} = params;
 
   const instructions: TransactionInstruction[] = [];
 
@@ -214,8 +267,10 @@ export function buildSPLTransferInstructions(
     );
   }
 
-  // Derive sender's ATA for the given mint.
-  const senderAta = findAssociatedTokenAddress(sender, mint);
+  // Source account to spend from. Prefer an explicitly resolved account (the
+  // wallet may hold the mint in a non-canonical account that is NOT its ATA),
+  // falling back to the canonical ATA when none was provided.
+  const senderAta = sourceTokenAccount ?? findAssociatedTokenAddress(sender, mint);
 
   // SPL Token TransferChecked instruction — verifies both amount and decimals
   // on-chain to guard against mint substitution attacks.

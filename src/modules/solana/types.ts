@@ -17,6 +17,10 @@ export interface SPLTransferParams {
   priorityFee?: number; // microlamports
   computeUnitLimit?: number;
   createAta?: boolean; // create ATA if recipient doesn't have one
+  // The sender's token account to spend from. A wallet may hold the mint in a
+  // NON-canonical account (not its ATA); when given, this overrides the derived
+  // ATA so the transfer spends from the account that actually holds the balance.
+  sourceTokenAccount?: PublicKey;
 }
 
 export type PriorityLevel = 'normal' | 'fast' | 'urgent';

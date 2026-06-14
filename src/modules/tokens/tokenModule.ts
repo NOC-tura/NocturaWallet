@@ -4,7 +4,8 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from '@solana/web3.js';
-import {CORE_MINTS} from './coreTokens';
+import {CORE_MINTS, CORE_TOKENS} from './coreTokens';
+import type {TokenMetadata} from '../../store/zustand/walletStore';
 import {NOC_MINT} from '../../constants/programs';
 import {pinnedFetch} from '../sslPinning/pinnedFetch';
 import {API_BASE} from '../../constants/programs';
@@ -145,6 +146,36 @@ export class TokenManager {
       if (!aCore && bCore) return 1;
       return a.symbol.localeCompare(b.symbol);
     });
+  }
+
+  /**
+   * Build the dashboard display-metadata list from on-chain token accounts.
+   * Includes only HELD (non-zero) accounts whose mint is 'core' or 'verified'
+   * (unknown/possible-scam mints are omitted). Core mints resolve full
+   * symbol/name/decimals from CORE_TOKENS; verified mints fall back to a
+   * shortened-mint symbol since no local name registry exists for them.
+   *
+   * Verified classification depends on the Jupiter list being loaded
+   * (fetchVerifiedList); when it is not, only core tokens qualify.
+   */
+  buildDisplayTokens(
+    accounts: {mint: string; amount: string; decimals: number}[],
+  ): TokenMetadata[] {
+    const result: TokenMetadata[] = [];
+    for (const acc of accounts) {
+      if (acc.amount === '0') continue; // not held
+      const trust = this.classifyToken(acc.mint);
+      if (trust === 'unknown') continue; // core + verified only
+      const core = CORE_TOKENS.find(t => t.mint === acc.mint);
+      result.push({
+        mint: acc.mint,
+        symbol: core?.symbol ?? `${acc.mint.slice(0, 4)}…${acc.mint.slice(-4)}`,
+        name: core?.name ?? 'Unknown token',
+        decimals: core?.decimals ?? acc.decimals,
+        trust,
+      });
+    }
+    return result;
   }
 }
 

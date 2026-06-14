@@ -2,7 +2,7 @@ import {create} from 'zustand';
 import {persist, createJSONStorage} from 'zustand/middleware';
 import {mmkvPublicStorage} from '../mmkv/publicAdapter';
 
-interface TokenMetadata {
+export interface TokenMetadata {
   mint: string;
   symbol: string;
   name: string;
