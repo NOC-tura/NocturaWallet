@@ -95,18 +95,21 @@ export function TransactionDetailScreen({signature, onBack}: Props) {
     }
   }
 
+  const [saved, setSaved] = React.useState(false);
+  const alreadyContact = tx?.to ? addressBook.findByAddress(tx.to) != null : false;
+
   function handleSaveContact() {
+    if (!tx?.to) return;
     try {
-      if (tx?.to) {
-        addressBook.addContact({
-          name: formatAddress(tx.to),
-          address: tx.to,
-          addressType: 'transparent',
-          lastUsedAt: Date.now(),
-        });
-      }
+      addressBook.addContact({
+        name: formatAddress(tx.to),
+        address: tx.to,
+        addressType: 'transparent',
+        lastUsedAt: Date.now(),
+      });
+      setSaved(true);
     } catch {
-      // address book write failed — no-op
+      // address book write failed — keep the button tappable
     }
   }
 
@@ -231,8 +234,9 @@ export function TransactionDetailScreen({signature, onBack}: Props) {
             />
             {tx.to ? (
               <Button
-                label="Save to address book"
+                label={saved || alreadyContact ? 'Saved to address book ✓' : 'Save to address book'}
                 variant="primary"
+                disabled={saved || alreadyContact}
                 onPress={handleSaveContact}
               />
             ) : null}
