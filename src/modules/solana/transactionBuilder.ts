@@ -18,7 +18,7 @@ const SPL_TOKEN_PROGRAM_ID = new PublicKey(
 );
 // SPL Associated Token Account program ID
 const SPL_ATA_PROGRAM_ID = new PublicKey(
-  'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bRS',
+  'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
 );
 
 /**

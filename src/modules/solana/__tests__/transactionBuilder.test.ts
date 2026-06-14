@@ -358,3 +358,24 @@ describe('resolveSourceTokenAccount', () => {
     expect(await resolveSourceTokenAccount(connWith([]), owner, mint)).toBeNull();
   });
 });
+
+// ── createAta uses the real Associated Token Account program ──────────────────
+describe('Associated Token Account program id', () => {
+  it('builds the create-ATA instruction against the canonical ATA program', () => {
+    // The create-ATA instruction has an empty data payload. Its programId MUST
+    // be the real ATA program; a typo'd id (the bug that broke every SPL send
+    // with on-chain ProgramAccountNotFound → "Check the address") would not
+    // exist on-chain. Verified against mainnet.
+    const A = new PublicKey('HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk');
+    const B = new PublicKey('EHqmfkN89RJ7Y33CXM6uCzhVeuywHoJXZZLszBHHZy7o');
+    const MINT = new PublicKey('B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW');
+    const ix = buildSPLTransferInstructions({
+      sender: A, recipient: B, mint: MINT, amount: 1_000n, decimals: 9, createAta: true,
+    });
+    const createAtaIx = ix.find(i => i.data.length === 0);
+    expect(createAtaIx).toBeDefined();
+    expect(createAtaIx!.programId.toBase58()).toBe(
+      'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
+    );
+  });
+});
