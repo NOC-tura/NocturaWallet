@@ -1,159 +1,248 @@
 import React from 'react';
 import {
   View,
-  Text,
-  TouchableOpacity,
+  Pressable,
+  ActivityIndicator,
   ScrollView,
   Linking,
-  StyleSheet,
 } from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import Clipboard from '@react-native-clipboard/clipboard';
-import {useTransactionHistory} from '../../hooks/useSolanaQueries';
-import {useWalletStore} from '../../store/zustand/walletStore';
-import {getExplorerUrl} from '../../utils/explorerUrl';
+import {Check, X, Copy, ArrowLeft} from 'lucide-react-native';
+import {Text, Button} from '../../components/ui';
+import {useTransactionDetail} from '../../hooks/useSolanaQueries';
+import {formatChecksumParts} from '../../modules/solana/transferRisk';
 import {formatAddress} from '../../utils/formatAddress';
+import {formatTokenAmount} from '../../utils/parseTokenAmount';
+import {getExplorerUrl} from '../../utils/explorerUrl';
+import {addressBook} from '../../modules/addressBook/addressBookModule';
+import {cn} from '../../utils/cn';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Props {
   signature: string;
   onBack: () => void;
 }
 
-export function TransactionDetailScreen({signature, onBack}: Props) {
-  const publicKey = useWalletStore(s => s.publicKey);
-  const {data: transactions = []} = useTransactionHistory(publicKey);
-  const tx = transactions.find(t => t.signature === signature) ?? null;
+// ── Sub-components ────────────────────────────────────────────────────────────
 
-  const explorerUrl = getExplorerUrl(signature);
-
-  function handleCopySignature() {
-    Clipboard.setString(signature);
-  }
-
-  function handleViewOnSolscan() {
-    Linking.openURL(explorerUrl).catch(() => {});
-  }
-
+function ChecksumAddr({address}: {address: string}) {
+  const {head, tail} = formatChecksumParts(address);
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onBack} accessibilityRole="button">
-          <Text style={styles.backButton}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>Transaction Detail</Text>
-      </View>
-
-      {/* Signature */}
-      <View style={styles.section}>
-        <Text style={styles.label}>Signature</Text>
-        <TouchableOpacity
-          onPress={handleCopySignature}
-          accessibilityRole="button"
-          accessibilityLabel="Copy signature"
-        >
-          <Text style={styles.signatureText}>{signature}</Text>
-          <Text style={styles.copyHint}>Tap to copy</Text>
-        </TouchableOpacity>
-      </View>
-
-      {tx ? (
+    <Text className="font-geist-mono text-[13px] text-fg-secondary text-right">
+      <Text className="text-accent-transparent font-geist-semibold">{head}</Text>
+      {tail ? (
         <>
-          {/* From / To */}
-          <View style={styles.section}>
-            <Text style={styles.label}>From</Text>
-            <Text style={styles.value}>
-              {tx.from ? formatAddress(tx.from) : '—'}
-            </Text>
-          </View>
-          <View style={styles.section}>
-            <Text style={styles.label}>To</Text>
-            <Text style={styles.value}>
-              {tx.to ? formatAddress(tx.to) : '—'}
-            </Text>
-          </View>
-
-          {/* Amount */}
-          {tx.amount != null && (
-            <View style={styles.section}>
-              <Text style={styles.label}>Amount</Text>
-              <Text style={styles.value}>{tx.amount}</Text>
-            </View>
-          )}
-
-          {/* Fee */}
-          <View style={styles.section}>
-            <Text style={styles.label}>Fee</Text>
-            <Text style={styles.value}>{tx.fee} lamports</Text>
-          </View>
-
-          {/* Timestamp */}
-          <View style={styles.section}>
-            <Text style={styles.label}>Date</Text>
-            <Text style={styles.value}>
-              {tx.timestamp
-                ? new Date(tx.timestamp * 1000).toLocaleString()
-                : '—'}
-            </Text>
-          </View>
-
-          {/* Status */}
-          <View style={styles.section}>
-            <Text style={styles.label}>Status</Text>
-            <Text style={styles.value}>{tx.status}</Text>
-          </View>
+          {'…'}
+          <Text className="text-accent-transparent font-geist-semibold">{tail}</Text>
         </>
-      ) : (
-        <View style={styles.section}>
-          <Text style={styles.value}>Transaction data not available locally.</Text>
-        </View>
-      )}
-
-      {/* Explorer link */}
-      <TouchableOpacity
-        style={styles.explorerButton}
-        onPress={handleViewOnSolscan}
-        accessibilityRole="link"
-        testID="solscan-link"
-      >
-        <Text style={styles.explorerButtonText}>View on Solscan →</Text>
-      </TouchableOpacity>
-    </ScrollView>
+      ) : null}
+    </Text>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {flex: 1, backgroundColor: '#0d0d0d'},
-  content: {padding: 16, paddingBottom: 48},
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 24,
-  },
-  backButton: {color: '#a78bfa', fontSize: 16},
-  title: {color: '#ffffff', fontSize: 20, fontWeight: '700'},
-  section: {marginBottom: 20},
-  label: {
-    color: '#6b7280',
-    fontSize: 12,
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  signatureText: {
-    color: '#e2e8f0',
-    fontSize: 12,
-    fontFamily: 'monospace',
-    flexWrap: 'wrap',
-  },
-  copyHint: {color: '#7c3aed', fontSize: 12, marginTop: 2},
-  value: {color: '#ffffff', fontSize: 15},
-  explorerButton: {
-    marginTop: 24,
-    backgroundColor: '#7c3aed',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  explorerButtonText: {color: '#ffffff', fontWeight: '700', fontSize: 15},
-});
+interface DetailRowProps {
+  label: string;
+  value: React.ReactNode;
+  mono?: boolean;
+  onCopy?: () => void;
+}
+
+function DetailRow({label, value, mono, onCopy}: DetailRowProps) {
+  return (
+    <View className="flex-row items-start justify-between gap-4 py-3 border-b border-bg-surface-2 min-h-[48px]">
+      <Text variant="overline" className="text-fg-secondary pt-0.5 shrink-0 pr-1">
+        {label}
+      </Text>
+      <View className="flex-1 items-end">
+        {typeof value === 'string' ? (
+          <Text
+            variant="body-sm"
+            className={cn('text-right', mono ? 'font-geist-mono text-fg-secondary text-[13px]' : 'text-fg-primary')}
+            numberOfLines={2}>
+            {value}
+          </Text>
+        ) : (
+          value
+        )}
+        {onCopy ? (
+          <Pressable onPress={onCopy} className="flex-row items-center gap-1 mt-1">
+            <Copy size={14} color="#B084FC" />
+            <Text variant="caption" className="text-accent-transparent">
+              Copy
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
+export function TransactionDetailScreen({signature, onBack}: Props) {
+  const {data: tx, isLoading} = useTransactionDetail(signature);
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
+
+  function handleCopySig() {
+    try {
+      Clipboard.setString(signature);
+      setTimeout(() => Clipboard.setString(''), 30_000);
+    } catch {
+      // clipboard unavailable — no-op
+    }
+  }
+
+  const [saved, setSaved] = React.useState(false);
+  const alreadyContact = tx?.to ? addressBook.findByAddress(tx.to) != null : false;
+
+  function handleSaveContact() {
+    if (!tx?.to) return;
+    try {
+      addressBook.addContact({
+        name: formatAddress(tx.to),
+        address: tx.to,
+        addressType: 'transparent',
+        lastUsedAt: Date.now(),
+      });
+      setSaved(true);
+    } catch {
+      // address book write failed — keep the button tappable
+    }
+  }
+
+  // ── Derived display values ─────────────────────────────────────────────────
+
+  const truncatedSig =
+    signature.length > 16
+      ? `${signature.slice(0, 8)}…${signature.slice(-8)}`
+      : signature;
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
+  return (
+    <SafeAreaView className="flex-1 bg-bg-base">
+      {/* Top bar */}
+      <View className="flex-row items-center px-4 py-3">
+        <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel="Go back">
+          <ArrowLeft size={22} color="#A8ACB5" />
+        </Pressable>
+        <Text variant="h2" className="ml-1">
+          Transaction
+        </Text>
+      </View>
+
+      {/* Loading state */}
+      {(isLoading || tx === undefined) ? (
+        <View className="flex-1 items-center justify-center gap-3">
+          <ActivityIndicator size="large" color="#B084FC" />
+          <Text variant="body-sm" className="text-fg-tertiary">
+            Loading transaction…
+          </Text>
+        </View>
+      ) : tx === null ? (
+        /* Not-found state */
+        <>
+          <View className="flex-1 items-center justify-center px-6">
+            <Text variant="body" className="text-fg-secondary text-center">
+              Couldn't load this transaction
+            </Text>
+          </View>
+          <View className="px-5 pb-4 gap-2">
+            <Button
+              label="View on explorer"
+              variant="secondary"
+              onPress={() => Linking.openURL(getExplorerUrl(signature)).catch(() => {})}
+            />
+            <Button label="Back" variant="primary" onPress={onBack} />
+          </View>
+        </>
+      ) : (
+        /* Ready state */
+        <ScrollView contentContainerClassName="px-5 pb-4">
+          {/* Amount card */}
+          <View className="bg-bg-surface-1 rounded-2xl p-6 items-center mt-2">
+            <Text variant="overline" className="text-fg-secondary">
+              {tx.type === 'Send' ? 'Sent' : 'Transaction'}
+            </Text>
+            <Text
+              className="text-fg-primary font-geist-semibold mt-2"
+              style={{fontSize: 28}}>
+              {tx.amount ? `${tx.amount} ${tx.tokenSymbol}` : '—'}
+            </Text>
+
+            {/* Status pill */}
+            {tx.status === 'failed' ? (
+              <View className="flex-row items-center gap-1 mt-3 px-3 py-1.5 rounded-pill bg-[rgba(248,113,113,0.14)]">
+                <X size={12} color="#F87171" />
+                <Text variant="caption" className="text-danger font-geist-semibold">
+                  Failed
+                </Text>
+              </View>
+            ) : (
+              <View className="flex-row items-center gap-1 mt-3 px-3 py-1.5 rounded-pill bg-[rgba(63,214,139,0.14)]">
+                <Check size={12} color="#3FD68B" />
+                <Text variant="caption" className="text-success font-geist-semibold">
+                  Confirmed
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Detail card */}
+          <View className="bg-bg-surface-1 rounded-lg px-5 mt-4">
+            <DetailRow label="Type" value={tx.type} />
+            <DetailRow
+              label="Status"
+              value={tx.status[0].toUpperCase() + tx.status.slice(1)}
+            />
+            <DetailRow label="From" value={<ChecksumAddr address={tx.from} />} />
+            <DetailRow
+              label="To"
+              value={
+                tx.to ? (
+                  <ChecksumAddr address={tx.to} />
+                ) : (
+                  <Text className="text-fg-primary">—</Text>
+                )
+              }
+            />
+            <DetailRow
+              label="Hash"
+              value={truncatedSig}
+              mono
+              onCopy={handleCopySig}
+            />
+            <DetailRow label="Block" value={String(tx.slot)} />
+            <DetailRow
+              label="Network fee"
+              value={`${formatTokenAmount(tx.feeLamports, 9)} SOL`}
+            />
+            {tx.memo ? (
+              <DetailRow label="Memo" value={tx.memo} />
+            ) : null}
+          </View>
+
+          {/* Actions */}
+          <View className="px-1 pt-4 gap-2">
+            <Button
+              label="View on explorer"
+              variant="secondary"
+              onPress={() => Linking.openURL(getExplorerUrl(signature)).catch(() => {})}
+            />
+            {tx.to ? (
+              <Button
+                label={saved || alreadyContact ? 'Saved to address book ✓' : 'Save to address book'}
+                variant="primary"
+                disabled={saved || alreadyContact}
+                onPress={handleSaveContact}
+              />
+            ) : null}
+          </View>
+        </ScrollView>
+      )}
+    </SafeAreaView>
+  );
+}
