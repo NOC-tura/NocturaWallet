@@ -237,3 +237,36 @@ describe('instruction builders', () => {
     expect(ix.length).toBe(4);
   });
 });
+
+// ── resolveCreateAta ──────────────────────────────────────────────────────────
+import {resolveCreateAta, findAssociatedTokenAddress} from '../transactionBuilder';
+import {getAccountInfo} from '../queries';
+
+jest.mock('../queries', () => ({
+  getAccountInfo: jest.fn(),
+}));
+
+const mockGetAccountInfo = getAccountInfo as jest.MockedFunction<typeof getAccountInfo>;
+
+describe('resolveCreateAta', () => {
+  const recipient = new PublicKey('So11111111111111111111111111111111111111112');
+  const mint = new PublicKey('TokenAccountAddr111111111111111111111111111');
+  const fakeConn = {} as never; // getAccountInfo is mocked, connection unused
+
+  it('returns false when the recipient ATA already exists (no creation needed)', async () => {
+    mockGetAccountInfo.mockResolvedValue({exists: true, executable: false});
+    expect(await resolveCreateAta(fakeConn, recipient, mint)).toBe(false);
+  });
+
+  it('returns true when the recipient ATA does not exist (must be created)', async () => {
+    mockGetAccountInfo.mockResolvedValue({exists: false, executable: false});
+    expect(await resolveCreateAta(fakeConn, recipient, mint)).toBe(true);
+  });
+
+  it('checks the canonical ATA address for the recipient + mint', async () => {
+    mockGetAccountInfo.mockResolvedValue({exists: true, executable: false});
+    await resolveCreateAta(fakeConn, recipient, mint);
+    const expectedAta = findAssociatedTokenAddress(recipient, mint);
+    expect(mockGetAccountInfo).toHaveBeenCalledWith(fakeConn, expectedAta);
+  });
+});

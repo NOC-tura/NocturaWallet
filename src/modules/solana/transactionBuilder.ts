@@ -6,7 +6,9 @@ import {
   TransactionInstruction,
   VersionedTransaction,
 } from '@solana/web3.js';
+import type {Connection} from '@solana/web3.js';
 import {getConnection} from './connection';
+import {getAccountInfo} from './queries';
 import {NOCTURA_FEE_TREASURY, TRANSPARENT_FEES} from '../../constants/programs';
 import type {TransferParams, SPLTransferParams} from './types';
 
@@ -28,7 +30,7 @@ const SPL_ATA_PROGRAM_ID = new PublicKey(
  *
  * This mirrors @solana/spl-token's getAssociatedTokenAddress().
  */
-function findAssociatedTokenAddress(
+export function findAssociatedTokenAddress(
   walletAddress: PublicKey,
   mintAddress: PublicKey,
 ): PublicKey {
@@ -41,6 +43,23 @@ function findAssociatedTokenAddress(
     SPL_ATA_PROGRAM_ID,
   );
   return ata;
+}
+
+/**
+ * Resolve whether a recipient needs their Associated Token Account created for
+ * `mint`. Returns true ONLY when the ATA does not yet exist on-chain — sending
+ * to a recipient who already holds the token must NOT prepend a create-ATA
+ * instruction (it fails with "account already in use"). Falls through to the
+ * caller's optimistic default only on RPC error (handled by the caller).
+ */
+export async function resolveCreateAta(
+  connection: Connection,
+  recipient: PublicKey,
+  mint: PublicKey,
+): Promise<boolean> {
+  const ata = findAssociatedTokenAddress(recipient, mint);
+  const info = await getAccountInfo(connection, ata);
+  return !info.exists;
 }
 
 /**
