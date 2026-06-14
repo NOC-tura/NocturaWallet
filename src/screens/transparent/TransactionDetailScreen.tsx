@@ -52,7 +52,7 @@ interface DetailRowProps {
 function DetailRow({label, value, mono, onCopy}: DetailRowProps) {
   return (
     <View className="flex-row items-start justify-between gap-4 py-3 border-b border-bg-surface-2 min-h-[48px]">
-      <Text variant="overline" className="text-fg-secondary pt-0.5">
+      <Text variant="overline" className="text-fg-secondary pt-0.5 shrink-0 pr-1">
         {label}
       </Text>
       <View className="flex-1 items-end">
