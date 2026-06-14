@@ -5,6 +5,7 @@ export interface TransferParams {
   recipient: PublicKey;
   lamports: bigint;
   priorityFee?: number; // microlamports
+  computeUnitLimit?: number;
 }
 
 export interface SPLTransferParams {
@@ -14,6 +15,7 @@ export interface SPLTransferParams {
   amount: bigint; // in smallest unit
   decimals: number;
   priorityFee?: number; // microlamports
+  computeUnitLimit?: number;
   createAta?: boolean; // create ATA if recipient doesn't have one
 }
 

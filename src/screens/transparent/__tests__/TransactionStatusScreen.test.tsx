@@ -1,113 +1,185 @@
 import React from 'react';
-import {render} from '@testing-library/react-native';
-import {TransactionStatusScreen} from '../TransactionStatusScreen';
+import {render, waitFor} from '@testing-library/react-native';
+import {SafeAreaProvider} from 'react-native-safe-area-context';
+
+// ── Module mocks (jest.mock is hoisted above all imports) ─────────────────────
+
+jest.mock('../../../modules/solana/priorityFee', () => ({
+  estimatePriorityFee: jest.fn().mockResolvedValue(10_000),
+}));
+
+jest.mock('../../../modules/solana/sendTransaction', () => ({
+  submitTransparentTransfer: jest.fn().mockResolvedValue({signature: 'S', lastValidBlockHeight: 1000}),
+}));
+
+jest.mock('../../../modules/keyDerivation/derivationScheme', () => ({
+  loadTransparentScheme: jest.fn(() => ({kind: 'slip10', account: 0})),
+}));
+
+// Default connection mock: getBlockHeight returns 0 (≤ lastValidBlockHeight=1000)
+// so no expiry is triggered in success/failed tests.
+const mockGetSignatureStatus = jest.fn().mockResolvedValue({
+  value: {confirmationStatus: 'confirmed', slot: 42},
+});
+const mockGetBlockHeight = jest.fn().mockResolvedValue(0);
 
 jest.mock('../../../modules/solana/connection', () => ({
-  getConnection: jest.fn(() => ({
-    getSignatureStatus: jest.fn().mockResolvedValue({value: null}),
-  })),
+  getConnection: () => ({
+    getSignatureStatus: mockGetSignatureStatus,
+    getBlockHeight: mockGetBlockHeight,
+  }),
 }));
 
 jest.mock('react-native/Libraries/Linking/Linking', () => ({
   openURL: jest.fn(),
 }));
 
-const defaultProps = {
-  signature: 'abc123signature',
-  amount: '1.5',
-  recipient: 'So11111111111111111111111111111111111111112',
-  token: 'SOL',
-  onDashboard: jest.fn(),
-  onRetry: jest.fn(),
+jest.mock('../../../store/mmkv/instances', () => ({
+  mmkvPublic: {
+    set: jest.fn(),
+    getString: jest.fn(),
+    getBoolean: jest.fn().mockReturnValue(false),
+  },
+  mmkvSecure: jest.fn().mockReturnValue(null),
+  initSecureMmkv: jest.fn(),
+  onSecureMmkvReady: jest.fn(),
+}));
+
+// Import after mocks so the lazy require() block sees mocked modules.
+import {TransactionStatusScreen} from '../TransactionStatusScreen';
+import {submitTransparentTransfer} from '../../../modules/solana/sendTransaction';
+
+const mockSubmit = jest.mocked(submitTransparentTransfer);
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function withSafeArea(node: React.ReactElement) {
+  return (
+    <SafeAreaProvider
+      initialMetrics={{
+        insets: {top: 0, bottom: 0, left: 0, right: 0},
+        frame: {x: 0, y: 0, width: 0, height: 0},
+      }}>
+      {node}
+    </SafeAreaProvider>
+  );
+}
+
+const intent = {
+  mode: 'transparent' as const,
+  recipient: 'Gabc1234xyz',
+  amount: '0.001',
+  tokenMint: 'native',
+  tokenSymbol: 'SOL',
+  decimals: 9,
+  priorityLevel: 'normal' as const,
+  createAta: false,
 };
 
-describe('TransactionStatusScreen', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    jest.useFakeTimers();
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  // Re-apply defaults after clearAllMocks
+  mockGetSignatureStatus.mockResolvedValue({
+    value: {confirmationStatus: 'confirmed', slot: 42},
   });
-
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it('shows "Transaction submitted" initially (pending state)', () => {
-    const {getByText} = render(<TransactionStatusScreen {...defaultProps} />);
-    expect(getByText('Transaction submitted')).toBeTruthy();
-  });
-
-  it('transitions to "Sent!" when status becomes confirmed', async () => {
-    const {getConnection} = require('../../../modules/solana/connection');
-    getConnection.mockReturnValue({
-      getSignatureStatus: jest.fn().mockResolvedValue({
-        value: {confirmationStatus: 'confirmed', err: null},
-      }),
-    });
-
-    const {findByText} = render(<TransactionStatusScreen {...defaultProps} />);
-
-    // Advance timers to allow polling to fire
-    jest.advanceTimersByTime(600);
-
-    const successText = await findByText('Sent!');
-    expect(successText).toBeTruthy();
-  });
-
-  it('shows "Transaction failed" when status has error', async () => {
-    const {getConnection} = require('../../../modules/solana/connection');
-    getConnection.mockReturnValue({
-      getSignatureStatus: jest.fn().mockResolvedValue({
-        value: {confirmationStatus: null, err: {InstructionError: [0, 'Custom']}},
-      }),
-    });
-
-    const {findByText} = render(<TransactionStatusScreen {...defaultProps} />);
-
-    jest.advanceTimersByTime(600);
-
-    const failedText = await findByText('Transaction failed');
-    expect(failedText).toBeTruthy();
-  });
-
-  it('shows "Transaction status unknown" on timeout (NOT "failed")', async () => {
-    // Reset to the default mock — never confirms
-    const {getConnection} = require('../../../modules/solana/connection');
-    getConnection.mockReturnValue({
-      getSignatureStatus: jest.fn().mockResolvedValue({value: null}),
-    });
-
-    const {findByText, queryByText} = render(
-      <TransactionStatusScreen {...defaultProps} />,
-    );
-
-    // Advance past MAX_ATTEMPTS * 500ms (120 * 500 = 60000ms)
-    // Use runAllTimersAsync to process both timers and microtasks/promises
-    await jest.runAllTimersAsync();
-
-    const unknownText = await findByText('Transaction status unknown');
-    expect(unknownText).toBeTruthy();
-    expect(queryByText('Transaction failed')).toBeNull();
-  });
-
-  it('shows "View on Solscan" link with correct URL', () => {
-    const {getByText} = render(<TransactionStatusScreen {...defaultProps} />);
-    const link = getByText('View on Solscan →');
-    expect(link).toBeTruthy();
-  });
-
-  it('shows "Back to dashboard" button', async () => {
-    const {getConnection} = require('../../../modules/solana/connection');
-    getConnection.mockReturnValue({
-      getSignatureStatus: jest.fn().mockResolvedValue({
-        value: {confirmationStatus: 'finalized', err: null},
-      }),
-    });
-
-    const {findByText} = render(<TransactionStatusScreen {...defaultProps} />);
-
-    jest.advanceTimersByTime(600);
-
-    const backBtn = await findByText('Back to dashboard');
-    expect(backBtn).toBeTruthy();
-  });
+  mockGetBlockHeight.mockResolvedValue(0);
 });
+
+it('success path: renders "Sent successfully" and tx-status-done', async () => {
+  mockSubmit.mockResolvedValueOnce({signature: 'S', lastValidBlockHeight: 1000});
+
+  const {getByText, getByTestId} = render(
+    withSafeArea(
+      <TransactionStatusScreen
+        intent={intent}
+        onDashboard={jest.fn()}
+        onViewDetails={jest.fn()}
+      />,
+    ),
+  );
+
+  await waitFor(() => {
+    expect(getByText('Sent successfully')).toBeTruthy();
+  });
+
+  expect(getByTestId('tx-status-done')).toBeTruthy();
+});
+
+it('landed-but-failed: a confirmed tx WITH err renders "Transaction failed", not success', async () => {
+  mockSubmit.mockResolvedValueOnce({signature: 'S', lastValidBlockHeight: 1000});
+  // On-chain failure: the tx is confirmed AND carries an err (e.g. CU exceeded).
+  mockGetSignatureStatus.mockResolvedValue({
+    value: {
+      confirmationStatus: 'confirmed',
+      slot: 42,
+      err: {InstructionError: [3, 'ComputationalBudgetExceeded']},
+    },
+  });
+
+  const {getByText, getByTestId, queryByText} = render(
+    withSafeArea(
+      <TransactionStatusScreen intent={intent} onDashboard={jest.fn()} />,
+    ),
+  );
+
+  await waitFor(() => {
+    expect(getByText('Transaction failed')).toBeTruthy();
+  });
+  expect(getByTestId('tx-status-retry')).toBeTruthy();
+  expect(queryByText('Sent successfully')).toBeNull();
+});
+
+it('failure path: renders "Transaction failed" and tx-status-retry when submitTransparentTransfer rejects', async () => {
+  mockSubmit.mockRejectedValueOnce(new Error('Insufficient funds'));
+
+  const {getByText, getByTestId} = render(
+    withSafeArea(
+      <TransactionStatusScreen
+        intent={intent}
+        onDashboard={jest.fn()}
+      />,
+    ),
+  );
+
+  await waitFor(() => {
+    expect(getByText('Transaction failed')).toBeTruthy();
+  });
+
+  expect(getByTestId('tx-status-retry')).toBeTruthy();
+});
+
+it('expiry → resubmit: calls submitTransparentTransfer a second time when blockhash expires', async () => {
+  // First submit resolves with a low lastValidBlockHeight (10).
+  // getBlockHeight returns 100 (> 10) so the expiry check fires.
+  // getSignatureStatus stays pending so the blockhash "expires" → resubmit.
+  // Second submit resolves with a higher lastValidBlockHeight (20).
+  mockSubmit
+    .mockResolvedValueOnce({signature: 'S1', lastValidBlockHeight: 10})
+    .mockResolvedValueOnce({signature: 'S2', lastValidBlockHeight: 20});
+
+  mockGetSignatureStatus.mockResolvedValue({value: null});
+  mockGetBlockHeight.mockResolvedValue(100);
+
+  const {unmount} = render(
+    withSafeArea(
+      <TransactionStatusScreen
+        intent={intent}
+        onDashboard={jest.fn()}
+      />,
+    ),
+  );
+
+  // The expiry check fires at i % 10 === 0, i.e. after 10 × 500 ms = 5 s of poll ticks.
+  // We wait up to 10 s (real timers) for the second call to happen.
+  await waitFor(
+    () => {
+      expect(mockSubmit).toHaveBeenCalledTimes(2);
+    },
+    {timeout: 10_000},
+  );
+
+  // Unmount so the poll loop's `cancelled` cleanup stops it — no dangling timer.
+  unmount();
+}, 15_000);

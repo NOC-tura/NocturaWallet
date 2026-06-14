@@ -57,12 +57,7 @@ export type SendStackParamList = {
   Send: undefined;
   TxSimulate: {intent: TransferIntent};
   TxConfirm: {intent: TransferIntent};
-  TransactionStatus: {
-    signature: string;
-    amount: string;
-    recipient: string;
-    token: string;
-  };
+  TransactionStatus: {intent: TransferIntent};
   TransactionDetail: {signature: string};
 };
 

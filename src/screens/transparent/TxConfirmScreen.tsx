@@ -1,13 +1,12 @@
 import React, {useState, useCallback, useRef} from 'react';
-import {View, Pressable, ScrollView, Alert, TextInput, StyleSheet} from 'react-native';
+import {View, Pressable, ScrollView, TextInput, StyleSheet} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {ArrowLeft} from 'lucide-react-native';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import {PublicKey} from '@solana/web3.js';
 import {Text, Button, Card} from '../../components/ui';
 import {formatAddress} from '../../utils/formatAddress';
-import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
+import {formatTokenAmount} from '../../utils/parseTokenAmount';
 import {addressBook} from '../../modules/addressBook/addressBookModule';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {awaitUserAuth} from '../../modules/session/pendingAuth';
@@ -28,23 +27,6 @@ const PRIORITY_FEE_LAMPORTS: Record<'normal' | 'fast' | 'urgent', bigint> = {
 };
 const SOL_DECIMALS = 9;
 
-// ── Lazy imports — wrapped in try/catch so Jest/stub envs don't crash ─────────
-let sendTransparentTransfer:
-  | typeof import('../../modules/solana/sendTransaction').sendTransparentTransfer
-  | null = null;
-let loadTransparentScheme:
-  | typeof import('../../modules/keyDerivation/derivationScheme').loadTransparentScheme
-  | null = null;
-
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  sendTransparentTransfer = require('../../modules/solana/sendTransaction').sendTransparentTransfer;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  loadTransparentScheme = require('../../modules/keyDerivation/derivationScheme').loadTransparentScheme;
-} catch {
-  // Modules unavailable in test/stub environment — no-op
-}
-
 // ── Module-scope helpers ──────────────────────────────────────────────────────
 function safeBigInt(v: string | undefined): bigint {
   try {
@@ -57,11 +39,11 @@ function safeBigInt(v: string | undefined): bigint {
 // ── Props ─────────────────────────────────────────────────────────────────────
 interface TxConfirmScreenProps {
   intent: TransferIntent;
-  onSent: (params: {signature: string; amount: string; recipient: string; token: string}) => void;
+  onBroadcast: (intent: TransferIntent) => void;
   onCancel: () => void;
 }
 
-export function TxConfirmScreen({intent, onSent, onCancel}: TxConfirmScreenProps) {
+export function TxConfirmScreen({intent, onBroadcast, onCancel}: TxConfirmScreenProps) {
   const {publicKey, solBalance, tokenBalances} = useWalletStore();
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
@@ -98,105 +80,27 @@ export function TxConfirmScreen({intent, onSent, onCancel}: TxConfirmScreenProps
     if (sending) return;
     setSending(true);
 
-    try {
-      const feeSOL = formatTokenAmount(
-        BASE_FEE_LAMPORTS + PRIORITY_FEE_LAMPORTS[intent.priorityLevel],
-        SOL_DECIMALS,
-      );
-      // Navigate to UnlockSend BEFORE awaiting — modal must appear while we wait.
-      const authPromise = awaitUserAuth();
-      rootNav.navigate('UnlockSend', {
-        amount: intent.amount,
-        ticker: intent.tokenSymbol,
-        recipient: intent.recipient,
-        networkFee: `${feeSOL} SOL`,
-      });
-      const approved = await authPromise;
-      if (!approved) {
-        setSending(false);
-        return;
-      }
-
-      let signature: string;
-      try {
-        if (!sendTransparentTransfer || !loadTransparentScheme) {
-          throw new Error('Send module unavailable');
-        }
-        const scheme = loadTransparentScheme();
-        const recipientPk = new PublicKey(intent.recipient);
-        // Priority tiers are expressed as a target lamport amount; convert to a
-        // per-compute-unit price (microLamports) for setComputeUnitPrice over the
-        // standard 200k CU budget. normal=0, fast≈75k µLam/CU, urgent≈250k µLam/CU.
-        const priorityFee = Number((PRIORITY_FEE_LAMPORTS[intent.priorityLevel] * 1_000_000n) / 200_000n);
-
-        if (intent.tokenMint === 'native') {
-          const lamports = parseTokenAmount(intent.amount, SOL_DECIMALS);
-          const res = await sendTransparentTransfer({
-            kind: 'sol',
-            recipient: recipientPk,
-            lamports,
-            priorityFee,
-            scheme,
-          });
-          signature = res.signature;
-        } else {
-          const splAmount = parseTokenAmount(intent.amount, intent.decimals);
-          const res = await sendTransparentTransfer({
-            kind: 'spl',
-            recipient: recipientPk,
-            mint: new PublicKey(intent.tokenMint),
-            amount: splAmount,
-            decimals: intent.decimals,
-            createAta: intent.createAta,
-            priorityFee,
-            scheme,
-          });
-          signature = res.signature;
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Transaction failed';
-        Alert.alert('Send failed', msg);
-        setSending(false);
-        return;
-      }
-
-      onSent({
-        signature,
-        amount: intent.amount,
-        recipient: intent.recipient,
-        token: intent.tokenSymbol,
-      });
-
-      try {
-        const existing = addressBook.findByAddress(intent.recipient);
-        if (!existing) {
-          const defaultName = formatAddress(intent.recipient);
-          Alert.alert('Add to contacts?', `Save ${defaultName} to your address book?`, [
-            {text: 'Skip', style: 'cancel'},
-            {
-              text: 'Save',
-              onPress: () => {
-                try {
-                  addressBook.addContact({
-                    name: defaultName,
-                    address: intent.recipient,
-                    addressType: 'transparent',
-                    lastUsedAt: Date.now(),
-                  });
-                } catch {
-                  // non-critical
-                }
-              },
-            },
-          ]);
-        }
-      } catch {
-        // non-critical
-      }
-    } finally {
+    const feeSOL = formatTokenAmount(
+      BASE_FEE_LAMPORTS + PRIORITY_FEE_LAMPORTS[intent.priorityLevel],
+      SOL_DECIMALS,
+    );
+    // Navigate to UnlockSend BEFORE awaiting — modal must appear while we wait.
+    const authPromise = awaitUserAuth();
+    rootNav.navigate('UnlockSend', {
+      amount: intent.amount,
+      ticker: intent.tokenSymbol,
+      recipient: intent.recipient,
+      networkFee: `${feeSOL} SOL`,
+    });
+    const approved = await authPromise;
+    if (!approved) {
       setSending(false);
+      return;
     }
-  }, [sending, intent, rootNav, onSent]);
+
+    // Auth approved — hand off to TransactionStatusScreen (#21) which owns broadcast.
+    onBroadcast(intent);
+  }, [sending, intent, rootNav, onBroadcast]);
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-bg-base">
