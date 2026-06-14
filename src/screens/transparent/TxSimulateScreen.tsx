@@ -34,6 +34,9 @@ let buildSPLTransferTx:
 let resolveCreateAta:
   | typeof import('../../modules/solana/transactionBuilder').resolveCreateAta
   | null = null;
+let resolveSourceTokenAccount:
+  | typeof import('../../modules/solana/transactionBuilder').resolveSourceTokenAccount
+  | null = null;
 let deriveTransferChecks:
   | ((recipient: PublicKey) => Promise<TransferCheck[]>)
   | null = null;
@@ -48,6 +51,7 @@ try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   buildSPLTransferTx = require('../../modules/solana/transactionBuilder').buildSPLTransferTx;
   resolveCreateAta = require('../../modules/solana/transactionBuilder').resolveCreateAta;
+  resolveSourceTokenAccount = require('../../modules/solana/transactionBuilder').resolveSourceTokenAccount;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   deriveTransferChecks = require('../../modules/solana/simulationChecks').deriveTransferChecks;
 } catch {
@@ -162,6 +166,25 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
             setResolvedCreateAta(effectiveCreateAta);
           }
 
+          // Resolve the actual source token account: this wallet may hold the
+          // mint in a non-canonical account (not its ATA). Without this the
+          // simulation references a non-existent ATA → AccountNotFound.
+          let effectiveSource: PublicKey | undefined;
+          if (isSpl && resolveSourceTokenAccount) {
+            try {
+              const src = await resolveSourceTokenAccount(
+                connection,
+                sender,
+                new PublicKey(intent.tokenMint),
+              );
+              effectiveSource = src ?? undefined;
+            } catch {
+              // RPC blip — fall back to the canonical ATA in the builder.
+              effectiveSource = undefined;
+            }
+            if (cancelled) return;
+          }
+
           const tx = isSpl
             ? await _buildSPLTransferTx({
                 sender,
@@ -170,6 +193,7 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
                 amount: parseTokenAmount(intent.amount, intent.decimals),
                 decimals: intent.decimals,
                 createAta: effectiveCreateAta,
+                sourceTokenAccount: effectiveSource,
                 priorityFee,
               })
             : await _buildTransferTx({

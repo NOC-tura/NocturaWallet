@@ -252,6 +252,28 @@ describe('instruction builders', () => {
     expect([...tc!.data]).toEqual([12, 0x00, 0x65, 0xcd, 0x1d, 0, 0, 0, 0, 9]);
   });
 
+  it('uses the provided sourceTokenAccount as the TransferChecked source', () => {
+    // A wallet may hold the mint in a non-canonical account; the transfer must
+    // spend from THAT account, not the derived ATA.
+    const source = new PublicKey('FpV5mr137k3GfLJqqWnZer12v2KxZfEEQzxXb6sJLABU');
+    const ix = buildSPLTransferInstructions({
+      sender: A, recipient: B, mint: MINT, amount: 1_000n, decimals: 9, createAta: false,
+      sourceTokenAccount: source,
+    });
+    const tc = findTransferChecked(ix) as {keys: {pubkey: PublicKey}[]} | undefined;
+    expect(tc).toBeDefined();
+    // TransferChecked keys: [source, mint, destination, owner] → keys[0] is the source.
+    expect(tc!.keys[0].pubkey.toBase58()).toBe(source.toBase58());
+  });
+
+  it('falls back to the canonical sender ATA when no sourceTokenAccount is given', () => {
+    const ix = buildSPLTransferInstructions({
+      sender: A, recipient: B, mint: MINT, amount: 1_000n, decimals: 9, createAta: false,
+    });
+    const tc = findTransferChecked(ix) as {keys: {pubkey: PublicKey}[]} | undefined;
+    expect(tc!.keys[0].pubkey.toBase58()).toBe(findAssociatedTokenAddress(A, MINT).toBase58());
+  });
+
   it('builds the TransferChecked without Buffer.writeBigUInt64LE (Hermes polyfill lacks it)', () => {
     // The Hermes Buffer polyfill (buffer@5.7.1) has no writeBigUInt64LE. Simulate
     // that environment by removing the method, then confirm the amount is still
@@ -274,7 +296,7 @@ describe('instruction builders', () => {
 });
 
 // ── resolveCreateAta ──────────────────────────────────────────────────────────
-import {resolveCreateAta, findAssociatedTokenAddress} from '../transactionBuilder';
+import {resolveCreateAta, findAssociatedTokenAddress, resolveSourceTokenAccount} from '../transactionBuilder';
 import {getAccountInfo} from '../queries';
 
 jest.mock('../queries', () => ({
@@ -303,5 +325,36 @@ describe('resolveCreateAta', () => {
     await resolveCreateAta(fakeConn, recipient, mint);
     const expectedAta = findAssociatedTokenAddress(recipient, mint);
     expect(mockGetAccountInfo).toHaveBeenCalledWith(fakeConn, expectedAta);
+  });
+});
+
+// ── resolveSourceTokenAccount ─────────────────────────────────────────────────
+describe('resolveSourceTokenAccount', () => {
+  const owner = new PublicKey('So11111111111111111111111111111111111111112');
+  const mint = new PublicKey('B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW');
+  const a1 = new PublicKey('4G8U5nQtNciNaEL7Zimb4DhqeanDMevXp7MLtFvUojwF');
+  const a2 = new PublicKey('FpV5mr137k3GfLJqqWnZer12v2KxZfEEQzxXb6sJLABU');
+
+  const connWith = (accts: {pubkey: PublicKey; amount: string}[]) =>
+    ({
+      getParsedTokenAccountsByOwner: jest.fn(async () => ({
+        value: accts.map(a => ({
+          pubkey: a.pubkey,
+          account: {data: {parsed: {info: {tokenAmount: {amount: a.amount}}}}},
+        })),
+      })),
+    }) as never;
+
+  it('returns the largest-balance account for the mint (handles non-canonical accounts)', async () => {
+    const conn = connWith([
+      {pubkey: a1, amount: '5'},
+      {pubkey: a2, amount: '13399619'},
+    ]);
+    const result = await resolveSourceTokenAccount(conn, owner, mint);
+    expect(result?.toBase58()).toBe(a2.toBase58());
+  });
+
+  it('returns null when the owner holds no account for the mint', async () => {
+    expect(await resolveSourceTokenAccount(connWith([]), owner, mint)).toBeNull();
   });
 });

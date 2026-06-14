@@ -3,6 +3,7 @@ import {getConnection} from './connection';
 import {
   buildTransferInstructions,
   buildSPLTransferInstructions,
+  resolveSourceTokenAccount,
 } from './transactionBuilder';
 import {KeychainManager} from '../keychain/keychainModule';
 import {mnemonicToSeed} from '../keyDerivation/mnemonicUtils';
@@ -56,6 +57,18 @@ export async function submitTransparentTransfer(
     // observed on-chain). 1_000 gives margin while keeping the priority fee tiny.
     const computeUnitLimit =
       params.kind === 'sol' ? 1_000 : params.createAta ? 65_000 : 40_000;
+
+    const connection = getConnection();
+
+    // The wallet may hold the mint in a non-canonical token account (not its
+    // ATA). Resolve the real source so the transfer spends from the account that
+    // actually holds the balance — otherwise the canonical ATA is referenced and
+    // the transaction fails on-chain with AccountNotFound.
+    const sourceTokenAccount =
+      params.kind === 'spl'
+        ? (await resolveSourceTokenAccount(connection, sender, params.mint)) ?? undefined
+        : undefined;
+
     const instructions =
       params.kind === 'sol'
         ? buildTransferInstructions({
@@ -72,11 +85,11 @@ export async function submitTransparentTransfer(
             amount: params.amount,
             decimals: params.decimals,
             createAta: params.createAta,
+            sourceTokenAccount,
             priorityFee,
             computeUnitLimit,
           });
 
-    const connection = getConnection();
     const {blockhash, lastValidBlockHeight} = await connection.getLatestBlockhash();
     const message = new TransactionMessage({
       payerKey: sender,

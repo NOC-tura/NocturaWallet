@@ -63,6 +63,32 @@ export async function resolveCreateAta(
 }
 
 /**
+ * Resolve the sender's source token account for `mint`. A wallet may hold a
+ * token in a NON-canonical token account (not its ATA) — using the derived ATA
+ * as the transfer source then fails on-chain with AccountNotFound. Returns the
+ * owned account with the largest balance for the mint, or null when the owner
+ * holds no account for it.
+ */
+export async function resolveSourceTokenAccount(
+  connection: Connection,
+  owner: PublicKey,
+  mint: PublicKey,
+): Promise<PublicKey | null> {
+  const response = await connection.getParsedTokenAccountsByOwner(owner, {mint});
+  let best: {pubkey: PublicKey; amount: bigint} | null = null;
+  for (const {pubkey, account} of response.value) {
+    const parsed = account.data.parsed as {
+      info?: {tokenAmount?: {amount?: string}};
+    };
+    const amount = BigInt(parsed.info?.tokenAmount?.amount ?? '0');
+    if (best === null || amount > best.amount) {
+      best = {pubkey, amount};
+    }
+  }
+  return best === null ? null : best.pubkey;
+}
+
+/**
  * Build an SPL Token TransferChecked instruction manually.
  * Mirrors @solana/spl-token's createTransferCheckedInstruction().
  *
@@ -211,7 +237,7 @@ export async function buildTransferTx(
 export function buildSPLTransferInstructions(
   params: SPLTransferParams,
 ): TransactionInstruction[] {
-  const {sender, recipient, mint, amount, decimals, priorityFee, computeUnitLimit, createAta} = params;
+  const {sender, recipient, mint, amount, decimals, priorityFee, computeUnitLimit, createAta, sourceTokenAccount} = params;
 
   const instructions: TransactionInstruction[] = [];
 
@@ -241,8 +267,10 @@ export function buildSPLTransferInstructions(
     );
   }
 
-  // Derive sender's ATA for the given mint.
-  const senderAta = findAssociatedTokenAddress(sender, mint);
+  // Source account to spend from. Prefer an explicitly resolved account (the
+  // wallet may hold the mint in a non-canonical account that is NOT its ATA),
+  // falling back to the canonical ATA when none was provided.
+  const senderAta = sourceTokenAccount ?? findAssociatedTokenAddress(sender, mint);
 
   // SPL Token TransferChecked instruction — verifies both amount and decimals
   // on-chain to guard against mint substitution attacks.
