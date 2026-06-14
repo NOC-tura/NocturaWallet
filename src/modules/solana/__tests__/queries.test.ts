@@ -146,3 +146,50 @@ describe('getAccountInfo', () => {
     expect(res).toEqual({exists: false, executable: false});
   });
 });
+
+import {getTransactionDetail} from '../queries';
+import {NOCTURA_FEE_TREASURY} from '../../../constants/programs';
+
+function parsedTxConn(opts: {err?: unknown} = {}) {
+  return {
+    getParsedTransaction: jest.fn(async () => ({
+      slot: 271_408_924,
+      blockTime: 1_760_000_000,
+      meta: {fee: 5005, err: opts.err ?? null},
+      transaction: {
+        message: {
+          accountKeys: [{pubkey: 'SENDER_ADDR'}],
+          instructions: [
+            {program: 'system', parsed: {type: 'transfer', info: {source: 'SENDER_ADDR', destination: 'RECIPIENT_ADDR', lamports: 10_000_000}}},
+            {program: 'system', parsed: {type: 'transfer', info: {source: 'SENDER_ADDR', destination: NOCTURA_FEE_TREASURY, lamports: 20_000}}},
+          ],
+        },
+      },
+    })),
+  } as never;
+}
+
+describe('getTransactionDetail', () => {
+  it('parses a SOL transfer, skipping the Noctura fee-markup transfer', async () => {
+    const d = await getTransactionDetail(parsedTxConn(), 'SIG');
+    expect(d).not.toBeNull();
+    expect(d!.from).toBe('SENDER_ADDR');
+    expect(d!.to).toBe('RECIPIENT_ADDR');
+    expect(d!.amount).toBe('0.01');
+    expect(d!.tokenSymbol).toBe('SOL');
+    expect(d!.feeLamports).toBe(5005n);
+    expect(d!.slot).toBe(271_408_924);
+    expect(d!.status).toBe('confirmed');
+    expect(d!.type).toBe('Send');
+  });
+
+  it('marks a tx with meta.err as failed', async () => {
+    const d = await getTransactionDetail(parsedTxConn({err: {InstructionError: [0, 'X']}}), 'SIG');
+    expect(d!.status).toBe('failed');
+  });
+
+  it('returns null when the tx is not found', async () => {
+    const conn = {getParsedTransaction: jest.fn(async () => null)} as never;
+    expect(await getTransactionDetail(conn, 'SIG')).toBeNull();
+  });
+});
