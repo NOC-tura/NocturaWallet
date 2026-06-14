@@ -89,7 +89,15 @@ function buildTransferCheckedInstruction(
 
   const data = Buffer.alloc(10);
   data.writeUInt8(12, 0); // TransferChecked discriminator
-  data.writeBigUInt64LE(amount, 1);
+  // Encode the u64 amount as little-endian. We do NOT use Buffer.writeBigUInt64LE:
+  // the Hermes Buffer polyfill (buffer@5.7.1) does not implement the BigInt
+  // accessors, so calling it throws "undefined is not a function" on-device.
+  // writeUInt8 + BigInt shifts are available in Hermes.
+  let remaining = amount;
+  for (let i = 0; i < 8; i++) {
+    data.writeUInt8(Number(remaining & 0xffn), 1 + i);
+    remaining >>= 8n;
+  }
   data.writeUInt8(decimals, 9);
 
   return new TransactionInstruction({

@@ -236,6 +236,41 @@ describe('instruction builders', () => {
     // priority-price + compute-limit + recipient transfer + fee markup = 4
     expect(ix.length).toBe(4);
   });
+
+  // The TransferChecked instruction is the 10-byte one whose first byte is the
+  // discriminator 12. Layout: [12][amount u64 little-endian (8 bytes)][decimals u8].
+  const findTransferChecked = (ixs: {data: Uint8Array}[]) =>
+    ixs.find(ix => ix.data.length === 10 && ix.data[0] === 12);
+
+  it('encodes the TransferChecked u64 amount as little-endian bytes', () => {
+    const ix = buildSPLTransferInstructions({
+      sender: A, recipient: B, mint: MINT, amount: 500_000_000n, decimals: 9, createAta: false,
+    });
+    const tc = findTransferChecked(ix);
+    expect(tc).toBeDefined();
+    // 500_000_000 = 0x1DCD6500 → LE: 00 65 CD 1D 00 00 00 00
+    expect([...tc!.data]).toEqual([12, 0x00, 0x65, 0xcd, 0x1d, 0, 0, 0, 0, 9]);
+  });
+
+  it('builds the TransferChecked without Buffer.writeBigUInt64LE (Hermes polyfill lacks it)', () => {
+    // The Hermes Buffer polyfill (buffer@5.7.1) has no writeBigUInt64LE. Simulate
+    // that environment by removing the method, then confirm the amount is still
+    // encoded correctly via manual little-endian byte writes.
+    type BufProto = {writeBigUInt64LE?: (value: bigint, offset?: number) => number};
+    const proto = Buffer.prototype as unknown as BufProto;
+    const original = proto.writeBigUInt64LE;
+    proto.writeBigUInt64LE = undefined;
+    try {
+      const ix = buildSPLTransferInstructions({
+        sender: A, recipient: B, mint: MINT, amount: 1n, decimals: 0, createAta: false,
+      });
+      const tc = findTransferChecked(ix);
+      expect(tc).toBeDefined();
+      expect([...tc!.data]).toEqual([12, 1, 0, 0, 0, 0, 0, 0, 0, 0]);
+    } finally {
+      proto.writeBigUInt64LE = original;
+    }
+  });
 });
 
 // ── resolveCreateAta ──────────────────────────────────────────────────────────
