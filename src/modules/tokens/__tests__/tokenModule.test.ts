@@ -299,3 +299,36 @@ describe('buildCloseAccountsTx', () => {
     }
   });
 });
+
+describe('buildDisplayTokens', () => {
+  const tm = new TokenManager();
+  const acct = (mint: string, amount: string, decimals: number) => ({
+    mint,
+    owner: 'Owner1111111111111111111111111111111111111',
+    amount,
+    decimals,
+    address: `ata-${mint}`,
+  });
+
+  it('includes held core tokens with registry metadata, excludes unknown and zero-balance', () => {
+    const result = tm.buildDisplayTokens([
+      acct(USDC_MINT, '5000000', 6),
+      acct(NOC_MINT, '69000000000000000', 9),
+      acct(UNKNOWN_MINT, '12345', 0), // unknown trust — excluded
+      acct(USDC_MINT, '0', 6), // zero balance — excluded
+    ]);
+    const mints = result.map(t => t.mint);
+    expect(mints).toContain(USDC_MINT);
+    expect(mints).toContain(NOC_MINT);
+    expect(mints).not.toContain(UNKNOWN_MINT);
+    // the zero-balance USDC account must not produce a second entry
+    expect(result.filter(t => t.mint === USDC_MINT)).toHaveLength(1);
+
+    const usdc = result.find(t => t.mint === USDC_MINT);
+    expect(usdc).toMatchObject({symbol: 'USDC', name: 'USD Coin', decimals: 6, trust: 'core'});
+  });
+
+  it('returns an empty list when no held tokens are core or verified', () => {
+    expect(tm.buildDisplayTokens([acct(UNKNOWN_MINT, '999', 0)])).toEqual([]);
+  });
+});

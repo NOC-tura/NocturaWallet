@@ -3,6 +3,9 @@ import {getBalance, getTokenAccounts} from '../solana/queries';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {PublicKey} from '@solana/web3.js';
 import {NOC_MINT} from '../../constants/programs';
+import {TokenManager} from '../tokens/tokenModule';
+
+const tokenManager = new TokenManager();
 
 export interface SyncResult {
   success: boolean;
@@ -58,6 +61,16 @@ export async function forceSync(): Promise<SyncResult> {
       : useWalletStore.getState().nocBalance;
 
     useWalletStore.getState().updateBalances(sol, nocBalance, tokens);
+
+    // Populate the dashboard's token-metadata list from the held accounts so
+    // SPL tokens (USDC, etc.) actually render — updateBalances only stores the
+    // mint→amount map, not the per-token metadata the list iterates over. Only
+    // refresh when the fetch succeeded, so a failed sync never clobbers the list.
+    if (tokenAccounts.status === 'fulfilled') {
+      useWalletStore
+        .getState()
+        .setTokens(tokenManager.buildDisplayTokens(tokenAccounts.value));
+    }
 
     return {
       success: true,
