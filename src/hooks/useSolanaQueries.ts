@@ -74,6 +74,8 @@ export function useTransactionDetail(signature: string | null) {
       return getTransactionDetail(getConnection(), signature);
     },
     enabled: !!signature,
-    refetchInterval: 4_000,
+    // Retry every 4 s until the tx is indexed, then stop (a confirmed tx detail
+    // does not change).
+    refetchInterval: query => (query.state.data ? false : 4_000),
   });
 }

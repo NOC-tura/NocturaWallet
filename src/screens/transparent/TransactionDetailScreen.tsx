@@ -16,6 +16,7 @@ import {formatAddress} from '../../utils/formatAddress';
 import {formatTokenAmount} from '../../utils/parseTokenAmount';
 import {getExplorerUrl} from '../../utils/explorerUrl';
 import {addressBook} from '../../modules/addressBook/addressBookModule';
+import {cn} from '../../utils/cn';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -44,10 +45,11 @@ function ChecksumAddr({address}: {address: string}) {
 interface DetailRowProps {
   label: string;
   value: React.ReactNode;
+  mono?: boolean;
   onCopy?: () => void;
 }
 
-function DetailRow({label, value, onCopy}: DetailRowProps) {
+function DetailRow({label, value, mono, onCopy}: DetailRowProps) {
   return (
     <View className="flex-row items-start justify-between gap-4 py-3 border-b border-bg-surface-2 min-h-[48px]">
       <Text variant="overline" className="text-fg-secondary pt-0.5">
@@ -55,7 +57,10 @@ function DetailRow({label, value, onCopy}: DetailRowProps) {
       </Text>
       <View className="flex-1 items-end">
         {typeof value === 'string' ? (
-          <Text variant="body-sm" className="text-fg-primary text-right" numberOfLines={2}>
+          <Text
+            variant="body-sm"
+            className={cn('text-right', mono ? 'font-geist-mono text-fg-secondary text-[13px]' : 'text-fg-primary')}
+            numberOfLines={2}>
             {value}
           </Text>
         ) : (
@@ -204,6 +209,7 @@ export function TransactionDetailScreen({signature, onBack}: Props) {
             <DetailRow
               label="Hash"
               value={truncatedSig}
+              mono
               onCopy={handleCopySig}
             />
             <DetailRow label="Block" value={String(tx.slot)} />
