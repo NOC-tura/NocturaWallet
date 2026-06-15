@@ -24,6 +24,7 @@ import {
 } from '../../modules/prices/priceHistory';
 import {CORE_TOKENS} from '../../modules/tokens/coreTokens';
 import {NOC_MINT} from '../../constants/programs';
+import {isSwappable} from '../../modules/swap/swapTokens';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {formatUsdString} from '../../utils/formatUsd';
@@ -36,6 +37,7 @@ interface Props {
   onBack: () => void;
   onSend: (mint: string) => void;
   onReceive: () => void;
+  onSwap: (mint: string) => void;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -44,7 +46,7 @@ const TIMEFRAMES: Timeframe[] = ['24H', '7D', '30D', '1Y'];
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function TokenDetailScreen({mint, onBack, onSend, onReceive}: Props) {
+export function TokenDetailScreen({mint, onBack, onSend, onReceive, onSwap}: Props) {
   // ── Data wiring ────────────────────────────────────────────────────────────
 
   const {solBalance, nocBalance, tokenBalances, tokens} = useWalletStore();
@@ -248,12 +250,13 @@ export function TokenDetailScreen({mint, onBack, onSend, onReceive}: Props) {
             label="Receive"
             onPress={onReceive}
           />
-          <ActionCell
-            Icon={Repeat}
-            label="Swap"
-            sub="Soon"
-            disabled
-          />
+          {isSwappable(mint) ? (
+            <ActionCell
+              Icon={Repeat}
+              label="Swap"
+              onPress={() => onSwap(mint)}
+            />
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>

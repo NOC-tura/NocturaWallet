@@ -84,6 +84,7 @@ interface DashboardScreenProps {
   onSend?: () => void;
   onReceive?: () => void;
   onShield?: () => void;
+  onSwap?: () => void;
   onBuy?: () => void;
   onScan?: () => void;
   onNotifications?: () => void;
@@ -106,6 +107,7 @@ export function DashboardScreen({
   onSend,
   onReceive,
   onShield,
+  onSwap,
   onBuy,
   onScan,
   onNotifications,
@@ -292,6 +294,7 @@ export function DashboardScreen({
             onSend={onSend}
             onReceive={onReceive}
             onShield={onShield}
+            onSwap={onSwap}
             onBuy={onBuy}
             onScan={onScan}
             onNotifications={onNotifications}
@@ -359,6 +362,7 @@ interface DashboardHeaderProps {
   onSend?: () => void;
   onReceive?: () => void;
   onShield?: () => void;
+  onSwap?: () => void;
   onBuy?: () => void;
   onScan?: () => void;
   onNotifications?: () => void;
@@ -380,6 +384,7 @@ function DashboardHeader({
   onSend,
   onReceive,
   onShield,
+  onSwap,
   onBuy,
   onScan,
   onNotifications,
@@ -594,7 +599,7 @@ function DashboardHeader({
             <QuickAction
               Icon={ArrowLeftRight}
               label="Swap"
-              onPress={onSend}
+              onPress={onSwap}
               mode={mode}
             />
           )}
