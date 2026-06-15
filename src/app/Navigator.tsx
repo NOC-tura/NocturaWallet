@@ -32,6 +32,7 @@ import {ReceiveScreen} from '../screens/transparent/ReceiveScreen';
 import {TransactionHistoryScreen as TransactionHistoryScreenImpl} from '../screens/transparent/TransactionHistoryScreen';
 import {TransactionDetailScreen as TransactionDetailScreenImpl} from '../screens/transparent/TransactionDetailScreen';
 import {ReferralScreen as ReferralScreenImpl} from '../screens/referral/ReferralScreen';
+import {TokenDetailScreen} from '../screens/transparent/TokenDetailScreen';
 import {isShieldedEnabled} from '../constants/features';
 import type {
   RootStackParamList,
@@ -301,6 +302,7 @@ function DashboardScreenNav() {
           rootNav.navigate('ShieldedExplainer');
         }
       }}
+      onTokenTap={mint => rootNav.navigate('TokenDetailModal', {mint})}
     />
   );
 }
@@ -373,6 +375,19 @@ function ReceiveScreenNav() {
     <ReceiveScreen
       address={fallback}
       onBack={() => navigation.goBack()}
+    />
+  );
+}
+
+function TokenDetailScreenNav() {
+  const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<RootStackParamList, 'TokenDetailModal'>>();
+  return (
+    <TokenDetailScreen
+      mint={route.params.mint}
+      onBack={() => rootNav.goBack()}
+      onSend={mint => rootNav.navigate('SendModal', {initialMint: mint})}
+      onReceive={() => rootNav.navigate('ReceiveModal')}
     />
   );
 }
@@ -672,6 +687,7 @@ export function RootNavigator() {
       <RootNav.Screen name="MainTabs" component={MainTabs} />
       <RootNav.Screen name="SendModal" component={SendStack} options={modalScreenOptions} />
       <RootNav.Screen name="ReceiveModal" component={ReceiveScreenNav} options={modalScreenOptions} />
+      <RootNav.Screen name="TokenDetailModal" component={TokenDetailScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="ScanModal" component={ScanScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="NotificationsModal" component={NotificationsScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="AddressBookModal" component={AddressBookScreenNav} options={modalScreenOptions} />
