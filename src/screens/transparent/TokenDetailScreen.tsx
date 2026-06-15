@@ -40,7 +40,7 @@ interface Props {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const TIMEFRAMES: Timeframe[] = ['24H', '7D', '30D', '1Y', 'All'];
+const TIMEFRAMES: Timeframe[] = ['24H', '7D', '30D', '1Y'];
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -77,9 +77,11 @@ export function TokenDetailScreen({mint, onBack, onSend, onReceive}: Props) {
       : null;
 
   const tfKey = `${MMKV_KEYS.TOKEN_TIMEFRAME_PREFIX}${mint}`;
-  const [tf, setTf] = React.useState<Timeframe>(
-    (mmkvPublic.getString(tfKey) as Timeframe) || '24H',
-  );
+  const [tf, setTf] = React.useState<Timeframe>(() => {
+    // Validate the persisted value — a stale 'All' (removed) falls back to 24H.
+    const stored = mmkvPublic.getString(tfKey) as Timeframe;
+    return TIMEFRAMES.includes(stored) ? stored : '24H';
+  });
   const onPickTf = (next: Timeframe) => {
     setTf(next);
     mmkvPublic.set(tfKey, next);

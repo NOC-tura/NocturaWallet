@@ -43,8 +43,10 @@ describe('fetchPriceHistory', () => {
 });
 
 describe('TIMEFRAME_DAYS', () => {
-  it('maps timeframes to day counts', () => {
+  it('maps timeframes to day counts; 1Y is the longest (free-tier 365d cap)', () => {
     expect(TIMEFRAME_DAYS['24H']).toBe(1);
-    expect(TIMEFRAME_DAYS.All).toBe('max');
+    expect(TIMEFRAME_DAYS['1Y']).toBe(365);
+    // No timeframe exceeds 365 — CoinGecko's free API rejects days>365 (HTTP 401).
+    expect(Math.max(...Object.values(TIMEFRAME_DAYS))).toBe(365);
   });
 });

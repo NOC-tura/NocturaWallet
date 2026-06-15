@@ -1,14 +1,15 @@
 import {USDC_MINT} from '../tokens/coreTokens';
 import {NOC_MINT} from '../../constants/programs';
 
-export type Timeframe = '24H' | '7D' | '30D' | '1Y' | 'All';
+export type Timeframe = '24H' | '7D' | '30D' | '1Y';
 
-export const TIMEFRAME_DAYS: Record<Timeframe, number | 'max'> = {
+// CoinGecko's free/public API caps historical data at 365 days (days>365 →
+// HTTP 401, error 10012), so '1Y' is the longest range offered.
+export const TIMEFRAME_DAYS: Record<Timeframe, number> = {
   '24H': 1,
   '7D': 7,
   '30D': 30,
   '1Y': 365,
-  All: 'max',
 };
 
 export interface PriceHistory {
