@@ -34,18 +34,7 @@ export const deepLinkConfig: LinkingOptions<RootStackParamList> = {
           ProfileTab: 'profile',
         },
       },
-      SendModal: {
-        screens: {
-          Send: {
-            path: 'pay',
-            parse: {
-              to: (to: string) => to,
-              amount: (amount: string) => amount,
-              token: (token: string) => token,
-            },
-          },
-        },
-      },
+      SendModal: 'pay',
       ReceiveModal: 'receive',
       ...shieldedDeepLinks,
     },

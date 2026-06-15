@@ -11,7 +11,7 @@ export type RootStackParamList = {
   };
   Onboarding: undefined;
   MainTabs: undefined;
-  SendModal: undefined; // Send flow as root-level modal (was tab)
+  SendModal: {initialMint?: string} | undefined; // Send flow as root-level modal (was tab)
   ReceiveModal: undefined; // Receive as root-level modal (was tab)
   ScanModal: undefined; // QR scanner (#14)
   NotificationsModal: undefined; // Notifications inbox (#29)
@@ -29,6 +29,7 @@ export type RootStackParamList = {
     recipient?: string;
   };
   AppUpdateModal: {storeUrl: string; message?: string};
+  TokenDetailModal: {mint: string};
 };
 
 export type OnboardingStackParamList = {
@@ -54,7 +55,7 @@ export type DashboardStackParamList = {
 };
 
 export type SendStackParamList = {
-  Send: undefined;
+  Send: {initialMint?: string} | undefined;
   TxSimulate: {intent: TransferIntent};
   TxConfirm: {intent: TransferIntent};
   TransactionStatus: {intent: TransferIntent};

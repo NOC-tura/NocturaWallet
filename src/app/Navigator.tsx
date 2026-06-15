@@ -396,10 +396,12 @@ function ZkProofScreenNav(
 function SendScreenNav() {
   const navigation = useNavigation<NativeStackNavigationProp<SendStackParamList>>();
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<SendStackParamList, 'Send'>>();
   return (
     <SendScreenImpl
       onReview={intent => navigation.navigate('TxSimulate', {intent})}
       onBack={() => rootNav.goBack()}
+      initialMint={route.params?.initialMint}
     />
   );
 }
@@ -562,9 +564,14 @@ function DashboardStack() {
 // Send Stack
 const SendNav = createNativeStackNavigator<SendStackParamList>();
 function SendStack() {
+  const route = useRoute<RouteProp<RootStackParamList, 'SendModal'>>();
   return (
     <SendNav.Navigator screenOptions={defaultScreenOptions}>
-      <SendNav.Screen name="Send" component={SendScreenNav} />
+      <SendNav.Screen
+        name="Send"
+        component={SendScreenNav}
+        initialParams={{initialMint: route.params?.initialMint}}
+      />
       <SendNav.Screen name="TxSimulate" component={TxSimulateScreenNav} />
       <SendNav.Screen name="TxConfirm" component={TxConfirmScreenNav} />
       <SendNav.Screen name="TransactionStatus" component={TransactionStatusScreenNav} />
