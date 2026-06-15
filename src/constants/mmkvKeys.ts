@@ -97,6 +97,9 @@ export const MMKV_KEYS = {
   JUPITER_VERIFIED_AT: 'v1_tokens.jupiterVerifiedAt',
   TOKEN_TIMEFRAME_PREFIX: 'v1_token.timeframe.',
 
+  // ─── Advanced swap settings [P] ─────────────────────────────────────
+  ADVANCED_SLIPPAGE_BPS: 'v1_advanced.slippageBps',
+
   // ─── Schema version [P] (no v1_ prefix — migration metadata) ───────
   SCHEMA_VERSION: 'schema_version',
 } as const;
