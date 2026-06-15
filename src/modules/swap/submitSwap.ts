@@ -30,10 +30,28 @@ export async function submitSwap(params: {
     const tx = VersionedTransaction.deserialize(Buffer.from(swapTransaction, 'base64'));
     tx.sign([signer]);
     const connection = getConnection();
-    const signature = await connection.sendRawTransaction(tx.serialize(), {
-      skipPreflight: true,
-      maxRetries: 0,
-    });
+    const raw = tx.serialize();
+    // Broadcast with a small retry: Helius can return a transient 504 / JSON-RPC
+    // -32504 "request timed out" on the larger Jupiter swap tx. Resending the
+    // SAME signed transaction is idempotent (the network dedups by signature),
+    // so retrying a transient send timeout is safe.
+    let signature: string | null = null;
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        signature = await connection.sendRawTransaction(raw, {
+          skipPreflight: true,
+          maxRetries: 2,
+        });
+        break;
+      } catch (e) {
+        lastErr = e;
+        await new Promise(r => setTimeout(r, 800));
+      }
+    }
+    if (signature === null) {
+      throw lastErr instanceof Error ? lastErr : new Error('Failed to broadcast swap');
+    }
     return {signature, lastValidBlockHeight};
   } finally {
     zeroize(secretKey);

@@ -28,11 +28,32 @@ jest.mock('@solana/web3.js', () => {
 });
 
 describe('submitSwap', () => {
+  beforeEach(() => {
+    mockSendRawTransaction.mockReset();
+    mockSendRawTransaction.mockResolvedValue('SWAPSIG');
+  });
+
   it('signs the Jupiter tx and broadcasts, returning the signature', async () => {
     const r = await submitSwap({quoteRaw: {route: true}, scheme: {kind: 'cli'} as never});
     expect(r.signature).toBe('SWAPSIG');
     expect(r.lastValidBlockHeight).toBe(999);
     expect(mockSendRawTransaction).toHaveBeenCalled();
     expect(mockZeroize).toHaveBeenCalled(); // secret key wiped
+  });
+
+  it('retries the broadcast on a transient send timeout (idempotent resend)', async () => {
+    mockSendRawTransaction
+      .mockRejectedValueOnce(new Error('504 request timed out'))
+      .mockRejectedValueOnce(new Error('504 request timed out'))
+      .mockResolvedValueOnce('RETRYSIG');
+    const r = await submitSwap({quoteRaw: {route: true}, scheme: {kind: 'cli'} as never});
+    expect(r.signature).toBe('RETRYSIG');
+    expect(mockSendRawTransaction).toHaveBeenCalledTimes(3);
+  });
+
+  it('throws after all broadcast attempts fail', async () => {
+    mockSendRawTransaction.mockReset();
+    mockSendRawTransaction.mockRejectedValue(new Error('504 request timed out'));
+    await expect(submitSwap({quoteRaw: {route: true}, scheme: {kind: 'cli'} as never})).rejects.toThrow();
   });
 });

@@ -53,6 +53,16 @@ type SwapState =
   | {kind: 'success'; signature: string}
   | {kind: 'failed'; reason: string};
 
+/** Map a raw swap error to a short, user-friendly message (no raw RPC JSON). */
+function friendlySwapError(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (/timed out|timeout|-32504|\b504\b/i.test(msg)) return 'Network timed out — please try again';
+  if (/blockhash|expired/i.test(msg)) return 'Swap expired — please try again';
+  if (/insufficient/i.test(msg)) return 'Insufficient balance for this swap';
+  if (/slippage/i.test(msg)) return 'Price moved beyond slippage — try again';
+  return 'Swap failed — please try again';
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 /** Slippage presets in basis points: 0.1% / 0.5% / 1.0% */
@@ -260,7 +270,7 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
       if (isMountedRef.current) {
         setSwapState({
           kind: 'failed',
-          reason: e instanceof Error ? e.message : 'Swap failed',
+          reason: friendlySwapError(e),
         });
       }
     }
