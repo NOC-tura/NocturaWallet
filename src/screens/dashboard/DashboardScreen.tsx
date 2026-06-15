@@ -44,6 +44,7 @@ import {cn} from '../../utils/cn';
 
 const SOLANA_LOGO = require('../../assets/tokens/solana-sol-logo.png');
 const NOC_LOGO = require('../../assets/tokens/noc-logo.png');
+const USDC_LOGO = require('../../assets/tokens/usdc-logo.png');
 
 /**
  * #11 Dashboard — Phase B migration · mirror /home/user/Downloads/index.html §s11
@@ -775,7 +776,19 @@ function TokenLogo({symbol, isNoc}: TokenLogoProps) {
       </View>
     );
   }
-  // USDC, BONK, and other SPL tokens — use the first letter
+  if (symbol === 'USDC') {
+    return (
+      <View className="w-10 h-10 rounded-pill items-center justify-center bg-bg-surface-2 overflow-hidden">
+        <Image
+          source={USDC_LOGO}
+          style={{width: 26, height: 26}}
+          resizeMode="contain"
+          accessibilityLabel="USD Coin logo"
+        />
+      </View>
+    );
+  }
+  // BONK and other SPL tokens — use the first letter
   return (
     <View className="w-10 h-10 rounded-pill items-center justify-center bg-bg-surface-2">
       <Text
