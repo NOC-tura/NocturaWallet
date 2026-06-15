@@ -37,9 +37,10 @@ describe('computePortfolio', () => {
     expect(r.change24hPct).toBeNull();
   });
 
-  it('handles missing price / zero balances', () => {
+  it('omits perToken entries for holdings with no price', () => {
     const r = computePortfolio([{mint: 'UNKNOWN', amountRaw: '5', decimals: 0}], prices);
     expect(r.totalUsd).toBe(0);
     expect(r.change24hPct).toBeNull();
+    expect(r.perToken.UNKNOWN).toBeUndefined();
   });
 });

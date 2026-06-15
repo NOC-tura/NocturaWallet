@@ -29,7 +29,8 @@ export function computePortfolio(
   for (const h of holdings) {
     const price = prices[h.mint];
     if (price == null) {
-      perToken[h.mint] = {usd: 0, change24h: null};
+      // No price for this mint → omit it from perToken so the UI hides the
+      // fiat column instead of showing a misleading $0.00.
       continue;
     }
     const uiAmount = Number(h.amountRaw) / Math.pow(10, h.decimals);
