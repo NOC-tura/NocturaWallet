@@ -2,6 +2,7 @@ import {
   parseTokenAmount,
   formatTokenAmount,
   formatBalanceForDisplay,
+  groupInteger,
 } from '../parseTokenAmount';
 
 describe('parseTokenAmount', () => {
@@ -123,5 +124,27 @@ describe('formatBalanceForDisplay', () => {
 
   it('rounds half-up to whole when maxDisplayDecimals=0 (1.5 SOL → "2")', () => {
     expect(formatBalanceForDisplay('1500000000', 9, 0)).toBe('2');
+  });
+});
+
+describe('groupInteger', () => {
+  it('groups thousands with commas', () => {
+    expect(groupInteger('69119998')).toBe('69,119,998');
+    expect(groupInteger('1234567')).toBe('1,234,567');
+    expect(groupInteger('1000')).toBe('1,000');
+  });
+  it('leaves short numbers unchanged', () => {
+    expect(groupInteger('17')).toBe('17');
+    expect(groupInteger('0')).toBe('0');
+    expect(groupInteger('999')).toBe('999');
+  });
+});
+
+describe('formatBalanceForDisplay grouping (on-device safe)', () => {
+  it('comma-groups a large 9-decimal balance', () => {
+    expect(formatBalanceForDisplay('69119998000000000', 9)).toBe('69,119,998');
+  });
+  it('keeps decimals for SOL', () => {
+    expect(formatBalanceForDisplay('17027600000', 9)).toBe('17.0276');
   });
 });

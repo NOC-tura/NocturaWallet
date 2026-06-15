@@ -25,6 +25,7 @@ import {
   CreditCard,
   ChevronRight,
   TrendingUp,
+  TrendingDown,
   Rocket,
 } from 'lucide-react-native';
 import {Text} from '../../components/ui';
@@ -37,13 +38,19 @@ import {forceSync} from '../../modules/backgroundSync/backgroundSyncModule';
 import {TokenManager} from '../../modules/tokens/tokenModule';
 import {NOC_MINT} from '../../constants/programs';
 import {isShieldedEnabled} from '../../constants/features';
-import {formatBalanceForDisplay} from '../../utils/parseTokenAmount';
+import {formatBalanceForDisplay, groupInteger} from '../../utils/parseTokenAmount';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {cn} from '../../utils/cn';
+import {usePrices} from '../../hooks/usePrices';
+import {computePortfolio, type Holding} from '../../modules/prices/portfolio';
+import type {TokenPrice} from '../../modules/prices/priceModule';
+import {nocUsdPriceForStage} from '../../constants/presale';
+import {usePresaleStore} from '../../store/zustand/presaleStore';
 
 const SOLANA_LOGO = require('../../assets/tokens/solana-sol-logo.png');
 const NOC_LOGO = require('../../assets/tokens/noc-logo.png');
+const USDC_LOGO = require('../../assets/tokens/usdc-logo.png');
 
 /**
  * #11 Dashboard — Phase B migration · mirror /home/user/Downloads/index.html §s11
@@ -95,7 +102,7 @@ function formatUsd(value: number): {whole: string; cents: string} {
   const safe = Number.isFinite(value) ? value : 0;
   const fixed = safe.toFixed(2);
   const [w, c] = fixed.split('.');
-  const whole = '$' + Number(w).toLocaleString('en-US');
+  const whole = '$' + groupInteger(w);
   return {whole, cents: `.${c ?? '00'}`};
 }
 
@@ -120,8 +127,41 @@ export function DashboardScreen({
   onTokenTap,
   onSeeAllTokens,
 }: DashboardScreenProps) {
-  const {publicKey, solBalance, nocBalance, totalUsdValue, tokens, tokenBalances} =
+  const {publicKey, solBalance, nocBalance, tokens, tokenBalances} =
     useWalletStore();
+
+  const {data: marketPrices} = usePrices();
+  const currentStage = usePresaleStore(s => s.currentStage);
+  const pricePerNoc = usePresaleStore(s => s.pricePerNoc);
+
+  const nocUsd =
+    pricePerNoc != null && Number(pricePerNoc) > 0
+      ? Number(pricePerNoc)
+      : nocUsdPriceForStage(currentStage);
+
+  const prices: Record<string, TokenPrice> = useMemo(
+    () => ({
+      ...(marketPrices ?? {}),
+      [NOC_MINT]: {usd: nocUsd, change24h: null},
+    }),
+    [marketPrices, nocUsd],
+  );
+
+  const holdings: Holding[] = useMemo(() => {
+    const list: Holding[] = [
+      {mint: 'native', amountRaw: solBalance || '0', decimals: SOL_DECIMALS},
+      {mint: NOC_MINT, amountRaw: (tokenBalances[NOC_MINT] ?? nocBalance) || '0', decimals: NOC_DECIMALS},
+    ];
+    for (const t of tokens) {
+      if (t.mint === NOC_MINT) continue;
+      list.push({mint: t.mint, amountRaw: tokenBalances[t.mint] ?? '0', decimals: t.decimals});
+    }
+    return list;
+  }, [solBalance, nocBalance, tokenBalances, tokens]);
+
+  const portfolio = useMemo(() => computePortfolio(holdings, prices), [holdings, prices]);
+  const havePrices = marketPrices != null;
+
   const {mode, setMode} = useShieldedStore();
   const hideBalances = usePublicSettingsStore(s => s.hideBalances);
   const setHideBalances = usePublicSettingsStore(s => s.setHideBalances);
@@ -250,7 +290,8 @@ export function DashboardScreen({
     return tokenManager.sortTokens([...defaults, ...tokens]);
   }, [tokens]);
 
-  const usd = formatUsd(totalUsdValue);
+  const usd = formatUsd(portfolio.totalUsd);
+  const change24h = portfolio.change24hPct; // number | null
   const avatarInitial = getAddressInitial(publicKey);
 
   return (
@@ -291,6 +332,8 @@ export function DashboardScreen({
             onNotifications={onNotifications}
             onProfileTap={onProfileTap}
             isOffline={!isOnline}
+            change24hPct={change24h}
+            havePrices={havePrices}
           />
         }
         renderItem={({item: token}) => {
@@ -302,6 +345,7 @@ export function DashboardScreen({
           if (isNativeSol) balance = solBalance;
           else if (isNoc) balance = tokenBalances[NOC_MINT] ?? nocBalance;
           else balance = tokenBalances[token.mint] ?? '0';
+          const fiat = portfolio.perToken[token.mint];
           return (
             <TokenListRow
               symbol={token.symbol}
@@ -312,6 +356,8 @@ export function DashboardScreen({
               mode={mode}
               isNoc={isNoc}
               onPress={onTokenTap ? () => onTokenTap(token.mint) : undefined}
+              usdValue={fiat?.usd ?? null}
+              change24h={fiat?.change24h ?? null}
             />
           );
         }}
@@ -353,6 +399,8 @@ interface DashboardHeaderProps {
   onNotifications?: () => void;
   onProfileTap?: () => void;
   isOffline: boolean;
+  change24hPct: number | null;
+  havePrices: boolean;
 }
 
 function DashboardHeader({
@@ -372,6 +420,8 @@ function DashboardHeader({
   onNotifications,
   onProfileTap,
   isOffline,
+  change24hPct,
+  havePrices,
 }: DashboardHeaderProps) {
   const isShielded = mode === 'shielded';
 
@@ -480,12 +530,18 @@ function DashboardHeader({
             </View>
           ) : (
             <View className="flex-row items-baseline mb-2">
-              <Text variant="balance-xl" numeral className="text-fg-primary">
-                {usd.whole}
-              </Text>
-              <Text variant="body-lg" numeral className="text-fg-secondary ml-0.5">
-                {usd.cents}
-              </Text>
+              {havePrices ? (
+                <>
+                  <Text variant="balance-xl" numeral className="text-fg-primary">
+                    {usd.whole}
+                  </Text>
+                  <Text variant="body-lg" numeral className="text-fg-secondary ml-0.5">
+                    {usd.cents}
+                  </Text>
+                </>
+              ) : (
+                <Text variant="balance-xl" className="text-fg-primary">—</Text>
+              )}
             </View>
           )}
 
@@ -502,12 +558,21 @@ function DashboardHeader({
               </Text>
             </View>
           ) : (
-            <View className="flex-row items-center gap-2 mb-3">
-              <TrendingUp size={14} color="#3FD68B" strokeWidth={2} />
-              <Text variant="body-sm" numeral className="text-success">
-                +2.34% · 24h
-              </Text>
-            </View>
+            change24hPct == null ? null : (
+              <View className="flex-row items-center gap-2 mb-3">
+                {change24hPct >= 0 ? (
+                  <TrendingUp size={14} color="#3FD68B" strokeWidth={2} />
+                ) : (
+                  <TrendingDown size={14} color="#F87171" strokeWidth={2} />
+                )}
+                <Text
+                  variant="body-sm"
+                  numeral
+                  className={change24hPct >= 0 ? 'text-success' : 'text-danger'}>
+                  {`${change24hPct >= 0 ? '+' : ''}${change24hPct.toFixed(2)}% · 24h`}
+                </Text>
+              </View>
+            )
           )}
 
           {/* Sub-balance · SOL + NOC */}
@@ -701,6 +766,8 @@ interface TokenListRowProps {
   mode: 'transparent' | 'shielded';
   isNoc: boolean;
   onPress?: () => void;
+  usdValue: number | null;
+  change24h: number | null;
 }
 
 function TokenListRow({
@@ -712,6 +779,8 @@ function TokenListRow({
   mode,
   isNoc,
   onPress,
+  usdValue,
+  change24h,
 }: TokenListRowProps) {
   const isShielded = mode === 'shielded';
   const formattedBalance = hidden
@@ -735,6 +804,28 @@ function TokenListRow({
           {isShielded ? ' · shielded' : ''}
         </Text>
       </View>
+      {!hidden && usdValue != null ? (
+        <View className="items-end mr-2">
+          <Text variant="body-lg" numeral className="text-fg-primary">
+            {(() => {
+              const u = formatUsd(usdValue);
+              return u.whole + u.cents;
+            })()}
+          </Text>
+          {change24h == null ? (
+            <Text variant="body-sm" className="text-fg-tertiary">
+              —
+            </Text>
+          ) : (
+            <Text
+              variant="body-sm"
+              numeral
+              className={change24h >= 0 ? 'text-success' : 'text-danger'}>
+              {`${change24h >= 0 ? '+' : ''}${change24h.toFixed(1)}%`}
+            </Text>
+          )}
+        </View>
+      ) : null}
       <ChevronRight size={18} color="#6E727A" strokeWidth={1.75} />
     </Pressable>
   );
@@ -775,7 +866,19 @@ function TokenLogo({symbol, isNoc}: TokenLogoProps) {
       </View>
     );
   }
-  // USDC, BONK, and other SPL tokens — use the first letter
+  if (symbol === 'USDC') {
+    return (
+      <View className="w-10 h-10 rounded-pill items-center justify-center bg-bg-surface-2 overflow-hidden">
+        <Image
+          source={USDC_LOGO}
+          style={{width: 26, height: 26}}
+          resizeMode="contain"
+          accessibilityLabel="USD Coin logo"
+        />
+      </View>
+    );
+  }
+  // BONK and other SPL tokens — use the first letter
   return (
     <View className="w-10 h-10 rounded-pill items-center justify-center bg-bg-surface-2">
       <Text

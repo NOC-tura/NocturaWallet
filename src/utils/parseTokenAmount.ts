@@ -11,6 +11,15 @@ export function parseTokenAmount(input: string, decimals: number): bigint {
   return BigInt(wholePart) * 10n ** BigInt(decimals) + BigInt(paddedFrac);
 }
 
+/**
+ * Insert thousands separators into a non-negative integer string.
+ * Implemented manually because Hermes `Number.toLocaleString('en-US')` does
+ * NOT group digits on-device (it works in Node/jest, which hides the bug).
+ */
+export function groupInteger(intStr: string): string {
+  return intStr.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
 export function formatTokenAmount(amount: bigint, decimals: number): string {
   const divisor = 10n ** BigInt(decimals);
   const whole = amount / divisor;
@@ -57,9 +66,9 @@ export function formatBalanceForDisplay(
   if (remainder === 0n || maxDisplayDecimals === 0) {
     // maxDisplayDecimals===0 case: round-half-up the fractional part into whole.
     if (maxDisplayDecimals === 0 && remainder >= divisor / 2n) {
-      return (whole + 1n).toLocaleString('en-US');
+      return groupInteger((whole + 1n).toString());
     }
-    return whole.toLocaleString('en-US');
+    return groupInteger(whole.toString());
   }
 
   // Round fractional to maxDisplayDecimals using bigint division (round-half-up).
@@ -77,12 +86,12 @@ export function formatBalanceForDisplay(
   // Rounding may overflow into whole (e.g. 1.99995 → carry → 2).
   const maxFrac = 10n ** BigInt(maxDisplayDecimals);
   if (fracBig >= maxFrac) {
-    return (whole + 1n).toLocaleString('en-US');
+    return groupInteger((whole + 1n).toString());
   }
 
   let fracStr = fracBig.toString().padStart(maxDisplayDecimals, '0');
   fracStr = fracStr.replace(/0+$/, '');
-  if (fracStr === '') return whole.toLocaleString('en-US');
+  if (fracStr === '') return groupInteger(whole.toString());
 
-  return `${whole.toLocaleString('en-US')}.${fracStr}`;
+  return `${groupInteger(whole.toString())}.${fracStr}`;
 }
