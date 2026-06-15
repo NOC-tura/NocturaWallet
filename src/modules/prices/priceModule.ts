@@ -1,8 +1,17 @@
 import {USDC_MINT} from '../tokens/coreTokens';
+import {COINGECKO_API_KEY} from '../../constants/programs';
 
 export interface TokenPrice {
   usd: number;
   change24h: number | null; // percent; null when unknown
+}
+
+/**
+ * Auth header for CoinGecko when a Demo API key is configured (lifts the
+ * ~2/min public-tier limit to ~30/min). Empty → public tier (no header).
+ */
+export function coingeckoHeaders(): Record<string, string> | undefined {
+  return COINGECKO_API_KEY ? {'x-cg-demo-api-key': COINGECKO_API_KEY} : undefined;
 }
 
 const COINGECKO_URL =
@@ -24,7 +33,10 @@ export async function fetchPrices(): Promise<Record<string, TokenPrice>> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 6000);
   try {
-    const res = await fetch(COINGECKO_URL, {signal: controller.signal});
+    const res = await fetch(COINGECKO_URL, {
+      signal: controller.signal,
+      headers: coingeckoHeaders(),
+    });
     if (!res.ok) {
       throw new Error(`CoinGecko HTTP ${res.status}`);
     }

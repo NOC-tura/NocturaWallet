@@ -1,5 +1,6 @@
 import {USDC_MINT} from '../tokens/coreTokens';
 import {NOC_MINT} from '../../constants/programs';
+import {coingeckoHeaders} from './priceModule';
 
 export type Timeframe = '24H' | '7D' | '30D' | '1Y';
 
@@ -46,7 +47,7 @@ export async function fetchPriceHistory(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {
-    const res = await fetch(url, {signal: controller.signal});
+    const res = await fetch(url, {signal: controller.signal, headers: coingeckoHeaders()});
     if (!res.ok) throw new Error(`CoinGecko market_chart HTTP ${res.status}`);
     const body = (await res.json()) as {prices?: [number, number][]};
     if (!Array.isArray(body.prices)) throw new Error('market_chart missing prices');
