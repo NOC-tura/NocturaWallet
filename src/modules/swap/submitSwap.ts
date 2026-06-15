@@ -31,21 +31,27 @@ export async function submitSwap(params: {
     tx.sign([signer]);
     const connection = getConnection();
     const raw = tx.serialize();
-    // Broadcast with a small retry: Helius can return a transient 504 / JSON-RPC
-    // -32504 "request timed out" on the larger Jupiter swap tx. Resending the
-    // SAME signed transaction is idempotent (the network dedups by signature),
-    // so retrying a transient send timeout is safe.
+    // skipPreflight is intentionally FALSE: Helius's skipPreflight=true
+    // sendTransaction path is pathologically slow for Jupiter swap txs (it
+    // retries internally for ~60s → the request times out with HTTP 504 /
+    // JSON-RPC -32504 and the tx never lands). With preflight ON, Helius
+    // simulates (sub-second) and forwards quickly, and an invalid swap is
+    // rejected with a real error instead of a 504 hang. A small retry covers a
+    // genuinely transient send error (resending the same signed tx is
+    // idempotent — the network dedups by signature).
     let signature: string | null = null;
     let lastErr: unknown;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         signature = await connection.sendRawTransaction(raw, {
-          skipPreflight: true,
+          skipPreflight: false,
           maxRetries: 2,
         });
         break;
       } catch (e) {
         lastErr = e;
+        // A deterministic preflight failure (e.g. slippage) won't recover on
+        // retry, but a transient network/gateway error can — keep it cheap.
         await new Promise(r => setTimeout(r, 800));
       }
     }
