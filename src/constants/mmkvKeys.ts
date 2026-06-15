@@ -95,6 +95,7 @@ export const MMKV_KEYS = {
   // ─── Tokens [P] ─────────────────────────────────────────────────────
   JUPITER_VERIFIED_LIST: 'v1_tokens.jupiterVerified',
   JUPITER_VERIFIED_AT: 'v1_tokens.jupiterVerifiedAt',
+  TOKEN_TIMEFRAME_PREFIX: 'v1_token.timeframe.',
 
   // ─── Schema version [P] (no v1_ prefix — migration metadata) ───────
   SCHEMA_VERSION: 'schema_version',

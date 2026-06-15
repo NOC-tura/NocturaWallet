@@ -91,6 +91,7 @@ const SOL_TOKEN: TokenInfo = {mint: SOL_MINT, symbol: 'SOL', decimals: SOL_DECIM
 export interface SendScreenProps {
   onReview: (intent: import('../../types/transfer').TransferIntent) => void;
   onBack?: () => void;
+  initialMint?: string;
 }
 
 /**
@@ -110,7 +111,7 @@ export interface SendScreenProps {
  *   - QR scanner integration (#14 still placeholder)
  *   - Bottom-sheet token picker (currently cycles on tap)
  */
-export function SendScreen({onReview, onBack}: SendScreenProps) {
+export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
   const {solBalance, tokens: storeTokens, tokenBalances} = useWalletStore();
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
@@ -141,7 +142,7 @@ export function SendScreen({onReview, onBack}: SendScreenProps) {
   const [recipient, setRecipient] = useState('');
   const [recipientError, setRecipientError] = useState('');
   const [suggestions, setSuggestions] = useState<Contact[]>([]);
-  const [selectedMint, setSelectedMint] = useState(SOL_MINT);
+  const [selectedMint, setSelectedMint] = useState(initialMint ?? SOL_MINT);
   const [amount, setAmount] = useState('');
   const [priorityLevel, setPriorityLevel] = useState<PriorityLevel>('normal');
 
