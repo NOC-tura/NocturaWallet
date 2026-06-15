@@ -6,7 +6,6 @@ import {
   RefreshControl,
   StatusBar,
   Vibration,
-  Image,
   Alert,
   AppState,
   type AppStateStatus,
@@ -38,19 +37,16 @@ import {forceSync} from '../../modules/backgroundSync/backgroundSyncModule';
 import {TokenManager} from '../../modules/tokens/tokenModule';
 import {NOC_MINT} from '../../constants/programs';
 import {isShieldedEnabled} from '../../constants/features';
-import {formatBalanceForDisplay, groupInteger} from '../../utils/parseTokenAmount';
+import {formatBalanceForDisplay} from '../../utils/parseTokenAmount';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {cn} from '../../utils/cn';
-import {usePrices} from '../../hooks/usePrices';
 import {computePortfolio, type Holding} from '../../modules/prices/portfolio';
-import type {TokenPrice} from '../../modules/prices/priceModule';
-import {nocUsdPriceForStage} from '../../constants/presale';
-import {usePresaleStore} from '../../store/zustand/presaleStore';
+import {buildHoldings} from '../../modules/prices/holdings';
+import {useResolvedPrices} from '../../hooks/useResolvedPrices';
+import {formatUsd, formatUsdString} from '../../utils/formatUsd';
+import {TokenLogo} from '../../components/TokenLogo';
 
-const SOLANA_LOGO = require('../../assets/tokens/solana-sol-logo.png');
-const NOC_LOGO = require('../../assets/tokens/noc-logo.png');
-const USDC_LOGO = require('../../assets/tokens/usdc-logo.png');
 
 /**
  * #11 Dashboard — Phase B migration · mirror /home/user/Downloads/index.html §s11
@@ -98,14 +94,6 @@ interface DashboardScreenProps {
   onSeeAllTokens?: () => void;
 }
 
-function formatUsd(value: number): {whole: string; cents: string} {
-  const safe = Number.isFinite(value) ? value : 0;
-  const fixed = safe.toFixed(2);
-  const [w, c] = fixed.split('.');
-  const whole = '$' + groupInteger(w);
-  return {whole, cents: `.${c ?? '00'}`};
-}
-
 const SOL_DECIMALS = 9;
 const NOC_DECIMALS = 9;
 
@@ -130,37 +118,14 @@ export function DashboardScreen({
   const {publicKey, solBalance, nocBalance, tokens, tokenBalances} =
     useWalletStore();
 
-  const {data: marketPrices} = usePrices();
-  const currentStage = usePresaleStore(s => s.currentStage);
-  const pricePerNoc = usePresaleStore(s => s.pricePerNoc);
+  const {prices, havePrices} = useResolvedPrices();
 
-  const nocUsd =
-    pricePerNoc != null && Number(pricePerNoc) > 0
-      ? Number(pricePerNoc)
-      : nocUsdPriceForStage(currentStage);
-
-  const prices: Record<string, TokenPrice> = useMemo(
-    () => ({
-      ...(marketPrices ?? {}),
-      [NOC_MINT]: {usd: nocUsd, change24h: null},
-    }),
-    [marketPrices, nocUsd],
+  const holdings: Holding[] = useMemo(
+    () => buildHoldings({solBalance, nocBalance, tokenBalances, tokens}),
+    [solBalance, nocBalance, tokenBalances, tokens],
   );
 
-  const holdings: Holding[] = useMemo(() => {
-    const list: Holding[] = [
-      {mint: 'native', amountRaw: solBalance || '0', decimals: SOL_DECIMALS},
-      {mint: NOC_MINT, amountRaw: (tokenBalances[NOC_MINT] ?? nocBalance) || '0', decimals: NOC_DECIMALS},
-    ];
-    for (const t of tokens) {
-      if (t.mint === NOC_MINT) continue;
-      list.push({mint: t.mint, amountRaw: tokenBalances[t.mint] ?? '0', decimals: t.decimals});
-    }
-    return list;
-  }, [solBalance, nocBalance, tokenBalances, tokens]);
-
   const portfolio = useMemo(() => computePortfolio(holdings, prices), [holdings, prices]);
-  const havePrices = marketPrices != null;
 
   const {mode, setMode} = useShieldedStore();
   const hideBalances = usePublicSettingsStore(s => s.hideBalances);
@@ -807,10 +772,7 @@ function TokenListRow({
       {!hidden && usdValue != null ? (
         <View className="items-end mr-2">
           <Text variant="body-lg" numeral className="text-fg-primary">
-            {(() => {
-              const u = formatUsd(usdValue);
-              return u.whole + u.cents;
-            })()}
+            {formatUsdString(usdValue)}
           </Text>
           {change24h == null ? (
             <Text variant="body-sm" className="text-fg-tertiary">
@@ -828,66 +790,6 @@ function TokenListRow({
       ) : null}
       <ChevronRight size={18} color="#6E727A" strokeWidth={1.75} />
     </Pressable>
-  );
-}
-
-// ── Token logo · per-token brand badge ──────────────────────────────────────
-// Known tokens get brand colors + white text. Unknown SPL tokens fall back to
-// the neutral surface-2 chip with first letter.
-// (NOC keeps accent-tint until user supplies a real PNG/SVG asset.)
-
-interface TokenLogoProps {
-  symbol: string;
-  isNoc: boolean;
-}
-
-function TokenLogo({symbol, isNoc}: TokenLogoProps) {
-  if (symbol === 'SOL') {
-    return (
-      <View className="w-10 h-10 rounded-pill items-center justify-center bg-bg-surface-2 overflow-hidden">
-        <Image
-          source={SOLANA_LOGO}
-          style={{width: 22, height: 22}}
-          resizeMode="contain"
-          accessibilityLabel="Solana logo"
-        />
-      </View>
-    );
-  }
-  if (isNoc) {
-    return (
-      <View className="w-10 h-10 rounded-pill items-center justify-center bg-bg-surface-2 overflow-hidden">
-        <Image
-          source={NOC_LOGO}
-          style={{width: 28, height: 28}}
-          resizeMode="contain"
-          accessibilityLabel="Noctura logo"
-        />
-      </View>
-    );
-  }
-  if (symbol === 'USDC') {
-    return (
-      <View className="w-10 h-10 rounded-pill items-center justify-center bg-bg-surface-2 overflow-hidden">
-        <Image
-          source={USDC_LOGO}
-          style={{width: 26, height: 26}}
-          resizeMode="contain"
-          accessibilityLabel="USD Coin logo"
-        />
-      </View>
-    );
-  }
-  // BONK and other SPL tokens — use the first letter
-  return (
-    <View className="w-10 h-10 rounded-pill items-center justify-center bg-bg-surface-2">
-      <Text
-        variant="body-sm"
-        numberOfLines={1}
-        className="font-geist-semibold text-fg-primary">
-        {symbol.charAt(0)}
-      </Text>
-    </View>
   );
 }
 
