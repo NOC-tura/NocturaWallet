@@ -11,6 +11,23 @@ jest.mock('../../solana/queries', () => ({
   getTokenAccounts: jest.fn(),
 }));
 
+// Mock TokenManager so fetchVerifiedList doesn't make real HTTP calls.
+jest.mock('../../tokens/tokenModule', () => {
+  return {
+    TokenManager: jest.fn().mockImplementation(() => ({
+      fetchVerifiedList: jest.fn().mockResolvedValue([]),
+      buildDisplayTokens: jest.fn().mockReturnValue([]),
+    })),
+  };
+});
+
+// Mock tokenMetadata so DAS + MMKV are not touched in tests.
+jest.mock('../../tokens/tokenMetadata', () => ({
+  fetchTokenMetadata: jest.fn().mockResolvedValue({}),
+  loadCachedMetadata: jest.fn().mockReturnValue({}),
+  saveCachedMetadata: jest.fn(),
+}));
+
 import {getBalance, getTokenAccounts} from '../../solana/queries';
 
 const mockGetBalance = getBalance as jest.MockedFunction<typeof getBalance>;

@@ -4,6 +4,7 @@ import {useWalletStore} from '../../store/zustand/walletStore';
 import {PublicKey} from '@solana/web3.js';
 import {NOC_MINT} from '../../constants/programs';
 import {TokenManager} from '../tokens/tokenModule';
+import {fetchTokenMetadata, loadCachedMetadata, saveCachedMetadata} from '../tokens/tokenMetadata';
 
 const tokenManager = new TokenManager();
 
@@ -67,9 +68,31 @@ export async function forceSync(): Promise<SyncResult> {
     // mint→amount map, not the per-token metadata the list iterates over. Only
     // refresh when the fetch succeeded, so a failed sync never clobbers the list.
     if (tokenAccounts.status === 'fulfilled') {
+      // Load the Jupiter verified list so verified (non-core) held tokens pass
+      // buildDisplayTokens' trust filter. Best-effort — it caches internally.
+      try {
+        await tokenManager.fetchVerifiedList();
+      } catch {
+        // verified list unavailable — only core tokens will show this sync
+      }
+
+      // Resolve name/symbol/logo for held non-core mints via Helius DAS, warm-
+      // starting from the MMKV cache so a failed/slow fetch still shows logos.
+      const heldMints = tokenAccounts.value
+        .filter(t => t.amount !== '0' && t.mint !== NOC_MINT)
+        .map(t => t.mint);
+      let meta = loadCachedMetadata();
+      try {
+        const resolved = await fetchTokenMetadata(heldMints);
+        meta = {...meta, ...resolved};
+        saveCachedMetadata(meta);
+      } catch {
+        // DAS unavailable — keep the cached metadata
+      }
+
       useWalletStore
         .getState()
-        .setTokens(tokenManager.buildDisplayTokens(tokenAccounts.value));
+        .setTokens(tokenManager.buildDisplayTokens(tokenAccounts.value, meta));
     }
 
     return {
