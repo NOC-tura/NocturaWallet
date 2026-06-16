@@ -5,6 +5,7 @@ import {Text} from './ui';
 const SOLANA_LOGO = require('../assets/tokens/solana-sol-logo.png');
 const NOC_LOGO = require('../assets/tokens/noc-logo.png');
 const USDC_LOGO = require('../assets/tokens/usdc-logo.png');
+const USDT_LOGO = require('../assets/tokens/usdt-logo.png');
 
 export interface TokenLogoProps {
   symbol: string;
@@ -44,6 +45,18 @@ export function TokenLogo({symbol, isNoc}: TokenLogoProps) {
           style={{width: 26, height: 26}}
           resizeMode="contain"
           accessibilityLabel="USD Coin logo"
+        />
+      </View>
+    );
+  }
+  if (symbol === 'USDT') {
+    return (
+      <View className="w-10 h-10 rounded-pill items-center justify-center bg-bg-surface-2 overflow-hidden">
+        <Image
+          source={USDT_LOGO}
+          style={{width: 26, height: 26}}
+          resizeMode="contain"
+          accessibilityLabel="Tether USD logo"
         />
       </View>
     );

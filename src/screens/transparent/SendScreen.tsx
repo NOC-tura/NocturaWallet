@@ -6,7 +6,6 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   Image,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
@@ -35,6 +34,7 @@ import {awaitContactSelection} from '../../modules/session/pendingContactSelect'
 import type {RootStackParamList} from '../../types/navigation';
 import {NOC_MINT, NOC_DECIMALS} from '../../constants/programs';
 import {cn} from '../../utils/cn';
+import {TokenPickerSheet} from '../../components/TokenPickerSheet';
 
 const SOLANA_LOGO = require('../../assets/tokens/solana-sol-logo.png');
 const NOC_LOGO = require('../../assets/tokens/noc-logo.png');
@@ -83,10 +83,11 @@ type PriorityLevel = 'normal' | 'fast' | 'urgent';
 interface TokenInfo {
   mint: string;
   symbol: string;
+  name: string;
   decimals: number;
 }
 
-const SOL_TOKEN: TokenInfo = {mint: SOL_MINT, symbol: 'SOL', decimals: SOL_DECIMALS};
+const SOL_TOKEN: TokenInfo = {mint: SOL_MINT, symbol: 'SOL', name: 'Solana', decimals: SOL_DECIMALS};
 
 export interface SendScreenProps {
   onReview: (intent: import('../../types/transfer').TransferIntent) => void;
@@ -109,10 +110,10 @@ export interface SendScreenProps {
  *   - Shielded variant (#12.2 — privacy meter + ZK fee row)
  *   - First-time recipient banner + checksum highlight
  *   - QR scanner integration (#14 still placeholder)
- *   - Bottom-sheet token picker (currently cycles on tap)
+ *   - Bottom-sheet token picker (TokenPickerSheet)
  */
 export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
-  const {solBalance, tokens: storeTokens, tokenBalances} = useWalletStore();
+  const {solBalance, nocBalance, tokens: storeTokens, tokenBalances} = useWalletStore();
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   // Default token list: ALWAYS include SOL + NOC even if not in the dynamic
@@ -123,6 +124,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
     const splTokens: TokenInfo[] = storeTokens.map(t => ({
       mint: t.mint,
       symbol: t.symbol,
+      name: t.name,
       decimals: t.decimals,
     }));
     const hasNoc = splTokens.some(t => t.mint === NOC_MINT);
@@ -130,6 +132,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
       splTokens.unshift({
         mint: NOC_MINT,
         symbol: 'NOC',
+        name: 'Noctura',
         decimals: NOC_DECIMALS,
       });
     }
@@ -145,6 +148,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
   const [selectedMint, setSelectedMint] = useState(initialMint ?? SOL_MINT);
   const [amount, setAmount] = useState('');
   const [priorityLevel, setPriorityLevel] = useState<PriorityLevel>('normal');
+  const [pickerVisible, setPickerVisible] = useState(false);
 
   const selectedToken = useMemo(
     () => availableTokens.find(t => t.mint === selectedMint) ?? SOL_TOKEN,
@@ -247,27 +251,6 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
       handleRecipientChange(contact.address);
     }
   }, [rootNav, handleRecipientChange]);
-
-  const handleOpenTokenPicker = useCallback(() => {
-    if (availableTokens.length < 2) return;
-    // Native Alert action sheet — works on both Android + iOS, supports up to
-    // ~5 options comfortably. Full bottom-sheet picker can land later as a
-    // separate primitive (#43 bottom-sheet component).
-    const buttons: Array<{
-      text: string;
-      onPress?: () => void;
-      style?: 'cancel' | 'default' | 'destructive';
-    }> = availableTokens.map(t => ({
-      text: t.mint === selectedMint ? `${t.symbol}  ✓` : t.symbol,
-      onPress: () => {
-        if (t.mint === selectedMint) return;
-        setSelectedMint(t.mint);
-        setAmount('');
-      },
-    }));
-    buttons.push({text: 'Cancel', style: 'cancel'});
-    Alert.alert('Select token', '', buttons);
-  }, [availableTokens, selectedMint]);
 
   // Insufficient balance check
   const insufficientBalance = useMemo(() => {
@@ -379,7 +362,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
               Token
             </Text>
             <Pressable
-              onPress={handleOpenTokenPicker}
+              onPress={() => setPickerVisible(true)}
               accessibilityRole="button"
               accessibilityLabel={`Token ${selectedToken.symbol}, tap to change`}
               testID="token-picker"
@@ -645,6 +628,20 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+
+      <TokenPickerSheet
+        visible={pickerVisible}
+        title="Select token"
+        tokens={availableTokens}
+        selectedMint={selectedMint}
+        balances={{native: solBalance, [NOC_MINT]: nocBalance, ...tokenBalances}}
+        onSelect={mint => {
+          setSelectedMint(mint);
+          setAmount('');
+          setPickerVisible(false);
+        }}
+        onClose={() => setPickerVisible(false)}
+      />
     </SafeAreaView>
   );
 }

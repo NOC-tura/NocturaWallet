@@ -35,6 +35,10 @@ jest.mock('../../../store/mmkv/instances', () => ({
   onSecureMmkvReady: jest.fn(),
 }));
 
+jest.mock('../../../modules/swap/swapTokens', () => ({
+  isSwappable: (mint: string) => mint === 'native' || mint === 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+}));
+
 jest.mock('../../../constants/programs', () => ({
   NOC_MINT: 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW',
   NOC_DECIMALS: 9,
@@ -76,6 +80,7 @@ it('renders Send action button', () => {
         onBack={() => {}}
         onSend={jest.fn()}
         onReceive={() => {}}
+        onSwap={jest.fn()}
       />,
     ),
   );
@@ -90,6 +95,7 @@ it('renders Receive action button', () => {
         onBack={() => {}}
         onSend={jest.fn()}
         onReceive={() => {}}
+        onSwap={jest.fn()}
       />,
     ),
   );
@@ -104,6 +110,7 @@ it('renders token symbol in top bar', () => {
         onBack={() => {}}
         onSend={jest.fn()}
         onReceive={() => {}}
+        onSwap={jest.fn()}
       />,
     ),
   );
@@ -119,25 +126,44 @@ it('renders holdings card overline', () => {
         onBack={() => {}}
         onSend={jest.fn()}
         onReceive={() => {}}
+        onSwap={jest.fn()}
       />,
     ),
   );
   expect(getByText('YOUR HOLDINGS')).toBeTruthy();
 });
 
-it('renders Swap action with Soon sub-label', () => {
-  const {getByText} = render(
+it('renders Swap action for swappable token (SOL)', () => {
+  const {getByText, queryByText} = render(
     withSafeArea(
       <TokenDetailScreen
         mint="native"
         onBack={() => {}}
         onSend={jest.fn()}
         onReceive={() => {}}
+        onSwap={jest.fn()}
       />,
     ),
   );
+  // SOL is swappable → Swap cell renders, no "Soon" label
   expect(getByText('Swap')).toBeTruthy();
-  expect(getByText('Soon')).toBeTruthy();
+  expect(queryByText('Soon')).toBeNull();
+});
+
+it('hides Swap action for NOC (not swappable)', () => {
+  const {queryByText} = render(
+    withSafeArea(
+      <TokenDetailScreen
+        mint="B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW"
+        onBack={() => {}}
+        onSend={jest.fn()}
+        onReceive={() => {}}
+        onSwap={jest.fn()}
+      />,
+    ),
+  );
+  // NOC is not swappable → Swap cell must not render at all
+  expect(queryByText('Swap')).toBeNull();
 });
 
 it('renders NOC variant with pre-TGE ticker and no chart', () => {
@@ -148,6 +174,7 @@ it('renders NOC variant with pre-TGE ticker and no chart', () => {
         onBack={() => {}}
         onSend={jest.fn()}
         onReceive={() => {}}
+        onSwap={jest.fn()}
       />,
     ),
   );

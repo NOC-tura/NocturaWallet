@@ -65,6 +65,7 @@ import {ScanScreen} from '../screens/scan/ScanScreen';
 import {AddressBookScreen} from '../screens/addressBook/AddressBookScreen';
 import {selectContact, cancelContactSelection} from '../modules/session/pendingContactSelect';
 import {ShieldUnshieldScreen} from '../screens/shielded/ShieldUnshieldScreen';
+import {SwapScreen} from '../screens/transparent/SwapScreen';
 import {Alert} from 'react-native';
 
 // Wrapper components that wire screens to navigation
@@ -292,6 +293,7 @@ function DashboardScreenNav() {
           rootNav.navigate('ShieldUnshieldModal', {direction: 'private'});
         }
       }}
+      onSwap={() => rootNav.navigate('SwapModal')}
       onBuy={() => dashNav.navigate('Presale')}
       onScan={() => rootNav.navigate('ScanModal')}
       onNotifications={() => rootNav.navigate('NotificationsModal')}
@@ -388,6 +390,19 @@ function TokenDetailScreenNav() {
       onBack={() => rootNav.goBack()}
       onSend={mint => rootNav.navigate('SendModal', {initialMint: mint})}
       onReceive={() => rootNav.navigate('ReceiveModal')}
+      onSwap={mint => rootNav.navigate('SwapModal', {initialFromMint: mint})}
+    />
+  );
+}
+
+function SwapScreenNav() {
+  const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<RootStackParamList, 'SwapModal'>>();
+  return (
+    <SwapScreen
+      initialFromMint={route.params?.initialFromMint}
+      onBack={() => rootNav.goBack()}
+      onDone={() => rootNav.goBack()}
     />
   );
 }
@@ -688,6 +703,7 @@ export function RootNavigator() {
       <RootNav.Screen name="SendModal" component={SendStack} options={modalScreenOptions} />
       <RootNav.Screen name="ReceiveModal" component={ReceiveScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="TokenDetailModal" component={TokenDetailScreenNav} options={modalScreenOptions} />
+      <RootNav.Screen name="SwapModal" component={SwapScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="ScanModal" component={ScanScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="NotificationsModal" component={NotificationsScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="AddressBookModal" component={AddressBookScreenNav} options={modalScreenOptions} />

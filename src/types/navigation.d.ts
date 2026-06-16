@@ -30,6 +30,7 @@ export type RootStackParamList = {
   };
   AppUpdateModal: {storeUrl: string; message?: string};
   TokenDetailModal: {mint: string};
+  SwapModal: {initialFromMint?: string} | undefined;
 };
 
 export type OnboardingStackParamList = {
