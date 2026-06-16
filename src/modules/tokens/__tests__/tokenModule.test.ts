@@ -332,3 +332,29 @@ describe('buildDisplayTokens', () => {
     expect(tm.buildDisplayTokens([acct(UNKNOWN_MINT, '999', 0)])).toEqual([]);
   });
 });
+
+describe('buildDisplayTokens enrichment', () => {
+  it('applies resolved name/symbol/logoUri to a non-core (verified) token', () => {
+    const tm = new TokenManager();
+    const VERIFIED = 'VerifiedMint1111111111111111111111111111111';
+    jest.spyOn(tm, 'classifyToken').mockImplementation(m => (m === VERIFIED ? 'verified' : 'unknown'));
+    const result = tm.buildDisplayTokens(
+      [{mint: VERIFIED, amount: '5', decimals: 5}],
+      {[VERIFIED]: {name: 'Bonk', symbol: 'BONK', logoUri: 'https://cdn.helius-rpc.com/b'}},
+    );
+    const t = result.find(x => x.mint === VERIFIED);
+    expect(t).toMatchObject({symbol: 'BONK', name: 'Bonk', logoUri: 'https://cdn.helius-rpc.com/b', decimals: 5});
+  });
+
+  it('keeps core tokens on bundled assets (no logoUri) even if meta provided', () => {
+    const tm = new TokenManager();
+    const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+    const r = tm.buildDisplayTokens(
+      [{mint: USDC, amount: '1000000', decimals: 6}],
+      {[USDC]: {name: 'X', symbol: 'X', logoUri: 'https://cdn/x'}},
+    );
+    const t = r.find(x => x.mint === USDC);
+    expect(t).toMatchObject({symbol: 'USDC', name: 'USD Coin'});
+    expect(t?.logoUri).toBeUndefined();
+  });
+});

@@ -10,9 +10,12 @@ const USDT_LOGO = require('../assets/tokens/usdt-logo.png');
 export interface TokenLogoProps {
   symbol: string;
   isNoc: boolean;
+  logoUri?: string;
 }
 
-export function TokenLogo({symbol, isNoc}: TokenLogoProps) {
+export function TokenLogo({symbol, isNoc, logoUri}: TokenLogoProps) {
+  const [failed, setFailed] = React.useState(false);
+
   if (symbol === 'SOL') {
     return (
       <View className="w-10 h-10 rounded-pill items-center justify-center bg-bg-surface-2 overflow-hidden">
@@ -61,6 +64,20 @@ export function TokenLogo({symbol, isNoc}: TokenLogoProps) {
       </View>
     );
   }
+  if (logoUri && !failed) {
+    return (
+      <View className="w-10 h-10 rounded-pill items-center justify-center bg-bg-surface-2 overflow-hidden">
+        <Image
+          source={{uri: logoUri}}
+          style={{width: 40, height: 40}}
+          resizeMode="cover"
+          onError={() => setFailed(true)}
+          accessibilityLabel={`${symbol} logo`}
+        />
+      </View>
+    );
+  }
+
   // BONK and other SPL tokens — use the first letter
   return (
     <View className="w-10 h-10 rounded-pill items-center justify-center bg-bg-surface-2">

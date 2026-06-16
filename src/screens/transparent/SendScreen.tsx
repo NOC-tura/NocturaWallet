@@ -6,7 +6,6 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Image,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useNavigation} from '@react-navigation/native';
@@ -24,6 +23,7 @@ import {
 } from 'lucide-react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import {Text} from '../../components/ui';
+import {TokenLogo} from '../../components/TokenLogo';
 import {validateRecipientInput} from '../../utils/validateAddress';
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
 import {useWalletStore} from '../../store/zustand/walletStore';
@@ -35,9 +35,6 @@ import type {RootStackParamList} from '../../types/navigation';
 import {NOC_MINT, NOC_DECIMALS} from '../../constants/programs';
 import {cn} from '../../utils/cn';
 import {TokenPickerSheet} from '../../components/TokenPickerSheet';
-
-const SOLANA_LOGO = require('../../assets/tokens/solana-sol-logo.png');
-const NOC_LOGO = require('../../assets/tokens/noc-logo.png');
 
 // ── Fee constants (lamports) ────────────────────────────────────────────────
 //
@@ -85,6 +82,7 @@ interface TokenInfo {
   symbol: string;
   name: string;
   decimals: number;
+  logoUri?: string;
 }
 
 const SOL_TOKEN: TokenInfo = {mint: SOL_MINT, symbol: 'SOL', name: 'Solana', decimals: SOL_DECIMALS};
@@ -126,6 +124,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
       symbol: t.symbol,
       name: t.name,
       decimals: t.decimals,
+      logoUri: t.logoUri,
     }));
     const hasNoc = splTokens.some(t => t.mint === NOC_MINT);
     if (!hasNoc) {
@@ -367,7 +366,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
               accessibilityLabel={`Token ${selectedToken.symbol}, tap to change`}
               testID="token-picker"
               className="flex-row items-center gap-3 p-4 rounded-md bg-bg-surface-1 border border-bg-surface-3 active:bg-bg-surface-2">
-              <TokenLogo symbol={selectedToken.symbol} mint={selectedToken.mint} />
+              <TokenLogo symbol={selectedToken.symbol} isNoc={selectedToken.mint === NOC_MINT} logoUri={selectedToken.logoUri} />
               <Text variant="body-lg" className="flex-1 text-fg-primary">
                 {selectedToken.symbol}
               </Text>
@@ -643,42 +642,6 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
         onClose={() => setPickerVisible(false)}
       />
     </SafeAreaView>
-  );
-}
-
-// ── Token logo helper ──────────────────────────────────────────────────────
-
-function TokenLogo({symbol, mint}: {symbol: string; mint: string}) {
-  if (symbol === 'SOL' || mint === SOL_MINT) {
-    return (
-      <View className="w-9 h-9 rounded-pill items-center justify-center bg-bg-surface-2 overflow-hidden">
-        <Image
-          source={SOLANA_LOGO}
-          style={{width: 20, height: 20}}
-          resizeMode="contain"
-          accessibilityLabel="Solana logo"
-        />
-      </View>
-    );
-  }
-  if (mint === NOC_MINT) {
-    return (
-      <View className="w-9 h-9 rounded-pill items-center justify-center bg-bg-surface-2 overflow-hidden">
-        <Image
-          source={NOC_LOGO}
-          style={{width: 26, height: 26}}
-          resizeMode="contain"
-          accessibilityLabel="Noctura logo"
-        />
-      </View>
-    );
-  }
-  return (
-    <View className="w-9 h-9 rounded-pill items-center justify-center bg-bg-surface-2">
-      <Text variant="body-sm" className="font-geist-semibold text-fg-primary">
-        {symbol.charAt(0)}
-      </Text>
-    </View>
   );
 }
 
