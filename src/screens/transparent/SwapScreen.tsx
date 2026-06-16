@@ -8,7 +8,6 @@ import {
   Linking,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {ArrowLeft, ArrowUpDown, Check, X} from 'lucide-react-native';
@@ -22,6 +21,7 @@ import {useSwapQuote} from '../../hooks/useSwapQuote';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {SWAP_TOKENS} from '../../modules/swap/swapTokens';
+import {TokenPickerSheet} from '../../components/TokenPickerSheet';
 
 // ── Lazy imports — wrapped in try/catch so Jest/stub envs don't crash ─────────
 let submitSwap:
@@ -100,6 +100,7 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
     return n != null && n > 0 ? n : 50;
   });
   const [swapState, setSwapState] = useState<SwapState>({kind: 'form'});
+  const [picker, setPicker] = useState<'from' | 'to' | null>(null);
   const lastTapRef = useRef(0);
   const isMountedRef = useRef(true);
 
@@ -175,51 +176,9 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
     }
   };
 
-  const onPickFrom = () => {
-    const options = SWAP_TOKENS.filter(t => t.mint !== toMint);
-    if (options.length < 2) {
-      setFromMint(options[0]?.mint ?? 'native');
-      return;
-    }
-    const buttons: Array<{
-      text: string;
-      onPress?: () => void;
-      style?: 'cancel' | 'default' | 'destructive';
-    }> = options.map(t => ({
-      text: t.mint === fromMint ? `${t.symbol}  ✓` : t.symbol,
-      onPress: () => {
-        if (t.mint !== fromMint) {
-          setFromMint(t.mint);
-          setAmount('');
-          setDebouncedAmount('');
-        }
-      },
-    }));
-    buttons.push({text: 'Cancel', style: 'cancel'});
-    Alert.alert('Swap from', '', buttons);
-  };
+  const onPickFrom = () => setPicker('from');
 
-  const onPickTo = () => {
-    const options = SWAP_TOKENS.filter(t => t.mint !== fromMint);
-    if (options.length < 2) {
-      setToMint(options[0]?.mint ?? SWAP_TOKENS[1].mint);
-      return;
-    }
-    const buttons: Array<{
-      text: string;
-      onPress?: () => void;
-      style?: 'cancel' | 'default' | 'destructive';
-    }> = options.map(t => ({
-      text: t.mint === toMint ? `${t.symbol}  ✓` : t.symbol,
-      onPress: () => {
-        if (t.mint !== toMint) {
-          setToMint(t.mint);
-        }
-      },
-    }));
-    buttons.push({text: 'Cancel', style: 'cancel'});
-    Alert.alert('Swap to', '', buttons);
-  };
+  const onPickTo = () => setPicker('to');
 
   const canSwap =
     quoteEnabled && quote.data != null && !quote.isLoading && !insufficient;
@@ -532,6 +491,27 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
           />
         </View>
       </KeyboardAvoidingView>
+
+      <TokenPickerSheet
+        visible={picker !== null}
+        title={picker === 'from' ? 'Swap from' : 'Swap to'}
+        tokens={SWAP_TOKENS.filter(t =>
+          picker === 'from' ? t.mint !== toMint : t.mint !== fromMint,
+        )}
+        selectedMint={picker === 'from' ? fromMint : toMint}
+        balances={{native: solBalance, ...tokenBalances}}
+        onSelect={mint => {
+          if (picker === 'from') {
+            setFromMint(mint);
+          } else {
+            setToMint(mint);
+          }
+          setAmount('');
+          setDebouncedAmount('');
+          setPicker(null);
+        }}
+        onClose={() => setPicker(null)}
+      />
     </SafeAreaView>
   );
 }
