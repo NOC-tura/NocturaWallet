@@ -152,14 +152,18 @@ export class TokenManager {
    * Build the dashboard display-metadata list from on-chain token accounts.
    * Includes only HELD (non-zero) accounts whose mint is 'core' or 'verified'
    * (unknown/possible-scam mints are omitted). Core mints resolve full
-   * symbol/name/decimals from CORE_TOKENS; verified mints fall back to a
-   * shortened-mint symbol since no local name registry exists for them.
+   * symbol/name/decimals from CORE_TOKENS; verified mints fall back to
+   * resolved metadata from the optional `meta` map, then to a shortened-mint symbol.
    *
    * Verified classification depends on the Jupiter list being loaded
    * (fetchVerifiedList); when it is not, only core tokens qualify.
+   *
+   * @param accounts Token accounts to display.
+   * @param meta Optional resolved metadata map from Helius DAS or similar resolver.
    */
   buildDisplayTokens(
     accounts: {mint: string; amount: string; decimals: number}[],
+    meta: Record<string, {name?: string; symbol?: string; logoUri?: string}> = {},
   ): TokenMetadata[] {
     const result: TokenMetadata[] = [];
     for (const acc of accounts) {
@@ -167,11 +171,14 @@ export class TokenManager {
       const trust = this.classifyToken(acc.mint);
       if (trust === 'unknown') continue; // core + verified only
       const core = CORE_TOKENS.find(t => t.mint === acc.mint);
+      const m = meta[acc.mint];
       result.push({
         mint: acc.mint,
-        symbol: core?.symbol ?? `${acc.mint.slice(0, 4)}…${acc.mint.slice(-4)}`,
-        name: core?.name ?? 'Unknown token',
+        symbol: core?.symbol ?? m?.symbol ?? `${acc.mint.slice(0, 4)}…${acc.mint.slice(-4)}`,
+        name: core?.name ?? m?.name ?? 'Unknown token',
         decimals: core?.decimals ?? acc.decimals,
+        // Core tokens render from bundled assets; only non-core carry a logoUri.
+        logoUri: core ? undefined : m?.logoUri,
         trust,
       });
     }
