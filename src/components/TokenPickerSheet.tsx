@@ -11,6 +11,7 @@ export interface PickerToken {
   symbol: string;
   name: string;
   decimals: number;
+  logoUri?: string;
 }
 
 interface TokenPickerSheetProps {
@@ -64,7 +65,7 @@ export function TokenPickerSheet({
                   accessibilityLabel={`Select ${t.symbol}`}
                   className="flex-row items-center px-5 py-3 active:bg-bg-surface-2"
                   style={{minHeight: 56}}>
-                  <TokenLogo symbol={t.symbol} isNoc={t.mint === NOC_MINT} />
+                  <TokenLogo symbol={t.symbol} isNoc={t.mint === NOC_MINT} logoUri={t.logoUri} />
                   <View className="flex-1 ml-3">
                     <Text variant="body-lg" className="text-fg-primary">
                       {t.symbol}

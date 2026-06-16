@@ -89,6 +89,8 @@ export function TokenDetailScreen({mint, onBack, onSend, onReceive, onSwap}: Pro
     mmkvPublic.set(tfKey, next);
   };
 
+  const logoUri = tokens.find(t => t.mint === mint)?.logoUri;
+
   const cgId = coingeckoIdForMint(mint);
   const history = usePriceHistory(cgId, tf);
   const series = history.data?.prices ?? [];
@@ -123,7 +125,7 @@ export function TokenDetailScreen({mint, onBack, onSend, onReceive, onSwap}: Pro
         contentContainerStyle={{paddingBottom: 32}}>
         {/* Price hero */}
         <View className="items-center px-5 pt-4 pb-6">
-          <TokenLogo symbol={meta.symbol} isNoc={isNoc} />
+          <TokenLogo symbol={meta.symbol} isNoc={isNoc} logoUri={logoUri} />
 
           <Text variant="body-lg" className="text-fg-primary mt-3">
             {meta.name}

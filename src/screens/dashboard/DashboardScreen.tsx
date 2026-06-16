@@ -326,6 +326,7 @@ export function DashboardScreen({
               onPress={onTokenTap ? () => onTokenTap(token.mint) : undefined}
               usdValue={fiat?.usd ?? null}
               change24h={fiat?.change24h ?? null}
+              logoUri={token.logoUri}
             />
           );
         }}
@@ -738,6 +739,7 @@ interface TokenListRowProps {
   onPress?: () => void;
   usdValue: number | null;
   change24h: number | null;
+  logoUri?: string;
 }
 
 function TokenListRow({
@@ -751,6 +753,7 @@ function TokenListRow({
   onPress,
   usdValue,
   change24h,
+  logoUri,
 }: TokenListRowProps) {
   const isShielded = mode === 'shielded';
   const formattedBalance = hidden
@@ -761,7 +764,7 @@ function TokenListRow({
       onPress={onPress}
       disabled={!onPress}
       className="flex-row items-center px-5 py-3 active:bg-bg-surface-1">
-      <TokenLogo symbol={symbol} isNoc={isNoc} />
+      <TokenLogo symbol={symbol} isNoc={isNoc} logoUri={logoUri} />
       <View className="flex-1 ml-3">
         <Text variant="body-lg" className="text-fg-primary">
           {name}
