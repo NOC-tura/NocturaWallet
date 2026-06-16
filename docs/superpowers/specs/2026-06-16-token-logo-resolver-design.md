@@ -27,6 +27,12 @@ export async function fetchTokenMetadata(mints: string[]): Promise<Record<string
 
 - Persist resolved metadata so we don't re-fetch every sync (logos rarely change). Store a JSON map `{[mint]: TokenMeta}` under a new key `MMKV_KEYS.TOKEN_METADATA_CACHE` in the **public** MMKV (non-sensitive). A small helper in the module: `loadCachedMetadata()` / `saveCachedMetadata(map)`. No TTL needed (refreshed each sync, merged over the cache); the cache is just the warm-start value.
 
+## C-pre. Enabler — load the Jupiter verified list (so non-core tokens show at all)
+
+**Discovery:** `TokenManager.fetchVerifiedList()` exists but is **never called**, so `_verifiedMints` is always null → `classifyToken` returns `'unknown'` for every non-core mint → `buildDisplayTokens` filters them out. Result: today ONLY core tokens (SOL/NOC/USDC/USDT) ever appear on the dashboard. Without fixing this, the logo resolver has nothing non-core to enrich (core tokens already have bundled logos) and the whole feature is invisible.
+
+So this cycle also wires the verified list: in `forceSync`, call `await tokenManager.fetchVerifiedList()` (best-effort, try/catch — it already caches to MMKV internally) BEFORE `buildDisplayTokens`, so verified held tokens (BONK, JUP, …) pass the trust filter and then get DAS name/logo. This realizes the "core + verified" visibility the dashboard-prices cycle intended but never enabled. Unknown-trust tokens stay hidden (scam-airdrop safety — unchanged).
+
 ## C. Integration — `backgroundSyncModule.forceSync`
 
 After the successful `getTokenAccounts`, resolve logos for the held mints and merge them into the metadata the dashboard renders:
