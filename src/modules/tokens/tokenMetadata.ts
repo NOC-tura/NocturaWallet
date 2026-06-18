@@ -1,11 +1,12 @@
-import {RPC_ENDPOINT} from '../../constants/programs';
+import {RPC_ENDPOINT, API_BASE, API_ORIGIN} from '../../constants/programs';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
+import {pinnedFetch} from '../sslPinning/pinnedFetch';
 
 export interface TokenMeta {
   name: string;
   symbol: string;
-  logoUri?: string; // ONLY the Helius cdn_uri (private); undefined when uncached
+  logoUri?: string; // absolute URL (backend img proxy) or Helius cdn_uri; undefined when unknown
 }
 
 interface DasAsset {
@@ -16,15 +17,46 @@ interface DasAsset {
   };
 }
 
+interface BackendMeta {
+  name?: string;
+  symbol?: string;
+  image?: string; // relative proxy path: /api/v1/wallet/img?url=...
+}
+
 /**
- * Resolve token name/symbol/logo for the given mints via Helius DAS
- * getAssetBatch on the RPC the app already uses (Helius already sees the
- * holdings — no new party). `logoUri` is ONLY the Helius cdn_uri; we never fall
- * back to the raw image host (that would leak the user's IP to an arbitrary
- * CDN). Throws on transport/HTTP error; the caller keeps its cache.
+ * Backend proxy (SSL-pinned): Helius DAS with the key server-side, and image
+ * URLs rewritten through the SSRF-safe img proxy (so logos work for ANY token,
+ * not just Helius-CDN ones). `logoUri` is the ABSOLUTE proxy URL. Throws on failure.
  */
-export async function fetchTokenMetadata(mints: string[]): Promise<Record<string, TokenMeta>> {
-  if (mints.length === 0) return {};
+export async function fetchTokenMetadataFromBackend(mints: string[]): Promise<Record<string, TokenMeta>> {
+  const res = await pinnedFetch(`${API_BASE}/wallet/tokens/metadata`, {
+    method: 'POST',
+    body: JSON.stringify({mints}),
+  });
+  if (res.status !== 200) {
+    throw new Error(`backend metadata HTTP ${res.status}`);
+  }
+  const body = (await res.json()) as {success?: boolean; data?: Record<string, BackendMeta>};
+  if (!body.success || !body.data) {
+    throw new Error('backend metadata unsuccessful');
+  }
+  const out: Record<string, TokenMeta> = {};
+  for (const [mint, m] of Object.entries(body.data)) {
+    out[mint] = {
+      name: m.name ?? '',
+      symbol: m.symbol ?? '',
+      logoUri: m.image ? `${API_ORIGIN}${m.image}` : undefined,
+    };
+  }
+  return out;
+}
+
+/**
+ * Direct Helius DAS fallback (getAssetBatch on the RPC the app already uses for
+ * balances — no new party). `logoUri` is ONLY the Helius cdn_uri; we never fall
+ * back to the raw image host. Throws on transport/HTTP error.
+ */
+export async function fetchTokenMetadataDirect(mints: string[]): Promise<Record<string, TokenMeta>> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {
@@ -48,6 +80,20 @@ export async function fetchTokenMetadata(mints: string[]): Promise<Record<string
     return out;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+/**
+ * Resolve token name/symbol/logo for the given mints. Backend-first (logos for
+ * any token via the SSRF proxy); on any backend failure, falls back to direct
+ * Helius DAS. Throws only when both fail; the caller keeps its cache.
+ */
+export async function fetchTokenMetadata(mints: string[]): Promise<Record<string, TokenMeta>> {
+  if (mints.length === 0) return {};
+  try {
+    return await fetchTokenMetadataFromBackend(mints);
+  } catch {
+    return fetchTokenMetadataDirect(mints);
   }
 }
 
