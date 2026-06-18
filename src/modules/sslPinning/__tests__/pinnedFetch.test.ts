@@ -16,17 +16,22 @@ describe('pinnedFetch', () => {
     });
   });
 
-  it('makes a GET request through SSL pinning', async () => {
-    await pinnedFetch('https://api.noc-tura.io/v1/health');
+  it('makes a GET request through SSL pinning with public-key pinning enabled', async () => {
+    await pinnedFetch('https://api.noc-tura.io/api/v1/health');
     expect(SSLPinning.fetch).toHaveBeenCalledWith(
-      'https://api.noc-tura.io/v1/health',
+      'https://api.noc-tura.io/api/v1/health',
       expect.objectContaining({
         method: 'GET',
+        pkPinning: true,
         sslPinning: expect.objectContaining({
           certs: expect.any(Array),
         }),
       }),
     );
+  });
+
+  it('all SSL_PINS use the sha256/ public-key format', () => {
+    SSL_PINS.forEach(pin => expect(pin.startsWith('sha256/')).toBe(true));
   });
 
   it('makes a POST request with JSON body', async () => {
