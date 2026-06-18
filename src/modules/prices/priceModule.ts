@@ -1,5 +1,6 @@
-import {USDC_MINT} from '../tokens/coreTokens';
-import {COINGECKO_API_KEY} from '../../constants/programs';
+import {USDC_MINT, USDT_MINT} from '../tokens/coreTokens';
+import {API_BASE, COINGECKO_API_KEY} from '../../constants/programs';
+import {pinnedFetch} from '../sslPinning/pinnedFetch';
 
 export interface TokenPrice {
   usd: number;
@@ -15,42 +16,68 @@ export function coingeckoHeaders(): Record<string, string> | undefined {
 }
 
 const COINGECKO_URL =
-  'https://api.coingecko.com/api/v3/simple/price?ids=solana,usd-coin&vs_currencies=usd&include_24hr_change=true';
+  'https://api.coingecko.com/api/v3/simple/price?ids=solana,usd-coin,tether&vs_currencies=usd&include_24hr_change=true';
 
 interface CoinGeckoEntry {
   usd?: number;
   usd_24h_change?: number;
 }
 
+function mapEntries(d: Record<string, CoinGeckoEntry>): Record<string, TokenPrice> {
+  const sol = d.solana;
+  const usdc = d['usd-coin'];
+  const usdt = d.tether;
+  if (sol?.usd == null || usdc?.usd == null || usdt?.usd == null) {
+    throw new Error('price response missing SOL/USDC/USDT');
+  }
+  return {
+    native: {usd: sol.usd, change24h: sol.usd_24h_change ?? null},
+    [USDC_MINT]: {usd: usdc.usd, change24h: usdc.usd_24h_change ?? null},
+    [USDT_MINT]: {usd: usdt.usd, change24h: usdt.usd_24h_change ?? null},
+  };
+}
+
+/** Backend proxy (privacy + shared rate limit), SSL-pinned. Throws on failure. */
+export async function fetchPricesFromBackend(): Promise<Record<string, TokenPrice>> {
+  const res = await pinnedFetch(`${API_BASE}/wallet/prices?ids=solana,usd-coin,tether`);
+  if (res.status !== 200) {
+    throw new Error(`backend prices HTTP ${res.status}`);
+  }
+  const body = (await res.json()) as {success?: boolean; data?: Record<string, CoinGeckoEntry>};
+  if (!body.success || !body.data) {
+    throw new Error('backend prices unsuccessful');
+  }
+  return mapEntries(body.data);
+}
+
 /**
- * Fetch SOL + USDC USD prices and 24h change from CoinGecko. Public market data
- * on a third-party host (cert not pinned) → plain fetch with a 6s timeout.
- * Returns a map keyed by the app's mint key ('native' for SOL, USDC mint).
- * NOC is NOT included (it is presale-only; the consumer injects it).
- * Throws on timeout / non-200 / parse failure; the hook keeps the last cache.
+ * Direct CoinGecko fallback. Public market data on a third-party host (cert not
+ * pinned) → plain fetch with a 6s timeout. Throws on timeout / non-200 / parse.
  */
-export async function fetchPrices(): Promise<Record<string, TokenPrice>> {
+export async function fetchPricesDirect(): Promise<Record<string, TokenPrice>> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 6000);
   try {
-    const res = await fetch(COINGECKO_URL, {
-      signal: controller.signal,
-      headers: coingeckoHeaders(),
-    });
+    const res = await fetch(COINGECKO_URL, {signal: controller.signal, headers: coingeckoHeaders()});
     if (!res.ok) {
       throw new Error(`CoinGecko HTTP ${res.status}`);
     }
-    const body = (await res.json()) as Record<string, CoinGeckoEntry>;
-    const sol = body.solana;
-    const usdc = body['usd-coin'];
-    if (sol?.usd == null || usdc?.usd == null) {
-      throw new Error('CoinGecko response missing prices');
-    }
-    return {
-      native: {usd: sol.usd, change24h: sol.usd_24h_change ?? null},
-      [USDC_MINT]: {usd: usdc.usd, change24h: usdc.usd_24h_change ?? null},
-    };
+    return mapEntries((await res.json()) as Record<string, CoinGeckoEntry>);
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+/**
+ * SOL + USDC + USDT USD prices and 24h change. Backend-first (privacy); on any
+ * backend failure, falls back to direct CoinGecko. Keyed by mint ('native' for
+ * SOL). NOC is NOT included (presale-only; the consumer injects it). Throws only
+ * when both paths fail; the hook then keeps its last cache.
+ */
+export async function fetchPrices(): Promise<Record<string, TokenPrice>> {
+  try {
+    return await fetchPricesFromBackend();
+  } catch {
+    return fetchPricesDirect();
   }
 }
