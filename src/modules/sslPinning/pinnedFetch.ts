@@ -6,11 +6,8 @@ import SSLPinning from 'react-native-ssl-pinning';
  * the served chain, so we pin the leaf AND the Let's Encrypt intermediate:
  * a leaf renewal (even with a new key) still validates against the intermediate,
  * so certbot rotation can't brick the app. Server should also renew with
- * `--reuse-key` to keep the leaf pin stable.
- *
- * Extract real values (see docs/superpowers/specs/2026-06-18-wallet-backend-wiring-design.md §A)
- * and replace the placeholders below before the on-device build. Until then,
- * backend calls fail the pin check and the app falls back to the direct path.
+ * `--reuse-key` to keep the leaf pin stable. If no pin matches the live cert,
+ * ALL backend calls fail the pin check and the app falls back to the direct path.
  */
 // Verified from the VPS 2026-06-18 (both MATCH the live cert). Server renews
 // with reuse_key=True so the LEAF pin survives ~90-day Let's Encrypt renewals;
