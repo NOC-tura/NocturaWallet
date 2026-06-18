@@ -1,6 +1,7 @@
-import {USDC_MINT} from '../tokens/coreTokens';
-import {NOC_MINT} from '../../constants/programs';
+import {USDC_MINT, USDT_MINT} from '../tokens/coreTokens';
+import {NOC_MINT, API_BASE} from '../../constants/programs';
 import {coingeckoHeaders} from './priceModule';
+import {pinnedFetch} from '../sslPinning/pinnedFetch';
 
 export type Timeframe = '24H' | '7D' | '30D' | '1Y';
 
@@ -21,6 +22,7 @@ export interface PriceHistory {
 export function coingeckoIdForMint(mint: string): string | null {
   if (mint === 'native') return 'solana';
   if (mint === USDC_MINT) return 'usd-coin';
+  if (mint === USDT_MINT) return 'tether';
   if (mint === NOC_MINT) return null;
   return null;
 }
@@ -34,14 +36,25 @@ export function changeOverSeries(prices: number[]): {absUsd: number; pct: number
   return {absUsd: last - first, pct: ((last - first) / first) * 100};
 }
 
+/** Backend proxy (SSL-pinned). Throws on failure. */
+export async function fetchPriceHistoryFromBackend(coingeckoId: string, tf: Timeframe): Promise<PriceHistory> {
+  const days = TIMEFRAME_DAYS[tf];
+  const res = await pinnedFetch(`${API_BASE}/wallet/chart?id=${coingeckoId}&days=${days}`);
+  if (res.status !== 200) {
+    throw new Error(`backend chart HTTP ${res.status}`);
+  }
+  const body = (await res.json()) as {success?: boolean; data?: {prices?: [number, number][]}};
+  if (!body.success || !Array.isArray(body.data?.prices)) {
+    throw new Error('backend chart unsuccessful');
+  }
+  return {prices: body.data.prices.map(p => p[1])};
+}
+
 /**
- * Fetch a USD price series from CoinGecko market_chart. Plain fetch (public
- * data, cert not pinned), 8s timeout. Throws on timeout / non-200 / parse.
+ * Direct CoinGecko market_chart fallback. Plain fetch (public data, cert not
+ * pinned), 8s timeout. Throws on timeout / non-200 / parse.
  */
-export async function fetchPriceHistory(
-  coingeckoId: string,
-  tf: Timeframe,
-): Promise<PriceHistory> {
+export async function fetchPriceHistoryDirect(coingeckoId: string, tf: Timeframe): Promise<PriceHistory> {
   const days = TIMEFRAME_DAYS[tf];
   const url = `https://api.coingecko.com/api/v3/coins/${coingeckoId}/market_chart?vs_currency=usd&days=${days}`;
   const controller = new AbortController();
@@ -54,5 +67,17 @@ export async function fetchPriceHistory(
     return {prices: body.prices.map(p => p[1])};
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+/**
+ * USD price series for a coin over a timeframe. Backend-first (privacy); on any
+ * backend failure, falls back to direct CoinGecko. Throws only when both fail.
+ */
+export async function fetchPriceHistory(coingeckoId: string, tf: Timeframe): Promise<PriceHistory> {
+  try {
+    return await fetchPriceHistoryFromBackend(coingeckoId, tf);
+  } catch {
+    return fetchPriceHistoryDirect(coingeckoId, tf);
   }
 }
