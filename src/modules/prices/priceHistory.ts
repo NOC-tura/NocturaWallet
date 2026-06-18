@@ -77,7 +77,10 @@ export async function fetchPriceHistoryDirect(coingeckoId: string, tf: Timeframe
 export async function fetchPriceHistory(coingeckoId: string, tf: Timeframe): Promise<PriceHistory> {
   try {
     return await fetchPriceHistoryFromBackend(coingeckoId, tf);
-  } catch {
+  } catch (err) {
+    if (__DEV__) {
+      console.debug('[chart] backend failed, falling back to direct CoinGecko', err);
+    }
     return fetchPriceHistoryDirect(coingeckoId, tf);
   }
 }

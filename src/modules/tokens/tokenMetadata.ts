@@ -92,7 +92,10 @@ export async function fetchTokenMetadata(mints: string[]): Promise<Record<string
   if (mints.length === 0) return {};
   try {
     return await fetchTokenMetadataFromBackend(mints);
-  } catch {
+  } catch (err) {
+    if (__DEV__) {
+      console.debug('[tokenMetadata] backend failed, falling back to direct Helius DAS', err);
+    }
     return fetchTokenMetadataDirect(mints);
   }
 }

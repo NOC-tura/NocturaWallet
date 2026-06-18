@@ -77,7 +77,10 @@ export async function fetchPricesDirect(): Promise<Record<string, TokenPrice>> {
 export async function fetchPrices(): Promise<Record<string, TokenPrice>> {
   try {
     return await fetchPricesFromBackend();
-  } catch {
+  } catch (err) {
+    if (__DEV__) {
+      console.debug('[prices] backend failed, falling back to direct CoinGecko', err);
+    }
     return fetchPricesDirect();
   }
 }
