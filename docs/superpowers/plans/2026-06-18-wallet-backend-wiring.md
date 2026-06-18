@@ -78,9 +78,14 @@ In `src/modules/sslPinning/pinnedFetch.ts`, replace the `SSL_PINS` declaration:
  * and replace the placeholders below before the on-device build. Until then,
  * backend calls fail the pin check and the app falls back to the direct path.
  */
+// Verified from the VPS 2026-06-18 (both MATCH the live cert). Server renews
+// with reuse_key=True so the LEAF pin survives ~90-day Let's Encrypt renewals;
+// the INTERMEDIATE is the backup. A systemd noc-pin-check.timer monitors these
+// daily. RULE on rotation: update BOTH this array AND the server's
+// scripts/check-ssl-pins.sh, and ship the new app version BEFORE the new cert.
 export const SSL_PINS: string[] = [
-  'sha256/REPLACE_WITH_LEAF_SPKI_PIN=', // primary — current leaf public key
-  'sha256/REPLACE_WITH_LE_INTERMEDIATE_SPKI=', // backup — Let's Encrypt intermediate
+  'sha256/r6OlpjBVoTMRSS9o9JFTgtzC8KyrVYI6OAmKQGhf9Y8=', // LEAF (primary)
+  'sha256/iFvwVyJSxnQdyaUvUERIf+8qk7gRze3612JMwoO3zdU=', // INTERMEDIATE Let's Encrypt (backup)
 ];
 ```
 And in the `SSLPinning.fetch(...)` options object, add `pkPinning: true` directly above the `sslPinning:` key:
@@ -103,7 +108,7 @@ git add src/modules/sslPinning/pinnedFetch.ts src/modules/sslPinning/__tests__/p
 git commit -m "feat(security): enable SPKI public-key pinning (pkPinning) in pinnedFetch"
 ```
 
-> **NOTE for the controller:** the real `sha256/…` pin values come from the user (openssl). When provided, replace the two placeholders in `SSL_PINS` before the on-device build (Task 6). With placeholders, the backend path fails the pin check and silently falls back to direct — functional, but not exercising the backend.
+> **NOTE:** the pins above are the REAL verified values — no placeholder swap needed later.
 
 ---
 
@@ -785,13 +790,9 @@ git commit -m "feat(tokens): backend-first metadata via pinnedFetch (proxy logos
 Run: `npx jest && npx tsc --noEmit`
 Expected: all suites PASS; no type errors. (If `eslint` is part of CI: `npx eslint src/modules/prices src/modules/tokens src/modules/sslPinning src/constants` — fix any new lint in changed files.)
 
-- [ ] **Step 2: Insert the real SSL pins**
+- [ ] **Step 2: Confirm real pins are set**
 
-Replace the two `sha256/REPLACE_WITH_…` placeholders in `src/modules/sslPinning/pinnedFetch.ts` with the real leaf + Let's Encrypt intermediate SPKI pins the user provides (from the spec §A openssl commands). Commit:
-```bash
-git add src/modules/sslPinning/pinnedFetch.ts
-git commit -m "chore(security): set real SPKI pins for api.noc-tura.io"
-```
+The real verified pins are already in `SSL_PINS` (set in Task 1) — confirm no `REPLACE_WITH` placeholder remains: `grep -c REPLACE_WITH src/modules/sslPinning/pinnedFetch.ts` → expected `0`.
 
 - [ ] **Step 3: Build the release APK**
 
