@@ -36,20 +36,21 @@ Cycle 1 (separate ICO/coordinator repo, merged + LIVE on `https://api.noc-tura.i
 - `.env.development`: `API_BASE=http://localhost:3001/api/v1`
 - `.env.example`: `API_BASE=http://localhost:3001/api/v1`
 - Add `export const API_ORIGIN` in `programs.ts` (e.g. `https://api.noc-tura.io`) — used to turn the backend's relative `image` path (`/api/v1/wallet/img?url=…`) into an absolute URL for `<Image>`. Compute it GUARDED so a missing/blank `API_BASE` can't throw at import time: `const API_ORIGIN = (() => { try { return new URL(API_BASE).origin; } catch { return ''; } })();`. (`new URL` is available via the `react-native-url-polyfill/auto` bootstrap.) When empty, `tokenMetadata` simply leaves `logoUri` undefined (letter fallback) — no crash.
+- Add `export const USDT_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';` to `src/modules/tokens/coreTokens.ts` (USDC_MINT already exists there; the USDT entry exists in the token list but has no exported constant yet) — needed by the prices + chart modules below.
 - The 10 existing `${API_BASE}/v1/…` double-`/v1` call sites (relayer/analytics/shielded/geo/version-check/tokens-flagged) are a SEPARATE latent bug — NOT touched this cycle.
 
 ## C. Prices — `src/modules/prices/priceModule.ts`
 
-- Rename the current CoinGecko implementation to `fetchPricesDirect()` (unchanged logic/return).
-- Add `fetchPricesFromBackend()`: `pinnedFetch(\`${API_BASE}/wallet/prices?ids=solana,usd-coin\`)`, parse `{success, data:{solana, "usd-coin"}}` into the same `Record<string, TokenPrice>` shape (`native`, `[USDC_MINT]`). Throws on non-200 / `success:false` / missing fields.
+- Now includes **USDT** (`tether`) alongside SOL + USDC.
+- Rename the current CoinGecko implementation to `fetchPricesDirect()` and EXTEND its URL to `ids=solana,usd-coin,tether`; map `tether` → `[USDT_MINT]: {usd, change24h}` (so the direct fallback also returns USDT).
+- Add `fetchPricesFromBackend()`: `pinnedFetch(\`${API_BASE}/wallet/prices?ids=solana,usd-coin,tether\`)`, parse `{success, data:{solana, "usd-coin", tether}}` into the same `Record<string, TokenPrice>` shape (`native`, `[USDC_MINT]`, `[USDT_MINT]`). Throws on non-200 / `success:false` / missing SOL/USDC/USDT fields.
 - `fetchPrices()` = backend-first wrapper: `try { return await fetchPricesFromBackend(); } catch { return await fetchPricesDirect(); }` (log the backend failure at debug). The `usePrices` hook keeps calling `fetchPrices` unchanged.
-- Preserve current scope: SOL + USDC only (no USDT pricing this cycle).
 
 ## D. Chart — `src/modules/prices/priceHistory.ts`
 
 - Rename current impl to `fetchPriceHistoryDirect(coingeckoId, tf)` (unchanged).
 - Add `fetchPriceHistoryFromBackend(coingeckoId, tf)`: `pinnedFetch(\`${API_BASE}/wallet/chart?id=${coingeckoId}&days=${TIMEFRAME_DAYS[tf]}\`)`, parse `{success, data:{prices:[[ms,usd],…]}}` → `{prices: number[]}` (map `p[1]`). Throws on non-200/`success:false`/bad shape.
-- `fetchPriceHistory()` = backend-first wrapper → fallback to direct. `usePriceHistory` unchanged. `coingeckoIdForMint`/`changeOverSeries`/`TIMEFRAME_DAYS` unchanged.
+- `fetchPriceHistory()` = backend-first wrapper → fallback to direct. `usePriceHistory` unchanged. `changeOverSeries`/`TIMEFRAME_DAYS` unchanged. **`coingeckoIdForMint` gains a USDT case:** `if (mint === USDT_MINT) return 'tether';` (so the USDT token-detail chart resolves; backend allowlist already supports `tether`).
 
 ## E. Token metadata — `src/modules/tokens/tokenMetadata.ts`
 
@@ -70,8 +71,8 @@ Cycle 1 (separate ICO/coordinator repo, merged + LIVE on `https://api.noc-tura.i
 
 ## H. Testing
 
-- `priceModule.test.ts`: backend success → mapped shape; backend fail → direct CoinGecko used (mock `pinnedFetch` reject + `global.fetch` resolve); both fail → throws. Verify `pinnedFetch` called with the `/wallet/prices` URL.
-- `priceHistory.test.ts`: same three paths for `/wallet/chart`; days mapping per timeframe.
+- `priceModule.test.ts`: backend success → mapped shape incl. `[USDT_MINT]`; backend fail → direct CoinGecko used (mock `pinnedFetch` reject + `global.fetch` resolve), also returns USDT; both fail → throws. Verify `pinnedFetch` called with the `/wallet/prices?ids=solana,usd-coin,tether` URL.
+- `priceHistory.test.ts`: same three paths for `/wallet/chart`; days mapping per timeframe; `coingeckoIdForMint(USDT_MINT) === 'tether'`.
 - `tokenMetadata.test.ts`: backend success → `logoUri = API_ORIGIN + image`; image absent → `logoUri` undefined; backend fail → direct DAS fallback (`logoUri = cdn_uri`); both fail → throws.
 - `pinnedFetch`: a small test asserting `pkPinning: true` and the `sha256/` pin format are passed to `SSLPinning.fetch` (mock the lib). (No real network.)
 - Mock `pinnedFetch` by mocking `../sslPinning/pinnedFetch`; mock `global.fetch` for the direct path.
@@ -82,7 +83,6 @@ APK build → verify: dashboard SOL/USDC USD + 24h% load (via backend); TokenDet
 
 ## Out of scope (stated)
 
-- USDT pricing on the dashboard (kept SOL+USDC parity).
 - Removing Helius RPC / proxying all RPC (key stays in app for balances) — future cycle.
 - Fixing the 10 double-`/v1` latent call sites.
 - Pinning the `<Image>` logo loads.
