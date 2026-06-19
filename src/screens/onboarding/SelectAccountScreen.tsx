@@ -61,36 +61,42 @@ export function SelectAccountScreen({
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      if (!mnemonic) {
-        setDetectFailed(true);
-        setLoading(false);
-        return;
-      }
-      try {
-        const seed = await mnemonicToSeed(mnemonic);
-        const found = await detectFundedAccounts(seed);
+  const runDetection = useCallback(async () => {
+    if (!mnemonic) {
+      setDetectFailed(true);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setDetectFailed(false);
+    let seed: Uint8Array | undefined;
+    try {
+      seed = await mnemonicToSeed(mnemonic);
+      const found = await detectFundedAccounts(seed);
+      setCandidates(found.candidates);
+      // A failed balance RPC still returns the (locally-derived) addresses; flag
+      // it so the user sees the warning + retry rather than a silent wrong pick.
+      setDetectFailed(!found.balancesResolved);
+      // Pre-select the first funded candidate, else standard account 0.
+      const preferred =
+        found.candidates.find(c => c.funded)?.scheme ??
+        DEFAULT_TRANSPARENT_SCHEME;
+      selectedSchemeRef.current = preferred;
+      setSelectedKey(schemeToString(preferred));
+    } catch {
+      setDetectFailed(true);
+    } finally {
+      // Zeroize the seed on EVERY path (success or throw) — it's sensitive.
+      if (seed) {
         zeroize(seed);
-        if (cancelled) return;
-        setCandidates(found);
-        // Pre-select the first funded candidate, else standard account 0.
-        const preferred =
-          found.find(c => c.funded)?.scheme ?? DEFAULT_TRANSPARENT_SCHEME;
-        selectedSchemeRef.current = preferred;
-        setSelectedKey(schemeToString(preferred));
-      } catch {
-        if (!cancelled) setDetectFailed(true);
-      } finally {
-        if (!cancelled) setLoading(false);
       }
-    };
-    run();
-    return () => {
-      cancelled = true;
-    };
+      setLoading(false);
+    }
   }, [mnemonic]);
+
+  useEffect(() => {
+    void runDetection();
+  }, [runDetection]);
 
   const handlePick = useCallback((scheme: TransparentScheme) => {
     selectedSchemeRef.current = scheme;
@@ -143,11 +149,17 @@ export function SelectAccountScreen({
         ) : (
           <View className="px-5 gap-2">
             {detectFailed ? (
-              <View className="mb-2 p-4 rounded-md bg-bg-surface-2 border-l-2 border-l-warning">
+              <View className="mb-2 p-4 rounded-md bg-bg-surface-2 border-l-2 border-l-warning gap-3">
                 <Text variant="body-sm" className="text-fg-primary">
                   Couldn't check balances right now. You can continue with the
                   standard account and switch later.
                 </Text>
+                <Button
+                  label="Try again"
+                  variant="secondary"
+                  onPress={() => void runDetection()}
+                  testID="select-account-retry"
+                />
               </View>
             ) : null}
 

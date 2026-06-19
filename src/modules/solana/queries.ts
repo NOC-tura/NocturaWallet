@@ -21,6 +21,24 @@ export async function getBalance(
 }
 
 /**
+ * Batch SOL balances for many owners in ONE RPC call (getMultipleAccountsInfo).
+ * Returns lamports per input pubkey (0n for a null/missing account). Throws if
+ * the RPC call itself fails (caller distinguishes this from a genuine 0).
+ */
+export async function getMultipleBalances(
+  connection: Connection,
+  publicKeys: PublicKey[],
+): Promise<bigint[]> {
+  if (publicKeys.length === 0) {
+    return [];
+  }
+  return rpcLimiter.execute(`getMultipleBalances:${publicKeys.length}`, async () => {
+    const infos = await connection.getMultipleAccountsInfo(publicKeys);
+    return infos.map(info => BigInt(info?.lamports ?? 0));
+  });
+}
+
+/**
  * Get all SPL token accounts for an owner.
  * Uses getParsedTokenAccountsByOwner for jsonParsed encoding (returns typed data).
  */
