@@ -64,21 +64,28 @@ Mirrors `usePrices`: TanStack Query, writes results into `presaleStore`. Mounted
 - Returns `{isPaused: statsQ.data?.isPaused ?? false}` for the dashboard to gate the banner.
 - A fetch failure keeps the last persisted store values (presaleStore is MMKV-persisted) — no crash, banner shows last-known.
 
-## C. Banner — `src/components/PresaleBanner.tsx` (modify)
+## C. Banner — `src/components/PresaleBanner.tsx` (REWRITE the buy state)
 
-Align the pre-TGE buy banner to the `index.html` dashboard `.presale` design (≈ line 6371): a compact promo, price in USD, progress as "% to next stage".
+**Discovery:** the existing `PresaleBanner` is an elaborate dark card (stage badge + progress bar + `1 NOC = X SOL` + `sold/cap` row) using inline `StyleSheet`, AND it is **not rendered anywhere** (dead component). The `index.html` dashboard `.presale` (≈ line 6371) is a **compact row**, so the buy state is rewritten to match it with NativeWind (consistent with the rest of the app):
 
-- **Title:** `NOC Presale · Stage {currentStage ?? 1}`.
-- **Subtitle:** `${pricePerNoc} · {pct}% to next stage` where `pricePerNoc` is the USD stage price (e.g. `$0.1501`) and `pct = round(soldInStage / stageCapacity × 100)`.
-- **Remove:** the `1 NOC = {price} SOL` line and the `{sold} / {cap} NOC` row (the SOL fallback `'0.0012'` goes away entirely).
-- Keep the "Buy NOC →" CTA and the `onPress` (→ PresaleScreen, wired in Cycle B).
-- The claim-state branch (`tgeStatus === 'claimable'`) stays unchanged (TGE is in the future; the buy banner is what renders now).
-- The implementer must read the `.presale` block in `/home/user/Downloads/index.html` and match it faithfully (classes/structure/copy), not approximate.
+```
+[rocket icon]  NOC Presale · Stage {N}                    [chevron-right]
+               ${pricePerNoc} · {pct}% to next stage
+```
+- **Title (`noc-body-lg`):** `NOC Presale · Stage {currentStage ?? 1}`.
+- **Subtitle (`noc-body-sm noc-numeral`):** `${pricePerNoc} · {pct}% to next stage`, where `pricePerNoc` is the USD stage price (e.g. `$0.1501`) and `pct = soldInStage / stageCapacity × 100` rounded (BigInt: `Number((sold * 100n) / cap)`).
+- Leading rocket icon + trailing chevron-right (lucide-react-native `Rocket` / `ChevronRight`, matching the design's `#i-rocket` / `#i-chevron-right`).
+- Whole row is a `Pressable` → `onPress` (→ presale screen; the dashboard passes its `onPresale`).
+- **Removed:** the SOL price line (incl. the `'0.0012'` fallback), the `sold/cap` row, the progress bar, and the `StyleSheet` block.
+- The claim-state branch (`tgeStatus === 'claimable'`) is kept as-is (TGE is in the future; only the buy state renders now) — but its inline styles can stay until Cycle C.
+- The implementer MUST read the `.presale` block in `/home/user/Downloads/index.html` (≈ line 6371) and match its structure/classes/copy faithfully.
 
 ## D. Dashboard wiring — `src/screens/dashboard/DashboardScreen.tsx` (modify)
 
-- Call `const {isPaused} = usePresaleSync();` near the existing `useResolvedPrices()` usage (line ~123).
-- Gate the banner: render `PresaleBanner` only when `!isPaused` (presale active). When paused, hide it (the design has no dedicated paused banner state; hiding is the safe default).
+- **Render the banner (it is currently NOT mounted anywhere):** insert `<PresaleBanner onPress={onPresale} />` in the dashboard content **after the TOKENS list and before the bottom nav / `DashboardFooter`**, matching the `index.html` placement (the `.presale` sits right after the `.tokens` block).
+- Call `const {isPaused} = usePresaleSync();` in the dashboard component.
+- Gate the banner: render it only when `!isPaused` (presale active). When paused, hide it (the design has no dedicated paused banner state; hiding is the safe default).
+- The existing footer "Buy" button keeps its `onPresale` (the banner and the button both lead to the presale screen).
 - NOC USD price already flows through `useResolvedPrices` → `nocUsdPriceForStage(currentStage)`; once `setStageInfo` runs with the live stage, NOC's USD value is correct for the ACTUAL stage (not just the stage-1 default).
 
 ## E. Error handling / states
