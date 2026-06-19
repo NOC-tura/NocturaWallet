@@ -23,6 +23,9 @@ export function usePriceHistory(coingeckoId: string | null, tf: Timeframe) {
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,
     placeholderData: keepPreviousData,
+    // fetchPriceHistory already tries backend → direct internally, so a failure
+    // means both fell over; one quick retry, not a ~minute-long backoff storm.
+    retry: 1,
   });
 }
 
@@ -30,6 +33,10 @@ export function usePriceHistory(coingeckoId: string | null, tf: Timeframe) {
  * Warm every timeframe in the background once the screen mounts, so tapping a
  * different range shows instantly (cache hit) instead of waiting on a fetch.
  * Cheap: the backend caches chart responses for 5 min. No-op for NOC (null id).
+ *
+ * Runs the prefetches SEQUENTIALLY (not all at once): firing 4 concurrent
+ * SSL-pinned requests on mount caused contention/timeouts on device. `retry:
+ * false` keeps a failed background warm from retry-storming.
  */
 export function usePrefetchPriceHistory(coingeckoId: string | null): void {
   const queryClient = useQueryClient();
@@ -37,12 +44,22 @@ export function usePrefetchPriceHistory(coingeckoId: string | null): void {
     if (coingeckoId == null) {
       return;
     }
-    for (const tf of Object.keys(TIMEFRAME_DAYS) as Timeframe[]) {
-      void queryClient.prefetchQuery({
-        queryKey: ['priceHistory', coingeckoId, tf],
-        queryFn: () => fetchPriceHistory(coingeckoId, tf),
-        staleTime: 5 * 60_000,
-      });
-    }
+    let cancelled = false;
+    void (async () => {
+      for (const tf of Object.keys(TIMEFRAME_DAYS) as Timeframe[]) {
+        if (cancelled) {
+          return;
+        }
+        await queryClient.prefetchQuery({
+          queryKey: ['priceHistory', coingeckoId, tf],
+          queryFn: () => fetchPriceHistory(coingeckoId, tf),
+          staleTime: 5 * 60_000,
+          retry: false,
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [coingeckoId, queryClient]);
 }
