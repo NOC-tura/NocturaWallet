@@ -51,6 +51,8 @@ export type OnboardingStackParamList = {
 export type DashboardStackParamList = {
   Dashboard: undefined;
   Presale: undefined;
+  PresaleBuyConfirm: {solLamports: string};
+  PresaleBuyStatus: {solLamports: string};
   Staking: undefined;
   Referral: undefined;
 };
