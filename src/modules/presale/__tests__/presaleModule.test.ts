@@ -5,7 +5,10 @@ import {parseTokenAmount} from '../../../utils/parseTokenAmount';
 jest.mock('../../sslPinning/pinnedFetch');
 const mockPinned = pinnedFetch as jest.Mock;
 
-afterEach(() => mockPinned.mockReset());
+afterEach(() => {
+  mockPinned.mockReset();
+  (global.fetch as jest.Mock | undefined)?.mockReset?.();
+});
 
 describe('fetchPresaleStats', () => {
   it('maps coordinator stage (0-indexed) to display stage + USD price + into-stage', async () => {
@@ -13,6 +16,7 @@ describe('fetchPresaleStats', () => {
       status: 200,
       json: async () => ({success: true, data: {currentStage: 0, totalNocSold: 839030.874670029, isPaused: false}}),
     });
+    global.fetch = jest.fn() as unknown as typeof fetch;
     const s = await fetchPresaleStats();
     expect(s.displayStage).toBe(1);
     expect(s.pricePerNocUsd).toBe(0.1501);
@@ -20,6 +24,7 @@ describe('fetchPresaleStats', () => {
     expect(s.stageCapacityBase).toBe((10_240_000n * 1_000_000_000n).toString());
     expect(s.soldInStageBase).toBe(parseTokenAmount('839030.874670029', 9).toString());
     expect(mockPinned).toHaveBeenCalledWith(expect.stringContaining('/stats'));
+    expect(global.fetch).not.toHaveBeenCalled(); // pinned succeeded, no fallback
   });
 
   it('computes into-stage for a mid presale stage', async () => {
@@ -34,8 +39,22 @@ describe('fetchPresaleStats', () => {
     expect(s.soldInStageBase).toBe(parseTokenAmount('520000', 9).toString());
   });
 
-  it('throws on a non-200 / unsuccessful response', async () => {
-    mockPinned.mockResolvedValue({status: 500, json: async () => ({})});
+  it('falls back to a plain fetch to the same coordinator when the pinned fetch fails', async () => {
+    mockPinned.mockRejectedValue(new Error('pin/transport fail'));
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({success: true, data: {currentStage: 0, totalNocSold: 839030.874670029, isPaused: false}}),
+    })) as unknown as typeof fetch;
+    const s = await fetchPresaleStats();
+    expect(s.displayStage).toBe(1);
+    expect(s.soldInStageBase).toBe(parseTokenAmount('839030.874670029', 9).toString());
+    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/stats'));
+  });
+
+  it('throws when both the pinned and the direct fetch fail', async () => {
+    mockPinned.mockRejectedValue(new Error('pin fail'));
+    global.fetch = jest.fn(async () => ({ok: false, status: 500, json: async () => ({})})) as unknown as typeof fetch;
     await expect(fetchPresaleStats()).rejects.toThrow();
   });
 });
@@ -64,8 +83,21 @@ describe('fetchUserAllocation', () => {
     expect(a).toEqual({tokensPurchasedBase: '0', referralBonusBase: '0'});
   });
 
-  it('throws on a non-200 response', async () => {
-    mockPinned.mockResolvedValue({status: 500, json: async () => ({})});
+  it('falls back to a plain fetch when the pinned fetch fails', async () => {
+    mockPinned.mockRejectedValue(new Error('pin fail'));
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({success: true, data: {purchases: [{noc_amount: '50', referral_bonus: '0'}]}}),
+    })) as unknown as typeof fetch;
+    const a = await fetchUserAllocation('Addr');
+    expect(a.tokensPurchasedBase).toBe(parseTokenAmount('50', 9).toString());
+    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/user/Addr'));
+  });
+
+  it('throws when both the pinned and the direct fetch fail', async () => {
+    mockPinned.mockRejectedValue(new Error('pin fail'));
+    global.fetch = jest.fn(async () => ({ok: false, status: 500, json: async () => ({})})) as unknown as typeof fetch;
     await expect(fetchUserAllocation('Addr')).rejects.toThrow();
   });
 });

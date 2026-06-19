@@ -34,13 +34,31 @@ function nocStringToBase(s: string): bigint {
   return parseTokenAmount(n.toFixed(NOC_DECIMALS), NOC_DECIMALS);
 }
 
+/**
+ * GET a coordinator JSON endpoint. Backend-first via the SSL-pinned fetch; on
+ * ANY pinned-fetch failure, fall back to a plain HTTPS fetch to the SAME
+ * coordinator URL (public read-only data — same posture as the other modules'
+ * direct CoinGecko/Helius fallbacks). Throws only when BOTH fail.
+ */
+async function getCoordinatorJson(path: string): Promise<unknown> {
+  try {
+    const res = await pinnedFetch(`${API_BASE}${path}`);
+    if (res.status !== 200) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    return await res.json();
+  } catch {
+    const res = await fetch(`${API_BASE}${path}`);
+    if (!res.ok) {
+      throw new Error(`presale ${path} HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+}
+
 /** Live global presale stage/price/progress from the coordinator. Throws on failure. */
 export async function fetchPresaleStats(): Promise<PresaleStats> {
-  const res = await pinnedFetch(`${API_BASE}/stats`);
-  if (res.status !== 200) {
-    throw new Error(`presale stats HTTP ${res.status}`);
-  }
-  const body = (await res.json()) as {
+  const body = (await getCoordinatorJson('/stats')) as {
     success?: boolean;
     data?: {currentStage?: number; totalNocSold?: number; isPaused?: boolean};
   };
@@ -61,11 +79,7 @@ export async function fetchPresaleStats(): Promise<PresaleStats> {
 
 /** The user's purchased NOC, summed from the coordinator's recorded purchases. Throws on failure. */
 export async function fetchUserAllocation(address: string): Promise<UserAllocation> {
-  const res = await pinnedFetch(`${API_BASE}/user/${address}`);
-  if (res.status !== 200) {
-    throw new Error(`presale user HTTP ${res.status}`);
-  }
-  const body = (await res.json()) as {
+  const body = (await getCoordinatorJson(`/user/${address}`)) as {
     success?: boolean;
     data?: {purchases?: Array<{noc_amount?: string; referral_bonus?: string}>};
   };
