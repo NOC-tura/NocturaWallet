@@ -44,8 +44,10 @@ import {cn} from '../../utils/cn';
 import {computePortfolio, type Holding} from '../../modules/prices/portfolio';
 import {buildHoldings} from '../../modules/prices/holdings';
 import {useResolvedPrices} from '../../hooks/useResolvedPrices';
+import {usePresaleSync} from '../../hooks/usePresaleSync';
 import {formatUsd, formatUsdString} from '../../utils/formatUsd';
 import {TokenLogo} from '../../components/TokenLogo';
+import {PresaleBanner} from '../../components/PresaleBanner';
 
 
 /**
@@ -121,6 +123,7 @@ export function DashboardScreen({
     useWalletStore();
 
   const {prices, havePrices} = useResolvedPrices();
+  const {isPaused: presalePaused} = usePresaleSync();
 
   const holdings: Holding[] = useMemo(
     () => buildHoldings({solBalance, nocBalance, tokenBalances, tokens}),
@@ -338,11 +341,14 @@ export function DashboardScreen({
           </View>
         }
         ListFooterComponent={
-          <DashboardFooter
-            mode={mode}
-            onPresale={onPresale}
-            onSeeAllTokens={onSeeAllTokens}
-          />
+          <>
+            {!presalePaused ? <PresaleBanner onPress={onPresale ?? (() => {})} /> : null}
+            <DashboardFooter
+              mode={mode}
+              onPresale={onPresale}
+              onSeeAllTokens={onSeeAllTokens}
+            />
+          </>
         }
       />
     </SafeAreaView>
