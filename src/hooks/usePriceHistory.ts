@@ -1,11 +1,5 @@
-import {useEffect} from 'react';
-import {useQuery, useQueryClient, keepPreviousData} from '@tanstack/react-query';
-import {
-  fetchPriceHistory,
-  TIMEFRAME_DAYS,
-  type PriceHistory,
-  type Timeframe,
-} from '../modules/prices/priceHistory';
+import {useQuery, keepPreviousData} from '@tanstack/react-query';
+import {fetchPriceHistory, type PriceHistory, type Timeframe} from '../modules/prices/priceHistory';
 
 /**
  * CoinGecko price history for a token over a timeframe. Disabled when the token
@@ -27,39 +21,4 @@ export function usePriceHistory(coingeckoId: string | null, tf: Timeframe) {
     // means both fell over; one quick retry, not a ~minute-long backoff storm.
     retry: 1,
   });
-}
-
-/**
- * Warm every timeframe in the background once the screen mounts, so tapping a
- * different range shows instantly (cache hit) instead of waiting on a fetch.
- * Cheap: the backend caches chart responses for 5 min. No-op for NOC (null id).
- *
- * Runs the prefetches SEQUENTIALLY (not all at once): firing 4 concurrent
- * SSL-pinned requests on mount caused contention/timeouts on device. `retry:
- * false` keeps a failed background warm from retry-storming.
- */
-export function usePrefetchPriceHistory(coingeckoId: string | null): void {
-  const queryClient = useQueryClient();
-  useEffect(() => {
-    if (coingeckoId == null) {
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      for (const tf of Object.keys(TIMEFRAME_DAYS) as Timeframe[]) {
-        if (cancelled) {
-          return;
-        }
-        await queryClient.prefetchQuery({
-          queryKey: ['priceHistory', coingeckoId, tf],
-          queryFn: () => fetchPriceHistory(coingeckoId, tf),
-          staleTime: 5 * 60_000,
-          retry: false,
-        });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [coingeckoId, queryClient]);
 }

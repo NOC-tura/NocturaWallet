@@ -14,7 +14,7 @@ import {TokenLogo} from '../../components/TokenLogo';
 import {SparkChart, SparkChartSkeleton} from '../../components/SparkChart';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {useResolvedPrices} from '../../hooks/useResolvedPrices';
-import {usePriceHistory, usePrefetchPriceHistory} from '../../hooks/usePriceHistory';
+import {usePriceHistory} from '../../hooks/usePriceHistory';
 import {buildHoldings} from '../../modules/prices/holdings';
 import {computePortfolio} from '../../modules/prices/portfolio';
 import {
@@ -93,7 +93,6 @@ export function TokenDetailScreen({mint, onBack, onSend, onReceive, onSwap}: Pro
 
   const cgId = coingeckoIdForMint(mint);
   const history = usePriceHistory(cgId, tf);
-  usePrefetchPriceHistory(cgId); // warm all ranges so timeframe switches are instant
   const series = history.data?.prices ?? [];
   const change = isNoc ? null : changeOverSeries(series);
 
