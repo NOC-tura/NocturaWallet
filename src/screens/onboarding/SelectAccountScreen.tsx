@@ -69,10 +69,10 @@ export function SelectAccountScreen({
     }
     setLoading(true);
     setDetectFailed(false);
+    let seed: Uint8Array | undefined;
     try {
-      const seed = await mnemonicToSeed(mnemonic);
+      seed = await mnemonicToSeed(mnemonic);
       const found = await detectFundedAccounts(seed);
-      zeroize(seed);
       setCandidates(found.candidates);
       // A failed balance RPC still returns the (locally-derived) addresses; flag
       // it so the user sees the warning + retry rather than a silent wrong pick.
@@ -86,6 +86,10 @@ export function SelectAccountScreen({
     } catch {
       setDetectFailed(true);
     } finally {
+      // Zeroize the seed on EVERY path (success or throw) — it's sensitive.
+      if (seed) {
+        zeroize(seed);
+      }
       setLoading(false);
     }
   }, [mnemonic]);
