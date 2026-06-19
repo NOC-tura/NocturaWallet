@@ -1,173 +1,97 @@
 import React from 'react';
-import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
+import {View, Pressable, StyleSheet} from 'react-native';
+import {Rocket, ChevronRight} from 'lucide-react-native';
+import {Text} from './ui';
 import {usePresaleStore} from '../store/zustand/presaleStore';
+import {PRESALE_STAGE_PRICES} from '../constants/presale';
 
 interface PresaleBannerProps {
   onPress: () => void;
 }
 
 export function PresaleBanner({onPress}: PresaleBannerProps) {
-  const {currentStage, pricePerNoc, soldInStage, stageCapacity, tgeStatus, tokensPurchased, claimedTokens, referralBonusTokens} = usePresaleStore();
+  const {
+    currentStage,
+    pricePerNoc,
+    soldInStage,
+    stageCapacity,
+    tgeStatus,
+    tokensPurchased,
+    claimedTokens,
+    referralBonusTokens,
+  } = usePresaleStore();
 
-  // Hide banner after all tokens claimed
+  // Hide once all tokens are claimed.
   if (tgeStatus === 'claimed') {
     return null;
   }
 
-  // Post-TGE: claim banner
+  // Post-TGE claim banner (unchanged — Cycle C will style/flesh this out).
   if (tgeStatus === 'claimable') {
     const total = BigInt(tokensPurchased) + BigInt(referralBonusTokens);
-    const claimed = BigInt(claimedTokens);
-    const unclaimed = total - claimed;
-
+    const unclaimed = total - BigInt(claimedTokens);
     return (
-      <TouchableOpacity
-        testID="presale-claim-banner"
-        style={styles.container}
-        onPress={onPress}
-        activeOpacity={0.7}>
-        <View style={styles.topRow}>
+      <Pressable testID="presale-claim-banner" style={styles.claimContainer} onPress={onPress}>
+        <View style={styles.claimRow}>
           <View style={styles.claimDot} />
-          <Text style={styles.claimTitle}>Claim Your NOC Tokens</Text>
+          <Text variant="body-lg" className="text-fg-primary">
+            Claim Your NOC Tokens
+          </Text>
         </View>
-        <Text style={styles.claimAmount}>
-          {formatAmount(unclaimed.toString())} NOC available
+        <Text variant="body-sm" numeral className="text-success mt-1">
+          {formatNoc(unclaimed)} NOC available
         </Text>
-        <View style={styles.ctaRow}>
-          <Text style={styles.ctaText}>Claim Now →</Text>
-        </View>
-      </TouchableOpacity>
+      </Pressable>
     );
   }
 
-  // Pre-TGE: buy banner
+  // Pre-TGE buy banner — compact .presale design (index.html ≈ 6371).
   const stage = currentStage ?? 1;
-  const price = pricePerNoc ?? '0.0012';
+  const price = pricePerNoc ?? String(PRESALE_STAGE_PRICES[0]);
   const sold = soldInStage ? BigInt(soldInStage) : 0n;
-  const cap = stageCapacity ? BigInt(stageCapacity) : 1_000_000n;
-  const progressPct = cap > 0n ? Number((sold * 100n) / cap) : 0;
+  const cap = stageCapacity ? BigInt(stageCapacity) : 0n;
+  const pct = cap > 0n ? Number((sold * 100n) / cap) : 0;
 
   return (
-    <TouchableOpacity
+    <Pressable
       testID="presale-buy-banner"
-      style={styles.container}
       onPress={onPress}
-      activeOpacity={0.7}>
-      <View style={styles.topRow}>
-        <View style={styles.stageBadge}>
-          <View style={styles.dot} />
-          <Text style={styles.stageText}>Stage {stage} of 10</Text>
-        </View>
-        <Text style={styles.priceText}>1 NOC = {price} SOL</Text>
+      accessibilityRole="button"
+      accessibilityLabel={`NOC Presale, stage ${stage}`}
+      className="mx-5 mt-2 mb-3 flex-row items-center gap-3 p-4 rounded-lg bg-bg-surface-1 border border-[#6C47FF33]">
+      <View className="w-10 h-10 rounded-pill items-center justify-center bg-bg-surface-2">
+        <Rocket size={20} color="#B084FC" strokeWidth={1.75} />
       </View>
-
-      <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, {width: `${Math.min(progressPct, 100)}%`}]} />
-      </View>
-
-      <View style={styles.bottomRow}>
-        <Text style={styles.soldText}>
-          {formatAmount(sold.toString())} / {formatAmount(cap.toString())} NOC
+      <View className="flex-1">
+        <Text variant="body-lg" className="text-fg-primary">
+          {`NOC Presale · Stage ${stage}`}
         </Text>
-        <Text style={styles.ctaText}>Buy NOC →</Text>
+        <Text variant="body-sm" numeral className="text-fg-secondary mt-0.5">
+          {`$${price} · ${pct}% to next stage`}
+        </Text>
       </View>
-    </TouchableOpacity>
+      <ChevronRight size={18} color="#A8ACB5" strokeWidth={1.75} />
+    </Pressable>
   );
 }
 
-function formatAmount(value: string): string {
-  const num = Number(value);
-  if (num >= 1_000_000) {
-    return (num / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
-  }
-  if (num >= 1_000) {
-    return (num / 1_000).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  }
-  return value;
+function formatNoc(base: bigint): string {
+  // base is 9-dec; show whole NOC with thousands separators.
+  const whole = base / 1_000_000_000n;
+  return whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
 const styles = StyleSheet.create({
-  container: {
+  claimContainer: {
     marginHorizontal: 20,
-    marginTop: 16,
+    marginTop: 8,
+    marginBottom: 12,
     padding: 16,
     backgroundColor: '#1A1A2E',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#6C47FF33',
+    borderColor: '#4CAF5033',
   },
-  topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  stageBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#6C47FF',
-  },
-  stageText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  priceText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  progressTrack: {
-    height: 6,
-    backgroundColor: '#2A2A3E',
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginBottom: 10,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#6C47FF',
-    borderRadius: 3,
-  },
-  bottomRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  soldText: {
-    fontSize: 12,
-    color: '#888888',
-  },
-  ctaText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#6C47FF',
-  },
-  // Claim state styles
-  claimDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#4CAF50',
-  },
-  claimTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginLeft: 8,
-  },
-  claimAmount: {
-    fontSize: 13,
-    color: '#4CAF50',
-    marginBottom: 8,
-  },
-  ctaRow: {
-    alignItems: 'flex-end',
-  },
+  claimRow: {flexDirection: 'row', alignItems: 'center', gap: 8},
+  claimDot: {width: 8, height: 8, borderRadius: 4, backgroundColor: '#4CAF50'},
 });
