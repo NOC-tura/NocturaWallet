@@ -18,3 +18,4 @@ export const CORE_TOKENS: CoreToken[] = [
 export const CORE_MINTS = new Set(CORE_TOKENS.map(t => t.mint));
 
 export const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+export const USDT_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';

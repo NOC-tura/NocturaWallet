@@ -38,6 +38,16 @@ export const NOCTURA_FEE_TREASURY = IS_DEVNET
 export const RPC_ENDPOINT = Config.HELIUS_RPC_URL;
 export const RPC_WEBSOCKET = Config.HELIUS_WS_URL;
 export const API_BASE = Config.API_BASE;
+// Origin of API_BASE (e.g. https://api.noc-tura.io) — used to absolutize the
+// backend's relative image-proxy paths. Guarded so a missing/blank API_BASE
+// can't throw at import time (new URL is available via react-native-url-polyfill).
+export const API_ORIGIN = (() => {
+  try {
+    return new URL(API_BASE).origin;
+  } catch {
+    return '';
+  }
+})();
 // CoinGecko Demo API key — lifts the public-tier rate limit (~2/min → ~30/min).
 // Optional: when empty, requests fall back to the (heavily rate-limited) public
 // tier. For a production launch this is replaced by a backend price proxy.

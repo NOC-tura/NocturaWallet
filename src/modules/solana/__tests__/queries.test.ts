@@ -1,5 +1,11 @@
 import {Connection, PublicKey} from '@solana/web3.js';
-import {getBalance, getTokenAccounts, getTransactionHistory, getAccountInfo} from '../queries';
+import {
+  getBalance,
+  getMultipleBalances,
+  getTokenAccounts,
+  getTransactionHistory,
+  getAccountInfo,
+} from '../queries';
 
 describe('getBalance', () => {
   it('returns bigint (not number)', async () => {
@@ -21,6 +27,34 @@ describe('getBalance', () => {
     await getBalance(connection, owner);
 
     expect(connection.getBalance).toHaveBeenCalledWith(owner);
+  });
+});
+
+describe('getMultipleBalances', () => {
+  it('returns lamports per pubkey (0n for null accounts)', async () => {
+    const connection = new Connection('https://api.mainnet-beta.solana.com');
+    (connection.getMultipleAccountsInfo as jest.Mock).mockResolvedValueOnce([
+      {lamports: 17_000_000_000},
+      null,
+    ]);
+
+    const keys = [
+      new PublicKey('So11111111111111111111111111111111111111112'),
+      new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
+    ];
+    const result = await getMultipleBalances(connection, keys);
+
+    expect(result).toEqual([17_000_000_000n, 0n]);
+    expect(connection.getMultipleAccountsInfo).toHaveBeenCalledWith(keys);
+  });
+
+  it('returns [] without an RPC call for empty input', async () => {
+    const connection = new Connection('https://api.mainnet-beta.solana.com');
+
+    const result = await getMultipleBalances(connection, []);
+
+    expect(result).toEqual([]);
+    expect(connection.getMultipleAccountsInfo).not.toHaveBeenCalled();
   });
 });
 
