@@ -63,3 +63,19 @@ describe('estimateNocForSol', () => {
     expect(MIN_PURCHASE_USD).toBe(25);
   });
 });
+
+import {VersionedTransaction} from '@solana/web3.js';
+import {buildSolPurchaseTx} from '../presaleBuyModule';
+import * as connectionMod from '../../solana/connection';
+
+describe('buildSolPurchaseTx', () => {
+  it('builds a VersionedTransaction with the purchase instruction and the user as payer', async () => {
+    jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
+      getLatestBlockhash: async () => ({blockhash: '11111111111111111111111111111111', lastValidBlockHeight: 1}),
+    } as never);
+    const tx = await buildSolPurchaseTx(USER, 2_000_000_000n);
+    expect(tx).toBeInstanceOf(VersionedTransaction);
+    // payer is the first static account key
+    expect(tx.message.staticAccountKeys[0].toBase58()).toBe(USER.toBase58());
+  });
+});

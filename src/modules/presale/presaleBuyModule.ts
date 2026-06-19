@@ -1,5 +1,19 @@
-import {PublicKey, SystemProgram, TransactionInstruction} from '@solana/web3.js';
+import {
+  PublicKey,
+  SystemProgram,
+  TransactionInstruction,
+  Keypair,
+  TransactionMessage,
+  VersionedTransaction,
+  ComputeBudgetProgram,
+} from '@solana/web3.js';
 import {PROGRAM_ID, ADMIN_ADDRESS, SOL_TREASURY, PYTH_SOL_USD_ACCOUNT} from '../../constants/programs';
+import {getConnection} from '../solana/connection';
+import {estimatePriorityFee} from '../solana/priorityFee';
+import {KeychainManager} from '../keychain/keychainModule';
+import {mnemonicToSeed} from '../keyDerivation/mnemonicUtils';
+import {deriveTransparentKeypair, type TransparentScheme} from '../keyDerivation/transparent';
+import {zeroize} from '../session/zeroize';
 
 const PROGRAM = new PublicKey(PROGRAM_ID);
 const ADMIN = new PublicKey(ADMIN_ADDRESS);
@@ -83,4 +97,74 @@ export function estimateNocForSol(solAmount: number, solUsd: number, stagePriceU
     return 0;
   }
   return (solAmount * solUsd) / stagePriceUsd;
+}
+
+const keychainManager = new KeychainManager();
+const COMPUTE_UNIT_LIMIT = 120_000;
+
+function buildBuyInstructions(user: PublicKey, solLamports: bigint, priorityFeeMicroLamports: number) {
+  return [
+    ComputeBudgetProgram.setComputeUnitLimit({units: COMPUTE_UNIT_LIMIT}),
+    ComputeBudgetProgram.setComputeUnitPrice({microLamports: priorityFeeMicroLamports}),
+    buildSolPurchaseInstruction(user, solLamports),
+  ];
+}
+
+/** Build the (unsigned) purchase tx for pre-submit simulation. Payer = user. */
+export async function buildSolPurchaseTx(user: PublicKey, solLamports: bigint): Promise<VersionedTransaction> {
+  const connection = getConnection();
+  const {blockhash} = await connection.getLatestBlockhash();
+  const message = new TransactionMessage({
+    payerKey: user,
+    recentBlockhash: blockhash,
+    instructions: buildBuyInstructions(user, solLamports, 0),
+  }).compileToV0Message();
+  return new VersionedTransaction(message);
+}
+
+/**
+ * Sign + broadcast the SOL purchase with the transparent keypair. Mirrors
+ * submitSwap: the 64-byte secret key is zeroized in finally. skipPreflight is
+ * FALSE (Helius's skipPreflight=true path is ~60s slow for program txs);
+ * resending the same signed tx is idempotent (network dedups by signature).
+ */
+export async function submitPresaleBuySol(
+  solLamports: bigint,
+  scheme: TransparentScheme,
+): Promise<{signature: string; lastValidBlockHeight: number}> {
+  const mnemonic = await keychainManager.retrieveSeed();
+  const seed = await mnemonicToSeed(mnemonic);
+  const {secretKey} = deriveTransparentKeypair(seed, scheme);
+  zeroize(seed);
+  try {
+    const signer = Keypair.fromSecretKey(secretKey);
+    const connection = getConnection();
+    const priorityFee = await estimatePriorityFee(connection, 'fast');
+    const {blockhash, lastValidBlockHeight} = await connection.getLatestBlockhash();
+    const message = new TransactionMessage({
+      payerKey: signer.publicKey,
+      recentBlockhash: blockhash,
+      instructions: buildBuyInstructions(signer.publicKey, solLamports, priorityFee),
+    }).compileToV0Message();
+    const tx = new VersionedTransaction(message);
+    tx.sign([signer]);
+    const raw = tx.serialize();
+    let signature: string | null = null;
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        signature = await connection.sendRawTransaction(raw, {skipPreflight: false, maxRetries: 2});
+        break;
+      } catch (e) {
+        lastErr = e;
+        await new Promise(r => setTimeout(r, 800));
+      }
+    }
+    if (signature === null) {
+      throw lastErr instanceof Error ? lastErr : new Error('Failed to broadcast presale buy');
+    }
+    return {signature, lastValidBlockHeight};
+  } finally {
+    zeroize(secretKey);
+  }
 }
