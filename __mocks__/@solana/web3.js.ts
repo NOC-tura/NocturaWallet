@@ -431,6 +431,14 @@ export class Connection {
     } | null> => null,
   );
 
+  getMultipleAccountsInfo = jest.fn(
+    async (
+      publicKeys: PublicKey[],
+      _commitment?: unknown,
+    ): Promise<Array<{lamports: number} | null>> =>
+      publicKeys.map(() => null),
+  );
+
   getParsedAccountInfo = jest.fn(
     async (_publicKey: PublicKey, _commitment?: unknown) => ({
       value: null,
