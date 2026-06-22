@@ -1,7 +1,7 @@
 import {pinnedFetch, SSL_PINS, SSLPinningError} from '../pinnedFetch';
-import SSLPinning from 'react-native-ssl-pinning';
+import * as SSLPinning from 'react-native-ssl-pinning';
 
-const mockSSL = SSLPinning as typeof SSLPinning & {__reset: () => void};
+const mockSSL = SSLPinning as unknown as typeof SSLPinning & {__reset: () => void};
 
 describe('pinnedFetch', () => {
   beforeEach(() => {
