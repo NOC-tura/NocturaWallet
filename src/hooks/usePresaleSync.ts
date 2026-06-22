@@ -1,8 +1,31 @@
 import {useEffect} from 'react';
 import {useQuery} from '@tanstack/react-query';
+import {PublicKey} from '@solana/web3.js';
 import {fetchPresaleStats, fetchUserAllocation} from '../modules/presale/presaleModule';
+import {fetchOnChainAllocation} from '../modules/presale/presaleBuyModule';
 import {usePresaleStore} from '../store/zustand/presaleStore';
 import {useWalletStore} from '../store/zustand/walletStore';
+
+/**
+ * Resolve the user's presale allocation, preferring the AUTHORITATIVE on-chain
+ * `total_tokens` (matches the website + what's claimable at TGE; already
+ * includes any referral bonus, so it's reported as the full purchased amount
+ * with a 0 bonus to avoid double-counting). Falls back to the coordinator DB
+ * sum only when there's no on-chain allocation account or the RPC read fails.
+ */
+async function resolveAllocation(
+  address: string,
+): Promise<{tokensPurchasedBase: string; referralBonusBase: string}> {
+  try {
+    const onChain = await fetchOnChainAllocation(new PublicKey(address));
+    if (onChain.exists) {
+      return {tokensPurchasedBase: onChain.totalTokensBase, referralBonusBase: '0'};
+    }
+  } catch {
+    // RPC/decoding failure → fall through to the coordinator DB sum.
+  }
+  return fetchUserAllocation(address);
+}
 
 /**
  * Fetches live presale stage/price/progress (+ the user's allocation) from the
@@ -25,7 +48,7 @@ export function usePresaleSync(): {isPaused: boolean} {
 
   const allocQ = useQuery({
     queryKey: ['presaleAllocation', address],
-    queryFn: () => fetchUserAllocation(address as string),
+    queryFn: () => resolveAllocation(address as string),
     enabled: address != null,
     staleTime: 60_000,
     retry: 1,
