@@ -42,8 +42,8 @@ export const FEE_HEADROOM_SOL = 0.001;
 /**
  * Pure gating logic for the [Buy NOC] button — extracted so it can be unit
  * tested without rendering the screen (which pulls in Zustand + price hooks +
- * navigation). Mirrors the design's three constraints: a positive amount, the
- * on-chain $25 minimum, and enough balance to cover the amount + fee headroom.
+ * navigation). Token-aware: a positive amount, the $10 min / $50k max (USD;
+ * stablecoins are 1:1), and enough balance (+ SOL for the network fee).
  */
 export function canBuy({
   paymentToken,
