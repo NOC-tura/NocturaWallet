@@ -94,3 +94,26 @@ export async function fetchUserAllocation(address: string): Promise<UserAllocati
   }
   return {tokensPurchasedBase: purchased.toString(), referralBonusBase: referral.toString()};
 }
+
+export interface PresalePurchaseRecord {
+  txHash: string;
+  buyerAddress: string;
+  paymentToken: 'SOL' | 'USDC' | 'USDT';
+  paymentAmount: number;
+  nocAmount: number;
+  usdValue: number;
+  stage: number;
+}
+
+/** Best-effort archive of a completed purchase to the coordinator. Never throws. */
+export async function recordPresalePurchase(rec: PresalePurchaseRecord): Promise<void> {
+  try {
+    await fetch(`${API_BASE}/solana/purchase`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(rec),
+    });
+  } catch {
+    // non-critical (matches the website — the on-chain tx is the source of truth)
+  }
+}
