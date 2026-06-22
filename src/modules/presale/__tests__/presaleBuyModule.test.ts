@@ -4,6 +4,7 @@ import {
   buildSolPurchaseInstruction,
   estimateNocForSol,
   MIN_PURCHASE_USD,
+  MAX_PURCHASE_USD,
 } from '../presaleBuyModule';
 import {PROGRAM_ID, ADMIN_ADDRESS, SOL_TREASURY, PYTH_SOL_USD_ACCOUNT} from '../../../constants/programs';
 
@@ -59,8 +60,9 @@ describe('estimateNocForSol', () => {
     expect(estimateNocForSol(2, 150, 0.1501)).toBeCloseTo(1998.667, 2);
     expect(estimateNocForSol(1, 150, 0)).toBe(0);
   });
-  it('MIN_PURCHASE_USD is $25', () => {
-    expect(MIN_PURCHASE_USD).toBe(25);
+  it('MIN_PURCHASE_USD is $10 and MAX_PURCHASE_USD is $50,000', () => {
+    expect(MIN_PURCHASE_USD).toBe(10);
+    expect(MAX_PURCHASE_USD).toBe(50_000);
   });
 });
 

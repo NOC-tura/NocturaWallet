@@ -19,7 +19,7 @@ import {Text, Button} from '../components/ui';
 import {usePresaleStore} from '../store/zustand/presaleStore';
 import {useWalletStore} from '../store/zustand/walletStore';
 import {useResolvedPrices} from '../hooks/useResolvedPrices';
-import {estimateNocForSol, MIN_PURCHASE_USD} from '../modules/presale/presaleBuyModule';
+import {estimateNocForSol, MIN_PURCHASE_USD, MAX_PURCHASE_USD} from '../modules/presale/presaleBuyModule';
 import {PRESALE_STAGE_PRICES} from '../constants/presale';
 import type {DashboardStackParamList} from '../types/navigation';
 
@@ -55,6 +55,9 @@ export function canBuy({
   const usdValue = sol * solUsd;
   if (usdValue < MIN_PURCHASE_USD) {
     return {enabled: false, reason: `Minimum $${MIN_PURCHASE_USD}`};
+  }
+  if (usdValue > MAX_PURCHASE_USD) {
+    return {enabled: false, reason: `Maximum $${MAX_PURCHASE_USD.toLocaleString('en-US')} per transaction`};
   }
   if (sol + FEE_HEADROOM_SOL > solBalance) {
     return {enabled: false, reason: 'Insufficient SOL balance'};

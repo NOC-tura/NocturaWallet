@@ -23,8 +23,9 @@ const TREASURY = new PublicKey(SOL_TREASURY);
 // Anchor 8-byte discriminator for `presale_purchase_with_sol`.
 const PURCHASE_WITH_SOL_DISCRIMINATOR = [161, 153, 65, 238, 160, 236, 43, 165];
 
-/** On-chain minimum purchase, in USD (the program rejects below $25). */
-export const MIN_PURCHASE_USD = 25;
+/** Minimum / maximum purchase, in USD, per the presale (Min $10 · Max $50k/tx). */
+export const MIN_PURCHASE_USD = 10;
+export const MAX_PURCHASE_USD = 50_000;
 
 export interface PresalePdas {
   config: PublicKey;
