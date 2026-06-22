@@ -25,7 +25,6 @@ import {
   ChevronRight,
   TrendingUp,
   TrendingDown,
-  Rocket,
 } from 'lucide-react-native';
 import {Text} from '../../components/ui';
 import {useWalletStore} from '../../store/zustand/walletStore';
@@ -44,8 +43,10 @@ import {cn} from '../../utils/cn';
 import {computePortfolio, type Holding} from '../../modules/prices/portfolio';
 import {buildHoldings} from '../../modules/prices/holdings';
 import {useResolvedPrices} from '../../hooks/useResolvedPrices';
+import {usePresaleSync} from '../../hooks/usePresaleSync';
 import {formatUsd, formatUsdString} from '../../utils/formatUsd';
 import {TokenLogo} from '../../components/TokenLogo';
+import {PresaleBanner} from '../../components/PresaleBanner';
 
 
 /**
@@ -121,6 +122,7 @@ export function DashboardScreen({
     useWalletStore();
 
   const {prices, havePrices} = useResolvedPrices();
+  const {isPaused: presalePaused} = usePresaleSync();
 
   const holdings: Holding[] = useMemo(
     () => buildHoldings({solBalance, nocBalance, tokenBalances, tokens}),
@@ -342,6 +344,7 @@ export function DashboardScreen({
             mode={mode}
             onPresale={onPresale}
             onSeeAllTokens={onSeeAllTokens}
+            presalePaused={presalePaused}
           />
         }
       />
@@ -807,9 +810,10 @@ interface DashboardFooterProps {
   mode: 'transparent' | 'shielded';
   onPresale?: () => void;
   onSeeAllTokens?: () => void;
+  presalePaused?: boolean;
 }
 
-function DashboardFooter({mode, onPresale, onSeeAllTokens}: DashboardFooterProps) {
+function DashboardFooter({mode, onPresale, onSeeAllTokens, presalePaused}: DashboardFooterProps) {
   if (mode === 'shielded') {
     return (
       <View className="px-5 mt-4">
@@ -831,35 +835,20 @@ function DashboardFooter({mode, onPresale, onSeeAllTokens}: DashboardFooterProps
   }
 
   return (
-    <View className="px-5 mt-8">
+    <View className="mt-8">
       {onSeeAllTokens ? (
         <Pressable
           onPress={onSeeAllTokens}
-          className="py-3 items-center active:opacity-70 mb-2">
+          className="py-3 items-center active:opacity-70 mb-2 px-5">
           <Text variant="body-sm" className="text-accent-transparent">
             See all tokens
           </Text>
         </Pressable>
       ) : null}
-      <Pressable
-        onPress={onPresale}
-        disabled={!onPresale}
-        accessibilityRole="button"
-        accessibilityLabel="NOC Presale"
-        className="flex-row items-center gap-3 p-4 rounded-lg bg-bg-surface-1 border border-bg-surface-3 active:bg-bg-surface-2">
-        <View className="w-9 h-9 rounded-pill bg-accent-transparent-tint items-center justify-center">
-          <Rocket size={20} color="#B084FC" strokeWidth={1.75} />
-        </View>
-        <View className="flex-1">
-          <Text variant="body-lg" className="text-fg-primary">
-            NOC Presale · Stage 1
-          </Text>
-          <Text variant="body-sm" numeral className="text-fg-secondary">
-            $0.1501 · 0% to next stage
-          </Text>
-        </View>
-        <ChevronRight size={18} color="#A8ACB5" strokeWidth={1.75} />
-      </Pressable>
+      {/* Live presale banner (compact .presale design); hidden when paused. */}
+      {!presalePaused && onPresale ? (
+        <PresaleBanner onPress={onPresale} />
+      ) : null}
     </View>
   );
 }

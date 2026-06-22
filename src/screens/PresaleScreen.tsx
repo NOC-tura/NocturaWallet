@@ -1,12 +1,27 @@
-import React from 'react';
+import React, {useCallback, useMemo, useState} from 'react';
 import {
   View,
-  Text,
+  Text as RNText,
   TouchableOpacity,
+  TextInput,
+  Pressable,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Alert,
 } from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
+import {useNavigation} from '@react-navigation/native';
+import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import {ArrowLeft} from 'lucide-react-native';
+import {Text, Button} from '../components/ui';
 import {usePresaleStore} from '../store/zustand/presaleStore';
+import {useWalletStore} from '../store/zustand/walletStore';
+import {useResolvedPrices} from '../hooks/useResolvedPrices';
+import {estimateNocForSol, MIN_PURCHASE_USD, MAX_PURCHASE_USD} from '../modules/presale/presaleBuyModule';
+import {PRESALE_STAGE_PRICES} from '../constants/presale';
+import type {DashboardStackParamList} from '../types/navigation';
 
 interface PresaleScreenProps {
   onSkip: () => void;
@@ -14,11 +29,61 @@ interface PresaleScreenProps {
   isOnboarding?: boolean;
 }
 
-// ─── State A: Presale Active ───────────────────────────────────────────────
+// Headroom (SOL) reserved for the network fee so the buy can't drain the wallet
+// below what's needed to pay for its own transaction.
+export const FEE_HEADROOM_SOL = 0.001;
+
+/**
+ * Pure gating logic for the [Buy NOC] button — extracted so it can be unit
+ * tested without rendering the screen (which pulls in Zustand + price hooks +
+ * navigation). Mirrors the design's three constraints: a positive amount, the
+ * on-chain $25 minimum, and enough balance to cover the amount + fee headroom.
+ */
+export function canBuy({
+  amount,
+  solUsd,
+  solBalance,
+}: {
+  amount: string;
+  solUsd: number;
+  solBalance: number;
+}): {enabled: boolean; reason: string | null} {
+  const sol = Number(amount);
+  if (!Number.isFinite(sol) || sol <= 0) {
+    return {enabled: false, reason: null};
+  }
+  const usdValue = sol * solUsd;
+  if (usdValue < MIN_PURCHASE_USD) {
+    return {enabled: false, reason: `Minimum $${MIN_PURCHASE_USD}`};
+  }
+  if (usdValue > MAX_PURCHASE_USD) {
+    return {enabled: false, reason: `Maximum $${MAX_PURCHASE_USD.toLocaleString('en-US')} per transaction`};
+  }
+  if (sol + FEE_HEADROOM_SOL > solBalance) {
+    return {enabled: false, reason: 'Insufficient SOL balance'};
+  }
+  return {enabled: true, reason: null};
+}
+
+// Group integers with thousands separators while preserving up to 2 decimals.
+function formatNoc(value: number): string {
+  return value.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatUsd(value: number): string {
+  return value.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+// ─── State A: Presale Active (#23 active) ──────────────────────────────────
 
 function PresaleActive({
   onSkip,
-  onComplete: _onComplete,
   isOnboarding,
   currentStage,
 }: {
@@ -27,39 +92,218 @@ function PresaleActive({
   isOnboarding: boolean;
   currentStage: number | null;
 }) {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<DashboardStackParamList>>();
   const stage = currentStage ?? 1;
 
+  const pricePerNoc = usePresaleStore(s => s.pricePerNoc);
+  const stagePriceUsd =
+    pricePerNoc != null && Number(pricePerNoc) > 0
+      ? Number(pricePerNoc)
+      : PRESALE_STAGE_PRICES[0];
+
+  const {prices} = useResolvedPrices();
+  const solUsd = prices.native?.usd ?? 0;
+
+  // solBalance is stored as a string in lamports.
+  const solBalanceLamports = useWalletStore(s => s.solBalance);
+  const solBalance = Number(solBalanceLamports) / 1e9;
+
+  const [amount, setAmount] = useState('');
+
+  const amountNum = Number(amount) || 0;
+  const usdValue = amountNum * solUsd;
+  const nocEstimate = estimateNocForSol(amountNum, solUsd, stagePriceUsd);
+
+  const gate = useMemo(
+    () => canBuy({amount, solUsd, solBalance}),
+    [amount, solUsd, solBalance],
+  );
+
+  const onChangeAmount = useCallback((raw: string) => {
+    // decimal-pad still allows commas on some locales; normalize + restrict to
+    // one decimal point and digits only.
+    const cleaned = raw.replace(/,/g, '.').replace(/[^0-9.]/g, '');
+    const parts = cleaned.split('.');
+    const normalized =
+      parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : cleaned;
+    setAmount(normalized);
+  }, []);
+
+  const onMax = useCallback(() => {
+    const max = Math.max(0, solBalance - FEE_HEADROOM_SOL);
+    // Trim trailing zeros; keep up to 9 dp (lamport precision).
+    setAmount(max > 0 ? String(Number(max.toFixed(9))) : '0');
+  }, [solBalance]);
+
+  const onBuy = useCallback(() => {
+    if (!gate.enabled) {
+      return;
+    }
+    const lamports = BigInt(Math.round(amountNum * 1e9));
+    navigation.navigate('PresaleBuyConfirm', {
+      solLamports: lamports.toString(),
+    });
+  }, [gate.enabled, amountNum, navigation]);
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Buy NOC</Text>
-
-      <View style={styles.stageBadge}>
-        <Text style={styles.stageBadgeText}>Stage {stage} of 10</Text>
+    <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-bg-base">
+      {/* Top bar */}
+      <View className="flex-row items-center px-4 py-3 min-h-touch-min">
+        {!isOnboarding && (
+          <Pressable
+            onPress={() => navigation.goBack()}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            className="w-12 h-12 items-center justify-center -ml-2">
+            <ArrowLeft size={22} color="#A8ACB5" strokeWidth={1.75} />
+          </Pressable>
+        )}
+        <Text variant="h3" className="ml-1 flex-1">
+          NOC presale
+        </Text>
       </View>
 
-      {/* Progress bar placeholder */}
-      <View style={styles.progressBarTrack}>
-        <View style={[styles.progressBarFill, {width: `${(stage / 10) * 100}%`}]} />
-      </View>
-      <Text style={styles.progressLabel}>Stage progress — live data coming soon</Text>
+      <KeyboardAvoidingView
+        className="flex-1"
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView
+          className="flex-1"
+          contentContainerClassName="px-5 pb-6"
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
+          {/* Stage card */}
+          <View className="rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-5 mb-4">
+            <Text variant="overline" className="text-accent mb-3">
+              Stage {stage} of 10 · live
+            </Text>
+            <View className="flex-row items-baseline gap-2">
+              <Text variant="balance-lg" numeral>
+                ${stagePriceUsd}
+              </Text>
+              <Text variant="body-lg" className="text-fg-secondary">
+                / NOC
+              </Text>
+            </View>
+            {/* Progress bar */}
+            <View className="h-2 rounded-pill bg-bg-surface-3 overflow-hidden mt-4">
+              <View
+                className="h-full bg-accent rounded-pill"
+                style={{width: `${(stage / 10) * 100}%`}}
+              />
+            </View>
+          </View>
 
-      {/* Price display placeholder */}
-      <View style={styles.priceCard}>
-        <Text style={styles.priceLabel}>Current price</Text>
-        <Text style={styles.priceValue}>— SOL / NOC</Text>
-        <Text style={styles.priceHint}>On-chain price loads after Anchor IDL integration</Text>
-      </View>
+          {/* Input card */}
+          <View className="rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-5 mb-4">
+            <View className="flex-row items-center justify-between mb-2">
+              <Text variant="overline">YOU PAY</Text>
+              <Text variant="caption">
+                Available{' '}
+                <Text variant="caption" numeral className="text-fg-secondary">
+                  {solBalance.toLocaleString('en-US', {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 4,
+                  })}
+                </Text>{' '}
+                SOL
+              </Text>
+            </View>
+            <View className="flex-row items-center gap-3">
+              <TextInput
+                value={amount}
+                onChangeText={onChangeAmount}
+                keyboardType="decimal-pad"
+                placeholder="0.0"
+                placeholderTextColor="#5B5F66"
+                accessibilityLabel="SOL amount"
+                testID="presale-sol-input"
+                className="flex-1 text-balance-lg text-fg-primary font-geist p-0"
+              />
+              <Text variant="body-lg" className="text-fg-secondary">
+                SOL
+              </Text>
+              <Pressable
+                onPress={onMax}
+                accessibilityRole="button"
+                accessibilityLabel="Use max balance"
+                className="px-3 h-8 rounded-pill bg-bg-surface-3 items-center justify-center">
+                <Text variant="caption" className="text-fg-primary font-semibold">
+                  MAX
+                </Text>
+              </Pressable>
+            </View>
 
-      <TouchableOpacity style={styles.primaryButton} onPress={() => Alert.alert('Coming Soon', 'Presale purchase will be available after on-chain program integration.')}>
-        <Text style={styles.primaryButtonText}>Buy NOC</Text>
-      </TouchableOpacity>
+            <View className="h-px bg-bg-surface-3 my-4" />
 
-      {isOnboarding && (
-        <TouchableOpacity style={styles.ghostButton} onPress={onSkip}>
-          <Text style={styles.ghostButtonText}>Skip</Text>
-        </TouchableOpacity>
-      )}
-    </View>
+            <View className="flex-row items-center justify-between mb-2">
+              <Text variant="overline">YOU RECEIVE (EST.)</Text>
+              <Text variant="caption">
+                @{' '}
+                <Text variant="caption" numeral className="text-fg-secondary">
+                  ${stagePriceUsd}
+                </Text>
+                {solUsd > 0 ? ` · 1 SOL = $${formatUsd(solUsd)}` : ''}
+              </Text>
+            </View>
+            <View className="flex-row items-baseline gap-2">
+              <Text variant="balance-md" numeral>
+                ≈ {formatNoc(nocEstimate)}
+              </Text>
+              <Text variant="body-lg" className="text-accent">
+                NOC
+              </Text>
+            </View>
+            {usdValue > 0 && (
+              <Text variant="caption" className="mt-1">
+                ≈ ${formatUsd(usdValue)}
+              </Text>
+            )}
+          </View>
+
+          <Pressable
+            onPress={() =>
+              Alert.alert(
+                'Region availability',
+                'Geographic eligibility checks are coming soon. Presale purchases settle on-chain transparently.',
+              )
+            }
+            accessibilityRole="button"
+            className="self-center py-2">
+            <Text variant="body-sm" className="text-fg-secondary">
+              Not available in your region?
+            </Text>
+          </Pressable>
+        </ScrollView>
+
+        {/* Sticky bottom bar */}
+        <View className="px-5 pt-3 pb-4 border-t border-bg-surface-3 bg-bg-base">
+          <Button
+            variant="primary"
+            disabled={!gate.enabled}
+            onPress={onBuy}
+            testID="presale-buy-button"
+            label={
+              nocEstimate > 0 ? `Buy ${formatNoc(nocEstimate)} NOC` : 'Buy NOC'
+            }
+          />
+          {gate.reason != null && (
+            <Text variant="caption" className="text-center mt-2 text-fg-secondary">
+              {gate.reason}
+            </Text>
+          )}
+          {isOnboarding && (
+            <TouchableOpacity
+              className="items-center py-3 mt-1"
+              onPress={onSkip}>
+              <Text variant="body" className="text-fg-secondary">
+                Skip
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -79,20 +323,20 @@ function PresaleClaim({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Claim Your NOC Tokens</Text>
+      <RNText style={styles.title}>Claim Your NOC Tokens</RNText>
 
       <View style={styles.allocationCard}>
-        <Text style={styles.allocationLabel}>Your allocation</Text>
-        <Text style={styles.allocationValue}>{totalDisplay} NOC</Text>
+        <RNText style={styles.allocationLabel}>Your allocation</RNText>
+        <RNText style={styles.allocationValue}>{totalDisplay} NOC</RNText>
         {BigInt(referralBonusTokens) > 0n && (
-          <Text style={styles.allocationBonus}>
+          <RNText style={styles.allocationBonus}>
             Includes {BigInt(referralBonusTokens).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')} referral bonus
-          </Text>
+          </RNText>
         )}
       </View>
 
       <TouchableOpacity style={styles.primaryButton} onPress={onComplete}>
-        <Text style={styles.primaryButtonText}>Claim NOC</Text>
+        <RNText style={styles.primaryButtonText}>Claim NOC</RNText>
       </TouchableOpacity>
     </View>
   );
@@ -104,27 +348,27 @@ function PresaleClaimed({onSkip, onComplete}: {onSkip: () => void; onComplete: (
   return (
     <View style={styles.container}>
       <View style={styles.claimedBadge}>
-        <Text style={styles.claimedBadgeText}>All Claimed ✓</Text>
+        <RNText style={styles.claimedBadgeText}>All Claimed ✓</RNText>
       </View>
 
-      <Text style={styles.claimedTitle}>Your NOC tokens are in your wallet</Text>
+      <RNText style={styles.claimedTitle}>Your NOC tokens are in your wallet</RNText>
 
       <View style={styles.quickActionsRow}>
         <TouchableOpacity style={styles.quickActionButton} onPress={() => Alert.alert('Coming Soon', 'Staking will be available after on-chain program integration.')}>
-          <Text style={styles.quickActionText}>Stake</Text>
+          <RNText style={styles.quickActionText}>Stake</RNText>
         </TouchableOpacity>
         <TouchableOpacity style={styles.quickActionButton} onPress={() => Alert.alert('Coming Soon', 'Send will be available from the Dashboard.')}>
-          <Text style={styles.quickActionText}>Send</Text>
+          <RNText style={styles.quickActionText}>Send</RNText>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.quickActionButton, styles.quickActionButtonAccent]}
           onPress={onComplete}>
-          <Text style={[styles.quickActionText, styles.quickActionTextAccent]}>Dashboard</Text>
+          <RNText style={[styles.quickActionText, styles.quickActionTextAccent]}>Dashboard</RNText>
         </TouchableOpacity>
       </View>
 
       <TouchableOpacity style={styles.ghostButton} onPress={onSkip}>
-        <Text style={styles.ghostButtonText}>Close</Text>
+        <RNText style={styles.ghostButtonText}>Close</RNText>
       </TouchableOpacity>
     </View>
   );
@@ -173,66 +417,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     marginBottom: 20,
-    textAlign: 'center',
-  },
-
-  // Stage A
-  stageBadge: {
-    alignSelf: 'center',
-    backgroundColor: '#1A1A2E',
-    borderWidth: 1,
-    borderColor: '#6C47FF',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    marginBottom: 20,
-  },
-  stageBadgeText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6C47FF',
-  },
-  progressBarTrack: {
-    height: 8,
-    backgroundColor: '#1A1A2E',
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginBottom: 6,
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#6C47FF',
-    borderRadius: 4,
-  },
-  progressLabel: {
-    fontSize: 11,
-    color: '#6C6C80',
-    textAlign: 'center',
-    marginBottom: 28,
-  },
-  priceCard: {
-    backgroundColor: '#1A1A2E',
-    borderRadius: 12,
-    padding: 20,
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  priceLabel: {
-    fontSize: 12,
-    color: '#9999B3',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  priceValue: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 8,
-  },
-  priceHint: {
-    fontSize: 11,
-    color: '#6C6C80',
     textAlign: 'center',
   },
 

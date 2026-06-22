@@ -23,6 +23,8 @@ import {SetPinScreen} from '../screens/onboarding/SetPinScreen';
 import {BiometricSetupScreen} from '../screens/onboarding/BiometricSetupScreen';
 import {SuccessScreen} from '../screens/onboarding/SuccessScreen';
 import {PresaleScreen} from '../screens/PresaleScreen';
+import {PresaleBuyConfirmScreen} from '../screens/presale/PresaleBuyConfirmScreen';
+import {PresaleBuyStatusScreen} from '../screens/presale/PresaleBuyStatusScreen';
 import {ShieldedExplainerScreen} from '../screens/shielded/ShieldedExplainerScreen';
 import {ZkProofScreen} from '../screens/shielded/ZkProofScreen';
 import {StakingScreen} from '../screens/staking/StakingScreen';
@@ -411,6 +413,34 @@ function PresaleScreenDashboard() {
   return <PresaleScreen onSkip={() => {}} onComplete={() => {}} />;
 }
 
+function PresaleBuyConfirmNav() {
+  const navigation = useNavigation<NativeStackNavigationProp<DashboardStackParamList>>();
+  const route = useRoute<RouteProp<DashboardStackParamList, 'PresaleBuyConfirm'>>();
+  const {solLamports} = route.params;
+  return (
+    <PresaleBuyConfirmScreen
+      solLamports={solLamports}
+      onAuthorized={() => navigation.navigate('PresaleBuyStatus', {solLamports})}
+      onCancel={() => navigation.goBack()}
+    />
+  );
+}
+
+function PresaleBuyStatusNav() {
+  const navigation = useNavigation<NativeStackNavigationProp<DashboardStackParamList>>();
+  const route = useRoute<RouteProp<DashboardStackParamList, 'PresaleBuyStatus'>>();
+  const {solLamports} = route.params;
+  return (
+    <PresaleBuyStatusScreen
+      solLamports={solLamports}
+      onDashboard={() => navigation.navigate('Dashboard')}
+      // TransactionDetail is not in DashboardStackParamList; the screen falls
+      // back to Linking.openURL(explorerUrl) when onViewDetails is undefined.
+      onViewDetails={undefined}
+    />
+  );
+}
+
 function ShieldedExplainerScreenNav(
   props: NativeStackScreenProps<RootStackParamList, 'ShieldedExplainer'>,
 ) {
@@ -585,6 +615,8 @@ function DashboardStack() {
     <DashboardNav.Navigator screenOptions={defaultScreenOptions}>
       <DashboardNav.Screen name="Dashboard" component={DashboardScreenNav} />
       <DashboardNav.Screen name="Presale" component={PresaleScreenDashboard} />
+      <DashboardNav.Screen name="PresaleBuyConfirm" component={PresaleBuyConfirmNav} />
+      <DashboardNav.Screen name="PresaleBuyStatus" component={PresaleBuyStatusNav} />
       <DashboardNav.Screen name="Staking" component={StakingScreenNav} />
       <DashboardNav.Screen name="Referral" component={ReferralScreenNav} />
     </DashboardNav.Navigator>

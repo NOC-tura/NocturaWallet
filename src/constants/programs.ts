@@ -29,6 +29,9 @@ export const SOL_TREASURY = IS_DEVNET
   ? 'TODO_DEVNET_TREASURY'
   : '6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd';
 
+// Pyth SOL/USD price account (read-only) required by presale_purchase_with_sol.
+export const PYTH_SOL_USD_ACCOUNT = '7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE';
+
 // Currently the project main wallet (same as ADMIN_ADDRESS). Move to a Squads
 // multisig before scaling — only this literal changes, no other code.
 export const NOCTURA_FEE_TREASURY = IS_DEVNET
