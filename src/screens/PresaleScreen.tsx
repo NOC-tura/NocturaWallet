@@ -27,6 +27,7 @@ import {
 } from '../modules/presale/presaleBuyModule';
 import {USDC_MINT, USDT_MINT} from '../modules/tokens/coreTokens';
 import {PRESALE_STAGE_PRICES} from '../constants/presale';
+import {presaleAllocationDisplay} from '../modules/presale/presaleAllocation';
 import type {DashboardStackParamList} from '../types/navigation';
 
 interface PresaleScreenProps {
@@ -117,6 +118,9 @@ function PresaleActive({
   const stage = currentStage ?? 1;
 
   const pricePerNoc = usePresaleStore(s => s.pricePerNoc);
+  const tokensPurchased = usePresaleStore(s => s.tokensPurchased);
+  const referralBonusTokens = usePresaleStore(s => s.referralBonusTokens);
+  const allocation = presaleAllocationDisplay({tokensPurchased, referralBonusTokens});
   const stagePriceUsd =
     pricePerNoc != null && Number(pricePerNoc) > 0
       ? Number(pricePerNoc)
@@ -351,6 +355,25 @@ function PresaleActive({
               </Text>
             )}
           </View>
+
+          {allocation.show ? (
+            <View className="rounded-lg bg-bg-surface-2 border-l-2 border-l-info p-4 mb-4">
+              <Text variant="overline" className="text-fg-secondary mb-1">
+                YOUR PRESALE ALLOCATION
+              </Text>
+              <View className="flex-row items-baseline gap-2">
+                <Text variant="body-lg" numeral className="text-fg-primary">
+                  {allocation.nocText}
+                </Text>
+                <Text variant="body-sm" className="text-fg-secondary">
+                  NOC
+                </Text>
+              </View>
+              <Text variant="caption" className="text-fg-tertiary mt-1">
+                Claimable after TGE
+              </Text>
+            </View>
+          ) : null}
 
           <Pressable
             onPress={() =>
