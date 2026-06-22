@@ -177,6 +177,78 @@ export async function buildSolPurchaseTx(user: PublicKey, solLamports: bigint): 
   return new VersionedTransaction(message);
 }
 
+function buildStablecoinInstructions(
+  user: PublicKey,
+  token: StablecoinToken,
+  amountBaseUnits: bigint,
+  priorityFeeMicroLamports: number,
+) {
+  return [
+    ComputeBudgetProgram.setComputeUnitLimit({units: COMPUTE_UNIT_LIMIT}),
+    ComputeBudgetProgram.setComputeUnitPrice({microLamports: priorityFeeMicroLamports}),
+    buildStablecoinPurchaseInstruction(user, token, amountBaseUnits),
+  ];
+}
+
+/** Unsigned stablecoin purchase tx for pre-submit simulation. Payer = user. */
+export async function buildStablecoinPurchaseTx(
+  user: PublicKey,
+  token: StablecoinToken,
+  amountBaseUnits: bigint,
+): Promise<VersionedTransaction> {
+  const connection = getConnection();
+  const {blockhash} = await connection.getLatestBlockhash();
+  const message = new TransactionMessage({
+    payerKey: user,
+    recentBlockhash: blockhash,
+    instructions: buildStablecoinInstructions(user, token, amountBaseUnits, 0),
+  }).compileToV0Message();
+  return new VersionedTransaction(message);
+}
+
+/** Sign + broadcast a USDC/USDT purchase. Same safety as submitPresaleBuySol. */
+export async function submitPresaleBuyStablecoin(
+  token: StablecoinToken,
+  amountBaseUnits: bigint,
+  scheme: TransparentScheme,
+): Promise<{signature: string; lastValidBlockHeight: number}> {
+  const mnemonic = await keychainManager.retrieveSeed();
+  const seed = await mnemonicToSeed(mnemonic);
+  const {secretKey} = deriveTransparentKeypair(seed, scheme);
+  zeroize(seed);
+  try {
+    const signer = Keypair.fromSecretKey(secretKey);
+    const connection = getConnection();
+    const priorityFee = await estimatePriorityFee(connection, 'fast');
+    const {blockhash, lastValidBlockHeight} = await connection.getLatestBlockhash();
+    const message = new TransactionMessage({
+      payerKey: signer.publicKey,
+      recentBlockhash: blockhash,
+      instructions: buildStablecoinInstructions(signer.publicKey, token, amountBaseUnits, priorityFee),
+    }).compileToV0Message();
+    const tx = new VersionedTransaction(message);
+    tx.sign([signer]);
+    const raw = tx.serialize();
+    let signature: string | null = null;
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        signature = await connection.sendRawTransaction(raw, {skipPreflight: false, maxRetries: 2});
+        break;
+      } catch (e) {
+        lastErr = e;
+        await new Promise(r => setTimeout(r, 800));
+      }
+    }
+    if (signature === null) {
+      throw lastErr instanceof Error ? lastErr : new Error('Failed to broadcast presale buy');
+    }
+    return {signature, lastValidBlockHeight};
+  } finally {
+    zeroize(secretKey);
+  }
+}
+
 /**
  * Sign + broadcast the SOL purchase with the transparent keypair. Mirrors
  * submitSwap: the 64-byte secret key is zeroized in finally. skipPreflight is

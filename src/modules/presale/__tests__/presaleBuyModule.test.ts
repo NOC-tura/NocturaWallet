@@ -126,3 +126,15 @@ describe('estimateNocForUsd', () => {
     expect(estimateNocForUsd(10, 0)).toBe(0);
   });
 });
+
+import {buildStablecoinPurchaseTx} from '../presaleBuyModule';
+
+describe('buildStablecoinPurchaseTx', () => {
+  it('builds a VersionedTransaction with the user as payer', async () => {
+    jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
+      getLatestBlockhash: async () => ({blockhash: '11111111111111111111111111111111', lastValidBlockHeight: 1}),
+    } as never);
+    const tx = await buildStablecoinPurchaseTx(USER, 'USDC', 25_000_000n);
+    expect(tx.message.staticAccountKeys[0].toBase58()).toBe(USER.toBase58());
+  });
+});
