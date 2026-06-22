@@ -10,7 +10,11 @@ import {useWalletStore} from '../../store/zustand/walletStore';
 import {usePresaleStore} from '../../store/zustand/presaleStore';
 import {useResolvedPrices} from '../../hooks/useResolvedPrices';
 import {awaitUserAuth} from '../../modules/session/pendingAuth';
-import {estimateNocForSol} from '../../modules/presale/presaleBuyModule';
+import {
+  estimateNocForSol,
+  estimateNocForUsd,
+} from '../../modules/presale/presaleBuyModule';
+import type {StablecoinToken} from '../../modules/presale/presaleBuyModule';
 import {PRESALE_STAGE_PRICES} from '../../constants/presale';
 import type {RootStackParamList} from '../../types/navigation';
 
@@ -30,6 +34,9 @@ let simulateTransaction:
 let buildSolPurchaseTx:
   | typeof import('../../modules/presale/presaleBuyModule').buildSolPurchaseTx
   | null = null;
+let buildStablecoinPurchaseTx:
+  | typeof import('../../modules/presale/presaleBuyModule').buildStablecoinPurchaseTx
+  | null = null;
 
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -40,6 +47,9 @@ try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   buildSolPurchaseTx =
     require('../../modules/presale/presaleBuyModule').buildSolPurchaseTx;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  buildStablecoinPurchaseTx =
+    require('../../modules/presale/presaleBuyModule').buildStablecoinPurchaseTx;
 } catch {
   // Modules unavailable in test/stub environment — no-op.
 }
@@ -81,15 +91,22 @@ function formatSol(sol: number): string {
   return String(Number(sol.toFixed(SOL_DECIMALS)));
 }
 
+// Trim trailing zeros on a stablecoin amount (6 dp).
+function formatStable(value: number): string {
+  return String(Number(value.toFixed(6)));
+}
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 interface PresaleBuyConfirmScreenProps {
-  solLamports: string;
+  paymentToken: 'SOL' | StablecoinToken;
+  amountBaseUnits: string;
   onAuthorized: () => void;
   onCancel: () => void;
 }
 
 export function PresaleBuyConfirmScreen({
-  solLamports,
+  paymentToken,
+  amountBaseUnits,
   onAuthorized,
   onCancel,
 }: PresaleBuyConfirmScreenProps) {
@@ -109,10 +126,14 @@ export function PresaleBuyConfirmScreen({
   const {prices} = useResolvedPrices();
   const solUsd = prices.native?.usd ?? 0;
 
-  const lamports = safeBigInt(solLamports);
-  const solAmount = Number(lamports) / 1e9;
-  const usdValue = solAmount * solUsd;
-  const nocEstimate = estimateNocForSol(solAmount, solUsd, stagePriceUsd);
+  const isSol = paymentToken === 'SOL';
+  const units = safeBigInt(amountBaseUnits);
+  const solAmount = Number(units) / 1e9;
+  const stableAmount = Number(units) / 1e6;
+  const usdValue = isSol ? solAmount * solUsd : stableAmount;
+  const nocEstimate = isSol
+    ? estimateNocForSol(solAmount, solUsd, stagePriceUsd)
+    : estimateNocForUsd(stableAmount, stagePriceUsd);
 
   const [simState, setSimState] = useState<SimState>('simulating');
   const [retryCount, setRetryCount] = useState(0);
@@ -130,9 +151,13 @@ export function PresaleBuyConfirmScreen({
       const _getConnection = getConnection;
       const _simulateTransaction = simulateTransaction;
       const _buildSolPurchaseTx = buildSolPurchaseTx;
+      const _buildStablecoinPurchaseTx = buildStablecoinPurchaseTx;
 
       const modulesLoaded =
-        !!_getConnection && !!_simulateTransaction && !!_buildSolPurchaseTx;
+        !!_getConnection &&
+        !!_simulateTransaction &&
+        !!_buildSolPurchaseTx &&
+        !!_buildStablecoinPurchaseTx;
 
       if (!modulesLoaded) {
         // Test/stub env only — modules absent. Treat as ready (best-effort).
@@ -151,7 +176,9 @@ export function PresaleBuyConfirmScreen({
       try {
         const user = new PublicKey(publicKey);
         const connection = _getConnection();
-        const tx = await _buildSolPurchaseTx(user, lamports);
+        const tx = isSol
+          ? await _buildSolPurchaseTx(user, units)
+          : await _buildStablecoinPurchaseTx(user, paymentToken, units);
         const sim = await _simulateTransaction(connection, tx);
         if (cancelled) return;
         if (sim.success) {
@@ -193,8 +220,8 @@ export function PresaleBuyConfirmScreen({
     // Navigate to UnlockSend BEFORE awaiting — modal must appear while we wait.
     const authPromise = awaitUserAuth();
     rootNav.navigate('UnlockSend', {
-      amount: formatSol(solAmount),
-      ticker: 'SOL',
+      amount: isSol ? formatSol(solAmount) : formatStable(stableAmount),
+      ticker: paymentToken,
       recipient: 'Noctura Presale',
     });
     const approved = await authPromise;
@@ -280,7 +307,7 @@ export function PresaleBuyConfirmScreen({
         showsVerticalScrollIndicator={false}>
         {/* Headline */}
         <Text variant="h1" className="mb-2">
-          Buy NOC with SOL
+          Buy NOC with {paymentToken}
         </Text>
 
         {/* Review card */}
@@ -288,8 +315,14 @@ export function PresaleBuyConfirmScreen({
           {eyebrowContent}
           <ReviewRow
             label="You pay"
-            value={`${formatSol(solAmount)} SOL`}
-            sub={solUsd > 0 ? `~$${formatUsd(usdValue)}` : undefined}
+            value={
+              isSol
+                ? `${formatSol(solAmount)} SOL`
+                : `${formatStable(stableAmount)} ${paymentToken}`
+            }
+            sub={
+              isSol && solUsd > 0 ? `~$${formatUsd(usdValue)}` : undefined
+            }
             isFirst
           />
           <ReviewRow
