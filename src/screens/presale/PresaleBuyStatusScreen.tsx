@@ -21,7 +21,10 @@ import {useResolvedPrices} from '../../hooks/useResolvedPrices';
 import {PRESALE_STAGE_PRICES} from '../../constants/presale';
 import {
   estimateNocForSol,
+  estimateNocForUsd,
   type submitPresaleBuySol as SubmitPresaleBuySol,
+  type submitPresaleBuyStablecoin as SubmitPresaleBuyStablecoin,
+  type StablecoinToken,
 } from '../../modules/presale/presaleBuyModule';
 
 // ── In-file constants ─────────────────────────────────────────────────────────
@@ -30,6 +33,7 @@ const MAX_ATTEMPTS = 3;
 
 // ── Lazy imports — wrapped in try/catch so Jest/stub envs don't crash ─────────
 let submitPresaleBuySol: typeof SubmitPresaleBuySol | null = null;
+let submitPresaleBuyStablecoin: typeof SubmitPresaleBuyStablecoin | null = null;
 let loadTransparentScheme:
   | typeof import('../../modules/keyDerivation/derivationScheme').loadTransparentScheme
   | null = null;
@@ -44,6 +48,8 @@ try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   submitPresaleBuySol = require('../../modules/presale/presaleBuyModule').submitPresaleBuySol;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
+  submitPresaleBuyStablecoin = require('../../modules/presale/presaleBuyModule').submitPresaleBuyStablecoin;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   loadTransparentScheme = require('../../modules/keyDerivation/derivationScheme').loadTransparentScheme;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   getConnection = require('../../modules/solana/connection').getConnection;
@@ -57,7 +63,8 @@ try {
 type Stage = 'submitting' | 'broadcasting' | 'success' | 'failed' | 'stuck';
 
 export interface PresaleBuyStatusScreenProps {
-  solLamports: string;
+  paymentToken: 'SOL' | StablecoinToken;
+  amountBaseUnits: string;
   onDashboard: () => void;
   onViewDetails?: (signature: string) => void;
 }
@@ -99,9 +106,14 @@ function formatSol(sol: number): string {
   return String(Number(sol.toFixed(SOL_DECIMALS)));
 }
 
+function formatStable(value: number): string {
+  return String(Number(value.toFixed(6)));
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export function PresaleBuyStatusScreen({
-  solLamports,
+  paymentToken,
+  amountBaseUnits,
   onDashboard,
   onViewDetails,
 }: PresaleBuyStatusScreenProps) {
@@ -126,10 +138,15 @@ export function PresaleBuyStatusScreen({
   const {prices} = useResolvedPrices();
   const solUsd = prices.native?.usd ?? 0;
 
-  const lamports = safeBigInt(solLamports);
-  const solAmount = Number(lamports) / 1e9;
-  const usdValue = solAmount * solUsd;
-  const nocEstimate = estimateNocForSol(solAmount, solUsd, stagePriceUsd);
+  const isSol = paymentToken === 'SOL';
+  const units = safeBigInt(amountBaseUnits);
+  const solAmount = Number(units) / 1e9;
+  const stableAmount = Number(units) / 1e6;
+  const paymentAmount = isSol ? solAmount : stableAmount;
+  const usdValue = isSol ? solAmount * solUsd : stableAmount;
+  const nocEstimate = isSol
+    ? estimateNocForSol(solAmount, solUsd, stagePriceUsd)
+    : estimateNocForUsd(stableAmount, stagePriceUsd);
 
   // Keep refs to the latest values for use inside the async closures.
   const signatureRef = useRef<string | null>(null);
@@ -149,8 +166,8 @@ export function PresaleBuyStatusScreen({
         void recordPresalePurchase({
           txHash: sig,
           buyerAddress: publicKey,
-          paymentToken: 'SOL',
-          paymentAmount: solAmount,
+          paymentToken,
+          paymentAmount,
           nocAmount: nocEstimate,
           usdValue,
           stage: displayStage,
@@ -164,13 +181,21 @@ export function PresaleBuyStatusScreen({
       setErrorMessage(null);
 
       // Guard: in stub/test env all required modules may be null — exit gracefully
-      if (!submitPresaleBuySol || !loadTransparentScheme || !getConnection) {
+      if (
+        !submitPresaleBuySol ||
+        !submitPresaleBuyStablecoin ||
+        !loadTransparentScheme ||
+        !getConnection
+      ) {
         return;
       }
 
       const scheme = loadTransparentScheme();
 
-      const attemptSubmit = () => submitPresaleBuySol!(lamports, scheme);
+      const attemptSubmit = () =>
+        isSol
+          ? submitPresaleBuySol!(units, scheme)
+          : submitPresaleBuyStablecoin!(paymentToken, units, scheme);
 
       let attempt = 1;
       let result: {signature: string; lastValidBlockHeight: number};
@@ -275,7 +300,7 @@ export function PresaleBuyStatusScreen({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [solLamports, retryCount]);
+  }, [amountBaseUnits, retryCount]);
 
   // ── Derived display values ─────────────────────────────────────────────────
   const truncatedSig =
@@ -354,7 +379,10 @@ export function PresaleBuyStatusScreen({
             </Text>
           </View>
           <Text variant="caption" className="text-fg-tertiary">
-            Paid {formatSol(solAmount)} SOL{solUsd > 0 ? ` · ~$${formatUsd(usdValue)}` : ''}
+            Paid{' '}
+            {isSol
+              ? `${formatSol(solAmount)} SOL${solUsd > 0 ? ` · ~$${formatUsd(usdValue)}` : ''}`
+              : `${formatStable(stableAmount)} ${paymentToken}`}
           </Text>
         </View>
 

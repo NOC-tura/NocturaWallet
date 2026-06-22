@@ -51,8 +51,8 @@ export type OnboardingStackParamList = {
 export type DashboardStackParamList = {
   Dashboard: undefined;
   Presale: undefined;
-  PresaleBuyConfirm: {solLamports: string};
-  PresaleBuyStatus: {solLamports: string};
+  PresaleBuyConfirm: {paymentToken: 'SOL' | 'USDC' | 'USDT'; amountBaseUnits: string};
+  PresaleBuyStatus: {paymentToken: 'SOL' | 'USDC' | 'USDT'; amountBaseUnits: string};
   Staking: undefined;
   Referral: undefined;
 };

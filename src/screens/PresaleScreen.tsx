@@ -19,7 +19,13 @@ import {Text, Button} from '../components/ui';
 import {usePresaleStore} from '../store/zustand/presaleStore';
 import {useWalletStore} from '../store/zustand/walletStore';
 import {useResolvedPrices} from '../hooks/useResolvedPrices';
-import {estimateNocForSol, MIN_PURCHASE_USD, MAX_PURCHASE_USD} from '../modules/presale/presaleBuyModule';
+import {
+  estimateNocForSol,
+  estimateNocForUsd,
+  MIN_PURCHASE_USD,
+  MAX_PURCHASE_USD,
+} from '../modules/presale/presaleBuyModule';
+import {USDC_MINT, USDT_MINT} from '../modules/tokens/coreTokens';
 import {PRESALE_STAGE_PRICES} from '../constants/presale';
 import type {DashboardStackParamList} from '../types/navigation';
 
@@ -36,31 +42,45 @@ export const FEE_HEADROOM_SOL = 0.001;
 /**
  * Pure gating logic for the [Buy NOC] button — extracted so it can be unit
  * tested without rendering the screen (which pulls in Zustand + price hooks +
- * navigation). Mirrors the design's three constraints: a positive amount, the
- * on-chain $25 minimum, and enough balance to cover the amount + fee headroom.
+ * navigation). Token-aware: a positive amount, the $10 min / $50k max (USD;
+ * stablecoins are 1:1), and enough balance (+ SOL for the network fee).
  */
 export function canBuy({
+  paymentToken,
   amount,
   solUsd,
   solBalance,
+  tokenBalance,
 }: {
+  paymentToken: 'SOL' | 'USDC' | 'USDT';
   amount: string;
   solUsd: number;
   solBalance: number;
+  tokenBalance: number; // display units of the selected stablecoin (ignored for SOL)
 }): {enabled: boolean; reason: string | null} {
-  const sol = Number(amount);
-  if (!Number.isFinite(sol) || sol <= 0) {
+  const amt = Number(amount);
+  if (!Number.isFinite(amt) || amt <= 0) {
     return {enabled: false, reason: null};
   }
-  const usdValue = sol * solUsd;
+  // Stablecoins are 1:1 USD; SOL converts via the live price.
+  const usdValue = paymentToken === 'SOL' ? amt * solUsd : amt;
   if (usdValue < MIN_PURCHASE_USD) {
     return {enabled: false, reason: `Minimum $${MIN_PURCHASE_USD}`};
   }
   if (usdValue > MAX_PURCHASE_USD) {
     return {enabled: false, reason: `Maximum $${MAX_PURCHASE_USD.toLocaleString('en-US')} per transaction`};
   }
-  if (sol + FEE_HEADROOM_SOL > solBalance) {
-    return {enabled: false, reason: 'Insufficient SOL balance'};
+  if (paymentToken === 'SOL') {
+    if (amt + FEE_HEADROOM_SOL > solBalance) {
+      return {enabled: false, reason: 'Insufficient SOL balance'};
+    }
+  } else {
+    if (amt > tokenBalance) {
+      return {enabled: false, reason: `Insufficient ${paymentToken} balance`};
+    }
+    if (solBalance < FEE_HEADROOM_SOL) {
+      return {enabled: false, reason: 'Need a little SOL for the network fee'};
+    }
   }
   return {enabled: true, reason: null};
 }
@@ -109,15 +129,40 @@ function PresaleActive({
   const solBalanceLamports = useWalletStore(s => s.solBalance);
   const solBalance = Number(solBalanceLamports) / 1e9;
 
+  const [paymentToken, setPaymentToken] = useState<'SOL' | 'USDC' | 'USDT'>(
+    'SOL',
+  );
   const [amount, setAmount] = useState('');
 
+  // tokenBalances are stored as base-unit strings keyed by mint (verified
+  // against TokenDetailScreen, which renders them via `/ 10 ** decimals`).
+  // USDC/USDT are 6 dp.
+  const tokenBalances = useWalletStore(s => s.tokenBalances);
+  const stableMint =
+    paymentToken === 'USDC'
+      ? USDC_MINT
+      : paymentToken === 'USDT'
+        ? USDT_MINT
+        : null;
+  const tokenBalance = stableMint
+    ? Number(tokenBalances[stableMint] ?? '0') / 1e6
+    : 0;
+
+  const onChangeToken = useCallback((next: 'SOL' | 'USDC' | 'USDT') => {
+    setPaymentToken(next);
+    setAmount('');
+  }, []);
+
   const amountNum = Number(amount) || 0;
-  const usdValue = amountNum * solUsd;
-  const nocEstimate = estimateNocForSol(amountNum, solUsd, stagePriceUsd);
+  const usdValue = paymentToken === 'SOL' ? amountNum * solUsd : amountNum;
+  const nocEstimate =
+    paymentToken === 'SOL'
+      ? estimateNocForSol(amountNum, solUsd, stagePriceUsd)
+      : estimateNocForUsd(amountNum, stagePriceUsd);
 
   const gate = useMemo(
-    () => canBuy({amount, solUsd, solBalance}),
-    [amount, solUsd, solBalance],
+    () => canBuy({paymentToken, amount, solUsd, solBalance, tokenBalance}),
+    [paymentToken, amount, solUsd, solBalance, tokenBalance],
   );
 
   const onChangeAmount = useCallback((raw: string) => {
@@ -131,20 +176,29 @@ function PresaleActive({
   }, []);
 
   const onMax = useCallback(() => {
-    const max = Math.max(0, solBalance - FEE_HEADROOM_SOL);
-    // Trim trailing zeros; keep up to 9 dp (lamport precision).
-    setAmount(max > 0 ? String(Number(max.toFixed(9))) : '0');
-  }, [solBalance]);
+    if (paymentToken === 'SOL') {
+      const max = Math.max(0, solBalance - FEE_HEADROOM_SOL);
+      // Trim trailing zeros; keep up to 9 dp (lamport precision).
+      setAmount(max > 0 ? String(Number(max.toFixed(9))) : '0');
+    } else {
+      // Stablecoin fee is paid in SOL, so no headroom is reserved here.
+      setAmount(tokenBalance > 0 ? String(tokenBalance) : '0');
+    }
+  }, [paymentToken, solBalance, tokenBalance]);
 
   const onBuy = useCallback(() => {
     if (!gate.enabled) {
       return;
     }
-    const lamports = BigInt(Math.round(amountNum * 1e9));
+    const amountBaseUnits =
+      paymentToken === 'SOL'
+        ? BigInt(Math.round(amountNum * 1e9))
+        : BigInt(Math.round(amountNum * 1e6));
     navigation.navigate('PresaleBuyConfirm', {
-      solLamports: lamports.toString(),
+      paymentToken,
+      amountBaseUnits: amountBaseUnits.toString(),
     });
-  }, [gate.enabled, amountNum, navigation]);
+  }, [gate.enabled, paymentToken, amountNum, navigation]);
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-bg-base">
@@ -194,6 +248,38 @@ function PresaleActive({
             </View>
           </View>
 
+          {/* Payment token selector */}
+          <View className="flex-row items-center gap-2 mb-4">
+            {(['SOL', 'USDC', 'USDT'] as const).map(t => {
+              const active = paymentToken === t;
+              return (
+                <Pressable
+                  key={t}
+                  onPress={() => onChangeToken(t)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Pay with ${t}`}
+                  accessibilityState={{selected: active}}
+                  testID={`pay-chip-${t}`}
+                  style={{minHeight: 44, justifyContent: 'center', alignItems: 'center'}}
+                  className={
+                    active
+                      ? 'flex-1 px-4 rounded-pill bg-accent-transparent-tint'
+                      : 'flex-1 px-4 rounded-pill'
+                  }>
+                  <Text
+                    variant="body-sm"
+                    className={
+                      active
+                        ? 'text-accent-transparent font-geist-semibold'
+                        : 'text-fg-tertiary'
+                    }>
+                    {t}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
           {/* Input card */}
           <View className="rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-5 mb-4">
             <View className="flex-row items-center justify-between mb-2">
@@ -201,12 +287,15 @@ function PresaleActive({
               <Text variant="caption">
                 Available{' '}
                 <Text variant="caption" numeral className="text-fg-secondary">
-                  {solBalance.toLocaleString('en-US', {
+                  {(paymentToken === 'SOL'
+                    ? solBalance
+                    : tokenBalance
+                  ).toLocaleString('en-US', {
                     minimumFractionDigits: 0,
                     maximumFractionDigits: 4,
                   })}
                 </Text>{' '}
-                SOL
+                {paymentToken}
               </Text>
             </View>
             <View className="flex-row items-center gap-3">
@@ -216,12 +305,12 @@ function PresaleActive({
                 keyboardType="decimal-pad"
                 placeholder="0.0"
                 placeholderTextColor="#5B5F66"
-                accessibilityLabel="SOL amount"
+                accessibilityLabel={`${paymentToken} amount`}
                 testID="presale-sol-input"
                 className="flex-1 text-balance-lg text-fg-primary font-geist p-0"
               />
               <Text variant="body-lg" className="text-fg-secondary">
-                SOL
+                {paymentToken}
               </Text>
               <Pressable
                 onPress={onMax}
@@ -243,7 +332,9 @@ function PresaleActive({
                 <Text variant="caption" numeral className="text-fg-secondary">
                   ${stagePriceUsd}
                 </Text>
-                {solUsd > 0 ? ` · 1 SOL = $${formatUsd(solUsd)}` : ''}
+                {paymentToken === 'SOL' && solUsd > 0
+                  ? ` · 1 SOL = $${formatUsd(solUsd)}`
+                  : ''}
               </Text>
             </View>
             <View className="flex-row items-baseline gap-2">

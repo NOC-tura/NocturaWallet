@@ -416,11 +416,14 @@ function PresaleScreenDashboard() {
 function PresaleBuyConfirmNav() {
   const navigation = useNavigation<NativeStackNavigationProp<DashboardStackParamList>>();
   const route = useRoute<RouteProp<DashboardStackParamList, 'PresaleBuyConfirm'>>();
-  const {solLamports} = route.params;
+  const {paymentToken, amountBaseUnits} = route.params;
   return (
     <PresaleBuyConfirmScreen
-      solLamports={solLamports}
-      onAuthorized={() => navigation.navigate('PresaleBuyStatus', {solLamports})}
+      paymentToken={paymentToken}
+      amountBaseUnits={amountBaseUnits}
+      onAuthorized={() =>
+        navigation.navigate('PresaleBuyStatus', {paymentToken, amountBaseUnits})
+      }
       onCancel={() => navigation.goBack()}
     />
   );
@@ -429,10 +432,11 @@ function PresaleBuyConfirmNav() {
 function PresaleBuyStatusNav() {
   const navigation = useNavigation<NativeStackNavigationProp<DashboardStackParamList>>();
   const route = useRoute<RouteProp<DashboardStackParamList, 'PresaleBuyStatus'>>();
-  const {solLamports} = route.params;
+  const {paymentToken, amountBaseUnits} = route.params;
   return (
     <PresaleBuyStatusScreen
-      solLamports={solLamports}
+      paymentToken={paymentToken}
+      amountBaseUnits={amountBaseUnits}
       onDashboard={() => navigation.navigate('Dashboard')}
       // TransactionDetail is not in DashboardStackParamList; the screen falls
       // back to Linking.openURL(explorerUrl) when onViewDetails is undefined.
