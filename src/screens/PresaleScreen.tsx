@@ -28,6 +28,7 @@ import {
 import {USDC_MINT, USDT_MINT} from '../modules/tokens/coreTokens';
 import {PRESALE_STAGE_PRICES} from '../constants/presale';
 import {presaleAllocationDisplay} from '../modules/presale/presaleAllocation';
+import {stageProgressDisplay} from '../modules/presale/stageProgress';
 import type {DashboardStackParamList} from '../types/navigation';
 
 interface PresaleScreenProps {
@@ -118,9 +119,12 @@ function PresaleActive({
   const stage = currentStage ?? 1;
 
   const pricePerNoc = usePresaleStore(s => s.pricePerNoc);
+  const soldInStage = usePresaleStore(s => s.soldInStage);
+  const stageCapacity = usePresaleStore(s => s.stageCapacity);
   const tokensPurchased = usePresaleStore(s => s.tokensPurchased);
   const referralBonusTokens = usePresaleStore(s => s.referralBonusTokens);
   const allocation = presaleAllocationDisplay({tokensPurchased, referralBonusTokens});
+  const progress = stageProgressDisplay({soldInStage, stageCapacity, pricePerNoc});
   const stagePriceUsd =
     pricePerNoc != null && Number(pricePerNoc) > 0
       ? Number(pricePerNoc)
@@ -243,13 +247,30 @@ function PresaleActive({
                 / NOC
               </Text>
             </View>
-            {/* Progress bar */}
+            {/* Progress bar — filled by NOC sold-in-stage / stage capacity */}
             <View className="h-2 rounded-pill bg-bg-surface-3 overflow-hidden mt-4">
               <View
                 className="h-full bg-accent rounded-pill"
-                style={{width: `${(stage / 10) * 100}%`}}
+                style={{width: `${progress.show ? progress.percent : 0}%`}}
               />
             </View>
+            {/* Meta row — USD raised / stage cap (matches #23 design) */}
+            {progress.show ? (
+              <View className="flex-row items-baseline justify-between mt-3">
+                <Text variant="caption" className="text-fg-tertiary">
+                  <Text variant="caption" numeral className="text-fg-secondary">
+                    {progress.raisedText}
+                  </Text>{' '}
+                  raised
+                </Text>
+                <Text variant="caption" className="text-fg-tertiary">
+                  <Text variant="caption" numeral className="text-fg-secondary">
+                    {progress.capText}
+                  </Text>{' '}
+                  stage cap
+                </Text>
+              </View>
+            ) : null}
           </View>
 
           {/* Payment token selector */}
