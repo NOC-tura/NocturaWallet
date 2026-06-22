@@ -81,3 +81,48 @@ describe('buildSolPurchaseTx', () => {
     expect(tx.message.staticAccountKeys[0].toBase58()).toBe(USER.toBase58());
   });
 });
+
+import {buildStablecoinPurchaseInstruction, estimateNocForUsd} from '../presaleBuyModule';
+import {USDC_MINT, USDT_MINT} from '../../tokens/coreTokens';
+import {findAssociatedTokenAddress} from '../../solana/transactionBuilder';
+
+const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+const ADMIN = new PublicKey(ADMIN_ADDRESS);
+
+describe('buildStablecoinPurchaseInstruction', () => {
+  it.each([
+    ['USDC', USDC_MINT, [150, 34, 181, 239, 229, 123, 187, 128]],
+    ['USDT', USDT_MINT, [209, 3, 170, 172, 219, 182, 149, 89]],
+  ] as const)('builds the %s instruction with the right disc, amount, and 10 accounts', (token, mint, disc) => {
+    const amount = 25_000_000n; // 25 USDC/USDT (6 dp)
+    const ix = buildStablecoinPurchaseInstruction(USER, token, amount);
+    expect([...ix.data.subarray(0, 8)]).toEqual(disc);
+    // 25_000_000 = 0x017D7840 → LE
+    expect([...ix.data.subarray(8, 16)]).toEqual([0x40, 0x78, 0x7d, 0x01, 0x00, 0x00, 0x00, 0x00]);
+    expect(ix.data.length).toBe(16);
+    expect(ix.programId.toBase58()).toBe(PROGRAM_ID);
+    const pdas = derivePresalePdas(USER);
+    const userAta = findAssociatedTokenAddress(USER, new PublicKey(mint)).toBase58();
+    const adminAta = findAssociatedTokenAddress(ADMIN, new PublicKey(mint)).toBase58();
+    const expected = [
+      [pdas.config.toBase58(), false, true],
+      [pdas.userAccount.toBase58(), false, true],
+      [pdas.userAllocation.toBase58(), false, true],
+      [pdas.referrerAllocation.toBase58(), false, true],
+      [userAta, false, true],
+      [adminAta, false, true],
+      [mint, false, false],
+      [USER.toBase58(), true, true],
+      [TOKEN_PROGRAM, false, false],
+      [SystemProgram.programId.toBase58(), false, false],
+    ];
+    expect(ix.keys.map(k => [k.pubkey.toBase58(), k.isSigner, k.isWritable])).toEqual(expected);
+  });
+});
+
+describe('estimateNocForUsd', () => {
+  it('computes NOC = usd/stagePrice (stablecoin is 1:1 USD)', () => {
+    expect(estimateNocForUsd(40, 0.1501)).toBeCloseTo(266.489, 2);
+    expect(estimateNocForUsd(10, 0)).toBe(0);
+  });
+});

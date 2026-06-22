@@ -8,6 +8,8 @@ import {
   ComputeBudgetProgram,
 } from '@solana/web3.js';
 import {PROGRAM_ID, ADMIN_ADDRESS, SOL_TREASURY, PYTH_SOL_USD_ACCOUNT} from '../../constants/programs';
+import {findAssociatedTokenAddress} from '../solana/transactionBuilder';
+import {USDC_MINT, USDT_MINT} from '../tokens/coreTokens';
 import {getConnection} from '../solana/connection';
 import {estimatePriorityFee} from '../solana/priorityFee';
 import {KeychainManager} from '../keychain/keychainModule';
@@ -22,6 +24,17 @@ const TREASURY = new PublicKey(SOL_TREASURY);
 
 // Anchor 8-byte discriminator for `presale_purchase_with_sol`.
 const PURCHASE_WITH_SOL_DISCRIMINATOR = [161, 153, 65, 238, 160, 236, 43, 165];
+
+const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+const PURCHASE_WITH_USDC_DISCRIMINATOR = [150, 34, 181, 239, 229, 123, 187, 128];
+const PURCHASE_WITH_USDT_DISCRIMINATOR = [209, 3, 170, 172, 219, 182, 149, 89];
+
+export type StablecoinToken = 'USDC' | 'USDT';
+
+const STABLECOIN: Record<StablecoinToken, {mint: PublicKey; disc: number[]}> = {
+  USDC: {mint: new PublicKey(USDC_MINT), disc: PURCHASE_WITH_USDC_DISCRIMINATOR},
+  USDT: {mint: new PublicKey(USDT_MINT), disc: PURCHASE_WITH_USDT_DISCRIMINATOR},
+};
 
 /** Minimum / maximum purchase, in USD, per the presale (Min $10 · Max $50k/tx). */
 export const MIN_PURCHASE_USD = 10;
@@ -98,6 +111,47 @@ export function estimateNocForSol(solAmount: number, solUsd: number, stagePriceU
     return 0;
   }
   return (solAmount * solUsd) / stagePriceUsd;
+}
+
+/**
+ * Hand-build presale_purchase_with_usdc / _usdt. Payment is an SPL transfer
+ * from the buyer's ATA to the ADMIN's ATA (1:1 USD, no Pyth). Account order
+ * matches the program's PresalePurchaseWithStablecoin struct.
+ */
+export function buildStablecoinPurchaseInstruction(
+  user: PublicKey,
+  token: StablecoinToken,
+  amountBaseUnits: bigint,
+): TransactionInstruction {
+  const {mint, disc} = STABLECOIN[token];
+  const {config, userAccount, userAllocation, referrerAllocation} = derivePresalePdas(user);
+  const userAta = findAssociatedTokenAddress(user, mint);
+  const adminAta = findAssociatedTokenAddress(ADMIN, mint);
+  const data = Buffer.concat([Buffer.from(disc), encodeU64LE(amountBaseUnits)]);
+  return new TransactionInstruction({
+    programId: PROGRAM,
+    keys: [
+      {pubkey: config, isSigner: false, isWritable: true},
+      {pubkey: userAccount, isSigner: false, isWritable: true},
+      {pubkey: userAllocation, isSigner: false, isWritable: true},
+      {pubkey: referrerAllocation, isSigner: false, isWritable: true},
+      {pubkey: userAta, isSigner: false, isWritable: true},
+      {pubkey: adminAta, isSigner: false, isWritable: true},
+      {pubkey: mint, isSigner: false, isWritable: false},
+      {pubkey: user, isSigner: true, isWritable: true},
+      {pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false},
+      {pubkey: SystemProgram.programId, isSigner: false, isWritable: false},
+    ],
+    data,
+  });
+}
+
+/** UI estimate for a stablecoin (1:1 USD) payment. */
+export function estimateNocForUsd(usd: number, stagePriceUsd: number): number {
+  if (stagePriceUsd <= 0) {
+    return 0;
+  }
+  return usd / stagePriceUsd;
 }
 
 const keychainManager = new KeychainManager();
