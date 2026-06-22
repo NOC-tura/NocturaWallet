@@ -1,4 +1,8 @@
-import SSLPinning from 'react-native-ssl-pinning';
+// NAMESPACE import — react-native-ssl-pinning exports ONLY named members
+// (`export { fetch, ... }`, no default). A default import resolves to `undefined`
+// under Metro/Babel's commonjs interop, so `SSLPinning.fetch` threw on-device and
+// every pinned call silently fell back. (The test mock's old default export hid this.)
+import * as SSLPinning from 'react-native-ssl-pinning';
 
 /**
  * SPKI public-key pins for api.noc-tura.io (SHA-256 of the SubjectPublicKeyInfo,
