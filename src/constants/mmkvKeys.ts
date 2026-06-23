@@ -67,8 +67,6 @@ export const MMKV_KEYS = {
   NOTIF_DEVICE_TOKEN: 'v1_notif.deviceToken',
 
   // ─── Referral [S] ──────────────────────────────────────────────────
-  REFERRAL_CODE_MINE: 'v1_referral.myCode',
-  REFERRAL_CODE_APPLIED: 'v1_referral.appliedCode',
   REFERRAL_REWARDS_TOTAL: 'v1_referral.totalRewards',
 
   // ─── Referral [P] onboarding-time entry (before secure store is ready) ─

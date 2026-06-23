@@ -54,7 +54,6 @@ export type DashboardStackParamList = {
   PresaleBuyConfirm: {paymentToken: 'SOL' | 'USDC' | 'USDT'; amountBaseUnits: string};
   PresaleBuyStatus: {paymentToken: 'SOL' | 'USDC' | 'USDT'; amountBaseUnits: string};
   Staking: undefined;
-  Referral: undefined;
 };
 
 export type SendStackParamList = {
@@ -73,6 +72,7 @@ export type SettingsStackParamList = {
   BackupSettings: undefined;
   NotificationSettings: undefined;
   WipeWallet: undefined;
+  Referral: undefined;
 };
 
 export type MainTabsParamList = {
