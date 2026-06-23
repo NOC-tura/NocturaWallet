@@ -1,4 +1,4 @@
-import {GeoFenceManager} from '../geoFenceModule';
+import {GeoFenceManager, isPresaleBlocked} from '../geoFenceModule';
 import type {JurisdictionResult} from '../geoFenceModule';
 import {pinnedFetch} from '../../sslPinning/pinnedFetch';
 import {mmkvPublic} from '../../../store/mmkv/instances';
@@ -48,6 +48,26 @@ describe('GeoFenceManager', () => {
     expect(result.countryCode).toBe('US');
     expect(result.reason).toBeUndefined();
     expect(result.transparentAllowed).toBe(true);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Geo check hits the correct path (/geo/check, no /v1 prefix)
+  // ──────────────────────────────────────────────────────────────────────────
+  it('calls the bare /geo/check endpoint (no duplicated /v1 — API_BASE already ends in /v1)', async () => {
+    mockPinnedFetch.mockResolvedValueOnce(
+      makeFetchResponse({countryCode: 'US', isVpn: false}),
+    );
+
+    await manager.checkJurisdiction();
+
+    const calledUrl = mockPinnedFetch.mock.calls[0][0] as string;
+    expect(calledUrl).toMatch(/\/geo\/check$/);
+    // The legacy bug appended /v1/geo onto an API_BASE that already ends in
+    // /v1, producing a doubled /v1/v1/geo path. Guard against any geo URL
+    // re-introducing that duplicate prefix.
+    for (const call of mockPinnedFetch.mock.calls) {
+      expect(call[0] as string).not.toContain('/v1/v1/geo');
+    }
   });
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -240,5 +260,31 @@ describe('GeoFenceManager', () => {
     expect(restricted).toEqual(
       expect.arrayContaining(['CN', 'MM', 'BY', 'VE', 'ZW']),
     );
+  });
+});
+
+describe('isPresaleBlocked', () => {
+  it('blocks only on action:block (OFAC sanctioned)', () => {
+    expect(
+      isPresaleBlocked({
+        action: 'block',
+        countryCode: 'KP',
+        transparentAllowed: true,
+      }),
+    ).toBe(true);
+    expect(
+      isPresaleBlocked({
+        action: 'warn',
+        countryCode: 'CN',
+        transparentAllowed: true,
+      }),
+    ).toBe(false);
+    expect(
+      isPresaleBlocked({
+        action: 'allow',
+        countryCode: 'SI',
+        transparentAllowed: true,
+      }),
+    ).toBe(false);
   });
 });
