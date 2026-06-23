@@ -1,10 +1,13 @@
 import React from 'react';
-import {render} from '@testing-library/react-native';
+import {Share} from 'react-native';
+import {fireEvent, render} from '@testing-library/react-native';
+import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
+import Clipboard from '@react-native-clipboard/clipboard';
 import {ReferralScreen} from '../ReferralScreen';
-import {generateReferralCode} from '../../../utils/generateReferralCode';
-import {initSecureMmkv, mmkvSecure} from '../../../store/mmkv/instances';
+import * as referralModule from '../../../modules/referral/referralModule';
 
 const MOCK_PUBLIC_KEY = 'So11111111111111111111111111111111111111112';
+const EXPECTED_LINK = `https://noc-tura.io?ref=${MOCK_PUBLIC_KEY}`;
 
 jest.mock('../../../store/zustand/walletStore', () => ({
   useWalletStore: jest.fn((selector: (s: {publicKey: string}) => unknown) =>
@@ -12,49 +15,86 @@ jest.mock('../../../store/zustand/walletStore', () => ({
   ),
 }));
 
-jest.mock('../../../store/zustand/presaleStore', () => ({
-  usePresaleStore: jest.fn(
-    (selector: (s: {referralBonusTokens: string}) => unknown) =>
-      selector({referralBonusTokens: '500'}),
-  ),
-}));
+// Real buildReferralLink (pure), mocked fetchReferralStats (no network).
+jest.mock('../../../modules/referral/referralModule', () => {
+  const actual = jest.requireActual('../../../modules/referral/referralModule');
+  return {
+    ...actual,
+    fetchReferralStats: jest.fn(),
+  };
+});
+
+const mockedFetch = referralModule.fetchReferralStats as jest.MockedFunction<
+  typeof referralModule.fetchReferralStats
+>;
+
+function renderScreen() {
+  const client = new QueryClient({
+    defaultOptions: {queries: {retry: false}},
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <ReferralScreen onBack={jest.fn()} />
+    </QueryClientProvider>,
+  );
+}
 
 describe('ReferralScreen', () => {
   beforeEach(() => {
-    initSecureMmkv('test-key');
-    mmkvSecure()!.clearAll();
+    jest.clearAllMocks();
+    mockedFetch.mockResolvedValue({
+      totalReferrals: 12,
+      totalBaseBonusNoc: 20,
+      totalExtraBonusNoc: 12.4,
+      totalBonusNoc: 32.4,
+      totalReferredNoc: 1000,
+      totalReferredUsd: 1234.5,
+      tierBonusCount: 2,
+    });
   });
 
-  it('Shows "My Referral Code" heading', () => {
-    const {getByText} = render(<ReferralScreen />);
-    expect(getByText('My Referral Code')).toBeTruthy();
+  it('renders the screen title', () => {
+    const {getByText} = renderScreen();
+    expect(getByText('Refer a friend')).toBeTruthy();
   });
 
-  it('Shows code in NOC-XXXX format', () => {
-    const {getByTestId} = render(<ReferralScreen />);
-    const codeEl = getByTestId('referral-code');
-    expect(codeEl.props.children).toMatch(/^NOC-[0-9A-Z]{4,6}$/);
-    // Verify it matches the deterministic generator
-    const expected = generateReferralCode(MOCK_PUBLIC_KEY);
-    expect(codeEl.props.children).toBe(expected);
+  it('shows the three stat values after the query resolves', async () => {
+    const {findByText, findAllByText} = renderScreen();
+    // "12" appears as the REFERRALS stat and again in "Used 12 times".
+    expect((await findAllByText('12')).length).toBeGreaterThanOrEqual(1);
+    expect(await findByText('32.40')).toBeTruthy(); // earned NOC
+    expect(await findByText('$1,234.50')).toBeTruthy(); // referred USD
   });
 
-  it('Shows Share and Copy buttons', () => {
-    const {getByTestId} = render(<ReferralScreen />);
-    expect(getByTestId('copy-button')).toBeTruthy();
-    expect(getByTestId('share-button')).toBeTruthy();
+  it('copies the ?ref= link to the clipboard', async () => {
+    const {findByLabelText} = renderScreen();
+    const copyBtn = await findByLabelText('Copy invite link');
+    fireEvent.press(copyBtn);
+    expect(Clipboard.setString).toHaveBeenCalledWith(EXPECTED_LINK);
   });
 
-  it('Shows "Apply code" input field', () => {
-    const {getByTestId} = render(<ReferralScreen />);
-    expect(getByTestId('apply-code-input')).toBeTruthy();
-    expect(getByTestId('apply-code-button')).toBeTruthy();
+  it('shares the ?ref= link', async () => {
+    const shareSpy = jest
+      .spyOn(Share, 'share')
+      .mockResolvedValue({action: 'sharedAction'});
+    const {findByLabelText} = renderScreen();
+    const shareBtn = await findByLabelText('Share invite link');
+    fireEvent.press(shareBtn);
+    expect(shareSpy).toHaveBeenCalledWith({message: EXPECTED_LINK});
   });
 
-  it('Shows referral stats section ("Referrals", "Rewards earned")', () => {
-    const {getByTestId, getByText} = render(<ReferralScreen />);
-    expect(getByTestId('referral-stats')).toBeTruthy();
-    expect(getByText('Referrals')).toBeTruthy();
-    expect(getByText('Rewards earned')).toBeTruthy();
+  it('renders the invite-link card even with zero referrals', async () => {
+    mockedFetch.mockResolvedValue({
+      totalReferrals: 0,
+      totalBaseBonusNoc: 0,
+      totalExtraBonusNoc: 0,
+      totalBonusNoc: 0,
+      totalReferredNoc: 0,
+      totalReferredUsd: 0,
+      tierBonusCount: 0,
+    });
+    const {getByText, findByLabelText} = renderScreen();
+    expect(getByText('YOUR INVITE LINK')).toBeTruthy();
+    expect(await findByLabelText('Copy invite link')).toBeTruthy();
   });
 });

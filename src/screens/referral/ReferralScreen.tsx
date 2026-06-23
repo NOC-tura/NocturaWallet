@@ -1,303 +1,207 @@
-import React, {useEffect, useState} from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  Share,
-  StyleSheet,
-  Alert,
-} from 'react-native';
+import React, {useCallback, useRef, useState} from 'react';
+import {Pressable, ScrollView, Share, View} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
+import {useQuery} from '@tanstack/react-query';
+import {ArrowLeft, Check, Copy, Info, Share2} from 'lucide-react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
+import {Text} from '../../components/ui';
 import {useWalletStore} from '../../store/zustand/walletStore';
-import {usePresaleStore} from '../../store/zustand/presaleStore';
-import {generateReferralCode} from '../../utils/generateReferralCode';
-import {mmkvSecure} from '../../store/mmkv/instances';
-import {MMKV_KEYS} from '../../constants/mmkvKeys';
+import {
+  buildReferralLink,
+  fetchReferralStats,
+} from '../../modules/referral/referralModule';
+import {referralStatsDisplay} from '../../modules/referral/referralDisplay';
 
 interface Props {
   onBack?: () => void;
 }
 
-export function ReferralScreen({onBack}: Props) {
-  const publicKey = useWalletStore(s => s.publicKey);
-  const referralBonusTokens = usePresaleStore(s => s.referralBonusTokens);
-
-  const myCode = publicKey ? generateReferralCode(publicKey) : 'NOC-0000';
-
-  const [applyInput, setApplyInput] = useState('');
-  const [applyMessage, setApplyMessage] = useState<string | null>(null);
-
-  // Persist my code and check if a code was already applied
-  const [alreadyApplied, setAlreadyApplied] = useState(false);
-  const [appliedCode, setAppliedCode] = useState<string | null>(null);
-
-  useEffect(() => {
-    const store = mmkvSecure();
-    if (!store) return;
-    // Persist generated code
-    const stored = store.getString(MMKV_KEYS.REFERRAL_CODE_MINE);
-    if (!stored && publicKey) {
-      store.set(MMKV_KEYS.REFERRAL_CODE_MINE, myCode);
-    }
-    // Check if a code was already applied
-    const applied = store.getString(MMKV_KEYS.REFERRAL_CODE_APPLIED);
-    if (applied) {
-      setAlreadyApplied(true);
-      setAppliedCode(applied);
-    }
-  }, [myCode, publicKey]);
-
-  function handleCopy() {
-    Clipboard.setString(myCode);
-    Alert.alert('Copied', `${myCode} copied to clipboard`);
-  }
-
-  async function handleShare() {
-    try {
-      await Share.share({
-        message: `Join Noctura: noctura://ref/${myCode}`,
-      });
-    } catch {
-      // ignore user cancellation
-    }
-  }
-
-  function handleApplyCode() {
-    const trimmed = applyInput.trim().toUpperCase();
-    if (!trimmed) {
-      setApplyMessage('Please enter a referral code');
-      return;
-    }
-    // Block self-referral
-    if (trimmed === myCode) {
-      setApplyMessage('You cannot apply your own referral code');
-      return;
-    }
-    const store = mmkvSecure();
-    if (!store) {
-      setApplyMessage('Storage not available');
-      return;
-    }
-    const existing = store.getString(MMKV_KEYS.REFERRAL_CODE_APPLIED);
-    if (existing) {
-      setApplyMessage('Code already applied');
-      setAlreadyApplied(true);
-      setAppliedCode(existing);
-      return;
-    }
-    store.set(MMKV_KEYS.REFERRAL_CODE_APPLIED, trimmed);
-    setAlreadyApplied(true);
-    setAppliedCode(trimmed);
-    setApplyMessage(`Code ${trimmed} applied successfully!`);
-    setApplyInput('');
-  }
-
-  // Estimate friends count: each referral bonus represents one referral
-  // (simplified — real count would come from on-chain data)
-  const rewardsDisplay = referralBonusTokens !== '0' ? referralBonusTokens : '0';
-
+/** A single stat card (overline label · balance-md numeral value · caption). */
+function StatCard({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  accent?: boolean;
+}) {
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      {onBack && (
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={onBack}
-          accessibilityRole="button"
-        >
-          <Text style={styles.backText}>← Back</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* MY REFERRAL CODE */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>My Referral Code</Text>
-        <Text style={styles.codeDisplay} testID="referral-code">
-          {myCode}
-        </Text>
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={handleCopy}
-            accessibilityRole="button"
-            testID="copy-button"
-          >
-            <Text style={styles.actionBtnText}>Copy</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.actionBtnPrimary]}
-            onPress={handleShare}
-            accessibilityRole="button"
-            testID="share-button"
-          >
-            <Text style={styles.actionBtnText}>Share</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* REFERRAL STATS */}
-      <View style={styles.section} testID="referral-stats">
-        <Text style={styles.sectionTitle}>Referral Stats</Text>
-        <View style={styles.statsRow}>
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>Referrals</Text>
-            <Text style={styles.statValue}>
-              {referralBonusTokens !== '0' ? '1+' : '0'}
-            </Text>
-          </View>
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>Rewards earned</Text>
-            <Text style={styles.statValue}>{rewardsDisplay} NOC</Text>
-          </View>
-        </View>
-        <View style={styles.pendingBox} testID="pending-rewards">
-          <Text style={styles.pendingLabel}>Pending rewards</Text>
-          <Text style={styles.pendingValue}>
-            {referralBonusTokens !== '0' ? referralBonusTokens : '0'} NOC
-          </Text>
-          <Text style={styles.pendingNote}>
-            Unlock after 90 days from referral date
-          </Text>
-        </View>
-      </View>
-
-      {/* APPLY CODE */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Apply a Referral Code</Text>
-        {alreadyApplied ? (
-          <View>
-            <Text style={styles.appliedText}>
-              Code already applied: {appliedCode}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.applyRow}>
-            <TextInput
-              style={styles.applyInput}
-              value={applyInput}
-              onChangeText={setApplyInput}
-              placeholder="Enter referral code"
-              placeholderTextColor="#6b7280"
-              autoCapitalize="characters"
-              testID="apply-code-input"
-              editable={!alreadyApplied}
-            />
-            <TouchableOpacity
-              style={styles.applyBtn}
-              onPress={handleApplyCode}
-              accessibilityRole="button"
-              testID="apply-code-button"
-              disabled={alreadyApplied}
-            >
-              <Text style={styles.applyBtnText}>Apply code</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        {applyMessage && (
-          <Text
-            style={[
-              styles.applyMessage,
-              applyMessage.includes('successfully') && styles.applyMessageSuccess,
-            ]}
-            testID="apply-message"
-          >
-            {applyMessage}
-          </Text>
-        )}
-      </View>
+    <View className="flex-1 rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-4 items-center">
+      <Text variant="overline" className="mb-2">
+        {label}
+      </Text>
+      <Text
+        variant="balance-md"
+        numeral
+        className={accent ? 'text-accent-transparent' : undefined}>
+        {value}
+      </Text>
+      <Text variant="caption" className="text-fg-tertiary mt-1 text-center">
+        {sub}
+      </Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {flex: 1, backgroundColor: '#0d0d0d', padding: 20},
-  backBtn: {marginBottom: 16},
-  backText: {color: '#a78bfa', fontSize: 16},
-  section: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    color: '#9ca3af',
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    marginBottom: 12,
-    letterSpacing: 0.5,
-  },
-  codeDisplay: {
-    color: '#a78bfa',
-    fontSize: 32,
-    fontWeight: '800',
-    fontFamily: 'monospace',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  actionRow: {flexDirection: 'row', gap: 12},
-  actionBtn: {
-    flex: 1,
-    backgroundColor: '#2a2a2a',
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  actionBtnPrimary: {backgroundColor: '#7c3aed'},
-  actionBtnText: {color: '#ffffff', fontWeight: '600', fontSize: 14},
-  statsRow: {flexDirection: 'row', gap: 12},
-  statBox: {
-    flex: 1,
-    backgroundColor: '#0d0d0d',
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-  },
-  statLabel: {color: '#6b7280', fontSize: 12, marginBottom: 6},
-  statValue: {color: '#ffffff', fontSize: 22, fontWeight: '700'},
-  applyRow: {gap: 10},
-  applyInput: {
-    backgroundColor: '#0d0d0d',
-    color: '#ffffff',
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 15,
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-  },
-  applyBtn: {
-    backgroundColor: '#7c3aed',
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  applyBtnText: {color: '#ffffff', fontWeight: '700', fontSize: 15},
-  applyMessage: {color: '#ef4444', fontSize: 13, marginTop: 8},
-  applyMessageSuccess: {color: '#10b981'},
-  appliedText: {color: '#9ca3af', fontSize: 14},
-  pendingBox: {
-    marginTop: 12,
-    backgroundColor: '#0d0d0d',
-    borderRadius: 10,
-    padding: 14,
-  },
-  pendingLabel: {
-    color: '#6b7280',
-    fontSize: 12,
-    marginBottom: 4,
-    textTransform: 'uppercase',
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-  pendingValue: {
-    color: '#f59e0b',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  pendingNote: {
-    color: '#6b7280',
-    fontSize: 12,
-    marginTop: 4,
-  },
-});
+export function ReferralScreen({onBack}: Props) {
+  const publicKey = useWalletStore(s => s.publicKey);
+
+  const statsQ = useQuery({
+    queryKey: ['referralStats', publicKey],
+    queryFn: () => fetchReferralStats(publicKey!),
+    enabled: publicKey != null,
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  const display = statsQ.data ? referralStatsDisplay(statsQ.data) : null;
+  const link = publicKey ? buildReferralLink(publicKey) : '';
+
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleCopy = useCallback(() => {
+    if (!link) return;
+    Clipboard.setString(link);
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    // A referral link isn't sensitive — no clipboard auto-clear, just reset
+    // the inline "Copied" confirmation after 2s.
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  }, [link]);
+
+  const handleShare = useCallback(async () => {
+    if (!link) return;
+    try {
+      await Share.share({message: link});
+    } catch {
+      // user cancelled — not actionable
+    }
+  }, [link]);
+
+  // Loading / error → values fall back to em-dash. Empty (totalReferrals 0)
+  // resolves to '0'/'$0.00' via the display helper, so it renders naturally.
+  const referralsVal = display ? display.referrals : '—';
+  const earnedVal = display ? display.earnedNoc : '—';
+  const referredVal = display ? display.referredUsd : '—';
+  const usesCount = display ? display.referrals : '0';
+
+  return (
+    <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-bg-base">
+      {/* Top bar */}
+      <View className="flex-row items-center px-4 py-3 min-h-touch-min">
+        {onBack && (
+          <Pressable
+            onPress={onBack}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            className="w-12 h-12 items-center justify-center -ml-2">
+            <ArrowLeft size={22} color="#A8ACB5" strokeWidth={1.75} />
+          </Pressable>
+        )}
+        <Text variant="h3" className="ml-1 flex-1">
+          Refer a friend
+        </Text>
+      </View>
+
+      <ScrollView
+        className="flex-1"
+        contentContainerClassName="px-5 pb-6"
+        showsVerticalScrollIndicator={false}>
+        {/* 3-stat hero */}
+        <View className="flex-row gap-3 mb-4">
+          <StatCard
+            label="REFERRALS"
+            value={referralsVal}
+            sub="total joined"
+          />
+          <StatCard
+            label="EARNED"
+            value={earnedVal}
+            sub="NOC lifetime"
+            accent
+          />
+          <StatCard
+            label="REFERRED"
+            value={referredVal}
+            sub="from your invites"
+          />
+        </View>
+
+        {/* Invite-link card */}
+        <View className="rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-5 mb-4">
+          <View className="flex-row items-center justify-between mb-3">
+            <Text variant="overline">YOUR INVITE LINK</Text>
+            <Text variant="caption" className="text-fg-tertiary">
+              Used{' '}
+              <Text variant="caption" numeral className="text-fg-secondary">
+                {usesCount}
+              </Text>{' '}
+              times
+            </Text>
+          </View>
+
+          <View className="flex-row items-center justify-between rounded-md bg-bg-surface-2 border border-bg-surface-3 px-4 py-3 mb-4">
+            <Text
+              variant="body-sm"
+              mono
+              numberOfLines={1}
+              ellipsizeMode="middle"
+              className="flex-1 text-fg-primary mr-3">
+              {link}
+            </Text>
+            <Pressable
+              onPress={handleCopy}
+              accessibilityRole="button"
+              accessibilityLabel="Copy invite link"
+              className="flex-row items-center min-h-touch-min px-1">
+              {copied ? (
+                <>
+                  <Check size={18} color="#B084FC" strokeWidth={2} />
+                  <Text
+                    variant="body-sm"
+                    className="text-accent-transparent ml-1">
+                    Copied
+                  </Text>
+                </>
+              ) : (
+                <Copy size={18} color="#A8ACB5" strokeWidth={1.75} />
+              )}
+            </Pressable>
+          </View>
+
+          <Pressable
+            onPress={handleShare}
+            accessibilityRole="button"
+            accessibilityLabel="Share invite link"
+            className="flex-row items-center justify-center min-h-touch-min rounded-pill bg-bg-surface-2 border border-bg-surface-3">
+            <Share2 size={16} color="#F4F5F7" strokeWidth={1.75} />
+            <Text variant="body-sm" className="text-fg-primary ml-2">
+              Share invite link
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Info banner */}
+        <View className="flex-row rounded-lg bg-bg-surface-2 p-4 mb-4">
+          <View className="mt-px mr-3">
+            <Info size={16} color="#A6F0DC" strokeWidth={1.75} />
+          </View>
+          <Text variant="body-sm" className="flex-1 text-shield-300">
+            Earn 10% in NOC when someone buys with your link — up to 30% on
+            larger buys.
+          </Text>
+        </View>
+
+        {/* Legalese */}
+        <Text variant="caption" className="text-fg-tertiary">
+          Referral payouts are subject to program terms. Self-referrals are
+          detected and rejected.
+        </Text>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
