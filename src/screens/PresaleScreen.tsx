@@ -236,7 +236,7 @@ function PresaleActive({
           showsVerticalScrollIndicator={false}>
           {/* Stage card */}
           <View className="rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-5 mb-4">
-            <Text variant="overline" className="text-accent mb-3">
+            <Text variant="overline" className="text-accent-transparent mb-3">
               Stage {stage} of 10 · live
             </Text>
             <View className="flex-row items-baseline gap-2">
@@ -250,7 +250,7 @@ function PresaleActive({
             {/* Progress bar — filled by NOC sold-in-stage / stage capacity */}
             <View className="h-2 rounded-pill bg-bg-surface-3 overflow-hidden mt-4">
               <View
-                className="h-full bg-accent rounded-pill"
+                className="h-full bg-accent-transparent rounded-pill"
                 style={{width: `${progress.show ? progress.percent : 0}%`}}
               />
             </View>
@@ -366,7 +366,7 @@ function PresaleActive({
               <Text variant="balance-md" numeral>
                 ≈ {formatNoc(nocEstimate)}
               </Text>
-              <Text variant="body-lg" className="text-accent">
+              <Text variant="body-lg" className="text-accent-transparent">
                 NOC
               </Text>
             </View>
