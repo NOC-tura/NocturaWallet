@@ -34,6 +34,7 @@ import {ReceiveScreen} from '../screens/transparent/ReceiveScreen';
 import {TransactionHistoryScreen as TransactionHistoryScreenImpl} from '../screens/transparent/TransactionHistoryScreen';
 import {TransactionDetailScreen as TransactionDetailScreenImpl} from '../screens/transparent/TransactionDetailScreen';
 import {ReferralScreen as ReferralScreenImpl} from '../screens/referral/ReferralScreen';
+import {GeoBlockedScreen as GeoBlockedScreenImpl} from '../screens/compliance/GeoBlockedScreen';
 import {TokenDetailScreen} from '../screens/transparent/TokenDetailScreen';
 import {isShieldedEnabled} from '../constants/features';
 import type {
@@ -556,6 +557,18 @@ function ReferralScreenNav() {
   );
 }
 
+function GeoBlockedNav() {
+  const navigation = useNavigation<NativeStackNavigationProp<DashboardStackParamList>>();
+  const route = useRoute<RouteProp<DashboardStackParamList, 'GeoBlocked'>>();
+  return (
+    <GeoBlockedScreenImpl
+      countryCode={route.params?.countryCode}
+      onDismiss={() => navigation.goBack()}
+      onClose={() => navigation.popToTop()}
+    />
+  );
+}
+
 function AppUpdateModalScreenNav() {
   const route = useRoute();
   const raw = (route.params ?? {}) as Record<string, unknown>;
@@ -622,6 +635,7 @@ function DashboardStack() {
       <DashboardNav.Screen name="PresaleBuyConfirm" component={PresaleBuyConfirmNav} />
       <DashboardNav.Screen name="PresaleBuyStatus" component={PresaleBuyStatusNav} />
       <DashboardNav.Screen name="Staking" component={StakingScreenNav} />
+      <DashboardNav.Screen name="GeoBlocked" component={GeoBlockedNav} />
     </DashboardNav.Navigator>
   );
 }

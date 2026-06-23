@@ -54,6 +54,7 @@ export type DashboardStackParamList = {
   PresaleBuyConfirm: {paymentToken: 'SOL' | 'USDC' | 'USDT'; amountBaseUnits: string};
   PresaleBuyStatus: {paymentToken: 'SOL' | 'USDC' | 'USDT'; amountBaseUnits: string};
   Staking: undefined;
+  GeoBlocked: {countryCode?: string} | undefined;
 };
 
 export type SendStackParamList = {
