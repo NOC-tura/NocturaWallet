@@ -21,6 +21,7 @@ type RootStackParamList = {
   NotificationSettings: undefined;
   ExportViewKey: undefined;
   WipeWallet: undefined;
+  Referral: undefined;
 };
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -123,6 +124,10 @@ export function SettingsScreen() {
       {/* ── Backup ────────────────────────────────────────────────────── */}
       <SectionHeader title="Backup" testID="section-backup" />
       <NavRow label="Backup Settings" onPress={() => navigation.navigate('BackupSettings')} />
+
+      {/* ── Rewards ───────────────────────────────────────────────────── */}
+      <SectionHeader title="Rewards" testID="section-rewards" />
+      <NavRow label="Refer a friend" onPress={() => navigation.navigate('Referral')} />
 
       {/* ── Notifications ─────────────────────────────────────────────── */}
       <SectionHeader title="Notifications" testID="section-notifications" />

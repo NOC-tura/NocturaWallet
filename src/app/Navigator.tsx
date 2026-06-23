@@ -622,7 +622,6 @@ function DashboardStack() {
       <DashboardNav.Screen name="PresaleBuyConfirm" component={PresaleBuyConfirmNav} />
       <DashboardNav.Screen name="PresaleBuyStatus" component={PresaleBuyStatusNav} />
       <DashboardNav.Screen name="Staking" component={StakingScreenNav} />
-      <DashboardNav.Screen name="Referral" component={ReferralScreenNav} />
     </DashboardNav.Navigator>
   );
 }
@@ -652,6 +651,7 @@ function SettingsStack() {
   return (
     <SettingsNav.Navigator screenOptions={defaultScreenOptions}>
       <SettingsNav.Screen name="Settings" component={SettingsScreen} />
+      <SettingsNav.Screen name="Referral" component={ReferralScreenNav} />
       <SettingsNav.Screen name="SecuritySettings" component={SecuritySettingsScreen} />
       <SettingsNav.Screen name="ChangePin" component={ChangePinScreen} />
       <SettingsNav.Screen name="ExportViewKey" component={ExportViewKeyScreen} />
