@@ -1,5 +1,5 @@
 import {API_BASE} from '../../constants/programs';
-import {pinnedFetch} from '../sslPinning/pinnedFetch';
+import {getCoordinatorJson} from '../backend/coordinatorClient';
 import {parseTokenAmount} from '../../utils/parseTokenAmount';
 import {PRESALE_STAGE_PRICES} from '../../constants/presale';
 
@@ -32,28 +32,6 @@ function nocStringToBase(s: string): bigint {
     return 0n;
   }
   return parseTokenAmount(n.toFixed(NOC_DECIMALS), NOC_DECIMALS);
-}
-
-/**
- * GET a coordinator JSON endpoint. Backend-first via the SSL-pinned fetch; on
- * ANY pinned-fetch failure, fall back to a plain HTTPS fetch to the SAME
- * coordinator URL (public read-only data — same posture as the other modules'
- * direct CoinGecko/Helius fallbacks). Throws only when BOTH fail.
- */
-async function getCoordinatorJson(path: string): Promise<unknown> {
-  try {
-    const res = await pinnedFetch(`${API_BASE}${path}`);
-    if (res.status !== 200) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-    return await res.json();
-  } catch {
-    const res = await fetch(`${API_BASE}${path}`);
-    if (!res.ok) {
-      throw new Error(`presale ${path} HTTP ${res.status}`);
-    }
-    return res.json();
-  }
 }
 
 /** Live global presale stage/price/progress from the coordinator. Throws on failure. */
