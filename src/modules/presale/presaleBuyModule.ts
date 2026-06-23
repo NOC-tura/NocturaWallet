@@ -61,6 +61,34 @@ export function derivePresalePdas(user: PublicKey): PresalePdas {
   return {config, userAccount, userAllocation, referrerAllocation};
 }
 
+// PresaleAllocation account layout: 8-byte Anchor discriminator + user Pubkey
+// (32) → `total_tokens` (u64 LE) at offset 40. This is the AUTHORITATIVE,
+// claimable allocation (already includes any referral bonus) — the value the
+// website reads. The coordinator's recorded-purchase sum is only approximate.
+const ALLOCATION_TOTAL_TOKENS_OFFSET = 40;
+
+/**
+ * Read the user's authoritative on-chain presale allocation (`total_tokens`,
+ * 9-dec base units) from the `["allocation", user]` PDA. This matches the
+ * website and what's actually claimable at TGE; prefer it over the coordinator
+ * DB sum. Returns 0 / exists:false when the user has no allocation account.
+ */
+export async function fetchOnChainAllocation(
+  user: PublicKey,
+): Promise<{totalTokensBase: string; exists: boolean}> {
+  const {userAllocation} = derivePresalePdas(user);
+  const info = await getConnection().getAccountInfo(userAllocation);
+  if (!info || !info.data || info.data.length < ALLOCATION_TOTAL_TOKENS_OFFSET + 8) {
+    return {totalTokensBase: '0', exists: false};
+  }
+  const data = info.data;
+  let total = 0n;
+  for (let i = 7; i >= 0; i--) {
+    total = (total << 8n) | BigInt(data[ALLOCATION_TOTAL_TOKENS_OFFSET + i]);
+  }
+  return {totalTokensBase: total.toString(), exists: true};
+}
+
 /**
  * Encode a u64 as 8 little-endian bytes WITHOUT Buffer.writeBigUInt64LE — the
  * Hermes Buffer polyfill (buffer@5.7.1) lacks the BigInt accessors and throws

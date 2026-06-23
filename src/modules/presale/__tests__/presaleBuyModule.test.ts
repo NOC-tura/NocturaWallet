@@ -138,3 +138,34 @@ describe('buildStablecoinPurchaseTx', () => {
     expect(tx.message.staticAccountKeys[0].toBase58()).toBe(USER.toBase58());
   });
 });
+
+import {fetchOnChainAllocation} from '../presaleBuyModule';
+
+function allocBufferWithTotal(total: bigint): Buffer {
+  const buf = Buffer.alloc(117);
+  let rem = total;
+  for (let i = 0; i < 8; i++) {
+    buf[40 + i] = Number(rem & 0xffn);
+    rem >>= 8n;
+  }
+  return buf;
+}
+
+describe('fetchOnChainAllocation', () => {
+  it('decodes total_tokens (u64 LE at offset 40) from the allocation account', async () => {
+    jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
+      getAccountInfo: async () => ({data: allocBufferWithTotal(697401732177n)}),
+    } as never);
+    const r = await fetchOnChainAllocation(USER);
+    expect(r.exists).toBe(true);
+    expect(r.totalTokensBase).toBe('697401732177');
+  });
+
+  it('returns 0 / exists:false when the allocation account does not exist', async () => {
+    jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
+      getAccountInfo: async () => null,
+    } as never);
+    const r = await fetchOnChainAllocation(USER);
+    expect(r).toEqual({totalTokensBase: '0', exists: false});
+  });
+});
