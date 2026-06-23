@@ -144,13 +144,10 @@ export function ReferralScreen({onBack}: Props) {
             </Text>
           </View>
 
-          <View className="flex-row items-center justify-between rounded-md bg-bg-surface-2 border border-bg-surface-3 px-4 py-3 mb-4">
-            <Text
-              variant="body-sm"
-              mono
-              numberOfLines={1}
-              ellipsizeMode="middle"
-              className="flex-1 text-fg-primary mr-3">
+          <View className="flex-row items-start justify-between rounded-md bg-bg-surface-2 border border-bg-surface-3 px-4 py-3 mb-4">
+            {/* Full link shown (not truncated) so it visibly matches the
+                website's affiliate link — a referral link isn't sensitive. */}
+            <Text variant="body-sm" mono className="flex-1 text-fg-primary mr-3">
               {link}
             </Text>
             <Pressable
