@@ -71,11 +71,15 @@ describe('estimateNocForSol', () => {
 import {VersionedTransaction} from '@solana/web3.js';
 import {buildSolPurchaseTx} from '../presaleBuyModule';
 import * as connectionMod from '../../solana/connection';
+import {useReferralCaptureStore as referralStoreForBuildTests} from '../../../store/zustand/referralCaptureStore';
 
 describe('buildSolPurchaseTx', () => {
   it('builds a VersionedTransaction with the purchase instruction and the user as payer', async () => {
+    referralStoreForBuildTests.getState().clearCapturedReferrer();
     jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
       getLatestBlockhash: async () => ({blockhash: '11111111111111111111111111111111', lastValidBlockHeight: 1}),
+      // resolveReferrer (no captured referrer) reads the allocation account.
+      getAccountInfo: async () => null,
     } as never);
     const tx = await buildSolPurchaseTx(USER, 2_000_000_000n);
     expect(tx).toBeInstanceOf(VersionedTransaction);
@@ -134,8 +138,10 @@ import {buildStablecoinPurchaseTx} from '../presaleBuyModule';
 
 describe('buildStablecoinPurchaseTx', () => {
   it('builds a VersionedTransaction with the user as payer', async () => {
+    referralStoreForBuildTests.getState().clearCapturedReferrer();
     jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
       getLatestBlockhash: async () => ({blockhash: '11111111111111111111111111111111', lastValidBlockHeight: 1}),
+      getAccountInfo: async () => null,
     } as never);
     const tx = await buildStablecoinPurchaseTx(USER, 'USDC', 25_000_000n);
     expect(tx.message.staticAccountKeys[0].toBase58()).toBe(USER.toBase58());
@@ -332,5 +338,200 @@ describe('resolveReferrer', () => {
     const r = await resolveReferrer(USER, 'not-a-real-address');
     expect(r.registerReferrer).toBeNull();
     expect(r.effectiveReferrerAddress).toBeNull();
+  });
+});
+
+// ===========================================================================
+// Task 4: bundle register_referrer + real referrer_allocation into the buy tx
+// ===========================================================================
+
+import {
+  submitPresaleBuySol,
+  submitPresaleBuyStablecoin,
+} from '../presaleBuyModule';
+import {useReferralCaptureStore} from '../../../store/zustand/referralCaptureStore';
+
+// Stub the connection + signing dependencies the submit* path reaches into so we
+// can build (and inspect) the tx without real RPC / keychain.
+jest.mock('../../keychain/keychainModule', () => ({
+  KeychainManager: jest.fn().mockImplementation(() => ({
+    retrieveSeed: jest.fn().mockResolvedValue('test mnemonic'),
+  })),
+}));
+jest.mock('../../keyDerivation/mnemonicUtils', () => ({
+  mnemonicToSeed: jest.fn().mockResolvedValue(new Uint8Array(64)),
+}));
+jest.mock('../../keyDerivation/transparent', () => {
+  const {Keypair} = jest.requireActual('@solana/web3.js');
+  return {
+    deriveTransparentKeypair: jest.fn(() => {
+      const kp = Keypair.fromSeed(
+        new Uint8Array(32).map((_, i) => (i * 13 + 1) & 0xff),
+      );
+      return {secretKey: kp.secretKey, publicKey: kp.publicKey};
+    }),
+  };
+});
+jest.mock('../../session/zeroize', () => ({zeroize: jest.fn()}));
+jest.mock('../../solana/priorityFee', () => ({
+  estimatePriorityFee: jest.fn().mockResolvedValue(0),
+}));
+
+// The submit* path derives the signer from the (mocked) keypair above; that
+// fixed public key is the `user` resolveReferrer/the purchase ix actually sees.
+const SUBMIT_SIGNER = (() => {
+  const {Keypair} = jest.requireActual('@solana/web3.js');
+  return Keypair.fromSeed(new Uint8Array(32).map((_, i) => (i * 13 + 1) & 0xff))
+    .publicKey as PublicKey;
+})();
+
+const SCHEME = {kind: 'slip10', account: 0} as const;
+
+function mockConnectionForSubmit() {
+  jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
+    getLatestBlockhash: async () => ({
+      blockhash: '11111111111111111111111111111111',
+      lastValidBlockHeight: 1,
+    }),
+    sendRawTransaction: async () => 'sig-deadbeef',
+  } as never);
+}
+
+/**
+ * Recover the program's (presale) instructions from a compiled v0 message so we
+ * can assert instruction count + ordering + the referrer_allocation account at
+ * index 3 of the purchase instruction. Under the test web3.js build the
+ * compiled message preserves the original `instructions` (programId + keys +
+ * data), so we read those directly and filter to the presale program.
+ */
+function programIxs(tx: VersionedTransaction): {data: Uint8Array; accountKeys: string[]}[] {
+  const message = tx.message as unknown as {
+    instructions: {programId: PublicKey; keys: {pubkey: PublicKey}[]; data: Uint8Array}[];
+  };
+  return message.instructions
+    .filter(ix => ix.programId.toBase58() === PROGRAM_ID)
+    .map(ix => ({
+      data: Buffer.from(ix.data),
+      accountKeys: ix.keys.map(k => k.pubkey.toBase58()),
+    }));
+}
+
+describe('Task 4 — bundle register_referrer into the buy tx', () => {
+  beforeEach(() => {
+    useReferralCaptureStore.getState().clearCapturedReferrer();
+    mockConnectionForSubmit();
+  });
+  afterEach(() => {
+    useReferralCaptureStore.getState().clearCapturedReferrer();
+    jest.restoreAllMocks();
+  });
+
+  describe('buildSolPurchaseTx', () => {
+    it('first-time captured referrer → 2 instructions [register, purchase], purchase acct#3 == PDA(captured)', async () => {
+      useReferralCaptureStore.getState().setCapturedReferrer(CAPTURED_REF);
+      jest
+        .spyOn(presaleBuyModule, 'fetchAllocationRef')
+        .mockResolvedValue({exists: false, referrer: null, purchaseCount: 0});
+      const tx = await buildSolPurchaseTx(SUBMIT_SIGNER, 2_000_000_000n);
+      const ixs = programIxs(tx);
+      expect(ixs.length).toBe(2);
+      expect([...ixs[0].data.subarray(0, 8)]).toEqual(REGISTER_REFERRER_DISCRIMINATOR);
+      expect([...ixs[1].data.subarray(0, 8)]).toEqual([161, 153, 65, 238, 160, 236, 43, 165]);
+      const [pdaRef] = PublicKey.findProgramAddressSync(
+        [Buffer.from('allocation'), new PublicKey(CAPTURED_REF).toBytes()],
+        PROGRAM,
+      );
+      expect(ixs[1].accountKeys[3]).toBe(pdaRef.toBase58());
+    });
+
+    it('no captured referrer → exactly 1 instruction (purchase), acct#3 == default PDA', async () => {
+      jest
+        .spyOn(presaleBuyModule, 'fetchAllocationRef')
+        .mockResolvedValue({exists: false, referrer: null, purchaseCount: 0});
+      const tx = await buildSolPurchaseTx(SUBMIT_SIGNER, 2_000_000_000n);
+      const ixs = programIxs(tx);
+      expect(ixs.length).toBe(1);
+      expect([...ixs[0].data.subarray(0, 8)]).toEqual([161, 153, 65, 238, 160, 236, 43, 165]);
+      const [pdaDefault] = PublicKey.findProgramAddressSync(
+        [Buffer.from('allocation'), PublicKey.default.toBytes()],
+        PROGRAM,
+      );
+      expect(ixs[0].accountKeys[3]).toBe(pdaDefault.toBase58());
+    });
+  });
+
+  describe('buildStablecoinPurchaseTx', () => {
+    it('first-time captured referrer → 2 instructions [register, purchase], purchase acct#3 == PDA(captured)', async () => {
+      useReferralCaptureStore.getState().setCapturedReferrer(CAPTURED_REF);
+      jest
+        .spyOn(presaleBuyModule, 'fetchAllocationRef')
+        .mockResolvedValue({exists: false, referrer: null, purchaseCount: 0});
+      const tx = await buildStablecoinPurchaseTx(SUBMIT_SIGNER, 'USDC', 25_000_000n);
+      const ixs = programIxs(tx);
+      expect(ixs.length).toBe(2);
+      expect([...ixs[0].data.subarray(0, 8)]).toEqual(REGISTER_REFERRER_DISCRIMINATOR);
+      expect([...ixs[1].data.subarray(0, 8)]).toEqual([150, 34, 181, 239, 229, 123, 187, 128]);
+      const [pdaRef] = PublicKey.findProgramAddressSync(
+        [Buffer.from('allocation'), new PublicKey(CAPTURED_REF).toBytes()],
+        PROGRAM,
+      );
+      expect(ixs[1].accountKeys[3]).toBe(pdaRef.toBase58());
+    });
+
+    it('no captured referrer → exactly 1 instruction (purchase), acct#3 == default PDA', async () => {
+      jest
+        .spyOn(presaleBuyModule, 'fetchAllocationRef')
+        .mockResolvedValue({exists: false, referrer: null, purchaseCount: 0});
+      const tx = await buildStablecoinPurchaseTx(SUBMIT_SIGNER, 'USDC', 25_000_000n);
+      const ixs = programIxs(tx);
+      expect(ixs.length).toBe(1);
+      const [pdaDefault] = PublicKey.findProgramAddressSync(
+        [Buffer.from('allocation'), PublicKey.default.toBytes()],
+        PROGRAM,
+      );
+      expect(ixs[0].accountKeys[3]).toBe(pdaDefault.toBase58());
+    });
+  });
+
+  describe('submitPresaleBuySol', () => {
+    it('bundles register + purchase and returns effectiveReferrerAddress', async () => {
+      useReferralCaptureStore.getState().setCapturedReferrer(CAPTURED_REF);
+      jest
+        .spyOn(presaleBuyModule, 'fetchAllocationRef')
+        .mockResolvedValue({exists: false, referrer: null, purchaseCount: 0});
+      const res = await submitPresaleBuySol(2_000_000_000n, SCHEME);
+      expect(res.signature).toBe('sig-deadbeef');
+      expect(res.lastValidBlockHeight).toBe(1);
+      expect(res.effectiveReferrerAddress).toBe(CAPTURED_REF);
+    });
+
+    it('no captured referrer → effectiveReferrerAddress null', async () => {
+      jest
+        .spyOn(presaleBuyModule, 'fetchAllocationRef')
+        .mockResolvedValue({exists: false, referrer: null, purchaseCount: 0});
+      const res = await submitPresaleBuySol(2_000_000_000n, SCHEME);
+      expect(res.effectiveReferrerAddress).toBeNull();
+    });
+  });
+
+  describe('submitPresaleBuyStablecoin', () => {
+    it('bundles register + purchase and returns effectiveReferrerAddress', async () => {
+      useReferralCaptureStore.getState().setCapturedReferrer(CAPTURED_REF);
+      jest
+        .spyOn(presaleBuyModule, 'fetchAllocationRef')
+        .mockResolvedValue({exists: false, referrer: null, purchaseCount: 0});
+      const res = await submitPresaleBuyStablecoin('USDC', 25_000_000n, SCHEME);
+      expect(res.signature).toBe('sig-deadbeef');
+      expect(res.lastValidBlockHeight).toBe(1);
+      expect(res.effectiveReferrerAddress).toBe(CAPTURED_REF);
+    });
+
+    it('no captured referrer → effectiveReferrerAddress null', async () => {
+      jest
+        .spyOn(presaleBuyModule, 'fetchAllocationRef')
+        .mockResolvedValue({exists: false, referrer: null, purchaseCount: 0});
+      const res = await submitPresaleBuyStablecoin('USDC', 25_000_000n, SCHEME);
+      expect(res.effectiveReferrerAddress).toBeNull();
+    });
   });
 });

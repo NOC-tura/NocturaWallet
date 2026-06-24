@@ -22,6 +22,7 @@ import {KeychainManager} from '../keychain/keychainModule';
 import {mnemonicToSeed} from '../keyDerivation/mnemonicUtils';
 import {deriveTransparentKeypair, type TransparentScheme} from '../keyDerivation/transparent';
 import {zeroize} from '../session/zeroize';
+import {useReferralCaptureStore} from '../../store/zustand/referralCaptureStore';
 
 const PROGRAM = new PublicKey(PROGRAM_ID);
 const ADMIN = new PublicKey(ADMIN_ADDRESS);
@@ -338,56 +339,83 @@ export function estimateNocForUsd(usd: number, stagePriceUsd: number): number {
 const keychainManager = new KeychainManager();
 const COMPUTE_UNIT_LIMIT = 120_000;
 
-function buildBuyInstructions(user: PublicKey, solLamports: bigint, priorityFeeMicroLamports: number) {
-  // Task 4 will swap in the resolved referrer_allocation; for now use the
-  // default PDA (no bonus) to keep behavior identical.
-  const {referrerAllocation} = derivePresalePdas(user);
+/**
+ * Assemble the full SOL-purchase instruction list, bundling a one-time
+ * `register_referrer` FIRST (when `resolveReferrer` says so) so the purchase
+ * reads the just-set referrer, and passing the resolved `referrerAllocation` to
+ * the purchase. The no-referrer path (registerReferrer == null,
+ * referrerAllocation == default PDA) is byte-identical to the pre-referral
+ * single-purchase tx.
+ */
+function buildBuyInstructions(
+  user: PublicKey,
+  solLamports: bigint,
+  priorityFeeMicroLamports: number,
+  resolved: {referrerAllocation: PublicKey; registerReferrer: PublicKey | null},
+) {
   return [
     ComputeBudgetProgram.setComputeUnitLimit({units: COMPUTE_UNIT_LIMIT}),
     ComputeBudgetProgram.setComputeUnitPrice({microLamports: priorityFeeMicroLamports}),
-    buildSolPurchaseInstruction(user, solLamports, referrerAllocation),
+    ...(resolved.registerReferrer
+      ? [buildRegisterReferrerInstruction(user, resolved.registerReferrer)]
+      : []),
+    buildSolPurchaseInstruction(user, solLamports, resolved.referrerAllocation),
   ];
 }
 
-/** Build the (unsigned) purchase tx for pre-submit simulation. Payer = user. */
+/**
+ * Build the (unsigned) purchase tx for pre-submit simulation. Payer = user.
+ * Resolves the captured referrer and bundles `register_referrer` identically to
+ * the submit path so the simulated tx matches what's broadcast.
+ */
 export async function buildSolPurchaseTx(user: PublicKey, solLamports: bigint): Promise<VersionedTransaction> {
+  const captured = useReferralCaptureStore.getState().capturedReferrer;
+  const r = await self.resolveReferrer(user, captured);
   const connection = getConnection();
   const {blockhash} = await connection.getLatestBlockhash();
   const message = new TransactionMessage({
     payerKey: user,
     recentBlockhash: blockhash,
-    instructions: buildBuyInstructions(user, solLamports, 0),
+    instructions: buildBuyInstructions(user, solLamports, 0, r),
   }).compileToV0Message();
   return new VersionedTransaction(message);
 }
 
+/** Stablecoin analogue of buildBuyInstructions — bundles register first. */
 function buildStablecoinInstructions(
   user: PublicKey,
   token: StablecoinToken,
   amountBaseUnits: bigint,
   priorityFeeMicroLamports: number,
+  resolved: {referrerAllocation: PublicKey; registerReferrer: PublicKey | null},
 ) {
-  // Task 4 will swap in the resolved referrer_allocation; default PDA for now.
-  const {referrerAllocation} = derivePresalePdas(user);
   return [
     ComputeBudgetProgram.setComputeUnitLimit({units: COMPUTE_UNIT_LIMIT}),
     ComputeBudgetProgram.setComputeUnitPrice({microLamports: priorityFeeMicroLamports}),
-    buildStablecoinPurchaseInstruction(user, token, amountBaseUnits, referrerAllocation),
+    ...(resolved.registerReferrer
+      ? [buildRegisterReferrerInstruction(user, resolved.registerReferrer)]
+      : []),
+    buildStablecoinPurchaseInstruction(user, token, amountBaseUnits, resolved.referrerAllocation),
   ];
 }
 
-/** Unsigned stablecoin purchase tx for pre-submit simulation. Payer = user. */
+/**
+ * Unsigned stablecoin purchase tx for pre-submit simulation. Payer = user.
+ * Bundles `register_referrer` identically to the submit path.
+ */
 export async function buildStablecoinPurchaseTx(
   user: PublicKey,
   token: StablecoinToken,
   amountBaseUnits: bigint,
 ): Promise<VersionedTransaction> {
+  const captured = useReferralCaptureStore.getState().capturedReferrer;
+  const r = await self.resolveReferrer(user, captured);
   const connection = getConnection();
   const {blockhash} = await connection.getLatestBlockhash();
   const message = new TransactionMessage({
     payerKey: user,
     recentBlockhash: blockhash,
-    instructions: buildStablecoinInstructions(user, token, amountBaseUnits, 0),
+    instructions: buildStablecoinInstructions(user, token, amountBaseUnits, 0, r),
   }).compileToV0Message();
   return new VersionedTransaction(message);
 }
@@ -397,20 +425,22 @@ export async function submitPresaleBuyStablecoin(
   token: StablecoinToken,
   amountBaseUnits: bigint,
   scheme: TransparentScheme,
-): Promise<{signature: string; lastValidBlockHeight: number}> {
+): Promise<{signature: string; lastValidBlockHeight: number; effectiveReferrerAddress: string | null}> {
   const mnemonic = await keychainManager.retrieveSeed();
   const seed = await mnemonicToSeed(mnemonic);
   const {secretKey} = deriveTransparentKeypair(seed, scheme);
   zeroize(seed);
   try {
     const signer = Keypair.fromSecretKey(secretKey);
+    const captured = useReferralCaptureStore.getState().capturedReferrer;
+    const r = await self.resolveReferrer(signer.publicKey, captured);
     const connection = getConnection();
     const priorityFee = await estimatePriorityFee(connection, 'fast');
     const {blockhash, lastValidBlockHeight} = await connection.getLatestBlockhash();
     const message = new TransactionMessage({
       payerKey: signer.publicKey,
       recentBlockhash: blockhash,
-      instructions: buildStablecoinInstructions(signer.publicKey, token, amountBaseUnits, priorityFee),
+      instructions: buildStablecoinInstructions(signer.publicKey, token, amountBaseUnits, priorityFee, r),
     }).compileToV0Message();
     const tx = new VersionedTransaction(message);
     tx.sign([signer]);
@@ -423,13 +453,13 @@ export async function submitPresaleBuyStablecoin(
         break;
       } catch (e) {
         lastErr = e;
-        await new Promise(r => setTimeout(r, 800));
+        await new Promise(res => setTimeout(res, 800));
       }
     }
     if (signature === null) {
       throw lastErr instanceof Error ? lastErr : new Error('Failed to broadcast presale buy');
     }
-    return {signature, lastValidBlockHeight};
+    return {signature, lastValidBlockHeight, effectiveReferrerAddress: r.effectiveReferrerAddress};
   } finally {
     zeroize(secretKey);
   }
@@ -444,20 +474,22 @@ export async function submitPresaleBuyStablecoin(
 export async function submitPresaleBuySol(
   solLamports: bigint,
   scheme: TransparentScheme,
-): Promise<{signature: string; lastValidBlockHeight: number}> {
+): Promise<{signature: string; lastValidBlockHeight: number; effectiveReferrerAddress: string | null}> {
   const mnemonic = await keychainManager.retrieveSeed();
   const seed = await mnemonicToSeed(mnemonic);
   const {secretKey} = deriveTransparentKeypair(seed, scheme);
   zeroize(seed);
   try {
     const signer = Keypair.fromSecretKey(secretKey);
+    const captured = useReferralCaptureStore.getState().capturedReferrer;
+    const r = await self.resolveReferrer(signer.publicKey, captured);
     const connection = getConnection();
     const priorityFee = await estimatePriorityFee(connection, 'fast');
     const {blockhash, lastValidBlockHeight} = await connection.getLatestBlockhash();
     const message = new TransactionMessage({
       payerKey: signer.publicKey,
       recentBlockhash: blockhash,
-      instructions: buildBuyInstructions(signer.publicKey, solLamports, priorityFee),
+      instructions: buildBuyInstructions(signer.publicKey, solLamports, priorityFee, r),
     }).compileToV0Message();
     const tx = new VersionedTransaction(message);
     tx.sign([signer]);
@@ -470,13 +502,13 @@ export async function submitPresaleBuySol(
         break;
       } catch (e) {
         lastErr = e;
-        await new Promise(r => setTimeout(r, 800));
+        await new Promise(res => setTimeout(res, 800));
       }
     }
     if (signature === null) {
       throw lastErr instanceof Error ? lastErr : new Error('Failed to broadcast presale buy');
     }
-    return {signature, lastValidBlockHeight};
+    return {signature, lastValidBlockHeight, effectiveReferrerAddress: r.effectiveReferrerAddress};
   } finally {
     zeroize(secretKey);
   }
