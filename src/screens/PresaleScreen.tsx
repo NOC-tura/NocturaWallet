@@ -14,10 +14,12 @@ import {
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import {ArrowLeft} from 'lucide-react-native';
+import {ArrowLeft, X} from 'lucide-react-native';
 import {Text, Button} from '../components/ui';
 import {usePresaleStore} from '../store/zustand/presaleStore';
 import {useWalletStore} from '../store/zustand/walletStore';
+import {useReferralCaptureStore} from '../store/zustand/referralCaptureStore';
+import {parseReferralInput} from '../modules/presale/referralInput';
 import {useResolvedPrices} from '../hooks/useResolvedPrices';
 import {
   estimateNocForSol,
@@ -153,6 +155,33 @@ export function PresaleActive({
   // solBalance is stored as a string in lamports.
   const solBalanceLamports = useWalletStore(s => s.solBalance);
   const solBalance = Number(solBalanceLamports) / 1e9;
+  const publicKey = useWalletStore(s => s.publicKey);
+
+  // Captured-referrer store (B1 interim manual field; B2's deep link will write
+  // here too). Cleared after a successful referred purchase.
+  const capturedReferrer = useReferralCaptureStore(s => s.capturedReferrer);
+  const setCapturedReferrer = useReferralCaptureStore(s => s.setCapturedReferrer);
+  const clearCapturedReferrer = useReferralCaptureStore(
+    s => s.clearCapturedReferrer,
+  );
+  const [referralOpen, setReferralOpen] = useState(false);
+  const [referralInput, setReferralInput] = useState('');
+  const [referralError, setReferralError] = useState<string | null>(null);
+
+  const onApplyReferral = useCallback(() => {
+    const a = parseReferralInput(referralInput);
+    if (a == null) {
+      setReferralError('Invalid referral address');
+      return;
+    }
+    if (a === publicKey) {
+      setReferralError("You can't refer yourself");
+      return;
+    }
+    setCapturedReferrer(a);
+    setReferralInput('');
+    setReferralError(null);
+  }, [referralInput, publicKey, setCapturedReferrer]);
 
   const [paymentToken, setPaymentToken] = useState<'SOL' | 'USDC' | 'USDT'>(
     'SOL',
@@ -443,6 +472,86 @@ export function PresaleActive({
               </Text>
             </View>
           ) : null}
+
+          {/* Have a referral? — interim manual capture (B2 adds the deep link) */}
+          {capturedReferrer == null ? (
+            <View className="mb-2">
+              {!referralOpen ? (
+                <Pressable
+                  onPress={() => setReferralOpen(true)}
+                  accessibilityRole="button"
+                  testID="referral-toggle"
+                  className="self-center py-2">
+                  <Text variant="body-sm" className="text-accent-transparent">
+                    Have a referral?
+                  </Text>
+                </Pressable>
+              ) : (
+                <View className="rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-4">
+                  <Text variant="overline" className="mb-2">
+                    HAVE A REFERRAL?
+                  </Text>
+                  <View className="flex-row items-center gap-2">
+                    <TextInput
+                      value={referralInput}
+                      onChangeText={t => {
+                        setReferralInput(t);
+                        if (referralError != null) {
+                          setReferralError(null);
+                        }
+                      }}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      placeholder="Paste referral address or link"
+                      placeholderTextColor="#5B5F66"
+                      accessibilityLabel="Referral address or link"
+                      testID="referral-input"
+                      className="flex-1 text-body-sm text-fg-primary font-geist-mono p-0"
+                    />
+                    <Pressable
+                      onPress={onApplyReferral}
+                      accessibilityRole="button"
+                      testID="referral-apply"
+                      className="px-3 h-8 rounded-pill bg-accent-transparent-tint items-center justify-center">
+                      <Text
+                        variant="caption"
+                        className="text-accent-transparent font-geist-semibold">
+                        Apply
+                      </Text>
+                    </Pressable>
+                  </View>
+                  {referralError != null ? (
+                    <Text
+                      variant="caption"
+                      className="text-danger mt-2"
+                      testID="referral-error">
+                      {referralError}
+                    </Text>
+                  ) : null}
+                </View>
+              )}
+            </View>
+          ) : (
+            <View className="flex-row items-center justify-center gap-2 mb-2">
+              <View className="flex-row items-center px-3 h-8 rounded-pill bg-accent-transparent-tint">
+                <Text
+                  variant="caption"
+                  className="text-accent-transparent font-geist-semibold"
+                  testID="referral-chip">
+                  Referral applied · {capturedReferrer.slice(0, 4)}…
+                  {capturedReferrer.slice(-4)}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => clearCapturedReferrer()}
+                accessibilityRole="button"
+                accessibilityLabel="Clear referral"
+                testID="referral-clear"
+                className="w-8 h-8 rounded-full items-center justify-center bg-bg-surface-3">
+                <X size={14} color="#A8ACB5" strokeWidth={1.75} />
+              </Pressable>
+            </View>
+          )}
 
           <Pressable
             onPress={onRegionInfo}
