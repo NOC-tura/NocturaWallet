@@ -23,6 +23,11 @@ interface GeoCheckResponse {
   isVpn: boolean;
 }
 
+/** Presale buy policy (OFAC-only): block only sanctioned jurisdictions. */
+export function isPresaleBlocked(result: JurisdictionResult): boolean {
+  return result.action === 'block';
+}
+
 /**
  * GeoFenceManager — 3-tier soft-block jurisdiction enforcement.
  *
@@ -66,7 +71,7 @@ export class GeoFenceManager {
     }
 
     try {
-      const response = await pinnedFetch(`${API_BASE}/v1/geo/check`);
+      const response = await pinnedFetch(`${API_BASE}/geo/check`);
       const data = (await response.json()) as GeoCheckResponse;
       const {countryCode, isVpn} = data;
 
@@ -177,7 +182,7 @@ export class GeoFenceManager {
    */
   private refreshRestrictedListInBackground(): void {
     Promise.resolve()
-      .then(() => pinnedFetch(`${API_BASE}/v1/geo/restricted-list`))
+      .then(() => pinnedFetch(`${API_BASE}/geo/restricted-list`))
       .then(async response => {
         const list = (await response.json()) as RestrictedCountry[];
         mmkvPublic.set(MMKV_KEYS.GEO_RESTRICTED_LIST, JSON.stringify(list));

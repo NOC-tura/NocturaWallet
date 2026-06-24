@@ -29,6 +29,8 @@ import {USDC_MINT, USDT_MINT} from '../modules/tokens/coreTokens';
 import {PRESALE_STAGE_PRICES} from '../constants/presale';
 import {presaleAllocationDisplay} from '../modules/presale/presaleAllocation';
 import {stageProgressDisplay} from '../modules/presale/stageProgress';
+import {useJurisdiction} from '../hooks/useJurisdiction';
+import {isPresaleBlocked} from '../modules/geoFence/geoFenceModule';
 import type {DashboardStackParamList} from '../types/navigation';
 
 interface PresaleScreenProps {
@@ -104,7 +106,7 @@ function formatUsd(value: number): string {
 
 // ─── State A: Presale Active (#23 active) ──────────────────────────────────
 
-function PresaleActive({
+export function PresaleActive({
   onSkip,
   isOnboarding,
   currentStage,
@@ -117,6 +119,17 @@ function PresaleActive({
   const navigation =
     useNavigation<NativeStackNavigationProp<DashboardStackParamList>>();
   const stage = currentStage ?? 1;
+
+  // Jurisdiction gate (OFAC-only): `block` swaps the buy CTA for a route into
+  // #50; `warn` shows a discreet caption but leaves the buy enabled.
+  const {result: jur} = useJurisdiction();
+  const geoBlocked = jur ? isPresaleBlocked(jur) : false;
+  const onRegionInfo = useCallback(() => {
+    navigation.navigate('GeoBlocked', {
+      countryCode: jur?.countryCode,
+      presaleBlocked: geoBlocked,
+    });
+  }, [navigation, jur?.countryCode, geoBlocked]);
 
   const pricePerNoc = usePresaleStore(s => s.pricePerNoc);
   const soldInStage = usePresaleStore(s => s.soldInStage);
@@ -397,12 +410,7 @@ function PresaleActive({
           ) : null}
 
           <Pressable
-            onPress={() =>
-              Alert.alert(
-                'Region availability',
-                'Geographic eligibility checks are coming soon. Presale purchases settle on-chain transparently.',
-              )
-            }
+            onPress={onRegionInfo}
             accessibilityRole="button"
             className="self-center py-2">
             <Text variant="body-sm" className="text-fg-secondary">
@@ -413,16 +421,33 @@ function PresaleActive({
 
         {/* Sticky bottom bar */}
         <View className="px-5 pt-3 pb-4 border-t border-bg-surface-3 bg-bg-base">
-          <Button
-            variant="primary"
-            disabled={!gate.enabled}
-            onPress={onBuy}
-            testID="presale-buy-button"
-            label={
-              nocEstimate > 0 ? `Buy ${formatNoc(nocEstimate)} NOC` : 'Buy NOC'
-            }
-          />
-          {gate.reason != null && (
+          {!geoBlocked && jur?.action === 'warn' && (
+            <Text
+              variant="caption"
+              className="text-center mb-2 text-fg-secondary">
+              Limited availability in your region — purchases still settle
+              on-chain.
+            </Text>
+          )}
+          {geoBlocked ? (
+            <Button
+              variant="primary"
+              onPress={onRegionInfo}
+              testID="presale-buy-button"
+              label="Not available in your region"
+            />
+          ) : (
+            <Button
+              variant="primary"
+              disabled={!gate.enabled}
+              onPress={onBuy}
+              testID="presale-buy-button"
+              label={
+                nocEstimate > 0 ? `Buy ${formatNoc(nocEstimate)} NOC` : 'Buy NOC'
+              }
+            />
+          )}
+          {!geoBlocked && gate.reason != null && (
             <Text variant="caption" className="text-center mt-2 text-fg-secondary">
               {gate.reason}
             </Text>
