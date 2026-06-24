@@ -61,9 +61,36 @@ jest.mock('../../store/zustand/presaleStore', () => ({
     }),
 }));
 
+const SELF_ADDR = '6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd';
+
 jest.mock('../../store/zustand/walletStore', () => ({
   useWalletStore: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector({solBalance: '10000000000', tokenBalances: {}}),
+    selector({
+      solBalance: '10000000000',
+      tokenBalances: {},
+      publicKey: '6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd',
+    }),
+}));
+
+// Controllable referral-capture store: a mutable backing object the selector
+// reads from, plus jest.fn actions so tests can assert set/clear calls.
+const mockReferralState: {
+  capturedReferrer: string | null;
+  setCapturedReferrer: jest.Mock<void, [string]>;
+  clearCapturedReferrer: jest.Mock<void, []>;
+} = {
+  capturedReferrer: null,
+  setCapturedReferrer: jest.fn((a: string) => {
+    mockReferralState.capturedReferrer = a;
+  }),
+  clearCapturedReferrer: jest.fn(() => {
+    mockReferralState.capturedReferrer = null;
+  }),
+};
+
+jest.mock('../../store/zustand/referralCaptureStore', () => ({
+  useReferralCaptureStore: (selector: (s: typeof mockReferralState) => unknown) =>
+    selector(mockReferralState),
 }));
 
 jest.mock('../../hooks/useResolvedPrices', () => ({
@@ -178,5 +205,62 @@ describe('PresaleActive — geo gate', () => {
       'GeoBlocked',
       expect.anything(),
     );
+  });
+});
+
+// ── Manual "Have a referral?" field (B1 interim capture) ─────────────────────
+
+describe('PresaleActive — manual referral field', () => {
+  const OTHER_ADDR = '6nTTJwtDuxjv8C1JMsajYQapmPAGrC3QF1w5nu9LXJvt';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockReferralState.capturedReferrer = null;
+    mockCheckJurisdiction.mockResolvedValue({
+      action: 'allow',
+      countryCode: 'SI',
+      transparentAllowed: true,
+    });
+  });
+
+  it('applies a valid (non-self) address → setCapturedReferrer', () => {
+    const {getByTestId} = renderActive();
+    fireEvent.press(getByTestId('referral-toggle'));
+    fireEvent.changeText(getByTestId('referral-input'), OTHER_ADDR);
+    fireEvent.press(getByTestId('referral-apply'));
+    expect(mockReferralState.setCapturedReferrer).toHaveBeenCalledWith(OTHER_ADDR);
+  });
+
+  it('rejects a self address with an error and does NOT set it', () => {
+    const {getByTestId} = renderActive();
+    fireEvent.press(getByTestId('referral-toggle'));
+    fireEvent.changeText(getByTestId('referral-input'), SELF_ADDR);
+    fireEvent.press(getByTestId('referral-apply'));
+    expect(getByTestId('referral-error').props.children).toBe(
+      "You can't refer yourself",
+    );
+    expect(mockReferralState.setCapturedReferrer).not.toHaveBeenCalled();
+  });
+
+  it('rejects junk with "Invalid referral address" and does NOT set it', () => {
+    const {getByTestId} = renderActive();
+    fireEvent.press(getByTestId('referral-toggle'));
+    fireEvent.changeText(getByTestId('referral-input'), 'not-an-address');
+    fireEvent.press(getByTestId('referral-apply'));
+    expect(getByTestId('referral-error').props.children).toBe(
+      'Invalid referral address',
+    );
+    expect(mockReferralState.setCapturedReferrer).not.toHaveBeenCalled();
+  });
+
+  it('renders the applied chip + the × clears the capture', () => {
+    mockReferralState.capturedReferrer = OTHER_ADDR;
+    const {getByTestId} = renderActive();
+    const chip = getByTestId('referral-chip');
+    // Chip shows the truncated address (first 4 … last 4).
+    expect(chip.props.children.join('')).toContain(OTHER_ADDR.slice(0, 4));
+    expect(chip.props.children.join('')).toContain(OTHER_ADDR.slice(-4));
+    fireEvent.press(getByTestId('referral-clear'));
+    expect(mockReferralState.clearCapturedReferrer).toHaveBeenCalled();
   });
 });
