@@ -28,7 +28,10 @@ import {
 import {USDC_MINT, USDT_MINT} from '../modules/tokens/coreTokens';
 import {PRESALE_STAGE_PRICES} from '../constants/presale';
 import {presaleAllocationDisplay} from '../modules/presale/presaleAllocation';
-import {stageProgressDisplay} from '../modules/presale/stageProgress';
+import {
+  stageProgressDisplay,
+  stageSecondRow,
+} from '../modules/presale/stageProgress';
 import {useJurisdiction} from '../hooks/useJurisdiction';
 import {isPresaleBlocked} from '../modules/geoFence/geoFenceModule';
 import type {DashboardStackParamList} from '../types/navigation';
@@ -138,6 +141,7 @@ export function PresaleActive({
   const referralBonusTokens = usePresaleStore(s => s.referralBonusTokens);
   const allocation = presaleAllocationDisplay({tokensPurchased, referralBonusTokens});
   const progress = stageProgressDisplay({soldInStage, stageCapacity, pricePerNoc});
+  const secondRow = stageSecondRow({currentStage, soldInStage, stageCapacity});
   const stagePriceUsd =
     pricePerNoc != null && Number(pricePerNoc) > 0
       ? Number(pricePerNoc)
@@ -281,6 +285,37 @@ export function PresaleActive({
                     {progress.capText}
                   </Text>{' '}
                   stage cap
+                </Text>
+              </View>
+            ) : null}
+            {/* Second meta row — next-stage price / NOC remaining in stage.
+                Replaces the design's fictional "Ends in N days" (no stage end
+                date exists — the presale is sold-out-based). */}
+            {progress.show && secondRow.show ? (
+              <View className="flex-row items-baseline justify-between mt-1">
+                <Text variant="caption" className="text-fg-tertiary">
+                  {secondRow.isFinalStage ? (
+                    'Final stage'
+                  ) : (
+                    <>
+                      Next stage{' '}
+                      <Text variant="caption" numeral className="text-fg-secondary">
+                        {secondRow.nextPriceText}
+                      </Text>{' '}
+                      <Text
+                        variant="caption"
+                        numeral
+                        className="text-accent-transparent">
+                        {secondRow.nextPctText}
+                      </Text>
+                    </>
+                  )}
+                </Text>
+                <Text variant="caption" className="text-fg-tertiary">
+                  <Text variant="caption" numeral className="text-fg-secondary">
+                    {secondRow.nocLeftText}
+                  </Text>{' '}
+                  NOC left
                 </Text>
               </View>
             ) : null}
