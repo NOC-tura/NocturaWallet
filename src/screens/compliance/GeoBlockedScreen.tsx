@@ -15,6 +15,13 @@ import {regionDisplay} from '../../modules/geoFence/regionDisplay';
 interface Props {
   /** Coarse IP-derived ISO-3166 alpha-2 region; undefined → "UNKNOWN". */
   countryCode?: string;
+  /**
+   * Whether the NOC presale is ACTUALLY blocked for this region (OFAC-sanctioned).
+   * Drives region-accuracy: when false (e.g. an EU user who reached this screen
+   * via the informational link), presale is shown as available — never falsely
+   * claimed as geofenced. Defaults to false.
+   */
+  presaleBlocked?: boolean;
   /** Sticky [Got it] — back to the trigger screen (presale / swap). */
   onDismiss: () => void;
   /** Header X — back to the dashboard root. */
@@ -69,14 +76,50 @@ function WorksItem({label}: {label: string}) {
  * #50 · geo-blocked — region-restricted action takeover.
  *
  * Honest, mode-agnostic compliance screen reached when the user's coarse-IP
- * region maps to a blocked operation (presale #23 / swap #28). Lists what's
- * limited (3 reason rows) AND what still works (Send · Receive · Stake), with
- * an explicit coarse-geo disclosure — IP-derived only, no GPS / device
- * location. Pure props; no network.
+ * region maps to a blocked operation (presale #23 / swap #28) OR via the
+ * informational "Not available in your region?" link. The reason rows are
+ * REGION-ACCURATE: only what actually applies to this region is listed —
+ * presale appears as restricted only when truly geofenced (OFAC-sanctioned),
+ * otherwise it's listed under "what still works". Swaps are EU-MiCA only.
+ * Coarse-geo: IP-derived, no GPS / device location. Pure props; no network.
  */
-export function GeoBlockedScreen({countryCode, onDismiss, onClose}: Props) {
+export function GeoBlockedScreen({
+  countryCode,
+  presaleBlocked = false,
+  onDismiss,
+  onClose,
+}: Props) {
   const {label, isEu} = regionDisplay(countryCode ?? 'UNKNOWN');
   const regionLine = `${label}${isEu ? ' · EU' : ''}`;
+
+  // Only surface restrictions that actually apply to this region.
+  const reasons: {icon: React.ReactNode; title: string; sub: string}[] = [];
+  if (isEu) {
+    reasons.push({
+      icon: <FileText size={18} color="#7DA8FF" strokeWidth={1.75} />,
+      title: 'Token swaps',
+      sub: 'Not available under EU MiCA',
+    });
+  }
+  if (presaleBlocked) {
+    reasons.push({
+      icon: <Lock size={18} color="#7DA8FF" strokeWidth={1.75} />,
+      title: 'NOC presale',
+      sub: 'Geofenced in your region',
+    });
+  }
+  reasons.push({
+    icon: <Landmark size={18} color="#7DA8FF" strokeWidth={1.75} />,
+    title: 'Fiat on-ramp',
+    sub: 'Licensing pending',
+  });
+
+  // Presale is available everywhere EXCEPT sanctioned regions, so list it under
+  // "what still works" whenever it isn't blocked.
+  const works = ['Send', 'Receive', 'Stake'];
+  if (!presaleBlocked) {
+    works.push('NOC presale');
+  }
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-bg-base">
@@ -129,25 +172,17 @@ export function GeoBlockedScreen({countryCode, onDismiss, onClose}: Props) {
           </Text>
         </View>
 
-        {/* 3 reason rows */}
+        {/* Region-accurate reason rows */}
         <View className="mx-5 mb-4 rounded-lg bg-bg-surface-1 border border-bg-surface-3 overflow-hidden">
-          <ReasonRow
-            icon={<FileText size={18} color="#7DA8FF" strokeWidth={1.75} />}
-            title="Token swaps"
-            sub="Not available under EU MiCA"
-          />
-          <ReasonRow
-            icon={<Lock size={18} color="#7DA8FF" strokeWidth={1.75} />}
-            title="NOC presale"
-            sub="Geofenced in your region"
-            divider
-          />
-          <ReasonRow
-            icon={<Landmark size={18} color="#7DA8FF" strokeWidth={1.75} />}
-            title="Fiat on-ramp"
-            sub="Licensing pending"
-            divider
-          />
+          {reasons.map((r, i) => (
+            <ReasonRow
+              key={r.title}
+              icon={r.icon}
+              title={r.title}
+              sub={r.sub}
+              divider={i > 0}
+            />
+          ))}
         </View>
 
         {/* What still works */}
@@ -159,9 +194,9 @@ export function GeoBlockedScreen({countryCode, onDismiss, onClose}: Props) {
             </Text>
           </View>
           <View className="flex-row flex-wrap">
-            <WorksItem label="Send" />
-            <WorksItem label="Receive" />
-            <WorksItem label="Stake" />
+            {works.map(w => (
+              <WorksItem key={w} label={w} />
+            ))}
           </View>
         </View>
       </ScrollView>

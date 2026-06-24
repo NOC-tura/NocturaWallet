@@ -125,8 +125,11 @@ export function PresaleActive({
   const {result: jur} = useJurisdiction();
   const geoBlocked = jur ? isPresaleBlocked(jur) : false;
   const onRegionInfo = useCallback(() => {
-    navigation.navigate('GeoBlocked', {countryCode: jur?.countryCode});
-  }, [navigation, jur?.countryCode]);
+    navigation.navigate('GeoBlocked', {
+      countryCode: jur?.countryCode,
+      presaleBlocked: geoBlocked,
+    });
+  }, [navigation, jur?.countryCode, geoBlocked]);
 
   const pricePerNoc = usePresaleStore(s => s.pricePerNoc);
   const soldInStage = usePresaleStore(s => s.soldInStage);

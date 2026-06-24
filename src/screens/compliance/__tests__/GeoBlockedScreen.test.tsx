@@ -14,20 +14,39 @@ describe('GeoBlockedScreen (#50)', () => {
     getByText('Slovenia · EU');
   });
 
-  it('renders the three reason rows', () => {
-    const {getByText} = render(
+  it('does NOT claim presale is geofenced for a non-blocked EU region', () => {
+    // SI (EU), presaleBlocked defaults to false → presale is available, swaps
+    // (MiCA) + fiat are the only restrictions, presale is under "what works".
+    const {getByText, queryByText, getAllByText} = render(
       <GeoBlockedScreen
         countryCode="SI"
         onDismiss={jest.fn()}
         onClose={jest.fn()}
       />,
     );
-    getByText(/Token swaps/i);
-    getByText(/NOC presale/i);
+    getByText(/Token swaps/i); // EU → MiCA reason shown
     getByText(/on-ramp/i);
+    expect(queryByText(/Geofenced in your region/i)).toBeNull(); // not falsely blocked
+    // presale appears exactly once — in "what still works", not as a restriction
+    expect(getAllByText('NOC presale')).toHaveLength(1);
   });
 
-  it('lists what still works', () => {
+  it('shows presale as restricted ONLY when actually blocked (sanctioned)', () => {
+    const {getByText, queryByText} = render(
+      <GeoBlockedScreen
+        countryCode="KP"
+        presaleBlocked
+        onDismiss={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    getByText('North Korea');
+    getByText(/Geofenced in your region/i); // presale restriction shown
+    getByText(/on-ramp/i);
+    expect(queryByText(/Token swaps/i)).toBeNull(); // KP is not EU → no MiCA row
+  });
+
+  it('lists what still works (incl. presale when not blocked)', () => {
     const {getByText} = render(
       <GeoBlockedScreen
         countryCode="SI"
@@ -39,6 +58,7 @@ describe('GeoBlockedScreen (#50)', () => {
     getByText('Send');
     getByText('Receive');
     getByText('Stake');
+    getByText('NOC presale'); // available → listed under what works
   });
 
   it('shows the coarse-geo disclosure', () => {

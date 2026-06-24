@@ -563,6 +563,7 @@ function GeoBlockedNav() {
   return (
     <GeoBlockedScreenImpl
       countryCode={route.params?.countryCode}
+      presaleBlocked={route.params?.presaleBlocked}
       onDismiss={() => navigation.goBack()}
       onClose={() => navigation.popToTop()}
     />

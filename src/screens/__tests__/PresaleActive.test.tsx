@@ -135,7 +135,10 @@ describe('PresaleActive — geo gate', () => {
 
     fireEvent.press(cta);
     // The blocked CTA navigates to GeoBlocked — NOT to the buy confirm flow.
-    expect(mockNavigate).toHaveBeenCalledWith('GeoBlocked', {countryCode: 'KP'});
+    expect(mockNavigate).toHaveBeenCalledWith('GeoBlocked', {
+      countryCode: 'KP',
+      presaleBlocked: true,
+    });
     expect(mockNavigate).not.toHaveBeenCalledWith(
       'PresaleBuyConfirm',
       expect.anything(),
@@ -152,7 +155,10 @@ describe('PresaleActive — geo gate', () => {
     // Wait for the jurisdiction query to resolve (blocked CTA appears).
     await findByText('Not available in your region');
     fireEvent.press(getByText('Not available in your region?'));
-    expect(mockNavigate).toHaveBeenCalledWith('GeoBlocked', {countryCode: 'KP'});
+    expect(mockNavigate).toHaveBeenCalledWith('GeoBlocked', {
+      countryCode: 'KP',
+      presaleBlocked: true,
+    });
   });
 
   it('keeps the normal Buy CTA when allowed (no geo navigation)', async () => {
