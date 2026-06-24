@@ -28,7 +28,8 @@ describe('derivePresalePdas', () => {
 describe('buildSolPurchaseInstruction', () => {
   it('encodes the discriminator + u64-LE lamports and orders the 8 accounts', () => {
     const lamports = 2_000_000_000n; // 2 SOL
-    const ix = buildSolPurchaseInstruction(USER, lamports);
+    const {referrerAllocation} = derivePresalePdas(USER);
+    const ix = buildSolPurchaseInstruction(USER, lamports, referrerAllocation);
     // data: 8-byte discriminator + 8-byte u64 LE
     expect([...ix.data.subarray(0, 8)]).toEqual([161, 153, 65, 238, 160, 236, 43, 165]);
     // 2_000_000_000 = 0x7735_9400 → LE bytes
@@ -50,8 +51,9 @@ describe('buildSolPurchaseInstruction', () => {
   });
 
   it('rejects a lamports value out of u64 range', () => {
-    expect(() => buildSolPurchaseInstruction(USER, -1n)).toThrow();
-    expect(() => buildSolPurchaseInstruction(USER, 2n ** 64n)).toThrow();
+    const {referrerAllocation} = derivePresalePdas(USER);
+    expect(() => buildSolPurchaseInstruction(USER, -1n, referrerAllocation)).toThrow();
+    expect(() => buildSolPurchaseInstruction(USER, 2n ** 64n, referrerAllocation)).toThrow();
   });
 });
 
@@ -95,7 +97,8 @@ describe('buildStablecoinPurchaseInstruction', () => {
     ['USDT', USDT_MINT, [209, 3, 170, 172, 219, 182, 149, 89]],
   ] as const)('builds the %s instruction with the right disc, amount, and 10 accounts', (token, mint, disc) => {
     const amount = 25_000_000n; // 25 USDC/USDT (6 dp)
-    const ix = buildStablecoinPurchaseInstruction(USER, token, amount);
+    const {referrerAllocation} = derivePresalePdas(USER);
+    const ix = buildStablecoinPurchaseInstruction(USER, token, amount, referrerAllocation);
     expect([...ix.data.subarray(0, 8)]).toEqual(disc);
     // 25_000_000 = 0x017D7840 → LE
     expect([...ix.data.subarray(8, 16)]).toEqual([0x40, 0x78, 0x7d, 0x01, 0x00, 0x00, 0x00, 0x00]);
@@ -167,5 +170,167 @@ describe('fetchOnChainAllocation', () => {
     } as never);
     const r = await fetchOnChainAllocation(USER);
     expect(r).toEqual({totalTokensBase: '0', exists: false});
+  });
+});
+
+// ===========================================================================
+// Task 3: register_referrer ix + allocation read + resolveReferrer
+// ===========================================================================
+
+import {
+  buildRegisterReferrerInstruction,
+  REGISTER_REFERRER_DISCRIMINATOR,
+  fetchAllocationRef,
+  resolveReferrer,
+} from '../presaleBuyModule';
+import * as presaleBuyModule from '../presaleBuyModule';
+
+// A referral wallet whose bytes are meaningful (not the all-zero bytes a
+// string-constructed PublicKey carries in the mock), so we can assert that the
+// register instruction actually serializes the 32 referrer bytes.
+const REF_BYTES = new Uint8Array(32).map((_, i) => (i * 7 + 3) & 0xff);
+const REF = new PublicKey(REF_BYTES);
+const REF_B58 = REF.toBase58();
+
+// A REAL base58 address for resolveReferrer's `capturedReferrer` arg — the
+// validity check (captureIsValid / parseReferralInput) base58-decodes the
+// captured string and asserts 32 bytes, so it must be a genuine pubkey string
+// (REF_B58 above is the mock's `mock-pubkey-…` placeholder, not valid base58).
+const CAPTURED_REF = '6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd';
+
+/**
+ * Craft a 117-byte PresaleAllocation buffer with purchase_count (u32 LE @56)
+ * and an optional referrer pubkey (32 bytes @84).
+ */
+function allocBuffer(purchaseCount: number, referrer: PublicKey | null): Buffer {
+  const buf = Buffer.alloc(117);
+  buf[56] = purchaseCount & 0xff;
+  buf[57] = (purchaseCount >>> 8) & 0xff;
+  buf[58] = (purchaseCount >>> 16) & 0xff;
+  buf[59] = (purchaseCount >>> 24) & 0xff;
+  if (referrer) {
+    Buffer.from(referrer.toBytes()).copy(buf, 84);
+  }
+  return buf;
+}
+
+describe('buildRegisterReferrerInstruction', () => {
+  it('encodes the disc + 32-byte referrer arg and orders the 4 accounts', () => {
+    const ix = buildRegisterReferrerInstruction(USER, REF);
+    expect(REGISTER_REFERRER_DISCRIMINATOR).toEqual([122, 229, 215, 169, 100, 145, 198, 120]);
+    expect([...ix.data.subarray(0, 8)]).toEqual([122, 229, 215, 169, 100, 145, 198, 120]);
+    expect([...ix.data.subarray(8, 40)]).toEqual([...REF.toBytes()]);
+    expect(ix.data.length).toBe(40);
+    expect(ix.programId.toBase58()).toBe(PROGRAM_ID);
+    const pdas = derivePresalePdas(USER);
+    const expected = [
+      [pdas.userAccount.toBase58(), false, true],
+      [pdas.userAllocation.toBase58(), false, true],
+      [USER.toBase58(), true, true],
+      [SystemProgram.programId.toBase58(), false, false],
+    ];
+    expect(ix.keys.map(k => [k.pubkey.toBase58(), k.isSigner, k.isWritable])).toEqual(expected);
+  });
+});
+
+describe('fetchAllocationRef', () => {
+  it('decodes purchase_count (u32 LE @56) and referrer (@84) from the allocation', async () => {
+    jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
+      getAccountInfo: async () => ({data: allocBuffer(1, REF)}),
+    } as never);
+    const r = await fetchAllocationRef(USER);
+    expect(r).toEqual({exists: true, referrer: REF_B58, purchaseCount: 1});
+  });
+
+  it('returns referrer:null when the 32 referrer bytes are all zero', async () => {
+    jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
+      getAccountInfo: async () => ({data: allocBuffer(3, null)}),
+    } as never);
+    const r = await fetchAllocationRef(USER);
+    expect(r).toEqual({exists: true, referrer: null, purchaseCount: 3});
+  });
+
+  it('returns exists:false when no account / too-short data', async () => {
+    jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
+      getAccountInfo: async () => null,
+    } as never);
+    expect(await fetchAllocationRef(USER)).toEqual({exists: false, referrer: null, purchaseCount: 0});
+
+    jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
+      getAccountInfo: async () => ({data: Buffer.alloc(115)}),
+    } as never);
+    expect(await fetchAllocationRef(USER)).toEqual({exists: false, referrer: null, purchaseCount: 0});
+  });
+});
+
+describe('resolveReferrer', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('no allocation + captured REF → registers REF; referrerAllocation == PDA(REF)', async () => {
+    jest
+      .spyOn(presaleBuyModule, 'fetchAllocationRef')
+      .mockResolvedValue({exists: false, referrer: null, purchaseCount: 0});
+    const r = await resolveReferrer(USER, CAPTURED_REF);
+    const [pdaRef] = PublicKey.findProgramAddressSync(
+      [Buffer.from('allocation'), new PublicKey(CAPTURED_REF).toBytes()],
+      PROGRAM,
+    );
+    expect(r.registerReferrer?.toBase58()).toBe(CAPTURED_REF);
+    expect(r.effectiveReferrerAddress).toBe(CAPTURED_REF);
+    expect(r.referrerAllocation.toBase58()).toBe(pdaRef.toBase58());
+    // CORRECTNESS INVARIANT: referrerAllocation is the PDA of the SAME key we register.
+    const [pdaOfRegistered] = PublicKey.findProgramAddressSync(
+      [Buffer.from('allocation'), r.registerReferrer!.toBytes()],
+      PROGRAM,
+    );
+    expect(r.referrerAllocation.toBase58()).toBe(pdaOfRegistered.toBase58());
+  });
+
+  it('on-chain referrer R2 set → no register; referrerAllocation == PDA(R2); effective R2', async () => {
+    const r2Bytes = new Uint8Array(32).map((_, i) => (i + 11) & 0xff);
+    const R2 = new PublicKey(r2Bytes);
+    jest
+      .spyOn(presaleBuyModule, 'fetchAllocationRef')
+      .mockResolvedValue({exists: true, referrer: R2.toBase58(), purchaseCount: 2});
+    const r = await resolveReferrer(USER, CAPTURED_REF);
+    const [pdaR2] = PublicKey.findProgramAddressSync(
+      [Buffer.from('allocation'), new PublicKey(R2.toBase58()).toBytes()],
+      PROGRAM,
+    );
+    expect(r.registerReferrer).toBeNull();
+    expect(r.effectiveReferrerAddress).toBe(R2.toBase58());
+    expect(r.referrerAllocation.toBase58()).toBe(pdaR2.toBase58());
+  });
+
+  it('purchase_count 1, captured REF, no on-chain → no register, effective null, PDA(default)', async () => {
+    jest
+      .spyOn(presaleBuyModule, 'fetchAllocationRef')
+      .mockResolvedValue({exists: true, referrer: null, purchaseCount: 1});
+    const r = await resolveReferrer(USER, CAPTURED_REF);
+    const [pdaDefault] = PublicKey.findProgramAddressSync(
+      [Buffer.from('allocation'), PublicKey.default.toBytes()],
+      PROGRAM,
+    );
+    expect(r.registerReferrer).toBeNull();
+    expect(r.effectiveReferrerAddress).toBeNull();
+    expect(r.referrerAllocation.toBase58()).toBe(pdaDefault.toBase58());
+  });
+
+  it('captured == self → ignored (no register, effective null)', async () => {
+    jest
+      .spyOn(presaleBuyModule, 'fetchAllocationRef')
+      .mockResolvedValue({exists: false, referrer: null, purchaseCount: 0});
+    const r = await resolveReferrer(USER, USER.toBase58());
+    expect(r.registerReferrer).toBeNull();
+    expect(r.effectiveReferrerAddress).toBeNull();
+  });
+
+  it('captured junk → ignored (no register, effective null)', async () => {
+    jest
+      .spyOn(presaleBuyModule, 'fetchAllocationRef')
+      .mockResolvedValue({exists: false, referrer: null, purchaseCount: 0});
+    const r = await resolveReferrer(USER, 'not-a-real-address');
+    expect(r.registerReferrer).toBeNull();
+    expect(r.effectiveReferrerAddress).toBeNull();
   });
 });
