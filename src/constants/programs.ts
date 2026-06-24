@@ -32,11 +32,13 @@ export const SOL_TREASURY = IS_DEVNET
 // Pyth SOL/USD price account (read-only) required by presale_purchase_with_sol.
 export const PYTH_SOL_USD_ACCOUNT = '7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE';
 
-// Currently the project main wallet (same as ADMIN_ADDRESS). Move to a Squads
-// multisig before scaling — only this literal changes, no other code.
+// Squads multisig vault (System-owned, mainnet) — the same vault used as
+// SOL_TREASURY, so all Noctura SOL (presale revenue + wallet fee markup)
+// consolidates into one multisig. Receives the transparent-transfer fee markup.
+// Only this literal changes; no other code.
 export const NOCTURA_FEE_TREASURY = IS_DEVNET
   ? 'TODO_DEVNET_FEE_TREASURY'
-  : 'KnZ5bRuaCb3JEAYgt9CJ69eWQ7i5dp5cASbTmLj39qr';
+  : '6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd';
 
 export const RPC_ENDPOINT = Config.HELIUS_RPC_URL;
 export const RPC_WEBSOCKET = Config.HELIUS_WS_URL;
@@ -67,7 +69,8 @@ export const SHIELDED_ADDRESS_HRP = 'noc' as const;
 // to devnet and copy the resulting program ID, mint, admin, treasury, and fee
 // treasury addresses here. See Phase 1 repo deployment instructions.
 //
-// MAINNET: Only NOCTURA_FEE_TREASURY is TODO (Squads multisig pending).
+// MAINNET: all addresses populated. NOCTURA_FEE_TREASURY now points to the
+// Squads multisig vault (= SOL_TREASURY); no TODOs remain.
 
 const TODO_GUARD_ADDRESSES = {
   NOC_MINT,
