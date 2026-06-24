@@ -17,6 +17,7 @@ import {formatAddress} from '../../utils/formatAddress';
 import {ERROR_CODES} from '../../constants/errors';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {usePresaleStore} from '../../store/zustand/presaleStore';
+import {useReferralCaptureStore} from '../../store/zustand/referralCaptureStore';
 import {useResolvedPrices} from '../../hooks/useResolvedPrices';
 import {PRESALE_STAGE_PRICES} from '../../constants/presale';
 import {
@@ -152,6 +153,9 @@ export function PresaleBuyStatusScreen({
   const signatureRef = useRef<string | null>(null);
   signatureRef.current = signature;
   const recordedRef = useRef(false);
+  // The referrer credited by the submitted tx (null when none) — captured from
+  // the submit result so onSuccess can record it + clear the capture store.
+  const effectiveReferrerRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -162,6 +166,7 @@ export function PresaleBuyStatusScreen({
         return;
       }
       recordedRef.current = true;
+      const effectiveReferrer = effectiveReferrerRef.current;
       if (recordPresalePurchase && publicKey) {
         void recordPresalePurchase({
           txHash: sig,
@@ -171,7 +176,13 @@ export function PresaleBuyStatusScreen({
           nocAmount: nocEstimate,
           usdValue,
           stage: displayStage,
+          referrerAddress: effectiveReferrer ?? undefined,
         });
+      }
+      // A referred purchase consumes the captured referrer (the on-chain bonus
+      // is one-time) — clear it so a later buy doesn't try to re-register.
+      if (effectiveReferrer) {
+        useReferralCaptureStore.getState().clearCapturedReferrer();
       }
       queryClient.invalidateQueries({queryKey: ['presaleAllocation']});
     };
@@ -198,7 +209,11 @@ export function PresaleBuyStatusScreen({
           : submitPresaleBuyStablecoin!(paymentToken, units, scheme);
 
       let attempt = 1;
-      let result: {signature: string; lastValidBlockHeight: number};
+      let result: {
+        signature: string;
+        lastValidBlockHeight: number;
+        effectiveReferrerAddress: string | null;
+      };
 
       try {
         result = await attemptSubmit();
@@ -211,6 +226,7 @@ export function PresaleBuyStatusScreen({
       }
 
       if (cancelled) return;
+      effectiveReferrerRef.current = result.effectiveReferrerAddress;
       setSignature(result.signature);
       setStage('broadcasting');
 
@@ -253,7 +269,11 @@ export function PresaleBuyStatusScreen({
             if (!cancelled && h > lastValidBlockHeight) {
               if (attempt < MAX_ATTEMPTS) {
                 attempt++;
-                let resubmitResult: {signature: string; lastValidBlockHeight: number};
+                let resubmitResult: {
+                  signature: string;
+                  lastValidBlockHeight: number;
+                  effectiveReferrerAddress: string | null;
+                };
                 try {
                   resubmitResult = await attemptSubmit();
                 } catch (e) {

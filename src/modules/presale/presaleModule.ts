@@ -81,6 +81,7 @@ export interface PresalePurchaseRecord {
   nocAmount: number;
   usdValue: number;
   stage: number;
+  referrerAddress?: string;
 }
 
 /** Best-effort archive of a completed purchase to the coordinator. Never throws. */
