@@ -50,15 +50,20 @@ jest.mock('../../store/zustand/shieldedStore', () => ({
     selector({mode: 'transparent'}),
 }));
 
+// Mutable presale store backing object so individual tests can vary
+// tokensPurchased (to reveal the #23 allocation card) and tgeTimestamp.
+const mockPresaleState: Record<string, unknown> = {
+  pricePerNoc: '0.05',
+  soldInStage: '0',
+  stageCapacity: '1000000',
+  tokensPurchased: '0',
+  referralBonusTokens: '0',
+  tgeTimestamp: null,
+};
+
 jest.mock('../../store/zustand/presaleStore', () => ({
   usePresaleStore: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector({
-      pricePerNoc: '0.05',
-      soldInStage: '0',
-      stageCapacity: '1000000',
-      tokensPurchased: '0',
-      referralBonusTokens: '0',
-    }),
+    selector(mockPresaleState),
 }));
 
 const SELF_ADDR = '6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd';
@@ -262,5 +267,39 @@ describe('PresaleActive — manual referral field', () => {
     expect(chip.props.children.join('')).toContain(OTHER_ADDR.slice(-4));
     fireEvent.press(getByTestId('referral-clear'));
     expect(mockReferralState.clearCapturedReferrer).toHaveBeenCalled();
+  });
+});
+
+// ── #23 allocation card — TGE countdown caption ──────────────────────────────
+
+describe('PresaleActive — TGE countdown caption', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockReferralState.capturedReferrer = null;
+    mockCheckJurisdiction.mockResolvedValue({
+      action: 'allow',
+      countryCode: 'SI',
+      transparentAllowed: true,
+    });
+    // A non-zero allocation reveals the #23 card; reset tgeTimestamp per test.
+    mockPresaleState.tokensPurchased = '1000000000000';
+    mockPresaleState.referralBonusTokens = '0';
+    mockPresaleState.tgeTimestamp = null;
+  });
+  afterEach(() => {
+    mockPresaleState.tokensPurchased = '0';
+    mockPresaleState.tgeTimestamp = null;
+  });
+
+  it('shows "Claimable in ~7 months" when TGE is ~204 days out', () => {
+    mockPresaleState.tgeTimestamp = Math.floor(Date.now() / 1000) + 204 * 86400;
+    const {getByText} = renderActive();
+    expect(getByText('Claimable in ~7 months')).toBeTruthy();
+  });
+
+  it('falls back to "Claimable after TGE" when tgeTimestamp is null', () => {
+    mockPresaleState.tgeTimestamp = null;
+    const {getByText} = renderActive();
+    expect(getByText('Claimable after TGE')).toBeTruthy();
   });
 });
