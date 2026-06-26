@@ -3,6 +3,7 @@ import {StatusBar} from 'react-native';
 import {AppProviders} from './AppProviders';
 import {RootNavigator} from './Navigator';
 import {useSessionGuard} from '../hooks/useSessionGuard';
+import {useReferralDeepLink} from '../hooks/useReferralDeepLink';
 import {navigationRef} from './navigationRef';
 
 function AppContent() {
@@ -16,6 +17,7 @@ function AppContent() {
   }, []);
 
   useSessionGuard(handleSessionExpired);
+  useReferralDeepLink();
 
   return (
     <>
