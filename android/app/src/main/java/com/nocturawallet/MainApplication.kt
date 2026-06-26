@@ -7,6 +7,7 @@ import com.facebook.react.ReactHost
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.nocturawallet.screensecurity.NocturaScreenSecurityPackage
+import com.nocturawallet.shieldedkey.NocturaKeyPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -18,6 +19,7 @@ class MainApplication : Application(), ReactApplication {
           // Project-local native modules (not auto-linked because they're not
           // distributed as separate npm packages).
           add(NocturaScreenSecurityPackage())
+          add(NocturaKeyPackage())
         },
     )
   }
