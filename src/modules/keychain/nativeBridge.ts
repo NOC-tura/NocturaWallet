@@ -16,11 +16,19 @@ import {NativeModules} from 'react-native';
  */
 
 interface NocturaKeyModuleInterface {
-  /** Derive sk_spend and sign payload. Returns BLS12-381 signature. */
-  signShieldedOp(payloadHex: string): Promise<string>;
+  /**
+   * Derive sk_spend (EIP-2333) from the seed and sign payload IN NATIVE.
+   * Returns a 96-byte G2 compressed BLS12-381 signature (hex). sk_spend is
+   * zeroized after the op and never crosses to JS. (C1 passes the seed; the
+   * circuit-specific spend-auth payload is finalized in C2.)
+   */
+  signShieldedOp(seedHex: string, payloadHex: string): Promise<string>;
 
-  /** Derive pk_shielded (G1 point) from sk_spend. Returns 48-byte compressed hex. */
-  getShieldedPublicKey(): Promise<string>;
+  /**
+   * Derive pk_shielded (G1) from sk_spend (EIP-2333) IN NATIVE.
+   * Returns the 48-byte G1 compressed public key (hex).
+   */
+  getShieldedPublicKey(seedHex: string): Promise<string>;
 
   /** Store encrypted seed in Secure Enclave (iOS) / Keystore (Android). */
   storeSeed(mnemonicEncrypted: string): Promise<void>;
@@ -50,11 +58,11 @@ function requireNative(): NocturaKeyModuleInterface {
 }
 
 export const NocturaKeyBridge: NocturaKeyModuleInterface = {
-  signShieldedOp: async (payloadHex: string) =>
-    requireNative().signShieldedOp(payloadHex),
+  signShieldedOp: async (seedHex: string, payloadHex: string) =>
+    requireNative().signShieldedOp(seedHex, payloadHex),
 
-  getShieldedPublicKey: async () =>
-    requireNative().getShieldedPublicKey(),
+  getShieldedPublicKey: async (seedHex: string) =>
+    requireNative().getShieldedPublicKey(seedHex),
 
   storeSeed: async (mnemonicEncrypted: string) =>
     requireNative().storeSeed(mnemonicEncrypted),

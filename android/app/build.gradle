@@ -90,6 +90,14 @@ android {
         versionCode 1
         versionName "1.0.0"
     }
+    // Native BLST (blst) shielded-key module — builds libnoctura_key.so from
+    // src/main/cpp (CMake). blst source is vendored under src/main/cpp/blst
+    // (gitignored; clone: git clone --depth 1 https://github.com/supranational/blst).
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+        }
+    }
     signingConfigs {
         debug {
             storeFile file('debug.keystore')
