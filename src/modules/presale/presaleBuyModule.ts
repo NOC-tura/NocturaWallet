@@ -96,6 +96,32 @@ export async function fetchOnChainAllocation(
   return {totalTokensBase: total.toString(), exists: true};
 }
 
+// Config account layout: `tge_timestamp` is an i64 LE at byte offset 201 (after
+// the 8-byte disc + admin/sale/usdt/usdc 4×32 + 4×u64 prices/ratios +
+// current_stage u8 + 3×u64 sold/raised counters + presale_start_time i64 @193).
+// The config PDA (`["config", ADMIN]`) is user-independent, so any pubkey works
+// for the derive. Value = 1800230400 = 2027-01-18.
+const CONFIG_TGE_TIMESTAMP_OFFSET = 201;
+
+/**
+ * Read the on-chain TGE timestamp (`config.tge_timestamp`) in unix seconds, or
+ * null when the config account is missing / too short. The stored value is
+ * positive, so an unsigned LE read is fine.
+ */
+export async function fetchTgeTimestamp(): Promise<number | null> {
+  const {config} = derivePresalePdas(PublicKey.default);
+  const info = await getConnection().getAccountInfo(config);
+  if (!info || !info.data || info.data.length < CONFIG_TGE_TIMESTAMP_OFFSET + 8) {
+    return null;
+  }
+  const d = info.data;
+  let v = 0n;
+  for (let i = 7; i >= 0; i--) {
+    v = (v << 8n) | BigInt(d[CONFIG_TGE_TIMESTAMP_OFFSET + i]);
+  }
+  return Number(v);
+}
+
 // ===========================================================================
 // Referral (B1): register_referrer instruction + allocation read + resolve
 // ===========================================================================

@@ -179,6 +179,42 @@ describe('fetchOnChainAllocation', () => {
   });
 });
 
+import {fetchTgeTimestamp} from '../presaleBuyModule';
+
+function configBufferWithTge(tge: bigint): Buffer {
+  // Config account: tge_timestamp is an i64 LE at byte offset 201.
+  const buf = Buffer.alloc(209);
+  let rem = tge;
+  for (let i = 0; i < 8; i++) {
+    buf[201 + i] = Number(rem & 0xffn);
+    rem >>= 8n;
+  }
+  return buf;
+}
+
+describe('fetchTgeTimestamp', () => {
+  it('decodes tge_timestamp (i64 LE at offset 201) from the config account', async () => {
+    jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
+      getAccountInfo: async () => ({data: configBufferWithTge(1800230400n)}),
+    } as never);
+    expect(await fetchTgeTimestamp()).toBe(1800230400);
+  });
+
+  it('returns null when the config account does not exist', async () => {
+    jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
+      getAccountInfo: async () => null,
+    } as never);
+    expect(await fetchTgeTimestamp()).toBeNull();
+  });
+
+  it('returns null when the account data is too short', async () => {
+    jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
+      getAccountInfo: async () => ({data: Buffer.alloc(208)}),
+    } as never);
+    expect(await fetchTgeTimestamp()).toBeNull();
+  });
+});
+
 // ===========================================================================
 // Task 3: register_referrer ix + allocation read + resolveReferrer
 // ===========================================================================
