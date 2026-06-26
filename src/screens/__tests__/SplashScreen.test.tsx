@@ -1,9 +1,48 @@
-import {resolveSplashRoute} from '../SplashScreen';
+import React from 'react';
+import {render, waitFor} from '@testing-library/react-native';
+import {resolveSplashRoute, SplashScreen} from '../SplashScreen';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
+import * as versionCheck from '../../modules/appUpdate/versionCheck';
 
 beforeEach(() => {
   mmkvPublic.clearAll();
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
+
+describe('SplashScreen force-update routing', () => {
+  it('fires onForceUpdate (and NOT onRouteResolved) when update_required', async () => {
+    jest
+      .spyOn(versionCheck, 'checkAppVersion')
+      .mockResolvedValue({status: 'update_required', storeUrl: 'https://s', message: 'm'});
+    const onForceUpdate = jest.fn();
+    const onRouteResolved = jest.fn();
+    render(
+      <SplashScreen onForceUpdate={onForceUpdate} onRouteResolved={onRouteResolved} />,
+    );
+    await waitFor(
+      () =>
+        expect(onForceUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({status: 'update_required'}),
+        ),
+      {timeout: 3000},
+    );
+    expect(onRouteResolved).not.toHaveBeenCalled();
+  });
+
+  it('fires onRouteResolved when status is ok', async () => {
+    jest.spyOn(versionCheck, 'checkAppVersion').mockResolvedValue({status: 'ok'});
+    const onForceUpdate = jest.fn();
+    const onRouteResolved = jest.fn();
+    render(
+      <SplashScreen onForceUpdate={onForceUpdate} onRouteResolved={onRouteResolved} />,
+    );
+    await waitFor(() => expect(onRouteResolved).toHaveBeenCalled(), {timeout: 3000});
+    expect(onForceUpdate).not.toHaveBeenCalled();
+  });
 });
 
 describe('resolveSplashRoute', () => {

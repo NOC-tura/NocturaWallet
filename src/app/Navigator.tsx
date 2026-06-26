@@ -83,6 +83,15 @@ function SplashScreenNav() {
           navigation.replace(route as 'Onboarding' | 'MainTabs');
         }
       }}
+      onForceUpdate={result => {
+        // A required update must take the user to the (non-dismissable) update
+        // screen — NOT leave them stuck on the splash. Without this, an
+        // update_required response was a silent no-op → frozen splash.
+        navigation.replace('AppUpdateModal', {
+          storeUrl: result.storeUrl ?? '',
+          message: result.message,
+        });
+      }}
     />
   );
 }
