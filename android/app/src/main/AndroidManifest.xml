@@ -23,6 +23,22 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
+        <!-- App Links: claim ONLY https://noc-tura.io/wallet/* (scoped path so the
+             app does not hijack the whole website). Auto-verifies against the
+             /.well-known/assetlinks.json hosted on noc-tura.io. -->
+        <intent-filter android:autoVerify="true">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" android:host="noc-tura.io" android:pathPrefix="/wallet" />
+        </intent-filter>
+        <!-- Custom scheme: always works without any website file (testing + fallback). -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="noctura" />
+        </intent-filter>
       </activity>
     </application>
 </manifest>
