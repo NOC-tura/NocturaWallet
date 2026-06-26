@@ -87,7 +87,7 @@ export class NotificationManager {
    * Only submits the types the user has enabled — privacy-safe: server never
    * learns which types the user rejected.
    *
-   * POST /v1/notifications/register
+   * POST /notifications/register
    * Body: { token, platform, types }
    */
   async registerToken(): Promise<void> {
@@ -96,7 +96,7 @@ export class NotificationManager {
     if (!this.deviceToken) return; // No real push token — don't pollute backend with stubs
     const token = this.deviceToken;
 
-    await pinnedFetch(`${API_BASE}/v1/notifications/register`, {
+    await pinnedFetch(`${API_BASE}/notifications/register`, {
       method: 'POST',
       body: JSON.stringify({
         token,
@@ -110,14 +110,14 @@ export class NotificationManager {
    * Removes the device push token from the Noctura backend.
    * Called on wallet wipe or sign-out.
    *
-   * DELETE /v1/notifications/unregister
+   * DELETE /notifications/unregister
    * Body: { token }
    */
   async unregisterToken(): Promise<void> {
     if (!this.deviceToken) return; // No real push token — nothing to unregister
     const token = this.deviceToken;
 
-    await pinnedFetch(`${API_BASE}/v1/notifications/unregister`, {
+    await pinnedFetch(`${API_BASE}/notifications/unregister`, {
       method: 'DELETE',
       body: JSON.stringify({token}),
     });

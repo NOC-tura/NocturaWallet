@@ -121,7 +121,7 @@ export class TokenManager {
   async checkScamFlag(mint: string): Promise<boolean> {
     try {
       const response = await pinnedFetch(
-        `${API_BASE}/v1/tokens/flagged?mint=${encodeURIComponent(mint)}`,
+        `${API_BASE}/tokens/flagged?mint=${encodeURIComponent(mint)}`,
       );
       const data = (await response.json()) as {flagged: boolean; reason?: string};
       return data.flagged;

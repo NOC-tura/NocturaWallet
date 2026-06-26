@@ -26,7 +26,7 @@ const VALID_STATUSES: VersionCheckStatus[] = [
 export async function checkAppVersion(): Promise<VersionCheckResult> {
   try {
     const platform = Platform.OS === 'ios' ? 'ios' : 'android';
-    const url = `${Config.API_BASE}/v1/app/version-check?platform=${platform}&version=${APP_VERSION}`;
+    const url = `${Config.API_BASE}/app/version-check?platform=${platform}&version=${APP_VERSION}`;
 
     const response = await pinnedFetch(url, {method: 'GET'});
     const data = (await response.json()) as Record<string, unknown>;
