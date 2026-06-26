@@ -13,6 +13,7 @@ interface PresaleState {
   isZeroFeeEligible: boolean;
   tgeStatus: 'pre_tge' | 'claimable' | 'claimed';
   claimingEnabled: boolean;
+  tgeTimestamp: number | null;
 
   setStageInfo: (info: {
     currentStage: number;
@@ -28,6 +29,7 @@ interface PresaleState {
   }) => void;
   setTgeStatus: (status: PresaleState['tgeStatus']) => void;
   setClaimingEnabled: (v: boolean) => void;
+  setTgeTimestamp: (t: number | null) => void;
   reset: () => void;
 }
 
@@ -42,6 +44,7 @@ const DEFAULTS = {
   isZeroFeeEligible: false,
   tgeStatus: 'pre_tge' as const,
   claimingEnabled: false,
+  tgeTimestamp: null,
 };
 
 export const usePresaleStore = create<PresaleState>()(
@@ -52,6 +55,7 @@ export const usePresaleStore = create<PresaleState>()(
       setAllocation: alloc => set(alloc),
       setTgeStatus: status => set({tgeStatus: status}),
       setClaimingEnabled: v => set({claimingEnabled: v}),
+      setTgeTimestamp: t => set({tgeTimestamp: t}),
       reset: () => set(DEFAULTS),
     }),
     {
