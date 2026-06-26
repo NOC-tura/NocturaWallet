@@ -30,6 +30,7 @@ import {
 import {USDC_MINT, USDT_MINT} from '../modules/tokens/coreTokens';
 import {PRESALE_STAGE_PRICES} from '../constants/presale';
 import {presaleAllocationDisplay} from '../modules/presale/presaleAllocation';
+import {tgeCountdownDisplay} from '../modules/presale/tgeCountdown';
 import {
   stageProgressDisplay,
   stageSecondRow,
@@ -141,7 +142,9 @@ export function PresaleActive({
   const stageCapacity = usePresaleStore(s => s.stageCapacity);
   const tokensPurchased = usePresaleStore(s => s.tokensPurchased);
   const referralBonusTokens = usePresaleStore(s => s.referralBonusTokens);
+  const tgeTimestamp = usePresaleStore(s => s.tgeTimestamp);
   const allocation = presaleAllocationDisplay({tokensPurchased, referralBonusTokens});
+  const tgeCountdown = tgeCountdownDisplay(tgeTimestamp, Date.now() / 1000);
   const progress = stageProgressDisplay({soldInStage, stageCapacity, pricePerNoc});
   const secondRow = stageSecondRow({currentStage, soldInStage, stageCapacity});
   const stagePriceUsd =
@@ -468,7 +471,7 @@ export function PresaleActive({
                 </Text>
               </View>
               <Text variant="caption" className="text-fg-tertiary mt-1">
-                Claimable after TGE
+                {tgeCountdown ? `Claimable ${tgeCountdown}` : 'Claimable after TGE'}
               </Text>
             </View>
           ) : null}

@@ -2,7 +2,7 @@ import {useEffect} from 'react';
 import {useQuery} from '@tanstack/react-query';
 import {PublicKey} from '@solana/web3.js';
 import {fetchPresaleStats, fetchUserAllocation} from '../modules/presale/presaleModule';
-import {fetchOnChainAllocation} from '../modules/presale/presaleBuyModule';
+import {fetchOnChainAllocation, fetchTgeTimestamp} from '../modules/presale/presaleBuyModule';
 import {usePresaleStore} from '../store/zustand/presaleStore';
 import {useWalletStore} from '../store/zustand/walletStore';
 
@@ -37,6 +37,7 @@ export function usePresaleSync(): {isPaused: boolean} {
   const address = useWalletStore(s => s.publicKey);
   const setStageInfo = usePresaleStore(s => s.setStageInfo);
   const setAllocation = usePresaleStore(s => s.setAllocation);
+  const setTgeTimestamp = usePresaleStore(s => s.setTgeTimestamp);
 
   const statsQ = useQuery({
     queryKey: ['presaleStats'],
@@ -53,6 +54,20 @@ export function usePresaleSync(): {isPaused: boolean} {
     staleTime: 60_000,
     retry: 1,
   });
+
+  // The on-chain TGE timestamp ~never changes, so cache it for an hour.
+  const tgeQ = useQuery({
+    queryKey: ['tgeTimestamp'],
+    queryFn: fetchTgeTimestamp,
+    staleTime: 60 * 60_000,
+    retry: 1,
+  });
+
+  useEffect(() => {
+    if (tgeQ.data != null) {
+      setTgeTimestamp(tgeQ.data);
+    }
+  }, [tgeQ.data, setTgeTimestamp]);
 
   useEffect(() => {
     if (!statsQ.data) {
