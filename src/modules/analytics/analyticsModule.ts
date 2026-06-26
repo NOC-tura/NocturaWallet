@@ -45,7 +45,7 @@ export class AnalyticsManager {
     for (let i = 0; i < toSend.length; i += BATCH_SIZE) {
       const batch = toSend.slice(i, i + BATCH_SIZE);
       try {
-        await pinnedFetch(`${API_BASE}/v1/analytics/event`, {
+        await pinnedFetch(`${API_BASE}/analytics/event`, {
           method: 'POST',
           body: JSON.stringify({events: batch}),
         });
