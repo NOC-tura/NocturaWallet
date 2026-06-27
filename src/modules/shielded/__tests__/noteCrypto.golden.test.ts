@@ -1,12 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import {base58} from '@scure/base';
+import {poseidon2} from 'poseidon-lite';
 import {
   bytesToBigIntBE,
   pkRecipientHash,
   mintHash,
   noteCommitment,
   nullifier,
+  recipientField,
 } from '../noteCrypto';
 import {computeMerkleRoot, BN254_FIELD_PRIME} from '../../merkle/merkleModule';
 
@@ -58,6 +60,28 @@ function buildVectors() {
   const feMinus1Hex = Buffer.from(feMinus1Bytes).toString('hex');
   const feMinus1Roundtrip = bytesToBigIntBE(feMinus1Bytes);
 
+  // --- Ratified-with-program-side vectors (recipientField + incremental merkle) ---
+  // Sample devnet recipient ATA (deterministic fixture).
+  const SAMPLE_RECIPIENT_TA =
+    'd5f0e3a1b2c4968778695a4b3c2d1e0f00112233445566778899aabbccddeeff';
+  // Sample leaf = the representative golden commitment (fixed constant).
+  const SAMPLE_LEAF =
+    12616215241406504088266863708796392158806576577856853960830103596174110701914n;
+  // Empty-subtree zero hashes: zeros[0]=0, zeros[i]=poseidon2(zeros[i-1],zeros[i-1]).
+  const miZeros: bigint[] = [0n];
+  for (let i = 1; i <= 20; i++) {
+    miZeros.push(poseidon2([miZeros[i - 1], miZeros[i - 1]]));
+  }
+  // Insert leaf at index 0 (always the left child): filledSubtrees[i] is the
+  // left-edge node after i levels; rootAfterInsert folds all 20 levels.
+  const filledSubtrees: bigint[] = [];
+  let miNode = SAMPLE_LEAF;
+  for (let level = 0; level < 20; level++) {
+    filledSubtrees.push(miNode);
+    miNode = poseidon2([miNode, miZeros[level]]);
+  }
+  const miRootAfterInsert = miNode;
+
   return {
     _meta: {
       scheme: 'noctura-zk-encoding-v1',
@@ -107,6 +131,26 @@ function buildVectors() {
         name: 'F_minus_1',
         be_hex: feMinus1Hex,
         value: feMinus1Roundtrip.toString(),
+      },
+    ],
+    recipientField: [
+      {
+        name: 'sample_recipient_token_account',
+        tokenAccount_hex: SAMPLE_RECIPIENT_TA,
+        output: recipientField(hexToBytes(SAMPLE_RECIPIENT_TA)).toString(),
+      },
+    ],
+    merkleIncremental: [
+      {
+        name: 'depth20_zeros_and_single_insert',
+        depth: 20,
+        zeroLeaf: '0',
+        zeros: miZeros.map(x => x.toString()),
+        emptyRoot: miZeros[20].toString(),
+        insertLeafIndex: 0,
+        insertLeaf: SAMPLE_LEAF.toString(),
+        rootAfterInsert: miRootAfterInsert.toString(),
+        filledSubtreesAfterInsert: filledSubtrees.map(x => x.toString()),
       },
     ],
   };
