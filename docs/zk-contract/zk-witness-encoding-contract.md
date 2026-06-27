@@ -27,7 +27,8 @@ fixtures (`GENERATE=1`) and otherwise asserts the code reproduces them — drift
 - `mintHash = be(mint[0:32]) mod F` — plain reduction, no Poseidon.
 - `noteCommitment = poseidon5(0x01, pkRecipientHash, amount, mintHash, noteSecret)` — amount in lamports.
 - `nullifier = poseidon3(0x02, noteSecret, leafIndex)`.
-- Merkle: `poseidon2`, depth 20, `ZERO_LEAF = 0`.
+- `recipientField = be(recipient_token_account[0:32]) mod F` — withdraw destination binding (plain reduction, same as `mintHash`; ratified 2026-06-27 with the program side).
+- Merkle: `poseidon2`, depth 20, `ZERO_LEAF = 0` (incremental tree; `zeros[i] = poseidon2(zeros[i-1], zeros[i-1])`, `zeros[0] = 0`).
 
 ## API contract (server routes)
 The wallet's `API_BASE` env value ALREADY includes the `/v1` version prefix
@@ -59,5 +60,6 @@ decimal string. `publicInputs` field elements = decimal strings.
 - [ ] mintHash = be(mint) mod F.
 - [ ] noteCommitment = poseidon5(0x01, pkRecipientHash, amount, mintHash, noteSecret).
 - [ ] nullifier = poseidon3(0x02, noteSecret, leafIndex).
+- [ ] recipientField = be(recipient_token_account) mod F (program rechecks the real destination).
 - [ ] Merkle poseidon2, depth 20, ZERO_LEAF=0.
-- [ ] All `golden-vectors.json` entries reproduce exactly.
+- [x] All `golden-vectors.json` entries reproduce exactly — incl. `recipientField` + `merkleIncremental` (RATIFIED 2026-06-27, wallet ↔ program; `noteCrypto.ratify.test.ts`).

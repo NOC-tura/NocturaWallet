@@ -57,6 +57,23 @@ export function mintHash(mint: Uint8Array): bigint {
   return bytesToBigIntBE(mint) % BN254_FIELD_PRIME;
 }
 
+const RECIPIENT_BYTES = 32;
+
+/**
+ * Bind a withdraw's recipient TOKEN ACCOUNT to a field element.
+ * `recipientField = be(recipient_token_account[0:32]) mod F` — same plain
+ * reduction as `mintHash`. The withdraw circuit takes this as a constrained
+ * public input; the program rechecks `be(actual_destination) mod F` against it,
+ * so a relayer cannot redirect funds (a controlled colliding address needs the
+ * Ed25519 private key of a specific 256-bit value → ~2^254, infeasible).
+ */
+export function recipientField(recipient: Uint8Array): bigint {
+  if (recipient.length !== RECIPIENT_BYTES) {
+    throw new Error(`recipientField: expected 32 bytes, got ${recipient.length}`);
+  }
+  return bytesToBigIntBE(recipient) % BN254_FIELD_PRIME;
+}
+
 const DOMAIN_COMMITMENT = 0x01n;
 
 export interface NoteCommitmentInput {
