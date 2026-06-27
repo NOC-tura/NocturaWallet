@@ -39,7 +39,10 @@ export async function fetchCircuitConfig(): Promise<CircuitConfig> {
     return cachedConfig;
   }
 
-  const resp = await pinnedFetch(`${API_BASE}/v1/config/circuit`);
+  // API_BASE already ends in /api/v1 → append the bare path (Phase 3 endpoint is
+  // live at /api/v1/config/circuit). The relayer/submit path below stays /v1/...
+  // until the relayer ships (out of POC scope).
+  const resp = await pinnedFetch(`${API_BASE}/config/circuit`);
   if (resp.status !== 200) {
     throw new Error(`Circuit config fetch returned HTTP ${resp.status}`);
   }
