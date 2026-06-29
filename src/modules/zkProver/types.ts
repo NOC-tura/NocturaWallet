@@ -45,6 +45,8 @@ export interface ZKProof {
   publicInputs: ProofPublicInputs;
   /** Unix ms timestamp when proof was generated. */
   generatedAt: number;
+  /** On-chain-ready proof bytes (hex, 256 B), from the coordinator converter. */
+  proofBytes: string;
 }
 
 /** A queued proof job, persisted in MMKV for crash safety. */
@@ -68,6 +70,8 @@ export interface ProofJob {
 export interface HostedProverResponse {
   success: boolean;
   proofData?: string;
+  /** On-chain-ready proof (hex, 256 bytes). Forwarded opaquely into the ix. */
+  proofBytes?: string;
   /** Public inputs as computed by the prover (root, nullifier, etc.). */
   publicInputs?: ProofPublicInputs;
   error?: string;
