@@ -155,6 +155,7 @@ describe('shieldedService', () => {
       proofData: MOCK_PROOF_DATA,
       publicInputs: {root: '', nullifier: '', amount: '1000'},
       generatedAt: Date.now(),
+      proofBytes: '',
     };
 
     const sig = await submitToRelayer(fakeProof);
@@ -175,6 +176,7 @@ describe('shieldedService', () => {
       proofData: MOCK_PROOF_DATA,
       publicInputs: {root: '', nullifier: '', amount: '1000'},
       generatedAt: Date.now(),
+      proofBytes: '',
     };
 
     await expect(submitToRelayer(fakeProof)).rejects.toThrow('HTTP 500');

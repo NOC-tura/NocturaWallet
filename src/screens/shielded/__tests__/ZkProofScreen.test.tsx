@@ -34,6 +34,7 @@ const mockProof: ZKProof = {
   proofData: 'mock-base64-proof',
   publicInputs: {root: '0x00', nullifier: '0x00', amount: '5000000000'},
   generatedAt: 1700000000000,
+  proofBytes: '',
 };
 
 beforeEach(() => {
