@@ -88,6 +88,7 @@ function makeNote(overrides: Partial<ShieldedNote> = {}): ShieldedNote {
     index: 0,
     spent: false,
     createdAt: Date.now(),
+    noteSecret: '',
     ...overrides,
   };
 }

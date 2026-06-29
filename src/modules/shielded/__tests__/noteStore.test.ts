@@ -24,6 +24,7 @@ function makeNote(overrides: Partial<ShieldedNote> = {}): ShieldedNote {
     index: 0,
     spent: false,
     createdAt: Date.now(),
+    noteSecret: '',
     ...overrides,
   };
 }
@@ -87,5 +88,13 @@ describe('noteStore', () => {
     addNote(makeNote());
     clearMint(MINT);
     expect(getNotes(MINT)).toEqual([]);
+  });
+
+  it('round-trips noteSecret through MMKV (de)serialization', () => {
+    const mint = 'MintForSecretTest1111111111111111111111111';
+    clearMint(mint);
+    addNote({commitment: 'c1', nullifier: '', mint, amount: 5n, index: 0,
+      spent: false, createdAt: 1, noteSecret: 'secret-123'});
+    expect(getNotes(mint)[0]!.noteSecret).toBe('secret-123');
   });
 });

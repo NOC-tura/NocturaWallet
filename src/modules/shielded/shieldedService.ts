@@ -136,6 +136,7 @@ function makeResultNote(
     index: idx,
     spent: false,
     createdAt: Date.now(),
+    noteSecret: '',
   };
 }
 
@@ -230,6 +231,7 @@ export async function deposit(
     index: 0,
     spent: false,
     createdAt: Date.now(),
+    noteSecret: '',
   };
   const witness = await buildWitness(depositNote, config.treeDepth, params.senderPubkey);
 
