@@ -3,7 +3,6 @@ import {sha256} from '@noble/hashes/sha2.js';
 import {buildDepositIx, depositDiscriminator} from '../poolInstructions';
 import {SHIELDED_POOL_PROGRAM_ID} from '../../../constants/programs';
 
-const MINT = new PublicKey('B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW');
 const A = (s: number) => new PublicKey(new Uint8Array(32).fill(s));
 
 describe('buildDepositIx', () => {
