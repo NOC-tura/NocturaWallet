@@ -1,7 +1,38 @@
 import React from 'react';
-import {render} from '@testing-library/react-native';
+import {render, fireEvent, act} from '@testing-library/react-native';
 import {DepositScreen} from '../DepositScreen';
 
+// ---- Mock new self-relay depositShield flow ----
+jest.mock('../../../modules/shielded/depositFlow', () => ({
+  depositShield: jest.fn().mockResolvedValue({
+    txSignature: 'mockTxSig1111111111111111111111111111111111111111111111111111111111',
+    leafIndex: 42,
+    amount: 1_000_000_000n,
+  }),
+}));
+
+// ---- Mock keychain + derivation (biometric gate) ----
+jest.mock('../../../modules/keychain/keychainModule', () => ({
+  keychainManager: {retrieveSeed: jest.fn().mockResolvedValue('test mnemonic words here')},
+}));
+jest.mock('../../../modules/keyDerivation/mnemonicUtils', () => ({
+  mnemonicToSeed: jest.fn().mockResolvedValue(new Uint8Array(64)),
+}));
+jest.mock('../../../modules/keyDerivation/transparent', () => ({
+  deriveTransparentKeypair: jest.fn().mockReturnValue({
+    publicKey: new Uint8Array(32),
+    secretKey: new Uint8Array(64),
+  }),
+}));
+jest.mock('../../../modules/keyDerivation/derivationScheme', () => ({
+  loadTransparentScheme: jest.fn().mockReturnValue({kind: 'slip10', account: 0}),
+}));
+jest.mock('../../../modules/session/zeroize', () => ({zeroize: jest.fn()}));
+jest.mock('@solana/web3.js', () => ({
+  Keypair: {fromSecretKey: jest.fn().mockReturnValue({publicKey: {toBase58: () => 'MockPubkey'}})},
+}));
+
+// ---- Existing mocks ----
 jest.mock('../../../modules/sslPinning/pinnedFetch', () => ({pinnedFetch: jest.fn()}));
 jest.mock('../../../store/mmkv/instances', () => {
   const actual = jest.requireActual('../../../store/mmkv/instances') as Record<string, unknown>;
@@ -29,6 +60,8 @@ jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({goBack: jest.fn()}),
   useRoute: () => ({params: {}}),
 }));
+
+import {depositShield} from '../../../modules/shielded/depositFlow';
 
 describe('DepositScreen', () => {
   it('renders "Move to private balance" title', () => {
@@ -58,4 +91,40 @@ describe('DepositScreen', () => {
     const {getByTestId} = render(<DepositScreen />);
     expect(getByTestId('fee-display-row')).toBeTruthy();
   });
+
+  it('calls depositShield on confirm and shows success', async () => {
+    jest.useFakeTimers();
+    const {getByTestId, getByText} = render(<DepositScreen />);
+
+    // Enter amount to enable the confirm button
+    await act(async () => {
+      fireEvent.changeText(getByTestId('amount-input'), '1');
+    });
+
+    // Tap "Review deposit" — advances to confirm step (debounce: first tap at t=0)
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-button'));
+    });
+
+    // Advance time past the 500ms debounce so the next tap is accepted
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+
+    // Now on confirm step — tap "Confirm deposit" to trigger depositShield
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-button'));
+    });
+
+    // Let the async depositShield promise resolve
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(depositShield).toHaveBeenCalled();
+    // Success screen text
+    expect(getByText('Moved to private balance')).toBeTruthy();
+
+    jest.useRealTimers();
+  }, 15_000);
 });

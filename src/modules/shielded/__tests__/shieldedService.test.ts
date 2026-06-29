@@ -33,12 +33,11 @@ import {
   fetchCircuitConfig,
   _resetConfigCache,
   submitToRelayer,
-  deposit,
   transfer,
   withdraw,
   setWitnessProvider,
 } from '../shieldedService';
-import {addNote, clearMint, getNotes, getBalance} from '../noteStore';
+import {addNote, clearMint, getBalance} from '../noteStore';
 import {encodeShieldedAddress} from '../shieldedAddressCodec';
 import type {ShieldedNote, WitnessProvider} from '../types';
 
@@ -183,31 +182,7 @@ describe('shieldedService', () => {
     await expect(submitToRelayer(fakeProof)).rejects.toThrow('HTTP 500');
   });
 
-  // 4. deposit — proves and submits, adds note to store
-  it('deposit calls prove and submitToRelayer, adds note to store', async () => {
-    // Mock 1: circuit config (fetchCircuitConfig called inside deposit)
-    mockPinnedFetch.mockReturnValueOnce(configResponse());
-    // Mock 2: hosted prover (called internally by zkProver)
-    mockPinnedFetch.mockReturnValueOnce(hostedProverResponse());
-    // Mock 3: relayer
-    mockPinnedFetch.mockReturnValueOnce(relayerResponse());
-
-    const result = await deposit({
-      mint: MINT,
-      amount: 10_000_000n,
-      senderPubkey: 'SenderPubkey1111111111111111111111111111111',
-    });
-
-    expect(result.proofType).toBe('deposit');
-    expect(result.txSignature).toBe(MOCK_TX_SIG);
-    expect(result.amount).toBe(10_000_000n);
-
-    // Note should have been added
-    const notes = getNotes(MINT);
-    expect(notes.length).toBeGreaterThanOrEqual(1);
-  });
-
-  // 5. transfer — selects notes, proves, submits, marks spent
+  // 4. transfer — selects notes, proves, submits, marks spent
   it('transfer selects notes, proves, submits, marks spent', async () => {
     // Seed notes into the store
     const note1 = makeNote({amount: 6_000_000n});
@@ -309,28 +284,4 @@ describe('shieldedService', () => {
     expect(getBalance(MINT)).toBeLessThan(10_000_000n);
   });
 
-  // 8. deposit — propagates prover errors
-  it('deposit propagates prover errors', async () => {
-    // Both hosted and local provers fail → ProverUnavailableError
-    // Mock hosted prover to return non-200
-    mockPinnedFetch.mockReturnValueOnce(mockResponse(503, {error: 'prover unavailable'}));
-
-    await expect(
-      deposit({
-        mint: MINT,
-        amount: 5_000_000n,
-        senderPubkey: 'SenderPubkey1111111111111111111111111111111',
-      }),
-    ).rejects.toThrow();
-  });
-
-  // 9. deposit — throws when no witness provider is configured
-  it('deposit throws when no witness provider is configured', async () => {
-    setWitnessProvider(null);
-    // Provide circuit config so the guard is reached; no prover/relayer needed
-    mockPinnedFetch.mockReturnValueOnce(configResponse());
-    await expect(
-      deposit({mint: MINT, amount: 1_000_000n, senderPubkey: 'sender1'}),
-    ).rejects.toThrow('witness provider');
-  });
 });

@@ -1,12 +1,19 @@
 import React, {useState, useCallback, useEffect, useRef} from 'react';
 import {View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
+import {Keypair} from '@solana/web3.js';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
 
 const securityManager = new ScreenSecurityManager();
-import {deposit} from '../../modules/shielded/shieldedService';
+import {depositShield} from '../../modules/shielded/depositFlow';
+import {keychainManager} from '../../modules/keychain/keychainModule';
+import {mnemonicToSeed} from '../../modules/keyDerivation/mnemonicUtils';
+import {deriveTransparentKeypair} from '../../modules/keyDerivation/transparent';
+import {loadTransparentScheme} from '../../modules/keyDerivation/derivationScheme';
+import {zeroize} from '../../modules/session/zeroize';
+import {SHIELDED_DEVNET_MINT} from '../../constants/programs';
 import {shouldRepeatWarning} from '../../modules/shielded/privacyMeter';
 import {feeEngine} from '../../modules/fees/feeEngine';
 import {PrivacyMeter} from '../../components/PrivacyMeter';
@@ -36,6 +43,7 @@ export function DepositScreen(): React.JSX.Element {
   const [amount, setAmount] = useState<string>('');
   const [privacyDismissed, setPrivacyDismissed] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [txSignature, setTxSignature] = useState<string>('');
 
   const parsedAmount: bigint = (() => {
     try {
@@ -65,18 +73,32 @@ export function DepositScreen(): React.JSX.Element {
       return;
     }
     setStep('proving');
+    let seed: Uint8Array | null = null;
     try {
-      await deposit({
-        mint: selectedMint,
-        amount: parsedAmount,
-        senderPubkey: publicKey,
-      });
+      // Mirror exactly the pattern from src/modules/solana/sendTransaction.ts (lines 47-49):
+      // 1. retrieve mnemonic (biometric/passcode gated via react-native-keychain)
+      // 2. derive 512-bit BIP-39 seed via PBKDF2-HMAC-SHA512
+      // 3. derive transparent Ed25519 keypair using the persisted scheme
+      // The seed is passed to depositShield (for shielded commitment via buildDepositNote)
+      // and used to build feePayer (transparent signing keypair). One keychain retrieval only.
+      const mnemonic = await keychainManager.retrieveSeed();
+      seed = await mnemonicToSeed(mnemonic);
+      const scheme = loadTransparentScheme();
+      const {secretKey} = deriveTransparentKeypair(seed, scheme);
+      const feePayer = Keypair.fromSecretKey(secretKey);
+
+      const result = await depositShield(seed, feePayer, SHIELDED_DEVNET_MINT, parsedAmount);
+      setTxSignature(result.txSignature);
       setStep('success');
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : 'An error occurred');
       setStep('error');
+    } finally {
+      if (seed !== null) {
+        zeroize(seed);
+      }
     }
-  }, [canConfirm, publicKey, selectedMint, parsedAmount]);
+  }, [canConfirm, publicKey, parsedAmount]);
 
   const handleBack = useCallback(() => {
     setStep('input');
@@ -96,6 +118,11 @@ export function DepositScreen(): React.JSX.Element {
       <View style={styles.centered}>
         <Text style={styles.successIcon}>✓</Text>
         <Text style={styles.successText}>Moved to private balance</Text>
+        {txSignature.length > 0 && (
+          <Text testID="success-tx-signature" style={styles.txSignatureText} numberOfLines={1} ellipsizeMode="middle">
+            {txSignature}
+          </Text>
+        )}
         <TouchableOpacity style={styles.primaryButton} onPress={handleDone} accessibilityLabel="Done">
           <Text style={styles.primaryButtonText}>Done</Text>
         </TouchableOpacity>
@@ -311,8 +338,16 @@ const styles = StyleSheet.create({
   successText: {
     fontSize: 18,
     color: '#44FF44',
-    marginBottom: 32,
+    marginBottom: 8,
     textAlign: 'center',
+  },
+  txSignatureText: {
+    fontSize: 12,
+    color: '#888',
+    marginBottom: 24,
+    textAlign: 'center',
+    fontFamily: 'monospace',
+    maxWidth: '90%',
   },
   errorIcon: {
     fontSize: 64,
