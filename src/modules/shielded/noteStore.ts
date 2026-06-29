@@ -20,7 +20,11 @@ function toJson(note: ShieldedNote): ShieldedNoteJson {
 }
 
 function fromJson(json: ShieldedNoteJson): ShieldedNote {
-  return {...json, amount: BigInt(json.amount)};
+  return {
+    ...json,
+    amount: BigInt(json.amount),
+    noteSecret: json.noteSecret ?? '',
+  };
 }
 
 function loadNotes(mint: string): ShieldedNote[] {

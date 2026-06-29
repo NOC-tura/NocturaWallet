@@ -10,6 +10,8 @@ import {
   HostedProverResponse,
   ProofGenerationError,
   ProverUnavailableError,
+  ShieldedProveParams,
+  ShieldedProveResult,
 } from './types';
 
 // ---- Witness sanitisation ------------------------------------------------
@@ -96,6 +98,7 @@ async function proveHosted(
       recipientAddress: witness.recipientAddress,
     },
     generatedAt: Date.now(),
+    proofBytes: data.proofBytes ?? '',
   };
 }
 
@@ -195,3 +198,44 @@ export class ZkProverModule {
 }
 
 export const zkProver = new ZkProverModule();
+
+// ---- proveShielded — direct circuit prove (noteSecret included) ---------------
+
+let _shieldedProveCallId = 0;
+
+/**
+ * Prove a shielded deposit/withdraw via the hosted coordinator and return the
+ * on-chain-ready proofBytes.
+ *
+ * ⚠️ PRIVACY: these circuits require `noteSecret` as a private input, so it IS
+ * sent to the coordinator (the user's own backend; never logged per contract).
+ * This is POC-grade. MAINNET privacy REQUIRES local on-device proving so noteSecret
+ * never leaves the device — see project_shielded_mainnet_blockers memory.
+ */
+export async function proveShielded(
+  proofType: 'deposit' | 'withdraw',
+  params: ShieldedProveParams,
+): Promise<ShieldedProveResult> {
+  const callKey = `shieldedProve:${proofType}:${++_shieldedProveCallId}`;
+  const resp = await proveLimiter.execute(callKey, () =>
+    pinnedFetch(`${API_BASE}/zk/prove`, {
+      method: 'POST',
+      body: JSON.stringify({proofType, params}),
+    }),
+  );
+  if (resp.status !== 200) {
+    throw new Error(`Shielded prover returned HTTP ${resp.status}`);
+  }
+  const data = (await resp.json()) as {
+    success: boolean; proofData?: string; proofBytes?: string;
+    publicInputs?: string[]; error?: string;
+  };
+  if (!data.success || !data.proofBytes || !data.publicInputs) {
+    throw new Error(data.error ?? 'Shielded prover returned no proofBytes');
+  }
+  return {
+    proofBytes: data.proofBytes,
+    publicInputs: data.publicInputs,
+    proofData: data.proofData ?? '',
+  };
+}

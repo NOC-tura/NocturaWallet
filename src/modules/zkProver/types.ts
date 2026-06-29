@@ -45,6 +45,8 @@ export interface ZKProof {
   publicInputs: ProofPublicInputs;
   /** Unix ms timestamp when proof was generated. */
   generatedAt: number;
+  /** On-chain-ready proof bytes (hex, 256 B), from the coordinator converter. */
+  proofBytes: string;
 }
 
 /** A queued proof job, persisted in MMKV for crash safety. */
@@ -68,9 +70,24 @@ export interface ProofJob {
 export interface HostedProverResponse {
   success: boolean;
   proofData?: string;
+  /** On-chain-ready proof (hex, 256 bytes). Forwarded opaquely into the ix. */
+  proofBytes?: string;
   /** Public inputs as computed by the prover (root, nullifier, etc.). */
   publicInputs?: ProofPublicInputs;
   error?: string;
+}
+
+/**
+ * Exact circuit input signals for a shielded proof (keys = circom main inputs).
+ * All values are base-10 decimal strings of field elements < F. Sent VERBATIM to
+ * /zk/prove — including noteSecret, which the circuit REQUIRES as a private input.
+ */
+export type ShieldedProveParams = Record<string, string | string[] | number[]>;
+
+export interface ShieldedProveResult {
+  proofBytes: string;        // hex, 256 B — on-chain-ready
+  publicInputs: string[];    // decimal, circuit order
+  proofData: string;         // base64 raw snarkjs proof
 }
 
 export class ProverUnavailableError extends Error {

@@ -8,6 +8,8 @@ export interface ShieldedNote {
   index: number;
   spent: boolean;
   createdAt: number;
+  /** Per-note spend secret (decimal field element). Stored locally; required to spend at withdraw. */
+  noteSecret: string;
 }
 
 export interface ShieldedNoteJson {
@@ -18,12 +20,7 @@ export interface ShieldedNoteJson {
   index: number;
   spent: boolean;
   createdAt: number;
-}
-
-export interface DepositParams {
-  mint: string;
-  amount: bigint;
-  senderPubkey: string;
+  noteSecret: string;
 }
 
 export interface ShieldedTransferParams {

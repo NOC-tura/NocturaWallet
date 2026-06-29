@@ -110,3 +110,17 @@ export const SHIELDED_FEES = {
   crossModeDeposit: 1_000_000n,
   crossModeWithdraw: 2_000_000n,
 } as const;
+
+// ---- Shielded pool (devnet POC) ----------------------------------------------
+// Deployed devnet program. The mainnet pool is a separate, audited deployment.
+export const SHIELDED_POOL_PROGRAM_ID =
+  'NPkcpUdnm1JZhndur3ggQZwo86yWgcU6Ry28T3zHfES' as const;
+
+// Devnet test mint the pool was initialized for. Sourced from the env so the
+// devnet build can override it; falls back to empty until configured.
+export const SHIELDED_DEVNET_MINT =
+  Config.SHIELDED_DEVNET_MINT ?? '';
+
+// Compute-unit limits: measured deposit ~132,256 / withdraw ~152,508 CU on
+// devnet; add headroom (the wallet prepends setComputeUnitLimit).
+export const SHIELDED_CU = {deposit: 200_000, withdraw: 250_000} as const;

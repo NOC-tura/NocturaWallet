@@ -8,6 +8,8 @@ declare module 'react-native-config' {
     COINGECKO_API_KEY?: string;
     /** TODO: integrate @sentry/react-native — DSN is declared but not yet consumed by any code */
     SENTRY_DSN: string;
+    /** Devnet test mint the shielded pool was initialized for. Optional; empty until configured. */
+    SHIELDED_DEVNET_MINT?: string;
   }
   const Config: NativeConfig;
   export default Config;

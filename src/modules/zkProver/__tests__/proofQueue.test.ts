@@ -46,6 +46,7 @@ describe('ProofQueue', () => {
       proofData: 'abc',
       publicInputs: {root: '', nullifier: '', amount: '0'},
       generatedAt: Date.now(),
+      proofBytes: '',
     } satisfies ZKProof);
 
     const pending = queue.getPending();
@@ -79,6 +80,7 @@ describe('ProofQueue', () => {
       proofData: 'xyz',
       publicInputs: {root: '', nullifier: '', amount: '0'},
       generatedAt: Date.now(),
+      proofBytes: '',
     });
     queue.markFailed(j2.id, 'error');
     // j3 stays pending

@@ -1,5 +1,4 @@
 import {API_BASE} from '../../constants/programs';
-import {ERROR_CODES} from '../../constants/errors';
 import {pinnedFetch} from '../sslPinning/pinnedFetch';
 import {relayerLimiter} from '../solana/rpcLimiter';
 import {zkProver} from '../zkProver/zkProverModule';
@@ -13,7 +12,6 @@ import {isValidShieldedAddress} from './shieldedAddressCodec';
 import type {
   CircuitConfig,
   ConsolidationProgress,
-  DepositParams,
   ShieldedNote,
   ShieldedTransferParams,
   ShieldedTxResult,
@@ -136,6 +134,7 @@ function makeResultNote(
     index: idx,
     spent: false,
     createdAt: Date.now(),
+    noteSecret: '',
   };
 }
 
@@ -197,62 +196,6 @@ async function consolidateNotes(
   }
 
   return mergedNotes;
-}
-
-// ---- Deposit -------------------------------------------------------------------
-
-/**
- * Deposit tokens into the shielded pool.
- *
- * Flow: prove('deposit') → relayer → addNote
- *
- * The deposit witness is constructed from the deposit params.
- * After successful submission the resulting note is added to the store.
- */
-export async function deposit(
-  params: DepositParams,
-  stakingDiscount: number = 0,
-): Promise<ShieldedTxResult> {
-  const fee = feeEngine.getEffectiveFee('crossModeDeposit', stakingDiscount);
-  const config = await fetchCircuitConfig();
-
-  if (fee > params.amount) {
-    throw new Error(ERROR_CODES.INSUFFICIENT_NOC_FEE.message);
-  }
-
-  // Build a synthetic note for the deposit (no pre-existing note to spend).
-  // The witness provider supplies real commitment/nullifier/noteSecret.
-  const depositNote: ShieldedNote = {
-    commitment: '0'.repeat(64),
-    nullifier: '0'.repeat(64),
-    mint: params.mint,
-    amount: params.amount,
-    index: 0,
-    spent: false,
-    createdAt: Date.now(),
-  };
-  const witness = await buildWitness(depositNote, config.treeDepth, params.senderPubkey);
-
-  let proof;
-  try {
-    proof = await zkProver.prove('deposit', witness);
-  } finally {
-    witness.noteSecret = '';
-    witness.nullifier = '';
-    witness.merklePath = [];
-  }
-  const txSignature = await submitToRelayer(proof);
-
-  // Record the resulting note in the shielded note store
-  const resultNote = makeResultNote(params.mint, params.amount - fee);
-  addNote(resultNote);
-
-  return {
-    txSignature,
-    proofType: 'deposit',
-    amount: params.amount,
-    timestamp: Date.now(),
-  };
 }
 
 // ---- Transfer ------------------------------------------------------------------
