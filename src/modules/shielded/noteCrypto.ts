@@ -123,3 +123,17 @@ export function nullifier(input: NullifierInput): bigint {
     assertField(BigInt(input.leafIndex), 'leafIndex'),
   ]);
 }
+
+/**
+ * Sample a uniform-ish field element in [0, F) for use as a note secret.
+ * 32 random bytes (big-endian) reduced mod F. The reduction bias is < 2^-252
+ * (F is ~254 bits), negligible for a blinding secret.
+ *
+ * Uses the global crypto.getRandomValues polyfilled by react-native-get-random-values
+ * (loaded first in index.js).
+ */
+export function randomFieldElement(): bigint {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return bytesToBigIntBE(bytes) % BN254_FIELD_PRIME;
+}
