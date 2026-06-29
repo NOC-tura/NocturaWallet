@@ -10,6 +10,8 @@ declare module 'react-native-config' {
     SENTRY_DSN: string;
     /** Devnet test mint the shielded pool was initialized for. Optional; empty until configured. */
     SHIELDED_DEVNET_MINT?: string;
+    /** 'true' enables shielded mode in this build (devnet test build only). Optional; absent = off. */
+    FEATURES_SHIELDED?: string;
   }
   const Config: NativeConfig;
   export default Config;
