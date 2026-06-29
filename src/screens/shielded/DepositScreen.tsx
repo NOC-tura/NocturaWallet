@@ -72,6 +72,13 @@ export function DepositScreen(): React.JSX.Element {
     if (!canConfirm || publicKey === null) {
       return;
     }
+    if (selectedMint !== SHIELDED_DEVNET_MINT) {
+      setErrorMessage(
+        'Shielding is only available for the devnet pool token on this build.',
+      );
+      setStep('error');
+      return;
+    }
     setStep('proving');
     let seed: Uint8Array | null = null;
     try {
@@ -87,7 +94,7 @@ export function DepositScreen(): React.JSX.Element {
       const {secretKey} = deriveTransparentKeypair(seed, scheme);
       const feePayer = Keypair.fromSecretKey(secretKey);
 
-      const result = await depositShield(seed, feePayer, SHIELDED_DEVNET_MINT, parsedAmount);
+      const result = await depositShield(seed, feePayer, selectedMint, parsedAmount);
       setTxSignature(result.txSignature);
       setStep('success');
     } catch (e) {
@@ -98,7 +105,7 @@ export function DepositScreen(): React.JSX.Element {
         zeroize(seed);
       }
     }
-  }, [canConfirm, publicKey, parsedAmount]);
+  }, [canConfirm, publicKey, parsedAmount, selectedMint]);
 
   const handleBack = useCallback(() => {
     setStep('input');

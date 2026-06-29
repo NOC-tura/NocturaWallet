@@ -88,6 +88,11 @@ export async function depositShield(
   const tx = await connection.getTransaction(txSignature, {
     maxSupportedTransactionVersion: 0, commitment: 'confirmed',
   });
+  if (tx?.meta?.err) {
+    throw new Error(
+      `Deposit transaction reverted on-chain: ${JSON.stringify(tx.meta.err)}`,
+    );
+  }
   const leafIndex = parseDepositLeafIndex(tx?.meta?.logMessages ?? []);
 
   addNote({

@@ -23,12 +23,6 @@ export interface ShieldedNoteJson {
   noteSecret: string;
 }
 
-export interface DepositParams {
-  mint: string;
-  amount: bigint;
-  senderPubkey: string;
-}
-
 export interface ShieldedTransferParams {
   mint: string;
   amount: bigint;
