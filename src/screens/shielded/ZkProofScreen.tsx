@@ -1,12 +1,19 @@
 import React, {useEffect, useReducer, useRef, useState, useCallback} from 'react';
-import {View, Pressable, ScrollView, Alert, Modal, BackHandler} from 'react-native';
+import {View, Pressable, ScrollView, Alert, Modal, BackHandler, Linking} from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {ArrowLeft, ShieldCheck, Cpu, AlertTriangle, Check} from 'lucide-react-native';
+import {ArrowLeft, ShieldCheck, Cpu, AlertTriangle, Check, Copy, ExternalLink} from 'lucide-react-native';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {Text} from '../../components/ui';
-import {zkProver} from '../../modules/zkProver/zkProverModule';
+import {Keypair} from '@solana/web3.js';
 import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
-import type {ProofWitness, ZKProof} from '../../modules/zkProver/types';
+import {depositShield} from '../../modules/shielded/depositFlow';
+import {keychainManager} from '../../modules/keychain/keychainModule';
+import {mnemonicToSeed} from '../../modules/keyDerivation/mnemonicUtils';
+import {deriveTransparentKeypair} from '../../modules/keyDerivation/transparent';
+import {loadTransparentScheme} from '../../modules/keyDerivation/derivationScheme';
+import {zeroize} from '../../modules/session/zeroize';
+import {SHIELDED_DEVNET_MINT} from '../../constants/programs';
 import type {RootStackParamList} from '../../types/navigation';
 
 const ACCENT = '#5BE3C2';
@@ -21,9 +28,11 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ZkProofModal'>;
 type StageNum = 1 | 2 | 3 | 4;
 type StageStatus = 'pending' | 'active' | 'done' | 'errored';
 
+type DepositOutcome = {txSignature: string; leafIndex: number};
+
 type ChainResult =
   | {kind: 'pending'}
-  | {kind: 'success'; proof: ZKProof}
+  | {kind: 'success'; outcome: DepositOutcome}
   | {kind: 'failed'; reason: string};
 
 type ZkUiState =
@@ -31,7 +40,7 @@ type ZkUiState =
   | {kind: 'building'; pct: number}
   | {kind: 'proving'; pct: number}
   | {kind: 'verifying'; pct: number}
-  | {kind: 'ready'; proof: ZKProof}
+  | {kind: 'ready'; outcome: DepositOutcome}
   | {kind: 'failed'; erroredStage: 1 | 2 | 3; reason: string; hostedBanner?: string}
   | {kind: 'sheet'; savedFailure: {erroredStage: 1 | 2 | 3; reason: string; hostedBanner?: string}}
   | {kind: 'hosted-proving'};
@@ -41,7 +50,7 @@ type Action =
   | {type: 'TICK'; pct: number}
   | {type: 'ADVANCE_TO_PROVING'}
   | {type: 'ADVANCE_TO_VERIFYING'}
-  | {type: 'ADVANCE_TO_READY'; proof: ZKProof}
+  | {type: 'ADVANCE_TO_READY'; outcome: DepositOutcome}
   | {type: 'FAIL'; erroredStage: 1 | 2 | 3; reason: string; hostedBanner?: string}
   | {type: 'OPEN_SHEET'}
   | {type: 'CLOSE_SHEET'}
@@ -66,7 +75,7 @@ function reducer(state: ZkUiState, action: Action): ZkUiState {
     case 'ADVANCE_TO_VERIFYING':
       return {kind: 'verifying', pct: 0};
     case 'ADVANCE_TO_READY':
-      return {kind: 'ready', proof: action.proof};
+      return {kind: 'ready', outcome: action.outcome};
     case 'FAIL':
       return {
         kind: 'failed',
@@ -100,19 +109,36 @@ function reducer(state: ZkUiState, action: Action): ZkUiState {
   }
 }
 
-function buildMockWitness(params: Props['route']['params']): ProofWitness {
-  // Zero-filled values matching ProofWitness shape. Real values flow in once
-  // shielded send pipes amount/recipient into proof generation end-to-end.
-  const zeroHex = '0x' + '0'.repeat(64);
-  return {
-    noteCommitment: zeroHex,
-    merklePath: [],
-    merklePathIndices: [],
-    nullifier: zeroHex,
-    amount: params.amount,
-    recipientAddress: params.recipient,
-    noteSecret: zeroHex,
-  };
+/**
+ * Real shield (deposit) execution: retrieve seed (biometric), derive the
+ * transparent fee-payer keypair, and run depositShield (build note → prove via
+ * /zk/prove → submit the on-chain deposit → store note). Devnet targets the
+ * shielded-pool SPL mint (SHIELDED_DEVNET_MINT). `params.amount` is the raw
+ * token amount string. Throws on failure (mapped to the screen's failed state).
+ */
+async function runDepositShield(
+  params: Props['route']['params'],
+): Promise<DepositOutcome> {
+  if (params.direction !== 'private') {
+    throw new Error('Unshield (withdraw) is not yet available on this build.');
+  }
+  let seed: Uint8Array | null = null;
+  try {
+    const mnemonic = await keychainManager.retrieveSeed();
+    seed = await mnemonicToSeed(mnemonic);
+    const scheme = loadTransparentScheme();
+    const {secretKey} = deriveTransparentKeypair(seed, scheme);
+    const feePayer = Keypair.fromSecretKey(secretKey);
+    const result = await depositShield(
+      seed,
+      feePayer,
+      SHIELDED_DEVNET_MINT,
+      BigInt(params.amount),
+    );
+    return {txSignature: result.txSignature, leafIndex: result.leafIndex};
+  } finally {
+    if (seed) zeroize(seed);
+  }
 }
 
 function extractErrorMessage(err: unknown): string {
@@ -152,11 +178,9 @@ export function ZkProofScreen({navigation, route}: Props) {
 
     async function runChain() {
       try {
-        const witness = buildMockWitness(route.params);
-        const proofType = route.params.direction === 'private' ? 'deposit' : 'withdraw';
-        const proof = await zkProver.prove(proofType, witness);
+        const outcome = await runDepositShield(route.params);
         if (cancelled) return;
-        chainResultRef.current = {kind: 'success', proof};
+        chainResultRef.current = {kind: 'success', outcome};
       } catch (err) {
         if (cancelled) return;
         chainResultRef.current = {kind: 'failed', reason: extractErrorMessage(err)};
@@ -206,7 +230,7 @@ export function ZkProofScreen({navigation, route}: Props) {
         state.kind === 'building' ? 1 : state.kind === 'proving' ? 2 : 3;
 
       if (result.kind === 'success') {
-        dispatch({type: 'ADVANCE_TO_READY', proof: result.proof});
+        dispatch({type: 'ADVANCE_TO_READY', outcome: result.outcome});
       } else if (result.kind === 'failed') {
         dispatch({type: 'FAIL', erroredStage: currentStage, reason: result.reason});
       } else if (state.kind === 'building') {
@@ -238,7 +262,7 @@ export function ZkProofScreen({navigation, route}: Props) {
       const result = chainResultRef.current;
       if (result.kind === 'success') {
         clearInterval(interval);
-        dispatch({type: 'ADVANCE_TO_READY', proof: result.proof});
+        dispatch({type: 'ADVANCE_TO_READY', outcome: result.outcome});
       } else if (result.kind === 'failed') {
         clearInterval(interval);
         dispatch({type: 'FAIL', erroredStage: 3, reason: result.reason});
@@ -249,17 +273,8 @@ export function ZkProofScreen({navigation, route}: Props) {
   }, [state.kind, 'pct' in state ? state.pct : 0]);
 
   // Ready → 400ms hold → Alert → popToTop
-  useEffect(() => {
-    if (state.kind !== 'ready') return;
-    const t = setTimeout(() => {
-      Alert.alert(
-        'Proof ready',
-        'Transaction simulation (#19) not yet wired — returning to dashboard.',
-        [{text: 'OK', onPress: () => navigation.popToTop()}],
-      );
-    }, 400);
-    return () => clearTimeout(t);
-  }, [state.kind, navigation]);
+  // 'ready' renders a dedicated success screen (below) with a Done button —
+  // no auto-dismiss, no system Alert.
 
   // Hosted-proving — retry with explicit consent. Calls zkProver.prove() again.
   // The module's chain (hosted-first → local → queue) means the user-visible
@@ -270,11 +285,9 @@ export function ZkProofScreen({navigation, route}: Props) {
     let cancelled = false;
     async function runHosted() {
       try {
-        const witness = buildMockWitness(route.params);
-        const proofType = route.params.direction === 'private' ? 'deposit' : 'withdraw';
-        const proof = await zkProver.prove(proofType, witness);
+        const outcome = await runDepositShield(route.params);
         if (cancelled) return;
-        dispatch({type: 'ADVANCE_TO_READY', proof});
+        dispatch({type: 'ADVANCE_TO_READY', outcome});
       } catch (err) {
         if (cancelled) return;
         dispatch({
@@ -350,6 +363,100 @@ export function ZkProofScreen({navigation, route}: Props) {
 
   const stages = computeStages(state);
   const hero = computeHero(state);
+
+  // ── Success screen (deposit confirmed on-chain) ──────────────────────────
+  if (state.kind === 'ready') {
+    const {txSignature, leafIndex} = state.outcome;
+    const amountTokens = (
+      Number(BigInt(route.params.amount)) / 1e9
+    ).toLocaleString(undefined, {maximumFractionDigits: 9});
+    const shortSig =
+      txSignature.length > 16
+        ? `${txSignature.slice(0, 8)}…${txSignature.slice(-8)}`
+        : txSignature;
+    const explorerUrl = `https://explorer.solana.com/tx/${txSignature}?cluster=devnet`;
+    return (
+      <SafeAreaView
+        edges={['top', 'bottom', 'left', 'right']}
+        className="flex-1 bg-bg-base">
+        <ScrollView
+          style={{flex: 1}}
+          contentContainerStyle={{
+            paddingHorizontal: 20,
+            paddingTop: 24,
+            paddingBottom: 24,
+            flexGrow: 1,
+          }}>
+          <View className="flex-1 items-center justify-center">
+            <View
+              className="rounded-full items-center justify-center"
+              style={{width: 96, height: 96, backgroundColor: 'rgba(91,227,194,0.14)'}}>
+              <Check size={48} color={ACCENT} strokeWidth={2} />
+            </View>
+            <Text variant="h1" className="text-fg-primary mt-6 text-center">
+              Shielded
+            </Text>
+            <Text variant="body" className="text-fg-secondary mt-2 text-center max-w-xs">
+              Your deposit is now private. Only you can spend it.
+            </Text>
+            <Text variant="h2" className="text-accent-shielded mt-5">
+              {amountTokens} shielded
+            </Text>
+
+            <View className="w-full bg-bg-surface-1 rounded-md mt-8 p-4 gap-3">
+              <View className="flex-row items-center justify-between">
+                <Text variant="body-sm" className="text-fg-tertiary">
+                  Note position
+                </Text>
+                <Text variant="body-sm" mono className="text-fg-primary">
+                  #{leafIndex}
+                </Text>
+              </View>
+              <View className="h-px bg-bg-surface-3" />
+              <Pressable
+                onPress={() => Clipboard.setString(txSignature)}
+                accessibilityRole="button"
+                accessibilityLabel="Copy transaction signature"
+                className="flex-row items-center justify-between active:opacity-70">
+                <Text variant="body-sm" className="text-fg-tertiary">
+                  Transaction
+                </Text>
+                <View className="flex-row items-center gap-2">
+                  <Text variant="body-sm" mono className="text-fg-primary">
+                    {shortSig}
+                  </Text>
+                  <Copy size={14} color="#A8ACB5" strokeWidth={1.75} />
+                </View>
+              </Pressable>
+              <View className="h-px bg-bg-surface-3" />
+              <Pressable
+                onPress={() => Linking.openURL(explorerUrl).catch(() => {})}
+                accessibilityRole="button"
+                accessibilityLabel="View on devnet explorer"
+                className="flex-row items-center justify-center gap-2 active:opacity-70">
+                <Text variant="body-sm" className="text-accent-shielded">
+                  View on devnet explorer
+                </Text>
+                <ExternalLink size={14} color={ACCENT} strokeWidth={1.75} />
+              </Pressable>
+            </View>
+          </View>
+        </ScrollView>
+        <View className="px-5 pb-4">
+          <Pressable
+            testID="shield-done-button"
+            onPress={() => navigation.popToTop()}
+            accessibilityRole="button"
+            accessibilityLabel="Done"
+            className="h-14 rounded-pill bg-accent-shielded items-center justify-center active:opacity-90">
+            <Text variant="body-lg" className="font-geist-semibold text-bg-base">
+              Done
+            </Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView
