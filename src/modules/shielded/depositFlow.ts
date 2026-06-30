@@ -8,8 +8,36 @@ import {poolPda, merkleTreePda, vaultAta} from './poolPdas';
 import {resolveSourceTokenAccount} from '../solana/transactionBuilder';
 import {addNote} from './noteStore';
 import {SHIELDED_CU} from '../../constants/programs';
+import {sha256} from '@noble/hashes/sha2.js';
+import {mmkvSecure, initSecureMmkv} from '../../store/mmkv/instances';
 
 const PROOF_BYTES_LEN = 256;
+
+/**
+ * Ensure the encrypted (secure) MMKV is initialized before the note store is
+ * used. The app never wired initSecureMmkv() anywhere (it was designed but
+ * unwired — see store/mmkv/instances.ts + walletStore comment), so the first
+ * real noteStore consumer (the shield deposit) must initialize it. The
+ * encryption key is derived DETERMINISTICALLY from the seed (sha256(seed ||
+ * domain), first 16 bytes) so notes persist + decrypt across sessions and are
+ * recoverable from the mnemonic. Idempotent: no-op if already initialized.
+ *
+ * NOTE: the proper fix wires this at unlock/onboarding for ALL secure-MMKV
+ * consumers; this deposit-flow guard unblocks the shield path.
+ */
+function ensureSecureMmkv(seed: Uint8Array): void {
+  if (mmkvSecure()) return;
+  const domain = new TextEncoder().encode('noctura-secure-mmkv-v1');
+  const material = new Uint8Array(seed.length + domain.length);
+  material.set(seed);
+  material.set(domain, seed.length);
+  const hash = sha256(material); // 32 bytes
+  let keyHex = '';
+  for (let i = 0; i < 16; i++) {
+    keyHex += hash[i]!.toString(16).padStart(2, '0');
+  }
+  initSecureMmkv(keyHex);
+}
 
 /** Decimal field-element string -> 32-byte big-endian Uint8Array. */
 function decToBe32(dec: string): Uint8Array {
@@ -56,6 +84,9 @@ export async function depositShield(
   amount: bigint,
 ): Promise<DepositResult> {
   const mint = new PublicKey(mintBase58);
+  // The note store writes to the encrypted MMKV — make sure it's initialized
+  // (the app never wired initSecureMmkv elsewhere). Seed-derived key, idempotent.
+  ensureSecureMmkv(seed);
   const {params, note} = buildDepositNote(seed, amount, mint);
 
   const proof = await proveShielded('deposit', params);

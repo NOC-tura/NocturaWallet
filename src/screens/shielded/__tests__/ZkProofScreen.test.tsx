@@ -2,16 +2,27 @@ import React from 'react';
 import {render, fireEvent, act} from '@testing-library/react-native';
 import {Alert} from 'react-native';
 import {ZkProofScreen} from '../ZkProofScreen';
-import {zkProver} from '../../../modules/zkProver/zkProverModule';
-import type {ZKProof} from '../../../modules/zkProver/types';
+import {depositShield} from '../../../modules/shielded/depositFlow';
 
-jest.mock('../../../modules/zkProver/zkProverModule', () => ({
-  zkProver: {
-    prove: jest.fn(),
-  },
+jest.mock('../../../modules/shielded/depositFlow', () => ({depositShield: jest.fn()}));
+jest.mock('../../../modules/keychain/keychainModule', () => ({
+  keychainManager: {retrieveSeed: jest.fn().mockResolvedValue('test mnemonic words')},
 }));
+jest.mock('../../../modules/keyDerivation/mnemonicUtils', () => ({
+  mnemonicToSeed: jest.fn().mockResolvedValue(new Uint8Array(64)),
+}));
+jest.mock('../../../modules/keyDerivation/derivationScheme', () => ({
+  loadTransparentScheme: jest.fn(() => ({kind: 'slip10', account: 0})),
+}));
+jest.mock('../../../modules/keyDerivation/transparent', () => {
+  const {Keypair} = require('@solana/web3.js');
+  const kp = Keypair.generate();
+  return {deriveTransparentKeypair: jest.fn(() => ({secretKey: kp.secretKey, publicKey: kp.publicKey.toBytes()}))};
+});
+jest.mock('../../../modules/session/zeroize', () => ({zeroize: jest.fn()}));
+jest.mock('@react-native-clipboard/clipboard', () => ({setString: jest.fn()}));
 
-const mockProve = zkProver.prove as jest.MockedFunction<typeof zkProver.prove>;
+const mockDeposit = depositShield as jest.MockedFunction<typeof depositShield>;
 
 const mockNavigate = jest.fn();
 const mockReplace = jest.fn();
@@ -29,17 +40,9 @@ const route = {
   params: {direction: 'private' as const, amount: '5000000000', recipient: undefined},
 } as any;
 
-const mockProof: ZKProof = {
-  proofType: 'deposit',
-  proofData: 'mock-base64-proof',
-  publicInputs: {root: '0x00', nullifier: '0x00', amount: '5000000000'},
-  generatedAt: 1700000000000,
-  proofBytes: '',
-};
-
 beforeEach(() => {
   jest.useFakeTimers();
-  mockProve.mockReset();
+  mockDeposit.mockReset();
   mockNavigate.mockClear();
   mockReplace.mockClear();
   mockGoBack.mockClear();
@@ -54,7 +57,7 @@ afterEach(() => {
 
 describe('ZkProofScreen', () => {
   it('renders 4 stage titles + footer note on mount', () => {
-    mockProve.mockReturnValue(new Promise(() => {})); // never resolves
+    mockDeposit.mockReturnValue(new Promise(() => {})); // never resolves
     const {getByText} = render(<ZkProofScreen navigation={navigation} route={route} />);
     expect(getByText('Build witness')).toBeTruthy();
     expect(getByText('Prove')).toBeTruthy();
@@ -64,7 +67,7 @@ describe('ZkProofScreen', () => {
   });
 
   it('starts in building state with hero "Building witness" after mount', () => {
-    mockProve.mockReturnValue(new Promise(() => {}));
+    mockDeposit.mockReturnValue(new Promise(() => {}));
     const {getByText} = render(<ZkProofScreen navigation={navigation} route={route} />);
     act(() => {
       jest.advanceTimersByTime(50);
@@ -73,7 +76,7 @@ describe('ZkProofScreen', () => {
   });
 
   it('advances to proving after 2 seconds when chain pending', () => {
-    mockProve.mockReturnValue(new Promise(() => {}));
+    mockDeposit.mockReturnValue(new Promise(() => {}));
     const {getByText} = render(<ZkProofScreen navigation={navigation} route={route} />);
     act(() => {
       jest.advanceTimersByTime(2100);
@@ -82,7 +85,7 @@ describe('ZkProofScreen', () => {
   });
 
   it('advances through building → proving → verifying when chain stays pending', () => {
-    mockProve.mockReturnValue(new Promise(() => {}));
+    mockDeposit.mockReturnValue(new Promise(() => {}));
     const {getByText} = render(<ZkProofScreen navigation={navigation} route={route} />);
     act(() => {
       jest.advanceTimersByTime(2100); // end of building → proving
@@ -95,20 +98,23 @@ describe('ZkProofScreen', () => {
   });
 
   it('fast-forwards to ready when chain succeeds during building', async () => {
-    mockProve.mockResolvedValue(mockProof);
+    mockDeposit.mockResolvedValue({txSignature: 'SiGnAtUrEabcdefgh12345678', leafIndex: 0, amount: 5000000000n});
     const {getByText} = render(<ZkProofScreen navigation={navigation} route={route} />);
     await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     });
     act(() => {
       jest.advanceTimersByTime(2100);
     });
-    expect(getByText('Ready')).toBeTruthy();
+    // When ready, the success screen is rendered (not the stage list)
+    expect(getByText('Shielded')).toBeTruthy();
   });
 
   it('transitions to failed state when chain fails (chain rejects)', async () => {
-    mockProve.mockRejectedValue(new Error('Hosted prover unreachable'));
+    mockDeposit.mockRejectedValue(new Error('Hosted prover unreachable'));
     const {getByText, queryByText} = render(<ZkProofScreen navigation={navigation} route={route} />);
     await act(async () => {
       await Promise.resolve();
@@ -123,7 +129,7 @@ describe('ZkProofScreen', () => {
   });
 
   it('tap Retry locally resets state to idle and re-fires chain', async () => {
-    mockProve.mockRejectedValue(new Error('Hosted prover unreachable'));
+    mockDeposit.mockRejectedValue(new Error('Hosted prover unreachable'));
     const {getByTestId, getByText} = render(<ZkProofScreen navigation={navigation} route={route} />);
     await act(async () => {
       await Promise.resolve();
@@ -133,17 +139,21 @@ describe('ZkProofScreen', () => {
       jest.advanceTimersByTime(2100);
     });
     expect(getByText("Couldn't generate proof")).toBeTruthy();
-    mockProve.mockClear();
+    mockDeposit.mockClear();
     fireEvent.press(getByTestId('retry-local-button'));
-    act(() => {
+    await act(async () => {
       jest.advanceTimersByTime(50);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
     });
-    expect(mockProve).toHaveBeenCalled();
+    expect(mockDeposit).toHaveBeenCalled();
     expect(getByText('Building witness')).toBeTruthy();
   });
 
   it('tap Use Noctura hosted prover opens sheet with disclosure cards + opt-in + Proceed', async () => {
-    mockProve.mockRejectedValue(new Error('Hosted prover unreachable'));
+    mockDeposit.mockRejectedValue(new Error('Hosted prover unreachable'));
     const {getByTestId, getByText} = render(<ZkProofScreen navigation={navigation} route={route} />);
     await act(async () => {
       await Promise.resolve();
@@ -166,8 +176,8 @@ describe('ZkProofScreen', () => {
     expect(getByText('Proceed with hosted proof')).toBeTruthy();
   });
 
-  it('sheet Proceed triggers another zkProver.prove call (hosted attempt)', async () => {
-    mockProve.mockRejectedValue(new Error('Hosted prover unreachable'));
+  it('sheet Proceed triggers another depositShield call (hosted attempt)', async () => {
+    mockDeposit.mockRejectedValue(new Error('Hosted prover unreachable'));
     const {getByTestId} = render(<ZkProofScreen navigation={navigation} route={route} />);
     await act(async () => {
       await Promise.resolve();
@@ -177,16 +187,20 @@ describe('ZkProofScreen', () => {
       jest.advanceTimersByTime(2100);
     });
     fireEvent.press(getByTestId('use-hosted-button'));
-    mockProve.mockClear();
+    mockDeposit.mockClear();
     fireEvent.press(getByTestId('proceed-hosted-button'));
-    act(() => {
+    await act(async () => {
       jest.advanceTimersByTime(50);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
     });
-    expect(mockProve).toHaveBeenCalled();
+    expect(mockDeposit).toHaveBeenCalled();
   });
 
-  it('hosted attempt success → ready → Alert with proof-ready copy', async () => {
-    mockProve.mockRejectedValueOnce(new Error('first fail'));
+  it('hosted attempt success → ready → success screen with Done', async () => {
+    mockDeposit.mockRejectedValueOnce(new Error('first fail'));
     const {getByTestId, getByText} = render(<ZkProofScreen navigation={navigation} route={route} />);
     await act(async () => {
       await Promise.resolve();
@@ -197,7 +211,7 @@ describe('ZkProofScreen', () => {
     });
     expect(getByText("Couldn't generate proof")).toBeTruthy();
     fireEvent.press(getByTestId('use-hosted-button'));
-    mockProve.mockResolvedValueOnce(mockProof);
+    mockDeposit.mockResolvedValueOnce({txSignature: 'SiGnAtUrEabcdefgh12345678', leafIndex: 0, amount: 5000000000n});
     fireEvent.press(getByTestId('proceed-hosted-button'));
     await act(async () => {
       await Promise.resolve();
@@ -206,20 +220,13 @@ describe('ZkProofScreen', () => {
     act(() => {
       jest.advanceTimersByTime(500);
     });
-    expect(Alert.alert).toHaveBeenCalledWith(
-      'Proof ready',
-      'Transaction simulation (#19) not yet wired — returning to dashboard.',
-      expect.any(Array),
-    );
-    // Verify pressing OK in the Alert calls navigation.popToTop
-    const alertCall = (Alert.alert as jest.Mock).mock.calls[0];
-    const buttons = alertCall[2] as Array<{text: string; onPress?: () => void}>;
-    buttons[0].onPress?.();
+    expect(getByText('Shielded')).toBeTruthy();
+    fireEvent.press(getByTestId('shield-done-button'));
     expect(mockPopToTop).toHaveBeenCalled();
   });
 
   it('hosted attempt failure shows hostedBanner on failed state', async () => {
-    mockProve.mockRejectedValueOnce(new Error('first fail'));
+    mockDeposit.mockRejectedValueOnce(new Error('first fail'));
     const {getByTestId, getByText} = render(<ZkProofScreen navigation={navigation} route={route} />);
     await act(async () => {
       await Promise.resolve();
@@ -229,7 +236,7 @@ describe('ZkProofScreen', () => {
       jest.advanceTimersByTime(2100);
     });
     fireEvent.press(getByTestId('use-hosted-button'));
-    mockProve.mockRejectedValueOnce(new Error('hosted 503'));
+    mockDeposit.mockRejectedValueOnce(new Error('hosted 503'));
     fireEvent.press(getByTestId('proceed-hosted-button'));
     await act(async () => {
       await Promise.resolve();
@@ -239,7 +246,7 @@ describe('ZkProofScreen', () => {
   });
 
   it('tap back × mid-proof shows confirm dialog', () => {
-    mockProve.mockReturnValue(new Promise(() => {}));
+    mockDeposit.mockReturnValue(new Promise(() => {}));
     const {getByTestId} = render(<ZkProofScreen navigation={navigation} route={route} />);
     act(() => {
       jest.advanceTimersByTime(500);
@@ -259,7 +266,7 @@ describe('ZkProofScreen', () => {
   });
 
   it('tap back × from failed state calls navigation.goBack directly', async () => {
-    mockProve.mockRejectedValue(new Error('fail'));
+    mockDeposit.mockRejectedValue(new Error('fail'));
     const {getByTestId} = render(<ZkProofScreen navigation={navigation} route={route} />);
     await act(async () => {
       await Promise.resolve();
