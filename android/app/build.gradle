@@ -90,12 +90,23 @@ android {
         versionCode 1
         versionName "1.0.0"
     }
-    // Native BLST (blst) shielded-key module — builds libnoctura_key.so from
-    // src/main/cpp (CMake). blst source is vendored under src/main/cpp/blst
-    // (gitignored; clone: git clone --depth 1 https://github.com/supranational/blst).
-    externalNativeBuild {
-        cmake {
-            path "src/main/cpp/CMakeLists.txt"
+    // Native blst module (libnoctura_key.so) is DISABLED: it bundles its own NDK-27
+    // libc++_shared.so which conflicts with React Native's at startup, crashing every
+    // release build on launch (verified on-device 2026-06-30, OnePlus 9 Pro). C2
+    // shielded uses the JS view-key model and never calls native, so this is safe.
+    // RE-ENABLE only with the libc++ conflict fixed (ANDROID_STL=c++_static in the
+    // CMake build) + on-device verification, when native shielded ops are needed
+    // (Project 2 / withdraw recoverability). See project_native_libcpp_crash memory.
+    // externalNativeBuild {
+    //     cmake {
+    //         path "src/main/cpp/CMakeLists.txt"
+    //     }
+    // }
+    packagingOptions {
+        jniLibs {
+            // Exclude any stale libnoctura_key.so from build intermediates so the
+            // disabled module can't sneak its conflicting libc++_shared into the APK.
+            excludes += ["**/libnoctura_key.so"]
         }
     }
     signingConfigs {

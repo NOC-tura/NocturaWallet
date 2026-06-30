@@ -29,8 +29,24 @@ class NocturaKeyModule(reactContext: ReactApplicationContext) :
     companion object {
         const val NAME = "NocturaKeyModule"
 
-        init {
-            System.loadLibrary("noctura_key")
+        // The native blst library is loaded LAZILY (on first shielded-signing call),
+        // NOT at module construction. Loading it eagerly in a companion `init {}` runs
+        // dlopen (+ the lib's .init_array) at app startup — and this legacy module is
+        // instantiated at startup by NocturaKeyPackage.createNativeModules(). If the
+        // .so fails to load, that crashed the whole app on launch. C2 (the shielded
+        // deposit/withdraw flow) uses the JS view-key model and NEVER calls the native
+        // methods, so deferring the load keeps startup independent of this lib; a load
+        // failure now surfaces as a rejected promise on an actual native call, not a
+        // launch crash.
+        @Volatile
+        private var libLoaded = false
+
+        @Synchronized
+        private fun ensureLibLoaded() {
+            if (!libLoaded) {
+                System.loadLibrary("noctura_key")
+                libLoaded = true
+            }
         }
     }
 
@@ -40,6 +56,7 @@ class NocturaKeyModule(reactContext: ReactApplicationContext) :
     @ReactMethod
     fun getShieldedPublicKey(seedHex: String, promise: Promise) {
         try {
+            ensureLibLoaded()
             val pk = nativeGetShieldedPublicKey(seedHex)
             if (pk.isEmpty()) {
                 promise.reject("E_BLST", "Invalid seed or key derivation failed")
@@ -55,6 +72,7 @@ class NocturaKeyModule(reactContext: ReactApplicationContext) :
     @ReactMethod
     fun signShieldedOp(seedHex: String, payloadHex: String, promise: Promise) {
         try {
+            ensureLibLoaded()
             val sig = nativeSignShieldedOp(seedHex, payloadHex)
             if (sig.isEmpty()) {
                 promise.reject("E_BLST", "Invalid input or signing failed")
