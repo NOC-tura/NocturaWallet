@@ -598,20 +598,25 @@ function DashboardHeader({
             )
           )}
 
-          {/* Sub-balance · SOL + NOC */}
-          <View className="flex-row items-center gap-3">
-            <SubBalanceCell
-              amount={hidden ? '••••' : formatBalanceForDisplay(solBalance, SOL_DECIMALS)}
-              ticker="SOL"
-              hidden={hidden}
-            />
-            <View className="w-1 h-1 rounded-pill bg-fg-tertiary" />
-            <SubBalanceCell
-              amount={hidden ? '••••' : formatBalanceForDisplay(nocBalance, NOC_DECIMALS)}
-              ticker="NOC"
-              hidden={hidden}
-            />
-          </View>
+          {/* Sub-balance · SOL + NOC — transparent only. In shielded mode this
+             would mirror the (unrelated) transparent SOL/NOC balances, which is
+             misleading; the shielded vault shows its own per-token asset rows +
+             anonymity line below instead. */}
+          {isShielded ? null : (
+            <View className="flex-row items-center gap-3">
+              <SubBalanceCell
+                amount={hidden ? '••••' : formatBalanceForDisplay(solBalance, SOL_DECIMALS)}
+                ticker="SOL"
+                hidden={hidden}
+              />
+              <View className="w-1 h-1 rounded-pill bg-fg-tertiary" />
+              <SubBalanceCell
+                amount={hidden ? '••••' : formatBalanceForDisplay(nocBalance, NOC_DECIMALS)}
+                ticker="NOC"
+                hidden={hidden}
+              />
+            </View>
+          )}
         </View>
       </View>
 

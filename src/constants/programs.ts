@@ -133,6 +133,10 @@ export const SHIELDED_CU = {deposit: 200_000, withdraw: 250_000} as const;
  * NOTE: SHIELDED_DEVNET_MINT may be '' if the env isn't set, so we filter it
  * out to avoid an empty-string "mint" appearing in the list.
  */
-export const SHIELDED_POOL_MINTS: readonly string[] = IS_DEVNET
-  ? [SHIELDED_DEVNET_MINT].filter(m => m.length > 0)
-  : [NOC_MINT];
+// Key off whether the devnet test mint is CONFIGURED, not IS_DEVNET: the devnet
+// shielded test build runs with NETWORK=mainnet-beta (to avoid the unfinished
+// TODO_DEVNET_* presale placeholders), so IS_DEVNET is false there even though the
+// shielded pool is the devnet AtjVK test mint. Presence of SHIELDED_DEVNET_MINT =
+// "use the devnet test pool"; otherwise (production) the pool is NOC.
+export const SHIELDED_POOL_MINTS: readonly string[] =
+  SHIELDED_DEVNET_MINT.length > 0 ? [SHIELDED_DEVNET_MINT] : [NOC_MINT];
