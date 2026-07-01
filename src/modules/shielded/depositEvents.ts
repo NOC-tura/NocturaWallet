@@ -44,8 +44,13 @@ export function parseDepositEvents(logs: string[]): DepositEvent[] {
 export function orderedLeaves(events: DepositEvent[]): string[] {
   const byIndex = new Map<number, string>();
   for (const e of events) byIndex.set(e.leafIndex, e.commitment);
+  if (byIndex.size === 0) return [];
+  // Expect a dense [0, max] range. Deriving the count from max (not from the
+  // map size) means a duplicated leaf_index — which dedups in the map — still
+  // surfaces as a gap rather than silently truncating the leaf set.
+  const max = Math.max(...byIndex.keys());
   const leaves: string[] = [];
-  for (let i = 0; i < byIndex.size; i++) {
+  for (let i = 0; i <= max; i++) {
     const c = byIndex.get(i);
     if (c === undefined) throw new Error(`orderedLeaves: gap at leaf index ${i}`);
     leaves.push(c);

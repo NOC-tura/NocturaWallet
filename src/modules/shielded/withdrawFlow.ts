@@ -19,6 +19,9 @@ import type {ShieldedNote} from './types';
 
 const PROOF_BYTES_LEN = 256;
 
+const sleep = (ms: number): Promise<void> =>
+  new Promise(resolve => setTimeout(resolve, ms));
+
 export class MerkleRootStaleError extends Error {
   constructor() {
     super('Local Merkle root is not in the on-chain history — resync needed');
@@ -87,11 +90,25 @@ export async function unshield(
     [createAtaIx, withdrawIx], SHIELDED_CU.withdraw, feePayer,
   );
 
+  // Verify the confirmed tx did not revert BEFORE marking the note spent.
+  // getTransaction can transiently return null right after confirmation if the
+  // serving RPC node lags (Helius round-robin), so poll a few times and FAIL
+  // CLOSED if it never resolves — a null result must never be read as success
+  // (that could hide a note whose withdraw actually reverted).
   const connection = getConnection();
-  const tx = await connection.getTransaction(txSignature, {
-    maxSupportedTransactionVersion: 0, commitment: 'confirmed',
-  });
-  if (tx?.meta?.err) {
+  let tx = null;
+  for (let attempt = 0; attempt < 5 && tx === null; attempt++) {
+    tx = await connection.getTransaction(txSignature, {
+      maxSupportedTransactionVersion: 0, commitment: 'confirmed',
+    });
+    if (tx === null && attempt < 4) await sleep(1000);
+  }
+  if (tx === null) {
+    throw new Error(
+      `Withdraw ${txSignature} confirmed but could not be fetched to verify — leaving the note unspent; retry to resync`,
+    );
+  }
+  if (tx.meta?.err) {
     throw new Error(`Withdraw transaction reverted on-chain: ${JSON.stringify(tx.meta.err)}`);
   }
 

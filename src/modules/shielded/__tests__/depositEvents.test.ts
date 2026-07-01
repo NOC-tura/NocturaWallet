@@ -36,4 +36,19 @@ describe('depositEvents', () => {
     ];
     expect(() => orderedLeaves(events)).toThrow(/gap/i);
   });
+  it('a duplicated leaf index does not mask a real gap', () => {
+    // Events for indices {0, 1, 1, 3}: index 1 is duplicated and index 2 is
+    // genuinely missing. Deriving the expected count from max (=3) rather than
+    // the unique count means the gap at 2 is still detected — no silent truncation.
+    const events: DepositEvent[] = [
+      {commitment: c(10), leafIndex: 0, root: r(0)},
+      {commitment: c(15), leafIndex: 1, root: r(1)},
+      {commitment: c(16), leafIndex: 1, root: r(1)},
+      {commitment: c(20), leafIndex: 3, root: r(3)},
+    ];
+    expect(() => orderedLeaves(events)).toThrow(/gap/i);
+  });
+  it('orderedLeaves returns [] for no events', () => {
+    expect(orderedLeaves([])).toEqual([]);
+  });
 });
