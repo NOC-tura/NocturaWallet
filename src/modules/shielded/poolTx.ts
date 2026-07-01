@@ -23,3 +23,23 @@ export async function submitPoolTx(
   );
   return signature;
 }
+
+/**
+ * Like submitPoolTx but for a list of instructions (e.g. create-ATA + withdraw).
+ * Prepends the ComputeBudget limit, signs as fee_payer, submits + confirms.
+ */
+export async function submitPoolTxMany(
+  poolIxs: TransactionInstruction[],
+  computeUnitLimit: number,
+  feePayer: Keypair,
+): Promise<string> {
+  const connection = getConnection();
+  const instructions = [
+    ComputeBudgetProgram.setComputeUnitLimit({units: computeUnitLimit}),
+    ...poolIxs,
+  ];
+  const {signature} = await signAndSend(
+    connection, {payer: feePayer.publicKey, instructions}, [feePayer],
+  );
+  return signature;
+}
