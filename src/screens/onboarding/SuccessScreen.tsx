@@ -24,6 +24,7 @@ import {useWalletStore} from '../../store/zustand/walletStore';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {zeroize} from '../../modules/session/zeroize';
+import {unlockSecureStorageWithSeed} from '../../modules/session/secureStorageSession';
 
 /**
  * #7 OnboardSuccess — Phase B migration · mirror /home/user/Downloads/index.html §s7
@@ -168,6 +169,11 @@ export function SuccessScreen({mnemonic, scheme, onComplete}: SuccessScreenProps
       mmkvPublic.set(MMKV_KEYS.WALLET_PUBLIC_KEY, publicKeyBase58);
       zeroize(viewKeyRef.current);
       viewKeyRef.current = null;
+      // Initialize the encrypted note store for this session so the dashboard
+      // can read shielded notes immediately after onboarding completes.
+      const sessionSeed = await mnemonicToSeed(mnemonic);
+      unlockSecureStorageWithSeed(sessionSeed);
+      zeroize(sessionSeed);
       // Clear clipboard if the address is still copied — defence in depth
       if (clearTimerRef.current) {
         clearTimeout(clearTimerRef.current);

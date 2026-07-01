@@ -10,6 +10,7 @@ import {ScreenSecurityManager} from '../modules/screenSecurity/screenSecurityMod
 import {mmkvPublic} from '../store/mmkv/instances';
 import {MMKV_KEYS} from '../constants/mmkvKeys';
 import {cn} from '../utils/cn';
+import {unlockSecureStorage} from '../modules/session/secureStorageSession';
 
 /**
  * #9 Unlock — Phase B migration · mirror /home/user/Downloads/index.html §s9
@@ -128,6 +129,7 @@ export function UnlockScreen({
       if (!supported) return;
 
       await keychainManager.retrieveSeed();
+      try { await unlockSecureStorage(); } catch { /* dashboard treats a null store as empty */ }
       onUnlock();
     } catch {
       // User cancelled / sensor failed / lockout → stay on PIN surface
@@ -169,6 +171,7 @@ export function UnlockScreen({
     if (verified) {
       setAttempts(0);
       setPinError(null);
+      try { await unlockSecureStorage(); } catch { /* dashboard treats a null store as empty */ }
       onUnlock();
       return;
     }
