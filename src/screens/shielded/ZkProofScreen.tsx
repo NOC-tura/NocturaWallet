@@ -8,6 +8,8 @@ import {Text} from '../../components/ui';
 import {Keypair} from '@solana/web3.js';
 import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
 import {depositShield} from '../../modules/shielded/depositFlow';
+import {unshield} from '../../modules/shielded/withdrawFlow';
+import {getNotes} from '../../modules/shielded/noteStore';
 import {keychainManager} from '../../modules/keychain/keychainModule';
 import {mnemonicToSeed} from '../../modules/keyDerivation/mnemonicUtils';
 import {deriveTransparentKeypair} from '../../modules/keyDerivation/transparent';
@@ -111,18 +113,17 @@ function reducer(state: ZkUiState, action: Action): ZkUiState {
 }
 
 /**
- * Real shield (deposit) execution: retrieve seed (biometric), derive the
- * transparent fee-payer keypair, and run depositShield (build note → prove via
- * /zk/prove → submit the on-chain deposit → store note). Devnet targets the
- * shielded-pool SPL mint (SHIELDED_DEVNET_MINT). `params.amount` is the raw
- * token amount string. Throws on failure (mapped to the screen's failed state).
+ * Dispatcher for shield/unshield operations:
+ *   direction === 'private' → depositShield (build note → prove → submit → store)
+ *   direction === 'public'  → unshield (spend whole matching note → transparent)
+ *
+ * Seed derivation and zeroization are shared across both paths via try/finally.
+ * `params.amount` is the raw token amount string (smallest unit). Throws on
+ * failure (mapped to the screen's failed state).
  */
-async function runDepositShield(
+async function runShieldOp(
   params: Props['route']['params'],
 ): Promise<DepositOutcome> {
-  if (params.direction !== 'private') {
-    throw new Error('Unshield (withdraw) is not yet available on this build.');
-  }
   let seed: Uint8Array | null = null;
   try {
     const mnemonic = await keychainManager.retrieveSeed();
@@ -131,13 +132,27 @@ async function runDepositShield(
     const {secretKey} = deriveTransparentKeypair(seed, scheme);
     const feePayer = Keypair.fromSecretKey(secretKey);
     const mint = params.mint ?? SHIELDED_POOL_MINTS[0] ?? '';
-    const result = await depositShield(
-      seed,
-      feePayer,
-      mint,
-      BigInt(params.amount),
-    );
-    return {txSignature: result.txSignature, leafIndex: result.leafIndex};
+
+    if (params.direction === 'private') {
+      const result = await depositShield(
+        seed,
+        feePayer,
+        mint,
+        BigInt(params.amount),
+      );
+      return {txSignature: result.txSignature, leafIndex: result.leafIndex};
+    }
+
+    // direction === 'public' → whole-note unshield
+    const target = BigInt(params.amount);
+    const note = getNotes(mint).find(n => n.amount === target);
+    if (!note) {
+      throw new Error(
+        'POC: unshield supports a full note only — amount must match a shielded note',
+      );
+    }
+    const result = await unshield(seed, feePayer, mint, note);
+    return {txSignature: result.txSignature, leafIndex: note.index};
   } finally {
     if (seed) zeroize(seed);
   }
@@ -180,7 +195,7 @@ export function ZkProofScreen({navigation, route}: Props) {
 
     async function runChain() {
       try {
-        const outcome = await runDepositShield(route.params);
+        const outcome = await runShieldOp(route.params);
         if (cancelled) return;
         chainResultRef.current = {kind: 'success', outcome};
       } catch (err) {
@@ -287,7 +302,7 @@ export function ZkProofScreen({navigation, route}: Props) {
     let cancelled = false;
     async function runHosted() {
       try {
-        const outcome = await runDepositShield(route.params);
+        const outcome = await runShieldOp(route.params);
         if (cancelled) return;
         dispatch({type: 'ADVANCE_TO_READY', outcome});
       } catch (err) {
@@ -379,6 +394,14 @@ export function ZkProofScreen({navigation, route}: Props) {
         ? `${txSignature.slice(0, 8)}…${txSignature.slice(-8)}`
         : txSignature;
     const explorerUrl = `https://explorer.solana.com/tx/${txSignature}?cluster=devnet`;
+    const isPublic = route.params.direction === 'public';
+    const heroTitle = isPublic ? 'Unshielded' : 'Shielded';
+    const heroSub = isPublic
+      ? 'Your funds are public again in your transparent balance.'
+      : 'Your deposit is now private. Only you can spend it.';
+    const heroAmount = isPublic
+      ? `${amountTokens} ${symbol} unshielded`
+      : `${amountTokens} ${symbol} shielded`;
     return (
       <SafeAreaView
         edges={['top', 'bottom', 'left', 'right']}
@@ -398,13 +421,13 @@ export function ZkProofScreen({navigation, route}: Props) {
               <Check size={48} color={ACCENT} strokeWidth={2} />
             </View>
             <Text variant="h1" className="text-fg-primary mt-6 text-center">
-              Shielded
+              {heroTitle}
             </Text>
             <Text variant="body" className="text-fg-secondary mt-2 text-center max-w-xs">
-              Your deposit is now private. Only you can spend it.
+              {heroSub}
             </Text>
             <Text variant="h2" className="text-accent-shielded mt-5">
-              {amountTokens} {symbol} shielded
+              {heroAmount}
             </Text>
 
             <View className="w-full bg-bg-surface-1 rounded-md mt-8 p-4 gap-3">
