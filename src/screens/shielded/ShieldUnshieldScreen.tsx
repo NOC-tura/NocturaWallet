@@ -172,11 +172,15 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
         <Text variant="h2" className="ml-1 flex-1">
           Shield / Unshield
         </Text>
-        <TokenSelector
-          tokens={SHIELDED_POOL_MINTS.map(m => ({mint: m, symbol: poolTokenMeta(m).symbol}))}
-          selected={selectedMint}
-          onSelect={setSelectedMint}
-        />
+        {/* Fixed-height wrapper prevents the horizontal ScrollView inside
+            TokenSelector from expanding the flex-row header container. */}
+        <View className="h-12 justify-center">
+          <TokenSelector
+            tokens={SHIELDED_POOL_MINTS.map(m => ({mint: m, symbol: poolTokenMeta(m).symbol}))}
+            selected={selectedMint}
+            onSelect={setSelectedMint}
+          />
+        </View>
       </View>
 
       {/* Direction tabs */}
