@@ -1,4 +1,4 @@
-import {PublicKey, Keypair} from '@solana/web3.js';
+import {Keypair} from '@solana/web3.js';
 
 jest.mock('../merkleSync', () => ({
   syncLeaves: jest.fn(),
