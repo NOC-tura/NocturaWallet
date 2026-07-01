@@ -27,6 +27,7 @@ export type RootStackParamList = {
     direction: 'private' | 'public';
     amount: string;
     recipient?: string;
+    mint?: string;
   };
   AppUpdateModal: {storeUrl: string; message?: string};
   TokenDetailModal: {mint: string};

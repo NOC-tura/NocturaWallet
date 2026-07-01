@@ -1,5 +1,5 @@
 import React, {useCallback, useMemo, useState} from 'react';
-import {View, Pressable, TextInput, ScrollView, Image} from 'react-native';
+import {View, Pressable, TextInput, ScrollView} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {ArrowLeft, ShieldCheck, Eye, AlertTriangle, Shield} from 'lucide-react-native';
 import {useNavigation} from '@react-navigation/native';
@@ -9,8 +9,9 @@ import {useWalletStore} from '../../store/zustand/walletStore';
 import {cn} from '../../utils/cn';
 import {parseTokenAmount} from '../../utils/parseTokenAmount';
 import type {RootStackParamList} from '../../types/navigation';
-
-const SOLANA_LOGO = require('../../assets/tokens/solana-sol-logo.png');
+import {SHIELDED_POOL_MINTS} from '../../constants/programs';
+import {poolTokenMeta} from '../../modules/shielded/poolTokens';
+import {TokenSelector} from '../../components/TokenSelector';
 
 /**
  * #16 Shield / Unshield — Phase B migration · mirror /home/user/Downloads/index.html §s16
@@ -88,6 +89,9 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
   const {solBalance, shieldedBalances} = useWalletStore();
   const [direction, setDirection] = useState<Direction>(initialDirection ?? 'private');
   const [amount, setAmount] = useState('');
+  const [selectedMint, setSelectedMint] = useState<string>(SHIELDED_POOL_MINTS[0] ?? '');
+
+  const tokenMeta = poolTokenMeta(selectedMint);
 
   const transparentSol = useMemo(() => {
     try {
@@ -132,7 +136,7 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
     if (insufficient || !hasAmount) return;
     let rawAmount: string;
     try {
-      rawAmount = parseTokenAmount(amount, 9).toString();
+      rawAmount = parseTokenAmount(amount, tokenMeta.decimals).toString();
     } catch {
       // Malformed input that slipped past parseFloat-based validators
       // (e.g. "1e3", "1abc"). Stay on the form; user will re-enter.
@@ -142,8 +146,9 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
       direction,
       amount: rawAmount,
       recipient: undefined,
+      mint: selectedMint,
     });
-  }, [insufficient, hasAmount, direction, amount, navigation]);
+  }, [insufficient, hasAmount, direction, amount, navigation, selectedMint, tokenMeta.decimals]);
 
   const canSubmit = hasAmount && !insufficient;
 
@@ -163,16 +168,11 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
         <Text variant="h2" className="ml-1 flex-1">
           Shield / Unshield
         </Text>
-        <View className="flex-row items-center gap-1 px-2 py-1 rounded-pill bg-bg-surface-2">
-          <Image
-            source={SOLANA_LOGO}
-            style={{width: 16, height: 16}}
-            resizeMode="contain"
-          />
-          <Text variant="caption" className="font-geist-semibold text-fg-primary">
-            SOL
-          </Text>
-        </View>
+        <TokenSelector
+          tokens={SHIELDED_POOL_MINTS.map(m => ({mint: m, symbol: poolTokenMeta(m).symbol}))}
+          selected={selectedMint}
+          onSelect={setSelectedMint}
+        />
       </View>
 
       {/* Direction tabs */}
@@ -209,7 +209,7 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
               {sourceLabel}
             </Text>
             <Text variant="body-sm" numeral className="font-geist-semibold text-fg-primary">
-              {formatNumber(sourceBalance, 4)} SOL
+              {formatNumber(sourceBalance, 4)} {tokenMeta.symbol}
             </Text>
           </View>
           <View className="flex-row items-baseline justify-center gap-2 mb-3">
@@ -230,7 +230,7 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
             <Text
               variant="h2"
               className={cn(insufficient ? 'text-danger' : 'text-fg-secondary')}>
-              SOL
+              {tokenMeta.symbol}
             </Text>
           </View>
           <View className="items-center">
@@ -238,7 +238,7 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
               <View className="flex-row items-center gap-2">
                 <AlertTriangle size={12} color="#FF5C6A" strokeWidth={2} />
                 <Text variant="caption" className="text-danger">
-                  Insufficient balance · max {formatNumber(sourceBalance, 4)} SOL
+                  Insufficient balance · max {formatNumber(sourceBalance, 4)} {tokenMeta.symbol}
                 </Text>
               </View>
             ) : hasAmount ? (
@@ -286,12 +286,12 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
           </Text>
           <FeeRow
             label="Network fee"
-            value={hasAmount ? `${NETWORK_FEE_SOL} SOL` : '—'}
+            value={hasAmount ? `${NETWORK_FEE_SOL} ${tokenMeta.symbol}` : '—'}
             fiat={hasAmount ? '$0.03' : '—'}
           />
           <FeeRow
             label="ZK proof fee"
-            value={hasAmount ? `${ZK_PROOF_FEE_SOL} SOL` : '—'}
+            value={hasAmount ? `${ZK_PROOF_FEE_SOL} ${tokenMeta.symbol}` : '—'}
             fiat={hasAmount ? '$0.50' : '—'}
             zk
           />
@@ -301,7 +301,7 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
               {direction === 'private' ? "You'll shield" : "You'll receive"}
             </Text>
             <Text variant="balance-md" numeral className="text-fg-primary">
-              {hasAmount && !insufficient ? formatNumber(netReceived, 5) : '—'} SOL
+              {hasAmount && !insufficient ? formatNumber(netReceived, 5) : '—'} {tokenMeta.symbol}
             </Text>
           </View>
         </View>
@@ -340,7 +340,7 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
                 Privacy decreases on public withdraw
               </Text>
               <Text variant="caption" className="text-fg-secondary">
-                SOL leaving the vault is associated with your transparent address from this point forward.
+                {tokenMeta.symbol} leaving the vault is associated with your transparent address from this point forward.
               </Text>
             </View>
           </View>
@@ -361,7 +361,7 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
           disabled={!canSubmit}
           accessibilityRole="button"
           testID="shield-cta"
-          accessibilityLabel={direction === 'private' ? 'Shield SOL' : 'Unshield SOL'}
+          accessibilityLabel={direction === 'private' ? `Shield ${tokenMeta.symbol}` : `Unshield ${tokenMeta.symbol}`}
           className={cn(
             'min-h-touch-rec rounded-pill items-center justify-center flex-row gap-2',
             canSubmit ? 'bg-accent-shielded active:opacity-90' : 'bg-bg-surface-3',
@@ -382,11 +382,11 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
             )}>
             {direction === 'private'
               ? canSubmit
-                ? `Shield ${formatNumber(netReceived, 5)} SOL`
-                : 'Shield SOL'
+                ? `Shield ${formatNumber(netReceived, 5)} ${tokenMeta.symbol}`
+                : `Shield ${tokenMeta.symbol}`
               : canSubmit
-                ? `Unshield ${formatNumber(netReceived, 5)} SOL`
-                : 'Unshield SOL'}
+                ? `Unshield ${formatNumber(netReceived, 5)} ${tokenMeta.symbol}`
+                : `Unshield ${tokenMeta.symbol}`}
           </Text>
         </Pressable>
       </View>
