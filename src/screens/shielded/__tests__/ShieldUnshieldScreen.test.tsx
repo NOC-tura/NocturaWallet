@@ -24,9 +24,17 @@ jest.mock('../../../modules/shielded/poolTokens', () => ({
 
 jest.mock('../../../store/zustand/walletStore', () => ({
   useWalletStore: jest.fn().mockReturnValue({
-    solBalance: '2000000000', // 2 SOL
-    shieldedBalances: {native: '500000000'}, // 0.5 shielded
+    tokenBalances: {'DevMint1111111111111111111111111111111111111': '2000000000'}, // 2 TEST
+    nocBalance: '0',
   }),
+}));
+
+jest.mock('../../../modules/shielded/noteStore', () => ({
+  getBalance: jest.fn().mockReturnValue(BigInt('500000000')), // 0.5 TEST in vault
+}));
+
+jest.mock('../../../store/mmkv/instances', () => ({
+  mmkvSecure: jest.fn().mockReturnValue({}), // non-null → vault available
 }));
 
 const mockNavigate = jest.fn();

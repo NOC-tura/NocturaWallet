@@ -9,8 +9,10 @@ import {useWalletStore} from '../../store/zustand/walletStore';
 import {cn} from '../../utils/cn';
 import {parseTokenAmount} from '../../utils/parseTokenAmount';
 import type {RootStackParamList} from '../../types/navigation';
-import {SHIELDED_POOL_MINTS} from '../../constants/programs';
+import {SHIELDED_POOL_MINTS, NOC_MINT} from '../../constants/programs';
 import {poolTokenMeta} from '../../modules/shielded/poolTokens';
+import {getBalance} from '../../modules/shielded/noteStore';
+import {mmkvSecure} from '../../store/mmkv/instances';
 import {TokenSelector} from '../../components/TokenSelector';
 
 /**
@@ -86,31 +88,33 @@ function parseAmount(s: string): number {
 
 export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldScreenProps) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const {solBalance, shieldedBalances} = useWalletStore();
+  const {tokenBalances, nocBalance} = useWalletStore();
   const [direction, setDirection] = useState<Direction>(initialDirection ?? 'private');
   const [amount, setAmount] = useState('');
   const [selectedMint, setSelectedMint] = useState<string>(SHIELDED_POOL_MINTS[0] ?? '');
 
   const tokenMeta = poolTokenMeta(selectedMint);
 
-  const transparentSol = useMemo(() => {
+  const transparentBalance = useMemo(() => {
+    const rawTransparent =
+      tokenBalances[selectedMint] ??
+      (selectedMint === NOC_MINT ? nocBalance : '0');
     try {
-      return Number(BigInt(solBalance)) / 1_000_000_000;
+      return Number(BigInt(rawTransparent || '0')) / 10 ** tokenMeta.decimals;
     } catch {
       return 0;
     }
-  }, [solBalance]);
+  }, [tokenBalances, selectedMint, nocBalance, tokenMeta.decimals]);
 
-  const vaultSol = useMemo(() => {
-    const raw = shieldedBalances['native'] ?? shieldedBalances['SOL'] ?? '0';
+  const vaultBalance = useMemo(() => {
     try {
-      return Number(BigInt(raw)) / 1_000_000_000;
+      return mmkvSecure() ? Number(getBalance(selectedMint)) / 10 ** tokenMeta.decimals : 0;
     } catch {
       return 0;
     }
-  }, [shieldedBalances]);
+  }, [selectedMint, tokenMeta.decimals]);
 
-  const sourceBalance = direction === 'private' ? transparentSol : vaultSol;
+  const sourceBalance = direction === 'private' ? transparentBalance : vaultBalance;
   const sourceLabel = direction === 'private' ? 'Available' : 'Vault balance';
 
   const parsed = parseAmount(amount);
