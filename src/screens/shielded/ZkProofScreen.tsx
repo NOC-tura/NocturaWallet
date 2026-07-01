@@ -13,7 +13,8 @@ import {mnemonicToSeed} from '../../modules/keyDerivation/mnemonicUtils';
 import {deriveTransparentKeypair} from '../../modules/keyDerivation/transparent';
 import {loadTransparentScheme} from '../../modules/keyDerivation/derivationScheme';
 import {zeroize} from '../../modules/session/zeroize';
-import {SHIELDED_DEVNET_MINT} from '../../constants/programs';
+import {SHIELDED_POOL_MINTS} from '../../constants/programs';
+import {poolTokenMeta} from '../../modules/shielded/poolTokens';
 import type {RootStackParamList} from '../../types/navigation';
 
 const ACCENT = '#5BE3C2';
@@ -129,10 +130,11 @@ async function runDepositShield(
     const scheme = loadTransparentScheme();
     const {secretKey} = deriveTransparentKeypair(seed, scheme);
     const feePayer = Keypair.fromSecretKey(secretKey);
+    const mint = params.mint ?? SHIELDED_POOL_MINTS[0] ?? '';
     const result = await depositShield(
       seed,
       feePayer,
-      SHIELDED_DEVNET_MINT,
+      mint,
       BigInt(params.amount),
     );
     return {txSignature: result.txSignature, leafIndex: result.leafIndex};
@@ -367,9 +369,11 @@ export function ZkProofScreen({navigation, route}: Props) {
   // ── Success screen (deposit confirmed on-chain) ──────────────────────────
   if (state.kind === 'ready') {
     const {txSignature, leafIndex} = state.outcome;
+    const mint = route.params.mint ?? SHIELDED_POOL_MINTS[0] ?? '';
+    const {symbol, decimals} = poolTokenMeta(mint);
     const amountTokens = (
-      Number(BigInt(route.params.amount)) / 1e9
-    ).toLocaleString(undefined, {maximumFractionDigits: 9});
+      Number(BigInt(route.params.amount)) / 10 ** decimals
+    ).toLocaleString(undefined, {maximumFractionDigits: decimals});
     const shortSig =
       txSignature.length > 16
         ? `${txSignature.slice(0, 8)}…${txSignature.slice(-8)}`
@@ -400,7 +404,7 @@ export function ZkProofScreen({navigation, route}: Props) {
               Your deposit is now private. Only you can spend it.
             </Text>
             <Text variant="h2" className="text-accent-shielded mt-5">
-              {amountTokens} shielded
+              {amountTokens} {symbol} shielded
             </Text>
 
             <View className="w-full bg-bg-surface-1 rounded-md mt-8 p-4 gap-3">

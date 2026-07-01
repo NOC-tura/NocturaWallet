@@ -22,6 +22,21 @@ jest.mock('../../../modules/keyDerivation/transparent', () => {
 jest.mock('../../../modules/session/zeroize', () => ({zeroize: jest.fn()}));
 jest.mock('@react-native-clipboard/clipboard', () => ({setString: jest.fn()}));
 
+// Stable fake mint used across mint-threading tests
+const TEST_POOL_MINT = 'PoolMint111111111111111111111111111111111111';
+jest.mock('../../../constants/programs', () => ({
+  SHIELDED_POOL_MINTS: ['PoolMint111111111111111111111111111111111111'],
+  SHIELDED_DEVNET_MINT: 'PoolMint111111111111111111111111111111111111',
+}));
+jest.mock('../../../modules/shielded/poolTokens', () => ({
+  poolTokenMeta: jest.fn((mint: string) => ({
+    mint,
+    symbol: mint === 'PoolMint111111111111111111111111111111111111' ? 'TEST' : mint.slice(0, 4),
+    name: 'Test Token',
+    decimals: 9,
+  })),
+}));
+
 const mockDeposit = depositShield as jest.MockedFunction<typeof depositShield>;
 
 const mockNavigate = jest.fn();
@@ -277,5 +292,67 @@ describe('ZkProofScreen', () => {
     });
     fireEvent.press(getByTestId('back-button'));
     expect(mockGoBack).toHaveBeenCalled();
+  });
+
+  // ── Mint threading tests ──────────────────────────────────────────────────
+
+  it('depositShield is called with mint from route.params.mint when provided', async () => {
+    const specificMint = 'CustomMint1111111111111111111111111111111111';
+    const routeWithMint = {
+      ...route,
+      params: {...route.params, mint: specificMint},
+    } as any;
+    mockDeposit.mockResolvedValue({txSignature: 'SIG', leafIndex: 0, amount: 5000000000n});
+    render(<ZkProofScreen navigation={navigation} route={routeWithMint} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockDeposit).toHaveBeenCalledWith(
+      expect.any(Uint8Array),  // seed
+      expect.anything(),        // feePayer
+      specificMint,             // mint from params
+      BigInt(route.params.amount),
+    );
+  });
+
+  it('depositShield falls back to SHIELDED_POOL_MINTS[0] when params.mint is absent', async () => {
+    mockDeposit.mockResolvedValue({txSignature: 'SIG', leafIndex: 0, amount: 5000000000n});
+    // route has no mint field
+    render(<ZkProofScreen navigation={navigation} route={route} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockDeposit).toHaveBeenCalledWith(
+      expect.any(Uint8Array),
+      expect.anything(),
+      TEST_POOL_MINT,           // default pool mint
+      BigInt(route.params.amount),
+    );
+  });
+
+  it('success screen shows token symbol from poolTokenMeta', async () => {
+    const routeWithMint = {
+      ...route,
+      params: {...route.params, mint: TEST_POOL_MINT},
+    } as any;
+    mockDeposit.mockResolvedValue({txSignature: 'SiGnAtUrEabcdefgh12345678', leafIndex: 3, amount: 5000000000n});
+    const {getByText} = render(<ZkProofScreen navigation={navigation} route={routeWithMint} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() => {
+      jest.advanceTimersByTime(2100);
+    });
+    // Success screen should include "TEST shielded" (symbol from poolTokenMeta)
+    expect(getByText(/TEST shielded/)).toBeTruthy();
   });
 });

@@ -124,3 +124,19 @@ export const SHIELDED_DEVNET_MINT =
 // Compute-unit limits: measured deposit ~132,256 / withdraw ~152,508 CU on
 // devnet; add headroom (the wallet prepends setComputeUnitLimit).
 export const SHIELDED_CU = {deposit: 200_000, withdraw: 250_000} as const;
+
+/**
+ * SPL mints that have a shielded pool (i.e. what can be shielded/displayed).
+ * Devnet: the test mint. Mainnet: NOC (extend when more pools ship — keep the
+ * set small; anonymity favors fewer, busier pools).
+ *
+ * NOTE: SHIELDED_DEVNET_MINT may be '' if the env isn't set, so we filter it
+ * out to avoid an empty-string "mint" appearing in the list.
+ */
+// Key off whether the devnet test mint is CONFIGURED, not IS_DEVNET: the devnet
+// shielded test build runs with NETWORK=mainnet-beta (to avoid the unfinished
+// TODO_DEVNET_* presale placeholders), so IS_DEVNET is false there even though the
+// shielded pool is the devnet AtjVK test mint. Presence of SHIELDED_DEVNET_MINT =
+// "use the devnet test pool"; otherwise (production) the pool is NOC.
+export const SHIELDED_POOL_MINTS: readonly string[] =
+  SHIELDED_DEVNET_MINT.length > 0 ? [SHIELDED_DEVNET_MINT] : [NOC_MINT];

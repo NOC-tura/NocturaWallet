@@ -8,8 +8,8 @@ import {poolPda, merkleTreePda, vaultAta} from './poolPdas';
 import {resolveSourceTokenAccount} from '../solana/transactionBuilder';
 import {addNote} from './noteStore';
 import {SHIELDED_CU} from '../../constants/programs';
-import {sha256} from '@noble/hashes/sha2.js';
 import {mmkvSecure, initSecureMmkv} from '../../store/mmkv/instances';
+import {deriveSecureStorageKey} from '../keychain/secureStorageKey';
 
 const PROOF_BYTES_LEN = 256;
 
@@ -27,16 +27,7 @@ const PROOF_BYTES_LEN = 256;
  */
 function ensureSecureMmkv(seed: Uint8Array): void {
   if (mmkvSecure()) return;
-  const domain = new TextEncoder().encode('noctura-secure-mmkv-v1');
-  const material = new Uint8Array(seed.length + domain.length);
-  material.set(seed);
-  material.set(domain, seed.length);
-  const hash = sha256(material); // 32 bytes
-  let keyHex = '';
-  for (let i = 0; i < 16; i++) {
-    keyHex += hash[i]!.toString(16).padStart(2, '0');
-  }
-  initSecureMmkv(keyHex);
+  initSecureMmkv(deriveSecureStorageKey(seed));
 }
 
 /** Decimal field-element string -> 32-byte big-endian Uint8Array. */

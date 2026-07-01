@@ -11,6 +11,7 @@ import {
   type AppStateStatus,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
+import {useFocusEffect} from '@react-navigation/native';
 import {
   Bell,
   ScanLine,
@@ -34,7 +35,7 @@ import {useNetworkStatus} from '../../hooks/useNetworkStatus';
 import {useAccentColor} from '../../hooks/useAccent';
 import {forceSync} from '../../modules/backgroundSync/backgroundSyncModule';
 import {TokenManager} from '../../modules/tokens/tokenModule';
-import {NOC_MINT} from '../../constants/programs';
+import {NOC_MINT, SHIELDED_POOL_MINTS} from '../../constants/programs';
 import {isShieldedEnabled} from '../../constants/features';
 import {formatBalanceForDisplay} from '../../utils/parseTokenAmount';
 import {mmkvPublic} from '../../store/mmkv/instances';
@@ -47,6 +48,8 @@ import {usePresaleSync} from '../../hooks/usePresaleSync';
 import {formatUsd, formatUsdString} from '../../utils/formatUsd';
 import {TokenLogo} from '../../components/TokenLogo';
 import {PresaleBanner} from '../../components/PresaleBanner';
+import {getShieldedBalances, type ShieldedBalanceRow} from '../../modules/shielded/shieldedBalances';
+import {fetchAnonymitySet} from '../../modules/shielded/poolState';
 
 
 /**
@@ -259,8 +262,39 @@ export function DashboardScreen({
     return tokenManager.sortTokens([...defaults, ...tokens]);
   }, [tokens]);
 
-  const usd = formatUsd(portfolio.totalUsd);
-  const change24h = portfolio.change24hPct; // number | null
+  // ── Shielded balances ───────────────────────────────────────────────────────
+  // Re-read on focus so the vault total updates after returning from a shield tx.
+  const [shieldedTick, setShieldedTick] = useState(0);
+  useFocusEffect(useCallback(() => { setShieldedTick(t => t + 1); }, []));
+  const shieldedRows: ShieldedBalanceRow[] = useMemo(
+    () => getShieldedBalances(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [shieldedTick],
+  );
+
+  // Shielded vault total in USD (sum across all pool rows).
+  const shieldedTotalUsd = useMemo(() => {
+    return shieldedRows.reduce((acc, row) => {
+      const uiAmount = Number(row.amount) / 10 ** row.decimals;
+      const price = prices[row.mint]?.usd ?? 0;
+      return acc + uiAmount * price;
+    }, 0);
+  }, [shieldedRows, prices]);
+
+  // ── Anonymity set ───────────────────────────────────────────────────────────
+  const [anon, setAnon] = useState<number | null>(null);
+  useFocusEffect(useCallback(() => {
+    let alive = true;
+    const m = SHIELDED_POOL_MINTS[0];
+    if (m) {
+      fetchAnonymitySet(m).then(v => { if (alive) setAnon(v); });
+    }
+    return () => { alive = false; };
+  }, []));
+
+  const isShielded = mode === 'shielded';
+  const usd = formatUsd(isShielded ? shieldedTotalUsd : portfolio.totalUsd);
+  const change24h = portfolio.change24hPct; // number | null (transparent only)
   const avatarInitial = getAddressInitial(publicKey);
 
   return (
@@ -271,7 +305,7 @@ export function DashboardScreen({
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
 
       <FlatList
-        data={displayTokens}
+        data={isShielded ? ([] as typeof displayTokens) : displayTokens}
         keyExtractor={item => item.mint}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -304,6 +338,7 @@ export function DashboardScreen({
             isOffline={!isOnline}
             change24hPct={change24h}
             havePrices={havePrices}
+            anonymitySet={anon}
           />
         }
         renderItem={({item: token}) => {
@@ -333,11 +368,20 @@ export function DashboardScreen({
           );
         }}
         ListEmptyComponent={
-          <View className="px-5 py-8">
-            <Text variant="body-sm" className="text-fg-tertiary text-center">
-              No tokens yet · pull to refresh
-            </Text>
-          </View>
+          isShielded ? (
+            <ShieldedAssetsSection
+              rows={shieldedRows}
+              prices={prices}
+              hidden={hideBalances}
+              onTokenTap={onTokenTap}
+            />
+          ) : (
+            <View className="px-5 py-8">
+              <Text variant="body-sm" className="text-fg-tertiary text-center">
+                No tokens yet · pull to refresh
+              </Text>
+            </View>
+          )
         }
         ListFooterComponent={
           <DashboardFooter
@@ -374,6 +418,8 @@ interface DashboardHeaderProps {
   isOffline: boolean;
   change24hPct: number | null;
   havePrices: boolean;
+  /** Live on-chain anonymity set leaf count; null while loading or on RPC error. */
+  anonymitySet: number | null;
 }
 
 function DashboardHeader({
@@ -396,6 +442,7 @@ function DashboardHeader({
   isOffline,
   change24hPct,
   havePrices,
+  anonymitySet,
 }: DashboardHeaderProps) {
   const isShielded = mode === 'shielded';
 
@@ -525,12 +572,14 @@ function DashboardHeader({
               Tap eye to reveal
             </Text>
           ) : isShielded ? (
-            <View className="flex-row items-center gap-2 mb-3">
-              <Shield size={14} color="#5BE3C2" strokeWidth={1.75} />
-              <Text variant="body-sm" numeral className="text-accent-shielded">
-                Anonymity set · 1,284
-              </Text>
-            </View>
+            anonymitySet != null ? (
+              <View className="flex-row items-center gap-2 mb-3">
+                <Shield size={14} color="#5BE3C2" strokeWidth={1.75} />
+                <Text variant="body-sm" numeral className="text-accent-shielded">
+                  {`Anonymity set · ${anonymitySet.toLocaleString()}`}
+                </Text>
+              </View>
+            ) : null
           ) : (
             change24hPct == null ? null : (
               <View className="flex-row items-center gap-2 mb-3">
@@ -549,20 +598,25 @@ function DashboardHeader({
             )
           )}
 
-          {/* Sub-balance · SOL + NOC */}
-          <View className="flex-row items-center gap-3">
-            <SubBalanceCell
-              amount={hidden ? '••••' : formatBalanceForDisplay(solBalance, SOL_DECIMALS)}
-              ticker="SOL"
-              hidden={hidden}
-            />
-            <View className="w-1 h-1 rounded-pill bg-fg-tertiary" />
-            <SubBalanceCell
-              amount={hidden ? '••••' : formatBalanceForDisplay(nocBalance, NOC_DECIMALS)}
-              ticker="NOC"
-              hidden={hidden}
-            />
-          </View>
+          {/* Sub-balance · SOL + NOC — transparent only. In shielded mode this
+             would mirror the (unrelated) transparent SOL/NOC balances, which is
+             misleading; the shielded vault shows its own per-token asset rows +
+             anonymity line below instead. */}
+          {isShielded ? null : (
+            <View className="flex-row items-center gap-3">
+              <SubBalanceCell
+                amount={hidden ? '••••' : formatBalanceForDisplay(solBalance, SOL_DECIMALS)}
+                ticker="SOL"
+                hidden={hidden}
+              />
+              <View className="w-1 h-1 rounded-pill bg-fg-tertiary" />
+              <SubBalanceCell
+                amount={hidden ? '••••' : formatBalanceForDisplay(nocBalance, NOC_DECIMALS)}
+                ticker="NOC"
+                hidden={hidden}
+              />
+            </View>
+          )}
         </View>
       </View>
 
@@ -801,6 +855,77 @@ function TokenListRow({
       ) : null}
       <ChevronRight size={18} color="#6E727A" strokeWidth={1.75} />
     </Pressable>
+  );
+}
+
+// ── Shielded assets section ────────────────────────────────────────────────
+
+interface ShieldedAssetsSectionProps {
+  rows: ShieldedBalanceRow[];
+  prices: Record<string, {usd: number; change24h: number | null}>;
+  hidden: boolean;
+  onTokenTap?: (mint: string) => void;
+}
+
+function ShieldedAssetsSection({rows, prices, hidden, onTokenTap}: ShieldedAssetsSectionProps) {
+  const allEmpty = rows.every(r => r.amount === 0n);
+
+  if (allEmpty) {
+    return (
+      <View className="px-5 py-10 items-center">
+        <Text variant="body-lg" className="text-fg-secondary text-center">
+          Nothing shielded yet
+        </Text>
+        <Text variant="body-sm" className="text-fg-tertiary text-center mt-1">
+          Tap Shield to make a token private
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View>
+      {rows.map(row => {
+        const uiAmount = Number(row.amount) / 10 ** row.decimals;
+        const priceUsd = prices[row.mint]?.usd ?? 0;
+        const usd = uiAmount * priceUsd;
+        const hasPrice = prices[row.mint] != null;
+        const formattedBalance = hidden
+          ? `•••••• ${row.symbol}`
+          : `${uiAmount.toFixed(row.decimals > 4 ? 4 : row.decimals)} · shielded`;
+        return (
+          <Pressable
+            key={row.mint}
+            onPress={onTokenTap ? () => onTokenTap(row.mint) : undefined}
+            disabled={!onTokenTap}
+            className="flex-row items-center px-5 py-3 active:bg-bg-surface-1">
+            <TokenLogo symbol={row.symbol} isNoc={row.symbol === 'NOC'} />
+            <View className="flex-1 ml-3">
+              <Text variant="body-lg" className="text-fg-primary">
+                {row.name}
+              </Text>
+              <Text
+                variant="body-sm"
+                numeral={!hidden}
+                className={hidden ? 'text-fg-tertiary' : 'text-accent-shielded'}>
+                {formattedBalance}
+              </Text>
+            </View>
+            {!hidden && hasPrice ? (
+              <View className="items-end mr-2">
+                <Text variant="body-lg" numeral className="text-fg-primary">
+                  {formatUsdString(usd)}
+                </Text>
+                <Text variant="body-sm" className="text-fg-tertiary">
+                  —
+                </Text>
+              </View>
+            ) : null}
+            <ChevronRight size={18} color="#6E727A" strokeWidth={1.75} />
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
