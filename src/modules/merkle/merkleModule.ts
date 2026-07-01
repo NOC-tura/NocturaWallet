@@ -20,6 +20,7 @@ import {
 // ./field module. Re-exported here for backward compatibility with existing
 // importers (tests, merkle consumers).
 export {BN254_FIELD_PRIME, toFieldElement} from './field';
+export {MERKLE_TREE_DEPTH} from './types';
 
 // ---- Minimal in-memory Merkle tree (Poseidon) ---------------------------
 
@@ -78,6 +79,46 @@ export function computeMerkleRoot(leaves: string[]): string {
   }
 
   return layer[0]!;
+}
+
+/**
+ * Merkle authentication path for the leaf at `leafIndex` in a depth-20 tree.
+ * Mirrors computeMerkleRoot exactly (same poseidon2 hashPair + ZERO_HASHES
+ * padding) so the folded root is identical. Returns:
+ *   - siblings[i]:     the sibling node at level i (hex; ZERO_HASHES[i] if absent)
+ *   - pathIndices[i]:  (leafIndex >> i) & 1  (0 = node is left child, 1 = right)
+ *   - root:            the depth-20 root reached by folding leaf up the path
+ */
+export function computeMerklePath(
+  leaves: string[],
+  leafIndex: number,
+): {root: string; siblings: string[]; pathIndices: number[]} {
+  if (leafIndex < 0 || leafIndex >= leaves.length) {
+    throw new Error(`computeMerklePath: leafIndex ${leafIndex} out of range (${leaves.length} leaves)`);
+  }
+  const siblings: string[] = [];
+  const pathIndices: number[] = [];
+  let layer = leaves.slice();
+  let index = leafIndex;
+
+  for (let depth = 0; depth < MERKLE_TREE_DEPTH; depth++) {
+    const isRight = index & 1;
+    const siblingIdx = isRight ? index - 1 : index + 1;
+    const sibling = siblingIdx < layer.length ? layer[siblingIdx]! : ZERO_HASHES[depth]!;
+    siblings.push(sibling);
+    pathIndices.push(isRight);
+
+    const next: string[] = [];
+    for (let i = 0; i < layer.length; i += 2) {
+      const left = layer[i]!;
+      const right = i + 1 < layer.length ? layer[i + 1]! : ZERO_HASHES[depth]!;
+      next.push(hashPair(left, right));
+    }
+    layer = next;
+    index = index >> 1;
+  }
+
+  return {root: computeMerkleRoot(leaves), siblings, pathIndices};
 }
 
 // ---- Persistence helpers -------------------------------------------------
