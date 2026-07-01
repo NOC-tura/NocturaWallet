@@ -25,6 +25,7 @@ jest.mock('@react-navigation/native', () => ({
     // Call synchronously so useMemo/useState updates happen in the same render.
     // Must use require inside factory to avoid jest.mock hoisting TDZ errors.
     const {useEffect} = require('react');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(cb, []);
   },
 }));
