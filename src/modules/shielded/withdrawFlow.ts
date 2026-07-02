@@ -13,7 +13,7 @@ import {
 import {markSpentByIndex, addNote} from './noteStore';
 import {mmkvSecure, initSecureMmkv} from '../../store/mmkv/instances';
 import {deriveSecureStorageKey} from '../keychain/secureStorageKey';
-import {hexToBytes, bytesToHex} from './fieldCodec';
+import {hexToBytes, bytesToHex, decToHex64} from './fieldCodec';
 import {SHIELDED_CU} from '../../constants/programs';
 import type {ShieldedNote} from './types';
 import {buildWithdrawChangeWitness} from './withdrawChangeWitness';
@@ -196,22 +196,40 @@ export async function unshieldWithChange(
     throw new Error(`withdraw_with_change reverted on-chain: ${JSON.stringify(tx.meta.err)}`);
   }
 
-  markSpentByIndex(mintBase58, note.index);
-
+  // Store the change note (with its secret) BEFORE marking the input spent, so a
+  // leaf-index lookup failure leaves the input recoverable (unspent) rather than
+  // losing the change forever (changeNoteSecret is random and only in memory).
   if (w.changeAmount > 0n) {
+    let changeLeafIndex: number | undefined;
+    // Fast path: the LeafInserted event in this tx.
     const events = parseDepositEvents(tx.meta?.logMessages ?? []);
-    if (events.length === 0) throw new Error('LeafInserted event not found for the change note');
+    if (events.length > 0) {
+      changeLeafIndex = events[0]!.leafIndex;
+    } else {
+      // Fallback (RPC returned no logs): the change commitment is on-chain now —
+      // re-sync and locate it among the leaves (deterministic; random secret ⇒ unique).
+      const {leaves: freshLeaves} = await syncLeaves(mintBase58);
+      const found = freshLeaves.indexOf(decToHex64(w.changeCommitmentDec));
+      if (found >= 0) changeLeafIndex = found;
+    }
+    if (changeLeafIndex === undefined) {
+      throw new Error(
+        'Could not locate the change note leaf index — input left unspent; resync and retry',
+      );
+    }
     addNote({
       commitment: w.changeCommitmentDec,
       nullifier: '',
       mint: mintBase58,
       amount: w.changeAmount,
-      index: events[0]!.leafIndex,
+      index: changeLeafIndex,
       spent: false,
       createdAt: Date.now(),
       noteSecret: changeNoteSecret.toString(),
     });
   }
+
+  markSpentByIndex(mintBase58, note.index);
 
   return {txSignature, withdrawn: withdrawAmount, change: w.changeAmount};
 }
