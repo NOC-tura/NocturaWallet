@@ -38,7 +38,7 @@ jest.mock('../../../store/mmkv/instances', () => {
 
 import {pinnedFetch} from '../../sslPinning/pinnedFetch';
 import {_resetRateLimitersForTest} from '../../solana/rpcLimiter';
-import {ZkProverModule} from '../zkProverModule';
+import {ZkProverModule, proveShielded} from '../zkProverModule';
 import {ProofQueue} from '../proofQueue';
 import {ProverUnavailableError, ProofGenerationError} from '../types';
 import type {ProofWitness} from '../types';
@@ -205,6 +205,28 @@ describe('ZkProverModule', () => {
     const jobs = queue.getAll();
     expect(jobs[0]!.status).toBe('done');
     expect(jobs[0]!.result?.proofData).toBe('retried-proof');
+  });
+});
+
+describe('proveShielded', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    _resetRateLimitersForTest();
+  });
+
+  it('returns proofBytes and 6-element publicInputs for withdraw_change', async () => {
+    mockPinnedFetch.mockReturnValueOnce(
+      mockResponse(200, {
+        success: true,
+        proofBytes: '00'.repeat(256),
+        publicInputs: ['1', '2', '3', '4', '5', '6'],
+        proofData: '',
+      }),
+    );
+
+    const res = await proveShielded('withdraw_change', {withdrawAmount: '200'});
+    expect(res.proofBytes.length).toBe(512); // 256 bytes as hex
+    expect(res.publicInputs).toHaveLength(6);
   });
 });
 

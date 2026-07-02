@@ -213,7 +213,7 @@ let _shieldedProveCallId = 0;
  * never leaves the device — see project_shielded_mainnet_blockers memory.
  */
 export async function proveShielded(
-  proofType: 'deposit' | 'withdraw',
+  proofType: 'deposit' | 'withdraw' | 'withdraw_change',
   params: ShieldedProveParams,
 ): Promise<ShieldedProveResult> {
   const callKey = `shieldedProve:${proofType}:${++_shieldedProveCallId}`;
