@@ -3,19 +3,22 @@ import {getConnection} from '../solana/connection';
 import {proveShielded} from '../zkProver/zkProverModule';
 import {syncLeaves} from './merkleSync';
 import {buildWithdrawWitness} from './withdrawWitness';
-import {buildWithdrawIx} from './poolInstructions';
+import {buildWithdrawIx, buildWithdrawWithChangeIx} from './poolInstructions';
 import {submitPoolTxMany} from './poolTx';
-import {poolPda, merkleTreePda, vaultAta, nullifierPda} from './poolPdas';
+import {poolPda, merkleTreePda, vaultAta, nullifierPda, wchangeVkPda} from './poolPdas';
 import {
   findAssociatedTokenAddress,
   buildCreateAtaIdempotentInstruction,
 } from '../solana/transactionBuilder';
-import {markSpentByIndex} from './noteStore';
+import {markSpentByIndex, addNote} from './noteStore';
 import {mmkvSecure, initSecureMmkv} from '../../store/mmkv/instances';
 import {deriveSecureStorageKey} from '../keychain/secureStorageKey';
 import {hexToBytes, bytesToHex} from './fieldCodec';
 import {SHIELDED_CU} from '../../constants/programs';
 import type {ShieldedNote} from './types';
+import {buildWithdrawChangeWitness} from './withdrawChangeWitness';
+import {randomFieldElement} from './noteCrypto';
+import {parseDepositEvents} from './depositEvents';
 
 const PROOF_BYTES_LEN = 256;
 
@@ -114,4 +117,101 @@ export async function unshield(
 
   markSpentByIndex(mintBase58, note.index);
   return {txSignature, amount: note.amount};
+}
+
+export interface UnshieldWithChangeResult {txSignature: string; withdrawn: bigint; change: bigint;}
+
+/**
+ * Partial unshield (change-output): withdraw `withdrawAmount` from `note`, and
+ * reinsert the remainder as a self-change note stored locally. Routes ALL
+ * unshields (whole-note = changeAmount 0). Marks the input note spent and stores
+ * the change note ONLY after a confirmed, non-reverted tx.
+ */
+export async function unshieldWithChange(
+  seed: Uint8Array,
+  feePayer: Keypair,
+  mintBase58: string,
+  note: ShieldedNote,
+  withdrawAmount: bigint,
+): Promise<UnshieldWithChangeResult> {
+  ensureSecureMmkv(seed);
+  const mint = new PublicKey(mintBase58);
+  const destTokenAccount = findAssociatedTokenAddress(feePayer.publicKey, mint);
+
+  const {leaves, onChainRoots} = await syncLeaves(mintBase58);
+  const changeNoteSecret = randomFieldElement();
+
+  const w = buildWithdrawChangeWitness({
+    seed, note, withdrawAmount, changeNoteSecret, destTokenAccount, leaves,
+  });
+
+  if (!onChainRoots.includes(bytesToHex(w.merkleRoot32))) {
+    throw new MerkleRootStaleError();
+  }
+
+  const proof = await proveShielded('withdraw_change', w.params);
+  if (proof.publicInputs[5] !== w.changeCommitmentDec) {
+    throw new Error('Prover changeCommitment mismatch — aborting unshield');
+  }
+  const proofBytes = hexToBytes(proof.proofBytes);
+  if (proofBytes.length !== PROOF_BYTES_LEN) {
+    throw new Error(`proofBytes must be ${PROOF_BYTES_LEN} bytes`);
+  }
+
+  const pool = poolPda(mint);
+  const withdrawIx = buildWithdrawWithChangeIx({
+    merkleRoot: w.merkleRoot32,
+    nullifier: w.nullifier32,
+    amount: withdrawAmount,
+    changeCommitment: w.changeCommitment32,
+    proofBytes,
+    pool,
+    merkleTree: merkleTreePda(pool),
+    vault: vaultAta(pool, mint),
+    destinationTokenAccount: destTokenAccount,
+    nullifierRecord: nullifierPda(w.nullifier32),
+    feePayer: feePayer.publicKey,
+    wchangeVk: wchangeVkPda(pool),
+  });
+  const createAtaIx = buildCreateAtaIdempotentInstruction(
+    feePayer.publicKey, destTokenAccount, feePayer.publicKey, mint,
+  );
+
+  const txSignature = await submitPoolTxMany(
+    [createAtaIx, withdrawIx], SHIELDED_CU.withdrawChange, feePayer,
+  );
+
+  const connection = getConnection();
+  let tx = null;
+  for (let attempt = 0; attempt < 5 && tx === null; attempt++) {
+    tx = await connection.getTransaction(txSignature, {
+      maxSupportedTransactionVersion: 0, commitment: 'confirmed',
+    });
+    if (tx === null && attempt < 4) await sleep(1000);
+  }
+  if (tx === null) {
+    throw new Error(`Withdraw ${txSignature} confirmed but could not be fetched to verify — leaving the note unspent; retry to resync`);
+  }
+  if (tx.meta?.err) {
+    throw new Error(`withdraw_with_change reverted on-chain: ${JSON.stringify(tx.meta.err)}`);
+  }
+
+  markSpentByIndex(mintBase58, note.index);
+
+  if (w.changeAmount > 0n) {
+    const events = parseDepositEvents(tx.meta?.logMessages ?? []);
+    if (events.length === 0) throw new Error('LeafInserted event not found for the change note');
+    addNote({
+      commitment: w.changeCommitmentDec,
+      nullifier: '',
+      mint: mintBase58,
+      amount: w.changeAmount,
+      index: events[0]!.leafIndex,
+      spent: false,
+      createdAt: Date.now(),
+      noteSecret: changeNoteSecret.toString(),
+    });
+  }
+
+  return {txSignature, withdrawn: withdrawAmount, change: w.changeAmount};
 }
