@@ -8,8 +8,9 @@ import {Text} from '../../components/ui';
 import {Keypair} from '@solana/web3.js';
 import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
 import {depositShield} from '../../modules/shielded/depositFlow';
-import {unshield} from '../../modules/shielded/withdrawFlow';
-import {getNotes} from '../../modules/shielded/noteStore';
+import {unshieldWithChange} from '../../modules/shielded/withdrawFlow';
+import {selectInputNote} from '../../modules/shielded/noteSelect';
+import {formatTokenAmount} from '../../utils/parseTokenAmount';
 import {keychainManager} from '../../modules/keychain/keychainModule';
 import {mnemonicToSeed} from '../../modules/keyDerivation/mnemonicUtils';
 import {deriveTransparentKeypair} from '../../modules/keyDerivation/transparent';
@@ -31,7 +32,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ZkProofModal'>;
 type StageNum = 1 | 2 | 3 | 4;
 type StageStatus = 'pending' | 'active' | 'done' | 'errored';
 
-type DepositOutcome = {txSignature: string; leafIndex: number};
+type DepositOutcome = {txSignature: string; leafIndex: number; change?: bigint};
 
 type ChainResult =
   | {kind: 'pending'}
@@ -115,7 +116,7 @@ function reducer(state: ZkUiState, action: Action): ZkUiState {
 /**
  * Dispatcher for shield/unshield operations:
  *   direction === 'private' → depositShield (build note → prove → submit → store)
- *   direction === 'public'  → unshield (spend whole matching note → transparent)
+ *   direction === 'public'  → unshieldWithChange (best-fit note → partial unshield)
  *
  * Seed derivation and zeroization are shared across both paths via try/finally.
  * `params.amount` is the raw token amount string (smallest unit). Throws on
@@ -143,16 +144,14 @@ async function runShieldOp(
       return {txSignature: result.txSignature, leafIndex: result.leafIndex};
     }
 
-    // direction === 'public' → whole-note unshield
-    const target = BigInt(params.amount);
-    const note = getNotes(mint).find(n => n.amount === target);
+    // direction === 'public' → partial unshield (change-output).
+    const W = BigInt(params.amount);
+    const note = selectInputNote(mint, W);
     if (!note) {
-      throw new Error(
-        'POC: unshield supports a full note only — amount must match a shielded note',
-      );
+      throw new Error('No single shielded note covers this amount — unshield a smaller amount');
     }
-    const result = await unshield(seed, feePayer, mint, note);
-    return {txSignature: result.txSignature, leafIndex: note.index};
+    const result = await unshieldWithChange(seed, feePayer, mint, note, W);
+    return {txSignature: result.txSignature, leafIndex: note.index, change: result.change};
   } finally {
     if (seed) zeroize(seed);
   }
@@ -384,6 +383,7 @@ export function ZkProofScreen({navigation, route}: Props) {
   // ── Success screen (deposit confirmed on-chain) ──────────────────────────
   if (state.kind === 'ready') {
     const {txSignature, leafIndex} = state.outcome;
+    const change = state.outcome.change ?? 0n;
     const mint = route.params.mint ?? SHIELDED_POOL_MINTS[0] ?? '';
     const {symbol, decimals} = poolTokenMeta(mint);
     const amountTokens = (
@@ -429,6 +429,11 @@ export function ZkProofScreen({navigation, route}: Props) {
             <Text variant="h2" className="text-accent-shielded mt-5">
               {heroAmount}
             </Text>
+            {change > 0n ? (
+              <Text variant="body" className="text-fg-secondary mt-2 text-center">
+                {`Kept private: ${formatTokenAmount(change, decimals)} ${symbol}`}
+              </Text>
+            ) : null}
 
             <View className="w-full bg-bg-surface-1 rounded-md mt-8 p-4 gap-3">
               <View className="flex-row items-center justify-between">
