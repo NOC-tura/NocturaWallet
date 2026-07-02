@@ -130,3 +130,59 @@ export function buildWithdrawIx(p: WithdrawIxParams): TransactionInstruction {
     data,
   });
 }
+
+export const withdrawChangeDiscriminator = (): Uint8Array => discriminator('withdraw_with_change');
+
+export interface WithdrawWithChangeIxParams {
+  merkleRoot: Uint8Array;              // 32
+  nullifier: Uint8Array;               // 32
+  amount: bigint;
+  changeCommitment: Uint8Array;        // 32
+  proofBytes: Uint8Array;              // 256
+  pool: PublicKey;
+  merkleTree: PublicKey;
+  vault: PublicKey;
+  destinationTokenAccount: PublicKey;
+  nullifierRecord: PublicKey;
+  feePayer: PublicKey;
+  wchangeVk: PublicKey;
+}
+
+/**
+ * withdraw_with_change(merkle_root[32], nullifier[32], amount:u64, change_commitment[32], proof_bytes).
+ * Data = disc(8) + merkle_root(32) + nullifier(32) + amount(u64 LE) + change_commitment(32) + len(u32 LE) + proof.
+ * Accounts (WithdrawWithChangeCtx order): the 8 WithdrawCtx accounts + wchange_vk (ro).
+ * SYNC POINT: the wchange_vk position is assumed appended LAST; confirm vs the ICO's final ctx at deploy.
+ */
+export function buildWithdrawWithChangeIx(p: WithdrawWithChangeIxParams): TransactionInstruction {
+  if (p.merkleRoot.length !== 32) throw new Error('merkleRoot must be 32 bytes');
+  if (p.nullifier.length !== 32) throw new Error('nullifier must be 32 bytes');
+  if (p.changeCommitment.length !== 32) throw new Error('changeCommitment must be 32 bytes');
+  if (p.proofBytes.length !== 256) throw new Error('proofBytes must be 256 bytes');
+
+  const data = Buffer.concat([
+    Buffer.from(withdrawChangeDiscriminator()),
+    Buffer.from(p.merkleRoot),
+    Buffer.from(p.nullifier),
+    Buffer.from(u64le(p.amount)),
+    Buffer.from(p.changeCommitment),
+    Buffer.from(u32le(p.proofBytes.length)),
+    Buffer.from(p.proofBytes),
+  ]);
+
+  return new TransactionInstruction({
+    programId: PROGRAM,
+    keys: [
+      {pubkey: p.pool, isSigner: false, isWritable: false},
+      {pubkey: p.merkleTree, isSigner: false, isWritable: true},
+      {pubkey: p.vault, isSigner: false, isWritable: true},
+      {pubkey: p.destinationTokenAccount, isSigner: false, isWritable: true},
+      {pubkey: p.nullifierRecord, isSigner: false, isWritable: true},
+      {pubkey: p.feePayer, isSigner: true, isWritable: true},
+      {pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false},
+      {pubkey: SystemProgram.programId, isSigner: false, isWritable: false},
+      {pubkey: p.wchangeVk, isSigner: false, isWritable: false},
+    ],
+    data,
+  });
+}
