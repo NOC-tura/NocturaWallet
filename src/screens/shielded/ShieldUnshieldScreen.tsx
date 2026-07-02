@@ -7,11 +7,11 @@ import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {Text} from '../../components/ui';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {cn} from '../../utils/cn';
-import {parseTokenAmount} from '../../utils/parseTokenAmount';
+import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
 import type {RootStackParamList} from '../../types/navigation';
 import {SHIELDED_POOL_MINTS, NOC_MINT} from '../../constants/programs';
 import {poolTokenMeta} from '../../modules/shielded/poolTokens';
-import {getBalance} from '../../modules/shielded/noteStore';
+import {getBalance, getNotes} from '../../modules/shielded/noteStore';
 import {mmkvSecure} from '../../store/mmkv/instances';
 import {TokenSelector} from '../../components/TokenSelector';
 
@@ -114,6 +114,22 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
     }
   }, [selectedMint, tokenMeta.decimals]);
 
+  // Largest unspent note for the selected mint. Unshield is WHOLE-NOTE (the
+  // circuit constrains withdrawAmount == note.amount, no change output), so
+  // MAX fills exactly this note's value — not the vault sum, and not minus a
+  // fee (the SOL relay fee is paid separately by the fee_payer).
+  const largestNoteRaw = useMemo<bigint | null>(() => {
+    if (direction !== 'public') return null;
+    try {
+      if (!mmkvSecure()) return null;
+      const notes = getNotes(selectedMint);
+      if (notes.length === 0) return null;
+      return notes.reduce((max, n) => (n.amount > max ? n.amount : max), 0n);
+    } catch {
+      return null;
+    }
+  }, [direction, selectedMint]);
+
   const sourceBalance = direction === 'private' ? transparentBalance : vaultBalance;
   const sourceLabel = direction === 'private' ? 'Available' : 'Vault balance';
 
@@ -124,11 +140,21 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
   const netReceived = hasAmount && !insufficient ? Math.max(0, parsed - parseFloat(TOTAL_FEE_SOL)) : 0;
 
   const handleMax = useCallback(() => {
+    // Unshield (public): fill the largest note's EXACT value. formatTokenAmount
+    // is the exact bigint inverse of parseTokenAmount, so the amount round-trips
+    // to the note's raw value and the whole-note match in ZkProofScreen succeeds.
+    // No fee subtraction (the fee is SOL, paid by the fee_payer) and no 4-decimal
+    // rounding (which previously produced an amount matching no note).
+    if (direction === 'public') {
+      if (largestNoteRaw === null || largestNoteRaw <= 0n) return;
+      setAmount(formatTokenAmount(largestNoteRaw, tokenMeta.decimals));
+      return;
+    }
     if (sourceBalance <= 0) return;
-    // Use ungrouped numeric string — `formatNumber` adds thousands separators
-    // which parseFloat then stops at, breaking downstream validation.
+    // Shield (private): use ungrouped numeric string — `formatNumber` adds
+    // thousands separators which parseFloat then stops at, breaking validation.
     setAmount(toInputString(Math.max(0, sourceBalance - parseFloat(TOTAL_FEE_SOL)), 4));
-  }, [sourceBalance]);
+  }, [direction, largestNoteRaw, tokenMeta.decimals, sourceBalance]);
 
   const handleSwitchDirection = useCallback((d: Direction) => {
     if (d === direction) return;
