@@ -113,6 +113,24 @@ describe('ShieldUnshieldScreen', () => {
     expect(makePublicTab.props.accessibilityState?.selected).toBe(true);
   });
 
+  it('unshield accepts an arbitrary amount <= the largest note (partial)', () => {
+    const {getByRole, getByTestId} = render(<ShieldUnshieldScreen onBack={jest.fn()} />);
+    fireEvent.press(getByRole('tab', {name: 'Make public'}));
+    fireEvent.changeText(getByTestId('shield-amount-input'), '0.25'); // < 0.3 largest note
+    fireEvent.press(getByTestId('shield-cta'));
+    expect(mockNavigate).toHaveBeenCalledWith(
+      'ZkProofModal',
+      expect.objectContaining({direction: 'public', mint: TEST_MINT, amount: '250000000'}),
+    );
+  });
+
+  it('unshield CTA is disabled when W exceeds the largest note', () => {
+    const {getByRole, getByTestId} = render(<ShieldUnshieldScreen onBack={jest.fn()} />);
+    fireEvent.press(getByRole('tab', {name: 'Make public'}));
+    fireEvent.changeText(getByTestId('shield-amount-input'), '0.35'); // > 0.3 largest note
+    expect(getByTestId('shield-cta').props.accessibilityState?.disabled).toBe(true);
+  });
+
   it('unshield MAX fills the largest note EXACTLY (no fee subtraction) so the whole-note match succeeds', () => {
     const {getByRole, getByLabelText, getByTestId} = render(
       <ShieldUnshieldScreen onBack={jest.fn()} />,

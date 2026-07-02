@@ -133,9 +133,16 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
   const sourceBalance = direction === 'private' ? transparentBalance : vaultBalance;
   const sourceLabel = direction === 'private' ? 'Available' : 'Vault balance';
 
+  // Max withdrawable in one unshield = the largest single note (1-input circuit).
+  // The private direction is unchanged: maxUnshield === sourceBalance there.
+  const maxUnshield = useMemo(() => {
+    if (direction !== 'public') return sourceBalance;
+    return largestNoteRaw === null ? 0 : Number(largestNoteRaw) / 10 ** tokenMeta.decimals;
+  }, [direction, largestNoteRaw, tokenMeta.decimals, sourceBalance]);
+
   const parsed = parseAmount(amount);
   const hasAmount = amount.trim().length > 0 && parsed > 0;
-  const insufficient = hasAmount && parsed > sourceBalance;
+  const insufficient = hasAmount && parsed > maxUnshield;
   const fiatEstimate = hasAmount ? parsed * MOCK_USD_PER_SOL : 0;
   const netReceived = hasAmount && !insufficient ? Math.max(0, parsed - parseFloat(TOTAL_FEE_SOL)) : 0;
 
@@ -272,7 +279,9 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
               <View className="flex-row items-center gap-2">
                 <AlertTriangle size={12} color="#FF5C6A" strokeWidth={2} />
                 <Text variant="caption" className="text-danger">
-                  Insufficient balance · max {formatNumber(sourceBalance, 4)} {tokenMeta.symbol}
+                  {direction === 'public'
+                    ? `Max per unshield: ${formatNumber(maxUnshield, 4)} ${tokenMeta.symbol} (your largest shielded note)`
+                    : `Insufficient balance · max ${formatNumber(sourceBalance, 4)} ${tokenMeta.symbol}`}
                 </Text>
               </View>
             ) : hasAmount ? (
