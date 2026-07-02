@@ -38,7 +38,7 @@ describe('buildWithdrawWithChangeIx', () => {
     expect(ix.data[lenOff + 1]).toBe((256 >> 8) & 0xff);
   });
 
-  it('orders accounts: WithdrawCtx then wchange_vk (ro), correct flags', () => {
+  it('orders accounts: wchange_vk (ro) sits between fee_payer and token_program', () => {
     const ix = buildWithdrawWithChangeIx(base);
     const keys = ix.keys.map(k => [k.pubkey.toBase58(), k.isSigner, k.isWritable]);
     expect(keys).toEqual([
@@ -48,9 +48,9 @@ describe('buildWithdrawWithChangeIx', () => {
       [base.destinationTokenAccount.toBase58(), false, true],
       [base.nullifierRecord.toBase58(), false, true],
       [base.feePayer.toBase58(), true, true],
+      [base.wchangeVk.toBase58(), false, false],  // position 7 (per deployed ctx)
       [TOK, false, false],
       [SYS, false, false],
-      [base.wchangeVk.toBase58(), false, false],
     ]);
   });
 

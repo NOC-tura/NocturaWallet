@@ -179,9 +179,11 @@ export function buildWithdrawWithChangeIx(p: WithdrawWithChangeIxParams): Transa
       {pubkey: p.destinationTokenAccount, isSigner: false, isWritable: true},
       {pubkey: p.nullifierRecord, isSigner: false, isWritable: true},
       {pubkey: p.feePayer, isSigner: true, isWritable: true},
+      // wchange_vk sits BETWEEN fee_payer and token_program per the deployed
+      // WithdrawWithChangeCtx (confirmed against the on-chain program), NOT last.
+      {pubkey: p.wchangeVk, isSigner: false, isWritable: false},
       {pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false},
       {pubkey: SystemProgram.programId, isSigner: false, isWritable: false},
-      {pubkey: p.wchangeVk, isSigner: false, isWritable: false},
     ],
     data,
   });
