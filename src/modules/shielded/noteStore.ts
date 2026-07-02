@@ -91,6 +91,23 @@ export function markSpent(mint: string, nullifiers: string[]): void {
   if (changed) saveNotes(mint, notes);
 }
 
+/**
+ * Mark the note at `leafIndex` as spent. Deposit-created notes store an empty
+ * `nullifier` (it is computed only at withdraw time), so `markSpent(nullifiers)`
+ * cannot match them; the on-chain leaf index is the stable key.
+ */
+export function markSpentByIndex(mint: string, leafIndex: number): void {
+  const notes = loadNotes(mint);
+  let changed = false;
+  for (const note of notes) {
+    if (note.index === leafIndex && !note.spent) {
+      note.spent = true;
+      changed = true;
+    }
+  }
+  if (changed) saveNotes(mint, notes);
+}
+
 export function clearMint(mint: string): void {
   getStorage().remove(storageKey(mint));
 }

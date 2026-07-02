@@ -10,7 +10,7 @@ jest.mock('../../../store/mmkv/instances', () => {
   };
 });
 
-import {getNotes, getBalance, selectNotes, addNote, markSpent, clearMint} from '../noteStore';
+import {getNotes, getBalance, selectNotes, addNote, markSpent, markSpentByIndex, clearMint} from '../noteStore';
 import type {ShieldedNote} from '../types';
 
 const MINT = 'TestMint111111111111111111111111111111111111';
@@ -96,5 +96,21 @@ describe('noteStore', () => {
     addNote({commitment: 'c1', nullifier: '', mint, amount: 5n, index: 0,
       spent: false, createdAt: 1, noteSecret: 'secret-123'});
     expect(getNotes(mint)[0]!.noteSecret).toBe('secret-123');
+  });
+});
+
+const MINT_MBI = 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW';
+
+describe('noteStore.markSpentByIndex', () => {
+  beforeEach(() => {
+    clearMint(MINT_MBI);
+  });
+  it('marks the note at the given leaf index spent (nullifier is empty)', () => {
+    addNote({commitment: 'c0', nullifier: '', mint: MINT_MBI, amount: 100n, index: 0, spent: false, createdAt: 1, noteSecret: 's0'});
+    addNote({commitment: 'c1', nullifier: '', mint: MINT_MBI, amount: 200n, index: 1, spent: false, createdAt: 2, noteSecret: 's1'});
+    expect(getBalance(MINT_MBI)).toBe(300n);
+    markSpentByIndex(MINT_MBI, 1);
+    expect(getBalance(MINT_MBI)).toBe(100n);
+    expect(getNotes(MINT_MBI).map(n => n.index)).toEqual([0]);
   });
 });

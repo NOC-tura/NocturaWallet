@@ -173,6 +173,31 @@ function buildCreateAtaInstruction(
 }
 
 /**
+ * Associated-Token-Account "CreateIdempotent" instruction (data byte 1) — a
+ * no-op if the ATA already exists. Use when we can't cheaply know whether the
+ * destination ATA is present.
+ */
+export function buildCreateAtaIdempotentInstruction(
+  payer: PublicKey,
+  ata: PublicKey,
+  owner: PublicKey,
+  mint: PublicKey,
+): TransactionInstruction {
+  return new TransactionInstruction({
+    keys: [
+      {pubkey: payer, isSigner: true, isWritable: true},
+      {pubkey: ata, isSigner: false, isWritable: true},
+      {pubkey: owner, isSigner: false, isWritable: false},
+      {pubkey: mint, isSigner: false, isWritable: false},
+      {pubkey: SystemProgram.programId, isSigner: false, isWritable: false},
+      {pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false},
+    ],
+    programId: SPL_ATA_PROGRAM_ID,
+    data: Buffer.from([1]),
+  });
+}
+
+/**
  * Build the instruction list for a native SOL transfer: optional priority fee,
  * the recipient transfer, and the Noctura fee-markup transfer. Exposed so
  * signAndSend can rebuild the transaction with a fresh blockhash per retry.

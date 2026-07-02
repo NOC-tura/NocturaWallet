@@ -1,4 +1,4 @@
-import {PublicKey, TransactionInstruction} from '@solana/web3.js';
+import {PublicKey, SystemProgram, TransactionInstruction} from '@solana/web3.js';
 import {sha256} from '@noble/hashes/sha2.js';
 import {SHIELDED_POOL_PROGRAM_ID} from '../../constants/programs';
 
@@ -74,6 +74,58 @@ export function buildDepositIx(p: DepositIxParams): TransactionInstruction {
       {pubkey: p.depositor, isSigner: true, isWritable: false},
       {pubkey: p.depositorTokenAccount, isSigner: false, isWritable: true},
       {pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false},
+    ],
+    data,
+  });
+}
+
+export const withdrawDiscriminator = (): Uint8Array => discriminator('withdraw');
+
+export interface WithdrawIxParams {
+  merkleRoot: Uint8Array;   // 32
+  nullifier: Uint8Array;    // 32
+  amount: bigint;
+  proofBytes: Uint8Array;   // 256
+  pool: PublicKey;
+  merkleTree: PublicKey;
+  vault: PublicKey;
+  destinationTokenAccount: PublicKey;
+  nullifierRecord: PublicKey;
+  feePayer: PublicKey;
+}
+
+/**
+ * withdraw(merkle_root: [u8;32], nullifier: [u8;32], amount: u64, proof_bytes).
+ * Data = disc(8) + merkle_root(32) + nullifier(32) + amount(u64 LE) + len(u32 LE) + proof.
+ * Accounts (WithdrawCtx order): pool(ro), merkle_tree(mut), vault(mut),
+ * destination_token_account(mut), nullifier_record(mut/init), fee_payer(signer,mut),
+ * token_program(ro), system_program(ro).
+ */
+export function buildWithdrawIx(p: WithdrawIxParams): TransactionInstruction {
+  if (p.merkleRoot.length !== 32) throw new Error('merkleRoot must be 32 bytes');
+  if (p.nullifier.length !== 32) throw new Error('nullifier must be 32 bytes');
+  if (p.proofBytes.length !== 256) throw new Error('proofBytes must be 256 bytes');
+
+  const data = Buffer.concat([
+    Buffer.from(withdrawDiscriminator()),
+    Buffer.from(p.merkleRoot),
+    Buffer.from(p.nullifier),
+    Buffer.from(u64le(p.amount)),
+    Buffer.from(u32le(p.proofBytes.length)),
+    Buffer.from(p.proofBytes),
+  ]);
+
+  return new TransactionInstruction({
+    programId: PROGRAM,
+    keys: [
+      {pubkey: p.pool, isSigner: false, isWritable: false},
+      {pubkey: p.merkleTree, isSigner: false, isWritable: true},
+      {pubkey: p.vault, isSigner: false, isWritable: true},
+      {pubkey: p.destinationTokenAccount, isSigner: false, isWritable: true},
+      {pubkey: p.nullifierRecord, isSigner: false, isWritable: true},
+      {pubkey: p.feePayer, isSigner: true, isWritable: true},
+      {pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false},
+      {pubkey: SystemProgram.programId, isSigner: false, isWritable: false},
     ],
     data,
   });

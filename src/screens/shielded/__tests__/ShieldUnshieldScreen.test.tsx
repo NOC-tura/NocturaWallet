@@ -31,6 +31,10 @@ jest.mock('../../../store/zustand/walletStore', () => ({
 
 jest.mock('../../../modules/shielded/noteStore', () => ({
   getBalance: jest.fn().mockReturnValue(BigInt('500000000')), // 0.5 TEST in vault
+  getNotes: jest.fn().mockReturnValue([
+    {commitment: 'c0', nullifier: '', mint: 'DevMint1111111111111111111111111111111111111', amount: BigInt('200000000'), index: 0, spent: false, createdAt: 1, noteSecret: 's0'},
+    {commitment: 'c1', nullifier: '', mint: 'DevMint1111111111111111111111111111111111111', amount: BigInt('300000000'), index: 1, spent: false, createdAt: 2, noteSecret: 's1'},
+  ]),
 }));
 
 jest.mock('../../../store/mmkv/instances', () => ({
@@ -107,5 +111,25 @@ describe('ShieldUnshieldScreen', () => {
     // The CTA label depends on canSubmit; with no amount it shows "Unshield TEST"
     // (we look for the tab being selected instead, which is safe to assert)
     expect(makePublicTab.props.accessibilityState?.selected).toBe(true);
+  });
+
+  it('unshield MAX fills the largest note EXACTLY (no fee subtraction) so the whole-note match succeeds', () => {
+    const {getByRole, getByLabelText, getByTestId} = render(
+      <ShieldUnshieldScreen onBack={jest.fn()} />,
+    );
+    fireEvent.press(getByRole('tab', {name: 'Make public'}));
+    fireEvent.press(getByLabelText('Max'));
+    fireEvent.press(getByTestId('shield-cta'));
+    // Largest note = 300000000 raw (0.3 TEST). MAX must produce EXACTLY that raw
+    // amount (not 0.3 - fee, not a 4-decimal-rounded value) so ZkProofScreen's
+    // exact `note.amount === BigInt(params.amount)` selection matches.
+    expect(mockNavigate).toHaveBeenCalledWith(
+      'ZkProofModal',
+      expect.objectContaining({
+        direction: 'public',
+        mint: TEST_MINT,
+        amount: '300000000',
+      }),
+    );
   });
 });
