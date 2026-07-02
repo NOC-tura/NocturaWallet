@@ -27,6 +27,13 @@ interface PinnedFetchOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   headers?: Record<string, string>;
   body?: string;
+  /**
+   * Per-request timeout (ms). Default 10s suits price/RPC calls, but ZK proving
+   * on the hosted prover (depth-20 circuits, cold-start proving-key loading) can
+   * take tens of seconds — those callers pass a larger value so the request is
+   * not killed mid-proof with a spurious "Network request failed" transport timeout.
+   */
+  timeoutMs?: number;
 }
 
 interface PinnedFetchResponse {
@@ -56,7 +63,7 @@ export async function pinnedFetch(
   url: string,
   options: PinnedFetchOptions = {},
 ): Promise<PinnedFetchResponse> {
-  const {method = 'GET', headers = {}, body} = options;
+  const {method = 'GET', headers = {}, body, timeoutMs = 10_000} = options;
 
   const mergedHeaders: Record<string, string> = {...headers};
   if (body && !mergedHeaders['Content-Type']) {
@@ -72,7 +79,7 @@ export async function pinnedFetch(
       sslPinning: {
         certs: SSL_PINS,
       },
-      timeoutInterval: 10_000,
+      timeoutInterval: timeoutMs,
     });
 
     return {

@@ -221,6 +221,10 @@ export async function proveShielded(
     pinnedFetch(`${API_BASE}/zk/prove`, {
       method: 'POST',
       body: JSON.stringify({proofType, params}),
+      // ZK proving is slow (depth-20 circuits + cold-start key loading on the
+      // hosted prover); the default 10s timeout kills it mid-proof with a
+      // spurious "Network request failed". 2 min gives real headroom.
+      timeoutMs: 120_000,
     }),
   );
   if (resp.status !== 200) {
