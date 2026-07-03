@@ -32,7 +32,9 @@ describe('buildWithdrawChangeWitness', () => {
     expect(w.params.recipientField).toBe(expectedRecip.toString());
     expect(w.params.mintHash).toBe(mH.toString());
     expect(w.params.pkRecipientHash).toBe(pkH.toString());
-    expect('changeCommitment' in w.params).toBe(false);
+    // changeCommitment IS a required public input signal of the circuit, so it
+    // must be present in the prover params (as well as returned for the ix arg).
+    expect(w.params.changeCommitment).toBe(expectedChangeCommitment.toString());
     expect(w.changeCommitmentDec).toBe(expectedChangeCommitment.toString());
     expect(w.changeCommitment32.length).toBe(32);
     expect(w.nullifier32.length).toBe(32);

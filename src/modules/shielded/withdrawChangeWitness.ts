@@ -56,7 +56,10 @@ export function buildWithdrawChangeWitness(
   const {root, siblings, pathIndices} = computeMerklePath(leaves, note.index);
   const merkleRootDec = hexToDec(root);
 
-  // Computed locally: circuit constrains it from private inputs, so NOT in params.
+  // The circuit declares changeCommitment as a PUBLIC INPUT signal (and internally
+  // constrains it == poseidon5(...)), so snarkjs fullProve requires it in the
+  // input JSON. The wallet computes it locally and passes it as a param; it is
+  // also returned for the ix arg + a cross-check against publicInputs[5].
   const changeCommitment = noteCommitment({
     pkRecipientHash: pkH,
     amount: changeAmount,
@@ -70,6 +73,7 @@ export function buildWithdrawChangeWitness(
     withdrawAmount: withdrawAmount.toString(),
     recipientField: recip.toString(),
     mintHash: mH.toString(),
+    changeCommitment: changeCommitment.toString(),
     noteSecret: BigInt(note.noteSecret).toString(),
     pkRecipientHash: pkH.toString(),
     inputAmount: note.amount.toString(),

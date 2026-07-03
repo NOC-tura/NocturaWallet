@@ -232,10 +232,18 @@ export async function proveShielded(
   }
   const data = (await resp.json()) as {
     success: boolean; proofData?: string; proofBytes?: string;
-    publicInputs?: string[]; error?: string;
+    publicInputs?: string[]; error?: unknown;
   };
   if (!data.success || !data.proofBytes || !data.publicInputs) {
-    throw new Error(data.error ?? 'Shielded prover returned no proofBytes');
+    // The prover may return `error` as a string OR an object; stringify objects
+    // so the failure is legible instead of surfacing as "[object Object]".
+    const reason =
+      data.error == null
+        ? 'Shielded prover returned no proofBytes'
+        : typeof data.error === 'string'
+          ? data.error
+          : JSON.stringify(data.error);
+    throw new Error(`Shielded prover (${proofType}) failed: ${reason}`);
   }
   return {
     proofBytes: data.proofBytes,
