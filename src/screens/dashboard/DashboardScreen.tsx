@@ -52,6 +52,7 @@ import {getShieldedBalances, type ShieldedBalanceRow} from '../../modules/shield
 import {fetchAnonymitySet} from '../../modules/shielded/poolState';
 import {mmkvSecure} from '../../store/mmkv/instances';
 import {unlockSecureStorage} from '../../modules/session/secureStorageSession';
+import {syncLeaves} from '../../modules/shielded/merkleSync';
 
 
 /**
@@ -306,6 +307,15 @@ export function DashboardScreen({
     }
     return () => { alive = false; };
   }, []));
+
+  // Warm the Merkle-sync cache in the background while the user views the
+  // shielded vault, so a subsequent unshield's syncLeaves is incremental (fast)
+  // instead of doing a full pool re-scan on the critical path. Fire-and-forget.
+  useEffect(() => {
+    if (mode !== 'shielded') return;
+    const m = SHIELDED_POOL_MINTS[0];
+    if (m) void syncLeaves(m).catch(() => { /* best-effort warmup */ });
+  }, [mode]);
 
   const isShielded = mode === 'shielded';
   const usd = formatUsd(isShielded ? shieldedTotalUsd : portfolio.totalUsd);
