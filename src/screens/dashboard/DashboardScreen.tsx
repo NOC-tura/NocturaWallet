@@ -50,6 +50,8 @@ import {TokenLogo} from '../../components/TokenLogo';
 import {PresaleBanner} from '../../components/PresaleBanner';
 import {getShieldedBalances, type ShieldedBalanceRow} from '../../modules/shielded/shieldedBalances';
 import {fetchAnonymitySet} from '../../modules/shielded/poolState';
+import {mmkvSecure} from '../../store/mmkv/instances';
+import {unlockSecureStorage} from '../../modules/session/secureStorageSession';
 
 
 /**
@@ -271,6 +273,19 @@ export function DashboardScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [shieldedTick],
   );
+
+  // If the user views the shielded vault but the encrypted note store isn't open
+  // yet (unlock-time init was skipped/failed → the vault would show empty even
+  // though notes exist), open it on demand (biometric), then re-read. No-op when
+  // already open or not in shielded mode.
+  useEffect(() => {
+    if (mode !== 'shielded' || mmkvSecure() !== null) return;
+    let alive = true;
+    unlockSecureStorage()
+      .then(() => { if (alive) setShieldedTick(t => t + 1); })
+      .catch(() => { /* leave empty; the user can retry or re-unlock */ });
+    return () => { alive = false; };
+  }, [mode]);
 
   // Shielded vault total in USD (sum across all pool rows).
   const shieldedTotalUsd = useMemo(() => {

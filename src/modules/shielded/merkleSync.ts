@@ -118,13 +118,21 @@ export async function syncLeaves(mintBase58: string): Promise<MerkleSyncResult> 
     if (page.length < 1000) break;
   }
 
-  // Parse LeafInserted events from the NEW txs (oldest-first for stable order).
+  // Parse LeafInserted events from the NEW txs. Fetch in parallel chunks — a
+  // sequential scan of a large pool over RPC is the withdraw's main latency;
+  // densify is keyed by leaf_index, so fetch order does not matter.
   const newEvents: DepositEvent[] = [];
-  for (const sig of newSigs.reverse()) {
-    const tx = await connection.getTransaction(sig, {
-      maxSupportedTransactionVersion: 0, commitment: 'confirmed',
-    });
-    newEvents.push(...parseDepositEvents(tx?.meta?.logMessages ?? []));
+  const FETCH_CONCURRENCY = 20;
+  for (let i = 0; i < newSigs.length; i += FETCH_CONCURRENCY) {
+    const chunk = newSigs.slice(i, i + FETCH_CONCURRENCY);
+    const txs = await Promise.all(
+      chunk.map(sig =>
+        connection.getTransaction(sig, {
+          maxSupportedTransactionVersion: 0, commitment: 'confirmed',
+        }),
+      ),
+    );
+    for (const tx of txs) newEvents.push(...parseDepositEvents(tx?.meta?.logMessages ?? []));
   }
 
   // Merge cached leaves (indices 0..N-1) with the new events (by leaf_index).
