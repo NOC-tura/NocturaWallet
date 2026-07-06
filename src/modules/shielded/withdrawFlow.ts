@@ -10,7 +10,7 @@ import {
   findAssociatedTokenAddress,
   buildCreateAtaIdempotentInstruction,
 } from '../solana/transactionBuilder';
-import {markSpentByIndex, addNote} from './noteStore';
+import {markSpentByIndex, markSpentByCommitment, setNoteIndex, addNote} from './noteStore';
 import {mmkvSecure, initSecureMmkv} from '../../store/mmkv/instances';
 import {deriveSecureStorageKey} from '../keychain/secureStorageKey';
 import {hexToBytes, bytesToHex, decToHex64} from './fieldCodec';
@@ -19,8 +19,44 @@ import type {ShieldedNote} from './types';
 import {buildWithdrawChangeWitness} from './withdrawChangeWitness';
 import {randomFieldElement} from './noteCrypto';
 import {parseDepositEvents} from './depositEvents';
+import {withTimeout} from '../solana/withTimeout';
 
 const PROOF_BYTES_LEN = 256;
+
+/** Sentinel leaf index for a change note whose on-chain index isn't known yet. */
+const UNRESOLVED_INDEX = -1;
+
+/**
+ * Best-effort, time-bounded lookup of a change note's on-chain leaf index after
+ * its withdraw tx confirms. The tx already succeeded (pollConfirmation confirmed
+ * + err-checked it), so this NEVER blocks the flow: it tries the tx's
+ * LeafInserted event, then a resync + deterministic commitment lookup, each under
+ * a timeout, and returns UNRESOLVED_INDEX if neither resolves promptly (the index
+ * is then backfilled when the change note is later spent).
+ */
+async function resolveChangeLeafIndex(
+  txSignature: string,
+  changeCommitmentDec: string,
+  mintBase58: string,
+): Promise<number> {
+  const connection = getConnection();
+  try {
+    const tx = await withTimeout(
+      connection.getTransaction(txSignature, {
+        maxSupportedTransactionVersion: 0, commitment: 'confirmed',
+      }),
+      12_000, 'getTransaction',
+    );
+    const events = parseDepositEvents(tx?.meta?.logMessages ?? []);
+    if (events.length > 0) return events[0]!.leafIndex;
+  } catch { /* fall through to resync */ }
+  try {
+    const {leaves} = await withTimeout(syncLeaves(mintBase58), 20_000, 'resync');
+    const found = leaves.indexOf(decToHex64(changeCommitmentDec));
+    if (found >= 0) return found;
+  } catch { /* fall through to sentinel */ }
+  return UNRESOLVED_INDEX;
+}
 
 const sleep = (ms: number): Promise<void> =>
   new Promise(resolve => setTimeout(resolve, ms));
@@ -143,9 +179,22 @@ export async function unshieldWithChange(
   const {leaves, onChainRoots} = await syncLeaves(mintBase58);
   const changeNoteSecret = randomFieldElement();
 
+  // Resolve the input note's on-chain leaf index if it was stored with a sentinel
+  // (a change note whose index wasn't known at creation). Backfill it so the
+  // Merkle path is built for the correct leaf and future reads are correct.
+  let inputNote = note;
+  if (inputNote.index < 0) {
+    const idx = leaves.indexOf(decToHex64(inputNote.commitment));
+    if (idx < 0) {
+      throw new Error('This shielded note is not on-chain yet — try again in a moment');
+    }
+    inputNote = {...inputNote, index: idx};
+    setNoteIndex(mintBase58, inputNote.commitment, idx);
+  }
+
   onStep?.('2/5 building witness…');
   const w = buildWithdrawChangeWitness({
-    seed, note, withdrawAmount, changeNoteSecret, destTokenAccount, leaves,
+    seed, note: inputNote, withdrawAmount, changeNoteSecret, destTokenAccount, leaves,
   });
 
   if (!onChainRoots.includes(bytesToHex(w.merkleRoot32))) {
@@ -188,56 +237,30 @@ export async function unshieldWithChange(
     [createAtaIx, withdrawIx], SHIELDED_CU.withdrawChange, feePayer,
   );
 
-  onStep?.('5/5 confirming…');
-  const connection = getConnection();
-  let tx = null;
-  for (let attempt = 0; attempt < 5 && tx === null; attempt++) {
-    tx = await connection.getTransaction(txSignature, {
-      maxSupportedTransactionVersion: 0, commitment: 'confirmed',
-    });
-    if (tx === null && attempt < 4) await sleep(1000);
-  }
-  if (tx === null) {
-    throw new Error(`Withdraw ${txSignature} confirmed but could not be fetched to verify — leaving the note unspent; retry to resync`);
-  }
-  if (tx.meta?.err) {
-    throw new Error(`withdraw_with_change reverted on-chain: ${JSON.stringify(tx.meta.err)}`);
-  }
-
-  // Store the change note (with its secret) BEFORE marking the input spent, so a
-  // leaf-index lookup failure leaves the input recoverable (unspent) rather than
-  // losing the change forever (changeNoteSecret is random and only in memory).
+  // submitPoolTxMany confirmed the tx over HTTP polling (getSignatureStatus,
+  // which also surfaces an on-chain error) — so the withdraw already succeeded.
+  // Do NOT re-fetch it in a blocking loop (a stalled getTransaction hung the flow
+  // here on-device). Record the change note (with its secret) FIRST — resolving
+  // its leaf index best-effort, or a sentinel to backfill on spend — then mark the
+  // input spent. Neither step can hang or lose the change.
+  onStep?.('5/5 recording…');
   if (w.changeAmount > 0n) {
-    let changeLeafIndex: number | undefined;
-    // Fast path: the LeafInserted event in this tx.
-    const events = parseDepositEvents(tx.meta?.logMessages ?? []);
-    if (events.length > 0) {
-      changeLeafIndex = events[0]!.leafIndex;
-    } else {
-      // Fallback (RPC returned no logs): the change commitment is on-chain now —
-      // re-sync and locate it among the leaves (deterministic; random secret ⇒ unique).
-      const {leaves: freshLeaves} = await syncLeaves(mintBase58);
-      const found = freshLeaves.indexOf(decToHex64(w.changeCommitmentDec));
-      if (found >= 0) changeLeafIndex = found;
-    }
-    if (changeLeafIndex === undefined) {
-      throw new Error(
-        'Could not locate the change note leaf index — input left unspent; resync and retry',
-      );
-    }
+    const changeLeafIndex = await resolveChangeLeafIndex(
+      txSignature, w.changeCommitmentDec, mintBase58,
+    );
     addNote({
       commitment: w.changeCommitmentDec,
       nullifier: '',
       mint: mintBase58,
       amount: w.changeAmount,
-      index: changeLeafIndex,
+      index: changeLeafIndex, // may be UNRESOLVED_INDEX; backfilled when spent
       spent: false,
       createdAt: Date.now(),
       noteSecret: changeNoteSecret.toString(),
     });
   }
 
-  markSpentByIndex(mintBase58, note.index);
+  markSpentByCommitment(mintBase58, inputNote.commitment);
 
   return {txSignature, withdrawn: withdrawAmount, change: w.changeAmount};
 }

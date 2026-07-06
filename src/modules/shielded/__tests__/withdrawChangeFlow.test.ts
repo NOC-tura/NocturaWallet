@@ -29,7 +29,12 @@ jest.mock('../../zkProver/zkProverModule', () => ({
   })),
 }));
 jest.mock('../poolTx', () => ({submitPoolTxMany: jest.fn(async () => 'SIG')}));
-jest.mock('../noteStore', () => ({markSpentByIndex: jest.fn(), addNote: jest.fn()}));
+jest.mock('../noteStore', () => ({
+  markSpentByIndex: jest.fn(),
+  markSpentByCommitment: jest.fn(),
+  setNoteIndex: jest.fn(),
+  addNote: jest.fn(),
+}));
 jest.mock('../../solana/connection', () => ({
   getConnection: () => ({
     getTransaction: jest.fn(async () => ({meta: {err: null, logMessages: logState.logs}})),
@@ -42,7 +47,7 @@ jest.mock('../../../store/mmkv/instances', () => ({
 
 import {unshieldWithChange, MerkleRootStaleError} from '../withdrawFlow';
 import {syncLeaves} from '../merkleSync';
-import {markSpentByIndex, addNote} from '../noteStore';
+import {markSpentByCommitment, setNoteIndex, addNote} from '../noteStore';
 import type {ShieldedNote} from '../types';
 
 const MINT = 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW';
@@ -81,7 +86,7 @@ describe('unshieldWithChange', () => {
         noteSecret: expect.any(String),
       }),
     );
-    expect(markSpentByIndex).toHaveBeenCalledWith(MINT, 0);
+    expect(markSpentByCommitment).toHaveBeenCalledWith(MINT, 'c');
   });
 
   it('falls back to resync to locate the change leaf when the tx has no logs', async () => {
@@ -95,7 +100,22 @@ describe('unshieldWithChange', () => {
     expect(addNote).toHaveBeenCalledWith(
       expect.objectContaining({commitment: '12345', index: 0}),
     );
-    expect(markSpentByIndex).toHaveBeenCalledWith(MINT, 0);
+    expect(markSpentByCommitment).toHaveBeenCalledWith(MINT, 'c');
+  });
+
+  it('resolves a sentinel input-note index from the synced leaves and backfills it', async () => {
+    const {decToHex64} = jest.requireActual('../fieldCodec') as typeof import('../fieldCodec');
+    // Input note stored with an unresolved index (-1); its commitment 'c' hashes
+    // to decToHex64('...') — put that hex in the leaves at index 2.
+    const cHex = decToHex64('777');
+    const sentinelNote: ShieldedNote = {...note, commitment: '777', index: -1};
+    (syncLeaves as jest.Mock).mockResolvedValue({
+      leaves: ['x', 'y', cHex],
+      onChainRoots: [rootHex],
+    });
+    await unshieldWithChange(seed, feePayer, MINT, sentinelNote, 200n);
+    expect(setNoteIndex).toHaveBeenCalledWith(MINT, '777', 2);
+    expect(markSpentByCommitment).toHaveBeenCalledWith(MINT, '777');
   });
 
   it('throws MerkleRootStaleError before proving when the root is absent', async () => {
@@ -103,6 +123,6 @@ describe('unshieldWithChange', () => {
     await expect(
       unshieldWithChange(seed, feePayer, MINT, note, 200n),
     ).rejects.toBeInstanceOf(MerkleRootStaleError);
-    expect(markSpentByIndex).not.toHaveBeenCalled();
+    expect(markSpentByCommitment).not.toHaveBeenCalled();
   });
 });

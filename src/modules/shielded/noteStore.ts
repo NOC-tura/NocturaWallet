@@ -108,6 +108,41 @@ export function markSpentByIndex(mint: string, leafIndex: number): void {
   if (changed) saveNotes(mint, notes);
 }
 
+/**
+ * Mark the note with the given `commitment` (decimal) as spent. Robust when the
+ * note's on-chain leaf index is not yet known (change notes may be stored with a
+ * sentinel index and resolved lazily) — commitments are unique, so this always
+ * targets the right note.
+ */
+export function markSpentByCommitment(mint: string, commitment: string): void {
+  const notes = loadNotes(mint);
+  let changed = false;
+  for (const note of notes) {
+    if (note.commitment === commitment && !note.spent) {
+      note.spent = true;
+      changed = true;
+    }
+  }
+  if (changed) saveNotes(mint, notes);
+}
+
+/**
+ * Set the on-chain leaf index of a stored note (by commitment). Used to backfill
+ * a change note whose index could not be determined at withdraw time (stored with
+ * a sentinel) once it is resolved from the synced tree at spend time.
+ */
+export function setNoteIndex(mint: string, commitment: string, index: number): void {
+  const notes = loadNotes(mint);
+  let changed = false;
+  for (const note of notes) {
+    if (note.commitment === commitment && note.index !== index) {
+      note.index = index;
+      changed = true;
+    }
+  }
+  if (changed) saveNotes(mint, notes);
+}
+
 export function clearMint(mint: string): void {
   getStorage().remove(storageKey(mint));
 }
