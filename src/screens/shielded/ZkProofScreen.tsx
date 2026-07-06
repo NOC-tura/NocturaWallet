@@ -124,6 +124,7 @@ function reducer(state: ZkUiState, action: Action): ZkUiState {
  */
 async function runShieldOp(
   params: Props['route']['params'],
+  onStep?: (label: string, detail?: string) => void,
 ): Promise<DepositOutcome> {
   let seed: Uint8Array | null = null;
   try {
@@ -150,7 +151,7 @@ async function runShieldOp(
     if (!note) {
       throw new Error('No single shielded note covers this amount — unshield a smaller amount');
     }
-    const result = await unshieldWithChange(seed, feePayer, mint, note, W);
+    const result = await unshieldWithChange(seed, feePayer, mint, note, W, onStep);
     return {txSignature: result.txSignature, leafIndex: note.index, change: result.change};
   } finally {
     if (seed) zeroize(seed);
@@ -169,6 +170,14 @@ export function ZkProofScreen({navigation, route}: Props) {
   const [isRetrying, setIsRetrying] = useState(false);
   const [isProceeding, setIsProceeding] = useState(false);
   const guardTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  // Diagnostic sub-step (unshield): shows which stage is actually running so a
+  // hang can be localized on-device. The prove step also copies the exact
+  // /zk/prove request body to the clipboard for relay.
+  const [diag, setDiag] = useState('');
+  const onStep = useCallback((label: string, detail?: string) => {
+    setDiag(label);
+    if (detail) Clipboard.setString(detail);
+  }, []);
 
   // FLAG_SECURE on mount, off on unmount
   useEffect(() => {
@@ -194,7 +203,7 @@ export function ZkProofScreen({navigation, route}: Props) {
 
     async function runChain() {
       try {
-        const outcome = await runShieldOp(route.params);
+        const outcome = await runShieldOp(route.params, onStep);
         if (cancelled) return;
         chainResultRef.current = {kind: 'success', outcome};
       } catch (err) {
@@ -207,7 +216,7 @@ export function ZkProofScreen({navigation, route}: Props) {
     return () => {
       cancelled = true;
     };
-  }, [retryCounter, route.params]);
+  }, [retryCounter, route.params, onStep]);
 
   // Mount + retry → kick off the state machine
   useEffect(() => {
@@ -301,7 +310,7 @@ export function ZkProofScreen({navigation, route}: Props) {
     let cancelled = false;
     async function runHosted() {
       try {
-        const outcome = await runShieldOp(route.params);
+        const outcome = await runShieldOp(route.params, onStep);
         if (cancelled) return;
         dispatch({type: 'ADVANCE_TO_READY', outcome});
       } catch (err) {
@@ -535,6 +544,11 @@ export function ZkProofScreen({navigation, route}: Props) {
           <Text variant="body-sm" className="text-fg-secondary mt-2 text-center max-w-xs">
             {hero.sub}
           </Text>
+          {diag ? (
+            <Text variant="caption" mono className="text-accent-shielded mt-3 text-center">
+              {diag}
+            </Text>
+          ) : null}
         </View>
 
         {/* Hosted banner (only on failed with hostedBanner) */}

@@ -133,14 +133,17 @@ export async function unshieldWithChange(
   mintBase58: string,
   note: ShieldedNote,
   withdrawAmount: bigint,
+  onStep?: (label: string, detail?: string) => void,
 ): Promise<UnshieldWithChangeResult> {
   ensureSecureMmkv(seed);
   const mint = new PublicKey(mintBase58);
   const destTokenAccount = findAssociatedTokenAddress(feePayer.publicKey, mint);
 
+  onStep?.('1/5 syncing tree…');
   const {leaves, onChainRoots} = await syncLeaves(mintBase58);
   const changeNoteSecret = randomFieldElement();
 
+  onStep?.('2/5 building witness…');
   const w = buildWithdrawChangeWitness({
     seed, note, withdrawAmount, changeNoteSecret, destTokenAccount, leaves,
   });
@@ -149,6 +152,9 @@ export async function unshieldWithChange(
     throw new MerkleRootStaleError();
   }
 
+  // Hand the exact /zk/prove request body up so the UI can copy it to the
+  // clipboard (relay to the prover team) — and mark that we've reached the POST.
+  onStep?.('3/5 proving…', JSON.stringify({proofType: 'withdraw_change', params: w.params}));
   const proof = await proveShielded('withdraw_change', w.params);
   if (proof.publicInputs[5] !== w.changeCommitmentDec) {
     throw new Error('Prover changeCommitment mismatch — aborting unshield');
@@ -177,10 +183,12 @@ export async function unshieldWithChange(
     feePayer.publicKey, destTokenAccount, feePayer.publicKey, mint,
   );
 
+  onStep?.('4/5 submitting…');
   const txSignature = await submitPoolTxMany(
     [createAtaIx, withdrawIx], SHIELDED_CU.withdrawChange, feePayer,
   );
 
+  onStep?.('5/5 confirming…');
   const connection = getConnection();
   let tx = null;
   for (let attempt = 0; attempt < 5 && tx === null; attempt++) {
