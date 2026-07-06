@@ -388,6 +388,10 @@ export class Connection {
     }),
   );
 
+  getBlockHeight = jest.fn(
+    async (_commitment?: unknown): Promise<number> => 0,
+  );
+
   getSignatureStatuses = jest.fn(
     async (
       _signatures: string[],

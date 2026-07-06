@@ -4,6 +4,37 @@ import type {SignAndSendResult} from './types';
 
 const DEFAULT_MAX_RETRIES = 3;
 
+const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
+
+/**
+ * Confirm a transaction by POLLING getSignatureStatus over HTTP — deliberately
+ * NOT connection.confirmTransaction, which relies on a WebSocket signature
+ * subscription. Some endpoints (e.g. Helius with a query-param api-key) don't
+ * deliver WS notifications, so confirmTransaction hangs until blockhash expiry;
+ * polling is endpoint-agnostic. Resolves with the confirmationStatus once
+ * 'confirmed'/'finalized'; throws 'block height exceeded' once the blockhash's
+ * lastValidBlockHeight passes (caller then retries with a fresh blockhash);
+ * throws on an on-chain error.
+ */
+async function pollConfirmation(
+  connection: Connection,
+  signature: string,
+  lastValidBlockHeight: number,
+): Promise<string> {
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const {value} = await connection.getSignatureStatus(signature);
+    if (value?.err) {
+      throw new Error(`Transaction failed on-chain: ${JSON.stringify(value.err)}`);
+    }
+    const status = value?.confirmationStatus;
+    if (status === 'confirmed' || status === 'finalized') return status;
+    const height = await connection.getBlockHeight('confirmed');
+    if (height > lastValidBlockHeight) throw new Error('block height exceeded');
+    await sleep(1000);
+  }
+}
+
 interface SignAndSendOptions {
   maxRetries?: number;
 }
@@ -68,15 +99,11 @@ export async function signAndSend(
         maxRetries: 0, // We handle retries ourselves
       });
 
-      // 4. Confirm with block height check
-      await connection.confirmTransaction(
-        {signature, blockhash, lastValidBlockHeight},
-        'confirmed',
+      // 4. Confirm by HTTP polling (NOT WS-based confirmTransaction — see
+      //    pollConfirmation). Throws 'block height exceeded' on expiry → retry.
+      const confirmationStatus = await pollConfirmation(
+        connection, signature, lastValidBlockHeight,
       );
-
-      // 5. Get final status
-      const status = await connection.getSignatureStatus(signature);
-      const confirmationStatus = status.value?.confirmationStatus ?? 'confirmed';
 
       return {
         signature,
