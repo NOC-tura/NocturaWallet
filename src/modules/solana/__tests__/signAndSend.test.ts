@@ -23,10 +23,9 @@ describe('signAndSend', () => {
   });
 
   it('throws with E022 after max retries', async () => {
-    (connection.confirmTransaction as jest.Mock).mockRejectedValue(
-      new Error('Transaction was not confirmed'),
-    );
+    // Never confirms; block height always past expiry → every attempt expires.
     (connection.getSignatureStatus as jest.Mock).mockResolvedValue({value: null});
+    (connection.getBlockHeight as jest.Mock).mockResolvedValue(1_000_000); // > lastValidBlockHeight 999_999
 
     await expect(
       signAndSend(connection, mockSpec, [mockSigner], {maxRetries: 1}),
@@ -34,18 +33,21 @@ describe('signAndSend', () => {
   });
 
   it('retries with new blockhash on expiry', async () => {
-    let attempt = 0;
-    (connection.confirmTransaction as jest.Mock).mockImplementation(async () => {
-      attempt++;
-      if (attempt < 2) throw new Error('Transaction expired');
-      return {value: {err: null}};
+    // First poll: not confirmed + height past expiry → retry. Second: confirmed.
+    (connection.getBlockHeight as jest.Mock).mockResolvedValue(1_000_000);
+    let polls = 0;
+    (connection.getSignatureStatus as jest.Mock).mockImplementation(async () => {
+      polls++;
+      return polls < 2
+        ? {value: null}
+        : {value: {confirmationStatus: 'confirmed', err: null}};
     });
 
     const result = await signAndSend(connection, mockSpec, [mockSigner], {
       maxRetries: 3,
     });
     expect(result.signature).toBeDefined();
-    expect(connection.getLatestBlockhash).toHaveBeenCalledTimes(attempt);
+    expect(connection.getLatestBlockhash).toHaveBeenCalledTimes(2); // 1 expired + 1 success
   });
 
   it('each retry uses a NEW blockhash', async () => {
@@ -55,12 +57,13 @@ describe('signAndSend', () => {
       blockhashes.push(bh);
       return {blockhash: bh, lastValidBlockHeight: 999999};
     });
-
-    let attempt = 0;
-    (connection.confirmTransaction as jest.Mock).mockImplementation(async () => {
-      attempt++;
-      if (attempt < 2) throw new Error('Block height exceeded');
-      return {value: {err: null}};
+    (connection.getBlockHeight as jest.Mock).mockResolvedValue(1_000_000);
+    let polls = 0;
+    (connection.getSignatureStatus as jest.Mock).mockImplementation(async () => {
+      polls++;
+      return polls < 2
+        ? {value: null}
+        : {value: {confirmationStatus: 'confirmed', err: null}};
     });
 
     await signAndSend(connection, mockSpec, [mockSigner], {maxRetries: 3});
@@ -69,15 +72,17 @@ describe('signAndSend', () => {
   });
 
   it('rebuilds transaction with new blockhash on each attempt', async () => {
-    let attempt = 0;
-    (connection.confirmTransaction as jest.Mock).mockImplementation(async () => {
-      attempt++;
-      if (attempt < 2) throw new Error('Transaction expired');
-      return {value: {err: null}};
+    (connection.getBlockHeight as jest.Mock).mockResolvedValue(1_000_000);
+    let polls = 0;
+    (connection.getSignatureStatus as jest.Mock).mockImplementation(async () => {
+      polls++;
+      return polls < 2
+        ? {value: null}
+        : {value: {confirmationStatus: 'confirmed', err: null}};
     });
 
     await signAndSend(connection, mockSpec, [mockSigner], {maxRetries: 3});
-    // sendRawTransaction called once per successful attempt (2 total: 1 expired + 1 success)
+    // sendRawTransaction called once per attempt (2 total: 1 expired + 1 success)
     expect(connection.sendRawTransaction).toHaveBeenCalledTimes(2);
   });
 });

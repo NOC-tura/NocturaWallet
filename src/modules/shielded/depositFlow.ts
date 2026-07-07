@@ -7,6 +7,7 @@ import {submitPoolTx} from './poolTx';
 import {poolPda, merkleTreePda, vaultAta} from './poolPdas';
 import {resolveSourceTokenAccount} from '../solana/transactionBuilder';
 import {addNote} from './noteStore';
+import {resolveLeafIndex} from './leafResolver';
 import {SHIELDED_CU} from '../../constants/programs';
 import {mmkvSecure, initSecureMmkv} from '../../store/mmkv/instances';
 import {deriveSecureStorageKey} from '../keychain/secureStorageKey';
@@ -73,13 +74,16 @@ export async function depositShield(
   feePayer: Keypair,
   mintBase58: string,
   amount: bigint,
+  onStep?: (label: string) => void,
 ): Promise<DepositResult> {
   const mint = new PublicKey(mintBase58);
   // The note store writes to the encrypted MMKV — make sure it's initialized
   // (the app never wired initSecureMmkv elsewhere). Seed-derived key, idempotent.
   ensureSecureMmkv(seed);
+  onStep?.('1/4 building note…');
   const {params, note} = buildDepositNote(seed, amount, mint);
 
+  onStep?.('2/4 proving…');
   const proof = await proveShielded('deposit', params);
   const proofBytes = hexToBytes(proof.proofBytes);
   if (proofBytes.length !== PROOF_BYTES_LEN) {
@@ -105,24 +109,23 @@ export async function depositShield(
     depositorTokenAccount,
   });
 
+  onStep?.('3/4 submitting…');
   const txSignature = await submitPoolTx(ix, SHIELDED_CU.deposit, feePayer);
 
-  const tx = await connection.getTransaction(txSignature, {
-    maxSupportedTransactionVersion: 0, commitment: 'confirmed',
-  });
-  if (tx?.meta?.err) {
-    throw new Error(
-      `Deposit transaction reverted on-chain: ${JSON.stringify(tx.meta.err)}`,
-    );
-  }
-  const leafIndex = parseDepositLeafIndex(tx?.meta?.logMessages ?? []);
+  // submitPoolTx confirmed the tx via HTTP polling (which also surfaces on-chain
+  // errors), so the deposit already succeeded. Do NOT block on a plain
+  // getTransaction to read the leaf index (an unbounded RN fetch on a
+  // just-confirmed tx hung the shield here) — resolve it time-bounded, with a
+  // sentinel backfilled on spend if the RPC can't surface it promptly.
+  onStep?.('4/4 recording…');
+  const leafIndex = await resolveLeafIndex(txSignature, note.commitment, mintBase58);
 
   addNote({
     commitment: note.commitment,
     nullifier: '', // computed at withdraw time from noteSecret + leafIndex
     mint: mintBase58,
     amount,
-    index: leafIndex,
+    index: leafIndex, // may be UNRESOLVED_INDEX; backfilled when spent
     spent: false,
     createdAt: Date.now(),
     noteSecret: note.noteSecret,

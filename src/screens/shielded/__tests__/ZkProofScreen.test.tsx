@@ -3,18 +3,17 @@ import {render, fireEvent, act} from '@testing-library/react-native';
 import {Alert} from 'react-native';
 import {ZkProofScreen} from '../ZkProofScreen';
 import {depositShield} from '../../../modules/shielded/depositFlow';
-import {unshield} from '../../../modules/shielded/withdrawFlow';
-import {getNotes} from '../../../modules/shielded/noteStore';
+import {unshieldWithChange} from '../../../modules/shielded/withdrawFlow';
+import {selectInputNote} from '../../../modules/shielded/noteSelect';
 
 jest.mock('../../../modules/shielded/depositFlow', () => ({depositShield: jest.fn()}));
 jest.mock('../../../modules/shielded/withdrawFlow', () => ({
-  unshield: jest.fn(async () => ({txSignature: 'WSIG', amount: 200_000_000n})),
+  unshield: jest.fn(),
+  unshieldWithChange: jest.fn(async () => ({txSignature: 'WSIG', withdrawn: 200_000_000n, change: 300_000_000n})),
   MerkleRootStaleError: class extends Error {},
 }));
-jest.mock('../../../modules/shielded/noteStore', () => ({
-  getNotes: jest.fn(() => [
-    {commitment: 'c', nullifier: '', mint: 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW', amount: 200_000_000n, index: 0, spent: false, createdAt: 1, noteSecret: '9'},
-  ]),
+jest.mock('../../../modules/shielded/noteSelect', () => ({
+  selectInputNote: jest.fn(() => ({commitment: 'c', nullifier: '', mint: 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW', amount: 500_000_000n, index: 0, spent: false, createdAt: 1, noteSecret: '9'})),
 }));
 jest.mock('../../../modules/keychain/keychainModule', () => ({
   keychainManager: {retrieveSeed: jest.fn().mockResolvedValue('test mnemonic words')},
@@ -49,8 +48,8 @@ jest.mock('../../../modules/shielded/poolTokens', () => ({
 }));
 
 const mockDeposit = depositShield as jest.MockedFunction<typeof depositShield>;
-const mockUnshield = unshield as jest.MockedFunction<typeof unshield>;
-const mockGetNotes = getNotes as jest.MockedFunction<typeof getNotes>;
+const mockUnshieldWithChange = unshieldWithChange as jest.MockedFunction<typeof unshieldWithChange>;
+const mockSelectInputNote = selectInputNote as jest.MockedFunction<typeof selectInputNote>;
 
 const mockNavigate = jest.fn();
 const mockReplace = jest.fn();
@@ -71,12 +70,10 @@ const route = {
 beforeEach(() => {
   jest.useFakeTimers();
   mockDeposit.mockReset();
-  mockUnshield.mockReset();
-  mockUnshield.mockResolvedValue({txSignature: 'WSIG', amount: 200_000_000n});
-  mockGetNotes.mockReset();
-  mockGetNotes.mockReturnValue([
-    {commitment: 'c', nullifier: '', mint: 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW', amount: 200_000_000n, index: 0, spent: false, createdAt: 1, noteSecret: '9'},
-  ]);
+  mockUnshieldWithChange.mockReset();
+  mockUnshieldWithChange.mockResolvedValue({txSignature: 'WSIG', withdrawn: 200_000_000n, change: 300_000_000n});
+  mockSelectInputNote.mockReset();
+  mockSelectInputNote.mockReturnValue({commitment: 'c', nullifier: '', mint: 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW', amount: 500_000_000n, index: 0, spent: false, createdAt: 1, noteSecret: '9'});
   mockNavigate.mockClear();
   mockReplace.mockClear();
   mockGoBack.mockClear();
@@ -129,6 +126,27 @@ describe('ZkProofScreen', () => {
       jest.advanceTimersByTime(3100); // end of proving → verifying
     });
     expect(getByText('Verify locally')).toBeTruthy();
+  });
+
+  it('transitions to ready when the chain op resolves AFTER the animation (regression: 90% hang)', async () => {
+    // The op stays pending through the whole ~7s animation, then resolves. Before
+    // the fix, pct sat at 90% and the polling fallback (gated on pct===100) never
+    // ran → the screen hung forever. Now the timeout drives pct to 100 so polling
+    // engages and the late result transitions to the success screen.
+    let resolveOp: (v: {txSignature: string; leafIndex: number; amount: bigint}) => void = () => {};
+    mockDeposit.mockReturnValue(new Promise(r => { resolveOp = r; }));
+    const {queryByTestId} = render(<ZkProofScreen navigation={navigation} route={route} />);
+    act(() => { jest.advanceTimersByTime(2100); }); // building → proving
+    act(() => { jest.advanceTimersByTime(3100); }); // proving → verifying
+    act(() => { jest.advanceTimersByTime(2100); }); // verifying ends, op pending → pct 100
+    expect(queryByTestId('shield-done-button')).toBeNull(); // not ready yet
+    await act(async () => {
+      resolveOp({txSignature: 'SiGnAtUrEabcdefgh12345678', leafIndex: 0, amount: 5000000000n});
+      await Promise.resolve();
+    });
+    act(() => { jest.advanceTimersByTime(300); }); // polling fallback (200ms) fires
+    await act(async () => { await Promise.resolve(); });
+    expect(queryByTestId('shield-done-button')).toBeTruthy(); // reached the success screen
   });
 
   it('fast-forwards to ready when chain succeeds during building', async () => {
@@ -313,9 +331,9 @@ describe('ZkProofScreen', () => {
     expect(mockGoBack).toHaveBeenCalled();
   });
 
-  // ── Public direction (unshield) tests ─────────────────────────────────────
+  // ── Public direction (partial unshield) tests ────────────────────────────
 
-  it('public direction: calls unshield with matching note and shows "Unshielded" on success', async () => {
+  it('public direction: calls unshieldWithChange with best-fit note and shows "Unshielded" on success', async () => {
     const NOC_MINT = 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW';
     const publicRoute = {
       key: 'ZkProofModal-public-test',
@@ -323,8 +341,8 @@ describe('ZkProofScreen', () => {
       params: {direction: 'public' as const, amount: '200000000', mint: NOC_MINT},
     } as any;
     mockDeposit.mockReturnValue(new Promise(() => {})); // should not be called
-    mockUnshield.mockResolvedValue({txSignature: 'WSIG12345678abcdefgh', amount: 200_000_000n});
-    const {getByText} = render(<ZkProofScreen navigation={navigation} route={publicRoute} />);
+    mockUnshieldWithChange.mockResolvedValue({txSignature: 'WSIG12345678abcdefgh', withdrawn: 200_000_000n, change: 300_000_000n});
+    const {getByText, queryByText} = render(<ZkProofScreen navigation={navigation} route={publicRoute} />);
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
@@ -334,21 +352,22 @@ describe('ZkProofScreen', () => {
     act(() => {
       jest.advanceTimersByTime(2100);
     });
-    expect(mockUnshield).toHaveBeenCalled();
+    expect(mockUnshieldWithChange).toHaveBeenCalled();
     expect(mockDeposit).not.toHaveBeenCalled();
     expect(getByText('Unshielded')).toBeTruthy();
     expect(getByText('Your funds are public again in your transparent balance.')).toBeTruthy();
+    expect(queryByText(/Kept private/)).toBeTruthy();
   });
 
-  it('public direction: success screen shows "unshielded" amount label', async () => {
+  it('public direction: success screen shows "unshielded" amount label and kept-private change', async () => {
     const NOC_MINT = 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW';
     const publicRoute = {
       key: 'ZkProofModal-public-test-2',
       name: 'ZkProofModal',
       params: {direction: 'public' as const, amount: '200000000', mint: NOC_MINT},
     } as any;
-    mockUnshield.mockResolvedValue({txSignature: 'WSIG12345678abcdefgh', amount: 200_000_000n});
-    const {getByText} = render(<ZkProofScreen navigation={navigation} route={publicRoute} />);
+    mockUnshieldWithChange.mockResolvedValue({txSignature: 'WSIG12345678abcdefgh', withdrawn: 200_000_000n, change: 300_000_000n});
+    const {getByText, queryByText} = render(<ZkProofScreen navigation={navigation} route={publicRoute} />);
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
@@ -360,16 +379,18 @@ describe('ZkProofScreen', () => {
     });
     expect(getByText(/unshielded/)).toBeTruthy();
     expect(getByText('Done')).toBeTruthy();
+    expect(queryByText(/Kept private/)).toBeTruthy();
   });
 
-  it('public direction: fails with error when no matching note found', async () => {
+  it('public direction: fails with error when no note covers the amount', async () => {
     const NOC_MINT = 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW';
     const publicRoute = {
       key: 'ZkProofModal-public-test-3',
       name: 'ZkProofModal',
       params: {direction: 'public' as const, amount: '999999999', mint: NOC_MINT},
     } as any;
-    // getNotes returns a note with amount 200_000_000n, not 999_999_999n
+    // selectInputNote returns null → throws "No single shielded note covers this amount"
+    mockSelectInputNote.mockReturnValue(null);
     const {getByText} = render(<ZkProofScreen navigation={navigation} route={publicRoute} />);
     await act(async () => {
       await Promise.resolve();
@@ -381,7 +402,7 @@ describe('ZkProofScreen', () => {
       jest.advanceTimersByTime(2100);
     });
     expect(getByText("Couldn't generate proof")).toBeTruthy();
-    expect(mockUnshield).not.toHaveBeenCalled();
+    expect(mockUnshieldWithChange).not.toHaveBeenCalled();
   });
 
   // ── Mint threading tests ──────────────────────────────────────────────────
@@ -405,6 +426,7 @@ describe('ZkProofScreen', () => {
       expect.anything(),        // feePayer
       specificMint,             // mint from params
       BigInt(route.params.amount),
+      expect.any(Function),     // onStep progress callback
     );
   });
 
@@ -423,6 +445,7 @@ describe('ZkProofScreen', () => {
       expect.anything(),
       TEST_POOL_MINT,           // default pool mint
       BigInt(route.params.amount),
+      expect.any(Function),     // onStep progress callback
     );
   });
 

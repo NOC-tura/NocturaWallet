@@ -91,3 +91,4 @@ claude-desktop-skills/
 android/app/src/main/assets/index.android.bundle
 android/app/src/main/assets/index.android.bundle.hbc
 android/app/src/main/assets/index.android.bundle.map
+android/app/src/main/cpp/blst/

@@ -213,7 +213,7 @@ let _shieldedProveCallId = 0;
  * never leaves the device — see project_shielded_mainnet_blockers memory.
  */
 export async function proveShielded(
-  proofType: 'deposit' | 'withdraw',
+  proofType: 'deposit' | 'withdraw' | 'withdraw_change',
   params: ShieldedProveParams,
 ): Promise<ShieldedProveResult> {
   const callKey = `shieldedProve:${proofType}:${++_shieldedProveCallId}`;
@@ -221,6 +221,10 @@ export async function proveShielded(
     pinnedFetch(`${API_BASE}/zk/prove`, {
       method: 'POST',
       body: JSON.stringify({proofType, params}),
+      // ZK proving is slow (depth-20 circuits + cold-start key loading on the
+      // hosted prover); the default 10s timeout kills it mid-proof with a
+      // spurious "Network request failed". 2 min gives real headroom.
+      timeoutMs: 120_000,
     }),
   );
   if (resp.status !== 200) {
@@ -228,14 +232,43 @@ export async function proveShielded(
   }
   const data = (await resp.json()) as {
     success: boolean; proofData?: string; proofBytes?: string;
-    publicInputs?: string[]; error?: string;
+    publicInputs?: string[]; error?: unknown;
   };
   if (!data.success || !data.proofBytes || !data.publicInputs) {
-    throw new Error(data.error ?? 'Shielded prover returned no proofBytes');
+    // The prover may return `error` as a string OR an object; stringify objects
+    // so the failure is legible instead of surfacing as "[object Object]".
+    const reason =
+      data.error == null
+        ? 'Shielded prover returned no proofBytes'
+        : typeof data.error === 'string'
+          ? data.error
+          : JSON.stringify(data.error);
+    throw new Error(`Shielded prover (${proofType}) failed: ${reason}`);
   }
   return {
     proofBytes: data.proofBytes,
     publicInputs: data.publicInputs,
     proofData: data.proofData ?? '',
   };
+}
+
+/**
+ * Best-effort, fire-and-forget warmup of a hosted-prover circuit so the first
+ * real prove of a session isn't a cold-start (loading the zkey from disk can take
+ * minutes; a warm zkey proves in <1s). Call when the user enters a flow that will
+ * soon prove (e.g. opening the shielded vault) — by unshield time the prover is
+ * hot. Idempotent + spam-safe server-side; never throws.
+ */
+export async function warmProver(
+  proofType: 'deposit' | 'withdraw' | 'withdraw_change',
+): Promise<void> {
+  try {
+    await pinnedFetch(`${API_BASE}/zk/warm`, {
+      method: 'POST',
+      body: JSON.stringify({proofType}),
+      timeoutMs: 8_000,
+    });
+  } catch {
+    /* best-effort — a failed warmup just means the first prove pays the cold cost */
+  }
 }

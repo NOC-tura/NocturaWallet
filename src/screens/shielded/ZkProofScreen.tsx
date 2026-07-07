@@ -8,8 +8,9 @@ import {Text} from '../../components/ui';
 import {Keypair} from '@solana/web3.js';
 import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
 import {depositShield} from '../../modules/shielded/depositFlow';
-import {unshield} from '../../modules/shielded/withdrawFlow';
-import {getNotes} from '../../modules/shielded/noteStore';
+import {unshieldWithChange} from '../../modules/shielded/withdrawFlow';
+import {selectInputNote} from '../../modules/shielded/noteSelect';
+import {formatTokenAmount} from '../../utils/parseTokenAmount';
 import {keychainManager} from '../../modules/keychain/keychainModule';
 import {mnemonicToSeed} from '../../modules/keyDerivation/mnemonicUtils';
 import {deriveTransparentKeypair} from '../../modules/keyDerivation/transparent';
@@ -31,7 +32,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ZkProofModal'>;
 type StageNum = 1 | 2 | 3 | 4;
 type StageStatus = 'pending' | 'active' | 'done' | 'errored';
 
-type DepositOutcome = {txSignature: string; leafIndex: number};
+type DepositOutcome = {txSignature: string; leafIndex: number; change?: bigint};
 
 type ChainResult =
   | {kind: 'pending'}
@@ -115,7 +116,7 @@ function reducer(state: ZkUiState, action: Action): ZkUiState {
 /**
  * Dispatcher for shield/unshield operations:
  *   direction === 'private' → depositShield (build note → prove → submit → store)
- *   direction === 'public'  → unshield (spend whole matching note → transparent)
+ *   direction === 'public'  → unshieldWithChange (best-fit note → partial unshield)
  *
  * Seed derivation and zeroization are shared across both paths via try/finally.
  * `params.amount` is the raw token amount string (smallest unit). Throws on
@@ -123,6 +124,7 @@ function reducer(state: ZkUiState, action: Action): ZkUiState {
  */
 async function runShieldOp(
   params: Props['route']['params'],
+  onStep?: (label: string, detail?: string) => void,
 ): Promise<DepositOutcome> {
   let seed: Uint8Array | null = null;
   try {
@@ -139,20 +141,19 @@ async function runShieldOp(
         feePayer,
         mint,
         BigInt(params.amount),
+        onStep,
       );
       return {txSignature: result.txSignature, leafIndex: result.leafIndex};
     }
 
-    // direction === 'public' → whole-note unshield
-    const target = BigInt(params.amount);
-    const note = getNotes(mint).find(n => n.amount === target);
+    // direction === 'public' → partial unshield (change-output).
+    const W = BigInt(params.amount);
+    const note = selectInputNote(mint, W);
     if (!note) {
-      throw new Error(
-        'POC: unshield supports a full note only — amount must match a shielded note',
-      );
+      throw new Error('No single shielded note covers this amount — unshield a smaller amount');
     }
-    const result = await unshield(seed, feePayer, mint, note);
-    return {txSignature: result.txSignature, leafIndex: note.index};
+    const result = await unshieldWithChange(seed, feePayer, mint, note, W, onStep);
+    return {txSignature: result.txSignature, leafIndex: note.index, change: result.change};
   } finally {
     if (seed) zeroize(seed);
   }
@@ -170,6 +171,10 @@ export function ZkProofScreen({navigation, route}: Props) {
   const [isRetrying, setIsRetrying] = useState(false);
   const [isProceeding, setIsProceeding] = useState(false);
   const guardTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  // Live sub-step label (e.g. "3/5 proving…") shown under the stage hero so a
+  // slow op reads as progress, not a stall.
+  const [diag, setDiag] = useState('');
+  const onStep = useCallback((label: string) => setDiag(label), []);
 
   // FLAG_SECURE on mount, off on unmount
   useEffect(() => {
@@ -195,7 +200,7 @@ export function ZkProofScreen({navigation, route}: Props) {
 
     async function runChain() {
       try {
-        const outcome = await runShieldOp(route.params);
+        const outcome = await runShieldOp(route.params, onStep);
         if (cancelled) return;
         chainResultRef.current = {kind: 'success', outcome};
       } catch (err) {
@@ -208,7 +213,7 @@ export function ZkProofScreen({navigation, route}: Props) {
     return () => {
       cancelled = true;
     };
-  }, [retryCounter, route.params]);
+  }, [retryCounter, route.params, onStep]);
 
   // Mount + retry → kick off the state machine
   useEffect(() => {
@@ -254,9 +259,13 @@ export function ZkProofScreen({navigation, route}: Props) {
         dispatch({type: 'ADVANCE_TO_PROVING'});
       } else if (state.kind === 'proving') {
         dispatch({type: 'ADVANCE_TO_VERIFYING'});
+      } else {
+        // Verifying ended but the chain op is still running (op slower than the
+        // ~7s animation). Drive pct to 100 so the polling-fallback effect below
+        // engages and transitions to ready/failed once the op resolves. WITHOUT
+        // this the bar sat at 90% forever whenever the op outlasted the animation.
+        dispatch({type: 'TICK', pct: 100});
       }
-      // If we're in verifying and chain still pending: fall through to
-      // the polling effect below.
     }, duration);
 
     return () => {
@@ -302,7 +311,7 @@ export function ZkProofScreen({navigation, route}: Props) {
     let cancelled = false;
     async function runHosted() {
       try {
-        const outcome = await runShieldOp(route.params);
+        const outcome = await runShieldOp(route.params, onStep);
         if (cancelled) return;
         dispatch({type: 'ADVANCE_TO_READY', outcome});
       } catch (err) {
@@ -384,6 +393,7 @@ export function ZkProofScreen({navigation, route}: Props) {
   // ── Success screen (deposit confirmed on-chain) ──────────────────────────
   if (state.kind === 'ready') {
     const {txSignature, leafIndex} = state.outcome;
+    const change = state.outcome.change ?? 0n;
     const mint = route.params.mint ?? SHIELDED_POOL_MINTS[0] ?? '';
     const {symbol, decimals} = poolTokenMeta(mint);
     const amountTokens = (
@@ -429,6 +439,11 @@ export function ZkProofScreen({navigation, route}: Props) {
             <Text variant="h2" className="text-accent-shielded mt-5">
               {heroAmount}
             </Text>
+            {change > 0n ? (
+              <Text variant="body" className="text-fg-secondary mt-2 text-center">
+                {`Kept private: ${formatTokenAmount(change, decimals)} ${symbol}`}
+              </Text>
+            ) : null}
 
             <View className="w-full bg-bg-surface-1 rounded-md mt-8 p-4 gap-3">
               <View className="flex-row items-center justify-between">
@@ -436,7 +451,7 @@ export function ZkProofScreen({navigation, route}: Props) {
                   Note position
                 </Text>
                 <Text variant="body-sm" mono className="text-fg-primary">
-                  #{leafIndex}
+                  {leafIndex < 0 ? 'pending' : `#${leafIndex}`}
                 </Text>
               </View>
               <View className="h-px bg-bg-surface-3" />
@@ -530,6 +545,11 @@ export function ZkProofScreen({navigation, route}: Props) {
           <Text variant="body-sm" className="text-fg-secondary mt-2 text-center max-w-xs">
             {hero.sub}
           </Text>
+          {diag ? (
+            <Text variant="caption" mono className="text-accent-shielded mt-3 text-center">
+              {diag}
+            </Text>
+          ) : null}
         </View>
 
         {/* Hosted banner (only on failed with hostedBanner) */}

@@ -50,6 +50,10 @@ import {TokenLogo} from '../../components/TokenLogo';
 import {PresaleBanner} from '../../components/PresaleBanner';
 import {getShieldedBalances, type ShieldedBalanceRow} from '../../modules/shielded/shieldedBalances';
 import {fetchAnonymitySet} from '../../modules/shielded/poolState';
+import {mmkvSecure} from '../../store/mmkv/instances';
+import {unlockSecureStorage} from '../../modules/session/secureStorageSession';
+import {syncLeaves} from '../../modules/shielded/merkleSync';
+import {warmProver} from '../../modules/zkProver/zkProverModule';
 
 
 /**
@@ -272,6 +276,19 @@ export function DashboardScreen({
     [shieldedTick],
   );
 
+  // If the user views the shielded vault but the encrypted note store isn't open
+  // yet (unlock-time init was skipped/failed → the vault would show empty even
+  // though notes exist), open it on demand (biometric), then re-read. No-op when
+  // already open or not in shielded mode.
+  useEffect(() => {
+    if (mode !== 'shielded' || mmkvSecure() !== null) return;
+    let alive = true;
+    unlockSecureStorage()
+      .then(() => { if (alive) setShieldedTick(t => t + 1); })
+      .catch(() => { /* leave empty; the user can retry or re-unlock */ });
+    return () => { alive = false; };
+  }, [mode]);
+
   // Shielded vault total in USD (sum across all pool rows).
   const shieldedTotalUsd = useMemo(() => {
     return shieldedRows.reduce((acc, row) => {
@@ -291,6 +308,20 @@ export function DashboardScreen({
     }
     return () => { alive = false; };
   }, []));
+
+  // While the user views the shielded vault, warm two things in the background so
+  // a subsequent unshield is fast on the critical path: (1) the Merkle-sync cache
+  // (incremental instead of a full pool re-scan); (2) the hosted withdraw_change
+  // prover (avoids a cold-start zkey load on the first prove). Both fire-and-forget.
+  useEffect(() => {
+    if (mode !== 'shielded') return;
+    const m = SHIELDED_POOL_MINTS[0];
+    if (m) void syncLeaves(m).catch(() => { /* best-effort warmup */ });
+    // Warm both provers the shielded vault can trigger: shield → deposit,
+    // unshield → withdraw_change. Cheap, idempotent, fire-and-forget.
+    void warmProver('deposit');
+    void warmProver('withdraw_change');
+  }, [mode]);
 
   const isShielded = mode === 'shielded';
   const usd = formatUsd(isShielded ? shieldedTotalUsd : portfolio.totalUsd);
