@@ -54,6 +54,7 @@ import {mmkvSecure} from '../../store/mmkv/instances';
 import {unlockSecureStorage} from '../../modules/session/secureStorageSession';
 import {syncLeaves} from '../../modules/shielded/merkleSync';
 import {warmProver} from '../../modules/zkProver/zkProverModule';
+import {scanIncomingNotes} from '../../modules/shielded/noteScan';
 
 
 /**
@@ -321,6 +322,14 @@ export function DashboardScreen({
     // unshield → withdraw_change. Cheap, idempotent, fire-and-forget.
     void warmProver('deposit');
     void warmProver('withdraw_change');
+    // Scan for incoming private notes (P2P transfers sent to this wallet).
+    // Fire-and-forget: if the view key store is locked, returns 0 harmlessly.
+    // On discovery, bump shieldedTick so getShieldedBalances() re-reads.
+    if (m) {
+      void scanIncomingNotes(m)
+        .then(n => { if (n > 0) setShieldedTick(t => t + 1); })
+        .catch(() => {});
+    }
   }, [mode]);
 
   const isShielded = mode === 'shielded';
