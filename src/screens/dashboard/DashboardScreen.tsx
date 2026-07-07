@@ -53,6 +53,7 @@ import {fetchAnonymitySet} from '../../modules/shielded/poolState';
 import {mmkvSecure} from '../../store/mmkv/instances';
 import {unlockSecureStorage} from '../../modules/session/secureStorageSession';
 import {syncLeaves} from '../../modules/shielded/merkleSync';
+import {warmProver} from '../../modules/zkProver/zkProverModule';
 
 
 /**
@@ -308,13 +309,15 @@ export function DashboardScreen({
     return () => { alive = false; };
   }, []));
 
-  // Warm the Merkle-sync cache in the background while the user views the
-  // shielded vault, so a subsequent unshield's syncLeaves is incremental (fast)
-  // instead of doing a full pool re-scan on the critical path. Fire-and-forget.
+  // While the user views the shielded vault, warm two things in the background so
+  // a subsequent unshield is fast on the critical path: (1) the Merkle-sync cache
+  // (incremental instead of a full pool re-scan); (2) the hosted withdraw_change
+  // prover (avoids a cold-start zkey load on the first prove). Both fire-and-forget.
   useEffect(() => {
     if (mode !== 'shielded') return;
     const m = SHIELDED_POOL_MINTS[0];
     if (m) void syncLeaves(m).catch(() => { /* best-effort warmup */ });
+    void warmProver('withdraw_change');
   }, [mode]);
 
   const isShielded = mode === 'shielded';

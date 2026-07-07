@@ -251,3 +251,24 @@ export async function proveShielded(
     proofData: data.proofData ?? '',
   };
 }
+
+/**
+ * Best-effort, fire-and-forget warmup of a hosted-prover circuit so the first
+ * real prove of a session isn't a cold-start (loading the zkey from disk can take
+ * minutes; a warm zkey proves in <1s). Call when the user enters a flow that will
+ * soon prove (e.g. opening the shielded vault) — by unshield time the prover is
+ * hot. Idempotent + spam-safe server-side; never throws.
+ */
+export async function warmProver(
+  proofType: 'deposit' | 'withdraw' | 'withdraw_change',
+): Promise<void> {
+  try {
+    await pinnedFetch(`${API_BASE}/zk/warm`, {
+      method: 'POST',
+      body: JSON.stringify({proofType}),
+      timeoutMs: 8_000,
+    });
+  } catch {
+    /* best-effort — a failed warmup just means the first prove pays the cold cost */
+  }
+}

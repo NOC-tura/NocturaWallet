@@ -38,7 +38,7 @@ jest.mock('../../../store/mmkv/instances', () => {
 
 import {pinnedFetch} from '../../sslPinning/pinnedFetch';
 import {_resetRateLimitersForTest} from '../../solana/rpcLimiter';
-import {ZkProverModule, proveShielded} from '../zkProverModule';
+import {ZkProverModule, proveShielded, warmProver} from '../zkProverModule';
 import {ProofQueue} from '../proofQueue';
 import {ProverUnavailableError, ProofGenerationError} from '../types';
 import type {ProofWitness} from '../types';
@@ -227,6 +227,24 @@ describe('proveShielded', () => {
     const res = await proveShielded('withdraw_change', {withdrawAmount: '200'});
     expect(res.proofBytes.length).toBe(512); // 256 bytes as hex
     expect(res.publicInputs).toHaveLength(6);
+  });
+});
+
+describe('warmProver', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('POSTs {proofType} to /zk/warm and resolves void', async () => {
+    mockPinnedFetch.mockReturnValueOnce(mockResponse(200, {success: true, warm: true}));
+    await expect(warmProver('withdraw_change')).resolves.toBeUndefined();
+    const [url, opts] = mockPinnedFetch.mock.calls[0] as [string, {method: string; body: string}];
+    expect(url).toContain('/zk/warm');
+    expect(opts.method).toBe('POST');
+    expect(JSON.parse(opts.body)).toEqual({proofType: 'withdraw_change'});
+  });
+
+  it('never throws when the warmup request fails', async () => {
+    mockPinnedFetch.mockRejectedValueOnce(new Error('network'));
+    await expect(warmProver('withdraw_change')).resolves.toBeUndefined();
   });
 });
 
