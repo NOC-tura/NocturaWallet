@@ -128,6 +128,27 @@ describe('ZkProofScreen', () => {
     expect(getByText('Verify locally')).toBeTruthy();
   });
 
+  it('transitions to ready when the chain op resolves AFTER the animation (regression: 90% hang)', async () => {
+    // The op stays pending through the whole ~7s animation, then resolves. Before
+    // the fix, pct sat at 90% and the polling fallback (gated on pct===100) never
+    // ran → the screen hung forever. Now the timeout drives pct to 100 so polling
+    // engages and the late result transitions to the success screen.
+    let resolveOp: (v: {txSignature: string; leafIndex: number; amount: bigint}) => void = () => {};
+    mockDeposit.mockReturnValue(new Promise(r => { resolveOp = r; }));
+    const {queryByTestId} = render(<ZkProofScreen navigation={navigation} route={route} />);
+    act(() => { jest.advanceTimersByTime(2100); }); // building → proving
+    act(() => { jest.advanceTimersByTime(3100); }); // proving → verifying
+    act(() => { jest.advanceTimersByTime(2100); }); // verifying ends, op pending → pct 100
+    expect(queryByTestId('shield-done-button')).toBeNull(); // not ready yet
+    await act(async () => {
+      resolveOp({txSignature: 'SiGnAtUrEabcdefgh12345678', leafIndex: 0, amount: 5000000000n});
+      await Promise.resolve();
+    });
+    act(() => { jest.advanceTimersByTime(300); }); // polling fallback (200ms) fires
+    await act(async () => { await Promise.resolve(); });
+    expect(queryByTestId('shield-done-button')).toBeTruthy(); // reached the success screen
+  });
+
   it('fast-forwards to ready when chain succeeds during building', async () => {
     mockDeposit.mockResolvedValue({txSignature: 'SiGnAtUrEabcdefgh12345678', leafIndex: 0, amount: 5000000000n});
     const {getByText} = render(<ZkProofScreen navigation={navigation} route={route} />);

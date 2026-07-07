@@ -263,9 +263,13 @@ export function ZkProofScreen({navigation, route}: Props) {
         dispatch({type: 'ADVANCE_TO_PROVING'});
       } else if (state.kind === 'proving') {
         dispatch({type: 'ADVANCE_TO_VERIFYING'});
+      } else {
+        // Verifying ended but the chain op is still running (op slower than the
+        // ~7s animation). Drive pct to 100 so the polling-fallback effect below
+        // engages and transitions to ready/failed once the op resolves. WITHOUT
+        // this the bar sat at 90% forever whenever the op outlasted the animation.
+        dispatch({type: 'TICK', pct: 100});
       }
-      // If we're in verifying and chain still pending: fall through to
-      // the polling effect below.
     }, duration);
 
     return () => {
