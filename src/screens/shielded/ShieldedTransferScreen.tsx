@@ -1,5 +1,6 @@
 import React, {useState, useCallback, useEffect, useRef} from 'react';
 import {View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet} from 'react-native';
+import {Keypair} from '@solana/web3.js';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {RouteProp} from '@react-navigation/native';
 import type {RootStackParamList} from '../../types/navigation';
@@ -8,17 +9,30 @@ import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
 
 const securityManager = new ScreenSecurityManager();
-import {transfer} from '../../modules/shielded/shieldedService';
+import {sendPrivateTransfer} from '../../modules/shielded/transferFlow';
+import {warmProver} from '../../modules/zkProver/zkProverModule';
+import {maxTransferable} from '../../modules/shielded/noteSelect';
+import {getNotes} from '../../modules/shielded/noteStore';
 import {shouldRepeatWarning} from '../../modules/shielded/privacyMeter';
 import {isValidShieldedAddress} from '../../modules/shielded/shieldedAddressCodec';
 import {feeEngine} from '../../modules/fees/feeEngine';
+import {keychainManager} from '../../modules/keychain/keychainModule';
+import {mnemonicToSeed} from '../../modules/keyDerivation/mnemonicUtils';
+import {deriveTransparentKeypair} from '../../modules/keyDerivation/transparent';
+import {loadTransparentScheme} from '../../modules/keyDerivation/derivationScheme';
+import {zeroize} from '../../modules/session/zeroize';
+import {SHIELDED_POOL_MINTS} from '../../constants/programs';
 import {PrivacyMeter} from '../../components/PrivacyMeter';
 import {FeeDisplayRow} from '../../components/FeeDisplayRow';
 import {ProofProgressOverlay} from '../../components/ProofProgressOverlay';
 import {ShieldedAddressInput} from '../../components/ShieldedAddressInput';
 import {TokenSelector} from '../../components/TokenSelector';
-import type {ShieldedScreenStep, ConsolidationProgress} from '../../modules/shielded/types';
-import {parseTokenAmount} from '../../utils/parseTokenAmount';
+import type {ShieldedScreenStep} from '../../modules/shielded/types';
+import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
+
+// The shielded transfer always targets the single live pool mint — the same
+// source ZkProofScreen uses for shield/unshield.
+const POOL_MINT = SHIELDED_POOL_MINTS[0] ?? '';
 
 export function ShieldedTransferScreen(): React.JSX.Element {
   const navigation = useNavigation();
@@ -31,6 +45,12 @@ export function ShieldedTransferScreen(): React.JSX.Element {
     return () => { void securityManager.disableSecureScreen(); };
   }, []);
 
+  // Warm the hosted transfer prover on mount so the first real prove of the
+  // session isn't a cold-start. Best-effort, fire-and-forget, never throws.
+  useEffect(() => {
+    void warmProver('transfer');
+  }, []);
+
   const lastTapRef = useRef(0);
 
   const initialRecipient = route.params?.recipient ?? '';
@@ -40,11 +60,8 @@ export function ShieldedTransferScreen(): React.JSX.Element {
   );
   const [recipient, setRecipient] = useState<string>(initialRecipient);
   const [amount, setAmount] = useState<string>('');
-  const [memo, setMemo] = useState<string>('');
   const [privacyDismissed, setPrivacyDismissed] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
-  const [consolidationProgress, setConsolidationProgress] =
-    useState<ConsolidationProgress | undefined>(undefined);
 
   const parsedAmount: bigint = (() => {
     try {
@@ -53,18 +70,14 @@ export function ShieldedTransferScreen(): React.JSX.Element {
       return 0n;
     }
   })();
-  const canConfirm = isValidShieldedAddress(recipient) && parsedAmount > 0n;
+  // 2-in transfer cap: cannot spend more than the sum of the two largest notes.
+  const maxAmount = maxTransferable(getNotes(POOL_MINT));
+  const overCap = parsedAmount > maxAmount;
+  const canConfirm =
+    isValidShieldedAddress(recipient) && parsedAmount > 0n && !overCap;
   const feeInfo = feeEngine.getFeeDisplayInfo('privateTransfer');
   const showPrivacyMeter =
     shouldRepeatWarning(merkleLeafCount) && !privacyDismissed;
-
-  const onConsolidationProgress = useCallback(
-    (progress: ConsolidationProgress) => {
-      setConsolidationProgress(progress);
-      setStep('consolidating');
-    },
-    [],
-  );
 
   const handleReviewTap = useCallback(() => {
     const now = Date.now();
@@ -82,30 +95,29 @@ export function ShieldedTransferScreen(): React.JSX.Element {
       return;
     }
     setStep('proving');
+    let seed: Uint8Array | null = null;
     try {
-      await transfer(
-        {
-          mint: selectedMint,
-          amount: parsedAmount,
-          recipientAddress: recipient,
-          memo: memo || undefined,
-        },
-        0,
-        onConsolidationProgress,
+      const mnemonic = await keychainManager.retrieveSeed();
+      seed = await mnemonicToSeed(mnemonic);
+      const scheme = loadTransparentScheme();
+      const {secretKey} = deriveTransparentKeypair(seed, scheme);
+      const feePayer = Keypair.fromSecretKey(secretKey);
+      await sendPrivateTransfer(
+        seed,
+        feePayer,
+        POOL_MINT,
+        recipient,
+        parsedAmount,
+        () => {},
       );
       setStep('success');
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : 'An error occurred');
       setStep('error');
+    } finally {
+      if (seed) zeroize(seed);
     }
-  }, [
-    canConfirm,
-    selectedMint,
-    parsedAmount,
-    recipient,
-    memo,
-    onConsolidationProgress,
-  ]);
+  }, [canConfirm, recipient, parsedAmount]);
 
   const handleBack = useCallback(() => {
     setStep('input');
@@ -114,15 +126,13 @@ export function ShieldedTransferScreen(): React.JSX.Element {
   const handleTryAgain = useCallback(() => {
     setStep('input');
     setErrorMessage('');
-    setConsolidationProgress(undefined);
   }, []);
 
   const handleDone = useCallback(() => {
     navigation.goBack();
   }, [navigation]);
 
-  const isOverlayVisible =
-    step === 'proving' || step === 'consolidating';
+  const isOverlayVisible = step === 'proving';
 
   if (step === 'success') {
     return (
@@ -171,12 +181,6 @@ export function ShieldedTransferScreen(): React.JSX.Element {
                 {recipient}
               </Text>
             </View>
-            {memo ? (
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Memo</Text>
-                <Text style={styles.summaryValue}>{memo}</Text>
-              </View>
-            ) : null}
           </View>
 
           <FeeDisplayRow feeInfo={feeInfo} />
@@ -206,7 +210,6 @@ export function ShieldedTransferScreen(): React.JSX.Element {
       <ProofProgressOverlay
         visible={isOverlayVisible}
         message="Securing transaction..."
-        consolidation={consolidationProgress}
       />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text testID="screen-title" style={styles.title}>
@@ -245,16 +248,11 @@ export function ShieldedTransferScreen(): React.JSX.Element {
           accessibilityLabel="Amount"
         />
 
-        <Text style={styles.label}>Memo</Text>
-        <TextInput
-          testID="memo-input"
-          style={styles.input}
-          value={memo}
-          onChangeText={setMemo}
-          placeholder="Add a note..."
-          placeholderTextColor="#555"
-          accessibilityLabel="Memo"
-        />
+        {overCap && parsedAmount > 0n ? (
+          <Text testID="cap-error" style={styles.errorText}>
+            {`Max per private transfer is ${formatTokenAmount(maxAmount, 9)} (two largest notes)`}
+          </Text>
+        ) : null}
 
         <Text testID="change-note" style={styles.changeNote}>
           Remainder stays in your private balance
