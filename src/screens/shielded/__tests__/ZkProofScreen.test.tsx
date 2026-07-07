@@ -405,6 +405,7 @@ describe('ZkProofScreen', () => {
       expect.anything(),        // feePayer
       specificMint,             // mint from params
       BigInt(route.params.amount),
+      expect.any(Function),     // onStep progress callback
     );
   });
 
@@ -423,6 +424,7 @@ describe('ZkProofScreen', () => {
       expect.anything(),
       TEST_POOL_MINT,           // default pool mint
       BigInt(route.params.amount),
+      expect.any(Function),     // onStep progress callback
     );
   });
 

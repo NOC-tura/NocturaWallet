@@ -141,6 +141,7 @@ async function runShieldOp(
         feePayer,
         mint,
         BigInt(params.amount),
+        onStep,
       );
       return {txSignature: result.txSignature, leafIndex: result.leafIndex};
     }
@@ -450,7 +451,7 @@ export function ZkProofScreen({navigation, route}: Props) {
                   Note position
                 </Text>
                 <Text variant="body-sm" mono className="text-fg-primary">
-                  #{leafIndex}
+                  {leafIndex < 0 ? 'pending' : `#${leafIndex}`}
                 </Text>
               </View>
               <View className="h-px bg-bg-surface-3" />

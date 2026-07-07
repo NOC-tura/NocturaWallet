@@ -317,6 +317,9 @@ export function DashboardScreen({
     if (mode !== 'shielded') return;
     const m = SHIELDED_POOL_MINTS[0];
     if (m) void syncLeaves(m).catch(() => { /* best-effort warmup */ });
+    // Warm both provers the shielded vault can trigger: shield → deposit,
+    // unshield → withdraw_change. Cheap, idempotent, fire-and-forget.
+    void warmProver('deposit');
     void warmProver('withdraw_change');
   }, [mode]);
 

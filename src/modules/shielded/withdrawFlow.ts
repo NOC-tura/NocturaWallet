@@ -18,45 +18,9 @@ import {SHIELDED_CU} from '../../constants/programs';
 import type {ShieldedNote} from './types';
 import {buildWithdrawChangeWitness} from './withdrawChangeWitness';
 import {randomFieldElement} from './noteCrypto';
-import {parseDepositEvents} from './depositEvents';
-import {withTimeout} from '../solana/withTimeout';
+import {resolveLeafIndex} from './leafResolver';
 
 const PROOF_BYTES_LEN = 256;
-
-/** Sentinel leaf index for a change note whose on-chain index isn't known yet. */
-const UNRESOLVED_INDEX = -1;
-
-/**
- * Best-effort, time-bounded lookup of a change note's on-chain leaf index after
- * its withdraw tx confirms. The tx already succeeded (pollConfirmation confirmed
- * + err-checked it), so this NEVER blocks the flow: it tries the tx's
- * LeafInserted event, then a resync + deterministic commitment lookup, each under
- * a timeout, and returns UNRESOLVED_INDEX if neither resolves promptly (the index
- * is then backfilled when the change note is later spent).
- */
-async function resolveChangeLeafIndex(
-  txSignature: string,
-  changeCommitmentDec: string,
-  mintBase58: string,
-): Promise<number> {
-  const connection = getConnection();
-  try {
-    const tx = await withTimeout(
-      connection.getTransaction(txSignature, {
-        maxSupportedTransactionVersion: 0, commitment: 'confirmed',
-      }),
-      12_000, 'getTransaction',
-    );
-    const events = parseDepositEvents(tx?.meta?.logMessages ?? []);
-    if (events.length > 0) return events[0]!.leafIndex;
-  } catch { /* fall through to resync */ }
-  try {
-    const {leaves} = await withTimeout(syncLeaves(mintBase58), 20_000, 'resync');
-    const found = leaves.indexOf(decToHex64(changeCommitmentDec));
-    if (found >= 0) return found;
-  } catch { /* fall through to sentinel */ }
-  return UNRESOLVED_INDEX;
-}
 
 const sleep = (ms: number): Promise<void> =>
   new Promise(resolve => setTimeout(resolve, ms));
@@ -245,7 +209,7 @@ export async function unshieldWithChange(
   // input spent. Neither step can hang or lose the change.
   onStep?.('5/5 recording…');
   if (w.changeAmount > 0n) {
-    const changeLeafIndex = await resolveChangeLeafIndex(
+    const changeLeafIndex = await resolveLeafIndex(
       txSignature, w.changeCommitmentDec, mintBase58,
     );
     addNote({
