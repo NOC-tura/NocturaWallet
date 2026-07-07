@@ -1,5 +1,8 @@
 import {bls12_381} from '@noble/curves/bls12-381.js';
 import {encryptNote, tryDecryptNote} from '../noteEncryption';
+import {getViewPublicKey} from '../shieldedIdentity';
+import {deriveShieldedViewKey} from '../../keyDerivation/shielded';
+import {encodeShieldedAddress, decodeShieldedAddress} from '../shieldedAddressCodec';
 
 const G1 = bls12_381.G1.Point;
 function bytesToBigIntBE(b: Uint8Array): bigint {
@@ -59,5 +62,30 @@ describe('noteEncryption', () => {
     expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true);
     expect(Buffer.from(a.subarray(0, 48))).not.toEqual(Buffer.alloc(48));
     expect(Buffer.from(a.subarray(48, 72))).toEqual(Buffer.from(nonce));
+  });
+});
+
+describe('noteEncryption — interop with the real view-key identity', () => {
+  const seed = new Uint8Array(32).fill(21);
+
+  it('encrypts to getViewPublicKey(seed) and decrypts with deriveShieldedViewKey(seed)', () => {
+    const pub = getViewPublicKey(seed);           // recipient's 48-B view pubkey
+    const sk = deriveShieldedViewKey(seed);       // recipient's view secret
+    const ct = encryptNote(pub, 777_000_000n, 424242n);
+    expect(tryDecryptNote(sk, ct)).toEqual({amount: 777_000_000n, noteSecret: 424242n});
+  });
+
+  it('works when the recipient is addressed via the noc1… bech32m address', () => {
+    const pub = getViewPublicKey(seed);
+    const addr = encodeShieldedAddress(pub);       // what a sender would paste
+    const pubFromAddr = decodeShieldedAddress(addr);
+    const ct = encryptNote(pubFromAddr, 1n, 2n);
+    expect(tryDecryptNote(deriveShieldedViewKey(seed), ct)).toEqual({amount: 1n, noteSecret: 2n});
+  });
+
+  it('a different seed cannot decrypt', () => {
+    const ct = encryptNote(getViewPublicKey(seed), 9n, 9n);
+    const otherSk = deriveShieldedViewKey(new Uint8Array(32).fill(99));
+    expect(tryDecryptNote(otherSk, ct)).toBeNull();
   });
 });
