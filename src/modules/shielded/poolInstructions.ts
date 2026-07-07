@@ -131,6 +131,79 @@ export function buildWithdrawIx(p: WithdrawIxParams): TransactionInstruction {
   });
 }
 
+export const transferDiscriminator = (): Uint8Array => discriminator('transfer');
+
+export interface TransferIxParams {
+  merkleRoot: Uint8Array;
+  nullifier0: Uint8Array;
+  nullifier1: Uint8Array;
+  outCommitment0: Uint8Array;
+  outCommitment1: Uint8Array;
+  proofBytes: Uint8Array;
+  ciphertext0: Uint8Array;
+  ciphertext1: Uint8Array;
+  pool: PublicKey;
+  merkleTree: PublicKey;
+  nullifierRecord0: PublicKey;
+  nullifierRecord1: PublicKey;
+  feePayer: PublicKey;
+  transferVk: PublicKey;
+}
+
+/**
+ * transfer(merkle_root, nullifier_0, nullifier_1, out_commitment_0, out_commitment_1,
+ *          proof_bytes, ciphertext_0, ciphertext_1). No SPL leg.
+ * Data = disc(8) + merkle_root(32) + nullifier_0(32) + nullifier_1(32)
+ *      + out_commitment_0(32) + out_commitment_1(32)
+ *      + len(u32 LE) + proof_bytes(256)
+ *      + len(u32 LE) + ciphertext_0(128)
+ *      + len(u32 LE) + ciphertext_1(128).
+ * Accounts (TransferCtx): pool(ro), merkle_tree(mut), nullifier_record_0(init,mut),
+ * nullifier_record_1(init,mut), fee_payer(signer,mut), transfer_vk(ro), system_program(ro).
+ */
+export function buildTransferIx(p: TransferIxParams): TransactionInstruction {
+  const chk = (b: Uint8Array, n: number, name: string) => {
+    if (b.length !== n) throw new Error(`${name} must be ${n} bytes`);
+  };
+  chk(p.merkleRoot, 32, 'merkleRoot');
+  chk(p.nullifier0, 32, 'nullifier0');
+  chk(p.nullifier1, 32, 'nullifier1');
+  chk(p.outCommitment0, 32, 'outCommitment0');
+  chk(p.outCommitment1, 32, 'outCommitment1');
+  chk(p.proofBytes, 256, 'proofBytes');
+  chk(p.ciphertext0, 128, 'ciphertext0');
+  chk(p.ciphertext1, 128, 'ciphertext1');
+
+  const data = Buffer.concat([
+    Buffer.from(transferDiscriminator()),
+    Buffer.from(p.merkleRoot),
+    Buffer.from(p.nullifier0),
+    Buffer.from(p.nullifier1),
+    Buffer.from(p.outCommitment0),
+    Buffer.from(p.outCommitment1),
+    Buffer.from(u32le(p.proofBytes.length)),
+    Buffer.from(p.proofBytes),
+    Buffer.from(u32le(p.ciphertext0.length)),
+    Buffer.from(p.ciphertext0),
+    Buffer.from(u32le(p.ciphertext1.length)),
+    Buffer.from(p.ciphertext1),
+  ]);
+
+  return new TransactionInstruction({
+    programId: PROGRAM,
+    keys: [
+      {pubkey: p.pool, isSigner: false, isWritable: false},
+      {pubkey: p.merkleTree, isSigner: false, isWritable: true},
+      {pubkey: p.nullifierRecord0, isSigner: false, isWritable: true},
+      {pubkey: p.nullifierRecord1, isSigner: false, isWritable: true},
+      {pubkey: p.feePayer, isSigner: true, isWritable: true},
+      {pubkey: p.transferVk, isSigner: false, isWritable: false},
+      {pubkey: SystemProgram.programId, isSigner: false, isWritable: false},
+    ],
+    data,
+  });
+}
+
 export const withdrawChangeDiscriminator = (): Uint8Array => discriminator('withdraw_with_change');
 
 export interface WithdrawWithChangeIxParams {
