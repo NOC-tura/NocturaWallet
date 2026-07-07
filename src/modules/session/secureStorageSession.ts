@@ -3,6 +3,7 @@ import {mnemonicToSeed} from '../keyDerivation/mnemonicUtils';
 import {deriveSecureStorageKey} from '../keychain/secureStorageKey';
 import {zeroize} from './zeroize';
 import {initSecureMmkv, mmkvSecure} from '../../store/mmkv/instances';
+import {setShieldedViewSession} from '../shielded/shieldedViewSession';
 
 /**
  * Initialize the encrypted note-store MMKV for this session. Retrieves the seed
@@ -17,6 +18,7 @@ export async function unlockSecureStorage(): Promise<void> {
     const mnemonic = await keychainManager.retrieveSeed();
     seed = await mnemonicToSeed(mnemonic);
     initSecureMmkv(deriveSecureStorageKey(seed));
+    setShieldedViewSession(seed);
   } finally {
     if (seed) zeroize(seed);
   }
@@ -26,4 +28,5 @@ export async function unlockSecureStorage(): Promise<void> {
 export function unlockSecureStorageWithSeed(seed: Uint8Array): void {
   if (mmkvSecure()) return;
   initSecureMmkv(deriveSecureStorageKey(seed));
+  setShieldedViewSession(seed);
 }
