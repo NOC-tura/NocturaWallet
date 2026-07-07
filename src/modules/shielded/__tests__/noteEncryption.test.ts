@@ -54,6 +54,20 @@ describe('noteEncryption', () => {
     }
   });
 
+  it('rejects the identity point on encrypt and on decrypt (forced-note guard)', () => {
+    const identity = G1.ZERO.toBytes(true); // 48-B compressed neutral element
+    expect(() => encryptNote(identity, 1n, 1n)).toThrow(/identity/i);
+    // A ciphertext whose R = identity must NOT decrypt for an arbitrary recipient.
+    const ct = encryptNote(pubA, 5n, 5n);
+    ct.set(identity, 0); // overwrite R with the identity encoding
+    expect(tryDecryptNote(skA, ct)).toBeNull();
+  });
+
+  it('rejects out-of-range sender inputs (u64 amount / 32-byte noteSecret)', () => {
+    expect(() => encryptNote(pubA, 1n << 64n, 1n)).toThrow(/u64/i);
+    expect(() => encryptNote(pubA, 1n, 1n << 256n)).toThrow(/32 bytes/i);
+  });
+
   it('is deterministic when r + nonce are injected (golden-vector seam)', () => {
     const r = new Uint8Array(32).fill(3);
     const nonce = new Uint8Array(24).fill(9);

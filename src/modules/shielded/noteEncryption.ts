@@ -21,7 +21,12 @@ function randomBytes(n: number): Uint8Array {
   return b;
 }
 
-/** BLS12-381 scalar from arbitrary bytes: big-endian → reduce mod the curve order. */
+/**
+ * BLS12-381 scalar from arbitrary bytes: big-endian → reduce mod the curve order.
+ * NOTE: an EIP-2333 sk_view is already < ORDER, so this reduction is a no-op for
+ * real secrets — it only normalises the ephemeral `r` bytes. If a future key path
+ * could produce sk ≥ ORDER, revisit (noble's pubkey path rejects such keys).
+ */
 function scalarFromBytes(bytes: Uint8Array): bigint {
   return bytesToBigIntBE(bytes) % G1.Fn.ORDER;
 }
@@ -74,7 +79,16 @@ export function encryptNote(
   if (recipientViewKeyG1.length !== VIEW_KEY_BYTES) {
     throw new Error(`recipient view key must be ${VIEW_KEY_BYTES} bytes`);
   }
+  // Reject out-of-range sender inputs so we never silently encrypt a truncated
+  // value (be32/u64le would wrap). A real note amount is u64 and a noteSecret is a
+  // field element (< 2^256), so this only catches caller bugs.
+  if (amount < 0n || amount >> 64n) throw new Error('amount out of u64 range');
+  if (noteSecret < 0n || noteSecret >> 256n) throw new Error('noteSecret exceeds 32 bytes');
   const P = G1.fromBytes(recipientViewKeyG1); // throws on an invalid point (bad address)
+  // Reject the identity point: S = P·r would be the identity for any r, yielding a
+  // key an observer can derive (a "no real recipient" address). fromBytes already
+  // enforces subgroup membership; only the neutral element needs an explicit reject.
+  if (P.is0()) throw new Error('recipient view key is the identity point');
   const r = scalarFromBytes(opts.r ?? randomBytes(32));
   const Rbytes = G1.BASE.multiply(r).toBytes(true);
   const Sbytes = P.multiply(r).toBytes(true);
@@ -102,6 +116,10 @@ export function tryDecryptNote(skView: Uint8Array, ct: Uint8Array): DecryptedNot
   } catch {
     return null;
   }
+  // Identity R would make S = R·sk the identity for EVERY sk → a key any attacker
+  // knows → a crafted ciphertext that "decrypts" for every recipient (forced-note
+  // spam). Reject so a successful decrypt is trustworthy for the scanner.
+  if (R.is0()) return null;
   const Sbytes = R.multiply(scalarFromBytes(skView)).toBytes(true);
   const key = hkdf(sha256, Sbytes, Rbytes, INFO, 32);
   let payload: Uint8Array;
