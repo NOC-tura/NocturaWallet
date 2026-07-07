@@ -125,7 +125,7 @@ export const SHIELDED_DEVNET_MINT =
 // devnet; add headroom (the wallet prepends setComputeUnitLimit).
 // withdrawChange: est. ~200–220k (plain withdraw ~152k + one merkle insert);
 // 250k headroom until the ICO reports the measured devnet CU (SYNC POINT).
-export const SHIELDED_CU = {deposit: 200_000, withdraw: 250_000, withdrawChange: 250_000} as const;
+export const SHIELDED_CU = {deposit: 200_000, withdraw: 250_000, withdrawChange: 250_000, transfer: 250_000} as const;
 
 /**
  * SPL mints that have a shielded pool (i.e. what can be shielded/displayed).

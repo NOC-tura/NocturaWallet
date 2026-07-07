@@ -1,5 +1,5 @@
 import {PublicKey} from '@solana/web3.js';
-import {poolPda, merkleTreePda, nullifierPda, vaultAta, wchangeVkPda} from '../poolPdas';
+import {poolPda, merkleTreePda, nullifierPda, vaultAta, wchangeVkPda, transferVkPda} from '../poolPdas';
 import {SHIELDED_POOL_PROGRAM_ID} from '../../../constants/programs';
 
 const MINT = new PublicKey('B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW');
@@ -38,5 +38,16 @@ describe('wchangeVkPda', () => {
       new PublicKey('NPkcpUdnm1JZhndur3ggQZwo86yWgcU6Ry28T3zHfES'),
     )[0];
     expect(vk.toBase58()).toBe(expected.toBase58());
+  });
+});
+
+describe('transferVkPda', () => {
+  it('derives ["transfer_vk", pool] under the shielded program', () => {
+    const pool = poolPda(new PublicKey('AtjVK2z561wDYo5EvougJKAo9AJ4KdduxSbiF173aiAe'));
+    const expected = PublicKey.findProgramAddressSync(
+      [Buffer.from('transfer_vk'), pool.toBuffer()],
+      new PublicKey('NPkcpUdnm1JZhndur3ggQZwo86yWgcU6Ry28T3zHfES'),
+    )[0];
+    expect(transferVkPda(pool).toBase58()).toBe(expected.toBase58());
   });
 });

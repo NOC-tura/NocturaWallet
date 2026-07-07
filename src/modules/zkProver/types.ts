@@ -82,7 +82,7 @@ export interface HostedProverResponse {
  * All values are base-10 decimal strings of field elements < F. Sent VERBATIM to
  * /zk/prove — including noteSecret, which the circuit REQUIRES as a private input.
  */
-export type ShieldedProveParams = Record<string, string | string[] | number[]>;
+export type ShieldedProveParams = Record<string, string | string[] | string[][] | number[]>;
 
 export interface ShieldedProveResult {
   proofBytes: string;        // hex, 256 B — on-chain-ready
