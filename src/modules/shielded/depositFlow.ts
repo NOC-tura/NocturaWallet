@@ -74,7 +74,7 @@ export async function depositShield(
   feePayer: Keypair,
   mintBase58: string,
   amount: bigint,
-  onStep?: (label: string, detail?: string) => void,
+  onStep?: (label: string) => void,
 ): Promise<DepositResult> {
   const mint = new PublicKey(mintBase58);
   // The note store writes to the encrypted MMKV — make sure it's initialized

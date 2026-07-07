@@ -171,14 +171,10 @@ export function ZkProofScreen({navigation, route}: Props) {
   const [isRetrying, setIsRetrying] = useState(false);
   const [isProceeding, setIsProceeding] = useState(false);
   const guardTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
-  // Diagnostic sub-step (unshield): shows which stage is actually running so a
-  // hang can be localized on-device. The prove step also copies the exact
-  // /zk/prove request body to the clipboard for relay.
+  // Live sub-step label (e.g. "3/5 proving…") shown under the stage hero so a
+  // slow op reads as progress, not a stall.
   const [diag, setDiag] = useState('');
-  const onStep = useCallback((label: string, detail?: string) => {
-    setDiag(label);
-    if (detail) Clipboard.setString(detail);
-  }, []);
+  const onStep = useCallback((label: string) => setDiag(label), []);
 
   // FLAG_SECURE on mount, off on unmount
   useEffect(() => {

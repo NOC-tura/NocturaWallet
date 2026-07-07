@@ -133,7 +133,7 @@ export async function unshieldWithChange(
   mintBase58: string,
   note: ShieldedNote,
   withdrawAmount: bigint,
-  onStep?: (label: string, detail?: string) => void,
+  onStep?: (label: string) => void,
 ): Promise<UnshieldWithChangeResult> {
   ensureSecureMmkv(seed);
   const mint = new PublicKey(mintBase58);
@@ -165,9 +165,7 @@ export async function unshieldWithChange(
     throw new MerkleRootStaleError();
   }
 
-  // Hand the exact /zk/prove request body up so the UI can copy it to the
-  // clipboard (relay to the prover team) — and mark that we've reached the POST.
-  onStep?.('3/5 proving…', JSON.stringify({proofType: 'withdraw_change', params: w.params}));
+  onStep?.('3/5 proving…');
   const proof = await proveShielded('withdraw_change', w.params);
   if (proof.publicInputs[5] !== w.changeCommitmentDec) {
     throw new Error('Prover changeCommitment mismatch — aborting unshield');
