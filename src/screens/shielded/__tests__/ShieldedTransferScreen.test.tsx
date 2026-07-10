@@ -11,21 +11,6 @@ jest.mock('../../../store/mmkv/instances', () => {
   const actual = jest.requireActual('../../../store/mmkv/instances') as Record<string, unknown>;
   return {...actual, mmkvSecure: () => actual.mmkvPublic};
 });
-jest.mock('../../../store/zustand/presaleStore', () => ({
-  usePresaleStore: Object.assign(
-    jest.fn().mockReturnValue({tgeStatus: 'pre_tge', isZeroFeeEligible: false}),
-    {getState: jest.fn().mockReturnValue({tgeStatus: 'pre_tge', isZeroFeeEligible: false})},
-  ),
-}));
-jest.mock('../../../store/zustand/walletStore', () => ({
-  useWalletStore: Object.assign(
-    jest.fn().mockReturnValue({
-      publicKey: 'TestPubkey1111111111111111111111111111111111',
-      tokens: [{mint: 'NOC_MINT', symbol: 'NOC'}],
-    }),
-    {getState: jest.fn().mockReturnValue({nocUsdPrice: 0, setNocUsdPrice: jest.fn()})},
-  ),
-}));
 jest.mock('../../../store/zustand/shieldedStore', () => ({
   useShieldedStore: jest.fn().mockReturnValue({merkleLeafCount: 50}),
 }));
@@ -42,15 +27,16 @@ jest.mock('../../../modules/zkProver/zkProverModule', () => ({
   warmProver: jest.fn().mockResolvedValue(undefined),
 }));
 
-// Note selection / storage — cap is well above the test amount
+// Note selection / storage — cap + balance well above the test amount.
 jest.mock('../../../modules/shielded/noteSelect', () => ({
   maxTransferable: jest.fn(() => 1_000_000_000_000n),
 }));
 jest.mock('../../../modules/shielded/noteStore', () => ({
   getNotes: jest.fn(() => []),
+  getBalance: jest.fn(() => 1_000_000_000_000n),
 }));
 
-// Address validation — treat our fixture as valid without bech32 decoding
+// Address validation — treat our fixture as valid without bech32 decoding.
 jest.mock('../../../modules/shielded/shieldedAddressCodec', () => ({
   isValidShieldedAddress: jest.fn((a: string) => a === 'noc1validrecipient'),
   decodeShieldedAddress: jest.fn(),
@@ -81,36 +67,30 @@ const mockSend = sendPrivateTransfer as jest.MockedFunction<typeof sendPrivateTr
 
 beforeEach(() => {
   mockSend.mockReset();
-  mockSend.mockResolvedValue({txSignature: 'T', sent: 200_000_000n, change: 0n});
+  mockSend.mockResolvedValue({txSignature: 'TxSigABCDEFGH12345678', sent: 200_000_000n, change: 0n});
 });
 
 describe('ShieldedTransferScreen', () => {
-  it('renders "Send privately" title', () => {
+  it('renders the "Send private" title', () => {
     const {getByTestId} = render(<ShieldedTransferScreen />);
-    const title = getByTestId('screen-title');
-    expect(title.props.children).toBe('Send privately');
+    expect(getByTestId('screen-title').props.children).toBe('Send private');
   });
 
-  it('shows ShieldedAddressInput', () => {
+  it('shows the noc1 recipient input', () => {
     const {getByTestId} = render(<ShieldedTransferScreen />);
-    expect(getByTestId('shielded-address-input')).toBeTruthy();
+    expect(getByTestId('recipient-input')).toBeTruthy();
   });
 
-  it('shows "Remainder stays in your private balance"', () => {
+  it('shows the remainder note', () => {
     const {getByTestId} = render(<ShieldedTransferScreen />);
-    const note = getByTestId('change-note');
-    expect(note.props.children).toBe('Remainder stays in your private balance');
+    expect(getByTestId('change-note').props.children).toBe(
+      'The remainder stays in your private balance',
+    );
   });
 
-  it('confirm button disabled when address is empty', () => {
+  it('review button disabled when recipient is empty', () => {
     const {getByTestId} = render(<ShieldedTransferScreen />);
-    const btn = getByTestId('confirm-button');
-    expect(btn.props.accessibilityState?.disabled).toBe(true);
-  });
-
-  it('shows fee display row', () => {
-    const {getByTestId} = render(<ShieldedTransferScreen />);
-    expect(getByTestId('fee-display-row')).toBeTruthy();
+    expect(getByTestId('review-button').props.accessibilityState?.disabled).toBe(true);
   });
 
   it('has no memo input field (on-chain transfer has no memo)', () => {
@@ -118,17 +98,17 @@ describe('ShieldedTransferScreen', () => {
     expect(queryByTestId('memo-input')).toBeNull();
   });
 
-  it('wires a valid transfer through review → confirm to sendPrivateTransfer and shows success', async () => {
+  it('wires a valid transfer through review → confirm to sendPrivateTransfer and shows the receipt', async () => {
     const {getByTestId, getByText} = render(<ShieldedTransferScreen />);
 
-    fireEvent.changeText(getByTestId('shielded-address-input'), VALID_RECIPIENT);
+    fireEvent.changeText(getByTestId('recipient-input'), VALID_RECIPIENT);
     fireEvent.changeText(getByTestId('amount-input'), '0.2');
 
     // input → confirm
-    fireEvent.press(getByTestId('confirm-button'));
+    fireEvent.press(getByTestId('review-button'));
     expect(getByTestId('confirm-summary')).toBeTruthy();
 
-    // The review + confirm buttons share a 500ms double-tap guard; wait it out.
+    // review + confirm share a 500ms double-tap guard; wait it out.
     await new Promise(r => setTimeout(r, 600));
 
     // confirm → proving → success
@@ -147,16 +127,19 @@ describe('ShieldedTransferScreen', () => {
       200_000_000n, // parsed 0.2 * 10^9
       expect.any(Function), // onStep
     );
-    expect(getByText('Transfer sent privately')).toBeTruthy();
+    expect(getByText('Sent privately')).toBeTruthy();
+    // tx signature surfaced on the receipt (copyable)
+    expect(getByTestId('copy-signature')).toBeTruthy();
+    expect(getByTestId('view-explorer')).toBeTruthy();
   });
 
   it('surfaces the flow error message on failure', async () => {
     mockSend.mockRejectedValue(new Error('insufficient shielded balance for this transfer'));
     const {getByTestId, getByText} = render(<ShieldedTransferScreen />);
 
-    fireEvent.changeText(getByTestId('shielded-address-input'), VALID_RECIPIENT);
+    fireEvent.changeText(getByTestId('recipient-input'), VALID_RECIPIENT);
     fireEvent.changeText(getByTestId('amount-input'), '0.2');
-    fireEvent.press(getByTestId('confirm-button')); // input → confirm
+    fireEvent.press(getByTestId('review-button')); // input → confirm
 
     await new Promise(r => setTimeout(r, 600)); // clear double-tap guard
 
