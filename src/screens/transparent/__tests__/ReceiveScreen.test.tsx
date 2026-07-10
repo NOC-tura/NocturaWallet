@@ -78,4 +78,45 @@ describe('ReceiveScreen', () => {
     const {getByText} = renderScreen({address: ''});
     expect(getByText('No wallet address')).toBeTruthy();
   });
+
+  describe('shielded variant (#13.shielded)', () => {
+    const NOC = 'noc1qqqqqqqqqqqqqqexampleshieldedpaymentcodexxxxxxxxxxxxxxxxx';
+
+    it('renders the shielded mode strip + payment-code title', () => {
+      const {getByText} = renderScreen({address: NOC, shielded: true});
+      expect(getByText('Shielded · payment code')).toBeTruthy();
+      expect(getByText('Shielded payment code')).toBeTruthy();
+    });
+
+    it('renders "Receive private" title + "Copy code" CTA', () => {
+      const {getByText} = renderScreen({address: NOC, shielded: true});
+      expect(getByText('Receive private')).toBeTruthy();
+      expect(getByText('Copy code')).toBeTruthy();
+    });
+
+    it('shows the noc1 address and copies it on card tap', () => {
+      const {getByTestId, getAllByText} = renderScreen({address: NOC, shielded: true});
+      expect(getAllByText(NOC).length).toBeGreaterThan(0);
+      fireEvent.press(getByTestId('copy-address-card'));
+      expect(Clipboard.setString).toHaveBeenCalledWith(NOC);
+    });
+
+    it('shares the shielded payment code with the shielded title', () => {
+      const shareSpy = jest
+        .spyOn(Share, 'share')
+        .mockResolvedValue({action: 'sharedAction', activityType: undefined});
+      const {getByText} = renderScreen({address: NOC, shielded: true});
+      fireEvent.press(getByText('Share'));
+      expect(shareSpy).toHaveBeenCalledWith({
+        message: NOC,
+        title: 'My Noctura shielded payment code',
+      });
+      shareSpy.mockRestore();
+    });
+
+    it('shows the shielded empty-state when the noc1 address is missing', () => {
+      const {getByText} = renderScreen({address: '', shielded: true});
+      expect(getByText('No shielded address')).toBeTruthy();
+    });
+  });
 });

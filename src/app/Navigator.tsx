@@ -299,7 +299,9 @@ function DashboardScreenNav() {
   return (
     <DashboardScreen
       onSend={() => rootNav.navigate('SendModal')}
-      onReceive={() => rootNav.navigate('ReceiveModal')}
+      onReceive={shielded =>
+        rootNav.navigate('ReceiveModal', shielded ? {shielded: true} : undefined)
+      }
       onShield={() => {
         if (isShieldedEnabled()) {
           rootNav.navigate('ShieldUnshieldModal', {direction: 'private'});
@@ -376,18 +378,21 @@ function StakingScreenNav() {
 function ReceiveScreenNav() {
   const publicKey = useWalletStore().publicKey;
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  // Defense-in-depth: fall back to mmkvPublic if walletStore hasn't hydrated
-  // the publicKey yet (e.g., cold launch into Receive deeplink before zustand
-  // rehydrate completes).
-  const fallback =
-    publicKey ??
-    require('../store/mmkv/instances').mmkvPublic.getString(
-      require('../constants/mmkvKeys').MMKV_KEYS.WALLET_PUBLIC_KEY,
-    ) ??
-    '';
+  const route = useRoute<RouteProp<RootStackParamList, 'ReceiveModal'>>();
+  const shielded = route.params?.shielded === true;
+  const {mmkvPublic} = require('../store/mmkv/instances');
+  const {MMKV_KEYS} = require('../constants/mmkvKeys');
+  // Shielded: the noc1… receive address is persisted (public data) at secure-store
+  // unlock; the dashboard unlocks the store on shielded view, so it's present here.
+  // Transparent: prefer walletStore, fall back to mmkvPublic if zustand hasn't
+  // hydrated the publicKey yet (e.g., cold launch into a Receive deeplink).
+  const address = shielded
+    ? mmkvPublic.getString(MMKV_KEYS.WALLET_SHIELDED_ADDRESS) ?? ''
+    : publicKey ?? mmkvPublic.getString(MMKV_KEYS.WALLET_PUBLIC_KEY) ?? '';
   return (
     <ReceiveScreen
-      address={fallback}
+      address={address}
+      shielded={shielded}
       onBack={() => navigation.goBack()}
     />
   );

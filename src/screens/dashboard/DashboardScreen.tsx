@@ -91,7 +91,7 @@ const tokenManager = new TokenManager();
 
 interface DashboardScreenProps {
   onSend?: () => void;
-  onReceive?: () => void;
+  onReceive?: (shielded?: boolean) => void;
   onShield?: () => void;
   onSwap?: () => void;
   onBuy?: () => void;
@@ -448,7 +448,7 @@ interface DashboardHeaderProps {
   onToggleBalance: () => void;
   onModeToggle: (target: 'transparent' | 'shielded') => void;
   onSend?: () => void;
-  onReceive?: () => void;
+  onReceive?: (shielded?: boolean) => void;
   onShield?: () => void;
   onSwap?: () => void;
   onBuy?: () => void;
@@ -683,7 +683,7 @@ function DashboardHeader({
           <QuickAction
             Icon={ArrowDownToLine}
             label="Receive"
-            onPress={onReceive}
+            onPress={() => onReceive?.(isShielded)}
             mode={mode}
           />
           {isShielded ? (

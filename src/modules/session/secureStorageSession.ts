@@ -2,18 +2,28 @@ import {keychainManager} from '../keychain/keychainModule';
 import {mnemonicToSeed} from '../keyDerivation/mnemonicUtils';
 import {deriveSecureStorageKey} from '../keychain/secureStorageKey';
 import {zeroize} from './zeroize';
-import {initSecureMmkv, mmkvSecure} from '../../store/mmkv/instances';
+import {initSecureMmkv, mmkvSecure, mmkvPublic} from '../../store/mmkv/instances';
 import {setShieldedViewSession} from '../shielded/shieldedViewSession';
+import {getViewPublicKey} from '../shielded/shieldedIdentity';
+import {encodeShieldedAddress} from '../shielded/shieldedAddressCodec';
+import {MMKV_KEYS} from '../../constants/mmkvKeys';
 
 /**
- * Prime the shielded view-key scan cache — BEST EFFORT. This only powers
- * incoming-note scanning; if view-key derivation ever fails it must NOT abort
- * the critical unlock/onboarding path, so failures are swallowed (scanning just
- * no-ops until the next unlock).
+ * Prime the shielded view-key scan cache AND persist the user's own noc1…
+ * shielded receive address — BEST EFFORT. The view session powers incoming-note
+ * scanning; the stored address (public data, like the transparent address — safe
+ * in the unencrypted store) powers the shielded Receive screen without needing a
+ * biometric prompt. If view-key derivation ever fails it must NOT abort the
+ * critical unlock/onboarding path, so failures are swallowed (scanning + the
+ * shielded receive address just refresh on the next unlock).
  */
 function primeViewSession(seed: Uint8Array): void {
   try {
     setShieldedViewSession(seed);
+    mmkvPublic.set(
+      MMKV_KEYS.WALLET_SHIELDED_ADDRESS,
+      encodeShieldedAddress(getViewPublicKey(seed)),
+    );
   } catch {
     // best effort — see doc comment
   }
