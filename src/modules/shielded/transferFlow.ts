@@ -135,26 +135,35 @@ export async function sendPrivateTransfer(
   const txSignature = await submitPoolTxMany([ix], SHIELDED_CU.transfer, feePayer);
 
   // submitPoolTxMany confirmed the tx (getSignatureStatus, which surfaces on-chain
-  // errors) — the transfer succeeded. Record the self-change note FIRST (best-effort
-  // leaf index or a sentinel to backfill on spend), then mark inputs spent. Neither
-  // step can hang or lose value.
+  // errors) — the transfer succeeded on-chain. Mark the inputs spent FIRST: this is
+  // the critical, must-not-be-skipped step. It is a pure synchronous MMKV write that
+  // cannot hang or throw, and skipping it would leave the input note spendable AND
+  // let the dashboard scan re-add the received output → local balance inflation.
   onStep?.('5/5 recording…');
-  if (w.change > 0n) {
-    const idx = await resolveLeafIndex(txSignature, w.changeOut.commitment, mint);
-    addNote({
-      commitment: w.changeOut.commitment,
-      nullifier: '',
-      mint,
-      amount: w.change,
-      index: idx, // may be UNRESOLVED_INDEX; backfilled when spent
-      spent: false,
-      createdAt: Date.now(),
-      noteSecret: w.changeOut.noteSecret.toString(),
-    });
-  }
-
   for (const n of resolvedInputs) {
     markSpentByCommitment(mint, n.commitment);
+  }
+
+  // Record the self-change note (best-effort). out_1 is encrypted to our OWN view
+  // key, so even if this fails, the dashboard scan rediscovers it — storing it here
+  // is only for instant feedback. Wrapped so a post-submit RPC/bookkeeping failure
+  // can never surface as an error after a confirmed, already-recorded transfer.
+  if (w.change > 0n) {
+    try {
+      const idx = await resolveLeafIndex(txSignature, w.changeOut.commitment, mint);
+      addNote({
+        commitment: w.changeOut.commitment,
+        nullifier: '',
+        mint,
+        amount: w.change,
+        index: idx, // may be UNRESOLVED_INDEX; backfilled when spent
+        spent: false,
+        createdAt: Date.now(),
+        noteSecret: w.changeOut.noteSecret.toString(),
+      });
+    } catch {
+      // best-effort — the scan will rediscover the self-change note
+    }
   }
 
   return {txSignature, sent: amount, change: w.change};

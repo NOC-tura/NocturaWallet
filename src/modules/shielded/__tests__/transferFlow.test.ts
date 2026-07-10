@@ -55,4 +55,18 @@ describe('sendPrivateTransfer', () => {
     (syncLeaves as jest.Mock).mockResolvedValue({leaves: [], onChainRoots: [rootHex]});
     await expect(sendPrivateTransfer(seed, feePayer, MINT, 'noc1r', 999n)).rejects.toThrow();
   });
+
+  // Regression: the input MUST be marked spent even if post-submit change-note
+  // bookkeeping (leaf-index resolution) fails. Otherwise the input stays unspent,
+  // the scan re-adds the received output, and the local balance inflates.
+  it('marks the input spent even when change-note leaf resolution throws', async () => {
+    const {resolveLeafIndex} = require('../leafResolver');
+    (selectTransferInputs as jest.Mock).mockReturnValue([input]);
+    (syncLeaves as jest.Mock).mockResolvedValue({leaves: ['ci'], onChainRoots: [rootHex]});
+    (resolveLeafIndex as jest.Mock).mockRejectedValueOnce(new Error('RPC exploded'));
+    // The transfer succeeded on-chain (submit resolved); a bookkeeping failure
+    // afterwards must not leave the input spendable.
+    await sendPrivateTransfer(seed, feePayer, MINT, 'noc1recipient', 200n).catch(() => {});
+    expect(markSpentByCommitment).toHaveBeenCalledWith(MINT, 'ci');
+  });
 });

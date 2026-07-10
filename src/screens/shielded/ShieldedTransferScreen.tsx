@@ -1,5 +1,6 @@
 import React, {useState, useCallback, useEffect, useRef} from 'react';
-import {View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet} from 'react-native';
+import {View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Linking} from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import {Keypair} from '@solana/web3.js';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {RouteProp} from '@react-navigation/native';
@@ -22,6 +23,8 @@ import {deriveTransparentKeypair} from '../../modules/keyDerivation/transparent'
 import {loadTransparentScheme} from '../../modules/keyDerivation/derivationScheme';
 import {zeroize} from '../../modules/session/zeroize';
 import {SHIELDED_POOL_MINTS} from '../../constants/programs';
+import {poolTokenMeta} from '../../modules/shielded/poolTokens';
+import {getExplorerUrl} from '../../utils/explorerUrl';
 import {PrivacyMeter} from '../../components/PrivacyMeter';
 import {FeeDisplayRow} from '../../components/FeeDisplayRow';
 import {ProofProgressOverlay} from '../../components/ProofProgressOverlay';
@@ -33,6 +36,7 @@ import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount'
 // The shielded transfer always targets the single live pool mint — the same
 // source ZkProofScreen uses for shield/unshield.
 const POOL_MINT = SHIELDED_POOL_MINTS[0] ?? '';
+const POOL_META = poolTokenMeta(POOL_MINT);
 
 export function ShieldedTransferScreen(): React.JSX.Element {
   const navigation = useNavigation();
@@ -62,10 +66,12 @@ export function ShieldedTransferScreen(): React.JSX.Element {
   const [amount, setAmount] = useState<string>('');
   const [privacyDismissed, setPrivacyDismissed] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [progressLabel, setProgressLabel] = useState<string>('');
+  const [txSignature, setTxSignature] = useState<string>('');
 
   const parsedAmount: bigint = (() => {
     try {
-      return parseTokenAmount(amount || '0', 9);
+      return parseTokenAmount(amount || '0', POOL_META.decimals);
     } catch {
       return 0n;
     }
@@ -94,6 +100,7 @@ export function ShieldedTransferScreen(): React.JSX.Element {
     if (!canConfirm) {
       return;
     }
+    setProgressLabel('Preparing…');
     setStep('proving');
     let seed: Uint8Array | null = null;
     try {
@@ -102,14 +109,15 @@ export function ShieldedTransferScreen(): React.JSX.Element {
       const scheme = loadTransparentScheme();
       const {secretKey} = deriveTransparentKeypair(seed, scheme);
       const feePayer = Keypair.fromSecretKey(secretKey);
-      await sendPrivateTransfer(
+      const result = await sendPrivateTransfer(
         seed,
         feePayer,
         POOL_MINT,
         recipient,
         parsedAmount,
-        () => {},
+        label => setProgressLabel(label),
       );
+      setTxSignature(result.txSignature);
       setStep('success');
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : 'An error occurred');
@@ -135,10 +143,32 @@ export function ShieldedTransferScreen(): React.JSX.Element {
   const isOverlayVisible = step === 'proving';
 
   if (step === 'success') {
+    const shortSig =
+      txSignature.length > 16
+        ? `${txSignature.slice(0, 8)}…${txSignature.slice(-8)}`
+        : txSignature;
     return (
       <View style={styles.centered}>
         <Text style={styles.successIcon}>✓</Text>
         <Text style={styles.successText}>Transfer sent privately</Text>
+        {txSignature ? (
+          <>
+            <Text style={styles.sigLabel}>Transaction</Text>
+            <TouchableOpacity
+              testID="copy-signature"
+              onPress={() => Clipboard.setString(txSignature)}
+              accessibilityLabel="Copy transaction signature">
+              <Text style={styles.sigValue}>{shortSig}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="view-explorer"
+              style={styles.secondaryButton}
+              onPress={() => void Linking.openURL(getExplorerUrl(txSignature))}
+              accessibilityLabel="View on explorer">
+              <Text style={styles.secondaryButtonText}>View on explorer</Text>
+            </TouchableOpacity>
+          </>
+        ) : null}
         <TouchableOpacity style={styles.primaryButton} onPress={handleDone} accessibilityLabel="Done">
           <Text style={styles.primaryButtonText}>Done</Text>
         </TouchableOpacity>
@@ -169,11 +199,11 @@ export function ShieldedTransferScreen(): React.JSX.Element {
           <View testID="confirm-summary" style={styles.summaryCard}>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Token</Text>
-              <Text style={styles.summaryValue}>{selectedMint}</Text>
+              <Text style={styles.summaryValue}>{POOL_META.symbol}</Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Amount</Text>
-              <Text style={styles.summaryValue}>{amount}</Text>
+              <Text style={styles.summaryValue}>{`${amount} ${POOL_META.symbol}`}</Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Recipient</Text>
@@ -209,7 +239,7 @@ export function ShieldedTransferScreen(): React.JSX.Element {
     <View style={styles.container}>
       <ProofProgressOverlay
         visible={isOverlayVisible}
-        message="Securing transaction..."
+        message={progressLabel || 'Securing transaction...'}
       />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text testID="screen-title" style={styles.title}>
@@ -379,8 +409,19 @@ const styles = StyleSheet.create({
   successText: {
     fontSize: 18,
     color: '#44FF44',
-    marginBottom: 32,
+    marginBottom: 24,
     textAlign: 'center',
+  },
+  sigLabel: {
+    color: '#888',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  sigValue: {
+    color: '#FFF',
+    fontSize: 15,
+    fontVariant: ['tabular-nums'],
+    marginBottom: 8,
   },
   errorIcon: {
     fontSize: 64,
