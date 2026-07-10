@@ -90,7 +90,7 @@ import {scanIncomingNotes} from '../../modules/shielded/noteScan';
 const tokenManager = new TokenManager();
 
 interface DashboardScreenProps {
-  onSend?: () => void;
+  onSend?: (shielded?: boolean) => void;
   onReceive?: (shielded?: boolean) => void;
   onShield?: () => void;
   onSwap?: () => void;
@@ -447,7 +447,7 @@ interface DashboardHeaderProps {
   hidden: boolean;
   onToggleBalance: () => void;
   onModeToggle: (target: 'transparent' | 'shielded') => void;
-  onSend?: () => void;
+  onSend?: (shielded?: boolean) => void;
   onReceive?: (shielded?: boolean) => void;
   onShield?: () => void;
   onSwap?: () => void;
@@ -677,7 +677,7 @@ function DashboardHeader({
           <QuickAction
             Icon={Send}
             label="Send"
-            onPress={onSend}
+            onPress={() => onSend?.(isShielded)}
             mode={mode}
           />
           <QuickAction

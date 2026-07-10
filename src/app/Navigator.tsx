@@ -298,7 +298,11 @@ function DashboardScreenNav() {
   const tabNav = useNavigation();
   return (
     <DashboardScreen
-      onSend={() => rootNav.navigate('SendModal')}
+      onSend={shielded =>
+        shielded && isShieldedEnabled()
+          ? rootNav.navigate('ShieldedTransfer', {})
+          : rootNav.navigate('SendModal')
+      }
       onReceive={shielded =>
         rootNav.navigate('ReceiveModal', shielded ? {shielded: true} : undefined)
       }
