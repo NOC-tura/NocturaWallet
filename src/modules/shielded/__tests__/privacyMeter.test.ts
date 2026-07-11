@@ -1,4 +1,8 @@
-import {getPrivacyLevel, shouldRepeatWarning} from '../privacyMeter';
+import {
+  getPrivacyLevel,
+  shouldRepeatWarning,
+  getPrivacyStrength,
+} from '../privacyMeter';
 
 describe('privacyMeter', () => {
   it('leafCount < 100 returns low/red/shouldShow', () => {
@@ -39,5 +43,29 @@ describe('privacyMeter', () => {
     expect(shouldRepeatWarning(999)).toBe(true);
     expect(shouldRepeatWarning(1000)).toBe(false);
     expect(shouldRepeatWarning(50)).toBe(true);
+  });
+
+  describe('getPrivacyStrength', () => {
+    it('maps anonymity set size to 0..5 bars across bands', () => {
+      expect(getPrivacyStrength(0)).toEqual({bars: 0, label: 'None', tone: 'muted'});
+      expect(getPrivacyStrength(5)).toEqual({bars: 1, label: 'Very weak', tone: 'danger'});
+      expect(getPrivacyStrength(50)).toEqual({bars: 2, label: 'Weak', tone: 'danger'});
+      expect(getPrivacyStrength(500)).toEqual({bars: 3, label: 'Fair', tone: 'warn'});
+      expect(getPrivacyStrength(5000)).toEqual({bars: 4, label: 'Strong', tone: 'accent'});
+      expect(getPrivacyStrength(15000)).toEqual({bars: 5, label: 'Very strong', tone: 'accent'});
+    });
+
+    it('treats negative leaf counts as no anonymity set', () => {
+      expect(getPrivacyStrength(-1).bars).toBe(0);
+    });
+
+    it('band edges are inclusive-low / exclusive-high', () => {
+      expect(getPrivacyStrength(9).bars).toBe(1);
+      expect(getPrivacyStrength(10).bars).toBe(2);
+      expect(getPrivacyStrength(999).bars).toBe(3);
+      expect(getPrivacyStrength(1000).bars).toBe(4);
+      expect(getPrivacyStrength(9999).bars).toBe(4);
+      expect(getPrivacyStrength(10000).bars).toBe(5);
+    });
   });
 });

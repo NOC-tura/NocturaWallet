@@ -23,7 +23,10 @@ import {
   Lock,
   Copy,
   ExternalLink,
+  ScanLine,
+  ChevronDown,
 } from 'lucide-react-native';
+import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RootStackParamList} from '../../types/navigation';
 import {Text} from '../../components/ui';
 import {TokenLogo} from '../../components/TokenLogo';
@@ -34,7 +37,7 @@ import {sendPrivateTransfer} from '../../modules/shielded/transferFlow';
 import {warmProver} from '../../modules/zkProver/zkProverModule';
 import {maxTransferable} from '../../modules/shielded/noteSelect';
 import {getNotes, getBalance} from '../../modules/shielded/noteStore';
-import {shouldRepeatWarning} from '../../modules/shielded/privacyMeter';
+import {getPrivacyStrength} from '../../modules/shielded/privacyMeter';
 import {isValidShieldedAddress} from '../../modules/shielded/shieldedAddressCodec';
 import {keychainManager} from '../../modules/keychain/keychainModule';
 import {mnemonicToSeed} from '../../modules/keyDerivation/mnemonicUtils';
@@ -42,7 +45,6 @@ import {deriveTransparentKeypair} from '../../modules/keyDerivation/transparent'
 import {loadTransparentScheme} from '../../modules/keyDerivation/derivationScheme';
 import {zeroize} from '../../modules/session/zeroize';
 import {SHIELDED_POOL_MINTS} from '../../constants/programs';
-import {PrivacyMeter} from '../../components/PrivacyMeter';
 import {ProofProgressOverlay} from '../../components/ProofProgressOverlay';
 import type {ShieldedScreenStep} from '../../modules/shielded/types';
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
@@ -64,6 +66,10 @@ const shieldedExplorerUrl = (sig: string): string =>
 // Mint accent (index.html §s12 shielded variant · §8 status mapping).
 const ACCENT = '#5BE3C2';
 
+// Thousands grouping without Intl (Hermes ships no full Intl on some builds).
+const groupThousands = (n: number): string =>
+  String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
 /**
  * #12 Send — SHIELDED variant (private transfer). Mirrors the transparent Send
  * (#12) DS/layout with the mint accent + a Privacy Meter card + ZK-proof fee row
@@ -75,6 +81,7 @@ const ACCENT = '#5BE3C2';
  */
 export function ShieldedTransferScreen(): React.JSX.Element {
   const navigation = useNavigation();
+  const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, 'ShieldedTransfer'>>();
   const {merkleLeafCount} = useShieldedStore();
 
@@ -96,7 +103,6 @@ export function ShieldedTransferScreen(): React.JSX.Element {
   const [step, setStep] = useState<ShieldedScreenStep>('input');
   const [recipient, setRecipient] = useState<string>(route.params?.recipient ?? '');
   const [amount, setAmount] = useState<string>('');
-  const [privacyDismissed, setPrivacyDismissed] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [progressLabel, setProgressLabel] = useState<string>('');
   const [txSignature, setTxSignature] = useState<string>('');
@@ -133,8 +139,16 @@ export function ShieldedTransferScreen(): React.JSX.Element {
   const canReview =
     validRecipient && parsedAmount > 0n && !overCap && !insufficient;
 
-  const showPrivacyMeter =
-    shouldRepeatWarning(merkleLeafCount) && !privacyDismissed;
+  // 5-bar privacy strength derived from the real on-chain anonymity set.
+  const privacyStrength = getPrivacyStrength(merkleLeafCount);
+  const privacyToneColor =
+    privacyStrength.tone === 'accent'
+      ? ACCENT
+      : privacyStrength.tone === 'warn'
+        ? '#E7B54A'
+        : privacyStrength.tone === 'danger'
+          ? '#FF5C6A'
+          : '#6E727A';
 
   const handlePaste = useCallback(async () => {
     try {
@@ -148,6 +162,13 @@ export function ShieldedTransferScreen(): React.JSX.Element {
   const handleMax = useCallback(() => {
     setAmount(formatTokenAmount(maxAmount, POOL_META.decimals));
   }, [maxAmount]);
+
+  // Opens the shared QR scanner modal (#14). Same route the transparent Send
+  // uses; the camera→recipient return plumbing (#14) is a project-wide gap, not
+  // wired here nor there.
+  const handleQrScan = useCallback(() => {
+    rootNav.navigate('ScanModal');
+  }, [rootNav]);
 
   const handleReviewTap = useCallback(() => {
     const now = Date.now();
@@ -391,45 +412,28 @@ export function ShieldedTransferScreen(): React.JSX.Element {
           contentContainerClassName="px-5 pb-6"
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
-          {/* Mode eyebrow */}
-          <Text variant="overline" className="mb-3 text-accent-shielded">
-            Shielded · vault
-          </Text>
-
-          {showPrivacyMeter ? (
-            <View className="mb-4">
-              <PrivacyMeter
-                leafCount={merkleLeafCount}
-                isFirstDeposit={merkleLeafCount === 0}
-                onDismiss={() => setPrivacyDismissed(true)}
-              />
-            </View>
-          ) : null}
-
-          {/* Token (single pool token — shown, not a picker) */}
-          <View className="mb-4">
-            <Text variant="overline" className="mb-2">
-              Token
+          {/* Eyebrow + token chip on one row (index.html #12 shielded, l.6705) */}
+          <View className="flex-row items-center justify-between mb-4">
+            <Text variant="overline" className="text-accent-shielded">
+              Shielded · vault
             </Text>
-            <View className="flex-row items-center gap-3 p-4 rounded-md bg-bg-surface-1 border border-bg-surface-3">
+            {/* Single live pool token → chip is display-only; a picker is a no-op
+                while the pool holds one mint. */}
+            <View className="flex-row items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-pill bg-bg-surface-1 border border-bg-surface-3">
               <TokenLogo symbol={POOL_META.symbol} isNoc={false} />
-              <View className="flex-1">
-                <Text variant="body-lg" className="text-fg-primary">
-                  {POOL_META.symbol}
-                </Text>
-                <Text variant="caption" className="text-fg-tertiary">
-                  {POOL_META.name}
-                </Text>
-              </View>
+              <Text variant="body-lg" className="text-fg-primary">
+                {POOL_META.symbol}
+              </Text>
+              <ChevronDown size={16} color="#6E727A" strokeWidth={2} />
             </View>
           </View>
 
-          {/* Recipient · noc1 payment code */}
+          {/* Recipient (index.html #12 shielded, l.6709–6717) */}
           <View className="mb-4">
             <Text
               variant="overline"
               className={cn('mb-2', recipient.length > 0 && !validRecipient && 'text-danger')}>
-              Recipient · payment code
+              Recipient
             </Text>
             <View
               className={cn(
@@ -442,7 +446,7 @@ export function ShieldedTransferScreen(): React.JSX.Element {
                 testID="recipient-input"
                 value={recipient}
                 onChangeText={setRecipient}
-                placeholder="noc1…"
+                placeholder="Address or shielded payment code"
                 placeholderTextColor="#6E727A"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -469,6 +473,14 @@ export function ShieldedTransferScreen(): React.JSX.Element {
                     <ClipboardPaste size={18} color="#A8ACB5" strokeWidth={1.75} />
                   </Pressable>
                 )}
+                <Pressable
+                  onPress={handleQrScan}
+                  accessibilityRole="button"
+                  accessibilityLabel="Scan QR"
+                  testID="qr-scan-button"
+                  className="w-9 h-9 items-center justify-center rounded-pill active:bg-bg-surface-2">
+                  <ScanLine size={18} color="#A8ACB5" strokeWidth={1.75} />
+                </Pressable>
               </View>
             </View>
             {recipient.length > 0 && !validRecipient ? (
@@ -527,7 +539,7 @@ export function ShieldedTransferScreen(): React.JSX.Element {
               </View>
               <View className="flex-row items-center mt-2">
                 <Text variant="body-sm" className="text-fg-secondary">
-                  Shielded{' '}
+                  Vault available{' '}
                 </Text>
                 <Text variant="body-sm" numeral className="font-geist-semibold text-fg-primary">
                   {formatTokenAmount(shieldedBalance, POOL_META.decimals)} {POOL_META.symbol}
@@ -551,25 +563,69 @@ export function ShieldedTransferScreen(): React.JSX.Element {
             ) : null}
           </View>
 
-          {/* ZK-proof fee row */}
+          {/* Privacy meter — 5-bar strength card (index.html #12 shielded,
+              l.6727–6734), between amount and fee. Strength + anonymity set are
+              REAL (merkle leaf count). The note states the honest current model:
+              hosted prover — NOT the mockup's "generated locally · no IP
+              exposure" (both false for this devnet build). */}
+          <View
+            testID="privacy-meter"
+            className="rounded-md bg-bg-surface-1 border border-bg-surface-3 p-4 mb-4">
+            <View className="flex-row items-center justify-between mb-3">
+              <View className="flex-row items-center gap-2">
+                <ShieldCheck size={14} color={ACCENT} strokeWidth={2} />
+                <Text variant="overline" className="text-fg-secondary">
+                  Privacy meter
+                </Text>
+              </View>
+              <Text
+                variant="body-sm"
+                className="font-geist-semibold"
+                style={{color: privacyToneColor}}>
+                {privacyStrength.label} · {privacyStrength.bars}/5
+              </Text>
+            </View>
+            <View className="flex-row gap-1.5 mb-3">
+              {[0, 1, 2, 3, 4].map(i => (
+                <View
+                  key={i}
+                  className="flex-1 rounded-pill"
+                  style={{
+                    height: 6,
+                    backgroundColor:
+                      i < privacyStrength.bars ? privacyToneColor : '#2A2E37',
+                  }}
+                />
+              ))}
+            </View>
+            <Text variant="caption" className="text-fg-tertiary">
+              Anonymity set {groupThousands(merkleLeafCount)} · ZK proof via
+              hosted prover
+            </Text>
+          </View>
+
+          {/* Fee row — two lines per index.html #12 shielded (l.6735–6738).
+              Network fee = real Solana base fee. ZK-proof line shows the honest
+              current model (hosted prover, self-relayed devnet → no separate ZK
+              charge), NOT the mockup's illustrative ~0.0021 SOL. */}
           <View className="rounded-md bg-bg-surface-1 border border-bg-surface-3 p-4 gap-2 mb-4">
+            <View className="flex-row items-center justify-between">
+              <Text variant="body-sm" className="text-fg-secondary">
+                Network fee
+              </Text>
+              <Text variant="body-sm" numeral className="text-fg-primary">
+                ~0.000005 SOL
+              </Text>
+            </View>
             <View className="flex-row items-center justify-between">
               <View className="flex-row items-center gap-2">
                 <ShieldCheck size={14} color={ACCENT} strokeWidth={2} />
                 <Text variant="body-sm" className="text-fg-secondary">
-                  ZK proof
+                  ZK proof fee
                 </Text>
               </View>
-              <Text variant="body-sm" className="text-fg-primary">
-                Hosted prover
-              </Text>
-            </View>
-            <View className="flex-row items-center justify-between">
-              <Text variant="body-sm" className="text-fg-tertiary">
-                Network fee
-              </Text>
-              <Text variant="body-sm" numeral className="text-fg-secondary">
-                self-relayed (SOL)
+              <Text variant="body-sm" className="text-fg-secondary">
+                Hosted · included
               </Text>
             </View>
           </View>
@@ -604,7 +660,7 @@ export function ShieldedTransferScreen(): React.JSX.Element {
               )}>
               {amount.trim() && canReview
                 ? `Send ${amount} ${POOL_META.symbol} privately`
-                : 'Send private'}
+                : `Send private ${POOL_META.symbol}`}
             </Text>
           </Pressable>
         </View>
