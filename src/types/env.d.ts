@@ -12,6 +12,12 @@ declare module 'react-native-config' {
     SHIELDED_DEVNET_MINT?: string;
     /** 'true' enables shielded mode in this build (devnet test build only). Optional; absent = off. */
     FEATURES_SHIELDED?: string;
+    /**
+     * 'true' routes shielded transfers through the coordinator relayer (private:
+     * coordinator is fee_payer). Absent/other = self-relay (sender's key visible
+     * on-chain, devnet/debug only). Optional; absent = off.
+     */
+    SHIELDED_RELAYER?: string;
   }
   const Config: NativeConfig;
   export default Config;

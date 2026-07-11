@@ -19,6 +19,10 @@ jest.mock('../../zkProver/zkProverModule', () => ({
   proveShielded: jest.fn(async () => ({proofBytes: '00'.repeat(256), publicInputs: ['r', 'n0', 'n1', '40', '50', 'mh'], proofData: ''})),
 }));
 jest.mock('../poolTx', () => ({submitPoolTxMany: jest.fn(async () => 'SIG')}));
+jest.mock('../relayerSubmit', () => ({
+  submitTransferViaRelayer: jest.fn(async () => ({txSignature: 'RELAYER_SIG', alreadyLanded: false})),
+}));
+jest.mock('../../../constants/features', () => ({isShieldedRelayerEnabled: jest.fn(() => false)}));
 jest.mock('../noteStore', () => ({markSpentByCommitment: jest.fn(), addNote: jest.fn(), getNotes: jest.fn(() => []), setNoteIndex: jest.fn()}));
 jest.mock('../leafResolver', () => ({resolveLeafIndex: jest.fn(async () => 42), UNRESOLVED_INDEX: -1}));
 jest.mock('../shieldedIdentity', () => ({getViewPublicKey: jest.fn(() => new Uint8Array(48).fill(9)), getPkRecipientHash: jest.fn()}));
@@ -31,6 +35,9 @@ import {sendPrivateTransfer} from '../transferFlow';
 import {syncLeaves} from '../merkleSync';
 import {selectTransferInputs} from '../noteSelect';
 import {markSpentByCommitment, addNote} from '../noteStore';
+import {submitPoolTxMany} from '../poolTx';
+import {submitTransferViaRelayer} from '../relayerSubmit';
+import {isShieldedRelayerEnabled} from '../../../constants/features';
 import type {ShieldedNote} from '../types';
 
 const MINT = 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW';
@@ -50,6 +57,27 @@ describe('sendPrivateTransfer', () => {
     expect(markSpentByCommitment).toHaveBeenCalledWith(MINT, 'ci');
     expect(addNote).toHaveBeenCalledWith(expect.objectContaining({commitment: '50', amount: 300n, index: 42}));
   });
+  it('self-relays (submitPoolTxMany) when the relayer flag is OFF', async () => {
+    (selectTransferInputs as jest.Mock).mockReturnValue([input]);
+    (syncLeaves as jest.Mock).mockResolvedValue({leaves: ['ci'], onChainRoots: [rootHex]});
+    const res = await sendPrivateTransfer(seed, feePayer, MINT, 'noc1recipient', 200n);
+    expect(res.txSignature).toBe('SIG');
+    expect(submitPoolTxMany).toHaveBeenCalledTimes(1);
+    expect(submitTransferViaRelayer).not.toHaveBeenCalled();
+  });
+
+  it('routes through the relayer (not self-relay) when the flag is ON', async () => {
+    (isShieldedRelayerEnabled as jest.Mock).mockReturnValueOnce(true);
+    (selectTransferInputs as jest.Mock).mockReturnValue([input]);
+    (syncLeaves as jest.Mock).mockResolvedValue({leaves: ['ci'], onChainRoots: [rootHex]});
+    const res = await sendPrivateTransfer(seed, feePayer, MINT, 'noc1recipient', 200n);
+    expect(res.txSignature).toBe('RELAYER_SIG');
+    expect(submitTransferViaRelayer).toHaveBeenCalledTimes(1);
+    expect(submitPoolTxMany).not.toHaveBeenCalled();
+    // still marks input spent + records change on the relayer path
+    expect(markSpentByCommitment).toHaveBeenCalledWith(MINT, 'ci');
+  });
+
   it('throws when no inputs cover the amount', async () => {
     (selectTransferInputs as jest.Mock).mockReturnValue(null);
     (syncLeaves as jest.Mock).mockResolvedValue({leaves: [], onChainRoots: [rootHex]});

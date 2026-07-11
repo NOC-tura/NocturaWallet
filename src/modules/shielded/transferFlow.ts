@@ -6,6 +6,8 @@ import {buildTransferWitness} from './transferWitness';
 import {encryptNote} from './noteEncryption';
 import {buildTransferIx} from './poolInstructions';
 import {submitPoolTxMany} from './poolTx';
+import {submitTransferViaRelayer} from './relayerSubmit';
+import {isShieldedRelayerEnabled} from '../../constants/features';
 import {poolPda, merkleTreePda, nullifierPda, transferVkPda} from './poolPdas';
 import {getNotes, markSpentByCommitment, addNote, setNoteIndex} from './noteStore';
 import {getViewPublicKey} from './shieldedIdentity';
@@ -113,26 +115,48 @@ export async function sendPrivateTransfer(
   const ct0 = encryptNote(recipientViewKeyG1, amount, w.recipientOut.noteSecret);
   const ct1 = encryptNote(getViewPublicKey(seed), w.change, w.changeOut.noteSecret);
 
-  const pool = poolPda(new PublicKey(mint));
-  const ix = buildTransferIx({
-    merkleRoot: w.merkleRoot32,
-    nullifier0: w.nullifier32[0],
-    nullifier1: w.nullifier32[1],
-    outCommitment0: w.outCommitment32[0],
-    outCommitment1: w.outCommitment32[1],
-    proofBytes,
-    ciphertext0: ct0,
-    ciphertext1: ct1,
-    pool,
-    merkleTree: merkleTreePda(pool),
-    nullifierRecord0: nullifierPda(w.nullifier32[0]),
-    nullifierRecord1: nullifierPda(w.nullifier32[1]),
-    feePayer: feePayer.publicKey,
-    transferVk: transferVkPda(pool),
-  });
-
   onStep?.('4/5 submitting…');
-  const txSignature = await submitPoolTxMany([ix], SHIELDED_CU.transfer, feePayer);
+  // Two mutually-exclusive submit paths (deliberate hard switch, never a silent
+  // fallback — a relayer failure must NOT quietly self-relay and leak the sender):
+  //   • relayer ON  → coordinator is fee_payer; our transparent key is absent.
+  //   • relayer OFF → self-relay; `feePayer` signs + pays and IS on-chain (debug).
+  let txSignature: string;
+  if (isShieldedRelayerEnabled()) {
+    const res = await submitTransferViaRelayer({
+      mint,
+      merkleRoot: w.merkleRoot32,
+      nullifier0: w.nullifier32[0],
+      nullifier1: w.nullifier32[1],
+      outCommitment0: w.outCommitment32[0],
+      outCommitment1: w.outCommitment32[1],
+      proofBytes,
+      publicInputs: proof.publicInputs,
+      ciphertext0: ct0,
+      ciphertext1: ct1,
+      cuLimit: SHIELDED_CU.transfer,
+      recipientCommitmentDec: w.recipientOut.commitment,
+    });
+    txSignature = res.txSignature; // '' when a 409 confirmed the transfer already landed
+  } else {
+    const pool = poolPda(new PublicKey(mint));
+    const ix = buildTransferIx({
+      merkleRoot: w.merkleRoot32,
+      nullifier0: w.nullifier32[0],
+      nullifier1: w.nullifier32[1],
+      outCommitment0: w.outCommitment32[0],
+      outCommitment1: w.outCommitment32[1],
+      proofBytes,
+      ciphertext0: ct0,
+      ciphertext1: ct1,
+      pool,
+      merkleTree: merkleTreePda(pool),
+      nullifierRecord0: nullifierPda(w.nullifier32[0]),
+      nullifierRecord1: nullifierPda(w.nullifier32[1]),
+      feePayer: feePayer.publicKey,
+      transferVk: transferVkPda(pool),
+    });
+    txSignature = await submitPoolTxMany([ix], SHIELDED_CU.transfer, feePayer);
+  }
 
   // submitPoolTxMany confirmed the tx (getSignatureStatus, which surfaces on-chain
   // errors) — the transfer succeeded on-chain. Mark the inputs spent FIRST: this is
