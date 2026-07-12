@@ -213,7 +213,7 @@ let _shieldedProveCallId = 0;
  * never leaves the device — see project_shielded_mainnet_blockers memory.
  */
 export async function proveShielded(
-  proofType: 'deposit' | 'withdraw' | 'withdraw_change',
+  proofType: 'deposit' | 'withdraw' | 'withdraw_change' | 'transfer',
   params: ShieldedProveParams,
 ): Promise<ShieldedProveResult> {
   const callKey = `shieldedProve:${proofType}:${++_shieldedProveCallId}`;
@@ -260,7 +260,7 @@ export async function proveShielded(
  * hot. Idempotent + spam-safe server-side; never throws.
  */
 export async function warmProver(
-  proofType: 'deposit' | 'withdraw' | 'withdraw_change',
+  proofType: 'deposit' | 'withdraw' | 'withdraw_change' | 'transfer',
 ): Promise<void> {
   try {
     await pinnedFetch(`${API_BASE}/zk/warm`, {

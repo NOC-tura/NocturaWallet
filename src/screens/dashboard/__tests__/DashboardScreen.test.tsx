@@ -19,6 +19,10 @@ jest.mock('../../../modules/shielded/poolState', () => ({
   fetchAnonymitySet: jest.fn().mockResolvedValue(null),
 }));
 
+jest.mock('../../../modules/shielded/noteScan', () => ({
+  scanIncomingNotes: jest.fn(() => Promise.resolve(0)),
+}));
+
 // ── Navigation ──────────────────────────────────────────────────────────────
 jest.mock('@react-navigation/native', () => ({
   useFocusEffect: (cb: () => void | (() => void)) => {

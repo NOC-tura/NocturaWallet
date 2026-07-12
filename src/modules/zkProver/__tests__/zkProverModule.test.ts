@@ -228,6 +228,21 @@ describe('proveShielded', () => {
     expect(res.proofBytes.length).toBe(512); // 256 bytes as hex
     expect(res.publicInputs).toHaveLength(6);
   });
+
+  it('returns proofBytes and 6-element publicInputs for transfer', async () => {
+    mockPinnedFetch.mockReturnValueOnce(
+      mockResponse(200, {
+        success: true,
+        proofBytes: '00'.repeat(256),
+        publicInputs: ['1', '2', '3', '4', '5', '6'],
+        proofData: '',
+      }),
+    );
+
+    const res = await proveShielded('transfer', {withdrawAmount: '200'});
+    expect(res.proofBytes.length).toBe(512); // 256 bytes as hex
+    expect(res.publicInputs).toHaveLength(6);
+  });
 });
 
 describe('warmProver', () => {
@@ -245,6 +260,15 @@ describe('warmProver', () => {
   it('never throws when the warmup request fails', async () => {
     mockPinnedFetch.mockRejectedValueOnce(new Error('network'));
     await expect(warmProver('withdraw_change')).resolves.toBeUndefined();
+  });
+
+  it('POSTs {proofType: transfer} to /zk/warm and resolves void', async () => {
+    mockPinnedFetch.mockReturnValueOnce(mockResponse(200, {success: true, warm: true}));
+    await expect(warmProver('transfer')).resolves.toBeUndefined();
+    const [url, opts] = mockPinnedFetch.mock.calls[0] as [string, {method: string; body: string}];
+    expect(url).toContain('/zk/warm');
+    expect(opts.method).toBe('POST');
+    expect(JSON.parse(opts.body)).toEqual({proofType: 'transfer'});
   });
 });
 

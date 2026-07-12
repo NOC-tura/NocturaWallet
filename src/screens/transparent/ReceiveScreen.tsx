@@ -3,7 +3,7 @@ import {View, Pressable, Share, TextInput, ScrollView, Vibration} from 'react-na
 import {SafeAreaView} from 'react-native-safe-area-context';
 import Clipboard from '@react-native-clipboard/clipboard';
 import QRCode from 'react-native-qrcode-svg';
-import {ArrowLeft, Share2, Copy, Check, X, AlertTriangle} from 'lucide-react-native';
+import {ArrowLeft, Share2, Copy, Check, X, AlertTriangle, ShieldCheck} from 'lucide-react-native';
 import {Text} from '../../components/ui';
 import {cn} from '../../utils/cn';
 
@@ -29,27 +29,37 @@ const NOC_LOGO = require('../../assets/tokens/noc-logo.png');
  * and clearing on backround sabotages the legitimate paste-into-other-app
  * flow).
  *
- * No FLAG_SECURE (public address is shareable by definition).
+ * No FLAG_SECURE (public address is shareable by definition — a screenshot of
+ * your own deposit address / shielded payment code is fine · index.html §s13 D).
+ *
+ * Mode awareness (§s13): when `shielded`, the address IS the noc1… shielded
+ * payment code (the recipient's view-key address that `sendPrivateTransfer`
+ * consumes); the mode strip, card title, accent, banner and CTA all flip.
  *
  * Deferred:
- *   - Shielded payment-code variant (#13.shielded) — separate when ZK lands
+ *   - Rotating/encrypted payment-code blob (design mock shows `noctura+shielded:eyJh…`,
+ *     an unlinkable per-request blob). For now the shielded payment code is the
+ *     STATIC noc1… view-key address — functional, but a static identifier.
  *   - Solana Pay URI label param (`?label=Noctura&message=…`)
  *   - Fiat estimate next to amount (needs price oracle)
  */
 
 interface ReceiveScreenProps {
   address: string;
+  shielded?: boolean;
   onBack?: () => void;
 }
 
 const CLIPBOARD_CLEAR_MS = 30_000;
 const COPIED_FEEDBACK_MS = 2_000;
 
-function buildUri(address: string, amount: string): string {
+function buildUri(address: string, amount: string, shielded: boolean): string {
   const cleaned = amount.trim();
-  if (!cleaned) return `solana:${address}`;
-  // Solana Pay URI · spec: solana:<recipient>?amount=N&label=Noctura
-  return `solana:${address}?amount=${encodeURIComponent(cleaned)}&label=Noctura`;
+  // Shielded · noctura+shielded:<payment-code>[?amount=N] (index.html §s13 C)
+  // Transparent · Solana Pay solana:<recipient>[?amount=N&label=Noctura]
+  const scheme = shielded ? `noctura+shielded:${address}` : `solana:${address}`;
+  if (!cleaned) return scheme;
+  return `${scheme}?amount=${encodeURIComponent(cleaned)}&label=Noctura`;
 }
 
 function truncateMiddle(s: string, head = 8, tail = 8): string {
@@ -57,12 +67,16 @@ function truncateMiddle(s: string, head = 8, tail = 8): string {
   return `${s.slice(0, head)}…${s.slice(-tail)}`;
 }
 
-export function ReceiveScreen({address, onBack}: ReceiveScreenProps) {
+export function ReceiveScreen({address, shielded = false, onBack}: ReceiveScreenProps) {
   const [amount, setAmount] = useState('');
   const [copied, setCopied] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
 
   const hasAddress = address.trim().length > 0;
+
+  // Mode-aware DS tokens (index.html §s13 mode-awareness row).
+  const accentHex = shielded ? '#5BE3C2' : '#B084FC';
+  const ticker = shielded ? 'NOC' : 'SOL';
 
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -76,7 +90,10 @@ export function ReceiveScreen({address, onBack}: ReceiveScreenProps) {
     };
   }, []);
 
-  const uri = useMemo(() => buildUri(address, amount), [address, amount]);
+  const uri = useMemo(
+    () => buildUri(address, amount, shielded),
+    [address, amount, shielded],
+  );
   const isPayRequest = amount.trim().length > 0;
   const uriTruncated = useMemo(() => truncateMiddle(uri, 12, 6), [uri]);
 
@@ -132,12 +149,16 @@ export function ReceiveScreen({address, onBack}: ReceiveScreenProps) {
     try {
       await Share.share({
         message: isPayRequest ? uri : address,
-        title: isPayRequest ? 'Noctura payment request' : 'My Solana address',
+        title: isPayRequest
+          ? 'Noctura payment request'
+          : shielded
+            ? 'My Noctura shielded payment code'
+            : 'My Solana address',
       });
     } catch {
       // user cancelled
     }
-  }, [address, isPayRequest, uri]);
+  }, [address, isPayRequest, uri, shielded]);
 
   const handleClearAmount = useCallback(() => {
     setAmount('');
@@ -159,20 +180,24 @@ export function ReceiveScreen({address, onBack}: ReceiveScreenProps) {
             className="w-12 h-12 items-center justify-center -ml-2">
             <ArrowLeft size={22} color="#A8ACB5" strokeWidth={1.75} />
           </Pressable>
-          <Text variant="h1" className="ml-1 flex-1">
-            Receive
-          </Text>
+          <View className="ml-1 flex-1 flex-row items-center gap-2">
+            {shielded ? (
+              <ShieldCheck size={18} color={accentHex} strokeWidth={2} />
+            ) : null}
+            <Text variant="h1">{shielded ? 'Receive private' : 'Receive'}</Text>
+          </View>
         </View>
         <View className="flex-1 items-center justify-center px-6">
           <View className="w-20 h-20 rounded-icon-hero bg-[rgba(255,92,106,0.18)] items-center justify-center mb-5">
             <AlertTriangle size={36} color="#FF5C6A" strokeWidth={1.75} />
           </View>
           <Text variant="h2" className="text-center mb-2">
-            No wallet address
+            {shielded ? 'No shielded address' : 'No wallet address'}
           </Text>
           <Text variant="body" className="text-center text-fg-secondary max-w-sm">
-            Your wallet hasn't finished loading. Try restarting the app, or
-            re-import your recovery phrase from Welcome.
+            {shielded
+              ? "Your shielded address isn't ready yet. Open the Shielded tab to unlock private mode, then try again."
+              : "Your wallet hasn't finished loading. Try restarting the app, or re-import your recovery phrase from Welcome."}
           </Text>
         </View>
       </SafeAreaView>
@@ -196,9 +221,12 @@ export function ReceiveScreen({address, onBack}: ReceiveScreenProps) {
         ) : (
           <View className="w-12 h-12 -ml-2" />
         )}
-        <Text variant="h1" className="ml-1 flex-1">
-          Receive
-        </Text>
+        <View className="ml-1 flex-1 flex-row items-center gap-2">
+          {shielded ? (
+            <ShieldCheck size={18} color={accentHex} strokeWidth={2} />
+          ) : null}
+          <Text variant="h1">{shielded ? 'Receive private' : 'Receive'}</Text>
+        </View>
         <Pressable
           onPress={handleShare}
           accessibilityRole="button"
@@ -215,15 +243,33 @@ export function ReceiveScreen({address, onBack}: ReceiveScreenProps) {
         showsVerticalScrollIndicator={false}>
         {/* Mode strip eyebrow */}
         <Text variant="overline" className="mb-3">
-          {isPayRequest ? 'Transparent · pay request' : 'Transparent · public address'}
+          {shielded
+            ? isPayRequest
+              ? 'Shielded · payment request'
+              : 'Shielded · payment code'
+            : isPayRequest
+              ? 'Transparent · pay request'
+              : 'Transparent · public address'}
         </Text>
 
         {/* QR card */}
         <View className="bg-bg-surface-1 rounded-lg border border-bg-surface-3 p-5 items-center mb-4">
           {isPayRequest ? (
-            <View className="mb-4 px-3 py-1.5 rounded-pill bg-accent-transparent-tint border border-accent-transparent">
-              <Text variant="caption" numeral className="text-accent-transparent font-geist-semibold">
-                PAY · {amount} SOL
+            <View
+              className={cn(
+                'mb-4 px-3 py-1.5 rounded-pill border',
+                shielded
+                  ? 'bg-accent-shielded-tint border-accent-shielded'
+                  : 'bg-accent-transparent-tint border-accent-transparent',
+              )}>
+              <Text
+                variant="caption"
+                numeral
+                className={cn(
+                  'font-geist-semibold',
+                  shielded ? 'text-accent-shielded' : 'text-accent-transparent',
+                )}>
+                PAY · {amount} {ticker}
               </Text>
             </View>
           ) : null}
@@ -259,13 +305,15 @@ export function ReceiveScreen({address, onBack}: ReceiveScreenProps) {
         <Pressable
           onPress={() => handleCopy(address)}
           accessibilityRole="button"
-          accessibilityLabel="Copy wallet address"
+          accessibilityLabel={shielded ? 'Copy shielded payment code' : 'Copy wallet address'}
           testID="copy-address-card"
           className={cn(
             'rounded-lg p-4 mb-4 border',
             copied
               ? 'border-success bg-[rgba(63,214,139,0.06)]'
-              : 'border-bg-surface-3 bg-bg-surface-1 active:bg-bg-surface-2',
+              : shielded
+                ? 'border-accent-shielded/40 bg-bg-surface-1 active:bg-bg-surface-2'
+                : 'border-bg-surface-3 bg-bg-surface-1 active:bg-bg-surface-2',
           )}>
           <View className="flex-row items-center justify-between mb-2">
             <View className="flex-row items-center gap-2">
@@ -274,8 +322,14 @@ export function ReceiveScreen({address, onBack}: ReceiveScreenProps) {
               ) : null}
               <Text
                 variant="overline"
-                className={copied ? 'text-success' : ''}>
-                {copied ? 'Copied to clipboard' : 'Wallet address'}
+                className={cn(
+                  copied ? 'text-success' : shielded ? 'text-accent-shielded' : '',
+                )}>
+                {copied
+                  ? 'Copied to clipboard'
+                  : shielded
+                    ? 'Shielded payment code'
+                    : 'Wallet address'}
               </Text>
             </View>
             <Text variant="caption" numeral className="text-fg-tertiary">
@@ -285,6 +339,11 @@ export function ReceiveScreen({address, onBack}: ReceiveScreenProps) {
           <Text variant="body-sm" mono selectable className="text-fg-primary">
             {address}
           </Text>
+          {shielded ? (
+            <Text variant="caption" className="text-fg-tertiary mt-1.5">
+              Your private address · share it to receive shielded transfers
+            </Text>
+          ) : null}
         </Pressable>
 
         {/* Amount card · optional pay-request */}
@@ -292,13 +351,17 @@ export function ReceiveScreen({address, onBack}: ReceiveScreenProps) {
           className={cn(
             'rounded-lg p-4 mb-4 border',
             isPayRequest
-              ? 'border-accent-transparent bg-bg-surface-1'
+              ? shielded
+                ? 'border-accent-shielded bg-bg-surface-1'
+                : 'border-accent-transparent bg-bg-surface-1'
               : 'border-bg-surface-3 bg-bg-surface-1',
           )}>
           <View className="flex-row items-center justify-between mb-2">
             <Text
               variant="overline"
-              className={isPayRequest ? 'text-accent-transparent' : ''}>
+              className={cn(
+                isPayRequest ? (shielded ? 'text-accent-shielded' : 'text-accent-transparent') : '',
+              )}>
               {isPayRequest ? 'Requested amount' : 'Request amount (optional)'}
             </Text>
             {isPayRequest ? (
@@ -322,10 +385,21 @@ export function ReceiveScreen({address, onBack}: ReceiveScreenProps) {
               className="flex-1 font-geist text-balance-md text-fg-primary"
             />
             <Text variant="body" className="text-fg-secondary">
-              SOL
+              {ticker}
             </Text>
           </View>
         </View>
+
+        {/* Shielded explainer banner (index.html §s13 · shield-tinted) */}
+        {shielded ? (
+          <View className="flex-row items-start gap-2 rounded-lg p-3 mb-1 bg-accent-shielded-tint border border-accent-shielded/30">
+            <ShieldCheck size={16} color={accentHex} strokeWidth={2} />
+            <Text variant="caption" className="flex-1 text-shield-300">
+              The sender's wallet must support Noctura shielded payment codes.
+              Amounts and parties stay private on-chain.
+            </Text>
+          </View>
+        ) : null}
       </ScrollView>
 
       {/* Sticky bottom CTAs · row */}
@@ -333,7 +407,9 @@ export function ReceiveScreen({address, onBack}: ReceiveScreenProps) {
         <Pressable
           onPress={handleCopyAddress}
           accessibilityRole="button"
-          accessibilityLabel={isPayRequest ? 'Copy link' : 'Copy address'}
+          accessibilityLabel={
+            isPayRequest ? 'Copy link' : shielded ? 'Copy code' : 'Copy address'
+          }
           className="flex-1 min-h-touch-rec rounded-pill bg-bg-surface-2 items-center justify-center flex-row gap-2 active:opacity-80">
           {copied ? (
             <Check size={18} color="#F4F5F7" strokeWidth={2} />
@@ -341,14 +417,17 @@ export function ReceiveScreen({address, onBack}: ReceiveScreenProps) {
             <Copy size={18} color="#F4F5F7" strokeWidth={1.75} />
           )}
           <Text variant="body-lg" className="font-geist-semibold text-fg-primary">
-            {copied ? 'Copied' : isPayRequest ? 'Copy link' : 'Copy address'}
+            {copied ? 'Copied' : isPayRequest ? 'Copy link' : shielded ? 'Copy code' : 'Copy address'}
           </Text>
         </Pressable>
         <Pressable
           onPress={handleShare}
           accessibilityRole="button"
           accessibilityLabel={isPayRequest ? 'Share request' : 'Share'}
-          className="flex-1 min-h-touch-rec rounded-pill bg-accent-transparent items-center justify-center flex-row gap-2 active:opacity-90">
+          className={cn(
+            'flex-1 min-h-touch-rec rounded-pill items-center justify-center flex-row gap-2 active:opacity-90',
+            shielded ? 'bg-accent-shielded' : 'bg-accent-transparent',
+          )}>
           <Share2 size={18} color="#0A0A0A" strokeWidth={2} />
           <Text variant="body-lg" className="font-geist-semibold text-bg-base">
             {isPayRequest ? 'Share request' : 'Share'}

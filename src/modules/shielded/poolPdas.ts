@@ -34,6 +34,12 @@ export function wchangeVkPda(pool: PublicKey): PublicKey {
     [Buffer.from('wchange_vk'), pool.toBuffer()], PROGRAM)[0];
 }
 
+/** transfer VK account PDA: ["transfer_vk", pool]. */
+export function transferVkPda(pool: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('transfer_vk'), pool.toBuffer()], PROGRAM)[0];
+}
+
 /**
  * Pool's vault token account = the off-curve ATA of the pool PDA for `mint`.
  * (allowOwnerOffCurve: the pool is a PDA, so its ATA is derived the same way but
