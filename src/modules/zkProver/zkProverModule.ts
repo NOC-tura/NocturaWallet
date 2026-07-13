@@ -1,6 +1,8 @@
 import {API_BASE} from '../../constants/programs';
+import {isLocalProvingEnabled} from '../../constants/features';
 import {pinnedFetch} from '../sslPinning/pinnedFetch';
 import {proveLimiter} from '../solana/rpcLimiter';
+import {localProver} from './localProver';
 import {proofQueue} from './proofQueue';
 import {
   ProofType,
@@ -206,6 +208,15 @@ export async function proveShielded(
   proofType: 'deposit' | 'withdraw' | 'withdraw_change' | 'transfer',
   params: ShieldedProveParams,
 ): Promise<ShieldedProveResult> {
+  // Local-only when enabled: the witness (incl. noteSecret) is proved on-device and
+  // NEVER sent to the hosted prover. No silent fallback — a local failure throws.
+  // Native returns on-chain-ready proofBytes directly; there is no base64 snarkjs
+  // proof to carry, so proofData is empty (no ShieldedProveResult consumer reads it).
+  if (isLocalProvingEnabled()) {
+    const {proofBytes, publicInputs} = await localProver.prove(proofType, params);
+    return {proofBytes, publicInputs, proofData: ''};
+  }
+
   const callKey = `shieldedProve:${proofType}:${++_shieldedProveCallId}`;
   const resp = await proveLimiter.execute(callKey, () =>
     pinnedFetch(`${API_BASE}/zk/prove`, {
