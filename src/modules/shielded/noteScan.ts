@@ -6,7 +6,7 @@ import {parseNoteCiphertextEvents} from './noteCiphertextEvents';
 import {tryDecryptNote} from './noteEncryption';
 import {noteCommitment, mintHash} from './noteCrypto';
 import {getShieldedViewSession} from './shieldedViewSession';
-import {getNotes, addNote} from './noteStore';
+import {hasNote, addNote} from './noteStore';
 import {decToHex64} from './fieldCodec';
 import {mmkvPublic} from '../../store/mmkv/instances';
 
@@ -117,9 +117,10 @@ export async function scanIncomingNotes(mint: string): Promise<number> {
           if (decToHex64(recomputedDec) !== onChainHex) continue; // spoofed/tampered
 
           // Dedup: stored commitments are DECIMAL strings (see transferFlow /
-          // withdrawFlow addNote). Compare like-for-like.
-          const known = getNotes(mint).some(n => n.commitment === recomputedDec);
-          if (known) continue;
+          // withdrawFlow addNote). Check the FULL set (spent-inclusive) — a spent
+          // note must not be rediscovered and re-added as unspent. addNote is also
+          // idempotent as a backstop against concurrent scans.
+          if (hasNote(mint, recomputedDec)) continue;
 
           addNote({
             commitment: recomputedDec,

@@ -67,8 +67,23 @@ export function selectNotes(mint: string, amount: bigint, fee: bigint): Shielded
   throw new Error(err.message);
 }
 
+/**
+ * Whether a note with this commitment already exists — SPENT OR UNSPENT.
+ * Unlike getNotes (which filters spent), this reads the full set, so a rescan
+ * can tell a genuinely-new note from a previously-seen (now spent) one.
+ */
+export function hasNote(mint: string, commitment: string): boolean {
+  return loadNotes(mint).some(n => n.commitment === commitment);
+}
+
 export function addNote(note: ShieldedNote): void {
   const notes = loadNotes(note.mint);
+  // Idempotent by commitment, spent-INCLUSIVE. A full rescan (cursor reset,
+  // reinstall, concurrent scan) re-encounters notes already in the store; re-adding
+  // a SPENT note as unspent would inflate the balance (getNotes filters spent, so a
+  // spent-blind dedup can't catch it). A commitment present anywhere — spent or not —
+  // is never re-inserted.
+  if (notes.some(n => n.commitment === note.commitment)) return;
   notes.push(note);
   saveNotes(note.mint, notes);
 }
