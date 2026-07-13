@@ -218,6 +218,7 @@ export interface WithdrawWithChangeIxParams {
   amount: bigint;
   changeCommitment: Uint8Array;        // 32
   proofBytes: Uint8Array;              // 256
+  ciphertext: Uint8Array;              // 128 — NoteCiphertext memo for the change note
   pool: PublicKey;
   merkleTree: PublicKey;
   vault: PublicKey;
@@ -228,8 +229,8 @@ export interface WithdrawWithChangeIxParams {
 }
 
 /**
- * withdraw_with_change(merkle_root[32], nullifier[32], amount:u64, change_commitment[32], proof_bytes).
- * Data = disc(8) + merkle_root(32) + nullifier(32) + amount(u64 LE) + change_commitment(32) + len(u32 LE) + proof.
+ * withdraw_with_change(merkle_root[32], nullifier[32], amount:u64, change_commitment[32], proof_bytes, ciphertext).
+ * Data = disc(8) + merkle_root(32) + nullifier(32) + amount(u64 LE) + change_commitment(32) + len(u32 LE) + proof + len(u32 LE) + ciphertext(128).
  * Accounts (WithdrawWithChangeCtx order): the 8 WithdrawCtx accounts + wchange_vk (ro).
  * SYNC POINT: the wchange_vk position is assumed appended LAST; confirm vs the ICO's final ctx at deploy.
  */
@@ -238,6 +239,7 @@ export function buildWithdrawWithChangeIx(p: WithdrawWithChangeIxParams): Transa
   if (p.nullifier.length !== 32) throw new Error('nullifier must be 32 bytes');
   if (p.changeCommitment.length !== 32) throw new Error('changeCommitment must be 32 bytes');
   if (p.proofBytes.length !== 256) throw new Error('proofBytes must be 256 bytes');
+  if (p.ciphertext.length !== 128) throw new Error('ciphertext must be 128 bytes');
 
   const data = Buffer.concat([
     Buffer.from(withdrawChangeDiscriminator()),
@@ -247,6 +249,8 @@ export function buildWithdrawWithChangeIx(p: WithdrawWithChangeIxParams): Transa
     Buffer.from(p.changeCommitment),
     Buffer.from(u32le(p.proofBytes.length)),
     Buffer.from(p.proofBytes),
+    Buffer.from(u32le(p.ciphertext.length)),
+    Buffer.from(p.ciphertext),
   ]);
 
   return new TransactionInstruction({
