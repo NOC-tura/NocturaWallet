@@ -40,6 +40,7 @@ export interface DepositIxParams {
   amount: bigint;
   commitment: Uint8Array;   // 32 bytes
   proofBytes: Uint8Array;   // 256 bytes
+  ciphertext: Uint8Array;   // 128 bytes — NoteCiphertext memo (amount+noteSecret to own view key)
   pool: PublicKey;
   merkleTree: PublicKey;
   vault: PublicKey;
@@ -48,14 +49,17 @@ export interface DepositIxParams {
 }
 
 /**
- * deposit(amount: u64, commitment: [u8;32], proof_bytes: Vec<u8>).
- * Data = disc(8) + amount(u64 LE) + commitment(32) + len(u32 LE) + proof_bytes.
+ * deposit(amount: u64, commitment: [u8;32], proof_bytes: Vec<u8>, ciphertext: Vec<u8>).
+ * Data = disc(8) + amount(u64 LE) + commitment(32) + len(u32 LE) + proof_bytes
+ *      + len(u32 LE) + ciphertext(128).  The memo lets a restored wallet recover
+ *      this deposit note by scanning (see seed-recovery design spec).
  * Accounts (DepositCtx order): pool(ro), merkle_tree(mut), vault(mut),
  * depositor(signer), depositor_token_account(mut), token_program(ro).
  */
 export function buildDepositIx(p: DepositIxParams): TransactionInstruction {
   if (p.commitment.length !== 32) throw new Error('commitment must be 32 bytes');
   if (p.proofBytes.length !== 256) throw new Error('proofBytes must be 256 bytes');
+  if (p.ciphertext.length !== 128) throw new Error('ciphertext must be 128 bytes');
 
   const data = Buffer.concat([
     Buffer.from(depositDiscriminator()),
@@ -63,6 +67,8 @@ export function buildDepositIx(p: DepositIxParams): TransactionInstruction {
     Buffer.from(p.commitment),
     Buffer.from(u32le(p.proofBytes.length)),
     Buffer.from(p.proofBytes),
+    Buffer.from(u32le(p.ciphertext.length)),
+    Buffer.from(p.ciphertext),
   ]);
 
   return new TransactionInstruction({
