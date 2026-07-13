@@ -18,6 +18,12 @@ declare module 'react-native-config' {
      * on-chain, devnet/debug only). Optional; absent = off.
      */
     SHIELDED_RELAYER?: string;
+    /**
+     * 'true' generates shielded ZK proofs on-device (noteSecret never leaves the
+     * phone; hosted prover unused for shielded). Requires native prover + assets.
+     * Optional; absent = off.
+     */
+    LOCAL_PROVING?: string;
   }
   const Config: NativeConfig;
   export default Config;
