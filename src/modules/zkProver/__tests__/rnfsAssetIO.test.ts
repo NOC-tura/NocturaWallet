@@ -7,9 +7,8 @@ jest.mock('react-native-fs', () => ({
 }));
 
 import {rnfsAssetIO} from '../rnfsAssetIO';
-import RNFS from 'react-native-fs';
 
-const mockRNFS = RNFS as jest.Mocked<typeof RNFS>;
+const mockRNFS = jest.requireMock('react-native-fs');
 
 it('cachePath is under the caches dir, keyed by circuit', () => {
   expect(rnfsAssetIO.cachePath('transfer')).toBe('/caches/noctura-transfer.zkey');
