@@ -9,7 +9,8 @@ jest.mock('../../solana/connection', () => ({
 import {
   submitTransferViaRelayer,
   RelayerError,
-  RelayerDisabledError,
+  RelayerBusyError,
+  RelayerUnavailableError,
   RelayerAlreadySpentError,
   type RelayerTransferInput,
 } from '../relayerSubmit';
@@ -35,6 +36,9 @@ const baseInput = (): RelayerTransferInput => ({
   cuLimit: 152000,
   recipientCommitmentDec: RECIP_DEC,
 });
+
+// Zero backoff so retry tests run instantly.
+const NOWAIT = {backoffMs: 0};
 
 beforeEach(() => {
   mockFetch.mockReset();
@@ -97,6 +101,16 @@ describe('submitTransferViaRelayer', () => {
     expect(res).toEqual({txSignature: '', alreadyLanded: true});
   });
 
+  it('409 with a txSignature + commitment on-chain → surfaces that signature', async () => {
+    mockFetch.mockResolvedValue({
+      status: 409,
+      json: async () => ({alreadySpent: true, txSignature: 'LANDED_VIA_409'}),
+    });
+    mockSync.mockResolvedValue({leaves: [decToHex64(RECIP_DEC)]});
+    const res = await submitTransferViaRelayer(baseInput());
+    expect(res).toEqual({txSignature: 'LANDED_VIA_409', alreadyLanded: true});
+  });
+
   it('409 + our commitment NOT on-chain → throws AlreadySpent (input spent elsewhere)', async () => {
     mockFetch.mockResolvedValue({status: 409, json: async () => ({alreadySpent: true})});
     mockSync.mockResolvedValue({leaves: ['deadbeef']});
@@ -109,12 +123,77 @@ describe('submitTransferViaRelayer', () => {
     await expect(submitTransferViaRelayer(baseInput())).rejects.toThrow(RelayerAlreadySpentError);
   });
 
-  it('503 → throws RelayerDisabledError', async () => {
-    mockFetch.mockResolvedValue({status: 503, json: async () => ({})});
-    await expect(submitTransferViaRelayer(baseInput())).rejects.toThrow(RelayerDisabledError);
+  // ---- 429: transient (spend-cap / in-flight nullifier lock / rate-limit) ----
+
+  it('429 then 200 → retries and succeeds', async () => {
+    mockFetch
+      .mockResolvedValueOnce({status: 429, json: async () => ({error: 'rate limited'})})
+      .mockResolvedValueOnce({status: 200, json: async () => ({txSignature: 'AFTER_RETRY'})});
+    const res = await submitTransferViaRelayer(baseInput(), NOWAIT);
+    expect(res).toEqual({txSignature: 'AFTER_RETRY', alreadyLanded: false});
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  it('502 → throws RelayerError', async () => {
+  it('429 in-flight lock then 409 (concurrent tx landed) → alreadyLanded success', async () => {
+    mockFetch
+      .mockResolvedValueOnce({status: 429, json: async () => ({error: 'in-flight'})})
+      .mockResolvedValueOnce({status: 409, json: async () => ({alreadySpent: true})});
+    mockSync.mockResolvedValue({leaves: [decToHex64(RECIP_DEC)]});
+    const res = await submitTransferViaRelayer(baseInput(), NOWAIT);
+    expect(res).toEqual({txSignature: '', alreadyLanded: true});
+  });
+
+  it('429 exhausted → throws RelayerBusyError after retrying', async () => {
+    mockFetch.mockResolvedValue({status: 429, json: async () => ({error: 'rate limited'})});
+    await expect(submitTransferViaRelayer(baseInput(), {backoffMs: 0, maxAttempts: 3})).rejects.toThrow(
+      RelayerBusyError,
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  // ---- 503: transient (fail-closed Redis / low-balance floor / disabled) ----
+
+  it('503 then 200 → retries and succeeds', async () => {
+    mockFetch
+      .mockResolvedValueOnce({status: 503, json: async () => ({})})
+      .mockResolvedValueOnce({status: 200, json: async () => ({txSignature: 'AFTER_503'})});
+    const res = await submitTransferViaRelayer(baseInput(), NOWAIT);
+    expect(res).toEqual({txSignature: 'AFTER_503', alreadyLanded: false});
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('503 exhausted → throws RelayerUnavailableError', async () => {
+    mockFetch.mockResolvedValue({status: 503, json: async () => ({})});
+    await expect(submitTransferViaRelayer(baseInput(), {backoffMs: 0, maxAttempts: 3})).rejects.toThrow(
+      RelayerUnavailableError,
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  // ---- 502: landed-but-reported-as-error (coordinator ERRCLS-3) ----
+
+  it('502 with a txSignature that confirms on-chain → success (defense vs ERRCLS-3)', async () => {
+    mockFetch.mockResolvedValue({
+      status: 502,
+      json: async () => ({error: 'confirm threw', txSignature: 'LANDED_502'}),
+    });
+    const res = await submitTransferViaRelayer(baseInput());
+    expect(res).toEqual({txSignature: 'LANDED_502', alreadyLanded: false});
+    expect(mockGetSignatureStatus).toHaveBeenCalledWith('LANDED_502', {searchTransactionHistory: true});
+  });
+
+  it('502 with a txSignature that FAILED on-chain → throws', async () => {
+    mockFetch.mockResolvedValue({
+      status: 502,
+      json: async () => ({error: 'x', txSignature: 'BAD_502'}),
+    });
+    mockGetSignatureStatus.mockResolvedValue({
+      value: {err: {InstructionError: [0, {Custom: 1}]}, confirmationStatus: 'confirmed'},
+    });
+    await expect(submitTransferViaRelayer(baseInput())).rejects.toThrow(RelayerError);
+  });
+
+  it('502 without a txSignature → throws RelayerError', async () => {
     mockFetch.mockResolvedValue({status: 502, json: async () => ({error: 'submit failed'})});
     await expect(submitTransferViaRelayer(baseInput())).rejects.toThrow(RelayerError);
   });
