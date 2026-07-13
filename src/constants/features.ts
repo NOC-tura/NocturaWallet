@@ -24,6 +24,13 @@ export const FEATURES = {
    * Enabled only when the build's env sets SHIELDED_RELAYER=true.
    */
   shieldedRelayer: Config.SHIELDED_RELAYER === 'true',
+  /**
+   * On-device ZK proving. OFF by default. When ON, shielded proofs are generated
+   * locally (noteSecret never leaves the device) and the hosted prover is NOT used
+   * for shielded ops — no silent fallback. Requires the native NocturaProver module
+   * + the circuit assets to be present; enable only once those ship.
+   */
+  localProving: Config.LOCAL_PROVING === 'true',
 } as const;
 
 /** Whether shielded mode is enabled in this build. */
@@ -34,4 +41,9 @@ export function isShieldedEnabled(): boolean {
 /** Whether shielded transfers route through the privacy relayer (vs self-relay). */
 export function isShieldedRelayerEnabled(): boolean {
   return FEATURES.shieldedRelayer;
+}
+
+/** Whether shielded proofs are generated on-device (vs the hosted prover). */
+export function isLocalProvingEnabled(): boolean {
+  return FEATURES.localProving;
 }

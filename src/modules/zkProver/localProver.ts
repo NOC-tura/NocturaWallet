@@ -1,29 +1,25 @@
-import {ProofWitness, ZKProof, ProofType} from './types';
+import type {ShieldedProveParams} from './types';
+import type {CircuitId} from '../../constants/provingAssets';
+import {isProverSupported, nativeProve} from './nativeProverBridge';
+import {ensureZkey, type AssetIO} from './provingAssets';
+import {rnfsAssetIO} from './rnfsAssetIO';
 
 /**
- * LocalProver — stub for on-device ZK proof generation.
- *
- * Phase 1: always reports unsupported. When native SNARK libs are integrated
- * (react-native-rapidsnark or similar) this stub is replaced with a real
- * implementation without changing the public interface.
+ * On-device ZK prover. `supported` is true only when the native module reports it
+ * can prove; `prove` verifies the pinned zkey then runs the native Groth16 prover.
+ * The witness (incl. noteSecret) is passed to native ONLY — never over the network.
  */
-export interface LocalProverResult {
-  /** Whether the device supports local proof generation. */
-  supported: false;
-}
-
 export const localProver = {
-  /** Always false until native libs are integrated. */
-  supported: false as const,
+  get supported(): boolean {
+    return isProverSupported();
+  },
 
-  /**
-   * Attempt to generate a proof locally.
-   * Currently always throws — callers must check `supported` first.
-   */
   async prove(
-    _proofType: ProofType,
-    _witness: ProofWitness,
-  ): Promise<ZKProof> {
-    throw new Error('Local proving not yet supported on this device');
+    proofType: CircuitId,
+    params: ShieldedProveParams,
+    io: AssetIO = rnfsAssetIO,
+  ): Promise<{proofBytes: string; publicInputs: string[]}> {
+    const zkeyPath = await ensureZkey(proofType, io);
+    return nativeProve(proofType, JSON.stringify(params), zkeyPath);
   },
 } as const;
