@@ -263,7 +263,10 @@ export function buildWithdrawWithChangeIx(p: WithdrawWithChangeIxParams): Transa
       {pubkey: p.nullifierRecord, isSigner: false, isWritable: true},
       {pubkey: p.feePayer, isSigner: true, isWritable: true},
       // wchange_vk sits BETWEEN fee_payer and token_program per the deployed
-      // WithdrawWithChangeCtx (confirmed against the on-chain program), NOT last.
+      // WithdrawWithChangeCtx — previously confirmed against the deployed C2
+      // program, NOT last. ICO is now adding the ciphertext arg + redeploying
+      // (see docs/superpowers/specs/2026-07-13-ico-deposit-withdrawchange-memo-contract.md);
+      // re-verify this position is unchanged after that redeploy.
       {pubkey: p.wchangeVk, isSigner: false, isWritable: false},
       {pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false},
       {pubkey: SystemProgram.programId, isSigner: false, isWritable: false},

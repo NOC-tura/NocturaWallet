@@ -77,20 +77,22 @@ disc(8) + merkle_root([u8;32], 32) + nullifier([u8;32], 32)
 sits at byte offset **372** (8+32+32+8+32+4+256=372); the ciphertext bytes occupy
 **376..504**.
 
-**Account order — wallet's current understanding, NOT frozen; ICO must verify against
-the deployed IDL.** Appending the memo argument to instruction *data* does not change
-account order or count — that part is not in question. What is **not** independently
-confirmed by this contract is the exact `WithdrawWithChangeCtx` account list itself:
-the wallet's `buildWithdrawWithChangeIx` (`poolInstructions.ts`) currently constructs
-it as the 8 `WithdrawCtx` accounts — `pool`(ro), `merkle_tree`(mut), `vault`(mut),
+**Account order — previously confirmed against the deployed C2 program; ICO must
+re-verify after this change redeploys it.** Appending the memo argument to
+instruction *data* does not change account order or count — that part is not in
+question. The exact `WithdrawWithChangeCtx` account list itself — the wallet's
+`buildWithdrawWithChangeIx` (`poolInstructions.ts`) constructs it as the 8
+`WithdrawCtx` accounts — `pool`(ro), `merkle_tree`(mut), `vault`(mut),
 `destination_token_account`(mut), `nullifier_record`(mut, init), `fee_payer`(signer,
 mut), `token_program`(ro), `system_program`(ro) — with `wchange_vk`(ro) inserted
-**between `fee_payer` and `token_program`** (not appended last). This reflects the
-wallet's best current understanding of the deployed program, but **ICO must verify
+**between `fee_payer` and `token_program`** (not appended last) — was confirmed
+against the program as previously deployed. But this contract has ICO adding the new
+`ciphertext` argument and redeploying that same instruction, so **ICO must re-verify
 the full account order — especially the `wchange_vk` position — and every
-signer/writable flag against their deployed `WithdrawWithChangeCtx` / IDL before
-relying on it.** If the deployed order differs, the wallet's instruction builder must
-be updated to match; do not assume the list above is authoritative.
+signer/writable flag against the redeployed `WithdrawWithChangeCtx` / IDL before
+relying on it being unchanged.** If the redeployed order differs, the wallet's
+instruction builder must be updated to match; do not assume the list above is
+authoritative post-redeploy.
 
 The **byte layout of the instruction data** above (the `disc + ... + ciphertext`
 sequence and offsets) is unaffected by this caveat and remains frozen — only the
@@ -161,8 +163,13 @@ transfer golden vector gated the transfer ix.
   before this change remain recoverable only from local MMKV on the device that
   created them. Devnet is disposable; this is a documented, deliberate omission, not
   a silently dropped requirement.
-- **Full withdraw** (no change output) creates no note — nothing to recover; that
-  instruction is untouched by this contract.
+- **Full withdraw** (no change output) creates no note — nothing to recover. The
+  wallet's only unshield entry point is `unshieldWithChange`, so a whole-note
+  ("max") unshield still goes through `withdraw_with_change` with
+  `changeAmount == 0`; it emits a non-recoverable random 128-byte filler memo
+  (not a self-recoverable `NoteCiphertext`) so `scanIncomingNotes` cannot decrypt
+  it and does not resurrect a spurious 0-amount note on restore. The
+  `withdraw` (no-change) instruction itself is untouched by this contract.
 - **`noteSecret` stays random.** No deterministic-derivation scheme is introduced;
   recoverability comes entirely from the on-chain memo, exactly as it already does
   for `transfer`.

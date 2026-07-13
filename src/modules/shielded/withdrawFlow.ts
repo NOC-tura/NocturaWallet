@@ -19,7 +19,7 @@ import type {ShieldedNote} from './types';
 import {buildWithdrawChangeWitness} from './withdrawChangeWitness';
 import {randomFieldElement} from './noteCrypto';
 import {resolveLeafIndex} from './leafResolver';
-import {encryptNote} from './noteEncryption';
+import {encryptNote, randomBytes} from './noteEncryption';
 import {getViewPublicKey} from './shieldedIdentity';
 
 const PROOF_BYTES_LEN = 256;
@@ -179,7 +179,15 @@ export async function unshieldWithChange(
 
   // Recovery memo for the same-owner change note: encrypt (changeAmount,
   // changeNoteSecret) to our own view key so a restored wallet recovers it.
-  const ciphertext = encryptNote(getViewPublicKey(seed), w.changeAmount, changeNoteSecret);
+  // Emit a self-recoverable memo ONLY for a real change note. A whole-note
+  // unshield has changeAmount==0 and stores no note (see the addNote guard
+  // below); a recoverable 0-memo would make scanIncomingNotes resurrect a
+  // spurious unspent 0-note on restore, so use a non-recoverable random filler
+  // (the ix requires 128 bytes; scan's G1 parse rejects random bytes).
+  const ciphertext =
+    w.changeAmount > 0n
+      ? encryptNote(getViewPublicKey(seed), w.changeAmount, changeNoteSecret)
+      : randomBytes(128);
 
   const pool = poolPda(mint);
   const withdrawIx = buildWithdrawWithChangeIx({
