@@ -4,11 +4,21 @@ jest.mock('../merkleSync', () => ({syncLeaves: jest.fn()}));
 jest.mock('../noteSelect', () => ({selectTransferInputs: jest.fn()}));
 jest.mock('../transferWitness', () => ({
   buildTransferWitness: jest.fn(() => ({
-    params: {merkleRoot: '5'},
+    params: {
+      merkleRoot: '10',
+      nullifier_0: '20',
+      nullifier_1: '30',
+      outCommitment_0: '40',
+      outCommitment_1: '50',
+      mintHash: '60',
+    },
     merkleRoot32: new Uint8Array(32).fill(1),
     nullifier32: [new Uint8Array(32).fill(2), new Uint8Array(32).fill(3)],
     outCommitment32: [new Uint8Array(32).fill(4), new Uint8Array(32).fill(5)],
     outCommitmentDec: ['40', '50'],
+    merkleRootDec: '10',
+    nullifierDec: ['20', '30'],
+    mintHashDec: '60',
     recipientOut: {commitment: '40', amount: 200n, noteSecret: 77n},
     changeOut: {commitment: '50', amount: 300n, noteSecret: 88n},
     change: 300n,
@@ -16,7 +26,7 @@ jest.mock('../transferWitness', () => ({
 }));
 jest.mock('../noteEncryption', () => ({encryptNote: jest.fn(() => new Uint8Array(128).fill(1))}));
 jest.mock('../../zkProver/zkProverModule', () => ({
-  proveShielded: jest.fn(async () => ({proofBytes: '00'.repeat(256), publicInputs: ['r', 'n0', 'n1', '40', '50', 'mh'], proofData: ''})),
+  proveShielded: jest.fn(async () => ({proofBytes: '00'.repeat(256), publicInputs: ['10', '20', '30', '40', '50', '60'], proofData: ''})),
 }));
 jest.mock('../poolTx', () => ({submitPoolTxMany: jest.fn(async () => 'SIG')}));
 jest.mock('../relayerSubmit', () => ({
@@ -76,6 +86,24 @@ describe('sendPrivateTransfer', () => {
     expect(submitPoolTxMany).not.toHaveBeenCalled();
     // still marks input spent + records change on the relayer path
     expect(markSpentByCommitment).toHaveBeenCalledWith(MINT, 'ci');
+  });
+
+  it('aborts if ANY prover public input drifts from the locally-computed value (#5)', async () => {
+    const {proveShielded} = require('../../zkProver/zkProverModule');
+    (selectTransferInputs as jest.Mock).mockReturnValue([input]);
+    (syncLeaves as jest.Mock).mockResolvedValue({leaves: ['ci'], onChainRoots: [rootHex]});
+    // Prover returns a wrong merkleRoot (index 0) — everything else matches.
+    (proveShielded as jest.Mock).mockResolvedValueOnce({
+      proofBytes: '00'.repeat(256),
+      publicInputs: ['999', '20', '30', '40', '50', '60'],
+      proofData: '',
+    });
+    await expect(
+      sendPrivateTransfer(seed, feePayer, MINT, 'noc1recipient', 200n),
+    ).rejects.toThrow(/publicInput\[0\] mismatch/);
+    // Never submitted, never marked spent.
+    expect(submitPoolTxMany).not.toHaveBeenCalled();
+    expect(markSpentByCommitment).not.toHaveBeenCalled();
   });
 
   it('throws when no inputs cover the amount', async () => {

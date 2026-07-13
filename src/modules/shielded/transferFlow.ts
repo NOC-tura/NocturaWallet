@@ -100,11 +100,27 @@ export async function sendPrivateTransfer(
 
   onStep?.('3/5 proving…');
   const proof = await proveShielded('transfer', w.params);
-  if (
-    proof.publicInputs[3] !== w.outCommitmentDec[0] ||
-    proof.publicInputs[4] !== w.outCommitmentDec[1]
-  ) {
-    throw new Error('Prover outCommitment mismatch — aborting transfer');
+  // Cross-check EVERY public input the prover returned against the value we
+  // computed locally — not just the out-commitments. Order per transfer.circom:
+  // [merkleRoot, nullifier_0, nullifier_1, outCommitment_0, outCommitment_1,
+  // mintHash]. BigInt equality (not string) so decimal/hex normalisation drift
+  // can't slip through. Any mismatch would otherwise only surface as an opaque
+  // coordinator/on-chain rejection after a full prove.
+  const expectedPublicInputs = [
+    w.merkleRootDec,
+    w.nullifierDec[0],
+    w.nullifierDec[1],
+    w.outCommitmentDec[0],
+    w.outCommitmentDec[1],
+    w.mintHashDec,
+  ];
+  if (proof.publicInputs.length !== expectedPublicInputs.length) {
+    throw new Error('Prover publicInputs count mismatch — aborting transfer');
+  }
+  for (let i = 0; i < expectedPublicInputs.length; i++) {
+    if (BigInt(proof.publicInputs[i]!) !== BigInt(expectedPublicInputs[i]!)) {
+      throw new Error(`Prover publicInput[${i}] mismatch — aborting transfer`);
+    }
   }
   const proofBytes = hexToBytes(proof.proofBytes);
   if (proofBytes.length !== PROOF_BYTES_LEN) {

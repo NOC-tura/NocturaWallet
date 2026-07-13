@@ -2,6 +2,15 @@ import {API_BASE} from '../../constants/programs';
 import {pinnedFetch} from '../sslPinning/pinnedFetch';
 import {bytesToHex, decToHex64} from './fieldCodec';
 import {syncLeaves} from './merkleSync';
+import {getConnection} from '../solana/connection';
+
+const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
+
+// Bound the post-200 confirmation poll. The coordinator already confirms before
+// answering, so this normally returns on the first poll; the window only covers
+// RPC propagation lag to the wallet's own endpoint.
+const CONFIRM_ATTEMPTS = 20;
+const CONFIRM_INTERVAL_MS = 1000;
 
 /**
  * Wallet → coordinator relayer client for shielded transfers.
@@ -82,6 +91,13 @@ export async function submitTransferViaRelayer(
     if (!data.txSignature) {
       throw new RelayerError('Relayer returned 200 without a txSignature');
     }
+    // NEVER trust the coordinator's word that the tx landed. Independently
+    // confirm the signature on-chain before the caller marks inputs spent — a
+    // coordinator that returns 200 for a failed-but-"already processed" tx (or
+    // optimistically, pre-confirmation) would otherwise cause the wallet to burn
+    // notes for a transfer that never succeeded. getSignatureStatus surfaces the
+    // on-chain `err`, so a failed tx throws here instead of a false success.
+    await confirmRelayedSignature(data.txSignature);
     return {txSignature: data.txSignature, alreadyLanded: false};
   }
 
@@ -132,4 +148,32 @@ async function recipientCommitmentOnChain(
   } catch {
     return false;
   }
+}
+
+/**
+ * Confirm a relayer-submitted signature actually SUCCEEDED on-chain. Polls
+ * getSignatureStatus (HTTP, endpoint-agnostic — no WS) until confirmed/finalized
+ * with no on-chain error. Throws RelayerError if the tx failed on-chain or never
+ * confirms within the window — the caller must not mark inputs spent otherwise.
+ */
+async function confirmRelayedSignature(signature: string): Promise<void> {
+  const connection = getConnection();
+  for (let i = 0; i < CONFIRM_ATTEMPTS; i++) {
+    const {value} = await connection.getSignatureStatus(signature, {
+      searchTransactionHistory: true,
+    });
+    if (value?.err) {
+      throw new RelayerError(
+        `Relayed tx failed on-chain: ${JSON.stringify(value.err)}`,
+      );
+    }
+    if (
+      value?.confirmationStatus === 'confirmed' ||
+      value?.confirmationStatus === 'finalized'
+    ) {
+      return;
+    }
+    await sleep(CONFIRM_INTERVAL_MS);
+  }
+  throw new RelayerError('Relayed tx not confirmed on-chain within timeout');
 }

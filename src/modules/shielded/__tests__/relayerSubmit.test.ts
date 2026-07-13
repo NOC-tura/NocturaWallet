@@ -1,6 +1,11 @@
 jest.mock('../../sslPinning/pinnedFetch', () => ({pinnedFetch: jest.fn()}));
 jest.mock('../merkleSync', () => ({syncLeaves: jest.fn()}));
 
+const mockGetSignatureStatus = jest.fn();
+jest.mock('../../solana/connection', () => ({
+  getConnection: () => ({getSignatureStatus: mockGetSignatureStatus}),
+}));
+
 import {
   submitTransferViaRelayer,
   RelayerError,
@@ -34,6 +39,11 @@ const baseInput = (): RelayerTransferInput => ({
 beforeEach(() => {
   mockFetch.mockReset();
   mockSync.mockReset();
+  mockGetSignatureStatus.mockReset();
+  // Default: the signature confirms cleanly on-chain.
+  mockGetSignatureStatus.mockResolvedValue({
+    value: {err: null, confirmationStatus: 'confirmed'},
+  });
 });
 
 describe('submitTransferViaRelayer', () => {
@@ -59,11 +69,20 @@ describe('submitTransferViaRelayer', () => {
     expect(body.publicInputs).toEqual(['r', 'n0', 'n1', '40', '50', 'mh']);
   });
 
-  it('200 → returns the txSignature (no self-relay)', async () => {
+  it('200 → confirms the signature on-chain, then returns it', async () => {
     mockFetch.mockResolvedValue({status: 200, json: async () => ({txSignature: 'REAL_SIG'})});
     const res = await submitTransferViaRelayer(baseInput());
     expect(res).toEqual({txSignature: 'REAL_SIG', alreadyLanded: false});
+    expect(mockGetSignatureStatus).toHaveBeenCalledWith('REAL_SIG', {searchTransactionHistory: true});
     expect(mockSync).not.toHaveBeenCalled();
+  });
+
+  it('200 but the tx FAILED on-chain → throws, never a false success (defense vs coordinator ERRCLS-2)', async () => {
+    mockFetch.mockResolvedValue({status: 200, json: async () => ({txSignature: 'FAILED_SIG'})});
+    mockGetSignatureStatus.mockResolvedValue({
+      value: {err: {InstructionError: [0, {Custom: 0}]}, confirmationStatus: 'confirmed'},
+    });
+    await expect(submitTransferViaRelayer(baseInput())).rejects.toThrow(RelayerError);
   });
 
   it('200 without a txSignature → throws', async () => {

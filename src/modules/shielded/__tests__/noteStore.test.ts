@@ -10,7 +10,7 @@ jest.mock('../../../store/mmkv/instances', () => {
   };
 });
 
-import {getNotes, getBalance, selectNotes, addNote, markSpent, markSpentByIndex, clearMint} from '../noteStore';
+import {getNotes, getBalance, selectNotes, addNote, hasNote, markSpent, markSpentByIndex, markSpentByCommitment, clearMint} from '../noteStore';
 import type {ShieldedNote} from '../types';
 
 const MINT = 'TestMint111111111111111111111111111111111111';
@@ -45,6 +45,36 @@ describe('noteStore', () => {
     expect(notes).toHaveLength(1);
     expect(notes[0]!.commitment).toBe(note.commitment);
     expect(notes[0]!.amount).toBe(1_000_000n);
+  });
+
+  it('addNote is idempotent by commitment (no double-count on re-add)', () => {
+    const note = makeNote({commitment: 'c0ffee', amount: 500_000n});
+    addNote(note);
+    addNote({...note}); // rescan re-encounters the same commitment
+    expect(getNotes(MINT)).toHaveLength(1);
+    expect(getBalance(MINT)).toBe(500_000n);
+  });
+
+  it('does NOT re-add a SPENT note as unspent (balance-inflation regression #3)', () => {
+    const note = makeNote({commitment: 'deadbeef', amount: 500_000n});
+    addNote(note);
+    markSpentByCommitment(MINT, 'deadbeef');
+    expect(getBalance(MINT)).toBe(0n);
+    // A full rescan re-encounters the note and tries to add it as unspent again.
+    addNote(makeNote({commitment: 'deadbeef', amount: 500_000n, spent: false}));
+    // It must NOT reappear as spendable.
+    expect(getBalance(MINT)).toBe(0n);
+    expect(getNotes(MINT)).toHaveLength(0); // still spent-filtered
+  });
+
+  it('hasNote is spent-INCLUSIVE (true for spent and unspent)', () => {
+    const note = makeNote({commitment: 'abc123'});
+    expect(hasNote(MINT, 'abc123')).toBe(false);
+    addNote(note);
+    expect(hasNote(MINT, 'abc123')).toBe(true);
+    markSpentByCommitment(MINT, 'abc123');
+    expect(getNotes(MINT)).toHaveLength(0); // filtered from getNotes
+    expect(hasNote(MINT, 'abc123')).toBe(true); // but still known
   });
 
   it('getBalance sums all unspent note amounts', () => {

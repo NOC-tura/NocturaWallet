@@ -31,6 +31,12 @@ export interface TransferWitness {
   nullifier32: [Uint8Array, Uint8Array];
   outCommitment32: [Uint8Array, Uint8Array];
   outCommitmentDec: [string, string];
+  // Typed decimals for the full public-input cross-check in transferFlow (params
+  // is a loose Record, so these give type-safe access). Order-aligned with the
+  // circuit's public signals: [merkleRoot, nullifier_0/1, outCommitment_0/1, mintHash].
+  merkleRootDec: string;
+  nullifierDec: [string, string];
+  mintHashDec: string;
   recipientOut: TransferOutRef; // out_0 — encrypt to recipient (NOT stored by sender)
   changeOut: TransferOutRef; // out_1 — self change (encrypt to self + store locally)
   change: bigint;
@@ -135,6 +141,9 @@ export function buildTransferWitness(input: TransferWitnessInput): TransferWitne
     nullifier32: [decToBe32(nulls[0]!.toString()), decToBe32(nulls[1]!.toString())],
     outCommitment32: [decToBe32(outCommitment[0]!.toString()), decToBe32(outCommitment[1]!.toString())],
     outCommitmentDec: [outCommitment[0]!.toString(), outCommitment[1]!.toString()],
+    merkleRootDec: rootDec,
+    nullifierDec: [nulls[0]!.toString(), nulls[1]!.toString()],
+    mintHashDec: mH.toString(),
     recipientOut: {commitment: outCommitment[0]!.toString(), amount: transferAmount, noteSecret: outNoteSecrets[0]},
     changeOut: {commitment: outCommitment[1]!.toString(), amount: change, noteSecret: outNoteSecrets[1]},
     change,

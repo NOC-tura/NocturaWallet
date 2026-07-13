@@ -32,7 +32,11 @@ jest.mock('../shieldedViewSession', () => ({
 const mockGetNotes = jest.fn();
 const mockAddNote = jest.fn();
 jest.mock('../noteStore', () => ({
-  getNotes: (mint: string) => mockGetNotes(mint),
+  // hasNote is spent-inclusive; mirror the test's mocked note set.
+  hasNote: (mint: string, commitment: string) =>
+    (mockGetNotes(mint) as Array<{commitment: string}>).some(
+      n => n.commitment === commitment,
+    ),
   addNote: (note: unknown) => mockAddNote(note),
 }));
 
