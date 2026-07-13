@@ -11,6 +11,8 @@ import {resolveLeafIndex} from './leafResolver';
 import {SHIELDED_CU} from '../../constants/programs';
 import {mmkvSecure, initSecureMmkv} from '../../store/mmkv/instances';
 import {deriveSecureStorageKey} from '../keychain/secureStorageKey';
+import {encryptNote} from './noteEncryption';
+import {getViewPublicKey} from './shieldedIdentity';
 
 const PROOF_BYTES_LEN = 256;
 
@@ -82,6 +84,9 @@ export async function depositShield(
   ensureSecureMmkv(seed);
   onStep?.('1/4 building note…');
   const {params, note} = buildDepositNote(seed, amount, mint);
+  // Recovery memo: encrypt (amount, noteSecret) to our OWN view key so a wallet
+  // restored from the mnemonic recovers this deposit by scanning (noteScan.ts).
+  const ciphertext = encryptNote(getViewPublicKey(seed), amount, BigInt(note.noteSecret));
 
   onStep?.('2/4 proving…');
   const proof = await proveShielded('deposit', params);
@@ -102,6 +107,7 @@ export async function depositShield(
     amount,
     commitment: decToBe32(note.commitment),
     proofBytes,
+    ciphertext,
     pool,
     merkleTree: merkleTreePda(pool),
     vault: vaultAta(pool, mint),
