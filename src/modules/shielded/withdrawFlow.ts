@@ -19,6 +19,8 @@ import type {ShieldedNote} from './types';
 import {buildWithdrawChangeWitness} from './withdrawChangeWitness';
 import {randomFieldElement} from './noteCrypto';
 import {resolveLeafIndex} from './leafResolver';
+import {encryptNote} from './noteEncryption';
+import {getViewPublicKey} from './shieldedIdentity';
 
 const PROOF_BYTES_LEN = 256;
 
@@ -175,6 +177,10 @@ export async function unshieldWithChange(
     throw new Error(`proofBytes must be ${PROOF_BYTES_LEN} bytes`);
   }
 
+  // Recovery memo for the same-owner change note: encrypt (changeAmount,
+  // changeNoteSecret) to our own view key so a restored wallet recovers it.
+  const ciphertext = encryptNote(getViewPublicKey(seed), w.changeAmount, changeNoteSecret);
+
   const pool = poolPda(mint);
   const withdrawIx = buildWithdrawWithChangeIx({
     merkleRoot: w.merkleRoot32,
@@ -189,6 +195,7 @@ export async function unshieldWithChange(
     nullifierRecord: nullifierPda(w.nullifier32),
     feePayer: feePayer.publicKey,
     wchangeVk: wchangeVkPda(pool),
+    ciphertext,
   });
   const createAtaIx = buildCreateAtaIdempotentInstruction(
     feePayer.publicKey, destTokenAccount, feePayer.publicKey, mint,

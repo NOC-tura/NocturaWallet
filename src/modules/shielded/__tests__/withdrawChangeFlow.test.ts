@@ -45,9 +45,20 @@ jest.mock('../../../store/mmkv/instances', () => ({
   initSecureMmkv: jest.fn(),
 }));
 
+const capturedW: {ciphertext?: Uint8Array} = {};
+jest.mock('../poolInstructions', () => ({
+  buildWithdrawWithChangeIx: jest.fn((p: {ciphertext: Uint8Array}) => {
+    capturedW.ciphertext = p.ciphertext;
+    return {};
+  }),
+  buildWithdrawIx: jest.fn(() => ({})),
+}));
+
 import {unshieldWithChange, MerkleRootStaleError} from '../withdrawFlow';
 import {syncLeaves} from '../merkleSync';
 import {markSpentByCommitment, setNoteIndex, addNote} from '../noteStore';
+import {tryDecryptNote} from '../noteEncryption';
+import {deriveShieldedViewKey} from '../../keyDerivation/shielded';
 import type {ShieldedNote} from '../types';
 
 const MINT = 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW';
@@ -124,5 +135,16 @@ describe('unshieldWithChange', () => {
       unshieldWithChange(seed, feePayer, MINT, note, 200n),
     ).rejects.toBeInstanceOf(MerkleRootStaleError);
     expect(markSpentByCommitment).not.toHaveBeenCalled();
+  });
+
+  it('emits a change-note memo that decrypts to the change amount + change secret', async () => {
+    (syncLeaves as jest.Mock).mockResolvedValue({leaves: ['c'], onChainRoots: [rootHex]});
+    await unshieldWithChange(seed, feePayer, MINT, note, 200n);
+    expect(capturedW.ciphertext).toHaveLength(128);
+    const dec = tryDecryptNote(deriveShieldedViewKey(seed), capturedW.ciphertext!);
+    expect(dec).not.toBeNull();
+    expect(dec!.amount).toBe(300n); // changeAmount from the mocked witness
+    const stored = (addNote as jest.Mock).mock.calls[0][0];
+    expect(dec!.noteSecret.toString()).toBe(stored.noteSecret);
   });
 });
