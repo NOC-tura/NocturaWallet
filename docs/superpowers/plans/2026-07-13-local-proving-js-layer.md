@@ -44,7 +44,7 @@
 **Interfaces:**
 - Produces: `FEATURES.localProving: boolean`, `isLocalProvingEnabled(): boolean`.
 
-- [ ] **Step 1: Write the failing test** (append to `features.test.ts`)
+- [x] **Step 1: Write the failing test** (append to `features.test.ts`)
 
 ```ts
 import {isLocalProvingEnabled} from '../features';
@@ -55,12 +55,12 @@ it('localProving is off unless env LOCAL_PROVING=true', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx jest --testPathPattern=features`
 Expected: FAIL — `isLocalProvingEnabled` is not exported.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/constants/features.ts`, add to the `FEATURES` object (after `shieldedRelayer`):
 
@@ -94,12 +94,12 @@ In `src/types/env.d.ts`, add inside `NativeConfig` (after `SHIELDED_RELAYER`):
     LOCAL_PROVING?: string;
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx jest --testPathPattern=features`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/constants/features.ts src/types/env.d.ts src/constants/__tests__/features.test.ts
@@ -120,7 +120,7 @@ git commit -m "feat(prover): add localProving feature flag (off by default)"
   - `nativeProve(circuitId: string, witnessJson: string, zkeyPath: string): Promise<{proofBytes: string; publicInputs: string[]}>`
 - Consumes: `NativeModules.NocturaProver` (native, mocked in tests). Native owns the bundled `.wasm` per circuitId; JS supplies only the verified `zkeyPath`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 const mockNative = {isSupported: jest.fn(), prove: jest.fn()};
@@ -145,12 +145,12 @@ it('nativeProve delegates to the native module and returns its result', async ()
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx jest --testPathPattern=nativeProverBridge`
 Expected: FAIL — module does not exist.
 
-- [ ] **Step 3: Implement `src/modules/zkProver/nativeProverBridge.ts`**
+- [x] **Step 3: Implement `src/modules/zkProver/nativeProverBridge.ts`**
 
 ```ts
 import {NativeModules} from 'react-native';
@@ -185,12 +185,12 @@ export async function nativeProve(
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx jest --testPathPattern=nativeProverBridge`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/modules/zkProver/nativeProverBridge.ts src/modules/zkProver/__tests__/nativeProverBridge.test.ts
@@ -211,7 +211,7 @@ git commit -m "feat(prover): native NocturaProver bridge contract (mocked)"
 
 > **ICO dependency:** the real `url` + `sha256` per circuit come from the ICO/circuits delivery and DO NOT exist yet. Ship the wired structure now with **empty strings**; `zkeyAsset` throwing on an empty entry is what keeps the gate honest (capability false until populated). Populate on delivery.
 
-- [ ] **Step 1: Write the failing test** (`src/constants/__tests__/provingAssets.test.ts`)
+- [x] **Step 1: Write the failing test** (`src/constants/__tests__/provingAssets.test.ts`)
 
 ```ts
 import {ZKEY_ASSETS, zkeyAsset} from '../provingAssets';
@@ -228,12 +228,12 @@ it('zkeyAsset throws until an entry is populated (unconfigured is not usable)', 
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx jest --testPathPattern=constants/__tests__/provingAssets`
 Expected: FAIL — module does not exist.
 
-- [ ] **Step 3: Implement `src/constants/provingAssets.ts`**
+- [x] **Step 3: Implement `src/constants/provingAssets.ts`**
 
 ```ts
 export type CircuitId = 'deposit' | 'withdraw' | 'withdraw_change' | 'transfer';
@@ -266,12 +266,12 @@ export function zkeyAsset(id: CircuitId): ZkeyAsset {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx jest --testPathPattern=constants/__tests__/provingAssets`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/constants/provingAssets.ts src/constants/__tests__/provingAssets.test.ts
@@ -292,7 +292,7 @@ git commit -m "feat(prover): zkey asset config (structure wired, values pending 
   - `interface AssetIO { exists(path): Promise<boolean>; download(url, path): Promise<void>; sha256(path): Promise<string>; remove(path): Promise<void>; cachePath(id): string; }`
   - `ensureZkey(id: CircuitId, io: AssetIO): Promise<string>` — returns a verified local zkey path.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 import {ensureZkey, type AssetIO} from '../provingAssets';
@@ -333,12 +333,12 @@ it('REJECTS a hash mismatch and deletes the bad file (no proving)', async () => 
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx jest --testPathPattern=zkProver/__tests__/provingAssets`
 Expected: FAIL — module does not exist.
 
-- [ ] **Step 3: Implement `src/modules/zkProver/provingAssets.ts`**
+- [x] **Step 3: Implement `src/modules/zkProver/provingAssets.ts`**
 
 ```ts
 import {zkeyAsset, type CircuitId} from '../../constants/provingAssets';
@@ -375,12 +375,12 @@ export async function ensureZkey(id: CircuitId, io: AssetIO): Promise<string> {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx jest --testPathPattern=zkProver/__tests__/provingAssets`
 Expected: PASS (3 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/modules/zkProver/provingAssets.ts src/modules/zkProver/__tests__/provingAssets.test.ts
@@ -404,7 +404,7 @@ git commit -m "feat(prover): ensureZkey — download + SHA-256 verify + cache (f
 > `ShieldedProveParams` signature that `proveShielded` actually uses. `supported`
 > becomes a getter (native + configured assets), not a literal.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 jest.mock('../nativeProverBridge', () => ({
@@ -433,12 +433,12 @@ it('prove ensures the zkey then delegates to native, returning the proof', async
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx jest --testPathPattern=localProver`
 Expected: FAIL — old stub throws / signature mismatch.
 
-- [ ] **Step 3: Implement** — replace `src/modules/zkProver/localProver.ts` body
+- [x] **Step 3: Implement** — replace `src/modules/zkProver/localProver.ts` body
 
 ```ts
 import type {ShieldedProveParams} from './types';
@@ -474,12 +474,12 @@ export const localProver = {
 > minimal stub file exporting `export const rnfsAssetIO = {} as never;` and replace
 > it in Task 6. (Prefer doing Task 6 first if executing in order.)
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx jest --testPathPattern=localProver`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/modules/zkProver/localProver.ts src/modules/zkProver/__tests__/localProver.test.ts
@@ -500,7 +500,7 @@ git commit -m "feat(prover): real localProver delegating to native + verified zk
 
 > Dependency: `react-native-fs`. If not already in `package.json`, add it (`npm i react-native-fs`) and note the native autolink in the task commit. Its API is thin and mockable.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 const RNFS = {
@@ -528,12 +528,12 @@ it('download throws on a non-200 status', async () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx jest --testPathPattern=rnfsAssetIO`
 Expected: FAIL — module does not exist.
 
-- [ ] **Step 3: Implement `src/modules/zkProver/rnfsAssetIO.ts`**
+- [x] **Step 3: Implement `src/modules/zkProver/rnfsAssetIO.ts`**
 
 ```ts
 import RNFS from 'react-native-fs';
@@ -564,12 +564,12 @@ export const rnfsAssetIO: AssetIO = {
 Then delete the temporary stub if Task 5 created one, and confirm `localProver.ts`
 imports this real module.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx jest --testPathPattern=rnfsAssetIO`
 Expected: PASS (3 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/modules/zkProver/rnfsAssetIO.ts src/modules/zkProver/__tests__/rnfsAssetIO.test.ts package.json
@@ -588,7 +588,7 @@ git commit -m "feat(prover): react-native-fs AssetIO (download/exists/hash/remov
 - Consumes: `isLocalProvingEnabled` (Task 1), `localProver` (Task 5), the existing hosted `proveShielded` internals.
 - Produces: `proveShielded` behavior — ON → `localProver.prove` (NO hosted call, NO network of the witness); OFF → today's hosted path (unchanged).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 jest.mock('../../../constants/features', () => ({isLocalProvingEnabled: jest.fn(() => false)}));
@@ -611,12 +611,12 @@ it('flag ON → proves locally, never calls the hosted prover', async () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx jest --testPathPattern=zkProverModule.shielded`
 Expected: FAIL — `proveShielded` still always calls the hosted path.
 
-- [ ] **Step 3: Implement** — at the top of `proveShielded` in `zkProverModule.ts`, before the hosted `pinnedFetch`:
+- [x] **Step 3: Implement** — at the top of `proveShielded` in `zkProverModule.ts`, before the hosted `pinnedFetch`:
 
 ```ts
   // Local-only when enabled: the witness (incl. noteSecret) is proved on-device and
@@ -633,12 +633,12 @@ import {isLocalProvingEnabled} from '../../constants/features';
 import {localProver} from './localProver';
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx jest --testPathPattern=zkProverModule.shielded`
 Expected: PASS.
 
-- [ ] **Step 5: Full-suite regression + commit**
+- [x] **Step 5: Full-suite regression + commit**
 
 ```bash
 npx tsc --noEmit
