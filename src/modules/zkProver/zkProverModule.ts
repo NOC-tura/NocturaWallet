@@ -1,7 +1,6 @@
 import {API_BASE} from '../../constants/programs';
 import {pinnedFetch} from '../sslPinning/pinnedFetch';
 import {proveLimiter} from '../solana/rpcLimiter';
-import {localProver} from './localProver';
 import {proofQueue} from './proofQueue';
 import {
   ProofType,
@@ -105,18 +104,20 @@ async function proveHosted(
 // ---- ZkProverModule ------------------------------------------------------
 
 /**
- * Fallback chain: hosted → local → queue
+ * Fallback chain: hosted → queue
  *
  * 1. Try hosted prover (primary, fast, no device overhead).
  *    - noteSecret and any sk_spend-derived fields are STRIPPED before sending.
- * 2. If hosted fails and device supports local proving, try localProver.
- * 3. If both fail, enqueue the job in the MMKV proof queue for retry.
+ * 2. If hosted fails, enqueue the job in the MMKV proof queue for retry.
+ *
+ * This legacy ProofWitness-based path does not use the on-device localProver —
+ * that operates on ShieldedProveParams via `proveShielded` instead (see below).
  *
  * Witness is zeroized after the proof attempt regardless of outcome.
  */
 export class ZkProverModule {
   /**
-   * Request a proof.  Returns the ZKProof immediately if hosted/local succeeds,
+   * Request a proof.  Returns the ZKProof immediately if hosted succeeds,
    * or throws ProverUnavailableError after queuing the job for later processing.
    */
   async prove(proofType: ProofType, witness: ProofWitness): Promise<ZKProof> {
@@ -128,17 +129,6 @@ export class ZkProverModule {
         return proof;
       } catch {
         // Hosted failed, try local
-      }
-
-      // --- Attempt 2: local prover ---
-      if (localProver.supported) {
-        try {
-          const proof = await localProver.prove(proofType, witness);
-          zeroizeWitness(witness);
-          return proof;
-        } catch {
-          // Local failed, fall through to queue
-        }
       }
 
       // --- Attempt 3: enqueue for later ---
