@@ -77,13 +77,24 @@ disc(8) + merkle_root([u8;32], 32) + nullifier([u8;32], 32)
 sits at byte offset **372** (8+32+32+8+32+4+256=372); the ciphertext bytes occupy
 **376..504**.
 
-Accounts (`WithdrawWithChangeCtx`, unchanged order): the 8 `WithdrawCtx` accounts —
-`pool`(ro), `merkle_tree`(mut), `vault`(mut), `destination_token_account`(mut),
-`nullifier_record`(mut, init), `fee_payer`(signer, mut), `token_program`(ro),
-`system_program`(ro) — **plus `wchange_vk`(ro) inserted between `fee_payer` and
-`token_program`**, per the deployed program (confirmed against the on-chain
-`WithdrawWithChangeCtx`, not appended last — see `poolInstructions.ts` comment at
-`buildWithdrawWithChangeIx`).
+**Account order — wallet's current understanding, NOT frozen; ICO must verify against
+the deployed IDL.** Appending the memo argument to instruction *data* does not change
+account order or count — that part is not in question. What is **not** independently
+confirmed by this contract is the exact `WithdrawWithChangeCtx` account list itself:
+the wallet's `buildWithdrawWithChangeIx` (`poolInstructions.ts`) currently constructs
+it as the 8 `WithdrawCtx` accounts — `pool`(ro), `merkle_tree`(mut), `vault`(mut),
+`destination_token_account`(mut), `nullifier_record`(mut, init), `fee_payer`(signer,
+mut), `token_program`(ro), `system_program`(ro) — with `wchange_vk`(ro) inserted
+**between `fee_payer` and `token_program`** (not appended last). This reflects the
+wallet's best current understanding of the deployed program, but **ICO must verify
+the full account order — especially the `wchange_vk` position — and every
+signer/writable flag against their deployed `WithdrawWithChangeCtx` / IDL before
+relying on it.** If the deployed order differs, the wallet's instruction builder must
+be updated to match; do not assume the list above is authoritative.
+
+The **byte layout of the instruction data** above (the `disc + ... + ciphertext`
+sequence and offsets) is unaffected by this caveat and remains frozen — only the
+account-metas certainty is being hedged.
 
 ## Note-ciphertext content (wallet-canonical, unchanged scheme)
 

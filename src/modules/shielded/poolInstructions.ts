@@ -231,8 +231,8 @@ export interface WithdrawWithChangeIxParams {
 /**
  * withdraw_with_change(merkle_root[32], nullifier[32], amount:u64, change_commitment[32], proof_bytes, ciphertext).
  * Data = disc(8) + merkle_root(32) + nullifier(32) + amount(u64 LE) + change_commitment(32) + len(u32 LE) + proof + len(u32 LE) + ciphertext(128).
- * Accounts (WithdrawWithChangeCtx order): the 8 WithdrawCtx accounts + wchange_vk (ro).
- * SYNC POINT: the wchange_vk position is assumed appended LAST; confirm vs the ICO's final ctx at deploy.
+ * Accounts (WithdrawWithChangeCtx order): the WithdrawCtx accounts with wchange_vk (ro)
+ * BETWEEN fee_payer and token_program (see inline note below), not appended last.
  */
 export function buildWithdrawWithChangeIx(p: WithdrawWithChangeIxParams): TransactionInstruction {
   if (p.merkleRoot.length !== 32) throw new Error('merkleRoot must be 32 bytes');
