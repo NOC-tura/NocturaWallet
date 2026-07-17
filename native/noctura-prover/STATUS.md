@@ -28,9 +28,18 @@ constraint-satisfying witness — the on-device Groth16 pipeline is proven for d
 **The full desktop de-risk is complete: zkey read → wasmi witness → arkworks prove →
 verify → on-chain-format serialize, all validated in pure Rust from the real artifacts.**
 
-**Next (on-device):** Stage 1 (UniFFI + Kotlin `NocturaProver`, cargo-ndk, release-build
-libc++ gate) → Stage 2 (on-device deposit → devnet accept). Other circuits reuse the same
-`witness_wasmi` + `proof_bytes`.
+## ✅ STAGE 1 BUILT (2026-07-17) — awaiting on-device confirmation
+
+- **Pure-Rust JNI** (`src/android.rs`, `jni` crate) → `libnoctura_prover.so` via cargo-ndk (arm64-v8a).
+- **Kotlin `NocturaProver` module + package** registered in `MainApplication` (unlike the disabled blst NocturaKey).
+- **libc++ pre-check (readelf):** `libnoctura_prover.so` NEEDs only `libc.so`/`libm.so`/`libdl.so` — **NO `libc++_shared.so` dependency**. (The APK still ships RN's own `libc++_shared.so` for RN's C++ libs; the difference from the blst crash is that our `.so` does NOT bundle/depend on a *conflicting* libc++ — there's just the single canonical RN one.)
+- **Devnet release APK built** (`BUILD SUCCESSFUL`, 92 MB) → `~/Downloads/NocturaWallet-native-prover.apk`. Contains `lib/arm64-v8a/libnoctura_prover.so`. Debug screen gated by `NATIVE_PROVER_DEBUG=true` in `.env.devnet`.
+
+**On-device (user):** sideload → **launch = libc++ gate** → Settings → "🔧 Native prover test (dev)" → confirm native prove succeeds + publicInputs match hosted. (Only arm64 devices — the APK's other ABIs lack the prover `.so`.)
+
+**Rebuild:** `cargo ndk -t arm64-v8a -o ../../android/app/src/main/jniLibs build --release` (ANDROID_NDK_HOME set), then `ENVFILE=.env.devnet ANDROID_HOME=~/Android/Sdk ./gradlew assembleRelease` in `android/`.
+
+**Next (Stage 2):** on-device deposit → devnet accept, then flip `localProving`. Other circuits reuse `witness_wasmi` + `proof_bytes`.
 
 ---
 
