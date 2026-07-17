@@ -1465,7 +1465,9 @@ dependencies = [
  "ark-serialize",
  "ark-snark",
  "ark-std",
+ "fnv",
  "num-bigint",
+ "num-traits",
  "serde_json",
 ]
 
