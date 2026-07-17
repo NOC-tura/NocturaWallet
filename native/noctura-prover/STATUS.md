@@ -13,9 +13,24 @@ amount, mintHash]` (the deposit circuit's public-signal order, nPublic=3, all ma
 the known inputs). The wasmi witness calculator (`src/witness_wasmi.rs`) produces a
 constraint-satisfying witness — the on-device Groth16 pipeline is proven for deposit.
 
-**Next:** Task 0.4 (serialize proof → 256-byte on-chain `alt_bn128` layout) then Stage 1
-(UniFFI + Kotlin `NocturaProver`, cargo-ndk, release-build libc++ gate) → Stage 2
-(on-device deposit → devnet accept).
+## ✅ TASK 0.4 DESKTOP-VALIDATED (2026-07-17)
+
+`serialize_proof` (`src/proof_bytes.rs`) produces the frozen 256-byte on-chain layout
+(**pi_a negated, G2 c1-first, big-endian**). Validated three ways:
+- `examples/deposit_prove` — serialize→parse→verify round-trip (B).
+- `examples/onchain_format_check` — parses an **ON-CHAIN-ACCEPTED** reference proofBytes
+  (hosted `/zk/prove`, saved to `artifacts/deposit_reference.json`) with OUR layout and
+  verifies it against the deployed VK → **PASS**. This proves the layout matches the
+  program's format (the reference is on-chain-accepted), independent of it being a
+  different random proof (A).
+- Stage 2 (on-device submit) = final confirmation, pending.
+
+**The full desktop de-risk is complete: zkey read → wasmi witness → arkworks prove →
+verify → on-chain-format serialize, all validated in pure Rust from the real artifacts.**
+
+**Next (on-device):** Stage 1 (UniFFI + Kotlin `NocturaProver`, cargo-ndk, release-build
+libc++ gate) → Stage 2 (on-device deposit → devnet accept). Other circuits reuse the same
+`witness_wasmi` + `proof_bytes`.
 
 ---
 
