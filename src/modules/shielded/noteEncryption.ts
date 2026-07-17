@@ -15,7 +15,9 @@ const SEALED_LEN = 56; // 40 payload + 16 tag
 const CT_LEN = R_LEN + NONCE_LEN + SEALED_LEN; // 128
 const PAYLOAD_LEN = 40; // amount(8 LE) + noteSecret(32 BE)
 
-function randomBytes(n: number): Uint8Array {
+// Exported so callers needing a non-recoverable filler of the same length/CSPRNG
+// (e.g. withdrawFlow's 0-change memo) reuse this exact source instead of a new one.
+export function randomBytes(n: number): Uint8Array {
   const b = new Uint8Array(n);
   crypto.getRandomValues(b);
   return b;

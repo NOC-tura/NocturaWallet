@@ -45,9 +45,21 @@ jest.mock('../../../store/mmkv/instances', () => ({
   initSecureMmkv: jest.fn(),
 }));
 
+const capturedW: {ciphertext?: Uint8Array} = {};
+jest.mock('../poolInstructions', () => ({
+  buildWithdrawWithChangeIx: jest.fn((p: {ciphertext: Uint8Array}) => {
+    capturedW.ciphertext = p.ciphertext;
+    return {};
+  }),
+  buildWithdrawIx: jest.fn(() => ({})),
+}));
+
 import {unshieldWithChange, MerkleRootStaleError} from '../withdrawFlow';
 import {syncLeaves} from '../merkleSync';
+import {buildWithdrawChangeWitness} from '../withdrawChangeWitness';
 import {markSpentByCommitment, setNoteIndex, addNote} from '../noteStore';
+import {tryDecryptNote} from '../noteEncryption';
+import {deriveShieldedViewKey} from '../../keyDerivation/shielded';
 import type {ShieldedNote} from '../types';
 
 const MINT = 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW';
@@ -124,5 +136,34 @@ describe('unshieldWithChange', () => {
       unshieldWithChange(seed, feePayer, MINT, note, 200n),
     ).rejects.toBeInstanceOf(MerkleRootStaleError);
     expect(markSpentByCommitment).not.toHaveBeenCalled();
+  });
+
+  it('emits a change-note memo that decrypts to the change amount + change secret', async () => {
+    (syncLeaves as jest.Mock).mockResolvedValue({leaves: ['c'], onChainRoots: [rootHex]});
+    await unshieldWithChange(seed, feePayer, MINT, note, 200n);
+    expect(capturedW.ciphertext).toHaveLength(128);
+    const dec = tryDecryptNote(deriveShieldedViewKey(seed), capturedW.ciphertext!);
+    expect(dec).not.toBeNull();
+    expect(dec!.amount).toBe(300n); // changeAmount from the mocked witness
+    const stored = (addNote as jest.Mock).mock.calls[0][0];
+    expect(dec!.noteSecret.toString()).toBe(stored.noteSecret);
+  });
+
+  it('emits a non-recoverable filler memo (not addNote) for a whole-note (0-change) unshield', async () => {
+    (syncLeaves as jest.Mock).mockResolvedValue({leaves: ['c'], onChainRoots: [rootHex]});
+    (buildWithdrawChangeWitness as jest.Mock).mockReturnValueOnce({
+      params: {withdrawAmount: '500'},
+      nullifier32: new Uint8Array(32).fill(2),
+      merkleRoot32: new Uint8Array(32).fill(1),
+      changeCommitment32: new Uint8Array(32).fill(9),
+      changeCommitmentDec: '12345',
+      changeAmount: 0n,
+    });
+    await unshieldWithChange(seed, feePayer, MINT, note, 500n);
+    expect(capturedW.ciphertext).toHaveLength(128);
+    const dec = tryDecryptNote(deriveShieldedViewKey(seed), capturedW.ciphertext!);
+    expect(dec).toBeNull();
+    expect(addNote).not.toHaveBeenCalled();
+    expect(markSpentByCommitment).toHaveBeenCalledWith(MINT, 'c');
   });
 });

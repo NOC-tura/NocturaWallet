@@ -40,6 +40,7 @@ export interface DepositIxParams {
   amount: bigint;
   commitment: Uint8Array;   // 32 bytes
   proofBytes: Uint8Array;   // 256 bytes
+  ciphertext: Uint8Array;   // 128 bytes — NoteCiphertext memo (amount+noteSecret to own view key)
   pool: PublicKey;
   merkleTree: PublicKey;
   vault: PublicKey;
@@ -48,14 +49,17 @@ export interface DepositIxParams {
 }
 
 /**
- * deposit(amount: u64, commitment: [u8;32], proof_bytes: Vec<u8>).
- * Data = disc(8) + amount(u64 LE) + commitment(32) + len(u32 LE) + proof_bytes.
+ * deposit(amount: u64, commitment: [u8;32], proof_bytes: Vec<u8>, ciphertext: Vec<u8>).
+ * Data = disc(8) + amount(u64 LE) + commitment(32) + len(u32 LE) + proof_bytes
+ *      + len(u32 LE) + ciphertext(128).  The memo lets a restored wallet recover
+ *      this deposit note by scanning (see seed-recovery design spec).
  * Accounts (DepositCtx order): pool(ro), merkle_tree(mut), vault(mut),
  * depositor(signer), depositor_token_account(mut), token_program(ro).
  */
 export function buildDepositIx(p: DepositIxParams): TransactionInstruction {
   if (p.commitment.length !== 32) throw new Error('commitment must be 32 bytes');
   if (p.proofBytes.length !== 256) throw new Error('proofBytes must be 256 bytes');
+  if (p.ciphertext.length !== 128) throw new Error('ciphertext must be 128 bytes');
 
   const data = Buffer.concat([
     Buffer.from(depositDiscriminator()),
@@ -63,6 +67,8 @@ export function buildDepositIx(p: DepositIxParams): TransactionInstruction {
     Buffer.from(p.commitment),
     Buffer.from(u32le(p.proofBytes.length)),
     Buffer.from(p.proofBytes),
+    Buffer.from(u32le(p.ciphertext.length)),
+    Buffer.from(p.ciphertext),
   ]);
 
   return new TransactionInstruction({
@@ -212,6 +218,7 @@ export interface WithdrawWithChangeIxParams {
   amount: bigint;
   changeCommitment: Uint8Array;        // 32
   proofBytes: Uint8Array;              // 256
+  ciphertext: Uint8Array;              // 128 — NoteCiphertext memo for the change note
   pool: PublicKey;
   merkleTree: PublicKey;
   vault: PublicKey;
@@ -222,16 +229,17 @@ export interface WithdrawWithChangeIxParams {
 }
 
 /**
- * withdraw_with_change(merkle_root[32], nullifier[32], amount:u64, change_commitment[32], proof_bytes).
- * Data = disc(8) + merkle_root(32) + nullifier(32) + amount(u64 LE) + change_commitment(32) + len(u32 LE) + proof.
- * Accounts (WithdrawWithChangeCtx order): the 8 WithdrawCtx accounts + wchange_vk (ro).
- * SYNC POINT: the wchange_vk position is assumed appended LAST; confirm vs the ICO's final ctx at deploy.
+ * withdraw_with_change(merkle_root[32], nullifier[32], amount:u64, change_commitment[32], proof_bytes, ciphertext).
+ * Data = disc(8) + merkle_root(32) + nullifier(32) + amount(u64 LE) + change_commitment(32) + len(u32 LE) + proof + len(u32 LE) + ciphertext(128).
+ * Accounts (WithdrawWithChangeCtx order): the WithdrawCtx accounts with wchange_vk (ro)
+ * BETWEEN fee_payer and token_program (see inline note below), not appended last.
  */
 export function buildWithdrawWithChangeIx(p: WithdrawWithChangeIxParams): TransactionInstruction {
   if (p.merkleRoot.length !== 32) throw new Error('merkleRoot must be 32 bytes');
   if (p.nullifier.length !== 32) throw new Error('nullifier must be 32 bytes');
   if (p.changeCommitment.length !== 32) throw new Error('changeCommitment must be 32 bytes');
   if (p.proofBytes.length !== 256) throw new Error('proofBytes must be 256 bytes');
+  if (p.ciphertext.length !== 128) throw new Error('ciphertext must be 128 bytes');
 
   const data = Buffer.concat([
     Buffer.from(withdrawChangeDiscriminator()),
@@ -241,6 +249,8 @@ export function buildWithdrawWithChangeIx(p: WithdrawWithChangeIxParams): Transa
     Buffer.from(p.changeCommitment),
     Buffer.from(u32le(p.proofBytes.length)),
     Buffer.from(p.proofBytes),
+    Buffer.from(u32le(p.ciphertext.length)),
+    Buffer.from(p.ciphertext),
   ]);
 
   return new TransactionInstruction({
@@ -253,7 +263,10 @@ export function buildWithdrawWithChangeIx(p: WithdrawWithChangeIxParams): Transa
       {pubkey: p.nullifierRecord, isSigner: false, isWritable: true},
       {pubkey: p.feePayer, isSigner: true, isWritable: true},
       // wchange_vk sits BETWEEN fee_payer and token_program per the deployed
-      // WithdrawWithChangeCtx (confirmed against the on-chain program), NOT last.
+      // WithdrawWithChangeCtx — previously confirmed against the deployed C2
+      // program, NOT last. ICO is now adding the ciphertext arg + redeploying
+      // (see docs/superpowers/specs/2026-07-13-ico-deposit-withdrawchange-memo-contract.md);
+      // re-verify this position is unchanged after that redeploy.
       {pubkey: p.wchangeVk, isSigner: false, isWritable: false},
       {pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false},
       {pubkey: SystemProgram.programId, isSigner: false, isWritable: false},
