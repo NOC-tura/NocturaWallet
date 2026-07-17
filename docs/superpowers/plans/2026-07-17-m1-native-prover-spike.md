@@ -16,6 +16,12 @@
 
 **Design spec:** `docs/superpowers/specs/2026-07-17-m1-native-prover-spike-design.md`
 
+## Spike findings (2026-07-17, `native/noctura-prover/`, see its STATUS.md)
+
+- ✅ **Task 0.1 done & runs:** `ark-circom` (pinned rev `4d99060`, arkworks-0.4 era) reads the deployed snarkjs-0.7.4 `deposit_final.zkey`; `nPublic = 3`, 382 constraints — the biggest desktop unknown is cleared. Dep-resolution archaeology captured in the crate's `Cargo.toml`.
+- ✅ **Full prove→verify pipeline compiles** against the real artifacts (`examples/deposit_prove.rs`).
+- ⛔ **Blocker (now resolved in design):** ark-circom 4d99060's witness calculator uses `wasmer 2.3.0`, which fails to LINK on modern rustc (`undefined symbol __rust_probestack`); older rustc hits an `edition2024` wall. → **Task 0.2 is upgraded from "prefer pure-Rust" to REQUIRE a pure-Rust wasm witness calculator (`wasmi` / a circom witness crate).** This unblocks desktop execution AND is exactly the Android (Stage 1) path — wasmer is C-containing and a libc++ risk on-device. Desktop blocker + Android design converge on the same fix.
+
 ---
 
 ## Stage 0 — Desktop Rust prover (runnable in the dev shell)

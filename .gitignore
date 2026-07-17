@@ -92,3 +92,7 @@ android/app/src/main/assets/index.android.bundle
 android/app/src/main/assets/index.android.bundle.hbc
 android/app/src/main/assets/index.android.bundle.map
 android/app/src/main/cpp/blst/
+
+# M1 prover spike (large ZK artifacts + Rust build)
+native/noctura-prover/artifacts/
+native/noctura-prover/target/
