@@ -4,6 +4,21 @@ Desktop-first Groth16 prover over the deployed devnet shielded circuits, using t
 exact snarkjs `.zkey` + circom `.wasm` the wallet downloads. Pure-Rust (arkworks).
 Plan: `docs/superpowers/plans/2026-07-17-m1-native-prover-spike.md`.
 
+## ✅ STAGE 0 COMPLETE (2026-07-17)
+
+`cargo run --example deposit_prove` runs end-to-end on **stable rust**, pure Rust,
+no wasmer/libc++: read_zkey → **wasmi witness (386 elts)** → arkworks Groth16 prove →
+**verify against the deployed VK = TRUE** → public inputs cross-checked = `[commitment,
+amount, mintHash]` (the deposit circuit's public-signal order, nPublic=3, all matching
+the known inputs). The wasmi witness calculator (`src/witness_wasmi.rs`) produces a
+constraint-satisfying witness — the on-device Groth16 pipeline is proven for deposit.
+
+**Next:** Task 0.4 (serialize proof → 256-byte on-chain `alt_bn128` layout) then Stage 1
+(UniFFI + Kotlin `NocturaProver`, cargo-ndk, release-build libc++ gate) → Stage 2
+(on-device deposit → devnet accept).
+
+---
+
 ## What is proven (Stage 0)
 
 - ✅ **Task 0.1 — zkey compatibility gate (RUNS today).** `cargo run --example zkey_check`

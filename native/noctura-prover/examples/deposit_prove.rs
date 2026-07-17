@@ -9,12 +9,19 @@ use std::fs::File;
 use std::io::BufReader;
 
 use ark_bn254::{Bn254, Fr};
-use ark_circom::{read_zkey, CircomReduction, WitnessCalculator};
+use ark_circom::{read_zkey, CircomReduction};
+use ark_ff::PrimeField;
 use ark_groth16::Groth16;
 use ark_snark::SNARK;
 use ark_std::rand::thread_rng;
 use ark_std::UniformRand;
+use noctura_prover::witness_wasmi::WitnessCalculator;
 use num_bigint::BigInt;
+
+/// ark-bn254 Fr → canonical decimal string, to compare against known input values.
+fn fr_dec(f: &Fr) -> String {
+    f.into_bigint().to_string()
+}
 
 fn main() -> Result<(), Box<dyn Error>> {
     // ---- read the proving key + constraint matrices from the snarkjs zkey ----
@@ -34,9 +41,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     println!("inputs: {:?}", input_json.keys().collect::<Vec<_>>());
 
-    let mut wtns = WitnessCalculator::new("artifacts/deposit.wasm")?;
-    let full_assignment = wtns.calculate_witness_element::<Bn254, _>(inputs, false)?;
-    println!("witness computed: {} elements (via wasmer)", full_assignment.len());
+    let mut wtns = WitnessCalculator::from_file("artifacts/deposit.wasm")?;
+    let full_assignment = wtns.calculate_witness_fr(inputs)?;
+    println!("witness computed: {} elements (via wasmi, pure Rust)", full_assignment.len());
 
     // ---- prove (Groth16 + circom reduction, using the zkey matrices) ----
     let mut rng = thread_rng();
@@ -60,8 +67,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     let pvk = Groth16::<Bn254>::process_vk(&params.vk)?;
     let public_inputs = &full_assignment[1..num_inputs];
     let verified = Groth16::<Bn254>::verify_with_processed_vk(&pvk, public_inputs, &proof)?;
-    println!("public inputs (nPublic={}): {:?}", n_public, public_inputs);
     assert!(verified, "proof MUST verify against the deployed VK");
-    println!("PASS: on-device-equivalent deposit proof VERIFIES against the deployed VK");
+
+    // ---- cross-check the wasmi witness against known input values ----
+    // A satisfying witness (verify=true) is already strong; additionally assert the
+    // public signals are exactly our known inputs (so the witness isn't a valid proof
+    // of some OTHER statement). Every public input must be one of our input values,
+    // and the commitment must appear among them.
+    let pub_dec: Vec<String> = public_inputs.iter().map(fr_dec).collect();
+    println!("public inputs (nPublic={n_public}): {pub_dec:?}");
+    let known: std::collections::HashSet<&String> = input_json.values().collect();
+    for p in &pub_dec {
+        assert!(known.contains(p), "public input {p} is not one of the known deposit inputs");
+    }
+    assert!(
+        pub_dec.contains(&input_json["commitment"]),
+        "the deposit commitment must be a public input",
+    );
+    println!("PASS: deposit proof VERIFIES against the deployed VK (witness via wasmi); public inputs cross-checked");
     Ok(())
 }

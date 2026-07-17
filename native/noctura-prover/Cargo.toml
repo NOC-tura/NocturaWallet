@@ -28,7 +28,10 @@ ark-groth16 = "=0.4.0"
 ark-snark = "=0.4.0"
 ark-std = "=0.4.0"
 num-bigint = "=0.4.3"
+num-traits = "0.2"
+fnv = "1"
 serde_json = "1"
+wasmi = "1.1.0"
 
 [[example]]
 name = "zkey_check"
