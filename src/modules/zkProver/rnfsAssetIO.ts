@@ -2,8 +2,8 @@ import RNFS from 'react-native-fs';
 import type {AssetIO} from './provingAssets';
 
 export const rnfsAssetIO: AssetIO = {
-  cachePath(id: string): string {
-    return `${RNFS.CachesDirectoryPath}/noctura-${id}.zkey`;
+  cachePath(id: string, kind: 'zkey' | 'wasm'): string {
+    return `${RNFS.CachesDirectoryPath}/noctura-${id}.${kind}`;
   },
   async exists(path: string): Promise<boolean> {
     return RNFS.exists(path);
@@ -11,7 +11,7 @@ export const rnfsAssetIO: AssetIO = {
   async download(url: string, path: string): Promise<void> {
     const {statusCode} = await RNFS.downloadFile({fromUrl: url, toFile: path}).promise;
     if (statusCode !== 200) {
-      throw new Error(`zkey download failed: HTTP ${statusCode}`);
+      throw new Error(`asset download failed: HTTP ${statusCode}`);
     }
   },
   async sha256(path: string): Promise<string> {

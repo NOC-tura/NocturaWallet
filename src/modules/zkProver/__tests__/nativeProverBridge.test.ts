@@ -21,9 +21,14 @@ it('isProverSupported reflects the native module', () => {
   expect(isProverSupported()).toBe(false);
 });
 
-it('nativeProve delegates to the native module and returns its result', async () => {
+it('nativeProve forwards zkeyPath AND wasmPath to native.prove and returns its result', async () => {
   mockNative.prove.mockResolvedValue({proofBytes: 'ab'.repeat(256), publicInputs: ['1', '2']});
-  const res = await nativeProve('transfer', '{"x":1}', '/cache/transfer.zkey');
-  expect(mockNative.prove).toHaveBeenCalledWith('transfer', '{"x":1}', '/cache/transfer.zkey');
+  const res = await nativeProve('transfer', '{"x":1}', '/cache/transfer.zkey', '/cache/transfer.wasm');
+  expect(mockNative.prove).toHaveBeenCalledWith(
+    'transfer',
+    '{"x":1}',
+    '/cache/transfer.zkey',
+    '/cache/transfer.wasm',
+  );
   expect(res.proofBytes).toBe('ab'.repeat(256));
 });
