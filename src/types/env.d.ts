@@ -24,6 +24,11 @@ declare module 'react-native-config' {
      * Optional; absent = off.
      */
     LOCAL_PROVING?: string;
+    /**
+     * 'true' shows the dev-only "Native prover test" screen in Settings (devnet
+     * build). Runs on-device native prove + compares to hosted. Absent = hidden.
+     */
+    NATIVE_PROVER_DEBUG?: string;
   }
   const Config: NativeConfig;
   export default Config;
