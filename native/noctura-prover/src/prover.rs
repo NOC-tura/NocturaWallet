@@ -27,6 +27,42 @@ fn fr_dec(f: &Fr) -> String {
     f.into_bigint().to_string()
 }
 
+/// Flatten a circom input value into field elements (row-major for arrays). Handles
+/// scalar decimal strings, JSON numbers, and (nested) arrays — the full shape of the
+/// wallet's ShieldedProveParams (`string | string[] | string[][] | number[]`).
+/// Deposit inputs are all scalars; withdraw/transfer add array signals (merklePath,
+/// merklePathIndices, …).
+fn json_to_bigints(v: &serde_json::Value, out: &mut Vec<BigInt>) -> Result<(), Box<dyn Error>> {
+    match v {
+        serde_json::Value::String(s) => {
+            out.push(BigInt::parse_bytes(s.as_bytes(), 10).ok_or("param string is not a decimal")?);
+        }
+        serde_json::Value::Number(n) => {
+            out.push(BigInt::parse_bytes(n.to_string().as_bytes(), 10).ok_or("param number is not an integer")?);
+        }
+        serde_json::Value::Array(a) => {
+            for e in a {
+                json_to_bigints(e, out)?;
+            }
+        }
+        _ => return Err("param value must be a decimal string, integer, or array thereof".into()),
+    }
+    Ok(())
+}
+
+/// Parse a ShieldedProveParams JSON object into the witness calculator's per-signal
+/// `Vec<BigInt>` form.
+pub fn parse_params(params_json: &str) -> Result<HashMap<String, Vec<BigInt>>, Box<dyn Error>> {
+    let flat: HashMap<String, serde_json::Value> = serde_json::from_str(params_json)?;
+    let mut inputs: HashMap<String, Vec<BigInt>> = HashMap::new();
+    for (k, v) in flat {
+        let mut vals = Vec::new();
+        json_to_bigints(&v, &mut vals)?;
+        inputs.insert(k, vals);
+    }
+    Ok(inputs)
+}
+
 /// Prove `circuit_id` for `params_json` (a flat object of decimal-string signals, the
 /// wallet's ShieldedProveParams) using the SHA-256-verified `zkey_path` + `wasm_path`.
 /// Returns the on-chain proofBytes hex + public inputs. Pure Rust (wasmi + arkworks).
@@ -36,15 +72,7 @@ pub fn prove_to_bytes(
     zkey_path: &str,
     wasm_path: &str,
 ) -> Result<ProveOutput, Box<dyn Error>> {
-    // params: {"name":"<decimal>", ...} → the witness calculator's HashMap form.
-    let flat: HashMap<String, serde_json::Value> = serde_json::from_str(params_json)?;
-    let mut inputs: HashMap<String, Vec<BigInt>> = HashMap::new();
-    for (k, v) in flat {
-        let s = v.as_str().ok_or("param values must be decimal strings")?;
-        let bi = BigInt::parse_bytes(s.as_bytes(), 10).ok_or("bad decimal param")?;
-        inputs.insert(k, vec![bi]);
-    }
-
+    let inputs = parse_params(params_json)?;
     let full_assignment = WitnessCalculator::from_file(wasm_path)?.calculate_witness_fr(inputs)?;
 
     let (params, matrices) = read_zkey(&mut std::io::BufReader::new(std::fs::File::open(zkey_path)?))?;
@@ -73,4 +101,32 @@ pub fn prove_to_bytes(
         proof_bytes_hex: hex::encode(proof_bytes),
         public_inputs,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_params;
+
+    #[test]
+    fn parses_scalars_arrays_and_numbers() {
+        // Mirrors the withdraw_change ShieldedProveParams shape: scalar decimal
+        // strings + array-valued signals (merklePath, merklePathIndices).
+        let json = r#"{
+            "merkleRoot": "123",
+            "merklePath": ["10", "20", "30"],
+            "merklePathIndices": ["0", "1", "0"],
+            "leafIndex": 5
+        }"#;
+        let out = parse_params(json).unwrap();
+        assert_eq!(out["merkleRoot"], vec![123u64.into()]);
+        assert_eq!(out["merklePath"], vec![10u64.into(), 20u64.into(), 30u64.into()]);
+        assert_eq!(out["merklePathIndices"], vec![0u64.into(), 1u64.into(), 0u64.into()]);
+        assert_eq!(out["leafIndex"], vec![5u64.into()], "JSON number handled");
+    }
+
+    #[test]
+    fn flattens_nested_arrays_row_major() {
+        let out = parse_params(r#"{"x": [["1","2"],["3","4"]]}"#).unwrap();
+        assert_eq!(out["x"], vec![1u64.into(), 2u64.into(), 3u64.into(), 4u64.into()]);
+    }
 }
