@@ -4,4 +4,5 @@
 pub use ark_circom;
 
 pub mod proof_bytes;
+pub mod prover;
 pub mod witness_wasmi;
