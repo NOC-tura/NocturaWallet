@@ -6,8 +6,11 @@
     "android": "react-native run-android",
     "ios": "react-native run-ios",
     "lint": "eslint .",
+    "lint:ci": "eslint 'src/**/*.{ts,tsx}' '__mocks__/**/*.ts'",
+    "typecheck": "tsc --noEmit",
     "start": "react-native start",
-    "test": "jest"
+    "test": "jest",
+    "verify": "npm run lint:ci && npm run typecheck && jest --coverage --forceExit"
   },
   "dependencies": {
     "@noble/ciphers": "^2.1.1",
