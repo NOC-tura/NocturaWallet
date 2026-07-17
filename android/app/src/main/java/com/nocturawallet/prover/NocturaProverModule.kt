@@ -41,14 +41,15 @@ class NocturaProverModule(reactContext: ReactApplicationContext) :
 
     override fun getName() = NAME
 
-    @ReactMethod
-    fun isSupported(promise: Promise) {
-        try {
+    // Synchronous to match `nativeProverBridge.ts`'s `isSupported(): boolean`.
+    // Triggers the lazy .so load; returns false (not a crash) if it can't load.
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    fun isSupported(): Boolean {
+        return try {
             ensureLibLoaded()
-            promise.resolve(nativeIsSupported())
+            nativeIsSupported()
         } catch (e: Throwable) {
-            // A load failure means unsupported, not a crash.
-            promise.resolve(false)
+            false
         }
     }
 
