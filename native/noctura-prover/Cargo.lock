@@ -1487,6 +1487,7 @@ dependencies = [
  "ark-snark",
  "ark-std",
  "fnv",
+ "hex",
  "num-bigint",
  "num-traits",
  "serde_json",

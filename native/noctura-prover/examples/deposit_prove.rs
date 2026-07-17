@@ -85,5 +85,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         "the deposit commitment must be a public input",
     );
     println!("PASS: deposit proof VERIFIES against the deployed VK (witness via wasmi); public inputs cross-checked");
+
+    // ---- serialize to the 256-byte on-chain layout + round-trip verify (validation B) ----
+    let proof_bytes = noctura_prover::proof_bytes::serialize_proof(&proof);
+    assert_eq!(proof_bytes.len(), 256);
+    println!("proofBytes (256B, on-chain layout): {}", hex::encode(proof_bytes));
+    let parsed = noctura_prover::proof_bytes::parse_proof(&proof_bytes)?;
+    let rt = Groth16::<Bn254>::verify_with_processed_vk(&pvk, public_inputs, &parsed)?;
+    assert!(rt, "round-trip: serialized -> parsed proof must still verify");
+    println!("PASS: proofBytes round-trips + verifies (on-chain layout: pi_a negated, G2 c1-first, BE)");
     Ok(())
 }
