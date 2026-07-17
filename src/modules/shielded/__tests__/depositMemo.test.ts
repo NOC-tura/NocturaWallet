@@ -1,4 +1,4 @@
-import {Keypair, PublicKey} from '@solana/web3.js';
+import {Keypair} from '@solana/web3.js';
 
 const captured: {ciphertext?: Uint8Array} = {};
 jest.mock('../poolInstructions', () => ({
