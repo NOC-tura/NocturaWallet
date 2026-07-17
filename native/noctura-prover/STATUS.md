@@ -39,7 +39,21 @@ verify → on-chain-format serialize, all validated in pure Rust from the real a
 
 **Rebuild:** `cargo ndk -t arm64-v8a -o ../../android/app/src/main/jniLibs build --release` (ANDROID_NDK_HOME set), then `ENVFILE=.env.devnet ANDROID_HOME=~/Android/Sdk ./gradlew assembleRelease` in `android/`.
 
-**Next (Stage 2):** on-device deposit → devnet accept, then flip `localProving`. Other circuits reuse `witness_wasmi` + `proof_bytes`.
+## ⏳ STAGE 2 APK BUILT (2026-07-17) — awaiting on-device deposit + tx sig
+
+`LOCAL_PROVING=true` baked in (BuildConfig verified) → `proveShielded` routes ALL
+shielded proofs through the native prover (no hosted fallback). Devnet release APK
+→ `~/Downloads/NocturaWallet-localproving.apk` (prover `.so` bundled). No source
+change — the native path was already wired + Stage-1-confirmed.
+
+**On-device (user):** Shield a small amount (transparent test-token acct
+`ByLmVNmn…ZFMs` holds 7.1; `Da83c…e31B` has 0.474 SOL) → native prove on-device →
+devnet accept → report the tx sig for on-chain verification (deposit ix to NPkc…,
+err:null, leaf inserted). That confirms the devnet program accepts the NATIVE
+proofBytes → Stage 2 done, localProving effectively ON for deposit.
+
+Global flag → withdraw/transfer also route native (same mechanism, on-device-untested).
+Other circuits reuse `witness_wasmi` + `proof_bytes`.
 
 ---
 
