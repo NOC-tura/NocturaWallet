@@ -39,7 +39,7 @@ verify → on-chain-format serialize, all validated in pure Rust from the real a
 
 **Rebuild:** `cargo ndk -t arm64-v8a -o ../../android/app/src/main/jniLibs build --release` (ANDROID_NDK_HOME set), then `ENVFILE=.env.devnet ANDROID_HOME=~/Android/Sdk ./gradlew assembleRelease` in `android/`.
 
-## ⏳ STAGE 2 APK BUILT (2026-07-17) — awaiting on-device deposit + tx sig
+## ✅✅✅ STAGE 2 CONFIRMED ON-CHAIN (2026-07-17) — M1 COMPLETE
 
 `LOCAL_PROVING=true` baked in (BuildConfig verified) → `proveShielded` routes ALL
 shielded proofs through the native prover (no hosted fallback). Devnet release APK
@@ -49,8 +49,11 @@ change — the native path was already wired + Stage-1-confirmed.
 **On-device (user):** Shield a small amount (transparent test-token acct
 `ByLmVNmn…ZFMs` holds 7.1; `Da83c…e31B` has 0.474 SOL) → native prove on-device →
 devnet accept → report the tx sig for on-chain verification (deposit ix to NPkc…,
-err:null, leaf inserted). That confirms the devnet program accepts the NATIVE
-proofBytes → Stage 2 done, localProving effectively ON for deposit.
+err:null, leaf inserted). CONFIRMED: devnet tx `5grcGn6…SaXeL8w5` — err=null, Instruction: Deposit, program
+NPkc… success (127,448 CU incl. on-chain alt_bn128 Groth16 verify), Deposit event
+leaf_index 45, vault +0.1 / depositor −0.1. The on-device NATIVE proof was verified
++ accepted on-chain. noteSecret never left the phone → mainnet blocker #1 RESOLVED
+for deposit. (Config-only change; native path was already wired + Stage-1-tested.)
 
 Global flag → withdraw/transfer also route native (same mechanism, on-device-untested).
 Other circuits reuse `witness_wasmi` + `proof_bytes`.
