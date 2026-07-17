@@ -48,6 +48,7 @@ import type {
 
 // Screen placeholders (replaced in later implementation steps)
 import {SettingsScreen} from '../screens/settings/SettingsScreen';
+import {NativeProveDebugScreen} from '../screens/debug/NativeProveDebugScreen';
 import {SecuritySettingsScreen} from '../screens/settings/SecuritySettingsScreen';
 import {ChangePinScreen} from '../screens/settings/ChangePinScreen';
 import {ExportViewKeyScreen} from '../screens/settings/ExportViewKeyScreen';
@@ -691,6 +692,7 @@ function SettingsStack() {
       <SettingsNav.Screen name="BackupSettings" component={BackupSettingsScreen} />
       <SettingsNav.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
       <SettingsNav.Screen name="WipeWallet" component={WipeWalletScreen} />
+      <SettingsNav.Screen name="NativeProveDebug" component={NativeProveDebugScreen} />
     </SettingsNav.Navigator>
   );
 }

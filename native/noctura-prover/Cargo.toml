@@ -7,13 +7,18 @@ edition = "2021"
 # using the exact snarkjs .zkey + circom .wasm the wallet downloads. Pure Rust
 # (arkworks) — no libc++. See docs/superpowers/plans/2026-07-17-m1-native-prover-spike.md
 
+[lib]
+name = "noctura_prover"
+crate-type = ["rlib", "cdylib"] # cdylib = libnoctura_prover.so for the Android JNI
+
 [dependencies]
-# circom-compat (ark-circom) — snarkjs .zkey reader + circom2 .wasm witness bridge.
-# Pinned to the arkworks-0.4 era (rev 4d99060, "Circom1/Circom2 traits") — master is
-# mid-0.5/0.6 migration and internally inconsistent (bn254 0.5 vs groth16-git 0.6).
-# NOTE (Android/#1 risk): this rev's witness calculator uses wasmer (C-containing) →
-# a libc++ concern for the on-device build; swap to a pure-Rust wasm exec (wasmi) in
-# Stage 1. Desktop Stage 0 uses wasmer as-is.
+# circom-compat (ark-circom) — used ONLY for read_zkey + CircomReduction (no wasm run).
+# Pinned to the arkworks-0.4 era (rev 4d99060) — master is mid-0.5/0.6 migration and
+# internally inconsistent. It transitively pulls wasmer (its own WitnessCalculator),
+# which we DO NOT call — we compute witnesses via pure-Rust wasmi (witness_wasmi) — so
+# wasmer's runtime is dead-code-eliminated at link (verified on desktop). If the
+# Android cross-compile/link chokes on wasmer, vendor read_zkey + CircomReduction and
+# drop ark-circom (see the Stage 1 spec fallback).
 ark-circom = { git = "https://github.com/arkworks-rs/circom-compat", rev = "4d99060" }
 # This rev pins arkworks to =0.4.1, but transitive deps (ark-bn254 0.4.0) would pull
 # ark-ec/ff/poly/serialize up to 0.4.2 → resolver conflict. Force the whole family
@@ -33,6 +38,10 @@ fnv = "1"
 serde_json = "1"
 hex = "0.4"
 wasmi = "1.1.0"
+
+# Android JNI bridge (pure Rust — no C++, no libc++_shared).
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
 
 [[example]]
 name = "zkey_check"

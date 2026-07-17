@@ -13,6 +13,7 @@ import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {useSettings} from '../../store/zustand/useSettings';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {isShieldedEnabled} from '../../constants/features';
+import Config from 'react-native-config';
 
 type RootStackParamList = {
   SecuritySettings: undefined;
@@ -22,6 +23,7 @@ type RootStackParamList = {
   ExportViewKey: undefined;
   WipeWallet: undefined;
   Referral: undefined;
+  NativeProveDebug: undefined;
 };
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -186,6 +188,12 @@ export function SettingsScreen() {
 
       {/* ── Advanced ──────────────────────────────────────────────────── */}
       <SectionHeader title="Advanced" testID="section-advanced" />
+      {Config.NATIVE_PROVER_DEBUG === 'true' && (
+        <NavRow
+          label="🔧 Native prover test (dev)"
+          onPress={() => navigation.navigate('NativeProveDebug')}
+        />
+      )}
       <SettingsRow label="Wallet Address">
         <Text style={styles.valueText}>
           {publicKey ? truncateAddress(publicKey) : '—'}

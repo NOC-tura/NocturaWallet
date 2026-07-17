@@ -96,3 +96,6 @@ android/app/src/main/cpp/blst/
 # M1 prover spike (large ZK artifacts + Rust build)
 native/noctura-prover/artifacts/
 native/noctura-prover/target/
+
+# Rust prover .so (build output of cargo-ndk; rebuild, do not commit)
+android/app/src/main/jniLibs/
