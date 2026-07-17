@@ -5,10 +5,134 @@
 //! Task 1: the pure marshaling helpers (fnv, to_array32/from_array32), ported
 //! verbatim from ark-circom. Task 2 adds the wasmi WitnessCalculator on top.
 
+use ark_bn254::Fr;
+use ark_ff::PrimeField;
 use fnv::FnvHasher;
-use num_bigint::BigInt;
-use num_traits::{ToPrimitive, Zero};
+use num_bigint::{BigInt, BigUint};
+use num_traits::{Signed, ToPrimitive, Zero};
+use std::collections::HashMap;
+use std::error::Error;
 use std::hash::Hasher;
+use wasmi::{Caller, Engine, Instance, Linker, Memory, MemoryType, Module, Store, TypedFunc};
+
+type Res<T> = Result<T, Box<dyn Error>>;
+
+/// Pure-Rust circom2 witness calculator over wasmi. Drives the downloaded circom
+/// `.wasm` through its exported functions (init / setInputSignal / getWitness over
+/// shared-RW-memory) — no wasmer, no C. Only circom2 wasm is supported.
+pub struct WitnessCalculator {
+    store: Store<()>,
+    instance: Instance,
+    n32: u32,
+}
+
+impl WitnessCalculator {
+    pub fn from_file(path: impl AsRef<std::path::Path>) -> Res<Self> {
+        let wasm = std::fs::read(path)?;
+        let engine = Engine::default();
+        let module = Module::new(&engine, &wasm[..])?;
+        let mut store = Store::new(&engine, ());
+
+        // circom wasm imports env.memory (it manages its own shared-RW buffer inside)
+        let memory = Memory::new(&mut store, MemoryType::new(2000, None))?;
+        let mut linker = Linker::new(&engine);
+        linker.define("env", "memory", memory)?;
+
+        // runtime.* host callbacks — all no-ops except `error`, which traps.
+        linker.func_wrap(
+            "runtime",
+            "error",
+            |_: Caller<()>, _: i32, _: i32, _: i32, _: i32, _: i32, _: i32| -> Result<(), wasmi::Error> {
+                Err(wasmi::Error::new("circom runtime error (constraint failed)"))
+            },
+        )?;
+        linker.func_wrap("runtime", "logSetSignal", |_: Caller<()>, _: i32, _: i32| {})?;
+        linker.func_wrap("runtime", "logGetSignal", |_: Caller<()>, _: i32, _: i32| {})?;
+        linker.func_wrap("runtime", "logFinishComponent", |_: Caller<()>, _: i32| {})?;
+        linker.func_wrap("runtime", "logStartComponent", |_: Caller<()>, _: i32| {})?;
+        linker.func_wrap("runtime", "log", |_: Caller<()>, _: i32| {})?;
+        linker.func_wrap("runtime", "exceptionHandler", |_: Caller<()>, _: i32| {})?;
+        linker.func_wrap("runtime", "showSharedRWMemory", |_: Caller<()>| {})?;
+        linker.func_wrap("runtime", "printErrorMessage", |_: Caller<()>| {})?;
+        linker.func_wrap("runtime", "writeBufferMessage", |_: Caller<()>| {})?;
+
+        let instance = linker.instantiate_and_start(&mut store, &module)?;
+
+        // Require circom2 (getVersion == 2). circom1 uses a different memory model.
+        let version = instance
+            .get_typed_func::<(), i32>(&store, "getVersion")
+            .map_err(|_| "wasm has no getVersion — circom1 is not supported")?
+            .call(&mut store, ())?;
+        if version != 2 {
+            return Err(format!("unsupported circom wasm version {version} (need 2)").into());
+        }
+
+        let n32 = instance
+            .get_typed_func::<(), i32>(&store, "getFieldNumLen32")?
+            .call(&mut store, ())? as u32;
+
+        Ok(Self { store, instance, n32 })
+    }
+
+    fn tf0(&self, name: &str) -> Res<TypedFunc<(), i32>> {
+        Ok(self.instance.get_typed_func(&self.store, name)?)
+    }
+
+    /// Compute the full witness assignment for `inputs`, as ark-bn254 field elements.
+    pub fn calculate_witness_fr(
+        &mut self,
+        inputs: HashMap<String, Vec<BigInt>>,
+    ) -> Res<Vec<Fr>> {
+        let n32 = self.n32 as usize;
+        let init: TypedFunc<i32, ()> = self.instance.get_typed_func(&self.store, "init")?;
+        let write: TypedFunc<(i32, i32), ()> =
+            self.instance.get_typed_func(&self.store, "writeSharedRWMemory")?;
+        let read: TypedFunc<i32, i32> =
+            self.instance.get_typed_func(&self.store, "readSharedRWMemory")?;
+        let set_input: TypedFunc<(i32, i32, i32), ()> =
+            self.instance.get_typed_func(&self.store, "setInputSignal")?;
+        let get_witness: TypedFunc<i32, ()> =
+            self.instance.get_typed_func(&self.store, "getWitness")?;
+
+        init.call(&mut self.store, 0)?;
+
+        for (name, values) in inputs {
+            let (msb, lsb) = fnv(&name);
+            for (i, value) in values.iter().enumerate() {
+                let arr = to_array32(value, n32);
+                for j in 0..n32 {
+                    // shared memory expects least-significant word first
+                    write.call(&mut self.store, (j as i32, arr[n32 - 1 - j] as i32))?;
+                }
+                set_input.call(&mut self.store, (msb as i32, lsb as i32, i as i32))?;
+            }
+        }
+
+        let witness_size = self.tf0("getWitnessSize")?.call(&mut self.store, ())? as usize;
+        let mut out = Vec::with_capacity(witness_size);
+        for i in 0..witness_size {
+            get_witness.call(&mut self.store, i as i32)?;
+            let mut arr = vec![0u32; n32];
+            for j in 0..n32 {
+                arr[n32 - 1 - j] = read.call(&mut self.store, j as i32)? as u32;
+            }
+            out.push(bigint_to_fr(from_array32(arr)));
+        }
+        Ok(out)
+    }
+}
+
+/// BigInt (possibly negative, from circom) → canonical ark-bn254 Fr. Verbatim logic
+/// from ark-circom's `calculate_witness_element`.
+fn bigint_to_fr(w: BigInt) -> Fr {
+    let modulus: BigUint = Fr::MODULUS.into();
+    let w = if w.sign() == num_bigint::Sign::Minus {
+        modulus - w.abs().to_biguint().unwrap()
+    } else {
+        w.to_biguint().unwrap()
+    };
+    Fr::from(w)
+}
 
 /// Circom signal-name hash → (msb, lsb) u32 pair (FNV-1a 64-bit split).
 /// MUST match ark-circom / circom_runtime exactly — the pair feeds setInputSignal.
