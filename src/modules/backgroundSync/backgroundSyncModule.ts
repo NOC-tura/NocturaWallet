@@ -1,5 +1,6 @@
 import {getConnection} from '../solana/connection';
 import {getBalance, getTokenAccounts} from '../solana/queries';
+import {sumTokenBalancesByMint} from '../solana/tokenBalances';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {PublicKey} from '@solana/web3.js';
 import {NOC_MINT} from '../../constants/programs';
@@ -52,13 +53,15 @@ export async function forceSync(): Promise<SyncResult> {
     }
 
     const sol = solBalance.status === 'fulfilled' ? solBalance.value.toString() : useWalletStore.getState().solBalance;
+    // Sum per mint — an owner can hold one mint across several token accounts,
+    // which this wallet routinely does. Taking one account's amount (whether the
+    // last or the first) under-reports or zeroes the real balance.
     const tokens = tokenAccounts.status === 'fulfilled'
-      ? Object.fromEntries(tokenAccounts.value.map(t => [t.mint, t.amount]))
+      ? sumTokenBalancesByMint(tokenAccounts.value)
       : useWalletStore.getState().tokenBalances;
 
-    // Extract NOC balance from token accounts (if available), otherwise keep existing
     const nocBalance = tokenAccounts.status === 'fulfilled'
-      ? (tokenAccounts.value.find(t => t.mint === NOC_MINT)?.amount ?? useWalletStore.getState().nocBalance)
+      ? (tokens[NOC_MINT] ?? useWalletStore.getState().nocBalance)
       : useWalletStore.getState().nocBalance;
 
     useWalletStore.getState().updateBalances(sol, nocBalance, tokens);

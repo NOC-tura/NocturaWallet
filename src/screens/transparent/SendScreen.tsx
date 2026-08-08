@@ -25,6 +25,7 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import {Text} from '../../components/ui';
 import {TokenLogo} from '../../components/TokenLogo';
 import {validateRecipientInput} from '../../utils/validateAddress';
+import {getTransferMarkupLamports} from '../../modules/solana/transactionBuilder';
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {addressBook} from '../../modules/addressBook/addressBookModule';
@@ -57,9 +58,11 @@ import {TokenPickerSheet} from '../../components/TokenPickerSheet';
 // SOL · Instant +0.00005 SOL). Real-time priority fee estimation via
 // `getPriorityFee()` RPC should land here in a follow-up for adaptive pricing.
 //
-// NO Noctura markup — fees are pure Solana network values, transparent to the
-// user. (Earlier draft had a 20,000-lamport markup; design baseline shows no
-// markup in the fee row, so we match design.)
+// The Noctura markup is NOT hardcoded here. It comes from
+// getTransferMarkupLamports(), the same call the instruction builders use, so
+// the fee shown, the MAX amount, and the instructions actually signed can never
+// disagree. Pre-TGE the fee engine waives it (0n), which matches the design's
+// send screen (#12) showing only a "Network fee" line.
 const BASE_FEE_LAMPORTS = 5_000n;
 
 const PRIORITY_FEE_LAMPORTS: Record<PriorityLevel, bigint> = {
@@ -69,7 +72,7 @@ const PRIORITY_FEE_LAMPORTS: Record<PriorityLevel, bigint> = {
 };
 
 function getTotalNetworkFee(level: PriorityLevel): bigint {
-  return BASE_FEE_LAMPORTS + PRIORITY_FEE_LAMPORTS[level];
+  return BASE_FEE_LAMPORTS + PRIORITY_FEE_LAMPORTS[level] + getTransferMarkupLamports();
 }
 
 const SOL_DECIMALS = 9;

@@ -9,7 +9,8 @@ import {
 import type {Connection} from '@solana/web3.js';
 import {getConnection} from './connection';
 import {getAccountInfo} from './queries';
-import {NOCTURA_FEE_TREASURY, TRANSPARENT_FEES} from '../../constants/programs';
+import {NOCTURA_FEE_TREASURY} from '../../constants/programs';
+import {feeEngine} from '../fees/feeEngine';
 import type {TransferParams, SPLTransferParams} from './types';
 
 // SPL Token program ID
@@ -68,24 +69,45 @@ export async function resolveCreateAta(
  * as the transfer source then fails on-chain with AccountNotFound. Returns the
  * owned account with the largest balance for the mint, or null when the owner
  * holds no account for it.
+ *
+ * When `requiredAmount` is given and no SINGLE account covers it, this throws
+ * rather than returning an account that cannot fund the transfer. TransferChecked
+ * spends from one account and is all-or-nothing, while the displayed balance is
+ * the SUM across accounts — so a balance split across accounts would otherwise
+ * pass every local check and fail on-chain with an opaque error.
  */
 export async function resolveSourceTokenAccount(
   connection: Connection,
   owner: PublicKey,
   mint: PublicKey,
+  requiredAmount?: bigint,
 ): Promise<PublicKey | null> {
   const response = await connection.getParsedTokenAccountsByOwner(owner, {mint});
   let best: {pubkey: PublicKey; amount: bigint} | null = null;
+  let total = 0n;
   for (const {pubkey, account} of response.value) {
     const parsed = account.data.parsed as {
       info?: {tokenAmount?: {amount?: string}};
     };
     const amount = BigInt(parsed.info?.tokenAmount?.amount ?? '0');
+    total += amount;
     if (best === null || amount > best.amount) {
       best = {pubkey, amount};
     }
   }
-  return best === null ? null : best.pubkey;
+  if (best === null) return null;
+
+  if (requiredAmount !== undefined && best.amount < requiredAmount) {
+    throw new Error(
+      total >= requiredAmount
+        ? 'This balance is split across several token accounts. ' +
+          `The largest holds ${best.amount} of the ${requiredAmount} needed — ` +
+          'send a smaller amount, or consolidate the accounts first.'
+        : `Insufficient token balance: holding ${total}, need ${requiredAmount}.`,
+    );
+  }
+
+  return best.pubkey;
 }
 
 /**
@@ -198,9 +220,44 @@ export function buildCreateAtaIdempotentInstruction(
 }
 
 /**
+ * The Noctura markup actually charged on a transparent transfer, in lamports.
+ *
+ * THE single source of truth for the markup: both the instruction builders and
+ * the send screen's fee/MAX/insufficient-balance math must call this. Reading
+ * `TRANSPARENT_FEES.transferMarkup` directly is what caused the builder to
+ * append a 20_000-lamport transfer that the fee engine considered waived and
+ * the UI never displayed — an undisclosed charge that also made MAX-send
+ * unpayable (it needed `balance + 20_000`).
+ *
+ * Delegates to the fee engine, so the pre-TGE / zero-fee-eligible / staking
+ * discount policy is applied in exactly one place. Pre-TGE this is 0n, matching
+ * the design's send screen (#12), which shows only a "Network fee" line.
+ */
+export function getTransferMarkupLamports(): bigint {
+  return feeEngine.getEffectiveFee('transferMarkup');
+}
+
+/** Append the markup transfer, but only when a markup is actually charged. */
+function pushMarkupInstruction(
+  instructions: TransactionInstruction[],
+  sender: PublicKey,
+): void {
+  const markup = getTransferMarkupLamports();
+  if (markup <= 0n) return;
+  instructions.push(
+    SystemProgram.transfer({
+      fromPubkey: sender,
+      toPubkey: new PublicKey(NOCTURA_FEE_TREASURY),
+      lamports: markup,
+    }),
+  );
+}
+
+/**
  * Build the instruction list for a native SOL transfer: optional priority fee,
- * the recipient transfer, and the Noctura fee-markup transfer. Exposed so
- * signAndSend can rebuild the transaction with a fresh blockhash per retry.
+ * the recipient transfer, and — only when non-zero — the Noctura fee markup.
+ * Exposed so signAndSend can rebuild the transaction with a fresh blockhash per
+ * retry.
  */
 export function buildTransferInstructions(
   params: TransferParams,
@@ -228,13 +285,7 @@ export function buildTransferInstructions(
     }),
   );
 
-  instructions.push(
-    SystemProgram.transfer({
-      fromPubkey: sender,
-      toPubkey: new PublicKey(NOCTURA_FEE_TREASURY),
-      lamports: TRANSPARENT_FEES.transferMarkup,
-    }),
-  );
+  pushMarkupInstruction(instructions, sender);
 
   return instructions;
 }
@@ -310,14 +361,7 @@ export function buildSPLTransferInstructions(
     ),
   );
 
-  // Noctura fee markup transfer
-  instructions.push(
-    SystemProgram.transfer({
-      fromPubkey: sender,
-      toPubkey: new PublicKey(NOCTURA_FEE_TREASURY),
-      lamports: TRANSPARENT_FEES.transferMarkup,
-    }),
-  );
+  pushMarkupInstruction(instructions, sender);
 
   return instructions;
 }

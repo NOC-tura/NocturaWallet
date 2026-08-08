@@ -66,7 +66,8 @@ export async function submitTransparentTransfer(
     // the transaction fails on-chain with AccountNotFound.
     const sourceTokenAccount =
       params.kind === 'spl'
-        ? (await resolveSourceTokenAccount(connection, sender, params.mint)) ?? undefined
+        ? (await resolveSourceTokenAccount(connection, sender, params.mint, params.amount)) ??
+          undefined
         : undefined;
 
     const instructions =

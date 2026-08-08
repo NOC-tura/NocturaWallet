@@ -16,6 +16,7 @@ import {formatAddress} from '../../utils/formatAddress';
 import {ERROR_CODES} from '../../constants/errors';
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
 import type {TransferIntent} from '../../types/transfer';
+import {CancelledError} from '../../modules/solana/landedSignature';
 
 // ── In-file constants ─────────────────────────────────────────────────────────
 const BASE_FEE_LAMPORTS = 5_000n;
@@ -35,6 +36,9 @@ let getConnection:
 let estimatePriorityFee:
   | typeof import('../../modules/solana/priorityFee').estimatePriorityFee
   | null = null;
+let findLandedSignature:
+  | typeof import('../../modules/solana/landedSignature').findLandedSignature
+  | null = null;
 
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -45,9 +49,16 @@ try {
   getConnection = require('../../modules/solana/connection').getConnection;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   estimatePriorityFee = require('../../modules/solana/priorityFee').estimatePriorityFee;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  findLandedSignature = require('../../modules/solana/landedSignature').findLandedSignature;
 } catch {
   // Modules unavailable in test/stub environment — no-op
 }
+
+/** Result of a submit attempt: either an earlier tx already landed, or we broadcast. */
+type SubmitOutcome =
+  | {kind: 'alreadyLanded'; signature: string; slot: number | null}
+  | {kind: 'broadcast'; signature: string; lastValidBlockHeight: number};
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Stage = 'submitting' | 'broadcasting' | 'success' | 'failed' | 'stuck';
@@ -86,6 +97,16 @@ export function TransactionStatusScreen({
   const signatureRef = useRef<string | null>(null);
   signatureRef.current = signature;
 
+  /**
+   * Every signature this screen has broadcast, across all attempts and retries.
+   * Checked before any re-broadcast so a transaction that already landed is
+   * adopted instead of sent a second time. Survives re-renders and the effect
+   * re-running on retry.
+   */
+  const issuedSignatures = useRef<string[]>([]);
+  /** True while a submit is in flight — blocks a second Retry from racing it. */
+  const submitInFlight = useRef(false);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -94,7 +115,12 @@ export function TransactionStatusScreen({
       setErrorMessage(null);
 
       // Guard: in stub/test env all required modules may be null — exit gracefully
-      if (!submitTransparentTransfer || !loadTransparentScheme || !getConnection) {
+      if (
+        !submitTransparentTransfer ||
+        !loadTransparentScheme ||
+        !getConnection ||
+        !findLandedSignature
+      ) {
         return;
       }
 
@@ -124,24 +150,55 @@ export function TransactionStatusScreen({
               scheme,
             };
 
-      const attemptSubmit = async () => {
+      const attemptSubmit = async (): Promise<SubmitOutcome> => {
+        // Before spending anything, adopt an earlier attempt that already
+        // landed. A send can surface as "failed" while the tx is still in
+        // flight (connection reset after the RPC accepted it, blockhash-expiry
+        // timeout, a status poll that missed it) — re-broadcasting then pays
+        // twice.
+        const landed = await findLandedSignature!(getConnection!(), issuedSignatures.current);
+        if (landed) {
+          return {kind: 'alreadyLanded', signature: landed.signature, slot: landed.slot};
+        }
+
         const fee = estimatePriorityFee
           ? await estimatePriorityFee(getConnection!(), intent.priorityLevel)
           : 0;
         setPriorityFeeUsed(fee);
-        return submitTransparentTransfer!(buildParams(fee));
+
+        // Re-check cancellation immediately before broadcasting. The effect
+        // cleanup sets `cancelled`, but an await already in progress would
+        // otherwise still reach sendRawTransaction and move real funds.
+        if (cancelled) throw new CancelledError();
+
+        submitInFlight.current = true;
+        try {
+          const sent = await submitTransparentTransfer!(buildParams(fee));
+          issuedSignatures.current.push(sent.signature);
+          return {kind: 'broadcast', ...sent};
+        } finally {
+          submitInFlight.current = false;
+        }
       };
 
       let attempt = 1;
       let result: {signature: string; lastValidBlockHeight: number};
 
       try {
-        result = await attemptSubmit();
-      } catch (e) {
-        if (!cancelled) {
-          setErrorMessage(e instanceof Error ? e.message : 'Transaction failed');
-          setStage('failed');
+        const outcome = await attemptSubmit();
+        if (outcome.kind === 'alreadyLanded') {
+          if (!cancelled) {
+            setSignature(outcome.signature);
+            setSlot(outcome.slot);
+            setStage('success');
+          }
+          return;
         }
+        result = outcome;
+      } catch (e) {
+        if (cancelled || e instanceof CancelledError) return;
+        setErrorMessage(e instanceof Error ? e.message : 'Transaction failed');
+        setStage('failed');
         return;
       }
 
@@ -189,12 +246,20 @@ export function TransactionStatusScreen({
                 attempt++;
                 let resubmitResult: {signature: string; lastValidBlockHeight: number};
                 try {
-                  resubmitResult = await attemptSubmit();
-                } catch (e) {
-                  if (!cancelled) {
-                    setErrorMessage(e instanceof Error ? e.message : 'Transaction failed');
-                    setStage('failed');
+                  const outcome = await attemptSubmit();
+                  if (outcome.kind === 'alreadyLanded') {
+                    if (!cancelled) {
+                      setSignature(outcome.signature);
+                      setSlot(outcome.slot);
+                      setStage('success');
+                    }
+                    return;
                   }
+                  resubmitResult = outcome;
+                } catch (e) {
+                  if (cancelled || e instanceof CancelledError) return;
+                  setErrorMessage(e instanceof Error ? e.message : 'Transaction failed');
+                  setStage('failed');
                   return;
                 }
                 if (cancelled) return;
@@ -374,7 +439,12 @@ export function TransactionStatusScreen({
               label="Retry"
               variant="primary"
               testID="tx-status-retry"
-              onPress={() => setRetryCount(c => c + 1)}
+              onPress={() => {
+                // Ignore repeat taps while a submit is still in flight — the
+                // effect cleanup cannot recall a broadcast already sent.
+                if (submitInFlight.current) return;
+                setRetryCount(c => c + 1);
+              }}
             />
             <Button
               label="Done"
