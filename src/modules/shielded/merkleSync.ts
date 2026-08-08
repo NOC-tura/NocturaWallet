@@ -5,6 +5,7 @@ import {parseDepositEvents} from './depositEvents';
 import type {DepositEvent} from './depositEvents';
 import {bytesToHex} from './fieldCodec';
 import {mmkvPublic} from '../../store/mmkv/instances';
+import {computeMerklePath} from '../merkle/merkleModule';
 
 // MerkleTree account layout (zero-copy, #[repr(C)]), see programs/shielded-pool
 // state.rs: 8 disc + 8 next_leaf_index + 640 zeros([[u8;32];20]) +
@@ -68,6 +69,63 @@ function clearCache(mint: string): void {
  * the expected count from the MAX index (not the map size) so a duplicated index
  * cannot mask a real gap. Throws on any gap.
  */
+/**
+ * Merge leaf events into a leafIndex→commitment map, treating a same-index /
+ * different-commitment collision as a HARD CONFLICT.
+ *
+ * The previous `byIndex.set(...)` was last-write-wins, so a contaminated leaf
+ * set could reconstruct a correct-looking root purely by iteration order — the
+ * real leaf happening to overwrite the foreign one. That is not a validation, it
+ * is a coin flip, and it flips the other way as soon as ordering changes.
+ * A collision means the leaf set is not exclusively ours; refuse it.
+ */
+export function mergeLeafEvents(
+  byIndex: Map<number, string>,
+  events: {leafIndex: number; commitment: string}[],
+): void {
+  for (const e of events) {
+    const existing = byIndex.get(e.leafIndex);
+    if (existing !== undefined && existing !== e.commitment) {
+      throw new Error(
+        `merkleSync: leaf conflict at index ${e.leafIndex} ` +
+          `(${existing.slice(0, 8)}… vs ${e.commitment.slice(0, 8)}…) — ` +
+          'the scanned leaf set is not exclusively this pool\'s',
+      );
+    }
+    byIndex.set(e.leafIndex, e.commitment);
+  }
+}
+
+/**
+ * Require the rebuilt leaf set to reproduce a root the chain actually attests.
+ *
+ * This is the invariant everything else is defence-in-depth for. Scoping rules
+ * (program id, discriminator, per-instruction merkle account) each close ONE way
+ * a wrong leaf gets in or a right leaf gets dropped; this closes all of them at
+ * once, including ways nobody has thought of yet, because it checks the RESULT
+ * rather than the provenance.
+ *
+ * It matters that a filter which is too STRICT is as damaging as one that is too
+ * loose: the tree is index-ordered, so a single dropped early leaf shifts every
+ * later index and invalidates the root for the whole pool, not just that leaf.
+ *
+ * Membership in the 64-deep ring rather than equality with head, because leaves
+ * can land between the signature scan and the account read. A wallet that has
+ * been offline long enough for its rebuilt root to age out of the ring will fail
+ * here — that is a resync-from-scratch path, not a corruption.
+ */
+export function assertLeafSetMatchesChain(leaves: string[], onChainRoots: string[]): void {
+  if (leaves.length === 0) return;
+  const {root} = computeMerklePath(leaves, 0);
+  if (!onChainRoots.includes(root)) {
+    throw new Error(
+      `merkleSync: rebuilt root ${root.slice(0, 12)}… is not in the on-chain ` +
+        `root history (${leaves.length} leaves) — the scanned leaf set does not ` +
+        'match this pool on chain; refusing to use it',
+    );
+  }
+}
+
 export function densifyLeaves(byIndex: Map<number, string>): string[] {
   if (byIndex.size === 0) return [];
   const max = Math.max(...byIndex.keys());
@@ -132,13 +190,13 @@ export async function syncLeaves(mintBase58: string): Promise<MerkleSyncResult> 
         }),
       ),
     );
-    for (const tx of txs) newEvents.push(...parseDepositEvents(tx?.meta?.logMessages ?? []));
+    for (const tx of txs) newEvents.push(...parseDepositEvents(tx, tree.toBase58()));
   }
 
   // Merge cached leaves (indices 0..N-1) with the new events (by leaf_index).
   const byIndex = new Map<number, string>();
   (cache?.leaves ?? []).forEach((c, i) => byIndex.set(i, c));
-  for (const e of newEvents) byIndex.set(e.leafIndex, e.commitment);
+  mergeLeafEvents(byIndex, newEvents);
 
   let leaves: string[];
   try {
@@ -157,6 +215,11 @@ export async function syncLeaves(mintBase58: string): Promise<MerkleSyncResult> 
   const info = await connection.getAccountInfo(tree);
   if (!info) throw new Error('merkleSync: merkle_tree account not found');
   const onChainRoots = parseRootHistory(info.data);
+
+  // Fail closed BEFORE the caller can prove against a tree we cannot attest.
+  // Previously a contaminated tree only surfaced as an on-chain proof rejection,
+  // after a full prove and a burned fee, with an opaque error.
+  assertLeafSetMatchesChain(leaves, onChainRoots);
 
   return {leaves, onChainRoots};
 }

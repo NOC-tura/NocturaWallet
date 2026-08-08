@@ -12,13 +12,29 @@ function programDataLine(commitmentHex: string, leafIndex: number, rootHex: stri
   return `Program data: ${buf.toString('base64')}`;
 }
 
-/** Wrap event lines in the pool program's invoke/success bracket, as the RPC returns them. */
-function inPoolInvoke(...lines: string[]): string[] {
-  return [
-    `Program ${SHIELDED_POOL_PROGRAM_ID} invoke [1]`,
-    ...lines,
-    `Program ${SHIELDED_POOL_PROGRAM_ID} success`,
-  ];
+const TREE = 'OurTree11111111111111111111111111111111111';
+
+/**
+ * A tx whose single top-level instruction targets the pool program and lists our
+ * merkle tree — the shape the RPC returns for a real deposit.
+ */
+function poolTx(...lines: string[]) {
+  return {
+    meta: {
+      logMessages: [
+        `Program ${SHIELDED_POOL_PROGRAM_ID} invoke [1]`,
+        ...lines,
+        `Program ${SHIELDED_POOL_PROGRAM_ID} success`,
+      ],
+      loadedAddresses: null,
+    },
+    transaction: {
+      message: {
+        staticAccountKeys: [SHIELDED_POOL_PROGRAM_ID, TREE],
+        compiledInstructions: [{programIdIndex: 0, accountKeyIndexes: [1]}],
+      },
+    },
+  };
 }
 
 const c = (n: number) => n.toString(16).padStart(64, '0');
@@ -26,12 +42,12 @@ const r = (n: number) => (1000 + n).toString(16).padStart(64, '0');
 
 describe('depositEvents', () => {
   it('parses commitment, leaf_index, root from Program data lines', () => {
-    const logs = inPoolInvoke('Program log: Instruction: Deposit', programDataLine(c(7), 3, r(3)));
-    const events = parseDepositEvents(logs);
+    const logs = poolTx('Program log: Instruction: Deposit', programDataLine(c(7), 3, r(3)));
+    const events = parseDepositEvents(logs, TREE);
     expect(events).toEqual<DepositEvent[]>([{commitment: c(7), leafIndex: 3, root: r(3)}]);
   });
   it('ignores non-event log lines', () => {
-    expect(parseDepositEvents(['Program log: hello', 'random'])).toEqual([]);
+    expect(parseDepositEvents(poolTx('Program log: hello', 'random'), TREE)).toEqual([]);
   });
   it('orderedLeaves places commitments densely by leaf_index', () => {
     const events: DepositEvent[] = [
@@ -81,25 +97,41 @@ describe('parseDepositEvents — forgery resistance', () => {
     return `Program data: ${Buffer.from(b).toString('base64')}`;
   }
 
+  /** A tx whose top-level instruction targets `prog` and lists our tree. */
+  function txFrom(prog: string, ...lines: string[]) {
+    return {
+      meta: {
+        logMessages: [`Program ${prog} invoke [1]`, ...lines, `Program ${prog} success`],
+        loadedAddresses: null,
+      },
+      transaction: {
+        message: {
+          staticAccountKeys: [prog, TREE],
+          compiledInstructions: [{programIdIndex: 0, accountKeyIndexes: [1]}],
+        },
+      },
+    };
+  }
+
   it('accepts a LeafInserted event from the pool program', () => {
-    const logs = [`Program ${POOL} invoke [1]`, leafBlob(EVENT_DISC.leafInserted, 3), `Program ${POOL} success`];
-    expect(parseDepositEvents(logs)).toHaveLength(1);
-    expect(parseDepositEvents(logs)[0]!.leafIndex).toBe(3);
+    const logs = txFrom(POOL, leafBlob(EVENT_DISC.leafInserted, 3));
+    expect(parseDepositEvents(logs, TREE)).toHaveLength(1);
+    expect(parseDepositEvents(logs, TREE)[0]!.leafIndex).toBe(3);
   });
 
   it('still accepts the legacy Deposit discriminator (pre-rename leaves)', () => {
-    const logs = [`Program ${POOL} invoke [1]`, leafBlob(EVENT_DISC.depositLegacy, 1), `Program ${POOL} success`];
-    expect(parseDepositEvents(logs)).toHaveLength(1);
+    const logs = txFrom(POOL, leafBlob(EVENT_DISC.depositLegacy, 1));
+    expect(parseDepositEvents(logs, TREE)).toHaveLength(1);
   });
 
   it('REJECTS a correctly-shaped leaf forged by another program', () => {
     // Balance-inflation / pool-wide-DoS vector: costs one transaction fee.
-    const logs = [`Program ${EVIL} invoke [1]`, leafBlob(EVENT_DISC.leafInserted, 1_048_575), `Program ${EVIL} success`];
-    expect(parseDepositEvents(logs)).toHaveLength(0);
+    const logs = txFrom(EVIL, leafBlob(EVENT_DISC.leafInserted, 1_048_575));
+    expect(parseDepositEvents(logs, TREE)).toHaveLength(0);
   });
 
   it('REJECTS a pool-emitted blob with an unknown discriminator', () => {
-    const logs = [`Program ${POOL} invoke [1]`, leafBlob('0011223344556677', 2), `Program ${POOL} success`];
-    expect(parseDepositEvents(logs)).toHaveLength(0);
+    const logs = txFrom(POOL, leafBlob('0011223344556677', 2));
+    expect(parseDepositEvents(logs, TREE)).toHaveLength(0);
   });
 });

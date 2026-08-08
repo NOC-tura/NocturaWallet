@@ -1,4 +1,4 @@
-import {EVENT_DISC, discriminatorHex, programDataBlobs} from './eventLogs';
+import {EVENT_DISC, discriminatorHex, poolLeafBlobs} from './eventLogs';
 import {SHIELDED_POOL_PROGRAM_ID} from '../../constants/programs';
 
 const DISC = 8;
@@ -20,12 +20,15 @@ export interface NoteCiphertextEvent {
  * LeafInserted and 72-B Transfer events). Lines with a Vec len prefix != 128
  * are also ignored.
  */
-export function parseNoteCiphertextEvents(logs: string[]): NoteCiphertextEvent[] {
+export function parseNoteCiphertextEvents(
+  tx: Parameters<typeof poolLeafBlobs>[0],
+  merkleTree: string,
+): NoteCiphertextEvent[] {
   const out: NoteCiphertextEvent[] = [];
   // Program-scoped + discriminator-checked: length alone is forgeable by anyone
   // (see eventLogs.ts). A forged ciphertext encrypted to a victim's public
   // address would otherwise credit them a phantom note.
-  for (const buf of programDataBlobs(logs, SHIELDED_POOL_PROGRAM_ID)) {
+  for (const buf of poolLeafBlobs(tx, SHIELDED_POOL_PROGRAM_ID, merkleTree)) {
     if (buf.length !== EVENT_LEN) continue;
     if (discriminatorHex(buf) !== EVENT_DISC.noteCiphertext) continue;
     let leafIndex = 0n;

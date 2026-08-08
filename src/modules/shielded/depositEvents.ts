@@ -1,5 +1,5 @@
 import {bytesToHex} from './fieldCodec';
-import {EVENT_DISC, discriminatorHex, programDataBlobs} from './eventLogs';
+import {EVENT_DISC, discriminatorHex, poolLeafBlobs} from './eventLogs';
 import {SHIELDED_POOL_PROGRAM_ID} from '../../constants/programs';
 
 export interface DepositEvent {
@@ -24,14 +24,18 @@ const LEAF_DISCRIMINATORS: readonly string[] = [
  * Parse Anchor leaf-insertion events from a transaction's log messages:
  *   disc(8) + commitment[32] + leaf_index(u64 LE) + root[32]  = 80 bytes.
  *
- * Only blobs emitted by the pool program itself, in a successful invocation,
- * carrying a known leaf discriminator are accepted. Length alone is NOT a filter
- * — any program can log 80 bytes, and the transaction set includes every tx that
- * merely references the tree PDA. See eventLogs.ts for the attack this closes.
+ * Only blobs emitted by the pool program itself, at top level, from an
+ * instruction that lists OUR `merkleTree` among its accounts, in a successful
+ * invocation, carrying a known leaf discriminator. Length alone is not a filter,
+ * and neither is the program id — the program hosts many pools and each starts
+ * at leaf_index 0. See eventLogs.ts for both attacks this closes.
  */
-export function parseDepositEvents(logs: string[]): DepositEvent[] {
+export function parseDepositEvents(
+  tx: Parameters<typeof poolLeafBlobs>[0],
+  merkleTree: string,
+): DepositEvent[] {
   const out: DepositEvent[] = [];
-  for (const buf of programDataBlobs(logs, SHIELDED_POOL_PROGRAM_ID)) {
+  for (const buf of poolLeafBlobs(tx, SHIELDED_POOL_PROGRAM_ID, merkleTree)) {
     if (buf.length !== EVENT_LEN) continue;
     if (!LEAF_DISCRIMINATORS.includes(discriminatorHex(buf))) continue;
     const commitment = bytesToHex(buf.subarray(DISC, DISC + COMMITMENT));

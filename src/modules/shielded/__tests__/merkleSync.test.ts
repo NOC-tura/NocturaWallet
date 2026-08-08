@@ -1,3 +1,7 @@
+jest.mock('../poolPdas', () => ({
+  poolPda: () => ({toBase58: () => 'PoolPda1111111111111111111111111111111111'}),
+  merkleTreePda: () => ({toBase58: () => 'OurTree11111111111111111111111111111111111'}),
+}));
 // ── Mocks (hoisted) ──────────────────────────────────────────────────────────
 const mockMmkvStore = new Map<string, string>();
 jest.mock('../../../store/mmkv/instances', () => ({
@@ -19,13 +23,28 @@ jest.mock('../../solana/connection', () => ({
   }),
 }));
 
-import {parseRootHistory, densifyLeaves, syncLeaves} from '../merkleSync';
+import {parseRootHistory, densifyLeaves, syncLeaves, mergeLeafEvents, assertLeafSetMatchesChain} from '../merkleSync';
 import {EVENT_DISC} from '../eventLogs';
-import {SHIELDED_POOL_PROGRAM_ID as POOL_ID} from '../../../constants/programs';
-/** Wrap event lines in the pool program's invoke/success bracket, as the RPC returns them. */
-function inPoolInvoke(...lines: string[]): string[] {
-  return [`Program ${POOL_ID} invoke [1]`, ...lines, `Program ${POOL_ID} success`];
+
+const POOL_PROG = 'NPkcpUdnm1JZhndur3ggQZwo86yWgcU6Ry28T3zHfES';
+const OUR_TREE = 'OurTree11111111111111111111111111111111111';
+/** A tx whose top-level instruction targets the pool program and lists our tree. */
+function poolTx(...lines: string[]) {
+  return {
+    meta: {
+      err: null,
+      logMessages: [`Program ${POOL_PROG} invoke [1]`, ...lines, `Program ${POOL_PROG} success`],
+      loadedAddresses: null,
+    },
+    transaction: {
+      message: {
+        staticAccountKeys: [POOL_PROG, OUR_TREE],
+        compiledInstructions: [{programIdIndex: 0, accountKeyIndexes: [1]}],
+      },
+    },
+  };
 }
+
 
 
 const hex = (n: number) => n.toString(16).padStart(64, '0');
@@ -39,7 +58,20 @@ function leafLog(commitmentHex: string, leafIndex: number): string {
   buf.writeUInt32LE(leafIndex, 8 + 32);
   return `Program data: ${buf.toString('base64')}`;
 }
-const rootHistoryAccount = () => ({data: Buffer.alloc(1296 + 64 * 32 + 8)});
+/**
+ * A root_history account whose ring contains `roots`. syncLeaves now asserts the
+ * rebuilt root is on chain, so a sync fixture must attest its own leaf set.
+ */
+const rootHistoryAccount = (...roots: string[]) => {
+  const data = Buffer.alloc(1296 + 64 * 32 + 8);
+  roots.forEach((r, i) => Buffer.from(r, 'hex').copy(data, 1296 + i * 32));
+  return {data};
+};
+
+/** The root the production merkle code derives for `leaves`. */
+const rootOf = (leaves: string[]): string =>
+  (jest.requireActual('../../merkle/merkleModule') as typeof import('../../merkle/merkleModule'))
+    .computeMerklePath(leaves, 0).root;
 
 // ── parseRootHistory ─────────────────────────────────────────────────────────
 describe('parseRootHistory', () => {
@@ -85,7 +117,7 @@ describe('syncLeaves incremental cache', () => {
         sigB: leafLog(hex(11), 1),
         sigC: leafLog(hex(12), 2),
       };
-      return {meta: {err: null, logMessages: inPoolInvoke(map[sig]!)}};
+      return poolTx(map[sig]!);
     });
   });
 
@@ -95,6 +127,7 @@ describe('syncLeaves incremental cache', () => {
       {signature: 'sigB', err: null},
       {signature: 'sigA', err: null},
     ]);
+    mockGetAccountInfo.mockResolvedValue(rootHistoryAccount(rootOf([hex(10), hex(11)])));
     const {leaves} = await syncLeaves(MINT);
     expect(leaves).toEqual([hex(10), hex(11)]);
     // first call has no `until`
@@ -109,6 +142,7 @@ describe('syncLeaves incremental cache', () => {
     // Seed the cache as if the first sync already ran.
     mockMmkvStore.set('shielded.syncCache.' + MINT, JSON.stringify({leaves: [hex(10), hex(11)], lastSig: 'sigB'}));
     mockGetSignatures.mockResolvedValueOnce([{signature: 'sigC', err: null}]);
+    mockGetAccountInfo.mockResolvedValue(rootHistoryAccount(rootOf([hex(10), hex(11), hex(12)])));
     const {leaves} = await syncLeaves(MINT);
     expect(leaves).toEqual([hex(10), hex(11), hex(12)]);
     // incremental: called with until = the cached lastSig
@@ -124,8 +158,61 @@ describe('syncLeaves incremental cache', () => {
   it('no new signatures → returns cached leaves unchanged', async () => {
     mockMmkvStore.set('shielded.syncCache.' + MINT, JSON.stringify({leaves: [hex(10), hex(11)], lastSig: 'sigB'}));
     mockGetSignatures.mockResolvedValueOnce([]);
+    mockGetAccountInfo.mockResolvedValue(rootHistoryAccount(rootOf([hex(10), hex(11)])));
     const {leaves} = await syncLeaves(MINT);
     expect(leaves).toEqual([hex(10), hex(11)]);
     expect(mockGetTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('mergeLeafEvents — conflict detection', () => {
+  it('accepts a repeated index carrying the SAME commitment', () => {
+    const byIndex = new Map<number, string>();
+    mergeLeafEvents(byIndex, [
+      {commitment: 'aa', leafIndex: 0},
+      {commitment: 'aa', leafIndex: 0},
+    ]);
+    expect(byIndex.get(0)).toBe('aa');
+  });
+
+  it('THROWS on the same index with a DIFFERENT commitment', () => {
+    // Last-write-wins is what made a contaminated tree pass verification by
+    // luck: whichever leaf 0 was iterated last silently won. A collision means
+    // the leaf set is not ours — fail closed rather than pick one.
+    const byIndex = new Map<number, string>();
+    expect(() =>
+      mergeLeafEvents(byIndex, [
+        {commitment: 'aa', leafIndex: 0},
+        {commitment: 'bb', leafIndex: 0},
+      ]),
+    ).toThrow(/conflict/i);
+  });
+
+  it('detects a conflict against already-cached leaves', () => {
+    const byIndex = new Map<number, string>([[0, 'aa']]);
+    expect(() =>
+      mergeLeafEvents(byIndex, [{commitment: 'bb', leafIndex: 0}]),
+    ).toThrow(/conflict/i);
+  });
+});
+
+describe('assertLeafSetMatchesChain — the invariant that catches everything', () => {
+  it('accepts a leaf set whose root is in the on-chain ring', () => {
+    const {computeMerklePath} = jest.requireActual('../../merkle/merkleModule');
+    const leaves = [hex(1), hex(2), hex(3)];
+    const {root} = computeMerklePath(leaves, 0);
+    expect(() => assertLeafSetMatchesChain(leaves, ['deadbeef', root])).not.toThrow();
+  });
+
+  it('REJECTS a contaminated leaf set whose root is absent from the ring', () => {
+    // This is what catches contamination regardless of HOW it got in: a foreign
+    // pool's leaf, a forged event, a dropped legacy leaf, or a variant neither
+    // side has thought of. Strictly stronger than any scoping rule.
+    const leaves = [hex(1), hex(99), hex(3)]; // leaf 1 swapped
+    expect(() => assertLeafSetMatchesChain(leaves, ['deadbeef'])).toThrow(/root/i);
+  });
+
+  it('does not fire on an empty pool', () => {
+    expect(() => assertLeafSetMatchesChain([], [])).not.toThrow();
   });
 });
