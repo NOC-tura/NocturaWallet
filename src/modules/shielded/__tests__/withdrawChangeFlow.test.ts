@@ -61,7 +61,13 @@ jest.mock('../poolInstructions', () => ({
   buildWithdrawIx: jest.fn(() => ({})),
 }));
 
+jest.mock('../leafResolver', () => {
+  const actual = jest.requireActual('../leafResolver');
+  return {...actual, resolveLeafIndex: jest.fn(actual.resolveLeafIndex)};
+});
+
 import {unshieldWithChange, MerkleRootStaleError} from '../withdrawFlow';
+import {resolveLeafIndex} from '../leafResolver';
 import {syncLeaves} from '../merkleSync';
 import {buildWithdrawChangeWitness} from '../withdrawChangeWitness';
 import {markSpentByCommitment, setNoteIndex, addNote} from '../noteStore';
@@ -116,9 +122,12 @@ describe('unshieldWithChange', () => {
       .mockResolvedValueOnce({leaves: [decToHex64('12345')], onChainRoots: [rootHex]}); // 2nd: fallback finds change commitment at index 0
     const res = await unshieldWithChange(seed, feePayer, MINT, note, 200n);
     expect(res.change).toBe(300n);
+    // The note is stored with the sentinel BEFORE any await, then backfilled by
+    // the best-effort resync — index resolution must never gate the store write.
     expect(addNote).toHaveBeenCalledWith(
-      expect.objectContaining({commitment: '12345', index: 0}),
+      expect.objectContaining({commitment: '12345', index: -1}),
     );
+    expect(setNoteIndex).toHaveBeenCalledWith(MINT, '12345', 0);
     expect(markSpentByCommitment).toHaveBeenCalledWith(MINT, 'c');
   });
 
@@ -194,5 +203,51 @@ describe('leafResolver — no guessing', () => {
       MINT,
     );
     expect(idx).toBe(7);
+  });
+});
+
+describe('unshieldWithChange — post-submit ordering', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    logState.logs = inPoolInvoke(leafInsertedLog);
+    (syncLeaves as jest.Mock).mockResolvedValue({leaves: ['c'], onChainRoots: [rootHex]});
+  });
+
+  it('records the change note and marks the input spent even when leaf resolution THROWS', async () => {
+    // The withdraw is already confirmed on-chain at this point. If a post-submit
+    // RPC failure propagates, the input note is never marked spent: the wallet
+    // shows a note whose nullifier already exists on-chain, so it is counted in
+    // the balance but every future spend of it is rejected. Permanent inflation.
+    (resolveLeafIndex as jest.Mock).mockRejectedValueOnce(new Error('rpc down'));
+
+    await expect(unshieldWithChange(seed, feePayer, MINT, note, 200n)).resolves.toBeDefined();
+
+    expect(addNote).toHaveBeenCalledWith(
+      expect.objectContaining({commitment: '12345', amount: 300n, index: -1}),
+    );
+    expect(markSpentByCommitment).toHaveBeenCalledWith(MINT, note.commitment);
+  });
+
+  it('performs both critical writes BEFORE awaiting leaf resolution', async () => {
+    // Neither write may sit behind an await: a process kill during the up-to-32s
+    // resolution window would otherwise lose the change note, or leave the input
+    // unspent, after money already moved.
+    const order: string[] = [];
+    (addNote as jest.Mock).mockImplementation(() => order.push('addNote'));
+    (markSpentByCommitment as jest.Mock).mockImplementation(() => order.push('markSpent'));
+    (resolveLeafIndex as jest.Mock).mockImplementation(async () => {
+      order.push('resolve');
+      return 7;
+    });
+
+    await unshieldWithChange(seed, feePayer, MINT, note, 200n);
+
+    expect(order).toEqual(['addNote', 'markSpent', 'resolve']);
+  });
+
+  it('backfills the change note index once resolution succeeds', async () => {
+    (resolveLeafIndex as jest.Mock).mockResolvedValueOnce(7);
+    await unshieldWithChange(seed, feePayer, MINT, note, 200n);
+    expect(setNoteIndex).toHaveBeenCalledWith(MINT, '12345', 7);
   });
 });
