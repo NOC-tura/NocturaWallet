@@ -36,7 +36,13 @@ export async function resolveLeafIndex(
     const events = parseDepositEvents(tx?.meta?.logMessages ?? []);
     const match = events.find(e => e.commitment === hex);
     if (match) return match.leafIndex;
-    if (events.length > 0) return events[0]!.leafIndex;
+    // Deliberately NO fallback to events[0]. A transfer inserts two leaves
+    // (recipient then self-change), so guessing the first event's index stores
+    // the change note under the RECIPIENT's leaf. A wrong non-negative index is
+    // never re-resolved (callers only retry when index < 0), so the note becomes
+    // permanently unspendable: its nullifier and Merkle path are computed for
+    // someone else's leaf and every proof is rejected. Falling through to the
+    // resync — and ultimately to the sentinel — is self-healing; a guess is not.
   } catch { /* fall through to resync */ }
   try {
     const {leaves} = await withTimeout(syncLeaves(mintBase58), 20_000, 'resync');

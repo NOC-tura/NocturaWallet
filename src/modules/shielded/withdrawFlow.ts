@@ -18,7 +18,7 @@ import {SHIELDED_CU} from '../../constants/programs';
 import type {ShieldedNote} from './types';
 import {buildWithdrawChangeWitness} from './withdrawChangeWitness';
 import {randomFieldElement} from './noteCrypto';
-import {resolveLeafIndex} from './leafResolver';
+import {resolveLeafIndex, UNRESOLVED_INDEX} from './leafResolver';
 import {encryptNote, randomBytes} from './noteEncryption';
 import {getViewPublicKey} from './shieldedIdentity';
 
@@ -215,22 +215,28 @@ export async function unshieldWithChange(
   );
 
   // submitPoolTxMany confirmed the tx over HTTP polling (getSignatureStatus,
-  // which also surfaces an on-chain error) — so the withdraw already succeeded.
-  // Do NOT re-fetch it in a blocking loop (a stalled getTransaction hung the flow
-  // here on-device). Record the change note (with its secret) FIRST — resolving
-  // its leaf index best-effort, or a sentinel to backfill on spend — then mark the
-  // input spent. Neither step can hang or lose the change.
+  // which also surfaces an on-chain error) — so the withdraw already succeeded
+  // and the money has moved.
+  //
+  // ORDERING IS LOAD-BEARING. Both bookkeeping writes are synchronous MMKV
+  // writes that cannot hang or throw, and BOTH happen before any await. The
+  // previous version awaited resolveLeafIndex (up to 32 s: 12 s getTransaction +
+  // 20 s resync) *before* either write and without a try/catch, so a post-submit
+  // RPC failure — or the process being killed during that window — left:
+  //   • the input note not marked spent → its nullifier exists on-chain but the
+  //     wallet still counts it, so the balance is permanently inflated and every
+  //     future spend that selects it is rejected; and
+  //   • the change note unrecorded until a later scan rediscovered it.
+  // Resolving the leaf index is pure optimisation and is now strictly last,
+  // best-effort, and non-fatal.
   onStep?.('5/5 recording…');
   if (w.changeAmount > 0n) {
-    const changeLeafIndex = await resolveLeafIndex(
-      txSignature, w.changeCommitmentDec, mintBase58,
-    );
     addNote({
       commitment: w.changeCommitmentDec,
       nullifier: '',
       mint: mintBase58,
       amount: w.changeAmount,
-      index: changeLeafIndex, // may be UNRESOLVED_INDEX; backfilled when spent
+      index: UNRESOLVED_INDEX, // backfilled below, or on spend
       spent: false,
       createdAt: Date.now(),
       noteSecret: changeNoteSecret.toString(),
@@ -238,6 +244,22 @@ export async function unshieldWithChange(
   }
 
   markSpentByCommitment(mintBase58, inputNote.commitment);
+
+  // Best-effort index backfill. A failure here costs one resync at spend time,
+  // never value: the change note is already stored (with a sentinel index) and
+  // is independently recoverable from its on-chain memo.
+  if (w.changeAmount > 0n) {
+    try {
+      const changeLeafIndex = await resolveLeafIndex(
+        txSignature, w.changeCommitmentDec, mintBase58,
+      );
+      if (changeLeafIndex >= 0) {
+        setNoteIndex(mintBase58, w.changeCommitmentDec, changeLeafIndex);
+      }
+    } catch {
+      // leave the sentinel — resolved on spend
+    }
+  }
 
   return {txSignature, withdrawn: withdrawAmount, change: w.changeAmount};
 }

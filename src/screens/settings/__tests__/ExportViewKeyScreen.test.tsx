@@ -37,3 +37,25 @@ describe('ExportViewKeyScreen', () => {
     expect(() => render(<ExportViewKeyScreen />)).not.toThrow();
   });
 });
+
+describe('ExportViewKeyScreen — spend-equivalence warning', () => {
+  it('does not claim the view key is read-only or cannot move funds', () => {
+    // The claim was false: NoteCiphertext is the only channel by which a
+    // recipient learns noteSecret, and noteSecret IS the spend authority, so
+    // whatever decrypts it can spend. Confirmed from the circuits 2026-08-08.
+    const {queryByText} = render(<ExportViewKeyScreen />);
+    expect(queryByText(/read-only/i)).toBeNull();
+    expect(queryByText(/cannot move your funds/i)).toBeNull();
+  });
+
+  it('warns on the pre-export screen that the view key can spend', () => {
+    const {getByText} = render(<ExportViewKeyScreen />);
+    expect(getByText(/can also spend them/i)).toBeTruthy();
+  });
+
+  it('does not tell the user to share it with an accountant or compliance tool', () => {
+    // The old copy actively recommended handing spend authority to a third party.
+    const {queryByText} = render(<ExportViewKeyScreen />);
+    expect(queryByText(/trust to audit your activity/i)).toBeNull();
+  });
+});

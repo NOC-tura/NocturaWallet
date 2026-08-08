@@ -29,6 +29,12 @@ declare module 'react-native-config' {
      * build). Runs on-device native prove + compares to hosted. Absent = hidden.
      */
     NATIVE_PROVER_DEBUG?: string;
+    /**
+     * 'true' enables private p2p shielded transfer. Absent/anything else = off.
+     * Keep it off: the deployed transfer circuit imposes no spend authorization,
+     * so the sender can reclaim the note they sent. See FEATURES.shieldedTransfer.
+     */
+    SHIELDED_TRANSFER?: string;
   }
   const Config: NativeConfig;
   export default Config;

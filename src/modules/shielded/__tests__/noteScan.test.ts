@@ -47,6 +47,13 @@ import {getViewPublicKey, getPkRecipientHash} from '../shieldedIdentity';
 import {encryptNote} from '../noteEncryption';
 import {noteCommitment, mintHash} from '../noteCrypto';
 import {decToHex64} from '../fieldCodec';
+import {EVENT_DISC} from '../eventLogs';
+import {SHIELDED_POOL_PROGRAM_ID as POOL_ID} from '../../../constants/programs';
+/** Wrap event lines in the pool program's invoke/success bracket, as the RPC returns them. */
+function inPoolInvoke(...lines: string[]): string[] {
+  return [`Program ${POOL_ID} invoke [1]`, ...lines, `Program ${POOL_ID} success`];
+}
+
 
 const MINT = 'AtjVK2z561wDYo5EvougJKAo9AJ4KdduxSbiF173aiAe';
 const mintBytes = new PublicKey(MINT).toBytes();
@@ -60,6 +67,7 @@ const OTHER = new Uint8Array(64).fill(9);
 // disc(8) + leaf_index(u64 LE, 8) + Vec len(u32 LE, 4)=128 + ciphertext(128) = 148 B.
 function noteCiphertextLog(ct: Uint8Array, leafIndex: number): string {
   const buf = Buffer.alloc(8 + 8 + 4 + 128);
+  Buffer.from(EVENT_DISC.noteCiphertext, 'hex').copy(buf, 0);
   buf.writeUInt32LE(leafIndex, 8);
   buf.writeUInt32LE(128, 8 + 8);
   Buffer.from(ct).copy(buf, 8 + 8 + 4);
@@ -70,6 +78,7 @@ function noteCiphertextLog(ct: Uint8Array, leafIndex: number): string {
 // disc(8) + commitment[32] + leaf_index(u64 LE) + root[32] = 80 B.
 function leafLog(commitmentHex: string, leafIndex: number): string {
   const buf = Buffer.alloc(8 + 32 + 8 + 32);
+  Buffer.from(EVENT_DISC.leafInserted, 'hex').copy(buf, 0);
   Buffer.from(commitmentHex, 'hex').copy(buf, 8);
   buf.writeUInt32LE(leafIndex, 8 + 32);
   return `Program data: ${buf.toString('base64')}`;
@@ -112,7 +121,7 @@ describe('scanIncomingNotes', () => {
     const {ct, commitmentDec, commitmentHex} = craftNote(SEED, AMOUNT, NOTE_SECRET);
     mockGetSignatures.mockResolvedValueOnce([{signature: 'sig1', err: null}]);
     mockGetTransaction.mockResolvedValueOnce({
-      meta: {err: null, logMessages: [noteCiphertextLog(ct, 5), leafLog(commitmentHex, 5)]},
+      meta: {err: null, logMessages: inPoolInvoke(noteCiphertextLog(ct, 5), leafLog(commitmentHex, 5))},
     });
 
     const count = await scanIncomingNotes(MINT);
@@ -139,7 +148,7 @@ describe('scanIncomingNotes', () => {
     const foreign = encryptNote(getViewPublicKey(OTHER), AMOUNT, NOTE_SECRET);
     mockGetSignatures.mockResolvedValueOnce([{signature: 'sig1', err: null}]);
     mockGetTransaction.mockResolvedValueOnce({
-      meta: {err: null, logMessages: [noteCiphertextLog(foreign, 5), leafLog(commitmentHex, 5)]},
+      meta: {err: null, logMessages: inPoolInvoke(noteCiphertextLog(foreign, 5), leafLog(commitmentHex, 5))},
     });
 
     const count = await scanIncomingNotes(MINT);
@@ -154,7 +163,7 @@ describe('scanIncomingNotes', () => {
     const wrongHex = (99n).toString(16).padStart(64, '0');
     mockGetSignatures.mockResolvedValueOnce([{signature: 'sig1', err: null}]);
     mockGetTransaction.mockResolvedValueOnce({
-      meta: {err: null, logMessages: [noteCiphertextLog(ct, 5), leafLog(wrongHex, 5)]},
+      meta: {err: null, logMessages: inPoolInvoke(noteCiphertextLog(ct, 5), leafLog(wrongHex, 5))},
     });
 
     const count = await scanIncomingNotes(MINT);
@@ -167,7 +176,7 @@ describe('scanIncomingNotes', () => {
     const {ct} = craftNote(SEED, AMOUNT, NOTE_SECRET);
     mockGetSignatures.mockResolvedValueOnce([{signature: 'sig1', err: null}]);
     mockGetTransaction.mockResolvedValueOnce({
-      meta: {err: null, logMessages: [noteCiphertextLog(ct, 5)]}, // no leaf log
+      meta: {err: null, logMessages: inPoolInvoke(noteCiphertextLog(ct, 5))}, // no leaf log
     });
 
     const count = await scanIncomingNotes(MINT);
@@ -192,7 +201,7 @@ describe('scanIncomingNotes', () => {
     ]);
     mockGetSignatures.mockResolvedValueOnce([{signature: 'sig1', err: null}]);
     mockGetTransaction.mockResolvedValueOnce({
-      meta: {err: null, logMessages: [noteCiphertextLog(ct, 5), leafLog(commitmentHex, 5)]},
+      meta: {err: null, logMessages: inPoolInvoke(noteCiphertextLog(ct, 5), leafLog(commitmentHex, 5))},
     });
 
     const count = await scanIncomingNotes(MINT);
@@ -206,7 +215,7 @@ describe('scanIncomingNotes', () => {
     const {ct, commitmentHex} = craftNote(SEED, AMOUNT, NOTE_SECRET);
     mockGetSignatures.mockResolvedValueOnce([{signature: 'newSig', err: null}]);
     mockGetTransaction.mockResolvedValueOnce({
-      meta: {err: null, logMessages: [noteCiphertextLog(ct, 5), leafLog(commitmentHex, 5)]},
+      meta: {err: null, logMessages: inPoolInvoke(noteCiphertextLog(ct, 5), leafLog(commitmentHex, 5))},
     });
 
     await scanIncomingNotes(MINT);

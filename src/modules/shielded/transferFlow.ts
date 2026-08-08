@@ -7,7 +7,7 @@ import {encryptNote} from './noteEncryption';
 import {buildTransferIx} from './poolInstructions';
 import {submitPoolTxMany} from './poolTx';
 import {submitTransferViaRelayer} from './relayerSubmit';
-import {isShieldedRelayerEnabled} from '../../constants/features';
+import {isShieldedRelayerEnabled, isShieldedTransferEnabled} from '../../constants/features';
 import {poolPda, merkleTreePda, nullifierPda, transferVkPda} from './poolPdas';
 import {getNotes, markSpentByCommitment, addNote, setNoteIndex} from './noteStore';
 import {getViewPublicKey} from './shieldedIdentity';
@@ -54,6 +54,24 @@ export async function sendPrivateTransfer(
   amount: bigint,
   onStep?: (label: string) => void,
 ): Promise<TransferResult> {
+  // Hard gate, ahead of any proving, submission, or note-store write.
+  //
+  // The deployed transfer circuit imposes NO spend authorization (confirmed from
+  // transfer.circom, 2026-08-08): spend authority is knowledge of `noteSecret`,
+  // and here the SENDER generates the recipient's `out_noteSecret`. The sender
+  // therefore keeps the complete withdraw witness for the note they just sent and
+  // can reclaim it — the nullifier is identical for both parties, so it is a race.
+  // A note created by this function is permanently co-owned by its sender.
+  //
+  // The UI entry points are hidden too, but this check is what actually protects
+  // funds: it guarantees no reachable code path can mint such a note.
+  if (!isShieldedTransferEnabled()) {
+    throw new Error(
+      'Private transfer is disabled pending a circuit fix — a sent note could be ' +
+        'reclaimed by its sender. Shield and unshield are unaffected.',
+    );
+  }
+
   ensureSecureMmkv(seed);
   const recipientViewKeyG1 = decodeShieldedAddress(recipientAddress); // 48 B
 

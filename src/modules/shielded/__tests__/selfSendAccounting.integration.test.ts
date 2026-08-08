@@ -5,6 +5,13 @@
 // the accounting bug is reproduced.
 const mockSecure = new Map<string, string>();
 const mockPublic = new Map<string, string>();
+jest.mock('../../../constants/features', () => ({
+  // This suite exercises transfer ACCOUNTING, not the safety gate. Transfer is
+  // disabled by default pending the circuit fix (see FEATURES.shieldedTransfer),
+  // so enable it here explicitly.
+  isShieldedTransferEnabled: () => true,
+  isShieldedRelayerEnabled: () => false,
+}));
 jest.mock('../../../store/mmkv/instances', () => ({
   mmkvSecure: () => ({
     getString: (k: string) => mockSecure.get(k),
@@ -60,8 +67,15 @@ function commitOf(amount: bigint, noteSecret: bigint): string {
   return noteCommitment({pkRecipientHash: pkH, amount, mintHash: mH, noteSecret}).toString();
 }
 
+const POOL_ID = 'NPkcpUdnm1JZhndur3ggQZwo86yWgcU6Ry28T3zHfES';
+/** Wrap event lines in the pool program's invoke/success bracket, as the RPC returns them. */
+function inPoolInvoke(...lines: string[]): string[] {
+  return [`Program ${POOL_ID} invoke [1]`, ...lines, `Program ${POOL_ID} success`];
+}
+
 function noteCiphertextLog(ct: Uint8Array, leafIndex: number): string {
   const buf = Buffer.alloc(8 + 8 + 4 + 128);
+  Buffer.from('6c50afa0eadfd292', 'hex').copy(buf, 0);
   buf.writeUInt32LE(leafIndex, 8);
   buf.writeUInt32LE(128, 8 + 8);
   Buffer.from(ct).copy(buf, 8 + 8 + 4);
@@ -70,6 +84,7 @@ function noteCiphertextLog(ct: Uint8Array, leafIndex: number): string {
 
 function leafLog(commitmentHex: string, leafIndex: number): string {
   const buf = Buffer.alloc(8 + 32 + 8 + 32);
+  Buffer.from('59f3d408d7bfbb98', 'hex').copy(buf, 0);
   Buffer.from(commitmentHex, 'hex').copy(buf, 8);
   buf.writeUInt32LE(leafIndex, 8 + 32);
   return `Program data: ${buf.toString('base64')}`;
@@ -129,12 +144,12 @@ describe('self-send conserves the local shielded balance', () => {
     mockGetTransaction.mockResolvedValueOnce({
       meta: {
         err: null,
-        logMessages: [
+        logMessages: inPoolInvoke(
           noteCiphertextLog(ct0, 10),
           leafLog(decToHex64(c0), 10),
           noteCiphertextLog(ct1, 11),
           leafLog(decToHex64(c1), 11),
-        ],
+        ),
       },
     });
 
@@ -171,7 +186,7 @@ describe('self-send conserves the local shielded balance', () => {
     ];
     // Two separate scans (cursor reset so the second re-reads the same tx).
     mockGetSignatures.mockResolvedValue([{signature: 'xfer', err: null}]);
-    mockGetTransaction.mockResolvedValue({meta: {err: null, logMessages: logs}});
+    mockGetTransaction.mockResolvedValue({meta: {err: null, logMessages: inPoolInvoke(...logs)}});
 
     await scanIncomingNotes(MINT);
     mockPublic.delete('noctura.noteScanCursor.' + MINT); // force re-scan

@@ -4,6 +4,7 @@ import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RootStackParamList} from '../../types/navigation';
 import {useWalletStore} from '../../store/zustand/walletStore';
+import {isShieldedTransferEnabled} from '../../constants/features';
 
 export function ShieldedBalanceScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -34,16 +35,20 @@ export function ShieldedBalanceScreen() {
         >
           <Text style={styles.actionText}>Deposit</Text>
         </TouchableOpacity>
+        {/* Private transfer is hidden while the transfer circuit lacks spend
+            authorization — a sent note stays reclaimable by its sender. */}
+        {isShieldedTransferEnabled() && (
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('ShieldedTransfer', {})}
+            accessibilityLabel="Send privately"
+          >
+            <Text style={styles.actionText}>Send</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => navigation.navigate('ShieldedTransfer', {})}
-          accessibilityLabel="Send privately"
-        >
-          <Text style={styles.actionText}>Send</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => navigation.navigate('Withdraw')}
+          onPress={() => navigation.navigate('ShieldUnshieldModal', {direction: 'public'})}
           accessibilityLabel="Move to public balance"
         >
           <Text style={styles.actionText}>Withdraw</Text>
