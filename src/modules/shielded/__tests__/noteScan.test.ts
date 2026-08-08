@@ -1,3 +1,7 @@
+jest.mock('../poolPdas', () => ({
+  poolPda: () => ({toBase58: () => 'PoolPda1111111111111111111111111111111111'}),
+  merkleTreePda: () => ({toBase58: () => 'OurTree11111111111111111111111111111111111'}),
+}));
 // ── Mocks (hoisted) ──────────────────────────────────────────────────────────
 // Mirror merkleSync.test.ts's connection + mmkv mocks. Crypto (encryption,
 // commitment, session, note store representation) is REAL so the round-trip is
@@ -48,11 +52,26 @@ import {encryptNote} from '../noteEncryption';
 import {noteCommitment, mintHash} from '../noteCrypto';
 import {decToHex64} from '../fieldCodec';
 import {EVENT_DISC} from '../eventLogs';
-import {SHIELDED_POOL_PROGRAM_ID as POOL_ID} from '../../../constants/programs';
-/** Wrap event lines in the pool program's invoke/success bracket, as the RPC returns them. */
-function inPoolInvoke(...lines: string[]): string[] {
-  return [`Program ${POOL_ID} invoke [1]`, ...lines, `Program ${POOL_ID} success`];
+
+const POOL_PROG = 'NPkcpUdnm1JZhndur3ggQZwo86yWgcU6Ry28T3zHfES';
+const OUR_TREE = 'OurTree11111111111111111111111111111111111';
+/** A tx whose top-level instruction targets the pool program and lists our tree. */
+function poolTx(...lines: string[]) {
+  return {
+    meta: {
+      err: null,
+      logMessages: [`Program ${POOL_PROG} invoke [1]`, ...lines, `Program ${POOL_PROG} success`],
+      loadedAddresses: null,
+    },
+    transaction: {
+      message: {
+        staticAccountKeys: [POOL_PROG, OUR_TREE],
+        compiledInstructions: [{programIdIndex: 0, accountKeyIndexes: [1]}],
+      },
+    },
+  };
 }
+
 
 
 const MINT = 'AtjVK2z561wDYo5EvougJKAo9AJ4KdduxSbiF173aiAe';
@@ -120,9 +139,7 @@ describe('scanIncomingNotes', () => {
   it('discovers a note encrypted to my key with a matching commitment', async () => {
     const {ct, commitmentDec, commitmentHex} = craftNote(SEED, AMOUNT, NOTE_SECRET);
     mockGetSignatures.mockResolvedValueOnce([{signature: 'sig1', err: null}]);
-    mockGetTransaction.mockResolvedValueOnce({
-      meta: {err: null, logMessages: inPoolInvoke(noteCiphertextLog(ct, 5), leafLog(commitmentHex, 5))},
-    });
+    mockGetTransaction.mockResolvedValueOnce(poolTx(noteCiphertextLog(ct, 5), leafLog(commitmentHex, 5)));
 
     const count = await scanIncomingNotes(MINT);
 
@@ -147,9 +164,7 @@ describe('scanIncomingNotes', () => {
     const {commitmentHex} = craftNote(OTHER, AMOUNT, NOTE_SECRET);
     const foreign = encryptNote(getViewPublicKey(OTHER), AMOUNT, NOTE_SECRET);
     mockGetSignatures.mockResolvedValueOnce([{signature: 'sig1', err: null}]);
-    mockGetTransaction.mockResolvedValueOnce({
-      meta: {err: null, logMessages: inPoolInvoke(noteCiphertextLog(foreign, 5), leafLog(commitmentHex, 5))},
-    });
+    mockGetTransaction.mockResolvedValueOnce(poolTx(noteCiphertextLog(foreign, 5), leafLog(commitmentHex, 5)));
 
     const count = await scanIncomingNotes(MINT);
 
@@ -162,9 +177,7 @@ describe('scanIncomingNotes', () => {
     // The on-chain LeafInserted commitment at this index is something ELSE.
     const wrongHex = (99n).toString(16).padStart(64, '0');
     mockGetSignatures.mockResolvedValueOnce([{signature: 'sig1', err: null}]);
-    mockGetTransaction.mockResolvedValueOnce({
-      meta: {err: null, logMessages: inPoolInvoke(noteCiphertextLog(ct, 5), leafLog(wrongHex, 5))},
-    });
+    mockGetTransaction.mockResolvedValueOnce(poolTx(noteCiphertextLog(ct, 5), leafLog(wrongHex, 5)));
 
     const count = await scanIncomingNotes(MINT);
 
@@ -175,9 +188,7 @@ describe('scanIncomingNotes', () => {
   it('rejects a note when no LeafInserted commitment exists at that index', async () => {
     const {ct} = craftNote(SEED, AMOUNT, NOTE_SECRET);
     mockGetSignatures.mockResolvedValueOnce([{signature: 'sig1', err: null}]);
-    mockGetTransaction.mockResolvedValueOnce({
-      meta: {err: null, logMessages: inPoolInvoke(noteCiphertextLog(ct, 5))}, // no leaf log
-    });
+    mockGetTransaction.mockResolvedValueOnce(poolTx(noteCiphertextLog(ct, 5)));
 
     const count = await scanIncomingNotes(MINT);
 
@@ -200,9 +211,7 @@ describe('scanIncomingNotes', () => {
       },
     ]);
     mockGetSignatures.mockResolvedValueOnce([{signature: 'sig1', err: null}]);
-    mockGetTransaction.mockResolvedValueOnce({
-      meta: {err: null, logMessages: inPoolInvoke(noteCiphertextLog(ct, 5), leafLog(commitmentHex, 5))},
-    });
+    mockGetTransaction.mockResolvedValueOnce(poolTx(noteCiphertextLog(ct, 5), leafLog(commitmentHex, 5)));
 
     const count = await scanIncomingNotes(MINT);
 
@@ -214,9 +223,7 @@ describe('scanIncomingNotes', () => {
     mockMmkvStore.set('noctura.noteScanCursor.' + MINT, 'oldSig');
     const {ct, commitmentHex} = craftNote(SEED, AMOUNT, NOTE_SECRET);
     mockGetSignatures.mockResolvedValueOnce([{signature: 'newSig', err: null}]);
-    mockGetTransaction.mockResolvedValueOnce({
-      meta: {err: null, logMessages: inPoolInvoke(noteCiphertextLog(ct, 5), leafLog(commitmentHex, 5))},
-    });
+    mockGetTransaction.mockResolvedValueOnce(poolTx(noteCiphertextLog(ct, 5), leafLog(commitmentHex, 5)));
 
     await scanIncomingNotes(MINT);
 

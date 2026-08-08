@@ -1,3 +1,7 @@
+jest.mock('../poolPdas', () => ({
+  poolPda: () => ({toBase58: () => 'PoolPda1111111111111111111111111111111111'}),
+  merkleTreePda: () => ({toBase58: () => 'OurTree11111111111111111111111111111111111'}),
+}));
 // Reproduction: a self-send (transfer to your own noc1) must CONSERVE the local
 // shielded balance. Models the exact note-store writes sendPrivateTransfer +
 // scanIncomingNotes perform, using the REAL noteStore (in-memory mmkv) and REAL
@@ -56,6 +60,26 @@ import {encryptNote} from '../noteEncryption';
 import {noteCommitment, mintHash} from '../noteCrypto';
 import {decToHex64} from '../fieldCodec';
 
+const POOL_PROG = 'NPkcpUdnm1JZhndur3ggQZwo86yWgcU6Ry28T3zHfES';
+const OUR_TREE = 'OurTree11111111111111111111111111111111111';
+/** A tx whose top-level instruction targets the pool program and lists our tree. */
+function poolTx(...lines: string[]) {
+  return {
+    meta: {
+      err: null,
+      logMessages: [`Program ${POOL_PROG} invoke [1]`, ...lines, `Program ${POOL_PROG} success`],
+      loadedAddresses: null,
+    },
+    transaction: {
+      message: {
+        staticAccountKeys: [POOL_PROG, OUR_TREE],
+        compiledInstructions: [{programIdIndex: 0, accountKeyIndexes: [1]}],
+      },
+    },
+  };
+}
+
+
 const MINT = 'AtjVK2z561wDYo5EvougJKAo9AJ4KdduxSbiF173aiAe';
 const mintBytes = new PublicKey(MINT).toBytes();
 const SEED = new Uint8Array(64).fill(7);
@@ -67,11 +91,6 @@ function commitOf(amount: bigint, noteSecret: bigint): string {
   return noteCommitment({pkRecipientHash: pkH, amount, mintHash: mH, noteSecret}).toString();
 }
 
-const POOL_ID = 'NPkcpUdnm1JZhndur3ggQZwo86yWgcU6Ry28T3zHfES';
-/** Wrap event lines in the pool program's invoke/success bracket, as the RPC returns them. */
-function inPoolInvoke(...lines: string[]): string[] {
-  return [`Program ${POOL_ID} invoke [1]`, ...lines, `Program ${POOL_ID} success`];
-}
 
 function noteCiphertextLog(ct: Uint8Array, leafIndex: number): string {
   const buf = Buffer.alloc(8 + 8 + 4 + 128);
@@ -142,15 +161,12 @@ describe('self-send conserves the local shielded balance', () => {
     const ct1 = encryptNote(getViewPublicKey(SEED), 1800n, s1);
     mockGetSignatures.mockResolvedValueOnce([{signature: 'xfer', err: null}]);
     mockGetTransaction.mockResolvedValueOnce({
-      meta: {
-        err: null,
-        logMessages: inPoolInvoke(
-          noteCiphertextLog(ct0, 10),
-          leafLog(decToHex64(c0), 10),
-          noteCiphertextLog(ct1, 11),
-          leafLog(decToHex64(c1), 11),
-        ),
-      },
+      ...poolTx(
+        noteCiphertextLog(ct0, 10),
+        leafLog(decToHex64(c0), 10),
+        noteCiphertextLog(ct1, 11),
+        leafLog(decToHex64(c1), 11),
+      ),
     });
 
     const discovered = await scanIncomingNotes(MINT);
@@ -186,7 +202,7 @@ describe('self-send conserves the local shielded balance', () => {
     ];
     // Two separate scans (cursor reset so the second re-reads the same tx).
     mockGetSignatures.mockResolvedValue([{signature: 'xfer', err: null}]);
-    mockGetTransaction.mockResolvedValue({meta: {err: null, logMessages: inPoolInvoke(...logs)}});
+    mockGetTransaction.mockResolvedValue(poolTx(...logs));
 
     await scanIncomingNotes(MINT);
     mockPublic.delete('noctura.noteScanCursor.' + MINT); // force re-scan

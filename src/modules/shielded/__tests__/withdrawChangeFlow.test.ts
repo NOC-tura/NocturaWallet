@@ -1,3 +1,10 @@
+jest.mock('../poolPdas', () => ({
+  poolPda: () => ({toBase58: () => 'PoolPda1111111111111111111111111111111111'}),
+  merkleTreePda: () => ({toBase58: () => 'OurTree11111111111111111111111111111111111'}),
+  vaultAta: () => ({toBase58: () => 'Vault111111111111111111111111111111111111'}),
+  nullifierPda: () => ({toBase58: () => 'Null1111111111111111111111111111111111111'}),
+  wchangeVkPda: () => ({toBase58: () => 'Wvk11111111111111111111111111111111111111'}),
+}));
 import {Keypair} from '@solana/web3.js';
 
 // logState is referenced lazily inside the async getTransaction fn, so hoisting
@@ -44,7 +51,18 @@ jest.mock('../noteStore', () => ({
 }));
 jest.mock('../../solana/connection', () => ({
   getConnection: () => ({
-    getTransaction: jest.fn(async () => ({meta: {err: null, logMessages: logState.logs}})),
+    getTransaction: jest.fn(async () => ({
+      meta: {err: null, logMessages: logState.logs, loadedAddresses: null},
+      transaction: {
+        message: {
+          staticAccountKeys: [
+            'NPkcpUdnm1JZhndur3ggQZwo86yWgcU6Ry28T3zHfES',
+            'OurTree11111111111111111111111111111111111',
+          ],
+          compiledInstructions: [{programIdIndex: 0, accountKeyIndexes: [1]}],
+        },
+      },
+    })),
   }),
 }));
 jest.mock('../../../store/mmkv/instances', () => ({

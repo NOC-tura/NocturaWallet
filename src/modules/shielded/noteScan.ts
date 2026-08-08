@@ -95,11 +95,11 @@ export async function scanIncomingNotes(mint: string): Promise<number> {
 
         // leaf_index → on-chain commitment (64-char HEX, from parseDepositEvents).
         const leafCommitments = new Map<number, string>();
-        for (const ev of parseDepositEvents(logs)) {
+        for (const ev of parseDepositEvents(tx, tree.toBase58())) {
           leafCommitments.set(ev.leafIndex, ev.commitment);
         }
 
-        for (const entry of parseNoteCiphertextEvents(logs)) {
+        for (const entry of parseNoteCiphertextEvents(tx, tree.toBase58())) {
           const dec = tryDecryptNote(session.skView, entry.ciphertext);
           if (dec === null) continue; // not ours
 

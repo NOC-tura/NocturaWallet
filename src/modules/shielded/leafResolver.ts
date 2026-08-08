@@ -3,6 +3,8 @@ import {syncLeaves} from './merkleSync';
 import {parseDepositEvents} from './depositEvents';
 import {decToHex64} from './fieldCodec';
 import {withTimeout} from '../solana/withTimeout';
+import {PublicKey} from '@solana/web3.js';
+import {merkleTreePda, poolPda} from './poolPdas';
 
 /** Sentinel leaf index for a note whose on-chain index isn't known yet. */
 export const UNRESOLVED_INDEX = -1;
@@ -33,7 +35,7 @@ export async function resolveLeafIndex(
       }),
       12_000, 'getTransaction',
     );
-    const events = parseDepositEvents(tx?.meta?.logMessages ?? []);
+    const events = parseDepositEvents(tx, merkleTreePda(poolPda(new PublicKey(mintBase58))).toBase58());
     const match = events.find(e => e.commitment === hex);
     if (match) return match.leafIndex;
     // Deliberately NO fallback to events[0]. A transfer inserts two leaves
