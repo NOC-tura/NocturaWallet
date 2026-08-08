@@ -1,4 +1,6 @@
 import {bytesToHex} from './fieldCodec';
+import {EVENT_DISC, discriminatorHex, programDataBlobs} from './eventLogs';
+import {SHIELDED_POOL_PROGRAM_ID} from '../../constants/programs';
 
 export interface DepositEvent {
   commitment: string; // 64-char hex
@@ -12,20 +14,26 @@ const LEAF_INDEX = 8;
 const ROOT = 32;
 const EVENT_LEN = DISC + COMMITMENT + LEAF_INDEX + ROOT;
 
+/** LeafInserted, plus the pre-rename Deposit event with the identical layout. */
+const LEAF_DISCRIMINATORS: readonly string[] = [
+  EVENT_DISC.leafInserted,
+  EVENT_DISC.depositLegacy,
+];
+
 /**
- * Parse Anchor `Deposit` events from a transaction's log messages.
- * Each event is emitted as a base64 `Program data:` line:
- *   disc(8) + commitment[32] + leaf_index(u64 LE) + root[32].
- * Lines that do not decode to an event of the exact length are ignored (other
- * programs / events may also emit `Program data:`).
+ * Parse Anchor leaf-insertion events from a transaction's log messages:
+ *   disc(8) + commitment[32] + leaf_index(u64 LE) + root[32]  = 80 bytes.
+ *
+ * Only blobs emitted by the pool program itself, in a successful invocation,
+ * carrying a known leaf discriminator are accepted. Length alone is NOT a filter
+ * — any program can log 80 bytes, and the transaction set includes every tx that
+ * merely references the tree PDA. See eventLogs.ts for the attack this closes.
  */
 export function parseDepositEvents(logs: string[]): DepositEvent[] {
   const out: DepositEvent[] = [];
-  for (const line of logs) {
-    const m = line.match(/^Program data: (.+)$/);
-    if (!m) continue;
-    const buf = Buffer.from(m[1]!, 'base64');
+  for (const buf of programDataBlobs(logs, SHIELDED_POOL_PROGRAM_ID)) {
     if (buf.length !== EVENT_LEN) continue;
+    if (!LEAF_DISCRIMINATORS.includes(discriminatorHex(buf))) continue;
     const commitment = bytesToHex(buf.subarray(DISC, DISC + COMMITMENT));
     let leafIndex = 0n;
     for (let i = 0; i < LEAF_INDEX; i++) {

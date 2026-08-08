@@ -3,8 +3,15 @@ import {Keypair} from '@solana/web3.js';
 // logState is referenced lazily inside the async getTransaction fn, so hoisting
 // of the jest.mock factory is safe — the object is mutated before each call.
 const logState: {logs: string[]} = {logs: []};
+const POOL_ID = 'NPkcpUdnm1JZhndur3ggQZwo86yWgcU6Ry28T3zHfES';
+/** Wrap event lines in the pool program's invoke/success bracket, as the RPC returns them. */
+const inPoolInvoke = (...lines: string[]): string[] => [
+  `Program ${POOL_ID} invoke [1]`,
+  ...lines,
+  `Program ${POOL_ID} success`,
+];
 const leafInsertedLog = `Program data: ${Buffer.concat([
-  Buffer.alloc(8),
+  Buffer.from('59f3d408d7bfbb98', 'hex'),
   Buffer.alloc(32, 9),
   (() => { const b = Buffer.alloc(8); b.writeUInt32LE(7, 0); return b; })(),
   Buffer.alloc(32),
@@ -80,10 +87,10 @@ const rootHex = '01'.repeat(32);
 describe('unshieldWithChange', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    logState.logs = [leafInsertedLog];
+    logState.logs = inPoolInvoke(leafInsertedLog);
   });
 
-  it('proves, submits, marks input spent, and stores the change note by its LeafInserted leaf_index', async () => {
+  it('proves, submits, marks input spent, stores the change note with a SENTINEL index when no LeafInserted commitment matches', async () => {
     (syncLeaves as jest.Mock).mockResolvedValue({leaves: ['c'], onChainRoots: [rootHex]});
     const res = await unshieldWithChange(seed, feePayer, MINT, note, 200n);
     expect(res.withdrawn).toBe(200n);
@@ -93,7 +100,7 @@ describe('unshieldWithChange', () => {
         commitment: '12345',
         mint: MINT,
         amount: 300n,
-        index: 7,
+        index: -1,
         spent: false,
         noteSecret: expect.any(String),
       }),
@@ -165,5 +172,27 @@ describe('unshieldWithChange', () => {
     expect(dec).toBeNull();
     expect(addNote).not.toHaveBeenCalled();
     expect(markSpentByCommitment).toHaveBeenCalledWith(MINT, 'c');
+  });
+});
+
+describe('leafResolver — no guessing', () => {
+  it('adopts the leaf index when the commitment MATCHES', async () => {
+    // Same log, but the change commitment now equals the logged one.
+    const matching = `Program data: ${Buffer.concat([
+      Buffer.from('59f3d408d7bfbb98', 'hex'),
+      Buffer.from('0909090909090909090909090909090909090909090909090909090909090909', 'hex'),
+      (() => { const b = Buffer.alloc(8); b.writeUInt32LE(7, 0); return b; })(),
+      Buffer.alloc(32),
+    ]).toString('base64')}`;
+    logState.logs = inPoolInvoke(matching);
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const {resolveLeafIndex} = jest.requireActual('../leafResolver');
+    const idx = await resolveLeafIndex(
+      'SIG',
+      // 0x0909...09 as a decimal string
+      BigInt('0x0909090909090909090909090909090909090909090909090909090909090909').toString(),
+      MINT,
+    );
+    expect(idx).toBe(7);
   });
 });

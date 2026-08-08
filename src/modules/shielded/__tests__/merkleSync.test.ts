@@ -20,6 +20,13 @@ jest.mock('../../solana/connection', () => ({
 }));
 
 import {parseRootHistory, densifyLeaves, syncLeaves} from '../merkleSync';
+import {EVENT_DISC} from '../eventLogs';
+import {SHIELDED_POOL_PROGRAM_ID as POOL_ID} from '../../../constants/programs';
+/** Wrap event lines in the pool program's invoke/success bracket, as the RPC returns them. */
+function inPoolInvoke(...lines: string[]): string[] {
+  return [`Program ${POOL_ID} invoke [1]`, ...lines, `Program ${POOL_ID} success`];
+}
+
 
 const hex = (n: number) => n.toString(16).padStart(64, '0');
 const MINT = 'AtjVK2z561wDYo5EvougJKAo9AJ4KdduxSbiF173aiAe';
@@ -27,6 +34,7 @@ const MINT = 'AtjVK2z561wDYo5EvougJKAo9AJ4KdduxSbiF173aiAe';
 // Build a `LeafInserted` Program-data log line: disc(8) + commitment[32] + leaf_index(u64 LE) + root[32].
 function leafLog(commitmentHex: string, leafIndex: number): string {
   const buf = Buffer.alloc(8 + 32 + 8 + 32);
+  Buffer.from(EVENT_DISC.leafInserted, 'hex').copy(buf, 0);
   Buffer.from(commitmentHex, 'hex').copy(buf, 8);
   buf.writeUInt32LE(leafIndex, 8 + 32);
   return `Program data: ${buf.toString('base64')}`;
@@ -77,7 +85,7 @@ describe('syncLeaves incremental cache', () => {
         sigB: leafLog(hex(11), 1),
         sigC: leafLog(hex(12), 2),
       };
-      return {meta: {err: null, logMessages: [map[sig]!]}};
+      return {meta: {err: null, logMessages: inPoolInvoke(map[sig]!)}};
     });
   });
 

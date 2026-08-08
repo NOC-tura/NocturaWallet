@@ -21,7 +21,6 @@ export type RootStackParamList = {
   ShieldedBalance: undefined;
   Deposit: {token?: string};
   ShieldedTransfer: {recipient?: string};
-  Withdraw: undefined;
   ShieldedExplainer: undefined;
   ZkProofModal: {
     direction: 'private' | 'public';

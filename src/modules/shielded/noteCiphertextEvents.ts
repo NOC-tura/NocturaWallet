@@ -1,3 +1,6 @@
+import {EVENT_DISC, discriminatorHex, programDataBlobs} from './eventLogs';
+import {SHIELDED_POOL_PROGRAM_ID} from '../../constants/programs';
+
 const DISC = 8;
 const LEAF_INDEX = 8;
 const LEN = 4;
@@ -19,11 +22,12 @@ export interface NoteCiphertextEvent {
  */
 export function parseNoteCiphertextEvents(logs: string[]): NoteCiphertextEvent[] {
   const out: NoteCiphertextEvent[] = [];
-  for (const line of logs) {
-    const m = line.match(/^Program data: (.+)$/);
-    if (!m) continue;
-    const buf = Buffer.from(m[1]!, 'base64');
+  // Program-scoped + discriminator-checked: length alone is forgeable by anyone
+  // (see eventLogs.ts). A forged ciphertext encrypted to a victim's public
+  // address would otherwise credit them a phantom note.
+  for (const buf of programDataBlobs(logs, SHIELDED_POOL_PROGRAM_ID)) {
     if (buf.length !== EVENT_LEN) continue;
+    if (discriminatorHex(buf) !== EVENT_DISC.noteCiphertext) continue;
     let leafIndex = 0n;
     for (let i = 0; i < LEAF_INDEX; i++) {
       leafIndex |= BigInt(buf[DISC + i]!) << BigInt(8 * i);

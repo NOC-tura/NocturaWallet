@@ -90,8 +90,10 @@ export function ExportViewKeyScreen() {
           selectable>
           {viewKeyEncoded}
         </Text>
-        <Text testID="readonly-message" style={styles.readonlyMessage}>
-          This view key is read-only. It cannot move your funds.
+        <Text testID="viewkey-warning" style={styles.readonlyMessage}>
+          Warning: anyone with this key can SPEND your shielded funds, not just
+          view them. Share it only with someone you would trust with the funds
+          themselves.
         </Text>
         <TouchableOpacity
           testID="copy-button"
@@ -116,13 +118,14 @@ export function ExportViewKeyScreen() {
     <View style={styles.container}>
       <Text style={styles.heading}>Export View Key</Text>
       <Text style={styles.warningText}>
-        Your view key (nocvk1...) allows others to see your shielded transaction
-        history and incoming notes, but it{'\u2019'}s read-only — it{'\u00A0'}
-        <Text style={styles.bold}>cannot</Text> move your funds or access your
-        spending key.
+        Your view key (nocvk1...) lets others see your shielded transaction
+        history and incoming notes — and, in the current protocol, it{' '}
+        <Text style={styles.bold}>can also spend them</Text>. Notes are encrypted
+        to this key, so whoever can read a note can also move it.
         {'\n\n'}
-        Share your view key only with parties you trust to audit your activity,
-        such as a tax accountant or compliance tool.
+        Treat it exactly like your recovery phrase. Do not share it with an
+        accountant, a compliance tool, or anyone you would not hand the funds to
+        outright. A genuinely watch-only key is not available yet.
       </Text>
       <TouchableOpacity
         testID="export-button"

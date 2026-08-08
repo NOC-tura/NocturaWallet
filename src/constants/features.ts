@@ -31,6 +31,26 @@ export const FEATURES = {
    * + the circuit assets to be present; enable only once those ship.
    */
   localProving: Config.LOCAL_PROVING === 'true',
+  /**
+   * Private p2p shielded transfer. OFF — and it must stay off until the circuits
+   * are redesigned.
+   *
+   * Confirmed from `transfer.circom` by the program side on 2026-08-08: no
+   * circuit imposes any spend authorization. Spend authority is knowledge of
+   * `noteSecret` alone, and in a transfer the SENDER generates the recipient's
+   * `out_noteSecret`. The sender therefore holds the entire withdraw witness for
+   * the note they just sent (`pkRecipientHash` is derivable from the public
+   * `noc1…` address, `leafIndex` and the Merkle path are public on-chain), and
+   * the nullifier is identical for both parties. Whoever proves first spends it.
+   * A sent note is permanently co-owned by its sender — this is fund loss, not a
+   * privacy weakness.
+   *
+   * Shield/unshield are NOT affected: there the depositor generates their own
+   * `noteSecret` and no counterparty ever learns it.
+   *
+   * Re-enable only once the nullifier keys off a secret the sender never learns.
+   */
+  shieldedTransfer: Config.SHIELDED_TRANSFER === 'true',
 } as const;
 
 /** Whether shielded mode is enabled in this build. */
@@ -46,4 +66,13 @@ export function isShieldedRelayerEnabled(): boolean {
 /** Whether shielded proofs are generated on-device (vs the hosted prover). */
 export function isLocalProvingEnabled(): boolean {
   return FEATURES.localProving;
+}
+
+/**
+ * Whether private p2p transfer is available. Requires BOTH shielded mode and the
+ * dedicated transfer flag, so a single stray env var cannot re-enable a flow that
+ * currently lets the sender reclaim the note they sent (see FEATURES.shieldedTransfer).
+ */
+export function isShieldedTransferEnabled(): boolean {
+  return FEATURES.shielded && FEATURES.shieldedTransfer;
 }

@@ -36,7 +36,7 @@ import {TransactionDetailScreen as TransactionDetailScreenImpl} from '../screens
 import {ReferralScreen as ReferralScreenImpl} from '../screens/referral/ReferralScreen';
 import {GeoBlockedScreen as GeoBlockedScreenImpl} from '../screens/compliance/GeoBlockedScreen';
 import {TokenDetailScreen} from '../screens/transparent/TokenDetailScreen';
-import {isShieldedEnabled} from '../constants/features';
+import {isShieldedEnabled, isShieldedTransferEnabled} from '../constants/features';
 import type {
   RootStackParamList,
   OnboardingStackParamList,
@@ -58,7 +58,6 @@ import {WipeWalletScreen} from '../screens/settings/WipeWalletScreen';
 import {ShieldedBalanceScreen} from '../screens/shielded/ShieldedBalanceScreen';
 import {DepositScreen} from '../screens/shielded/DepositScreen';
 import {ShieldedTransferScreen} from '../screens/shielded/ShieldedTransferScreen';
-import {WithdrawScreen} from '../screens/shielded/WithdrawScreen';
 import {AppUpdateModal} from '../components/AppUpdateModal';
 import {approveAuth, cancelAuth} from '../modules/session/pendingAuth';
 import {Home, PieChart, Grid3x3, User} from 'lucide-react-native';
@@ -300,7 +299,7 @@ function DashboardScreenNav() {
   return (
     <DashboardScreen
       onSend={shielded =>
-        shielded && isShieldedEnabled()
+        shielded && isShieldedTransferEnabled()
           ? rootNav.navigate('ShieldedTransfer', {})
           : rootNav.navigate('SendModal')
       }
@@ -782,8 +781,9 @@ export function RootNavigator() {
       <RootNav.Screen name="TransactionHistory" component={TransactionHistoryScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="ShieldedBalance" component={ShieldedBalanceScreen} options={modalScreenOptions} />
       <RootNav.Screen name="Deposit" component={DepositScreen} options={modalWithCloseOptions} />
-      <RootNav.Screen name="ShieldedTransfer" component={ShieldedTransferScreen} options={modalWithCloseOptions} />
-      <RootNav.Screen name="Withdraw" component={WithdrawScreen} options={modalWithCloseOptions} />
+      {isShieldedTransferEnabled() && (
+        <RootNav.Screen name="ShieldedTransfer" component={ShieldedTransferScreen} options={modalWithCloseOptions} />
+      )}
       <RootNav.Screen name="ShieldedExplainer" component={ShieldedExplainerScreenNav} options={modalScreenOptions} />
       <RootNav.Screen
         name="ZkProofModal"

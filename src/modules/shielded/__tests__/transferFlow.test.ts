@@ -32,7 +32,10 @@ jest.mock('../poolTx', () => ({submitPoolTxMany: jest.fn(async () => 'SIG')}));
 jest.mock('../relayerSubmit', () => ({
   submitTransferViaRelayer: jest.fn(async () => ({txSignature: 'RELAYER_SIG', alreadyLanded: false})),
 }));
-jest.mock('../../../constants/features', () => ({isShieldedRelayerEnabled: jest.fn(() => false)}));
+jest.mock('../../../constants/features', () => ({
+  isShieldedRelayerEnabled: jest.fn(() => false),
+  isShieldedTransferEnabled: jest.fn(() => true),
+}));
 jest.mock('../noteStore', () => ({markSpentByCommitment: jest.fn(), addNote: jest.fn(), getNotes: jest.fn(() => []), setNoteIndex: jest.fn()}));
 jest.mock('../leafResolver', () => ({resolveLeafIndex: jest.fn(async () => 42), UNRESOLVED_INDEX: -1}));
 jest.mock('../shieldedIdentity', () => ({getViewPublicKey: jest.fn(() => new Uint8Array(48).fill(9)), getPkRecipientHash: jest.fn()}));
@@ -124,5 +127,46 @@ describe('sendPrivateTransfer', () => {
     // afterwards must not leave the input spendable.
     await sendPrivateTransfer(seed, feePayer, MINT, 'noc1recipient', 200n).catch(() => {});
     expect(markSpentByCommitment).toHaveBeenCalledWith(MINT, 'ci');
+  });
+});
+
+describe('sendPrivateTransfer — transfer gate', () => {
+  it('refuses to build or submit anything when transfer is disabled', async () => {
+    // Defence in depth behind the hidden UI. The deployed transfer circuit
+    // imposes no spend authorization, so a note created here is permanently
+    // co-owned by its sender. Nothing may be proved, submitted, or written to
+    // the note store while the flag is off.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const features = require('../../../constants/features');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const {submitPoolTxMany} = require('../poolTx');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const {submitTransferViaRelayer} = require('../relayerSubmit');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const {proveShielded} = require('../../zkProver/zkProverModule');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const {markSpentByCommitment, addNote} = require('../noteStore');
+    features.isShieldedTransferEnabled.mockReturnValue(false);
+    jest.clearAllMocks();
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const {sendPrivateTransfer} = require('../transferFlow');
+    await expect(
+      sendPrivateTransfer(
+        new Uint8Array(64).fill(1),
+        Keypair.generate(),
+        MINT,
+        'noc1recipient',
+        200n,
+      ),
+    ).rejects.toThrow(/disabled|unavailable/i);
+
+    expect(proveShielded).not.toHaveBeenCalled();
+    expect(submitPoolTxMany).not.toHaveBeenCalled();
+    expect(submitTransferViaRelayer).not.toHaveBeenCalled();
+    expect(markSpentByCommitment).not.toHaveBeenCalled();
+    expect(addNote).not.toHaveBeenCalled();
+
+    features.isShieldedTransferEnabled.mockReturnValue(true);
   });
 });
