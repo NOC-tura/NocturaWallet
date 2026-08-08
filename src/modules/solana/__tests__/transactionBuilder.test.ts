@@ -5,7 +5,10 @@ import {
   buildSPLTransferTx,
   buildTransferInstructions,
   buildSPLTransferInstructions,
+  getTransferMarkupLamports,
 } from '../transactionBuilder';
+import {usePresaleStore} from '../../../store/zustand/presaleStore';
+import {TRANSPARENT_FEES} from '../../../constants/programs';
 
 /**
  * Helper to extract instructions from a VersionedTransaction in tests.
@@ -33,6 +36,10 @@ jest.mock('../connection', () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // The app's default state. Tests that exercise the post-TGE markup set this
+  // explicitly; without the reset, ordering between tests would decide whether
+  // a markup instruction is appended.
+  usePresaleStore.setState({tgeStatus: 'pre_tge', isZeroFeeEligible: false});
 });
 
 describe('buildTransferTx', () => {
@@ -66,14 +73,21 @@ describe('buildTransferTx', () => {
     );
   });
 
-  it('includes Noctura fee markup (SystemProgram.transfer called twice)', async () => {
-    await buildTransferTx({
-      sender,
-      recipient,
-      lamports: 1_000_000n,
-    });
+  it('pre-TGE, charges no Noctura markup (one SystemProgram.transfer)', async () => {
+    usePresaleStore.setState({tgeStatus: 'pre_tge', isZeroFeeEligible: false});
+    await buildTransferTx({sender, recipient, lamports: 1_000_000n});
+
+    expect(SystemProgram.transfer).toHaveBeenCalledTimes(1);
+  });
+
+  it('post-TGE, adds the Noctura markup as a second SystemProgram.transfer', async () => {
+    usePresaleStore.setState({tgeStatus: 'claimable', isZeroFeeEligible: false});
+    await buildTransferTx({sender, recipient, lamports: 1_000_000n});
 
     expect(SystemProgram.transfer).toHaveBeenCalledTimes(2);
+    expect(SystemProgram.transfer).toHaveBeenLastCalledWith(
+      expect.objectContaining({lamports: TRANSPARENT_FEES.transferMarkup}),
+    );
   });
 
   it('includes priority fee instruction when priorityFee specified', async () => {
@@ -127,9 +141,10 @@ describe('buildSPLTransferTx', () => {
       decimals: 9,
     });
 
-    // Instructions: [TransferChecked, fee markup SystemProgram.transfer]
+    // Instructions pre-TGE: [TransferChecked] (the markup is waived, so no
+    // second SystemProgram.transfer is appended).
     const instructions = txInstructions(tx);
-    expect(instructions.length).toBeGreaterThanOrEqual(2);
+    expect(instructions.length).toBeGreaterThanOrEqual(1);
 
     // The TransferChecked instruction is the first non-priority-fee instruction.
     // Without createAta and without priorityFee it is index 0.
@@ -176,8 +191,8 @@ describe('buildSPLTransferTx', () => {
       createAta: true,
     });
 
-    // Instructions: [createAta, TransferChecked, fee markup]
-    expect(txInstructions(tx).length).toBe(3);
+    // Instructions pre-TGE: [createAta, TransferChecked] — markup waived.
+    expect(txInstructions(tx).length).toBe(2);
   });
 
   it('includes priority fee instruction when priorityFee is specified', async () => {
@@ -201,10 +216,37 @@ describe('instruction builders', () => {
   const B = new PublicKey('EHqmfkN89RJ7Y33CXM6uCzhVeuywHoJXZZLszBHHZy7o');
   const MINT = new PublicKey('B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW');
 
-  it('SOL transfer yields transfer + fee-markup instructions', () => {
+  it('omits the fee-markup transfer while the effective markup is zero', () => {
+    // Pre-TGE the fee engine returns 0n, and the design's send screen (#12)
+    // shows a single "Network fee" line with no Noctura markup row. Appending a
+    // 20_000-lamport transfer the UI never shows is an undisclosed charge, and
+    // it also makes MAX-send unpayable.
+    usePresaleStore.setState({tgeStatus: 'pre_tge', isZeroFeeEligible: false});
     const ix = buildTransferInstructions({sender: A, recipient: B, lamports: 1_000n});
-    // recipient transfer + Noctura fee markup transfer = 2 (no priority fee)
+    expect(ix.length).toBe(1);
+  });
+
+  it('includes the fee-markup transfer once the markup becomes non-zero', () => {
+    usePresaleStore.setState({tgeStatus: 'claimable', isZeroFeeEligible: false});
+    const ix = buildTransferInstructions({sender: A, recipient: B, lamports: 1_000n});
     expect(ix.length).toBe(2);
+    expect(getTransferMarkupLamports()).toBe(TRANSPARENT_FEES.transferMarkup);
+  });
+
+  it('reports the same markup the builder charges', () => {
+    // One source of truth: whatever the screen budgets for must equal what the
+    // builder appends, or MAX-send and the balance check are wrong again.
+    usePresaleStore.setState({tgeStatus: 'pre_tge', isZeroFeeEligible: false});
+    const zero = getTransferMarkupLamports();
+    const ixZero = buildTransferInstructions({sender: A, recipient: B, lamports: 1_000n});
+    expect(zero).toBe(0n);
+    expect(ixZero.length).toBe(1);
+
+    usePresaleStore.setState({tgeStatus: 'claimable', isZeroFeeEligible: false});
+    const charged = getTransferMarkupLamports();
+    const ixCharged = buildTransferInstructions({sender: A, recipient: B, lamports: 1_000n});
+    expect(charged).toBeGreaterThan(0n);
+    expect(ixCharged.length).toBe(2);
   });
 
   it('priority fee prepends a compute-budget instruction', () => {
@@ -214,10 +256,11 @@ describe('instruction builders', () => {
       lamports: 1_000n,
       priorityFee: 15_000,
     });
-    expect(ix.length).toBe(3);
+    // priority-price + recipient transfer = 2 (markup waived pre-TGE)
+    expect(ix.length).toBe(2);
   });
 
-  it('SPL transfer with createAta yields ata + transfer + fee-markup', () => {
+  it('SPL transfer with createAta yields ata + transfer (markup waived)', () => {
     const ix = buildSPLTransferInstructions({
       sender: A,
       recipient: B,
@@ -226,15 +269,15 @@ describe('instruction builders', () => {
       decimals: 9,
       createAta: true,
     });
-    expect(ix.length).toBe(3);
+    expect(ix.length).toBe(2);
   });
 
   it('prepends a setComputeUnitLimit when computeUnitLimit is given', () => {
     const ix = buildTransferInstructions({
       sender: A, recipient: B, lamports: 1_000n, priorityFee: 15_000, computeUnitLimit: 450,
     });
-    // priority-price + compute-limit + recipient transfer + fee markup = 4
-    expect(ix.length).toBe(4);
+    // compute-limit + priority-price + recipient transfer = 3 (markup waived)
+    expect(ix.length).toBe(3);
   });
 
   // The TransferChecked instruction is the 10-byte one whose first byte is the
@@ -356,6 +399,28 @@ describe('resolveSourceTokenAccount', () => {
 
   it('returns null when the owner holds no account for the mint', async () => {
     expect(await resolveSourceTokenAccount(connWith([]), owner, mint)).toBeNull();
+  });
+
+  it('throws a clear error when no single account covers the required amount', async () => {
+    // Displayed balance is the SUM (100 + 60 = 160), but TransferChecked spends
+    // from one account and is all-or-nothing. Sending 160 must fail here with an
+    // explanation, not on-chain with an opaque error.
+    const conn = connWith([
+      {pubkey: a1, amount: '100'},
+      {pubkey: a2, amount: '60'},
+    ]);
+    await expect(resolveSourceTokenAccount(conn, owner, mint, 160n)).rejects.toThrow(
+      /split across/i,
+    );
+  });
+
+  it('returns the largest account when it does cover the required amount', async () => {
+    const conn = connWith([
+      {pubkey: a1, amount: '100'},
+      {pubkey: a2, amount: '60'},
+    ]);
+    const result = await resolveSourceTokenAccount(conn, owner, mint, 100n);
+    expect(result?.toBase58()).toBe(a1.toBase58());
   });
 });
 

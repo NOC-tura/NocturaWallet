@@ -38,4 +38,23 @@ describe('validateRecipientInput', () => {
     const result = validateRecipientInput('not-a-valid-address!!!');
     expect(result.type).toBe('invalid');
   });
+
+  it('rejects an off-curve PDA that passes the base58 regex', () => {
+    // findProgramAddressSync([b'noctura-test'], SystemProgram) — SOL sent here
+    // is unrecoverable, but the 32-44 char regex accepted it as type 'solana'.
+    const result = validateRecipientInput('E4E6ZBCXe3s5tBjEwTfXm2NthmxLQBZiPyTVoc2E8HNw');
+    expect(result.type).toBe('invalid');
+    expect(result.error).toMatch(/cannot receive/i);
+  });
+
+  it('rejects base58 that decodes to the wrong byte length', () => {
+    expect(validateRecipientInput('2'.repeat(32)).type).toBe('invalid');
+  });
+
+  it('rejects an off-curve address inside a solana: pay URI', () => {
+    const result = validateRecipientInput(
+      'solana:E4E6ZBCXe3s5tBjEwTfXm2NthmxLQBZiPyTVoc2E8HNw?amount=1',
+    );
+    expect(result.type).toBe('invalid');
+  });
 });

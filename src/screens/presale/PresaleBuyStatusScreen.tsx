@@ -20,6 +20,7 @@ import {usePresaleStore} from '../../store/zustand/presaleStore';
 import {useReferralCaptureStore} from '../../store/zustand/referralCaptureStore';
 import {useResolvedPrices} from '../../hooks/useResolvedPrices';
 import {PRESALE_STAGE_PRICES} from '../../constants/presale';
+import {CancelledError} from '../../modules/solana/landedSignature';
 import {
   estimateNocForSol,
   estimateNocForUsd,
@@ -41,6 +42,9 @@ let loadTransparentScheme:
 let getConnection:
   | typeof import('../../modules/solana/connection').getConnection
   | null = null;
+let findLandedSignature:
+  | typeof import('../../modules/solana/landedSignature').findLandedSignature
+  | null = null;
 let recordPresalePurchase:
   | typeof import('../../modules/presale/presaleModule').recordPresalePurchase
   | null = null;
@@ -54,6 +58,8 @@ try {
   loadTransparentScheme = require('../../modules/keyDerivation/derivationScheme').loadTransparentScheme;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   getConnection = require('../../modules/solana/connection').getConnection;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  findLandedSignature = require('../../modules/solana/landedSignature').findLandedSignature;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   recordPresalePurchase = require('../../modules/presale/presaleModule').recordPresalePurchase;
 } catch {
@@ -152,6 +158,11 @@ export function PresaleBuyStatusScreen({
   // Keep refs to the latest values for use inside the async closures.
   const signatureRef = useRef<string | null>(null);
   signatureRef.current = signature;
+
+  /** Every signature broadcast by this screen — checked before any re-broadcast. */
+  const issuedSignatures = useRef<string[]>([]);
+  /** True while a submit is in flight — blocks a second Retry from racing it. */
+  const submitInFlight = useRef(false);
   const recordedRef = useRef(false);
   // The referrer credited by the submitted tx (null when none) — captured from
   // the submit result so onSuccess can record it + clear the capture store.
@@ -196,17 +207,36 @@ export function PresaleBuyStatusScreen({
         !submitPresaleBuySol ||
         !submitPresaleBuyStablecoin ||
         !loadTransparentScheme ||
-        !getConnection
+        !getConnection ||
+        !findLandedSignature
       ) {
         return;
       }
 
       const scheme = loadTransparentScheme();
 
-      const attemptSubmit = () =>
-        isSol
-          ? submitPresaleBuySol!(units, scheme)
-          : submitPresaleBuyStablecoin!(paymentToken, units, scheme);
+      // Adopt an earlier attempt that already landed rather than buying twice.
+      // A presale buy moves real mainnet funds, and a send can surface as
+      // "failed" while the tx is still in flight.
+      const attemptSubmit = async () => {
+        const landed = await findLandedSignature!(
+          getConnection!(),
+          issuedSignatures.current,
+        );
+        if (landed) return {kind: 'alreadyLanded' as const, landed};
+
+        if (cancelled) throw new CancelledError();
+        submitInFlight.current = true;
+        try {
+          const sent = isSol
+            ? await submitPresaleBuySol!(units, scheme)
+            : await submitPresaleBuyStablecoin!(paymentToken, units, scheme);
+          issuedSignatures.current.push(sent.signature);
+          return {kind: 'broadcast' as const, sent};
+        } finally {
+          submitInFlight.current = false;
+        }
+      };
 
       let attempt = 1;
       let result: {
@@ -216,12 +246,19 @@ export function PresaleBuyStatusScreen({
       };
 
       try {
-        result = await attemptSubmit();
-      } catch (e) {
-        if (!cancelled) {
-          setErrorMessage(e instanceof Error ? e.message : 'Transaction failed');
-          setStage('failed');
+        const outcome = await attemptSubmit();
+        if (outcome.kind === 'alreadyLanded') {
+          if (!cancelled) {
+            setSignature(outcome.landed.signature);
+            setStage('success');
+          }
+          return;
         }
+        result = outcome.sent;
+      } catch (e) {
+        if (cancelled || e instanceof CancelledError) return;
+        setErrorMessage(e instanceof Error ? e.message : 'Transaction failed');
+        setStage('failed');
         return;
       }
 
@@ -275,12 +312,19 @@ export function PresaleBuyStatusScreen({
                   effectiveReferrerAddress: string | null;
                 };
                 try {
-                  resubmitResult = await attemptSubmit();
-                } catch (e) {
-                  if (!cancelled) {
-                    setErrorMessage(e instanceof Error ? e.message : 'Transaction failed');
-                    setStage('failed');
+                  const outcome = await attemptSubmit();
+                  if (outcome.kind === 'alreadyLanded') {
+                    if (!cancelled) {
+                      setSignature(outcome.landed.signature);
+                      setStage('success');
+                    }
+                    return;
                   }
+                  resubmitResult = outcome.sent;
+                } catch (e) {
+                  if (cancelled || e instanceof CancelledError) return;
+                  setErrorMessage(e instanceof Error ? e.message : 'Transaction failed');
+                  setStage('failed');
                   return;
                 }
                 if (cancelled) return;
@@ -461,7 +505,10 @@ export function PresaleBuyStatusScreen({
               label="Retry"
               variant="primary"
               testID="presale-status-retry"
-              onPress={() => setRetryCount(c => c + 1)}
+              onPress={() => {
+                if (submitInFlight.current) return;
+                setRetryCount(c => c + 1);
+              }}
             />
             <Button
               label="Cancel"
