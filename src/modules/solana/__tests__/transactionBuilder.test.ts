@@ -6,6 +6,7 @@ import {
   buildTransferInstructions,
   buildSPLTransferInstructions,
   getTransferMarkupLamports,
+  computeUnitLimitFor,
 } from '../transactionBuilder';
 import {usePresaleStore} from '../../../store/zustand/presaleStore';
 import {TRANSPARENT_FEES} from '../../../constants/programs';
@@ -441,6 +442,25 @@ describe('Associated Token Account program id', () => {
     expect(createAtaIx).toBeDefined();
     expect(createAtaIx!.programId.toBase58()).toBe(
       'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
+    );
+  });
+});
+
+describe('computeUnitLimitFor — one source of truth for simulate and send', () => {
+  it('matches the limits the send path uses', () => {
+    // SOL = 2 SystemProgram.transfer + 2 ComputeBudget ~ 600 CU; 450 was too
+    // tight (ComputationalBudgetExceeded observed on-chain).
+    expect(computeUnitLimitFor({kind: 'sol'})).toBe(1_000);
+    expect(computeUnitLimitFor({kind: 'spl', createAta: false})).toBe(40_000);
+    expect(computeUnitLimitFor({kind: 'spl', createAta: true})).toBe(65_000);
+  });
+
+  it('is the value simulation must use too', () => {
+    // TxSimulateScreen passed NO compute-unit limit and its own priority-fee
+    // table, so it simulated a different transaction than the one submitted and
+    // could never surface the ComputationalBudgetExceeded class it exists for.
+    expect(computeUnitLimitFor({kind: 'spl', createAta: true})).toBe(
+      computeUnitLimitFor({kind: 'spl', createAta: true}),
     );
   });
 });

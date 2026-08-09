@@ -220,6 +220,21 @@ export function buildCreateAtaIdempotentInstruction(
 }
 
 /**
+ * Compute-unit limit for a transfer. THE single source of truth — the send path
+ * and the simulation must request the same budget or the simulation is of a
+ * different transaction.
+ *
+ * TxSimulateScreen previously passed no limit at all and computed its own
+ * priority fee from a separate table, so it could never surface the
+ * ComputationalBudgetExceeded class it exists to catch — the exact failure that
+ * was observed on-chain and that motivated raising the SOL limit from 450.
+ */
+export function computeUnitLimitFor(params: {kind: 'sol'} | {kind: 'spl'; createAta?: boolean}): number {
+  if (params.kind === 'sol') return 1_000;
+  return params.createAta ? 65_000 : 40_000;
+}
+
+/**
  * The Noctura markup actually charged on a transparent transfer, in lamports.
  *
  * THE single source of truth for the markup: both the instruction builders and

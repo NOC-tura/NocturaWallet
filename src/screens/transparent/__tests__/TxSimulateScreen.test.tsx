@@ -18,6 +18,15 @@ jest.mock('../../../modules/solana/simulation', () => ({
 jest.mock('../../../modules/solana/transactionBuilder', () => ({
   buildTransferTx: jest.fn().mockResolvedValue({}),
   buildSPLTransferTx: jest.fn().mockResolvedValue({}),
+  // Mirror the real module: a partial mock leaves new exports undefined, and
+  // calling one throws inside the effect, which renders as a simulation
+  // failure rather than a missing-export error.
+  computeUnitLimitFor: jest.requireActual('../../../modules/solana/transactionBuilder')
+    .computeUnitLimitFor,
+}));
+
+jest.mock('../../../modules/solana/priorityFee', () => ({
+  estimatePriorityFee: jest.fn().mockResolvedValue(50_000),
 }));
 
 jest.mock('../../../modules/solana/simulationChecks', () => ({

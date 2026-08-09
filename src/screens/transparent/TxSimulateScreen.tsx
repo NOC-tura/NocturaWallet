@@ -16,6 +16,7 @@ import {useWalletStore} from '../../store/zustand/walletStore';
 import {cn} from '../../utils/cn';
 import type {TransferIntent} from '../../types/transfer';
 import type {TransferCheck} from '../../modules/solana/simulationChecks';
+import {computeUnitLimitFor} from '../../modules/solana/transactionBuilder';
 
 // ── Lazy imports — wrapped in try/catch so Jest/stub envs don't crash ────────
 let getConnection: (() => import('@solana/web3.js').Connection) | null = null;
@@ -37,8 +38,14 @@ let resolveCreateAta:
 let resolveSourceTokenAccount:
   | typeof import('../../modules/solana/transactionBuilder').resolveSourceTokenAccount
   | null = null;
+let estimatePriorityFee:
+  | typeof import('../../modules/solana/priorityFee').estimatePriorityFee
+  | null = null;
+// Derived from the real function rather than hand-written, so a signature
+// change is a type error here instead of a silent drift. The hand-written
+// 1-arg version is why this screen never passed the instructions.
 let deriveTransferChecks:
-  | ((recipient: PublicKey) => Promise<TransferCheck[]>)
+  | typeof import('../../modules/solana/simulationChecks').deriveTransferChecks
   | null = null;
 
 try {
@@ -54,6 +61,8 @@ try {
   resolveSourceTokenAccount = require('../../modules/solana/transactionBuilder').resolveSourceTokenAccount;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   deriveTransferChecks = require('../../modules/solana/simulationChecks').deriveTransferChecks;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  estimatePriorityFee = require('../../modules/solana/priorityFee').estimatePriorityFee;
 } catch {
   // Modules unavailable in test/stub environment — no-op
 }
@@ -102,9 +111,16 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
   const accentText =
     intent.mode === 'shielded' ? 'text-accent-shielded' : 'text-accent-transparent';
 
-  // priority fee in per-CU microLamports over a 200k CU budget
+  // The priority fee is NOT derived from a local table any more. The send path
+  // uses estimatePriorityFee (per-tier floors + ceilings, live network data),
+  // so a table here simulated a different transaction than the one submitted —
+  // and, with no compute-unit limit passed at all, could never surface the
+  // ComputationalBudgetExceeded class this screen exists to catch. Resolved
+  // inside the effect below, from the same function the send calls.
+  //
+  // This value is DISPLAY ONLY — the per-tier lamport figure the design's fee
+  // row shows. It is deliberately not used to build the transaction.
   const priorityLamports = PRIORITY_FEE_LAMPORTS[intent.priorityLevel];
-  const priorityFee = Number((priorityLamports * 1_000_000n) / 200_000n);
 
   // ── Run-simulation effect (on mount + retry) ──────────────────────────────
   useEffect(() => {
@@ -118,6 +134,7 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
       const _buildTransferTx = buildTransferTx;
       const _buildSPLTransferTx = buildSPLTransferTx;
       const _deriveTransferChecks = deriveTransferChecks;
+      const _estimatePriorityFee = estimatePriorityFee;
 
       const modulesLoaded =
         !!_getConnection &&
@@ -185,6 +202,15 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
             if (cancelled) return;
           }
 
+          // Same estimator and same CU budget as submitTransparentTransfer.
+          const priorityFee = _estimatePriorityFee
+            ? await _estimatePriorityFee(connection, intent.priorityLevel)
+            : 0;
+          if (cancelled) return;
+          const computeUnitLimit = isSpl
+            ? computeUnitLimitFor({kind: 'spl', createAta: effectiveCreateAta})
+            : computeUnitLimitFor({kind: 'sol'});
+
           const tx = isSpl
             ? await _buildSPLTransferTx({
                 sender,
@@ -195,19 +221,36 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
                 createAta: effectiveCreateAta,
                 sourceTokenAccount: effectiveSource,
                 priorityFee,
+                computeUnitLimit,
               })
             : await _buildTransferTx({
                 sender,
                 recipient: recipientPk,
                 lamports: parseTokenAmount(intent.amount, SOL_DECIMALS),
                 priorityFee,
+                computeUnitLimit,
               });
 
           const result = await _simulateTransaction(connection, tx);
           if (cancelled) return;
 
           if (result.success) {
-            const checks = await _deriveTransferChecks(recipientPk);
+            // Pass the ACTUAL instructions so the contract/approval rows are
+            // derived rather than hardcoded PASS.
+            // An uninspectable transaction yields NO instructions, which
+            // checkInstructions reports as inconclusive — never as a pass.
+            const message = tx.message as unknown as
+              | {
+                  compiledInstructions?: {programIdIndex: number; data: Uint8Array}[];
+                  staticAccountKeys?: {toBase58: () => string}[];
+                }
+              | undefined;
+            const staticKeys = message?.staticAccountKeys;
+            const inspectable = (message?.compiledInstructions ?? []).map(i => ({
+              programId: staticKeys?.[i.programIdIndex]?.toBase58() ?? '',
+              data: i.data,
+            }));
+            const checks = await _deriveTransferChecks(recipientPk, inspectable);
             if (cancelled) return;
 
             // Compute balance delta strings
