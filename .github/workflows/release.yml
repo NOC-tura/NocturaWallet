@@ -68,18 +68,30 @@ jobs:
       # Fail loudly if the artifact carries the public debug certificate. The
       # build.gradle guard should make this unreachable; assert it anyway,
       # because that guard is the thing under test here.
+      # An assertion that can pass without asserting is worse than no assertion.
+      # The first version used `find ... || true` and `if [ -n "$APK" ]`, so a
+      # wrong search path made it green while checking nothing — which is
+      # exactly what happened on the first run.
       - name: Assert the artifact is not debug-signed
         run: |
-          APK=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1 || true)
-          if [ -n "$APK" ]; then
-            SIGNER=$("$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "$APK" | grep 'certificate DN' | head -1)
-            echo "$SIGNER"
+          set -euo pipefail
+          APKS=$(find android/app/build/outputs -name '*.apk' -path '*release*')
+          if [ -z "$APKS" ]; then
+            echo "::error::No release APK found to verify. Refusing to report a pass."
+            find android/app/build/outputs -type f | head -50
+            exit 1
+          fi
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | tail -1)
+          for APK in $APKS; do
+            SIGNER=$("$APKSIGNER" verify --print-certs "$APK" | grep 'certificate DN' | head -1)
+            echo "$APK -> $SIGNER"
             case "$SIGNER" in
               *"CN=Android Debug"*)
-                echo "::error::Artifact is signed with the public Android debug certificate."
+                echo "::error::$APK is signed with the public Android debug certificate."
                 exit 1 ;;
+              "") echo "::error::$APK carries no signer certificate."; exit 1 ;;
             esac
-          fi
+          done
 
       - name: Remove signing key
         if: always()
