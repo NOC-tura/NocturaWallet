@@ -70,6 +70,7 @@ import {selectContact, cancelContactSelection} from '../modules/session/pendingC
 import {ShieldUnshieldScreen} from '../screens/shielded/ShieldUnshieldScreen';
 import {SwapScreen} from '../screens/transparent/SwapScreen';
 import {Alert} from 'react-native';
+import Config from 'react-native-config';
 
 // Wrapper components that wire screens to navigation
 function SplashScreenNav() {
@@ -691,7 +692,12 @@ function SettingsStack() {
       <SettingsNav.Screen name="BackupSettings" component={BackupSettingsScreen} />
       <SettingsNav.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
       <SettingsNav.Screen name="WipeWallet" component={WipeWalletScreen} />
-      <SettingsNav.Screen name="NativeProveDebug" component={NativeProveDebugScreen} />
+      {/* Dev-only. The Settings entry is Config-gated, but the ROUTE was
+          registered unconditionally, so it stayed navigable by name in a
+          release build. Gate the route itself. */}
+      {__DEV__ || Config.NATIVE_PROVER_DEBUG === 'true' ? (
+        <SettingsNav.Screen name="NativeProveDebug" component={NativeProveDebugScreen} />
+      ) : null}
     </SettingsNav.Navigator>
   );
 }

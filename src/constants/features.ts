@@ -1,4 +1,5 @@
 import Config from 'react-native-config';
+import {assertShieldedRequiresLocalProving} from './networkGuard';
 
 /**
  * Build-time feature flags. Single source of truth for gating unfinished
@@ -52,6 +53,13 @@ export const FEATURES = {
    */
   shieldedTransfer: Config.SHIELDED_TRANSFER === 'true',
 } as const;
+
+// Fail-closed at import. Hosted proving POSTs the full private witness —
+// including the note secret, which is the entire spend authority — to the
+// coordinator. A build that enables shielded and forgets LOCAL_PROVING=true
+// hands custody away silently, with no UI difference. Asserted here rather than
+// in provingAssets so each check lives with the data it reads.
+assertShieldedRequiresLocalProving(FEATURES.shielded, FEATURES.localProving);
 
 /** Whether shielded mode is enabled in this build. */
 export function isShieldedEnabled(): boolean {
