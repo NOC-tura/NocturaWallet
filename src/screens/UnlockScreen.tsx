@@ -167,7 +167,21 @@ export function UnlockScreen({
   const handlePinComplete = async (pin: string) => {
     if (cooldownRemaining > 0) return;
 
-    const verified = await keychainManager.verifyPin(pin);
+    // verifyPin THROWS while the persisted cooldown is active. That ledger
+    // lives in MMKV and survives an app restart; `cooldownRemaining` above is
+    // React state and does not. So after 5 failures and a relaunch the screen
+    // believes it is not cooling down, calls through, and the rejection was
+    // unhandled: the dots reset, no error appeared, no countdown started, and
+    // the user was left on a silent dead end at the app's primary auth surface.
+    let verified: boolean;
+    try {
+      verified = await keychainManager.verifyPin(pin);
+    } catch (e) {
+      setPinResetKey(k => k + 1);
+      setPinError(e instanceof Error ? e.message : 'Unlock failed. Try again.');
+      return;
+    }
+
     if (verified) {
       setAttempts(0);
       setPinError(null);
@@ -196,7 +210,11 @@ export function UnlockScreen({
   });
 
   const isCoolingDown = cooldownRemaining > 0;
-  const hasError = pinError !== null && attempts > 0;
+  // `attempts > 0` was redundant — pinError is cleared on success and on
+  // cooldown start — and it suppressed the message on the one path that sets an
+  // error WITHOUT a failed attempt: verifyPin throwing under a persisted
+  // cooldown. That made a real error invisible.
+  const hasError = pinError !== null;
   const biometricEnabled =
     mmkvPublic.getString(MMKV_KEYS.SECURITY_BIOMETRIC_ENABLED) === 'true';
 

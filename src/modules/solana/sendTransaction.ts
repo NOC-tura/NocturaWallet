@@ -4,6 +4,7 @@ import {
   buildTransferInstructions,
   buildSPLTransferInstructions,
   resolveSourceTokenAccount,
+  computeUnitLimitFor,
 } from './transactionBuilder';
 import {KeychainManager} from '../keychain/keychainModule';
 import {mnemonicToSeed} from '../keyDerivation/mnemonicUtils';
@@ -56,7 +57,9 @@ export async function submitTransparentTransfer(
     // + 2 ComputeBudget ix ≈ 600 CU; 450 was too tight (ComputationalBudgetExceeded
     // observed on-chain). 1_000 gives margin while keeping the priority fee tiny.
     const computeUnitLimit =
-      params.kind === 'sol' ? 1_000 : params.createAta ? 65_000 : 40_000;
+      params.kind === 'sol'
+        ? computeUnitLimitFor({kind: 'sol'})
+        : computeUnitLimitFor({kind: 'spl', createAta: params.createAta});
 
     const connection = getConnection();
 
