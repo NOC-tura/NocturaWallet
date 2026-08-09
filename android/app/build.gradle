@@ -64,6 +64,24 @@ react {
  */
 def enableProguardInReleaseBuilds = false
 
+// ── Release signing ──────────────────────────────────────────────────────────
+// Read from android/keystore.properties (gitignored) with an environment
+// override for CI. Absent credentials do NOT fall back to the debug keystore:
+// that is how a release APK signed with a publicly-known key shipped in the
+// first place. Missing credentials fail the release build instead (see the
+// task guard at the bottom of this file).
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+def releaseStoreFile = System.getenv("NOCTURA_KEYSTORE_FILE") ?: keystoreProperties["storeFile"]
+def releaseStorePassword = System.getenv("NOCTURA_KEYSTORE_PASSWORD") ?: keystoreProperties["storePassword"]
+def releaseKeyAlias = System.getenv("NOCTURA_KEY_ALIAS") ?: keystoreProperties["keyAlias"]
+def releaseKeyPassword = System.getenv("NOCTURA_KEY_PASSWORD") ?: keystoreProperties["keyPassword"]
+def hasReleaseSigning = releaseStoreFile && releaseStorePassword && releaseKeyAlias && releaseKeyPassword &&
+        file(releaseStoreFile).exists()
+
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
  *
@@ -116,15 +134,29 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        // Release signing is defined ONLY when real credentials are present.
+        // Credentials live in android/keystore.properties (gitignored) or the
+        // environment — never in android/gradle.properties, which is tracked.
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // The release build used to be signed with the CHECKED-IN debug
+            // keystore (password 'android'), so anyone could build a
+            // signature-matching APK and overwrite the installed wallet in
+            // place. It is now signed with a real key, or not signed at all —
+            // never with a key everyone has. See the guard below.
+            signingConfig hasReleaseSigning ? signingConfigs.release : null
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
@@ -139,5 +171,30 @@ dependencies {
         implementation("com.facebook.react:hermes-android")
     } else {
         implementation jscFlavor
+    }
+}
+
+
+// Fail a release build loudly rather than emitting an unsigned — or worse,
+// debug-signed — artifact. Consistent with the rest of this codebase: a
+// misconfiguration should stop the build, not quietly produce something that
+// looks shippable.
+tasks.configureEach { task ->
+    if (!hasReleaseSigning && task.name ==~ /(?i)(assemble|bundle|install)[A-Za-z]*Release/) {
+        task.doFirst {
+            throw new GradleException(
+                "No release signing key configured.\n" +
+                "  The release build is NOT signed with the debug keystore any more — that key is\n" +
+                "  checked into this repo with password 'android', so anyone could build a\n" +
+                "  signature-matching APK and replace the installed wallet.\n\n" +
+                "  1. Create a key:\n" +
+                "       keytool -genkeypair -v -keystore android/app/noctura-release.jks \\\n" +
+                "         -alias noctura-upload -keyalg RSA -keysize 4096 -validity 10000\n" +
+                "  2. cp android/keystore.properties.example android/keystore.properties\n" +
+                "  3. Fill it in. Both files are gitignored; do NOT put credentials in\n" +
+                "     android/gradle.properties, which IS tracked.\n\n" +
+                "  CI may instead set NOCTURA_KEYSTORE_FILE / _PASSWORD / NOCTURA_KEY_ALIAS / _KEY_PASSWORD."
+            )
+        }
     }
 }

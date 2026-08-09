@@ -36,6 +36,11 @@ local.properties
 .cxx/
 *.keystore
 !debug.keystore
+# Release signing material — NEVER commit. `android/gradle.properties` IS
+# tracked, so credentials must not live there; they go in
+# android/keystore.properties (below) or the environment.
+*.jks
+android/keystore.properties
 .kotlin/
 
 # node.js
