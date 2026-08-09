@@ -1,6 +1,7 @@
 import {create} from 'zustand';
 import {persist, createJSONStorage} from 'zustand/middleware';
 import {mmkvSecureStorage} from '../mmkv/secureAdapter';
+import {onSecureMmkvReady} from '../mmkv/instances';
 
 interface SecureSettingsState {
   sessionTimeoutMinutes: number;
@@ -54,3 +55,14 @@ export const useSecureSettingsStore = create<SecureSettingsState>()(
     },
   ),
 );
+
+// Zustand hydrates at store-creation time. This module is imported during cold
+// boot (App -> useSessionGuard -> sessionStore -> here), BEFORE unlock, when
+// mmkvSecure() is still null — so getItem returns null and the store settles on
+// DEFAULTS. Without this, the user's session timeout silently reverted to 5
+// minutes on every launch, and the first post-unlock write persisted the
+// defaults over their real values. The write-replay queue guaranteed the WRONG
+// values were saved.
+onSecureMmkvReady(() => {
+  void useSecureSettingsStore.persist.rehydrate();
+});

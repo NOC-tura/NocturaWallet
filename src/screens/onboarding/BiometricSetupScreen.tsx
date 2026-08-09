@@ -28,9 +28,7 @@ const keychainManager = new KeychainManager();
  *   - 3 feature rows:
  *       · Check icon · "Faster unlock" · "Tap the sensor instead of typing 6 digits."
  *       · Shield-Lock icon · "PIN still wins" · "Sends, signs, and changes always re-prompt for the PIN."
- *       · Info icon · "Resets on enrollment change" · "Adding, removing, or
- *         changing any fingerprint or face on this device clears biometric
- *         access. You'll need to re-enter your PIN to set it up again."
+ *       · Info icon · "Anyone enrolled can unlock" · see the invalidation note below.
  *   - Sticky bottom: [Enable fingerprint] primary + [Skip — use PIN only] secondary
  *
  * The Enable action persists MMKV flag (SECURITY_BIOMETRIC_ENABLED) which
@@ -39,12 +37,20 @@ const keychainManager = new KeychainManager();
  * access control via KeychainManager — so the OS-level biometric requirement
  * is set at seed storage time, not here.
  *
- * Named security property (per Round 2d Fix 4): enrollment-change invalidation
- * via .biometryCurrentSet (iOS) / setInvalidatedByBiometricEnrollment(true)
- * (Android KeyGenParameterSpec). Both produce the same semantic — biometric
- * access invalidates if user adds/removes/changes any enrolled fingerprint
- * or face. PIN unlock continues to work; spend key re-wraps under new
- * biometric-gated cipher on re-enrollment.
+ * ⚠ NOT IMPLEMENTED: enrollment-change invalidation. This screen used to claim
+ * that adding or changing a fingerprint clears biometric access. It does not.
+ * We use ACCESS_CONTROL.BIOMETRY_ANY_OR_DEVICE_PASSCODE, and react-native-keychain
+ * v10 has no setInvalidatedByBiometricEnrollment call anywhere in its Android
+ * cipher storage — BIOMETRY_CURRENT_SET and BIOMETRY_ANY select the identical
+ * storage. So someone who has the device unlocked once can enrol their own
+ * fingerprint and unlock the wallet with it, which is the opposite of what the
+ * copy promised.
+ *
+ * Delivering it needs BIOMETRY_CURRENT_SET_OR_DEVICE_PASSCODE on iOS and a
+ * custom KeyGenParameterSpec on Android (a library patch or fork). Until then
+ * the copy states the real behaviour: biometrics is convenience, the PIN is the
+ * control. See feedback_verify_dont_read_comments — this was the fourth
+ * user-facing claim in this codebase that the code did not implement.
  */
 
 interface BiometricSetupScreenProps {
@@ -169,8 +175,8 @@ export function BiometricSetupScreen({
         />
         <FeatureRow
           Icon={Info}
-          title="Resets on enrollment change"
-          body="Adding, removing, or changing any fingerprint or face on this device clears biometric access. You'll need to re-enter your PIN to set it up again."
+          title="Anyone enrolled can unlock"
+          body="Biometric unlock accepts any fingerprint or face enrolled on this device, including ones added later. Your PIN is what protects sends and signing."
         />
       </View>
 

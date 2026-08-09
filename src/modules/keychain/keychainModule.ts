@@ -1,6 +1,7 @@
 import Keychain from 'react-native-keychain';
 import {hashPin, verifyPin as verifyPinHash, generateSalt} from './pinManager';
 import {checkCooldown, recordFailedAttempt, resetAttempts} from './pinLockout';
+import {useSessionStore} from '../../store/zustand/sessionStore';
 
 /** Convert Uint8Array to hex string without Buffer (not available in RN prod bundle). */
 function toHex(bytes: Uint8Array): string {
@@ -81,8 +82,19 @@ export class KeychainManager {
    *
    * Returns true on auth success, false on user cancel / sensor failure / lockout.
    */
+  /**
+   * Prove a real biometric prompt can gate a Keychain read.
+   *
+   * The enrolment check is load-bearing, not a nicety. react-native-keychain
+   * selects a cipher by walking its variants and SKIPPING every auth-backed one
+   * when no biometry and no passcode is available, falling through to plain
+   * AES. So on a device with nothing enrolled the sentinel write and read both
+   * succeed — with no prompt — and this returned `true`, after which the app
+   * recorded biometric protection that does not exist. Ask the OS first.
+   */
   async testBiometric(): Promise<boolean> {
     try {
+      if ((await Keychain.getSupportedBiometryType()) === null) return false;
       await Keychain.setGenericPassword('biometric-test', 'ok', {
         ...KEYCHAIN_OPTIONS,
         service: SERVICE_BIOMETRIC_TEST,
@@ -186,7 +198,12 @@ export class KeychainManager {
     } else {
       const result = recordFailedAttempt();
       if (result.shouldWipeSession) {
-        // Caller (UnlockScreen) should lock session on receiving false + checking attempt count
+        // Act on it here rather than hoping a caller does. This branch was an
+        // empty block whose comment delegated the wipe to UnlockScreen; no
+        // caller ever read the flag, so the documented escalation from cooldown
+        // to session-lock never happened and a brute-forcer had unlimited
+        // attempts at one per cooldown window.
+        useSessionStore.getState().lock();
       }
     }
 

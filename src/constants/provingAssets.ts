@@ -79,11 +79,23 @@ export const ZKEY_ASSETS: Record<CircuitId, CircuitAssets> = {
 };
 
 // Fail-closed at import: the pinned zkeys must target the program we transact with.
+//
+// NOTE ON WHAT THIS DOES AND DOESN'T CATCH. Both operands are hardcoded literals
+// with no env input, so this fires only if a developer edits one string and not
+// the other. It detects no runtime or environment misconfiguration, which is
+// what the coherence check below is for.
 if (ZKEY_PROGRAM_ID !== SHIELDED_POOL_PROGRAM_ID) {
   throw new Error(
     `ZKEY_PROGRAM_ID (${ZKEY_PROGRAM_ID}) != SHIELDED_POOL_PROGRAM_ID (${SHIELDED_POOL_PROGRAM_ID})`,
   );
 }
+
+// NOT asserted: ZKEY_CLUSTER === NETWORK. That comparison looks right and is
+// wrong for this app. `.env.devnet` deliberately sets NETWORK=mainnet-beta —
+// the transparent side (RPC, presale, NOC mint) is mainnet while the shielded
+// pool is a devnet deployment. The two clusters legitimately differ, so the
+// meaningful binding is artifacts→pool, which the ZKEY_PROGRAM_ID check above
+// already enforces. Asserting against NETWORK would break the real devnet build.
 
 /** Pinned zkey+wasm for a circuit. Throws if either url/sha256 is unset (fail-closed
  *  — an undelivered circuit is not provable). */

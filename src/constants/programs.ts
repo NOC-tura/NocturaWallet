@@ -1,6 +1,13 @@
 import Config from 'react-native-config';
+import {assertKnownNetwork} from './networkGuard';
 
-export const NETWORK = Config.NETWORK as 'devnet' | 'mainnet-beta';
+// Fail closed BEFORE any address constant is derived. Previously this was an
+// unchecked cast whose default branch was mainnet, so a missing or misspelled
+// NETWORK silently selected the real mint, program and treasuries.
+const RAW_NETWORK = Config.NETWORK;
+assertKnownNetwork(RAW_NETWORK);
+
+export const NETWORK = RAW_NETWORK;
 export const IS_DEVNET = NETWORK === 'devnet';
 
 // $NOC SPL Token

@@ -16,6 +16,7 @@ import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
 import {useSecureSettingsStore} from '../../store/zustand/secureSettingsStore';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {useSessionStore} from '../../store/zustand/sessionStore';
+import {clearAllStores} from '../../store/mmkv/instances';
 
 type RootStackParamList = {
   Onboarding: undefined;
@@ -47,6 +48,10 @@ export function WipeWalletScreen() {
       usePublicSettingsStore.getState().reset();
       useSecureSettingsStore.getState().reset();
       useShieldedStore.getState().reset();
+      // Resetting the Zustand stores does not clear MMKV: shielded notes, the
+      // merkle sync cache, the address book, the derivation scheme and the
+      // PIN-lockout counters live there and used to survive a wipe.
+      clearAllStores();
       useSessionStore.getState().lock();
       navigation.reset({
         index: 0,
