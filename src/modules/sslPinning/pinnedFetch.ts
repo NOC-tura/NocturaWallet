@@ -59,6 +59,29 @@ export class SSLPinningError extends Error {
  * All requests to api.noc-tura.io MUST go through this function.
  * On pin failure → throws SSLPinningError (E032).
  */
+/**
+ * Recognise the rejected-but-valid HTTP response the pinning library hands back
+ * for non-2xx, and normalise it into a PinnedFetchResponse. Returns null for
+ * anything that is a genuine failure (pin mismatch, DNS, timeout).
+ */
+function toRejectedResponse(error: unknown): PinnedFetchResponse | null {
+  if (error instanceof Error || typeof error !== 'object' || error === null) return null;
+  const candidate = error as {
+    status?: unknown;
+    headers?: unknown;
+    bodyString?: unknown;
+  };
+  if (typeof candidate.status !== 'number') return null;
+
+  const body = typeof candidate.bodyString === 'string' ? candidate.bodyString : '';
+  return {
+    status: candidate.status,
+    headers: (candidate.headers as Record<string, string>) ?? {},
+    json: async () => JSON.parse(body),
+    text: async () => body,
+  };
+}
+
 export async function pinnedFetch(
   url: string,
   options: PinnedFetchOptions = {},
@@ -89,6 +112,22 @@ export async function pinnedFetch(
       text: async () => response.text(),
     };
   } catch (error) {
+    // react-native-ssl-pinning REJECTS on every non-2xx: the native module
+    // invokes the callback with the response as the ERROR argument whenever
+    // `!okHttpResponse.isSuccessful()` (RNSslPinningModule.java:238-241), and
+    // the JS wrapper then does `deferred.reject(data)` with a plain object
+    // (index.js:43). Converting that to `new Error(String(error))` stringified
+    // it to "[object Object]" and DESTROYED the status code — which made
+    // relayerSubmit's entire 409/429/502/503 machine unreachable on device,
+    // including the "already landed vs input-spent-elsewhere" disambiguation.
+    // A transfer that DID land was reported as a failure, so its input note was
+    // never marked spent and the local balance inflated permanently.
+    //
+    // A rejected RESPONSE is not an error condition for this wrapper — hand it
+    // back like any other response and let the caller branch on the status.
+    const asResponse = toRejectedResponse(error);
+    if (asResponse) return asResponse;
+
     const cause = error instanceof Error ? error : new Error(String(error));
     const message = cause.message.toLowerCase();
     // Differentiate SSL pin failures from network errors
