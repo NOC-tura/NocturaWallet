@@ -1,0 +1,95 @@
+name: Release build
+
+# Signed builds only on an explicit action — never on pull_request. Fork PRs do
+# not receive secrets by default, but keeping the signing job off PR triggers
+# entirely means a workflow-file change in a PR can never reach the key.
+on:
+  workflow_dispatch:
+    inputs:
+      artifact:
+        description: 'What to build'
+        required: true
+        default: 'aab'
+        type: choice
+        options: [aab, apk, both]
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # The keystore never exists in the repo. It is materialised from a secret
+      # into the app module and removed again in a step that always runs.
+      # `storeFile` is resolved by Gradle relative to android/app.
+      - name: Materialise signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.NOCTURA_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::NOCTURA_KEYSTORE_B64 is not set — refusing to produce an unsigned or debug-signed artifact."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > android/app/release.jks
+          chmod 600 android/app/release.jks
+
+      - name: Build
+        env:
+          NOCTURA_KEYSTORE_FILE: release.jks
+          NOCTURA_KEYSTORE_PASSWORD: ${{ secrets.NOCTURA_KEYSTORE_PASSWORD }}
+          NOCTURA_KEY_ALIAS: ${{ secrets.NOCTURA_KEY_ALIAS }}
+          NOCTURA_KEY_PASSWORD: ${{ secrets.NOCTURA_KEY_PASSWORD }}
+        working-directory: android
+        run: |
+          case "${{ github.event.inputs.artifact || 'both' }}" in
+            aab)  ./gradlew bundleRelease ;;
+            apk)  ./gradlew assembleRelease ;;
+            *)    ./gradlew bundleRelease assembleRelease ;;
+          esac
+
+      # Fail loudly if the artifact carries the public debug certificate. The
+      # build.gradle guard should make this unreachable; assert it anyway,
+      # because that guard is the thing under test here.
+      - name: Assert the artifact is not debug-signed
+        run: |
+          APK=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1 || true)
+          if [ -n "$APK" ]; then
+            SIGNER=$("$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "$APK" | grep 'certificate DN' | head -1)
+            echo "$SIGNER"
+            case "$SIGNER" in
+              *"CN=Android Debug"*)
+                echo "::error::Artifact is signed with the public Android debug certificate."
+                exit 1 ;;
+            esac
+          fi
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f android/app/release.jks
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: noctura-release
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            android/app/build/outputs/bundle/release/*.aab
+            android/app/build/outputs/apk/release/*.apk
