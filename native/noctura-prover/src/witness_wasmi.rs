@@ -42,12 +42,29 @@ impl WitnessCalculator {
         linker.func_wrap(
             "runtime",
             "error",
-            |_: Caller<()>, _: i32, _: i32, _: i32, _: i32, _: i32, _: i32| -> Result<(), wasmi::Error> {
-                Err(wasmi::Error::new("circom runtime error (constraint failed)"))
+            |_: Caller<()>,
+             _: i32,
+             _: i32,
+             _: i32,
+             _: i32,
+             _: i32,
+             _: i32|
+             -> Result<(), wasmi::Error> {
+                Err(wasmi::Error::new(
+                    "circom runtime error (constraint failed)",
+                ))
             },
         )?;
-        linker.func_wrap("runtime", "logSetSignal", |_: Caller<()>, _: i32, _: i32| {})?;
-        linker.func_wrap("runtime", "logGetSignal", |_: Caller<()>, _: i32, _: i32| {})?;
+        linker.func_wrap(
+            "runtime",
+            "logSetSignal",
+            |_: Caller<()>, _: i32, _: i32| {},
+        )?;
+        linker.func_wrap(
+            "runtime",
+            "logGetSignal",
+            |_: Caller<()>, _: i32, _: i32| {},
+        )?;
         linker.func_wrap("runtime", "logFinishComponent", |_: Caller<()>, _: i32| {})?;
         linker.func_wrap("runtime", "logStartComponent", |_: Caller<()>, _: i32| {})?;
         linker.func_wrap("runtime", "log", |_: Caller<()>, _: i32| {})?;
@@ -71,7 +88,11 @@ impl WitnessCalculator {
             .get_typed_func::<(), i32>(&store, "getFieldNumLen32")?
             .call(&mut store, ())? as u32;
 
-        Ok(Self { store, instance, n32 })
+        Ok(Self {
+            store,
+            instance,
+            n32,
+        })
     }
 
     fn tf0(&self, name: &str) -> Res<TypedFunc<(), i32>> {
@@ -79,18 +100,18 @@ impl WitnessCalculator {
     }
 
     /// Compute the full witness assignment for `inputs`, as ark-bn254 field elements.
-    pub fn calculate_witness_fr(
-        &mut self,
-        inputs: HashMap<String, Vec<BigInt>>,
-    ) -> Res<Vec<Fr>> {
+    pub fn calculate_witness_fr(&mut self, inputs: HashMap<String, Vec<BigInt>>) -> Res<Vec<Fr>> {
         let n32 = self.n32 as usize;
         let init: TypedFunc<i32, ()> = self.instance.get_typed_func(&self.store, "init")?;
-        let write: TypedFunc<(i32, i32), ()> =
-            self.instance.get_typed_func(&self.store, "writeSharedRWMemory")?;
-        let read: TypedFunc<i32, i32> =
-            self.instance.get_typed_func(&self.store, "readSharedRWMemory")?;
-        let set_input: TypedFunc<(i32, i32, i32), ()> =
-            self.instance.get_typed_func(&self.store, "setInputSignal")?;
+        let write: TypedFunc<(i32, i32), ()> = self
+            .instance
+            .get_typed_func(&self.store, "writeSharedRWMemory")?;
+        let read: TypedFunc<i32, i32> = self
+            .instance
+            .get_typed_func(&self.store, "readSharedRWMemory")?;
+        let set_input: TypedFunc<(i32, i32, i32), ()> = self
+            .instance
+            .get_typed_func(&self.store, "setInputSignal")?;
         let get_witness: TypedFunc<i32, ()> =
             self.instance.get_typed_func(&self.store, "getWitness")?;
 
@@ -197,7 +218,11 @@ mod tests {
             BigInt::from(0u64),
             BigInt::from(1u64),
             BigInt::from(0x1234_5678_9abc_def0u64),
-            BigInt::parse_bytes(b"8081702745406920529902264228351723735379273324999453834569345340835518474946", 10).unwrap(),
+            BigInt::parse_bytes(
+                b"8081702745406920529902264228351723735379273324999453834569345340835518474946",
+                10,
+            )
+            .unwrap(),
         ] {
             let arr = to_array32(&v, 8);
             assert_eq!(arr.len(), 8);

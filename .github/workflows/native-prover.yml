@@ -1,0 +1,121 @@
+name: Native prover
+
+# The Rust prover has never been compiled by anything but a developer's machine.
+# That is the same category as an untracked toolchain: the results are not wrong,
+# they are unfalsifiable — nobody else could build it in order to disagree.
+#
+# It matters more after the A0 circuit freeze, when `nk` is assembled inside
+# native and never crosses the JS bridge. At that point the wallet's custody
+# guarantee lives entirely on the side of the boundary the JS suite cannot see,
+# so this job is the only place it can be checked at all.
+
+on:
+  push:
+    branches: [main]
+    paths: ['native/**', '.github/workflows/native-prover.yml', 'src/constants/provingAssets.ts']
+  pull_request:
+    paths: ['native/**', '.github/workflows/native-prover.yml', 'src/constants/provingAssets.ts']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: native/noctura-prover
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native/noctura-prover
+
+      # The integration test proves a real deposit against the SAME artifacts the
+      # wallet ships, pinned by SHA-256 in src/constants/provingAssets.ts. Reading
+      # the pins from there rather than restating them means a drift between the
+      # prover's fixtures and the wallet's pins fails here instead of on a device.
+      # `artifacts/` is gitignored, so without this step the integration test
+      # panics on a missing file — it does not skip.
+      - name: Fetch and verify pinned circuit artifacts
+        working-directory: .
+        run: |
+          set -euo pipefail
+          mkdir -p native/noctura-prover/artifacts
+          pin() { grep -A8 "^  $1: {" src/constants/provingAssets.ts | grep -m"$2" "sha256:" | tail -1 | sed -E "s/.*'([0-9a-f]{64})'.*/\1/"; }
+          base=$(grep -E "^const BASE" src/constants/provingAssets.ts | sed -E "s/.*'([^']+)'.*/\1/")
+          for spec in "deposit_final.zkey:1" "deposit.wasm:2"; do
+            file=${spec%%:*}; n=${spec##*:}
+            want=$(pin deposit "$n")
+            [ -n "$want" ] || { echo "::error::could not read the $file pin from provingAssets.ts"; exit 1; }
+            curl -fsSL --retry 3 "$base/$file" -o "native/noctura-prover/artifacts/$file"
+            got=$(sha256sum "native/noctura-prover/artifacts/$file" | cut -d' ' -f1)
+            if [ "$got" != "$want" ]; then
+              echo "::error::$file SHA-256 mismatch — pinned $want, downloaded $got"
+              exit 1
+            fi
+            echo "$file verified against the wallet's pin: $want"
+          done
+
+      - name: Formatting
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      # --locked fails if Cargo.lock would need updating, so a dependency cannot
+      # drift without a committed lockfile change.
+      # `set -o pipefail` is load-bearing: without it the pipeline exits with
+      # tee's status, so a FAILING test produced a GREEN step. That is exactly
+      # what happened on this workflow's first run — the positive control below
+      # was the only thing that caught it.
+      - name: Test
+        run: |
+          set -o pipefail
+          cargo test --locked 2>&1 | tee /tmp/cargo-test.log
+
+      # The assertion lives in one place so both controls exercise the SAME code.
+      # `cargo test` reports success when zero tests run, and a suite that
+      # silently stopped executing its only meaningful test is indistinguishable
+      # from a passing one.
+      - name: Write the interop assertion
+        working-directory: .
+        run: |
+          cat > /tmp/assert-interop.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          grep -q "test deposit_prove_to_bytes_matches_public_inputs \.\.\. ok" "$1"
+          SH
+          chmod +x /tmp/assert-interop.sh
+
+      # POSITIVE CONTROL — the assertion passes on the real log.
+      - name: Assert the interop test actually ran
+        working-directory: .
+        run: |
+          if ! /tmp/assert-interop.sh /tmp/cargo-test.log; then
+            echo "::error::The deposit interop test did not run. A green suite that skipped it proves nothing."
+            cat /tmp/cargo-test.log
+            exit 1
+          fi
+          echo "interop test executed and passed"
+
+      # NEGATIVE CONTROL — the SAME assertion must fail on a log where the test
+      # is absent. Without this, a broken matcher makes the positive control
+      # permanently permissive and nothing reports it.
+      - name: Assert the interop check can fail
+        working-directory: .
+        run: |
+          printf 'running 0 tests\n\ntest result: ok. 0 passed; 0 failed\n' > /tmp/cargo-test-empty.log
+          if /tmp/assert-interop.sh /tmp/cargo-test-empty.log; then
+            echo "::error::the interop assertion PASSED on a log with no tests — it cannot fail, so it proves nothing"
+            exit 1
+          fi
+          echo "interop assertion is falsifiable"
