@@ -35,8 +35,17 @@ async function ensureOne(
  * Return local paths to the circuit's proving key AND witness wasm, each guaranteed
  * to match its pinned SHA-256. Downloads on first use; re-verifies cached copies on
  * every call so tampering is caught. A mismatch deletes the file and throws —
- * proving never proceeds on an unverified artifact. BOTH are downloaded (the wasm is
- * NOT bundled) so the circuit set can rotate without an app-store release.
+ * proving never proceeds on an unverified artifact. BOTH are downloaded rather
+ * than bundled, which keeps the APK small and lets a NEW install fetch whatever
+ * its pins name.
+ *
+ * It does NOT let the circuit set rotate without an app-store release — an
+ * earlier version of this comment claimed that and was wrong. The pins live in
+ * `src/constants/provingAssets.ts`, compiled into the binary, and must: pins
+ * fetched at runtime would let a compromised host serve any zkey with a matching
+ * hash, and this check would become decoration. Content-addressed URLs
+ * (`/h/<sha256>/<file>`) buy something smaller and real — installs that do not
+ * take a release keep working instead of breaking on a hash mismatch.
  */
 export async function ensureCircuitAssets(
   id: CircuitId,
