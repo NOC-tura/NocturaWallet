@@ -44,7 +44,6 @@ jest.mock('../../zkProver/zkProverModule', () => ({
 }));
 jest.mock('../poolTx', () => ({submitPoolTxMany: jest.fn(async () => 'SIG')}));
 jest.mock('../noteStore', () => ({
-  markSpentByIndex: jest.fn(),
   markSpentByCommitment: jest.fn(),
   setNoteIndex: jest.fn(),
   addNote: jest.fn(),
