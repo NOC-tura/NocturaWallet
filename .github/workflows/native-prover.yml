@@ -69,6 +69,23 @@ jobs:
       # prover's fixtures and the wallet's pins fails here instead of on a device.
       # `artifacts/` is gitignored, so without this step the integration test
       # panics on a missing file — it does not skip.
+      # Cache ONLY the two downloaded artifacts, listed by name. Caching the
+      # whole `artifacts/` directory would let a stale cache overwrite the
+      # tracked deposit_input.json fixture on restore, silently reverting a
+      # file that git owns.
+      #
+      # A cache hit is not trusted on the strength of its key: the step below
+      # re-hashes whatever it finds against the pin, so a stale or poisoned
+      # cache entry fails exactly as a corrupted download would. That check is
+      # what makes caching safe here rather than a second source of truth.
+      - name: Cache the pinned circuit artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            native/noctura-prover/artifacts/deposit_final.zkey
+            native/noctura-prover/artifacts/deposit.wasm
+          key: zk-artifacts-${{ hashFiles('src/constants/provingAssets.ts') }}
+
       - name: Fetch and verify pinned circuit artifacts
         working-directory: .
         run: |
@@ -80,13 +97,23 @@ jobs:
             file=${spec%%:*}; n=${spec##*:}
             want=$(pin deposit "$n")
             [ -n "$want" ] || { echo "::error::could not read the $file pin from provingAssets.ts"; exit 1; }
-            curl -fsSL --retry 3 "$base/$file" -o "native/noctura-prover/artifacts/$file"
-            got=$(sha256sum "native/noctura-prover/artifacts/$file" | cut -d' ' -f1)
+            dest="native/noctura-prover/artifacts/$file"
+            if [ -f "$dest" ] && [ "$(sha256sum "$dest" | cut -d' ' -f1)" = "$want" ]; then
+              echo "$file served from cache and re-verified against the wallet's pin: $want"
+              continue
+            fi
+            # --connect-timeout bounds an unreachable host. Without it a hard
+            # outage burned ~135s per attempt, four attempts, on every run.
+            curl -fsSL --retry 3 --connect-timeout 15 --max-time 300 "$base/$file" -o "$dest" || {
+              echo "::error::could not download $file from $base — the coordinator's asset host was unreachable. This gate is deliberately fail-closed: it will not test the prover against artifacts it could not verify."
+              exit 1
+            }
+            got=$(sha256sum "$dest" | cut -d' ' -f1)
             if [ "$got" != "$want" ]; then
               echo "::error::$file SHA-256 mismatch — pinned $want, downloaded $got"
               exit 1
             fi
-            echo "$file verified against the wallet's pin: $want"
+            echo "$file downloaded and verified against the wallet's pin: $want"
           done
 
       - name: Formatting
