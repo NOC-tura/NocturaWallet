@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "start": "react-native start",
     "test": "jest",
-    "verify": "npm run lint:ci && npm run typecheck && jest --coverage --forceExit"
+    "verify": "npm run lint:ci && npm run typecheck && jest --coverage --forceExit",
+    "mutation-sweep": "node scripts/mutation-sweep.mjs"
   },
   "dependencies": {
     "@noble/ciphers": "^2.1.1",
