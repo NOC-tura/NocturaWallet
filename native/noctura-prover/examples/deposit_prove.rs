@@ -28,7 +28,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut zkey_reader = BufReader::new(File::open("artifacts/deposit_final.zkey")?);
     let (params, matrices) = read_zkey(&mut zkey_reader)?;
     let n_public = matrices.num_instance_variables - 1;
-    println!("read_zkey OK — nPublic = {n_public}, constraints = {}", matrices.num_constraints);
+    println!(
+        "read_zkey OK — nPublic = {n_public}, constraints = {}",
+        matrices.num_constraints
+    );
     assert_eq!(n_public, 3, "deposit nPublic must be 3");
 
     // ---- witness from the circom .wasm for a valid deposit input ----
@@ -43,7 +46,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut wtns = WitnessCalculator::from_file("artifacts/deposit.wasm")?;
     let full_assignment = wtns.calculate_witness_fr(inputs)?;
-    println!("witness computed: {} elements (via wasmi, pure Rust)", full_assignment.len());
+    println!(
+        "witness computed: {} elements (via wasmi, pure Rust)",
+        full_assignment.len()
+    );
 
     // ---- prove (Groth16 + circom reduction, using the zkey matrices) ----
     let mut rng = thread_rng();
@@ -78,7 +84,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("public inputs (nPublic={n_public}): {pub_dec:?}");
     let known: std::collections::HashSet<&String> = input_json.values().collect();
     for p in &pub_dec {
-        assert!(known.contains(p), "public input {p} is not one of the known deposit inputs");
+        assert!(
+            known.contains(p),
+            "public input {p} is not one of the known deposit inputs"
+        );
     }
     assert!(
         pub_dec.contains(&input_json["commitment"]),
@@ -89,10 +98,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     // ---- serialize to the 256-byte on-chain layout + round-trip verify (validation B) ----
     let proof_bytes = noctura_prover::proof_bytes::serialize_proof(&proof);
     assert_eq!(proof_bytes.len(), 256);
-    println!("proofBytes (256B, on-chain layout): {}", hex::encode(proof_bytes));
+    println!(
+        "proofBytes (256B, on-chain layout): {}",
+        hex::encode(proof_bytes)
+    );
     let parsed = noctura_prover::proof_bytes::parse_proof(&proof_bytes)?;
     let rt = Groth16::<Bn254>::verify_with_processed_vk(&pvk, public_inputs, &parsed)?;
-    assert!(rt, "round-trip: serialized -> parsed proof must still verify");
-    println!("PASS: proofBytes round-trips + verifies (on-chain layout: pi_a negated, G2 c1-first, BE)");
+    assert!(
+        rt,
+        "round-trip: serialized -> parsed proof must still verify"
+    );
+    println!(
+        "PASS: proofBytes round-trips + verifies (on-chain layout: pi_a negated, G2 c1-first, BE)"
+    );
     Ok(())
 }

@@ -16,16 +16,22 @@ use ark_snark::SNARK;
 
 fn main() -> Result<(), Box<dyn Error>> {
     // reference proof produced by the hosted prover for our test deposit input
-    let reference: serde_json::Value =
-        serde_json::from_reader(BufReader::new(File::open("artifacts/deposit_reference.json")?))?;
-    let hex_str = reference["proofBytes"].as_str().ok_or("no proofBytes in reference")?;
+    let reference: serde_json::Value = serde_json::from_reader(BufReader::new(File::open(
+        "artifacts/deposit_reference.json",
+    )?))?;
+    let hex_str = reference["proofBytes"]
+        .as_str()
+        .ok_or("no proofBytes in reference")?;
     let public_dec: Vec<String> = reference["publicInputs"]
         .as_array()
         .ok_or("no publicInputs")?
         .iter()
         .map(|v| v.as_str().unwrap().to_string())
         .collect();
-    println!("reference proofBytes: {} hex chars; publicInputs: {public_dec:?}", hex_str.len());
+    println!(
+        "reference proofBytes: {} hex chars; publicInputs: {public_dec:?}",
+        hex_str.len()
+    );
 
     let raw = hex::decode(hex_str)?;
     if raw.len() != 256 {
@@ -38,7 +44,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let proof = noctura_prover::proof_bytes::parse_proof(&bytes)?;
 
     // VK straight from the deployed zkey
-    let (params, _matrices) = read_zkey(&mut BufReader::new(File::open("artifacts/deposit_final.zkey")?))?;
+    let (params, _matrices) = read_zkey(&mut BufReader::new(File::open(
+        "artifacts/deposit_final.zkey",
+    )?))?;
     let pvk = Groth16::<Bn254>::process_vk(&params.vk)?;
 
     let public_inputs: Vec<Fr> = public_dec

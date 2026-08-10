@@ -37,9 +37,7 @@ pub extern "system" fn Java_com_nocturawallet_prover_NocturaProverModule_nativeP
     })();
 
     // Always return a JSON string; errors go in an `error` field for Kotlin to reject.
-    let json = result.unwrap_or_else(|e| {
-        serde_json::json!({ "error": e.to_string() }).to_string()
-    });
+    let json = result.unwrap_or_else(|e| serde_json::json!({ "error": e.to_string() }).to_string());
     env.new_string(json)
         .expect("failed to build result jstring")
         .into_raw()

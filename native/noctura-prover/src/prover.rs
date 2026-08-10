@@ -38,7 +38,10 @@ fn json_to_bigints(v: &serde_json::Value, out: &mut Vec<BigInt>) -> Result<(), B
             out.push(BigInt::parse_bytes(s.as_bytes(), 10).ok_or("param string is not a decimal")?);
         }
         serde_json::Value::Number(n) => {
-            out.push(BigInt::parse_bytes(n.to_string().as_bytes(), 10).ok_or("param number is not an integer")?);
+            out.push(
+                BigInt::parse_bytes(n.to_string().as_bytes(), 10)
+                    .ok_or("param number is not an integer")?,
+            );
         }
         serde_json::Value::Array(a) => {
             for e in a {
@@ -75,7 +78,9 @@ pub fn prove_to_bytes(
     let inputs = parse_params(params_json)?;
     let full_assignment = WitnessCalculator::from_file(wasm_path)?.calculate_witness_fr(inputs)?;
 
-    let (params, matrices) = read_zkey(&mut std::io::BufReader::new(std::fs::File::open(zkey_path)?))?;
+    let (params, matrices) = read_zkey(&mut std::io::BufReader::new(std::fs::File::open(
+        zkey_path,
+    )?))?;
     let num_inputs = matrices.num_instance_variables;
 
     // Deterministic RNG seeded from the witness so proofs are reproducible per input
@@ -119,14 +124,23 @@ mod tests {
         }"#;
         let out = parse_params(json).unwrap();
         assert_eq!(out["merkleRoot"], vec![123u64.into()]);
-        assert_eq!(out["merklePath"], vec![10u64.into(), 20u64.into(), 30u64.into()]);
-        assert_eq!(out["merklePathIndices"], vec![0u64.into(), 1u64.into(), 0u64.into()]);
+        assert_eq!(
+            out["merklePath"],
+            vec![10u64.into(), 20u64.into(), 30u64.into()]
+        );
+        assert_eq!(
+            out["merklePathIndices"],
+            vec![0u64.into(), 1u64.into(), 0u64.into()]
+        );
         assert_eq!(out["leafIndex"], vec![5u64.into()], "JSON number handled");
     }
 
     #[test]
     fn flattens_nested_arrays_row_major() {
         let out = parse_params(r#"{"x": [["1","2"],["3","4"]]}"#).unwrap();
-        assert_eq!(out["x"], vec![1u64.into(), 2u64.into(), 3u64.into(), 4u64.into()]);
+        assert_eq!(
+            out["x"],
+            vec![1u64.into(), 2u64.into(), 3u64.into(), 4u64.into()]
+        );
     }
 }
