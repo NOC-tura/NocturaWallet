@@ -165,13 +165,17 @@ export function validateZkManifest(raw: unknown): ZkManifest {
     // ever removed, this still refuses to resolve an ambiguous id rather than
     // quietly taking whichever row happened to come last.
     //
-    // Mutation-swept 2026-08-10: 8 of the 9 guards in this function are
-    // demonstrated load-bearing — neutralise any one and a named test fails. The
-    // ninth is `matches.length > 1` below, which SURVIVES, and must: the
-    // uniqueness check runs first, so it is unreachable from the public API.
-    // That is redundancy on purpose, not missing coverage, and it cannot be
-    // isolated by a test — removing uniqueness is what makes it reachable, and
-    // the sweep shows that removal already fails three tests.
+    // 8 of the 9 guards in this function are demonstrated load-bearing —
+    // neutralise any one and a named test fails. The ninth is `matches.length > 1`
+    // below, which SURVIVES and must: the uniqueness check runs first, so it is
+    // unreachable from the public API. Redundancy on purpose, not missing
+    // coverage.
+    //
+    // That is not a historical note. `npm run mutation-sweep` re-measures it, is
+    // run by the ZK manifest workflow, and FAILS on any survivor not declared
+    // with a reason — including this one if uniqueness is ever reordered away.
+    // The first version of this claim was produced by a shell loop that no longer
+    // existed, which made it unreproducible by anyone who might disagree.
     const matches = cases.filter(c => c.id === id);
     if (matches.length === 0) {
       throw new ZkManifestError(

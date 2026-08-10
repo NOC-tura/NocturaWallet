@@ -15,9 +15,9 @@ name: ZK manifest
 on:
   push:
     branches: [main]
-    paths: ['src/modules/shielded/zkManifest.ts', 'src/modules/shielded/__tests__/zkManifest*', '.github/workflows/zk-manifest.yml']
+    paths: ['src/modules/shielded/zkManifest.ts', 'src/modules/shielded/__tests__/zkManifest*', 'scripts/mutation-sweep.mjs', '.github/workflows/zk-manifest.yml']
   pull_request:
-    paths: ['src/modules/shielded/zkManifest.ts', 'src/modules/shielded/__tests__/zkManifest*', '.github/workflows/zk-manifest.yml']
+    paths: ['src/modules/shielded/zkManifest.ts', 'src/modules/shielded/__tests__/zkManifest*', 'scripts/mutation-sweep.mjs', '.github/workflows/zk-manifest.yml']
   workflow_dispatch:
 
 permissions:
@@ -52,6 +52,15 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # Mutation results DECAY: which guard fires first is a property of the code's
+      # order, not of the spec, so a reordering or a new guard silently changes what
+      # the suite proves. Re-measured on every change to this module rather than
+      # recorded once in a comment — the sweep carries its own controls (green
+      # baseline, a no-op mutant that must survive, and proof that each mutation
+      # actually applied) and fails on any undeclared survivor.
+      - name: Mutation-sweep the manifest guards
+        run: npm run mutation-sweep
 
       # NEGATIVE CONTROL, first: without the env var the suite must SKIP. This is
       # what makes "it did not skip" meaningful in the positive control below —
