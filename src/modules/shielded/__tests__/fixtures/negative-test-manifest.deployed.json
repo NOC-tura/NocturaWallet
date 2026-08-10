@@ -67,7 +67,7 @@
       "name": "transfer: out_amount out of 64-bit range (VALUE MINTING)"
     },
     {
-      "id": "out_range",
+      "id": "out_range_eliminated",
       "circuit": "transfer",
       "kind": "NEGATIVE",
       "status": "MUT-VERIFIED",

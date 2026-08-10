@@ -1,3 +1,4 @@
+import {createHash} from 'crypto';
 import {readFileSync} from 'fs';
 import {join} from 'path';
 
@@ -101,23 +102,37 @@ describe('validateZkManifest — the constraints the wallet depends on', () => {
 });
 
 describe('the manifest actually deployed at api.noc-tura.io', () => {
-  // Pinned copy of what the coordinator serves today, byte-identical to
-  // sha256 41dc8fb8a7b04788e7a51ddbd80c480ba03a3953ed28a13ea8485ffb51e5e48b.
-  // It carries a real defect: `out_range` is the id of TWO different cases, so a
-  // by-id gate would report on 24 of 25 and silently drop the value-minting one.
-  // This test documents that, and will fail loudly when they fix it — at which
-  // point the expectation flips to `not.toThrow()`.
-  it('is REJECTED, because out_range is used twice', () => {
-    expect(() => validateZkManifest(fixture('negative-test-manifest.deployed.json'))).toThrow(
-      /duplicate.*out_range/i,
-    );
+  // A pinned copy of what the coordinator serves. It is deliberately a SEPARATE
+  // file from the well-formed fixture the mutation tests above are built on:
+  // that one is ours to hold still, so a case added upstream cannot quietly move
+  // the ground under every negative test.
+  //
+  // History worth keeping: the first deployed manifest used `out_range` as the id
+  // of two different cases (25 cases, 24 unique ids), so a by-id gate would have
+  // reported on 24 of them and silently dropped a value-minting check. This suite
+  // asserted the rejection until the coordinator fixed it; the second case is now
+  // `out_range_eliminated` and their generator refuses to emit duplicate ids.
+  const DEPLOYED_SHA256 = '220aa4fb0874ada57c955d3772bb85e7e9baf2ba79fee27c783e4e24d76fa041';
+
+  it('is accepted, with every constraint the wallet depends on still MUT-VERIFIED', () => {
+    expect(() => validateZkManifest(fixture('negative-test-manifest.deployed.json'))).not.toThrow();
   });
 
-  it('is otherwise identical to the well-formed fixture', () => {
-    const deployed = fixture('negative-test-manifest.deployed.json') as Record<string, unknown>;
-    const fixed = wellFormed();
-    expect(casesOf(deployed).map(c => c.name)).toEqual(casesOf(fixed).map(c => c.name));
-    expect(deployed.summary).toEqual(fixed.summary);
+  it('is the artifact we recorded — provenance, not the assertion', () => {
+    // Pinning the hash of our OWN copy, so a fixture updated without updating this
+    // line fails. Deliberately not a check against the live file: that changes on
+    // any upstream line and would make this suite fail on unrelated edits. The
+    // live artifact is checked by zkManifest.live.test.ts, on the rows.
+    const raw = readFileSync(
+      join(__dirname, 'fixtures', 'negative-test-manifest.deployed.json'),
+    );
+    expect(createHash('sha256').update(raw).digest('hex')).toBe(DEPLOYED_SHA256);
+  });
+
+  it('no longer carries the duplicate id it shipped with', () => {
+    const ids = casesOf(fixture('negative-test-manifest.deployed.json') as Record<string, unknown>).map(c => c.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual(expect.arrayContaining(['out_range', 'out_range_eliminated']));
   });
 });
 
