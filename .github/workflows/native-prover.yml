@@ -23,6 +23,16 @@ permissions:
 defaults:
   run:
     working-directory: native/noctura-prover
+    # GitHub's default for `run` is `bash -e {0}` — no pipefail — so a pipeline
+    # exits with its LAST command's status and `cargo test | tee` reports success
+    # on a failing test. That is not hypothetical: it happened on this
+    # workflow's first run, and only the positive control below noticed.
+    #
+    # `shell: bash` selects `bash --noprofile --norc -eo pipefail {0}`, which
+    # fixes it for EVERY step rather than the one step someone remembered. The
+    # per-step `set -o pipefail` further down is left in place deliberately:
+    # a future edit that drops this default should not silently re-arm the bug.
+    shell: bash
 
 jobs:
   build-and-test:
@@ -30,6 +40,20 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+
+      # CONTROL ON THE SHELL ITSELF. Every assertion below is only worth what
+      # this job's exit-status handling is worth, and "shell: bash implies
+      # pipefail" is a claim about GitHub's runner, not something this
+      # repository controls. So it is measured on every run instead of trusted:
+      # under `bash -e` alone this step FAILS, under `-eo pipefail` it passes.
+      - name: Assert this job's shell cannot mask a failing pipeline
+        working-directory: .
+        run: |
+          if (exit 1) | cat; then
+            echo "::error::pipefail is OFF in this job — a failing command piped into another reports success, and every gate below can silently pass. See the first run of this workflow."
+            exit 1
+          fi
+          echo "shell propagates pipeline failure"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
