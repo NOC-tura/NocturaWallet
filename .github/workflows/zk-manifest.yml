@@ -1,0 +1,84 @@
+name: ZK manifest
+
+# Validates the coordinator's negative-test manifest as SERVED, not as described.
+#
+# The manifest records which circuit constraints are mutation-verified — shown to
+# reject a witness that violates them. The wallet's own correctness rests on seven
+# of them (nullifier binding, rho derivation, change redirection, conservation),
+# so a constraint quietly losing that status is a change to what the wallet can
+# assume, with nothing in this repository to announce it.
+#
+# We do NOT gate on the file's hash: it changes on any line, so a hash gate would
+# fail on every unrelated coordinator edit and degrade into noise until someone
+# deleted it. We assert the rows. See src/modules/shielded/zkManifest.ts.
+
+on:
+  push:
+    branches: [main]
+    paths: ['src/modules/shielded/zkManifest.ts', 'src/modules/shielded/__tests__/zkManifest*', '.github/workflows/zk-manifest.yml']
+  pull_request:
+    paths: ['src/modules/shielded/zkManifest.ts', 'src/modules/shielded/__tests__/zkManifest*', '.github/workflows/zk-manifest.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    # GitHub's default is `bash -e {0}` — no pipefail — so `jest | tee` would exit
+    # with tee's status and a failing check would report success. That is not
+    # hypothetical; it happened on the first run of the native-prover workflow.
+    shell: bash
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Control on the shell itself: under `bash -e` alone this FAILS.
+      - name: Assert this job's shell cannot mask a failing pipeline
+        run: |
+          if (exit 1) | cat; then
+            echo "::error::pipefail is OFF in this job — every check below could pass silently"
+            exit 1
+          fi
+          echo "shell propagates pipeline failure"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # NEGATIVE CONTROL, first: without the env var the suite must SKIP. This is
+      # what makes "it did not skip" meaningful in the positive control below —
+      # otherwise a suite that can never run looks identical to one that passed.
+      - name: Assert the live check is genuinely gated
+        run: |
+          npx jest --testPathPattern=zkManifest.live 2>&1 | tee /tmp/off.log
+          if ! grep -qE "Tests:.*1 skipped" /tmp/off.log; then
+            echo "::error::without ZK_MANIFEST_LIVE the live suite should skip, so that npm run verify stays offline. It did not."
+            exit 1
+          fi
+          echo "live check is off by default, as intended"
+
+      - name: Validate the manifest as served
+        run: ZK_MANIFEST_LIVE=1 npx jest --testPathPattern=zkManifest.live --verbose 2>&1 | tee /tmp/live.log
+
+      # POSITIVE CONTROL: the step above is green both when the check passes and
+      # when it never executed. Only one of those is evidence.
+      - name: Assert the live check actually executed
+        if: always()
+        run: |
+          if ! grep -q "the live ZK negative-test manifest" /tmp/live.log; then
+            echo "::error::the live suite did not run at all"
+            exit 1
+          fi
+          if grep -qE "Tests:.*skipped" /tmp/live.log; then
+            echo "::error::the live check SKIPPED. A skipped test is green and proves nothing."
+            exit 1
+          fi
+          echo "live manifest check executed against api.noc-tura.io"

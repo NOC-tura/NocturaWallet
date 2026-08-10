@@ -1,0 +1,222 @@
+{
+  "schema": "noctura.zk.negative-test-manifest/1",
+  "generatedFrom": {
+    "circom": "2.1.9",
+    "circomlib": "2.0.5"
+  },
+  "summary": {
+    "byKind": {
+      "BASELINE": 3,
+      "NEGATIVE": 13,
+      "N/A-BY-CONSTRUCTION": 5,
+      "NOT-EXPRESSIBLE": 4
+    },
+    "byStatus": {
+      "MUT-VERIFIED": 17
+    },
+    "testable": 17,
+    "failing": 0
+  },
+  "cases": [
+    {
+      "id": "baseline_deposit",
+      "circuit": "deposit baseline",
+      "kind": "BASELINE",
+      "status": null,
+      "ok": true,
+      "name": "deposit baseline"
+    },
+    {
+      "id": "dep_range",
+      "circuit": "deposit",
+      "kind": "NEGATIVE",
+      "status": "MUT-VERIFIED",
+      "ok": true,
+      "name": "deposit: amount out of 64-bit range"
+    },
+    {
+      "id": "dep_owner",
+      "circuit": "deposit",
+      "kind": "NEGATIVE",
+      "status": "MUT-VERIFIED",
+      "ok": true,
+      "name": "deposit: addrField from a DIFFERENT nk (deposit-to-third-party)"
+    },
+    {
+      "id": "deposit_rho_reused_across_two_deposits",
+      "circuit": "deposit",
+      "kind": "N/A-BY-CONSTRUCTION",
+      "status": null,
+      "ok": true,
+      "name": "deposit: rho reused across two deposits"
+    },
+    {
+      "id": "baseline_transfer",
+      "circuit": "transfer baseline (1 real + 1 dummy)",
+      "kind": "BASELINE",
+      "status": null,
+      "ok": true,
+      "name": "transfer baseline (1 real + 1 dummy)"
+    },
+    {
+      "id": "out_range",
+      "circuit": "transfer",
+      "kind": "NEGATIVE",
+      "status": "MUT-VERIFIED",
+      "ok": true,
+      "name": "transfer: out_amount out of 64-bit range (VALUE MINTING)"
+    },
+    {
+      "id": "out_range",
+      "circuit": "transfer",
+      "kind": "NEGATIVE",
+      "status": "MUT-VERIFIED",
+      "ok": true,
+      "name": "transfer: out_amount[1] (the ELIMINATED signal) out of range"
+    },
+    {
+      "id": "conservation",
+      "circuit": "transfer",
+      "kind": "NEGATIVE",
+      "status": "MUT-VERIFIED",
+      "ok": true,
+      "name": "transfer: conservation broken (Σin ≠ Σout + fee)"
+    },
+    {
+      "id": "dummy0",
+      "circuit": "transfer",
+      "kind": "NEGATIVE",
+      "status": "MUT-VERIFIED",
+      "ok": true,
+      "name": "transfer: in_isDummy[0] = 1 (rho anchored on a prover-chosen dummy rho)"
+    },
+    {
+      "id": "dummy_value",
+      "circuit": "transfer",
+      "kind": "NEGATIVE",
+      "status": "MUT-VERIFIED",
+      "ok": true,
+      "name": "transfer: dummy carrying value (500 from nowhere)"
+    },
+    {
+      "id": "membership",
+      "circuit": "transfer",
+      "kind": "NEGATIVE",
+      "status": "MUT-VERIFIED",
+      "ok": true,
+      "name": "transfer: membership bypassed on a REAL input (wrong path)"
+    },
+    {
+      "id": "nullifier_bind",
+      "circuit": "transfer",
+      "kind": "NEGATIVE",
+      "status": "MUT-VERIFIED",
+      "ok": true,
+      "name": "transfer: nullifier not H(TAG_NULL, nk, rho)"
+    },
+    {
+      "id": "transfer_addrfield_from_an_nk_the_prover_does_no",
+      "circuit": "transfer",
+      "kind": "N/A-BY-CONSTRUCTION",
+      "status": null,
+      "ok": true,
+      "name": "transfer: addrField from an nk the prover does not hold"
+    },
+    {
+      "id": "fee_range",
+      "circuit": "transfer",
+      "kind": "NEGATIVE",
+      "status": "MUT-VERIFIED",
+      "ok": true,
+      "name": "transfer: fee wraps to absorb outputs EXCEEDING inputs (VALUE MINTING)"
+    },
+    {
+      "id": "promote_change",
+      "circuit": "transfer",
+      "kind": "NOT-EXPRESSIBLE",
+      "status": "MUT-VERIFIED",
+      "ok": true,
+      "name": "transfer: change output redirected to a FOREIGN addrField (§1.4b)"
+    },
+    {
+      "id": "promote_rho",
+      "circuit": "transfer",
+      "kind": "NOT-EXPRESSIBLE",
+      "status": "MUT-VERIFIED",
+      "ok": true,
+      "name": "transfer: output rho CHOSEN by the sender, not derived"
+    },
+    {
+      "id": "baseline_withdraw_change",
+      "circuit": "withdraw_change baseline",
+      "kind": "BASELINE",
+      "status": null,
+      "ok": true,
+      "name": "withdraw_change baseline"
+    },
+    {
+      "id": "wc_change_range",
+      "circuit": "withdraw_change",
+      "kind": "NEGATIVE",
+      "status": "MUT-VERIFIED",
+      "ok": true,
+      "name": "withdraw_change: withdraw exceeds input, changeAmount wraps (VALUE MINTING)"
+    },
+    {
+      "id": "wc_nullifier",
+      "circuit": "withdraw_change",
+      "kind": "NEGATIVE",
+      "status": "MUT-VERIFIED",
+      "ok": true,
+      "name": "withdraw_change: nullifier not H(TAG_NULL, nk, rho)"
+    },
+    {
+      "id": "wc_membership",
+      "circuit": "withdraw_change",
+      "kind": "NEGATIVE",
+      "status": "MUT-VERIFIED",
+      "ok": true,
+      "name": "withdraw_change: membership (note not in the tree)"
+    },
+    {
+      "id": "wc_promote_change",
+      "circuit": "withdraw_change",
+      "kind": "NOT-EXPRESSIBLE",
+      "status": "MUT-VERIFIED",
+      "ok": true,
+      "name": "withdraw_change: change redirected to a FOREIGN addrField (§1.4b)"
+    },
+    {
+      "id": "wc_promote_rho",
+      "circuit": "withdraw_change",
+      "kind": "NOT-EXPRESSIBLE",
+      "status": "MUT-VERIFIED",
+      "ok": true,
+      "name": "withdraw_change: change rho CHOSEN by the prover (INV-RHO)"
+    },
+    {
+      "id": "withdraw_change_addrfield_from_an_nk_the_prover_",
+      "circuit": "withdraw_change",
+      "kind": "N/A-BY-CONSTRUCTION",
+      "status": null,
+      "ok": true,
+      "name": "withdraw_change: addrField from an nk the prover does not hold"
+    },
+    {
+      "id": "withdraw_change_recipientfield_substituted",
+      "circuit": "withdraw_change",
+      "kind": "N/A-BY-CONSTRUCTION",
+      "status": null,
+      "ok": true,
+      "name": "withdraw_change: recipientField substituted"
+    },
+    {
+      "id": "withdraw_change_withdrawamount_not_matching_the_",
+      "circuit": "withdraw_change",
+      "kind": "N/A-BY-CONSTRUCTION",
+      "status": null,
+      "ok": true,
+      "name": "withdraw_change: withdrawAmount not matching the SPL transfer"
+    }
+  ]
+}
