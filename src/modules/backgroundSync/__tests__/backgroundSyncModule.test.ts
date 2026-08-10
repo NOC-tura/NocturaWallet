@@ -80,6 +80,30 @@ describe('backgroundSyncModule', () => {
       expect(lastSynced).toBeLessThanOrEqual(after);
     });
 
+    it('does not carry the RPC API key into the error it returns', async () => {
+      // forceSync's `error` is returned into app state AND rendered verbatim in a
+      // user-facing Alert on the Dashboard, so an upstream message that formats
+      // the request URL would put the Helius key on screen. Asserted at the call
+      // site, not only on the helper: a redaction nothing calls still passes its
+      // own unit tests.
+      useWalletStore.getState().setPublicKey(TEST_PUBLIC_KEY);
+      const KEY = 'a852c8f4-e262-4a03-9a29-4e414edc87e5';
+      const withUrl = new Error(
+        `request to https://mainnet.helius-rpc.com/?api-key=${KEY} failed, reason: connect ETIMEDOUT`,
+      );
+      mockGetBalance.mockRejectedValue(withUrl);
+      mockGetTokenAccounts.mockRejectedValue(withUrl);
+
+      const result = await forceSync();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(result.error).not.toContain(KEY);
+      expect(result.error).toContain('<redacted>');
+      // The diagnosis must survive the redaction, or the error stops being useful.
+      expect(result.error).toContain('ETIMEDOUT');
+    });
+
     it('handles errors gracefully and returns partial result', async () => {
       useWalletStore.getState().setPublicKey(TEST_PUBLIC_KEY);
 

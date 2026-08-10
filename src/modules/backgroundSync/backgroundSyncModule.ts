@@ -6,6 +6,7 @@ import {PublicKey} from '@solana/web3.js';
 import {NOC_MINT} from '../../constants/programs';
 import {TokenManager} from '../tokens/tokenModule';
 import {fetchTokenMetadata, loadCachedMetadata, saveCachedMetadata} from '../tokens/tokenMetadata';
+import {redactUrlSecrets} from '../../utils/redactSecrets';
 
 const tokenManager = new TokenManager();
 
@@ -42,10 +43,15 @@ export async function forceSync(): Promise<SyncResult> {
       const tokenReason = tokenAccounts.reason instanceof Error
         ? tokenAccounts.reason.message
         : String(tokenAccounts.reason);
-      const reason =
+      // Redacted here rather than at the display site: this string is returned
+      // into app state as well as shown in an Alert, and the RPC endpoint carries
+      // the Helius API key in its query string. Upstream error text is not ours
+      // to shape.
+      const reason = redactUrlSecrets(
         solReason === tokenReason
           ? solReason
-          : `sol: ${solReason}; tokens: ${tokenReason}`;
+          : `sol: ${solReason}; tokens: ${tokenReason}`,
+      );
       if (__DEV__) {
         console.warn('[forceSync] both RPC calls failed:', reason);
       }
@@ -105,7 +111,7 @@ export async function forceSync(): Promise<SyncResult> {
       timestamp: Date.now(),
     };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = redactUrlSecrets(e instanceof Error ? e.message : String(e));
     if (__DEV__) {
       console.warn('[forceSync] threw:', msg);
     }
