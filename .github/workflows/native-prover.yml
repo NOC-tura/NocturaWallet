@@ -73,8 +73,14 @@ jobs:
 
       # --locked fails if Cargo.lock would need updating, so a dependency cannot
       # drift without a committed lockfile change.
+      # `set -o pipefail` is load-bearing: without it the pipeline exits with
+      # tee's status, so a FAILING test produced a GREEN step. That is exactly
+      # what happened on this workflow's first run — the positive control below
+      # was the only thing that caught it.
       - name: Test
-        run: cargo test --locked 2>&1 | tee /tmp/cargo-test.log
+        run: |
+          set -o pipefail
+          cargo test --locked 2>&1 | tee /tmp/cargo-test.log
 
       # The assertion lives in one place so both controls exercise the SAME code.
       # `cargo test` reports success when zero tests run, and a suite that
