@@ -63,7 +63,12 @@ function leafLog(commitmentHex: string, leafIndex: number): string {
  * rebuilt root is on chain, so a sync fixture must attest its own leaf set.
  */
 const rootHistoryAccount = (...roots: string[]) => {
+  // Faithful to a real account: exact size AND the MerkleTree discriminator.
+  // Without the discriminator this fixture was not the thing production reads,
+  // and the guards that catch a program-side layout change would have been
+  // untestable through syncLeaves.
   const data = Buffer.alloc(1296 + 64 * 32 + 8);
+  Buffer.from('623333e2a21449d4', 'hex').copy(data, 0);
   roots.forEach((r, i) => Buffer.from(r, 'hex').copy(data, 1296 + i * 32));
   return {data};
 };
@@ -75,17 +80,43 @@ const rootOf = (leaves: string[]): string =>
 
 // ── parseRootHistory ─────────────────────────────────────────────────────────
 describe('parseRootHistory', () => {
+  // sha256('account:MerkleTree')[0..8], confirmed against the live devnet account
+  // 5wUcszpMDY9skjrL85daN9dmhfHwJTcffkX29eZwMwrR (3352 bytes).
+  const DISC = '623333e2a21449d4';
+  const OFFSET = 8 + 8 + 640 + 640; // = 1296
+  const SIZE = OFFSET + 64 * 32 + 2 + 6; // = 3352, head:u16 + 6 pad
+
+  const account = (size = SIZE, disc = DISC): Buffer => {
+    const data = Buffer.alloc(size);
+    Buffer.from(disc, 'hex').copy(data, 0);
+    return data;
+  };
+
   it('reads the 64 roots at offset 1296 (disc+next_leaf_index+zeros+filled_subtrees)', () => {
-    const OFFSET = 8 + 8 + 640 + 640; // = 1296
-    const data = Buffer.alloc(OFFSET + 64 * 32 + 8);
+    const data = account();
     Buffer.from(hex(42), 'hex').copy(data, OFFSET + 2 * 32);
     const roots = parseRootHistory(data);
     expect(roots.length).toBe(64);
     expect(roots[2]).toBe(hex(42));
     expect(roots[0]).toBe('0'.repeat(64));
   });
-  it('throws when the account is too small', () => {
-    expect(() => parseRootHistory(Buffer.alloc(100))).toThrow();
+
+  it('rejects an account that is LONGER than the known layout', () => {
+    // The one that matters. A shorter account already failed; a longer one used
+    // to succeed and return 64 plausible 32-byte values read from the wrong
+    // offset. The A0 program change is expected to alter this layout, and this
+    // must break loudly at that moment rather than mis-parse.
+    expect(() => parseRootHistory(account(SIZE + 32))).toThrow(/layout/i);
+  });
+
+  it('rejects an account with a different discriminator', () => {
+    expect(() => parseRootHistory(account(SIZE, '0011223344556677'))).toThrow(
+      /discriminator/i,
+    );
+  });
+
+  it('rejects an account that is too small', () => {
+    expect(() => parseRootHistory(account(100))).toThrow(/layout/i);
   });
 });
 

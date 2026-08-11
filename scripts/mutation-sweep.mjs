@@ -75,6 +75,49 @@ const TARGETS = {
         'where uniqueness is one day removed — removing it already fails three tests.',
     },
   },
+
+  // The MerkleTree account is parsed at a HARDCODED byte offset, and the A0
+  // program change will alter that layout. These two guards exist to break at
+  // that moment rather than mis-parse: without them a longer or reordered
+  // account returns 64 entirely plausible 32-byte values read from the wrong
+  // place, and the failure surfaces downstream as "our root is not in the ring".
+  merkleSyncAccountGuards: {
+    file: 'src/modules/shielded/merkleSync.ts',
+    testPattern: 'merkleSync.test',
+    noop: ['const roots: string[] = [];', 'const roots: Array<string> = [];'],
+    mutants: {
+      discriminator: [
+        'if (data.length < 8 || disc !== MERKLE_TREE_DISCRIMINATOR) {',
+        'if (false) {',
+      ],
+      'exact-size': ['if (data.length !== MERKLE_TREE_SIZE) {', 'if (false) {'],
+    },
+    expectedSurvivors: {},
+  },
+
+  // The A0 field equations. These are our independent path from the frozen spec
+  // to a test, so if they can be wrong without a test failing, the whole
+  // names-not-values boundary is decorative.
+  a0FieldEquations: {
+    file: 'src/modules/shielded/a0/fieldEquations.ts',
+    testPattern: 'fieldEquations',
+    noop: ['const z: bigint[] = [0n];', 'const z: Array<bigint> = [0n];'],
+    mutants: {
+      'tag-cm': ['CM: 0x10n,', 'CM: 0x1fn,'],
+      'tag-addr': ['ADDR: 0x12n,', 'ADDR: 0x1en,'],
+      'addrfield-arg-order': [
+        "poseidon3([TAG.ADDR, assertInField('nk', nk), assertInField('d', d)]);",
+        "poseidon3([TAG.ADDR, assertInField('d', d), assertInField('nk', nk)]);",
+      ],
+      // The fund-loss one: ignoring j gives both transfer outputs the same rho,
+      // hence the same nullifier, and the second note is unspendable with
+      // nothing failing at proving time.
+      'rho-index-ignored': ['BigInt(index)]);', '0n]);'],
+      'be32-padding': ["v.toString(16).padStart(64, '0')", 'v.toString(16)'],
+      'zero-fold-start': ['const z: bigint[] = [0n];', 'const z: bigint[] = [1n];'],
+    },
+    expectedSurvivors: {},
+  },
 };
 
 /**
