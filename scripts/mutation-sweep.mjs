@@ -75,6 +75,25 @@ const TARGETS = {
         'where uniqueness is one day removed — removing it already fails three tests.',
     },
   },
+
+  // The MerkleTree account is parsed at a HARDCODED byte offset, and the A0
+  // program change will alter that layout. These two guards exist to break at
+  // that moment rather than mis-parse: without them a longer or reordered
+  // account returns 64 entirely plausible 32-byte values read from the wrong
+  // place, and the failure surfaces downstream as "our root is not in the ring".
+  merkleSyncAccountGuards: {
+    file: 'src/modules/shielded/merkleSync.ts',
+    testPattern: 'merkleSync.test',
+    noop: ['const roots: string[] = [];', 'const roots: Array<string> = [];'],
+    mutants: {
+      discriminator: [
+        'if (data.length < 8 || disc !== MERKLE_TREE_DISCRIMINATOR) {',
+        'if (false) {',
+      ],
+      'exact-size': ['if (data.length !== MERKLE_TREE_SIZE) {', 'if (false) {'],
+    },
+    expectedSurvivors: {},
+  },
 };
 
 /**
