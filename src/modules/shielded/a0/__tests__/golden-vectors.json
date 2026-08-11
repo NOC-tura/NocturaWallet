@@ -1,0 +1,242 @@
+{
+  "schema": "noctura.zk.golden-vectors/1",
+  "_notAnInput": "COMPUTE these from §1.4a and COMPARE. Do not read them into a builder: the same number on both sides of an equals sign always matches, and a wrong value in this file would then surface as a green test on both sides at once. A defect in a shared artefact shows up as AGREEMENT — that is why each repo needs a path from the frozen spec to a test that passes through no shared file, and this is that file for the positive half.",
+  "_provenance": "Each value is computed with poseidon-lite AND validated by the compiled circuit accepting a witness built from it — two independent implementations (poseidon-lite vs circom+circomlib inside the R1CS) agreeing. The validator carries its own negative control: a commitment off by one must be REJECTED, or the generator refuses to write this file.",
+  "_byteOrder": "32-byte BIG-ENDIAN hex, unprefixed, zero-padded — what the on-chain verifier reads. Two implementations can agree on every integer here and still disagree on the bytes, and the bytes are the half that fails at the verifier instead of in a unit test.",
+  "_notValidatedHere": "THE EMPTY-SUBTREE CONSTANTS. Z[i] = P2(Z[i-1], Z[i-1]) starting from 0 are the values an empty tree is built from, and NOTHING IN THIS FILE PINS THEM: the circuit accepts any path, so they enter a witness as arbitrary sibling data and cancel on both sides. A wallet using different constants still proves membership here and computes wrong roots against the real tree. They must be checked against the DEPLOYED PROGRAM's tree initialization, which is A0.4's on-chain half — named here so the gap is a stated limit rather than an assumption. Found by a gate self-test that mutated them and was published clean; a mutant that changes nothing is information.",
+  "_tags": {
+    "TAG_CM": "0x10",
+    "TAG_NULL": "0x11",
+    "TAG_ADDR": "0x12",
+    "TAG_RHO": "0x13",
+    "_burned": "0x01-0x0F are the entire old scheme and must never be reused",
+    "_untagged": "the Merkle node is Poseidon2(left, right) with NO tag — the single named exception"
+  },
+  "equations": {
+    "addrField": "Poseidon3(TAG_ADDR, nk, d)",
+    "commitment": "Poseidon5(TAG_CM, addrField, amount, mintHash, rho)",
+    "nullifier": "Poseidon3(TAG_NULL, nk, rho)",
+    "rhoOut": "Poseidon3(TAG_RHO, nullifier_in_0, j)",
+    "merkleNode": "Poseidon2(left, right)   // UNTAGGED"
+  },
+  "vectors": {
+    "addrField": [
+      {
+        "label": "typical",
+        "in": {
+          "nk": "11111111111111111111",
+          "d": "123456789"
+        },
+        "out": "4947035564518995647175241781714281034799228106877000059895312313574757862062",
+        "outHexBE32": "0aefec436f92bcc5a46a5fcdd012d0a64c19b5476a2f01985a03b6b86f758aae",
+        "validatedBy": "deposit witness"
+      },
+      {
+        "label": "d_zero",
+        "in": {
+          "nk": "11111111111111111111",
+          "d": "0"
+        },
+        "out": "1900246915712315684012249823846090987777586784694719488179908726488255915621",
+        "outHexBE32": "0433806b79d1415f04a5cf050fd2d49e8a5c69094751716c61cfd897b5676665",
+        "validatedBy": "deposit witness"
+      },
+      {
+        "label": "nk_one",
+        "in": {
+          "nk": "1",
+          "d": "987654321"
+        },
+        "out": "19915982335806091138441121005683188857167931469967810493027743844982283271408",
+        "outHexBE32": "2c080be9c500913aaeb081eff95c6c16985b322c4df0ccd3efdcfd77649f7cf0",
+        "validatedBy": "deposit witness"
+      },
+      {
+        "label": "near_modulus",
+        "in": {
+          "nk": "21888242871839275222246405745257275088548364400416034343698204186575808495616",
+          "d": "21888242871839275222246405745257275088548364400416034343698204186575808495615"
+        },
+        "out": "19988963375719999058452657302644460619482278095086919284692035995528890000094",
+        "outHexBE32": "2c315a32fda925818d0b69f7a6d4b1816f414c9494fd90c46b943ece43cda2de",
+        "validatedBy": "deposit witness"
+      }
+    ],
+    "commitment": [
+      {
+        "label": "zero_value_note",
+        "in": {
+          "addrField": "4947035564518995647175241781714281034799228106877000059895312313574757862062",
+          "amount": "0",
+          "mintHash": "555555555",
+          "rho": "42424242"
+        },
+        "out": "13824503353727099519396076176237474445299677808535935183312330583066935538159",
+        "outHexBE32": "1e906440b2cc992962366439c5b2dd7bb91256ad549a288c4297eb1e46b3b1ef",
+        "validatedBy": "deposit witness"
+      },
+      {
+        "label": "typical",
+        "in": {
+          "addrField": "4947035564518995647175241781714281034799228106877000059895312313574757862062",
+          "amount": "1000000000",
+          "mintHash": "555555555",
+          "rho": "42424242"
+        },
+        "out": "1387741545571838401872231576820331983003996969526730025046535981326067932838",
+        "outHexBE32": "03116f12c395326b818bc0dccb2db5b3e79094dbe2fcdf63e9b9e4cdfe1d9ea6",
+        "validatedBy": "deposit witness"
+      },
+      {
+        "label": "max_u64",
+        "in": {
+          "addrField": "4947035564518995647175241781714281034799228106877000059895312313574757862062",
+          "amount": "18446744073709551615",
+          "mintHash": "555555555",
+          "rho": "42424242"
+        },
+        "out": "20661480436147070291916431975092028377262223938201649773839810883905216059999",
+        "outHexBE32": "2dadfbc729200e65e544de03ec858e0180259a9bd4f07cc44098310437581a5f",
+        "validatedBy": "deposit witness"
+      }
+    ],
+    "nullifier": [
+      {
+        "label": "typical",
+        "in": {
+          "nk": "11111111111111111111",
+          "rho": "606060"
+        },
+        "out": "847659508468183968581499747419711796613625445405826683657885953076716734712",
+        "outHexBE32": "01dfc21e9fff4177532bb70c418975b6fd7a15054eecc9d332a3e99a67e188f8",
+        "validatedBy": "withdraw_change witness"
+      },
+      {
+        "label": "rho_zero",
+        "in": {
+          "nk": "11111111111111111111",
+          "rho": "0"
+        },
+        "out": "7651016046813293903466779392043018711595239904055270428797029443453655135711",
+        "outHexBE32": "10ea5255cc69346a2fb467412b1f78cc662b9b7a0d206a9c37dc97b83fe735df",
+        "validatedBy": "withdraw_change witness"
+      }
+    ],
+    "rhoOut": [
+      {
+        "label": "j0",
+        "in": {
+          "nullifierIn0": "847659508468183968581499747419711796613625445405826683657885953076716734712",
+          "index": 0
+        },
+        "out": "8974781204699522311005477164683195195866145320954796205597211250719613058988",
+        "outHexBE32": "13d78bd0749896fe9001fab8c7aa6aeb86fcdb170d3f6c5a9cb04ac4d368ffac",
+        "validatedBy": "transfer witness (both outputs)"
+      },
+      {
+        "label": "j1",
+        "in": {
+          "nullifierIn0": "847659508468183968581499747419711796613625445405826683657885953076716734712",
+          "index": 1
+        },
+        "out": "1337975690170092115769762560654141379258018353266082848859927879474073600307",
+        "outHexBE32": "02f54474983098dd0d9169b9f014b70becaa5d5c04536264676135782f148133",
+        "validatedBy": "transfer witness (both outputs)"
+      }
+    ],
+    "merkleNode": [
+      {
+        "label": "fold_level0_leaf_with_empty_sibling",
+        "in": {
+          "left": "10694984030822933937253859324544057077297630985264507709808676870356868430762",
+          "right": "0"
+        },
+        "out": "3045976450203485747677545911668112273290344799741715915809833531809916744195",
+        "outHexBE32": "06bbf629d6e569e4860205243357f81d53fe20e970f659092348e2e472f77203",
+        "validatedBy": "withdraw_change witness — the circuit refolds leaf+path and equates the result to the public merkleRoot"
+      },
+      {
+        "label": "fold_root_depth20_leaf_at_index0",
+        "in": {
+          "note": "fold of the leaf above with Z[i], i = 0..19, left-to-right"
+        },
+        "out": "18278552566264393289621285323109335879032305290707252263973890002582674287466",
+        "outHexBE32": "28694b4c0b6529d2856e5f6cc5713b7164b00a9cfd31cc1528ab17a2ceef2b6a",
+        "isPublicMerkleRoot": true,
+        "validatedBy": "withdraw_change witness — the circuit refolds leaf+path and equates the result to the public merkleRoot"
+      }
+    ]
+  },
+  "publicInputVectors": {
+    "deposit": [
+      {
+        "index": 0,
+        "name": "commitment",
+        "dec": "1387741545571838401872231576820331983003996969526730025046535981326067932838",
+        "hexBE32": "03116f12c395326b818bc0dccb2db5b3e79094dbe2fcdf63e9b9e4cdfe1d9ea6"
+      },
+      {
+        "index": 1,
+        "name": "amount",
+        "dec": "1000000000",
+        "hexBE32": "000000000000000000000000000000000000000000000000000000003b9aca00"
+      },
+      {
+        "index": 2,
+        "name": "mintHash",
+        "dec": "555555555",
+        "hexBE32": "00000000000000000000000000000000000000000000000000000000211d1ae3"
+      },
+      {
+        "index": 3,
+        "name": "rho",
+        "dec": "42424242",
+        "hexBE32": "00000000000000000000000000000000000000000000000000000000028757b2"
+      }
+    ],
+    "withdraw_change": [
+      {
+        "index": 0,
+        "name": "merkleRoot",
+        "dec": "18278552566264393289621285323109335879032305290707252263973890002582674287466",
+        "hexBE32": "28694b4c0b6529d2856e5f6cc5713b7164b00a9cfd31cc1528ab17a2ceef2b6a"
+      },
+      {
+        "index": 1,
+        "name": "nullifier",
+        "dec": "847659508468183968581499747419711796613625445405826683657885953076716734712",
+        "hexBE32": "01dfc21e9fff4177532bb70c418975b6fd7a15054eecc9d332a3e99a67e188f8"
+      },
+      {
+        "index": 2,
+        "name": "withdrawAmount",
+        "dec": "700",
+        "hexBE32": "00000000000000000000000000000000000000000000000000000000000002bc"
+      },
+      {
+        "index": 3,
+        "name": "recipientField",
+        "dec": "424242",
+        "hexBE32": "0000000000000000000000000000000000000000000000000000000000067932"
+      },
+      {
+        "index": 4,
+        "name": "mintHash",
+        "dec": "555555555",
+        "hexBE32": "00000000000000000000000000000000000000000000000000000000211d1ae3"
+      },
+      {
+        "index": 5,
+        "name": "changeCommitment",
+        "dec": "8267144516438739864980456780032898696299736959374531873770876368920246736767",
+        "hexBE32": "124709b8e3d4a7e02a90e03f14236aa1ceba868bede91063f313bfdb14e7d77f"
+      },
+      {
+        "index": 6,
+        "name": "fee",
+        "dec": "0",
+        "hexBE32": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ]
+  }
+}

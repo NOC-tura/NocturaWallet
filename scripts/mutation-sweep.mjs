@@ -94,6 +94,30 @@ const TARGETS = {
     },
     expectedSurvivors: {},
   },
+
+  // The A0 field equations. These are our independent path from the frozen spec
+  // to a test, so if they can be wrong without a test failing, the whole
+  // names-not-values boundary is decorative.
+  a0FieldEquations: {
+    file: 'src/modules/shielded/a0/fieldEquations.ts',
+    testPattern: 'fieldEquations',
+    noop: ['const z: bigint[] = [0n];', 'const z: Array<bigint> = [0n];'],
+    mutants: {
+      'tag-cm': ['CM: 0x10n,', 'CM: 0x1fn,'],
+      'tag-addr': ['ADDR: 0x12n,', 'ADDR: 0x1en,'],
+      'addrfield-arg-order': [
+        "poseidon3([TAG.ADDR, assertInField('nk', nk), assertInField('d', d)]);",
+        "poseidon3([TAG.ADDR, assertInField('d', d), assertInField('nk', nk)]);",
+      ],
+      // The fund-loss one: ignoring j gives both transfer outputs the same rho,
+      // hence the same nullifier, and the second note is unspendable with
+      // nothing failing at proving time.
+      'rho-index-ignored': ['BigInt(index)]);', '0n]);'],
+      'be32-padding': ["v.toString(16).padStart(64, '0')", 'v.toString(16)'],
+      'zero-fold-start': ['const z: bigint[] = [0n];', 'const z: bigint[] = [1n];'],
+    },
+    expectedSurvivors: {},
+  },
 };
 
 /**
