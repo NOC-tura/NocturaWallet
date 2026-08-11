@@ -19,8 +19,35 @@ const live = process.env.ZK_MANIFEST_LIVE === '1';
 (live ? describe : describe.skip)('the live ZK negative-test manifest', () => {
   jest.setTimeout(60_000);
 
+  /**
+   * Three attempts, because the coordinator's host has now been unreachable from
+   * GitHub's runners twice (2026-08-10 ~14:50Z, 2026-08-11 ~16:24Z) while
+   * answering normally from a workstation. A single blip must not redden the
+   * build — but this still FAILS CLOSED, because "we could not check" is not
+   * "it is fine".
+   *
+   * The distinction that matters is made in the workflow: a reachability failure
+   * and a contract violation are both one red tick here, and only the second is
+   * a finding about the manifest.
+   */
+  const fetchWithRetry = async (): Promise<Response> => {
+    let last: unknown;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        return await fetch(MANIFEST_URL);
+      } catch (e) {
+        last = e;
+        await new Promise(r => setTimeout(r, attempt * 2000));
+      }
+    }
+    throw new Error(
+      `UNREACHABLE: ${MANIFEST_URL} did not answer in 3 attempts — ${String(last)}. ` +
+        'This is a reachability failure, not a manifest violation.',
+    );
+  };
+
   it('is served, well-formed, and still mutation-verifies every constraint the wallet depends on', async () => {
-    const res = await fetch(MANIFEST_URL);
+    const res = await fetchWithRetry();
     expect(res.ok).toBe(true);
     const body: unknown = await res.json();
 
