@@ -75,7 +75,21 @@ jobs:
           echo "live check is off by default, as intended"
 
       - name: Validate the manifest as served
+        id: live
         run: ZK_MANIFEST_LIVE=1 npx jest --testPathPattern=zkManifest.live --verbose 2>&1 | tee /tmp/live.log
+
+      # An outage and a contract violation are both one red tick, and only the
+      # second is a finding about the manifest. A red build nobody can classify
+      # at a glance is how a gate degrades into noise and then gets deleted, so
+      # the distinction is made here rather than left to whoever opens the log.
+      - name: Was that an outage or a contract violation?
+        if: failure() && steps.live.outcome == 'failure'
+        run: |
+          if grep -q "UNREACHABLE:" /tmp/live.log; then
+            echo "::error::api.noc-tura.io was unreachable from this runner after 3 attempts. This is a REACHABILITY failure, NOT a manifest violation — the contract has not been shown to be broken. Third occurrence from GitHub runners; the host answers normally from a workstation. Re-run, and tell the coordinator."
+          else
+            echo "::error::The host answered and the manifest FAILED validation. This IS a contract violation: a constraint the wallet depends on is no longer MUT-VERIFIED, or the artifact lost its integrity. Read the assertion above; do not re-run."
+          fi
 
       # POSITIVE CONTROL: the step above is green both when the check passes and
       # when it never executed. Only one of those is evidence.
