@@ -22,6 +22,15 @@
  *      nothing is indistinguishable from a test that failed to detect it, and it
  *      reports as SURVIVED. Both repos hit this on the same day.
  *
+ *      Note the asymmetry, because it says where this control is load-bearing:
+ *      for "mutate the input to something bad, assert the tool REJECTS it" a
+ *      no-op leaves the input good and the assertion fails — safe by
+ *      construction. It is THIS direction — remove the guard, assert the test
+ *      now fails — where a no-op is silent.
+ *   4. THE SOURCE MUST BE RESTORED BYTE-IDENTICALLY between mutants, verified
+ *      rather than intended: otherwise a later mutant runs against already-mutated
+ *      source and its verdict concerns a file nobody has read.
+ *
  * And the result is a GATE, not a report: `expectedSurvivors` is declared, and any
  * difference fails. Mutation results decay — a guard added without a test, or a
  * reordering that makes one mutant unreachable, changes the set. Silence about
@@ -68,6 +77,21 @@ const TARGETS = {
   },
 };
 
+/**
+ * CONTROL 4 (the coordinator's, adopted): restoring in a `finally` is an
+ * intention, not a fact. If a restore ever wrote something subtly different, the
+ * next mutant would be applied to already-mutated source and every verdict after
+ * it would concern a file nobody has read. Verified byte-for-byte instead.
+ */
+const restoreVerified = (file, original) => {
+  writeFileSync(file, original);
+  if (readFileSync(file, 'utf8') !== original) {
+    throw new Error(
+      `${file} was NOT restored byte-identically — every later verdict would concern a file nobody has read`,
+    );
+  }
+};
+
 const runTests = pattern => {
   try {
     execFileSync('npx', ['jest', `--testPathPattern=${pattern}`, '--silent'], {
@@ -83,7 +107,7 @@ const occurrences = (haystack, needle) => haystack.split(needle).length - 1;
 
 function sweep(name, t) {
   const original = readFileSync(t.file, 'utf8');
-  const restore = () => writeFileSync(t.file, original);
+  const restore = () => restoreVerified(t.file, original);
 
   try {
     process.stdout.write(`baseline… `);
