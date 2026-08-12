@@ -6,53 +6,22 @@ import type {DepositEvent} from './depositEvents';
 import {bytesToHex} from './fieldCodec';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {computeMerklePath} from '../merkle/merkleModule';
+import {assertMerkleTreeAccount} from './merkleTreeAccount';
 
 // MerkleTree account layout (zero-copy, #[repr(C)]), see programs/shielded-pool
 // state.rs: 8 disc + 8 next_leaf_index + 640 zeros([[u8;32];20]) +
 // 640 filled_subtrees([[u8;32];20]) + 64*32 root_history + u16 head + 6 pad.
 const ROOT_HISTORY_OFFSET = 8 + 8 + 640 + 640; // 1296
 const ROOT_HISTORY_LEN = 64;
-/** disc + next_leaf_index + zeros + filled_subtrees + root_history + head:u16 + 6 pad. */
-const MERKLE_TREE_SIZE = ROOT_HISTORY_OFFSET + ROOT_HISTORY_LEN * 32 + 2 + 6; // 3352
-
-/**
- * Anchor discriminator: sha256('account:MerkleTree')[0..8]. Read off the live
- * devnet account rather than derived from a guessed type name, then confirmed to
- * match the derivation.
- */
-const MERKLE_TREE_DISCRIMINATOR = '623333e2a21449d4';
-
-const toHex8 = (d: Uint8Array): string =>
-  Array.from(d.subarray(0, 8), b => b.toString(16).padStart(2, '0')).join('');
-
 /**
  * Extract the 64-entry root_history ring (hex strings) from raw account data.
  *
- * Both guards below exist because the offset is hardcoded and the A0 program
- * change WILL alter this layout (`pool` gains `max_fee`, the `withdraw_vk` slot
- * goes away). Checking `length >= end` was a proxy for "the layout is what I
- * think": a SHORTER account failed, but a longer or reordered one returned 64
- * entirely plausible 32-byte values read from the wrong place — and the failure
- * then surfaced downstream as "our root is not in the ring", which points at the
- * wrong problem.
- *
- * So: exact size, and the discriminator. The intent is to break at the moment
- * the program is redeployed rather than to survive it.
+ * The account shape is asserted by `assertMerkleTreeAccount` — one definition,
+ * shared with the next_leaf_index reader, because two copies of a guard is how
+ * one of them quietly stops matching the program.
  */
 export function parseRootHistory(data: Uint8Array): string[] {
-  const disc = toHex8(data);
-  if (data.length < 8 || disc !== MERKLE_TREE_DISCRIMINATOR) {
-    throw new Error(
-      `parseRootHistory: account discriminator ${disc} != MerkleTree ${MERKLE_TREE_DISCRIMINATOR} — ` +
-        'this is not a MerkleTree account, or the program defines it differently now',
-    );
-  }
-  if (data.length !== MERKLE_TREE_SIZE) {
-    throw new Error(
-      `parseRootHistory: account layout changed — expected exactly ${MERKLE_TREE_SIZE} bytes, got ${data.length}. ` +
-        'The hardcoded root_history offset is no longer trustworthy; re-derive it from the program state before reading roots.',
-    );
-  }
+  assertMerkleTreeAccount(data);
   const roots: string[] = [];
   for (let i = 0; i < ROOT_HISTORY_LEN; i++) {
     const start = ROOT_HISTORY_OFFSET + i * 32;
