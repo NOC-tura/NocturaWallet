@@ -32,7 +32,9 @@ const live = process.env.ZK_MANIFEST_LIVE === '1';
    */
   const fetchWithRetry = async (): Promise<Response> => {
     let last: unknown;
+    const attemptedAt: string[] = [];
     for (let attempt = 1; attempt <= 3; attempt++) {
+      attemptedAt.push(new Date().toISOString());
       try {
         return await fetch(MANIFEST_URL);
       } catch (e) {
@@ -40,9 +42,15 @@ const live = process.env.ZK_MANIFEST_LIVE === '1';
         await new Promise(r => setTimeout(r, attempt * 2000));
       }
     }
+    // The timestamps are the point, not decoration. The coordinator runs a
+    // rotating tcpdump for SYNs on :443 and needs the exact UTC minute to line
+    // up against it — "no SYN in the capture" closes the question at their
+    // provider, "SYN with no reply" reopens everything. Printing them here means
+    // nobody has to go digging in a CI log to answer that.
     throw new Error(
       `UNREACHABLE: ${MANIFEST_URL} did not answer in 3 attempts — ${String(last)}. ` +
-        'This is a reachability failure, not a manifest violation.',
+        'This is a reachability failure, not a manifest violation. ' +
+        `ATTEMPTED_AT_UTC=${attemptedAt.join(',')}`,
     );
   };
 

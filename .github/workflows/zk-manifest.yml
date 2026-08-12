@@ -86,7 +86,8 @@ jobs:
         if: failure() && steps.live.outcome == 'failure'
         run: |
           if grep -q "UNREACHABLE:" /tmp/live.log; then
-            echo "::error::api.noc-tura.io was unreachable from this runner after 3 attempts. This is a REACHABILITY failure, NOT a manifest violation — the contract has not been shown to be broken. Third occurrence from GitHub runners; the host answers normally from a workstation. Re-run, and tell the coordinator."
+            WHEN=$(grep -o 'ATTEMPTED_AT_UTC=[^ ]*' /tmp/live.log | head -1 | cut -d= -f2)
+            echo "::error::api.noc-tura.io was unreachable from this runner after 3 attempts. This is a REACHABILITY failure, NOT a manifest violation — the contract has not been shown to be broken. The host answers normally from a workstation. SEND THESE EXACT UTC TIMES TO THE COORDINATOR so they can line them up against their SYN capture on :443 — no SYN in the capture closes the question at their provider, a SYN with no reply reopens it: ${WHEN}"
           else
             echo "::error::The host answered and the manifest FAILED validation. This IS a contract violation: a constraint the wallet depends on is no longer MUT-VERIFIED, or the artifact lost its integrity. Read the assertion above; do not re-run."
           fi
