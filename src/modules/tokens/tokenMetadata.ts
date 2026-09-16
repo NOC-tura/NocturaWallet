@@ -1,7 +1,7 @@
 import {RPC_ENDPOINT, API_BASE, API_ORIGIN} from '../../constants/programs';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
-import {pinnedFetch} from '../sslPinning/pinnedFetch';
+import {pinnedFetch, rethrowIfSSLPinningError} from '../sslPinning/pinnedFetch';
 
 export interface TokenMeta {
   name: string;
@@ -93,6 +93,7 @@ export async function fetchTokenMetadata(mints: string[]): Promise<Record<string
   try {
     return await fetchTokenMetadataFromBackend(mints);
   } catch (err) {
+    rethrowIfSSLPinningError(err);
     if (__DEV__) {
       console.debug('[tokenMetadata] backend failed, falling back to direct Helius DAS', err);
     }
@@ -105,7 +106,8 @@ export function loadCachedMetadata(): Record<string, TokenMeta> {
   try {
     const s = mmkvPublic.getString(MMKV_KEYS.TOKEN_METADATA_CACHE);
     return s ? (JSON.parse(s) as Record<string, TokenMeta>) : {};
-  } catch {
+  } catch (error) {
+    rethrowIfSSLPinningError(error);
     return {};
   }
 }
@@ -113,7 +115,8 @@ export function loadCachedMetadata(): Record<string, TokenMeta> {
 export function saveCachedMetadata(map: Record<string, TokenMeta>): void {
   try {
     mmkvPublic.set(MMKV_KEYS.TOKEN_METADATA_CACHE, JSON.stringify(map));
-  } catch {
+  } catch (error) {
+    rethrowIfSSLPinningError(error);
     // cache write is best-effort
   }
 }

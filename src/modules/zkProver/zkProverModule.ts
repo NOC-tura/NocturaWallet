@@ -1,6 +1,6 @@
 import {API_BASE} from '../../constants/programs';
 import {isLocalProvingEnabled} from '../../constants/features';
-import {pinnedFetch} from '../sslPinning/pinnedFetch';
+import {pinnedFetch, rethrowIfSSLPinningError} from '../sslPinning/pinnedFetch';
 import {proveLimiter} from '../solana/rpcLimiter';
 import {localProver} from './localProver';
 import {proofQueue} from './proofQueue';
@@ -129,7 +129,8 @@ export class ZkProverModule {
         const proof = await proveHosted(proofType, witness);
         zeroizeWitness(witness);
         return proof;
-      } catch {
+      } catch (error) {
+        rethrowIfSSLPinningError(error);
         // Hosted failed, try local
       }
 
@@ -143,6 +144,7 @@ export class ZkProverModule {
         `Proof queued (job ${job.id}) — no prover available right now`,
       );
     } catch (err) {
+      rethrowIfSSLPinningError(err);
       if (
         err instanceof ProverUnavailableError ||
         err instanceof ProofGenerationError
@@ -180,6 +182,7 @@ export class ZkProverModule {
         proofQueue.markDone(job.id, proof);
         succeeded++;
       } catch (err) {
+        rethrowIfSSLPinningError(err);
         const msg = err instanceof Error ? err.message : String(err);
         proofQueue.markFailed(job.id, msg);
       }
@@ -269,7 +272,8 @@ export async function warmProver(
       body: JSON.stringify({proofType}),
       timeoutMs: 8_000,
     });
-  } catch {
+  } catch (error) {
+    rethrowIfSSLPinningError(error);
     /* best-effort — a failed warmup just means the first prove pays the cold cost */
   }
 }

@@ -1,6 +1,7 @@
 import {proveShielded} from '../zkProverModule';
 
 jest.mock('../../sslPinning/pinnedFetch', () => ({
+  ...jest.requireActual('../../sslPinning/pinnedFetch'),
   pinnedFetch: jest.fn(),
 }));
 import {pinnedFetch} from '../../sslPinning/pinnedFetch';

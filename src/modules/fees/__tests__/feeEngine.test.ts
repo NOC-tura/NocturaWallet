@@ -6,6 +6,7 @@
 
 // Mock pinnedFetch (not directly used by feeEngine but required by module graph)
 jest.mock('../../sslPinning/pinnedFetch', () => ({
+  ...jest.requireActual('../../sslPinning/pinnedFetch'),
   pinnedFetch: jest.fn(),
 }));
 

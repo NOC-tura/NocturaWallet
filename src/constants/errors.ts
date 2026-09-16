@@ -9,6 +9,7 @@ export const ERROR_CODES = {
   NETWORK_OFFLINE: {code: 'E001', message: 'No internet connection', action: 'Check your connection and try again'},
   RPC_TIMEOUT: {code: 'E002', message: 'Network is slow', action: 'Please try again in a moment'},
   RPC_RATE_LIMIT: {code: 'E003', message: 'Too many requests', action: 'Please wait a few seconds and retry'},
+  SSL_PINNING_FAILED: {code: 'E004', message: 'Secure connection to Noctura could not be verified', action: 'Check your network. On public Wi-Fi or behind a proxy, try mobile data.'},
 
   // ─── Balance ──────────────────────────────────────────────────────────
   INSUFFICIENT_SOL: {code: 'E010', message: 'Not enough SOL', action: 'You need more SOL to cover network fees'},

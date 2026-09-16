@@ -1,4 +1,5 @@
 jest.mock('../../sslPinning/pinnedFetch', () => ({
+  ...jest.requireActual('../../sslPinning/pinnedFetch'),
   pinnedFetch: jest.fn(),
 }));
 

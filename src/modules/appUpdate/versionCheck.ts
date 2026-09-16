@@ -1,6 +1,6 @@
 import {Platform} from 'react-native';
 import Config from 'react-native-config';
-import {pinnedFetch} from '../sslPinning/pinnedFetch';
+import {pinnedFetch, rethrowIfSSLPinningError} from '../sslPinning/pinnedFetch';
 import {version as APP_VERSION} from '../../../package.json';
 
 export type VersionCheckStatus = 'ok' | 'update_available' | 'update_required';
@@ -53,7 +53,8 @@ export async function checkAppVersion(): Promise<VersionCheckResult> {
     }
 
     return result;
-  } catch {
+  } catch (error) {
+    rethrowIfSSLPinningError(error);
     // Never block the app on any error
     return {status: 'ok'};
   }

@@ -1,4 +1,4 @@
-import {pinnedFetch} from '../sslPinning/pinnedFetch';
+import {pinnedFetch, rethrowIfSSLPinningError} from '../sslPinning/pinnedFetch';
 import {API_BASE} from '../../constants/programs';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {mmkvPublic} from '../../store/mmkv/instances';
@@ -87,7 +87,8 @@ export class GeoFenceManager {
       }
 
       return this.classifyCountry(countryCode, {skipBackgroundRefresh: false});
-    } catch {
+    } catch (error) {
+      rethrowIfSSLPinningError(error);
       // NEVER silent-block on API failure — always fail open with warn
       return {
         action: 'warn',
@@ -160,7 +161,8 @@ export class GeoFenceManager {
       if (age < RESTRICTED_LIST_TTL_MS) {
         try {
           return JSON.parse(cachedJson) as RestrictedCountry[];
-        } catch {
+        } catch (error) {
+          rethrowIfSSLPinningError(error);
           // Corrupted cache — fall through to bundled list
         }
       }

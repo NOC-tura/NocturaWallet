@@ -1,7 +1,10 @@
 import {AnalyticsManager} from '../analyticsModule';
 import type {AnalyticsPayload} from '../types';
 
-jest.mock('../../sslPinning/pinnedFetch', () => ({pinnedFetch: jest.fn()}));
+jest.mock('../../sslPinning/pinnedFetch', () => ({
+  ...jest.requireActual('../../sslPinning/pinnedFetch'),
+  pinnedFetch: jest.fn(),
+}));
 
 let mockOptOut = false;
 jest.mock('../../../store/zustand/publicSettingsStore', () => ({

@@ -1,6 +1,6 @@
 import {USDC_MINT, USDT_MINT} from '../tokens/coreTokens';
 import {API_BASE, COINGECKO_API_KEY} from '../../constants/programs';
-import {pinnedFetch} from '../sslPinning/pinnedFetch';
+import {pinnedFetch, rethrowIfSSLPinningError} from '../sslPinning/pinnedFetch';
 
 export interface TokenPrice {
   usd: number;
@@ -78,6 +78,7 @@ export async function fetchPrices(): Promise<Record<string, TokenPrice>> {
   try {
     return await fetchPricesFromBackend();
   } catch (err) {
+    rethrowIfSSLPinningError(err);
     if (__DEV__) {
       console.debug('[prices] backend failed, falling back to direct CoinGecko', err);
     }

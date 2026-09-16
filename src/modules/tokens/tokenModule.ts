@@ -7,7 +7,7 @@ import {
 import {CORE_MINTS, CORE_TOKENS} from './coreTokens';
 import type {TokenMetadata} from '../../store/zustand/walletStore';
 import {NOC_MINT} from '../../constants/programs';
-import {pinnedFetch} from '../sslPinning/pinnedFetch';
+import {pinnedFetch, rethrowIfSSLPinningError} from '../sslPinning/pinnedFetch';
 import {API_BASE} from '../../constants/programs';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
@@ -87,7 +87,8 @@ export class TokenManager {
       _verifiedLoadedAt = now;
 
       return mints;
-    } catch {
+    } catch (error) {
+      rethrowIfSSLPinningError(error);
       // Fall back to whatever is in MMKV (may be stale or absent)
       const raw = mmkvPublic.getString(MMKV_KEYS.JUPITER_VERIFIED_LIST);
       if (raw !== undefined) {
@@ -125,7 +126,8 @@ export class TokenManager {
       );
       const data = (await response.json()) as {flagged: boolean; reason?: string};
       return data.flagged;
-    } catch {
+    } catch (error) {
+      rethrowIfSSLPinningError(error);
       return false;
     }
   }

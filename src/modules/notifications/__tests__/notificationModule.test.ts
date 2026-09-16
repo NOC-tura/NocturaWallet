@@ -1,6 +1,9 @@
 import {NotificationManager, setNavigationRef} from '../notificationModule';
 
-jest.mock('../../sslPinning/pinnedFetch', () => ({pinnedFetch: jest.fn()}));
+jest.mock('../../sslPinning/pinnedFetch', () => ({
+  ...jest.requireActual('../../sslPinning/pinnedFetch'),
+  pinnedFetch: jest.fn(),
+}));
 
 const mockState: Record<string, boolean> = {
   notifIncomingTx: false,

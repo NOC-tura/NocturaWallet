@@ -63,7 +63,7 @@ describe('pinnedFetch', () => {
     );
   });
 
-  it('throws SSLPinningError with E032 code on SSL pin failure', async () => {
+  it('throws SSLPinningError with E004 code on SSL pin failure', async () => {
     (SSLPinning.fetch as jest.Mock).mockRejectedValueOnce(
       new Error('SSL certificate pinning verification failed'),
     );
@@ -72,11 +72,11 @@ describe('pinnedFetch', () => {
       fail('Should have thrown');
     } catch (err) {
       expect(err).toBeInstanceOf(SSLPinningError);
-      expect((err as SSLPinningError).code).toBe('E032');
+      expect((err as SSLPinningError).code).toBe('E004');
     }
   });
 
-  it('re-throws network errors without wrapping as E032', async () => {
+  it('re-throws network errors without wrapping as E004', async () => {
     (SSLPinning.fetch as jest.Mock).mockRejectedValueOnce(
       new Error('Network request failed'),
     );

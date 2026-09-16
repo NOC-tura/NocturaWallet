@@ -20,7 +20,14 @@ import * as SSLPinning from 'react-native-ssl-pinning';
 // scripts/check-ssl-pins.sh, and ship the new app version BEFORE the new cert.
 export const SSL_PINS: string[] = [
   'sha256/r6OlpjBVoTMRSS9o9JFTgtzC8KyrVYI6OAmKQGhf9Y8=', // LEAF (primary)
-  'sha256/iFvwVyJSxnQdyaUvUERIf+8qk7gRze3612JMwoO3zdU=', // INTERMEDIATE Let's Encrypt (backup)
+  // BACKUP: SPKI of a spare P-256 key we hold and have never deployed.
+  // Replaced the Let's Encrypt INTERMEDIATE on 2026-09-16. That pin had not matched
+  // since the 19 July renewal — Let's Encrypt rotates its intermediates, so pinning
+  // one guarantees this recurs. A backup pin is only a backup if we control the key.
+  // Private key: ~/.config/noctura/backup-tls-key-2026-09.pem (600, never in a repo).
+  // If the leaf key is ever lost, issue a certificate for THIS key and the wallet
+  // keeps working without a release. Both keys must survive, or a release is required.
+  'sha256/AUlTQGY2L516ItWn7kKvOqzHQN4Tokjv8SmM4jCUuAo=', // BACKUP (spare key, ours)
 ];
 
 interface PinnedFetchOptions {
@@ -43,8 +50,27 @@ interface PinnedFetchResponse {
   text: () => Promise<string>;
 }
 
+/**
+ * For use inside a `catch` that degrades gracefully. A pin failure is never one of
+ * the things worth degrading past: it means the certificate chain did not match what
+ * this build pins, which is either an attack or a misconfiguration, and in both cases
+ * the caller must learn about it rather than see an empty list.
+ *
+ * Added 2026-09-16 after measuring that the narrow-catch fix of 2026-08-09
+ * (coordinatorClient.ts, d72ae5c) had been applied to ONE of seventeen call sites.
+ * Two months of a stale backup pin went unnoticed because the two most-used screens
+ * swallowed the failure and fell back to a third-party host.
+ */
+export function rethrowIfSSLPinningError(error: unknown): void {
+  if (error instanceof SSLPinningError) {
+    throw error;
+  }
+}
+
 export class SSLPinningError extends Error {
-  readonly code = 'E032';
+  readonly code = 'E004';  // transport family, with NETWORK_OFFLINE / RPC_TIMEOUT.
+  // Was E032 until 2026-09-16, which is PROVER_UNAVAILABLE — a pin failure reported
+  // itself as a zero-knowledge outage to anything that read the code.
   readonly cause: Error;
 
   constructor(message: string, cause: Error) {
@@ -57,7 +83,7 @@ export class SSLPinningError extends Error {
 /**
  * SSL-pinned fetch wrapper for Noctura API calls.
  * All requests to api.noc-tura.io MUST go through this function.
- * On pin failure → throws SSLPinningError (E032).
+ * On pin failure → throws SSLPinningError (E004).
  */
 /**
  * Recognise the rejected-but-valid HTTP response the pinning library hands back
@@ -139,7 +165,7 @@ export async function pinnedFetch(
     ) {
       throw new SSLPinningError('SSL certificate pinning failed', cause);
     }
-    // Re-throw transport errors (timeout, DNS, etc.) without wrapping as E032
+    // Re-throw transport errors (timeout, DNS, etc.) without wrapping as E004
     throw cause;
   }
 }
