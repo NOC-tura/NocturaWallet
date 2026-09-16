@@ -2,7 +2,7 @@ import {poseidon2} from 'poseidon-lite';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {API_BASE} from '../../constants/programs';
-import {pinnedFetch} from '../sslPinning/pinnedFetch';
+import {pinnedFetch, rethrowIfSSLPinningError} from '../sslPinning/pinnedFetch';
 import {toFieldElement} from './field';
 import {
   MerkleState,
@@ -133,7 +133,8 @@ function loadState(): MerkleState {
   }
   try {
     return JSON.parse(raw) as MerkleState;
-  } catch {
+  } catch (error) {
+    rethrowIfSSLPinningError(error);
     return {nextLeafIndex: 0, currentRoot: '', lastSyncedAt: null, treeAddress: null};
   }
 }
@@ -147,7 +148,8 @@ function loadLeaves(treeAddress: string): string[] {
   if (!raw) return [];
   try {
     return JSON.parse(raw) as string[];
-  } catch {
+  } catch (error) {
+    rethrowIfSSLPinningError(error);
     return [];
   }
 }
@@ -251,6 +253,7 @@ export class MerkleModule {
         rootVerified: true,
       };
     } catch (err) {
+      rethrowIfSSLPinningError(err);
       if (err instanceof MerkleRootMismatchError) {
         throw err;
       }

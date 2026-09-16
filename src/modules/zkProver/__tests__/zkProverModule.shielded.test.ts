@@ -1,6 +1,9 @@
 jest.mock('../../../constants/features', () => ({isLocalProvingEnabled: jest.fn(() => false)}));
 jest.mock('../localProver', () => ({localProver: {supported: true, prove: jest.fn(async () => ({proofBytes: 'cc'.repeat(256), publicInputs: ['1']}))}}));
-jest.mock('../../sslPinning/pinnedFetch', () => ({pinnedFetch: jest.fn()}));
+jest.mock('../../sslPinning/pinnedFetch', () => ({
+  ...jest.requireActual('../../sslPinning/pinnedFetch'),
+  pinnedFetch: jest.fn(),
+}));
 
 import {proveShielded} from '../zkProverModule';
 import {isLocalProvingEnabled} from '../../../constants/features';

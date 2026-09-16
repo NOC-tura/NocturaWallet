@@ -1,7 +1,7 @@
 import {USDC_MINT, USDT_MINT} from '../tokens/coreTokens';
 import {NOC_MINT, API_BASE} from '../../constants/programs';
 import {coingeckoHeaders} from './priceModule';
-import {pinnedFetch} from '../sslPinning/pinnedFetch';
+import {pinnedFetch, rethrowIfSSLPinningError} from '../sslPinning/pinnedFetch';
 
 export type Timeframe = '24H' | '7D' | '30D' | '1Y';
 
@@ -78,6 +78,7 @@ export async function fetchPriceHistory(coingeckoId: string, tf: Timeframe): Pro
   try {
     return await fetchPriceHistoryFromBackend(coingeckoId, tf);
   } catch (err) {
+    rethrowIfSSLPinningError(err);
     if (__DEV__) {
       console.debug('[chart] backend failed, falling back to direct CoinGecko', err);
     }

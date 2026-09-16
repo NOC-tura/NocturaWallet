@@ -1,4 +1,7 @@
-jest.mock('../../sslPinning/pinnedFetch', () => ({pinnedFetch: jest.fn()}));
+jest.mock('../../sslPinning/pinnedFetch', () => ({
+  ...jest.requireActual('../../sslPinning/pinnedFetch'),
+  pinnedFetch: jest.fn(),
+}));
 jest.mock('../merkleSync', () => ({syncLeaves: jest.fn()}));
 
 const mockGetSignatureStatus = jest.fn();

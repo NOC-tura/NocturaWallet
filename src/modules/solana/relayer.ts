@@ -1,5 +1,5 @@
 import {PublicKey, AddressLookupTableAccount} from '@solana/web3.js';
-import {pinnedFetch} from '../sslPinning/pinnedFetch';
+import {pinnedFetch, rethrowIfSSLPinningError} from '../sslPinning/pinnedFetch';
 import {API_BASE} from '../../constants/programs';
 
 interface RelayerTable {
@@ -26,7 +26,8 @@ export async function getRelayerLookupTables(): Promise<AddressLookupTableAccoun
         },
       }),
     );
-  } catch {
+  } catch (error) {
+    rethrowIfSSLPinningError(error);
     return [];
   }
 }

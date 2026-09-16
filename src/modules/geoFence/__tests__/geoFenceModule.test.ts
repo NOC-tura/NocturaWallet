@@ -7,6 +7,7 @@ import {BUNDLED_RESTRICTED_LIST} from '../restrictedList';
 
 // Mock pinnedFetch
 jest.mock('../../sslPinning/pinnedFetch', () => ({
+  ...jest.requireActual('../../sslPinning/pinnedFetch'),
   pinnedFetch: jest.fn(),
 }));
 

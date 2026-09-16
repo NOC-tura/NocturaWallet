@@ -1,5 +1,5 @@
 import {Platform} from 'react-native';
-import {pinnedFetch} from '../sslPinning/pinnedFetch';
+import {pinnedFetch, rethrowIfSSLPinningError} from '../sslPinning/pinnedFetch';
 import {API_BASE} from '../../constants/programs';
 import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
 import type {AnalyticsEvent, AnalyticsPayload} from './types';
@@ -49,7 +49,8 @@ export class AnalyticsManager {
           method: 'POST',
           body: JSON.stringify({events: batch}),
         });
-      } catch {
+      } catch (error) {
+        rethrowIfSSLPinningError(error);
         // Re-add unsent events (this batch + remaining) back to queue for retry
         const unsent = toSend.slice(i);
         this._queue.unshift(...unsent);

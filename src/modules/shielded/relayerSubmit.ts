@@ -1,5 +1,5 @@
 import {API_BASE} from '../../constants/programs';
-import {pinnedFetch} from '../sslPinning/pinnedFetch';
+import {pinnedFetch, rethrowIfSSLPinningError} from '../sslPinning/pinnedFetch';
 import {bytesToHex, decToHex64} from './fieldCodec';
 import {syncLeaves} from './merkleSync';
 import {getConnection} from '../solana/connection';
@@ -191,7 +191,8 @@ export async function submitTransferViaRelayer(
     let detail = '';
     try {
       detail = JSON.stringify(await resp.json());
-    } catch {
+    } catch (error) {
+      rethrowIfSSLPinningError(error);
       // no JSON body
     }
     throw new RelayerError(
@@ -216,7 +217,8 @@ async function recipientCommitmentOnChain(
     const hex = decToHex64(commitmentDec);
     const {leaves} = await syncLeaves(mint);
     return leaves.indexOf(hex) >= 0;
-  } catch {
+  } catch (error) {
+    rethrowIfSSLPinningError(error);
     return false;
   }
 }
