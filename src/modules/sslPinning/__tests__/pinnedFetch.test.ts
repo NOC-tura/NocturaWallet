@@ -215,3 +215,41 @@ describe('pinnedFetch — refuses URLs where pinning would silently not apply', 
     expect(SSLPinning.fetch).toHaveBeenCalled();
   });
 });
+
+/**
+ * The pin set is written out here in full, on purpose.
+ *
+ * Changing which keys the wallet trusts should take two deliberate edits, not one.
+ * A pin that is wrong is invisible until the server serves the matching chain, and
+ * then it is total: every installed wallet fails at once and the fix is a release,
+ * which does not reach devices quickly. The July incident was the mild version of
+ * this — a backup pin that silently matched nothing for two months.
+ */
+describe('SSL_PINS — the exact set this build trusts', () => {
+  it('is exactly the three transition pins, in order', () => {
+    expect(SSL_PINS).toEqual([
+      // outgoing: shared cert (CN=noc-tura.io, SANs api/apex/www)
+      'sha256/r6OlpjBVoTMRSS9o9JFTgtzC8KyrVYI6OAmKQGhf9Y8=',
+      // incoming: new api-only lineage, issued 2026-09-18, not yet served
+      'sha256/FbxrIC2khOYPbi9JerRRSSxHeP/9JL32xyuszk2nmQ8=',
+      // backup: spare key generated offline in the vault qube, never deployed
+      'sha256/aAsfaKi1QNcO7yRHo8bUJ9ABhJIcSnHZZm766XwBmHM=',
+    ]);
+  });
+
+  it('carries a spare that is not either serving key', () => {
+    const [outgoing, incoming, spare] = SSL_PINS;
+    expect(spare).not.toBe(outgoing);
+    expect(spare).not.toBe(incoming);
+  });
+
+  it('no longer carries the rehearsal spare that sat on the VPS', () => {
+    expect(SSL_PINS).not.toContain('sha256/AUlTQGY2L516ItWn7kKvOqzHQN4Tokjv8SmM4jCUuAo=');
+  });
+
+  it('every pin is a well-formed sha256/<base64-32-bytes> value', () => {
+    SSL_PINS.forEach(pin => {
+      expect(pin).toMatch(/^sha256\/[A-Za-z0-9+/]{43}=$/);
+    });
+  });
+});
