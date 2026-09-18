@@ -24,6 +24,7 @@ type RootStackParamList = {
   WipeWallet: undefined;
   Referral: undefined;
   NativeProveDebug: undefined;
+  PinProbe: undefined;
 };
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -192,6 +193,12 @@ export function SettingsScreen() {
         <NavRow
           label="🔧 Native prover test (dev)"
           onPress={() => navigation.navigate('NativeProveDebug')}
+        />
+      )}
+      {Config.PIN_PROBE === 'true' && (
+        <NavRow
+          label="🔒 TLS pin probe (dev)"
+          onPress={() => navigation.navigate('PinProbe')}
         />
       )}
       <SettingsRow label="Wallet Address">

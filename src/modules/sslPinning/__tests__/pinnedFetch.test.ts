@@ -165,3 +165,53 @@ describe('end-to-end through the real library mock', () => {
     });
   });
 });
+
+/**
+ * Silent no-op guards (2026-09-18).
+ *
+ * OkHttp's CertificatePinner starts with `findMatchingPins(hostname)` and, on an
+ * empty result, RETURNS WITHOUT CHECKING ANYTHING. Two shapes of URL reach that
+ * branch, and both look exactly like a successful pinned call:
+ *
+ *  - a `www.` host: react-native-ssl-pinning registers pins under the host with
+ *    a leading `www.` stripped (RNSslPinningModule.getDomainName), while OkHttp
+ *    asks for the full host — no pin matches the pattern, so pinning is off.
+ *  - a plaintext `http://` URL: no TLS, so there is no chain to pin at all.
+ *
+ * A pinned call that silently is not pinned is worse than an error, so both are
+ * refused before the request leaves.
+ */
+describe('pinnedFetch — refuses URLs where pinning would silently not apply', () => {
+  beforeEach(() => {
+    mockSSL.__reset();
+  });
+
+  it('rejects a www. host and never issues the request', async () => {
+    await expect(pinnedFetch('https://www.noc-tura.io/api/v1/health')).rejects.toThrow(
+      SSLPinningError,
+    );
+    expect(SSLPinning.fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects a plaintext http:// URL and never issues the request', async () => {
+    await expect(pinnedFetch('http://api.noc-tura.io/api/v1/health')).rejects.toThrow(
+      SSLPinningError,
+    );
+    expect(SSLPinning.fetch).not.toHaveBeenCalled();
+  });
+
+  it('allows a host that merely contains www elsewhere', async () => {
+    await pinnedFetch('https://wwwapi.noc-tura.io/health');
+    expect(SSLPinning.fetch).toHaveBeenCalled();
+  });
+
+  it('allows the production host (control)', async () => {
+    await pinnedFetch('https://api.noc-tura.io/api/v1/health');
+    expect(SSLPinning.fetch).toHaveBeenCalled();
+  });
+
+  it('allows an arbitrary https host — the probe must be able to reach any of them', async () => {
+    await pinnedFetch('https://dao.noc-tura.io/vote');
+    expect(SSLPinning.fetch).toHaveBeenCalled();
+  });
+});

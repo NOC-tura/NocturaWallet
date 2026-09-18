@@ -6,12 +6,19 @@ import * as SSLPinning from 'react-native-ssl-pinning';
 
 /**
  * SPKI public-key pins for api.noc-tura.io (SHA-256 of the SubjectPublicKeyInfo,
- * `sha256/<base64>` — OkHttp/AFNetworking format). The lib matches ANY cert in
- * the served chain, so we pin the leaf AND the Let's Encrypt intermediate:
- * a leaf renewal (even with a new key) still validates against the intermediate,
- * so certbot rotation can't brick the app. Server should also renew with
- * `--reuse-key` to keep the leaf pin stable. If no pin matches the live cert,
- * ALL backend calls fail the pin check and the app falls back to the direct path.
+ * `sha256/<base64>` — OkHttp/AFNetworking format). OkHttp matches ANY certificate
+ * in the cleaned chain — leaf, intermediate or root — and the first match ends the
+ * check (CertificatePinner.check$okhttp, verified against okhttp 4.12.0).
+ *
+ * We pin the LEAF and a SPARE KEY OF OUR OWN. The second pin was the Let's Encrypt
+ * intermediate until 2026-09-16 and that was the bug: Let's Encrypt rotates its
+ * intermediates, so the backup silently stopped matching at the 19 July renewal and
+ * nothing said so for two months. A backup pin is only a backup if we hold the key.
+ *
+ * The server must renew with `--reuse-key`, or the leaf pin dies with the renewal.
+ * If NO pin matches, every pinned call now FAILS LOUDLY (E004) — there is no
+ * fallback path and there must not be one: a pin failure is an attack or a
+ * misconfiguration, and both have to be seen.
  */
 // Verified from the VPS 2026-06-18 (both MATCH the live cert). Server renews
 // with reuse_key=True so the LEAF pin survives ~90-day Let's Encrypt renewals;
@@ -108,10 +115,45 @@ function toRejectedResponse(error: unknown): PinnedFetchResponse | null {
   };
 }
 
+/**
+ * OkHttp's CertificatePinner begins with `findMatchingPins(hostname)` and, when
+ * that is empty, RETURNS WITHOUT CHECKING — the call succeeds, unpinned, and looks
+ * identical to a pinned one. Two URL shapes land there:
+ *
+ *  - `www.<host>`: react-native-ssl-pinning registers the pins under the host with
+ *    a leading `www.` removed (RNSslPinningModule.getDomainName:125) while OkHttp
+ *    looks them up under the full host, so no pattern matches.
+ *  - `http://`: no TLS, so there is no chain to pin in the first place.
+ *
+ * Refused here, before the request leaves, because the failure mode they produce is
+ * indistinguishable from success at every layer above.
+ */
+function assertPinningCanApply(url: string): void {
+  const host = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)/i.exec(url);
+  const scheme = host?.[1]?.toLowerCase();
+  const authority = host?.[2]?.toLowerCase() ?? '';
+  if (scheme !== 'https') {
+    throw new SSLPinningError(
+      `Refusing to send a pinned request over ${scheme ?? 'an unknown scheme'}: ` +
+        'without TLS there is no certificate chain to pin.',
+      new Error(`non-https URL: ${url}`),
+    );
+  }
+  if (authority.startsWith('www.')) {
+    throw new SSLPinningError(
+      'Refusing a `www.` host: the pinning library would register the pins under ' +
+        'the stripped host and OkHttp would find none, leaving the call unpinned.',
+      new Error(`www host: ${url}`),
+    );
+  }
+}
+
 export async function pinnedFetch(
   url: string,
   options: PinnedFetchOptions = {},
 ): Promise<PinnedFetchResponse> {
+  assertPinningCanApply(url);
+
   const {method = 'GET', headers = {}, body, timeoutMs = 10_000} = options;
 
   const mergedHeaders: Record<string, string> = {...headers};

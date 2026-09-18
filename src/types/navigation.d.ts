@@ -75,6 +75,7 @@ export type SettingsStackParamList = {
   WipeWallet: undefined;
   Referral: undefined;
   NativeProveDebug: undefined;
+  PinProbe: undefined;
 };
 
 export type MainTabsParamList = {

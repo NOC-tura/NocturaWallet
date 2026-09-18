@@ -29,6 +29,8 @@ declare module 'react-native-config' {
      * build). Runs on-device native prove + compares to hosted. Absent = hidden.
      */
     NATIVE_PROVER_DEBUG?: string;
+    /** Dev-only TLS pin probe screen (positive + negative control). Never set in .env.production. */
+    PIN_PROBE?: string;
     /**
      * 'true' enables private p2p shielded transfer. Absent/anything else = off.
      * Keep it off: the deployed transfer circuit imposes no spend authorization,
