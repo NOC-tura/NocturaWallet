@@ -17,7 +17,10 @@ import {
 } from 'lucide-react-native';
 import {Text, Button} from '../../components/ui';
 import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
-import {validateMnemonic} from '../../modules/keyDerivation/mnemonicUtils';
+import {
+  normalizeMnemonicInput,
+  validateMnemonic,
+} from '../../modules/keyDerivation/mnemonicUtils';
 import {cn} from '../../utils/cn';
 
 /**
@@ -63,10 +66,17 @@ const IDLE_COUNTDOWN_MS = 12_000;
 const PASTE_TOAST_MS = 3_000;
 const PASTE_HEURISTIC_MIN_CHARS = 20;
 
+/**
+ * Word count is taken from the NORMALIZED input, not the raw field. A phone
+ * keyboard that inserts a period (Gboard turns a double space into ". ") adds a
+ * token the user never typed: the counter runs one ahead, the phrase goes red at
+ * the 23rd word, and the message blames spelling. Counting what will actually be
+ * validated keeps the counter honest. See normalizeMnemonicInput.
+ */
 function getWords(raw: string): string[] {
-  const trimmed = raw.trim();
-  if (trimmed.length === 0) return [];
-  return trimmed.split(/\s+/).filter(w => w.length > 0);
+  const normalized = normalizeMnemonicInput(raw);
+  if (normalized.length === 0) return [];
+  return normalized.split(' ');
 }
 
 type ValidationKind =
@@ -200,7 +210,7 @@ export function ImportSeedScreen({onMnemonicValidated, onBack}: ImportSeedScreen
     const v = validate(input);
     if (v.kind === 'valid') {
       clearIdleTimers();
-      onMnemonicValidated(input.trim().split(/\s+/).join(' '));
+      onMnemonicValidated(normalizeMnemonicInput(input));
     }
   };
 
