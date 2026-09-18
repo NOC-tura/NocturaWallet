@@ -49,6 +49,7 @@ import type {
 // Screen placeholders (replaced in later implementation steps)
 import {SettingsScreen} from '../screens/settings/SettingsScreen';
 import {NativeProveDebugScreen} from '../screens/debug/NativeProveDebugScreen';
+import {PinProbeScreen} from '../screens/debug/PinProbeScreen';
 import {SecuritySettingsScreen} from '../screens/settings/SecuritySettingsScreen';
 import {ChangePinScreen} from '../screens/settings/ChangePinScreen';
 import {ExportViewKeyScreen} from '../screens/settings/ExportViewKeyScreen';
@@ -697,6 +698,12 @@ function SettingsStack() {
           release build. Gate the route itself. */}
       {__DEV__ || Config.NATIVE_PROVER_DEBUG === 'true' ? (
         <SettingsNav.Screen name="NativeProveDebug" component={NativeProveDebugScreen} />
+      ) : null}
+      {/* Same rule as above: gate the ROUTE, not only the Settings row — a
+          registered route stays navigable by name (and by deep link) even with
+          its entry point hidden. */}
+      {__DEV__ || Config.PIN_PROBE === 'true' ? (
+        <SettingsNav.Screen name="PinProbe" component={PinProbeScreen} />
       ) : null}
     </SettingsNav.Navigator>
   );
