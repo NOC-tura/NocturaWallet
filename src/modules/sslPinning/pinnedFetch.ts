@@ -10,7 +10,12 @@ import * as SSLPinning from 'react-native-ssl-pinning';
  * in the cleaned chain — leaf, intermediate or root — and the first match ends the
  * check (CertificatePinner.check$okhttp, verified against okhttp 4.12.0).
  *
- * We pin the LEAF and a SPARE KEY OF OUR OWN. The second pin was the Let's Encrypt
+ * During the api-lineage transition we pin THREE: the leaf being served today, the
+ * leaf that will be served after the cutover, and a spare key of our own. Three,
+ * because the set matches if ANY pin does — which makes both the cutover and a
+ * rollback safe without the release and the server change having to coincide.
+ *
+ * The spare was the Let's Encrypt
  * intermediate until 2026-09-16 and that was the bug: Let's Encrypt rotates its
  * intermediates, so the backup silently stopped matching at the 19 July renewal and
  * nothing said so for two months. A backup pin is only a backup if we hold the key.
@@ -26,15 +31,37 @@ import * as SSLPinning from 'react-native-ssl-pinning';
 // daily. RULE on rotation: update BOTH this array AND the server's
 // scripts/check-ssl-pins.sh, and ship the new app version BEFORE the new cert.
 export const SSL_PINS: string[] = [
-  'sha256/r6OlpjBVoTMRSS9o9JFTgtzC8KyrVYI6OAmKQGhf9Y8=', // LEAF (primary)
-  // BACKUP: SPKI of a spare P-256 key we hold and have never deployed.
-  // Replaced the Let's Encrypt INTERMEDIATE on 2026-09-16. That pin had not matched
-  // since the 19 July renewal — Let's Encrypt rotates its intermediates, so pinning
-  // one guarantees this recurs. A backup pin is only a backup if we control the key.
-  // Private key: ~/.config/noctura/backup-tls-key-2026-09.pem (600, never in a repo).
-  // If the leaf key is ever lost, issue a certificate for THIS key and the wallet
-  // keeps working without a release. Both keys must survive, or a release is required.
-  'sha256/AUlTQGY2L516ItWn7kKvOqzHQN4Tokjv8SmM4jCUuAo=', // BACKUP (spare key, ours)
+  // [0] OUTGOING — the shared certificate api.noc-tura.io is served from today:
+  // subject CN=noc-tura.io, SANs api./apex/www. One key for three names, which is
+  // the problem being fixed: that lineage is renewed for reasons that have nothing
+  // to do with the wallet (the website), and any renewal with a fresh key would
+  // brick every installed wallet at once. DROP THIS PIN in the release AFTER the
+  // server has cut over — not before, or a rollback has nothing to land on.
+  'sha256/r6OlpjBVoTMRSS9o9JFTgtzC8KyrVYI6OAmKQGhf9Y8=',
+
+  // [1] INCOMING — leaf of the new api-only certbot lineage (single SAN
+  // api.noc-tura.io, ECDSA P-256, reuse_key=True). Issued 2026-09-18 14:36 UTC,
+  // sitting on the VPS unused until the cutover. Derived here from the leaf PEM the
+  // server side sent, not copied from their message: SPKI, SHA-256 fingerprint
+  // DD:CE:40:98…F4:E6 and serial 054F1C10…8B31 all matched, and the certificate
+  // carries its own SCTs (log C2:31:7E:57…, 2026-09-18 15:35:01 UTC), so publication
+  // is provable from the object itself — crt.sh was two months behind for this domain.
+  'sha256/FbxrIC2khOYPbi9JerRRSSxHeP/9JL32xyuszk2nmQ8=',
+
+  // [2] BACKUP — a spare P-256 key we hold and have never deployed. Generated
+  // 2026-09-18 inside the offline `vault` qube; it has never existed on a networked
+  // machine and must never reach the VPS except during an actual emergency.
+  // It replaces the previous spare (AUlTQGY2…uAo=), which spent ~2h on the
+  // production VPS during the pin rehearsal. Nothing suggests that window was
+  // abused — but a backup pin whose value rests on an assumption is not a backup,
+  // and rotating it costs one key and one line.
+  //
+  // Before this: the pin here was the Let's Encrypt INTERMEDIATE, and it had not
+  // matched since the 19 July renewal. Let's Encrypt rotates its intermediates, so
+  // pinning one guarantees that outcome. A backup pin is only a backup if we hold
+  // the key: if the live key is ever lost, we issue a certificate for THIS one and
+  // every installed wallet keeps working with no release at all.
+  'sha256/aAsfaKi1QNcO7yRHo8bUJ9ABhJIcSnHZZm766XwBmHM=',
 ];
 
 interface PinnedFetchOptions {
