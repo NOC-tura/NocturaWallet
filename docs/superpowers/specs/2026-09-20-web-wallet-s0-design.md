@@ -149,17 +149,60 @@ Served from `wallet.noc-tura.io`, not a path under the marketing site. A separat
 separate storage, separate cookies and a CSP that does not have to accommodate the website's
 needs. The DAO app is already its own origin; follow the same rule.
 
-### 6.6 The RPC key problem
+### 6.6 The RPC key problem, and the exact method list
 
 The mobile app embeds a Helius key. **A web bundle cannot**: everything in it is public, and a
-key in the JavaScript is a key published. Two options, and only one survives review:
+key in the JavaScript is a key published. So RPC is routed through the coordinator
+(`POST /api/v1/rpc`), method-allowlisted and rate-limited. Probed 2026-09-20: `/rpc`,
+`/wallet/rpc` and `/solana/rpc` all returned 404. Agreed with the coordinator side on
+2026-09-20 and now in progress; rate limiting lands first, because nginx has none today.
 
-1. **Route RPC through the coordinator** (`/rpc`, method-allowlisted, rate-limited per IP).
-   Probed 2026-09-20: `/rpc`, `/wallet/rpc` and `/solana/rpc` all return 404, so this endpoint
-   does not exist yet. It is new backend work — a dependency on the coordinator side, and the
-   only blocking one in S0.
-2. A browser-exposed key, rotated when abused. Rejected: it is abuse-by-design, and the abuse
-   lands on the same account the wallet and the backend depend on.
+**The allowlist, counted out of the wallet's code rather than estimated.** Every
+`connection.*` call in `src/` was enumerated and mapped to its JSON-RPC method name:
+
+| method | why S0 needs it |
+|---|---|
+| `getAccountInfo` | allocation PDA, TGE timestamp, referrer PDA |
+| `getMultipleAccounts` | batched balance reads |
+| `getBalance` | SOL |
+| `getTokenAccountsByOwner` | NOC balance (jsonParsed) |
+| `getLatestBlockhash` | building the purchase transaction |
+| `getBlockHeight` | blockhash expiry while confirming |
+| `getRecentPrioritizationFees` | priority fee estimate |
+| `simulateTransaction` | the mandatory pre-signature simulation (§6.7) |
+| `getSignatureStatuses` | confirmation |
+| `getTransaction` | rendering the result (jsonParsed) |
+| `getSignaturesForAddress` | history, if S0 shows it |
+
+`sendTransaction` is **deliberately absent**: the connected wallet broadcasts through its own
+RPC, so the proxy never sends anything and never needs write quota. `getTokenAccountBalance`
+and `getFeeForMessage` are not used today; the list is default-deny, so if either is ever
+introduced it fails visibly in the browser rather than degrading quietly.
+
+**WebSocket: not in S0.** The app uses `onAccountChange` (`accountSubscribe`) for live balance
+updates. A `wss://` endpoint would expose the key exactly as the HTTP one would, so the web
+polls instead. Reconsider only if a WS proxy is built for other reasons.
+
+**CORS is not the boundary.** The coordinator's `cors()` allows requests with no `Origin` at
+all, so CORS constrains browsers on other sites and nothing else — `curl` is unaffected. A
+browser always sends `Origin` on a cross-origin POST, so the web app will always carry one, but
+that is a property of the client, not a control. The boundaries are **the method list and the
+rate limit**; the Origin pin to `https://wallet.noc-tura.io` stays as cheap defence in depth.
+If this app is ever packaged (Capacitor, Tauri, a WebView), its Origin becomes
+`capacitor://`, `file://` or nothing — tell the coordinator before that ships, not after.
+
+**A second proxy already exists and is open.** `https://noc-tura.io/api/rpc/solana` forwards any
+JSON-RPC method to Helius on the paid key, with no allowlist and no limit; verified from
+outside. It cannot take the list above — the website's presale sends transactions through it
+and Anchor's `program.account.all()` needs `getProgramAccounts` — so it gets its own list, built
+from 48 hours of method-name-only logging. Two endpoints, two lists, one shared default-deny
+module.
+
+▎ That open path spends the quota of **the same Helius account this wallet depends on**. If a
+stranger exhausts it, the phone goes blind with it. Hence the proposal to issue **a key per
+surface** — website, `/api/v1/rpc`, mobile — so abuse of one cannot blind the others. The
+wallet's key was already replaced once this week because it had stopped working; it should not
+be replaced a second time because someone else spent it.
 
 ### 6.7 Signing safety
 
@@ -192,14 +235,27 @@ installing anything, so its exposure is larger than the app's, not smaller.
 Whether the EU offer itself needs more than a gate is a legal question, not an engineering one,
 and it should be answered before the presale has a second channel.
 
-## 8. Network stance — decide before launch
+## 8. Network stance — settled 2026-09-20
 
-`api.noc-tura.io` sits behind CrowdSec, which has previously returned 403 to a large number of
-real requests, including users on CGNAT, VPNs and Tor. For a privacy-branded product this is a
-contradiction that must be decided deliberately rather than inherited: either those users are
-served, or the product's own audience is being blocked by its own infrastructure.
+`api.noc-tura.io` sits behind CrowdSec. Two corrections to what this section first assumed,
+both from the server side:
 
-Single-host risk applies equally: today one host fronts everything.
+- **The rejection is not silent.** The bouncer renders `ban.html`. It is CrowdSec's page,
+  though: it does not say why, and offers no way back. Replacing it with ours is part of this.
+- **Tor exit ranges are banned right now, and not by our rules.** `185.220.101.0` and
+  `185.220.101.100` carry live CAPI bans of 164 hours. No amount of local tuning would have
+  changed that, so this is a decision about whether we want that traffic, not a setting.
+
+Resolution: keep CAPI, make the remedy proportional **per path** rather than global, using the
+bouncer's `EXCLUDE_LOCATION`. Read paths come out from under bouncing, so someone on Tor can
+read state, see their allocation and verify a vote. Writes stay bounced — purchase recording,
+ballot submission, admin — and so does `/api/v1/rpc`, where every request spends real money.
+
+▎ The audience most likely to arrive over a VPN or Tor is the audience a privacy wallet is for.
+Blocking them by inheritance rather than by decision is the one outcome this section exists to
+prevent.
+
+Single-host risk still applies: one host fronts everything.
 
 ## 9. Shielded — why it is out, and what would let it in
 
@@ -233,8 +289,9 @@ conditions are met.
 
 ## 11. Open questions
 
-1. **RPC proxy** — will the coordinator expose a method-allowlisted `/rpc`? S0 cannot ship
-   without it (§6.6). This is the one external dependency.
+1. ~~RPC proxy~~ — **answered 2026-09-20**: yes, being built, rate limiting first. The method
+   list in §6.6 is the measured one. Remaining: confirm a key per surface, and the lower quota
+   for requests without an `Origin` header.
 2. **Design source** — the app is built to `index.html` + `screen.md`. Does the web reuse those
    screens, or does it get its own layouts for desktop widths?
 3. **Buy in S0** — confirmed as in scope. If it should be read-only for a first release, say so
