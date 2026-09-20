@@ -103,6 +103,32 @@ android {
     namespace "com.nocturawallet"
     defaultConfig {
         applicationId "com.nocturawallet"
+
+        // A build that has to live NEXT TO the production wallet — the devnet /
+        // shielded test build — sets APP_ID_SUFFIX in its env file. Without it the
+        // install replaces the real wallet in place (same package, same signing key)
+        // and takes its data directory with it: seed, notes, settings. There is no
+        // prompt and no way back.
+        //
+        // APP_LABEL renames the launcher icon in the same breath. Two identical icons
+        // is how the wrong one gets opened, and the two talk to different chains.
+        def appIdSuffix = project.env.get("APP_ID_SUFFIX")
+        if (appIdSuffix) {
+            applicationIdSuffix appIdSuffix
+        } else if (project.env.get("FEATURES_SHIELDED") == "true") {
+            // Fail closed. A shielded build is by definition a test build against a
+            // different chain, and without a suffix it installs straight over the
+            // production wallet — same package, same signing key — destroying its
+            // data directory on the way. That is a silent, unrecoverable outcome
+            // reached by forgetting one line, so it is refused here instead.
+            throw new GradleException(
+                "FEATURES_SHIELDED=true without APP_ID_SUFFIX: this build would " +
+                "REPLACE the production wallet and wipe its seed. Set " +
+                "APP_ID_SUFFIX (e.g. .devnet) in the env file, or unset " +
+                "FEATURES_SHIELDED.")
+        }
+        manifestPlaceholders = [appLabel: (project.env.get("APP_LABEL") ?: "@string/app_name")]
+
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
