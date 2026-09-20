@@ -12,6 +12,14 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-20-web-wallet-s0-design.md`
 
+**Revision history.** v1 was blocked after a review found six load-bearing assumptions
+false. This document is v2, and it has since had a second review and a third pass. That
+review confirmed all seven v1 fixes and then found new defects **in exactly the parts v2
+still wrote from assumption** — the buy path's dependencies, the coordinator's write
+contract, and the browser's globals. Those tasks (3, 4, 8, 9, 11) were rewritten from the
+files. The pattern across both rounds is worth stating for whoever writes the next plan
+here: **what was read is right, what was assumed is wrong**, without exception so far.
+
 ## Global Constraints
 
 - **No key material in the page.** No code path produces or accepts a private key, seed or mnemonic.
@@ -206,9 +214,10 @@ Expected: FAIL — both modules missing.
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "vitest run --exclude '**/no-external-hosts.test.ts'",
+    "test:bundle": "vitest run no-external-hosts",
     "scan": "node scripts/check-no-secrets.mjs src ../core && node scripts/check-no-secrets.mjs --bundle dist",
-    "verify": "npm run build && npm run test && npm run scan"
+    "verify": "rm -rf dist && npm run build && npm run test && npm run test:bundle && npm run scan"
   },
   "dependencies": {
     "@solana/web3.js": "1.95.8",
@@ -220,6 +229,7 @@ Expected: FAIL — both modules missing.
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "@types/node": "^22.7.0",
     "jsdom": "^24.1.0",
     "typescript": "^5.5.0",
     "vite": "^5.4.0",
@@ -363,7 +373,7 @@ process.exit(bad === 0 ? 0 : 1);
 - [ ] **Step 4: Run the tests, then make the gate refuse something real**
 
 Run: `cd web && npm test`
-Expected: PASS, 7 tests.
+Expected: PASS, 8 tests (1 App + 7 gate).
 
 ```bash
 cd web
@@ -462,40 +472,47 @@ export function rpcEndpoint(): string {
 
 ```
 # Read by the Vite dev server ONLY. No VITE_ prefix, so it is never inlined.
-HELIUS_RPC_URL=https://mainnet.helius-rpc.com/?api-key=REPLACE_ME
+# No Helius key here: /rpc forwards to the coordinator's allowlisted route, which
+# holds its own key server-side. Nothing in development needs a credential.
 COORDINATOR_ORIGIN=https://api.noc-tura.io
 ```
+
+**Error semantics of that route, to code against** (given by the coordinator side, the
+first three verified from here on 2026-09-20):
+
+| status | meaning | client behaviour |
+|---|---|---|
+| `403` `-32601 method not allowed: X` | `X` is not on the allowlist | **a bug in our code, never a transient — never retry.** Surface it. |
+| `429` | throttled; the upstream status is preserved | back off; do not treat as a failure of the call |
+| `503` | the proxy could not ask (key unset, upstream unreachable) | a transient, not a refusal |
+| `502` | a 2xx whose body was not JSON | genuinely broken |
+
+Configure TanStack Query with `retry: false` for anything that can produce a 403: a
+retried client bug is a client bug repeated.
 
 `web/vite.config.ts` — add the proxy. `ignorePath` makes the proxy use the target's own path and query and discard the incoming one, which is what an RPC POST needs; the `configure` hook prints the URL actually requested so a failure can be diagnosed instead of guessed:
 
 ```ts
-import {defineConfig, loadEnv} from 'vitest/config';
+import {defineConfig} from 'vitest/config';
+import {loadEnv} from 'vite';   // loadEnv is a vite export; vitest/config re-exports only defineConfig, mergeConfig, configDefaults
 import react from '@vitejs/plugin-react';
 import {resolve} from 'node:path';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, __dirname, '');
   const coordinator = env.COORDINATOR_ORIGIN || 'https://api.noc-tura.io';
-  const helius = env.HELIUS_RPC_URL || '';
-
   return {
     plugins: [react()],
     server: {
       fs: {allow: [resolve(__dirname, '..')]},
       proxy: {
         '/api': {target: coordinator, changeOrigin: true, secure: true},
-        '/rpc': {
-          target: helius || `${coordinator}/api/v1/rpc`,
-          changeOrigin: true,
-          secure: true,
-          ignorePath: true,
-          configure: proxy => {
-            proxy.on('proxyReq', proxyReq => {
-              // Host + path only: the query carries the key and must not be logged.
-              console.log(`[rpc proxy] -> ${proxyReq.getHeader('host')}${proxyReq.path.split('?')[0]}`);
-            });
-          },
-        },
+        // Since 2026-09-20 the coordinator serves a method-allowlisted RPC route,
+        // so development no longer needs a Helius key at all and local and
+        // production have the same shape. Verified against the live route:
+        // getLatestBlockhash and getAccountInfo 200; sendTransaction, getVersion
+        // and a batch containing one refused method all 403.
+        '/rpc': {target: `${coordinator}/api/v1/rpc`, changeOrigin: true, secure: true, ignorePath: true},
       },
     },
     resolve: {dedupe: ['@solana/web3.js', 'react', 'react-dom']},
@@ -504,21 +521,25 @@ export default defineConfig(({mode}) => {
 });
 ```
 
-- [ ] **Step 4: PROBE — confirm the proxy reaches Helius, and learn which failure you have**
+- [ ] **Step 4: Confirm the proxy reaches the coordinator's route**
 
 ```bash
-cd web && cp .env.local.example .env.local   # then put the real key in it
+cd web && cp .env.local.example .env.local
 npm run dev &
 sleep 3
 curl -s -X POST http://localhost:5173/rpc -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"getLatestBlockhash"}' | head -c 200
+  -d '{"jsonrpc":"2.0","id":1,"method":"getLatestBlockhash"}' | head -c 160
+curl -s -o /dev/null -w 'sendTransaction through the proxy: %{http_code}\n' -X POST http://localhost:5173/rpc \
+  -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"sendTransaction","params":["x"]}'
 ```
 
-Record what you get. Three outcomes, and they are **not** the same problem:
+Expected: a real `blockhash`, then **403** — the second call is the positive control
+that the allowlist is in the path at all. A 200 there would mean the dev proxy is not
+reaching the route this plan assumes.
 
-- a JSON-RPC `result` → correct, continue.
-- `Unauthorized` **and** the dev-server line shows a path ending in `/` → the key in `.env.local` is wrong or has no mainnet access. Check it directly: `curl -s -X POST "$HELIUS_RPC_URL" -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' -H 'content-type: application/json'`.
-- `Unauthorized` **and** the logged path contains `api-key` twice, or the request path is appended after the query → `ignorePath` is not doing what this plan assumes in the installed Vite/http-proxy version. Fix it by moving the key out of the target into a header-free rewrite, and **record the finding in this plan** — it is exactly the kind of assumption that must not survive unmeasured.
+If the first call fails, the cause is `ignorePath` behaving differently in the
+installed Vite/http-proxy version than assumed here. Record what you find **in this
+plan**, then fix it.
 
 - [ ] **Step 5: Commit**
 
@@ -542,7 +563,7 @@ debug the wrong one."
 `core/` must not import React Native, MMKV, Zustand or `react-native-config`. Each moved module therefore takes a **narrow port**: the smallest interface it actually needs, so nothing drags a platform in behind it.
 
 **Files:**
-- Create: `core/ports.ts`, `core/presale/stats.ts`, `core/presale/stagePrices.ts`
+- Create: `core/ports.ts`, `core/presale/stats.ts`, `core/presale/stagePrices.ts`, `core/util/parseTokenAmount.ts`
 - Modify: `src/modules/presale/presaleModule.ts` (delegate), `src/constants/presale.ts` (re-export)
 - Test: `core/presale/__tests__/stats.test.ts`
 
@@ -627,7 +648,9 @@ export function nocUsdPriceForStage(stage: number | null): number {
 }
 ```
 
-`core/presale/stats.ts` — the body is `fetchPresaleStats` from `src/modules/presale/presaleModule.ts:37-56`, with `getCoordinatorJson('/stats')` replaced by `json.get('/stats')`. Copy the arithmetic exactly; do not re-derive it.
+`core/util/parseTokenAmount.ts` — move `src/utils/parseTokenAmount.ts` **whole**: it has zero imports, it is pure, and `fetchPresaleStats` reaches it through `nocStringToBase`. Leave `src/utils/parseTokenAmount.ts` as a one-line re-export so its many existing importers and `parseTokenAmount.test.ts` keep working. Without this move, core would import upward into `src/`, which is the wrong direction and is also invisible to the secret scan (`scan` walks `src ../core` from `web/`, never `src/utils` from core's point of view).
+
+`core/presale/stats.ts` — the body is `fetchPresaleStats` from `src/modules/presale/presaleModule.ts:37-56`, with `getCoordinatorJson('/stats')` replaced by `json.get('/stats')`. Bring `nocStringToBase` with it. Copy the arithmetic exactly; do not re-derive it.
 
 Then in `src/modules/presale/presaleModule.ts`, replace the moved function with a delegation that supplies the app's transport:
 
@@ -642,7 +665,7 @@ export const fetchPresaleStats = () => coreFetchPresaleStats(appJson);
 - [ ] **Step 4: Prove the move with the app's own tests**
 
 Run: `cd web && npm test -- stats` → PASS, 4 tests.
-Run: `cd .. && npx jest src/modules/presale src/constants && npx tsc --noEmit` → PASS.
+Run: `cd .. && npx jest src/modules/presale src/constants src/utils && npx tsc --noEmit` → PASS. `parseTokenAmount.test.ts` is what proves the utility survived the move intact.
 
 The RN suite passing against the moved code is the whole point: one implementation, guarded by tests that already existed.
 
@@ -665,8 +688,8 @@ price, and two copies of that table would be two answers to what a buyer pays."
 ### Task 4: Move the on-chain allocation and TGE readers
 
 **Files:**
-- Create: `core/presale/allocation.ts`
-- Modify: `src/modules/presale/presaleBuyModule.ts` (delegate)
+- Create: `core/presale/allocation.ts`, `core/presale/addresses.ts`
+- Modify: `src/modules/presale/presaleBuyModule.ts` (delegate), `src/constants/programs.ts` (re-export the mainnet literals)
 - Test: `core/presale/__tests__/allocation.test.ts`
 
 **Interfaces:**
@@ -740,7 +763,12 @@ describe('allocation readers', () => {
     expect(await fetchTgeTimestamp(readerFor(data))).toBe(1_893_456_000);
   });
 
-  it('returns null for a zero timestamp — not 1970 (negative control for the offset)', async () => {
+  // BEHAVIOUR CHANGE, declared: the app returns Number(0) for a zero field
+// (presaleBuyModule.ts:122) and its tests never cover that case, so the RN suite
+// passing does NOT prove this one unchanged. null is the better answer — the
+// countdown then says "not set" instead of counting from 1970 — but it is a change
+// and the app's `tgeCountdownDisplay` consumer must be checked for it.
+it('returns null for a zero timestamp — not 1970 (negative control for the offset)', async () => {
     const data = new Uint8Array(CONFIG_TGE_TIMESTAMP_OFFSET + 8);
     expect(await fetchTgeTimestamp(readerFor(data))).toBeNull();
   });
@@ -762,7 +790,48 @@ Expected: FAIL — module missing.
 
 `core/presale/allocation.ts` — take the bodies from `src/modules/presale/presaleBuyModule.ts:50-128` unchanged, including the **byte-loop decode**, and change only the connection source:
 
+**Two decisions this task must make, because the previous version left them implicit and both are fatal in a browser.**
+
+**`Buffer` is not a global in a Vite bundle.** Every moved body uses it —
+`Buffer.from('config')`, `Buffer.concat`, `Buffer.alloc` — and web3.js imports the
+`buffer` package for itself without defining `globalThis.Buffer`. Under Vitest (Node)
+the global exists, so the tests would be green and the page would throw
+`ReferenceError: Buffer is not defined` on the first PDA derivation. Every core file
+that touches it therefore imports it explicitly:
+
 ```ts
+import {Buffer} from 'buffer';
+```
+
+which resolves to the root `buffer@5.7.1` for React Native and Jest, and to the copy
+web3.js already carries under the web build. `TransactionInstruction`'s `data` field is
+typed `Buffer`, so this is also what type-checks. **`readU64LE` and `encodeU64LE` still
+return/accept `Uint8Array` and do their own byte loops** — the import gives us the
+constructor, not the BigInt accessors, which 5.7.1 does not have.
+
+**Core needs `PROGRAM` and `ADMIN`, and `src/constants/programs.ts` cannot be their home**
+— its first line is `import Config from 'react-native-config'`, and it runs
+`assertKnownNetwork(Config.NETWORK)` at import time. Pulling it into the web bundle
+drags React Native in; copying the literals creates the second specification this plan
+exists to avoid. So `core/presale/addresses.ts` owns them, and the app re-exports:
+
+```ts
+import {PublicKey} from '@solana/web3.js';
+
+/** Mainnet, as recorded in the project's CLAUDE.md. `src/constants/programs.ts`
+ *  re-exports these; it keeps the devnet switch, which core does not need. */
+export const PROGRAM = new PublicKey('6nTTJwtDuxjv8C1JMsajYQapmPAGrC3QF1w5nu9LXJvt');
+export const ADMIN = new PublicKey('KnZ5bRuaCb3JEAYgt9CJ69eWQ7i5dp5cASbTmLj39qr');
+export const NOC_MINT = new PublicKey('B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW');
+export const NOC_DECIMALS = 9;
+```
+
+Read the current values out of `src/constants/programs.ts` before writing this file and
+use those; the ones above are from `CLAUDE.md` and must agree. If they disagree, stop —
+that disagreement is a finding, not a formatting detail.
+
+```ts
+import {Buffer} from 'buffer';
 import {PublicKey} from '@solana/web3.js';
 
 export interface AccountReader {
@@ -1206,7 +1275,8 @@ means an empty wallet and the other means we do not know."
 ### Task 8: The geo gate — the real contract, OFAC-only
 
 **Files:**
-- Create: `core/geo/classify.ts`, `web/src/geo/useGeo.ts`
+- Create: `core/geo/classify.ts`, `core/geo/restrictedList.ts`, `web/src/geo/useGeo.ts`
+- Test (web): `web/src/geo/__tests__/checkGeo.test.ts` — the wiring is where v1 invented a field, so it does not go untested
 - Modify: `src/modules/geoFence/geoFenceModule.ts` (delegate the classifier)
 - Test: `core/geo/__tests__/classify.test.ts`
 
@@ -1266,7 +1336,13 @@ Run: `cd web && npm test -- classify` → FAIL, module missing.
 
 Take the decision branches from `src/modules/geoFence/geoFenceModule.ts:105-140` — no list entry → `allow`; `category === 'sanctioned'` → `block`/`sanctioned`; otherwise → `warn`/`restricted`; `isVpn` → `warn`/`vpn_detected` — into `core/geo/classify.ts` as a pure function over `(input, restricted)`. Move `isPresaleBlocked` (`:27`) with it. **Transport and caching stay per platform**: the app keeps its MMKV-cached list with the 6-hour TTL and the bundled fallback; the web fetches `/geo/restricted-list` through `json.get`.
 
-`web/src/geo/useGeo.ts` exports **`checkGeo(): Promise<JurisdictionResult>`** — Task 9 mocks it by that name. It fetches `/geo/check` — real shape `{countryCode, isVpn}`, **no envelope** — and `/geo/restricted-list`, then calls `classifyJurisdiction`. If either request fails, return `{action: 'warn', reason: 'ambiguous', …}`: the app's own fail-safe is to warn rather than block when the service is unreachable, and the web must not be stricter than the app by accident.
+Move `BUNDLED_RESTRICTED_LIST` and `BUNDLED_LIST_DATE` from `src/modules/geoFence/restrictedList.ts` into `core/geo/restrictedList.ts` — pure data, no imports — and re-export from the app file. The web needs the same fallback: without it, a failure of `/geo/restricted-list` leaves the page unable to block anyone, including the jurisdictions the gate exists for.
+
+`web/src/geo/useGeo.ts` exports **`checkGeo(): Promise<JurisdictionResult>`** — Task 9 mocks it by that name. It fetches `/geo/check` — real shape `{countryCode, isVpn}`, **no envelope** — and `/geo/restricted-list`, falls back to the bundled list on failure, then calls `classifyJurisdiction`.
+
+**When `/geo/check` itself fails, the buy is refused, not warned.** The app's `warn` on an unreachable service is its shielded-era fail-safe, and copying it here would contradict spec §6.8 — "a failed geo check … blocks the action and says so" — silently. So `checkGeo` throws when the country lookup fails and `useBuy` surfaces that; the rest of the page keeps working, because only the purchase is gated. Write this divergence from the app's behaviour into the file header, or the next reader will "fix" it back.
+
+`web/src/geo/__tests__/checkGeo.test.ts` covers four cases: a sanctioned country blocks; an unlisted country allows; `/geo/restricted-list` failing still blocks a sanctioned country through the bundled fallback; and `/geo/check` failing **throws** rather than returning warn.
 
 Then have `geoFenceModule.ts` import the classifier from core instead of its private copy.
 
@@ -1292,106 +1368,164 @@ geo tests are what prove it still decides the same way."
 
 ---
 
-### Task 9: Buy with SOL — gated, priced, simulated, signed by the wallet, confirmed, recorded
+### Task 9: Buy with SOL — the whole money path, moved rather than re-invented
+
+The previous version of this task invented three things and each would have cost real
+money. What follows is built out of what the app already does.
 
 **Files:**
-- Create: `core/presale/buyInstructions.ts`, `web/src/presale/useBuy.ts`, `web/src/presale/BuyForm.tsx`
-- Modify: `src/modules/presale/presaleBuyModule.ts` (delegate the pure builders), `web/src/lib/api.ts` (add the writer below)
-- Test: `core/presale/__tests__/buyInstructions.test.ts`, `web/src/presale/__tests__/useBuy.test.tsx`
+- Create: `core/presale/buyInstructions.ts`, `core/presale/referrer.ts`, `core/presale/record.ts`, `core/solana/priorityFee.ts`, `web/src/presale/useBuy.ts`, `web/src/presale/BuyForm.tsx`
+- Modify: `src/modules/presale/presaleBuyModule.ts`, `src/modules/presale/presaleModule.ts`, `src/modules/solana/priorityFee.ts` (all three become delegations), `web/src/lib/api.ts` (add `post`)
+- Test: `core/presale/__tests__/buyInstructions.test.ts`, `core/presale/__tests__/referrer.test.ts`, `web/src/presale/__tests__/useBuy.test.tsx`
 
 **Interfaces:**
-- Produces:
-  - `encodeU64LE(value: bigint): Uint8Array` — hand-rolled, for the same reason as `readU64LE`
-  - `buildSolPurchaseInstruction(user: PublicKey, solLamports: bigint, referrerAllocation: PublicKey): TransactionInstruction`
-  - `buildBuyInstructions(user: PublicKey, solLamports: bigint, priorityFeeMicroLamports: number, resolved: {referrerAllocation: PublicKey; registerReferrer: PublicKey | null}): TransactionInstruction[]`
-  - `useBuy(): {submit(solLamports: bigint): Promise<string>; state: BuyState; error: string | null}`
-  - added to `web/src/lib/api.ts`:
+- `encodeU64LE(value: bigint): Uint8Array` — byte loop; `buffer@5.7.1` has no `writeBigUInt64LE` either
+- `buildSolPurchaseInstruction(user, solLamports, referrerAllocation): TransactionInstruction`
+- `buildBuyInstructions(user, solLamports, priorityFeeMicroLamports, resolved): TransactionInstruction[]`
+- `fetchAllocationRef(reader: AccountReader, user): Promise<{exists: boolean; referrer: string | null; purchaseCount: number}>`
+- `resolveReferrer(reader: AccountReader, user, capturedReferrer: string | null): Promise<{referrerAllocation: PublicKey; registerReferrer: PublicKey | null; effectiveReferrerAddress: string | null}>`
+- `estimatePriorityFee(fees: FeeReader, level: PriorityLevel): Promise<number>` where `FeeReader = {getRecentPrioritizationFees(): Promise<{prioritizationFee: number}[]>}`
+- `recordPresalePurchase(post: JsonPoster, rec: PresalePurchaseRecord): Promise<void>` — **best effort, never throws**
+- `useBuy(): {submit(solLamports: bigint): Promise<string>; state: BuyState; error: string | null; canBuy: boolean; blockedReason: string | null}`
 
-```ts
-/** Records a confirmed purchase with the coordinator. Throws on a non-200 — a
- *  purchase that landed on chain but was not recorded must be visible, not silent. */
-export async function recordPurchase(body: {signature: string; address: string; solLamports: string}): Promise<void> {
-  const res = await fetch(`${API_BASE}/solana/purchase`, {
-    method: 'POST',
-    headers: {'content-type': 'application/json'},
-    body: JSON.stringify(body),
-  });
-  if (res.status !== 200) throw new Error(`purchase record returned HTTP ${res.status}`);
-}
-```
+#### Three corrections this task exists to carry
 
-Only the **pure** builders move. `buildSolPurchaseTx` stays in the app: it reads the MMKV referral-capture store and calls `resolveReferrer`, and dragging those into `core/` would drag React Native into the web bundle. The web composes its own transaction from the moved instruction builders, which is also how it gets a **real priority fee** — the app's `buildSolPurchaseTx` passes 0 because it builds the tx for simulation only, and broadcasting that same object would send a mainnet purchase at zero priority.
+**1. The referrer PDA is not derivable from the buyer alone.** `presaleBuyModule.ts:225`
+says it outright: *the program validates `referrer_allocation` against
+`["allocation", user_allocation.referrer]`, so a mismatch makes the tx fail.* Anyone who
+has ever bought with a referrer has a non-default on-chain referrer, so passing
+`derivePresalePdas(user).referrerAllocation` makes **their** purchase fail simulation
+with no stated cause. `resolveReferrer` is pure once `fetchAllocationRef` takes an
+`AccountReader` — the only MMKV-bound input is the *captured* referrer, which is already
+a parameter. Both move; the web passes the `?ref=` query parameter, or `null`.
 
-- [ ] **Step 1: Write the failing tests**
+**2. The coordinator's record has eight fields and never throws.** The real contract is
+`PresalePurchaseRecord {txHash, buyerAddress, paymentToken, paymentAmount, nocAmount,
+usdValue, stage, referrerAddress?}` (`presaleModule.ts:76-85`), and
+`recordPresalePurchase` swallows failures on purpose — the chain is the source of truth
+and a failed archive must not look like a failed purchase (`:88-98`). Move that function
+behind a `post` port instead of writing a new one that invents `{signature, address,
+solLamports}` and throws.
 
-`core/presale/__tests__/buyInstructions.test.ts`:
+**3. The priority fee has an engineered ceiling, and re-reading the raw RPC drops it.**
+`src/modules/solana/priorityFee.ts` clamps between `FLOOR` and `CEILING` so that
+`CEILING * MAX_COMPUTE_UNITS / 1e6 <= MAX_PRIORITY_FEE_LAMPORTS`, with the reason in the
+file: *the RPC is untrusted … no RPC response can inflate the fee without bound.* Telling
+the web to call `getRecentPrioritizationFees` itself would be a copy with the control
+removed, on the one path that spends money. Move the module; narrow its `Connection`
+parameter to the one method it calls.
+
+- [ ] **Step 1: PROBE — can a wallet that cannot broadcast be recognised BEFORE it signs?**
+
+Policy, agreed with the coordinator side on 2026-09-20: `sendTransaction` stays off the
+RPC allowlist, so the proxy keeps a property one test can prove — *this key cannot put
+anything on chain* (verified from here: `sendTransaction` → 403 `-32601`). The cost is
+that a wallet without the `solana:signAndSendTransaction` feature signs and then
+broadcasts through **our** connection, and receives that 403 **after** the user signed.
+
+A signature followed by silent non-delivery is worse than refusing the wallet, so the
+condition on the policy is: **refuse at connect time, before an amount is entered.**
+
+Measure, and write the answer here:
+
+1. Can the feature be read from `useWallet()` before any signing — e.g. through
+   `wallet.adapter` and the Wallet Standard features object? Record the exact expression.
+2. **Does the reading match behaviour?** A detector that reads a property answers
+   "capable" whenever the property exists; if the call then fails, you have a green light
+   that cannot show red. The test that separates them is a real broadcast from a wallet
+   without the feature, with the outcome measured — not the presence of a key in an object.
+
+If (1) has no answer, **(b) cannot meet its own condition** and this task switches to the
+S1 path instead: broadcast through the public Solana RPC (`api.mainnet-beta.solana.com`,
+no key needed, the signed transaction is public anyway) while reads and confirmation stay
+on our proxy. That path needs resubmission and a visible pending state, which is why it
+is not the S0 default — not because it is worse.
+
+- [ ] **Step 2: Write the failing tests**
+
+`core/presale/__tests__/referrer.test.ts`:
 
 ```ts
 import {PublicKey} from '@solana/web3.js';
-import {buildBuyInstructions, buildSolPurchaseInstruction, encodeU64LE} from '../buyInstructions';
+import {derivePresalePdas} from '../allocation';
+import {resolveReferrer} from '../referrer';
 
 const USER = new PublicKey('Da83cAfGUrsm896FUghCkNKutgFc96WNGWN73bZxe31B');
-const REF = PublicKey.default;
+const R2 = new PublicKey('9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4');
 
-it('encodes u64 little-endian by hand (buffer@5.7.1 has no writeBigUInt64LE)', () => {
-  expect(Array.from(encodeU64LE(1n))).toEqual([1, 0, 0, 0, 0, 0, 0, 0]);
-  expect(Array.from(encodeU64LE(2n ** 64n - 1n))).toEqual([255, 255, 255, 255, 255, 255, 255, 255]);
+/** An allocation account with `referrer` set and a purchase count. Layout per
+ *  presaleBuyModule.ts:161-170 — read it and mirror it exactly. */
+function allocationWith(referrer: PublicKey | null, purchaseCount: number): Uint8Array {
+  /* build the fixture from the documented offsets */
+  throw new Error('build from the real layout before running');
+}
+
+it('honours an existing on-chain referrer — the program validates against it', async () => {
+  const reader = {getAccountInfo: async () => ({data: allocationWith(R2, 1)})};
+  const r = await resolveReferrer(reader, USER, null);
+  expect(r.referrerAllocation.toBase58()).toBe(derivePresalePdas(R2).userAllocation.toBase58());
+  expect(r.registerReferrer).toBeNull();
 });
 
-it('puts the discriminator first and the amount after it', () => {
-  const ix = buildSolPurchaseInstruction(USER, 1_000_000_000n, REF);
-  expect(ix.data.length).toBe(16);
-  expect(Array.from(ix.data.subarray(8))).toEqual(Array.from(encodeU64LE(1_000_000_000n)));
+it('ignores a captured referrer once the buyer already has an on-chain one', async () => {
+  const reader = {getAccountInfo: async () => ({data: allocationWith(R2, 1)})};
+  const r = await resolveReferrer(reader, USER, USER.toBase58());
+  expect(r.referrerAllocation.toBase58()).toBe(derivePresalePdas(R2).userAllocation.toBase58());
 });
 
-it('includes a compute-unit price instruction when a priority fee is given', () => {
-  const none = buildBuyInstructions(USER, 1n, 0, {referrerAllocation: REF, registerReferrer: null});
-  const some = buildBuyInstructions(USER, 1n, 25_000, {referrerAllocation: REF, registerReferrer: null});
-  expect(some.length).toBe(none.length);
-  // Positive control: the two differ, so the fee is actually carried in the data.
-  expect(some[1]!.data).not.toEqual(none[1]!.data);
-});
-
-it('bundles register_referrer only when one is resolved', () => {
-  const without = buildBuyInstructions(USER, 1n, 0, {referrerAllocation: REF, registerReferrer: null});
-  const with_ = buildBuyInstructions(USER, 1n, 0, {referrerAllocation: REF, registerReferrer: USER});
-  expect(with_.length).toBe(without.length + 1);
+it('falls back to the default PDA when there is no referrer at all (positive control)', async () => {
+  const reader = {getAccountInfo: async () => null};
+  const r = await resolveReferrer(reader, USER, null);
+  expect(r.referrerAllocation.toBase58()).toBe(derivePresalePdas(PublicKey.default).userAllocation.toBase58());
 });
 ```
 
-`web/src/presale/__tests__/useBuy.test.tsx` — every mocked module is declared with `vi.hoisted` so the factories do not dereference a later `const`:
+The first two are the tests whose absence would have shipped the defect: they fail loudly
+if the web ever goes back to deriving the referrer from the buyer.
+
+`web/src/presale/__tests__/useBuy.test.tsx` — the connection stub carries **every** method
+the hook calls, including `getBlockHeight` for blockhash expiry, and the debounce is
+per-hook so five tests in one file do not collide:
 
 ```tsx
+import {PublicKey} from '@solana/web3.js';
+import {renderHook, act} from '@testing-library/react';
+
 const h = vi.hoisted(() => ({
-  geo: vi.fn(),
-  simulate: vi.fn(),
-  send: vi.fn(),
-  blockhash: vi.fn(),
-  fees: vi.fn(),
-  record: vi.fn(),
+  geo: vi.fn(), simulate: vi.fn(), send: vi.fn(), blockhash: vi.fn(),
+  height: vi.fn(), statuses: vi.fn(), fees: vi.fn(), record: vi.fn(), resolve: vi.fn(),
 }));
 
 vi.mock('../../geo/useGeo', () => ({checkGeo: h.geo}));
-vi.mock('../../lib/api', () => ({json: {get: vi.fn()}, recordPurchase: h.record}));
+vi.mock('../../lib/api', () => ({post: vi.fn(), recordPurchase: h.record}));
+vi.mock('../../../../core/presale/referrer', () => ({resolveReferrer: h.resolve}));
 vi.mock('../../lib/solana', () => ({
   connection: () => ({
     simulateTransaction: h.simulate,
     getLatestBlockhash: h.blockhash,
+    getBlockHeight: h.height,
+    getSignatureStatuses: h.statuses,
     getRecentPrioritizationFees: h.fees,
-    getSignatureStatuses: vi.fn(async () => ({value: [{confirmationStatus: 'confirmed', err: null}]})),
   }),
+  accountReader: {getAccountInfo: vi.fn()},
 }));
 vi.mock('@solana/wallet-adapter-react', () => ({
-  useWallet: () => ({publicKey: new (require('@solana/web3.js').PublicKey)('Da83cAfGUrsm896FUghCkNKutgFc96WNGWN73bZxe31B'), sendTransaction: h.send}),
+  useWallet: () => ({
+    publicKey: new PublicKey('Da83cAfGUrsm896FUghCkNKutgFc96WNGWN73bZxe31B'),
+    sendTransaction: h.send,
+    wallet: {adapter: {name: 'Phantom'}},
+  }),
 }));
 
-import {renderHook, act} from '@testing-library/react';
 import {useBuy} from '../useBuy';
 
 beforeEach(() => {
   Object.values(h).forEach(m => m.mockReset());
-  h.blockhash.mockResolvedValue({blockhash: '11111111111111111111111111111111', lastValidBlockHeight: 1});
+  h.blockhash.mockResolvedValue({blockhash: '11111111111111111111111111111111', lastValidBlockHeight: 100});
+  h.height.mockResolvedValue(10);
+  h.statuses.mockResolvedValue({value: [{confirmationStatus: 'confirmed', err: null}]});
   h.fees.mockResolvedValue([{prioritizationFee: 1000}]);
+  h.resolve.mockResolvedValue({referrerAllocation: PublicKey.default, registerReferrer: null, effectiveReferrerAddress: null});
 });
 
 it('refuses a sanctioned region before asking for a signature', async () => {
@@ -1403,7 +1537,16 @@ it('refuses a sanctioned region before asking for a signature', async () => {
   expect(h.send).not.toHaveBeenCalled();
 });
 
-it('proceeds on a warn — warn is not a block', async () => {
+it('refuses when the geo service itself fails — spec 6.8, not the app warn', async () => {
+  h.geo.mockRejectedValue(new Error('geo unreachable'));
+  const {result} = renderHook(() => useBuy());
+  await act(async () => {
+    await expect(result.current.submit(1_000_000_000n)).rejects.toThrow();
+  });
+  expect(h.send).not.toHaveBeenCalled();
+});
+
+it('proceeds on a warn — warn is not a block (positive control)', async () => {
   h.geo.mockResolvedValue({action: 'warn', countryCode: 'SI', reason: 'vpn_detected', transparentAllowed: true});
   h.simulate.mockResolvedValue({value: {err: null}});
   h.send.mockResolvedValue('sig');
@@ -1423,7 +1566,21 @@ it('refuses when the simulation errors, before asking for a signature', async ()
   expect(h.send).not.toHaveBeenCalled();
 });
 
-it('ignores a second submit inside the debounce window', async () => {
+it('uses the resolved referrer allocation, never one derived from the buyer', async () => {
+  const R2 = new PublicKey('9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4');
+  h.resolve.mockResolvedValue({referrerAllocation: R2, registerReferrer: null, effectiveReferrerAddress: R2.toBase58()});
+  h.geo.mockResolvedValue({action: 'allow', countryCode: 'SI', transparentAllowed: true});
+  h.simulate.mockResolvedValue({value: {err: null}});
+  h.send.mockResolvedValue('sig');
+  const {result} = renderHook(() => useBuy());
+  await act(async () => {
+    await result.current.submit(1_000_000_000n);
+  });
+  const tx = h.send.mock.calls[0]![0];
+  expect(tx.message.staticAccountKeys.some((k: PublicKey) => k.equals(R2))).toBe(true);
+});
+
+it('rejects a second submit inside the debounce window, per hook instance', async () => {
   h.geo.mockResolvedValue({action: 'allow', countryCode: 'SI', transparentAllowed: true});
   h.simulate.mockResolvedValue({value: {err: null}});
   h.send.mockResolvedValue('sig');
@@ -1435,7 +1592,7 @@ it('ignores a second submit inside the debounce window', async () => {
   expect(h.send).toHaveBeenCalledTimes(1);
 });
 
-it('records the purchase with the coordinator once confirmed', async () => {
+it('records the purchase best-effort, in the coordinator field names', async () => {
   h.geo.mockResolvedValue({action: 'allow', countryCode: 'SI', transparentAllowed: true});
   h.simulate.mockResolvedValue({value: {err: null}});
   h.send.mockResolvedValue('sig');
@@ -1443,39 +1600,93 @@ it('records the purchase with the coordinator once confirmed', async () => {
   await act(async () => {
     await result.current.submit(1_000_000_000n);
   });
-  expect(h.record).toHaveBeenCalledWith(expect.objectContaining({signature: 'sig'}));
+  expect(h.record).toHaveBeenCalledWith(
+    expect.objectContaining({txHash: 'sig', paymentToken: 'SOL', buyerAddress: expect.any(String)}),
+  );
+});
+
+it('still resolves when the record call fails — the chain is the source of truth', async () => {
+  h.geo.mockResolvedValue({action: 'allow', countryCode: 'SI', transparentAllowed: true});
+  h.simulate.mockResolvedValue({value: {err: null}});
+  h.send.mockResolvedValue('sig');
+  h.record.mockRejectedValue(new Error('coordinator down'));
+  const {result} = renderHook(() => useBuy());
+  await act(async () => {
+    await expect(result.current.submit(1_000_000_000n)).resolves.toBe('sig');
+  });
 });
 ```
 
-- [ ] **Step 2: Run them and watch them fail**
+- [ ] **Step 3: Run them and watch them fail, then move the code**
 
-Run: `cd web && npm test -- buyInstructions useBuy` → FAIL, modules missing.
+Move, in this order, each with the app's suite as the proof:
 
-- [ ] **Step 3: Implement**
+1. `encodeU64LE`, `buildSolPurchaseInstruction`, `buildRegisterReferrerInstruction`, `buildBuyInstructions` → `core/presale/buyInstructions.ts`. Account order is authoritative; do not reorder. Import `Buffer` explicitly (Task 4).
+2. `fetchAllocationRef`, `resolveReferrer`, `captureIsValid` → `core/presale/referrer.ts`, with `AccountReader` as the first parameter. The `self.` indirection in the app exists for test spying; keep the app's wrapper doing that and let core take a plain call.
+3. `estimatePriorityFee` with `FLOOR`, `CEILING`, `PERCENTILE`, `MAX_PRIORITY_FEE_LAMPORTS` → `core/solana/priorityFee.ts`, parameter narrowed to `FeeReader`.
+4. `PresalePurchaseRecord` and `recordPresalePurchase` → `core/presale/record.ts`, taking a `JsonPoster` port. **Keep the swallow**; add the port to `core/ports.ts`:
 
-Move `encodeU64LE`, `buildSolPurchaseInstruction`, `buildRegisterReferrerInstruction` and `buildBuyInstructions` into `core/presale/buyInstructions.ts` unchanged (account order is authoritative — do not reorder), and have `presaleBuyModule.ts` import them from core.
+```ts
+export interface JsonPoster {
+  post(path: string, body: unknown): Promise<void>;
+}
+```
 
-`web/src/presale/useBuy.ts` runs, in order: `checkGeo()` → refuse when `isPresaleBlocked`; read the priority fee from `getRecentPrioritizationFees`; `getLatestBlockhash`; compile a `VersionedTransaction` from `buildBuyInstructions(user, lamports, fee, {referrerAllocation: derivePresalePdas(user).referrerAllocation, registerReferrer: null})`; `simulateTransaction` → refuse on `err`; `sendTransaction(tx, connection())` (the **wallet** broadcasts); poll `getSignatureStatuses` until confirmed or the blockhash's `lastValidBlockHeight` passes; then `recordPurchase({signature, ...})`. A module-level timestamp enforces the 500 ms minimum between submissions and an in-flight ref rejects a concurrent one.
+`web/src/presale/useBuy.ts` then runs, in order: `checkGeo()` → refuse on `isPresaleBlocked`
+and on a thrown lookup; `resolveReferrer(accountReader, publicKey, refFromQueryString)`;
+`estimatePriorityFee(connection(), 'normal')`; `getLatestBlockhash()`; compile a
+`VersionedTransaction` from `buildBuyInstructions(...)`; `simulateTransaction` → refuse on
+`err`; `sendTransaction(tx, connection())`; poll `getSignatureStatuses` until confirmed or
+`getBlockHeight()` passes `lastValidBlockHeight`; then `recordPurchase({txHash, ...})`,
+whose failure is logged and ignored. Debounce with a `useRef` timestamp **per hook
+instance**, not a module-level one — Vitest isolates modules per file, not per test, so a
+module-level stamp makes the tests collide with each other.
+
+`BuyForm` disables the button while busy, and when `canBuy` is false renders
+`blockedReason` instead of the amount field — that is where the connect-time refusal from
+Step 1 surfaces.
+
+**Spec §6.7 lands here too, and it is not optional.** Before the signature request the
+form renders, in words: the amount in SOL, the NOC it buys at the current stage price,
+the priority fee, and the program the transaction calls. And the transaction is checked
+against an allowlist of program ids before it is handed to the wallet:
+
+```ts
+const ALLOWED_PROGRAM_IDS = [PROGRAM, ComputeBudgetProgram.programId, SystemProgram.programId];
+```
+
+An instruction addressed to anything else is a bug in code we wrote, and the page refuses
+to ask for a signature rather than showing a summary it cannot vouch for. Add a test that
+plants a foreign program id into the instruction list and asserts `sendTransaction` was
+never called.
 
 - [ ] **Step 4: Verify**
 
-Run: `cd web && npm test -- buyInstructions useBuy` → PASS, 9 tests.
-**Do not buy on mainnet from this build until Task 11's gates are green and the amount is the minimum.**
+Run: `cd web && npm test -- buyInstructions referrer useBuy` → PASS.
+Run: `cd .. && npx jest src/modules/presale src/modules/solana && npx tsc --noEmit` → PASS.
+The app's `presaleBuyModule.test.ts` covers the referrer cases (an on-chain R2 must produce
+`PDA(R2)`), which is exactly what proves move 2 changed nothing.
+
+**Do not buy on mainnet from this build until Task 11's gates are green**, and when you
+do, use the minimum and check the signature on an explorer before believing the UI.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add core/presale/buyInstructions.ts web/src/presale src/modules/presale/presaleBuyModule.ts
-git commit -m "feat(web): buy with SOL — three refusals before any signature request
+git add core/presale core/solana web/src/presale src/modules/presale src/modules/solana/priorityFee.ts
+git commit -m "feat(web): buy with SOL, with the money path moved rather than re-invented
 
-A blocked region, a failing simulation and a repeat click each refuse, and each has a
-test asserting sendTransaction was never reached: 'it showed an error' and 'it did
-not send' are different claims.
+Three things an earlier draft of this task invented, each of which would have cost
+money: the referrer allocation derived from the buyer (the program validates it
+against the buyer's ON-CHAIN referrer, so every referred buyer's transaction would
+fail simulation), a three-field purchase record that throws (the real one has eight
+fields and swallows, because the chain is the source of truth), and a fresh read of
+getRecentPrioritizationFees (the app clamps that against an untrusted RPC, and the
+copy dropped the clamp).
 
-Only the pure instruction builders moved into core. buildSolPurchaseTx stays in the
-app because it reads MMKV, and because it passes priority fee 0 — it builds the tx
-for simulation. Broadcasting that same object would send a mainnet purchase at zero
-priority, so the web composes its own with a fee read from the chain."
+All three are now moved from the app and guarded by its own tests. The refusals —
+blocked region, unreachable geo service, failed simulation, repeat click — each
+assert that sendTransaction was never reached."
 ```
 
 ---
@@ -1597,8 +1808,12 @@ import {join} from 'node:path';
 // Every entry needs a reason; an allowlist without one is how this gate rots.
 const ALLOWED = [/(^|\.)noc-tura\.io$/, /^localhost$/];
 
+// Excluded from the default `npm test` set and run only by `verify`, after
+// `rm -rf dist && build`. In the default set it would fail every run that had not
+// built; against a stale dist/ it would report on yesterday's bundle — a gate
+// describing an artifact nobody is shipping.
 it('the built bundle references no third-party host', () => {
-  expect(existsSync('dist')).toBe(true); // build runs before test in `verify`
+  expect(existsSync('dist')).toBe(true);
   const offenders: string[] = [];
   const files = [
     ...readdirSync('dist/assets').map(f => join('dist/assets', f)),
@@ -1648,14 +1863,27 @@ jobs:
         working-directory: web
 ```
 
-`core/` is type-checked and tested through `web/`'s tsconfig `include`, which is why the workflow does not install at the repo root.
+**`core/` needs a `paths` mapping, or the root install.** `core/*.ts` import `@solana/web3.js`, and tsc resolves that by walking up from `core/` to the **repo root** `node_modules`, which this workflow never installs — so `npm run build` (`tsc --noEmit && vite build`) passes locally and fails in CI. Make both agree in `web/tsconfig.json`:
+
+```json
+"paths": {"@solana/web3.js": ["./node_modules/@solana/web3.js"], "buffer": ["./node_modules/buffer"]}
+```
+
+Locally this prevents the other half of the same problem: two copies of web3.js give two `Connection` classes, and `Connection` has private members, so tsc rejects passing one where the other is expected. The narrow ports this plan uses — `AccountReader`, the fee reader — never name `Connection`, which is why they were chosen.
+
+`npm audit --audit-level=high` here covers `web/`'s own tree including the wallet-adapter dev dependencies, while the repo root's policy is `--omit=dev --audit-level=critical`. Decide which applies **before** the first red run, and write the reason into the workflow instead of lowering the threshold later when it is inconvenient.
 
 - [ ] **Step 4: Make every gate refuse something**
 
 ```bash
 cd web
 printf 'const k = Keypair.generate();\n' > src/planted.ts && npm run scan; echo "expect 1, got $?"; rm src/planted.ts
-printf 'export const u = "https://cdn.example.com/x.js";\n' > src/planted2.ts && npm run build >/dev/null && npm test -- no-external-hosts; echo "expect fail"; rm src/planted2.ts
+# The planted host must actually be REACHED by the bundler, or nothing is bundled and
+# the gate 'passes' while proving nothing. Import it from the entry, and capture the code.
+printf 'export const u = "https://cdn.example.com/x.js";\n' > src/planted2.ts
+printf "\nimport './planted2';\n" >> src/main.tsx
+npm run build >/dev/null && npm run test:bundle; echo "expect NON-ZERO, got $?"
+git checkout src/main.tsx && rm src/planted2.ts
 npm run verify; echo "expect 0, got $?"
 ```
 
@@ -1680,6 +1908,15 @@ tree passes both. A gate that has only ever said yes has not been tested."
 - **Stablecoin purchases.** SOL only in S0; the USDC/USDT path has its own token-account handling and doubles the buy surface.
 - **Price and chart.** `/wallet/prices` and `/wallet/chart` are live and cheap to add, but nothing in S0 needs a USD figure that the stage price does not already give.
 - **Production hosting, CSP headers, the separate origin and the reproducible build.** They belong to the deploy task; spec §6.3–6.5 is its requirements list.
+- **Ledger.** It has no Wallet Standard interface, so with `wallets={[]}` it does not
+  appear at all; and under the S0 broadcast policy a wallet that cannot `signAndSend`
+  is refused at connect time anyway. Ledger returns in S1 together with the public-RPC
+  broadcast path — that pairing is the reason the path is written down rather than
+  discarded.
+- **A user-cancelled signature test** (spec §10). The refusals that are tested are the
+  ones we control: region, geo outage, simulation, repeat click. A cancellation is the
+  adapter's own rejection and belongs with the end-to-end mock-adapter test, which is
+  deploy-task work.
 - **Desktop visual design.** Structure and behaviour only. The layouts are the user's to design, and this plan is written so that pass changes CSS, not components.
 
 ## One deliberate deviation from the plan format
