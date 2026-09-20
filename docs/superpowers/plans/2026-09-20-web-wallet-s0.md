@@ -1,5 +1,29 @@
 # Noctura Web S0 Implementation Plan
 
+> ## ⛔ DO NOT EXECUTE — this plan is blocked pending a rewrite (2026-09-20)
+>
+> An adversarial review found its load-bearing assumptions false against the pinned
+> libraries and the real backend. Six were re-verified directly, by running the code
+> rather than reading it:
+>
+> | claim in this plan | reality |
+> |---|---|
+> | `RPC_URL = '/rpc'` passed to `new Connection()` | **throws** `Endpoint URL must start with \`http:\` or \`https:\`` (web3.js 1.95.8). The app would not render. |
+> | `CONFIG_TGE_TIMESTAMP_OFFSET = 0` | the real offset is **201** (`presaleBuyModule.ts:104`) |
+> | `PresalePdas` has three fields | it has **four**; dropping `referrerAllocation` breaks the RN tests this plan claims will guard the move |
+> | `readBigUInt64LE` in moved core code | `buffer@5.7.1` **does not have it** — the RN app uses a byte loop for exactly this reason. Would crash the shipping Android presale screen. |
+> | `/geo/check` returns `{success, data:{allowed,…}}` | it returns `{countryCode, isVpn}`; the block decision is client-side, OFAC-only. Every purchase would refuse, while the mocked test stayed green. |
+> | `web/` and `core/` are invisible to the root build | root `tsconfig.json` includes `**/*.ts` and excludes only node_modules/Pods/e2e — root CI goes red from Task 1 |
+>
+> The architecture survived the review and the spec stands: no key in the page, the
+> wallet signs, RPC behind a proxy, `core/` moved rather than copied. What failed is
+> this document — its code was written from the shape of the APIs instead of from the
+> repository and the versions actually pinned here.
+>
+> Rewrite Tasks 2–7 and 10 against the real modules before starting any of them, and
+> add root `tsconfig`/Jest exclusions plus a resolution strategy for `core/` before
+> Task 1. Full findings: the review is in this session's transcript.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A locally runnable web app at `web/` where a presale buyer connects an existing Solana wallet and sees their on-chain allocation, the live presale stage, their referral standing and the TGE countdown — and can buy with SOL.
