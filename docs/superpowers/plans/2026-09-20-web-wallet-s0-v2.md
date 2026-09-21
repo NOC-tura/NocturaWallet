@@ -537,6 +537,23 @@ Expected: a real `blockhash`, then **403** — the second call is the positive c
 that the allowlist is in the path at all. A 200 there would mean the dev proxy is not
 reaching the route this plan assumes.
 
+**MEASURED 2026-09-21, dev server on :5173** — recorded here, because a probe whose
+answer is not written down is an assumption again:
+
+| through the dev proxy | result |
+|---|---|
+| `/rpc` `getLatestBlockhash` | 200, real blockhash |
+| `/rpc` `sendTransaction` | **403** `-32601 method not allowed` |
+| `/api/v1/stats` | 200, live data |
+| `/api/v1/stats` **with a browser-style `Origin` header** | 200 |
+
+The last row is the one that mattered: the earlier `curl`-only probe sent no `Origin`
+and so could not see that the coordinator answered an unlisted one with a 500. That is
+fixed server-side (`callback(null, false)` — no CORS headers, request answered
+normally), and the dev proxy additionally **rewrites `Origin` to
+`https://wallet.noc-tura.io`**, because Vite moves to :5174 when :5173 is taken and an
+unlisted port returns without CORS headers — a failure that reads as "the API is down".
+
 If the first call fails, the cause is `ignorePath` behaving differently in the
 installed Vite/http-proxy version than assumed here. Record what you find **in this
 plan**, then fix it.

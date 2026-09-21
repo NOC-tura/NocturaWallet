@@ -109,3 +109,6 @@ native/noctura-prover/target/
 
 # Rust prover .so (build output of cargo-ndk; rebuild, do not commit)
 android/app/src/main/jniLibs/
+
+# web app build output
+web/dist/
