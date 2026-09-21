@@ -34,6 +34,53 @@ export const ALLOCATION_TOTAL_TOKENS_OFFSET = 40;
  */
 export const CONFIG_TGE_TIMESTAMP_OFFSET = 201;
 
+/**
+ * `sol_treasury` is the LAST field of Config — a Pubkey at byte offset 338 of a
+ * 370-byte account. Both numbers confirmed from chain on 2026-09-22, with the known
+ * `tge_timestamp` at 201 used as the control that the offset arithmetic was right.
+ *
+ * WHY THIS IS READ AND NOT A CONSTANT. On 2026-09-21 the program gained
+ * `stablecoin_ata_for_admin.owner == config.sol_treasury`. Both the website and this
+ * wallet were still deriving that account from the ADMIN address, so every stablecoin
+ * purchase began failing with InvalidTokenAccountOwner the moment the upgrade landed —
+ * the account LIST had not changed, so both sides concluded nothing had to change, and
+ * the value inside one of its slots was what moved.
+ *
+ * A shipped constant repeats that failure by construction: an installed APK cannot be
+ * corrected in five minutes. Reading the destination from the same account the program
+ * checks it against means the two cannot drift apart at all.
+ */
+export const CONFIG_SOL_TREASURY_OFFSET = 338;
+export const CONFIG_ACCOUNT_LENGTH = 370;
+
+/**
+ * Read `sol_treasury` out of a Config account's bytes.
+ *
+ * Throws on a short account rather than returning a key built from whatever follows,
+ * because a Pubkey read past the end of the data is still 32 valid-looking bytes — it
+ * would become a real address that nobody controls, and the purchase would send money
+ * there. Fail closed.
+ */
+export function readSolTreasury(data: Uint8Array): PublicKey {
+  const end = CONFIG_SOL_TREASURY_OFFSET + 32;
+  if (data.length < end) {
+    throw new Error(
+      `Config account is ${data.length} bytes, needs at least ${end} to hold sol_treasury`,
+    );
+  }
+  return new PublicKey(data.subarray(CONFIG_SOL_TREASURY_OFFSET, end));
+}
+
+/** Fetch the treasury the program will validate against. Throws if it cannot be read. */
+export async function fetchSolTreasury(reader: AccountReader): Promise<PublicKey> {
+  const {config} = derivePresalePdas(PublicKey.default);
+  const info = await reader.getAccountInfo(config);
+  if (!info) {
+    throw new Error('Presale config account not found — cannot resolve the treasury');
+  }
+  return readSolTreasury(info.data);
+}
+
 export interface PresalePdas {
   config: PublicKey;
   userAccount: PublicKey;

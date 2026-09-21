@@ -14,3 +14,7 @@ export const MAINNET_SOL_TREASURY = '6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6V
 /** Pyth SOL/USD price account (read-only), required by `presale_purchase_with_sol`. */
 export const PYTH_SOL_USD_ACCOUNT = '7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE';
 export const NOC_DECIMALS = 9;
+
+/** Circle's USDC and Tether's USDT on Solana mainnet, both 6 decimals. */
+export const MAINNET_USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+export const MAINNET_USDT_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';

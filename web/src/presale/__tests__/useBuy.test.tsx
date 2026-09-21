@@ -4,6 +4,7 @@ import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {PublicKey} from '@solana/web3.js';
 
 const h = vi.hoisted(() => ({
+  account: vi.fn(),
   geo: vi.fn(),
   simulate: vi.fn(),
   send: vi.fn(),
@@ -31,7 +32,7 @@ vi.mock('../../lib/solana', () => ({
     getSignatureStatuses: h.statuses,
     getRecentPrioritizationFees: h.fees,
   }),
-  accountReader: {getAccountInfo: vi.fn()},
+  accountReader: {getAccountInfo: h.account},
 }));
 vi.mock('@solana/wallet-adapter-react', () => ({
   useWallet: () => ({
@@ -48,6 +49,17 @@ function wrapper({children}: {children: ReactNode}) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
+/**
+ * A real Config account, 370 bytes with the treasury at offset 338 — the layout the
+ * program uses. Built rather than stubbed away, so this suite exercises the OFFSET too:
+ * the destination is read from chain precisely because a constant drifted from it once.
+ */
+const CONFIG_ACCOUNT = (() => {
+  const data = new Uint8Array(370);
+  data.set(new PublicKey('6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd').toBytes(), 338);
+  return {data};
+})();
+
 const ALLOW = {result: {action: 'allow', countryCode: 'SI', transparentAllowed: true}, listSource: 'server', listStale: false, listUpdatedAt: '2026-09-21'};
 
 beforeEach(() => {
@@ -55,6 +67,8 @@ beforeEach(() => {
     h[k].mockReset();
   }
   h.features = {'solana:signAndSendTransaction': {}};
+  h.account.mockReset();
+  h.account.mockResolvedValue(CONFIG_ACCOUNT);
   h.blockhash.mockResolvedValue({blockhash: '11111111111111111111111111111111', lastValidBlockHeight: 100});
   h.height.mockResolvedValue(10);
   h.statuses.mockResolvedValue({value: [{confirmationStatus: 'confirmed', err: null}]});

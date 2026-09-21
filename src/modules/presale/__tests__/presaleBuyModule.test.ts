@@ -25,11 +25,13 @@ describe('derivePresalePdas', () => {
   });
 });
 
+const TREASURY = new PublicKey('6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd');
+
 describe('buildSolPurchaseInstruction', () => {
   it('encodes the discriminator + u64-LE lamports and orders the 8 accounts', () => {
     const lamports = 2_000_000_000n; // 2 SOL
     const {referrerAllocation} = derivePresalePdas(USER);
-    const ix = buildSolPurchaseInstruction(USER, lamports, referrerAllocation);
+    const ix = buildSolPurchaseInstruction(USER, lamports, referrerAllocation, TREASURY);
     // data: 8-byte discriminator + 8-byte u64 LE
     expect([...ix.data.subarray(0, 8)]).toEqual([161, 153, 65, 238, 160, 236, 43, 165]);
     // 2_000_000_000 = 0x7735_9400 → LE bytes
@@ -52,8 +54,8 @@ describe('buildSolPurchaseInstruction', () => {
 
   it('rejects a lamports value out of u64 range', () => {
     const {referrerAllocation} = derivePresalePdas(USER);
-    expect(() => buildSolPurchaseInstruction(USER, -1n, referrerAllocation)).toThrow();
-    expect(() => buildSolPurchaseInstruction(USER, 2n ** 64n, referrerAllocation)).toThrow();
+    expect(() => buildSolPurchaseInstruction(USER, -1n, referrerAllocation, TREASURY)).toThrow();
+    expect(() => buildSolPurchaseInstruction(USER, 2n ** 64n, referrerAllocation, TREASURY)).toThrow();
   });
 });
 
@@ -71,11 +73,13 @@ describe('estimateNocForSol', () => {
 import {VersionedTransaction} from '@solana/web3.js';
 import {buildSolPurchaseTx} from '../presaleBuyModule';
 import * as connectionMod from '../../solana/connection';
+import * as presaleBuyModuleForTreasury from '../presaleBuyModule';
 import {useReferralCaptureStore as referralStoreForBuildTests} from '../../../store/zustand/referralCaptureStore';
 
 describe('buildSolPurchaseTx', () => {
   it('builds a VersionedTransaction with the purchase instruction and the user as payer', async () => {
     referralStoreForBuildTests.getState().clearCapturedReferrer();
+    jest.spyOn(presaleBuyModuleForTreasury, 'fetchTreasury').mockResolvedValue(TREASURY);
     jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
       getLatestBlockhash: async () => ({blockhash: '11111111111111111111111111111111', lastValidBlockHeight: 1}),
       // resolveReferrer (no captured referrer) reads the allocation account.
@@ -96,13 +100,18 @@ const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 const ADMIN = new PublicKey(ADMIN_ADDRESS);
 
 describe('buildStablecoinPurchaseInstruction', () => {
+  // The destination test lives in core/presale/__tests__/buyInstructions.test.ts, not
+  // here: __mocks__/@solana/web3.js stubs findProgramAddressSync on the first 16 bytes of
+  // the seed, so the treasury's ATA and the admin's ATA are the SAME value in this suite.
+  // A test written here would be green and empty — which is how the regression survived.
+
   it.each([
     ['USDC', USDC_MINT, [150, 34, 181, 239, 229, 123, 187, 128]],
     ['USDT', USDT_MINT, [209, 3, 170, 172, 219, 182, 149, 89]],
   ] as const)('builds the %s instruction with the right disc, amount, and 10 accounts', (token, mint, disc) => {
     const amount = 25_000_000n; // 25 USDC/USDT (6 dp)
     const {referrerAllocation} = derivePresalePdas(USER);
-    const ix = buildStablecoinPurchaseInstruction(USER, token, amount, referrerAllocation);
+    const ix = buildStablecoinPurchaseInstruction(USER, token, amount, referrerAllocation, TREASURY);
     expect([...ix.data.subarray(0, 8)]).toEqual(disc);
     // 25_000_000 = 0x017D7840 → LE
     expect([...ix.data.subarray(8, 16)]).toEqual([0x40, 0x78, 0x7d, 0x01, 0x00, 0x00, 0x00, 0x00]);
@@ -139,6 +148,7 @@ import {buildStablecoinPurchaseTx} from '../presaleBuyModule';
 describe('buildStablecoinPurchaseTx', () => {
   it('builds a VersionedTransaction with the user as payer', async () => {
     referralStoreForBuildTests.getState().clearCapturedReferrer();
+    jest.spyOn(presaleBuyModuleForTreasury, 'fetchTreasury').mockResolvedValue(TREASURY);
     jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
       getLatestBlockhash: async () => ({blockhash: '11111111111111111111111111111111', lastValidBlockHeight: 1}),
       getAccountInfo: async () => null,
@@ -162,6 +172,7 @@ function allocBufferWithTotal(total: bigint): Buffer {
 
 describe('fetchOnChainAllocation', () => {
   it('decodes total_tokens (u64 LE at offset 40) from the allocation account', async () => {
+    jest.spyOn(presaleBuyModuleForTreasury, 'fetchTreasury').mockResolvedValue(TREASURY);
     jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
       getAccountInfo: async () => ({data: allocBufferWithTotal(697401732177n)}),
     } as never);
@@ -171,6 +182,7 @@ describe('fetchOnChainAllocation', () => {
   });
 
   it('returns 0 / exists:false when the allocation account does not exist', async () => {
+    jest.spyOn(presaleBuyModuleForTreasury, 'fetchTreasury').mockResolvedValue(TREASURY);
     jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
       getAccountInfo: async () => null,
     } as never);
@@ -194,6 +206,7 @@ function configBufferWithTge(tge: bigint): Buffer {
 
 describe('fetchTgeTimestamp', () => {
   it('decodes tge_timestamp (i64 LE at offset 201) from the config account', async () => {
+    jest.spyOn(presaleBuyModuleForTreasury, 'fetchTreasury').mockResolvedValue(TREASURY);
     jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
       getAccountInfo: async () => ({data: configBufferWithTge(1800230400n)}),
     } as never);
@@ -201,6 +214,7 @@ describe('fetchTgeTimestamp', () => {
   });
 
   it('returns null when the config account does not exist', async () => {
+    jest.spyOn(presaleBuyModuleForTreasury, 'fetchTreasury').mockResolvedValue(TREASURY);
     jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
       getAccountInfo: async () => null,
     } as never);
@@ -208,6 +222,7 @@ describe('fetchTgeTimestamp', () => {
   });
 
   it('returns null when the account data is too short', async () => {
+    jest.spyOn(presaleBuyModuleForTreasury, 'fetchTreasury').mockResolvedValue(TREASURY);
     jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
       getAccountInfo: async () => ({data: Buffer.alloc(208)}),
     } as never);
@@ -277,6 +292,7 @@ describe('buildRegisterReferrerInstruction', () => {
 
 describe('fetchAllocationRef', () => {
   it('decodes purchase_count (u32 LE @56) and referrer (@84) from the allocation', async () => {
+    jest.spyOn(presaleBuyModuleForTreasury, 'fetchTreasury').mockResolvedValue(TREASURY);
     jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
       getAccountInfo: async () => ({data: allocBuffer(1, REF)}),
     } as never);
@@ -285,6 +301,7 @@ describe('fetchAllocationRef', () => {
   });
 
   it('returns referrer:null when the 32 referrer bytes are all zero', async () => {
+    jest.spyOn(presaleBuyModuleForTreasury, 'fetchTreasury').mockResolvedValue(TREASURY);
     jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
       getAccountInfo: async () => ({data: allocBuffer(3, null)}),
     } as never);
@@ -293,11 +310,13 @@ describe('fetchAllocationRef', () => {
   });
 
   it('returns exists:false when no account / too-short data', async () => {
+    jest.spyOn(presaleBuyModuleForTreasury, 'fetchTreasury').mockResolvedValue(TREASURY);
     jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
       getAccountInfo: async () => null,
     } as never);
     expect(await fetchAllocationRef(USER)).toEqual({exists: false, referrer: null, purchaseCount: 0});
 
+    jest.spyOn(presaleBuyModuleForTreasury, 'fetchTreasury').mockResolvedValue(TREASURY);
     jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
       getAccountInfo: async () => ({data: Buffer.alloc(115)}),
     } as never);
@@ -424,7 +443,8 @@ const SUBMIT_SIGNER = (() => {
 const SCHEME = {kind: 'slip10', account: 0} as const;
 
 function mockConnectionForSubmit() {
-  jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
+  jest.spyOn(presaleBuyModuleForTreasury, 'fetchTreasury').mockResolvedValue(TREASURY);
+    jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
     getLatestBlockhash: async () => ({
       blockhash: '11111111111111111111111111111111',
       lastValidBlockHeight: 1,

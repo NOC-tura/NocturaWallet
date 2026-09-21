@@ -39,6 +39,7 @@ import {
   derivePresalePdas as coreDerivePresalePdas,
   fetchOnChainAllocation as coreFetchOnChainAllocation,
   fetchTgeTimestamp as coreFetchTgeTimestamp,
+  fetchSolTreasury as coreFetchSolTreasury,
 } from '../../../core/presale/allocation';
 
 const PROGRAM = new PublicKey(PROGRAM_ID);
@@ -85,6 +86,17 @@ export const fetchOnChainAllocation = (user: PublicKey) => coreFetchOnChainAlloc
 
 /** Read the on-chain TGE timestamp in unix seconds, or null when unreadable. */
 export const fetchTgeTimestamp = () => coreFetchTgeTimestamp(appReader);
+
+/**
+ * The treasury the program validates the purchase destination against, READ FROM CHAIN.
+ *
+ * Deliberately not a constant. On 2026-09-21 the program began requiring the stablecoin
+ * destination to be owned by `config.sol_treasury`; this module derived it from ADMIN, so
+ * every USDC/USDT purchase failed the moment the upgrade landed. A constant in a shipped
+ * APK cannot be corrected — reading it from the account the program itself checks means
+ * the two can never disagree. Routed through `self.` so tests can intercept it.
+ */
+export const fetchTreasury = () => coreFetchSolTreasury(appReader);
 
 // ===========================================================================
 // Referral (B1): register_referrer instruction + allocation read + resolve
@@ -155,34 +167,16 @@ export async function resolveReferrer(
  * from the buyer's ATA to the ADMIN's ATA (1:1 USD, no Pyth). Account order
  * matches the program's PresalePurchaseWithStablecoin struct.
  */
-export function buildStablecoinPurchaseInstruction(
-  user: PublicKey,
-  token: StablecoinToken,
-  amountBaseUnits: bigint,
-  referrerAllocation: PublicKey,
-): TransactionInstruction {
-  const {mint, disc} = STABLECOIN[token];
-  const {config, userAccount, userAllocation} = derivePresalePdas(user);
-  const userAta = findAssociatedTokenAddress(user, mint);
-  const adminAta = findAssociatedTokenAddress(ADMIN, mint);
-  const data = Buffer.concat([Buffer.from(disc), encodeU64LE(amountBaseUnits)]);
-  return new TransactionInstruction({
-    programId: PROGRAM,
-    keys: [
-      {pubkey: config, isSigner: false, isWritable: true},
-      {pubkey: userAccount, isSigner: false, isWritable: true},
-      {pubkey: userAllocation, isSigner: false, isWritable: true},
-      {pubkey: referrerAllocation, isSigner: false, isWritable: true},
-      {pubkey: userAta, isSigner: false, isWritable: true},
-      {pubkey: adminAta, isSigner: false, isWritable: true},
-      {pubkey: mint, isSigner: false, isWritable: false},
-      {pubkey: user, isSigner: true, isWritable: true},
-      {pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false},
-      {pubkey: SystemProgram.programId, isSigner: false, isWritable: false},
-    ],
-    data,
-  });
-}
+/**
+ * Moved to `core/presale/buyInstructions.ts` so its address derivation can be tested for
+ * real — this suite replaces `findProgramAddressSync` with a stub that keys on the first
+ * 16 characters of the seed, which makes the treasury's ATA and the admin's ATA identical
+ * here. That is exactly the difference the 2026-09-21 regression turned on.
+ */
+// Imported as well as re-exported: `export … from` does not bring the name into this
+// module's own scope, and buildStablecoinInstructions below calls it.
+import {buildStablecoinPurchaseInstruction} from '../../../core/presale/buyInstructions';
+export {buildStablecoinPurchaseInstruction};
 
 /** UI estimate for a stablecoin (1:1 USD) payment. */
 export function estimateNocForUsd(usd: number, stagePriceUsd: number): number {
@@ -216,7 +210,7 @@ export async function buildSolPurchaseTx(user: PublicKey, solLamports: bigint): 
   const message = new TransactionMessage({
     payerKey: user,
     recentBlockhash: blockhash,
-    instructions: buildBuyInstructions(user, solLamports, 0, r),
+    instructions: buildBuyInstructions(user, solLamports, 0, r, await self.fetchTreasury()),
   }).compileToV0Message();
   return new VersionedTransaction(message);
 }
@@ -228,6 +222,7 @@ function buildStablecoinInstructions(
   amountBaseUnits: bigint,
   priorityFeeMicroLamports: number,
   resolved: {referrerAllocation: PublicKey; registerReferrer: PublicKey | null},
+  treasury: PublicKey,
 ) {
   return [
     ComputeBudgetProgram.setComputeUnitLimit({units: COMPUTE_UNIT_LIMIT}),
@@ -235,7 +230,7 @@ function buildStablecoinInstructions(
     ...(resolved.registerReferrer
       ? [buildRegisterReferrerInstruction(user, resolved.registerReferrer)]
       : []),
-    buildStablecoinPurchaseInstruction(user, token, amountBaseUnits, resolved.referrerAllocation),
+    buildStablecoinPurchaseInstruction(user, token, amountBaseUnits, resolved.referrerAllocation, treasury),
   ];
 }
 
@@ -255,7 +250,7 @@ export async function buildStablecoinPurchaseTx(
   const message = new TransactionMessage({
     payerKey: user,
     recentBlockhash: blockhash,
-    instructions: buildStablecoinInstructions(user, token, amountBaseUnits, 0, r),
+    instructions: buildStablecoinInstructions(user, token, amountBaseUnits, 0, r, await self.fetchTreasury()),
   }).compileToV0Message();
   return new VersionedTransaction(message);
 }
@@ -280,7 +275,9 @@ export async function submitPresaleBuyStablecoin(
     const message = new TransactionMessage({
       payerKey: signer.publicKey,
       recentBlockhash: blockhash,
-      instructions: buildStablecoinInstructions(signer.publicKey, token, amountBaseUnits, priorityFee, r),
+      instructions: buildStablecoinInstructions(
+        signer.publicKey, token, amountBaseUnits, priorityFee, r, await self.fetchTreasury(),
+      ),
     }).compileToV0Message();
     const tx = new VersionedTransaction(message);
     tx.sign([signer]);
@@ -329,7 +326,7 @@ export async function submitPresaleBuySol(
     const message = new TransactionMessage({
       payerKey: signer.publicKey,
       recentBlockhash: blockhash,
-      instructions: buildBuyInstructions(signer.publicKey, solLamports, priorityFee, r),
+      instructions: buildBuyInstructions(signer.publicKey, solLamports, priorityFee, r, await self.fetchTreasury()),
     }).compileToV0Message();
     const tx = new VersionedTransaction(message);
     tx.sign([signer]);

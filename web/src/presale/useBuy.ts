@@ -11,6 +11,7 @@ import {checkGeo} from '../geo/useGeo';
 import {json, post} from '../lib/api';
 import {accountReader, connection} from '../lib/solana';
 import {buildBuyInstructions, estimateNocForSol} from '../../../core/presale/buyInstructions';
+import {fetchSolTreasury} from '../../../core/presale/allocation';
 import {resolveReferrer} from '../../../core/presale/referrer';
 import {recordPresalePurchase} from '../../../core/presale/record';
 import {estimatePriorityFee} from '../../../core/solana/priorityFee';
@@ -79,13 +80,19 @@ export function useBuy(stage: {displayStage: number; pricePerNocUsd: number}) {
         }
 
         const conn = connection();
-        const [resolved, priorityFee, latest] = await Promise.all([
+        // The treasury is READ FROM CHAIN, never a constant. The program validates the
+        // purchase destination against `config.sol_treasury`, and on 2026-09-21 a shipped
+        // constant that had drifted from it broke every stablecoin purchase on the website
+        // the moment the program was upgraded. Reading it from the account the program
+        // checks against means the two cannot disagree.
+        const [resolved, priorityFee, latest, treasury] = await Promise.all([
           resolveReferrer(accountReader, publicKey, new URLSearchParams(window.location.search).get('ref')),
           estimatePriorityFee(conn, 'normal'),
           conn.getLatestBlockhash(),
+          fetchSolTreasury(accountReader),
         ]);
 
-        const instructions = buildBuyInstructions(publicKey, solLamports, priorityFee, resolved);
+        const instructions = buildBuyInstructions(publicKey, solLamports, priorityFee, resolved, treasury);
         const foreign = instructions.find(ix => !ALLOWED_PROGRAM_IDS.includes(ix.programId.toBase58()));
         if (foreign) {
           // A transaction we built addressing a program we did not expect is our bug.
