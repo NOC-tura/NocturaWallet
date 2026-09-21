@@ -26,16 +26,15 @@ export function WalletProviders({children}: {children: ReactNode}) {
 }
 
 /*
- * KNOWN third-party request, not fixed here — recorded so the Task 11 host gate is
- * not loosened without the reason.
+ * RESOLVED 2026-09-21 — the third-party request recorded here is gone.
  *
  * @solana/wallet-adapter-react pulls @solana-mobile/wallet-adapter-mobile, whose
- * EmbeddedModal does `host.innerHTML = <link href="https://fonts.googleapis.com/…">`
- * when the modal is CONSTRUCTED. So it is not a page-load leak — desktop never
- * reaches it — but a mobile user who opens that flow hands Google their IP, and the
- * people most likely to be on a mobile browser are the ones this product is for.
+ * EmbeddedModal did `host.innerHTML = <link href="https://fonts.googleapis.com/…">`
+ * when the modal was CONSTRUCTED, and built two <style> elements at run time that a
+ * strict style-src blocks. Writing the CSP forced the choice; the adapter was replaced
+ * with src/wallet/mobileAdapterStub.ts, which carries the full reasoning and what it
+ * costs (no intent hand-off to a native wallet from a plain Android browser).
  *
- * Options when this is decided (deploy task): patch the dependency, drop Mobile
- * Wallet Adapter support, or accept it and say so in the privacy page. It is listed
- * in the no-external-hosts allowlist with this note attached, never silently.
+ * Measured after: fonts.googleapis.com and fonts.gstatic.com out of the bundle, style
+ * injections 2 → 0, bundle 630 kB → 507 kB.
  */

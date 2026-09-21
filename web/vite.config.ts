@@ -35,7 +35,21 @@ export default defineConfig(({mode}) => {
         },
       },
     },
-    resolve: {dedupe: ['@solana/web3.js', 'react', 'react-dom', 'buffer', '@scure/base']},
+    resolve: {
+      dedupe: ['@solana/web3.js', 'react', 'react-dom', 'buffer', '@scure/base'],
+      alias: {
+        // @solana/wallet-adapter-react imports the mobile adapter unconditionally, and it
+        // drags @solana-mobile/wallet-standard-mobile in behind it. Both build a <style>
+        // element at run time and one of them requests a Google font — see the reasoning
+        // in src/wallet/mobileAdapterStub.ts. Replaced rather than removed, because the
+        // import is in a dependency we do not control.
+        //
+        // If a future version of wallet-adapter-react imports a symbol the stub does not
+        // export, the BUILD fails on the missing export. That is the failure we want: loud,
+        // in CI, rather than a modal that quietly stops working on phones.
+        '@solana-mobile/wallet-adapter-mobile': resolve(__dirname, 'src/wallet/mobileAdapterStub.ts'),
+      },
+    },
     test: {
       // happy-dom rather than jsdom: jsdom runs in its own realm, so `instanceof
       // Uint8Array` fails across it and @noble rejects every seed — PDA derivation and

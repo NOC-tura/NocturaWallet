@@ -7,10 +7,9 @@ import {checkHtml, checkJs, countStyleInjections, auditRuntimeStyleInjection} fr
 const MARKER = 'mobile-wallet-adapter-embedded-modal-styles';
 const REAL = [{marker: MARKER, count: 2, why: 'the real entry, used to test the real numbers'}];
 
-// The default JS mirrors the shape our real bundle has: the mobile adapter's modal
-// marker and its two style injections. A fixture without them would fail the process
-// tests for the right reason (a stale allowlist entry) and hide the wrong one.
-const REALISTIC_JS = `const id="${MARKER}";document.createElement("style");document.createElement(\`style\`);`;
+// The default JS mirrors the shape our real bundle has since the mobile adapter left:
+// no runtime style injection at all, and therefore an empty allowlist to satisfy.
+const REALISTIC_JS = 'const a=1;el.style.color="red";';
 
 /** A build directory holding one HTML and one JS file, so the run is never inconclusive. */
 function buildDir({html = '<html><body><div id="root"></div></body></html>', js = REALISTIC_JS} = {}) {
@@ -128,8 +127,10 @@ describe('the gate as a process', () => {
     expect(run(buildDir({js: `${REALISTIC_JS} const r = eval(s);`}))).toBe(1);
   });
 
-  it('exits 1 when the allowlisted component is gone and the entry was not revisited', () => {
-    expect(run(buildDir({js: 'const a = 1;'}))).toBe(1);
+  it('exits 1 on a runtime style injection nobody wrote down', () => {
+    // With the allowlist empty this is the live case: any dependency that starts
+    // building a <style> element fails the build instead of failing on a phone.
+    expect(run(buildDir({js: 'document.createElement("style");'}))).toBe(1);
   });
 
   it('exits 2 — not 0 — when there is nothing to inspect', () => {

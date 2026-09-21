@@ -12,39 +12,50 @@ import {join} from 'node:path';
  *
  * Every entry below carries the reason it is acceptable. An allowlist without reasons
  * is how this gate rots into decoration — the next person adds a line to make it green.
- * Adding a host means writing why, and the two marked LIVE REQUEST are the only ones
- * that reach the network.
+ *
+ * Since 2026-09-21 there is no LIVE REQUEST entry at all: every host here is a string the
+ * bundle carries and no code fetches. The two that did reach the network — fonts.googleapis
+ * and fonts.gstatic, injected by the Mobile Wallet Adapter's embedded modal — left with the
+ * adapter itself (src/wallet/mobileAdapterStub.ts), and `localhost`, `feross.org` and
+ * `solanamobile.com` left with it.
  */
 const ALLOWED: Record<string, string> = {
   'noc-tura.io': 'ours — the referral link the website records',
-  'www.w3.org': 'inert: React\'s XML namespace table (xmlns attribute values)',
-  'feross.org': 'inert: the BSD licence header of the buffer package',
+  'www.w3.org': "inert: React's XML namespace table (xmlns attribute values)",
   'github.com': 'inert: text inside an error message about getRandomValues',
-  'reactjs.org': 'inert: React\'s error-decoder URL, printed in messages',
-  'localhost': 'inert: a default ws:// endpoint in a constructor we never call',
+  'reactjs.org': "inert: React's error-decoder URL, printed in messages",
   'api.mainnet-beta.solana.com': 'inert: web3.js clusterApiUrl default; we pass our own endpoint',
-  'solanamobile.com':
-    'navigation, user-initiated: the Mobile Wallet Adapter modal sets window.location on a click',
-  'fonts.googleapis.com':
-    'LIVE REQUEST, known and unfixed: @solana-mobile/wallet-adapter-mobile injects a <link> when its embedded modal is CONSTRUCTED. Desktop never reaches it; a mobile user who opens that flow hands Google their IP. Decision recorded in src/wallet/WalletProviders.tsx — patch the dependency, drop MWA, or say so on the privacy page.',
-  'fonts.gstatic.com': 'LIVE REQUEST, same injection as fonts.googleapis.com above',
 };
 
-it('the built bundle references no host outside the documented allowlist', () => {
-  expect(existsSync('dist')).toBe(true);
+function hostsInBundle(): Set<string> {
   const files = [
     ...readdirSync('dist/assets').map(f => join('dist/assets', f)),
     'dist/index.html',
   ].filter(f => /\.(js|css|html)$/.test(f));
 
-  const offenders = new Map<string, string>();
+  const hosts = new Set<string>();
   for (const file of files) {
     for (const m of readFileSync(file, 'utf8').matchAll(/https?:\/\/([a-z0-9.-]+)/gi)) {
-      const host = (m[1] as string).toLowerCase();
-      if (!(host in ALLOWED)) offenders.set(host, file);
+      hosts.add((m[1] as string).toLowerCase());
     }
   }
-  expect([...offenders.entries()]).toEqual([]);
+  return hosts;
+}
+
+it('the built bundle references no host outside the documented allowlist', () => {
+  expect(existsSync('dist')).toBe(true);
+  const offenders = [...hostsInBundle()].filter(h => !(h in ALLOWED));
+  expect(offenders).toEqual([]);
+});
+
+it('no allowlist entry outlives the host it excuses', () => {
+  // Without this the list only ever grows: a host leaves the bundle, its line stays, and
+  // years later it silently pre-approves the same host arriving again for a new reason.
+  // This is what let fonts.googleapis.com read as a settled decision instead of an open one.
+  expect(existsSync('dist')).toBe(true);
+  const present = hostsInBundle();
+  const stale = Object.keys(ALLOWED).filter(h => !present.has(h));
+  expect(stale).toEqual([]);
 });
 
 it('every allowlist entry carries a reason (the gate guarding itself)', () => {

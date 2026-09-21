@@ -34,17 +34,15 @@ import {join, relative} from 'node:path';
  * here was made about code that is no longer there.
  */
 export const RUNTIME_STYLE_ALLOWED = [
-  {
-    marker: 'mobile-wallet-adapter-embedded-modal-styles',
-    count: 2,
-    why:
-      "@solana-mobile/wallet-adapter-mobile's EmbeddedModal builds its own <style> element " +
-      '(two code paths, one per modal class). It is reached only when a mobile browser opens ' +
-      'the Mobile Wallet Adapter flow; desktop never constructs it. Under style-src \'self\' ' +
-      'that modal renders unstyled inside its closed shadow root. OPEN DECISION: drop the ' +
-      'mobile adapter, or loosen style-src. The same modal also requests Google Fonts — see ' +
-      'the note in web/src/wallet/WalletProviders.tsx.',
-  },
+  // Empty, and that is the goal state. It held one entry for the length of an afternoon:
+  // @solana-mobile/wallet-adapter-mobile's embedded modal, twice, because
+  // @solana-mobile/wallet-standard-mobile rode in on the same dependency. Rather than
+  // loosen style-src for it, the adapter was replaced with a stub
+  // (web/src/wallet/mobileAdapterStub.ts) — which also removed the Google Fonts request it
+  // made and 123 kB of bundle.
+  //
+  // Adding an entry here is a decision to ship something a strict policy blocks. Write the
+  // reason and the exact count; the count is what stops one entry from covering the next.
 ];
 
 const INLINE_SCRIPT = /<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?\S[\s\S]*?<\/script>/i;
