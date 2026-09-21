@@ -2,7 +2,9 @@
   "name": "noctura-web",
   "private": true,
   "type": "module",
-  "engines": {"node": ">=22.11.0"},
+  "engines": {
+    "node": ">=22.11.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -13,7 +15,7 @@
     "verify": "rm -rf dist && npm run build && npm run test && npm run test:bundle && npm run scan"
   },
   "dependencies": {
-    "@solana/web3.js": "1.95.8",
+    "@solana/web3.js": "^1.99.0",
     "buffer": "^6.0.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
