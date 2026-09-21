@@ -30,7 +30,10 @@ export function useAllocation(): AllocationState {
     queryFn: async () => fetchOnChainAllocation(accountReader, publicKey!),
   });
 
-  if (!publicKey || q.isPending) return {status: 'loading'};
+  // Not connected is its own state: "Reading…" with no wallet attached is a claim
+  // about work that is not happening, and the query is disabled in that case anyway.
+  if (!publicKey) return {status: 'disconnected'};
+  if (q.isPending) return {status: 'loading'};
   if (q.isError || !q.data) return {status: 'error'};
   return q.data.exists ? {status: 'ok', base: q.data.totalTokensBase} : {status: 'absent'};
 }

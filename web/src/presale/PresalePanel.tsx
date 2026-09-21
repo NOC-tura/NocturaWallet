@@ -7,6 +7,7 @@ import {formatBaseUnits, percentOf} from '../format';
  * a failed RPC call must never be able to produce the second.
  */
 export type AllocationState =
+  | {status: 'disconnected'}
   | {status: 'loading'}
   | {status: 'error'}
   | {status: 'absent'}
@@ -40,6 +41,9 @@ export function PresalePanel({
       </p>
 
       <h3>Your allocation</h3>
+      {allocation.status === 'disconnected' ? (
+        <p>Connect a wallet to see your allocation.</p>
+      ) : null}
       {allocation.status === 'loading' ? <p>Reading…</p> : null}
       {allocation.status === 'ok' ? <p>{formatBaseUnits(BigInt(allocation.base), NOC_DECIMALS, 'NOC')}</p> : null}
       {allocation.status === 'absent' ? <p>No allocation for this wallet</p> : null}

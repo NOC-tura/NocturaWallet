@@ -35,6 +35,13 @@ describe('PresalePanel', () => {
     expect(screen.getByText(/could not be read/i)).toBeTruthy();
   });
 
+  it('asks for a wallet when none is connected — never "Reading…"', () => {
+    render(<PresalePanel stats={stats} allocation={{status: 'disconnected'}} />);
+    expect(screen.getByText(/connect a wallet/i)).toBeTruthy();
+    expect(screen.queryByText(/reading/i)).toBeNull();
+    expect(screen.queryByText(/no allocation/i)).toBeNull();
+  });
+
   it('says nothing about an allocation while the read is still running', () => {
     render(<PresalePanel stats={stats} allocation={{status: 'loading'}} />);
     expect(screen.queryByText(/no allocation/i)).toBeNull();
