@@ -1,6 +1,6 @@
 import {Buffer} from 'buffer';
 import {PublicKey} from '@solana/web3.js';
-import {MAINNET_ADMIN_ADDRESS, MAINNET_PROGRAM_ID} from './addresses';
+import {MAINNET_ADMIN_ADDRESS, MAINNET_NOC_MINT, MAINNET_PROGRAM_ID} from './addresses';
 
 /**
  * `Buffer` is imported rather than assumed global. React Native provides one through a
@@ -68,6 +68,24 @@ export function readSolTreasury(data: Uint8Array): PublicKey {
       `Config account is ${data.length} bytes, needs at least ${end} to hold sol_treasury`,
     );
   }
+
+  // POSITIONAL CONTROL, before trusting the offset we actually care about.
+  //
+  // Config's length alone cannot tell a harmless change from a dangerous one: a field
+  // appended at the end leaves 8, 40 and 338 valid, while a field INSERTED shifts all
+  // three, and both look identical as a byte count. So instead of guessing from the
+  // length, two fields whose values we already know are read at their own offsets. If
+  // the layout moved, they stop matching — and the read that would have sent money to
+  // an address nobody controls fails instead.
+  const admin = new PublicKey(data.subarray(8, 40));
+  const saleToken = new PublicKey(data.subarray(40, 72));
+  if (admin.toBase58() !== MAINNET_ADMIN_ADDRESS || saleToken.toBase58() !== MAINNET_NOC_MINT) {
+    throw new Error(
+      'Config layout check failed: admin@8 or sale_token@40 is not what this build expects. ' +
+        'The account layout has changed and every offset here — 8, 40, 201, 338 — is suspect.',
+    );
+  }
+
   return new PublicKey(data.subarray(CONFIG_SOL_TREASURY_OFFSET, end));
 }
 

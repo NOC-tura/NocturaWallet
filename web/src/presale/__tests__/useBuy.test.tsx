@@ -56,6 +56,11 @@ function wrapper({children}: {children: ReactNode}) {
  */
 const CONFIG_ACCOUNT = (() => {
   const data = new Uint8Array(370);
+  // admin@8 and sale_token@40 are not decoration: readSolTreasury checks them as a
+  // positional control before trusting offset 338, so a fixture that omits them is
+  // rejected — as this one was, the moment the control was added.
+  data.set(new PublicKey('KnZ5bRuaCb3JEAYgt9CJ69eWQ7i5dp5cASbTmLj39qr').toBytes(), 8);
+  data.set(new PublicKey('B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW').toBytes(), 40);
   data.set(new PublicKey('6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd').toBytes(), 338);
   return {data};
 })();
