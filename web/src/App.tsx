@@ -5,6 +5,10 @@ import {PresalePanel} from './presale/PresalePanel';
 import {PortfolioPanel} from './portfolio/PortfolioPanel';
 import {usePresaleStats, useAllocation} from './presale/usePresale';
 import {BuyForm} from './presale/BuyForm';
+import {ReferralPanel} from './referral/ReferralPanel';
+import {useReferral} from './referral/useReferral';
+import {Countdown} from './tge/Countdown';
+import {useTge} from './tge/useTge';
 import {useQuery} from '@tanstack/react-query';
 import {json} from './lib/api';
 import {queryClient} from './lib/queryClient';
@@ -39,6 +43,21 @@ function Presale() {
   );
 }
 
+function Referral() {
+  const {address, data, isPending, isError} = useReferral();
+  if (!address) return null;
+  if (isPending) return <p>Reading your referral stats…</p>;
+  if (isError || !data) return <p>Your referral stats could not be read.</p>;
+  return <ReferralPanel address={address} stats={data} />;
+}
+
+function Tge() {
+  const {data, isPending, isError} = useTge();
+  if (isPending) return <p>Reading the TGE date…</p>;
+  if (isError) return <p>The TGE date could not be read.</p>;
+  return <Countdown tgeUnix={data ?? null} />;
+}
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -48,6 +67,8 @@ export function App() {
           <ConnectPanel />
           <PortfolioPanel />
           <Presale />
+          <Tge />
+          <Referral />
         </main>
       </WalletProviders>
     </QueryClientProvider>
