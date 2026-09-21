@@ -9,7 +9,11 @@ import {resolve} from 'node:path';
 // looks like the API is down. CORS is not an authorization boundary here (the
 // method allowlist and the rate limits are), so asserting the production origin
 // from a local proxy costs nothing and removes a trap.
-const PROD_ORIGIN = 'https://wallet.noc-tura.io';
+//
+// Imported rather than repeated: the same origin is baked into the nginx config and
+// asserted in its tests, and a dev proxy quietly claiming a host we no longer serve
+// would fail as a CORS rejection that looks like the API being down.
+import {PROD_ORIGIN} from './deploy/security-headers.mjs';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, __dirname, '');

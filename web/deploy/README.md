@@ -1,4 +1,4 @@
-# Deploying `wallet.noc-tura.io`
+# Deploying `app.noc-tura.io`
 
 Everything here is a step a **person** takes on the VPS or at the registrar. Nothing in this
 repository deploys itself, and nothing below should be run by an agent on your behalf.
@@ -14,7 +14,7 @@ The repository side is done and gated:
 | 6.4 the headers themselves | nginx config generated from one source; a hand edit fails | `npm run nginx:check` |
 | 6.5 separate origin | its own server block, its own cert, `/api` and `/rpc` proxied so they are same-origin | this file |
 
-`npm run verify` runs all of them. Measured on 2026-09-21: 179 tests, no inline script or
+`npm run verify` runs all of them. Measured on 2026-09-21: 205 unit tests plus 3 bundle gates, no inline script or
 style, no `eval`, two builds identical.
 
 ---
@@ -24,10 +24,18 @@ style, no `eval`, two builds identical.
 Point the host at the VPS that already serves `api.noc-tura.io`.
 
 ```
-wallet.noc-tura.io.  A  <the coordinator VPS address>
+app.noc-tura.io.  A  <the coordinator VPS address>
 ```
 
-Verified 2026-09-21: `wallet.noc-tura.io` does not resolve yet, so nothing is being replaced.
+Verified 2026-09-21: neither `app.noc-tura.io` nor `wallet.noc-tura.io` resolves, so nothing
+is being replaced.
+
+**`app.` and not `wallet.`**, decided 2026-09-21. This page is not a wallet — it holds no key
+and creates none — and `walletapp.noc-tura.io` already exists on this domain as a devnet
+sandbox. `wallet.` beside `walletapp.` is a pair no user can be expected to tell apart, which
+on a wallet brand is a gift to whoever clones one of them. The name stays free for the thing
+that will genuinely be a wallet: the browser extension, or the S2 vault origin. Do **not**
+create `wallet.noc-tura.io` as a redirect — that puts the confusable pair back.
 
 ## 2. The certificate — read this before running certbot
 
@@ -35,12 +43,12 @@ Verified 2026-09-21: `wallet.noc-tura.io` does not resolve yet, so nothing is be
 
 ```bash
 certbot certonly --webroot -w /var/www/certbot \
-  -d wallet.noc-tura.io \
-  --cert-name wallet.noc-tura.io \
+  -d app.noc-tura.io \
+  --cert-name app.noc-tura.io \
   --key-type ecdsa --reuse-key
 ```
 
-`--cert-name` is what keeps this out of the existing certificates. If `wallet.noc-tura.io` were
+`--cert-name` is what keeps this out of the existing certificates. If `app.noc-tura.io` were
 added as a SAN to the `api.noc-tura.io` lineage instead, that certificate would be reissued with
 a new key — and **every installed Android wallet would stop working**, because the app pins that
 key and has no fallback path by design. The whole point of the September split was to stop the
@@ -62,8 +70,8 @@ transition and is unrelated to this deployment.
 ## 3. Install the server block
 
 ```bash
-cp web/deploy/nginx/wallet.noc-tura.io.conf /etc/nginx/sites-available/
-ln -s /etc/nginx/sites-available/wallet.noc-tura.io.conf /etc/nginx/sites-enabled/
+cp web/deploy/nginx/app.noc-tura.io.conf /etc/nginx/sites-available/
+ln -s /etc/nginx/sites-available/app.noc-tura.io.conf /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
 ```
 
@@ -88,9 +96,9 @@ Build in CI, not on a laptop (§6.3). The workflow prints the digest to the job 
 
 ```bash
 # on the VPS
-install -d -o www-data -g www-data /var/www/wallet.noc-tura.io
+install -d -o www-data -g www-data /var/www/app.noc-tura.io
 # copy the CI artifact's dist/ into it, then:
-cd /var/www/wallet.noc-tura.io
+cd /var/www/app.noc-tura.io
 find . -type f ! -name build-manifest.json -printf '%P\n' | LC_ALL=C sort | xargs sha256sum | sha256sum
 ```
 
@@ -100,7 +108,7 @@ against a downloaded copy of the served site and get the same answer.
 
 ## 5. Tell the coordinator
 
-`https://wallet.noc-tura.io` must be on the coordinator's Origin allowlist, and `/api/v1/rpc`
+`https://app.noc-tura.io` must be on the coordinator's Origin allowlist, and `/api/v1/rpc`
 must accept it. Both were agreed on 2026-09-20; confirm before the host goes live rather than
 after, because the failure looks like the API being down.
 
@@ -151,10 +159,10 @@ crt.sh ran two months behind for this domain in September, so do not rely on it 
 ## 7. Verify what is actually served
 
 ```bash
-curl -sI https://wallet.noc-tura.io/ | grep -iE 'content-security|strict-transport|referrer|permissions|x-frame|x-content|cross-origin|cache-control'
-curl -sI https://wallet.noc-tura.io/assets/  # immutable caching on the hashed assets
-curl -s  https://wallet.noc-tura.io/build-manifest.json | head
-curl -sI https://wallet.noc-tura.io/nothing-here   # must be 404, not the app
+curl -sI https://app.noc-tura.io/ | grep -iE 'content-security|strict-transport|referrer|permissions|x-frame|x-content|cross-origin|cache-control'
+curl -sI https://app.noc-tura.io/assets/  # immutable caching on the hashed assets
+curl -s  https://app.noc-tura.io/build-manifest.json | head
+curl -sI https://app.noc-tura.io/nothing-here   # must be 404, not the app
 ```
 
 Then open the site with the browser console visible and connect a wallet. A CSP violation prints

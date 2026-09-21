@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Renders deploy/nginx/wallet.noc-tura.io.conf from deploy/security-headers.mjs.
+// Renders deploy/nginx/<host>.conf from deploy/security-headers.mjs, which also owns the
+// host name itself — see the note on PROD_HOST for why it is `app.` and not `wallet.`.
 //
 // Generated rather than hand-written because the headers exist in two places — the file
 // nginx serves and the tests that assert them — and hand-keeping two copies in step is
@@ -11,13 +12,13 @@
 import {readFileSync, writeFileSync, mkdirSync} from 'node:fs';
 import {dirname, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {SECURITY_HEADERS, CACHE_RULES, OMITTED} from '../deploy/security-headers.mjs';
+import {SECURITY_HEADERS, CACHE_RULES, OMITTED, PROD_HOST, PROD_ORIGIN} from '../deploy/security-headers.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-export const OUT_PATH = resolve(HERE, '../deploy/nginx/wallet.noc-tura.io.conf');
+export const OUT_PATH = resolve(HERE, `../deploy/nginx/${PROD_HOST}.conf`);
 
-const HOST = 'wallet.noc-tura.io';
-const ROOT = '/var/www/wallet.noc-tura.io';
+const HOST = PROD_HOST;
+const ROOT = `/var/www/${PROD_HOST}`;
 const COORDINATOR = 'https://api.noc-tura.io';
 
 const wrap = (text, width, indent) => {
@@ -136,7 +137,7 @@ ${headerLines()}
         proxy_pass ${COORDINATOR}/api/;
         proxy_ssl_server_name on;
         proxy_set_header Host api.noc-tura.io;
-        proxy_set_header Origin https://${HOST};
+        proxy_set_header Origin ${PROD_ORIGIN};
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
         proxy_http_version 1.1;
@@ -155,7 +156,7 @@ ${headerLines()}
         proxy_pass ${COORDINATOR}/api/v1/rpc;
         proxy_ssl_server_name on;
         proxy_set_header Host api.noc-tura.io;
-        proxy_set_header Origin https://${HOST};
+        proxy_set_header Origin ${PROD_ORIGIN};
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
         proxy_http_version 1.1;

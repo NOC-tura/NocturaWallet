@@ -1,4 +1,4 @@
-# Noctura Web — S0 design (`wallet.noc-tura.io`)
+# Noctura Web — S0 design (`app.noc-tura.io`)
 
 Date: 2026-09-20 · Status: proposed, awaiting review
 
@@ -145,9 +145,18 @@ into the bundle and served from our origin.
 
 ### 6.5 Separate origin
 
-Served from `wallet.noc-tura.io`, not a path under the marketing site. A separate origin means
+Served from `app.noc-tura.io`, not a path under the marketing site. A separate origin means
 separate storage, separate cookies and a CSP that does not have to accommodate the website's
 needs. The DAO app is already its own origin; follow the same rule.
+
+**`app.` and not `wallet.`, revised 2026-09-21.** This section first said `wallet.`, and that
+was wrong for two reasons that only became visible once the page existed. The page is not a
+wallet: it holds no key and creates none, so the hostname would promise custody before the
+page had loaded. And `walletapp.noc-tura.io` already exists on this domain — a devnet sandbox
+— so `wallet.` would sit beside `walletapp.` as a pair no user can be expected to tell apart,
+which on a wallet brand is a gift to whoever clones one of them. The name stays reserved for
+the thing that will genuinely be a wallet: the browser extension, or the S2 vault origin.
+`wallet.noc-tura.io` is not to be created even as a redirect — that restores the pair.
 
 ### 6.6 The RPC key problem, and the exact method list
 
@@ -187,7 +196,8 @@ polls instead. Reconsider only if a WS proxy is built for other reasons.
 all, so CORS constrains browsers on other sites and nothing else — `curl` is unaffected. A
 browser always sends `Origin` on a cross-origin POST, so the web app will always carry one, but
 that is a property of the client, not a control. The boundaries are **the method list and the
-rate limit**; the Origin pin to `https://wallet.noc-tura.io` stays as cheap defence in depth.
+rate limit**; the Origin pin to `https://app.noc-tura.io` (see §6.5) stays as cheap defence
+in depth.
 If this app is ever packaged (Capacitor, Tauri, a WebView), its Origin becomes
 `capacitor://`, `file://` or nothing — tell the coordinator before that ships, not after.
 

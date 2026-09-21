@@ -1,14 +1,35 @@
 /**
- * The response headers wallet.noc-tura.io serves, in one place, because they exist in two:
- * the nginx config that is deployed and the tests that check them. Two copies of a policy
- * is one policy and one decoration, and the decoration is always the one that stays right.
+ * The host and the response headers it serves, in one place, because they exist in several:
+ * the nginx config that is deployed, the Vite dev proxy that impersonates the production
+ * Origin, and the tests that check both. Two copies of a policy is one policy and one
+ * decoration, and the decoration is always the one that stays right.
  *
- * `scripts/gen-nginx-conf.mjs` renders these into deploy/nginx/wallet.noc-tura.io.conf, and
- * a test re-renders and compares, so an edit to the served file that skipped this one fails.
+ * `scripts/gen-nginx-conf.mjs` renders these into deploy/nginx/<host>.conf, and a test
+ * re-renders and compares, so an edit to the served file that skipped this one fails.
  *
  * Every entry carries why. Several of these headers have a stricter setting that we did not
  * take, and the reason for stopping where we did is the part worth keeping.
  */
+
+/**
+ * The public host. `app.` rather than `wallet.`, decided 2026-09-21 and worth the note:
+ *
+ *  - this page is not a wallet. It holds no key, creates none, and asks one you already
+ *    control to sign. A hostname that promises custody it does not offer is a lie told
+ *    before the page has loaded.
+ *  - `walletapp.noc-tura.io` already exists — a devnet sandbox on Netlify. `wallet.` beside
+ *    `walletapp.` is a pair no user can be expected to tell apart, and on a wallet brand a
+ *    pair of confusable hostnames is a gift to whoever clones one of them.
+ *  - it keeps `wallet.` free for the thing that will genuinely be a wallet: the browser
+ *    extension, or the S2 vault origin. Spending the name on this page spends it on the
+ *    wrong product.
+ *
+ * Changing it later costs a redirect, a second certificate, a second Origin allowlist entry
+ * at the coordinator and every link already published. Nothing is deployed yet, which is why
+ * this was decided now.
+ */
+export const PROD_HOST = 'app.noc-tura.io';
+export const PROD_ORIGIN = `https://${PROD_HOST}`;
 
 /**
  * CSP, as directives rather than a string, so tests can assert one of them without parsing.

@@ -1,6 +1,6 @@
 import {readFileSync} from 'node:fs';
 import {render, OUT_PATH} from '../gen-nginx-conf.mjs';
-import {SECURITY_HEADERS, CSP_DIRECTIVES, csp} from '../../deploy/security-headers.mjs';
+import {SECURITY_HEADERS, CSP_DIRECTIVES, csp, PROD_HOST, PROD_ORIGIN} from '../../deploy/security-headers.mjs';
 
 const conf = render();
 
@@ -138,7 +138,21 @@ describe('caching and proxying', () => {
   });
 
   it('pins the Origin the coordinator allowlists rather than forwarding the browser\'s', () => {
-    expect(conf).toContain('proxy_set_header Origin https://wallet.noc-tura.io;');
+    expect(conf).toContain(`proxy_set_header Origin ${PROD_ORIGIN};`);
+  });
+
+  it('serves the host the rest of the project believes in', () => {
+    // The dev proxy in vite.config.ts imports the same constant. A hostname that lived in
+    // two places would drift into a CORS rejection that reads as "the API is down".
+    expect(conf).toContain(`server_name ${PROD_HOST};`);
+    expect(conf).toContain(`/etc/letsencrypt/live/${PROD_HOST}/fullchain.pem`);
+    expect(conf).toContain(`root /var/www/${PROD_HOST};`);
+  });
+
+  it('does not still answer to the name that was rejected', () => {
+    // `wallet.` was given up on 2026-09-21: the page holds no keys, and `walletapp.` already
+    // exists on this domain. A leftover server_name would put the confusable pair back.
+    expect(conf).not.toContain('server_name wallet.noc-tura.io');
   });
 
   it('exposes /rpc as an exact location, not a prefix', () => {
