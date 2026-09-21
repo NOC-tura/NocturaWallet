@@ -64,6 +64,12 @@ export function App() {
       <WalletProviders>
         <main>
           <h1>Noctura</h1>
+          {/*
+            What this page is, said before anyone has to guess. It is not a wallet: it holds
+            no keys and creates none. Naming it honestly is also what makes the connect
+            screen below make sense rather than read as a demand.
+          */}
+          <p>Presale and portfolio. Your wallet stays where it is.</p>
           <ConnectPanel />
           <PortfolioPanel />
           <Presale />
