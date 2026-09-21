@@ -77,8 +77,13 @@ describe('presale allocation readers', () => {
     expect(await fetchTgeTimestamp(readerFor(new Uint8Array(8)))).toBeNull();
   });
 
-  it('returns 0 for an unset timestamp — current app behaviour, moved unchanged', async () => {
+  it('returns null for an unset timestamp — not 0, which would count from 1970', async () => {
     const zeroed = new Uint8Array(CONFIG_TGE_TIMESTAMP_OFFSET + 8);
-    expect(await fetchTgeTimestamp(readerFor(zeroed))).toBe(0);
+    expect(await fetchTgeTimestamp(readerFor(zeroed))).toBeNull();
+  });
+
+  it('still returns a real timestamp — the null above is not a blanket null', async () => {
+    const data = withU64At(1n, CONFIG_TGE_TIMESTAMP_OFFSET, CONFIG_TGE_TIMESTAMP_OFFSET + 8);
+    expect(await fetchTgeTimestamp(readerFor(data))).toBe(1);
   });
 });

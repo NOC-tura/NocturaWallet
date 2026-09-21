@@ -105,5 +105,9 @@ export async function fetchTgeTimestamp(reader: AccountReader): Promise<number |
   if (!info || !info.data || info.data.length < CONFIG_TGE_TIMESTAMP_OFFSET + 8) {
     return null;
   }
-  return Number(readU64LE(info.data, CONFIG_TGE_TIMESTAMP_OFFSET));
+  const seconds = Number(readU64LE(info.data, CONFIG_TGE_TIMESTAMP_OFFSET));
+  // Zero means the date has not been set. Returning it would make every consumer
+  // count from 1970 — the app's countdown renders "now" for it — so absence is
+  // reported as absence, the same answer an unreadable account gives.
+  return seconds > 0 ? seconds : null;
 }
