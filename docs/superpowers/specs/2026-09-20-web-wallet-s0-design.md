@@ -219,7 +219,20 @@ Follow the pattern already in the wallet: a failed geo check, a failed simulatio
 unreachable backend or an unparseable response blocks the action and says so. No silent
 fallback, no degraded "probably fine" path.
 
-### 6.9 Anti-phishing posture
+### 6.9 Domain hardening — pulled forward from the S2 spec
+
+The mobile app pins certificates; a browser cannot. What a browser wallet has instead is
+the domain itself, so it is hardened before launch, not after: **CAA** records restricting
+which CAs may issue for `noc-tura.io`, **DNSSEC** on, **registry lock** at the registrar
+with out-of-band verification for changes, hardware security keys (no SMS) on the registrar
+and DNS accounts, and **Certificate Transparency monitoring** for any unexpected
+certificate on `*.noc-tura.io`.
+
+A frontend served from a hijacked domain is indistinguishable from the real one to every
+control in §6 — this is the layer that makes that hijack hard rather than detectable
+afterwards.
+
+### 6.10 Anti-phishing posture
 
 - The site never asks the user to enter a seed phrase. There is no field to type one into, so
   a phishing clone cannot claim the real site does it.
@@ -256,6 +269,24 @@ Blocking them by inheritance rather than by decision is the one outcome this sec
 prevent.
 
 Single-host risk still applies: one host fronts everything.
+
+## 8b. Where this leads — the S2 security spec
+
+`2026-09-21-wallet-ai-guard-security-spec.md` describes the product two stages on: a web
+wallet that **does** hold keys, isolated in a separately audited vault origin, plus a
+layered AI Guard. It answers the objection that shaped S0 — that a browser has no
+equivalent of the Android Keystore — with the two boundaries a browser does have: a
+sandboxed second origin the UI cannot read, and a non-extractable WebCrypto key, unlocked
+by a WebAuthn PRF passkey.
+
+S0 does not become that by growing. That design is its own repo folder, its own reviewers,
+an external pentest and a vault audit as launch gates. S0 stays key-free, and the three
+cheap-now items from that document — domain hardening (CAA, DNSSEC, registry lock, CT
+monitoring), a reproducible build with a signed manifest, and no third-party requests —
+are pulled forward into §6 rather than deferred with the rest.
+
+Read its correction header before quoting it: five of its statements about Noctura's own
+circuits, keys and programs were inferred rather than read, and are wrong.
 
 ## 9. Shielded — why it is out, and what would let it in
 
