@@ -12,7 +12,10 @@
     "test": "vitest run --exclude '**/no-external-hosts.test.ts'",
     "test:bundle": "vitest run no-external-hosts",
     "scan": "node scripts/check-no-secrets.mjs src ../core && node scripts/check-no-secrets.mjs --bundle dist",
-    "verify": "rm -rf dist && npm run build && npm run test && npm run test:bundle && npm run scan"
+    "csp": "node scripts/check-csp.mjs dist",
+    "manifest": "node scripts/build-manifest.mjs dist",
+    "reproducible": "node scripts/verify-reproducible.mjs",
+    "verify": "rm -rf dist && npm run build && npm run test && npm run test:bundle && npm run scan && npm run csp && npm run reproducible && npm run manifest"
   },
   "dependencies": {
     "@scure/base": "^2.4.0",

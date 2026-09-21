@@ -28,10 +28,38 @@ jobs:
         working-directory: web
 
       # `verify` is: rm -rf dist && tsc && vite build && unit tests && the bundle gate
-      # && the secret scan. The bundle checks run after a fresh build on purpose —
+      # && the secret scan && the CSP gate && two more builds compared byte for byte
+      # && the manifest. The bundle checks run after a fresh build on purpose —
       # against a stale dist/ they would report on an artifact nobody is shipping.
+      #
+      # The reproducibility step matters MORE here than locally: the laptop comparing
+      # two of its own builds cannot tell a machine-independent build from one that
+      # merely agrees with itself. This runner is the different machine.
       - run: npm run verify
         working-directory: web
+
+      # The number a third party checks the served bundle against. It is in the job log
+      # rather than only in dist/, so a release has a timestamped, immutable record of
+      # what was built from which commit — and so a bundle served from a host we do not
+      # control can be compared against something the host never touched.
+      - name: Publish the build digest
+        working-directory: web
+        run: |
+          {
+            echo '### Build digest'
+            echo
+            echo "commit \`${GITHUB_SHA}\`"
+            echo
+            echo '```'
+            node scripts/build-manifest.mjs dist --print-only
+            echo '```'
+            echo
+            echo 'Reproduce from a served site:'
+            echo '```'
+            echo "cd dist && find . -type f ! -name build-manifest.json -printf '%P\n' \\"
+            echo '  | LC_ALL=C sort | xargs sha256sum | sha256sum'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # web/'s own tree, including the wallet-adapter dev dependencies. `high` here
       # rather than the root's `critical`: this tree has no React Native in it, so a
