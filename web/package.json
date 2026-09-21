@@ -15,6 +15,7 @@
     "verify": "rm -rf dist && npm run build && npm run test && npm run test:bundle && npm run scan"
   },
   "dependencies": {
+    "@scure/base": "^2.4.0",
     "@solana/wallet-adapter-base": "^0.9.28",
     "@solana/wallet-adapter-react": "^0.15.40",
     "@solana/wallet-adapter-react-ui": "^0.9.40",
@@ -30,6 +31,7 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "happy-dom": "^20.14.5",
     "jsdom": "^24.1.0",
     "typescript": "^5.5.0",
     "vite": "^5.4.0",

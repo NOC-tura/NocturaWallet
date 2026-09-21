@@ -1,6 +1,10 @@
 import {API_BASE} from '../../constants/programs';
 import {getCoordinatorJson} from '../backend/coordinatorClient';
 import {
+  recordPresalePurchase as coreRecordPresalePurchase,
+  type PresalePurchaseRecord as CorePurchaseRecord,
+} from '../../../core/presale/record';
+import {
   fetchPresaleStats as coreFetchPresaleStats,
   nocStringToBase,
   type PresaleStats,
@@ -37,26 +41,19 @@ export async function fetchUserAllocation(address: string): Promise<UserAllocati
   return {tokensPurchasedBase: purchased.toString(), referralBonusBase: referral.toString()};
 }
 
-export interface PresalePurchaseRecord {
-  txHash: string;
-  buyerAddress: string;
-  paymentToken: 'SOL' | 'USDC' | 'USDT';
-  paymentAmount: number;
-  nocAmount: number;
-  usdValue: number;
-  stage: number;
-  referrerAddress?: string;
-}
+export type {PresalePurchaseRecord} from '../../../core/presale/record';
 
-/** Best-effort archive of a completed purchase to the coordinator. Never throws. */
-export async function recordPresalePurchase(rec: PresalePurchaseRecord): Promise<void> {
-  try {
-    await fetch(`${API_BASE}/solana/purchase`, {
+/** The app's writer, handed to core. */
+const appPost = {
+  post: async (path: string, body: unknown): Promise<void> => {
+    await fetch(`${API_BASE}${path}`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(rec),
+      body: JSON.stringify(body),
     });
-  } catch {
-    // non-critical (matches the website — the on-chain tx is the source of truth)
-  }
-}
+  },
+};
+
+/** Best-effort archive of a completed purchase to the coordinator. Never throws. */
+export const recordPresalePurchase = (rec: CorePurchaseRecord) =>
+  coreRecordPresalePurchase(appPost, rec);

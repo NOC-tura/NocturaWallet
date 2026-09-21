@@ -35,9 +35,13 @@ export default defineConfig(({mode}) => {
         },
       },
     },
-    resolve: {dedupe: ['@solana/web3.js', 'react', 'react-dom', 'buffer']},
+    resolve: {dedupe: ['@solana/web3.js', 'react', 'react-dom', 'buffer', '@scure/base']},
     test: {
-      environment: 'jsdom',
+      // happy-dom rather than jsdom: jsdom runs in its own realm, so `instanceof
+      // Uint8Array` fails across it and @noble rejects every seed — PDA derivation and
+      // transaction building both break with errors that look like our bugs. Measured:
+      // the same code passes under node and under happy-dom.
+      environment: 'happy-dom',
       globals: true,
       include: ['src/**/*.{test,spec}.{ts,tsx}', 'scripts/**/*.test.mjs', '../core/**/*.test.ts'],
       // core/ holds no DOM code, and jsdom actively breaks it: jsdom runs in its own

@@ -7,13 +7,12 @@ import {
   VersionedTransaction,
   ComputeBudgetProgram,
 } from '@solana/web3.js';
-import {base58} from '@scure/base';
 // Self-import so resolveReferrer calls fetchAllocationRef through the module's
 // live export binding, which lets tests `jest.spyOn(presaleBuyModule,
 // 'fetchAllocationRef')` intercept it (a direct intra-module call is NOT
 // interceptable under the @react-native/babel CJS transform).
 import * as self from './presaleBuyModule';
-import {PROGRAM_ID, ADMIN_ADDRESS, SOL_TREASURY, PYTH_SOL_USD_ACCOUNT} from '../../constants/programs';
+import {PROGRAM_ID, ADMIN_ADDRESS} from '../../constants/programs';
 import {findAssociatedTokenAddress} from '../solana/transactionBuilder';
 import {USDC_MINT, USDT_MINT} from '../tokens/coreTokens';
 import {getConnection} from '../solana/connection';
@@ -24,6 +23,19 @@ import {deriveTransparentKeypair, type TransparentScheme} from '../keyDerivation
 import {zeroize} from '../session/zeroize';
 import {useReferralCaptureStore} from '../../store/zustand/referralCaptureStore';
 import {
+  fetchAllocationRef as coreFetchAllocationRef,
+  resolveReferrerWith as coreResolveReferrerWith,
+} from '../../../core/presale/referrer';
+import {
+  buildBuyInstructions,
+  buildRegisterReferrerInstruction,
+  buildSolPurchaseInstruction,
+  encodeU64LE,
+  estimateNocForSol,
+  COMPUTE_UNIT_LIMIT,
+  REGISTER_REFERRER_DISCRIMINATOR,
+} from '../../../core/presale/buyInstructions';
+import {
   derivePresalePdas as coreDerivePresalePdas,
   fetchOnChainAllocation as coreFetchOnChainAllocation,
   fetchTgeTimestamp as coreFetchTgeTimestamp,
@@ -31,11 +43,8 @@ import {
 
 const PROGRAM = new PublicKey(PROGRAM_ID);
 const ADMIN = new PublicKey(ADMIN_ADDRESS);
-const PYTH = new PublicKey(PYTH_SOL_USD_ACCOUNT);
-const TREASURY = new PublicKey(SOL_TREASURY);
 
 // Anchor 8-byte discriminator for `presale_purchase_with_sol`.
-const PURCHASE_WITH_SOL_DISCRIMINATOR = [161, 153, 65, 238, 160, 236, 43, 165];
 
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 const PURCHASE_WITH_USDC_DISCRIMINATOR = [150, 34, 181, 239, 229, 123, 187, 128];
@@ -54,6 +63,13 @@ export const MAX_PURCHASE_USD = 50_000;
 
 export type {PresalePdas} from '../../../core/presale/allocation';
 export const derivePresalePdas = coreDerivePresalePdas;
+export {
+  estimateNocForSol,
+  buildSolPurchaseInstruction,
+  buildRegisterReferrerInstruction,
+  encodeU64LE,
+  REGISTER_REFERRER_DISCRIMINATOR,
+};
 
 /** The app's chain reader, handed to core: its own Connection, narrow interface. */
 const appReader = {getAccountInfo: (address: PublicKey) => getConnection().getAccountInfo(address)};
@@ -71,8 +87,6 @@ export const fetchTgeTimestamp = () => coreFetchTgeTimestamp(appReader);
 // Referral (B1): register_referrer instruction + allocation read + resolve
 // ===========================================================================
 
-/** Anchor 8-byte discriminator for `register_referrer(referrer: Pubkey)`. */
-export const REGISTER_REFERRER_DISCRIMINATOR = [122, 229, 215, 169, 100, 145, 198, 120];
 
 /**
  * Hand-build the `register_referrer(referrer)` instruction. Both PDAs are
@@ -82,88 +96,11 @@ export const REGISTER_REFERRER_DISCRIMINATOR = [122, 229, 215, 169, 100, 145, 19
  * address is the instruction ARG (32 bytes appended to the discriminator), not
  * an account.
  */
-export function buildRegisterReferrerInstruction(
-  user: PublicKey,
-  referrer: PublicKey,
-): TransactionInstruction {
-  const {userAccount, userAllocation} = derivePresalePdas(user);
-  const data = Buffer.concat([
-    Buffer.from(REGISTER_REFERRER_DISCRIMINATOR),
-    Buffer.from(referrer.toBytes()),
-  ]);
-  return new TransactionInstruction({
-    programId: PROGRAM,
-    keys: [
-      {pubkey: userAccount, isSigner: false, isWritable: true},
-      {pubkey: userAllocation, isSigner: false, isWritable: true},
-      {pubkey: user, isSigner: true, isWritable: true},
-      {pubkey: SystemProgram.programId, isSigner: false, isWritable: false},
-    ],
-    data,
-  });
-}
 
-// PresaleAllocation layout (117 bytes): purchase_count (u32 LE) @56, referrer
-// (32 bytes) @84. See spec §"PresaleAllocation layout".
-const ALLOC_PURCHASE_COUNT_OFFSET = 56;
-const ALLOC_REFERRER_OFFSET = 84;
-const ALLOCATION_MIN_LEN = 116;
+/** Read the buyer's on-chain PresaleAllocation referral fields. Delegates to core. */
+export const fetchAllocationRef = (user: PublicKey) => coreFetchAllocationRef(appReader, user);
 
-/**
- * Read the buyer's on-chain `PresaleAllocation` referral fields: whether the
- * account exists, its current `referrer` (null when the 32 bytes are all zero /
- * the default key), and `purchase_count`. Used by `resolveReferrer` to decide
- * whether to bundle a one-time `register_referrer` and which
- * `referrer_allocation` to pass.
- */
-export async function fetchAllocationRef(
-  user: PublicKey,
-): Promise<{exists: boolean; referrer: string | null; purchaseCount: number}> {
-  const {userAllocation} = derivePresalePdas(user);
-  const info = await getConnection().getAccountInfo(userAllocation);
-  if (!info || !info.data || info.data.length < ALLOCATION_MIN_LEN) {
-    return {exists: false, referrer: null, purchaseCount: 0};
-  }
-  const data = info.data;
-  // u32 LE — `* 2**24` (not `<< 24`) so the high byte never flips the sign.
-  const purchaseCount =
-    data[ALLOC_PURCHASE_COUNT_OFFSET] |
-    (data[ALLOC_PURCHASE_COUNT_OFFSET + 1] << 8) |
-    (data[ALLOC_PURCHASE_COUNT_OFFSET + 2] << 16) |
-    data[ALLOC_PURCHASE_COUNT_OFFSET + 3] * 2 ** 24;
-  const referrerBytes = data.subarray(ALLOC_REFERRER_OFFSET, ALLOC_REFERRER_OFFSET + 32);
-  let allZero = true;
-  for (let i = 0; i < 32; i++) {
-    if (referrerBytes[i] !== 0) {
-      allZero = false;
-      break;
-    }
-  }
-  const referrer = allZero ? null : new PublicKey(referrerBytes).toBase58();
-  return {exists: true, referrer, purchaseCount};
-}
 
-/**
- * Validate a captured referrer string as a real 32-byte base58 pubkey that is
- * neither the buyer (self-referral) nor the default/all-zero key. Mirrors the
- * base58-decode + 32-byte-length check used by `parseReferralInput` — the
- * canonical check works regardless of the PublicKey implementation.
- */
-function captureIsValid(captured: string | null, user: PublicKey): boolean {
-  if (captured === null) {
-    return false;
-  }
-  let decoded: Uint8Array;
-  try {
-    decoded = base58.decode(captured);
-  } catch {
-    return false;
-  }
-  if (decoded.length !== 32) {
-    return false;
-  }
-  return captured !== user.toBase58() && captured !== PublicKey.default.toBase58();
-}
 
 /**
  * Decide how a presale buy should apply a referrer (spec §B). CORRECTNESS: the
@@ -178,6 +115,11 @@ function captureIsValid(captured: string | null, user: PublicKey): boolean {
  * - No effective referrer → `referrerAllocation` = PDA(default) (the program
  *   skips the bonus), byte-identical to the pre-referral behavior.
  */
+/**
+ * Decide how a presale buy applies a referrer. Delegates to core, but keeps the
+ * `self.` indirection so the existing tests' spies on fetchAllocationRef still reach
+ * it — the spy is what proves this behaviour did not change.
+ */
 export async function resolveReferrer(
   user: PublicKey,
   capturedReferrer: string | null,
@@ -186,47 +128,15 @@ export async function resolveReferrer(
   registerReferrer: PublicKey | null;
   effectiveReferrerAddress: string | null;
 }> {
-  const a = await self.fetchAllocationRef(user);
-  const onChainReferrer = a.exists && a.referrer ? a.referrer : null;
-  const capturedValid = captureIsValid(capturedReferrer, user);
-  const isFirstPurchase = !a.exists || a.purchaseCount === 0;
-
-  const registerReferrer =
-    !onChainReferrer && capturedValid && isFirstPurchase
-      ? new PublicKey(capturedReferrer as string)
-      : null;
-  const effective: PublicKey | null =
-    registerReferrer ?? (onChainReferrer ? new PublicKey(onChainReferrer) : null);
-
-  const [referrerAllocation] = PublicKey.findProgramAddressSync(
-    [Buffer.from('allocation'), (effective ?? PublicKey.default).toBytes()],
-    PROGRAM,
-  );
-  return {
-    referrerAllocation,
-    registerReferrer,
-    effectiveReferrerAddress: effective?.toBase58() ?? null,
-  };
+  return coreResolveReferrerWith(u => self.fetchAllocationRef(u), user, capturedReferrer);
 }
+
 
 /**
  * Encode a u64 as 8 little-endian bytes WITHOUT Buffer.writeBigUInt64LE — the
  * Hermes Buffer polyfill (buffer@5.7.1) lacks the BigInt accessors and throws
  * on-device. Mirrors buildTransferCheckedInstruction in transactionBuilder.ts.
  */
-function encodeU64LE(value: bigint): Buffer {
-  const MAX_U64 = 18_446_744_073_709_551_615n;
-  if (value < 0n || value > MAX_U64) {
-    throw new Error(`presale buy: lamports out of u64 range: ${value}`);
-  }
-  const buf = Buffer.alloc(8);
-  let remaining = value;
-  for (let i = 0; i < 8; i++) {
-    buf.writeUInt8(Number(remaining & 0xffn), i);
-    remaining >>= 8n;
-  }
-  return buf;
-}
 
 /**
  * Hand-build the `presale_purchase_with_sol(sol_amount)` instruction.
@@ -234,36 +144,8 @@ function encodeU64LE(value: bigint): Buffer {
  * struct / lib/idl.json): config, user_account, user_allocation,
  * referrer_allocation, pyth_sol_usd_price, user(signer), sol_treasury, system.
  */
-export function buildSolPurchaseInstruction(
-  user: PublicKey,
-  solLamports: bigint,
-  referrerAllocation: PublicKey,
-): TransactionInstruction {
-  const {config, userAccount, userAllocation} = derivePresalePdas(user);
-  const data = Buffer.concat([Buffer.from(PURCHASE_WITH_SOL_DISCRIMINATOR), encodeU64LE(solLamports)]);
-  return new TransactionInstruction({
-    programId: PROGRAM,
-    keys: [
-      {pubkey: config, isSigner: false, isWritable: true},
-      {pubkey: userAccount, isSigner: false, isWritable: true},
-      {pubkey: userAllocation, isSigner: false, isWritable: true},
-      {pubkey: referrerAllocation, isSigner: false, isWritable: true},
-      {pubkey: PYTH, isSigner: false, isWritable: false},
-      {pubkey: user, isSigner: true, isWritable: true},
-      {pubkey: TREASURY, isSigner: false, isWritable: true},
-      {pubkey: SystemProgram.programId, isSigner: false, isWritable: false},
-    ],
-    data,
-  });
-}
 
 /** UI estimate only — actual NOC is computed on-chain from the Pyth SOL/USD price. */
-export function estimateNocForSol(solAmount: number, solUsd: number, stagePriceUsd: number): number {
-  if (stagePriceUsd <= 0) {
-    return 0;
-  }
-  return (solAmount * solUsd) / stagePriceUsd;
-}
 
 /**
  * Hand-build presale_purchase_with_usdc / _usdt. Payment is an SPL transfer
@@ -308,7 +190,6 @@ export function estimateNocForUsd(usd: number, stagePriceUsd: number): number {
 }
 
 const keychainManager = new KeychainManager();
-const COMPUTE_UNIT_LIMIT = 120_000;
 
 /**
  * Assemble the full SOL-purchase instruction list, bundling a one-time
@@ -318,21 +199,6 @@ const COMPUTE_UNIT_LIMIT = 120_000;
  * referrerAllocation == default PDA) is byte-identical to the pre-referral
  * single-purchase tx.
  */
-function buildBuyInstructions(
-  user: PublicKey,
-  solLamports: bigint,
-  priorityFeeMicroLamports: number,
-  resolved: {referrerAllocation: PublicKey; registerReferrer: PublicKey | null},
-) {
-  return [
-    ComputeBudgetProgram.setComputeUnitLimit({units: COMPUTE_UNIT_LIMIT}),
-    ComputeBudgetProgram.setComputeUnitPrice({microLamports: priorityFeeMicroLamports}),
-    ...(resolved.registerReferrer
-      ? [buildRegisterReferrerInstruction(user, resolved.registerReferrer)]
-      : []),
-    buildSolPurchaseInstruction(user, solLamports, resolved.referrerAllocation),
-  ];
-}
 
 /**
  * Build the (unsigned) purchase tx for pre-submit simulation. Payer = user.

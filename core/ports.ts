@@ -12,3 +12,8 @@
 export interface JsonGetter {
   get<T>(path: string): Promise<T>;
 }
+
+/** POST a bare path with a JSON body. Used where a write is best-effort. */
+export interface JsonPoster {
+  post(path: string, body: unknown): Promise<void>;
+}
