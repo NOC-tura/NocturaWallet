@@ -2,6 +2,7 @@ import {QueryClientProvider} from '@tanstack/react-query';
 import {WalletProviders} from './wallet/WalletProviders';
 import {ConnectPanel} from './wallet/ConnectPanel';
 import {PresalePanel} from './presale/PresalePanel';
+import {PortfolioPanel} from './portfolio/PortfolioPanel';
 import {usePresaleStats, useAllocation} from './presale/usePresale';
 import {queryClient} from './lib/queryClient';
 
@@ -20,6 +21,7 @@ export function App() {
         <main>
           <h1>Noctura</h1>
           <ConnectPanel />
+          <PortfolioPanel />
           <Presale />
         </main>
       </WalletProviders>
