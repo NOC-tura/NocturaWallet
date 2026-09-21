@@ -1,7 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM"],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
@@ -9,12 +12,26 @@
     "noUnusedLocals": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
-    "types": ["vitest/globals", "node"],
+    "types": [
+      "vitest/globals",
+      "node"
+    ],
     "paths": {
-      "@solana/web3.js": ["./node_modules/@solana/web3.js"],
-      "buffer": ["./node_modules/buffer"]
+      "@solana/web3.js": [
+        "./node_modules/@solana/web3.js"
+      ],
+      "buffer": [
+        "./node_modules/buffer"
+      ],
+      "@scure/base": [
+        "./node_modules/@scure/base"
+      ]
     },
     "baseUrl": "."
   },
-  "include": ["src", "scripts", "../core"]
+  "include": [
+    "src",
+    "scripts",
+    "../core"
+  ]
 }

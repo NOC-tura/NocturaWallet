@@ -1,0 +1,42 @@
+name: web
+
+on:
+  pull_request:
+    paths: ['web/**', 'core/**', '.github/workflows/web.yml']
+  push:
+    branches: [main]
+    paths: ['web/**', 'core/**', '.github/workflows/web.yml']
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.11.0'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # Only web/ is installed, deliberately: core/ is imported from here by relative
+      # path, and this job is what proves that arrangement resolves without the app's
+      # node_modules. It was verified locally the same way — by hiding the root install
+      # and building — which is how core/tsconfig.json came to exist: esbuild otherwise
+      # picks up the ROOT tsconfig for core files, and that one extends a React Native
+      # config this job does not have.
+      - run: npm ci
+        working-directory: web
+
+      # `verify` is: rm -rf dist && tsc && vite build && unit tests && the bundle gate
+      # && the secret scan. The bundle checks run after a fresh build on purpose —
+      # against a stale dist/ they would report on an artifact nobody is shipping.
+      - run: npm run verify
+        working-directory: web
+
+      # web/'s own tree, including the wallet-adapter dev dependencies. `high` here
+      # rather than the root's `critical`: this tree has no React Native in it, so a
+      # high is not drowned in advisories about a bundler that never runs on a phone.
+      # The root keeps its own threshold, and scripts/audit-shipped.js answers the
+      # narrower question for the app.
+      - run: npm audit --audit-level=high
+        working-directory: web
