@@ -15,6 +15,9 @@
     "verify": "rm -rf dist && npm run build && npm run test && npm run test:bundle && npm run scan"
   },
   "dependencies": {
+    "@solana/wallet-adapter-base": "^0.9.28",
+    "@solana/wallet-adapter-react": "^0.15.40",
+    "@solana/wallet-adapter-react-ui": "^0.9.40",
     "@solana/web3.js": "^1.99.0",
     "buffer": "^6.0.3",
     "react": "^18.3.1",
