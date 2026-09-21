@@ -57,7 +57,15 @@ jobs:
           node-version: '22'
           cache: 'npm'
       - run: npm ci
+      # Kept at `critical`, deliberately: in a React Native project `react-native` is a
+      # runtime dependency and drags the whole Metro toolchain into the "production"
+      # tree, so a `high` threshold here reports mostly a bundler that never runs on a
+      # phone. The narrow gate below is the one that answers the question we care about.
       - run: npm audit --omit=dev --audit-level=critical
+      # What actually ships: the packages Metro put in the bundle, read from its source
+      # map, audited at `high`. A high-severity overflow in bigint-buffer rode inside
+      # the bundle until 2026-09-21 because the check above could not see it.
+      - run: node scripts/audit-shipped.js --min-severity high
 
   detox-ios:
     # Enable when Detox is added to package.json and iOS build is configured
