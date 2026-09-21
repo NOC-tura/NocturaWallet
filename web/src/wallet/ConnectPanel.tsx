@@ -28,8 +28,9 @@ export function ConnectPanel() {
         <>
           <h2 id="connect-heading">Connect your Solana wallet</h2>
           <p>
-            Your wallet signs; this page never sees a key. Connecting asks for no signature — a
-            signature is requested only when you buy.
+            Connect to see your allocation and to buy. Your wallet signs; this page never sees a
+            key, and connecting asks for no signature — a signature is requested only when you
+            buy.
           </p>
           <WalletMultiButton />
           <p>Found on this device: {wallets.map(w => w.adapter.name).join(', ')}</p>

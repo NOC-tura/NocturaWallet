@@ -35,11 +35,40 @@ describe('PresalePanel', () => {
     expect(screen.getByText(/could not be read/i)).toBeTruthy();
   });
 
-  it('asks for a wallet when none is connected — never "Reading…"', () => {
+  it('shows no allocation section at all when no wallet is connected', () => {
+    // It used to print a third "Connect a wallet to …" here, under a heading with nothing
+    // beneath it. The connect panel above already explains what connecting is for; this
+    // section now simply does not exist until there is a wallet to have an allocation.
     render(<PresalePanel stats={stats} allocation={{status: 'disconnected'}} />);
-    expect(screen.getByText(/connect a wallet/i)).toBeTruthy();
+    expect(screen.queryByRole('heading', {name: /your allocation/i})).toBeNull();
     expect(screen.queryByText(/reading/i)).toBeNull();
     expect(screen.queryByText(/no allocation/i)).toBeNull();
+    expect(screen.queryByText(/could not be read/i)).toBeNull();
+  });
+
+  it('still shows the stage, the price and the progress with no wallet', () => {
+    // The point of the change above is NOT to hide the presale behind connecting. A page
+    // that shows a visitor nothing until they connect is the habit phishing relies on.
+    render(<PresalePanel stats={stats} allocation={{status: 'disconnected'}} />);
+    expect(screen.getByText(/stage 2/i)).toBeTruthy();
+    expect(screen.getByText(/0\.1723/)).toBeTruthy();
+  });
+
+  it('shows the stage total in whole NOC, not to the ninth decimal', () => {
+    // What the live page printed: "1,279,937.425329514 NOC of 10,240,000 NOC".
+    render(
+      <PresalePanel
+        stats={{...stats, soldInStageBase: '1279937425329514'}}
+        allocation={{status: 'disconnected'}}
+      />,
+    );
+    expect(screen.getByText(/1,279,937 NOC of/)).toBeTruthy();
+    expect(screen.queryByText(/425329514/)).toBeNull();
+  });
+
+  it('shows an allocation to the last unit, because that one is the buyer\'s money', () => {
+    render(<PresalePanel stats={stats} allocation={{status: 'ok', base: '773484343768'}} />);
+    expect(screen.getByText('773.484343768 NOC')).toBeTruthy();
   });
 
   it('says nothing about an allocation while the read is still running', () => {

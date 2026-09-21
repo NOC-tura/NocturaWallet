@@ -6,10 +6,25 @@
  * version is a bug that only appears for users. Same reasoning applies here, where a
  * float would also quietly lose precision above 2^53.
  */
-export function formatBaseUnits(base: bigint, decimals: number, symbol: string): string {
+export function formatBaseUnits(
+  base: bigint,
+  decimals: number,
+  symbol: string,
+  options: {maxFractionDigits?: number} = {},
+): string {
   const unit = 10n ** BigInt(decimals);
   const whole = (base / unit).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  const frac = (base % unit).toString().padStart(decimals, '0').replace(/0+$/, '');
+
+  let frac = (base % unit).toString().padStart(decimals, '0');
+  const {maxFractionDigits} = options;
+  if (maxFractionDigits !== undefined) {
+    // TRUNCATED, never rounded. This is used for aggregates like "sold of capacity",
+    // and rounding up would let the page claim a stage is fuller than it is. Down is
+    // the direction that can only understate.
+    frac = frac.slice(0, maxFractionDigits);
+  }
+  frac = frac.replace(/0+$/, '');
+
   return frac ? `${whole}.${frac} ${symbol}` : `${whole} ${symbol}`;
 }
 

@@ -35,21 +35,36 @@ export function PresalePanel({
           Stage {stats.displayStage} · ${stats.pricePerNocUsd} per NOC
         </p>
       )}
+      {/*
+        Whole NOC for the stage total. Nobody's decision changes at the ninth decimal, and
+        "1,279,937.425329514 NOC of 10,240,000 NOC" reads as a leaked internal number rather
+        than a progress figure. Full precision stays the default everywhere it is YOUR money:
+        a balance and an allocation are shown to the last unit.
+      */}
       <p>
-        {formatBaseUnits(sold, NOC_DECIMALS, 'NOC')} of{' '}
-        {formatBaseUnits(capacity, NOC_DECIMALS, 'NOC')} — {percentOf(sold, capacity)}%
+        {formatBaseUnits(sold, NOC_DECIMALS, 'NOC', {maxFractionDigits: 0})} of{' '}
+        {formatBaseUnits(capacity, NOC_DECIMALS, 'NOC', {maxFractionDigits: 0})} —{' '}
+        {percentOf(sold, capacity)}%
       </p>
 
-      <h3>Your allocation</h3>
-      {allocation.status === 'disconnected' ? (
-        <p>Connect a wallet to see your allocation.</p>
-      ) : null}
-      {allocation.status === 'loading' ? <p>Reading…</p> : null}
-      {allocation.status === 'ok' ? <p>{formatBaseUnits(BigInt(allocation.base), NOC_DECIMALS, 'NOC')}</p> : null}
-      {allocation.status === 'absent' ? <p>No allocation for this wallet</p> : null}
-      {allocation.status === 'error' ? (
-        <p>Your allocation could not be read. This is a connection problem, not a zero balance.</p>
-      ) : null}
+      {/*
+        Nothing about an allocation while there is no wallet to have one. The connect panel
+        above already says what connecting is for; a heading over a third "connect a wallet"
+        line turns an explanation into nagging, and gives a visitor an empty section to read.
+      */}
+      {allocation.status === 'disconnected' ? null : (
+        <>
+          <h3>Your allocation</h3>
+          {allocation.status === 'loading' ? <p>Reading…</p> : null}
+          {allocation.status === 'ok' ? (
+            <p>{formatBaseUnits(BigInt(allocation.base), NOC_DECIMALS, 'NOC')}</p>
+          ) : null}
+          {allocation.status === 'absent' ? <p>No allocation for this wallet</p> : null}
+          {allocation.status === 'error' ? (
+            <p>Your allocation could not be read. This is a connection problem, not a zero balance.</p>
+          ) : null}
+        </>
+      )}
     </section>
   );
 }
