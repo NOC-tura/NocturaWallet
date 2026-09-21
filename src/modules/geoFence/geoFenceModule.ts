@@ -6,27 +6,19 @@ import {
   BUNDLED_RESTRICTED_LIST,
   type RestrictedCountry,
 } from './restrictedList';
+import {classifyJurisdiction, type JurisdictionResult} from '../../../core/geo/classify';
 
 /** 6-hour TTL for the cached restricted list (in milliseconds) */
 const RESTRICTED_LIST_TTL_MS = 6 * 60 * 60 * 1000;
 
-export interface JurisdictionResult {
-  action: 'allow' | 'warn' | 'block';
-  countryCode: string;
-  reason?: 'restricted' | 'sanctioned' | 'ambiguous' | 'vpn_detected';
-  transparentAllowed: true;
-  message?: string;
-}
+export type {JurisdictionResult} from '../../../core/geo/classify';
 
 interface GeoCheckResponse {
   countryCode: string;
   isVpn: boolean;
 }
 
-/** Presale buy policy (OFAC-only): block only sanctioned jurisdictions. */
-export function isPresaleBlocked(result: JurisdictionResult): boolean {
-  return result.action === 'block';
-}
+export {isPresaleBlocked} from '../../../core/geo/classify';
 
 /**
  * GeoFenceManager — 3-tier soft-block jurisdiction enforcement.
@@ -111,35 +103,9 @@ export class GeoFenceManager {
     opts: {skipBackgroundRefresh: boolean} = {skipBackgroundRefresh: false},
   ): JurisdictionResult {
     const list = this.getActiveRestrictedList(opts.skipBackgroundRefresh);
-    const entry = list.find(c => c.code === countryCode);
-
-    if (!entry) {
-      return {
-        action: 'allow',
-        countryCode,
-        transparentAllowed: true,
-      };
-    }
-
-    if (entry.category === 'sanctioned') {
-      return {
-        action: 'block',
-        countryCode,
-        reason: 'sanctioned',
-        transparentAllowed: true,
-        message:
-          'Access to shielded features is unavailable in your jurisdiction.',
-      };
-    }
-
-    return {
-      action: 'warn',
-      countryCode,
-      reason: 'restricted',
-      transparentAllowed: true,
-      message:
-        'Shielded features may have limited availability in your region.',
-    };
+    // isVpn:false because checkJurisdiction already returned on the VPN branch before
+    // reaching here; the default options keep the app's long-standing order.
+    return classifyJurisdiction({countryCode, isVpn: false}, list);
   }
 
   /**
