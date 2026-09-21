@@ -57,9 +57,12 @@ const STABLECOIN: Record<StablecoinToken, {mint: PublicKey; disc: number[]}> = {
   USDT: {mint: new PublicKey(USDT_MINT), disc: PURCHASE_WITH_USDT_DISCRIMINATOR},
 };
 
-/** Minimum / maximum purchase, in USD, per the presale (Min $10 · Max $50k/tx). */
-export const MIN_PURCHASE_USD = 10;
-export const MAX_PURCHASE_USD = 50_000;
+/**
+ * Minimum / maximum purchase, in USD. Moved to `core/presale/purchaseGate.ts`, which also
+ * records where these numbers actually come from: the program's CONFIG ACCOUNT, not its
+ * constants — the on-chain minimum was lowered from $25 to $10 by an admin.
+ */
+export {MIN_PURCHASE_USD, MAX_PURCHASE_USD} from '../../../core/presale/purchaseGate';
 
 export type {PresalePdas} from '../../../core/presale/allocation';
 export const derivePresalePdas = coreDerivePresalePdas;
