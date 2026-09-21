@@ -40,6 +40,13 @@ export default defineConfig(({mode}) => {
       environment: 'jsdom',
       globals: true,
       include: ['src/**/*.{test,spec}.{ts,tsx}', 'scripts/**/*.test.mjs', '../core/**/*.test.ts'],
+      // core/ holds no DOM code, and jsdom actively breaks it: jsdom runs in its own
+      // realm, so `instanceof Uint8Array` fails across it and @noble/hashes rejects a
+      // seed with "Uint8Array expected" — PublicKey.isOnCurve then answers true for
+      // everything and findProgramAddressSync can find no viable nonce. A real browser
+      // has one realm and does not have this problem; the node environment is both
+      // faster here and closer to the truth.
+      environmentMatchGlobs: [['../core/**', 'node']],
     },
   } as UserConfig;
 });

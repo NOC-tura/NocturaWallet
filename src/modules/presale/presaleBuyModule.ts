@@ -23,6 +23,11 @@ import {mnemonicToSeed} from '../keyDerivation/mnemonicUtils';
 import {deriveTransparentKeypair, type TransparentScheme} from '../keyDerivation/transparent';
 import {zeroize} from '../session/zeroize';
 import {useReferralCaptureStore} from '../../store/zustand/referralCaptureStore';
+import {
+  derivePresalePdas as coreDerivePresalePdas,
+  fetchOnChainAllocation as coreFetchOnChainAllocation,
+  fetchTgeTimestamp as coreFetchTgeTimestamp,
+} from '../../../core/presale/allocation';
 
 const PROGRAM = new PublicKey(PROGRAM_ID);
 const ADMIN = new PublicKey(ADMIN_ADDRESS);
@@ -47,80 +52,20 @@ const STABLECOIN: Record<StablecoinToken, {mint: PublicKey; disc: number[]}> = {
 export const MIN_PURCHASE_USD = 10;
 export const MAX_PURCHASE_USD = 50_000;
 
-export interface PresalePdas {
-  config: PublicKey;
-  userAccount: PublicKey;
-  userAllocation: PublicKey;
-  referrerAllocation: PublicKey;
-}
+export type {PresalePdas} from '../../../core/presale/allocation';
+export const derivePresalePdas = coreDerivePresalePdas;
 
-/** Derive the four PDAs the purchase instruction needs. */
-export function derivePresalePdas(user: PublicKey): PresalePdas {
-  const [config] = PublicKey.findProgramAddressSync([Buffer.from('config'), ADMIN.toBytes()], PROGRAM);
-  const [userAccount] = PublicKey.findProgramAddressSync([Buffer.from('user'), user.toBytes()], PROGRAM);
-  const [userAllocation] = PublicKey.findProgramAddressSync([Buffer.from('allocation'), user.toBytes()], PROGRAM);
-  // No referrer in B1: the program skips the bonus when the referrer allocation
-  // is the PDA of the default (all-zero) pubkey.
-  const [referrerAllocation] = PublicKey.findProgramAddressSync(
-    [Buffer.from('allocation'), PublicKey.default.toBytes()],
-    PROGRAM,
-  );
-  return {config, userAccount, userAllocation, referrerAllocation};
-}
-
-// PresaleAllocation account layout: 8-byte Anchor discriminator + user Pubkey
-// (32) → `total_tokens` (u64 LE) at offset 40. This is the AUTHORITATIVE,
-// claimable allocation (already includes any referral bonus) — the value the
-// website reads. The coordinator's recorded-purchase sum is only approximate.
-const ALLOCATION_TOTAL_TOKENS_OFFSET = 40;
+/** The app's chain reader, handed to core: its own Connection, narrow interface. */
+const appReader = {getAccountInfo: (address: PublicKey) => getConnection().getAccountInfo(address)};
 
 /**
- * Read the user's authoritative on-chain presale allocation (`total_tokens`,
- * 9-dec base units) from the `["allocation", user]` PDA. This matches the
- * website and what's actually claimable at TGE; prefer it over the coordinator
- * DB sum. Returns 0 / exists:false when the user has no allocation account.
+ * Read the user's authoritative on-chain presale allocation. Delegates to core so the
+ * web app reads the same bytes at the same offsets.
  */
-export async function fetchOnChainAllocation(
-  user: PublicKey,
-): Promise<{totalTokensBase: string; exists: boolean}> {
-  const {userAllocation} = derivePresalePdas(user);
-  const info = await getConnection().getAccountInfo(userAllocation);
-  if (!info || !info.data || info.data.length < ALLOCATION_TOTAL_TOKENS_OFFSET + 8) {
-    return {totalTokensBase: '0', exists: false};
-  }
-  const data = info.data;
-  let total = 0n;
-  for (let i = 7; i >= 0; i--) {
-    total = (total << 8n) | BigInt(data[ALLOCATION_TOTAL_TOKENS_OFFSET + i]);
-  }
-  return {totalTokensBase: total.toString(), exists: true};
-}
+export const fetchOnChainAllocation = (user: PublicKey) => coreFetchOnChainAllocation(appReader, user);
 
-// Config account layout: `tge_timestamp` is an i64 LE at byte offset 201 (after
-// the 8-byte disc + admin/sale/usdt/usdc 4×32 + 4×u64 prices/ratios +
-// current_stage u8 + 3×u64 sold/raised counters + presale_start_time i64 @193).
-// The config PDA (`["config", ADMIN]`) is user-independent, so any pubkey works
-// for the derive. Value = 1800230400 = 2027-01-18.
-const CONFIG_TGE_TIMESTAMP_OFFSET = 201;
-
-/**
- * Read the on-chain TGE timestamp (`config.tge_timestamp`) in unix seconds, or
- * null when the config account is missing / too short. The stored value is
- * positive, so an unsigned LE read is fine.
- */
-export async function fetchTgeTimestamp(): Promise<number | null> {
-  const {config} = derivePresalePdas(PublicKey.default);
-  const info = await getConnection().getAccountInfo(config);
-  if (!info || !info.data || info.data.length < CONFIG_TGE_TIMESTAMP_OFFSET + 8) {
-    return null;
-  }
-  const d = info.data;
-  let v = 0n;
-  for (let i = 7; i >= 0; i--) {
-    v = (v << 8n) | BigInt(d[CONFIG_TGE_TIMESTAMP_OFFSET + i]);
-  }
-  return Number(v);
-}
+/** Read the on-chain TGE timestamp in unix seconds, or null when unreadable. */
+export const fetchTgeTimestamp = () => coreFetchTgeTimestamp(appReader);
 
 // ===========================================================================
 // Referral (B1): register_referrer instruction + allocation read + resolve

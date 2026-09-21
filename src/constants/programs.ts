@@ -1,5 +1,14 @@
 import Config from 'react-native-config';
 import {assertKnownNetwork} from './networkGuard';
+// The mainnet literals live in core/ so the web app reads the same ones. The devnet
+// switch stays here: core has no network to switch on, the web being mainnet-only.
+import {
+  MAINNET_ADMIN_ADDRESS,
+  MAINNET_NOC_MINT,
+  MAINNET_PROGRAM_ID,
+  MAINNET_SOL_TREASURY,
+  PYTH_SOL_USD_ACCOUNT as CORE_PYTH_SOL_USD_ACCOUNT,
+} from '../../core/presale/addresses';
 
 // Fail closed BEFORE any address constant is derived. Previously this was an
 // unchecked cast whose default branch was mainnet, so a missing or misspelled
@@ -13,13 +22,13 @@ export const IS_DEVNET = NETWORK === 'devnet';
 // $NOC SPL Token
 export const NOC_MINT = IS_DEVNET
   ? 'TODO_DEVNET_MINT'
-  : 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW';
+  : MAINNET_NOC_MINT;
 export const NOC_DECIMALS = 9;
 
 // Noctura On-Chain Program (Phase 1 — unified: presale + staking + airdrop + referral)
 export const PROGRAM_ID = IS_DEVNET
   ? 'TODO_DEVNET_PROGRAM'
-  : '6nTTJwtDuxjv8C1JMsajYQapmPAGrC3QF1w5nu9LXJvt';
+  : MAINNET_PROGRAM_ID;
 
 export const PROGRAMS = {
   icoProgram: PROGRAM_ID,
@@ -30,14 +39,14 @@ export const PROGRAMS = {
 
 export const ADMIN_ADDRESS = IS_DEVNET
   ? 'TODO_DEVNET_ADMIN'
-  : 'KnZ5bRuaCb3JEAYgt9CJ69eWQ7i5dp5cASbTmLj39qr';
+  : MAINNET_ADMIN_ADDRESS;
 
 export const SOL_TREASURY = IS_DEVNET
   ? 'TODO_DEVNET_TREASURY'
-  : '6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd';
+  : MAINNET_SOL_TREASURY;
 
 // Pyth SOL/USD price account (read-only) required by presale_purchase_with_sol.
-export const PYTH_SOL_USD_ACCOUNT = '7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE';
+export const PYTH_SOL_USD_ACCOUNT = CORE_PYTH_SOL_USD_ACCOUNT;
 
 // Squads multisig vault (System-owned, mainnet) — the same vault used as
 // SOL_TREASURY, so all Noctura SOL (presale revenue + wallet fee markup)
