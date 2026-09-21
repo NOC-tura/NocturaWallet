@@ -1,59 +1,23 @@
 import {API_BASE} from '../../constants/programs';
 import {getCoordinatorJson} from '../backend/coordinatorClient';
-import {parseTokenAmount} from '../../utils/parseTokenAmount';
-import {PRESALE_STAGE_PRICES} from '../../constants/presale';
+import {
+  fetchPresaleStats as coreFetchPresaleStats,
+  nocStringToBase,
+  type PresaleStats,
+} from '../../../core/presale/stats';
 
-const TOKENS_PER_STAGE = 10_240_000;
-const NOC_DECIMALS = 9;
-const STAGE_CAPACITY_BASE = (BigInt(TOKENS_PER_STAGE) * 10n ** BigInt(NOC_DECIMALS)).toString();
+export type {PresaleStats};
 
-export interface PresaleStats {
-  displayStage: number; // 1-indexed (coordinator currentStage is 0-indexed)
-  pricePerNocUsd: number;
-  soldInStageBase: string; // NOC into the current stage, 9-dec base units
-  stageCapacityBase: string; // 10,240,000 NOC in base units
-  isPaused: boolean;
-}
+/** The app's transport, handed to core: certificate-pinned, bare paths. */
+const appJson = {get: <T,>(path: string) => getCoordinatorJson(path) as Promise<T>};
 
 export interface UserAllocation {
   tokensPurchasedBase: string;
   referralBonusBase: string;
 }
 
-/**
- * Convert a NOC display-amount string (≤9 dp, possibly a float like
- * "839030.874670029") to base units. Goes through Number().toFixed(9) so a
- * value with >9 fractional digits (or float noise) can't make parseTokenAmount
- * throw. Non-finite / non-positive → 0n.
- */
-function nocStringToBase(s: string): bigint {
-  const n = Number(s);
-  if (!Number.isFinite(n) || n <= 0) {
-    return 0n;
-  }
-  return parseTokenAmount(n.toFixed(NOC_DECIMALS), NOC_DECIMALS);
-}
-
 /** Live global presale stage/price/progress from the coordinator. Throws on failure. */
-export async function fetchPresaleStats(): Promise<PresaleStats> {
-  const body = (await getCoordinatorJson('/stats')) as {
-    success?: boolean;
-    data?: {currentStage?: number; totalNocSold?: number; isPaused?: boolean};
-  };
-  if (!body.success || !body.data) {
-    throw new Error('presale stats unsuccessful');
-  }
-  const idx = Math.min(Math.max(body.data.currentStage ?? 0, 0), PRESALE_STAGE_PRICES.length - 1);
-  const totalNocSold = body.data.totalNocSold ?? 0;
-  const intoStage = Math.max(0, totalNocSold - idx * TOKENS_PER_STAGE);
-  return {
-    displayStage: idx + 1,
-    pricePerNocUsd: PRESALE_STAGE_PRICES[idx],
-    soldInStageBase: nocStringToBase(String(intoStage)).toString(),
-    stageCapacityBase: STAGE_CAPACITY_BASE,
-    isPaused: body.data.isPaused === true,
-  };
-}
+export const fetchPresaleStats = () => coreFetchPresaleStats(appJson);
 
 /** The user's purchased NOC, summed from the coordinator's recorded purchases. Throws on failure. */
 export async function fetchUserAllocation(address: string): Promise<UserAllocation> {
