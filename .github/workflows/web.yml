@@ -61,6 +61,12 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # The served headers are generated from deploy/security-headers.mjs; this refuses a
+      # hand edit to the config that skipped the source. It runs inside `verify` too — as
+      # its own step its failure names the reason without anyone reading the whole log.
+      - run: npm run nginx:check
+        working-directory: web
+
       # web/'s own tree, including the wallet-adapter dev dependencies. `high` here
       # rather than the root's `critical`: this tree has no React Native in it, so a
       # high is not drowned in advisories about a bundler that never runs on a phone.
