@@ -12,28 +12,18 @@ const EXPLORERS: Record<string, string> = {
   bnb: 'https://bscscan.com/tx/',
 };
 
-/**
- * The coordinator's own words for a status, rendered verbatim.
- *
- * `not_credited` means one thing and only one: the payment is on chain, and no Solana
- * allocation was ever created for it — by decision, not by accident and not by delay.
- * The wording below is the coordinator's, supplied 2026-09-22, translated for this page
- * and confirmed back to them; it deliberately forecloses the three readings that are NOT
- * true — that tokens are owed, that something is processing, that anything is in flight.
- *
- * It is a fixed string rather than something this page infers, because the meaning of the
- * word belongs to whoever set it. If a row ever carries its own reason, that reason wins
- * over this map and this map should shrink.
- */
-const STATUS_MEANING: Record<string, string> = {
-  not_credited:
-    'The payment is on chain and can be checked. No Solana allocation was ever created ' +
-    'for this purchase. This is not a recording error and not a pending state — it is a ' +
-    'decision made during the presale reconciliation of September 2026.',
-};
 
 /** The chain gave a verdict about the transaction itself, rather than about our ability to ask. */
 const chainSpoke = (v: string | undefined) => v === 'missing' || v === 'failed';
+
+/**
+ * The coordinator has admitted the problem in the status AND said what it was.
+ *
+ * Both halves matter. A reason without a non-confirmed status is a note, not an
+ * admission, and must not silence what we read from the chain ourselves.
+ */
+const acknowledged = (p: {status: string; statusReason: string}) =>
+  p.status !== 'confirmed' && p.statusReason !== '';
 
 /** The verdict for a row, or nothing at all when Solana cannot have an opinion about it. */
 const verdictFor = (
@@ -139,7 +129,7 @@ export function PurchaseHistory() {
                 */}
                 {p.status !== 'confirmed' &&
                 !chainSpoke(verdictFor(verdicts, p)) &&
-                STATUS_MEANING[p.status] === undefined ? (
+                p.statusReason === '' ? (
                   <b className="noc-warning">{p.status}</b>
                 ) : null}
               </div>
@@ -151,13 +141,19 @@ export function PurchaseHistory() {
                 nothing at all. Telling a buyer their purchase does not exist because our
                 own proxy was down would be the worst sentence on this page.
               */}
-              {/* One statement per fact: the sentence replaces the raw token, it does not
-                  accompany it. */}
-              {STATUS_MEANING[p.status] !== undefined ? (
-                <p className="noc-caption noc-warning">{STATUS_MEANING[p.status]}</p>
+              {/*
+                The coordinator's own sentence for its own word, rendered verbatim and
+                never translated. One statement per fact: it replaces the raw token rather
+                than accompanying it, and it replaces OUR derived paragraph below — but
+                only when the coordinator has acknowledged the problem in its status. A
+                reason sitting on a row still marked `confirmed` is not an acknowledgement,
+                and our own reading of the chain has to survive it.
+              */}
+              {p.statusReason !== '' ? (
+                <p className="noc-caption noc-warning">{p.statusReason}</p>
               ) : null}
 
-              {verdictFor(verdicts, p) === 'missing' ? (
+              {!acknowledged(p) && verdictFor(verdicts, p) === 'missing' ? (
                 <p className="noc-caption noc-danger">
                   Not found on chain. The backend recorded this purchase, but the Solana
                   ledger has no transaction with this signature — so no payment was taken
@@ -165,7 +161,7 @@ export function PurchaseHistory() {
                   chain and is unaffected.
                 </p>
               ) : null}
-              {verdictFor(verdicts, p) === 'failed' ? (
+              {!acknowledged(p) && verdictFor(verdicts, p) === 'failed' ? (
                 <p className="noc-caption noc-danger">
                   This transaction is on chain but failed, so it moved nothing.
                 </p>

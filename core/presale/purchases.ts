@@ -35,6 +35,15 @@ export interface PresalePurchase {
   status: string;
   /** ISO 8601, as recorded. */
   createdAt: string;
+  /**
+   * The coordinator's own sentence for a non-`confirmed` status, or '' when it set none.
+   *
+   * Authored by whoever set the status, stored on the row, and rendered verbatim. Since
+   * 2026-09-22 the coordinator refuses to write `not_on_chain` or `not_credited` without
+   * one, so in practice these arrive together. '' is still handled, because a guarantee
+   * on the writing side is not a guarantee about what arrives over a network.
+   */
+  statusReason: string;
 }
 
 /*
@@ -62,6 +71,7 @@ interface RawPurchase {
   usd_value?: unknown;
   stage?: unknown;
   status?: unknown;
+  status_reason?: unknown;
   created_at?: unknown;
 }
 
@@ -94,6 +104,7 @@ export function parsePurchases(body: unknown): PresalePurchase[] {
       stage: num(r.stage),
       status: str(r.status),
       createdAt: str(r.created_at),
+      statusReason: str(r.status_reason),
     }))
     .filter(p => p.signature !== '')
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
