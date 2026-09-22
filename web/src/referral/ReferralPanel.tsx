@@ -28,30 +28,33 @@ export function ReferralPanel({address, stats}: {address: string; stats: Referra
         </p>
       </div>
 
-      <div className="stat-row">
-        <div className="noc-card-quiet">
-          <span className="noc-overline noc-dim">Referred</span>
-          {/* The overline already says "Referred"; repeating the word beside the figure
-              made the card read twice and wrap to two lines in a 1fr track. */}
-          <p data-testid="referral-count" className="noc-balance-md noc-numeral">
-            {stats.totalReferrals}
-          </p>
+      <div className="stat-group">
+        <div className="stat-row">
+          <div className="noc-card-quiet">
+            <span className="noc-overline noc-dim">Referred</span>
+            {/* The overline already says "Referred"; repeating the word beside the figure
+                made the card read twice and wrap to two lines in a 1fr track. */}
+            <p data-testid="referral-count" className="noc-balance-md noc-numeral">
+              {stats.totalReferrals}
+            </p>
+          </div>
+          <div className="noc-card-quiet">
+            <span className="noc-overline noc-dim">Bonus</span>
+            {/* Two decimals here, not the chain's nine: this is a figure to glance at, and
+                "40.247084996 NOC bonus" wrapped across two lines inside a small card. The
+                exact number is the allocation above, which IS shown to the last unit. */}
+            <p data-testid="referral-bonus" className="noc-balance-md noc-numeral">
+              {formatNoc(stats.totalBonusNoc)}
+              <span className="noc-ticker"> NOC</span>
+            </p>
+          </div>
         </div>
-        <div className="noc-card-quiet">
-          <span className="noc-overline noc-dim">Bonus</span>
-          {/* Two decimals here, not the chain's nine: this is a figure to glance at, and
-              "40.247084996 NOC bonus" wrapped across two lines inside a small card. The
-              exact number is the allocation above, which IS shown to the last unit. */}
-          <p data-testid="referral-bonus" className="noc-balance-md noc-numeral">
-            {formatNoc(stats.totalBonusNoc)}
-            <span className="noc-ticker"> NOC</span>
-          </p>
-        </div>
+        {/* Under the row rather than beside it: the same fact at a coarser grain, not a
+            third statistic competing for a track. */}
+        <p data-testid="referral-volume" className="noc-caption noc-dim noc-numeral">
+          {formatNoc(stats.totalReferredNoc)} NOC referred (${stats.totalReferredUsd})
+        </p>
       </div>
-
-      <p data-testid="referral-volume" className="noc-body-sm noc-dim noc-numeral">
-        {formatNoc(stats.totalReferredNoc)} NOC referred (${stats.totalReferredUsd})
-      </p>
     </section>
   );
 }

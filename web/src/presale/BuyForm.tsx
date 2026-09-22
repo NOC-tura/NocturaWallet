@@ -101,7 +101,11 @@ export function BuyForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="buy">
+    /* One card, not four floating pieces. Choosing a currency, entering an amount,
+       reading what will be signed and pressing the button are one act, and before this
+       they sat on the page as separate objects with nothing saying they belonged
+       together. */
+    <form onSubmit={onSubmit} className="buy noc-card">
       {/* Segmented, not a dropdown: three options that each change the meaning of the
           field below deserve to be visible at once rather than hidden behind a click. */}
       <fieldset className="seg">
@@ -130,7 +134,7 @@ export function BuyForm({
         </div>
       </fieldset>
 
-      <div className="noc-card-quiet">
+      <div className="buy-amount">
         <label htmlFor="buy-amount" className="noc-overline noc-dim">
           Amount in {token}
         </label>

@@ -145,12 +145,18 @@ body {
 }
 
 /* ── Cards, from the #23 presale screen ─────────────────────────────────────── */
+/* The hairline is the single biggest thing separating this from a flat page. On a phone
+   a card fills the width and its edge is obvious; on a dark desktop, #0E0E10 on #0A0A0A
+   is a four-value difference and the card simply disappears. The ring is not invented —
+   it is the treatment the design file already gives the brand mark, inset 1px at 4%
+   white, borrowed rather than made up. */
 .noc-card {
   background: var(--bg-surface-1);
   border-radius: var(--radius-2xl);
   padding: var(--space-5);
   display: flex; flex-direction: column; gap: var(--space-4);
   position: relative; overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .04);
 }
 
 /* The stage card's accent wash — a radial gradient from the top-left corner, exactly as
@@ -167,6 +173,7 @@ body {
   border-radius: var(--radius-lg);
   padding: var(--space-4) var(--space-5);
   display: flex; flex-direction: column; gap: var(--space-3);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .04);
 }
 
 .noc-eyebrow { display: flex; align-items: center; gap: var(--space-2); color: var(--accent); }
@@ -231,8 +238,8 @@ a { color: var(--accent); }
   gap: var(--space-5);
 }
 
-.cols { display: flex; flex-direction: column; gap: var(--space-5); }
-.col  { display: flex; flex-direction: column; gap: var(--space-5); min-width: 0; }
+.cols { display: flex; flex-direction: column; gap: 28px; }
+.col  { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
 
 @media (min-width: 900px) {
   .shell {
@@ -245,7 +252,7 @@ a { color: var(--accent); }
     /* The buy column is wider because the amount field and the signing summary need the
        room; the side rail holds figures and one address, which do not. */
     grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-    gap: var(--space-6);
+    gap: var(--space-7) var(--space-6);
     align-items: start;
   }
   /* The header spans both tracks and gets a rule under it, so the two columns read as
@@ -263,7 +270,10 @@ a { color: var(--accent); }
   padding-bottom: var(--space-2);
 }
 
-.shell > section {
+/* Proximity does the grouping. Everything inside one section sits 12 px apart; sections
+   themselves sit 28 px apart. Before, both were 20 px, so a card and its own heading were
+   as far apart as two unrelated panels and nothing read as belonging to anything. */
+.shell > section, .col > section {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -420,7 +430,8 @@ a { color: var(--accent); }
   gap: var(--space-2);
 }
 .shell section > h2 svg { flex: 0 0 auto; }
-.shell h2.noc-h3 { display: flex; align-items: center; gap: var(--space-2); text-transform: none; letter-spacing: normal; font-size: 17px; line-height: 22px; color: var(--fg-primary); font-family: var(--font-display); }
+/* The connect panel used to take a white 17 px heading while every other section took the
+   overline. One page, one rule: an eyebrow with its icon, in tertiary, above a card. */
 
 /* ── The wallet dialog ──────────────────────────────────────────────────────────
    The adapter ships its own navy (#10141f) and its own DM Sans. Neither is ours, and a
@@ -462,3 +473,20 @@ a { color: var(--accent); }
 .wallet-adapter-modal-button-close { background: var(--bg-surface-2) !important; }
 .wallet-adapter-modal-button-close svg { fill: var(--fg-secondary) !important; }
 .wallet-adapter-modal-list-more { color: var(--accent) !important; }
+
+/* ── Buy form as one object ─────────────────────────────────────────────────────
+   The card supplies the padding and the ring; the pieces inside get the tighter rhythm
+   of things that belong together. */
+.buy { gap: var(--space-4); }
+.buy-amount {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-base);
+  border-radius: var(--radius-lg);
+}
+/* The segmented control sits on the page ground inside the card, so it reads as a
+   control rather than as another surface stacked on the same colour. */
+.buy .seg-row { background: var(--bg-base); }
+.buy .seg-row label.seg-on { background: var(--bg-surface-3); }
+
+.stat-group { display: flex; flex-direction: column; gap: var(--space-2); }

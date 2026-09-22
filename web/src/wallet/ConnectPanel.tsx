@@ -21,42 +21,62 @@ export function ConnectPanel() {
     <section aria-labelledby="connect-heading">
       {publicKey ? (
         <>
-          <h2 className="noc-h3" id="connect-heading">
-            <Icon name="key" size={16} />
+          <h2 id="connect-heading">
+            <Icon name="key" />
             Your wallet
           </h2>
-          <WalletMultiButton />
-          <p className="noc-body-sm noc-mono link-break">{publicKey.toBase58()}</p>
+          <div className="noc-card-quiet">
+            <WalletMultiButton />
+            {/* The button already shows GpyR..ay11; the full address is here because a
+                truncation is not something a reader can check against anything. It sits
+                inside the card as its own row rather than floating under it. */}
+            <p className="noc-caption noc-dim noc-mono link-break">{publicKey.toBase58()}</p>
+          </div>
         </>
       ) : availability === 'available' ? (
         <>
-          <h2 className="noc-h3" id="connect-heading">Connect your Solana wallet</h2>
-          <p className="noc-body-sm noc-muted">
-            Connect to see your allocation and to buy. Your wallet signs; this page never sees a
-            key, and connecting asks for no signature — a signature is requested only when you
-            buy.
-          </p>
-          <WalletMultiButton />
-          <p className="noc-caption noc-dim">
-            Found on this device: {wallets.map(w => w.adapter.name).join(', ')}
-          </p>
+          <h2 id="connect-heading">
+            <Icon name="key" />
+            Connect your Solana wallet
+          </h2>
+          <div className="noc-card-quiet">
+            <p className="noc-body-sm noc-muted">
+              Connect to see your allocation and to buy. Your wallet signs; this page never sees
+              a key, and connecting asks for no signature — a signature is requested only when
+              you buy.
+            </p>
+            <WalletMultiButton />
+            <p className="noc-caption noc-dim">
+              Found on this device: {wallets.map(w => w.adapter.name).join(', ')}
+            </p>
+          </div>
         </>
       ) : availability === 'searching' ? (
         <>
-          <h2 className="noc-h3" id="connect-heading">Looking for a wallet…</h2>
-          <WalletMultiButton />
+          <h2 id="connect-heading">
+            <Icon name="key" />
+            Looking for a wallet…
+          </h2>
+          <div className="noc-card-quiet">
+            <WalletMultiButton />
+          </div>
         </>
       ) : (
         <>
-          <h2 className="noc-h3" id="connect-heading">You’ll need a Solana wallet</h2>
-          <p className="noc-body-sm noc-muted">
-            This page holds no keys of its own. It reads the chain and asks a wallet you already
-            control to sign, so there is nothing to create here.
-          </p>
-          <p className="noc-body-sm noc-muted">
-            Install <strong>Phantom</strong>, <strong>Solflare</strong> or{' '}
-            <strong>Backpack</strong> from your browser’s extension store, then reload this page.
-          </p>
+          <h2 id="connect-heading">
+            <Icon name="key" />
+            You’ll need a Solana wallet
+          </h2>
+          <div className="noc-card-quiet">
+            <p className="noc-body-sm noc-muted">
+              This page holds no keys of its own. It reads the chain and asks a wallet you
+              already control to sign, so there is nothing to create here.
+            </p>
+            <p className="noc-body-sm noc-muted">
+              Install <strong>Phantom</strong>, <strong>Solflare</strong> or{' '}
+              <strong>Backpack</strong> from your browser’s extension store, then reload this
+              page.
+            </p>
           {/*
             Named, not linked, and that is deliberate. A page that sends you somewhere to
             install a wallet is the exact shape of a phishing page, and this site's whole
@@ -64,16 +84,17 @@ export function ConnectPanel() {
             nowhere. It also keeps the bundle at zero external hosts, which is a property the
             build gate now enforces.
           */}
-          <p className="noc-caption noc-dim">
-            We deliberately don’t link to them: a page that sends you somewhere to install a
-            wallet is the shape a phishing page takes. Search your extension store yourself.
-          </p>
-          <p className="noc-body-sm noc-muted">
-            <strong>Using Noctura for Android?</strong> It’s a direct download rather than a
-            store install, and it can’t connect to this page. Buy in the app instead — the
-            presale is built into it.
-          </p>
-          <WalletMultiButton />
+            <p className="noc-caption noc-dim">
+              We deliberately don’t link to them: a page that sends you somewhere to install a
+              wallet is the shape a phishing page takes. Search your extension store yourself.
+            </p>
+            <p className="noc-body-sm noc-muted">
+              <strong>Using Noctura for Android?</strong> It’s a direct download rather than a
+              store install, and it can’t connect to this page. Buy in the app instead — the
+              presale is built into it.
+            </p>
+            <WalletMultiButton />
+          </div>
         </>
       )}
 
