@@ -87,15 +87,24 @@ export function PresalePanel({
             </p>
           ) : null}
           {/*
-            Named, because otherwise the total cannot be checked. A referral bonus is
-            credited by SOMEONE ELSE's first purchase, so it lands in the allocation with
-            no row of its own in your history — and a reader who adds up their purchases
-            gets a smaller number than this one and concludes something is wrong. On
-            mainnet the gap for 2ixJ…QMr9 is exactly this field: 533.710859424 bought
-            + 16.142571618 bonus = 549.853431042.
+            Named, because otherwise the total cannot be checked. Whatever is in this
+            field arrived WITHOUT a purchase of the holder's own, so someone adding up
+            their own history comes up short by exactly this much with no way to see why.
 
-            Read from the chain, like the total it is part of. The coordinator's referral
-            endpoint reports zero referrals and a zero bonus for that same wallet.
+            The wording says "not from your own purchases" and NOT "referral bonus",
+            which it said until 2026-09-22 and which was wrong. PresaleAllocation
+            .referral_bonus_tokens has three writers and only two of them are referrals:
+            presale_purchase_with_sol (lib.rs:384) and coordinator_mint_and_vest_stake
+            (2445) add a referral bonus, while admin_add_allocation (744) adds an admin
+            giveaway to the recipient themselves — the program's own comment there says
+            "reuse existing field for giveaway tracking". One mainnet account carries
+            both: 80.539640239 awarded + 40.247084996 given = 120.786725235, verified by
+            enumerating that PDA's transactions. Calling the whole of it a referral bonus
+            would have told that holder they earned 40 NOC from referrals they never made.
+
+            The page cannot tell the two apart without walking the account's history, and
+            it does not need to: what is true of all three writers, and is the reason the
+            line exists at all, is that none of them is a purchase of yours.
           */}
           {allocation.status === 'ok' &&
           allocation.referralBonusBase !== null &&
@@ -105,8 +114,9 @@ export function PresalePanel({
               title={formatAmount(BigInt(allocation.referralBonusBase), NOC_DECIMALS, 'NOC').exact}
             >
               includes{' '}
-              {formatAmount(BigInt(allocation.referralBonusBase), NOC_DECIMALS, 'NOC').text} earned
-              as a referral bonus
+              {formatAmount(BigInt(allocation.referralBonusBase), NOC_DECIMALS, 'NOC').text} that
+              did not come from your own purchases — a referral bonus, or an allocation added
+              by the project
             </p>
           ) : null}
           {allocation.status === 'absent' ? (

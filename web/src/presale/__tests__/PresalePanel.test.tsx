@@ -129,18 +129,32 @@ describe('PresalePanel referral bonus', () => {
       <PresalePanel stats={stats} allocation={ok('549853431042', '16142571618')} />,
     );
     expect(screen.getByText('549.8534 NOC')).toBeTruthy();
-    expect(container.textContent).toMatch(/includes 16\.1425 NOC earned as a referral bonus/);
+    expect(container.textContent).toMatch(
+      /includes 16\.1425 NOC that did not come from your own purchases/,
+    );
   });
 
-  it('says nothing when there is no bonus', () => {
+  it('says nothing when there is nothing credited outside the holder\'s purchases', () => {
     const {container} = render(<PresalePanel stats={stats} allocation={ok('549853431042', '0')} />);
-    expect(container.textContent).not.toMatch(/referral bonus/i);
+    expect(container.textContent).not.toMatch(/did not come from your own purchases/i);
+  });
+
+  it('does not call an admin giveaway a referral bonus', () => {
+    // The mainnet account that carries both: 80.539640239 awarded by referrals plus
+    // 40.247084996 added by admin_add_allocation, whose log says ADMIN_GIVEAWAY and
+    // whose code comment says the field is reused for giveaway tracking. The field
+    // cannot distinguish them, so the copy must not claim to.
+    const {container} = render(
+      <PresalePanel stats={stats} allocation={ok('1964890655947', '120786725235')} />,
+    );
+    expect(container.textContent).toMatch(/includes 120\.7867 NOC that did not come from/);
+    expect(container.textContent).not.toMatch(/earned as a referral bonus/);
   });
 
   it('says nothing when the bonus could not be read', () => {
     // null is "we do not know", and an unknown must not be printed as a zero or as a
     // figure. Silence is the only honest rendering of it.
     const {container} = render(<PresalePanel stats={stats} allocation={ok('549853431042', null)} />);
-    expect(container.textContent).not.toMatch(/referral bonus/i);
+    expect(container.textContent).not.toMatch(/did not come from your own purchases/i);
   });
 });
