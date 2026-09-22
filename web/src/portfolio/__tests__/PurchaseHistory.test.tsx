@@ -12,8 +12,10 @@ const purchase = (
   nocAmount: number,
   usdValue: number,
   status = 'confirmed',
+  chain = 'solana',
 ): PresalePurchase => ({
   signature,
+  chain,
   paymentToken: 'SOL',
   paymentAmount: 0.2,
   nocAmount,
@@ -29,8 +31,12 @@ let verdicts: Record<string, SignatureVerdict> = {};
 vi.mock('../usePurchases', () => ({
   usePurchases: () => ({purchases, isError: false, isLoading: false}),
 }));
+let askedSpy: ((signatures: string[]) => void) | null = null;
 vi.mock('../useSignatureVerdicts', () => ({
-  useSignatureVerdicts: () => verdicts,
+  useSignatureVerdicts: (signatures: string[]) => {
+    askedSpy?.(signatures);
+    return verdicts;
+  },
 }));
 
 beforeEach(() => {
@@ -116,6 +122,57 @@ describe('PurchaseHistory', () => {
     purchases = [];
     const {container} = render(<PurchaseHistory />);
     expect(container.textContent).not.toMatch(/fraction of a percent/);
+  });
+
+  it('never tells a cross-chain buyer that no payment was taken', () => {
+    // The row the coordinator holds for the deployer's own Ethereum test purchases:
+    // status not_credited, a 0x hash, real money moved on Ethereum, no Solana allocation.
+    // Put through the Solana check its hash is not a signature, the verdict is `missing`,
+    // and the sentence that follows would be false in the most damaging direction there
+    // is. /user/<solana address> does not return these today; surfacing them by
+    // buyer_solana_address is the obvious next improvement, and this is what must hold
+    // when it lands.
+    purchases = [
+      {
+        ...purchase(
+          '0xbc02c07f5d905184e09d3964085cab3840f205fcfa3401014a931d182490276c',
+          67.186668887,
+          16.54,
+          'not_credited',
+          'ethereum',
+        ),
+      },
+    ];
+    verdicts = {};
+    const {container} = render(<PurchaseHistory />);
+    expect(container.textContent).not.toMatch(/Not found on chain/);
+    expect(container.textContent).not.toMatch(/no payment was taken/);
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(container.textContent).toMatch(/ethereum · 0xbc02c07f5d…1d182490276c/);
+    expect(container.textContent).toMatch(/not_credited/);
+  });
+
+  it('does not ask Solana about a hash that is not a Solana signature', () => {
+    // The check above proves the sentence is absent; this proves the QUESTION is never
+    // asked, so the answer cannot arrive later by another route.
+    let asked: string[] | null = null;
+    purchases = [
+      purchase('0xbc02c07f5d905184e09d3964085cab3840f205fcfa3401014a931d182490276c', 1, 1, 'not_credited', 'ethereum'),
+      purchase(REAL, 2, 2),
+    ];
+    askedSpy = s => {
+      asked = s;
+    };
+    render(<PurchaseHistory />);
+    expect(asked).toEqual([REAL]);
+    askedSpy = null;
+  });
+
+  it('treats an unrecorded chain as not-Solana, because saying less is the safe failure', () => {
+    purchases = [purchase(REAL, 1, 1, 'confirmed', '')];
+    verdicts = {[REAL]: 'missing'};
+    const {container} = render(<PurchaseHistory />);
+    expect(container.textContent).not.toMatch(/Not found on chain/);
   });
 
   it('prints money with both decimal places', () => {

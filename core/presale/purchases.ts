@@ -14,6 +14,15 @@ import type {JsonGetter} from '../ports';
 export interface PresalePurchase {
   /** The Solana signature. `solana_tx_hash` when present, else `tx_hash`. */
   signature: string;
+  /**
+   * 'solana' | 'ethereum' | 'bnb' — which chain this hash belongs to, as recorded.
+   *
+   * Carried because everything this page does with a hash is chain-specific: asking
+   * Solana whether it has an Ethereum transaction gets "no", and "no" is rendered as an
+   * accusation that no payment was taken. Unknown is deliberately NOT read as 'solana':
+   * saying less is the safe failure here, saying the wrong thing is not.
+   */
+  chain: string;
   /** 'SOL' | 'USDC' | 'USDT' — as the coordinator recorded it. */
   paymentToken: string;
   /** Paid, in whole tokens. */
@@ -44,6 +53,7 @@ export interface PresalePurchase {
  */
 
 interface RawPurchase {
+  chain?: unknown;
   tx_hash?: unknown;
   solana_tx_hash?: unknown;
   payment_token?: unknown;
@@ -76,6 +86,7 @@ export function parsePurchases(body: unknown): PresalePurchase[] {
   return rows
     .map(r => ({
       signature: str(r.solana_tx_hash) || str(r.tx_hash),
+      chain: str(r.chain),
       paymentToken: str(r.payment_token),
       paymentAmount: num(r.payment_amount),
       nocAmount: num(r.noc_amount),

@@ -7,6 +7,26 @@ const EXPLORER = 'https://explorer.solana.com/tx/';
 /** The chain gave a verdict about the transaction itself, rather than about our ability to ask. */
 const chainSpoke = (v: string | undefined) => v === 'missing' || v === 'failed';
 
+/** The verdict for a row, or nothing at all when Solana cannot have an opinion about it. */
+const verdictFor = (
+  verdicts: Record<string, string>,
+  p: {signature: string; chain: string},
+): string | undefined => (isSolanaRow(p.chain) ? verdicts[p.signature] : undefined);
+
+/**
+ * Only a Solana hash may be asked about on Solana, and only a Solana hash may be linked
+ * to a Solana explorer.
+ *
+ * An Ethereum hash put through getSignatureStatuses comes back unknown — correctly, it is
+ * not a Solana signature — and this page renders that as "Not found on chain… no payment
+ * was taken and no tokens are owed", which over a real 0.009 ETH purchase is false in the
+ * most damaging direction available. Measured 2026-09-22: /user/<solana address> returns
+ * only that address's own Solana rows, so no such row reaches this page today; the
+ * coordinator holds cross-chain rows keyed by `buyer_solana_address`, and the natural
+ * improvement of surfacing them here is what would make it live.
+ */
+const isSolanaRow = (chain: string) => chain === 'solana';
+
 const num = (n: number, max = 2) =>
   n.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: max});
 
@@ -32,7 +52,9 @@ function day(iso: string): string {
 export function PurchaseHistory() {
   const {purchases, isError, isLoading} = usePurchases();
   // Hooks run before the early return, or the order changes between renders.
-  const verdicts = useSignatureVerdicts((purchases ?? []).map(p => p.signature));
+  const verdicts = useSignatureVerdicts(
+    (purchases ?? []).filter(p => isSolanaRow(p.chain)).map(p => p.signature),
+  );
   if (purchases === null && !isError && !isLoading) return null;
 
   return (
@@ -87,7 +109,7 @@ export function PurchaseHistory() {
                   fact, one of them in snake_case. `unknown` is not an answer and does not
                   suppress anything.
                 */}
-                {p.status !== 'confirmed' && !chainSpoke(verdicts[p.signature]) ? (
+                {p.status !== 'confirmed' && !chainSpoke(verdictFor(verdicts, p)) ? (
                   <b className="noc-warning">{p.status}</b>
                 ) : null}
               </div>
@@ -99,7 +121,7 @@ export function PurchaseHistory() {
                 nothing at all. Telling a buyer their purchase does not exist because our
                 own proxy was down would be the worst sentence on this page.
               */}
-              {verdicts[p.signature] === 'missing' ? (
+              {verdictFor(verdicts, p) === 'missing' ? (
                 <p className="noc-caption noc-danger">
                   Not found on chain. The backend recorded this purchase, but the Solana
                   ledger has no transaction with this signature — so no payment was taken
@@ -107,7 +129,7 @@ export function PurchaseHistory() {
                   chain and is unaffected.
                 </p>
               ) : null}
-              {verdicts[p.signature] === 'failed' ? (
+              {verdictFor(verdicts, p) === 'failed' ? (
                 <p className="noc-caption noc-danger">
                   This transaction is on chain but failed, so it moved nothing.
                 </p>
@@ -121,16 +143,29 @@ export function PurchaseHistory() {
                 control. Navigation, never a request; the page fetches nothing from it, and
                 Referrer-Policy: no-referrer means it learns nothing about where you came
                 from.
+
+                Solana rows only. An Ethereum hash under explorer.solana.com/tx/ is a link
+                to a page that cannot exist, offered as proof. Those are rendered as text
+                with their chain named, which is checkable without this page asserting
+                anything about a ledger it did not read.
               */}
-              <a
-                className="noc-caption noc-mono sig"
-                href={`${EXPLORER}${p.signature}`}
-                target="_blank"
-                rel="noreferrer noopener"
-                title={p.signature}
-              >
-                {p.signature.slice(0, 12)}…{p.signature.slice(-12)}
-              </a>
+              {isSolanaRow(p.chain) ? (
+                <a
+                  className="noc-caption noc-mono sig"
+                  href={`${EXPLORER}${p.signature}`}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  title={p.signature}
+                >
+                  {p.signature.slice(0, 12)}…{p.signature.slice(-12)}
+                </a>
+              ) : (
+                <span className="noc-caption noc-mono sig" title={p.signature}>
+                  {p.chain || 'other chain'} · {p.signature.slice(0, 12)}…
+                  {p.signature.slice(-12)}
+                </span>
+              )}
+
             </li>
           ))}
         </ol>
