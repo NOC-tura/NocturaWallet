@@ -33,3 +33,31 @@ export function percentOf(part: bigint, whole: bigint): number {
   if (whole === 0n) return 0;
   return Number((part * 1000n) / whole) / 10;
 }
+
+/**
+ * A readable amount, with the exact one kept for the `title`.
+ *
+ * Nine decimals is what the chain stores; it is not what a person reads. "1,964.890655947
+ * NOC" reads as a value that leaked rather than one that was written, and its last digits
+ * are meaningless — a billionth of a NOC is fifteen-hundred-millionths of a cent.
+ *
+ * TRUNCATED, not rounded, and that is the whole reason this is a function rather than
+ * toFixed. Rounding 1,964.890655947 to four places gives 1,964.8907 — a number LARGER
+ * than the holding, displayed as the holding. Down can only ever understate.
+ *
+ * The one case truncation gets wrong is dust: a real balance below the cutoff would print
+ * as a flat "0", which is a different claim entirely. Those keep their full precision
+ * instead, because a number too small to round is exactly the one a reader needs to see
+ * in full.
+ */
+export function formatAmount(
+  base: bigint,
+  decimals: number,
+  symbol: string,
+  displayDecimals = 4,
+): {text: string; exact: string} {
+  const exact = formatBaseUnits(base, decimals, symbol);
+  const short = formatBaseUnits(base, decimals, symbol, {maxFractionDigits: displayDecimals});
+  const truncatedToNothing = base > 0n && short === `0 ${symbol}`;
+  return {text: truncatedToNothing ? exact : short, exact};
+}

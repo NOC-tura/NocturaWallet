@@ -1,4 +1,4 @@
-import {formatBaseUnits} from '../format';
+import {formatBaseUnits, formatAmount} from '../format';
 
 describe('formatBaseUnits', () => {
   it('formats base units without ever touching a float', () => {
@@ -48,5 +48,36 @@ describe('formatBaseUnits with a fraction limit', () => {
 
   it('does not grow a fraction that was not there', () => {
     expect(formatBaseUnits(5_000_000_000n, 9, 'NOC', {maxFractionDigits: 9})).toBe('5 NOC');
+  });
+});
+
+describe('formatAmount — readable, with the exact value kept', () => {
+  it('shortens the nine-decimal allocation to something a person reads', () => {
+    // The live figure that prompted this: 1,964.890655947 NOC.
+    const {text, exact} = formatAmount(1_964_890_655_947n, 9, 'NOC');
+    expect(text).toBe('1,964.8906 NOC');
+    expect(exact).toBe('1,964.890655947 NOC');
+  });
+
+  it('TRUNCATES rather than rounds, so it can never show more than is held', () => {
+    // Rounding this to four places gives 1,964.8907 — larger than the holding, printed
+    // as the holding. The direction matters more than the digit.
+    expect(formatAmount(1_964_890_655_947n, 9, 'NOC').text).not.toBe('1,964.8907 NOC');
+  });
+
+  it('keeps full precision for dust rather than printing a flat zero', () => {
+    // 0.000000001 NOC truncated to four places is "0 NOC", which says the wallet is
+    // empty. A number too small to shorten is the one a reader most needs in full.
+    const {text} = formatAmount(1n, 9, 'NOC');
+    expect(text).toBe('0.000000001 NOC');
+  });
+
+  it('still prints a real zero as zero (the control)', () => {
+    // Without this the dust rule could be satisfied by never shortening anything.
+    expect(formatAmount(0n, 9, 'NOC').text).toBe('0 NOC');
+  });
+
+  it('leaves a short number alone', () => {
+    expect(formatAmount(1_500_000_000n, 9, 'SOL').text).toBe('1.5 SOL');
   });
 });

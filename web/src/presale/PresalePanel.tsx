@@ -1,5 +1,5 @@
 import type {PresaleStats} from '../../../core/presale/stats';
-import {formatBaseUnits, percentOf} from '../format';
+import {formatBaseUnits, formatAmount, percentOf} from '../format';
 import {Icon} from '../ui/Icon';
 
 /**
@@ -80,8 +80,10 @@ export function PresalePanel({
           <span className="noc-overline noc-dim">Your allocation</span>
           {allocation.status === 'loading' ? <p className="noc-body noc-muted">Reading…</p> : null}
           {allocation.status === 'ok' ? (
-            <p className="noc-balance-md noc-numeral">
-              {formatBaseUnits(BigInt(allocation.base), NOC_DECIMALS, 'NOC')}
+            /* Four decimals on screen, the exact figure on hover. The chain stores nine;
+               the last of them are worth fractions of a cent and read as a leak. */
+            <p className="noc-balance-md noc-numeral" title={formatAmount(BigInt(allocation.base), NOC_DECIMALS, 'NOC').exact}>
+              {formatAmount(BigInt(allocation.base), NOC_DECIMALS, 'NOC').text}
             </p>
           ) : null}
           {allocation.status === 'absent' ? (

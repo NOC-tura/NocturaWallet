@@ -3,7 +3,7 @@ import {useBalances} from './useBalances';
 import {usePrices} from './usePrices';
 import {useChart} from './useChart';
 import {Sparkline} from './Sparkline';
-import {formatBaseUnits} from '../format';
+import {formatAmount} from '../format';
 import {valueHoldings, marketTotalUsd} from '../../../core/portfolio/value';
 import {Icon} from '../ui/Icon';
 
@@ -49,8 +49,8 @@ export function PortfolioPanel({stagePriceUsd}: {stagePriceUsd: number}) {
 
         {valued.map(v => (
           <div className="holding" key={v.symbol}>
-            <span className="noc-body noc-numeral">
-              {formatBaseUnits(v.base, v.decimals, v.symbol)}
+            <span className="noc-body noc-numeral" title={formatAmount(v.base, v.decimals, v.symbol).exact}>
+              {formatAmount(v.base, v.decimals, v.symbol).text}
             </span>
             {v.usd === null ? (
               <span className="noc-caption noc-dim">{priceError ? 'price unavailable' : '—'}</span>

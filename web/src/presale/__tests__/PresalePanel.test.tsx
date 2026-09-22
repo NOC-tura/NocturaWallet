@@ -69,9 +69,30 @@ describe('PresalePanel', () => {
     expect(container.textContent).not.toMatch(/425329514/);
   });
 
-  it('shows an allocation to the last unit, because that one is the buyer\'s money', () => {
+  it('shows an allocation at four decimals, with the last unit still reachable', () => {
+    // This test used to demand all nine decimals, on the reasoning that the smallest unit
+    // is the buyer's money. The money argument survives; the display argument did not.
+    // "773.484343768 NOC" is not a figure anyone reads — the ninth decimal of a NOC is
+    // around a hundred-millionth of a cent — and a number no one can read is not a number
+    // anyone can check. So four on screen, all nine on the element itself, which is where
+    // someone who wants to compare against the chain goes.
     render(<PresalePanel stats={stats} allocation={{status: 'ok', base: '773484343768'}} />);
-    expect(screen.getByText('773.484343768 NOC')).toBeTruthy();
+    const node = screen.getByText('773.4843 NOC');
+    expect(node.getAttribute('title')).toBe('773.484343768 NOC');
+  });
+
+  it('never rounds the allocation up, because that would overstate the holding', () => {
+    // 0.99999 rounded to four places is 1.0 — a page claiming a whole NOC the buyer does
+    // not have. Truncation can only ever understate, which is the safe direction.
+    render(<PresalePanel stats={stats} allocation={{status: 'ok', base: '999990000'}} />);
+    expect(screen.getByText('0.9999 NOC')).toBeTruthy();
+  });
+
+  it('shows a dust allocation in full rather than printing a flat zero', () => {
+    // Truncating 4 base units to four decimals gives "0 NOC", which says the buyer holds
+    // nothing. That is a different claim, not a shorter one.
+    render(<PresalePanel stats={stats} allocation={{status: 'ok', base: '4'}} />);
+    expect(screen.getByText('0.000000004 NOC')).toBeTruthy();
   });
 
   it('says nothing about an allocation while the read is still running', () => {
