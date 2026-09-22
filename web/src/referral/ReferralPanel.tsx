@@ -2,6 +2,16 @@ import type {ReferralStats} from '../../../core/referral';
 import {buildReferralLink} from '../../../core/referral';
 import {Icon} from '../ui/Icon';
 
+/** Two decimals for a glanceable figure; the chain's full precision belongs to an
+ *  allocation, not to a summary card. Kept tolerant of a non-numeric string rather than
+ *  rendering NaN at someone. */
+function formatNoc(value: string | number): string {
+  const n = Number(value);
+  return Number.isFinite(n)
+    ? n.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 2})
+    : String(value);
+}
+
 export function ReferralPanel({address, stats}: {address: string; stats: ReferralStats}) {
   return (
     <section>
@@ -21,20 +31,26 @@ export function ReferralPanel({address, stats}: {address: string; stats: Referra
       <div className="stat-row">
         <div className="noc-card-quiet">
           <span className="noc-overline noc-dim">Referred</span>
+          {/* The overline already says "Referred"; repeating the word beside the figure
+              made the card read twice and wrap to two lines in a 1fr track. */}
           <p data-testid="referral-count" className="noc-balance-md noc-numeral">
-            {stats.totalReferrals} referred
+            {stats.totalReferrals}
           </p>
         </div>
         <div className="noc-card-quiet">
           <span className="noc-overline noc-dim">Bonus</span>
+          {/* Two decimals here, not the chain's nine: this is a figure to glance at, and
+              "40.247084996 NOC bonus" wrapped across two lines inside a small card. The
+              exact number is the allocation above, which IS shown to the last unit. */}
           <p data-testid="referral-bonus" className="noc-balance-md noc-numeral">
-            {stats.totalBonusNoc} NOC bonus
+            {formatNoc(stats.totalBonusNoc)}
+            <span className="noc-ticker"> NOC</span>
           </p>
         </div>
       </div>
 
       <p data-testid="referral-volume" className="noc-body-sm noc-dim noc-numeral">
-        {stats.totalReferredNoc} NOC referred (${stats.totalReferredUsd})
+        {formatNoc(stats.totalReferredNoc)} NOC referred (${stats.totalReferredUsd})
       </p>
     </section>
   );

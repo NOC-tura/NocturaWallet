@@ -3,6 +3,7 @@ import {ConnectionProvider, WalletProvider} from '@solana/wallet-adapter-react';
 import {WalletModalProvider} from '@solana/wallet-adapter-react-ui';
 import './wallet-adapter.css';
 import {rpcEndpoint} from '../config';
+import {userHasActed} from './userGesture';
 
 export function WalletProviders({children}: {children: ReactNode}) {
   return (
@@ -15,10 +16,18 @@ export function WalletProviders({children}: {children: ReactNode}) {
         re-exports dozens of adapters and, with them, dozens of third-party hosts into
         a bundle that is supposed to contact only our origin.
 
-        autoConnect stays off: a page that connects on arrival is the shape every
-        drainer uses, and users are right to be trained against it.
+        autoConnect is a FUNCTION, not false, and the distinction is the whole point.
+        `false` was costing a click: after choosing Solflare in the dialog the button
+        turned into "Connect" and waited to be pressed again, for a connection the user
+        had just asked for. `true` would have gone too far the other way — reconnecting
+        on arrival is the shape every drainer uses.
+
+        The rule this page actually wants is neither: never connect except in response to
+        something the user did. A restore from localStorage happens before anyone has
+        touched anything; a selection happens after they opened the dialog. userHasActed()
+        tells those apart, so the redundant click goes and the property stays.
       */}
-      <WalletProvider wallets={[]} autoConnect={false}>
+      <WalletProvider wallets={[]} autoConnect={async () => userHasActed()}>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>

@@ -64,9 +64,13 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <WalletProviders>
         {/*
-          One column, capped at the width the design draws for: the mockups are Pixel-9
-          screens, and a presale panel stretched across a 27-inch monitor is a different
-          product. 440px keeps the phone layout honest and centres it instead.
+          Phone-first, but not phone-only. Keeping the mockup's 440 px column at every
+          width made a laptop look like it was displaying a screenshot of a phone: one
+          narrow strip with a field of black on either side. The panels are independent
+          cards, so above 900 px they take two tracks — the presale and the buy form on
+          the left, where the work happens, and the wallet, countdown and referral on the
+          right, where the facts about you sit. Below that it collapses back to the single
+          column the design actually draws.
         */}
         <main className="shell">
           <header className="shell-head">
@@ -81,11 +85,17 @@ export function App() {
               <p className="noc-body-sm noc-dim">Presale and portfolio. Your wallet stays where it is.</p>
             </div>
           </header>
-          <ConnectPanel />
-          <PortfolioPanel />
-          <Presale />
-          <Tge />
-          <Referral />
+          <div className="cols">
+            <div className="col col-main">
+              <Presale />
+            </div>
+            <div className="col col-side">
+              <ConnectPanel />
+              <PortfolioPanel />
+              <Tge />
+              <Referral />
+            </div>
+          </div>
         </main>
       </WalletProviders>
     </QueryClientProvider>

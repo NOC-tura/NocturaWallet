@@ -216,10 +216,11 @@ a { color: var(--accent); }
 }
 
 /* ── The page shell ─────────────────────────────────────────────────────────────
-   The design is a set of Pixel-9 screens. Rather than invent a desktop layout the
-   author never drew, the page keeps that column and centres it: one 440 px column,
-   the same paddings the mockups use, and a 16 px gutter at phone width so nothing
-   touches the edge. */
+   The design is a set of Pixel-9 screens, and at phone width that is exactly what this
+   is: one 440 px column with the mockups' own paddings. A laptop is not a phone, though,
+   and rendering the phone column there made the page look like a screenshot of one — so
+   above 900 px the same cards take two tracks instead of being stretched or stranded.
+   Nothing about a card changes; only how many sit side by side. */
 .shell {
   max-width: 440px;
   margin-inline: auto;
@@ -228,6 +229,31 @@ a { color: var(--accent); }
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+}
+
+.cols { display: flex; flex-direction: column; gap: var(--space-5); }
+.col  { display: flex; flex-direction: column; gap: var(--space-5); min-width: 0; }
+
+@media (min-width: 900px) {
+  .shell {
+    max-width: 980px;
+    padding-inline: var(--space-6);
+    padding-block: var(--space-8) var(--space-8);
+  }
+  .cols {
+    display: grid;
+    /* The buy column is wider because the amount field and the signing summary need the
+       room; the side rail holds figures and one address, which do not. */
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    gap: var(--space-6);
+    align-items: start;
+  }
+  /* The header spans both tracks and gets a rule under it, so the two columns read as
+     one page rather than two panes that happen to be adjacent. */
+  .shell-head {
+    padding-bottom: var(--space-5);
+    border-bottom: 1px solid var(--bg-surface-2);
+  }
 }
 
 .shell-head {
@@ -395,3 +421,44 @@ a { color: var(--accent); }
 }
 .shell section > h2 svg { flex: 0 0 auto; }
 .shell h2.noc-h3 { display: flex; align-items: center; gap: var(--space-2); text-transform: none; letter-spacing: normal; font-size: 17px; line-height: 22px; color: var(--fg-primary); font-family: var(--font-display); }
+
+/* ── The wallet dialog ──────────────────────────────────────────────────────────
+   The adapter ships its own navy (#10141f) and its own DM Sans. Neither is ours, and a
+   dialog that does not belong to the page is exactly where a user stops trusting what
+   they are looking at — this is the one moment the page asks them to hand over a
+   connection. Re-pointed at the DS surfaces and the DS face, without touching its
+   behaviour. */
+.wallet-adapter-modal-wrapper {
+  background: var(--bg-surface-1) !important;
+  border: 1px solid var(--bg-surface-3);
+  border-radius: var(--radius-2xl) !important;
+  font-family: var(--font-body) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .7) !important;
+}
+.wallet-adapter-modal-title {
+  font-family: var(--font-display) !important;
+  font-size: 20px !important;
+  line-height: 26px !important;
+  font-weight: 600 !important;
+  color: var(--fg-primary) !important;
+}
+.wallet-adapter-modal-list .wallet-adapter-button {
+  background: var(--bg-surface-2) !important;
+  color: var(--fg-primary) !important;
+  border-radius: var(--radius-lg) !important;
+  font-size: 15px !important;
+  height: var(--touch-target-min) !important;
+  line-height: var(--touch-target-min) !important;
+}
+.wallet-adapter-modal-list .wallet-adapter-button:hover {
+  background: var(--bg-surface-3) !important;
+}
+/* "Detected" — a fact about the reader's machine, not a call to action. */
+.wallet-adapter-modal-list .wallet-adapter-button span {
+  color: var(--fg-tertiary) !important;
+  font-size: 12px !important;
+}
+.wallet-adapter-modal-overlay { background: rgba(10, 10, 10, .72) !important; }
+.wallet-adapter-modal-button-close { background: var(--bg-surface-2) !important; }
+.wallet-adapter-modal-button-close svg { fill: var(--fg-secondary) !important; }
+.wallet-adapter-modal-list-more { color: var(--accent) !important; }
