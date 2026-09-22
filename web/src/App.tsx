@@ -1,5 +1,6 @@
 import {QueryClientProvider} from '@tanstack/react-query';
 import {WalletProviders} from './wallet/WalletProviders';
+import {BrandMark} from './ui/BrandMark';
 import {ConnectPanel} from './wallet/ConnectPanel';
 import {PresalePanel} from './presale/PresalePanel';
 import {PortfolioPanel} from './portfolio/PortfolioPanel';
@@ -69,13 +70,16 @@ export function App() {
         */}
         <main className="shell">
           <header className="shell-head">
-            <h1 className="noc-h1">Noctura</h1>
+            <BrandMark size={44} />
+            <div className="head-copy">
+              <h1 className="noc-h1">Noctura</h1>
             {/*
               What this page is, said before anyone has to guess. It is not a wallet: it
               holds no keys and creates none. Naming it honestly is also what makes the
               connect screen below make sense rather than read as a demand.
             */}
-            <p className="noc-body-sm noc-dim">Presale and portfolio. Your wallet stays where it is.</p>
+              <p className="noc-body-sm noc-dim">Presale and portfolio. Your wallet stays where it is.</p>
+            </div>
           </header>
           <ConnectPanel />
           <PortfolioPanel />

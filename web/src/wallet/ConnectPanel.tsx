@@ -1,6 +1,7 @@
 import {useWallet} from '@solana/wallet-adapter-react';
 import {WalletMultiButton} from '@solana/wallet-adapter-react-ui';
 import {useWalletAvailability} from './useWalletAvailability';
+import {Icon} from '../ui/Icon';
 
 /**
  * The first thing a visitor sees. Before this it was a bare "Select Wallet" button, which
@@ -20,7 +21,10 @@ export function ConnectPanel() {
     <section aria-labelledby="connect-heading">
       {publicKey ? (
         <>
-          <h2 className="noc-h3" id="connect-heading">Your wallet</h2>
+          <h2 className="noc-h3" id="connect-heading">
+            <Icon name="key" size={16} />
+            Your wallet
+          </h2>
           <WalletMultiButton />
           <p className="noc-body-sm noc-mono link-break">{publicKey.toBase58()}</p>
         </>
@@ -78,7 +82,10 @@ export function ConnectPanel() {
         recovery phrase into, which is what makes the sentence true rather than a
         promise — a phishing clone cannot claim the real site asks for one.
       */}
-      <p className="noc-caption noc-dim phrase-note">Noctura will never ask for your recovery phrase.</p>
+      <p className="noc-caption noc-dim phrase-note">
+        <Icon name="shield-check" />
+        Noctura will never ask for your recovery phrase.
+      </p>
     </section>
   );
 }

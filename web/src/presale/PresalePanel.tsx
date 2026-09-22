@@ -1,5 +1,6 @@
 import type {PresaleStats} from '../../../core/presale/stats';
 import {formatBaseUnits, percentOf} from '../format';
+import {Icon} from '../ui/Icon';
 
 /**
  * Three states, not a nullable number. "We could not read your allocation" and "you
@@ -33,7 +34,10 @@ export function PresalePanel({
 
   return (
     <section>
-      <h2>Presale</h2>
+      <h2>
+        <Icon name="trend-up" />
+        Presale
+      </h2>
 
       <div className="noc-card noc-card-accent">
         {stats.isPaused ? (

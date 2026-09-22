@@ -1,3 +1,4 @@
+import {Icon} from '../ui/Icon';
 /**
  * Two failure modes here look like data, and both are refused explicitly: an unset
  * timestamp must not count from 1970, and a past one must not count through zero.
@@ -14,7 +15,10 @@ export function Countdown({tgeUnix}: {tgeUnix: number | null}) {
   const when = new Date(tgeUnix * 1000).toISOString().slice(0, 10);
   return (
     <div className="noc-card-quiet">
-      <span className="noc-overline noc-dim">Token generation event</span>
+      <span className="noc-overline noc-dim tge-label">
+        <Icon name="clock" />
+        Token generation event
+      </span>
       {/* The number carries the weight; the date underneath is the fact it rests on. */}
       <p className="noc-balance-md noc-numeral">
         {days} days {hours} hours

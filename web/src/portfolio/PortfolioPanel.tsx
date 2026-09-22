@@ -1,6 +1,7 @@
 import {useWallet} from '@solana/wallet-adapter-react';
 import {useBalances} from './useBalances';
 import {formatBaseUnits} from '../format';
+import {Icon} from '../ui/Icon';
 
 export function PortfolioPanel() {
   const {publicKey} = useWallet();
@@ -9,7 +10,10 @@ export function PortfolioPanel() {
 
   return (
     <section>
-      <h2>Balances</h2>
+      <h2>
+        <Icon name="pie" />
+        Balances
+      </h2>
       <div className="noc-card-quiet">
         {isLoading ? <p className="noc-body noc-muted">Reading…</p> : null}
         {isError ? (

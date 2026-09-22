@@ -347,3 +347,51 @@ a { color: var(--accent); }
   padding-top: var(--space-2);
   border-top: 1px solid var(--bg-surface-2);
 }
+
+/* ── Brand mark (design file, screen #1) ────────────────────────────────────────
+   The gradients and the inset hairline are the original's, to the value. The "N" is
+   clipped from a linear gradient that runs white → lilac → shielded teal, which is how
+   the mark carries the dual-mode identity rather than stating it in a caption. */
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  background:
+    radial-gradient(120% 100% at 30% 20%, rgba(176, 132, 252, .6), transparent 60%),
+    radial-gradient(120% 100% at 70% 80%, rgba(91, 227, 194, .45), transparent 60%),
+    #14141a;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .04);
+}
+.brand-mark-n {
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  background: linear-gradient(135deg, #fff, #c4b3ff 60%, #5be3c2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ── Section headings carry their icon ─────────────────────────────────────────
+   The icon sits in the overline, at the overline's own colour, so it dims and brightens
+   with the label instead of becoming a second accent competing with the figure below. */
+.shell h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.shell-head { flex-direction: row; align-items: center; gap: var(--space-3); }
+.shell-head .head-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+/* Icons that sit inside a line of running text need the line's own alignment, not the
+   block alignment a section heading gets. */
+.phrase-note, .tge-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.shell section > h2 svg { flex: 0 0 auto; }
+.shell h2.noc-h3 { display: flex; align-items: center; gap: var(--space-2); text-transform: none; letter-spacing: normal; font-size: 17px; line-height: 22px; color: var(--fg-primary); font-family: var(--font-display); }

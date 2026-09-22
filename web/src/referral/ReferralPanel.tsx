@@ -1,10 +1,14 @@
 import type {ReferralStats} from '../../../core/referral';
 import {buildReferralLink} from '../../../core/referral';
+import {Icon} from '../ui/Icon';
 
 export function ReferralPanel({address, stats}: {address: string; stats: ReferralStats}) {
   return (
     <section>
-      <h2>Referral</h2>
+      <h2>
+        <Icon name="users" />
+        Referral
+      </h2>
       <div className="noc-card-quiet">
         <span className="noc-overline noc-dim">Your link</span>
         {/* The link is the thing to copy, so it breaks rather than truncating: a shortened
