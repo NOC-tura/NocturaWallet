@@ -106,6 +106,18 @@ describe('PurchaseHistory', () => {
     expect(container.textContent).not.toMatch(/Not found on chain/);
   });
 
+  it('says once why the rows will never sum to the allocation exactly', () => {
+    const {container} = render(<PurchaseHistory />);
+    expect(container.textContent).toMatch(/differ by a fraction of a percent/);
+    expect(container.textContent).toMatch(/The chain is what pays out/);
+  });
+
+  it('says it only when there are rows to be confused by', () => {
+    purchases = [];
+    const {container} = render(<PurchaseHistory />);
+    expect(container.textContent).not.toMatch(/fraction of a percent/);
+  });
+
   it('prints money with both decimal places', () => {
     const {container} = render(<PurchaseHistory />);
     expect(container.textContent).toMatch(/\$10\.50/);

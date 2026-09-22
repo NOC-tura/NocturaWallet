@@ -135,6 +135,24 @@ export function PurchaseHistory() {
           ))}
         </ol>
       ) : null}
+
+      {/*
+        Said once, so nobody has to work it out from a subtraction.
+        These rows are the coordinator's record; the allocation above is read from the
+        chain. The two are priced at slightly different moments — the coordinator uses
+        its own USD rate, the program its on-chain feed at execution — so the sums do not
+        tie exactly and never will. Measured 2026-09-22: 0.036% over five purchases for
+        one wallet, 0.031% for another. Without this line, a reader who adds up their own
+        history and comes up 0.2 NOC short has no way to tell a rounding difference from
+        a missing purchase, which is the whole confusion this page exists to end.
+      */}
+      {purchases !== null && purchases.length > 0 ? (
+        <p className="noc-caption noc-dim">
+          These amounts are the backend's record of each purchase. Your allocation is read
+          from the chain, priced at the moment each transaction executed, so the two differ
+          by a fraction of a percent. The chain is what pays out.
+        </p>
+      ) : null}
     </section>
   );
 }
