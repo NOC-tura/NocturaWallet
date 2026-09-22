@@ -26,8 +26,22 @@ export interface PresalePurchase {
   status: string;
   /** ISO 8601, as recorded. */
   createdAt: string;
-  referralBonusNoc: number;
 }
+
+/*
+ * `referral_bonus` is deliberately NOT parsed into the type above.
+ *
+ * The coordinator writes 10% onto every referred purchase; the program awards the bonus
+ * ONCE, on the referred buyer's first purchase, and says so in the logs of the others
+ * ("Referral bonus skipped - not first purchase"). Measured across five referrers on
+ * 2026-09-22 the column totals 1,155.75 NOC against 311.66 actually credited on chain —
+ * and for one referrer it runs the other way, 80.49 recorded against 120.79 on chain.
+ * It is not a record of what was paid in either direction.
+ *
+ * The number that IS a record is `PresaleAllocation.referral_bonus_tokens`, read from the
+ * account in core/presale/allocation.ts and shown under the allocation. A field nobody
+ * should trust, sitting in a type, is a field somebody renders later.
+ */
 
 interface RawPurchase {
   tx_hash?: unknown;
@@ -39,7 +53,6 @@ interface RawPurchase {
   stage?: unknown;
   status?: unknown;
   created_at?: unknown;
-  referral_bonus?: unknown;
 }
 
 const num = (v: unknown): number => {
@@ -70,7 +83,6 @@ export function parsePurchases(body: unknown): PresalePurchase[] {
       stage: num(r.stage),
       status: str(r.status),
       createdAt: str(r.created_at),
-      referralBonusNoc: num(r.referral_bonus),
     }))
     .filter(p => p.signature !== '')
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));

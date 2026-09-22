@@ -7,16 +7,20 @@ const REAL = '75fvgBVd7oRWLYxQ9CqXymWyqEHpCcN7f9qzYQm4nUJvZPPXnFN6SPHXJKFfmyBtBF
 const PHANTOM =
   '27BRB9fcLBHhdcwYZg3HaPjTvpZrnSULt5eRxZxs6QNQeUzNakgRGrk2h9j8sPgWn2cuMjiWvzUdzQmESVA9PtWv';
 
-const purchase = (signature: string, nocAmount: number, usdValue: number): PresalePurchase => ({
+const purchase = (
+  signature: string,
+  nocAmount: number,
+  usdValue: number,
+  status = 'confirmed',
+): PresalePurchase => ({
   signature,
   paymentToken: 'SOL',
   paymentAmount: 0.2,
   nocAmount,
   usdValue,
   stage: 1,
-  status: 'confirmed',
+  status,
   createdAt: '2026-04-12T06:26:20.541Z',
-  referralBonusNoc: 0,
 });
 
 let purchases: PresalePurchase[] | null = [];
@@ -80,6 +84,26 @@ describe('PurchaseHistory', () => {
       `https://explorer.solana.com/tx/${REAL}`,
       `https://explorer.solana.com/tx/${PHANTOM}`,
     ]);
+  });
+
+  it('does not print the coordinator\'s token AND our sentence for the same fact', () => {
+    // Since 2026-09-22 the coordinator marks these rows `not_on_chain` itself. Both
+    // statements are true; showing both is one of them in snake_case.
+    purchases = [purchase(PHANTOM, 109.763651379, 16.48, 'not_on_chain')];
+    verdicts = {[PHANTOM]: 'missing'};
+    const {container} = render(<PurchaseHistory />);
+    expect(container.textContent).toMatch(/Not found on chain/);
+    expect(container.textContent).not.toMatch(/not_on_chain/);
+  });
+
+  it('still shows the coordinator\'s word when the chain has not answered', () => {
+    // The control on the test above. `unknown` is our ignorance, and suppressing the
+    // backend's own statement because of it would hide the only thing anyone knows.
+    purchases = [purchase(PHANTOM, 109.763651379, 16.48, 'not_on_chain')];
+    verdicts = {[PHANTOM]: 'unknown'};
+    const {container} = render(<PurchaseHistory />);
+    expect(container.textContent).toMatch(/not_on_chain/);
+    expect(container.textContent).not.toMatch(/Not found on chain/);
   });
 
   it('prints money with both decimal places', () => {

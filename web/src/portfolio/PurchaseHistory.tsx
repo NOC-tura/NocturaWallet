@@ -4,6 +4,9 @@ import {Icon} from '../ui/Icon';
 
 const EXPLORER = 'https://explorer.solana.com/tx/';
 
+/** The chain gave a verdict about the transaction itself, rather than about our ability to ask. */
+const chainSpoke = (v: string | undefined) => v === 'missing' || v === 'failed';
+
 const num = (n: number, max = 2) =>
   n.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: max});
 
@@ -73,9 +76,20 @@ export function PurchaseHistory() {
                 <span className="noc-dim noc-numeral">
                   {num(p.paymentAmount, 6)} {p.paymentToken} · {usd(p.usdValue)} · stage {p.stage}
                 </span>
-                {/* Rendered, never interpreted: the coordinator owns this word, and a page
-                    that translated it would be inventing a second source of truth. */}
-                {p.status !== 'confirmed' ? <b className="noc-warning">{p.status}</b> : null}
+                {/*
+                  Rendered, never interpreted: the coordinator owns this word, and a page
+                  that translated it would be inventing a second source of truth.
+
+                  Suppressed once the chain itself has answered, because then the sentence
+                  below says the same thing in a form a person can read. Since 2026-09-22
+                  the coordinator marks a phantom row `not_on_chain`, so without this the
+                  row would carry that token AND the paragraph — two statements of one
+                  fact, one of them in snake_case. `unknown` is not an answer and does not
+                  suppress anything.
+                */}
+                {p.status !== 'confirmed' && !chainSpoke(verdicts[p.signature]) ? (
+                  <b className="noc-warning">{p.status}</b>
+                ) : null}
               </div>
 
               {/*
