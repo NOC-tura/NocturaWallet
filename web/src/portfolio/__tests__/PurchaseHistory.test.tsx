@@ -147,9 +147,9 @@ describe('PurchaseHistory', () => {
     const {container} = render(<PurchaseHistory />);
     expect(container.textContent).not.toMatch(/Not found on chain/);
     expect(container.textContent).not.toMatch(/no payment was taken/);
-    expect(screen.queryByRole('link')).toBeNull();
     expect(container.textContent).toMatch(/ethereum · 0xbc02c07f5d…1d182490276c/);
-    expect(container.textContent).toMatch(/not_credited/);
+    // The link exists, and it points at the ledger that can answer for this hash.
+    expect(screen.getByRole('link').getAttribute('href')).not.toMatch(/explorer\.solana\.com/);
   });
 
   it('does not ask Solana about a hash that is not a Solana signature', () => {
@@ -173,6 +173,59 @@ describe('PurchaseHistory', () => {
     verdicts = {[REAL]: 'missing'};
     const {container} = render(<PurchaseHistory />);
     expect(container.textContent).not.toMatch(/Not found on chain/);
+  });
+
+  it("renders the coordinator's sentence for not_credited, not the raw token", () => {
+    purchases = [
+      purchase('0xbc02c07f5d905184e09d3964085cab3840f205fcfa3401014a931d182490276c', 67.18, 16.54, 'not_credited', 'ethereum'),
+    ];
+    const {container} = render(<PurchaseHistory />);
+    expect(container.textContent).toMatch(/No Solana allocation was ever created/);
+    expect(container.textContent).toMatch(/a decision made during the presale reconciliation/);
+    expect(container.textContent).not.toMatch(/not_credited/);
+  });
+
+  it('never says the three things that are not true of not_credited', () => {
+    // The negative control on the sentence. These are the readings the coordinator
+    // explicitly ruled out: that tokens are owed, that something is processing, that
+    // anything is in flight.
+    purchases = [
+      purchase('0xbc02c07f5d905184e09d3964085cab3840f205fcfa3401014a931d182490276c', 67.18, 16.54, 'not_credited', 'ethereum'),
+    ];
+    const {container} = render(<PurchaseHistory />);
+    // Phrased as the claims themselves, not as bare words: the sentence contains the
+    // word "pending" precisely in order to deny it, and a control that fired on the word
+    // would be forcing the copy to be vaguer than the coordinator wrote it.
+    for (const wrong of [
+      /tokens are owed/i,
+      /are owed to you/i,
+      /being processed/i,
+      /is processing/i,
+      /in progress/i,
+      /is pending/i,
+      /will be credited/i,
+      /awaiting/i,
+    ]) {
+      expect(container.textContent, String(wrong)).not.toMatch(wrong);
+    }
+    // Positive control: the sentence that IS there, so the loop above cannot pass by
+    // rendering nothing at all.
+    expect(container.textContent).toMatch(/not a pending state/);
+  });
+
+  it('links an Ethereum hash to Etherscan, never to a Solana explorer', () => {
+    const hash = '0xbc02c07f5d905184e09d3964085cab3840f205fcfa3401014a931d182490276c';
+    purchases = [purchase(hash, 67.18, 16.54, 'not_credited', 'ethereum')];
+    render(<PurchaseHistory />);
+    expect(screen.getByRole('link').getAttribute('href')).toBe(`https://etherscan.io/tx/${hash}`);
+    expect(screen.getByRole('link').textContent).toMatch(/^ethereum · /);
+  });
+
+  it('gives an unrecognised chain no link at all, rather than a guess', () => {
+    purchases = [purchase(REAL, 1, 1, 'confirmed', 'someotherchain')];
+    const {container} = render(<PurchaseHistory />);
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(container.textContent).toMatch(/someotherchain · /);
   });
 
   it('prints money with both decimal places', () => {

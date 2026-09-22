@@ -2,7 +2,35 @@ import {usePurchases} from './usePurchases';
 import {useSignatureVerdicts} from './useSignatureVerdicts';
 import {Icon} from '../ui/Icon';
 
-const EXPLORER = 'https://explorer.solana.com/tx/';
+/**
+ * One explorer per chain. A hash is only checkable on the ledger it belongs to, and a
+ * row whose chain we do not recognise gets no link at all rather than a guess.
+ */
+const EXPLORERS: Record<string, string> = {
+  solana: 'https://explorer.solana.com/tx/',
+  ethereum: 'https://etherscan.io/tx/',
+  bnb: 'https://bscscan.com/tx/',
+};
+
+/**
+ * The coordinator's own words for a status, rendered verbatim.
+ *
+ * `not_credited` means one thing and only one: the payment is on chain, and no Solana
+ * allocation was ever created for it — by decision, not by accident and not by delay.
+ * The wording below is the coordinator's, supplied 2026-09-22, translated for this page
+ * and confirmed back to them; it deliberately forecloses the three readings that are NOT
+ * true — that tokens are owed, that something is processing, that anything is in flight.
+ *
+ * It is a fixed string rather than something this page infers, because the meaning of the
+ * word belongs to whoever set it. If a row ever carries its own reason, that reason wins
+ * over this map and this map should shrink.
+ */
+const STATUS_MEANING: Record<string, string> = {
+  not_credited:
+    'The payment is on chain and can be checked. No Solana allocation was ever created ' +
+    'for this purchase. This is not a recording error and not a pending state — it is a ' +
+    'decision made during the presale reconciliation of September 2026.',
+};
 
 /** The chain gave a verdict about the transaction itself, rather than about our ability to ask. */
 const chainSpoke = (v: string | undefined) => v === 'missing' || v === 'failed';
@@ -109,7 +137,9 @@ export function PurchaseHistory() {
                   fact, one of them in snake_case. `unknown` is not an answer and does not
                   suppress anything.
                 */}
-                {p.status !== 'confirmed' && !chainSpoke(verdictFor(verdicts, p)) ? (
+                {p.status !== 'confirmed' &&
+                !chainSpoke(verdictFor(verdicts, p)) &&
+                STATUS_MEANING[p.status] === undefined ? (
                   <b className="noc-warning">{p.status}</b>
                 ) : null}
               </div>
@@ -121,6 +151,12 @@ export function PurchaseHistory() {
                 nothing at all. Telling a buyer their purchase does not exist because our
                 own proxy was down would be the worst sentence on this page.
               */}
+              {/* One statement per fact: the sentence replaces the raw token, it does not
+                  accompany it. */}
+              {STATUS_MEANING[p.status] !== undefined ? (
+                <p className="noc-caption noc-warning">{STATUS_MEANING[p.status]}</p>
+              ) : null}
+
               {verdictFor(verdicts, p) === 'missing' ? (
                 <p className="noc-caption noc-danger">
                   Not found on chain. The backend recorded this purchase, but the Solana
@@ -149,14 +185,15 @@ export function PurchaseHistory() {
                 with their chain named, which is checkable without this page asserting
                 anything about a ledger it did not read.
               */}
-              {isSolanaRow(p.chain) ? (
+              {EXPLORERS[p.chain] !== undefined ? (
                 <a
                   className="noc-caption noc-mono sig"
-                  href={`${EXPLORER}${p.signature}`}
+                  href={`${EXPLORERS[p.chain] as string}${p.signature}`}
                   target="_blank"
                   rel="noreferrer noopener"
                   title={p.signature}
                 >
+                  {p.chain !== 'solana' ? `${p.chain} · ` : ''}
                   {p.signature.slice(0, 12)}…{p.signature.slice(-12)}
                 </a>
               ) : (

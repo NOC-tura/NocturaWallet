@@ -26,6 +26,10 @@ const ALLOWED: Record<string, string> = {
   'github.com': 'inert: text inside an error message about getRandomValues',
   'reactjs.org': "inert: React's error-decoder URL, printed in messages",
   'api.mainnet-beta.solana.com': 'inert: web3.js clusterApiUrl default; we pass our own endpoint',
+  'etherscan.io':
+    "NAVIGATION, user-initiated, same reasoning as explorer.solana.com below: a cross-chain purchase is recorded with an Ethereum transaction hash, and a hash is only checkable on the ledger it belongs to. Putting that hash under explorer.solana.com would offer a link to a page that cannot exist AS PROOF, which is worse than no link. The page fetches nothing from it and Referrer-Policy: no-referrer means it learns nothing about where the click came from.",
+  'bscscan.com':
+    'NAVIGATION, user-initiated, identical in kind to etherscan.io above: the coordinator records BNB-chain purchases too, and their hashes are checkable only on that chain. Navigation, never a request.',
   'explorer.solana.com':
     'NAVIGATION, user-initiated, and the only outbound link on the page: each purchase row links its signature to the explorer so a buyer can check our claim against a source we do not control. The page fetches nothing from it — no script, no image, no request of any kind — and Referrer-Policy: no-referrer means it is told nothing about where the click came from. §6.10 says the site sends you nowhere, and that rule exists against being sent somewhere to INSTALL something, which is the shape of a phishing page; this is the opposite of that.',
 };
