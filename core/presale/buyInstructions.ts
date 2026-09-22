@@ -204,3 +204,41 @@ export function buildStablecoinPurchaseInstruction(
     data,
   });
 }
+
+/** UI estimate for a stablecoin payment. USDC and USDT are 1:1 with the dollar. */
+export function estimateNocForUsd(usd: number, stagePriceUsd: number): number {
+  if (stagePriceUsd <= 0) return 0;
+  return usd / stagePriceUsd;
+}
+
+/**
+ * The full stablecoin purchase, bundled exactly like the SOL one: compute budget, the
+ * one-time `register_referrer` when there is a referrer to record, then the purchase.
+ *
+ * Moved out of the app so the web builds the SAME transaction rather than a second
+ * implementation of it. Two implementations of a money path is how the destination came
+ * to be derived from ADMIN in one place and from config in another.
+ */
+export function buildStablecoinBuyInstructions(
+  user: PublicKey,
+  token: StablecoinToken,
+  amountBaseUnits: bigint,
+  priorityFeeMicroLamports: number,
+  resolved: {referrerAllocation: PublicKey; registerReferrer: PublicKey | null},
+  treasury: PublicKey,
+): TransactionInstruction[] {
+  return [
+    ComputeBudgetProgram.setComputeUnitLimit({units: COMPUTE_UNIT_LIMIT}),
+    ComputeBudgetProgram.setComputeUnitPrice({microLamports: priorityFeeMicroLamports}),
+    ...(resolved.registerReferrer
+      ? [buildRegisterReferrerInstruction(user, resolved.registerReferrer)]
+      : []),
+    buildStablecoinPurchaseInstruction(user, token, amountBaseUnits, resolved.referrerAllocation, treasury),
+  ];
+}
+
+/** The SPL Token program, which a stablecoin purchase touches and a SOL one does not. */
+export const SPL_TOKEN_PROGRAM = SPL_TOKEN_PROGRAM_ID.toBase58();
+
+/** Base units per whole token: 9 for SOL, 6 for both stablecoins. */
+export const TOKEN_DECIMALS: Record<'SOL' | StablecoinToken, number> = {SOL: 9, USDC: 6, USDT: 6};

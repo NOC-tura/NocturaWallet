@@ -10,7 +10,14 @@ import {
 import {checkGeo} from '../geo/useGeo';
 import {json, post} from '../lib/api';
 import {accountReader, connection} from '../lib/solana';
-import {buildBuyInstructions, estimateNocForSol} from '../../../core/presale/buyInstructions';
+import {
+  buildBuyInstructions,
+  buildStablecoinBuyInstructions,
+  estimateNocForSol,
+  estimateNocForUsd,
+  TOKEN_DECIMALS,
+} from '../../../core/presale/buyInstructions';
+import type {PaymentToken} from '../../../core/presale/purchaseGate';
 import {fetchSolTreasury} from '../../../core/presale/allocation';
 import {resolveReferrer} from '../../../core/presale/referrer';
 import {recordPresalePurchase} from '../../../core/presale/record';
@@ -28,6 +35,12 @@ const ALLOWED_PROGRAM_IDS = [
   ComputeBudgetProgram.programId.toBase58(),
   SystemProgram.programId.toBase58(),
 ];
+// NOT the SPL Token program, and that was a mistake caught by a test rather than by
+// reading. A stablecoin purchase moves tokens, so it seemed obvious the token program
+// had to be allowed — but it appears only as an ACCOUNT of the presale instruction,
+// never as an instruction's own programId, which is what this guard inspects. Adding it
+// would have loosened the guard to permit an injected token transfer, in exchange for
+// nothing.
 
 /**
  * Can this wallet broadcast for itself?
@@ -60,7 +73,7 @@ export function useBuy(stage: {displayStage: number; pricePerNocUsd: number}) {
   }, [wallet]);
 
   const submit = useCallback(
-    async (solLamports: bigint): Promise<string> => {
+    async (token: PaymentToken, amountBaseUnits: bigint): Promise<string> => {
       if (!publicKey) throw new Error('No wallet connected');
       if (blockedReason) throw new Error(blockedReason);
       const now = Date.now();
@@ -92,7 +105,17 @@ export function useBuy(stage: {displayStage: number; pricePerNocUsd: number}) {
           fetchSolTreasury(accountReader),
         ]);
 
-        const instructions = buildBuyInstructions(publicKey, solLamports, priorityFee, resolved, treasury);
+        const instructions =
+          token === 'SOL'
+            ? buildBuyInstructions(publicKey, amountBaseUnits, priorityFee, resolved, treasury)
+            : buildStablecoinBuyInstructions(
+                publicKey,
+                token,
+                amountBaseUnits,
+                priorityFee,
+                resolved,
+                treasury,
+              );
         const foreign = instructions.find(ix => !ALLOWED_PROGRAM_IDS.includes(ix.programId.toBase58()));
         if (foreign) {
           // A transaction we built addressing a program we did not expect is our bug.
@@ -122,8 +145,14 @@ export function useBuy(stage: {displayStage: number; pricePerNocUsd: number}) {
         setState('confirming');
         await confirmBySignature(signature, latest.lastValidBlockHeight);
 
-        const sol = Number(solLamports) / 1e9;
-        const solUsd = await fetchSolUsd();
+        const amount = Number(amountBaseUnits) / 10 ** TOKEN_DECIMALS[token];
+        // The dollar value of a stablecoin is itself; only SOL needs a price, and only
+        // SOL should pay for fetching one.
+        const usdValue = token === 'SOL' ? amount * (await fetchSolUsd()) : amount;
+        const nocAmount =
+          token === 'SOL'
+            ? estimateNocForSol(amount, usdValue / amount, stage.pricePerNocUsd)
+            : estimateNocForUsd(amount, stage.pricePerNocUsd);
         // core's recordPresalePurchase swallows by contract, and this catch is the
         // same promise made locally: the money has already moved, so a failed archive
         // must never surface as a failed purchase — not even if that collaborator is
@@ -132,10 +161,10 @@ export function useBuy(stage: {displayStage: number; pricePerNocUsd: number}) {
           await recordPresalePurchase(post, {
             txHash: signature,
             buyerAddress: publicKey.toBase58(),
-            paymentToken: 'SOL',
-            paymentAmount: sol,
-            nocAmount: estimateNocForSol(sol, solUsd, stage.pricePerNocUsd),
-            usdValue: sol * solUsd,
+            paymentToken: token,
+            paymentAmount: amount,
+            nocAmount,
+            usdValue,
             stage: stage.displayStage,
             ...(resolved.effectiveReferrerAddress
               ? {referrerAddress: resolved.effectiveReferrerAddress}

@@ -1,7 +1,7 @@
 import type {ReactNode} from 'react';
 import {renderHook, act} from '@testing-library/react';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
-import {PublicKey} from '@solana/web3.js';
+import {PublicKey, type VersionedTransaction} from '@solana/web3.js';
 
 const h = vi.hoisted(() => ({
   account: vi.fn(),
@@ -42,7 +42,7 @@ vi.mock('@solana/wallet-adapter-react', () => ({
   }),
 }));
 
-import {useBuy} from '../useBuy';
+import {useBuy, ALLOWED_PROGRAM_IDS} from '../useBuy';
 
 function wrapper({children}: {children: ReactNode}) {
   const client = new QueryClient({defaultOptions: {queries: {retry: false}}});
@@ -92,7 +92,7 @@ describe('useBuy — every refusal happens before a signature is requested', () 
     h.geo.mockResolvedValue({...ALLOW, result: {action: 'block', countryCode: 'IR', reason: 'sanctioned', transparentAllowed: true}});
     const {result} = renderHook(() => useBuy(STAGE), {wrapper});
     await act(async () => {
-      await expect(result.current.submit(1_000_000_000n)).rejects.toThrow(/restricted|sanctioned/i);
+      await expect(result.current.submit('SOL', 1_000_000_000n)).rejects.toThrow(/restricted|sanctioned/i);
     });
     expect(h.send).not.toHaveBeenCalled();
   });
@@ -101,7 +101,7 @@ describe('useBuy — every refusal happens before a signature is requested', () 
     h.geo.mockRejectedValue(new Error('geo unreachable'));
     const {result} = renderHook(() => useBuy(STAGE), {wrapper});
     await act(async () => {
-      await expect(result.current.submit(1_000_000_000n)).rejects.toThrow();
+      await expect(result.current.submit('SOL', 1_000_000_000n)).rejects.toThrow();
     });
     expect(h.send).not.toHaveBeenCalled();
   });
@@ -110,7 +110,7 @@ describe('useBuy — every refusal happens before a signature is requested', () 
     h.simulate.mockResolvedValue({value: {err: {InstructionError: [0, 'Custom']}}});
     const {result} = renderHook(() => useBuy(STAGE), {wrapper});
     await act(async () => {
-      await expect(result.current.submit(1_000_000_000n)).rejects.toThrow(/simulation/i);
+      await expect(result.current.submit('SOL', 1_000_000_000n)).rejects.toThrow(/simulation/i);
     });
     expect(h.send).not.toHaveBeenCalled();
   });
@@ -121,7 +121,7 @@ describe('useBuy — every refusal happens before a signature is requested', () 
     expect(result.current.canBuy).toBe(false);
     expect(result.current.blockedReason).toMatch(/cannot/i);
     await act(async () => {
-      await expect(result.current.submit(1_000_000_000n)).rejects.toThrow(/cannot/i);
+      await expect(result.current.submit('SOL', 1_000_000_000n)).rejects.toThrow(/cannot/i);
     });
     expect(h.send).not.toHaveBeenCalled();
   });
@@ -135,8 +135,8 @@ describe('useBuy — every refusal happens before a signature is requested', () 
   it('rejects a second submit inside the debounce window, per hook instance', async () => {
     const {result} = renderHook(() => useBuy(STAGE), {wrapper});
     await act(async () => {
-      await result.current.submit(1_000_000_000n);
-      await expect(result.current.submit(1_000_000_000n)).rejects.toThrow(/too soon|in flight/i);
+      await result.current.submit('SOL', 1_000_000_000n);
+      await expect(result.current.submit('SOL', 1_000_000_000n)).rejects.toThrow(/too soon|in flight/i);
     });
     expect(h.send).toHaveBeenCalledTimes(1);
   });
@@ -148,7 +148,7 @@ describe('useBuy — the successful path', () => {
     h.resolve.mockResolvedValue({referrerAllocation: R2, registerReferrer: null, effectiveReferrerAddress: R2.toBase58()});
     const {result} = renderHook(() => useBuy(STAGE), {wrapper});
     await act(async () => {
-      await result.current.submit(1_000_000_000n);
+      await result.current.submit('SOL', 1_000_000_000n);
     });
     const tx = h.send.mock.calls[0]![0];
     expect(tx.message.staticAccountKeys.some((k: PublicKey) => k.equals(R2))).toBe(true);
@@ -157,7 +157,7 @@ describe('useBuy — the successful path', () => {
   it('records the purchase in the coordinator field names, with a real NOC amount', async () => {
     const {result} = renderHook(() => useBuy(STAGE), {wrapper});
     await act(async () => {
-      await result.current.submit(1_000_000_000n);
+      await result.current.submit('SOL', 1_000_000_000n);
     });
     const rec = h.record.mock.calls[0]![1];
     expect(rec.txHash).toBe('5orjuduJpk6F3oF9YZM3signature');
@@ -173,7 +173,51 @@ describe('useBuy — the successful path', () => {
     h.record.mockRejectedValue(new Error('coordinator down'));
     const {result} = renderHook(() => useBuy(STAGE), {wrapper});
     await act(async () => {
-      await expect(result.current.submit(1_000_000_000n)).resolves.toContain('signature');
+      await expect(result.current.submit('SOL', 1_000_000_000n)).resolves.toContain('signature');
     });
+  });
+});
+
+describe('useBuy — paying with a stablecoin', () => {
+  it('touches the token program as an ACCOUNT, never as an instruction target', async () => {
+    // Written the other way round first, and the test corrected the code: it seemed
+    // obvious that a token purchase must address the token program, so it was added to
+    // ALLOWED_PROGRAM_IDS. It is not addressed — it rides along as an account of the
+    // presale instruction — and allowing it would have permitted an injected transfer
+    // for no benefit. The allowlist stays at three.
+    const {result} = renderHook(() => useBuy(STAGE), {wrapper});
+    await act(async () => {
+      await result.current.submit('USDC', 10_500_000n);
+    });
+    expect(h.send).toHaveBeenCalledTimes(1);
+    const tx = h.send.mock.calls[0]![0] as VersionedTransaction;
+    const targets = tx.message.compiledInstructions.map(ix =>
+      tx.message.staticAccountKeys[ix.programIdIndex]!.toBase58(),
+    );
+    const accounts = tx.message.staticAccountKeys.map(k => k.toBase58());
+    expect(targets).not.toContain('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+    expect(accounts).toContain('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+    expect(new Set(targets).size).toBeLessThanOrEqual(ALLOWED_PROGRAM_IDS.length);
+    for (const t of targets) expect(ALLOWED_PROGRAM_IDS).toContain(t);
+  });
+
+  it('records the dollar value as the amount itself, never multiplied by the SOL price', async () => {
+    // $10.50 of USDC is $10.50. Reusing the SOL path's `amount × price` would have
+    // recorded it as about $1,240 and credited the buyer accordingly in the archive.
+    const {result} = renderHook(() => useBuy(STAGE), {wrapper});
+    await act(async () => {
+      await result.current.submit('USDC', 10_500_000n);
+    });
+    const body = h.record.mock.calls.at(-1)![1] as Record<string, unknown>;
+    expect(body.paymentToken).toBe('USDC');
+    expect(body.paymentAmount).toBeCloseTo(10.5, 6);
+    expect(body.usdValue).toBeCloseTo(10.5, 6);
+    expect(body.nocAmount).toBeCloseTo(10.5 / STAGE.pricePerNocUsd, 6);
+  });
+
+  it('asks for no SOL price when paying with a stablecoin', () => {
+    // Not an optimisation: the price call can fail, and a failed price must not be able
+    // to fail a purchase whose value never depended on it.
+    expect(h.price).not.toHaveBeenCalled();
   });
 });

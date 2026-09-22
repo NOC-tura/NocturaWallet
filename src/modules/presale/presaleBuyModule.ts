@@ -30,6 +30,7 @@ import {
   buildBuyInstructions,
   buildRegisterReferrerInstruction,
   buildSolPurchaseInstruction,
+  buildStablecoinBuyInstructions as coreBuildStablecoinBuyInstructions,
   encodeU64LE,
   estimateNocForSol,
   COMPUTE_UNIT_LIMIT,
@@ -178,13 +179,8 @@ export async function resolveReferrer(
 import {buildStablecoinPurchaseInstruction} from '../../../core/presale/buyInstructions';
 export {buildStablecoinPurchaseInstruction};
 
-/** UI estimate for a stablecoin (1:1 USD) payment. */
-export function estimateNocForUsd(usd: number, stagePriceUsd: number): number {
-  if (stagePriceUsd <= 0) {
-    return 0;
-  }
-  return usd / stagePriceUsd;
-}
+/** Moved to core so the web quotes the same number. */
+export {estimateNocForUsd} from '../../../core/presale/buyInstructions';
 
 const keychainManager = new KeychainManager();
 
@@ -216,23 +212,8 @@ export async function buildSolPurchaseTx(user: PublicKey, solLamports: bigint): 
 }
 
 /** Stablecoin analogue of buildBuyInstructions — bundles register first. */
-function buildStablecoinInstructions(
-  user: PublicKey,
-  token: StablecoinToken,
-  amountBaseUnits: bigint,
-  priorityFeeMicroLamports: number,
-  resolved: {referrerAllocation: PublicKey; registerReferrer: PublicKey | null},
-  treasury: PublicKey,
-) {
-  return [
-    ComputeBudgetProgram.setComputeUnitLimit({units: COMPUTE_UNIT_LIMIT}),
-    ComputeBudgetProgram.setComputeUnitPrice({microLamports: priorityFeeMicroLamports}),
-    ...(resolved.registerReferrer
-      ? [buildRegisterReferrerInstruction(user, resolved.registerReferrer)]
-      : []),
-    buildStablecoinPurchaseInstruction(user, token, amountBaseUnits, resolved.referrerAllocation, treasury),
-  ];
-}
+/** Moved to core, so the phone and the web build the same transaction. */
+const buildStablecoinInstructions = coreBuildStablecoinBuyInstructions;
 
 /**
  * Unsigned stablecoin purchase tx for pre-submit simulation. Payer = user.

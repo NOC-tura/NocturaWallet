@@ -1,5 +1,5 @@
 import {render, screen, fireEvent} from '@testing-library/react';
-import {BuyForm, solToLamports} from '../BuyForm';
+import {BuyForm, solToLamports, parseAmount} from '../BuyForm';
 
 const h = vi.hoisted(() => ({buy: vi.fn(), balances: vi.fn(), wallet: vi.fn()}));
 vi.mock('../useBuy', () => ({useBuy: h.buy}));
@@ -16,7 +16,7 @@ beforeEach(() => {
   h.balances.mockReset();
   h.wallet.mockReset();
   h.buy.mockReturnValue({submit: vi.fn(), state: 'idle', error: null, canBuy: true, blockedReason: null});
-  h.balances.mockReturnValue({sol: BALANCE, noc: 0n, isError: false, isLoading: false});
+  h.balances.mockReturnValue({sol: BALANCE, noc: 0n, usdc: 25_000_000n, usdt: 0n, isError: false, isLoading: false});
   h.wallet.mockReturnValue({publicKey: {toBase58: () => 'KnZ5'}});
 });
 
@@ -81,7 +81,7 @@ describe('the purchase limits', () => {
   });
 
   it('refuses an amount above the per-transaction maximum', () => {
-    h.balances.mockReturnValue({sol: 1_000_000_000_000n, noc: 0n, isError: false, isLoading: false});
+    h.balances.mockReturnValue({sol: 1_000_000_000_000n, noc: 0n, usdc: 25_000_000n, usdt: 0n, isError: false, isLoading: false});
     renderWithAmount('500'); // ≈ $59,090
     expect(screen.getByRole('status').textContent).toMatch(/maximum \$50,000/i);
   });
@@ -115,7 +115,7 @@ describe('while the inputs the gate needs are still loading', () => {
   it('holds the button closed when the balance has not arrived', () => {
     // Guessing zero here would print "Insufficient SOL balance" at someone whose balance is
     // simply not loaded yet; guessing infinity would let a doomed purchase through.
-    h.balances.mockReturnValue({sol: null, noc: null, isError: false, isLoading: true});
+    h.balances.mockReturnValue({sol: null, noc: null, usdc: 25_000_000n, usdt: 0n, isError: false, isLoading: true});
     renderWithAmount('0.2');
     expect(screen.getByRole('button', {name: /buy noc/i}).hasAttribute('disabled')).toBe(true);
     expect(screen.queryByRole('status')).toBeNull();
@@ -140,5 +140,57 @@ describe('BuyForm', () => {
     h.buy.mockReturnValue({submit: vi.fn(), state: 'signing', error: null, canBuy: true, blockedReason: null});
     renderWithAmount('0.2');
     expect(screen.getByRole('button').hasAttribute('disabled')).toBe(true);
+  });
+});
+
+
+describe('paying with a stablecoin', () => {
+  function pick(token: 'SOL' | 'USDC' | 'USDT') {
+    fireEvent.click(screen.getByLabelText(token));
+  }
+
+  it('parses 6 decimals for USDC, not SOL\'s 9', () => {
+    // The thousand-fold trap: one shared decimals constant would turn a $10 purchase
+    // into a $10,000 one, or refuse it as dust, depending on which way the constant went.
+    expect(parseAmount('10.5', 6)).toBe(10_500_000n);
+    expect(parseAmount('10.5', 9)).toBe(10_500_000_000n);
+    expect(() => parseAmount('1.0000001', 6)).toThrow(/6 decimal/);
+  });
+
+  it('switches the label and clears the amount, so no figure is reinterpreted', () => {
+    // "10" is ten dollars in USDC and roughly $1,180 in SOL. Carrying it across would
+    // rewrite the summary under the reader without the field appearing to change.
+    renderWithAmount('0.2');
+    pick('USDC');
+    expect(screen.getByLabelText(/amount in usdc/i)).toBeTruthy();
+    expect((screen.getByLabelText(/amount in usdc/i) as HTMLInputElement).value).toBe('');
+  });
+
+  it('values a stablecoin at its own number, not at the SOL price', () => {
+    renderWithAmount('');
+    pick('USDC');
+    fireEvent.change(screen.getByLabelText(/amount in usdc/i), {target: {value: '10.5'}});
+    const summary = screen.getByRole('list', {name: /what you are signing/i});
+    expect(summary.textContent).toMatch(/Paying 10\.5 USDC \(about \$10\.50\)/);
+  });
+
+  it('gates on the USDC balance, not the SOL one', () => {
+    // 25 USDC held, 30 requested: refused for the right reason while 17 SOL sits there.
+    renderWithAmount('');
+    pick('USDC');
+    fireEvent.change(screen.getByLabelText(/amount in usdc/i), {target: {value: '30'}});
+    expect(screen.getByRole('status').textContent).toMatch(/insufficient usdc/i);
+  });
+
+  it('refuses USDT when none is held, while USDC of the same size passes', () => {
+    // The control the previous case needs: without it, "insufficient" could come from
+    // any balance at all and the test would not know which one was consulted.
+    renderWithAmount('');
+    pick('USDT');
+    fireEvent.change(screen.getByLabelText(/amount in usdt/i), {target: {value: '20'}});
+    expect(screen.getByRole('status').textContent).toMatch(/insufficient usdt/i);
+    pick('USDC');
+    fireEvent.change(screen.getByLabelText(/amount in usdc/i), {target: {value: '20'}});
+    expect(screen.queryByRole('status')).toBeNull();
   });
 });
