@@ -17,7 +17,7 @@ describe('PresalePanel', () => {
   });
 
   it('shows the allocation when the read succeeded and found one', () => {
-    render(<PresalePanel stats={stats} allocation={{status: 'ok', base: '1234000000000'}} />);
+    render(<PresalePanel stats={stats} allocation={{status: 'ok', base: '1234000000000', referralBonusBase: null}} />);
     expect(screen.getByText('1,234 NOC')).toBeTruthy();
   });
 
@@ -76,7 +76,7 @@ describe('PresalePanel', () => {
     // around a hundred-millionth of a cent — and a number no one can read is not a number
     // anyone can check. So four on screen, all nine on the element itself, which is where
     // someone who wants to compare against the chain goes.
-    render(<PresalePanel stats={stats} allocation={{status: 'ok', base: '773484343768'}} />);
+    render(<PresalePanel stats={stats} allocation={{status: 'ok', base: '773484343768', referralBonusBase: null}} />);
     const node = screen.getByText('773.4843 NOC');
     expect(node.getAttribute('title')).toBe('773.484343768 NOC');
   });
@@ -84,14 +84,14 @@ describe('PresalePanel', () => {
   it('never rounds the allocation up, because that would overstate the holding', () => {
     // 0.99999 rounded to four places is 1.0 — a page claiming a whole NOC the buyer does
     // not have. Truncation can only ever understate, which is the safe direction.
-    render(<PresalePanel stats={stats} allocation={{status: 'ok', base: '999990000'}} />);
+    render(<PresalePanel stats={stats} allocation={{status: 'ok', base: '999990000', referralBonusBase: null}} />);
     expect(screen.getByText('0.9999 NOC')).toBeTruthy();
   });
 
   it('shows a dust allocation in full rather than printing a flat zero', () => {
     // Truncating 4 base units to four decimals gives "0 NOC", which says the buyer holds
     // nothing. That is a different claim, not a shorter one.
-    render(<PresalePanel stats={stats} allocation={{status: 'ok', base: '4'}} />);
+    render(<PresalePanel stats={stats} allocation={{status: 'ok', base: '4', referralBonusBase: null}} />);
     expect(screen.getByText('0.000000004 NOC')).toBeTruthy();
   });
 
@@ -114,5 +114,33 @@ describe('PresalePanel', () => {
       />,
     );
     expect(screen.getByText(/50(\.0)?%/)).toBeTruthy();
+  });
+});
+
+describe('PresalePanel referral bonus', () => {
+  const ok = (base: string, referralBonusBase: string | null) =>
+    ({status: 'ok', base, referralBonusBase}) as const;
+
+  it('names the referral bonus, so the allocation can be added up', () => {
+    // The mainnet case: 533.710859424 bought across five purchases + 16.142571618
+    // credited by someone else's first purchase = the 549.853431042 on screen. Without
+    // this line a buyer who sums their own history is 16 NOC short and cannot tell why.
+    const {container} = render(
+      <PresalePanel stats={stats} allocation={ok('549853431042', '16142571618')} />,
+    );
+    expect(screen.getByText('549.8534 NOC')).toBeTruthy();
+    expect(container.textContent).toMatch(/includes 16\.1425 NOC earned as a referral bonus/);
+  });
+
+  it('says nothing when there is no bonus', () => {
+    const {container} = render(<PresalePanel stats={stats} allocation={ok('549853431042', '0')} />);
+    expect(container.textContent).not.toMatch(/referral bonus/i);
+  });
+
+  it('says nothing when the bonus could not be read', () => {
+    // null is "we do not know", and an unknown must not be printed as a zero or as a
+    // figure. Silence is the only honest rendering of it.
+    const {container} = render(<PresalePanel stats={stats} allocation={ok('549853431042', null)} />);
+    expect(container.textContent).not.toMatch(/referral bonus/i);
   });
 });

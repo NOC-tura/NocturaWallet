@@ -35,5 +35,11 @@ export function useAllocation(): AllocationState {
   if (!publicKey) return {status: 'disconnected'};
   if (q.isPending) return {status: 'loading'};
   if (q.isError || !q.data) return {status: 'error'};
-  return q.data.exists ? {status: 'ok', base: q.data.totalTokensBase} : {status: 'absent'};
+  return q.data.exists
+    ? {
+        status: 'ok',
+        base: q.data.totalTokensBase,
+        referralBonusBase: q.data.referralBonusBase,
+      }
+    : {status: 'absent'};
 }

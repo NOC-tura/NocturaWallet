@@ -12,7 +12,7 @@ export type AllocationState =
   | {status: 'loading'}
   | {status: 'error'}
   | {status: 'absent'}
-  | {status: 'ok'; base: string};
+  | {status: 'ok'; base: string; referralBonusBase: string | null};
 
 const NOC_DECIMALS = 9;
 
@@ -84,6 +84,29 @@ export function PresalePanel({
                the last of them are worth fractions of a cent and read as a leak. */
             <p className="noc-balance-md noc-numeral" title={formatAmount(BigInt(allocation.base), NOC_DECIMALS, 'NOC').exact}>
               {formatAmount(BigInt(allocation.base), NOC_DECIMALS, 'NOC').text}
+            </p>
+          ) : null}
+          {/*
+            Named, because otherwise the total cannot be checked. A referral bonus is
+            credited by SOMEONE ELSE's first purchase, so it lands in the allocation with
+            no row of its own in your history — and a reader who adds up their purchases
+            gets a smaller number than this one and concludes something is wrong. On
+            mainnet the gap for 2ixJ…QMr9 is exactly this field: 533.710859424 bought
+            + 16.142571618 bonus = 549.853431042.
+
+            Read from the chain, like the total it is part of. The coordinator's referral
+            endpoint reports zero referrals and a zero bonus for that same wallet.
+          */}
+          {allocation.status === 'ok' &&
+          allocation.referralBonusBase !== null &&
+          BigInt(allocation.referralBonusBase) > 0n ? (
+            <p
+              className="noc-caption noc-dim noc-numeral"
+              title={formatAmount(BigInt(allocation.referralBonusBase), NOC_DECIMALS, 'NOC').exact}
+            >
+              includes{' '}
+              {formatAmount(BigInt(allocation.referralBonusBase), NOC_DECIMALS, 'NOC').text} earned
+              as a referral bonus
             </p>
           ) : null}
           {allocation.status === 'absent' ? (

@@ -160,8 +160,9 @@ describe('buildStablecoinPurchaseTx', () => {
 
 import {fetchOnChainAllocation} from '../presaleBuyModule';
 
-function allocBufferWithTotal(total: bigint): Buffer {
+function allocBufferWithOwner(total: bigint, owner: Uint8Array): Buffer {
   const buf = Buffer.alloc(117);
+  buf.set(owner, 8);
   let rem = total;
   for (let i = 0; i < 8; i++) {
     buf[40 + i] = Number(rem & 0xffn);
@@ -171,23 +172,43 @@ function allocBufferWithTotal(total: bigint): Buffer {
 }
 
 describe('fetchOnChainAllocation', () => {
-  it('decodes total_tokens (u64 LE at offset 40) from the allocation account', async () => {
+  it('cannot decode under this mock, and that is a property OF THE MOCK', () => {
+    // A tripwire, not a comment. __mocks__/@solana/web3.js.ts gives a PublicKey built
+    // from a base58 STRING 32 zero bytes, and one built from BYTES a synthetic
+    // "mock-pubkey-…" base58. The two can therefore never compare equal, so the
+    // positional control in core/presale/allocation.ts — which checks that the pubkey
+    // at offset 8 is the user this PDA was derived from — can never pass here.
+    //
+    // That is why the decode itself is tested in core/presale/__tests__/allocation.test.ts,
+    // which runs under vitest against the REAL @solana/web3.js. This is the same
+    // blindness that once hid the treasury-ATA bug behind 1219 green tests.
+    //
+    // When someone fixes the mock, this test fails and sends them here.
+    expect(new PublicKey('KnZ5bRuaCb3JEAYgt9CJ69eWQ7i5dp5cASbTmLj39qr').toBytes()).toEqual(
+      new Uint8Array(32).fill(0),
+    );
+    expect(new PublicKey(new Uint8Array(32).fill(7)).toBase58()).toMatch(/^mock-pubkey-/);
+  });
+
+  it('propagates the layout control instead of swallowing it at the module boundary', async () => {
+    // The wrapper must not turn a throw into a number. usePresaleSync catches it and
+    // falls back to the coordinator's sum, which is a decision made there, in the open.
     jest.spyOn(presaleBuyModuleForTreasury, 'fetchTreasury').mockResolvedValue(TREASURY);
     jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
-      getAccountInfo: async () => ({data: allocBufferWithTotal(697401732177n)}),
+      getAccountInfo: async () => ({data: allocBufferWithOwner(697401732177n, new Uint8Array(32))}),
     } as never);
-    const r = await fetchOnChainAllocation(USER);
-    expect(r.exists).toBe(true);
-    expect(r.totalTokensBase).toBe('697401732177');
+    await expect(fetchOnChainAllocation(USER)).rejects.toThrow(/Allocation layout check failed/);
   });
 
   it('returns 0 / exists:false when the allocation account does not exist', async () => {
+    // Reached before the control, so this one still measures something here: absence is
+    // reported as absence rather than as a zero allocation.
     jest.spyOn(presaleBuyModuleForTreasury, 'fetchTreasury').mockResolvedValue(TREASURY);
     jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
       getAccountInfo: async () => null,
     } as never);
     const r = await fetchOnChainAllocation(USER);
-    expect(r).toEqual({totalTokensBase: '0', exists: false});
+    expect(r).toEqual({totalTokensBase: '0', referralBonusBase: null, exists: false});
   });
 });
 

@@ -26,6 +26,21 @@ const ADMIN = new PublicKey(MAINNET_ADMIN_ADDRESS);
 export const ALLOCATION_TOTAL_TOKENS_OFFSET = 40;
 
 /**
+ * The rest of PresaleAllocation, from the program's own struct:
+ * disc(8) + user(32) + total_tokens(8) + total_spent_cents(8) + purchase_count(4)
+ * + first_purchase_at(8) + last_purchase_at(8) + referral_bonus_tokens(8)
+ * + referrer(32) + claimed(1) = 117 bytes, which is exactly what mainnet accounts are.
+ *
+ * `referral_bonus_tokens` is read because the page shows a buyer their allocation next
+ * to their purchases, and those two numbers do not add up without it: a bonus is credited
+ * by SOMEONE ELSE's first purchase, so it appears in the total with no row of its own.
+ * The coordinator's referral endpoint reports zero for a wallet the chain credited
+ * 16.142571618 NOC, so this is read from the chain like the total it is part of.
+ */
+export const ALLOCATION_REFERRAL_BONUS_OFFSET = 76;
+export const ALLOCATION_ACCOUNT_LENGTH = 117;
+
+/**
  * Config account layout: `tge_timestamp` is an i64 LE at byte offset 201 (after the
  * 8-byte disc + admin/sale/usdt/usdc 4×32 + 4×u64 prices/ratios + current_stage u8 +
  * 3×u64 sold/raised counters + presale_start_time i64 @193). The config PDA
@@ -147,14 +162,34 @@ export function derivePresalePdas(user: PublicKey): PresalePdas {
 export async function fetchOnChainAllocation(
   reader: AccountReader,
   user: PublicKey,
-): Promise<{totalTokensBase: string; exists: boolean}> {
+): Promise<{totalTokensBase: string; referralBonusBase: string | null; exists: boolean}> {
   const {userAllocation} = derivePresalePdas(user);
   const info = await reader.getAccountInfo(userAllocation);
   if (!info || !info.data || info.data.length < ALLOCATION_TOTAL_TOKENS_OFFSET + 8) {
-    return {totalTokensBase: '0', exists: false};
+    return {totalTokensBase: '0', referralBonusBase: null, exists: false};
   }
+
+  // POSITIONAL CONTROL. `user` sits at offset 8 and we derived this very PDA from it,
+  // so it is a value we already know — if the layout ever shifts, it stops matching and
+  // every offset below is suspect. Throwing is deliberate: the caller renders a throw as
+  // "could not be read", while returning exists:false would say "you have no allocation",
+  // which is the one sentence this module exists to never say by accident.
+  const owner = new PublicKey(info.data.subarray(8, 40));
+  if (!owner.equals(user)) {
+    throw new Error(
+      `Allocation layout check failed: the pubkey at offset 8 is ${owner.toBase58()}, ` +
+        `not the ${user.toBase58()} this PDA was derived from.`,
+    );
+  }
+
+  // null, not 0: an account too short to hold the field means we do not know the bonus,
+  // and "no bonus" is a different statement from "not readable".
+  const hasBonus = info.data.length >= ALLOCATION_REFERRAL_BONUS_OFFSET + 8;
   return {
     totalTokensBase: readU64LE(info.data, ALLOCATION_TOTAL_TOKENS_OFFSET).toString(),
+    referralBonusBase: hasBonus
+      ? readU64LE(info.data, ALLOCATION_REFERRAL_BONUS_OFFSET).toString()
+      : null,
     exists: true,
   };
 }

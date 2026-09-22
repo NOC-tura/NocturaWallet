@@ -1,5 +1,7 @@
 import {PublicKey} from '@solana/web3.js';
 import {
+  ALLOCATION_ACCOUNT_LENGTH,
+  ALLOCATION_REFERRAL_BONUS_OFFSET,
   ALLOCATION_TOTAL_TOKENS_OFFSET,
   CONFIG_TGE_TIMESTAMP_OFFSET,
   derivePresalePdas,
@@ -10,6 +12,34 @@ import {
 
 const USER = new PublicKey('Da83cAfGUrsm896FUghCkNKutgFc96WNGWN73bZxe31B');
 const readerFor = (data: Uint8Array | null) => ({getAccountInfo: async () => (data ? {data} : null)});
+
+function putU64(buf: Uint8Array, value: bigint, at: number): Uint8Array {
+  let v = value;
+  for (let i = 0; i < 8; i++) {
+    buf[at + i] = Number(v & 0xffn);
+    v >>= 8n;
+  }
+  return buf;
+}
+
+/**
+ * A realistic PresaleAllocation: the owner pubkey really sits at offset 8, as it does on
+ * chain. Zeros there would mean every test below ran against an account the positional
+ * control rejects — and the control would be proven by nothing.
+ */
+function allocationAccount(
+  total: bigint,
+  bonus: bigint,
+  {owner = USER, length = ALLOCATION_ACCOUNT_LENGTH} = {},
+): Uint8Array {
+  const buf = new Uint8Array(length);
+  buf.set(owner.toBytes(), 8);
+  putU64(buf, total, ALLOCATION_TOTAL_TOKENS_OFFSET);
+  if (length >= ALLOCATION_REFERRAL_BONUS_OFFSET + 8) {
+    putU64(buf, bonus, ALLOCATION_REFERRAL_BONUS_OFFSET);
+  }
+  return buf;
+}
 
 function withU64At(value: bigint, at: number, length: number): Uint8Array {
   const buf = new Uint8Array(length);
@@ -45,17 +75,45 @@ describe('presale allocation readers', () => {
     expect(readU64LE(withU64At(2n ** 64n - 1n, 0, 8), 0)).toBe(2n ** 64n - 1n);
   });
 
-  it('reads total_tokens at offset 40', async () => {
-    const data = withU64At(1_234_000_000_000n, ALLOCATION_TOTAL_TOKENS_OFFSET, ALLOCATION_TOTAL_TOKENS_OFFSET + 8);
+  it('reads total_tokens at 40 and referral_bonus_tokens at 76', async () => {
+    // The real mainnet numbers for 2ixJ…QMr9: 549.853431042 total, of which
+    // 16.142571618 was a bonus credited by someone else's first purchase. Both were read
+    // off chain before being written here, and the account is 117 bytes there too.
+    const data = allocationAccount(549_853_431_042n, 16_142_571_618n);
+    expect(data).toHaveLength(117);
     expect(await fetchOnChainAllocation(readerFor(data), USER)).toEqual({
-      totalTokensBase: '1234000000000',
+      totalTokensBase: '549853431042',
+      referralBonusBase: '16142571618',
       exists: true,
     });
+  });
+
+  it('reads a zero bonus as zero, not as unknown', async () => {
+    // The control on the null below: a full-length account always answers the question.
+    const data = allocationAccount(1_234_000_000_000n, 0n);
+    expect((await fetchOnChainAllocation(readerFor(data), USER)).referralBonusBase).toBe('0');
+  });
+
+  it('reports the bonus as unknown when the account is too short to carry it', async () => {
+    const data = allocationAccount(1_234_000_000_000n, 0n, {length: ALLOCATION_TOTAL_TOKENS_OFFSET + 8});
+    const read = await fetchOnChainAllocation(readerFor(data), USER);
+    expect(read.totalTokensBase).toBe('1234000000000');
+    expect(read.referralBonusBase).toBeNull();
+  });
+
+  it('THROWS rather than answering when the pubkey at offset 8 is not this user', async () => {
+    // A layout shift makes every offset here point at the wrong field. Throwing reaches
+    // the buyer as "could not be read"; a returned value would reach them as a number.
+    const foreign = allocationAccount(1n, 0n, {owner: PublicKey.default});
+    await expect(fetchOnChainAllocation(readerFor(foreign), USER)).rejects.toThrow(
+      /Allocation layout check failed/,
+    );
   });
 
   it('reports absence rather than zero when the account is missing', async () => {
     expect(await fetchOnChainAllocation(readerFor(null), USER)).toEqual({
       totalTokensBase: '0',
+      referralBonusBase: null,
       exists: false,
     });
   });

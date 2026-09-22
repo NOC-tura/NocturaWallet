@@ -1,10 +1,15 @@
 import {usePurchases} from './usePurchases';
+import {useSignatureVerdicts} from './useSignatureVerdicts';
 import {Icon} from '../ui/Icon';
 
 const EXPLORER = 'https://explorer.solana.com/tx/';
 
 const num = (n: number, max = 2) =>
   n.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: max});
+
+/** Money always carries both places: "$10.5" is a typo, "$10.50" is an amount. */
+const usd = (n: number) =>
+  `$${n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
 
 /** ISO → 2026-09-22, in UTC. The chain records UTC and so does this. */
 function day(iso: string): string {
@@ -23,6 +28,8 @@ function day(iso: string): string {
  */
 export function PurchaseHistory() {
   const {purchases, isError, isLoading} = usePurchases();
+  // Hooks run before the early return, or the order changes between renders.
+  const verdicts = useSignatureVerdicts((purchases ?? []).map(p => p.signature));
   if (purchases === null && !isError && !isLoading) return null;
 
   return (
@@ -64,12 +71,33 @@ export function PurchaseHistory() {
 
               <div className="noc-meta noc-caption">
                 <span className="noc-dim noc-numeral">
-                  {num(p.paymentAmount, 6)} {p.paymentToken} · ${num(p.usdValue)} · stage {p.stage}
+                  {num(p.paymentAmount, 6)} {p.paymentToken} · {usd(p.usdValue)} · stage {p.stage}
                 </span>
                 {/* Rendered, never interpreted: the coordinator owns this word, and a page
                     that translated it would be inventing a second source of truth. */}
                 {p.status !== 'confirmed' ? <b className="noc-warning">{p.status}</b> : null}
               </div>
+
+              {/*
+                The chain's own answer, which outranks the word above it.
+                `missing` is printed only when the chain actually answered "I do not have
+                this" — an RPC we could not reach yields `unknown`, and `unknown` says
+                nothing at all. Telling a buyer their purchase does not exist because our
+                own proxy was down would be the worst sentence on this page.
+              */}
+              {verdicts[p.signature] === 'missing' ? (
+                <p className="noc-caption noc-danger">
+                  Not found on chain. The backend recorded this purchase, but the Solana
+                  ledger has no transaction with this signature — so no payment was taken
+                  and no tokens are owed for it. Your allocation above is read from the
+                  chain and is unaffected.
+                </p>
+              ) : null}
+              {verdicts[p.signature] === 'failed' ? (
+                <p className="noc-caption noc-danger">
+                  This transaction is on chain but failed, so it moved nothing.
+                </p>
+              ) : null}
 
               {/*
                 An outbound link, and the only one on this page. §6.10's rule is that the
