@@ -52,8 +52,17 @@ export function BuyForm({
   const [signature, setSignature] = useState<string | null>(null);
   const busy = state === 'checking' || state === 'simulating' || state === 'signing' || state === 'confirming';
 
-  if (blockedReason) return <p role="alert">{blockedReason}</p>;
-  if (!canBuy) return <p>Connect a wallet to buy.</p>;
+  // Both early returns used to be bare text under the presale card, orphaned on the
+  // background while everything around them sat in something. They are the buy panel in
+  // its unavailable state, so they take the buy panel's card.
+  if (blockedReason)
+    return (
+      <p role="alert" className="noc-card-quiet noc-body-sm noc-danger">
+        {blockedReason}
+      </p>
+    );
+  if (!canBuy)
+    return <p className="noc-card-quiet noc-body-sm noc-muted">Connect a wallet to buy.</p>;
 
   const decimals = TOKEN_DECIMALS[token];
   const entered = Number(amount);
@@ -200,6 +209,9 @@ export function BuyForm({
       ) : null}
 
       <button type="submit" className="btn btn-primary" disabled={busy || !gate.enabled}>
+        {/* The word says which step; the dot says the page is working rather than stuck.
+            Both are needed — "confirming" alone looks identical to a frozen button. */}
+        {busy ? <span className="noc-spin" aria-hidden /> : null}
         {busy ? state : `Buy NOC with ${token}`}
       </button>
 

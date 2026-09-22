@@ -98,10 +98,10 @@ html { background: var(--bg-base); }
 
 body {
   margin: 0;
-  background: var(--bg-base);
   color: var(--fg-primary);
   font: 400 15px/22px var(--font-body);
   -webkit-font-smoothing: antialiased;
+  /* background is set in the Motion/floor block below, where the wash lives */
 }
 
 /* ── Type scale (.noc-*) — the design file's names, unchanged ───────────────── */
@@ -490,3 +490,102 @@ a { color: var(--accent); }
 .buy .seg-row label.seg-on { background: var(--bg-surface-3); }
 
 .stat-group { display: flex; flex-direction: column; gap: var(--space-2); }
+
+/* ══ Motion ═══════════════════════════════════════════════════════════════════
+   Every duration below is one of the design file's four tokens. Nothing here is a
+   loading state pretending to be polish: the page renders at rest and then settles,
+   so a reader who arrives mid-animation still sees the finished thing, and a reader
+   with JavaScript broken sees it too.
+
+   Everything is disabled wholesale under prefers-reduced-motion at the bottom of this
+   block — one query rather than a `@media` inside each rule, so a rule added later
+   cannot forget. */
+
+@keyframes noc-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Sections arrive in order, 40 ms apart. Six steps at 40 ms is 240 ms end to end —
+   under the 300 ms where a stagger stops reading as sequence and starts reading as lag. */
+.shell > header,
+.col > section {
+  animation: noc-rise var(--dur-base) cubic-bezier(.2, 0, 0, 1) both;
+}
+.shell > header          { animation-delay: 0ms; }
+.col-main > section      { animation-delay: 80ms; }
+.col-side > section:nth-child(1) { animation-delay: 120ms; }
+.col-side > section:nth-child(2) { animation-delay: 160ms; }
+.col-side > section:nth-child(3) { animation-delay: 200ms; }
+.col-side > section:nth-child(4) { animation-delay: 240ms; }
+
+/* The rail fills to its figure rather than appearing at it. --dur-slow, because this is
+   the one number on the page whose CHANGE is the information. */
+.noc-progress > i {
+  transition: width var(--dur-slow) cubic-bezier(.2, 0, 0, 1);
+}
+
+/* The accent wash breathes, very slightly, so the stage card is not a flat rectangle on
+   a flat page. 12 s is long enough that it is never caught moving — it is noticed only
+   as the card not being dead. */
+@keyframes noc-breathe {
+  0%, 100% { opacity: .85; }
+  50%      { opacity: 1; }
+}
+.noc-card-accent::before {
+  animation: noc-breathe 12s ease-in-out infinite;
+}
+
+/* Hover and press, on the two things that are pressable. */
+.btn { transition: transform 100ms cubic-bezier(.2, 0, 0, 1), filter var(--dur-fast) linear; }
+.btn-primary:not([disabled]):hover { filter: brightness(1.08); }
+.noc-card, .noc-card-quiet { transition: box-shadow var(--dur-base) linear; }
+
+/* The button says which step it is on while a purchase is in flight; the dot makes it
+   clear the page is working rather than stuck. */
+.btn .noc-spin {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor;
+  animation: noc-pulse var(--dur-spin) ease-in-out infinite;
+}
+@keyframes noc-pulse {
+  0%, 100% { opacity: .35; transform: scale(.8); }
+  50%      { opacity: 1;   transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell > header,
+  .col > section,
+  .noc-card-accent::before,
+  .btn .noc-spin {
+    animation: none !important;
+  }
+  .noc-progress > i,
+  .btn,
+  .noc-card,
+  .noc-card-quiet {
+    transition: none !important;
+  }
+}
+
+/* ══ The page has a floor ═════════════════════════════════════════════════════
+   Disconnected, this page is short: one presale card and a connect panel. The content
+   ended and the viewport did not, leaving a field of flat black that read as the page
+   having failed to load the rest.
+
+   The fix is not filler. The shell reaches the full viewport, and the ground carries a
+   single very low radial wash of the accent from above the fold — the same gradient
+   vocabulary the design file uses on the brand mark and the stage card, at an alpha
+   where it is atmosphere rather than a shape. Fixed attachment, so it does not travel
+   with the scroll and become a visible blob. */
+html, body { min-height: 100%; }
+
+body {
+  min-height: 100dvh;
+  background:
+    radial-gradient(120% 70% at 50% -10%, color-mix(in oklab, var(--accent) 7%, transparent), transparent 70%),
+    var(--bg-base);
+  background-attachment: fixed;
+}
+
+.shell { min-height: 100dvh; }
