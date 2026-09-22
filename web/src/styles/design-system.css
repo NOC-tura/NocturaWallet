@@ -647,3 +647,36 @@ body {
   background-color: color-mix(in oklab, var(--danger) 16%, transparent) !important;
   color: var(--danger) !important;
 }
+
+/* ── Portfolio ──────────────────────────────────────────────────────────────────
+   A holding is an amount and what it is worth, on one line, with the figure leading and
+   the valuation trailing in tertiary — the valuation is context, not the subject. */
+.holding-total { display: flex; flex-direction: column; gap: 2px; padding-bottom: var(--space-2); }
+.holding {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--space-3); min-width: 0;
+}
+.holding > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+/* The basis is a qualifier on the number, so it is smaller and quieter than the number —
+   but it is never omitted, because "at stage price" is what makes the figure honest. */
+.basis { color: var(--fg-disabled); }
+
+.spark-row { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--space-4); }
+.spark-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.spark { flex: 0 0 auto; display: block; overflow: visible; }
+.chg { font-size: 12px; font-weight: 600; margin-left: var(--space-2); }
+
+:root {
+  --spark-up-fill:   color-mix(in oklab, var(--success) 12%, transparent);
+  --spark-down-fill: color-mix(in oklab, var(--danger) 12%, transparent);
+}
+
+/* ── Purchase history ───────────────────────────────────────────────────────────
+   A list, numbered in the markup and unnumbered on screen: the order is the information,
+   the ordinal is not. */
+.buys { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.buy-row { gap: var(--space-2); }
+/* The signature breaks rather than truncating with an ellipsis the reader cannot expand:
+   it is already shortened in the middle, and the full value is in the title attribute. */
+.sig { color: var(--fg-tertiary); text-decoration: none; overflow-wrap: anywhere; }
+.sig:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }

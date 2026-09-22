@@ -13,8 +13,9 @@ import {join} from 'node:path';
  * Every entry below carries the reason it is acceptable. An allowlist without reasons
  * is how this gate rots into decoration — the next person adds a line to make it green.
  *
- * Since 2026-09-21 there is no LIVE REQUEST entry at all: every host here is a string the
- * bundle carries and no code fetches. The two that did reach the network — fonts.googleapis
+ * There is still no LIVE REQUEST entry: every host here is either a string the bundle
+ * carries and no code fetches, or — in exactly one case — the target of a link a person
+ * has to click. The two that did reach the network — fonts.googleapis
  * and fonts.gstatic, injected by the Mobile Wallet Adapter's embedded modal — left with the
  * adapter itself (src/wallet/mobileAdapterStub.ts), and `localhost`, `feross.org` and
  * `solanamobile.com` left with it.
@@ -25,6 +26,8 @@ const ALLOWED: Record<string, string> = {
   'github.com': 'inert: text inside an error message about getRandomValues',
   'reactjs.org': "inert: React's error-decoder URL, printed in messages",
   'api.mainnet-beta.solana.com': 'inert: web3.js clusterApiUrl default; we pass our own endpoint',
+  'explorer.solana.com':
+    'NAVIGATION, user-initiated, and the only outbound link on the page: each purchase row links its signature to the explorer so a buyer can check our claim against a source we do not control. The page fetches nothing from it — no script, no image, no request of any kind — and Referrer-Policy: no-referrer means it is told nothing about where the click came from. §6.10 says the site sends you nowhere, and that rule exists against being sent somewhere to INSTALL something, which is the shape of a phishing page; this is the opposite of that.',
 };
 
 function hostsInBundle(): Set<string> {

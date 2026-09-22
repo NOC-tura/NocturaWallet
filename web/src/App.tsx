@@ -4,6 +4,7 @@ import {BrandMark} from './ui/BrandMark';
 import {ConnectPanel} from './wallet/ConnectPanel';
 import {PresalePanel} from './presale/PresalePanel';
 import {PortfolioPanel} from './portfolio/PortfolioPanel';
+import {PurchaseHistory} from './portfolio/PurchaseHistory';
 import {usePresaleStats, useAllocation} from './presale/usePresale';
 import {BuyForm} from './presale/BuyForm';
 import {ReferralPanel} from './referral/ReferralPanel';
@@ -40,6 +41,24 @@ function Presale() {
     <>
       <PresalePanel stats={stats.data} allocation={allocation} />
       <BuyForm stage={stats.data} solUsd={solUsd} />
+    </>
+  );
+}
+
+/**
+ * The portfolio needs the stage price to value a NOC holding, and the presale query
+ * already holds it — asking the coordinator twice for the same number would be a second
+ * source that can disagree with the first.
+ */
+function Portfolio() {
+  const stats = usePresaleStats();
+  // Until the stage is known there is no basis to value NOC against, and a zero would
+  // render someone's holding as worthless. The panel waits rather than guesses.
+  if (!stats.data) return null;
+  return (
+    <>
+      <PortfolioPanel stagePriceUsd={stats.data.pricePerNocUsd} />
+      <PurchaseHistory />
     </>
   );
 }
@@ -91,7 +110,7 @@ export function App() {
             </div>
             <div className="col col-side">
               <ConnectPanel />
-              <PortfolioPanel />
+              <Portfolio />
               <Tge />
               <Referral />
             </div>
