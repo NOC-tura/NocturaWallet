@@ -62,14 +62,21 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <WalletProviders>
-        <main>
-          <h1>Noctura</h1>
-          {/*
-            What this page is, said before anyone has to guess. It is not a wallet: it holds
-            no keys and creates none. Naming it honestly is also what makes the connect
-            screen below make sense rather than read as a demand.
-          */}
-          <p>Presale and portfolio. Your wallet stays where it is.</p>
+        {/*
+          One column, capped at the width the design draws for: the mockups are Pixel-9
+          screens, and a presale panel stretched across a 27-inch monitor is a different
+          product. 440px keeps the phone layout honest and centres it instead.
+        */}
+        <main className="shell">
+          <header className="shell-head">
+            <h1 className="noc-h1">Noctura</h1>
+            {/*
+              What this page is, said before anyone has to guess. It is not a wallet: it
+              holds no keys and creates none. Naming it honestly is also what makes the
+              connect screen below make sense rather than read as a demand.
+            */}
+            <p className="noc-body-sm noc-dim">Presale and portfolio. Your wallet stays where it is.</p>
+          </header>
           <ConnectPanel />
           <PortfolioPanel />
           <Presale />

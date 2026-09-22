@@ -56,14 +56,17 @@ describe('PresalePanel', () => {
 
   it('shows the stage total in whole NOC, not to the ninth decimal', () => {
     // What the live page printed: "1,279,937.425329514 NOC of 10,240,000 NOC".
-    render(
+    // Asserted on the section's text rather than on one node: the figure now sits in a
+    // meta row where the sold amount is bold and the capacity is not, so the sentence is
+    // split across elements. The claim is about what the reader sees, not the markup.
+    const {container} = render(
       <PresalePanel
         stats={{...stats, soldInStageBase: '1279937425329514'}}
         allocation={{status: 'disconnected'}}
       />,
     );
-    expect(screen.getByText(/1,279,937 NOC of/)).toBeTruthy();
-    expect(screen.queryByText(/425329514/)).toBeNull();
+    expect(container.textContent).toMatch(/1,279,937 NOC of/);
+    expect(container.textContent).not.toMatch(/425329514/);
   });
 
   it('shows an allocation to the last unit, because that one is the buyer\'s money', () => {

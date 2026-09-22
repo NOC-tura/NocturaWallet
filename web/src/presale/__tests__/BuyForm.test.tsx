@@ -68,8 +68,12 @@ describe('the pre-signature summary', () => {
 describe('the purchase limits', () => {
   it('states them before the attempt, not after a rejection', () => {
     renderWithAmount('');
-    expect(screen.getByText(/minimum \$10/i)).toBeTruthy();
-    expect(screen.getByText(/maximum \$50,000/i)).toBeTruthy();
+    // Terse, because it sits in a meta row — the register the mockups use for the line
+    // under a figure. The property is that the limits are stated BEFORE the attempt, not
+    // the particular wording.
+    const {container} = render(<BuyForm stage={STAGE} solUsd={SOL_USD} />);
+    expect(container.textContent).toMatch(/Min \$10/);
+    expect(container.textContent).toMatch(/max \$50,000/);
   });
 
   it('refuses an amount below the on-chain minimum, with the reason', () => {

@@ -61,6 +61,12 @@ export const CSP_DIRECTIVES = {
   // polled precisely so no wss:// endpoint has to exist (src/portfolio/useBalances.ts).
   'connect-src': "'self'",
 
+  // Geist, served from our own origin. Without this line fonts are blocked even from
+  // 'self', because font-src falls back to default-src 'none' — the page would render in
+  // the system fallback and nothing would say why. The two variable files are in the
+  // bundle; §6.2 still holds, because no third party is contacted for them.
+  'font-src': "'self'",
+
   // A <base> tag injected by an XSS can redirect every relative URL on the page, including
   // the module script. There is no <base> in our HTML and there is no reason to allow one.
   'base-uri': "'none'",

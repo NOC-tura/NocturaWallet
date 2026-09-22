@@ -1,0 +1,349 @@
+/*
+ * Noctura DS v0.2 — lifted from the user's own design file, /home/user/Downloads/index.html,
+ * which CLAUDE.md names as the binding source of truth for how this product looks.
+ *
+ * The tokens and the type scale are COPIED, value for value, not reinterpreted: the same
+ * greys, the same two accents, the same 4/8/12/16/20/24/32/48 spacing, the same radii, the
+ * same `.noc-*` class names. A second set of numbers that merely resembles the first is how
+ * a brand drifts, and this file exists so the phone and the web cannot drift.
+ *
+ * Deliberately single-theme. The design is dark (`--bg-base: #0A0A0A`) and says so; there is
+ * no light palette to honour, so there are no `prefers-color-scheme` blocks pretending there
+ * is one.
+ *
+ * Two departures from the mockup, both because a browser is not a phone:
+ *   - `--inset-top` / `--inset-bottom` are mockup-only constants there (the file says so).
+ *     Here they are 0: there is no notch to clear.
+ *   - Touch targets stay at the mockup's sizes. A 56 px primary button is not too large on
+ *     a desktop; it is what the product looks like, and the phone is the first audience.
+ */
+
+/* ── Geist, served from our own origin ─────────────────────────────────────────
+   §6.2 forbids a hosted font: a privacy product must not hand every visitor's IP to a
+   font CDN. Two variable files, 137 KB together, cover every weight the design uses —
+   the alternative was 45 static cuts. This is also why the CSP carries `font-src 'self'`:
+   with `default-src 'none'`, fonts are blocked even from our own origin unless named.
+   Source: npm `geist@1.7.2`, Vercel, OFL. */
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Variable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/fonts/GeistMono-Variable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg-base:       #0A0A0A;
+  --bg-surface-1:  #0E0E10;
+  --bg-surface-2:  #17171A;
+  --bg-surface-3:  #212126;
+
+  --fg-primary:    #F4F5F7;
+  --fg-secondary:  #A8ACB5;
+  --fg-tertiary:   #6E727A;
+  --fg-disabled:   #3A3D44;
+
+  /* Two accents, one per mode. The web is transparent-only today, so `--accent` resolves
+     to the purple; the shielded teal is kept because the design has it and a wallet that
+     gains shielded later should not have to reintroduce its own colour. */
+  --accent-transparent:       #B084FC;
+  --accent-shielded:          #5BE3C2;
+  --accent-transparent-tint:  #1B142C;
+  --accent-shielded-tint:     #0E2620;
+  --accent:                   var(--accent-transparent);
+  --accent-tint:              var(--accent-transparent-tint);
+
+  --success: #3FD68B;
+  --warning: #F2B53B;
+  --danger:  #FF5C6A;
+  --info:    #7DA8FF;
+  --shield-300: #A6F0DC;
+  --danger-on: #FFFFFF;
+
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-7: 32px; --space-8: 48px;
+
+  --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px;
+  --radius-xl: 20px; --radius-2xl: 24px; --radius-pill: 9999px;
+  --radius-icon-hero: 16px;
+
+  --dur-fast: 120ms; --dur-base: 220ms; --dur-slow: 360ms; --dur-spin: 900ms;
+
+  --touch-target-min: 48px;
+  --touch-target-rec: 56px;
+  --touch-target-lg:  64px;
+
+  --font-display: 'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-body:    'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono:    'Geist Mono', 'JetBrains Mono', ui-monospace, Menlo, monospace;
+
+  color-scheme: dark;
+}
+
+[data-mode='shielded'] {
+  --accent:      var(--accent-shielded);
+  --accent-tint: var(--accent-shielded-tint);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { background: var(--bg-base); }
+
+body {
+  margin: 0;
+  background: var(--bg-base);
+  color: var(--fg-primary);
+  font: 400 15px/22px var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Type scale (.noc-*) — the design file's names, unchanged ───────────────── */
+.noc-display    { font-family: var(--font-display); font-size: 32px; line-height: 38px; font-weight: 600; letter-spacing: -0.01em; }
+.noc-h1         { font-family: var(--font-display); font-size: 24px; line-height: 30px; font-weight: 600; letter-spacing: -0.01em; }
+.noc-h1-compact { font-family: var(--font-display); font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -0.01em; }
+.noc-h2         { font-family: var(--font-display); font-size: 20px; line-height: 26px; font-weight: 600; }
+.noc-h3         { font-family: var(--font-display); font-size: 17px; line-height: 22px; font-weight: 600; }
+.noc-body-lg    { font-family: var(--font-body); font-size: 17px; line-height: 24px; font-weight: 500; }
+.noc-body       { font-family: var(--font-body); font-size: 15px; line-height: 22px; font-weight: 400; }
+.noc-body-sm    { font-family: var(--font-body); font-size: 13px; line-height: 18px; font-weight: 400; }
+.noc-caption    { font-family: var(--font-body); font-size: 12px; line-height: 16px; font-weight: 400; }
+.noc-overline   { font-family: var(--font-body); font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.noc-balance-xl { font-family: var(--font-display); font-size: 44px; line-height: 50px; font-weight: 600; letter-spacing: -0.02em; }
+.noc-balance-lg { font-family: var(--font-display); font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -0.02em; }
+.noc-balance-md { font-family: var(--font-display); font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; }
+.noc-numeral    { font-variant-numeric: tabular-nums; }
+.noc-mono       { font-family: var(--font-mono); font-variant-numeric: tabular-nums slashed-zero; }
+
+/* ── Buttons — the design file's primitives, unchanged ──────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  width: 100%;
+  height: var(--touch-target-rec);
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-pill);
+  font: 600 17px/1 var(--font-body);
+  border: 0; cursor: pointer;
+  transition: transform 100ms cubic-bezier(.2, 0, 0, 1);
+}
+.btn:active { transform: scale(.985); }
+.btn-primary     { background: var(--accent); color: var(--bg-base); }
+.btn-secondary   { background: var(--bg-surface-2); color: var(--fg-primary); }
+.btn-tertiary    { background: transparent; color: var(--accent); height: var(--touch-target-min); }
+.btn-destructive { background: var(--danger); color: var(--danger-on); }
+.btn[disabled]   { background: var(--bg-surface-3); color: var(--fg-disabled); cursor: not-allowed; }
+
+@media (prefers-reduced-motion: reduce) {
+  .btn { transition: none; }
+  .btn:active { transform: none; }
+}
+
+/* ── Cards, from the #23 presale screen ─────────────────────────────────────── */
+.noc-card {
+  background: var(--bg-surface-1);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-5);
+  display: flex; flex-direction: column; gap: var(--space-4);
+  position: relative; overflow: hidden;
+}
+
+/* The stage card's accent wash — a radial gradient from the top-left corner, exactly as
+   #23 draws it. `color-mix` keeps it tied to `--accent`, so shielded mode would tint it
+   teal without a second rule. */
+.noc-card-accent::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(140% 100% at 0% 0%, color-mix(in oklab, var(--accent) 18%, transparent), transparent 60%);
+}
+.noc-card-accent > * { position: relative; }
+
+.noc-card-quiet {
+  background: var(--bg-surface-1);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  display: flex; flex-direction: column; gap: var(--space-3);
+}
+
+.noc-eyebrow { display: flex; align-items: center; gap: var(--space-2); color: var(--accent); }
+.noc-meta    { display: flex; justify-content: space-between; align-items: baseline; color: var(--fg-tertiary); }
+.noc-meta b  { color: var(--fg-secondary); font-weight: 500; }
+
+/* ── Progress, from #23 ─────────────────────────────────────────────────────── */
+.noc-progress {
+  width: 100%; height: 6px;
+  background: var(--bg-surface-3);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+.noc-progress > i {
+  display: block; height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+}
+
+/* ── The amount field, from #23's input-card ────────────────────────────────── */
+.noc-amount {
+  flex: 1; min-width: 0;
+  color: var(--fg-primary);
+  background: transparent; border: 0; outline: 0;
+  font: 600 28px/34px var(--font-display);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.noc-amount::placeholder { color: var(--fg-disabled); }
+.noc-ticker { color: var(--fg-secondary); font: 600 17px/22px var(--font-body); }
+.noc-row    { display: flex; align-items: baseline; gap: var(--space-3); }
+.noc-rule   { border: 0; border-top: 1px solid var(--bg-surface-3); margin: var(--space-1) 0; width: 100%; }
+
+/* ── Status colours, by role rather than by hue ─────────────────────────────── */
+.noc-danger  { color: var(--danger); }
+.noc-warning { color: var(--warning); }
+.noc-success { color: var(--success); }
+.noc-muted   { color: var(--fg-secondary); }
+.noc-dim     { color: var(--fg-tertiary); }
+
+a { color: var(--accent); }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── The page shell ─────────────────────────────────────────────────────────────
+   The design is a set of Pixel-9 screens. Rather than invent a desktop layout the
+   author never drew, the page keeps that column and centres it: one 440 px column,
+   the same paddings the mockups use, and a 16 px gutter at phone width so nothing
+   touches the edge. */
+.shell {
+  max-width: 440px;
+  margin-inline: auto;
+  padding-inline: var(--space-4);
+  padding-block: var(--space-7) var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.shell-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-bottom: var(--space-2);
+}
+
+.shell > section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+/* The mockups have no visible <h2> on most panels — the eyebrow carries the label.
+   Section headings therefore take the overline tier rather than a heading size that
+   would compete with the balances they sit above. */
+.shell h2 {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-tertiary);
+}
+
+.shell h3 { margin: 0; font: 600 17px/22px var(--font-display); }
+.shell p  { margin: 0; }
+
+/* ── Buy form ───────────────────────────────────────────────────────────────── */
+.buy { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.seg { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.seg legend { padding: 0; }
+.seg-row {
+  display: flex; gap: var(--space-1);
+  background: var(--bg-surface-1);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1);
+}
+.seg-row label {
+  flex: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 36px;
+  border-radius: var(--radius-pill);
+  color: var(--fg-secondary);
+  cursor: pointer;
+  transition: background var(--dur-fast) linear, color var(--dur-fast) linear;
+}
+/* The radio itself is not hidden with display:none — that removes it from the
+   accessibility tree and from keyboard focus. Clipped instead, so the control is still
+   a real radio group: arrow keys move between the three, and the label lights up. */
+.seg-row input {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  clip-path: inset(50%);
+  overflow: hidden; white-space: nowrap;
+}
+.seg-row label.seg-on { background: var(--bg-surface-3); color: var(--fg-primary); }
+.seg-row label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .seg-row label { transition: none; }
+}
+
+/* The pre-signature summary is deliberately plain and dense: it is the one block on the
+   page meant to be READ rather than scanned, so it gets no card, no accent, and the two
+   addresses get the mono face and break instead of overflowing. */
+.signing {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-left: 2px solid var(--bg-surface-3);
+  display: flex; flex-direction: column; gap: var(--space-2);
+  color: var(--fg-secondary);
+}
+.signing .noc-mono { color: var(--fg-tertiary); font-size: 11px; word-break: break-all; }
+
+/* ── Referral ───────────────────────────────────────────────────────────────── */
+.stat-row { display: flex; gap: var(--space-3); }
+.stat-row > * { flex: 1; min-width: 0; }
+.link-break { word-break: break-all; color: var(--fg-secondary); }
+
+/* ── Connect ────────────────────────────────────────────────────────────────────
+   The wallet-adapter ships its own purple button and its own font stack. Rather than
+   fight it per property, its trigger is re-pointed at our button primitive so there is
+   one button in the product, not two that nearly match. */
+.wallet-adapter-button-trigger {
+  background-color: var(--accent) !important;
+  color: var(--bg-base) !important;
+}
+.wallet-adapter-button {
+  font-family: var(--font-body) !important;
+  font-size: 17px !important;
+  height: var(--touch-target-rec) !important;
+  line-height: var(--touch-target-rec) !important;
+  border-radius: var(--radius-pill) !important;
+  justify-content: center;
+  width: 100%;
+}
+.wallet-adapter-button:not([disabled]):hover {
+  background-color: color-mix(in oklab, var(--accent) 88%, white) !important;
+}
+
+/* The section's own heading is a real h3 here, not the overline the other panels use:
+   this is the one place the page addresses the reader directly. */
+.shell section:has(> [id='connect-heading']) { gap: var(--space-3); }
+
+/* Set apart from the prose above it — it is a standing promise about the product, not a
+   sentence in the paragraph it follows. */
+.phrase-note {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--bg-surface-2);
+}

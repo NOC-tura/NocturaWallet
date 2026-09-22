@@ -108,10 +108,12 @@ describe('the policy itself', () => {
     expect(csp()).not.toMatch(/https?:\/\//);
   });
 
-  it('declares no font-src, so fonts inherit default-src none', () => {
-    // The built CSS has no @font-face and no url(); adding font-src here would loosen the
-    // policy for nothing, and it is how the Google Fonts request would quietly come back.
-    expect(CSP_DIRECTIVES['font-src']).toBeUndefined();
+  it("allows fonts from 'self' and from nowhere else", () => {
+    // The page self-hosts Geist, so the directive has to exist — font-src falls back to
+    // default-src 'none' and would block our own files. It must never name a host: that
+    // is exactly how the Google Fonts request would come back.
+    expect(CSP_DIRECTIVES['font-src']).toBe("'self'");
+    expect(CSP_DIRECTIVES['font-src']).not.toMatch(/https?:|fonts\./);
   });
 });
 

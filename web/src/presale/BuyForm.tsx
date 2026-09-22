@@ -101,47 +101,77 @@ export function BuyForm({
   }
 
   return (
-    <form onSubmit={onSubmit}>
-      <fieldset>
-        <legend>Pay with</legend>
-        {TOKENS.map(t => (
-          <label key={t} htmlFor={`pay-${t}`}>
-            <input
-              id={`pay-${t}`}
-              type="radio"
-              name="paymentToken"
-              value={t}
-              checked={token === t}
-              onChange={() => {
-                setToken(t);
-                // Not carried over: "10" means ten dollars in USDC and about $1,180 in
-                // SOL, and the summary would be recomputed under the reader without the
-                // field appearing to change.
-                setAmount('');
-                setSignature(null);
-              }}
-            />
-            {t}
-          </label>
-        ))}
+    <form onSubmit={onSubmit} className="buy">
+      {/* Segmented, not a dropdown: three options that each change the meaning of the
+          field below deserve to be visible at once rather than hidden behind a click. */}
+      <fieldset className="seg">
+        <legend className="noc-overline noc-dim">Pay with</legend>
+        <div className="seg-row">
+          {TOKENS.map(t => (
+            <label key={t} htmlFor={`pay-${t}`} className={t === token ? 'seg-on' : undefined}>
+              <input
+                id={`pay-${t}`}
+                type="radio"
+                name="paymentToken"
+                value={t}
+                checked={token === t}
+                onChange={() => {
+                  setToken(t);
+                  // Not carried over: "10" means ten dollars in USDC and about $1,180 in
+                  // SOL, and the summary would be recomputed under the reader without the
+                  // field appearing to change.
+                  setAmount('');
+                  setSignature(null);
+                }}
+              />
+              <span className="noc-body-sm">{t}</span>
+            </label>
+          ))}
+        </div>
       </fieldset>
 
-      <label htmlFor="buy-amount">Amount in {token}</label>
-      <input
-        id="buy-amount"
-        inputMode="decimal"
-        value={amount}
-        onChange={e => setAmount(e.target.value)}
-      />
-      {/* Said before the attempt, not discovered from a rejected transaction. */}
-      <p>
-        Minimum ${MIN_PURCHASE_USD} · maximum ${MAX_PURCHASE_USD.toLocaleString('en-US')} per
-        transaction
-      </p>
+      <div className="noc-card-quiet">
+        <label htmlFor="buy-amount" className="noc-overline noc-dim">
+          Amount in {token}
+        </label>
+        <div className="noc-row">
+          <input
+            id="buy-amount"
+            className="noc-amount"
+            inputMode="decimal"
+            placeholder="0"
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+          />
+          <span className="noc-ticker">{token}</span>
+        </div>
+
+        {showSummary ? (
+          <>
+            <hr className="noc-rule" />
+            <div className="noc-row">
+              <span className="noc-balance-md noc-numeral">
+                {noc !== null ? noc.toFixed(2) : '—'}
+              </span>
+              <span className="noc-ticker" style={{color: 'var(--accent)'}}>
+                NOC
+              </span>
+            </div>
+          </>
+        ) : null}
+
+        {/* Said before the attempt, not discovered from a rejected transaction. */}
+        <div className="noc-meta noc-caption">
+          <span>
+            Min ${MIN_PURCHASE_USD} · max ${MAX_PURCHASE_USD.toLocaleString('en-US')}
+          </span>
+          {priceKnown && showSummary ? <b>≈ ${usd.toFixed(2)}</b> : null}
+        </div>
+      </div>
 
       {/* Spec 6.7: what is being signed, in words, before the request goes out. */}
       {showSummary ? (
-        <ul aria-label="What you are signing">
+        <ul aria-label="What you are signing" className="signing noc-body-sm">
           <li>
             Paying {amount} {token}
             {priceKnown ? ` (about $${usd.toFixed(2)})` : ''}
@@ -150,19 +180,31 @@ export function BuyForm({
             Receiving {noc !== null ? noc.toFixed(2) : '—'} NOC at stage {stage.displayStage}, $
             {stage.pricePerNocUsd} per NOC
           </li>
-          <li>To the presale program {MAINNET_PROGRAM_ID}</li>
-          <li>Treasury {MAINNET_SOL_TREASURY}</li>
+          <li>
+            To the presale program <span className="noc-mono">{MAINNET_PROGRAM_ID}</span>
+          </li>
+          <li>
+            Treasury <span className="noc-mono">{MAINNET_SOL_TREASURY}</span>
+          </li>
         </ul>
       ) : null}
 
-      {gate.reason ? <p role="status">{gate.reason}</p> : null}
+      {gate.reason ? (
+        <p role="status" className="noc-body-sm noc-warning">
+          {gate.reason}
+        </p>
+      ) : null}
 
-      <button type="submit" disabled={busy || !gate.enabled}>
+      <button type="submit" className="btn btn-primary" disabled={busy || !gate.enabled}>
         {busy ? state : `Buy NOC with ${token}`}
       </button>
 
-      {error ? <p role="alert">{error}</p> : null}
-      {signature ? <p>Sent: {signature}</p> : null}
+      {error ? (
+        <p role="alert" className="noc-body-sm noc-danger">
+          {error}
+        </p>
+      ) : null}
+      {signature ? <p className="noc-body-sm noc-mono noc-muted">Sent: {signature}</p> : null}
     </form>
   );
 }
