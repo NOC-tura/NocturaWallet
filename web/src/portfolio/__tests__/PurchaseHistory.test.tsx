@@ -9,7 +9,13 @@ const PHANTOM =
 
 const ETH_HASH = '0xbc02c07f5d905184e09d3964085cab3840f205fcfa3401014a931d182490276c';
 
-/** The strings the coordinator actually stores, copied from the live API on 2026-09-22. */
+/*
+ * Sample text, taken from the live API on 2026-09-22. It is a SAMPLE and not a pin: the
+ * coordinator owns this prose and may reword it whenever it likes, and nothing here
+ * should make it hesitate to. What these tests assert is that whatever the row carries is
+ * rendered exactly — so this constant drifting out of date breaks nothing, and a comment
+ * claiming it mirrors production would be false within a day.
+ */
 const NOT_CREDITED_REASON =
   'This payment is on the blockchain and can be verified, but no Solana allocation was ' +
   "ever created for it. It was a test purchase made from the project's own deployer " +
