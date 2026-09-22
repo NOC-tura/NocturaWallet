@@ -589,3 +589,61 @@ body {
 }
 
 .shell { min-height: 100dvh; }
+
+/* ── The wallet dropdown (copy address / change wallet / disconnect) ────────────
+   It was there and barely usable, for two reasons at once.
+
+   STACKING. Each section carries an entry animation, and an element with an animation in
+   effect creates its own stacking context. The dropdown's z-index: 99 is therefore scoped
+   INSIDE the wallet section, and the section painted after it — balances — covered it.
+   The panel that owns an overlay is raised above its siblings so the overlay can leave it.
+
+   WIDTH. The adapter wraps the button in an inline-block, which collapses around a button
+   we set to 100%, so the list anchored to `right: 0` of a container narrower than the card
+   it sits in. Both now span the card.
+
+   And the list arrived in the adapter's own #2c2d30 with DM Sans — the third surface
+   colour on a page that has three, none of them that one. */
+.col > section:has(.wallet-adapter-dropdown) {
+  position: relative;
+  z-index: 5;
+}
+
+.wallet-adapter-dropdown { display: block; width: 100%; }
+
+.wallet-adapter-dropdown-list {
+  width: 100%;
+  background: var(--bg-surface-2) !important;
+  border: 1px solid var(--bg-surface-3);
+  border-radius: var(--radius-lg) !important;
+  font-family: var(--font-body) !important;
+  padding: var(--space-2) !important;
+  grid-row-gap: var(--space-1) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .7) !important;
+}
+
+.wallet-adapter-dropdown-list-item {
+  justify-content: flex-start !important;
+  height: var(--touch-target-min) !important;
+  padding: 0 var(--space-3) !important;
+  border-radius: var(--radius-md) !important;
+  font-family: var(--font-body) !important;
+  font-size: 15px !important;
+  font-weight: 500 !important;
+  color: var(--fg-secondary) !important;
+}
+.wallet-adapter-dropdown-list-item:not([disabled]):hover {
+  background-color: var(--bg-surface-3) !important;
+  color: var(--fg-primary) !important;
+}
+/* Disconnect is the one destructive row, and it was the same grey as "copy address" — the
+   row people were hunting for looked like the two above it.
+   ASSUMPTION, stated because it is positional and the adapter gives the rows no class of
+   their own: the list is Copy address / Change wallet / Disconnect, and Disconnect is
+   last. If a future adapter appends anything after it, the red lands on the wrong row —
+   which is visible immediately, not silent. */
+.wallet-adapter-dropdown-list-item:last-child { color: var(--danger) !important; }
+.wallet-adapter-dropdown-list-item:last-child:not([disabled]):hover {
+  background-color: color-mix(in oklab, var(--danger) 16%, transparent) !important;
+  color: var(--danger) !important;
+}
