@@ -33,3 +33,33 @@ export const signatureStatusReader = {
     return value.map(v => (v === null ? null : {err: v.err}));
   },
 };
+
+/**
+ * Every transaction that touched an account, with its logs.
+ *
+ * Paginated deliberately, and a page that cannot be read aborts the whole walk rather
+ * than returning what it has: a short answer here is indistinguishable from a complete
+ * one, and the caller reconciles against an exact total, so a silently truncated history
+ * would present as a mismatch — or worse, as a match that happens to land.
+ */
+export async function accountTransactions(address: PublicKey) {
+  const conn = connection();
+  const out: {signature: string; blockTime: number | null; logs: string[]}[] = [];
+  let before: string | undefined;
+  for (;;) {
+    const page = await conn.getSignaturesForAddress(address, {limit: 1000, before});
+    if (page.length === 0) break;
+    for (const s of page) {
+      const tx = await conn.getTransaction(s.signature, {maxSupportedTransactionVersion: 0});
+      if (!tx) throw new Error(`transaction ${s.signature} could not be read`);
+      out.push({
+        signature: s.signature,
+        blockTime: s.blockTime ?? null,
+        logs: tx.meta?.logMessages ?? [],
+      });
+    }
+    if (page.length < 1000) break;
+    before = page[page.length - 1]?.signature;
+  }
+  return out;
+}

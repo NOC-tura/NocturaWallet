@@ -6,6 +6,7 @@ import {PresalePanel} from './presale/PresalePanel';
 import {PortfolioPanel} from './portfolio/PortfolioPanel';
 import {PurchaseHistory} from './portfolio/PurchaseHistory';
 import {usePresaleStats, useAllocation} from './presale/usePresale';
+import {useCredits} from './presale/useCredits';
 import {BuyForm} from './presale/BuyForm';
 import {ReferralPanel} from './referral/ReferralPanel';
 import {useReferral} from './referral/useReferral';
@@ -34,12 +35,13 @@ function useSolUsd() {
 function Presale() {
   const stats = usePresaleStats();
   const allocation = useAllocation();
+  const credits = useCredits(allocation.status === 'ok' ? allocation.referralBonusBase : null);
   const solUsd = useSolUsd();
   if (stats.isPending) return <p>Loading the presale…</p>;
   if (stats.isError || !stats.data) return <p>The presale status could not be read.</p>;
   return (
     <>
-      <PresalePanel stats={stats.data} allocation={allocation} />
+      <PresalePanel stats={stats.data} allocation={allocation} credits={credits} />
       <BuyForm stage={stats.data} solUsd={solUsd} />
     </>
   );

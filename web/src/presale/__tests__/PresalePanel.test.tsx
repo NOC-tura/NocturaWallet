@@ -158,3 +158,63 @@ describe('PresalePanel referral bonus', () => {
     expect(container.textContent).not.toMatch(/did not come from your own purchases/i);
   });
 });
+
+describe('PresalePanel itemised credits', () => {
+  const ok = (base: string, referralBonusBase: string | null) =>
+    ({status: 'ok', base, referralBonusBase}) as const;
+  const SIG = 'jS8QcYTyTw16Qh2vNRqWhpwSywiXz2oDoJ2uvsZX66RR2vWUHcze6DJJC7tcBMUDzQwZzA6QhdUFF7K1fQzVKaz';
+
+  it('makes the credit checkable: amount, kind, date and a link to the chain', () => {
+    // The mainnet account of 2026-09-23: the whole allocation is one project credit and
+    // there are no purchases at all, so the sentence alone left its owner nothing to
+    // check against.
+    render(
+      <PresalePanel
+        stats={stats}
+        allocation={ok('188607594936', '188607594936')}
+        credits={[{kind: 'giveaway', base: 188_607_594_936n, signature: SIG, blockTime: 1790143419}]}
+      />,
+    );
+    const link = screen.getByRole('link', {name: /jS8QcYTy/});
+    expect(link.getAttribute('href')).toBe(`https://explorer.solana.com/tx/${SIG}`);
+    expect(link.getAttribute('title')).toBe(SIG);
+    // Scoped to the row: the allocation total above happens to be the same figure here,
+    // because the whole allocation IS this credit.
+    const row = screen.getByRole('listitem');
+    expect(row.textContent).toMatch(/^188\.6075 NOC added by the project · 2026-09-23/);
+  });
+
+  it('names a referral bonus as a referral bonus', () => {
+    render(
+      <PresalePanel
+        stats={stats}
+        allocation={ok('549853431042', '16142571618')}
+        credits={[{kind: 'referral', base: 16_142_571_618n, signature: SIG, blockTime: null}]}
+      />,
+    );
+    // Scoped to the row, because the sentence above legitimately contains the phrase
+    // "an allocation added by the project" as one of the possibilities it lists.
+    const row = screen.getByRole('listitem');
+    expect(row.textContent).toMatch(/^16\.1425 NOC referral bonus/);
+    expect(row.textContent).not.toMatch(/added by the project/);
+    expect(row.textContent).not.toMatch(/·\s*$/);
+  });
+
+  it('draws no empty list when there is nothing to itemise', () => {
+    // A mutation survived without this: dropping the length check rendered an empty <ul>,
+    // which is a frame around nothing rather than an absence.
+    render(<PresalePanel stats={stats} allocation={ok('549853431042', '0')} credits={[]} />);
+    expect(screen.queryByRole('list')).toBeNull();
+    expect(screen.queryByRole('listitem')).toBeNull();
+  });
+
+  it('keeps the unitemised sentence when attribution did not reconcile', () => {
+    // credits === null is "nothing to explain", "not read yet" and "could not be
+    // attributed" at once, and all three render the same way on purpose.
+    const {container} = render(
+      <PresalePanel stats={stats} allocation={ok('549853431042', '16142571618')} credits={null} />,
+    );
+    expect(container.textContent).toMatch(/did not come from your own purchases/);
+    expect(screen.queryByRole('listitem')).toBeNull();
+  });
+});

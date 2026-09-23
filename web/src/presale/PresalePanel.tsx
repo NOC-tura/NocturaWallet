@@ -1,6 +1,7 @@
 import type {PresaleStats} from '../../../core/presale/stats';
 import {formatBaseUnits, formatAmount, percentOf} from '../format';
 import {Icon} from '../ui/Icon';
+import type {Credit} from '../../../core/presale/credits';
 
 /**
  * Three states, not a nullable number. "We could not read your allocation" and "you
@@ -21,12 +22,20 @@ const NOC_DECIMALS = 9;
  * price on a baseline row with a muted unit, a 6 px progress rail, and a meta row whose
  * figures are secondary and whose labels are tertiary.
  */
+const EXPLORER = 'https://explorer.solana.com/tx/';
+
+const day = (t: number | null) =>
+  t === null ? '' : new Date(t * 1000).toISOString().slice(0, 10);
+
 export function PresalePanel({
   stats,
   allocation,
+  credits = null,
 }: {
   stats: PresaleStats;
   allocation: AllocationState;
+  /** Itemised non-purchase credits, when they reconcile exactly against the account. */
+  credits?: Credit[] | null;
 }) {
   const sold = BigInt(stats.soldInStageBase);
   const capacity = BigInt(stats.stageCapacityBase);
@@ -118,6 +127,39 @@ export function PresalePanel({
               did not come from your own purchases — a referral bonus, or an allocation added
               by the project
             </p>
+          ) : null}
+          {/*
+            Checkable, not just stated. Every other number on this page can be taken to the
+            chain and confirmed; until now this one could not, and on 2026-09-23 a mainnet
+            account appeared whose ENTIRE allocation was a credit — 188.607594936 NOC with
+            no purchases at all, and nothing its owner could check it against.
+
+            Shown only when the items add up to the account's own figure exactly. The
+            referral log names no recipient, so on an account that is both a buyer and a
+            referrer the sum overshoots, the check fails, and the sentence above stands
+            alone — less informative, never wrong.
+          */}
+          {credits !== null && credits.length > 0 ? (
+            <ul className="credits">
+              {credits.map(c => (
+                <li key={c.signature} className="noc-caption noc-dim">
+                  <span className="noc-numeral">
+                    {formatAmount(c.base, NOC_DECIMALS, 'NOC').text}
+                  </span>{' '}
+                  {c.kind === 'giveaway' ? 'added by the project' : 'referral bonus'}
+                  {c.blockTime !== null ? ` · ${day(c.blockTime)}` : ''}{' '}
+                  <a
+                    className="noc-mono"
+                    href={`${EXPLORER}${c.signature}`}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    title={c.signature}
+                  >
+                    {c.signature.slice(0, 8)}…
+                  </a>
+                </li>
+              ))}
+            </ul>
           ) : null}
           {allocation.status === 'absent' ? (
             <p className="noc-body noc-muted">No allocation for this wallet</p>
