@@ -137,10 +137,23 @@ export const SHIELDED_POOL_PROGRAM_ID =
 export const SHIELDED_DEVNET_MINT =
   Config.SHIELDED_DEVNET_MINT ?? '';
 
-// Compute-unit limits: measured deposit ~132,256 / withdraw ~152,508 CU on
-// devnet; add headroom (the wallet prepends setComputeUnitLimit).
-// withdrawChange: est. ~200–220k (plain withdraw ~152k + one merkle insert);
-// 250k headroom until the ICO reports the measured devnet CU (SYNC POINT).
+// Compute-unit limits. The wallet prepends setComputeUnitLimit, so these are
+// ceilings and every one of them sits above anything yet observed — nothing here
+// can fail for being too small.
+//
+// PROVENANCE, because the previous comment said "measured" and we never measured
+// anything. The figures deposit ~132,256 / withdraw ~152,508 came from the
+// program side's C2 contract and were copied here under a word we had not earned.
+// Asked to confirm them on 2026-09-23, that side reported: no withdraw test
+// exists at all, and no measurement is written down anywhere — the CU tests
+// println! their result, so the number survives only as long as someone is
+// watching stdout. One real figure exists: transfer = 172,805 CU.
+//
+// So: deposit and withdrawChange are UNCONFIRMED, withdraw is unmeasured on
+// either side, and these ceilings stay where they are until the program side
+// runs deposit.rs and withdraw_change.rs, writes the results to a file, and a
+// withdraw test is written. Tightening any of them before that would be trading
+// a safe ceiling for an inherited guess.
 export const SHIELDED_CU = {deposit: 200_000, withdraw: 250_000, withdrawChange: 250_000, transfer: 250_000} as const;
 
 /**
