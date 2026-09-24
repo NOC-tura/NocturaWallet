@@ -103,11 +103,25 @@ export function PurchaseHistory() {
 
       {purchases !== null && purchases.length > 0 ? (
         <ol className="buys">
-          {purchases.map(p => (
+          {purchases.map(p => {
+            /*
+              Struck when the chain itself says the transaction moved nothing. The headline
+              figure is what a reader adds up, and a row that took no payment and owes no
+              tokens read exactly like one that did — only the sentence under it said
+              otherwise. Only the chain's answer strikes it: `unknown` is our failure to
+              ask, and the coordinator's word is rendered, never acted on.
+            */
+            const moved = !chainSpoke(verdictFor(verdicts, p));
+            const amount = (
+              <span data-testid={`amount-${p.signature}`}>
+                {num(p.nocAmount)} <span className="noc-ticker">NOC</span>
+              </span>
+            );
+            return (
             <li key={p.signature} className="noc-card-quiet buy-row">
               <div className="noc-meta">
-                <span className="noc-body noc-numeral">
-                  {num(p.nocAmount)} <span className="noc-ticker">NOC</span>
+                <span className={moved ? 'noc-body noc-numeral' : 'noc-body noc-numeral noc-dim'}>
+                  {moved ? amount : <s>{amount}</s>}
                 </span>
                 <span className="noc-caption noc-dim noc-numeral">{day(p.createdAt)}</span>
               </div>
@@ -200,7 +214,8 @@ export function PurchaseHistory() {
               )}
 
             </li>
-          ))}
+            );
+          })}
         </ol>
       ) : null}
 

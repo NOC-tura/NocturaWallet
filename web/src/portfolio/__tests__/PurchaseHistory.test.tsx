@@ -255,6 +255,31 @@ describe('PurchaseHistory', () => {
     expect(container.textContent).toMatch(/someotherchain · /);
   });
 
+  it('strikes the amount of a row the chain says moved nothing', () => {
+    // The headline figure is what a reader adds up. A row that took no payment and owes
+    // no tokens must not read like one that did, whatever the sentence under it says.
+    verdicts = {[REAL]: 'confirmed', [PHANTOM]: 'missing'};
+    render(<PurchaseHistory />);
+    expect(screen.getByTestId(`amount-${PHANTOM}`).closest('s')).not.toBeNull();
+    expect(screen.getByTestId(`amount-${REAL}`).closest('s')).toBeNull();
+  });
+
+  it('strikes a failed transaction too', () => {
+    verdicts = {[REAL]: 'failed', [PHANTOM]: 'confirmed'};
+    render(<PurchaseHistory />);
+    expect(screen.getByTestId(`amount-${REAL}`).closest('s')).not.toBeNull();
+    expect(screen.getByTestId(`amount-${PHANTOM}`).closest('s')).toBeNull();
+  });
+
+  it('strikes nothing the chain has not answered for', () => {
+    // `unknown` is our failure to ask, not the chain's answer; and the coordinator's word
+    // alone is rendered, never acted on.
+    purchases = [purchase(PHANTOM, 109.76, 16.48, 'not_on_chain', 'solana', NOT_ON_CHAIN_REASON)];
+    verdicts = {[PHANTOM]: 'unknown'};
+    render(<PurchaseHistory />);
+    expect(screen.getByTestId(`amount-${PHANTOM}`).closest('s')).toBeNull();
+  });
+
   it('prints money with both decimal places', () => {
     const {container} = render(<PurchaseHistory />);
     expect(container.textContent).toMatch(/\$10\.50/);
