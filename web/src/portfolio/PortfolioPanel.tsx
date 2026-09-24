@@ -3,6 +3,7 @@ import {useBalances} from './useBalances';
 import {usePrices} from './usePrices';
 import {useChart} from './useChart';
 import {Sparkline} from './Sparkline';
+import {periodChangePct} from './periodChange';
 import {formatAmount} from '../format';
 import {valueHoldings, marketTotalUsd} from '../../../core/portfolio/value';
 import {Icon} from '../ui/Icon';
@@ -13,12 +14,13 @@ const usd = (n: number) =>
 export function PortfolioPanel({stagePriceUsd}: {stagePriceUsd: number}) {
   const {publicKey} = useWallet();
   const {sol, noc, usdc, usdt, isError, isLoading} = useBalances(publicKey ?? null);
-  const {prices, solChange24h, isError: priceError} = usePrices();
+  const {prices, isError: priceError} = usePrices();
   const chart = useChart(7);
   if (!publicKey) return null;
 
   const valued = valueHoldings({sol, noc, usdc, usdt}, prices, stagePriceUsd);
   const total = marketTotalUsd(valued);
+  const change = chart.points ? periodChangePct(chart.points) : null;
 
   return (
     <section>
@@ -74,10 +76,10 @@ export function PortfolioPanel({stagePriceUsd}: {stagePriceUsd: number}) {
             <span className="noc-overline noc-dim">SOL · 7 days</span>
             <p className="noc-body-lg noc-numeral">
               {prices.solana !== undefined ? usd(prices.solana) : '—'}
-              {solChange24h !== null ? (
-                <span className={solChange24h >= 0 ? 'chg noc-success' : 'chg noc-danger'}>
-                  {solChange24h >= 0 ? '+' : ''}
-                  {solChange24h.toFixed(2)}%
+              {change !== null ? (
+                <span className={change >= 0 ? 'chg noc-success' : 'chg noc-danger'}>
+                  {change >= 0 ? '+' : ''}
+                  {change.toFixed(2)}%
                 </span>
               ) : null}
             </p>

@@ -4,7 +4,7 @@ import type {Prices} from '../../../core/portfolio/value';
 
 interface PriceBody {
   success?: boolean;
-  data?: Record<string, {usd?: number; usd_24h_change?: number}>;
+  data?: Record<string, {usd?: number}>;
 }
 
 /** CoinGecko ids, as the coordinator's proxy accepts them — verified against the live route. */
@@ -12,8 +12,6 @@ const IDS = 'solana,usd-coin,tether';
 
 export interface PriceState {
   prices: Prices;
-  /** SOL's 24 h move, the only one worth showing: a stablecoin's is noise around zero. */
-  solChange24h: number | null;
   isError: boolean;
   isLoading: boolean;
 }
@@ -37,7 +35,7 @@ export function usePrices(): PriceState {
   });
 
   if (q.isError || !q.data) {
-    return {prices: {}, solChange24h: null, isError: q.isError, isLoading: q.isPending};
+    return {prices: {}, isError: q.isError, isLoading: q.isPending};
   }
   return {
     prices: {
@@ -45,7 +43,6 @@ export function usePrices(): PriceState {
       usdc: q.data['usd-coin']?.usd,
       usdt: q.data.tether?.usd,
     },
-    solChange24h: q.data.solana?.usd_24h_change ?? null,
     isError: false,
     isLoading: false,
   };
