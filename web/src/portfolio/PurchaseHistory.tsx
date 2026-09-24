@@ -17,13 +17,22 @@ const EXPLORERS: Record<string, string> = {
 const chainSpoke = (v: string | undefined) => v === 'missing' || v === 'failed';
 
 /**
+ * The coordinator's two words for success. `completed` is what the EVM path writes once
+ * an Ethereum or BNB purchase lands on Solana (coordinator.js:722) and means exactly what
+ * `confirmed` means; printing it as a raw token in amber would tell a buyer something went
+ * wrong when nothing did. `/user/:address` returns it only for 0x… buyers today, and the
+ * coordinator asked for it to be treated as success regardless.
+ */
+const settled = (status: string) => status === 'confirmed' || status === 'completed';
+
+/**
  * The coordinator has admitted the problem in the status AND said what it was.
  *
  * Both halves matter. A reason without a non-confirmed status is a note, not an
  * admission, and must not silence what we read from the chain ourselves.
  */
 const acknowledged = (p: {status: string; statusReason: string}) =>
-  p.status !== 'confirmed' && p.statusReason !== '';
+  !settled(p.status) && p.statusReason !== '';
 
 /** The verdict for a row, or nothing at all when Solana cannot have an opinion about it. */
 const verdictFor = (
@@ -141,7 +150,7 @@ export function PurchaseHistory() {
                   fact, one of them in snake_case. `unknown` is not an answer and does not
                   suppress anything.
                 */}
-                {p.status !== 'confirmed' &&
+                {!settled(p.status) &&
                 !chainSpoke(verdictFor(verdicts, p)) &&
                 p.statusReason === '' ? (
                   <b className="noc-warning">{p.status}</b>
@@ -162,8 +171,15 @@ export function PurchaseHistory() {
                 only when the coordinator has acknowledged the problem in its status. A
                 reason sitting on a row still marked `confirmed` is not an acknowledgement,
                 and our own reading of the chain has to survive it.
+
+                Not rendered at all on a settled row. A reason belongs to the status that
+                set it, and a success needs no excuse. Until the coordinator fixed it,
+                POST /admin/retry sent a row back to `pending` keeping its old reason, so
+                a not_on_chain row the sweep later confirmed would have carried "no tokens
+                are owed" under a real purchase. Losing a note is the cheap failure; that
+                sentence under a purchase that did land is the expensive one.
               */}
-              {p.statusReason !== '' ? (
+              {p.statusReason !== '' && !settled(p.status) ? (
                 <p className="noc-caption noc-warning">{p.statusReason}</p>
               ) : null}
 

@@ -280,6 +280,36 @@ describe('PurchaseHistory', () => {
     expect(screen.getByTestId(`amount-${PHANTOM}`).closest('s')).toBeNull();
   });
 
+  it('treats completed as confirmed: no token, no warning', () => {
+    // The EVM path's success status (coordinator.js:722). It means what confirmed means,
+    // and printing it in amber would tell a buyer something went wrong when nothing did.
+    purchases = [purchase(REAL, 69.95, 10.5, 'completed')];
+    const {container} = render(<PurchaseHistory />);
+    expect(container.textContent).not.toMatch(/completed/);
+    expect(container.querySelector('.noc-warning')).toBeNull();
+  });
+
+  it('does not render a stale sentence on a row that is now confirmed', () => {
+    // POST /admin/retry used to send a row back through processing while keeping its old
+    // reason, so a not_on_chain row the sweep later confirmed would carry "no tokens are
+    // owed" under a real purchase. Fixed on the coordinator; this is the page not relying
+    // on it. A confirmed row needs no excuse, so a sentence on one is dropped.
+    for (const status of ['confirmed', 'completed']) {
+      purchases = [purchase(REAL, 69.95, 10.5, status, 'solana', NOT_ON_CHAIN_REASON)];
+      verdicts = {[REAL]: 'confirmed'};
+      const {container, unmount} = render(<PurchaseHistory />);
+      expect(container.textContent).not.toContain(NOT_ON_CHAIN_REASON);
+      unmount();
+    }
+  });
+
+  it('still shows the sentence while the row is not confirmed', () => {
+    // Control for the test above: dropping every reason would pass it too.
+    purchases = [purchase(REAL, 69.95, 10.5, 'failed', 'solana', NOT_ON_CHAIN_REASON)];
+    const {container} = render(<PurchaseHistory />);
+    expect(container.textContent).toContain(NOT_ON_CHAIN_REASON);
+  });
+
   it('prints money with both decimal places', () => {
     const {container} = render(<PurchaseHistory />);
     expect(container.textContent).toMatch(/\$10\.50/);
