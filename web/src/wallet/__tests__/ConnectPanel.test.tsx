@@ -132,6 +132,13 @@ describe('ConnectPanel', () => {
       expect(screen.getByText(/shape a phishing page takes/i)).toBeTruthy();
     });
 
+    it('sets the Android note apart, because it is for a different reader', () => {
+      const {container} = renderSettled();
+      expect(container.querySelector('.no-wallet-aside')?.textContent).toMatch(
+        /^Using Noctura for Android\?/,
+      );
+    });
+
     it('tells an Android user to buy in the app instead of connecting here', () => {
       // The honest version of "install Noctura": that app is a direct download and is not
       // a Wallet Standard provider, so it cannot connect to this page at all. Pointing a
@@ -148,6 +155,18 @@ describe('ConnectPanel', () => {
       wallets = [{adapter: {name: 'Phantom'}}];
       renderSettled();
       expect(screen.getByText('KnZ5bRuaCb3JEAYgt9CJ69eWQ7i5dp5cASbTmLj39qr')).toBeTruthy();
+    });
+
+    it('offers the full address to copy, and keeps the recovery-phrase line in the card', () => {
+      publicKey = {toBase58: () => 'KnZ5bRuaCb3JEAYgt9CJ69eWQ7i5dp5cASbTmLj39qr'};
+      const {container} = renderSettled();
+      expect(screen.getByRole('button', {name: 'Copy address'})).toBeTruthy();
+      const card = container.querySelector('.wallet-card');
+      expect(card?.classList.contains('is-connected')).toBe(true);
+      expect(card?.textContent).toMatch(/never ask for your recovery phrase/i);
+      expect(card?.querySelector('.addr-field')?.textContent).toBe(
+        'KnZ5bRuaCb3JEAYgt9CJ69eWQ7i5dp5cASbTmLj39qr',
+      );
     });
 
     it('stops asking a connected user to connect', () => {
