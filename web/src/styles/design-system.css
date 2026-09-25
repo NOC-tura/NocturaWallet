@@ -392,6 +392,37 @@ a { color: var(--accent); }
 }
 .signing .noc-mono { color: var(--fg-tertiary); font-size: 11px; word-break: break-all; }
 
+/* ── Addresses and copy (desktop redesign) ────────────────────────────────────
+   Equal weight across the whole address, in groups of four. The gap is a column-gap,
+   not a space character, so a selection copies the exact address. */
+.addr-groups {
+  display: inline-flex; flex-wrap: wrap;
+  column-gap: .6ch; row-gap: 2px;
+  font: 400 12px/20px var(--font-mono);
+  font-variant-numeric: slashed-zero;
+  color: var(--fg-primary);
+  user-select: all;
+}
+
+.icon-btn {
+  position: relative;
+  width: 36px; height: 36px; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--elev-2);
+  color: var(--fg-secondary);
+  cursor: pointer;
+  transition: background var(--dur-fast) linear, color var(--dur-fast) linear;
+}
+.icon-btn:hover { background: var(--elev-3); color: var(--fg-primary); }
+/* A 36 px button with a 48 px hit area: the ring is invisible, the target is not. */
+.icon-btn::after { content: ''; position: absolute; inset: -6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .icon-btn { transition: none; }
+}
+
 /* ── Referral ───────────────────────────────────────────────────────────────── */
 .stat-row { display: flex; gap: var(--space-3); }
 .stat-row > * { flex: 1; min-width: 0; }
