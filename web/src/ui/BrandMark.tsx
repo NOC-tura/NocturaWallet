@@ -4,21 +4,19 @@
  * gradient-clipped "N" over it.
  *
  * It is pure CSS in the original and stays pure CSS here: no image asset, so no request,
- * no bundle weight, and it scales to any size without a second file. The two colours are
- * the DS accents at reduced alpha — the mark carries the dual-mode identity (transparent
- * purple, shielded teal) that the product is built around, which is exactly why the
- * design file draws it this way rather than as a flat logo.
+ * no bundle weight. The two colours are the DS accents at reduced alpha — the mark carries
+ * the dual-mode identity (transparent purple, shielded teal) that the product is built
+ * around, which is exactly why the design file draws it this way rather than as a flat
+ * logo.
+ *
+ * One size, set in the stylesheet (.brand-mark). It used to take a `size` prop applied as
+ * an inline style, which is the one kind of style the CSP should not have to allow, for a
+ * mark the page only ever draws at 44 px.
  */
-export function BrandMark({size = 40}: {size?: number}) {
+export function BrandMark() {
   return (
-    <span
-      className="brand-mark"
-      style={{width: size, height: size, borderRadius: size * 0.29}}
-      aria-hidden
-    >
-      <span className="brand-mark-n" style={{fontSize: size * 0.5}}>
-        N
-      </span>
+    <span className="brand-mark" aria-hidden>
+      <span className="brand-mark-n">N</span>
     </span>
   );
 }

@@ -99,7 +99,7 @@ export function App() {
         */}
         <main className="shell">
           <header className="shell-head">
-            <BrandMark size={44} />
+            <BrandMark />
             <div className="head-copy">
               <h1 className="noc-h1">Noctura</h1>
             {/*

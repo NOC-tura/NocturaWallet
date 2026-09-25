@@ -1,6 +1,8 @@
 import {useState, type FormEvent} from 'react';
 import {useWallet} from '@solana/wallet-adapter-react';
-import {useBuy} from './useBuy';
+import {useBuy, type BuyState} from './useBuy';
+import {Icon} from '../ui/Icon';
+import {AddressGroups} from '../ui/AddressGroups';
 import {useBalances} from '../portfolio/useBalances';
 import {MAINNET_PROGRAM_ID, MAINNET_SOL_TREASURY} from '../../../core/presale/addresses';
 import {
@@ -36,6 +38,18 @@ export function parseAmount(input: string, decimals: number): bigint {
 /** Kept for the callers and tests that only ever meant SOL. */
 export const solToLamports = (input: string): bigint => parseAmount(input, 9);
 
+/**
+ * The button's words while a purchase is in flight. It used to print the raw state
+ * ("signing"), which told the reader what the code was doing rather than what they were
+ * waiting for. Checking and simulating are one step to the buyer: nothing is asked of
+ * them yet.
+ */
+export function busyLabel(state: BuyState): string {
+  if (state === 'signing') return 'Waiting for wallet signature';
+  if (state === 'confirming') return 'Confirming on chain…';
+  return 'Checking…';
+}
+
 export function BuyForm({
   stage,
   solUsd,
@@ -62,7 +76,12 @@ export function BuyForm({
       </p>
     );
   if (!canBuy)
-    return <p className="noc-card-quiet noc-body-sm noc-muted">Connect a wallet to buy.</p>;
+    return (
+      <p className="noc-card connect-to-buy noc-body-sm">
+        <Icon name="lock" />
+        Connect a wallet to buy.
+      </p>
+    );
 
   const decimals = TOKEN_DECIMALS[token];
   const entered = Number(amount);
@@ -166,9 +185,7 @@ export function BuyForm({
               <span className="noc-balance-md noc-numeral">
                 {noc !== null ? noc.toFixed(2) : '—'}
               </span>
-              <span className="noc-ticker" style={{color: 'var(--accent)'}}>
-                NOC
-              </span>
+              <span className="noc-ticker noc-accent">NOC</span>
             </div>
           </>
         ) : null}
@@ -182,45 +199,74 @@ export function BuyForm({
         </div>
       </div>
 
-      {/* Spec 6.7: what is being signed, in words, before the request goes out. */}
-      {showSummary ? (
-        <ul aria-label="What you are signing" className="signing noc-body-sm">
-          <li>
-            Paying {amount} {token}
-            {priceKnown ? ` (about $${usd.toFixed(2)})` : ''}
-          </li>
-          <li>
-            Receiving {noc !== null ? noc.toFixed(2) : '—'} NOC at stage {stage.displayStage}, $
-            {stage.pricePerNocUsd} per NOC
-          </li>
-          <li>
-            To the presale program <span className="noc-mono">{MAINNET_PROGRAM_ID}</span>
-          </li>
-          <li>
-            Treasury <span className="noc-mono">{MAINNET_SOL_TREASURY}</span>
-          </li>
-        </ul>
-      ) : null}
-
+      {/* Directly under the field it is about, with its icon, so it reads as a note on
+          that amount rather than as a page-level warning. */}
       {gate.reason ? (
-        <p role="status" className="noc-body-sm noc-warning">
+        <p role="status" className="field-msg field-warn">
+          <Icon name="alert" />
           {gate.reason}
         </p>
       ) : null}
 
-      <button type="submit" className="btn btn-primary" disabled={busy || !gate.enabled}>
-        {/* The word says which step; the dot says the page is working rather than stuck.
-            Both are needed — "confirming" alone looks identical to a frozen button. */}
+      {/*
+        Spec 6.7: what is being signed, in words, before the request goes out. The two
+        addresses are in full, grouped by four and at equal weight — see AddressGroups
+        for why the ends are deliberately NOT emphasised. They come from the constants,
+        never from anything typed or fetched.
+      */}
+      {showSummary ? (
+        <ul aria-label="What you are signing" className="signing">
+          <li>
+            Paying{' '}
+            <b>
+              {amount} {token}
+            </b>
+            {priceKnown ? ` (about $${usd.toFixed(2)})` : ''}
+          </li>
+          <li>
+            Receiving <b>{noc !== null ? noc.toFixed(2) : '—'} NOC</b> at stage{' '}
+            {stage.displayStage}, ${stage.pricePerNocUsd} per NOC
+          </li>
+          <li className="sign-addr">
+            <span className="sign-label">To the presale program</span>{' '}
+            <AddressGroups address={MAINNET_PROGRAM_ID} />
+          </li>
+          <li className="sign-addr">
+            <span className="sign-label">Treasury</span>{' '}
+            <AddressGroups address={MAINNET_SOL_TREASURY} />
+          </li>
+        </ul>
+      ) : null}
+
+      <button
+        type="submit"
+        className={busy ? 'btn btn-primary is-busy' : 'btn btn-primary'}
+        disabled={busy || !gate.enabled}
+        aria-busy={busy || undefined}
+      >
+        {/* The words say which step; the dot says the page is working rather than stuck.
+            Both are needed — "Confirming on chain…" alone looks like a frozen button. */}
         {busy ? <span className="noc-spin" aria-hidden /> : null}
-        {busy ? state : `Buy NOC with ${token}`}
+        {busy ? busyLabel(state) : `Buy NOC with ${token}`}
       </button>
 
       {error ? (
-        <p role="alert" className="noc-body-sm noc-danger">
+        <p role="alert" className="tx-msg tx-error">
+          <Icon name="alert" />
           {error}
         </p>
       ) : null}
-      {signature ? <p className="noc-body-sm noc-mono noc-muted">Sent: {signature}</p> : null}
+      {/* In full and in mono, never truncated: this is the one thing the buyer may want
+          to look up, and a shortened signature cannot be looked up. */}
+      {signature ? (
+        <p className="tx-msg tx-success">
+          <Icon name="check" />
+          <span>
+            Sent:
+            <span className="noc-mono tx-sig">{signature}</span>
+          </span>
+        </p>
+      ) : null}
     </form>
   );
 }

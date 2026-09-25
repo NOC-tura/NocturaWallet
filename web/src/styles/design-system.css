@@ -372,6 +372,7 @@ a { color: var(--accent); }
   /* The stage card is the page's headline, so on a laptop it gets the room to be one. */
   .noc-card-accent.stage { padding: var(--space-6); border-radius: var(--radius-2xl); }
   .price { font-size: 44px; line-height: 50px; }
+  .buy { padding: var(--space-6); border-radius: var(--radius-2xl); }
 }
 
 .shell-head {
@@ -438,25 +439,77 @@ a { color: var(--accent); }
   clip-path: inset(50%);
   overflow: hidden; white-space: nowrap;
 }
-.seg-row label.seg-on { background: var(--bg-surface-3); color: var(--fg-primary); }
+.seg-row label.seg-on {
+  background: var(--elev-3);
+  color: var(--fg-primary);
+  box-shadow: inset 0 0 0 1px var(--border-strong), 0 2px 6px rgb(0 0 0 / .4);
+}
 .seg-row label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 @media (prefers-reduced-motion: reduce) {
   .seg-row label { transition: none; }
 }
 
-/* The pre-signature summary is deliberately plain and dense: it is the one block on the
-   page meant to be READ rather than scanned, so it gets no card, no accent, and the two
-   addresses get the mono face and break instead of overflowing. */
+/* The pre-signature summary is the one block on the page meant to be READ rather than
+   scanned: a well, one row per fact, amounts in bold and addresses in full at equal
+   weight (AddressGroups). No accent — nothing in it should look like a button. */
 .signing {
   list-style: none;
   margin: 0;
-  padding: var(--space-3) var(--space-4);
-  border-left: 2px solid var(--bg-surface-3);
-  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-1) 0;
+  display: flex; flex-direction: column;
+  background: var(--well);
+  border-radius: var(--radius-lg);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
   color: var(--fg-secondary);
+  font: 400 13px/19px var(--font-body);
 }
-.signing .noc-mono { color: var(--fg-tertiary); font-size: 11px; word-break: break-all; }
+.signing > li { padding: var(--space-3); }
+.signing > li + li { border-top: 1px solid var(--border-subtle); }
+.signing b { color: var(--fg-primary); font-weight: 600; }
+.sign-addr { display: flex; flex-direction: column; gap: 6px; }
+.sign-label {
+  color: var(--fg-tertiary);
+  font: 600 11px/14px var(--font-body);
+  letter-spacing: .08em; text-transform: uppercase;
+}
+
+/* Messages about the purchase: a note under the field, and the outcome under the button. */
+.field-msg { display: flex; align-items: flex-start; gap: var(--space-2); font: 500 13px/18px var(--font-body); }
+.field-msg svg { margin-top: 2px; flex: 0 0 auto; }
+.field-warn { color: var(--warning); }
+.tx-msg {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  font: 500 13px/19px var(--font-body);
+}
+.tx-msg svg { margin-top: 3px; flex: 0 0 auto; }
+.tx-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--danger) 30%, transparent);
+}
+.tx-success {
+  background: color-mix(in oklab, var(--success) 10%, transparent);
+  color: var(--fg-primary);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--success) 28%, transparent);
+}
+.tx-success svg { color: var(--success); }
+.tx-sig { display: block; font-size: 12px; line-height: 18px; color: var(--fg-secondary); overflow-wrap: anywhere; }
+
+.noc-accent { color: var(--accent); }
+
+/* No wallet yet: the buy panel's unavailable state, dashed so it reads as a slot waiting
+   to be filled rather than as a card with content. */
+.connect-to-buy {
+  flex-direction: row; align-items: center; gap: var(--space-3);
+  color: var(--fg-secondary);
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--border-strong);
+  box-shadow: none;
+}
 
 /* ── Addresses and copy (desktop redesign) ────────────────────────────────────
    Equal weight across the whole address, in groups of four. The gap is a column-gap,
@@ -531,6 +584,11 @@ a { color: var(--accent); }
    clipped from a linear gradient that runs white → lilac → shielded teal, which is how
    the mark carries the dual-mode identity rather than stating it in a caption. */
 .brand-mark {
+  /* Sized here rather than by a prop: it was an inline style, which the CSP should not
+     have to allow, for a mark that is only ever drawn at one size. 13 px is the
+     original's 0.29 radius ratio at 44 px. */
+  width: 44px; height: 44px;
+  border-radius: 13px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -542,6 +600,7 @@ a { color: var(--accent); }
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .04);
 }
 .brand-mark-n {
+  font-size: 22px;
   font-family: var(--font-display);
   font-weight: 700;
   line-height: 1;
@@ -620,16 +679,24 @@ a { color: var(--accent); }
    The card supplies the padding and the ring; the pieces inside get the tighter rhythm
    of things that belong together. */
 .buy { gap: var(--space-4); }
+/* The field and the segmented control sink into a well below the card: three layers —
+   page, card, well — so a control reads as a control rather than another surface. */
 .buy-amount {
   display: flex; flex-direction: column; gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  background: var(--bg-base);
+  padding: var(--space-4);
+  background: var(--well);
   border-radius: var(--radius-lg);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  transition: box-shadow var(--dur-fast) linear;
 }
-/* The segmented control sits on the page ground inside the card, so it reads as a
-   control rather than as another surface stacked on the same colour. */
-.buy .seg-row { background: var(--bg-base); }
-.buy .seg-row label.seg-on { background: var(--bg-surface-3); }
+.buy-amount:focus-within { box-shadow: inset 0 0 0 1px var(--accent-border), 0 0 0 3px var(--accent-soft); }
+.buy .seg-row { background: var(--well); box-shadow: inset 0 0 0 1px var(--border-subtle); }
+.buy .noc-amount { font-size: 32px; line-height: 38px; }
+.buy .noc-amount::placeholder { color: var(--fg-tertiary); }
+
+@media (prefers-reduced-motion: reduce) {
+  .buy-amount { transition: none; }
+}
 
 .stat-group { display: flex; flex-direction: column; gap: var(--space-2); }
 

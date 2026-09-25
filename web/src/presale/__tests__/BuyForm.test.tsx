@@ -1,5 +1,6 @@
 import {render, screen, fireEvent} from '@testing-library/react';
-import {BuyForm, solToLamports, parseAmount} from '../BuyForm';
+import {BuyForm, solToLamports, parseAmount, busyLabel} from '../BuyForm';
+import {MAINNET_PROGRAM_ID, MAINNET_SOL_TREASURY} from '../../../../core/presale/addresses';
 
 const h = vi.hoisted(() => ({buy: vi.fn(), balances: vi.fn(), wallet: vi.fn()}));
 vi.mock('../useBuy', () => ({useBuy: h.buy}));
@@ -196,5 +197,62 @@ describe('paying with a stablecoin', () => {
     pick('USDC');
     fireEvent.change(screen.getByLabelText(/amount in usdc/i), {target: {value: '20'}});
     expect(screen.queryByRole('status')).toBeNull();
+  });
+});
+
+describe('the redesigned buy form', () => {
+  it.each([
+    ['checking', 'Checking…'],
+    ['simulating', 'Checking…'],
+    ['signing', 'Waiting for wallet signature'],
+    ['confirming', 'Confirming on chain…'],
+  ] as const)('names the step: %s', (state, label) => {
+    expect(busyLabel(state)).toBe(label);
+  });
+
+  it('shows the step on the button while it is in flight', () => {
+    h.buy.mockReturnValue({submit: vi.fn(), state: 'signing', error: null, canBuy: true, blockedReason: null});
+    renderWithAmount('0.2');
+    const button = screen.getByRole('button');
+    expect(button.textContent).toBe('Waiting for wallet signature');
+    expect(button.getAttribute('aria-busy')).toBe('true');
+  });
+
+  it('shows both addresses in full, grouped, from the constants — and emphasises neither', () => {
+    renderWithAmount('0.2');
+    const summary = screen.getByRole('list', {name: /what you are signing/i});
+    const groups = Array.from(summary.querySelectorAll('.addr-groups'));
+    expect(groups.map(g => g.textContent)).toEqual([MAINNET_PROGRAM_ID, MAINNET_SOL_TREASURY]);
+    expect(summary.querySelectorAll('.addr-groups b, .addr-groups strong').length).toBe(0);
+    // The amounts are bold; that is where emphasis belongs.
+    expect(summary.querySelector('b')?.textContent).toBe('0.2 SOL');
+  });
+
+  it('puts no inline style anywhere in the form', () => {
+    const {container} = renderWithAmount('0.2');
+    expect(container.querySelector('[style]')).toBeNull();
+  });
+
+  it('shows an error after signing as an alert with its icon', () => {
+    h.buy.mockReturnValue({
+      submit: vi.fn(),
+      state: 'error',
+      error: 'The transaction expired before it confirmed.',
+      canBuy: true,
+      blockedReason: null,
+    });
+    renderWithAmount('0.2');
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toBe('The transaction expired before it confirmed.');
+    expect(alert.classList.contains('tx-error')).toBe(true);
+    expect(alert.querySelector('svg')).not.toBeNull();
+  });
+
+  it('asks for a wallet in its own card, with the lock', () => {
+    h.buy.mockReturnValue({submit: vi.fn(), state: 'idle', error: null, canBuy: false, blockedReason: null});
+    const {container} = render(<BuyForm stage={STAGE} solUsd={SOL_USD} />);
+    const card = container.querySelector('.connect-to-buy');
+    expect(card?.textContent).toBe('Connect a wallet to buy.');
+    expect(card?.querySelector('svg')).not.toBeNull();
   });
 });
