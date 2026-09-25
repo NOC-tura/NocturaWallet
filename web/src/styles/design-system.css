@@ -225,17 +225,80 @@ body {
 .noc-meta    { display: flex; justify-content: space-between; align-items: baseline; color: var(--fg-tertiary); }
 .noc-meta b  { color: var(--fg-secondary); font-weight: 500; }
 
-/* ── Progress, from #23 ─────────────────────────────────────────────────────── */
+/* ── Progress, a native <progress> sunk into a well ─────────────────────────────
+   It was a div with an inline width, which is the one kind of style the CSP should not
+   have to allow. The element carries its value as an attribute; the fill is styled per
+   engine because there is no standard pseudo-element for it. */
 .noc-progress {
-  width: 100%; height: 6px;
-  background: var(--bg-surface-3);
+  appearance: none; -webkit-appearance: none;
+  display: block; width: 100%; height: 8px;
+  border: 0;
   border-radius: var(--radius-pill);
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
   overflow: hidden;
+  color: var(--accent);
 }
-.noc-progress > i {
-  display: block; height: 100%;
-  background: var(--accent);
+.noc-progress::-webkit-progress-bar { background: transparent; }
+.noc-progress::-webkit-progress-value {
+  background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 70%, #6f4fd8), var(--accent));
   border-radius: var(--radius-pill);
+  box-shadow: 0 0 12px color-mix(in oklab, var(--accent) 60%, transparent);
+}
+.noc-progress::-moz-progress-bar { background: var(--accent); border-radius: var(--radius-pill); }
+
+/* ── The stage card and the allocation ──────────────────────────────────────── */
+.stage-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.price { font: 600 32px/38px var(--font-display); letter-spacing: -0.02em; }
+.per   { color: var(--fg-secondary); font: 500 17px/22px var(--font-body); }
+.noc-meta .pct { color: var(--fg-primary); font-weight: 500; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 24px; padding: 0 10px;
+  border-radius: var(--radius-pill);
+  font: 600 12px/1 var(--font-body);
+}
+.badge svg { width: 12px; height: 12px; }
+.badge-paused {
+  background: var(--warning-soft);
+  color: var(--warning);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--warning) 30%, transparent);
+}
+/* Paused: the accent drains out, so the card stops inviting action. */
+.stage.is-paused { border-color: var(--border-default); }
+.stage.is-paused::before { background: radial-gradient(120% 110% at 0% 0%, rgb(255 255 255 / .04), transparent 58%); }
+.stage.is-paused .noc-eyebrow,
+.stage.is-paused .price { color: var(--fg-secondary); }
+.stage.is-paused .noc-progress::-webkit-progress-value { background: var(--fg-tertiary); box-shadow: none; }
+.stage.is-paused .noc-progress::-moz-progress-bar { background: var(--fg-tertiary); }
+
+.amt-lg { display: inline-flex; align-items: baseline; gap: 6px; }
+.alloc { gap: var(--space-2); }
+.alloc .amt-lg { margin-bottom: var(--space-1); }
+.credits {
+  list-style: none;
+  padding: var(--space-3) 0 0;
+  margin: var(--space-2) 0 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.credits a { color: var(--fg-secondary); text-underline-offset: 3px; }
+.credits a:hover { color: var(--accent); }
+
+/* ── Reading and read errors ──────────────────────────────────────────────────
+   "Reading…" gets a pulsing dot so it reads as work in progress, not as a stuck label.
+   A read error carries its icon, so it is not mistaken for ordinary red copy. */
+.reading { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--fg-secondary); }
+.reading::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  animation: noc-pulse var(--dur-spin) ease-in-out infinite;
+}
+.read-error { display: flex; align-items: flex-start; gap: var(--space-2); color: var(--danger); }
+.read-error svg { margin-top: 2px; flex: 0 0 auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  .reading::before { animation: none; }
 }
 
 /* ── The amount field, from #23's input-card ────────────────────────────────── */
@@ -288,7 +351,7 @@ a { color: var(--accent); }
 
 @media (min-width: 900px) {
   .shell {
-    max-width: 980px;
+    max-width: var(--layout-max);
     padding-inline: var(--space-6);
     padding-block: var(--space-8) var(--space-8);
   }
@@ -296,7 +359,7 @@ a { color: var(--accent); }
     display: grid;
     /* The buy column is wider because the amount field and the signing summary need the
        room; the side rail holds figures and one address, which do not. */
-    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
     gap: var(--space-7) var(--space-6);
     align-items: start;
   }
@@ -304,8 +367,11 @@ a { color: var(--accent); }
      one page rather than two panes that happen to be adjacent. */
   .shell-head {
     padding-bottom: var(--space-5);
-    border-bottom: 1px solid var(--bg-surface-2);
+    border-bottom: 1px solid var(--border-subtle);
   }
+  /* The stage card is the page's headline, so on a laptop it gets the room to be one. */
+  .noc-card-accent.stage { padding: var(--space-6); border-radius: var(--radius-2xl); }
+  .price { font-size: 44px; line-height: 50px; }
 }
 
 .shell-head {
@@ -595,12 +661,6 @@ a { color: var(--accent); }
 .col-side > section:nth-child(3) { animation-delay: 200ms; }
 .col-side > section:nth-child(4) { animation-delay: 240ms; }
 
-/* The rail fills to its figure rather than appearing at it. --dur-slow, because this is
-   the one number on the page whose CHANGE is the information. */
-.noc-progress > i {
-  transition: width var(--dur-slow) cubic-bezier(.2, 0, 0, 1);
-}
-
 /* The accent wash breathes, very slightly, so the stage card is not a flat rectangle on
    a flat page. 12 s is long enough that it is never caught moving — it is noticed only
    as the card not being dead. */
@@ -636,7 +696,6 @@ a { color: var(--accent); }
   .btn .noc-spin {
     animation: none !important;
   }
-  .noc-progress > i,
   .btn,
   .noc-card,
   .noc-card-quiet {

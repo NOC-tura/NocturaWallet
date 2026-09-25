@@ -1,6 +1,25 @@
 import {render, screen} from '@testing-library/react';
 import {App} from '../App';
 
+// A connected referrer, so the referral panel renders and its column can be checked.
+// Nothing else in this file looks at referral, so the mock changes no other claim.
+vi.mock('../referral/useReferral', () => ({
+  useReferral: () => ({
+    address: '2ixJm1hh6Ff8KuUCoaAe1myqKAT2PimVJ3B6ubuYQMr9',
+    data: {
+      totalReferrals: 1,
+      totalBaseBonusNoc: 16.14,
+      totalExtraBonusNoc: 0,
+      totalBonusNoc: 16.14,
+      totalReferredNoc: 436.44,
+      totalReferredUsd: 65.51,
+      tierBonusCount: 0,
+    },
+    isPending: false,
+    isError: false,
+  }),
+}));
+
 // The App mounts real queries, which reach for the dev proxy and print ECONNREFUSED after
 // the run finishes — noise that trains everyone to ignore the tail of the log, which is
 // where a real failure would also appear.
@@ -47,4 +66,13 @@ it('starts reading the presale without waiting for a wallet', () => {
 it('opens with the connect panel in its searching state, never its empty-handed one', () => {
   render(<App />);
   expect(screen.getByRole('heading', {name: /looking for a wallet/i})).toBeTruthy();
+});
+
+it('puts referral in the main column, under the buy form', () => {
+  // The desktop redesign's balance fix: the side column carried wallet, balances, chart,
+  // purchases, TGE AND referral, and ran twice the length of the main one.
+  const {container} = render(<App />);
+  const link = screen.getByTestId('referral-link');
+  expect(link.closest('.col-main')).not.toBeNull();
+  expect(container.querySelector('.col-side [data-testid="referral-link"]')).toBeNull();
 });

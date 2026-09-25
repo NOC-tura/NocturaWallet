@@ -24,6 +24,9 @@ const NOC_DECIMALS = 9;
  */
 const EXPLORER = 'https://explorer.solana.com/tx/';
 
+/** "773.4843 NOC" → "773.4843". The ticker is rendered on its own, a step smaller. */
+const figure = (text: string) => text.replace(/ NOC$/, '');
+
 const day = (t: number | null) =>
   t === null ? '' : new Date(t * 1000).toISOString().slice(0, 10);
 
@@ -48,18 +51,25 @@ export function PresalePanel({
         Presale
       </h2>
 
-      <div className="noc-card noc-card-accent">
-        {stats.isPaused ? (
-          <p className="noc-body-lg noc-warning">Presale is paused</p>
-        ) : (
-          <>
-            <div className="noc-eyebrow noc-overline">Stage {stats.displayStage}</div>
-            <div className="noc-row">
-              <span className="noc-balance-lg noc-numeral">${stats.pricePerNocUsd}</span>
-              <span className="noc-ticker">per NOC</span>
-            </div>
-          </>
-        )}
+      {/*
+        Paused keeps the stage and the price in view, dimmed, with a badge. It used to
+        replace them with one sentence; a paused sale still has a price, and a card that
+        lost its figures read as a page that had failed to load.
+      */}
+      <div className={`noc-card noc-card-accent stage${stats.isPaused ? ' is-paused' : ''}`}>
+        <div className="stage-top">
+          <div className="noc-eyebrow noc-overline">Stage {stats.displayStage}</div>
+          {stats.isPaused ? (
+            <span className="badge badge-paused">
+              <Icon name="pause" />
+              Presale is paused
+            </span>
+          ) : null}
+        </div>
+        <div className="noc-row">
+          <span className="price noc-numeral">${stats.pricePerNocUsd}</span>
+          <span className="per">per NOC</span>
+        </div>
 
         {/*
           Whole NOC for the stage total. Nobody's decision changes at the ninth decimal,
@@ -67,9 +77,14 @@ export function PresalePanel({
           number rather than a progress figure. Full precision stays the default
           everywhere it is YOUR money: a balance and an allocation are shown to the last unit.
         */}
-        <div className="noc-progress" role="img" aria-label={`${pct}% of this stage sold`}>
-          <i style={{width: `${Math.min(100, pct)}%`}} />
-        </div>
+        {/* Native, so the fill is an attribute rather than an inline width the CSP
+            would have to allow. */}
+        <progress
+          className="noc-progress"
+          max={100}
+          value={Math.min(100, pct)}
+          aria-label={`${pct}% of this stage sold`}
+        />
         <div className="noc-meta noc-body-sm noc-numeral">
           <span>
             <b>{formatBaseUnits(sold, NOC_DECIMALS, 'NOC', {maxFractionDigits: 0})}</b> of{' '}
@@ -85,14 +100,22 @@ export function PresalePanel({
         line turns an explanation into nagging, and gives a visitor an empty section to read.
       */}
       {allocation.status === 'disconnected' ? null : (
-        <div className="noc-card-quiet">
+        <div className="noc-card-quiet alloc">
           <span className="noc-overline noc-dim">Your allocation</span>
-          {allocation.status === 'loading' ? <p className="noc-body noc-muted">Reading…</p> : null}
+          {allocation.status === 'loading' ? <p className="reading noc-body">Reading…</p> : null}
           {allocation.status === 'ok' ? (
             /* Four decimals on screen, the exact figure on hover. The chain stores nine;
-               the last of them are worth fractions of a cent and read as a leak. */
-            <p className="noc-balance-md noc-numeral" title={formatAmount(BigInt(allocation.base), NOC_DECIMALS, 'NOC').exact}>
-              {formatAmount(BigInt(allocation.base), NOC_DECIMALS, 'NOC').text}
+               the last of them are worth fractions of a cent and read as a leak. The
+               number leads and the ticker steps down, as everywhere in the redesign. */
+            <p
+              data-testid="allocation"
+              className="amt-lg"
+              title={formatAmount(BigInt(allocation.base), NOC_DECIMALS, 'NOC').exact}
+            >
+              <span className="noc-balance-lg noc-numeral">
+                {figure(formatAmount(BigInt(allocation.base), NOC_DECIMALS, 'NOC').text)}
+              </span>{' '}
+              <span className="noc-ticker">NOC</span>
             </p>
           ) : null}
           {/*
@@ -165,7 +188,8 @@ export function PresalePanel({
             <p className="noc-body noc-muted">No allocation for this wallet</p>
           ) : null}
           {allocation.status === 'error' ? (
-            <p className="noc-body-sm noc-danger">
+            <p className="read-error noc-body-sm">
+              <Icon name="alert" />
               Your allocation could not be read. This is a connection problem, not a zero balance.
             </p>
           ) : null}

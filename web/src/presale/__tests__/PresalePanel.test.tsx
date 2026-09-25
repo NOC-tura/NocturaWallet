@@ -18,7 +18,7 @@ describe('PresalePanel', () => {
 
   it('shows the allocation when the read succeeded and found one', () => {
     render(<PresalePanel stats={stats} allocation={{status: 'ok', base: '1234000000000', referralBonusBase: null}} />);
-    expect(screen.getByText('1,234 NOC')).toBeTruthy();
+    expect(screen.getByTestId('allocation').textContent).toBe('1,234 NOC');
   });
 
   it('says "no allocation" only when the read succeeded and found none', () => {
@@ -77,7 +77,10 @@ describe('PresalePanel', () => {
     // anyone can check. So four on screen, all nine on the element itself, which is where
     // someone who wants to compare against the chain goes.
     render(<PresalePanel stats={stats} allocation={{status: 'ok', base: '773484343768', referralBonusBase: null}} />);
-    const node = screen.getByText('773.4843 NOC');
+    // The figure and its ticker are two elements now (the number leads, the ticker is
+    // smaller), so the claim is checked on what the element reads as, not one text node.
+    const node = screen.getByTestId('allocation');
+    expect(node.textContent).toBe('773.4843 NOC');
     expect(node.getAttribute('title')).toBe('773.484343768 NOC');
   });
 
@@ -85,14 +88,14 @@ describe('PresalePanel', () => {
     // 0.99999 rounded to four places is 1.0 — a page claiming a whole NOC the buyer does
     // not have. Truncation can only ever understate, which is the safe direction.
     render(<PresalePanel stats={stats} allocation={{status: 'ok', base: '999990000', referralBonusBase: null}} />);
-    expect(screen.getByText('0.9999 NOC')).toBeTruthy();
+    expect(screen.getByTestId('allocation').textContent).toBe('0.9999 NOC');
   });
 
   it('shows a dust allocation in full rather than printing a flat zero', () => {
     // Truncating 4 base units to four decimals gives "0 NOC", which says the buyer holds
     // nothing. That is a different claim, not a shorter one.
     render(<PresalePanel stats={stats} allocation={{status: 'ok', base: '4', referralBonusBase: null}} />);
-    expect(screen.getByText('0.000000004 NOC')).toBeTruthy();
+    expect(screen.getByTestId('allocation').textContent).toBe('0.000000004 NOC');
   });
 
   it('says nothing about an allocation while the read is still running', () => {
@@ -104,6 +107,32 @@ describe('PresalePanel', () => {
   it('marks the presale paused when the backend says so', () => {
     render(<PresalePanel stats={{...stats, isPaused: true}} allocation={{status: 'absent'}} />);
     expect(screen.getByText(/paused/i)).toBeTruthy();
+  });
+
+  it('keeps the price in view when paused, and says so in its own words', () => {
+    // The redesign keeps the stage visible and dims it, rather than replacing the price
+    // with a sentence: a paused sale still has a price, and hiding it reads as broken.
+    const {container} = render(
+      <PresalePanel stats={{...stats, isPaused: true}} allocation={{status: 'absent'}} />,
+    );
+    expect(container.textContent).toContain('Presale is paused');
+    expect(container.textContent).toContain('$0.1723');
+    expect(container.querySelector('.stage.is-paused')).not.toBeNull();
+  });
+
+  it('draws progress with a native <progress>, never an inline width', () => {
+    // An inline style is exactly what the CSP is there to refuse; the native element
+    // carries its value as an attribute instead.
+    const {container} = render(
+      <PresalePanel
+        stats={{...stats, soldInStageBase: '5120000000000000'}}
+        allocation={{status: 'disconnected'}}
+      />,
+    );
+    const bar = container.querySelector('progress');
+    expect(bar?.getAttribute('max')).toBe('100');
+    expect(bar?.getAttribute('value')).toBe('50');
+    expect(container.querySelector('[style]')).toBeNull();
   });
 
   it('shows progress through the current stage', () => {
@@ -128,7 +157,7 @@ describe('PresalePanel referral bonus', () => {
     const {container} = render(
       <PresalePanel stats={stats} allocation={ok('549853431042', '16142571618')} />,
     );
-    expect(screen.getByText('549.8534 NOC')).toBeTruthy();
+    expect(screen.getByTestId('allocation').textContent).toBe('549.8534 NOC');
     expect(container.textContent).toMatch(
       /includes 16\.1425 NOC that did not come from your own purchases/,
     );

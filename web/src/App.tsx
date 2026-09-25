@@ -88,10 +88,14 @@ export function App() {
           Phone-first, but not phone-only. Keeping the mockup's 440 px column at every
           width made a laptop look like it was displaying a screenshot of a phone: one
           narrow strip with a field of black on either side. The panels are independent
-          cards, so above 900 px they take two tracks — the presale and the buy form on
-          the left, where the work happens, and the wallet, countdown and referral on the
-          right, where the facts about you sit. Below that it collapses back to the single
-          column the design actually draws.
+          cards, so above 900 px they take two tracks — the presale, the buy form and
+          referral on the left, where the work happens, and the wallet, balances,
+          purchases and countdown on the right, where the facts about you sit. Referral
+          moved left in the desktop redesign (2026-09-25): on the right it made that
+          column twice the length of the other. Below 900 px it collapses back to the
+          single column the design draws, in this same DOM order — the redesign's visual
+          reordering on phone was not taken, because focus order would then differ from
+          what the reader sees.
         */}
         <main className="shell">
           <header className="shell-head">
@@ -109,12 +113,12 @@ export function App() {
           <div className="cols">
             <div className="col col-main">
               <Presale />
+              <Referral />
             </div>
             <div className="col col-side">
               <ConnectPanel />
               <Portfolio />
               <Tge />
-              <Referral />
             </div>
           </div>
         </main>
