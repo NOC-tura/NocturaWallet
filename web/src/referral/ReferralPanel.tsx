@@ -1,6 +1,7 @@
 import type {ReferralStats} from '../../../core/referral';
 import {buildReferralLink} from '../../../core/referral';
 import {Icon} from '../ui/Icon';
+import {CopyButton} from '../ui/CopyButton';
 
 /** Two decimals for a glanceable figure; the chain's full precision belongs to an
  *  allocation, not to a summary card. Kept tolerant of a non-numeric string rather than
@@ -13,24 +14,34 @@ function formatNoc(value: string | number): string {
 }
 
 export function ReferralPanel({address, stats}: {address: string; stats: ReferralStats}) {
+  const link = buildReferralLink(address);
+  // Everything before the address. Derived from the link rather than restated, so the
+  // two runs below can never disagree with what buildReferralLink produces.
+  const base = link.slice(0, link.length - address.length);
   return (
     <section>
       <h2>
         <Icon name="users" />
         Referral
       </h2>
-      <div className="noc-card-quiet">
-        <span className="noc-overline noc-dim">Your link</span>
-        {/* The link is the thing to copy, so it breaks rather than truncating: a shortened
-            invite link is one a reader cannot check and cannot retype. */}
-        <p data-testid="referral-link" className="noc-body-sm noc-mono link-break">
-          {buildReferralLink(address)}
+      <div className="noc-card">
+        <div className="ref-head">
+          <span className="noc-overline noc-dim">Your link</span>
+          <CopyButton value={link} label="Copy link" />
+        </div>
+        {/* Never truncated: a shortened invite link is one a reader cannot check and
+            cannot retype. Two no-wrap runs, so the only place a line can break is between
+            the base and the address — never inside the address, which is what the live
+            page did. */}
+        <p data-testid="referral-link" className="link-field noc-mono">
+          <span className="link-base">{base}</span>
+          <span className="link-ref">{address}</span>
         </p>
       </div>
 
       <div className="stat-group">
         <div className="stat-row">
-          <div className="noc-card-quiet">
+          <div className="noc-card stat">
             <span className="noc-overline noc-dim">Referred</span>
             {/* The overline already says "Referred"; repeating the word beside the figure
                 made the card read twice and wrap to two lines in a 1fr track. */}
@@ -38,7 +49,7 @@ export function ReferralPanel({address, stats}: {address: string; stats: Referra
               {stats.totalReferrals}
             </p>
           </div>
-          <div className="noc-card-quiet">
+          <div className="noc-card stat">
             <span className="noc-overline noc-dim">Bonus</span>
             {/* Two decimals here, not the chain's nine: this is a figure to glance at, and
                 "40.247084996 NOC bonus" wrapped across two lines inside a small card. The

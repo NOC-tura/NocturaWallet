@@ -373,6 +373,8 @@ a { color: var(--accent); }
   .noc-card-accent.stage { padding: var(--space-6); border-radius: var(--radius-2xl); }
   .price { font-size: 44px; line-height: 50px; }
   .buy { padding: var(--space-6); border-radius: var(--radius-2xl); }
+  /* On a laptop the date sits at the countdown's baseline, to the right. */
+  .tge { flex-direction: row; align-items: flex-end; justify-content: space-between; }
 }
 
 .shell-head {
@@ -543,9 +545,30 @@ a { color: var(--accent); }
 }
 
 /* ── Referral ───────────────────────────────────────────────────────────────── */
-.stat-row { display: flex; gap: var(--space-3); }
-.stat-row > * { flex: 1; min-width: 0; }
-.link-break { word-break: break-all; color: var(--fg-secondary); }
+.stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.stat-row > * { min-width: 0; }
+.stat { gap: var(--space-2); padding: var(--space-4) var(--space-5); }
+
+.ref-head { display: flex; align-items: center; justify-content: space-between; margin: -6px -6px 0 0; }
+/* The link in a well, select-all, as two no-wrap runs: base and address. A line can then
+   break only between them, never inside the address. The address run scrolls sideways
+   rather than overflowing if a column is ever narrower than one address. */
+.link-field {
+  display: flex; flex-wrap: wrap;
+  margin: 0;
+  font-size: 12px; line-height: 20px;
+  padding: var(--space-3);
+  background: var(--well);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  user-select: all;
+}
+.link-base { white-space: nowrap; color: var(--fg-tertiary); }
+.link-ref  { white-space: nowrap; color: var(--fg-primary); max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+
+/* ── Token generation event ── */
+.tge { gap: var(--space-2); }
+.tge-main { display: flex; flex-direction: column; gap: var(--space-2); }
 
 /* ── Connect ────────────────────────────────────────────────────────────────────
    The wallet-adapter ships its own purple button and its own font stack. Rather than

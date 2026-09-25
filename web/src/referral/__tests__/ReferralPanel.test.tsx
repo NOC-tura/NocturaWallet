@@ -1,5 +1,6 @@
 import {render, screen} from '@testing-library/react';
 import {ReferralPanel} from '../ReferralPanel';
+import {buildReferralLink} from '../../../../core/referral';
 
 const ADDR = 'Da83cAfGUrsm896FUghCkNKutgFc96WNGWN73bZxe31B';
 const STATS = {
@@ -31,5 +32,19 @@ describe('ReferralPanel', () => {
     render(<ReferralPanel address={ADDR} stats={{...STATS, totalReferrals: 0, totalBonusNoc: 0}} />);
     expect(screen.getByTestId('referral-count').textContent).toContain('0');
     expect(screen.getByTestId('referral-bonus').textContent).toContain('0');
+  });
+
+  it('splits base and address so a line can only break between them', () => {
+    // The live page broke the link mid-address ("…CoaAe / 1myqKAT…"): a link nobody can
+    // retype or check by eye. Two no-wrap runs leave one legal break point.
+    const {container} = render(<ReferralPanel address={ADDR} stats={STATS} />);
+    expect(container.querySelector('.link-base')?.textContent).toBe('https://noc-tura.io?ref=');
+    expect(container.querySelector('.link-ref')?.textContent).toBe(ADDR);
+    expect(screen.getByTestId('referral-link').textContent).toBe(buildReferralLink(ADDR));
+  });
+
+  it('offers the whole link to copy', () => {
+    render(<ReferralPanel address={ADDR} stats={STATS} />);
+    expect(screen.getByRole('button', {name: 'Copy link'})).toBeTruthy();
   });
 });

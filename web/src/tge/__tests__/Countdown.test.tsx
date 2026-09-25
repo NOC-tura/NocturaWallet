@@ -32,4 +32,22 @@ describe('Countdown', () => {
     render(<Countdown tgeUnix={1_893_456_000} />);
     expect(screen.getByText(/2030-01-01/)).toBeTruthy();
   });
+
+  it('keeps every state inside the TGE card, under its label', () => {
+    // "The TGE date is not set yet." used to render as a bare line with no card and no
+    // heading — a sentence floating on the page with nothing saying what it was about.
+    for (const tge of [null, 1]) {
+      const {container, unmount} = render(<Countdown tgeUnix={tge} />);
+      const card = container.querySelector('.noc-card.tge');
+      expect(card?.textContent).toMatch(/Token generation event/i);
+      unmount();
+    }
+  });
+
+  it('still shows the date once TGE has passed', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2030-01-02T00:00:00Z'));
+    render(<Countdown tgeUnix={1_893_456_000} />);
+    expect(screen.getByText(/2030-01-01/)).toBeTruthy();
+  });
 });
