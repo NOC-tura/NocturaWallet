@@ -9,7 +9,7 @@ let points: number[] | null = null;
 
 vi.mock('@solana/wallet-adapter-react', () => ({useWallet: () => ({publicKey: USER})}));
 vi.mock('../useBalances', () => ({
-  useBalances: () => ({sol: 0n, noc: 0n, usdc: 0n, usdt: 0n, isError: false, isLoading: false}),
+  useBalances: () => ({sol: 0n, noc: 2_000_000_000n, usdc: 0n, usdt: 0n, isError: false, isLoading: false}),
 }));
 vi.mock('../usePrices', () => ({
   usePrices: () => ({prices: {solana: 112.99}, isError: false, isLoading: false}),
@@ -45,5 +45,25 @@ describe('PortfolioPanel SOL row', () => {
     points = [100, 112.99];
     render(<PortfolioPanel stagePriceUsd={0.1501} />);
     expect(screen.getByText('+12.99%')).toBeTruthy();
+  });
+});
+
+describe('PortfolioPanel balances', () => {
+  it('leads with the holdings; market value is the footer row of the card', () => {
+    // "Market value $0.00" was the largest figure on the panel for a presale buyer whose
+    // holding is NOC, which has no market yet. The holdings are the subject.
+    points = null;
+    const {container} = render(<PortfolioPanel stagePriceUsd={0.1501} />);
+    const list = container.querySelector('ul.holdings');
+    expect(list?.querySelectorAll('li.holding').length).toBeGreaterThan(0);
+    const card = list?.closest('.noc-card');
+    expect(card?.lastElementChild?.classList.contains('holding-total')).toBe(true);
+    expect(card?.lastElementChild?.textContent).toMatch(/^Market value\$/);
+  });
+
+  it('still says what the NOC figure is valued at', () => {
+    points = null;
+    const {container} = render(<PortfolioPanel stagePriceUsd={0.1501} />);
+    expect(container.textContent).toMatch(/\$0\.30 at stage price/);
   });
 });

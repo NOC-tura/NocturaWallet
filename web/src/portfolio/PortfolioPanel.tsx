@@ -29,53 +29,72 @@ export function PortfolioPanel({stagePriceUsd}: {stagePriceUsd: number}) {
         Balances
       </h2>
 
-      <div className="noc-card-quiet">
-        {isLoading ? <p className="noc-body noc-muted">Reading…</p> : null}
+      {/*
+        Holdings lead; market value is the card's footer. It used to be the largest figure
+        on the panel, and for a presale buyer — whose holding is NOC, which has no market
+        before TGE — it was usually "$0.00" in 28 px over the numbers that mattered.
+      */}
+      <div className="noc-card holdings-card">
+        {isLoading ? <p className="reading noc-body">Reading…</p> : null}
         {isError ? (
-          <p className="noc-body-sm noc-danger">
+          <p className="read-error noc-body-sm">
+            <Icon name="alert" />
             Balances could not be read. This is a connection problem, not a zero balance.
           </p>
         ) : null}
 
+        {valued.length > 0 ? (
+          <ul className="holdings">
+            {valued.map(v => {
+              const f = formatAmount(v.base, v.decimals, v.symbol);
+              return (
+                <li className="holding" key={v.symbol}>
+                  <span className="amt-md" title={f.exact}>
+                    <span className="noc-balance-md noc-numeral">
+                      {f.text.slice(0, -(v.symbol.length + 1))}
+                    </span>{' '}
+                    <span className="noc-ticker">{v.symbol}</span>
+                  </span>
+                  {v.usd === null ? (
+                    <span className="noc-caption noc-dim">{priceError ? 'price unavailable' : '—'}</span>
+                  ) : (
+                    <span className="holding-val noc-body-sm noc-numeral">
+                      {usd(v.usd)}
+                      {/* Said, not implied. There is no market for NOC before TGE, so this
+                          is the presale price and not something anyone has paid on an
+                          exchange. */}
+                      {v.basis === 'stage' ? <span className="basis"> at stage price</span> : null}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+
         {/*
-          MARKET value only, and the NOC row carries its own basis below. Folding NOC in
-          would make one bold figure that is part market price and part a price the project
-          set for itself, with nothing in the number saying which part is which.
+          MARKET value only, and the NOC row carries its own basis above. Folding NOC in
+          would make one figure that is part market price and part a price the project set
+          for itself, with nothing in the number saying which part is which.
         */}
         {total !== null ? (
           <div className="holding-total">
             <span className="noc-overline noc-dim">Market value</span>
-            <p className="noc-balance-lg noc-numeral">{usd(total)}</p>
+            <span className="mv noc-numeral">{usd(total)}</span>
           </div>
         ) : null}
-
-        {valued.map(v => (
-          <div className="holding" key={v.symbol}>
-            <span className="noc-body noc-numeral" title={formatAmount(v.base, v.decimals, v.symbol).exact}>
-              {formatAmount(v.base, v.decimals, v.symbol).text}
-            </span>
-            {v.usd === null ? (
-              <span className="noc-caption noc-dim">{priceError ? 'price unavailable' : '—'}</span>
-            ) : (
-              <span className="noc-caption noc-dim noc-numeral">
-                {usd(v.usd)}
-                {/* Said, not implied. There is no market for NOC before TGE, so this is the
-                    presale price and not something anyone has paid on an exchange. */}
-                {v.basis === 'stage' ? <span className="basis"> at stage price</span> : null}
-              </span>
-            )}
-          </div>
-        ))}
       </div>
 
       {/* The row appears only when there are real points to draw. A failed read leaves it
           out rather than showing an empty frame that implies a flat price. */}
       {chart.points ? (
-        <div className="noc-card-quiet spark-row">
+        <div className="noc-card spark-card">
           <div className="spark-copy">
             <span className="noc-overline noc-dim">SOL · 7 days</span>
-            <p className="noc-body-lg noc-numeral">
-              {prices.solana !== undefined ? usd(prices.solana) : '—'}
+            <p className="spark-price">
+              <span className="noc-balance-md noc-numeral">
+                {prices.solana !== undefined ? usd(prices.solana) : '—'}
+              </span>
               {change !== null ? (
                 <span className={change >= 0 ? 'chg noc-success' : 'chg noc-danger'}>
                   {change >= 0 ? '+' : ''}
@@ -84,7 +103,7 @@ export function PortfolioPanel({stagePriceUsd}: {stagePriceUsd: number}) {
               ) : null}
             </p>
           </div>
-          <Sparkline points={chart.points} label="SOL price over the last 7 days" />
+          <Sparkline points={chart.points} width={160} height={44} label="SOL price over the last 7 days" />
         </div>
       ) : null}
     </section>

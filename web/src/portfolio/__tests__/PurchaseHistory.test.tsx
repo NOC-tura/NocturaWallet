@@ -310,6 +310,37 @@ describe('PurchaseHistory', () => {
     expect(container.textContent).toContain(NOT_ON_CHAIN_REASON);
   });
 
+  it('renders the purchases as one list card, not a card per row', () => {
+    // The redesign's density fix: five cards stacked took twice the height of one list.
+    const {container} = render(<PurchaseHistory />);
+    expect(container.querySelectorAll('ol.buys.noc-card').length).toBe(1);
+    expect(container.querySelectorAll('li.buy-row.noc-card-quiet').length).toBe(0);
+  });
+
+  it('marks a row by what the chain said: missing is unconfirmed, failed is failed', () => {
+    verdicts = {[REAL]: 'failed', [PHANTOM]: 'missing'};
+    const {container} = render(<PurchaseHistory />);
+    const row = (sig: string) =>
+      container.querySelector(`[data-testid="amount-${sig}"]`)?.closest('.buy-row');
+    expect(row(PHANTOM)?.classList.contains('is-unconfirmed')).toBe(true);
+    expect(row(REAL)?.classList.contains('is-failed')).toBe(true);
+    expect(row(REAL)?.classList.contains('is-unconfirmed')).toBe(false);
+  });
+
+  it('marks nothing on a row the chain confirmed, or could not be asked about', () => {
+    verdicts = {[REAL]: 'confirmed', [PHANTOM]: 'unknown'};
+    const {container} = render(<PurchaseHistory />);
+    expect(container.querySelector('.buy-row.is-unconfirmed, .buy-row.is-failed')).toBeNull();
+  });
+
+  it('says there are no purchases in a card with its icon', () => {
+    purchases = [];
+    const {container} = render(<PurchaseHistory />);
+    const empty = container.querySelector('.empty');
+    expect(empty?.textContent).toBe('No purchases recorded for this wallet yet.');
+    expect(empty?.querySelector('svg')).not.toBeNull();
+  });
+
   it('prints money with both decimal places', () => {
     const {container} = render(<PurchaseHistory />);
     expect(container.textContent).toMatch(/\$10\.50/);

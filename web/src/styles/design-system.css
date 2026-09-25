@@ -892,22 +892,39 @@ body {
 }
 
 /* ── Portfolio ──────────────────────────────────────────────────────────────────
-   A holding is an amount and what it is worth, on one line, with the figure leading and
-   the valuation trailing in tertiary — the valuation is context, not the subject. */
-.holding-total { display: flex; flex-direction: column; gap: 2px; padding-bottom: var(--space-2); }
+   Holdings lead, each an amount and what it is worth on one line; the market value is
+   the card's footer. The valuation is context, not the subject. */
+.holdings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .holding {
   display: flex; align-items: baseline; justify-content: space-between;
   gap: var(--space-3); min-width: 0;
+  padding: var(--space-2) 0;
 }
+.holding + .holding { border-top: 1px solid var(--border-subtle); padding-top: var(--space-3); }
 .holding > span:first-child { min-width: 0; overflow-wrap: anywhere; }
-/* The basis is a qualifier on the number, so it is smaller and quieter than the number —
-   but it is never omitted, because "at stage price" is what makes the figure honest. */
-.basis { color: var(--fg-disabled); }
+.amt-md { display: inline-flex; align-items: baseline; gap: 6px; }
+.holding-val { color: var(--fg-secondary); }
+/* The basis is a qualifier on the number, so it is quieter than the number — but never
+   omitted, because "at stage price" is what makes the figure honest. */
+.basis { color: var(--fg-tertiary); }
+.holding-total {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3);
+  margin: var(--space-1) calc(var(--space-5) * -1) calc(var(--space-5) * -1);
+  padding: var(--space-3) var(--space-5);
+  background: rgb(255 255 255 / .018);
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+}
+.mv { color: var(--fg-secondary); font-weight: 500; }
 
-.spark-row { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--space-4); }
-.spark-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.spark { flex: 0 0 auto; display: block; overflow: visible; }
-.chg { font-size: 12px; font-weight: 600; margin-left: var(--space-2); }
+.spark-card {
+  flex-direction: row; align-items: center; justify-content: space-between;
+  gap: var(--space-4); padding-block: var(--space-4);
+}
+.spark-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.spark-price { display: flex; align-items: baseline; gap: var(--space-2); }
+.spark { flex: 0 0 auto; display: block; overflow: visible; max-width: 45%; height: auto; }
+.chg { font: 600 13px/1 var(--font-body); }
 
 :root {
   --spark-up-fill:   color-mix(in oklab, var(--success) 12%, transparent);
@@ -915,26 +932,54 @@ body {
 }
 
 /* ── Purchase history ───────────────────────────────────────────────────────────
-   A list, numbered in the markup and unnumbered on screen: the order is the information,
-   the ordinal is not. */
-.buys { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
-.buy-row { gap: var(--space-2); }
+   One list card with divided rows. Numbered in the markup and unnumbered on screen: the
+   order is the information, the ordinal is not. */
+.buys { list-style: none; margin: 0; padding: 0; gap: 0; overflow: hidden; }
+.buy-row {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: var(--space-4) var(--space-5);
+  transition: background var(--dur-fast) linear;
+}
+.buy-row + .buy-row { border-top: 1px solid var(--border-subtle); }
+.buy-row:hover { background: rgb(255 255 255 / .02); }
+.buy-row-main, .buy-row-sub {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--space-3); min-width: 0;
+}
+.buy-row-sub { flex-wrap: wrap; row-gap: 2px; color: var(--fg-secondary); }
+.buy-amt b { font: 600 17px/22px var(--font-display); letter-spacing: -0.01em; color: var(--fg-primary); }
+.buy-tk { font: 500 13px/18px var(--font-body); color: var(--fg-tertiary); }
+.buy-date { font-size: 12px; color: var(--fg-tertiary); }
 /* The signature breaks rather than truncating with an ellipsis the reader cannot expand:
    it is already shortened in the middle, and the full value is in the title attribute. */
-.sig { color: var(--fg-tertiary); text-decoration: none; overflow-wrap: anywhere; }
-.sig:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
-
-/* Itemised non-purchase credits under the allocation. */
-.credits {
-  list-style: none;
-  margin: var(--space-2) 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+.sig {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--fg-tertiary);
+  text-decoration: none; overflow-wrap: anywhere;
 }
-.credits a {
-  color: var(--text-dim);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+.sig svg { width: 12px; height: 12px; opacity: .8; flex: 0 0 auto; }
+.sig:hover { color: var(--accent); }
+/* A row the chain says moved nothing: struck (the <s> in the markup) and drained. */
+.buy-row.is-unconfirmed .buy-amt b,
+.buy-row.is-failed .buy-amt b { color: var(--fg-tertiary); }
+.buy-row.is-unconfirmed .buy-row-sub > span,
+.buy-row.is-failed .buy-row-sub > span { color: var(--fg-tertiary); }
+.buy-note {
+  display: flex; gap: var(--space-2); align-items: flex-start;
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--warning-soft);
+  color: var(--fg-primary);
+}
+.buy-note svg { color: var(--warning); margin-top: 1px; flex: 0 0 auto; }
+/* Failed reached the chain; it did not simply go missing. Red, with an ×. */
+.buy-row.is-failed .buy-note { background: var(--danger-soft); }
+.buy-row.is-failed .buy-note svg { color: var(--danger); }
+
+.empty { flex-direction: row; align-items: center; gap: var(--space-3); color: var(--fg-secondary); }
+.empty svg { color: var(--fg-tertiary); flex: 0 0 auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  .buy-row { transition: none; }
 }

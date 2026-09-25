@@ -98,20 +98,24 @@ export function PurchaseHistory() {
         The hook keeps them apart and so does this.
       */}
       {isError ? (
-        <p className="noc-card-quiet noc-body-sm noc-danger">
+        <p className="noc-card read-error noc-body-sm">
+          <Icon name="alert" />
           Your purchase history could not be read. This is a connection problem — it does not
           mean a purchase is missing. Anything that landed on chain is on chain regardless.
         </p>
       ) : null}
 
       {purchases !== null && purchases.length === 0 ? (
-        <p className="noc-card-quiet noc-body-sm noc-muted">
+        <p className="noc-card empty noc-body-sm">
+          <Icon name="history" />
           No purchases recorded for this wallet yet.
         </p>
       ) : null}
 
       {purchases !== null && purchases.length > 0 ? (
-        <ol className="buys">
+        /* One list card with divided rows, not a card per purchase: five stacked cards
+           took twice the height and read as five separate things. */
+        <ol className="buys noc-card">
           {purchases.map(p => {
             /*
               Struck when the chain itself says the transaction moved nothing. The headline
@@ -120,23 +124,26 @@ export function PurchaseHistory() {
               otherwise. Only the chain's answer strikes it: `unknown` is our failure to
               ask, and the coordinator's word is rendered, never acted on.
             */
-            const moved = !chainSpoke(verdictFor(verdicts, p));
+            const verdict = verdictFor(verdicts, p);
+            const moved = !chainSpoke(verdict);
             const amount = (
               <span data-testid={`amount-${p.signature}`}>
-                {num(p.nocAmount)} <span className="noc-ticker">NOC</span>
+                <b className="noc-numeral">{num(p.nocAmount)}</b> <span className="buy-tk">NOC</span>
               </span>
             );
+            // The row's class says which answer the chain gave, so the two read differently:
+            // `missing` never reached the chain, `failed` reached it and moved nothing.
+            const mark =
+              verdict === 'failed' ? ' is-failed' : verdict === 'missing' ? ' is-unconfirmed' : '';
             return (
-            <li key={p.signature} className="noc-card-quiet buy-row">
-              <div className="noc-meta">
-                <span className={moved ? 'noc-body noc-numeral' : 'noc-body noc-numeral noc-dim'}>
-                  {moved ? amount : <s>{amount}</s>}
-                </span>
-                <span className="noc-caption noc-dim noc-numeral">{day(p.createdAt)}</span>
+            <li key={p.signature} className={`buy-row${mark}`}>
+              <div className="buy-row-main">
+                <span className="buy-amt">{moved ? amount : <s>{amount}</s>}</span>
+                <span className="buy-date noc-mono">{day(p.createdAt)}</span>
               </div>
 
-              <div className="noc-meta noc-caption">
-                <span className="noc-dim noc-numeral">
+              <div className="buy-row-sub noc-body-sm">
+                <span className="noc-numeral">
                   {num(p.paymentAmount, 6)} {p.paymentToken} · {usd(p.usdValue)} · stage {p.stage}
                 </span>
                 {/*
@@ -155,6 +162,38 @@ export function PurchaseHistory() {
                 p.statusReason === '' ? (
                   <b className="noc-warning">{p.status}</b>
                 ) : null}
+                {/*
+                  An outbound link, and the only one on this page. §6.10's rule is that the
+                  site sends you nowhere — but that rule exists against being sent somewhere
+                  to INSTALL something, which is the shape of a phishing page. This is the
+                  opposite: it lets a reader check our claim against a source we do not
+                  control. Navigation, never a request; the page fetches nothing from it, and
+                  Referrer-Policy: no-referrer means it learns nothing about where you came
+                  from.
+
+                  Solana rows only. An Ethereum hash under explorer.solana.com/tx/ is a link
+                  to a page that cannot exist, offered as proof. Those are rendered as text
+                  with their chain named, which is checkable without this page asserting
+                  anything about a ledger it did not read.
+                */}
+                {EXPLORERS[p.chain] !== undefined ? (
+                  <a
+                    className="noc-mono sig"
+                    href={`${EXPLORERS[p.chain] as string}${p.signature}`}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    title={p.signature}
+                  >
+                    {p.chain !== 'solana' ? `${p.chain} · ` : ''}
+                    {p.signature.slice(0, 12)}…{p.signature.slice(-12)}
+                    <Icon name="ext" />
+                  </a>
+                ) : (
+                  <span className="noc-mono sig" title={p.signature}>
+                    {p.chain || 'other chain'} · {p.signature.slice(0, 12)}…
+                    {p.signature.slice(-12)}
+                  </span>
+                )}
               </div>
 
               {/*
@@ -180,11 +219,15 @@ export function PurchaseHistory() {
                 sentence under a purchase that did land is the expensive one.
               */}
               {p.statusReason !== '' && !settled(p.status) ? (
-                <p className="noc-caption noc-warning">{p.statusReason}</p>
+                <p className="buy-note noc-caption">
+                  <Icon name="alert" />
+                  {p.statusReason}
+                </p>
               ) : null}
 
               {!acknowledged(p) && verdictFor(verdicts, p) === 'missing' ? (
-                <p className="noc-caption noc-danger">
+                <p className="buy-note noc-caption">
+                  <Icon name="alert" />
                   Not found on chain. The backend recorded this purchase, but the Solana
                   ledger has no transaction with this signature — so no payment was taken
                   and no tokens are owed for it. Your allocation above is read from the
@@ -192,43 +235,11 @@ export function PurchaseHistory() {
                 </p>
               ) : null}
               {!acknowledged(p) && verdictFor(verdicts, p) === 'failed' ? (
-                <p className="noc-caption noc-danger">
+                <p className="buy-note noc-caption">
+                  <Icon name="x" />
                   This transaction is on chain but failed, so it moved nothing.
                 </p>
               ) : null}
-
-              {/*
-                An outbound link, and the only one on this page. §6.10's rule is that the
-                site sends you nowhere — but that rule exists against being sent somewhere
-                to INSTALL something, which is the shape of a phishing page. This is the
-                opposite: it lets a reader check our claim against a source we do not
-                control. Navigation, never a request; the page fetches nothing from it, and
-                Referrer-Policy: no-referrer means it learns nothing about where you came
-                from.
-
-                Solana rows only. An Ethereum hash under explorer.solana.com/tx/ is a link
-                to a page that cannot exist, offered as proof. Those are rendered as text
-                with their chain named, which is checkable without this page asserting
-                anything about a ledger it did not read.
-              */}
-              {EXPLORERS[p.chain] !== undefined ? (
-                <a
-                  className="noc-caption noc-mono sig"
-                  href={`${EXPLORERS[p.chain] as string}${p.signature}`}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  title={p.signature}
-                >
-                  {p.chain !== 'solana' ? `${p.chain} · ` : ''}
-                  {p.signature.slice(0, 12)}…{p.signature.slice(-12)}
-                </a>
-              ) : (
-                <span className="noc-caption noc-mono sig" title={p.signature}>
-                  {p.chain || 'other chain'} · {p.signature.slice(0, 12)}…
-                  {p.signature.slice(-12)}
-                </span>
-              )}
-
             </li>
             );
           })}
