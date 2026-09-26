@@ -24,8 +24,6 @@ import {useResolvedPrices} from '../hooks/useResolvedPrices';
 import {
   estimateNocForSol,
   estimateNocForUsd,
-  MIN_PURCHASE_USD,
-  MAX_PURCHASE_USD,
 } from '../modules/presale/presaleBuyModule';
 import {USDC_MINT, USDT_MINT} from '../modules/tokens/coreTokens';
 import {PRESALE_STAGE_PRICES} from '../constants/presale';

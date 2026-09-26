@@ -1,20 +1,14 @@
 import {
   PublicKey,
-  SystemProgram,
-  TransactionInstruction,
   Keypair,
   TransactionMessage,
   VersionedTransaction,
-  ComputeBudgetProgram,
 } from '@solana/web3.js';
 // Self-import so resolveReferrer calls fetchAllocationRef through the module's
 // live export binding, which lets tests `jest.spyOn(presaleBuyModule,
 // 'fetchAllocationRef')` intercept it (a direct intra-module call is NOT
 // interceptable under the @react-native/babel CJS transform).
 import * as self from './presaleBuyModule';
-import {PROGRAM_ID, ADMIN_ADDRESS} from '../../constants/programs';
-import {findAssociatedTokenAddress} from '../solana/transactionBuilder';
-import {USDC_MINT, USDT_MINT} from '../tokens/coreTokens';
 import {getConnection} from '../solana/connection';
 import {estimatePriorityFee} from '../solana/priorityFee';
 import {KeychainManager} from '../keychain/keychainModule';
@@ -33,7 +27,6 @@ import {
   buildStablecoinBuyInstructions as coreBuildStablecoinBuyInstructions,
   encodeU64LE,
   estimateNocForSol,
-  COMPUTE_UNIT_LIMIT,
   REGISTER_REFERRER_DISCRIMINATOR,
 } from '../../../core/presale/buyInstructions';
 import {
@@ -43,21 +36,7 @@ import {
   fetchSolTreasury as coreFetchSolTreasury,
 } from '../../../core/presale/allocation';
 
-const PROGRAM = new PublicKey(PROGRAM_ID);
-const ADMIN = new PublicKey(ADMIN_ADDRESS);
-
-// Anchor 8-byte discriminator for `presale_purchase_with_sol`.
-
-const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-const PURCHASE_WITH_USDC_DISCRIMINATOR = [150, 34, 181, 239, 229, 123, 187, 128];
-const PURCHASE_WITH_USDT_DISCRIMINATOR = [209, 3, 170, 172, 219, 182, 149, 89];
-
 export type StablecoinToken = 'USDC' | 'USDT';
-
-const STABLECOIN: Record<StablecoinToken, {mint: PublicKey; disc: number[]}> = {
-  USDC: {mint: new PublicKey(USDC_MINT), disc: PURCHASE_WITH_USDC_DISCRIMINATOR},
-  USDT: {mint: new PublicKey(USDT_MINT), disc: PURCHASE_WITH_USDT_DISCRIMINATOR},
-};
 
 /**
  * Minimum / maximum purchase, in USD. Moved to `core/presale/purchaseGate.ts`, which also
