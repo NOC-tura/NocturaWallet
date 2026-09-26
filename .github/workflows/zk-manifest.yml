@@ -51,6 +51,11 @@ jobs:
           node-version: 22
           cache: npm
 
+      # npm is pinned, not taken from Node: the lockfiles are written with npm 11 and npm 10
+      # (Node 22's own) disagrees with it about optional peers whose range excludes the hoisted
+      # version — it demanded a nested typescript@5.9.3 and utf-8-validate@5.0.10 that npm 11
+      # omits, so `npm ci` refused both lockfiles as out of sync. Same npm on both sides.
+      - run: npm install -g npm@11.6.2
       - run: npm ci
 
       # Mutation results DECAY: which guard fires first is a property of the code's

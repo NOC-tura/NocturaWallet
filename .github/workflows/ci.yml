@@ -17,6 +17,11 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+      # npm is pinned, not taken from Node: the lockfiles are written with npm 11 and npm 10
+      # (Node 22's own) disagrees with it about optional peers whose range excludes the hoisted
+      # version — it demanded a nested typescript@5.9.3 and utf-8-validate@5.0.10 that npm 11
+      # omits, so `npm ci` refused both lockfiles as out of sync. Same npm on both sides.
+      - run: npm install -g npm@11.6.2
       - run: npm ci
       - run: npx eslint 'src/**/*.{ts,tsx}' '__mocks__/**/*.ts'
 
@@ -30,6 +35,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+      - run: npm install -g npm@11.6.2
       - run: npm ci
       - run: npx tsc --noEmit
 
@@ -43,6 +49,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+      - run: npm install -g npm@11.6.2
       - run: npm ci
       - run: npx jest --coverage --forceExit
 
@@ -56,6 +63,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+      - run: npm install -g npm@11.6.2
       - run: npm ci
       # Kept at `critical`, deliberately: in a React Native project `react-native` is a
       # runtime dependency and drags the whole Metro toolchain into the "production"
@@ -78,6 +86,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+      - run: npm install -g npm@11.6.2
       - run: npm ci
       - name: Install Detox CLI
         run: npm install -g detox-cli
