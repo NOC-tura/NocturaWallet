@@ -60,7 +60,13 @@ it('starts reading the presale without waiting for a wallet', () => {
   // not for the page to function at all.
   render(<App />);
   expect(screen.getByText(/loading the presale/i)).toBeTruthy();
-  expect(screen.getByText(/reading the tge date/i)).toBeTruthy();
+});
+
+it('publishes nothing about the TGE date', () => {
+  // The owner's decision (2026-09-26): the page does not announce a TGE date or count down
+  // to one. The value exists on chain; this page does not advertise it.
+  const {container} = render(<App />);
+  expect(container.textContent).not.toMatch(/TGE|token generation/i);
 });
 
 it('opens with the connect panel in its searching state, never its empty-handed one', () => {

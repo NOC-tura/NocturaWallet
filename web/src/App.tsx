@@ -10,8 +10,6 @@ import {useCredits} from './presale/useCredits';
 import {BuyForm} from './presale/BuyForm';
 import {ReferralPanel} from './referral/ReferralPanel';
 import {useReferral} from './referral/useReferral';
-import {Countdown} from './tge/Countdown';
-import {useTge} from './tge/useTge';
 import {useQuery} from '@tanstack/react-query';
 import {json} from './lib/api';
 import {queryClient} from './lib/queryClient';
@@ -73,13 +71,6 @@ function Referral() {
   return <ReferralPanel address={address} stats={data} />;
 }
 
-function Tge() {
-  const {data, isPending, isError} = useTge();
-  if (isPending) return <p>Reading the TGE date…</p>;
-  if (isError) return <p>The TGE date could not be read.</p>;
-  return <Countdown tgeUnix={data ?? null} />;
-}
-
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -90,7 +81,7 @@ export function App() {
           narrow strip with a field of black on either side. The panels are independent
           cards, so above 900 px they take two tracks — the presale, the buy form and
           referral on the left, where the work happens, and the wallet, balances,
-          purchases and countdown on the right, where the facts about you sit. Referral
+          purchases on the right, where the facts about you sit. Referral
           moved left in the desktop redesign (2026-09-25): on the right it made that
           column twice the length of the other. Below 900 px it collapses back to the
           single column the design draws, in this same DOM order — the redesign's visual
@@ -118,7 +109,6 @@ export function App() {
             <div className="col col-side">
               <ConnectPanel />
               <Portfolio />
-              <Tge />
             </div>
           </div>
         </main>

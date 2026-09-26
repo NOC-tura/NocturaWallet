@@ -1,22 +1,14 @@
 /**
- * The Noctura mark, copied from screen #1 of the design file — a rounded square carrying
- * two radial washes, purple from the top-left and teal from the bottom-right, with a
- * gradient-clipped "N" over it.
+ * The Noctura mark: the owner's own logo, the same artwork the Android app uses for NOC
+ * (src/assets/tokens/noc-logo.png), cropped to the letter and scaled to 96 px so it is
+ * sharp at 44 px on a 2x screen.
  *
- * It is pure CSS in the original and stays pure CSS here: no image asset, so no request,
- * no bundle weight. The two colours are the DS accents at reduced alpha — the mark carries
- * the dual-mode identity (transparent purple, shielded teal) that the product is built
- * around, which is exactly why the design file draws it this way rather than as a flat
- * logo.
+ * It replaces a CSS-drawn "N" lifted from the design file, which was a placeholder mark
+ * and not the logo (owner, 2026-09-26). Served from our own origin (/noc-mark.png), which
+ * `img-src 'self'` already allows; no third-party request.
  *
- * One size, set in the stylesheet (.brand-mark). It used to take a `size` prop applied as
- * an inline style, which is the one kind of style the CSP should not have to allow, for a
- * mark the page only ever draws at 44 px.
+ * Decorative: the heading beside it already says "Noctura".
  */
 export function BrandMark() {
-  return (
-    <span className="brand-mark" aria-hidden>
-      <span className="brand-mark-n">N</span>
-    </span>
-  );
+  return <img className="brand-mark" src="/noc-mark.png" width={44} height={44} alt="" />;
 }
