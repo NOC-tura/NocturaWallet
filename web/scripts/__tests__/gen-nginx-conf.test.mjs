@@ -168,6 +168,41 @@ describe('caching and proxying', () => {
   });
 });
 
+/** The body of the first location block whose opening line matches `head`, braces balanced. */
+function locationBody(source, head) {
+  const start = source.indexOf(head);
+  if (start === -1) throw new Error(`no location ${head}`);
+  let depth = 0;
+  for (let i = source.indexOf('{', start); i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    else if (source[i] === '}' && --depth === 0) return source.slice(start, i + 1);
+  }
+  throw new Error(`location ${head} never closes`);
+}
+
+const hidden = body =>
+  new Set([...body.matchAll(/^\s*proxy_hide_header\s+([A-Za-z-]+);/gm)].map(m => m[1].toLowerCase()));
+
+describe('headers from the coordinator on the proxied paths', () => {
+  /*
+   * Measured on the live host, 2026-09-26: through app.noc-tura.io/api every one of our eight
+   * headers arrived two or three times, because the coordinator sets its own (helmet, plus its
+   * nginx) and ours were added after. Harmless for the CSP on a JSON body, not for HSTS: a
+   * browser honours the FIRST Strict-Transport-Security, which was the coordinator's 180 days,
+   * so every API call could shorten app.'s two-year policy. Ours must be the only copy.
+   */
+  it.each(['location /api/ {', 'location = /rpc {'])('%s hides every header we set ourselves', head => {
+    const got = hidden(locationBody(conf, head));
+    for (const h of SECURITY_HEADERS) expect(got.has(h.name.toLowerCase()), h.name).toBe(true);
+  });
+
+  it('control: a block missing one hide is caught', () => {
+    const name = SECURITY_HEADERS[0].name;
+    const stripped = conf.replace(new RegExp(`^\\s*proxy_hide_header ${name};\\n`, 'gm'), '');
+    expect(hidden(locationBody(stripped, 'location /api/ {')).has(name.toLowerCase())).toBe(false);
+  });
+});
+
 describe('the committed file', () => {
   it('matches what the generator produces right now', () => {
     expect(readFileSync(OUT_PATH, 'utf8')).toBe(conf);

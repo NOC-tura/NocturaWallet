@@ -36,6 +36,16 @@ const wrap = (text, width, indent) => {
   return out.join('\n');
 };
 
+/**
+ * On the proxied paths the coordinator's own copies of these headers are dropped, so ours are
+ * the only ones. Measured 2026-09-26: without this, every header arrived two or three times
+ * through /api — the coordinator sets them (helmet, and its nginx), then ours were added. A
+ * browser honours the FIRST Strict-Transport-Security, which was the coordinator's 180 days.
+ * Derived from SECURITY_HEADERS, so a header added there is hidden here without a second edit.
+ */
+const hideUpstreamCopies = indent =>
+  SECURITY_HEADERS.map(h => `${indent}proxy_hide_header ${h.name};`).join('\n');
+
 /** `always` on every add_header: without it nginx drops the header on 4xx and 5xx. */
 const headerLines = (indent = '    ') =>
   SECURITY_HEADERS.map(
@@ -148,6 +158,9 @@ ${headerLines()}
         # second, contradictory answer at worst.
         proxy_hide_header Access-Control-Allow-Origin;
         proxy_hide_header Access-Control-Allow-Credentials;
+
+        # Ours are the only security headers on this path; see hideUpstreamCopies.
+${hideUpstreamCopies('        ')}
     }
 
     # /rpc is a single method-allowlisted endpoint, not a prefix. Exact-match location so
@@ -163,6 +176,7 @@ ${headerLines()}
         proxy_read_timeout 30s;
         proxy_hide_header Access-Control-Allow-Origin;
         proxy_hide_header Access-Control-Allow-Credentials;
+${hideUpstreamCopies('        ')}
     }
 
     # No SPA fallback on purpose. S0 has no client-side router (verified: no pushState, no
