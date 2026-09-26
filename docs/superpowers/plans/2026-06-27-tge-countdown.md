@@ -36,7 +36,7 @@ it('now for past', () => expect(tgeCountdownDisplay(d(-1), NOW)).toBe('now'));
 
 ## Task 2: fetchTgeTimestamp
 **Files:** Modify `src/modules/presale/presaleBuyModule.ts` + its test.
-- [ ] **Step 1: Test** (mirror `fetchOnChainAllocation`'s `connectionMod` spy): craft a ≥209-byte buffer with `1800230400` as i64 LE at offset 201 → `fetchTgeTimestamp()` returns `1800230400`; null account → null; short buffer → null.
+- [ ] **Step 1: Test** (mirror `fetchOnChainAllocation`'s `connectionMod` spy): craft a ≥209-byte buffer with `1893456000` as i64 LE at offset 201 → `fetchTgeTimestamp()` returns `1893456000`; null account → null; short buffer → null.
 - [ ] **Step 2:** `npx jest presaleBuyModule` → FAIL.
 - [ ] **Step 3: Implement** `export async function fetchTgeTimestamp(): Promise<number | null>`:
 ```ts
@@ -85,4 +85,4 @@ export async function fetchTgeTimestamp(): Promise<number | null> {
 - **Spec coverage:** A fetch→T2; B helper→T1; C store→T3; D sync→T3; E card→T4. ✓
 - **Scope guard:** countdown only; claim tx + tgeStatus flip + claim CTA all DEFERRED (no broken claim button). tgeStatus stays pre_tge. ✓
 - **Type consistency:** `fetchTgeTimestamp(): Promise<number|null>` (T2) → store `tgeTimestamp:number|null` (T3) → `tgeCountdownDisplay(number|null, number)` (T1) used in T4. ✓
-- **Offset:** config.tge_timestamp @201 verified against the Rust struct + a live scan (2027-01-18).
+- **Offset:** config.tge_timestamp @201 verified against the Rust struct + a live scan.

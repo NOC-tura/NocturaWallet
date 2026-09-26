@@ -4,9 +4,9 @@
 
 ## Context
 
-Cycle C is the post-TGE claim. The **claim transaction is untestable until TGE** (`config.tge_timestamp` = **2027-01-18**, ~7 months out; the program rejects `claim_presale_allocation` before then), so it's deferred to a near-TGE cycle. This cycle ships only the **testable TGE-aware piece**: read the real on-chain TGE timestamp and show a soft **countdown** on the #23 allocation card (replacing the static "Claimable after TGE"). Decision: **countdown only, no hard date** (consistent with the C1 "no fixed date" preference).
+Cycle C is the post-TGE claim. The **claim transaction is untestable until TGE** (`config.tge_timestamp`; the program rejects `claim_presale_allocation` before then), so it's deferred to a near-TGE cycle. This cycle ships only the **testable TGE-aware piece**: read the real on-chain TGE timestamp and show a soft **countdown** on the #23 allocation card (replacing the static "Claimable after TGE"). Decision: **countdown only, no hard date** (consistent with the C1 "no fixed date" preference).
 
-**Verified on-chain:** `config` PDA = `["config", ADMIN]`; `Config.tge_timestamp` is an `i64` LE at **byte offset 201** (8 disc + admin/sale/usdt/usdc 4×32 + 4×u64 prices/ratios + current_stage u8 + stage_tokens_sold/tokens_sold/total_usd_raised_cents 3×u64 + presale_start_time i64 @193 → tge_timestamp @201). Value = 1800230400 = 2027-01-18. `derivePresalePdas(user).config` already derives the (user-independent) config PDA.
+**Verified on-chain:** `config` PDA = `["config", ADMIN]`; `Config.tge_timestamp` is an `i64` LE at **byte offset 201** (8 disc + admin/sale/usdt/usdc 4×32 + 4×u64 prices/ratios + current_stage u8 + stage_tokens_sold/tokens_sold/total_usd_raised_cents 3×u64 + presale_start_time i64 @193 → tge_timestamp @201). Value: read live from the account, not restated here. `derivePresalePdas(user).config` already derives the (user-independent) config PDA.
 
 ## A. Read the TGE timestamp — `src/modules/presale/presaleBuyModule.ts`
 
@@ -45,7 +45,7 @@ Replace the static `Claimable after TGE` (line ~471) caption:
 
 ## Testing
 - `tgeCountdownDisplay`: null→''; diff 204d→"in ~7 months"; 21d→"in ~3 weeks"; 5d→"in 5 days"; 1.5d→"tomorrow"; 0.5d→"today"; past→"now".
-- `fetchTgeTimestamp`: crafted ≥209-byte buffer with 1800230400 @201 → 1800230400; short/null → null. (Mirror `fetchOnChainAllocation`'s connection-mock test pattern.)
+- `fetchTgeTimestamp`: crafted ≥209-byte buffer with 1893456000 @201 → 1893456000; short/null → null. (Mirror `fetchOnChainAllocation`'s connection-mock test pattern.)
 
 ## On-device
 - #23 allocation card shows **"Claimable in ~7 months"** (instead of "Claimable after TGE"). Verifiable now (the read + countdown are live; only the claim action is deferred).

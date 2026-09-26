@@ -123,7 +123,7 @@ describe('presale allocation readers', () => {
     expect((await fetchOnChainAllocation(readerFor(short), USER)).exists).toBe(false);
   });
 
-  it('reads tge_timestamp at offset 201 — the real on-chain value', async () => {
+  it('reads tge_timestamp at offset 201 (a fixture value; the real one is not restated)', async () => {
     const data = withU64At(1_893_456_000n, CONFIG_TGE_TIMESTAMP_OFFSET, CONFIG_TGE_TIMESTAMP_OFFSET + 8);
     expect(await fetchTgeTimestamp(readerFor(data))).toBe(1_893_456_000);
   });

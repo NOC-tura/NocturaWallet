@@ -229,9 +229,9 @@ describe('fetchTgeTimestamp', () => {
   it('decodes tge_timestamp (i64 LE at offset 201) from the config account', async () => {
     jest.spyOn(presaleBuyModuleForTreasury, 'fetchTreasury').mockResolvedValue(TREASURY);
     jest.spyOn(connectionMod, 'getConnection').mockReturnValue({
-      getAccountInfo: async () => ({data: configBufferWithTge(1800230400n)}),
+      getAccountInfo: async () => ({data: configBufferWithTge(1893456000n)}),
     } as never);
-    expect(await fetchTgeTimestamp()).toBe(1800230400);
+    expect(await fetchTgeTimestamp()).toBe(1893456000);
   });
 
   it('returns null when the config account does not exist', async () => {
