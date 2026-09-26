@@ -17,6 +17,11 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+      # npm is pinned, not taken from Node: the lockfiles are written with npm 11 and npm 10
+      # (Node 22's own) disagrees with it about optional peers whose range excludes the hoisted
+      # version — it demanded a nested typescript@5.9.3 and utf-8-validate@5.0.10 that npm 11
+      # omits, so `npm ci` refused both lockfiles as out of sync. Same npm on both sides.
+      - run: npm install -g npm@11.6.2
       - run: npm ci
       - run: npx eslint 'src/**/*.{ts,tsx}' '__mocks__/**/*.ts'
 
@@ -30,6 +35,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+      - run: npm install -g npm@11.6.2
       - run: npm ci
       - run: npx tsc --noEmit
 
@@ -43,6 +49,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+      - run: npm install -g npm@11.6.2
       - run: npm ci
       - run: npx jest --coverage --forceExit
 
@@ -56,8 +63,17 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+      - run: npm install -g npm@11.6.2
       - run: npm ci
+      # Kept at `critical`, deliberately: in a React Native project `react-native` is a
+      # runtime dependency and drags the whole Metro toolchain into the "production"
+      # tree, so a `high` threshold here reports mostly a bundler that never runs on a
+      # phone. The narrow gate below is the one that answers the question we care about.
       - run: npm audit --omit=dev --audit-level=critical
+      # What actually ships: the packages Metro put in the bundle, read from its source
+      # map, audited at `high`. A high-severity overflow in bigint-buffer rode inside
+      # the bundle until 2026-09-21 because the check above could not see it.
+      - run: node scripts/audit-shipped.js --min-severity high
 
   detox-ios:
     # Enable when Detox is added to package.json and iOS build is configured
@@ -70,6 +86,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+      - run: npm install -g npm@11.6.2
       - run: npm ci
       - name: Install Detox CLI
         run: npm install -g detox-cli

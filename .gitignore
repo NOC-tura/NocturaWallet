@@ -85,6 +85,8 @@ yarn-error.log
 # Environment variables
 .env*
 !.env.example
+# the web app ships an example env file; .env* above would swallow it
+!web/.env.local.example
 BUILD_PLAN.md
 .instructions.md
 
@@ -107,3 +109,6 @@ native/noctura-prover/target/
 
 # Rust prover .so (build output of cargo-ndk; rebuild, do not commit)
 android/app/src/main/jniLibs/
+
+# web app build output
+web/dist/

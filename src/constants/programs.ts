@@ -1,5 +1,14 @@
 import Config from 'react-native-config';
 import {assertKnownNetwork} from './networkGuard';
+// The mainnet literals live in core/ so the web app reads the same ones. The devnet
+// switch stays here: core has no network to switch on, the web being mainnet-only.
+import {
+  MAINNET_ADMIN_ADDRESS,
+  MAINNET_NOC_MINT,
+  MAINNET_PROGRAM_ID,
+  MAINNET_SOL_TREASURY,
+  PYTH_SOL_USD_ACCOUNT as CORE_PYTH_SOL_USD_ACCOUNT,
+} from '../../core/presale/addresses';
 
 // Fail closed BEFORE any address constant is derived. Previously this was an
 // unchecked cast whose default branch was mainnet, so a missing or misspelled
@@ -13,13 +22,13 @@ export const IS_DEVNET = NETWORK === 'devnet';
 // $NOC SPL Token
 export const NOC_MINT = IS_DEVNET
   ? 'TODO_DEVNET_MINT'
-  : 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW';
+  : MAINNET_NOC_MINT;
 export const NOC_DECIMALS = 9;
 
 // Noctura On-Chain Program (Phase 1 — unified: presale + staking + airdrop + referral)
 export const PROGRAM_ID = IS_DEVNET
   ? 'TODO_DEVNET_PROGRAM'
-  : '6nTTJwtDuxjv8C1JMsajYQapmPAGrC3QF1w5nu9LXJvt';
+  : MAINNET_PROGRAM_ID;
 
 export const PROGRAMS = {
   icoProgram: PROGRAM_ID,
@@ -30,14 +39,14 @@ export const PROGRAMS = {
 
 export const ADMIN_ADDRESS = IS_DEVNET
   ? 'TODO_DEVNET_ADMIN'
-  : 'KnZ5bRuaCb3JEAYgt9CJ69eWQ7i5dp5cASbTmLj39qr';
+  : MAINNET_ADMIN_ADDRESS;
 
 export const SOL_TREASURY = IS_DEVNET
   ? 'TODO_DEVNET_TREASURY'
-  : '6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd';
+  : MAINNET_SOL_TREASURY;
 
 // Pyth SOL/USD price account (read-only) required by presale_purchase_with_sol.
-export const PYTH_SOL_USD_ACCOUNT = '7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE';
+export const PYTH_SOL_USD_ACCOUNT = CORE_PYTH_SOL_USD_ACCOUNT;
 
 // Squads multisig vault (System-owned, mainnet) — the same vault used as
 // SOL_TREASURY, so all Noctura SOL (presale revenue + wallet fee markup)
@@ -128,10 +137,23 @@ export const SHIELDED_POOL_PROGRAM_ID =
 export const SHIELDED_DEVNET_MINT =
   Config.SHIELDED_DEVNET_MINT ?? '';
 
-// Compute-unit limits: measured deposit ~132,256 / withdraw ~152,508 CU on
-// devnet; add headroom (the wallet prepends setComputeUnitLimit).
-// withdrawChange: est. ~200–220k (plain withdraw ~152k + one merkle insert);
-// 250k headroom until the ICO reports the measured devnet CU (SYNC POINT).
+// Compute-unit limits. The wallet prepends setComputeUnitLimit, so these are
+// ceilings and every one of them sits above anything yet observed — nothing here
+// can fail for being too small.
+//
+// PROVENANCE, because the previous comment said "measured" and we never measured
+// anything. The figures deposit ~132,256 / withdraw ~152,508 came from the
+// program side's C2 contract and were copied here under a word we had not earned.
+// Asked to confirm them on 2026-09-23, that side reported: no withdraw test
+// exists at all, and no measurement is written down anywhere — the CU tests
+// println! their result, so the number survives only as long as someone is
+// watching stdout. One real figure exists: transfer = 172,805 CU.
+//
+// So: deposit and withdrawChange are UNCONFIRMED, withdraw is unmeasured on
+// either side, and these ceilings stay where they are until the program side
+// runs deposit.rs and withdraw_change.rs, writes the results to a file, and a
+// withdraw test is written. Tightening any of them before that would be trading
+// a safe ceiling for an inherited guess.
 export const SHIELDED_CU = {deposit: 200_000, withdraw: 250_000, withdrawChange: 250_000, transfer: 250_000} as const;
 
 /**

@@ -16,7 +16,7 @@ module.exports = {
     // react-native-config uses ESM syntax that Jest cannot parse; use a CJS mock.
     '^react-native-config$': '<rootDir>/__mocks__/react-native-config.ts',
   },
-  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/e2e/'],
+  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/e2e/', '<rootDir>/web/', '<rootDir>/core/'],
   // TODO(phase-b): restore to 60 once UnlockScreen + SendScreen test suites
   // are rewritten (currently describe.skip'd) and smoke tests added for the
   // new placeholder screens (Portfolio, NFTs, Notifications) + new modal

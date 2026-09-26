@@ -24,7 +24,7 @@
     "@react-navigation/native-stack": "^7.14.10",
     "@scure/bip32": "^2.0.1",
     "@scure/bip39": "^2.0.1",
-    "@solana/web3.js": "^1.95.8",
+    "@solana/web3.js": "^1.99.0",
     "@tanstack/react-query": "^5.96.2",
     "buffer": "^5.7.1",
     "clsx": "^2.1.1",
@@ -78,7 +78,8 @@
     "typescript": "^6.0.2"
   },
   "overrides": {
-    "shell-quote": "^1.8.4"
+    "shell-quote": "^1.8.4",
+    "nanoid": "^3.3.19"
   },
   "engines": {
     "node": ">= 22.11.0"

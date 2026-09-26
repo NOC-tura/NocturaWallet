@@ -1,0 +1,15 @@
+{
+  "//": "core/ is platform-independent and is consumed by both the React Native app and the web app. It gets its own tsconfig so that neither platform's compiler options leak into it: without this, esbuild finds the ROOT tsconfig when transforming these files, which extends @react-native/typescript-config — absent in a web-only install, and wrong even when present.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": []
+  },
+  "include": ["**/*.ts"]
+}

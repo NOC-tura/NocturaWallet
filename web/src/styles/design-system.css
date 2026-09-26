@@ -1,0 +1,981 @@
+/*
+ * Noctura DS v0.2 — lifted from the user's own design file, /home/user/Downloads/index.html,
+ * which CLAUDE.md names as the binding source of truth for how this product looks.
+ *
+ * The tokens and the type scale are COPIED, value for value, not reinterpreted: the same
+ * greys, the same two accents, the same 4/8/12/16/20/24/32/48 spacing, the same radii, the
+ * same `.noc-*` class names. A second set of numbers that merely resembles the first is how
+ * a brand drifts, and this file exists so the phone and the web cannot drift.
+ *
+ * Deliberately single-theme. The design is dark (`--bg-base: #0A0A0A`) and says so; there is
+ * no light palette to honour, so there are no `prefers-color-scheme` blocks pretending there
+ * is one.
+ *
+ * Two departures from the mockup, both because a browser is not a phone:
+ *   - `--inset-top` / `--inset-bottom` are mockup-only constants there (the file says so).
+ *     Here they are 0: there is no notch to clear.
+ *   - Touch targets stay at the mockup's sizes. A 56 px primary button is not too large on
+ *     a desktop; it is what the product looks like, and the phone is the first audience.
+ */
+
+/* ── Geist, served from our own origin ─────────────────────────────────────────
+   §6.2 forbids a hosted font: a privacy product must not hand every visitor's IP to a
+   font CDN. Two variable files, 137 KB together, cover every weight the design uses —
+   the alternative was 45 static cuts. This is also why the CSP carries `font-src 'self'`:
+   with `default-src 'none'`, fonts are blocked even from our own origin unless named.
+   Source: npm `geist@1.7.2`, Vercel, OFL. */
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Variable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/fonts/GeistMono-Variable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg-base:       #0A0A0A;
+  --bg-surface-1:  #0E0E10;
+  --bg-surface-2:  #17171A;
+  --bg-surface-3:  #212126;
+
+  --fg-primary:    #F4F5F7;
+  --fg-secondary:  #A8ACB5;
+  /* Web only: index.html has #6E727A, which is 3.9:1 on the card fill — under AA for the
+     dates, footnotes and labels that use it. The desktop redesign (2026-09-25) lifted it
+     to 5.3:1. The Android app takes its colours from tailwind.config.js and is unchanged. */
+  --fg-tertiary:   #878B94;
+  --fg-disabled:   #3A3D44;
+
+  /* Two accents, one per mode. The web is transparent-only today, so `--accent` resolves
+     to the purple; the shielded teal is kept because the design has it and a wallet that
+     gains shielded later should not have to reintroduce its own colour. */
+  --accent-transparent:       #B084FC;
+  --accent-shielded:          #5BE3C2;
+  --accent-transparent-tint:  #1B142C;
+  --accent-shielded-tint:     #0E2620;
+  --accent:                   var(--accent-transparent);
+  --accent-tint:              var(--accent-transparent-tint);
+
+  --success: #3FD68B;
+  --warning: #F2B53B;
+  --danger:  #FF5C6A;
+  --info:    #7DA8FF;
+  --shield-300: #A6F0DC;
+  --danger-on: #FFFFFF;
+
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-7: 32px; --space-8: 48px;
+
+  --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px;
+  --radius-xl: 20px; --radius-2xl: 24px; --radius-pill: 9999px;
+  --radius-icon-hero: 16px;
+
+  --dur-fast: 120ms; --dur-base: 220ms; --dur-slow: 360ms; --dur-spin: 900ms;
+
+  --touch-target-min: 48px;
+  --touch-target-rec: 56px;
+  --touch-target-lg:  64px;
+
+  --font-display: 'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-body:    'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono:    'Geist Mono', 'JetBrains Mono', ui-monospace, Menlo, monospace;
+
+  /* ── Depth, from the desktop redesign (2026-09-25) ──────────────────────────────
+     Three readable layers instead of one: the page, a card seven steps above it, and a
+     well sunk below the card for inputs. Edges are white-alpha rather than a grey, so
+     they lift on whatever surface they sit on. */
+  --elev-1: #111114;
+  --elev-2: #17171B;
+  --elev-3: #1E1E23;
+  --well:   #08080A;
+
+  --border-subtle:  rgb(255 255 255 / .06);
+  --border-default: rgb(255 255 255 / .09);
+  --border-strong:  rgb(255 255 255 / .16);
+
+  --edge-highlight: inset 0 1px 0 rgb(255 255 255 / .05);
+  --shadow-card:    0 1px 2px rgb(0 0 0 / .5), 0 18px 40px -18px rgb(0 0 0 / .85);
+  --grad-card:      linear-gradient(180deg, rgb(255 255 255 / .022), rgb(255 255 255 / 0) 45%);
+
+  --accent-soft:   color-mix(in oklab, var(--accent) 14%, transparent);
+  --accent-border: color-mix(in oklab, var(--accent) 38%, transparent);
+  --accent-hover:  color-mix(in oklab, var(--accent) 88%, white);
+  /* The only glow on the page, and only on the enabled buy button. */
+  --glow-accent:   0 10px 30px -10px color-mix(in oklab, var(--accent) 60%, transparent);
+  --danger-soft:   color-mix(in oklab, var(--danger) 12%, transparent);
+  --warning-soft:  color-mix(in oklab, var(--warning) 12%, transparent);
+
+  --layout-max: 1120px;
+
+  color-scheme: dark;
+}
+
+[data-mode='shielded'] {
+  --accent:      var(--accent-shielded);
+  --accent-tint: var(--accent-shielded-tint);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { background: #050507; }
+
+body {
+  margin: 0;
+  color: var(--fg-primary);
+  font: 400 15px/22px var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  /* background is set in the Motion/floor block below, where the wash lives */
+}
+
+/* ── Type scale (.noc-*) — the design file's names, unchanged ───────────────── */
+.noc-display    { font-family: var(--font-display); font-size: 32px; line-height: 38px; font-weight: 600; letter-spacing: -0.01em; }
+.noc-h1         { font-family: var(--font-display); font-size: 24px; line-height: 30px; font-weight: 600; letter-spacing: -0.01em; }
+.noc-h1-compact { font-family: var(--font-display); font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -0.01em; }
+.noc-h2         { font-family: var(--font-display); font-size: 20px; line-height: 26px; font-weight: 600; }
+.noc-h3         { font-family: var(--font-display); font-size: 17px; line-height: 22px; font-weight: 600; }
+.noc-body-lg    { font-family: var(--font-body); font-size: 17px; line-height: 24px; font-weight: 500; }
+.noc-body       { font-family: var(--font-body); font-size: 15px; line-height: 22px; font-weight: 400; }
+.noc-body-sm    { font-family: var(--font-body); font-size: 13px; line-height: 18px; font-weight: 400; }
+.noc-caption    { font-family: var(--font-body); font-size: 12px; line-height: 16px; font-weight: 400; }
+.noc-overline   { font-family: var(--font-body); font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.noc-balance-xl { font-family: var(--font-display); font-size: 44px; line-height: 50px; font-weight: 600; letter-spacing: -0.02em; }
+.noc-balance-lg { font-family: var(--font-display); font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -0.02em; }
+.noc-balance-md { font-family: var(--font-display); font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; }
+.noc-numeral    { font-variant-numeric: tabular-nums; }
+.noc-mono       { font-family: var(--font-mono); font-variant-numeric: tabular-nums slashed-zero; }
+
+/* ── Buttons — the design file's primitives, unchanged ──────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  width: 100%;
+  height: var(--touch-target-rec);
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-pill);
+  font: 600 17px/1 var(--font-body);
+  border: 0; cursor: pointer;
+  transition: transform 100ms cubic-bezier(.2, 0, 0, 1), background var(--dur-fast) linear, box-shadow var(--dur-fast) linear;
+}
+.btn:active { transform: scale(.985); }
+.btn-primary     { background: var(--accent); color: var(--bg-base); box-shadow: inset 0 1px 0 rgb(255 255 255 / .25), var(--glow-accent); }
+.btn-secondary   { background: var(--bg-surface-2); color: var(--fg-primary); }
+.btn-tertiary    { background: transparent; color: var(--accent); height: var(--touch-target-min); }
+.btn-destructive { background: var(--danger); color: var(--danger-on); }
+/* Disabled was #3A3D44 on #212126, which is 1.6:1 — the button all but vanished, and a
+   buyer could not tell "not yet" from "not here". Now an outlined surface at 5:1. */
+.btn[disabled]   { background: var(--elev-2); color: var(--fg-tertiary); box-shadow: inset 0 0 0 1px var(--border-strong); cursor: not-allowed; transform: none; }
+/* In flight: tinted, not filled, so it reads as working rather than as pressable. */
+.btn.is-busy     { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-border); cursor: progress; }
+
+@media (prefers-reduced-motion: reduce) {
+  .btn { transition: none; }
+  .btn:active { transform: none; }
+}
+
+/* ── Cards, from the #23 presale screen ─────────────────────────────────────── */
+/* The hairline is the single biggest thing separating this from a flat page. On a phone
+   a card fills the width and its edge is obvious; on a dark desktop, #0E0E10 on #0A0A0A
+   is a four-value difference and the card simply disappears.
+
+   It was the brand mark's ring (4% white), then index.html's --bg-surface-3 edge, and on
+   a real laptop screen both still read as merged with the page (2026-09-25). The desktop
+   redesign fixes it with depth rather than a heavier line: a card fill seven steps above
+   the page, a white-alpha edge, a one-pixel top highlight and a soft drop. */
+.noc-card {
+  background: var(--grad-card), var(--elev-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  display: flex; flex-direction: column; gap: var(--space-4);
+  position: relative;
+  box-shadow: var(--edge-highlight), var(--shadow-card);
+}
+
+/* The stage card's accent wash — a radial gradient from the top-left corner, exactly as
+   #23 draws it. `color-mix` keeps it tied to `--accent`, so shielded mode would tint it
+   teal without a second rule. */
+.noc-card-accent::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(140% 100% at 0% 0%, color-mix(in oklab, var(--accent) 18%, transparent), transparent 60%);
+}
+.noc-card-accent > * { position: relative; }
+/* The wash is clipped here, not on every card: a card that holds an overlay (the wallet
+   dropdown) must be able to let it out. */
+.noc-card-accent {
+  overflow: hidden;
+  border-color: color-mix(in oklab, var(--accent) 22%, var(--border-default));
+}
+
+.noc-card-quiet {
+  background: var(--grad-card), var(--elev-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  display: flex; flex-direction: column; gap: var(--space-3);
+  box-shadow: var(--edge-highlight), var(--shadow-card);
+}
+
+.noc-eyebrow { display: flex; align-items: center; gap: var(--space-2); color: var(--accent); }
+.noc-meta    { display: flex; justify-content: space-between; align-items: baseline; color: var(--fg-tertiary); }
+.noc-meta b  { color: var(--fg-secondary); font-weight: 500; }
+
+/* ── Progress, a native <progress> sunk into a well ─────────────────────────────
+   It was a div with an inline width, which is the one kind of style the CSP should not
+   have to allow. The element carries its value as an attribute; the fill is styled per
+   engine because there is no standard pseudo-element for it. */
+.noc-progress {
+  appearance: none; -webkit-appearance: none;
+  display: block; width: 100%; height: 8px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  overflow: hidden;
+  color: var(--accent);
+}
+.noc-progress::-webkit-progress-bar { background: transparent; }
+.noc-progress::-webkit-progress-value {
+  background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 70%, #6f4fd8), var(--accent));
+  border-radius: var(--radius-pill);
+  box-shadow: 0 0 12px color-mix(in oklab, var(--accent) 60%, transparent);
+}
+.noc-progress::-moz-progress-bar { background: var(--accent); border-radius: var(--radius-pill); }
+
+/* ── The stage card and the allocation ──────────────────────────────────────── */
+.stage-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.price { font: 600 32px/38px var(--font-display); letter-spacing: -0.02em; }
+.per   { color: var(--fg-secondary); font: 500 17px/22px var(--font-body); }
+.noc-meta .pct { color: var(--fg-primary); font-weight: 500; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 24px; padding: 0 10px;
+  border-radius: var(--radius-pill);
+  font: 600 12px/1 var(--font-body);
+}
+.badge svg { width: 12px; height: 12px; }
+.badge-paused {
+  background: var(--warning-soft);
+  color: var(--warning);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--warning) 30%, transparent);
+}
+/* Paused: the accent drains out, so the card stops inviting action. */
+.stage.is-paused { border-color: var(--border-default); }
+.stage.is-paused::before { background: radial-gradient(120% 110% at 0% 0%, rgb(255 255 255 / .04), transparent 58%); }
+.stage.is-paused .noc-eyebrow,
+.stage.is-paused .price { color: var(--fg-secondary); }
+.stage.is-paused .noc-progress::-webkit-progress-value { background: var(--fg-tertiary); box-shadow: none; }
+.stage.is-paused .noc-progress::-moz-progress-bar { background: var(--fg-tertiary); }
+
+.amt-lg { display: inline-flex; align-items: baseline; gap: 6px; }
+.alloc { gap: var(--space-2); }
+.alloc .amt-lg { margin-bottom: var(--space-1); }
+.credits {
+  list-style: none;
+  padding: var(--space-3) 0 0;
+  margin: var(--space-2) 0 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.credits a { color: var(--fg-secondary); text-underline-offset: 3px; }
+.credits a:hover { color: var(--accent); }
+
+/* ── Reading and read errors ──────────────────────────────────────────────────
+   "Reading…" gets a pulsing dot so it reads as work in progress, not as a stuck label.
+   A read error carries its icon, so it is not mistaken for ordinary red copy. */
+.reading { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--fg-secondary); }
+.reading::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  animation: noc-pulse var(--dur-spin) ease-in-out infinite;
+}
+.read-error { display: flex; align-items: flex-start; gap: var(--space-2); color: var(--danger); }
+.read-error svg { margin-top: 2px; flex: 0 0 auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  .reading::before { animation: none; }
+}
+
+/* ── The amount field, from #23's input-card ────────────────────────────────── */
+.noc-amount {
+  flex: 1; min-width: 0;
+  color: var(--fg-primary);
+  background: transparent; border: 0; outline: 0;
+  font: 600 28px/34px var(--font-display);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.noc-amount::placeholder { color: var(--fg-disabled); }
+.noc-ticker { color: var(--fg-secondary); font: 600 17px/22px var(--font-body); }
+.noc-row    { display: flex; align-items: baseline; gap: var(--space-3); }
+.noc-rule   { border: 0; border-top: 1px solid var(--bg-surface-3); margin: var(--space-1) 0; width: 100%; }
+
+/* ── Status colours, by role rather than by hue ─────────────────────────────── */
+.noc-danger  { color: var(--danger); }
+.noc-warning { color: var(--warning); }
+.noc-success { color: var(--success); }
+.noc-muted   { color: var(--fg-secondary); }
+.noc-dim     { color: var(--fg-tertiary); }
+
+a { color: var(--accent); }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── The page shell ─────────────────────────────────────────────────────────────
+   The design is a set of Pixel-9 screens, and at phone width that is exactly what this
+   is: one 440 px column with the mockups' own paddings. A laptop is not a phone, though,
+   and rendering the phone column there made the page look like a screenshot of one — so
+   above 900 px the same cards take two tracks instead of being stretched or stranded.
+   Nothing about a card changes; only how many sit side by side. */
+.shell {
+  max-width: 440px;
+  margin-inline: auto;
+  padding-inline: var(--space-4);
+  padding-block: var(--space-7) var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.cols { display: flex; flex-direction: column; gap: 28px; }
+.col  { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
+
+@media (min-width: 900px) {
+  .shell {
+    max-width: var(--layout-max);
+    padding-inline: var(--space-6);
+    padding-block: var(--space-8) var(--space-8);
+  }
+  .cols {
+    display: grid;
+    /* The buy column is wider because the amount field and the signing summary need the
+       room; the side rail holds figures and one address, which do not. */
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    gap: var(--space-7) var(--space-6);
+    align-items: start;
+  }
+  /* The header spans both tracks and gets a rule under it, so the two columns read as
+     one page rather than two panes that happen to be adjacent. */
+  .shell-head {
+    padding-bottom: var(--space-5);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  /* The stage card is the page's headline, so on a laptop it gets the room to be one. */
+  .noc-card-accent.stage { padding: var(--space-6); border-radius: var(--radius-2xl); }
+  .price { font-size: 44px; line-height: 50px; }
+  .buy { padding: var(--space-6); border-radius: var(--radius-2xl); }
+}
+
+.shell-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-bottom: var(--space-2);
+}
+
+/* Proximity does the grouping. Everything inside one section sits 12 px apart; sections
+   themselves sit 28 px apart. Before, both were 20 px, so a card and its own heading were
+   as far apart as two unrelated panels and nothing read as belonging to anything. */
+.shell > section, .col > section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+/* The mockups have no visible <h2> on most panels — the eyebrow carries the label.
+   Section headings therefore take the overline tier rather than a heading size that
+   would compete with the balances they sit above. */
+.shell h2 {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-tertiary);
+}
+
+.shell h3 { margin: 0; font: 600 17px/22px var(--font-display); }
+.shell p  { margin: 0; }
+
+/* ── Buy form ───────────────────────────────────────────────────────────────── */
+.buy { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.seg { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.seg legend { padding: 0; }
+.seg-row {
+  display: flex; gap: var(--space-1);
+  background: var(--bg-surface-1);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1);
+}
+.seg-row label {
+  flex: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 36px;
+  border-radius: var(--radius-pill);
+  color: var(--fg-secondary);
+  cursor: pointer;
+  transition: background var(--dur-fast) linear, color var(--dur-fast) linear;
+}
+/* The radio itself is not hidden with display:none — that removes it from the
+   accessibility tree and from keyboard focus. Clipped instead, so the control is still
+   a real radio group: arrow keys move between the three, and the label lights up. */
+.seg-row input {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  clip-path: inset(50%);
+  overflow: hidden; white-space: nowrap;
+}
+.seg-row label.seg-on {
+  background: var(--elev-3);
+  color: var(--fg-primary);
+  box-shadow: inset 0 0 0 1px var(--border-strong), 0 2px 6px rgb(0 0 0 / .4);
+}
+.seg-row label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .seg-row label { transition: none; }
+}
+
+/* The pre-signature summary is the one block on the page meant to be READ rather than
+   scanned: a well, one row per fact, amounts in bold and addresses in full at equal
+   weight (AddressGroups). No accent — nothing in it should look like a button. */
+.signing {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1) 0;
+  display: flex; flex-direction: column;
+  background: var(--well);
+  border-radius: var(--radius-lg);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  color: var(--fg-secondary);
+  font: 400 13px/19px var(--font-body);
+}
+.signing > li { padding: var(--space-3); }
+.signing > li + li { border-top: 1px solid var(--border-subtle); }
+.signing b { color: var(--fg-primary); font-weight: 600; }
+.sign-addr { display: flex; flex-direction: column; gap: 6px; }
+.sign-label {
+  color: var(--fg-tertiary);
+  font: 600 11px/14px var(--font-body);
+  letter-spacing: .08em; text-transform: uppercase;
+}
+
+/* Messages about the purchase: a note under the field, and the outcome under the button. */
+.field-msg { display: flex; align-items: flex-start; gap: var(--space-2); font: 500 13px/18px var(--font-body); }
+.field-msg svg { margin-top: 2px; flex: 0 0 auto; }
+.field-warn { color: var(--warning); }
+.tx-msg {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  font: 500 13px/19px var(--font-body);
+}
+.tx-msg svg { margin-top: 3px; flex: 0 0 auto; }
+.tx-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--danger) 30%, transparent);
+}
+.tx-success {
+  background: color-mix(in oklab, var(--success) 10%, transparent);
+  color: var(--fg-primary);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--success) 28%, transparent);
+}
+.tx-success svg { color: var(--success); }
+.tx-sig { display: block; font-size: 12px; line-height: 18px; color: var(--fg-secondary); overflow-wrap: anywhere; }
+
+.noc-accent { color: var(--accent); }
+
+/* No wallet yet: the buy panel's unavailable state, dashed so it reads as a slot waiting
+   to be filled rather than as a card with content. */
+.connect-to-buy {
+  flex-direction: row; align-items: center; gap: var(--space-3);
+  color: var(--fg-secondary);
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--border-strong);
+  box-shadow: none;
+}
+
+/* ── Addresses and copy (desktop redesign) ────────────────────────────────────
+   Equal weight across the whole address, in groups of four. The gap is a column-gap,
+   not a space character, so a selection copies the exact address. */
+.addr-groups {
+  display: inline-flex; flex-wrap: wrap;
+  column-gap: .6ch; row-gap: 2px;
+  font: 400 12px/20px var(--font-mono);
+  font-variant-numeric: slashed-zero;
+  color: var(--fg-primary);
+  user-select: all;
+}
+
+.icon-btn {
+  position: relative;
+  width: 36px; height: 36px; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--elev-2);
+  color: var(--fg-secondary);
+  cursor: pointer;
+  transition: background var(--dur-fast) linear, color var(--dur-fast) linear;
+}
+.icon-btn:hover { background: var(--elev-3); color: var(--fg-primary); }
+/* A 36 px button with a 48 px hit area: the ring is invisible, the target is not. */
+.icon-btn::after { content: ''; position: absolute; inset: -6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .icon-btn { transition: none; }
+}
+
+/* ── Referral ───────────────────────────────────────────────────────────────── */
+.stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.stat-row > * { min-width: 0; }
+.stat { gap: var(--space-2); padding: var(--space-4) var(--space-5); }
+
+.ref-head { display: flex; align-items: center; justify-content: space-between; margin: -6px -6px 0 0; }
+/* The link in a well, select-all, as two no-wrap runs: base and address. A line can then
+   break only between them, never inside the address. The address run scrolls sideways
+   rather than overflowing if a column is ever narrower than one address. */
+.link-field {
+  display: flex; flex-wrap: wrap;
+  margin: 0;
+  font-size: 12px; line-height: 20px;
+  padding: var(--space-3);
+  background: var(--well);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  user-select: all;
+}
+.link-base { white-space: nowrap; color: var(--fg-tertiary); }
+.link-ref  { white-space: nowrap; color: var(--fg-primary); max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+
+
+/* ── Connect ────────────────────────────────────────────────────────────────────
+   The wallet-adapter ships its own purple button and its own font stack. Rather than
+   fight it per property, its trigger is re-pointed at our button primitive so there is
+   one button in the product, not two that nearly match. */
+.wallet-adapter-button-trigger {
+  background-color: var(--accent) !important;
+  color: var(--bg-base) !important;
+}
+.wallet-adapter-button {
+  font-family: var(--font-body) !important;
+  font-size: 17px !important;
+  height: var(--touch-target-rec) !important;
+  line-height: var(--touch-target-rec) !important;
+  border-radius: var(--radius-pill) !important;
+  justify-content: center;
+  width: 100%;
+}
+.wallet-adapter-button:not([disabled]):hover {
+  background-color: var(--accent-hover) !important;
+}
+
+/* Connected, the wallet button steps down to a secondary surface, so purple belongs to
+   one thing on the page: the buy button. The adapter gives the connected trigger no
+   class of its own, so the card says which state it is in. */
+.wallet-card.is-connected .wallet-adapter-button-trigger {
+  justify-content: flex-start;
+  padding: 0 var(--space-4) 0 var(--space-3) !important;
+  gap: var(--space-3);
+  background-color: var(--elev-2) !important;
+  color: var(--fg-primary) !important;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.wallet-card.is-connected .wallet-adapter-button-trigger:not([disabled]):hover {
+  background-color: var(--elev-3) !important;
+}
+
+.wallet-card { gap: var(--space-4); }
+
+/* The full address in a well, with its copy button. */
+.addr-field {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  background: var(--well);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+}
+.addr { flex: 1; min-width: 0; font-size: 12px; line-height: 18px; color: var(--fg-secondary); overflow-wrap: anywhere; }
+
+/* No wallet: the Android note is for a different reader, so it is set apart. */
+.no-wallet-aside {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--elev-2);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  color: var(--fg-secondary);
+}
+
+/* The section's own heading is a real h3 here, not the overline the other panels use:
+   this is the one place the page addresses the reader directly. */
+.shell section:has(> [id='connect-heading']) { gap: var(--space-3); }
+
+/* Set apart from the prose above it — it is a standing promise about the product, not a
+   sentence in the paragraph it follows. */
+.phrase-note {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  color: var(--fg-secondary);
+}
+.phrase-note svg { color: var(--success); }
+
+/* ── Brand mark ────────────────────────────────────────────────────────────────
+   The owner's logo as an image (ui/BrandMark.tsx). It used to be a CSS-drawn "N" from
+   the design file's placeholder mark, which was not the logo. */
+.brand-mark {
+  width: 44px; height: 44px;
+  flex: 0 0 auto;
+  display: block;
+  object-fit: contain;
+}
+
+/* ── Section headings carry their icon ─────────────────────────────────────────
+   The icon sits in the overline, at the overline's own colour, so it dims and brightens
+   with the label instead of becoming a second accent competing with the figure below. */
+.shell h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.shell-head { flex-direction: row; align-items: center; gap: var(--space-3); }
+.shell-head .head-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+/* Icons that sit inside a line of running text need the line's own alignment, not the
+   block alignment a section heading gets. */
+.phrase-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.shell section > h2 svg { flex: 0 0 auto; }
+/* The connect panel used to take a white 17 px heading while every other section took the
+   overline. One page, one rule: an eyebrow with its icon, in tertiary, above a card. */
+
+/* ── The wallet dialog ──────────────────────────────────────────────────────────
+   The adapter ships its own navy (#10141f) and its own DM Sans. Neither is ours, and a
+   dialog that does not belong to the page is exactly where a user stops trusting what
+   they are looking at — this is the one moment the page asks them to hand over a
+   connection. Re-pointed at the DS surfaces and the DS face, without touching its
+   behaviour. */
+.wallet-adapter-modal-wrapper {
+  background: var(--grad-card), var(--elev-1) !important;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-2xl) !important;
+  font-family: var(--font-body) !important;
+  box-shadow: var(--edge-highlight), 0 28px 64px -16px rgb(0 0 0 / .95) !important;
+}
+.wallet-adapter-modal-title {
+  font-family: var(--font-display) !important;
+  font-size: 20px !important;
+  line-height: 26px !important;
+  font-weight: 600 !important;
+  color: var(--fg-primary) !important;
+}
+.wallet-adapter-modal-list .wallet-adapter-button {
+  background: var(--elev-2) !important;
+  color: var(--fg-primary) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: inset 0 0 0 1px var(--border-default);
+  justify-content: flex-start;
+  font-size: 15px !important;
+  height: var(--touch-target-rec) !important;
+  line-height: var(--touch-target-rec) !important;
+}
+.wallet-adapter-modal-list .wallet-adapter-button:hover {
+  background: var(--elev-3) !important;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+/* "Detected" — a fact about the reader's machine, not a call to action. */
+.wallet-adapter-modal-list .wallet-adapter-button span {
+  color: var(--fg-tertiary) !important;
+  font-size: 12px !important;
+}
+.wallet-adapter-modal-overlay { background: rgba(10, 10, 10, .72) !important; }
+.wallet-adapter-modal-button-close { background: var(--elev-2) !important; border: 1px solid var(--border-default) !important; }
+.wallet-adapter-modal-button-close svg { fill: var(--fg-secondary) !important; }
+.wallet-adapter-modal-list-more { color: var(--accent) !important; }
+
+/* ── Buy form as one object ─────────────────────────────────────────────────────
+   The card supplies the padding and the ring; the pieces inside get the tighter rhythm
+   of things that belong together. */
+.buy { gap: var(--space-4); }
+/* The field and the segmented control sink into a well below the card: three layers —
+   page, card, well — so a control reads as a control rather than another surface. */
+.buy-amount {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--well);
+  border-radius: var(--radius-lg);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  transition: box-shadow var(--dur-fast) linear;
+}
+.buy-amount:focus-within { box-shadow: inset 0 0 0 1px var(--accent-border), 0 0 0 3px var(--accent-soft); }
+.buy .seg-row { background: var(--well); box-shadow: inset 0 0 0 1px var(--border-subtle); }
+.buy .noc-amount { font-size: 32px; line-height: 38px; }
+.buy .noc-amount::placeholder { color: var(--fg-tertiary); }
+
+@media (prefers-reduced-motion: reduce) {
+  .buy-amount { transition: none; }
+}
+
+.stat-group { display: flex; flex-direction: column; gap: var(--space-2); }
+
+/* ══ Motion ═══════════════════════════════════════════════════════════════════
+   Every duration below is one of the design file's four tokens. Nothing here is a
+   loading state pretending to be polish: the page renders at rest and then settles,
+   so a reader who arrives mid-animation still sees the finished thing, and a reader
+   with JavaScript broken sees it too.
+
+   Everything is disabled wholesale under prefers-reduced-motion at the bottom of this
+   block — one query rather than a `@media` inside each rule, so a rule added later
+   cannot forget. */
+
+@keyframes noc-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Sections arrive in order, 40 ms apart. Six steps at 40 ms is 240 ms end to end —
+   under the 300 ms where a stagger stops reading as sequence and starts reading as lag. */
+.shell > header,
+.col > section {
+  animation: noc-rise var(--dur-base) cubic-bezier(.2, 0, 0, 1) both;
+}
+.shell > header          { animation-delay: 0ms; }
+.col-main > section      { animation-delay: 80ms; }
+.col-side > section:nth-child(1) { animation-delay: 120ms; }
+.col-side > section:nth-child(2) { animation-delay: 160ms; }
+.col-side > section:nth-child(3) { animation-delay: 200ms; }
+.col-side > section:nth-child(4) { animation-delay: 240ms; }
+
+/* The accent wash breathes, very slightly, so the stage card is not a flat rectangle on
+   a flat page. 12 s is long enough that it is never caught moving — it is noticed only
+   as the card not being dead. */
+@keyframes noc-breathe {
+  0%, 100% { opacity: .85; }
+  50%      { opacity: 1; }
+}
+.noc-card-accent::before {
+  animation: noc-breathe 12s ease-in-out infinite;
+}
+
+/* Hover and press, on the two things that are pressable. */
+.btn { transition: transform 100ms cubic-bezier(.2, 0, 0, 1), filter var(--dur-fast) linear; }
+.btn-primary:not([disabled]):hover { background: var(--accent-hover); }
+.noc-card, .noc-card-quiet { transition: box-shadow var(--dur-base) linear; }
+
+/* The button says which step it is on while a purchase is in flight; the dot makes it
+   clear the page is working rather than stuck. */
+.btn .noc-spin {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor;
+  animation: noc-pulse var(--dur-spin) ease-in-out infinite;
+}
+@keyframes noc-pulse {
+  0%, 100% { opacity: .35; transform: scale(.8); }
+  50%      { opacity: 1;   transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell > header,
+  .col > section,
+  .noc-card-accent::before,
+  .btn .noc-spin {
+    animation: none !important;
+  }
+  .btn,
+  .noc-card,
+  .noc-card-quiet {
+    transition: none !important;
+  }
+}
+
+/* ══ The page has a floor ═════════════════════════════════════════════════════
+   Disconnected, this page is short: one presale card and a connect panel. The content
+   ended and the viewport did not, leaving a field of flat black that read as the page
+   having failed to load the rest.
+
+   The fix is not filler. The shell reaches the full viewport, and the ground carries a
+   single very low radial wash of the accent from above the fold — the same gradient
+   vocabulary the design file uses on the brand mark and the stage card, at an alpha
+   where it is atmosphere rather than a shape. Fixed attachment, so it does not travel
+   with the scroll and become a visible blob. */
+html, body { min-height: 100%; }
+
+body {
+  min-height: 100dvh;
+  background:
+    radial-gradient(120% 70% at 50% -10%, color-mix(in oklab, var(--accent) 7%, transparent), transparent 70%),
+    var(--bg-base);
+  background-attachment: fixed;
+}
+
+.shell { min-height: 100dvh; }
+
+/* ── The wallet dropdown (copy address / change wallet / disconnect) ────────────
+   It was there and barely usable, for two reasons at once.
+
+   STACKING. Each section carries an entry animation, and an element with an animation in
+   effect creates its own stacking context. The dropdown's z-index: 99 is therefore scoped
+   INSIDE the wallet section, and the section painted after it — balances — covered it.
+   The panel that owns an overlay is raised above its siblings so the overlay can leave it.
+
+   WIDTH. The adapter wraps the button in an inline-block, which collapses around a button
+   we set to 100%, so the list anchored to `right: 0` of a container narrower than the card
+   it sits in. Both now span the card.
+
+   And the list arrived in the adapter's own #2c2d30 with DM Sans — the third surface
+   colour on a page that has three, none of them that one. */
+.col > section:has(.wallet-adapter-dropdown) {
+  position: relative;
+  z-index: 5;
+}
+
+.wallet-adapter-dropdown { display: block; width: 100%; }
+
+.wallet-adapter-dropdown-list {
+  width: 100%;
+  background: var(--elev-2) !important;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg) !important;
+  font-family: var(--font-body) !important;
+  padding: var(--space-2) !important;
+  grid-row-gap: var(--space-1) !important;
+  box-shadow: var(--edge-highlight), 0 20px 44px -12px rgb(0 0 0 / .9) !important;
+}
+
+.wallet-adapter-dropdown-list-item {
+  justify-content: flex-start !important;
+  height: var(--touch-target-min) !important;
+  padding: 0 var(--space-3) !important;
+  border-radius: var(--radius-md) !important;
+  font-family: var(--font-body) !important;
+  font-size: 15px !important;
+  font-weight: 500 !important;
+  color: var(--fg-secondary) !important;
+}
+.wallet-adapter-dropdown-list-item:not([disabled]):hover {
+  background-color: var(--elev-3) !important;
+  color: var(--fg-primary) !important;
+}
+/* Disconnect is the one destructive row, and it was the same grey as "copy address" — the
+   row people were hunting for looked like the two above it.
+   ASSUMPTION, stated because it is positional and the adapter gives the rows no class of
+   their own: the list is Copy address / Change wallet / Disconnect, and Disconnect is
+   last. If a future adapter appends anything after it, the red lands on the wrong row —
+   which is visible immediately, not silent. */
+.wallet-adapter-dropdown-list-item:last-child { color: var(--danger) !important; }
+.wallet-adapter-dropdown-list-item:last-child:not([disabled]):hover {
+  background-color: var(--danger-soft) !important;
+  color: var(--danger) !important;
+}
+
+/* ── Portfolio ──────────────────────────────────────────────────────────────────
+   Holdings lead, each an amount and what it is worth on one line; the market value is
+   the card's footer. The valuation is context, not the subject. */
+.holdings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.holding {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--space-3); min-width: 0;
+  padding: var(--space-2) 0;
+}
+.holding + .holding { border-top: 1px solid var(--border-subtle); padding-top: var(--space-3); }
+.holding > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.amt-md { display: inline-flex; align-items: baseline; gap: 6px; }
+.holding-val { color: var(--fg-secondary); }
+/* The basis is a qualifier on the number, so it is quieter than the number — but never
+   omitted, because "at stage price" is what makes the figure honest. */
+.basis { color: var(--fg-tertiary); }
+.holding-total {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3);
+  margin: var(--space-1) calc(var(--space-5) * -1) calc(var(--space-5) * -1);
+  padding: var(--space-3) var(--space-5);
+  background: rgb(255 255 255 / .018);
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+}
+.mv { color: var(--fg-secondary); font-weight: 500; }
+
+.spark-card {
+  flex-direction: row; align-items: center; justify-content: space-between;
+  gap: var(--space-4); padding-block: var(--space-4);
+}
+.spark-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.spark-price { display: flex; align-items: baseline; gap: var(--space-2); }
+.spark { flex: 0 0 auto; display: block; overflow: visible; max-width: 45%; height: auto; }
+.chg { font: 600 13px/1 var(--font-body); }
+
+:root {
+  --spark-up-fill:   color-mix(in oklab, var(--success) 12%, transparent);
+  --spark-down-fill: color-mix(in oklab, var(--danger) 12%, transparent);
+}
+
+/* ── Purchase history ───────────────────────────────────────────────────────────
+   One list card with divided rows. Numbered in the markup and unnumbered on screen: the
+   order is the information, the ordinal is not. */
+.buys { list-style: none; margin: 0; padding: 0; gap: 0; overflow: hidden; }
+.buy-row {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: var(--space-4) var(--space-5);
+  transition: background var(--dur-fast) linear;
+}
+.buy-row + .buy-row { border-top: 1px solid var(--border-subtle); }
+.buy-row:hover { background: rgb(255 255 255 / .02); }
+.buy-row-main, .buy-row-sub {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--space-3); min-width: 0;
+}
+.buy-row-sub { flex-wrap: wrap; row-gap: 2px; color: var(--fg-secondary); }
+.buy-amt b { font: 600 17px/22px var(--font-display); letter-spacing: -0.01em; color: var(--fg-primary); }
+.buy-tk { font: 500 13px/18px var(--font-body); color: var(--fg-tertiary); }
+.buy-date { font-size: 12px; color: var(--fg-tertiary); }
+/* The signature breaks rather than truncating with an ellipsis the reader cannot expand:
+   it is already shortened in the middle, and the full value is in the title attribute. */
+.sig {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--fg-tertiary);
+  text-decoration: none; overflow-wrap: anywhere;
+}
+.sig svg { width: 12px; height: 12px; opacity: .8; flex: 0 0 auto; }
+.sig:hover { color: var(--accent); }
+/* A row the chain says moved nothing: struck (the <s> in the markup) and drained. */
+.buy-row.is-unconfirmed .buy-amt b,
+.buy-row.is-failed .buy-amt b { color: var(--fg-tertiary); }
+.buy-row.is-unconfirmed .buy-row-sub > span,
+.buy-row.is-failed .buy-row-sub > span { color: var(--fg-tertiary); }
+.buy-note {
+  display: flex; gap: var(--space-2); align-items: flex-start;
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--warning-soft);
+  color: var(--fg-primary);
+}
+.buy-note svg { color: var(--warning); margin-top: 1px; flex: 0 0 auto; }
+/* Failed reached the chain; it did not simply go missing. Red, with an ×. */
+.buy-row.is-failed .buy-note { background: var(--danger-soft); }
+.buy-row.is-failed .buy-note svg { color: var(--danger); }
+
+.empty { flex-direction: row; align-items: center; gap: var(--space-3); color: var(--fg-secondary); }
+.empty svg { color: var(--fg-tertiary); flex: 0 0 auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  .buy-row { transition: none; }
+}

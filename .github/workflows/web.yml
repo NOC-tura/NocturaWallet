@@ -1,0 +1,81 @@
+name: web
+
+on:
+  pull_request:
+    paths: ['web/**', 'core/**', '.github/workflows/web.yml']
+  push:
+    branches: [main]
+    paths: ['web/**', 'core/**', '.github/workflows/web.yml']
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # Only web/ is installed, deliberately: core/ is imported from here by relative
+      # path, and this job is what proves that arrangement resolves without the app's
+      # node_modules. It was verified locally the same way — by hiding the root install
+      # and building — which is how core/tsconfig.json came to exist: esbuild otherwise
+      # picks up the ROOT tsconfig for core files, and that one extends a React Native
+      # config this job does not have.
+      # npm is pinned, not taken from Node: the lockfiles are written with npm 11 and npm 10
+      # (Node 22's own) disagrees with it about optional peers whose range excludes the hoisted
+      # version — it demanded a nested typescript@5.9.3 and utf-8-validate@5.0.10 that npm 11
+      # omits, so `npm ci` refused both lockfiles as out of sync. Same npm on both sides.
+      - run: npm install -g npm@11.6.2
+      - run: npm ci
+        working-directory: web
+
+      # `verify` is: rm -rf dist && tsc && vite build && unit tests && the bundle gate
+      # && the secret scan && the CSP gate && two more builds compared byte for byte
+      # && the manifest. The bundle checks run after a fresh build on purpose —
+      # against a stale dist/ they would report on an artifact nobody is shipping.
+      #
+      # The reproducibility step matters MORE here than locally: the laptop comparing
+      # two of its own builds cannot tell a machine-independent build from one that
+      # merely agrees with itself. This runner is the different machine.
+      - run: npm run verify
+        working-directory: web
+
+      # The number a third party checks the served bundle against. It is in the job log
+      # rather than only in dist/, so a release has a timestamped, immutable record of
+      # what was built from which commit — and so a bundle served from a host we do not
+      # control can be compared against something the host never touched.
+      - name: Publish the build digest
+        working-directory: web
+        run: |
+          {
+            echo '### Build digest'
+            echo
+            echo "commit \`${GITHUB_SHA}\`"
+            echo
+            echo '```'
+            node scripts/build-manifest.mjs dist --print-only
+            echo '```'
+            echo
+            echo 'Reproduce from a served site:'
+            echo '```'
+            echo "cd dist && find . -type f ! -name build-manifest.json -printf '%P\n' \\"
+            echo '  | LC_ALL=C sort | xargs sha256sum | sha256sum'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The served headers are generated from deploy/security-headers.mjs; this refuses a
+      # hand edit to the config that skipped the source. It runs inside `verify` too — as
+      # its own step its failure names the reason without anyone reading the whole log.
+      - run: npm run nginx:check
+        working-directory: web
+
+      # web/'s own tree, including the wallet-adapter dev dependencies. `high` here
+      # rather than the root's `critical`: this tree has no React Native in it, so a
+      # high is not drowned in advisories about a bundler that never runs on a phone.
+      # The root keeps its own threshold, and scripts/audit-shipped.js answers the
+      # narrower question for the app.
+      - run: npm audit --audit-level=high
+        working-directory: web

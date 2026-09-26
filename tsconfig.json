@@ -13,5 +13,5 @@
     "ignoreDeprecations": "6.0"
   },
   "include": ["**/*.ts", "**/*.tsx", "nativewind-env.d.ts"],
-  "exclude": ["**/node_modules", "**/Pods", "e2e"]
+  "exclude": ["**/node_modules", "**/Pods", "e2e", "web", "core"]
 }

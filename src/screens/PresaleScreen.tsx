@@ -24,8 +24,6 @@ import {useResolvedPrices} from '../hooks/useResolvedPrices';
 import {
   estimateNocForSol,
   estimateNocForUsd,
-  MIN_PURCHASE_USD,
-  MAX_PURCHASE_USD,
 } from '../modules/presale/presaleBuyModule';
 import {USDC_MINT, USDT_MINT} from '../modules/tokens/coreTokens';
 import {PRESALE_STAGE_PRICES} from '../constants/presale';
@@ -47,53 +45,16 @@ interface PresaleScreenProps {
 
 // Headroom (SOL) reserved for the network fee so the buy can't drain the wallet
 // below what's needed to pay for its own transaction.
-export const FEE_HEADROOM_SOL = 0.001;
-
 /**
- * Pure gating logic for the [Buy NOC] button — extracted so it can be unit
- * tested without rendering the screen (which pulls in Zustand + price hooks +
- * navigation). Token-aware: a positive amount, the $10 min / $50k max (USD;
- * stablecoins are 1:1), and enough balance (+ SOL for the network fee).
+ * Moved to `core/presale/purchaseGate.ts` so the web enforces the same limits instead of
+ * letting the program refuse a purchase the page could have refused for free. Re-exported
+ * here unchanged — the existing tests in __tests__/PresaleActive.test.tsx import these names
+ * and are what proves the move changed nothing.
  */
-export function canBuy({
-  paymentToken,
-  amount,
-  solUsd,
-  solBalance,
-  tokenBalance,
-}: {
-  paymentToken: 'SOL' | 'USDC' | 'USDT';
-  amount: string;
-  solUsd: number;
-  solBalance: number;
-  tokenBalance: number; // display units of the selected stablecoin (ignored for SOL)
-}): {enabled: boolean; reason: string | null} {
-  const amt = Number(amount);
-  if (!Number.isFinite(amt) || amt <= 0) {
-    return {enabled: false, reason: null};
-  }
-  // Stablecoins are 1:1 USD; SOL converts via the live price.
-  const usdValue = paymentToken === 'SOL' ? amt * solUsd : amt;
-  if (usdValue < MIN_PURCHASE_USD) {
-    return {enabled: false, reason: `Minimum $${MIN_PURCHASE_USD}`};
-  }
-  if (usdValue > MAX_PURCHASE_USD) {
-    return {enabled: false, reason: `Maximum $${MAX_PURCHASE_USD.toLocaleString('en-US')} per transaction`};
-  }
-  if (paymentToken === 'SOL') {
-    if (amt + FEE_HEADROOM_SOL > solBalance) {
-      return {enabled: false, reason: 'Insufficient SOL balance'};
-    }
-  } else {
-    if (amt > tokenBalance) {
-      return {enabled: false, reason: `Insufficient ${paymentToken} balance`};
-    }
-    if (solBalance < FEE_HEADROOM_SOL) {
-      return {enabled: false, reason: 'Need a little SOL for the network fee'};
-    }
-  }
-  return {enabled: true, reason: null};
-}
+// Imported as well as re-exported: `export … from` does not bring the names into this
+// module's own scope, and both are used below.
+import {canBuy, FEE_HEADROOM_SOL} from '../../core/presale/purchaseGate';
+export {canBuy, FEE_HEADROOM_SOL};
 
 // Group integers with thousands separators while preserving up to 2 decimals.
 function formatNoc(value: number): string {
