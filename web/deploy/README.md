@@ -39,6 +39,22 @@ create `wallet.noc-tura.io` as a redirect — that puts the confusable pair back
 
 ## 2. The certificate — read this before running certbot
 
+**First, the port-80 block alone.** The full server block names the certificate files, so
+`nginx -t` refuses it until the certificate exists — and certbot's webroot challenge needs a
+server block for this name to answer on port 80. The VPS's `000-default-reject` otherwise
+closes the connection for any unknown host. Install only the first `server { listen 80; … }`
+block of the generated file, as the same path, and reload:
+
+```bash
+install -d /var/www/certbot
+# /etc/nginx/sites-available/app.noc-tura.io.conf containing ONLY the port-80 server block
+ln -s /etc/nginx/sites-available/app.noc-tura.io.conf /etc/nginx/sites-enabled/
+nginx -t && systemctl reload nginx
+```
+
+`/var/www/certbot` is this host's own webroot; the existing lineages renew through
+`/var/www/html`, so the two never touch. Then `--dry-run` the command below before the real one.
+
 **Issue a NEW, SEPARATE lineage. Do not expand an existing one.**
 
 ```bash
@@ -69,11 +85,15 @@ transition and is unrelated to this deployment.
 
 ## 3. Install the server block
 
+Once the certificate exists, replace the port-80-only file with the full generated one:
+
 ```bash
 cp web/deploy/nginx/app.noc-tura.io.conf /etc/nginx/sites-available/
-ln -s /etc/nginx/sites-available/app.noc-tura.io.conf /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
 ```
+
+Keep the previous file until `nginx -t` passes; if it fails, put the old one back and reload,
+so `api.noc-tura.io` on the same nginx never sees a broken configuration.
 
 The file is generated from `web/deploy/security-headers.mjs`. **Do not edit it on the server.**
 Edit the source, run `npm run nginx`, commit, and copy it up again — `npm run nginx:check` fails
@@ -87,17 +107,30 @@ Two things in it are worth knowing before you touch it:
   header inherited from the server block**. A per-location cache header would have served the
   bundle with no CSP and no HSTS, and nothing would have reported it. A test parses the config
   and fails if an `add_header` appears inside any location.
+- On `/api` and `/rpc` the coordinator's own copies of our security headers are hidden
+  (`proxy_hide_header`, generated from the same list), so each header arrives once. Without
+  it they arrived two or three times, and a browser honours the first HSTS — the
+  coordinator's 180 days, not ours.
 - There is no SPA fallback. S0 has no client-side router, so every real URL is a real file and
   unknown paths return 404 rather than a page that looks like it worked.
 
 ## 4. Publish the build
 
-Build in CI, not on a laptop (§6.3). The workflow prints the digest to the job summary.
+The `web` workflow builds from a clean checkout and prints the digest (job summary and log);
+it does **not** upload `dist/`. So the files are built again from the same commit, under the
+same toolchain as CI — Node 22.12.0, npm 11.6.2, `npm ci` — and the digest is what proves they
+are the same bytes CI built. The build is reproducible across Node versions (22.12 and 24 give
+the same digest), which is what makes this sound.
 
 ```bash
+# anywhere: a clean copy of the merged commit
+git archive <commit> web core | tar -x -C /tmp/release && cd /tmp/release/web
+npm ci && npm run build && npm run manifest     # prints: digest sha256:…
+# compare with the digest in the web workflow's run for that commit — they must be equal
+
 # on the VPS
 install -d -o www-data -g www-data /var/www/app.noc-tura.io
-# copy the CI artifact's dist/ into it, then:
+# copy dist/ into it, then:
 cd /var/www/app.noc-tura.io
 find . -type f ! -name build-manifest.json -printf '%P\n' | LC_ALL=C sort | xargs sha256sum | sha256sum
 ```
