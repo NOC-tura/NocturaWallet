@@ -47,4 +47,25 @@ describe('ReferralPanel', () => {
     render(<ReferralPanel address={ADDR} stats={STATS} />);
     expect(screen.getByRole('button', {name: 'Copy link'})).toBeTruthy();
   });
+
+  it('shows the bonus exactly as the allocation shows the same credit', () => {
+    // The live figures: the coordinator's totalBonusNoc is the very credit the chain holds,
+    // 16.142571618. Under the allocation it read 16.1425; in this card it read 16.14 —
+    // one number, two precisions, on the same screen.
+    render(<ReferralPanel address={ADDR} stats={{...STATS, totalBonusNoc: 16.142571618}} />);
+    const bonus = screen.getByTestId('referral-bonus');
+    expect(bonus.textContent).toBe('16.1425 NOC');
+    expect(bonus.getAttribute('title')).toBe('16.142571618 NOC');
+  });
+
+  it('never rounds the bonus up', () => {
+    // 0.99999 to two places is "1": a card claiming a whole NOC that was never credited.
+    render(<ReferralPanel address={ADDR} stats={{...STATS, totalBonusNoc: 0.99999}} />);
+    expect(screen.getByTestId('referral-bonus').textContent).toBe('0.9999 NOC');
+  });
+
+  it('prints the referred volume in dollars the way every other amount is printed', () => {
+    render(<ReferralPanel address={ADDR} stats={{...STATS, totalReferredUsd: 1234.5}} />);
+    expect(screen.getByTestId('referral-volume').textContent).toMatch(/\(\$1,234\.50\)$/);
+  });
 });
