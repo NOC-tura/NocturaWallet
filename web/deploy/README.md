@@ -1,7 +1,9 @@
 # Deploying `app.noc-tura.io`
 
-Everything here is a step a **person** takes on the VPS or at the registrar. Nothing in this
-repository deploys itself, and nothing below should be run by an agent on your behalf.
+Everything here is a step taken on the VPS or at the registrar, and each one is the owner's
+decision. Nothing in this repository deploys itself. The first deployment (2026-09-26/27) was
+carried out by Claude over SSH **at the owner's explicit request**, one step at a time, with
+`nginx -t` and a rollback before every reload; the account steps in §6 stayed with the owner.
 
 The repository side is done and gated:
 
@@ -27,8 +29,9 @@ Point the host at the VPS that already serves `api.noc-tura.io`.
 app.noc-tura.io.  A  <the coordinator VPS address>
 ```
 
-Verified 2026-09-21: neither `app.noc-tura.io` nor `wallet.noc-tura.io` resolves, so nothing
-is being replaced.
+Verified 2026-09-21: neither `app.noc-tura.io` nor `wallet.noc-tura.io` resolved, so nothing
+was replaced. **Done 2026-09-26:** `app.noc-tura.io A 76.13.7.226`, Cloudflare **DNS only**
+(not proxied — certbot and the digest comparison both talk to the VPS directly), no AAAA.
 
 **`app.` and not `wallet.`**, decided 2026-09-21. This page is not a wallet — it holds no key
 and creates none — and `walletapp.noc-tura.io` already exists on this domain as a devnet
@@ -153,41 +156,110 @@ Note for later: if this app is ever packaged (Capacitor, Tauri, a WebView) its O
 The app pins certificates. **A browser cannot.** These records are what the web has instead, and
 they are weaker — do not describe them as equivalent.
 
-Verified 2026-09-21, and both are missing today:
+State as of 2026-09-27. Registrar, DNS, CAA and DNSSEC are all in **one Cloudflare account**,
+which makes that account the single thing whose takeover undoes everything below.
 
-```
-$ dig +short CAA noc-tura.io     → (nothing: any CA in the world may issue for this domain)
-$ dig +short DS  noc-tura.io     → (nothing: DNSSEC is not enabled)
-```
+### Inventory first
 
-**CAA.** Checked before recommending: all four live hosts — apex, `api`, `dao` and `walletapp` —
-are issued by Let's Encrypt, and none of the certificates is a wildcard. So this restriction
-breaks nothing that exists today:
+Every control here applies to every name under the domain, so it starts from the zone export
+(Cloudflare → DNS → Records → Export), not from memory. On 2026-09-26 it held:
+
+| name | points at | HTTPS |
+|---|---|---|
+| `noc-tura.io`, `www`, `api`, `app`, `dao` | 76.13.7.226, DNS only | Let's Encrypt, http → https |
+| `srv` | 76.13.7.226 — the VPS's own hostname, serves no site | nothing on 80 or 443 |
+| `walletapp` | CNAME `nocturawallet.netlify.app` (devnet sandbox) | Let's Encrypt, http → https |
+
+plus Google Workspace mail (MX, SPF, DKIM, DMARC `p=reject`), which none of this affects.
+
+Two third-party verification records were also there and were **deleted**:
+`_cf-custom-hostname` (a Cloudflare-for-SaaS claim: it lets a *different* Cloudflare account
+serve a name under this domain and get certificates for it) and `subdomain-owner-verification`.
+Nothing in the zone pointed at an outside service, so nothing depended on them. A leftover claim
+like that is a phishing host waiting to be used.
+
+### CAA — live since 2026-09-27
 
 ```
 noc-tura.io.  CAA  0 issue "letsencrypt.org"
 noc-tura.io.  CAA  0 issuewild ";"
-noc-tura.io.  CAA  0 iodef "mailto:<an address someone actually reads>"
+noc-tura.io.  CAA  0 iodef "mailto:privacy@noc-tura.io"
 ```
 
-`issuewild ";"` forbids wildcard certificates outright, which is correct while every host has
-its own. If a wildcard is ever wanted, that line has to change first — visibly.
+Set on the apex only; subdomains inherit it.
 
-⚠️ CAA applies to **every** issuance under the domain, including the `api.noc-tura.io` renewal
-that the pin transition is waiting on. Add it while the next renewal is not imminent, and watch
-the first renewal after it lands.
+**This document used to say no certificate for the domain was a wildcard. That was wrong.**
+Cloudflare **Universal SSL** was issuing `*.noc-tura.io` certificates on its own — from Let's
+Encrypt and from Google Trust Services, the last on 2026-09-07 — even though no record is
+proxied and none of them was ever served. With Universal SSL on, adding CAA makes Cloudflare
+silently add permissions for its own CAs, wildcards included, and the two lines above stop
+meaning what they say. **Universal SSL was disabled first** (SSL/TLS → Edge Certificates);
+it only affects proxied names, of which there are none. After adding the records, verify that
+exactly these three are published (`dig +short CAA noc-tura.io` at several resolvers and at
+the Cloudflare nameservers) — any extra `issue` line means Universal SSL is back.
 
-**DNSSEC.** Enable at the DNS provider and publish the DS record at the registrar. Without it,
-CAA and every other DNS-based control can be stripped by anyone who can answer for the zone.
+Proven, not assumed: after the records landed, `certbot renew --dry-run` on the VPS succeeded
+for all four lineages (`api`, `app`, `dao`, `noc-tura.io`) — Let's Encrypt checks CAA on the
+staging run too — and the `api` SPKI was unchanged. If a wildcard is ever wanted, the
+`issuewild` line has to change first, visibly.
 
-**Registry lock** at the registrar, with out-of-band verification for changes, and **hardware
-security keys — not SMS** — on the registrar and DNS accounts. A frontend served from a hijacked
-domain is indistinguishable from the real one to every other control in §6. This is the layer
-that makes the hijack hard rather than detectable afterwards.
+### DNSSEC — active since 2026-09-27
 
-**Certificate Transparency monitoring** for any unexpected certificate on `*.noc-tura.io`. The
-api certificate carries its own SCTs, so publication is provable from the certificate itself —
-crt.sh ran two months behind for this domain in September, so do not rely on it alone.
+With Cloudflare as the registrar the DS record is managed for you: DNS → Settings → Enable
+DNSSEC, and Cloudflare publishes the DS at `.io` itself (it said "pending", and the DS
+appeared within the hour). Zone signed with algorithm 13 (ECDSA P-256), KSK tag 2371.
+
+Check it end to end rather than trusting the dashboard:
+
+```bash
+dig +short DS noc-tura.io @a0.nic.io                 # the parent has it
+delv @1.1.1.1 noc-tura.io A                          # "; fully validated"
+dig +dnssec A noc-tura.io @8.8.8.8 | grep flags      # 'ad' set
+```
+
+and recompute the DS from the KSK (`dig DNSKEY … | dnssec-dsfromkey -2`) — it must equal what
+the parent publishes. For the first hour some resolvers keep serving their cached "no DS";
+that is expiry, not failure.
+
+### HSTS preload — submitted 2026-09-27, status `pending`
+
+hstspreload.org reported the domain eligible with no errors or warnings, and the owner
+submitted `noc-tura.io`. Status: `curl https://hstspreload.org/api/v2/status?domain=noc-tura.io`.
+
+What that commits to, permanently: **every** name under `noc-tura.io`, including any added
+later, must serve valid HTTPS — a vendor "custom domain" that only speaks HTTP would simply be
+unreachable. The apex must keep sending
+`Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`, or the domain is
+dropped from the list. Removal takes months and old browsers keep the entry longer.
+
+### Certificate Transparency monitoring — live since 2026-09-27
+
+Two layers, deliberately unequal in who they trust:
+
+- **Independent:** `NOC-tura/noc-ops` → `scripts/ct-watch.mjs`, run daily by
+  `.github/workflows/ct-watch.yml`. It asks SSLMate's Cert Spotter (crt.sh was missing the api
+  and app certificates when checked, and must not be relied on) and **fails** — so GitHub
+  emails the owner — on any certificate in the last three days that is not Let's Encrypt, is a
+  wildcard, or names a host outside apex/`www`/`api`/`app`/`dao`/`walletapp`. Every run first
+  self-tests that the judge can both pass and fail. It trusts neither Cloudflare nor the VPS.
+- **Cloudflare's own** CT Monitoring (SSL/TLS → Edge Certificates), mailing the account's
+  address. Convenient, but it lives inside the account an attacker would have to take first.
+
+**A new subdomain has to be added to `POLICY.names` in `ct-watch.mjs`** before its first
+certificate, or that certificate raises the alarm. That is intended: every new name should be a
+decision someone made. The first run also surfaced `pin-test.noc-tura.io` (a certificate on
+2026-09-18, no DNS record today) — left out of the allowed names on purpose.
+
+### Account security — the part only the owner can do
+
+**Registry lock** with out-of-band verification, and **hardware security keys — not SMS** — on
+the Cloudflare account, which now holds the registrar, DNS, CAA and DNSSEC together. A frontend
+served from a hijacked domain is indistinguishable from the real one to every other control in
+§6; this is the layer that makes the hijack hard rather than detectable afterwards.
+
+As of 2026-09-27 the account uses TOTP from an app — better than SMS against SIM swap, but a
+TOTP code can still be typed into a convincing fake login page. Two security keys (one kept as
+a spare) close that. Review who else is a member of the account: each of them can change DNS.
 
 ## 7. Verify what is actually served
 
