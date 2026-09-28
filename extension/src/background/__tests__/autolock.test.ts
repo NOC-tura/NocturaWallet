@@ -5,6 +5,11 @@ import {fakeExt} from './fakeExt';
 const ACC = [{index: 0, publicKey: 'x', secretKey: 'AAAA'}];
 
 describe('auto-lock', () => {
+  it('a failed alarms.create surfaces as an error, not a silently unarmed lock', async () => {
+    const ext = fakeExt();
+    ext.alarms.create = () => Promise.reject(new Error('alarm refused'));
+    await expect(armAutolock(ext)).rejects.toThrow('alarm refused');
+  });
   it('arms the alarm for the default five minutes', async () => {
     const ext = fakeExt();
     await armAutolock(ext);
