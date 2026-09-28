@@ -5,7 +5,16 @@
     <title>Noctura — unlock</title>
   </head>
   <body>
-    <main id="app"></main>
+    <main>
+      <h1>Unlock Noctura</h1>
+      <form id="pw">
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" minlength="12" required />
+        <button id="unlock" type="submit">Unlock</button>
+      </form>
+      <button id="passkey" type="button" hidden>Unlock with passkey</button>
+      <p id="status" role="status"></p>
+    </main>
     <script type="module" src="./src/unlock/main.ts"></script>
   </body>
 </html>
