@@ -1,3 +1,5 @@
+import {ed25519} from '@noble/curves/ed25519.js';
+import {base58, base64} from '@scure/base';
 import {handleMessage} from '../messages';
 import {getSession} from '../session';
 import {AUTOLOCK_ALARM, DEFAULT_AUTOLOCK_MINUTES} from '../autolock';
@@ -8,11 +10,15 @@ const ID = 'abcdefghijklmnopabcdefghijklmnop';
 const unlockPage = {id: ID, origin: ORIGIN, url: `${ORIGIN}/unlock.html`, tab: {}, frameId: 0};
 const popup = {id: ID, origin: ORIGIN, url: `${ORIGIN}/popup.html`};
 const page = {id: ID, origin: 'https://evil.example', url: 'https://evil.example/', tab: {}, frameId: 0};
-// A well-formed raw Ed25519 keypair encoding (32-byte seed + 32-byte pubkey) is exactly 64 bytes;
-// this is 64 arbitrary non-zero bytes, base64-encoded, so it is distinguishable from an
-// all-zero placeholder and actually exercises the decode-and-measure check.
-const SECRET64 = 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ==';
-const ACC = [{index: 0, publicKey: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk', secretKey: SECRET64}];
+// A real raw Ed25519 keypair encoding (32-byte seed + the 32-byte public key it derives),
+// base64-encoded, with the matching base58 address: the only shape vault.setKeys accepts.
+const SEED = new Uint8Array(32).fill(1);
+const PUB = ed25519.getPublicKey(SEED);
+const SECRET64 = base64.encode(new Uint8Array([...SEED, ...PUB]));
+const ACC = [{index: 0, publicKey: base58.encode(PUB), secretKey: SECRET64}];
+// 64 × 0x01 is 64 bytes but not a keypair: its "public half" is not what its seed derives.
+const ONES64 = base64.encode(new Uint8Array(64).fill(1));
+const UNRELATED = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
 
 describe('message partitions', () => {
   it('accepts vault.setKeys from the vault page (positive control)', async () => {
@@ -74,6 +80,42 @@ describe('message partitions', () => {
   it('refuses a secretKey that does not decode to 64 bytes', async () => {
     const ext = fakeExt();
     const bad = [{index: 0, publicKey: ACC[0]?.publicKey, secretKey: 'AAAA'}];
+    expect(await handleMessage(ext, {type: 'vault.setKeys', accounts: bad}, unlockPage)).toEqual({ok: false, error: 'malformed'});
+    expect(await getSession(ext)).toBeNull();
+  });
+
+  it('refuses 64 × 0x01 with an unrelated address — 64 bytes is not a keypair', async () => {
+    const ext = fakeExt();
+    const bad = [{index: 0, publicKey: UNRELATED, secretKey: ONES64}];
+    expect(await handleMessage(ext, {type: 'vault.setKeys', accounts: bad}, unlockPage)).toEqual({ok: false, error: 'malformed'});
+    expect(await getSession(ext)).toBeNull();
+  });
+
+  it('refuses a real keypair sent under another address', async () => {
+    const ext = fakeExt();
+    const bad = [{index: 0, publicKey: UNRELATED, secretKey: SECRET64}];
+    expect(await handleMessage(ext, {type: 'vault.setKeys', accounts: bad}, unlockPage)).toEqual({ok: false, error: 'malformed'});
+    expect(await getSession(ext)).toBeNull();
+  });
+
+  it('refuses a secretKey whose embedded public key matches the address but whose seed does not derive it', async () => {
+    const ext = fakeExt();
+    const otherSeed = new Uint8Array(32).fill(2);
+    const bad = [{index: 0, publicKey: ACC[0]?.publicKey, secretKey: base64.encode(new Uint8Array([...otherSeed, ...PUB]))}];
+    expect(await handleMessage(ext, {type: 'vault.setKeys', accounts: bad}, unlockPage)).toEqual({ok: false, error: 'malformed'});
+    expect(await getSession(ext)).toBeNull();
+  });
+
+  it('refuses a secretKey whose seed derives the address but whose embedded public half is something else', async () => {
+    const ext = fakeExt();
+    const bad = [{index: 0, publicKey: ACC[0]?.publicKey, secretKey: base64.encode(new Uint8Array([...SEED, ...new Uint8Array(32).fill(9)]))}];
+    expect(await handleMessage(ext, {type: 'vault.setKeys', accounts: bad}, unlockPage)).toEqual({ok: false, error: 'malformed'});
+    expect(await getSession(ext)).toBeNull();
+  });
+
+  it('refuses a publicKey that is not base58', async () => {
+    const ext = fakeExt();
+    const bad = [{index: 0, publicKey: '0OIl', secretKey: SECRET64}];
     expect(await handleMessage(ext, {type: 'vault.setKeys', accounts: bad}, unlockPage)).toEqual({ok: false, error: 'malformed'});
     expect(await getSession(ext)).toBeNull();
   });

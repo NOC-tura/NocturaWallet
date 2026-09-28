@@ -1,4 +1,5 @@
-import {base64} from '@scure/base';
+import {ed25519} from '@noble/curves/ed25519.js';
+import {base58, base64} from '@scure/base';
 import type {Ext} from '../ext';
 import type {SessionAccount} from '../vault/accounts';
 import {getSession, setSession} from './session';
@@ -48,18 +49,32 @@ function pagePath(ext: Ext, s: Sender): string | null {
 /** A signing key's secretKey is a raw Ed25519 keypair encoding: 32-byte seed + 32-byte pubkey. */
 const SECRET_KEY_BYTES = 64;
 
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && a.every((x, i) => x === b[i]);
+}
+
+/**
+ * The secretKey must be a real keypair FOR the address it is stored under: its embedded public
+ * half equals the base58-decoded `publicKey`, and its seed half derives that same key. Anything
+ * else would sign as one address while the wallet shows another.
+ */
 function isValidAccount(a: unknown): a is SessionAccount {
   if (typeof a !== 'object' || a === null) return false;
   const {index, publicKey, secretKey} = a as SessionAccount;
   if (!Number.isInteger(index) || index < 0) return false;
   if (typeof publicKey !== 'string' || publicKey.length === 0) return false;
   if (typeof secretKey !== 'string') return false;
+  let sk: Uint8Array | undefined;
   try {
-    if (base64.decode(secretKey).length !== SECRET_KEY_BYTES) return false;
+    const pub = base58.decode(publicKey);
+    sk = base64.decode(secretKey);
+    if (sk.length !== SECRET_KEY_BYTES || pub.length !== 32) return false;
+    return sameBytes(sk.subarray(32), pub) && sameBytes(ed25519.getPublicKey(sk.subarray(0, 32)), pub);
   } catch {
     return false;
+  } finally {
+    sk?.fill(0);
   }
-  return true;
 }
 
 function validAccounts(v: unknown): v is SessionAccount[] {
