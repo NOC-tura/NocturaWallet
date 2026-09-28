@@ -5,7 +5,8 @@ import type {JurisdictionResult} from './classify';
  *
  * Fails closed on purpose (spec §4, owner decision 2026-09-27): the app once ran five
  * months on its bundled fallback because the list endpoint 404'd silently. So the bundled
- * list is always stale, missing or unparsable dates are stale, a missing limit is stale,
+ * list is always stale, missing or unparsable dates are stale (a date more than a day in the
+ * future counts as unparsable), a missing limit is stale,
  * and a server's `stale: false` never overrides an age computed here.
  */
 export interface ListMeta {
@@ -97,6 +98,10 @@ export function evaluateListFreshness(meta: ListMeta, now: Date): Freshness {
   const nowMs = now.getTime();
   // Fail closed: if `now` is invalid (NaN), treat as stale. This protects against clock skew or invalid dates.
   if (!Number.isFinite(nowMs)) return {stale: true, reason: 'too_old', ageDays: null};
+  // A date more than a day ahead of `now` is a broken or lying server (the day covers time zones
+  // and small clock skew). It is treated as unparsable, and poisons the whole list rather than
+  // being dropped in favour of the other date: nothing from that server is trusted to be fresh.
+  if (dates.some(t => t - nowMs > DAY)) return {stale: true, reason: 'no_dates', ageDays: null};
   const ageDays = Math.floor((nowMs - Math.max(...dates)) / DAY);
   const limit = meta.maxStalenessDays;
   if (typeof limit !== 'number' || !Number.isFinite(limit) || limit <= 0 || ageDays > limit) {

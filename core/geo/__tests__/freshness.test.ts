@@ -78,18 +78,51 @@ describe('evaluateListFreshness', () => {
     expect(r.stale).toBe(false);
   });
   it('accepts leap-year date 2028-02-29', () => {
-    // 2028 is a leap year, so Feb 29 is valid.
-    expect(evaluateListFreshness({...fresh, updatedAt: '2028-02-29', reviewedAt: '2028-02-29'}, NOW).reason).toBe(null);
+    // 2028 is a leap year, so Feb 29 is valid. Judged from the day after, so the future-date
+    // rule below does not decide the outcome — only the parser does.
+    const after = new Date('2028-03-01T00:00:00Z');
+    expect(evaluateListFreshness({...fresh, updatedAt: '2028-02-29', reviewedAt: '2028-02-29'}, after).reason).toBe(null);
   });
   it('rejects non-leap-year date 2027-02-29', () => {
-    // 2027 is not a leap year, so Feb 29 is invalid.
-    expect(evaluateListFreshness({...fresh, updatedAt: '2027-02-29', reviewedAt: '2027-02-29'}, NOW).reason).toBe('no_dates');
+    // 2027 is not a leap year, so Feb 29 is invalid. Judged from the day after, where a parser
+    // that accepted it (as 2027-03-01) would report the list fresh.
+    const after = new Date('2027-03-01T00:00:00Z');
+    expect(evaluateListFreshness({...fresh, updatedAt: '2027-02-29', reviewedAt: '2027-02-29'}, after).reason).toBe('no_dates');
   });
   it('rejects hour 24 (2026-09-20T24:00:00Z)', () => {
     expect(evaluateListFreshness({...fresh, updatedAt: '2026-09-20T24:00:00Z', reviewedAt: '2026-09-20T24:00:00Z'}, NOW).reason).toBe('no_dates');
   });
   it('rejects invalid month (2026-13-01)', () => {
     expect(evaluateListFreshness({...fresh, updatedAt: '2026-13-01', reviewedAt: '2026-13-01'}, NOW).reason).toBe('no_dates');
+  });
+
+  // A list dated in the future is a broken or lying server, not a fresh list: more than one
+  // day ahead of `now` (the tolerance covers time zones and small clock skew) is stale.
+  describe('future dates', () => {
+    const at = (d: string) => evaluateListFreshness({...fresh, updatedAt: d, reviewedAt: d}, NOW);
+    it('just under one day ahead is accepted', () => {
+      expect(at('2026-09-29T11:59:59Z').stale).toBe(false);
+    });
+    it('exactly one day ahead is accepted', () => {
+      expect(at('2026-09-29T12:00:00Z').stale).toBe(false);
+    });
+    it('just over one day ahead is stale', () => {
+      expect(at('2026-09-29T12:00:01Z')).toEqual({stale: true, reason: 'no_dates', ageDays: null});
+    });
+    it('a date-only value tomorrow is accepted, the day after is stale', () => {
+      expect(at('2026-09-29').stale).toBe(false);
+      expect(at('2026-09-30')).toMatchObject({stale: true, reason: 'no_dates'});
+    });
+    it('a far-future date is stale even with a fresh date beside it and stale:false from the server', () => {
+      expect(evaluateListFreshness({...fresh, updatedAt: '2099-01-01', reviewedAt: '2026-09-25'}, NOW)).toMatchObject({stale: true, reason: 'no_dates'});
+      expect(evaluateListFreshness({...fresh, updatedAt: '2026-09-25', reviewedAt: '2099-01-01'}, NOW)).toMatchObject({stale: true, reason: 'no_dates'});
+    });
+    it('an offset timestamp is compared as the instant it names', () => {
+      // 2026-09-29T13:30:00+02:00 is 11:30Z — under one day ahead.
+      expect(at('2026-09-29T13:30:00+02:00').stale).toBe(false);
+      // 2026-09-29T11:30:00-02:00 is 13:30Z — over one day ahead.
+      expect(at('2026-09-29T11:30:00-02:00').stale).toBe(true);
+    });
   });
 });
 
