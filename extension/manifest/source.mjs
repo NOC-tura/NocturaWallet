@@ -15,6 +15,11 @@ export const HOST_PERMISSIONS = [
 
 export const EXTENSION_CSP = "script-src 'self'; object-src 'self'";
 
+// The minimum browsers (plan: Chrome 122, Firefox 150). The permissions gate compares the built
+// manifests against these, so a lowered floor cannot arrive by a hand edit either.
+export const MIN_CHROME_VERSION = '122';
+export const MIN_FIREFOX_VERSION = '150.0';
+
 const VERSION = '0.1.0';
 
 function base() {
@@ -33,7 +38,7 @@ function base() {
 /** @param {'chrome' | 'firefox'} browser */
 export function render(browser) {
   if (browser === 'chrome') {
-    return {...base(), minimum_chrome_version: '122', background: {service_worker: 'background.js', type: 'module'}};
+    return {...base(), minimum_chrome_version: MIN_CHROME_VERSION, background: {service_worker: 'background.js', type: 'module'}};
   }
   if (browser === 'firefox') {
     return {
@@ -42,7 +47,7 @@ export function render(browser) {
       browser_specific_settings: {
         gecko: {
           id: 'wallet@noc-tura.io',
-          strict_min_version: '150.0',
+          strict_min_version: MIN_FIREFOX_VERSION,
           // Truthful, per spec §5: public addresses and transactions go to the coordinator.
           // The exact category list is re-checked against AMO's current taxonomy in B1e,
           // before the first submission.

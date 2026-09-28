@@ -3,7 +3,7 @@
 // arrives by a hand edit of dist/ — or by a future generator bug — fails here.
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {PERMISSIONS, HOST_PERMISSIONS, EXTENSION_CSP} from '../manifest/source.mjs';
+import {PERMISSIONS, HOST_PERMISSIONS, EXTENSION_CSP, MIN_CHROME_VERSION, MIN_FIREFOX_VERSION} from '../manifest/source.mjs';
 
 export function comparePermissions(manifest, browser) {
   const problems = [];
@@ -17,8 +17,12 @@ export function comparePermissions(manifest, browser) {
     problems.push(`CSP differs: ${manifest.content_security_policy?.extension_pages}`);
   }
   if (manifest.content_scripts !== undefined) problems.push('content_scripts present (not before B1c)');
+  if (browser === 'chrome' && manifest.minimum_chrome_version !== MIN_CHROME_VERSION) {
+    problems.push(`chrome: minimum_chrome_version differs: ${manifest.minimum_chrome_version}`);
+  }
   if (browser === 'firefox') {
     const gecko = manifest.browser_specific_settings?.gecko;
+    if (gecko?.strict_min_version !== MIN_FIREFOX_VERSION) problems.push(`firefox: gecko.strict_min_version differs: ${gecko?.strict_min_version}`);
     if (!gecko?.id) problems.push('firefox: gecko.id missing');
     if (!gecko?.data_collection_permissions) problems.push('firefox: data_collection_permissions missing');
   }
