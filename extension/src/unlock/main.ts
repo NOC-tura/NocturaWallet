@@ -1,5 +1,5 @@
 import {ENVELOPE_KEY, unlockFlow} from './unlockFlow';
-import {attemptPasskeyUnlock, attemptUnlock, runExclusive, type BusyGate, type Outcome} from './orchestrate';
+import {attemptPasskeyUnlock, attemptUnlock, createWrongBackoff, runExclusive, type BusyGate, type Outcome} from './orchestrate';
 import {workerKdf} from '../vault/kdf';
 import {evaluatePrf} from '../vault/passkey';
 import {unb64} from '../vault/bytes';
@@ -36,6 +36,14 @@ async function envelope(): Promise<EnvelopeV1 | null> {
 let busy = false;
 const gate: BusyGate = {isBusy: () => busy, setBusy: b => (busy = b)};
 
+// Spec §2: consecutive wrong outcomes add a growing wait before the buttons come back. It runs
+// inside runExclusive + withButtonsDisabled, so both buttons stay disabled and the gate held.
+const WAITING = 'That did not unlock the wallet. Wait a moment before trying again.';
+const backoff = createWrongBackoff(ms => new Promise<void>(resolve => setTimeout(resolve, ms)));
+const showWaiting = (): void => {
+  status.textContent = WAITING;
+};
+
 /**
  * Disables both buttons for the duration of `action` and re-enables them — and clears the
  * password field — in a `finally`, so a thrown error can never leave the page stuck mid-unlock.
@@ -55,7 +63,9 @@ async function withButtonsDisabled<T>(action: () => Promise<T>): Promise<T> {
 
 async function handlePasswordSubmit(): Promise<void> {
   const password = pw.value;
-  const result = await runExclusive(gate, () => withButtonsDisabled(() => attemptUnlock({envelope, send, unlockFlow}, {password, kdf: workerKdf})));
+  const result = await runExclusive(gate, () =>
+    withButtonsDisabled(() => backoff.run(() => attemptUnlock({envelope, send, unlockFlow}, {password, kdf: workerKdf}), showWaiting)),
+  );
   if (result !== 'busy') status.textContent = WORDS[result];
 }
 
@@ -67,12 +77,16 @@ document.getElementById('pw')?.addEventListener('submit', e => {
 async function handlePasskeyClick(pk: NonNullable<EnvelopeV1['passkey']>): Promise<void> {
   const result = await runExclusive(gate, () =>
     withButtonsDisabled(() =>
-      attemptPasskeyUnlock({
-        evaluatePrf: () => evaluatePrf(navigator.credentials, unb64(pk.credentialId), unb64(pk.prfSalt)),
-        envelope,
-        send,
-        unlockFlow,
-      }),
+      backoff.run(
+        () =>
+          attemptPasskeyUnlock({
+            evaluatePrf: () => evaluatePrf(navigator.credentials, unb64(pk.credentialId), unb64(pk.prfSalt)),
+            envelope,
+            send,
+            unlockFlow,
+          }),
+        showWaiting,
+      ),
     ),
   );
   if (result !== 'busy') status.textContent = WORDS[result];

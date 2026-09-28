@@ -1,4 +1,13 @@
-import {attemptPasskeyUnlock, attemptUnlock, runExclusive, type BusyGate} from '../orchestrate';
+import {
+  attemptPasskeyUnlock,
+  attemptUnlock,
+  createWrongBackoff,
+  runExclusive,
+  wrongDelayMs,
+  MAX_WRONG_DELAY_MS,
+  type BusyGate,
+  type Outcome,
+} from '../orchestrate';
 import type {EnvelopeV1} from '../../vault/envelope';
 
 const FAKE_ENV: EnvelopeV1 = {
@@ -164,5 +173,86 @@ describe('runExclusive — one in-flight guard for the whole page', () => {
     const gate = fakeGate();
     expect(await runExclusive(gate, async () => 'a')).toBe('a');
     expect(await runExclusive(gate, async () => 'b')).toBe('b');
+  });
+});
+
+describe('wrong-password backoff (spec §2: an increasing delay on top of the Argon2id cost)', () => {
+  function recordingSleep() {
+    const slept: number[] = [];
+    return {slept, sleep: async (ms: number) => void slept.push(ms)};
+  }
+
+  it('grows 0, 1 s, 2 s, 4 s, 8 s, 16 s and caps at 30 s', () => {
+    const seq = [1, 2, 3, 4, 5, 6, 7, 8, 50].map(wrongDelayMs);
+    expect(seq).toEqual([0, 1000, 2000, 4000, 8000, 16000, 30000, 30000, 30000]);
+    expect(MAX_WRONG_DELAY_MS).toBe(30000);
+  });
+
+  it('sleeps the growing delay after each consecutive wrong outcome, and shows the wait once per sleep', async () => {
+    const {slept, sleep} = recordingSleep();
+    const backoff = createWrongBackoff(sleep);
+    let waits = 0;
+    for (let i = 0; i < 5; i++) await backoff.run(async () => 'wrong' as Outcome, () => waits++);
+    expect(slept).toEqual([1000, 2000, 4000, 8000]);
+    expect(waits).toBe(4);
+  });
+
+  it('resets on unlocked', async () => {
+    const {slept, sleep} = recordingSleep();
+    const backoff = createWrongBackoff(sleep);
+    await backoff.run(async () => 'wrong' as Outcome, () => undefined);
+    await backoff.run(async () => 'wrong' as Outcome, () => undefined);
+    await backoff.run(async () => 'wrong' as Outcome, () => undefined);
+    await backoff.run(async () => 'unlocked' as Outcome, () => undefined);
+    await backoff.run(async () => 'wrong' as Outcome, () => undefined);
+    await backoff.run(async () => 'wrong' as Outcome, () => undefined);
+    expect(slept).toEqual([1000, 2000, 1000]);
+  });
+
+  it('neither resets nor grows on failed / unavailable / no-wallet', async () => {
+    const {slept, sleep} = recordingSleep();
+    const backoff = createWrongBackoff(sleep);
+    await backoff.run(async () => 'wrong' as Outcome, () => undefined);
+    await backoff.run(async () => 'failed' as Outcome, () => undefined);
+    await backoff.run(async () => 'unavailable' as Outcome | 'unavailable', () => undefined);
+    await backoff.run(async () => 'no-wallet' as Outcome, () => undefined);
+    await backoff.run(async () => 'wrong' as Outcome, () => undefined);
+    expect(slept).toEqual([1000]);
+  });
+
+  it('returns the outcome unchanged', async () => {
+    const backoff = createWrongBackoff(async () => undefined);
+    expect(await backoff.run(async () => 'wrong' as Outcome, () => undefined)).toBe('wrong');
+    expect(await backoff.run(async () => 'unlocked' as Outcome, () => undefined)).toBe('unlocked');
+  });
+
+  it('keeps the busy gate held for the whole delay', async () => {
+    let busy = false;
+    const gate: BusyGate = {isBusy: () => busy, setBusy: b => (busy = b)};
+    let release: (() => void) | undefined;
+    const sleeps: number[] = [];
+    const backoff = createWrongBackoff(ms => {
+      sleeps.push(ms);
+      return new Promise<void>(resolve => {
+        release = resolve;
+      });
+    });
+    await runExclusive(gate, () => backoff.run(async () => 'wrong' as Outcome, () => undefined));
+    const second = runExclusive(gate, () => backoff.run(async () => 'wrong' as Outcome, () => undefined));
+    // Let the action reach the sleep.
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(sleeps).toEqual([1000]);
+    expect(gate.isBusy()).toBe(true);
+    let thirdCalled = false;
+    expect(
+      await runExclusive(gate, async () => {
+        thirdCalled = true;
+        return 'x';
+      }),
+    ).toBe('busy');
+    expect(thirdCalled).toBe(false);
+    release?.();
+    expect(await second).toBe('wrong');
+    expect(gate.isBusy()).toBe(false);
   });
 });

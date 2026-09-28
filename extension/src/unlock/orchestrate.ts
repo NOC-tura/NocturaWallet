@@ -79,3 +79,44 @@ export async function runExclusive<T>(gate: BusyGate, action: () => Promise<T>):
     gate.setBusy(false);
   }
 }
+
+/** The cap on the extra wait after a wrong password (spec §2). */
+export const MAX_WRONG_DELAY_MS = 30_000;
+
+/**
+ * The extra wait after the n-th consecutive wrong outcome: none after the first (a typo costs
+ * only the ~3 s Argon2id run), then 1 s, 2 s, 4 s, 8 s … doubling up to `MAX_WRONG_DELAY_MS`.
+ */
+export function wrongDelayMs(consecutiveWrong: number): number {
+  if (consecutiveWrong <= 1) return 0;
+  return Math.min(MAX_WRONG_DELAY_MS, 1000 * 2 ** (consecutiveWrong - 2));
+}
+
+export interface WrongBackoff {
+  run<T extends Outcome | 'unavailable'>(action: () => Promise<T>, onWait: () => void): Promise<T>;
+}
+
+/**
+ * Spec §2: wrong passwords get an increasing delay on top of the Argon2id cost. The streak lives
+ * in this page's memory; `'unlocked'` resets it, `'wrong'` extends it and every other outcome
+ * leaves it as it is. The delay runs INSIDE `run`, so a caller that wraps `run` in
+ * `runExclusive` keeps the busy gate (and the disabled buttons) held for the whole wait.
+ * `sleep` is injected so the sequence is testable without a clock.
+ */
+export function createWrongBackoff(sleep: (ms: number) => Promise<void>): WrongBackoff {
+  let streak = 0;
+  return {
+    async run(action, onWait) {
+      const outcome = await action();
+      if (outcome === 'unlocked') streak = 0;
+      if (outcome !== 'wrong') return outcome;
+      streak += 1;
+      const ms = wrongDelayMs(streak);
+      if (ms > 0) {
+        onWait();
+        await sleep(ms);
+      }
+      return outcome;
+    },
+  };
+}
