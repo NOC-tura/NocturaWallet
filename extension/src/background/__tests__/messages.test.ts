@@ -114,6 +114,16 @@ describe('message partitions', () => {
     expect(ext.alarmsSet.get(AUTOLOCK_ALARM)).toBe(DEFAULT_AUTOLOCK_MINUTES);
   });
 
+  it('vault.setKeys leaves no session behind when arming the auto-lock alarm fails (no fail-open)', async () => {
+    const ext = fakeExt();
+    ext.alarms.create = async () => {
+      throw new Error('alarms.create rejected');
+    };
+    await expect(handleMessage(ext, {type: 'vault.setKeys', accounts: ACC}, unlockPage)).rejects.toThrow('alarms.create rejected');
+    expect(await getSession(ext)).toBeNull();
+    expect(ext.alarmsSet.has(AUTOLOCK_ALARM)).toBe(false);
+  });
+
   it('activity.ping while locked leaves no alarm armed', async () => {
     const ext = fakeExt();
     expect(await getSession(ext)).toBeNull();

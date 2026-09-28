@@ -80,8 +80,15 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender): Pro
       if (pagePath(ext, sender) !== '/unlock.html') return {ok: false, error: 'forbidden'};
       const accounts = (msg as {accounts?: unknown}).accounts;
       if (!validAccounts(accounts)) return {ok: false, error: 'malformed'};
-      await setSession(ext, accounts);
-      await armAutolock(ext);
+      // Fail closed: keys in storage.session with no alarm armed would never auto-lock, while
+      // the vault page reports "Unlock failed". Anything that throws after the write undoes it.
+      try {
+        await setSession(ext, accounts);
+        await armAutolock(ext);
+      } catch (e) {
+        await lock(ext);
+        throw e;
+      }
       return {ok: true};
     }
     case 'vault.lock':
