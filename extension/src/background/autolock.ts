@@ -13,7 +13,7 @@ async function minutes(ext: Ext): Promise<number> {
 
 /** Re-arm on every user action and every unlock; the alarm firing locks. */
 export async function armAutolock(ext: Ext): Promise<void> {
-  ext.alarms.create(AUTOLOCK_ALARM, {delayInMinutes: await minutes(ext)});
+  await ext.alarms.create(AUTOLOCK_ALARM, {delayInMinutes: await minutes(ext)});
 }
 
 export async function lock(ext: Ext): Promise<void> {

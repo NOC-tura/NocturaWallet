@@ -5,7 +5,11 @@ import type {SessionAccount} from '../vault/accounts';
 export const SESSION_KEY = 'v1_session';
 
 export async function setSession(ext: Ext, accounts: SessionAccount[]): Promise<void> {
-  await ext.session.set(SESSION_KEY, {accounts});
+  // Rebuild each account as exactly this shape before it touches storage — whatever the caller
+  // validated (or didn't) is not what gets persisted. A stray field on the input object (e.g. an
+  // accidental `seed`) must never reach storage.session.
+  const clean = accounts.map(a => ({index: a.index, publicKey: a.publicKey, secretKey: a.secretKey}));
+  await ext.session.set(SESSION_KEY, {accounts: clean});
 }
 
 export async function getSession(ext: Ext): Promise<SessionAccount[] | null> {
@@ -14,5 +18,7 @@ export async function getSession(ext: Ext): Promise<SessionAccount[] | null> {
 }
 
 export async function clearSession(ext: Ext): Promise<void> {
-  await ext.session.remove(SESSION_KEY);
+  // Clears the whole storage.session area, not just SESSION_KEY — lock() must leave nothing
+  // behind, including any key another part of the extension may have written there.
+  await ext.session.clear();
 }

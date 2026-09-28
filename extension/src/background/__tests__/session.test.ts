@@ -21,4 +21,12 @@ describe('session keys', () => {
     await setSession(ext, ACC);
     expect((ext.local as unknown as {data: Map<string, unknown>}).data.size).toBe(0);
   });
+  it('strips unknown fields before storing — never persists more than index/publicKey/secretKey', async () => {
+    const ext = fakeExt();
+    const dirty = [{...ACC[0], seed: 'do-not-store-me'}] as unknown as typeof ACC;
+    await setSession(ext, dirty);
+    const raw = (await ext.session.get(SESSION_KEY)) as {accounts: Record<string, unknown>[]};
+    expect(Object.keys(raw.accounts[0] ?? {}).sort()).toEqual(['index', 'publicKey', 'secretKey']);
+    expect(JSON.stringify(raw)).not.toContain('seed');
+  });
 });

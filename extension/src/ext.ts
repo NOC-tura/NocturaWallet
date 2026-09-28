@@ -7,6 +7,7 @@ export interface KV {
   get(key: string): Promise<unknown>;
   set(key: string, value: unknown): Promise<void>;
   remove(key: string): Promise<void>;
+  clear(): Promise<void>;
 }
 
 export interface Ext {
@@ -14,7 +15,7 @@ export interface Ext {
   extensionOrigin: string;
   session: KV;
   local: KV;
-  alarms: {create(name: string, o: {delayInMinutes: number}): void; clear(name: string): Promise<boolean>};
+  alarms: {create(name: string, o: {delayInMinutes: number}): Promise<void> | void; clear(name: string): Promise<boolean>};
   windowCount(): Promise<number>;
 }
 
@@ -22,11 +23,12 @@ interface StorageArea {
   get(key: string): Promise<Record<string, unknown>>;
   set(items: Record<string, unknown>): Promise<void>;
   remove(key: string): Promise<void>;
+  clear(): Promise<void>;
 }
 interface BrowserLike {
   runtime: {id: string; getURL(path: string): string};
   storage: {session: StorageArea; local: StorageArea};
-  alarms: {create(name: string, o: {delayInMinutes: number}): void; clear(name: string): Promise<boolean>};
+  alarms: {create(name: string, o: {delayInMinutes: number}): Promise<void> | void; clear(name: string): Promise<boolean>};
   windows: {getAll(): Promise<unknown[]>};
 }
 
@@ -35,7 +37,29 @@ function kv(area: StorageArea): KV {
     get: async key => (await area.get(key))[key],
     set: (key, value) => area.set({[key]: value}),
     remove: key => area.remove(key),
+    clear: () => area.clear(),
   };
+}
+
+/**
+ * Builds the extension's own origin from `protocol` + `host` (not the `.origin` getter — see
+ * messages.ts `pagePath` for why), then fails closed by cross-checking that value against what
+ * the runtime's own URL parser computes as `.origin` for the same URL. In a real Chrome or
+ * Firefox, an extension-scheme URL DOES get a proper web-exposed origin (Chrome registers
+ * `chrome-extension:` as a standard scheme; Firefox's `moz-extension:` carries
+ * URI_HAS_WEB_EXPOSED_ORIGIN), so the two values should always agree there. If they don't —
+ * including the degenerate case where `.origin` comes back as the literal string `"null"`, which
+ * is what a URL implementation that does NOT special-case the extension's own scheme returns —
+ * refuse to start rather than silently run every origin comparison in this codebase (isOwnPage,
+ * pagePath) against a value that cannot be trusted.
+ */
+export function deriveExtensionOrigin(url: string): string {
+  const u = new URL(url);
+  const origin = `${u.protocol}//${u.host}`;
+  if (origin === 'null' || u.origin !== origin) {
+    throw new Error(`extension origin is not web-exposed: derived ${origin}, url.origin was ${u.origin}`);
+  }
+  return origin;
 }
 
 export function browserExt(): Ext {
@@ -44,7 +68,7 @@ export function browserExt(): Ext {
   if (!b) throw new Error('not running in an extension');
   return {
     runtimeId: b.runtime.id,
-    extensionOrigin: new URL(b.runtime.getURL('')).origin,
+    extensionOrigin: deriveExtensionOrigin(b.runtime.getURL('')),
     session: kv(b.storage.session),
     local: kv(b.storage.local),
     alarms: b.alarms,

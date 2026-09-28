@@ -41,4 +41,27 @@ describe('auto-lock', () => {
     await onWindowRemoved(ext);
     expect(await getSession(ext)).toBeNull();
   });
+  it('lock clears the whole storage.session area, not just SESSION_KEY', async () => {
+    const ext = fakeExt();
+    await ext.session.set('some_unrelated_key', 'still here?');
+    await setSession(ext, ACC);
+    await armAutolock(ext);
+    await lock(ext);
+    expect(await getSession(ext)).toBeNull();
+    expect(await ext.session.get('some_unrelated_key')).toBeUndefined();
+  });
+  it('a NaN, Infinite, or non-numeric stored autoLockMinutes falls back to the default', async () => {
+    const ext = fakeExt();
+    // fakeExt's memKV JSON-round-trips (`JSON.parse(JSON.stringify(v))`), which is what a real
+    // storage.local write would do too — but that turns NaN/Infinity into `null` before minutes()
+    // ever sees them, which would trivially pass via the `typeof m !== 'number'` branch alone and
+    // never actually exercise the `Number.isFinite` guard. Writing the raw map directly is the
+    // only way to get a real NaN/Infinity in front of minutes().
+    const raw = (ext.local as unknown as {data: Map<string, unknown>}).data;
+    for (const bad of [NaN, Infinity, '15']) {
+      raw.set('v1_settings', {autoLockMinutes: bad});
+      await armAutolock(ext);
+      expect(ext.alarmsSet.get(AUTOLOCK_ALARM)).toBe(DEFAULT_AUTOLOCK_MINUTES);
+    }
+  });
 });

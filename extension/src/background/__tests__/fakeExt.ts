@@ -12,6 +12,9 @@ export function memKV(): KV & {data: Map<string, unknown>} {
     remove: async k => {
       data.delete(k);
     },
+    clear: async () => {
+      data.clear();
+    },
   };
 }
 

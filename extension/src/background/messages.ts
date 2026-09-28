@@ -1,3 +1,4 @@
+import {base64} from '@scure/base';
 import type {Ext} from '../ext';
 import type {SessionAccount} from '../vault/accounts';
 import {getSession, setSession} from './session';
@@ -44,18 +45,25 @@ function pagePath(ext: Ext, s: Sender): string | null {
   }
 }
 
+/** A signing key's secretKey is a raw Ed25519 keypair encoding: 32-byte seed + 32-byte pubkey. */
+const SECRET_KEY_BYTES = 64;
+
+function isValidAccount(a: unknown): a is SessionAccount {
+  if (typeof a !== 'object' || a === null) return false;
+  const {index, publicKey, secretKey} = a as SessionAccount;
+  if (!Number.isInteger(index) || index < 0) return false;
+  if (typeof publicKey !== 'string' || publicKey.length === 0) return false;
+  if (typeof secretKey !== 'string') return false;
+  try {
+    if (base64.decode(secretKey).length !== SECRET_KEY_BYTES) return false;
+  } catch {
+    return false;
+  }
+  return true;
+}
+
 function validAccounts(v: unknown): v is SessionAccount[] {
-  return (
-    Array.isArray(v) &&
-    v.length > 0 &&
-    v.every(
-      a =>
-        typeof a === 'object' && a !== null &&
-        Number.isInteger((a as SessionAccount).index) &&
-        typeof (a as SessionAccount).publicKey === 'string' &&
-        typeof (a as SessionAccount).secretKey === 'string',
-    )
-  );
+  return Array.isArray(v) && v.length > 0 && v.every(isValidAccount);
 }
 
 export async function handleMessage(ext: Ext, msg: unknown, sender: Sender): Promise<Result> {
