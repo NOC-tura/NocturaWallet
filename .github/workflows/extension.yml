@@ -24,3 +24,8 @@ jobs:
         working-directory: extension
       - run: npm run verify
         working-directory: extension
+
+      # extension/'s own tree, same threshold as web.yml: this tree has no React Native in it,
+      # so a high advisory is not drowned out. Its own step so a failure names the reason.
+      - run: npm audit --audit-level=high
+        working-directory: extension

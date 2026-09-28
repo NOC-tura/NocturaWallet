@@ -8,9 +8,10 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "csp": "node scripts/check-csp.mjs dist/app",
+    "secrets": "test -d dist/app && test -d dist/chrome && test -d dist/firefox && node ../web/scripts/check-no-secrets.mjs --bundle dist/app dist/chrome dist/firefox",
     "gates": "node scripts/check-permissions.mjs && node scripts/check-vault-isolation.mjs",
     "reproducible": "node scripts/verify-reproducible.mjs",
-    "verify": "rm -rf dist && npm run build && npm run test && npm run csp && npm run gates && npm run reproducible"
+    "verify": "rm -rf dist && npm run build && npm run test && npm run csp && npm run secrets && npm run gates && npm run reproducible"
   },
   "dependencies": {
     "@noble/curves": "^2.0.1",
