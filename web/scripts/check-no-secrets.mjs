@@ -18,6 +18,14 @@ const extensions = bundleMode ? /\.(js|css|html|map|json)$/ : /\.(ts|tsx|js|jsx|
 
 let bad = 0;
 
+function scanFile(p) {
+  const m = rule.exec(readFileSync(p, 'utf8'));
+  if (m) {
+    console.error(`FORBIDDEN ${m[0]} in ${p}`);
+    bad += 1;
+  }
+}
+
 function walk(dir) {
   for (const entry of readdirSync(dir)) {
     if (entry === 'node_modules' || entry.startsWith('.')) continue;
@@ -27,15 +35,16 @@ function walk(dir) {
       continue;
     }
     if (!extensions.test(entry)) continue;
-    const m = rule.exec(readFileSync(p, 'utf8'));
-    if (m) {
-      console.error(`FORBIDDEN ${m[0]} in ${p}`);
-      bad += 1;
-    }
+    scanFile(p);
   }
 }
 
 for (const root of roots) {
-  if (existsSync(root)) walk(root);
+  if (!existsSync(root)) continue;
+  if (statSync(root).isDirectory()) {
+    walk(root);
+  } else if (extensions.test(root)) {
+    scanFile(root);
+  }
 }
 process.exit(bad === 0 ? 0 : 1);
