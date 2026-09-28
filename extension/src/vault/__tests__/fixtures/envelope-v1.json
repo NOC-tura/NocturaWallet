@@ -1,0 +1,30 @@
+{
+  "v": 1,
+  "scheme": "slip10",
+  "kdf": {
+    "alg": "argon2id",
+    "m": 64,
+    "t": 1,
+    "p": 1,
+    "salt": "EBESExQVFhcYGRobHB0eHw=="
+  },
+  "seed": {
+    "iv": "gIGCg4SFhoeIiYqL",
+    "ct": "TDzfqUYbRKMJCPFGFs37ApmeqLwpCIg0n+wZurV6D1xyXtu6uJvDZ26wpta+N2dHAYTMTNczaOYe4SIMq+3f5S2M/xau1Bh3a494QXKqRa98v0COjPrT0x1GHiR17aDoDoC4RQ6NES05c1CdUA=="
+  },
+  "password": {
+    "wrapped": "4lrdrNAwQ/WY4av301igBmRsHXZeHELJR7D4Vu7hWxKJD9AZ1+B5Ww=="
+  },
+  "passkey": {
+    "credentialId": "4OHi4+Tl5ufo6err7O3u7w==",
+    "prfSalt": "wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t8=",
+    "wrapped": "0mf8IvYQpFQ4hIOb+yRavNTzfL2/1w27hY/6XCV0iE0CBOnNFuFHmQ=="
+  },
+  "accounts": [
+    {
+      "index": 0,
+      "name": "Account 1",
+      "publicKey": "HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk"
+    }
+  ]
+}
