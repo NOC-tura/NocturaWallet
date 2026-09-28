@@ -43,8 +43,16 @@ for (const root of roots) {
   if (!existsSync(root)) continue;
   if (statSync(root).isDirectory()) {
     walk(root);
-  } else if (extensions.test(root)) {
-    scanFile(root);
+    continue;
   }
+  if (!extensions.test(root)) {
+    // A security gate must fail loud on a root it cannot scan, not silently pass it
+    // by — the whole reason to run this before shipping is to be told when it can't
+    // do its job, not to find out later that a file was never checked.
+    console.error(`CANNOT SCAN ${root}: extension not matched by ${extensions}`);
+    bad += 1;
+    continue;
+  }
+  scanFile(root);
 }
 process.exit(bad === 0 ? 0 : 1);
