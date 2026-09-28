@@ -71,10 +71,12 @@ export async function createEnvelope(input: {
   const salt = random(16);
   const dataKey = random(32);
   const iv = random(12);
+  // The phrase's UTF-8 bytes are ours to zero (the string itself is not): see `finally`.
+  const encoded = utf8(input.mnemonic);
   let kek: Uint8Array | undefined;
   try {
     const key = await subtle().importKey('raw', dataKey, 'AES-GCM', false, ['encrypt']);
-    const ct = new Uint8Array(await subtle().encrypt({name: 'AES-GCM', iv}, key, utf8(input.mnemonic)));
+    const ct = new Uint8Array(await subtle().encrypt({name: 'AES-GCM', iv}, key, encoded));
     kek = await input.kdf(input.password, salt, params);
     assertArrayBufferBacked(kek);
     const env: EnvelopeV1 = {
@@ -87,6 +89,7 @@ export async function createEnvelope(input: {
     };
     return env;
   } finally {
+    encoded.fill(0);
     dataKey.fill(0);
     kek?.fill(0);
   }
@@ -107,8 +110,13 @@ export async function unlockWithPassword(env: EnvelopeV1, password: string, kdf:
 export async function decryptMnemonic(env: EnvelopeV1, dataKey: Uint8Array): Promise<string> {
   assertArrayBufferBacked(dataKey);
   const key = await subtle().importKey('raw', dataKey, 'AES-GCM', false, ['decrypt']);
-  const pt = await subtle().decrypt({name: 'AES-GCM', iv: unb64(env.seed.iv)}, key, unb64(env.seed.ct));
-  return new TextDecoder().decode(pt);
+  const pt = new Uint8Array(await subtle().decrypt({name: 'AES-GCM', iv: unb64(env.seed.iv)}, key, unb64(env.seed.ct)));
+  try {
+    return new TextDecoder().decode(pt);
+  } finally {
+    // The returned string cannot be zeroed; the plaintext bytes it was decoded from can.
+    pt.fill(0);
+  }
 }
 
 export async function addPasskeyWrap(

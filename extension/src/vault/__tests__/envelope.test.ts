@@ -121,4 +121,64 @@ describe('vault envelope', () => {
     if (!capturedWrong) throw new Error('kdf was not called');
     expect(Array.from(capturedWrong)).toEqual(new Array(capturedWrong.length).fill(0));
   });
+
+  it('zeroes the decrypted plaintext bytes after decoding them', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+    const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
+    const seen: Uint8Array[] = [];
+    const real = TextDecoder.prototype.decode;
+    const spy = vi.spyOn(TextDecoder.prototype, 'decode').mockImplementation(function (this: TextDecoder, input?: AllowSharedBufferSource) {
+      if (input instanceof Uint8Array) seen.push(input);
+      else if (input instanceof ArrayBuffer) seen.push(new Uint8Array(input));
+      return real.call(this, input);
+    });
+    try {
+      expect(await decryptMnemonic(env, dk)).toBe(MNEMONIC);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.length).toBe(MNEMONIC.length);
+    expect(Array.from(seen[0] ?? [])).toEqual(new Array(MNEMONIC.length).fill(0));
+  });
+
+  it('zeroes the encoded mnemonic bytes once createEnvelope has encrypted them', async () => {
+    const seen: Uint8Array[] = [];
+    const real = TextEncoder.prototype.encode;
+    const spy = vi.spyOn(TextEncoder.prototype, 'encode').mockImplementation(function (this: TextEncoder, input?: string) {
+      const out = real.call(this, input);
+      if (input === MNEMONIC) seen.push(out);
+      return out;
+    });
+    let env: Awaited<ReturnType<typeof createEnvelope>>;
+    try {
+      env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+    } finally {
+      spy.mockRestore();
+    }
+    expect(seen).toHaveLength(1);
+    expect(Array.from(seen[0] ?? [])).toEqual(new Array(MNEMONIC.length).fill(0));
+    // Zeroing happened after encryption, not before: the envelope still opens to the phrase.
+    expect(await decryptMnemonic(env, await unlockWithPassword(env, 'correct horse battery', kdf))).toBe(MNEMONIC);
+  });
+
+  it('zeroes the encoded mnemonic bytes even when createEnvelope fails', async () => {
+    const seen: Uint8Array[] = [];
+    const real = TextEncoder.prototype.encode;
+    const spy = vi.spyOn(TextEncoder.prototype, 'encode').mockImplementation(function (this: TextEncoder, input?: string) {
+      const out = real.call(this, input);
+      if (input === MNEMONIC) seen.push(out);
+      return out;
+    });
+    const failing: Kdf = async () => {
+      throw new Error('kdf failed');
+    };
+    try {
+      await expect(createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf: failing, params: FAST})).rejects.toThrow('kdf failed');
+    } finally {
+      spy.mockRestore();
+    }
+    expect(seen).toHaveLength(1);
+    expect(Array.from(seen[0] ?? [])).toEqual(new Array(MNEMONIC.length).fill(0));
+  });
 });
