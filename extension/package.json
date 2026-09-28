@@ -8,7 +8,7 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "csp": "node scripts/check-csp.mjs dist/app",
-    "gates": "node scripts/check-permissions.mjs",
+    "gates": "node scripts/check-permissions.mjs && node scripts/check-vault-isolation.mjs",
     "reproducible": "node scripts/verify-reproducible.mjs",
     "verify": "rm -rf dist && npm run build && npm run test && npm run csp && npm run gates && npm run reproducible"
   },
