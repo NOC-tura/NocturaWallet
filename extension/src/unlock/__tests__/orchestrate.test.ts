@@ -20,8 +20,8 @@ describe('attemptUnlock — the caller-owned prfOutput is zeroed on every path',
 
   it('zeroes prfOutput when the envelope read rejects (e.g. extension context invalidated mid-prompt)', async () => {
     const prfOutput = new Uint8Array(32).fill(9);
-    await expect(
-      attemptUnlock(
+    expect(
+      await attemptUnlock(
         {
           envelope: async () => {
             throw new Error('Extension context invalidated.');
@@ -31,7 +31,7 @@ describe('attemptUnlock — the caller-owned prfOutput is zeroed on every path',
         },
         {prfOutput},
       ),
-    ).rejects.toThrow('Extension context invalidated.');
+    ).toBe('failed');
     expect(Array.from(prfOutput)).toEqual(new Array(32).fill(0));
   });
 

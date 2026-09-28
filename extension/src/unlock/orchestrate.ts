@@ -28,6 +28,10 @@ export async function attemptUnlock(deps: AttemptUnlockDeps, factor: Factor): Pr
     const env = await deps.envelope();
     if (!env) return 'no-wallet';
     return await deps.unlockFlow({env, send: deps.send}, factor);
+  } catch {
+    // Same rule as unlockFlow: an unexpected throw is a failed attempt, never an escaping
+    // exception that would leave the page reading "Unlocking…".
+    return 'failed';
   } finally {
     if ('prfOutput' in factor) factor.prfOutput.fill(0);
   }
