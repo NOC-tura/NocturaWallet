@@ -64,6 +64,33 @@ describe('evaluateListFreshness', () => {
   it('rejects invalid now (NaN date)', () => {
     expect(evaluateListFreshness({...fresh}, new Date(NaN)).reason).toBe('too_old');
   });
+
+  // Day-boundary tests: validate the date as written, not as UTC.
+  it('accepts offset timestamp near day boundary (2026-09-20T01:00:00+02:00 = 2026-09-19T23:00:00Z)', () => {
+    // The written date is 2026-09-20 but UTC instant is 2026-09-19T23:00:00Z, which is about 13 days old.
+    const r = evaluateListFreshness({...fresh, updatedAt: '2026-09-20T01:00:00+02:00', reviewedAt: '2026-09-20T01:00:00+02:00'}, NOW);
+    expect(r.stale).toBe(false);
+    expect(r.ageDays).toBe(8); // Computed as (2026-09-28T12:00:00Z - 2026-09-19T23:00:00Z) / 86400000
+  });
+  it('accepts negative offset timestamp (2026-09-19T23:30:00-05:00)', () => {
+    // 2026-09-19T23:30:00-05:00 is 2026-09-20T04:30:00Z, about 8 days old.
+    const r = evaluateListFreshness({...fresh, updatedAt: '2026-09-19T23:30:00-05:00', reviewedAt: '2026-09-19T23:30:00-05:00'}, NOW);
+    expect(r.stale).toBe(false);
+  });
+  it('accepts leap-year date 2028-02-29', () => {
+    // 2028 is a leap year, so Feb 29 is valid.
+    expect(evaluateListFreshness({...fresh, updatedAt: '2028-02-29', reviewedAt: '2028-02-29'}, NOW).reason).toBe(null);
+  });
+  it('rejects non-leap-year date 2027-02-29', () => {
+    // 2027 is not a leap year, so Feb 29 is invalid.
+    expect(evaluateListFreshness({...fresh, updatedAt: '2027-02-29', reviewedAt: '2027-02-29'}, NOW).reason).toBe('no_dates');
+  });
+  it('rejects hour 24 (2026-09-20T24:00:00Z)', () => {
+    expect(evaluateListFreshness({...fresh, updatedAt: '2026-09-20T24:00:00Z', reviewedAt: '2026-09-20T24:00:00Z'}, NOW).reason).toBe('no_dates');
+  });
+  it('rejects invalid month (2026-13-01)', () => {
+    expect(evaluateListFreshness({...fresh, updatedAt: '2026-13-01', reviewedAt: '2026-13-01'}, NOW).reason).toBe('no_dates');
+  });
 });
 
 describe('presaleGeoGate', () => {

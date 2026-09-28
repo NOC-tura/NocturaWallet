@@ -24,26 +24,70 @@ export interface Freshness {
 
 const DAY = 86_400_000;
 
+/** Days in month, with Gregorian leap-year rule. */
+function daysInMonth(year: number, month: number): number {
+  if (month < 1 || month > 12) return 0;
+  if (month === 2) {
+    const isLeap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+    return isLeap ? 29 : 28;
+  }
+  if ([4, 6, 9, 11].includes(month)) return 30;
+  return 31;
+}
+
 function parseDay(v: string | undefined): number | null {
   if (!v) return null;
-  // Accept ONLY: (a) YYYY-MM-DD as UTC, or (b) full ISO-8601 with explicit Z or offset.
-  const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(v);
-  const isIso8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/.test(v);
-  if (!isDateOnly && !isIso8601) return null;
 
-  const t = Date.parse(isDateOnly ? `${v}T00:00:00Z` : v);
-  if (!Number.isFinite(t)) return null;
+  // Validate date-only format: YYYY-MM-DD.
+  const dateMatch = /^\d{4}-\d{2}-\d{2}$/.exec(v);
+  if (dateMatch) {
+    const year = parseInt(v.slice(0, 4), 10);
+    const month = parseInt(v.slice(5, 7), 10);
+    const day = parseInt(v.slice(8, 10), 10);
+    if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) {
+      return null;
+    }
+    const t = Date.parse(`${v}T00:00:00Z`);
+    return Number.isFinite(t) ? t : null;
+  }
 
-  // Validate that the parsed date is real (reject impossible dates like 2026-02-31).
-  const parsed = new Date(t);
-  const year = parsed.getUTCFullYear();
-  const month = parsed.getUTCMonth() + 1;
-  const day = parsed.getUTCDate();
-  const dateStr = `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-  const expectedStr = v.slice(0, 10);
-  if (dateStr !== expectedStr) return null; // Round-trip failed; date was invalid.
+  // Validate full ISO-8601 format with explicit offset. Parse components, validate as written (not UTC),
+  // only then Date.parse. This prevents rejecting valid offset timestamps near day boundaries (e.g.,
+  // 2026-09-20T01:00:00+02:00 is 2026-09-19T23:00:00Z but the written date is valid).
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}:\d{2})$/.exec(v);
+  if (!isoMatch) return null;
 
-  return t;
+  const year = parseInt(isoMatch[1]!, 10);
+  const month = parseInt(isoMatch[2]!, 10);
+  const day = parseInt(isoMatch[3]!, 10);
+  const hour = parseInt(isoMatch[4]!, 10);
+  const minute = parseInt(isoMatch[5]!, 10);
+  const second = isoMatch[6] ? parseInt(isoMatch[6], 10) : 0;
+  const offset = isoMatch[8]!;
+
+  // Validate date components as written.
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) {
+    return null;
+  }
+
+  // Validate time components.
+  if (hour > 23 || minute > 59 || second > 59) {
+    return null;
+  }
+
+  // Validate offset.
+  if (offset !== 'Z') {
+    const offsetMatch = /^([+-])(\d{2}):(\d{2})$/.exec(offset);
+    if (!offsetMatch) return null;
+    const offsetHours = parseInt(offsetMatch[2]!, 10);
+    const offsetMinutes = parseInt(offsetMatch[3]!, 10);
+    if (offsetHours > 14 || offsetMinutes > 59) {
+      return null;
+    }
+  }
+
+  const t = Date.parse(v);
+  return Number.isFinite(t) ? t : null;
 }
 
 export function evaluateListFreshness(meta: ListMeta, now: Date): Freshness {
