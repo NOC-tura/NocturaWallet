@@ -25,16 +25,35 @@ export interface Freshness {
 const DAY = 86_400_000;
 
 function parseDay(v: string | undefined): number | null {
-  if (!v || !/^\d{4}-\d{2}-\d{2}/.test(v)) return null;
-  const t = Date.parse(v.length === 10 ? `${v}T00:00:00Z` : v);
-  return Number.isFinite(t) ? t : null;
+  if (!v) return null;
+  // Accept ONLY: (a) YYYY-MM-DD as UTC, or (b) full ISO-8601 with explicit Z or offset.
+  const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(v);
+  const isIso8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/.test(v);
+  if (!isDateOnly && !isIso8601) return null;
+
+  const t = Date.parse(isDateOnly ? `${v}T00:00:00Z` : v);
+  if (!Number.isFinite(t)) return null;
+
+  // Validate that the parsed date is real (reject impossible dates like 2026-02-31).
+  const parsed = new Date(t);
+  const year = parsed.getUTCFullYear();
+  const month = parsed.getUTCMonth() + 1;
+  const day = parsed.getUTCDate();
+  const dateStr = `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+  const expectedStr = v.slice(0, 10);
+  if (dateStr !== expectedStr) return null; // Round-trip failed; date was invalid.
+
+  return t;
 }
 
 export function evaluateListFreshness(meta: ListMeta, now: Date): Freshness {
   if (meta.source === 'bundled') return {stale: true, reason: 'bundled', ageDays: null};
   const dates = [parseDay(meta.updatedAt), parseDay(meta.reviewedAt)].filter((t): t is number => t !== null);
   if (dates.length === 0) return {stale: true, reason: 'no_dates', ageDays: null};
-  const ageDays = Math.floor((now.getTime() - Math.max(...dates)) / DAY);
+  const nowMs = now.getTime();
+  // Fail closed: if `now` is invalid (NaN), treat as stale. This protects against clock skew or invalid dates.
+  if (!Number.isFinite(nowMs)) return {stale: true, reason: 'too_old', ageDays: null};
+  const ageDays = Math.floor((nowMs - Math.max(...dates)) / DAY);
   const limit = meta.maxStalenessDays;
   if (typeof limit !== 'number' || !Number.isFinite(limit) || limit <= 0 || ageDays > limit) {
     return {stale: true, reason: 'too_old', ageDays};

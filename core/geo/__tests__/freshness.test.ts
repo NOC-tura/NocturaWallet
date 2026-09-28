@@ -31,6 +31,39 @@ describe('evaluateListFreshness', () => {
   it('uses the later of updatedAt and reviewedAt', () => {
     expect(evaluateListFreshness({...fresh, updatedAt: '2026-04-04', reviewedAt: '2026-09-25'}, NOW).stale).toBe(false);
   });
+
+  // Date parsing strictness: only YYYY-MM-DD (as UTC) or full ISO-8601 with explicit offset.
+  it('rejects timestamps without explicit UTC offset (no Z, no ±HH:MM)', () => {
+    expect(
+      evaluateListFreshness({...fresh, updatedAt: '2026-09-20T00:00:00', reviewedAt: '2026-09-20T00:00:00'}, NOW).reason,
+    ).toBe('no_dates');
+  });
+  it('accepts timestamps with Z suffix', () => {
+    expect(
+      evaluateListFreshness({...fresh, updatedAt: '2026-09-20T00:00:00Z', reviewedAt: '2026-09-20T00:00:00Z'}, NOW).stale,
+    ).toBe(false);
+  });
+  it('accepts timestamps with explicit +HH:MM offset', () => {
+    // 2026-09-20T02:00:00+02:00 is the same instant as 2026-09-20T00:00:00Z, so it should be fresh.
+    expect(
+      evaluateListFreshness({...fresh, updatedAt: '2026-09-20T02:00:00+02:00', reviewedAt: '2026-09-20T02:00:00+02:00'}, NOW).stale,
+    ).toBe(false);
+  });
+  it('rejects junk text after valid date', () => {
+    expect(evaluateListFreshness({...fresh, updatedAt: '2026-09-20junktext', reviewedAt: '2026-09-20junktext'}, NOW).reason).toBe('no_dates');
+  });
+  it('rejects impossible dates (e.g., 2026-02-31)', () => {
+    expect(evaluateListFreshness({...fresh, updatedAt: '2026-02-31', reviewedAt: '2026-02-31'}, NOW).reason).toBe('no_dates');
+  });
+  it('rejects maxStalenessDays of 0', () => {
+    expect(evaluateListFreshness({...fresh, maxStalenessDays: 0}, NOW).stale).toBe(true);
+  });
+  it('rejects negative maxStalenessDays', () => {
+    expect(evaluateListFreshness({...fresh, maxStalenessDays: -5}, NOW).stale).toBe(true);
+  });
+  it('rejects invalid now (NaN date)', () => {
+    expect(evaluateListFreshness({...fresh}, new Date(NaN)).reason).toBe('too_old');
+  });
 });
 
 describe('presaleGeoGate', () => {
