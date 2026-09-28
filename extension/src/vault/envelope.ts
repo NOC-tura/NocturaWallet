@@ -1,4 +1,4 @@
-import {b64, unb64, utf8} from './bytes';
+import {b64, unb64, utf8, assertArrayBufferBacked} from './bytes';
 
 /**
  * The vault on disk: the seed encrypted once with a random data key (AES-256-GCM), and the
@@ -71,24 +71,30 @@ export async function createEnvelope(input: {
   const salt = random(16);
   const dataKey = random(32);
   const iv = random(12);
-  const key = await subtle().importKey('raw', dataKey, 'AES-GCM', false, ['encrypt']);
-  const ct = new Uint8Array(await subtle().encrypt({name: 'AES-GCM', iv}, key, utf8(input.mnemonic)));
-  const kek = new Uint8Array(await input.kdf(input.password, salt, params));
-  const env: EnvelopeV1 = {
-    v: 1,
-    scheme: input.scheme,
-    kdf: {alg: 'argon2id', ...params, salt: b64(salt)},
-    seed: {iv: b64(iv), ct: b64(ct)},
-    password: {wrapped: await wrap(dataKey, kek)},
-    accounts: input.accounts,
-  };
-  dataKey.fill(0);
-  kek.fill(0);
-  return env;
+  let kek: Uint8Array | undefined;
+  try {
+    const key = await subtle().importKey('raw', dataKey, 'AES-GCM', false, ['encrypt']);
+    const ct = new Uint8Array(await subtle().encrypt({name: 'AES-GCM', iv}, key, utf8(input.mnemonic)));
+    kek = await input.kdf(input.password, salt, params);
+    assertArrayBufferBacked(kek);
+    const env: EnvelopeV1 = {
+      v: 1,
+      scheme: input.scheme,
+      kdf: {alg: 'argon2id', ...params, salt: b64(salt)},
+      seed: {iv: b64(iv), ct: b64(ct)},
+      password: {wrapped: await wrap(dataKey, kek)},
+      accounts: input.accounts,
+    };
+    return env;
+  } finally {
+    dataKey.fill(0);
+    kek?.fill(0);
+  }
 }
 
 export async function unlockWithPassword(env: EnvelopeV1, password: string, kdf: Kdf): Promise<Uint8Array> {
-  const kek = new Uint8Array(await kdf(password, unb64(env.kdf.salt), {m: env.kdf.m, t: env.kdf.t, p: env.kdf.p}));
+  const kek = await kdf(password, unb64(env.kdf.salt), {m: env.kdf.m, t: env.kdf.t, p: env.kdf.p});
+  assertArrayBufferBacked(kek);
   try {
     return await unwrap(env.password.wrapped, kek);
   } catch {
@@ -99,7 +105,8 @@ export async function unlockWithPassword(env: EnvelopeV1, password: string, kdf:
 }
 
 export async function decryptMnemonic(env: EnvelopeV1, dataKey: Uint8Array): Promise<string> {
-  const key = await subtle().importKey('raw', new Uint8Array(dataKey), 'AES-GCM', false, ['decrypt']);
+  assertArrayBufferBacked(dataKey);
+  const key = await subtle().importKey('raw', dataKey, 'AES-GCM', false, ['decrypt']);
   const pt = await subtle().decrypt({name: 'AES-GCM', iv: unb64(env.seed.iv)}, key, unb64(env.seed.ct));
   return new TextDecoder().decode(pt);
 }
@@ -111,15 +118,19 @@ export async function addPasskeyWrap(
   credentialId: Uint8Array,
   prfSalt: Uint8Array,
 ): Promise<EnvelopeV1> {
-  const kek = await prfKek(new Uint8Array(prfOutput), new Uint8Array(prfSalt));
-  const wrapped = await wrap(new Uint8Array(dataKey), kek);
+  assertArrayBufferBacked(dataKey);
+  assertArrayBufferBacked(prfOutput);
+  assertArrayBufferBacked(prfSalt);
+  const kek = await prfKek(prfOutput, prfSalt);
+  const wrapped = await wrap(dataKey, kek);
   kek.fill(0);
   return {...env, passkey: {credentialId: b64(credentialId), prfSalt: b64(prfSalt), wrapped}};
 }
 
 export async function unlockWithPrf(env: EnvelopeV1, prfOutput: Uint8Array): Promise<Uint8Array> {
   if (!env.passkey) throw new WrongPasskey();
-  const kek = await prfKek(new Uint8Array(prfOutput), unb64(env.passkey.prfSalt));
+  assertArrayBufferBacked(prfOutput);
+  const kek = await prfKek(prfOutput, unb64(env.passkey.prfSalt));
   try {
     return await unwrap(env.passkey.wrapped, kek);
   } catch {

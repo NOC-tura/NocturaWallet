@@ -57,4 +57,40 @@ describe('vault envelope', () => {
     const flipped = {...env, seed: {...env.seed, ct: (ct[0] === 'A' ? 'B' : 'A') + ct.slice(1)}};
     await expect(decryptMnemonic(flipped, dk)).rejects.toThrow();
   });
+
+  it('zeroes the array the KDF returned to createEnvelope, not a copy of it', async () => {
+    let captured: Uint8Array | undefined;
+    const spyKdf: Kdf = async (pw, salt, p) => {
+      const out = await kdf(pw, salt, p);
+      captured = out;
+      return out;
+    };
+    await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf: spyKdf, params: FAST});
+    if (!captured) throw new Error('kdf was not called');
+    expect(Array.from(captured)).toEqual(new Array(captured.length).fill(0));
+  });
+
+  it('zeroes the array the KDF returned to unlockWithPassword, on the right password and on the wrong one', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+
+    let capturedOk: Uint8Array | undefined;
+    const spyKdfOk: Kdf = async (pw, salt, p) => {
+      const out = await kdf(pw, salt, p);
+      capturedOk = out;
+      return out;
+    };
+    await unlockWithPassword(env, 'correct horse battery', spyKdfOk);
+    if (!capturedOk) throw new Error('kdf was not called');
+    expect(Array.from(capturedOk)).toEqual(new Array(capturedOk.length).fill(0));
+
+    let capturedWrong: Uint8Array | undefined;
+    const spyKdfWrong: Kdf = async (pw, salt, p) => {
+      const out = await kdf(pw, salt, p);
+      capturedWrong = out;
+      return out;
+    };
+    await expect(unlockWithPassword(env, 'wrong horse battery!', spyKdfWrong)).rejects.toBeInstanceOf(WrongPassword);
+    if (!capturedWrong) throw new Error('kdf was not called');
+    expect(Array.from(capturedWrong)).toEqual(new Array(capturedWrong.length).fill(0));
+  });
 });
