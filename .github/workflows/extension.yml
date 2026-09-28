@@ -1,0 +1,26 @@
+name: extension
+
+on:
+  pull_request:
+    paths: ['extension/**', 'core/**', 'web/scripts/**', '.github/workflows/extension.yml']
+  push:
+    branches: [main]
+    paths: ['extension/**', 'core/**', 'web/scripts/**', '.github/workflows/extension.yml']
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      # Same pin as ci.yml/web.yml: the lockfile is written by npm 11.6.2.
+      - run: npm install -g npm@11.6.2
+      # Only extension/ is installed: core/ resolves through this package's node_modules.
+      - run: npm ci
+        working-directory: extension
+      - run: npm run verify
+        working-directory: extension
