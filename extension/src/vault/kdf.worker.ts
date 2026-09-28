@@ -1,11 +1,5 @@
-import {argon2idKdf} from './kdf';
-import type {KdfParams} from './envelope';
+import {argon2idKdf, runKdfRequest, type KdfRequest} from './kdf';
 
-self.onmessage = async (e: MessageEvent<{password: string; salt: Uint8Array; params: KdfParams}>) => {
-  try {
-    const key = await argon2idKdf(e.data.password, e.data.salt, e.data.params);
-    self.postMessage({key});
-  } catch (err) {
-    self.postMessage({error: err instanceof Error ? err.message : 'kdf failed'});
-  }
+self.onmessage = (e: MessageEvent<KdfRequest>) => {
+  void runKdfRequest(argon2idKdf, e.data, (reply, transfer) => self.postMessage(reply, {transfer}));
 };

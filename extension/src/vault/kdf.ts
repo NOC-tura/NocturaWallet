@@ -1,5 +1,6 @@
 import {argon2idAsync} from '@noble/hashes/argon2.js';
-import type {Kdf} from './envelope';
+import {assertArrayBufferBacked} from './bytes';
+import type {Kdf, KdfParams} from './envelope';
 
 /** Argon2id on the calling thread. In the extension this runs only inside kdf.worker.ts. */
 export const argon2idKdf: Kdf = (password, salt, params) =>
@@ -24,3 +25,25 @@ export const workerKdf: Kdf = (password, salt, params) =>
     };
     worker.postMessage({password, salt, params});
   });
+
+export interface KdfRequest {
+  password: string;
+  salt: Uint8Array;
+  params: KdfParams;
+}
+export type KdfReply = {key: Uint8Array} | {error: string};
+
+/**
+ * The worker's whole job, taking its `postMessage` as a parameter so it runs in a test. The
+ * key's buffer is TRANSFERRED, not copied: after the post, the worker's own view of it is
+ * detached, so no copy of the password key stays behind in the worker's heap.
+ */
+export async function runKdfRequest(kdf: Kdf, req: KdfRequest, post: (reply: KdfReply, transfer: ArrayBuffer[]) => void): Promise<void> {
+  try {
+    const key = await kdf(req.password, req.salt, req.params);
+    assertArrayBufferBacked(key);
+    post({key}, [key.buffer]);
+  } catch (err) {
+    post({error: err instanceof Error ? err.message : 'kdf failed'}, []);
+  }
+}
