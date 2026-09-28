@@ -124,6 +124,36 @@ describe('vault isolation (source)', () => {
     ]);
     expect(sourceViolations([f('src/unlock/main.ts', "import {browserExt} from '../ext';")])).toHaveLength(1);
   });
+
+  // Final review: vault.setKeys goes out via runtime.sendMessage, which every extension page
+  // with a runtime.onMessage listener receives — so only the background may listen.
+  it.each([
+    ['runtime.onMessage', 'chrome.runtime.onMessage.addListener(m => console.log(m));'],
+    ['optional-chained runtime.onMessage', 'browser?.runtime?.onMessage?.addListener(m => m);'],
+    ['bracketed runtime.onMessage', "chrome.runtime['onMessage'].addListener(m => m);"],
+    ['runtime.onConnect', 'chrome.runtime.onConnect.addListener(p => p.onMessage.addListener(m => m));'],
+    ['runtime.onMessageExternal', 'chrome.runtime.onMessageExternal.addListener(m => m);'],
+    ['runtime.onConnectExternal', 'chrome.runtime.onConnectExternal.addListener(p => p);'],
+    ['a destructured listener', 'const {onMessage} = chrome.runtime;\nonMessage.addListener(m => m);'],
+  ])('refuses %s outside the background', (_, text) => {
+    for (const path of ['src/popup/main.ts', 'src/unlock/main.ts', 'src/vault/reauth.ts', 'src/ui/send.ts', 'src/ext.ts']) {
+      expect(sourceViolations([f(path, text)])).toEqual([`${path}: listens for runtime messages outside the background`]);
+    }
+  });
+
+  it('allows runtime message listeners in the background (positive control)', () => {
+    expect(sourceViolations([
+      f('src/background/index.ts', 'api.runtime.onMessage.addListener((msg, sender, reply) => true);'),
+      f('src/background/sub/port.ts', 'chrome.runtime.onConnect.addListener(p => p);'),
+    ])).toEqual([]);
+  });
+
+  it('does not mistake a worker onmessage or sendMessage for a runtime listener', () => {
+    expect(sourceViolations([
+      f('src/vault/kdf.ts', 'worker.onmessage = e => e; worker.postMessage({});'),
+      f('src/ui/send.ts', 'chrome.runtime.sendMessage({type: "vault.status"});'),
+    ])).toEqual([]);
+  });
 });
 
 describe('vault isolation (built output)', () => {

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Spec §1: the vault module is imported only by the vault bundle (unlock page + worker, and
-// the vault folder itself); storage.session is touched only by the background. Checked three
+// the vault folder itself); storage.session is touched, and runtime messages are listened
+// for, only by the background. Checked three
 // ways: in the sources, in the built files — a shared chunk could carry vault code into the
 // popup even when every source import looks right — and in the built manifests, because a
 // web-accessible vault page could be framed by any web site, and messages from that frame
@@ -21,6 +22,12 @@ const VAULT_ALLOWED = /^src\/(unlock|vault)\//;
 const SESSION_ALLOWED = /^src\/background\/|^src\/ext\.ts$/;
 const EXT_IMPORT_ALLOWED = /^src\/background\//;
 const TOUCHES_SESSION = /storage\s*(?:\?\.|\.)\s*session\b|storage\s*\[\s*['"`]session['"`]\s*\]/;
+// vault.setKeys travels by runtime.sendMessage, which EVERY extension page with a runtime
+// listener receives, keys included — so only the background may listen. Any mention of the
+// listener names counts (property, bracket, destructured, comment: fail-closed); a worker's
+// lowercase `onmessage` and `sendMessage` are different identifiers.
+const LISTENS_RUNTIME = /\bon(?:Message|Connect)(?:External)?\b/;
+const LISTEN_ALLOWED = /^src\/background\//;
 
 // A string that exists only in the vault's envelope code (the passkey-wrap HKDF info).
 export const VAULT_MARKER = 'noctura-ext-v1/passkey-wrap';
@@ -93,6 +100,7 @@ export function sourceViolations(files) {
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesVault(path, r.spec))) out.push(`${path}: imports the vault`);
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesCoreKeys(path, r.spec))) out.push(`${path}: imports core/keys (seed code)`);
     if (!SESSION_ALLOWED.test(path) && TOUCHES_SESSION.test(text)) out.push(`${path}: touches storage.session`);
+    if (!LISTEN_ALLOWED.test(path) && LISTENS_RUNTIME.test(text)) out.push(`${path}: listens for runtime messages outside the background`);
     if (!EXT_IMPORT_ALLOWED.test(path) && path !== 'src/ext.ts' && values.some(r => namesExt(path, r.spec))) {
       out.push(`${path}: imports src/ext.ts (storage.session) outside the background`);
     }
