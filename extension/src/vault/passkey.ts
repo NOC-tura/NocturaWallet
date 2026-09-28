@@ -1,3 +1,5 @@
+import {assertArrayBufferBacked} from './bytes';
+
 /**
  * Passkey unlock (spec §2). The RP ID is claimed through the extension's host permission for
  * wallet.noc-tura.io (Chrome 122+, Firefox 150+). This module runs only in a tab — the
@@ -28,6 +30,8 @@ function prfOutputOf(cred: Credential | null): Uint8Array | null {
 }
 
 export async function evaluatePrf(api: CredentialsApi, credentialId: Uint8Array, prfSalt: Uint8Array): Promise<Uint8Array | null> {
+  assertArrayBufferBacked(credentialId);
+  assertArrayBufferBacked(prfSalt);
   const cred = await api.get({
     publicKey: {
       challenge: crypto.getRandomValues(new Uint8Array(32)),
@@ -49,6 +53,7 @@ export async function registerPasskey(
   api: CredentialsApi,
   userHandle: Uint8Array,
 ): Promise<{credentialId: Uint8Array; prfSalt: Uint8Array; prfOutput: Uint8Array} | {unsupported: true}> {
+  assertArrayBufferBacked(userHandle);
   const cred = await api.create({
     publicKey: {
       challenge: crypto.getRandomValues(new Uint8Array(32)),

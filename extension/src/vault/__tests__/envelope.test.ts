@@ -50,6 +50,34 @@ describe('vault envelope', () => {
     await expect(unlockWithPrf(withPk, crypto.getRandomValues(new Uint8Array(32)))).rejects.toBeInstanceOf(WrongPasskey);
   });
 
+  it('refuses a PRF salt or PRF output that is not exactly 32 bytes', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+    const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
+    const goodPrf = crypto.getRandomValues(new Uint8Array(32));
+    const goodSalt = crypto.getRandomValues(new Uint8Array(32));
+    const shortPrf = crypto.getRandomValues(new Uint8Array(16));
+    const shortSalt = crypto.getRandomValues(new Uint8Array(16));
+    await expect(addPasskeyWrap(env, dk, shortPrf, new Uint8Array([1, 2, 3]), goodSalt)).rejects.toThrow();
+    await expect(addPasskeyWrap(env, dk, goodPrf, new Uint8Array([1, 2, 3]), shortSalt)).rejects.toThrow();
+  });
+
+  it('refuses to wrap a data key that does not decrypt this envelope', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+    const wrongDataKey = crypto.getRandomValues(new Uint8Array(32));
+    const prf = crypto.getRandomValues(new Uint8Array(32));
+    const salt = crypto.getRandomValues(new Uint8Array(32));
+    await expect(addPasskeyWrap(env, wrongDataKey, prf, new Uint8Array([1, 2, 3]), salt)).rejects.toThrow();
+  });
+
+  it('does not zero the caller\'s data key when wrapping it for a passkey', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+    const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
+    const dkCopy = dk.slice();
+    const prf = crypto.getRandomValues(new Uint8Array(32));
+    await addPasskeyWrap(env, dk, prf, new Uint8Array([1, 2, 3]), crypto.getRandomValues(new Uint8Array(32)));
+    expect(Array.from(dk)).toEqual(Array.from(dkCopy));
+  });
+
   it('refuses a tampered ciphertext', async () => {
     const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
     const dk = await unlockWithPassword(env, 'correct horse battery', kdf);

@@ -121,10 +121,25 @@ export async function addPasskeyWrap(
   assertArrayBufferBacked(dataKey);
   assertArrayBufferBacked(prfOutput);
   assertArrayBufferBacked(prfSalt);
+  if (prfOutput.length !== 32) throw new TypeError('PRF output must be exactly 32 bytes');
+  if (prfSalt.length !== 32) throw new TypeError('PRF salt must be exactly 32 bytes');
+  // Prove dataKey actually decrypts THIS envelope's seed before wrapping it: wrapping the
+  // wrong key would silently brick passkey unlock later (the passkey wrap would "succeed" but
+  // unlockWithPrf would never recover a usable data key). Use a copy so decryptMnemonic never
+  // has the chance to consume or zero the caller's own dataKey.
+  const dataKeyCheck = dataKey.slice();
+  try {
+    await decryptMnemonic(env, dataKeyCheck);
+  } finally {
+    dataKeyCheck.fill(0);
+  }
   const kek = await prfKek(prfOutput, prfSalt);
-  const wrapped = await wrap(dataKey, kek);
-  kek.fill(0);
-  return {...env, passkey: {credentialId: b64(credentialId), prfSalt: b64(prfSalt), wrapped}};
+  try {
+    const wrapped = await wrap(dataKey, kek);
+    return {...env, passkey: {credentialId: b64(credentialId), prfSalt: b64(prfSalt), wrapped}};
+  } finally {
+    kek.fill(0);
+  }
 }
 
 export async function unlockWithPrf(env: EnvelopeV1, prfOutput: Uint8Array): Promise<Uint8Array> {
