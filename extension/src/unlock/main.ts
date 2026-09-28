@@ -40,7 +40,11 @@ const gate: BusyGate = {isBusy: () => busy, setBusy: b => (busy = b)};
 // inside runExclusive + withButtonsDisabled, so both buttons stay disabled and the gate held.
 const WAITING = 'That did not unlock the wallet. Wait a moment before trying again.';
 const backoff = createWrongBackoff(ms => new Promise<void>(resolve => setTimeout(resolve, ms)));
+// The delay is a person-at-the-keyboard throttle held in this page's memory: reloading
+// unlock.html resets the streak. Spec §2 is explicit that against a stolen envelope only
+// Argon2id's cost stands, so this is deliberate, not an oversight.
 const showWaiting = (): void => {
+  pw.value = ''; // a near-miss password must not sit in the field for the whole wait
   status.textContent = WAITING;
 };
 

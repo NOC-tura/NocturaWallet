@@ -1,6 +1,6 @@
 import {readFileSync} from 'node:fs';
-import {argon2idAsync} from '@noble/hashes/argon2.js';
 import {decryptMnemonic, unlockWithPassword, unlockWithPrf, WrongPassword, type EnvelopeV1, type Kdf} from '../envelope';
+import {argon2idKdf} from '../kdf';
 
 // Spec §5: the envelope format is pinned by a COMMITTED v1 envelope, written once by
 // scripts/make-envelope-v1-fixture.mjs (an independent WebCrypto implementation of the format)
@@ -13,7 +13,8 @@ const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abando
 const PASSWORD = 'correct horse battery staple';
 // 0xa0, 0xa1, … 0xbf — the fixed PRF output the fixture's passkey wrap was made with.
 const PRF_OUTPUT = Uint8Array.from({length: 32}, (_, i) => 0xa0 + i);
-const kdf: Kdf = (pw, salt, p) => argon2idAsync(pw, salt, {m: p.m, t: p.t, p: p.p, dkLen: 32});
+// The production KDF, so a change to its parameter mapping breaks this pinned format too.
+const kdf: Kdf = argon2idKdf;
 
 describe('envelope v1 known-answer fixture', () => {
   it('is the v1 slip10 envelope with a passkey wrap at the small test parameters', () => {
