@@ -1,7 +1,7 @@
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
-import {bundleViolations, manifestViolations, sourceViolations, DERIVATION_MARKER, VAULT_MARKER} from '../check-vault-isolation.mjs';
+import {bundleViolations, manifestViolations, sourceViolations, BIP39_MARKER, DERIVATION_MARKER, VAULT_MARKER} from '../check-vault-isolation.mjs';
 import {render} from '../../manifest/source.mjs';
 
 const f = (path, text) => ({path, text});
@@ -73,6 +73,40 @@ describe('vault isolation (source)', () => {
     expect(sourceViolations([f('src/popup/main.ts', "import {a} from '../vault/a';\nimport {b} from '../vault/b';")])).toHaveLength(1);
   });
 
+  // Fix round 1: core/keys (mnemonic → seed, SLIP-0010) is the vault's seed code, shared with the app.
+  it.each([
+    ['a named import', "import {mnemonicToSeed, generateMnemonic} from '../../../core/keys/mnemonic';"],
+    ['an import of the folder', "import {x} from '../../../core/keys';"],
+    ['a ./-prefixed path', "import {x} from './../../../core/keys/transparent';"],
+    ['a dynamic import', "void import('../../../core/keys/mnemonic');"],
+    ['a re-export', "export * from '../../../core/keys/mnemonic';"],
+    ['a side-effect import', "import '../../../core/keys/mnemonic';"],
+    ['a require', "require('../../../core/keys/mnemonic');"],
+    ['a mixed type/value import', "import {type X, mnemonicToSeed} from '../../../core/keys/mnemonic';"],
+    ['an aliased specifier', "import {x} from '@core/keys/mnemonic';"],
+  ])('refuses %s of core/keys from the popup', (_, text) => {
+    expect(sourceViolations([f('src/popup/main.ts', text)])).toEqual(['src/popup/main.ts: imports core/keys (seed code)']);
+  });
+
+  it('refuses core/keys from the background, ui and ext.ts, resolving from each file', () => {
+    expect(sourceViolations([f('src/background/index.ts', "import {deriveTransparentKeypair} from '../../../core/keys/transparent';")])).toHaveLength(1);
+    expect(sourceViolations([f('src/ui/x.ts', "import {x} from '../../../core/keys/mnemonic';")])).toHaveLength(1);
+    expect(sourceViolations([f('src/ext.ts', "import {x} from '../../core/keys/mnemonic';")])).toHaveLength(1);
+  });
+
+  it('allows core/keys in the vault and the vault page, and type-only anywhere', () => {
+    expect(sourceViolations([
+      f('src/vault/accounts.ts', "import {deriveTransparentKeypair} from '../../../core/keys/transparent';\nimport {mnemonicToSeed} from '../../../core/keys/mnemonic';"),
+      f('src/unlock/main.ts', "import {x} from '../../../core/keys/mnemonic';"),
+      f('src/popup/main.ts', "import type {X} from '../../../core/keys/mnemonic';"),
+    ])).toEqual([]);
+  });
+
+  it('does not mistake a path that resolves elsewhere for core/keys', () => {
+    expect(sourceViolations([f('src/popup/main.ts', "import {x} from '../../../core/keysmith/x';")])).toEqual([]);
+    expect(sourceViolations([f('src/popup/main.ts', "import {x} from '../../../core/util/x';")])).toEqual([]);
+  });
+
   it('refuses storage.session in any spelling outside the background', () => {
     expect(sourceViolations([f('src/popup/main.ts', 'chrome.storage?.session.get(null)')])).toHaveLength(1);
     expect(sourceViolations([f('src/popup/main.ts', "chrome.storage['session'].get(null)")])).toHaveLength(1);
@@ -107,7 +141,7 @@ describe('vault isolation (built output)', () => {
     write('assets/popup-1.js', 'import{t as e}from"./send-1.js";e();');
     write('assets/send-1.js', 'export const t=()=>1;');
     write('unlock.html', html('./assets/unlock-1.js'));
-    write('assets/unlock-1.js', `import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";`);
+    write('assets/unlock-1.js', `import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";`);
   };
 
   beforeEach(() => {
@@ -128,6 +162,11 @@ describe('vault isolation (built output)', () => {
   it('fails on the derivation marker alone — derivation without the envelope is still the vault', () => {
     write('assets/send-1.js', `export const t=()=>"${DERIVATION_MARKER}";`);
     expect(bundleViolations(dir)).toEqual(['assets/send-1.js (reachable from assets/popup-1.js) contains vault code (derivation)']);
+  });
+
+  it('fails on the BIP-39 marker alone — mnemonic code without the envelope or derivation', () => {
+    write('assets/popup-1.js', `import"./send-1.js";throw TypeError("${BIP39_MARKER}"+typeof e);`);
+    expect(bundleViolations(dir)).toEqual(['assets/popup-1.js (reachable from assets/popup-1.js) contains vault code (bip39)']);
   });
 
   it("follows a dynamic import, including Vite's __vitePreload wrapper", () => {
@@ -166,7 +205,7 @@ describe('vault isolation (built output)', () => {
 
   it('does not follow imports out of the unlock bundle (it may carry the vault)', () => {
     write('assets/unlock-1.js', `import"./vault-1.js";`);
-    write('assets/vault-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";`);
+    write('assets/vault-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";`);
     expect(bundleViolations(dir)).toEqual([]);
   });
 
@@ -177,14 +216,18 @@ describe('vault isolation (built output)', () => {
     expect(bundleViolations(dir)).toEqual(['assets/popup-1.js imports ../../outside.js, which leaves dist']);
   });
 
-  it('is INCONCLUSIVE — and fails — when either marker is in no built file', () => {
-    write('assets/unlock-1.js', `const d="${DERIVATION_MARKER}";`);
+  it('is INCONCLUSIVE — and fails — when any marker is in no built file', () => {
+    write('assets/unlock-1.js', `const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";`);
     expect(bundleViolations(dir)).toEqual([
       'INCONCLUSIVE: the envelope marker "noctura-ext-v1/passkey-wrap" is in no built file — the check would pass trivially',
     ]);
-    write('assets/unlock-1.js', `const i="${VAULT_MARKER}";`);
+    write('assets/unlock-1.js', `const i="${VAULT_MARKER}";const b="${BIP39_MARKER}";`);
     expect(bundleViolations(dir)).toEqual([
       'INCONCLUSIVE: the derivation marker "ed25519 seed" is in no built file — the check would pass trivially',
+    ]);
+    write('assets/unlock-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";`);
+    expect(bundleViolations(dir)).toEqual([
+      'INCONCLUSIVE: the bip39 marker "invalid mnemonic type: " is in no built file — the check would pass trivially',
     ]);
   });
 

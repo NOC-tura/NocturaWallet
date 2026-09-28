@@ -5,11 +5,17 @@
 // popup even when every source import looks right — and in the built manifests, because a
 // web-accessible vault page could be framed by any web site, and messages from that frame
 // would pass the background's own-origin check.
+//
+// Limits, deliberate: the source rule reads text, so a comment that spells out a vault import
+// trips it (fail-closed); a computed specifier (`import('../' + 'vault/x')`) is out of reach of
+// any static check — the bundle markers below are the backstop for both.
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import {dirname, join, posix, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const VAULT_ALLOWED = /^src\/(unlock|vault)\//;
+// The seed code the vault uses also lives in ../core/keys (mnemonic → seed, SLIP-0010), shared
+// with the app; for this package it is vault code, allowed exactly where the vault is.
 // src/ext.ts is the one wrapper over chrome.* / browser.*, so it names storage.session; in
 // exchange, only the background may value-import it (EXT_IMPORT_ALLOWED).
 const SESSION_ALLOWED = /^src\/background\/|^src\/ext\.ts$/;
@@ -21,9 +27,13 @@ export const VAULT_MARKER = 'noctura-ext-v1/passkey-wrap';
 // A string that exists only in key derivation (micro-key-producer/slip10's MASTER_SECRET):
 // derivation code in the background without the envelope must fail the gate as well.
 export const DERIVATION_MARKER = 'ed25519 seed';
+// A string that exists only in @scure/bip39 (its phrase normalizer, which mnemonicToSeed and
+// validateMnemonic run): core/keys/mnemonic carries neither marker above.
+export const BIP39_MARKER = 'invalid mnemonic type: ';
 const MARKERS = [
   ['envelope', VAULT_MARKER],
   ['derivation', DERIVATION_MARKER],
+  ['bip39', BIP39_MARKER],
 ];
 
 // `import X from`, `import {a, type B} from`, `import * as n from`, `import type … from`,
@@ -63,6 +73,12 @@ function namesVault(fromPath, spec) {
   return /(^|\/)vault(\/|$)/.test(spec);
 }
 
+function namesCoreKeys(fromPath, spec) {
+  const target = resolveSource(fromPath, spec);
+  if (target !== null) return target === '../core/keys' || target.startsWith('../core/keys/');
+  return /(^|[/@])core\/keys(\/|$)/.test(spec);
+}
+
 function namesExt(fromPath, spec) {
   const target = resolveSource(fromPath, spec);
   return target !== null && /^src\/ext(\.[cm]?[jt]s)?$/.test(target);
@@ -75,6 +91,7 @@ export function sourceViolations(files) {
     // verbatimModuleSyntax it survives as a side-effect import — so it counts as a value import.
     const values = moduleReferences(text).filter(r => !r.typeOnly);
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesVault(path, r.spec))) out.push(`${path}: imports the vault`);
+    if (!VAULT_ALLOWED.test(path) && values.some(r => namesCoreKeys(path, r.spec))) out.push(`${path}: imports core/keys (seed code)`);
     if (!SESSION_ALLOWED.test(path) && TOUCHES_SESSION.test(text)) out.push(`${path}: touches storage.session`);
     if (!EXT_IMPORT_ALLOWED.test(path) && path !== 'src/ext.ts' && values.some(r => namesExt(path, r.spec))) {
       out.push(`${path}: imports src/ext.ts (storage.session) outside the background`);
