@@ -1,6 +1,15 @@
 import {registerPasskey, evaluatePrf, RP_ID, type CredentialsApi} from '../passkey';
 
-type Opts = {publicKey?: {rp?: {id?: string}; rpId?: string; authenticatorSelection?: {userVerification?: string}; userVerification?: string; extensions?: {prf?: {eval?: {first: BufferSource}}}}};
+type Opts = {
+  publicKey?: {
+    rp?: {id?: string};
+    rpId?: string;
+    authenticatorSelection?: {userVerification?: string};
+    userVerification?: string;
+    extensions?: {prf?: {eval?: {first: BufferSource}}};
+    allowCredentials?: {type: string; id: BufferSource}[];
+  };
+};
 
 function fakeApi(prfAtGet: boolean): {api: CredentialsApi; seen: Opts[]} {
   const seen: Opts[] = [];
@@ -48,10 +57,14 @@ function fakeApiWithShortPrf(len: number): {api: CredentialsApi; seen: Opts[]} {
 describe('passkey', () => {
   it('registers on wallet.noc-tura.io with user verification required', async () => {
     const {api, seen} = fakeApi(true);
-    await registerPasskey(api, new Uint8Array(16));
+    const r = await registerPasskey(api, new Uint8Array(16));
     expect(seen[0]?.publicKey?.rp?.id).toBe(RP_ID);
     expect(seen[0]?.publicKey?.authenticatorSelection?.userVerification).toBe('required');
     expect(seen[1]?.publicKey?.rpId).toBe(RP_ID);
+    if ('unsupported' in r) throw new Error('expected support');
+    const allowedId = seen[1]?.publicKey?.allowCredentials?.[0]?.id as Uint8Array | undefined;
+    expect(allowedId).toBeDefined();
+    expect(Array.from(allowedId ?? [])).toEqual(Array.from(r.credentialId));
   });
 
   it('decides PRF support by a get() after create, not by create', async () => {

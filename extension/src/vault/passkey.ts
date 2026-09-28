@@ -29,6 +29,10 @@ function prfOutputOf(cred: Credential | null): Uint8Array | null {
   return bytes.length === PRF_OUTPUT_LEN ? bytes : null;
 }
 
+/**
+ * The returned PRF output is secret — it is key material for the passkey wrap's KEK, on the
+ * same footing as a password. The caller owns zeroing it once it is no longer needed.
+ */
 export async function evaluatePrf(api: CredentialsApi, credentialId: Uint8Array, prfSalt: Uint8Array): Promise<Uint8Array | null> {
   assertArrayBufferBacked(credentialId);
   assertArrayBufferBacked(prfSalt);
@@ -48,6 +52,9 @@ export async function evaluatePrf(api: CredentialsApi, credentialId: Uint8Array,
  * Create a passkey, then prove PRF works with an immediate get(): some authenticators
  * (Windows Hello on older Chrome) surface PRF only on get(), so the create result cannot
  * decide it (spec §2).
+ *
+ * The `prfOutput` in a successful result is secret, exactly as in `evaluatePrf` — the caller
+ * owns zeroing it once it is no longer needed.
  */
 export async function registerPasskey(
   api: CredentialsApi,
