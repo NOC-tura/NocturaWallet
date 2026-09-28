@@ -15,8 +15,10 @@ import {deriveSessionAccounts, type SessionAccount} from './accounts';
 async function matches(env: EnvelopeV1, dataKey: Uint8Array, session: SessionAccount[]): Promise<boolean> {
   try {
     const mnemonic = await decryptMnemonic(env, dataKey);
+    // derived is always the same length as session — deriveSessionAccounts maps
+    // 1:1 over session.map(a => a.index), or throws — so no length check needed here.
     const derived = await deriveSessionAccounts(mnemonic, env.scheme, session.map(a => a.index));
-    return session.length > 0 && derived.length === session.length && derived.every((d, i) => d.publicKey === session[i]?.publicKey);
+    return session.length > 0 && derived.every((d, i) => d.publicKey === session[i]?.publicKey);
   } finally {
     dataKey.fill(0);
   }

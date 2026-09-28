@@ -1,12 +1,24 @@
 import {argon2idAsync} from '@noble/hashes/argon2.js';
-import {createEnvelope, type Kdf} from '../envelope';
+import {addPasskeyWrap, createEnvelope, unlockWithPassword, type Kdf} from '../envelope';
 import * as envelopeModule from '../envelope';
 import {deriveSessionAccounts} from '../accounts';
-import {proveWithPassword} from '../reauth';
+import {proveWithPassword, proveWithPrf} from '../reauth';
 
 const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const OTHER = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
 const kdf: Kdf = (pw, salt, p) => argon2idAsync(pw, salt, {m: p.m, t: p.t, p: p.p, dkLen: 32});
+const randomBytes = (n: number) => globalThis.crypto.getRandomValues(new Uint8Array(n));
+
+/** A real envelope with a passkey wrap added on top of the password wrap, the way unlock.html would. */
+async function passkeyEnvelope() {
+  const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts: [], kdf, params: {m: 64, t: 1, p: 1}});
+  const dataKey = await unlockWithPassword(env, 'correct horse battery', kdf);
+  const prfOutput = randomBytes(32);
+  const prfSalt = randomBytes(32);
+  const credentialId = randomBytes(16);
+  const withPasskey = await addPasskeyWrap(env, dataKey, prfOutput, credentialId, prfSalt);
+  return {env: withPasskey, prfOutput, prfSalt, credentialId};
+}
 
 describe('re-authentication is a proof', () => {
   it('passes with the right password against the right session', async () => {
@@ -52,5 +64,36 @@ describe('re-authentication is a proof', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe('re-authentication is a proof — passkey (PRF) factor', () => {
+  it('passes with the right PRF output against the right session', async () => {
+    const {env, prfOutput} = await passkeyEnvelope();
+    const session = await deriveSessionAccounts(MNEMONIC, 'slip10', [0]);
+    expect(await proveWithPrf(env, prfOutput, session)).toBe(true);
+  });
+
+  it('fails with the wrong PRF output', async () => {
+    const {env} = await passkeyEnvelope();
+    const session = await deriveSessionAccounts(MNEMONIC, 'slip10', [0]);
+    expect(await proveWithPrf(env, randomBytes(32), session)).toBe(false);
+  });
+
+  it("fails when the session keys are not this vault's (a swapped session)", async () => {
+    const {env, prfOutput} = await passkeyEnvelope();
+    const foreign = await deriveSessionAccounts(OTHER, 'slip10', [0]);
+    expect(await proveWithPrf(env, prfOutput, foreign)).toBe(false);
+  });
+
+  it('fails a right-PRF proof against an empty session (vacuous truth guard)', async () => {
+    const {env, prfOutput} = await passkeyEnvelope();
+    expect(await proveWithPrf(env, prfOutput, [])).toBe(false);
+  });
+
+  it('fails when the envelope has no passkey wrap', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts: [], kdf, params: {m: 64, t: 1, p: 1}});
+    const session = await deriveSessionAccounts(MNEMONIC, 'slip10', [0]);
+    expect(await proveWithPrf(env, randomBytes(32), session)).toBe(false);
   });
 });
