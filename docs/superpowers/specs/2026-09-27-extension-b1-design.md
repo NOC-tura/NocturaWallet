@@ -51,6 +51,7 @@ and designed around rather than hidden.
 | Auto-lock default | **5 minutes** idle (1–60 configurable), plus browser close and manual | owner, following S2 |
 | Re-authentication while unlocked | **first send to a new address; amount above 5 % of the account's balance or above an absolute threshold (default $100); whole balance to a first-time address; security-settings changes** | owner (four triggers), with the design file's 5 % rule (`screen.md` §0) |
 | Dangerous instructions | **blocked by default; overridable per transaction only**, by typing the token symbol (the design's #48 rule) plus re-authentication — never by a permanent setting | design file #48, after review round 2 |
+| Transparent send fee | **the same as the app**: no Noctura markup before TGE; after TGE the app's markup to the fee treasury unless the user is zero-fee eligible, with the staking discount. The policy moves into `core/` in B1b so app and extension share one rule and one disclosed fee line | owner, 2026-09-28 |
 | Networks | mainnet only | Claude, YAGNI |
 
 ---
@@ -286,6 +287,11 @@ account switcher. NOC is valued "at stage price", as on `web/`. Prices from the 
 **Send (#12 → #19 simulate → #20 confirm → #21 status → #54 stuck).**
 - Token choice; amounts **BigInt in the smallest unit** (rule 2); fee shown; a warning when SOL
   for the fee is short.
+- **Noctura fee (owner decision):** the app's policy, shared through `core/` —
+  `src/modules/fees/feeEngine.ts` `getEffectiveFee('transferMarkup')`: 0 before TGE, 0 for
+  zero-fee-eligible users, otherwise the markup (minus any staking discount) as a separate
+  transfer to the fee treasury. Always shown as its own line when non-zero; never charged
+  undisclosed (the app once did, and MAX-send broke on it).
 - **Non-canonical token accounts:** spend from the account holding the most of that token, and
   refuse when the amount is split across accounts (`src/modules/solana/transactionBuilder.ts`);
   this moves to `core/`.
