@@ -14,14 +14,15 @@ try {
     const [a, b] = dirs.map(d => buildManifest(join(d, browser)));
     if (a.files.length === 0) {
       console.error(`INCONCLUSIVE: ${browser} build is empty`);
-      process.exit(2);
+      process.exitCode = 2;
+      break;
     }
     if (a.digest !== b.digest) {
       console.error(`NOT REPRODUCIBLE: ${browser} sha256:${a.digest} vs sha256:${b.digest}`);
       bad += 1;
     } else console.log(`reproducible: ${browser} ${a.files.length} files sha256:${a.digest}`);
   }
-  if (bad) process.exit(1);
+  if (bad && !process.exitCode) process.exitCode = 1;
 } finally {
   for (const d of dirs) rmSync(d, {recursive: true, force: true});
 }
