@@ -1,4 +1,4 @@
-import {BROADCAST_TIMEOUT_MS, FORBIDDEN_UNTIL_KEY, REQUEST_TIMEOUT_MS, RequestTimedOut, browserDeps, createJsonGetter, stagePriceFrom} from '../deps';
+import {BROADCAST_TIMEOUT_MS, FORBIDDEN_UNTIL_KEY, REQUEST_TIMEOUT_MS, RequestTimedOut, browserDeps, createJsonGetter, stagePriceFrom, timedFetch} from '../deps';
 import {submitSigned} from '../pending';
 import {PENDING_KEY} from '../pendingStore';
 import {fakeDeps} from './fakeDeps';
@@ -137,6 +137,24 @@ describe('browserDeps request timeouts (CrowdSec answers some users with silence
     expect(await deps.reader.getBlockHeight()).toBe(77);
     // A finished request leaves no timer behind.
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('an answer whose body is never read leaves no unhandled rejection when its deadline passes', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', async () => ({status: 403, json: async () => ({})}));
+    const unhandled: unknown[] = [];
+    const onUnhandled = (e: unknown) => unhandled.push(e);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const res = await timedFetch(REQUEST_TIMEOUT_MS)('https://example.invalid/x', {method: 'GET'});
+      expect(res.status).toBe(403); // a 403 is decided from the status alone; its body is never read
+      await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS + 1);
+      vi.useRealTimers();
+      await new Promise(r => setTimeout(r, 10)); // let Node report any unhandled rejection
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
   });
 
   it('the JSON reads time out the same way', async () => {
