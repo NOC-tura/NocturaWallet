@@ -5,6 +5,9 @@ import {
 } from '../envelope';
 import {reencryptForAccounts} from '../envelope';
 import {MAX_ACCOUNTS} from '../../shared/envelopeRules';
+import * as accountsModule from '../accounts';
+import * as transparentModule from '../../../../core/keys/transparent';
+import * as mnemonicModule from '../../../../core/keys/mnemonic';
 
 const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 // The envelope refuses Argon2id parameters below production (spec §2), so every envelope here
@@ -363,6 +366,41 @@ describe('reencryptForAccounts (adding or removing an account, spec §2)', () =>
     const cli = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'cli', accounts, kdf});
     const cliKey = await unlockWithPassword(cli, 'correct horse battery', kdf);
     expect((await reencryptForAccounts(cli, cliKey, [{index: 0, name: 'Main'}])).accounts).toEqual([{index: 0, name: 'Main', publicKey: KCLI}]);
+  });
+
+  it('derives public keys only: equal to the session derivation, every secret key and the seed zeroed, no secret-key string made', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
+    const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
+    const session = await accountsModule.deriveSessionAccounts(MNEMONIC, 'slip10', [0, 1]);
+    const secretKeys: Uint8Array[] = [];
+    const seeds: Uint8Array[] = [];
+    const derive = transparentModule.deriveTransparentKeypair;
+    const toSeed = mnemonicModule.mnemonicToSeed;
+    const spies = [
+      vi.spyOn(transparentModule, 'deriveTransparentKeypair').mockImplementation((...args) => {
+        const kp = derive(...args);
+        secretKeys.push(kp.secretKey);
+        return kp;
+      }),
+      vi.spyOn(mnemonicModule, 'mnemonicToSeed').mockImplementation(async (...args) => {
+        const seed = await toSeed(...args);
+        seeds.push(seed);
+        return seed;
+      }),
+      vi.spyOn(accountsModule, 'deriveSessionAccounts'),
+    ];
+    try {
+      const next = await reencryptForAccounts(env, dk, two);
+      expect(next.accounts.map(a => a.publicKey)).toEqual(session.map(a => a.publicKey));
+      expect(next.accounts.map(a => a.publicKey)).toEqual([K0, K1]);
+      expect(secretKeys).toHaveLength(2);
+      for (const sk of secretKeys) expect([sk.length, sk.every(b => b === 0)]).toEqual([64, true]);
+      expect(seeds).toHaveLength(1);
+      expect([seeds[0]!.length, seeds[0]!.every(b => b === 0)]).toEqual([64, true]);
+      expect(spies[2]).not.toHaveBeenCalled();
+    } finally {
+      for (const s of spies) s.mockRestore();
+    }
   });
 
   it('returns exactly the envelope fields: nothing stray from the stored envelope or the account list', async () => {

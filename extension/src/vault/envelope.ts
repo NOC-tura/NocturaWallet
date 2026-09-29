@@ -304,6 +304,7 @@ export async function unlockWithPrf(env: EnvelopeV1, prfOutput: Uint8Array): Pro
  *
  * The caller names only indexes and names: every public key is DERIVED here from the decrypted seed
  * (scheme-aware; a cli wallet is exactly account 0), so no caller-supplied key can enter the header.
+ * Public keys only (derivePublicKeys): every secret key and the seed are zeroed, no secret-key string made.
  * The limits are the background's (src/shared/envelopeRules.ts): 1..MAX_ACCOUNTS accounts, unique
  * non-negative indexes, and a name a rename would accept (cleanName) — or, for an account already
  * stored, its stored name unchanged. The result is built field by field: nothing stray from `env` or
@@ -324,13 +325,15 @@ export async function reencryptForAccounts(env: EnvelopeV1, dataKey: Uint8Array,
   }
   if (env.scheme === 'cli' && (named.length !== 1 || named[0]?.index !== 0)) throw new TypeError('a cli wallet has exactly one account');
   const mnemonic = await decryptMnemonic(env, dataKey);
-  // Loaded on first use, not at module load: this module is also imported by Node tooling (the E2E
-  // envelope fixture) that must not load the derivation code (core/keys, ESM-only dependencies).
-  const {deriveSessionAccounts} = await import('./accounts');
-  const derived = await deriveSessionAccounts(mnemonic, env.scheme, named.map(a => a.index));
+  // A dynamic import, deliberately: e2e/makeEnvelope.ts loads this module into Playwright's Node
+  // loader, where a static import of the derivation (core/keys → micro-key-producer, ESM-only) fails
+  // to load ("module is not linked"). In the Vite build accounts.ts is already in the vault page's
+  // chunk, so this adds no chunk and no request.
+  const {derivePublicKeys} = await import('./accounts');
+  const derived = await derivePublicKeys(mnemonic, env.scheme, named.map(a => a.index));
   const clean = named.map((a, i) => {
-    const publicKey = derived[i]?.publicKey;
-    if (publicKey === undefined || derived[i]?.index !== a.index) throw new Error('derivation did not return every account');
+    const publicKey = derived[i];
+    if (publicKey === undefined || derived.length !== named.length) throw new Error('derivation did not return every account');
     return {index: a.index, name: a.name, publicKey};
   });
   const kdf = {alg: 'argon2id' as const, m: env.kdf.m, t: env.kdf.t, p: env.kdf.p, salt: env.kdf.salt};
