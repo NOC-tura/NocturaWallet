@@ -1,13 +1,14 @@
 import {argon2idAsync} from '@noble/hashes/argon2.js';
 import {
   createEnvelope, unlockWithPassword, decryptMnemonic, addPasskeyWrap, unlockWithPrf,
-  CorruptEnvelope, WrongPassword, WrongPasskey, PRODUCTION_KDF, type EnvelopeV1, type Kdf,
+  CorruptEnvelope, UnsafeKdfParams, WrongPassword, WrongPasskey, KDF_CAP, PRODUCTION_KDF, type EnvelopeV1, type Kdf,
 } from '../envelope';
 
 const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-// Tiny parameters for speed; the production parameters are asserted below, not exercised.
-const kdf: Kdf = (pw, salt, p) => argon2idAsync(pw, salt, {m: p.m, t: p.t, p: p.p, dkLen: 32});
-const FAST = {m: 64, t: 1, p: 1};
+// The envelope refuses Argon2id parameters below production (spec §2), so every envelope here
+// DECLARES the production cost; this test KDF computes Argon2id at a tiny cost instead, so a
+// test runs in milliseconds. The production KDF's parameter mapping is pinned by envelopeKat.
+const kdf: Kdf = (pw, salt) => argon2idAsync(pw, salt, {m: 64, t: 1, p: 1, dkLen: 32});
 const accounts = [{index: 0, name: 'Account 1', publicKey: 'x'}];
 
 describe('vault envelope', () => {
@@ -16,33 +17,33 @@ describe('vault envelope', () => {
   });
 
   it('round-trips the mnemonic with the right password', async () => {
-    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
     expect(await decryptMnemonic(env, dk)).toBe(MNEMONIC);
   });
 
   it('refuses the wrong password', async () => {
-    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     await expect(unlockWithPassword(env, 'wrong horse battery!', kdf)).rejects.toBeInstanceOf(WrongPassword);
   });
 
   it('stores nothing in the clear', async () => {
-    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     const json = JSON.stringify(env);
     expect(json).not.toContain('abandon');
     expect(json).not.toContain('correct horse');
   });
 
   it('two envelopes of one seed share no salt, IV or ciphertext', async () => {
-    const a = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
-    const b = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+    const a = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
+    const b = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     expect(a.kdf.salt).not.toBe(b.kdf.salt);
     expect(a.seed.iv).not.toBe(b.seed.iv);
     expect(a.seed.ct).not.toBe(b.seed.ct);
   });
 
   it('a passkey wrap unlocks the same data key; a different PRF output does not', async () => {
-    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
     const prf = crypto.getRandomValues(new Uint8Array(32));
     const withPk = await addPasskeyWrap(env, dk, prf, new Uint8Array([1, 2, 3]), crypto.getRandomValues(new Uint8Array(32)));
@@ -51,7 +52,7 @@ describe('vault envelope', () => {
   });
 
   it('refuses a PRF salt or PRF output that is not exactly 32 bytes', async () => {
-    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
     const goodPrf = crypto.getRandomValues(new Uint8Array(32));
     const goodSalt = crypto.getRandomValues(new Uint8Array(32));
@@ -62,7 +63,7 @@ describe('vault envelope', () => {
   });
 
   it('refuses to wrap a data key that does not decrypt this envelope', async () => {
-    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     const wrongDataKey = crypto.getRandomValues(new Uint8Array(32));
     const prf = crypto.getRandomValues(new Uint8Array(32));
     const salt = crypto.getRandomValues(new Uint8Array(32));
@@ -70,7 +71,7 @@ describe('vault envelope', () => {
   });
 
   it('does not zero the caller\'s data key when wrapping it for a passkey', async () => {
-    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
     const dkCopy = dk.slice();
     const prf = crypto.getRandomValues(new Uint8Array(32));
@@ -79,7 +80,7 @@ describe('vault envelope', () => {
   });
 
   it('refuses a tampered ciphertext', async () => {
-    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
     const ct = env.seed.ct;
     const flipped = {...env, seed: {...env.seed, ct: (ct[0] === 'A' ? 'B' : 'A') + ct.slice(1)}};
@@ -93,13 +94,13 @@ describe('vault envelope', () => {
       captured = out;
       return out;
     };
-    await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf: spyKdf, params: FAST});
+    await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf: spyKdf});
     if (!captured) throw new Error('kdf was not called');
     expect(Array.from(captured)).toEqual(new Array(captured.length).fill(0));
   });
 
   it('zeroes the array the KDF returned to unlockWithPassword, on the right password and on the wrong one', async () => {
-    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
 
     let capturedOk: Uint8Array | undefined;
     const spyKdfOk: Kdf = async (pw, salt, p) => {
@@ -123,7 +124,7 @@ describe('vault envelope', () => {
   });
 
   it('zeroes the decrypted plaintext bytes after decoding them', async () => {
-    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
     const seen: Uint8Array[] = [];
     const real = TextDecoder.prototype.decode;
@@ -152,7 +153,7 @@ describe('vault envelope', () => {
     });
     let env: Awaited<ReturnType<typeof createEnvelope>>;
     try {
-      env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+      env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     } finally {
       spy.mockRestore();
     }
@@ -174,7 +175,7 @@ describe('vault envelope', () => {
       throw new Error('kdf failed');
     };
     try {
-      await expect(createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf: failing, params: FAST})).rejects.toThrow('kdf failed');
+      await expect(createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf: failing})).rejects.toThrow('kdf failed');
     } finally {
       spy.mockRestore();
     }
@@ -190,7 +191,7 @@ describe('a malformed envelope is CorruptEnvelope, never a wrong factor', () => 
   let env: EnvelopeV1;
   const prf = new Uint8Array(32).fill(5);
   beforeAll(async () => {
-    const base = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+    const base = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     const dk = await unlockWithPassword(base, 'correct horse battery', kdf);
     env = await addPasskeyWrap(base, dk, prf.slice(), new Uint8Array([1, 2, 3]), new Uint8Array(32).fill(9));
   });
@@ -249,3 +250,71 @@ describe('a malformed envelope is CorruptEnvelope, never a wrong factor', () => 
     expect(await decryptMnemonic(env, await unlockWithPrf(env, prf.slice()))).toBe(MNEMONIC);
   });
 });
+
+// Fable review (Minor 3): the seed ciphertext is bound to the envelope header, and the declared
+// Argon2id cost is bounded on both sides.
+describe('the envelope header is bound to the seed ciphertext (AES-GCM additionalData)', () => {
+  const pubkey = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
+  const real = [{index: 0, name: 'Account 1', publicKey: pubkey}];
+  async function opened() {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts: real, kdf});
+    return {env, dk: await unlockWithPassword(env, 'correct horse battery', kdf)};
+  }
+
+  it('declares the production cost by default', async () => {
+    const {env} = await opened();
+    expect(env.kdf).toMatchObject({alg: 'argon2id', ...PRODUCTION_KDF});
+  });
+
+  it.each<[string, (e: EnvelopeV1) => EnvelopeV1]>([
+    ['scheme', e => ({...e, scheme: 'cli'})],
+    ['accounts[0].index', e => ({...e, accounts: [{...real[0]!, index: 1}]})],
+    ['accounts[0].publicKey', e => ({...e, accounts: [{...real[0]!, publicKey: '11111111111111111111111111111111'}]})],
+    ['an added account', e => ({...e, accounts: [...real, {index: 1, name: 'Account 2', publicKey: pubkey}]})],
+    ['kdf.m', e => ({...e, kdf: {...e.kdf, m: e.kdf.m + 1}})],
+    ['kdf.t', e => ({...e, kdf: {...e.kdf, t: e.kdf.t + 1}})],
+  ])('a stored envelope with %s changed no longer decrypts, even with the right data key', async (_, change) => {
+    const {env, dk} = await opened();
+    await expect(decryptMnemonic(change(env), dk.slice())).rejects.toThrow();
+    expect(await decryptMnemonic(env, dk)).toBe(MNEMONIC); // positive control
+  });
+
+  it('renaming an account needs no re-encryption (names are not in the header)', async () => {
+    const {env, dk} = await opened();
+    expect(await decryptMnemonic({...env, accounts: [{...real[0]!, name: 'Savings'}]}, dk)).toBe(MNEMONIC);
+  });
+});
+
+describe('Argon2id parameters are bounded: production floor, cap above', () => {
+  const neverKdf: Kdf = async () => {
+    throw new Error('the KDF must not run on refused parameters');
+  };
+  it('the cap is m 1 GiB (in KiB), t 10, p 4', () => {
+    expect(KDF_CAP).toEqual({m: 1024 * 1024, t: 10, p: 4});
+  });
+
+  it.each([
+    ['m below production', {m: 65535}],
+    ['t below production', {t: 2}],
+    ['p below production', {p: 0}],
+    ['the old test cost', {m: 64, t: 1, p: 1}],
+    ['m above the cap', {m: 1024 * 1024 + 1}],
+    ['t above the cap', {t: 11}],
+    ['p above the cap', {p: 5}],
+  ])('%s: unlock throws UnsafeKdfParams (not WrongPassword) without running the KDF; create refuses too', async (_, change) => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
+    const bad = {...env, kdf: {...env.kdf, ...change}};
+    await expect(unlockWithPassword(bad, 'correct horse battery', neverKdf)).rejects.toBeInstanceOf(UnsafeKdfParams);
+    await expect(unlockWithPrf(bad, new Uint8Array(32))).rejects.toBeInstanceOf(UnsafeKdfParams);
+    const params = {...PRODUCTION_KDF, ...change};
+    await expect(createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params})).rejects.toBeInstanceOf(UnsafeKdfParams);
+  });
+
+  it('accepts exactly the production floor and exactly the cap (boundary positive control)', async () => {
+    for (const params of [PRODUCTION_KDF, KDF_CAP]) {
+      const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params});
+      expect(await decryptMnemonic(env, await unlockWithPassword(env, 'correct horse battery', kdf))).toBe(MNEMONIC);
+    }
+  });
+});
+

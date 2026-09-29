@@ -12,6 +12,14 @@ export interface KdfParams {
   p: number;
 }
 export const PRODUCTION_KDF: KdfParams = {m: 65536, t: 3, p: 1};
+/**
+ * The most an envelope may declare: m 1 GiB (Argon2's m is in KiB), t 10, p 4. With the
+ * production values as the floor, a stored envelope can neither lower the cost of guessing its
+ * password nor make the vault page grind through an absurd one. There is no weaker mode for
+ * tests: tests pass a KDF that computes a tiny cost while the envelope declares production, so
+ * no option that admits weak parameters exists for the vault page to be tricked into.
+ */
+export const KDF_CAP: KdfParams = {m: 1024 * 1024, t: 10, p: 4};
 export type Kdf = (password: string, salt: Uint8Array, params: KdfParams) => Promise<Uint8Array>;
 
 export interface EnvelopeV1 {
@@ -46,6 +54,48 @@ export class CorruptEnvelope extends Error {
   }
 }
 
+/** Argon2id parameters outside [PRODUCTION_KDF, KDF_CAP] — declared by a stored envelope or asked for on create. */
+export class UnsafeKdfParams extends Error {
+  constructor() {
+    super('Argon2id parameters outside the allowed range');
+  }
+}
+
+function checkKdfParams(params: KdfParams): void {
+  for (const k of ['m', 't', 'p'] as const) {
+    const v = params[k];
+    if (!Number.isSafeInteger(v) || v < PRODUCTION_KDF[k] || v > KDF_CAP[k]) throw new UnsafeKdfParams();
+  }
+}
+
+/**
+ * The AES-GCM additionalData of the seed ciphertext: the envelope header, canonically encoded.
+ *
+ * Canonical form: the UTF-8 bytes of JSON.stringify of an object built here, key by key, in
+ * exactly this order —
+ *   {"v":1,"scheme":<string>,"kdf":{"alg":"argon2id","m":<int>,"t":<int>,"p":<int>},
+ *    "accounts":[{"index":<int>,"publicKey":<string>}, … in stored order]}
+ * — with no whitespace (JSON.stringify's default). Every value has been shape-checked first
+ * (integers, strings), so the encoding is deterministic. Changing any of these in storage makes
+ * the seed undecryptable, so a stored scheme, account list or declared cost cannot be swapped
+ * under a valid ciphertext.
+ *
+ * Left out, deliberately: account names (renaming needs no re-encryption); the salt and the
+ * password/passkey wraps (they unwrap the data key — a changed one already fails there, and a
+ * passkey is added later without re-encrypting the seed). Adding or removing an account changes
+ * the header, so it re-encrypts the seed under the same data key.
+ */
+function headerAad(h: {v: 1; scheme: EnvelopeV1['scheme']; kdf: KdfParams; accounts: EnvelopeV1['accounts']}): Uint8Array<ArrayBuffer> {
+  return utf8(
+    JSON.stringify({
+      v: h.v,
+      scheme: h.scheme,
+      kdf: {alg: 'argon2id', m: h.kdf.m, t: h.kdf.t, p: h.kdf.p},
+      accounts: h.accounts.map(a => ({index: a.index, publicKey: a.publicKey})),
+    }),
+  );
+}
+
 // Byte lengths of a well-formed v1 envelope: 16-byte Argon2id salt, 12-byte GCM IV, a GCM
 // ciphertext of at least one byte plus its 16-byte tag, a 32-byte data key wrapped by AES-KW
 // (RFC 3394: +8 bytes), a 32-byte PRF salt (spec §2).
@@ -73,7 +123,8 @@ const isIndex = (x: unknown): x is number => typeof x === 'number' && Number.isS
 
 /**
  * Every field of a stored envelope, checked for shape before any of it is used — the value comes
- * from storage.local, so its static type is a claim, not a fact. Throws CorruptEnvelope.
+ * from storage.local, so its static type is a claim, not a fact. Throws CorruptEnvelope, or
+ * UnsafeKdfParams for a declared cost outside the bounds (before any KDF runs).
  */
 function checkEnvelope(env: unknown): asserts env is EnvelopeV1 {
   if (!isObject(env)) throw new CorruptEnvelope('not an object');
@@ -84,6 +135,7 @@ function checkEnvelope(env: unknown): asserts env is EnvelopeV1 {
   for (const k of ['m', 't', 'p'] as const) {
     if (typeof kdf[k] !== 'number' || !Number.isSafeInteger(kdf[k])) throw new CorruptEnvelope(`kdf.${k} is not an integer`);
   }
+  checkKdfParams({m: kdf.m as number, t: kdf.t as number, p: kdf.p as number});
   bytesField(kdf.salt, 'kdf.salt', {exact: SALT_LEN});
   if (!isObject(env.seed)) throw new CorruptEnvelope('no seed');
   bytesField(env.seed.iv, 'seed.iv', {exact: IV_LEN});
@@ -137,6 +189,11 @@ export async function createEnvelope(input: {
   params?: KdfParams;
 }): Promise<EnvelopeV1> {
   const params = input.params ?? PRODUCTION_KDF;
+  checkKdfParams(params);
+  for (const a of input.accounts) {
+    if (!isIndex(a.index) || typeof a.name !== 'string' || typeof a.publicKey !== 'string') throw new TypeError('malformed account');
+  }
+  const aad = headerAad({v: 1, scheme: input.scheme, kdf: params, accounts: input.accounts});
   const salt = random(16);
   const dataKey = random(32);
   const iv = random(12);
@@ -145,16 +202,16 @@ export async function createEnvelope(input: {
   let kek: Uint8Array | undefined;
   try {
     const key = await subtle().importKey('raw', dataKey, 'AES-GCM', false, ['encrypt']);
-    const ct = new Uint8Array(await subtle().encrypt({name: 'AES-GCM', iv}, key, encoded));
+    const ct = new Uint8Array(await subtle().encrypt({name: 'AES-GCM', iv, additionalData: aad}, key, encoded));
     kek = await input.kdf(input.password, salt, params);
     assertArrayBufferBacked(kek);
     const env: EnvelopeV1 = {
       v: 1,
       scheme: input.scheme,
-      kdf: {alg: 'argon2id', ...params, salt: b64(salt)},
+      kdf: {alg: 'argon2id', m: params.m, t: params.t, p: params.p, salt: b64(salt)},
       seed: {iv: b64(iv), ct: b64(ct)},
       password: {wrapped: await wrap(dataKey, kek)},
-      accounts: input.accounts,
+      accounts: input.accounts.map(a => ({index: a.index, name: a.name, publicKey: a.publicKey})),
     };
     return env;
   } finally {
@@ -181,7 +238,8 @@ export async function decryptMnemonic(env: EnvelopeV1, dataKey: Uint8Array): Pro
   checkEnvelope(env);
   assertArrayBufferBacked(dataKey);
   const key = await subtle().importKey('raw', dataKey, 'AES-GCM', false, ['decrypt']);
-  const pt = new Uint8Array(await subtle().decrypt({name: 'AES-GCM', iv: unb64(env.seed.iv)}, key, unb64(env.seed.ct)));
+  const aad = headerAad({v: env.v, scheme: env.scheme, kdf: env.kdf, accounts: env.accounts});
+  const pt = new Uint8Array(await subtle().decrypt({name: 'AES-GCM', iv: unb64(env.seed.iv), additionalData: aad}, key, unb64(env.seed.ct)));
   try {
     return new TextDecoder().decode(pt);
   } finally {

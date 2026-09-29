@@ -1,4 +1,6 @@
-import {CorruptEnvelope, decryptMnemonic, unlockWithPassword, unlockWithPrf, WrongPasskey, WrongPassword, type EnvelopeV1, type Kdf} from '../vault/envelope';
+import {
+  CorruptEnvelope, decryptMnemonic, unlockWithPassword, unlockWithPrf, UnsafeKdfParams, WrongPasskey, WrongPassword, type EnvelopeV1, type Kdf,
+} from '../vault/envelope';
 import {deriveSessionAccounts} from '../vault/accounts';
 
 export const ENVELOPE_KEY = 'v1_vault';
@@ -11,8 +13,8 @@ export const ENVELOPE_KEY = 'v1_vault';
  * `dataKey` in a `finally` around its own use, and — when the factor is a passkey PRF output —
  * `factor.prfOutput` in an outer `finally`, because the caller hands ownership of that array
  * over to this call. A proven-wrong password or passkey (a thrown `WrongPassword`/
- * `WrongPasskey`) is `'wrong'`; a stored envelope that is malformed (`CorruptEnvelope`) is
- * `'damaged'` — a failure, with nothing sent and no wrong-password backoff, that the page names
+ * `WrongPasskey`) is `'wrong'`; a stored envelope that is malformed (`CorruptEnvelope`) or
+ * declares an Argon2id cost outside the bounds (`UnsafeKdfParams`) is `'damaged'` — a failure, with nothing sent and no wrong-password backoff, that the page names
  * as damaged data rather than inviting another try; anything else (a `send()` rejection, …)
  * comes back as `'failed'`, never as an escaping exception.
  */
@@ -27,7 +29,7 @@ export async function unlockFlow(
       dataKey = isPrf ? await unlockWithPrf(deps.env, factor.prfOutput) : await unlockWithPassword(deps.env, factor.password, factor.kdf);
     } catch (e) {
       if (e instanceof WrongPassword || e instanceof WrongPasskey) return 'wrong';
-      if (e instanceof CorruptEnvelope) return 'damaged';
+      if (e instanceof CorruptEnvelope || e instanceof UnsafeKdfParams) return 'damaged';
       return 'failed';
     }
     try {
@@ -37,7 +39,7 @@ export async function unlockFlow(
       const r = await deps.send({type: 'vault.setKeys', accounts});
       return r.ok ? 'unlocked' : 'failed';
     } catch (e) {
-      return e instanceof CorruptEnvelope ? 'damaged' : 'failed';
+      return e instanceof CorruptEnvelope || e instanceof UnsafeKdfParams ? 'damaged' : 'failed';
     } finally {
       dataKey.fill(0);
     }
