@@ -400,9 +400,10 @@ selection; balance reads; history decoding; the stale-list gate.
 `web/src/presale/useBuy.ts`; re-confirmed in B1a). Refused: `sendTransaction`,
 `getFeeForMessage`, `getMinimumBalanceForRentExemption`, `getSlot`, `getEpochInfo`,
 `isBlockhashValid`, `getTokenAccountBalance`, `getProgramAccounts`, `getHealth`, `getVersion`.
-- **A refused method is not just an error**: the proxy answers HTTP 403, and a few 403s in a
-  burst make the host's CrowdSec bouncer ban the user's IP from the whole domain for hours
-  (it happened during review round 1). So the methods are a **compile-time list with a test**
+- **A refused method is not just an error**: the proxy answered HTTP 403 (until the coordinator
+  change of 2026-09-29, which answers 200 with a JSON-RPC error — see the coordinator's answers in
+  §5), and a few 403s in a burst make the host's CrowdSec bouncer ban the user's IP from the whole
+  domain for hours (it happened during review round 1). So the methods are a **compile-time list with a test**
   that every call maps to an allowed one; a 403 is **terminal, never retried**; confirmation
   polling is no faster than every 2 s; if `getBlockHeight` hiccups, that iteration skips the
   expiry check (the app's rule).
@@ -494,6 +495,37 @@ is of the unsigned contents. Minimum versions: **Chrome 122, Firefox 150**.
 4. `getBlockHeight` re-confirmed allowed; a decision on `getFeeForMessage` and
    `getMinimumBalanceForRentExemption`.
 5. What `/geo/check` returns when it cannot geolocate (the gate closes on unknown either way).
+
+**The coordinator's answers (ICO Claude, 2026-09-29; deployed as coordinator 93bce63 and checked
+live on `/api/v1/tx/broadcast` — not base64 → `400 malformed`, unsigned v0 → `400 unsigned`, signed
+with an unknown blockhash → `400 rejected` "Blockhash not found"):**
+1. **Broadcast route** `POST /api/v1/tx/broadcast` as in the contract
+   (`2026-09-29-coordinator-broadcast-route.md`): body `{"transaction"}` only, ≤ 1232 bytes, legacy or
+   v0 that re-serialises byte-identically; every required signature Ed25519-verified; forwarded
+   unchanged (`sendTransaction`, base64, `skipPreflight: false`, `preflightCommitment: confirmed`,
+   15 s, no retry). `200 {"signature"}` = the first signature of the received bytes (also for "already
+   processed"); `400` only with `malformed` / `unsigned` / `rejected` (a preflight rejection — nothing
+   was forwarded); `502 {"error":"unknown"}` for anything else; `503` RPC not configured; `429` its
+   own limit of 30/min per IP (not a ban). Nginx on `api` adds no `error_page`, so the JSON reaches the
+   wallet unchanged; nginx's own 400 (malformed HTTP) carries HTML and never reached the route — the
+   wallet treats it as not acknowledged. Only the first signature and the status are logged.
+2. **No 403 on an unknown `Origin`**, measured live for `chrome-extension://…` on `/stats`,
+   `/geo/check`, `/recent-purchases` and `/rpc`, and locked by a test for Chrome and Firefox origins.
+3. `/rpc`: a method off the allowlist → **HTTP 200** `{"error":{"code":-32601,"message":"Method not
+   allowed"}}`; a body that is not JSON-RPC → `400` with `-32600`. An upstream (Helius) 403 becomes a
+   `502` with a synthetic JSON-RPC error (nothing copied from Helius's body), in the `api` route and
+   in the site's own `/rpc` proxy alike (coordinator 75450df, deployed; live on `api` with an extension
+   `Origin`: `getBlockHeight` → 200 with a result, `sendTransaction` → 200 with -32601; the main
+   site's proxy takes the rule with its next frontend build) — so a 403 always means "the proxy refused".
+4. `getBlockHeight` stays allowed; **`getFeeForMessage` and `getMinimumBalanceForRentExemption` stay
+   refused** — the wallet computes the fee locally and uses the fixed rent constants (§4).
+5. `/geo/check` that cannot place the IP (private or invalid IP, not in the database, missing
+   GeoLite2, lookup error) → `200 {"countryCode":"UNKNOWN","isVpn":false}`, never an error.
+   **`isVpn` is always `false` today** (no VPN detection) — the presale gate (B1d) must not read
+   `isVpn: false` as evidence of anything; a sanctioned country closes the gate regardless.
+6. `/wallet/fee-status`: not started — waits for the owner's eligibility rule.
+- CrowdSec's `http-probing` counts 400/403/404 across *different* paths (10 in 10 s); repeated 400s on
+  the one broadcast path cannot trigger it.
 
 **S2 security spec — kept, adapted, deferred, rejected.**
 

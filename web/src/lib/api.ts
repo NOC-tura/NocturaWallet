@@ -5,8 +5,9 @@ import type {JsonGetter} from '../../../core/ports';
  * Fail closed. A non-200 throws, and so does a body that is not JSON. The envelope
  * check lives in core, next to the reader that depends on it.
  *
- * The coordinator's RPC route answers 403 for a method outside its allowlist. That is
- * a bug in our code, never a transient, so nothing here retries.
+ * The coordinator's RPC route answers a method outside its allowlist with HTTP 200 and a
+ * JSON-RPC error (-32601; it answered 403 before 2026-09-29). Either way that is a bug in our
+ * code, never a transient, so nothing here retries.
  */
 export const json: JsonGetter = {
   async get<T>(path: string): Promise<T> {
