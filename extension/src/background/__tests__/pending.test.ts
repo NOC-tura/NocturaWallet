@@ -303,6 +303,40 @@ describe('pollOnce', () => {
     expect((await readPending(ext))[0]?.state).toBe('confirmed');
   });
 
+  it('a failing full-history read past the margin is a skipped round, never a null one', async () => {
+    const {ext, deps} = await submitted();
+    deps.reader = fakeReader({
+      getSignatureStatuses: async (sigs, history) => {
+        if (history === true) throw new Error('hiccup');
+        return sigs.map(() => null);
+      },
+      getBlockHeight: async () => EXPIRED_HEIGHT,
+    });
+    for (let i = 0; i < 3; i++) {
+      await pollOnce(ext, deps);
+      deps.clock.t += POLL_INTERVAL_MS;
+    }
+    expect((await readPending(ext))[0]).toMatchObject({state: 'pending', expiryNullSeenAt: null});
+  });
+
+  it('a failing status read past the margin is a skipped round, never a null one', async () => {
+    const {ext, deps} = await submitted();
+    deps.reader = fakeReader({
+      // Only the plain read fails; the full history would answer null, so treating the failure as
+      // "not seen" would expire the send after two rounds.
+      getSignatureStatuses: async (sigs, history) => {
+        if (history !== true) throw new Error('hiccup');
+        return sigs.map(() => null);
+      },
+      getBlockHeight: async () => EXPIRED_HEIGHT,
+    });
+    for (let i = 0; i < 3; i++) {
+      await pollOnce(ext, deps);
+      deps.clock.t += POLL_INTERVAL_MS;
+    }
+    expect((await readPending(ext))[0]).toMatchObject({state: 'pending', expiryNullSeenAt: null});
+  });
+
   it('a getBlockHeight failure skips the expiry check for that round', async () => {
     const {ext, deps} = await submitted();
     let statusCalls = 0;
