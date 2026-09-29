@@ -11,6 +11,8 @@
 // backwards.
 //
 //   inline <script> / <style> / style="…"   → needs 'unsafe-inline'
+//   onclick="…" (any on* attribute),
+//   href/src/action/formaction="javascript:…" → inline script; needs 'unsafe-inline'
 //   eval( / new Function(                   → needs 'unsafe-eval'
 //   document.createElement('style')         → injects a stylesheet at run time,
 //                                             blocked by style-src without 'unsafe-inline'
@@ -48,6 +50,9 @@ export const RUNTIME_STYLE_ALLOWED = [
 const INLINE_SCRIPT = /<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?\S[\s\S]*?<\/script>/i;
 const INLINE_STYLE_EL = /<style[^>]*>/i;
 const STYLE_ATTR = /\sstyle\s*=\s*["']/i;
+// Matched inside a tag only (`<name …`), so prose such as "one = two" is not an attribute.
+const EVENT_HANDLER_ATTR = /<[a-z][^>]*\son[a-z]+\s*=/i;
+const JAVASCRIPT_URL_ATTR = /<[a-z][^>]*\s(?:href|src|action|formaction)\s*=\s*["']?\s*javascript\s*:/i;
 
 // `eval(` preceded by a word character is a method named *eval (safeEval, $eval) and
 // `.eval(` is a property access. Only the bare global call needs 'unsafe-eval'.
@@ -63,6 +68,8 @@ export function checkHtml(source) {
   if (INLINE_SCRIPT.test(source)) found.push("inline <script> — needs script-src 'unsafe-inline'");
   if (INLINE_STYLE_EL.test(source)) found.push("<style> element — needs style-src 'unsafe-inline'");
   if (STYLE_ATTR.test(source)) found.push('style="…" attribute — needs style-src \'unsafe-inline\'');
+  if (EVENT_HANDLER_ATTR.test(source)) found.push("on…= event-handler attribute — needs script-src 'unsafe-inline'");
+  if (JAVASCRIPT_URL_ATTR.test(source)) found.push("javascript: URL in href/src/action — needs script-src 'unsafe-inline'");
   return found;
 }
 

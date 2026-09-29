@@ -45,6 +45,30 @@ describe('HTML', () => {
     expect(checkHtml(`<html><body>${snippet}</body></html>`).length).toBe(1);
   });
 
+  // Fable review (Minor 7): an inline event handler or a javascript: URL is inline script too —
+  // both need script-src 'unsafe-inline' (or 'unsafe-hashes'), which the policy never grants.
+  it.each([
+    ['an onclick handler', '<button onclick="go()">x</button>'],
+    ['an onload handler on img, unquoted', '<img src="/a.png" onload=go()>'],
+    ['an upper-case ONERROR handler', '<img src="/a.png" ONERROR = "go()">'],
+    ['an onfocus handler after a newline', '<input\n  onfocus="go()">'],
+    ['a javascript: href', '<a href="javascript:go()">x</a>'],
+    ['a JavaScript: href with leading space', "<a href=' JavaScript:go()'>x</a>"],
+    ['a javascript: src', '<iframe src="javascript:go()"></iframe>'],
+    ['a javascript: form action', '<form action="javascript:go()"></form>'],
+    ['a javascript: formaction', '<button formaction=javascript:go()>x</button>'],
+  ])('rejects %s', (_label, snippet) => {
+    expect(checkHtml(`<html><body>${snippet}</body></html>`).length).toBe(1);
+  });
+
+  it.each([
+    ['prose with "on…=" in it', '<p>Say one = two, and only = three.</p>'],
+    ['an attribute that merely contains "on"', '<button type="button" aria-controls="x" data-onboard="1">x</button>'],
+    ['the word javascript in text and in a normal href', '<p>javascript: is blocked</p><a href="/docs/javascript">docs</a>'],
+  ])('does not fire on %s (negative control)', (_label, snippet) => {
+    expect(checkHtml(`<html><body>${snippet}</body></html>`)).toEqual([]);
+  });
+
   it('does not mistake an empty script tag pair for inline code', () => {
     // Vite emits <script src=…></script>; the closing tag is not inline content.
     expect(checkHtml('<script type="module" src="/a.js"></script>')).toEqual([]);
