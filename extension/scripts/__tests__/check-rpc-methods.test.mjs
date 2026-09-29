@@ -4,7 +4,7 @@ import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
   CONNECTION_ONLY, DEPS_FILE, KNOWN_RPC_METHODS, RPC_FILE, RPC_PATH_LITERAL, SPEC_ALLOWED,
-  allowlistFrom, checkRepo, methodViolations, networkViolations, reachable,
+  allowlistFrom, checkRepo, methodViolations, networkViolations, reachable, stripComments,
 } from '../check-rpc-methods.mjs';
 import {listSourceFiles} from '../check-vault-isolation.mjs';
 
@@ -135,6 +135,43 @@ describe('the RPC method gate', () => {
   });
 
   it('still passes on this repository with the network checks folded in (rpc.ts and broadcast.ts use injected fetch)', () => {
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+    expect(checkRepo(root)).toEqual([]);
+  });
+
+  // Fix round 2: the narrowed Connection rule (an import/export clause member or a `.Connection`
+  // property access) still missed a Connection reached by destructuring — neither
+  // `const {Connection} = await import('@solana/web3.js')` nor `const {Connection: C} = web3`
+  // (paired with a prior web3.js reference) is a `.` access or a clause member. Controller ruling:
+  // strip comments first, then apply the BLUNT rule (any `Connection` word token in a file that
+  // references web3.js at all) — and the same for the fetch rule (any `fetch` call or
+  // globalThis/self/window.fetch property access outside deps.ts). Comment-stripping is what now
+  // keeps this sound: without it, a blunt token scan would trip on core/solana/transfer.ts's own
+  // comment ("…its Connection.") and core/solana/rpc.ts's own comment ("`globalThis.fetch`
+  // satisfies it") — both real, reachable files.
+  it('strips // and /* */ comments outside string/template literals, leaving a same-line URL string untouched', () => {
+    expect(stripComments("const u = 'https://x//y';")).toBe("const u = 'https://x//y';");
+    expect(stripComments('const a = 1; // comment\nconst b = 2;')).toBe('const a = 1; \nconst b = 2;');
+    expect(stripComments('/* c */const x = 1;')).toBe('const x = 1;');
+    // A comment-like sequence inside a template literal's plain text also survives.
+    expect(stripComments('const t = `a // not a comment`;')).toBe('const t = `a // not a comment`;');
+  });
+
+  it('catches a Connection reached by destructuring — the narrowed rule\'s own hole', () => {
+    expect(methodViolations([f('a.ts', "const {Connection} = await import('@solana/web3.js');")], SPEC_ALLOWED)).toEqual([
+      'a.ts: uses a web3.js Connection, which bypasses the RPC allowlist',
+    ]);
+    expect(methodViolations([f('b.ts', "import * as web3 from '@solana/web3.js';\nconst {Connection: C} = web3;")], SPEC_ALLOWED)).toEqual([
+      'b.ts: uses a web3.js Connection, which bypasses the RPC allowlist',
+    ]);
+  });
+
+  it('spares a comment that merely mentions Connection or globalThis.fetch (comments are stripped first)', () => {
+    expect(methodViolations([f('c.ts', "import {PublicKey} from '@solana/web3.js';\n/** store and its Connection. */\n")], SPEC_ALLOWED)).toEqual([]);
+    expect(networkViolations([f('d.ts', '/** globalThis.fetch satisfies it. */\nexport const x = 1;')])).toEqual([]);
+  });
+
+  it('still passes on this repository with comment-stripped blunt Connection/fetch rules', () => {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
     expect(checkRepo(root)).toEqual([]);
   });
