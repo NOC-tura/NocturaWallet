@@ -90,7 +90,11 @@ export class FeeEngineManager {
   getEffectiveFee(feeType: FeeType, stakingDiscount: number = 0): bigint {
     // The policy lives in core/fees/transferMarkup.ts, shared with the browser extension.
     const {tgeStatus, isZeroFeeEligible} = usePresaleStore.getState();
-    return effectiveFee(this._baseFee(feeType), {tgeStatus, isZeroFeeEligible, stakingDiscount}).lamports;
+    const inputs = {tgeStatus, isZeroFeeEligible, stakingDiscount};
+    // Decide free-or-charged before touching the base fee, as the app always did: a free
+    // fee must not depend on the fee constants being readable.
+    if (effectiveFee(0n, inputs).reason !== 'charged') return 0n;
+    return effectiveFee(this._baseFee(feeType), inputs).lamports;
   }
 
   /**
