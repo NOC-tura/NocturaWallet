@@ -188,6 +188,46 @@ describe('storeEnvelope (the vault page hands the background a re-encrypted enve
     }
   });
 
+  it("refuses a change of kdf m/t/p, of an existing account's public key, or of the password wrap — nothing written, the stored envelope byte-identical", async () => {
+    for (const env of [
+      {...NEXT, kdf: {...NEXT.kdf, t: 4}},
+      {...NEXT, kdf: {...NEXT.kdf, m: 131072}},
+      {...NEXT, kdf: {...NEXT.kdf, p: 2}},
+      {...NEXT, accounts: [{...NEXT.accounts[0]!, publicKey: K2}, NEXT.accounts[1]!, {...NEXT.accounts[2]!, publicKey: K0}]},
+      {...NEXT, accounts: [NEXT.accounts[0]!, {...NEXT.accounts[1]!, publicKey: K2}]},
+      {...NEXT, password: {wrapped: B(40, 14)}},
+    ]) {
+      const ext = fakeExt();
+      await ext.local.set(VAULT_KEY, ENV);
+      const before = JSON.stringify(await ext.local.get(VAULT_KEY));
+      expect([env, await storeEnvelope(ext, REV, env)]).toEqual([env, 'malformed']);
+      expect(JSON.stringify(await ext.local.get(VAULT_KEY))).toBe(before);
+    }
+  });
+
+  it("answers 'stored-invalid' (not 'busy') when the stored envelope itself is not well formed, and writes nothing", async () => {
+    for (const stored of [{...ENV, seed: 'damaged'}, {...ENV, kdf: {...ENV.kdf, m: 1}}, {...ENV, accounts: []}, {...ENV, password: {wrapped: B(39, 4)}}]) {
+      const ext = fakeExt();
+      await ext.local.set(VAULT_KEY, stored);
+      const before = JSON.stringify(await ext.local.get(VAULT_KEY));
+      expect(await storeEnvelope(ext, REV, NEXT)).toBe('stored-invalid');
+      expect(JSON.stringify(await ext.local.get(VAULT_KEY))).toBe(before);
+    }
+  });
+
+  it('a passkey enrolment (only the passkey wrap changes) and a removal still store (positive controls)', async () => {
+    const ext = fakeExt();
+    await ext.local.set(VAULT_KEY, ENV);
+    expect(await storeEnvelope(ext, REV, {...ENV, passkey: PASSKEY})).toBe('stored');
+    const enrolled = {...ENV, passkey: PASSKEY};
+    expect(await ext.local.get(VAULT_KEY)).toEqual(enrolled);
+    const reEnrolled = {...ENV, passkey: {...PASSKEY, wrapped: B(40, 15), prfSalt: B(32, 16)}};
+    expect(await storeEnvelope(ext, envelopeRevision(enrolled as Parameters<typeof envelopeRevision>[0]), reEnrolled)).toBe('stored');
+    const removed = {...reEnrolled, seed: {iv: B(12, 17), ct: B(48, 18)}, accounts: [ENV.accounts[0]!]};
+    expect(await storeEnvelope(ext, envelopeRevision(reEnrolled as Parameters<typeof envelopeRevision>[0]), removed)).toBe('stored');
+    expect(await ext.local.get(VAULT_KEY)).toEqual(removed);
+  });
+
   it('the first write (expectedRevision null) stores the envelope while no wallet exists, every name cleaned', async () => {
     const ext = fakeExt();
     const sent = {...NEXT, accounts: [{...NEXT.accounts[0]!, name: '  Main  '}, NEXT.accounts[1]!, NEXT.accounts[2]!]};

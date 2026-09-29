@@ -78,7 +78,7 @@ export async function renameAccount(ext: Ext, index: number, name: string): Prom
   });
 }
 
-export type StoreResult = 'stored' | 'malformed' | 'no-wallet' | 'wallet-exists' | 'busy';
+export type StoreResult = 'stored' | 'malformed' | 'no-wallet' | 'wallet-exists' | 'busy' | 'stored-invalid';
 type StoredEnvelope = {
   v: 1;
   scheme: 'slip10' | 'cli';
@@ -144,6 +144,23 @@ function envelopeShape(x: unknown): StoredEnvelope | null {
 }
 
 /**
+ * What an account change or a passkey enrolment may not change: the scheme, the whole KDF (salt and
+ * cost), the password wrap, and the public key of any account in both envelopes. Only the seed
+ * ciphertext, the account list and the passkey wrap may differ.
+ *
+ * B1 has no password-change flow. A future one rewrites the password wrap and may choose a new salt
+ * or cost: it must revisit this rule (and its tests) rather than route around it.
+ */
+function sameWallet(current: StoredEnvelope, next: StoredEnvelope): boolean {
+  const {kdf: a} = current;
+  const {kdf: b} = next;
+  if (next.scheme !== current.scheme || b.salt !== a.salt || b.m !== a.m || b.t !== a.t || b.p !== a.p) return false;
+  if (next.password.wrapped !== current.password.wrapped) return false;
+  const keys = new Map(current.accounts.map(x => [x.index, x.publicKey]));
+  return next.accounts.every(x => !keys.has(x.index) || keys.get(x.index) === x.publicKey);
+}
+
+/**
  * The vault page re-encrypted the seed for a changed account list and hands the envelope over
  * (`vault.storeEnvelope`); the background is the one writer of v1_vault. Under the mutex renames
  * take, the write lands only if the stored envelope still has the revision the vault page opened
@@ -151,8 +168,10 @@ function envelopeShape(x: unknown): StoredEnvelope | null {
  * something else landed in between — another account change, a passkey enrolment — and the vault
  * page re-opens and retries ('busy'). A rename changes no revision, so it never makes a store busy;
  * instead the current name of every account present in both is kept (names are outside the AAD).
- * A new account's name must be one a rename would accept (cleanName), or nothing is written. The
- * scheme and the KDF salt may not change against the stored envelope ('malformed').
+ * A new account's name must be one a rename would accept (cleanName), or nothing is written.
+ * Anything sameWallet refuses — a changed scheme, KDF, password wrap or existing account's public
+ * key — is 'malformed'. A stored envelope that is itself not well formed is 'stored-invalid' (not
+ * 'busy': re-opening it cannot help, so the vault page stops retrying).
  *
  * `expectedRevision: null` is onboarding's FIRST write: accepted only while v1_vault is absent
  * (every name is then new, so every name is cleaned); with anything stored, 'wallet-exists' and
@@ -172,8 +191,9 @@ export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelop
     } else {
       if (!isObj(stored)) return 'no-wallet';
       const current = envelopeShape(stored);
-      if (current === null || envelopeRevision(current) !== expectedRevision) return 'busy';
-      if (next.scheme !== current.scheme || next.kdf.salt !== current.kdf.salt) return 'malformed';
+      if (current === null) return 'stored-invalid';
+      if (envelopeRevision(current) !== expectedRevision) return 'busy';
+      if (!sameWallet(current, next)) return 'malformed';
       for (const a of current.accounts) names.set(a.index, a.name);
     }
     const accounts: AccountView[] = [];

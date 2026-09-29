@@ -249,6 +249,8 @@ describe('message partitions (B1b-1 types)', () => {
     expect(await ext.local.get('v1_vault')).toEqual(STORED);
     expect(await handleMessage(ext, msg, unlockPage)).toEqual({ok: true});
     expect(await ext.local.get('v1_vault')).toEqual(NEXT);
+    await ext.local.set('v1_vault', {...STORED, seed: 'damaged'});
+    expect(await handleMessage(ext, msg, unlockPage)).toEqual({ok: false, error: 'stored-invalid'});
   });
 
   it('vault.storeEnvelope with expectedRevision null (the first write) only from the vault page, only without a wallet', async () => {
