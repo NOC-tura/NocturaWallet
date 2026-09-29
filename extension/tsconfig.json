@@ -16,7 +16,9 @@
       "@scure/base": ["./node_modules/@scure/base"],
       "@scure/bip39": ["./node_modules/@scure/bip39"],
       "@scure/bip39/*": ["./node_modules/@scure/bip39/*"],
-      "micro-key-producer/*": ["./node_modules/micro-key-producer/*"]
+      "micro-key-producer/*": ["./node_modules/micro-key-producer/*"],
+      "@solana/web3.js": ["./node_modules/@solana/web3.js"],
+      "buffer": ["./node_modules/buffer"]
     }
   },
   "include": ["src", "e2e", "../core/keys", "../core/util", "../core/solana", "../core/fees"]
