@@ -44,3 +44,18 @@ export class ResendRefused extends Error {
     this.code = code;
   }
 }
+
+/**
+ * The signed transaction was recorded (and may have been broadcast), then something failed before
+ * its state could be read back. Never "nothing sent": the caller checks wallet.pending.
+ */
+export class SentUnconfirmed extends Error {
+  readonly id: string;
+  readonly signature: string;
+  constructor(id: string, signature: string) {
+    super(`sent or about to be sent (${signature}); check the pending list`);
+    this.name = 'SentUnconfirmed';
+    this.id = id;
+    this.signature = signature;
+  }
+}

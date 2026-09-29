@@ -188,9 +188,15 @@ describe('submitSigned — the poller survives a failure after the record is wri
       if (writes > 1) throw new Error('quota');
       await set(k, v);
     };
-    await expect(submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT})).rejects.toThrow('quota');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    // Recorded and broadcast: never the storage error ("failed", nothing sent) — SentUnconfirmed, naming the transaction.
+    await expect(submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT})).rejects.toMatchObject({
+      name: 'SentUnconfirmed',
+      signature: firstSignature(signedWire()),
+    });
     expect(deps.broadcasts).toHaveLength(1);
     expect(sleeps).toEqual([POLL_INTERVAL_MS]);
+    warn.mockRestore();
   });
 });
 

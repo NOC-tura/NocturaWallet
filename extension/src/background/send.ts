@@ -59,6 +59,8 @@ export async function sendPrepared(ext: Ext, deps: WalletDeps, id: string): Prom
     lastValidBlockHeight: prepared.lastValidBlockHeight,
     intent: prepared.intent,
   });
-  await armAutolock(ext); // an approved signature resets the idle timer (spec §2)
+  // An approved signature resets the idle timer (spec §2) — best effort: the transaction is out,
+  // and a failed re-arm must not turn its answer into "failed".
+  await armAutolock(ext).catch((e: unknown) => console.warn('idle timer not re-armed after a send', e));
   return view;
 }

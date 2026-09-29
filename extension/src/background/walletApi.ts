@@ -13,7 +13,7 @@ import {sendPrepared} from './send';
 import {resend, startPoller} from './pending';
 import {isOpen, readPending, viewOf} from './pendingStore';
 import {createHistory, type History} from './history';
-import {ResendRefused, SendRefused} from './sendTypes';
+import {ResendRefused, SendRefused, SentUnconfirmed} from './sendTypes';
 import {readWalletBalances, WALLET_TOKENS} from '../../../core/solana/balances';
 import {RpcForbidden} from '../../../core/solana/rpc';
 
@@ -71,7 +71,8 @@ function historyFor(deps: WalletDeps): History {
 
 /**
  * Every refusal is a fixed code. A 403 — and the latch refusing during the cool-down that follows
- * one (RpcCoolingDown, a subclass) — is 'coordinator-refused': terminal, never retried. Anything
+ * one (RpcCoolingDown, a subclass) — is 'coordinator-refused': terminal, never retried. A send
+ * recorded (and possibly broadcast) whose state could not be read back is 'check-pending'. Anything
  * unexpected is 'failed', never a thrown error across the message boundary.
  */
 function failure(e: unknown): Result {
@@ -80,6 +81,8 @@ function failure(e: unknown): Result {
     return e.detail === '' ? {ok: false, error: e.code} : {ok: false, error: e.code, data: {detail: e.detail}};
   }
   if (e instanceof ResendRefused) return {ok: false, error: e.code};
+  // Recorded and possibly broadcast: not 'failed' — the screens send the user to wallet.pending.
+  if (e instanceof SentUnconfirmed) return {ok: false, error: 'check-pending', data: {id: e.id, signature: e.signature}};
   if (e instanceof RpcForbidden) return {ok: false, error: 'coordinator-refused'};
   return {ok: false, error: 'failed'};
 }

@@ -188,6 +188,61 @@ describe('handleWallet', () => {
     expect(await handleWallet(ext, deps, 'wallet.resend', {id: pendingId})).toEqual({ok: false, error: 'too-soon'});
   });
 
+  // Final review minor 2: once the signed bytes may have left, the answer is never a bare 'failed' ("nothing sent").
+  async function broadcastReady() {
+    const ext = fakeExt();
+    await unlocked(ext);
+    await ext.local.set(KNOWN_RECIPIENTS_KEY, [RECIPIENT]);
+    const deps = fakeDeps({reader: sendReader()});
+    deps.broadcast = async wire => {
+      deps.broadcasts.push(wire);
+      return firstSignature(wire);
+    };
+    const prep = await handleWallet(ext, deps, 'wallet.prepareSend', {account: ACCOUNT.publicKey, intent: {token: 'SOL', recipient: RECIPIENT, amount: '1000'}});
+    return {ext, deps, id: (prep.data as {id: string}).id};
+  }
+
+  it('wallet.send: an idle-timer re-arm that fails after the broadcast still answers the pending send', async () => {
+    const {ext, deps, id} = await broadcastReady();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const create = ext.alarms.create;
+    ext.alarms.create = (name, o) => {
+      if (name === AUTOLOCK_ALARM) throw new Error('alarms unavailable');
+      return create(name, o);
+    };
+    const sent = await handleWallet(ext, deps, 'wallet.send', {id});
+    expect(sent).toMatchObject({ok: true, data: {state: 'pending', signature: firstSignature(deps.broadcasts[0]!)}});
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('wallet.send: a storage failure after the record exists answers check-pending with its id and signature — never "failed"', async () => {
+    const {ext, deps, id} = await broadcastReady();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const set = ext.local.set.bind(ext.local);
+    let writes = 0;
+    ext.local.set = async (key, value) => {
+      // The first write is the record itself (before the broadcast); every later one fails.
+      if (key === PENDING_KEY && ++writes >= 2) throw new Error('quota');
+      return set(key, value);
+    };
+    const sent = await handleWallet(ext, deps, 'wallet.send', {id});
+    expect(deps.broadcasts).toHaveLength(1);
+    const records = (await ext.local.get(PENDING_KEY)) as {id: string; signature: string}[];
+    expect(records).toHaveLength(1);
+    expect(sent).toEqual({ok: false, error: 'check-pending', data: {id: records[0]!.id, signature: firstSignature(deps.broadcasts[0]!)}});
+    warn.mockRestore();
+  });
+
+  it('wallet.send: a failure BEFORE the record is written is still a plain failure (nothing was sent)', async () => {
+    const {ext, deps, id} = await broadcastReady();
+    ext.local.set = async () => {
+      throw new Error('quota');
+    };
+    expect(await handleWallet(ext, deps, 'wallet.send', {id})).toEqual({ok: false, error: 'failed'});
+    expect(deps.broadcasts).toHaveLength(0);
+  });
+
   it('wallet.prepareSend checks the intent and the account BEFORE any request (ruling 6)', async () => {
     const ext = fakeExt();
     await unlocked(ext);

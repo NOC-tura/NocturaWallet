@@ -4,7 +4,7 @@ import type {WalletDeps} from './deps';
 import {addKnownRecipient} from './knownRecipients';
 import {randomId} from './digest';
 import {inFlightFor, isOpen, readPending, updatePending, viewOf, type PendingRecord, type PendingView} from './pendingStore';
-import {ResendRefused, SendRefused, type ResendRefusal, type SendIntent} from './sendTypes';
+import {ResendRefused, SendRefused, SentUnconfirmed, type ResendRefusal, type SendIntent} from './sendTypes';
 import {BroadcastRejected, BroadcastSubstituted, firstSignature} from '../../../core/solana/broadcast';
 import {RpcCoolingDown, RpcForbidden, type SignatureStatus} from '../../../core/solana/rpc';
 
@@ -97,11 +97,17 @@ export async function submitSigned(
   // never keep the signed bytes from being sent.
   await armPendingAlarm(ext).catch((e: unknown) => console.warn('pending alarm not armed; the poller still runs', e));
   try {
-    await deliver(ext, deps, record, 'first');
-  } finally {
-    void startPoller(ext, deps);
+    try {
+      await deliver(ext, deps, record, 'first');
+    } finally {
+      void startPoller(ext, deps);
+    }
+    return viewOf((await readPending(ext)).find(r => r.id === record.id) ?? record);
+  } catch (e) {
+    // The bytes may have left: never let this surface as "failed" (nothing sent).
+    console.warn('send recorded, but its state could not be read back', e);
+    throw new SentUnconfirmed(record.id, record.signature);
   }
-  return viewOf((await readPending(ext)).find(r => r.id === record.id) ?? record);
 }
 
 /** "Send again": the same signed bytes, so the same signature — it can land at most once. */
