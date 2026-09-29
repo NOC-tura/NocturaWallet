@@ -7,14 +7,30 @@ describe('settings', () => {
     expect(await readSettings(fakeExt())).toEqual(DEFAULT_SETTINGS);
   });
 
-  it('clamps stored values into range and ignores garbage', async () => {
+  it('keeps a stored value that is an integer in range', async () => {
+    const ext = fakeExt();
+    await ext.local.set(SETTINGS_KEY, {autoLockMinutes: 60, reauthUsdCents: 100, selectedAccount: 3});
+    expect(await readSettings(ext)).toEqual({autoLockMinutes: 60, reauthUsdCents: 100, selectedAccount: 3});
+    await ext.local.set(SETTINGS_KEY, {autoLockMinutes: 1, reauthUsdCents: 100_000});
+    expect(await readSettings(ext)).toEqual({autoLockMinutes: 1, reauthUsdCents: 100_000, selectedAccount: 0});
+  });
+
+  // Controller ruling (overrides the plan's clamp): a stored value outside what parsePatch would
+  // accept is not clamped to the nearest — possibly weakest — bound; it falls back to the default.
+  it('an out-of-range, non-integer or garbage stored value falls back to the safe default', async () => {
     const ext = fakeExt();
     await ext.local.set(SETTINGS_KEY, {autoLockMinutes: 600, reauthUsdCents: 5, selectedAccount: -1});
-    expect(await readSettings(ext)).toEqual({autoLockMinutes: 60, reauthUsdCents: 100, selectedAccount: 0});
+    expect(await readSettings(ext)).toEqual(DEFAULT_SETTINGS);
+    await ext.local.set(SETTINGS_KEY, {autoLockMinutes: 61, reauthUsdCents: 100_001});
+    expect(await readSettings(ext)).toEqual(DEFAULT_SETTINGS);
+    await ext.local.set(SETTINGS_KEY, {autoLockMinutes: 0, reauthUsdCents: 99});
+    expect(await readSettings(ext)).toEqual(DEFAULT_SETTINGS);
     await ext.local.set(SETTINGS_KEY, {autoLockMinutes: '15', reauthUsdCents: 25_000.4, selectedAccount: 2});
-    expect(await readSettings(ext)).toEqual({autoLockMinutes: 5, reauthUsdCents: 25_000, selectedAccount: 2});
+    expect(await readSettings(ext)).toEqual({autoLockMinutes: 5, reauthUsdCents: 10_000, selectedAccount: 2});
     await ext.local.set(SETTINGS_KEY, {reauthUsdCents: 1_000_000});
-    expect((await readSettings(ext)).reauthUsdCents).toBe(100_000);
+    expect((await readSettings(ext)).reauthUsdCents).toBe(10_000);
+    await ext.local.set(SETTINGS_KEY, 'garbage');
+    expect(await readSettings(ext)).toEqual(DEFAULT_SETTINGS);
   });
 
   it('writes only its own fields', async () => {

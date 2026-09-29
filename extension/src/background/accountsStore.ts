@@ -50,15 +50,18 @@ export function cleanName(x: unknown): string | null {
 
 /**
  * Names are outside the seed's AES-GCM additionalData (spec §2), so renaming needs no key and no
- * re-encryption: every other field of the stored envelope is written back exactly as read.
+ * re-encryption: every other field of the stored envelope is written back exactly as read. The
+ * name is cleaned here (cleanName), whatever the caller did; a name it refuses renames nothing.
  */
 export async function renameAccount(ext: Ext, index: number, name: string): Promise<boolean> {
+  const clean = cleanName(name);
+  if (clean === null) return false;
   return serial(async () => {
     const env = await ext.local.get(VAULT_KEY);
     if (!isObj(env) || accountsOf(env) === null) return false;
     const accounts = env.accounts as Json[];
     if (!accounts.some(a => a.index === index)) return false;
-    await ext.local.set(VAULT_KEY, {...env, accounts: accounts.map(a => (a.index === index ? {...a, name} : a))});
+    await ext.local.set(VAULT_KEY, {...env, accounts: accounts.map(a => (a.index === index ? {...a, name: clean} : a))});
     return true;
   });
 }

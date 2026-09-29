@@ -17,19 +17,20 @@ export const AUTOLOCK_RANGE = {min: 1, max: 60};
 /** $1 … $1 000: one re-authentication must not be able to raise the threshold a hundredfold (controller ruling). */
 export const REAUTH_USD_CENTS_RANGE = {min: 100, max: 100_000};
 
-function clampInt(v: unknown, range: {min: number; max: number}, fallback: number): number {
-  if (typeof v !== 'number' || !Number.isFinite(v)) return fallback;
-  return Math.min(range.max, Math.max(range.min, Math.round(v)));
-}
+const inRange = (v: unknown, r: {min: number; max: number}): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= r.min && v <= r.max;
 
-/** Stored values are claims: each field is checked and clamped, garbage falls back to the default. */
+/**
+ * Stored values are claims: a field that is not an integer in its range falls back to the safe
+ * default — never clamped to the nearest bound, which for a too-long lock or a too-high threshold
+ * would be the weakest setting there is (controller ruling).
+ */
 export async function readSettings(ext: Ext): Promise<Settings> {
   const raw = await ext.local.get(SETTINGS_KEY);
   const o = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {};
   const sel = o.selectedAccount;
   return {
-    autoLockMinutes: clampInt(o.autoLockMinutes, AUTOLOCK_RANGE, DEFAULT_SETTINGS.autoLockMinutes),
-    reauthUsdCents: clampInt(o.reauthUsdCents, REAUTH_USD_CENTS_RANGE, DEFAULT_SETTINGS.reauthUsdCents),
+    autoLockMinutes: inRange(o.autoLockMinutes, AUTOLOCK_RANGE) ? o.autoLockMinutes : DEFAULT_SETTINGS.autoLockMinutes,
+    reauthUsdCents: inRange(o.reauthUsdCents, REAUTH_USD_CENTS_RANGE) ? o.reauthUsdCents : DEFAULT_SETTINGS.reauthUsdCents,
     selectedAccount: typeof sel === 'number' && Number.isSafeInteger(sel) && sel >= 0 ? sel : DEFAULT_SETTINGS.selectedAccount,
   };
 }
@@ -39,8 +40,6 @@ export async function writeSettings(ext: Ext, s: Settings): Promise<void> {
 }
 
 export type SettingsPatch = {autoLockMinutes?: number; reauthUsdCents?: number};
-
-const inRange = (v: unknown, r: {min: number; max: number}): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= r.min && v <= r.max;
 
 /** The security settings a message may change: only these two keys, integers, in range. */
 export function parsePatch(x: unknown): SettingsPatch | null {

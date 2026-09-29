@@ -1,20 +1,21 @@
 import type {Ext} from '../ext';
 import type {WalletDeps} from './deps';
-import {REAUTH_KEY} from './session';
-import {createMutex} from './mutex';
+import {REAUTH_KEY, sessionMutex} from './session';
 import {randomId} from './digest';
 
 /** How long the vault page has to prove the factor (brief decision 6). */
 export const CHALLENGE_TTL_MS = 120_000;
+
+/** What randomId produces. Anything else — `__proto__`, `constructor`, garbage — is refused unread. */
+const CHALLENGE_ID = /^[0-9a-f]{32}$/;
 
 interface Challenge {
   digest: string;
   expiresAt: number;
   satisfied: boolean;
 }
-type Store = Record<string, Challenge>;
-
-const serial = createMutex();
+// A Map, not an object: no id can resolve to an inherited property.
+type Store = Map<string, Challenge>;
 
 function isChallenge(x: unknown): x is Challenge {
   if (typeof x !== 'object' || x === null) return false;
@@ -24,40 +25,52 @@ function isChallenge(x: unknown): x is Challenge {
 
 async function load(ext: Ext): Promise<Store> {
   const v = await ext.session.get(REAUTH_KEY);
-  const out: Store = {};
-  if (typeof v !== 'object' || v === null) return out;
-  for (const [id, c] of Object.entries(v as Record<string, unknown>)) if (isChallenge(c)) out[id] = c;
+  const out: Store = new Map();
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return out;
+  for (const [id, c] of Object.entries(v as Record<string, unknown>)) if (CHALLENGE_ID.test(id) && isChallenge(c)) out.set(id, c);
   return out;
 }
 
-const live = (store: Store, now: number): Store => Object.fromEntries(Object.entries(store).filter(([, c]) => c.expiresAt > now));
+async function save(ext: Ext, store: Store): Promise<void> {
+  await ext.session.set(REAUTH_KEY, Object.fromEntries(store));
+}
+
+function live(store: Store, now: number): Store {
+  return new Map([...store].filter(([, c]) => c.expiresAt > now));
+}
+
+// Every read-modify-write runs under sessionMutex, the one clearSession (lock) takes: a lock can
+// never land between a read and its write and be undone by the write.
 
 /** A new challenge for the action whose digest is given; the vault page proves, the action consumes. */
 export async function issueChallenge(ext: Ext, deps: Pick<WalletDeps, 'now' | 'randomBytes'>, digest: string): Promise<string> {
+  if (digest.length === 0) throw new TypeError('issueChallenge: empty digest');
   const id = randomId(deps.randomBytes);
-  await serial(async () => {
+  await sessionMutex(async () => {
     const now = deps.now();
     const store = live(await load(ext), now);
-    store[id] = {digest, expiresAt: now + CHALLENGE_TTL_MS, satisfied: false};
-    await ext.session.set(REAUTH_KEY, store);
+    store.set(id, {digest, expiresAt: now + CHALLENGE_TTL_MS, satisfied: false});
+    await save(ext, store);
   });
   return id;
 }
 
-/** vault.reauthOk: the proof succeeded in the vault page. False for an unknown or expired id. */
+/** vault.reauthOk: the proof succeeded in the vault page. False for an unknown, malformed or expired id. */
 export async function satisfyChallenge(ext: Ext, now: number, id: string): Promise<boolean> {
-  return serial(async () => {
+  if (!CHALLENGE_ID.test(id)) return false;
+  return sessionMutex(async () => {
     const store = live(await load(ext), now);
-    const c = store[id];
-    if (c !== undefined) store[id] = {...c, satisfied: true};
-    await ext.session.set(REAUTH_KEY, store);
+    const c = store.get(id);
+    if (c !== undefined) store.set(id, {...c, satisfied: true});
+    await save(ext, store);
     return c !== undefined;
   });
 }
 
 /** Peek without consuming: may the action proceed? */
 export async function challengeSatisfied(ext: Ext, now: number, id: string, digest: string): Promise<boolean> {
-  const c = (await load(ext))[id];
+  if (!CHALLENGE_ID.test(id)) return false;
+  const c = (await load(ext)).get(id);
   return c !== undefined && c.satisfied && c.expiresAt > now && c.digest === digest;
 }
 
@@ -66,13 +79,14 @@ export async function challengeSatisfied(ext: Ext, now: number, id: string, dige
  * burns the challenge (it can never be right); a not-yet-satisfied one is left for the vault page.
  */
 export async function consumeChallenge(ext: Ext, now: number, id: string, digest: string): Promise<boolean> {
-  return serial(async () => {
+  if (!CHALLENGE_ID.test(id)) return false;
+  return sessionMutex(async () => {
     const store = live(await load(ext), now);
-    const c = store[id];
+    const c = store.get(id);
     if (c === undefined) return false;
     if (c.digest === digest && !c.satisfied) return false;
-    delete store[id];
-    await ext.session.set(REAUTH_KEY, store);
+    store.delete(id);
+    await save(ext, store);
     return c.digest === digest;
   });
 }

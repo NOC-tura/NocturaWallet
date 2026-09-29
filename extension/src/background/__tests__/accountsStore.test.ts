@@ -36,6 +36,17 @@ describe('accountsStore', () => {
     expect(after).toEqual({...ENV, accounts: [ENV.accounts[0], {...ENV.accounts[1], name: 'Savings'}]});
   });
 
+  it('cleans the name itself: stores it trimmed, and refuses a control or bidi-override name untouched', async () => {
+    const ext = fakeExt();
+    await ext.local.set(VAULT_KEY, ENV);
+    for (const bad of ['a\u202eb', 'a\u2066b', 'a\nb', '   ', 'x'.repeat(33)]) {
+      expect(await renameAccount(ext, 1, bad)).toBe(false);
+      expect(await ext.local.get(VAULT_KEY)).toEqual(ENV);
+    }
+    expect(await renameAccount(ext, 1, '  Savings  ')).toBe(true);
+    expect(((await ext.local.get(VAULT_KEY)) as typeof ENV).accounts[1]?.name).toBe('Savings');
+  });
+
   it('refuses an unknown index and a missing wallet', async () => {
     const ext = fakeExt();
     expect(await renameAccount(ext, 0, 'x')).toBe(false);
