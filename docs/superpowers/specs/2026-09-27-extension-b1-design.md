@@ -514,8 +514,9 @@ with an unknown blockhash → `400 rejected` "Blockhash not found"):**
 3. `/rpc`: a method off the allowlist → **HTTP 200** `{"error":{"code":-32601,"message":"Method not
    allowed"}}`; a body that is not JSON-RPC → `400` with `-32600`. An upstream (Helius) 403 becomes a
    `502` with a synthetic JSON-RPC error (nothing copied from Helius's body), in the `api` route and
-   in the site's own `/rpc` proxy alike (coordinator 75450df, deployment pending the owner's
-   approval) — so a 403 always means "the proxy refused".
+   in the site's own `/rpc` proxy alike (coordinator 75450df, deployed; live on `api` with an extension
+   `Origin`: `getBlockHeight` → 200 with a result, `sendTransaction` → 200 with -32601; the main
+   site's proxy takes the rule with its next frontend build) — so a 403 always means "the proxy refused".
 4. `getBlockHeight` stays allowed; **`getFeeForMessage` and `getMinimumBalanceForRentExemption` stay
    refused** — the wallet computes the fee locally and uses the fixed rent constants (§4).
 5. `/geo/check` that cannot place the IP (private or invalid IP, not in the database, missing
