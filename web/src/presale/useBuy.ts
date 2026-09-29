@@ -48,7 +48,7 @@ const ALLOWED_PROGRAM_IDS = [
  * The standard adapter branches on exactly this property: with
  * `solana:signAndSendTransaction` it asks the wallet to send, and without it, it signs
  * and calls `connection.sendRawTransaction` on OUR connection — where `sendTransaction`
- * is not on the RPC allowlist and comes back 403 AFTER the user has signed. So the
+ * is not on the RPC allowlist and is refused AFTER the user has signed. So the
  * check reads the same condition the adapter itself uses, not a proxy for it.
  */
 function canBroadcast(wallet: unknown): boolean {
