@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "test": "vitest run --exclude '**/no-external-hosts.test.ts'",
     "test:bundle": "vitest run no-external-hosts",
-    "scan": "node scripts/check-no-secrets.mjs src ../core && node scripts/check-no-secrets.mjs --bundle dist",
+    "scan": "node scripts/check-no-secrets.mjs src ../core/presale ../core/geo ../core/portfolio ../core/referral ../core/solana ../core/util ../core/ports.ts && node scripts/check-no-secrets.mjs --bundle dist",
     "csp": "node scripts/check-csp.mjs dist",
     "manifest": "node scripts/build-manifest.mjs dist",
     "reproducible": "node scripts/verify-reproducible.mjs",

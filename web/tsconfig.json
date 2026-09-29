@@ -32,6 +32,12 @@
   "include": [
     "src",
     "scripts",
-    "../core"
+    "../core/presale",
+    "../core/geo",
+    "../core/portfolio",
+    "../core/referral",
+    "../core/solana",
+    "../core/util",
+    "../core/ports.ts"
   ]
 }

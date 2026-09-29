@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "WebWorker"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "types": ["vitest/globals", "node"],
+    "baseUrl": ".",
+    "paths": {
+      "@noble/curves/*": ["./node_modules/@noble/curves/*"],
+      "@noble/hashes/*": ["./node_modules/@noble/hashes/*"],
+      "@scure/base": ["./node_modules/@scure/base"],
+      "@scure/bip39": ["./node_modules/@scure/bip39"],
+      "@scure/bip39/*": ["./node_modules/@scure/bip39/*"],
+      "micro-key-producer/*": ["./node_modules/micro-key-producer/*"]
+    }
+  },
+  "include": ["src", "e2e", "../core/keys", "../core/util"]
+}

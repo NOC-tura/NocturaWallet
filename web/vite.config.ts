@@ -61,7 +61,11 @@ export default defineConfig(({mode}) => {
       // the same code passes under node and under happy-dom.
       environment: 'happy-dom',
       globals: true,
-      include: ['src/**/*.{test,spec}.{ts,tsx}', 'scripts/**/*.test.mjs', '../core/**/*.test.ts'],
+      include: [
+        'src/**/*.{test,spec}.{ts,tsx}',
+        'scripts/**/*.test.mjs',
+        '../core/{presale,geo,portfolio,referral,solana,util}/**/*.test.ts',
+      ],
       // core/ holds no DOM code, and jsdom actively breaks it: jsdom runs in its own
       // realm, so `instanceof Uint8Array` fails across it and @noble/hashes rejects a
       // seed with "Uint8Array expected" — PublicKey.isOnCurve then answers true for

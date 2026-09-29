@@ -1,0 +1,41 @@
+name: extension
+
+on:
+  pull_request:
+    paths: ['extension/**', 'core/**', 'web/scripts/**', '.github/workflows/extension.yml']
+  push:
+    branches: [main]
+    paths: ['extension/**', 'core/**', 'web/scripts/**', '.github/workflows/extension.yml']
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      # Same pin as ci.yml/web.yml: the lockfile is written by npm 11.6.2.
+      - run: npm install -g npm@11.6.2
+      # Only extension/ is installed: core/ resolves through this package's node_modules.
+      # --ignore-scripts: no dependency's install script runs on the runner (the lockfile's only
+      # one is fsevents, macOS-only); the browser comes from the explicit step below instead.
+      - run: npm ci --ignore-scripts
+        working-directory: extension
+      - run: npm run verify
+        working-directory: extension
+
+      # The E2E loads dist/chrome (built by verify) into Playwright's Chromium: unlock in the
+      # vault page, session holds only signing keys, a wrong password sends nothing. Kept out of
+      # `verify` so the local gate stays browser-free.
+      - run: npx playwright install --with-deps chromium
+        working-directory: extension
+      - run: npm run e2e
+        working-directory: extension
+
+      # extension/'s own tree, same threshold as web.yml: this tree has no React Native in it,
+      # so a high advisory is not drowned out. Its own step so a failure names the reason.
+      - run: npm audit --audit-level=high
+        working-directory: extension
