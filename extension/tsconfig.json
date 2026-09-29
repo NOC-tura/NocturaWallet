@@ -19,5 +19,5 @@
       "micro-key-producer/*": ["./node_modules/micro-key-producer/*"]
     }
   },
-  "include": ["src", "e2e", "../core/keys", "../core/util"]
+  "include": ["src", "e2e", "../core/keys", "../core/util", "../core/solana"]
 }

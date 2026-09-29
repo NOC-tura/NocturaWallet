@@ -33,6 +33,6 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['src/**/*.test.ts', 'manifest/**/*.test.mjs', 'scripts/**/*.test.mjs', '../core/keys/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'manifest/**/*.test.mjs', 'scripts/**/*.test.mjs', '../core/keys/**/*.test.ts', '../core/solana/**/*.test.ts'],
   },
 } as UserConfig);

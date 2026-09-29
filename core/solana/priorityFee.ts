@@ -1,3 +1,5 @@
+import {RpcForbidden} from './rpc';
+
 /**
  * The narrowest chain read this needs. Naming `Connection` here would tie core to one
  * copy of web3.js, and two copies give two classes with private members that tsc then
@@ -74,7 +76,9 @@ export async function estimatePriorityFee(
       .sort((a, b) => a - b);
     const estimate = Math.max(percentile(fees, PERCENTILE[level]), FLOOR[level]);
     return Math.min(estimate, CEILING[level]);
-  } catch {
+  } catch (e) {
+    // A 403 is terminal (spec §4): the send stops rather than proceeding on the floor.
+    if (e instanceof RpcForbidden) throw e;
     return FLOOR[level];
   }
 }
