@@ -47,7 +47,11 @@ describe('unlockFlow', () => {
     expect(await unlockFlow({env, send: async () => ({ok: false, error: 'forbidden'})}, {password: 'correct horse battery', kdf})).toBe('failed');
   });
 
-  it('returns failed and zeroes the unwrapped data key when decryptMnemonic throws', async () => {
+  // Fable re-review: once unlockWithPassword/unlockWithPrf has PROVEN the factor right (the
+  // data key unwrapped), a decryptMnemonic failure cannot be a wrong guess any more — the only
+  // way to reach here with a bad AES-GCM tag is a tampered or corrupted stored envelope. That
+  // is 'damaged', the same outcome as a malformed envelope caught earlier, not 'failed'.
+  it('returns damaged (not failed) and zeroes the unwrapped data key when decryptMnemonic throws after a correct unlock', async () => {
     const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     let captured: Uint8Array | undefined;
     const originalUnlock = envelopeModule.unlockWithPassword;
@@ -56,15 +60,31 @@ describe('unlockFlow', () => {
       return captured;
     });
     const decryptSpy = vi.spyOn(envelopeModule, 'decryptMnemonic').mockRejectedValue(new Error('corrupt seed'));
+    const sent: unknown[] = [];
     try {
-      const r = await unlockFlow({env, send: async () => ({ok: true})}, {password: 'correct horse battery', kdf});
-      expect(r).toBe('failed');
+      const r = await unlockFlow({env, send: async m => (sent.push(m), {ok: true})}, {password: 'correct horse battery', kdf});
+      expect(r).toBe('damaged');
+      expect(sent).toHaveLength(0);
       expect(captured).toBeDefined();
       expect(Array.from(captured ?? [])).toEqual(new Array(32).fill(0));
     } finally {
       unlockSpy.mockRestore();
       decryptSpy.mockRestore();
     }
+  });
+
+  it('says damaged, not failed, for a stored envelope whose scheme was tampered with after creation', async () => {
+    // scheme is part of the seed's AES-GCM additionalData (spec §2): a swapped scheme is still
+    // a value unlockWithPassword accepts, so the password unwraps fine and only decryptMnemonic
+    // — where the GCM tag no longer matches — catches the tamper.
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
+    const sent: unknown[] = [];
+    const r = await unlockFlow(
+      {env: {...env, scheme: 'cli'}, send: async m => (sent.push(m), {ok: true})},
+      {password: 'correct horse battery', kdf},
+    );
+    expect(r).toBe('damaged');
+    expect(sent).toHaveLength(0);
   });
 
   it('returns failed when send() throws instead of resolving', async () => {

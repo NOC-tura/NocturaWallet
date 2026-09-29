@@ -14,10 +14,14 @@ export const ENVELOPE_KEY = 'v1_vault';
  * `factor.prfOutput` in an outer `finally`, because the caller hands ownership of that array
  * over to this call. A proven-wrong password or passkey (a thrown `WrongPassword`/
  * `WrongPasskey`) is `'wrong'`; a stored envelope that is malformed (`CorruptEnvelope`) or
- * declares an Argon2id cost outside the bounds (`UnsafeKdfParams`) is `'damaged'` — a failure,
- * with nothing sent and no wrong-password backoff, that the page names as damaged data rather
- * than inviting another try; anything else (a `send()` rejection, …) comes back as `'failed'`,
- * never as an escaping exception.
+ * declares an Argon2id cost outside the bounds (`UnsafeKdfParams`) is `'damaged'` before the
+ * factor is ever checked — and so is ANY `decryptMnemonic` failure once the factor has already
+ * unwrapped the data key: past that point the factor is proven correct, so a bad AES-GCM tag
+ * can only mean the stored envelope was tampered with or corrupted, never a wrong guess. Both
+ * are a failure, with nothing sent and no wrong-password backoff, that the page names as
+ * damaged data rather than inviting another try; anything else after that (a mismatched
+ * derived key, a `send()` rejection, …) comes back as `'failed'`, never as an escaping
+ * exception.
  */
 export async function unlockFlow(
   deps: {env: EnvelopeV1; send(m: unknown): Promise<{ok: boolean; error?: string}>},
@@ -34,20 +38,32 @@ export async function unlockFlow(
       return 'failed';
     }
     try {
-      const mnemonic = await decryptMnemonic(deps.env, dataKey);
-      const indexes = deps.env.accounts.length ? deps.env.accounts.map(a => a.index) : [0];
-      const accounts = await deriveSessionAccounts(mnemonic, deps.env.scheme, indexes);
-      // The derived keys must be the ones the envelope records for this wallet, account by
-      // account; otherwise nothing is sent. (An envelope with no stored accounts has nothing to
-      // compare against and derives account 0, as before.)
-      const stored = deps.env.accounts;
-      if (stored.length > 0 && (accounts.length !== stored.length || accounts.some((a, i) => a.publicKey !== stored[i]?.publicKey))) {
+      let mnemonic: string;
+      try {
+        mnemonic = await decryptMnemonic(deps.env, dataKey);
+      } catch {
+        // The factor is already proven right (the unwrap above succeeded): any failure here —
+        // a bad AES-GCM tag, an AAD that no longer matches the stored header — is corruption or
+        // tampering, not a wrong guess. Every decryptMnemonic error counts, not just
+        // CorruptEnvelope/UnsafeKdfParams (checkEnvelope's own throws): AES-GCM's own tag
+        // check throws a plain error, not one of those two.
+        return 'damaged';
+      }
+      try {
+        const indexes = deps.env.accounts.length ? deps.env.accounts.map(a => a.index) : [0];
+        const accounts = await deriveSessionAccounts(mnemonic, deps.env.scheme, indexes);
+        // The derived keys must be the ones the envelope records for this wallet, account by
+        // account; otherwise nothing is sent. (An envelope with no stored accounts has nothing
+        // to compare against and derives account 0, as before.)
+        const stored = deps.env.accounts;
+        if (stored.length > 0 && (accounts.length !== stored.length || accounts.some((a, i) => a.publicKey !== stored[i]?.publicKey))) {
+          return 'failed';
+        }
+        const r = await deps.send({type: 'vault.setKeys', accounts});
+        return r.ok ? 'unlocked' : 'failed';
+      } catch {
         return 'failed';
       }
-      const r = await deps.send({type: 'vault.setKeys', accounts});
-      return r.ok ? 'unlocked' : 'failed';
-    } catch (e) {
-      return e instanceof CorruptEnvelope || e instanceof UnsafeKdfParams ? 'damaged' : 'failed';
     } finally {
       dataKey.fill(0);
     }
