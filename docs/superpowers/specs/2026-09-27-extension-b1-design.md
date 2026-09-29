@@ -496,8 +496,9 @@ is of the unsigned contents. Minimum versions: **Chrome 122, Firefox 150**.
    `getMinimumBalanceForRentExemption`.
 5. What `/geo/check` returns when it cannot geolocate (the gate closes on unknown either way).
 
-**The coordinator's answers (ICO Claude, 2026-09-29; implemented, deployment pending the owner's
-approval):**
+**The coordinator's answers (ICO Claude, 2026-09-29; deployed as coordinator 93bce63 and checked
+live on `/api/v1/tx/broadcast` — not base64 → `400 malformed`, unsigned v0 → `400 unsigned`, signed
+with an unknown blockhash → `400 rejected` "Blockhash not found"):**
 1. **Broadcast route** `POST /api/v1/tx/broadcast` as in the contract
    (`2026-09-29-coordinator-broadcast-route.md`): body `{"transaction"}` only, ≤ 1232 bytes, legacy or
    v0 that re-serialises byte-identically; every required signature Ed25519-verified; forwarded
@@ -511,9 +512,10 @@ approval):**
 2. **No 403 on an unknown `Origin`**, measured live for `chrome-extension://…` on `/stats`,
    `/geo/check`, `/recent-purchases` and `/rpc`, and locked by a test for Chrome and Firefox origins.
 3. `/rpc`: a method off the allowlist → **HTTP 200** `{"error":{"code":-32601,"message":"Method not
-   allowed"}}`; a body that is not JSON-RPC → `400` with `-32600`. An upstream (Helius) 403 is still
-   passed through; the wallet asked for it to become a `502`, so that a 403 always means "the proxy
-   refused".
+   allowed"}}`; a body that is not JSON-RPC → `400` with `-32600`. An upstream (Helius) 403 becomes a
+   `502` with a synthetic JSON-RPC error (nothing copied from Helius's body), in the `api` route and
+   in the site's own `/rpc` proxy alike (coordinator 75450df, deployment pending the owner's
+   approval) — so a 403 always means "the proxy refused".
 4. `getBlockHeight` stays allowed; **`getFeeForMessage` and `getMinimumBalanceForRentExemption` stay
    refused** — the wallet computes the fee locally and uses the fixed rent constants (§4).
 5. `/geo/check` that cannot place the IP (private or invalid IP, not in the database, missing
