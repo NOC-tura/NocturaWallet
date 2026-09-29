@@ -1,9 +1,8 @@
 import {evaluateListFreshness, presaleGeoGate} from '../freshness';
-import type {JurisdictionResult} from '../classify';
+import {BUNDLED_RESTRICTED_LIST} from '../restrictedList';
 
 const NOW = new Date('2026-09-28T12:00:00Z');
 const fresh = {source: 'server' as const, updatedAt: '2026-09-20', reviewedAt: '2026-09-20', maxStalenessDays: 30, serverStale: false};
-const allow: JurisdictionResult = {action: 'allow', countryCode: 'SI', transparentAllowed: true};
 
 describe('evaluateListFreshness', () => {
   it('a server list inside its limit is fresh', () => {
@@ -128,21 +127,31 @@ describe('evaluateListFreshness', () => {
 
 describe('presaleGeoGate', () => {
   const ok = evaluateListFreshness(fresh, NOW);
+  const LIST = BUNDLED_RESTRICTED_LIST;
+  const at = (countryCode: string, isVpn = false) => ({freshness: ok, location: {countryCode, isVpn}, restricted: LIST});
   it('opens for a fresh list and an allowed country (positive control)', () => {
-    expect(presaleGeoGate({freshness: ok, jurisdiction: allow})).toEqual({open: true, reason: null});
+    expect(presaleGeoGate(at('SI'))).toEqual({open: true, reason: null});
+  });
+  it('opens for a restricted (not sanctioned) country and for an allowed country behind a VPN — OFAC-only policy', () => {
+    expect(presaleGeoGate(at('CN'))).toEqual({open: true, reason: null});
+    expect(presaleGeoGate(at('SI', true))).toEqual({open: true, reason: null});
   });
   it('closes on a stale list', () => {
-    expect(presaleGeoGate({freshness: evaluateListFreshness({source: 'bundled'}, NOW), jurisdiction: allow}).reason).toBe('stale_list');
+    expect(presaleGeoGate({...at('SI'), freshness: evaluateListFreshness({source: 'bundled'}, NOW)}).reason).toBe('stale_list');
   });
   it('closes when the check did not happen', () => {
-    expect(presaleGeoGate({freshness: ok, jurisdiction: null}).reason).toBe('no_check');
+    expect(presaleGeoGate({freshness: ok, location: null, restricted: LIST}).reason).toBe('no_check');
   });
   it.each(['', 'XX', 'UNKNOWN', 'zz', 'S'])('closes on unknown country code %j', code => {
-    expect(presaleGeoGate({freshness: ok, jurisdiction: {...allow, countryCode: code}}).reason).toBe('unknown_country');
+    expect(presaleGeoGate(at(code)).reason).toBe('unknown_country');
   });
-  it('closes on a sanctioned block', () => {
-    expect(
-      presaleGeoGate({freshness: ok, jurisdiction: {action: 'block', countryCode: 'IR', reason: 'sanctioned', transparentAllowed: true}}).reason,
-    ).toBe('sanctioned');
+  it('closes on a sanctioned country', () => {
+    expect(presaleGeoGate(at('IR'))).toEqual({open: false, reason: 'sanctioned'});
+  });
+  // Fable review (Minor 13): the app's classifier order lets a VPN flag turn a sanctioned
+  // country into a 'warn'. The presale gate classifies itself, sanctioned first, so no caller
+  // can forget the option.
+  it.each(['IR', 'KP', 'CU', 'SY', 'RU'])('closes on sanctioned %s even behind a VPN flag', code => {
+    expect(presaleGeoGate(at(code, true))).toEqual({open: false, reason: 'sanctioned'});
   });
 });

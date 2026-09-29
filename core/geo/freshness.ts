@@ -1,4 +1,5 @@
-import type {JurisdictionResult} from './classify';
+import {classifyJurisdiction} from './classify';
+import type {RestrictedCountry} from './restrictedList';
 
 /**
  * Whether the sanctions list a purchase is judged against is fresh enough to sell on.
@@ -121,10 +122,22 @@ function isKnownCountry(code: string): boolean {
   return /^[A-Z]{2}$/.test(code) && code !== 'XX' && code !== 'ZZ';
 }
 
-export function presaleGeoGate(input: {freshness: Freshness; jurisdiction: JurisdictionResult | null}): GeoGate {
+/**
+ * Whether the presale may sell to this visitor. The gate classifies the location itself, with
+ * `sanctionedWinsOverVpn` on: an IP that geolocates to a sanctioned country is an IP there, and
+ * a VPN flag only says the exit is a proxy, so a sanctioned country closes the gate whatever the
+ * VPN flag says. Taking the raw location rather than a caller's classification means no caller
+ * can reopen that hole by classifying with the app's default order.
+ */
+export function presaleGeoGate(input: {
+  freshness: Freshness;
+  location: {countryCode: string; isVpn: boolean} | null;
+  restricted: readonly RestrictedCountry[];
+}): GeoGate {
   if (input.freshness.stale) return {open: false, reason: 'stale_list'};
-  if (input.jurisdiction === null) return {open: false, reason: 'no_check'};
-  if (!isKnownCountry(input.jurisdiction.countryCode)) return {open: false, reason: 'unknown_country'};
-  if (input.jurisdiction.action === 'block') return {open: false, reason: 'sanctioned'};
+  if (input.location === null) return {open: false, reason: 'no_check'};
+  if (!isKnownCountry(input.location.countryCode)) return {open: false, reason: 'unknown_country'};
+  const j = classifyJurisdiction(input.location, input.restricted, {sanctionedWinsOverVpn: true});
+  if (j.action === 'block') return {open: false, reason: 'sanctioned'};
   return {open: true, reason: null};
 }
