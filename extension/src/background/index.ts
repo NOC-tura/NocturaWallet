@@ -14,8 +14,10 @@ interface BgApi {
 const g = globalThis as unknown as {browser?: BgApi; chrome?: BgApi};
 const api = (g.browser ?? g.chrome) as BgApi;
 const ext = browserExt();
-// First thing on every start: storage.session readable by trusted contexts only (no-op on Firefox).
-void ext.pinSessionAccess();
+// First thing on every start: storage.session readable by trusted contexts only (no-op on
+// Firefox). Caught, not left to reject unhandled — a browser that refuses the call must not
+// stop the listeners below from registering.
+void ext.pinSessionAccess().catch(e => console.warn('storage.session access level not pinned', e));
 
 api.runtime.onMessage.addListener((msg, sender, reply) => {
   handleMessage(ext, msg, sender).then(reply, () => reply({ok: false, error: 'internal'}));
