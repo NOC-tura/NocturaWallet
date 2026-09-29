@@ -7,7 +7,7 @@ import * as passkeyModule from '../../vault/passkey';
 import type {CredentialsApi} from '../../vault/passkey';
 import {envelopeRevision} from '../../shared/envelopeRevision';
 import {storeEnvelope} from '../../background/accountsStore';
-import {addPasskey, chooseScheme, finishOnboarding, importCandidates, indexesFor, newMnemonic, probeCandidates, type Candidate} from '../onboarding';
+import {acceptedPhrase, addPasskey, chooseScheme, detectImport, finishOnboarding, importCandidates, indexesFor, newMnemonic, probeCandidates, type Candidate} from '../onboarding';
 import type {Send} from '../types';
 import {memoryVault} from './memoryVault';
 
@@ -15,6 +15,10 @@ const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abando
 const PASSWORD = 'correct horse battery';
 // The pinned SLIP-0010 account 0 of MNEMONIC (the app's vector): stored fixtures carry real keys.
 const K0 = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
+// The app's cli vector (core/keys/__tests__/transparent.test.ts, c5785e18…), in base58.
+const KCLI = 'EHqmfkN89RJ7Y33CXM6uCzhVeuywHoJXZZLszBHHZy7o';
+// A valid 18-word phrase (BIP-39's all-zero 192-bit vector): valid, but not a length the wallet imports.
+const EIGHTEEN = `${'abandon '.repeat(17)}agent`;
 // Declares production Argon2id (the envelope refuses less), computes a tiny cost: see envelope.test.ts.
 let kdfCalls = 0;
 const kdf: Kdf = (pw, salt) => (kdfCalls++, argon2idAsync(pw, salt, {m: 64, t: 1, p: 1, dkLen: 32}));
@@ -42,7 +46,7 @@ describe('import detection', () => {
     const c = await importCandidates(MNEMONIC);
     expect(c).toHaveLength(6);
     expect(c[0]).toEqual({scheme: 'slip10', index: 0, publicKey: K0});
-    expect(c[5]?.scheme).toBe('cli');
+    expect(c[5]).toEqual({scheme: 'cli', index: 0, publicKey: KCLI});
     expect(new Set(c.map(x => x.publicKey)).size).toBe(6);
   });
 
@@ -66,6 +70,27 @@ describe('import detection', () => {
     expect((await probeCandidates(failing, c)).resolved).toBe(false);
     expect((await probeCandidates(recorder(() => ({ok: false})).send, c)).resolved).toBe(false);
     expect((await probeCandidates(recorder(() => ({ok: true, data: {resolved: false, balances: []}})).send, c)).resolved).toBe(false);
+  });
+
+  it('only 12 or 24 words, as the app (spec §2): a valid 18-word phrase is refused before any probe', async () => {
+    expect(validateMnemonic(EIGHTEEN)).toBe(true);
+    expect(acceptedPhrase(EIGHTEEN)).toBe(false);
+    expect(acceptedPhrase(MNEMONIC)).toBe(true);
+    expect(acceptedPhrase(`  ${MNEMONIC.toUpperCase()}.`)).toBe(true);
+    expect(acceptedPhrase(newMnemonic())).toBe(true);
+    const {sent, send} = recorder();
+    expect(await detectImport(send, EIGHTEEN)).toEqual({outcome: 'invalid-mnemonic'});
+    expect(sent).toHaveLength(0);
+  });
+
+  it('detectImport: an unresolved probe makes the user choose; a funded cli picks cli', async () => {
+    const unresolved = recorder(() => ({ok: true, data: {resolved: false, balances: []}}));
+    const d = await detectImport(unresolved.send, MNEMONIC);
+    expect(d.outcome === 'detected' && d.choice).toEqual({choose: 'unresolved'});
+    expect(unresolved.sent.map(m => m.type)).toEqual(['wallet.probeBalances']);
+    const cli = recorder(() => ({ok: true, data: {resolved: true, balances: [{publicKey: KCLI, lamports: '1', noc: '0'}]}}));
+    const e = await detectImport(cli.send, MNEMONIC);
+    expect(e.outcome === 'detected' && e.choice).toEqual({scheme: 'cli'});
   });
 
   it('funded wins; both funded or unresolved means the user chooses', async () => {
@@ -107,6 +132,7 @@ describe('finishOnboarding', () => {
     const {send} = recorder();
     expect(await finishOnboarding({...store, send, kdf}, {mnemonic: MNEMONIC, password: 'x'.repeat(11), scheme: 'slip10', indexes: [0]})).toBe('weak-password');
     expect(await finishOnboarding({...store, send, kdf}, {mnemonic: 'abandon '.repeat(12).trim(), password: PASSWORD, scheme: 'slip10', indexes: [0]})).toBe('invalid-mnemonic');
+    expect(await finishOnboarding({...store, send, kdf}, {mnemonic: EIGHTEEN, password: PASSWORD, scheme: 'slip10', indexes: [0]})).toBe('invalid-mnemonic');
     expect(store.calls).toHaveLength(0);
   });
 

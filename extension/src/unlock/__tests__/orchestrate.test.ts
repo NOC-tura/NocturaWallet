@@ -270,7 +270,7 @@ describe('wrong-password backoff (spec §2: an increasing delay on top of the Ar
 });
 
 describe('the wrong-password backoff also serves re-authentication, accounts and the reveal', () => {
-  it.each(['confirmed', 'done', 'shown'])("a proven '%s' ends the streak, like 'unlocked'", async success => {
+  it.each(['confirmed', 'done', 'done-locked', 'done-not-locked', 'shown'])("a proven '%s' ends the streak, like 'unlocked'", async success => {
     const sleeps: number[] = [];
     const backoff = createWrongBackoff(async ms => void sleeps.push(ms));
     const run = (o: string) => backoff.run(async () => o, () => undefined);

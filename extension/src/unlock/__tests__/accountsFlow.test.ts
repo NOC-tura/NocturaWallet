@@ -4,6 +4,7 @@ import {addPasskeyWrap, createEnvelope, decryptMnemonic, unlockWithPassword, typ
 import {reencryptForAccounts} from '../../vault/reencrypt';
 import {deriveSessionAccounts} from '../../vault/accounts';
 import {envelopeRevision} from '../../shared/envelopeRevision';
+import {MAX_ACCOUNTS} from '../../shared/envelopeRules';
 import {storeEnvelope} from '../../background/accountsStore';
 import {addAccount, removeAccount} from '../accountsFlow';
 import type {Send, VaultStore} from '../types';
@@ -15,7 +16,7 @@ const PASSWORD = 'correct horse battery';
 let kdfCalls = 0;
 const kdf: Kdf = (pw, salt) => (kdfCalls++, argon2idAsync(pw, salt, {m: 64, t: 1, p: 1, dkLen: 32}));
 
-async function wallet(indexes: number[], scheme: 'slip10' | 'cli' = 'slip10', sessionMnemonic = MNEMONIC, prf?: Uint8Array) {
+async function wallet(indexes: number[], scheme: 'slip10' | 'cli' = 'slip10', sessionMnemonic = MNEMONIC, prf?: Uint8Array, reply: (type: string) => {ok: boolean} = () => ({ok: true})) {
   // Real derived public keys: the background refuses anything else, and unlock compares them.
   const derived = await deriveSessionAccounts(MNEMONIC, scheme, indexes);
   const accounts = derived.map(a => ({index: a.index, name: `Account ${a.index + 1}`, publicKey: a.publicKey}));
@@ -32,7 +33,7 @@ async function wallet(indexes: number[], scheme: 'slip10' | 'cli' = 'slip10', se
     const msg = m as {type: string};
     sent.push(msg);
     if (msg.type === 'vault.status') return {ok: true, data: {unlocked: true, accounts: session.map(a => ({index: a.index, publicKey: a.publicKey}))}};
-    return {ok: true};
+    return reply(msg.type);
   };
   kdfCalls = 0;
   return {deps: {...store, send}, store, sent, opened};
@@ -65,6 +66,24 @@ describe('accounts in the vault page', () => {
     expect(await removeAccount(one.deps, {password: PASSWORD, kdf}, 0)).toBe('last-account');
     expect(await removeAccount(one.deps, {password: PASSWORD, kdf}, 5)).toBe('no-such-account');
     expect(one.store.calls).toHaveLength(0);
+  });
+
+  it('a change the background stored but whose keys it refused locks the vault — and says the accounts WERE changed', async () => {
+    const refused = await wallet([0, 1], 'slip10', MNEMONIC, undefined, type => ({ok: type !== 'vault.setKeys'}));
+    expect(await removeAccount(refused.deps, {password: PASSWORD, kdf}, 1)).toBe('done-locked');
+    expect(refused.sent.map(m => m.type)).toEqual(['vault.status', 'vault.setKeys', 'vault.lock']);
+    expect((await refused.store.stored())?.accounts.map(a => a.index)).toEqual([0]);
+    const neither = await wallet([0], 'slip10', MNEMONIC, undefined, type => ({ok: type !== 'vault.setKeys' && type !== 'vault.lock'}));
+    expect(await addAccount(neither.deps, {password: PASSWORD, kdf})).toBe('done-not-locked');
+    expect(neither.sent.map(m => m.type)).toEqual(['vault.status', 'vault.setKeys', 'vault.lock']);
+    expect((await neither.store.stored())?.accounts.map(a => a.index)).toEqual([0, 1]);
+  });
+
+  it(`refuses an account past MAX_ACCOUNTS (${MAX_ACCOUNTS}) by name, before re-encrypting`, async () => {
+    const full = await wallet(Array.from({length: MAX_ACCOUNTS}, (_, i) => i));
+    expect(await addAccount(full.deps, {password: PASSWORD, kdf})).toBe('too-many-accounts');
+    expect(full.store.calls).toHaveLength(0);
+    expect(full.sent.map(m => m.type)).toEqual(['vault.status']);
   });
 
   it('a cli wallet has exactly one account', async () => {

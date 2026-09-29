@@ -1,12 +1,11 @@
 import {ENVELOPE_KEY} from './unlockFlow';
-import {MIN_PASSWORD_LENGTH, chooseScheme, finishOnboarding, importCandidates, indexesFor, newMnemonic, probeCandidates, type Candidate, type FinishOutcome, type ProbeResult} from './onboarding';
+import {MIN_PASSWORD_LENGTH, detectImport, finishOnboarding, indexesFor, newMnemonic, type Candidate, type FinishOutcome, type ProbeResult} from './onboarding';
 import {addAccount, removeAccount, type AccountsOutcome} from './accountsFlow';
 import {runReauth, type ReauthPageOutcome} from './reauthFlow';
 import {runReveal, type RevealOutcome} from './revealFlow';
 import {createWrongBackoff, runExclusive, type BusyGate} from './orchestrate';
 import {backgroundVaultStore} from './vaultStore';
 import type {PageMode} from './mode';
-import {validateMnemonic} from '../../../core/keys/mnemonic';
 import {workerKdf} from '../vault/kdf';
 import {evaluatePrf} from '../vault/passkey';
 import {unb64} from '../vault/bytes';
@@ -44,6 +43,8 @@ const REAUTH_WORDS: Record<ReauthPageOutcome | 'unavailable', string> = {
 };
 const ACCOUNTS_WORDS: Record<AccountsOutcome, string> = {
   done: 'Done. The accounts are updated.',
+  'done-locked': 'The accounts were changed, and the wallet has been locked. Unlock it to use them.',
+  'done-not-locked': 'The accounts were changed, but the wallet could not be locked. Lock it now from the Noctura menu.',
   wrong: 'That did not confirm it.',
   'mismatch-locked': 'That did not match this wallet, so the wallet has been locked.',
   damaged: "This wallet's stored data is damaged.",
@@ -52,6 +53,7 @@ const ACCOUNTS_WORDS: Record<AccountsOutcome, string> = {
   'cli-single': 'A Solana CLI wallet has exactly one account.',
   'last-account': 'The last account cannot be removed.',
   'no-such-account': 'There is no account with that number.',
+  'too-many-accounts': 'This wallet already has the most accounts it can hold.',
   failed: 'Something went wrong.',
 };
 const REVEAL_WORDS: Record<RevealOutcome['outcome'], string> = {
@@ -64,6 +66,7 @@ const REVEAL_WORDS: Record<RevealOutcome['outcome'], string> = {
   failed: 'Something went wrong. Try again.',
 };
 const WAIT = 'That did not confirm it. Wait a moment before trying again.';
+const UNREADABLE = "This wallet's stored data could not be read. Reload this page.";
 const SECTIONS = ['unlock-section', 'create', 'import', 'reauth', 'accounts', 'reveal'] as const;
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -104,14 +107,16 @@ function startCreate(): void {
   const button = $<HTMLButtonElement>('create-btn');
   button.addEventListener('click', () => {
     void runExclusive(gate, async () => {
+      // The fields are cleared only once the attempt goes ahead: a click the busy gate or the
+      // checkbox turns away leaves what was typed.
+      if (mnemonic === null) return;
+      if (!$<HTMLInputElement>('saved').checked) return say('Write the words down first, then tick the box.');
       const pw = $<HTMLInputElement>('new-password');
       const pw2 = $<HTMLInputElement>('new-password2');
       const password = pw.value;
       const repeated = pw2.value;
       pw.value = '';
       pw2.value = '';
-      if (mnemonic === null) return;
-      if (!$<HTMLInputElement>('saved').checked) return say('Write the words down first, then tick the box.');
       if (password !== repeated) return say('The two passwords are not the same.');
       button.disabled = true;
       say('Creating the wallet…');
@@ -150,14 +155,14 @@ function startImport(): void {
       const repeated = pw2.value;
       pw.value = '';
       pw2.value = '';
-      if (!validateMnemonic(mnemonic)) return say(FINISH_WORDS['invalid-mnemonic']);
       if (password.length < MIN_PASSWORD_LENGTH) return say(FINISH_WORDS['weak-password']);
       if (password !== repeated) return say('The two passwords are not the same.');
-      phrase.value = '';
       say('Checking which addresses hold funds…');
-      const candidates = await importCandidates(mnemonic);
-      const probe = await probeCandidates(send, candidates);
-      const choice = chooseScheme(candidates, probe);
+      // Only 12 or 24 words, refused before anything is sent (detectImport).
+      const detected = await detectImport(send, mnemonic);
+      if (detected.outcome === 'invalid-mnemonic') return say(FINISH_WORDS['invalid-mnemonic']);
+      phrase.value = '';
+      const {candidates, probe, choice} = detected;
       pending = {mnemonic, password, candidates, probe};
       if ('choose' in choice) {
         $('choose-why').textContent = CHOOSE_WORDS[choice.choose];
@@ -178,10 +183,10 @@ function startReauth(challengeId: string): void {
   const backoff = createWrongBackoff(sleep);
   $('reauth-form').addEventListener('submit', e => {
     e.preventDefault();
-    const pw = $<HTMLInputElement>('reauth-password');
-    const password = pw.value;
-    pw.value = '';
     void runExclusive(gate, async () => {
+      const pw = $<HTMLInputElement>('reauth-password');
+      const password = pw.value;
+      pw.value = '';
       say('Checking…');
       const outcome = await backoff.run(() => runReauth({...store, send}, challengeId, {password, kdf: workerKdf}), () => say(WAIT));
       say(REAUTH_WORDS[outcome]);
@@ -205,7 +210,7 @@ function startReauth(challengeId: string): void {
         say(REAUTH_WORDS[await backoff.run(() => runReauth({...store, send}, challengeId, factor), () => say(WAIT))]);
       });
     });
-  });
+  }, () => say(UNREADABLE));
 }
 
 function startAccounts(): void {
@@ -242,11 +247,11 @@ function startReveal(): void {
   };
   $('reveal-form').addEventListener('submit', e => {
     e.preventDefault();
-    const pw = $<HTMLInputElement>('reveal-password');
-    const password = pw.value;
-    pw.value = '';
-    hide();
     void runExclusive(gate, async () => {
+      const pw = $<HTMLInputElement>('reveal-password');
+      const password = pw.value;
+      pw.value = '';
+      hide();
       say('Checking…');
       const outcome = await backoff.run(async () => {
         const r = await runReveal({...store, send}, {password, kdf: workerKdf});
@@ -260,7 +265,10 @@ function startReveal(): void {
     hide();
     say('');
   });
-  // Leaving the page (closing the tab, navigating, or going into the back-forward cache) clears
-  // the words: a restored page never shows them again without a new proof.
+  // Leaving the page (closing the tab, navigating, or going into the back-forward cache) or hiding
+  // it (another tab, a minimised window) clears the words: they come back only with a new proof.
   addEventListener('pagehide', hide);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') hide();
+  });
 }

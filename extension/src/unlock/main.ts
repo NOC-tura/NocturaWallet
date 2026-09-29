@@ -104,4 +104,6 @@ void envelope().then(env => {
   if (!pk) return;
   passkeyBtn.hidden = false;
   passkeyBtn.addEventListener('click', () => void handlePasskeyClick(pk));
+}, () => {
+  status.textContent = "This wallet's stored data could not be read. Reload this page.";
 });

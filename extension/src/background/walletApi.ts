@@ -86,7 +86,12 @@ function failure(e: unknown): Result {
 async function walletState(ext: Ext) {
   const [view, session, settings] = await Promise.all([readWalletView(ext), getSession(ext), readSettings(ext)]);
   if (view === null) return {hasWallet: false, unlocked: false, scheme: null, accounts: [], selected: null};
-  const selected = view.accounts.some(a => a.index === settings.selectedAccount) ? settings.selectedAccount : (view.accounts[0]?.index ?? null);
+  // The selection is only ever an account that exists: in the envelope, and — while unlocked — in the
+  // session too (an account removed in the vault page must not stay selected). Otherwise the first
+  // such account: the session's first while unlocked, the envelope's first while locked.
+  const inView = (i: number) => view.accounts.some(a => a.index === i);
+  const choices = session === null ? view.accounts.map(a => a.index) : session.map(a => a.index).filter(inView);
+  const selected = choices.includes(settings.selectedAccount) ? settings.selectedAccount : (choices[0] ?? view.accounts[0]?.index ?? null);
   return {hasWallet: true, unlocked: session !== null, scheme: view.scheme, accounts: view.accounts, selected};
 }
 
@@ -105,11 +110,14 @@ async function probe(deps: WalletDeps, keys: unknown): Promise<Result> {
   const nocMint = WALLET_TOKENS.NOC.mint as string;
   const balances: {publicKey: string; lamports: string; noc: string}[] = [];
   for (const [i, publicKey] of list.entries()) {
-    let noc = 0n;
+    let noc: bigint;
     try {
       noc = (await deps.reader.getTokenAccountsByOwner(publicKey, {mint: nocMint})).reduce((sum, a) => sum + a.amount, 0n);
     } catch (e) {
-      if (e instanceof RpcForbidden) throw e; // best-effort like the app — but a 403 is never swallowed
+      if (e instanceof RpcForbidden) throw e;
+      // Never a zero for a read that failed: a NOC-only wallet would look unfunded, and import would
+      // choose its (permanent) scheme from that. Unresolved makes the user choose.
+      return {ok: true, data: {resolved: false, balances: []}};
     }
     balances.push({publicKey, lamports: (lamports[i] ?? 0n).toString(), noc: noc.toString()});
   }

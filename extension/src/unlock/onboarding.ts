@@ -19,6 +19,16 @@ export function newMnemonic(): string {
   return generateMnemonic();
 }
 
+/**
+ * A phrase this wallet imports: exactly 12 or 24 words once normalised (spec §2, as the app's
+ * ImportSeedScreen), and a valid BIP-39 checksum. 15-, 18- and 21-word phrases are valid BIP-39
+ * but refused, as the app refuses them.
+ */
+export function acceptedPhrase(mnemonic: string): boolean {
+  const words = normalizeMnemonicInput(mnemonic).split(' ').length;
+  return (words === 12 || words === 24) && validateMnemonic(mnemonic);
+}
+
 export interface Candidate {
   scheme: 'slip10' | 'cli';
   index: number;
@@ -89,6 +99,16 @@ export function indexesFor(scheme: 'slip10' | 'cli', candidates: readonly Candid
   return Array.from({length: top + 1}, (_, i) => i);
 }
 
+export type Detection = {outcome: 'invalid-mnemonic'} | {outcome: 'detected'; candidates: Candidate[]; probe: ProbeResult; choice: SchemeChoice};
+
+/** Import's detection: refuse a phrase it does not import (before anything is sent), derive, probe, choose. */
+export async function detectImport(send: Send, mnemonic: string): Promise<Detection> {
+  if (!acceptedPhrase(mnemonic)) return {outcome: 'invalid-mnemonic'};
+  const candidates = await importCandidates(mnemonic);
+  const probe = await probeCandidates(send, candidates);
+  return {outcome: 'detected', candidates, probe, choice: chooseScheme(candidates, probe)};
+}
+
 export type FinishOutcome = 'created' | 'created-locked' | 'exists' | 'weak-password' | 'invalid-mnemonic' | 'failed';
 
 const present = (x: unknown): boolean => x !== undefined && x !== null;
@@ -105,7 +125,7 @@ export async function finishOnboarding(
   input: {mnemonic: string; password: string; scheme: 'slip10' | 'cli'; indexes: number[]},
 ): Promise<FinishOutcome> {
   if (input.password.length < MIN_PASSWORD_LENGTH) return 'weak-password';
-  if (!validateMnemonic(input.mnemonic)) return 'invalid-mnemonic';
+  if (!acceptedPhrase(input.mnemonic)) return 'invalid-mnemonic';
   try {
     if (present(await deps.readEnvelope())) return 'exists';
     const mnemonic = normalizeMnemonicInput(input.mnemonic);

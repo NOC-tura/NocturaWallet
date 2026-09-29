@@ -6,7 +6,7 @@ import {KNOWN_RECIPIENTS_KEY} from '../knownRecipients';
 import {satisfyChallenge} from '../reauthChallenges';
 import {AUTOLOCK_ALARM} from '../autolock';
 import {PREPARED_TTL_MS} from '../prepare';
-import {PREPARED_KEY, REAUTH_KEY, SESSION_KEY} from '../session';
+import {PREPARED_KEY, REAUTH_KEY, SESSION_KEY, setSession} from '../session';
 import {PENDING_KEY} from '../pendingStore';
 import {POLL_INTERVAL_MS} from '../pending';
 import {firstSignature} from '../../../../core/solana/broadcast';
@@ -15,6 +15,9 @@ import {WALLET_TOKENS} from '../../../../core/solana/balances';
 import {fakeDeps, fakeReader} from './fakeDeps';
 import {fakeExt} from './fakeExt';
 import {ACCOUNT, RECIPIENT, pendingRecord, sendReader, unlocked} from './fixtures';
+
+// A second session account for the selection tests (index 3, the envelope's 'Old'); setSession stores it as given.
+const OTHER = {index: 3, publicKey: RECIPIENT, secretKey: ACCOUNT.secretKey};
 
 const ENV = {v: 1, scheme: 'slip10', accounts: [{index: 0, name: 'Account 1', publicKey: ACCOUNT.publicKey}, {index: 3, name: 'Old', publicKey: RECIPIENT}]};
 const NOC = WALLET_TOKENS.NOC.mint as string;
@@ -26,9 +29,27 @@ describe('handleWallet', () => {
     await ext.local.set(VAULT_KEY, ENV);
     await unlocked(ext);
     await ext.local.set(SETTINGS_KEY, {selectedAccount: 3});
+    await setSession(ext, [ACCOUNT, OTHER]);
     const r = await handleWallet(ext, fakeDeps(), 'wallet.state', {});
     expect(r).toEqual({ok: true, data: {hasWallet: true, unlocked: true, scheme: 'slip10', accounts: ENV.accounts, selected: 3}});
     expect(JSON.stringify(r)).not.toContain('secretKey');
+  });
+
+  it('wallet.state never reports a selection the session does not hold: it falls back to the first session account', async () => {
+    const ext = fakeExt();
+    await ext.local.set(VAULT_KEY, ENV);
+    await ext.local.set(SETTINGS_KEY, {selectedAccount: 3});
+    // Locked: the stored selection stands while the envelope has it.
+    expect((await handleWallet(ext, fakeDeps(), 'wallet.state', {})).data).toMatchObject({unlocked: false, selected: 3});
+    // A removal whose keys reached the session while the envelope still names index 3 (or the reverse).
+    await unlocked(ext);
+    expect((await handleWallet(ext, fakeDeps(), 'wallet.state', {})).data).toMatchObject({unlocked: true, selected: 0});
+    // A selection gone from the envelope falls back too (positive control of the old rule).
+    await ext.local.set(SETTINGS_KEY, {selectedAccount: 7});
+    expect((await handleWallet(ext, fakeDeps(), 'wallet.state', {})).data).toMatchObject({selected: 0});
+    // The session's first account, not the envelope's: the session holds only index 3.
+    await setSession(ext, [OTHER]);
+    expect((await handleWallet(ext, fakeDeps(), 'wallet.state', {})).data).toMatchObject({selected: 3});
   });
 
   it('wallet.balances: strings, for a valid address only', async () => {
@@ -37,7 +58,7 @@ describe('handleWallet', () => {
     expect(await handleWallet(fakeExt(), fakeDeps({reader}), 'wallet.balances', {account: 'nope'})).toEqual({ok: false, error: 'malformed'});
   });
 
-  it('wallet.probeBalances: public keys only, at most six; SOL failing is "unresolved", NOC is best-effort', async () => {
+  it('wallet.probeBalances: public keys only, at most six; any failed read — SOL or NOC — is "unresolved", never a zero', async () => {
     const reader = fakeReader({
       getMultipleLamports: async keys => keys.map((_, i) => BigInt(i)),
       getTokenAccountsByOwner: async owner => {
@@ -45,8 +66,10 @@ describe('handleWallet', () => {
         return [{pubkey: 'a', mint: NOC, owner, amount: 5n, decimals: 9}];
       },
     });
-    const r = await handleWallet(fakeExt(), fakeDeps({reader}), 'wallet.probeBalances', {publicKeys: [ACCOUNT.publicKey, RECIPIENT]});
-    expect(r).toEqual({ok: true, data: {resolved: true, balances: [{publicKey: ACCOUNT.publicKey, lamports: '0', noc: '5'}, {publicKey: RECIPIENT, lamports: '1', noc: '0'}]}});
+    // A NOC-only wallet whose token read fails must not read as unfunded (import would pick the wrong, permanent scheme).
+    expect(await handleWallet(fakeExt(), fakeDeps({reader}), 'wallet.probeBalances', {publicKeys: [ACCOUNT.publicKey, RECIPIENT]})).toEqual({ok: true, data: {resolved: false, balances: []}});
+    const r = await handleWallet(fakeExt(), fakeDeps({reader}), 'wallet.probeBalances', {publicKeys: [ACCOUNT.publicKey]});
+    expect(r).toEqual({ok: true, data: {resolved: true, balances: [{publicKey: ACCOUNT.publicKey, lamports: '0', noc: '5'}]}});
     const down = fakeReader({
       getMultipleLamports: async () => {
         throw new Error('down');

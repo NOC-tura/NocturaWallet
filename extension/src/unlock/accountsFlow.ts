@@ -3,11 +3,14 @@ import {reencryptForAccounts} from '../vault/reencrypt';
 import {openProven, type ReauthFactor} from '../vault/reauth';
 import {deriveSessionAccounts} from '../vault/accounts';
 import {envelopeRevision} from '../shared/envelopeRevision';
+import {MAX_ACCOUNTS} from '../shared/envelopeRules';
 import {lockOnMismatch, sessionKeys} from './reauthFlow';
 import type {Send, VaultStore} from './types';
 
 export type AccountsOutcome =
   | 'done'
+  | 'done-locked'
+  | 'done-not-locked'
   | 'wrong'
   | 'mismatch-locked'
   | 'damaged'
@@ -16,6 +19,7 @@ export type AccountsOutcome =
   | 'cli-single'
   | 'last-account'
   | 'no-such-account'
+  | 'too-many-accounts'
   | 'failed';
 
 type Deps = VaultStore & {send: Send};
@@ -46,14 +50,28 @@ async function attempt(deps: Deps, factor: ReauthFactor, change: (env: EnvelopeV
     if (stored === 'stored-invalid') return 'damaged';
     if (stored === 'no-wallet') return 'no-wallet';
     if (stored !== 'stored') return 'failed';
-    const indexes = reencrypted.accounts.map(a => a.index);
-    const derived = await deriveSessionAccounts(proven.mnemonic, env.scheme, indexes);
-    // The keys handed over are the ones the stored header names, account by account.
-    if (derived.length !== indexes.length || derived.some((d, i) => d.publicKey !== reencrypted.accounts[i]?.publicKey)) return 'failed';
-    const r = await deps.send({type: 'vault.setKeys', accounts: derived});
-    return r.ok ? 'done' : 'failed';
+    // Stored: the accounts HAVE changed. From here, anything that keeps the new keys out of the
+    // session locks the vault — a removed account's key must not keep signing — and says so.
+    try {
+      const indexes = reencrypted.accounts.map(a => a.index);
+      const derived = await deriveSessionAccounts(proven.mnemonic, env.scheme, indexes);
+      // The keys handed over are the ones the stored header names, account by account.
+      const same = derived.length === indexes.length && derived.every((d, i) => d.publicKey === reencrypted.accounts[i]?.publicKey);
+      if (same && (await deps.send({type: 'vault.setKeys', accounts: derived})).ok) return 'done';
+    } catch {
+      // fall through to the lock
+    }
+    return lockAfterChange(deps.send);
   } finally {
     proven.dataKey.fill(0);
+  }
+}
+
+async function lockAfterChange(send: Send): Promise<'done-locked' | 'done-not-locked'> {
+  try {
+    return (await send({type: 'vault.lock'})).ok ? 'done-locked' : 'done-not-locked';
+  } catch {
+    return 'done-not-locked';
   }
 }
 
@@ -81,6 +99,7 @@ async function withProvenSeed(deps: Deps, factor: ReauthFactor, change: (env: En
 export function addAccount(deps: Deps, factor: ReauthFactor): Promise<AccountsOutcome> {
   return withProvenSeed(deps, factor, env => {
     if (env.scheme === 'cli') return 'cli-single';
+    if (env.accounts.length >= MAX_ACCOUNTS) return 'too-many-accounts';
     const next = Math.max(...env.accounts.map(a => a.index)) + 1;
     return [...env.accounts.map(a => ({index: a.index, name: a.name})), {index: next, name: `Account ${next + 1}`}];
   });
