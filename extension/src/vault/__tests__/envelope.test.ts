@@ -3,6 +3,7 @@ import {
   createEnvelope, unlockWithPassword, decryptMnemonic, addPasskeyWrap, unlockWithPrf,
   CorruptEnvelope, UnsafeKdfParams, WrongPassword, WrongPasskey, KDF_CAP, PRODUCTION_KDF, type EnvelopeV1, type Kdf,
 } from '../envelope';
+import {reencryptForAccounts} from '../envelope';
 
 const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 // The envelope refuses Argon2id parameters below production (spec §2), so every envelope here
@@ -328,3 +329,48 @@ describe('Argon2id parameters are bounded: production floor, cap above', () => {
   });
 });
 
+describe('reencryptForAccounts (adding or removing an account, spec §2)', () => {
+  const two = [
+    {index: 0, name: 'Account 1', publicKey: 'x'},
+    {index: 1, name: 'Account 2', publicKey: 'y'},
+  ];
+
+  it('re-encrypts under the same data key: the password still unlocks, the new header decrypts (positive control)', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
+    const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
+    const next = await reencryptForAccounts(env, dk, two);
+    expect(next.accounts).toEqual(two);
+    expect(next.password).toEqual(env.password);
+    expect(next.kdf).toEqual(env.kdf);
+    const dk2 = await unlockWithPassword(next, 'correct horse battery', kdf);
+    expect(await decryptMnemonic(next, dk2)).toBe(MNEMONIC);
+  });
+
+  it('uses a fresh IV, and the old ciphertext does not decrypt under the new header', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
+    const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
+    const next = await reencryptForAccounts(env, dk, two);
+    expect(next.seed.iv).not.toBe(env.seed.iv);
+    await expect(decryptMnemonic({...next, seed: env.seed}, dk)).rejects.toThrow();
+  });
+
+  it('keeps a passkey wrap working', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
+    const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
+    const prf = crypto.getRandomValues(new Uint8Array(32));
+    const withPasskey = await addPasskeyWrap(env, dk, prf, crypto.getRandomValues(new Uint8Array(16)), crypto.getRandomValues(new Uint8Array(32)));
+    const next = await reencryptForAccounts(withPasskey, dk, two);
+    expect(await decryptMnemonic(next, await unlockWithPrf(next, prf))).toBe(MNEMONIC);
+  });
+
+  it('refuses no accounts, a duplicate index, a second cli account and the wrong data key', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
+    const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
+    await expect(reencryptForAccounts(env, dk, [])).rejects.toThrow(/at least one account/);
+    await expect(reencryptForAccounts(env, dk, [two[0]!, {...two[1]!, index: 0}])).rejects.toThrow(/malformed account/);
+    const cli = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'cli', accounts, kdf});
+    const cliKey = await unlockWithPassword(cli, 'correct horse battery', kdf);
+    await expect(reencryptForAccounts(cli, cliKey, two)).rejects.toThrow(/cli wallet has exactly one account/);
+    await expect(reencryptForAccounts(env, crypto.getRandomValues(new Uint8Array(32)), two)).rejects.toThrow();
+  });
+});

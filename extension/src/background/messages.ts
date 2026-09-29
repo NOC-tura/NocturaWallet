@@ -6,6 +6,7 @@ import {getSession, setSession} from './session';
 import {armAutolock, lock} from './autolock';
 import type {WalletDeps} from './deps';
 import {satisfyChallenge} from './reauthChallenges';
+import {storeEnvelope} from './accountsStore';
 import {WALLET_TYPES, handleWallet, isWalletType, type Result} from './walletApi';
 
 /** What the browser reports about a message's origin (runtime.MessageSender). */
@@ -23,9 +24,12 @@ export interface Sender {
  * sets — never the URL the message claims, and never "has a tab", which a full-tab
  * extension page also has.
  */
-export const PRIVILEGED = ['vault.setKeys', 'vault.lock', 'vault.status', 'vault.reauthOk', 'activity.ping', ...WALLET_TYPES] as const;
-/** Only the vault page itself may hand over keys, or report a re-authentication it proved. */
-const VAULT_PAGE_ONLY: readonly string[] = ['vault.setKeys', 'vault.reauthOk'];
+export const PRIVILEGED = ['vault.setKeys', 'vault.lock', 'vault.status', 'vault.reauthOk', 'vault.storeEnvelope', 'activity.ping', ...WALLET_TYPES] as const;
+/**
+ * Only the vault page itself may hand over keys, report a re-authentication it proved, or hand over
+ * the envelope it re-encrypted (the background is the one writer of v1_vault).
+ */
+const VAULT_PAGE_ONLY: readonly string[] = ['vault.setKeys', 'vault.reauthOk', 'vault.storeEnvelope'];
 export const PAGE: readonly string[] = [];
 
 function isOwnPage(ext: Ext, s: Sender): boolean {
@@ -125,6 +129,11 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       if (typeof challengeId !== 'string') return {ok: false, error: 'malformed'};
       if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
       return (await satisfyChallenge(ext, deps.now(), challengeId)) ? {ok: true} : {ok: false, error: 'unknown-challenge'};
+    }
+    case 'vault.storeEnvelope': {
+      const {expectedSeedCt, envelope} = msg as {expectedSeedCt?: unknown; envelope?: unknown};
+      const r = await storeEnvelope(ext, expectedSeedCt, envelope);
+      return r === 'stored' ? {ok: true} : {ok: false, error: r};
     }
     default:
       if (isWalletType(type)) {

@@ -1,4 +1,5 @@
 import {browserExt, deriveExtensionOrigin, readLocal} from '../ext';
+import * as extModule from '../ext';
 
 describe('deriveExtensionOrigin', () => {
   it('returns protocol+host for a URL whose origin the parser actually computes', () => {
@@ -65,3 +66,8 @@ describe('pinSessionAccess', () => {
   });
 });
 
+describe('the vault page has no storage writer (B1b-1 ruling: the background is the one writer of v1_vault)', () => {
+  it('ext.ts exports readLocal and no other plain storage function', () => {
+    expect(Object.keys(extModule).sort()).toEqual(['browserExt', 'deriveExtensionOrigin', 'readLocal']);
+  });
+});

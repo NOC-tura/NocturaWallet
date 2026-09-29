@@ -189,7 +189,7 @@ describe('message partitions (B1b-1 types)', () => {
   // Listed literally, not read from PRIVILEGED: dropping a type from the list must make it
   // 'unknown type' here, which fails, rather than silently shrinking the test.
   const ALL = [
-    'vault.setKeys', 'vault.lock', 'vault.status', 'vault.reauthOk', 'activity.ping',
+    'vault.setKeys', 'vault.lock', 'vault.status', 'vault.reauthOk', 'vault.storeEnvelope', 'activity.ping',
     'wallet.state', 'wallet.balances', 'wallet.probeBalances', 'wallet.prepareSend', 'wallet.send', 'wallet.resend',
     'wallet.pending', 'wallet.history', 'accounts.rename', 'accounts.select', 'settings.get', 'settings.set',
   ];
@@ -218,6 +218,33 @@ describe('message partitions (B1b-1 types)', () => {
     expect(await handleMessage(ext, {type: 'vault.reauthOk', challengeId}, unlockPage, deps)).toEqual({ok: true});
     await handleMessage(ext, {type: 'vault.lock'}, popup);
     expect(await handleMessage(ext, {type: 'vault.reauthOk', challengeId}, unlockPage, deps)).toEqual({ok: false, error: 'locked'});
+  });
+
+  it('vault.storeEnvelope only from the vault page, only while a wallet exists, only over the seed it re-encrypted', async () => {
+    const STORED = {
+      v: 1,
+      scheme: 'slip10',
+      kdf: {alg: 'argon2id', m: 65536, t: 3, p: 1, salt: 'c2FsdHNhbHRzYWx0c2FsdA=='},
+      seed: {iv: 'aXZpdml2aXZpdml2', ct: 'Y3Q='},
+      password: {wrapped: 'd3JhcHBlZA=='},
+      accounts: [{index: 0, name: 'Account 1', publicKey: UNRELATED}],
+    };
+    const NEXT = {...STORED, seed: {iv: 'bmV3bmV3bmV3bmV3', ct: 'bmV3'}, accounts: [...STORED.accounts, {index: 1, name: 'Account 2', publicKey: 'EHqmfkN89RJ7Y33CXM6uCzhVeuywHoJXZZLszBHHZy7o'}]};
+    const msg = {type: 'vault.storeEnvelope', expectedSeedCt: 'Y3Q=', envelope: NEXT};
+    const otherId = 'someotherextensionidxxxxxxxxxxxx';
+    const ext = fakeExt();
+    expect(await handleMessage(ext, msg, unlockPage)).toEqual({ok: false, error: 'no-wallet'});
+    expect(await ext.local.get('v1_vault')).toBeUndefined();
+    await ext.local.set('v1_vault', STORED);
+    for (const sender of [page, popup, {...unlockPage, id: otherId}, {id: otherId, origin: `chrome-extension://${otherId}`, url: `chrome-extension://${otherId}/unlock.html`}]) {
+      expect(await handleMessage(ext, msg, sender)).toEqual({ok: false, error: 'forbidden'});
+    }
+    expect(await ext.local.get('v1_vault')).toEqual(STORED);
+    expect(await handleMessage(ext, {...msg, envelope: {...NEXT, v: 2}}, unlockPage)).toEqual({ok: false, error: 'malformed'});
+    expect(await handleMessage(ext, {...msg, expectedSeedCt: 'b3RoZXI='}, unlockPage)).toEqual({ok: false, error: 'busy'});
+    expect(await ext.local.get('v1_vault')).toEqual(STORED);
+    expect(await handleMessage(ext, msg, unlockPage)).toEqual({ok: true});
+    expect(await ext.local.get('v1_vault')).toEqual(NEXT);
   });
 
   it('wallet types answer "unavailable" when the background has no deps, and route when it does', async () => {

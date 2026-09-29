@@ -294,3 +294,34 @@ export async function unlockWithPrf(env: EnvelopeV1, prfOutput: Uint8Array): Pro
     kek.fill(0);
   }
 }
+
+/**
+ * The account list changed (an account added or removed, spec §2): re-encrypt the seed under the
+ * SAME data key with the new header as its additionalData. The password and passkey wraps wrap the
+ * data key, not the seed, so they stay valid; the IV is fresh (AES-GCM must never reuse an IV under
+ * one key). Decrypting first proves `dataKey` and the current header before anything is written.
+ * Names are copied but, as everywhere, not part of the AAD.
+ */
+export async function reencryptForAccounts(env: EnvelopeV1, dataKey: Uint8Array, accounts: EnvelopeV1['accounts']): Promise<EnvelopeV1> {
+  checkEnvelope(env);
+  assertArrayBufferBacked(dataKey);
+  if (accounts.length === 0) throw new TypeError('an envelope needs at least one account');
+  const seen = new Set<number>();
+  for (const a of accounts) {
+    if (!isIndex(a.index) || typeof a.name !== 'string' || typeof a.publicKey !== 'string' || seen.has(a.index)) throw new TypeError('malformed account');
+    seen.add(a.index);
+  }
+  if (env.scheme === 'cli' && (accounts.length !== 1 || accounts[0]?.index !== 0)) throw new TypeError('a cli wallet has exactly one account');
+  const mnemonic = await decryptMnemonic(env, dataKey);
+  const clean = accounts.map(a => ({index: a.index, name: a.name, publicKey: a.publicKey}));
+  const aad = headerAad({v: 1, scheme: env.scheme, kdf: env.kdf, accounts: clean});
+  const iv = random(12);
+  const encoded = utf8(mnemonic);
+  try {
+    const key = await subtle().importKey('raw', dataKey, 'AES-GCM', false, ['encrypt']);
+    const ct = new Uint8Array(await subtle().encrypt({name: 'AES-GCM', iv, additionalData: aad}, key, encoded));
+    return {...env, seed: {iv: b64(iv), ct: b64(ct)}, accounts: clean};
+  } finally {
+    encoded.fill(0);
+  }
+}

@@ -258,6 +258,29 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
     }
     expect(sourceViolations([f('src/popup/main.ts', "import {readLocal} from '../ext';")])).toEqual([EXT('src/popup/main.ts')]);
   });
+  // B1b-1 ruling: v1_vault has ONE writer, the background (storage.local has no compare-and-set
+  // across contexts); the vault page hands it the envelope by message. So the vault page gets no
+  // storage writer: not a writeLocal from ext.ts, not storage.local itself.
+  it('does not let the vault page write storage.local — by any ext.ts export or by the storage API', () => {
+    const EXT = path => `${path}: imports src/ext.ts (storage.session) outside the background`;
+    for (const text of [
+      "import {writeLocal} from '../ext';",
+      "import {readLocal, writeLocal} from '../ext';",
+      "import {writeLocal as write} from '../ext';",
+      "import {browserExt} from '../ext';\nbrowserExt().local.set('v1_vault', env);",
+    ]) {
+      expect(sourceViolations([f('src/unlock/onboarding.ts', text)])).toEqual([EXT('src/unlock/onboarding.ts')]);
+    }
+    const STORAGE = path => `${path}: touches storage outside src/ext.ts and the background`;
+    for (const text of [
+      'chrome.storage.local.set({v1_vault: env});',
+      'browser.storage.local.set({v1_vault: env});',
+      "const {storage} = chrome;\nstorage.local.set({v1_vault: env});",
+    ]) {
+      expect(sourceViolations([f('src/unlock/onboarding.ts', text)])).toEqual([STORAGE('src/unlock/onboarding.ts')]);
+    }
+    expect(sourceViolations([f('src/unlock/onboarding.ts', "import {readLocal} from '../ext';\nawait readLocal('v1_vault');")])).toEqual([]);
+  });
   // B1b-1: storage.local keys only the background writes. No other file may even name them — a
   // popup writing v1_settings could undo a re-authenticated setting without re-authenticating.
   it('lets only the background name the background-owned storage keys', () => {
