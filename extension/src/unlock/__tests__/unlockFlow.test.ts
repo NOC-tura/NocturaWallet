@@ -145,5 +145,19 @@ describe('unlockFlow', () => {
     expect(r).not.toBe('unlocked');
     expect(sent).toHaveLength(0);
   });
+
+  // Fable review (Minor 4): the keys handed to the background must be the keys the envelope
+  // says this wallet has — a mismatch (a wrong public key written at create time, a derivation
+  // bug) is a failed unlock, with nothing sent.
+  it.each([
+    ['a public key that is not account 0\'s', [{index: 0, name: 'Account 1', publicKey: '11111111111111111111111111111111'}]],
+    ['account 0\'s public key stored under index 1', [{index: 1, name: 'Account 2', publicKey: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk'}]],
+    ['a second account whose key is account 0\'s', [...accounts, {index: 1, name: 'Account 2', publicKey: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk'}]],
+  ])('fails and sends nothing when the derived keys do not match the stored ones: %s', async (_, stored) => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts: stored, kdf});
+    const sent: unknown[] = [];
+    expect(await unlockFlow({env, send: async m => (sent.push(m), {ok: true})}, {password: 'correct horse battery', kdf})).toBe('failed');
+    expect(sent).toHaveLength(0);
+  });
 });
 
