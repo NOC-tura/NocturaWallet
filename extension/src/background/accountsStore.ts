@@ -1,5 +1,9 @@
 import type {Ext} from '../ext';
 import {createMutex} from './mutex';
+import {ENVELOPE_BYTES, ENVELOPE_KDF_MAX, ENVELOPE_KDF_MIN, MAX_ACCOUNTS, b64Length, cleanName} from '../shared/envelopeRules';
+import {envelopeRevision} from '../shared/envelopeRevision';
+
+export {MAX_ACCOUNTS, MAX_NAME_LENGTH, cleanName} from '../shared/envelopeRules';
 
 /**
  * The envelope. The background is its one writer (storage.local has no compare-and-set across
@@ -7,9 +11,6 @@ import {createMutex} from './mutex';
  * account is added or removed (storeEnvelope). Both writes run under the same mutex.
  */
 export const VAULT_KEY = 'v1_vault';
-export const MAX_NAME_LENGTH = 32;
-/** The most accounts an envelope the vault page hands over may carry. */
-export const MAX_ACCOUNTS = 100;
 
 export interface AccountView {
   index: number;
@@ -41,17 +42,6 @@ export async function readWalletView(ext: Ext): Promise<WalletView | null> {
   if (!isObj(env) || (env.scheme !== 'slip10' && env.scheme !== 'cli')) return null;
   const accounts = accountsOf(env);
   return accounts === null ? null : {scheme: env.scheme, accounts};
-}
-
-// C0 and C1 controls, and the bidi embedding/override/isolate characters that can make an
-// account name read as something else.
-const FORBIDDEN_IN_NAME = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/;
-
-export function cleanName(x: unknown): string | null {
-  if (typeof x !== 'string') return null;
-  const name = x.trim();
-  if (name.length === 0 || name.length > MAX_NAME_LENGTH || FORBIDDEN_IN_NAME.test(name)) return null;
-  return name;
 }
 
 export type RenameResult = 'renamed' | 'malformed' | 'unknown-account' | 'busy';
@@ -101,20 +91,39 @@ type StoredEnvelope = {
 
 const isStr = (x: unknown): x is string => typeof x === 'string';
 const isInt = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x);
+const REVISION = /^[0-9a-f]{64}$/;
+
+function kdfInBounds(kdf: Json): boolean {
+  return (['m', 't', 'p'] as const).every(k => {
+    const v = kdf[k];
+    return isInt(v) && v >= ENVELOPE_KDF_MIN[k] && v <= ENVELOPE_KDF_MAX[k];
+  });
+}
+
+const bytesExactly = (x: unknown, n: number): x is string => b64Length(x) === n;
+const bytesAtLeast = (x: unknown, n: number): x is string => (b64Length(x) ?? -1) >= n;
 
 /**
- * The envelope's shape, checked structurally and rebuilt field by field (a stray field — a seed, a
- * key — is never stored). The background holds no vault code, so it cannot check the ciphertext:
- * the vault page proved the factor and re-encrypted; what is checked here is that the object has
- * the envelope's shape. Names are checked in storeEnvelope, against the stored envelope. Null otherwise.
+ * The envelope's shape, with the vault's own bounds (checkEnvelope's, copied in
+ * src/shared/envelopeRules.ts and pinned to it by src/vault/__tests__/envelopeBounds.test.ts): the
+ * Argon2id cost within [PRODUCTION_KDF, KDF_CAP], every byte string strict base64 of its length.
+ * Rebuilt field by field, so a stray field — a seed, a key — is never stored. The background holds
+ * no vault code and cannot check the ciphertext itself; the vault page proved the factor and
+ * re-encrypted. Names are checked in storeEnvelope, against the stored envelope. Null otherwise.
  */
 function envelopeShape(x: unknown): StoredEnvelope | null {
   if (!isObj(x) || x.v !== 1 || (x.scheme !== 'slip10' && x.scheme !== 'cli')) return null;
   const {kdf, seed, password, passkey} = x;
-  if (!isObj(kdf) || kdf.alg !== 'argon2id' || !isInt(kdf.m) || !isInt(kdf.t) || !isInt(kdf.p) || !isStr(kdf.salt)) return null;
-  if (!isObj(seed) || !isStr(seed.iv) || !isStr(seed.ct)) return null;
-  if (!isObj(password) || !isStr(password.wrapped)) return null;
-  if (passkey !== undefined && (!isObj(passkey) || !isStr(passkey.credentialId) || !isStr(passkey.prfSalt) || !isStr(passkey.wrapped))) return null;
+  if (!isObj(kdf) || kdf.alg !== 'argon2id' || !kdfInBounds(kdf) || !bytesExactly(kdf.salt, ENVELOPE_BYTES.salt)) return null;
+  if (!isObj(seed) || !bytesExactly(seed.iv, ENVELOPE_BYTES.iv) || !bytesAtLeast(seed.ct, ENVELOPE_BYTES.minCt)) return null;
+  if (!isObj(password) || !bytesExactly(password.wrapped, ENVELOPE_BYTES.wrapped)) return null;
+  let pk: StoredEnvelope['passkey'];
+  if (passkey !== undefined) {
+    if (!isObj(passkey)) return null;
+    const {credentialId, prfSalt, wrapped} = passkey;
+    if (!bytesAtLeast(credentialId, ENVELOPE_BYTES.minCredentialId) || !bytesExactly(prfSalt, ENVELOPE_BYTES.prfSalt) || !bytesExactly(wrapped, ENVELOPE_BYTES.wrapped)) return null;
+    pk = {credentialId, prfSalt, wrapped};
+  }
   if (!Array.isArray(x.accounts) || x.accounts.length === 0 || x.accounts.length > MAX_ACCOUNTS) return null;
   const accounts: AccountView[] = [];
   for (const a of x.accounts as unknown[]) {
@@ -126,10 +135,10 @@ function envelopeShape(x: unknown): StoredEnvelope | null {
   return {
     v: 1,
     scheme: x.scheme,
-    kdf: {alg: 'argon2id', m: kdf.m, t: kdf.t, p: kdf.p, salt: kdf.salt},
+    kdf: {alg: 'argon2id', m: kdf.m as number, t: kdf.t as number, p: kdf.p as number, salt: kdf.salt},
     seed: {iv: seed.iv, ct: seed.ct},
     password: {wrapped: password.wrapped},
-    ...(passkey === undefined ? {} : {passkey: {credentialId: passkey.credentialId as string, prfSalt: passkey.prfSalt as string, wrapped: passkey.wrapped as string}}),
+    ...(pk === undefined ? {} : {passkey: pk}),
     accounts,
   };
 }
@@ -137,32 +146,35 @@ function envelopeShape(x: unknown): StoredEnvelope | null {
 /**
  * The vault page re-encrypted the seed for a changed account list and hands the envelope over
  * (`vault.storeEnvelope`); the background is the one writer of v1_vault. Under the mutex renames
- * take: the write lands only if the stored seed ciphertext is still the one the vault page
- * re-encrypted (`expectedSeedCt`) — otherwise another change landed in between and the vault page
- * re-opens and retries ('busy'). A rename changes no ciphertext, so it never makes a store busy;
+ * take, the write lands only if the stored envelope still has the revision the vault page opened
+ * (`expectedRevision`, src/shared/envelopeRevision.ts — every field but the names): otherwise
+ * something else landed in between — another account change, a passkey enrolment — and the vault
+ * page re-opens and retries ('busy'). A rename changes no revision, so it never makes a store busy;
  * instead the current name of every account present in both is kept (names are outside the AAD).
- * A new account's name must be one a rename would accept (cleanName), or nothing is written.
+ * A new account's name must be one a rename would accept (cleanName), or nothing is written. The
+ * scheme and the KDF salt may not change against the stored envelope ('malformed').
  *
- * `expectedSeedCt: null` is onboarding's FIRST write: accepted only while v1_vault is absent
- * (every name is then new, so every name is cleaned); with a wallet stored, 'wallet-exists' and
- * nothing is written — onboarding never overwrites a wallet. A string `expectedSeedCt` with no
- * wallet stored is 'no-wallet'.
+ * `expectedRevision: null` is onboarding's FIRST write: accepted only while v1_vault is absent
+ * (every name is then new, so every name is cleaned); with anything stored, 'wallet-exists' and
+ * nothing is written — onboarding never overwrites a wallet. A revision with no wallet stored is
+ * 'no-wallet'.
  */
-export async function storeEnvelope(ext: Ext, expectedSeedCt: unknown, envelope: unknown): Promise<StoreResult> {
-  const first = expectedSeedCt === null;
-  const next = first || isStr(expectedSeedCt) ? envelopeShape(envelope) : null;
+export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelope: unknown): Promise<StoreResult> {
+  const first = expectedRevision === null;
+  if (!first && !(isStr(expectedRevision) && REVISION.test(expectedRevision))) return 'malformed';
+  const next = envelopeShape(envelope);
   if (next === null) return 'malformed';
   return serial(async () => {
-    const current = await ext.local.get(VAULT_KEY);
-    if (first) {
-      if (current !== undefined) return 'wallet-exists';
-    } else {
-      if (!isObj(current)) return 'no-wallet';
-      if (!isObj(current.seed) || current.seed.ct !== expectedSeedCt) return 'busy';
-    }
+    const stored = await ext.local.get(VAULT_KEY);
     const names = new Map<number, string>();
-    if (isObj(current) && Array.isArray(current.accounts)) {
-      for (const a of current.accounts as unknown[]) if (isObj(a) && isInt(a.index) && isStr(a.name)) names.set(a.index, a.name);
+    if (first) {
+      if (stored !== undefined) return 'wallet-exists';
+    } else {
+      if (!isObj(stored)) return 'no-wallet';
+      const current = envelopeShape(stored);
+      if (current === null || envelopeRevision(current) !== expectedRevision) return 'busy';
+      if (next.scheme !== current.scheme || next.kdf.salt !== current.kdf.salt) return 'malformed';
+      for (const a of current.accounts) names.set(a.index, a.name);
     }
     const accounts: AccountView[] = [];
     for (const a of next.accounts) {

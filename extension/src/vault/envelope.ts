@@ -1,4 +1,5 @@
 import {b64, unb64, utf8, assertArrayBufferBacked} from './bytes';
+import {MAX_ACCOUNTS, cleanName} from '../shared/envelopeRules';
 
 /**
  * The vault on disk: the seed encrypted once with a random data key (AES-256-GCM), and the
@@ -299,28 +300,56 @@ export async function unlockWithPrf(env: EnvelopeV1, prfOutput: Uint8Array): Pro
  * The account list changed (an account added or removed, spec §2): re-encrypt the seed under the
  * SAME data key with the new header as its additionalData. The password and passkey wraps wrap the
  * data key, not the seed, so they stay valid; the IV is fresh (AES-GCM must never reuse an IV under
- * one key). Decrypting first proves `dataKey` and the current header before anything is written.
- * Names are copied but, as everywhere, not part of the AAD.
+ * one key). Decrypting first proves `dataKey` and the current header before anything is built.
+ *
+ * The caller names only indexes and names: every public key is DERIVED here from the decrypted seed
+ * (scheme-aware; a cli wallet is exactly account 0), so no caller-supplied key can enter the header.
+ * The limits are the background's (src/shared/envelopeRules.ts): 1..MAX_ACCOUNTS accounts, unique
+ * non-negative indexes, and a name a rename would accept (cleanName) — or, for an account already
+ * stored, its stored name unchanged. The result is built field by field: nothing stray from `env` or
+ * `accounts` is carried over. Names are, as everywhere, not part of the AAD.
  */
-export async function reencryptForAccounts(env: EnvelopeV1, dataKey: Uint8Array, accounts: EnvelopeV1['accounts']): Promise<EnvelopeV1> {
+export async function reencryptForAccounts(env: EnvelopeV1, dataKey: Uint8Array, accounts: {index: number; name: string}[]): Promise<EnvelopeV1> {
   checkEnvelope(env);
   assertArrayBufferBacked(dataKey);
   if (accounts.length === 0) throw new TypeError('an envelope needs at least one account');
-  const seen = new Set<number>();
+  if (accounts.length > MAX_ACCOUNTS) throw new TypeError(`an envelope holds at most ${MAX_ACCOUNTS} accounts`);
+  const stored = new Map(env.accounts.map(a => [a.index, a.name]));
+  const named: {index: number; name: string}[] = [];
   for (const a of accounts) {
-    if (!isIndex(a.index) || typeof a.name !== 'string' || typeof a.publicKey !== 'string' || seen.has(a.index)) throw new TypeError('malformed account');
-    seen.add(a.index);
+    if (!isIndex(a.index) || named.some(b => b.index === a.index)) throw new TypeError('malformed account');
+    const name = cleanName(a.name) ?? (stored.get(a.index) === a.name ? a.name : null);
+    if (name === null) throw new TypeError('malformed account');
+    named.push({index: a.index, name});
   }
-  if (env.scheme === 'cli' && (accounts.length !== 1 || accounts[0]?.index !== 0)) throw new TypeError('a cli wallet has exactly one account');
+  if (env.scheme === 'cli' && (named.length !== 1 || named[0]?.index !== 0)) throw new TypeError('a cli wallet has exactly one account');
   const mnemonic = await decryptMnemonic(env, dataKey);
-  const clean = accounts.map(a => ({index: a.index, name: a.name, publicKey: a.publicKey}));
-  const aad = headerAad({v: 1, scheme: env.scheme, kdf: env.kdf, accounts: clean});
+  // Loaded on first use, not at module load: this module is also imported by Node tooling (the E2E
+  // envelope fixture) that must not load the derivation code (core/keys, ESM-only dependencies).
+  const {deriveSessionAccounts} = await import('./accounts');
+  const derived = await deriveSessionAccounts(mnemonic, env.scheme, named.map(a => a.index));
+  const clean = named.map((a, i) => {
+    const publicKey = derived[i]?.publicKey;
+    if (publicKey === undefined || derived[i]?.index !== a.index) throw new Error('derivation did not return every account');
+    return {index: a.index, name: a.name, publicKey};
+  });
+  const kdf = {alg: 'argon2id' as const, m: env.kdf.m, t: env.kdf.t, p: env.kdf.p, salt: env.kdf.salt};
+  const aad = headerAad({v: 1, scheme: env.scheme, kdf, accounts: clean});
   const iv = random(12);
   const encoded = utf8(mnemonic);
   try {
     const key = await subtle().importKey('raw', dataKey, 'AES-GCM', false, ['encrypt']);
     const ct = new Uint8Array(await subtle().encrypt({name: 'AES-GCM', iv, additionalData: aad}, key, encoded));
-    return {...env, seed: {iv: b64(iv), ct: b64(ct)}, accounts: clean};
+    const out: EnvelopeV1 = {
+      v: 1,
+      scheme: env.scheme,
+      kdf,
+      seed: {iv: b64(iv), ct: b64(ct)},
+      password: {wrapped: env.password.wrapped},
+      accounts: clean,
+    };
+    if (env.passkey !== undefined) out.passkey = {credentialId: env.passkey.credentialId, prfSalt: env.passkey.prfSalt, wrapped: env.passkey.wrapped};
+    return out;
   } finally {
     encoded.fill(0);
   }

@@ -281,6 +281,19 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
     }
     expect(sourceViolations([f('src/unlock/onboarding.ts', "import {readLocal} from '../ext';\nawait readLocal('v1_vault');")])).toEqual([]);
   });
+  // Fix round 1: src/shared/ holds what both sides of the envelope need (the revision, the bounds);
+  // it is neither vault nor vault page, so the background, the vault page and the popup may import it.
+  it('lets the background, the vault page and the popup import src/shared/', () => {
+    expect(sourceViolations([
+      f('src/background/accountsStore.ts', "import {envelopeRevision} from '../shared/envelopeRevision';\nimport {MAX_ACCOUNTS} from '../shared/envelopeRules';"),
+      f('src/unlock/accountsFlow.ts', "import {envelopeRevision} from '../shared/envelopeRevision';"),
+      f('src/vault/envelope.ts', "import {MAX_ACCOUNTS, cleanName} from '../shared/envelopeRules';"),
+      f('src/popup/main.ts', "import {cleanName} from '../shared/envelopeRules';"),
+      f('src/shared/envelopeRevision.ts', "import {sha256} from '@noble/hashes/sha2.js';"),
+    ])).toEqual([]);
+    // …and src/shared/ itself is held to the same rules: it may not reach into the vault.
+    expect(sourceViolations([f('src/shared/x.ts', "import {decryptMnemonic} from '../vault/envelope';")])).toEqual(['src/shared/x.ts: imports the vault']);
+  });
   // B1b-1: storage.local keys only the background writes. No other file may even name them — a
   // popup writing v1_settings could undo a re-authenticated setting without re-authenticating.
   it('lets only the background name the background-owned storage keys', () => {

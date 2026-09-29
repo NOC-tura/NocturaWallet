@@ -131,8 +131,8 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       return (await satisfyChallenge(ext, deps.now(), challengeId)) ? {ok: true} : {ok: false, error: 'unknown-challenge'};
     }
     case 'vault.storeEnvelope': {
-      const {expectedSeedCt, envelope} = msg as {expectedSeedCt?: unknown; envelope?: unknown};
-      const r = await storeEnvelope(ext, expectedSeedCt, envelope);
+      const {expectedRevision, envelope} = msg as {expectedRevision?: unknown; envelope?: unknown};
+      const r = await storeEnvelope(ext, expectedRevision, envelope);
       return r === 'stored' ? {ok: true} : {ok: false, error: r};
     }
     default:

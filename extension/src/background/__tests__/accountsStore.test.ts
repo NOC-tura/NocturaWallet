@@ -1,17 +1,28 @@
+import {base64} from '@scure/base';
 import {MAX_ACCOUNTS, VAULT_KEY, cleanName, readWalletView, renameAccount, storeEnvelope} from '../accountsStore';
+import {envelopeRevision} from '../../shared/envelopeRevision';
 import {fakeExt} from './fakeExt';
+
+/** n bytes of `fill`, base64: every byte string in these fixtures has the length a real envelope's has. */
+const B = (n: number, fill: number) => base64.encode(new Uint8Array(n).fill(fill));
+// The public keys SLIP-0010 accounts 0, 1, 2 of the "abandon … about" test phrase derive.
+const K0 = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
+const K1 = 'Hh8QwFUA6MtVu1qAoq12ucvFHNwCcVTV7hpWjeY1Hztb';
+const K2 = '7WktogJEd2wQ9eH2oWusmcoFTgeYi6rS632UviTBJ2jm';
 
 const ENV = {
   v: 1,
   scheme: 'slip10',
-  kdf: {alg: 'argon2id', m: 65536, t: 3, p: 1, salt: 'c2FsdHNhbHRzYWx0c2FsdA=='},
-  seed: {iv: 'aXZpdml2aXZpdml2', ct: 'Y3Q='},
-  password: {wrapped: 'd3JhcHBlZA=='},
+  kdf: {alg: 'argon2id', m: 65536, t: 3, p: 1, salt: B(16, 1)},
+  seed: {iv: B(12, 2), ct: B(48, 3)},
+  password: {wrapped: B(40, 4)},
   accounts: [
-    {index: 0, name: 'Account 1', publicKey: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk'},
-    {index: 1, name: 'Account 2', publicKey: 'EHqmfkN89RJ7Y33CXM6uCzhVeuywHoJXZZLszBHHZy7o'},
+    {index: 0, name: 'Account 1', publicKey: K0},
+    {index: 1, name: 'Account 2', publicKey: K1},
   ],
 };
+/** The revision of ENV: what the vault page sends after opening it. */
+const REV = envelopeRevision(ENV as Parameters<typeof envelopeRevision>[0]);
 
 describe('accountsStore', () => {
   it('reads the scheme and the accounts, or null without a (well-shaped) wallet', async () => {
@@ -61,8 +72,8 @@ describe('accountsStore', () => {
     // A rename that read the envelope before such a write must not put the old envelope back after it.
     const ADDED = {
       ...ENV,
-      seed: {iv: 'bmV3bmV3bmV3bmV3', ct: 'bmV3'},
-      accounts: [...ENV.accounts, {index: 2, name: 'Account 3', publicKey: '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4'}],
+      seed: {iv: B(12, 5), ct: B(48, 6)},
+      accounts: [...ENV.accounts, {index: 2, name: 'Account 3', publicKey: K2}],
     };
 
     /** The vault page's write lands right after the rename's first read of v1_vault. */
@@ -89,7 +100,7 @@ describe('accountsStore', () => {
     });
 
     it('a concurrent remove of the renamed account renames nothing and restores nothing', async () => {
-      const REMOVED = {...ENV, seed: {iv: 'b2xkb2xkb2xkb2xk', ct: 'b2xk'}, accounts: [ENV.accounts[0]]};
+      const REMOVED = {...ENV, seed: {iv: B(12, 7), ct: B(48, 8)}, accounts: [ENV.accounts[0]]};
       const ext = interleaved(REMOVED);
       await ext.local.set(VAULT_KEY, ENV);
       expect(await renameAccount(ext, 1, 'Savings')).toBe('unknown-account');
@@ -119,38 +130,73 @@ describe('accountsStore', () => {
 
 describe('storeEnvelope (the vault page hands the background a re-encrypted envelope; the background is the one writer)', () => {
   // What the vault page sends after adding account 2: a new seed ciphertext, the same wraps.
-  const NEXT = {
-    ...ENV,
-    seed: {iv: 'bmV3bmV3bmV3bmV3', ct: 'bmV3Y3Q='},
-    accounts: [...ENV.accounts, {index: 2, name: 'Account 3', publicKey: '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4'}],
-  };
+  const NEXT = {...ENV, seed: {iv: B(12, 5), ct: B(48, 6)}, accounts: [...ENV.accounts, {index: 2, name: 'Account 3', publicKey: K2}]};
+  const PASSKEY = {credentialId: B(16, 7), prfSalt: B(32, 8), wrapped: B(40, 9)};
 
-  it('writes the envelope when the stored seed is the one the vault page re-encrypted (positive control)', async () => {
+  it('writes the envelope when the stored one is the revision the vault page opened (positive control)', async () => {
     const ext = fakeExt();
     await ext.local.set(VAULT_KEY, ENV);
-    expect(await storeEnvelope(ext, ENV.seed.ct, NEXT)).toBe('stored');
+    expect(await storeEnvelope(ext, REV, NEXT)).toBe('stored');
     expect(await ext.local.get(VAULT_KEY)).toEqual(NEXT);
   });
 
-  it("refuses as 'busy' when the stored seed changed since the vault page read it, and writes nothing", async () => {
+  it("refuses as 'busy' when the stored envelope changed since the vault page opened it, and writes nothing", async () => {
     const ext = fakeExt();
-    const OTHER_WRITE = {...ENV, seed: {iv: 'b3RoZXJvdGhlcm90', ct: 'b3RoZXI='}};
+    const OTHER_WRITE = {...ENV, seed: {iv: B(12, 10), ct: B(48, 11)}};
     await ext.local.set(VAULT_KEY, OTHER_WRITE);
-    expect(await storeEnvelope(ext, ENV.seed.ct, NEXT)).toBe('busy');
+    expect(await storeEnvelope(ext, REV, NEXT)).toBe('busy');
     expect(await ext.local.get(VAULT_KEY)).toEqual(OTHER_WRITE);
+  });
+
+  it("a passkey enrolment between open and store (same seed ciphertext, a new wrap) makes the store 'busy'", async () => {
+    const ext = fakeExt();
+    const ENROLLED = {...ENV, passkey: PASSKEY};
+    await ext.local.set(VAULT_KEY, ENROLLED);
+    expect(ENROLLED.seed).toEqual(ENV.seed);
+    expect(await storeEnvelope(ext, REV, NEXT)).toBe('busy');
+    expect(await ext.local.get(VAULT_KEY)).toEqual(ENROLLED);
+    // …and so does a changed password wrap.
+    const REWRAPPED = {...ENV, password: {wrapped: B(40, 12)}};
+    await ext.local.set(VAULT_KEY, REWRAPPED);
+    expect(await storeEnvelope(ext, REV, NEXT)).toBe('busy');
+    expect(await ext.local.get(VAULT_KEY)).toEqual(REWRAPPED);
+  });
+
+  it("a rename between open and store does not make it 'busy' (names are outside the revision), and the new name is kept", async () => {
+    const ext = fakeExt();
+    await ext.local.set(VAULT_KEY, ENV);
+    expect(await renameAccount(ext, 0, 'Savings')).toBe('renamed');
+    expect(await storeEnvelope(ext, REV, NEXT)).toBe('stored');
+    expect(((await ext.local.get(VAULT_KEY)) as typeof NEXT).accounts.map(a => a.name)).toEqual(['Savings', 'Account 2', 'Account 3']);
   });
 
   it("refuses without a wallet: 'no-wallet', and nothing is written", async () => {
     const ext = fakeExt();
-    expect(await storeEnvelope(ext, ENV.seed.ct, NEXT)).toBe('no-wallet');
+    expect(await storeEnvelope(ext, REV, NEXT)).toBe('no-wallet');
     expect(await ext.local.get(VAULT_KEY)).toBeUndefined();
   });
 
-  it('the first write (expectedSeedCt null) stores the envelope while no wallet exists, every name cleaned', async () => {
+  it("refuses a change of scheme or of the KDF salt against the stored envelope as 'malformed'", async () => {
+    for (const env of [
+      {...NEXT, kdf: {...NEXT.kdf, salt: B(16, 13)}},
+      {...NEXT, scheme: 'cli', accounts: [{index: 0, name: 'Account 1', publicKey: K0}]},
+    ]) {
+      const ext = fakeExt();
+      await ext.local.set(VAULT_KEY, ENV);
+      expect(await storeEnvelope(ext, REV, env)).toBe('malformed');
+      expect(await ext.local.get(VAULT_KEY)).toEqual(ENV);
+    }
+  });
+
+  it('the first write (expectedRevision null) stores the envelope while no wallet exists, every name cleaned', async () => {
     const ext = fakeExt();
     const sent = {...NEXT, accounts: [{...NEXT.accounts[0]!, name: '  Main  '}, NEXT.accounts[1]!, NEXT.accounts[2]!]};
     expect(await storeEnvelope(ext, null, sent)).toBe('stored');
     expect(await ext.local.get(VAULT_KEY)).toEqual({...NEXT, accounts: [{...NEXT.accounts[0]!, name: 'Main'}, NEXT.accounts[1]!, NEXT.accounts[2]!]});
+    const cli = fakeExt();
+    const CLI = {...ENV, scheme: 'cli', accounts: [{index: 0, name: 'Account 1', publicKey: K0}]};
+    expect(await storeEnvelope(cli, null, CLI)).toBe('stored');
+    expect(await cli.local.get(VAULT_KEY)).toEqual(CLI);
   });
 
   it("the first write never overwrites a wallet: 'wallet-exists', the stored envelope byte-identical", async () => {
@@ -176,7 +222,7 @@ describe('storeEnvelope (the vault page hands the background a re-encrypted enve
       await tick();
       return set(k, v);
     };
-    const other = {...NEXT, seed: {iv: 'b3RoZXJvdGhlcm90', ct: 'b3RoZXI='}};
+    const other = {...NEXT, seed: {iv: B(12, 10), ct: B(48, 11)}};
     expect(await Promise.all([storeEnvelope(ext, null, NEXT), storeEnvelope(ext, null, other)])).toEqual(['stored', 'wallet-exists']);
     expect(await get(VAULT_KEY)).toEqual(NEXT);
   });
@@ -195,7 +241,7 @@ describe('storeEnvelope (the vault page hands the background a re-encrypted enve
     const ext = fakeExt();
     const renamed = {...ENV, accounts: [{...ENV.accounts[0]!, name: 'Savings'}, ENV.accounts[1]!]};
     await ext.local.set(VAULT_KEY, renamed);
-    expect(await storeEnvelope(ext, ENV.seed.ct, NEXT)).toBe('stored');
+    expect(await storeEnvelope(ext, REV, NEXT)).toBe('stored');
     const after = (await ext.local.get(VAULT_KEY)) as typeof NEXT;
     expect(after.accounts.map(a => a.name)).toEqual(['Savings', 'Account 2', 'Account 3']);
     expect(after.seed).toEqual(NEXT.seed);
@@ -206,7 +252,7 @@ describe('storeEnvelope (the vault page hands the background a re-encrypted enve
     const legacy = {...ENV, accounts: [{...ENV.accounts[0]!, name: ''}, ENV.accounts[1]!]};
     await ext.local.set(VAULT_KEY, legacy);
     const sent = {...NEXT, accounts: [{...NEXT.accounts[0]!, name: ''}, NEXT.accounts[1]!, {...NEXT.accounts[2]!, name: '  Trading  '}]};
-    expect(await storeEnvelope(ext, ENV.seed.ct, sent)).toBe('stored');
+    expect(await storeEnvelope(ext, REV, sent)).toBe('stored');
     expect(((await ext.local.get(VAULT_KEY)) as typeof NEXT).accounts.map(a => a.name)).toEqual(['', 'Account 2', 'Trading']);
   });
 
@@ -214,15 +260,15 @@ describe('storeEnvelope (the vault page hands the background a re-encrypted enve
     const ext = fakeExt();
     await ext.local.set(VAULT_KEY, ENV);
     const extra = {...NEXT, mnemonic: 'abandon', accounts: NEXT.accounts.map(a => ({...a, secretKey: 'k'}))};
-    expect(await storeEnvelope(ext, ENV.seed.ct, extra)).toBe('stored');
+    expect(await storeEnvelope(ext, REV, extra)).toBe('stored');
     expect(await ext.local.get(VAULT_KEY)).toEqual(NEXT);
-    const withPasskey = {...NEXT, passkey: {credentialId: 'Y3JlZA==', prfSalt: 'c2FsdA==', wrapped: 'd3JhcA==', x: 1}};
+    const withPasskey = {...NEXT, passkey: {...PASSKEY, x: 1}};
     await ext.local.set(VAULT_KEY, ENV);
-    expect(await storeEnvelope(ext, ENV.seed.ct, withPasskey)).toBe('stored');
-    expect(((await ext.local.get(VAULT_KEY)) as {passkey: unknown}).passkey).toEqual({credentialId: 'Y3JlZA==', prfSalt: 'c2FsdA==', wrapped: 'd3JhcA=='});
+    expect(await storeEnvelope(ext, REV, withPasskey)).toBe('stored');
+    expect(((await ext.local.get(VAULT_KEY)) as {passkey: unknown}).passkey).toEqual(PASSKEY);
   });
 
-  it("refuses anything not envelope-shaped as 'malformed', and writes nothing", async () => {
+  it("refuses anything not envelope-shaped — the vault's own bounds and lengths — as 'malformed', and writes nothing", async () => {
     const acc = NEXT.accounts[0]!;
     const many = Array.from({length: MAX_ACCOUNTS + 1}, (_, i) => ({index: i, name: `Account ${i + 1}`, publicKey: `k${i}`}));
     const bad: unknown[] = [
@@ -233,14 +279,31 @@ describe('storeEnvelope (the vault page hands the background a re-encrypted enve
       {...NEXT, scheme: 'bip32'},
       {...NEXT, kdf: {...NEXT.kdf, alg: 'scrypt'}},
       {...NEXT, kdf: {...NEXT.kdf, m: '65536'}},
-      {...NEXT, kdf: {...NEXT.kdf, t: 1.5}},
+      {...NEXT, kdf: {...NEXT.kdf, t: 3.5}},
+      {...NEXT, kdf: {...NEXT.kdf, m: 65535}},
+      {...NEXT, kdf: {...NEXT.kdf, m: 1024 * 1024 + 1}},
+      {...NEXT, kdf: {...NEXT.kdf, t: 2}},
+      {...NEXT, kdf: {...NEXT.kdf, t: 11}},
+      {...NEXT, kdf: {...NEXT.kdf, p: 0}},
+      {...NEXT, kdf: {...NEXT.kdf, p: 5}},
       {...NEXT, kdf: {...NEXT.kdf, salt: 1}},
-      {...NEXT, seed: {iv: 'aXY='}},
-      {...NEXT, seed: {iv: 1, ct: 'Y3Q='}},
+      {...NEXT, kdf: {...NEXT.kdf, salt: B(15, 1)}},
+      {...NEXT, kdf: {...NEXT.kdf, salt: B(17, 1)}},
+      {...NEXT, kdf: {...NEXT.kdf, salt: 'not base64!'}},
+      {...NEXT, seed: {iv: B(12, 5)}},
+      {...NEXT, seed: {iv: 1, ct: B(48, 6)}},
+      {...NEXT, seed: {iv: B(11, 5), ct: B(48, 6)}},
+      {...NEXT, seed: {iv: B(13, 5), ct: B(48, 6)}},
+      {...NEXT, seed: {iv: B(12, 5), ct: B(16, 6)}},
       {...NEXT, password: undefined},
       {...NEXT, password: {wrapped: 7}},
-      {...NEXT, passkey: {credentialId: 'x', prfSalt: 'y'}},
+      {...NEXT, password: {wrapped: B(39, 4)}},
+      {...NEXT, password: {wrapped: B(41, 4)}},
+      {...NEXT, passkey: {credentialId: PASSKEY.credentialId, prfSalt: PASSKEY.prfSalt}},
       {...NEXT, passkey: null},
+      {...NEXT, passkey: {...PASSKEY, credentialId: ''}},
+      {...NEXT, passkey: {...PASSKEY, prfSalt: B(31, 8)}},
+      {...NEXT, passkey: {...PASSKEY, wrapped: B(39, 9)}},
       {...NEXT, accounts: []},
       {...NEXT, accounts: many},
       {...NEXT, accounts: 'x'},
@@ -256,13 +319,15 @@ describe('storeEnvelope (the vault page hands the background a re-encrypted enve
     for (const env of bad) {
       const ext = fakeExt();
       await ext.local.set(VAULT_KEY, ENV);
-      expect(await storeEnvelope(ext, ENV.seed.ct, env)).toBe('malformed');
+      expect([env, await storeEnvelope(ext, REV, env)]).toEqual([env, 'malformed']);
       expect(await ext.local.get(VAULT_KEY)).toEqual(ENV);
     }
-    const ext = fakeExt();
-    await ext.local.set(VAULT_KEY, ENV);
-    expect(await storeEnvelope(ext, 7, NEXT)).toBe('malformed');
-    expect(await ext.local.get(VAULT_KEY)).toEqual(ENV);
+    for (const revision of [7, undefined, 'abc', REV.toUpperCase(), `${REV}0`]) {
+      const ext = fakeExt();
+      await ext.local.set(VAULT_KEY, ENV);
+      expect(await storeEnvelope(ext, revision, NEXT)).toBe('malformed');
+      expect(await ext.local.get(VAULT_KEY)).toEqual(ENV);
+    }
   });
 
   it('a rename and a store that interleave lose neither: the new account and the new name both survive, in either order', async () => {
@@ -283,7 +348,7 @@ describe('storeEnvelope (the vault page hands the background a re-encrypted enve
         return set(k, v);
       };
       const rename = () => renameAccount(ext, 1, 'Savings');
-      const store = () => storeEnvelope(ext, ENV.seed.ct, NEXT);
+      const store = () => storeEnvelope(ext, REV, NEXT);
       const [a, b] = renameFirst ? await Promise.all([rename(), store()]) : (await Promise.all([store(), rename()])).reverse();
       expect([a, b]).toEqual(['renamed', 'stored']);
       const after = (await get(VAULT_KEY)) as typeof NEXT;
