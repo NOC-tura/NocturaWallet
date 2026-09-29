@@ -8,7 +8,7 @@ import {EXTENSION_FEE_INPUTS} from './feePolicy';
 import {knownRecipients} from './knownRecipients';
 import {readSettings} from './settings';
 import {sendReauthReasons, usdMicros, type SendReauthReason} from './reauthPolicy';
-import {issueChallenge} from './reauthChallenges';
+import {CHALLENGE_TTL_MS, challengeReusable, issueChallenge} from './reauthChallenges';
 import {digestOf, randomId} from './digest';
 import {SendRefused, type SendIntent} from './sendTypes';
 import {estimatePriorityFee} from '../../../core/solana/priorityFee';
@@ -45,9 +45,17 @@ export interface PreparedSend {
   message: string;
   lastValidBlockHeight: number;
   createdAt: number;
-  /** Binds a re-auth challenge to this exact message. */
-  digest: string;
+  /**
+   * What a re-auth challenge is bound to: the intent (sendIntentDigest), not the message bytes.
+   * The bytes carry a blockhash that a re-prepare must renew every 30 s, and a human
+   * re-authentication routinely takes longer (final review, Important 1).
+   */
+  intentDigest: string;
   challengeId: string | null;
+  /** preparedIntegrity of every field above: an entry changed after prepare is refused at send. */
+  integrity: string;
+  /** What prepare showed, kept so wallet.preparedFor can show it again. Not signed, not bound. */
+  shown: {fees: PreparedView['fees']; solRequiredLamports: string; reasons: SendReauthReason[]};
 }
 
 export interface PreparedView {
@@ -55,6 +63,28 @@ export interface PreparedView {
   fees: {networkLamports: string; priorityLamports: string; rentLamports: string; markupLamports: string; markupReason: FeeReason};
   solRequiredLamports: string;
   reauth: {challengeId: string; reasons: SendReauthReason[]} | null;
+}
+
+/** wallet.preparedFor: the view again, with the intent; `expired` = no longer sendable, prepare again. */
+export type ResumableView = PreparedView & {intent: SendIntent; expired: boolean};
+
+/** The re-auth binding of a send: who sends what to whom — amounts as decimal strings. */
+export function sendIntentDigest(account: string, intent: SendIntent): string {
+  return digestOf('send', {account, token: intent.token, recipient: intent.recipient, amount: intent.amount});
+}
+
+/** Message integrity of a stored prepared send: every field that decides what is signed, or whether re-auth is asked. */
+export function preparedIntegrity(p: Omit<PreparedSend, 'integrity' | 'shown'>): string {
+  return digestOf('prepared', {
+    id: p.id,
+    account: p.account,
+    intent: {token: p.intent.token, recipient: p.intent.recipient, amount: p.intent.amount},
+    message: p.message,
+    lastValidBlockHeight: p.lastValidBlockHeight,
+    createdAt: p.createdAt,
+    intentDigest: p.intentDigest,
+    challengeId: p.challengeId,
+  });
 }
 
 export function isAddress(x: unknown): x is string {
@@ -93,12 +123,31 @@ async function unitPrice(deps: WalletDeps, token: WalletToken): Promise<number |
   }
 }
 
-async function loadPrepared(ext: Ext): Promise<PreparedSend[]> {
-  const v = await ext.session.get(PREPARED_KEY);
-  return Array.isArray(v) ? (v as PreparedSend[]) : [];
+function isPreparedShape(x: unknown): x is PreparedSend {
+  if (typeof x !== 'object' || x === null) return false;
+  const p = x as Record<string, unknown>;
+  return typeof p.id === 'string' && typeof p.integrity === 'string' && typeof p.createdAt === 'number' && typeof p.shown === 'object' && p.shown !== null;
 }
 
-export async function prepareSend(ext: Ext, deps: WalletDeps, account: string, intent: SendIntent): Promise<PreparedView> {
+async function loadPrepared(ext: Ext): Promise<PreparedSend[]> {
+  const v = await ext.session.get(PREPARED_KEY);
+  // An entry of another shape (an older build's) is not ours to sign or show.
+  return Array.isArray(v) ? (v as unknown[]).filter(isPreparedShape) : [];
+}
+
+/**
+ * `opts.challengeId`: the challenge an earlier prepare of the same intent issued (wallet.send answered
+ * 'prepared-expired', or a reopened popup resumes via wallet.preparedFor). While it is live and bound
+ * to this intent — proven or not — it is reused instead of issuing a new one, so one re-authentication
+ * survives the 30 s re-prepare. The message itself is always rebuilt with a fresh blockhash.
+ */
+export async function prepareSend(
+  ext: Ext,
+  deps: WalletDeps,
+  account: string,
+  intent: SendIntent,
+  opts: {challengeId?: string} = {},
+): Promise<PreparedView> {
   const session = await getSession(ext);
   if (session === null) throw new SendRefused('locked');
   if (!session.some(a => a.publicKey === account)) throw new SendRefused('unknown-account');
@@ -188,19 +237,31 @@ export async function prepareSend(ext: Ext, deps: WalletDeps, account: string, i
   });
 
   const messageB64 = base64.encode(message.serialize());
-  const digest = digestOf('send', {account, token: intent.token, recipient: intent.recipient, amount: intent.amount, message: messageB64});
+  const intentDigest = sendIntentDigest(account, intent);
+  const carried = opts.challengeId;
   // Issued before the critical section below: issueChallenge takes sessionMutex itself, which is not re-entrant.
-  const challengeId = reasons.length > 0 ? await issueChallenge(ext, deps, digest) : null;
-  const prepared: PreparedSend = {
+  let challengeId: string | null = null;
+  if (reasons.length > 0) {
+    challengeId = carried !== undefined && (await challengeReusable(ext, deps.now(), carried, intentDigest)) ? carried : await issueChallenge(ext, deps, intentDigest);
+  }
+  const fees = {
+    networkLamports: networkLamports.toString(),
+    priorityLamports: priorityLamports.toString(),
+    rentLamports: rent.toString(),
+    markupLamports: markupLamports.toString(),
+    markupReason: fee.reason,
+  };
+  const bound = {
     id: randomId(deps.randomBytes),
     account,
     intent,
     message: messageB64,
     lastValidBlockHeight: latest.lastValidBlockHeight,
     createdAt: deps.now(),
-    digest,
+    intentDigest,
     challengeId,
   };
+  const prepared: PreparedSend = {...bound, integrity: preparedIntegrity(bound), shown: {fees, solRequiredLamports: solRequired.toString(), reasons}};
   // Under sessionMutex, the one lock (clearSession) takes: a lock that landed while this send was
   // being read, simulated or challenged is seen here, and nothing is written back after it.
   await sessionMutex(async () => {
@@ -212,21 +273,35 @@ export async function prepareSend(ext: Ext, deps: WalletDeps, account: string, i
       throw new SendRefused('locked');
     }
     const now = deps.now();
-    const keep = (await loadPrepared(ext)).filter(p => p.account !== account && now - p.createdAt < PREPARED_TTL_MS).slice(-(MAX_PREPARED - 1));
+    // Other accounts' entries stay while their challenge can live: past 30 s they are unsendable,
+    // but wallet.preparedFor still resumes them (see there).
+    const keep = (await loadPrepared(ext)).filter(p => p.account !== account && now - p.createdAt < CHALLENGE_TTL_MS).slice(-(MAX_PREPARED - 1));
     await ext.session.set(PREPARED_KEY, [...keep, prepared]);
   });
+  return viewOf(prepared);
+}
+
+function viewOf(p: PreparedSend): PreparedView {
   return {
-    id: prepared.id,
-    fees: {
-      networkLamports: networkLamports.toString(),
-      priorityLamports: priorityLamports.toString(),
-      rentLamports: rent.toString(),
-      markupLamports: markupLamports.toString(),
-      markupReason: fee.reason,
-    },
-    solRequiredLamports: solRequired.toString(),
-    reauth: challengeId === null ? null : {challengeId, reasons},
+    id: p.id,
+    fees: p.shown.fees,
+    solRequiredLamports: p.shown.solRequiredLamports,
+    reauth: p.challengeId === null ? null : {challengeId: p.challengeId, reasons: p.shown.reasons},
   };
+}
+
+/**
+ * wallet.preparedFor: the newest prepared send of this account, so a popup closed during
+ * re-authentication can resume. Past PREPARED_TTL_MS it is still reported — `expired`, not
+ * sendable — while its challenge can live (CHALLENGE_TTL_MS): the popup then prepares the same
+ * intent again with that challengeId instead of asking for a second re-authentication.
+ */
+export async function preparedFor(ext: Ext, deps: Pick<WalletDeps, 'now'>, account: string): Promise<ResumableView | null> {
+  const now = deps.now();
+  const mine = (await loadPrepared(ext)).filter(p => p.account === account && now - p.createdAt < CHALLENGE_TTL_MS);
+  const newest = mine.reduce<PreparedSend | null>((a, p) => (a === null || p.createdAt >= a.createdAt ? p : a), null);
+  if (newest === null) return null;
+  return {...viewOf(newest), intent: newest.intent, expired: now - newest.createdAt >= PREPARED_TTL_MS};
 }
 
 export async function peekPrepared(ext: Ext, id: string): Promise<PreparedSend | null> {

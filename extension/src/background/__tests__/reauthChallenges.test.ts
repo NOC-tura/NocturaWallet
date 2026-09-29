@@ -1,6 +1,6 @@
 import {lock} from '../autolock';
 import {REAUTH_KEY} from '../session';
-import {CHALLENGE_TTL_MS, challengeSatisfied, consumeChallenge, issueChallenge, satisfyChallenge} from '../reauthChallenges';
+import {CHALLENGE_TTL_MS, challengeReusable, challengeSatisfied, consumeChallenge, issueChallenge, satisfyChallenge} from '../reauthChallenges';
 import {fakeDeps} from './fakeDeps';
 import {fakeExt} from './fakeExt';
 
@@ -139,5 +139,23 @@ describe('re-auth challenges', () => {
     ext.session.get = realGet;
     expect(await ext.session.get(REAUTH_KEY)).toBeUndefined();
     expect(await satisfyChallenge(ext, deps.now(), id)).toBe(false);
+  });
+});
+
+describe('challengeReusable (a re-prepared send keeps its proof)', () => {
+  it('true for a live challenge with the same digest, proven or not; false for another digest, an expired or unknown id', async () => {
+    const ext = fakeExt();
+    const deps = fakeDeps();
+    const id = await issueChallenge(ext, deps, 'd1');
+    expect(await challengeReusable(ext, deps.now(), id, 'd1')).toBe(true);
+    await satisfyChallenge(ext, deps.now(), id);
+    expect(await challengeReusable(ext, deps.now(), id, 'd1')).toBe(true);
+    expect(await challengeReusable(ext, deps.now(), id, 'd2')).toBe(false);
+    expect(await challengeReusable(ext, deps.now(), 'f'.repeat(32), 'd1')).toBe(false);
+    expect(await challengeReusable(ext, deps.now(), '__proto__', 'd1')).toBe(false);
+    expect(await challengeReusable(ext, deps.now() + CHALLENGE_TTL_MS, id, 'd1')).toBe(false);
+    // Reading it neither consumes nor changes it.
+    expect(await consumeChallenge(ext, deps.now(), id, 'd1')).toBe(true);
+    expect(await challengeReusable(ext, deps.now(), id, 'd1')).toBe(false);
   });
 });

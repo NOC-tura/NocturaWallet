@@ -1,10 +1,10 @@
 import {base64} from '@scure/base';
 import {VersionedMessage} from '@solana/web3.js';
-import {PREPARED_TTL_MS, parseIntent, peekPrepared, prepareSend, takePrepared} from '../prepare';
+import {PREPARED_TTL_MS, parseIntent, peekPrepared, preparedIntegrity, prepareSend, sendIntentDigest, takePrepared} from '../prepare';
 import {PREPARED_KEY, REAUTH_KEY, SESSION_KEY, clearSession, getSession, setSession} from '../session';
 import {PENDING_KEY} from '../pendingStore';
 import {KNOWN_RECIPIENTS_KEY} from '../knownRecipients';
-import {challengeSatisfied} from '../reauthChallenges';
+import {CHALLENGE_TTL_MS, challengeSatisfied, satisfyChallenge} from '../reauthChallenges';
 import {digestOf} from '../digest';
 import {stagePriceFrom} from '../deps';
 import {WALLET_TOKENS} from '../../../../core/solana/balances';
@@ -72,7 +72,7 @@ describe('prepareSend', () => {
     expect(view.reauth?.reasons).toEqual(['first-send']);
     const p = await peekPrepared(ext, view.id);
     expect(p?.challengeId).toBe(view.reauth?.challengeId);
-    expect(await challengeSatisfied(ext, deps.now(), view.reauth!.challengeId, p!.digest)).toBe(false);
+    expect(await challengeSatisfied(ext, deps.now(), view.reauth!.challengeId, p!.intentDigest)).toBe(false);
   });
 
   it('sending to the account itself is not a first send', async () => {
@@ -289,15 +289,80 @@ describe('prepareSend', () => {
     expect(await peekPrepared(ext, view.id)).not.toBeNull();
   }, 2_000);
 
-  it('the challenge is bound to the digest of this exact send', async () => {
+  it('the challenge is bound to the intent (not the blockhash-bearing bytes); the entry carries its own integrity digest', async () => {
     const ext = fakeExt();
     await unlocked(ext);
     const view = await prepareSend(ext, fakeDeps({reader: sendReader()}), ACCOUNT.publicKey, SOL_INTENT);
     const p = (await peekPrepared(ext, view.id))!;
     const {account, token, recipient, amount} = {account: p.account, ...p.intent};
-    expect(p.digest).toBe(digestOf('send', {account, token, recipient, amount, message: p.message}));
+    expect(p.intentDigest).toBe(digestOf('send', {account, token, recipient, amount}));
+    expect(p.intentDigest).toBe(sendIntentDigest(account, p.intent));
     const stored = (await ext.session.get(REAUTH_KEY)) as Record<string, {digest: string}>;
-    expect(stored[view.reauth!.challengeId]?.digest).toBe(p.digest);
+    expect(stored[view.reauth!.challengeId]?.digest).toBe(p.intentDigest);
+    expect(p.integrity).toBe(preparedIntegrity(p));
+    expect(p.integrity).not.toBe(p.intentDigest);
+  });
+
+  it('the integrity digest covers every field that decides what is signed and whether re-auth is asked', async () => {
+    const ext = fakeExt();
+    await unlocked(ext);
+    const view = await prepareSend(ext, fakeDeps({reader: sendReader()}), ACCOUNT.publicKey, SOL_INTENT);
+    const p = (await peekPrepared(ext, view.id))!;
+    for (const altered of [
+      {...p, id: 'f'.repeat(32)},
+      {...p, account: RECIPIENT},
+      {...p, intent: {...p.intent, amount: '2000000'}},
+      {...p, intent: {...p.intent, recipient: ACCOUNT.publicKey}},
+      {...p, message: `AAAA${p.message}`},
+      {...p, lastValidBlockHeight: p.lastValidBlockHeight + 1},
+      {...p, createdAt: p.createdAt + 1},
+      {...p, challengeId: null},
+      {...p, intentDigest: 'x'},
+    ]) {
+      expect(preparedIntegrity(altered)).not.toBe(p.integrity);
+    }
+  });
+
+  it('a re-prepare for the same intent reuses a live challenge it is given, proven or not — no second re-auth', async () => {
+    const ext = fakeExt();
+    await unlocked(ext);
+    const deps = fakeDeps({reader: sendReader()});
+    const first = await prepareSend(ext, deps, ACCOUNT.publicKey, SOL_INTENT);
+    const challengeId = first.reauth!.challengeId;
+    const again = await prepareSend(ext, deps, ACCOUNT.publicKey, SOL_INTENT, {challengeId});
+    expect(again.reauth).toEqual({challengeId, reasons: ['first-send']});
+    await satisfyChallenge(ext, deps.now(), challengeId);
+    const third = await prepareSend(ext, deps, ACCOUNT.publicKey, SOL_INTENT, {challengeId});
+    expect(third.reauth?.challengeId).toBe(challengeId);
+    expect((await peekPrepared(ext, third.id))?.challengeId).toBe(challengeId);
+    expect(Object.keys((await ext.session.get(REAUTH_KEY)) as object)).toEqual([challengeId]);
+  });
+
+  it('a challenge for another intent, an expired one, or a malformed id is not reused: a new challenge is issued', async () => {
+    const ext = fakeExt();
+    await unlocked(ext);
+    const deps = fakeDeps({reader: sendReader()});
+    const first = await prepareSend(ext, deps, ACCOUNT.publicKey, SOL_INTENT);
+    const challengeId = first.reauth!.challengeId;
+    await satisfyChallenge(ext, deps.now(), challengeId);
+    const other = await prepareSend(ext, deps, ACCOUNT.publicKey, {...SOL_INTENT, amount: '2000000'}, {challengeId});
+    expect(other.reauth?.challengeId).toBeDefined();
+    expect(other.reauth?.challengeId).not.toBe(challengeId);
+    const otherRecipient = await prepareSend(ext, deps, ACCOUNT.publicKey, {...SOL_INTENT, recipient: HOLDING_SMALL}, {challengeId});
+    expect(otherRecipient.reauth?.challengeId).not.toBe(challengeId);
+    const junk = await prepareSend(ext, deps, ACCOUNT.publicKey, SOL_INTENT, {challengeId: '__proto__'});
+    expect(junk.reauth?.challengeId).toMatch(/^[0-9a-f]{32}$/);
+    deps.clock.t += CHALLENGE_TTL_MS;
+    const late = await prepareSend(ext, deps, ACCOUNT.publicKey, SOL_INTENT, {challengeId});
+    expect(late.reauth?.challengeId).not.toBe(challengeId);
+  });
+
+  it('no re-auth reason, no challenge — a given id is ignored', async () => {
+    const ext = await knownSetup();
+    const deps = fakeDeps({reader: sendReader()});
+    const view = await prepareSend(ext, deps, ACCOUNT.publicKey, SOL_INTENT, {challengeId: 'a'.repeat(32)});
+    expect(view.reauth).toBeNull();
+    expect((await peekPrepared(ext, view.id))?.challengeId).toBeNull();
   });
 
   it('a newer prepare replaces the older one; taking is single use; an expired one is refused as prepared-expired', async () => {

@@ -105,6 +105,34 @@ describe('handleWallet', () => {
     expect(await handleWallet(ext, deps, 'wallet.send', {id})).toEqual({ok: false, error: 'reauth-required', data: {challengeId: reauth.challengeId}});
   });
 
+  it('wallet.prepareSend carries a challengeId into a re-prepare; wallet.preparedFor resumes a reopened popup', async () => {
+    const ext = fakeExt();
+    await unlocked(ext);
+    const deps = fakeDeps({reader: sendReader()});
+    deps.broadcast = async wire => firstSignature(wire);
+    const intent = {token: 'SOL', recipient: RECIPIENT, amount: '1000'};
+    const prep = await handleWallet(ext, deps, 'wallet.prepareSend', {account: ACCOUNT.publicKey, intent});
+    const {reauth} = prep.data as {reauth: {challengeId: string}};
+    // The popup closed while the user re-authenticated; reopened past the 30 s, it finds the send and its challenge.
+    await satisfyChallenge(ext, deps.now(), reauth.challengeId);
+    deps.clock.t += PREPARED_TTL_MS + 1_000;
+    const resumed = await handleWallet(ext, deps, 'wallet.preparedFor', {account: ACCOUNT.publicKey});
+    expect(resumed).toMatchObject({ok: true, data: {expired: true, intent, reauth: {challengeId: reauth.challengeId}}});
+    const again = await handleWallet(ext, deps, 'wallet.prepareSend', {account: ACCOUNT.publicKey, intent, challengeId: reauth.challengeId});
+    expect(again).toMatchObject({ok: true, data: {reauth: {challengeId: reauth.challengeId}}});
+    expect(await handleWallet(ext, deps, 'wallet.send', {id: (again.data as {id: string}).id})).toMatchObject({ok: true, data: {state: 'pending'}});
+    expect(await handleWallet(ext, deps, 'wallet.preparedFor', {account: ACCOUNT.publicKey})).toEqual({ok: true, data: null});
+  });
+
+  it('wallet.prepareSend refuses a non-string challengeId; wallet.preparedFor refuses a non-address', async () => {
+    const ext = fakeExt();
+    await unlocked(ext);
+    const intent = {token: 'SOL', recipient: RECIPIENT, amount: '1000'};
+    expect(await handleWallet(ext, fakeDeps(), 'wallet.prepareSend', {account: ACCOUNT.publicKey, intent, challengeId: 5})).toEqual({ok: false, error: 'malformed'});
+    expect(await handleWallet(ext, fakeDeps(), 'wallet.preparedFor', {account: 'nope'})).toEqual({ok: false, error: 'malformed'});
+    expect(await handleWallet(ext, fakeDeps(), 'wallet.preparedFor', {account: ACCOUNT.publicKey})).toEqual({ok: true, data: null});
+  });
+
   it('refusals and a 403 become fixed error codes', async () => {
     const ext = fakeExt();
     expect(await handleWallet(ext, fakeDeps(), 'wallet.prepareSend', {account: ACCOUNT.publicKey, intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}})).toMatchObject({ok: false, error: 'locked'});

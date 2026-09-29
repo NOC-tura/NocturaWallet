@@ -8,7 +8,7 @@ import {parsePatch, readSettings, weakens, writeSettings, type Settings} from '.
 import {cleanName, readWalletView, renameAccount} from './accountsStore';
 import {consumeChallenge, issueChallenge} from './reauthChallenges';
 import {digestOf} from './digest';
-import {isAddress, parseIntent, prepareSend} from './prepare';
+import {isAddress, parseIntent, preparedFor, prepareSend} from './prepare';
 import {sendPrepared} from './send';
 import {resend, startPoller} from './pending';
 import {isOpen, readPending, viewOf} from './pendingStore';
@@ -27,6 +27,7 @@ export const WALLET_TYPES = [
   'wallet.send',
   'wallet.resend',
   'wallet.pending',
+  'wallet.preparedFor',
   'wallet.history',
   'accounts.rename',
   'accounts.select',
@@ -193,13 +194,20 @@ export async function handleWallet(ext: Ext, deps: WalletDeps, type: WalletType,
       case 'wallet.prepareSend': {
         // Everything the page sent is checked before any request: the intent's shape, then the
         // account against the unlocked session.
-        const {account} = msg;
+        const {account, challengeId} = msg;
         const intent = parseIntent(msg.intent);
         if (!isAddress(account) || intent === null) return MALFORMED;
+        // Optional: the challenge of an earlier prepare of this intent (reused only if live and bound to it).
+        if (challengeId !== undefined && typeof challengeId !== 'string') return MALFORMED;
         const session = await getSession(ext);
         if (session === null) return {ok: false, error: 'locked'};
         if (!session.some(a => a.publicKey === account)) return {ok: false, error: 'unknown-account'};
-        return {ok: true, data: await prepareSend(ext, deps, account, intent)};
+        return {ok: true, data: await prepareSend(ext, deps, account, intent, challengeId === undefined ? {} : {challengeId})};
+      }
+      case 'wallet.preparedFor': {
+        const {account} = msg;
+        if (!isAddress(account)) return MALFORMED;
+        return {ok: true, data: await preparedFor(ext, deps, account)};
       }
       case 'wallet.send': {
         const {id} = msg;

@@ -75,6 +75,16 @@ export async function challengeSatisfied(ext: Ext, now: number, id: string, dige
 }
 
 /**
+ * May a re-prepare of the same action keep this challenge instead of issuing a new one? True for a
+ * live challenge with this digest, proven or not. Reads only: nothing is consumed or changed.
+ */
+export async function challengeReusable(ext: Ext, now: number, id: string, digest: string): Promise<boolean> {
+  if (!CHALLENGE_ID.test(id)) return false;
+  const c = (await load(ext)).get(id);
+  return c !== undefined && c.expiresAt > now && c.digest === digest;
+}
+
+/**
  * True exactly once, for a satisfied, unexpired challenge with the same digest. A different digest
  * burns the challenge (it can never be right); a not-yet-satisfied one is left for the vault page.
  */

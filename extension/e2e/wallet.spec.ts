@@ -118,20 +118,30 @@ test('create a wallet, unlock it, re-authenticate a first send, send SOL: pendin
     const account = state.accounts[0]!.publicKey;
 
     // 3–5. Prepare: fee lines up front; a first send to a new address needs re-authentication; the
-    // send is refused until the vault page's reauth mode proves the password, then goes through.
+    // send is refused until the vault page's reauth mode proves the password — once.
+    const intent = {token: 'SOL', recipient: RECIPIENT, amount: '10000000'};
+    const prep = await msg(popup, {type: 'wallet.prepareSend', account, intent});
+    expect(prep.ok).toBe(true);
+    const view = prep.data as PreparedView;
+    expect(view.fees).toMatchObject({networkLamports: '5050', priorityLamports: '50', rentLamports: '0', markupLamports: '0', markupReason: 'status-unknown'});
+    expect(view.reauth?.reasons).toEqual(['first-send']);
+    const challengeId = view.reauth!.challengeId;
+    expect(await msg(popup, {type: 'wallet.send', id: view.id})).toEqual({ok: false, error: 'reauth-required', data: {challengeId}});
+    expect(fake.broadcasts).toEqual([]);
+
+    await reauthenticate(ctx, id, challengeId, NEW_PASSWORD);
+
+    // A popup reopened after the re-authentication finds the prepared send and its challenge.
+    expect(await msg(popup, {type: 'wallet.preparedFor', account})).toMatchObject({ok: true, data: {intent, reauth: {challengeId}}});
+    // A human re-authentication routinely outlives the 30 s prepared send, so the popup prepares
+    // again carrying the challenge: the proof carries over to the fresh message (no second
+    // re-authentication). Only a 'prepared-expired' on a slow runner prepares once more.
     let sent: Reply | undefined;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      const prep = await msg(popup, {type: 'wallet.prepareSend', account, intent: {token: 'SOL', recipient: RECIPIENT, amount: '10000000'}});
-      expect(prep.ok).toBe(true);
-      const view = prep.data as PreparedView;
-      expect(view.fees).toMatchObject({networkLamports: '5050', priorityLamports: '50', rentLamports: '0', markupLamports: '0', markupReason: 'status-unknown'});
-      expect(view.reauth?.reasons).toEqual(['first-send']);
-      expect(await msg(popup, {type: 'wallet.send', id: view.id})).toEqual({ok: false, error: 'reauth-required', data: {challengeId: view.reauth!.challengeId}});
-      expect(fake.broadcasts).toEqual([]);
-
-      await reauthenticate(ctx, id, view.reauth!.challengeId, NEW_PASSWORD);
-
-      sent = await msg(popup, {type: 'wallet.send', id: view.id});
+      const again = await msg(popup, {type: 'wallet.prepareSend', account, intent, challengeId});
+      expect(again.ok).toBe(true);
+      expect((again.data as PreparedView).reauth?.challengeId).toBe(challengeId);
+      sent = await msg(popup, {type: 'wallet.send', id: (again.data as PreparedView).id});
       if (sent.ok || sent.error !== 'prepared-expired') break;
     }
     expect(sent?.ok).toBe(true);

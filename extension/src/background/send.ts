@@ -7,8 +7,7 @@ import type {WalletDeps} from './deps';
 import {getSession} from './session';
 import {armAutolock} from './autolock';
 import {challengeSatisfied, consumeChallenge} from './reauthChallenges';
-import {digestOf} from './digest';
-import {peekPrepared, takePrepared, type PreparedSend} from './prepare';
+import {peekPrepared, preparedIntegrity, sendIntentDigest, takePrepared, type PreparedSend} from './prepare';
 import {submitSigned} from './pending';
 import type {PendingView} from './pendingStore';
 import {SendRefused} from './sendTypes';
@@ -31,25 +30,22 @@ export function signPrepared(prepared: PreparedSend, account: SessionAccount): U
   }
 }
 
-/** The digest prepare.ts bound to this send, recomputed from what is stored now — same fields, same order. */
-function recomputedDigest(p: PreparedSend): string {
-  return digestOf('send', {account: p.account, token: p.intent.token, recipient: p.intent.recipient, amount: p.intent.amount, message: p.message});
-}
-
 export async function sendPrepared(ext: Ext, deps: WalletDeps, id: string): Promise<PendingView> {
   if ((await getSession(ext)) === null) throw new SendRefused('locked');
   const peek = await peekPrepared(ext, id);
   if (peek === null) throw new SendRefused('unknown-prepared');
   // Checked before the prepared send is taken, so a Send before re-authenticating does not burn it.
-  if (peek.challengeId !== null && !(await challengeSatisfied(ext, deps.now(), peek.challengeId, peek.digest))) {
+  if (peek.challengeId !== null && !(await challengeSatisfied(ext, deps.now(), peek.challengeId, sendIntentDigest(peek.account, peek.intent)))) {
     throw new SendRefused('reauth-required', peek.challengeId);
   }
   const prepared = await takePrepared(ext, deps, id);
   // What is about to be signed must be what was bound at prepare time: a stored entry changed
-  // since (message, amount, recipient, account) no longer matches its digest and is refused.
-  const digest = recomputedDigest(prepared);
-  if (digest !== prepared.digest) throw new SendRefused('prepared-invalid');
-  if (prepared.challengeId !== null && !(await consumeChallenge(ext, deps.now(), prepared.challengeId, digest))) {
+  // since (message, amount, recipient, account, challenge) no longer matches its integrity
+  // digest and is refused. The challenge is bound to the intent, recomputed from the stored
+  // fields — never taken from the stored intentDigest.
+  const intentDigest = sendIntentDigest(prepared.account, prepared.intent);
+  if (preparedIntegrity(prepared) !== prepared.integrity || intentDigest !== prepared.intentDigest) throw new SendRefused('prepared-invalid');
+  if (prepared.challengeId !== null && !(await consumeChallenge(ext, deps.now(), prepared.challengeId, intentDigest))) {
     throw new SendRefused('reauth-required');
   }
   // The session as it is now (a lock or a changed account list since the start is honoured).

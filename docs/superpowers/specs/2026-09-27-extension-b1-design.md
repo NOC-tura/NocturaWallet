@@ -45,6 +45,11 @@ implementation and its reviews, folded back here:
   and an unreadable stage price counts as above the threshold;
 - import accepts exactly 12 or 24 words; a scheme probe that cannot read every balance makes the
   user choose.
+- a send's re-authentication is bound to its **intent** (account, token, recipient, amount), not to
+  the message bytes: a prepared send lives 30 s (the re-simulation rule), a human re-authentication
+  routinely takes longer, and a re-prepare of the same intent carrying the challenge keeps the
+  proof while the message gets a fresh blockhash; the stored message keeps its own integrity
+  digest, and `wallet.preparedFor` lets a reopened popup resume.
 
 **What B1 is.** A browser extension named **Noctura** for Chrome-family browsers and Firefox
 that holds the user's seed, derives the same addresses as the Android app, sends and receives
