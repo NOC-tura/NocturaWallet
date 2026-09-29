@@ -50,6 +50,14 @@ test('unlocking in the vault page puts only signing keys into session storage', 
     await page.click('#unlock');
     await expect(page.locator('#status')).toHaveText('That did not unlock the wallet.', {timeout: 60_000});
     expect(await sw.evaluate(() => chrome.storage.session.get(null))).toEqual({});
+
+    // A malformed stored envelope is named as damaged — not a wrong password — and sends nothing.
+    await sw.evaluate(e => chrome.storage.local.set({v1_vault: e}), {...env, password: {wrapped: 'AAAA'}});
+    await page.reload();
+    await page.fill('#password', E2E_PASSWORD);
+    await page.click('#unlock');
+    await expect(page.locator('#status')).toHaveText("This wallet's stored data is damaged.", {timeout: 60_000});
+    expect(await sw.evaluate(() => chrome.storage.session.get(null))).toEqual({});
   } finally {
     await ctx.close();
     rmSync(profile, {recursive: true, force: true});
