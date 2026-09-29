@@ -9,6 +9,7 @@ import {
   MAINNET_SOL_TREASURY,
   PYTH_SOL_USD_ACCOUNT as CORE_PYTH_SOL_USD_ACCOUNT,
 } from '../../core/presale/addresses';
+import {MAINNET_FEE_TREASURY, TRANSFER_MARKUP_LAMPORTS} from '../../core/fees/transferMarkup';
 
 // Fail closed BEFORE any address constant is derived. Previously this was an
 // unchecked cast whose default branch was mainnet, so a missing or misspelled
@@ -54,7 +55,7 @@ export const PYTH_SOL_USD_ACCOUNT = CORE_PYTH_SOL_USD_ACCOUNT;
 // Only this literal changes; no other code.
 export const NOCTURA_FEE_TREASURY = IS_DEVNET
   ? 'TODO_DEVNET_FEE_TREASURY'
-  : '6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd';
+  : MAINNET_FEE_TREASURY;
 
 export const RPC_ENDPOINT = Config.HELIUS_RPC_URL;
 export const RPC_WEBSOCKET = Config.HELIUS_WS_URL;
@@ -107,7 +108,7 @@ for (const [name, value] of Object.entries(TODO_GUARD_ADDRESSES)) {
 
 export const TRANSPARENT_FEES = {
   /** Fixed SOL markup added to every transparent transfer (lamports, BigInt). */
-  transferMarkup: 20_000n,
+  transferMarkup: TRANSFER_MARKUP_LAMPORTS,
   /**
    * Percentage-based fees below are Phase 4 (not active in v1).
    * These are PERCENTAGE CONSTANTS (not lamport amounts) — float is acceptable
