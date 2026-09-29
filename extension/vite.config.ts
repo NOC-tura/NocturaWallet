@@ -55,6 +55,7 @@ export default defineConfig({
       '../core/keys/**/*.test.ts',
       '../core/solana/**/*.test.ts',
       '../core/fees/**/*.test.ts',
+      '../core/portfolio/**/*.test.ts',
     ],
   },
 } as UserConfig);
