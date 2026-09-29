@@ -3,7 +3,7 @@ import {
   createEnvelope, unlockWithPassword, decryptMnemonic, addPasskeyWrap, unlockWithPrf,
   CorruptEnvelope, UnsafeKdfParams, WrongPassword, WrongPasskey, KDF_CAP, PRODUCTION_KDF, type EnvelopeV1, type Kdf,
 } from '../envelope';
-import {reencryptForAccounts} from '../envelope';
+import {reencryptForAccounts} from '../reencrypt';
 import {MAX_ACCOUNTS} from '../../shared/envelopeRules';
 import * as accountsModule from '../accounts';
 import * as transparentModule from '../../../../core/keys/transparent';

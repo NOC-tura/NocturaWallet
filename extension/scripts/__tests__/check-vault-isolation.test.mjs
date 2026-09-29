@@ -3,7 +3,7 @@ import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
 import {
   bundleViolations, htmlViolations, listSourceFiles, manifestViolations, sourceViolations,
-  BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, VAULT_MARKER,
+  BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, VAULT_MARKER, WORDLIST_MARKER,
 } from '../check-vault-isolation.mjs';
 import {render} from '../../manifest/source.mjs';
 
@@ -407,7 +407,7 @@ describe('vault isolation (built output)', () => {
     write('assets/popup-1.js', 'import{t as e}from"./send-1.js";e();');
     write('assets/send-1.js', 'export const t=()=>1;');
     write('unlock.html', html('./assets/unlock-1.js'));
-    write('assets/unlock-1.js', `import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";`);
+    write('assets/unlock-1.js', `import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
     write('assets/kdf.worker-1.js', `throw Error("${KDF_MARKER}");`);
   };
 
@@ -472,8 +472,16 @@ describe('vault isolation (built output)', () => {
 
   it('does not follow imports out of the unlock bundle (it may carry the vault)', () => {
     write('assets/unlock-1.js', `import"./vault-1.js";`);
-    write('assets/vault-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";`);
+    write('assets/vault-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
     expect(bundleViolations(dir)).toEqual([]);
+  });
+
+  it('fails when the vault page imports the background entry, directly or through a chunk (it would run the background)', () => {
+    write('assets/unlock-1.js', `import{t as x}from"../background.js";import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+    expect(bundleViolations(dir)).toEqual(['the vault page (assets/unlock-1.js) reaches background.js — it would run the background']);
+    write('assets/unlock-1.js', `import"./mid-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+    write('assets/mid-1.js', 'import"../background.js";');
+    expect(bundleViolations(dir)).toEqual(['the vault page (assets/unlock-1.js) reaches background.js — it would run the background']);
   });
 
   it('fails closed on an import it cannot resolve', () => {
@@ -484,9 +492,9 @@ describe('vault isolation (built output)', () => {
   });
 
   it('is INCONCLUSIVE — and fails — when any marker is in no built file', () => {
-    const all = {i: VAULT_MARKER, d: DERIVATION_MARKER, b: BIP39_MARKER, r: PASSKEY_MARKER};
-    const without = k => Object.entries(all).filter(([n]) => n !== k).map(([n, m]) => `const ${n}="${m}";`).join('');
-    for (const [k, name, marker] of [['i', 'envelope', VAULT_MARKER], ['d', 'derivation', DERIVATION_MARKER], ['b', 'bip39', BIP39_MARKER], ['r', 'passkey', PASSKEY_MARKER]]) {
+    const all = {i: VAULT_MARKER, d: DERIVATION_MARKER, b: BIP39_MARKER, r: PASSKEY_MARKER, w: WORDLIST_MARKER};
+    const without = k => Object.entries(all).filter(([n]) => n !== k).map(([n, m]) => `const ${n}=\`${m}\`;`).join('');
+    for (const [k, name, marker] of [['i', 'envelope', VAULT_MARKER], ['d', 'derivation', DERIVATION_MARKER], ['b', 'bip39', BIP39_MARKER], ['r', 'passkey', PASSKEY_MARKER], ['w', 'wordlist', WORDLIST_MARKER]]) {
       write('assets/unlock-1.js', without(k));
       expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the ${name} marker "${marker}" is in no built JS file — the check would pass trivially`]);
     }
@@ -498,7 +506,7 @@ describe('vault isolation (built output)', () => {
   // The built manifest names wallet.noc-tura.io (a host permission): a marker that only a
   // non-JS file carries must not count as present.
   it('does not count a marker found only in a non-JS file (the manifest) as present', () => {
-    write('assets/unlock-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";`);
+    write('assets/unlock-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
     write('manifest.json', `{"host_permissions":["https://${PASSKEY_MARKER}/*"]}`);
     expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the passkey marker "${PASSKEY_MARKER}" is in no built JS file — the check would pass trivially`]);
   });
@@ -508,6 +516,15 @@ describe('vault isolation (built output)', () => {
     write('assets/prf-1.js', 'import"./passkey-1.js";');
     write('assets/passkey-1.js', `const r="${PASSKEY_MARKER}";`);
     expect(bundleViolations(dir)).toEqual(['assets/passkey-1.js (reachable from assets/prf-1.js) contains vault code (passkey)']);
+  });
+
+  it('fails on the wordlist marker alone — generateMnemonic outside the vault page', () => {
+    write('assets/send-1.js', `export const words=\`${WORDLIST_MARKER}\`;`);
+    expect(bundleViolations(dir)).toEqual(['assets/send-1.js (reachable from assets/popup-1.js) contains vault code (wordlist)']);
+  });
+
+  it('the wordlist marker is how the real build spells the list: a template literal with newlines', () => {
+    expect(WORDLIST_MARKER).toBe('abandon\nability\nable\nabout');
   });
 
   it('fails on the KDF marker alone — Argon2 outside the vault worker', () => {

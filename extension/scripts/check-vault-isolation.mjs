@@ -77,12 +77,17 @@ export const PASSKEY_MARKER = 'wallet.noc-tura.io';
 // An error message of @noble/hashes' Argon2 parameter check: the KDF, found in the vault
 // worker only (checked against the real build: no other built file carries it).
 export const KDF_MARKER = '(memory) must be at least 8*p bytes';
+// The BIP-39 English wordlist, as the build emits it (a template literal with real newlines —
+// checked against a real Vite build): generateMnemonic and validateMnemonic carry it into the vault
+// page, and nothing else may carry it.
+export const WORDLIST_MARKER = 'abandon\nability\nable\nabout';
 const MARKERS = [
   ['envelope', VAULT_MARKER],
   ['derivation', DERIVATION_MARKER],
   ['bip39', BIP39_MARKER],
   ['passkey', PASSKEY_MARKER],
   ['kdf', KDF_MARKER],
+  ['wordlist', WORDLIST_MARKER],
 ];
 
 // `import X from`, `import {a, type B} from`, `import * as n from`, `import type … from`,
@@ -293,6 +298,18 @@ export function bundleViolations(distApp) {
       const r = resolveBuilt(distApp, page, m[1]);
       if (r.problem) problems.add(r.problem);
       else entries.push(r.target);
+    }
+  }
+
+  // The other direction: the vault page may not load the background entry. Importing background.js
+  // runs it — its runtime listeners and its poller — inside the vault page (a Rolldown runtime helper
+  // placed in background.js once made the unlock bundle import it, and every marker check passed).
+  if (all.includes('unlock.html')) {
+    const html = readFileSync(join(distApp, 'unlock.html'), 'utf8');
+    for (const m of html.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/g)) {
+      const r = resolveBuilt(distApp, 'unlock.html', m[1]);
+      if (r.problem) problems.add(r.problem);
+      else if (reachable(distApp, r.target, problems).includes('background.js')) out.push(`the vault page (${r.target}) reaches background.js — it would run the background`);
     }
   }
 

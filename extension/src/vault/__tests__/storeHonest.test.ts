@@ -1,5 +1,6 @@
 import {argon2idAsync} from '@noble/hashes/argon2.js';
-import {addPasskeyWrap, createEnvelope, reencryptForAccounts, unlockWithPassword, type EnvelopeV1, type Kdf} from '../envelope';
+import {addPasskeyWrap, createEnvelope, unlockWithPassword, type EnvelopeV1, type Kdf} from '../envelope';
+import {reencryptForAccounts} from '../reencrypt';
 import {envelopeRevision} from '../../shared/envelopeRevision';
 import {VAULT_KEY, storeEnvelope} from '../../background/accountsStore';
 import {fakeExt} from '../../background/__tests__/fakeExt';

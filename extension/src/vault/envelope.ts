@@ -1,5 +1,4 @@
 import {b64, unb64, utf8, assertArrayBufferBacked} from './bytes';
-import {MAX_ACCOUNTS, cleanName} from '../shared/envelopeRules';
 
 /**
  * The vault on disk: the seed encrypted once with a random data key (AES-256-GCM), and the
@@ -84,9 +83,10 @@ function checkKdfParams(params: KdfParams): void {
  * Left out, deliberately: account names (renaming needs no re-encryption); the salt and the
  * password/passkey wraps (they unwrap the data key — a changed one already fails there, and a
  * passkey is added later without re-encrypting the seed). Adding or removing an account changes
- * the header, so whatever does that must re-encrypt the seed under the same data key.
+ * the header, so whatever does that must re-encrypt the seed under the same data key
+ * (src/vault/reencrypt.ts, which is why this, isIndex and checkEnvelope are exported).
  */
-function headerAad(h: {v: 1; scheme: EnvelopeV1['scheme']; kdf: KdfParams; accounts: EnvelopeV1['accounts']}): Uint8Array<ArrayBuffer> {
+export function headerAad(h: {v: 1; scheme: EnvelopeV1['scheme']; kdf: KdfParams; accounts: EnvelopeV1['accounts']}): Uint8Array<ArrayBuffer> {
   return utf8(
     JSON.stringify({
       v: h.v,
@@ -120,14 +120,14 @@ function bytesField(value: unknown, what: string, len: {exact: number} | {min: n
   if ('exact' in len ? bytes.length !== len.exact : bytes.length < len.min) throw new CorruptEnvelope(`${what} has the wrong length`);
 }
 
-const isIndex = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0;
+export const isIndex = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0;
 
 /**
  * Every field of a stored envelope, checked for shape before any of it is used — the value comes
  * from storage.local, so its static type is a claim, not a fact. Throws CorruptEnvelope, or
  * UnsafeKdfParams for a declared cost outside the bounds (before any KDF runs).
  */
-function checkEnvelope(env: unknown): asserts env is EnvelopeV1 {
+export function checkEnvelope(env: unknown): asserts env is EnvelopeV1 {
   if (!isObject(env)) throw new CorruptEnvelope('not an object');
   if (env.v !== 1) throw new CorruptEnvelope('unknown version');
   if (env.scheme !== 'slip10' && env.scheme !== 'cli') throw new CorruptEnvelope('unknown scheme');
@@ -293,67 +293,5 @@ export async function unlockWithPrf(env: EnvelopeV1, prfOutput: Uint8Array): Pro
     throw new WrongPasskey();
   } finally {
     kek.fill(0);
-  }
-}
-
-/**
- * The account list changed (an account added or removed, spec §2): re-encrypt the seed under the
- * SAME data key with the new header as its additionalData. The password and passkey wraps wrap the
- * data key, not the seed, so they stay valid; the IV is fresh (AES-GCM must never reuse an IV under
- * one key). Decrypting first proves `dataKey` and the current header before anything is built.
- *
- * The caller names only indexes and names: every public key is DERIVED here from the decrypted seed
- * (scheme-aware; a cli wallet is exactly account 0), so no caller-supplied key can enter the header.
- * Public keys only (derivePublicKeys): every secret key and the seed are zeroed, no secret-key string made.
- * The limits are the background's (src/shared/envelopeRules.ts): 1..MAX_ACCOUNTS accounts, unique
- * non-negative indexes, and a name a rename would accept (cleanName) — or, for an account already
- * stored, its stored name unchanged. The result is built field by field: nothing stray from `env` or
- * `accounts` is carried over. Names are, as everywhere, not part of the AAD.
- */
-export async function reencryptForAccounts(env: EnvelopeV1, dataKey: Uint8Array, accounts: {index: number; name: string}[]): Promise<EnvelopeV1> {
-  checkEnvelope(env);
-  assertArrayBufferBacked(dataKey);
-  if (accounts.length === 0) throw new TypeError('an envelope needs at least one account');
-  if (accounts.length > MAX_ACCOUNTS) throw new TypeError(`an envelope holds at most ${MAX_ACCOUNTS} accounts`);
-  const stored = new Map(env.accounts.map(a => [a.index, a.name]));
-  const named: {index: number; name: string}[] = [];
-  for (const a of accounts) {
-    if (!isIndex(a.index) || named.some(b => b.index === a.index)) throw new TypeError('malformed account');
-    const name = cleanName(a.name) ?? (stored.get(a.index) === a.name ? a.name : null);
-    if (name === null) throw new TypeError('malformed account');
-    named.push({index: a.index, name});
-  }
-  if (env.scheme === 'cli' && (named.length !== 1 || named[0]?.index !== 0)) throw new TypeError('a cli wallet has exactly one account');
-  const mnemonic = await decryptMnemonic(env, dataKey);
-  // A dynamic import, deliberately: e2e/makeEnvelope.ts loads this module into Playwright's Node
-  // loader, where a static import of the derivation (core/keys → micro-key-producer, ESM-only) fails
-  // to load ("module is not linked"). In the Vite build accounts.ts is already in the vault page's
-  // chunk, so this adds no chunk and no request.
-  const {derivePublicKeys} = await import('./accounts');
-  const derived = await derivePublicKeys(mnemonic, env.scheme, named.map(a => a.index));
-  const clean = named.map((a, i) => {
-    const publicKey = derived[i];
-    if (publicKey === undefined || derived.length !== named.length) throw new Error('derivation did not return every account');
-    return {index: a.index, name: a.name, publicKey};
-  });
-  const kdf = {alg: 'argon2id' as const, m: env.kdf.m, t: env.kdf.t, p: env.kdf.p, salt: env.kdf.salt};
-  const aad = headerAad({v: 1, scheme: env.scheme, kdf, accounts: clean});
-  const iv = random(12);
-  const encoded = utf8(mnemonic);
-  try {
-    const key = await subtle().importKey('raw', dataKey, 'AES-GCM', false, ['encrypt']);
-    const ct = new Uint8Array(await subtle().encrypt({name: 'AES-GCM', iv, additionalData: aad}, key, encoded));
-    const out: EnvelopeV1 = {
-      v: 1,
-      scheme: env.scheme,
-      kdf,
-      seed: {iv: b64(iv), ct: b64(ct)},
-      password: {wrapped: env.password.wrapped},
-      accounts: clean,
-    };
-    if (env.passkey !== undefined) out.passkey = {credentialId: env.passkey.credentialId, prfSalt: env.passkey.prfSalt, wrapped: env.passkey.wrapped};
-    return out;
-  } finally {
-    encoded.fill(0);
   }
 }

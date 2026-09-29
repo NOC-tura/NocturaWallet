@@ -268,3 +268,27 @@ describe('wrong-password backoff (spec §2: an increasing delay on top of the Ar
     expect(gate.isBusy()).toBe(false);
   });
 });
+
+describe('the wrong-password backoff also serves re-authentication, accounts and the reveal', () => {
+  it.each(['confirmed', 'done', 'shown'])("a proven '%s' ends the streak, like 'unlocked'", async success => {
+    const sleeps: number[] = [];
+    const backoff = createWrongBackoff(async ms => void sleeps.push(ms));
+    const run = (o: string) => backoff.run(async () => o, () => undefined);
+    await run('wrong');
+    await run('wrong');
+    await run(success);
+    await run('wrong');
+    expect(sleeps).toEqual([1000]);
+  });
+
+  it.each(['failed', 'damaged', 'mismatch-locked', 'not-unlocked', 'added'])("'%s' leaves the streak as it is (negative control): never charged, never a reset", async other => {
+    const sleeps: number[] = [];
+    const backoff = createWrongBackoff(async ms => void sleeps.push(ms));
+    const run = (o: string) => backoff.run(async () => o, () => undefined);
+    await run('wrong');
+    await run('wrong');
+    await run(other);
+    await run('wrong');
+    expect(sleeps).toEqual([1000, 2000]);
+  });
+});

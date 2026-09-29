@@ -6,13 +6,70 @@
   </head>
   <body>
     <main>
-      <h1>Unlock Noctura</h1>
-      <form id="pw">
-        <label for="password">Password</label>
-        <input id="password" type="password" autocomplete="current-password" minlength="12" required />
-        <button id="unlock" type="submit">Unlock</button>
-      </form>
-      <button id="passkey" type="button" hidden>Unlock with passkey</button>
+      <section id="unlock-section">
+        <h1>Unlock Noctura</h1>
+        <form id="pw">
+          <label for="password">Password</label>
+          <input id="password" type="password" autocomplete="current-password" minlength="12" required />
+          <button id="unlock" type="submit">Unlock</button>
+        </form>
+        <button id="passkey" type="button" hidden>Unlock with passkey</button>
+      </section>
+      <section id="create" hidden>
+        <h1>Create a wallet</h1>
+        <p>Write these 24 words down, in order. They are the only way to recover this wallet.</p>
+        <ol id="words"></ol>
+        <label><input id="saved" type="checkbox" /> I wrote the words down</label>
+        <label for="new-password">Password (at least 12 characters)</label>
+        <input id="new-password" type="password" autocomplete="new-password" minlength="12" />
+        <label for="new-password2">Repeat the password</label>
+        <input id="new-password2" type="password" autocomplete="new-password" minlength="12" />
+        <button id="create-btn" type="button">Create wallet</button>
+      </section>
+      <section id="import" hidden>
+        <h1>Import a wallet</h1>
+        <label for="phrase">Recovery phrase (12 or 24 words)</label>
+        <textarea id="phrase" autocomplete="off" autocapitalize="none" spellcheck="false"></textarea>
+        <label for="imp-password">Password (at least 12 characters)</label>
+        <input id="imp-password" type="password" autocomplete="new-password" minlength="12" />
+        <label for="imp-password2">Repeat the password</label>
+        <input id="imp-password2" type="password" autocomplete="new-password" minlength="12" />
+        <button id="import-btn" type="button">Import</button>
+        <div id="choose" hidden>
+          <p id="choose-why"></p>
+          <button id="choose-slip10" type="button">Standard (Phantom/Solflare)</button>
+          <button id="choose-cli" type="button">Solana CLI (solana-keygen)</button>
+        </div>
+      </section>
+      <section id="reauth" hidden>
+        <h1>Confirm it is you</h1>
+        <form id="reauth-form">
+          <label for="reauth-password">Password</label>
+          <input id="reauth-password" type="password" autocomplete="current-password" minlength="12" required />
+          <button id="reauth-btn" type="submit">Confirm</button>
+        </form>
+        <button id="reauth-passkey" type="button" hidden>Confirm with passkey</button>
+      </section>
+      <section id="accounts" hidden>
+        <h1>Accounts</h1>
+        <label for="acc-password">Password</label>
+        <input id="acc-password" type="password" autocomplete="current-password" minlength="12" />
+        <button id="add-account" type="button">Add an account</button>
+        <label for="remove-index">Account number to remove</label>
+        <input id="remove-index" type="number" min="1" />
+        <button id="remove-account" type="button">Remove the account</button>
+      </section>
+      <section id="reveal" hidden>
+        <h1>Your recovery phrase</h1>
+        <p>Anyone who sees these words can take everything in this wallet. There is no copy button, on purpose.</p>
+        <form id="reveal-form">
+          <label for="reveal-password">Password</label>
+          <input id="reveal-password" type="password" autocomplete="current-password" minlength="12" required />
+          <button id="reveal-btn" type="submit">Show the phrase</button>
+        </form>
+        <ol id="reveal-words"></ol>
+        <button id="reveal-hide" type="button">Hide</button>
+      </section>
       <p id="status" role="status"></p>
     </main>
     <script type="module" src="./src/unlock/main.ts"></script>
