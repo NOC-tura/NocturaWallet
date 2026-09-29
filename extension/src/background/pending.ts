@@ -35,7 +35,7 @@ export async function armPendingAlarm(ext: Ext): Promise<void> {
 }
 
 /**
- * Hand the signed bytes to the broadcast route. On a first attempt, only the route's refusal (400)
+ * Hand the signed bytes to the broadcast route. On a first attempt, only the route's refusal (a 400 naming a contract reason)
  * or the latch refusing during its cool-down (nothing was sent at all) means nothing was forwarded:
  * failed. A 403 RESPONSE is "not acknowledged" (route contract): the request reached the
  * coordinator, so the record stays pending and polling decides. On a re-send the first copy may

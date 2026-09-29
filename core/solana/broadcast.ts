@@ -13,7 +13,7 @@ export const BROADCAST_ENDPOINT = `${API_BASE}/tx/broadcast`;
 
 export type BroadcastRefusal = 'malformed' | 'unsigned' | 'rejected';
 
-/** Refused before forwarding (by the route's 400, or locally): nothing reached the network. */
+/** Refused before forwarding (by the route's 400 with a contract reason, or locally): nothing reached the network. */
 export class BroadcastRejected extends Error {
   readonly reason: BroadcastRefusal;
   readonly detail: string;
@@ -85,6 +85,9 @@ export async function broadcastSigned(opts: {fetch: FetchLike; latch: ForbiddenL
     throw new BroadcastUnavailable(null);
   }
   if (res.status === 400) {
+    // Only the route's own refusal — a body naming one of the contract's reasons — proves the
+    // transaction was not forwarded. Any other 400 (a proxy's, a CDN's, an unreadable body) proves
+    // nothing: "not acknowledged", and the send stays pending.
     let answer: unknown = null;
     try {
       answer = await res.json();
@@ -92,8 +95,8 @@ export async function broadcastSigned(opts: {fetch: FetchLike; latch: ForbiddenL
       answer = null;
     }
     const {error, message} = (typeof answer === 'object' && answer !== null ? answer : {}) as {error?: unknown; message?: unknown};
-    const reason = typeof error === 'string' && REASONS.includes(error) ? (error as BroadcastRefusal) : 'rejected';
-    throw new BroadcastRejected(reason, typeof message === 'string' ? message : 'refused');
+    if (typeof error !== 'string' || !REASONS.includes(error)) throw new BroadcastUnavailable(400);
+    throw new BroadcastRejected(error as BroadcastRefusal, typeof message === 'string' ? message : 'refused');
   }
   if (res.status !== 200) throw new BroadcastUnavailable(res.status);
   let answer: unknown;

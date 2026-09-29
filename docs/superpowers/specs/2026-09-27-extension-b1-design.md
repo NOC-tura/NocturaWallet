@@ -36,7 +36,8 @@ implementation and its reviews, folded back here:
   transaction that may still land; a lock clears `storage.session` only;
 - "no funds moved" needs the height past `lastValidBlockHeight + 32` **and** two null full-history
   status checks ≥ 2 s apart; only a *confirmed/finalized* error closes a send as failed; only a
-  broadcast-route **400** means "not forwarded" (a 403 response keeps the send pending);
+  broadcast-route **400** whose body names a contract reason (`malformed`, `unsigned`, `rejected`)
+  means "not forwarded" (any other 400, and a 403 response, keep the send pending);
 - every coordinator request has a deadline (20 s reads, 30 s broadcast) and all go through one
   serialised, persisted 403 latch;
 - the **Noctura fee** in the extension is 0 with the visible reason "status unknown" until the

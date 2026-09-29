@@ -50,7 +50,8 @@ body `{"transaction": "<base64 of the fully signed wire bytes>"}`. No other fiel
   them the same way, and never count them as abuse. An RPC "already processed" answer is a `200`
   with the signature.
 - **A `400` MUST mean "not forwarded".** The wallet marks the send failed ("no funds moved") on a
-  `400` to a first broadcast. If the route has already handed the bytes to the RPC, the answer must
+  `400` to a first broadcast — only when its JSON body's `error` is `malformed`, `unsigned` or
+  `rejected`; a `400` with any other body (a proxy's, or none) is "not acknowledged". If the route has already handed the bytes to the RPC, the answer must
   not be `400` — use `200` (forwarded) or `502` (unknown). Any status other than `200`/`400` is "not
   acknowledged", and the wallet keeps watching the signature until its blockhash expires.
 - Keep no transaction bodies beyond what operations need; the wallet's privacy disclosure already

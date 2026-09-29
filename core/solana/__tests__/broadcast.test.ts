@@ -71,12 +71,34 @@ describe('broadcastSigned', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('maps a 400 to BroadcastRejected with the route\'s reason; an unknown reason is "rejected"', async () => {
+  it('a 400 with one of the contract reasons (malformed | unsigned | rejected) is BroadcastRejected, with its message', async () => {
     const w = wire(true);
-    const malformed = fakeFetch({status: 400, body: {error: 'malformed', message: 'bad base64'}});
-    await expect(broadcastSigned({fetch: malformed.fetch, latch: createForbiddenLatch()}, w.bytes)).rejects.toMatchObject({reason: 'malformed', detail: 'bad base64'});
-    const odd = fakeFetch({status: 400, body: {error: 'weird'}});
-    await expect(broadcastSigned({fetch: odd.fetch, latch: createForbiddenLatch()}, w.bytes)).rejects.toMatchObject({reason: 'rejected'});
+    for (const error of ['malformed', 'unsigned', 'rejected']) {
+      const {fetch} = fakeFetch({status: 400, body: {error, message: 'bad base64'}});
+      await expect(broadcastSigned({fetch, latch: createForbiddenLatch()}, w.bytes)).rejects.toMatchObject({name: 'BroadcastRejected', reason: error, detail: 'bad base64'});
+    }
+    const {fetch} = fakeFetch({status: 400, body: {error: 'rejected'}});
+    await expect(broadcastSigned({fetch, latch: createForbiddenLatch()}, w.bytes)).rejects.toMatchObject({reason: 'rejected', detail: 'refused'});
+  });
+
+  // Final review minor 3: a 400 closes a first send as failed ("no funds moved") only when the
+  // body proves it is the route's refusal. A proxy or CDN 400, or a body the client cannot read,
+  // does not prove the transaction was not forwarded: "not acknowledged", the send stays pending.
+  it('any other 400 — unknown reason, no body, an unreadable or non-object body — is "not acknowledged"', async () => {
+    const w = wire(true);
+    for (const body of [{error: 'weird'}, {error: 'Malformed'}, {message: 'no reason'}, {error: 5}, undefined, null, 'rejected', ['rejected'], {error: '__proto__'}]) {
+      const {fetch} = fakeFetch({status: 400, body});
+      const e = await broadcastSigned({fetch, latch: createForbiddenLatch()}, w.bytes).catch((x: unknown) => x);
+      expect(e).toBeInstanceOf(BroadcastUnavailable);
+      expect(e).toMatchObject({status: 400});
+    }
+    const unreadable = async () => ({
+      status: 400,
+      json: async () => {
+        throw new SyntaxError('Unexpected token < in JSON');
+      },
+    });
+    await expect(broadcastSigned({fetch: unreadable, latch: createForbiddenLatch()}, w.bytes)).rejects.toBeInstanceOf(BroadcastUnavailable);
   });
 
   it('a 403 is terminal and trips the shared latch — the next broadcast sends nothing', async () => {
