@@ -11,6 +11,8 @@
 // backwards.
 //
 //   inline <script> / <style> / style="…"   → needs 'unsafe-inline'
+//   onclick="…" (any on* attribute),
+//   href/src/action/formaction="javascript:…" → inline script; needs 'unsafe-inline'
 //   eval( / new Function(                   → needs 'unsafe-eval'
 //   document.createElement('style')         → injects a stylesheet at run time,
 //                                             blocked by style-src without 'unsafe-inline'
@@ -48,6 +50,39 @@ export const RUNTIME_STYLE_ALLOWED = [
 const INLINE_SCRIPT = /<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?\S[\s\S]*?<\/script>/i;
 const INLINE_STYLE_EL = /<style[^>]*>/i;
 const STYLE_ATTR = /\sstyle\s*=\s*["']/i;
+// Matched inside a tag only (`<name …`), so prose such as "one = two" is not an attribute. The
+// attribute name must be preceded by whitespace, `/` (`<svg/onload=`, no space before a
+// self-closing slash) or a closing quote (`"x"onerror=`, no space between two attributes) —
+// every way HTML lets one attribute run straight into the next with no whitespace between.
+// Trade-off, deliberate: this also flags a non-handler attribute that happens to match
+// `on[a-z]+` (an `online=` attribute, say) — there is no reliable way to tell those apart
+// without a real attribute-name parse, and fail-closed is the correct default for a CSP gate.
+const EVENT_HANDLER_ATTR = /<[a-z][^>]*[\s/'"]on[a-z]+\s*=/i;
+// href/src/action/formaction, quoted or bare, captured so its value can be decoded and
+// whitespace-stripped before the javascript: test below (see isJavascriptUrl).
+const URL_ATTR = /\b(?:href|src|action|formaction)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]*))/gi;
+// Every opening tag, scanned one at a time so an attribute value never bleeds across tags.
+const TAG = /<[a-z][^>]*>/gi;
+
+// Numeric character references (`&#NN;`, `&#xNN;`) and the few named ones that can hide a
+// colon or ASCII whitespace inside a URL (`&colon;`, `&Tab;`/`&tab;`, `&NewLine;`/`&newline;`)
+// — enough to catch `java&#115;cript:` and `&#106;avascript:`. Not a general HTML entity
+// decoder: anything else is left exactly as written.
+const NAMED_CHAR_REF = {colon: ':', tab: '\t', newline: '\n'};
+function decodeCharRefs(value) {
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&([a-z]+);/gi, (whole, name) => NAMED_CHAR_REF[name.toLowerCase()] ?? whole);
+}
+
+// A browser strips ASCII whitespace and C0 control characters out of a URL before reading its
+// scheme, so a literal or entity-encoded tab/newline sitting inside "javascript" does not make
+// the string safe — "java\tscript:" and "java&#9;script:" both read as javascript:.
+function isJavascriptUrl(rawValue) {
+  const normalized = decodeCharRefs(rawValue).replace(/[\u0000- ]/g, '');
+  return /^javascript:/i.test(normalized);
+}
 
 // `eval(` preceded by a word character is a method named *eval (safeEval, $eval) and
 // `.eval(` is a property access. Only the bare global call needs 'unsafe-eval'.
@@ -63,6 +98,17 @@ export function checkHtml(source) {
   if (INLINE_SCRIPT.test(source)) found.push("inline <script> — needs script-src 'unsafe-inline'");
   if (INLINE_STYLE_EL.test(source)) found.push("<style> element — needs style-src 'unsafe-inline'");
   if (STYLE_ATTR.test(source)) found.push('style="…" attribute — needs style-src \'unsafe-inline\'');
+
+  let eventHandler = false;
+  let javascriptUrl = false;
+  for (const tag of source.match(TAG) ?? []) {
+    if (EVENT_HANDLER_ATTR.test(tag)) eventHandler = true;
+    for (const m of tag.matchAll(URL_ATTR)) {
+      if (isJavascriptUrl(m[1] ?? m[2] ?? m[3] ?? '')) javascriptUrl = true;
+    }
+  }
+  if (eventHandler) found.push("on…= event-handler attribute — needs script-src 'unsafe-inline'");
+  if (javascriptUrl) found.push("javascript: URL in href/src/action — needs script-src 'unsafe-inline'");
   return found;
 }
 

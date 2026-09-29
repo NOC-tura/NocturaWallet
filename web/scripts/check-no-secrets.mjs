@@ -18,6 +18,14 @@ const extensions = bundleMode ? /\.(js|css|html|map|json)$/ : /\.(ts|tsx|js|jsx|
 
 let bad = 0;
 
+function scanFile(p) {
+  const m = rule.exec(readFileSync(p, 'utf8'));
+  if (m) {
+    console.error(`FORBIDDEN ${m[0]} in ${p}`);
+    bad += 1;
+  }
+}
+
 function walk(dir) {
   for (const entry of readdirSync(dir)) {
     if (entry === 'node_modules' || entry.startsWith('.')) continue;
@@ -27,15 +35,30 @@ function walk(dir) {
       continue;
     }
     if (!extensions.test(entry)) continue;
-    const m = rule.exec(readFileSync(p, 'utf8'));
-    if (m) {
-      console.error(`FORBIDDEN ${m[0]} in ${p}`);
-      bad += 1;
-    }
+    scanFile(p);
   }
 }
 
 for (const root of roots) {
-  if (existsSync(root)) walk(root);
+  if (!existsSync(root)) {
+    // A root that is not there is a root that was not scanned: a renamed or moved directory
+    // must fail the gate, not drop out of it with the run still green.
+    console.error(`MISSING ROOT ${root}: nothing there to scan`);
+    bad += 1;
+    continue;
+  }
+  if (statSync(root).isDirectory()) {
+    walk(root);
+    continue;
+  }
+  if (!extensions.test(root)) {
+    // A security gate must fail loud on a root it cannot scan, not silently pass it
+    // by — the whole reason to run this before shipping is to be told when it can't
+    // do its job, not to find out later that a file was never checked.
+    console.error(`CANNOT SCAN ${root}: extension not matched by ${extensions}`);
+    bad += 1;
+    continue;
+  }
+  scanFile(root);
 }
 process.exit(bad === 0 ? 0 : 1);
