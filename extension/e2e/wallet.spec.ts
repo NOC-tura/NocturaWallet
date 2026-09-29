@@ -1,9 +1,18 @@
 import {test, expect, type BrowserContext, type Page} from '@playwright/test';
-import {rmSync} from 'node:fs';
+import {readFileSync, rmSync} from 'node:fs';
 import {BLOCKHASH_LIFETIME, installFakeCoordinator, type FakeCoordinator} from './fakeCoordinator';
 import {makeEnvelope, E2E_PASSWORD} from './makeEnvelope';
 import {expectContained, launchContained} from './launch';
-import {ALLOWED_RPC_METHODS} from '../../core/solana/rpc';
+// Read from the source rather than imported: core/ has no package.json "type", so Playwright's loader
+// on Node 22 (CI) treats core/solana/rpc.ts as CommonJS and cannot take a named export from it.
+// The same literal the RPC-method gate parses; not found means it moved — fail loudly.
+const ALLOWED_RPC_METHODS: readonly string[] = (() => {
+  const text = readFileSync(new URL('../../core/solana/rpc.ts', import.meta.url), 'utf8');
+  const m = /ALLOWED_RPC_METHODS\s*=\s*\[([^\]]*)\]\s*as\s+const/.exec(text);
+  const list = m === null ? [] : [...(m[1] ?? '').matchAll(/['"`]([^'"`]+)['"`]/g)].map(x => x[1] ?? '');
+  if (list.length !== 11) throw new Error(`expected the 11 allowed RPC methods in core/solana/rpc.ts, found ${list.length}`);
+  return list;
+})();
 
 declare const chrome: {
   runtime: {sendMessage(m: unknown): Promise<unknown>};
@@ -75,7 +84,7 @@ function onlyTheSimulatedCoordinator(fake: FakeCoordinator): void {
   expect(fake.unexpected).toEqual([]);
   for (const h of fake.hits) {
     expect(h.url.startsWith('https://api.noc-tura.io/api/v1/')).toBe(true);
-    if (h.rpcMethod !== null) expect(ALLOWED_RPC_METHODS as readonly string[]).toContain(h.rpcMethod);
+    if (h.rpcMethod !== null) expect(ALLOWED_RPC_METHODS).toContain(h.rpcMethod);
   }
 }
 

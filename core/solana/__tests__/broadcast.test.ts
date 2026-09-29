@@ -1,5 +1,4 @@
 import {base58, base64} from '@scure/base';
-import {ed25519} from '@noble/curves/ed25519.js';
 import {PublicKey, SystemProgram, TransactionMessage, VersionedTransaction} from '@solana/web3.js';
 import {BROADCAST_ENDPOINT, BroadcastRejected, BroadcastSubstituted, BroadcastUnavailable, broadcastSigned, firstSignature} from '../broadcast';
 import {RpcCoolingDown, RpcForbidden, createForbiddenLatch, type FetchInit} from '../rpc';
@@ -7,20 +6,24 @@ import {RpcCoolingDown, RpcForbidden, createForbiddenLatch, type FetchInit} from
 const OTHER = new PublicKey('9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4');
 const BLOCKHASH = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
 
-// Signed with @noble directly and added with addSignature — as the extension signs. (web's secret
-// scan reads this file in source mode and refuses Keypair constructors, so none is used here.)
-const SEED = new Uint8Array(32).fill(1);
+// The broadcast client never verifies a signature: it only reads the first 64-byte slot and checks
+// it is not all zeros. So the fixture uses a fixed payer and a fixed non-zero 64-byte slot — no
+// signing library. That keeps this core test free of @noble, which web/ (which also runs it) does
+// not install at the version core would resolve, and free of Keypair constructors, which web's
+// secret scan refuses in source mode.
+const PAYER = new PublicKey('HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk');
+const SIGNATURE_SLOT = Uint8Array.from({length: 64}, (_, i) => i + 1);
 
 /** A real v0 transfer, signed or not. */
 function wire(signed: boolean): {bytes: Uint8Array; signature: string} {
-  const payer = new PublicKey(ed25519.getPublicKey(SEED));
+  const payer = PAYER;
   const message = new TransactionMessage({
     payerKey: payer,
     recentBlockhash: BLOCKHASH,
     instructions: [SystemProgram.transfer({fromPubkey: payer, toPubkey: OTHER, lamports: 1n})],
   }).compileToV0Message();
   const tx = new VersionedTransaction(message);
-  if (signed) tx.addSignature(payer, ed25519.sign(message.serialize(), SEED));
+  if (signed) tx.addSignature(payer, SIGNATURE_SLOT);
   const bytes = tx.serialize();
   return {bytes, signature: base58.encode(bytes.subarray(1, 65))};
 }
