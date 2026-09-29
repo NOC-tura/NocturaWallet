@@ -13,8 +13,8 @@ describe('manifest source', () => {
     ]);
   });
 
-  it('forbids eval and remote script in extension pages', () => {
-    expect(EXTENSION_CSP).toBe("script-src 'self'; object-src 'self'");
+  it('forbids eval and remote script in extension pages, and connects only to the coordinator', () => {
+    expect(EXTENSION_CSP).toBe("script-src 'self'; object-src 'self'; connect-src https://api.noc-tura.io");
   });
 
   it('renders a Chrome MV3 service worker', () => {

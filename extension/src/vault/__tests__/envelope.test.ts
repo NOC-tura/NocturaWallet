@@ -3,13 +3,22 @@ import {
   createEnvelope, unlockWithPassword, decryptMnemonic, addPasskeyWrap, unlockWithPrf,
   CorruptEnvelope, UnsafeKdfParams, WrongPassword, WrongPasskey, KDF_CAP, PRODUCTION_KDF, type EnvelopeV1, type Kdf,
 } from '../envelope';
+import {reencryptForAccounts} from '../reencrypt';
+import {MAX_ACCOUNTS} from '../../shared/envelopeRules';
+import * as accountsModule from '../accounts';
+import * as transparentModule from '../../../../core/keys/transparent';
+import * as mnemonicModule from '../../../../core/keys/mnemonic';
 
 const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 // The envelope refuses Argon2id parameters below production (spec §2), so every envelope here
 // DECLARES the production cost; this test KDF computes Argon2id at a tiny cost instead, so a
 // test runs in milliseconds. The production KDF's parameter mapping is pinned by envelopeKat.
 const kdf: Kdf = (pw, salt) => argon2idAsync(pw, salt, {m: 64, t: 1, p: 1, dkLen: 32});
-const accounts = [{index: 0, name: 'Account 1', publicKey: 'x'}];
+// The public keys the "abandon … about" phrase derives: SLIP-0010 accounts 0 and 1, and cli.
+const K0 = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
+const K1 = 'Hh8QwFUA6MtVu1qAoq12ucvFHNwCcVTV7hpWjeY1Hztb';
+const KCLI = 'EHqmfkN89RJ7Y33CXM6uCzhVeuywHoJXZZLszBHHZy7o';
+const accounts = [{index: 0, name: 'Account 1', publicKey: K0}];
 
 describe('vault envelope', () => {
   it('production Argon2id parameters are the spec values', () => {
@@ -328,3 +337,128 @@ describe('Argon2id parameters are bounded: production floor, cap above', () => {
   });
 });
 
+describe('reencryptForAccounts (adding or removing an account, spec §2)', () => {
+  const two = [
+    {index: 0, name: 'Account 1'},
+    {index: 1, name: 'Account 2'},
+  ];
+  const withKeys = [
+    {index: 0, name: 'Account 1', publicKey: K0},
+    {index: 1, name: 'Account 2', publicKey: K1},
+  ];
+
+  it('re-encrypts under the same data key: the password still unlocks, the new header decrypts (positive control)', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
+    const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
+    const next = await reencryptForAccounts(env, dk, two);
+    expect(next.accounts).toEqual(withKeys);
+    expect(next.password).toEqual(env.password);
+    expect(next.kdf).toEqual(env.kdf);
+    const dk2 = await unlockWithPassword(next, 'correct horse battery', kdf);
+    expect(await decryptMnemonic(next, dk2)).toBe(MNEMONIC);
+  });
+
+  it('derives every public key from the seed: a caller-supplied one is ignored', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
+    const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
+    const smuggled = [{index: 0, name: 'Account 1', publicKey: 'attacker'}, {index: 1, name: 'Account 2', publicKey: 'attacker'}];
+    expect((await reencryptForAccounts(env, dk, smuggled)).accounts).toEqual(withKeys);
+    const cli = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'cli', accounts, kdf});
+    const cliKey = await unlockWithPassword(cli, 'correct horse battery', kdf);
+    expect((await reencryptForAccounts(cli, cliKey, [{index: 0, name: 'Main'}])).accounts).toEqual([{index: 0, name: 'Main', publicKey: KCLI}]);
+  });
+
+  it('derives public keys only: equal to the session derivation, every secret key and the seed zeroed, no secret-key string made', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
+    const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
+    const session = await accountsModule.deriveSessionAccounts(MNEMONIC, 'slip10', [0, 1]);
+    const secretKeys: Uint8Array[] = [];
+    const seeds: Uint8Array[] = [];
+    const derive = transparentModule.deriveTransparentKeypair;
+    const toSeed = mnemonicModule.mnemonicToSeed;
+    const spies = [
+      vi.spyOn(transparentModule, 'deriveTransparentKeypair').mockImplementation((...args) => {
+        const kp = derive(...args);
+        secretKeys.push(kp.secretKey);
+        return kp;
+      }),
+      vi.spyOn(mnemonicModule, 'mnemonicToSeed').mockImplementation(async (...args) => {
+        const seed = await toSeed(...args);
+        seeds.push(seed);
+        return seed;
+      }),
+      vi.spyOn(accountsModule, 'deriveSessionAccounts'),
+    ];
+    try {
+      const next = await reencryptForAccounts(env, dk, two);
+      expect(next.accounts.map(a => a.publicKey)).toEqual(session.map(a => a.publicKey));
+      expect(next.accounts.map(a => a.publicKey)).toEqual([K0, K1]);
+      expect(secretKeys).toHaveLength(2);
+      for (const sk of secretKeys) expect([sk.length, sk.every(b => b === 0)]).toEqual([64, true]);
+      expect(seeds).toHaveLength(1);
+      expect([seeds[0]!.length, seeds[0]!.every(b => b === 0)]).toEqual([64, true]);
+      expect(spies[2]).not.toHaveBeenCalled();
+    } finally {
+      for (const s of spies) s.mockRestore();
+    }
+  });
+
+  it('returns exactly the envelope fields: nothing stray from the stored envelope or the account list', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
+    const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
+    const prf = crypto.getRandomValues(new Uint8Array(32));
+    const withPasskey = await addPasskeyWrap(env, dk, prf, crypto.getRandomValues(new Uint8Array(16)), crypto.getRandomValues(new Uint8Array(32)));
+    const stray = {...withPasskey, extra: 'x', kdf: {...withPasskey.kdf, extra: 1}, seed: {...withPasskey.seed, extra: 1}, password: {...withPasskey.password, extra: 1}, passkey: {...withPasskey.passkey!, extra: 1}};
+    const next = await reencryptForAccounts(stray as EnvelopeV1, dk, two.map(a => ({...a, secretKey: 'k'})));
+    expect(Object.keys(next).sort()).toEqual(['accounts', 'kdf', 'passkey', 'password', 'scheme', 'seed', 'v']);
+    expect(Object.keys(next.kdf).sort()).toEqual(['alg', 'm', 'p', 'salt', 't']);
+    expect(Object.keys(next.seed).sort()).toEqual(['ct', 'iv']);
+    expect(next.password).toEqual(withPasskey.password);
+    expect(next.passkey).toEqual(withPasskey.passkey);
+    expect(next.accounts).toEqual(withKeys);
+    expect('passkey' in (await reencryptForAccounts(env, dk, two))).toBe(false);
+  });
+
+  it('uses a fresh IV, and the old ciphertext does not decrypt under the new header', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
+    const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
+    const next = await reencryptForAccounts(env, dk, two);
+    expect(next.seed.iv).not.toBe(env.seed.iv);
+    await expect(decryptMnemonic({...next, seed: env.seed}, dk)).rejects.toThrow();
+  });
+
+  it('keeps a passkey wrap working', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
+    const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
+    const prf = crypto.getRandomValues(new Uint8Array(32));
+    const withPasskey = await addPasskeyWrap(env, dk, prf, crypto.getRandomValues(new Uint8Array(16)), crypto.getRandomValues(new Uint8Array(32)));
+    const next = await reencryptForAccounts(withPasskey, dk, two);
+    expect(await decryptMnemonic(next, await unlockWithPrf(next, prf))).toBe(MNEMONIC);
+  });
+
+  it('cleans names: a new one must be one a rename would accept; a stored one comes back unchanged', async () => {
+    const legacy = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts: [{index: 0, name: '', publicKey: K0}], kdf});
+    const dk = await unlockWithPassword(legacy, 'correct horse battery', kdf);
+    const next = await reencryptForAccounts(legacy, dk, [{index: 0, name: ''}, {index: 1, name: '  Trading  '}]);
+    expect(next.accounts.map(a => a.name)).toEqual(['', 'Trading']);
+    for (const name of ['', '   ', 'a\u202eb', 'x'.repeat(33)]) {
+      await expect(reencryptForAccounts(legacy, dk, [{index: 0, name: ''}, {index: 1, name}])).rejects.toThrow(/malformed account/);
+    }
+    await expect(reencryptForAccounts(legacy, dk, [{index: 0, name: 'a\nb'}])).rejects.toThrow(/malformed account/);
+  });
+
+  it('refuses no accounts, too many, a bad or duplicate index, a second cli account and the wrong data key', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
+    const dk = await unlockWithPassword(env, 'correct horse battery', kdf);
+    await expect(reencryptForAccounts(env, dk, [])).rejects.toThrow(/at least one account/);
+    const many = Array.from({length: MAX_ACCOUNTS + 1}, (_, i) => ({index: i, name: `Account ${i + 1}`}));
+    await expect(reencryptForAccounts(env, dk, many)).rejects.toThrow(/at most 100 accounts/);
+    await expect(reencryptForAccounts(env, dk, [two[0]!, {...two[1]!, index: 0}])).rejects.toThrow(/malformed account/);
+    for (const index of [-1, 0.5, Number.NaN]) await expect(reencryptForAccounts(env, dk, [{index, name: 'x'}])).rejects.toThrow(/malformed account/);
+    const cli = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'cli', accounts, kdf});
+    const cliKey = await unlockWithPassword(cli, 'correct horse battery', kdf);
+    await expect(reencryptForAccounts(cli, cliKey, two)).rejects.toThrow(/cli wallet has exactly one account/);
+    await expect(reencryptForAccounts(cli, cliKey, [{index: 1, name: 'x'}])).rejects.toThrow(/cli wallet has exactly one account/);
+    await expect(reencryptForAccounts(env, crypto.getRandomValues(new Uint8Array(32)), two)).rejects.toThrow();
+  });
+});

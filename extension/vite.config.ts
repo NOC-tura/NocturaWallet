@@ -1,14 +1,29 @@
-import {defineConfig} from 'vite';
+import {defineConfig, type Plugin} from 'vite';
 import type {UserConfig} from 'vitest/config';
-import {resolve} from 'node:path';
+import {resolve, sep} from 'node:path';
 
-// core/ is imported by relative path and its bare imports must resolve to THIS package's
-// node_modules — CI installs only extension/, exactly as web.yml does for web/.
-const SHARED = ['@noble/curves', '@noble/hashes', '@scure/base', '@scure/bip39', 'micro-key-producer'];
+// core/ is imported by relative path, and a bare import in a core/ file would otherwise resolve
+// upwards from core/ — to the repository root's node_modules (the app's copies) locally, and to
+// nothing in CI, which installs only extension/. This resolves every bare import made BY a core/
+// file as if it were made from this package, and touches nothing else: a dependency's own imports
+// (@solana/web3.js 1.x needs @noble v1, this package has v2) resolve normally, next to it.
+const CORE = resolve(__dirname, '../core');
+const HERE = resolve(__dirname, 'package.json');
+function coreResolvesFromHere(): Plugin {
+  return {
+    name: 'noctura:core-resolves-from-extension',
+    enforce: 'pre',
+    async resolveId(source, importer, options) {
+      if (importer === undefined || !importer.startsWith(CORE + sep)) return null;
+      if (source.startsWith('.') || source.startsWith('/') || source.startsWith('\0')) return null;
+      return this.resolve(source, HERE, {...options, skipSelf: true});
+    },
+  };
+}
 
 export default defineConfig({
   base: './',
-  resolve: {dedupe: SHARED},
+  plugins: [coreResolvesFromHere()],
   server: {fs: {allow: [resolve(__dirname, '..')]}},
   build: {
     outDir: 'dist/app',
@@ -33,6 +48,14 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['src/**/*.test.ts', 'manifest/**/*.test.mjs', 'scripts/**/*.test.mjs', '../core/keys/**/*.test.ts'],
+    include: [
+      'src/**/*.test.ts',
+      'manifest/**/*.test.mjs',
+      'scripts/**/*.test.mjs',
+      '../core/keys/**/*.test.ts',
+      '../core/solana/**/*.test.ts',
+      '../core/fees/**/*.test.ts',
+      '../core/portfolio/**/*.test.ts',
+    ],
   },
 } as UserConfig);

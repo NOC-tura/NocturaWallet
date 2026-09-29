@@ -23,6 +23,35 @@ Awaiting the owner's review, then the implementation plan.
 - the extension installs with `npm ci --ignore-scripts`;
 - `storage.session` is pinned to `TRUSTED_CONTEXTS` at service-worker start.
 
+**Revision 5 (2026-09-29), from implementing B1b-1 (the wallet engine).** Decisions taken during
+implementation and its reviews, folded back here:
+- the extension CSP gains **`connect-src https://api.noc-tura.io`** — the run-time backstop behind
+  the RPC-method and network gates (a text gate cannot see a computed name);
+- **`v1_vault` has one writer, the background**: the vault page sends `vault.storeEnvelope
+  {expectedRevision, envelope}` (vault page only); the background compare-and-sets on a revision
+  hash of everything but account names, validates the envelope's bounds and lengths, and refuses a
+  change of scheme, KDF, salt, password wrap or an existing account's public key; `null` is the
+  first write and never overwrites a wallet;
+- pending sends live in **`storage.local`** (owner, 2026-09-29), so a browser restart cannot hide a
+  transaction that may still land; a lock clears `storage.session` only;
+- "no funds moved" needs the height past `lastValidBlockHeight + 32` **and** two null full-history
+  status checks ≥ 2 s apart; only a *confirmed/finalized* error closes a send as failed; only a
+  broadcast-route **400** whose body names a contract reason (`malformed`, `unsigned`, `rejected`)
+  means "not forwarded" (any other 400, and a 403 response, keep the send pending);
+- every coordinator request has a deadline (20 s reads, 30 s broadcast) and all go through one
+  serialised, persisted 403 latch;
+- the **Noctura fee** in the extension is 0 with the visible reason "status unknown" until the
+  coordinator reports the fee status (the app has no source for it either — see the coordinator
+  asks); NOC is valued at the current **stage price** for the $100 re-authentication rule (owner),
+  and an unreadable stage price counts as above the threshold;
+- import accepts exactly 12 or 24 words; a scheme probe that cannot read every balance makes the
+  user choose.
+- a send's re-authentication is bound to its **intent** (account, token, recipient, amount), not to
+  the message bytes: a prepared send lives 30 s (the re-simulation rule), a human re-authentication
+  routinely takes longer, and a re-prepare of the same intent carrying the challenge keeps the
+  proof while the message gets a fresh blockhash; the stored message keeps its own integrity
+  digest, and `wallet.preparedFor` lets a reopened popup resume.
+
 **What B1 is.** A browser extension named **Noctura** for Chrome-family browsers and Firefox
 that holds the user's seed, derives the same addresses as the Android app, sends and receives
 SOL, NOC, USDC and USDT on mainnet, buys NOC in the presale, and offers itself to web pages as

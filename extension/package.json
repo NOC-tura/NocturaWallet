@@ -9,7 +9,7 @@
     "e2e": "playwright test",
     "csp": "node scripts/check-csp.mjs dist/app",
     "secrets": "test -d dist/app && test -d dist/chrome && test -d dist/firefox && node ../web/scripts/check-no-secrets.mjs --bundle dist/app dist/chrome dist/firefox",
-    "gates": "node scripts/check-permissions.mjs && node scripts/check-vault-isolation.mjs",
+    "gates": "node scripts/check-permissions.mjs && node scripts/check-vault-isolation.mjs && node scripts/check-rpc-methods.mjs",
     "reproducible": "node scripts/verify-reproducible.mjs",
     "verify": "rm -rf dist && npm run build && npm run test && npm run csp && npm run secrets && npm run gates && npm run reproducible"
   },
@@ -18,6 +18,8 @@
     "@noble/hashes": "^2.0.1",
     "@scure/base": "^2.0.0",
     "@scure/bip39": "^2.0.1",
+    "@solana/web3.js": "^1.99.0",
+    "buffer": "^6.0.3",
     "micro-key-producer": "^0.8.5"
   },
   "devDependencies": {

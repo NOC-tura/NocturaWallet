@@ -84,6 +84,12 @@ describe('FeeEngineManager', () => {
     expect(fee).toBe(350_000n);
   });
 
+  it('a discount above 1 clamps to a zero fee — never a negative one (core/fees clamp)', () => {
+    mockStore({tgeStatus: 'claimable', isZeroFeeEligible: false});
+    expect(engine.getEffectiveFee('privateTransfer', 1.5)).toBe(0n);
+    expect(engine.getEffectiveFee('transferMarkup', 1.5)).toBe(0n);
+  });
+
   // ---- buildTransparentFeeInstruction ----
 
   it('buildTransparentFeeInstruction calls SystemProgram.transfer', () => {

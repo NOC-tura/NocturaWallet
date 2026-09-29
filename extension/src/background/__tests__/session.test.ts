@@ -1,4 +1,4 @@
-import {setSession, getSession, clearSession, SESSION_KEY} from '../session';
+import {setSession, getSession, clearSession, sessionMutex, SESSION_KEY} from '../session';
 import {fakeExt} from './fakeExt';
 
 const ACC = [{index: 0, publicKey: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk', secretKey: 'AAAA'}];
@@ -20,6 +20,18 @@ describe('session keys', () => {
     const ext = fakeExt();
     await setSession(ext, ACC);
     expect((ext.local as unknown as {data: Map<string, unknown>}).data.size).toBe(0);
+  });
+  it('an unlock waits for a critical section on sessionMutex instead of writing into it', async () => {
+    const ext = fakeExt();
+    let release: () => void = () => undefined;
+    const held = sessionMutex(() => new Promise<void>(r => (release = r)));
+    const unlock = setSession(ext, ACC);
+    await new Promise(r => setTimeout(r, 10));
+    expect(await getSession(ext)).toBeNull();
+    release();
+    await held;
+    await unlock;
+    expect(await getSession(ext)).toEqual(ACC);
   });
   it('strips unknown fields before storing — never persists more than index/publicKey/secretKey', async () => {
     const ext = fakeExt();

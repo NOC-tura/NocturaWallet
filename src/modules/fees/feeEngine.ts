@@ -3,6 +3,7 @@ import {SHIELDED_FEES, TRANSPARENT_FEES, NOCTURA_FEE_TREASURY, NOC_MINT} from '.
 import {usePresaleStore} from '../../store/zustand/presaleStore';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {FeeDisplayInfo, FEE_DISTRIBUTION, FeeType} from './types';
+import {effectiveFee} from '../../../core/fees/transferMarkup';
 
 // NOC has 9 decimals; 1 NOC = 1_000_000_000 lamports
 const NOC_DECIMALS = 9;
@@ -66,20 +67,6 @@ export function _resetPriceCache(): void {
 }
 
 /**
- * Apply a staking discount to a fee.
- * Uses BigInt arithmetic — never floats.
- * discount is a fraction in [0, 1], e.g. 0.1 for 10%.
- *
- * Conversion: discount (float 0-1) → integer percent (0-100) → BigInt division.
- * Example: 0.3 → 30 → fee - (fee * 30n) / 100n = 70% of original fee.
- */
-function applyDiscount(fee: bigint, discount: number): bigint {
-  if (discount <= 0) return fee;
-  const discountPercent = BigInt(Math.round(discount * 100));
-  return fee - (fee * discountPercent) / 100n;
-}
-
-/**
  * Format a lamport amount as "X.XXXXXXXXX NOC", trimming trailing zeros.
  */
 function formatNoc(lamports: bigint): string {
@@ -96,24 +83,18 @@ export class FeeEngineManager {
   /**
    * Returns the effective fee (in lamports, BigInt) for a given fee type.
    *
-   * Rules:
-   *  1. pre-TGE → always 0n
-   *  2. isZeroFeeEligible → 0n
-   *  3. Otherwise apply staking discount to the base fee
+   * The rules live in core/fees/transferMarkup.ts (shared with the browser extension):
+   * pre-TGE or an unknown TGE status → 0; zero-fee eligible or unknown eligibility → 0;
+   * otherwise the base fee minus a staking discount, clamped to [0, 1].
    */
   getEffectiveFee(feeType: FeeType, stakingDiscount: number = 0): bigint {
+    // The policy lives in core/fees/transferMarkup.ts, shared with the browser extension.
     const {tgeStatus, isZeroFeeEligible} = usePresaleStore.getState();
-
-    if (tgeStatus === 'pre_tge') {
-      return 0n;
-    }
-
-    if (isZeroFeeEligible) {
-      return 0n;
-    }
-
-    const baseFee = this._baseFee(feeType);
-    return applyDiscount(baseFee, stakingDiscount);
+    const inputs = {tgeStatus, isZeroFeeEligible, stakingDiscount};
+    // Decide free-or-charged before touching the base fee, as the app always did: a free
+    // fee must not depend on the fee constants being readable.
+    if (effectiveFee(0n, inputs).reason !== 'charged') return 0n;
+    return effectiveFee(this._baseFee(feeType), inputs).lamports;
   }
 
   /**

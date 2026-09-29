@@ -13,7 +13,15 @@ export const HOST_PERMISSIONS = [
   {value: 'https://wallet.noc-tura.io/*', reason: 'The passkey relying-party ID: an extension may claim an RP ID only for a host it has permission for.'},
 ];
 
-export const EXTENSION_CSP = "script-src 'self'; object-src 'self'";
+// connect-src is the one runtime backstop for extension/scripts/check-rpc-methods.mjs's text-based
+// checks: even a bypass that check misses cannot reach the network from an extension page or the
+// background, because Chrome/Firefox enforce this at the fetch/XHR/WebSocket layer regardless of
+// what the JS source says. Exactly the one host anything here ever fetches (the coordinator proxy
+// — RPC reads, JSON reads, the broadcast route; see extension/src/background/deps.ts). No 'self':
+// nothing fetches the extension's own origin (the kdf worker is loaded as a script, not fetched).
+// No wallet.noc-tura.io: that host is the passkey relying-party ID only — a WebAuthn ceremony is
+// not a fetch and is not governed by connect-src — never a fetch target.
+export const EXTENSION_CSP = "script-src 'self'; object-src 'self'; connect-src https://api.noc-tura.io";
 
 // The minimum browsers (plan: Chrome 122, Firefox 150). The permissions gate compares the built
 // manifests against these, so a lowered floor cannot arrive by a hand edit either.

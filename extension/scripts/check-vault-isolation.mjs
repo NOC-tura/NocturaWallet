@@ -39,15 +39,20 @@ const SOURCE_EXT = /\.[cm]?[jt]sx?$/;
 // The seed code the vault uses also lives in ../core/keys (mnemonic → seed, SLIP-0010), shared
 // with the app; for this package it is vault code, allowed exactly where the vault is.
 // src/ext.ts is the one wrapper over chrome.* / browser.*, so it names storage.session; in
-// exchange, only the background may value-import it (EXT_IMPORT_ALLOWED) — except that the
-// vault page may import exactly `readLocal` (LOCAL_READER), which reads storage.local only.
+// exchange, only the background may value-import it (EXT_IMPORT_ALLOWED). The vault page's one
+// storage call is src/shared/readLocal.ts (LOCAL_READER): it reads storage.local and nothing else —
+// it may not name storage.session, write, or import anything — and only the vault page may import
+// it. (It used to be an ext.ts export, which put all of ext.ts in the vault page's bundle.)
 // Everywhere else `storage` may not appear as a property access or a destructuring key at all:
 // `storage.session` alone missed `const {session} = chrome.storage` and
 // `const {storage: {session: s}} = chrome`.
 const SESSION_ALLOWED = /^src\/background\/|^src\/ext\.ts$/;
 const EXT_IMPORT_ALLOWED = /^src\/background\//;
-const LOCAL_READER = 'readLocal';
+const LOCAL_READER = 'src/shared/readLocal';
+const LOCAL_READER_PATH = `${LOCAL_READER}.ts`;
 const LOCAL_READER_ALLOWED = /^src\/unlock\//;
+// A storage write in any spelling: a call (`.set(`), a bracket (`['set']`), a destructured name.
+const WRITES_STORAGE = /(?:\?\.|\.)\s*(?:set|remove|clear)\s*\(|\[\s*['"`](?:set|remove|clear)['"`]\s*\]|[{,]\s*(?:set|remove|clear)\s*[,}:=]/;
 const TOUCHES_SESSION = /storage\s*(?:\?\.|\.)\s*session\b|storage\s*\[\s*['"`]session['"`]\s*\]/;
 // `.storage` / `?.storage`, `x['storage']`, and `storage` as a destructuring key (`{storage}`,
 // `{a, storage}`, `{storage: …}`, `{storage = …}`). localStorage/sessionStorage do not match.
@@ -58,6 +63,10 @@ const TOUCHES_STORAGE = /(?:\?\.|\.)\s*storage\b|\[\s*['"`]storage['"`]\s*\]|[{,
 // lowercase `onmessage` and `sendMessage` are different identifiers.
 const LISTENS_RUNTIME = /\bon(?:Message|Connect)(?:External)?\b/;
 const LISTEN_ALLOWED = /^src\/background\//;
+// storage.local keys only the background writes (plan B1b-1): no other file may even name them —
+// a popup writing v1_settings could undo a re-authenticated setting without re-authenticating.
+export const BACKGROUND_OWNED_KEYS = ['v1_settings', 'v1_known_recipients', 'v1_pending', 'v1_forbidden_until'];
+const BACKGROUND_OWNED_ALLOWED = /^src\/background\//;
 
 // A string that exists only in the vault's envelope code (the passkey-wrap HKDF info).
 export const VAULT_MARKER = 'noctura-ext-v1/passkey-wrap';
@@ -73,12 +82,17 @@ export const PASSKEY_MARKER = 'wallet.noc-tura.io';
 // An error message of @noble/hashes' Argon2 parameter check: the KDF, found in the vault
 // worker only (checked against the real build: no other built file carries it).
 export const KDF_MARKER = '(memory) must be at least 8*p bytes';
+// The BIP-39 English wordlist, as the build emits it (a template literal with real newlines —
+// checked against a real Vite build): generateMnemonic and validateMnemonic carry it into the vault
+// page, and nothing else may carry it.
+export const WORDLIST_MARKER = 'abandon\nability\nable\nabout';
 const MARKERS = [
   ['envelope', VAULT_MARKER],
   ['derivation', DERIVATION_MARKER],
   ['bip39', BIP39_MARKER],
   ['passkey', PASSKEY_MARKER],
   ['kdf', KDF_MARKER],
+  ['wordlist', WORDLIST_MARKER],
 ];
 
 // `import X from`, `import {a, type B} from`, `import * as n from`, `import type … from`,
@@ -101,15 +115,6 @@ function moduleReferences(text) {
   for (const m of text.matchAll(FROM_CLAUSE)) refs.push({spec: m[5], typeOnly: m[2] !== undefined, kind: m[1], clause: m[3]});
   for (const re of OTHER_REFERENCES) for (const m of text.matchAll(re)) refs.push({spec: m[2], typeOnly: false, kind: null, clause: null});
   return refs;
-}
-
-/** `import {readLocal}` (optionally renamed, alongside inline type-only names) and nothing else. */
-function importsOnlyLocalReader(ref) {
-  if (ref.kind !== 'import' || ref.clause === null) return false;
-  const named = /^\{([^}]*)\}$/.exec(ref.clause.trim());
-  if (!named) return false;
-  const values = named[1].split(',').map(n => n.trim()).filter(n => n !== '' && !/^type\s/.test(n));
-  return values.length > 0 && values.every(n => new RegExp(`^${LOCAL_READER}(\\s+as\\s+[\\w$]+)?$`).test(n));
 }
 
 /** Where a specifier points, as a path relative to the package (`src/vault/kdf`), or null. */
@@ -143,6 +148,11 @@ function namesExt(fromPath, spec) {
   return target !== null && /^src\/ext(\.[cm]?[jt]s)?$/.test(target);
 }
 
+function namesLocalReader(fromPath, spec) {
+  const target = resolveSource(fromPath, spec);
+  return target !== null && target.replace(/\.[cm]?[jt]s$/, '') === LOCAL_READER;
+}
+
 export function sourceViolations(files) {
   const out = [];
   for (const {path, text} of files) {
@@ -152,13 +162,21 @@ export function sourceViolations(files) {
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesVault(path, r.spec))) out.push(`${path}: imports the vault`);
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesCoreKeys(path, r.spec))) out.push(`${path}: imports core/keys (seed code)`);
     if (!UNLOCK_ALLOWED.test(path) && values.some(r => namesUnlock(path, r.spec))) out.push(`${path}: imports the vault page (src/unlock)`);
-    if (!SESSION_ALLOWED.test(path) && (TOUCHES_SESSION.test(text) || TOUCHES_STORAGE.test(text))) {
+    if (path === LOCAL_READER_PATH) {
+      if (TOUCHES_SESSION.test(text)) out.push(`${path}: touches storage.session — it may read storage.local only`);
+      if (WRITES_STORAGE.test(text)) out.push(`${path}: writes storage — it may only read`);
+      if (values.length > 0) out.push(`${path}: imports a module — it must stand alone`);
+    } else if (!SESSION_ALLOWED.test(path) && (TOUCHES_SESSION.test(text) || TOUCHES_STORAGE.test(text))) {
       out.push(`${path}: touches storage outside src/ext.ts and the background`);
     }
+    if (!LOCAL_READER_ALLOWED.test(path) && values.some(r => namesLocalReader(path, r.spec))) {
+      out.push(`${path}: imports ${LOCAL_READER}, the vault page's storage reader`);
+    }
     if (!LISTEN_ALLOWED.test(path) && LISTENS_RUNTIME.test(text)) out.push(`${path}: listens for runtime messages outside the background`);
-    const extRefs = values.filter(r => namesExt(path, r.spec));
-    const localReaderOnly = LOCAL_READER_ALLOWED.test(path) && extRefs.every(importsOnlyLocalReader);
-    if (!EXT_IMPORT_ALLOWED.test(path) && path !== 'src/ext.ts' && extRefs.length > 0 && !localReaderOnly) {
+    if (!BACKGROUND_OWNED_ALLOWED.test(path)) {
+      for (const key of BACKGROUND_OWNED_KEYS) if (text.includes(key)) out.push(`${path}: names ${key}, which only the background may write`);
+    }
+    if (!EXT_IMPORT_ALLOWED.test(path) && path !== 'src/ext.ts' && values.some(r => namesExt(path, r.spec))) {
       out.push(`${path}: imports src/ext.ts (storage.session) outside the background`);
     }
   }
@@ -222,6 +240,9 @@ const toPosix = p => p.split(sep).join('/');
 // dynamic ones (`import("./x.js")`, inside Vite's `__vitePreload(() => import(...))` too), and
 // URLs built against the module (`new URL("w.js", import.meta.url)` — how Vite loads a worker).
 const BUILT_IMPORT = /\b(?:from|import)\s*\(?\s*(['"`])([^'"`$]+)\1/g;
+// storage.session in a built file: the property (minified `r.storage.session`), a bracketed key,
+// or ext.ts's access pin.
+const BUILT_SESSION = /storage\s*(?:\?\.|\.)\s*session\b|storage\s*\[\s*['"`]session['"`]\s*\]|\bsetAccessLevel\b/;
 const BUILT_URL = /\bnew\s+URL\s*\(\s*(['"`])([^'"`$]+)\1\s*,\s*import\.meta\.url/g;
 
 function builtReferences(text) {
@@ -289,6 +310,40 @@ export function bundleViolations(distApp) {
     }
   }
 
+  // The other direction: the vault page may not load the background entry. Importing background.js
+  // runs it — its runtime listeners and its poller — inside the vault page (a Rolldown runtime helper
+  // placed in background.js once made the unlock bundle import it, and every marker check passed).
+  if (all.includes('unlock.html')) {
+    const html = readFileSync(join(distApp, 'unlock.html'), 'utf8');
+    for (const m of html.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/g)) {
+      const r = resolveBuilt(distApp, 'unlock.html', m[1]);
+      if (r.problem) problems.add(r.problem);
+      else if (reachable(distApp, r.target, problems).includes('background.js')) out.push(`the vault page (${r.target}) reaches background.js — it would run the background`);
+    }
+  }
+
+  // No page may reach storage.session: in the built files, not just the sources (final review
+  // minor 4 — readLocal in ext.ts put ext.ts's storage.session and setAccessLevel into a chunk the
+  // vault page loaded, and every source rule passed). Only the background may carry it.
+  if (!js.some(p => BUILT_SESSION.test(readFileSync(join(distApp, p), 'utf8')))) {
+    out.push('INCONCLUSIVE: no built JS file names storage.session — the vault-page rule would pass trivially');
+  }
+  for (const page of all.filter(p => /\.html?$/.test(p))) {
+    const html = readFileSync(join(distApp, page), 'utf8');
+    for (const m of html.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/g)) {
+      const r = resolveBuilt(distApp, page, m[1]);
+      if (r.problem) {
+        problems.add(r.problem);
+        continue;
+      }
+      for (const file of reachable(distApp, r.target, problems)) {
+        if (/\.m?js$/.test(file) && BUILT_SESSION.test(readFileSync(join(distApp, file), 'utf8'))) {
+          out.push(`${file} (reachable from ${page}) touches storage.session — only the background may`);
+        }
+      }
+    }
+  }
+
   for (const entry of entries) {
     for (const file of reachable(distApp, entry, problems)) {
       const text = readFileSync(join(distApp, file), 'utf8');
@@ -341,5 +396,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     for (const p of problems) console.error(p);
     process.exit(1);
   }
-  console.log('vault isolation ok: sources, built popup/background and both manifests carry no path to the vault');
+  console.log('vault isolation ok: sources, built popup/background and both manifests carry no path to the vault; no page reaches storage.session');
 }

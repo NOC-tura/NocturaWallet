@@ -93,23 +93,29 @@ export function wrongDelayMs(consecutiveWrong: number): number {
 }
 
 export interface WrongBackoff {
-  run<T extends Outcome | 'unavailable'>(action: () => Promise<T>, onWait: () => void): Promise<T>;
+  run<T extends string>(action: () => Promise<T>, onWait: () => void): Promise<T>;
 }
 
 /**
  * Spec §2: wrong passwords get an increasing delay on top of the Argon2id cost. The streak lives
- * in this page's memory; `'unlocked'` resets it, `'wrong'` extends it and every other outcome
- * (`'damaged'` included — a corrupt envelope is not a guess) leaves it as it is. The delay
- * runs INSIDE `run`, so a caller that wraps `run` in `runExclusive` keeps the busy gate (and the
- * disabled buttons) held for the whole wait. `sleep` is injected so the sequence is testable
- * without a clock.
+ * in this page's memory; a proven factor (`'unlocked'`, and re-authentication's `'confirmed'`,
+ * the accounts' `'done'`/`'done-locked'`/`'done-not-locked'`, the reveal's `'shown'`) resets it, `'wrong'` extends it and every other
+ * outcome (`'damaged'` and `'mismatch-locked'` included — neither is a guess) leaves it as it is.
+ * The delay runs INSIDE `run`, so a caller that wraps `run` in `runExclusive` keeps the busy
+ * gate (and the disabled buttons) held for the whole wait. `sleep` is injected so the sequence is
+ * testable without a clock.
  */
+/** Outcomes that proved the factor: unlocked, re-auth confirmed, accounts changed (even if then locked), phrase shown. */
+const PROVEN: readonly string[] = ['unlocked', 'confirmed', 'done', 'done-locked', 'done-not-locked', 'shown'];
+
 export function createWrongBackoff(sleep: (ms: number) => Promise<void>): WrongBackoff {
   let streak = 0;
   return {
     async run(action, onWait) {
       const outcome = await action();
-      if (outcome === 'unlocked') streak = 0;
+      // A proven factor ends the streak — it unlocked the vault, confirmed a re-authentication,
+      // changed the accounts or showed the phrase.
+      if (PROVEN.includes(outcome)) streak = 0;
       if (outcome !== 'wrong') return outcome;
       streak += 1;
       const ms = wrongDelayMs(streak);

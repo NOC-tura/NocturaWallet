@@ -4,8 +4,14 @@ import {workerKdf} from '../vault/kdf';
 import {evaluatePrf} from '../vault/passkey';
 import {unb64} from '../vault/bytes';
 import {send} from '../ui/send';
-import {readLocal} from '../ext';
+import {readLocal} from '../shared/readLocal';
 import type {EnvelopeV1} from '../vault/envelope';
+import {pageMode} from './mode';
+import {startMode} from './modes';
+
+// unlock.html?mode=create|import|reauth&challenge=…|accounts|reveal shows that mode's section; no
+// mode is the unlock page below, whose handlers stay registered either way (on a hidden section).
+startMode(pageMode(location.search));
 
 // The vault page renders only its own fixed strings — nothing from a dApp, a token or the
 // network (spec §1). Every status line below is one of the WORDS/literal strings in this file.
@@ -98,4 +104,6 @@ void envelope().then(env => {
   if (!pk) return;
   passkeyBtn.hidden = false;
   passkeyBtn.addEventListener('click', () => void handlePasskeyClick(pk));
+}, () => {
+  status.textContent = "This wallet's stored data could not be read. Reload this page.";
 });

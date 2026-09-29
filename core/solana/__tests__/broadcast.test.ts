@@ -1,0 +1,134 @@
+import {base58, base64} from '@scure/base';
+import {PublicKey, SystemProgram, TransactionMessage, VersionedTransaction} from '@solana/web3.js';
+import {BROADCAST_ENDPOINT, BroadcastRejected, BroadcastSubstituted, BroadcastUnavailable, broadcastSigned, firstSignature} from '../broadcast';
+import {RpcCoolingDown, RpcForbidden, createForbiddenLatch, type FetchInit} from '../rpc';
+
+const OTHER = new PublicKey('9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4');
+const BLOCKHASH = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
+
+// The broadcast client never verifies a signature: it only reads the first 64-byte slot and checks
+// it is not all zeros. So the fixture uses a fixed payer and a fixed non-zero 64-byte slot — no
+// signing library. That keeps this core test free of @noble, which web/ (which also runs it) does
+// not install at the version core would resolve, and free of Keypair constructors, which web's
+// secret scan refuses in source mode.
+const PAYER = new PublicKey('HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk');
+const SIGNATURE_SLOT = Uint8Array.from({length: 64}, (_, i) => i + 1);
+
+/** A real v0 transfer, signed or not. */
+function wire(signed: boolean): {bytes: Uint8Array; signature: string} {
+  const payer = PAYER;
+  const message = new TransactionMessage({
+    payerKey: payer,
+    recentBlockhash: BLOCKHASH,
+    instructions: [SystemProgram.transfer({fromPubkey: payer, toPubkey: OTHER, lamports: 1n})],
+  }).compileToV0Message();
+  const tx = new VersionedTransaction(message);
+  if (signed) tx.addSignature(payer, SIGNATURE_SLOT);
+  const bytes = tx.serialize();
+  return {bytes, signature: base58.encode(bytes.subarray(1, 65))};
+}
+
+function fakeFetch(answer: {status: number; body?: unknown} | 'throw') {
+  const calls: {url: string; init: FetchInit}[] = [];
+  const fetch = async (url: string, init: FetchInit) => {
+    calls.push({url, init});
+    if (answer === 'throw') throw new TypeError('Failed to fetch');
+    return {status: answer.status, json: async () => answer.body};
+  };
+  return {fetch, calls};
+}
+
+describe('firstSignature', () => {
+  it('is the base58 of the first 64-byte slot after the count', () => {
+    const w = wire(true);
+    expect(firstSignature(w.bytes)).toBe(w.signature);
+  });
+
+  it('refuses an unsigned transaction, an empty count and truncated bytes', () => {
+    expect(() => firstSignature(wire(false).bytes)).toThrow(BroadcastRejected);
+    expect(() => firstSignature(new Uint8Array([0]))).toThrow(BroadcastRejected);
+    expect(() => firstSignature(new Uint8Array([1, 7, 7]))).toThrow(BroadcastRejected);
+  });
+});
+
+describe('broadcastSigned', () => {
+  it('POSTs {transaction: base64} to the broadcast route and returns the signature it verified (positive control)', async () => {
+    const w = wire(true);
+    const {fetch, calls} = fakeFetch({status: 200, body: {signature: w.signature}});
+    expect(await broadcastSigned({fetch, latch: createForbiddenLatch()}, w.bytes)).toBe(w.signature);
+    expect(BROADCAST_ENDPOINT).toBe('https://api.noc-tura.io/api/v1/tx/broadcast');
+    expect(calls[0]?.url).toBe(BROADCAST_ENDPOINT);
+    expect(calls[0]?.init).toMatchObject({method: 'POST', credentials: 'omit', headers: {'content-type': 'application/json'}});
+    expect(JSON.parse(calls[0]?.init.body ?? '')).toEqual({transaction: base64.encode(w.bytes)});
+  });
+
+  it('refuses a signature that is not the one it sent — a coordinator cannot substitute another transaction', async () => {
+    const w = wire(true);
+    const {fetch} = fakeFetch({status: 200, body: {signature: base58.encode(new Uint8Array(64).fill(9))}});
+    await expect(broadcastSigned({fetch, latch: createForbiddenLatch()}, w.bytes)).rejects.toBeInstanceOf(BroadcastSubstituted);
+  });
+
+  it('never sends an unsigned transaction', async () => {
+    const {fetch, calls} = fakeFetch({status: 200, body: {}});
+    await expect(broadcastSigned({fetch, latch: createForbiddenLatch()}, wire(false).bytes)).rejects.toMatchObject({reason: 'unsigned'});
+    expect(calls).toHaveLength(0);
+  });
+
+  it('a 400 with one of the contract reasons (malformed | unsigned | rejected) is BroadcastRejected, with its message', async () => {
+    const w = wire(true);
+    for (const error of ['malformed', 'unsigned', 'rejected']) {
+      const {fetch} = fakeFetch({status: 400, body: {error, message: 'bad base64'}});
+      await expect(broadcastSigned({fetch, latch: createForbiddenLatch()}, w.bytes)).rejects.toMatchObject({name: 'BroadcastRejected', reason: error, detail: 'bad base64'});
+    }
+    const {fetch} = fakeFetch({status: 400, body: {error: 'rejected'}});
+    await expect(broadcastSigned({fetch, latch: createForbiddenLatch()}, w.bytes)).rejects.toMatchObject({reason: 'rejected', detail: 'refused'});
+  });
+
+  // Final review minor 3: a 400 closes a first send as failed ("no funds moved") only when the
+  // body proves it is the route's refusal. A proxy or CDN 400, or a body the client cannot read,
+  // does not prove the transaction was not forwarded: "not acknowledged", the send stays pending.
+  it('any other 400 — unknown reason, no body, an unreadable or non-object body — is "not acknowledged"', async () => {
+    const w = wire(true);
+    for (const body of [{error: 'weird'}, {error: 'Malformed'}, {message: 'no reason'}, {error: 5}, undefined, null, 'rejected', ['rejected'], {error: '__proto__'}]) {
+      const {fetch} = fakeFetch({status: 400, body});
+      const e = await broadcastSigned({fetch, latch: createForbiddenLatch()}, w.bytes).catch((x: unknown) => x);
+      expect(e).toBeInstanceOf(BroadcastUnavailable);
+      expect(e).toMatchObject({status: 400});
+    }
+    const unreadable = async () => ({
+      status: 400,
+      json: async () => {
+        throw new SyntaxError('Unexpected token < in JSON');
+      },
+    });
+    await expect(broadcastSigned({fetch: unreadable, latch: createForbiddenLatch()}, w.bytes)).rejects.toBeInstanceOf(BroadcastUnavailable);
+  });
+
+  it('a 403 is terminal and trips the shared latch — the next broadcast sends nothing', async () => {
+    const w = wire(true);
+    const {fetch, calls} = fakeFetch({status: 403});
+    const latch = createForbiddenLatch();
+    await expect(broadcastSigned({fetch, latch}, w.bytes)).rejects.toBeInstanceOf(RpcForbidden);
+    await expect(broadcastSigned({fetch, latch}, w.bytes)).rejects.toBeInstanceOf(RpcForbidden);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('a broadcast answered 403 is RpcForbidden; one refused by the cool-down before any request is RpcCoolingDown', async () => {
+    const w = wire(true);
+    const {fetch, calls} = fakeFetch({status: 403});
+    const latch = createForbiddenLatch();
+    const answered = await broadcastSigned({fetch, latch}, w.bytes).catch((e: unknown) => e);
+    expect(answered).toBeInstanceOf(RpcForbidden);
+    expect(answered).not.toBeInstanceOf(RpcCoolingDown);
+    await expect(broadcastSigned({fetch, latch}, w.bytes)).rejects.toBeInstanceOf(RpcCoolingDown);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('a 5xx, a network failure or an unreadable 200 is "not acknowledged"', async () => {
+    const w = wire(true);
+    for (const answer of [{status: 502}, 'throw' as const, {status: 200, body: {nope: 1}}]) {
+      const {fetch} = fakeFetch(answer);
+      await expect(broadcastSigned({fetch, latch: createForbiddenLatch()}, w.bytes)).rejects.toBeInstanceOf(BroadcastUnavailable);
+    }
+  });
+});

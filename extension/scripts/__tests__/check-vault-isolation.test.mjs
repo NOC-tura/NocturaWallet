@@ -3,7 +3,7 @@ import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
 import {
   bundleViolations, htmlViolations, listSourceFiles, manifestViolations, sourceViolations,
-  BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, VAULT_MARKER,
+  BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, VAULT_MARKER, WORDLIST_MARKER,
 } from '../check-vault-isolation.mjs';
 import {render} from '../../manifest/source.mjs';
 
@@ -205,7 +205,7 @@ describe('vault isolation (files outside src/, and the vault page as a target)',
 // Fable review (Minor 6): the storage.session rule matched `storage.session` / `storage['session']`
 // only, so destructuring walked past it. Now no file outside src/ext.ts and the background may
 // name `storage` as a property or destructuring key at all; the vault page reads storage.local
-// through ext.ts's readLocal, the one ext.ts export it may import.
+// through src/shared/readLocal.ts (final review minor 4: no longer an ext.ts export).
 describe('vault isolation (storage, and what may import src/ext.ts)', () => {
   const STORAGE = path => `${path}: touches storage outside src/ext.ts and the background`;
 
@@ -239,15 +239,15 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
     ])).toEqual([]);
   });
 
-  it('lets only the vault page value-import readLocal — and nothing else — from src/ext.ts', () => {
-    expect(sourceViolations([
-      f('src/unlock/main.ts', "import {readLocal} from '../ext';"),
-      f('src/unlock/other.ts', "import {type Ext, readLocal as read} from '../ext';"),
-    ])).toEqual([]);
+  // Final review minor 4: readLocal lived in src/ext.ts, so the vault page's bundle carried ext.ts
+  // (storage.session, setAccessLevel) in a shared chunk. It now has its own module; the vault page
+  // may import nothing at all from src/ext.ts.
+  it('refuses every import of src/ext.ts from the vault page, readLocal included', () => {
     const EXT = path => `${path}: imports src/ext.ts (storage.session) outside the background`;
     for (const text of [
+      "import {readLocal} from '../ext';",
+      "import {type Ext, readLocal as read} from '../ext';",
       "import {readLocal, browserExt} from '../ext';",
-      "import {browserExt as readLocal} from '../ext';",
       "import * as ext from '../ext';",
       "import ext from '../ext';",
       "import '../ext';",
@@ -256,7 +256,90 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
     ]) {
       expect(sourceViolations([f('src/unlock/main.ts', text)])).toEqual([EXT('src/unlock/main.ts')]);
     }
-    expect(sourceViolations([f('src/popup/main.ts', "import {readLocal} from '../ext';")])).toEqual([EXT('src/popup/main.ts')]);
+    expect(sourceViolations([f('src/unlock/types.ts', "import type {Ext} from '../ext';")])).toEqual([]);
+  });
+
+  it('lets only the vault page import src/shared/readLocal', () => {
+    expect(sourceViolations([
+      f('src/unlock/main.ts', "import {readLocal} from '../shared/readLocal';"),
+      f('src/unlock/modes.ts', "import {readLocal as read} from '../shared/readLocal.ts';"),
+    ])).toEqual([]);
+    const READER = path => `${path}: imports src/shared/readLocal, the vault page's storage reader`;
+    for (const [path, text] of [
+      ['src/popup/main.ts', "import {readLocal} from '../shared/readLocal';"],
+      ['src/background/x.ts', "import {readLocal} from '../shared/readLocal';"],
+      ['src/ui/send.ts', "const m = await import('../shared/readLocal');"],
+      ['src/shared/other.ts', "export {readLocal} from './readLocal';"],
+    ]) {
+      expect(sourceViolations([f(path, text)])).toEqual([READER(path)]);
+    }
+  });
+
+  it('src/shared/readLocal.ts may read storage.local — and not touch storage.session, write, or import anything', () => {
+    const P = 'src/shared/readLocal.ts';
+    expect(sourceViolations([f(P, "const b = g.browser ?? g.chrome;\nreturn (await b.storage.local.get(key))[key];")])).toEqual([]);
+    expect(sourceViolations([f(P, 'b.storage.session.get(null);')])).toEqual([`${P}: touches storage.session — it may read storage.local only`]);
+    expect(sourceViolations([f(P, "b.storage['session'].get(null);")])).toEqual([`${P}: touches storage.session — it may read storage.local only`]);
+    for (const text of ["b.storage.local.set({v1_vault: e});", "b.storage.local.remove('v1_vault');", 'b.storage.local.clear();', "b.storage.local['set']({});", 'const {set} = b.storage.local;']) {
+      expect(sourceViolations([f(P, text)])).toEqual([`${P}: writes storage — it may only read`]);
+    }
+    for (const text of ["import {x} from './envelopeRules';", "import '@noble/hashes/sha2.js';", "const m = await import('../ext');"]) {
+      expect(sourceViolations([f(P, text)]).some(v => v === `${P}: imports a module — it must stand alone`)).toBe(true);
+    }
+    expect(sourceViolations([f(P, "import type {X} from './types';")])).toEqual([]);
+  });
+
+  // B1b-1 ruling: v1_vault has ONE writer, the background (storage.local has no compare-and-set
+  // across contexts); the vault page hands it the envelope by message. So the vault page gets no
+  // storage writer: not a writeLocal from ext.ts, not storage.local itself.
+  it('does not let the vault page write storage.local — by any ext.ts export or by the storage API', () => {
+    const EXT = path => `${path}: imports src/ext.ts (storage.session) outside the background`;
+    for (const text of [
+      "import {writeLocal} from '../ext';",
+      "import {readLocal, writeLocal} from '../ext';",
+      "import {writeLocal as write} from '../ext';",
+      "import {browserExt} from '../ext';\nbrowserExt().local.set('v1_vault', env);",
+    ]) {
+      expect(sourceViolations([f('src/unlock/onboarding.ts', text)])).toEqual([EXT('src/unlock/onboarding.ts')]);
+    }
+    const STORAGE = path => `${path}: touches storage outside src/ext.ts and the background`;
+    for (const text of [
+      'chrome.storage.local.set({v1_vault: env});',
+      'browser.storage.local.set({v1_vault: env});',
+      "const {storage} = chrome;\nstorage.local.set({v1_vault: env});",
+    ]) {
+      expect(sourceViolations([f('src/unlock/onboarding.ts', text)])).toEqual([STORAGE('src/unlock/onboarding.ts')]);
+    }
+    expect(sourceViolations([f('src/unlock/onboarding.ts', "import {readLocal} from '../shared/readLocal';\nawait readLocal('v1_vault');")])).toEqual([]);
+  });
+  // Fix round 1: src/shared/ holds what both sides of the envelope need (the revision, the bounds);
+  // it is neither vault nor vault page, so the background, the vault page and the popup may import it.
+  it('lets the background, the vault page and the popup import src/shared/', () => {
+    expect(sourceViolations([
+      f('src/background/accountsStore.ts', "import {envelopeRevision} from '../shared/envelopeRevision';\nimport {MAX_ACCOUNTS} from '../shared/envelopeRules';"),
+      f('src/unlock/accountsFlow.ts', "import {envelopeRevision} from '../shared/envelopeRevision';"),
+      f('src/vault/envelope.ts', "import {MAX_ACCOUNTS, cleanName} from '../shared/envelopeRules';"),
+      f('src/popup/main.ts', "import {cleanName} from '../shared/envelopeRules';"),
+      f('src/shared/envelopeRevision.ts', "import {sha256} from '@noble/hashes/sha2.js';"),
+    ])).toEqual([]);
+    // …and src/shared/ itself is held to the same rules: it may not reach into the vault.
+    expect(sourceViolations([f('src/shared/x.ts', "import {decryptMnemonic} from '../vault/envelope';")])).toEqual(['src/shared/x.ts: imports the vault']);
+  });
+  // B1b-1: storage.local keys only the background writes. No other file may even name them — a
+  // popup writing v1_settings could undo a re-authenticated setting without re-authenticating.
+  it('lets only the background name the background-owned storage keys', () => {
+    const OWNED = (path, key) => `${path}: names ${key}, which only the background may write`;
+    expect(sourceViolations([
+      f('src/background/settings.ts', "export const SETTINGS_KEY = 'v1_settings';"),
+      f('src/background/knownRecipients.ts', "export const KNOWN_RECIPIENTS_KEY = 'v1_known_recipients';"),
+    ])).toEqual([]);
+    expect(sourceViolations([f('src/popup/main.ts', "chrome.runtime.sendMessage({type: 'x', key: 'v1_settings'});")])).toEqual([OWNED('src/popup/main.ts', 'v1_settings')]);
+    expect(sourceViolations([f('src/unlock/main.ts', '// v1_known_recipients')])).toEqual([OWNED('src/unlock/main.ts', 'v1_known_recipients')]);
+    expect(sourceViolations([f('src/ext.ts', "const k = 'v1_settings';")])).toEqual([OWNED('src/ext.ts', 'v1_settings')]);
+    expect(sourceViolations([f('src/popup/main.ts', "const p = 'v1_pending'; const f = 'v1_forbidden_until';")])).toEqual([
+      OWNED('src/popup/main.ts', 'v1_pending'),
+      OWNED('src/popup/main.ts', 'v1_forbidden_until'),
+    ]);
   });
 });
 
@@ -349,13 +432,15 @@ describe('vault isolation (built output)', () => {
   const html = src => `<!doctype html><html><head><script type="module" crossorigin src="${src}"></script></head></html>`;
   // A minimal dist/app shaped like Vite's: background.js at the root, chunks under assets/.
   const baseline = () => {
-    write('background.js', 'import{n as e}from"./assets/base-1.js";e();');
+    write('background.js', 'import{n as e}from"./assets/base-1.js";import"./assets/session-1.js";e();');
     write('assets/base-1.js', 'export const n=()=>1;');
+    // ext.ts as Vite emits it: storage.session and its access pin, in a chunk only the background loads.
+    write('assets/session-1.js', 'export const s=r=>({session:r.storage.session,pin:()=>r.storage.session.setAccessLevel({accessLevel:"TRUSTED_CONTEXTS"})});');
     write('popup.html', html('./assets/popup-1.js'));
     write('assets/popup-1.js', 'import{t as e}from"./send-1.js";e();');
     write('assets/send-1.js', 'export const t=()=>1;');
     write('unlock.html', html('./assets/unlock-1.js'));
-    write('assets/unlock-1.js', `import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";`);
+    write('assets/unlock-1.js', `import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
     write('assets/kdf.worker-1.js', `throw Error("${KDF_MARKER}");`);
   };
 
@@ -420,8 +505,18 @@ describe('vault isolation (built output)', () => {
 
   it('does not follow imports out of the unlock bundle (it may carry the vault)', () => {
     write('assets/unlock-1.js', `import"./vault-1.js";`);
-    write('assets/vault-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";`);
+    write('assets/vault-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
     expect(bundleViolations(dir)).toEqual([]);
+  });
+
+  it('fails when the vault page imports the background entry, directly or through a chunk (it would run the background)', () => {
+    write('assets/unlock-1.js', `import{t as x}from"../background.js";import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+    // …and through it the background's storage.session chunk (the rule below).
+    const viaBackground = 'assets/session-1.js (reachable from unlock.html) touches storage.session — only the background may';
+    expect(bundleViolations(dir)).toEqual(['the vault page (assets/unlock-1.js) reaches background.js — it would run the background', viaBackground]);
+    write('assets/unlock-1.js', `import"./mid-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+    write('assets/mid-1.js', 'import"../background.js";');
+    expect(bundleViolations(dir)).toEqual(['the vault page (assets/unlock-1.js) reaches background.js — it would run the background', viaBackground]);
   });
 
   it('fails closed on an import it cannot resolve', () => {
@@ -432,9 +527,9 @@ describe('vault isolation (built output)', () => {
   });
 
   it('is INCONCLUSIVE — and fails — when any marker is in no built file', () => {
-    const all = {i: VAULT_MARKER, d: DERIVATION_MARKER, b: BIP39_MARKER, r: PASSKEY_MARKER};
-    const without = k => Object.entries(all).filter(([n]) => n !== k).map(([n, m]) => `const ${n}="${m}";`).join('');
-    for (const [k, name, marker] of [['i', 'envelope', VAULT_MARKER], ['d', 'derivation', DERIVATION_MARKER], ['b', 'bip39', BIP39_MARKER], ['r', 'passkey', PASSKEY_MARKER]]) {
+    const all = {i: VAULT_MARKER, d: DERIVATION_MARKER, b: BIP39_MARKER, r: PASSKEY_MARKER, w: WORDLIST_MARKER};
+    const without = k => Object.entries(all).filter(([n]) => n !== k).map(([n, m]) => `const ${n}=\`${m}\`;`).join('');
+    for (const [k, name, marker] of [['i', 'envelope', VAULT_MARKER], ['d', 'derivation', DERIVATION_MARKER], ['b', 'bip39', BIP39_MARKER], ['r', 'passkey', PASSKEY_MARKER], ['w', 'wordlist', WORDLIST_MARKER]]) {
       write('assets/unlock-1.js', without(k));
       expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the ${name} marker "${marker}" is in no built JS file — the check would pass trivially`]);
     }
@@ -446,7 +541,7 @@ describe('vault isolation (built output)', () => {
   // The built manifest names wallet.noc-tura.io (a host permission): a marker that only a
   // non-JS file carries must not count as present.
   it('does not count a marker found only in a non-JS file (the manifest) as present', () => {
-    write('assets/unlock-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";`);
+    write('assets/unlock-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
     write('manifest.json', `{"host_permissions":["https://${PASSKEY_MARKER}/*"]}`);
     expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the passkey marker "${PASSKEY_MARKER}" is in no built JS file — the check would pass trivially`]);
   });
@@ -458,9 +553,45 @@ describe('vault isolation (built output)', () => {
     expect(bundleViolations(dir)).toEqual(['assets/passkey-1.js (reachable from assets/prf-1.js) contains vault code (passkey)']);
   });
 
+  it('fails on the wordlist marker alone — generateMnemonic outside the vault page', () => {
+    write('assets/send-1.js', `export const words=\`${WORDLIST_MARKER}\`;`);
+    expect(bundleViolations(dir)).toEqual(['assets/send-1.js (reachable from assets/popup-1.js) contains vault code (wordlist)']);
+  });
+
+  it('the wordlist marker is how the real build spells the list: a template literal with newlines', () => {
+    expect(WORDLIST_MARKER).toBe('abandon\nability\nable\nabout');
+  });
+
   it('fails on the KDF marker alone — Argon2 outside the vault worker', () => {
     write('background.js', `import"./assets/base-1.js";const k="${KDF_MARKER}";`);
     expect(bundleViolations(dir)).toEqual(['background.js (reachable from background.js) contains vault code (kdf)']);
+  });
+
+  // Final review minor 4: readLocal lived in src/ext.ts, so the vault page's bundle carried the
+  // whole of ext.ts (storage.session, setAccessLevel) in a shared chunk — every source rule passed.
+  const UNLOCK_MARKERS = `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`;
+  const SESSION = (file, from) => `${file} (reachable from ${from}) touches storage.session — only the background may`;
+
+  it('fails when the vault page reaches storage.session — the old layout: ext.ts in a shared chunk', () => {
+    write('assets/unlock-1.js', `import"./base-1.js";import{s}from"./session-1.js";${UNLOCK_MARKERS}`);
+    expect(bundleViolations(dir)).toEqual([SESSION('assets/session-1.js', 'unlock.html')]);
+  });
+
+  it('fails on each spelling: storage.session, storage["session"], setAccessLevel — and from the popup too', () => {
+    for (const text of ['export const s=r=>r.storage.session;', 'export const s=r=>r.storage["session"];', 'export const s=r=>r.setAccessLevel({accessLevel:"TRUSTED_CONTEXTS"});']) {
+      write('assets/mid-1.js', text);
+      write('assets/unlock-1.js', `import"./mid-1.js";${UNLOCK_MARKERS}`);
+      expect(bundleViolations(dir)).toEqual([SESSION('assets/mid-1.js', 'unlock.html')]);
+      baseline();
+    }
+    write('assets/send-1.js', 'export const t=r=>r.storage.session;');
+    expect(bundleViolations(dir)).toEqual([SESSION('assets/send-1.js', 'popup.html')]);
+  });
+
+  it('is INCONCLUSIVE when no built JS names storage.session — the rule would pass trivially', () => {
+    rmSync(join(dir, 'assets/session-1.js'));
+    write('background.js', 'import{n as e}from"./assets/base-1.js";e();');
+    expect(bundleViolations(dir)).toEqual(['INCONCLUSIVE: no built JS file names storage.session — the vault-page rule would pass trivially']);
   });
 
   it('fails when the background or the popup page is missing', () => {

@@ -83,9 +83,10 @@ function checkKdfParams(params: KdfParams): void {
  * Left out, deliberately: account names (renaming needs no re-encryption); the salt and the
  * password/passkey wraps (they unwrap the data key — a changed one already fails there, and a
  * passkey is added later without re-encrypting the seed). Adding or removing an account changes
- * the header, so whatever does that must re-encrypt the seed under the same data key.
+ * the header, so whatever does that must re-encrypt the seed under the same data key
+ * (src/vault/reencrypt.ts, which is why this, isIndex and checkEnvelope are exported).
  */
-function headerAad(h: {v: 1; scheme: EnvelopeV1['scheme']; kdf: KdfParams; accounts: EnvelopeV1['accounts']}): Uint8Array<ArrayBuffer> {
+export function headerAad(h: {v: 1; scheme: EnvelopeV1['scheme']; kdf: KdfParams; accounts: EnvelopeV1['accounts']}): Uint8Array<ArrayBuffer> {
   return utf8(
     JSON.stringify({
       v: h.v,
@@ -119,14 +120,14 @@ function bytesField(value: unknown, what: string, len: {exact: number} | {min: n
   if ('exact' in len ? bytes.length !== len.exact : bytes.length < len.min) throw new CorruptEnvelope(`${what} has the wrong length`);
 }
 
-const isIndex = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0;
+export const isIndex = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0;
 
 /**
  * Every field of a stored envelope, checked for shape before any of it is used — the value comes
  * from storage.local, so its static type is a claim, not a fact. Throws CorruptEnvelope, or
  * UnsafeKdfParams for a declared cost outside the bounds (before any KDF runs).
  */
-function checkEnvelope(env: unknown): asserts env is EnvelopeV1 {
+export function checkEnvelope(env: unknown): asserts env is EnvelopeV1 {
   if (!isObject(env)) throw new CorruptEnvelope('not an object');
   if (env.v !== 1) throw new CorruptEnvelope('unknown version');
   if (env.scheme !== 'slip10' && env.scheme !== 'cli') throw new CorruptEnvelope('unknown scheme');

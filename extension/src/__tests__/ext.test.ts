@@ -1,4 +1,5 @@
-import {browserExt, deriveExtensionOrigin, readLocal} from '../ext';
+import {browserExt, deriveExtensionOrigin} from '../ext';
+import * as extModule from '../ext';
 
 describe('deriveExtensionOrigin', () => {
   it('returns protocol+host for a URL whose origin the parser actually computes', () => {
@@ -12,31 +13,6 @@ describe('deriveExtensionOrigin', () => {
     // not know the scheme and reports the literal string "null" for `.origin`. That mismatch is
     // exactly the case this function must refuse to paper over.
     expect(() => deriveExtensionOrigin('chrome-extension://abcdefghijklmnopabcdefghijklmnop/')).toThrow();
-  });
-});
-
-describe('readLocal (the vault page\'s one storage call)', () => {
-  afterEach(() => vi.unstubAllGlobals());
-
-  it('reads one key from storage.local and nothing from storage.session', async () => {
-    const asked: string[] = [];
-    const area = (name: string, data: Record<string, unknown>) => ({
-      get: async (k: string) => (asked.push(`${name}:${k}`), {[k]: data[k]}),
-    });
-    vi.stubGlobal('chrome', {storage: {local: area('local', {v1_vault: {v: 1}}), session: area('session', {v1_vault: 'no'})}});
-    expect(await readLocal('v1_vault')).toEqual({v: 1});
-    expect(await readLocal('missing')).toBeUndefined();
-    expect(asked).toEqual(['local:v1_vault', 'local:missing']);
-  });
-
-  it('prefers browser.* over chrome.* and throws outside an extension', async () => {
-    vi.stubGlobal('browser', {storage: {local: {get: async (k: string) => ({[k]: 'firefox'})}}});
-    vi.stubGlobal('chrome', {storage: {local: {get: async (k: string) => ({[k]: 'chrome'})}}});
-    expect(await readLocal('x')).toBe('firefox');
-    vi.unstubAllGlobals();
-    vi.stubGlobal('browser', undefined);
-    vi.stubGlobal('chrome', undefined);
-    await expect(readLocal('x')).rejects.toThrow('not running in an extension');
   });
 });
 
@@ -65,3 +41,8 @@ describe('pinSessionAccess', () => {
   });
 });
 
+describe('the vault page has no storage writer (B1b-1 ruling: the background is the one writer of v1_vault)', () => {
+  it('ext.ts exports no plain storage function (readLocal has its own module, final review minor 4)', () => {
+    expect(Object.keys(extModule).sort()).toEqual(['browserExt', 'deriveExtensionOrigin']);
+  });
+});

@@ -1,26 +1,21 @@
-import {test, expect, chromium} from '@playwright/test';
-import {fileURLToPath} from 'node:url';
-import {mkdtempSync, rmSync} from 'node:fs';
-import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {test, expect} from '@playwright/test';
+import {rmSync} from 'node:fs';
 import {makeEnvelope, E2E_PASSWORD} from './makeEnvelope';
+import {expectContained, launchContained} from './launch';
 
 declare const chrome: {storage: {local: {set(o: object): Promise<void>}; session: {get(k: null): Promise<object>; clear(): Promise<void>}}};
 
-// The package is an ES module ("type": "module"), where __dirname does not exist.
-const EXT = fileURLToPath(new URL('../dist/chrome', import.meta.url));
-
 test('unlocking in the vault page puts only signing keys into session storage', async () => {
-  const profile = mkdtempSync(join(tmpdir(), 'noctura-e2e-'));
-  const ctx = await chromium.launchPersistentContext(profile, {
-    // The default headless browser is chrome-headless-shell, which does not load extensions
-    // (the service worker never starts). channel 'chromium' is Playwright's full Chromium build
-    // in new headless mode, which does.
-    channel: 'chromium',
-    headless: true,
-    args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
+  // Contained like the wallet E2E: noc-tura.io does not resolve in this browser, and a route
+  // records (and aborts) anything addressed to it — unlocking needs no network at all.
+  const {ctx, profile} = await launchContained('noctura-e2e-');
+  const contacted: string[] = [];
+  await ctx.route(/^https?:\/\/([^/]*\.)?noc-tura\.io(\/|$)/, route => {
+    contacted.push(route.request().url());
+    return route.abort();
   });
   try {
+    await expectContained(ctx);
     const sw = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent('serviceworker'));
     const id = new URL(sw.url()).host;
 
@@ -58,6 +53,7 @@ test('unlocking in the vault page puts only signing keys into session storage', 
     await page.click('#unlock');
     await expect(page.locator('#status')).toHaveText("This wallet's stored data is damaged.", {timeout: 60_000});
     expect(await sw.evaluate(() => chrome.storage.session.get(null))).toEqual({});
+    expect(contacted).toEqual([]);
   } finally {
     await ctx.close();
     rmSync(profile, {recursive: true, force: true});

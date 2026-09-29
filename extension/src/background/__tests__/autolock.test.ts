@@ -16,17 +16,17 @@ describe('auto-lock', () => {
     expect(DEFAULT_AUTOLOCK_MINUTES).toBe(5);
     expect(ext.alarmsSet.get(AUTOLOCK_ALARM)).toBe(5);
   });
-  it('honours a stored setting inside 1–60, and clamps outside it', async () => {
+  it('honours a stored setting inside 1–60, and falls back to the default outside it', async () => {
     const ext = fakeExt();
     await ext.local.set('v1_settings', {autoLockMinutes: 15});
     await armAutolock(ext);
     expect(ext.alarmsSet.get(AUTOLOCK_ALARM)).toBe(15);
     await ext.local.set('v1_settings', {autoLockMinutes: 600});
     await armAutolock(ext);
-    expect(ext.alarmsSet.get(AUTOLOCK_ALARM)).toBe(60);
+    expect(ext.alarmsSet.get(AUTOLOCK_ALARM)).toBe(DEFAULT_AUTOLOCK_MINUTES);
     await ext.local.set('v1_settings', {autoLockMinutes: 0});
     await armAutolock(ext);
-    expect(ext.alarmsSet.get(AUTOLOCK_ALARM)).toBe(1);
+    expect(ext.alarmsSet.get(AUTOLOCK_ALARM)).toBe(DEFAULT_AUTOLOCK_MINUTES);
   });
   it('lock clears the session and the alarm', async () => {
     const ext = fakeExt();

@@ -1,14 +1,12 @@
 import type {Ext} from '../ext';
 import {clearSession} from './session';
+import {DEFAULT_SETTINGS, readSettings} from './settings';
 
 export const AUTOLOCK_ALARM = 'autolock';
-export const DEFAULT_AUTOLOCK_MINUTES = 5;
+export const DEFAULT_AUTOLOCK_MINUTES = DEFAULT_SETTINGS.autoLockMinutes;
 
 async function minutes(ext: Ext): Promise<number> {
-  const s = (await ext.local.get('v1_settings')) as {autoLockMinutes?: number} | undefined;
-  const m = s?.autoLockMinutes;
-  if (typeof m !== 'number' || !Number.isFinite(m)) return DEFAULT_AUTOLOCK_MINUTES;
-  return Math.min(60, Math.max(1, Math.round(m)));
+  return (await readSettings(ext)).autoLockMinutes;
 }
 
 /** Re-arm on every user action and every unlock; the alarm firing locks. */

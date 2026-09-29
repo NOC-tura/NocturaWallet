@@ -1,9 +1,12 @@
 import {ed25519} from '@noble/curves/ed25519.js';
 import {base58, base64} from '@scure/base';
-import {handleMessage} from '../messages';
+import {PRIVILEGED, handleMessage} from '../messages';
 import {getSession} from '../session';
 import {AUTOLOCK_ALARM, DEFAULT_AUTOLOCK_MINUTES} from '../autolock';
 import {fakeExt} from './fakeExt';
+import {issueChallenge} from '../reauthChallenges';
+import {fakeDeps} from './fakeDeps';
+import {envelopeRevision} from '../../shared/envelopeRevision';
 
 const ORIGIN = 'chrome-extension://abcdefghijklmnopabcdefghijklmnop';
 const ID = 'abcdefghijklmnopabcdefghijklmnop';
@@ -180,5 +183,93 @@ describe('message partitions', () => {
     await ext.local.set('v1_settings', {autoLockMinutes: 20});
     await handleMessage(ext, {type: 'activity.ping'}, popup);
     expect(ext.alarmsSet.get(AUTOLOCK_ALARM)).toBe(20);
+  });
+});
+
+describe('message partitions (B1b-1 types)', () => {
+  // Listed literally, not read from PRIVILEGED: dropping a type from the list must make it
+  // 'unknown type' here, which fails, rather than silently shrinking the test.
+  const ALL = [
+    'vault.setKeys', 'vault.lock', 'vault.status', 'vault.reauthOk', 'vault.storeEnvelope', 'activity.ping',
+    'wallet.state', 'wallet.balances', 'wallet.probeBalances', 'wallet.prepareSend', 'wallet.send', 'wallet.resend',
+    'wallet.pending', 'wallet.preparedFor', 'wallet.history', 'accounts.rename', 'accounts.select', 'settings.get', 'settings.set',
+  ];
+
+  it('every privileged type is refused from a web page and from another extension', async () => {
+    expect([...PRIVILEGED].sort()).toEqual([...ALL].sort());
+    const otherId = 'someotherextensionidxxxxxxxxxxxx';
+    const others = [
+      {...popup, id: otherId},
+      {id: otherId, origin: `chrome-extension://${otherId}`, url: `chrome-extension://${otherId}/popup.html`},
+      {...unlockPage, id: otherId},
+    ];
+    for (const type of ALL) {
+      expect(await handleMessage(fakeExt(), {type}, page, fakeDeps())).toEqual({ok: false, error: 'forbidden'});
+      for (const sender of others) expect(await handleMessage(fakeExt(), {type}, sender, fakeDeps())).toEqual({ok: false, error: 'forbidden'});
+    }
+  });
+
+  it('vault.reauthOk only from the vault page, only while unlocked, only for a live challenge', async () => {
+    const ext = fakeExt();
+    const deps = fakeDeps();
+    await handleMessage(ext, {type: 'vault.setKeys', accounts: ACC}, unlockPage);
+    const challengeId = await issueChallenge(ext, deps, 'd');
+    expect(await handleMessage(ext, {type: 'vault.reauthOk', challengeId}, popup, deps)).toEqual({ok: false, error: 'forbidden'});
+    expect(await handleMessage(ext, {type: 'vault.reauthOk', challengeId: 'f'.repeat(32)}, unlockPage, deps)).toEqual({ok: false, error: 'unknown-challenge'});
+    expect(await handleMessage(ext, {type: 'vault.reauthOk', challengeId}, unlockPage, deps)).toEqual({ok: true});
+    await handleMessage(ext, {type: 'vault.lock'}, popup);
+    expect(await handleMessage(ext, {type: 'vault.reauthOk', challengeId}, unlockPage, deps)).toEqual({ok: false, error: 'locked'});
+  });
+
+  // Envelope fixtures with the byte lengths a real envelope has (the background checks them).
+  const B = (n: number, fill: number) => base64.encode(new Uint8Array(n).fill(fill));
+  const STORED = {
+    v: 1,
+    scheme: 'slip10',
+    kdf: {alg: 'argon2id', m: 65536, t: 3, p: 1, salt: B(16, 1)},
+    seed: {iv: B(12, 2), ct: B(48, 3)},
+    password: {wrapped: B(40, 4)},
+    accounts: [{index: 0, name: 'Account 1', publicKey: UNRELATED}],
+  };
+  const REV = envelopeRevision(STORED as Parameters<typeof envelopeRevision>[0]);
+  const otherId = 'someotherextensionidxxxxxxxxxxxx';
+  const refused = [page, popup, {...unlockPage, id: otherId}, {id: otherId, origin: `chrome-extension://${otherId}`, url: `chrome-extension://${otherId}/unlock.html`}];
+
+  it('vault.storeEnvelope only from the vault page, only while a wallet exists, only over the revision it opened', async () => {
+    const NEXT = {...STORED, seed: {iv: B(12, 5), ct: B(48, 6)}, accounts: [...STORED.accounts, {index: 1, name: 'Account 2', publicKey: 'Hh8QwFUA6MtVu1qAoq12ucvFHNwCcVTV7hpWjeY1Hztb'}]};
+    const msg = {type: 'vault.storeEnvelope', expectedRevision: REV, envelope: NEXT};
+    const ext = fakeExt();
+    expect(await handleMessage(ext, msg, unlockPage)).toEqual({ok: false, error: 'no-wallet'});
+    expect(await ext.local.get('v1_vault')).toBeUndefined();
+    await ext.local.set('v1_vault', STORED);
+    for (const sender of refused) expect(await handleMessage(ext, msg, sender)).toEqual({ok: false, error: 'forbidden'});
+    expect(await ext.local.get('v1_vault')).toEqual(STORED);
+    expect(await handleMessage(ext, {...msg, envelope: {...NEXT, v: 2}}, unlockPage)).toEqual({ok: false, error: 'malformed'});
+    expect(await handleMessage(ext, {...msg, expectedRevision: 'f'.repeat(64)}, unlockPage)).toEqual({ok: false, error: 'busy'});
+    expect(await ext.local.get('v1_vault')).toEqual(STORED);
+    expect(await handleMessage(ext, msg, unlockPage)).toEqual({ok: true});
+    expect(await ext.local.get('v1_vault')).toEqual(NEXT);
+    await ext.local.set('v1_vault', {...STORED, seed: 'damaged'});
+    expect(await handleMessage(ext, msg, unlockPage)).toEqual({ok: false, error: 'stored-invalid'});
+  });
+
+  it('vault.storeEnvelope with expectedRevision null (the first write) only from the vault page, only without a wallet', async () => {
+    const msg = {type: 'vault.storeEnvelope', expectedRevision: null, envelope: STORED};
+    const ext = fakeExt();
+    for (const sender of refused) expect(await handleMessage(ext, msg, sender)).toEqual({ok: false, error: 'forbidden'});
+    expect(await ext.local.get('v1_vault')).toBeUndefined();
+    expect(await handleMessage(ext, {...msg, envelope: {...STORED, v: 2}}, unlockPage)).toEqual({ok: false, error: 'malformed'});
+    expect(await handleMessage(ext, {...msg, expectedRevision: REV}, unlockPage)).toEqual({ok: false, error: 'no-wallet'});
+    expect(await ext.local.get('v1_vault')).toBeUndefined();
+    expect(await handleMessage(ext, msg, unlockPage)).toEqual({ok: true});
+    expect(await ext.local.get('v1_vault')).toEqual(STORED);
+    const other = {...STORED, seed: {iv: B(12, 7), ct: B(48, 8)}};
+    expect(await handleMessage(ext, {...msg, envelope: other}, unlockPage)).toEqual({ok: false, error: 'wallet-exists'});
+    expect(await ext.local.get('v1_vault')).toEqual(STORED);
+  });
+
+  it('wallet types answer "unavailable" when the background has no deps, and route when it does', async () => {
+    expect(await handleMessage(fakeExt(), {type: 'settings.get'}, popup)).toEqual({ok: false, error: 'unavailable'});
+    expect(await handleMessage(fakeExt(), {type: 'settings.get'}, popup, fakeDeps())).toMatchObject({ok: true, data: {autoLockMinutes: 5}});
   });
 });
