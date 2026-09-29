@@ -159,8 +159,22 @@ describe('submitSigned — the poller survives a failure after the record is wri
     expect([...deps.broadcasts[0]!]).toEqual([...signedWire()]);
     expect(view.state).toBe('pending');
     expect(await readPending(ext)).toHaveLength(1);
-    expect(sleeps).toEqual([POLL_INTERVAL_MS]);    expect(warn).toHaveBeenCalledTimes(1);
+    expect(sleeps).toEqual([POLL_INTERVAL_MS]);
+    expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
+  });
+
+  it('the alarm is already armed when the bytes go out (a worker stopped mid-broadcast still wakes)', async () => {
+    const ext = fakeExt();
+    const armedAtBroadcast: boolean[] = [];
+    const deps = depsWith({sleep: () => new Promise<void>(() => undefined)});
+    deps.broadcast = async wire => {
+      armedAtBroadcast.push(ext.alarmsSet.has(PENDING_ALARM));
+      deps.broadcasts.push(wire);
+      return firstSignature(wire);
+    };
+    await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT});
+    expect(armedAtBroadcast).toEqual([true]);
   });
 
   it("a storage failure in the broadcast's own record update still leaves a poller running", async () => {
