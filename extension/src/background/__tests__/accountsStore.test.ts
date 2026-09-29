@@ -146,6 +146,51 @@ describe('storeEnvelope (the vault page hands the background a re-encrypted enve
     expect(await ext.local.get(VAULT_KEY)).toBeUndefined();
   });
 
+  it('the first write (expectedSeedCt null) stores the envelope while no wallet exists, every name cleaned', async () => {
+    const ext = fakeExt();
+    const sent = {...NEXT, accounts: [{...NEXT.accounts[0]!, name: '  Main  '}, NEXT.accounts[1]!, NEXT.accounts[2]!]};
+    expect(await storeEnvelope(ext, null, sent)).toBe('stored');
+    expect(await ext.local.get(VAULT_KEY)).toEqual({...NEXT, accounts: [{...NEXT.accounts[0]!, name: 'Main'}, NEXT.accounts[1]!, NEXT.accounts[2]!]});
+  });
+
+  it("the first write never overwrites a wallet: 'wallet-exists', the stored envelope byte-identical", async () => {
+    for (const stored of [ENV, {...ENV, seed: 'damaged'}, 'not an envelope', null]) {
+      const ext = fakeExt();
+      await ext.local.set(VAULT_KEY, stored);
+      const before = JSON.stringify(await ext.local.get(VAULT_KEY));
+      expect(await storeEnvelope(ext, null, NEXT)).toBe('wallet-exists');
+      expect(JSON.stringify(await ext.local.get(VAULT_KEY))).toBe(before);
+    }
+  });
+
+  it('two first writes racing: exactly one is stored, the other is refused as wallet-exists', async () => {
+    const ext = fakeExt();
+    const {get, set} = ext.local;
+    const tick = () => new Promise(r => setTimeout(r, 0));
+    ext.local.get = async k => {
+      await tick();
+      return get(k);
+    };
+    ext.local.set = async (k, v) => {
+      await tick();
+      await tick();
+      return set(k, v);
+    };
+    const other = {...NEXT, seed: {iv: 'b3RoZXJvdGhlcm90', ct: 'b3RoZXI='}};
+    expect(await Promise.all([storeEnvelope(ext, null, NEXT), storeEnvelope(ext, null, other)])).toEqual(['stored', 'wallet-exists']);
+    expect(await get(VAULT_KEY)).toEqual(NEXT);
+  });
+
+  it("the first write cleans every name: one a rename would refuse is 'malformed', and nothing is written", async () => {
+    const ext = fakeExt();
+    for (const name of ['a\u202eb', '   ', 'x'.repeat(33)]) {
+      expect(await storeEnvelope(ext, null, {...NEXT, accounts: [{...NEXT.accounts[0]!, name}]})).toBe('malformed');
+      expect(await ext.local.get(VAULT_KEY)).toBeUndefined();
+    }
+    expect(await storeEnvelope(ext, null, {...NEXT, v: 2})).toBe('malformed');
+    expect(await ext.local.get(VAULT_KEY)).toBeUndefined();
+  });
+
   it('keeps the current name of every account present in both (names are outside the AAD); new accounts keep theirs', async () => {
     const ext = fakeExt();
     const renamed = {...ENV, accounts: [{...ENV.accounts[0]!, name: 'Savings'}, ENV.accounts[1]!]};

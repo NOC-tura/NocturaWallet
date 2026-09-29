@@ -88,7 +88,7 @@ export async function renameAccount(ext: Ext, index: number, name: string): Prom
   });
 }
 
-export type StoreResult = 'stored' | 'malformed' | 'no-wallet' | 'busy';
+export type StoreResult = 'stored' | 'malformed' | 'no-wallet' | 'wallet-exists' | 'busy';
 type StoredEnvelope = {
   v: 1;
   scheme: 'slip10' | 'cli';
@@ -142,16 +142,26 @@ function envelopeShape(x: unknown): StoredEnvelope | null {
  * re-opens and retries ('busy'). A rename changes no ciphertext, so it never makes a store busy;
  * instead the current name of every account present in both is kept (names are outside the AAD).
  * A new account's name must be one a rename would accept (cleanName), or nothing is written.
+ *
+ * `expectedSeedCt: null` is onboarding's FIRST write: accepted only while v1_vault is absent
+ * (every name is then new, so every name is cleaned); with a wallet stored, 'wallet-exists' and
+ * nothing is written — onboarding never overwrites a wallet. A string `expectedSeedCt` with no
+ * wallet stored is 'no-wallet'.
  */
 export async function storeEnvelope(ext: Ext, expectedSeedCt: unknown, envelope: unknown): Promise<StoreResult> {
-  const next = isStr(expectedSeedCt) ? envelopeShape(envelope) : null;
+  const first = expectedSeedCt === null;
+  const next = first || isStr(expectedSeedCt) ? envelopeShape(envelope) : null;
   if (next === null) return 'malformed';
   return serial(async () => {
     const current = await ext.local.get(VAULT_KEY);
-    if (!isObj(current)) return 'no-wallet';
-    if (!isObj(current.seed) || current.seed.ct !== expectedSeedCt) return 'busy';
+    if (first) {
+      if (current !== undefined) return 'wallet-exists';
+    } else {
+      if (!isObj(current)) return 'no-wallet';
+      if (!isObj(current.seed) || current.seed.ct !== expectedSeedCt) return 'busy';
+    }
     const names = new Map<number, string>();
-    if (Array.isArray(current.accounts)) {
+    if (isObj(current) && Array.isArray(current.accounts)) {
       for (const a of current.accounts as unknown[]) if (isObj(a) && isInt(a.index) && isStr(a.name)) names.set(a.index, a.name);
     }
     const accounts: AccountView[] = [];

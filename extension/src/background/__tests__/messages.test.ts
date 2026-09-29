@@ -247,6 +247,32 @@ describe('message partitions (B1b-1 types)', () => {
     expect(await ext.local.get('v1_vault')).toEqual(NEXT);
   });
 
+  it('vault.storeEnvelope with expectedSeedCt null (the first write) only from the vault page, only without a wallet', async () => {
+    const FIRST = {
+      v: 1,
+      scheme: 'slip10',
+      kdf: {alg: 'argon2id', m: 65536, t: 3, p: 1, salt: 'c2FsdHNhbHRzYWx0c2FsdA=='},
+      seed: {iv: 'aXZpdml2aXZpdml2', ct: 'Y3Q='},
+      password: {wrapped: 'd3JhcHBlZA=='},
+      accounts: [{index: 0, name: 'Account 1', publicKey: UNRELATED}],
+    };
+    const msg = {type: 'vault.storeEnvelope', expectedSeedCt: null, envelope: FIRST};
+    const otherId = 'someotherextensionidxxxxxxxxxxxx';
+    const ext = fakeExt();
+    for (const sender of [page, popup, {...unlockPage, id: otherId}, {id: otherId, origin: `chrome-extension://${otherId}`, url: `chrome-extension://${otherId}/unlock.html`}]) {
+      expect(await handleMessage(ext, msg, sender)).toEqual({ok: false, error: 'forbidden'});
+    }
+    expect(await ext.local.get('v1_vault')).toBeUndefined();
+    expect(await handleMessage(ext, {...msg, envelope: {...FIRST, v: 2}}, unlockPage)).toEqual({ok: false, error: 'malformed'});
+    expect(await handleMessage(ext, {...msg, expectedSeedCt: 'Y3Q='}, unlockPage)).toEqual({ok: false, error: 'no-wallet'});
+    expect(await ext.local.get('v1_vault')).toBeUndefined();
+    expect(await handleMessage(ext, msg, unlockPage)).toEqual({ok: true});
+    expect(await ext.local.get('v1_vault')).toEqual(FIRST);
+    const other = {...FIRST, seed: {iv: 'bmV3bmV3bmV3bmV3', ct: 'bmV3'}};
+    expect(await handleMessage(ext, {...msg, envelope: other}, unlockPage)).toEqual({ok: false, error: 'wallet-exists'});
+    expect(await ext.local.get('v1_vault')).toEqual(FIRST);
+  });
+
   it('wallet types answer "unavailable" when the background has no deps, and route when it does', async () => {
     expect(await handleMessage(fakeExt(), {type: 'settings.get'}, popup)).toEqual({ok: false, error: 'unavailable'});
     expect(await handleMessage(fakeExt(), {type: 'settings.get'}, popup, fakeDeps())).toMatchObject({ok: true, data: {autoLockMinutes: 5}});
