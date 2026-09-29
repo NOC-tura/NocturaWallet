@@ -33,10 +33,19 @@ const SKIP_DIRS = new Set(['node_modules', 'dist', '__tests__', 'e2e', 'scripts'
 // The seed code the vault uses also lives in ../core/keys (mnemonic → seed, SLIP-0010), shared
 // with the app; for this package it is vault code, allowed exactly where the vault is.
 // src/ext.ts is the one wrapper over chrome.* / browser.*, so it names storage.session; in
-// exchange, only the background may value-import it (EXT_IMPORT_ALLOWED).
+// exchange, only the background may value-import it (EXT_IMPORT_ALLOWED) — except that the
+// vault page may import exactly `readLocal` (LOCAL_READER), which reads storage.local only.
+// Everywhere else `storage` may not appear as a property access or a destructuring key at all:
+// `storage.session` alone missed `const {session} = chrome.storage` and
+// `const {storage: {session: s}} = chrome`.
 const SESSION_ALLOWED = /^src\/background\/|^src\/ext\.ts$/;
 const EXT_IMPORT_ALLOWED = /^src\/background\//;
+const LOCAL_READER = 'readLocal';
+const LOCAL_READER_ALLOWED = /^src\/unlock\//;
 const TOUCHES_SESSION = /storage\s*(?:\?\.|\.)\s*session\b|storage\s*\[\s*['"`]session['"`]\s*\]/;
+// `.storage` / `?.storage`, `x['storage']`, and `storage` as a destructuring key (`{storage}`,
+// `{a, storage}`, `{storage: …}`, `{storage = …}`). localStorage/sessionStorage do not match.
+const TOUCHES_STORAGE = /(?:\?\.|\.)\s*storage\b|\[\s*['"`]storage['"`]\s*\]|[{,]\s*storage\s*[,}:=]/;
 // vault.setKeys travels by runtime.sendMessage, which EVERY extension page with a runtime
 // listener receives, keys included — so only the background may listen. Any mention of the
 // listener names counts (property, bracket, destructured, comment: fail-closed); a worker's
@@ -83,9 +92,18 @@ const OTHER_REFERENCES = [
 /** Every module a source file names, with whether that reference is type-only (erased). */
 function moduleReferences(text) {
   const refs = [];
-  for (const m of text.matchAll(FROM_CLAUSE)) refs.push({spec: m[5], typeOnly: m[2] !== undefined});
-  for (const re of OTHER_REFERENCES) for (const m of text.matchAll(re)) refs.push({spec: m[2], typeOnly: false});
+  for (const m of text.matchAll(FROM_CLAUSE)) refs.push({spec: m[5], typeOnly: m[2] !== undefined, kind: m[1], clause: m[3]});
+  for (const re of OTHER_REFERENCES) for (const m of text.matchAll(re)) refs.push({spec: m[2], typeOnly: false, kind: null, clause: null});
   return refs;
+}
+
+/** `import {readLocal}` (optionally renamed, alongside inline type-only names) and nothing else. */
+function importsOnlyLocalReader(ref) {
+  if (ref.kind !== 'import' || ref.clause === null) return false;
+  const named = /^\{([^}]*)\}$/.exec(ref.clause.trim());
+  if (!named) return false;
+  const values = named[1].split(',').map(n => n.trim()).filter(n => n !== '' && !/^type\s/.test(n));
+  return values.length > 0 && values.every(n => new RegExp(`^${LOCAL_READER}(\\s+as\\s+[\\w$]+)?$`).test(n));
 }
 
 /** Where a specifier points, as a path relative to the package (`src/vault/kdf`), or null. */
@@ -128,9 +146,13 @@ export function sourceViolations(files) {
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesVault(path, r.spec))) out.push(`${path}: imports the vault`);
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesCoreKeys(path, r.spec))) out.push(`${path}: imports core/keys (seed code)`);
     if (!UNLOCK_ALLOWED.test(path) && values.some(r => namesUnlock(path, r.spec))) out.push(`${path}: imports the vault page (src/unlock)`);
-    if (!SESSION_ALLOWED.test(path) && TOUCHES_SESSION.test(text)) out.push(`${path}: touches storage.session`);
+    if (!SESSION_ALLOWED.test(path) && (TOUCHES_SESSION.test(text) || TOUCHES_STORAGE.test(text))) {
+      out.push(`${path}: touches storage outside src/ext.ts and the background`);
+    }
     if (!LISTEN_ALLOWED.test(path) && LISTENS_RUNTIME.test(text)) out.push(`${path}: listens for runtime messages outside the background`);
-    if (!EXT_IMPORT_ALLOWED.test(path) && path !== 'src/ext.ts' && values.some(r => namesExt(path, r.spec))) {
+    const extRefs = values.filter(r => namesExt(path, r.spec));
+    const localReaderOnly = LOCAL_READER_ALLOWED.test(path) && extRefs.every(importsOnlyLocalReader);
+    if (!EXT_IMPORT_ALLOWED.test(path) && path !== 'src/ext.ts' && extRefs.length > 0 && !localReaderOnly) {
       out.push(`${path}: imports src/ext.ts (storage.session) outside the background`);
     }
   }

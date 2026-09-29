@@ -4,15 +4,11 @@ import {workerKdf} from '../vault/kdf';
 import {evaluatePrf} from '../vault/passkey';
 import {unb64} from '../vault/bytes';
 import {send} from '../ui/send';
+import {readLocal} from '../ext';
 import type {EnvelopeV1} from '../vault/envelope';
 
 // The vault page renders only its own fixed strings — nothing from a dApp, a token or the
 // network (spec §1). Every status line below is one of the WORDS/literal strings in this file.
-interface LocalLike {
-  storage: {local: {get(k: string): Promise<Record<string, unknown>>}};
-}
-const g = globalThis as unknown as {browser?: LocalLike; chrome?: LocalLike};
-const api = (g.browser ?? g.chrome) as LocalLike;
 const status = document.getElementById('status') as HTMLParagraphElement;
 const pw = document.getElementById('password') as HTMLInputElement;
 const unlockBtn = document.getElementById('unlock') as HTMLButtonElement;
@@ -28,7 +24,7 @@ const WORDS: Record<Outcome | 'unavailable', string> = {
 };
 
 async function envelope(): Promise<EnvelopeV1 | null> {
-  return ((await api.storage.local.get(ENVELOPE_KEY))[ENVELOPE_KEY] as EnvelopeV1 | undefined) ?? null;
+  return ((await readLocal(ENVELOPE_KEY)) as EnvelopeV1 | undefined) ?? null;
 }
 
 // Cardinal rule 6 (no double-submit): one busy flag for the whole page, not one per button —

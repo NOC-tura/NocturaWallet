@@ -62,10 +62,25 @@ export function deriveExtensionOrigin(url: string): string {
   return origin;
 }
 
-export function browserExt(): Ext {
+function extensionApi(): BrowserLike {
   const g = globalThis as unknown as {browser?: BrowserLike; chrome?: BrowserLike};
   const b = g.browser ?? g.chrome;
   if (!b) throw new Error('not running in an extension');
+  return b;
+}
+
+/**
+ * The one storage call the vault page makes: read a key from storage.local. A plain function
+ * rather than an `Ext`, because an `Ext` carries storage.session, which only the background may
+ * touch; scripts/check-vault-isolation.mjs lets src/unlock/ import this export and nothing else
+ * from this file.
+ */
+export async function readLocal(key: string): Promise<unknown> {
+  return (await extensionApi().storage.local.get(key))[key];
+}
+
+export function browserExt(): Ext {
+  const b = extensionApi();
   return {
     runtimeId: b.runtime.id,
     extensionOrigin: deriveExtensionOrigin(b.runtime.getURL('')),

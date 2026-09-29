@@ -202,6 +202,64 @@ describe('vault isolation (files outside src/, and the vault page as a target)',
   });
 });
 
+// Fable review (Minor 6): the storage.session rule matched `storage.session` / `storage['session']`
+// only, so destructuring walked past it. Now no file outside src/ext.ts and the background may
+// name `storage` as a property or destructuring key at all; the vault page reads storage.local
+// through ext.ts's readLocal, the one ext.ts export it may import.
+describe('vault isolation (storage, and what may import src/ext.ts)', () => {
+  const STORAGE = path => `${path}: touches storage outside src/ext.ts and the background`;
+
+  it.each([
+    ['destructured session', 'const {session} = chrome.storage;\nsession.get(null);'],
+    ['nested destructuring', 'const {storage: {session: s}} = chrome;\ns.get(null);'],
+    ['nested destructuring without spaces', 'const {storage:{session:s}} = chrome;'],
+    ['a destructured storage used for local', "const {storage} = browser;\nstorage.local.get('v1_vault');"],
+    ['a destructured storage among other keys', 'const {runtime, storage} = chrome;'],
+    ['a destructuring default', 'const {storage = null} = chrome;'],
+    ['storage.local', "chrome.storage.local.get('v1_vault');"],
+    ['optional-chained storage', 'chrome?.storage?.local.get(null);'],
+    ['bracketed storage', "chrome['storage'].local.get(null);"],
+    ['storage.session (still)', 'chrome.storage.session.get(null);'],
+  ])('refuses %s outside ext.ts and the background', (_, text) => {
+    for (const path of ['src/popup/main.ts', 'src/unlock/main.ts', 'src/vault/reauth.ts', 'src/ui/send.ts', 'leak/x.ts']) {
+      expect(sourceViolations([f(path, text)])).toEqual([STORAGE(path)]);
+    }
+  });
+
+  it('allows storage in src/ext.ts and the background (positive control)', () => {
+    expect(sourceViolations([
+      f('src/ext.ts', 'const {session} = b.storage;\nconst {storage: {local}} = b;'),
+      f('src/background/x.ts', 'const {storage} = chrome;\nstorage.session.get(null);'),
+    ])).toEqual([]);
+  });
+
+  it('does not mistake localStorage, sessionStorage or prose for the extension storage API', () => {
+    expect(sourceViolations([
+      f('src/popup/main.ts', "localStorage.getItem('x'); sessionStorage.clear();\n// the vault is kept in local storage, keys in session storage"),
+    ])).toEqual([]);
+  });
+
+  it('lets only the vault page value-import readLocal — and nothing else — from src/ext.ts', () => {
+    expect(sourceViolations([
+      f('src/unlock/main.ts', "import {readLocal} from '../ext';"),
+      f('src/unlock/other.ts', "import {type Ext, readLocal as read} from '../ext';"),
+    ])).toEqual([]);
+    const EXT = path => `${path}: imports src/ext.ts (storage.session) outside the background`;
+    for (const text of [
+      "import {readLocal, browserExt} from '../ext';",
+      "import {browserExt as readLocal} from '../ext';",
+      "import * as ext from '../ext';",
+      "import ext from '../ext';",
+      "import '../ext';",
+      "const m = await import('../ext');",
+      "export {readLocal} from '../ext';",
+    ]) {
+      expect(sourceViolations([f('src/unlock/main.ts', text)])).toEqual([EXT('src/unlock/main.ts')]);
+    }
+    expect(sourceViolations([f('src/popup/main.ts', "import {readLocal} from '../ext';")])).toEqual([EXT('src/popup/main.ts')]);
+  });
+});
+
 describe('vault isolation (HTML entries)', () => {
   const page = (...srcs) => `<!doctype html><html><body>${srcs.map(s => `<script type="module" src="${s}"></script>`).join('')}</body></html>`;
 
