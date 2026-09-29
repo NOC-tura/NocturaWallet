@@ -54,7 +54,7 @@ export class CorruptEnvelope extends Error {
   }
 }
 
-/** Argon2id parameters outside [PRODUCTION_KDF, KDF_CAP] — declared by a stored envelope or asked for on create. */
+/** Argon2id parameters outside [PRODUCTION_KDF, KDF_CAP], declared by a stored envelope or asked for on create. */
 export class UnsafeKdfParams extends Error {
   constructor() {
     super('Argon2id parameters outside the allowed range');
@@ -83,7 +83,7 @@ function checkKdfParams(params: KdfParams): void {
  * Left out, deliberately: account names (renaming needs no re-encryption); the salt and the
  * password/passkey wraps (they unwrap the data key — a changed one already fails there, and a
  * passkey is added later without re-encrypting the seed). Adding or removing an account changes
- * the header, so it re-encrypts the seed under the same data key.
+ * the header, so whatever does that must re-encrypt the seed under the same data key.
  */
 function headerAad(h: {v: 1; scheme: EnvelopeV1['scheme']; kdf: KdfParams; accounts: EnvelopeV1['accounts']}): Uint8Array<ArrayBuffer> {
   return utf8(

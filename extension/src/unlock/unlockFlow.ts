@@ -14,9 +14,10 @@ export const ENVELOPE_KEY = 'v1_vault';
  * `factor.prfOutput` in an outer `finally`, because the caller hands ownership of that array
  * over to this call. A proven-wrong password or passkey (a thrown `WrongPassword`/
  * `WrongPasskey`) is `'wrong'`; a stored envelope that is malformed (`CorruptEnvelope`) or
- * declares an Argon2id cost outside the bounds (`UnsafeKdfParams`) is `'damaged'` — a failure, with nothing sent and no wrong-password backoff, that the page names
- * as damaged data rather than inviting another try; anything else (a `send()` rejection, …)
- * comes back as `'failed'`, never as an escaping exception.
+ * declares an Argon2id cost outside the bounds (`UnsafeKdfParams`) is `'damaged'` — a failure,
+ * with nothing sent and no wrong-password backoff, that the page names as damaged data rather
+ * than inviting another try; anything else (a `send()` rejection, …) comes back as `'failed'`,
+ * never as an escaping exception.
  */
 export async function unlockFlow(
   deps: {env: EnvelopeV1; send(m: unknown): Promise<{ok: boolean; error?: string}>},

@@ -99,9 +99,10 @@ export interface WrongBackoff {
 /**
  * Spec §2: wrong passwords get an increasing delay on top of the Argon2id cost. The streak lives
  * in this page's memory; `'unlocked'` resets it, `'wrong'` extends it and every other outcome
- * (`'damaged'` included — a corrupt envelope is not a guess) leaves it as it is. The delay runs INSIDE `run`, so a caller that wraps `run` in
- * `runExclusive` keeps the busy gate (and the disabled buttons) held for the whole wait.
- * `sleep` is injected so the sequence is testable without a clock.
+ * (`'damaged'` included — a corrupt envelope is not a guess) leaves it as it is. The delay
+ * runs INSIDE `run`, so a caller that wraps `run` in `runExclusive` keeps the busy gate (and the
+ * disabled buttons) held for the whole wait. `sleep` is injected so the sequence is testable
+ * without a clock.
  */
 export function createWrongBackoff(sleep: (ms: number) => Promise<void>): WrongBackoff {
   let streak = 0;
