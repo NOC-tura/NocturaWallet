@@ -1,5 +1,5 @@
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync, mkdirSync, writeFileSync} from 'node:fs';
+import {mkdtempSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
@@ -80,3 +80,35 @@ it('a file root with a non-matching extension fails loudly, naming the root', ()
   expect(status).toBe(1);
   expect(stderr).toContain(f);
 });
+
+// Fable review (Minor 14): a root that does not exist used to be skipped silently — a renamed
+// core directory would have dropped out of the scan with the gate still green.
+it('a missing root fails loudly, naming the root', () => {
+  const d = mkdtempSync(join(tmpdir(), 'missing-'));
+  const gone = join(d, 'no-such-dir');
+  const {status, stderr} = runCaptured(gone);
+  expect(status).toBe(1);
+  expect(stderr).toContain(gone);
+});
+
+it('a missing root fails even alongside a clean one (it is not averaged away)', () => {
+  const d = mkdtempSync(join(tmpdir(), 'mixed-'));
+  writeFileSync(join(d, 'a.ts'), 'export const x = 1;\n');
+  expect(run(d, join(d, 'gone.ts'))).toBe(1);
+});
+
+// The scan's source roots are hand-listed in package.json; they must be exactly what web
+// compiles (tsconfig include), so a core directory added to the build cannot miss the scan.
+// The one exception is scripts/: Node tooling that is never bundled, and that holds the
+// forbidden patterns themselves (this scanner's own regex) and test fixtures spelling them.
+it('the scan script scans exactly the tsconfig include roots, except scripts/', () => {
+  const include = JSON.parse(readFileSync('tsconfig.json', 'utf8')).include;
+  const scan = JSON.parse(readFileSync('package.json', 'utf8')).scripts.scan;
+  const first = /^node scripts\/check-no-secrets\.mjs ((?:(?!&&)[^\s]+ ?)+)&&/.exec(scan);
+  expect(first).not.toBeNull();
+  const roots = (first?.[1] ?? '').trim().split(/\s+/);
+  expect(roots).not.toContain('--bundle');
+  expect([...roots].sort()).toEqual(include.filter(r => r !== 'scripts').sort());
+  expect(include).toContain('scripts');
+});
+

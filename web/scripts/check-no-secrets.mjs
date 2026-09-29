@@ -40,7 +40,13 @@ function walk(dir) {
 }
 
 for (const root of roots) {
-  if (!existsSync(root)) continue;
+  if (!existsSync(root)) {
+    // A root that is not there is a root that was not scanned: a renamed or moved directory
+    // must fail the gate, not drop out of it with the run still green.
+    console.error(`MISSING ROOT ${root}: nothing there to scan`);
+    bad += 1;
+    continue;
+  }
   if (statSync(root).isDirectory()) {
     walk(root);
     continue;
