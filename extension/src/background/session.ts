@@ -16,12 +16,16 @@ export const REAUTH_KEY = 'v1_reauth';
  */
 export const sessionMutex = createMutex();
 
+/**
+ * Under sessionMutex, like every other storage.session write: an unlock that arrives while a
+ * critical section is deciding what a lock left behind waits for it, instead of being undone by it.
+ */
 export async function setSession(ext: Ext, accounts: SessionAccount[]): Promise<void> {
   // Rebuild each account as exactly this shape before it touches storage — whatever the caller
   // validated (or didn't) is not what gets persisted. A stray field on the input object (e.g. an
   // accidental `seed`) must never reach storage.session.
   const clean = accounts.map(a => ({index: a.index, publicKey: a.publicKey, secretKey: a.secretKey}));
-  await ext.session.set(SESSION_KEY, {accounts: clean});
+  await sessionMutex(() => ext.session.set(SESSION_KEY, {accounts: clean}));
 }
 
 export async function getSession(ext: Ext): Promise<SessionAccount[] | null> {

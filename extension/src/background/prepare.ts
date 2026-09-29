@@ -2,7 +2,7 @@ import {PublicKey, TransactionMessage, VersionedTransaction, type TransactionIns
 import {base64} from '@scure/base';
 import type {Ext} from '../ext';
 import type {WalletDeps} from './deps';
-import {PREPARED_KEY, getSession, sessionMutex} from './session';
+import {PREPARED_KEY, REAUTH_KEY, getSession, sessionMutex} from './session';
 import {inFlightFor, readPending} from './pendingStore';
 import {EXTENSION_FEE_INPUTS} from './feePolicy';
 import {knownRecipients} from './knownRecipients';
@@ -205,9 +205,10 @@ export async function prepareSend(ext: Ext, deps: WalletDeps, account: string, i
   // being read, simulated or challenged is seen here, and nothing is written back after it.
   await sessionMutex(async () => {
     if ((await getSession(ext)) === null) {
-      // Locked meanwhile. A challenge issued after the lock's clear would outlive it: clear again
-      // (directly — clearSession would wait on this very mutex).
-      await ext.session.clear();
+      // Locked meanwhile. A challenge issued after the lock's clear would outlive it: remove just
+      // that (PREPARED_KEY was never written). Never clear the area — clearSession would wait on
+      // this very mutex, and a direct clear() could wipe a session written since (fix round 1).
+      await ext.session.remove(REAUTH_KEY);
       throw new SendRefused('locked');
     }
     const now = deps.now();

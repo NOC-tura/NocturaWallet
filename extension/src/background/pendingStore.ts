@@ -37,9 +37,37 @@ export const isOpen = (r: PendingRecord): boolean => r.state === 'pending' || r.
 
 const serial = createMutex();
 
+const STATES: readonly string[] = ['pending', 'stuck', 'confirmed', 'failed', 'expired'];
+const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
+
+/** A stored element is a claim: only an exact record shape is read; anything else is dropped. */
+function isRecord(x: unknown): x is PendingRecord {
+  if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
+  const r = x as Record<string, unknown>;
+  const i = r.intent as Record<string, unknown> | null;
+  return (
+    typeof r.id === 'string' &&
+    typeof r.account === 'string' &&
+    typeof r.signature === 'string' &&
+    typeof r.wire === 'string' &&
+    typeof r.state === 'string' &&
+    STATES.includes(r.state) &&
+    isNum(r.lastValidBlockHeight) &&
+    isNum(r.createdAt) &&
+    isNum(r.lastSentAt) &&
+    (r.detail === null || typeof r.detail === 'string') &&
+    (r.expiryNullSeenAt === null || isNum(r.expiryNullSeenAt)) &&
+    typeof i === 'object' &&
+    i !== null &&
+    typeof i.token === 'string' &&
+    typeof i.recipient === 'string' &&
+    typeof i.amount === 'string'
+  );
+}
+
 export async function readPending(ext: Ext): Promise<PendingRecord[]> {
   const v = await ext.local.get(PENDING_KEY);
-  return Array.isArray(v) ? (v as PendingRecord[]) : [];
+  return Array.isArray(v) ? (v as unknown[]).filter(isRecord) : [];
 }
 
 export function inFlightFor(records: readonly PendingRecord[], account: string): PendingRecord | undefined {
@@ -69,7 +97,11 @@ function trim(records: PendingRecord[]): PendingRecord[] {
   return records.filter(r => isOpen(r) || keepClosed.has(r));
 }
 
-/** The one way records change: read, change, trim, write — serialised. */
+/**
+ * The one way records change: read, change, trim, write — serialised. Records are kept oldest
+ * first: `change` appends a new record at the end, so trimming drops the oldest closed ones.
+ * Open records are never trimmed, even past MAX_RECORDS (one per account can be open).
+ */
 export async function updatePending(ext: Ext, change: (records: PendingRecord[]) => PendingRecord[]): Promise<PendingRecord[]> {
   return serial(async () => {
     const next = trim(change(await readPending(ext)));

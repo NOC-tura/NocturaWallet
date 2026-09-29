@@ -1,7 +1,7 @@
 import {base64} from '@scure/base';
 import {VersionedMessage} from '@solana/web3.js';
 import {PREPARED_TTL_MS, parseIntent, peekPrepared, prepareSend, takePrepared} from '../prepare';
-import {PREPARED_KEY, REAUTH_KEY, clearSession} from '../session';
+import {PREPARED_KEY, REAUTH_KEY, SESSION_KEY, clearSession, getSession, setSession} from '../session';
 import {PENDING_KEY} from '../pendingStore';
 import {KNOWN_RECIPIENTS_KEY} from '../knownRecipients';
 import {challengeSatisfied} from '../reauthChallenges';
@@ -218,6 +218,50 @@ describe('prepareSend', () => {
       expect(await ext.session.get(PREPARED_KEY)).toBeUndefined();
       expect(await ext.session.get(REAUTH_KEY)).toBeUndefined();
     }
+  });
+
+  it('an unlock arriving while prepare handles a mid-prepare lock is not wiped (fix round 1)', async () => {
+    const ext = fakeExt();
+    await unlocked(ext);
+    const get = ext.session.get.bind(ext.session);
+    let locked = false;
+    let unlockDone: Promise<void> | undefined;
+    ext.session.get = async key => {
+      const v = await get(key);
+      // prepare's in-section getSession has read "locked"; the user unlocks before it acts on it.
+      if (key === SESSION_KEY && locked && unlockDone === undefined) unlockDone = setSession(ext, [ACCOUNT]);
+      return v;
+    };
+    const reader = sendReader({
+      simulateTransaction: async () => {
+        await clearSession(ext);
+        locked = true;
+        return {err: null, logs: [], unitsConsumed: 450};
+      },
+    });
+    await expect(prepareSend(ext, fakeDeps({reader}), ACCOUNT.publicKey, SOL_INTENT)).rejects.toMatchObject({code: 'locked'});
+    expect(unlockDone).toBeDefined();
+    await unlockDone;
+    expect(await getSession(ext)).toEqual([ACCOUNT]);
+    expect(await get(PREPARED_KEY)).toBeUndefined();
+    expect(await get(REAUTH_KEY)).toBeUndefined();
+  });
+
+  it('the lock branch removes only the orphaned challenge — it never clears the whole area', async () => {
+    const ext = fakeExt();
+    await unlocked(ext);
+    const clear = vi.spyOn(ext.session, 'clear');
+    const remove = vi.spyOn(ext.session, 'remove');
+    const reader = sendReader({
+      simulateTransaction: async () => {
+        await clearSession(ext);
+        clear.mockClear();
+        return {err: null, logs: [], unitsConsumed: 450};
+      },
+    });
+    await expect(prepareSend(ext, fakeDeps({reader}), ACCOUNT.publicKey, SOL_INTENT)).rejects.toMatchObject({code: 'locked'});
+    expect(clear).not.toHaveBeenCalled();
+    expect(remove.mock.calls).toEqual([[REAUTH_KEY]]);
   });
 
   it('a lock racing the write of the prepared send is never undone by it', async () => {
