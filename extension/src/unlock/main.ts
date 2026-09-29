@@ -4,7 +4,7 @@ import {workerKdf} from '../vault/kdf';
 import {evaluatePrf} from '../vault/passkey';
 import {unb64} from '../vault/bytes';
 import {send} from '../ui/send';
-import {readLocal} from '../ext';
+import {readLocal} from '../shared/readLocal';
 import type {EnvelopeV1} from '../vault/envelope';
 import {pageMode} from './mode';
 import {startMode} from './modes';

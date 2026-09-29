@@ -11,7 +11,7 @@ import {evaluatePrf} from '../vault/passkey';
 import {unb64} from '../vault/bytes';
 import type {EnvelopeV1} from '../vault/envelope';
 import {send} from '../ui/send';
-import {readLocal} from '../ext';
+import {readLocal} from '../shared/readLocal';
 
 // Thin page modes for B1b-1 (the owner's screens arrive in B1b-2). The vault page renders only its
 // own fixed strings (spec §1): every status line is a literal below, and the only other text it

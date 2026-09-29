@@ -10,7 +10,7 @@ export type Send = (m: unknown) => Promise<{ok: boolean; error?: string; data?: 
 export type StoreOutcome = 'stored' | 'busy' | 'wallet-exists' | 'stored-invalid' | 'malformed' | 'no-wallet' | 'failed';
 
 /**
- * The envelope in storage.local. The vault page reads it (readLocal) and never writes it: the
+ * The envelope in storage.local. The vault page reads it (shared/readLocal) and never writes it: the
  * background is v1_vault's one writer, and storeEnvelope asks it to compare-and-set.
  * `expectedRevision` is envelopeRevision(the envelope the flow OPENED) — never of what it
  * re-encrypted — or null for onboarding's first write, accepted only while no wallet is stored.

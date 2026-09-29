@@ -75,16 +75,6 @@ function extensionApi(): BrowserLike {
   return b;
 }
 
-/**
- * The one storage call the vault page makes: read a key from storage.local. A plain function
- * rather than an `Ext`, because an `Ext` carries storage.session, which only the background may
- * touch; scripts/check-vault-isolation.mjs lets src/unlock/ import this export and nothing else
- * from this file.
- */
-export async function readLocal(key: string): Promise<unknown> {
-  return (await extensionApi().storage.local.get(key))[key];
-}
-
 export function browserExt(): Ext {
   const b = extensionApi();
   return {

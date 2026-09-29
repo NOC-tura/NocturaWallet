@@ -39,15 +39,20 @@ const SOURCE_EXT = /\.[cm]?[jt]sx?$/;
 // The seed code the vault uses also lives in ../core/keys (mnemonic → seed, SLIP-0010), shared
 // with the app; for this package it is vault code, allowed exactly where the vault is.
 // src/ext.ts is the one wrapper over chrome.* / browser.*, so it names storage.session; in
-// exchange, only the background may value-import it (EXT_IMPORT_ALLOWED) — except that the
-// vault page may import exactly `readLocal` (LOCAL_READER), which reads storage.local only.
+// exchange, only the background may value-import it (EXT_IMPORT_ALLOWED). The vault page's one
+// storage call is src/shared/readLocal.ts (LOCAL_READER): it reads storage.local and nothing else —
+// it may not name storage.session, write, or import anything — and only the vault page may import
+// it. (It used to be an ext.ts export, which put all of ext.ts in the vault page's bundle.)
 // Everywhere else `storage` may not appear as a property access or a destructuring key at all:
 // `storage.session` alone missed `const {session} = chrome.storage` and
 // `const {storage: {session: s}} = chrome`.
 const SESSION_ALLOWED = /^src\/background\/|^src\/ext\.ts$/;
 const EXT_IMPORT_ALLOWED = /^src\/background\//;
-const LOCAL_READER = 'readLocal';
+const LOCAL_READER = 'src/shared/readLocal';
+const LOCAL_READER_PATH = `${LOCAL_READER}.ts`;
 const LOCAL_READER_ALLOWED = /^src\/unlock\//;
+// A storage write in any spelling: a call (`.set(`), a bracket (`['set']`), a destructured name.
+const WRITES_STORAGE = /(?:\?\.|\.)\s*(?:set|remove|clear)\s*\(|\[\s*['"`](?:set|remove|clear)['"`]\s*\]|[{,]\s*(?:set|remove|clear)\s*[,}:=]/;
 const TOUCHES_SESSION = /storage\s*(?:\?\.|\.)\s*session\b|storage\s*\[\s*['"`]session['"`]\s*\]/;
 // `.storage` / `?.storage`, `x['storage']`, and `storage` as a destructuring key (`{storage}`,
 // `{a, storage}`, `{storage: …}`, `{storage = …}`). localStorage/sessionStorage do not match.
@@ -112,15 +117,6 @@ function moduleReferences(text) {
   return refs;
 }
 
-/** `import {readLocal}` (optionally renamed, alongside inline type-only names) and nothing else. */
-function importsOnlyLocalReader(ref) {
-  if (ref.kind !== 'import' || ref.clause === null) return false;
-  const named = /^\{([^}]*)\}$/.exec(ref.clause.trim());
-  if (!named) return false;
-  const values = named[1].split(',').map(n => n.trim()).filter(n => n !== '' && !/^type\s/.test(n));
-  return values.length > 0 && values.every(n => new RegExp(`^${LOCAL_READER}(\\s+as\\s+[\\w$]+)?$`).test(n));
-}
-
 /** Where a specifier points, as a path relative to the package (`src/vault/kdf`), or null. */
 function resolveSource(fromPath, spec) {
   if (spec.startsWith('./') || spec.startsWith('../') || spec === '.' || spec === '..') {
@@ -152,6 +148,11 @@ function namesExt(fromPath, spec) {
   return target !== null && /^src\/ext(\.[cm]?[jt]s)?$/.test(target);
 }
 
+function namesLocalReader(fromPath, spec) {
+  const target = resolveSource(fromPath, spec);
+  return target !== null && target.replace(/\.[cm]?[jt]s$/, '') === LOCAL_READER;
+}
+
 export function sourceViolations(files) {
   const out = [];
   for (const {path, text} of files) {
@@ -161,16 +162,21 @@ export function sourceViolations(files) {
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesVault(path, r.spec))) out.push(`${path}: imports the vault`);
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesCoreKeys(path, r.spec))) out.push(`${path}: imports core/keys (seed code)`);
     if (!UNLOCK_ALLOWED.test(path) && values.some(r => namesUnlock(path, r.spec))) out.push(`${path}: imports the vault page (src/unlock)`);
-    if (!SESSION_ALLOWED.test(path) && (TOUCHES_SESSION.test(text) || TOUCHES_STORAGE.test(text))) {
+    if (path === LOCAL_READER_PATH) {
+      if (TOUCHES_SESSION.test(text)) out.push(`${path}: touches storage.session — it may read storage.local only`);
+      if (WRITES_STORAGE.test(text)) out.push(`${path}: writes storage — it may only read`);
+      if (values.length > 0) out.push(`${path}: imports a module — it must stand alone`);
+    } else if (!SESSION_ALLOWED.test(path) && (TOUCHES_SESSION.test(text) || TOUCHES_STORAGE.test(text))) {
       out.push(`${path}: touches storage outside src/ext.ts and the background`);
+    }
+    if (!LOCAL_READER_ALLOWED.test(path) && values.some(r => namesLocalReader(path, r.spec))) {
+      out.push(`${path}: imports ${LOCAL_READER}, the vault page's storage reader`);
     }
     if (!LISTEN_ALLOWED.test(path) && LISTENS_RUNTIME.test(text)) out.push(`${path}: listens for runtime messages outside the background`);
     if (!BACKGROUND_OWNED_ALLOWED.test(path)) {
       for (const key of BACKGROUND_OWNED_KEYS) if (text.includes(key)) out.push(`${path}: names ${key}, which only the background may write`);
     }
-    const extRefs = values.filter(r => namesExt(path, r.spec));
-    const localReaderOnly = LOCAL_READER_ALLOWED.test(path) && extRefs.every(importsOnlyLocalReader);
-    if (!EXT_IMPORT_ALLOWED.test(path) && path !== 'src/ext.ts' && extRefs.length > 0 && !localReaderOnly) {
+    if (!EXT_IMPORT_ALLOWED.test(path) && path !== 'src/ext.ts' && values.some(r => namesExt(path, r.spec))) {
       out.push(`${path}: imports src/ext.ts (storage.session) outside the background`);
     }
   }
@@ -234,6 +240,9 @@ const toPosix = p => p.split(sep).join('/');
 // dynamic ones (`import("./x.js")`, inside Vite's `__vitePreload(() => import(...))` too), and
 // URLs built against the module (`new URL("w.js", import.meta.url)` — how Vite loads a worker).
 const BUILT_IMPORT = /\b(?:from|import)\s*\(?\s*(['"`])([^'"`$]+)\1/g;
+// storage.session in a built file: the property (minified `r.storage.session`), a bracketed key,
+// or ext.ts's access pin.
+const BUILT_SESSION = /storage\s*(?:\?\.|\.)\s*session\b|storage\s*\[\s*['"`]session['"`]\s*\]|\bsetAccessLevel\b/;
 const BUILT_URL = /\bnew\s+URL\s*\(\s*(['"`])([^'"`$]+)\1\s*,\s*import\.meta\.url/g;
 
 function builtReferences(text) {
@@ -313,6 +322,28 @@ export function bundleViolations(distApp) {
     }
   }
 
+  // No page may reach storage.session: in the built files, not just the sources (final review
+  // minor 4 — readLocal in ext.ts put ext.ts's storage.session and setAccessLevel into a chunk the
+  // vault page loaded, and every source rule passed). Only the background may carry it.
+  if (!js.some(p => BUILT_SESSION.test(readFileSync(join(distApp, p), 'utf8')))) {
+    out.push('INCONCLUSIVE: no built JS file names storage.session — the vault-page rule would pass trivially');
+  }
+  for (const page of all.filter(p => /\.html?$/.test(p))) {
+    const html = readFileSync(join(distApp, page), 'utf8');
+    for (const m of html.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/g)) {
+      const r = resolveBuilt(distApp, page, m[1]);
+      if (r.problem) {
+        problems.add(r.problem);
+        continue;
+      }
+      for (const file of reachable(distApp, r.target, problems)) {
+        if (/\.m?js$/.test(file) && BUILT_SESSION.test(readFileSync(join(distApp, file), 'utf8'))) {
+          out.push(`${file} (reachable from ${page}) touches storage.session — only the background may`);
+        }
+      }
+    }
+  }
+
   for (const entry of entries) {
     for (const file of reachable(distApp, entry, problems)) {
       const text = readFileSync(join(distApp, file), 'utf8');
@@ -365,5 +396,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     for (const p of problems) console.error(p);
     process.exit(1);
   }
-  console.log('vault isolation ok: sources, built popup/background and both manifests carry no path to the vault');
+  console.log('vault isolation ok: sources, built popup/background and both manifests carry no path to the vault; no page reaches storage.session');
 }
