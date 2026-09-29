@@ -1,10 +1,8 @@
-import {test, expect, chromium, type BrowserContext, type Page} from '@playwright/test';
-import {fileURLToPath} from 'node:url';
-import {mkdtempSync, rmSync} from 'node:fs';
-import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {test, expect, type BrowserContext, type Page} from '@playwright/test';
+import {rmSync} from 'node:fs';
 import {BLOCKHASH_LIFETIME, installFakeCoordinator, type FakeCoordinator} from './fakeCoordinator';
 import {makeEnvelope, E2E_PASSWORD} from './makeEnvelope';
+import {expectContained, launchContained} from './launch';
 import {ALLOWED_RPC_METHODS} from '../../core/solana/rpc';
 
 declare const chrome: {
@@ -12,8 +10,6 @@ declare const chrome: {
   storage: {local: {set(o: object): Promise<void>; get(k: string): Promise<Record<string, unknown>>}};
 };
 
-// The package is an ES module ("type": "module"), where __dirname does not exist.
-const EXT = fileURLToPath(new URL('../dist/chrome', import.meta.url));
 const RECIPIENT = '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4';
 /** makeEnvelope's wallet: the ABANDON phrase, SLIP-0010 account 0. */
 const E2E_ACCOUNT = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
@@ -25,19 +21,11 @@ type PreparedView = {id: string; fees: Record<string, string>; reauth: {challeng
 type PendingView = {id: string; signature: string; state: string; detail: string | null; lastValidBlockHeight: number};
 
 async function launch() {
-  const profile = mkdtempSync(join(tmpdir(), 'noctura-e2e-wallet-'));
-  const ctx = await chromium.launchPersistentContext(profile, {
-    channel: 'chromium',
-    headless: true,
-    args: [
-      `--disable-extensions-except=${EXT}`,
-      `--load-extension=${EXT}`,
-      // The safety net under ctx.route: a request the route does not catch fails to resolve here
-      // instead of reaching the real host.
-      '--host-resolver-rules=MAP *.noc-tura.io ~NOTFOUND, MAP noc-tura.io ~NOTFOUND',
-    ],
-  });
+  // Two layers: the fake coordinator's ctx.route answers every api.noc-tura.io request, and
+  // launchContained makes every noc-tura.io name unresolvable, so one the route misses fails locally.
+  const {ctx, profile} = await launchContained('noctura-e2e-wallet-');
   const fake = await installFakeCoordinator(ctx);
+  await expectContained(ctx);
   const sw = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent('serviceworker'));
   const id = new URL(sw.url()).host;
   // An extension page (own origin), so its messages are privileged — it stands in for the B1b-2 popup screens.
