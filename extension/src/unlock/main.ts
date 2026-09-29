@@ -22,6 +22,7 @@ const WORDS: Record<Outcome | 'unavailable', string> = {
   unlocked: 'Unlocked. You can close this tab.',
   wrong: 'That did not unlock the wallet.',
   failed: 'Unlock failed. Try again.',
+  damaged: "This wallet's stored data is damaged.",
   'no-wallet': 'No wallet on this browser yet.',
   unavailable: 'This device cannot unlock the wallet with a passkey; your password still works.',
 };

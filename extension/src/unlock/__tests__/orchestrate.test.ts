@@ -220,6 +220,18 @@ describe('wrong-password backoff (spec §2: an increasing delay on top of the Ar
     expect(slept).toEqual([1000]);
   });
 
+  it('neither resets nor grows on damaged (a corrupt envelope is not a guess)', async () => {
+    const {slept, sleep} = recordingSleep();
+    const backoff = createWrongBackoff(sleep);
+    let waits = 0;
+    await backoff.run(async () => 'wrong' as Outcome, () => waits++);
+    await backoff.run(async () => 'wrong' as Outcome, () => waits++);
+    for (let i = 0; i < 3; i++) expect(await backoff.run(async () => 'damaged' as Outcome, () => waits++)).toBe('damaged');
+    await backoff.run(async () => 'wrong' as Outcome, () => waits++);
+    expect(slept).toEqual([1000, 2000]);
+    expect(waits).toBe(2);
+  });
+
   it('returns the outcome unchanged', async () => {
     const backoff = createWrongBackoff(async () => undefined);
     expect(await backoff.run(async () => 'wrong' as Outcome, () => undefined)).toBe('wrong');

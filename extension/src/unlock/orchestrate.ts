@@ -1,12 +1,12 @@
 import type {EnvelopeV1, Kdf} from '../vault/envelope';
 
 export type Factor = {password: string; kdf: Kdf} | {prfOutput: Uint8Array};
-export type Outcome = 'unlocked' | 'wrong' | 'failed' | 'no-wallet';
+export type Outcome = 'unlocked' | 'wrong' | 'failed' | 'damaged' | 'no-wallet';
 
 export interface AttemptUnlockDeps {
   envelope(): Promise<EnvelopeV1 | null>;
   send(m: unknown): Promise<{ok: boolean; error?: string}>;
-  unlockFlow(deps: {env: EnvelopeV1; send(m: unknown): Promise<{ok: boolean; error?: string}>}, factor: Factor): Promise<'unlocked' | 'wrong' | 'failed'>;
+  unlockFlow(deps: {env: EnvelopeV1; send(m: unknown): Promise<{ok: boolean; error?: string}>}, factor: Factor): Promise<'unlocked' | 'wrong' | 'failed' | 'damaged'>;
 }
 
 /**
@@ -99,7 +99,7 @@ export interface WrongBackoff {
 /**
  * Spec §2: wrong passwords get an increasing delay on top of the Argon2id cost. The streak lives
  * in this page's memory; `'unlocked'` resets it, `'wrong'` extends it and every other outcome
- * leaves it as it is. The delay runs INSIDE `run`, so a caller that wraps `run` in
+ * (`'damaged'` included — a corrupt envelope is not a guess) leaves it as it is. The delay runs INSIDE `run`, so a caller that wraps `run` in
  * `runExclusive` keeps the busy gate (and the disabled buttons) held for the whole wait.
  * `sleep` is injected so the sequence is testable without a clock.
  */

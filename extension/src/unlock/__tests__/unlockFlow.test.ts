@@ -97,4 +97,21 @@ describe('unlockFlow', () => {
     expect(json).toContain('HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk');
     expect(Array.from(prfOutput)).toEqual(new Array(32).fill(0));
   });
+
+  it.each(['AAAA', '!!!not-base64'])('says damaged (not wrong) for a malformed wrapped key %j, and sends nothing', async wrapped => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: {m: 64, t: 1, p: 1}});
+    const sent: unknown[] = [];
+    const r = await unlockFlow({env: {...env, password: {wrapped}}, send: async m => (sent.push(m), {ok: true})}, {password: 'correct horse battery', kdf});
+    expect(r).toBe('damaged');
+    expect(sent).toHaveLength(0);
+  });
+
+  it('says damaged for a malformed passkey wrap, and still zeroes the prfOutput', async () => {
+    const {env, prfOutput} = await passkeyEnvelope();
+    const pk = env.passkey;
+    if (!pk) throw new Error('no passkey wrap');
+    const r = await unlockFlow({env: {...env, passkey: {...pk, wrapped: 'AAAA'}}, send: async () => ({ok: true})}, {prfOutput});
+    expect(r).toBe('damaged');
+    expect(Array.from(prfOutput)).toEqual(new Array(32).fill(0));
+  });
 });

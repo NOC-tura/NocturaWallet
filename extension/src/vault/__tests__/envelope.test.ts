@@ -1,7 +1,7 @@
 import {argon2idAsync} from '@noble/hashes/argon2.js';
 import {
   createEnvelope, unlockWithPassword, decryptMnemonic, addPasskeyWrap, unlockWithPrf,
-  WrongPassword, WrongPasskey, PRODUCTION_KDF, type Kdf,
+  CorruptEnvelope, WrongPassword, WrongPasskey, PRODUCTION_KDF, type EnvelopeV1, type Kdf,
 } from '../envelope';
 
 const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -180,5 +180,72 @@ describe('vault envelope', () => {
     }
     expect(seen).toHaveLength(1);
     expect(Array.from(seen[0] ?? [])).toEqual(new Array(MNEMONIC.length).fill(0));
+  });
+});
+
+// Fable review (Minor 12): only an AES-KW integrity failure on a WELL-FORMED wrapped key means
+// a wrong password or passkey. Damaged stored data must say so, not look like a typo: the
+// person would otherwise keep retrying (and walk into the wrong-password backoff) forever.
+describe('a malformed envelope is CorruptEnvelope, never a wrong factor', () => {
+  let env: EnvelopeV1;
+  const prf = new Uint8Array(32).fill(5);
+  beforeAll(async () => {
+    const base = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf, params: FAST});
+    const dk = await unlockWithPassword(base, 'correct horse battery', kdf);
+    env = await addPasskeyWrap(base, dk, prf.slice(), new Uint8Array([1, 2, 3]), new Uint8Array(32).fill(9));
+  });
+  const neverKdf: Kdf = async () => {
+    throw new Error('the KDF must not run on a malformed envelope');
+  };
+  const edit = (f: (e: Record<string, unknown>) => void): EnvelopeV1 => {
+    const copy = JSON.parse(JSON.stringify(env)) as Record<string, unknown>;
+    f(copy);
+    return copy as unknown as EnvelopeV1;
+  };
+
+  it.each(['AAAA', '!!!not-base64', '', 'AA=='])('password.wrapped %j → CorruptEnvelope, without running the KDF', async wrapped => {
+    await expect(unlockWithPassword({...env, password: {wrapped}}, 'correct horse battery', neverKdf)).rejects.toBeInstanceOf(CorruptEnvelope);
+  });
+
+  it.each(['AAAA', '!!!not-base64'])('passkey.wrapped %j → CorruptEnvelope', async wrapped => {
+    const pk = env.passkey;
+    if (!pk) throw new Error('no passkey wrap');
+    await expect(unlockWithPrf({...env, passkey: {...pk, wrapped}}, prf.slice())).rejects.toBeInstanceOf(CorruptEnvelope);
+  });
+
+  it.each<[string, (e: Record<string, unknown>) => void]>([
+    ['v is not 1', e => void (e.v = 2)],
+    ['an unknown scheme', e => void (e.scheme = 'bip44')],
+    ['no kdf', e => void delete e.kdf],
+    ['a kdf.alg other than argon2id', e => void ((e.kdf as Record<string, unknown>).alg = 'scrypt')],
+    ['kdf.m as a string', e => void ((e.kdf as Record<string, unknown>).m = '65536')],
+    ['kdf.t fractional', e => void ((e.kdf as Record<string, unknown>).t = 1.5)],
+    ['a short kdf.salt', e => void ((e.kdf as Record<string, unknown>).salt = 'AAAA')],
+    ['kdf.salt not base64', e => void ((e.kdf as Record<string, unknown>).salt = '!!!not-base64')],
+    ['a short seed.iv', e => void ((e.seed as Record<string, unknown>).iv = 'AAAA')],
+    ['seed.ct not base64', e => void ((e.seed as Record<string, unknown>).ct = '!!!not-base64')],
+    ['a seed.ct shorter than the GCM tag', e => void ((e.seed as Record<string, unknown>).ct = 'AAAA')],
+    ['no password wrap', e => void delete e.password],
+    ['accounts not an array', e => void (e.accounts = {})],
+    ['an account with a negative index', e => void (e.accounts = [{index: -1, name: 'a', publicKey: 'x'}])],
+    ['an account without a public key', e => void (e.accounts = [{index: 0, name: 'a'}])],
+    ['a short passkey.prfSalt', e => void ((e.passkey as Record<string, unknown>).prfSalt = 'AAAA')],
+    ['an empty passkey.credentialId', e => void ((e.passkey as Record<string, unknown>).credentialId = '')],
+  ])('%s → CorruptEnvelope on the password path, the passkey path and decrypt', async (_, f) => {
+    const bad = edit(f);
+    await expect(unlockWithPassword(bad, 'correct horse battery', neverKdf)).rejects.toBeInstanceOf(CorruptEnvelope);
+    await expect(unlockWithPrf(bad, prf.slice())).rejects.toBeInstanceOf(CorruptEnvelope);
+    await expect(decryptMnemonic(bad, new Uint8Array(32))).rejects.toBeInstanceOf(CorruptEnvelope);
+  });
+
+  it('refuses a stored value that is not an object at all', async () => {
+    await expect(unlockWithPassword(null as unknown as EnvelopeV1, 'x', neverKdf)).rejects.toBeInstanceOf(CorruptEnvelope);
+    await expect(unlockWithPassword('v1' as unknown as EnvelopeV1, 'x', neverKdf)).rejects.toBeInstanceOf(CorruptEnvelope);
+  });
+
+  it('a well-formed envelope still says WrongPassword / WrongPasskey for a wrong factor (negative control)', async () => {
+    await expect(unlockWithPassword(env, 'wrong horse battery!', kdf)).rejects.toBeInstanceOf(WrongPassword);
+    await expect(unlockWithPrf(env, new Uint8Array(32).fill(6))).rejects.toBeInstanceOf(WrongPasskey);
+    expect(await decryptMnemonic(env, await unlockWithPrf(env, prf.slice()))).toBe(MNEMONIC);
   });
 });

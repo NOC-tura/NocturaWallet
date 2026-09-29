@@ -1,4 +1,4 @@
-import {decryptMnemonic, unlockWithPassword, unlockWithPrf, WrongPasskey, WrongPassword, type EnvelopeV1, type Kdf} from '../vault/envelope';
+import {CorruptEnvelope, decryptMnemonic, unlockWithPassword, unlockWithPrf, WrongPasskey, WrongPassword, type EnvelopeV1, type Kdf} from '../vault/envelope';
 import {deriveSessionAccounts} from '../vault/accounts';
 
 export const ENVELOPE_KEY = 'v1_vault';
@@ -10,15 +10,16 @@ export const ENVELOPE_KEY = 'v1_vault';
  * Every secret this function touches is zeroed on every exit path, success or failure:
  * `dataKey` in a `finally` around its own use, and — when the factor is a passkey PRF output —
  * `factor.prfOutput` in an outer `finally`, because the caller hands ownership of that array
- * over to this call. Any failure other than a proven-wrong password or passkey (a thrown
- * `WrongPassword`/`WrongPasskey`) comes back as `'failed'`, never as an escaping exception —
- * a corrupt envelope, a `send()` rejection, or anything else must leave the vault page able to
- * tell the person "try again" rather than crash.
+ * over to this call. A proven-wrong password or passkey (a thrown `WrongPassword`/
+ * `WrongPasskey`) is `'wrong'`; a stored envelope that is malformed (`CorruptEnvelope`) is
+ * `'damaged'` — a failure, with nothing sent and no wrong-password backoff, that the page names
+ * as damaged data rather than inviting another try; anything else (a `send()` rejection, …)
+ * comes back as `'failed'`, never as an escaping exception.
  */
 export async function unlockFlow(
   deps: {env: EnvelopeV1; send(m: unknown): Promise<{ok: boolean; error?: string}>},
   factor: {password: string; kdf: Kdf} | {prfOutput: Uint8Array},
-): Promise<'unlocked' | 'wrong' | 'failed'> {
+): Promise<'unlocked' | 'wrong' | 'failed' | 'damaged'> {
   const isPrf = 'prfOutput' in factor;
   try {
     let dataKey: Uint8Array;
@@ -26,6 +27,7 @@ export async function unlockFlow(
       dataKey = isPrf ? await unlockWithPrf(deps.env, factor.prfOutput) : await unlockWithPassword(deps.env, factor.password, factor.kdf);
     } catch (e) {
       if (e instanceof WrongPassword || e instanceof WrongPasskey) return 'wrong';
+      if (e instanceof CorruptEnvelope) return 'damaged';
       return 'failed';
     }
     try {
@@ -34,8 +36,8 @@ export async function unlockFlow(
       const accounts = await deriveSessionAccounts(mnemonic, deps.env.scheme, indexes);
       const r = await deps.send({type: 'vault.setKeys', accounts});
       return r.ok ? 'unlocked' : 'failed';
-    } catch {
-      return 'failed';
+    } catch (e) {
+      return e instanceof CorruptEnvelope ? 'damaged' : 'failed';
     } finally {
       dataKey.fill(0);
     }

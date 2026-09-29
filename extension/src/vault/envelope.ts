@@ -34,6 +34,75 @@ export class WrongPasskey extends Error {
     super('this passkey does not unlock this wallet');
   }
 }
+/**
+ * The stored envelope is not one this code could have written: a missing field, a value of the
+ * wrong type, base64 that does not decode, a byte string of the wrong length. Distinct from
+ * WrongPassword/WrongPasskey, which mean exactly one thing — AES-KW's integrity check refused a
+ * WELL-FORMED wrapped key under the key derived from the factor offered.
+ */
+export class CorruptEnvelope extends Error {
+  constructor(what: string) {
+    super(`the stored wallet is damaged: ${what}`);
+  }
+}
+
+// Byte lengths of a well-formed v1 envelope: 16-byte Argon2id salt, 12-byte GCM IV, a GCM
+// ciphertext of at least one byte plus its 16-byte tag, a 32-byte data key wrapped by AES-KW
+// (RFC 3394: +8 bytes), a 32-byte PRF salt (spec §2).
+const SALT_LEN = 16;
+const IV_LEN = 12;
+const MIN_CT_LEN = 17;
+const WRAPPED_LEN = 40;
+const PRF_SALT_LEN = 32;
+
+type Json = Record<string, unknown>;
+const isObject = (x: unknown): x is Json => typeof x === 'object' && x !== null && !Array.isArray(x);
+
+function bytesField(value: unknown, what: string, len: {exact: number} | {min: number}): void {
+  if (typeof value !== 'string') throw new CorruptEnvelope(`${what} is not a string`);
+  let bytes: Uint8Array;
+  try {
+    bytes = unb64(value);
+  } catch {
+    throw new CorruptEnvelope(`${what} is not base64`);
+  }
+  if ('exact' in len ? bytes.length !== len.exact : bytes.length < len.min) throw new CorruptEnvelope(`${what} has the wrong length`);
+}
+
+const isIndex = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0;
+
+/**
+ * Every field of a stored envelope, checked for shape before any of it is used — the value comes
+ * from storage.local, so its static type is a claim, not a fact. Throws CorruptEnvelope.
+ */
+function checkEnvelope(env: unknown): asserts env is EnvelopeV1 {
+  if (!isObject(env)) throw new CorruptEnvelope('not an object');
+  if (env.v !== 1) throw new CorruptEnvelope('unknown version');
+  if (env.scheme !== 'slip10' && env.scheme !== 'cli') throw new CorruptEnvelope('unknown scheme');
+  const kdf = env.kdf;
+  if (!isObject(kdf) || kdf.alg !== 'argon2id') throw new CorruptEnvelope('kdf is not argon2id');
+  for (const k of ['m', 't', 'p'] as const) {
+    if (typeof kdf[k] !== 'number' || !Number.isSafeInteger(kdf[k])) throw new CorruptEnvelope(`kdf.${k} is not an integer`);
+  }
+  bytesField(kdf.salt, 'kdf.salt', {exact: SALT_LEN});
+  if (!isObject(env.seed)) throw new CorruptEnvelope('no seed');
+  bytesField(env.seed.iv, 'seed.iv', {exact: IV_LEN});
+  bytesField(env.seed.ct, 'seed.ct', {min: MIN_CT_LEN});
+  if (!isObject(env.password)) throw new CorruptEnvelope('no password wrap');
+  bytesField(env.password.wrapped, 'password.wrapped', {exact: WRAPPED_LEN});
+  if (env.passkey !== undefined) {
+    if (!isObject(env.passkey)) throw new CorruptEnvelope('passkey is not an object');
+    bytesField(env.passkey.credentialId, 'passkey.credentialId', {min: 1});
+    bytesField(env.passkey.prfSalt, 'passkey.prfSalt', {exact: PRF_SALT_LEN});
+    bytesField(env.passkey.wrapped, 'passkey.wrapped', {exact: WRAPPED_LEN});
+  }
+  if (!Array.isArray(env.accounts)) throw new CorruptEnvelope('accounts is not an array');
+  for (const a of env.accounts as unknown[]) {
+    if (!isObject(a) || !isIndex(a.index) || typeof a.name !== 'string' || typeof a.publicKey !== 'string') {
+      throw new CorruptEnvelope('an account is malformed');
+    }
+  }
+}
 
 const HKDF_INFO = utf8('noctura-ext-v1/passkey-wrap');
 const subtle = () => globalThis.crypto.subtle;
@@ -96,6 +165,7 @@ export async function createEnvelope(input: {
 }
 
 export async function unlockWithPassword(env: EnvelopeV1, password: string, kdf: Kdf): Promise<Uint8Array> {
+  checkEnvelope(env);
   const kek = await kdf(password, unb64(env.kdf.salt), {m: env.kdf.m, t: env.kdf.t, p: env.kdf.p});
   assertArrayBufferBacked(kek);
   try {
@@ -108,6 +178,7 @@ export async function unlockWithPassword(env: EnvelopeV1, password: string, kdf:
 }
 
 export async function decryptMnemonic(env: EnvelopeV1, dataKey: Uint8Array): Promise<string> {
+  checkEnvelope(env);
   assertArrayBufferBacked(dataKey);
   const key = await subtle().importKey('raw', dataKey, 'AES-GCM', false, ['decrypt']);
   const pt = new Uint8Array(await subtle().decrypt({name: 'AES-GCM', iv: unb64(env.seed.iv)}, key, unb64(env.seed.ct)));
@@ -151,6 +222,7 @@ export async function addPasskeyWrap(
 }
 
 export async function unlockWithPrf(env: EnvelopeV1, prfOutput: Uint8Array): Promise<Uint8Array> {
+  checkEnvelope(env);
   if (!env.passkey) throw new WrongPasskey();
   assertArrayBufferBacked(prfOutput);
   const kek = await prfKek(prfOutput, unb64(env.passkey.prfSalt));
