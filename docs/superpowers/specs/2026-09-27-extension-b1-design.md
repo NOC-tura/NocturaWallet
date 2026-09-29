@@ -7,6 +7,22 @@ could not work at all — see §4, and the correction note there — plus three 
 revision answers every round-2 finding. The owner took every decision the reviews raised.
 Awaiting the owner's review, then the implementation plan.
 
+**Revision 4 (2026-09-29).** A small follow-up round on the B1a implementation, folded back into
+§2 and §5:
+- the seed's AES-GCM `additionalData` is a fixed-order JSON encoding of `{v, scheme, kdf: {alg,
+  m, t, p}, accounts: [{index, publicKey}, …]}` (account names excluded; any later code that
+  adds or removes an account, e.g. B1b, must re-encrypt the seed);
+- Argon2id parameters a stored envelope declares are bounded to `[PRODUCTION_KDF, cap]`;
+- a malformed or tampered envelope is `CorruptEnvelope`, surfaced to the unlock flow as the
+  fixed `'damaged'` outcome (never `'wrong'`, never charged against the backoff);
+- unlock compares every derived public key against the envelope's stored ones before sending
+  any key to the background;
+- the vault-isolation gate's scope: the whole package (not just `src/`), the HTML entries at
+  the package root, and 5 built-output markers as a backstop;
+- the end-to-end Playwright suite runs in CI;
+- the extension installs with `npm ci --ignore-scripts`;
+- `storage.session` is pinned to `TRUSTED_CONTEXTS` at service-worker start.
+
 **What B1 is.** A browser extension named **Noctura** for Chrome-family browsers and Firefox
 that holds the user's seed, derives the same addresses as the Android app, sends and receives
 SOL, NOC, USDC and USDT on mainnet, buys NOC in the presale, and offers itself to web pages as
@@ -133,6 +149,17 @@ browser removes that; the unlock factors and the short auto-lock bound it.
   IVs, the wrapped keys, the passkey credential ID and PRF salt, and the accounts with their
   public keys. No password, seed or data key in the clear.
 - Password: at least 12 characters. Recovery is the seed phrase and nothing else.
+- **The seed ciphertext's AES-GCM `additionalData` binds it to the envelope's own header**: a
+  fixed-order JSON encoding of `{v, scheme, kdf: {alg, m, t, p}, accounts: [{index,
+  publicKey}, …]}` — account **names** excluded (renaming needs no re-encryption), so any code
+  that adds or removes an account (B1b) must re-encrypt the seed under the same data key. A
+  stored value this code could not have written — the wrong shape, or a header that no longer
+  matches its ciphertext — is `CorruptEnvelope`, surfaced to the unlock flow as the fixed
+  `'damaged'` outcome. `'damaged'` is never `'wrong'`: it is never charged against the
+  wrong-password backoff, and the vault page never invites a retry that cannot succeed.
+- **Argon2id parameters are bounded on both sides**: a stored envelope must declare a cost
+  between `PRODUCTION_KDF` (the floor, the values above) and a fixed cap, checked before the
+  KDF ever runs; a declared cost outside that range is also `'damaged'`.
 
 **Passkey.**
 - **RP ID `wallet.noc-tura.io`**, claimed through a host permission for it (Chrome 122+,
@@ -159,9 +186,11 @@ browser removes that; the unlock factors and the short auto-lock bound it.
 
 **Unlocking and the unlocked state.**
 - The vault page derives the data key (Argon2id in the worker, or passkey), decrypts the seed,
-  derives the per-account Ed25519 signing keys, sends them to the background as
-  `vault.setKeys` (privileged, from the vault page's URL only; §1), and drops the seed and the
-  data key. The seed exists in memory only for that moment.
+  derives the per-account Ed25519 signing keys, **compares each derived public key against the
+  one the envelope records for that account** (index by index — a mismatch sends nothing and
+  reports a failed unlock), sends them to the background as `vault.setKeys` (privileged, from
+  the vault page's URL only; §1), and drops the seed and the data key. The seed exists in
+  memory only for that moment.
 - While unlocked, the signing keys live in **`storage.session`** — memory only, cleared on
   browser restart, not exposed to content scripts by default (Chrome 102+, Firefox 115+).
   **Never the seed, never the data key.** Adding an account, revealing the seed or exporting
@@ -396,9 +425,18 @@ is of the unsigned contents. Minimum versions: **Chrome 122, Firefox 150**.
   ever added), no external script;
 - **host allowlist over the package**: exactly the hosts in §4, each with a reason;
 - **permissions**: the manifest's permissions equal the list in §4, each justified;
-- **bundles**: the vault module is imported only by the vault bundle; `storage.session` only by
-  the background; the privileged message types are sent only from extension pages;
+- **vault isolation**: checked in the sources (every file under the package, not just `src/` —
+  a file anywhere can be bundled once an HTML entry loads it — plus the HTML entries at the
+  package root, each of which may load only its own page's entry), in the built output (a
+  shared chunk cannot carry vault code into another bundle, backstopped by 5 markers: envelope,
+  derivation, bip39, passkey, kdf) and in both built manifests (`web_accessible_resources`
+  cannot expose the vault page to being framed); `storage.session` only by the background,
+  **pinned to `TRUSTED_CONTEXTS`** the moment the service worker starts (a no-op on Firefox,
+  which has no `setAccessLevel`); the privileged message types are sent only from extension
+  pages;
 - **RPC method list**: every call maps to an allowed method;
+- **`npm ci --ignore-scripts`**: the extension's own install runs no `postinstall`/`prepare`
+  scripts from a dependency, in CI and locally;
 - reproducibility and a manifest check (both browsers' required fields).
 
 **Tests.**
@@ -414,7 +452,8 @@ is of the unsigned contents. Minimum versions: **Chrome 122, Firefox 150**.
   the `signMessage` rules, the no-double-spend flow — each with a mutation that proves the
   test can fail.
 - End to end: Playwright loads the extension into Chromium; a test page connects and asks for a
-  signature against a simulated RPC and broadcast route; no real funds move.
+  signature against a simulated RPC and broadcast route; no real funds move. Runs **in CI**, not
+  only locally.
 
 **Needed from the coordinator (ICO Claude), before the work that depends on each:**
 1. **The broadcast-only route** described in §4.
