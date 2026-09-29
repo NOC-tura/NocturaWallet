@@ -99,4 +99,27 @@ describe('passkey', () => {
     const {api} = fakeApiWithShortPrf(16);
     expect(await registerPasskey(api, new Uint8Array(16))).toEqual({unsupported: true});
   });
+
+  // Fable review (Minor 5): the platform hands back the PRF output in an ArrayBuffer the
+  // credential object keeps; evaluatePrf copies it out and zeroes that original.
+  function fakeApiKeepingBuffer(len: number): {api: CredentialsApi; original: ArrayBuffer} {
+    const original = new Uint8Array(len).fill(5).buffer;
+    const cred = {rawId: new Uint8Array([9]).buffer, getClientExtensionResults: () => ({prf: {results: {first: original}}})} as unknown as Credential;
+    return {original, api: {create: async () => cred, get: async () => cred}};
+  }
+
+  it('zeroes the credential\'s own PRF buffer, and returns an independent copy of the output', async () => {
+    const {api, original} = fakeApiKeepingBuffer(32);
+    const out = await evaluatePrf(api, new Uint8Array([9]), new Uint8Array(32));
+    expect(Array.from(new Uint8Array(original))).toEqual(new Array(32).fill(0));
+    expect(out && Array.from(out)).toEqual(new Array(32).fill(5));
+    expect(out?.buffer).not.toBe(original);
+  });
+
+  it('zeroes the credential\'s PRF buffer even when its length makes it unusable', async () => {
+    const {api, original} = fakeApiKeepingBuffer(16);
+    expect(await evaluatePrf(api, new Uint8Array([9]), new Uint8Array(32))).toBeNull();
+    expect(Array.from(new Uint8Array(original))).toEqual(new Array(16).fill(0));
+  });
 });
+

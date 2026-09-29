@@ -25,8 +25,14 @@ function prfOutputOf(cred: Credential | null): Uint8Array | null {
   const ext = (cred as PublicKeyCredential).getClientExtensionResults() as PrfResults;
   const first = ext.prf?.results?.first;
   if (!first) return null;
-  const bytes = new Uint8Array(first);
-  return bytes.length === PRF_OUTPUT_LEN ? bytes : null;
+  // Copy the output out, then zero the credential's own buffer: the credential object may
+  // outlive this call, and the PRF output is key material (see evaluatePrf).
+  const view = new Uint8Array(first);
+  const bytes = view.slice();
+  view.fill(0);
+  if (bytes.length === PRF_OUTPUT_LEN) return bytes;
+  bytes.fill(0);
+  return null;
 }
 
 /**
