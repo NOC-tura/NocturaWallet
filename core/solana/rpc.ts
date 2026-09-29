@@ -52,6 +52,19 @@ export class RpcForbidden extends Error {
     this.name = 'RpcForbidden';
   }
 }
+/**
+ * The latch refused a request during its cool-down, BEFORE anything was sent — unlike a 403
+ * response, where the request did reach the coordinator. A subclass, so every `instanceof
+ * RpcForbidden` caller keeps treating it as terminal; a caller that must know "never sent" (the
+ * broadcast) checks for this class.
+ */
+export class RpcCoolingDown extends RpcForbidden {
+  constructor(what: string) {
+    super(what);
+    this.message = `${what}: not sent — cooling down after an earlier 403`;
+    this.name = 'RpcCoolingDown';
+  }
+}
 export class RpcMethodRefused extends Error {
   constructor(method: string) {
     super(`${method} is not on the RPC allowlist; no request was sent`);
@@ -117,7 +130,7 @@ export function createForbiddenLatch(opts: {now?: () => number; store?: LatchSto
     request(what, send) {
       const turn = async (): Promise<FetchResponse> => {
         await load();
-        if (now() < until) throw new RpcForbidden(`${what} (cooling down after an earlier 403)`);
+        if (now() < until) throw new RpcCoolingDown(what);
         const res = await send();
         if (res.status === 403) {
           until = now() + FORBIDDEN_COOLDOWN_MS;

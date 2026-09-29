@@ -17,6 +17,7 @@ export type SendRefusal =
   | 'simulation-failed'
   | 'unknown-prepared'
   | 'prepared-expired'
+  | 'prepared-invalid'
   | 'reauth-required'
   | 'sender-below-rent'
   | 'recipient-below-rent';

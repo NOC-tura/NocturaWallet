@@ -93,7 +93,7 @@ describe('sendPrepared — what is signed is what was prepared', () => {
     const challengeId = view.reauth!.challengeId;
     await satisfyChallenge(ext, deps.now(), challengeId);
     await alterMessage(ext);
-    await expect(sendPrepared(ext, deps, view.id)).rejects.toMatchObject({code: 'reauth-required'});
+    await expect(sendPrepared(ext, deps, view.id)).rejects.toMatchObject({code: 'prepared-invalid'});
     expect(deps.broadcasts).toHaveLength(0);
     expect(await ext.local.get(PENDING_KEY)).toBeUndefined();
   });
@@ -101,7 +101,7 @@ describe('sendPrepared — what is signed is what was prepared', () => {
   it('a message altered after prepare is refused without a challenge too', async () => {
     const {ext, deps, view} = await setup(true);
     await alterMessage(ext);
-    await expect(sendPrepared(ext, deps, view.id)).rejects.toMatchObject({code: 'reauth-required'});
+    await expect(sendPrepared(ext, deps, view.id)).rejects.toMatchObject({code: 'prepared-invalid'});
     expect(deps.broadcasts).toHaveLength(0);
   });
 

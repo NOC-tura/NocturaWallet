@@ -6,7 +6,7 @@ import {randomId} from './digest';
 import {inFlightFor, isOpen, readPending, updatePending, viewOf, type PendingRecord, type PendingView} from './pendingStore';
 import {ResendRefused, SendRefused, type ResendRefusal, type SendIntent} from './sendTypes';
 import {BroadcastRejected, BroadcastSubstituted, firstSignature} from '../../../core/solana/broadcast';
-import {RpcForbidden, type SignatureStatus} from '../../../core/solana/rpc';
+import {RpcCoolingDown, RpcForbidden, type SignatureStatus} from '../../../core/solana/rpc';
 
 /** ≥ 2 s: the proxy's request budget, and CrowdSec (spec §4). */
 export const POLL_INTERVAL_MS = 2_000;
@@ -35,9 +35,11 @@ export async function armPendingAlarm(ext: Ext): Promise<void> {
 }
 
 /**
- * Hand the signed bytes to the broadcast route. On a first attempt, a refusal (400) or a 403 means
- * nothing was forwarded: failed. On a re-send the first copy may already have landed, so only the
- * detail changes. "Not acknowledged" is never failure: the poller decides.
+ * Hand the signed bytes to the broadcast route. On a first attempt, only the route's refusal (400)
+ * or the latch refusing during its cool-down (nothing was sent at all) means nothing was forwarded:
+ * failed. A 403 RESPONSE is "not acknowledged" (route contract): the request reached the
+ * coordinator, so the record stays pending and polling decides. On a re-send the first copy may
+ * already have landed, so only the detail changes.
  */
 async function deliver(ext: Ext, deps: WalletDeps, record: PendingRecord, attempt: 'first' | 'again'): Promise<void> {
   try {
@@ -46,8 +48,12 @@ async function deliver(ext: Ext, deps: WalletDeps, record: PendingRecord, attemp
   } catch (e) {
     if (attempt === 'first' && e instanceof BroadcastRejected) {
       await patch(ext, record.id, r => ({...r, state: 'failed', detail: `The network refused this transaction (${e.reason}: ${e.detail}). No funds moved.`}));
-    } else if (attempt === 'first' && e instanceof RpcForbidden) {
-      await patch(ext, record.id, r => ({...r, state: 'failed', detail: 'The coordinator refused the broadcast (HTTP 403). No funds moved; not retried.'}));
+    } else if (attempt === 'first' && e instanceof RpcCoolingDown) {
+      await patch(ext, record.id, r => ({...r, state: 'failed', detail: 'Not sent: the coordinator is cooling down after an earlier HTTP 403. No funds moved.'}));
+    } else if (e instanceof RpcCoolingDown) {
+      await patch(ext, record.id, r => ({...r, detail: 'Not sent again: cooling down after an earlier HTTP 403; still watching the first copy.'}));
+    } else if (e instanceof RpcForbidden) {
+      await patch(ext, record.id, r => ({...r, detail: 'The coordinator answered HTTP 403: not acknowledged; still watching, not retried automatically.'}));
     } else if (e instanceof BroadcastSubstituted) {
       await patch(ext, record.id, r => ({...r, detail: 'The coordinator answered with another signature; watching this transaction’s own signature.'}));
     } else {
@@ -85,9 +91,17 @@ export async function submitSigned(
   });
   if (guard.refused) throw new SendRefused('in-flight');
   // Written above BEFORE the broadcast below: a service worker stopped in between still knows it.
-  await armPendingAlarm(ext);
-  await deliver(ext, deps, record, 'first');
-  void startPoller(ext, deps);
+  // From here on the record exists, so whatever throws, a poller (and, if it can be armed, the
+  // alarm) is left watching it.
+  let armed = false;
+  try {
+    await armPendingAlarm(ext);
+    armed = true;
+    await deliver(ext, deps, record, 'first');
+  } finally {
+    void startPoller(ext, deps);
+    if (!armed) await armPendingAlarm(ext).catch(() => undefined);
+  }
   return viewOf((await readPending(ext)).find(r => r.id === record.id) ?? record);
 }
 
@@ -116,11 +130,15 @@ export async function resend(ext: Ext, deps: WalletDeps, id: string): Promise<Pe
   return viewOf(current);
 }
 
-/** Check err FIRST: a landed-but-failed transaction also carries a confirmationStatus. */
+/**
+ * Final only at confirmed/finalized (the app's findLandedSignature rule): a `processed` status —
+ * with or without err — may be a minority fork, and the same bytes can still land. At a final
+ * commitment err is checked first: a landed-but-failed transaction is failed, never confirmed.
+ */
 function landed(s: SignatureStatus | null): 'confirmed' | 'failed' | null {
   if (s === null) return null;
-  if (s.err !== null) return 'failed';
-  return s.confirmationStatus === 'confirmed' || s.confirmationStatus === 'finalized' ? 'confirmed' : null;
+  if (s.confirmationStatus !== 'confirmed' && s.confirmationStatus !== 'finalized') return null;
+  return s.err !== null ? 'failed' : 'confirmed';
 }
 
 const failedDetail = (err: unknown): string => `Landed but failed (${JSON.stringify(err)}): the network fee was paid, nothing was sent.`;
@@ -163,6 +181,9 @@ export async function pollOnce(ext: Ext, deps: WalletDeps): Promise<boolean> {
       const final = landed(last);
       if (final === 'confirmed') updates.set(r.id, {state: 'confirmed', detail: null});
       else if (final === 'failed') updates.set(r.id, {state: 'failed', detail: failedDetail(last?.err)});
+      // Only a literal null in both answers is a null round; any status seen (processed, with or
+      // without err) means the network knows the transaction: restart the count, keep watching.
+      else if (last !== null || s !== null) updates.set(r.id, {expiryNullSeenAt: null});
       else if (r.expiryNullSeenAt !== null && now - r.expiryNullSeenAt >= POLL_INTERVAL_MS) updates.set(r.id, {state: 'expired', detail: NOT_CONFIRMED});
       else updates.set(r.id, {expiryNullSeenAt: r.expiryNullSeenAt ?? now});
     } else if (r.state === 'pending' && now - r.createdAt > STUCK_AFTER_MS) {
@@ -207,13 +228,17 @@ export function startPoller(ext: Ext, deps: WalletDeps): Promise<void> {
   return loop;
 }
 
+const anyOpen = async (ext: Ext): Promise<boolean> => (await readPending(ext)).some(isOpen);
+
 /**
  * The 30 s alarm: poll once if no loop is running (a running loop already polls every 2 s — two
  * pollers would break the ≥ 2 s rule), then re-arm while anything is open, or clear the alarm.
+ * A send written meanwhile arms the alarm itself after writing its record; the clear could land
+ * after that arm, so the store is read again after clearing and the alarm re-armed if needed.
  */
 export async function onPendingAlarm(ext: Ext, deps: WalletDeps): Promise<void> {
   let open = true;
-  if (loops.has(ext)) open = (await readPending(ext)).some(isOpen);
+  if (loops.has(ext)) open = await anyOpen(ext);
   else {
     try {
       open = await pollOnce(ext, deps);
@@ -221,6 +246,10 @@ export async function onPendingAlarm(ext: Ext, deps: WalletDeps): Promise<void> 
       open = true;
     }
   }
-  if (open) await armPendingAlarm(ext);
-  else await ext.alarms.clear(PENDING_ALARM);
+  if (open || (await anyOpen(ext))) {
+    await armPendingAlarm(ext);
+    return;
+  }
+  await ext.alarms.clear(PENDING_ALARM);
+  if (await anyOpen(ext)) await armPendingAlarm(ext);
 }

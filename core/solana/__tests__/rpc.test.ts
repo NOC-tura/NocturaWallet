@@ -1,5 +1,5 @@
 import {
-  ALLOWED_RPC_METHODS, API_BASE, FORBIDDEN_COOLDOWN_MS, RPC_ENDPOINT, RpcForbidden, RpcHttpError, RpcMalformed, RpcMethodRefused, RpcResponseError,
+  ALLOWED_RPC_METHODS, API_BASE, FORBIDDEN_COOLDOWN_MS, RPC_ENDPOINT, RpcCoolingDown, RpcForbidden, RpcHttpError, RpcMalformed, RpcMethodRefused, RpcResponseError,
   createForbiddenLatch, createRpc, solanaReader, type FetchInit, type RpcMethod,
 } from '../rpc';
 
@@ -80,6 +80,20 @@ describe('createRpc', () => {
     t = FORBIDDEN_COOLDOWN_MS;
     await expect(rpc.call('getBlockHeight', [])).rejects.toBeInstanceOf(RpcForbidden);
     expect(calls).toHaveLength(2);
+  });
+
+  it('a 403 response and a refusal during the cool-down are told apart: only the latter is RpcCoolingDown (nothing sent)', async () => {
+    const {fetch, calls} = fakeFetch(() => ({status: 403}));
+    const rpc = createRpc({fetch, latch: createForbiddenLatch({now: () => 0})});
+    const answered = await rpc.call('getBalance', []).catch((e: unknown) => e);
+    expect(answered).toBeInstanceOf(RpcForbidden);
+    expect(answered).not.toBeInstanceOf(RpcCoolingDown);
+    expect(calls).toHaveLength(1);
+    const refused = await rpc.call('getBalance', []).catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(RpcCoolingDown);
+    // Still an RpcForbidden: every existing `instanceof RpcForbidden` caller keeps treating it as terminal.
+    expect(refused).toBeInstanceOf(RpcForbidden);
+    expect(calls).toHaveLength(1);
   });
 
   it('three concurrent calls into a 403 send exactly ONE request — the queue is what stops a burst', async () => {

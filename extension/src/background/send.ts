@@ -48,7 +48,7 @@ export async function sendPrepared(ext: Ext, deps: WalletDeps, id: string): Prom
   // What is about to be signed must be what was bound at prepare time: a stored entry changed
   // since (message, amount, recipient, account) no longer matches its digest and is refused.
   const digest = recomputedDigest(prepared);
-  if (digest !== prepared.digest) throw new SendRefused('reauth-required');
+  if (digest !== prepared.digest) throw new SendRefused('prepared-invalid');
   if (prepared.challengeId !== null && !(await consumeChallenge(ext, deps.now(), prepared.challengeId, digest))) {
     throw new SendRefused('reauth-required');
   }

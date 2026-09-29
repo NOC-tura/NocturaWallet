@@ -2,7 +2,7 @@ import {base58, base64} from '@scure/base';
 import {ed25519} from '@noble/curves/ed25519.js';
 import {PublicKey, SystemProgram, TransactionMessage, VersionedTransaction} from '@solana/web3.js';
 import {BROADCAST_ENDPOINT, BroadcastRejected, BroadcastSubstituted, BroadcastUnavailable, broadcastSigned, firstSignature} from '../broadcast';
-import {RpcForbidden, createForbiddenLatch, type FetchInit} from '../rpc';
+import {RpcCoolingDown, RpcForbidden, createForbiddenLatch, type FetchInit} from '../rpc';
 
 const OTHER = new PublicKey('9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4');
 const BLOCKHASH = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
@@ -85,6 +85,17 @@ describe('broadcastSigned', () => {
     const latch = createForbiddenLatch();
     await expect(broadcastSigned({fetch, latch}, w.bytes)).rejects.toBeInstanceOf(RpcForbidden);
     await expect(broadcastSigned({fetch, latch}, w.bytes)).rejects.toBeInstanceOf(RpcForbidden);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('a broadcast answered 403 is RpcForbidden; one refused by the cool-down before any request is RpcCoolingDown', async () => {
+    const w = wire(true);
+    const {fetch, calls} = fakeFetch({status: 403});
+    const latch = createForbiddenLatch();
+    const answered = await broadcastSigned({fetch, latch}, w.bytes).catch((e: unknown) => e);
+    expect(answered).toBeInstanceOf(RpcForbidden);
+    expect(answered).not.toBeInstanceOf(RpcCoolingDown);
+    await expect(broadcastSigned({fetch, latch}, w.bytes)).rejects.toBeInstanceOf(RpcCoolingDown);
     expect(calls).toHaveLength(1);
   });
 
