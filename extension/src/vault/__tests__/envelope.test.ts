@@ -27,6 +27,15 @@ describe('vault envelope', () => {
     await expect(unlockWithPassword(env, 'wrong horse battery!', kdf)).rejects.toBeInstanceOf(WrongPassword);
   });
 
+  // Fable re-review: an envelope always carries at least one account from creation — nothing
+  // downstream (unlockFlow's account-matching, the popup's account list) is meant to handle a
+  // wallet with zero accounts, so refuse to create one rather than store data nothing can use.
+  it('refuses to create an envelope with no accounts', async () => {
+    await expect(createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts: [], kdf})).rejects.toThrow(
+      /at least one account/,
+    );
+  });
+
   it('stores nothing in the clear', async () => {
     const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     const json = JSON.stringify(env);
@@ -228,6 +237,7 @@ describe('a malformed envelope is CorruptEnvelope, never a wrong factor', () => 
     ['a seed.ct shorter than the GCM tag', e => void ((e.seed as Record<string, unknown>).ct = 'AAAA')],
     ['no password wrap', e => void delete e.password],
     ['accounts not an array', e => void (e.accounts = {})],
+    ['accounts is empty', e => void (e.accounts = [])],
     ['an account with a negative index', e => void (e.accounts = [{index: -1, name: 'a', publicKey: 'x'}])],
     ['an account without a public key', e => void (e.accounts = [{index: 0, name: 'a'}])],
     ['a short passkey.prfSalt', e => void ((e.passkey as Record<string, unknown>).prfSalt = 'AAAA')],

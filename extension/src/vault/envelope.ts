@@ -149,6 +149,7 @@ function checkEnvelope(env: unknown): asserts env is EnvelopeV1 {
     bytesField(env.passkey.wrapped, 'passkey.wrapped', {exact: WRAPPED_LEN});
   }
   if (!Array.isArray(env.accounts)) throw new CorruptEnvelope('accounts is not an array');
+  if (env.accounts.length === 0) throw new CorruptEnvelope('accounts is empty');
   for (const a of env.accounts as unknown[]) {
     if (!isObject(a) || !isIndex(a.index) || typeof a.name !== 'string' || typeof a.publicKey !== 'string') {
       throw new CorruptEnvelope('an account is malformed');
@@ -190,6 +191,7 @@ export async function createEnvelope(input: {
 }): Promise<EnvelopeV1> {
   const params = input.params ?? PRODUCTION_KDF;
   checkKdfParams(params);
+  if (input.accounts.length === 0) throw new TypeError('createEnvelope requires at least one account');
   for (const a of input.accounts) {
     if (!isIndex(a.index) || typeof a.name !== 'string' || typeof a.publicKey !== 'string') throw new TypeError('malformed account');
   }

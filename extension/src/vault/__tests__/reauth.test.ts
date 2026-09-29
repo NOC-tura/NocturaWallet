@@ -5,6 +5,7 @@ import {deriveSessionAccounts} from '../accounts';
 import {proveWithPassword, proveWithPrf} from '../reauth';
 
 const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+const accounts = [{index: 0, name: 'Account 1', publicKey: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk'}];
 const OTHER = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
 // The envelope refuses Argon2id parameters below production (spec §2), so every envelope here
 // DECLARES the production cost; this test KDF computes Argon2id at a tiny cost instead, so a
@@ -14,7 +15,7 @@ const randomBytes = (n: number) => globalThis.crypto.getRandomValues(new Uint8Ar
 
 /** A real envelope with a passkey wrap added on top of the password wrap, the way unlock.html would. */
 async function passkeyEnvelope() {
-  const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts: [], kdf});
+  const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
   const dataKey = await unlockWithPassword(env, 'correct horse battery', kdf);
   const prfOutput = randomBytes(32);
   const prfSalt = randomBytes(32);
@@ -25,30 +26,30 @@ async function passkeyEnvelope() {
 
 describe('re-authentication is a proof', () => {
   it('passes with the right password against the right session', async () => {
-    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts: [], kdf});
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     const session = await deriveSessionAccounts(MNEMONIC, 'slip10', [0]);
     expect(await proveWithPassword(env, 'correct horse battery', kdf, session)).toBe(true);
   });
 
   it('fails with the wrong password', async () => {
-    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts: [], kdf});
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     const session = await deriveSessionAccounts(MNEMONIC, 'slip10', [0]);
     expect(await proveWithPassword(env, 'nope nope nope nope', kdf, session)).toBe(false);
   });
 
   it("fails when the session keys are not this vault's (a swapped session)", async () => {
-    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts: [], kdf});
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     const foreign = await deriveSessionAccounts(OTHER, 'slip10', [0]);
     expect(await proveWithPassword(env, 'correct horse battery', kdf, foreign)).toBe(false);
   });
 
   it('fails a right-password proof against an empty session (vacuous truth guard)', async () => {
-    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts: [], kdf});
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     expect(await proveWithPassword(env, 'correct horse battery', kdf, [])).toBe(false);
   });
 
   it('zeroes the unwrapped data key even when decryptMnemonic throws', async () => {
-    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts: [], kdf});
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     // Corrupt only the seed ciphertext (not the password-wrapped data key), so
     // unlockWithPassword still succeeds but decryptMnemonic's AES-GCM tag check throws.
     const flip = env.seed.ct.slice(-4) === 'AAAA' ? 'BBBB' : 'AAAA';
@@ -95,7 +96,7 @@ describe('re-authentication is a proof — passkey (PRF) factor', () => {
   });
 
   it('fails when the envelope has no passkey wrap', async () => {
-    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts: [], kdf});
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: 'correct horse battery', scheme: 'slip10', accounts, kdf});
     const session = await deriveSessionAccounts(MNEMONIC, 'slip10', [0]);
     expect(await proveWithPrf(env, randomBytes(32), session)).toBe(false);
   });

@@ -50,13 +50,14 @@ export async function unlockFlow(
         return 'damaged';
       }
       try {
-        const indexes = deps.env.accounts.length ? deps.env.accounts.map(a => a.index) : [0];
+        // checkEnvelope (run inside decryptMnemonic above) refuses a stored envelope with no
+        // accounts, so deps.env.accounts is never empty here — no account-0 fallback needed.
+        const indexes = deps.env.accounts.map(a => a.index);
         const accounts = await deriveSessionAccounts(mnemonic, deps.env.scheme, indexes);
         // The derived keys must be the ones the envelope records for this wallet, account by
-        // account; otherwise nothing is sent. (An envelope with no stored accounts has nothing
-        // to compare against and derives account 0, as before.)
+        // account; otherwise nothing is sent.
         const stored = deps.env.accounts;
-        if (stored.length > 0 && (accounts.length !== stored.length || accounts.some((a, i) => a.publicKey !== stored[i]?.publicKey))) {
+        if (accounts.length !== stored.length || accounts.some((a, i) => a.publicKey !== stored[i]?.publicKey)) {
           return 'failed';
         }
         const r = await deps.send({type: 'vault.setKeys', accounts});
