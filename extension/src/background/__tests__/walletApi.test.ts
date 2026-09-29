@@ -6,7 +6,7 @@ import {KNOWN_RECIPIENTS_KEY} from '../knownRecipients';
 import {satisfyChallenge} from '../reauthChallenges';
 import {AUTOLOCK_ALARM} from '../autolock';
 import {PREPARED_TTL_MS} from '../prepare';
-import {PREPARED_KEY} from '../session';
+import {PREPARED_KEY, REAUTH_KEY, SESSION_KEY} from '../session';
 import {PENDING_KEY} from '../pendingStore';
 import {POLL_INTERVAL_MS} from '../pending';
 import {firstSignature} from '../../../../core/solana/broadcast';
@@ -256,6 +256,36 @@ describe('handleWallet', () => {
     const id2 = (again.data as {challengeId: string}).challengeId;
     await satisfyChallenge(ext, deps.now(), id2);
     expect(await handleWallet(ext, deps, 'settings.set', {patch: {reauthUsdCents: 20_000}, challengeId: id2})).toMatchObject({ok: true, data: {reauthUsdCents: 20_000}});
+  });
+
+  it('settings.set: a lock landing before the challenge is issued answers locked and leaves no challenge behind', async () => {
+    // (a) the lock lands between the first session check and issueChallenge
+    const ext = fakeExt();
+    await unlocked(ext);
+    const get = ext.session.get;
+    let sessionReads = 0;
+    ext.session.get = async k => {
+      const v = await get(k);
+      if (k === SESSION_KEY && ++sessionReads === 1) await ext.session.clear();
+      return v;
+    };
+    const issued: number[] = [];
+    const deps = fakeDeps({randomBytes: n => (issued.push(n), new Uint8Array(n).fill(9))});
+    expect(await handleWallet(ext, deps, 'settings.set', {patch: {autoLockMinutes: 30}})).toEqual({ok: false, error: 'locked'});
+    expect(issued).toEqual([]); // no challenge was even issued
+    expect(await get(REAUTH_KEY)).toBeUndefined();
+    expect(await readSettings(ext)).toMatchObject({autoLockMinutes: 5});
+
+    // (b) the lock lands while issueChallenge is writing: the challenge it wrote is removed
+    const ext2 = fakeExt();
+    await unlocked(ext2);
+    const set = ext2.session.set;
+    ext2.session.set = async (k, v) => {
+      await set(k, v);
+      if (k === REAUTH_KEY) await ext2.session.remove(SESSION_KEY);
+    };
+    expect(await handleWallet(ext2, fakeDeps(), 'settings.set', {patch: {autoLockMinutes: 30}})).toEqual({ok: false, error: 'locked'});
+    expect(await ext2.session.get(REAUTH_KEY)).toBeUndefined();
   });
 
   it('settings.set: a weakening patch while locked is refused outright', async () => {

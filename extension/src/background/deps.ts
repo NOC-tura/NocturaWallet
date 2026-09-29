@@ -56,6 +56,59 @@ export function stagePriceFrom(body: unknown): number | null {
   return typeof price === 'number' && Number.isFinite(price) && price > 0 ? price : null;
 }
 
+/**
+ * How long one coordinator request may take. The latch serialises every request, so one that never
+ * answers — CrowdSec answers some users (CGNAT, VPN, Tor) with silence, not an error — would
+ * otherwise freeze balances, history, prepare, broadcast and the confirmation poller behind it.
+ */
+export const REQUEST_TIMEOUT_MS = 20_000;
+/** The broadcast route forwards to the network before answering: a little longer. */
+export const BROADCAST_TIMEOUT_MS = 30_000;
+
+/** A coordinator request got no answer in time. Not a 403: it never trips the cool-down. */
+export class RequestTimedOut extends Error {
+  constructor(url: string, ms: number) {
+    super(`${url}: no answer within ${ms} ms; aborted`);
+    this.name = 'RequestTimedOut';
+  }
+}
+
+/**
+ * globalThis.fetch with a deadline covering the response AND its body: the request is aborted and
+ * the promise rejected when the deadline passes — even if the fetch ignored the abort — so the
+ * latch moves on to the next request. The timer is cleared as soon as the body is read (or the
+ * fetch fails), so a finished request leaves nothing behind.
+ */
+export function timedFetch(ms: number): FetchLike {
+  return async (url, init) => {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new RequestTimedOut(url, ms));
+      }, ms);
+    });
+    const done = () => clearTimeout(timer);
+    try {
+      const res = await Promise.race([globalThis.fetch(url, {...init, signal: controller.signal}), deadline]);
+      return {
+        status: res.status,
+        json: async () => {
+          try {
+            return (await Promise.race([res.json(), deadline])) as unknown;
+          } finally {
+            done();
+          }
+        },
+      };
+    } catch (e) {
+      done();
+      throw e;
+    }
+  };
+}
+
 /** storage.local, background-owned: the end of a 403 cool-down, so a restarted worker keeps it (review M3). */
 export const FORBIDDEN_UNTIL_KEY = 'v1_forbidden_until';
 
@@ -75,14 +128,15 @@ export function latchStore(ext: Ext): LatchStore {
  * service worker keeps it. Build this once per background instance.
  */
 export function browserDeps(ext: Ext): WalletDeps {
-  const fetch: FetchLike = (url, init) => globalThis.fetch(url, init);
+  const fetch = timedFetch(REQUEST_TIMEOUT_MS);
+  const broadcastFetch = timedFetch(BROADCAST_TIMEOUT_MS);
   const latch = createForbiddenLatch({store: latchStore(ext)});
   const get = createJsonGetter(fetch, latch);
   let cache: {at: number; prices: Prices} | null = null;
   let stage: {at: number; price: number} | null = null;
   return {
     reader: solanaReader(createRpc({fetch, latch})),
-    broadcast: wire => broadcastSigned({fetch, latch}, wire),
+    broadcast: wire => broadcastSigned({fetch: broadcastFetch, latch}, wire),
     async prices() {
       const now = Date.now();
       if (cache !== null && now - cache.at < PRICE_TTL_MS) return cache.prices;

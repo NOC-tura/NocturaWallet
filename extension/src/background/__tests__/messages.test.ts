@@ -194,10 +194,17 @@ describe('message partitions (B1b-1 types)', () => {
     'wallet.pending', 'wallet.history', 'accounts.rename', 'accounts.select', 'settings.get', 'settings.set',
   ];
 
-  it('every privileged type is refused from a web page', async () => {
+  it('every privileged type is refused from a web page and from another extension', async () => {
     expect([...PRIVILEGED].sort()).toEqual([...ALL].sort());
+    const otherId = 'someotherextensionidxxxxxxxxxxxx';
+    const others = [
+      {...popup, id: otherId},
+      {id: otherId, origin: `chrome-extension://${otherId}`, url: `chrome-extension://${otherId}/popup.html`},
+      {...unlockPage, id: otherId},
+    ];
     for (const type of ALL) {
       expect(await handleMessage(fakeExt(), {type}, page, fakeDeps())).toEqual({ok: false, error: 'forbidden'});
+      for (const sender of others) expect(await handleMessage(fakeExt(), {type}, sender, fakeDeps())).toEqual({ok: false, error: 'forbidden'});
     }
   });
 

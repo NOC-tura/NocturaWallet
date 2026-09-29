@@ -1,4 +1,4 @@
-import {HISTORY_PAGE_SIZE, TX_MIN_INTERVAL_MS, createHistory} from '../history';
+import {HISTORY_PAGE_SIZE, MAX_CACHED, TX_MIN_INTERVAL_MS, createHistory} from '../history';
 import {fakeReader} from './fakeDeps';
 
 const OWNER = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
@@ -27,5 +27,35 @@ describe('history', () => {
     expect(fetched).toEqual(['s1', 's2', 's3', 's3']);
     expect(asked[1]).toEqual({limit: HISTORY_PAGE_SIZE, before: 's1'});
     expect(TX_MIN_INTERVAL_MS).toBeGreaterThanOrEqual(500);
+  });
+
+  it('keeps at most MAX_CACHED entries: of 501, the oldest is fetched again and the newest is not', async () => {
+    const sigs = Array.from({length: MAX_CACHED + 1}, (_, i) => `s${i}`);
+    let answer = sigs;
+    const fetched: string[] = [];
+    const reader = fakeReader({
+      getSignaturesForAddress: async () => answer.map(signature => ({signature, blockTime: 5, err: null})),
+      getTransaction: async sig => (fetched.push(sig), solSend),
+    });
+    const history = createHistory({reader, now: () => 0, sleep: async () => undefined});
+    expect(await history.page(OWNER)).toHaveLength(MAX_CACHED + 1);
+    expect(fetched).toHaveLength(MAX_CACHED + 1);
+    answer = [`s${MAX_CACHED}`];
+    await history.page(OWNER);
+    expect(fetched).toHaveLength(MAX_CACHED + 1); // the newest is still cached
+    answer = ['s0'];
+    await history.page(OWNER);
+    expect(fetched.slice(MAX_CACHED + 1)).toEqual(['s0']); // the oldest was evicted
+  });
+
+  it('a malformed getTransaction body decodes to "other" without throwing', async () => {
+    for (const body of [{}, 'garbage', 42, [], {meta: 'x', transaction: {message: {accountKeys: 'y'}}}]) {
+      const reader = fakeReader({
+        getSignaturesForAddress: async () => [{signature: 's1', blockTime: 5, err: null}],
+        getTransaction: async () => body,
+      });
+      const [entry] = await createHistory({reader, now: () => 0, sleep: async () => undefined}).page(OWNER);
+      expect(entry).toMatchObject({signature: 's1', kind: 'other', token: null, amount: null, feeLamports: '0', failed: false});
+    }
   });
 });

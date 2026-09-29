@@ -1,7 +1,7 @@
 import {base58} from '@scure/base';
 import type {Ext} from '../ext';
 import type {WalletDeps} from './deps';
-import {getSession} from './session';
+import {REAUTH_KEY, getSession, sessionMutex} from './session';
 import {armAutolock} from './autolock';
 import {createMutex} from './mutex';
 import {parsePatch, readSettings, weakens, writeSettings, type Settings} from './settings';
@@ -127,7 +127,18 @@ async function setSettings(ext: Ext, deps: WalletDeps, msg: Record<string, unkno
       const id = msg.challengeId;
       // Neither call runs inside sessionMutex here: each takes it itself (it is not re-entrant).
       if (typeof id !== 'string' || !(await consumeChallenge(ext, deps.now(), id, digest))) {
-        return {ok: false, error: 'reauth-required', data: {challengeId: await issueChallenge(ext, deps, digest)}};
+        // A lock may have landed since the check above: never issue a challenge into a locked session.
+        if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
+        const challengeId = await issueChallenge(ext, deps, digest);
+        // …nor keep one a lock raced past (issueChallenge wrote after the lock's clear): as in
+        // prepareSend, remove just the challenges, under the mutex the lock takes — never lock()
+        // or clearSession() here, which would wait on this very mutex.
+        const lockedMeanwhile = await sessionMutex(async () => {
+          if ((await getSession(ext)) !== null) return false;
+          await ext.session.remove(REAUTH_KEY);
+          return true;
+        });
+        return lockedMeanwhile ? {ok: false, error: 'locked'} : {ok: false, error: 'reauth-required', data: {challengeId}};
       }
     }
     const next: Settings = {...current, ...patch};
