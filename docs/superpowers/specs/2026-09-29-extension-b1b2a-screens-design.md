@@ -74,7 +74,9 @@ Owner answers to this spec's first draft (2026-09-29), and one controller ruling
 | — | Keep the three-plan split under this one spec | §12 |
 
 Owner answers and controller rulings after the independent review (Fable 5.1, round 1,
-`.superpowers/sdd/b1b2a-spec-review-1.md`; every finding B1, H1–H4, M1–M8, L1–L7 is applied):
+`.superpowers/sdd/b1b2a-spec-review-1.md`; every finding B1, H1–H4, M1–M8, L1–L7 is applied), and
+round 2 (`.superpowers/sdd/b1b2a-spec-review-2.md`: R2-H1, R2-M1–M5 and R2-L1–L7 applied; C5 and
+C6 below):
 
 | # | answer / ruling (substance) | applied here |
 |---|---|---|
@@ -84,6 +86,8 @@ Owner answers and controller rulings after the independent review (Fable 5.1, ro
 | D41 | #40 "Try a different seed" is **built in B1b-2a** as designed, using E5 | #40, E5 (§11 item 13 records how, since C4 forbids a replacement with other keys) |
 | C2 | `wallet.discardPrepared {account}` (privileged, partition-tested): drops that account's prepared sends and any send challenge bound to their intent; called by #10 [Cancel send], #20 [Cancel], Esc/back past #19. After it, `preparedFor` returns null. No toast claim that cannot be true | E7, #10, #19, #20, #44 |
 | C3 | `failure: 'landed' \| 'not-sent' \| null` on PendingRecord/PendingView, set where the engine writes each `failed`; #44 keys on it, `detail` stays the caption | E8, #44 |
+| C5 | The challenge re-base (D39) is **capped**: a challenge records `issuedAt`, and no re-base extends it past `issuedAt + 10 min` (`CHALLENGE_MAX_LIFE_MS`). #20's automatic re-prepare at the quote's end runs **at most once without user input**; after that "Quote expired — refresh", and refresh is a tap (review R2-H1) | E3, §4.5 |
+| C6 | D41's delete is guarded **in the background**: `vault.forgetWallet {…, guard: 'unfunded'}` reads every envelope account's balances through `deps.reader` inside E5's critical section, before the lock; any non-zero → `funded`, any read failure → `unreachable` (a 403 stays `coordinator-refused`). The vault page still never touches the network (review R2-M4) | E5, #8 retry, #40 |
 | C4 | E5's `replacement` binding is enforced **in the background**: `replacement.scheme === stored.scheme` and identical `{index, publicKey}` sets, else `malformed`; mutation test | E5 |
 
 The inventory's decision numbers D20 (address book) and D29–D33 (CSV/diagnostics, auto-lock
@@ -410,13 +414,24 @@ simulation: {
     120 s` and keeps `satisfied`. It is the same grant renewed, not a new one: an expired challenge
     is never revived, a different digest is never re-based, and the challenge stays single-use
     (`consumeChallenge`).
-  - Consequence: a user who re-authenticates while #20 keeps re-preparing does not lose the proof
-    halfway. A user who walks away for more than 120 s without any re-prepare does.
+  - **The re-base is capped (controller ruling C5; review R2-H1).** A challenge record gains
+    `issuedAt`. `rebaseChallenge` sets `expiresAt = min(now + 120 s, issuedAt +
+    CHALLENGE_MAX_LIFE_MS)`, with `CHALLENGE_MAX_LIFE_MS` = 10 min. So no chain of re-prepares keeps
+    one proof alive longer than 10 minutes from the moment it was issued. #20 cannot build such a
+    chain on its own either: its automatic re-prepare at the quote's end runs **at most once without
+    user input** (§4.5).
+  - **The real consequence:** a user who re-authenticates while #20 is on screen keeps the proof as
+    long as they keep interacting, up to 10 minutes after the challenge was issued. After one
+    automatic refresh, an untouched #20 shows "Quote expired — refresh", and the proof runs out 120 s
+    after that last prepare. Past 10 minutes, whatever happens, the next Send asks for a new
+    re-authentication (`reauth-required`, §4.5).
   - A `vault.reauthOk` answered `unknown-challenge` (the challenge expired while the password was
     typed) shows #10's `expired` state, never `failed`.
   - Tests: re-based on a same-intent reuse; not re-based for another digest; an expired challenge is
-    not revived; `satisfied` survives the re-base; the mutation "re-base on any digest" must fail;
-    the vault-page mapping `unknown-challenge` → `expired`.
+    not revived; `satisfied` survives the re-base; the Nth re-base near the cap stops at `issuedAt +
+    10 min` and the one after that finds the challenge expired; the mutation "re-base on any digest"
+    must fail, and so must the mutation "no cap"; the vault-page mapping `unknown-challenge` →
+    `expired`.
 - **Request:** `{type: 'vault.challengeInfo', challengeId}`. **Vault page only**: the sender path
   must be `/unlock.html` (`VAULT_PAGE_ONLY`), on top of the extension-origin check. The popup and
   the tab cannot read it; a partition test proves both are refused.
@@ -470,18 +485,24 @@ simulation: {
   timeout → `unreachable`; fetch rejection → `unreachable`; 403 → still `coordinator-refused`; the
   gate rejects any non-background file naming `v1_balance_cache`.
 
-### E5 — `vault.forgetWallet` (the engine half of delete-wallet, D35, D40, D41, C4)
+### E5 — `vault.forgetWallet` (the engine half of delete-wallet, D35, D40, D41, C4, C6)
 
-- **Request:** `{type: 'vault.forgetWallet', expectedRevision: string, replacement?: EnvelopeV1}`.
-  **Vault page only** (`VAULT_PAGE_ONLY`: extension origin and sender path `/unlock.html`). The
-  popup, the tab and any web page are refused, and a partition test proves each.
-- **Reply:** `{ok: true}`. Refusals:
+- **Request:** `{type: 'vault.forgetWallet', expectedRevision: string, replacement?: EnvelopeV1,
+  guard?: 'unfunded'}`. **Vault page only** (`VAULT_PAGE_ONLY`: extension origin and sender path
+  `/unlock.html`). The popup, the tab and any web page are refused, and a partition test proves
+  each. `guard` is set by #40's "Try a different seed" path only (C6).
+- **Reply:** `{ok: true}`. Refusals, one vocabulary (review R2-L2):
+  - `malformed`: the request's shape, or a `replacement` whose shape, first-write validation or
+    binding (C4) fails. Anything the *caller* sent that is wrong is `malformed`;
+  - `stored-invalid`: the *stored* `v1_vault` cannot be read as an envelope;
+  - `no-wallet`;
+  - `busy`: `expectedRevision` is not the stored envelope's revision, at the start or at the
+    re-check before the vault write, or the wallet was unlocked again meanwhile (R2-M1);
   - `send-open`: a send is `pending` or `stuck`;
-  - `busy`: `expectedRevision` is not the stored envelope's revision;
-  - `malformed`: a `replacement` that is not the same wallet (C4, below);
-  - `stored-invalid`: a `replacement` that fails the first-write validation `vault.storeEnvelope`
-    applies;
-  - `no-wallet`; `failed`.
+  - `funded` (only with `guard: 'unfunded'`): an account now holds one of the four tokens (C6);
+  - `unreachable` / `coordinator-refused` (only with the guard): the balance read failed or was
+    refused;
+  - `failed`.
 - **Re-authentication happens in the vault page, before the message is sent.** This is the same
   trust boundary as `vault.reauthOk` and `vault.storeEnvelope`: the background cannot check a
   password or a seed without holding it, so the proof runs in the one page allowed to hold them
@@ -493,42 +514,68 @@ simulation: {
     proof, since it already controls the funds. A phrase that does not match is refused in the page
     (`not-this-wallet`) and nothing is sent, so nobody at the keyboard can wipe a wallet whose
     phrase they do not hold.
-  - **factor proof**: the password (Argon2id unwrap of the stored envelope) or the passkey (PRF
-    unwrap), with no session needed. Used by #40's "Try a different seed" (D41, below); B1b-2b's
-    #37 screen uses it too.
+  - **factor proof**, used by #40's "Try a different seed" (D41) and later by B1b-2b's #37. It has
+    the **`openWithPassword` shape** (`src/unlock/onboarding.ts`): the password unwraps the stored
+    envelope's data key through Argon2id, or the passkey's PRF output unwraps it. There is **no
+    session comparison** (unlike #10's `reauthenticate`), so it works on a locked wallet. The data
+    key is zeroed at once; nothing else is derived (review R2-L7).
 - **The replacement is bound in the background (C4, review M1).** `replacement.scheme` must equal
   the stored scheme, and its `{index, publicKey}` set must equal the stored one exactly (same
   indexes, same keys, no extra, none missing). Anything else is `malformed`, and nothing changes. So
   a replacement can only ever re-encrypt **the same wallet** under a new password. It can never swap
   in other keys, even if the page's proof code were wrong. Mutation test: dropping the key-set
-  comparison must fail the "other keys" test.
-- **Order of operations (review H1).** A pending record is written by `submitSigned` under
-  `pendingStore`'s own mutex after signing, so a check made under another lock is not atomic with it:
-  1. Under the `accountsStore` mutex: `no-wallet`; compare `expectedRevision` (`busy`); validate
-     and bind `replacement` (`stored-invalid` / `malformed`).
-  2. **`lock()` first.** It clears `storage.session` (keys, prepared sends, challenges) and the
-     auto-lock alarm. From here no new `sendPrepared` can pass its `getSession` check.
-  3. **Check and clear `v1_pending` in one `updatePending(ext, records => …)`**: if any record
-     `isOpen`, the change function throws `SendOpen` and nothing is written; otherwise it returns
-     `[]`. Refused here → `send-open`. The wallet is then left locked and otherwise unchanged; the
-     page says so.
-  4. The rest of the wallet's local data:
+  comparison must fail the "other keys" test. Because the key sets are identical, **the page copies
+  every stored account name into the replacement** (names are not in the envelope's authenticated
+  header, so this needs no re-derivation; review R2-L3, in D40's spirit).
+- **The unfunded guard (controller ruling C6; review R2-M4).** With `guard: 'unfunded'`, the
+  background reads the balances of **every account in the stored envelope** through `deps.reader`
+  (`readWalletBalances`: SOL, NOC, USDC, USDT; through the one 403 latch). Any non-zero → `funded`,
+  "This wallet now holds funds. Nothing was changed." Any read failure → `unreachable`, and a 403 →
+  `coordinator-refused`. So the guard fails closed. The vault page still never touches the
+  network: the background does the reading. This makes D41's non-atomic delete safe even if funds
+  arrive between #40 rendering and the click.
+- **One critical section (review H1 and R2-M1).** Steps 1–7 run in **one `accountsStore` `serial`
+  section**, the mutex every `v1_vault` write takes (`storeEnvelope`, `renameAccount`), so no
+  envelope write can interleave. `lock()` runs inside it: it takes `sessionMutex`, which nests
+  inside `serial` safely because nothing that holds `sessionMutex` ever takes `serial`.
+  1. Read `v1_vault` (`no-wallet` / `stored-invalid`); compare `expectedRevision` (`busy`);
+     validate and bind `replacement` (`malformed`).
+  2. With `guard: 'unfunded'`: the balance reads above (`funded` / `unreachable` /
+     `coordinator-refused`). Nothing has been changed yet.
+  3. **`lock()`.** It clears `storage.session` (keys, prepared sends, challenges) and the auto-lock
+     alarm. From here no new `sendPrepared` can pass its `getSession` check.
+  4. **Check and clear `v1_pending` in one `updatePending(ext, records => …)`** (pendingStore's own
+     mutex, the one `submitSigned` writes under): if any record `isOpen`, the change function throws
+     `SendOpen` and nothing is written; otherwise it returns `[]`. Refused here → `send-open`. The
+     wallet is left locked and otherwise unchanged; the page says so.
+  5. **Immediately before the vault write, re-check** (R2-M1): re-read `v1_vault` and re-compare its
+     revision with `expectedRevision` (`busy` if it moved), and, under `sessionMutex`, confirm
+     `getSession() === null` (`busy` if an unlock landed since step 3; `vault.setKeys` does not
+     take `serial`, so this is the one race left inside the section). A `busy` here has changed
+     nothing but the lock and the removal of closed pending records. The page says: "The wallet
+     changed while this was running. Nothing was deleted; the wallet is locked. Start again."
+  6. **The vault write:** `v1_vault` removed, or overwritten by `replacement`. A crash before this
+     write leaves the old wallet in place and locked, and the operation can be repeated. There is
+     never half a wallet.
+  7. After it, the rest of the wallet's local data:
      - **without `replacement`** (a delete: D41's path, and B1b-2b's #37): remove
        `v1_known_recipients` (D40), `v1_settings` (the defaults apply to whatever comes next),
        `v1_balance_cache`, `v1_price_cache`;
      - **with `replacement`** (a restore of the same wallet, proven): **keep `v1_known_recipients`**
-       (D40: the same wallet is proven) and **keep `v1_settings`** (resetting could weaken a stricter
-       auto-lock or threshold without a re-auth); remove the two caches.
-  5. **Last**, `v1_vault`: removed, or overwritten by `replacement` in the same write. A crash
-     before this step leaves the old wallet in place and locked, and the operation can be repeated;
-     there is never half a wallet.
+       (D40) and **keep `v1_settings`** (resetting could weaken a stricter auto-lock or threshold
+       without a re-auth); remove the two caches.
+     A crash between steps 6 and 7 of a delete could leave the old recipients and settings behind.
+     So **a first write (`vault.storeEnvelope` with `expectedRevision: null`) also removes any
+     `v1_known_recipients` and `v1_settings` it finds**, under the same `serial`, before it writes:
+     they cannot belong to a wallet that does not exist yet. That way they never carry into the next
+     wallet.
   - **Kept always:** `v1_forbidden_until`. The 403 cool-down belongs to the network, not to the
     wallet; clearing it could start a request burst during a ban.
-  - **After step 5, one more `updatePending` read.** A `submitSigned` that had passed its session
-    check before step 2 could still append a record after step 3. If an open record appears, it is
-    **kept, never deleted**: the background poller watches it without keys, and the in-flight block
-    stays for its account. The reply is still `ok`. The window is a few milliseconds; this rule
-    makes it harmless rather than impossible.
+  - **After step 7, one more `updatePending` read.** A `submitSigned` that had passed its
+    session check before step 3 could still append a record after step 4. If an open record
+    appears, it is **kept, never deleted**: the background poller watches it without keys, and the
+    in-flight block stays for its account. The reply is still `ok`. The window is a few
+    milliseconds; this rule makes it harmless rather than impossible.
 - **Why a pending send refuses the delete, instead of warning.** While a send is open it can still
   land. Deleting would drop the only record that watches it and the in-flight block that stops a
   second transaction from the same account, and a re-import could then build a new send while the
@@ -540,35 +587,47 @@ simulation: {
   failed; the replacement makes the restore atomic.
 - **#39 → "Continue to import" works as designed:** #39 → #8 (`?mode=import&source=forgot`) →
   phrase → seed proof → #5 (new password) → the page builds the new envelope with the **stored
-  scheme and every stored account index** (names reset to "Account N") → `vault.forgetWallet
+  scheme, every stored account index and every stored name** → `vault.forgetWallet
   {expectedRevision, replacement}` → `vault.setKeys` → UI tab `#/imported`.
 - **#40 "Try a different seed" (D41).** A different seed is a different wallet, so C4 forbids it
-  as a `replacement`. It uses a delete followed by a normal first write instead:
-  1. #40 (`no-assets-empty` state only, as the design draws it) → `unlock.html?mode=import&source=retry`;
-  2. the page first asks for **the password just set for the wallet being replaced** (factor proof;
-     fixed strings: "Confirm with the password of the wallet you are replacing"; a passkey also
-     works) and records the revision it proved against;
+  as a `replacement`. It uses a guarded delete followed by a normal first write instead:
+  1. #40 (`no-assets-empty` state only, as the design draws it; the button re-reads the balances on
+     click and hides itself, showing the funded state, if anything arrived) →
+     `unlock.html?mode=import&source=retry`;
+  2. the page first asks for **the password just set for the wallet being replaced** (the factor
+     proof; fixed strings: "Confirm with the password of the wallet you are replacing"; a passkey
+     also works) and records the revision it proved against;
   3. #8 takes phrase B (cleared field, as the design says); scheme detection as a normal import; #5
      takes B's password;
-  4. `vault.forgetWallet {expectedRevision}` (no replacement), then at once `vault.storeEnvelope(null,
-     envelopeB)` and `vault.setKeys` → UI tab `#/imported`.
-  The two writes are not atomic. That is acceptable only here: the wallet being removed was just
-  imported, holds nothing on chain (the button exists only in the empty state), and the user has
-  just typed its phrase. If the store fails, the page keeps phrase B and its password in memory and
-  offers `[Try again]`, which retries only the first write.
+  4. `vault.forgetWallet {expectedRevision, guard: 'unfunded'}` (no replacement), then at once
+     `vault.storeEnvelope(null, envelopeB)` and `vault.setKeys` → UI tab `#/imported`.
+  The two writes are not atomic. That is acceptable only here: the background has just proven the
+  wallet being removed holds none of the four tokens (C6), and the user has just typed its phrase.
+  If the first write fails, the page keeps phrase B and its password in memory and offers `[Try
+  again]`, which retries only the first write. If that retry answers `wallet-exists` (another tab
+  created a wallet meanwhile), the page shows the fixed `exists` string ("A wallet already exists in
+  this browser. Nothing was changed.") and stops: no loop, no second delete (review R2-L6).
 - **Tests:**
   - background: refused from `/popup.html`, `/wallet.html` and a web origin; `send-open` for a
     pending and for a stuck record, and allowed once they are closed; **H1:** a pending write
     injected between the lock and the clear (fake `Ext` hook) → `send-open`; mutation: replacing the
     atomic `updatePending` clear with `local.remove(v1_pending)` must fail that test; a record
-    appended after step 3 is kept; `busy` on a stale revision; **C4:** other scheme, an extra
-    account, a missing account and one changed key → `malformed`, nothing changed; **D40:** with
+    appended after step 4 is kept; `busy` on a stale revision; **R2-M1:** a `storeEnvelope`
+    injected between steps → `busy` and `v1_vault` byte-identical; a `vault.setKeys` injected
+    before step 5 → `busy` and `v1_vault` byte-identical; **C4:** other scheme, an extra account, a
+    missing account and one changed key → `malformed`, nothing changed; **C6:** with the guard, a
+    non-zero balance on any account (each of the four tokens) → `funded`, a failed read →
+    `unreachable`, a 403 → `coordinator-refused`, each with nothing changed and the wallet not
+    locked; mutation: dropping the read must fail the "funded meanwhile" test; **D40:** with
     replacement, known recipients and settings kept; without it, both removed; `v1_forbidden_until`
-    kept in both; an invalid replacement → `stored-invalid`, nothing removed; a thrown write before
-    step 5 leaves `v1_vault` intact.
+    kept in both; an unreadable stored vault → `stored-invalid`; a thrown write before step 6 leaves
+    `v1_vault` intact; a first write removes leftover `v1_known_recipients` / `v1_settings`
+    (a crash between steps 6 and 7 simulated).
   - vault page: the seed proof accepts the stored wallet's phrase (slip10 with several accounts;
     cli) and refuses a different valid phrase and the same phrase under the other scheme; the
-    factor proof accepts the right password and refuses a wrong one; nothing is sent on refusal.
+    replacement carries the stored names; the factor proof accepts the right password and refuses a
+    wrong one without any session; `wallet-exists` on the D41 retry shows the `exists` string and
+    sends nothing more; nothing is sent on refusal.
   - E2E: §8.5 specs 10 and 12.
 
 ### E6 — `wallet.recipientInfo` (read-only, controller ruling C1)
@@ -628,13 +687,16 @@ simulation: {
   - `deliver()` first attempt, `BroadcastRejected` (the route's 400 naming a contract reason) →
     `'not-sent'`;
   - `deliver()` first attempt, `RpcCoolingDown` (the latch refused before sending) → `'not-sent'`;
-  - the poller, a confirmed/finalized status with `err` (`landed() === 'failed'`) → `'landed'`;
+  - the poller, **both** of its writers of a confirmed/finalized status with `err` (`landed() ===
+    'failed'`) → `'landed'`: the regular status check of open records, and the full-history check
+    past `lastValidBlockHeight + 32` (review R2-L1);
   - every other state (`pending`, `stuck`, `confirmed`, `expired`) → `null`.
 - **#44 keys on it** (§4.7): `landed` → `rejected-by-program`; `not-sent` → `network-error`;
   `expired` (a state, not a failure) → `blockhash-expired`. A `failed` record with `failure: null`
   (only possible from an older build) → a generic "Transaction failed" with the `detail`. `detail`
   stays the caption under the title, as B1b-1 writes it.
-- **Tests:** one per writer, asserting `failure` and that `detail` is unchanged; old-format records
+- **Tests:** one per writer (four: two in `deliver()`, the two poller writers named above),
+  asserting `failure` and that `detail` is unchanged; old-format records
   read as `null`; mutation: swapping the two first-attempt values must fail.
 
 ### What the engine does **not** gain (named so nobody assumes it)
@@ -843,15 +905,20 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   - **`&source=retry` (#40's "Try a different seed", D41):** before the phrase field, a password
     step: "Confirm with the password of the wallet you are replacing" + `[Confirm]` /
     `[Confirm with passkey]`; `wrong` → "That did not confirm it."; then #8 as a normal import. At
-    the finish, `send-open` / `busy` as below; a failed first write after the delete → "The new
-    wallet was not saved. Try again." + `[Try again]` (phrase and password kept in page memory).
+    the finish, `vault.forgetWallet {expectedRevision, guard: 'unfunded'}`: `send-open` / `busy` as
+    below; `funded` → "This wallet now holds funds. Nothing was changed." (C6); `unreachable` →
+    "Balances could not be checked, so nothing was changed. Try again later."; `coordinator-refused`
+    → the D26 banner text. A failed first write after the delete → "The new wallet was not saved.
+    Try again." + `[Try again]` (phrase and password kept in page memory); a `[Try again]` answered
+    `wallet-exists` → "A wallet already exists in this browser. Nothing was changed." and the flow
+    stops (review R2-L6).
   - **Restore path from #39 (`&source=forgot`, E5), extension-only states:**
     - `checking-match`: "Checking this phrase against the wallet in this browser…" (the seed
       proof, local, no network);
     - `not-this-wallet`: "This phrase does not belong to the wallet in this browser. Nothing was
       changed." + "To replace that wallet without its password, remove Noctura from this browser and
       install it again." + `[Try another phrase]`;
-    - on a match there is no scheme choice (the stored scheme and account indexes are reused), and
+    - on a match there is no scheme choice (the stored scheme, account indexes and names are reused), and
       the flow goes to #5 with the step counter "Restore · 2 / 2";
     - at the finish, `vault.forgetWallet {expectedRevision, replacement}`:
       - `send-open` → "A transaction from this wallet is still pending. Wait until it confirms or
@@ -978,8 +1045,6 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     mentions address-book entries, which do not exist in B1b-2a.
   - The design's step-3 line "Biometric unlock is also reset — you'll re-enroll after this" becomes
     "A passkey is not carried over; you can add one again later." (passkey management is B1b-2b).
-  - The restore keeps the stored accounts but resets their names to "Account N" (the names live
-    only in the envelope being replaced).
   - "24 words" becomes "12 or 24 words" (import accepts both).
   - "#36 change-pin" is not a step: import sets the password itself.
 
@@ -997,14 +1062,20 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     (D10) and `[Close this tab]`.
   - `multi-account-N-tokens`: "N accounts · M tokens recovered."; "across N accounts"; rows summed
     over accounts ("Solana · N accounts").
-  - `no-assets-empty`: "Wallet imported · empty"; "Your seed checked out, but this wallet has no
-    on-chain assets yet. That's fine — go receive some."; "Recovered 0 tokens" / "1 account ·
+  - `no-assets-empty` — shown **only when every account's balance read succeeded** and all four
+    tokens are zero on every account (review R2-L5); if any read failed, the `unreachable` state
+    shows instead, never "empty": "Wallet imported · empty"; "Your seed checked out, but this wallet
+    holds none of the tokens Noctura shows yet. That's fine — go receive some." **→ adapted**
+    (design "has no on-chain assets yet": the engine reads four tokens, not every asset); "Recovered 0 tokens" / "1 account ·
     address derivation succeeded"; "A few reasons this can happen:" / "This is a fresh seed — never
     received any tokens" / "You imported the wrong seed for this account" / "Your assets are on a
     different derivation path (we check m/44'/501'/n'/0' for n = 0–4, and the Solana CLI key)"
     **→ adapted** (the engine's real paths; design "m/44'/501'/n'/0/0 for n=0..9"); the address;
     "You can send SOL to this address to fund the wallet."; the D10 line; `[Try a different
-    seed]` (secondary) → `unlock.html?mode=import&source=retry` (D41, E5).
+    seed]` (secondary). On click it re-reads every account's balances first (`LockedButton`): if
+    anything arrived, the button disappears and the screen switches to the funded state; only if all
+    are still zero → `unlock.html?mode=import&source=retry` (D41, E5). The background guard (C6)
+    repeats the check at the moment of deletion, whatever the page saw.
   - **extension-only:** `locked` ("Wallet imported. Unlock it to see what was recovered." +
     `[Unlock]` → `?mode=unlock&return=imported`); `refused` (D26 banner); `unreachable`
     ("Balances could not be read right now." + refresh).
@@ -1193,7 +1264,11 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     route" **→ adapted** (design "Solana mainnet-beta DIRECT"); "Fees" as defined above; "Total"
     with USD; "Quote valid 28 s · slot 271 408 921" — the 30 s prepared life and nothing else (D39).
     At 0, #20 re-prepares by itself (a read, never a send) and shows the fresh values with "Updated
-    with a fresh network quote". `[Send 2.4800 SOL]` (`LockedButton`); `[Cancel]`.
+    with a fresh network quote" — **at most once without user input** (C5; review R2-H1). When that
+    quote also runs out with no input since, #20 shows "Quote expired — refresh" and a `[Refresh]`
+    button; the refresh is a tap, which also sends `activity.ping`. `[Send 2.4800 SOL]`
+    (`LockedButton`); `[Cancel]`. **Send is never autofocused** in any state, `confirmed` and
+    `resume` included (review R2-L4): Enter on a freshly loaded #20 does nothing.
   - `first-time recipient` (`first-send` in reasons): banner "You've never sent to this address" /
     "First-time recipient · check the whole address below, group by group, against what you
     expect." **→ adapted** (spec §3; design "double-check the first 6 and last 6 characters in
@@ -1223,8 +1298,14 @@ point here. **One user tap per broadcast, always (D38; review B1).**
      - `prepared-expired` (the quote expired between the tap and the send) → re-prepare with the
        challengeId, show the fresh #20 with "Updated with a fresh network quote — review and send",
        and **wait for a new tap**. The earlier tap is never reused for new values.
-     - `reauth-required {challengeId}` → the #10 tab again, on a tap only. **Loop guard:** if this
-       happens right after a `confirmed` resume for the same intent, the screen shows "Your
+     - `reauth-required` **with** `{challengeId}` (the prepared send is intact; the proof is
+       missing) → the #10 tab again, on a tap only. `reauth-required` **without** a challengeId (the
+       engine consumed the prepared send and the challenge did not match or had expired, e.g. past
+       C5's 10-minute cap) → back to #19 with "Your confirmation expired — review again" (review
+       R2-M3). The client accepts both shapes, and both are tested against the real
+       `handleMessage`.
+     - **Loop guard** (for `reauth-required` with a challengeId): if it happens right after a
+       `confirmed` resume for the same intent, the screen shows "Your
        confirmation did not carry over. Confirm again." once. A second time in a row goes back to
        #12 with the draft and "Something went wrong — start the send again." A tab is never opened
        without a user tap.
@@ -1234,7 +1315,11 @@ point here. **One user tap per broadcast, always (D38; review B1).**
        sent. Check Activity before trying again." (carried rule: never "nothing sent").
      - `coordinator-refused` → D26 banner; nothing retried.
      - `locked` → locked screen.
-     - `unknown-prepared` / `prepared-invalid` → back to #19 (re-prepare).
+     - `unknown-prepared` / `prepared-invalid` (after a tap) → **first read `wallet.pending`**: a
+       record of this account created at or after the time #20 was shown means the send went out
+       (a second window, or a double tap that raced the lock), so #21 tracks that record. Only
+       without one → back to #19 (re-prepare). Component test with the record present → #21, not
+       #19 (review R2-M2).
 - **Cancel and back:** `[Cancel]` → `wallet.discardPrepared {account}` (C2) → #11 with the toast
   "Transaction cancelled. No fees charged." (true: nothing was signed). The back arrow → #19 with
   the prepared send kept (not a cancel).
@@ -1646,7 +1731,8 @@ shows its `detail`.
 ### 7.4 Prepared-expired carry-over and resume
 
 Defined once in §4.5 (D38, review B1): a resume or a `prepared-expired` re-prepares (carrying the
-challengeId, whose 120 s life is re-based by a same-intent re-prepare, D39) and **shows #20; one tap
+challengeId, whose 120 s life is re-based by a same-intent re-prepare, D39, never past 10 minutes
+from its issue, C5) and **shows #20; one tap
 sends; nothing is ever sent without a tap**. `wallet.preparedFor` on popup open resumes a live
 prepared send as #20 `resume`. A prepared send the engine no longer reports (past the challenge's
 life, or discarded by E7) is gone, and the flow starts at #12.
@@ -1714,7 +1800,14 @@ with a fake `Ext` (in-memory `storage.session`/`storage.local`), fake `WalletDep
   `confirmed`, after `expired`, on popup reopen, or from a hash another page opened) calls
   `wallet.send` before a tap event; a `prepared-expired` after a tap waits for a second tap.
   Mutation: an auto-send on resume must fail them;
-- E7: #20 Cancel and #19 back call `wallet.discardPrepared`, and `preparedFor` is `null` after.
+- E7: #20 Cancel and #19 back call `wallet.discardPrepared`, and `preparedFor` is `null` after;
+- **R2-M3:** `reauth-required` with a challengeId → the #10 route; without one → #19 with "Your
+  confirmation expired — review again"; both shapes produced by the real `handleMessage` (the
+  second by consuming the prepared send against an expired challenge);
+- **R2-M2:** after a tap, `unknown-prepared` with a pending record of this account created at or
+  after #20 was shown → #21 on that record, not #19;
+- **C5:** with no input, #20 re-prepares exactly once at the quote's end, then shows `[Refresh]` and
+  makes no further `wallet.prepareSend` call (fake timers).
 
 ### 8.4 Components (vitest + happy-dom + @testing-library/react, like `web/`)
 
@@ -1729,7 +1822,9 @@ state from §§3–6 that renders it from a fixture and asserts:
 - navigation targets;
 - **negative controls (review L6):** in every #19 failed state no CTA that continues is enabled
   (no `[Continue to confirm]` at all); #20's Send is disabled while a send is pending for the
-  account; #10's `undescribable` state has no Confirm button.
+  account; #10's `undescribable` state has no Confirm button; **#20's Send is never focused on
+  mount**, in `default`, `confirmed` and `resume` (`document.activeElement` is not the Send
+  button, and Enter does nothing; review R2-L4).
 
 Plus: `AddressGroups` everywhere an address is verified (#10, #13, #19, #20, #27, #54, #7, #40);
 the hidden-balance ladder hides all three layers; `formatAmount` never rounds a balance up; MAX
@@ -1791,7 +1886,10 @@ cannot click the toolbar action; stated). Specs:
     unlock to send"; after a confirmed send to it, the same address shows "Verified · sent before".
 12. **Try a different seed (D41):** import a phrase with no funds → #40 `no-assets-empty` →
     `[Try a different seed]` → wrong password refused and the envelope unchanged → right password →
-    phrase B → #5 → `#/imported` shows B's address; the old password no longer unlocks.
+    phrase B → #5 → `#/imported` shows B's address; the old password no longer unlocks. **A second
+    run (C6):** after #40 has rendered empty and the flow has passed the #40 click, the fake credits
+    account 0 → at the finish `funded`, "This wallet now holds funds. Nothing was changed.", and the
+    stored envelope is byte-identical.
 Every spec asserts `fake.unexpected` is empty and `hits > 0` (routing proven).
 
 ### 8.6 Visual fidelity against the design
@@ -1852,7 +1950,9 @@ The review's findings are recorded in the PR. The screenshots are CI artifacts, 
 - `extension/src/background/`: `walletApi.ts` (`wallet.prices`, `wallet.cached`,
   `wallet.recipientInfo`, `wallet.discardPrepared`, `unreachable`), `messages.ts`
   (`vault.challengeInfo`, `vault.forgetWallet`), `accountsStore.ts` (the forget/replace critical
-  section, the C4 binding), `reauthChallenges.ts` (`about`, `rebaseChallenge`), `prepare.ts`
+  section: one `serial` section, the C4 binding, the C6 guard, the step-5 re-check, and a first
+  write's cleanup of leftover recipients/settings), `reauthChallenges.ts` (`about`, `issuedAt`,
+  `rebaseChallenge` with the 10-minute cap), `prepare.ts`
   (simulation; `isKnownRecipient` extracted; `getAccountKind` replaces `getAccountExists` for the
   recipient; discard), `pendingStore.ts` and `pending.ts` (`failure`, E8),
   `knownRecipients.ts` (`{address, at}` entries), `deps.ts` (`RequestUnreachable`),
@@ -1901,6 +2001,23 @@ Resolved after the independent review (round 1):
 19. **Restore wiped known recipients** (M6). *Resolved by D40:* kept on a proven same-wallet
     restore; wiped by a delete.
 
+Resolved after round 2:
+
+20. **The re-base could keep one proof alive indefinitely** (R2-H1): #20's automatic re-prepare
+    renewed the challenge every 30 s while the screen stayed open. *Resolved by C5:* a 10-minute cap
+    from `issuedAt`, and one automatic re-prepare without user input.
+21. **E5's steps were not one section** (R2-M1): an envelope write or an unlock could land between
+    steps. *Resolved:* one `serial` section, with a revision and session re-check right before the
+    vault write. Cleanup of wallet-scoped keys was moved after that write, and a first write clears
+    any leftovers, so a `busy` changes nothing.
+22. **D41's "empty" was the page's word** (R2-M4). *Resolved by C6:* the background re-reads every
+    balance at deletion time.
+23. **A tap whose send already went out could re-prepare** (R2-M2), and **`reauth-required`
+    without a challengeId was unhandled** (R2-M3). *Resolved in §4.5*, with tests against the real
+    `handleMessage`.
+24. **Plan 1 pointed at a vault mode it did not ship** (R2-M5). *Resolved:* a minimal `welcome`
+    mode, `wallet.html` and the `ENTRIES` change are in plan 1 (§12).
+
 Still standing (each with the default this spec builds):
 
 2. **Dashboard total vs NOC.** The design's total includes NOC ($14,881.19 with 4,200 NOC). The
@@ -1922,7 +2039,6 @@ Still standing (each with the default this spec builds):
 12. **#38's website link** (new, from D37's "the one external link"). The design links
     "noctura.io". Here "noc-tura.io" is shown as text, so Solscan stays the only external link. The
     owner can allow a second link; it would need no CSP change either (§6.5).
-
 13. **D41 vs C4** (new with this revision; **I disagree with the letter of D41 and say so**). The
     owner asked for #40's "Try a different seed" using "E5's seed-proven replacement". A different
     seed is a different wallet, and C4 (which I agree with) makes the background refuse any
@@ -1931,9 +2047,9 @@ Still standing (each with the default this spec builds):
     without replacement, proven by the password just set**, followed by a normal first write. It is
     offered only in the design's `no-assets-empty` state, where the non-atomic delete-then-store
     risks nothing on chain (§2 E5). If the owner wants the seed proof instead, the page asks for
-    the old phrase and nothing else changes.
-
-Still standing (each with the default this spec builds):
+    the old phrase and nothing else changes. *Round 2 (C6):* the background now also refuses the
+    delete if any account holds any of the four tokens at that moment, so "risks nothing on chain"
+    is enforced by the engine, not assumed from what #40 showed.
 
 
 ---
@@ -1958,6 +2074,17 @@ Still standing (each with the default this spec builds):
   still slips in is kept rather than deleted. D40 vs E5's delete path: recipients and settings kept
   only on a proven same-wallet replacement. **D41 vs C4 is not resolved by the letter of D41**:
   §11.13 states the disagreement and the build.
+- **Contradictions checked after round 2.**
+  - C5 vs D39: the re-base stays, and the cap bounds it. The copy on #20 ("Quote expired — refresh")
+    matches the one-automatic-re-prepare rule.
+  - E5's `busy` copy ("Nothing was deleted") is now true, because the removals follow the vault
+    write.
+  - C6 vs "the vault page never touches the network": the guard reads in the background.
+  - #40's `no-assets-empty` vs a failed read: `unreachable` wins, and "empty" needs every read to
+    succeed.
+  - Restore names (R2-L3) vs C4: identical key sets, so every name carries over.
+  - The factor proof vs a locked wallet (R2-L7): it has the `openWithPassword` shape and needs no
+    session.
 - **Contradictions checked after the owner's answers.** E5 vs "a pending send must never be hidden":
   E5 refuses while a send is open, instead of clearing it. E5 vs "the vault page renders nothing
   untrusted": it adds only fixed strings. E5's proof vs a locked wallet: the seed proof needs no
@@ -1972,9 +2099,18 @@ Still standing (each with the default this spec builds):
   1. **B1b-2a-1 — engine + scaffold + read-only popup.** First task: record ICO Claude's
      confirmation that the proxy forwards `simulateTransaction`'s `accounts` unchanged. E2 does not
      start without it; the other tasks do not depend on it. Then:
-     - the engine: E1–E8, E3's `rebaseChallenge` (D39), E5 with the C4 binding and the H1 order,
-       E2's H2 `accounts` rule and L4's single read, `discardPrepared` (E7), `failure` (E8);
-     - the `onInstalled` listener, the gate changes (M4, L5), the Solscan containment (M5);
+     - the engine: E1–E8, E3's `rebaseChallenge` (D39) with its 10-minute cap (C5), E5 with the C4
+       binding, the one-`serial` order and step-5 re-check (H1, R2-M1), the unfunded guard (C6) and
+       the first write's leftover cleanup, E2's H2 `accounts` rule and L4's single read,
+       `discardPrepared` (E7), `failure` with all four writers (E8);
+     - the `onInstalled` listener, the gate changes (M4, L5) **including the new `ENTRIES`**, the
+       Solscan containment (M5);
+     - **`wallet.html` and `src/app/tab.tsx`** (review R2-M5): in plan 1 the tab has one route,
+       `#/home` (#11 in a column); any other hash shows it too;
+     - **a minimal `welcome` vault mode** (review R2-M5): `?mode=welcome` shows the B1b-1 thin page's
+       look with the two existing actions, "Create a wallet" → `?mode=create` and "Import a wallet"
+       → `?mode=import`, fixed strings only. The popup's no-wallet path and `onInstalled` both open
+       it, so nothing in plan 1 points at a mode that does not exist. Plan 2 replaces it with #1;
      - React and CSS plumbing, the message client, `WalletContext`, router, shared UI components;
      - #11, #13, the switcher, Settings, #38, #42 states, #26, #27 (with §6.5), #41;
      - E2E 6–9.
@@ -1982,7 +2118,9 @@ Still standing (each with the default this spec builds):
      shows the state text ("Sending 2.48 SOL · pending" / "· taking longer than usual") and opens
      Activity, not #21/#54; #26's PENDING rows open nothing; the popup open sequence does not call
      `preparedFor` (no resume) and #11 has no Send action; #27 and #44's `[Try again]` do not exist
-     yet. Plan 3 replaces each stand-in with its real route.
+     yet; `welcome` is the minimal mode above and `wallet.html` has only `#/home`. Plan 2 replaces
+     `welcome` with #1 and adds `#/created` / `#/imported`; plan 3 replaces the rest with its real
+     routes.
      It is useful on its own: a read-only wallet.
   2. **B1b-2a-2 — vault-page screens + #7/#40:** #1–#10 (with #10's discard and its `expired`
      mapping), #39 with the #8 restore path on E5, #40 with "Try a different seed" (D41), the
@@ -1990,7 +2128,8 @@ Still standing (each with the default this spec builds):
      lands on `wallet.html#/send/resume`, which plan 2 ships as a route that shows "Open the Noctura
      icon to continue." until plan 3 replaces it with #20 (no dangling route, and no send).
   3. **B1b-2a-3 — send flow:** #12 (with E6's hints), #43, #19, #20 (the §4.5 resume, one tap per
-     broadcast), #21, #54, #44 (on `failure`); removes plan 1's and plan 2's stand-ins; E2E 4, 5
+     broadcast, the once-only automatic re-prepare and `[Refresh]` of C5, no autofocus), #21, #54,
+     #44 (on `failure`); removes plan 1's and plan 2's stand-ins; E2E 4, 5
      and 11.
   The order is fixed by dependencies: plans 2 and 3 need plan 1's engine; plan 3 needs #10 from
   plan 2.
