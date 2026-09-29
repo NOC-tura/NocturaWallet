@@ -2,7 +2,10 @@ import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {CONNECTION_ONLY, KNOWN_RPC_METHODS, SPEC_ALLOWED, allowlistFrom, checkRepo, methodViolations, reachable} from '../check-rpc-methods.mjs';
+import {
+  CONNECTION_ONLY, DEPS_FILE, KNOWN_RPC_METHODS, RPC_FILE, RPC_PATH_LITERAL, SPEC_ALLOWED,
+  allowlistFrom, checkRepo, methodViolations, networkViolations, reachable,
+} from '../check-rpc-methods.mjs';
 import {listSourceFiles} from '../check-vault-isolation.mjs';
 
 const f = (path, text) => ({path, text});
@@ -66,5 +69,73 @@ describe('the RPC method gate', () => {
   it('does not read itself: the gate spells refused method names, and scripts/ is not bundled', () => {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
     expect(listSourceFiles(root)).not.toContain('scripts/check-rpc-methods.mjs');
+  });
+
+  // Fix round 1: the reviewer bypassed the original Connection check twice — a namespace import
+  // used as `web3.Connection`, and `require('@solana/web3.js').Connection` — because it only
+  // matched `import {Connection} from '@solana/web3.js'` and a bare `new Connection(`. The
+  // controller's ruling: the token `Connection` is a violation whenever the file references
+  // '@solana/web3.js' at all, with no usage-site matching. A file that references web3.js for
+  // unrelated names but only *mentions* "Connection" in prose (no `.Connection`, no `{Connection}`
+  // import clause) must still be spared — core/solana/transfer.ts does exactly this in a comment,
+  // and is part of the real repo's reachable set.
+  it('flags every way a bundled file can reach a web3.js Connection, and spares an unrelated mention', () => {
+    expect(methodViolations([f('a.ts', "import * as web3 from '@solana/web3.js';\nconst c = new web3.Connection(url);")], SPEC_ALLOWED)).toEqual([
+      'a.ts: uses a web3.js Connection, which bypasses the RPC allowlist',
+    ]);
+    expect(methodViolations([f('b.ts', "const C = require('@solana/web3.js').Connection;")], SPEC_ALLOWED)).toEqual([
+      'b.ts: uses a web3.js Connection, which bypasses the RPC allowlist',
+    ]);
+    expect(methodViolations([f('c.ts', "export {Connection} from '@solana/web3.js';")], SPEC_ALLOWED)).toEqual([
+      'c.ts: uses a web3.js Connection, which bypasses the RPC allowlist',
+    ]);
+    // Negative control: no web3.js reference at all, and "Connection" is not a property access,
+    // import clause member or `new Connection(` call — allowed (the transfer.ts shape).
+    expect(methodViolations([f('d.ts', "import {PublicKey} from '@solana/web3.js';\n// store and its Connection.\n")], SPEC_ALLOWED)).toEqual([]);
+    expect(methodViolations([f('e.ts', 'const Connection = 1;\nvoid Connection;')], SPEC_ALLOWED)).toEqual([]);
+  });
+
+  // Fix round 1: a raw fetch of the RPC endpoint with a computed method name bypassed both the
+  // gate and createRpc's compile-time list, because nothing forbade calling fetch directly. Only
+  // extension/src/background/deps.ts (timedFetch) may call the global fetch; injected
+  // `opts.fetch(`/`deps.fetch(` calls (rpc.ts, broadcast.ts) stay allowed.
+  it('flags the global fetch and other raw network calls outside deps.ts, but allows injected fetch', () => {
+    expect(networkViolations([f('src/background/x.ts', 'await fetch(url);')])).toEqual([
+      `src/background/x.ts: calls the global fetch directly, bypassing the coordinator client (only ${DEPS_FILE} may)`,
+    ]);
+    expect(networkViolations([f('src/background/x.ts', 'await globalThis.fetch(url);')])).toEqual([
+      `src/background/x.ts: calls the global fetch directly, bypassing the coordinator client (only ${DEPS_FILE} may)`,
+    ]);
+    expect(networkViolations([f('src/background/x.ts', 'await self.fetch(url);')])).toEqual([
+      `src/background/x.ts: calls the global fetch directly, bypassing the coordinator client (only ${DEPS_FILE} may)`,
+    ]);
+    expect(networkViolations([f('src/background/x.ts', 'await window.fetch(url);')])).toEqual([
+      `src/background/x.ts: calls the global fetch directly, bypassing the coordinator client (only ${DEPS_FILE} may)`,
+    ]);
+    expect(networkViolations([f('src/background/x.ts', 'const r = new XMLHttpRequest();')])).toEqual([
+      'src/background/x.ts: uses XMLHttpRequest, bypassing the coordinator client',
+    ]);
+    expect(networkViolations([f('src/background/x.ts', 'navigator.sendBeacon(url, body);')])).toEqual([
+      'src/background/x.ts: uses navigator.sendBeacon, bypassing the coordinator client',
+    ]);
+    expect(networkViolations([f('src/background/x.ts', 'const ws = new WebSocket(url);')])).toEqual([
+      'src/background/x.ts: uses new WebSocket, bypassing the coordinator client',
+    ]);
+    // Injected fetch (a parameter or a field), and a lookalike identifier, stay allowed.
+    expect(networkViolations([f('src/background/x.ts', 'await opts.fetch(url); await deps.fetch(url); prefetch(url);')])).toEqual([]);
+    // deps.ts itself is the one place the global fetch may be called.
+    expect(networkViolations([f(DEPS_FILE, 'await fetch(url); await globalThis.fetch(url);')])).toEqual([]);
+  });
+
+  it('flags the RPC endpoint path named outside core/solana/rpc.ts', () => {
+    expect(networkViolations([f('src/background/x.ts', "const u = 'https://api.noc-tura.io/api/v1/rpc';")])).toEqual([
+      `src/background/x.ts: names the RPC endpoint path (${RPC_PATH_LITERAL}), which only ${RPC_FILE} may`,
+    ]);
+    expect(networkViolations([f(RPC_FILE, "const u = API_BASE + '/rpc';")])).toEqual([]);
+  });
+
+  it('still passes on this repository with the network checks folded in (rpc.ts and broadcast.ts use injected fetch)', () => {
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+    expect(checkRepo(root)).toEqual([]);
   });
 });
