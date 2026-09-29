@@ -317,6 +317,27 @@ describe('vault isolation (which files the source rule reads)', () => {
     ]) touch(rel);
     expect(listSourceFiles(root).sort()).toEqual(['deep/a/b.js', 'leak/prf.ts', 'manifest/source.mjs', 'src/popup/main.ts', 'src/ui/a.tsx', 'vite.config.ts', 'x.mjs']);
   });
+
+  // Fable re-review: SKIP_DIRS (node_modules, dist, e2e, scripts) must only apply at the
+  // package root — a nested src/popup/scripts/ is ordinary source, not build tooling — and the
+  // extension list must cover .mts/.cts/.cjs/.jsx too, not just .ts/.tsx/.js/.mjs.
+  it('reads .mts files, and does not skip a nested scripts/ folder (only the root one)', () => {
+    for (const rel of [
+      'src/popup/leak.mts', 'src/popup/scripts/leak.ts', 'scripts/check.mjs', 'src/vault/__tests__/a.test.ts',
+    ]) touch(rel);
+    expect(listSourceFiles(root).sort()).toEqual(['src/popup/leak.mts', 'src/popup/scripts/leak.ts']);
+  });
+
+  it('a vault import from src/popup/leak.mts or src/popup/scripts/leak.ts is a source violation', () => {
+    const files = [
+      {path: 'src/popup/leak.mts', text: "import {decryptMnemonic} from '../vault/envelope';"},
+      {path: 'src/popup/scripts/leak.ts', text: "import {decryptMnemonic} from '../../vault/envelope';"},
+    ];
+    expect(sourceViolations(files)).toEqual([
+      'src/popup/leak.mts: imports the vault',
+      'src/popup/scripts/leak.ts: imports the vault',
+    ]);
+  });
 });
 
 describe('vault isolation (built output)', () => {

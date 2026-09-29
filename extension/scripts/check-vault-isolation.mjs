@@ -7,13 +7,15 @@
 // web-accessible vault page could be framed by any web site, and messages from that frame
 // would pass the background's own-origin check.
 //
-// The source rule reads every .ts/.tsx/.js/.mjs under extension/ (paths relative to it), not
-// just src/: a file anywhere in the package can be bundled once an HTML entry loads it, and a
-// file outside src/ importing ../src/vault/passkey did exactly that past an earlier src-only
-// walk. Skipped: node_modules/ and dist/ (not ours / our output), __tests__/ and e2e/ (never
-// bundled), and scripts/ — Node tooling (this gate, the build, the fixture generator) that no
-// page loads. The HTML entries at the package root are checked as well: each may load only its
-// own page's entry (ENTRIES), so no other file can become a bundle root.
+// The source rule reads every .ts/.tsx/.js/.jsx/.mjs/.cjs/.mts/.cts under extension/ (paths
+// relative to it), not just src/: a file anywhere in the package can be bundled once an HTML
+// entry loads it, and a file outside src/ importing ../src/vault/passkey did exactly that past
+// an earlier src-only walk. Skipped, but only at the package ROOT: node_modules/ and dist/ (not
+// ours / our output), e2e/ (never bundled) and scripts/ — Node tooling (this gate, the build,
+// the fixture generator) that no page loads; a folder with one of these names nested deeper
+// (src/popup/scripts/) is ordinary source and is read. __tests__/ is skipped at any depth
+// (never bundled, wherever it sits). The HTML entries at the package root are checked as well:
+// each may load only its own page's entry (ENTRIES), so no other file can become a bundle root.
 //
 // Limits, deliberate: the source rule reads text, so a comment that spells out a vault import
 // trips it (fail-closed); a computed specifier (`import('../' + 'vault/x')`) is out of reach of
@@ -28,8 +30,12 @@ const VAULT_ALLOWED = /^src\/(unlock|vault)\//;
 const UNLOCK_ALLOWED = /^src\/unlock\//;
 // The one entry each HTML page at the package root may load.
 export const ENTRIES = {'popup.html': 'src/popup/main.ts', 'unlock.html': 'src/unlock/main.ts'};
-// Directories (at any depth) the source walk skips — see the header.
-const SKIP_DIRS = new Set(['node_modules', 'dist', '__tests__', 'e2e', 'scripts']);
+// node_modules/, dist/, e2e/ and scripts/ are skipped only at the package ROOT — a nested
+// src/popup/scripts/ is ordinary source a page can bundle, not this package's own tooling.
+// __tests__/ is skipped at any depth (never bundled, wherever it sits). See the header.
+const SKIP_DIRS_ROOT = new Set(['node_modules', 'dist', 'e2e', 'scripts']);
+// Every extension a source file under the package can have: .ts/.tsx/.js/.jsx/.mjs/.cjs/.mts/.cts.
+const SOURCE_EXT = /\.[cm]?[jt]sx?$/;
 // The seed code the vault uses also lives in ../core/keys (mnemonic → seed, SLIP-0010), shared
 // with the app; for this package it is vault code, allowed exactly where the vault is.
 // src/ext.ts is the one wrapper over chrome.* / browser.*, so it names storage.session; in
@@ -185,15 +191,17 @@ export function htmlViolations(pages) {
 /** The files the source rule reads, relative to `root` with / separators (see the header). */
 export function listSourceFiles(root) {
   const out = [];
-  const walk = dir => {
+  const walk = (dir, atRoot) => {
     for (const e of readdirSync(dir)) {
       const p = join(dir, e);
       if (statSync(p).isDirectory()) {
-        if (!SKIP_DIRS.has(e)) walk(p);
-      } else if (/\.(ts|tsx|js|mjs)$/.test(e)) out.push(toPosix(relative(root, p)));
+        if (e === '__tests__') continue;
+        if (atRoot && SKIP_DIRS_ROOT.has(e)) continue;
+        walk(p, false);
+      } else if (SOURCE_EXT.test(e)) out.push(toPosix(relative(root, p)));
     }
   };
-  walk(root);
+  walk(root, true);
   return out;
 }
 
