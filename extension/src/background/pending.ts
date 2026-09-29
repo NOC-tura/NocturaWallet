@@ -92,15 +92,13 @@ export async function submitSigned(
   if (guard.refused) throw new SendRefused('in-flight');
   // Written above BEFORE the broadcast below: a service worker stopped in between still knows it.
   // From here on the record exists, so whatever throws, a poller (and, if it can be armed, the
-  // alarm) is left watching it.
-  let armed = false;
+  // alarm) is left watching it. The alarm is armed after the broadcast: an alarm failure must
+  // never keep the signed bytes from being sent.
   try {
-    await armPendingAlarm(ext);
-    armed = true;
     await deliver(ext, deps, record, 'first');
   } finally {
     void startPoller(ext, deps);
-    if (!armed) await armPendingAlarm(ext).catch(() => undefined);
+    await armPendingAlarm(ext).catch((e: unknown) => console.warn('pending alarm not armed; the poller still runs', e));
   }
   return viewOf((await readPending(ext)).find(r => r.id === record.id) ?? record);
 }

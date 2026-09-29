@@ -146,16 +146,21 @@ describe('submitSigned — what a refused first broadcast means (route contract)
 });
 
 describe('submitSigned — the poller survives a failure after the record is written', () => {
-  it('an alarm that cannot be armed still leaves a poller running', async () => {
+  it('an alarm that cannot be armed does not stop the broadcast: sent exactly once, pending, with a poller', async () => {
     const ext = fakeExt();
     const sleeps: number[] = [];
     const deps = depsWith({sleep: ms => (sleeps.push(ms), new Promise<void>(() => undefined))});
     ext.alarms.create = () => {
       throw new Error('alarms down');
     };
-    await expect(submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT})).rejects.toThrow('alarms down');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const view = await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT});
+    expect(deps.broadcasts).toHaveLength(1);
+    expect([...deps.broadcasts[0]!]).toEqual([...signedWire()]);
+    expect(view.state).toBe('pending');
     expect(await readPending(ext)).toHaveLength(1);
-    expect(sleeps).toEqual([POLL_INTERVAL_MS]);
+    expect(sleeps).toEqual([POLL_INTERVAL_MS]);    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 
   it("a storage failure in the broadcast's own record update still leaves a poller running", async () => {
