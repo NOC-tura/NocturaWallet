@@ -4,7 +4,7 @@
 // manifests against these lists, so a permission cannot arrive by a hand edit.
 
 export const PERMISSIONS = [
-  {value: 'storage', reason: 'The encrypted vault (storage.local) and the unlocked per-account signing keys (storage.session, memory only).'},
+  {value: 'storage', reason: 'The encrypted vault (the local storage area) and the unlocked per-account signing keys (the session storage area, memory only).'},
   {value: 'alarms', reason: 'Auto-lock: the vault locks itself after the chosen idle time, default five minutes.'},
 ];
 

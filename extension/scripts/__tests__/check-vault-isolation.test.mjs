@@ -1,7 +1,10 @@
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
-import {bundleViolations, manifestViolations, sourceViolations, BIP39_MARKER, DERIVATION_MARKER, VAULT_MARKER} from '../check-vault-isolation.mjs';
+import {
+  bundleViolations, htmlViolations, listSourceFiles, manifestViolations, sourceViolations,
+  BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, VAULT_MARKER,
+} from '../check-vault-isolation.mjs';
 import {render} from '../../manifest/source.mjs';
 
 const f = (path, text) => ({path, text});
@@ -156,6 +159,108 @@ describe('vault isolation (source)', () => {
   });
 });
 
+// Fable review (Important 1): a file outside src/ — `extension/leak/prf.ts` — imported the
+// passkey module and popup.html loaded it; the source rule never saw it (it walked only src/).
+describe('vault isolation (files outside src/, and the vault page as a target)', () => {
+  it('refuses the reproduced layout: leak/prf.ts importing ../src/vault/passkey', () => {
+    expect(sourceViolations([f('leak/prf.ts', "import {evaluatePrf} from '../src/vault/passkey';")])).toEqual([
+      'leak/prf.ts: imports the vault',
+    ]);
+  });
+
+  it('refuses vault, vault-page and core/keys imports from a file at the package root', () => {
+    expect(sourceViolations([f('x.ts', "import {b64} from './src/vault/bytes';")])).toEqual(['x.ts: imports the vault']);
+    expect(sourceViolations([f('x.ts', "import {unlockFlow} from './src/unlock/unlockFlow';")])).toEqual([
+      'x.ts: imports the vault page (src/unlock)',
+    ]);
+    expect(sourceViolations([f('x.mjs', "import {mnemonicToSeed} from '../core/keys/mnemonic';")])).toEqual([
+      'x.mjs: imports core/keys (seed code)',
+    ]);
+  });
+
+  it.each([
+    ['a named import', "import {unlockFlow} from '../unlock/unlockFlow';"],
+    ['a dynamic import', "void import('../unlock/orchestrate');"],
+    ['a side-effect import', "import '../unlock/main';"],
+    ['an import of the folder', "import {x} from '../unlock';"],
+  ])('refuses %s of src/unlock from the popup', (_, text) => {
+    expect(sourceViolations([f('src/popup/main.ts', text)])).toEqual(['src/popup/main.ts: imports the vault page (src/unlock)']);
+  });
+
+  it('refuses src/unlock from the vault folder and the background, but not from src/unlock itself', () => {
+    expect(sourceViolations([f('src/vault/reauth.ts', "import {unlockFlow} from '../unlock/unlockFlow';")])).toHaveLength(1);
+    expect(sourceViolations([f('src/background/messages.ts', "import {ENVELOPE_KEY} from '../unlock/unlockFlow';")])).toHaveLength(1);
+    expect(sourceViolations([
+      f('src/unlock/main.ts', "import {ENVELOPE_KEY, unlockFlow} from './unlockFlow';"),
+      f('src/unlock/sub/x.ts', "import {runExclusive} from '../orchestrate';"),
+      f('src/popup/main.ts', "import type {Outcome} from '../unlock/orchestrate';"),
+    ])).toEqual([]);
+  });
+
+  it('does not mistake a folder that merely starts with "unlock"', () => {
+    expect(sourceViolations([f('src/popup/main.ts', "import {x} from '../unlockish/x';")])).toEqual([]);
+  });
+});
+
+describe('vault isolation (HTML entries)', () => {
+  const page = (...srcs) => `<!doctype html><html><body>${srcs.map(s => `<script type="module" src="${s}"></script>`).join('')}</body></html>`;
+
+  it('accepts each page loading exactly its own entry (positive control)', () => {
+    expect(htmlViolations([
+      f('popup.html', page('./src/popup/main.ts')),
+      f('unlock.html', page('./src/unlock/main.ts')),
+    ])).toEqual([]);
+    expect(htmlViolations([f('popup.html', page('/src/popup/main.ts')), f('unlock.html', page('src/unlock/main.ts'))])).toEqual([]);
+  });
+
+  it('refuses the reproduced layout: popup.html also loading ./leak/prf.ts', () => {
+    expect(htmlViolations([f('popup.html', page('./src/popup/main.ts', './leak/prf.ts'))])).toEqual([
+      'popup.html: loads ./leak/prf.ts — only src/popup/main.ts may be its entry',
+    ]);
+  });
+
+  it('refuses the popup loading the vault page entry, and the vault page loading the popup entry', () => {
+    expect(htmlViolations([f('popup.html', page('./src/unlock/main.ts'))])).toHaveLength(1);
+    expect(htmlViolations([f('unlock.html', page('./src/popup/main.ts'))])).toHaveLength(1);
+  });
+
+  it('refuses a script on a page that has no entry of its own', () => {
+    expect(htmlViolations([f('options.html', page('./src/popup/main.ts'))])).toEqual([
+      'options.html: loads ./src/popup/main.ts — this page has no entry of its own',
+    ]);
+  });
+
+  it('refuses an inline script and a script tag whose src it cannot read', () => {
+    expect(htmlViolations([f('popup.html', `${page('./src/popup/main.ts')}<script type="module">import '../src/vault/passkey';</script>`)])).toEqual([
+      'popup.html: has a <script> without a src',
+    ]);
+    expect(htmlViolations([f('popup.html', '<script type="module" src=./leak/prf.ts></script>')])).toEqual([
+      'popup.html: has a <script> without a src',
+    ]);
+  });
+});
+
+describe('vault isolation (which files the source rule reads)', () => {
+  let root;
+  const touch = rel => {
+    mkdirSync(dirname(join(root, rel)), {recursive: true});
+    writeFileSync(join(root, rel), '');
+  };
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'vault-iso-src-'));
+  });
+  afterEach(() => rmSync(root, {recursive: true, force: true}));
+
+  it('reads every source file under the package except node_modules, dist, tests, e2e and scripts', () => {
+    for (const rel of [
+      'src/popup/main.ts', 'src/ui/a.tsx', 'leak/prf.ts', 'x.mjs', 'vite.config.ts', 'manifest/source.mjs', 'deep/a/b.js',
+      'node_modules/p/index.js', 'dist/app/background.js', 'src/vault/__tests__/a.test.ts', 'e2e/a.spec.ts',
+      'scripts/check.mjs', 'popup.html', 'notes.md',
+    ]) touch(rel);
+    expect(listSourceFiles(root).sort()).toEqual(['deep/a/b.js', 'leak/prf.ts', 'manifest/source.mjs', 'src/popup/main.ts', 'src/ui/a.tsx', 'vite.config.ts', 'x.mjs']);
+  });
+});
+
 describe('vault isolation (built output)', () => {
   let dir;
   const write = (rel, text) => {
@@ -171,7 +276,8 @@ describe('vault isolation (built output)', () => {
     write('assets/popup-1.js', 'import{t as e}from"./send-1.js";e();');
     write('assets/send-1.js', 'export const t=()=>1;');
     write('unlock.html', html('./assets/unlock-1.js'));
-    write('assets/unlock-1.js', `import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";`);
+    write('assets/unlock-1.js', `import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";`);
+    write('assets/kdf.worker-1.js', `throw Error("${KDF_MARKER}");`);
   };
 
   beforeEach(() => {
@@ -235,7 +341,7 @@ describe('vault isolation (built output)', () => {
 
   it('does not follow imports out of the unlock bundle (it may carry the vault)', () => {
     write('assets/unlock-1.js', `import"./vault-1.js";`);
-    write('assets/vault-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";`);
+    write('assets/vault-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";`);
     expect(bundleViolations(dir)).toEqual([]);
   });
 
@@ -247,18 +353,35 @@ describe('vault isolation (built output)', () => {
   });
 
   it('is INCONCLUSIVE — and fails — when any marker is in no built file', () => {
-    write('assets/unlock-1.js', `const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";`);
-    expect(bundleViolations(dir)).toEqual([
-      'INCONCLUSIVE: the envelope marker "noctura-ext-v1/passkey-wrap" is in no built file — the check would pass trivially',
-    ]);
-    write('assets/unlock-1.js', `const i="${VAULT_MARKER}";const b="${BIP39_MARKER}";`);
-    expect(bundleViolations(dir)).toEqual([
-      'INCONCLUSIVE: the derivation marker "ed25519 seed" is in no built file — the check would pass trivially',
-    ]);
-    write('assets/unlock-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";`);
-    expect(bundleViolations(dir)).toEqual([
-      'INCONCLUSIVE: the bip39 marker "invalid mnemonic type: " is in no built file — the check would pass trivially',
-    ]);
+    const all = {i: VAULT_MARKER, d: DERIVATION_MARKER, b: BIP39_MARKER, r: PASSKEY_MARKER};
+    const without = k => Object.entries(all).filter(([n]) => n !== k).map(([n, m]) => `const ${n}="${m}";`).join('');
+    for (const [k, name, marker] of [['i', 'envelope', VAULT_MARKER], ['d', 'derivation', DERIVATION_MARKER], ['b', 'bip39', BIP39_MARKER], ['r', 'passkey', PASSKEY_MARKER]]) {
+      write('assets/unlock-1.js', without(k));
+      expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the ${name} marker "${marker}" is in no built JS file — the check would pass trivially`]);
+    }
+    baseline();
+    rmSync(join(dir, 'assets/kdf.worker-1.js'));
+    expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the kdf marker "${KDF_MARKER}" is in no built JS file — the check would pass trivially`]);
+  });
+
+  // The built manifest names wallet.noc-tura.io (a host permission): a marker that only a
+  // non-JS file carries must not count as present.
+  it('does not count a marker found only in a non-JS file (the manifest) as present', () => {
+    write('assets/unlock-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";`);
+    write('manifest.json', `{"host_permissions":["https://${PASSKEY_MARKER}/*"]}`);
+    expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the passkey marker "${PASSKEY_MARKER}" is in no built JS file — the check would pass trivially`]);
+  });
+
+  it('fails on the passkey marker alone — the reproduced leak split passkey.ts into its own chunk', () => {
+    write('popup.html', `${html('./assets/popup-1.js')}${html('./assets/prf-1.js')}`);
+    write('assets/prf-1.js', 'import"./passkey-1.js";');
+    write('assets/passkey-1.js', `const r="${PASSKEY_MARKER}";`);
+    expect(bundleViolations(dir)).toEqual(['assets/passkey-1.js (reachable from assets/prf-1.js) contains vault code (passkey)']);
+  });
+
+  it('fails on the KDF marker alone — Argon2 outside the vault worker', () => {
+    write('background.js', `import"./assets/base-1.js";const k="${KDF_MARKER}";`);
+    expect(bundleViolations(dir)).toEqual(['background.js (reachable from background.js) contains vault code (kdf)']);
   });
 
   it('fails when the background or the popup page is missing', () => {

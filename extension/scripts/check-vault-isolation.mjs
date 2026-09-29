@@ -7,6 +7,14 @@
 // web-accessible vault page could be framed by any web site, and messages from that frame
 // would pass the background's own-origin check.
 //
+// The source rule reads every .ts/.tsx/.js/.mjs under extension/ (paths relative to it), not
+// just src/: a file anywhere in the package can be bundled once an HTML entry loads it, and a
+// file outside src/ importing ../src/vault/passkey did exactly that past an earlier src-only
+// walk. Skipped: node_modules/ and dist/ (not ours / our output), __tests__/ and e2e/ (never
+// bundled), and scripts/ — Node tooling (this gate, the build, the fixture generator) that no
+// page loads. The HTML entries at the package root are checked as well: each may load only its
+// own page's entry (ENTRIES), so no other file can become a bundle root.
+//
 // Limits, deliberate: the source rule reads text, so a comment that spells out a vault import
 // trips it (fail-closed); a computed specifier (`import('../' + 'vault/x')`) is out of reach of
 // any static check — the bundle markers below are the backstop for both.
@@ -15,6 +23,13 @@ import {dirname, join, posix, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const VAULT_ALLOWED = /^src\/(unlock|vault)\//;
+// The vault page's own modules (unlockFlow, orchestrate, main) hold the seed while they run:
+// they are vault code too, and only the vault page itself may import them.
+const UNLOCK_ALLOWED = /^src\/unlock\//;
+// The one entry each HTML page at the package root may load.
+export const ENTRIES = {'popup.html': 'src/popup/main.ts', 'unlock.html': 'src/unlock/main.ts'};
+// Directories (at any depth) the source walk skips — see the header.
+const SKIP_DIRS = new Set(['node_modules', 'dist', '__tests__', 'e2e', 'scripts']);
 // The seed code the vault uses also lives in ../core/keys (mnemonic → seed, SLIP-0010), shared
 // with the app; for this package it is vault code, allowed exactly where the vault is.
 // src/ext.ts is the one wrapper over chrome.* / browser.*, so it names storage.session; in
@@ -37,10 +52,18 @@ export const DERIVATION_MARKER = 'ed25519 seed';
 // A string that exists only in @scure/bip39 (its phrase normalizer, which mnemonicToSeed and
 // validateMnemonic run): core/keys/mnemonic carries neither marker above.
 export const BIP39_MARKER = 'invalid mnemonic type: ';
+// The passkey RP ID, which only src/vault/passkey.ts spells in code. The built manifest names
+// the same host (a host permission), so only JS files count — for presence and for leaks.
+export const PASSKEY_MARKER = 'wallet.noc-tura.io';
+// An error message of @noble/hashes' Argon2 parameter check: the KDF, found in the vault
+// worker only (checked against the real build: no other built file carries it).
+export const KDF_MARKER = '(memory) must be at least 8*p bytes';
 const MARKERS = [
   ['envelope', VAULT_MARKER],
   ['derivation', DERIVATION_MARKER],
   ['bip39', BIP39_MARKER],
+  ['passkey', PASSKEY_MARKER],
+  ['kdf', KDF_MARKER],
 ];
 
 // `import X from`, `import {a, type B} from`, `import * as n from`, `import type … from`,
@@ -80,6 +103,11 @@ function namesVault(fromPath, spec) {
   return /(^|\/)vault(\/|$)/.test(spec);
 }
 
+function namesUnlock(fromPath, spec) {
+  const target = resolveSource(fromPath, spec);
+  return target !== null && (target === 'src/unlock' || target.startsWith('src/unlock/'));
+}
+
 function namesCoreKeys(fromPath, spec) {
   const target = resolveSource(fromPath, spec);
   if (target !== null) return target === '../core/keys' || target.startsWith('../core/keys/');
@@ -99,12 +127,51 @@ export function sourceViolations(files) {
     const values = moduleReferences(text).filter(r => !r.typeOnly);
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesVault(path, r.spec))) out.push(`${path}: imports the vault`);
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesCoreKeys(path, r.spec))) out.push(`${path}: imports core/keys (seed code)`);
+    if (!UNLOCK_ALLOWED.test(path) && values.some(r => namesUnlock(path, r.spec))) out.push(`${path}: imports the vault page (src/unlock)`);
     if (!SESSION_ALLOWED.test(path) && TOUCHES_SESSION.test(text)) out.push(`${path}: touches storage.session`);
     if (!LISTEN_ALLOWED.test(path) && LISTENS_RUNTIME.test(text)) out.push(`${path}: listens for runtime messages outside the background`);
     if (!EXT_IMPORT_ALLOWED.test(path) && path !== 'src/ext.ts' && values.some(r => namesExt(path, r.spec))) {
       out.push(`${path}: imports src/ext.ts (storage.session) outside the background`);
     }
   }
+  return out;
+}
+
+/**
+ * Every `<script>` in the root HTML pages must be `src=` its own page's entry (ENTRIES). A page
+ * with no entry of its own may load nothing; an inline script (Vite bundles an inline module
+ * too) or a src it cannot read fails closed.
+ */
+export function htmlViolations(pages) {
+  const out = [];
+  for (const {path, text} of pages) {
+    const own = ENTRIES[path];
+    for (const m of text.matchAll(/<script\b[^>]*>/gi)) {
+      const src = /\bsrc\s*=\s*(["'])([^"']*)\1/i.exec(m[0]);
+      if (!src) {
+        out.push(`${path}: has a <script> without a src`);
+        continue;
+      }
+      const target = posix.normalize(src[2].replace(/^\//, ''));
+      if (own === undefined) out.push(`${path}: loads ${src[2]} — this page has no entry of its own`);
+      else if (target !== own) out.push(`${path}: loads ${src[2]} — only ${own} may be its entry`);
+    }
+  }
+  return out;
+}
+
+/** The files the source rule reads, relative to `root` with / separators (see the header). */
+export function listSourceFiles(root) {
+  const out = [];
+  const walk = dir => {
+    for (const e of readdirSync(dir)) {
+      const p = join(dir, e);
+      if (statSync(p).isDirectory()) {
+        if (!SKIP_DIRS.has(e)) walk(p);
+      } else if (/\.(ts|tsx|js|mjs)$/.test(e)) out.push(toPosix(relative(root, p)));
+    }
+  };
+  walk(root);
   return out;
 }
 
@@ -170,9 +237,10 @@ export function bundleViolations(distApp) {
   const out = [];
   const problems = new Set();
   const all = listFiles(distApp, /./).map(p => toPosix(relative(distApp, p)));
+  const js = all.filter(p => /\.m?js$/.test(p));
   for (const [name, marker] of MARKERS) {
-    if (!all.some(p => readFileSync(join(distApp, p), 'utf8').includes(marker))) {
-      out.push(`INCONCLUSIVE: the ${name} marker "${marker}" is in no built file — the check would pass trivially`);
+    if (!js.some(p => readFileSync(join(distApp, p), 'utf8').includes(marker))) {
+      out.push(`INCONCLUSIVE: the ${name} marker "${marker}" is in no built JS file — the check would pass trivially`);
     }
   }
 
@@ -229,8 +297,9 @@ export function manifestViolations(manifest) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-  const files = listFiles(join(ROOT, 'src'), /\.[cm]?[jt]sx?$/).map(p => ({path: toPosix(relative(ROOT, p)), text: readFileSync(p, 'utf8')}));
-  const problems = [...sourceViolations(files)];
+  const files = listSourceFiles(ROOT).map(path => ({path, text: readFileSync(join(ROOT, path), 'utf8')}));
+  const pages = readdirSync(ROOT).filter(e => /\.html?$/i.test(e)).map(path => ({path, text: readFileSync(join(ROOT, path), 'utf8')}));
+  const problems = [...sourceViolations(files), ...htmlViolations(pages)];
   for (const d of ['app', 'chrome', 'firefox']) {
     for (const p of bundleViolations(join(ROOT, 'dist', d))) problems.push(`dist/${d}: ${p}`);
   }
