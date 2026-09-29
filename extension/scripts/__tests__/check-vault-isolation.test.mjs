@@ -258,6 +258,22 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
     }
     expect(sourceViolations([f('src/popup/main.ts', "import {readLocal} from '../ext';")])).toEqual([EXT('src/popup/main.ts')]);
   });
+  // B1b-1: storage.local keys only the background writes. No other file may even name them — a
+  // popup writing v1_settings could undo a re-authenticated setting without re-authenticating.
+  it('lets only the background name the background-owned storage keys', () => {
+    const OWNED = (path, key) => `${path}: names ${key}, which only the background may write`;
+    expect(sourceViolations([
+      f('src/background/settings.ts', "export const SETTINGS_KEY = 'v1_settings';"),
+      f('src/background/knownRecipients.ts', "export const KNOWN_RECIPIENTS_KEY = 'v1_known_recipients';"),
+    ])).toEqual([]);
+    expect(sourceViolations([f('src/popup/main.ts', "chrome.runtime.sendMessage({type: 'x', key: 'v1_settings'});")])).toEqual([OWNED('src/popup/main.ts', 'v1_settings')]);
+    expect(sourceViolations([f('src/unlock/main.ts', '// v1_known_recipients')])).toEqual([OWNED('src/unlock/main.ts', 'v1_known_recipients')]);
+    expect(sourceViolations([f('src/ext.ts', "const k = 'v1_settings';")])).toEqual([OWNED('src/ext.ts', 'v1_settings')]);
+    expect(sourceViolations([f('src/popup/main.ts', "const p = 'v1_pending'; const f = 'v1_forbidden_until';")])).toEqual([
+      OWNED('src/popup/main.ts', 'v1_pending'),
+      OWNED('src/popup/main.ts', 'v1_forbidden_until'),
+    ]);
+  });
 });
 
 describe('vault isolation (HTML entries)', () => {

@@ -3,6 +3,10 @@ import type {SessionAccount} from '../vault/accounts';
 
 /** Per-account signing keys while unlocked; memory-only storage.session, base64 strings. */
 export const SESSION_KEY = 'v1_session';
+/** Unsigned sends waiting for "Send" (cleared by lock). */
+export const PREPARED_KEY = 'v1_prepared';
+/** Re-authentication challenges (cleared by lock). */
+export const REAUTH_KEY = 'v1_reauth';
 
 export async function setSession(ext: Ext, accounts: SessionAccount[]): Promise<void> {
   // Rebuild each account as exactly this shape before it touches storage — whatever the caller

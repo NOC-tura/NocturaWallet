@@ -58,6 +58,10 @@ const TOUCHES_STORAGE = /(?:\?\.|\.)\s*storage\b|\[\s*['"`]storage['"`]\s*\]|[{,
 // lowercase `onmessage` and `sendMessage` are different identifiers.
 const LISTENS_RUNTIME = /\bon(?:Message|Connect)(?:External)?\b/;
 const LISTEN_ALLOWED = /^src\/background\//;
+// storage.local keys only the background writes (plan B1b-1): no other file may even name them —
+// a popup writing v1_settings could undo a re-authenticated setting without re-authenticating.
+export const BACKGROUND_OWNED_KEYS = ['v1_settings', 'v1_known_recipients', 'v1_pending', 'v1_forbidden_until'];
+const BACKGROUND_OWNED_ALLOWED = /^src\/background\//;
 
 // A string that exists only in the vault's envelope code (the passkey-wrap HKDF info).
 export const VAULT_MARKER = 'noctura-ext-v1/passkey-wrap';
@@ -156,6 +160,9 @@ export function sourceViolations(files) {
       out.push(`${path}: touches storage outside src/ext.ts and the background`);
     }
     if (!LISTEN_ALLOWED.test(path) && LISTENS_RUNTIME.test(text)) out.push(`${path}: listens for runtime messages outside the background`);
+    if (!BACKGROUND_OWNED_ALLOWED.test(path)) {
+      for (const key of BACKGROUND_OWNED_KEYS) if (text.includes(key)) out.push(`${path}: names ${key}, which only the background may write`);
+    }
     const extRefs = values.filter(r => namesExt(path, r.spec));
     const localReaderOnly = LOCAL_READER_ALLOWED.test(path) && extRefs.every(importsOnlyLocalReader);
     if (!EXT_IMPORT_ALLOWED.test(path) && path !== 'src/ext.ts' && extRefs.length > 0 && !localReaderOnly) {
