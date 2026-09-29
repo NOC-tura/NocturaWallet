@@ -61,6 +61,27 @@ describe('HTML', () => {
     expect(checkHtml(`<html><body>${snippet}</body></html>`).length).toBe(1);
   });
 
+  // Fable re-review: an attribute-name boundary that required whitespace immediately before
+  // `on[a-z]+=` missed a handler right after `/` (`<svg/onload=`) or right after another
+  // attribute's closing quote (`"x"onerror=`); and the javascript: test missed an HTML character
+  // reference standing in for a letter, and literal ASCII whitespace/control chars sitting
+  // inside the word "javascript" — a browser discards both before reading a URL's scheme.
+  it.each([
+    ['an onload handler right after a slash, no whitespace', '<svg/onload=alert(1)>'],
+    ['an onerror handler right after a closing quote, no whitespace', '<img src="x"onerror="go()">'],
+  ])('rejects %s', (_label, snippet) => {
+    expect(checkHtml(`<html><body>${snippet}</body></html>`).length).toBe(1);
+  });
+
+  it.each([
+    ['a javascript: href behind a decimal char reference mid-word', '<a href="java&#115;cript:go()">x</a>'],
+    ['a javascript: href behind a decimal char reference at the start', '<a href="&#106;avascript:go()">x</a>'],
+    ['a javascript: href with a literal tab inside the word', '<a href="java\tscript:go()">x</a>'],
+    ['a javascript: href with a literal newline inside the word', '<a href="java\nscript:go()">x</a>'],
+  ])('rejects %s', (_label, snippet) => {
+    expect(checkHtml(`<html><body>${snippet}</body></html>`).length).toBe(1);
+  });
+
   it.each([
     ['prose with "on…=" in it', '<p>Say one = two, and only = three.</p>'],
     ['an attribute that merely contains "on"', '<button type="button" aria-controls="x" data-onboard="1">x</button>'],
