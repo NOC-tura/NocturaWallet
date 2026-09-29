@@ -17,6 +17,8 @@ export interface Ext {
   local: KV;
   alarms: {create(name: string, o: {delayInMinutes: number}): Promise<void> | void; clear(name: string): Promise<boolean>};
   windowCount(): Promise<number>;
+  /** Restrict storage.session to trusted (extension) contexts where the browser supports it. */
+  pinSessionAccess(): Promise<void>;
 }
 
 interface StorageArea {
@@ -25,9 +27,13 @@ interface StorageArea {
   remove(key: string): Promise<void>;
   clear(): Promise<void>;
 }
+// Chrome only (102+); Firefox has no storage.session.setAccessLevel.
+interface SessionArea extends StorageArea {
+  setAccessLevel?(o: {accessLevel: 'TRUSTED_CONTEXTS' | 'TRUSTED_AND_UNTRUSTED_CONTEXTS'}): Promise<void>;
+}
 interface BrowserLike {
   runtime: {id: string; getURL(path: string): string};
-  storage: {session: StorageArea; local: StorageArea};
+  storage: {session: SessionArea; local: StorageArea};
   alarms: {create(name: string, o: {delayInMinutes: number}): Promise<void> | void; clear(name: string): Promise<boolean>};
   windows: {getAll(): Promise<unknown[]>};
 }
@@ -88,5 +94,11 @@ export function browserExt(): Ext {
     local: kv(b.storage.local),
     alarms: b.alarms,
     windowCount: async () => (await b.windows.getAll()).length,
+    // TRUSTED_CONTEXTS is Chrome's default today; pinning it means a future default (or another
+    // piece of code) cannot open the signing keys to content scripts. Where the API is absent
+    // (Firefox), there is nothing to pin and the call is a no-op.
+    pinSessionAccess: async () => {
+      if (typeof b.storage.session.setAccessLevel === 'function') await b.storage.session.setAccessLevel({accessLevel: 'TRUSTED_CONTEXTS'});
+    },
   };
 }

@@ -14,6 +14,8 @@ interface BgApi {
 const g = globalThis as unknown as {browser?: BgApi; chrome?: BgApi};
 const api = (g.browser ?? g.chrome) as BgApi;
 const ext = browserExt();
+// First thing on every start: storage.session readable by trusted contexts only (no-op on Firefox).
+void ext.pinSessionAccess();
 
 api.runtime.onMessage.addListener((msg, sender, reply) => {
   handleMessage(ext, msg, sender).then(reply, () => reply({ok: false, error: 'internal'}));

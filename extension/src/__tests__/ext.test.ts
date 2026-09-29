@@ -1,4 +1,4 @@
-import {deriveExtensionOrigin, readLocal} from '../ext';
+import {browserExt, deriveExtensionOrigin, readLocal} from '../ext';
 
 describe('deriveExtensionOrigin', () => {
   it('returns protocol+host for a URL whose origin the parser actually computes', () => {
@@ -37,6 +37,31 @@ describe('readLocal (the vault page\'s one storage call)', () => {
     vi.stubGlobal('browser', undefined);
     vi.stubGlobal('chrome', undefined);
     await expect(readLocal('x')).rejects.toThrow('not running in an extension');
+  });
+});
+
+// Fable review (Minor 10): pin storage.session to trusted contexts where the browser lets us
+// (Chrome); Firefox has no setAccessLevel, and there the call is a no-op.
+describe('pinSessionAccess', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const area = () => ({get: async () => ({}), set: async () => undefined, remove: async () => undefined, clear: async () => undefined});
+  const fake = (session: object) => ({
+    runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`},
+    storage: {session, local: area()},
+    alarms: {create: () => undefined, clear: async () => true},
+    windows: {getAll: async () => []},
+  });
+
+  it('sets the session area to TRUSTED_CONTEXTS where setAccessLevel exists', async () => {
+    const calls: unknown[] = [];
+    vi.stubGlobal('chrome', fake({...area(), setAccessLevel: async (o: unknown) => void calls.push(o)}));
+    await browserExt().pinSessionAccess();
+    expect(calls).toEqual([{accessLevel: 'TRUSTED_CONTEXTS'}]);
+  });
+
+  it('is a no-op where the API is absent (Firefox)', async () => {
+    vi.stubGlobal('browser', fake(area()));
+    await expect(browserExt().pinSessionAccess()).resolves.toBeUndefined();
   });
 });
 

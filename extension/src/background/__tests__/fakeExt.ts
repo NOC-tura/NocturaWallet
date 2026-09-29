@@ -32,6 +32,7 @@ export function fakeExt(windows = 1) {
       clear: async name => alarms.delete(name),
     },
     windowCount: async () => ext.windows,
+    pinSessionAccess: async () => undefined,
     alarmsSet: alarms,
     windows,
   };
