@@ -20,9 +20,19 @@ jobs:
       # Same pin as ci.yml/web.yml: the lockfile is written by npm 11.6.2.
       - run: npm install -g npm@11.6.2
       # Only extension/ is installed: core/ resolves through this package's node_modules.
-      - run: npm ci
+      # --ignore-scripts: no dependency's install script runs on the runner (the lockfile's only
+      # one is fsevents, macOS-only); the browser comes from the explicit step below instead.
+      - run: npm ci --ignore-scripts
         working-directory: extension
       - run: npm run verify
+        working-directory: extension
+
+      # The E2E loads dist/chrome (built by verify) into Playwright's Chromium: unlock in the
+      # vault page, session holds only signing keys, a wrong password sends nothing. Kept out of
+      # `verify` so the local gate stays browser-free.
+      - run: npx playwright install --with-deps chromium
+        working-directory: extension
+      - run: npm run e2e
         working-directory: extension
 
       # extension/'s own tree, same threshold as web.yml: this tree has no React Native in it,
