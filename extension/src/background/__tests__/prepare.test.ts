@@ -6,6 +6,7 @@ import {PENDING_KEY} from '../pendingStore';
 import {KNOWN_RECIPIENTS_KEY} from '../knownRecipients';
 import {challengeSatisfied} from '../reauthChallenges';
 import {digestOf} from '../digest';
+import {stagePriceFrom} from '../deps';
 import {WALLET_TOKENS} from '../../../../core/solana/balances';
 import {SPL_TOKEN_PROGRAM_ID} from '../../../../core/solana/transfer';
 import {RpcForbidden} from '../../../../core/solana/rpc';
@@ -128,7 +129,7 @@ describe('prepareSend', () => {
     });
     expect((await prepareSend(ext, noStage, ACCOUNT.publicKey, intent)).reauth?.reasons).toEqual(['over-usd-threshold']);
     // /stats answered without a usable currentStage: the stage price is null → re-auth required.
-    const missingStage = fakeDeps({reader, stagePrice: async () => null});
+    const missingStage = fakeDeps({reader, stagePrice: async () => stagePriceFrom({success: true, data: {totalNocSold: 0, isPaused: false}})});
     expect((await prepareSend(ext, missingStage, ACCOUNT.publicKey, intent)).reauth?.reasons).toEqual(['over-usd-threshold']);
     const forbidden = fakeDeps({
       reader,

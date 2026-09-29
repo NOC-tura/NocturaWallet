@@ -48,20 +48,37 @@ export function cleanName(x: unknown): string | null {
   return name;
 }
 
+export type RenameResult = 'renamed' | 'malformed' | 'unknown-account' | 'busy';
+
 /**
  * Names are outside the seed's AES-GCM additionalData (spec §2), so renaming needs no key and no
  * re-encryption: every other field of the stored envelope is written back exactly as read. The
  * name is cleaned here (cleanName), whatever the caller did; a name it refuses renames nothing.
+ *
+ * The vault page also writes v1_vault (adding or removing an account re-encrypts the envelope), and
+ * storage.local has no transactions. So this is a compare-and-set: immediately before writing, the
+ * envelope is read again, and the renamed copy is written only if nothing changed since it was
+ * built. Otherwise the rename is redone once on the fresh envelope; if that changes too, 'busy'.
+ * What remains is the gap between that last read and the write itself — one storage round-trip,
+ * which no API here can close.
  */
-export async function renameAccount(ext: Ext, index: number, name: string): Promise<boolean> {
+export async function renameAccount(ext: Ext, index: number, name: string): Promise<RenameResult> {
   const clean = cleanName(name);
-  if (clean === null) return false;
+  if (clean === null) return 'malformed';
   return serial(async () => {
-    const env = await ext.local.get(VAULT_KEY);
-    if (!isObj(env) || accountsOf(env) === null) return false;
-    const accounts = env.accounts as Json[];
-    if (!accounts.some(a => a.index === index)) return false;
-    await ext.local.set(VAULT_KEY, {...env, accounts: accounts.map(a => (a.index === index ? {...a, name: clean} : a))});
-    return true;
+    let env = await ext.local.get(VAULT_KEY);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (!isObj(env) || accountsOf(env) === null) return 'unknown-account';
+      const accounts = env.accounts as Json[];
+      if (!accounts.some(a => a.index === index)) return 'unknown-account';
+      const next = {...env, accounts: accounts.map(a => (a.index === index ? {...a, name: clean} : a))};
+      const current = await ext.local.get(VAULT_KEY);
+      if (JSON.stringify(current) === JSON.stringify(env)) {
+        await ext.local.set(VAULT_KEY, next);
+        return 'renamed';
+      }
+      env = current;
+    }
+    return 'busy';
   });
 }

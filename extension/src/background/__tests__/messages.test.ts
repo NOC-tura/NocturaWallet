@@ -1,9 +1,11 @@
 import {ed25519} from '@noble/curves/ed25519.js';
 import {base58, base64} from '@scure/base';
-import {handleMessage} from '../messages';
+import {PRIVILEGED, handleMessage} from '../messages';
 import {getSession} from '../session';
 import {AUTOLOCK_ALARM, DEFAULT_AUTOLOCK_MINUTES} from '../autolock';
 import {fakeExt} from './fakeExt';
+import {issueChallenge} from '../reauthChallenges';
+import {fakeDeps} from './fakeDeps';
 
 const ORIGIN = 'chrome-extension://abcdefghijklmnopabcdefghijklmnop';
 const ID = 'abcdefghijklmnopabcdefghijklmnop';
@@ -180,5 +182,39 @@ describe('message partitions', () => {
     await ext.local.set('v1_settings', {autoLockMinutes: 20});
     await handleMessage(ext, {type: 'activity.ping'}, popup);
     expect(ext.alarmsSet.get(AUTOLOCK_ALARM)).toBe(20);
+  });
+});
+
+describe('message partitions (B1b-1 types)', () => {
+  // Listed literally, not read from PRIVILEGED: dropping a type from the list must make it
+  // 'unknown type' here, which fails, rather than silently shrinking the test.
+  const ALL = [
+    'vault.setKeys', 'vault.lock', 'vault.status', 'vault.reauthOk', 'activity.ping',
+    'wallet.state', 'wallet.balances', 'wallet.probeBalances', 'wallet.prepareSend', 'wallet.send', 'wallet.resend',
+    'wallet.pending', 'wallet.history', 'accounts.rename', 'accounts.select', 'settings.get', 'settings.set',
+  ];
+
+  it('every privileged type is refused from a web page', async () => {
+    expect([...PRIVILEGED].sort()).toEqual([...ALL].sort());
+    for (const type of ALL) {
+      expect(await handleMessage(fakeExt(), {type}, page, fakeDeps())).toEqual({ok: false, error: 'forbidden'});
+    }
+  });
+
+  it('vault.reauthOk only from the vault page, only while unlocked, only for a live challenge', async () => {
+    const ext = fakeExt();
+    const deps = fakeDeps();
+    await handleMessage(ext, {type: 'vault.setKeys', accounts: ACC}, unlockPage);
+    const challengeId = await issueChallenge(ext, deps, 'd');
+    expect(await handleMessage(ext, {type: 'vault.reauthOk', challengeId}, popup, deps)).toEqual({ok: false, error: 'forbidden'});
+    expect(await handleMessage(ext, {type: 'vault.reauthOk', challengeId: 'f'.repeat(32)}, unlockPage, deps)).toEqual({ok: false, error: 'unknown-challenge'});
+    expect(await handleMessage(ext, {type: 'vault.reauthOk', challengeId}, unlockPage, deps)).toEqual({ok: true});
+    await handleMessage(ext, {type: 'vault.lock'}, popup);
+    expect(await handleMessage(ext, {type: 'vault.reauthOk', challengeId}, unlockPage, deps)).toEqual({ok: false, error: 'locked'});
+  });
+
+  it('wallet types answer "unavailable" when the background has no deps, and route when it does', async () => {
+    expect(await handleMessage(fakeExt(), {type: 'settings.get'}, popup)).toEqual({ok: false, error: 'unavailable'});
+    expect(await handleMessage(fakeExt(), {type: 'settings.get'}, popup, fakeDeps())).toMatchObject({ok: true, data: {autoLockMinutes: 5}});
   });
 });

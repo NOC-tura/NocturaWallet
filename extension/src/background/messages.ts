@@ -4,6 +4,9 @@ import type {Ext} from '../ext';
 import type {SessionAccount} from '../vault/accounts';
 import {getSession, setSession} from './session';
 import {armAutolock, lock} from './autolock';
+import type {WalletDeps} from './deps';
+import {satisfyChallenge} from './reauthChallenges';
+import {WALLET_TYPES, handleWallet, isWalletType, type Result} from './walletApi';
 
 /** What the browser reports about a message's origin (runtime.MessageSender). */
 export interface Sender {
@@ -20,10 +23,10 @@ export interface Sender {
  * sets — never the URL the message claims, and never "has a tab", which a full-tab
  * extension page also has.
  */
-export const PRIVILEGED = ['vault.setKeys', 'vault.lock', 'vault.status', 'activity.ping'] as const;
+export const PRIVILEGED = ['vault.setKeys', 'vault.lock', 'vault.status', 'vault.reauthOk', 'activity.ping', ...WALLET_TYPES] as const;
+/** Only the vault page itself may hand over keys, or report a re-authentication it proved. */
+const VAULT_PAGE_ONLY: readonly string[] = ['vault.setKeys', 'vault.reauthOk'];
 export const PAGE: readonly string[] = [];
-
-type Result = {ok: true; data?: unknown} | {ok: false; error: string};
 
 function isOwnPage(ext: Ext, s: Sender): boolean {
   return s.id === ext.runtimeId && s.origin === ext.extensionOrigin;
@@ -81,7 +84,7 @@ function validAccounts(v: unknown): v is SessionAccount[] {
   return Array.isArray(v) && v.length > 0 && v.every(isValidAccount);
 }
 
-export async function handleMessage(ext: Ext, msg: unknown, sender: Sender): Promise<Result> {
+export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps?: WalletDeps): Promise<Result> {
   if (typeof msg !== 'object' || msg === null || typeof (msg as {type?: unknown}).type !== 'string') {
     return {ok: false, error: 'malformed'};
   }
@@ -89,10 +92,10 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender): Pro
   const privileged = (PRIVILEGED as readonly string[]).includes(type);
   if (!privileged && !PAGE.includes(type)) return {ok: false, error: 'unknown type'};
   if (privileged && !isOwnPage(ext, sender)) return {ok: false, error: 'forbidden'};
+  if (VAULT_PAGE_ONLY.includes(type) && pagePath(ext, sender) !== '/unlock.html') return {ok: false, error: 'forbidden'};
 
   switch (type) {
     case 'vault.setKeys': {
-      if (pagePath(ext, sender) !== '/unlock.html') return {ok: false, error: 'forbidden'};
       const accounts = (msg as {accounts?: unknown}).accounts;
       if (!validAccounts(accounts)) return {ok: false, error: 'malformed'};
       // Fail closed: keys in storage.session with no alarm armed would never auto-lock, while
@@ -116,7 +119,17 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender): Pro
     case 'activity.ping':
       if ((await getSession(ext)) !== null) await armAutolock(ext);
       return {ok: true};
+    case 'vault.reauthOk': {
+      if (deps === undefined) return {ok: false, error: 'unavailable'};
+      const challengeId = (msg as {challengeId?: unknown}).challengeId;
+      if (typeof challengeId !== 'string') return {ok: false, error: 'malformed'};
+      if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
+      return (await satisfyChallenge(ext, deps.now(), challengeId)) ? {ok: true} : {ok: false, error: 'unknown-challenge'};
+    }
     default:
+      if (isWalletType(type)) {
+        return deps === undefined ? {ok: false, error: 'unavailable'} : handleWallet(ext, deps, type, msg as Record<string, unknown>);
+      }
       return {ok: false, error: 'unknown type'};
   }
 }
