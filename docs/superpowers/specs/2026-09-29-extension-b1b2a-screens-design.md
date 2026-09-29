@@ -70,7 +70,7 @@ Owner answers to this spec's first draft (2026-09-29), and one controller ruling
 | D36 | #42 offline: **Receive stays enabled** (the address is local); Send disabled. A deviation from the design, recorded | §5.4 |
 | D37 | Explorer: **Solscan as in the design** (`https://solscan.io/tx/<signature>`), a link only, never fetched | S5, #27, #44, §6.5 |
 | C1 | Controller ruling on the first draft's conflict 3: a read-only engine message **`wallet.recipientInfo`**, so #12 renders as drawn; the first-time-recipient warning goes back on #12 and stays on #20 | E6, #12, #20 |
-| — | simulateTransaction's `accounts` through the proxy: keep E2 as specified; ICO Claude confirms the proxy forwards `accounts` unchanged before E2's task starts, and the plan's first task checks it | E2 precondition |
+| — | simulateTransaction's `accounts` through the proxy: keep E2 as specified; ICO Claude confirms the proxy forwards `accounts` unchanged before E2's task starts, and the plan's first task checks it — **confirmed 2026-09-29** (§11.5) | E2 precondition |
 | — | Keep the three-plan split under this one spec | §12 |
 
 Owner answers and controller rulings after the independent review (Fable 5.1, round 1,
@@ -1978,8 +1978,17 @@ visible):
    `wallet.recipientInfo` (local only). #12 renders states 3 and 6 as drawn, and #20 keeps its
    banner.
 5. **simulateTransaction `accounts` pass-through was unverified.** *Resolved as a precondition:*
-   ICO Claude confirms before E2's task starts, and the plan's first task checks it (§2 E2). Until
-   then it stays open by design, and E2 fails closed.
+   ICO Claude confirms before E2's task starts, and the plan's first task checks it (§2 E2).
+   **Confirmed 2026-09-29** (one live call through `/api/v1/rpc`, config `{encoding: 'base64',
+   sigVerify: false, replaceRecentBlockhash: true, commitment: 'confirmed', accounts: {encoding:
+   'base64', addresses: [...]}}`): the proxy checks only the method name and forwards the body
+   unchanged; `value.accounts` has one entry per requested address in order, `data` is
+   `[<base64>, 'base64']`; `preBalances`/`postBalances` and `pre/postTokenBalances` are also present.
+   Two rules follow for E2's reader: **never use `rentEpoch`** (u64 max, which `JSON.parse` rounds to
+   18446744073709552000); and a **non-existent address is `null`** in `accounts` (Solana RPC spec;
+   not tried live) — the reader accepts `null` for exactly those entries and E2's test covers it.
+   JSON numbers for lamports are exact only below 2^53 (≈ 9 million SOL) — above that the reader
+   refuses as malformed rather than compute on a rounded value.
 6. **#42 disabled Receive although the address is local.** *Resolved by D36:* Receive enabled,
    Send disabled, recorded as a deviation.
 9. **Explorer target** (design solscan.io, `web/` explorer.solana.com). *Resolved by D37:* Solscan,
