@@ -21,29 +21,42 @@
 //
 // Fix round 2 (review found the round-1 narrowing still had a hole): `const {Connection} = await
 // import('@solana/web3.js')` and `const {Connection: C} = web3` are destructuring, not a `.`
-// access or a clause member, so round 1 missed both. Controller ruling: stop narrowing the match —
-// strip comments first (stripComments: a small tokenizer that tracks '…'/"…"/`…` literals,
-// including template `${…}` interpolation, and removes `//`/`/* */` comments everywhere else,
-// leaving a `//` inside a string like a URL untouched) — and THEN apply the BLUNT rule: any
-// `Connection` word token in a file that references web3.js at all, and any `fetch` call or
-// globalThis/self/window.fetch property access outside deps.ts, no usage-site matching at all.
-// Comment-stripping is what keeps this sound instead of narrowing: core/solana/transfer.ts
-// references web3.js and separately says "its Connection" in a *comment* about unrelated app code,
-// and core/solana/rpc.ts's own doc comment says "`globalThis.fetch` satisfies it" — both real,
-// reachable files that would otherwise trip a blunt token scan; stripping the comments first, not
-// narrowing what counts as a reference, is what spares them while still catching every bypass form.
+// access or a clause member, so round 1 missed both. Round 2's fix stripped comments first (a small
+// tokenizer), then applied the Connection/fetch rules blunt on the stripped text.
 //
-// Limits, deliberate: it reads text, so a refused method name inside a quoted comment still fails
-// the gate (fail-closed — only the Connection and fetch rules run on comment-stripped text, per the
-// controller's round-2 ruling; the method-name and RPC-endpoint-literal checks do not); a name
-// assembled at run time is out of its reach — createRpc refuses that one. stripComments is a
-// tokenizer, not a parser: it does not distinguish a regex /literal/ from division, so a regex
-// containing a literal `//` or `/*` could misparse — the gate's reachable set carries no such regex
-// today. A file that assigns `web3['Connection']` (bracket notation) to a differently-named local
-// is out of reach the same way a cast past RpcMethod is. CONNECTION_ONLY matches `.methodName(` on
-// any receiver, so an unrelated object with a same-named method is a possible false positive — left
-// as is, fail-closed, per the controller's round-1 ruling (ex: `.getParsedTransaction(` on a
-// non-Connection reader).
+// Fix round 3 (re-review found round 2's stripComments itself was unsound, and two more fetch
+// bypasses): the tokenizer misread a regex literal — `const re = /foo/*2;` opens what it thinks is
+// a `/* … */` block comment and swallows the rest of the file, so every LATER Connection or fetch
+// use became invisible to the gate; `/\/\//` (a regex matching two literal slashes) ate a line the
+// same way. And `const {fetch: f} = globalThis` / `globalThis['fe' + 'tch']` bypassed the fetch
+// rule, which only matched a direct `.fetch` property access or call. Controller ruling: REMOVE
+// stripComments — it is gone from this file. The Connection and fetch rules are blunt on RAW text
+// instead: any `Connection` word token in a file that references '@solana/web3.js' at all is a
+// violation (same as round 2, minus the comment-stripping step), and outside
+// extension/src/background/deps.ts, a bare `fetch(` call, a bare `globalThis.fetch`/`self.fetch`/
+// `window.fetch` property access, a destructure of `fetch` off globalThis/self/window
+// (`{fetch …} = globalThis`), or ANY computed property access on globalThis/self/window
+// (`globalThis[`/`self[`/`window[`, unreadable statically, so every form is a violation, no
+// usage-site matching) is a violation too. Being blunt on raw text means a file's own COMMENT that
+// happens to mention "Connection" or "globalThis.fetch" trips this gate now, same as a refused RPC
+// method name always has (see Limits below) — so instead of teaching the gate about comments again,
+// the three real files that had such a comment (core/solana/transfer.ts, core/presale/allocation.ts,
+// core/solana/rpc.ts) were REWORDED to say the same thing without the trigger word. And this text
+// check is no longer the only thing standing between a bypass and the network: manifest/source.mjs's
+// EXTENSION_CSP now declares `connect-src https://api.noc-tura.io`, so even a Connection or fetch
+// this gate still cannot see is refused by the browser itself at the point it tries to reach any
+// other host — checked by check-permissions.mjs's connectSrcViolations, independent of this file.
+//
+// Limits, deliberate: it reads text, so a refused method name — or, as of round 3, a mention of
+// "Connection" or a global fetch form — inside a quoted comment fails the gate (fail-closed); a name
+// assembled at run time is out of its reach — createRpc refuses that one, and the CSP above refuses
+// the resulting network request regardless. A file that assigns `web3['Connection']` (bracket
+// notation) to a differently-named local, or destructures `fetch` from something other than a
+// literal `globalThis`/`self`/`window` (e.g. an intermediate variable: `const g = globalThis; const
+// {fetch} = g;`), is out of reach the same way a cast past RpcMethod is — the CSP is the backstop
+// for exactly this gap. CONNECTION_ONLY matches `.methodName(` on any receiver, so an unrelated
+// object with a same-named method is a possible false positive — left as is, fail-closed, per the
+// controller's round-1 ruling (ex: `.getParsedTransaction(` on a non-Connection reader).
 import {existsSync, readFileSync, statSync} from 'node:fs';
 import {dirname, join, posix, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -98,103 +111,29 @@ const WEB3JS_REF =
   /\bfrom\s*(['"`])@solana\/web3\.js\1|\bimport\s*\(\s*(['"`])@solana\/web3\.js\2|\brequire\s*\(\s*(['"`])@solana\/web3\.js\3/;
 
 /**
- * A tokenizer good enough for our sources: walks the text once, tracking whether it is inside a
- * '…'/"…"/`…` literal (respecting \ escapes, and template `${…}` interpolation via a context
- * stack, so a `}` inside an interpolation's own object literal does not close the template too
- * early), and removes `//` line and `/* *‍/` block comments everywhere else. A string or template
- * literal's contents — including a `//` inside a URL — are copied through untouched, never scanned
- * for comment markers. This is not a full parser (a regex /literal/ is not distinguished from
- * division, so a regex containing a literal `//` or `/*` could misparse) but the gate's reachable
- * set carries no such regex today; good enough, not a general-purpose lexer.
- */
-export function stripComments(text) {
-  const stack = [];
-  let out = '';
-  let i = 0;
-  const n = text.length;
-  while (i < n) {
-    const top = stack[stack.length - 1];
-    const mode = top === 'string1' || top === 'string2' || top === 'template' ? top : 'code';
-    const c = text[i];
-    const c2 = i + 1 < n ? text[i + 1] : '';
-    if (mode === 'code') {
-      if (c === '/' && c2 === '/') {
-        while (i < n && text[i] !== '\n') i++;
-        continue;
-      }
-      if (c === '/' && c2 === '*') {
-        i += 2;
-        while (i < n && !(text[i] === '*' && text[i + 1] === '/')) i++;
-        i = Math.min(i + 2, n);
-        continue;
-      }
-      if (c === "'") stack.push('string1');
-      else if (c === '"') stack.push('string2');
-      else if (c === '`') stack.push('template');
-      else if (c === '{') stack.push('brace');
-      else if (c === '}') stack.pop();
-      out += c;
-      i++;
-      continue;
-    }
-    if (mode === 'string1' || mode === 'string2') {
-      const quote = mode === 'string1' ? "'" : '"';
-      if (c === '\\' && i + 1 < n) {
-        out += c + text[i + 1];
-        i += 2;
-        continue;
-      }
-      out += c;
-      i++;
-      if (c === quote || c === '\n') stack.pop(); // an unescaped newline recovers from an unterminated string
-      continue;
-    }
-    // mode === 'template'
-    if (c === '\\' && i + 1 < n) {
-      out += c + text[i + 1];
-      i += 2;
-      continue;
-    }
-    if (c === '`') {
-      stack.pop();
-      out += c;
-      i++;
-      continue;
-    }
-    if (c === '$' && c2 === '{') {
-      stack.push('templateExpr');
-      out += '${';
-      i += 2;
-      continue;
-    }
-    out += c;
-    i++;
-  }
-  return out;
-}
-
-/**
- * A web3.js Connection reached by any form at all. Fix round 2: the narrower version of this rule
- * (an import/export clause member or a `.Connection` property access) still missed
- * `const {Connection} = await import('@solana/web3.js')` and `const {Connection: C} = web3` —
- * destructuring is neither. Controller ruling: strip comments, then a blunt token match — any
- * `Connection` word token in a file that references web3.js at all, no usage-site matching. Sound
- * only because comments are gone first: core/solana/transfer.ts references web3.js and separately
- * says "its Connection" in a comment, which must not trip this.
+ * A web3.js Connection reached by any form at all, on RAW text (round 3: no comment-stripping —
+ * see the header). Blunt: any `Connection` word token in a file that references web3.js at all, no
+ * usage-site matching, so a comment mentioning it trips this too (fail-closed; the three real files
+ * that had such a comment were reworded instead of taught around — see the header).
  */
 function namesWeb3jsConnection(text) {
-  const code = stripComments(text);
-  if (WEB3JS_REF.test(code) && /\bConnection\b/.test(code)) return true;
+  if (WEB3JS_REF.test(text) && /\bConnection\b/.test(text)) return true;
   // A bare `new Connection(` with no web3.js reference visible in this same file at all (e.g. a
   // Connection destructured from an object built elsewhere) — kept from the original check.
-  return /\bnew\s+Connection\s*\(/.test(code);
+  return /\bnew\s+Connection\s*\(/.test(text);
 }
 
-// The global fetch — a call (bare, not preceded by `.`/an identifier char, so `opts.fetch(` and
-// `deps.fetch(`, the injected form, are spared) or a bare globalThis/self/window.fetch property
-// access, called or not. Matched against comment-stripped text (see namesWeb3jsConnection): without
-// that, core/solana/rpc.ts's own doc comment ("`globalThis.fetch` satisfies it") would trip it.
-const GLOBAL_FETCH = /(?<![.\w$])fetch\s*\(|\bglobalThis\.fetch\b|\bself\.fetch\b|\bwindow\.fetch\b/;
+// The global fetch, on RAW text (round 3: no comment-stripping) — every form the controller named:
+//  - a bare call, not preceded by `.`/an identifier char, so `opts.fetch(` and `deps.fetch(` (the
+//    injected form) are spared;
+//  - a bare globalThis/self/window.fetch property access, called or not;
+//  - a destructure of `fetch` off a literal globalThis/self/window (`{fetch` … `} = globalThis`,
+//    `{fetch: f} = self`, any name list, any renaming);
+//  - ANY computed property access on globalThis/self/window (`globalThis[`, `self[`, `window[`) —
+//    the accessed name cannot be read statically (`globalThis['fe' + 'tch']`), so every computed
+//    access on these three is a violation, no usage-site matching.
+const GLOBAL_FETCH =
+  /(?<![.\w$])fetch\s*\(|\bglobalThis\.fetch\b|\bself\.fetch\b|\bwindow\.fetch\b|\{[^}]*\bfetch\b[^}]*\}\s*=\s*(?:globalThis|self|window)\b|\b(?:globalThis|self|window)\s*\[/;
 // Other network primitives no core/ or extension file should reach directly — the coordinator
 // client (rpc.ts, broadcast.ts, deps.ts) is the only path to the network.
 const OTHER_NETWORK_PRIMITIVES = [
@@ -204,17 +143,16 @@ const OTHER_NETWORK_PRIMITIVES = [
 ];
 
 /** Every raw-network violation: a direct global fetch / XHR / sendBeacon / WebSocket outside
- * DEPS_FILE, and the RPC endpoint path spelled outside RPC_FILE. */
+ * DEPS_FILE, and the RPC endpoint path spelled outside RPC_FILE. All on raw text (see the header). */
 export function networkViolations(files) {
   const out = [];
   for (const {path, text} of files) {
     if (path !== DEPS_FILE) {
-      const code = stripComments(text);
-      if (GLOBAL_FETCH.test(code)) {
+      if (GLOBAL_FETCH.test(text)) {
         out.push(`${path}: calls the global fetch directly, bypassing the coordinator client (only ${DEPS_FILE} may)`);
       }
       for (const [name, re] of OTHER_NETWORK_PRIMITIVES) {
-        if (re.test(code)) out.push(`${path}: uses ${name}, bypassing the coordinator client`);
+        if (re.test(text)) out.push(`${path}: uses ${name}, bypassing the coordinator client`);
       }
     }
     if (path !== RPC_FILE && text.includes(RPC_PATH_LITERAL)) {

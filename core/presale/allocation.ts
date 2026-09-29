@@ -9,7 +9,7 @@ import {MAINNET_ADMIN_ADDRESS, MAINNET_NOC_MINT, MAINNET_PROGRAM_ID} from './add
  * test stayed green, because the tests run in Node.
  */
 
-/** The narrowest chain read this module needs: no `Connection`, so no two-copies problem. */
+/** The narrowest chain read this module needs: no RPC client instance, so no two-copies problem. */
 export interface AccountReader {
   getAccountInfo(address: PublicKey): Promise<{data: Uint8Array} | null>;
 }

@@ -5,8 +5,8 @@ import {encodeU64LE, findAssociatedTokenAddress} from '../presale/buyInstruction
 /**
  * SOL and SPL transfer building, shared by the app and the extension (spec §4 "Moves into core/").
  * Moved from src/modules/solana/transactionBuilder.ts; what stayed there binds this to the app's fee
- * store and its Connection. Everything here is pure: the markup, the source token account and the
- * priority fee are explicit inputs.
+ * store and its stateful RPC client. Everything here is pure: the markup, the source token account
+ * and the priority fee are explicit inputs.
  *
  * `Buffer` is imported, not assumed global (a Vite bundle has none), and every u64 is encoded by
  * hand: buffer@5.7.1, which the app ships on Hermes, has no writeBigUInt64LE.

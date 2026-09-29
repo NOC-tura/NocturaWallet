@@ -4,7 +4,7 @@ import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
   CONNECTION_ONLY, DEPS_FILE, KNOWN_RPC_METHODS, RPC_FILE, RPC_PATH_LITERAL, SPEC_ALLOWED,
-  allowlistFrom, checkRepo, methodViolations, networkViolations, reachable, stripComments,
+  allowlistFrom, checkRepo, methodViolations, networkViolations, reachable,
 } from '../check-rpc-methods.mjs';
 import {listSourceFiles} from '../check-vault-isolation.mjs';
 
@@ -20,14 +20,6 @@ describe('the RPC method gate', () => {
 
   it('accepts the allowed names (positive control) and ignores words that are not RPC methods', () => {
     expect(methodViolations([f('a.ts', "call('getBalance', []); const t = 'wallet.balances'; const u = 'getAssociatedTokenAddress';")], SPEC_ALLOWED)).toEqual([]);
-  });
-
-  it('flags a web3.js Connection and its methods that bypass the list', () => {
-    expect(methodViolations([f('a.ts', "import {Connection, PublicKey} from '@solana/web3.js';")], SPEC_ALLOWED)).toEqual(['a.ts: uses a web3.js Connection, which bypasses the RPC allowlist']);
-    expect(methodViolations([f('b.ts', 'const c = new Connection(url);')], SPEC_ALLOWED)).toEqual(['b.ts: uses a web3.js Connection, which bypasses the RPC allowlist']);
-    expect(methodViolations([f('c.ts', 'await conn.getParsedTransaction(sig);')], SPEC_ALLOWED)).toEqual(['c.ts: calls Connection.getParsedTransaction, which bypasses the RPC allowlist']);
-    expect(methodViolations([f('d.ts', 'await reader.getSignatureStatuses([s]);')], SPEC_ALLOWED)).toEqual([]);
-    expect(CONNECTION_ONLY).toContain('sendRawTransaction');
   });
 
   it('reads the list out of core/solana/rpc.ts', () => {
@@ -71,34 +63,76 @@ describe('the RPC method gate', () => {
     expect(listSourceFiles(root)).not.toContain('scripts/check-rpc-methods.mjs');
   });
 
-  // Fix round 1: the reviewer bypassed the original Connection check twice — a namespace import
-  // used as `web3.Connection`, and `require('@solana/web3.js').Connection` — because it only
-  // matched `import {Connection} from '@solana/web3.js'` and a bare `new Connection(`. The
-  // controller's ruling: the token `Connection` is a violation whenever the file references
-  // '@solana/web3.js' at all, with no usage-site matching. A file that references web3.js for
-  // unrelated names but only *mentions* "Connection" in prose (no `.Connection`, no `{Connection}`
-  // import clause) must still be spared — core/solana/transfer.ts does exactly this in a comment,
-  // and is part of the real repo's reachable set.
-  it('flags every way a bundled file can reach a web3.js Connection, and spares an unrelated mention', () => {
-    expect(methodViolations([f('a.ts', "import * as web3 from '@solana/web3.js';\nconst c = new web3.Connection(url);")], SPEC_ALLOWED)).toEqual([
+  // Fix round 1: a namespace-import Connection (`web3.Connection`) and `require(...).Connection`
+  // bypassed the original check (it only matched `import {Connection} from …` and a bare
+  // `new Connection(`). Fix round 2 narrowed to a `.Connection` access or an import/export clause
+  // member, gated on a web3.js reference, and added stripComments to keep that sound against two
+  // real files' own comments — but round 2 still missed a Connection reached by destructuring
+  // (`const {Connection} = await import(...)`, `const {Connection: C} = web3`), and stripComments
+  // itself mis-parsed a regex literal (`/foo/*2`) as opening a block comment, silently swallowing
+  // the rest of the file. Fix round 3 (this state): stripComments is GONE. The rule is blunt on
+  // RAW text — any `Connection` word token in a file that references '@solana/web3.js' at all —
+  // and the two real files that merely *mentioned* "Connection" in a comment
+  // (core/solana/transfer.ts, core/presale/allocation.ts) were reworded instead, so the gate does
+  // not need to understand comments at all. The runtime backstop (manifest/source.mjs's
+  // connect-src, checked by check-permissions.mjs) is what actually stops a bypass this text-based
+  // gate still cannot see.
+  it('flags every way a bundled file can reach a web3.js Connection, on raw text', () => {
+    expect(methodViolations([f('a.ts', "import {Connection, PublicKey} from '@solana/web3.js';")], SPEC_ALLOWED)).toEqual([
       'a.ts: uses a web3.js Connection, which bypasses the RPC allowlist',
     ]);
-    expect(methodViolations([f('b.ts', "const C = require('@solana/web3.js').Connection;")], SPEC_ALLOWED)).toEqual([
+    expect(methodViolations([f('b.ts', 'const c = new Connection(url);')], SPEC_ALLOWED)).toEqual([
       'b.ts: uses a web3.js Connection, which bypasses the RPC allowlist',
     ]);
-    expect(methodViolations([f('c.ts', "export {Connection} from '@solana/web3.js';")], SPEC_ALLOWED)).toEqual([
+    expect(methodViolations([f('c.ts', "import * as web3 from '@solana/web3.js';\nconst c = new web3.Connection(url);")], SPEC_ALLOWED)).toEqual([
       'c.ts: uses a web3.js Connection, which bypasses the RPC allowlist',
     ]);
-    // Negative control: no web3.js reference at all, and "Connection" is not a property access,
-    // import clause member or `new Connection(` call — allowed (the transfer.ts shape).
-    expect(methodViolations([f('d.ts', "import {PublicKey} from '@solana/web3.js';\n// store and its Connection.\n")], SPEC_ALLOWED)).toEqual([]);
-    expect(methodViolations([f('e.ts', 'const Connection = 1;\nvoid Connection;')], SPEC_ALLOWED)).toEqual([]);
+    expect(methodViolations([f('d.ts', "const C = require('@solana/web3.js').Connection;")], SPEC_ALLOWED)).toEqual([
+      'd.ts: uses a web3.js Connection, which bypasses the RPC allowlist',
+    ]);
+    expect(methodViolations([f('e.ts', "export {Connection} from '@solana/web3.js';")], SPEC_ALLOWED)).toEqual([
+      'e.ts: uses a web3.js Connection, which bypasses the RPC allowlist',
+    ]);
+    expect(methodViolations([f('g.ts', "const {Connection} = await import('@solana/web3.js');")], SPEC_ALLOWED)).toEqual([
+      'g.ts: uses a web3.js Connection, which bypasses the RPC allowlist',
+    ]);
+    expect(methodViolations([f('h.ts', "import * as web3 from '@solana/web3.js';\nconst {Connection: C} = web3;")], SPEC_ALLOWED)).toEqual([
+      'h.ts: uses a web3.js Connection, which bypasses the RPC allowlist',
+    ]);
+    expect(methodViolations([f('i.ts', 'await conn.getParsedTransaction(sig);')], SPEC_ALLOWED)).toEqual([
+      'i.ts: calls Connection.getParsedTransaction, which bypasses the RPC allowlist',
+    ]);
+    expect(methodViolations([f('j.ts', 'await reader.getSignatureStatuses([s]);')], SPEC_ALLOWED)).toEqual([]);
+    expect(CONNECTION_ONLY).toContain('sendRawTransaction');
+    // Negative control: no web3.js reference at all — an unrelated identifier is still spared.
+    expect(methodViolations([f('k.ts', 'const Connection = 1;\nvoid Connection;')], SPEC_ALLOWED)).toEqual([]);
   });
 
-  // Fix round 1: a raw fetch of the RPC endpoint with a computed method name bypassed both the
-  // gate and createRpc's compile-time list, because nothing forbade calling fetch directly. Only
-  // extension/src/background/deps.ts (timedFetch) may call the global fetch; injected
-  // `opts.fetch(`/`deps.fetch(` calls (rpc.ts, broadcast.ts) stay allowed.
+  it('flags a comment mentioning Connection too, now that nothing strips comments (fail-closed by design)', () => {
+    expect(methodViolations([f('m.ts', "import {PublicKey} from '@solana/web3.js';\n// its Connection.\n")], SPEC_ALLOWED)).toEqual([
+      'm.ts: uses a web3.js Connection, which bypasses the RPC allowlist',
+    ]);
+  });
+
+  it('a regex literal does not swallow the rest of the file (no comment logic left to confuse)', () => {
+    const text = "const re = /foo/*2;\nimport {Connection} from '@solana/web3.js';\n";
+    expect(methodViolations([f('a.ts', text)], SPEC_ALLOWED)).toEqual(['a.ts: uses a web3.js Connection, which bypasses the RPC allowlist']);
+    // `/\/\//` would have eaten a line under round 2's stripComments too; raw text never tries.
+    const text2 = "const slashes = /\\/\\//;\nconst probe = 'getSlot';\n";
+    expect(methodViolations([f('b.ts', text2)], SPEC_ALLOWED)).toEqual([
+      'b.ts: names the RPC method getSlot, which the coordinator proxy refuses (HTTP 403)',
+    ]);
+  });
+
+  // Fix round 1: forbid a direct call to the global fetch and to XMLHttpRequest/sendBeacon/
+  // WebSocket anywhere except extension/src/background/deps.ts.
+  //
+  // Fix round 3: re-review found two more fetch bypasses round 1 missed — destructuring fetch off
+  // globalThis/self/window (`const {fetch: f} = globalThis`), and a computed property access on
+  // any of the three (`globalThis['fe' + 'tch']`), which cannot be read statically, so ANY
+  // computed access on these three globals is a violation, no usage-site matching. Checked on RAW
+  // text (round 2's stripComments is gone); core/solana/rpc.ts's own comment ("`globalThis.fetch`
+  // satisfies it") was reworded instead of relying on the gate to spare it.
   it('flags the global fetch and other raw network calls outside deps.ts, but allows injected fetch', () => {
     expect(networkViolations([f('src/background/x.ts', 'await fetch(url);')])).toEqual([
       `src/background/x.ts: calls the global fetch directly, bypassing the coordinator client (only ${DEPS_FILE} may)`,
@@ -112,6 +146,22 @@ describe('the RPC method gate', () => {
     expect(networkViolations([f('src/background/x.ts', 'await window.fetch(url);')])).toEqual([
       `src/background/x.ts: calls the global fetch directly, bypassing the coordinator client (only ${DEPS_FILE} may)`,
     ]);
+    expect(networkViolations([f('src/background/x.ts', 'const {fetch: f} = globalThis;\nf(url);')])).toEqual([
+      `src/background/x.ts: calls the global fetch directly, bypassing the coordinator client (only ${DEPS_FILE} may)`,
+    ]);
+    expect(networkViolations([f('src/background/x.ts', 'const {fetch} = self;')])).toEqual([
+      `src/background/x.ts: calls the global fetch directly, bypassing the coordinator client (only ${DEPS_FILE} may)`,
+    ]);
+    expect(networkViolations([f('src/background/x.ts', "globalThis['fe' + 'tch'](url);")])).toEqual([
+      `src/background/x.ts: calls the global fetch directly, bypassing the coordinator client (only ${DEPS_FILE} may)`,
+    ]);
+    expect(networkViolations([f('src/background/x.ts', "const u = self['fetch'];")])).toEqual([
+      `src/background/x.ts: calls the global fetch directly, bypassing the coordinator client (only ${DEPS_FILE} may)`,
+    ]);
+    // Blunt per the controller's ruling: ANY computed access on window (not only ['fetch']).
+    expect(networkViolations([f('src/background/x.ts', "const w = window['location'];")])).toEqual([
+      `src/background/x.ts: calls the global fetch directly, bypassing the coordinator client (only ${DEPS_FILE} may)`,
+    ]);
     expect(networkViolations([f('src/background/x.ts', 'const r = new XMLHttpRequest();')])).toEqual([
       'src/background/x.ts: uses XMLHttpRequest, bypassing the coordinator client',
     ]);
@@ -123,8 +173,8 @@ describe('the RPC method gate', () => {
     ]);
     // Injected fetch (a parameter or a field), and a lookalike identifier, stay allowed.
     expect(networkViolations([f('src/background/x.ts', 'await opts.fetch(url); await deps.fetch(url); prefetch(url);')])).toEqual([]);
-    // deps.ts itself is the one place the global fetch may be called.
-    expect(networkViolations([f(DEPS_FILE, 'await fetch(url); await globalThis.fetch(url);')])).toEqual([]);
+    // deps.ts itself is the one place the global fetch (in any of these forms) may be reached.
+    expect(networkViolations([f(DEPS_FILE, "await fetch(url); await globalThis.fetch(url); globalThis['fetch'](url);")])).toEqual([]);
   });
 
   it('flags the RPC endpoint path named outside core/solana/rpc.ts', () => {
@@ -134,44 +184,7 @@ describe('the RPC method gate', () => {
     expect(networkViolations([f(RPC_FILE, "const u = API_BASE + '/rpc';")])).toEqual([]);
   });
 
-  it('still passes on this repository with the network checks folded in (rpc.ts and broadcast.ts use injected fetch)', () => {
-    const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-    expect(checkRepo(root)).toEqual([]);
-  });
-
-  // Fix round 2: the narrowed Connection rule (an import/export clause member or a `.Connection`
-  // property access) still missed a Connection reached by destructuring — neither
-  // `const {Connection} = await import('@solana/web3.js')` nor `const {Connection: C} = web3`
-  // (paired with a prior web3.js reference) is a `.` access or a clause member. Controller ruling:
-  // strip comments first, then apply the BLUNT rule (any `Connection` word token in a file that
-  // references web3.js at all) — and the same for the fetch rule (any `fetch` call or
-  // globalThis/self/window.fetch property access outside deps.ts). Comment-stripping is what now
-  // keeps this sound: without it, a blunt token scan would trip on core/solana/transfer.ts's own
-  // comment ("…its Connection.") and core/solana/rpc.ts's own comment ("`globalThis.fetch`
-  // satisfies it") — both real, reachable files.
-  it('strips // and /* */ comments outside string/template literals, leaving a same-line URL string untouched', () => {
-    expect(stripComments("const u = 'https://x//y';")).toBe("const u = 'https://x//y';");
-    expect(stripComments('const a = 1; // comment\nconst b = 2;')).toBe('const a = 1; \nconst b = 2;');
-    expect(stripComments('/* c */const x = 1;')).toBe('const x = 1;');
-    // A comment-like sequence inside a template literal's plain text also survives.
-    expect(stripComments('const t = `a // not a comment`;')).toBe('const t = `a // not a comment`;');
-  });
-
-  it('catches a Connection reached by destructuring — the narrowed rule\'s own hole', () => {
-    expect(methodViolations([f('a.ts', "const {Connection} = await import('@solana/web3.js');")], SPEC_ALLOWED)).toEqual([
-      'a.ts: uses a web3.js Connection, which bypasses the RPC allowlist',
-    ]);
-    expect(methodViolations([f('b.ts', "import * as web3 from '@solana/web3.js';\nconst {Connection: C} = web3;")], SPEC_ALLOWED)).toEqual([
-      'b.ts: uses a web3.js Connection, which bypasses the RPC allowlist',
-    ]);
-  });
-
-  it('spares a comment that merely mentions Connection or globalThis.fetch (comments are stripped first)', () => {
-    expect(methodViolations([f('c.ts', "import {PublicKey} from '@solana/web3.js';\n/** store and its Connection. */\n")], SPEC_ALLOWED)).toEqual([]);
-    expect(networkViolations([f('d.ts', '/** globalThis.fetch satisfies it. */\nexport const x = 1;')])).toEqual([]);
-  });
-
-  it('still passes on this repository with comment-stripped blunt Connection/fetch rules', () => {
+  it('still passes on this repository (round 3: raw-text blunt rules, the real comments reworded)', () => {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
     expect(checkRepo(root)).toEqual([]);
   });

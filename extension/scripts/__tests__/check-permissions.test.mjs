@@ -1,5 +1,5 @@
-import {comparePermissions} from '../check-permissions.mjs';
-import {MIN_CHROME_VERSION, MIN_FIREFOX_VERSION, render} from '../../manifest/source.mjs';
+import {REQUIRED_CONNECT_SRC, comparePermissions, connectSrcViolations} from '../check-permissions.mjs';
+import {EXTENSION_CSP, MIN_CHROME_VERSION, MIN_FIREFOX_VERSION, render} from '../../manifest/source.mjs';
 
 describe('permissions gate', () => {
   it('accepts the rendered manifests', () => {
@@ -23,6 +23,34 @@ describe('permissions gate', () => {
     const m = render('chrome');
     m.content_security_policy = {extension_pages: "script-src 'self' 'unsafe-eval'"};
     expect(comparePermissions(m, 'chrome')[0]).toMatch(/^CSP differs/);
+  });
+
+  // Fix round 3: the runtime backstop for check-rpc-methods.mjs's text-based checks. Pinned
+  // independent of EXTENSION_CSP (REQUIRED_CONNECT_SRC is its own hardcoded list, not read from
+  // it), so a loosened EXTENSION_CSP is caught here too, not just a manifest that drifted from it.
+  it('requires connect-src to be exactly the coordinator host, nothing else', () => {
+    expect(REQUIRED_CONNECT_SRC).toEqual(['https://api.noc-tura.io']);
+    expect(connectSrcViolations(EXTENSION_CSP)).toEqual([]);
+    expect(connectSrcViolations("script-src 'self'; object-src 'self'")).toEqual([
+      'connect-src is "(missing)", want exactly "https://api.noc-tura.io"',
+    ]);
+    expect(connectSrcViolations("script-src 'self'; connect-src https://api.noc-tura.io https://evil.example")).toEqual([
+      'connect-src is "https://api.noc-tura.io https://evil.example", want exactly "https://api.noc-tura.io"',
+    ]);
+    expect(connectSrcViolations("script-src 'self'; connect-src *")).toEqual([
+      'connect-src is "*", want exactly "https://api.noc-tura.io"',
+    ]);
+    expect(connectSrcViolations("script-src 'self'; connect-src 'self' https://api.noc-tura.io")).toEqual([
+      'connect-src is "\'self\' https://api.noc-tura.io", want exactly "https://api.noc-tura.io"',
+    ]);
+  });
+
+  it('refuses a built manifest whose CSP is missing connect-src', () => {
+    const m = render('chrome');
+    m.content_security_policy = {extension_pages: "script-src 'self'; object-src 'self'"};
+    expect(comparePermissions(m, 'chrome')).toEqual(
+      expect.arrayContaining(['connect-src is "(missing)", want exactly "https://api.noc-tura.io"']),
+    );
   });
 
   it('refuses a Firefox manifest without gecko.id', () => {

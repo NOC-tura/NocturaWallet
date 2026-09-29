@@ -1,9 +1,35 @@
 #!/usr/bin/env node
 // The built manifests must say exactly what manifest/source.mjs says. A permission that
 // arrives by a hand edit of dist/ — or by a future generator bug — fails here.
+//
+// Fix round 3: the manifest-vs-source equality check above only catches a manifest that drifted
+// FROM source.mjs — it says nothing if EXTENSION_CSP itself were loosened in source.mjs, since the
+// manifest would then "correctly" match a weaker policy. connect-src is the one runtime backstop
+// for check-rpc-methods.mjs's text-based Connection/fetch checks (a bypass that check misses still
+// cannot reach the network, because the browser enforces this independent of what the JS says), so
+// its value is worth pinning independent of source.mjs too — REQUIRED_CONNECT_SRC is copied here on
+// purpose, same pattern as check-rpc-methods.mjs's SPEC_ALLOWED against core/solana/rpc.ts's list.
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {PERMISSIONS, HOST_PERMISSIONS, EXTENSION_CSP, MIN_CHROME_VERSION, MIN_FIREFOX_VERSION} from '../manifest/source.mjs';
+
+// The one host anything in the extension ever fetches (extension/src/background/deps.ts — RPC
+// reads, JSON reads, the broadcast route, all through the coordinator proxy). No 'self': nothing
+// fetches the extension's own origin. No wallet.noc-tura.io: that is the passkey RP ID, and a
+// WebAuthn ceremony is not a fetch, so it is not governed by connect-src.
+export const REQUIRED_CONNECT_SRC = ['https://api.noc-tura.io'];
+
+/** connect-src in `csp` must be exactly REQUIRED_CONNECT_SRC — checked against a CSP string
+ * directly, independent of whether it came from source.mjs or a built manifest. */
+export function connectSrcViolations(csp) {
+  const m = /(?:^|;)\s*connect-src\s+([^;]*)/.exec(csp ?? '');
+  const got = m ? m[1].trim().split(/\s+/).filter(Boolean) : [];
+  const want = REQUIRED_CONNECT_SRC;
+  if (got.join(' ') !== want.join(' ')) {
+    return [`connect-src is "${got.join(' ') || '(missing)'}", want exactly "${want.join(' ')}"`];
+  }
+  return [];
+}
 
 export function comparePermissions(manifest, browser) {
   const problems = [];
@@ -16,6 +42,7 @@ export function comparePermissions(manifest, browser) {
   if (manifest.content_security_policy?.extension_pages !== EXTENSION_CSP) {
     problems.push(`CSP differs: ${manifest.content_security_policy?.extension_pages}`);
   }
+  problems.push(...connectSrcViolations(manifest.content_security_policy?.extension_pages));
   if (manifest.content_scripts !== undefined) problems.push('content_scripts present (not before B1c)');
   if (browser === 'chrome' && manifest.minimum_chrome_version !== MIN_CHROME_VERSION) {
     problems.push(`chrome: minimum_chrome_version differs: ${manifest.minimum_chrome_version}`);

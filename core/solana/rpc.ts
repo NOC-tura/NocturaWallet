@@ -43,7 +43,7 @@ export interface FetchInit {
   body?: string;
   credentials?: 'omit';
 }
-/** The narrowest fetch this needs; `globalThis.fetch` satisfies it. Tests pass a fake. */
+/** The narrowest fetch this needs; the browser's own fetch implementation satisfies it. Tests pass a fake. */
 export type FetchLike = (url: string, init: FetchInit) => Promise<{status: number; json(): Promise<unknown>}>;
 
 export class RpcForbidden extends Error {
