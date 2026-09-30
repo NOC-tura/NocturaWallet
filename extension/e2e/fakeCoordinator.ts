@@ -24,6 +24,12 @@ export interface FakeCoordinator {
   historyChecks: {signature: string; at: number}[];
   /** Anything the fake was asked that it does not implement, or asked in the wrong shape. */
   unexpected: string[];
+  /** SOL per address, lamports; anything unlisted holds 10 SOL. */
+  lamports: Map<string, number>;
+  /** The simulation's error switch (E2): err set and accounts null, as the real RPC answers. */
+  simulateError: boolean;
+  /** Every simulateTransaction's requested addresses (null = the field was missing). */
+  simulations: (string[] | null)[];
 }
 
 /** Compact-u16: the signature count that opens a serialized transaction. */
@@ -35,6 +41,38 @@ function shortVec(bytes: Uint8Array): {value: number; size: number} {
     if ((b & 0x80) === 0) return {value, size: size + 1};
   }
   return {value, size: 3};
+}
+
+/**
+ * The static keys and instructions of a serialized v0 transaction: signature count and slots, then
+ * the message (0x80 prefix, 3-byte header, keys, blockhash, instructions). Read by hand: the E2E runs
+ * under Playwright's loader, where @solana/web3.js's CommonJS dependencies do not load.
+ */
+function parseV0(wire: Uint8Array): {keys: string[]; instructions: {program: number; accounts: number[]; data: Uint8Array}[]} {
+  let at = 0;
+  const vec = (): number => {
+    const {value, size} = shortVec(wire.subarray(at));
+    at += size;
+    return value;
+  };
+  const signatures = vec();
+  at += 64 * signatures;
+  if (wire[at] !== 0x80) throw new Error('not a v0 message');
+  at += 4;
+  const keys: string[] = [];
+  for (let n = vec(), i = 0; i < n; i++, at += 32) keys.push(base58.encode(wire.subarray(at, at + 32)));
+  at += 32;
+  const instructions: {program: number; accounts: number[]; data: Uint8Array}[] = [];
+  for (let n = vec(), i = 0; i < n; i++) {
+    const program = wire[at++] ?? 0;
+    const accounts: number[] = [];
+    const count = vec();
+    for (let j = 0; j < count; j++) accounts.push(wire[at++] ?? 0);
+    const len = vec();
+    instructions.push({program, accounts, data: wire.slice(at, at + len)});
+    at += len;
+  }
+  return {keys, instructions};
 }
 
 /**
@@ -53,6 +91,9 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     broadcastWires: [],
     historyChecks: [],
     unexpected: [],
+    lamports: new Map(),
+    simulateError: false,
+    simulations: [],
   };
   const statusChecks = new Map<string, number>();
   const context = () => ({slot: fake.blockHeight + 50});
@@ -68,16 +109,44 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     }),
   });
 
+  const lamportsOf = (address: string): number => fake.lamports.get(address) ?? 10_000_000_000;
+
+  /**
+   * What a node answers: the requested accounts after the transaction, WITHOUT the fee (the engine
+   * accepts either form, E2) — the payer's lamports less every System transfer it makes. Its error
+   * switch answers err with accounts: null, as the real RPC does (review H2).
+   */
+  const simulate = (params: unknown[]): unknown => {
+    const config = params[1] as {accounts?: {encoding?: string; addresses?: unknown}} | undefined;
+    const addresses = Array.isArray(config?.accounts?.addresses) ? (config.accounts.addresses as string[]) : null;
+    fake.simulations.push(addresses);
+    if (addresses === null || config?.accounts?.encoding !== 'base64') fake.unexpected.push('simulateTransaction without accounts {encoding: base64, addresses}');
+    if (fake.simulateError) return {context: context(), value: {err: {InstructionError: [2, {Custom: 1}]}, logs: [], accounts: null, unitsConsumed: 0, returnData: null}};
+    const {keys, instructions} = parseV0(base64.decode(params[0] as string));
+    const payer = keys[0] ?? '';
+    let out = 0;
+    for (const ix of instructions) {
+      const data = ix.data;
+      if (keys[ix.program] === '11111111111111111111111111111111' && data[0] === 2 && keys[ix.accounts[0] ?? -1] === payer) {
+        out += Number(new DataView(data.buffer, data.byteOffset, data.byteLength).getBigUint64(4, true));
+      }
+    }
+    const accounts = (addresses ?? []).map(a =>
+      a === payer ? {lamports: lamportsOf(payer) - out, owner: '11111111111111111111111111111111', data: ['', 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 0} : null,
+    );
+    return {context: context(), value: {err: null, logs: ['Program 11111111111111111111111111111111 success'], accounts, unitsConsumed: 450, returnData: null}};
+  };
+
   const rpcResult = (method: string, params: unknown[]): unknown => {
     switch (method) {
       case 'getBalance':
-        return {context: context(), value: 10_000_000_000};
+        return {context: context(), value: lamportsOf(params[0] as string)};
       case 'getLatestBlockhash':
         return {context: context(), value: {blockhash: base58.encode(randomBytes(32)), lastValidBlockHeight: fake.blockHeight + BLOCKHASH_LIFETIME}};
       case 'getRecentPrioritizationFees':
         return [];
       case 'simulateTransaction':
-        return {context: context(), value: {err: null, logs: ['Program 11111111111111111111111111111111 success'], accounts: null, unitsConsumed: 450, returnData: null}};
+        return simulate(params);
       case 'getTokenAccountsByOwner':
         return {context: context(), value: []};
       case 'getMultipleAccounts':

@@ -1,5 +1,5 @@
-import {PublicKey, TransactionMessage, VersionedTransaction, type TransactionInstruction} from '@solana/web3.js';
-import {base64} from '@scure/base';
+import {PublicKey, TransactionMessage, VersionedTransaction, type MessageV0, type TransactionInstruction} from '@solana/web3.js';
+import {base58, base64} from '@scure/base';
 import type {Ext} from '../ext';
 import type {WalletDeps} from './deps';
 import {PREPARED_KEY, REAUTH_KEY, getSession, sessionMutex} from './session';
@@ -15,6 +15,8 @@ import {estimatePriorityFee} from '../../../core/solana/priorityFee';
 import {
   InsufficientTokenBalance,
   SYSTEM_ACCOUNT_RENT_LAMPORTS,
+  SPL_ATA_PROGRAM_ID,
+  SPL_TOKEN_PROGRAM_ID,
   SplitTokenBalance,
   TOKEN_ACCOUNT_RENT_LAMPORTS,
   buildSolTransferInstructions,
@@ -29,7 +31,7 @@ import {
 import {WALLET_TOKENS, type WalletToken} from '../../../core/solana/balances';
 import {MAINNET_FEE_TREASURY, TRANSFER_MARKUP_LAMPORTS, effectiveFee, type FeeReason} from '../../../core/fees/transferMarkup';
 import type {Prices} from '../../../core/portfolio/value';
-import {RpcForbidden} from '../../../core/solana/rpc';
+import {RpcForbidden, SYSTEM_PROGRAM_ID, type AccountKind, type SimulatedAccount} from '../../../core/solana/rpc';
 
 /** Spec §3: after 30 s unconfirmed a transaction is simulated again — a prepared send older than that is re-prepared. */
 export const PREPARED_TTL_MS = 30_000;
@@ -55,7 +57,25 @@ export interface PreparedSend {
   /** preparedIntegrity of every field above: an entry changed after prepare is refused at send. */
   integrity: string;
   /** What prepare showed, kept so wallet.preparedFor can show it again. Not signed, not bound. */
-  shown: {fees: PreparedView['fees']; solRequiredLamports: string; reasons: SendReauthReason[]};
+  shown: {fees: PreparedView['fees']; solRequiredLamports: string; reasons: SendReauthReason[]; simulation: SimulationView};
+}
+
+export type SimulatedProgram = 'compute-budget' | 'system' | 'token' | 'associated-token';
+
+/** What the simulation showed (spec B1b-2a E2), for #19. Amounts are base-unit decimal strings. */
+export interface SimulationView {
+  /** context.slot of the simulateTransaction reply. */
+  slot: number;
+  /** Wall time of the simulate call, measured by the engine. */
+  elapsedMs: number;
+  /** Compiled instruction count. */
+  instructions: number;
+  programs: SimulatedProgram[];
+  recipient: 'wallet' | 'new' | 'program' | 'other';
+  /** Lamports of the fee payer before (the balance prepare read) and after (the simulated state). */
+  sol: {before: string; after: string};
+  /** The source token account, for an SPL send. */
+  token: {symbol: 'NOC' | 'USDC' | 'USDT'; before: string; after: string} | null;
 }
 
 export interface PreparedView {
@@ -63,6 +83,7 @@ export interface PreparedView {
   fees: {networkLamports: string; priorityLamports: string; rentLamports: string; markupLamports: string; markupReason: FeeReason};
   solRequiredLamports: string;
   reauth: {challengeId: string; reasons: SendReauthReason[]} | null;
+  simulation: SimulationView;
 }
 
 /** wallet.preparedFor: the view again, with the intent; `expired` = no longer sendable, prepare again. */
@@ -126,7 +147,41 @@ async function unitPrice(deps: WalletDeps, token: WalletToken): Promise<number |
 function isPreparedShape(x: unknown): x is PreparedSend {
   if (typeof x !== 'object' || x === null) return false;
   const p = x as Record<string, unknown>;
-  return typeof p.id === 'string' && typeof p.integrity === 'string' && typeof p.createdAt === 'number' && typeof p.shown === 'object' && p.shown !== null;
+  if (typeof p.id !== 'string' || typeof p.integrity !== 'string' || typeof p.createdAt !== 'number' || typeof p.shown !== 'object' || p.shown === null) return false;
+  // An entry from before E2 has no simulation to show: not ours to resume.
+  const sim = (p.shown as Record<string, unknown>).simulation;
+  return typeof sim === 'object' && sim !== null;
+}
+
+/** The four programs this engine's own messages use. Anything else is an engine bug, never shown as "unknown". */
+const PROGRAM_NAMES = new Map<string, SimulatedProgram>([
+  ['ComputeBudget111111111111111111111111111111', 'compute-budget'],
+  [SYSTEM_PROGRAM_ID, 'system'],
+  [SPL_TOKEN_PROGRAM_ID.toBase58(), 'token'],
+  [SPL_ATA_PROGRAM_ID.toBase58(), 'associated-token'],
+]);
+
+function programsOf(message: MessageV0): SimulatedProgram[] {
+  const out: SimulatedProgram[] = [];
+  for (const ix of message.compiledInstructions) {
+    const id = message.staticAccountKeys[ix.programIdIndex]?.toBase58() ?? '';
+    const name = PROGRAM_NAMES.get(id);
+    if (name === undefined) throw new Error(`prepare built an instruction for an unexpected program ${id}`);
+    if (!out.includes(name)) out.push(name);
+  }
+  return out;
+}
+
+const recipientKind = (k: AccountKind): SimulationView['recipient'] => (k === 'missing' ? 'new' : k);
+
+/**
+ * An SPL token account's mint (bytes 0–32), owner (32–64) and amount (u64 LE at 64–72). Null when the
+ * simulated account is missing, not owned by the token program, or too short to be one.
+ */
+function tokenAccountOf(a: SimulatedAccount | null): {mint: string; owner: string; amount: bigint} | null {
+  if (a === null || a.owner !== SPL_TOKEN_PROGRAM_ID.toBase58() || a.data.length < 72) return null;
+  const view = new DataView(a.data.buffer, a.data.byteOffset, a.data.byteLength);
+  return {mint: base58.encode(a.data.subarray(0, 32)), owner: base58.encode(a.data.subarray(32, 64)), amount: view.getBigUint64(64, true)};
 }
 
 async function loadPrepared(ext: Ext): Promise<PreparedSend[]> {
@@ -151,6 +206,8 @@ export async function prepareSend(
   const session = await getSession(ext);
   if (session === null) throw new SendRefused('locked');
   if (!session.some(a => a.publicKey === account)) throw new SendRefused('unknown-account');
+  // A send to the sending account itself moves nothing but the fees: refused (review L2; #12 disables it).
+  if (intent.recipient === account) throw new SendRefused('self-send');
   // One in-flight send per account: nothing new is built while an earlier one may still land.
   if (inFlightFor(await readPending(ext), account) !== undefined) throw new SendRefused('in-flight');
 
@@ -171,8 +228,13 @@ export async function prepareSend(
   let rent = 0n;
   let tokenBalance: bigint;
   let recipientExists = true;
+  let recipientAccount: AccountKind;
+  let source: string | null = null;
+  let sourceBefore = 0n;
   if (token.mint === null) {
-    recipientExists = await deps.reader.getAccountExists(intent.recipient);
+    // One read answers both questions (review L4): is there an account (rent), and what kind is it (#19).
+    recipientAccount = await deps.reader.getAccountKind(intent.recipient);
+    recipientExists = recipientAccount !== 'missing';
     computeUnitLimit = computeUnitLimitFor({kind: 'sol'});
     instructions = buildSolTransferInstructions({sender, recipient, lamports: amount, priorityFee: price, computeUnitLimit, markup});
     tokenBalance = solBalance;
@@ -180,7 +242,6 @@ export async function prepareSend(
     const mint = new PublicKey(token.mint);
     const holdings = await deps.reader.getTokenAccountsByOwner(account, {mint: token.mint});
     tokenBalance = holdings.reduce((sum, h) => sum + h.amount, 0n);
-    let source: string | null;
     try {
       source = selectSourceTokenAccount(holdings.map(h => ({pubkey: h.pubkey, amount: h.amount})), amount);
     } catch (e) {
@@ -189,6 +250,9 @@ export async function prepareSend(
       throw e;
     }
     if (source === null) throw new SendRefused('insufficient-token', 'This account holds none of this token.');
+    const chosen = source;
+    sourceBefore = holdings.find(h => h.pubkey === chosen)?.amount ?? 0n;
+    recipientAccount = await deps.reader.getAccountKind(intent.recipient);
     const createAta = !(await deps.reader.getAccountExists(findAssociatedTokenAddress(recipient, mint).toBase58()));
     rent = createAta ? TOKEN_ACCOUNT_RENT_LAMPORTS : 0n;
     computeUnitLimit = computeUnitLimitFor({kind: 'spl', createAta});
@@ -223,8 +287,37 @@ export async function prepareSend(
     throw new SendRefused('recipient-below-rent', `a new account needs at least ${SYSTEM_ACCOUNT_RENT_LAMPORTS} lamports`);
   }
 
-  const simulation = await deps.reader.simulateTransaction(base64.encode(new VersionedTransaction(message).serialize()));
-  if (simulation.err !== null) throw new SendRefused('simulation-failed', JSON.stringify(simulation.err));
+  // E2: the simulation also reports the sender's (and the token source's) state after the transaction.
+  const addresses = source === null ? [account] : [account, source];
+  const started = deps.now();
+  const simulated = await deps.reader.simulateTransaction(base64.encode(new VersionedTransaction(message).serialize()), {accounts: addresses});
+  const elapsedMs = Math.max(0, deps.now() - started);
+  if (simulated.err !== null) throw new SendRefused('simulation-failed', JSON.stringify(simulated.err));
+  const senderAfter = simulated.accounts?.[0] ?? null;
+  if (senderAfter === null) throw new SendRefused('simulation-mismatch', 'the simulation does not show the sending account');
+  // SOL leaving the wallet must be exactly what this send costs: with the network fee in the simulated
+  // state, or without it. Anything else is another transaction, or a balance that moved between reads.
+  const spent = solBalance - senderAfter.lamports;
+  if (spent !== solRequired && spent !== solRequired - networkLamports) {
+    throw new SendRefused('simulation-mismatch', `the simulation moves ${spent} lamports; this send moves ${solRequired} (${solRequired - networkLamports} without the network fee)`);
+  }
+  let tokenChange: SimulationView['token'] = null;
+  if (source !== null && intent.token !== 'SOL') {
+    const after = tokenAccountOf(simulated.accounts?.[1] ?? null);
+    if (after === null || after.mint !== token.mint || after.owner !== account || sourceBefore - after.amount !== amount) {
+      throw new SendRefused('simulation-mismatch', `the simulated token account does not show ${amount} leaving ${source}`);
+    }
+    tokenChange = {symbol: intent.token, before: sourceBefore.toString(), after: after.amount.toString()};
+  }
+  const simulation: SimulationView = {
+    slot: simulated.slot,
+    elapsedMs,
+    instructions: message.compiledInstructions.length,
+    programs: programsOf(message),
+    recipient: recipientKind(recipientAccount),
+    sol: {before: solBalance.toString(), after: senderAfter.lamports.toString()},
+    token: tokenChange,
+  };
 
   const knownRecipient = session.some(a => a.publicKey === intent.recipient) || (await knownRecipients(ext)).has(intent.recipient);
   const settings = await readSettings(ext);
@@ -261,7 +354,7 @@ export async function prepareSend(
     intentDigest,
     challengeId,
   };
-  const prepared: PreparedSend = {...bound, integrity: preparedIntegrity(bound), shown: {fees, solRequiredLamports: solRequired.toString(), reasons}};
+  const prepared: PreparedSend = {...bound, integrity: preparedIntegrity(bound), shown: {fees, solRequiredLamports: solRequired.toString(), reasons, simulation}};
   // Under sessionMutex, the one lock (clearSession) takes: a lock that landed while this send was
   // being read, simulated or challenged is seen here, and nothing is written back after it.
   await sessionMutex(async () => {
@@ -287,6 +380,7 @@ function viewOf(p: PreparedSend): PreparedView {
     fees: p.shown.fees,
     solRequiredLamports: p.shown.solRequiredLamports,
     reauth: p.challengeId === null ? null : {challengeId: p.challengeId, reasons: p.shown.reasons},
+    simulation: p.shown.simulation,
   };
 }
 

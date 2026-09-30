@@ -75,11 +75,10 @@ describe('prepareSend', () => {
     expect(await challengeSatisfied(ext, deps.now(), view.reauth!.challengeId, p!.intentDigest)).toBe(false);
   });
 
-  it('sending to the account itself is not a first send', async () => {
+  it('refuses a send to the sending account itself — before any request (review L2)', async () => {
     const ext = fakeExt();
     await unlocked(ext);
-    const view = await prepareSend(ext, fakeDeps({reader: sendReader()}), ACCOUNT.publicKey, {...SOL_INTENT, recipient: ACCOUNT.publicKey});
-    expect(view.reauth).toBeNull();
+    await expect(prepareSend(ext, fakeDeps({reader: fakeReader()}), ACCOUNT.publicKey, {...SOL_INTENT, recipient: ACCOUNT.publicKey})).rejects.toMatchObject({code: 'self-send'});
   });
 
   it('a missing price counts as above the dollar threshold', async () => {
@@ -151,7 +150,7 @@ describe('prepareSend', () => {
 
   it('refuses less than the rent-exempt minimum to a brand-new recipient account', async () => {
     const ext = await knownSetup();
-    const reader = sendReader({getAccountExists: async () => false});
+    const reader = sendReader({getAccountKind: async () => 'missing'});
     await expect(prepareSend(ext, fakeDeps({reader}), ACCOUNT.publicKey, {...SOL_INTENT, amount: '890879'})).rejects.toMatchObject({code: 'recipient-below-rent'});
     expect((await prepareSend(ext, fakeDeps({reader}), ACCOUNT.publicKey, {...SOL_INTENT, amount: '890880'})).id).toMatch(/^[0-9a-f]{32}$/);
     expect((await prepareSend(ext, fakeDeps({reader: sendReader()}), ACCOUNT.publicKey, {...SOL_INTENT, amount: '1000'})).id).toMatch(/^[0-9a-f]{32}$/);
@@ -179,7 +178,8 @@ describe('prepareSend', () => {
 
   it('refuses a transaction whose simulation fails', async () => {
     const ext = await knownSetup();
-    const reader = sendReader({simulateTransaction: async () => ({err: {InstructionError: [2, {Custom: 1}]}, logs: [], unitsConsumed: null})});
+    // A failed simulation: the RPC answers accounts: null alongside err (review H2) — simulation-failed, not failed.
+    const reader = sendReader({simulateTransaction: async () => ({err: {InstructionError: [2, {Custom: 1}]}, logs: [], unitsConsumed: null, slot: 5, accounts: null})});
     await expect(prepareSend(ext, fakeDeps({reader}), ACCOUNT.publicKey, SOL_INTENT)).rejects.toMatchObject({code: 'simulation-failed', detail: '{"InstructionError":[2,{"Custom":1}]}'});
   });
 
@@ -209,12 +209,14 @@ describe('prepareSend', () => {
     for (const known of [true, false]) {
       const ext = known ? await knownSetup() : fakeExt();
       if (!known) await unlocked(ext);
-      const reader = sendReader({
-        simulateTransaction: async () => {
+      const base = sendReader();
+      const reader = {
+        ...base,
+        simulateTransaction: async (tx: string, o?: {accounts?: readonly string[]}) => {
           await clearSession(ext);
-          return {err: null, logs: [], unitsConsumed: 450};
+          return base.simulateTransaction(tx, o);
         },
-      });
+      };
       await expect(prepareSend(ext, fakeDeps({reader}), ACCOUNT.publicKey, SOL_INTENT)).rejects.toMatchObject({code: 'locked'});
       expect(await ext.session.get(PREPARED_KEY)).toBeUndefined();
       expect(await ext.session.get(REAUTH_KEY)).toBeUndefined();
@@ -233,13 +235,15 @@ describe('prepareSend', () => {
       if (key === SESSION_KEY && locked && unlockDone === undefined) unlockDone = setSession(ext, [ACCOUNT]);
       return v;
     };
-    const reader = sendReader({
-      simulateTransaction: async () => {
+    const base = sendReader();
+    const reader = {
+      ...base,
+      simulateTransaction: async (tx: string, o?: {accounts?: readonly string[]}) => {
         await clearSession(ext);
         locked = true;
-        return {err: null, logs: [], unitsConsumed: 450};
+        return base.simulateTransaction(tx, o);
       },
-    });
+    };
     await expect(prepareSend(ext, fakeDeps({reader}), ACCOUNT.publicKey, SOL_INTENT)).rejects.toMatchObject({code: 'locked'});
     expect(unlockDone).toBeDefined();
     await unlockDone;
@@ -253,13 +257,15 @@ describe('prepareSend', () => {
     await unlocked(ext);
     const clear = vi.spyOn(ext.session, 'clear');
     const remove = vi.spyOn(ext.session, 'remove');
-    const reader = sendReader({
-      simulateTransaction: async () => {
+    const base = sendReader();
+    const reader = {
+      ...base,
+      simulateTransaction: async (tx: string, o?: {accounts?: readonly string[]}) => {
         await clearSession(ext);
         clear.mockClear();
-        return {err: null, logs: [], unitsConsumed: 450};
+        return base.simulateTransaction(tx, o);
       },
-    });
+    };
     await expect(prepareSend(ext, fakeDeps({reader}), ACCOUNT.publicKey, SOL_INTENT)).rejects.toMatchObject({code: 'locked'});
     expect(clear).not.toHaveBeenCalled();
     expect(remove.mock.calls).toEqual([[REAUTH_KEY]]);

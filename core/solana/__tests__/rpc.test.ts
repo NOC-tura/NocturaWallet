@@ -207,10 +207,68 @@ describe('solanaReader', () => {
     expect(await r.getAccountExists(OWNER)).toBe(true);
   });
 
-  it('simulateTransaction sends base64 without signature verification and returns err, logs and units', async () => {
+  it('simulateTransaction sends base64 without signature verification and returns err, logs, units and the slot', async () => {
     const {r, calls} = reader(() => ok({context: {slot: 1}, value: {err: {InstructionError: [0, 'Custom']}, logs: ['a', 3], unitsConsumed: 450}}));
-    expect(await r.simulateTransaction('AQID')).toEqual({err: {InstructionError: [0, 'Custom']}, logs: ['a'], unitsConsumed: 450});
+    expect(await r.simulateTransaction('AQID')).toEqual({err: {InstructionError: [0, 'Custom']}, logs: ['a'], unitsConsumed: 450, slot: 1, accounts: null});
     expect(calls[0]?.body.params).toEqual(['AQID', {encoding: 'base64', sigVerify: false, replaceRecentBlockhash: false, commitment: 'confirmed'}]);
+  });
+
+  // B1b-2a E2: the post-states of the requested accounts, for #19's balance changes.
+  describe('simulateTransaction with accounts (E2)', () => {
+    const SYSTEM = '11111111111111111111111111111111';
+    const U64_MAX = 18446744073709552000; // what JSON.parse makes of rentEpoch u64::MAX — never read
+    const acct = (lamports: number, data = '') => ({lamports, owner: SYSTEM, data: [data, 'base64'], executable: false, rentEpoch: U64_MAX, space: 0});
+
+    it('asks for the addresses in base64 and returns their post-states in order; a missing account is null', async () => {
+      const {r, calls} = reader(() => ok({context: {slot: 271408921}, value: {err: null, logs: [], unitsConsumed: 450, accounts: [acct(7_500_000_000, 'AQID'), null]}}));
+      const out = await r.simulateTransaction('AQID', {accounts: [OWNER, MINT]});
+      expect(out.slot).toBe(271408921);
+      expect(out.accounts).toEqual([{lamports: 7_500_000_000n, owner: SYSTEM, data: Uint8Array.from([1, 2, 3])}, null]);
+      expect(calls[0]?.body.params).toEqual([
+        'AQID',
+        {encoding: 'base64', sigVerify: false, replaceRecentBlockhash: false, commitment: 'confirmed', accounts: {encoding: 'base64', addresses: [OWNER, MINT]}},
+      ]);
+    });
+
+    it('a failed simulation answers accounts: null — that is {err, accounts: null}, not a malformed reply (review H2)', async () => {
+      const {r} = reader(() => ok({context: {slot: 5}, value: {err: 'AccountNotFound', logs: null, accounts: null, unitsConsumed: 0}}));
+      expect(await r.simulateTransaction('AQID', {accounts: [OWNER]})).toEqual({err: 'AccountNotFound', logs: [], unitsConsumed: 0, slot: 5, accounts: null});
+    });
+
+    it('with err null, accounts must be an array of exactly the requested length', async () => {
+      for (const accounts of [null, undefined, [], [acct(1)], [acct(1), acct(2), acct(3)]]) {
+        const {r} = reader(() => ok({context: {slot: 5}, value: {err: null, logs: [], accounts}}));
+        await expect(r.simulateTransaction('AQID', {accounts: [OWNER, MINT]})).rejects.toBeInstanceOf(RpcMalformed);
+      }
+    });
+
+    it('a reply without context.slot is malformed, whether or not the simulation failed', async () => {
+      for (const value of [{err: null, logs: [], accounts: [acct(1)]}, {err: 'x', logs: [], accounts: null}]) {
+        const {r} = reader(() => ok({context: {}, value}));
+        await expect(r.simulateTransaction('AQID', {accounts: [OWNER]})).rejects.toBeInstanceOf(RpcMalformed);
+      }
+    });
+
+    it('refuses lamports a JSON number cannot hold exactly (above 2^53), and data that is not [base64, "base64"]', async () => {
+      const bad = [{...acct(1), lamports: 2 ** 53}, {...acct(1), lamports: -1}, {...acct(1), data: 'AQID'}, {...acct(1), data: ['AQID', 'base58']}, {...acct(1), owner: 7}];
+      for (const a of bad) {
+        const {r} = reader(() => ok({context: {slot: 5}, value: {err: null, logs: [], accounts: [a]}}));
+        await expect(r.simulateTransaction('AQID', {accounts: [OWNER]})).rejects.toBeInstanceOf(RpcMalformed);
+      }
+    });
+  });
+
+  it('getAccountKind: missing, a System-owned wallet, an executable program, anything else (E2)', async () => {
+    let value: unknown = null;
+    const {r, calls} = reader(() => ok({context: {slot: 1}, value}));
+    expect(await r.getAccountKind(OWNER)).toBe('missing');
+    expect(calls[0]?.body).toMatchObject({method: 'getAccountInfo', params: [OWNER, {encoding: 'base64', dataSlice: {offset: 0, length: 0}, commitment: 'confirmed'}]});
+    value = {lamports: 1, owner: '11111111111111111111111111111111', executable: false, data: ['', 'base64']};
+    expect(await r.getAccountKind(OWNER)).toBe('wallet');
+    value = {lamports: 1, owner: 'BPFLoaderUpgradeab1e11111111111111111111111', executable: true, data: ['', 'base64']};
+    expect(await r.getAccountKind(OWNER)).toBe('program');
+    value = {lamports: 1, owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', executable: false, data: ['', 'base64']};
+    expect(await r.getAccountKind(OWNER)).toBe('other');
   });
 
   it('getTransaction asks for jsonParsed v0 and passes null through', async () => {

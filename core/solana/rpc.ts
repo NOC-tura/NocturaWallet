@@ -13,6 +13,7 @@
  * extension/scripts/check-rpc-methods.mjs proves that every method name the extension bundles is
  * on this list and that this list equals the spec's.
  */
+import {base64} from '@scure/base';
 
 export const API_ORIGIN = 'https://api.noc-tura.io';
 /** Already ends in /api/v1: append bare paths (never another /v1). */
@@ -206,22 +207,40 @@ export interface SignatureInfo {
   blockTime: number | null;
   err: unknown;
 }
+/** An account as simulateTransaction reports it after the simulated transaction. Never its rentEpoch (u64 max, which JSON rounds). */
+export interface SimulatedAccount {
+  lamports: bigint;
+  owner: string;
+  data: Uint8Array;
+}
 export interface SimulationOutcome {
   err: unknown;
   logs: string[];
   unitsConsumed: number | null;
+  /** context.slot of the reply. */
+  slot: number;
+  /**
+   * The requested accounts' post-states, in request order; null for an address with no account.
+   * Null as a whole when none were requested, or when `err` is set (the RPC then answers null).
+   */
+  accounts: (SimulatedAccount | null)[] | null;
 }
+/** What an address holds: nothing, a plain wallet (System-owned), a program (executable), or anything else. */
+export type AccountKind = 'missing' | 'wallet' | 'program' | 'other';
+
+export const SYSTEM_PROGRAM_ID = '11111111111111111111111111111111';
 
 /** Every chain read the extension makes, typed. The only way to reach the RPC above. */
 export interface SolanaReader {
   getBalance(owner: string): Promise<bigint>;
   getAccountExists(address: string): Promise<boolean>;
+  getAccountKind(address: string): Promise<AccountKind>;
   getMultipleLamports(addresses: readonly string[]): Promise<bigint[]>;
   getLatestBlockhash(): Promise<{blockhash: string; lastValidBlockHeight: number}>;
   getBlockHeight(): Promise<number>;
   getSignatureStatuses(signatures: readonly string[], searchTransactionHistory?: boolean): Promise<(SignatureStatus | null)[]>;
   getRecentPrioritizationFees(): Promise<{prioritizationFee: number}[]>;
-  simulateTransaction(transactionBase64: string): Promise<SimulationOutcome>;
+  simulateTransaction(transactionBase64: string, opts?: {accounts?: readonly string[]}): Promise<SimulationOutcome>;
   getTokenAccountsByOwner(owner: string, filter: {mint: string} | {programId: string}): Promise<TokenAccountEntry[]>;
   getSignaturesForAddress(address: string, opts: {limit: number; before?: string}): Promise<SignatureInfo[]>;
   getTransaction(signature: string): Promise<unknown>;
@@ -251,6 +270,27 @@ function valueOf(result: unknown, what: string): unknown {
   const o = obj(result, what);
   if (!('value' in o)) throw new RpcMalformed(`${what}: no value`);
   return o.value;
+}
+
+/**
+ * One simulated account: lamports exact (a JSON number above 2^53 has already been rounded, so it is
+ * refused rather than computed on), the owner, and the base64 data. rentEpoch is never read: it is
+ * u64 max, which JSON.parse rounds.
+ */
+function simulatedAccount(x: unknown): SimulatedAccount | null {
+  if (x === null) return null;
+  const a = obj(x, 'simulated account');
+  const lamports = a.lamports;
+  if (typeof lamports !== 'number' || !Number.isSafeInteger(lamports) || lamports < 0) throw new RpcMalformed('simulated account lamports');
+  const data = list(a.data, 'simulated account data');
+  if (data.length !== 2 || data[1] !== 'base64' || typeof data[0] !== 'string') throw new RpcMalformed('simulated account data encoding');
+  let bytes: Uint8Array;
+  try {
+    bytes = base64.decode(data[0]);
+  } catch {
+    throw new RpcMalformed('simulated account data');
+  }
+  return {lamports: BigInt(lamports), owner: text(a.owner, 'simulated account owner'), data: bytes};
 }
 
 function signatureStatus(x: unknown): SignatureStatus | null {
@@ -284,6 +324,14 @@ export function solanaReader(rpc: Rpc): SolanaReader {
     async getAccountExists(address) {
       return valueOf(await rpc.call('getAccountInfo', [address, {encoding: 'base64', ...COMMITMENT}]), 'getAccountInfo') !== null;
     },
+    async getAccountKind(address) {
+      // Only the header is needed: a zero-length data slice keeps the answer small.
+      const v = valueOf(await rpc.call('getAccountInfo', [address, {encoding: 'base64', dataSlice: {offset: 0, length: 0}, ...COMMITMENT}]), 'getAccountInfo');
+      if (v === null) return 'missing';
+      const a = obj(v, 'getAccountInfo.value');
+      if (a.executable === true) return 'program';
+      return text(a.owner, 'getAccountInfo.owner') === SYSTEM_PROGRAM_ID ? 'wallet' : 'other';
+    },
     async getMultipleLamports(addresses) {
       const params = [addresses, {encoding: 'base64', dataSlice: {offset: 0, length: 0}, ...COMMITMENT}];
       const v = list(valueOf(await rpc.call('getMultipleAccounts', params), 'getMultipleAccounts'), 'getMultipleAccounts.value');
@@ -310,11 +358,21 @@ export function solanaReader(rpc: Rpc): SolanaReader {
         return {prioritizationFee: typeof fee === 'number' ? fee : Number.NaN};
       });
     },
-    async simulateTransaction(transactionBase64) {
-      const params = [transactionBase64, {encoding: 'base64', sigVerify: false, replaceRecentBlockhash: false, ...COMMITMENT}];
-      const v = obj(valueOf(await rpc.call('simulateTransaction', params), 'simulateTransaction'), 'simulateTransaction.value');
+    async simulateTransaction(transactionBase64, opts = {}) {
+      const addresses = opts.accounts ?? [];
+      const config = {encoding: 'base64', sigVerify: false, replaceRecentBlockhash: false, ...COMMITMENT};
+      const params = [transactionBase64, addresses.length === 0 ? config : {...config, accounts: {encoding: 'base64', addresses}}];
+      const result = obj(await rpc.call('simulateTransaction', params), 'simulateTransaction');
+      const slot = count(obj(result.context, 'simulateTransaction.context').slot, 'simulateTransaction.context.slot');
+      const v = obj(valueOf(result, 'simulateTransaction'), 'simulateTransaction.value');
       const logs = Array.isArray(v.logs) ? (v.logs as unknown[]).filter((l): l is string => typeof l === 'string') : [];
-      return {err: v.err ?? null, logs, unitsConsumed: typeof v.unitsConsumed === 'number' ? v.unitsConsumed : null};
+      const err = v.err ?? null;
+      const outcome = {err, logs, unitsConsumed: typeof v.unitsConsumed === 'number' ? v.unitsConsumed : null, slot};
+      // The RPC answers accounts: null whenever err is set: that is a failed simulation, not a malformed reply.
+      if (err !== null || addresses.length === 0) return {...outcome, accounts: null};
+      const accounts = list(v.accounts, 'simulateTransaction.accounts');
+      if (accounts.length !== addresses.length) throw new RpcMalformed('simulateTransaction.accounts: wrong length');
+      return {...outcome, accounts: accounts.map(simulatedAccount)};
     },
     async getTokenAccountsByOwner(owner, filter) {
       const result = await rpc.call('getTokenAccountsByOwner', [owner, filter, {encoding: 'jsonParsed', ...COMMITMENT}]);

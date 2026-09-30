@@ -147,6 +147,9 @@ test('create a wallet, unlock it, re-authenticate a first send, send SOL: pendin
     await expect.poll(() => pendingState(popup, signature), {timeout: 30_000, intervals: [1_000]}).toBe('confirmed');
     expect(fake.broadcasts).toEqual([signature]);
     expect(await sw.evaluate(() => chrome.storage.local.get('v1_known_recipients'))).toEqual({v1_known_recipients: [RECIPIENT]});
+    // E2: every simulation asked for the sender's post-state.
+    expect(fake.simulations.length).toBeGreaterThan(0);
+    for (const s of fake.simulations) expect(s).toEqual([account]);
     // Owner decision A: the record lives in storage.local, where a lock or a restart cannot drop it.
     const stored = (await sw.evaluate(() => chrome.storage.local.get('v1_pending'))) as {v1_pending?: {signature: string; state: string}[]};
     expect(stored.v1_pending?.map(r => [r.signature, r.state])).toEqual([[signature, 'confirmed']]);
