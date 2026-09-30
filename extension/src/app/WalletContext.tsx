@@ -14,7 +14,7 @@ export interface Net {
   mode: NetMode;
   /** When the current offline/unreachable spell began. */
   since: number;
-  /** Failed refreshes in this spell. */
+  /** Failed reads in this spell, the first included (so the retries are `failures - 1`). */
   failures: number;
 }
 
@@ -30,6 +30,8 @@ export interface WalletModel {
   balancesAt: number | null;
   stale: boolean;
   prices: Prices | null;
+  /** `prices` came from the cache (E4) and no fresh wallet.prices has replaced them: never shown as current. */
+  pricesStale: boolean;
   pending: Pending[];
   net: Net;
   lastSync: number | null;
@@ -85,10 +87,12 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
   const [balancesAt, setBalancesAt] = useState<number | null>(null);
   const [stale, setStale] = useState(false);
   const [prices, setPrices] = useState<Prices | null>(null);
+  const [pricesStale, setPricesStale] = useState(false);
   const [pending, setPending] = useState<Pending[]>([]);
   const [net, setNet] = useState<Net>(() => (online() ? {mode: 'online', since: now(), failures: 0} : {mode: 'offline', since: now(), failures: 0}));
   const [lastSync, setLastSync] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const refreshingRef = useRef(false);
   const netRef = useRef(net);
   netRef.current = net;
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -122,13 +126,19 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
     }
   }, [now]);
 
-  /** Fresh balances and prices for the selected account. Refused while the 403 cool-down holds. */
+  /**
+   * Fresh balances and prices for the selected account. Refused while the 403 cool-down holds. Both
+   * reads start together; the balances are applied as soon as they land, so a reconnect shows
+   * "Connected · syncing" while the price read still runs (#42 reconnecting: "re-fetching prices").
+   */
   const refresh = useCallback(async () => {
     const a = accountRef.current;
     if (a === null || netRef.current.mode === 'refused') return;
+    refreshingRef.current = true;
     setRefreshing(true);
     try {
-      const [b, p] = await Promise.all([engine.balances(a.publicKey), engine.prices()]);
+      const priceRead = engine.prices();
+      const b = await engine.balances(a.publicKey);
       if (accountRef.current?.publicKey !== a.publicKey) return;
       if (b.ok) {
         setBalances(b.data);
@@ -136,9 +146,14 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
         setStale(false);
         succeeded();
       } else failed(b.error);
-      if (p.ok) setPrices(p.data);
-      else if (b.ok) failed(p.error);
+      const p = await priceRead;
+      if (accountRef.current?.publicKey !== a.publicKey) return;
+      if (p.ok) {
+        setPrices(p.data);
+        setPricesStale(false);
+      } else if (b.ok) failed(p.error);
     } finally {
+      refreshingRef.current = false;
       setRefreshing(false);
     }
   }, [engine, now, failed, succeeded]);
@@ -168,6 +183,7 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
           setStale(false);
         }
         setPrices(c.data.prices);
+        setPricesStale(c.data.prices !== null);
         if (c.data.prices !== null || c.data.balances !== null) setLastSync(c.data.balances?.at ?? c.data.prices?.at ?? null);
       }
       await readPending();
@@ -186,14 +202,16 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
         const changed = prev === null || prev.unlocked !== w.unlocked || prev.selected !== w.selected || JSON.stringify(prev.accounts) !== JSON.stringify(w.accounts);
         return changed ? w : prev;
       });
-      if (!w.hasWallet) {
-        setPhase('no-wallet');
-        return;
-      }
-      if (!w.unlocked) {
-        setPhase('locked');
+      if (!w.hasWallet || !w.unlocked) {
+        // Nothing of the session outlives it: balances, prices, and the open sends (which also stops
+        // the 2 s pending poll).
+        setPhase(w.hasWallet ? 'locked' : 'no-wallet');
         setBalances(null);
+        setBalancesAt(null);
+        setStale(false);
         setPrices(null);
+        setPricesStale(false);
+        setPending([]);
         return;
       }
       const wasUnlocked = phaseRef.current === 'unlocked';
@@ -247,8 +265,17 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
 
   // The browser's own connectivity events: offline shows #42 at once; online refreshes.
   useEffect(() => {
-    const off = () => setNet(n => (n.mode === 'refused' ? n : {mode: 'offline', since: n.mode === 'offline' || n.mode === 'unreachable' ? n.since : now(), failures: n.failures}));
-    const on = () => void refresh();
+    const off = () =>
+      setNet(n => {
+        if (n.mode === 'refused') return n;
+        const spell = n.mode === 'offline' || n.mode === 'unreachable';
+        return {mode: 'offline', since: spell ? n.since : now(), failures: spell ? n.failures : 0};
+      });
+    // One read at a time, and none during the cool-down (403 is terminal for this popup).
+    const on = () => {
+      if (refreshingRef.current || netRef.current.mode === 'refused') return;
+      void refresh();
+    };
     window.addEventListener('offline', off);
     window.addEventListener('online', on);
     return () => {
@@ -270,6 +297,6 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
     await applyState(true);
   }, [engine, applyState]);
 
-  const model: WalletModel = {surface, engine, platform, phase, wallet, account, balances, balancesAt, stale, prices, pending, net, lastSync, refreshing, now, report: failed, refresh, reload, lock};
+  const model: WalletModel = {surface, engine, platform, phase, wallet, account, balances, balancesAt, stale, prices, pricesStale, pending, net, lastSync, refreshing, now, report: failed, refresh, reload, lock};
   return <Ctx.Provider value={model}>{children}</Ctx.Provider>;
 }

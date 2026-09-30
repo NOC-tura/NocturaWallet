@@ -1,4 +1,4 @@
-import {ago, agoLong, clock, dateSection, shortAddress, showAmount, showSol, twoGroups, usdParts} from '../format';
+import {ago, agoLong, clock, dateSection, stamp, shortAddress, showAmount, showSol, twoGroups, usdParts} from '../format';
 import {valuation} from '../valuation';
 
 // The words and numbers the screens print, from one place.
@@ -28,6 +28,13 @@ describe('format', () => {
     expect(ago(0, 3 * 86_400_000)).toBe('3 d ago');
     expect(agoLong(0, 138_000)).toBe('2 min 18 s ago');
     expect(clock(new Date(2026, 0, 2, 9, 41, 13).getTime())).toBe('09:41:13');
+    // Long ages fall back to the short form: "3 d ago", never "4320 min 0 s ago".
+    expect(agoLong(0, 7_205_000)).toBe('2 h ago');
+    expect(agoLong(0, 3 * 86_400_000)).toBe('3 d ago');
+    // A clock time alone today; with the day when it is not today (a "Stale · 09:41:13" from days ago).
+    const synced = new Date(2026, 0, 2, 9, 41, 13).getTime();
+    expect(stamp(synced, new Date(2026, 0, 2, 18, 0).getTime())).toBe('09:41:13');
+    expect(stamp(synced, new Date(2026, 0, 5, 8, 0).getTime())).toBe('Jan 2, 09:41:13');
   });
 
   it('date sections, local calendar days', () => {

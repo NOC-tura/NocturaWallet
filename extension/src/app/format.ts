@@ -41,11 +41,12 @@ export function ago(at: number, now: number): string {
   return `${Math.floor(h / 24)} d ago`;
 }
 
-/** "2 min 18 s ago" — the sustained-offline line. */
+/** "2 min 18 s ago" — the sustained-offline line; from an hour on, the short form ("2 h ago", "3 d ago"). */
 export function agoLong(at: number, now: number): string {
   const s = Math.max(0, Math.floor((now - at) / 1000));
   if (s < 60) return `${s} s ago`;
-  return `${Math.floor(s / 60)} min ${s % 60} s ago`;
+  if (s < 3_600) return `${Math.floor(s / 60)} min ${s % 60} s ago`;
+  return ago(at, now);
 }
 
 /** Local wall-clock time "09:41:13" (UTC stored, local only at the UI layer — cardinal rule 3). */
@@ -53,6 +54,14 @@ export const clock = (at: number): string => {
   const d = new Date(at);
   return [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, '0')).join(':');
 };
+
+/** A sync time: the clock alone when it is today ("09:41:13"), with the day otherwise ("Jan 2, 09:41:13"), local. */
+export function stamp(at: number, now: number): string {
+  const a = new Date(at);
+  const n = new Date(now);
+  const today = a.getFullYear() === n.getFullYear() && a.getMonth() === n.getMonth() && a.getDate() === n.getDate();
+  return today ? clock(at) : `${a.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}, ${clock(at)}`;
+}
 
 /** "9:14 AM", local. */
 export const timeOfDay = (at: number): string => new Date(at).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'});
