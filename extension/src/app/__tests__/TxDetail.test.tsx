@@ -4,9 +4,12 @@ import {base58} from '@scure/base';
 import {renderInWallet, walletReader} from './harness';
 import {ExplorerLink, TxDetail} from '../screens/TxDetail';
 import {explorerUrl} from '../explorer';
+import {useWallet} from '../WalletContext';
+import {REFUSED_TEXT} from '../ui/Banner';
+import {RequestUnreachable, RpcForbidden} from '../../../../core/solana/rpc';
 import type {HistoryItem} from '../engine';
 import {ACCOUNT, RECIPIENT} from '../../background/__tests__/fixtures';
-import {COUNTERPARTY, sentSol, sig} from '../../../e2e/historyFixtures';
+import {COUNTERPARTY, otherTx, sentSol, sig} from '../../../e2e/historyFixtures';
 
 // Spec §6.3 (#27) and §6.5 (the one external link).
 const NOW = Math.floor(Date.now() / 1000);
@@ -97,6 +100,86 @@ describe('#27 tx-detail', () => {
     expect(await screen.findByText('This transaction is not in the recent history yet.')).toBeTruthy();
     expect(screen.getByRole('link', {name: 'Explorer'})).toBeTruthy();
     await waitFor(() => expect(pages).toBe(1));
+  });
+
+  // Review fix round 1, #3: a hardcoded 3 (never FIND_PAGES itself) — a mutation raising the cap
+  // (e.g. to 50) must turn this red, which referencing the exported constant could never do.
+  it('a 3-page cap: 3 full pages without the signature → exactly 3 requests, then not-found', async () => {
+    let calls = 0;
+    const reader = walletReader({
+      getSignaturesForAddress: async () => {
+        calls += 1;
+        return Array.from({length: 10}, (_, i) => ({signature: sig(calls * 100 + i), blockTime: NOW, err: null}));
+      },
+      getTransaction: async () => otherTx(ACCOUNT.publicKey, NOW),
+    });
+    await renderInWallet(<TxDetail signature={sig(9999)} onBack={() => undefined} />, {reader});
+    expect(await screen.findByText('This transaction is not in the recent history yet.')).toBeTruthy();
+    expect(screen.getByRole('link', {name: 'Explorer'})).toBeTruthy();
+    expect(calls).toBe(3);
+  });
+});
+
+// A direct read of the shared model's net state — proves `m.report` was actually called (review M4),
+// not just that #27's own local copy happened to say the same thing. Rendering Home alongside for
+// this would risk a false pass: Home's OWN balance read could independently trip the same net mode
+// (or, if it succeeds first, flip it back to "reconnecting"), making the assertion insensitive to
+// whether #27 ever called report() at all.
+function NetModeProbe() {
+  const m = useWallet();
+  return <div data-testid="net-mode">{m.net.mode}</div>;
+}
+
+// Review fix round 1, #2: a network failure while searching by signature is never shown as "not in
+// the recent history" — that line is reserved for a real, answered, empty search (§7.2, §7.3).
+describe('#27 network failure while searching', () => {
+  it('unreachable: the #42 banner, no not-in-history line, the explorer link stays, reports it, and stops', async () => {
+    let calls = 0;
+    const reader = walletReader({
+      getSignaturesForAddress: async () => {
+        calls += 1;
+        throw new RequestUnreachable('u', 'x');
+      },
+    });
+    await renderInWallet(
+      <>
+        <NetModeProbe />
+        <TxDetail signature={sig(1)} onBack={() => undefined} />
+      </>,
+      {reader},
+    );
+    expect(await screen.findByText('Could not reach the Noctura server')).toBeTruthy();
+    expect(screen.queryByText('This transaction is not in the recent history yet.')).toBeNull();
+    expect(screen.getByRole('link', {name: 'Explorer'})).toBeTruthy();
+    // Reported to the model (review M4): its shared net state changed, not just #27's own copy.
+    await waitFor(() => expect(screen.getByTestId('net-mode').textContent).toBe('unreachable'));
+    const seen = calls;
+    await new Promise(r => setTimeout(r, 30));
+    expect(calls).toBe(seen); // no further page was read once the search itself failed
+  });
+
+  it('refused: the D26 banner, no not-in-history line, the explorer link stays, reports it, and stops', async () => {
+    let calls = 0;
+    const reader = walletReader({
+      getSignaturesForAddress: async () => {
+        calls += 1;
+        throw new RpcForbidden('getSignaturesForAddress');
+      },
+    });
+    await renderInWallet(
+      <>
+        <NetModeProbe />
+        <TxDetail signature={sig(1)} onBack={() => undefined} />
+      </>,
+      {reader},
+    );
+    expect(await screen.findByText(REFUSED_TEXT)).toBeTruthy();
+    expect(screen.queryByText('This transaction is not in the recent history yet.')).toBeNull();
+    expect(screen.getByRole('link', {name: 'Explorer'})).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId('net-mode').textContent).toBe('refused'));
+    const seen = calls;
+    await new Promise(r => setTimeout(r, 30));
+    expect(calls).toBe(seen);
   });
 });
 

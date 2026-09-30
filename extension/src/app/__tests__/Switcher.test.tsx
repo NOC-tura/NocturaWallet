@@ -25,7 +25,7 @@ function stubEngine(accounts: Account[], selected: number): Engine {
     send: async () => ({ok: false, error: 'failed'}),
     resend: async () => ({ok: false, error: 'failed'}),
     pending: async () => ({ok: true, data: []}),
-    history: async () => ({ok: true, data: []}),
+    history: async () => ({ok: true, data: {items: [], next: null}}),
     recipientInfo: async () => ({ok: false, error: 'failed'}),
     discardPrepared: async () => ({ok: true, data: null}),
     rename: async () => ({ok: false, error: 'failed'}),

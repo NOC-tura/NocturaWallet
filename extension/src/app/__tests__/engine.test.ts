@@ -98,7 +98,7 @@ describe('the message client against the real background', () => {
     expect((await engine.state()).data).toMatchObject({accounts: [{name: 'Savings'}]});
     expect(await engine.rename(9, 'x')).toEqual({ok: false, error: 'unknown-account'});
     expect(await engine.select(0)).toEqual({ok: true, data: null});
-    expect(await engine.history(ACCOUNT.publicKey)).toEqual({ok: true, data: []});
+    expect(await engine.history(ACCOUNT.publicKey)).toEqual({ok: true, data: {items: [], next: null}});
     expect(await engine.history(ACCOUNT.publicKey, 'not-a-signature')).toEqual({ok: false, error: 'malformed'});
   });
 });

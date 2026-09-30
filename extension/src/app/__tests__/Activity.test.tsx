@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
-import {fireEvent, screen, waitFor, within} from '@testing-library/react';
-import {renderInWallet, walletReader} from './harness';
+import {fireEvent, render, screen, waitFor, within} from '@testing-library/react';
+import {renderInWallet, setupWallet, walletReader} from './harness';
 import {Activity} from '../screens/Activity';
 import {Home} from '../screens/Home';
+import {useWallet, WalletProvider} from '../WalletContext';
 import {PENDING_KEY} from '../../background/pendingStore';
 import {ACTIVITY_FILTER_KEY} from '../prefs';
 import {REFUSED_TEXT} from '../ui/Banner';
@@ -83,6 +84,41 @@ describe('#26 activity', () => {
     expect(document.querySelectorAll('button.tx-row')).toHaveLength(12);
   });
 
+  // Review fix round 1, #1: a full page of signatures with one not-yet-indexed entry must not lose
+  // "Load more", and continuing must follow the RPC page's own last signature (`next`), not the last
+  // row that happened to decode — those can differ once a signature is skipped.
+  it('an unindexed signature in a full page: 9 rows but [Load more] still shows, and continuing uses next, not the last shown row', async () => {
+    const list = Array.from({length: 10}, (_, i) => sig(i + 1));
+    const txs: Record<string, unknown> = {};
+    for (let i = 0; i < 9; i++) txs[list[i] as string] = otherTx(ACCOUNT.publicKey, NOW - i);
+    // list[9] (the page's real last signature) has no getTransaction result: not indexed yet.
+    const seenBefore: (string | undefined)[] = [];
+    const reader = walletReader({
+      getSignaturesForAddress: async (_a, o) => {
+        seenBefore.push(o.before);
+        if (o.before === undefined) return list.map(s => ({signature: s, blockTime: null, err: null}));
+        return [];
+      },
+      getTransaction: async s => txs[s] ?? null,
+    });
+    await openActivity(reader);
+    const btn = await screen.findByRole('button', {name: 'Load more'});
+    expect(document.querySelectorAll('button.tx-row')).toHaveLength(9);
+    fireEvent.click(btn);
+    await waitFor(() => expect(seenBefore).toEqual([undefined, list[9]]));
+  });
+
+  it('a full page of all-unindexed signatures: 0 rows but [Load more] still shows — never the #41 empty state', async () => {
+    const list = Array.from({length: 10}, (_, i) => sig(i + 1));
+    const reader = walletReader({
+      getSignaturesForAddress: async (_a, o) => (o.before === undefined ? list.map(s => ({signature: s, blockTime: null, err: null})) : []),
+      getTransaction: async () => null,
+    });
+    await openActivity(reader);
+    expect(await screen.findByRole('button', {name: 'Load more'})).toBeTruthy();
+    expect(screen.queryByText('No activity yet')).toBeNull();
+  });
+
   it('open sends on top, in a PENDING section', async () => {
     await openActivity(historyReader(), ext =>
       ext.local.set(PENDING_KEY, [pendingRecord({account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '2480000000'}, createdAt: Date.now() - 72_000})]),
@@ -110,6 +146,139 @@ describe('#26 activity', () => {
     });
     await openActivity(refused);
     expect(await screen.findByText(REFUSED_TEXT)).toBeTruthy();
+  });
+
+  // Review fix round 1, #3: more()'s own report call needs a direct test, not just the visual pass —
+  // a refused reply on [Load more] must reach the model (Home's refresh reacts too), the same as load()'s.
+  it('a refused reply on [Load more] reports it too: Home\'s refresh disables from the same click', async () => {
+    const list = Array.from({length: 10}, (_, i) => sig(i + 1));
+    const txs: Record<string, unknown> = {};
+    for (const s of list) txs[s] = otherTx(ACCOUNT.publicKey, NOW - 300);
+    const reader = walletReader({
+      getSignaturesForAddress: async (_a, o) => {
+        if (o.before !== undefined) throw new RpcForbidden('getSignaturesForAddress');
+        return list.map(s => ({signature: s, blockTime: null, err: null}));
+      },
+      getTransaction: async s => txs[s] ?? null,
+    });
+    await renderInWallet(
+      <>
+        <Home onReceive={() => undefined} onActivity={() => undefined} onAccounts={() => undefined} />
+        <Activity {...nav} />
+      </>,
+      {reader},
+    );
+    fireEvent.click(await screen.findByRole('button', {name: 'Load more'}));
+    await waitFor(() => expect(screen.getAllByRole('button', {name: 'Refresh'}).every(b => (b as HTMLButtonElement).disabled)).toBe(true));
+  });
+
+  // Review fix round 1, #4b: a mount while the model is already refused (a previous screen's 403)
+  // must not spin the skeleton forever, and must not make a request of its own.
+  it('mounted while already refused: no endless skeleton, and no request of its own', async () => {
+    let historyReads = 0;
+    const reader = walletReader({
+      getBalance: async () => {
+        throw new RpcForbidden('getBalance');
+      },
+      getSignaturesForAddress: async () => {
+        historyReads += 1;
+        return [];
+      },
+    });
+    const w = await setupWallet({reader});
+    const {rerender} = render(
+      <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
+        <Home onReceive={() => undefined} onActivity={() => undefined} onAccounts={() => undefined} />
+      </WalletProvider>,
+    );
+    await screen.findByText(REFUSED_TEXT);
+    // Chose: nothing beyond the D26 banner (no skeleton, no #41 "No activity yet" copy — that would
+    // be a claim about activity this screen never actually checked). Mirrors Home.tsx's own
+    // cold-mount-while-refused fallback (dashes, never a skeleton or an invented claim).
+    rerender(
+      <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
+        <>
+          <Home onReceive={() => undefined} onActivity={() => undefined} onAccounts={() => undefined} />
+          <Activity {...nav} />
+        </>
+      </WalletProvider>,
+    );
+    expect(screen.queryByTestId('skeleton')).toBeNull();
+    expect(screen.getAllByText(REFUSED_TEXT)).toHaveLength(2);
+    expect(historyReads).toBe(0);
+  });
+
+  // Review fix round 1, #4c: a stale reply after the account changed must never land in the new
+  // account's list. more() and load() share one request token for exactly this.
+  //
+  // background/history.ts serializes every page() through one mutex per popup session (shared by
+  // every account, to pace getTransaction as one stream): the switched-to account's own load() is
+  // *queued behind* the old account's still-hanging "Load more" and can only resolve after it, never
+  // before. That ordering means a load() that SUCCEEDS after the stale reply would always overwrite
+  // it anyway (a full replace) regardless of whether more()'s own guard fired — so this test makes
+  // the new account's own read FAIL instead: nothing then overwrites items on its own, so only the
+  // guard in more() stands between the stale reply and a corrupted list.
+  it('a stale [Load more] reply after the account changed is dropped, even when the new account\'s own read then fails', async () => {
+    const listA = Array.from({length: 10}, (_, i) => sig(100 + i));
+    const txsA: Record<string, unknown> = {};
+    for (const s of listA) txsA[s] = otherTx(ACCOUNT.publicKey, NOW - 10);
+    let releaseA: (() => void) | undefined;
+    const reader = walletReader({
+      getSignaturesForAddress: async (address, o) => {
+        if (address === ACCOUNT.publicKey) {
+          if (o.before === undefined) return listA.map(s => ({signature: s, blockTime: null, err: null}));
+          // The account we are about to switch away from: its "Load more" hangs until released.
+          await new Promise<void>(r => {
+            releaseA = r;
+          });
+          return listA.map(s => ({signature: s, blockTime: null, err: null}));
+        }
+        // The switched-to account's own read fails: nothing else will overwrite `items` afterwards.
+        throw new RpcForbidden('getSignaturesForAddress');
+      },
+      getTransaction: async s => txsA[s] ?? null,
+    });
+
+    function SwitchTo1() {
+      const m = useWallet();
+      return (
+        <>
+          <div data-testid="current-account">{m.account?.publicKey}</div>
+          <button
+            type="button"
+            onClick={() =>
+              void (async () => {
+                await m.engine.select(1);
+                await m.reload();
+              })()
+            }
+          >
+            switch
+          </button>
+        </>
+      );
+    }
+
+    await renderInWallet(
+      <>
+        <Activity {...nav} />
+        <SwitchTo1 />
+      </>,
+      {reader},
+    );
+    fireEvent.click(await screen.findByRole('button', {name: 'Load more'}));
+    await waitFor(() => expect(releaseA).toBeDefined());
+    fireEvent.click(screen.getByRole('button', {name: 'switch'}));
+    // The switch is fully committed — including the account-changed re-render that bumps Activity's
+    // shared request token via its own fresh load() — before the stale reply below is allowed to
+    // resolve. waitFor's act()-wrapped polling is what guarantees the effect it triggers has run.
+    await waitFor(() => expect(screen.getByTestId('current-account').textContent).toBe(RECIPIENT));
+    releaseA?.();
+    // The switched-to account's own read failed: the D26 banner, not a corrupted list.
+    expect(await screen.findByText(REFUSED_TEXT)).toBeTruthy();
+    await new Promise(r => setTimeout(r, 20));
+    // Never 20 (10 original + the stale reply's 10 more): the guard dropped the stale reply outright.
+    expect(document.querySelectorAll('button.tx-row').length).toBeLessThanOrEqual(10);
   });
 });
 

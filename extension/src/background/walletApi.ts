@@ -304,7 +304,8 @@ export async function handleWallet(ext: Ext, deps: WalletDeps, type: WalletType,
       case 'wallet.history': {
         const {account, before} = msg;
         if (!isAddress(account) || (before !== undefined && !isSignature(before))) return MALFORMED;
-        return {ok: true, data: await historyFor(deps).page(account, before)};
+        const {items, next} = await historyFor(deps).page(account, before);
+        return {ok: true, data: {items, next}};
       }
       case 'accounts.rename': {
         const {index} = msg;

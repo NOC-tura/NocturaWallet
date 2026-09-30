@@ -90,6 +90,16 @@ export interface HistoryItem {
   feeLamports: bigint;
   failed: boolean;
 }
+/**
+ * `next` is the cursor for the next `history()` call (the getSignaturesForAddress page's own last
+ * signature, review fix round 1 #1) — not derivable from `items.length` or the last item's signature,
+ * because a signature not yet indexed is dropped from `items` without shrinking the underlying page.
+ * `null` means there is no further page.
+ */
+export interface HistoryPage {
+  items: HistoryItem[];
+  next: string | null;
+}
 export interface Settings {
   autoLockMinutes: number;
   reauthUsdCents: number;
@@ -128,7 +138,7 @@ export interface Engine {
   send(id: string): Promise<Reply<Pending, 'malformed' | 'locked' | 'unknown-account' | 'unknown-prepared' | 'prepared-expired' | 'prepared-invalid' | 'reauth-required' | 'in-flight' | 'check-pending' | Network>>;
   resend(id: string): Promise<Reply<Pending, 'malformed' | 'unknown' | 'not-open' | 'too-soon' | Network>>;
   pending(): Promise<Reply<Pending[], never>>;
-  history(account: string, before?: string): Promise<Reply<HistoryItem[], 'malformed' | Network>>;
+  history(account: string, before?: string): Promise<Reply<HistoryPage, 'malformed' | Network>>;
   recipientInfo(account: string, recipient: string): Promise<Reply<RecipientInfo, 'malformed' | 'locked'>>;
   discardPrepared(account: string): Promise<Reply<null, 'malformed'>>;
   rename(index: number, name: string): Promise<Reply<null, 'malformed' | 'unknown-account' | 'busy'>>;
@@ -315,6 +325,16 @@ function historyOf(x: unknown): HistoryItem | undefined {
   return {signature: o.signature, blockTime, kind, token, mint, amount, counterparty, feeLamports, failed: o.failed};
 }
 
+/** `next`: null, or a string that passes the same signature check as an item's own `signature` (review fix round 1 #1). */
+function historyPageOf(x: unknown): HistoryPage | undefined {
+  const o = obj(x);
+  if (o === undefined) return undefined;
+  const items = all(o.items, historyOf);
+  const next = o.next === null ? null : typeof o.next === 'string' && SIGNATURE.test(o.next) ? o.next : undefined;
+  if (items === undefined || next === undefined) return undefined;
+  return {items, next};
+}
+
 function settingsOf(x: unknown): Settings | undefined {
   const o = obj(x);
   if (o === undefined || !isInt(o.autoLockMinutes) || !isInt(o.reauthUsdCents) || !isInt(o.selectedAccount)) return undefined;
@@ -397,7 +417,7 @@ export function createEngine(transport: Transport = runtimeSend, sleep: (ms: num
     send: id => call({type: 'wallet.send', id}, SEND, pendingOf),
     resend: id => call({type: 'wallet.resend', id}, ['malformed', 'unknown', 'not-open', 'too-soon', ...NET], pendingOf),
     pending: () => call({type: 'wallet.pending'}, [], d => all(d, pendingOf)),
-    history: (account, before) => call({type: 'wallet.history', account, ...(before === undefined ? {} : {before})}, ['malformed', ...NET], d => all(d, historyOf)),
+    history: (account, before) => call({type: 'wallet.history', account, ...(before === undefined ? {} : {before})}, ['malformed', ...NET], historyPageOf),
     recipientInfo: (account, recipient) => call({type: 'wallet.recipientInfo', account, recipient}, ['malformed', 'locked'], recipientInfoOf),
     discardPrepared: account => call({type: 'wallet.discardPrepared', account}, ['malformed'], nothing),
     rename: (index, name) => call({type: 'accounts.rename', index, name}, ['malformed', 'unknown-account', 'busy'], nothing),

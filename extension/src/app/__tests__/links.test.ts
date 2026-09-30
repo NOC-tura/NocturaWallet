@@ -14,11 +14,34 @@ function files(dir: string): string[] {
   });
 }
 
+// Review fix round 1, #4d: a page navigation is as much an "external link" as an <a href>, and it
+// leaves no href for the other checks below to catch — `location.href =`, `.assign(`, `.replace(`
+// and a bare `location =` are all forbidden the same way `window.open` is.
+const LOCATION_REDIRECT = /\blocation\.href\s*=(?!=)|\blocation\.assign\s*\(|\blocation\.replace\s*\(|\blocation\s*=(?!=)/;
+
 describe('links out of the UI', () => {
   const sources = files(APP).map(p => ({path: relative(APP, p), text: readFileSync(p, 'utf8')}));
 
   it('reads the real tree (positive control)', () => {
     expect(sources.map(s => s.path)).toEqual(expect.arrayContaining(['explorer.ts', 'platform.ts', 'screens/TxDetail.tsx']));
+  });
+
+  // Negative control: the same regex the real-tree check below uses, run against planted violations
+  // (never against the real tree) — proves the check is not vacuous, before trusting it to find nothing.
+  it('catches a planted location-redirect (negative control)', () => {
+    for (const bad of ['location.href = "https://evil.example";', 'location.assign("https://evil.example");', 'location.replace("https://evil.example");', 'location = "https://evil.example";']) {
+      expect(LOCATION_REDIRECT.test(bad)).toBe(true);
+    }
+    // Comparisons and unrelated identifiers must not trip it.
+    for (const fine of ['if (location === x) {}', 'const relocationTarget = 1;', 'href={locationLabel}']) {
+      expect(LOCATION_REDIRECT.test(fine)).toBe(false);
+    }
+  });
+
+  it('no page navigation but the explorer link: no location.href / .assign( / .replace( / bare location =', () => {
+    for (const {path, text} of sources) {
+      expect(`${path}: ${LOCATION_REDIRECT.test(text)}`).toBe(`${path}: false`);
+    }
   });
 
   it('no URL but Solscan’s and the extension’s own pages', () => {

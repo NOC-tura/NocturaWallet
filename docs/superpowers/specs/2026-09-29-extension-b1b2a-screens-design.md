@@ -1622,7 +1622,11 @@ point here. **One user tap per broadcast, always (D38; review B1).**
 ### 6.2 #26 activity
 
 - **Where:** popup, tab bar "Activity". **Engine:** `wallet.history(account, before?)` (10 per
-  page, ~5 s per page at 2 `getTransaction`/s), `wallet.pending` (open sends on top).
+  page, ~5 s per page at 2 `getTransaction`/s), `wallet.pending` (open sends on top). `wallet.history`
+  answers `{items, next}`, not a bare array (review fix round 1, #1): `next` is the
+  getSignaturesForAddress page's own last signature when that page was full, else null — never
+  derived from `items.length`, because a signature the RPC has not indexed yet is dropped from
+  `items` without shrinking the underlying page, and "Load more" must still offer it.
 - **Elements:** title "Activity"; filter chips "All" / "Sent" / "Received" / "Purchases" (D24;
   persisted per S4, `noctura.ui.v1.activityFilter`); refresh icon (D2); date sections (local time):
   "TODAY · MAY 8", "YESTERDAY · MAY 7", "THIS WEEK", "THIS MONTH", then "APRIL 2026"-style month

@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import {useWallet} from '../WalletContext';
 import {ACTIVITY_FILTER_KEY, readPref, writePref} from '../prefs';
 import {FILTERS, isFilter, matches, rowText, type Filter} from '../history';
@@ -10,7 +10,7 @@ import {ExtIcon} from '../ui/ExtIcon';
 import {Banner, RefusedBanner} from '../ui/Banner';
 import type {HistoryItem, Pending} from '../engine';
 
-/** wallet.history answers 10 per page (background HISTORY_PAGE_SIZE); a full page means there may be more. */
+/** wallet.history answers 10 per page (background HISTORY_PAGE_SIZE); "Load more" follows the reply's own `next` cursor (review fix round 1 #1), not this count. */
 export const PAGE_SIZE = 10;
 
 function PendingRow({p, now}: {p: Pending; now: number}) {
@@ -76,7 +76,13 @@ export function Activity({onTx, onReceive}: {onTx: (item: HistoryItem) => void; 
   const now = useNow(1_000, m.now);
   const account = m.account;
   const [items, setItems] = useState<HistoryItem[] | null>(null);
-  const [full, setFull] = useState(false);
+  /**
+   * The background's own paging cursor (review fix round 1 #1): the getSignaturesForAddress page's
+   * last signature when that page was full, else null. Never derived from `items.length` — a
+   * signature not yet indexed is dropped from `items` without shrinking the underlying RPC page, so
+   * `[Load more]` and its `before` must follow this, not the last row that happened to decode.
+   */
+  const [next, setNext] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>(() => {
@@ -87,14 +93,24 @@ export function Activity({onTx, onReceive}: {onTx: (item: HistoryItem) => void; 
 
   const key = account?.publicKey ?? null;
   const {engine, report} = m;
+  /**
+   * A monotonic request token (review fix round 1 #4c): a load or "Load more" reply that lands after
+   * a newer one started — a second click, or a fresh `load()` because the selected account changed
+   * — is dropped rather than applied. Shared by `load` and `more`, so an account switch mid "Load
+   * more" cannot mix a stale page into the new account's list: switching re-runs `load()` below,
+   * which bumps this before the old request's reply can land.
+   */
+  const reqRef = useRef(0);
   const load = useCallback(async () => {
     if (key === null) return;
+    const mine = ++reqRef.current;
     setBusy(true);
     const r = await engine.history(key);
+    if (reqRef.current !== mine) return; // superseded while in flight: its reply is dropped
     setBusy(false);
     if (r.ok) {
-      setItems(r.data);
-      setFull(r.data.length === PAGE_SIZE);
+      setItems(r.data.items);
+      setNext(r.data.next);
       setError(null);
     } else {
       setError(r.error);
@@ -108,13 +124,15 @@ export function Activity({onTx, onReceive}: {onTx: (item: HistoryItem) => void; 
   }, [load]);
 
   const more = async () => {
-    if (account === null || items === null || items.length === 0) return;
+    if (account === null || items === null || next === null) return;
+    const mine = ++reqRef.current;
     setBusy(true);
-    const r = await m.engine.history(account.publicKey, items[items.length - 1]?.signature);
+    const r = await m.engine.history(account.publicKey, next);
+    if (reqRef.current !== mine) return; // superseded (account changed, or another request started)
     setBusy(false);
     if (r.ok) {
-      setItems([...items, ...r.data]);
-      setFull(r.data.length === PAGE_SIZE);
+      setItems(prev => [...(prev ?? []), ...r.data.items]);
+      setNext(r.data.next);
     } else {
       setError(r.error);
       m.report(r.error);
@@ -156,7 +174,10 @@ export function Activity({onTx, onReceive}: {onTx: (item: HistoryItem) => void; 
     </div>
   );
 
-  if (items !== null && items.length === 0 && open.length === 0 && error === null) {
+  // #41 needs items truly exhausted (next === null) too: a full page of not-yet-indexed signatures
+  // decodes to zero items but is not "empty" — Load more must still offer the next page (review fix
+  // round 1 #1).
+  if (items !== null && items.length === 0 && next === null && open.length === 0 && error === null) {
     return (
       <div className="screen s-act">
         {top}
@@ -179,7 +200,7 @@ export function Activity({onTx, onReceive}: {onTx: (item: HistoryItem) => void; 
             ))}
           </>
         ) : null}
-        {items === null && error === null ? (
+        {items === null && error === null && !refused ? (
           <div data-testid="skeleton">
             {['TODAY', 'YESTERDAY'].map((t, s) => (
               <div key={t}>
@@ -222,7 +243,7 @@ export function Activity({onTx, onReceive}: {onTx: (item: HistoryItem) => void; 
             })}
           </div>
         ))}
-        {full ? (
+        {next !== null ? (
           <button type="button" className="btn btn-secondary app-load-more" disabled={busy || refused} onClick={() => void more()}>
             Load more
           </button>

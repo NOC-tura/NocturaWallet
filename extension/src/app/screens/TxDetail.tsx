@@ -7,7 +7,7 @@ import {CopyButton} from '../../../../web/src/ui/CopyButton';
 import {TopBar} from '../ui/TopBar';
 import {StatusPill} from '../ui/StatusPill';
 import {ExtIcon} from '../ui/ExtIcon';
-import {Banner} from '../ui/Banner';
+import {Banner, RefusedBanner} from '../ui/Banner';
 import type {HistoryItem} from '../engine';
 import {MAINNET_FEE_TREASURY} from '../../../../core/fees/transferMarkup';
 
@@ -54,34 +54,70 @@ export function ExplorerLink({signature}: {signature: string}) {
 export function TxDetail({signature, item: given, onBack}: {signature: string; item?: HistoryItem; onBack: () => void}) {
   const m = useWallet();
   const [item, setItem] = useState<HistoryItem | null | undefined>(given);
-  const owner = m.account?.publicKey ?? '';
+  /**
+   * Set only when the by-signature search itself fails to reach or was refused by the coordinator
+   * (review fix round 1 #2): §7.2/§7.3 never let a network failure read as "not in the recent
+   * history" — that line is reserved for a real, answered search that came up empty. `item` stays
+   * `undefined` (still "searching") while this is set, so the render below shows the net-state
+   * banner instead, with the explorer link kept (the signature is already known).
+   */
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const account = m.account;
+  const owner = account?.publicKey ?? '';
 
   useEffect(() => {
     if (given !== undefined) return;
+    // The open sequence has not set the account yet: wait for it rather than search with ''
+    // (review fix round 1 #4a) — the effect re-runs once `account` is set, below.
+    if (account === null) return;
+    const ownerKey = account.publicKey;
     let alive = true;
     void (async () => {
       let before: string | undefined;
       for (let page = 0; page < FIND_PAGES; page++) {
-        const r = await m.engine.history(owner, before);
+        const r = await m.engine.history(ownerKey, before);
         if (!alive) return;
         if (!r.ok) {
           m.report(r.error);
-          break;
+          setSearchError(r.error);
+          return; // stop: no further page is read once the search itself has failed
         }
-        const hit = r.data.find(i => i.signature === signature);
+        const hit = r.data.items.find(i => i.signature === signature);
         if (hit !== undefined) return setItem(hit);
-        if (r.data.length === 0) break;
-        before = r.data[r.data.length - 1]?.signature;
+        if (r.data.next === null) break;
+        before = r.data.next;
       }
       if (alive) setItem(null);
     })();
     return () => {
       alive = false;
     };
-  }, [given, owner, signature, m.engine]);
+  }, [given, account, signature, m.engine]);
 
   const top = <TopBar title="Transaction" onBack={onBack} titleClass="noc-h3" />;
-  if (item === undefined) return <div className="screen s-txd">{top}</div>;
+  if (item === undefined) {
+    if (searchError !== null) {
+      // #42/D26 banner over the search, exactly as Activity shows it — never the not-in-history line.
+      const refused = m.net.mode === 'refused' || searchError === 'coordinator-refused';
+      const netBanner = refused ? (
+        <RefusedBanner />
+      ) : searchError === 'unreachable' ? (
+        <Banner tone="warning" icon="wifi-off" title={m.net.mode === 'offline' ? "You're offline" : 'Could not reach the Noctura server'} />
+      ) : null;
+      return (
+        <div className="screen s-txd">
+          {top}
+          <div className="scroll">
+            {netBanner}
+            <div className="actions-row">
+              <ExplorerLink signature={signature} />
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return <div className="screen s-txd">{top}</div>;
+  }
   if (item === null) {
     return (
       <div className="screen s-txd">
@@ -96,7 +132,6 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
     );
   }
 
-  const account = m.account;
   const accounts = m.wallet?.accounts ?? [];
   const labelOf = (address: string | null): string | null => {
     if (address === null) return null;
