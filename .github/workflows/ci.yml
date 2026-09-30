@@ -7,6 +7,17 @@ on:
     branches: [main]
 
 jobs:
+  no-tge-date:
+    # The owner has not published the TGE date: no tracked file may carry it (forms are assembled
+    # from parts inside the script, so the gate itself never contains it). No install needed.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node scripts/check-no-tge-date.mjs --self-test
+      - run: node scripts/check-no-tge-date.mjs
   lint:
     runs-on: ubuntu-latest
     env:
