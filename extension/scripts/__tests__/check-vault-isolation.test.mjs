@@ -341,6 +341,13 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
       OWNED('src/popup/main.ts', 'v1_forbidden_until'),
     ]);
   });
+  // B1b-2a E4: the balance and price caches are the background's too.
+  it('lets only the background name the two cache keys', () => {
+    const OWNED = (path, key) => `${path}: names ${key}, which only the background may write`;
+    expect(sourceViolations([f('src/background/balanceCache.ts', "export const BALANCE_CACHE_KEY = 'v1_balance_cache'; export const P = 'v1_price_cache';")])).toEqual([]);
+    expect(sourceViolations([f('src/app/screens/Home.tsx', "const k = 'v1_balance_cache';")])).toEqual([OWNED('src/app/screens/Home.tsx', 'v1_balance_cache')]);
+    expect(sourceViolations([f('src/popup/main.ts', "const k = 'v1_price_cache';")])).toEqual([OWNED('src/popup/main.ts', 'v1_price_cache')]);
+  });
 });
 
 describe('vault isolation (HTML entries)', () => {

@@ -65,7 +65,8 @@ const LISTENS_RUNTIME = /\bon(?:Message|Connect)(?:External)?\b/;
 const LISTEN_ALLOWED = /^src\/background\//;
 // storage.local keys only the background writes (plan B1b-1): no other file may even name them —
 // a popup writing v1_settings could undo a re-authenticated setting without re-authenticating.
-export const BACKGROUND_OWNED_KEYS = ['v1_settings', 'v1_known_recipients', 'v1_pending', 'v1_forbidden_until'];
+// B1b-2a E4 adds the two caches: a popup writing one could show a balance the chain never had.
+export const BACKGROUND_OWNED_KEYS = ['v1_settings', 'v1_known_recipients', 'v1_pending', 'v1_forbidden_until', 'v1_balance_cache', 'v1_price_cache'];
 const BACKGROUND_OWNED_ALLOWED = /^src\/background\//;
 
 // A string that exists only in the vault's envelope code (the passkey-wrap HKDF info).

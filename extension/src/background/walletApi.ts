@@ -14,6 +14,7 @@ import {resend, startPoller} from './pending';
 import {isOpen, readPending, viewOf} from './pendingStore';
 import {createHistory, type History} from './history';
 import {ResendRefused, SendRefused, SentUnconfirmed} from './sendTypes';
+import {readCachedBalances, readCachedPrices, writeCachedBalances, writeCachedPrices, type PriceView} from './balanceCache';
 import {readWalletBalances, WALLET_TOKENS} from '../../../core/solana/balances';
 import {RequestUnreachable, RpcForbidden} from '../../../core/solana/rpc';
 
@@ -29,6 +30,8 @@ export const WALLET_TYPES = [
   'wallet.pending',
   'wallet.preparedFor',
   'wallet.history',
+  'wallet.prices',
+  'wallet.cached',
   'accounts.rename',
   'accounts.select',
   'settings.get',
@@ -131,6 +134,31 @@ async function probe(deps: WalletDeps, keys: unknown): Promise<Result> {
   return {ok: true, data: {resolved: true, balances}};
 }
 
+/** USD per whole token, re-validated: finite and > 0, else null — never 0 (E1). */
+const usd = (x: unknown): number | null => (typeof x === 'number' && Number.isFinite(x) && x > 0 ? x : null);
+
+/**
+ * wallet.prices (E1): SOL, USDC and USDT from /wallet/prices, NOC at the presale stage price from
+ * /stats. The two reads are independent: one failing nulls only its own fields; both failing is the
+ * first read's refusal. A 403 from either is never swallowed. The reply is cached (E4).
+ */
+async function prices(ext: Ext, deps: WalletDeps): Promise<Result> {
+  const [market, stage] = await Promise.allSettled([deps.prices(), deps.stagePrice()]);
+  for (const r of [market, stage]) if (r.status === 'rejected' && r.reason instanceof RpcForbidden) throw r.reason;
+  if (market.status === 'rejected' && stage.status === 'rejected') throw market.reason;
+  const m = market.status === 'fulfilled' ? market.value : {};
+  const data: PriceView = {
+    sol: usd(m.solana),
+    usdc: usd(m.usdc),
+    usdt: usd(m.usdt),
+    noc: stage.status === 'fulfilled' ? usd(stage.value) : null,
+    at: deps.now(),
+  };
+  // Best effort: a storage hiccup must not turn fresh prices into 'failed'.
+  await writeCachedPrices(ext, data).catch(() => undefined);
+  return {ok: true, data};
+}
+
 async function setSettings(ext: Ext, deps: WalletDeps, msg: Record<string, unknown>): Promise<Result> {
   const patch = parsePatch(msg.patch);
   if (patch === null) return MALFORMED;
@@ -193,7 +221,21 @@ export async function handleWallet(ext: Ext, deps: WalletDeps, type: WalletType,
         const {account} = msg;
         if (!isAddress(account)) return MALFORMED;
         const b = await readWalletBalances(deps.reader, account);
-        return {ok: true, data: {sol: b.sol.toString(), noc: b.noc.toString(), usdc: b.usdc.toString(), usdt: b.usdt.toString()}};
+        const data = {sol: b.sol.toString(), noc: b.noc.toString(), usdc: b.usdc.toString(), usdt: b.usdt.toString()};
+        // E4: the last good read, for the next popup to show (stale) at once. Best effort.
+        const envelope = (await readWalletView(ext))?.accounts.map(a => a.publicKey) ?? [];
+        await writeCachedBalances(ext, envelope, account, data, deps.now()).catch(() => undefined);
+        return {ok: true, data};
+      }
+      case 'wallet.prices':
+        return await prices(ext, deps);
+      case 'wallet.cached': {
+        const {account} = msg;
+        if (!isAddress(account)) return MALFORMED;
+        // Not served while locked: a locked popup shows no balances.
+        if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
+        const [balances, cachedPrices] = await Promise.all([readCachedBalances(ext, account), readCachedPrices(ext)]);
+        return {ok: true, data: {balances, prices: cachedPrices}};
       }
       case 'wallet.probeBalances':
         return await probe(deps, msg.publicKeys);
