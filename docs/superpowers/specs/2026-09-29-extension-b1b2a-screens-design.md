@@ -1504,6 +1504,11 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   - "See all" and token-row taps removed (#25/#28, D34).
   - BONK row impossible (4 tokens).
   - **The total excludes NOC** (spec §4 / `web/`; §11 conflict 2).
+  - **Cold skeleton (from Task 12):** the real top bar instead of skeleton circles; no mode-toggle
+    bar (D4); no "See all" skeleton; the quick-action skeleton shows only the actions that exist —
+    Receive in plan 1, Receive + Send from plan 3.
+  - **Plan-1 stand-in:** no Send quick action and no resume until plan 3 (§12); the pending strip
+    shows the state text and opens Activity.
   - The bottom nav is Home / Activity / Settings (D3), not Home/Portfolio/NFTs/Profile.
   - Pull-to-refresh becomes the refresh button (D2).
 
@@ -1582,6 +1587,13 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   - **Receive stays enabled offline (owner, D36)**; the design disables Send, Receive and Swap.
     #13 needs only the local address (its fiat line shows "—" offline). Send stays disabled.
   - The air-gap link is removed.
+  - **#42's own layout is not used (from Task 12):** #42 is rendered as states of #11 — #11's hero,
+    quick-action row and token rows, with #42's banners, copy and stale marking applied. The design's
+    disabled Send/Receive/Swap row becomes #11's quick row with Receive enabled (D36) and Send
+    disabled from plan 3 (absent in plan 1); Swap is not planned.
+  - Rows read "62.4821 SOL · cached" (the token symbol stays), not "62.4821 · cached".
+  - A retry count of zero omits "· N retries failed"; a sync time on another day reads with its date
+    ("Jan 2, 09:41:13").
 
 ---
 
