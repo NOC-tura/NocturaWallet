@@ -32,6 +32,24 @@ export async function containSolscan(ctx: BrowserContext): Promise<{hits: string
   return {hits};
 }
 
+/** Any request to noc-tura.io or a name under it, whatever the page. */
+export const NOC_TURA = /^https?:\/\/([^/]*\.)?noc-tura\.io(\/|$)/;
+
+/**
+ * Every noc-tura.io name, routed and counted: recorded and aborted. Install it BEFORE the fake
+ * coordinator — Playwright runs the last-registered matching route first, so the fake answers
+ * api.noc-tura.io and this sees only what the fake does not (any other name). Every spec asserts it 0.
+ */
+export async function containNocTura(ctx: BrowserContext): Promise<{hits: string[]}> {
+  const hits: string[] = [];
+  const abort = (route: Route) => {
+    hits.push(route.request().url());
+    return route.abort();
+  };
+  await ctx.route(NOC_TURA, abort);
+  return {hits};
+}
+
 /** Chromium with the built extension loaded and noc-tura.io and solscan.io unresolvable, in a fresh profile. */
 export async function launchContained(profilePrefix: string): Promise<{ctx: BrowserContext; profile: string}> {
   const profile = mkdtempSync(join(tmpdir(), profilePrefix));

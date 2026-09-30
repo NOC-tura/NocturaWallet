@@ -94,6 +94,9 @@ describe('Banner, TabBar, Toast, ChipRow', () => {
     expect(tabs[1]?.getAttribute('aria-current')).toBe('page');
     fireEvent.click(tabs[2] as HTMLElement);
     expect(onChange).toHaveBeenCalledWith('settings');
+    // Task 17 fix round 1 (C13): Activity's glyph is the design's #i-trend-up (index.html #s26 tab bar).
+    const points = [...(tabs[1] as HTMLElement).querySelectorAll('polyline')].map(p => p.getAttribute('points'));
+    expect(points).toEqual(['22 7 13.5 15.5 8.5 10.5 2 17', '16 7 22 7 22 13']);
   });
 
   it('Toast: shown, then gone after its time', async () => {

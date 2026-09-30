@@ -1,4 +1,4 @@
-import {ago, agoLong, clock, dateSection, stamp, shortAddress, showAmount, showSol, twoGroups, usdParts} from '../format';
+import {ago, agoLong, clock, dateSection, feeUsd, stamp, shortAddress, showAmount, showFee, showSol, twoGroups, usdParts} from '../format';
 import {valuation} from '../valuation';
 
 // The words and numbers the screens print, from one place.
@@ -8,6 +8,24 @@ describe('format', () => {
     expect(showAmount('NOC', 4_200_000_000_000n)).toBe('4,200.00');
     expect(showAmount('USDC', 740_219_999n)).toBe('740.21');
     expect(showSol(5_000n)).toBe('0.000005');
+  });
+
+  // Task 17 fix round 1 (C8, C9; review L7): #27's fee line as index.html draws it — "0.000 005 SOL ·
+  // $0.0007" (lines 12136, 12197). The design groups with a plain U+0020 space, checked byte for byte.
+  it('the fee line only: fraction digits in groups of three, and its dollars to four places, truncated', () => {
+    expect(showFee(5_000n)).toBe('0.000 005');
+    expect(showFee(1_234_567n)).toBe('0.001 234 567');
+    expect(showFee(10_000n)).toBe('0.000 01');
+    expect(showFee(1_500_000_000n)).toBe('1.5');
+    expect(showFee(0n)).toBe('0');
+    expect(showFee(5_000n)).not.toContain('\u2009');
+    // Other amounts are unchanged.
+    expect(showSol(5_000n)).toBe('0.000005');
+    expect(showAmount('SOL', 62_482_199_999n)).toBe('62.4821');
+    expect(feeUsd(0.000745)).toBe('$0.0007');
+    expect(feeUsd(0.00075)).toBe('$0.0007');
+    expect(feeUsd(0.0123)).toBe('$0.01');
+    expect(feeUsd(null)).toBe('—');
   });
 
   it('the hero’s dollars and cents, floored', () => {

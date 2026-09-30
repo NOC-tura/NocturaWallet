@@ -36,11 +36,14 @@ test('visual: the plan-1 screens and states at 412 × 600', async () => {
     await expect(p.getByText('10.0000 SOL', {exact: true})).toBeVisible();
     await shot(p, '11-loaded');
     await p.getByRole('button', {name: 'Hide balance'}).click();
+    await expect(p.getByText('Tap eye to reveal')).toBeVisible();
+    await expect(p.getByText('10.0000 SOL', {exact: true})).toHaveCount(0);
     await shot(p, '11-hidden-balance');
     await p.getByRole('button', {name: 'Show balance'}).click();
 
     await p.getByRole('button', {name: 'Accounts'}).click();
-    await expect(p.getByRole('dialog', {name: 'Accounts'}).getByText('10.0000 SOL · $1,500.00').first()).toBeVisible();
+    // Both rows' balance lines: the switcher reads them one at a time (§5.2), Savings second.
+    await expect(p.getByRole('dialog', {name: 'Accounts'}).getByText('10.0000 SOL · $1,500.00')).toHaveCount(2);
     await shot(p, '43-account-switcher');
     await p.keyboard.press('Escape');
 
@@ -53,21 +56,42 @@ test('visual: the plan-1 screens and states at 412 × 600', async () => {
     await p.getByRole('button', {name: 'Back'}).click();
 
     await p.getByRole('button', {name: 'Activity'}).click();
-    await expect(p.getByText('Sent SOL')).toBeVisible({timeout: 30_000});
+    // All five rows, the slowest (~5 s a page at 2 getTransaction/s) last.
+    for (const t of ['Sent SOL', 'Received USDC', 'Presale purchase', 'Other transaction', 'Failed · transaction']) await expect(p.getByText(t)).toBeVisible({timeout: 30_000});
     await shot(p, '26-loaded-mixed');
+    await p.locator('main.app-content').evaluate(e => e.scrollTo(0, e.scrollHeight));
+    await expect(p.getByText('Failed · transaction')).toBeInViewport();
+    await shot(p, '26-loaded-mixed-end');
     await p.getByRole('tab', {name: 'Sent'}).click();
+    await expect(p.getByRole('tab', {name: 'Sent'})).toHaveAttribute('aria-selected', 'true');
+    await expect(p.locator('button.tx-row .pri')).toHaveText(['Sent SOL']);
     await shot(p, '26-filter-sent');
     await p.getByRole('tab', {name: 'All'}).click();
-    for (const [title, name] of [['Sent SOL', '27-transparent-send'], ['Received USDC', '27-received'], ['Failed · transaction', '27-failed'], ['Presale purchase', '27-purchase']] as const) {
+    const details = [
+      ['Sent SOL', 'SENT', '27-transparent-send'],
+      ['Received USDC', 'RECEIVED', '27-received'],
+      ['Failed · transaction', 'FAILED', '27-failed'],
+      ['Presale purchase', 'PRESALE PURCHASE', '27-purchase'],
+    ] as const;
+    for (const [title, eyebrow, name] of details) {
       await p.getByText(title).click();
-      await expect(p.getByText('Transaction', {exact: true})).toBeVisible();
+      await expect(p.locator('.amount-card .eyebrow')).toHaveText(eyebrow);
+      // Opened at the top (fix round 1, A1): the top bar is in view, not scrolled past.
+      await expect(p.getByText('Transaction', {exact: true})).toBeInViewport();
       await shot(p, name);
+      // The lower half (fee line, Explorer): the content region scrolled to its end, shot too.
+      await p.locator('main.app-content').evaluate(e => e.scrollTo(0, e.scrollHeight));
+      await expect(p.getByRole('link', {name: 'Explorer'})).toBeInViewport();
+      await shot(p, `${name}-end`);
       await p.getByRole('button', {name: 'Back'}).click();
     }
 
     await p.getByRole('button', {name: 'Settings'}).click();
+    await expect(p.locator('.s7-row .s7-title')).toHaveText(['Accounts', 'Lock now', 'About Noctura']);
     await shot(p, '31-settings-minimal');
     await p.getByText('About Noctura').click();
+    await expect(p.getByText('Solana wallet for your browser — your keys stay on this device.')).toBeVisible();
+    await expect(p.getByText('BSL 1.1 · converts to MIT on 2034-01-01')).toBeVisible();
     await shot(p, '38-about');
     await p.close();
 
@@ -86,7 +110,9 @@ test('visual: the plan-1 screens and states at 412 × 600', async () => {
     // #42 and D26.
     h.fake.network = 'unreachable';
     await h.ctx.setOffline(true);
-    const off = await h.openPopup();
+    // Playwright's clock, installed before the page loads: the reconnecting state's 1.5 s auto-dismiss
+    // is held while it is asserted and shot, then released to prove the clock is what held it.
+    const off = await h.openPopup({clock: true});
     await expect(off.getByText("You're offline")).toBeVisible();
     await shot(off, '42-just-disconnected');
     await off.getByRole('button', {name: 'Refresh'}).click();
@@ -94,9 +120,13 @@ test('visual: the plan-1 screens and states at 412 × 600', async () => {
     await shot(off, '42-sustained');
     h.fake.network = 'ok';
     await h.ctx.setOffline(false);
+    await off.clock.pauseAt(await off.evaluate(() => Date.now() + 1_000));
     await off.getByRole('button', {name: 'Refresh'}).click();
     await expect(off.getByText('Connected · syncing')).toBeVisible();
+    await expect(off.getByText('Auto-dismisses in 1.5 s')).toBeVisible();
     await shot(off, '42-reconnecting');
+    await off.clock.runFor(1_600);
+    await expect(off.getByText('Connected · syncing')).toHaveCount(0);
     await off.close();
     h.fake.network = 'forbidden';
     const refused = await h.openPopup();

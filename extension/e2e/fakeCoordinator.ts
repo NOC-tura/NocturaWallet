@@ -9,6 +9,8 @@ const RPC = 'https://api.noc-tura.io/api/v1/rpc';
 const BROADCAST = 'https://api.noc-tura.io/api/v1/tx/broadcast';
 const PRICES = 'https://api.noc-tura.io/api/v1/wallet/prices';
 const STATS = 'https://api.noc-tura.io/api/v1/stats';
+/** rpcResult's answer for a method it does not implement (listed in `unexpected` too). */
+const METHOD_NOT_FOUND: unique symbol = Symbol('method not found');
 
 export interface FakeCoordinator {
   /** 'confirm': a signature is confirmed at its second status check. 'expire': the network never sees it. */
@@ -178,8 +180,15 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       case 'getSignaturesForAddress': {
         const list = fake.history.get(params[0] as string) ?? [];
         const o = params[1] as {limit?: number; before?: string} | undefined;
-        const from = o?.before === undefined ? 0 : list.findIndex(e => e.signature === o.before) + 1;
-        return list.slice(from, from + (o?.limit ?? 10)).map(e => ({signature: e.signature, slot: 1, err: null, memo: null, blockTime: null, confirmationStatus: 'finalized'}));
+        // An unknown `before` is an empty page, as a node answers — never a restart at page 0.
+        const at = o?.before === undefined ? -1 : list.findIndex(e => e.signature === o.before);
+        if (o?.before !== undefined && at < 0) return [];
+        // Each entry as the node reports it: the transaction's own err and blockTime, when it has them.
+        return list.slice(at + 1, at + 1 + (o?.limit ?? 10)).map(e => {
+          const t = e.tx as {blockTime?: unknown; meta?: {err?: unknown}} | null;
+          const blockTime = typeof t?.blockTime === 'number' ? t.blockTime : null;
+          return {signature: e.signature, slot: 1, err: t?.meta?.err ?? null, memo: null, blockTime, confirmationStatus: 'finalized'};
+        });
       }
       case 'getTransaction': {
         for (const list of fake.history.values()) {
@@ -190,7 +199,7 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       }
       default:
         fake.unexpected.push(`rpc ${method}`);
-        return null;
+        return METHOD_NOT_FOUND;
     }
   };
 
@@ -213,7 +222,10 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       const method = body.method ?? '';
       fake.hits.push({url, rpcMethod: method});
       if (body.jsonrpc !== '2.0' || !Array.isArray(body.params)) fake.unexpected.push(`rpc ${method}: not a JSON-RPC 2.0 request`);
-      return json(route, 200, {jsonrpc: '2.0', id: body.id ?? 0, result: rpcResult(method, body.params ?? [])});
+      const result = rpcResult(method, body.params ?? []);
+      // A method the fake does not implement answers as a node does: JSON-RPC -32601, never a result.
+      if (result === METHOD_NOT_FOUND) return json(route, 200, {jsonrpc: '2.0', id: body.id ?? 0, error: {code: -32601, message: 'Method not found'}});
+      return json(route, 200, {jsonrpc: '2.0', id: body.id ?? 0, result});
     }
     fake.hits.push({url, rpcMethod: null});
     if (url === BROADCAST && req.method() === 'POST') {

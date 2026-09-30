@@ -1,4 +1,4 @@
-import {useEffect, useReducer, useState} from 'react';
+import {useEffect, useLayoutEffect, useReducer, useRef, useState} from 'react';
 import {WalletProvider, useWallet, type Surface} from './WalletContext';
 import {createEngine, type Engine, type HistoryItem} from './engine';
 import {browserPlatform, type Platform} from './platform';
@@ -20,6 +20,14 @@ function Shell() {
   const [accounts, setAccounts] = useState(false);
   const [txItems, setTxItems] = useState<Record<string, HistoryItem>>({});
   const route = stack[stack.length - 1] ?? {screen: 'tab', tab: 'home'};
+  const content = useRef<HTMLElement>(null);
+
+  // One scroller serves every route: a screen opened from a scrolled list would otherwise start
+  // where the list was (#27 opened below its own top bar — Task 17 fix round 1). Every accepted push,
+  // pop or tab change is a new stack array, so each one starts the new screen at the top, before paint.
+  useLayoutEffect(() => {
+    if (content.current !== null) content.current.scrollTop = 0;
+  }, [stack]);
 
   // Esc goes back one step on a pushed screen (a sheet handles its own Esc).
   useEffect(() => {
@@ -62,7 +70,9 @@ function Shell() {
 
   return (
     <>
-      <main className="app-content">{screen}</main>
+      <main className="app-content" ref={content}>
+        {screen}
+      </main>
       {route.screen === 'tab' ? <TabBar active={route.tab} onChange={tab => go({type: 'tab', tab})} /> : null}
       {accounts ? <Switcher onClose={() => setAccounts(false)} /> : null}
     </>

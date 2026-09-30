@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {render, screen, waitFor} from '@testing-library/react';
+import {fireEvent, render, screen, waitFor} from '@testing-library/react';
 import {base58} from '@scure/base';
 import {renderInWallet, setupWallet, walletReader} from './harness';
 import {ExplorerLink, TxDetail} from '../screens/TxDetail';
@@ -44,7 +44,8 @@ describe('#27 tx-detail', () => {
     // Full addresses in groups of four (AddressGroups): the groups join to the exact address.
     const groups = [...document.querySelectorAll('.addr-groups')].map(g => [...g.children].map(c => c.textContent).join(''));
     expect(groups).toEqual([ACCOUNT.publicKey, RECIPIENT, sig(1)]);
-    expect(screen.getByText('0.000005 SOL')).toBeTruthy();
+    // The fee line as index.html 12136 draws it (Task 17 fix round 1, C8/C9): grouped, with its dollars.
+    expect(await screen.findByText('0.000 005 SOL · $0.0007')).toBeTruthy();
     expect(screen.getByRole('button', {name: 'Copy recipient'})).toBeTruthy();
     // Absent by decision: Block and Memo (G13), Save (B1b-2b), share (D19).
     for (const gone of ['Block', 'Memo', 'Save', 'Share']) expect(screen.queryByText(gone)).toBeNull();
@@ -65,13 +66,82 @@ describe('#27 tx-detail', () => {
     expect(screen.getByText('Paid by sender')).toBeTruthy();
   });
 
+  // Task 17 fix round 1 (C11): index.html 27c — the amount in --success, "Type · USDC transfer", "Your
+  // wallet" in the accent, and the pill "Confirmed · 8h ago" (format.ts's ago, the injected clock).
+  it('a receive as 27c draws it: success amount, the Type row, "Your wallet" in accent, "Confirmed · <age>"', async () => {
+    const at = 1_780_000_000;
+    await renderInWallet(<TxDetail signature={sig(2)} item={item({signature: sig(2), blockTime: at, kind: 'received', token: 'USDC', amount: 250_000_000n, counterparty: COUNTERPARTY})} onBack={() => undefined} />, {
+      now: () => (at + 8 * 3_600) * 1000,
+    });
+    await waitFor(() => expect(document.body.textContent).toContain(ACCOUNT.publicKey));
+    const amt = document.querySelector('.amount-card .amt') as HTMLElement;
+    expect(amt.textContent).toBe('+250.00 USDC');
+    expect(amt.classList.contains('app-amt-in')).toBe(true);
+    const typeRow = screen.getByText('Type').closest('.detail-row') as HTMLElement;
+    expect(typeRow.querySelector('.val')?.textContent).toBe('USDC transfer');
+    expect(screen.getByText('Your wallet').classList.contains('noc-accent')).toBe(true);
+    expect(document.querySelector('.status-pill')?.textContent).toBe('Confirmed · 8 h ago');
+  });
+
+  it('a receive of SOL reads "Transfer"; with no block time the pill is plain "Confirmed"; a send\'s pill carries no age (27a)', async () => {
+    await show(item({kind: 'received', token: 'SOL', blockTime: null, counterparty: COUNTERPARTY}));
+    expect((screen.getByText('Type').closest('.detail-row') as HTMLElement).querySelector('.val')?.textContent).toBe('Transfer');
+    expect(document.querySelector('.status-pill')?.textContent).toBe('Confirmed');
+    expect(document.querySelector('.amount-card .amt')?.classList.contains('app-amt-in')).toBe(true);
+  });
+
+  it('a send: the pill is "Confirmed" alone and the amount is not tinted', async () => {
+    await show(item({}));
+    expect(document.querySelector('.status-pill')?.textContent).toBe('Confirmed');
+    expect(document.querySelector('.amount-card .amt')?.classList.contains('app-amt-in')).toBe(false);
+  });
+
+  it('no price: the fee line reads "· —", never a made-up dollar value', async () => {
+    await renderInWallet(<TxDetail signature={sig(1)} item={item({})} onBack={() => undefined} />, {
+      deps: {
+        prices: async () => {
+          throw new Error('down');
+        },
+      },
+    });
+    expect(await screen.findByText('0.000 005 SOL · —')).toBeTruthy();
+  });
+
+  // Task 17 fix round 1 (C10): index.html 12115 — each address line carries the design's inline
+  // `.copy-btn` ("Copy", with the copy glyph), not an icon-only button; honest copy as useCopy.
+  it('Copy is the design\'s copy-btn: the word "Copy", then "Copied" only when the clipboard took it', async () => {
+    const writes: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {writeText: async (v: string) => void writes.push(v)}});
+    await show(item({}));
+    const buttons = [...document.querySelectorAll('.detail-row .val button')] as HTMLElement[];
+    expect(buttons.map(b => [b.className, b.textContent])).toEqual([
+      ['copy-btn', 'Copy'],
+      ['copy-btn', 'Copy'],
+      ['copy-btn', 'Copy'],
+    ]);
+    fireEvent.click(screen.getByRole('button', {name: 'Copy recipient'}));
+    await waitFor(() => expect(writes).toEqual([RECIPIENT]));
+    expect(await screen.findByRole('button', {name: 'Copied'})).toBeTruthy();
+    expect(screen.getByRole('button', {name: 'Copied'}).textContent).toBe('Copied');
+    Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {writeText: async () => Promise.reject(new Error('denied'))}});
+    fireEvent.click(screen.getByRole('button', {name: 'Copy sender'}));
+    expect(await screen.findByRole('button', {name: 'Copy failed'})).toBeTruthy();
+  });
+
+  it('failed, as 27d: the eyebrow and card in danger, "Fee charged · $…", the grouped fee', async () => {
+    await renderInWallet(<TxDetail signature={sig(5)} item={item({signature: sig(5), kind: 'other', token: null, amount: null, counterparty: null, failed: true})} onBack={() => undefined} />);
+    expect(await screen.findByText('Fee charged · $0.0007')).toBeTruthy();
+    expect(document.querySelector('.amount-card')?.classList.contains('app-failed')).toBe(true);
+    expect(screen.getByText('0.000 005 SOL')).toBeTruthy();
+  });
+
   it('a failed transaction: the danger pill and banner, the fee charged; no Try again in plan 1', async () => {
     const w = renderInWallet(<TxDetail signature={sig(5)} item={item({signature: sig(5), kind: 'other', token: null, amount: null, counterparty: null, failed: true})} onBack={() => undefined} />);
     await w;
     expect(await screen.findByText('FAILED')).toBeTruthy();
     // No token is known for a failed row: a dash, never "— SOL" (review L3).
     expect(document.querySelector('.amount-card .amt')?.textContent).toBe('—');
-    expect(screen.getByText('Fee charged')).toBeTruthy();
+    expect(await screen.findByText('Fee charged · $0.0007')).toBeTruthy();
     expect(document.querySelector('.status-pill.fail')?.textContent).toBe('Failed');
     expect(screen.getByText('The transaction failed on chain. The network fee was charged; the amount did not move.')).toBeTruthy();
     expect(screen.getByText('Network fee charged')).toBeTruthy();

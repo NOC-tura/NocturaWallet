@@ -80,6 +80,33 @@ describe('navigation (spec §1.6: an in-memory stack; no route acts)', () => {
     expect(await screen.findByText('Sent SOL')).toBeTruthy();
   });
 
+  // Task 17 fix round 1 (A1): one `.app-content` scroller serves every route, so a screen opened from
+  // a scrolled list once kept the list's scrollTop — #27 opened below its own top bar.
+  it('every route change starts the new screen at the top: push, pop and tab', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const reader = walletReader({
+      getSignaturesForAddress: async () => [{signature: sig(1), blockTime: now, err: null}],
+      getTransaction: async () => sentSol(ACCOUNT.publicKey, RECIPIENT, 2_480_000_000, now),
+    });
+    await renderApp({reader});
+    const scroller = () => document.querySelector('main.app-content') as HTMLElement;
+    fireEvent.click(await screen.findByRole('button', {name: 'Activity'}));
+    await screen.findByText('Sent SOL');
+    scroller().scrollTop = 400;
+    expect(scroller().scrollTop).toBe(400);
+    fireEvent.click(screen.getByText('Sent SOL'));
+    expect(await screen.findByText('SENT')).toBeTruthy();
+    expect(scroller().scrollTop).toBe(0);
+    scroller().scrollTop = 300;
+    fireEvent.click(screen.getByRole('button', {name: 'Back'}));
+    await screen.findByText('Sent SOL');
+    expect(scroller().scrollTop).toBe(0);
+    scroller().scrollTop = 200;
+    fireEvent.click(screen.getByRole('button', {name: 'Settings'}));
+    await screen.findByText('About Noctura');
+    expect(scroller().scrollTop).toBe(0);
+  });
+
   it('the pending strip opens Activity (plan-1 stand-in), where the send is in PENDING', async () => {
     await renderApp({
       before: ext => ext.local.set(PENDING_KEY, [pendingRecord({account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '2480000000'}, createdAt: Date.now()})]),

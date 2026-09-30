@@ -1101,6 +1101,8 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   (primary) → `tabs.create('unlock.html?mode=unlock')` + `window.close()`; "Forgot password?" →
   `?mode=forgot`. No password field: the password only ever exists in the vault page (D12).
 - **Differs:** a derived screen. The password field and keypad are in the tab (D12).
+  - **Plan-1 stand-in:** "Forgot password?" is absent until #39's `?mode=forgot` exists — deferred to
+    plan 2 (ruling from the plan review; Task 17 fix round 1).
 
 ### 4.2 #12 send
 
@@ -1659,6 +1661,20 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     They are a scanning aid; verification surfaces (#20, #27, #10, #13) show the full address (§11
     conflict 7).
   - Pull-to-refresh becomes the button (D2).
+  - **Plan-1 stand-in — failed rows** (Task 17 fix round 1): `core/solana/history.ts` decodes every
+    failed transaction as `other` with no token or amount (`if (failed) return other;`), so a failed
+    row reads "Failed · transaction" / "the network fee was charged" / "—" (red `.ic.fail` with the
+    ✕ glyph), not "Failed · sent SOL"; and the **Sent filter does not include failed sends** (a failed
+    row matches only "All"). The design's failed row ("— SOL" with the fee in dollars beneath) needs
+    the attempted kind and token, which the decoder does not keep. Owner decision in plan 3.
+  - **Purchase row:** the design has no purchase row. It keeps the swap tint (`.ic.swap`) with the
+    transfer arrow (`#i-arrow-up-right`), and its meta "NOC · 4:36 PM" is in the body face.
+  - **Other row:** the design's no-funds row (`.ic` neutral, `#i-doc`, 26b) is used, but its amount
+    stays "—" (D24's generic row), not the design's "No funds moved": the meta line already says "no
+    transfer to or from this account".
+  - **Meta lines:** an address line ("from H4qZ…m2N1 · 8:02 AM") is `noc-mono` as 26b draws it. A
+    line that names an own account ("to Your account: Savings · …") stays in the body face: the design
+    has no labelled row, and in mono the label is clipped at 412 px.
 
 ### 6.3 #27 tx-detail
 
@@ -1670,13 +1686,18 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     "≈ $369.42" **→ adapted** to "≈ $… now" (current price, labelled so; historical price is not
     available); status pill "Confirmed"; rows: "Type" "Transfer" (SPL: "USDC transfer"); "From"
     (the account name + full address in groups, Copy); "To" (full, groups, Copy, label if known);
-    "Hash" (full, mono, Copy); "Network fee" "0.000 005 SOL"; "Date" "May 8 2026 · 9:14 AM" (local);
-    `[Explorer]` → solscan (S5).
-  - `received`: eyebrow "RECEIVED"; "+250.00 USDC"; "Confirmed"; "From" (full, Copy); "To" "Your
-    wallet" + address; "Network fee" "Paid by sender"; `[Explorer]`.
-  - `failed` **→ adapted** (the design's 27d is a failed swap): eyebrow "FAILED · SENT"; "— SOL" /
-    "Fee charged"; pill "Failed" (danger); banner "The transaction failed on chain. The network fee
-    was charged; the amount did not move."; "Hash", "Network fee charged", "Date"; `[Try again]` →
+    "Hash" (full, mono, Copy); "Network fee" "0.000 005 SOL · $0.0007" (the fraction in groups of
+    three with the design's plain space; dollars at today's SOL price, four places, truncated; "· —"
+    with no price); "Date" "May 8 2026 · 9:14 AM" (local); `[Explorer]` → solscan (S5). Each Copy is
+    the design's `.copy-btn` (the copy glyph and "Copy"; "Copied" / "Copy failed" as CopyButton).
+  - `received`: eyebrow "RECEIVED"; "+250.00 USDC" in `--success`; pill "Confirmed · 8 h ago" (the
+    block time's age; "Confirmed" when it is unknown); "Type" "USDC transfer" (SOL: "Transfer");
+    "From" (full, Copy); "To" "Your wallet" (in `--accent`) + address; "Network fee" "Paid by
+    sender"; `[Explorer]`.
+  - `failed` **→ adapted** (the design's 27d is a failed swap): the card's danger wash and the
+    eyebrow in `--danger` (27d); eyebrow "FAILED · SENT"; "— SOL" / "Fee charged · $0.0007"; pill
+    "Failed" (danger); banner "The transaction failed on chain. The network fee was charged; the
+    amount did not move."; "Hash", "Network fee charged" "0.000 005 SOL", "Date"; `[Try again]` →
     #19 with the same intent (sent kind only); `[Explorer]`.
   - **extension-only `purchase` / `other`**: eyebrow "PRESALE PURCHASE" / "OTHER"; the decoded
     fields that exist; `[Explorer]`.
@@ -1687,6 +1708,17 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   - The 6+6 checksum highlight is replaced by groups of four (spec §3).
   - The shielded/dApp state 27b is hidden (D4, B1c).
   - Fiat is labelled "now" as marked.
+  - **Plan-1 stand-in — failed** (Task 17 fix round 1; see §6.2's failed-rows entry): the decoder
+    gives a failed transaction as `other` with no token, so #27 reads eyebrow "FAILED" (not "FAILED ·
+    SENT") and amount "—" (not "— SOL"); `[Try again]` is absent until the send flow (plan 3).
+    `TxDetail.tsx` keeps the "FAILED · SENT" arm for that decision. Owner decision in plan 3.
+  - 27d's "Reason", "Tried to swap", "Slippage limit" and "Observed move" rows are a swap's; a failed
+    transfer has none of them (no swaps, and no failure reason in `HistoryView`).
+  - `received`: "To" shows the full address in groups with Copy (a verification surface, §11
+    conflict 7), not 27c's short caption "7xKp…vN9D" without Copy.
+  - `transparent-send`: "From" adds the account's name above the address, and "To" an own account's
+    label ("Your account: Savings") — 27a shows the address alone.
+  - The pill's age reads "8 h ago" (format.ts's one age form, as #42's "0 s ago"), not 27c's "8h ago".
 
 ### 6.4 #41 empty-activity
 

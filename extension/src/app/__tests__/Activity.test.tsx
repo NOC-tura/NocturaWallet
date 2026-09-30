@@ -2,6 +2,7 @@
 import {act, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
 import {renderInWallet, setupWallet, walletReader} from './harness';
 import {Activity} from '../screens/Activity';
+import {rowText} from '../history';
 import {Home} from '../screens/Home';
 import {RECONNECTED_MS, useWallet, WalletProvider, type WalletModel} from '../WalletContext';
 import {PENDING_KEY} from '../../background/pendingStore';
@@ -60,6 +61,50 @@ describe('#26 activity', () => {
     expect(document.body.textContent).not.toMatch(/\$\d|Wallet|Dapp|Swaps|Shielded/);
     fireEvent.click(sent);
     expect(nav.onTx).toHaveBeenCalledWith(expect.objectContaining({signature: sig(1), kind: 'sent', amount: 2_480_000_000n}));
+  });
+
+  // Task 17 fix round 1 (C6, C7): the design's row chrome (index.html #s26 26b).
+  it('an address meta line is mono (noc-mono) as the design draws it; a label or words are not', async () => {
+    await openActivity();
+    await screen.findByText('Sent SOL');
+    const sec = (title: string) => (screen.getByText(title).closest('button') as HTMLElement).querySelector('.sec') as HTMLElement;
+    // "from H4qZ…m2N1" is an address; "to Your account: Savings" is a label (it would clip in mono).
+    expect(sec('Received USDC').classList.contains('noc-mono')).toBe(true);
+    expect(sec('Sent SOL').classList.contains('noc-mono')).toBe(false);
+    const base = {signature: sig(9), blockTime: null, mint: null, feeLamports: 5_000n, failed: false} as const;
+    expect(rowText({...base, kind: 'sent', token: 'SOL', amount: 1n, counterparty: COUNTERPARTY}, []).mono).toBe(true);
+    expect(rowText({...base, kind: 'sent', token: 'SOL', amount: 1n, counterparty: null}, []).mono).toBe(false);
+    expect(sec('Presale purchase').classList.contains('noc-mono')).toBe(false);
+    expect(sec('Other transaction').classList.contains('noc-mono')).toBe(false);
+    expect(sec('Failed · transaction').classList.contains('noc-mono')).toBe(false);
+  });
+
+  // Found in fix round 1's visual pass: 26b's TODAY / YESTERDAY rows end in the time ("· 9:14 AM"),
+  // older sections' rows in the day ("· May 6", 11832, 11840).
+  it('the meta ends in the time today and yesterday, and in the day ("May 6") in older sections', async () => {
+    const old = NOW - 3 * 86_400;
+    const reader = walletReader({
+      getSignaturesForAddress: async () => [{signature: sig(1), blockTime: NOW, err: null}, {signature: sig(4), blockTime: old, err: null}],
+      getTransaction: async s => (s === sig(1) ? sentSol(ACCOUNT.publicKey, COUNTERPARTY, 1_000_000_000, NOW) : otherTx(ACCOUNT.publicKey, old)),
+    });
+    await openActivity(reader);
+    await screen.findByText('Other transaction');
+    const sec = (title: string) => ((screen.getByText(title).closest('button') as HTMLElement).querySelector('.sec') as HTMLElement).textContent;
+    const time = new Date(NOW * 1000).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'});
+    const day = new Date(old * 1000).toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
+    expect(sec('Sent SOL')).toBe(`to ${COUNTERPARTY.slice(0, 4)}…${COUNTERPARTY.slice(-4)} · ${time}`);
+    expect(sec('Other transaction')).toBe(`no transfer to or from this account · ${day}`);
+  });
+
+  it('the Other row is the design\'s no-funds row: a neutral icon circle with the document glyph', async () => {
+    await openActivity();
+    await screen.findByText('Other transaction');
+    const ic = (screen.getByText('Other transaction').closest('button') as HTMLElement).querySelector('.ic') as HTMLElement;
+    expect(ic.className).toBe('ic');
+    expect(ic.querySelector('path[d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"]')).not.toBeNull();
+    // The rest keep their tones: sent, recv (rotated in app.css), purchase in the swap tint, fail.
+    const tone = (title: string) => ((screen.getByText(title).closest('button') as HTMLElement).querySelector('.ic') as HTMLElement).className;
+    expect([tone('Sent SOL'), tone('Received USDC'), tone('Presale purchase'), tone('Failed · transaction')]).toEqual(['ic send', 'ic recv', 'ic swap', 'ic fail']);
   });
 
   it('filters Sent / Received / Purchases apply to the loaded rows, and the choice is remembered', async () => {

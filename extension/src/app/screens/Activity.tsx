@@ -2,7 +2,7 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import {useWallet} from '../WalletContext';
 import {ACTIVITY_FILTER_KEY, readPref, writePref} from '../prefs';
 import {FILTERS, isFilter, matches, rowText, type Filter} from '../history';
-import {TOKEN_INFO, dateSection, timeOfDay} from '../format';
+import {TOKEN_INFO, dateSection, shortDay, timeOfDay} from '../format';
 import {formatAmount} from '../../shared/amount';
 import {useNow} from '../useNow';
 import {ChipRow} from '../ui/Chip';
@@ -239,15 +239,17 @@ export function Activity({onTx, onReceive}: {onTx: (item: HistoryItem) => void; 
             <div className="date-h noc-overline">{s.title}</div>
             {s.rows.map(item => {
               const t = rowText(item, accounts);
-              const time = item.blockTime === null ? '' : ` · ${timeOfDay(item.blockTime * 1000)}`;
+              // 26b: today's and yesterday's rows end in the time ("· 9:14 AM"), older ones in the day ("· May 6").
+              const recent = s.title.startsWith('TODAY') || s.title.startsWith('YESTERDAY');
+              const time = item.blockTime === null ? '' : ` · ${recent ? timeOfDay(item.blockTime * 1000) : shortDay(item.blockTime * 1000)}`;
               return (
                 <button type="button" className="tx-row" key={item.signature} onClick={() => onTx(item)}>
-                  <span className={`ic ${t.tone}`}>
-                    <ExtIcon name={t.tone === 'fail' ? 'close' : 'arrow-up-right'} size={20} />
+                  <span className={t.tone === 'plain' ? 'ic' : `ic ${t.tone}`}>
+                    <ExtIcon name={t.tone === 'fail' ? 'close' : t.tone === 'plain' ? 'doc' : 'arrow-up-right'} size={20} />
                   </span>
                   <span className="meta">
                     <span className="pri noc-body-lg">{t.title}</span>
-                    <span className="sec noc-body-sm">
+                    <span className={`sec noc-body-sm${t.mono ? ' noc-mono' : ''}`}>
                       {t.meta}
                       {time}
                     </span>

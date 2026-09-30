@@ -12,7 +12,6 @@ export type ExtIconName =
   | 'receive'
   | 'refresh'
   | 'home'
-  | 'activity'
   | 'settings'
   | 'plus'
   | 'pencil'
@@ -29,9 +28,30 @@ export type ExtIconName =
   | 'alert-triangle'
   | 'check'
   | 'shield-lock'
-  | 'globe';
+  | 'globe'
+  | 'trend-up'
+  | 'doc'
+  | 'copy';
 
 const PATHS: Record<ExtIconName, ReactNode> = {
+  'trend-up': (
+    <>
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+      <polyline points="16 7 22 7 22 13" />
+    </>
+  ),
+  doc: (
+    <>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </>
+  ),
   eye: (
     <>
       <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12Z" />
@@ -70,12 +90,6 @@ const PATHS: Record<ExtIconName, ReactNode> = {
     <>
       <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
       <polyline points="9 22 9 12 15 12 15 22" />
-    </>
-  ),
-  activity: (
-    <>
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12 6 12 12 16 14" />
     </>
   ),
   settings: (

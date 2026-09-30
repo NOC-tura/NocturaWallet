@@ -3,7 +3,7 @@ import {rmSync} from 'node:fs';
 import {ed25519} from '@noble/curves/ed25519.js';
 import {base58, base64} from '@scure/base';
 import {installFakeCoordinator, type FakeCoordinator} from './fakeCoordinator';
-import {containSolscan, expectContained, launchContained} from './launch';
+import {containNocTura, containSolscan, expectContained, launchContained} from './launch';
 
 declare const chrome: {storage: {local: {set(o: object): Promise<void>}; session: {set(o: object): Promise<void>}}};
 
@@ -42,13 +42,21 @@ export interface Harness {
   sw: Worker;
   id: string;
   solscan: {hits: string[]};
-  openPopup(): Promise<Page>;
+  /** Any noc-tura.io request the fake does not answer (a name other than api.noc-tura.io). */
+  nocTura: {hits: string[]};
+  /**
+   * `clock`: install Playwright's clock before the page loads, so a timer (#42's 1.5 s auto-dismiss)
+   * can be held while a state is asserted and shot.
+   */
+  openPopup(o?: {clock?: boolean}): Promise<Page>;
   close(): Promise<void>;
 }
 
 /** The contained browser (noc-tura.io and solscan.io unresolvable, both routed), the fake, a popup opener at 412 × 600. */
 export async function launchPopup(prefix: string): Promise<Harness> {
   const {ctx, profile} = await launchContained(prefix);
+  // First, so the fake's own route (registered after it, so run before it) answers api.noc-tura.io.
+  const nocTura = await containNocTura(ctx);
   const fake = await installFakeCoordinator(ctx);
   const solscan = await containSolscan(ctx);
   await expectContained(ctx);
@@ -60,10 +68,12 @@ export async function launchPopup(prefix: string): Promise<Harness> {
     sw,
     id,
     solscan,
+    nocTura,
     // Playwright cannot click the toolbar action: the popup page is opened as a page, at the popup's size.
-    async openPopup() {
+    async openPopup(o = {}) {
       const page = await ctx.newPage();
       await page.setViewportSize({width: 412, height: 600});
+      if (o.clock === true) await page.clock.install();
       await page.goto(`chrome-extension://${id}/popup.html`);
       return page;
     },
@@ -74,9 +84,10 @@ export async function launchPopup(prefix: string): Promise<Harness> {
   };
 }
 
-/** What every spec ends with: the route saw the worker's requests, nothing unexpected, Solscan never contacted. */
+/** What every spec ends with: the route saw the worker's requests, nothing unexpected, Solscan and every other noc-tura.io name never contacted. */
 export function contained(h: Harness): void {
   expect(h.fake.hits.length).toBeGreaterThan(0);
   expect(h.fake.unexpected).toEqual([]);
   expect(h.solscan.hits).toEqual([]);
+  expect(h.nocTura.hits).toEqual([]);
 }

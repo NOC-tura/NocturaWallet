@@ -441,10 +441,6 @@
 }
 .tx-row .ic.send { color: var(--fg-primary); }
 .tx-row .ic.recv { background: color-mix(in oklab, var(--success) 14%, transparent); color: var(--success); }
-/* The design points the same arrow glyph down-left for an inbound row (index.html #s26, `#i-arrow-up-right`
-   rotated 180deg) rather than drawing a second glyph: a received row is visually distinct from a sent one
-   even before the icon's colour registers. */
-.tx-row .ic.recv svg { transform: rotate(180deg); transform-origin: center; }
 .tx-row .ic.swap { background: color-mix(in oklab, var(--info) 14%, transparent); color: var(--info); }
 .tx-row .ic.fail { background: color-mix(in oklab, var(--danger) 14%, transparent); color: var(--danger); }
 .tx-row .meta { min-width: 0; display: flex; flex-direction: column; gap: 2px; }

@@ -1,12 +1,13 @@
 import {useEffect, useState, type ReactNode} from 'react';
 import {useWallet} from '../WalletContext';
-import {TOKEN_INFO, fullDate, showAmount, showSol, showUsd} from '../format';
+import {TOKEN_INFO, ago, feeUsd, fullDate, showAmount, showFee, showUsd} from '../format';
 import {explorerUrl} from '../explorer';
 import {AddressGroups} from '../../../../web/src/ui/AddressGroups';
-import {CopyButton} from '../../../../web/src/ui/CopyButton';
 import {TopBar} from '../ui/TopBar';
 import {StatusPill} from '../ui/StatusPill';
 import {ExtIcon} from '../ui/ExtIcon';
+import {useCopy} from '../ui/useCopy';
+import {useNow} from '../useNow';
 import {Banner, RefusedBanner} from '../ui/Banner';
 import type {HistoryItem} from '../engine';
 import {MAINNET_FEE_TREASURY} from '../../../../core/fees/transferMarkup';
@@ -24,13 +25,29 @@ function Row({label, children}: {label: string; children: ReactNode}) {
   );
 }
 
+/**
+ * The design's inline `.copy-btn` (index.html 12115, 12347: the copy glyph, then "Copy"), with
+ * CopyButton's honesty through useCopy: "Copied" only when the clipboard took it, "Copy failed"
+ * otherwise; the accessible name says which address while idle.
+ */
+function CopyBtn({value, label}: {value: string; label: string}) {
+  const [state, copy] = useCopy();
+  const text = state === 'copied' ? 'Copied' : state === 'failed' ? 'Copy failed' : 'Copy';
+  return (
+    <button type="button" className="copy-btn" aria-label={state === 'idle' ? label : text} onClick={() => copy(value)}>
+      <ExtIcon name={state === 'copied' ? 'check' : state === 'failed' ? 'close' : 'copy'} size={14} />
+      {text}
+    </button>
+  );
+}
+
 function Address({address, label}: {address: string; label: string}) {
   return (
     <>
       <span className="mono-addr">
         <AddressGroups address={address} />
       </span>
-      <CopyButton value={address} label={label} />
+      <CopyBtn value={address} label={label} />
     </>
   );
 }
@@ -53,6 +70,7 @@ export function ExplorerLink({signature}: {signature: string}) {
  */
 export function TxDetail({signature, item: given, onBack}: {signature: string; item?: HistoryItem; onBack: () => void}) {
   const m = useWallet();
+  const now = useNow(30_000, m.now);
   const [item, setItem] = useState<HistoryItem | null | undefined>(given);
   /**
    * Set only when the by-signature search itself fails to reach or was refused by the coordinator
@@ -149,6 +167,10 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
   const price = item.token === null ? null : item.token === 'NOC' ? null : m.prices?.[item.token === 'SOL' ? 'sol' : item.token === 'USDC' ? 'usdc' : 'usdt'] ?? null;
   const fiat = item.amount === null || item.token === null || price === null ? null : (Number(item.amount) / 10 ** TOKEN_INFO[item.token].decimals) * price;
   const date = item.blockTime === null ? '—' : fullDate(item.blockTime * 1000);
+  // The fee in SOL, grouped, with today's dollars (index.html 12136: "0.000 005 SOL · $0.0007").
+  const solPrice = m.prices?.sol ?? null;
+  const feeFiat = feeUsd(solPrice === null ? null : (Number(item.feeLamports) / 1e9) * solPrice);
+  const fee = `${showFee(item.feeLamports)} SOL`;
   const hash = <Address address={item.signature} label="Copy hash" />;
 
   if (item.failed) {
@@ -156,17 +178,22 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
       <div className="screen s-txd">
         {top}
         <div className="scroll">
-          <div className="amount-card">
+          <div className="amount-card app-failed">
+            {/*
+              The 'FAILED · SENT' arm cannot be reached in plan 1: core/solana/history.ts decodes every
+              failed transaction as `other` with no token, so this reads "FAILED" and "—" — the plan-1
+              stand-in declared in spec §6.3 Differs (owner decision in plan 3). Kept for that decision.
+            */}
             <div className="eyebrow noc-overline">{item.kind === 'sent' ? 'FAILED · SENT' : 'FAILED'}</div>
             <div className="amt noc-balance-lg noc-numeral">{item.token === null ? '—' : `— ${item.token}`}</div>
-            <div className="fiat noc-body">Fee charged</div>
+            <div className="fiat noc-body noc-numeral">Fee charged · {feeFiat}</div>
             <StatusPill text="Failed" fail />
           </div>
           <Banner tone="danger" title="The transaction failed on chain. The network fee was charged; the amount did not move." />
           <div className="detail-card">
             <Row label="Hash">{hash}</Row>
             <Row label="Network fee charged">
-              <span className="noc-body noc-numeral">{showSol(item.feeLamports)} SOL</span>
+              <span className="noc-body noc-numeral">{fee}</span>
             </Row>
             <Row label="Date">
               <span className="noc-body">{date}</span>
@@ -198,7 +225,9 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
           <div className="detail-card">
             <Row label="Hash">{hash}</Row>
             <Row label="Network fee">
-              <span className="noc-body noc-numeral">{showSol(item.feeLamports)} SOL</span>
+              <span className="noc-body noc-numeral">
+                {fee} · {feeFiat}
+              </span>
             </Row>
             <Row label="Date">
               <span className="noc-body">{date}</span>
@@ -221,19 +250,20 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
       <div className="scroll">
         <div className="amount-card">
           <div className="eyebrow noc-overline">{sent ? 'SENT' : 'RECEIVED'}</div>
-          <div className="amt noc-balance-lg noc-numeral">
+          <div className={`amt noc-balance-lg noc-numeral${sent ? '' : ' app-amt-in'}`}>
             {sent ? MINUS : '+'}
             {item.amount === null ? '—' : showAmount(token, item.amount)} {token}
           </div>
           {fiat === null ? null : <div className="fiat noc-body noc-numeral">≈ {showUsd(fiat)} now</div>}
-          <StatusPill text="Confirmed" />
+          {/* 27c carries the age ("Confirmed · 8h ago"); 27a does not. */}
+          <StatusPill text={!sent && item.blockTime !== null ? `Confirmed · ${ago(item.blockTime * 1000, now)}` : 'Confirmed'} />
         </div>
         <div className="detail-card">
+          <Row label="Type">
+            <span className="noc-body">{token === 'SOL' ? 'Transfer' : `${token} transfer`}</span>
+          </Row>
           {sent ? (
             <>
-              <Row label="Type">
-                <span className="noc-body">{token === 'SOL' ? 'Transfer' : `${token} transfer`}</span>
-              </Row>
               <Row label="From">
                 <span className="noc-body-sm">{account?.name}</span>
                 <Address address={owner} label="Copy sender" />
@@ -247,14 +277,14 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
             <>
               <Row label="From">{item.counterparty === null ? <span className="noc-body">—</span> : <Address address={item.counterparty} label="Copy sender" />}</Row>
               <Row label="To">
-                <span className="noc-body-sm">Your wallet</span>
+                <span className="noc-body-sm noc-accent">Your wallet</span>
                 <Address address={owner} label="Copy recipient" />
               </Row>
             </>
           )}
           <Row label="Hash">{hash}</Row>
           <Row label="Network fee">
-            <span className="noc-body noc-numeral">{sent ? `${showSol(item.feeLamports)} SOL` : 'Paid by sender'}</span>
+            <span className="noc-body noc-numeral">{sent ? `${fee} · ${feeFiat}` : 'Paid by sender'}</span>
           </Row>
           <Row label="Date">
             <span className="noc-body">{date}</span>

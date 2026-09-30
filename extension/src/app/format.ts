@@ -14,6 +14,24 @@ export const showAmount = (token: Token, base: bigint): string => formatAmount(b
 /** Lamports shown in full precision ("0.000005"), for fees. */
 export const showSol = (lamports: bigint): string => formatAmount(lamports, 9, {min: 0, max: 9});
 
+/**
+ * #27's fee line only, as index.html draws it ("0.000 005 SOL", lines 12136, 12197): full precision,
+ * the fraction digits in groups of three from the point. The separator is the design's own character,
+ * a plain U+0020 space (checked byte for byte); every other amount keeps showSol / showAmount.
+ */
+export function showFee(lamports: bigint): string {
+  const [whole, fraction] = showSol(lamports).split('.');
+  if (fraction === undefined) return whole ?? '';
+  return `${whole}.${(fraction.match(/.{1,3}/g) ?? []).join(' ')}`;
+}
+
+/** A fee's dollars ("$0.0007", 12136): four places, truncated, below a cent; "—" with no price. */
+export function feeUsd(usd: number | null): string {
+  if (usd === null) return '—';
+  if (usd >= 0.01) return showUsd(usd);
+  return `$${(Math.floor(usd * 10_000 + 1e-9) / 10_000).toFixed(4)}`;
+}
+
 /** "$14,881.19" split as the hero draws it: whole part and cents. */
 export function usdParts(usd: number): {whole: string; cents: string} {
   const cents = Math.floor(usd * 100 + 1e-9);
@@ -65,6 +83,9 @@ export function stamp(at: number, now: number): string {
 
 /** "9:14 AM", local. */
 export const timeOfDay = (at: number): string => new Date(at).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'});
+
+/** "May 6", local — an older #26 row's day. */
+export const shortDay = (at: number): string => new Date(at).toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
 
 /** "May 8 2026 · 9:14 AM", local. */
 export function fullDate(at: number): string {

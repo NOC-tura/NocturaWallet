@@ -311,6 +311,27 @@ body:has(.app-popup) {
 .app-load-more {
   margin: var(--space-4) 0;
 }
+/* 26b: an inbound row draws the same #i-arrow-up-right turned half a turn (inline in index.html). */
+.tx-row .ic.recv svg {
+  transform: rotate(180deg);
+  transform-origin: center;
+}
+
+/* Tx detail (#27), the design's inline styles. The Explorer link is a button in 27a: no underline. */
+a.btn {
+  text-decoration: none;
+}
+/* 27c: a received amount in --success. */
+.s-txd .amount-card .amt.app-amt-in {
+  color: var(--success);
+}
+/* 27d: the failed card's danger wash and its eyebrow in --danger. */
+.s-txd .amount-card.app-failed {
+  background: radial-gradient(120% 100% at 30% 0%, color-mix(in oklab, var(--danger) 20%, transparent), transparent 65%), var(--bg-surface-1);
+}
+.s-txd .amount-card.app-failed .eyebrow {
+  color: var(--danger);
+}
 .app-empty {
   flex: 1;
   display: flex;
