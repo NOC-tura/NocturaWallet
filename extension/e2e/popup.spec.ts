@@ -108,12 +108,14 @@ test('8 · activity: kinds, filters, a detail page, Load more, and the explorer 
   }
 });
 
-test('9 · switcher: rename, select — the dashboard follows', async () => {
+test('9 · switcher: rename, select — the dashboard follows select()’s own reload, not the 5 s poll', async () => {
   const h = await launchPopup('noctura-e2e-switcher-');
   try {
     await seedUnlockedWallet(h.sw);
     h.fake.lamports.set(SAVINGS.publicKey, 2_500_000_000);
-    const popup = await h.openPopup();
+    // Playwright's clock, installed before load: it follows real time until paused below, so the
+    // rename flow's LockedButton floor (500 ms, a real setTimeout under the fake clock) still fires.
+    const popup = await h.openPopup({clock: true});
     await expect(popup.getByText('10.0000 SOL')).toBeVisible();
     await popup.getByRole('button', {name: 'Accounts'}).click();
     const sheet = popup.getByRole('dialog', {name: 'Accounts'});
@@ -122,6 +124,14 @@ test('9 · switcher: rename, select — the dashboard follows', async () => {
     await sheet.getByRole('textbox', {name: 'Account name'}).fill('Rainy day');
     await sheet.getByRole('button', {name: 'Save'}).click();
     await expect(sheet.getByText('Rainy day')).toBeVisible();
+
+    // Freeze the popup's own clock right here, so WalletContext's 5 s wallet.state poll
+    // (STATE_POLL_MS) can never fire again in this test — Playwright's own assertion retries below
+    // still run on the real host clock, only the PAGE's timers are frozen. If the dashboard still
+    // follows the selection below, it is select()'s own `await m.reload()` (Switcher.tsx) doing it,
+    // never the poll's coattails under Playwright's 5 s default assertion timeout (review round 1).
+    await popup.clock.pauseAt(await popup.evaluate(() => Date.now() + 1_000));
+
     await sheet.getByText('Rainy day').click();
     await expect(popup.getByRole('dialog')).toHaveCount(0);
     await expect(popup.getByRole('button', {name: 'Accounts'})).toContainText('Rainy day');
