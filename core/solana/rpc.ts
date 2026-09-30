@@ -93,6 +93,18 @@ export class RpcMalformed extends Error {
     this.name = 'RpcMalformed';
   }
 }
+/**
+ * A coordinator request that got no answer: the fetch itself rejected (DNS, offline, a reset
+ * connection) or its deadline passed (extension/src/background/deps.ts timedFetch). Not a 403 — it
+ * never trips the cool-down — and not "failed": the screens say the server could not be reached.
+ * Every client in core/ lets it through unwrapped, so the caller can tell the two apart.
+ */
+export class RequestUnreachable extends Error {
+  constructor(what: string, why: string) {
+    super(`${what}: ${why}`);
+    this.name = 'RequestUnreachable';
+  }
+}
 
 export type FetchResponse = {status: number; json(): Promise<unknown>};
 

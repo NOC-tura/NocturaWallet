@@ -15,7 +15,7 @@ import {isOpen, readPending, viewOf} from './pendingStore';
 import {createHistory, type History} from './history';
 import {ResendRefused, SendRefused, SentUnconfirmed} from './sendTypes';
 import {readWalletBalances, WALLET_TOKENS} from '../../../core/solana/balances';
-import {RpcForbidden} from '../../../core/solana/rpc';
+import {RequestUnreachable, RpcForbidden} from '../../../core/solana/rpc';
 
 export type Result = {ok: true; data?: unknown} | {ok: false; error: string; data?: unknown};
 
@@ -72,8 +72,9 @@ function historyFor(deps: WalletDeps): History {
 /**
  * Every refusal is a fixed code. A 403 — and the latch refusing during the cool-down that follows
  * one (RpcCoolingDown, a subclass) — is 'coordinator-refused': terminal, never retried. A send
- * recorded (and possibly broadcast) whose state could not be read back is 'check-pending'. Anything
- * unexpected is 'failed', never a thrown error across the message boundary.
+ * recorded (and possibly broadcast) whose state could not be read back is 'check-pending'. A request
+ * that got no answer is 'unreachable'. Anything unexpected is 'failed', never a thrown error across
+ * the message boundary.
  */
 function failure(e: unknown): Result {
   if (e instanceof SendRefused) {
@@ -84,6 +85,8 @@ function failure(e: unknown): Result {
   // Recorded and possibly broadcast: not 'failed' — the screens send the user to wallet.pending.
   if (e instanceof SentUnconfirmed) return {ok: false, error: 'check-pending', data: {id: e.id, signature: e.signature}};
   if (e instanceof RpcForbidden) return {ok: false, error: 'coordinator-refused'};
+  // No answer at all (a timeout, or the fetch rejecting): the screens say "could not reach", never "failed".
+  if (e instanceof RequestUnreachable) return {ok: false, error: 'unreachable'};
   return {ok: false, error: 'failed'};
 }
 

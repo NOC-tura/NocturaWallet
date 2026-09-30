@@ -1,5 +1,5 @@
 import {base58, base64} from '@scure/base';
-import {API_BASE, RpcForbidden, type FetchLike, type FetchResponse, type ForbiddenLatch} from './rpc';
+import {API_BASE, RequestUnreachable, RpcForbidden, type FetchLike, type FetchResponse, type ForbiddenLatch} from './rpc';
 
 /**
  * The coordinator's broadcast-only route (spec §4 "Broadcast — through the coordinator"). The
@@ -81,7 +81,9 @@ export async function broadcastSigned(opts: {fetch: FetchLike; latch: ForbiddenL
       opts.fetch(opts.endpoint ?? BROADCAST_ENDPOINT, {method: 'POST', headers: {'content-type': 'application/json'}, body, credentials: 'omit'}),
     );
   } catch (e) {
-    if (e instanceof RpcForbidden) throw e;
+    // A 403 is terminal; no answer at all is the caller's to name ("unreachable"). Both mean "not
+    // acknowledged" to the pending record, which keeps watching either way.
+    if (e instanceof RpcForbidden || e instanceof RequestUnreachable) throw e;
     throw new BroadcastUnavailable(null);
   }
   if (res.status === 400) {
