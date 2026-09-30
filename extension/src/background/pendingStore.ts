@@ -10,6 +10,13 @@ import type {SendIntent} from './sendTypes';
 export const PENDING_KEY = 'v1_pending';
 
 export type PendingState = 'pending' | 'stuck' | 'confirmed' | 'failed' | 'expired';
+/**
+ * Why a `failed` record failed (spec B1b-2a E8), set where the engine writes each `failed`: `landed`
+ * — on chain with an error, the network fee was paid; `not-sent` — refused before anything reached the
+ * network. Null in every other state (and on a record from before E8). #44 chooses its state from
+ * this, never from `detail`.
+ */
+export type PendingFailure = 'landed' | 'not-sent';
 
 /** A signed send, from before its broadcast until confirmed, failed or expired (spec §4 "No double spend"). */
 export interface PendingRecord {
@@ -26,6 +33,7 @@ export interface PendingRecord {
   intent: SendIntent;
   /** When a full-history status check past expiry first came back null; `expired` needs a second one ≥ 2 s later. */
   expiryNullSeenAt: number | null;
+  failure: PendingFailure | null;
 }
 
 /** What leaves the background: everything but the signed bytes. */
@@ -40,8 +48,8 @@ const serial = createMutex();
 const STATES: readonly string[] = ['pending', 'stuck', 'confirmed', 'failed', 'expired'];
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 
-/** A stored element is a claim: only an exact record shape is read; anything else is dropped. */
-function isRecord(x: unknown): x is PendingRecord {
+/** A stored element is a claim: only an exact record shape is read; anything else is dropped. `failure` is checked by recordOf. */
+function isRecord(x: unknown): x is Omit<PendingRecord, 'failure'> & {failure?: unknown} {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
   const r = x as Record<string, unknown>;
   const i = r.intent as Record<string, unknown> | null;
@@ -65,9 +73,23 @@ function isRecord(x: unknown): x is PendingRecord {
   );
 }
 
+/** A record from before E8 has no `failure`: it reads as null, so no migration is needed. Any other value drops the record. */
+function recordOf(x: unknown): PendingRecord | null {
+  if (!isRecord(x)) return null;
+  const f = x.failure;
+  if (f === undefined || f === null) return {...x, failure: null};
+  return f === 'landed' || f === 'not-sent' ? {...x, failure: f} : null;
+}
+
 export async function readPending(ext: Ext): Promise<PendingRecord[]> {
   const v = await ext.local.get(PENDING_KEY);
-  return Array.isArray(v) ? (v as unknown[]).filter(isRecord) : [];
+  if (!Array.isArray(v)) return [];
+  const out: PendingRecord[] = [];
+  for (const x of v as unknown[]) {
+    const r = recordOf(x);
+    if (r !== null) out.push(r);
+  }
+  return out;
 }
 
 export function inFlightFor(records: readonly PendingRecord[], account: string): PendingRecord | undefined {
@@ -86,6 +108,7 @@ export function viewOf(r: PendingRecord): PendingView {
     detail: r.detail,
     intent: r.intent,
     expiryNullSeenAt: r.expiryNullSeenAt,
+    failure: r.failure,
   };
 }
 

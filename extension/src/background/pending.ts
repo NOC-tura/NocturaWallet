@@ -24,7 +24,7 @@ export const NOT_CONFIRMED = 'Not confirmed — no funds moved.';
 export const PENDING_ALARM = 'pending-poll';
 export const PENDING_ALARM_MINUTES = 0.5;
 
-type Update = Partial<Pick<PendingRecord, 'state' | 'detail' | 'expiryNullSeenAt'>>;
+type Update = Partial<Pick<PendingRecord, 'state' | 'detail' | 'expiryNullSeenAt' | 'failure'>>;
 
 async function patch(ext: Ext, id: string, change: (r: PendingRecord) => PendingRecord): Promise<void> {
   await updatePending(ext, records => records.map(r => (r.id === id && isOpen(r) ? change(r) : r)));
@@ -47,9 +47,9 @@ async function deliver(ext: Ext, deps: WalletDeps, record: PendingRecord, attemp
     await patch(ext, record.id, r => ({...r, detail: null}));
   } catch (e) {
     if (attempt === 'first' && e instanceof BroadcastRejected) {
-      await patch(ext, record.id, r => ({...r, state: 'failed', detail: `The network refused this transaction (${e.reason}: ${e.detail}). No funds moved.`}));
+      await patch(ext, record.id, r => ({...r, state: 'failed', failure: 'not-sent', detail: `The network refused this transaction (${e.reason}: ${e.detail}). No funds moved.`}));
     } else if (attempt === 'first' && e instanceof RpcCoolingDown) {
-      await patch(ext, record.id, r => ({...r, state: 'failed', detail: 'Not sent: the coordinator is cooling down after an earlier HTTP 403. No funds moved.'}));
+      await patch(ext, record.id, r => ({...r, state: 'failed', failure: 'not-sent', detail: 'Not sent: the coordinator is cooling down after an earlier HTTP 403. No funds moved.'}));
     } else if (e instanceof RpcCoolingDown) {
       await patch(ext, record.id, r => ({...r, detail: 'Not sent again: cooling down after an earlier HTTP 403; still watching the first copy.'}));
     } else if (e instanceof RpcForbidden) {
@@ -80,6 +80,7 @@ export async function submitSigned(
     detail: null,
     intent: input.intent,
     expiryNullSeenAt: null,
+    failure: null,
   };
   const guard = {refused: false};
   await updatePending(ext, records => {
@@ -172,7 +173,7 @@ export async function pollOnce(ext: Ext, deps: WalletDeps): Promise<boolean> {
     if (verdict === 'confirmed') {
       updates.set(r.id, {state: 'confirmed', detail: null});
     } else if (verdict === 'failed') {
-      updates.set(r.id, {state: 'failed', detail: failedDetail(s?.err)});
+      updates.set(r.id, {state: 'failed', failure: 'landed', detail: failedDetail(s?.err)});
     } else if (height !== null && height > r.lastValidBlockHeight + EXPIRY_MARGIN_BLOCKS) {
       // Past the blockhash's life, with margin, so this transaction can no longer land — but it may
       // have landed before. Ask with the full status history, and say "no funds moved" only after
@@ -185,7 +186,7 @@ export async function pollOnce(ext: Ext, deps: WalletDeps): Promise<boolean> {
       }
       const final = landed(last);
       if (final === 'confirmed') updates.set(r.id, {state: 'confirmed', detail: null});
-      else if (final === 'failed') updates.set(r.id, {state: 'failed', detail: failedDetail(last?.err)});
+      else if (final === 'failed') updates.set(r.id, {state: 'failed', failure: 'landed', detail: failedDetail(last?.err)});
       // Only a literal null in both answers is a null round; any status seen (processed, with or
       // without err) means the network knows the transaction: restart the count, keep watching.
       else if (last !== null || s !== null) updates.set(r.id, {expiryNullSeenAt: null});
