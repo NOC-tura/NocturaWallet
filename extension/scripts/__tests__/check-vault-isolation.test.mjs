@@ -1,8 +1,9 @@
-import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {dirname, join} from 'node:path';
+import {dirname, join, resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {
-  bundleViolations, htmlViolations, listSourceFiles, manifestViolations, sourceViolations,
+  bundleViolations, htmlViolations, listSourceFiles, manifestViolations, sourceViolations, vaultPageViolations,
   BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, VAULT_MARKER, WORDLIST_MARKER,
 } from '../check-vault-isolation.mjs';
 import {render} from '../../manifest/source.mjs';
@@ -638,5 +639,88 @@ describe('vault isolation (manifest)', () => {
   it('refuses a web_accessible_resources value of an unexpected shape', () => {
     expect(manifestViolations(withWar({resources: ['icon.png']}))).toEqual(['web_accessible_resources has an unexpected shape']);
     expect(manifestViolations(withWar([{matches: ['<all_urls>']}]))).toEqual(['web_accessible_resources has an unexpected shape']);
+  });
+});
+
+// B1b-2a §1.2: the vault page reaches only vault-page code, and a few modules stand alone.
+describe('the vault page import allowlist', () => {
+  const tree = files => [p => files[p], p => p in files];
+  const ENTRY = "import {x} from './modes';";
+
+  it('passes the real vault page, and the walk really reaches the vault, core/keys and the KDF worker (positive control)', () => {
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+    const read = rel => {
+      try {
+        return readFileSync(join(root, rel), 'utf8');
+      } catch {
+        return undefined;
+      }
+    };
+    const seen = [];
+    const spy = rel => {
+      const t = read(rel);
+      if (t !== undefined) seen.push(rel);
+      return t;
+    };
+    expect(vaultPageViolations(spy, rel => read(rel) !== undefined)).toEqual([]);
+    expect(seen).toEqual(expect.arrayContaining(['src/unlock/main.ts', 'src/vault/envelope.ts', 'src/vault/kdf.worker.ts', '../core/keys/mnemonic.ts']));
+  });
+
+  it('refuses a src/unlock file importing src/app', () => {
+    const [read, exists] = tree({'src/unlock/main.ts': "import {App} from '../app/x';", 'src/app/x.tsx': 'export const App = 1;'});
+    expect(vaultPageViolations(read, exists)).toEqual(['the vault page reaches src/app/x.tsx — only vault-page code may be bundled with the seed']);
+  });
+
+  it('refuses react, react-dom and any package outside the five', () => {
+    const [read, exists] = tree({'src/unlock/main.ts': "import React from 'react';\nimport {createRoot} from 'react-dom/client';\nimport {PublicKey} from '@solana/web3.js';"});
+    expect(vaultPageViolations(read, exists)).toEqual([
+      'src/unlock/main.ts: the vault page imports the package react',
+      'src/unlock/main.ts: the vault page imports the package react-dom/client',
+      'src/unlock/main.ts: the vault page imports the package @solana/web3.js',
+    ]);
+  });
+
+  it('follows an allowed door: a src/shared file that imports src/app, and a ../web/src/ui component', () => {
+    const [read, exists] = tree({
+      'src/unlock/main.ts': ENTRY,
+      'src/unlock/modes.ts': "import {a} from '../shared/x';\nimport {B} from '../../../web/src/ui/Icon';",
+      'src/shared/x.ts': "import {App} from '../app/x';",
+      'src/app/x.tsx': '',
+      '../web/src/ui/Icon.tsx': '',
+    });
+    expect(vaultPageViolations(read, exists).sort()).toEqual([
+      'the vault page reaches ../web/src/ui/Icon.tsx — only vault-page code may be bundled with the seed',
+      'the vault page reaches src/app/x.tsx — only vault-page code may be bundled with the seed',
+    ]);
+  });
+
+  it('allows the shared stylesheets and the five packages (negative control of the rule above)', () => {
+    const [read, exists] = tree({
+      'src/unlock/main.ts': "import '../../../web/src/styles/design-system.css';\nimport '../styles/design-ext.css';\nimport {base58} from '@scure/base';\nimport {sha256} from '@noble/hashes/sha2.js';",
+      '../web/src/styles/design-system.css': '',
+      'src/styles/design-ext.css': '',
+    });
+    expect(vaultPageViolations(read, exists)).toEqual([]);
+  });
+
+  it('does not follow a type-only import, nor prose that looks like one', () => {
+    const [read, exists] = tree({'src/unlock/main.ts': "import type {X} from '../app/x';\nif (mode === 'import' || m === 'accounts') run();"});
+    expect(vaultPageViolations(read, exists)).toEqual([]);
+  });
+});
+
+describe('stand-alone modules (review M4)', () => {
+  it('src/shared/amount.ts and src/unlock/strings.ts may import nothing (a type-only import is erased)', () => {
+    expect(sourceViolations([f('src/unlock/strings.ts', "import {x} from './y';")])).toEqual(['src/unlock/strings.ts: imports a module — it must stand alone']);
+    expect(sourceViolations([f('src/shared/amount.ts', "export * from './y';")])).toEqual(['src/shared/amount.ts: imports a module — it must stand alone']);
+    expect(sourceViolations([f('src/shared/amount.ts', "import type {X} from './y';")])).toEqual([]);
+    expect(sourceViolations([f('src/shared/amount.ts', 'export const parse = (s: string) => s;'), f('src/unlock/strings.ts', "export const S = 'x';")])).toEqual([]);
+  });
+
+  it('a src/shared file may not import src/app or ../web', () => {
+    expect(sourceViolations([f('src/shared/x.ts', "import {App} from '../app/x';")])).toEqual([
+      'src/shared/x.ts: imports UI code (src/app, ../web) — src/shared is vault-page reachable',
+    ]);
+    expect(sourceViolations([f('src/shared/x.ts', "import {Icon} from '../../../web/src/ui/Icon';")])).toHaveLength(1);
   });
 });
