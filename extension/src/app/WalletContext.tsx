@@ -299,11 +299,12 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
     };
   }, [refresh, now]);
   // Reconnecting shows for RECONNECTED_MS, then online. Armed only when the mode really became
-  // reconnecting; any change of mode or spell meanwhile (a refusal, a new failure) runs the cleanup,
-  // which cancels it — so the timer never lands on another state.
+  // reconnecting; any committed change of mode or spell (a refusal, a new failure) runs the cleanup,
+  // which cancels it. The callback is ALSO a functional guard (review fix round 2): a refusal queued
+  // but not yet committed when the timer fires is applied first, and online never overwrites it.
   useEffect(() => {
     if (net.mode !== 'reconnecting') return;
-    const t = setTimeout(() => setNet({mode: 'online', since: now(), failures: 0}), RECONNECTED_MS);
+    const t = setTimeout(() => setNet(n => (n.mode === 'reconnecting' ? {mode: 'online', since: now(), failures: 0} : n)), RECONNECTED_MS);
     return () => clearTimeout(t);
   }, [net.mode, net.since, now]);
 

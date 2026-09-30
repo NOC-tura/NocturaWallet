@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
-import {fireEvent, render, screen, waitFor, within} from '@testing-library/react';
+import {act, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
 import {renderInWallet, setupWallet, walletReader} from './harness';
 import {Activity} from '../screens/Activity';
 import {Home} from '../screens/Home';
-import {useWallet, WalletProvider} from '../WalletContext';
+import {RECONNECTED_MS, useWallet, WalletProvider, type WalletModel} from '../WalletContext';
 import {PENDING_KEY} from '../../background/pendingStore';
 import {ACTIVITY_FILTER_KEY} from '../prefs';
 import {REFUSED_TEXT} from '../ui/Banner';
@@ -597,6 +597,37 @@ describe('the model: a success never ends the refused cool-down', () => {
     expect(mode()).toBe('refused');
     await new Promise(r => setTimeout(r, 1_700));
     expect(mode()).toBe('refused');
+  });
+
+  // Review fix round 2: the timer's own callback is a guard. A refusal queued but not yet committed
+  // when the 1.5 s fires — both inside one act(), before any render — must win: the cleanup cannot
+  // cancel a timer for a state that has not been committed yet.
+  it('a refusal queued in the same act as the 1.5 s timer firing: refused, never online', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    try {
+      const seen: {m: WalletModel | null} = {m: null};
+      function Grab() {
+        const m = useWallet();
+        seen.m = m;
+        return <div data-testid="mode">{m.net.mode}</div>;
+      }
+      await renderInWallet(<Grab />, {reader: unreachable});
+      const mode = () => screen.getByTestId('mode').textContent;
+      await waitFor(() => expect(mode()).toBe('unreachable'));
+      act(() => seen.m?.reached());
+      expect(mode()).toBe('reconnecting');
+      act(() => {
+        seen.m?.report('coordinator-refused');
+        vi.advanceTimersByTime(RECONNECTED_MS);
+      });
+      expect(mode()).toBe('refused');
+      act(() => {
+        vi.advanceTimersByTime(RECONNECTED_MS * 2);
+      });
+      expect(mode()).toBe('refused');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('refused while reconnecting: the pending 1.5 s never turns it online', async () => {
