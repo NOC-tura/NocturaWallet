@@ -1,13 +1,13 @@
 // @vitest-environment happy-dom
 import {render, screen, waitFor} from '@testing-library/react';
 import {base58} from '@scure/base';
-import {renderInWallet, walletReader} from './harness';
+import {renderInWallet, setupWallet, walletReader} from './harness';
 import {ExplorerLink, TxDetail} from '../screens/TxDetail';
 import {explorerUrl} from '../explorer';
-import {useWallet} from '../WalletContext';
+import {useWallet, WalletProvider} from '../WalletContext';
 import {REFUSED_TEXT} from '../ui/Banner';
 import {RequestUnreachable, RpcForbidden} from '../../../../core/solana/rpc';
-import type {HistoryItem} from '../engine';
+import type {Engine, HistoryItem} from '../engine';
 import {ACCOUNT, RECIPIENT} from '../../background/__tests__/fixtures';
 import {COUNTERPARTY, otherTx, sentSol, sig} from '../../../e2e/historyFixtures';
 
@@ -117,6 +117,67 @@ describe('#27 tx-detail', () => {
     expect(await screen.findByText('This transaction is not in the recent history yet.')).toBeTruthy();
     expect(screen.getByRole('link', {name: 'Explorer'})).toBeTruthy();
     expect(calls).toBe(3);
+  });
+
+  // Review fix round 2, M5: no wallet.history call is ever made with the account still unknown
+  // (owner ''). A spy on the engine itself, not the reader: walletApi.ts's own `isAddress` check
+  // would silently answer 'malformed' for an empty account without ever reaching the reader, so a
+  // reader-level spy could not tell the two apart.
+  it('never calls wallet.history before the account is known', async () => {
+    const reader = walletReader({getSignaturesForAddress: async () => []});
+    const w = await setupWallet({reader});
+    const calls: string[] = [];
+    const engine: Engine = {...w.engine, history: (account, before) => (calls.push(account), w.engine.history(account, before))};
+    render(
+      <WalletProvider engine={engine} platform={w.platform} surface="popup">
+        <TxDetail signature={sig(1)} onBack={() => undefined} />
+      </WalletProvider>,
+    );
+    await screen.findByText('This transaction is not in the recent history yet.');
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every(a => a === ACCOUNT.publicKey)).toBe(true);
+  });
+
+  // Review fix round 2, M6: page 1 ends in an unindexed signature, so its real last signature (next)
+  // differs from the last DECODED item's signature — page 2 must be asked for with `next`.
+  it('pages on next, not the last decoded item, when page 1 ends in an unindexed signature', async () => {
+    const list1 = Array.from({length: 10}, (_, i) => sig(300 + i));
+    const txs: Record<string, unknown> = {};
+    for (let i = 0; i < 9; i++) txs[list1[i] as string] = otherTx(ACCOUNT.publicKey, NOW - i);
+    // list1[9] (the page's real last signature) has no getTransaction result: not indexed yet.
+    const target = sig(999);
+    txs[target] = sentSol(ACCOUNT.publicKey, RECIPIENT, 2_480_000_000, NOW);
+    const seenBefore: (string | undefined)[] = [];
+    const reader = walletReader({
+      getSignaturesForAddress: async (_a, o) => {
+        seenBefore.push(o.before);
+        if (o.before === undefined) return list1.map(s => ({signature: s, blockTime: NOW, err: null}));
+        if (o.before === list1[9]) return [{signature: target, blockTime: NOW, err: null}];
+        return [];
+      },
+      getTransaction: async s => txs[s] ?? null,
+    });
+    await renderInWallet(<TxDetail signature={target} onBack={() => undefined} />, {reader});
+    expect(await screen.findByText('SENT')).toBeTruthy();
+    expect(seenBefore).toEqual([undefined, list1[9]]);
+  });
+});
+
+// Review fix round 2, #3: a searchError code that is neither 'unreachable' nor 'coordinator-refused'
+// (only 'malformed' remains, from Engine.history's type — the client never sends a bad account or
+// `before`, but the UI must not go blank if the coordinator ever answered one) gets a fixed line.
+describe('#27 a malformed searchError', () => {
+  it('shows a fixed line, not a bare screen, and keeps the explorer link', async () => {
+    const w = await setupWallet();
+    const engine: Engine = {...w.engine, history: async () => ({ok: false, error: 'malformed'})};
+    render(
+      <WalletProvider engine={engine} platform={w.platform} surface="popup">
+        <TxDetail signature={sig(1)} onBack={() => undefined} />
+      </WalletProvider>,
+    );
+    expect(await screen.findByText('Could not read this transaction.')).toBeTruthy();
+    expect(screen.getByRole('link', {name: 'Explorer'})).toBeTruthy();
+    expect(screen.queryByText('This transaction is not in the recent history yet.')).toBeNull();
   });
 });
 

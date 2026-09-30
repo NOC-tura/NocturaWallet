@@ -208,6 +208,62 @@ describe('#26 activity', () => {
     expect(historyReads).toBe(0);
   });
 
+  // Review fix round 2, #1: a refused [Load more] left the model refused, then switching accounts
+  // used to skip load() (still refused) without ever resetting `items`/`next`/`error` — so account
+  // A's rows and A's cursor stayed on screen under account B. Load more would then ask
+  // history(B, A's cursor) once clickable again, appending B's rows onto A's.
+  it('a refused switch never leaves the old account\'s rows or cursor on screen under the new account', async () => {
+    const listA = Array.from({length: 10}, (_, i) => sig(200 + i));
+    const txsA: Record<string, unknown> = {};
+    for (const s of listA) txsA[s] = otherTx(ACCOUNT.publicKey, NOW - 10);
+    let historyForB = 0;
+    const reader = walletReader({
+      getSignaturesForAddress: async (address, o) => {
+        if (address === ACCOUNT.publicKey) {
+          if (o.before === undefined) return listA.map(s => ({signature: s, blockTime: null, err: null}));
+          throw new RpcForbidden('getSignaturesForAddress'); // the "Load more" click that gets refused
+        }
+        historyForB += 1;
+        return [];
+      },
+      getTransaction: async s => txsA[s] ?? null,
+    });
+
+    function SwitchTo1() {
+      const m = useWallet();
+      return (
+        <button
+          type="button"
+          onClick={() =>
+            void (async () => {
+              await m.engine.select(1);
+              await m.reload();
+            })()
+          }
+        >
+          switch
+        </button>
+      );
+    }
+
+    await renderInWallet(
+      <>
+        <Activity {...nav} />
+        <SwitchTo1 />
+      </>,
+      {reader},
+    );
+    fireEvent.click(await screen.findByRole('button', {name: 'Load more'}));
+    await screen.findByText(REFUSED_TEXT);
+    fireEvent.click(screen.getByRole('button', {name: 'switch'}));
+    // Account A's rows are gone, not merely hidden by a filter or a banner on top of them.
+    await waitFor(() => expect(screen.queryByText('Other transaction')).toBeNull());
+    // No cursor left to resume from: the button that would carry it is gone too.
+    expect(screen.queryByRole('button', {name: 'Load more'})).toBeNull();
+    // Never account B's own history at all while still refused — let alone one carrying A's cursor.
+    expect(historyForB).toBe(0);
+  });
+
   // Review fix round 1, #4c: a stale reply after the account changed must never land in the new
   // account's list. more() and load() share one request token for exactly this.
   //
@@ -279,6 +335,67 @@ describe('#26 activity', () => {
     await new Promise(r => setTimeout(r, 20));
     // Never 20 (10 original + the stale reply's 10 more): the guard dropped the stale reply outright.
     expect(document.querySelectorAll('button.tx-row').length).toBeLessThanOrEqual(10);
+  });
+
+  // Review fix round 2, M4: load()'s OWN stale guard (as opposed to more()'s, above), observed the
+  // same way — the account being left is the one whose read hangs, so its reply is the one that must
+  // be dropped once the switched-to account's own (later) read fails and so never overwrites it.
+  // Reversing this (the switched-to account hangs, the original one fails) would hit the same FIFO
+  // mutex confound as #4c originally did: whichever read resolves LAST always wins the final render
+  // if it succeeds, so only a failing "last" read isolates the EARLIER one's own guard.
+  it('the load() stale guard: a reply for the account being left, released after the switch, is dropped even though the new account\'s own read then fails', async () => {
+    const aSig = sig(700);
+    let releaseA: (() => void) | undefined;
+    const reader = walletReader({
+      getSignaturesForAddress: async address => {
+        if (address === ACCOUNT.publicKey) {
+          // The initial mount load for the account being left: hangs until released.
+          await new Promise<void>(r => {
+            releaseA = r;
+          });
+          return [{signature: aSig, blockTime: null, err: null}];
+        }
+        throw new RpcForbidden('getSignaturesForAddress'); // the switched-to account's own read fails
+      },
+      getTransaction: async s => (s === aSig ? otherTx(ACCOUNT.publicKey, NOW) : null),
+    });
+
+    function SwitchTo1() {
+      const m = useWallet();
+      return (
+        <>
+          <div data-testid="current-account">{m.account?.publicKey}</div>
+          <button
+            type="button"
+            onClick={() =>
+              void (async () => {
+                await m.engine.select(1);
+                await m.reload();
+              })()
+            }
+          >
+            switch
+          </button>
+        </>
+      );
+    }
+
+    await renderInWallet(
+      <>
+        <Activity {...nav} />
+        <SwitchTo1 />
+      </>,
+      {reader},
+    );
+    // The very first (mount) load is the one that hangs: nothing has rendered A's row yet.
+    await waitFor(() => expect(releaseA).toBeDefined());
+    fireEvent.click(screen.getByRole('button', {name: 'switch'}));
+    await waitFor(() => expect(screen.getByTestId('current-account').textContent).toBe(RECIPIENT));
+    releaseA?.();
+    // RECIPIENT's own read failed: the D26 banner, not A's row.
+    expect(await screen.findByText(REFUSED_TEXT)).toBeTruthy();
+    await new Promise(r => setTimeout(r, 20));
+    expect(screen.queryByText('Other transaction')).toBeNull(); // A's stale reply never landed
   });
 });
 

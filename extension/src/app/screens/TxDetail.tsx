@@ -98,12 +98,17 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
   if (item === undefined) {
     if (searchError !== null) {
       // #42/D26 banner over the search, exactly as Activity shows it — never the not-in-history line.
+      // A code that is neither (review fix round 2 #3: 'malformed' — defensive; the client never
+      // sends a bad account or `before`, but a bare screen with no message at all was a real bug) gets
+      // a fixed line instead of nothing.
       const refused = m.net.mode === 'refused' || searchError === 'coordinator-refused';
       const netBanner = refused ? (
         <RefusedBanner />
       ) : searchError === 'unreachable' ? (
         <Banner tone="warning" icon="wifi-off" title={m.net.mode === 'offline' ? "You're offline" : 'Could not reach the Noctura server'} />
-      ) : null;
+      ) : (
+        <p className="noc-body app-muted">Could not read this transaction.</p>
+      );
       return (
         <div className="screen s-txd">
           {top}

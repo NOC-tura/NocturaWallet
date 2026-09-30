@@ -118,8 +118,20 @@ export function Activity({onTx, onReceive}: {onTx: (item: HistoryItem) => void; 
     }
   }, [key, engine, report]);
 
-  // Read on open (and when the selected account changes); after that only the refresh button reads (D2).
+  /**
+   * Read on open, and whenever the selected account changes — ALWAYS: an account switch resets
+   * to that account's own (empty, unloaded) state first, then loads only if not refused (review fix
+   * round 2 #1). Before this, a switch while refused left the previous account's rows and `next` on
+   * screen under the new account — "Load more" would then ask `history(B, A's cursor)` and append
+   * B's rows onto A's, and A's own rows still opened as #27 under B. `reqRef` is bumped even when
+   * the load is skipped, so a reply still in flight for the account being left is dropped too. After
+   * this effect, only the refresh button reads (D2).
+   */
   useEffect(() => {
+    reqRef.current += 1;
+    setItems(null);
+    setNext(null);
+    setError(null);
     if (m.net.mode !== 'refused') void load();
   }, [load]);
 

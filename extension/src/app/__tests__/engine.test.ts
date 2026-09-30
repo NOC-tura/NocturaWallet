@@ -130,6 +130,17 @@ describe('shape checks: a reply of the wrong shape is failed', () => {
     expect((await engineAnswering({ok: true, data: {sol: null, usdc: 1, usdt: 1, noc: null, at: 1}}).prices()).ok).toBe(true);
   });
 
+  // Review fix round 2, M1: `next` is checked the same way an item's own `signature` is (review fix
+  // round 1 #1) — null, or a string that passes SIGNATURE — never trusted as-is.
+  it('history: a malformed next (not null, not a valid signature)', async () => {
+    const good = {items: [], next: null};
+    expect((await engineAnswering({ok: true, data: good}).history(acc)).ok).toBe(true);
+    expect((await engineAnswering({ok: true, data: {...good, next: '5'.repeat(88)}}).history(acc)).ok).toBe(true);
+    expect(await engineAnswering({ok: true, data: {...good, next: 'not-a-signature'}}).history(acc)).toEqual({ok: false, error: 'failed'});
+    expect(await engineAnswering({ok: true, data: {...good, next: 42}}).history(acc)).toEqual({ok: false, error: 'failed'});
+    expect(await engineAnswering({ok: true, data: {...good, next: undefined}}).history(acc)).toEqual({ok: false, error: 'failed'});
+  });
+
   it('pending: an unknown state or failure value', async () => {
     const p = {
       id: 'r1', account: acc, signature: '5'.repeat(88), lastValidBlockHeight: 1, createdAt: 1, lastSentAt: 1, state: 'pending', detail: null,
