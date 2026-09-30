@@ -2,6 +2,7 @@ import {base64} from '@scure/base';
 import type {Ext} from '../ext';
 import type {WalletDeps} from './deps';
 import {addKnownRecipient} from './knownRecipients';
+import {readWalletView} from './accountsStore';
 import {randomId} from './digest';
 import {inFlightFor, isOpen, readPending, updatePending, viewOf, type PendingRecord, type PendingView} from './pendingStore';
 import {ResendRefused, SendRefused, SentUnconfirmed, type ResendRefusal, type SendIntent} from './sendTypes';
@@ -202,8 +203,12 @@ export async function pollOnce(ext: Ext, deps: WalletDeps): Promise<boolean> {
       return u !== undefined && isOpen(r) ? {...r, ...u} : r;
     }),
   );
-  for (const r of open) {
-    if (updates.get(r.id)?.state === 'confirmed') await addKnownRecipient(ext, r.intent.recipient, now);
+  const confirmed = open.filter(r => updates.get(r.id)?.state === 'confirmed');
+  if (confirmed.length > 0) {
+    // Only for an account of the wallet stored now (review M1): a send that outlived a delete must not
+    // make its recipient "known" to the next wallet.
+    const own = new Set((await readWalletView(ext))?.accounts.map(a => a.publicKey) ?? []);
+    for (const r of confirmed) if (own.has(r.account)) await addKnownRecipient(ext, r.intent.recipient, now);
   }
   return after.some(isOpen);
 }

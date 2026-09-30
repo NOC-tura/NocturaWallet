@@ -1,7 +1,16 @@
 import type {Ext} from '../ext';
+import type {WalletDeps} from './deps';
 import {createMutex} from './mutex';
+import {lock} from './autolock';
+import {getSession, sessionMutex} from './session';
+import {isOpen, updatePending} from './pendingStore';
+import {KNOWN_RECIPIENTS_KEY} from './knownRecipients';
+import {SETTINGS_KEY} from './settings';
+import {clearCaches} from './balanceCache';
 import {ENVELOPE_BYTES, ENVELOPE_KDF_MAX, ENVELOPE_KDF_MIN, MAX_ACCOUNTS, b64Length, cleanName} from '../shared/envelopeRules';
 import {envelopeRevision} from '../shared/envelopeRevision';
+import {readWalletBalances} from '../../../core/solana/balances';
+import {RpcForbidden} from '../../../core/solana/rpc';
 
 export {MAX_ACCOUNTS, MAX_NAME_LENGTH, cleanName} from '../shared/envelopeRules';
 
@@ -202,7 +211,139 @@ export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelop
       if (name === null) return 'malformed';
       accounts.push({...a, name});
     }
+    // A first write: recipients and settings left behind cannot belong to a wallet that does not exist
+    // yet (a crash between vault.forgetWallet's vault write and its cleanup could leave them). E5.
+    if (first) {
+      await ext.local.remove(KNOWN_RECIPIENTS_KEY);
+      await ext.local.remove(SETTINGS_KEY);
+      // …and the caches of a wallet that no longer exists (review L1).
+      await clearCaches(ext);
+    }
     await ext.local.set(VAULT_KEY, {...next, accounts});
     return 'stored';
+  });
+}
+
+export type ForgetResult =
+  | 'forgotten'
+  | 'malformed'
+  | 'stored-invalid'
+  | 'no-wallet'
+  | 'busy'
+  | 'unlocked'
+  | 'send-open'
+  | 'funded'
+  | 'unreachable'
+  | 'coordinator-refused';
+
+class SendOpen extends Error {
+  constructor() {
+    super('a send is still open');
+    this.name = 'SendOpen';
+  }
+}
+
+/** C4: a replacement re-encrypts the same wallet — same scheme, exactly the same {index, publicKey} set. */
+function sameKeys(current: StoredEnvelope, next: StoredEnvelope): boolean {
+  if (next.scheme !== current.scheme || next.accounts.length !== current.accounts.length) return false;
+  const keys = new Map(current.accounts.map(a => [a.index, a.publicKey]));
+  return next.accounts.every(a => keys.get(a.index) === a.publicKey);
+}
+
+/** C6: does any account of the stored envelope hold any of the four tokens right now? Throws on a failed read. */
+async function anyFunded(deps: Pick<WalletDeps, 'reader'>, env: StoredEnvelope): Promise<boolean> {
+  for (const a of env.accounts) {
+    const b = await readWalletBalances(deps.reader, a.publicKey);
+    if (b.sol > 0n || b.noc > 0n || b.usdc > 0n || b.usdt > 0n) return true;
+  }
+  return false;
+}
+
+/**
+ * vault.forgetWallet (spec B1b-2a E5): the engine half of delete-wallet, after the vault page proved
+ * the wallet (its seed, or a factor). `replacement` re-encrypts the SAME wallet under a new password
+ * (#39's restore, bound in the background: C4); without it the wallet is deleted (#40's "Try a
+ * different seed", with `guard: 'unfunded'`: C6). One `serial` section, the mutex every v1_vault
+ * write takes, so no envelope write interleaves (R2-M1):
+ *  1. read and shape-check the stored envelope, compare the revision, bind the replacement;
+ *  2. with the guard, read every account's balances — nothing changed yet;
+ *  3. lock: from here no new send can pass its session check;
+ *  4. check-and-clear v1_pending in ONE updatePending (the mutex submitSigned writes under): an open
+ *     record refuses, and nothing is written (H1);
+ *  5. re-read the envelope's revision (`busy` if it moved), and — under sessionMutex, with the write
+ *     inside it — confirm no unlock landed since step 3 (`unlocked` if one did, review L4);
+ *  6. the vault write: removed, or replaced;
+ *  7. the rest: a delete removes the known recipients and the settings (D40); both remove the caches.
+ *     The vault write is the commit point: a failure here is logged and the answer stays 'forgotten'
+ *     (the next first write clears any leftovers; review M2).
+ * v1_forbidden_until is always kept (it belongs to the network). A record appended after step 4 by a
+ * send that passed its session check before step 3 is kept, never deleted; the message handler
+ * restarts the poller for it. `guard` and `replacement` together are malformed (review L4).
+ */
+export async function forgetWallet(
+  ext: Ext,
+  deps: WalletDeps,
+  req: {expectedRevision: unknown; replacement?: unknown; guard?: unknown},
+): Promise<ForgetResult> {
+  const {expectedRevision, replacement, guard} = req;
+  if (!isStr(expectedRevision) || !REVISION.test(expectedRevision)) return 'malformed';
+  if (guard !== undefined && guard !== 'unfunded') return 'malformed';
+  if (guard !== undefined && replacement !== undefined) return 'malformed';
+  const next = replacement === undefined ? null : envelopeShape(replacement);
+  if (replacement !== undefined && next === null) return 'malformed';
+  return serial(async (): Promise<ForgetResult> => {
+    // 1.
+    const stored = await ext.local.get(VAULT_KEY);
+    if (!isObj(stored)) return 'no-wallet';
+    const current = envelopeShape(stored);
+    if (current === null) return 'stored-invalid';
+    if (envelopeRevision(current) !== expectedRevision) return 'busy';
+    if (next !== null && !sameKeys(current, next)) return 'malformed';
+    // 2.
+    if (guard === 'unfunded') {
+      try {
+        if (await anyFunded(deps, current)) return 'funded';
+      } catch (e) {
+        return e instanceof RpcForbidden ? 'coordinator-refused' : 'unreachable';
+      }
+    }
+    // 3.
+    await lock(ext);
+    // 4.
+    try {
+      await updatePending(ext, records => {
+        if (records.some(isOpen)) throw new SendOpen();
+        return [];
+      });
+    } catch (e) {
+      if (e instanceof SendOpen) return 'send-open';
+      throw e;
+    }
+    // 5 + 6.
+    const again = envelopeShape(await ext.local.get(VAULT_KEY));
+    if (again === null || envelopeRevision(again) !== expectedRevision) return 'busy';
+    const written = await sessionMutex(async () => {
+      if ((await getSession(ext)) !== null) return false;
+      if (next === null) {
+        await ext.local.remove(VAULT_KEY);
+      } else {
+        // Same keys (C4), so every stored name carries over (R2-L3).
+        const names = new Map(current.accounts.map(a => [a.index, a.name]));
+        await ext.local.set(VAULT_KEY, {...next, accounts: next.accounts.map(a => ({...a, name: names.get(a.index) ?? a.name}))});
+      }
+      return true;
+    });
+    if (!written) return 'unlocked';
+    // 7. After the commit point: best effort, never un-forgotten.
+    try {
+      if (next === null) {
+        await ext.local.remove(KNOWN_RECIPIENTS_KEY);
+        await ext.local.remove(SETTINGS_KEY);
+      }
+      await clearCaches(ext);
+    } catch (e) {
+      console.warn('forgetWallet: cleanup after the vault write failed; the next first write clears it', e);
+    }
+    return 'forgotten';
   });
 }
