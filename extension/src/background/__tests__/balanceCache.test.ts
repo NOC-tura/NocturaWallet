@@ -96,17 +96,17 @@ describe('cached balances and prices (E4)', () => {
     const ext = fakeExt();
     await ext.local.set(VAULT_KEY, ENV);
     await ext.local.set(BALANCE_CACHE_KEY, {[RECIPIENT]: {sol: '1', noc: '0', usdc: '0', usdt: '0', at: 1}});
-    await writeCachedBalances(ext, [ACCOUNT.publicKey], RECIPIENT, {sol: '5', noc: '0', usdc: '0', usdt: '0'}, 2);
+    await writeCachedBalances(ext, async () => [ACCOUNT.publicKey], RECIPIENT, {sol: '5', noc: '0', usdc: '0', usdt: '0'}, 2);
     // Not an envelope account: nothing written (the stale entry is still there, untouched).
     expect(Object.keys((await ext.local.get(BALANCE_CACHE_KEY)) as object)).toEqual([RECIPIENT]);
-    await writeCachedBalances(ext, [ACCOUNT.publicKey], ACCOUNT.publicKey, {sol: '5', noc: '0', usdc: '0', usdt: '0'}, 3);
+    await writeCachedBalances(ext, async () => [ACCOUNT.publicKey], ACCOUNT.publicKey, {sol: '5', noc: '0', usdc: '0', usdt: '0'}, 3);
     expect(Object.keys((await ext.local.get(BALANCE_CACHE_KEY)) as object)).toEqual([ACCOUNT.publicKey]);
   });
 
   it('wallet.cached: refused while locked, served while unlocked', async () => {
     const ext = fakeExt();
     await ext.local.set(VAULT_KEY, ENV);
-    await writeCachedBalances(ext, [ACCOUNT.publicKey], ACCOUNT.publicKey, {sol: '5', noc: '1', usdc: '2', usdt: '3'}, 9);
+    await writeCachedBalances(ext, async () => [ACCOUNT.publicKey], ACCOUNT.publicKey, {sol: '5', noc: '1', usdc: '2', usdt: '3'}, 9);
     await ext.local.set(PRICE_CACHE_KEY, {sol: 150, usdc: 1, usdt: 1, noc: null, at: 9});
     expect(await handleWallet(ext, fakeDeps(), 'wallet.cached', {account: ACCOUNT.publicKey})).toEqual({ok: false, error: 'locked'});
     await unlocked(ext);

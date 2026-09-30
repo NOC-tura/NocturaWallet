@@ -1,5 +1,5 @@
 import {base64} from '@scure/base';
-import {VAULT_KEY, forgetWallet, storeEnvelope} from '../accountsStore';
+import {GUARD_CONCURRENCY, VAULT_KEY, forgetWallet, storeEnvelope, type ForgetResult} from '../accountsStore';
 import {handleMessage} from '../messages';
 import {SESSION_KEY, getSession, setSession} from '../session';
 import {PENDING_KEY, readPending, updatePending} from '../pendingStore';
@@ -310,5 +310,143 @@ describe('a first write clears what a crashed delete left behind', () => {
     expect(await ext.local.get(SETTINGS_KEY)).toBeUndefined();
     expect(await ext.local.get(BALANCE_CACHE_KEY)).toBeUndefined();
     expect(await ext.local.get(PRICE_CACHE_KEY)).toBeUndefined();
+  });
+});
+
+// Task 7 review, fix round 1.
+const settle = () => new Promise(resolve => setTimeout(resolve, 30));
+
+describe('vault.forgetWallet — races with an unlock and a balance read (fix round 1)', () => {
+  it('a vault.setKeys landing between the forget’s session check and its vault write never leaves the deleted wallet’s keys', async () => {
+    const {ext, deps} = await setup();
+    const remove = ext.local.remove.bind(ext.local);
+    let setKeys: Promise<unknown> | undefined;
+    ext.local.remove = async key => {
+      if (key === VAULT_KEY && setKeys === undefined) {
+        // forget has checked the session (none) and is about to remove the vault: an unlock arrives now.
+        setKeys = handleMessage(ext, {type: 'vault.setKeys', accounts: [ACCOUNT]}, from('/unlock.html'), deps);
+        await settle();
+      }
+      return remove(key);
+    };
+    const r = await forgetWallet(ext, deps, {expectedRevision: REV});
+    const k = await setKeys;
+    expect(await getSession(ext)).toBeNull();
+    // Totally ordered: the forget's section (session check + vault write) ran first, so the unlock's binding
+    // read, under the same sessionMutex, finds no wallet.
+    expect(r).toBe('forgotten');
+    expect(k).toEqual({ok: false, error: 'unknown-account'});
+    expect(await vault(ext)).toBeUndefined();
+  });
+
+  it('a wallet.balances whose envelope read straddles the forget leaves no balance of the deleted wallet', async () => {
+    const {ext, deps} = await setup();
+    const get = ext.local.get.bind(ext.local);
+    let armed = true;
+    let reached: () => void = () => undefined;
+    const atRead = new Promise<void>(resolve => (reached = resolve));
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>(resolve => (release = resolve));
+    ext.local.get = async key => {
+      const v = await get(key);
+      if (key === VAULT_KEY && armed) {
+        // The balance read's envelope read: it saw the old wallet, and its answer arrives late.
+        armed = false;
+        reached();
+        await gate;
+      }
+      return v;
+    };
+    const popupPage = {id: ID, origin: ORIGIN, url: `${ORIGIN}/popup.html`};
+    const balances = handleMessage(ext, {type: 'wallet.balances', account: ACCOUNT.publicKey}, popupPage, deps);
+    await atRead;
+    const forget = forgetWallet(ext, deps, {expectedRevision: REV});
+    await settle();
+    release();
+    expect(await forget).toBe('forgotten');
+    await balances;
+    expect(await ext.local.get(BALANCE_CACHE_KEY)).toBeUndefined();
+  });
+
+  it('a storage failure after the vault write (the poller restart) still answers ok', async () => {
+    const {ext, deps} = await setup();
+    const get = ext.local.get.bind(ext.local);
+    ext.local.get = async key => {
+      if (key === PENDING_KEY && (await get(VAULT_KEY)) === undefined) throw new Error('storage gone');
+      return get(key);
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(await handleMessage(ext, {type: 'vault.forgetWallet', expectedRevision: REV}, from('/unlock.html'), deps)).toEqual({ok: true});
+    expect(await vault(ext)).toBeUndefined();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('a stored v1_vault that is not an object is stored-invalid, not no-wallet — nothing changed', async () => {
+    for (const bad of [[], 'x', 5, null, true]) {
+      const ext = fakeExt();
+      await ext.local.set(VAULT_KEY, bad);
+      await setSession(ext, [ACCOUNT]);
+      expect(await forgetWallet(ext, fakeDeps(), {expectedRevision: REV})).toBe('stored-invalid');
+      expect(await ext.local.get(VAULT_KEY)).toEqual(bad);
+      expect(await getSession(ext)).not.toBeNull();
+    }
+  });
+});
+
+describe('vault.forgetWallet — the unfunded guard reads concurrently, bounded (fix round 1)', () => {
+  const KEYS = ['K0', 'K1', 'K2', 'K3', 'K4', 'K5', 'K6', 'K7', 'K8', 'K9'];
+  const MANY = {...STORED, accounts: KEYS.map((publicKey, index) => ({index, name: `Account ${index + 1}`, publicKey}))};
+  const MANY_REV = envelopeRevision(MANY as Parameters<typeof envelopeRevision>[0]);
+  async function many(getBalance: (owner: string) => Promise<bigint>) {
+    const ext = fakeExt();
+    await ext.local.set(VAULT_KEY, MANY);
+    await setSession(ext, [ACCOUNT]);
+    return {ext, deps: fakeDeps({reader: fakeReader({getBalance, getTokenAccountsByOwner: async () => []})})};
+  }
+
+  it('reads every account, several at a time but never more than GUARD_CONCURRENCY', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const read: string[] = [];
+    const {ext, deps} = await many(async owner => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      inFlight--;
+      read.push(owner);
+      return 0n;
+    });
+    expect(await forgetWallet(ext, deps, {expectedRevision: MANY_REV, guard: 'unfunded'})).toBe('forgotten');
+    expect([...read].sort()).toEqual([...KEYS].sort());
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(GUARD_CONCURRENCY);
+  });
+
+  it('precedence, whatever the order the answers arrive in: coordinator-refused > unreachable > funded', async () => {
+    const cases: [Record<string, 'funded' | 'unreachable' | 'forbidden'>, ForgetResult][] = [
+      [{K2: 'funded', K7: 'unreachable'}, 'unreachable'],
+      [{K7: 'funded', K2: 'unreachable'}, 'unreachable'],
+      [{K2: 'unreachable', K7: 'forbidden'}, 'coordinator-refused'],
+      [{K2: 'forbidden', K7: 'unreachable'}, 'coordinator-refused'],
+      [{K2: 'funded', K7: 'forbidden'}, 'coordinator-refused'],
+      [{K2: 'funded', K9: 'funded'}, 'funded'],
+    ];
+    for (const [plan, expected] of cases) {
+      for (const slowFirst of [true, false]) {
+        const {ext, deps} = await many(async owner => {
+          const what = plan[owner];
+          // Vary which answer arrives first.
+          await new Promise(resolve => setTimeout(resolve, what === undefined ? 1 : (owner === 'K2') === slowFirst ? 15 : 3));
+          if (what === 'funded') return 1n;
+          if (what === 'unreachable') throw new RequestUnreachable('u', 'x');
+          if (what === 'forbidden') throw new RpcForbidden('getBalance');
+          return 0n;
+        });
+        expect(await forgetWallet(ext, deps, {expectedRevision: MANY_REV, guard: 'unfunded'})).toBe(expected);
+        expect(await ext.local.get(VAULT_KEY)).toEqual(MANY);
+        expect(await getSession(ext)).not.toBeNull();
+      }
+    }
   });
 });

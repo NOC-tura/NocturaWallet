@@ -206,7 +206,9 @@ export async function pollOnce(ext: Ext, deps: WalletDeps): Promise<boolean> {
   const confirmed = open.filter(r => updates.get(r.id)?.state === 'confirmed');
   if (confirmed.length > 0) {
     // Only for an account of the wallet stored now (review M1): a send that outlived a delete must not
-    // make its recipient "known" to the next wallet.
+    // make its recipient "known" to the next wallet. Best effort: a round that read the envelope just
+    // before a forget's vault write can still add one after the forget's cleanup; the next wallet's
+    // first write (storeEnvelope with expectedRevision null) removes v1_known_recipients (L1).
     const own = new Set((await readWalletView(ext))?.accounts.map(a => a.publicKey) ?? []);
     for (const r of confirmed) if (own.has(r.account)) await addKnownRecipient(ext, r.intent.recipient, now);
   }

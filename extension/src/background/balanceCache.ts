@@ -61,12 +61,22 @@ export async function readCachedPrices(ext: Ext): Promise<PriceView | null> {
 
 /**
  * After a successful wallet.balances. Only an account of the stored envelope is cached (`envelope`:
- * its accounts' addresses, read by the caller), and every write trims the cache to them (at most
- * MAX_ACCOUNTS), so a removed account's balances do not linger and the key cannot grow without bound.
+ * reads its accounts' addresses), and every write trims the cache to them (at most MAX_ACCOUNTS), so a
+ * removed account's balances do not linger and the key cannot grow without bound. `envelope` is called
+ * INSIDE this mutex, the one clearCaches takes (Task 7 review): vault.forgetWallet removes the vault
+ * before it queues clearCaches, so a write either read the vault before the removal and is cleared
+ * after it, or reads no wallet and writes nothing — a deleted wallet's balances are never left behind.
+ * A reader function, not an import of accountsStore, which imports this module.
  */
-export async function writeCachedBalances(ext: Ext, envelope: readonly string[], account: string, b: Omit<CachedBalances, 'at'>, at: number): Promise<void> {
+export async function writeCachedBalances(
+  ext: Ext,
+  envelope: () => Promise<readonly string[]>,
+  account: string,
+  b: Omit<CachedBalances, 'at'>,
+  at: number,
+): Promise<void> {
   await serial(async () => {
-    const keep = new Set(envelope);
+    const keep = new Set(await envelope());
     if (!keep.has(account)) return;
     const stored = await ext.local.get(BALANCE_CACHE_KEY);
     const next: Record<string, CachedBalances> = {};

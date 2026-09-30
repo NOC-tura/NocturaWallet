@@ -250,13 +250,43 @@ function sameKeys(current: StoredEnvelope, next: StoredEnvelope): boolean {
   return next.accounts.every(a => keys.get(a.index) === a.publicKey);
 }
 
-/** C6: does any account of the stored envelope hold any of the four tokens right now? Throws on a failed read. */
-async function anyFunded(deps: Pick<WalletDeps, 'reader'>, env: StoredEnvelope): Promise<boolean> {
-  for (const a of env.accounts) {
-    const b = await readWalletBalances(deps.reader, a.publicKey);
-    if (b.sol > 0n || b.noc > 0n || b.usdc > 0n || b.usdt > 0n) return true;
-  }
-  return false;
+/**
+ * How many accounts the C6 guard reads at once. Concurrent (Task 7 review) but bounded: an envelope
+ * holds up to MAX_ACCOUNTS (100) accounts at two requests each, and one burst of hundreds of requests
+ * to the coordinator's proxy would spend its request budget (spec §4, CrowdSec). After a 403 the
+ * reader's own latch answers RpcCoolingDown without sending anything.
+ */
+export const GUARD_CONCURRENCY = 4;
+
+/**
+ * C6: the guard's verdict over every account of the stored envelope, read now. Every account is read
+ * (no early exit), so the verdict depends only on the set of answers, never on which arrived first:
+ * 'coordinator-refused' if any read was refused with a 403 (RpcForbidden, or RpcCoolingDown, its
+ * subclass) — terminal, the vault page must not suggest a retry; else 'unreachable' if any read failed
+ * in any other way — the answer is incomplete; else 'funded' if any account holds any of the four
+ * tokens; else null (unfunded). Every non-null verdict refuses the delete: fail closed.
+ */
+async function guardVerdict(deps: Pick<WalletDeps, 'reader'>, env: StoredEnvelope): Promise<'coordinator-refused' | 'unreachable' | 'funded' | null> {
+  let forbidden = false;
+  let failed = false;
+  let funded = false;
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < env.accounts.length) {
+      const a = env.accounts[next++] as AccountView;
+      try {
+        const b = await readWalletBalances(deps.reader, a.publicKey);
+        if (b.sol > 0n || b.noc > 0n || b.usdc > 0n || b.usdt > 0n) funded = true;
+      } catch (e) {
+        if (e instanceof RpcForbidden) forbidden = true;
+        else failed = true;
+      }
+    }
+  };
+  await Promise.all(Array.from({length: Math.min(GUARD_CONCURRENCY, env.accounts.length)}, worker));
+  if (forbidden) return 'coordinator-refused';
+  if (failed) return 'unreachable';
+  return funded ? 'funded' : null;
 }
 
 /**
@@ -273,7 +303,8 @@ async function anyFunded(deps: Pick<WalletDeps, 'reader'>, env: StoredEnvelope):
  *  5. re-read the envelope's revision (`busy` if it moved), and — under sessionMutex, with the write
  *     inside it — confirm no unlock landed since step 3 (`unlocked` if one did, review L4);
  *  6. the vault write: removed, or replaced;
- *  7. the rest: a delete removes the known recipients and the settings (D40); both remove the caches.
+ *  7. the rest: a delete removes the known recipients and the settings (D40); both remove the caches
+ *     (best effort against a concurrent pollOnce / settings write; the first write is the backstop).
  *     The vault write is the commit point: a failure here is logged and the answer stays 'forgotten'
  *     (the next first write clears any leftovers; review M2).
  * v1_forbidden_until is always kept (it belongs to the network). A record appended after step 4 by a
@@ -294,18 +325,17 @@ export async function forgetWallet(
   return serial(async (): Promise<ForgetResult> => {
     // 1.
     const stored = await ext.local.get(VAULT_KEY);
-    if (!isObj(stored)) return 'no-wallet';
+    // Only an absent key is "no wallet": anything else stored there (an array, a string, null) is a
+    // damaged vault, which a forget must not treat as already gone (Task 7 review).
+    if (stored === undefined) return 'no-wallet';
     const current = envelopeShape(stored);
     if (current === null) return 'stored-invalid';
     if (envelopeRevision(current) !== expectedRevision) return 'busy';
     if (next !== null && !sameKeys(current, next)) return 'malformed';
     // 2.
     if (guard === 'unfunded') {
-      try {
-        if (await anyFunded(deps, current)) return 'funded';
-      } catch (e) {
-        return e instanceof RpcForbidden ? 'coordinator-refused' : 'unreachable';
-      }
+      const verdict = await guardVerdict(deps, current);
+      if (verdict !== null) return verdict;
     }
     // 3.
     await lock(ext);
@@ -334,7 +364,11 @@ export async function forgetWallet(
       return true;
     });
     if (!written) return 'unlocked';
-    // 7. After the commit point: best effort, never un-forgotten.
+    // 7. After the commit point: best effort, never un-forgotten. Best effort also against concurrent
+    // writers: a pollOnce that read the old envelope before step 6 may still add a known recipient, and
+    // a settings.set / accounts.select may still write v1_settings, after these removes. The backstop is
+    // the next first write (storeEnvelope with expectedRevision null), which removes both before it
+    // stores a new wallet (L1) — so nothing left here reaches the next wallet.
     try {
       if (next === null) {
         await ext.local.remove(KNOWN_RECIPIENTS_KEY);

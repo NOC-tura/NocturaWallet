@@ -2,7 +2,7 @@ import {ed25519} from '@noble/curves/ed25519.js';
 import {base58, base64} from '@scure/base';
 import type {Ext} from '../ext';
 import type {SessionAccount} from '../vault/accounts';
-import {getSession, setSession} from './session';
+import {getSession, setSessionIf} from './session';
 import {armAutolock, lock} from './autolock';
 import type {WalletDeps} from './deps';
 import {CHALLENGE_ID, challengeInfo, satisfyChallenge} from './reauthChallenges';
@@ -110,14 +110,18 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       // one the envelope records. Every vault-page flow stores the envelope before it hands over keys
       // (onboarding and D41's retry: storeEnvelope then setKeys; #39's restore: forgetWallet with the
       // same-key replacement, then setKeys; add account: storeEnvelope then setKeys; unlock: the
-      // envelope exists), so this refuses only keys of no stored wallet.
-      const view = await readWalletView(ext);
-      const stored = new Map((view?.accounts ?? []).map(a => [a.index, a.publicKey]));
-      if (!accounts.every(a => stored.get(a.index) === a.publicKey)) return {ok: false, error: 'unknown-account'};
+      // envelope exists), so this refuses only keys of no stored wallet. The envelope is read inside
+      // the same sessionMutex section as the session write (setSessionIf), the section vault.forgetWallet
+      // writes the vault in: keys bound to a wallet a forget removes meanwhile are never written.
+      const bound = async (): Promise<boolean> => {
+        const view = await readWalletView(ext);
+        const stored = new Map((view?.accounts ?? []).map(a => [a.index, a.publicKey]));
+        return accounts.every(a => stored.get(a.index) === a.publicKey);
+      };
       // Fail closed: keys in storage.session with no alarm armed would never auto-lock, while
       // the vault page reports "Unlock failed". Anything that throws after the write undoes it.
       try {
-        await setSession(ext, accounts);
+        if (!(await setSessionIf(ext, accounts, bound))) return {ok: false, error: 'unknown-account'};
         await armAutolock(ext);
       } catch (e) {
         await lock(ext);
@@ -154,17 +158,24 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
     case 'vault.forgetWallet': {
       if (deps === undefined) return {ok: false, error: 'unavailable'};
       const {expectedRevision, replacement, guard} = msg as {expectedRevision?: unknown; replacement?: unknown; guard?: unknown};
+      let r: Awaited<ReturnType<typeof forgetWallet>>;
       try {
-        const r = await forgetWallet(ext, deps, {expectedRevision, replacement, guard});
-        if (r !== 'forgotten') return {ok: false, error: r};
-        // A send that passed its session check before the lock may have appended a record after the
-        // clear: it is kept, and watched without keys.
-        if ((await readPending(ext)).some(isOpen)) void startPoller(ext, deps);
-        return {ok: true};
+        r = await forgetWallet(ext, deps, {expectedRevision, replacement, guard});
       } catch {
         // A storage failure: the steps before the vault write leave the wallet in place (locked at most).
         return {ok: false, error: 'failed'};
       }
+      if (r !== 'forgotten') return {ok: false, error: r};
+      // After the commit point, so never 'failed' (the vault is already removed or replaced): a send
+      // that passed its session check before the lock may have appended a record after the clear — it
+      // is kept, and watched without keys. If this read fails, the 30 s alarm, the next wallet.*
+      // message or a service-worker start resumes the polling.
+      try {
+        if ((await readPending(ext)).some(isOpen)) void startPoller(ext, deps);
+      } catch (e) {
+        console.warn('vault.forgetWallet: forgotten, but the pending check after it failed', e);
+      }
+      return {ok: true};
     }
     case 'vault.storeEnvelope': {
       const {expectedRevision, envelope} = msg as {expectedRevision?: unknown; envelope?: unknown};

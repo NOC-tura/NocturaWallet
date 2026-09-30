@@ -245,7 +245,8 @@ export async function handleWallet(ext: Ext, deps: WalletDeps, type: WalletType,
         const b = await readWalletBalances(deps.reader, account);
         const data = {sol: b.sol.toString(), noc: b.noc.toString(), usdc: b.usdc.toString(), usdt: b.usdt.toString()};
         // E4: the last good read, for the next popup to show (stale) at once. Best effort.
-        const envelope = (await readWalletView(ext))?.accounts.map(a => a.publicKey) ?? [];
+        // The envelope is read inside the cache's mutex (see writeCachedBalances).
+        const envelope = async () => (await readWalletView(ext))?.accounts.map(a => a.publicKey) ?? [];
         await writeCachedBalances(ext, envelope, account, data, deps.now()).catch(() => undefined);
         return {ok: true, data};
       }
