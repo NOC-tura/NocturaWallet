@@ -118,15 +118,15 @@ body:has(.app-popup) {
 .app-banner {
   margin: var(--space-3) var(--space-4) 0;
 }
-/* The design's two-line banner (index.html #20 simulate-failed, #16 auto-clear): a 500 title in
-   --fg-primary, a secondary line 2 px under it. */
+/* The design's two-line banner (index.html #20 first-time recipient, the public-withdraw banners):
+   a 600 title in --fg-primary with 2 px below it, then a --fg-secondary line. */
 .banner .banner-title {
-  font-weight: 500;
+  font-weight: 600;
   color: var(--fg-primary);
+  margin-bottom: 2px;
 }
 .banner .banner-line {
   color: var(--fg-secondary);
-  margin-top: 2px;
 }
 /* #42 reconnecting: the refresh glyph beside the value spins (index.html #42c, inline there). */
 .app-hero-spin {
@@ -179,14 +179,15 @@ body:has(.app-popup) {
   text-align: center;
 }
 .app-lock-tile {
-  width: 72px;
-  height: 72px;
+  /* #9's tile (index.html #9a pin-head): 56 px, --accent-tint, --space-4 below. */
+  width: 56px;
+  height: 56px;
   border-radius: var(--radius-icon-hero);
-  background: var(--bg-surface-2);
+  background: var(--accent-tint);
   color: var(--accent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
+  margin-bottom: var(--space-4);
 }
 
 /* Sheets: the design's .s8-sheet, laid over the whole app. */
@@ -337,11 +338,6 @@ body:has(.app-popup) {
 .app-about-body > .noc-overline,
 .app-about-card p {
   margin: 0;
-}
-.s7-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
 }
 .app-static {
   cursor: default;

@@ -1605,6 +1605,9 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   (`.s7-group-label`): row "Accounts" / meta "N accounts" → the switcher sheet; group "Security":
   row "Lock now" → `vault.lock` → the locked screen; group "About": row "About Noctura" / meta
   "v0.1.0" (`.noc-mono`, from `runtime.getManifest()`) → #38. Rows are `.s7-row`, 56 px.
+  A failed "Lock now" (vault.lock not ok, or the wallet still unlocked on the re-read) shows the
+  danger line "Could not lock the wallet. Try again." and re-enables the row — **a controller addition
+  (Task 16 review, rule 7), awaiting the owner's copy**.
 - **#38 about:** wordmark "noctura." (`.s7-wordmark`, the dot in `--accent-shielded`); "Solana
   wallet for your browser — your keys stay on this device." **→ adapted** (design "…transparent and
   shielded modes in one app…", D4); "v0.1.0" (mono); "Resources": "noc-tura.io" as plain text

@@ -35,6 +35,15 @@ describe('the app before #11', () => {
     expect(platform.closed).toBe(1);
   });
 
+  // Task 16 review, fix round 1 #5 (ruling): the tab is the page the user is looking at — its
+  // [Unlock] opens the vault page (§7.1) and leaves wallet.html open. The popup still closes.
+  it('locked, tab: Unlock opens the vault page and does not close the tab', async () => {
+    const {platform} = await renderApp({unlocked: false, surface: 'tab'});
+    fireEvent.click(await screen.findByRole('button', {name: 'Unlock'}));
+    expect(platform.opened).toEqual(['unlock.html?mode=unlock']);
+    expect(platform.closed).toBe(0);
+  });
+
   it('unlocked: #11 with the tab bar Home / Activity / Settings (D3)', async () => {
     await renderApp();
     expect(await screen.findByText('TOKENS')).toBeTruthy();

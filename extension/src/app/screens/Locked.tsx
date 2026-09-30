@@ -7,10 +7,12 @@ import {ExtIcon} from '../ui/ExtIcon';
  * plan 2 (the `forgot` vault mode does not exist yet; linking it now would open the plain unlock page).
  */
 export function Locked() {
-  const {platform} = useWallet();
+  const {platform, surface} = useWallet();
+  // The popup closes once the vault page opens; the tab (wallet.html) is the page the user is looking
+  // at and stays open (§7.1 only opens ?mode=unlock; review fix round 1 #5, a ruling).
   const unlock = () => {
     platform.openPage('unlock.html?mode=unlock');
-    platform.closeWindow();
+    if (surface === 'popup') platform.closeWindow();
   };
   return (
     <div className="screen app-center">

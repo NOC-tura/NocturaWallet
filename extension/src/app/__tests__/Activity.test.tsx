@@ -553,3 +553,75 @@ describe('#26 and the model: a successful read reports itself (m.reached)', () =
     expect(mode()).toBe('refused');
   });
 });
+
+// Task 16 review, fix round 1 #1: a success never clears the 403 state — not even in the same batch
+// as the refusal, when the ref the old code read had not caught up yet.
+describe('the model: a success never ends the refused cool-down', () => {
+  function Batch() {
+    const m = useWallet();
+    return (
+      <>
+        <div data-testid="mode">{m.net.mode}</div>
+        <button
+          type="button"
+          onClick={() => {
+            m.report('coordinator-refused');
+            m.reached();
+          }}
+        >
+          refused then reached
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            m.reached();
+            m.report('coordinator-refused');
+          }}
+        >
+          reached then refused
+        </button>
+      </>
+    );
+  }
+  const unreachable = walletReader({
+    getBalance: async () => {
+      throw new RequestUnreachable('u', 'x');
+    },
+  });
+
+  it.each(['refused then reached', 'reached then refused'])('%s in one batch: refused, and still refused after the 1.5 s', async name => {
+    await renderInWallet(<Batch />, {reader: unreachable});
+    const mode = () => screen.getByTestId('mode').textContent;
+    await waitFor(() => expect(mode()).toBe('unreachable'));
+    fireEvent.click(screen.getByRole('button', {name}));
+    expect(mode()).toBe('refused');
+    await new Promise(r => setTimeout(r, 1_700));
+    expect(mode()).toBe('refused');
+  });
+
+  it('refused while reconnecting: the pending 1.5 s never turns it online', async () => {
+    function Steps() {
+      const m = useWallet();
+      return (
+        <>
+          <div data-testid="mode">{m.net.mode}</div>
+          <button type="button" onClick={() => m.reached()}>
+            reached
+          </button>
+          <button type="button" onClick={() => m.report('coordinator-refused')}>
+            refused
+          </button>
+        </>
+      );
+    }
+    await renderInWallet(<Steps />, {reader: unreachable});
+    const mode = () => screen.getByTestId('mode').textContent;
+    await waitFor(() => expect(mode()).toBe('unreachable'));
+    fireEvent.click(screen.getByRole('button', {name: 'reached'}));
+    expect(mode()).toBe('reconnecting');
+    fireEvent.click(screen.getByRole('button', {name: 'refused'}));
+    expect(mode()).toBe('refused');
+    await new Promise(r => setTimeout(r, 1_700));
+    expect(mode()).toBe('refused');
+  });
+});

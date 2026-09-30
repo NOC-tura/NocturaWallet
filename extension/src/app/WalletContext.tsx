@@ -53,7 +53,8 @@ export interface WalletModel {
   reached(): void;
   refresh(): Promise<void>;
   reload(): Promise<void>;
-  lock(): Promise<void>;
+  /** Locks and re-reads the state; false when the wallet is still unlocked (the caller says so). */
+  lock(): Promise<boolean>;
 }
 
 export const STATE_POLL_MS = 5_000;
@@ -103,7 +104,6 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
   const refreshingRef = useRef(false);
   const netRef = useRef(net);
   netRef.current = net;
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const shownKey = useRef<string | null>(null);
 
   const account = useMemo(() => wallet?.accounts.find(a => a.index === wallet.selected) ?? null, [wallet]);
@@ -125,16 +125,15 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
     [now],
   );
 
-  /** A read got an answer: offline/unreachable → reconnecting (1.5 s) → online. Refused is left alone. */
+  /**
+   * A read got an answer: offline/unreachable → reconnecting. A functional update, so it sees the
+   * mode as it will be — never the ref, which lags a refusal made in the same batch (review fix round
+   * 1 #1: a success must never clear the 403 state). Refused, online and reconnecting are left alone.
+   * The 1.5 s timer to online is armed by the effect below, only when the mode really became
+   * reconnecting.
+   */
   const reached = useCallback(() => {
-    if (netRef.current.mode === 'offline' || netRef.current.mode === 'unreachable') {
-      const next: Net = {mode: 'reconnecting', since: now(), failures: 0};
-      // The ref too: a second good read before the re-render must not restart the 1.5 s.
-      netRef.current = next;
-      setNet(next);
-      clearTimeout(reconnectTimer.current);
-      reconnectTimer.current = setTimeout(() => setNet(n => (n.mode === 'reconnecting' ? {mode: 'online', since: now(), failures: 0} : n)), RECONNECTED_MS);
-    }
+    setNet(n => (n.mode === 'offline' || n.mode === 'unreachable' ? {mode: 'reconnecting', since: now(), failures: 0} : n));
   }, [now]);
 
   const succeeded = useCallback(() => {
@@ -299,7 +298,14 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
       window.removeEventListener('online', on);
     };
   }, [refresh, now]);
-  useEffect(() => () => clearTimeout(reconnectTimer.current), []);
+  // Reconnecting shows for RECONNECTED_MS, then online. Armed only when the mode really became
+  // reconnecting; any change of mode or spell meanwhile (a refusal, a new failure) runs the cleanup,
+  // which cancels it — so the timer never lands on another state.
+  useEffect(() => {
+    if (net.mode !== 'reconnecting') return;
+    const t = setTimeout(() => setNet({mode: 'online', since: now(), failures: 0}), RECONNECTED_MS);
+    return () => clearTimeout(t);
+  }, [net.mode, net.since, now]);
 
   // No wallet in the popup: setup opens in a tab and the popup closes (§1.6 step 1).
   useEffect(() => {
@@ -308,9 +314,11 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
     platform.closeWindow();
   }, [phase, surface, platform]);
 
-  const lock = useCallback(async () => {
-    await engine.lock();
+  /** True when the wallet is locked afterwards: vault.lock answered ok AND the state re-read says so. */
+  const lock = useCallback(async (): Promise<boolean> => {
+    const r = await engine.lock();
     await applyState(true);
+    return r.ok && phaseRef.current !== 'unlocked';
   }, [engine, applyState]);
 
   const model: WalletModel = {surface, engine, platform, phase, wallet, account, balances, balancesAt, stale, prices, pricesStale, pending, net, lastSync, refreshing, now, report: failed, reached, refresh, reload, lock};

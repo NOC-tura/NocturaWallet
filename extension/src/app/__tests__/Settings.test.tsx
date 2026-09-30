@@ -80,4 +80,36 @@ describe('Settings (minimal)', () => {
     expect(count()).toBe(1);
     expect((button as HTMLButtonElement).disabled).toBe(true);
   });
+
+  // Task 16 review, fix round 1 #6 (ruling, rule 7): Lock now never fails silently.
+  const LOCK_FAILED = 'Could not lock the wallet. Try again.';
+  async function withLock(lock: () => Promise<{ok: true; data: null} | {ok: false; error: 'failed'}>) {
+    const w = await setupWallet();
+    const engine = {...w.engine, lock};
+    render(<App surface="popup" engine={engine} platform={w.platform} />);
+    fireEvent.click(await screen.findByRole('button', {name: 'Settings'}));
+    const button = await screen.findByRole('button', {name: /Lock now/});
+    fireEvent.click(button);
+    return button as HTMLButtonElement;
+  }
+
+  it('a failed vault.lock: the danger line, still Settings, the button back after the floor', async () => {
+    const button = await withLock(async () => ({ok: false, error: 'failed'}));
+    expect((await screen.findByRole('alert')).textContent).toBe(LOCK_FAILED);
+    expect(screen.getByRole('heading', {name: 'Settings'})).toBeTruthy();
+    await waitFor(() => expect(button.disabled).toBe(false), {timeout: 2_000});
+  });
+
+  it('a lock that answered ok but left the wallet unlocked: the same line', async () => {
+    await withLock(async () => ({ok: true, data: null}));
+    expect((await screen.findByRole('alert')).textContent).toBe(LOCK_FAILED);
+    expect(screen.queryByText('Welcome back')).toBeNull();
+  });
+
+  it('a lock that worked shows no failure line', async () => {
+    await openSettings();
+    fireEvent.click(screen.getByText('Lock now'));
+    expect(await screen.findByText('Welcome back')).toBeTruthy();
+    expect(screen.queryByText(LOCK_FAILED)).toBeNull();
+  });
 });
