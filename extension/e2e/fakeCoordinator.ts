@@ -24,12 +24,21 @@ export interface FakeCoordinator {
   historyChecks: {signature: string; at: number}[];
   /** Anything the fake was asked that it does not implement, or asked in the wrong shape. */
   unexpected: string[];
+  /**
+   * B1b-2a: 'ok' answers; 'forbidden' answers every request 403 (the D26 cool-down); 'unreachable'
+   * aborts every request — no answer at all (#42).
+   */
+  network: 'ok' | 'forbidden' | 'unreachable';
   /** SOL per address, lamports; anything unlisted holds 10 SOL. */
   lamports: Map<string, number>;
+  /** What getAccountInfo says an address is (E2); anything unlisted does not exist. */
+  accountKinds: Map<string, 'wallet' | 'program' | 'other'>;
   /** The simulation's error switch (E2): err set and accounts null, as the real RPC answers. */
   simulateError: boolean;
   /** Every simulateTransaction's requested addresses (null = the field was missing). */
   simulations: (string[] | null)[];
+  /** Per owner, newest first: the signatures getSignaturesForAddress pages through, and each getTransaction result. */
+  history: Map<string, {signature: string; tx: unknown}[]>;
 }
 
 /** Compact-u16: the signature count that opens a serialized transaction. */
@@ -91,9 +100,12 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     broadcastWires: [],
     historyChecks: [],
     unexpected: [],
+    network: 'ok',
     lamports: new Map(),
+    accountKinds: new Map(),
     simulateError: false,
     simulations: [],
+    history: new Map(),
   };
   const statusChecks = new Map<string, number>();
   const context = () => ({slot: fake.blockHeight + 50});
@@ -151,18 +163,31 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
         return {context: context(), value: []};
       case 'getMultipleAccounts':
         return {context: context(), value: (params[0] as unknown[]).map(() => null)};
-      case 'getAccountInfo':
-        return {context: context(), value: null};
+      case 'getAccountInfo': {
+        const kind = fake.accountKinds.get(params[0] as string);
+        if (kind === undefined) return {context: context(), value: null};
+        const owner = kind === 'wallet' ? '11111111111111111111111111111111' : 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+        return {context: context(), value: {lamports: 1_000_000, owner, executable: kind === 'program', data: ['', 'base64'], rentEpoch: 0, space: 0}};
+      }
       case 'getBlockHeight':
         return fake.blockHeight;
       case 'getSignatureStatuses': {
         const config = params[1] as {searchTransactionHistory?: boolean} | undefined;
         return signatureStatuses(params[0] as string[], config?.searchTransactionHistory === true);
       }
-      case 'getSignaturesForAddress':
-        return [];
-      case 'getTransaction':
+      case 'getSignaturesForAddress': {
+        const list = fake.history.get(params[0] as string) ?? [];
+        const o = params[1] as {limit?: number; before?: string} | undefined;
+        const from = o?.before === undefined ? 0 : list.findIndex(e => e.signature === o.before) + 1;
+        return list.slice(from, from + (o?.limit ?? 10)).map(e => ({signature: e.signature, slot: 1, err: null, memo: null, blockTime: null, confirmationStatus: 'finalized'}));
+      }
+      case 'getTransaction': {
+        for (const list of fake.history.values()) {
+          const hit = list.find(e => e.signature === params[0]);
+          if (hit !== undefined) return hit.tx;
+        }
         return null;
+      }
       default:
         fake.unexpected.push(`rpc ${method}`);
         return null;
@@ -174,6 +199,15 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
   await ctx.route('https://api.noc-tura.io/**', async route => {
     const req = route.request();
     const url = req.url();
+    // B1b-2a: the two failure switches, counted as hits (the request did leave the extension).
+    if (fake.network === 'unreachable') {
+      fake.hits.push({url, rpcMethod: null});
+      return route.abort('internetdisconnected');
+    }
+    if (fake.network === 'forbidden') {
+      fake.hits.push({url, rpcMethod: null});
+      return json(route, 403, {error: 'forbidden'});
+    }
     if (url === RPC && req.method() === 'POST') {
       const body = JSON.parse(req.postData() ?? '{}') as {jsonrpc?: string; id?: number; method?: string; params?: unknown[]};
       const method = body.method ?? '';

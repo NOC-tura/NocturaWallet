@@ -1,4 +1,4 @@
-import {expect, chromium, type BrowserContext} from '@playwright/test';
+import {expect, chromium, type BrowserContext, type Route} from '@playwright/test';
 import {fileURLToPath} from 'node:url';
 import {mkdtempSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -17,6 +17,20 @@ export const RESOLVER_MAP = 'MAP *.noc-tura.io ~NOTFOUND, MAP noc-tura.io ~NOTFO
 export const HOST_RESOLVER_RULES = `--host-resolver-rules=${RESOLVER_MAP}`;
 /** Any request to solscan.io, whatever the page: routed here, recorded and aborted. */
 export const SOLSCAN = /^https?:\/\/([^/]*\.)?solscan\.io(\/|$)/;
+
+/**
+ * The explorer link's host, routed and counted: any request to solscan.io is aborted and recorded.
+ * Every spec asserts the count is 0 — the link's href is checked, never followed.
+ */
+export async function containSolscan(ctx: BrowserContext): Promise<{hits: string[]}> {
+  const hits: string[] = [];
+  const abort = (route: Route) => {
+    hits.push(route.request().url());
+    return route.abort();
+  };
+  await ctx.route(SOLSCAN, abort);
+  return {hits};
+}
 
 /** Chromium with the built extension loaded and noc-tura.io and solscan.io unresolvable, in a fresh profile. */
 export async function launchContained(profilePrefix: string): Promise<{ctx: BrowserContext; profile: string}> {
