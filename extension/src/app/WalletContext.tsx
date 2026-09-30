@@ -36,6 +36,12 @@ export interface WalletModel {
   net: Net;
   lastSync: number | null;
   refreshing: boolean;
+  /**
+   * The selected account's first fresh balance read has answered, either way (final review I1). Until
+   * then, with nothing cached, #11 shows its skeleton; after it, never — a failed first read of any
+   * code shows the layout, with Receive (D36) and the refresh button.
+   */
+  settled: boolean;
   /** The clock every screen uses (injectable for tests). */
   now(): number;
   /**
@@ -101,6 +107,7 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
   const [net, setNet] = useState<Net>(() => (online() ? {mode: 'online', since: now(), failures: 0} : {mode: 'offline', since: now(), failures: 0}));
   const [lastSync, setLastSync] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [settled, setSettled] = useState(false);
   const refreshingRef = useRef(false);
   const netRef = useRef(net);
   netRef.current = net;
@@ -155,6 +162,7 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
       const priceRead = engine.prices();
       const b = await engine.balances(a.publicKey);
       if (accountRef.current?.publicKey !== a.publicKey) return;
+      setSettled(true);
       if (b.ok) {
         setBalances(b.data);
         setBalancesAt(now());
@@ -166,7 +174,11 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
       if (p.ok) {
         setPrices(p.data);
         setPricesStale(false);
-      } else if (b.ok) failed(p.error);
+      } else if (b.ok || p.error === 'coordinator-refused') {
+        // A 403 from either read is the D26 state, never hidden behind the other's "unreachable"
+        // (final review M1); refused is sticky, so its order against the balance failure is moot.
+        failed(p.error);
+      }
     } finally {
       refreshingRef.current = false;
       setRefreshing(false);
@@ -185,6 +197,8 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
       if (a === null) return;
       // The render that derives `account` from this state has not happened yet: point the ref at it now.
       accountRef.current = a;
+      // This account has not been read yet: the skeleton (when nothing is cached) until its read answers.
+      setSettled(false);
       const c = await engine.cached(a.publicKey);
       if (c.ok) {
         if (c.data.balances !== null) {
@@ -322,6 +336,6 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
     return r.ok && phaseRef.current !== 'unlocked';
   }, [engine, applyState]);
 
-  const model: WalletModel = {surface, engine, platform, phase, wallet, account, balances, balancesAt, stale, prices, pricesStale, pending, net, lastSync, refreshing, now, report: failed, reached, refresh, reload, lock};
+  const model: WalletModel = {surface, engine, platform, phase, wallet, account, balances, balancesAt, stale, prices, pricesStale, pending, net, lastSync, refreshing, settled, now, report: failed, reached, refresh, reload, lock};
   return <Ctx.Provider value={model}>{children}</Ctx.Provider>;
 }

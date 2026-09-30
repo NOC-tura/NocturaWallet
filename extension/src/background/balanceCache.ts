@@ -91,8 +91,17 @@ export async function writeCachedBalances(
   });
 }
 
-export async function writeCachedPrices(ext: Ext, p: PriceView): Promise<void> {
-  await ext.local.set(PRICE_CACHE_KEY, {sol: p.sol, usdc: p.usdc, usdt: p.usdt, noc: p.noc, at: p.at});
+/**
+ * After a successful wallet.prices, under the same mutex as writeCachedBalances and clearCaches, and
+ * only while a wallet exists (`envelope` is read INSIDE the mutex; final review M5): a price read in
+ * flight across vault.forgetWallet either wrote before its clearCaches, which then removes it, or
+ * finds no wallet and writes nothing — never a price cache left behind a deleted wallet.
+ */
+export async function writeCachedPrices(ext: Ext, envelope: () => Promise<readonly string[]>, p: PriceView): Promise<void> {
+  await serial(async () => {
+    if ((await envelope()).length === 0) return;
+    await ext.local.set(PRICE_CACHE_KEY, {sol: p.sol, usdc: p.usdc, usdt: p.usdt, noc: p.noc, at: p.at});
+  });
 }
 
 /** Both caches, removed (vault.forgetWallet, E5). */

@@ -83,6 +83,12 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
   const account = m.account;
   const owner = account?.publicKey ?? '';
 
+  /**
+   * The by-signature search. Unreachable in plan 1 (final review M4): App opens #27 only from an
+   * Activity row and always passes that row's `item`, so `given` is never undefined there. It is the
+   * plumbing for #21 in plan 3, which opens #27 with a signature only; its tests
+   * (TxDetail.test.tsx) keep it honest until then.
+   */
   useEffect(() => {
     if (given !== undefined) return;
     // The open sequence has not set the account yet: wait for it rather than search with ''

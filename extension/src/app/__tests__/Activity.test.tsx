@@ -167,6 +167,29 @@ describe('#26 activity', () => {
     expect(screen.queryByText('No activity yet')).toBeNull();
   });
 
+  // Final review M3: a later good "Load more" clears the earlier one's error (and its banner).
+  it('a failed [Load more] then a good one: the error banner goes, the rows are appended', async () => {
+    const list = Array.from({length: 12}, (_, i) => sig(i + 1));
+    const txs: Record<string, unknown> = {};
+    for (const s of list) txs[s] = otherTx(ACCOUNT.publicKey, NOW - 300);
+    let continued = 0;
+    const reader = walletReader({
+      getSignaturesForAddress: async (_a, o) => {
+        if (o.before === undefined) return list.slice(0, 10).map(s => ({signature: s, blockTime: null, err: null}));
+        continued += 1;
+        if (continued === 1) throw new RequestUnreachable('u', 'x');
+        return list.slice(10).map(s => ({signature: s, blockTime: null, err: null}));
+      },
+      getTransaction: async s => txs[s] ?? null,
+    });
+    await openActivity(reader);
+    fireEvent.click(await screen.findByRole('button', {name: 'Load more'}));
+    expect(await screen.findByText('Could not reach the Noctura server')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Load more'}));
+    await waitFor(() => expect(document.querySelectorAll('button.tx-row')).toHaveLength(12));
+    expect(screen.queryByText('Could not reach the Noctura server')).toBeNull();
+  });
+
   it('open sends on top, in a PENDING section', async () => {
     await openActivity(historyReader(), ext =>
       ext.local.set(PENDING_KEY, [pendingRecord({account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '2480000000'}, createdAt: Date.now() - 72_000})]),

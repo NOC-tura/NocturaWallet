@@ -138,6 +138,9 @@ async function probe(deps: WalletDeps, keys: unknown): Promise<Result> {
   return {ok: true, data: {resolved: true, balances}};
 }
 
+/** The stored envelope's account addresses (none without a wallet): the cache writers' check, read inside their mutex. */
+const envelopeKeys = async (ext: Ext): Promise<string[]> => (await readWalletView(ext))?.accounts.map(a => a.publicKey) ?? [];
+
 /** USD per whole token, re-validated: finite and > 0, else null — never 0 (E1). */
 const usd = (x: unknown): number | null => (typeof x === 'number' && Number.isFinite(x) && x > 0 ? x : null);
 
@@ -158,8 +161,9 @@ async function prices(ext: Ext, deps: WalletDeps): Promise<Result> {
     noc: stage.status === 'fulfilled' ? usd(stage.value) : null,
     at: deps.now(),
   };
-  // Best effort: a storage hiccup must not turn fresh prices into 'failed'.
-  await writeCachedPrices(ext, data).catch(() => undefined);
+  // Best effort: a storage hiccup must not turn fresh prices into 'failed'. The wallet check runs
+  // inside the cache's mutex (see writeCachedPrices).
+  await writeCachedPrices(ext, () => envelopeKeys(ext), data).catch(() => undefined);
   return {ok: true, data};
 }
 
@@ -246,8 +250,7 @@ export async function handleWallet(ext: Ext, deps: WalletDeps, type: WalletType,
         const data = {sol: b.sol.toString(), noc: b.noc.toString(), usdc: b.usdc.toString(), usdt: b.usdt.toString()};
         // E4: the last good read, for the next popup to show (stale) at once. Best effort.
         // The envelope is read inside the cache's mutex (see writeCachedBalances).
-        const envelope = async () => (await readWalletView(ext))?.accounts.map(a => a.publicKey) ?? [];
-        await writeCachedBalances(ext, envelope, account, data, deps.now()).catch(() => undefined);
+        await writeCachedBalances(ext, () => envelopeKeys(ext), account, data, deps.now()).catch(() => undefined);
         return {ok: true, data};
       }
       case 'wallet.prices':

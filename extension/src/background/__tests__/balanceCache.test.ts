@@ -18,10 +18,19 @@ describe('wallet.prices (E1)', () => {
 
   it('maps /wallet/prices and the stage price to numbers, with the time, and caches them', async () => {
     const ext = fakeExt();
+    await ext.local.set(VAULT_KEY, ENV);
     const deps = fakeDeps({prices: async () => ({solana: 150, usdc: 1, usdt: 0.999}), stagePrice: async () => 0.1501});
     const r = await handleWallet(ext, deps, 'wallet.prices', {});
     expect(r).toEqual({ok: true, data: {sol: 150, usdc: 1, usdt: 0.999, noc: 0.1501, at: deps.clock.t}});
     expect(await readCachedPrices(ext)).toEqual({sol: 150, usdc: 1, usdt: 0.999, noc: 0.1501, at: deps.clock.t});
+  });
+
+  // Final review M5: prices are cached only while a wallet exists (the same check as the balances).
+  it('with no wallet stored, fresh prices are answered but not cached', async () => {
+    const ext = fakeExt();
+    const deps = fakeDeps();
+    expect(await handleWallet(ext, deps, 'wallet.prices', {})).toMatchObject({ok: true, data: {sol: 150}});
+    expect(await ext.local.get(PRICE_CACHE_KEY)).toBeUndefined();
   });
 
   it('one source failing nulls only its own fields', async () => {

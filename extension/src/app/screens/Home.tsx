@@ -58,6 +58,8 @@ function PendingStrip({p, now, onOpen}: {p: Pending; now: number; onOpen: () => 
   );
 }
 
+/** A failed balance read with nothing to show — a controller addition (final review I1), awaiting the owner's copy. */
+export const BALANCES_FAILED_TEXT = 'Could not read your balances. Try again.';
 const HIDDEN_ROW = '••••••';
 const DOTS = [0, 1, 2, 3, 4, 5];
 const joined = (...parts: (string | null)[]): string => parts.filter((x): x is string => x !== null).join(' · ');
@@ -91,6 +93,8 @@ export function Home({onReceive, onActivity, onAccounts}: {onReceive: () => void
   const heroStale = b !== null && (stale || pricesStale);
   /** #42 reconnecting: fresh balances have landed, the price read still runs. */
   const syncing = mode === 'reconnecting' && m.refreshing;
+  /** The first read answered with a failure that has no banner of its own ('failed'): say so, with nothing to show. */
+  const readFailed = b === null && m.settled && !away && !refused;
   const open = m.pending.find(p => p.account === account?.publicKey && (p.state === 'pending' || p.state === 'stuck'));
 
   const top = (
@@ -109,9 +113,10 @@ export function Home({onReceive, onActivity, onAccounts}: {onReceive: () => void
   );
   const banner = refused ? <RefusedBanner /> : <NetBanner mode={mode} sustainedNow={long} lastSync={m.lastSync} failures={m.net.failures} now={now} />;
 
-  if (b === null && !away && !refused) {
+  if (b === null && !m.settled && !away && !refused) {
     // Cold mount: no cache yet, nothing read yet (design #11 state 1). Offline or refused with nothing
-    // read, the layout below shows "—" instead: never an endless skeleton, and Receive stays usable.
+    // read, or once the first read answered with any failure (final review I1), the layout below shows
+    // "—" instead: never an endless skeleton, and Receive stays usable (D36).
     return (
       <div className="screen s-dash" aria-busy="true">
         {top}
@@ -236,6 +241,11 @@ export function Home({onReceive, onActivity, onAccounts}: {onReceive: () => void
           <span className="lbl">Receive</span>
         </button>
       </div>
+      {readFailed ? (
+        <p className="field-msg noc-danger app-offline-note" role="alert">
+          {BALANCES_FAILED_TEXT}
+        </p>
+      ) : null}
       {away && !long ? <p className="noc-caption app-muted app-offline-note">Sending needs a network connection. Receiving works — your address is on this device. Use the refresh button to retry.</p> : null}
       {away && long ? (
         <div className="banner info app-banner app-callout">

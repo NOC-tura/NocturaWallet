@@ -7,7 +7,7 @@ import {BALANCE_CACHE_KEY, PRICE_CACHE_KEY} from '../../background/balanceCache'
 import {PENDING_KEY} from '../../background/pendingStore';
 import {HIDE_BALANCES_KEY} from '../prefs';
 import {REFUSED_TEXT} from '../ui/Banner';
-import {RequestUnreachable, RpcForbidden} from '../../../../core/solana/rpc';
+import {RequestUnreachable, RpcForbidden, RpcMalformed} from '../../../../core/solana/rpc';
 import {ACCOUNT, RECIPIENT, pendingRecord} from '../../background/__tests__/fixtures';
 
 // Spec §5.1 (#11) and §5.4 (#42 and the D26 refused state). Totals from walletReader: SOL
@@ -90,6 +90,57 @@ describe('#11 dashboard', () => {
     expect(screen.queryByRole('button', {name: 'Receive'})).toBeNull();
   });
 
+  // Final review I1: a first read that fails with a code that is neither a network one nor a 403
+  // ('failed') settles the first read too — never an endless skeleton (§5.1 "until the first read"),
+  // and Receive stays usable (D36).
+  it('a first read that fails without a network code (\'failed\'): the layout, not the skeleton; Receive, the refresh button and the failed-read line; a good retry clears it', async () => {
+    let reads = 0;
+    const reader = walletReader({
+      getBalance: async () => {
+        reads += 1;
+        if (reads === 1) throw new RpcMalformed('getBalance: no result');
+        return 62_482_100_000n;
+      },
+    });
+    await renderHome({reader});
+    expect(await screen.findByText('Could not read your balances. Try again.')).toBeTruthy();
+    expect(screen.queryByTestId('skeleton')).toBeNull();
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+    // Not a network state: no #42 or D26 banner.
+    expect(screen.queryByText('Could not reach the Noctura server')).toBeNull();
+    expect(screen.queryByText(REFUSED_TEXT)).toBeNull();
+    expect([...document.querySelectorAll('.tokens .row')].map(r => r.getAttribute('data-token'))).toEqual(['SOL', 'NOC']);
+    expect(document.body.textContent).not.toContain('$0.00');
+    const receive = screen.getByRole('button', {name: 'Receive'}) as HTMLButtonElement;
+    expect(receive.disabled).toBe(false);
+    fireEvent.click(receive);
+    expect(nav.onReceive).toHaveBeenCalledTimes(1);
+    const refresh = screen.getByRole('button', {name: 'Refresh'}) as HTMLButtonElement;
+    await waitFor(() => expect(refresh.disabled).toBe(false));
+    fireEvent.click(refresh);
+    expect(await screen.findByText('$10,112')).toBeTruthy();
+    expect(screen.queryByText('Could not read your balances. Try again.')).toBeNull();
+  });
+
+  it('the settled first read is per account: after a failed read of one account, another with nothing cached shows the skeleton until its own read, not the failed line', async () => {
+    const reader = walletReader({
+      getBalance: async address => {
+        if (address === ACCOUNT.publicKey) throw new RpcMalformed('getBalance: no result');
+        return never();
+      },
+    });
+    const {model} = await renderHomeWithModel({reader});
+    expect(await screen.findByText('Could not read your balances. Try again.')).toBeTruthy();
+    await act(async () => {
+      await model().engine.select(1);
+      // Not awaited: the second account's read never answers here.
+      void model().reload();
+    });
+    expect(await screen.findByTestId('skeleton')).toBeTruthy();
+    expect(screen.getByRole('button', {name: 'Accounts'}).textContent).toContain('Savings');
+    expect(screen.queryByText('Could not read your balances. Try again.')).toBeNull();
+  });
+
   it('stale: cached values at once, marked, until the fresh read lands', async () => {
     let answer: (v: bigint) => void = () => undefined;
     const reader = walletReader({getBalance: () => new Promise<bigint>(r => (answer = r))});
@@ -169,6 +220,45 @@ describe('#42 offline and the D26 refused state', () => {
     expect(await screen.findByText('Could not reach the Noctura server')).toBeTruthy();
     expect(screen.getByText('Showing your last synced balances.')).toBeTruthy();
     expect(screen.queryByText(/offline/)).toBeNull();
+  });
+
+  // Final review M1: a 403 from the price read is not hidden behind the balance read's "unreachable".
+  it('balances unreachable and prices refused (403): refused wins — the D26 banner, refresh disabled', async () => {
+    const reader = walletReader({
+      getBalance: async () => {
+        throw new RequestUnreachable('u', 'no answer');
+      },
+    });
+    await renderHome({
+      reader,
+      before: async ext => ext.local.set(BALANCE_CACHE_KEY, CACHE),
+      deps: {
+        prices: async () => {
+          throw new RpcForbidden('/wallet/prices');
+        },
+      },
+    });
+    expect(await screen.findByText(REFUSED_TEXT)).toBeTruthy();
+    expect(screen.queryByText('Could not reach the Noctura server')).toBeNull();
+    expect((screen.getByRole('button', {name: 'Refresh'}) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('balances refused (403) and prices unreachable: still refused', async () => {
+    const reader = walletReader({
+      getBalance: async () => {
+        throw new RpcForbidden('getBalance');
+      },
+    });
+    await renderHome({
+      reader,
+      deps: {
+        prices: async () => {
+          throw new RequestUnreachable('u', 'no answer');
+        },
+      },
+    });
+    expect(await screen.findByText(REFUSED_TEXT)).toBeTruthy();
+    expect(screen.queryByText('Could not reach the Noctura server')).toBeNull();
   });
 
   it('just disconnected: the design\u2019s banner and caption; Receive stays enabled and opens #13 (D36)', async () => {

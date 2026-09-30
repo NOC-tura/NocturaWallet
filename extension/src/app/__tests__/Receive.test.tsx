@@ -108,6 +108,30 @@ describe('#13 receive', () => {
     expect(document.querySelector('[data-qr]')?.getAttribute('data-qr')).toBe(`solana:${A}?amount=2.48&label=Noctura`);
   });
 
+  // Final review M2: the sticky button copies what the field says NOW, not the debounced request.
+  it('a copy inside the debounce window copies the field as typed: the new amount, or the bare address once the field is no request; the QR stays debounced', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    clipboard(writeText);
+    await openReceive();
+    const field = screen.getByRole('textbox', {name: 'Request amount'});
+    fireEvent.change(field, {target: {value: '2.48'}});
+    await act(async () => new Promise(r => setTimeout(r, QR_DEBOUNCE_MS + 20)));
+    vi.useFakeTimers();
+    fireEvent.change(field, {target: {value: '3'}});
+    await act(async () => vi.advanceTimersByTime(QR_DEBOUNCE_MS - 1));
+    // The request (and its QR) has not followed yet…
+    expect(document.querySelector('[data-qr]')?.getAttribute('data-qr')).toBe(`solana:${A}?amount=2.48&label=Noctura`);
+    // …but the copy does.
+    fireEvent.click(screen.getByRole('button', {name: 'Copy link'}));
+    expect(writeText).toHaveBeenLastCalledWith(`solana:${A}?amount=3&label=Noctura`);
+    // The same sticky button (its label may still read "Copied"): a field that is no request copies the bare address.
+    fireEvent.change(field, {target: {value: '1.0000000001'}});
+    fireEvent.click(document.querySelector('.sticky-bar .btn') as HTMLButtonElement);
+    expect(writeText).toHaveBeenLastCalledWith(A);
+    await act(async () => vi.advanceTimersByTime(QR_DEBOUNCE_MS));
+    expect(document.querySelector('[data-qr]')?.getAttribute('data-qr')).toBe(`solana:${A}`);
+  });
+
   it('no price: the fiat line reads "SOL · ≈ —", never "$0.00"', async () => {
     await openReceive({
       deps: {

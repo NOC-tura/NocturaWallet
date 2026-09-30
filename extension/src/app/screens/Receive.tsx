@@ -12,6 +12,13 @@ import {useCopy} from '../ui/useCopy';
 /** The pay request's QR is rebuilt this long after the last keystroke. */
 export const QR_DEBOUNCE_MS = 200;
 
+/** The field as a request: a positive SOL amount in lamports, or null (no request). */
+const requestOf = (text: string): bigint | null => {
+  const v = parseAmount(text, 9);
+  return v !== null && v > 0n ? v : null;
+};
+const uriOf = (address: string, amount: bigint | null): string => (amount === null ? `solana:${address}` : `solana:${address}?amount=${formatAmount(amount, 9, {min: 0, max: 9})}&label=Noctura`);
+
 /**
  * #13 receive (spec §5.3). Share is copy only (D19); the clipboard is never cleared (spec §4); the
  * shielded payment code is hidden (D4); the amount request is SOL only, as the design draws it.
@@ -27,15 +34,12 @@ export function Receive({onBack}: {onBack: () => void}) {
 
   // 200 ms after the last keystroke, the request (and its QR) follows the field.
   useEffect(() => {
-    const t = setTimeout(() => {
-      const v = parseAmount(text, 9);
-      setAmount(v !== null && v > 0n ? v : null);
-    }, QR_DEBOUNCE_MS);
+    const t = setTimeout(() => setAmount(requestOf(text)), QR_DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [text]);
 
   const decimal = amount === null ? null : formatAmount(amount, 9, {min: 0, max: 9});
-  const uri = amount === null ? `solana:${address}` : `solana:${address}?amount=${decimal}&label=Noctura`;
+  const uri = uriOf(address, amount);
   const shownUri = amount === null ? `solana:${shortAddress(address)}` : `solana:${shortAddress(address)}?amount=${decimal}`;
   const fiat = amount === null || m.prices?.sol == null || m.net.mode === 'offline' ? '—' : showUsd((Number(amount) / 1e9) * m.prices.sol);
 
@@ -43,6 +47,15 @@ export function Receive({onBack}: {onBack: () => void}) {
     if (copy === 'copied') setToast(true);
   }, [copy]);
 
+  /**
+   * The sticky button copies the field as it reads NOW (final review M2), not the request debounced
+   * for the QR: a copy within QR_DEBOUNCE_MS of a keystroke must not carry the previous amount. No
+   * request in the field → the bare address, as the button's idle label says.
+   */
+  const copyRequest = () => {
+    const now = requestOf(text);
+    doCopy(now === null ? address : uriOf(address, now));
+  };
   const copied = copy === 'copied';
   const buttonText = copy === 'copied' ? 'Copied' : copy === 'failed' ? 'Copy failed' : amount === null ? 'Copy address' : 'Copy link';
   return (
@@ -91,7 +104,7 @@ export function Receive({onBack}: {onBack: () => void}) {
         </div>
       </div>
       <div className="sticky-bar">
-        <button type="button" className="btn btn-primary" onClick={() => doCopy(amount === null ? address : uri)}>
+        <button type="button" className="btn btn-primary" onClick={copyRequest}>
           <ExtIcon name={copy === 'failed' ? 'close' : 'check'} size={18} />
           {buttonText}
         </button>

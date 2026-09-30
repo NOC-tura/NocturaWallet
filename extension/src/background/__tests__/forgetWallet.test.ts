@@ -368,6 +368,68 @@ describe('vault.forgetWallet — races with an unlock and a balance read (fix ro
     expect(await ext.local.get(BALANCE_CACHE_KEY)).toBeUndefined();
   });
 
+  // Final review M5: v1_price_cache is written under the cache mutex, and only while a wallet exists.
+  it('a wallet.prices whose answer lands after the forget leaves no price cache behind', async () => {
+    const {ext} = await setup();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>(resolve => (release = resolve));
+    let asked: () => void = () => undefined;
+    const inFlight = new Promise<void>(resolve => (asked = resolve));
+    const deps = fakeDeps({
+      reader: zero(),
+      prices: async () => {
+        asked();
+        await gate;
+        return {solana: 150, usdc: 1, usdt: 1};
+      },
+    });
+    const popupPage = {id: ID, origin: ORIGIN, url: `${ORIGIN}/popup.html`};
+    const prices = handleMessage(ext, {type: 'wallet.prices'}, popupPage, deps);
+    await inFlight;
+    expect(await forgetWallet(ext, deps, {expectedRevision: REV})).toBe('forgotten');
+    expect(await ext.local.get(PRICE_CACHE_KEY)).toBeUndefined();
+    release();
+    expect(await prices).toMatchObject({ok: true});
+    expect(await ext.local.get(PRICE_CACHE_KEY)).toBeUndefined();
+  });
+
+  it('a wallet.prices whose wallet check straddles the forget leaves no price cache behind', async () => {
+    const {ext} = await setup();
+    const get = ext.local.get.bind(ext.local);
+    let armed = false;
+    let reached: () => void = () => undefined;
+    const atRead = new Promise<void>(resolve => (reached = resolve));
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>(resolve => (release = resolve));
+    ext.local.get = async key => {
+      const v = await get(key);
+      if (key === VAULT_KEY && armed) {
+        // The price write's wallet check: it saw the old wallet, and its answer arrives late.
+        armed = false;
+        reached();
+        await gate;
+      }
+      return v;
+    };
+    const deps = fakeDeps({
+      reader: zero(),
+      prices: async () => {
+        // Armed only once the prices are in: the next v1_vault read is the cache write's own check.
+        armed = true;
+        return {solana: 150, usdc: 1, usdt: 1};
+      },
+    });
+    const popupPage = {id: ID, origin: ORIGIN, url: `${ORIGIN}/popup.html`};
+    const prices = handleMessage(ext, {type: 'wallet.prices'}, popupPage, deps);
+    await atRead;
+    const forget = forgetWallet(ext, deps, {expectedRevision: REV});
+    await settle();
+    release();
+    expect(await forget).toBe('forgotten');
+    expect(await prices).toMatchObject({ok: true});
+    expect(await ext.local.get(PRICE_CACHE_KEY)).toBeUndefined();
+  });
+
   it('a storage failure after the vault write (the poller restart) still answers ok', async () => {
     const {ext, deps} = await setup();
     const get = ext.local.get.bind(ext.local);

@@ -459,7 +459,9 @@ simulation: {
 - **Store:** `v1_balance_cache` in `storage.local`, background-written only:
   `{[publicKey]: {sol, noc, usdc, usdt (base-unit strings), at}}`. Written after every successful
   `wallet.balances`. On each write it is trimmed to the accounts in the envelope (≤ 100).
-  `v1_price_cache`: `{sol, usdc, usdt, noc, at}`, written after every successful `wallet.prices`.
+  `v1_price_cache`: `{sol, usdc, usdt, noc, at}`, written after every successful `wallet.prices`
+  while a wallet is stored — checked under the same cache mutex as the balance write and E5's
+  cache removal, so a price read in flight across a delete leaves no cache behind (final review M5).
   Both keys join `BACKGROUND_OWNED_KEYS` (no other file may even name them).
 - **Request:** `{type: 'wallet.cached', account}` →
   `{ok: true, data: {balances: {sol, noc, usdc, usdt, at} | null, prices: {sol, usdc, usdt, noc, at} | null}}`.
@@ -497,7 +499,10 @@ simulation: {
   - `stored-invalid`: the *stored* `v1_vault` cannot be read as an envelope;
   - `no-wallet`;
   - `busy`: `expectedRevision` is not the stored envelope's revision, at the start or at the
-    re-check before the vault write, or the wallet was unlocked again meanwhile (R2-M1);
+    re-check before the vault write (R2-M1);
+  - `unlocked`: the wallet was unlocked again meanwhile — a `vault.setKeys` landed between step 3's
+    lock and step 5's re-check (R2-M1; `accountsStore.ts` step 5, ledger L4). Nothing was deleted,
+    and the wallet is **not** locked (the unlock that landed stands);
   - `send-open`: a send is `pending` or `stuck`;
   - `funded` (only with `guard: 'unfunded'`): an account now holds one of the four tokens (C6);
   - `unreachable` / `coordinator-refused` (only with the guard): the balance read failed or was
@@ -550,10 +555,13 @@ simulation: {
      wallet is left locked and otherwise unchanged; the page says so.
   5. **Immediately before the vault write, re-check** (R2-M1): re-read `v1_vault` and re-compare its
      revision with `expectedRevision` (`busy` if it moved), and, under `sessionMutex`, confirm
-     `getSession() === null` (`busy` if an unlock landed since step 3; `vault.setKeys` does not
-     take `serial`, so this is the one race left inside the section). A `busy` here has changed
+     `getSession() === null` (**`unlocked`** if an unlock landed since step 3; `vault.setKeys` does
+     not take `serial`, so this is the one race left inside the section). A `busy` here has changed
      nothing but the lock and the removal of closed pending records. The page says: "The wallet
-     changed while this was running. Nothing was deleted; the wallet is locked. Start again."
+     changed while this was running. Nothing was deleted; the wallet is locked. Start again." An
+     `unlocked` here has changed the same, but the wallet is unlocked again, so that line would be
+     false. **Note for plan 2:** #39 and #40 need their own line for `unlocked` — the `busy` copy
+     says "the wallet is locked", which is false here (owner's copy to come).
   6. **The vault write:** `v1_vault` removed, or overwritten by `replacement`. A crash before this
      write leaves the old wallet in place and locked, and the operation can be repeated. There is
      never half a wallet.
@@ -614,7 +622,7 @@ simulation: {
     atomic `updatePending` clear with `local.remove(v1_pending)` must fail that test; a record
     appended after step 4 is kept; `busy` on a stale revision; **R2-M1:** a `storeEnvelope`
     injected between steps → `busy` and `v1_vault` byte-identical; a `vault.setKeys` injected
-    before step 5 → `busy` and `v1_vault` byte-identical; **C4:** other scheme, an extra account, a
+    before step 5 → `unlocked` and `v1_vault` byte-identical; **C4:** other scheme, an extra account, a
     missing account and one changed key → `malformed`, nothing changed; **C6:** with the guard, a
     non-zero balance on any account (each of the four tokens) → `funded`, a failed read →
     `unreachable`, a 403 → `coordinator-refused`, each with nothing changed and the wallet not
@@ -1479,7 +1487,12 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   except SOL and NOC, which always show.
 - **States:**
   - `cold-mount skeleton`: only when no cache exists (first open). Skeleton hero and 4 rows, until
-    the first read.
+    the first read answers — either way.
+  - **extension-only `read failed`** (final review I1): the first read answered with a failure that
+    has no banner of its own (`failed`, not `unreachable` or `coordinator-refused`) and nothing is
+    cached → #11's layout with "—" (never the skeleton, never "$0.00"), Receive (D36), the refresh
+    button, and the danger line "Could not read your balances. Try again." — **a controller
+    addition (final review), awaiting the owner's copy**. A good refresh replaces it.
   - `loaded`: as above.
   - `hidden balance`: eye toggled → "Tap eye to reveal" in place of the total, "••••SOL" /
     "••••NOC", rows "•••••• SOL" / "••••". Persisted per S4 (`localStorage`

@@ -147,6 +147,8 @@ export function Activity({onTx, onReceive}: {onTx: (item: HistoryItem) => void; 
     if (r.ok) {
       setItems(prev => [...(prev ?? []), ...r.data.items]);
       setNext(r.data.next);
+      // A good page clears an earlier "Load more" failure and its banner (final review M3), as load() does.
+      setError(null);
       m.reached();
     } else {
       setError(r.error);
