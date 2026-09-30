@@ -402,7 +402,7 @@ simulation: {
   - send: `{kind: 'send', account, token: 'SOL'|'NOC'|'USDC'|'USDT', recipient, amount (base units),
     networkLamports, markupLamports, markupReason, rentLamports, reasons, thresholdCents}`;
   - settings: `{kind: 'settings', autoLockMinutes: number | null, reauthUsdCents: number | null}`.
-  When `prepareSend` reuses a live challenge (`challengeReusable`), it refreshes the fee fields
+  When `prepareSend` reuses a live challenge (`rebaseChallenge`), it refreshes the fee fields
   of `about` from the new prepare. The digest and the identity fields never change. `isChallenge`
   validates `about`'s exact shape; a stored record with another shape is dropped, as today.
 - **Challenge life re-based on reuse (owner D39; review H3).** The timing rule, stated once:

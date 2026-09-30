@@ -14,7 +14,7 @@ export const CHALLENGE_TTL_MS = 120_000;
 export const CHALLENGE_MAX_LIFE_MS = 10 * 60_000;
 
 /** What randomId produces. Anything else — `__proto__`, `constructor`, garbage — is refused unread. */
-const CHALLENGE_ID = /^[0-9a-f]{32}$/;
+export const CHALLENGE_ID = /^[0-9a-f]{32}$/;
 
 /**
  * The action behind a challenge, written by the same call that binds the digest, from the same parsed
@@ -54,6 +54,8 @@ const TOKENS: readonly string[] = ['SOL', 'NOC', 'USDC', 'USDT'];
 const REASONS: readonly string[] = ['first-send', 'over-5-percent', 'over-usd-threshold', 'whole-balance-to-new'];
 const FEE_REASONS: readonly string[] = ['pre-tge', 'zero-fee-eligible', 'status-unknown', 'charged'];
 const DIGITS = /^\d{1,20}$/;
+/** A base58 Solana address's shape (32–44 characters). */
+const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const isInt = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x);
 const isIntOrNull = (x: unknown): boolean => x === null || isInt(x);
 
@@ -65,7 +67,9 @@ function isAbout(x: unknown): x is ChallengeAbout {
   if (a.kind !== 'send') return false;
   return (
     typeof a.account === 'string' &&
+    ADDRESS.test(a.account) &&
     typeof a.recipient === 'string' &&
+    ADDRESS.test(a.recipient) &&
     typeof a.token === 'string' &&
     TOKENS.includes(a.token) &&
     [a.amount, a.networkLamports, a.markupLamports, a.rentLamports].every(v => typeof v === 'string' && DIGITS.test(v)) &&
@@ -130,9 +134,26 @@ export async function rebaseChallenge(ext: Ext, now: number, id: string, digest:
     const store = live(await load(ext), now);
     const c = store.get(id);
     if (c === undefined || c.digest !== digest || c.about.kind !== 'send') return false;
-    // A live challenge has issuedAt + CHALLENGE_MAX_LIFE_MS ≥ expiresAt > now, so this never shortens it.
+    // With a clock that only moves forward, a live challenge has issuedAt + CHALLENGE_MAX_LIFE_MS ≥
+    // expiresAt > now, so this does not shorten it; a clock stepped backwards can shorten it, which
+    // fails closed (a new challenge, a new proof).
     const expiresAt = Math.min(now + CHALLENGE_TTL_MS, c.issuedAt + CHALLENGE_MAX_LIFE_MS);
-    const about = {...c.about, ...refresh};
+    // Built field by field: the identity fields come only from the stored record, and nothing else
+    // the caller's object carries is written.
+    const about: ChallengeAbout = {
+      kind: 'send',
+      account: c.about.account,
+      token: c.about.token,
+      recipient: c.about.recipient,
+      amount: c.about.amount,
+      networkLamports: refresh.networkLamports,
+      markupLamports: refresh.markupLamports,
+      markupReason: refresh.markupReason,
+      rentLamports: refresh.rentLamports,
+      reasons: refresh.reasons,
+      thresholdCents: refresh.thresholdCents,
+    };
+    if (!isAbout(about)) return false;
     store.set(id, {...c, expiresAt, about});
     await save(ext, store);
     return true;
@@ -163,16 +184,6 @@ export async function challengeSatisfied(ext: Ext, now: number, id: string, dige
   if (!CHALLENGE_ID.test(id)) return false;
   const c = (await load(ext)).get(id);
   return c !== undefined && c.satisfied && c.expiresAt > now && c.digest === digest;
-}
-
-/**
- * May a re-prepare of the same action keep this challenge instead of issuing a new one? True for a
- * live challenge with this digest, proven or not. Reads only: nothing is consumed or changed.
- */
-export async function challengeReusable(ext: Ext, now: number, id: string, digest: string): Promise<boolean> {
-  if (!CHALLENGE_ID.test(id)) return false;
-  const c = (await load(ext)).get(id);
-  return c !== undefined && c.expiresAt > now && c.digest === digest;
 }
 
 /**

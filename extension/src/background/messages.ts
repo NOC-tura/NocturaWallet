@@ -5,7 +5,7 @@ import type {SessionAccount} from '../vault/accounts';
 import {getSession, setSession} from './session';
 import {armAutolock, lock} from './autolock';
 import type {WalletDeps} from './deps';
-import {challengeInfo, satisfyChallenge} from './reauthChallenges';
+import {CHALLENGE_ID, challengeInfo, satisfyChallenge} from './reauthChallenges';
 import {storeEnvelope} from './accountsStore';
 import {WALLET_TYPES, handleWallet, isWalletType, type Result} from './walletApi';
 
@@ -134,7 +134,7 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
     case 'vault.challengeInfo': {
       if (deps === undefined) return {ok: false, error: 'unavailable'};
       const challengeId = (msg as {challengeId?: unknown}).challengeId;
-      if (typeof challengeId !== 'string' || !/^[0-9a-f]{32}$/.test(challengeId)) return {ok: false, error: 'malformed'};
+      if (typeof challengeId !== 'string' || !CHALLENGE_ID.test(challengeId)) return {ok: false, error: 'malformed'};
       if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
       // The description comes only from here, never from the vault page's URL (E3).
       const about = await challengeInfo(ext, deps.now(), challengeId);

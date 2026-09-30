@@ -332,7 +332,6 @@ export async function prepareSend(
   const messageB64 = base64.encode(message.serialize());
   const intentDigest = sendIntentDigest(account, intent);
   const carried = opts.challengeId;
-  // Issued before the critical section below: issueChallenge takes sessionMutex itself, which is not re-entrant.
   const fees = {
     networkLamports: networkLamports.toString(),
     priorityLamports: priorityLamports.toString(),
@@ -349,6 +348,8 @@ export async function prepareSend(
     reasons,
     thresholdCents: settings.reauthUsdCents,
   };
+  // Issued or re-based before the critical section below: issueChallenge and rebaseChallenge each
+  // take sessionMutex themselves, which is not re-entrant.
   let challengeId: string | null = null;
   if (reasons.length > 0) {
     // A live challenge of this intent is renewed (D39, capped by C5); anything else gets a new one.
