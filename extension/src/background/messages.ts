@@ -5,7 +5,7 @@ import type {SessionAccount} from '../vault/accounts';
 import {getSession, setSession} from './session';
 import {armAutolock, lock} from './autolock';
 import type {WalletDeps} from './deps';
-import {satisfyChallenge} from './reauthChallenges';
+import {challengeInfo, satisfyChallenge} from './reauthChallenges';
 import {storeEnvelope} from './accountsStore';
 import {WALLET_TYPES, handleWallet, isWalletType, type Result} from './walletApi';
 
@@ -24,12 +24,13 @@ export interface Sender {
  * sets — never the URL the message claims, and never "has a tab", which a full-tab
  * extension page also has.
  */
-export const PRIVILEGED = ['vault.setKeys', 'vault.lock', 'vault.status', 'vault.reauthOk', 'vault.storeEnvelope', 'activity.ping', ...WALLET_TYPES] as const;
+export const PRIVILEGED = ['vault.setKeys', 'vault.lock', 'vault.status', 'vault.reauthOk', 'vault.storeEnvelope', 'vault.challengeInfo', 'activity.ping', ...WALLET_TYPES] as const;
 /**
- * Only the vault page itself may hand over keys, report a re-authentication it proved, or hand over
- * the envelope it re-encrypted (the background is the one writer of v1_vault).
+ * Only the vault page itself may hand over keys, report a re-authentication it proved, hand over
+ * the envelope it re-encrypted (the background is the one writer of v1_vault), or read what a
+ * re-authentication is for (vault.challengeInfo, B1b-2a E3: the popup and the tab cannot).
  */
-const VAULT_PAGE_ONLY: readonly string[] = ['vault.setKeys', 'vault.reauthOk', 'vault.storeEnvelope'];
+const VAULT_PAGE_ONLY: readonly string[] = ['vault.setKeys', 'vault.reauthOk', 'vault.storeEnvelope', 'vault.challengeInfo'];
 export const PAGE: readonly string[] = [];
 
 function isOwnPage(ext: Ext, s: Sender): boolean {
@@ -129,6 +130,15 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       if (typeof challengeId !== 'string') return {ok: false, error: 'malformed'};
       if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
       return (await satisfyChallenge(ext, deps.now(), challengeId)) ? {ok: true} : {ok: false, error: 'unknown-challenge'};
+    }
+    case 'vault.challengeInfo': {
+      if (deps === undefined) return {ok: false, error: 'unavailable'};
+      const challengeId = (msg as {challengeId?: unknown}).challengeId;
+      if (typeof challengeId !== 'string' || !/^[0-9a-f]{32}$/.test(challengeId)) return {ok: false, error: 'malformed'};
+      if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
+      // The description comes only from here, never from the vault page's URL (E3).
+      const about = await challengeInfo(ext, deps.now(), challengeId);
+      return about === null ? {ok: false, error: 'unknown-challenge'} : {ok: true, data: about};
     }
     case 'vault.storeEnvelope': {
       const {expectedRevision, envelope} = msg as {expectedRevision?: unknown; envelope?: unknown};

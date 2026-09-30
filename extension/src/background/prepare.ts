@@ -8,7 +8,7 @@ import {EXTENSION_FEE_INPUTS} from './feePolicy';
 import {knownRecipients} from './knownRecipients';
 import {readSettings} from './settings';
 import {sendReauthReasons, usdMicros, type SendReauthReason} from './reauthPolicy';
-import {CHALLENGE_TTL_MS, challengeReusable, issueChallenge} from './reauthChallenges';
+import {CHALLENGE_TTL_MS, issueChallenge, rebaseChallenge, type SendAboutRefresh} from './reauthChallenges';
 import {digestOf, randomId} from './digest';
 import {SendRefused, type SendIntent} from './sendTypes';
 import {estimatePriorityFee} from '../../../core/solana/priorityFee';
@@ -333,10 +333,6 @@ export async function prepareSend(
   const intentDigest = sendIntentDigest(account, intent);
   const carried = opts.challengeId;
   // Issued before the critical section below: issueChallenge takes sessionMutex itself, which is not re-entrant.
-  let challengeId: string | null = null;
-  if (reasons.length > 0) {
-    challengeId = carried !== undefined && (await challengeReusable(ext, deps.now(), carried, intentDigest)) ? carried : await issueChallenge(ext, deps, intentDigest);
-  }
   const fees = {
     networkLamports: networkLamports.toString(),
     priorityLamports: priorityLamports.toString(),
@@ -344,6 +340,23 @@ export async function prepareSend(
     markupLamports: markupLamports.toString(),
     markupReason: fee.reason,
   };
+  // E3: what #10 shows, bound to the challenge by the same values the digest was computed from.
+  const refresh: SendAboutRefresh = {
+    networkLamports: fees.networkLamports,
+    markupLamports: fees.markupLamports,
+    markupReason: fees.markupReason,
+    rentLamports: fees.rentLamports,
+    reasons,
+    thresholdCents: settings.reauthUsdCents,
+  };
+  let challengeId: string | null = null;
+  if (reasons.length > 0) {
+    // A live challenge of this intent is renewed (D39, capped by C5); anything else gets a new one.
+    const renewed = carried !== undefined && (await rebaseChallenge(ext, deps.now(), carried, intentDigest, refresh));
+    challengeId = renewed
+      ? (carried as string)
+      : await issueChallenge(ext, deps, intentDigest, {kind: 'send', account, token: intent.token, recipient: intent.recipient, amount: intent.amount, ...refresh});
+  }
   const bound = {
     id: randomId(deps.randomBytes),
     account,

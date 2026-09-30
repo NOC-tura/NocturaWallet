@@ -172,7 +172,7 @@ async function setSettings(ext: Ext, deps: WalletDeps, msg: Record<string, unkno
       if (typeof id !== 'string' || !(await consumeChallenge(ext, deps.now(), id, digest))) {
         // A lock may have landed since the check above: never issue a challenge into a locked session.
         if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
-        const challengeId = await issueChallenge(ext, deps, digest);
+        const challengeId = await issueChallenge(ext, deps, digest, {kind: 'settings', autoLockMinutes: patch.autoLockMinutes ?? null, reauthUsdCents: patch.reauthUsdCents ?? null});
         // …nor keep one a lock raced past (issueChallenge wrote after the lock's clear): as in
         // prepareSend, remove just the challenges, under the mutex the lock takes — never lock()
         // or clearSession() here, which would wait on this very mutex.

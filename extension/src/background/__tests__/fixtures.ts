@@ -6,6 +6,7 @@ import type {SessionAccount} from '../../vault/accounts';
 import type {SimulationOutcome, SolanaReader} from '../../../../core/solana/rpc';
 import {setSession} from '../session';
 import type {PendingRecord} from '../pendingStore';
+import type {ChallengeAbout} from '../reauthChallenges';
 import {fakeReader} from './fakeDeps';
 
 /** A real Ed25519 keypair (32 × 0x01 seed): its address is AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9. */
@@ -121,3 +122,6 @@ export function signedWire(lamports = 1n): Uint8Array {
   tx.addSignature(payer, ed25519.sign(message.serialize(), SEED));
   return tx.serialize();
 }
+
+/** A well-formed `about` for challenges whose action a test does not care about. */
+export const SETTINGS_ABOUT: ChallengeAbout = {kind: 'settings', autoLockMinutes: null, reauthUsdCents: null};

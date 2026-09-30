@@ -1,3 +1,4 @@
+import {SETTINGS_ABOUT} from './fixtures';
 import {ed25519} from '@noble/curves/ed25519.js';
 import {base58, base64} from '@scure/base';
 import {PRIVILEGED, handleMessage} from '../messages';
@@ -190,7 +191,7 @@ describe('message partitions (B1b-1 types)', () => {
   // Listed literally, not read from PRIVILEGED: dropping a type from the list must make it
   // 'unknown type' here, which fails, rather than silently shrinking the test.
   const ALL = [
-    'vault.setKeys', 'vault.lock', 'vault.status', 'vault.reauthOk', 'vault.storeEnvelope', 'activity.ping',
+    'vault.setKeys', 'vault.lock', 'vault.status', 'vault.reauthOk', 'vault.storeEnvelope', 'vault.challengeInfo', 'activity.ping',
     'wallet.state', 'wallet.balances', 'wallet.probeBalances', 'wallet.prepareSend', 'wallet.send', 'wallet.resend',
     'wallet.pending', 'wallet.preparedFor', 'wallet.history', 'wallet.prices', 'wallet.cached', 'accounts.rename', 'accounts.select', 'settings.get', 'settings.set',
   ];
@@ -213,7 +214,7 @@ describe('message partitions (B1b-1 types)', () => {
     const ext = fakeExt();
     const deps = fakeDeps();
     await handleMessage(ext, {type: 'vault.setKeys', accounts: ACC}, unlockPage);
-    const challengeId = await issueChallenge(ext, deps, 'd');
+    const challengeId = await issueChallenge(ext, deps, 'd', SETTINGS_ABOUT);
     expect(await handleMessage(ext, {type: 'vault.reauthOk', challengeId}, popup, deps)).toEqual({ok: false, error: 'forbidden'});
     expect(await handleMessage(ext, {type: 'vault.reauthOk', challengeId: 'f'.repeat(32)}, unlockPage, deps)).toEqual({ok: false, error: 'unknown-challenge'});
     expect(await handleMessage(ext, {type: 'vault.reauthOk', challengeId}, unlockPage, deps)).toEqual({ok: true});
