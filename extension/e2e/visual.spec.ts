@@ -34,6 +34,10 @@ test('visual: the plan-1 screens and states at 412 × 600', async () => {
     ]);
     const p = await h.openPopup();
     await expect(p.getByText('10.0000 SOL', {exact: true})).toBeVisible();
+    // #11 loaded, not #42: under `unshare -rn` Chromium reports navigator.onLine false at launch, so the
+    // model starts offline and the first good read shows "Connected · syncing" for 1.5 s. Wait it out,
+    // so the shot is the loaded state in either launch mode (Task 17 fix round 2).
+    await expect(p.getByText('Connected · syncing')).toHaveCount(0);
     await shot(p, '11-loaded');
     await p.getByRole('button', {name: 'Hide balance'}).click();
     await expect(p.getByText('Tap eye to reveal')).toBeVisible();

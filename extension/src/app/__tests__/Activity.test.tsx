@@ -105,6 +105,9 @@ describe('#26 activity', () => {
     // The rest keep their tones: sent, recv (rotated in app.css), purchase in the swap tint, fail.
     const tone = (title: string) => ((screen.getByText(title).closest('button') as HTMLElement).querySelector('.ic') as HTMLElement).className;
     expect([tone('Sent SOL'), tone('Received USDC'), tone('Presale purchase'), tone('Failed · transaction')]).toEqual(['ic send', 'ic recv', 'ic swap', 'ic fail']);
+    // Fix round 2 (#2): the purchase row follows 26b's swap row (11813): `.ic.swap` with #i-swap.
+    const purchase = (screen.getByText('Presale purchase').closest('button') as HTMLElement).querySelector('.ic') as HTMLElement;
+    expect([...purchase.querySelectorAll('path')].map(p => p.getAttribute('d'))).toEqual(['M3 8h13a4 4 0 0 1 0 8h-3', 'm7 4-4 4 4 4', 'M21 16H8a4 4 0 0 1 0-8h3', 'm17 20 4-4-4-4']);
   });
 
   it('filters Sent / Received / Purchases apply to the loaded rows, and the choice is remembered', async () => {

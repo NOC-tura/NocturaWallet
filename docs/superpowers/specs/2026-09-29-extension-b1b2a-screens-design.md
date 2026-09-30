@@ -1667,8 +1667,8 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     ✕ glyph), not "Failed · sent SOL"; and the **Sent filter does not include failed sends** (a failed
     row matches only "All"). The design's failed row ("— SOL" with the fee in dollars beneath) needs
     the attempted kind and token, which the decoder does not keep. Owner decision in plan 3.
-  - **Purchase row:** the design has no purchase row. It keeps the swap tint (`.ic.swap`) with the
-    transfer arrow (`#i-arrow-up-right`), and its meta "NOC · 4:36 PM" is in the body face.
+  - **Purchase row:** the design has no purchase row; it follows 26b's swap row (`.ic.swap` with
+    `#i-swap`).
   - **Other row:** the design's no-funds row (`.ic` neutral, `#i-doc`, 26b) is used, but its amount
     stays "—" (D24's generic row), not the design's "No funds moved": the meta line already says "no
     transfer to or from this account".

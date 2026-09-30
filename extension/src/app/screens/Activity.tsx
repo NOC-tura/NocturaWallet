@@ -245,7 +245,7 @@ export function Activity({onTx, onReceive}: {onTx: (item: HistoryItem) => void; 
               return (
                 <button type="button" className="tx-row" key={item.signature} onClick={() => onTx(item)}>
                   <span className={t.tone === 'plain' ? 'ic' : `ic ${t.tone}`}>
-                    <ExtIcon name={t.tone === 'fail' ? 'close' : t.tone === 'plain' ? 'doc' : 'arrow-up-right'} size={20} />
+                    <ExtIcon name={t.tone === 'fail' ? 'close' : t.tone === 'plain' ? 'doc' : t.tone === 'swap' ? 'swap' : 'arrow-up-right'} size={20} />
                   </span>
                   <span className="meta">
                     <span className="pri noc-body-lg">{t.title}</span>

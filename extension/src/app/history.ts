@@ -59,8 +59,8 @@ export function rowText(item: HistoryItem, accounts: readonly Account[]): {title
       return {title: `Received ${item.token ?? ''}`.trim(), meta: `from ${c.text}`, amount: amount('+'), tone: 'recv', mono: c.mono};
     }
     case 'purchase':
-      // The design has no purchase row: it keeps the swap tint (a trade, NOC for SOL or a stablecoin) and
-      // the transfer arrow — declared in spec §6.2 Differs.
+      // The design has no purchase row: it follows 26b's swap row (a trade, NOC for SOL or a stablecoin),
+      // `.ic.swap` with #i-swap — declared in spec §6.2 Differs.
       return {title: 'Presale purchase', meta: 'NOC', amount: amount(MINUS), tone: 'swap', mono: false};
     case 'other':
       return {title: 'Other transaction', meta: 'no transfer to or from this account', amount: '—', tone: 'plain', mono: false};

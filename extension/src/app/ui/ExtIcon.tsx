@@ -31,7 +31,8 @@ export type ExtIconName =
   | 'globe'
   | 'trend-up'
   | 'doc'
-  | 'copy';
+  | 'copy'
+  | 'swap';
 
 const PATHS: Record<ExtIconName, ReactNode> = {
   'trend-up': (
@@ -44,6 +45,14 @@ const PATHS: Record<ExtIconName, ReactNode> = {
     <>
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <polyline points="14 2 14 8 20 8" />
+    </>
+  ),
+  swap: (
+    <>
+      <path d="M3 8h13a4 4 0 0 1 0 8h-3" />
+      <path d="m7 4-4 4 4 4" />
+      <path d="M21 16H8a4 4 0 0 1 0-8h3" />
+      <path d="m17 20 4-4-4-4" />
     </>
   ),
   copy: (

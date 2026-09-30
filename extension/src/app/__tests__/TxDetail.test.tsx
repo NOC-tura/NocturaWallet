@@ -152,6 +152,8 @@ describe('#27 tx-detail', () => {
     renderInWallet(<TxDetail signature={sig(3)} item={item({signature: sig(3), kind: 'purchase', amount: 1_000_000_000n, counterparty: null})} onBack={() => undefined} />);
     expect(await screen.findByText('PRESALE PURCHASE')).toBeTruthy();
     expect(screen.getByText('−1.0000 SOL')).toBeTruthy();
+    // Fix round 2 (#3): the purchase's fee line carries its dollars too (12136's form).
+    expect(await screen.findByText('0.000 005 SOL · $0.0007')).toBeTruthy();
   });
 
   it('reached by signature only: reads history pages until it finds it; not found in 3 pages → the not-yet line and the explorer link', async () => {
