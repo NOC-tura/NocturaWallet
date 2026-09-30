@@ -202,3 +202,16 @@ export async function consumeChallenge(ext: Ext, now: number, id: string, digest
     return c.digest === digest;
   });
 }
+
+/** Remove every challenge bound to one of these digests (wallet.discardPrepared, E7). Under sessionMutex by the caller. */
+export async function dropChallengesFor(ext: Ext, digests: ReadonlySet<string>): Promise<void> {
+  const store = await load(ext);
+  let changed = false;
+  for (const [id, c] of store) {
+    if (digests.has(c.digest)) {
+      store.delete(id);
+      changed = true;
+    }
+  }
+  if (changed) await save(ext, store);
+}

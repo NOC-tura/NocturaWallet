@@ -5,10 +5,10 @@ import type {WalletDeps} from './deps';
 import {PREPARED_KEY, REAUTH_KEY, getSession, sessionMutex} from './session';
 import {inFlightFor, readPending} from './pendingStore';
 import {EXTENSION_FEE_INPUTS} from './feePolicy';
-import {knownRecipients} from './knownRecipients';
+import {isKnownRecipient} from './knownRecipients';
 import {readSettings} from './settings';
 import {sendReauthReasons, usdMicros, type SendReauthReason} from './reauthPolicy';
-import {CHALLENGE_TTL_MS, issueChallenge, rebaseChallenge, type SendAboutRefresh} from './reauthChallenges';
+import {CHALLENGE_TTL_MS, dropChallengesFor, issueChallenge, rebaseChallenge, type SendAboutRefresh} from './reauthChallenges';
 import {digestOf, randomId} from './digest';
 import {SendRefused, type SendIntent} from './sendTypes';
 import {estimatePriorityFee} from '../../../core/solana/priorityFee';
@@ -319,7 +319,7 @@ export async function prepareSend(
     token: tokenChange,
   };
 
-  const knownRecipient = session.some(a => a.publicKey === intent.recipient) || (await knownRecipients(ext)).has(intent.recipient);
+  const knownRecipient = await isKnownRecipient(ext, session, intent.recipient);
   const settings = await readSettings(ext);
   const reasons = sendReauthReasons({
     knownRecipient,
@@ -410,6 +410,22 @@ export async function preparedFor(ext: Ext, deps: Pick<WalletDeps, 'now'>, accou
   const newest = mine.reduce<PreparedSend | null>((a, p) => (a === null || p.createdAt >= a.createdAt ? p : a), null);
   if (newest === null) return null;
   return {...viewOf(newest), intent: newest.intent, expired: now - newest.createdAt >= PREPARED_TTL_MS};
+}
+
+/**
+ * wallet.discardPrepared (E7): the user left the review (#19 back, #20 Cancel, #10 Cancel send). Every
+ * prepared send of this account goes, and every challenge bound to one of their intents — a settings
+ * challenge or another account's has another digest and stays. Afterwards preparedFor is null, and a
+ * stale #10 tab for that intent gets unknown-challenge. Nothing was signed, so nothing else changes.
+ */
+export async function discardPrepared(ext: Ext, account: string): Promise<void> {
+  await sessionMutex(async () => {
+    const all = await loadPrepared(ext);
+    const dropped = all.filter(p => p.account === account);
+    if (dropped.length === 0) return;
+    await ext.session.set(PREPARED_KEY, all.filter(p => p.account !== account));
+    await dropChallengesFor(ext, new Set(dropped.map(p => p.intentDigest)));
+  });
 }
 
 export async function peekPrepared(ext: Ext, id: string): Promise<PreparedSend | null> {

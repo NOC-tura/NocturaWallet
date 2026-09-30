@@ -202,7 +202,7 @@ export async function pollOnce(ext: Ext, deps: WalletDeps): Promise<boolean> {
     }),
   );
   for (const r of open) {
-    if (updates.get(r.id)?.state === 'confirmed') await addKnownRecipient(ext, r.intent.recipient);
+    if (updates.get(r.id)?.state === 'confirmed') await addKnownRecipient(ext, r.intent.recipient, now);
   }
   return after.some(isOpen);
 }

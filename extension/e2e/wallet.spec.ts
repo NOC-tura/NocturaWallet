@@ -146,7 +146,8 @@ test('create a wallet, unlock it, re-authenticate a first send, send SOL: pendin
     expect((await pendingRecord(popup, signature))?.state).toBe('pending');
     await expect.poll(() => pendingState(popup, signature), {timeout: 30_000, intervals: [1_000]}).toBe('confirmed');
     expect(fake.broadcasts).toEqual([signature]);
-    expect(await sw.evaluate(() => chrome.storage.local.get('v1_known_recipients'))).toEqual({v1_known_recipients: [RECIPIENT]});
+    // E6: a confirmed recipient is stored with the time of the confirmation.
+    expect(await sw.evaluate(() => chrome.storage.local.get('v1_known_recipients'))).toEqual({v1_known_recipients: [{address: RECIPIENT, at: expect.any(Number)}]});
     // E2: every simulation asked for the sender's post-state.
     expect(fake.simulations.length).toBeGreaterThan(0);
     for (const s of fake.simulations) expect(s).toEqual([account]);

@@ -8,7 +8,9 @@ import {parsePatch, readSettings, weakens, writeSettings, type Settings} from '.
 import {cleanName, readWalletView, renameAccount} from './accountsStore';
 import {consumeChallenge, issueChallenge} from './reauthChallenges';
 import {digestOf} from './digest';
-import {isAddress, parseIntent, preparedFor, prepareSend} from './prepare';
+import {discardPrepared, isAddress, parseIntent, preparedFor, prepareSend} from './prepare';
+import {isKnownRecipient, lastSentAt} from './knownRecipients';
+import {MAINNET_FEE_TREASURY} from '../../../core/fees/transferMarkup';
 import {sendPrepared} from './send';
 import {resend, startPoller} from './pending';
 import {isOpen, readPending, viewOf} from './pendingStore';
@@ -32,6 +34,8 @@ export const WALLET_TYPES = [
   'wallet.history',
   'wallet.prices',
   'wallet.cached',
+  'wallet.recipientInfo',
+  'wallet.discardPrepared',
   'accounts.rename',
   'accounts.select',
   'settings.get',
@@ -159,6 +163,24 @@ async function prices(ext: Ext, deps: WalletDeps): Promise<Result> {
   return {ok: true, data};
 }
 
+/**
+ * wallet.recipientInfo (E6): what #12 may say about a recipient before anything is prepared. Local
+ * only — no network. Refused while locked: it reveals whom this wallet has paid. A hint: prepareSend
+ * recomputes everything that decides.
+ */
+async function recipientInfo(ext: Ext, account: unknown, recipient: unknown): Promise<Result> {
+  if (!isAddress(account) || !isAddress(recipient)) return MALFORMED;
+  const session = await getSession(ext);
+  if (session === null) return {ok: false, error: 'locked'};
+  const view = await readWalletView(ext);
+  const own = view?.accounts.find(a => a.publicKey === recipient);
+  const label = own !== undefined ? {kind: 'own' as const, index: own.index, name: own.name} : recipient === MAINNET_FEE_TREASURY ? {kind: 'treasury' as const} : null;
+  return {
+    ok: true,
+    data: {known: await isKnownRecipient(ext, session, recipient), lastSentAt: await lastSentAt(ext, recipient), label, self: recipient === account},
+  };
+}
+
 async function setSettings(ext: Ext, deps: WalletDeps, msg: Record<string, unknown>): Promise<Result> {
   const patch = parsePatch(msg.patch);
   if (patch === null) return MALFORMED;
@@ -251,6 +273,14 @@ export async function handleWallet(ext: Ext, deps: WalletDeps, type: WalletType,
         if (session === null) return {ok: false, error: 'locked'};
         if (!session.some(a => a.publicKey === account)) return {ok: false, error: 'unknown-account'};
         return {ok: true, data: await prepareSend(ext, deps, account, intent, challengeId === undefined ? {} : {challengeId})};
+      }
+      case 'wallet.recipientInfo':
+        return await recipientInfo(ext, msg.account, msg.recipient);
+      case 'wallet.discardPrepared': {
+        const {account} = msg;
+        if (!isAddress(account)) return MALFORMED;
+        await discardPrepared(ext, account);
+        return {ok: true};
       }
       case 'wallet.preparedFor': {
         const {account} = msg;
