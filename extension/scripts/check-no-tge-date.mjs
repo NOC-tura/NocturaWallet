@@ -42,6 +42,8 @@ export function forbiddenForms() {
     `${long} ${nth}, ${year}`,
     `${long} ${nth} ${year}`,
     `${pad(day)}.${pad(month)}.${year}`,
+    `${pad(day)}-${pad(month)}-${year}`,
+    `${pad(day)}/${pad(month)}/${year}`,
     `${pad(month)}/${pad(day)}/${year}`,
     `${month}/${day}/${year}`,
     String(seconds),

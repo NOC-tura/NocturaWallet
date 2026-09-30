@@ -184,7 +184,12 @@ const VAULT_PAGE_FILES = [
 export const VAULT_PAGE_PACKAGES = ['@noble/curves', '@noble/hashes', '@scure/base', '@scure/bip39', 'micro-key-producer'];
 const RESOLVE_EXTENSIONS = ['', '.ts', '.tsx', '.mts', '.js', '.mjs', '/index.ts', '/index.tsx'];
 const MODULE_SPECIFIER = /^[\w@.\/-]+$/;
+// A specifier-shaped token that carries a backslash (checked before the prose filter below, which
+// would otherwise skip it): no bundler treats `\` as a separator the same way on every platform.
+const BACKSLASH_SPECIFIER = /^[\w@.\/\\-]*\\[\w@.\/\\-]*$/;
 const packageOf = spec => (spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]);
+// `@scure/base/../../../app/leak` has an allowed package name but names a file outside it.
+const packageSubpathEscapes = spec => spec.split('/').slice(spec.startsWith('@') ? 2 : 1).some(s => s === '.' || s === '..');
 
 /** `read(path)` → text or undefined; `exists(path)` → boolean. Paths package-relative, / separators. */
 export function vaultPageViolations(read, exists, entry = VAULT_PAGE_ENTRY) {
@@ -203,10 +208,16 @@ export function vaultPageViolations(read, exists, entry = VAULT_PAGE_ENTRY) {
       // The loose patterns above also match prose (`mode === 'import' || …`); a module specifier has
       // no spaces or operators. A computed specifier is out of any static reach (the bundle checks are
       // the backstop).
-      if (ref.typeOnly || !MODULE_SPECIFIER.test(ref.spec)) continue;
+      if (ref.typeOnly) continue;
+      if (BACKSLASH_SPECIFIER.test(ref.spec)) {
+        out.push(`${path}: the vault page imports ${ref.spec} — a specifier may not contain a backslash`);
+        continue;
+      }
+      if (!MODULE_SPECIFIER.test(ref.spec)) continue;
       const target = resolveSource(path, ref.spec);
       if (target === null) {
         if (!VAULT_PAGE_PACKAGES.includes(packageOf(ref.spec))) out.push(`${path}: the vault page imports the package ${ref.spec}`);
+        else if (packageSubpathEscapes(ref.spec)) out.push(`${path}: the vault page imports ${ref.spec} — a package path may not contain a . or .. segment`);
         continue;
       }
       const file = RESOLVE_EXTENSIONS.map(e => target + e).find(exists);
@@ -228,6 +239,7 @@ export function sourceViolations(files) {
     if (!UNLOCK_ALLOWED.test(path) && values.some(r => namesUnlock(path, r.spec))) out.push(`${path}: imports the vault page (src/unlock)`);
     if (STANDALONE.includes(path) && values.length > 0) out.push(`${path}: imports a module — it must stand alone`);
     // src/shared/ is reachable from the vault page: it may never reach UI code (B1b-2a M4).
+    // Deliberately all references, type-only ones too — stricter than the stand-alone rule above.
     if (/^src\/shared\//.test(path) && moduleReferences(text).some(r => namesUiCode(path, r.spec))) out.push(`${path}: imports UI code (src/app, ../web) — src/shared is vault-page reachable`);
     if (path === LOCAL_READER_PATH) {
       if (TOUCHES_SESSION.test(text)) out.push(`${path}: touches storage.session — it may read storage.local only`);

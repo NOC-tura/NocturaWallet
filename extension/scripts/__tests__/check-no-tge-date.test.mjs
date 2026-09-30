@@ -36,6 +36,10 @@ describe('the TGE-date gate', () => {
       ['an ordinal, day first', `${d}th ${month} ${y}`],
       ['an ordinal, month first', `${month} ${d}th, ${y}`],
       ['the millisecond timestamp', ms],
+      // Review fix round 1: the day-first numeric forms.
+      ['day-first with dashes (DD-MM-YYYY)', `${p2(d)}-${p2(m)}-${y}`],
+      ['day-first with slashes (DD/MM/YYYY)', `${p2(d)}/${p2(m)}/${y}`],
+      ['day-first with dots (DD.MM.YYYY)', `${p2(d)}.${p2(m)}.${y}`],
     ];
     it.each(cases)('%s is a form, and is refused in any letter case', (_, form) => {
       expect(forbiddenForms()).toContain(form.toLowerCase());

@@ -703,6 +703,33 @@ describe('the vault page import allowlist', () => {
     expect(vaultPageViolations(read, exists)).toEqual([]);
   });
 
+  // Review fix round 1: a package name followed by a `.`/`..` segment names a file outside the package.
+  it('refuses a package specifier with a . or .. segment after the package name, and any backslash', () => {
+    const [read, exists] = tree({
+      'src/unlock/main.ts': [
+        "import {a} from '@scure/base/../../../app/leak';",
+        "import {b} from '@noble/hashes/./sha2.js';",
+        "import {c} from 'micro-key-producer/..';",
+        "import {d} from '@scure/base\\..\\x';",
+        "import {e} from './modes\\x';",
+      ].join('\n'),
+    });
+    expect(vaultPageViolations(read, exists)).toEqual([
+      "src/unlock/main.ts: the vault page imports @scure/base/../../../app/leak — a package path may not contain a . or .. segment",
+      "src/unlock/main.ts: the vault page imports @noble/hashes/./sha2.js — a package path may not contain a . or .. segment",
+      "src/unlock/main.ts: the vault page imports micro-key-producer/.. — a package path may not contain a . or .. segment",
+      "src/unlock/main.ts: the vault page imports @scure/base\\..\\x — a specifier may not contain a backslash",
+      "src/unlock/main.ts: the vault page imports ./modes\\x — a specifier may not contain a backslash",
+    ]);
+  });
+
+  it('still allows the packages by name and by a plain subpath (positive control of the rule above)', () => {
+    const [read, exists] = tree({
+      'src/unlock/main.ts': "import {base58} from '@scure/base';\nimport {sha256} from '@noble/hashes/sha2.js';\nimport {x} from 'micro-key-producer/slip10.js';",
+    });
+    expect(vaultPageViolations(read, exists)).toEqual([]);
+  });
+
   it('does not follow a type-only import, nor prose that looks like one', () => {
     const [read, exists] = tree({'src/unlock/main.ts': "import type {X} from '../app/x';\nif (mode === 'import' || m === 'accounts') run();"});
     expect(vaultPageViolations(read, exists)).toEqual([]);
