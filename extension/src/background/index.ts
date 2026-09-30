@@ -7,9 +7,12 @@ import {PENDING_ALARM, armPendingAlarm, onPendingAlarm, startPoller} from './pen
 
 interface BgApi {
   runtime: {
+    getURL(path: string): string;
     onMessage: {addListener(cb: (m: unknown, s: Sender, reply: (r: unknown) => void) => boolean): void};
     onStartup: {addListener(cb: () => void): void};
+    onInstalled: {addListener(cb: (details: {reason: string}) => void): void};
   };
+  tabs: {create(o: {url: string}): Promise<unknown> | void};
   alarms: {onAlarm: {addListener(cb: (a: {name: string}) => void): void}};
   windows: {onRemoved: {addListener(cb: () => void): void}};
 }
@@ -37,6 +40,12 @@ api.windows.onRemoved.addListener(() => {
 });
 api.runtime.onStartup.addListener(() => {
   void lock(ext);
+});
+// B1b-2a §1.1: a fresh install opens the welcome page (the vault page's `welcome` mode) once. An
+// update or a browser update opens nothing. tabs.create needs no permission.
+api.runtime.onInstalled.addListener(details => {
+  if (details.reason !== 'install') return;
+  void Promise.resolve(api.tabs.create({url: api.runtime.getURL('unlock.html?mode=welcome')})).catch(e => console.warn('welcome tab not opened', e));
 });
 
 // A service worker stopped while a send was open restarts here: resume watching it.

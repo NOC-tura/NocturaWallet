@@ -67,7 +67,8 @@ const REVEAL_WORDS: Record<RevealOutcome['outcome'], string> = {
 };
 const WAIT = 'That did not confirm it. Wait a moment before trying again.';
 const UNREADABLE = "This wallet's stored data could not be read. Reload this page.";
-const SECTIONS = ['unlock-section', 'create', 'import', 'reauth', 'accounts', 'reveal'] as const;
+// `welcome` (B1b-2a plan 1, minimal): two links to create and import, fixed strings in unlock.html. Plan 2 replaces it with #1.
+const SECTIONS = ['unlock-section', 'welcome', 'create', 'import', 'reauth', 'accounts', 'reveal'] as const;
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const say = (text: string): void => {

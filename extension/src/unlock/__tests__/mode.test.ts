@@ -4,6 +4,7 @@ describe('pageMode', () => {
   const id = 'ab'.repeat(16);
   it('reads the mode from the query string; anything unknown is the unlock page', () => {
     expect(pageMode('')).toEqual({mode: 'unlock'});
+    expect(pageMode('?mode=welcome')).toEqual({mode: 'welcome'});
     expect(pageMode('?mode=create')).toEqual({mode: 'create'});
     expect(pageMode('?mode=import')).toEqual({mode: 'import'});
     expect(pageMode('?mode=accounts')).toEqual({mode: 'accounts'});
