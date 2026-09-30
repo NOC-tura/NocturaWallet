@@ -2,10 +2,10 @@ name: extension
 
 on:
   pull_request:
-    paths: ['extension/**', 'core/**', 'web/scripts/**', '.github/workflows/extension.yml']
+    paths: ['extension/**', 'core/**', 'web/scripts/**', 'web/src/ui/**', 'web/src/styles/**', 'web/public/fonts/**', '.github/workflows/extension.yml']
   push:
     branches: [main]
-    paths: ['extension/**', 'core/**', 'web/scripts/**', '.github/workflows/extension.yml']
+    paths: ['extension/**', 'core/**', 'web/scripts/**', 'web/src/ui/**', 'web/src/styles/**', 'web/public/fonts/**', '.github/workflows/extension.yml']
 
 jobs:
   verify:

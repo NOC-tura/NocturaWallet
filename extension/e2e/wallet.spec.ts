@@ -2,7 +2,7 @@ import {test, expect, type BrowserContext, type Page} from '@playwright/test';
 import {readFileSync, rmSync} from 'node:fs';
 import {BLOCKHASH_LIFETIME, installFakeCoordinator, type FakeCoordinator} from './fakeCoordinator';
 import {makeEnvelope, E2E_PASSWORD} from './makeEnvelope';
-import {expectContained, launchContained} from './launch';
+import {SOLSCAN, expectContained, launchContained} from './launch';
 // Read from the source rather than imported: core/ has no package.json "type", so Playwright's loader
 // on Node 22 (CI) treats core/solana/rpc.ts as CommonJS and cannot take a named export from it.
 // The same literal the RPC-method gate parses; not found means it moved — fail loudly.
@@ -34,13 +34,21 @@ async function launch() {
   // launchContained makes every noc-tura.io name unresolvable, so one the route misses fails locally.
   const {ctx, profile} = await launchContained('noctura-e2e-wallet-');
   const fake = await installFakeCoordinator(ctx);
+  // The one external link (#27's Explorer) is never followed: anything addressed to solscan.io is
+  // recorded and aborted here, under the resolver rule, and each test asserts the count is zero.
+  const explorer: string[] = [];
+  await ctx.route(SOLSCAN, route => {
+    explorer.push(route.request().url());
+    return route.abort();
+  });
   await expectContained(ctx);
   const sw = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent('serviceworker'));
   const id = new URL(sw.url()).host;
-  // An extension page (own origin), so its messages are privileged — it stands in for the B1b-2 popup screens.
+  // An extension page (own origin), so its messages are privileged. B1b-2a: the UI tab, wallet.html —
+  // the popup, with no wallet yet, would open the welcome page and close itself (spec §1.6).
   const popup = await ctx.newPage();
-  await popup.goto(`chrome-extension://${id}/popup.html`);
-  return {ctx, fake, sw, id, popup, profile};
+  await popup.goto(`chrome-extension://${id}/wallet.html#/home`);
+  return {ctx, fake, sw, id, popup, profile, explorer};
 }
 
 const msg = async (page: Page, m: unknown): Promise<Reply> => (await page.evaluate(x => chrome.runtime.sendMessage(x), m)) as Reply;
@@ -89,7 +97,7 @@ function onlyTheSimulatedCoordinator(fake: FakeCoordinator): void {
 }
 
 test('create a wallet, unlock it, re-authenticate a first send, send SOL: pending → confirmed', async () => {
-  const {ctx, fake, id, popup, sw, profile} = await launch();
+  const {ctx, fake, id, popup, sw, profile, explorer} = await launch();
   try {
     // 1. Onboarding: the vault page's create mode.
     const vault = await ctx.newPage();
@@ -155,6 +163,7 @@ test('create a wallet, unlock it, re-authenticate a first send, send SOL: pendin
     const stored = (await sw.evaluate(() => chrome.storage.local.get('v1_pending'))) as {v1_pending?: {signature: string; state: string}[]};
     expect(stored.v1_pending?.map(r => [r.signature, r.state])).toEqual([[signature, 'confirmed']]);
     onlyTheSimulatedCoordinator(fake);
+    expect(explorer).toEqual([]);
   } finally {
     await ctx.close();
     rmSync(profile, {recursive: true, force: true});
@@ -162,7 +171,7 @@ test('create a wallet, unlock it, re-authenticate a first send, send SOL: pendin
 });
 
 test('an unconfirmed send expires: "no funds moved", nothing re-sent, and only then a new transaction', async () => {
-  const {ctx, fake, id, popup, sw, profile} = await launch();
+  const {ctx, fake, id, popup, sw, profile, explorer} = await launch();
   try {
     fake.mode = 'expire';
     await sw.evaluate(({env, recipient}) => chrome.storage.local.set({v1_vault: env, v1_known_recipients: [recipient]}), {env: await makeEnvelope(), recipient: RECIPIENT});
@@ -214,6 +223,7 @@ test('an unconfirmed send expires: "no funds moved", nothing re-sent, and only t
     expect(secondRecord?.lastValidBlockHeight).toBe(fake.blockHeight + BLOCKHASH_LIFETIME);
     expect(await pendingState(popup, signature)).toBe('expired');
     onlyTheSimulatedCoordinator(fake);
+    expect(explorer).toEqual([]);
   } finally {
     await ctx.close();
     rmSync(profile, {recursive: true, force: true});

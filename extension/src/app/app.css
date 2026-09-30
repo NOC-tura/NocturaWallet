@@ -1,0 +1,389 @@
+/*
+ * The extension's own layout (spec B1b-2a §1.4), on top of design-system.css (tokens, type, buttons)
+ * and design-ext.css (the design's screen classes). Only what the phone mockups cannot say: the
+ * popup's fixed 412 × 600 frame, the tab's 412 px column, a scrolling content region between a 56 px
+ * top and an 80 px tab bar, and a few state helpers. Colours are tokens only.
+ */
+html,
+body {
+  margin: 0;
+  background: var(--bg-base);
+  color: var(--fg-primary);
+}
+#root {
+  height: 100%;
+}
+
+/* The popup: exactly the action popup's size, never a horizontal scroll. */
+html:has(.app-popup),
+body:has(.app-popup) {
+  width: 412px;
+  height: 600px;
+  overflow: hidden;
+}
+.app {
+  display: flex;
+  flex-direction: column;
+  width: 412px;
+  height: 600px;
+  overflow: hidden;
+  position: relative;
+  background: var(--bg-base);
+}
+/* The tab: the same app in a 412 px column centred on the page. */
+.app-tab {
+  height: 100vh;
+  margin-inline: auto;
+}
+.app-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+/*
+ * The mockups clip their scroll areas (a phone frame); here the content region scrolls instead: a
+ * screen grows with its content and nothing in it shrinks (a long list once squeezed the activity
+ * filter chips to zero height — found by the plan's E2E dry run).
+ */
+.app-content .scroll,
+.app-content .screen {
+  overflow: visible;
+}
+.app-content > .screen {
+  flex: 1 0 auto;
+}
+.app-content .screen > * {
+  flex-shrink: 0;
+}
+.app-tab-bar {
+  flex: 0 0 80px;
+  height: 80px;
+}
+.app-tab-bar .item {
+  min-height: var(--touch-target-min);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+/* Buttons that are rows or tiles in the design. */
+.app-content button.tx-row,
+.app-content button.s7-row,
+.app-account,
+.app-account-pick,
+.app-addr-card,
+.app-strip,
+.app-token-row {
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  border: 0;
+  cursor: pointer;
+}
+.app-account {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: transparent;
+  min-height: var(--touch-target-min);
+  width: auto;
+  padding: 0;
+}
+.app-account-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.top-actions button:disabled,
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.is-spinning svg {
+  animation: spin var(--dur-spin) linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .is-spinning svg,
+  .app-hero-spin {
+    animation: none;
+  }
+}
+
+.app-banner {
+  margin: var(--space-3) var(--space-4) 0;
+}
+/* The design's two-line banner (index.html #20 simulate-failed, #16 auto-clear): a 500 title in
+   --fg-primary, a secondary line 2 px under it. */
+.banner .banner-title {
+  font-weight: 500;
+  color: var(--fg-primary);
+}
+.banner .banner-line {
+  color: var(--fg-secondary);
+  margin-top: 2px;
+}
+/* #42 reconnecting: the refresh glyph beside the value spins (index.html #42c, inline there). */
+.app-hero-spin {
+  display: inline-flex;
+  align-self: center;
+  color: var(--accent);
+  animation: spin var(--dur-spin) linear infinite;
+}
+.app-callout ul {
+  margin: var(--space-2) 0 0;
+  padding-inline-start: var(--space-5);
+}
+.app-offline-note {
+  padding: var(--space-3) var(--space-4) 0;
+  text-align: center;
+  margin: 0;
+}
+
+.app-muted {
+  color: var(--fg-secondary);
+}
+.app-dim {
+  color: var(--fg-tertiary);
+}
+.app-warning {
+  color: var(--warning);
+}
+.app-success {
+  color: var(--success);
+}
+.app-reveal {
+  color: var(--fg-secondary);
+}
+
+/* Centered states: locked, no wallet. */
+.app-center {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--space-4);
+  padding: var(--space-6);
+}
+.app-center-actions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.app-center-text {
+  text-align: center;
+}
+.app-lock-tile {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-icon-hero);
+  background: var(--bg-surface-2);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Sheets: the design's .s8-sheet, laid over the whole app. */
+.app-sheet-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+}
+.s8-sheet .grabber-hit {
+  background: transparent;
+  border: 0;
+  padding: var(--space-2) 0;
+  cursor: pointer;
+  width: 100%;
+  min-height: 24px;
+}
+.app-sheet-body {
+  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.app-account-row,
+.app-token-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+}
+.app-token-row {
+  grid-template-columns: 32px 1fr auto;
+  background: transparent;
+}
+.app-account-row.sel,
+.app-token-row.sel {
+  background: color-mix(in oklab, var(--accent) 14%, var(--bg-surface-3));
+  border: 1px solid color-mix(in oklab, var(--accent) 32%, transparent);
+}
+.app-account-pick {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  gap: var(--space-3);
+  align-items: center;
+  background: transparent;
+  min-height: var(--touch-target-min);
+}
+.app-account-pick > span:nth-child(2),
+.app-token-row > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.app-account-pick .pri {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--fg-primary);
+}
+.app-account-pick .sec {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--fg-tertiary);
+}
+.app-account-row .avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg-surface-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+}
+.app-rename {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: var(--space-2);
+  align-items: center;
+}
+.app-rename .field-msg {
+  grid-column: 1 / -1;
+}
+.app-input,
+.app-amount-input {
+  background: var(--bg-surface-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--fg-primary);
+  font: inherit;
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-3);
+}
+.app-amount-input {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: 28px;
+  line-height: 34px;
+  width: 100%;
+}
+.app-btn-sm {
+  width: auto;
+  height: var(--touch-target-min);
+  padding: 0 var(--space-4);
+  font-size: 15px;
+}
+
+/* Receive */
+.app-addr-card {
+  display: block;
+}
+
+/* Activity */
+.app-content .tx-row {
+  background: transparent;
+}
+.app-load-more {
+  margin: var(--space-4) 0;
+}
+.app-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-6);
+}
+.app-empty-actions {
+  margin-top: var(--space-6);
+  width: 100%;
+}
+
+/* Settings and About: #31's and #38's body columns (index.html, inline there). */
+.app-settings-body,
+.app-about-body {
+  padding: 0 var(--space-5) var(--space-7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.app-about-body {
+  gap: var(--space-5);
+}
+.app-about-body > .noc-overline,
+.app-about-card p {
+  margin: 0;
+}
+.s7-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.app-static {
+  cursor: default;
+}
+.app-about-card {
+  background: var(--bg-surface-1);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-7) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: center;
+  margin-top: var(--space-4);
+}
+.app-about-card .noc-body-sm {
+  max-width: 280px;
+}
+.app-about-card .noc-mono {
+  margin-top: var(--space-3);
+}
+.app-about-mark {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-icon-hero);
+  background: linear-gradient(135deg, var(--accent-transparent), var(--accent-shielded));
+  color: var(--bg-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 32px color-mix(in oklab, var(--accent-shielded) 30%, transparent);
+}
+.app-about-foot {
+  text-align: center;
+  padding: var(--space-7) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.app-about-foot p {
+  margin: 0;
+}
+.s8-sheet .grabber-hit .grabber {
+  display: block;
+}

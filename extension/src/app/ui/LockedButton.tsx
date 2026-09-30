@@ -7,6 +7,9 @@ export const LOCK_MS = 500;
  * A button that disables itself synchronously in its click handler and comes back no earlier than
  * LOCK_MS after the click AND not before `onPress`'s promise settles (spec §7.6). The ref, not only the
  * state, guards: a second click in the same frame, before React re-renders, is refused too.
+ *
+ * A rejected `onPress` is logged and swallowed here: the button only re-enables. The caller owns the
+ * failure UI — an action that can fail must say so on its own screen.
  */
 export function LockedButton({
   onPress,

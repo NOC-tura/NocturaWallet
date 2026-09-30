@@ -209,7 +209,7 @@ export function Home({onReceive, onActivity, onAccounts}: {onReceive: () => void
             <span className="real noc-balance-xl noc-numeral">{usdParts(total).whole}</span>
             <span className="cents noc-numeral">{usdParts(total).cents}</span>
             {syncing ? (
-              <span className="app-hero-spin" data-spinner="" aria-hidden="true" style={{display: 'inline-flex', alignSelf: 'center', color: 'var(--accent)', animation: 'spin var(--dur-spin) linear infinite'}}>
+              <span className="app-hero-spin" data-spinner="" aria-hidden="true">
                 <ExtIcon name="refresh" size={20} />
               </span>
             ) : null}

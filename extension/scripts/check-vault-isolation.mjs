@@ -29,7 +29,7 @@ const VAULT_ALLOWED = /^src\/(unlock|vault)\//;
 // they are vault code too, and only the vault page itself may import them.
 const UNLOCK_ALLOWED = /^src\/unlock\//;
 // The one entry each HTML page at the package root may load.
-export const ENTRIES = {'popup.html': 'src/popup/main.ts', 'unlock.html': 'src/unlock/main.ts'};
+export const ENTRIES = {'popup.html': 'src/app/popup.tsx', 'wallet.html': 'src/app/tab.tsx', 'unlock.html': 'src/unlock/main.ts'};
 // node_modules/, dist/, e2e/ and scripts/ are skipped only at the package ROOT — a nested
 // src/popup/scripts/ is ordinary source a page can bundle, not this package's own tooling.
 // __tests__/ is skipped at any depth (never bundled, wherever it sits). See the header.
@@ -93,6 +93,11 @@ export const KDF_MARKER = '(memory) must be at least 8*p bytes';
 // checked against a real Vite build): generateMnemonic and validateMnemonic carry it into the vault
 // page, and nothing else may carry it.
 export const WORDLIST_MARKER = 'abandon\nability\nable\nabout';
+// React 18's internal export name, present only in react / react-dom 18 (React 19 renamed it). The
+// vault page is plain DOM (spec B1b-2a S1): no file it loads may carry React. The marker must also be
+// present in SOME built file (the popup's), or a React upgrade would make the rule pass trivially —
+// that INCONCLUSIVE is what an upgrade trips, and the fix is to update this marker.
+export const REACT_MARKER = '__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED';
 const MARKERS = [
   ['envelope', VAULT_MARKER],
   ['derivation', DERIVATION_MARKER],
@@ -388,6 +393,10 @@ export function bundleViolations(distApp) {
     }
   }
 
+  if (!js.some(p => readFileSync(join(distApp, p), 'utf8').includes(REACT_MARKER))) {
+    out.push(`INCONCLUSIVE: the React marker "${REACT_MARKER}" is in no built JS file — React 19 renamed it: update REACT_MARKER, or the no-React-in-the-vault-page rule passes trivially`);
+  }
+
   // The other direction: the vault page may not load the background entry. Importing background.js
   // runs it — its runtime listeners and its poller — inside the vault page (a Rolldown runtime helper
   // placed in background.js once made the unlock bundle import it, and every marker check passed).
@@ -396,7 +405,13 @@ export function bundleViolations(distApp) {
     for (const m of html.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/g)) {
       const r = resolveBuilt(distApp, 'unlock.html', m[1]);
       if (r.problem) problems.add(r.problem);
-      else if (reachable(distApp, r.target, problems).includes('background.js')) out.push(`the vault page (${r.target}) reaches background.js — it would run the background`);
+      else {
+        const files = reachable(distApp, r.target, problems);
+        if (files.includes('background.js')) out.push(`the vault page (${r.target}) reaches background.js — it would run the background`);
+        for (const file of files) {
+          if (/\.m?js$/.test(file) && readFileSync(join(distApp, file), 'utf8').includes(REACT_MARKER)) out.push(`${file} (reachable from unlock.html) contains React — the vault page must stay plain DOM`);
+        }
+      }
     }
   }
 

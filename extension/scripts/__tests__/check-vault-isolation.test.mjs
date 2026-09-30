@@ -4,7 +4,7 @@ import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
   bundleViolations, htmlViolations, listSourceFiles, manifestViolations, sourceViolations, vaultPageViolations,
-  BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, VAULT_MARKER, WORDLIST_MARKER,
+  BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, REACT_MARKER, VAULT_MARKER, WORDLIST_MARKER,
 } from '../check-vault-isolation.mjs';
 import {render} from '../../manifest/source.mjs';
 
@@ -19,7 +19,7 @@ describe('vault isolation (source)', () => {
   });
 
   it('refuses a value import of the vault from the popup or the background', () => {
-    expect(sourceViolations([f('src/popup/main.ts', "import {decryptMnemonic} from '../vault/envelope';")])).toHaveLength(1);
+    expect(sourceViolations([f('src/app/popup.tsx', "import {decryptMnemonic} from '../vault/envelope';")])).toHaveLength(1);
     expect(sourceViolations([f('src/background/messages.ts', "import {deriveSessionAccounts} from '../vault/accounts';")])).toHaveLength(1);
   });
 
@@ -49,7 +49,7 @@ describe('vault isolation (source)', () => {
     ['a worker URL', "new Worker(new URL('../vault/kdf.worker.ts', import.meta.url), {type: 'module'});"],
     ['an import of the folder itself', "import {x} from '../vault';"],
   ])('refuses %s of the vault from the popup', (_, text) => {
-    expect(sourceViolations([f('src/popup/main.ts', text)])).toEqual(['src/popup/main.ts: imports the vault']);
+    expect(sourceViolations([f('src/app/popup.tsx', text)])).toEqual(['src/app/popup.tsx: imports the vault']);
   });
 
   it('refuses a vault import from src/ui/ and from a file at the top of src/', () => {
@@ -63,18 +63,18 @@ describe('vault isolation (source)', () => {
 
   it('allows type-only imports and re-exports from anywhere', () => {
     expect(sourceViolations([
-      f('src/popup/main.ts', "import type {EnvelopeV1} from '../vault/envelope';"),
+      f('src/app/popup.tsx', "import type {EnvelopeV1} from '../vault/envelope';"),
       f('src/popup/types.ts', "export type {EnvelopeV1} from '../vault/envelope';"),
       f('src/background/messages.ts', "import type {\n  SessionAccount,\n} from '../vault/accounts';"),
     ])).toEqual([]);
   });
 
   it('does not mistake a folder that merely contains "vault" in its name', () => {
-    expect(sourceViolations([f('src/popup/main.ts', "import {x} from '../vaultish/x';")])).toEqual([]);
+    expect(sourceViolations([f('src/app/popup.tsx', "import {x} from '../vaultish/x';")])).toEqual([]);
   });
 
   it('reports each file once per rule even with several vault imports', () => {
-    expect(sourceViolations([f('src/popup/main.ts', "import {a} from '../vault/a';\nimport {b} from '../vault/b';")])).toHaveLength(1);
+    expect(sourceViolations([f('src/app/popup.tsx', "import {a} from '../vault/a';\nimport {b} from '../vault/b';")])).toHaveLength(1);
   });
 
   // Fix round 1: core/keys (mnemonic → seed, SLIP-0010) is the vault's seed code, shared with the app.
@@ -89,7 +89,7 @@ describe('vault isolation (source)', () => {
     ['a mixed type/value import', "import {type X, mnemonicToSeed} from '../../../core/keys/mnemonic';"],
     ['an aliased specifier', "import {x} from '@core/keys/mnemonic';"],
   ])('refuses %s of core/keys from the popup', (_, text) => {
-    expect(sourceViolations([f('src/popup/main.ts', text)])).toEqual(['src/popup/main.ts: imports core/keys (seed code)']);
+    expect(sourceViolations([f('src/app/popup.tsx', text)])).toEqual(['src/app/popup.tsx: imports core/keys (seed code)']);
   });
 
   it('refuses core/keys from the background, ui and ext.ts, resolving from each file', () => {
@@ -102,18 +102,18 @@ describe('vault isolation (source)', () => {
     expect(sourceViolations([
       f('src/vault/accounts.ts', "import {deriveTransparentKeypair} from '../../../core/keys/transparent';\nimport {mnemonicToSeed} from '../../../core/keys/mnemonic';"),
       f('src/unlock/main.ts', "import {x} from '../../../core/keys/mnemonic';"),
-      f('src/popup/main.ts', "import type {X} from '../../../core/keys/mnemonic';"),
+      f('src/app/popup.tsx', "import type {X} from '../../../core/keys/mnemonic';"),
     ])).toEqual([]);
   });
 
   it('does not mistake a path that resolves elsewhere for core/keys', () => {
-    expect(sourceViolations([f('src/popup/main.ts', "import {x} from '../../../core/keysmith/x';")])).toEqual([]);
-    expect(sourceViolations([f('src/popup/main.ts', "import {x} from '../../../core/util/x';")])).toEqual([]);
+    expect(sourceViolations([f('src/app/popup.tsx', "import {x} from '../../../core/keysmith/x';")])).toEqual([]);
+    expect(sourceViolations([f('src/app/popup.tsx', "import {x} from '../../../core/util/x';")])).toEqual([]);
   });
 
   it('refuses storage.session in any spelling outside the background', () => {
-    expect(sourceViolations([f('src/popup/main.ts', 'chrome.storage?.session.get(null)')])).toHaveLength(1);
-    expect(sourceViolations([f('src/popup/main.ts', "chrome.storage['session'].get(null)")])).toHaveLength(1);
+    expect(sourceViolations([f('src/app/popup.tsx', 'chrome.storage?.session.get(null)')])).toHaveLength(1);
+    expect(sourceViolations([f('src/app/popup.tsx', "chrome.storage['session'].get(null)")])).toHaveLength(1);
   });
 
   // src/ext.ts is the one wrapper over chrome.* and so names storage.session; it is allowed to,
@@ -123,8 +123,8 @@ describe('vault isolation (source)', () => {
     expect(sourceViolations([f('src/ext.ts', 'session: kv(b.storage.session),')])).toEqual([]);
     expect(sourceViolations([f('src/background/index.ts', "import {browserExt} from '../ext';")])).toEqual([]);
     expect(sourceViolations([f('src/background/messages.ts', "import type {Ext} from '../ext';")])).toEqual([]);
-    expect(sourceViolations([f('src/popup/main.ts', "import {browserExt} from '../ext';")])).toEqual([
-      'src/popup/main.ts: imports src/ext.ts (storage.session) outside the background',
+    expect(sourceViolations([f('src/app/popup.tsx', "import {browserExt} from '../ext';")])).toEqual([
+      'src/app/popup.tsx: imports src/ext.ts (storage.session) outside the background',
     ]);
     expect(sourceViolations([f('src/unlock/main.ts', "import {browserExt} from '../ext';")])).toHaveLength(1);
   });
@@ -140,7 +140,7 @@ describe('vault isolation (source)', () => {
     ['runtime.onConnectExternal', 'chrome.runtime.onConnectExternal.addListener(p => p);'],
     ['a destructured listener', 'const {onMessage} = chrome.runtime;\nonMessage.addListener(m => m);'],
   ])('refuses %s outside the background', (_, text) => {
-    for (const path of ['src/popup/main.ts', 'src/unlock/main.ts', 'src/vault/reauth.ts', 'src/ui/send.ts', 'src/ext.ts']) {
+    for (const path of ['src/app/popup.tsx', 'src/unlock/main.ts', 'src/vault/reauth.ts', 'src/ui/send.ts', 'src/ext.ts']) {
       expect(sourceViolations([f(path, text)])).toEqual([`${path}: listens for runtime messages outside the background`]);
     }
   });
@@ -185,7 +185,7 @@ describe('vault isolation (files outside src/, and the vault page as a target)',
     ['a side-effect import', "import '../unlock/main';"],
     ['an import of the folder', "import {x} from '../unlock';"],
   ])('refuses %s of src/unlock from the popup', (_, text) => {
-    expect(sourceViolations([f('src/popup/main.ts', text)])).toEqual(['src/popup/main.ts: imports the vault page (src/unlock)']);
+    expect(sourceViolations([f('src/app/popup.tsx', text)])).toEqual(['src/app/popup.tsx: imports the vault page (src/unlock)']);
   });
 
   it('refuses src/unlock from the vault folder and the background, but not from src/unlock itself', () => {
@@ -194,12 +194,12 @@ describe('vault isolation (files outside src/, and the vault page as a target)',
     expect(sourceViolations([
       f('src/unlock/main.ts', "import {ENVELOPE_KEY, unlockFlow} from './unlockFlow';"),
       f('src/unlock/sub/x.ts', "import {runExclusive} from '../orchestrate';"),
-      f('src/popup/main.ts', "import type {Outcome} from '../unlock/orchestrate';"),
+      f('src/app/popup.tsx', "import type {Outcome} from '../unlock/orchestrate';"),
     ])).toEqual([]);
   });
 
   it('does not mistake a folder that merely starts with "unlock"', () => {
-    expect(sourceViolations([f('src/popup/main.ts', "import {x} from '../unlockish/x';")])).toEqual([]);
+    expect(sourceViolations([f('src/app/popup.tsx', "import {x} from '../unlockish/x';")])).toEqual([]);
   });
 });
 
@@ -222,7 +222,7 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
     ['bracketed storage', "chrome['storage'].local.get(null);"],
     ['storage.session (still)', 'chrome.storage.session.get(null);'],
   ])('refuses %s outside ext.ts and the background', (_, text) => {
-    for (const path of ['src/popup/main.ts', 'src/unlock/main.ts', 'src/vault/reauth.ts', 'src/ui/send.ts', 'leak/x.ts']) {
+    for (const path of ['src/app/popup.tsx', 'src/unlock/main.ts', 'src/vault/reauth.ts', 'src/ui/send.ts', 'leak/x.ts']) {
       expect(sourceViolations([f(path, text)])).toEqual([STORAGE(path)]);
     }
   });
@@ -236,7 +236,7 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
 
   it('does not mistake localStorage, sessionStorage or prose for the extension storage API', () => {
     expect(sourceViolations([
-      f('src/popup/main.ts', "localStorage.getItem('x'); sessionStorage.clear();\n// the vault is kept in local storage, keys in session storage"),
+      f('src/app/popup.tsx', "localStorage.getItem('x'); sessionStorage.clear();\n// the vault is kept in local storage, keys in session storage"),
     ])).toEqual([]);
   });
 
@@ -267,7 +267,7 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
     ])).toEqual([]);
     const READER = path => `${path}: imports src/shared/readLocal, the vault page's storage reader`;
     for (const [path, text] of [
-      ['src/popup/main.ts', "import {readLocal} from '../shared/readLocal';"],
+      ['src/app/popup.tsx', "import {readLocal} from '../shared/readLocal';"],
       ['src/background/x.ts', "import {readLocal} from '../shared/readLocal';"],
       ['src/ui/send.ts', "const m = await import('../shared/readLocal');"],
       ['src/shared/other.ts', "export {readLocal} from './readLocal';"],
@@ -320,7 +320,7 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
       f('src/background/accountsStore.ts', "import {envelopeRevision} from '../shared/envelopeRevision';\nimport {MAX_ACCOUNTS} from '../shared/envelopeRules';"),
       f('src/unlock/accountsFlow.ts', "import {envelopeRevision} from '../shared/envelopeRevision';"),
       f('src/vault/envelope.ts', "import {MAX_ACCOUNTS, cleanName} from '../shared/envelopeRules';"),
-      f('src/popup/main.ts', "import {cleanName} from '../shared/envelopeRules';"),
+      f('src/app/popup.tsx', "import {cleanName} from '../shared/envelopeRules';"),
       f('src/shared/envelopeRevision.ts', "import {sha256} from '@noble/hashes/sha2.js';"),
     ])).toEqual([]);
     // …and src/shared/ itself is held to the same rules: it may not reach into the vault.
@@ -334,12 +334,12 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
       f('src/background/settings.ts', "export const SETTINGS_KEY = 'v1_settings';"),
       f('src/background/knownRecipients.ts', "export const KNOWN_RECIPIENTS_KEY = 'v1_known_recipients';"),
     ])).toEqual([]);
-    expect(sourceViolations([f('src/popup/main.ts', "chrome.runtime.sendMessage({type: 'x', key: 'v1_settings'});")])).toEqual([OWNED('src/popup/main.ts', 'v1_settings')]);
+    expect(sourceViolations([f('src/app/popup.tsx', "chrome.runtime.sendMessage({type: 'x', key: 'v1_settings'});")])).toEqual([OWNED('src/app/popup.tsx', 'v1_settings')]);
     expect(sourceViolations([f('src/unlock/main.ts', '// v1_known_recipients')])).toEqual([OWNED('src/unlock/main.ts', 'v1_known_recipients')]);
     expect(sourceViolations([f('src/ext.ts', "const k = 'v1_settings';")])).toEqual([OWNED('src/ext.ts', 'v1_settings')]);
-    expect(sourceViolations([f('src/popup/main.ts', "const p = 'v1_pending'; const f = 'v1_forbidden_until';")])).toEqual([
-      OWNED('src/popup/main.ts', 'v1_pending'),
-      OWNED('src/popup/main.ts', 'v1_forbidden_until'),
+    expect(sourceViolations([f('src/app/popup.tsx', "const p = 'v1_pending'; const f = 'v1_forbidden_until';")])).toEqual([
+      OWNED('src/app/popup.tsx', 'v1_pending'),
+      OWNED('src/app/popup.tsx', 'v1_forbidden_until'),
     ]);
   });
   // B1b-2a E4: the balance and price caches are the background's too.
@@ -347,7 +347,7 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
     const OWNED = (path, key) => `${path}: names ${key}, which only the background may write`;
     expect(sourceViolations([f('src/background/balanceCache.ts', "export const BALANCE_CACHE_KEY = 'v1_balance_cache'; export const P = 'v1_price_cache';")])).toEqual([]);
     expect(sourceViolations([f('src/app/screens/Home.tsx', "const k = 'v1_balance_cache';")])).toEqual([OWNED('src/app/screens/Home.tsx', 'v1_balance_cache')]);
-    expect(sourceViolations([f('src/popup/main.ts', "const k = 'v1_price_cache';")])).toEqual([OWNED('src/popup/main.ts', 'v1_price_cache')]);
+    expect(sourceViolations([f('src/app/popup.tsx', "const k = 'v1_price_cache';")])).toEqual([OWNED('src/app/popup.tsx', 'v1_price_cache')]);
   });
 });
 
@@ -356,31 +356,37 @@ describe('vault isolation (HTML entries)', () => {
 
   it('accepts each page loading exactly its own entry (positive control)', () => {
     expect(htmlViolations([
-      f('popup.html', page('./src/popup/main.ts')),
+      f('popup.html', page('./src/app/popup.tsx')),
       f('unlock.html', page('./src/unlock/main.ts')),
     ])).toEqual([]);
-    expect(htmlViolations([f('popup.html', page('/src/popup/main.ts')), f('unlock.html', page('src/unlock/main.ts'))])).toEqual([]);
+    expect(htmlViolations([f('popup.html', page('/src/app/popup.tsx')), f('unlock.html', page('src/unlock/main.ts'))])).toEqual([]);
+  });
+
+  // B1b-2a: wallet.html is a third entry, the UI tab; it may load only src/app/tab.tsx.
+  it('holds wallet.html to its own entry', () => {
+    expect(htmlViolations([f('wallet.html', page('./src/app/tab.tsx'))])).toEqual([]);
+    expect(htmlViolations([f('wallet.html', page('./src/unlock/main.ts'))])).toEqual(['wallet.html: loads ./src/unlock/main.ts — only src/app/tab.tsx may be its entry']);
   });
 
   it('refuses the reproduced layout: popup.html also loading ./leak/prf.ts', () => {
-    expect(htmlViolations([f('popup.html', page('./src/popup/main.ts', './leak/prf.ts'))])).toEqual([
-      'popup.html: loads ./leak/prf.ts — only src/popup/main.ts may be its entry',
+    expect(htmlViolations([f('popup.html', page('./src/app/popup.tsx', './leak/prf.ts'))])).toEqual([
+      'popup.html: loads ./leak/prf.ts — only src/app/popup.tsx may be its entry',
     ]);
   });
 
   it('refuses the popup loading the vault page entry, and the vault page loading the popup entry', () => {
     expect(htmlViolations([f('popup.html', page('./src/unlock/main.ts'))])).toHaveLength(1);
-    expect(htmlViolations([f('unlock.html', page('./src/popup/main.ts'))])).toHaveLength(1);
+    expect(htmlViolations([f('unlock.html', page('./src/app/popup.tsx'))])).toHaveLength(1);
   });
 
   it('refuses a script on a page that has no entry of its own', () => {
-    expect(htmlViolations([f('options.html', page('./src/popup/main.ts'))])).toEqual([
-      'options.html: loads ./src/popup/main.ts — this page has no entry of its own',
+    expect(htmlViolations([f('options.html', page('./src/app/popup.tsx'))])).toEqual([
+      'options.html: loads ./src/app/popup.tsx — this page has no entry of its own',
     ]);
   });
 
   it('refuses an inline script and a script tag whose src it cannot read', () => {
-    expect(htmlViolations([f('popup.html', `${page('./src/popup/main.ts')}<script type="module">import '../src/vault/passkey';</script>`)])).toEqual([
+    expect(htmlViolations([f('popup.html', `${page('./src/app/popup.tsx')}<script type="module">import '../src/vault/passkey';</script>`)])).toEqual([
       'popup.html: has a <script> without a src',
     ]);
     expect(htmlViolations([f('popup.html', '<script type="module" src=./leak/prf.ts></script>')])).toEqual([
@@ -402,11 +408,11 @@ describe('vault isolation (which files the source rule reads)', () => {
 
   it('reads every source file under the package except node_modules, dist, tests, e2e and scripts', () => {
     for (const rel of [
-      'src/popup/main.ts', 'src/ui/a.tsx', 'leak/prf.ts', 'x.mjs', 'vite.config.ts', 'manifest/source.mjs', 'deep/a/b.js',
+      'src/app/popup.tsx', 'src/ui/a.tsx', 'leak/prf.ts', 'x.mjs', 'vite.config.ts', 'manifest/source.mjs', 'deep/a/b.js',
       'node_modules/p/index.js', 'dist/app/background.js', 'src/vault/__tests__/a.test.ts', 'e2e/a.spec.ts',
       'scripts/check.mjs', 'popup.html', 'notes.md',
     ]) touch(rel);
-    expect(listSourceFiles(root).sort()).toEqual(['deep/a/b.js', 'leak/prf.ts', 'manifest/source.mjs', 'src/popup/main.ts', 'src/ui/a.tsx', 'vite.config.ts', 'x.mjs']);
+    expect(listSourceFiles(root).sort()).toEqual(['deep/a/b.js', 'leak/prf.ts', 'manifest/source.mjs', 'src/app/popup.tsx', 'src/ui/a.tsx', 'vite.config.ts', 'x.mjs']);
   });
 
   // Fable re-review: SKIP_DIRS (node_modules, dist, e2e, scripts) must only apply at the
@@ -446,6 +452,8 @@ describe('vault isolation (built output)', () => {
     write('assets/session-1.js', 'export const s=r=>({session:r.storage.session,pin:()=>r.storage.session.setAccessLevel({accessLevel:"TRUSTED_CONTEXTS"})});');
     write('popup.html', html('./assets/popup-1.js'));
     write('assets/popup-1.js', 'import{t as e}from"./send-1.js";e();');
+    // The popup bundles React (B1b-2a): its internal marker is in some built file, as in a real build.
+    write('assets/react-1.js', `export const R="${REACT_MARKER}";`);
     write('assets/send-1.js', 'export const t=()=>1;');
     write('unlock.html', html('./assets/unlock-1.js'));
     write('assets/unlock-1.js', `import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
@@ -460,6 +468,19 @@ describe('vault isolation (built output)', () => {
 
   it('passes a dist where only the unlock bundle carries vault code', () => {
     expect(bundleViolations(dir)).toEqual([]);
+  });
+
+  // B1b-2a S1 / §1.2: React never reaches the vault page, and the marker proves the check is live.
+  it('fails when a chunk the vault page loads carries React', () => {
+    write('assets/base-1.js', `export const n=()=>"${REACT_MARKER}";`);
+    expect(bundleViolations(dir)).toEqual(['assets/base-1.js (reachable from unlock.html) contains React — the vault page must stay plain DOM']);
+  });
+
+  it('is INCONCLUSIVE — a failure — when no built file carries the React 18 marker (React upgraded or gone)', () => {
+    write('assets/react-1.js', 'export const R="__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE";');
+    expect(bundleViolations(dir)).toEqual([
+      `INCONCLUSIVE: the React marker "${REACT_MARKER}" is in no built JS file — React 19 renamed it: update REACT_MARKER, or the no-React-in-the-vault-page rule passes trivially`,
+    ]);
   });
 
   it('fails when a static import from the background reaches a chunk with the envelope marker', () => {

@@ -10,11 +10,15 @@ export const EXT = fileURLToPath(new URL('../dist/chrome', import.meta.url));
 /**
  * The safety net under any ctx.route: every noc-tura.io name fails to resolve inside this
  * browser, so a request nothing catches fails locally instead of reaching the real host (a
- * CrowdSec bouncer bans IPs on 403s). Every E2E launches through launchContained.
+ * CrowdSec bouncer bans IPs on 403s). solscan.io too (B1b-2a §6.5): #27's Explorer link is a link
+ * only, and no test may reach it. Every E2E launches through launchContained.
  */
-export const HOST_RESOLVER_RULES = '--host-resolver-rules=MAP *.noc-tura.io ~NOTFOUND, MAP noc-tura.io ~NOTFOUND';
+export const RESOLVER_MAP = 'MAP *.noc-tura.io ~NOTFOUND, MAP noc-tura.io ~NOTFOUND, MAP *.solscan.io ~NOTFOUND, MAP solscan.io ~NOTFOUND';
+export const HOST_RESOLVER_RULES = `--host-resolver-rules=${RESOLVER_MAP}`;
+/** Any request to solscan.io, whatever the page: routed here, recorded and aborted. */
+export const SOLSCAN = /^https?:\/\/([^/]*\.)?solscan\.io(\/|$)/;
 
-/** Chromium with the built extension loaded and noc-tura.io unresolvable, in a fresh profile. */
+/** Chromium with the built extension loaded and noc-tura.io and solscan.io unresolvable, in a fresh profile. */
 export async function launchContained(profilePrefix: string): Promise<{ctx: BrowserContext; profile: string}> {
   const profile = mkdtempSync(join(tmpdir(), profilePrefix));
   const ctx = await chromium.launchPersistentContext(profile, {
@@ -33,7 +37,7 @@ export async function expectContained(ctx: BrowserContext): Promise<void> {
   const page = await ctx.newPage();
   try {
     await page.goto('chrome://version');
-    await expect(page.locator('#command_line')).toContainText('MAP *.noc-tura.io ~NOTFOUND, MAP noc-tura.io ~NOTFOUND');
+    await expect(page.locator('#command_line')).toContainText(RESOLVER_MAP);
   } finally {
     await page.close();
   }

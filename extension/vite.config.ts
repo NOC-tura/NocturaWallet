@@ -36,6 +36,7 @@ export default defineConfig({
       input: {
         background: resolve(__dirname, 'src/background/index.ts'),
         popup: resolve(__dirname, 'popup.html'),
+        wallet: resolve(__dirname, 'wallet.html'),
         unlock: resolve(__dirname, 'unlock.html'),
       },
       output: {
