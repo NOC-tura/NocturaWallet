@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {useWallet} from '../WalletContext';
 import {valuation} from '../valuation';
 import {ago, showAmount, showUsd, twoGroups} from '../format';
@@ -13,12 +13,18 @@ export const FRESH_ROWS = 10;
 
 type RowBalance = {b: Balances; at: number; fresh: boolean};
 
+const RENAME_FAILED = 'Something went wrong.';
 const RENAME_ERRORS: Record<string, string> = {
   malformed: 'Names are 1 to 32 characters, without control characters.',
   busy: 'The wallet is busy. Try again.',
   'unknown-account': 'That account no longer exists.',
-  failed: 'Something went wrong.',
+  failed: RENAME_FAILED,
 };
+
+const SELECT_ERROR = 'Could not switch accounts. Try again.';
+/** The error codes `report` (review M4) is for — `select` cannot return them today (spec: no network
+ * call), but the check is here in case that ever changes, rather than assuming its own contract. */
+const NETWORK_ERRORS = new Set<string>(['coordinator-refused', 'unreachable']);
 
 /**
  * The account switcher (spec §5.2, D14): derived from #43's sheet — accounts with balances, select,
@@ -32,11 +38,22 @@ export function Switcher({onClose}: {onClose: () => void}) {
   const [editing, setEditing] = useState<number | null>(null);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const refused = m.net.mode === 'refused';
-  const away = m.net.mode === 'offline' || m.net.mode === 'unreachable';
+  const [selectError, setSelectError] = useState<string | null>(null);
+  // The live net mode (WalletContext's own netRef pattern): a ref, kept current every render, so the
+  // async pass below reads what net.mode IS when it checks, not what it was when the effect started.
+  const netRef = useRef(m.net);
+  netRef.current = m.net;
 
   useEffect(() => {
     let alive = true;
+    // No fresh pass during the 403 cool-down, nor while offline or unreachable (review M5): the cached
+    // rows are what there is, and ten reads that cannot answer would only wait. Read live (netRef), not
+    // a value captured once: the sequential cached loop below can run long enough for net.mode to flip
+    // mid-pass, and a snapshot taken at mount would miss that (review follow-up).
+    const away = (): boolean => {
+      const mode = netRef.current.mode;
+      return mode === 'refused' || mode === 'offline' || mode === 'unreachable';
+    };
     void (async () => {
       for (const a of accounts) {
         const c = await m.engine.cached(a.publicKey);
@@ -46,10 +63,9 @@ export function Switcher({onClose}: {onClose: () => void}) {
           setRows(r => ({...r, [a.publicKey]: {b, at, fresh: false}}));
         }
       }
-      // No fresh pass during the 403 cool-down, nor while offline or unreachable (review M5): the
-      // cached rows are what there is, and ten reads that cannot answer would only wait.
-      if (refused || away) return;
+      if (away()) return;
       for (const a of accounts.slice(0, FRESH_ROWS)) {
+        if (away()) return;
         const f = await m.engine.balances(a.publicKey);
         if (!alive) return;
         if (f.ok) {
@@ -64,16 +80,21 @@ export function Switcher({onClose}: {onClose: () => void}) {
     return () => {
       alive = false;
     };
-    // The list is read once per opening; a rename changes names, not balances.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Mount-only, deliberately: the account list is read once per opening (a rename changes names, not
+    // balances), and the live net mode is read through netRef above rather than restarting this whole
+    // pass on every net.mode change. extension/ has no lint gate to satisfy here; this is a plain note.
   }, []);
 
   const select = async (a: Account) => {
     const r = await m.engine.select(a.index);
     if (r.ok) {
+      setSelectError(null);
       onClose();
       await m.reload();
+      return;
     }
+    setSelectError(SELECT_ERROR);
+    if (NETWORK_ERRORS.has(r.error)) m.report(r.error);
   };
 
   const save = async (a: Account) => {
@@ -82,7 +103,7 @@ export function Switcher({onClose}: {onClose: () => void}) {
       setEditing(null);
       setError(null);
       await m.reload();
-    } else setError(RENAME_ERRORS[r.error] ?? RENAME_ERRORS.failed ?? null);
+    } else setError(RENAME_ERRORS[r.error] ?? RENAME_FAILED);
   };
 
   const cli = m.wallet?.scheme === 'cli';
@@ -142,6 +163,7 @@ export function Switcher({onClose}: {onClose: () => void}) {
           );
         })}
       </div>
+      {selectError === null ? null : <p className="field-msg noc-danger" role="alert">{selectError}</p>}
       <button type="button" className="btn btn-secondary" disabled={cli} onClick={() => m.platform.openPage('unlock.html?mode=accounts')}>
         <ExtIcon name="plus" size={18} />
         Add account
