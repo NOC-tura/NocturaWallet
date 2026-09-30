@@ -50,14 +50,14 @@ export function Receive({onBack}: {onBack: () => void}) {
   /**
    * The sticky button copies the field as it reads NOW (final review M2), not the request debounced
    * for the QR: a copy within QR_DEBOUNCE_MS of a keystroke must not carry the previous amount. No
-   * request in the field → the bare address, as the button's idle label says.
+   * request in the field → the bare address, as the button's label says.
    */
-  const copyRequest = () => {
-    const now = requestOf(text);
-    doCopy(now === null ? address : uriOf(address, now));
-  };
+  const live = requestOf(text);
+  const copyRequest = () => doCopy(live === null ? address : uriOf(address, live));
   const copied = copy === 'copied';
-  const buttonText = copy === 'copied' ? 'Copied' : copy === 'failed' ? 'Copy failed' : amount === null ? 'Copy address' : 'Copy link';
+  // The label says what a click copies, from the same parse (final re-review F1); only the QR, the
+  // ribbon and the caption wait for the debounce.
+  const buttonText = copy === 'copied' ? 'Copied' : copy === 'failed' ? 'Copy failed' : live === null ? 'Copy address' : 'Copy link';
   return (
     <div className="screen s-recv">
       <TopBar title="Receive" onBack={onBack} />

@@ -132,6 +132,22 @@ describe('#13 receive', () => {
     expect(document.querySelector('[data-qr]')?.getAttribute('data-qr')).toBe(`solana:${A}`);
   });
 
+  // Final re-review F1: the button's label says what a click copies, at once; the QR stays debounced.
+  it('the button label follows the field at once: "Copy link" before QR_DEBOUNCE_MS, "Copy address" once the field is no request', async () => {
+    await openReceive();
+    vi.useFakeTimers();
+    const field = screen.getByRole('textbox', {name: 'Request amount'});
+    fireEvent.change(field, {target: {value: '2.48'}});
+    await act(async () => vi.advanceTimersByTime(QR_DEBOUNCE_MS - 1));
+    expect(document.querySelector('[data-qr]')?.getAttribute('data-qr')).toBe(`solana:${A}`);
+    expect(document.querySelector('.pay-ribbon')).toBeNull();
+    expect(screen.getByRole('button', {name: 'Copy link'})).toBeTruthy();
+    await act(async () => vi.advanceTimersByTime(1));
+    fireEvent.change(field, {target: {value: '1.0000000001'}});
+    expect(screen.getByRole('button', {name: 'Copy address'})).toBeTruthy();
+    expect(document.querySelector('.pay-ribbon')).toBeTruthy();
+  });
+
   it('no price: the fiat line reads "SOL · ≈ —", never "$0.00"', async () => {
     await openReceive({
       deps: {

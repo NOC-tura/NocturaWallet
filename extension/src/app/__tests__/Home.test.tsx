@@ -423,6 +423,23 @@ describe('#42 offline and the D26 refused state', () => {
     expect(nav.onReceive).toHaveBeenCalledTimes(1);
   });
 
+  // Final re-review F2: once refused, a later 'unreachable' report never replaces the D26 state.
+  it('refused, then a screen reports unreachable: the D26 banner stays, refresh stays disabled, no #42', async () => {
+    const reader = walletReader({
+      getBalance: async () => {
+        throw new RpcForbidden('getBalance');
+      },
+    });
+    const {model} = await renderHomeWithModel({reader});
+    expect(await screen.findByText(REFUSED_TEXT)).toBeTruthy();
+    act(() => model().report('unreachable'));
+    expect(model().net.mode).toBe('refused');
+    expect(screen.getByText(REFUSED_TEXT)).toBeTruthy();
+    expect((screen.getByRole('button', {name: 'Refresh'}) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByText('Could not reach the Noctura server')).toBeNull();
+    expect(screen.queryByText(/offline/)).toBeNull();
+  });
+
   it('refused is terminal for this popup: neither the online event nor a refresh() call reads again', async () => {
     let reads = 0;
     const reader = walletReader({
