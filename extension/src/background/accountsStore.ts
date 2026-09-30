@@ -184,8 +184,9 @@ function sameWallet(current: StoredEnvelope, next: StoredEnvelope): boolean {
  *
  * `expectedRevision: null` is onboarding's FIRST write: accepted only while v1_vault is absent
  * (every name is then new, so every name is cleaned); with anything stored, 'wallet-exists' and
- * nothing is written — onboarding never overwrites a wallet. A revision with no wallet stored is
- * 'no-wallet'.
+ * nothing is written — onboarding never overwrites a wallet, nor a damaged value in its place. A
+ * revision with no v1_vault stored is 'no-wallet'; with a value that is not an envelope (an array, a
+ * string, null), 'stored-invalid'.
  */
 export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelope: unknown): Promise<StoreResult> {
   const first = expectedRevision === null;
@@ -198,7 +199,8 @@ export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelop
     if (first) {
       if (stored !== undefined) return 'wallet-exists';
     } else {
-      if (!isObj(stored)) return 'no-wallet';
+      // Only an absent key is "no wallet"; anything else stored there is a damaged vault (as in forgetWallet).
+      if (stored === undefined) return 'no-wallet';
       const current = envelopeShape(stored);
       if (current === null) return 'stored-invalid';
       if (envelopeRevision(current) !== expectedRevision) return 'busy';

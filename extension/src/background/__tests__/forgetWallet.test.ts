@@ -450,3 +450,23 @@ describe('vault.forgetWallet — the unfunded guard reads concurrently, bounded 
     }
   });
 });
+
+describe('storeEnvelope on a stored v1_vault that is not an object (fix round 2)', () => {
+  it('a revision write is stored-invalid, a first write is wallet-exists — nothing written', async () => {
+    for (const bad of [[], 'x', 5, null, true]) {
+      const ext = fakeExt();
+      await ext.local.set(VAULT_KEY, bad);
+      expect(await storeEnvelope(ext, REV, STORED)).toBe('stored-invalid');
+      expect(await storeEnvelope(ext, null, STORED)).toBe('wallet-exists');
+      expect(await ext.local.get(VAULT_KEY)).toEqual(bad);
+    }
+  });
+
+  it('an absent v1_vault: a revision write is no-wallet, a first write is stored', async () => {
+    const ext = fakeExt();
+    expect(await storeEnvelope(ext, REV, STORED)).toBe('no-wallet');
+    expect(await ext.local.get(VAULT_KEY)).toBeUndefined();
+    expect(await storeEnvelope(ext, null, STORED)).toBe('stored');
+    expect(await ext.local.get(VAULT_KEY)).toEqual(STORED);
+  });
+});
