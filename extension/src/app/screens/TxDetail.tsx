@@ -82,6 +82,8 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
           setSearchError(r.error);
           return; // stop: no further page is read once the search itself has failed
         }
+        // An answered page is a good read for the whole app (#42: unreachable → reconnecting).
+        m.reached();
         const hit = r.data.items.find(i => i.signature === signature);
         if (hit !== undefined) return setItem(hit);
         if (r.data.next === null) break;

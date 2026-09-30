@@ -260,3 +260,34 @@ describe('the explorer link (§6.5)', () => {
     expect(explorerUrl(`${sig(9)}?x=1`)).toBeNull();
   });
 });
+
+// Task 16 (carried from Tasks 13 and 15): #27's by-signature search that got an answer is a good read
+// for the whole app — #42 moves from unreachable to reconnecting, as after Home's own refresh.
+describe('#27 and the model: a successful search reports itself (m.reached)', () => {
+  it('unreachable → reconnecting once the search is answered', async () => {
+    let release = (): void => undefined;
+    const gate = new Promise<void>(r => {
+      release = r;
+    });
+    const reader = walletReader({
+      getBalance: async () => {
+        throw new RequestUnreachable('u', 'x');
+      },
+      getSignaturesForAddress: async () => {
+        await gate;
+        return [];
+      },
+    });
+    await renderInWallet(
+      <>
+        <NetModeProbe />
+        <TxDetail signature={sig(1)} onBack={() => undefined} />
+      </>,
+      {reader},
+    );
+    await waitFor(() => expect(screen.getByTestId('net-mode').textContent).toBe('unreachable'));
+    release();
+    expect(await screen.findByText('This transaction is not in the recent history yet.')).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId('net-mode').textContent).toBe('reconnecting'));
+  });
+});

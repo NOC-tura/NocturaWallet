@@ -43,6 +43,14 @@ export interface WalletModel {
    * whole app into the D26 state (banner, network buttons disabled), 'unreachable' into #42's.
    */
   report(error: string): void;
+  /**
+   * The counterpart of `report`: a screen whose own network read succeeded (Activity's history,
+   * #27's search) says so here, with the same effect on the net state as Home's own successful
+   * refresh — offline or unreachable becomes reconnecting for 1.5 s, then online; refused stays
+   * refused (the 403 cool-down holds until the popup reopens). It does not move `lastSync`: that is
+   * the age of the balances shown, and a history read does not refresh them.
+   */
+  reached(): void;
   refresh(): Promise<void>;
   reload(): Promise<void>;
   lock(): Promise<void>;
@@ -117,14 +125,22 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
     [now],
   );
 
-  const succeeded = useCallback(() => {
-    setLastSync(now());
+  /** A read got an answer: offline/unreachable → reconnecting (1.5 s) → online. Refused is left alone. */
+  const reached = useCallback(() => {
     if (netRef.current.mode === 'offline' || netRef.current.mode === 'unreachable') {
-      setNet({mode: 'reconnecting', since: now(), failures: 0});
+      const next: Net = {mode: 'reconnecting', since: now(), failures: 0};
+      // The ref too: a second good read before the re-render must not restart the 1.5 s.
+      netRef.current = next;
+      setNet(next);
       clearTimeout(reconnectTimer.current);
       reconnectTimer.current = setTimeout(() => setNet(n => (n.mode === 'reconnecting' ? {mode: 'online', since: now(), failures: 0} : n)), RECONNECTED_MS);
     }
   }, [now]);
+
+  const succeeded = useCallback(() => {
+    setLastSync(now());
+    reached();
+  }, [now, reached]);
 
   /**
    * Fresh balances and prices for the selected account. Refused while the 403 cool-down holds. Both
@@ -297,6 +313,6 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
     await applyState(true);
   }, [engine, applyState]);
 
-  const model: WalletModel = {surface, engine, platform, phase, wallet, account, balances, balancesAt, stale, prices, pricesStale, pending, net, lastSync, refreshing, now, report: failed, refresh, reload, lock};
+  const model: WalletModel = {surface, engine, platform, phase, wallet, account, balances, balancesAt, stale, prices, pricesStale, pending, net, lastSync, refreshing, now, report: failed, reached, refresh, reload, lock};
   return <Ctx.Provider value={model}>{children}</Ctx.Provider>;
 }

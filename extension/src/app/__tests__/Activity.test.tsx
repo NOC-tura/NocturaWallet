@@ -452,3 +452,104 @@ describe('#41 empty activity', () => {
     expect(reads).toBe(seen);
   });
 });
+
+// Task 16 (carried from Tasks 13 and 15): a good network read on Activity is a good read for the whole
+// app — it moves #42 from unreachable to reconnecting exactly as Home's own successful refresh does.
+// The model is read directly (not through Home, whose own reads could move it either way).
+function NetProbe() {
+  const m = useWallet();
+  return (
+    <>
+      <div data-testid="net-mode">{m.net.mode}</div>
+      <button type="button" onClick={() => m.report('unreachable')}>
+        Drop the network
+      </button>
+    </>
+  );
+}
+
+describe('#26 and the model: a successful read reports itself (m.reached)', () => {
+  // Nothing but Activity's reads can succeed: every balance read (the provider's own refresh) is unreachable.
+  const unreachableBalances = {
+    getBalance: async (): Promise<bigint> => {
+      throw new RequestUnreachable('u', 'x');
+    },
+  };
+
+  it('the first page: unreachable → reconnecting', async () => {
+    let release = (): void => undefined;
+    const gate = new Promise<void>(r => {
+      release = r;
+    });
+    const reader = walletReader({
+      ...unreachableBalances,
+      getSignaturesForAddress: async () => {
+        await gate;
+        return [];
+      },
+    });
+    await renderInWallet(
+      <>
+        <NetProbe />
+        <Activity {...nav} />
+      </>,
+      {reader},
+    );
+    await waitFor(() => expect(screen.getByTestId('net-mode').textContent).toBe('unreachable'));
+    release();
+    await waitFor(() => expect(screen.getByTestId('net-mode').textContent).toBe('reconnecting'));
+  });
+
+  it('[Load more]: unreachable → reconnecting', async () => {
+    const list = Array.from({length: 10}, (_, i) => sig(i + 1));
+    const reader = walletReader({
+      ...unreachableBalances,
+      getSignaturesForAddress: async (_a, o) => (o.before === undefined ? list.map(s => ({signature: s, blockTime: null, err: null})) : []),
+      getTransaction: async () => otherTx(ACCOUNT.publicKey, NOW - 300),
+    });
+    await renderInWallet(
+      <>
+        <NetProbe />
+        <Activity {...nav} />
+      </>,
+      {reader},
+    );
+    const more = await screen.findByRole('button', {name: 'Load more'});
+    fireEvent.click(screen.getByRole('button', {name: 'Drop the network'}));
+    await waitFor(() => expect(screen.getByTestId('net-mode').textContent).toBe('unreachable'));
+    fireEvent.click(more);
+    await waitFor(() => expect(screen.getByTestId('net-mode').textContent).toBe('reconnecting'));
+  });
+
+  // The model method itself, driven directly (a history read cannot succeed while refused: the
+  // background's own 403 latch refuses it first, so a screen-level test here would prove nothing).
+  it('reached(): unreachable → reconnecting → online after 1.5 s; refused stays refused', async () => {
+    function Driver() {
+      const m = useWallet();
+      return (
+        <>
+          <div data-testid="mode">{m.net.mode}</div>
+          <button type="button" onClick={() => m.report('unreachable')}>
+            unreachable
+          </button>
+          <button type="button" onClick={() => m.report('coordinator-refused')}>
+            refused
+          </button>
+          <button type="button" onClick={() => m.reached()}>
+            reached
+          </button>
+        </>
+      );
+    }
+    await renderInWallet(<Driver />, {reader: walletReader(unreachableBalances)});
+    const mode = () => screen.getByTestId('mode').textContent;
+    await waitFor(() => expect(mode()).toBe('unreachable'));
+    fireEvent.click(screen.getByRole('button', {name: 'reached'}));
+    expect(mode()).toBe('reconnecting');
+    await waitFor(() => expect(mode()).toBe('online'), {timeout: 3_000});
+    fireEvent.click(screen.getByRole('button', {name: 'refused'}));
+    expect(mode()).toBe('refused');
+    fireEvent.click(screen.getByRole('button', {name: 'reached'}));
+    expect(mode()).toBe('refused');
+  });
+});

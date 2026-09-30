@@ -92,7 +92,7 @@ export function Activity({onTx, onReceive}: {onTx: (item: HistoryItem) => void; 
   const refused = m.net.mode === 'refused' || error === 'coordinator-refused';
 
   const key = account?.publicKey ?? null;
-  const {engine, report} = m;
+  const {engine, report, reached} = m;
   /**
    * A monotonic request token (review fix round 1 #4c): a load or "Load more" reply that lands after
    * a newer one started — a second click, or a fresh `load()` because the selected account changed
@@ -112,11 +112,13 @@ export function Activity({onTx, onReceive}: {onTx: (item: HistoryItem) => void; 
       setItems(r.data.items);
       setNext(r.data.next);
       setError(null);
+      // A good read is the whole app's news too (#42: unreachable → reconnecting), as Home's refresh.
+      reached();
     } else {
       setError(r.error);
       report(r.error);
     }
-  }, [key, engine, report]);
+  }, [key, engine, report, reached]);
 
   /**
    * Read on open, and whenever the selected account changes — ALWAYS: an account switch resets
@@ -145,6 +147,7 @@ export function Activity({onTx, onReceive}: {onTx: (item: HistoryItem) => void; 
     if (r.ok) {
       setItems(prev => [...(prev ?? []), ...r.data.items]);
       setNext(r.data.next);
+      m.reached();
     } else {
       setError(r.error);
       m.report(r.error);
