@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {act, fireEvent, screen, waitFor} from '@testing-library/react';
-import {renderInWallet} from './harness';
+import {renderInWallet, type WalletOptions} from './harness';
 import {Receive} from '../screens/Receive';
 import {QR_DEBOUNCE_MS} from '../screens/Receive';
 import {ACCOUNT} from '../../background/__tests__/fixtures';
@@ -11,12 +11,18 @@ const short = `${A.slice(0, 4)}…${A.slice(-4)}`;
 function clipboard(writeText: (v: string) => Promise<void>) {
   Object.defineProperty(navigator, 'clipboard', {value: {writeText}, configurable: true});
 }
+const setOnline = (value: boolean) => Object.defineProperty(navigator, 'onLine', {value, configurable: true});
 const onBack = vi.fn();
-async function openReceive() {
-  const r = await renderInWallet(<Receive onBack={onBack} />);
+async function openReceive(o: WalletOptions = {}) {
+  const r = await renderInWallet(<Receive onBack={onBack} />, o);
   await waitFor(() => expect(document.querySelector('[data-qr]')?.getAttribute('data-qr')).toBe(`solana:${A}`));
   return r;
 }
+
+afterEach(() => {
+  setOnline(true);
+  vi.useRealTimers();
+});
 
 describe('#13 receive', () => {
   it('plain address: the QR of solana:<address>, the short URI, the full address in groups, Copy address', async () => {
@@ -81,5 +87,66 @@ describe('#13 receive', () => {
     await act(async () => new Promise(r => setTimeout(r, QR_DEBOUNCE_MS + 20)));
     expect(document.querySelector('.pay-ribbon')).toBeNull();
     expect(document.querySelector('[data-qr]')?.getAttribute('data-qr')).toBe(`solana:${A}`);
+  });
+
+  it('the QR follows only the LAST keystroke, exactly QR_DEBOUNCE_MS later — a keystroke inside the window restarts it', async () => {
+    expect(QR_DEBOUNCE_MS).toBe(200);
+    await openReceive();
+    vi.useFakeTimers();
+    const field = screen.getByRole('textbox', {name: 'Request amount'});
+    fireEvent.change(field, {target: {value: '1'}});
+    await act(async () => vi.advanceTimersByTime(QR_DEBOUNCE_MS - 1));
+    // Not yet: the debounce has one ms left.
+    expect(document.querySelector('[data-qr]')?.getAttribute('data-qr')).toBe(`solana:${A}`);
+    // A second keystroke inside the window restarts the debounce from here, not from the first one.
+    fireEvent.change(field, {target: {value: '2.48'}});
+    await act(async () => vi.advanceTimersByTime(QR_DEBOUNCE_MS - 1));
+    expect(document.querySelector('[data-qr]')?.getAttribute('data-qr')).toBe(`solana:${A}`);
+    await act(async () => vi.advanceTimersByTime(1));
+    // QR_DEBOUNCE_MS after the LAST keystroke (2 × (QR_DEBOUNCE_MS − 1) + 2 ms since the first one),
+    // and it carries the final value, never the '1' that was overtaken.
+    expect(document.querySelector('[data-qr]')?.getAttribute('data-qr')).toBe(`solana:${A}?amount=2.48&label=Noctura`);
+  });
+
+  it('no price: the fiat line reads "SOL · ≈ —", never "$0.00"', async () => {
+    await openReceive({
+      deps: {
+        prices: async () => {
+          throw new Error('down');
+        },
+        stagePrice: async () => {
+          throw new Error('down');
+        },
+      },
+    });
+    fireEvent.change(screen.getByRole('textbox', {name: 'Request amount'}), {target: {value: '2.48'}});
+    await act(async () => new Promise(r => setTimeout(r, QR_DEBOUNCE_MS + 20)));
+    expect(screen.getByText('SOL · ≈ —')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('$0.00');
+  });
+
+  it('offline: a price is present, but the fiat line still reads "—" (D36 — never a stale $ figure)', async () => {
+    await openReceive();
+    fireEvent.change(screen.getByRole('textbox', {name: 'Request amount'}), {target: {value: '2.48'}});
+    await act(async () => new Promise(r => setTimeout(r, QR_DEBOUNCE_MS + 20)));
+    expect(screen.getByText('SOL · ≈ $372.00')).toBeTruthy();
+    await act(async () => {
+      setOnline(false);
+      window.dispatchEvent(new Event('offline'));
+    });
+    expect(screen.getByText('SOL · ≈ —')).toBeTruthy();
+  });
+
+  it('pay state: the WALLET ADDRESS card still copies the bare address; [Copy link] copies the URI (index.html #13 pay state)', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    clipboard(writeText);
+    await openReceive();
+    fireEvent.change(screen.getByRole('textbox', {name: 'Request amount'}), {target: {value: '2.48'}});
+    await act(async () => new Promise(r => setTimeout(r, QR_DEBOUNCE_MS + 20)));
+    expect(screen.getByText('WALLET ADDRESS')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Copy link'}));
+    expect(writeText).toHaveBeenLastCalledWith(`solana:${A}?amount=2.48&label=Noctura`);
+    fireEvent.click(screen.getByRole('button', {name: 'Copy wallet address'}));
+    expect(writeText).toHaveBeenLastCalledWith(A);
   });
 });
