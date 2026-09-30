@@ -106,18 +106,40 @@ describe('prepareSend: the simulation (E2)', () => {
 
   it('a token account with the wrong mint, the wrong owner or the wrong amount is simulation-mismatch', async () => {
     const ext = await setup();
-    const tokenAt = (mint: string, owner: string, amount: bigint) => (o: SimulationOutcome): SimulationOutcome => ({
+    const tokenAt = (mint: string, owner: string, amount: bigint, program = TOKEN, length = 165) => (o: SimulationOutcome): SimulationOutcome => ({
       ...o,
-      accounts: [o.accounts?.[0] ?? null, {lamports: 2_039_280n, owner: TOKEN, data: tokenAccountData(mint, owner, amount)}],
+      accounts: [o.accounts?.[0] ?? null, {lamports: 2_039_280n, owner: program, data: tokenAccountData(mint, owner, amount).slice(0, length)}],
     });
     const USDC = WALLET_TOKENS.USDC.mint as string;
-    for (const edit of [tokenAt(USDC, ACCOUNT.publicKey, 12_399_619n), tokenAt(NOC, RECIPIENT, 12_399_619n), tokenAt(NOC, ACCOUNT.publicKey, 12_399_620n)]) {
+    const SYSTEM = '11111111111111111111111111111111';
+    for (const edit of [
+      tokenAt(USDC, ACCOUNT.publicKey, 12_399_619n),
+      tokenAt(NOC, RECIPIENT, 12_399_619n),
+      tokenAt(NOC, ACCOUNT.publicKey, 12_399_620n),
+      // Right bytes, but the account is not the token program's: not a token account.
+      tokenAt(NOC, ACCOUNT.publicKey, 12_399_619n, SYSTEM),
+      // One byte short of the amount's end: refused as a mismatch, not read past its end.
+      tokenAt(NOC, ACCOUNT.publicKey, 12_399_619n, TOKEN, 71),
+    ]) {
       const {reader} = editedReader(edit, {getTokenAccountsByOwner: nocHoldings});
       await expect(prepareSend(ext, fakeDeps({reader}), ACCOUNT.publicKey, NOC_INTENT)).rejects.toMatchObject({code: 'simulation-mismatch'});
     }
     // Positive control: the right mint, owner and amount pass.
     const {reader} = editedReader(tokenAt(NOC, ACCOUNT.publicKey, 12_399_619n), {getTokenAccountsByOwner: nocHoldings});
     expect((await prepareSend(ext, fakeDeps({reader}), ACCOUNT.publicKey, NOC_INTENT)).simulation.token?.after).toBe('12399619');
+  });
+
+  it('an SPL send: accepts the sender state simulated with the network fee included, exactly', async () => {
+    const ext = await setup();
+    const plain = await prepareSend(ext, fakeDeps({reader: editedReader(o => o, {getTokenAccountsByOwner: nocHoldings}).reader}), ACCOUNT.publicKey, NOC_INTENT);
+    const network = BigInt(plain.fees.networkLamports);
+    expect(network).toBeGreaterThan(0n);
+    const withFee = 10_000_000_000n - BigInt(plain.solRequiredLamports);
+    const {reader} = editedReader(o => withSenderLamports(o, withFee), {getTokenAccountsByOwner: nocHoldings});
+    const view = await prepareSend(ext, fakeDeps({reader}), ACCOUNT.publicKey, NOC_INTENT);
+    expect(view.simulation.sol).toEqual({before: '10000000000', after: withFee.toString()});
+    expect(BigInt(plain.simulation.sol.after) - BigInt(view.simulation.sol.after)).toBe(network);
+    expect(view.simulation.token).toEqual({symbol: 'NOC', before: '13399619', after: '12399619'});
   });
 
   it('the recipient kind: a missing account is "new"; a program or another owner is shown, never refused', async () => {
@@ -145,6 +167,7 @@ describe('prepareSend: the simulation (E2)', () => {
     const ext = await setup();
     const deps = fakeDeps({reader: sendReader()});
     const view = await prepareSend(ext, deps, ACCOUNT.publicKey, SOL_INTENT);
+    expect(view.simulation).toEqual(expect.objectContaining({slot: SIMULATED_SLOT, sol: {before: '10000000000', after: '9999000000'}}));
     expect((await preparedFor(ext, deps, ACCOUNT.publicKey))?.simulation).toEqual(view.simulation);
   });
 
