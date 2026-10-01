@@ -334,14 +334,11 @@
   justify-content: flex-end;
 }
 
-/* #39: the mockup's card spacing (inline there), the done cards at its 0.55 opacity, the warning card's title tone. */
-.vlt-gap-3b {
-  margin-bottom: var(--space-3);
-}
+/* #39: the done cards at the mockup's 0.55 opacity; the warning card's title in --warning (inline in the
+   mockup), scoped by the design's own `.s8-step-card.warn` — (0,2,1) above its `.s8-step-card h3` colour. */
 .vlt-col .s8-step-card.vlt-done {
   opacity: 0.55;
 }
-/* Above the design's `.s8-step-card h3` colour (0,1,1), as the mockup's inline style is. */
-.vlt-col .s8-step-card .vlt-warning {
+.s8-step-card.warn h3 {
   color: var(--warning);
 }

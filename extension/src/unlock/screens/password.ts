@@ -48,7 +48,7 @@ export interface PasswordScreen {
  * `finish` again with the same password, held here (`held`) — until the tab is hidden or the page left:
  * §3.5's rule wins over E5's "kept while this page stays open" (plan review L5), and #5 goes back to
  * enter with "Enter a new password to try again.". A tab hidden while `finish` runs counts: a `retry`
- * answer then keeps no password and asks for one (`retype`).
+ * answer then keeps no password and asks for one (`retype`, with the same line).
  *
  * Rule 6 (spec §7.6): Continue and Back run through the page's one `exclusive()` gate; `step` is the
  * `offered`-style guard (welcome.ts) — 'off' before show() and once the run has moved on. The show/hide
@@ -142,13 +142,16 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
       held = '';
       return;
     }
-    // A `retry` whose password went with a hidden tab meanwhile is a `retype`: nothing is held past §3.5's rule.
-    const then = out.then === 'retry' && leftWhileCreating ? 'retype' : out.then;
+    // A `retry` whose password went with a hidden tab meanwhile is a `retype`: nothing is held past §3.5's rule,
+    // and #5 says so as a hidden [Try again] does — "Enter a new password to try again." (L5).
+    const dropped = out.then === 'retry' && leftWhileCreating;
+    const then = dropped ? 'retype' : out.then;
     if (then === 'stop') {
       setText(byId('pw-notice-line'), out.line);
       setText(byId('pw-notice-help'), out.help ?? '');
       shown(byId('pw-notice-help'), (out.help ?? '') !== '');
-    } else helper(out.line, true);
+    } else if (dropped) helper(PASSWORD.newPasswordToRetry, false);
+    else helper(out.line, true);
     note = then === 'retype';
     held = then === 'retry' ? password : '';
     // A refusal that can be retyped keeps nothing typed: the run starts again at enter.

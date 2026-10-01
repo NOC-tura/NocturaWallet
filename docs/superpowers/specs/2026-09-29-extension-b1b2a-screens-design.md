@@ -864,6 +864,14 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     `invalid-mnemonic`, `failed` ("Something went wrong. Nothing was saved.").
 - **On the import path** this same screen appears after #8 with the step counter "Import · 2 / 2"
   **→ adapted** (the design's import path has no PIN step; the extension needs a password).
+- **On #39's restore path** it appears after #8 with "Recovery" / "Restore · 2 / 2", and gains one
+  extension-only state, **`retry`** (a refusal the same password may answer later — `send-open`, §3.8):
+  the refusal's line in the helper and `[Try again]`, which runs the restore again with the password
+  held in page memory. In `retry` the form and the lede are hidden (the lede would ask for a field that
+  is not there); Back is offered and drops the held password, returning to #8 with the phrase in the
+  field (plan-2 review L3). A tab hidden while the restore runs counts as hidden: a `retry` answer then
+  holds nothing, and #5 goes back to `enter` with "Enter a new password to try again." (§3.5's rule,
+  L5) — as it does when the tab is hidden behind `[Try again]` (Task 12, **controller addition**).
 - **Navigation:** `created` → #6 (create path) or the UI tab `#/imported` (import path, no #6
   prompt; D9 puts the passkey step on #6 only). `created-locked` → the UI tab
   (`#/created` or `#/imported`), which shows its locked variant.
@@ -971,7 +979,9 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
         expires — about two minutes — then try again." + `[Try again]`; the phrase stays in page
         memory while this page stays open; the password too, until the tab is hidden — §3.5's rule
         wins (plan-2 review L5): a hidden tab drops it and #5 reads "Enter a new password to try
-        again." (**controller addition — confirmed by the owner 2026-10-01**);
+        again." (**controller addition — confirmed by the owner 2026-10-01**); a tab hidden while the
+        restore runs drops it too, and #5 reads the same line; Back from `[Try again]` returns to #8 with
+        the phrase in the field (§3.5's `retry`);
       - `busy` → "The wallet changed while you were typing. Start again." → #39;
       - `unlocked` (an unlock landed mid-forget, E5 step 5) → "The wallet was unlocked while this was
         running, so nothing was deleted. Start again." → #39 — **controller addition — confirmed by the owner 2026-10-01**;
@@ -1110,6 +1120,11 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     "A passkey is not carried over; you can add one again later." (passkey management is B1b-2b).
   - "24 words" becomes "12 or 24 words" (import accepts both).
   - "#36 change-pin" is not a step: import sets the password itself.
+  - **The back arrow walks back through the steps** (3 → 2 → 1), and goes to #9 only from step 1;
+    the design sends Back straight to #9. With the cards walked in order (L1), Back is the way to
+    re-read a step (Task 12).
+  - **Step 2's CTA reads "Continue"**, not the design's "Continue to import": step 2 leads to step
+    3, not to #8 (plan-mandated, with L1); "Continue to import" is step 3's.
 
 ### 3.12 #40 import-success (UI tab `#/imported`)
 

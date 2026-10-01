@@ -46,8 +46,8 @@ describe('#39 forgot password (spec §3.11)', () => {
     expect(text(el('fg-title'))).toBe('Forgot your password?');
     expect(text(el('fg-lede'))).toBe('Your recovery phrase is the only way back. Three steps to restore.');
     expect(cards().map(c => [c.className, text(c)])).toEqual([
-      ['s8-step-card vlt-gap-3b active', "1 Recover from seed phrase You'll need the 12 or 24 words you wrote down during setup. Make sure you have them on paper or steel — not on this computer. If you don't have your seed, your funds cannot be recovered. That's the security tradeoff of self-custody."],
-      ['s8-step-card vlt-gap-3b', "2 Enter your words You'll be taken to the import screen. Type or paste your words."],
+      ['s8-step-card vlt-gap-bottom-3 active', "1 Recover from seed phrase You'll need the 12 or 24 words you wrote down during setup. Make sure you have them on paper or steel — not on this computer. If you don't have your seed, your funds cannot be recovered. That's the security tradeoff of self-custody."],
+      ['s8-step-card vlt-gap-bottom-3', "2 Enter your words You'll be taken to the import screen. Type or paste your words."],
       ['s8-step-card', "3 Set a new password Once your phrase is verified against this wallet, you'll choose a new password (at least 12 characters). The old password stops working."],
     ]);
     expect(text(el('fg-foot'))).toBe('The recovery flow is offline-only. We never see your seed phrase, your password, or your wallet address.');
@@ -70,7 +70,7 @@ describe('#39 forgot password (spec §3.11)', () => {
     await idle(h);
     expect(text(el('fg-title'))).toBe('Enter your words');
     expect(text(el('fg-lede'))).toBe('Type or paste the 12 or 24 words, in order.');
-    expect(cards().map(c => c.className)).toEqual(['s8-step-card vlt-gap-3b vlt-done', 's8-step-card vlt-gap-3b active', 's8-step-card']);
+    expect(cards().map(c => c.className)).toEqual(['s8-step-card vlt-gap-bottom-3 vlt-done', 's8-step-card vlt-gap-bottom-3 active', 's8-step-card']);
     expect(text(el('fg-card-1-body'))).toBe('Done — you confirmed you have your words.');
     expect(visible(el('fg-card-1-hint'))).toBe(false);
     expect(text(el('fg-card-2-body'))).toBe("You'll be taken to the import screen. Type or paste your words.");
@@ -85,7 +85,7 @@ describe('#39 forgot password (spec §3.11)', () => {
     expect(text(el('fg-step'))).toBe('3 / 3');
     expect(text(el('fg-title'))).toBe('Set a new password');
     expect(text(el('fg-lede'))).toBe("Once your phrase is verified against this wallet, you'll choose a new password (at least 12 characters). The old password stops working.");
-    expect(cards().map(c => c.className)).toEqual(['s8-step-card vlt-gap-3b vlt-done', 's8-step-card vlt-gap-3b vlt-done', 's8-step-card active']);
+    expect(cards().map(c => c.className)).toEqual(['s8-step-card vlt-gap-bottom-3 vlt-done', 's8-step-card vlt-gap-bottom-3 vlt-done', 's8-step-card active']);
     expect(text(el('fg-card-1-body'))).toBe('Done.');
     expect(text(el('fg-card-2-body'))).toBe('Done — seed verified against your existing public key.');
     expect(text(el('fg-card-3-body'))).toBe("You'll choose a new password. The old password stops working. A passkey is not carried over; you can add one again later.");
@@ -168,9 +168,11 @@ async function storedWallet(): Promise<EnvelopeV1> {
 
 let run: RestoreRun;
 let pw: PasswordScreen;
-async function restoring(o: {vault?: unknown; send?: (inner: Send) => Send; holdSleep?: boolean} = {}) {
+async function restoring(o: {vault?: unknown; send?: (inner: Send) => Send; holdSleep?: boolean; read?: (stored: () => Promise<unknown>) => () => Promise<unknown>} = {}) {
   const h = await harness({vault: 'vault' in o ? o.vault : await storedWallet(), send: o.send, holdSleep: o.holdSleep});
   await h.ext.local.set(KNOWN_RECIPIENTS_KEY, [{address: RECIPIENT, at: 1}]);
+  // `read` wraps the page's v1_vault reader (the run reads deps.store at each call).
+  if (o.read !== undefined) h.deps.store = {...h.deps.store, readEnvelope: o.read(h.deps.store.readEnvelope)};
   pw = mountPassword(h.deps);
   run = createRestoreRun(h.deps, {password: pw});
   await run.show();
@@ -352,7 +354,7 @@ describe('#8 restore path (E5 with replacement, D35, D40)', () => {
     expect(forgets(h)).toHaveLength(1);
   }, 30_000);
 
-  it('a tab hidden while the restore runs: a send-open answer then holds no password — the line, and a new password to retype', async () => {
+  it('a tab hidden while the restore runs: a send-open answer then holds no password — "Enter a new password to try again."', async () => {
     let release: () => void = () => undefined;
     let started = false;
     const h = await restoring({
@@ -371,7 +373,11 @@ describe('#8 restore path (E5 with replacement, D35, D40)', () => {
     h.leave();
     release();
     await h.until(() => !h.deps.gate.isBusy() && !visible(el('pw-creating')));
-    expect(text(el('pw-helper'))).toBe('A transaction from this wallet is still pending. Wait until it confirms or expires — about two minutes — then try again.');
+    // Fix round 1 item 3: §3.5's line, as a hidden [Try again] says it — not a refusal line over an empty field.
+    expect(text(el('pw-helper'))).toBe('Enter a new password to try again.');
+    expect(el('pw-helper').classList.contains('error')).toBe(false);
+    expect(text(el('pw-title'))).toBe('Create a password');
+    expect(el<HTMLInputElement>('pw-field').value).toBe('');
     expect(text(el('pw-cta'))).toBe('Continue');
     expect(visible(el('pw-form'))).toBe(true);
     expect(pw.holds()).toBe(false);
@@ -529,6 +535,130 @@ describe('#8 restore path (E5 with replacement, D35, D40)', () => {
     click(el('imp-back'));
     await idle(n);
     expect(n.went).toEqual(['unlock.html?mode=forgot']);
+  });
+});
+
+// Fix round 1 (Task 12 review): the outcomes and the one drop the first round left untested.
+describe('#8 restore path: every other outcome (fix round 1)', () => {
+  const SOMETHING = 'Something went wrong. Try again.';
+
+  it('item 1: pagehide while #8 checks the phrase — the proof that resolves afterwards is never kept, and #5 is never shown', async () => {
+    let release: () => void = () => undefined;
+    let reading = false;
+    let shows = 0;
+    const h = await restoring({
+      read: stored => async () => {
+        shows += 1;
+        // The first read is show()'s; the second is the seed proof's — held open until pagehide.
+        if (shows === 2) {
+          reading = true;
+          await new Promise<void>(r => (release = r));
+        }
+        return stored();
+      },
+    });
+    type(el<HTMLTextAreaElement>('imp-phrase'), M);
+    click(el('imp-continue'));
+    await h.until(() => reading);
+    expect(text(el('imp-line'))).toBe('Checking this phrase against the wallet in this browser…');
+    h.leave('pagehide');
+    release();
+    await idle(h);
+    await new Promise(r => setTimeout(r, 30));
+    expect(run.holds()).toEqual({proof: false});
+    expect(visible(el('v-password'))).toBe(false);
+    expect(h.sent).toEqual([]);
+  });
+
+  it('a generic failure of the replacement keeps the password behind [Try again] (`retry`), the proof too', async () => {
+    const h = await restoring({send: inner => async m => ((m as {type: string}).type === 'vault.forgetWallet' ? {ok: false, error: 'failed'} : inner(m))});
+    await phrase(h, M);
+    await newPassword(h);
+    await h.until(() => text(el('pw-cta')) === 'Try again' && !h.deps.gate.isBusy());
+    expect(text(el('pw-helper'))).toBe(SOMETHING);
+    expect(visible(el('pw-form'))).toBe(false);
+    expect([run.holds(), pw.holds()]).toEqual([{proof: true}, true]);
+    expect(h.went).toEqual([]);
+  }, 30_000);
+
+  it.each([
+    ['no-wallet', 'No wallet on this browser yet.', 'Set up a wallet', 'unlock.html?mode=welcome'],
+    ['stored-invalid', "This wallet's stored data is damaged. Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase.", null, null],
+  ])('the background answers %s at the replacement: back to #8 with its lines, nothing held', async (error, line, label, target) => {
+    const h = await restoring({send: inner => async m => ((m as {type: string}).type === 'vault.forgetWallet' ? {ok: false, error} : inner(m))});
+    await phrase(h, M);
+    await newPassword(h);
+    await h.until(() => visible(el('imp-notice')) && !h.deps.gate.isBusy());
+    expect(text(el('imp-notice'))).toBe(line);
+    expect([run.holds(), pw.holds()]).toEqual([{proof: false}, false]);
+    expect(visible(el('imp-action'))).toBe(label !== null);
+    if (label !== null) {
+      expect(text(el('imp-action'))).toBe(label);
+      click(el('imp-action'));
+      await idle(h);
+      expect(h.went).toEqual([target]);
+    }
+  }, 30_000);
+
+  it('the stored wallet gone, or damaged, by the time the phrase is proven: the notice in place of the field, nothing sent', async () => {
+    const gone = await restoring();
+    await gone.ext.local.remove(VAULT_KEY);
+    await phrase(gone, M);
+    expect(text(el('imp-notice'))).toBe('No wallet on this browser yet.');
+    expect(text(el('imp-action'))).toBe('Set up a wallet');
+    expect([run.holds(), gone.sent]).toEqual([{proof: false}, []]);
+    loadPage();
+    const damaged = await restoring();
+    await damaged.ext.local.set(VAULT_KEY, null);
+    await phrase(damaged, M);
+    expect(text(el('imp-notice-line'))).toBe("This wallet's stored data is damaged.");
+    expect(visible(el('imp-action'))).toBe(false);
+    expect([run.holds(), damaged.sent]).toEqual([{proof: false}, []]);
+  });
+
+  it('the proof failing (the read throws): "Something went wrong. Try again." under the field, the phrase kept for another try', async () => {
+    let reads = 0;
+    const h = await restoring({
+      read: stored => async () => {
+        reads += 1;
+        if (reads === 2) throw new Error('storage');
+        return stored();
+      },
+    });
+    type(el<HTMLTextAreaElement>('imp-phrase'), M);
+    click(el('imp-continue'));
+    await h.until(() => text(el('imp-line')) === SOMETHING && !h.deps.gate.isBusy());
+    expect(visible(el('imp-field'))).toBe(true);
+    expect(el<HTMLTextAreaElement>('imp-phrase').value).toBe(M);
+    expect(run.holds()).toEqual({proof: false});
+    expect(h.sent).toEqual([]);
+    click(el('imp-continue'));
+    await h.until(() => visible(el('v-password')) && !h.deps.gate.isBusy());
+    expect(run.holds()).toEqual({proof: true});
+  });
+
+  it('restored-locked (the keys did not reach the background): still #/imported, nothing held', async () => {
+    const h = await restoring({send: inner => async m => ((m as {type: string}).type === 'vault.setKeys' ? {ok: false, error: 'failed'} : inner(m))});
+    await phrase(h, M);
+    await newPassword(h);
+    await h.until(() => h.went.length > 0);
+    expect(h.went).toEqual(['wallet.html#/imported']);
+    expect([run.holds(), pw.holds()]).toEqual([{proof: false}, false]);
+    const env = (await h.ext.local.get(VAULT_KEY)) as EnvelopeV1;
+    expect(await decryptMnemonic(env, await unlockWithPassword(env, NEW_PW, testKdf))).toBe(M);
+    expect(await getSession(h.ext)).toBeNull();
+  }, 30_000);
+
+  it('an unreadable stored vault: the reload line before anything is typed, no action', async () => {
+    const h = await restoring({
+      read: () => async () => {
+        throw new Error('storage');
+      },
+    });
+    expect(text(el('imp-notice'))).toBe("This wallet's stored data could not be read. Reload this page.");
+    expect(visible(el('imp-action'))).toBe(false);
+    expect(visible(el('imp-field'))).toBe(false);
+    expect(h.sent).toEqual([]);
   });
 });
 
