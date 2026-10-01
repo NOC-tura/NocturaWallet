@@ -567,6 +567,27 @@ describe('vault isolation (built output)', () => {
     expect(bundleViolations(dir)).toEqual([`assets/base-1.js (reachable from unlock.html) builds CSS at run time (${name}) — the vault page is styled by its built stylesheets only`]);
   });
 
+  // Controller ruling (the cooldown ring): in the build, only the literal shape `.style.setProperty("--vlt-…",`.
+  it.each([
+    'n.ring.style.setProperty("--vlt-ring",r(t/e))',
+    "n.style.setProperty('--vlt-angle',`${t}deg`)",
+    'n.style.setProperty(`--vlt-ring`,String(t))',
+  ])('allows a --vlt- custom property write in a chunk the vault page loads: %s (negative control)', code => {
+    write('assets/base-1.js', `export const n=(n,t,e)=>{${code}};`);
+    expect(bundleViolations(dir)).toEqual([]);
+  });
+
+  it.each([
+    ['n.style.setProperty("--other",t)', '.style'],
+    ['n.style.setProperty("background",t)', '.style'],
+    ['n.style.setProperty(t,e)', '.style'],
+    ['n.style.setProperty("--vlt-ring",t);n.style.color=t', '.style'],
+    ['const s=n.style;s.setProperty("--vlt-ring",t)', '.style'],
+  ])('refuses any other style write next to the allowed shape: %s', (code, name) => {
+    write('assets/base-1.js', `export const n=(n,t,e)=>{${code}};`);
+    expect(bundleViolations(dir)).toEqual([`assets/base-1.js (reachable from unlock.html) builds CSS at run time (${name}) — the vault page is styled by its built stylesheets only`]);
+  });
+
   it('a computed createElement is the h() helper’s, and is not CSS (negative control); CSS in a popup-only chunk is not the vault page’s', () => {
     write('assets/base-1.js', 'export const n=(e,t)=>{const r=document.createElement(e);return r.className=t,r};');
     write('assets/send-1.js', 'export const t=e=>{const s=document.createElement("style");return s};');
@@ -1390,6 +1411,51 @@ describe('plan 2: the vault-page screens stay inside the boundary', () => {
     expect(sourceViolations([f('src/unlock/view/x.ts', "const a = h('div', 'x'); const b = document.createElement('li'); el.classList.toggle('is-held', on); el.hidden = true;")])).toEqual([]);
     // Prose and names that merely contain the word are not an inline style (negative control).
     expect(sourceViolations([f('src/unlock/view/x.ts', "// restyled with the tokens only\nconst label = 'style guide'; const styled = true; const lifestyle = 1;")])).toEqual([]);
+  });
+
+  // Controller ruling (2026-10-01, the cooldown ring): one CSSOM write is allowed — exactly
+  // `<expr>.style.setProperty('--vlt-<name>', <value>)`, the value made from a number inside the module.
+  const VLT = 'src/unlock/view/x.ts';
+  it.each([
+    ['a number through a module-local formatter', "function share(n: number): string {\n  return String(Math.min(1, Math.max(0, n)));\n}\nexport function paint(el: HTMLElement, left: number, ms: number) {\n  el.style.setProperty('--vlt-ring', share(left / ms));\n}"],
+    ['a template literal with a number parameter and a unit', "export function spin(el: HTMLElement, n: number) {\n  el.style.setProperty('--vlt-angle', `${n * 360}deg`);\n}"],
+    ['a percentage from a numeric const', "const pct = 64;\nexport function fill(parts: {ring: HTMLElement}) {\n  parts.ring.style.setProperty('--vlt-fill', `${pct}%`);\n}"],
+    ['String() of a Math call', "export function f(el: HTMLElement, x: number) {\n  el.style.setProperty('--vlt-ring', String(Math.round(x)));\n}"],
+  ])('allows a --vlt- custom property from a number: %s (negative control)', (_name, code) => {
+    expect(sourceViolations([f(VLT, code)])).toEqual([]);
+  });
+
+  const STYLE_WHY = [CSS_WHY('writes CSS declarations'), CSS_WHY('reaches an element’s inline style')];
+  it.each([
+    ['a --vlt- write with a string parameter', "export function f(el: HTMLElement, v: string) {\n  el.style.setProperty('--vlt-ring', v);\n}"],
+    ['a --vlt- write with an untyped parameter', 'export function f(el, v) {\n  el.style.setProperty(\'--vlt-ring\', v);\n}'],
+    ['a formatter of a string', "function share(s: string): string {\n  return s;\n}\nexport function f(el: HTMLElement, v: string) {\n  el.style.setProperty('--vlt-ring', share(v));\n}"],
+    ['a formatter whose number goes through a string', "function share(n: number): string {\n  return `${n}` + suffix;\n}\nexport function f(el: HTMLElement) {\n  el.style.setProperty('--vlt-ring', share(1));\n}"],
+    ['a template literal of a string parameter', "export function f(el: HTMLElement, v: string) {\n  el.style.setProperty('--vlt-angle', `${v}deg`);\n}"],
+    ['a number plus a string', "export function f(el: HTMLElement, n: number, v: string) {\n  el.style.setProperty('--vlt-angle', `${n + v}deg`);\n}"],
+    ['a formatter whose parameter is a string', "function share(s: string): string {\n  return String(Math.max(0, 1));\n}\nexport function f(el: HTMLElement, v: string) {\n  el.style.setProperty('--vlt-ring', share(v));\n}"],
+    ['an imported formatter', "import {share} from './fmt';\nexport function f(el: HTMLElement) {\n  el.style.setProperty('--vlt-ring', share(1));\n}"],
+    ['--other', "export function f(el: HTMLElement, n: number) {\n  el.style.setProperty('--other', String(n));\n}"],
+    ['--vlt- with a capital or a digit', "export function f(el: HTMLElement, n: number) {\n  el.style.setProperty('--vlt-Ring2', String(n));\n}"],
+    ['background', "export function f(el: HTMLElement, n: number) {\n  el.style.setProperty('background', String(n));\n}"],
+    ['a value with url(', "export function f(el: HTMLElement, n: number) {\n  el.style.setProperty('--vlt-ring', `url(https://example.invalid/${n})`);\n}"],
+    ['a value with var(', "export function f(el: HTMLElement, n: number) {\n  el.style.setProperty('--vlt-ring', `var(--x, ${n})`);\n}"],
+    ['a string literal value', "export function f(el: HTMLElement) {\n  el.style.setProperty('--vlt-ring', 'url(https://example.invalid/a)');\n}"],
+    ['a computed name', "export function f(el: HTMLElement, k: string, n: number) {\n  el.style.setProperty(k, String(n));\n}"],
+    ['a third (priority) argument', "export function f(el: HTMLElement, n: number) {\n  el.style.setProperty('--vlt-ring', String(n), 'important');\n}"],
+  ])('refuses %s', (_name, code) => {
+    expect(sourceViolations([f(VLT, code)])).toEqual(expect.arrayContaining([STYLE_WHY[0]]));
+    expect(sourceViolations([f(VLT, code)]).length).toBeGreaterThan(0);
+  });
+
+  it('an allowed --vlt- write does not excuse another style write in the same module', () => {
+    const code = "function share(n: number): string {\n  return String(n);\n}\nexport function f(el: HTMLElement, n: number) {\n  el.style.setProperty('--vlt-ring', share(n));\n  el.style.background = 'red';\n}";
+    expect(sourceViolations([f(VLT, code)])).toEqual([CSS_WHY('reaches an element’s inline style')]);
+  });
+
+  it('the real cooldown.ts passes (positive control)', () => {
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+    expect(sourceViolations([f('src/unlock/view/cooldown.ts', readFileSync(join(root, 'src/unlock/view/cooldown.ts'), 'utf8'))])).toEqual([]);
   });
 
   it('what the vault page’s own code writes is allowed: destructuring, typed arrays, tuples, plain-named brackets, literal attributes (negative controls)', () => {

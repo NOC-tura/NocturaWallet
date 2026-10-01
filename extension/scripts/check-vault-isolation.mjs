@@ -127,6 +127,103 @@ export const RUNTIME_CSS = [
 ];
 
 /**
+ * The one CSSOM write the vault page may make (controller ruling, 2026-10-01 — the design's conic-gradient
+ * cooldown ring): exactly `<expr>.style.setProperty('--vlt-<name>', <value>)`, the name a literal matching
+ * VLT_PROPERTY, two arguments, and the value made from a number inside this module:
+ * - a template literal whose literal pieces are only letters or `%` (`${n}deg`, `${pct}%` — so no `url(`,
+ *   `var(` or quote) and whose every `${…}` is numeric;
+ * - `String(<numeric>)`;
+ * - a call of a function declared in this module with one parameter typed `number` whose body is one
+ *   `return` of one of the two forms above (its parameter counts as numeric).
+ * Numeric: a number literal; `Math.<fn>(…)` or `Number(…)` (always a number); `- * / % **` (and `+` of two
+ * numerics); unary `-`/`+`; a conditional with numeric branches; a parameter typed `number`; a const whose
+ * initializer is numeric. Anything else — a parameter typed string, an untyped one, an import, a string
+ * literal — is not, and the write stays refused by RUNTIME_CSS. Returns the source ranges of the allowed
+ * `.style.setProperty('--vlt-…'` texts, which the RUNTIME_CSS check blanks out; nothing else is excused.
+ */
+const VLT_PROPERTY = /^--vlt-[a-z-]+$/;
+const UNIT_TEXT = /^[a-z%]*$/i;
+function allowedVltWrites(text, path) {
+  const sf = parse(text, path);
+  const ranges = [];
+  const isLiteral = node => ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node);
+  const declarations = name => {
+    const found = [];
+    const visit = node => {
+      if ((ts.isParameter(node) || ts.isVariableDeclaration(node)) && ts.isIdentifier(node.name) && node.name.text === name) found.push(node);
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+    return found;
+  };
+  const numeric = (node, depth = 0) => {
+    if (depth > 8) return false;
+    if (ts.isParenthesizedExpression(node)) return numeric(node.expression, depth + 1);
+    if (ts.isNumericLiteral(node)) return true;
+    if (ts.isCallExpression(node)) {
+      const c = node.expression;
+      if (ts.isIdentifier(c) && c.text === 'Number') return true;
+      return ts.isPropertyAccessExpression(c) && ts.isIdentifier(c.expression) && c.expression.text === 'Math';
+    }
+    if (ts.isPrefixUnaryExpression(node)) return (node.operator === ts.SyntaxKind.MinusToken || node.operator === ts.SyntaxKind.PlusToken) && numeric(node.operand, depth + 1);
+    if (ts.isConditionalExpression(node)) return numeric(node.whenTrue, depth + 1) && numeric(node.whenFalse, depth + 1);
+    if (ts.isBinaryExpression(node)) {
+      const op = node.operatorToken.kind;
+      if (op === ts.SyntaxKind.PlusToken) return numeric(node.left, depth + 1) && numeric(node.right, depth + 1);
+      return [ts.SyntaxKind.MinusToken, ts.SyntaxKind.AsteriskToken, ts.SyntaxKind.SlashToken, ts.SyntaxKind.PercentToken, ts.SyntaxKind.AsteriskAsteriskToken].includes(op);
+    }
+    if (ts.isIdentifier(node)) {
+      const decls = declarations(node.text);
+      return decls.length > 0 && decls.every(d => {
+        if (ts.isParameter(d)) return d.type !== undefined && d.type.kind === ts.SyntaxKind.NumberKeyword;
+        const list = d.parent;
+        return ts.isVariableDeclarationList(list) && (list.flags & ts.NodeFlags.Const) !== 0 && d.initializer !== undefined && numeric(d.initializer, depth + 1);
+      });
+    }
+    return false;
+  };
+  const formatted = node => {
+    if (ts.isParenthesizedExpression(node)) return formatted(node.expression);
+    if (ts.isTemplateExpression(node)) {
+      return UNIT_TEXT.test(node.head.text) && node.templateSpans.every(sp => UNIT_TEXT.test(sp.literal.text) && numeric(sp.expression));
+    }
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'String') {
+      return node.arguments.length === 1 && numeric(node.arguments[0]);
+    }
+    return false;
+  };
+  const formatter = name => {
+    const fns = sf.statements.filter(st => ts.isFunctionDeclaration(st) && st.name?.text === name);
+    if (fns.length !== 1) return false;
+    const fn = fns[0];
+    const [param] = fn.parameters;
+    if (fn.parameters.length !== 1 || !ts.isIdentifier(param.name) || param.type?.kind !== ts.SyntaxKind.NumberKeyword) return false;
+    const body = fn.body?.statements ?? [];
+    return body.length === 1 && ts.isReturnStatement(body[0]) && body[0].expression !== undefined && formatted(body[0].expression);
+  };
+  const value = node => formatted(node) || (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.arguments.length === 1 && formatter(node.expression.text));
+  const visit = node => {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'setProperty') {
+      const style = node.expression.expression;
+      const [name, val] = node.arguments;
+      if (ts.isPropertyAccessExpression(style) && style.name.text === 'style' && node.arguments.length === 2 && isLiteral(name) && VLT_PROPERTY.test(name.text) && value(val)) {
+        ranges.push([style.name.getStart(sf) - 1, name.getEnd()]);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return ranges;
+}
+
+/** The text with the allowed `--vlt-` writes' `.style.setProperty('--vlt-…'` blanked to spaces. */
+function withoutVltWrites(text, path) {
+  let out = text;
+  for (const [from, to] of allowedVltWrites(text, path)) out = out.slice(0, from) + ' '.repeat(to - from) + out.slice(to);
+  return out;
+}
+
+/**
  * Does the module create an element whose tag is not one plain string (fix round 4)? A computed tag can
  * be 'style'. The one exception is structural, not a file allowance: the DOM helper `h` in
  * src/unlock/view/dom.ts passes its own first parameter to createElement — and every call of `h` must
@@ -456,7 +553,8 @@ export function sourceViolations(files) {
       if (SETS_MARKUP.test(text)) out.push(`${path}: writes markup — the vault page sets text only (textContent)`);
       for (const [re, what] of MARKUP_EVASIONS) if (re.test(text)) out.push(`${path}: ${what} — the vault page sets text only (textContent)`);
       if (htmlTyped(text, path)) out.push(`${path}: names the text/html type — the vault page sets text only (textContent)`);
-      for (const [re, what] of RUNTIME_CSS) if (re.test(text)) out.push(`${path}: ${what} — ${CSS_ONLY}`);
+      const cssText = withoutVltWrites(text, path);
+      for (const [re, what] of RUNTIME_CSS) if (re.test(cssText)) out.push(`${path}: ${what} — ${CSS_ONLY}`);
       if (computedTag(text, path)) out.push(`${path}: creates an element by a computed tag — ${CSS_ONLY}`);
     }
     if (!BACKGROUND_OWNED_ALLOWED.test(path)) {
@@ -625,6 +723,7 @@ export const BUILT_REFLECTION =
 // createElement is the h() helper's (dom.ts) and is not refused here; the source rule checks its callers.
 export const BUILT_STYLE =
   /createElement(?:NS)?\(\s*(?:[^,()]*,\s*)?(["'`])(?:style|link)\1|\b(?:CSSStyleSheet|CSSRule|adoptedStyleSheets|styleSheets|insertRule|replaceSync|cssText|attributeStyleMap)\b|setAttribute(?:NS)?\(\s*(?:[^,()]*,\s*)?(["'`])style\2|\.style\b|\[\s*(["'`])style\3\s*\]|\bsetProperty\b/i;
+const BUILT_VLT_WRITE = /\.style\.setProperty\((["'`])--vlt-[a-z-]+\1,/g;
 const BUILT_URL = /\bnew\s+URL\s*\(\s*(['"`])([^'"`$]+)\1\s*,\s*import\.meta\.url/g;
 
 function builtReferences(text) {
@@ -713,7 +812,9 @@ export function bundleViolations(distApp) {
           if (text.includes(REACT_MARKER)) out.push(`${file} (reachable from unlock.html) contains React — the vault page must stay plain DOM`);
           const sink = BUILT_MARKUP.exec(text);
           if (sink) out.push(`${file} (reachable from unlock.html) names a markup sink (${sink[0]}) — the vault page sets text only`);
-          const css = BUILT_STYLE.exec(text);
+          // The one shape the ruling allows (the cooldown ring): `.style.setProperty("--vlt-…",` — blanked
+          // before the check, so any other style write in the same chunk is still seen.
+          const css = BUILT_STYLE.exec(text.replace(BUILT_VLT_WRITE, ' '));
           if (css) out.push(`${file} (reachable from unlock.html) builds CSS at run time (${css[0]}) — the vault page is styled by its built stylesheets only`);
           const reflect = BUILT_REFLECTION.exec(text);
           if (reflect) out.push(`${file} (reachable from unlock.html) uses reflection by a computed name (${reflect[0]}) — the vault page sets text only`);

@@ -202,7 +202,11 @@ mutation test in `scripts/__tests__`):
   stylesheets; and `src/unlock` (sources) and the chunks `unlock.html` loads (build) create no
   `<style>`/`<link>` element, construct or adopt no sheet, insert no rule and set no style
   attribute, declaration text or inline style (`.style`, `setProperty` — a CSSOM write the CSP
-  allows; the vault page toggles classes instead).
+  allows; the vault page toggles classes instead). One exception (controller ruling, 2026-10-01, for
+  #9/#10's conic-gradient cooldown ring): exactly `<el>.style.setProperty('--vlt-<name>', <value>)`,
+  the name a literal matching `^--vlt-[a-z-]+$`, the value formatted from a number inside the same
+  module (`ringShare(n: number)` in `view/cooldown.ts`), never a string parameter, `url(`, `var(` or
+  a quote; the built chunks may carry only that literal shape.
 - *Fonts from the vault page (review L5).* `design-system.css` loads `/fonts/*.woff2` by an
   absolute path. With Vite's `base: './'` a `public/` asset referenced absolutely stays
   `/fonts/…`, which resolves against the extension origin's root from any page, the vault page
