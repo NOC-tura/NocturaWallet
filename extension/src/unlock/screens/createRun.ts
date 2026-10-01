@@ -102,7 +102,7 @@ export function createCreateRun(deps: PageDeps, o: {password: PasswordScreen; im
       back: () => confirm.show(words()),
       finish: async chosen => {
         const phrase = mnemonic;
-        if (phrase === null) return {line: PASSWORD.failed, stop: true};
+        if (phrase === null) return {line: PASSWORD.failed, then: 'stop'};
         leftWhileStoring = false;
         const started = generation;
         const out = await whileStoring(() => finishOnboarding({...deps.store, send: deps.send, kdf: deps.kdf}, {mnemonic: phrase, password: chosen, scheme: 'slip10', indexes: [0]}));
@@ -120,7 +120,7 @@ export function createCreateRun(deps: PageDeps, o: {password: PasswordScreen; im
           return null;
         }
         if (out === 'exists') return existsLines(deps);
-        return {line: out === 'weak-password' ? PASSWORD.weak : out === 'invalid-mnemonic' ? PASSWORD.invalid : PASSWORD.failed, stop: false};
+        return {line: out === 'weak-password' ? PASSWORD.weak : out === 'invalid-mnemonic' ? PASSWORD.invalid : PASSWORD.failed, then: 'retype'};
       },
     });
 
@@ -140,12 +140,12 @@ export function createCreateRun(deps: PageDeps, o: {password: PasswordScreen; im
  * Noctura icon to use it."; damaged → the damaged lines; unreadable → the reload line. Shared by the
  * create and import runs.
  */
-export async function existsLines(deps: PageDeps): Promise<{line: string; help: string; stop: true}> {
+export async function existsLines(deps: PageDeps): Promise<{line: string; help: string; then: 'stop'}> {
   try {
     const stored = storedVault(await deps.store.readEnvelope());
-    if (stored.kind === 'damaged') return {line: COMMON.damaged, help: COMMON.damagedHelp, stop: true};
-    return {line: COMMON.exists, help: WELCOME.useIt, stop: true};
+    if (stored.kind === 'damaged') return {line: COMMON.damaged, help: COMMON.damagedHelp, then: 'stop'};
+    return {line: COMMON.exists, help: WELCOME.useIt, then: 'stop'};
   } catch {
-    return {line: COMMON.unreadable, help: '', stop: true};
+    return {line: COMMON.unreadable, help: '', then: 'stop'};
   }
 }

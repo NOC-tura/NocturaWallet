@@ -463,7 +463,7 @@ describe('#9 unlock: what the brief left implicit (carried rules)', () => {
 
   it('return= is a closed enum: anything else in the URL steers nowhere — the plain "Unlocked." notice', async () => {
     const {startMode} = await import('../modes');
-    for (const search of ['?mode=unlock&return=https://example.com', '?mode=unlock&return=wallet.html%23/send', '?mode=forgot&return=created', '?return=created%20']) {
+    for (const search of ['?mode=unlock&return=https://example.com', '?mode=unlock&return=wallet.html%23/send', '?return=created%20']) {
       loadPage();
       const h = await harness({vault: await wallet()});
       startMode(pageMode(search), h.deps);
@@ -472,6 +472,11 @@ describe('#9 unlock: what the brief left implicit (carried rules)', () => {
       await h.until(() => visible(el('unl-notice')));
       expect([search, text(el('unl-notice-line')), h.went]).toEqual([search, 'Unlocked.', []]);
     }
+    // ?mode=forgot is #39 since Task 12: a `return=` beside it is not followed there either.
+    loadPage();
+    const forgot = await harness({vault: await wallet()});
+    startMode(pageMode('?mode=forgot&return=created'), forgot.deps);
+    expect([visible(el('v-forgot')), visible(el('v-unlock')), forgot.went]).toEqual([true, false, []]);
     loadPage();
     const h = await harness({vault: await wallet()});
     startMode(pageMode('?mode=unlock&return=imported'), h.deps);

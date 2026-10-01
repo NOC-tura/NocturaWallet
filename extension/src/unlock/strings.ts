@@ -80,9 +80,12 @@ export const PASSWORD = {
   mismatch: "Passwords don't match — try again.",
   show: 'Show password',
   hide: 'Hide password',
+  continue: 'Continue',
+  tryAgain: 'Try again',
   /**
    * Controller addition — confirmed by the owner 2026-10-01 (plan Scope 19, review L5): a hidden tab drops what
-   * #5 held (§3.5's memory rule), and #5 then says so.
+   * #5 held (§3.5's memory rule) — the password a [Try again] was holding included (§3.5's rule wins over E5's
+   * "kept while this page stays open") — and #5 then says so.
    */
   newPasswordToRetry: 'Enter a new password to try again.',
   /** finishOnboarding's outcomes (the B1b-1 strings). */
@@ -106,6 +109,50 @@ export const IMPORT = {
    * live region says once when the idle timer wipes the field (the banner's per-second countdown is not announced).
    */
   wipedLive: 'The phrase was wiped from this field.',
+} as const;
+
+/** #39 forgot-pin → "Forgot password?" (each step's changing copy; the cards' titles are static). */
+export const FORGOT = {
+  step: (n: 1 | 2 | 3): string => `${n} / 3`,
+  title: {1: 'Forgot your password?', 2: 'Enter your words', 3: 'Set a new password'},
+  lede: {
+    1: 'Your recovery phrase is the only way back. Three steps to restore.',
+    /** Controller addition — confirmed by the owner 2026-10-01 (plan 2): the design's "Pick from the BIP-39 wordlist. Type the first 3 letters…" describes a picker #8 does not have. */
+    2: 'Type or paste the 12 or 24 words, in order.',
+    3: "Once your phrase is verified against this wallet, you'll choose a new password (at least 12 characters). The old password stops working.",
+  },
+  card1: {
+    1: "You'll need the 12 or 24 words you wrote down during setup. Make sure you have them on paper or steel — not on this computer.",
+    2: 'Done — you confirmed you have your words.',
+    3: 'Done.',
+  },
+  /** Controller addition — confirmed by the owner 2026-10-01 (plan 2): the cards' step copy, adapted from the design (spec §3.11 Differs). */
+  card2: {
+    1: "You'll be taken to the import screen. Type or paste your words.",
+    2: "You'll be taken to the import screen. Type or paste your words.",
+    3: 'Done — seed verified against your existing public key.',
+  },
+  card3: {
+    1: "Once your phrase is verified against this wallet, you'll choose a new password (at least 12 characters). The old password stops working.",
+    2: 'After your phrase is verified.',
+    3: "You'll choose a new password. The old password stops working. A passkey is not carried over; you can add one again later.",
+  },
+  next: {1: 'Restore from seed', 2: 'Continue', 3: 'Continue to import'},
+} as const;
+
+/** #8 on #39's restore path (E5 with `replacement`). */
+export const RESTORE = {
+  checking: 'Checking this phrase against the wallet in this browser…',
+  notThisWallet: 'This phrase does not belong to the wallet in this browser. Nothing was changed.',
+  notThisWalletHelp: 'To replace that wallet without its password, remove Noctura from this browser and install it again.',
+  tryAnother: 'Try another phrase',
+  sendOpen: 'A transaction from this wallet is still pending. Wait until it confirms or expires — about two minutes — then try again.',
+  busy: 'The wallet changed while you were typing. Start again.',
+  /** Controller addition — confirmed by the owner 2026-10-01 (plan 2, carry 4): E5's `unlocked` — an unlock landed mid-forget. The `busy` line would say the wallet is locked, which is false here. */
+  unlocked: 'The wallet was unlocked while this was running, so nothing was deleted. Start again.',
+  /** Controller addition — confirmed by the owner 2026-10-01 (plan 2): the button the two "Start again" lines offer — back to #39. */
+  startAgain: 'Start again',
+  setUp: 'Set up a wallet',
 } as const;
 
 /** #6 biometric-setup → passkey (D9). */

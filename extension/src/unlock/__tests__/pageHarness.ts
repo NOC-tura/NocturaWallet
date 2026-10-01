@@ -65,7 +65,15 @@ export async function harness(
     sent.push(JSON.parse(JSON.stringify(m)) as {type: string});
     return (await handleMessage(ext, JSON.parse(JSON.stringify(m)), UNLOCK_SENDER, wallet)) as {ok: boolean; error?: string; data?: unknown};
   };
-  const send = o.send === undefined ? inner : o.send(inner);
+  const outer = o.send === undefined ? inner : o.send(inner);
+  // E5's boundary, enforced under every screen test (plan review M5): the page never sends a bare
+  // delete — every vault.forgetWallet carries a `replacement` (the seed proof) or the unfunded guard.
+  // Checked on the page's own send, before a test's `send` wrapper can answer in the background's place.
+  const send: Send = async m => {
+    const f = m as {type?: unknown; replacement?: unknown; guard?: unknown};
+    if (f.type === 'vault.forgetWallet' && f.replacement === undefined && f.guard !== 'unfunded') throw new Error('forgetWallet without replacement or guard');
+    return outer(m);
+  };
   const read = () => ext.local.get(VAULT_KEY);
   const timers = fakeTimers();
   const gate = createPageGate();

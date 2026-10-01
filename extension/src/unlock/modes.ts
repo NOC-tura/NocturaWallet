@@ -9,7 +9,9 @@ import type {PageDeps} from './page';
 import {createCreateRun} from './screens/createRun';
 import {createImportRun} from './screens/importRun';
 import {mountPassword} from './screens/password';
+import {mountForgot} from './screens/forgot';
 import {mountReauth} from './screens/reauth';
+import {createRestoreRun} from './screens/restoreRun';
 import {mountUnlock} from './screens/unlock';
 import {workerKdf} from '../vault/kdf';
 import {send} from '../ui/send';
@@ -104,9 +106,20 @@ export function startMode(mode: PageMode, deps: PageDeps): void {
     void mountReauth(deps).show(mode.challengeId);
     return;
   }
-  if (mode.mode === 'unlock' || mode.mode === 'forgot') {
+  if (mode.mode === 'forgot') {
     legacy(null);
-    void mountUnlock(deps).show(mode.mode === 'unlock' ? mode.returnTo : null);
+    mountForgot(deps).show();
+    return;
+  }
+  // #39's restore (Task 12) replaces the B1b-1 section for `source=forgot`; `source=retry` stays on it until Task 13.
+  if (mode.mode === 'import' && mode.source === 'forgot') {
+    legacy(null);
+    void createRestoreRun(deps, {password: mountPassword(deps)}).show();
+    return;
+  }
+  if (mode.mode === 'unlock') {
+    legacy(null);
+    void mountUnlock(deps).show(mode.returnTo);
     return;
   }
   legacy(mode.mode);

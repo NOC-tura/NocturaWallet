@@ -582,11 +582,12 @@ simulation: {
      revision with `expectedRevision` (`busy` if it moved), and, under `sessionMutex`, confirm
      `getSession() === null` (**`unlocked`** if an unlock landed since step 3; `vault.setKeys` does
      not take `serial`, so this is the one race left inside the section). A `busy` here has changed
-     nothing but the lock and the removal of closed pending records. The page says: "The wallet
-     changed while this was running. Nothing was deleted; the wallet is locked. Start again." An
-     `unlocked` here has changed the same, but the wallet is unlocked again, so that line would be
-     false. **Note for plan 2:** #39 and #40 need their own line for `unlocked` — the `busy` copy
-     says "the wallet is locked", which is false here (owner's copy to come).
+     nothing but the lock and the removal of closed pending records. The page cannot tell a step-1
+     `busy` from a step-5 one, so it shows one line for both: §3.8's "The wallet changed while you
+     were typing. Start again." (true in both; plan-2 review ruling 3). An `unlocked` here has changed
+     the same, but the wallet is unlocked again. #39's restore and #40's retry (both on #8) say
+     instead: "The wallet was unlocked while this was running, so nothing was deleted. Start again." +
+     `[Start again]` → #39 — **controller addition — confirmed by the owner 2026-10-01**.
   6. **The vault write:** `v1_vault` removed, or overwritten by `replacement`. A crash before this
      write leaves the old wallet in place and locked, and the operation can be repeated. There is
      never half a wallet.
@@ -967,9 +968,13 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
       the flow goes to #5 with the step counter "Restore · 2 / 2";
     - at the finish, `vault.forgetWallet {expectedRevision, replacement}`:
       - `send-open` → "A transaction from this wallet is still pending. Wait until it confirms or
-        expires — about two minutes — then try again." + `[Try again]`; the phrase and password
-        stay in page memory while this page stays open;
+        expires — about two minutes — then try again." + `[Try again]`; the phrase stays in page
+        memory while this page stays open; the password too, until the tab is hidden — §3.5's rule
+        wins (plan-2 review L5): a hidden tab drops it and #5 reads "Enter a new password to try
+        again." (**controller addition — confirmed by the owner 2026-10-01**);
       - `busy` → "The wallet changed while you were typing. Start again." → #39;
+      - `unlocked` (an unlock landed mid-forget, E5 step 5) → "The wallet was unlocked while this was
+        running, so nothing was deleted. Start again." → #39 — **controller addition — confirmed by the owner 2026-10-01**;
       - `ok` → `vault.setKeys` → UI tab `#/imported`.
 - **Navigation:** Continue → (scheme) → #5 (import variant) → `created` → UI tab `#/imported`; on
   the restore path, as above.

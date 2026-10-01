@@ -299,7 +299,7 @@
           </div>
         </div>
         <span id="imp-idle-live" class="vlt-sr" aria-live="polite"></span>
-        <div class="ta-wrap">
+        <div id="imp-field" class="ta-wrap">
           <textarea id="imp-phrase" class="noc-mono vlt-phrase" autocomplete="off" autocapitalize="none" spellcheck="false" rows="4" aria-label="Recovery phrase" placeholder="Enter your 12 or 24-word recovery phrase, separated by spaces."></textarea>
           <div id="imp-grid" class="ta-grid" hidden></div>
         </div>
@@ -311,6 +311,10 @@
           <div class="noc-body-sm">This phrase is also the root of the Noctura phone app's future private (shielded) keys — anyone who gets it from this browser gets those too. Accounts after the first one exist only in this extension until the phone app supports more than one account.</div>
         </div>
         <p id="imp-line" class="noc-body vlt-pad vlt-center" role="status" hidden></p>
+        <div id="imp-notice" class="vlt-notice" role="status" hidden>
+          <p id="imp-notice-line" class="noc-body"></p>
+          <p id="imp-notice-help" class="noc-body-sm vlt-lede"></p>
+        </div>
         <div id="imp-choose" class="vlt-choose" hidden>
           <p id="imp-choose-why" class="noc-body"></p>
           <button id="imp-choose-slip10" type="button" class="noc-card vlt-choice">Standard (Phantom/Solflare)</button>
@@ -320,6 +324,7 @@
         <div class="sticky-bar">
           <button id="imp-continue" type="button" class="btn btn-primary" disabled>Continue</button>
           <button id="imp-keep" type="button" class="btn btn-tertiary" hidden>Keep working — reset timer</button>
+          <button id="imp-action" type="button" class="btn btn-secondary" hidden></button>
         </div>
       </section>
 
@@ -414,6 +419,46 @@
           <button id="ra-paused" type="button" class="btn btn-secondary" disabled hidden>Confirm paused</button>
           <button id="ra-passkey" type="button" class="btn btn-secondary" hidden>Confirm with passkey</button>
           <button id="ra-unlock" type="button" class="btn btn-primary" hidden>Unlock</button>
+        </div>
+      </section>
+
+      <!-- #39 forgot-pin → "Forgot password?" (spec §3.11): three cards walked in order; the restore runs on #8 (E5).
+           The mockup's `.s-secintro` scope is not carried: none of its rules applies to #39's step cards. -->
+      <section id="v-forgot" class="screen" hidden>
+        <div class="top-bar">
+          <button id="fg-back" type="button" class="icon-btn" aria-label="Back"><svg width="22" height="22" aria-hidden="true"><use href="#i-arrow-left" /></svg></button>
+          <span class="title noc-overline vlt-muted">Recovery</span>
+          <span id="fg-step" class="step noc-body-sm noc-numeral"></span>
+        </div>
+        <div class="scroll-area vlt-pad-top">
+          <h1 id="fg-title" class="noc-h1 vlt-gap-2"></h1>
+          <p id="fg-lede" class="noc-body vlt-lede vlt-gap-6"></p>
+          <div id="fg-card-1" class="s8-step-card vlt-gap-3b">
+            <div class="num-pill">1</div>
+            <h3>Recover from seed phrase</h3>
+            <p id="fg-card-1-body"></p>
+            <span id="fg-card-1-hint" class="hint">If you don't have your seed, your funds cannot be recovered. That's the security tradeoff of self-custody.</span>
+          </div>
+          <div id="fg-card-2" class="s8-step-card vlt-gap-3b">
+            <div class="num-pill">2</div>
+            <h3>Enter your words</h3>
+            <p id="fg-card-2-body"></p>
+          </div>
+          <div id="fg-card-3" class="s8-step-card">
+            <div class="num-pill">3</div>
+            <h3>Set a new password</h3>
+            <p id="fg-card-3-body"></p>
+          </div>
+          <div id="fg-warn" class="s8-step-card warn vlt-gap-top-3" hidden>
+            <div class="num-pill"><svg width="14" height="14" aria-hidden="true"><use href="#i-alert-triangle" /></svg></div>
+            <h3 class="vlt-warning">One warning before you proceed</h3>
+            <p>Restoring from seed replaces the wallet in this browser — including any unconfirmed transactions. Your funds on Solana are unaffected.</p>
+          </div>
+          <p id="fg-foot" class="noc-caption vlt-muted vlt-gap-top-5">The recovery flow is offline-only. We never see your seed phrase, your password, or your wallet address.</p>
+        </div>
+        <div class="sticky-bar">
+          <button id="fg-next" type="button" class="btn btn-primary"><svg width="18" height="18" aria-hidden="true"><use href="#i-arrow-right" /></svg><span id="fg-next-label"></span></button>
+          <button id="fg-cancel" type="button" class="btn btn-secondary">Cancel</button>
         </div>
       </section>
 

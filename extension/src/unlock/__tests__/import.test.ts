@@ -731,10 +731,10 @@ describe('#1 → #8 in one page', () => {
     expect(h.went).toEqual([]);
   }, 30_000);
 
-  it('a sourced import (#39/#40, B1b-1 section until Tasks 12–13) runs under the page’s one gate too', async () => {
+  it('a retry import (#40, B1b-1 section until Task 13) runs under the page’s one gate too', async () => {
     const {startMode} = await import('../modes');
     const h = await harness();
-    startMode({mode: 'import', source: 'forgot'}, h.deps);
+    startMode({mode: 'import', source: 'retry'}, h.deps);
     expect(visible(el('import'))).toBe(true);
     h.deps.gate.setBusy(true);
     click(el('import-btn'));

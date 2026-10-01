@@ -52,7 +52,7 @@ export function createImportRun(deps: PageDeps, o: {password: PasswordScreen; ba
       },
       finish: async password => {
         const held = phrase;
-        if (held === null) return {line: PASSWORD.failed, stop: true};
+        if (held === null) return {line: PASSWORD.failed, then: 'stop'};
         const started = generation;
         const out = await storing(() => finishOnboarding({...deps.store, send: deps.send, kdf: deps.kdf}, {mnemonic: held, password, scheme, indexes: indexesFor(scheme, candidates, probe)}));
         if (out === 'created' || out === 'created-locked' || out === 'exists') phrase = null;
@@ -63,7 +63,7 @@ export function createImportRun(deps: PageDeps, o: {password: PasswordScreen; ba
           return null;
         }
         if (out === 'exists') return existsLines(deps);
-        return {line: out === 'weak-password' ? PASSWORD.weak : out === 'invalid-mnemonic' ? PASSWORD.invalid : PASSWORD.failed, stop: false};
+        return {line: out === 'weak-password' ? PASSWORD.weak : out === 'invalid-mnemonic' ? PASSWORD.invalid : PASSWORD.failed, then: 'retype'};
       },
     });
   };

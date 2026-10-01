@@ -445,7 +445,7 @@ describe('#4 seed-confirm: leaving', () => {
 });
 
 describe('#5 create password (D7)', () => {
-  async function shown(finish: (pw: string) => Promise<{line: string; stop: boolean} | null> = async () => null, o: {holdSleep?: boolean} = {}) {
+  async function shown(finish: (pw: string) => Promise<{line: string; help?: string; then: 'retype' | 'retry' | 'stop'} | null> = async () => null, o: {holdSleep?: boolean} = {}) {
     const h = await harness(o);
     const finished: string[] = [];
     const backs: number[] = [];
@@ -535,7 +535,7 @@ describe('#5 create password (D7)', () => {
 
   it('creating: "Creating your wallet…" with the progress bar, every control disabled — and rule 6’s lock itself, tested past a lifted `disabled`', async () => {
     let release: () => void = () => undefined;
-    const {h, field, cta, finished, screen} = await shown(() => new Promise(r => (release = () => r({line: 'Something went wrong. Nothing was saved.', stop: false}))), {holdSleep: true});
+    const {h, field, cta, finished, screen} = await shown(() => new Promise(r => (release = () => r({line: 'Something went wrong. Nothing was saved.', then: 'retype'}))), {holdSleep: true});
     type(field, PW);
     click(cta);
     // Inside the floor of the enter step's Continue: a second click (disabled lifted, as a stray event would)
@@ -596,7 +596,7 @@ describe('#5 create password (D7)', () => {
   });
 
   it('a refusal that stops: its line and help replace the field; no CTA; nothing held', async () => {
-    const {h, field, cta, screen} = await shown(async () => ({line: 'A wallet already exists in this browser. Nothing was changed.', help: 'Open the Noctura icon to use it.', stop: true}));
+    const {h, field, cta, screen} = await shown(async () => ({line: 'A wallet already exists in this browser. Nothing was changed.', help: 'Open the Noctura icon to use it.', then: 'stop'}));
     await toConfirm(h, field, cta);
     type(field, PW);
     click(cta);
@@ -612,7 +612,7 @@ describe('#5 create password (D7)', () => {
   });
 
   it('a refusal that can be retried starts again at enter, with nothing typed kept', async () => {
-    const {h, field, cta, screen} = await shown(async () => ({line: 'Something went wrong. Nothing was saved.', stop: false}));
+    const {h, field, cta, screen} = await shown(async () => ({line: 'Something went wrong. Nothing was saved.', then: 'retype'}));
     await toConfirm(h, field, cta);
     type(field, PW);
     click(cta);

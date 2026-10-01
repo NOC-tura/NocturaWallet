@@ -15,10 +15,18 @@ export interface PasswordRun {
   back(): void;
   /**
    * Stores the wallet with this password (seconds: Argon2id). Returns null when it went on (the caller
-   * moved the page on), or the line to show; `stop` when nothing more can be tried here — the line then
-   * replaces the field, with `help` (what to do instead) under it.
+   * moved the page on), or the line to show and what this screen offers next: `retype` (enter a password
+   * again), `retry` (the same password, kept in this page's memory behind [Try again], until the tab is
+   * hidden) or `stop` (nothing more here — the line then replaces the field, with `help` under it).
    */
-  finish(password: string): Promise<{line: string; help?: string; stop: boolean} | null>;
+  finish(password: string): Promise<PasswordRefusal | null>;
+}
+
+/** A refusal #5 shows (see PasswordRun.finish). */
+export interface PasswordRefusal {
+  line: string;
+  help?: string;
+  then: 'retype' | 'retry' | 'stop';
 }
 
 export interface PasswordScreen {
@@ -36,6 +44,12 @@ export interface PasswordScreen {
  * is hidden or the page left (§3.5's memory rule; then "Enter a new password to try again."). JS strings
  * cannot be zeroed: dropping the reference is all a page can do.
  *
+ * `retry` (#39's restore refused with `send-open`, E5): the refusal's line and [Try again], which runs
+ * `finish` again with the same password, held here (`held`) — until the tab is hidden or the page left:
+ * §3.5's rule wins over E5's "kept while this page stays open" (plan review L5), and #5 goes back to
+ * enter with "Enter a new password to try again.". A tab hidden while `finish` runs counts: a `retry`
+ * answer then keeps no password and asks for one (`retype`).
+ *
  * Rule 6 (spec §7.6): Continue and Back run through the page's one `exclusive()` gate; `step` is the
  * `offered`-style guard (welcome.ts) — 'off' before show() and once the run has moved on. The show/hide
  * toggle is the one control left outside the gate: it submits nothing, and holding the gate for it would
@@ -48,8 +62,12 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
   const toggle = byId<HTMLButtonElement>('pw-toggle');
   const helperEl = byId('pw-helper');
   let run: PasswordRun | null = null;
-  let step: 'off' | 'enter' | 'confirm' | 'creating' | 'stopped' = 'off';
+  let step: 'off' | 'enter' | 'confirm' | 'creating' | 'retry' | 'stopped' = 'off';
   let first = '';
+  /** `retry` only: the password the last `finish` ran with, for [Try again]. */
+  let held = '';
+  /** The tab was hidden (or the page left) while `finish` ran: its password must not be held after. */
+  let leftWhileCreating = false;
   /** The helper shows a line typing should clear (a mismatch, a refusal, the hidden-tab line). */
   let note = false;
   /** A mismatch is showing (its line, the shake, both step dots wide) until the field is cleared or typed in. */
@@ -67,11 +85,13 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
     byId('pw-dot-2').classList.toggle('active', step !== 'enter');
     setText(byId('pw-title'), step === 'enter' ? PASSWORD.enterTitle : PASSWORD.confirmTitle);
     setText(byId('pw-lede'), step === 'enter' ? PASSWORD.enterLede : PASSWORD.confirmLede);
+    // `retry` has no field: "Enter the same password to verify." would ask for what is not there.
+    shown(byId('pw-lede'), step !== 'retry');
     shown(byId('pw-meter'), step === 'enter');
     shown(byId('pw-meter-label'), step === 'enter');
     renderMeter(byId('pw-meter'), byId('pw-meter-label'), field.value.length);
     shown(byId('pw-creating'), step === 'creating');
-    shown(byId('pw-form'), step !== 'stopped');
+    shown(byId('pw-form'), step !== 'stopped' && step !== 'retry');
     shown(byId('pw-helper'), step !== 'stopped');
     shown(byId('pw-notice'), step === 'stopped');
     const open = step === 'enter' || step === 'confirm';
@@ -79,9 +99,10 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
     // Continue are kept; only the buttons wait for the gate.
     field.disabled = !open;
     toggle.disabled = !open;
-    back.disabled = busy || !open;
+    back.disabled = busy || !(open || step === 'retry');
     shown(cta, step !== 'stopped');
-    cta.disabled = busy || !open || (step === 'enter' ? field.value.length < MIN_PASSWORD_LENGTH : field.value.length === 0);
+    setText(cta, step === 'retry' ? PASSWORD.tryAgain : PASSWORD.continue);
+    cta.disabled = busy || (step === 'retry' ? held === '' : !open || (step === 'enter' ? field.value.length < MIN_PASSWORD_LENGTH : field.value.length === 0));
     if (refocus && !field.disabled) {
       refocus = false;
       field.focus();
@@ -99,6 +120,7 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
   const reset = () => {
     stopClearing();
     first = '';
+    held = '';
     field.value = '';
     field.classList.remove('is-error');
     note = false;
@@ -106,11 +128,44 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
     wrong = '';
   };
 
+  /** Runs the run's `finish` with this password and shows what it answers. */
+  const create = async (r: PasswordRun, password: string) => {
+    step = 'creating';
+    leftWhileCreating = false;
+    helper('', false);
+    field.value = '';
+    render();
+    const out = await r.finish(password);
+    if (out === null) {
+      // The run moved the page on (#6, #8, or the UI tab): this screen has ended.
+      step = 'off';
+      held = '';
+      return;
+    }
+    // A `retry` whose password went with a hidden tab meanwhile is a `retype`: nothing is held past §3.5's rule.
+    const then = out.then === 'retry' && leftWhileCreating ? 'retype' : out.then;
+    if (then === 'stop') {
+      setText(byId('pw-notice-line'), out.line);
+      setText(byId('pw-notice-help'), out.help ?? '');
+      shown(byId('pw-notice-help'), (out.help ?? '') !== '');
+    } else helper(out.line, true);
+    note = then === 'retype';
+    held = then === 'retry' ? password : '';
+    // A refusal that can be retyped keeps nothing typed: the run starts again at enter.
+    step = then === 'stop' ? 'stopped' : then === 'retry' ? 'retry' : 'enter';
+    refocus = then === 'retype';
+  };
+
   const submit = () => {
-    if (step !== 'enter' && step !== 'confirm') return;
+    if (step !== 'enter' && step !== 'confirm' && step !== 'retry') return;
     void exclusive(deps, render, async () => {
       const r = run;
       if (r === null) return;
+      if (step === 'retry') {
+        if (held === '') return;
+        await create(r, held);
+        return;
+      }
       if (step === 'enter') {
         if (field.value.length < MIN_PASSWORD_LENGTH) return;
         first = field.value;
@@ -143,27 +198,9 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
         render();
         return;
       }
-      step = 'creating';
-      helper('', false);
-      field.value = '';
-      render();
       const password = first;
       first = '';
-      const out = await r.finish(password);
-      if (out === null) {
-        // The run moved the page on (#6, or the UI tab): this screen has ended.
-        step = 'off';
-        return;
-      }
-      if (out.stop) {
-        setText(byId('pw-notice-line'), out.line);
-        setText(byId('pw-notice-help'), out.help ?? '');
-        shown(byId('pw-notice-help'), (out.help ?? '') !== '');
-      } else helper(out.line, true);
-      note = !out.stop;
-      // A refusal that can be retried keeps nothing typed: the run starts again at enter.
-      step = out.stop ? 'stopped' : 'enter';
-      refocus = !out.stop;
+      await create(r, password);
     });
   };
 
@@ -199,7 +236,7 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
     byId('pw-toggle-icon').setAttribute('href', show ? '#i-eye-off' : '#i-eye-on');
   });
   back.addEventListener('click', () => {
-    if (step !== 'enter' && step !== 'confirm') return;
+    if (step !== 'enter' && step !== 'confirm' && step !== 'retry') return;
     void exclusive(deps, render, async () => {
       if (step === 'confirm') {
         reset();
@@ -209,16 +246,20 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
         render();
         return;
       }
-      if (step !== 'enter') return;
+      // From enter, or from [Try again], whose held password is dropped: the run's own back.
+      if (step !== 'enter' && step !== 'retry') return;
       reset();
       step = 'off';
       run?.back();
     });
   });
-  // Leaving or hiding the tab drops what was typed but not yet used (spec §3.5 memory rule; review L5).
+  // Leaving or hiding the tab drops what was typed but not yet used (spec §3.5 memory rule; review L5) — and
+  // the password a [Try again] was holding: the rule wins over E5's "kept while this page stays open" (L5).
   deps.onLeave(() => {
-    if (step !== 'enter' && step !== 'confirm') return;
-    const dropped = first !== '' || field.value !== '';
+    if (step === 'creating') leftWhileCreating = true;
+    if (step !== 'enter' && step !== 'confirm' && step !== 'retry') return;
+    const dropped = first !== '' || field.value !== '' || held !== '';
+    if (step === 'retry') helper('', false);
     reset();
     step = 'enter';
     if (dropped) {
@@ -243,6 +284,6 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
       render();
       showScreen('v-password');
     },
-    holds: () => first !== '' || wrong !== '' || field.value !== '',
+    holds: () => first !== '' || wrong !== '' || held !== '' || field.value !== '',
   };
 }

@@ -43,6 +43,12 @@ export interface ImportScreen {
   choose(why: string): Promise<Scheme | null>;
   /** Empties the field and its grid; the screen is no longer the run's (it moved on to #5). */
   clear(): void;
+  /**
+   * A state that replaces the field (a refusal on the restore or retry path, or what the stored vault reads
+   * as before anything is typed): the line, its help, and at most one action. The field is emptied first.
+   * Back stays (→ the run's `back`); show() ends the notice.
+   */
+  notice(line: string, help: string, action: {label: string; run(): void} | null): void;
 }
 
 /**
@@ -57,8 +63,8 @@ export interface ImportScreen {
  * Rule 6 (spec §7.6): Continue, Back, [Keep working] and the two scheme rows run through the page's one
  * `exclusive()` gate, each guarded by `phase` (the `offered`-style guard of welcome.ts): `off` before
  * show() and once the run has moved on or Back was taken, `typing`, `checking` (the run's `next` is
- * running), `choosing`. The field follows the phase, not the gate (Task 8's M2): keystrokes inside a
- * floor are kept. The scheme choice ends `next` (and so frees the gate) — a pick is its own gated action.
+ * running), `choosing`, `notice` (a refusal replaces the field; its one action and Back are offered). The
+ * field follows the phase, not the gate (Task 8's M2): keystrokes inside a floor are kept. The scheme choice ends `next` (and so frees the gate) — a pick is its own gated action.
  *
  * The idle timer runs whenever the field holds the phrase (typing, checking, choosing); at 60 s the field
  * and grid are emptied, an open choice ends with null, and the run is told (`wiped`). A hidden tab keeps the phrase (Scope 19,
@@ -72,7 +78,11 @@ export function mountImport(deps: PageDeps, handlers: {back(): void; next(phrase
   const keep = byId<HTMLButtonElement>('imp-keep');
   const slip10 = byId<HTMLButtonElement>('imp-choose-slip10');
   const cli = byId<HTMLButtonElement>('imp-choose-cli');
-  let phase: 'off' | 'typing' | 'checking' | 'choosing' = 'off';
+  const act = byId<HTMLButtonElement>('imp-action');
+  let phase: 'off' | 'typing' | 'checking' | 'choosing' | 'notice' = 'off';
+  /** A notice replaces the field (set by notice(), ended by show()); `action` is its one button, if any. */
+  let noticed = false;
+  let action: (() => void) | null = null;
   let lastInput = deps.timers.now();
   let idle: number | null = null;
   let pasted = false;
@@ -95,9 +105,14 @@ export function mountImport(deps: PageDeps, handlers: {back(): void; next(phrase
     shown(byId('imp-invalid'), invalid);
     setText(byId('imp-invalid'), invalid ? IMPORT.invalid : '');
     const open = phase === 'typing' || phase === 'choosing';
+    shown(byId('imp-field'), !noticed);
+    shown(cta, !noticed);
+    shown(byId('imp-notice'), noticed);
+    shown(act, noticed && action !== null);
+    act.disabled = busy || phase !== 'notice';
     field.disabled = phase !== 'typing';
     cta.disabled = busy || phase !== 'typing' || !valid;
-    back.disabled = busy || !open;
+    back.disabled = busy || !(open || phase === 'notice');
     keep.disabled = busy || !open;
     // During `checking` the timer runs (ruling 7) but the gate is Continue's: nothing to keep working on yet.
     if (phase === 'checking') shown(keep, false);
@@ -190,11 +205,22 @@ export function mountImport(deps: PageDeps, handlers: {back(): void; next(phrase
     });
   });
   back.addEventListener('click', () => {
-    if (phase !== 'typing' && phase !== 'choosing') return;
+    if (phase !== 'typing' && phase !== 'choosing' && phase !== 'notice') return;
     void exclusive(deps, render, async () => {
-      if (phase !== 'typing' && phase !== 'choosing') return;
+      if (phase !== 'typing' && phase !== 'choosing' && phase !== 'notice') return;
       end();
       handlers.back();
+    });
+  });
+  act.addEventListener('click', () => {
+    if (phase !== 'notice') return;
+    void exclusive(deps, render, async () => {
+      const run = action;
+      if (phase !== 'notice' || run === null) return;
+      // The action is taken once: it shows #8 again (show() ends the notice) or leaves the page.
+      phase = 'off';
+      action = null;
+      run();
     });
   });
   cta.addEventListener('click', () => {
@@ -236,6 +262,8 @@ export function mountImport(deps: PageDeps, handlers: {back(): void; next(phrase
   return {
     show(o = {}) {
       empty();
+      noticed = false;
+      action = null;
       field.value = o.phrase ?? '';
       phase = 'typing';
       if (field.value !== '') watchIdle();
@@ -255,5 +283,17 @@ export function mountImport(deps: PageDeps, handlers: {back(): void; next(phrase
       });
     },
     clear: end,
+    notice(line, help, next) {
+      empty();
+      phase = 'notice';
+      noticed = true;
+      action = next === null ? null : next.run;
+      setText(byId('imp-notice-line'), line);
+      setText(byId('imp-notice-help'), help);
+      shown(byId('imp-notice-help'), help !== '');
+      setText(act, next?.label ?? '');
+      render();
+      showScreen('v-import');
+    },
   };
 }
