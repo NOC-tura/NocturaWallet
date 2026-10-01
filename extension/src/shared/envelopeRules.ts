@@ -44,3 +44,25 @@ export function cleanName(x: unknown): string | null {
   if (name.length === 0 || name.length > MAX_NAME_LENGTH || FORBIDDEN_IN_NAME.test(name)) return null;
   return name;
 }
+
+/**
+ * The POLICY rules an envelope's account list must obey, on top of being well-shaped (an index is a
+ * safe non-negative integer, a publicKey is a string — each side's own job: the vault's checkEnvelope,
+ * the background's envelopeShape). Review fix round 1, item 1: the background's envelopeShape
+ * (src/background/accountsStore.ts) checked these and the vault page's checkEnvelope
+ * (src/vault/envelope.ts) did not, so the page called a wallet what the background called
+ * stored-invalid. One predicate, shared: at least one and at most MAX_ACCOUNTS accounts, no two
+ * accounts sharing an index, no empty publicKey, and a cli wallet is exactly account 0 — never more,
+ * never a different index. Operates on an account list already validated field-by-field by the
+ * caller; this is the one list of extra rules both sides must apply identically on top of that.
+ */
+export function accountsPolicyOk(scheme: 'slip10' | 'cli', accounts: readonly {index: number; publicKey: string}[]): boolean {
+  if (accounts.length === 0 || accounts.length > MAX_ACCOUNTS) return false;
+  const seen = new Set<number>();
+  for (const a of accounts) {
+    if (a.publicKey === '') return false;
+    if (seen.has(a.index)) return false;
+    seen.add(a.index);
+  }
+  return scheme !== 'cli' || (accounts.length === 1 && accounts[0]?.index === 0);
+}

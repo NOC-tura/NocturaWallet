@@ -47,6 +47,47 @@ describe('storedVault: the page reads v1_vault as the background does', () => {
   ])('a stored $label is damaged, never "none"', ({raw}) => {
     expect(storedVault(raw)).toEqual({kind: 'damaged'});
   });
+
+  // Fix round 1 item 1: checkEnvelope alone is weaker than the background's envelopeShape (it never
+  // checked these four), so a vault the background calls stored-invalid used to read here as a whole
+  // wallet. accountsPolicyOk (src/shared/envelopeRules.ts) is the one predicate both sides now apply.
+  // One test per rule, each a real, otherwise-well-formed envelope (createEnvelope), damaged in
+  // exactly one way.
+  it('damaged past MAX_ACCOUNTS: checkEnvelope alone would accept it', async () => {
+    const accounts = Array.from({length: 101}, (_, i) => ({index: i, name: `A${i}`, publicKey: `k${i}`}));
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: PASSWORD, scheme: 'slip10', accounts, kdf});
+    expect(storedVault(env)).toEqual({kind: 'damaged'});
+  });
+
+  it('damaged on a duplicate account index: checkEnvelope alone would accept it', async () => {
+    const accounts = [
+      {index: 0, name: 'A', publicKey: K0},
+      {index: 0, name: 'B', publicKey: 'k1'},
+    ];
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: PASSWORD, scheme: 'slip10', accounts, kdf});
+    expect(storedVault(env)).toEqual({kind: 'damaged'});
+  });
+
+  it('damaged on an empty publicKey: checkEnvelope alone would accept it (it only checks the type)', async () => {
+    const env = await createEnvelope({mnemonic: MNEMONIC, password: PASSWORD, scheme: 'slip10', accounts: [{index: 0, name: 'A', publicKey: ''}], kdf});
+    expect(storedVault(env)).toEqual({kind: 'damaged'});
+  });
+
+  it('damaged on a cli wallet with other than exactly account 0: checkEnvelope alone would accept it', async () => {
+    const twoAccounts = await createEnvelope({
+      mnemonic: MNEMONIC,
+      password: PASSWORD,
+      scheme: 'cli',
+      accounts: [
+        {index: 0, name: 'A', publicKey: K0},
+        {index: 1, name: 'B', publicKey: 'k1'},
+      ],
+      kdf,
+    });
+    expect(storedVault(twoAccounts)).toEqual({kind: 'damaged'});
+    const wrongIndex = await createEnvelope({mnemonic: MNEMONIC, password: PASSWORD, scheme: 'cli', accounts: [{index: 1, name: 'A', publicKey: K0}], kdf});
+    expect(storedVault(wrongIndex)).toEqual({kind: 'damaged'});
+  });
 });
 
 // Fix round 1 item 2: the passkey-button bootstraps (main.ts, modes.ts startReauth) used to cast the

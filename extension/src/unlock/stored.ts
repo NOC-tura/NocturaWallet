@@ -1,4 +1,5 @@
 import {checkEnvelope, type EnvelopeV1} from '../vault/envelope';
+import {accountsPolicyOk} from '../shared/envelopeRules';
 
 /**
  * What v1_vault holds, as the vault page reads it — the same three answers the background gives
@@ -8,6 +9,13 @@ import {checkEnvelope, type EnvelopeV1} from '../vault/envelope';
  * accountsFlow, revealFlow, reauthFlow, the unlock page). Every page flow now reads through this one
  * function. A damaged vault is never treated as gone: onboarding refuses to write over it ('exists'),
  * and every flow that needs the envelope stops with 'damaged'. Repairing it is #37's (B1b-2b).
+ *
+ * Fix round 1 item 1: checkEnvelope alone is weaker than the background's envelopeShape — it never
+ * checked the MAX_ACCOUNTS cap, duplicate account indexes, an empty publicKey, or a cli wallet
+ * holding anything but exactly account 0. A vault the background calls stored-invalid on one of
+ * those rules used to read here as a whole wallet. `accountsPolicyOk` (src/shared/envelopeRules.ts)
+ * is the one predicate both sides apply, so `storedVault` now returns `wallet` only when checkEnvelope
+ * AND that predicate both pass.
  */
 export type StoredVault = {kind: 'none'} | {kind: 'damaged'} | {kind: 'wallet'; env: EnvelopeV1};
 
@@ -15,10 +23,11 @@ export function storedVault(raw: unknown): StoredVault {
   if (raw === undefined) return {kind: 'none'};
   try {
     checkEnvelope(raw);
-    return {kind: 'wallet', env: raw};
   } catch {
     return {kind: 'damaged'};
   }
+  if (!accountsPolicyOk(raw.scheme, raw.accounts)) return {kind: 'damaged'};
+  return {kind: 'wallet', env: raw};
 }
 
 /**
