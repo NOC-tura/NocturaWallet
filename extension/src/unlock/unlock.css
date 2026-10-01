@@ -1,0 +1,87 @@
+/*
+ * The vault page's own layout (spec B1b-2a §1.1: "full tab; a 412 px column centred on --bg-base"), on
+ * top of web's design-system.css (tokens, type, buttons) and design-ext.css (the design's screen
+ * classes, extracted from index.html — never edited by hand). Only what the phone mockups cannot say,
+ * under `vlt-` names: the tab column, the password field that replaces the design's PIN keypad (D7),
+ * the length meter, and the spacing the mockups write inline. Colours are tokens only.
+ */
+
+/* `hidden` must hide: the design's classes set `display` (.screen, .sticky-bar, .auto-blur-chip …), and an
+   author `display` beats the browser's own [hidden] rule. The page shows and hides with the attribute. */
+[hidden] {
+  display: none !important;
+}
+
+/* The icon sprite takes no room. */
+.vlt-sprite {
+  position: absolute;
+}
+
+/* The column: the design's 412 px phone width, centred, as tall as the tab. */
+.vlt-col {
+  width: 412px;
+  max-width: 100%;
+  min-height: 100vh;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-base);
+}
+/* A screen fills the tab and scrolls with it (the mockups clip a fixed phone frame instead). */
+.vlt-col > .screen {
+  min-height: 100vh;
+  overflow: visible;
+}
+.vlt-col .scroll-area {
+  overflow: visible;
+}
+.vlt-col .sticky-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-top: auto;
+}
+.vlt-col .top-bar .step {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The mockups' inline spacing and tones, as classes (the CSP allows inline styles; classes keep the
+   coverage gate able to see every one). */
+.vlt-lede {
+  color: var(--fg-secondary);
+}
+.vlt-muted {
+  color: var(--fg-tertiary);
+}
+.vlt-gap-2 {
+  margin: 0 0 var(--space-2);
+}
+.vlt-gap-4 {
+  margin-bottom: var(--space-4);
+}
+.vlt-gap-6 {
+  margin-bottom: var(--space-6);
+}
+.vlt-pad {
+  padding: 0 var(--space-5);
+}
+.vlt-danger {
+  color: var(--danger);
+}
+.vlt-success {
+  color: var(--success);
+}
+.vlt-center {
+  text-align: center;
+}
+.vlt-grow {
+  flex: 1;
+}
+/* A state message that replaces a screen's content (exists, damaged, no wallet, closed). */
+.vlt-notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-7) var(--space-6);
+  text-align: center;
+}

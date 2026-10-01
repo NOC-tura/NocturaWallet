@@ -74,6 +74,9 @@ const LISTEN_ALLOWED = /^src\/background\//;
 // B1b-2a E4 adds the two caches: a popup writing one could show a balance the chain never had.
 export const BACKGROUND_OWNED_KEYS = ['v1_settings', 'v1_known_recipients', 'v1_pending', 'v1_forbidden_until', 'v1_balance_cache', 'v1_price_cache'];
 const BACKGROUND_OWNED_ALLOWED = /^src\/background\//;
+// The vault page renders only fixed strings and the user's own words, as text (B1b-2a §1.2 item 3):
+// no file in src/unlock may parse or write markup, so nothing it shows can become an element.
+export const SETS_MARKUP = /\b(?:innerHTML|outerHTML|insertAdjacentHTML|createContextualFragment|DOMParser|srcdoc)\b|\bdocument\s*\.\s*write(?:ln)?\b/;
 
 // A string that exists only in the vault's envelope code (the passkey-wrap HKDF info).
 export const VAULT_MARKER = 'noctura-ext-v1/passkey-wrap';
@@ -242,7 +245,9 @@ export function sourceViolations(files) {
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesVault(path, r.spec))) out.push(`${path}: imports the vault`);
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesCoreKeys(path, r.spec))) out.push(`${path}: imports core/keys (seed code)`);
     if (!UNLOCK_ALLOWED.test(path) && values.some(r => namesUnlock(path, r.spec))) out.push(`${path}: imports the vault page (src/unlock)`);
-    if (STANDALONE.includes(path) && values.length > 0) out.push(`${path}: imports a module — it must stand alone`);
+    // A module specifier has no spaces or operators: prose a loose pattern matched ('Continue to import',
+    // in the vault page's own strings) is not an import (the vault-page walk filters the same way).
+    if (STANDALONE.includes(path) && values.some(r => MODULE_SPECIFIER.test(r.spec) || BACKSLASH_SPECIFIER.test(r.spec))) out.push(`${path}: imports a module — it must stand alone`);
     // src/shared/ is reachable from the vault page: it may never reach UI code (B1b-2a M4).
     // Deliberately all references, type-only ones too — stricter than the stand-alone rule above.
     if (/^src\/shared\//.test(path) && moduleReferences(text).some(r => namesUiCode(path, r.spec))) out.push(`${path}: imports UI code (src/app, ../web) — src/shared is vault-page reachable`);
@@ -256,6 +261,7 @@ export function sourceViolations(files) {
       out.push(`${path}: imports ${LOCAL_READER}, the vault page's storage reader`);
     }
     if (!LISTEN_ALLOWED.test(path) && LISTENS_RUNTIME.test(text)) out.push(`${path}: listens for runtime messages outside the background`);
+    if (UNLOCK_ALLOWED.test(path) && SETS_MARKUP.test(text)) out.push(`${path}: writes markup — the vault page sets text only (textContent)`);
     if (!BACKGROUND_OWNED_ALLOWED.test(path)) {
       for (const key of BACKGROUND_OWNED_KEYS) if (text.includes(key)) out.push(`${path}: names ${key}, which only the background may write`);
     }

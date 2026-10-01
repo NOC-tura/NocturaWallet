@@ -1,7 +1,7 @@
 /**
  * The vault page's own DOM helpers (spec B1b-2a §1.2 item 2, S1): no React, no UI kit — the page that
- * holds the seed stays small. Text is only ever set with textContent (a gate forbids innerHTML and its
- * kin in src/unlock), so nothing the page shows can become markup.
+ * holds the seed stays small. Text is only ever set with textContent (a gate forbids every way of writing
+ * markup in src/unlock), so nothing the page shows can become an element.
  */
 
 /** An element of unlock.html by id; a missing one is a bug in the page, never a state. */

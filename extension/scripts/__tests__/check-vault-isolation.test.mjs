@@ -765,10 +765,81 @@ describe('stand-alone modules (review M4)', () => {
     expect(sourceViolations([f('src/shared/amount.ts', 'export const parse = (s: string) => s;'), f('src/unlock/strings.ts', "export const S = 'x';")])).toEqual([]);
   });
 
+  it('prose that reads like an import in the vault page’s strings is not one; a real import still is', () => {
+    expect(sourceViolations([f('src/unlock/strings.ts', "export const S = {next: 'Continue to import', b: 'import screen'};")])).toEqual([]);
+    for (const code of ["import {x} from './y';", "import './y';", "const y = import('./y');", "export {x} from '../app/x';"]) {
+      expect(sourceViolations([f('src/unlock/strings.ts', code)])).toEqual(['src/unlock/strings.ts: imports a module — it must stand alone']);
+    }
+  });
+
   it('a src/shared file may not import src/app or ../web', () => {
     expect(sourceViolations([f('src/shared/x.ts', "import {App} from '../app/x';")])).toEqual([
       'src/shared/x.ts: imports UI code (src/app, ../web) — src/shared is vault-page reachable',
     ]);
     expect(sourceViolations([f('src/shared/x.ts', "import {Icon} from '../../../web/src/ui/Icon';")])).toHaveLength(1);
+  });
+});
+
+// Plan 2 (B1b-2a-2): the vault-page screens are built from src/unlock/view and src/unlock/screens.
+// The boundary is the allowlist above, walked from the real entry; these fixtures put the two
+// imports it exists to stop — UI code and React — inside the new folders.
+describe('plan 2: the vault-page screens stay inside the boundary', () => {
+  const tree = files => [p => files[p], p => p in files];
+  const ENTRY = "import {start} from './screens/welcome';";
+
+  it('a view helper importing an app component fails the gate', () => {
+    const [read, exists] = tree({
+      'src/unlock/main.ts': ENTRY,
+      'src/unlock/screens/welcome.ts': "import {banner} from '../view/banner';",
+      'src/unlock/view/banner.ts': "import {Banner} from '../../app/ui/Banner';",
+      'src/app/ui/Banner.tsx': '',
+    });
+    expect(vaultPageViolations(read, exists)).toEqual(['the vault page reaches src/app/ui/Banner.tsx — only vault-page code may be bundled with the seed']);
+  });
+
+  it('a screen importing React (or react-dom) fails the gate; so does a web/src/ui component', () => {
+    const [read, exists] = tree({
+      'src/unlock/main.ts': ENTRY,
+      'src/unlock/screens/welcome.ts': "import {useState} from 'react';\nimport {createRoot} from 'react-dom/client';\nimport {AddressGroups} from '../../../../web/src/ui/AddressGroups';",
+      '../web/src/ui/AddressGroups.tsx': '',
+    });
+    expect(vaultPageViolations(read, exists)).toEqual([
+      'src/unlock/screens/welcome.ts: the vault page imports the package react',
+      'src/unlock/screens/welcome.ts: the vault page imports the package react-dom/client',
+      'the vault page reaches ../web/src/ui/AddressGroups.tsx — only vault-page code may be bundled with the seed',
+    ]);
+  });
+
+  it('the real vault page reaches its own stylesheet and the two shared ones (positive control)', () => {
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+    const read = rel => {
+      try {
+        return readFileSync(join(root, rel), 'utf8');
+      } catch {
+        return undefined;
+      }
+    };
+    // A stylesheet is resolved (exists) but never read: record what the walk resolved.
+    const resolved = [];
+    expect(
+      vaultPageViolations(read, rel => {
+        const hit = read(rel) !== undefined;
+        if (hit) resolved.push(rel);
+        return hit;
+      }),
+    ).toEqual([]);
+    expect(resolved).toEqual(expect.arrayContaining(['src/unlock/unlock.css', 'src/styles/design-ext.css', '../web/src/styles/design-system.css']));
+  });
+
+  it.each(['el.innerHTML = s;', 'el.outerHTML = s;', "el.insertAdjacentHTML('beforeend', s);", 'range.createContextualFragment(s);', 'new DOMParser();', 'document.write(s);', 'document.writeln(s);', 'frame.srcdoc = s;'])(
+    'the vault page may not write markup: %s',
+    code => {
+      expect(sourceViolations([f('src/unlock/view/x.ts', code)])).toEqual(['src/unlock/view/x.ts: writes markup — the vault page sets text only (textContent)']);
+    },
+  );
+
+  it('textContent is allowed, and the rule is the vault page’s alone (negative controls)', () => {
+    expect(sourceViolations([f('src/unlock/view/x.ts', 'el.textContent = s; el.replaceChildren(a);')])).toEqual([]);
+    expect(sourceViolations([f('src/app/x.tsx', 'el.innerHTML = s;')])).toEqual([]);
   });
 });

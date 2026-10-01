@@ -1,3 +1,8 @@
+// The design's look, and nothing else from outside the vault (spec B1b-2a §1.2 item 1): stylesheets
+// carry no code. Tokens and type first, then the design's screen classes, then this page's layout.
+import '../../../web/src/styles/design-system.css';
+import '../styles/design-ext.css';
+import './unlock.css';
 import {ENVELOPE_KEY, unlockFlow} from './unlockFlow';
 import {attemptPasskeyUnlock, attemptUnlock, createWrongBackoff, runExclusive, type BusyGate, type Outcome} from './orchestrate';
 import {workerKdf} from '../vault/kdf';
