@@ -8,6 +8,7 @@ import {RESET_MS, confirmPlan, mountConfirm, randomBelow} from '../screens/confi
 import {MISMATCH_CLEAR_MS, mountPassword} from '../screens/password';
 import {mountPasskey} from '../screens/passkey';
 import {startCreateRun} from '../screens/createRun';
+import {mountSeed} from '../screens/seed';
 import {HOLD_MS, TICK_MS} from '../view/hold';
 import {click, el, harness, loadPage, testKdf, text, type, unstyled, visible, type Harness} from './pageHarness';
 
@@ -338,6 +339,23 @@ describe('#4 seed-confirm: a repeated word (I1)', () => {
     expect(el<HTMLButtonElement>('cnf-cta').disabled).toBe(false);
     click(el('cnf-cta'));
     expect(visible(el('cnf-success'))).toBe(true);
+  });
+});
+
+describe('#3 seed-display: pagehide (fix round 1)', () => {
+  it('a hidden tab only re-blurs #3; pagehide also drops its phrase (the page may sit in the back/forward cache)', async () => {
+    const h = await harness();
+    const seed = mountSeed(h.deps, {back: () => undefined, done: () => undefined});
+    seed.show(WORDS);
+    await press(h, 'sg-continue');
+    el('seed-grid').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}));
+    h.timers.advance(HOLD_MS + TICK_MS);
+    h.leave('hidden');
+    expect(leaked()).toEqual([]);
+    expect(seed.holds()).toBe(true);
+    h.leave('pagehide');
+    expect(seed.holds()).toBe(false);
+    expect(el('seed-grid').querySelectorAll('.word')).toHaveLength(0);
   });
 });
 
