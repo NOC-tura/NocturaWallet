@@ -4,7 +4,7 @@ import {deriveTransparentKeypair} from '../../../core/keys/transparent';
 import {
   CorruptEnvelope, UnsafeKdfParams, WrongPassword, addPasskeyWrap, createEnvelope, unlockWithPassword, type EnvelopeV1, type Kdf,
 } from '../vault/envelope';
-import {deriveSessionAccounts} from '../vault/accounts';
+import {deriveSessionAccounts, type SessionAccount} from '../vault/accounts';
 import {registerPasskey, type CredentialsApi} from '../vault/passkey';
 import {envelopeRevision} from '../shared/envelopeRevision';
 import {storedVault} from './stored';
@@ -116,6 +116,46 @@ export type FinishOutcome = 'created' | 'created-locked' | 'exists' | 'weak-pass
 const present = (x: unknown): boolean => storedVault(x).kind !== 'none';
 
 /**
+ * A new or imported wallet, encrypted and ready to store: the envelope and the signing keys to hand
+ * the background once it is stored. Built before any vault write, so #40's "Try a different seed"
+ * (D41) can delete the old wallet and store this one at once, and retry the store alone (E5).
+ */
+export interface PreparedWallet {
+  env: EnvelopeV1;
+  session: SessionAccount[];
+}
+
+/** Derive and encrypt; the Argon2id run (seconds) happens here. The phrase is stored normalised. */
+export async function prepareWallet(kdf: Kdf, input: {mnemonic: string; password: string; scheme: 'slip10' | 'cli'; indexes: number[]}): Promise<PreparedWallet> {
+  const mnemonic = normalizeMnemonicInput(input.mnemonic);
+  const session = await deriveSessionAccounts(mnemonic, input.scheme, input.indexes);
+  const accounts = session.map(a => ({index: a.index, name: `Account ${a.index + 1}`, publicKey: a.publicKey}));
+  const env = await createEnvelope({mnemonic, password: input.password, scheme: input.scheme, accounts, kdf});
+  return {env, session};
+}
+
+/**
+ * The first write (expectedRevision null: the background stores it only while no wallet is stored),
+ * then the keys. 'exists' when a wallet landed first; 'created-locked' when the store held but the
+ * keys did not reach the background.
+ */
+export async function commitWallet(deps: VaultStore & {send: Send}, wallet: PreparedWallet): Promise<Exclude<FinishOutcome, 'weak-password' | 'invalid-mnemonic'>> {
+  try {
+    const stored = await deps.storeEnvelope(null, wallet.env);
+    if (stored === 'wallet-exists') return 'exists';
+    if (stored !== 'stored') return 'failed';
+  } catch {
+    return 'failed';
+  }
+  try {
+    const r = await deps.send({type: 'vault.setKeys', accounts: wallet.session});
+    return r.ok ? 'created' : 'created-locked';
+  } catch {
+    return 'created-locked';
+  }
+}
+
+/**
  * Encrypt and store a new or imported wallet, then hand the background its signing keys. Never
  * overwrites a stored vault: checked here before the seconds-long Argon2id run, and enforced by
  * the background at the store — a first write (expectedRevision null) lands only while no wallet is
@@ -130,19 +170,7 @@ export async function finishOnboarding(
   if (!acceptedPhrase(input.mnemonic)) return 'invalid-mnemonic';
   try {
     if (present(await deps.readEnvelope())) return 'exists';
-    const mnemonic = normalizeMnemonicInput(input.mnemonic);
-    const session = await deriveSessionAccounts(mnemonic, input.scheme, input.indexes);
-    const accounts = session.map(a => ({index: a.index, name: `Account ${a.index + 1}`, publicKey: a.publicKey}));
-    const env = await createEnvelope({mnemonic, password: input.password, scheme: input.scheme, accounts, kdf: deps.kdf});
-    const stored = await deps.storeEnvelope(null, env);
-    if (stored === 'wallet-exists') return 'exists';
-    if (stored !== 'stored') return 'failed';
-    try {
-      const r = await deps.send({type: 'vault.setKeys', accounts: session});
-      return r.ok ? 'created' : 'created-locked';
-    } catch {
-      return 'created-locked';
-    }
+    return await commitWallet(deps, await prepareWallet(deps.kdf, input));
   } catch {
     return 'failed';
   }
