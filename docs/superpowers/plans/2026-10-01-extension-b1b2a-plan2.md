@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md` (owner-approved 2026-09-29; plan 1 merged as PR #101). Read §1.2 (the vault page and its gate), §2 E3 and E5 (their vault-page halves), §3 (every screen here), §4.1 (the popup's locked screen), §7.6 (rule 6), §8 (testing) and §12 (the split) before starting. Parent spec: `docs/superpowers/specs/2026-09-27-extension-b1-design.md` (rev 5). The design: `/home/user/Downloads/index.html` (`#s1`–`#s10`, `#s39`, `#s40`, `#s7`) and `/home/user/Downloads/screen.md` — binding (CLAUDE.md). Plan 1 (`docs/superpowers/plans/2026-09-29-extension-b1b2a-plan1.md`) and its ledger (`.superpowers/sdd/2026-09-29-extension-b1b2a-plan1/progress.md`) show the code this builds on and the lessons it carries.
 
-**Dry run (2026-10-01).** This plan's end state was built in a scratch copy of the repository outside the checkout (`git archive` of `main` at 23a5010), one commit per task, and then **replayed task by task** in a second worktree of that copy: each task's tests were applied to the previous task's tree and run (red, as each Step 2 below states), then the task (green), then `tsc --noEmit` and the whole vitest suite (green after every task, 1 028 → 1 240; see each task). Under Node 22.12.0 with only `web/` and `extension/` installed (`npm ci --ignore-scripts`, npm 11.6.2): `npm run verify` in `extension/` (build, tests, csp, secrets, every gate incl. the new rules, reproducible) passed; all 22 Playwright specs passed in a normal launch **and** inside an offline network namespace (`unshare -rn`), with the noc-tura.io and Solscan counters at 0; `web/`'s `npm run verify` passed (503 + 3 tests, csp, scan, reproducible); the root app's `tsc --noEmit` and the **full** root `jest` passed (1 228 passed, 1 skipped) (root `node_modules` linked in for that step only; no task touches the root `src/`). Every mutation named below was run on the end state and turned its test red. What the dry run caught is listed at the end ("Dry-run findings"); every catch is fixed in the code below.
+**Dry run (2026-10-01).** This plan's end state was built in a scratch copy of the repository outside the checkout (`git archive` of `main` at 23a5010), one commit per task, and then **replayed task by task** in a second worktree of that copy: each task's tests were applied to the previous task's tree and run (red, as each Step 2 below states), then the task (green), then `tsc --noEmit` and the whole vitest suite (green after every task, 1 028 → 1 258; see each task). Under Node 22.12.0 with only `web/` and `extension/` installed (`npm ci --ignore-scripts`, npm 11.6.2): `npm run verify` in `extension/` (build, tests, csp, secrets, every gate incl. the new rules, reproducible) passed; all 22 Playwright specs passed in a normal launch **and** inside an offline network namespace (`unshare -rn`), with the noc-tura.io and Solscan counters at 0; `web/`'s `npm run verify` passed (503 + 3 tests, csp, scan, reproducible); the root app's `tsc --noEmit` and the **full** root `jest` passed (1 228 passed, 1 skipped) (root `node_modules` linked in for that step only; no task touches the root `src/`). Every mutation named below was run on the end state and turned its test red. What the dry run caught is listed at the end ("Dry-run findings"); every catch is fixed in the code below. **Revision 2 (2026-10-01)** applies every finding of the plan-2 review (`.superpowers/sdd/b1b2a-plan2-review-1.md`: 0 blockers, 2 high, 7 medium, 9 low) and its rulings; the dry run was repeated for the result (every task replayed red → green, every mutation, `npm run verify`, both E2E launch modes).
 
 ## Scope — what plan 2 builds, its stand-ins, what stays for plan 3, and every departure (stated)
 
@@ -22,25 +22,32 @@
 
 **Not in plan 2 (plan 3's, spec §12 item 3):** #12, #19, #20, #21, #43's opener, #44, #54, `wallet.send` from any screen, the popup's `preparedFor` resume, E2E specs 4, 5 and 11. Plan 2 adds no engine change: every message it uses (`vault.challengeInfo`, `vault.forgetWallet`, `wallet.discardPrepared`, `wallet.probeBalances`, the B1b-1 vault messages) merged in plan 1.
 
-**Departures, decisions and contradictions — stated (the controller may overrule any before execution):**
-1. **#3's CTA** reads "I've written it down" (disabled until one full hold) and, in `confirmed`, "Continue" — as the design's 3e draws it. Spec §3.3 writes "`confirmed`: … `[I've written it down]` → #4"; both labels go to #4. *Contradiction reported.*
-2. **#4's pool** is one pool of nine words: each slot's word with two BIP-39 distractors of the same first letter, none of them a phrase word — the design's 4a rows ("orchid coral circle / vendor voyage vintage / lift linger latch"). Spec §3.4's "1 correct + 8 BIP-39 distractors per slot" is read as "of the nine, one is right for each slot".
+**Departures, decisions and contradictions — stated.** The plan-2 review (Fable, `.superpowers/sdd/b1b2a-plan2-review-1.md`: approve after fixes) ruled on each contradiction below; each ruling is quoted with the item, and every spec amendment it names is a spec-editing step (Tasks 12 and 18). **Every controller addition is marked "controller addition — awaiting the owner"** in the code comments and the spec: the owner has not confirmed any of them yet.
+1. **#3's CTA** reads "I've written it down" (disabled until one full hold) and, in `confirmed`, "Continue" — as the design's 3e draws it. Spec §3.3 writes "`confirmed`: … `[I've written it down]` → #4"; both labels go to #4. **Ruled (ruling 1): the plan is right** (the design is binding); Task 18 amends §3.3's `confirmed` line to "`[Continue]` → #4", noting that 3b–3d read "I've written it down".
+2. **#4's pool** is one pool of nine words: each slot's word with two BIP-39 distractors of the same first letter, none of them a phrase word — the design's 4a rows ("orchid coral circle / vendor voyage vintage / lift linger latch"). Spec §3.4's "1 correct + 8 BIP-39 distractors per slot" is read as "of the nine, one is right for each slot". **Ruled (ruling 6): the plan is right**; Task 18 rewords §3.4 to "a pool of nine: each slot's word with two BIP-39 distractors of the same first letter, none a phrase word".
 3. **#8 keeps an editable field.** The design draws the words only in the mono cell grid; a browser needs a field to type and correct a phrase. The field sits inside the design's `.ta-wrap`, the grid shows the words typed so far under it, and the counter targets 12 words up to 12, then 24. Spec Differs entry added (Task 18).
-4. **#10's "Network fee" includes the priority fee.** Spec §4.5 defines the fee rows "the same on #19, #20, #10", but `vault.challengeInfo`'s `about` (E3, merged) carries `networkLamports` and no `priorityLamports`, so #10 cannot split them. A zero Noctura fee shows its reason line (the carried rule, §4.5); §3.10's "each its own line when non-zero" is read as applying to the fee amounts. `charged` with a zero fee is not described (fail closed). *Contradiction reported.*
-5. **E5 `busy` has two copies in the spec** (E5 step 5's "…Nothing was deleted; the wallet is locked. Start again." and #8's "The wallet changed while you were typing. Start again."); the page cannot tell a step-1 `busy` (nothing locked) from a step-5 one (locked), so it always shows #8's line, which is true in both.
-6. **The vault page reads a stored null as damaged** (carry 3): `src/unlock/stored.ts` gives the background's three answers (absent = no wallet; an envelope = a wallet; anything else = damaged). Every flow reads through it. **What the page shows instead of a repair** (#37 is B1b-2b): "This wallet's stored data is damaged." + "Your funds stay on Solana; your recovery phrase still controls them." with no setup and no password field — on #1, #9, #10, #8 (restore/retry). The second line is a **controller addition**.
-7. **E5's `unlocked`** (carry 4) gets its own line on #39's restore and #40's retry (both on #8): "The wallet was unlocked while this was running, so nothing was deleted. Start again." + `[Start again]` — **controller addition, added to the spec** (Task 12) for the owner to confirm.
-8. **Spec E2E 10's "'Verified · sent before' on #12 (D40)"** cannot run in plan 2 (#12 is plan 3's). Spec 10 checks the engine message #12 reads instead: `wallet.recipientInfo` answers `known: true` for the recipient after the restore. *Substitution reported.*
-9. **Spec E2E 1's `document.fonts.check('16px Geist')`** returns true when no face named Geist exists at all. Spec 1 also asserts that `document.fonts.load('16px Geist')` loads at least one face.
-10. **#39's step copy** the spec does not give (step 1's card 2 and card 3 bodies, step 2's lede and card 3, step 3's card 3) is adapted from the design's sentences with the spec's own words (Task 12) — **controller adaptations**, listed in the spec's #39 Differs (Task 18).
+4. **#10's "Network fee" includes the priority fee.** Spec §4.5 defines the fee rows "the same on #19, #20, #10", but `vault.challengeInfo`'s `about` (E3, merged) carries `networkLamports` and no `priorityLamports`, so #10 cannot split them. A zero Noctura fee shows its reason line (the carried rule, §4.5); §3.10's "each its own line when non-zero" is read as applying to the fee amounts. `charged` with a zero fee is not described (fail closed). **Ruled (ruling 2): accepted for plan 2** — "Network fee" = `networkLamports` (priority included) on #10, declared in §3.10's Differs. The controller asked for `about` to be extended with `priorityLamports` (validated in the closed alphabet) *unless the review ruled otherwise*; it did, and the plan follows it: plan 2 is UI-only (§12 — "plan 2 adds no engine change"), and the field would change the merged E3 record the background validates key by key (`isAbout`'s exact 11 keys), the challenge store, its tests and the page renderer together — the engine change belongs with the screens that need the split, #19 and #20, which plan 3 builds. Plan 3's carry list has it (end of this plan). The reason-line reading is right: the amounts appear when non-zero, a zero Noctura fee always shows its reason, and `charged` with 0 fails closed.
+5. **E5 `busy` has two copies in the spec** (E5 step 5's "…Nothing was deleted; the wallet is locked. Start again." and #8's "The wallet changed while you were typing. Start again."); the page cannot tell a step-1 `busy` (nothing locked) from a step-5 one (locked), so it always shows #8's line, which is true in both. **Ruled (ruling 3): one line, #8's**; Task 12 amends E5 step 5's page sentence to point at §3.8's line (the `unlocked` line stays separate).
+6. **The vault page reads a stored null as damaged** (carry 3): `src/unlock/stored.ts` gives the background's three answers (absent = no wallet; an envelope = a wallet; anything else = damaged). Every flow reads through it. **What the page shows instead of a repair** (#37 is B1b-2b): "This wallet's stored data is damaged." + "Your funds stay on Solana; your recovery phrase still controls them." with no setup and no password field — on #1, #9, #10, #8 (restore/retry). The plan-2 review's copy verdict: true, but it left the user no next step while #37 is B1b-2b, so the line now reads "Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase." (the second sentence is the spec's own `not-this-wallet` advice) — **controller addition — awaiting the owner**.
+7. **E5's `unlocked`** (carry 4) gets its own line on #39's restore and #40's retry (both on #8): "The wallet was unlocked while this was running, so nothing was deleted. Start again." + `[Start again]` — **controller addition — awaiting the owner**, added to the spec (Task 12). The review: true and clear; accepted.
+8. **Spec E2E 10's "'Verified · sent before' on #12 (D40)"** cannot run in plan 2 (#12 is plan 3's). Spec 10 checks the engine message #12 reads instead: `wallet.recipientInfo` answers `known: true` for the recipient after the restore. **Ruled (ruling 4): accepted for plan 2**; Task 18 records it in §8.5, and plan 3 restores "Verified · sent before" on #12, folded into spec 11 (plan-3 carry).
+9. **Spec E2E 1's `document.fonts.check('16px Geist')`** returns true when no face named Geist exists at all. Spec 1 also asserts that `document.fonts.load('16px Geist')` loads at least one face. **Ruled (ruling 5): `load()` → ≥ 1 face is the real assertion, `check()` stays beside it**; Task 18 amends §1.2's last bullet and §8.5 spec 1.
+10. **#39's step copy** the spec does not give (step 1's card 2 and card 3 bodies, step 2's lede and card 3, step 3's card 3) is adapted from the design's sentences with the spec's own words (Task 12) — **controller adaptations — awaiting the owner**, listed in the spec's #39 Differs (Task 18). **Ruled (ruling 7): accepted**; the step-2 lede "Type or paste the 12 or 24 words, in order." is true and clear (the design's "type the first 3 letters" describes a picker #8 lacks).
 11. **The design's `.s-secintro` scope on #39 and #40 is not carried**: none of its rules applies to their cards, and the plan's ancestor-aware coverage check (Task 5) flags a class that styles nothing.
-12. **#6 has no back arrow** (the wallet is already stored when it shows); **#5 on the restore path** reads "Recovery" (#39's eyebrow) with "Restore · 2 / 2"; **#10's cooldown button** reads "Confirm paused" and **a settings challenge's cancel** reads "Cancel" (only closes the tab) — the last two are **controller additions**.
-13. **`[Start again]`** (the button the `busy`/`unlocked` lines offer: → #39 on the restore path, → the retry path's start on the retry path) is a **controller addition**.
-14. **#40 reads at most six accounts** (spec §3.12), so a wallet with more never shows `no-assets-empty`; its address is in groups of four, not the design's 6+6 `.ck` highlight (§11.7); one token reads "1 token".
+12. **#6 has no back arrow** (the wallet is already stored when it shows); **#5 on the restore path** reads "Recovery" (#39's eyebrow) with "Restore · 2 / 2"; **#10's cooldown button** reads "Confirm paused" and **a settings challenge's cancel** reads "Cancel" (only closes the tab; the challenge simply expires — noted in the spec) — the last two are **controller additions — awaiting the owner** (review: both clear; accepted).
+13. **`[Start again]`** (the button the `busy`/`unlocked` lines offer: → #39 on the restore path, → the retry path's start on the retry path) is a **controller addition — awaiting the owner** (review: clear; accepted).
+14. **#40 reads at most six accounts** — spec §3.12's Engine line says so ("sequential, ≤ 6"); what it did not say is what the screen says past six. **Ruled (ruling 8): keep `MAX_READ = 6`, and the copy never claims accounts it did not read** (review M2): past six, "N accounts · M tokens recovered from the first 6." and "across the first 6 of N accounts" — **controller addition — awaiting the owner**; a wallet with more never shows `no-assets-empty`. Its "≈ X SOL" is truncated, never rounded up (plan-1 ruling L6, review M1); under the address chip, #7's "Copying puts the address on your clipboard. Noctura does not clear it afterwards." (the carried rule; the spec's #40 copy omitted it — **controller addition — awaiting the owner**, review M3). The address is in groups of four, not the design's 6+6 `.ck` highlight (§11.7); one token reads "1 token" (**controller addition — awaiting the owner**; review: accepted).
 15. **The vault page's 500 ms floor** (rule 6, §7.6) is `exclusive()` in `src/unlock/page.ts`: the page's one busy gate held until the action settles and 500 ms have passed. The gate also tells every mounted screen when it frees up — an action begun on #5 ends on #6, whose buttons must come back (the dry run caught #6's Skip staying disabled).
 16. **The UI tab's hand-over screens run a quiet provider** (`WalletProvider quiet`): `wallet.state` only — #7 reads nothing from the network, #40 reads its own balances (one account at a time) and the prices, the resume stand-in reads nothing. Without it, #40 would read account 0 twice.
 17. **Two departures from plan 1's gates, both tightenings:** the vault isolation gate forbids writing markup in `src/unlock` (`innerHTML`, `outerHTML`, `insertAdjacentHTML`, `createContextualFragment`, `DOMParser`, `srcdoc`, `document.write`); the class gate now covers `unlock.html` and `src/unlock` (a vault-page class must be a literal string). Its stand-alone rule now ignores prose that a loose pattern reads as an import ("Continue to import" in `strings.ts`) — the vault-page walk already filtered the same way; a real import still fails (fixture).
 18. **The class gate ignores ancestor context** (plan-1 lesson): plan 2 does not rely on it alone. `src/__tests__/styled.ts` checks every rendered element of every DOM test (vault page and #7/#40): each class must match a rule *where it stands* (or, for a scope class, match a descendant). In the dry run it caught #39's inert `.s-secintro` scope. Plan 1's static gate is left as it is for `src/app` (plan 3 may extend the rendered check to its screens).
+19. **What holds the seed, the keys and the password, and for how long** (review H2; the brief's priority 1). Stated per run, each with a test:
+    - **the create run's phrase** — `createCreateRun`'s closure, from #3's first show until the wallet is stored (`created`, `created-locked`, `exists`), and with the page. #3 and #4 drop their own references whenever they are left (#3's `clear()` empties its `words`; #4 empties its plan) — after the store nothing on the page holds it (Tasks 7, 8).
+    - **the phrase on #8** (plain import, restore, retry) — kept while the page is open, **a hidden tab included**: §3.5's hidden-tab rule is the password's, and dropping the phrase under an open #5 would end the run on an untrue "That is not a valid 12- or 24-word recovery phrase." (review M4). It goes when the wallet is stored, at every other end of the run, on Back (into the field, not memory), and with the page (`pagehide`). The restore run's seed proof holds the phrase too and has the same lifetime (review H2(c): allowed, stated).
+    - **passwords** — #5's typed passwords and the one a `[Try again]` holds go when the tab is hidden (§3.5's rule wins over E5's "kept while this page stays open"; review L5); #5 then reads "Enter a new password to try again." (**controller addition — awaiting the owner**). #6's password (held for the passkey) goes when #6 ends or the tab is hidden (#6 then asks for it once more).
+    - **the retry run's B prepared** (`PreparedWallet`: B's envelope **and its session secret keys**) — exists only behind a pending `[Try again]`; it goes at every end of the run (stored, every `stop`, every notice, Back) **and whenever the tab is hidden**, with the password it was encrypted under — B is encrypted again under the password typed next. **The factor proof** (a revision stamp: no key material — the data key is zeroed at once) goes at every end of the run and on Back; it is **kept on a hidden tab**, like the phrase, because dropping it there would end an open #5 on "Something went wrong" — a departure from the review's literal "drop next/proof on hidden unless a retry is pending", made for the same reason as M4, with the key material (B prepared) dropped on hidden unconditionally. `RetryRun.holds()` reports the three references; the retry tests assert them after every terminal outcome (Task 13).
+20. **#10's `undescribable` is still a prepared send** (review H1): `[Cancel send]` discards it by its account, re-validated by itself, then says "Send cancelled. Nothing was sent."; when even the account is not an address the button reads `[Close]` and the line is "Nothing was sent. Start the send again from the Noctura icon." — never "cancelled" (**both controller additions — awaiting the owner**). In every other notice with nothing to cancel the top bar's X closes the tab and claims nothing (review L4).
+21. **A latent bug the review fixes surfaced** (Task 13): before H2, a `[Try again]` after a hidden tab re-used B prepared under the password §3.5 had just dropped — the user typed a new password and B was stored under the old one. Dropping B prepared on hidden fixes it; a test stores B under the new password and proves the old one fails.
 
 ## Global Constraints
 
@@ -83,6 +90,8 @@ Every task's requirements include these.
 | `extension/src/unlock/stored.ts` | 1 | the vault page's one reader of `v1_vault`: none / wallet / damaged, as the background answers |
 | `extension/src/unlock/mode.ts` | 1 | the modes and their closed `source` / `return` enums |
 | `extension/src/unlock/orchestrate.ts`, `onboarding.ts`, `accountsFlow.ts`, `revealFlow.ts`, `reauthFlow.ts`, `main.ts` | 1, 2, 3 | aligned to `storedVault`; the backoff's wait length; `prepareWallet` / `commitWallet`; `expired` |
+| `extension/src/unlock/__tests__/accountsFlow.test.ts` | 1 | the 100-key test's 30 s timeout (dry-run finding 9) |
+| `extension/src/unlock/__tests__/pageHarness.ts` | 6, 8, 12 | the real `unlock.html` against the real background; refuses a bare `vault.forgetWallet` (review M5) |
 | `extension/src/unlock/forgetFlow.ts` | 2 | the seed and factor proofs; the only two `vault.forgetWallet` messages (E5) |
 | `extension/src/unlock/strings.ts` | 3–14 | every string the page sets (stand-alone) |
 | `extension/src/unlock/challenge.ts` | 3 | #10's closed-alphabet renderer, `readChallenge`, `discardPrepared` (E3, E7) |
@@ -104,7 +113,8 @@ Every task's requirements include these.
 | `extension/src/app/{router.ts,App.tsx,WalletContext.tsx,platform.ts}`, `ui/useCloseTab.ts`, `ui/ExtIcon.tsx`, `screens/{Created,Resume}.tsx`, `app.css` | 15 | the tab's hand-over routes, the quiet provider, #7, the resume stand-in |
 | `extension/src/app/screens/Locked.tsx` | 10 | the popup locked screen's "Forgot password?" |
 | `extension/src/app/screens/Imported.tsx` | 16 | #40 |
-| `extension/e2e/{vaultPage.ts,onboarding.spec.ts,visual-vault.spec.ts,fakeCoordinator.ts,makeEnvelope.ts}`, `wallet.spec.ts`, `unlock.spec.ts`, `visual.spec.ts` | 8, 10, 11, 17, 18 | the vault page driven in a browser; specs 1–3, 10, 12; the visual pass |
+| `extension/src/app/format.ts`, `extension/src/app/screens/Home.tsx` | 16 | `approxSol` — one truncating "≈ X SOL" for #11 and #40 (review M1) |
+| `extension/e2e/{vaultPage.ts,onboarding.spec.ts,visual-vault.spec.ts,fakeCoordinator.ts,makeEnvelope.ts}`, `wallet.spec.ts`, `unlock.spec.ts`, `visual.spec.ts` | 8, 10, 11, 17, 18 | the vault page driven in a browser; specs 1–3, 10, 12; the resume stand-in asserted in a browser (17, review M7); the visual pass |
 | `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md` | 12, 13, 18 | E5 `unlocked` copy (controller addition); plan 2's Differs entries |
 
 ---
@@ -112,6 +122,7 @@ Every task's requirements include these.
 ### Task 1: The vault page reads v1_vault as the background does; the closed `source`/`return` enums; the backoff tells its wait
 
 **Files:**
+- Modify: `extension/src/unlock/__tests__/accountsFlow.test.ts`
 - Modify: `extension/src/unlock/__tests__/mode.test.ts`
 - Modify: `extension/src/unlock/__tests__/orchestrate.test.ts`
 - Modify: `extension/src/unlock/__tests__/reauthFlow.test.ts`
@@ -136,7 +147,28 @@ Plan-1 carry 3: the background answers `stored-invalid` for anything in `v1_vaul
 
 Two small engine-of-the-page changes the screens need: `pageMode` learns the spec §1.2 modes (`forgot`; `import&source=forgot|retry`; `unlock&return=created|imported`) — `source` and `return` are **closed enums**: an unknown value is dropped, never followed, and no parameter names a URL; and `createWrongBackoff`'s `onWait` is told the length of the wait (#9's cooldown card counts it down), and #40's factor proof (`'proven'`, Task 2) resets the streak like any proven factor.
 
+One harness fix the plan-2 review asked for in this PR: `accountsFlow.test.ts` › "refuses an account past MAX_ACCOUNTS" derives 100 keys and takes ~6 s under a parallel run's CPU load — past vitest's 5 s default (dry-run finding 9). It gets a `30_000` timeout here, so no later task's whole-suite run can fail on it.
+
 - [ ] **Step 1: Write the failing tests.**
+
+Modify `extension/src/unlock/__tests__/accountsFlow.test.ts`:
+
+```diff
+diff --git a/extension/src/unlock/__tests__/accountsFlow.test.ts b/extension/src/unlock/__tests__/accountsFlow.test.ts
+index 2747dbb..7f21881 100644
+--- a/extension/src/unlock/__tests__/accountsFlow.test.ts
++++ b/extension/src/unlock/__tests__/accountsFlow.test.ts
+@@ -84,7 +84,8 @@ describe('accounts in the vault page', () => {
+     expect(await addAccount(full.deps, {password: PASSWORD, kdf})).toBe('too-many-accounts');
+     expect(full.store.calls).toHaveLength(0);
+     expect(full.sent.map(m => m.type)).toEqual(['vault.status']);
+-  });
++    // Deriving 100 keys takes ~6 s under a parallel run's CPU load — past vitest's 5 s default.
++  }, 30_000);
+ 
+   it('a cli wallet has exactly one account', async () => {
+     const cli = await wallet([0], 'cli');
+```
 
 Modify `extension/src/unlock/__tests__/mode.test.ts`:
 
@@ -442,8 +474,8 @@ describe('every page flow reads a stored null as a damaged wallet, never as "no 
 
 - [ ] **Step 2: Run them and watch them fail.**
 
-Run: `npx vitest run src/unlock/__tests__/mode.test.ts src/unlock/__tests__/orchestrate.test.ts src/unlock/__tests__/reauthFlow.test.ts src/unlock/__tests__/stored.test.ts`
-Expected (dry run): FAIL — Test Files 4 failed (4) Tests 16 failed (the modules this task adds do not exist yet, or the behaviour is the old one).
+Run: `npx vitest run src/unlock/__tests__/accountsFlow.test.ts src/unlock/__tests__/mode.test.ts src/unlock/__tests__/orchestrate.test.ts src/unlock/__tests__/reauthFlow.test.ts src/unlock/__tests__/stored.test.ts`
+Expected (dry run): FAIL — Test Files 4 failed | 1 passed (5) Tests 16 failed | 44 passed (60) (the modules this task adds do not exist yet, or the behaviour is the old one).
 
 - [ ] **Step 3: Write the implementation.**
 
@@ -795,8 +827,8 @@ export function storedVault(raw: unknown): StoredVault {
 
 - [ ] **Step 4: Run the tests and the whole suite.**
 
-Run: `npx vitest run src/unlock/__tests__/mode.test.ts src/unlock/__tests__/orchestrate.test.ts src/unlock/__tests__/reauthFlow.test.ts src/unlock/__tests__/stored.test.ts` — PASS. Then the whole suite: `npx tsc --noEmit && npx vitest run`
-Expected (dry run): tsc clean; tsc-ok |  Test Files 82 passed (82) Tests 1045 passed (1045).
+Run: `npx vitest run src/unlock/__tests__/accountsFlow.test.ts src/unlock/__tests__/mode.test.ts src/unlock/__tests__/orchestrate.test.ts src/unlock/__tests__/reauthFlow.test.ts src/unlock/__tests__/stored.test.ts` — PASS. Then the whole suite: `npx tsc --noEmit && npx vitest run`
+Expected (dry run): tsc clean; Test Files 82 passed (82) Tests 1045 passed (1045).
 
 - [ ] **Step 5: Mutations (in a scratch copy outside the repo — each must turn its test red; the dry run ran every one).**
 
@@ -809,7 +841,7 @@ Expected (dry run): tsc clean; tsc-ok |  Test Files 82 passed (82) Tests 1045 pa
 
 ```bash
 cd "$(git rev-parse --show-toplevel)"
-git add extension/src/unlock/__tests__/mode.test.ts extension/src/unlock/__tests__/orchestrate.test.ts extension/src/unlock/__tests__/reauthFlow.test.ts extension/src/unlock/__tests__/stored.test.ts extension/src/unlock/accountsFlow.ts extension/src/unlock/main.ts extension/src/unlock/mode.ts extension/src/unlock/onboarding.ts extension/src/unlock/orchestrate.ts extension/src/unlock/reauthFlow.ts extension/src/unlock/revealFlow.ts extension/src/unlock/stored.ts
+git add extension/src/unlock/__tests__/accountsFlow.test.ts extension/src/unlock/__tests__/mode.test.ts extension/src/unlock/__tests__/orchestrate.test.ts extension/src/unlock/__tests__/reauthFlow.test.ts extension/src/unlock/__tests__/stored.test.ts extension/src/unlock/accountsFlow.ts extension/src/unlock/main.ts extension/src/unlock/mode.ts extension/src/unlock/onboarding.ts extension/src/unlock/orchestrate.ts extension/src/unlock/reauthFlow.ts extension/src/unlock/revealFlow.ts extension/src/unlock/stored.ts
 git commit -m "fix(extension): the vault page reads a stored null v1_vault as damaged, as the background does; closed source/return modes; the backoff tells its wait" -m "Co-Authored-By: <the executing model's own line>"
 ```
 
@@ -1364,12 +1396,12 @@ git commit -m "feat(extension): forgetFlow — the seed-proven restore and the f
 - Consumes: Task 1; plan 1 — `formatAmount` (`src/shared/amount.ts`), the background's `vault.challengeInfo` (E3) and `wallet.discardPrepared` (E7), `runReauth`.
 - Produces:
   - `src/unlock/strings.ts`: `COMMON` (damaged, damagedHelp, noWallet, exists, wrongConfirm, waitConfirm, mismatchLocked, failedTryAgain, unreadable, passkeyUnavailableConfirm), `clockText(seconds)`, `cooldownLabel(seconds)`, `REAUTH` (#10's lines, `feeReason`, `reason`, `overUsd(dollars)`, `autoLock(minutes)`, `threshold(dollars)`)
-  - `src/unlock/challenge.ts`: `type TokenSymbol`; `interface FeeLine {label: string; value: string | null}`; `interface SendDescription {kind: 'send'; account; amount; symbol; recipient; fees: FeeLine[]; reasons: string[]}`; `interface SettingsDescription {kind: 'settings'; lines: string[]}`; `type Description`; `describeChallenge(about: unknown): Description | null`; `type ChallengeRead = {state: 'described'; description} | {state: 'undescribable' | 'expired' | 'not-unlocked'}`; `readChallenge(send, challengeId): Promise<ChallengeRead>`; `discardPrepared(send, account): Promise<boolean>`
+  - `src/unlock/challenge.ts`: `type TokenSymbol`; `interface FeeLine {label: string; value: string | null}`; `interface SendDescription {kind: 'send'; account; amount; symbol; recipient; fees: FeeLine[]; reasons: string[]}`; `interface SettingsDescription {kind: 'settings'; lines: string[]}`; `type Description`; `describeChallenge(about: unknown): Description | null`; `type ChallengeRead = {state: 'described'; description} | {state: 'undescribable'; account: string | null} | {state: 'expired' | 'not-unlocked'}`; `readChallenge(send, challengeId): Promise<ChallengeRead>`; `discardPrepared(send, account): Promise<boolean>`
   - `src/unlock/reauthFlow.ts`: `ReauthPageOutcome` gains `'expired'`
 
 Plan-1 carry 1. Spec §2 E3: the vault page takes the challenge id from its URL and the description **only** from the background, and renders nothing untrusted. `src/unlock/challenge.ts` (new) re-validates every field before any text is built: the token in this page's own four-entry table (looked up as an own property — `constructor` is not a token), amounts `^\d{1,20}$`, account and recipient the base58 alphabet at 32–44 characters, each reason and fee reason one of its codes mapped to a fixed string, `thresholdCents` an integer in 100–100 000, and exactly the record's keys. Anything else is `null` → #10's "could not be shown" (Task 11). The amount is shown **exactly** (every base unit: a confirmation never rounds); a zero Noctura fee shows its reason line (the carried rule); `charged` with a zero fee does not describe one action and fails closed (see Scope 4 for the fee rows). A settings challenge (used from B1b-2b) is described too, and one that changes nothing is not.
 
-`readChallenge` maps the replies: `unknown-challenge` → `expired`, `locked` → `not-unlocked`, everything else (a reply it cannot describe, an unnamed refusal, a thrown message) → `undescribable`. `discardPrepared` sends E7 for an address only. `runReauth` now answers `expired` when `vault.reauthOk` says `unknown-challenge` (D39: never `failed`) and `not-unlocked` for `locked`. `src/unlock/strings.ts` starts here, stand-alone (plan 1's gate), with the shared lines and #10's.
+`readChallenge` maps the replies: `unknown-challenge` → `expired`, `locked` → `not-unlocked`, everything else (a reply it cannot describe, an unnamed refusal, a thrown message) → `undescribable`, which carries the send's `account` when that one field is an address **by itself** (else `null`) — so #10's `[Cancel send]` can still discard a send it cannot describe, and never claims a cancel it did not make (plan-2 review H1, Task 11). `discardPrepared` sends E7 for an address only. `runReauth` now answers `expired` when `vault.reauthOk` says `unknown-challenge` (D39: never `failed`) and `not-unlocked` for `locked`. `src/unlock/strings.ts` starts here, stand-alone (plan 1's gate), with the shared lines and #10's.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -1495,13 +1527,23 @@ describe('readChallenge against the real background', () => {
   });
 
   it('a reply it cannot describe, and a thrown message, are "undescribable"', async () => {
-    expect(await readChallenge(async () => ({ok: true, data: {...SEND, token: 'BONK'}}), 'ab'.repeat(16))).toEqual({state: 'undescribable'});
-    expect(await readChallenge(async () => ({ok: false, error: 'malformed'}), 'ab'.repeat(16))).toEqual({state: 'undescribable'});
+    expect(await readChallenge(async () => ({ok: true, data: {...SEND, token: 'BONK'}}), 'ab'.repeat(16))).toEqual({state: 'undescribable', account: ACCOUNT.publicKey});
+    expect(await readChallenge(async () => ({ok: false, error: 'malformed'}), 'ab'.repeat(16))).toEqual({state: 'undescribable', account: null});
     expect(
       await readChallenge(async () => {
         throw new Error('gone');
       }, 'ab'.repeat(16)),
-    ).toEqual({state: 'undescribable'});
+    ).toEqual({state: 'undescribable', account: null});
+  });
+
+  // H1: [Cancel send] can discard only an account it has validated by itself; anything else is null.
+  it('an undescribable send carries its account only when that field is an address by itself', async () => {
+    const read = (data: unknown) => readChallenge(async () => ({ok: true, data}), 'ab'.repeat(16));
+    expect(await read({...SEND, markupReason: 'charged'})).toEqual({state: 'undescribable', account: ACCOUNT.publicKey});
+    expect(await read({...SEND, account: 'not an address', token: 'BONK'})).toEqual({state: 'undescribable', account: null});
+    expect(await read({...SEND, account: 42, token: 'BONK'})).toEqual({state: 'undescribable', account: null});
+    expect(await read({kind: 'settings', account: ACCOUNT.publicKey, autoLockMinutes: 99, reauthUsdCents: null})).toEqual({state: 'undescribable', account: null});
+    expect(await read('send')).toEqual({state: 'undescribable', account: null});
   });
 
   it('discardPrepared (E7) sends the account only when it is an address', async () => {
@@ -1554,7 +1596,7 @@ index d47cc41..dea092d 100644
 - [ ] **Step 2: Run them and watch them fail.**
 
 Run: `npx vitest run src/unlock/__tests__/challenge.test.ts src/unlock/__tests__/reauthFlow.test.ts`
-Expected (dry run): FAIL — Test Files 2 failed (2) Tests 1 failed (the modules this task adds do not exist yet, or the behaviour is the old one).
+Expected (dry run): FAIL — Test Files 2 failed (2) Tests 1 failed | 12 passed (13) (the modules this task adds do not exist yet, or the behaviour is the old one).
 
 - [ ] **Step 3: Write the implementation.**
 
@@ -1670,12 +1712,27 @@ export function describeChallenge(about: unknown): Description | null {
   return null;
 }
 
-export type ChallengeRead = {state: 'described'; description: Description} | {state: 'undescribable' | 'expired' | 'not-unlocked'};
+export type ChallengeRead =
+  | {state: 'described'; description: Description}
+  | {state: 'undescribable'; account: string | null}
+  | {state: 'expired' | 'not-unlocked'};
+
+/**
+ * The one field of a send record #10 may use when the rest cannot be described: its account, valid by
+ * itself (the base58 alphabet, 32–44 characters). [Cancel send] discards that account's prepared send
+ * (E7) — without it the page could not drop the send, and must not say "Send cancelled".
+ */
+function sendAccount(about: unknown): string | null {
+  if (typeof about !== 'object' || about === null || Array.isArray(about)) return null;
+  const a = about as Record<string, unknown>;
+  return a.kind === 'send' && own(a, 'account') && typeof a.account === 'string' && ADDRESS.test(a.account) ? a.account : null;
+}
 
 /**
  * vault.challengeInfo, read for #10's first state. `unknown-challenge` (absent or expired) is
  * `expired`; `locked` is `not-unlocked`; any other answer — a reply the renderer cannot describe, a
- * refusal it does not name, a thrown message — is `undescribable`, which offers only Cancel.
+ * refusal it does not name, a thrown message — is `undescribable`, which offers only Cancel, and carries
+ * the send's account when that one field is valid by itself (H1 of the plan review).
  */
 export async function readChallenge(send: Send, challengeId: string): Promise<ChallengeRead> {
   try {
@@ -1683,12 +1740,12 @@ export async function readChallenge(send: Send, challengeId: string): Promise<Ch
     if (!r.ok) {
       if (r.error === 'unknown-challenge') return {state: 'expired'};
       if (r.error === 'locked') return {state: 'not-unlocked'};
-      return {state: 'undescribable'};
+      return {state: 'undescribable', account: null};
     }
     const description = describeChallenge(r.data);
-    return description === null ? {state: 'undescribable'} : {state: 'described', description};
+    return description === null ? {state: 'undescribable', account: sendAccount(r.data)} : {state: 'described', description};
   } catch {
-    return {state: 'undescribable'};
+    return {state: 'undescribable', account: null};
   }
 }
 
@@ -1775,8 +1832,11 @@ Create `extension/src/unlock/strings.ts`:
 /** Shared lines (the B1b-1 vault words, kept). */
 export const COMMON = {
   damaged: "This wallet's stored data is damaged.",
-  /** Controller addition (plan 2, carry 3): what the page says beside `damaged` where nothing can repair it yet (#37 is B1b-2b). */
-  damagedHelp: 'Your funds stay on Solana; your recovery phrase still controls them.',
+  /**
+   * Controller addition — awaiting the owner (plan 2, carry 3; its next step per the plan-2 review): what the
+   * page says beside `damaged` where nothing can repair it yet (#37 is B1b-2b).
+   */
+  damagedHelp: 'Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase.',
   noWallet: 'No wallet on this browser yet.',
   exists: 'A wallet already exists in this browser. Nothing was changed.',
   wrongConfirm: 'That did not confirm it.',
@@ -1823,13 +1883,14 @@ export const REAUTH = {
 - [ ] **Step 4: Run the tests and the whole suite.**
 
 Run: `npx vitest run src/unlock/__tests__/challenge.test.ts src/unlock/__tests__/reauthFlow.test.ts` — PASS. Then the whole suite: `npx tsc --noEmit && npx vitest run`
-Expected (dry run): tsc clean; tsc-ok |  Test Files 84 passed (84) Tests 1088 passed (1088).
+Expected (dry run): tsc clean; Test Files 84 passed (84) Tests 1089 passed (1089).
 
 - [ ] **Step 5: Mutations (in a scratch copy outside the repo — each must turn its test red; the dry run ran every one).**
 
-- the recipient not re-validated → RED Tests  2 failed | 22 passed (24)
+- the recipient not re-validated → RED Tests  2 failed | 23 passed (25)
 - unknown-challenge reported as failed → RED Tests  1 failed | 12 passed (13)
-- the token looked up with `in` (inherited keys) → RED Tests  1 failed | 23 passed (24)
+- the token looked up with `in` (inherited keys) → RED Tests  1 failed | 24 passed (25)
+- an undescribable send’s account taken unvalidated (H1) → RED Tests  1 failed | 24 passed (25)
 
 - [ ] **Step 6: Commit.**
 
@@ -2228,10 +2289,10 @@ Modify `extension/src/unlock/strings.ts`:
 
 ```diff
 diff --git a/extension/src/unlock/strings.ts b/extension/src/unlock/strings.ts
-index bde0134..c31a401 100644
+index c5dbbe5..743520c 100644
 --- a/extension/src/unlock/strings.ts
 +++ b/extension/src/unlock/strings.ts
-@@ -22,6 +22,12 @@ export const COMMON = {
+@@ -25,6 +25,12 @@ export const COMMON = {
    passkeyUnavailableConfirm: 'This device cannot confirm with a passkey; your password still works.',
  } as const;
  
@@ -2540,7 +2601,7 @@ export function phraseWords(text: string): string[] {
 - [ ] **Step 4: Run the tests and the whole suite.**
 
 Run: `npx vitest run src/unlock/__tests__/fakeTimers.ts src/unlock/__tests__/page.test.ts src/unlock/__tests__/views.test.ts` — PASS. Then the whole suite: `npx tsc --noEmit && npx vitest run`
-Expected (dry run): tsc clean; Test Files 86 passed (86) Tests 1101 passed (1101).
+Expected (dry run): tsc clean; Test Files 86 passed (86) Tests 1102 passed (1102).
 
 - [ ] **Step 5: Mutations (in a scratch copy outside the repo — each must turn its test red; the dry run ran every one).**
 
@@ -2588,7 +2649,7 @@ Spec §1.2 item 1: the vault page imports two stylesheets — web's `design-syst
 
 The gates (each rule with fixtures in `scripts/__tests__`):
 - **vault isolation:** no file in `src/unlock` may write markup (`SETS_MARKUP`); fixtures put a `src/app` import, `react`, `react-dom/client` and a `web/src/ui` component inside plan 2's new folders (`src/unlock/view/`, `src/unlock/screens/`) — each fails; the real walk reaches `unlock.css` and both shared sheets (positive control). The stand-alone rule now ignores prose a loose pattern reads as an import ("Continue to import" in `strings.ts`, Task 12) — a real import still fails.
-- **classes:** `unlock.html` and `src/unlock/**/*.ts` against the vault page's three sheets (`VAULT_SHEETS`); a vault-page class must be one literal string (`h(tag, '…')`, `className = '…'`, `classList.*('…')`), the DOM helper's own `el.className = cls` excepted.
+- **classes:** `unlock.html` and `src/unlock/**/*.ts` against the vault page's three sheets (`VAULT_SHEETS`); a vault-page class must be one literal string (`h(tag, '…')`, `className = '…'`, `classList.*('…')`), the DOM helper's own `el.className = cls` excepted. Its comment names the known blind spot: `h()`'s tag is matched only as a single-quoted literal, the one form Prettier writes (plan-2 review L8).
 - **fonts:** the stylesheets `unlock.html` links must load `fonts/Geist-Variable.woff2` (`vaultPageFontViolations`).
 - **ancestor-aware coverage (new, test-side, plan-1 lesson):** `src/__tests__/styled.ts` — for every rendered element and each class, some selector naming it must match the element where it stands (pseudo parts stripped; a scope class may match through a descendant). Every DOM test of plan 2 asserts `unstyled(…) == []` on the screen it rendered.
 
@@ -2653,7 +2714,7 @@ Modify `extension/scripts/__tests__/check-fonts.test.mjs`:
 
 ```diff
 diff --git a/extension/scripts/__tests__/check-fonts.test.mjs b/extension/scripts/__tests__/check-fonts.test.mjs
-index dfd1339..e4d1ff1 100644
+index dfd1339..8fa4754 100644
 --- a/extension/scripts/__tests__/check-fonts.test.mjs
 +++ b/extension/scripts/__tests__/check-fonts.test.mjs
 @@ -1,7 +1,7 @@
@@ -2665,7 +2726,7 @@ index dfd1339..e4d1ff1 100644
  
  describe('the font gate', () => {
    let dir;
-@@ -34,3 +34,29 @@ describe('the font gate', () => {
+@@ -34,3 +34,32 @@ describe('the font gate', () => {
      expect(fontViolations(dir)).toContain('INCONCLUSIVE: no built CSS loads fonts/Geist-Variable.woff2');
    });
  });
@@ -2693,6 +2754,9 @@ index dfd1339..e4d1ff1 100644
 +    write('unlock.html', '<head><link rel="stylesheet" href="./assets/unlock-1.css"></head>');
 +    write('assets/unlock-1.css', '.x{color:red}');
 +    expect(vaultPageFontViolations(dir)).toEqual(['unlock.html loads no stylesheet that names fonts/Geist-Variable.woff2 — the vault page would render in a fallback font']);
++    // Another bundled face is not Geist: the mono face alone still fails.
++    write('assets/unlock-1.css', '@font-face{src:url(../fonts/GeistMono-Variable.woff2)}');
++    expect(vaultPageFontViolations(dir)).toHaveLength(1);
 +  });
 +});
 ```
@@ -2942,7 +3006,7 @@ it('unlock.css makes the hidden attribute win over the design classes', () => {
 - [ ] **Step 2: Run them and watch them fail.**
 
 Run: `npx vitest run scripts/__tests__/check-classes.test.mjs scripts/__tests__/check-fonts.test.mjs scripts/__tests__/check-vault-isolation.test.mjs src/__tests__/styled.test.ts src/__tests__/styled.ts src/unlock/__tests__/unlockCss.test.ts`
-Expected (dry run): FAIL — Test Files 5 failed (5) Tests 17 failed (the modules this task adds do not exist yet, or the behaviour is the old one).
+Expected (dry run): FAIL — Test Files 5 failed (5) Tests 17 failed | 148 passed (165) (the modules this task adds do not exist yet, or the behaviour is the old one).
 
 - [ ] **Step 3: Write the implementation.**
 
@@ -2967,10 +3031,10 @@ Modify `extension/scripts/check-classes.mjs`:
 
 ```diff
 diff --git a/extension/scripts/check-classes.mjs b/extension/scripts/check-classes.mjs
-index 215d6a6..73c85c8 100644
+index 215d6a6..69177c4 100644
 --- a/extension/scripts/check-classes.mjs
 +++ b/extension/scripts/check-classes.mjs
-@@ -185,12 +185,77 @@ export function classViolations(files = listScreens().map(path => ({path, text:
+@@ -185,12 +185,81 @@ export function classViolations(files = listScreens().map(path => ({path, text:
    return out;
  }
  
@@ -2986,7 +3050,11 @@ index 215d6a6..73c85c8 100644
 +/** The stylesheets src/unlock/main.ts imports, relative to the package. */
 +export const VAULT_SHEETS = ['../web/src/styles/design-system.css', 'src/styles/design-ext.css', 'src/unlock/unlock.css'];
 +
-+/** Classes named in unlock.html (`html: true`) or in a src/unlock module, and any computed class expression. */
++/**
++ * Classes named in unlock.html (`html: true`) or in a src/unlock module, and any computed class expression.
++ * Known blind spot: h()'s tag is matched only as a single-quoted literal (`h('div', …)`, the one form
++ * Prettier writes today); a template-literal or computed tag hides that call's class from this gate.
++ */
 +export function vaultClassUses(src, html) {
 +  const classes = [];
 +  const computed = [];
@@ -3317,7 +3385,7 @@ index 8610d5f..555043f 100644
 - [ ] **Step 4: Run the tests and the whole suite.**
 
 Run: `npx vitest run scripts/__tests__/check-classes.test.mjs scripts/__tests__/check-fonts.test.mjs scripts/__tests__/check-vault-isolation.test.mjs src/__tests__/styled.test.ts src/__tests__/styled.ts src/unlock/__tests__/unlockCss.test.ts` — PASS. Then the whole suite: `npx tsc --noEmit && npx vitest run`
-Expected (dry run): tsc clean; tsc-ok |  Test Files 88 passed (88) Tests 1125 passed (1125).
+Expected (dry run): tsc clean; Test Files 88 passed (88) Tests 1126 passed (1126).
 
 - [ ] **Step 5: Build, and run the gates on the real build.**
 
@@ -3329,7 +3397,7 @@ Expected: every gate ok — among them `vault isolation ok: …`, `fonts ok: …
 - the no-markup rule removed → RED Tests  8 failed | 138 passed (146)
 - computed vault classes allowed → RED Tests  1 failed | 9 passed (10)
 - scope classes and descendants ignored (the old, ancestor-blind check) → RED Tests  4 failed | 1 passed (5)
-- the vault page font rule always passes → SITE-NOT-FOUND
+- the vault page takes any bundled font for Geist → RED Tests  1 failed | 3 passed (4)
 - [hidden] loses to the design classes → RED Tests  1 failed (1)
 - prose in strings.ts counted as an import → RED Tests  1 failed | 145 passed (146)
 
@@ -3358,7 +3426,7 @@ git commit -m "feat(extension): the vault page’s shell — the design classes 
 - Consumes: Tasks 1, 3, 4, 5.
 - Produces: `src/unlock/screens/welcome.ts`: `mountWelcome(deps: PageDeps, next: {create(): void; import(): void}): {show(): Promise<void>}`; `mountIntro(next: {back(): void; continue(): void}): {show(): void}`; `strings.ts`: `WELCOME.useIt`; test helpers `loadPage()`, `harness(o)`, `testKdf`, `UNLOCK_SENDER`, `text`, `el`, `visible`, `unstyled(screenId)`, `click`, `type`
 
-Spec §3.1 and §3.2. #1 replaces plan 1's minimal `welcome` section (wired in Task 8). What is stored decides first, and the CTAs stay hidden until the vault read says there is no wallet: a wallet → `exists` ("A wallet already exists in this browser. Nothing was changed." + "Open the Noctura icon to use it.", no CTAs); a damaged vault (null included, Task 1) → "This wallet's stored data is damaged." + "Your funds stay on Solana; your recovery phrase still controls them." (controller addition, Scope 6), no CTAs. Idle: the design's logo, wordmark and tagline; two trust chips (no "ZK-private", D6); the terms line as plain text (B1e); `[Create new wallet]` and `[I have a wallet]`. #2: eyebrow "Onboarding", "1 / 5", the three adapted layer cards (D7, D9), the footer, Continue → #3, back → #1. `src/unlock/__tests__/pageHarness.ts` (new) loads the real `unlock.html` into happy-dom and wires a page to the real background.
+Spec §3.1 and §3.2. #1 replaces plan 1's minimal `welcome` section (wired in Task 8). What is stored decides first, and the CTAs stay hidden until the vault read says there is no wallet: a wallet → `exists` ("A wallet already exists in this browser. Nothing was changed." + "Open the Noctura icon to use it.", no CTAs); a damaged vault (null included, Task 1) → "This wallet's stored data is damaged." + "Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase." (controller addition — awaiting the owner, Scope 6; the next step per the plan-2 review), no CTAs. Idle: the design's logo, wordmark and tagline; two trust chips (no "ZK-private", D6); the terms line as plain text (B1e); `[Create new wallet]` and `[I have a wallet]`. #2: eyebrow "Onboarding", "1 / 5", the three adapted layer cards (D7, D9), the footer, Continue → #3, back → #1. `src/unlock/__tests__/pageHarness.ts` (new) loads the real `unlock.html` into happy-dom and wires a page to the real background.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -3549,7 +3617,7 @@ describe('#1 welcome (spec §3.1)', () => {
     await mountWelcome(h.deps, {create: () => undefined, import: () => undefined}).show();
     expect(visible(el('wel-actions'))).toBe(false);
     expect(text(el('wel-notice-line'))).toBe("This wallet's stored data is damaged.");
-    expect(text(el('wel-notice-help'))).toBe('Your funds stay on Solana; your recovery phrase still controls them.');
+    expect(text(el('wel-notice-help'))).toBe('Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase.');
     expect(h.sent).toEqual([]);
   });
 });
@@ -3643,10 +3711,10 @@ Modify `extension/src/unlock/strings.ts`:
 
 ```diff
 diff --git a/extension/src/unlock/strings.ts b/extension/src/unlock/strings.ts
-index c31a401..9e1a0f9 100644
+index 743520c..8a6b24e 100644
 --- a/extension/src/unlock/strings.ts
 +++ b/extension/src/unlock/strings.ts
-@@ -22,6 +22,11 @@ export const COMMON = {
+@@ -25,6 +25,11 @@ export const COMMON = {
    passkeyUnavailableConfirm: 'This device cannot confirm with a passkey; your password still works.',
  } as const;
  
@@ -3773,7 +3841,7 @@ index 555043f..ab51d40 100644
 - [ ] **Step 4: Run the tests and the whole suite.**
 
 Run: `npx vitest run src/unlock/__tests__/pageHarness.ts src/unlock/__tests__/welcome.test.ts` — PASS. Then the whole suite: `npx tsc --noEmit && npx vitest run`
-Expected (dry run): tsc clean; Test Files 89 passed (89) Tests 1129 passed (1129).
+Expected (dry run): tsc clean; Test Files 89 passed (89) Tests 1130 passed (1130).
 
 - [ ] **Step 5: Mutations (in a scratch copy outside the repo — each must turn its test red; the dry run ran every one).**
 
@@ -3806,7 +3874,7 @@ git commit -m "feat(extension): #1 welcome and #2 security-intro in the vault pa
 - Consumes: Task 4 (`createHold`, `seedWordCells`, `PageDeps`), Task 6 (harness).
 - Produces: `src/unlock/screens/seed.ts`: `mountSeed(deps, next: {back(): void; done(): void}): {show(words: readonly string[]): void}`; `strings.ts`: `SEED`; `SCREENS` gains `'v-seed-gate'`
 
-Spec §3.3. The gate first (`v-seed-gate`: the design's modal, its callout without the screenshot claim, D1); the word grid is **not in the DOM** until it is passed, and leaving the step (back, Continue, the gate's Cancel or backdrop) takes the words out and clears every timer. Then: `blurred` (24 words, column-major, blurred under "Press and hold to reveal" — "Tap" → "Press", adapted), `revealed` (the chip "13 s · auto-blur" in `--warning`, "5 s — still memorizing?" in `--danger` at ≤ 5 s, the helper line), `still-looking` (the auto-blur fires even while held; only a release and a new press hold again), `confirmed` ("Acknowledged", the new lede, the CTA "Continue"; Scope 1). Pointer and keyboard (Space/Enter held) hold; pointerup/leave/cancel, keyup, the grid or the window losing focus and the tab being hidden all release. The chip is `aria-hidden`; a separate live region speaks at 10 s and 5 s only (the design's TalkBack throttle).
+Spec §3.3. The gate first (`v-seed-gate`: the design's modal, its callout without the screenshot claim, D1); the word grid is **not in the DOM** until it is passed, and leaving the step (back, Continue, the gate's Cancel or backdrop) takes the words out and clears every timer. Then: `blurred` (24 words, column-major, blurred under "Press and hold to reveal" — "Tap" → "Press", adapted), `revealed` (the chip "13 s · auto-blur" in `--warning`, "5 s — still memorizing?" in `--danger` at ≤ 5 s, the helper line), `still-looking` (the auto-blur fires even while held; only a release and a new press hold again), `confirmed` ("Acknowledged", the new lede, the CTA "Continue"; Scope 1). Pointer and keyboard (Space/Enter held) hold; pointerup/leave/cancel, keyup, the grid or the window losing focus and the tab being hidden all release. The chip is `aria-hidden`; a separate live region speaks at 10 s and 5 s only (the design's TalkBack throttle). Leaving #3 drops the screen's own reference to the phrase too (`clear()` empties `words`), so once the create run stores the wallet nothing on the page holds it (plan-2 review H2; the test reaches the gate's Continue without a new `show()` and finds no word to render; Scope 19).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -3964,6 +4032,28 @@ describe('#3 seed-display: blurred → revealed → confirmed', () => {
     seed.show(WORDS);
     expect(visible(el('v-seed-gate'))).toBe(true);
   });
+
+  // H2 (plan review): leaving #3 drops the screen's own reference to the phrase, not only the DOM's —
+  // the gate's Continue, reached without a new show(), has no word left to render.
+  it('leaving #3 (Continue, back, the gate’s Cancel) drops the phrase: nothing is left to render', async () => {
+    const {h, seed} = await setup();
+    click(el('sg-continue'));
+    down();
+    h.timers.advance(HELD);
+    up();
+    click(el('seed-cta'));
+    click(el('sg-continue'));
+    expect(document.querySelectorAll('.word')).toHaveLength(0);
+    seed.show(WORDS);
+    click(el('sg-continue'));
+    click(el('seed-back'));
+    click(el('sg-continue'));
+    expect(document.querySelectorAll('.word')).toHaveLength(0);
+    seed.show(WORDS);
+    click(el('sg-cancel'));
+    click(el('sg-continue'));
+    expect(document.querySelectorAll('.word')).toHaveLength(0);
+  });
 });
 ```
 
@@ -4025,10 +4115,14 @@ export function mountSeed(deps: PageDeps, next: {back(): void; done(): void}): {
     if (seconds === 10 || seconds === 5) setText(byId('seed-live'), `${SEED.chip(seconds)} ${late ? SEED.chipLate : SEED.chipTail}`);
   };
 
-  /** Out of the DOM, timers cleared: the words exist again only after the gate. */
+  /**
+   * Out of the DOM, timers cleared, and the screen's own reference dropped (H2 of the plan review): after
+   * any way out of #3 the phrase is held only by the create run, which drops it once the wallet is stored.
+   */
   const clear = () => {
     hold?.dispose();
     hold = null;
+    words = [];
     grid.querySelectorAll('.word').forEach(w => w.remove());
     setText(byId('seed-live'), '');
   };
@@ -4061,7 +4155,9 @@ export function mountSeed(deps: PageDeps, next: {back(): void; done(): void}): {
   byId('sg-cancel').addEventListener('click', cancel);
   byId('sg-backdrop').addEventListener('click', cancel);
   byId('sg-continue').addEventListener('click', () => {
+    const phrase = words;
     clear();
+    words = phrase;
     grid.append(...seedWordCells(words));
     hold = createHold(deps.timers, {state: paint, tick});
     paint('blurred');
@@ -4079,8 +4175,8 @@ export function mountSeed(deps: PageDeps, next: {back(): void; done(): void}): {
 
   return {
     show(w) {
-      words = w;
       clear();
+      words = w;
       gate();
     },
   };
@@ -4091,10 +4187,10 @@ Modify `extension/src/unlock/strings.ts`:
 
 ```diff
 diff --git a/extension/src/unlock/strings.ts b/extension/src/unlock/strings.ts
-index 9e1a0f9..2835474 100644
+index 8a6b24e..c17a525 100644
 --- a/extension/src/unlock/strings.ts
 +++ b/extension/src/unlock/strings.ts
-@@ -27,6 +27,21 @@ export const WELCOME = {
+@@ -30,6 +30,21 @@ export const WELCOME = {
    useIt: 'Open the Noctura icon to use it.',
  } as const;
  
@@ -4243,12 +4339,13 @@ index ab51d40..4211291 100644
 - [ ] **Step 4: Run the tests and the whole suite.**
 
 Run: `npx vitest run src/unlock/__tests__/seed.test.ts` — PASS. Then the whole suite: `npx tsc --noEmit && npx vitest run`
-Expected (dry run): tsc clean; Test Files 90 passed (90) Tests 1137 passed (1137).
+Expected (dry run): tsc clean; Test Files 90 passed (90) Tests 1139 passed (1139).
 
 - [ ] **Step 5: Mutations (in a scratch copy outside the repo — each must turn its test red; the dry run ran every one).**
 
-- the words in the DOM before the gate → RED Tests  1 failed | 7 passed (8)
-- leaving #3 leaves the words → RED Tests  2 failed | 6 passed (8)
+- the words in the DOM before the gate → RED Tests  1 failed | 8 passed (9)
+- leaving #3 leaves the words → RED Tests  3 failed | 6 passed (9)
+- leaving #3 keeps the phrase referenced (H2) → RED Tests  1 failed | 8 passed (9)
 
 - [ ] **Step 6: Add the states to the visual pass.** Task 18 shoots, asserting each state's copy first: `03-pre-reveal-modal`, `03-blurred`, `03-revealed-countdown-13s`, `03-revealed-countdown-5s`, `03-re-blurred-still-looking`, `03-confirmed`. The reviewer checks them against the matching `index.html` mockup with §8.6's checklist (Task 18 Step 3).
 
@@ -4295,7 +4392,7 @@ git commit -m "feat(extension): #3 seed-display — the gate, press-and-hold, th
   - `src/unlock/browser.ts`: `browserPageDeps(): PageDeps`; `src/unlock/modes.ts`: `startMode(mode: PageMode, deps: PageDeps): void`
   - `e2e/vaultPage.ts`: `createWallet(vault, id, password, o?)`, `holdToReveal(vault)`, `confirmWords(vault, words)`, `setPassword(vault, password)`
 
-Spec §3.4, §3.5, §3.6, S2. #4: three random positions, one pool of nine (Scope 2), a right word fills its slot, a wrong one shows the danger lede, shakes the slot, says "Word #N was wrong. Slots will reset in a moment." and resets ~700 ms later; three right words → `[Confirm]` → "Phrase verified" (adapted, D7) → `[Continue]`; leaving #4 takes its words out of the DOM. #5: enter (the field with show/hide, the length meter — 4 bars at 3/6/9/12, "N of 12 characters" / "Long enough"), confirm, mismatch (helper, shake, the field cleared after 600 ms), `creating` ("Creating your wallet…" / "Securing your password takes a few seconds." with the indeterminate `.noc-progress`, every control disabled); finishOnboarding's outcomes in the B1b-1 words. #6: the adapted copy (D9 plus the parent spec's limits), `[Add a passkey]` with the password #5 just set (held by the run until #6 ends; dropped when the tab is hidden, after which #6 asks for it once more), `adding` / `added` / `unsupported` / `failed`, Skip — every end → `wallet.html#/created`.
+Spec §3.4, §3.5, §3.6, S2. #4: three random positions, one pool of nine (Scope 2), a right word fills its slot, a wrong one shows the danger lede, shakes the slot, says "Word #N was wrong. Slots will reset in a moment." and resets ~700 ms later; three right words → `[Confirm]` → "Phrase verified" (adapted, D7) → `[Continue]`; leaving #4 takes its words out of the DOM. #5: enter (the field with show/hide, the length meter — 4 bars at 3/6/9/12, "N of 12 characters" / "Long enough"), confirm, mismatch (helper, shake, the field cleared after 600 ms), `creating` ("Creating your wallet…" / "Securing your password takes a few seconds." with the indeterminate `.noc-progress`, every control disabled); finishOnboarding's outcomes in the B1b-1 words. #6: the adapted copy (D9 plus the parent spec's limits), `[Add a passkey]` with the password #5 just set (held by the run until #6 ends; dropped when the tab is hidden, after which #6 asks for it once more), `adding` / `added` / `unsupported` / `failed`, Skip — every end → `wallet.html#/created` (the `unsupported` test stores a wallet so it reaches `unsupported`; `failed` has its own test — plan-2 review L1).
 
 `createCreateRun` wires #1 → #2 → #3 → #4 → #5 → #6 in **one page**: the phrase is generated when #3 is first reached, never crosses a navigation, and is dropped once the wallet is stored. `src/unlock/browser.ts` builds the real `PageDeps`; `modes.ts` routes `welcome` and `create` through the run (the B1b-1 create section and plan 1's minimal welcome section go). The page gate becomes a `PageGate` that tells every mounted screen when it frees up (Scope 15: #5's store ends on #6). `e2e/vaultPage.ts` (new) drives the run in a real browser; `wallet.spec.ts`'s first test uses it.
 
@@ -4550,13 +4647,24 @@ describe('#6 passkey (D9)', () => {
   });
 
   it('a device without PRF: "Waiting for your passkey…", then unsupported + Continue → #7', async () => {
-    const h = await harness({vault: undefined});
+    const env = await createEnvelope({mnemonic: PHRASE, password: PW, scheme: 'slip10', accounts: [{index: 0, name: 'A', publicKey: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk'}], kdf: testKdf});
+    const h = await harness({vault: env, credentials: {create: async () => null, get: async () => null}});
     const done: number[] = [];
     mountPasskey(h.deps, {done: () => done.push(1)}).show({get: () => PW, drop: () => undefined});
     click(el('pk-add'));
     expect(text(el('pk-line'))).toBe('Waiting for your passkey…');
     await h.until(() => visible(el('pk-continue')));
-    // No wallet stored in this harness: addPasskey answers before any prompt — the failed line.
+    expect(text(el('pk-line'))).toBe('This device cannot unlock the wallet with a passkey; your password still works.');
+    click(el('pk-continue'));
+    expect(done).toEqual([1]);
+  });
+
+  it('no wallet stored (the store never landed): the failed line + Continue → #7', async () => {
+    const h = await harness({vault: undefined});
+    const done: number[] = [];
+    mountPasskey(h.deps, {done: () => done.push(1)}).show({get: () => PW, drop: () => undefined});
+    click(el('pk-add'));
+    await h.until(() => visible(el('pk-continue')));
     expect(text(el('pk-line'))).toBe('Something went wrong. Your password still works.');
     click(el('pk-continue'));
     expect(done).toEqual([1]);
@@ -4731,7 +4839,7 @@ index fb5655b..0c70f47 100644
 - [ ] **Step 2: Run them and watch them fail.**
 
 Run: `npx vitest run src/unlock/__tests__/create.test.ts src/unlock/__tests__/page.test.ts src/unlock/__tests__/pageHarness.ts`
-Expected (dry run): FAIL — Test Files 2 failed (2) Tests 1 failed (the modules this task adds do not exist yet, or the behaviour is the old one).
+Expected (dry run): FAIL — Test Files 2 failed (2) Tests 1 failed | 3 passed (4) (the modules this task adds do not exist yet, or the behaviour is the old one).
 
 - [ ] **Step 3: Write the implementation.**
 
@@ -5458,10 +5566,10 @@ Modify `extension/src/unlock/strings.ts`:
 
 ```diff
 diff --git a/extension/src/unlock/strings.ts b/extension/src/unlock/strings.ts
-index 2835474..b750c9b 100644
+index c17a525..aec2ad7 100644
 --- a/extension/src/unlock/strings.ts
 +++ b/extension/src/unlock/strings.ts
-@@ -42,10 +42,47 @@ export const SEED = {
+@@ -45,10 +45,47 @@ export const SEED = {
    chipLate: '— still memorizing?',
  } as const;
  
@@ -5781,7 +5889,7 @@ index 4211291..2259638 100644
 - [ ] **Step 4: Run the tests and the whole suite.**
 
 Run: `npx vitest run src/unlock/__tests__/create.test.ts src/unlock/__tests__/page.test.ts src/unlock/__tests__/pageHarness.ts` — PASS. Then the whole suite: `npx tsc --noEmit && npx vitest run`
-Expected (dry run): tsc clean; tsc-ok |  Test Files 91 passed (91) Tests 1153 passed (1153).
+Expected (dry run): tsc clean; Test Files 91 passed (91) Tests 1156 passed (1156).
 
 - [ ] **Step 5: The E2E that created a wallet through the old markup.** `e2e/vaultPage.ts` (new) drives the create run in a real browser; `wallet.spec.ts`'s first test uses it:
 
@@ -5883,9 +5991,9 @@ Expected: 3 passed.
 
 - [ ] **Step 6: Mutations (in a scratch copy outside the repo — each must turn its test red; the dry run ran every one).**
 
-- leaving #4 leaves its words → RED Tests  1 failed | 14 passed (15)
-- a mismatch never clears → RED Tests  1 failed | 14 passed (15)
-- #5 without the page gate → RED Tests  5 failed | 10 passed (15)
+- leaving #4 leaves its words → RED Tests  1 failed | 15 passed (16)
+- a mismatch never clears → RED Tests  1 failed | 15 passed (16)
+- #5 without the page gate → RED Tests  5 failed | 11 passed (16)
 
 - [ ] **Step 7: Add the states to the visual pass.** Task 18 shoots, asserting each state's copy first: `04-empty`, `04-partial-correct`, `04-wrong-answer`, `04-success`, `05-enter`, `05-confirm`, `05-mismatch`, `05-creating`, `06-passkey-idle`, `06-adding`, `06-unsupported`. The reviewer checks them against the matching `index.html` mockup with §8.6's checklist (Task 18 Step 3).
 
@@ -5920,7 +6028,7 @@ git commit -m "feat(extension): #4 seed-confirm, #5 create password, #6 passkey 
 
 Spec §3.8. `phrase idle`: "Import wallet" / "Bring an existing wallet onto this device.", the field (`autocomplete="off"`, `spellcheck="false"`), the D8 banner, `[Continue]` disabled until 12 or 24 words with a valid checksum (the segmented control and the backup-file tab are gone, D17). The words typed so far show in the design's mono cell grid under the field (Scope 3), with "N of 12 words entered." until valid, then "Valid N-word BIP-39 phrase · checksum OK". `paste-detected`: the toast that does **not** claim to clear the clipboard. `idle-timer-active`: after 48 s without input, "Auto-clearing in 12 s" / "No activity for 60 s — phrase will be wiped from this field." + `[Keep working — reset timer]`; at 60 s the field and grid are emptied. `checking`, `choose-scheme` (the B1b-1 strings, now in two `.noc-card` rows), `invalid-mnemonic`.
 
-`createImportRun` (the plain path): #8 → detection (the background's probe, public keys only) → the scheme → #5 "Import · 2 / 2" → `wallet.html#/imported` (no #6 on this path, D9). Back from #5 returns to #8 with the phrase back in the field. The create run's "I have a wallet" opens the import run in the **same page**; each screen is mounted once per page and the runs share #5 (`createCreateRun` takes the shared `PasswordScreen`).
+`createImportRun` (the plain path): #8 → detection (the background's probe, public keys only) → the scheme → #5 "Import · 2 / 2" → `wallet.html#/imported` (no #6 on this path, D9). Back from #5 returns to #8 with the phrase back in the field. The phrase is kept while the page is open, **a hidden tab included** — §3.5's hidden-tab rule is the password's, and dropping the phrase under an open #5 would end the run on an untrue "That is not a valid 12- or 24-word recovery phrase." (plan-2 review M4; Scope 19); it goes when the wallet is stored, on `exists`, on Back, and with the page. The create run's "I have a wallet" opens the import run in the **same page**; each screen is mounted once per page and the runs share #5 (`createCreateRun` takes the shared `PasswordScreen`).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -5928,7 +6036,7 @@ Modify `extension/src/unlock/__tests__/create.test.ts`:
 
 ```diff
 diff --git a/extension/src/unlock/__tests__/create.test.ts b/extension/src/unlock/__tests__/create.test.ts
-index e97dd2a..985b4e8 100644
+index 23f45ff..6371b5e 100644
 --- a/extension/src/unlock/__tests__/create.test.ts
 +++ b/extension/src/unlock/__tests__/create.test.ts
 @@ -6,7 +6,7 @@ import {getSession} from '../../background/session';
@@ -5940,7 +6048,7 @@ index e97dd2a..985b4e8 100644
  import {HOLD_MS, TICK_MS} from '../view/hold';
  import {click, el, harness, loadPage, testKdf, text, type, unstyled, visible} from './pageHarness';
  
-@@ -283,7 +283,7 @@ describe('the create run, end to end in one page, against the real background',
+@@ -294,7 +294,7 @@ describe('the create run, end to end in one page, against the real background',
  
    it('#1 → #2 → #3 → #4 → #5 → #6 → Skip → wallet.html#/created; the stored wallet is the phrase shown on #3', async () => {
      const h = await harness({mnemonic: PHRASE});
@@ -6119,6 +6227,18 @@ describe('#8 → #5 → #40: the plain import run, against the real background',
     expect(visible(el('v-import'))).toBe(true);
     expect(el<HTMLTextAreaElement>('imp-phrase').value).toBe(M);
   });
+
+  // M4 (plan review): the hidden-tab rule drops the password, never the phrase under an open #5.
+  it('a tab hidden on #5 keeps the phrase: the password set after it stores the wallet — no "not a valid phrase"', async () => {
+    const h = await run({getMultipleLamports: async keys => keys.map(() => 0n)});
+    await h.until(() => visible(el('v-password')) && !h.deps.gate.isBusy());
+    h.leave();
+    await setPassword(h);
+    expect(text(document.body)).not.toContain('That is not a valid 12- or 24-word recovery phrase.');
+    expect(h.went).toEqual(['wallet.html#/imported']);
+    const env = (await h.ext.local.get(VAULT_KEY)) as EnvelopeV1;
+    expect(await decryptMnemonic(env, await unlockWithPassword(env, PW, testKdf))).toBe(M);
+  }, 30_000);
 });
 
 describe('#1 → #8 in one page', () => {
@@ -6139,7 +6259,7 @@ describe('#1 → #8 in one page', () => {
 - [ ] **Step 2: Run them and watch them fail.**
 
 Run: `npx vitest run src/unlock/__tests__/create.test.ts src/unlock/__tests__/import.test.ts`
-Expected (dry run): FAIL — Test Files 2 failed (2) Tests 1 failed (the modules this task adds do not exist yet, or the behaviour is the old one).
+Expected (dry run): FAIL — Test Files 2 failed (2) Tests 1 failed | 15 passed (16) (the modules this task adds do not exist yet, or the behaviour is the old one).
 
 - [ ] **Step 3: Write the implementation.**
 
@@ -6294,9 +6414,9 @@ export function createImportRun(deps: PageDeps, o: {password: PasswordScreen; ba
       });
     },
   });
-  deps.onLeave(() => {
-    phrase = '';
-  });
+  // The phrase is kept while this page stays open, a hidden tab included: the hidden-tab rule (§3.5) is
+  // the password's, and dropping the phrase under an open #5 would end the run on an untrue "not a valid
+  // phrase" (M4 of the plan review). It goes when the wallet is stored, on `exists`, on Back, and with the page.
   return {show: () => screen.show()};
 }
 ```
@@ -6479,10 +6599,10 @@ Modify `extension/src/unlock/strings.ts`:
 
 ```diff
 diff --git a/extension/src/unlock/strings.ts b/extension/src/unlock/strings.ts
-index b750c9b..2dfb736 100644
+index aec2ad7..9873d03 100644
 --- a/extension/src/unlock/strings.ts
 +++ b/extension/src/unlock/strings.ts
-@@ -77,6 +77,17 @@ export const PASSWORD = {
+@@ -80,6 +80,17 @@ export const PASSWORD = {
    failed: 'Something went wrong. Nothing was saved.',
  } as const;
  
@@ -6643,12 +6763,13 @@ index 2259638..d6db20a 100644
 - [ ] **Step 4: Run the tests and the whole suite.**
 
 Run: `npx vitest run src/unlock/__tests__/create.test.ts src/unlock/__tests__/import.test.ts` — PASS. Then the whole suite: `npx tsc --noEmit && npx vitest run`
-Expected (dry run): tsc clean; tsc-ok |  Test Files 92 passed (92) Tests 1164 passed (1164).
+Expected (dry run): tsc clean; Test Files 92 passed (92) Tests 1168 passed (1168).
 
 - [ ] **Step 5: Mutations (in a scratch copy outside the repo — each must turn its test red; the dry run ran every one).**
 
-- Continue on for any 12 words (no checksum) → RED Tests  1 failed | 10 passed (11)
-- the idle timer never wipes → RED Tests  1 failed | 9 passed (10)
+- Continue on for any 12 words (no checksum) → RED Tests  1 failed | 11 passed (12)
+- the idle timer never wipes → RED Tests  1 failed | 11 passed (12)
+- the import run drops the phrase on a hidden tab (M4) → RED Tests  1 failed | 11 passed (12)
 
 - [ ] **Step 6: Add the states to the visual pass.** Task 18 shoots, asserting each state's copy first: `08-phrase-idle`, `08-typing`, `08-idle-timer-active`, `08-paste-detected`, `08-checking`, `08-choose-scheme`, `05-import-enter`. The reviewer checks them against the matching `index.html` mockup with §8.6's checklist (Task 18 Step 3).
 
@@ -6840,7 +6961,7 @@ describe('#9 unlock (spec §3.9)', () => {
 
   it('a damaged vault (a stored null too) says so before any password is typed — never charged to the backoff', async () => {
     const h = await shown(null);
-    expect(text(el('unl-notice'))).toBe("This wallet's stored data is damaged. Your funds stay on Solana; your recovery phrase still controls them.");
+    expect(text(el('unl-notice'))).toBe("This wallet's stored data is damaged. Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase.");
     expect(visible(el('unl-entry'))).toBe(false);
     expect(visible(el('unl-forgot'))).toBe(false);
     expect(h.sent).toEqual([]);
@@ -6865,7 +6986,7 @@ describe('#9 unlock (spec §3.9)', () => {
 - [ ] **Step 2: Run them and watch them fail.**
 
 Run: `npx vitest run src/app/__tests__/App.test.tsx src/unlock/__tests__/unlockScreen.test.ts`
-Expected (dry run): FAIL — Test Files 2 failed (2) Tests 1 failed (the modules this task adds do not exist yet, or the behaviour is the old one).
+Expected (dry run): FAIL — Test Files 2 failed (2) Tests 1 failed | 11 passed (12) (the modules this task adds do not exist yet, or the behaviour is the old one).
 
 - [ ] **Step 3: Write the implementation.**
 
@@ -7240,10 +7361,10 @@ Modify `extension/src/unlock/strings.ts`:
 
 ```diff
 diff --git a/extension/src/unlock/strings.ts b/extension/src/unlock/strings.ts
-index 2dfb736..cdaa83f 100644
+index 9873d03..2aeee3c 100644
 --- a/extension/src/unlock/strings.ts
 +++ b/extension/src/unlock/strings.ts
-@@ -96,6 +96,16 @@ export const PASSKEY = {
+@@ -99,6 +99,16 @@ export const PASSKEY = {
    failed: 'Something went wrong. Your password still works.',
  } as const;
  
@@ -7383,7 +7504,7 @@ index d6db20a..f88da9e 100644
 - [ ] **Step 4: Run the tests and the whole suite.**
 
 Run: `npx vitest run src/app/__tests__/App.test.tsx src/unlock/__tests__/unlockScreen.test.ts` — PASS. Then the whole suite: `npx tsc --noEmit && npx vitest run`
-Expected (dry run): tsc clean; tsc-ok |  Test Files 93 passed (93) Tests 1176 passed (1176).
+Expected (dry run): tsc clean; Test Files 93 passed (93) Tests 1180 passed (1180).
 
 - [ ] **Step 5: The E2E that unlocked through the old markup.**
 
@@ -7532,9 +7653,9 @@ git commit -m "feat(extension): #9 unlock — the cooldown card, passkey, return
 
 **Interfaces:**
 - Consumes: Tasks 1, 3, 4, 5, 8, 10; `runReauth` (Task 3), the resume target (Task 4).
-- Produces: `src/unlock/screens/reauth.ts`: `mountReauth(deps): {show(challengeId: string): Promise<void>}`; `strings.ts`: `REAUTH.aboutSend`, `aboutChange`, `to`, `cancelSend`, `cancel`
+- Produces: `src/unlock/screens/reauth.ts`: `mountReauth(deps): {show(challengeId: string): Promise<void>}`; `strings.ts`: `REAUTH.aboutSend`, `aboutChange`, `to`, `cancelSend`, `cancel`, `close`, `nothingSent`
 
-Spec §3.10 (D7, D11, D12, D38, D39, E3, E7). `loading` ("Reading the details…") → `vault.challengeInfo` (Task 3). `idle`: the top bar's X and "Confirm with password", "You are about to send", the exact amount and the token from the page's own table, "To" + the **full recipient in groups of four**, "Network fee" and the Noctura-fee line (or its reason) and "New token account" when non-zero (Scope 4), "Enter your password", one fixed line per engine reason, `[Confirm]`, `[Confirm with passkey]` when the envelope has one, `[Cancel send]`. `error` ("That did not confirm it."), `cooldown` (#9's card with "That did not confirm it. Wait a moment before trying again." and `[Confirm paused]`, controller addition), `undescribable` ("The details of this action could not be shown." with **only** `[Cancel send]` — no Confirm, no field), `not-unlocked` (+ `[Unlock]` → `?mode=unlock`, no return target, M7), `mismatch-locked`, `expired` (from `challengeInfo` **or** `vault.reauthOk`, D39), `damaged`, `no-wallet`. `confirmed` → `location.replace('wallet.html#/send/resume?account=…')` in the same tab — **nothing is sent from #10** (D38). `[Cancel send]` and the X → `wallet.discardPrepared {account}` first; only when the background says ok: "Send cancelled. Nothing was sent." and the tab closes; a refused discard says "Something went wrong. Try again." and keeps the screen. A settings challenge (B1b-2b's) shows "You are about to change" and its lines; confirmed → "Confirmed. You can close this tab."; its cancel ("Cancel", controller addition) only closes the tab. `wallet.spec.ts`'s re-authentication goes through #10 and asserts the hand-over URL and that nothing was broadcast.
+Spec §3.10 (D7, D11, D12, D38, D39, E3, E7). `loading` ("Reading the details…") → `vault.challengeInfo` (Task 3). `idle`: the top bar's X and "Confirm with password", "You are about to send", the exact amount and the token from the page's own table, "To" + the **full recipient in groups of four**, "Network fee" and the Noctura-fee line (or its reason) and "New token account" when non-zero (Scope 4), "Enter your password", one fixed line per engine reason, `[Confirm]`, `[Confirm with passkey]` when the envelope has one, `[Cancel send]`. `error` ("That did not confirm it."), `cooldown` (#9's card with "That did not confirm it. Wait a moment before trying again." and `[Confirm paused]`, controller addition), `undescribable` ("The details of this action could not be shown." with **only** `[Cancel send]` — no Confirm, no field; it discards the send by the account `readChallenge` re-validated by itself, and when even that is not an address the button is `[Close]` with "Nothing was sent. Start the send again from the Noctura icon." — no "cancelled" — both controller additions awaiting the owner, plan-2 review H1), `not-unlocked` (+ `[Unlock]` → `?mode=unlock`, no return target, M7), `mismatch-locked`, `expired` (from `challengeInfo` **or** `vault.reauthOk`, D39), `damaged`, `no-wallet`. `confirmed` → `location.replace('wallet.html#/send/resume?account=…')` in the same tab — **nothing is sent from #10** (D38). `[Cancel send]` and the X → `wallet.discardPrepared {account}` first; only when the background says ok: "Send cancelled. Nothing was sent." and the tab closes; a refused discard says "Something went wrong. Try again." and keeps the screen. A settings challenge (B1b-2b's) shows "You are about to change" and its lines; confirmed → "Confirmed. You can close this tab."; its cancel ("Cancel", controller addition — awaiting the owner) only closes the tab and the challenge simply expires. In every other notice (`expired`, `not-unlocked`, `mismatch-locked`, `damaged`, `no-wallet`) the top bar's X closes the tab and claims nothing (plan-2 review L4). Rule 6: a second `[Cancel send]` (or the X) before the first settles sends one `wallet.discardPrepared` (M6). `wallet.spec.ts`'s re-authentication goes through #10 and asserts the hand-over URL and that nothing was broadcast.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -7708,13 +7829,26 @@ describe('#10 unlock-send (spec §3.10)', () => {
   });
 });
 
+const LOCKED_VAULT = {v: 1, scheme: 'slip10', kdf: {alg: 'argon2id', m: 65536, t: 3, p: 1, salt: B(16)}, seed: {iv: B(12), ct: B(48)}, password: {wrapped: B(40)}, accounts: [{index: 0, name: 'A', publicKey: ACCOUNT.publicKey}]};
+
+/** A real prepared send for ACCOUNT (its challenge issued by the background); `about` replaces what #10 reads. */
+async function prepared(about?: unknown) {
+  const h = await harness({
+    vault: LOCKED_VAULT,
+    send: inner => async m => ((m as {type: string}).type === 'vault.challengeInfo' && about !== undefined ? {ok: true, data: about} : inner(m)),
+  });
+  await setSession(h.ext, [ACCOUNT]);
+  h.wallet.reader = sendReader();
+  const view = await prepareSend(h.ext, h.wallet, ACCOUNT.publicKey, {token: 'SOL', recipient: RECIPIENT, amount: '1000000'});
+  const id = view.reauth!.challengeId;
+  return {h, id};
+}
+const stillPrepared = async (h: Awaited<ReturnType<typeof harness>>) =>
+  ((await handleMessage(h.ext, {type: 'wallet.preparedFor', account: ACCOUNT.publicKey}, UNLOCK_SENDER, h.wallet)) as {data: unknown}).data !== null;
+
 describe('#10 [Cancel send] discards the prepared send (E7), against the real background', () => {
   it('drops the prepared send and its challenge, says "Send cancelled. Nothing was sent." and closes the tab', async () => {
-    const h = await harness({vault: {v: 1, scheme: 'slip10', kdf: {alg: 'argon2id', m: 65536, t: 3, p: 1, salt: B(16)}, seed: {iv: B(12), ct: B(48)}, password: {wrapped: B(40)}, accounts: [{index: 0, name: 'A', publicKey: ACCOUNT.publicKey}]}});
-    await setSession(h.ext, [ACCOUNT]);
-    h.wallet.reader = sendReader();
-    const view = await prepareSend(h.ext, h.wallet, ACCOUNT.publicKey, {token: 'SOL', recipient: RECIPIENT, amount: '1000000'});
-    const id = view.reauth!.challengeId;
+    const {h, id} = await prepared();
     await mountReauth(h.deps).show(id);
     click(el('ra-cancel'));
     await h.until(() => h.closed > 0);
@@ -7723,6 +7857,59 @@ describe('#10 [Cancel send] discards the prepared send (E7), against the real ba
     expect(await challengeInfo(h.ext, h.wallet.now(), id)).toBeNull();
     expect(await handleMessage(h.ext, {type: 'wallet.preparedFor', account: ACCOUNT.publicKey}, UNLOCK_SENDER, h.wallet)).toEqual({ok: true, data: null});
     expect(visible(el('ra-cancel'))).toBe(false);
+  });
+
+  // H1 (plan review): an action the page cannot describe is still a prepared send — Cancel must drop it.
+  it('undescribable, its account valid by itself: [Cancel send] discards that send, then "Send cancelled…"', async () => {
+    const {h, id} = await prepared({...SEND(ACCOUNT.publicKey), markupReason: 'charged'});
+    await mountReauth(h.deps).show(id);
+    expect(text(el('ra-notice-line'))).toBe('The details of this action could not be shown.');
+    expect(text(el('ra-cancel'))).toBe('Cancel send');
+    click(el('ra-cancel'));
+    await h.until(() => h.closed > 0);
+    expect(h.sent.filter(m => m.type === 'wallet.discardPrepared')).toEqual([{type: 'wallet.discardPrepared', account: ACCOUNT.publicKey}]);
+    expect(await stillPrepared(h)).toBe(false);
+    expect(await challengeInfo(h.ext, h.wallet.now(), id)).toBeNull();
+    expect(text(el('ra-notice-line'))).toBe('Send cancelled. Nothing was sent.');
+  });
+
+  it('undescribable with no valid account: [Close] and a true line — nothing is sent and nothing says "cancelled"', async () => {
+    const {h, id} = await prepared({...SEND(ACCOUNT.publicKey), account: 'not an address', token: 'BONK'});
+    await mountReauth(h.deps).show(id);
+    expect(text(el('ra-notice-line'))).toBe('The details of this action could not be shown.');
+    expect(text(el('ra-notice-help'))).toBe('Nothing was sent. Start the send again from the Noctura icon.');
+    expect(text(el('ra-cancel'))).toBe('Close');
+    expect(el('ra-x').getAttribute('aria-label')).toBe('Close');
+    click(el('ra-cancel'));
+    await h.until(() => h.closed > 0);
+    expect(h.sent.some(m => m.type === 'wallet.discardPrepared')).toBe(false);
+    expect(text(document.body)).not.toMatch(/cancelled/i);
+    expect(await stillPrepared(h)).toBe(true);
+  });
+
+  it('rule 6: a second [Cancel send] before the first settles sends one wallet.discardPrepared', async () => {
+    const {h, id} = await prepared();
+    await mountReauth(h.deps).show(id);
+    click(el('ra-cancel'));
+    click(el('ra-cancel'));
+    click(el('ra-x'));
+    await h.until(() => h.closed > 0 && !h.deps.gate.isBusy());
+    expect(h.sent.filter(m => m.type === 'wallet.discardPrepared')).toHaveLength(1);
+    expect(h.closed).toBe(1);
+  });
+
+  // L4 (plan review): a notice with nothing to cancel still has a way out — the X closes, claiming nothing.
+  it('expired, locked or mismatch: the top bar’s X closes the tab, sends nothing and says nothing was cancelled', async () => {
+    const {h, id} = await prepared();
+    h.wallet.clock.t += CHALLENGE_TTL_MS + 1;
+    await mountReauth(h.deps).show(id);
+    expect(text(el('ra-notice-line'))).toBe('This confirmation has expired. Start the send again from the Noctura icon.');
+    expect(el<HTMLButtonElement>('ra-x').disabled).toBe(false);
+    expect(el('ra-x').getAttribute('aria-label')).toBe('Close');
+    click(el('ra-x'));
+    expect(h.closed).toBe(1);
+    expect(h.sent.some(m => m.type === 'wallet.discardPrepared')).toBe(false);
+    expect(text(document.body)).not.toMatch(/cancelled/i);
   });
 
   it('a discard the background refuses keeps the screen and says so — no "Send cancelled" it cannot vouch for', async () => {
@@ -7892,8 +8079,11 @@ type View = 'loading' | 'entry' | 'notice';
  * built. A description that fails is "The details of this action could not be shown." with only
  * [Cancel send]. After a proven factor the send is NOT executed (D38): the same tab goes to the UI tab's
  * resume route, where #20 shows a fresh preview and one tap sends. [Cancel send] discards the prepared
- * send (E7) first, then says "Send cancelled. Nothing was sent." and closes the tab. A
- * `vault.reauthOk` answered `unknown-challenge` is `expired`, never `failed` (D39).
+ * send (E7) first, then says "Send cancelled. Nothing was sent." and closes the tab — also from the
+ * `undescribable` state, with the one field it re-validated by itself (the account). When even that is
+ * not an address, the button is [Close] and the line says only what is true: nothing was sent here
+ * (plan review H1). In every other notice state the top bar's X closes the tab and claims nothing (L4).
+ * A `vault.reauthOk` answered `unknown-challenge` is `expired`, never `failed` (D39).
  */
 export function mountReauth(deps: PageDeps): {show(challengeId: string): Promise<void>} {
   const field = byId<HTMLInputElement>('ra-password');
@@ -7903,6 +8093,10 @@ export function mountReauth(deps: PageDeps): {show(challengeId: string): Promise
   const backoff = createWrongBackoff(deps.sleep);
   let challengeId = '';
   let described: Description | null = null;
+  /** `undescribable` only: the send's account, valid by itself — what [Cancel send] discards. */
+  let orphan: string | null = null;
+  /** `undescribable` with no valid account: the button only closes the tab. */
+  let closeOnly = false;
   let pk: {credentialId: string; prfSalt: string} | null = null;
   let view: View = 'loading';
   let canCancel = false;
@@ -7923,13 +8117,16 @@ export function mountReauth(deps: PageDeps): {show(challengeId: string): Promise
     confirm.disabled = busy;
     passkey.disabled = busy;
     cancel.disabled = busy;
-    byId<HTMLButtonElement>('ra-x').disabled = busy || !canCancel;
+    const x = byId<HTMLButtonElement>('ra-x');
+    x.disabled = busy || !(canCancel || view === 'notice');
+    x.setAttribute('aria-label', canCancel && !closeOnly ? REAUTH.cancel : REAUTH.close);
   };
   const helper = (text: string, error: boolean) => {
     setText(byId('ra-helper'), text);
     byId('ra-helper').classList.toggle('error', error);
     field.classList.toggle('is-error', error);
   };
+  const failed = () => (view === 'notice' ? setText(byId('ra-notice-help'), COMMON.failedTryAgain) : helper(COMMON.failedTryAgain, false));
   const notice = (line: string, o: {help?: string; cancel?: boolean; unlock?: boolean} = {}) => {
     view = 'notice';
     canCancel = o.cancel === true;
@@ -8017,13 +8214,20 @@ export function mountReauth(deps: PageDeps): {show(challengeId: string): Promise
   const doCancel = () =>
     void exclusive(deps, render, async () => {
       if (!canCancel) return;
-      if (described?.kind === 'settings') return deps.closeTab();
+      if (described?.kind === 'settings' || closeOnly) return deps.closeTab();
       // E7: nothing of this send may outlive the cancel — its prepared send and its challenge go.
-      if (described?.kind === 'send' && !(await discardPrepared(deps.send, described.account))) return helper(COMMON.failedTryAgain, false);
+      const account = described?.kind === 'send' ? described.account : orphan;
+      if (account === null || !(await discardPrepared(deps.send, account))) return failed();
       described = null;
+      orphan = null;
       notice(REAUTH.cancelled);
       deps.closeTab();
     });
+  /** The top bar's X: Cancel while there is something to cancel; in any other notice, only a close (L4). */
+  const doX = () => {
+    if (canCancel) return doCancel();
+    if (view === 'notice' && !deps.gate.isBusy()) deps.closeTab();
+  };
 
   deps.gate.onIdle(render);
   byId('ra-form').addEventListener('submit', e => {
@@ -8033,7 +8237,7 @@ export function mountReauth(deps: PageDeps): {show(challengeId: string): Promise
   confirm.addEventListener('click', () => prove('password'));
   passkey.addEventListener('click', () => prove('passkey'));
   cancel.addEventListener('click', doCancel);
-  byId('ra-x').addEventListener('click', doCancel);
+  byId('ra-x').addEventListener('click', doX);
   byId('ra-unlock').addEventListener('click', () => deps.go('unlock.html?mode=unlock'));
 
   return {
@@ -8054,11 +8258,13 @@ export function mountReauth(deps: PageDeps): {show(challengeId: string): Promise
       pk = stored.env.passkey ?? null;
       const read = await readChallenge(deps.send, id);
       if (read.state !== 'described') {
-        if (read.state === 'expired') return notice(REAUTH.expired);
-        if (read.state === 'not-unlocked') return notice(REAUTH.notUnlocked, {unlock: true});
-        // Fail closed: what cannot be described is never offered for confirmation — only Cancel.
-        setText(cancel, REAUTH.cancelSend);
-        return notice(REAUTH.undescribable, {cancel: true});
+        if (read.state !== 'undescribable') return read.state === 'expired' ? notice(REAUTH.expired) : notice(REAUTH.notUnlocked, {unlock: true});
+        // Fail closed: what cannot be described is never offered for confirmation — only Cancel, which
+        // discards the send by its own re-validated account; without one, only Close (plan review H1).
+        orphan = read.account;
+        closeOnly = orphan === null;
+        setText(cancel, closeOnly ? REAUTH.close : REAUTH.cancelSend);
+        return notice(REAUTH.undescribable, {cancel: true, help: closeOnly ? REAUTH.nothingSent : ''});
       }
       described = read.description;
       describe(read.description);
@@ -8075,10 +8281,10 @@ Modify `extension/src/unlock/strings.ts`:
 
 ```diff
 diff --git a/extension/src/unlock/strings.ts b/extension/src/unlock/strings.ts
-index cdaa83f..8887886 100644
+index 2aeee3c..7ba60b6 100644
 --- a/extension/src/unlock/strings.ts
 +++ b/extension/src/unlock/strings.ts
-@@ -119,6 +119,12 @@ export const REAUTH = {
+@@ -122,6 +122,16 @@ export const REAUTH = {
    checking: 'Checking…',
    cancelled: 'Send cancelled. Nothing was sent.',
    settingsConfirmed: 'Confirmed. You can close this tab.',
@@ -8086,7 +8292,11 @@ index cdaa83f..8887886 100644
 +  aboutChange: 'You are about to change',
 +  to: 'To',
 +  cancelSend: 'Cancel send',
-+  /** Controller addition (plan 2): a settings confirmation (B1b-2b) is not a send. */
++  /** Controller addition — awaiting the owner (plan review H1): #10 could not tell which send to drop. */
++  close: 'Close',
++  /** Controller addition — awaiting the owner (plan review H1): no "cancelled" the page cannot vouch for. */
++  nothingSent: 'Nothing was sent. Start the send again from the Noctura icon.',
++  /** Controller addition — awaiting the owner (plan 2): a settings confirmation (B1b-2b) is not a send. */
 +  cancel: 'Cancel',
    networkFee: 'Network fee',
    nocturaFee: 'Noctura fee',
@@ -8128,7 +8338,7 @@ Modify `extension/unlock.html`:
 
 ```diff
 diff --git a/extension/unlock.html b/extension/unlock.html
-index f88da9e..81413e0 100644
+index f88da9e..455ee1f 100644
 --- a/extension/unlock.html
 +++ b/extension/unlock.html
 @@ -106,15 +106,6 @@
@@ -8147,7 +8357,7 @@ index f88da9e..81413e0 100644
        <section id="accounts" hidden>
          <h1>Accounts</h1>
          <label for="acc-password">Password</label>
-@@ -366,6 +357,57 @@
+@@ -366,6 +357,58 @@
          </div>
        </section>
  
@@ -8196,6 +8406,7 @@ index f88da9e..81413e0 100644
 +        <button id="ra-cancel" type="button" class="btn btn-tertiary forgot-link" hidden></button>
 +        <div class="sticky-bar">
 +          <button id="ra-confirm" type="button" class="btn btn-primary" hidden>Confirm</button>
++          <!-- "Confirm paused": controller addition — awaiting the owner (mirrors #9's "Unlock paused"). -->
 +          <button id="ra-paused" type="button" class="btn btn-secondary" disabled hidden>Confirm paused</button>
 +          <button id="ra-passkey" type="button" class="btn btn-secondary" hidden>Confirm with passkey</button>
 +          <button id="ra-unlock" type="button" class="btn btn-primary" hidden>Unlock</button>
@@ -8210,7 +8421,7 @@ index f88da9e..81413e0 100644
 - [ ] **Step 4: Run the tests and the whole suite.**
 
 Run: `npx vitest run src/unlock/__tests__/reauthScreen.test.ts` — PASS. Then the whole suite: `npx tsc --noEmit && npx vitest run`
-Expected (dry run): tsc clean; Test Files 94 passed (94) Tests 1188 passed (1188).
+Expected (dry run): tsc clean; Test Files 94 passed (94) Tests 1196 passed (1196).
 
 - [ ] **Step 5: The E2E that re-authenticated through the old markup.**
 
@@ -8263,8 +8474,10 @@ Expected: 2 passed — #10 hands over to `wallet.html#/send/resume?account=…` 
 
 - [ ] **Step 6: Mutations (in a scratch copy outside the repo — each must turn its test red; the dry run ran every one).**
 
-- an undescribable action offered for confirmation → RED Tests  1 failed | 11 passed (12)
-- cancel without the discard (E7) → RED Tests  2 failed | 10 passed (12)
+- an undescribable action offered for confirmation → RED Tests  3 failed | 13 passed (16)
+- cancel without the discard (E7) → RED Tests  4 failed | 12 passed (16)
+- an undescribable send said cancelled without its discard (H1) → RED Tests  1 failed | 15 passed (16)
+- the X stays disabled in a notice with nothing to cancel (L4) → RED Tests  1 failed | 15 passed (16)
 
 - [ ] **Step 7: Add the states to the visual pass.** Task 18 shoots, asserting each state's copy first: `10-idle`, `10-error`, `10-cooldown`, `10-expired`, `10-undescribable`, `10-cancelled`, `10-not-unlocked`. The reviewer checks them against the matching `index.html` mockup with §8.6's checklist (Task 18 Step 3).
 
@@ -8284,6 +8497,7 @@ git commit -m "feat(extension): #10 unlock-send — the closed-alphabet descript
 **Files:**
 - Modify: `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md`
 - Modify: `extension/src/unlock/__tests__/create.test.ts`
+- Modify: `extension/src/unlock/__tests__/pageHarness.ts`
 - Create: `extension/src/unlock/__tests__/restore.test.ts`
 - Modify: `extension/src/unlock/modes.ts`
 - Modify: `extension/src/unlock/screens/createRun.ts`
@@ -8298,9 +8512,9 @@ git commit -m "feat(extension): #10 unlock-send — the closed-alphabet descript
 
 **Interfaces:**
 - Consumes: Tasks 2, 4, 5, 8, 9, 10.
-- Produces: `src/unlock/screens/forgot.ts`: `mountForgot(deps: Pick<PageDeps, 'go'>): {show(): void}`; `src/unlock/screens/restoreRun.ts`: `createRestoreRun(deps, o: {password: PasswordScreen}): {show(): Promise<void>}`; `ImportScreen.notice(line, help, action: {label; run()} | null)`; `PasswordRun.finish(password): Promise<{line: string; then: 'retype' | 'retry' | 'stop'} | null>`; `strings.ts`: `FORGOT`, `RESTORE`, `PASSWORD.continue`, `PASSWORD.tryAgain`
+- Produces: `src/unlock/screens/forgot.ts`: `mountForgot(deps: Pick<PageDeps, 'go'>): {show(): void}`; `src/unlock/screens/restoreRun.ts`: `createRestoreRun(deps, o: {password: PasswordScreen}): {show(): Promise<void>}`; `ImportScreen.notice(line, help, action: {label; run()} | null)`; `PasswordRun.finish(password): Promise<{line: string; then: 'retype' | 'retry' | 'stop'} | null>`; `strings.ts`: `FORGOT`, `RESTORE`, `PASSWORD.continue`, `PASSWORD.tryAgain`, `PASSWORD.newPasswordToRetry`; `pageHarness.ts`: `inner` throws `forgetWallet without replacement or guard`
 
-Spec §3.11 and §3.8's restore path (D35, D40, E5). #39: all three cards visible, the highlighted one moving 1 → 2 → 3 with each step's copy (Scope 10), walked in order so the step-2 warning is always seen (review L1); `[Continue to import]` → `?mode=import&source=forgot`; `[Cancel]` and back from step 1 → #9. The restore run: the stored vault read first (none → "No wallet on this browser yet." + `[Set up a wallet]`; damaged → the damaged lines); #8 → `checking-match` ("Checking this phrase against the wallet in this browser…", local, no network) → the seed proof (Task 2): `not-this-wallet` replaces the field with the two lines and `[Try another phrase]`, nothing sent; a match → #5 "Recovery" / "Restore · 2 / 2" (no scheme choice) → `restoreWallet`: `restored` → `wallet.html#/imported`; `send-open` → its line on #5 and `[Try again]` with the password **kept in page memory** (#5's new `retry` step); `busy` / `unlocked` (carry 4: "The wallet was unlocked while this was running, so nothing was deleted. Start again.", controller addition) → #8 with the line and `[Start again]` → #39. #5's `finish` answer becomes `then: 'retype' | 'retry' | 'stop'`; `ImportScreen` gains `notice()`. The spec's E5 step-5 note and §3.8 restore list get the `unlocked` line (Step 5).
+Spec §3.11 and §3.8's restore path (D35, D40, E5). #39: all three cards visible, the highlighted one moving 1 → 2 → 3 with each step's copy (Scope 10), walked in order so the step-2 warning is always seen (review L1); `[Continue to import]` → `?mode=import&source=forgot`; `[Cancel]` and back from step 1 → #9. The restore run: the stored vault read first (none → "No wallet on this browser yet." + `[Set up a wallet]`; damaged → the damaged lines); #8 → `checking-match` ("Checking this phrase against the wallet in this browser…", local, no network) → the seed proof (Task 2): `not-this-wallet` replaces the field with the two lines and `[Try another phrase]`, nothing sent; a match → #5 "Recovery" / "Restore · 2 / 2" (no scheme choice) → `restoreWallet`: `restored` → `wallet.html#/imported`; `send-open` → its line on #5 and `[Try again]` with the password **kept in page memory** (#5's new `retry` step); `busy` / `unlocked` (carry 4: "The wallet was unlocked while this was running, so nothing was deleted. Start again.", controller addition) → #8 with the line and `[Start again]` → #39. #5's `finish` answer becomes `then: 'retype' | 'retry' | 'stop'`; `ImportScreen` gains `notice()`. A hidden tab drops the password a `[Try again]` was holding — §3.5's rule wins over E5's "kept while this page stays open" — and #5 then reads "Enter a new password to try again." (controller addition — awaiting the owner; plan-2 review L5). Back from #5 returns to #8 with the phrase in the field, as the plain import does (L3). The seed proof (it holds the phrase) lives from the match to the run's end, a hidden tab included (Scope 19). The page harness now refuses any `vault.forgetWallet` with neither `replacement` nor `guard: 'unfunded'`, so every screen test enforces E5's rule at the boundary — not only the source grep (plan-2 review M5). The spec's E5 step-5 note and §3.8 restore list get the `unlocked` line (Step 5).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -8308,7 +8522,7 @@ Modify `extension/src/unlock/__tests__/create.test.ts`:
 
 ```diff
 diff --git a/extension/src/unlock/__tests__/create.test.ts b/extension/src/unlock/__tests__/create.test.ts
-index 985b4e8..544fc52 100644
+index 6371b5e..bd7c0df 100644
 --- a/extension/src/unlock/__tests__/create.test.ts
 +++ b/extension/src/unlock/__tests__/create.test.ts
 @@ -120,7 +120,7 @@ describe('#4 seed-confirm: the screen', () => {
@@ -8329,6 +8543,26 @@ index 985b4e8..544fc52 100644
      type(field, PW);
      click(cta);
      await h.until(() => text(el('pw-title')) === 'Confirm your password' && !h.deps.gate.isBusy());
+```
+
+Modify `extension/src/unlock/__tests__/pageHarness.ts`:
+
+```diff
+diff --git a/extension/src/unlock/__tests__/pageHarness.ts b/extension/src/unlock/__tests__/pageHarness.ts
+index 0c70f47..e0e248f 100644
+--- a/extension/src/unlock/__tests__/pageHarness.ts
++++ b/extension/src/unlock/__tests__/pageHarness.ts
+@@ -59,6 +59,10 @@ export async function harness(
+   const wallet = fakeDeps({reader: fakeReader({getBalance: async () => 0n, getTokenAccountsByOwner: async () => [], ...o.reader})});
+   const sent: Harness['sent'] = [];
+   const inner: Send = async m => {
++    // E5's boundary, enforced under every screen test (plan review M5): the page never sends a bare
++    // delete — every vault.forgetWallet carries a `replacement` (the seed proof) or the unfunded guard.
++    const f = m as {type?: unknown; replacement?: unknown; guard?: unknown};
++    if (f.type === 'vault.forgetWallet' && f.replacement === undefined && f.guard !== 'unfunded') throw new Error('forgetWallet without replacement or guard');
+     sent.push(JSON.parse(JSON.stringify(m)) as {type: string});
+     return (await handleMessage(ext, JSON.parse(JSON.stringify(m)), UNLOCK_SENDER, wallet)) as {ok: boolean; error?: string; data?: unknown};
+   };
 ```
 
 Create `extension/src/unlock/__tests__/restore.test.ts`:
@@ -8500,9 +8734,45 @@ describe('#8 restore path (E5 with replacement, D35, D40)', () => {
     expect(h.went).toEqual(['wallet.html#/imported']);
   }, 30_000);
 
+  // L5 (plan review): §3.5's hidden-tab rule wins — the held password goes, and the helper says what is next.
+  it('a tab hidden behind [Try again] drops the held password: "Enter a new password to try again."; a new one restores', async () => {
+    const h = await restoring();
+    await h.ext.local.set(PENDING_KEY, [pendingRecord({state: 'pending'})]);
+    await phrase(h, M);
+    await newPassword(h);
+    await h.until(() => text(el('pw-cta')) === 'Try again' && !h.deps.gate.isBusy());
+    h.leave();
+    expect(text(el('pw-helper'))).toBe('Enter a new password to try again.');
+    expect(text(el('pw-cta'))).toBe('Continue');
+    expect(visible(el('pw-form'))).toBe(true);
+    expect(el<HTMLInputElement>('pw-field').value).toBe('');
+    await h.ext.local.set(PENDING_KEY, [pendingRecord({state: 'expired'})]);
+    await newPassword(h);
+    await h.until(() => h.went.length > 0);
+    expect(h.went).toEqual(['wallet.html#/imported']);
+    const env = (await h.ext.local.get(VAULT_KEY)) as EnvelopeV1;
+    expect(await decryptMnemonic(env, await unlockWithPassword(env, NEW_PW, testKdf))).toBe(M);
+  }, 30_000);
+
+  it('back from #5 returns to #8 with the phrase in the field, as the plain import does (L3)', async () => {
+    const h = await restoring();
+    await phrase(h, M);
+    click(el('pw-back'));
+    expect(visible(el('v-import'))).toBe(true);
+    expect(el<HTMLTextAreaElement>('imp-phrase').value).toBe(M);
+  });
+
+  // M5 (plan review): the harness itself refuses a bare delete, so every screen test enforces E5's rule.
+  it('the page harness refuses a vault.forgetWallet with neither replacement nor guard (positive control)', async () => {
+    const h = await restoring();
+    await expect(h.deps.send({type: 'vault.forgetWallet', expectedRevision: 'r'})).rejects.toThrow('forgetWallet without replacement or guard');
+    await expect(h.deps.send({type: 'vault.forgetWallet', expectedRevision: 'r', guard: 'none'})).rejects.toThrow('forgetWallet without replacement or guard');
+    expect(h.sent).toEqual([]);
+  });
+
   it.each([
     ['busy', 'The wallet changed while you were typing. Start again.'],
-    // Carry 4 (controller addition): an unlock landed mid-forget — the wallet is NOT locked, so not the busy line.
+    // Carry 4 (controller addition — awaiting the owner): an unlock landed mid-forget — the wallet is NOT locked, so not the busy line.
     ['unlocked', 'The wallet was unlocked while this was running, so nothing was deleted. Start again.'],
   ])('%s: back to #8 with "%s" and [Start again] → #39', async (error, line) => {
     const h = await restoring({send: inner => async m => ((m as {type: string}).type === 'vault.forgetWallet' ? {ok: false, error} : inner(m))});
@@ -8523,7 +8793,7 @@ describe('#8 restore path (E5 with replacement, D35, D40)', () => {
     expect(none.went).toEqual(['unlock.html?mode=welcome']);
     loadPage();
     await restoring({vault: null});
-    expect(text(el('imp-notice'))).toBe("This wallet's stored data is damaged. Your funds stay on Solana; your recovery phrase still controls them.");
+    expect(text(el('imp-notice'))).toBe("This wallet's stored data is damaged. Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase.");
     expect(visible(el('imp-action'))).toBe(false);
   });
 
@@ -8537,8 +8807,8 @@ describe('#8 restore path (E5 with replacement, D35, D40)', () => {
 
 - [ ] **Step 2: Run them and watch them fail.**
 
-Run: `npx vitest run src/unlock/__tests__/create.test.ts src/unlock/__tests__/restore.test.ts`
-Expected (dry run): FAIL — Test Files 2 failed (2) Tests 1 failed (the modules this task adds do not exist yet, or the behaviour is the old one).
+Run: `npx vitest run src/unlock/__tests__/create.test.ts src/unlock/__tests__/pageHarness.ts src/unlock/__tests__/restore.test.ts`
+Expected (dry run): FAIL — Test Files 2 failed (2) Tests 1 failed | 15 passed (16) (the modules this task adds do not exist yet, or the behaviour is the old one).
 
 - [ ] **Step 3: Write the implementation.**
 
@@ -8667,7 +8937,7 @@ Modify `extension/src/unlock/screens/importRun.ts`:
 
 ```diff
 diff --git a/extension/src/unlock/screens/importRun.ts b/extension/src/unlock/screens/importRun.ts
-index f38091a..9a5d843 100644
+index 17874d3..f938a26 100644
 --- a/extension/src/unlock/screens/importRun.ts
 +++ b/extension/src/unlock/screens/importRun.ts
 @@ -43,9 +43,9 @@ export function createImportRun(deps: PageDeps, o: {password: PasswordScreen; ba
@@ -8760,7 +9030,7 @@ Modify `extension/src/unlock/screens/password.ts`:
 
 ```diff
 diff --git a/extension/src/unlock/screens/password.ts b/extension/src/unlock/screens/password.ts
-index dbba2e1..e2b51a8 100644
+index dbba2e1..6d945ce 100644
 --- a/extension/src/unlock/screens/password.ts
 +++ b/extension/src/unlock/screens/password.ts
 @@ -15,9 +15,11 @@ export interface PasswordRun {
@@ -8845,12 +9115,17 @@ index dbba2e1..e2b51a8 100644
  
    deps.gate.onIdle(render);
    field.addEventListener('input', () => {
-@@ -140,9 +158,9 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
+@@ -138,11 +156,13 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
+     reset();
+     run?.back();
    });
-   // Leaving or hiding the tab drops what was typed but not yet used (spec §3.5 memory rule).
+-  // Leaving or hiding the tab drops what was typed but not yet used (spec §3.5 memory rule).
++  // Leaving or hiding the tab drops what was typed but not yet used (spec §3.5 memory rule) — and the
++  // password a [Try again] was holding: the rule wins over E5's "kept while this page stays open" (L5).
    deps.onLeave(() => {
 -    if (step === 'confirm' || step === 'enter') {
 +    if (step === 'confirm' || step === 'enter' || step === 'retry') {
++      if (step === 'retry') helper(PASSWORD.newPasswordToRetry, false);
        reset();
 -      if (step === 'confirm') step = 'enter';
 +      if (step !== 'enter') step = 'enter';
@@ -8876,7 +9151,10 @@ import type {PasswordScreen} from './password';
  * nothing. On a match there is no scheme choice: #5 "Restore · 2 / 2" takes the new password, and the
  * same wallet, re-encrypted with every stored account and name, replaces the stored one in one
  * message; then the keys. A pending send refuses it (`send-open`): the password stays in this page's
- * memory behind [Try again] while the page stays open.
+ * memory behind [Try again] until the tab is hidden (§3.5's rule; then "Enter a new password to try
+ * again."). The proof — which holds the phrase — lives from the match until the run ends (restored, a
+ * notice, Back), a hidden tab included (the hidden-tab rule is the password's), and goes with the page.
+ * Back from #5 returns to #8 with the phrase in the field, as the plain import does (plan review L3).
  */
 export function createRestoreRun(deps: PageDeps, o: {password: PasswordScreen}): {show(): Promise<void>} {
   const startAgain = {label: RESTORE.startAgain, run: () => deps.go('unlock.html?mode=forgot')};
@@ -8921,7 +9199,12 @@ export function createRestoreRun(deps: PageDeps, o: {password: PasswordScreen}):
       if (r.outcome === 'match') {
         proof = r.proof;
         screen.clear();
-        o.password.show({eyebrow: PASSWORD.recovery, step: PASSWORD.stepRestore, back: () => ((proof = null), screen.show()), finish: restore});
+        const toPhrase = () => {
+          const words = proof?.mnemonic ?? '';
+          proof = null;
+          screen.show({phrase: words});
+        };
+        o.password.show({eyebrow: PASSWORD.recovery, step: PASSWORD.stepRestore, back: toPhrase, finish: restore});
         return;
       }
       if (r.outcome === 'not-this-wallet') return screen.notice(RESTORE.notThisWallet, RESTORE.notThisWalletHelp, {label: RESTORE.tryAnother, run: () => screen.show()});
@@ -8952,19 +9235,24 @@ Modify `extension/src/unlock/strings.ts`:
 
 ```diff
 diff --git a/extension/src/unlock/strings.ts b/extension/src/unlock/strings.ts
-index 8887886..fef2e61 100644
+index 7ba60b6..8b53d85 100644
 --- a/extension/src/unlock/strings.ts
 +++ b/extension/src/unlock/strings.ts
-@@ -70,6 +70,8 @@ export const PASSWORD = {
+@@ -73,6 +73,13 @@ export const PASSWORD = {
    mismatch: "Passwords don't match — try again.",
    show: 'Show password',
    hide: 'Hide password',
 +  continue: 'Continue',
 +  tryAgain: 'Try again',
++  /**
++   * Controller addition — awaiting the owner (plan review L5): a hidden tab drops the password a
++   * [Try again] was holding (§3.5's rule wins over E5's "kept while this page stays open").
++   */
++  newPasswordToRetry: 'Enter a new password to try again.',
    /** finishOnboarding's outcomes (the B1b-1 strings). */
    exists: 'A wallet already exists in this browser. Nothing was changed.',
    weak: 'The password must be at least 12 characters.',
-@@ -88,6 +90,50 @@ export const IMPORT = {
+@@ -91,6 +98,51 @@ export const IMPORT = {
    invalid: 'That is not a valid 12- or 24-word recovery phrase.',
  } as const;
  
@@ -8974,7 +9262,7 @@ index 8887886..fef2e61 100644
 +  title: {1: 'Forgot your password?', 2: 'Enter your words', 3: 'Set a new password'},
 +  lede: {
 +    1: 'Your recovery phrase is the only way back. Three steps to restore.',
-+    /** Controller addition (plan 2): the design's "Pick from the BIP-39 wordlist. Type the first 3 letters…" describes a picker #8 does not have. */
++    /** Controller addition — awaiting the owner (plan 2): the design's "Pick from the BIP-39 wordlist. Type the first 3 letters…" describes a picker #8 does not have. */
 +    2: 'Type or paste the 12 or 24 words, in order.',
 +    3: "Once your phrase is verified against this wallet, you'll choose a new password (at least 12 characters). The old password stops working.",
 +  },
@@ -8983,6 +9271,7 @@ index 8887886..fef2e61 100644
 +    2: 'Done — you confirmed you have your words.',
 +    3: 'Done.',
 +  },
++  /** Controller addition — awaiting the owner (plan 2): the cards' step copy, adapted from the design (spec §3.11 Differs). */
 +  card2: {
 +    1: "You'll be taken to the import screen. Type or paste your words.",
 +    2: "You'll be taken to the import screen. Type or paste your words.",
@@ -9005,9 +9294,9 @@ index 8887886..fef2e61 100644
 +  sendOpen: 'A transaction from this wallet is still pending. Wait until it confirms or expires — about two minutes — then try again.',
 +  tryAgain: 'Try again',
 +  busy: 'The wallet changed while you were typing. Start again.',
-+  /** Controller addition (plan 2, carry 4; owner to confirm): E5's `unlocked` — an unlock landed mid-forget. The `busy` line would say the wallet is locked, which is false here. */
++  /** Controller addition — awaiting the owner (plan 2, carry 4): E5's `unlocked` — an unlock landed mid-forget. The `busy` line would say the wallet is locked, which is false here. */
 +  unlocked: 'The wallet was unlocked while this was running, so nothing was deleted. Start again.',
-+  /** Controller addition (plan 2): the button the two "Start again" lines offer — back to #39. */
++  /** Controller addition — awaiting the owner (plan 2): the button the two "Start again" lines offer — back to #39. */
 +  startAgain: 'Start again',
 +  setUp: 'Set up a wallet',
 +} as const;
@@ -9045,7 +9334,7 @@ Modify `extension/unlock.html`:
 
 ```diff
 diff --git a/extension/unlock.html b/extension/unlock.html
-index 81413e0..ebc74ff 100644
+index 455ee1f..44c3a28 100644
 --- a/extension/unlock.html
 +++ b/extension/unlock.html
 @@ -295,7 +295,7 @@
@@ -9076,7 +9365,7 @@ index 81413e0..ebc74ff 100644
          </div>
        </section>
  
-@@ -408,6 +413,46 @@
+@@ -409,6 +414,46 @@
          </div>
        </section>
  
@@ -9127,8 +9416,8 @@ index 81413e0..ebc74ff 100644
 
 - [ ] **Step 4: Run the tests and the whole suite.**
 
-Run: `npx vitest run src/unlock/__tests__/create.test.ts src/unlock/__tests__/restore.test.ts` — PASS. Then the whole suite: `npx tsc --noEmit && npx vitest run`
-Expected (dry run): tsc clean; tsc-ok |  Test Files 95 passed (95) Tests 1198 passed (1198).
+Run: `npx vitest run src/unlock/__tests__/create.test.ts src/unlock/__tests__/pageHarness.ts src/unlock/__tests__/restore.test.ts` — PASS. Then the whole suite: `npx tsc --noEmit && npx vitest run`
+Expected (dry run): tsc clean; Test Files 95 passed (95) Tests 1209 passed (1209).
 
 - [ ] **Step 5: Edit the spec.**
 
@@ -9136,27 +9425,40 @@ Modify `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md`:
 
 ```diff
 diff --git a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-index be18eb1..162c942 100644
+index be18eb1..07e38c6 100644
 --- a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
 +++ b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-@@ -560,8 +560,9 @@ simulation: {
-      nothing but the lock and the removal of closed pending records. The page says: "The wallet
-      changed while this was running. Nothing was deleted; the wallet is locked. Start again." An
-      `unlocked` here has changed the same, but the wallet is unlocked again, so that line would be
+@@ -557,11 +557,12 @@ simulation: {
+      revision with `expectedRevision` (`busy` if it moved), and, under `sessionMutex`, confirm
+      `getSession() === null` (**`unlocked`** if an unlock landed since step 3; `vault.setKeys` does
+      not take `serial`, so this is the one race left inside the section). A `busy` here has changed
+-     nothing but the lock and the removal of closed pending records. The page says: "The wallet
+-     changed while this was running. Nothing was deleted; the wallet is locked. Start again." An
+-     `unlocked` here has changed the same, but the wallet is unlocked again, so that line would be
 -     false. **Note for plan 2:** #39 and #40 need their own line for `unlocked` — the `busy` copy
 -     says "the wallet is locked", which is false here (owner's copy to come).
-+     false. #39's restore and #40's retry (both on #8) say instead: "The wallet was unlocked while this
-+     was running, so nothing was deleted. Start again." + `[Start again]` → #39 — **a controller
-+     addition (plan 2), for the owner to confirm**.
++     nothing but the lock and the removal of closed pending records. The page cannot tell a step-1
++     `busy` from a step-5 one, so it shows one line for both: §3.8's "The wallet changed while you
++     were typing. Start again." (true in both; plan-2 review ruling 3). An `unlocked` here has changed
++     the same, but the wallet is unlocked again. #39's restore and #40's retry (both on #8) say
++     instead: "The wallet was unlocked while this was running, so nothing was deleted. Start again." +
++     `[Start again]` → #39 — **controller addition — awaiting the owner**.
    6. **The vault write:** `v1_vault` removed, or overwritten by `replacement`. A crash before this
       write leaves the old wallet in place and locked, and the operation can be repeated. There is
       never half a wallet.
-@@ -933,6 +934,8 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
-         expires — about two minutes — then try again." + `[Try again]`; the phrase and password
-         stay in page memory while this page stays open;
+@@ -930,9 +931,13 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
+       the flow goes to #5 with the step counter "Restore · 2 / 2";
+     - at the finish, `vault.forgetWallet {expectedRevision, replacement}`:
+       - `send-open` → "A transaction from this wallet is still pending. Wait until it confirms or
+-        expires — about two minutes — then try again." + `[Try again]`; the phrase and password
+-        stay in page memory while this page stays open;
++        expires — about two minutes — then try again." + `[Try again]`; the phrase stays in page
++        memory while this page stays open; the password too, until the tab is hidden — §3.5's rule
++        wins (plan-2 review L5): a hidden tab drops it and #5 reads "Enter a new password to try
++        again." (**controller addition — awaiting the owner**);
        - `busy` → "The wallet changed while you were typing. Start again." → #39;
 +      - `unlocked` (an unlock landed mid-forget, E5 step 5) → "The wallet was unlocked while this was
-+        running, so nothing was deleted. Start again." → #39 — **controller addition (plan 2)**;
++        running, so nothing was deleted. Start again." → #39 — **controller addition — awaiting the owner**;
        - `ok` → `vault.setKeys` → UI tab `#/imported`.
  - **Navigation:** Continue → (scheme) → #5 (import variant) → `created` → UI tab `#/imported`; on
    the restore path, as above.
@@ -9164,8 +9466,10 @@ index be18eb1..162c942 100644
 
 - [ ] **Step 6: Mutations (in a scratch copy outside the repo — each must turn its test red; the dry run ran every one).**
 
-- send-open asks for the password again → RED Tests  1 failed | 9 passed (10)
-- unlocked shown with the busy line → RED Tests  1 failed | 9 passed (10)
+- send-open asks for the password again → RED Tests  2 failed | 11 passed (13)
+- unlocked shown with the busy line → RED Tests  1 failed | 12 passed (13)
+- restore Back empties #8 (L3) → RED Tests  1 failed | 12 passed (13)
+- a hidden tab behind [Try again] keeps the refusal line (L5) → RED Tests  1 failed | 12 passed (13)
 
 - [ ] **Step 7: Add the states to the visual pass.** Task 18 shoots, asserting each state's copy first: `39-step-1-card`, `39-step-2-card`, `39-step-3-card`, `08-restore-not-this-wallet`, `05-restore-enter`. The reviewer checks them against the matching `index.html` mockup with §8.6's checklist (Task 18 Step 3).
 
@@ -9173,7 +9477,7 @@ index be18eb1..162c942 100644
 
 ```bash
 cd "$(git rev-parse --show-toplevel)"
-git add docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md extension/src/unlock/__tests__/create.test.ts extension/src/unlock/__tests__/restore.test.ts extension/src/unlock/modes.ts extension/src/unlock/screens/createRun.ts extension/src/unlock/screens/forgot.ts extension/src/unlock/screens/importRun.ts extension/src/unlock/screens/importScreen.ts extension/src/unlock/screens/password.ts extension/src/unlock/screens/restoreRun.ts extension/src/unlock/strings.ts extension/src/unlock/unlock.css extension/unlock.html
+git add docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md extension/src/unlock/__tests__/create.test.ts extension/src/unlock/__tests__/pageHarness.ts extension/src/unlock/__tests__/restore.test.ts extension/src/unlock/modes.ts extension/src/unlock/screens/createRun.ts extension/src/unlock/screens/forgot.ts extension/src/unlock/screens/importRun.ts extension/src/unlock/screens/importScreen.ts extension/src/unlock/screens/password.ts extension/src/unlock/screens/restoreRun.ts extension/src/unlock/strings.ts extension/src/unlock/unlock.css extension/unlock.html
 git commit -m "feat(extension): #39 forgot password and #8’s restore path — seed proof, replacement, send-open retry, the unlocked line" -m "Co-Authored-By: <the executing model's own line>"
 ```
 
@@ -9193,9 +9497,11 @@ git commit -m "feat(extension): #39 forgot password and #8’s restore path — 
 
 **Interfaces:**
 - Consumes: Tasks 2, 4, 5, 8, 9, 12.
-- Produces: `src/unlock/screens/retryRun.ts`: `createRetryRun(deps, o: {password: PasswordScreen}): {show(): Promise<void>}`; `PageTarget` gains `'unlock.html?mode=import&source=retry'`; `strings.ts`: `RETRY`
+- Produces: `src/unlock/screens/retryRun.ts`: `interface RetryRun {show(): Promise<void>; holds(): {phrase: boolean; prepared: boolean; proof: boolean}}`; `createRetryRun(deps, o: {password: PasswordScreen}): RetryRun`; `PageTarget` gains `'unlock.html?mode=import&source=retry'`; `strings.ts`: `RETRY`
 
 Spec §3.8's `source=retry` and §2 E5 / §11.13 (D41, C6, R2-L6). First "Confirm with the password of the wallet you are replacing" (`[Confirm]`, `[Confirm with passkey]` when there is one; `wrong` → "That did not confirm it."; the backoff, with "That did not confirm it. Wait a moment before trying again." during its wait) — the factor proof records the revision it proved; back → #40. Then #8 with a cleared field → the scheme → #5 "Import · 2 / 2" for B → B is encrypted, then `replaceEmptyWallet` (Task 2: the delete always under the unfunded guard, then the first write): `created` → `#/imported`; `funded` → "This wallet now holds funds. Nothing was changed." (stop); `unreachable` → "Balances could not be checked, so nothing was changed. Try again later." (stop); `coordinator-refused` → the D26 text (stop); `send-open` → its line + `[Try again]`; a failed store after the delete → "The new wallet was not saved. Try again." + `[Try again]` (B and its password kept in page memory), which retries **the store alone**; a `[Try again]` answered `wallet-exists` → "A wallet already exists in this browser. Nothing was changed." and stops — no loop, no second delete (R2-L6); `busy` / `unlocked` → #8 with the line and `[Start again]` → the retry path's start.
+
+What the run holds, and for how long (plan-2 review H2; Scope 19): B's phrase and the factor proof until the run ends — B stored, every `stop` answer (`exists`, `funded`, `unreachable`, `coordinator-refused`), every notice — and with the page; B prepared (`next`: its envelope **and its session secret keys**) only behind a pending `[Try again]`, and it goes whenever the tab is hidden, with the password it was encrypted under (§3.5, L5) — B is then encrypted again under the password typed next. (Without that, the dry run of the review fixes found, a `[Try again]` after a hidden tab stored B under the password the user had been told was dropped.) `holds()` reports which of the three the run still references; the tests assert it after every terminal outcome. Rule 6: a second `[Confirm]` before the first settles runs one proof (M6).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -9225,9 +9531,13 @@ async function retrying(o: {balance?: (owner: string) => bigint; send?: (inner: 
   const old = await createEnvelope({mnemonic: A, password: A_PW, scheme: 'slip10', accounts: [{index: 0, name: 'Account 1', publicKey: K_A}], kdf: testKdf});
   const h = await harness({vault: old, send: o.send, reader: {getBalance: async owner => o.balance?.(owner) ?? 0n, getMultipleLamports: async keys => keys.map(() => 0n)}});
   await h.ext.local.set(KNOWN_RECIPIENTS_KEY, [{address: RECIPIENT, at: 1}]);
-  await createRetryRun(h.deps, {password: mountPassword(h.deps)}).show();
-  return {h, old};
+  const kdfCalls = {n: 0};
+  h.deps.kdf = (pw, salt, params) => ((kdfCalls.n += 1), testKdf(pw, salt, params));
+  const run = createRetryRun(h.deps, {password: mountPassword(h.deps)});
+  await run.show();
+  return {h, old, run, kdfCalls};
 }
+const NOTHING = {phrase: false, prepared: false, proof: false};
 async function prove(h: Harness, password: string) {
   type(el<HTMLInputElement>('rp-password'), password);
   click(el('rp-confirm'));
@@ -9261,7 +9571,7 @@ describe('#8 retry path: the password of the wallet being replaced (D41, E5 fact
   });
 
   it('the right password → #8 → B → #5 → the old wallet deleted under the guard, B stored and unlocked → #/imported', async () => {
-    const {h} = await retrying();
+    const {h, run} = await retrying();
     await prove(h, A_PW);
     expect(visible(el('v-import'))).toBe(true);
     expect(el<HTMLTextAreaElement>('imp-phrase').value).toBe('');
@@ -9276,14 +9586,17 @@ describe('#8 retry path: the password of the wallet being replaced (D41, E5 fact
     await expect(unlockWithPassword(env, A_PW, testKdf)).rejects.toThrow();
     expect((await getSession(h.ext))?.map(a => a.publicKey)).toEqual(env.accounts.map(a => a.publicKey));
     expect(await h.ext.local.get(KNOWN_RECIPIENTS_KEY)).toBeUndefined();
+    expect(run.holds()).toEqual(NOTHING);
   }, 30_000);
 
   // C6, the spec's E2E 12 second run at unit scale: funds arrive after #40 rendered empty.
   it('funds that arrived meanwhile: "This wallet now holds funds. Nothing was changed." — the stored envelope is byte-identical', async () => {
-    const {h, old} = await retrying({balance: owner => (owner === K_A ? 1n : 0n)});
+    const {h, old, run} = await retrying({balance: owner => (owner === K_A ? 1n : 0n)});
     await prove(h, A_PW);
     await importB(h);
     expect(text(el('pw-helper'))).toBe('This wallet now holds funds. Nothing was changed.');
+    // H2 (plan review): a `stop` keeps nothing of B (its envelope, its session secret keys, its phrase) nor the proof.
+    expect(run.holds()).toEqual(NOTHING);
     expect(visible(el('pw-cta'))).toBe(false);
     expect(JSON.stringify(await h.ext.local.get(VAULT_KEY))).toBe(JSON.stringify(old));
     expect(h.went).toEqual([]);
@@ -9306,9 +9619,10 @@ describe('#8 retry path: the password of the wallet being replaced (D41, E5 fact
 
   it('a [Try again] answered wallet-exists (another tab created one) says so and stops — no second delete (R2-L6)', async () => {
     let fail = true;
-    const {h} = await retrying({send: inner => async m => ((m as {type: string}).type === 'vault.storeEnvelope' && fail ? {ok: false, error: 'something'} : inner(m))});
+    const {h, run} = await retrying({send: inner => async m => ((m as {type: string}).type === 'vault.storeEnvelope' && fail ? {ok: false, error: 'something'} : inner(m))});
     await prove(h, A_PW);
     await importB(h);
+    expect(run.holds()).toEqual({phrase: true, prepared: true, proof: true});
     const third = await createEnvelope({mnemonic: A, password: A_PW, scheme: 'cli', accounts: [{index: 0, name: 'X', publicKey: 'EHqmfkN89RJ7Y33CXM6uCzhVeuywHoJXZZLszBHHZy7o'}], kdf: testKdf});
     await h.ext.local.set(VAULT_KEY, third);
     fail = false;
@@ -9317,17 +9631,66 @@ describe('#8 retry path: the password of the wallet being replaced (D41, E5 fact
     expect(visible(el('pw-cta'))).toBe(false);
     expect(h.sent.filter(m => m.type === 'vault.forgetWallet')).toHaveLength(1);
     expect(await h.ext.local.get(VAULT_KEY)).toEqual(third);
+    expect(run.holds()).toEqual(NOTHING);
   }, 30_000);
+
+  // H2 + L5 (plan review): a hidden tab drops the held password AND B prepared under it — B is stored
+  // under the password typed next, never under the one the user was told to replace.
+  it('a tab hidden behind [Try again]: B prepared goes with the password; B is stored under the new one', async () => {
+    let fail = true;
+    const {h, run} = await retrying({send: inner => async m => ((m as {type: string}).type === 'vault.storeEnvelope' && fail ? {ok: false, error: 'something'} : inner(m))});
+    await prove(h, A_PW);
+    await importB(h);
+    expect(text(el('pw-cta'))).toBe('Try again');
+    h.leave();
+    expect(run.holds()).toEqual({phrase: true, prepared: false, proof: true});
+    expect(text(el('pw-helper'))).toBe('Enter a new password to try again.');
+    fail = false;
+    const C_PW = 'a third password, typed after';
+    type(el<HTMLInputElement>('pw-field'), C_PW);
+    click(el('pw-cta'));
+    await h.until(() => text(el('pw-title')) === 'Confirm your password' && !h.deps.gate.isBusy());
+    type(el<HTMLInputElement>('pw-field'), C_PW);
+    click(el('pw-cta'));
+    await h.until(() => h.went.length > 0);
+    const env = (await h.ext.local.get(VAULT_KEY)) as EnvelopeV1;
+    await unlockWithPassword(env, C_PW, testKdf);
+    await expect(unlockWithPassword(env, B_PW, testKdf)).rejects.toThrow();
+    expect(h.sent.filter(m => m.type === 'vault.forgetWallet')).toHaveLength(1);
+    expect(run.holds()).toEqual(NOTHING);
+  }, 30_000);
+
+  it.each([
+    ['busy', 'The wallet changed while you were typing. Start again.'],
+    ['no-wallet', 'No wallet on this browser yet.'],
+  ])('the forget answered %s ends the run on #8’s notice, keeping nothing', async (error, line) => {
+    const {h, run} = await retrying({send: inner => async m => ((m as {type: string}).type === 'vault.forgetWallet' ? {ok: false, error} : inner(m))});
+    await prove(h, A_PW);
+    await importB(h);
+    expect(text(el('imp-notice-line'))).toBe(line);
+    expect(run.holds()).toEqual(NOTHING);
+  }, 30_000);
+
+  it('rule 6: a second [Confirm] before the first settles runs one proof (one KDF run)', async () => {
+    const {h, kdfCalls} = await retrying();
+    type(el<HTMLInputElement>('rp-password'), A_PW);
+    click(el('rp-confirm'));
+    click(el('rp-confirm'));
+    await h.until(() => !h.deps.gate.isBusy() && visible(el('v-import')));
+    expect(kdfCalls.n).toBe(1);
+  });
 
   it.each([
     ['unreachable', 'Balances could not be checked, so nothing was changed. Try again later.'],
     ['coordinator-refused', 'The server is not answering for now — try again in 10 minutes.'],
     ['send-open', 'A transaction from this wallet is still pending. Wait until it confirms or expires — about two minutes — then try again.'],
   ])("the guard's %s: %s", async (error, line) => {
-    const {h} = await retrying({send: inner => async m => ((m as {type: string}).type === 'vault.forgetWallet' ? {ok: false, error} : inner(m))});
+    const {h, run} = await retrying({send: inner => async m => ((m as {type: string}).type === 'vault.forgetWallet' ? {ok: false, error} : inner(m))});
     await prove(h, A_PW);
     await importB(h);
     expect(text(el('pw-helper'))).toBe(line);
+    // A `stop` keeps nothing; `send-open` keeps B and the proof behind its [Try again].
+    expect(run.holds()).toEqual(error === 'send-open' ? {phrase: true, prepared: true, proof: true} : NOTHING);
   }, 30_000);
 
   it('back from the password step returns to #40', async () => {
@@ -9406,6 +9769,12 @@ import {byId, setText, showScreen, shown} from '../view/dom';
 import {mountImport} from './importScreen';
 import type {PasswordScreen} from './password';
 
+export interface RetryRun {
+  show(): Promise<void>;
+  /** For the tests: which of B's phrase, B prepared and the proof this run still references. */
+  holds(): {phrase: boolean; prepared: boolean; proof: boolean};
+}
+
 /**
  * #40's "Try a different seed" (D41, spec §3.8 `source=retry`, E5 §11.13): first the password (or
  * passkey) of the wallet being replaced — the factor proof, which records the revision it proved —
@@ -9415,8 +9784,16 @@ import type {PasswordScreen} from './password';
  * store after the delete keeps B in this page's memory behind [Try again], which retries the store
  * alone; a retry answered `wallet-exists` says so and stops (R2-L6). Funds that arrived meanwhile
  * (`funded`) change nothing.
+ *
+ * What this run holds, and for how long (plan review H2): B's phrase from #8's Continue, and the factor
+ * proof from the confirm step, until the run ends — B stored, any `stop` answer (`exists`, `funded`,
+ * `unreachable`, `coordinator-refused`), any notice — and with the page; a hidden tab keeps them (the
+ * hidden-tab rule is the password's, §3.5). B prepared (`next`: its envelope AND its session secret
+ * keys) exists only behind a pending [Try again], and goes at every end and whenever the tab is hidden:
+ * the password it was encrypted under is dropped then (§3.5, L5), so B is encrypted again under the
+ * password typed next — never stored under one the user was told to replace.
  */
-export function createRetryRun(deps: PageDeps, o: {password: PasswordScreen}): {show(): Promise<void>} {
+export function createRetryRun(deps: PageDeps, o: {password: PasswordScreen}): RetryRun {
   const field = byId<HTMLInputElement>('rp-password');
   const confirm = byId<HTMLButtonElement>('rp-confirm');
   const passkey = byId<HTMLButtonElement>('rp-passkey');
@@ -9428,6 +9805,14 @@ export function createRetryRun(deps: PageDeps, o: {password: PasswordScreen}): {
   /** B, encrypted, once #5's password is set; and whether the old wallet is already gone. */
   let next: PreparedWallet | null = null;
   let deleted = false;
+  /** B's phrase, from #8's Continue to the run's end. */
+  let phrase: string | null = null;
+  /** The run ended (or never began): nothing of B or of the proof is kept. */
+  const end = () => {
+    next = null;
+    proof = null;
+    phrase = null;
+  };
 
   const render = () => {
     const busy = deps.gate.isBusy();
@@ -9458,19 +9843,25 @@ export function createRetryRun(deps: PageDeps, o: {password: PasswordScreen}): {
     helper(COMMON.failedTryAgain, false);
   };
   const notice = (line: string, help: string, action: {label: string; run(): void} | null) => {
-    proof = null;
+    end();
     screen.show();
     screen.notice(line, help, action);
   };
 
   /** #5's finish: delete-then-store, or (after a delete whose store failed) the store alone. */
-  const finish = async (password: string, scheme: 'slip10' | 'cli', indexes: number[], phrase: string) => {
-    if (proof === null) return {line: COMMON.failedTryAgain, then: 'stop' as const};
+  const finish = async (password: string, scheme: 'slip10' | 'cli', indexes: number[]) => {
+    if (proof === null || phrase === null) {
+      end();
+      return {line: COMMON.failedTryAgain, then: 'stop' as const};
+    }
     next ??= await prepareWallet(deps.kdf, {mnemonic: phrase, password, scheme, indexes});
     const out = deleted ? await commitWallet({...deps.store, send: deps.send}, next) : await replaceEmptyWallet({...deps.store, send: deps.send}, proof, next);
+    const stop = (line: string) => {
+      end();
+      return {line, then: 'stop' as const};
+    };
     if (out === 'created' || out === 'created-locked') {
-      next = null;
-      proof = null;
+      end();
       deps.go('wallet.html#/imported');
       return null;
     }
@@ -9478,11 +9869,11 @@ export function createRetryRun(deps: PageDeps, o: {password: PasswordScreen}): {
       deleted = true;
       return {line: RETRY.storeFailed, then: 'retry' as const};
     }
-    if (out === 'exists') return {line: COMMON.exists, then: 'stop' as const};
+    if (out === 'exists') return stop(COMMON.exists);
     if (out === 'send-open') return {line: RESTORE.sendOpen, then: 'retry' as const};
-    if (out === 'funded') return {line: RETRY.funded, then: 'stop' as const};
-    if (out === 'unreachable') return {line: RETRY.unreachable, then: 'stop' as const};
-    if (out === 'coordinator-refused') return {line: RETRY.refused, then: 'stop' as const};
+    if (out === 'funded') return stop(RETRY.funded);
+    if (out === 'unreachable') return stop(RETRY.unreachable);
+    if (out === 'coordinator-refused') return stop(RETRY.refused);
     const ended = {
       busy: [RESTORE.busy, '', startAgain],
       unlocked: [RESTORE.unlocked, '', startAgain],
@@ -9491,7 +9882,6 @@ export function createRetryRun(deps: PageDeps, o: {password: PasswordScreen}): {
     } as const;
     if (out in ended) {
       const [line, help, action] = ended[out as keyof typeof ended];
-      next = null;
       notice(line, help, action);
       return null;
     }
@@ -9500,7 +9890,7 @@ export function createRetryRun(deps: PageDeps, o: {password: PasswordScreen}): {
 
   const screen = mountImport(deps, {
     back: () => {
-      proof = null;
+      end();
       showScreen('v-retry');
     },
     next: async typed => {
@@ -9513,11 +9903,15 @@ export function createRetryRun(deps: PageDeps, o: {password: PasswordScreen}): {
       const indexes = indexesFor(scheme, candidates, probe);
       screen.clear();
       next = null;
+      phrase = typed;
       o.password.show({
         eyebrow: PASSWORD.onboarding,
         step: PASSWORD.stepImport,
-        back: () => screen.show({phrase: typed}),
-        finish: password => finish(password, scheme, indexes, typed),
+        back: () => {
+          next = null;
+          screen.show({phrase: phrase ?? ''});
+        },
+        finish: password => finish(password, scheme, indexes),
       });
     },
   });
@@ -9545,9 +9939,12 @@ export function createRetryRun(deps: PageDeps, o: {password: PasswordScreen}): {
   byId('rp-back').addEventListener('click', () => deps.go('wallet.html#/imported'));
   deps.onLeave(() => {
     field.value = '';
+    // B prepared goes with the password it was encrypted under (§3.5 drops that password now).
+    next = null;
   });
 
   return {
+    holds: () => ({phrase: phrase !== null, prepared: next !== null, proof: proof !== null}),
     async show() {
       showScreen('v-retry');
       render();
@@ -9572,10 +9969,10 @@ Modify `extension/src/unlock/strings.ts`:
 
 ```diff
 diff --git a/extension/src/unlock/strings.ts b/extension/src/unlock/strings.ts
-index fef2e61..19a7d01 100644
+index 8b53d85..478cdf9 100644
 --- a/extension/src/unlock/strings.ts
 +++ b/extension/src/unlock/strings.ts
-@@ -134,6 +134,15 @@ export const RESTORE = {
+@@ -143,6 +143,15 @@ export const RESTORE = {
    setUp: 'Set up a wallet',
  } as const;
  
@@ -9597,10 +9994,10 @@ Modify `extension/unlock.html`:
 
 ```diff
 diff --git a/extension/unlock.html b/extension/unlock.html
-index ebc74ff..b503e2b 100644
+index 44c3a28..8dae391 100644
 --- a/extension/unlock.html
 +++ b/extension/unlock.html
-@@ -453,6 +453,26 @@
+@@ -454,6 +454,26 @@
          </div>
        </section>
  
@@ -9632,7 +10029,7 @@ index ebc74ff..b503e2b 100644
 - [ ] **Step 4: Run the tests and the whole suite.**
 
 Run: `npx vitest run src/unlock/__tests__/retry.test.ts` — PASS. Then the whole suite: `npx tsc --noEmit && npx vitest run`
-Expected (dry run): tsc clean; Test Files 96 passed (96) Tests 1207 passed (1207).
+Expected (dry run): tsc clean; Test Files 96 passed (96) Tests 1222 passed (1222).
 
 - [ ] **Step 5: Edit the spec.**
 
@@ -9640,7 +10037,7 @@ Modify `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md`:
 
 ```diff
 diff --git a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-index 162c942..62e5544 100644
+index 07e38c6..967c29b 100644
 --- a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
 +++ b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
 @@ -914,8 +914,8 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
@@ -9658,8 +10055,12 @@ index 162c942..62e5544 100644
 
 - [ ] **Step 6: Mutations (in a scratch copy outside the repo — each must turn its test red; the dry run ran every one).**
 
-- [Try again] after a failed store deletes again → RED Tests  2 failed | 7 passed (9)
-- funded offers a retry → RED Tests  1 failed | 8 passed (9)
+- [Try again] after a failed store deletes again → RED Tests  3 failed | 10 passed (13)
+- funded offers a retry → RED Tests  1 failed | 12 passed (13)
+- a stop keeps B prepared and the proof (H2) → RED Tests  4 failed | 9 passed (13)
+- a hidden tab keeps B prepared under the dropped password (H2, L5) → RED Tests  1 failed | 12 passed (13)
+- retryRun sends vault.forgetWallet itself, without the guard (M5) → RED Tests  10 failed | 3 passed (13)
+- #rp [Confirm] without the page gate (M6) → RED Tests  1 failed | 12 passed (13)
 
 - [ ] **Step 7: Add the states to the visual pass.** Task 18 shoots, asserting each state's copy first: `08-retry-password`. The reviewer checks them against the matching `index.html` mockup with §8.6's checklist (Task 18 Step 3).
 
@@ -9842,7 +10243,7 @@ describe('the dispatcher: each mode shows its one screen', () => {
 - [ ] **Step 2: Run them and watch them fail.**
 
 Run: `npx vitest run scripts/__tests__/check-vault-isolation.test.mjs src/unlock/__tests__/accountsReveal.test.ts`
-Expected (dry run): FAIL — Test Files 2 failed (2) Tests 1 failed (the modules this task adds do not exist yet, or the behaviour is the old one).
+Expected (dry run): FAIL — Test Files 2 failed (2) Tests 1 failed | 145 passed (146) (the modules this task adds do not exist yet, or the behaviour is the old one).
 
 - [ ] **Step 3: Write the implementation.**
 
@@ -10264,10 +10665,10 @@ Modify `extension/src/unlock/strings.ts`:
 
 ```diff
 diff --git a/extension/src/unlock/strings.ts b/extension/src/unlock/strings.ts
-index 19a7d01..70e137f 100644
+index 478cdf9..d9580eb 100644
 --- a/extension/src/unlock/strings.ts
 +++ b/extension/src/unlock/strings.ts
-@@ -143,6 +143,42 @@ export const RETRY = {
+@@ -152,6 +152,42 @@ export const RETRY = {
    storeFailed: 'The new wallet was not saved. Try again.',
  } as const;
  
@@ -10347,7 +10748,7 @@ Modify `extension/unlock.html`:
 
 ```diff
 diff --git a/extension/unlock.html b/extension/unlock.html
-index b503e2b..611a15d 100644
+index 8dae391..68c79a9 100644
 --- a/extension/unlock.html
 +++ b/extension/unlock.html
 @@ -91,42 +91,6 @@
@@ -10393,7 +10794,7 @@ index b503e2b..611a15d 100644
        <!-- #3 seed-display, its pre-reveal gate (spec §3.3): the word grid is not in the DOM until the gate is passed. -->
        <section id="v-seed-gate" class="screen s-seed-modal" hidden>
          <div id="sg-backdrop" class="modal-backdrop"></div>
-@@ -473,6 +437,51 @@
+@@ -474,6 +438,51 @@
          </div>
        </section>
  
@@ -10450,7 +10851,7 @@ index b503e2b..611a15d 100644
 - [ ] **Step 4: Run the tests and the whole suite.**
 
 Run: `npx vitest run scripts/__tests__/check-vault-isolation.test.mjs src/unlock/__tests__/accountsReveal.test.ts` — PASS. Then the whole suite: `npx tsc --noEmit && npx vitest run`
-Expected (dry run): tsc clean; tsc-ok |  Test Files 97 passed (97) Tests 1221 passed (1221).
+Expected (dry run): tsc clean; Test Files 97 passed (97) Tests 1236 passed (1236).
 
 - [ ] **Step 5: Build, gates, and every E2E spec so far.**
 
@@ -10793,7 +11194,7 @@ index 1716d72..8e8c42b 100644
 - [ ] **Step 2: Run them and watch them fail.**
 
 Run: `npx vitest run src/app/__tests__/Created.test.tsx src/app/__tests__/Switcher.test.tsx src/app/__tests__/appHarness.tsx src/app/__tests__/harness.tsx src/app/__tests__/links.test.ts src/app/__tests__/router.test.ts`
-Expected (dry run): FAIL — Test Files 3 failed (the modules this task adds do not exist yet, or the behaviour is the old one).
+Expected (dry run): FAIL — Test Files 3 failed | 1 passed (4) Tests 3 failed | 33 passed (36) (the modules this task adds do not exist yet, or the behaviour is the old one).
 
 - [ ] **Step 3: Write the implementation.**
 
@@ -11265,12 +11666,13 @@ export function useCloseTab(platform: Platform): {refused: boolean; close(): voi
 - [ ] **Step 4: Run the tests and the whole suite.**
 
 Run: `npx vitest run src/app/__tests__/Created.test.tsx src/app/__tests__/Switcher.test.tsx src/app/__tests__/appHarness.tsx src/app/__tests__/harness.tsx src/app/__tests__/links.test.ts src/app/__tests__/router.test.ts` — PASS. Then the whole suite: `npx tsc --noEmit && npx vitest run`
-Expected (dry run): tsc clean; 33 passed (36) | tsc-ok |  Test Files 98 passed (98) Tests 1232 passed (1232).
+Expected (dry run): tsc clean; Test Files 98 passed (98) Tests 1247 passed (1247).
 
 - [ ] **Step 5: Mutations (in a scratch copy outside the repo — each must turn its test red; the dry run ran every one).**
 
 - the hand-over screens run the open sequence → RED Tests  2 failed | 5 passed (7)
 - any account accepted in the resume hash → RED Tests  2 failed | 17 passed (19)
+- Resume.tsx calls engine.send (M7) → RED Tests  1 failed | 6 passed (7)
 
 - [ ] **Step 6: Add the states to the visual pass.** Task 18 shoots, asserting each state's copy first: `07-created`, `07-created-locked`. The reviewer checks them against the matching `index.html` mockup with §8.6's checklist (Task 18 Step 3).
 
@@ -11290,16 +11692,19 @@ git commit -m "feat(extension): the UI tab’s hand-over routes — #7 at #/crea
 **Files:**
 - Modify: `extension/src/app/App.tsx`
 - Create: `extension/src/app/__tests__/Imported.test.tsx`
+- Modify: `extension/src/app/__tests__/format.test.ts`
 - Modify: `extension/src/app/__tests__/router.test.ts`
 - Modify: `extension/src/app/app.css`
+- Modify: `extension/src/app/format.ts`
 - Modify: `extension/src/app/router.ts`
+- Modify: `extension/src/app/screens/Home.tsx`
 - Create: `extension/src/app/screens/Imported.tsx`
 
 **Interfaces:**
 - Consumes: Task 15; plan 1's `valuation`, `TOKEN_INFO`, `showAmount`, `showUsd`, `TokenTile`, `Skeleton`, `RefusedBanner`, `LockedButton`.
-- Produces: `src/app/screens/Imported.tsx`: `Imported`, `MAX_READ = 6`; `Route` gains `{screen: 'imported'}`; `firstRoute('tab', '#/imported')`
+- Produces: `src/app/format.ts`: `approxSol(usd: number, solUsd: number): string` (Home uses it too); `src/app/screens/Imported.tsx`: `Imported`, `MAX_READ = 6`, `CLIPBOARD_LINE`; `Route` gains `{screen: 'imported'}`; `firstRoute('tab', '#/imported')`
 
-Spec §3.12. `loading`: the ring + "Checking what this wallet holds…" + skeleton rows. Then up to six accounts' balances, one at a time, and the prices (Scope 14): `single-account` ("Wallet imported", "1 account · N tokens recovered. Welcome back.", "Total value recovered" + the market total — SOL + USDC + USDT, NOC outside it — and "≈ X SOL", a row per token held with NOC's value "… at stage price", "Your wallet address" in groups of four + copy, the D10 line + `[Close this tab]`); `multi-account` ("N accounts · M tokens recovered.", "across N accounts · ≈ X SOL", rows summed with "Solana · N accounts"); `no-assets-empty` — **only when every read succeeded** and all four tokens are zero on every account (R2-L5): the info ring, "Wallet imported · empty", the adapted sub, "Recovered" / "0 tokens" / "N account · address derivation succeeded", the three reasons with the engine's real paths (adapted), the address, "You can send SOL to this address to fund the wallet.", the D10 line and `[Try a different seed]` (`LockedButton`): it re-reads every account first; anything arrived → the funded state and the button gone; all still zero → `unlock.html?mode=import&source=retry` in this tab; `unreachable` ("Balances could not be read right now." + refresh — never "empty"); `refused` (the D26 banner, refresh disabled); `locked` ("Wallet imported. Unlock it to see what was recovered." + `[Unlock]` → `?mode=unlock&return=imported`).
+Spec §3.12. `loading`: the ring + "Checking what this wallet holds…" + skeleton rows. Then up to six accounts' balances, one at a time, and the prices (Scope 14): `single-account` ("Wallet imported", "1 account · N tokens recovered. Welcome back.", "Total value recovered" + the market total — SOL + USDC + USDT, NOC outside it — and "≈ X SOL", **truncated, never rounded up** (plan-1 ruling L6, now one `approxSol` in `format.ts` shared with Home; plan-2 review M1), a row per token held with NOC's value "… at stage price", "Your wallet address" in groups of four + copy and, under it, #7's "Copying puts the address on your clipboard. Noctura does not clear it afterwards." (the carried rule; controller addition — awaiting the owner, M3), the D10 line + `[Close this tab]`); `multi-account` ("N accounts · M tokens recovered.", "across N accounts · ≈ X SOL", rows summed with "Solana · N accounts"; past `MAX_READ` the copy claims only what was read — "N accounts · M tokens recovered from the first 6." and "across the first 6 of N accounts", controller addition — awaiting the owner, M2); `no-assets-empty` — **only when every read succeeded** and all four tokens are zero on every account (R2-L5): the info ring, "Wallet imported · empty", the adapted sub, "Recovered" / "0 tokens" / "N account · address derivation succeeded", the three reasons with the engine's real paths (adapted), the address, "You can send SOL to this address to fund the wallet.", the D10 line and `[Try a different seed]` (`LockedButton`): it re-reads every account first; anything arrived → the funded state and the button gone; all still zero → `unlock.html?mode=import&source=retry` in this tab (a double click re-reads once and navigates once — rule 6, M6); `unreachable` ("Balances could not be read right now." + refresh — never "empty"); `refused` (the D26 banner, refresh disabled); `locked` ("Wallet imported. Unlock it to see what was recovered." + `[Unlock]` → `?mode=unlock&return=imported`).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -11313,6 +11718,9 @@ import {ENV, walletReader} from './harness';
 import {ACCOUNT} from '../../background/__tests__/fixtures';
 import {RequestUnreachable, RpcForbidden} from '../../../../core/solana/rpc';
 import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
+import {deriveSessionAccounts} from '../../vault/accounts';
+
+const M7 = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
 
 const SELECTORS = selectorsOf(UI_SHEETS);
 const ONE = {...ENV, accounts: [ENV.accounts[0]]};
@@ -11328,7 +11736,8 @@ describe('#40 import-success (wallet.html#/imported)', () => {
     expect(screen.getByText('Total value recovered')).toBeTruthy();
     // 62.4821 SOL × $150 + 740.21 USDC × $1 = $10,112.52 (NOC is outside the market total).
     expect(screen.getByText('$10,112.52')).toBeTruthy();
-    expect(screen.getByText('≈ 67.42 SOL')).toBeTruthy();
+    // 10,112.52 / 150 = 67.4168…: truncated, never rounded up (M1).
+    expect(screen.getByText('≈ 67.41 SOL')).toBeTruthy();
     const rows = [...document.querySelectorAll('.s8-token-row')].map(r => [r.querySelector('.pri')?.textContent, r.querySelector('.sec')?.textContent, r.querySelector('.amt')?.textContent, r.querySelector('.fiat')?.textContent]);
     expect(rows).toEqual([
       ['SOL', 'Solana', '62.4821', '$9,372.31'],
@@ -11338,6 +11747,7 @@ describe('#40 import-success (wallet.html#/imported)', () => {
     expect(screen.getByText('Your wallet address')).toBeTruthy();
     expect([...document.querySelectorAll('.s8-addr-chip .addr-groups > span')].map(s => s.textContent).join('')).toBe(ACCOUNT.publicKey);
     expect(screen.getByRole('button', {name: 'Copy address'})).toBeTruthy();
+    expect(screen.getByText('Copying puts the address on your clipboard. Noctura does not clear it afterwards.')).toBeTruthy();
     expect(screen.getByText('Wallet is ready — open the Noctura icon')).toBeTruthy();
     expect(screen.getByRole('button', {name: 'Close this tab'})).toBeTruthy();
     expect(screen.queryByText('Try a different seed')).toBeNull();
@@ -11353,7 +11763,22 @@ describe('#40 import-success (wallet.html#/imported)', () => {
     expect(screen.getByText('$20,225.05')).toBeTruthy();
     expect([...document.querySelectorAll('.s8-token-row .sec')].map(s => s.textContent)).toEqual(['Solana · 2 accounts', 'Noctura · 2 accounts', 'USD Coin · 2 accounts']);
     expect(sent.filter(t => t !== 'wallet.state')).toEqual(['wallet.balances', 'wallet.balances', 'wallet.prices']);
+    expect(screen.getByText('Copying puts the address on your clipboard. Noctura does not clear it afterwards.')).toBeTruthy();
     expect(styled()).toEqual([]);
+  });
+
+  // M2 (plan review): past MAX_READ the screen claims only the accounts it read.
+  it('seven accounts: six read, and the copy says so — "recovered from the first 6", "across the first 6 of 7 accounts"', async () => {
+    const session = await deriveSessionAccounts(M7, 'slip10', [0, 1, 2, 3, 4, 5, 6]);
+    const env = {...ENV, accounts: session.map(a => ({index: a.index, name: `Account ${a.index + 1}`, publicKey: a.publicKey}))};
+    const sent: {type: string; account?: string}[] = [];
+    await renderApp({surface: 'tab', hash: '#/imported', env, accounts: session, spy: m => void sent.push(m as {type: string})});
+    expect(await screen.findByText('7 accounts · 3 tokens recovered from the first 6.')).toBeTruthy();
+    expect(screen.getByText(/^across the first 6 of 7 accounts · ≈ [\d.]+ SOL$/)).toBeTruthy();
+    const reads = sent.filter(m => m.type === 'wallet.balances');
+    expect(reads).toHaveLength(6);
+    expect(reads.map(m => m.account)).toEqual(session.slice(0, 6).map(a => a.publicKey));
+    expect(document.body.textContent).not.toMatch(/across 7 accounts|7 accounts · 3 tokens recovered\./);
   });
 
   it('no-assets-empty: only when every read succeeded — the info ring, the adapted copy, the real paths, [Try a different seed]', async () => {
@@ -11370,9 +11795,22 @@ describe('#40 import-success (wallet.html#/imported)', () => {
       "Your assets are on a different derivation path (we check m/44'/501'/n'/0' for n = 0–4, and the Solana CLI key)",
     ]);
     expect(screen.getByText('You can send SOL to this address to fund the wallet.')).toBeTruthy();
+    expect(screen.getByText('Copying puts the address on your clipboard. Noctura does not clear it afterwards.')).toBeTruthy();
     expect(screen.getByText('Wallet is ready — open the Noctura icon')).toBeTruthy();
     expect(document.querySelector('.s8-success-hero .ring')?.className).toBe('ring app-onb-info');
     expect(styled()).toEqual([]);
+  });
+
+  it('rule 6: a double click on [Try a different seed] re-reads once and navigates once', async () => {
+    const sent: string[] = [];
+    const {platform} = await renderApp({surface: 'tab', hash: '#/imported', env: ONE, accounts: [ACCOUNT], reader: zero(), spy: m => void sent.push((m as {type: string}).type)});
+    const button = await screen.findByRole('button', {name: 'Try a different seed'});
+    const before = sent.filter(t => t === 'wallet.balances').length;
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await waitFor(() => expect(platform.navigated).toEqual(['unlock.html?mode=import&source=retry']));
+    expect(sent.filter(t => t === 'wallet.balances').length - before).toBe(1);
+    expect(platform.navigated).toHaveLength(1);
   });
 
   it('[Try a different seed] re-reads first; all still zero → the vault page’s retry path (D41)', async () => {
@@ -11429,6 +11867,33 @@ describe('#40 import-success (wallet.html#/imported)', () => {
 });
 ```
 
+Modify `extension/src/app/__tests__/format.test.ts`:
+
+```diff
+diff --git a/extension/src/app/__tests__/format.test.ts b/extension/src/app/__tests__/format.test.ts
+index 3c8ed7f..196c85c 100644
+--- a/extension/src/app/__tests__/format.test.ts
++++ b/extension/src/app/__tests__/format.test.ts
+@@ -1,8 +1,16 @@
+-import {ago, agoLong, clock, dateSection, feeUsd, stamp, shortAddress, showAmount, showFee, showSol, twoGroups, usdParts} from '../format';
++import {ago, agoLong, approxSol, clock, dateSection, feeUsd, stamp, shortAddress, showAmount, showFee, showSol, twoGroups, usdParts} from '../format';
+ import {valuation} from '../valuation';
+ 
+ // The words and numbers the screens print, from one place.
+ describe('format', () => {
++  // Plan-1 ruling L6, now shared by Home and #40 (plan-2 review M1): a SOL equivalent is truncated.
++  it('approxSol truncates to the cent of a SOL, never rounds up', () => {
++    expect(approxSol(10_112.52, 150)).toBe('≈ 67.41 SOL');
++    expect(approxSol(20_225.05, 150)).toBe('≈ 134.83 SOL');
++    expect(approxSol(299.99, 100)).toBe('≈ 2.99 SOL');
++    expect(approxSol(0, 150)).toBe('≈ 0.00 SOL');
++  });
++
+   it('token amounts as the design prints them, truncated', () => {
+     expect(showAmount('SOL', 62_482_199_999n)).toBe('62.4821');
+     expect(showAmount('NOC', 4_200_000_000_000n)).toBe('4,200.00');
+```
+
 Modify `extension/src/app/__tests__/router.test.ts`:
 
 ```diff
@@ -11462,8 +11927,8 @@ index 8e8c42b..50b3aa7 100644
 
 - [ ] **Step 2: Run them and watch them fail.**
 
-Run: `npx vitest run src/app/__tests__/Imported.test.tsx src/app/__tests__/router.test.ts`
-Expected (dry run): FAIL — Test Files 2 failed (2) Tests 9 failed (the modules this task adds do not exist yet, or the behaviour is the old one).
+Run: `npx vitest run src/app/__tests__/Imported.test.tsx src/app/__tests__/format.test.ts src/app/__tests__/router.test.ts`
+Expected (dry run): FAIL — Test Files 3 failed (3) Tests 12 failed | 26 passed (38) (the modules this task adds do not exist yet, or the behaviour is the old one).
 
 - [ ] **Step 3: Write the implementation.**
 
@@ -11552,6 +12017,25 @@ index d2ee2e2..c8b7e7f 100644
 +}
 ```
 
+Modify `extension/src/app/format.ts`:
+
+```diff
+diff --git a/extension/src/app/format.ts b/extension/src/app/format.ts
+index 9327970..f1c20de 100644
+--- a/extension/src/app/format.ts
++++ b/extension/src/app/format.ts
+@@ -43,6 +43,9 @@ export const showUsd = (usd: number): string => {
+   return `${p.whole}${p.cents}`;
+ };
+ 
++/** "≈ 67.41 SOL": a USD value in SOL, truncated to the cent of a SOL — never rounded up (review L6). */
++export const approxSol = (usd: number, solUsd: number): string => `≈ ${(Math.floor((usd / solUsd) * 100) / 100).toFixed(2)} SOL`;
++
+ /** The first four and the last four characters, at equal weight — a scanning aid in lists only (spec §11.7). */
+ export const shortAddress = (a: string): string => `${a.slice(0, 4)}…${a.slice(-4)}`;
+ /** The first two groups of four, then "…" (the account switcher). */
+```
+
 Modify `extension/src/app/router.ts`:
 
 ```diff
@@ -11603,13 +12087,40 @@ index ffca37a..66ff411 100644
    }
 ```
 
+Modify `extension/src/app/screens/Home.tsx`:
+
+```diff
+diff --git a/extension/src/app/screens/Home.tsx b/extension/src/app/screens/Home.tsx
+index 14db6fa..0f7be2d 100644
+--- a/extension/src/app/screens/Home.tsx
++++ b/extension/src/app/screens/Home.tsx
+@@ -1,7 +1,7 @@
+ import {useState} from 'react';
+ import {useWallet, sustained, type NetMode} from '../WalletContext';
+ import {valuation} from '../valuation';
+-import {TOKEN_INFO, ago, agoLong, showAmount, showUsd, stamp, usdParts} from '../format';
++import {TOKEN_INFO, approxSol, ago, agoLong, showAmount, showUsd, stamp, usdParts} from '../format';
+ import {formatAmount} from '../../shared/amount';
+ import {HIDE_BALANCES_KEY, readPref, writePref} from '../prefs';
+ import {useNow} from '../useNow';
+@@ -169,7 +169,7 @@ export function Home({onReceive, onActivity, onAccounts}: {onReceive: () => void
+   const rowNote = b === null ? null : mode === 'reconnecting' ? 'live' : long ? 'stale' : stale ? 'cached' : null;
+   const solPrice = m.prices?.sol ?? null;
+   // Truncated, never rounded up (review L6).
+-  const approx = total !== null && solPrice !== null ? `≈ ${(Math.floor((total / solPrice) * 100) / 100).toFixed(2)} SOL` : null;
++  const approx = total !== null && solPrice !== null ? approxSol(total, solPrice) : null;
+   const heroLine = hidden
+     ? null
+     : syncing
+```
+
 Create `extension/src/app/screens/Imported.tsx`:
 
 ```tsx
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {AddressGroups} from '../../../../web/src/ui/AddressGroups';
 import type {Account, Balances, Prices, Token} from '../engine';
-import {TOKEN_INFO, showAmount, showUsd} from '../format';
+import {TOKEN_INFO, approxSol, showAmount, showUsd} from '../format';
 import {valuation} from '../valuation';
 import {useWallet} from '../WalletContext';
 import {RefusedBanner} from '../ui/Banner';
@@ -11653,21 +12164,28 @@ async function readAll(engine: ReturnType<typeof useWallet>['engine'], accounts:
 
 const sum = (per: readonly Balances[]): Balances => per.reduce((t, b) => ({sol: t.sol + b.sol, noc: t.noc + b.noc, usdc: t.usdc + b.usdc, usdt: t.usdt + b.usdt}), {sol: 0n, noc: 0n, usdc: 0n, usdt: 0n});
 
+/** #7's sentence (the carried rule: the clipboard is not auto-cleared, and the screen says so). */
+export const CLIPBOARD_LINE = 'Copying puts the address on your clipboard. Noctura does not clear it afterwards.';
+
 function AddressChip({address}: {address: string}) {
   const [copied, copy] = useCopy();
   const label = copied === 'copied' ? 'Copied' : copied === 'failed' ? 'Copy failed' : 'Copy address';
   return (
-    <div className="s8-addr-chip app-onb-chip">
-      <div>
-        <div className="noc-overline app-dim app-onb-chip-label">Your wallet address</div>
-        <span className="addr noc-mono">
-          <AddressGroups address={address} />
-        </span>
+    <>
+      <div className="s8-addr-chip app-onb-chip">
+        <div>
+          <div className="noc-overline app-dim app-onb-chip-label">Your wallet address</div>
+          <span className="addr noc-mono">
+            <AddressGroups address={address} />
+          </span>
+        </div>
+        <button type="button" aria-label={label} title={label} onClick={() => copy(address)}>
+          <ExtIcon name={copied === 'copied' ? 'check' : copied === 'failed' ? 'close' : 'copy'} size={20} />
+        </button>
       </div>
-      <button type="button" aria-label={label} title={label} onClick={() => copy(address)}>
-        <ExtIcon name={copied === 'copied' ? 'check' : copied === 'failed' ? 'close' : 'copy'} size={20} />
-      </button>
-    </div>
+      {/* Controller addition — awaiting the owner (plan-2 review M3): #7's line under #40's chip. */}
+      <p className="noc-caption app-dim app-onb-help">{CLIPBOARD_LINE}</p>
+    </>
   );
 }
 
@@ -11812,11 +12330,15 @@ export function Imported() {
 
   const v = valuation(total, read.prices);
   const solUsd = read.prices?.sol ?? null;
-  const approxSol = v.total !== null && solUsd !== null ? `≈ ${(v.total / solUsd).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} SOL` : null;
+  // Truncated, never rounded up (plan-1 ruling L6; plan-2 review M1).
+  const approx = v.total !== null && solUsd !== null ? approxSol(v.total, solUsd) : null;
   const holders = (t: Token) => read.per.filter(b => b[KEY[t]] > 0n).length;
+  // "1 token" (singular): controller addition — awaiting the owner.
   const tokens = held.length === 1 ? '1 token' : `${held.length} tokens`;
-  const sub = n === 1 ? `1 account · ${tokens} recovered. Welcome back.` : `${n} accounts · ${tokens} recovered.`;
-  const delta = n === 1 ? approxSol : [`across ${n} accounts`, approxSol].filter(x => x !== null).join(' · ');
+  // Past MAX_READ the copy claims only what was read (plan-2 review M2 — controller addition, awaiting the owner).
+  const sub = n === 1 ? `1 account · ${tokens} recovered. Welcome back.` : allRead ? `${n} accounts · ${tokens} recovered.` : `${n} accounts · ${tokens} recovered from the first ${MAX_READ}.`;
+  const across = allRead ? `across ${n} accounts` : `across the first ${MAX_READ} of ${n} accounts`;
+  const delta = n === 1 ? approx : [across, approx].filter(x => x !== null).join(' · ');
   return (
     <div className="screen app-onb-imported">
       <Hero head="Wallet imported" sub={sub} />
@@ -11860,13 +12382,17 @@ export function Imported() {
 
 - [ ] **Step 4: Run the tests and the whole suite.**
 
-Run: `npx vitest run src/app/__tests__/Imported.test.tsx src/app/__tests__/router.test.ts` — PASS. Then the whole suite: `npx tsc --noEmit && npx vitest run`
-Expected (dry run): tsc clean; tsc-ok |  Test Files 99 passed (99) Tests 1240 passed (1240).
+Run: `npx vitest run src/app/__tests__/Imported.test.tsx src/app/__tests__/format.test.ts src/app/__tests__/router.test.ts` — PASS. Then the whole suite: `npx tsc --noEmit && npx vitest run`
+Expected (dry run): tsc clean; Test Files 99 passed (99) Tests 1258 passed (1258).
 
 - [ ] **Step 5: Mutations (in a scratch copy outside the repo — each must turn its test red; the dry run ran every one).**
 
-- a failed read reads as empty → RED Tests  1 failed | 7 passed (8)
-- [Try a different seed] without the re-read → RED Tests  1 failed | 7 passed (8)
+- a failed read reads as empty → RED Tests  1 failed | 9 passed (10)
+- [Try a different seed] without the re-read → RED Tests  1 failed | 9 passed (10)
+- #40 rounds ≈ SOL up (M1) → RED Tests  1 failed | 9 passed (10)
+- past six accounts the copy claims every account (M2) → RED Tests  1 failed | 9 passed (10)
+- #40 drops the clipboard line (M3) → RED Tests  3 failed | 7 passed (10)
+- [Try a different seed] without LockedButton (M6) → RED Tests  1 failed | 9 passed (10)
 
 - [ ] **Step 6: Add the states to the visual pass.** Task 18 shoots, asserting each state's copy first: `40-loading`, `40-single-account`, `40-multi-account`, `40-no-assets-empty`, `40-unreachable`, `40-refused-d26`, `40-locked`. The reviewer checks them against the matching `index.html` mockup with §8.6's checklist (Task 18 Step 3).
 
@@ -11874,7 +12400,7 @@ Expected (dry run): tsc clean; tsc-ok |  Test Files 99 passed (99) Tests 1240 pa
 
 ```bash
 cd "$(git rev-parse --show-toplevel)"
-git add extension/src/app/App.tsx extension/src/app/__tests__/Imported.test.tsx extension/src/app/__tests__/router.test.ts extension/src/app/app.css extension/src/app/router.ts extension/src/app/screens/Imported.tsx
+git add extension/src/app/App.tsx extension/src/app/__tests__/Imported.test.tsx extension/src/app/__tests__/format.test.ts extension/src/app/__tests__/router.test.ts extension/src/app/app.css extension/src/app/format.ts extension/src/app/router.ts extension/src/app/screens/Home.tsx extension/src/app/screens/Imported.tsx
 git commit -m "feat(extension): #40 import-success — what the wallet holds, empty only when every read answered, Try a different seed (D41)" -m "Co-Authored-By: <the executing model's own line>"
 ```
 
@@ -11888,6 +12414,7 @@ git commit -m "feat(extension): #40 import-success — what the wallet holds, em
 - Modify: `extension/e2e/makeEnvelope.ts`
 - Create: `extension/e2e/onboarding.spec.ts`
 - Modify: `extension/e2e/vaultPage.ts`
+- Modify: `extension/e2e/wallet.spec.ts`
 
 **Interfaces:**
 - Consumes: Tasks 8–16, plan 1's harness (`launchPopup`, `contained`, `installFakeCoordinator`).
@@ -11899,7 +12426,7 @@ Spec §8.5, against the real extension (vault page, UI tab, popup) and the conta
 3. **unlock:** the popup's locked screen → `[Unlock]` opens the tab → two wrong passwords → the third shows the cooldown card (the engine's 2 s) → the right one → "Unlocked." → the popup is #11.
 10. **forgot → restore:** a 2-account wallet, locked, with a known recipient → #9 → "Forgot password?" → #39's three steps → #8: a different valid phrase → `not-this-wallet` and the stored envelope byte-identical → `[Try another phrase]` → the right phrase → #5 "Restore · 2 / 2" → `#/imported` shows both accounts; the old password no longer unlocks, the new one does; the recipient is still known (`wallet.recipientInfo`, Scope 8). **Second run:** a send pending in the fake's `expire` mode → the restore answers `send-open` and the envelope is unchanged → past the blockhash's life the record expires → `[Try again]` restores.
 12. **try a different seed:** an empty import → #40 empty → `[Try a different seed]` → a wrong password refused, the envelope unchanged → the right one → phrase B → #5 → `#/imported` shows B's address; the old password no longer unlocks. **Second run (C6):** after the #40 click the fake credits account 0 → at the finish "This wallet now holds funds. Nothing was changed." and the envelope byte-identical.
-The fake gains `defaultLamports` (what an unlisted address holds); `makeEnvelope` can make the two-account wallet; the addresses the specs compare are constants derived once with `src/vault/accounts.ts` (no `core/` import in the E2E).
+`wallet.spec.ts`'s re-authentication now also asserts, in the browser, that the resume stand-in renders "Open the Noctura icon to continue." and that nothing was broadcast before the tab closes (plan-2 review M7). The fake gains `defaultLamports` (what an unlisted address holds); `makeEnvelope` can make the two-account wallet; the addresses the specs compare are constants derived once with `src/vault/accounts.ts` (no `core/` import in the E2E).
 
 - [ ] **Step 1: Write the specs.**
 
@@ -12282,6 +12809,42 @@ index e30aacf..123fa51 100644
 +}
 ```
 
+Modify `extension/e2e/wallet.spec.ts`:
+
+```diff
+diff --git a/extension/e2e/wallet.spec.ts b/extension/e2e/wallet.spec.ts
+index adcef1c..bb01705 100644
+--- a/extension/e2e/wallet.spec.ts
++++ b/extension/e2e/wallet.spec.ts
+@@ -63,7 +63,7 @@ const pendingState = async (page: Page, signature: string): Promise<string | und
+  * Re-authenticate a challenge through the real vault page (#10). After the proof the same tab hands
+  * over to the UI tab's resume route (D38) — nothing is sent from the vault page.
+  */
+-async function reauthenticate(ctx: BrowserContext, id: string, challengeId: string, password: string, account: string): Promise<void> {
++async function reauthenticate(ctx: BrowserContext, fake: FakeCoordinator, id: string, challengeId: string, password: string, account: string): Promise<void> {
+   const vault = await ctx.newPage();
+   try {
+     await vault.goto(`chrome-extension://${id}/unlock.html?mode=reauth&challenge=${challengeId}`);
+@@ -71,6 +71,9 @@ async function reauthenticate(ctx: BrowserContext, id: string, challengeId: stri
+     await vault.fill('#ra-password', password);
+     await vault.click('#ra-confirm');
+     await vault.waitForURL(`chrome-extension://${id}/wallet.html#/send/resume?account=${account}`, {timeout: 60_000});
++    // The resume stand-in, in a real browser (plan-2 review M7): it renders, and it sends nothing.
++    await expect(vault.getByText('Open the Noctura icon to continue.')).toBeVisible();
++    expect(fake.broadcasts).toEqual([]);
+   } finally {
+     await vault.close();
+   }
+@@ -130,7 +133,7 @@ test('create a wallet, unlock it, re-authenticate a first send, send SOL: pendin
+     expect(await msg(popup, {type: 'wallet.send', id: view.id})).toEqual({ok: false, error: 'reauth-required', data: {challengeId}});
+     expect(fake.broadcasts).toEqual([]);
+ 
+-    await reauthenticate(ctx, id, challengeId, NEW_PASSWORD, account);
++    await reauthenticate(ctx, fake, id, challengeId, NEW_PASSWORD, account);
+     // The vault page broadcast nothing: the send waits for a tap (D38).
+     expect(fake.broadcasts).toEqual([]);
+```
+
 - [ ] **Step 2: Run them — a normal launch, then offline, twice each.**
 
 Run: `npm run build && npx playwright test e2e/onboarding.spec.ts --repeat-each=2 && unshare -rn npx playwright test e2e/onboarding.spec.ts --repeat-each=2`
@@ -12291,7 +12854,7 @@ Expected: 14 passed, twice. (`unshare -rn` is the offline namespace plan 1's les
 
 ```bash
 cd "$(git rev-parse --show-toplevel)"
-git add extension/e2e/fakeCoordinator.ts extension/e2e/makeEnvelope.ts extension/e2e/onboarding.spec.ts extension/e2e/vaultPage.ts
+git add extension/e2e/fakeCoordinator.ts extension/e2e/makeEnvelope.ts extension/e2e/onboarding.spec.ts extension/e2e/vaultPage.ts extension/e2e/wallet.spec.ts
 git commit -m "test(extension): E2E specs 1, 2, 3, 10 and 12 — create, import, unlock, restore, try a different seed" -m "Co-Authored-By: <the executing model's own line>"
 ```
 
@@ -12310,7 +12873,7 @@ git commit -m "test(extension): E2E specs 1, 2, 3, 10 and 12 — create, import,
 - Consumes: everything above.
 - Produces: `e2e/visual-vault.spec.ts`; `FakeCoordinator.hold(): () => void`; the spec's Differs entries for #1, #3, #5, #6, #8, #9, #10, #39, #40 and §4.1
 
-Spec §8.6 and the plan-1 lessons. `e2e/visual-vault.spec.ts` drives every state above in the real extension at the mockups' 412 × 916 and saves `test-results/visual/<NN>-<state>.png` (58 shots; screenshots are CI artifacts, never committed). Every state asserts its own copy before its shot. A state that lasts a moment is shot under Playwright's paused clock (#3's countdown at 13 s and 5 s and "Still looking?", #4's wrong word before its 700 ms reset, #5's mismatch before its 600 ms clear, #8's idle timer at 48 s, #9's and #10's cooldown); a state that lasts as long as a computation is **held open by the test**, never raced (#5 `creating` and #6 `adding` by holding the Argon2id worker's answer in a test-only wrapper installed with `addInitScript`; #8 `checking` and #40 `loading` by `fake.hold()`). #3's held states are viewport shots (a full-page capture resizes the view under the pressed pointer, which the page reads as a release). The plan-1 shot of the popup's locked screen now asserts "Forgot password?". Then **an opus-tier reviewer** (plan-1 lesson) compares each image with the same state in `index.html` using the checklist in Step 3, and the spec's Differs lists gain plan 2's entries (Step 4).
+Spec §8.6 and the plan-1 lessons. `e2e/visual-vault.spec.ts` drives every state above in the real extension at the mockups' 412 × 916 and saves `test-results/visual/<NN>-<state>.png` (58 shots; screenshots are CI artifacts, never committed). Every state asserts its own copy before its shot. A state that lasts a moment is shot under Playwright's paused clock (#3's countdown at 13 s and 5 s and "Still looking?", #4's wrong word before its 700 ms reset, #5's mismatch before its 600 ms clear, #8's idle timer at 48 s, #9's and #10's cooldown); a state that lasts as long as a computation is **held open by the test**, never raced (#5 `creating` and #6 `adding` by holding the Argon2id worker's answer in a test-only wrapper installed with `addInitScript` — it hooks `worker.onmessage`, which `kdf.ts` assigns, and `releaseKdf()` first polls that exactly one answer is held, so a change to `addEventListener` fails loudly instead of racing (plan-2 review L6); #8 `checking` and #40 `loading` by `fake.hold()`). #3's held states are viewport shots (a full-page capture resizes the view under the pressed pointer, which the page reads as a release). The plan-1 shot of the popup's locked screen now asserts "Forgot password?". Then **an opus-tier reviewer** (plan-1 lesson) compares each image with the same state in `index.html` using the checklist in Step 3, and the spec gets plan 2's Differs entries and the plan-2 review's rulings (Step 4): §1.2's and §8.5 spec 1's font assertion (ruling 5), §3.3's `confirmed` CTA (ruling 1), §3.4's pool wording (ruling 6), §3.8's phrase lifetime and Back (M4, L3, H2), §3.10's `undescribable` `[Close]` line, the X in notices, the settings challenge's expiry and the fee-row ruling (H1, L4, ruling 2), §3.12's truncation, clipboard line and past-six copy (M1, M3, M2, ruling 8), §8.5 spec 10's `wallet.recipientInfo` note (ruling 4).
 
 - [ ] **Step 1: Write the specs.**
 
@@ -12434,12 +12997,17 @@ async function vaultTab(h: Harness, path: string, o: {passkeyCreate?: 'null'} = 
   return page;
 }
 const holdKdf = (p: Page) => p.evaluate(() => void ((window as unknown as {__kdf: {hold: boolean}}).__kdf.hold = true));
-const releaseKdf = (p: Page) =>
-  p.evaluate(() => {
+const releaseKdf = async (p: Page) => {
+  // The hold relies on kdf.ts assigning `worker.onmessage`. Were it to use addEventListener, nothing
+  // would be held and the "creating" / "adding" shots would race the answer — so the held answer must
+  // be there before it is released, and the spec fails loudly otherwise (plan-2 review L6).
+  await expect.poll(() => p.evaluate(() => (window as unknown as {__kdf: {queue: unknown[]}}).__kdf.queue.length), {timeout: 60_000}).toBe(1);
+  await p.evaluate(() => {
     const k = (window as unknown as {__kdf: {hold: boolean; queue: (() => void)[]}}).__kdf;
     k.hold = false;
     k.queue.splice(0).forEach(f => f());
   });
+};
 const text = (p: Page, sel: string) => p.locator(sel);
 const stored = (sw: Worker): Promise<string> => sw.evaluate(async () => JSON.stringify(((await (chrome.storage.local as unknown as {get(k: string): Promise<Record<string, unknown>>}).get('v1_vault')) as Record<string, unknown>).v1_vault));
 
@@ -12605,6 +13173,7 @@ test('visual: import — #8’s states, #5 import, and #40', async () => {
     await setPassword(p, PASSWORD);
     await p.waitForURL(/wallet\.html#\/imported$/, {timeout: 60_000});
     await expect(p.getByText('1 account · 1 token recovered. Welcome back.')).toBeVisible();
+    await expect(p.getByText('Copying puts the address on your clipboard. Noctura does not clear it afterwards.')).toBeVisible();
     await shot(p, '40-single-account');
 
     const hold = h.fake.hold();
@@ -12778,6 +13347,10 @@ test('visual: #10 — the action from the background, and each of its states', a
     await p.goto(`chrome-extension://${h.id}/unlock.html?mode=reauth&challenge=${bad}`);
     await expect(text(p, '#ra-notice-line')).toHaveText('The details of this action could not be shown.');
     await expect(p.locator('#ra-confirm')).toBeHidden();
+    // Its account is an address by itself, so Cancel can discard the send (plan-2 review H1). The
+    // [Close] variant needs a stored record whose account is not an address, which the background
+    // never keeps (it drops the record): asserted in the DOM test only.
+    await expect(text(p, '#ra-cancel')).toHaveText('Cancel send');
     await shot(p, '10-undescribable');
 
     const live = await challenge();
@@ -12827,7 +13400,9 @@ Expected: 6 passed, then 5 passed; `test-results/visual/` holds the 58 plan-2 sh
   4. every string matches the design or is an adapted string listed in the spec (or a controller addition listed in this plan's Scope);
   5. every element is present, or appears in that screen's "Differs" list (Step 4 adds plan 2's);
   6. controls are ≥ 48 px, there is no horizontal scroll at 412 px, and the sticky bar never covers content that cannot scroll clear;
-  7. dark theme only.
+  7. dark theme only;
+  8. #10's fees read exact and ungrouped ("0.00000505 SOL"): the design's thin grouping (plan-1 L7) — fix it or keep the Differs entry Step 4 adds (plan-2 review L2);
+  9. `COMMON.unreadable` ("…could not be read. Reload this page.") has no shot: no state a browser reaches without failing storage shows it (asserted in the DOM tests); the reviewer confirms the line reads right on #8's restore and retry notices, where no action follows it (plan-2 review L9). Likewise #10's `[Close]` variant of `undescribable` (the background never keeps a record whose account is not an address — DOM test only).
   Every drift is fixed to the design or declared in the spec's Differs list — none is left implicit. The findings go in the PR.
 
 - [ ] **Step 4: Edit the spec.**
@@ -12836,21 +13411,47 @@ Modify `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md`:
 
 ```diff
 diff --git a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-index 62e5544..e1ecdd4 100644
+index 967c29b..9cc56a2 100644
 --- a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
 +++ b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-@@ -739,6 +739,10 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
+@@ -190,8 +190,10 @@ mutation test in `scripts/__tests__`):
+   absolute path. With Vite's `base: './'` a `public/` asset referenced absolutely stays
+   `/fonts/…`, which resolves against the extension origin's root from any page, the vault page
+   included. The build test asserts both woff2 files exist at `dist/app/fonts/` and that the
+-  built `unlock` CSS names `/fonts/Geist-Variable.woff2`. E2E spec 1 asserts
+-  `document.fonts.check('16px Geist')` is true on `unlock.html`.
++  built `unlock` CSS names `/fonts/Geist-Variable.woff2`. E2E spec 1 asserts on `unlock.html` that
++  `document.fonts.load('16px Geist')` resolves to at least one face — the real assertion, since
++  `document.fonts.check()` is also true when no face named Geist exists at all — and keeps
++  `check('16px Geist')` beside it (plan-2 review ruling 5).
+ 
+ ### 1.3 The UI bundle (popup and tab)
+ 
+@@ -739,6 +741,12 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
    - "Terms" and "Privacy Policy" are plain text, not links, until the privacy policy exists (a
      release gate, parent §5 / B1e). The sentence stays.
    - `exists` state added (the engine never overwrites a wallet).
 +  - **Plan 2:** a stored v1_vault that is not an envelope (null included — the background calls it
 +    `stored-invalid`) shows "This wallet's stored data is damaged." + "Your funds stay on Solana; your
-+    recovery phrase still controls them." and no CTAs — **the second line is a controller addition
-+    (plan 2)**; repairing a damaged vault is #37's (B1b-2b).
++    recovery phrase still controls them. To use them here, remove Noctura from this browser, install
++    it again and import the phrase." and no CTAs — **the second line is a controller addition —
++    awaiting the owner** (its next step added per the plan-2 review); repairing a damaged vault is
++    #37's (B1b-2b).
  
  ### 3.2 #2 security-intro
  
-@@ -791,6 +795,10 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
+@@ -782,7 +790,9 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
+     fine — your hand is remembering enough." **→ adapted** ("Tap-and-hold" → "Press and hold"); the
+     hold resets and must be released and pressed again.
+   - `confirmed`: lede "Phrase locked in. Tap continue to verify a few words."; grid re-blurred;
+-    stamp "Acknowledged" (`.noc-overline`, `--success`); `[I've written it down]` → #4.
++    stamp "Acknowledged" (`.noc-overline`, `--success`); `[Continue]` → #4. (3b–3d read "I've
++    written it down", disabled until one full hold; 3e reads "Continue" — the design is binding,
++    plan-2 review ruling 1.)
+ - **Mechanics:** hold timer 30 ms ticks to 2 s; `pointerup`/`pointerleave`/`blur`/`keyup` re-blur;
+   the 20 s auto-blur fires even while held; every timer is cleared on leaving the step.
+   `prefers-reduced-motion` removes the blur transition.
+@@ -791,12 +801,18 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
      (D1).
    - FLAG_SECURE, haptics and the predictive-back exit modal dropped (no browser equivalent).
      Leaving the page discards the mnemonic, and a new visit generates a new one.
@@ -12861,7 +13462,17 @@ index 62e5544..e1ecdd4 100644
  
  ### 3.4 #4 seed-confirm
  
-@@ -838,6 +846,9 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
+ - **States:** `empty` (step "3 / 5", "Confirm phrase", "Tap the correct word for each position.",
+-  slots "Word #5" / "Word #12" / "Word #19" with "— select —", a pool of 9 words: 1 correct + 8
+-  BIP-39 distractors per slot, generated once, `[Confirm]` disabled); `partial-correct` (filled
++  slots "Word #5" / "Word #12" / "Word #19" with "— select —", a pool of nine: each slot's word
++  with two BIP-39 distractors of the same first letter, none a phrase word, generated once
++  (`screen.md`'s "1 correct + 8 distractors" counts from one slot's point of view; plan-2 review
++  ruling 6), `[Confirm]` disabled); `partial-correct` (filled
+   slots, used buttons dimmed); `wrong-answer` (lede "That's not the right word — let's start
+   over." in `--danger`, slot flips `--danger` with the 320 ms shake, helper "Word #12 was wrong.
+   Slots will reset in a moment.", reset after ~700 ms); `success` (96 px ring, "Phrase
+@@ -838,6 +854,9 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
  - **Differs:**
    - The 6 PIN dots and keypad are replaced by a password field and confirm field (D7).
    - The step dots keep the design's two-step indicator.
@@ -12871,7 +13482,7 @@ index 62e5544..e1ecdd4 100644
    - FLAG_SECURE dropped (D1).
  
  ### 3.6 #6 biometric-setup → passkey (D9)
-@@ -863,6 +874,7 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
+@@ -863,6 +882,7 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
  - **Navigation:** any end → the UI tab `wallet.html#/created`.
  - **Differs:** copy as marked; the fingerprint icon becomes a key icon; the native BiometricPrompt
    becomes the browser's WebAuthn prompt.
@@ -12879,19 +13490,27 @@ index 62e5544..e1ecdd4 100644
  
  ### 3.7 #7 onboard-success (UI tab `#/created`)
  
-@@ -946,6 +958,11 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
+@@ -948,6 +968,19 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
      (D1; the clipboard half is false too).
    - FLAG_SECURE dropped.
    - Added: the D8 banner, the scheme choice and the password step.
 +  - **Plan 2:** the phrase stays editable in a field (inside the design's `.ta-wrap`), and the mono
 +    cell grid shows the words typed so far under it; the counter targets 12 words up to 12, then 24
 +    ("9 of 12 words entered."). The restore and retry refusals replace the field with their line and
-+    one button; `busy` and `unlocked` offer `[Start again]` — **a controller addition (plan 2)** — to
-+    #39 (restore) or the retry path's start (retry).
++    one button; `busy` and `unlocked` offer `[Start again]` — **controller addition — awaiting the
++    owner** — to #39 (restore) or the retry path's start (retry).
++  - **Plan 2 (plan-2 review M4, L3, H2):** the phrase stays in page memory while this page is open, a
++    hidden tab included — §3.5's hidden-tab rule is the password's, and dropping the phrase under an
++    open #5 would end the run on an untrue "That is not a valid 12- or 24-word recovery phrase." It
++    goes when the wallet is stored, at every other end of the run, and with the page. Back from #5
++    returns to #8 with the phrase in the field on every path (plain import, restore, retry). On the
++    retry path the new wallet prepared under #5's password (its envelope and its session keys) is
++    kept only behind a pending `[Try again]`, and goes when the tab is hidden, with that password;
++    the factor proof goes at every end of the run.
  
  ### 3.9 #9 unlock
  
-@@ -973,6 +990,8 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
+@@ -975,6 +1008,8 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
    - The attempt counter and "Cycle 1 of 2" line are removed (D11).
    - The keypad is replaced by a password field (D7).
    - FLAG_SECURE dropped (D1).
@@ -12900,26 +13519,44 @@ index 62e5544..e1ecdd4 100644
  
  ### 3.10 #10 unlock-send (re-authentication)
  
-@@ -1022,6 +1041,13 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
+@@ -998,7 +1033,10 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
+   - `cooldown`: #9's cooldown card with "That did not confirm it. Wait a moment before trying
+     again." (the design reuses #9's cooldown on #10).
+   - **extension-only:** `undescribable` ("The details of this action could not be shown." + only
+-    `[Cancel send]`, E3); `not-unlocked` ("The wallet locked while you were confirming. Unlock it
++    `[Cancel send]`, E3, which discards the send by its account — the one field re-validated by
++    itself; when even that is not an address: + "Nothing was sent. Start the send again from the
++    Noctura icon." and `[Close]`, which closes the tab and claims no cancel — **controller addition —
++    awaiting the owner**, plan-2 review H1); `not-unlocked` ("The wallet locked while you were confirming. Unlock it
+     and start the send again." + `[Unlock]` → `?mode=unlock`, with no return target: the lock
+     cleared the prepared send, so there is nothing to resume, as §7.1 says; review M7);
+     `mismatch-locked` ("That did not match this wallet, so the wallet has been
+@@ -1024,6 +1062,19 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
    - **`[Cancel send]` closes the tab** (review L2). The design returns to #20, but the popup that
      showed #20 closed when this tab opened, and a tab cannot reopen it. It discards the prepared send
      first (E7), so nothing is left to resume.
 +  - **Plan 2:** "Network fee" is `networkLamports` — priority included: `about` (E3) carries no
-+    `priorityLamports`, so #10 cannot split it as §4.5's fee rows do on #19 and #20. A zero Noctura
-+    fee shows its reason line (the carried rule), and `charged` with a zero fee is not described.
-+    The cooldown's disabled button reads "Confirm paused" and a settings challenge's cancel reads
-+    "Cancel" (it only closes the tab) — **both controller additions (plan 2)**. A discard the
-+    background refuses says "Something went wrong. Try again." and keeps the screen: "Send cancelled"
-+    is shown only when it is true.
++    `priorityLamports`, so #10 cannot split it as §4.5's fee rows do on #19 and #20 (plan-2 review
++    ruling 2: plan 2 is UI-only, §12; plan 3, which builds #19/#20's rows, may add
++    `priorityLamports` to `about` so the three screens agree). The amounts appear when non-zero; a
++    zero Noctura fee shows its reason line (the carried rule), and `charged` with a zero fee is not
++    described. Fees are exact and ungrouped ("0.00000505 SOL"); the design's thin grouping is listed
++    for the visual review (plan-1 L7). The cooldown's disabled button reads "Confirm paused" and a
++    settings challenge's cancel reads "Cancel" (it only closes the tab; the challenge simply
++    expires) — **both controller additions — awaiting the owner**. A discard the background refuses
++    says "Something went wrong. Try again." and keeps the screen: "Send cancelled" is shown only when
++    it is true — including `undescribable` (H1, above). In `expired`, `not-unlocked`,
++    `mismatch-locked` and every other notice with nothing to cancel, the top bar's X closes the tab
++    and claims nothing (plan-2 review L4).
  
  ### 3.11 #39 forgot-pin → "Forgot password?"
  
-@@ -1058,6 +1084,14 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
+@@ -1060,6 +1111,14 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
      "A passkey is not carried over; you can add one again later." (passkey management is B1b-2b).
    - "24 words" becomes "12 or 24 words" (import accepts both).
    - "#36 change-pin" is not a step: import sets the password itself.
-+  - **Plan 2 (controller adaptations of the design's step copy):** step 1's card 2 "You'll be taken to
-+    the import screen. Type or paste your words." and card 3 "Once your phrase is verified against this
++  - **Plan 2 (controller adaptations of the design's step copy — awaiting the owner):** step 1's
++    card 2 "You'll be taken to the import screen. Type or paste your words." and card 3 "Once your phrase is verified against this
 +    wallet, you'll choose a new password (at least 12 characters). The old password stops working.";
 +    step 2's title "Enter your words", lede "Type or paste the 12 or 24 words, in order." (the design's
 +    word picker does not exist) and card 3 "After your phrase is verified."; step 3's card 3 "You'll
@@ -12929,19 +13566,25 @@ index 62e5544..e1ecdd4 100644
  
  ### 3.12 #40 import-success (UI tab `#/imported`)
  
-@@ -1101,6 +1135,11 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
+@@ -1103,6 +1162,17 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
    - `[Open wallet]` becomes the D10 line.
    - Long-press menu and 30 s clipboard clear dropped.
    - The `v1_imported` MMKV annotation does not apply.
 +  - **Plan 2:** the address is in groups of four at equal weight (`AddressGroups`), not the design's
-+    first-6/last-6 `.ck` highlight (§11.7's poisoning note). One token reads "1 token". Balances are
-+    read for the first six accounts; a wallet with more never shows `no-assets-empty`. The empty
++    first-6/last-6 `.ck` highlight (§11.7's poisoning note). Under it, #7's line "Copying puts the
++    address on your clipboard. Noctura does not clear it afterwards." — the carried rule, missing
++    from this section's copy (**controller addition — awaiting the owner**, plan-2 review M3). One
++    token reads "1 token" (**controller addition — awaiting the owner**). "≈ X SOL" is truncated,
++    never rounded up (plan-1 ruling L6, as #11; plan-2 review M1). Balances are read for the first
++    six accounts (≤ 6, above); past six the copy claims only what was read: "N accounts · M tokens
++    recovered from the first 6." and "across the first 6 of N accounts" (**controller addition —
++    awaiting the owner**, plan-2 review M2), and a wallet with more never shows `no-assets-empty`. The empty
 +    state's sticky bar is the D10 line and `[Try a different seed]`, as listed above (no `[Close this
 +    tab]` there).
  
  ---
  
-@@ -1112,8 +1151,8 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
+@@ -1114,8 +1184,8 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
    (primary) → `tabs.create('unlock.html?mode=unlock')` + `window.close()`; "Forgot password?" →
    `?mode=forgot`. No password field: the password only ever exists in the vault page (D12).
  - **Differs:** a derived screen. The password field and keypad are in the tab (D12).
@@ -12951,6 +13594,31 @@ index 62e5544..e1ecdd4 100644
 +    plan-1 stand-in is gone).
  
  ### 4.2 #12 send
+ 
+@@ -1934,8 +2004,9 @@ The popup is opened as `chrome-extension://<id>/popup.html` in a page sized 412
+ cannot click the toolbar action; stated). Specs:
+ 1. **Onboarding create:** welcome → #2 → #3 (modal, hold 2 s, confirmed) → #4 (picks the right
+    words from the page's own grid) → #5 (password, confirm) → #6 skip → `wallet.html#/created` shows
+-   the address; the popup then shows #11. On `unlock.html`, `document.fonts.check('16px Geist')` is
+-   true (review L5).
++   the address; the popup then shows #11. On `unlock.html`, `document.fonts.load('16px Geist')`
++   resolves to at least one face and `document.fonts.check('16px Geist')` is true (review L5;
++   plan-2 review ruling 5: `check()` alone passes when no Geist face exists).
+ 2. **Import:** #8 paste a fixture phrase → scheme auto → #5 → `#/imported` with the fake's balances.
+ 3. **Unlock:** popup locked screen → tab → wrong password → cooldown → right password → popup #11.
+ 4. **Send with re-auth:** #11 → #12 → #43 pick SOL → #19 shows the balance delta and "After" from
+@@ -1959,7 +2030,10 @@ cannot click the toolbar action; stated). Specs:
+     password?" → #39 → `[Continue to import]` → #8 with a *different* valid phrase →
+     `not-this-wallet`, and the stored envelope is byte-identical afterwards → the right phrase → #5
+     new password → `#/imported` shows both accounts; the old password no longer unlocks and the new
+-    one does; an address sent to before the restore is still "Verified · sent before" on #12 (D40).
++    one does; an address sent to before the restore is still known (D40) — in plan 2 asserted
++    through the engine's `wallet.recipientInfo` (#12 is plan 3's); plan 3 restores the on-screen
++    "Verified · sent before" check, folded into spec 11, which already drives #12 after a confirmed
++    send (plan-2 review ruling 4).
+     A second run with a pending send open (the fake in `expire` mode, before expiry) gets
+     `send-open` and the envelope is unchanged; after expiry the restore goes through.
+ 11. **#12 recipient hints (E6):** a first-time address shows the state-6 banner and "Review &
 ```
 
 - [ ] **Step 5: Commit.**
@@ -12971,10 +13639,11 @@ git commit -m "test(extension): the plan-2 visual pass — every vault-page stat
 
 ## Self-review
 
-- **Spec coverage.** §3.1–§3.12: every state of #1–#10, #39, #7, #40 has its copy in a DOM/component test and its shot in Task 18 (states with no shot: #9 `unlocking` and #10 `Checking…` — one-line helper states inside `idle`/`error`, asserted in the DOM tests; #6 `added` and `failed` — need a real authenticator or a failing store; asserted in the DOM tests). §1.2: modes (Task 1), strings (Tasks 3–14), the view helpers (Task 4), the gate rules (Tasks 5, 14). E3's vault half (Tasks 3, 11), E5's (Tasks 2, 12, 13), E7's #10 caller (Task 11). §4.1's "Forgot password?" (Task 10). §7.6 rule 6 on the vault page's buttons: Create (#5), Import (#8 Continue), Unlock, Confirm (#10), Add a passkey, Add account — each has a double-click test. §8.5 specs 1, 2, 3, 10, 12 (Task 17); §8.6 (Task 18). §12's resume stand-in (Task 15).
+- **Spec coverage.** §3.1–§3.12: every state of #1–#10, #39, #7, #40 has its copy in a DOM/component test and its shot in Task 18 (states with no shot: #9 `unlocking` and #10 `Checking…` — one-line helper states inside `idle`/`error`, asserted in the DOM tests; #6 `added` and `failed` — need a real authenticator or a failing store; asserted in the DOM tests). §1.2: modes (Task 1), strings (Tasks 3–14), the view helpers (Task 4), the gate rules (Tasks 5, 14). E3's vault half (Tasks 3, 11), E5's (Tasks 2, 12, 13), E7's #10 caller (Task 11). §4.1's "Forgot password?" (Task 10). §7.6 rule 6 on the vault page's buttons: Create (#5), Import (#8 Continue), Unlock, Confirm (#10), `[Cancel send]` (#10), `[Confirm]` on the retry path's password step (`rp-confirm`), Add a passkey, Add account — each has a double-click test; the UI tab's `[Try a different seed]` (`LockedButton`) has one too (review M6). §8.5 specs 1, 2, 3, 10, 12 (Task 17); §8.6 (Task 18). §12's resume stand-in (Task 15).
 - **Placeholders.** None: every step has its code, its command and its expected output; the one generated file (`design-ext.css`) has its generator and its hash.
+- **Key material.** Scope 19 states each lifetime; the tests that hold it: `seed.test` (#3 keeps no phrase after it is left), `import.test` (a hidden tab keeps the phrase under an open #5), `restore.test` (a hidden tab drops the held password), `retry.test` (`holds()` after every terminal outcome; B prepared gone on a hidden tab).
 - **Type consistency.** `PageDeps`, `PageTarget`, `PasswordRun`/`PasswordScreen`, `ImportScreen`, `SeedProof`/`FactorProof`, `Description`, `Route` and `Platform` are used as Task N's Interfaces block states; Task 12 widens `PasswordRun.finish`'s answer (`stop: boolean` → `then`) and updates every caller and test in the same diff. The dry run's task-by-task replay proved each task compiles and passes on its own predecessor.
-- **Plan 3 must know:** `wallet.html#/send/resume?account=` is a stand-in (Task 15's `Resume.tsx`) to replace with #20 `confirmed`; `firstRoute` already validates the account; `PageTarget`'s resume target is built by `resumeTarget()` only; `PasswordRun`'s `retry` step exists for any flow that must keep a password in page memory; the class gate still ignores ancestors for `src/app` (extend `unstyledClasses` to #12–#54's tests).
+- **Plan 3 must know (the carry list):** `vault.challengeInfo`'s `about` has no `priorityLamports`, so #10's "Network fee" includes the priority fee — when plan 3 builds #19/#20's rows it may add the field to E3 (validated in `isAbout` and in `challenge.ts`'s closed alphabet) so the three screens agree (review ruling 2); spec E2E 10's "Verified · sent before" on #12 is asserted through `wallet.recipientInfo` in plan 2 — plan 3 restores the on-screen check inside spec 11 (ruling 4); `wallet.html#/send/resume?account=` is a stand-in (Task 15's `Resume.tsx`) to replace with #20 `confirmed`; `firstRoute` already validates the account; `PageTarget`'s resume target is built by `resumeTarget()` only; `PasswordRun`'s `retry` step exists for any flow that must keep a password in page memory; the class gate still ignores ancestors for `src/app` (extend `unstyledClasses` to #12–#54's tests).
 
 ## Dry-run findings (each fixed in the code above)
 
@@ -12986,7 +13655,8 @@ git commit -m "test(extension): the plan-2 visual pass — every vault-page stat
 6. **#39 carried the design's `.s-secintro` scope, which styles nothing there** — the ancestor-aware check flagged it; removed and declared (Scope 11).
 7. **E2E races:** spec 3's `contained()` ran before #11's balance read reached the fake (assert the balance first); `getByText('Wait a moment')` matched #9's and #10's hidden headings (scope to `#unl-cooldown`); a full-page screenshot under a pressed pointer released #3's hold (viewport shots for the held states); #8's idle timer was read one second late when the clock was paused after typing (pause before typing). All fixed in Tasks 17–18; both launch modes pass twice in a row.
 8. **#10's reasons for 2.48 of 10 SOL** are three (first-send, over-5-percent, over-usd-threshold), not two — the visual spec asserts the engine's order.
-9. **Pre-existing, not plan 2's:** `src/unlock/__tests__/accountsFlow.test.ts` › "refuses an account past MAX_ACCOUNTS (100) by name" derives 100 keys and takes ~6 s under parallel CPU load, past vitest's 5 s default — it failed twice in the dry run while other suites ran concurrently (and on plan 1's own tree under the same load), and passed alone every time. Worth a `30_000` timeout in plan 3 or a follow-up; this plan does not touch it.
+9. **Pre-existing, from plan 1:** `src/unlock/__tests__/accountsFlow.test.ts` › "refuses an account past MAX_ACCOUNTS (100) by name" derives 100 keys and takes ~6 s under parallel CPU load, past vitest's 5 s default — it failed twice in the first dry run while other suites ran concurrently (and on plan 1's own tree under the same load), and passed alone every time. Fixed in Task 1 with a `30_000` timeout (the review: in this PR, not later).
+10. **Revision 2 (the review's fixes), dry-run catch:** the retry run re-used B prepared under a password §3.5 had already dropped — see Scope 21; fixed in Task 13 with a test that fails on the old code.
 
 ## Execution handoff
 
