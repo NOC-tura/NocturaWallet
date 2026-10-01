@@ -64,9 +64,19 @@ describe('describeChallenge: the closed-alphabet renderer', () => {
     ['a negative fee', {networkLamports: '-5'}],
     ['a recipient with markup', {recipient: '<img src=x onerror=alert(1)>'}],
     ['a recipient with a 0 (outside base58)', {recipient: `0${RECIPIENT.slice(1)}`}],
+    // ADDRESS's end anchor: a valid 32–44-char run with one more character tacked on must not pass by
+    // matching only the valid prefix. Each case stays within the {32,44} length range after the valid
+    // run, so only the `$` anchor (not the length bound) can reject it.
+    ['a recipient with a trailing right-to-left override', {recipient: `${RECIPIENT}‮`}],
+    ['a recipient with a trailing newline', {recipient: `${RECIPIENT}\n`}],
+    ['a recipient of 40 valid characters plus a trailing zero-width space', {recipient: `${RECIPIENT.slice(0, 40)}​`}],
     ['a short account', {account: 'abc'}],
     ['an unknown reason', {reasons: ['because']}],
     ['reasons that are not a list', {reasons: 'first-send'}],
+    // prepare.ts issues a 'send' challenge only when sendReauthReasons returned at least one code,
+    // and that function pushes each code at most once: neither shape is a real challenge.
+    ['an empty reasons list (the background never issues a challenge without one)', {reasons: []}],
+    ['a duplicated reason', {reasons: ['first-send', 'first-send']}],
     ['a threshold below $1', {thresholdCents: 99}],
     ['a threshold above $1 000', {thresholdCents: 100_001}],
     ['a fractional threshold', {thresholdCents: 100.5}],
@@ -132,6 +142,8 @@ describe('readChallenge against the real background', () => {
     expect(await read({...SEND, markupReason: 'charged'})).toEqual({state: 'undescribable', account: ACCOUNT.publicKey});
     expect(await read({...SEND, account: 'not an address', token: 'BONK'})).toEqual({state: 'undescribable', account: null});
     expect(await read({...SEND, account: 42, token: 'BONK'})).toEqual({state: 'undescribable', account: null});
+    // ADDRESS's end anchor again: a valid account with one extra character is not an address by itself.
+    expect(await read({...SEND, account: `${ACCOUNT.publicKey}X`, token: 'BONK'})).toEqual({state: 'undescribable', account: null});
     expect(await read({kind: 'settings', account: ACCOUNT.publicKey, autoLockMinutes: 99, reauthUsdCents: null})).toEqual({state: 'undescribable', account: null});
     expect(await read('send')).toEqual({state: 'undescribable', account: null});
   });
@@ -141,6 +153,11 @@ describe('readChallenge against the real background', () => {
     const send: Send = async m => (sent.push(m), {ok: true});
     expect(await discardPrepared(send, ACCOUNT.publicKey)).toBe(true);
     expect(await discardPrepared(send, 'not an address')).toBe(false);
+    // ADDRESS's end anchor: a valid account with one extra character is not an address by itself.
+    expect(await discardPrepared(send, `${ACCOUNT.publicKey}X`)).toBe(false);
+    // A non-string whose toString() produces a valid address is not a string: refused before ADDRESS.test
+    // (which would otherwise coerce it).
+    expect(await discardPrepared(send, {toString: () => ACCOUNT.publicKey} as unknown as string)).toBe(false);
     expect(sent).toEqual([{type: 'wallet.discardPrepared', account: ACCOUNT.publicKey}]);
     expect(await discardPrepared(async () => ({ok: false, error: 'malformed'}), ACCOUNT.publicKey)).toBe(false);
   });

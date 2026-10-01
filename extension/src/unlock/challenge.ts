@@ -54,7 +54,10 @@ function describeSend(a: Record<string, unknown>): SendDescription | null {
   const symbol = token as TokenSymbol;
   if (![amount, networkLamports, markupLamports, rentLamports].every(v => typeof v === 'string' && DIGITS.test(v))) return null;
   if (!isInt(thresholdCents, 100, 100_000)) return null;
-  if (!Array.isArray(reasons)) return null;
+  // The background issues a 'send' challenge only when sendReauthReasons returned at least one
+  // code (prepare.ts: `if (reasons.length > 0) { ... issueChallenge ... }`), and that function
+  // pushes each code at most once: an empty list or a duplicate is never a real challenge.
+  if (!Array.isArray(reasons) || reasons.length === 0 || new Set(reasons).size !== reasons.length) return null;
   const lines: string[] = [];
   for (const r of reasons as unknown[]) {
     if (r === 'over-usd-threshold') lines.push(REAUTH.overUsd(dollars(thresholdCents)));
@@ -146,7 +149,7 @@ export async function readChallenge(send: Send, challengeId: string): Promise<Ch
 
 /** E7: #10's [Cancel send] drops the account's prepared send and its challenge. True when the background says so. */
 export async function discardPrepared(send: Send, account: string): Promise<boolean> {
-  if (!ADDRESS.test(account)) return false;
+  if (typeof account !== 'string' || !ADDRESS.test(account)) return false;
   try {
     return (await send({type: 'wallet.discardPrepared', account})).ok;
   } catch {
