@@ -1,7 +1,6 @@
 import {ENVELOPE_KEY} from './unlockFlow';
 import {MIN_PASSWORD_LENGTH, detectImport, finishOnboarding, indexesFor, type Candidate, type FinishOutcome, type ProbeResult} from './onboarding';
 import {addAccount, removeAccount, type AccountsOutcome} from './accountsFlow';
-import {runReauth, type ReauthPageOutcome} from './reauthFlow';
 import {runReveal, type RevealOutcome} from './revealFlow';
 import {createWrongBackoff, runExclusive, type BusyGate} from './orchestrate';
 import {backgroundVaultStore} from './vaultStore';
@@ -10,14 +9,11 @@ import type {PageDeps} from './page';
 import {createCreateRun} from './screens/createRun';
 import {createImportRun} from './screens/importRun';
 import {mountPassword} from './screens/password';
+import {mountReauth} from './screens/reauth';
 import {mountUnlock} from './screens/unlock';
 import {workerKdf} from '../vault/kdf';
-import {evaluatePrf} from '../vault/passkey';
-import {unb64} from '../vault/bytes';
 import {send} from '../ui/send';
 import {readLocal} from '../shared/readLocal';
-import {REAUTH} from './strings';
-import {passkeyOf} from './stored';
 
 // Thin page modes for B1b-1 (the owner's screens arrive in B1b-2). The vault page renders only its
 // own fixed strings (spec §1): every status line is a literal below, and the only other text it
@@ -37,17 +33,6 @@ const CHOOSE_WORDS = {
   'both-funded': 'Both address types on this phrase hold funds. Choose the one to use.',
   unresolved: 'Balances could not be checked. Choose the address type to use.',
 } as const;
-const REAUTH_WORDS: Record<ReauthPageOutcome | 'unavailable', string> = {
-  confirmed: 'Confirmed. You can close this tab.',
-  wrong: 'That did not confirm it.',
-  'not-unlocked': 'The wallet is locked. Unlock it first, then try again.',
-  'mismatch-locked': 'That did not match this wallet, so the wallet has been locked.',
-  expired: REAUTH.expired,
-  damaged: "This wallet's stored data is damaged.",
-  'no-wallet': 'No wallet on this browser yet.',
-  failed: 'Something went wrong. Try again.',
-  unavailable: 'This device cannot confirm with a passkey; your password still works.',
-};
 const ACCOUNTS_WORDS: Record<AccountsOutcome, string> = {
   done: 'Done. The accounts are updated.',
   'done-locked': 'The accounts were changed, and the wallet has been locked. Unlock it to use them.',
@@ -73,9 +58,8 @@ const REVEAL_WORDS: Record<RevealOutcome['outcome'], string> = {
   failed: 'Something went wrong. Try again.',
 };
 const WAIT = 'That did not confirm it. Wait a moment before trying again.';
-const UNREADABLE = "This wallet's stored data could not be read. Reload this page.";
 // The B1b-1 thin sections the plan-2 screens have not replaced yet.
-const SECTIONS = ['import', 'reauth', 'accounts', 'reveal'] as const;
+const SECTIONS = ['import', 'accounts', 'reveal'] as const;
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const say = (text: string): void => {
@@ -115,6 +99,11 @@ export function startMode(mode: PageMode, deps: PageDeps): void {
     else create.start(mode.mode === 'welcome' ? 'welcome' : 'intro');
     return;
   }
+  if (mode.mode === 'reauth') {
+    legacy(null);
+    void mountReauth(deps).show(mode.challengeId);
+    return;
+  }
   if (mode.mode === 'unlock' || mode.mode === 'forgot') {
     legacy(null);
     void mountUnlock(deps).show(mode.mode === 'unlock' ? mode.returnTo : null);
@@ -122,7 +111,6 @@ export function startMode(mode: PageMode, deps: PageDeps): void {
   }
   legacy(mode.mode);
   if (mode.mode === 'import') startImport();
-  if (mode.mode === 'reauth') startReauth(mode.challengeId);
   if (mode.mode === 'accounts') startAccounts();
   if (mode.mode === 'reveal') startReveal();
 }
@@ -168,42 +156,6 @@ function startImport(): void {
   });
   $('choose-slip10').addEventListener('click', () => void runExclusive(gate, () => finish('slip10')));
   $('choose-cli').addEventListener('click', () => void runExclusive(gate, () => finish('cli')));
-}
-
-// Deferred to B1b-2 (stated): this page does not show WHICH action the challenge is for — the
-// background holds only its digest; B1b-2's screen asks the background for a description.
-function startReauth(challengeId: string): void {
-  const backoff = createWrongBackoff(sleep);
-  $('reauth-form').addEventListener('submit', e => {
-    e.preventDefault();
-    void runExclusive(gate, async () => {
-      const pw = $<HTMLInputElement>('reauth-password');
-      const password = pw.value;
-      pw.value = '';
-      say('Checking…');
-      const outcome = await backoff.run(() => runReauth({...store, send}, challengeId, {password, kdf: workerKdf}), () => say(WAIT));
-      say(REAUTH_WORDS[outcome]);
-    });
-  });
-  void store.readEnvelope().then(raw => {
-    const pk = passkeyOf(raw);
-    if (!pk) return;
-    const button = $<HTMLButtonElement>('reauth-passkey');
-    button.hidden = false;
-    button.addEventListener('click', () => {
-      void runExclusive(gate, async () => {
-        let prfOutput: Uint8Array | null;
-        try {
-          prfOutput = await evaluatePrf(navigator.credentials, unb64(pk.credentialId), unb64(pk.prfSalt));
-        } catch {
-          prfOutput = null;
-        }
-        if (prfOutput === null) return say(REAUTH_WORDS.unavailable);
-        const factor = {prfOutput};
-        say(REAUTH_WORDS[await backoff.run(() => runReauth({...store, send}, challengeId, factor), () => say(WAIT))]);
-      });
-    });
-  }, () => say(UNREADABLE));
 }
 
 function startAccounts(): void {

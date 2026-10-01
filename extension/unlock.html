@@ -104,15 +104,6 @@
           <button id="choose-cli" type="button">Solana CLI (solana-keygen)</button>
         </div>
       </section>
-      <section id="reauth" hidden>
-        <h1>Confirm it is you</h1>
-        <form id="reauth-form">
-          <label for="reauth-password">Password</label>
-          <input id="reauth-password" type="password" autocomplete="current-password" minlength="12" required />
-          <button id="reauth-btn" type="submit">Confirm</button>
-        </form>
-        <button id="reauth-passkey" type="button" hidden>Confirm with passkey</button>
-      </section>
       <section id="accounts" hidden>
         <h1>Accounts</h1>
         <label for="acc-password">Password</label>
@@ -370,6 +361,59 @@
           <button id="unl-passkey" type="button" class="btn btn-secondary" hidden>Unlock with passkey</button>
           <button id="unl-setup" type="button" class="btn btn-primary" hidden>Set up a wallet</button>
           <button id="unl-close" type="button" class="btn btn-secondary" hidden>Close this tab</button>
+        </div>
+      </section>
+
+      <!-- #10 unlock-send (spec §3.10, E3, D38, D39): the action comes from vault.challengeInfo, never the URL. -->
+      <section id="v-reauth" class="screen s-pin" hidden>
+        <div class="top-bar">
+          <button id="ra-x" type="button" class="icon-btn" aria-label="Cancel"><svg width="22" height="22" aria-hidden="true"><use href="#i-x" /></svg></button>
+          <span class="title noc-overline vlt-muted">Confirm with password</span>
+          <span class="vlt-bar-spacer"></span>
+        </div>
+        <p id="ra-loading" class="noc-body vlt-center vlt-pad" role="status">Reading the details…</p>
+        <div id="ra-intent" class="intent-card" hidden>
+          <div id="ra-about" class="noc-overline vlt-muted vlt-gap-2"></div>
+          <div id="ra-amount-row" class="vlt-amount">
+            <span id="ra-amount" class="noc-balance-lg noc-numeral"></span>
+            <span id="ra-symbol" class="noc-body-lg vlt-lede"></span>
+          </div>
+          <div id="ra-rows"></div>
+        </div>
+        <div id="ra-entry" hidden>
+          <div class="pin-head vlt-pin-head-tight">
+            <h2 class="noc-h2 vlt-gap-2">Enter your password</h2>
+            <div id="ra-reasons"></div>
+            <form id="ra-form" class="vlt-field-row">
+              <input id="ra-password" class="vlt-input" type="password" autocomplete="current-password" aria-label="Password" />
+            </form>
+          </div>
+          <p id="ra-helper" class="noc-caption pin-helper" aria-live="polite"></p>
+        </div>
+        <div id="ra-cooldown" hidden>
+          <div class="vlt-pad-cooldown">
+            <h1 class="noc-h1 vlt-center vlt-gap-2">Wait a moment</h1>
+            <p class="noc-body vlt-lede vlt-center vlt-narrow-300 vlt-gap-5">That did not confirm it. Wait a moment before trying again.</p>
+          </div>
+          <div class="cooldown-card">
+            <div id="ra-ring" class="ring"></div>
+            <div id="ra-timer" class="timer noc-numeral"></div>
+            <div id="ra-cooldown-label" class="noc-body-sm label"></div>
+          </div>
+        </div>
+        <span id="ra-cooldown-live" class="vlt-sr" aria-live="polite"></span>
+        <div id="ra-notice" class="vlt-notice" role="status" hidden>
+          <p id="ra-notice-line" class="noc-body"></p>
+          <p id="ra-notice-help" class="noc-body-sm vlt-lede"></p>
+        </div>
+        <div class="pin-spacer"></div>
+        <button id="ra-cancel" type="button" class="btn btn-tertiary forgot-link" hidden></button>
+        <div class="sticky-bar">
+          <button id="ra-confirm" type="button" class="btn btn-primary" hidden>Confirm</button>
+          <!-- "Confirm paused": controller addition — confirmed by the owner 2026-10-01 (mirrors #9's "Unlock paused"). -->
+          <button id="ra-paused" type="button" class="btn btn-secondary" disabled hidden>Confirm paused</button>
+          <button id="ra-passkey" type="button" class="btn btn-secondary" hidden>Confirm with passkey</button>
+          <button id="ra-unlock" type="button" class="btn btn-primary" hidden>Unlock</button>
         </div>
       </section>
 

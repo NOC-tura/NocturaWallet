@@ -59,14 +59,18 @@ async function pendingRecord(page: Page, signature: string): Promise<PendingView
 }
 const pendingState = async (page: Page, signature: string): Promise<string | undefined> => (await pendingRecord(page, signature))?.state;
 
-/** Re-authenticate a challenge through the real vault page in reauth mode. */
-async function reauthenticate(ctx: BrowserContext, id: string, challengeId: string, password: string): Promise<void> {
+/**
+ * Re-authenticate a challenge through the real vault page (#10). After the proof the same tab hands
+ * over to the UI tab's resume route (D38) — nothing is sent from the vault page.
+ */
+async function reauthenticate(ctx: BrowserContext, id: string, challengeId: string, password: string, account: string): Promise<void> {
   const vault = await ctx.newPage();
   try {
     await vault.goto(`chrome-extension://${id}/unlock.html?mode=reauth&challenge=${challengeId}`);
-    await vault.fill('#reauth-password', password);
-    await vault.click('#reauth-btn');
-    await expect(vault.locator('#status')).toHaveText('Confirmed. You can close this tab.', {timeout: 60_000});
+    await expect(vault.locator('#ra-about')).toHaveText('You are about to send');
+    await vault.fill('#ra-password', password);
+    await vault.click('#ra-confirm');
+    await vault.waitForURL(`chrome-extension://${id}/wallet.html#/send/resume?account=${account}`, {timeout: 60_000});
   } finally {
     await vault.close();
   }
@@ -126,7 +130,9 @@ test('create a wallet, unlock it, re-authenticate a first send, send SOL: pendin
     expect(await msg(popup, {type: 'wallet.send', id: view.id})).toEqual({ok: false, error: 'reauth-required', data: {challengeId}});
     expect(fake.broadcasts).toEqual([]);
 
-    await reauthenticate(ctx, id, challengeId, NEW_PASSWORD);
+    await reauthenticate(ctx, id, challengeId, NEW_PASSWORD, account);
+    // The vault page broadcast nothing: the send waits for a tap (D38).
+    expect(fake.broadcasts).toEqual([]);
 
     // A popup reopened after the re-authentication finds the prepared send and its challenge.
     expect(await msg(popup, {type: 'wallet.preparedFor', account})).toMatchObject({ok: true, data: {intent, reauth: {challengeId}}});

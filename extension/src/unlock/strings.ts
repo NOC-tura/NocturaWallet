@@ -141,6 +141,16 @@ export const REAUTH = {
   checking: 'Checking…',
   cancelled: 'Send cancelled. Nothing was sent.',
   settingsConfirmed: 'Confirmed. You can close this tab.',
+  aboutSend: 'You are about to send',
+  aboutChange: 'You are about to change',
+  to: 'To',
+  cancelSend: 'Cancel send',
+  /** Controller addition — confirmed by the owner 2026-10-01 (plan review H1): #10 could not tell which send to drop. */
+  close: 'Close',
+  /** Controller addition — confirmed by the owner 2026-10-01 (plan review H1): no "cancelled" the page cannot vouch for. */
+  nothingSent: 'Nothing was sent. Start the send again from the Noctura icon.',
+  /** Controller addition — confirmed by the owner 2026-10-01 (plan 2): a settings confirmation (B1b-2b) is not a send. */
+  cancel: 'Cancel',
   networkFee: 'Network fee',
   nocturaFee: 'Noctura fee',
   newTokenAccount: 'New token account',
