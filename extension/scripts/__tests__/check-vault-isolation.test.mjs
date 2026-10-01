@@ -395,6 +395,40 @@ describe('vault isolation (HTML entries)', () => {
   });
 });
 
+// Fix round 4: the vault page's own HTML carries no CSS — no <style>, no style="", no <link> (the build
+// adds the vault page's stylesheets). Attributes are read case-insensitively, quoted or not.
+describe('vault isolation (the vault page’s HTML carries no CSS)', () => {
+  const ENTRY = '<script type="module" src="./src/unlock/main.ts"></script>';
+  const unlock = body => [f('unlock.html', `<!doctype html><html><head><meta charset="utf-8" /><title>Noctura</title></head><body>${body}${ENTRY}</body></html>`)];
+
+  it('the real unlock.html passes (positive control)', () => {
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+    expect(htmlViolations([f('unlock.html', readFileSync(join(root, 'unlock.html'), 'utf8'))])).toEqual([]);
+  });
+
+  it.each([
+    ['<link rel=stylesheet href="https://example.invalid/a.css">', 'unlock.html: has a <link> — the build adds the vault page’s stylesheets; its source links nothing'],
+    ['<LINK REL="Stylesheet" HREF=https://example.invalid/a.css>', 'unlock.html: has a <link> — the build adds the vault page’s stylesheets; its source links nothing'],
+    ["<link rel='preload' as='style' href='../src/app/app.css'>", 'unlock.html: has a <link> — the build adds the vault page’s stylesheets; its source links nothing'],
+    ['<style>input[value^="a"]{background:url(https://example.invalid/a)}</style>', 'unlock.html: has a <style> element — the vault page is styled by its three named sheets only'],
+    ['<svg><STYLE>.x{}</STYLE></svg>', 'unlock.html: has a <style> element — the vault page is styled by its three named sheets only'],
+    ['<p style="background:url(https://example.invalid/a)">x</p>', 'unlock.html: <p> has a style attribute — the vault page is styled by its three named sheets only'],
+    ['<p STYLE=color:red>x</p>', 'unlock.html: <p> has a style attribute — the vault page is styled by its three named sheets only'],
+    ['<p title="a"style="color:red">x</p>', 'unlock.html: <p> has a style attribute — the vault page is styled by its three named sheets only'],
+    ['<svg><symbol id="i" style=""></symbol></svg>', 'unlock.html: <symbol> has a style attribute — the vault page is styled by its three named sheets only'],
+  ])('refuses %s', (markup, message) => {
+    expect(htmlViolations(unlock(markup))).toEqual([message]);
+  });
+
+  it('text and attribute values that merely mention style or link are not markup (negative controls)', () => {
+    expect(htmlViolations(unlock('<p title="<style> and <link>">a style= b</p><input data-style="x" /><a href="unlock.html?mode=create">Create</a>'))).toEqual([]);
+  });
+
+  it('the rule is the vault page’s alone: popup.html is held by the CSP gate (negative control)', () => {
+    expect(htmlViolations([f('popup.html', '<link rel="icon" href="x.png"><script type="module" src="./src/app/popup.tsx"></script>')])).toEqual([]);
+  });
+});
+
 describe('vault isolation (which files the source rule reads)', () => {
   let root;
   const touch = rel => {
@@ -512,6 +546,29 @@ describe('vault isolation (built output)', () => {
     expect(bundleViolations(dir)).toEqual([`assets/base-1.js (reachable from unlock.html) uses reflection by a computed name (${name}) — the vault page sets text only`]);
   });
 
+  // Fix round 4: CSS built at run time, in a chunk the vault page loads.
+  it.each([
+    ['const s=document.createElement("style");s.textContent=t;document.head.append(s)', 'createElement("style"'],
+    ["document.createElement('LINK')", "createElement('LINK'"],
+    ['document.createElementNS(n,"style")', 'createElementNS(n,"style"'],
+    ['const s=new CSSStyleSheet;s.replaceSync(t);document.adoptedStyleSheets=[s]', 'CSSStyleSheet'],
+    ['document.adoptedStyleSheets=[t]', 'adoptedStyleSheets'],
+    ['e.sheet.insertRule(t)', 'insertRule'],
+    ['document.styleSheets[0]', 'styleSheets'],
+    ['e.setAttribute("style",t)', 'setAttribute("style"'],
+    ['e.cssText=t', 'cssText'],
+    ['e.attributeStyleMap.set("color",t)', 'attributeStyleMap'],
+  ])('fails when a chunk the vault page loads builds CSS at run time: %s', (code, name) => {
+    write('assets/base-1.js', `export const n=(e,t,n)=>{${code}};`);
+    expect(bundleViolations(dir)).toEqual([`assets/base-1.js (reachable from unlock.html) builds CSS at run time (${name}) — the vault page is styled by its built stylesheets only`]);
+  });
+
+  it('a computed createElement is the h() helper’s, and is not CSS (negative control); CSS in a popup-only chunk is not the vault page’s', () => {
+    write('assets/base-1.js', 'export const n=(e,t)=>{const r=document.createElement(e);return r.className=t,r};');
+    write('assets/send-1.js', 'export const t=e=>{const s=document.createElement("style");return s};');
+    expect(bundleViolations(dir)).toEqual([]);
+  });
+
   it('reflection with one literal, non-sink name is allowed — @noble/curves’ Field does it (negative control)', () => {
     write('assets/base-1.js', 'export const n=function(t){Object.defineProperty(this,"sqrt",{value:t.sqrt,enumerable:!0})};');
     expect(bundleViolations(dir)).toEqual([]);
@@ -538,10 +595,10 @@ describe('vault isolation (built output)', () => {
       'assets/popup-1.css': ['src/app/app.css'],
     },
     cssRefs: {
-      '../web/src/styles/design-system.css': {imports: [], urls: ['/fonts/Geist-Variable.woff2', '/fonts/GeistMono-Variable.woff2']},
-      'src/styles/design-ext.css': {imports: [], urls: []},
-      'src/unlock/unlock.css': {imports: [], urls: []},
-      'src/app/app.css': {imports: [], urls: []},
+      '../web/src/styles/design-system.css': {imports: [], urls: ['/fonts/Geist-Variable.woff2', '/fonts/GeistMono-Variable.woff2'], loaders: [], escapes: false},
+      'src/styles/design-ext.css': {imports: [], urls: [], loaders: [], escapes: false},
+      'src/unlock/unlock.css': {imports: [], urls: [], loaders: [], escapes: false},
+      'src/app/app.css': {imports: [], urls: [], loaders: [], escapes: false},
     },
   });
   const sheets = () => {
@@ -592,7 +649,7 @@ describe('vault isolation (built output)', () => {
     sheets();
     const map = MAP();
     map.chunks['assets/popup-1.js'].push('src/app/engine.ts');
-    map.cssRefs['src/app/app.css'] = {imports: ['./more.css'], urls: ['https://example.invalid/x.png']};
+    map.cssRefs['src/app/app.css'] = {imports: ['./more.css'], urls: ['https://example.invalid/x.png'], loaders: ['image-set'], escapes: true};
     expect(vaultPageModuleViolations(dir, map)).toEqual([]);
   });
 
@@ -603,7 +660,7 @@ describe('vault isolation (built output)', () => {
     ]],
     ['a new src/styles/zz.css', m => {
       m.css['assets/unlock-1.css'].push('src/styles/zz.css');
-      m.cssRefs['src/styles/zz.css'] = {imports: [], urls: []};
+      m.cssRefs['src/styles/zz.css'] = {imports: [], urls: [], loaders: [], escapes: false};
     }, ['assets/unlock-1.css (loaded by unlock.html) is built from "src/styles/zz.css" — only ../web/src/styles/design-system.css, src/styles/design-ext.css, src/unlock/unlock.css may style the vault page']],
     ['an @import in unlock.css (inlined: app.css is no module of its own)', m => {
       m.cssRefs['src/unlock/unlock.css'].imports.push('../app/app.css');
@@ -648,6 +705,72 @@ describe('vault isolation (built output)', () => {
     map.css['assets/extra-1.css'] = ['src/app/app.css'];
     expect(vaultPageModuleViolations(dir, map)).toEqual([
       'assets/extra-1.css (loaded by unlock.html) is built from "src/app/app.css" — only ../web/src/styles/design-system.css, src/styles/design-ext.css, src/unlock/unlock.css may style the vault page',
+    ]);
+  });
+
+  // Fix round 4: the built text is read by the tokenizer too, and the built page is parsed as HTML.
+  it.each([
+    ['a quote inside the quotes', 'input[value^="a"]{background:url("https://example.invalid/a\'b")}', ["assets/unlock-1.css (loaded by unlock.html) loads url(https://example.invalid/a'b) — only the bundled Geist faces may be loaded"]],
+    ['a comment inside url', '.x{background:ur/**/l(https://example.invalid/a)}', ['assets/unlock-1.css (loaded by unlock.html) loads url(https://example.invalid/a) — only the bundled Geist faces may be loaded']],
+    ['a backslash escape', '.x{background:\\75rl(https://example.invalid/a)}', ['assets/unlock-1.css (loaded by unlock.html) contains a backslash escape — an escape can spell url( or @import']],
+    ['image-set()', '.x{background:image-set("https://example.invalid/a" 1x)}', ['assets/unlock-1.css (loaded by unlock.html) uses image-set() — it loads URLs without url()']],
+    ['a comment inside @import', '@im/**/port "https://example.invalid/x.css";', ['assets/unlock-1.css (loaded by unlock.html) contains @import']],
+  ])('refuses, in the built text of a vault-page stylesheet, %s', (_name, css, expected) => {
+    sheets();
+    write('assets/unlock-1.css', css);
+    expect(vaultPageModuleViolations(dir, MAP())).toEqual(expected);
+  });
+
+  const page = head => write('unlock.html', `<!doctype html><html><head>${head}<script type="module" crossorigin src="./assets/unlock-1.js"></script></head><body><main id="vault"></main></body></html>`);
+  it.each([
+    ['an unquoted rel to another origin', '<link rel=stylesheet href="https://example.invalid/a.css">', ['unlock.html links a stylesheet from another origin (https://example.invalid/a.css) — only the build’s own stylesheets']],
+    ['a protocol-relative href', '<LINK REL=STYLESHEET HREF=//example.invalid/a.css>', ['unlock.html links a stylesheet from another origin (//example.invalid/a.css) — only the build’s own stylesheets']],
+    ['a stylesheet that is not in the build', '<link rel="alternate stylesheet" href="./assets/nope-1.css">', ['unlock.html imports ./assets/nope-1.css, which is not a built file']],
+    ['a <link> that is not a stylesheet', '<link rel=preload as=style href="./assets/unlock-1.css">', ['unlock.html has a <link rel="preload"> — only the build’s own stylesheets may be linked']],
+    ['a <style> element', '<style>input[value^="a"]{background:url(https://example.invalid/a)}</style>', ['unlock.html: has a <style> element — the vault page is styled by its built stylesheets only']],
+    ['a style attribute', '<meta name="x" STYLE=x>', ['unlock.html: <meta> has a style attribute — the vault page is styled by its built stylesheets only']],
+  ])('refuses, in the built unlock.html, %s', (_name, head, expected) => {
+    sheets();
+    page(head);
+    expect(vaultPageModuleViolations(dir, MAP())).toEqual(expected);
+  });
+
+  it('reads an unquoted stylesheet link the build makes (negative control) and checks what it was built from', () => {
+    sheets();
+    page('<link rel=stylesheet crossorigin href=./assets/unlock-1.css>');
+    expect(vaultPageModuleViolations(dir, MAP())).toEqual([]);
+    write('assets/extra-1.css', '.x{}');
+    page('<link rel=stylesheet href=./assets/extra-1.css>');
+    const map = MAP();
+    map.css['assets/extra-1.css'] = ['src/app/app.css'];
+    expect(vaultPageModuleViolations(dir, map)).toEqual([
+      'assets/extra-1.css (loaded by unlock.html) is built from "src/app/app.css" — only ../web/src/styles/design-system.css, src/styles/design-ext.css, src/unlock/unlock.css may style the vault page',
+    ]);
+  });
+
+  it.each(['pcss', 'scss', 'less', 'styl'])('a .%s sheet in the vault page’s chunk or stylesheet is refused', ext => {
+    sheets();
+    const id = `src/unlock/zz.${ext}`;
+    const map = MAP();
+    map.chunks['assets/unlock-1.js'].push(id);
+    map.css['assets/unlock-1.css'].push(id);
+    map.cssRefs[id] = {imports: ['../app/app.css'], urls: [], loaders: [], escapes: false};
+    expect(vaultPageModuleViolations(dir, map)).toEqual([
+      `assets/unlock-1.js (reachable from unlock.html) carries ${JSON.stringify(id)} — only vault-page code and its five packages may be bundled with the seed`,
+      `assets/unlock-1.css (loaded by unlock.html) is built from ${JSON.stringify(id)} — only ../web/src/styles/design-system.css, src/styles/design-ext.css, src/unlock/unlock.css may style the vault page`,
+      `assets/unlock-1.css (loaded by unlock.html): ${id} @imports ../app/app.css — the vault page's sheets import nothing`,
+    ]);
+  });
+
+  it('refuses a raw source that loads a URL without url(), or escapes, and a record without those fields', () => {
+    sheets();
+    const map = MAP();
+    map.cssRefs['src/unlock/unlock.css'] = {imports: [], urls: [], loaders: ['image-set'], escapes: true};
+    map.cssRefs['src/styles/design-ext.css'] = {imports: [], urls: []};
+    expect(vaultPageModuleViolations(dir, map)).toEqual([
+      'assets/base-1.css (loaded by unlock.html): no source record for src/styles/design-ext.css — what it imports is unknown',
+      'assets/unlock-1.css (loaded by unlock.html): src/unlock/unlock.css uses image-set() — it loads URLs without url()',
+      'assets/unlock-1.css (loaded by unlock.html): src/unlock/unlock.css contains a backslash escape — an escape can spell url( or @import',
     ]);
   });
 
@@ -1015,6 +1138,41 @@ describe('the vault page import allowlist', () => {
     expect(vaultPageViolations(read, exists)).toEqual(expected);
   });
 
+  // Fix round 4: the sheets are read by a tokenizer (scripts/css-scan.mjs), and every CSS language Vite
+  // compiles is a stylesheet.
+  it.each([
+    ['a quote inside the quotes of a url()', {'src/unlock/unlock.css': '.x{background:url("https://example.invalid/a\'b")}'}, '', [
+      "src/unlock/unlock.css: the vault page's stylesheet loads url(https://example.invalid/a'b) — only the bundled Geist faces may be loaded",
+    ]],
+    ['a comment inside url', {'src/unlock/unlock.css': '.x{background:ur/**/l(https://example.invalid/a)}'}, '', [
+      "src/unlock/unlock.css: the vault page's stylesheet loads url(https://example.invalid/a) — only the bundled Geist faces may be loaded",
+    ]],
+    ['a comment inside @import', {'src/unlock/unlock.css': "@im/**/port '../app/app.css';"}, '', [
+      "src/unlock/unlock.css: the vault page's stylesheet uses @import — every sheet it loads is named in VAULT_PAGE_SHEETS",
+    ]],
+    ['cross-fade()', {'src/unlock/unlock.css': '.x{background:cross-fade("https://example.invalid/a", "b")}'}, '', [
+      "src/unlock/unlock.css: the vault page's stylesheet uses cross-fade() — it loads URLs without url()",
+    ]],
+    ['a Geist url in design-system.css spelled with a quote inside (not one of the two exactly)', {
+      '../web/src/styles/design-system.css': "@font-face{src:url(\"/fonts/Geist-Variable.woff2'\")}",
+    }, '', [
+      "../web/src/styles/design-system.css: the vault page's stylesheet loads url(/fonts/Geist-Variable.woff2') — only the bundled Geist faces may be loaded",
+    ]],
+  ])('refuses %s', (_name, files, extra, expected) => {
+    const [read, exists] = tree({'src/unlock/main.ts': STYLED + extra, ...SHEETS, ...files});
+    expect(vaultPageViolations(read, exists)).toEqual(expected);
+  });
+
+  it.each(['pcss', 'postcss', 'scss', 'sass', 'less', 'styl', 'stylus', 'sss'])('a .%s sheet reachable from the vault page is refused outright, and read', ext => {
+    const path = `src/unlock/zz.${ext}`;
+    const [read, exists] = tree({'src/unlock/main.ts': `${STYLED}\nimport './zz.${ext}';`, ...SHEETS, [path]: "@import '../app/app.css';"});
+    expect(vaultPageViolations(read, exists)).toEqual([
+      `the vault page reaches ${path} — only vault-page code may be bundled with the seed`,
+      `${path}: a .${ext} stylesheet — only the three named .css sheets may reach the vault page, never another CSS language Vite compiles`,
+      `${path}: the vault page's stylesheet uses @import — every sheet it loads is named in VAULT_PAGE_SHEETS`,
+    ]);
+  });
+
   // Fix round 3 (N2): an inline worker is invisible to the module map; the source refuses its query.
   it('refuses an inline worker import (?worker&inline) — the query is never a plain specifier', () => {
     const [read, exists] = tree({'src/unlock/main.ts': "import KdfWorker from '../vault/kdf.worker?worker&inline';", 'src/vault/kdf.worker.ts': ''});
@@ -1170,6 +1328,52 @@ describe('plan 2: the vault-page screens stay inside the boundary', () => {
     ['frame.src = URL.createObjectURL(b);', 'creates an object URL'],
   ])('the vault page may not reach a sink by another spelling: %s', (code, what) => {
     expect(sourceViolations([f('src/unlock/view/x.ts', code)])).toContain(WHY(what));
+  });
+
+  // Fix round 4: no CSS is built at run time in the vault page — no <style>/<link> element, no constructed
+  // or adopted sheet, no rule inserted, no style attribute, no declaration text. (The CSP refuses an inline
+  // <style> and a remote sheet in the browser; these rules are the backstop.)
+  const CSS_WHY = what => `src/unlock/view/x.ts: ${what} — the vault page is styled by its three named sheets only`;
+  it.each([
+    ["const s = document.createElement('style'); s.textContent = css; document.head.append(s);", 'creates a <style> or <link> element'],
+    ['const s = document.createElement("STYLE");', 'creates a <style> or <link> element'],
+    ["const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = u;", 'creates a <style> or <link> element'],
+    ["const s = document.createElementNS('http://www.w3.org/2000/svg', 'style');", 'creates a <style> or <link> element'],
+    ["const s = h('style', '', css);", 'creates a <style> or <link> element'],
+    ['const s = h(`Link`);', 'creates a <style> or <link> element'],
+    ['const sh = new CSSStyleSheet();', 'builds a stylesheet at run time'],
+    ['sh.replaceSync(css);', 'builds a stylesheet at run time'],
+    ['document.adoptedStyleSheets = [sh];', 'builds a stylesheet at run time'],
+    ['document.styleSheets[0];', 'builds a stylesheet at run time'],
+    ['link.sheet.replace(css);', 'builds a stylesheet at run time'],
+    ['sheet.insertRule(r);', 'builds a stylesheet at run time'],
+    ['const r = CSSRule;', 'builds a stylesheet at run time'],
+    ["el.setAttribute('style', s);", 'sets a style attribute'],
+    ['el.setAttribute("STYLE", s);', 'sets a style attribute'],
+    ["el.setAttributeNS(null, 'style', s);", 'sets a style attribute'],
+    ['el.cssText = s;', 'writes CSS declarations'],
+    ["el.attributeStyleMap.set('background-image', v);", 'writes CSS declarations'],
+    ['const e = document.createElement(tag);', 'creates an element by a computed tag'],
+    ["const e = document.createElementNS(ns, 'svg' + x);", 'creates an element by a computed tag'],
+    ['const e = h(tag);', 'creates an element by a computed tag'],
+  ])('the vault page may not build CSS at run time: %s', (code, what) => {
+    expect(sourceViolations([f('src/unlock/view/x.ts', code)])).toContain(CSS_WHY(what));
+  });
+
+  it('dom.ts’s h() may pass its own tag to createElement; every caller of h names its tag (negative control)', () => {
+    const dom = [
+      'export function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls = \'\', text?: string): HTMLElementTagNameMap[K] {',
+      '  const el = document.createElement(tag);',
+      '  return el;',
+      '}',
+    ].join('\n');
+    expect(sourceViolations([f('src/unlock/view/dom.ts', dom)])).toEqual([]);
+    // The same body anywhere else, or under another name, is a computed tag.
+    expect(sourceViolations([f('src/unlock/view/x.ts', dom)])).toContain(CSS_WHY('creates an element by a computed tag'));
+    expect(sourceViolations([f('src/unlock/view/dom.ts', dom.replace('function h<', 'function make<'))])).toEqual([
+      'src/unlock/view/dom.ts: creates an element by a computed tag — the vault page is styled by its three named sheets only',
+    ]);
+    expect(sourceViolations([f('src/unlock/view/x.ts', "const a = h('div', 'x'); const b = document.createElement('li'); el.classList.toggle('is-held', on); el.hidden = true;")])).toEqual([]);
   });
 
   it('what the vault page’s own code writes is allowed: destructuring, typed arrays, tuples, plain-named brackets, literal attributes (negative controls)', () => {

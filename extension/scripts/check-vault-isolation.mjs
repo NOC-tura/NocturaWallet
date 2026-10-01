@@ -20,11 +20,15 @@
 // Limits, deliberate: module references are read with the TypeScript parser (comments and strings
 // are not code); a computed specifier (`import('../' + 'vault/x')`) is out of reach of any static check
 // and is refused in the vault page's own walk. The bundle markers and the vault page's chunk module map
-// (dist/app.modules.json, vaultPageModuleViolations) are the backstop.
+// (dist/app.modules.json, vaultPageModuleViolations) are the backstop. For CSS on the vault page the
+// boundary is the browser's (the extension CSP: style-src, img-src and font-src 'self', fix round 4); the
+// CSS rules here — the sheets read by scripts/css-scan.mjs, the page's HTML parsed, the code's runtime
+// CSS refused — are the backstop that names an escape before a reviewer has to find it.
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import {dirname, join, posix, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import ts from 'typescript';
+import {isStylesheet, scanCss} from './css-scan.mjs';
 
 const VAULT_ALLOWED = /^src\/(unlock|vault)\//;
 // The vault page's own modules (unlockFlow, orchestrate, main) hold the seed while they run:
@@ -105,6 +109,53 @@ export const MARKUP_EVASIONS = [
   [/\bresponseType\b/, 'sets an XHR responseType'],
   [/\bcreateObjectURL\b/, 'creates an object URL'],
 ];
+
+// No CSS is built at run time in src/unlock (fix round 4): a stylesheet on the password page is an
+// exfiltration surface (an attribute selector on an input's value plus a url()). The CSP refuses an inline
+// <style> and a remote sheet in the browser; these rules are the backstop, and the built chunks the vault
+// page loads are checked too (BUILT_STYLE). A sheet object cannot be reached at all (`.sheet`,
+// `styleSheets`, `CSSStyleSheet`), so neither can its `replace()`.
+const CSS_ONLY = 'the vault page is styled by its three named sheets only';
+export const RUNTIME_CSS = [
+  [/\b(?:createElementNS\s*\(\s*[^,()]*,\s*|createElement\s*\(\s*|h\s*\(\s*)(['"`])(?:style|link)\1/i, 'creates a <style> or <link> element'],
+  [/\b(?:CSSStyleSheet|CSSRule|adoptedStyleSheets|styleSheets|insertRule|replaceSync)\b|\.\s*sheet\b/, 'builds a stylesheet at run time'],
+  [/\bsetAttribute(?:NS)?\s*\(\s*(?:[^,()]*,\s*)?(['"`])style\1/i, 'sets a style attribute'],
+  [/\b(?:cssText|attributeStyleMap)\b/, 'writes CSS declarations'],
+];
+
+/**
+ * Does the module create an element whose tag is not one plain string (fix round 4)? A computed tag can
+ * be 'style'. The one exception is structural, not a file allowance: the DOM helper `h` in
+ * src/unlock/view/dom.ts passes its own first parameter to createElement — and every call of `h` must
+ * name its tag (a computed tag in an `h(…)` call is refused here, a literal 'style'/'link' by RUNTIME_CSS).
+ */
+function computedTag(text, path) {
+  let found = false;
+  const ownTag = (call, arg) => {
+    if (path !== 'src/unlock/view/dom.ts' || !ts.isIdentifier(arg)) return false;
+    let fn = call.parent;
+    while (fn !== undefined && !ts.isFunctionLike(fn)) fn = fn.parent;
+    if (fn === undefined || !ts.isFunctionDeclaration(fn) || fn.name?.text !== 'h') return false;
+    const first = fn.parameters[0];
+    return first !== undefined && ts.isIdentifier(first.name) && first.name.text === arg.text;
+  };
+  const visit = node => {
+    if (found) return;
+    if (ts.isCallExpression(node)) {
+      const callee = node.expression;
+      const name = ts.isIdentifier(callee) ? callee.text : ts.isPropertyAccessExpression(callee) ? callee.name.text : '';
+      const at = name === 'createElementNS' ? 1 : name === 'createElement' || name === 'h' ? 0 : -1;
+      if (at >= 0) {
+        const arg = node.arguments[at];
+        const literal = arg !== undefined && (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg));
+        if (!literal && !(name === 'createElement' && ownTag(node, arg))) found = true;
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(parse(text, path));
+  return found;
+}
 
 const TEXT_HTML = /text\s*\/\s*html/i;
 /**
@@ -290,22 +341,26 @@ const VAULT_PAGE_FILES = [
 export const VAULT_PAGE_SHEETS = ['../web/src/styles/design-system.css', 'src/styles/design-ext.css', 'src/unlock/unlock.css'];
 // Every url() a vault-page sheet may contain, exactly: the two bundled Geist faces, in design-system.css
 // (where they resolve is pinned by the font gate, scripts/check-fonts.mjs). Any other url(), any
-// @import, any image-set() and any backslash escape (`\\75rl(` spells url) is refused.
+// @import, any other function that loads a URL (image-set(), image(), cross-fade(), src()) and any
+// backslash escape (`\\75rl(` spells url) is refused.
 export const VAULT_PAGE_CSS_URLS = {'../web/src/styles/design-system.css': ['/fonts/Geist-Variable.woff2', '/fonts/GeistMono-Variable.woff2']};
-const isSheet = path => /\.css$/i.test(path);
+// Every CSS language Vite compiles is a stylesheet (fix round 4: `src/unlock/zz.pcss` with an @import
+// of app.css was neither walked as a sheet nor named in the map, and Vite inlined app.css into the vault
+// page's CSS); any sheet that is not one of the three named .css files is refused outright.
+const isSheet = isStylesheet;
 const vaultPageFileAllowed = path => (isSheet(path) ? VAULT_PAGE_SHEETS.includes(path) : VAULT_PAGE_FILES.some(re => re.test(path)));
 
-/** What a vault-page stylesheet may not contain, from its source (comments removed). */
+/** What a vault-page stylesheet may not contain, from its source (read by scripts/css-scan.mjs). */
 function sheetViolations(path, text) {
   const out = [];
-  const css = text.replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const css = scanCss(text);
   const allowed = VAULT_PAGE_CSS_URLS[path] ?? [];
-  if (/@import\b/i.test(css)) out.push(`${path}: the vault page's stylesheet uses @import — every sheet it loads is named in VAULT_PAGE_SHEETS`);
-  for (const m of css.matchAll(/url\(\s*(['"]?)([^'")]*)\1\s*\)/gi)) {
-    if (!allowed.includes(m[2] ?? '')) out.push(`${path}: the vault page's stylesheet loads url(${m[2]}) — only the bundled Geist faces may be loaded`);
+  if (css.imports.length > 0) out.push(`${path}: the vault page's stylesheet uses @import — every sheet it loads is named in VAULT_PAGE_SHEETS`);
+  for (const url of css.urls) {
+    if (!allowed.includes(url)) out.push(`${path}: the vault page's stylesheet loads url(${url}) — only the bundled Geist faces may be loaded`);
   }
-  if (/image-set\s*\(/i.test(css)) out.push(`${path}: the vault page's stylesheet uses image-set() — it loads URLs without url()`);
-  if (css.includes('\\')) out.push(`${path}: the vault page's stylesheet uses a backslash escape — an escape can spell url( or @import`);
+  for (const fn of css.loaders) out.push(`${path}: the vault page's stylesheet uses ${fn}() — it loads URLs without url()`);
+  if (css.escapes) out.push(`${path}: the vault page's stylesheet uses a backslash escape — an escape can spell url( or @import`);
   return out;
 }
 export const VAULT_PAGE_PACKAGES = ['@noble/curves', '@noble/hashes', '@scure/base', '@scure/bip39', 'micro-key-producer'];
@@ -331,7 +386,9 @@ export function vaultPageViolations(read, exists, entry = VAULT_PAGE_ENTRY) {
     if (!vaultPageFileAllowed(path)) out.push(`the vault page reaches ${path} — only vault-page code may be bundled with the seed`);
     if (isSheet(path)) {
       // A stylesheet may import nothing and load only the fonts (fix round 3): @import is refused, so
-      // there is nothing in it to follow.
+      // there is nothing in it to follow. A sheet in another CSS language is refused outright (round 4).
+      const lang = /\.([^./]+)$/.exec(path)?.[1] ?? '';
+      if (lang.toLowerCase() !== 'css') out.push(`${path}: a .${lang} stylesheet — only the three named .css sheets may reach the vault page, never another CSS language Vite compiles`);
       out.push(...sheetViolations(path, read(path) ?? ''));
       continue;
     }
@@ -396,6 +453,8 @@ export function sourceViolations(files) {
       if (SETS_MARKUP.test(text)) out.push(`${path}: writes markup — the vault page sets text only (textContent)`);
       for (const [re, what] of MARKUP_EVASIONS) if (re.test(text)) out.push(`${path}: ${what} — the vault page sets text only (textContent)`);
       if (htmlTyped(text, path)) out.push(`${path}: names the text/html type — the vault page sets text only (textContent)`);
+      for (const [re, what] of RUNTIME_CSS) if (re.test(text)) out.push(`${path}: ${what} — ${CSS_ONLY}`);
+      if (computedTag(text, path)) out.push(`${path}: creates an element by a computed tag — ${CSS_ONLY}`);
     }
     if (!BACKGROUND_OWNED_ALLOWED.test(path)) {
       for (const key of BACKGROUND_OWNED_KEYS) if (text.includes(key)) out.push(`${path}: names ${key}, which only the background may write`);
@@ -408,13 +467,90 @@ export function sourceViolations(files) {
 }
 
 /**
+ * The start tags of an HTML document, read as the HTML tokenizer reads them (fix round 4): the tag name
+ * and the attribute names lower-cased, a value quoted ('…', "…") or unquoted, an attribute straight after
+ * a quoted value (`title="a"style="…"`) read as the next attribute. Comments are skipped. A tag inside a
+ * raw-text element (`<title><style>`) is still reported: fail-closed.
+ * @returns {{name: string, attrs: Map<string, string>}[]}
+ */
+export function htmlTags(html) {
+  const tags = [];
+  const n = html.length;
+  let i = 0;
+  while (i < n) {
+    const lt = html.indexOf('<', i);
+    if (lt < 0) break;
+    if (html.startsWith('<!--', lt)) {
+      const end = html.indexOf('-->', lt + 4);
+      i = end < 0 ? n : end + 3;
+      continue;
+    }
+    const open = /^<([a-zA-Z][^\s/>]*)/.exec(html.slice(lt, lt + 256));
+    if (open === null) {
+      i = lt + 1;
+      continue;
+    }
+    const attrs = new Map();
+    let j = lt + open[0].length;
+    while (j < n) {
+      while (j < n && /[\s/]/.test(html[j])) j += 1;
+      if (j >= n || html[j] === '>') {
+        j += 1;
+        break;
+      }
+      let k = j + 1;
+      while (k < n && !/[\s/>=]/.test(html[k])) k += 1;
+      const name = html.slice(j, k).toLowerCase();
+      j = k;
+      while (j < n && /\s/.test(html[j])) j += 1;
+      let value = '';
+      if (html[j] === '=') {
+        j += 1;
+        while (j < n && /\s/.test(html[j])) j += 1;
+        if (html[j] === '"' || html[j] === "'") {
+          const end = html.indexOf(html[j], j + 1);
+          value = html.slice(j + 1, end < 0 ? n : end);
+          j = end < 0 ? n : end + 1;
+        } else {
+          let e = j;
+          while (e < n && !/[\s>]/.test(html[e])) e += 1;
+          value = html.slice(j, e);
+          j = e;
+        }
+      }
+      if (!attrs.has(name)) attrs.set(name, value);
+    }
+    tags.push({name: open[1].toLowerCase(), attrs});
+    i = j;
+  }
+  return tags;
+}
+
+/** CSS in the vault page's HTML: a <style> element or a style attribute anywhere (fix round 4). */
+function inlineCss(path, html, why) {
+  const out = [];
+  for (const tag of htmlTags(html)) {
+    if (tag.name === 'style') out.push(`${path}: has a <style> element — ${why}`);
+    if (tag.attrs.has('style')) out.push(`${path}: <${tag.name}> has a style attribute — ${why}`);
+  }
+  return out;
+}
+
+/**
  * Every `<script>` in the root HTML pages must be `src=` its own page's entry (ENTRIES). A page
  * with no entry of its own may load nothing; an inline script (Vite bundles an inline module
  * too) or a src it cannot read fails closed.
+ *
+ * The vault page's source (unlock.html) carries no CSS at all (fix round 4): no <style>, no style
+ * attribute, no <link> — the build adds its stylesheets.
  */
 export function htmlViolations(pages) {
   const out = [];
   for (const {path, text} of pages) {
+    if (path === 'unlock.html') {
+      out.push(...inlineCss(path, text, CSS_ONLY));
+      if (htmlTags(text).some(t => t.name === 'link')) out.push('unlock.html: has a <link> — the build adds the vault page’s stylesheets; its source links nothing');
+    }
     const own = ENTRIES[path];
     for (const m of text.matchAll(/<script\b[^>]*>/gi)) {
       const src = /\bsrc\s*=\s*(["'])([^"']*)\1/i.exec(m[0]);
@@ -480,6 +616,11 @@ export const BUILT_MARKUP =
 // BUILT_MARKUP by name.
 export const BUILT_REFLECTION =
   /\b(?:defineProperty|getOwnPropertyDescriptor)\b(?!\s*\(\s*[\w$.]+\s*,\s*(["'`])[\w$]+\1\s*[,)])|\b(?:__lookupSetter__|__defineSetter__|__lookupGetter__|__defineGetter__)\b(?!\s*\(\s*(["'`])[\w$]+\2\s*[,)])|\b(?:defineProperties|getOwnPropertyDescriptors)\b/;
+// CSS built at run time in a chunk the vault page loads (fix round 4): a <style> or <link> element, a
+// constructed or adopted sheet, an inserted rule, a style attribute, declaration text. A computed
+// createElement is the h() helper's (dom.ts) and is not refused here; the source rule checks its callers.
+export const BUILT_STYLE =
+  /createElement(?:NS)?\(\s*(?:[^,()]*,\s*)?(["'`])(?:style|link)\1|\b(?:CSSStyleSheet|CSSRule|adoptedStyleSheets|styleSheets|insertRule|replaceSync|cssText|attributeStyleMap)\b|setAttribute(?:NS)?\(\s*(?:[^,()]*,\s*)?(["'`])style\2/i;
 const BUILT_URL = /\bnew\s+URL\s*\(\s*(['"`])([^'"`$]+)\1\s*,\s*import\.meta\.url/g;
 
 function builtReferences(text) {
@@ -568,6 +709,8 @@ export function bundleViolations(distApp) {
           if (text.includes(REACT_MARKER)) out.push(`${file} (reachable from unlock.html) contains React — the vault page must stay plain DOM`);
           const sink = BUILT_MARKUP.exec(text);
           if (sink) out.push(`${file} (reachable from unlock.html) names a markup sink (${sink[0]}) — the vault page sets text only`);
+          const css = BUILT_STYLE.exec(text);
+          if (css) out.push(`${file} (reachable from unlock.html) builds CSS at run time (${css[0]}) — the vault page is styled by its built stylesheets only`);
           const reflect = BUILT_REFLECTION.exec(text);
           if (reflect) out.push(`${file} (reachable from unlock.html) uses reflection by a computed name (${reflect[0]}) — the vault page sets text only`);
         }
@@ -642,15 +785,24 @@ export function vaultPageModuleViolations(distApp, modules) {
   const seen = new Set();
   const sheets = new Set();
   const page = existsSync(join(distApp, 'unlock.html')) ? readFileSync(join(distApp, 'unlock.html'), 'utf8') : '';
-  for (const m of page.matchAll(/<link\b[^>]*\brel\s*=\s*["']stylesheet["'][^>]*>/gi)) {
-    const href = /\bhref\s*=\s*["']([^"']+)["']/i.exec(m[0])?.[1];
-    if (href === undefined) continue;
-    const r = resolveBuilt(distApp, 'unlock.html', href);
-    if (r.problem) problems.add(r.problem);
-    else sheets.add(r.target);
+  // The built page is parsed as HTML (fix round 4: an unquoted `rel=stylesheet` was not read). It carries
+  // no inline CSS, and every <link> is a stylesheet of the build's own.
+  const tags = htmlTags(page);
+  out.push(...inlineCss('unlock.html', page, 'the vault page is styled by its built stylesheets only'));
+  for (const tag of tags.filter(t => t.name === 'link')) {
+    const rel = (tag.attrs.get('rel') ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+    const href = (tag.attrs.get('href') ?? '').trim();
+    if (!rel.includes('stylesheet')) out.push(`unlock.html has a <link rel="${rel.join(' ')}"> — only the build’s own stylesheets may be linked`);
+    else if (href === '') out.push('unlock.html has a stylesheet <link> without an href — only the build’s own stylesheets may be linked');
+    else if (/^[a-z][a-z0-9+.-]*:|^\/\//i.test(href)) out.push(`unlock.html links a stylesheet from another origin (${href}) — only the build’s own stylesheets`);
+    else {
+      const r = resolveBuilt(distApp, 'unlock.html', href);
+      if (r.problem) problems.add(r.problem);
+      else sheets.add(r.target);
+    }
   }
-  for (const m of page.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/g)) {
-    const r = resolveBuilt(distApp, 'unlock.html', m[1]);
+  for (const src of tags.filter(t => t.name === 'script' && t.attrs.has('src')).map(t => t.attrs.get('src') ?? '')) {
+    const r = resolveBuilt(distApp, 'unlock.html', src);
     if (r.problem) {
       problems.add(r.problem);
       continue;
@@ -686,20 +838,27 @@ export function vaultPageModuleViolations(distApp, modules) {
       const path = id.replace(/[?#].*$/, '');
       from.add(path);
       if (!VAULT_PAGE_SHEETS.includes(path)) out.push(`${sheet} (loaded by unlock.html) is built from ${JSON.stringify(id)} — only ${VAULT_PAGE_SHEETS.join(', ')} may style the vault page`);
+      // The raw source as scripts/css-scan.mjs read it (vite.config.ts): every field, or no record at all.
       const refs = modules.cssRefs[id] ?? modules.cssRefs[path];
-      if (refs === undefined) {
+      if (refs === undefined || !Array.isArray(refs.imports) || !Array.isArray(refs.urls) || !Array.isArray(refs.loaders) || typeof refs.escapes !== 'boolean') {
         out.push(`${sheet} (loaded by unlock.html): no source record for ${id} — what it imports is unknown`);
         continue;
       }
       for (const spec of refs.imports) out.push(`${sheet} (loaded by unlock.html): ${path} @imports ${spec} — the vault page's sheets import nothing`);
       for (const url of refs.urls) if (!(VAULT_PAGE_CSS_URLS[path] ?? []).includes(url)) out.push(`${sheet} (loaded by unlock.html): ${path} loads url(${url}) — only the bundled Geist faces may be loaded`);
+      for (const fn of refs.loaders) out.push(`${sheet} (loaded by unlock.html): ${path} uses ${fn}() — it loads URLs without url()`);
+      if (refs.escapes) out.push(`${sheet} (loaded by unlock.html): ${path} contains a backslash escape — an escape can spell url( or @import`);
     }
-    const built = existsSync(join(distApp, sheet)) ? readFileSync(join(distApp, sheet), 'utf8') : '';
-    if (/@import\b/i.test(built)) out.push(`${sheet} (loaded by unlock.html) contains @import`);
-    for (const u of built.matchAll(/url\(\s*(['"]?)([^'")]*)\1\s*\)/gi)) {
-      const target = posix.normalize(posix.join(posix.dirname(sheet), u[2] ?? ''));
-      if (target !== 'fonts/Geist-Variable.woff2' && target !== 'fonts/GeistMono-Variable.woff2') out.push(`${sheet} (loaded by unlock.html) loads url(${u[2]}) — only the bundled Geist faces may be loaded`);
+    // The built text, read by the same tokenizer (fix round 4): no @import, no backslash, no URL loaded
+    // without url(), and every url() resolves to one of the two Geist faces.
+    const built = scanCss(existsSync(join(distApp, sheet)) ? readFileSync(join(distApp, sheet), 'utf8') : '');
+    if (built.imports.length > 0) out.push(`${sheet} (loaded by unlock.html) contains @import`);
+    for (const url of built.urls) {
+      const target = posix.normalize(posix.join(posix.dirname(sheet), url));
+      if (target !== 'fonts/Geist-Variable.woff2' && target !== 'fonts/GeistMono-Variable.woff2') out.push(`${sheet} (loaded by unlock.html) loads url(${url}) — only the bundled Geist faces may be loaded`);
     }
+    for (const fn of built.loaders) out.push(`${sheet} (loaded by unlock.html) uses ${fn}() — it loads URLs without url()`);
+    if (built.escapes) out.push(`${sheet} (loaded by unlock.html) contains a backslash escape — an escape can spell url( or @import`);
   }
   for (const want of VAULT_PAGE_SHEETS) if (!from.has(want)) out.push(`INCONCLUSIVE: no stylesheet unlock.html loads is built from ${want} — the map does not describe the vault page's styles`);
   return [...out, ...problems];
@@ -754,5 +913,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     for (const p of problems) console.error(p);
     process.exit(1);
   }
-  console.log('vault isolation ok: sources, built popup/background and both manifests carry no path to the vault; no page reaches storage.session; every module bundled into the vault page is vault-page code or one of its five packages, and its stylesheets are the three named sheets, importing nothing and loading only the Geist faces');
+  console.log('vault isolation ok: sources, built popup/background and both manifests carry no path to the vault; no page reaches storage.session; every module bundled into the vault page is vault-page code or one of its five packages, and its stylesheets are the three named sheets, importing nothing and loading only the Geist faces; its HTML carries no inline CSS and links only its built sheets, and its code builds no CSS at run time');
 }

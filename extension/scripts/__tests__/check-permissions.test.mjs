@@ -1,4 +1,4 @@
-import {REQUIRED_CONNECT_SRC, comparePermissions, connectSrcViolations} from '../check-permissions.mjs';
+import {REQUIRED_CONNECT_SRC, REQUIRED_CSP, comparePermissions, connectSrcViolations, cspViolations} from '../check-permissions.mjs';
 import {EXTENSION_CSP, MIN_CHROME_VERSION, MIN_FIREFOX_VERSION, render} from '../../manifest/source.mjs';
 
 describe('permissions gate', () => {
@@ -43,6 +43,57 @@ describe('permissions gate', () => {
     expect(connectSrcViolations("script-src 'self'; connect-src 'self' https://api.noc-tura.io")).toEqual([
       'connect-src is "\'self\' https://api.noc-tura.io", want exactly "https://api.noc-tura.io"',
     ]);
+  });
+
+  // Controller hardening (2026-10-01): every directive is pinned here, independent of EXTENSION_CSP, so a
+  // loosened source.mjs fails too — not just a manifest that drifted from it.
+  it('pins every directive of the extension CSP, independent of source.mjs', () => {
+    expect(REQUIRED_CSP).toEqual([
+      ['default-src', "'self'"],
+      ['script-src', "'self'"],
+      ['object-src', "'self'"],
+      ['style-src', "'self'"],
+      ['img-src', "'self' data:"],
+      ['font-src', "'self'"],
+      ['connect-src', 'https://api.noc-tura.io'],
+      ['base-uri', "'none'"],
+      ['form-action', "'none'"],
+      ['frame-ancestors', "'none'"],
+    ]);
+    expect(cspViolations(EXTENSION_CSP)).toEqual([]);
+    expect(EXTENSION_CSP).toBe(REQUIRED_CSP.map(([d, v]) => `${d} ${v}`).join('; '));
+  });
+
+  it.each(['default-src', 'style-src', 'img-src', 'font-src', 'base-uri', 'form-action', 'frame-ancestors', 'script-src', 'object-src'])(
+    'refuses a CSP without %s (negative control)',
+    name => {
+      const csp = EXTENSION_CSP.split('; ').filter(d => !d.startsWith(`${name} `)).join('; ');
+      const want = REQUIRED_CSP.find(([d]) => d === name)[1];
+      expect(cspViolations(csp)).toEqual([`${name} is "(missing)", want exactly "${want}"`]);
+      const m = render('firefox');
+      m.content_security_policy = {extension_pages: csp};
+      expect(comparePermissions(m, 'firefox')).toEqual([`CSP differs: ${csp}`, `${name} is "(missing)", want exactly "${want}"`]);
+    },
+  );
+
+  it.each([
+    ["style-src 'self' 'unsafe-inline'", 'style-src', "'self' 'unsafe-inline'"],
+    ["style-src 'self' https://fonts.googleapis.com", 'style-src', "'self' https://fonts.googleapis.com"],
+    ['img-src *', 'img-src', '*'],
+    ["img-src 'self' data: https:", 'img-src', "'self' data: https:"],
+    ["font-src 'self' data:", 'font-src', "'self' data:"],
+    ["default-src *", 'default-src', '*'],
+    ["base-uri 'self'", 'base-uri', "'self'"],
+  ])('refuses a loosened directive: %s', (directive, name, got) => {
+    const csp = EXTENSION_CSP.split('; ').map(d => (d.startsWith(`${name} `) ? directive : d)).join('; ');
+    const want = REQUIRED_CSP.find(([d]) => d === name)[1];
+    expect(cspViolations(csp)).toEqual([`${name} is "${got}", want exactly "${want}"`]);
+  });
+
+  it('refuses an extra or a repeated directive', () => {
+    expect(cspViolations(`${EXTENSION_CSP}; worker-src *`)).toEqual(['unexpected directive "worker-src *"']);
+    expect(cspViolations(`${EXTENSION_CSP}; style-src 'unsafe-inline'`)).toEqual(['directive style-src appears twice']);
+    expect(cspViolations(`${EXTENSION_CSP};`)).toEqual([]);
   });
 
   it('refuses a built manifest whose CSP is missing connect-src', () => {

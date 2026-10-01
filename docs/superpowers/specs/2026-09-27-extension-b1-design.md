@@ -144,7 +144,8 @@ extension and web pages. What limits damage inside:
   nor other accounts;
 - build gates: the vault module is imported only by the vault bundle; `storage.session` is
   touched only by the background;
-- no remote code: the extension CSP forbids `eval` and external scripts;
+- no remote code: the extension CSP forbids `eval` and external scripts — and, since the
+  2026-10-01 hardening (§5), inline CSS and any stylesheet, image or font from elsewhere;
 - a 5-minute auto-lock.
 
 Code with access to the user's browser profile can still reach an unlocked vault. Nothing in a
@@ -453,6 +454,19 @@ is of the unsigned contents. Minimum versions: **Chrome 122, Firefox 150**.
 - tsc, tests, secret scan;
 - **extension CSP**: `script-src 'self'` (plus `'wasm-unsafe-eval'` only if a WASM module is
   ever added), no external script;
+  - **controller hardening (2026-10-01):** the whole policy is now
+    `default-src 'self'; script-src 'self'; object-src 'self'; style-src 'self'; img-src 'self' data:;
+    font-src 'self'; connect-src https://api.noc-tura.io; base-uri 'none'; form-action 'none';
+    frame-ancestors 'none'` (`manifest/source.mjs`, both browsers; `scripts/check-permissions.mjs`
+    pins every directive independently of that file). **Why:** CSS on the vault page, the page that
+    holds the seed and the password, is an exfiltration surface — an attribute selector on an
+    input's value plus a `url()` reads the field — and three review rounds of the text gates each
+    found a new spelling that reached the built page (a quote inside a quoted `url()`, a comment
+    inside `url`, an unquoted `rel=stylesheet`, a `.pcss` sheet, runtime `<style>`/constructed
+    sheets). So the **browser** now enforces it: no inline `<style>` or `style=""`, no stylesheet,
+    image or font from anywhere but the extension itself (CSSOM writes such as React's `style={{}}`
+    stay allowed), no `<base>`, no form submission, no framing. The vault-isolation gate's CSS
+    rules stay as the backstop. Never loosened with `'unsafe-inline'` or a wildcard;
 - **host allowlist over the package**: exactly the hosts in §4, each with a reason;
 - **permissions**: the manifest's permissions equal the list in §4, each justified;
 - **vault isolation**: checked in the sources (every file under the package, not just `src/` —

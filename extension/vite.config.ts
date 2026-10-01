@@ -3,6 +3,7 @@ import type {UserConfig} from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import {writeFileSync} from 'node:fs';
 import {relative, resolve, sep} from 'node:path';
+import {isStylesheet, scanCss} from './scripts/css-scan.mjs';
 
 // core/ and web/src/ui/ are imported by relative path, and a bare import in one of their files would
 // otherwise resolve upwards from there — to web/node_modules or the repository root's node_modules
@@ -32,12 +33,14 @@ function sharedResolvesFromHere(): Plugin {
 //   chunks:  JS chunk file → the modules it carries (package-relative)
 //   css:     CSS asset file → the stylesheet modules it was built from (the chunk whose importedCss it is)
 //   chunkCss: JS chunk file → the CSS assets it loads
-//   cssRefs: stylesheet module → the @import and url() targets in its RAW source, read before Vite's CSS
-//            plugin inlines an @import (an @import'ed file never becomes a module of its own)
+//   cssRefs: stylesheet module → its RAW source as scripts/css-scan.mjs reads it (@import and url() targets,
+//            other URL-loading functions, whether it has a backslash), read before Vite's CSS plugin inlines
+//            an @import (an @import'ed file never becomes a module of its own). Every CSS language Vite
+//            compiles counts as a stylesheet (fix round 4), not only .css.
 const CHUNK_MODULES = new Map<string, string[]>();
 const CSS_SOURCES = new Map<string, string[]>();
 const CHUNK_CSS = new Map<string, string[]>();
-const CSS_REFS = new Map<string, {imports: string[]; urls: string[]}>();
+const CSS_REFS = new Map<string, {imports: string[]; urls: string[]; loaders: string[]; escapes: boolean}>();
 const moduleId = (id: string) => (id.startsWith('\0') ? id : relative(__dirname, id).split(sep).join('/'));
 const sorted = <T,>(m: Map<string, T>) => Object.fromEntries([...m].sort(([a], [b]) => a.localeCompare(b)));
 function chunkModules(write: boolean): Plugin {
@@ -47,11 +50,8 @@ function chunkModules(write: boolean): Plugin {
     enforce: 'pre',
     transform(code, id) {
       const path = id.replace(/[?#].*$/, '');
-      if (!path.endsWith('.css')) return null;
-      const css = code.replace(/\/\*[\s\S]*?\*\//g, ' ');
-      const imports = [...css.matchAll(/@import\s+(?:url\(\s*)?(['"]?)([^'")\s;]*)\1/gi)].map(m => m[2] ?? '');
-      const urls = [...css.matchAll(/url\(\s*(['"]?)([^'")]*)\1\s*\)/gi)].map(m => m[2] ?? '');
-      CSS_REFS.set(moduleId(path), {imports, urls});
+      if (!isStylesheet(path)) return null;
+      CSS_REFS.set(moduleId(path), scanCss(code));
       return null;
     },
     generateBundle(_options, bundle) {
@@ -61,7 +61,7 @@ function chunkModules(write: boolean): Plugin {
         CHUNK_MODULES.set(file.fileName, [...ids].sort());
         const css = [...(file.viteMetadata?.importedCss ?? [])].sort();
         CHUNK_CSS.set(file.fileName, css);
-        const sheets = ids.filter(m => m.replace(/[?#].*$/, '').endsWith('.css')).sort();
+        const sheets = ids.filter(m => isStylesheet(m)).sort();
         // A chunk's importedCss is the stylesheet built from its own CSS modules (one per chunk).
         for (const asset of css) CSS_SOURCES.set(asset, [...(CSS_SOURCES.get(asset) ?? []), ...sheets].sort());
       }

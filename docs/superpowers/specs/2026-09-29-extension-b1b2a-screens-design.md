@@ -186,6 +186,22 @@ mutation test in `scripts/__tests__`):
   covers `<script>`. A Vite-injected `<link rel="stylesheet">` is not a script and stays allowed.
 - `BACKGROUND_OWNED_KEYS` gains `v1_balance_cache` and `v1_price_cache` (E4).
 - `vault.challengeInfo` (E3) and `vault.forgetWallet` (E5) join `VAULT_PAGE_ONLY`.
+- *The browser keeps CSS off the vault page (controller hardening, 2026-10-01).* A stylesheet on the
+  page that holds the seed and the password is an exfiltration surface: an attribute selector on an
+  input's value plus a `url()` reads the field. Three review rounds of the text gates each found a new
+  spelling that reached the built page, so the extension CSP now enforces it in the browser: it gains
+  `default-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none';
+  form-action 'none'; frame-ancestors 'none'` (script-src, object-src and connect-src unchanged; the
+  full policy is in the parent spec, §5). No inline `<style>`/`style=""`, no remote sheet, image or
+  font. The gate stays as the backstop: the vault page's sheets are read by a tokenizer
+  (`scripts/css-scan.mjs`: comments removed to nothing, strings and escapes read whole) — every
+  `url()` one of the two Geist faces, no `@import`, no `image-set()`/`image()`/`cross-fade()`/`src()`,
+  no backslash, in the sources and in the built text; every CSS language Vite compiles is a sheet,
+  and any non-`.css` sheet reaching the vault page is refused; `unlock.html` carries no `<style>`,
+  no `style` attribute and no `<link>` in source, and in the build only links its own built
+  stylesheets; and `src/unlock` (sources) and the chunks `unlock.html` loads (build) create no
+  `<style>`/`<link>` element, construct or adopt no sheet, insert no rule and set no style
+  attribute or declaration text.
 - *Fonts from the vault page (review L5).* `design-system.css` loads `/fonts/*.woff2` by an
   absolute path. With Vite's `base: './'` a `public/` asset referenced absolutely stays
   `/fonts/…`, which resolves against the extension origin's root from any page, the vault page
