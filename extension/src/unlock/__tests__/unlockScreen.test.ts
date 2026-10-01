@@ -342,15 +342,58 @@ describe('#9 unlock: what the brief left implicit (carried rules)', () => {
     expect([h.sent.filter(m => m.type === 'vault.setKeys').length, h.went.length, h.closed, prfOutputs.length]).toEqual([1, 0, 0, 0]);
   });
 
-  it('rule 6: each button acts only in its own phase (a lifted stray click elsewhere does nothing)', async () => {
-    // No wallet: nothing to unlock, no "Forgot password?", no close.
-    const none = await shown(undefined);
+  it('rule 6: while an attempt is in flight, a lifted Unlock (with a password typed again), passkey or "Forgot password?" runs nothing', async () => {
+    let release: () => void = () => undefined;
+    let inFlight = 0;
+    const held = new Promise<void>(r => (release = r));
+    const h = await harness({
+      vault: await withPasskey(PRF),
+      credentials: prfCredentials(PRF),
+      send: inner => async m => {
+        if ((m as {type?: string}).type === 'vault.setKeys') {
+          inFlight += 1;
+          await held;
+        }
+        return inner(m);
+      },
+    });
+    await mountUnlock(h.deps).show(null);
+    submit(PW);
+    await h.until(() => inFlight === 1);
+    expect(el<HTMLButtonElement>('unl-submit').disabled).toBe(true);
+    expect(el<HTMLInputElement>('unl-password').disabled).toBe(true);
+    type(el<HTMLInputElement>('unl-password'), PW);
     force('unl-submit');
+    el<HTMLFormElement>('unl-form').dispatchEvent(new Event('submit', {cancelable: true}));
+    force('unl-passkey');
+    force('unl-forgot');
+    await new Promise(r => setTimeout(r, 20));
+    release();
+    await h.until(() => visible(el('unl-notice')) && !h.deps.gate.isBusy());
+    expect([inFlight, h.sent.filter(m => m.type === 'vault.setKeys').length, h.went, prfOutputs.length]).toEqual([1, 1, [], 0]);
+  });
+
+  it('an empty field submits nothing — no "Unlocking…", no Argon2id run, nothing charged to the backoff', async () => {
+    const h = await shown(await wallet());
+    click(el('unl-submit'));
+    el<HTMLFormElement>('unl-form').dispatchEvent(new Event('submit', {cancelable: true}));
+    await new Promise(r => setTimeout(r, 5));
+    expect([text(el('unl-helper')), h.deps.gate.isBusy(), h.sent]).toEqual(['', false, []]);
+  });
+
+  it('rule 6: each button acts only in its own phase (a lifted stray click elsewhere does nothing)', async () => {
+    // No wallet: nothing to unlock (even with something in the hidden field), no "Forgot password?", no close.
+    const none = await shown(undefined);
+    type(el<HTMLInputElement>('unl-password'), PW);
+    force('unl-submit');
+    el<HTMLFormElement>('unl-form').dispatchEvent(new Event('submit', {cancelable: true}));
     force('unl-passkey');
     force('unl-forgot');
     force('unl-close');
+    // Refused by the phase guard before the gate is taken: nothing runs at all.
+    expect(none.deps.gate.isBusy()).toBe(false);
     await new Promise(r => setTimeout(r, 5));
-    expect([none.sent, none.went, none.closed]).toEqual([[], [], 0]);
+    expect([none.sent, none.went, none.closed, text(el('unl-helper'))]).toEqual([[], [], 0, '']);
     // A wallet: no setup and no close before it is unlocked.
     loadPage();
     const some = await shown(await wallet());
@@ -361,10 +404,13 @@ describe('#9 unlock: what the brief left implicit (carried rules)', () => {
     // Unlocked: no second unlock, no setup.
     submit(PW);
     await some.until(() => visible(el('unl-notice')) && !some.deps.gate.isBusy());
+    type(el<HTMLInputElement>('unl-password'), PW);
     force('unl-submit');
     force('unl-setup');
     force('unl-forgot');
-    await new Promise(r => setTimeout(r, 5));
+    expect(some.deps.gate.isBusy()).toBe(false);
+    await some.until(() => !some.deps.gate.isBusy());
+    await new Promise(r => setTimeout(r, 50));
     expect([some.sent.filter(m => m.type === 'vault.setKeys').length, some.went]).toEqual([1, []]);
   });
 
