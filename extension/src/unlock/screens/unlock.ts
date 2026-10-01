@@ -37,7 +37,8 @@ type Phase = 'off' | 'reading' | 'entry' | 'unlocked' | 'no-wallet' | 'damaged' 
  * output is zeroed by attemptUnlock on every path (orchestrate.ts).
  *
  * Rule 6 (spec §7.6): every button runs through the page's one `exclusive()` gate. The backoff's wait runs
- * inside it, so the gate stays held through the cooldown: [Unlock paused] and "Forgot password?" wait for it.
+ * inside it, so the gate stays held through the cooldown — except "Forgot password?", which is plain navigation
+ * there (review fix round 1, ruling).
  */
 export function mountUnlock(deps: PageDeps): UnlockScreen {
   const field = byId<HTMLInputElement>('unl-password');
@@ -75,7 +76,9 @@ export function mountUnlock(deps: PageDeps): UnlockScreen {
     field.disabled = busy || !entry;
     submit.disabled = busy || !entry;
     passkey.disabled = busy || !entry || pk === null;
-    forgot.disabled = busy || !entry;
+    // During the cooldown the gate is held by a settled wrong attempt's wait: Forgot stays usable (ruling, below).
+    forgot.disabled = !entry || (busy && !cooling);
+    forgot.classList.toggle('vlt-forgot-cool', cooling);
     setup.disabled = busy || phase !== 'no-wallet';
     close.disabled = busy || !closing;
   };
@@ -174,6 +177,19 @@ export function mountUnlock(deps: PageDeps): UnlockScreen {
   passkey.addEventListener('click', unlockWithPasskey);
   forgot.addEventListener('click', () => {
     if (phase !== 'entry') return;
+    // Review fix round 1 (ruling): during the cooldown "Forgot password?" is plain navigation, outside the gate.
+    // Safe: the attempt has already settled as wrong (the gate is held only by its wait), a navigation link is not
+    // on §7.6's list, and the backoff is this page's memory (D11) — leaving the page was always a way out of it.
+    // The phase change makes a double click navigate once. While an attempt is in flight, or inside the 500 ms
+    // floor, it still goes through the gate.
+    if (stopCooldown !== null) {
+      endCooldown();
+      field.value = '';
+      phase = 'off';
+      render();
+      deps.go('unlock.html?mode=forgot');
+      return;
+    }
     void exclusive(deps, render, async () => {
       if (phase !== 'entry') return;
       field.value = '';

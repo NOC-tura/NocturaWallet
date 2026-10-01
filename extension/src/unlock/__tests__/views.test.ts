@@ -67,6 +67,25 @@ describe('the vault page’s DOM twins of the design', () => {
     expect(t.pending()).toBe(0);
   });
 
+  it('startCooldown: the helper line\'s minute and second integers are .noc-numeral spans (design annotation B), set as text', () => {
+    const t = fakeTimers();
+    const parts = {timer: h('div'), label: h('div'), ring: h('div')};
+    startCooldown(t, 75_000, parts);
+    const numerals = () => [...parts.label.children].map(c => [c.tagName, c.className, c.textContent]);
+    expect(numerals()).toEqual([
+      ['SPAN', 'noc-numeral', '1'],
+      ['SPAN', 'noc-numeral', '15'],
+    ]);
+    expect(parts.label.textContent).toBe('Cooldown · 1 minutes 15 seconds remaining');
+    expect(parts.label.querySelectorAll('*')).toHaveLength(2);
+    t.advance(16_000);
+    expect(numerals()).toEqual([
+      ['SPAN', 'noc-numeral', '0'],
+      ['SPAN', 'noc-numeral', '59'],
+    ]);
+    expect(parts.label.textContent).toBe('Cooldown · 0 minutes 59 seconds remaining');
+  });
+
   it('closeOrHide: closes, and hides the button when the tab is still here afterwards', () => {
     const t = fakeTimers();
     const button = h('button');

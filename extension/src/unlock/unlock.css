@@ -311,3 +311,7 @@
 .vlt-col .cooldown-card .ring {
   background: conic-gradient(var(--warning) calc(var(--vlt-ring, 1) * 100%), var(--bg-surface-3) 0);
 }
+/* 9c: the design gives the cooldown's "Forgot password?" its own padding-bottom (inline in the mockup). */
+.vlt-col .s-pin .forgot-link.vlt-forgot-cool {
+  padding-bottom: var(--space-3);
+}

@@ -46,6 +46,13 @@ const submit = (password: string) => {
   type(el<HTMLInputElement>('unl-password'), password);
   click(el('unl-submit'));
 };
+/** Records every wait the screen asks for (the 500 ms floor, a backoff wait), in order. Must run before mountUnlock. */
+function recordSleeps(h: {deps: {sleep(ms: number): Promise<void>}}): number[] {
+  const asked: number[] = [];
+  const inner = h.deps.sleep;
+  h.deps.sleep = ms => (asked.push(ms), inner(ms));
+  return asked;
+}
 /** A stray event on a button the page drew disabled or hidden: happy-dom drops clicks on disabled buttons, so lift it first. */
 function force(id: string): void {
   el<HTMLButtonElement>(id).disabled = false;
@@ -168,7 +175,11 @@ describe('#9 unlock (spec §3.9)', () => {
   });
 
   it('a damaged vault (a stored null too) says so before any password is typed — never charged to the backoff', async () => {
-    const h = await shown(null);
+    const h = await harness({vault: null});
+    const asked = recordSleeps(h);
+    await mountUnlock(h.deps).show(null);
+    // No attempt ran, so nothing could be charged: no wait of any kind was asked for (the mid-run case is below).
+    expect(asked).toEqual([]);
     expect(text(el('unl-notice'))).toBe("This wallet's stored data is damaged. Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase.");
     expect(visible(el('unl-entry'))).toBe(false);
     expect(visible(el('unl-forgot'))).toBe(false);
@@ -303,15 +314,26 @@ describe('#9 unlock: what the brief left implicit (carried rules)', () => {
     expect(h.timers.pending()).toBe(0);
   });
 
-  it('a vault damaged during the run is named, never charged to the backoff (no cooldown after a wrong)', async () => {
-    const h = await shown(await wallet());
+  // Review fix round 1, item 2: observed, not inferred — every wait the screen asks for is recorded. After one wrong
+  // the streak is 1; had a damaged (or vanished) vault been charged, it would be 2 and a 1 s backoff wait would follow.
+  it.each([
+    ['damaged', null, "This wallet's stored data is damaged."],
+    ['no-wallet', undefined, 'No wallet on this browser yet.'],
+  ] as const)('a vault %s during the run is named, never charged to the backoff (no wait after it, even after a wrong)', async (_kind, stored, line) => {
+    const h = await harness({vault: await wallet()});
+    const asked = recordSleeps(h);
+    await mountUnlock(h.deps).show(null);
     submit('not the password at all');
     await h.until(() => text(el('unl-helper')) === 'That did not unlock the wallet.');
     await h.until(() => !h.deps.gate.isBusy());
-    await h.ext.local.set(VAULT_KEY, null);
+    expect(asked).toEqual([500]);
+    if (stored === undefined) await h.ext.local.remove(VAULT_KEY);
+    else await h.ext.local.set(VAULT_KEY, stored);
     submit(PW);
-    await h.until(() => visible(el('unl-notice')));
-    expect(text(el('unl-notice-line'))).toBe("This wallet's stored data is damaged.");
+    await h.until(() => visible(el('unl-notice')) && !h.deps.gate.isBusy());
+    expect(text(el('unl-notice-line'))).toBe(line);
+    // Only the second click's floor: no backoff wait was asked for.
+    expect(asked).toEqual([500, 500]);
     expect(visible(el('unl-cooldown'))).toBe(false);
     expect(visible(el('unl-entry'))).toBe(false);
     expect(h.sent.filter(m => m.type === 'vault.setKeys')).toEqual([]);
@@ -340,6 +362,31 @@ describe('#9 unlock: what the brief left implicit (carried rules)', () => {
     force('unl-close');
     await new Promise(r => setTimeout(r, 5));
     expect([h.sent.filter(m => m.type === 'vault.setKeys').length, h.went.length, h.closed, prfOutputs.length]).toEqual([1, 0, 0, 0]);
+  });
+
+  // Review fix round 1, item 1 (ruling): during the cooldown the attempt has already settled as wrong, so "Forgot
+  // password?" is plain navigation, outside the gate; it still waits for the gate while an attempt is in flight.
+  it('cooldown: "Forgot password?" is enabled and navigates to #39 at once; a double click navigates once', async () => {
+    const h = await shown(await wallet(), {holdSleep: true});
+    submit('wrong wrong wrong wrong');
+    await h.until(() => text(el('unl-helper')) === 'That did not unlock the wallet.');
+    h.wake();
+    await h.until(() => !h.deps.gate.isBusy());
+    submit('wrong wrong wrong wrong');
+    await h.until(() => visible(el('unl-cooldown')));
+    expect(h.deps.gate.isBusy()).toBe(true);
+    expect(visible(el('unl-forgot'))).toBe(true);
+    expect(el<HTMLButtonElement>('unl-forgot').disabled).toBe(false);
+    expect(el('unl-forgot').classList.contains('vlt-forgot-cool')).toBe(true);
+    expect(unstyled('v-unlock')).toEqual([]);
+    click(el('unl-forgot'));
+    force('unl-forgot');
+    expect(h.went).toEqual(['unlock.html?mode=forgot']);
+    // The countdown stopped with it; the held wait settling later shows nothing.
+    expect(h.timers.pending()).toBe(0);
+    h.wake();
+    await h.until(() => !h.deps.gate.isBusy());
+    expect([visible(el('unl-entry')), visible(el('unl-cooldown')), h.went]).toEqual([false, false, ['unlock.html?mode=forgot']]);
   });
 
   it('rule 6: while an attempt is in flight, a lifted Unlock (with a password typed again), passkey or "Forgot password?" runs nothing', async () => {

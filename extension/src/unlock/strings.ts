@@ -128,7 +128,9 @@ export const UNLOCK = {
 
 /** #9's cooldown card (and #10's, which reuses it): "0:12", and the design's helper line. */
 export const clockText = (seconds: number): string => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-export const cooldownLabel = (seconds: number): string => `Cooldown · ${Math.floor(seconds / 60)} minutes ${seconds % 60} seconds remaining`;
+/** The helper line's fixed words, around its two `.noc-numeral` integers (view/cooldown.ts builds it from these). */
+export const COOLDOWN_LABEL = {head: 'Cooldown · ', minutes: ' minutes ', tail: ' seconds remaining'} as const;
+export const cooldownLabel = (seconds: number): string => `${COOLDOWN_LABEL.head}${Math.floor(seconds / 60)}${COOLDOWN_LABEL.minutes}${seconds % 60}${COOLDOWN_LABEL.tail}`;
 
 /** #10 unlock-send (re-authentication). */
 export const REAUTH = {
