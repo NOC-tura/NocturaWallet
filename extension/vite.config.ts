@@ -24,22 +24,51 @@ function sharedResolvesFromHere(): Plugin {
   };
 }
 
-// Which source modules each built chunk carries, for the vault-isolation gate (Task 5 review I1(b)): the
-// authoritative answer to "what did the bundler put in the vault page", whatever spelling imported it.
-// Written NEXT TO the build directory (dist/app.modules.json), never inside it: it is not an extension
-// resource and no package (dist/chrome, dist/firefox) carries it. The worker build feeds the same map.
+// What each built chunk and stylesheet carries, for the vault-isolation gate (Task 5 review I1(b), N1):
+// the authoritative answer to "what did the bundler put in the vault page", whatever spelling imported
+// it. Written NEXT TO the build directory (dist/app.modules.json), never inside it: it is not an
+// extension resource and no package (dist/chrome, dist/firefox) carries it. The worker build feeds the
+// same map. Shape:
+//   chunks:  JS chunk file → the modules it carries (package-relative)
+//   css:     CSS asset file → the stylesheet modules it was built from (the chunk whose importedCss it is)
+//   chunkCss: JS chunk file → the CSS assets it loads
+//   cssRefs: stylesheet module → the @import and url() targets in its RAW source, read before Vite's CSS
+//            plugin inlines an @import (an @import'ed file never becomes a module of its own)
 const CHUNK_MODULES = new Map<string, string[]>();
+const CSS_SOURCES = new Map<string, string[]>();
+const CHUNK_CSS = new Map<string, string[]>();
+const CSS_REFS = new Map<string, {imports: string[]; urls: string[]}>();
 const moduleId = (id: string) => (id.startsWith('\0') ? id : relative(__dirname, id).split(sep).join('/'));
+const sorted = <T,>(m: Map<string, T>) => Object.fromEntries([...m].sort(([a], [b]) => a.localeCompare(b)));
 function chunkModules(write: boolean): Plugin {
   return {
     name: 'noctura:chunk-modules',
     apply: 'build',
+    enforce: 'pre',
+    transform(code, id) {
+      const path = id.replace(/[?#].*$/, '');
+      if (!path.endsWith('.css')) return null;
+      const css = code.replace(/\/\*[\s\S]*?\*\//g, ' ');
+      const imports = [...css.matchAll(/@import\s+(?:url\(\s*)?(['"]?)([^'")\s;]*)\1/gi)].map(m => m[2] ?? '');
+      const urls = [...css.matchAll(/url\(\s*(['"]?)([^'")]*)\1\s*\)/gi)].map(m => m[2] ?? '');
+      CSS_REFS.set(moduleId(path), {imports, urls});
+      return null;
+    },
     generateBundle(_options, bundle) {
-      for (const file of Object.values(bundle)) if (file.type === 'chunk') CHUNK_MODULES.set(file.fileName, file.moduleIds.map(moduleId).sort());
+      for (const file of Object.values(bundle)) {
+        if (file.type !== 'chunk') continue;
+        const ids = file.moduleIds.map(moduleId);
+        CHUNK_MODULES.set(file.fileName, [...ids].sort());
+        const css = [...(file.viteMetadata?.importedCss ?? [])].sort();
+        CHUNK_CSS.set(file.fileName, css);
+        const sheets = ids.filter(m => m.replace(/[?#].*$/, '').endsWith('.css')).sort();
+        // A chunk's importedCss is the stylesheet built from its own CSS modules (one per chunk).
+        for (const asset of css) CSS_SOURCES.set(asset, [...(CSS_SOURCES.get(asset) ?? []), ...sheets].sort());
+      }
     },
     writeBundle(options) {
       if (!write || options.dir === undefined) return;
-      const out = Object.fromEntries([...CHUNK_MODULES].sort(([a], [b]) => a.localeCompare(b)));
+      const out = {chunks: sorted(CHUNK_MODULES), css: sorted(CSS_SOURCES), chunkCss: sorted(CHUNK_CSS), cssRefs: sorted(CSS_REFS)};
       writeFileSync(`${options.dir}.modules.json`, `${JSON.stringify(out, null, 2)}\n`);
     },
   };

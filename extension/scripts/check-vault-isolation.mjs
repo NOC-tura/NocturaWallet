@@ -281,11 +281,33 @@ const VAULT_PAGE_FILES = [
   /^src\/vault\//,
   /^src\/shared\//,
   /^src\/ui\/send\.ts$/,
-  /^src\/styles\/[^/]+\.css$/,
-  /^\.\.\/web\/src\/styles\/design-system\.css$/,
   /^\.\.\/core\/keys\//,
   /^\.\.\/core\/util\//,
 ];
+// The vault page's stylesheets, by name (fix round 3, N1): a stylesheet on the password page is an
+// exfiltration surface (an attribute selector with a url() reads the field), so no folder admits one —
+// not src/styles/, not src/unlock/. These three, and only these, may reach the page.
+export const VAULT_PAGE_SHEETS = ['../web/src/styles/design-system.css', 'src/styles/design-ext.css', 'src/unlock/unlock.css'];
+// Every url() a vault-page sheet may contain, exactly: the two bundled Geist faces, in design-system.css
+// (where they resolve is pinned by the font gate, scripts/check-fonts.mjs). Any other url(), any
+// @import, any image-set() and any backslash escape (`\\75rl(` spells url) is refused.
+export const VAULT_PAGE_CSS_URLS = {'../web/src/styles/design-system.css': ['/fonts/Geist-Variable.woff2', '/fonts/GeistMono-Variable.woff2']};
+const isSheet = path => /\.css$/i.test(path);
+const vaultPageFileAllowed = path => (isSheet(path) ? VAULT_PAGE_SHEETS.includes(path) : VAULT_PAGE_FILES.some(re => re.test(path)));
+
+/** What a vault-page stylesheet may not contain, from its source (comments removed). */
+function sheetViolations(path, text) {
+  const out = [];
+  const css = text.replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const allowed = VAULT_PAGE_CSS_URLS[path] ?? [];
+  if (/@import\b/i.test(css)) out.push(`${path}: the vault page's stylesheet uses @import — every sheet it loads is named in VAULT_PAGE_SHEETS`);
+  for (const m of css.matchAll(/url\(\s*(['"]?)([^'")]*)\1\s*\)/gi)) {
+    if (!allowed.includes(m[2] ?? '')) out.push(`${path}: the vault page's stylesheet loads url(${m[2]}) — only the bundled Geist faces may be loaded`);
+  }
+  if (/image-set\s*\(/i.test(css)) out.push(`${path}: the vault page's stylesheet uses image-set() — it loads URLs without url()`);
+  if (css.includes('\\')) out.push(`${path}: the vault page's stylesheet uses a backslash escape — an escape can spell url( or @import`);
+  return out;
+}
 export const VAULT_PAGE_PACKAGES = ['@noble/curves', '@noble/hashes', '@scure/base', '@scure/bip39', 'micro-key-producer'];
 const RESOLVE_EXTENSIONS = ['', '.ts', '.tsx', '.mts', '.js', '.mjs', '/index.ts', '/index.tsx'];
 const MODULE_SPECIFIER = /^[\w@.\/-]+$/;
@@ -306,8 +328,14 @@ export function vaultPageViolations(read, exists, entry = VAULT_PAGE_ENTRY) {
     const path = stack.pop();
     if (seen.has(path)) continue;
     seen.add(path);
-    if (!VAULT_PAGE_FILES.some(re => re.test(path))) out.push(`the vault page reaches ${path} — only vault-page code may be bundled with the seed`);
-    if (!SOURCE_EXT.test(path)) continue; // a stylesheet carries no code and imports nothing we follow
+    if (!vaultPageFileAllowed(path)) out.push(`the vault page reaches ${path} — only vault-page code may be bundled with the seed`);
+    if (isSheet(path)) {
+      // A stylesheet may import nothing and load only the fonts (fix round 3): @import is refused, so
+      // there is nothing in it to follow.
+      out.push(...sheetViolations(path, read(path) ?? ''));
+      continue;
+    }
+    if (!SOURCE_EXT.test(path)) continue;
     const text = read(path) ?? '';
     for (const use of importMetaMisuses(text, path)) out.push(`${path}: the vault page uses ${use} — only import.meta.url is allowed (import.meta.glob bundles files without an import)`);
     for (const ref of moduleReferences(text, path)) {
@@ -589,19 +617,39 @@ export function bundleViolations(distApp) {
 // refused too: none is bundled today (modulePreload is off), and a new one is a decision to make here.
 function vaultPageModuleAllowed(id) {
   const path = id.replace(/[?#].*$/, '');
-  if (path === 'unlock.html' || VAULT_PAGE_FILES.some(re => re.test(path))) return true;
+  if (path === 'unlock.html' || vaultPageFileAllowed(path)) return true;
   const pkg = /^node_modules\/((?:@[^/]+\/)?[^/]+)\/(.+)$/.exec(path);
   return pkg !== null && VAULT_PAGE_PACKAGES.includes(pkg[1]) && !pkg[2].split('/').includes('node_modules');
 }
 
-/** `modules`: the parsed dist/app.modules.json (chunk file → module ids), or undefined when it is missing. */
+/**
+ * `modules`: the parsed dist/app.modules.json ({chunks, css, chunkCss, cssRefs}; vite.config.ts), or
+ * undefined when it is missing. Checks every JS chunk and every stylesheet unlock.html loads.
+ *
+ * Known gap (fix round 3, N2): an inline worker (`./x?worker&inline`) is built into a base64 string
+ * inside the importing chunk; the modules of the worker's own build are recorded, but under a chunk name
+ * no page loads, so this map would not tie them to the vault page. The source walk refuses the `?worker`
+ * query outright (a query is never a plain specifier), and an inline worker starts through
+ * `URL.createObjectURL(new Blob(…))`, which BUILT_MARKUP's createObjectURL name refuses in any chunk the
+ * vault page loads — the incidental backstop.
+ */
 export function vaultPageModuleViolations(distApp, modules) {
-  if (modules === undefined) return ['INCONCLUSIVE: no chunk module map (app.modules.json next to dist/app) — the build must write one'];
+  if (modules === undefined || typeof modules.chunks !== 'object' || typeof modules.css !== 'object' || typeof modules.cssRefs !== 'object') {
+    return ['INCONCLUSIVE: no chunk module map (app.modules.json next to dist/app, with chunks, css, chunkCss and cssRefs) — the build must write one'];
+  }
   const out = [];
   const problems = new Set();
   const seen = new Set();
-  const html = existsSync(join(distApp, 'unlock.html')) ? readFileSync(join(distApp, 'unlock.html'), 'utf8') : '';
-  for (const m of html.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/g)) {
+  const sheets = new Set();
+  const page = existsSync(join(distApp, 'unlock.html')) ? readFileSync(join(distApp, 'unlock.html'), 'utf8') : '';
+  for (const m of page.matchAll(/<link\b[^>]*\brel\s*=\s*["']stylesheet["'][^>]*>/gi)) {
+    const href = /\bhref\s*=\s*["']([^"']+)["']/i.exec(m[0])?.[1];
+    if (href === undefined) continue;
+    const r = resolveBuilt(distApp, 'unlock.html', href);
+    if (r.problem) problems.add(r.problem);
+    else sheets.add(r.target);
+  }
+  for (const m of page.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/g)) {
     const r = resolveBuilt(distApp, 'unlock.html', m[1]);
     if (r.problem) {
       problems.add(r.problem);
@@ -609,7 +657,8 @@ export function vaultPageModuleViolations(distApp, modules) {
     }
     for (const file of reachable(distApp, r.target, problems)) {
       if (!/\.m?js$/.test(file)) continue;
-      const ids = modules[file];
+      for (const css of modules.chunkCss?.[file] ?? []) sheets.add(css);
+      const ids = modules.chunks[file];
       if (!Array.isArray(ids)) {
         out.push(`${file} (reachable from unlock.html) is not in the chunk module map — what it carries is unknown`);
         continue;
@@ -622,6 +671,37 @@ export function vaultPageModuleViolations(distApp, modules) {
   }
   // Positive control: the map really describes the vault page (its entry module is in a chunk it loads).
   if (!seen.has(VAULT_PAGE_ENTRY)) out.push(`INCONCLUSIVE: no chunk reachable from unlock.html carries ${VAULT_PAGE_ENTRY} in the module map — the check would pass trivially`);
+
+  // Fix round 3 (N1): every stylesheet the vault page loads is built from the three named sheets — all
+  // three, nothing else — and none of them @imports or loads a url() beyond the Geist faces (read from
+  // the RAW source, before Vite inlines an @import). The built text is checked too.
+  const from = new Set();
+  for (const sheet of [...sheets].sort()) {
+    const sources = modules.css[sheet];
+    if (!Array.isArray(sources)) {
+      out.push(`${sheet} (loaded by unlock.html) is not in the module map — what it was built from is unknown`);
+      continue;
+    }
+    for (const id of sources) {
+      const path = id.replace(/[?#].*$/, '');
+      from.add(path);
+      if (!VAULT_PAGE_SHEETS.includes(path)) out.push(`${sheet} (loaded by unlock.html) is built from ${JSON.stringify(id)} — only ${VAULT_PAGE_SHEETS.join(', ')} may style the vault page`);
+      const refs = modules.cssRefs[id] ?? modules.cssRefs[path];
+      if (refs === undefined) {
+        out.push(`${sheet} (loaded by unlock.html): no source record for ${id} — what it imports is unknown`);
+        continue;
+      }
+      for (const spec of refs.imports) out.push(`${sheet} (loaded by unlock.html): ${path} @imports ${spec} — the vault page's sheets import nothing`);
+      for (const url of refs.urls) if (!(VAULT_PAGE_CSS_URLS[path] ?? []).includes(url)) out.push(`${sheet} (loaded by unlock.html): ${path} loads url(${url}) — only the bundled Geist faces may be loaded`);
+    }
+    const built = existsSync(join(distApp, sheet)) ? readFileSync(join(distApp, sheet), 'utf8') : '';
+    if (/@import\b/i.test(built)) out.push(`${sheet} (loaded by unlock.html) contains @import`);
+    for (const u of built.matchAll(/url\(\s*(['"]?)([^'")]*)\1\s*\)/gi)) {
+      const target = posix.normalize(posix.join(posix.dirname(sheet), u[2] ?? ''));
+      if (target !== 'fonts/Geist-Variable.woff2' && target !== 'fonts/GeistMono-Variable.woff2') out.push(`${sheet} (loaded by unlock.html) loads url(${u[2]}) — only the bundled Geist faces may be loaded`);
+    }
+  }
+  for (const want of VAULT_PAGE_SHEETS) if (!from.has(want)) out.push(`INCONCLUSIVE: no stylesheet unlock.html loads is built from ${want} — the map does not describe the vault page's styles`);
   return [...out, ...problems];
 }
 
@@ -674,5 +754,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     for (const p of problems) console.error(p);
     process.exit(1);
   }
-  console.log('vault isolation ok: sources, built popup/background and both manifests carry no path to the vault; no page reaches storage.session; every module bundled into the vault page is vault-page code or one of its five packages');
+  console.log('vault isolation ok: sources, built popup/background and both manifests carry no path to the vault; no page reaches storage.session; every module bundled into the vault page is vault-page code or one of its five packages, and its stylesheets are the three named sheets, importing nothing and loading only the Geist faces');
 }

