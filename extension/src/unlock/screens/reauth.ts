@@ -54,7 +54,22 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
   const x = byId<HTMLButtonElement>('ra-x');
   const unlock = byId<HTMLButtonElement>('ra-unlock');
   const live = byId('ra-cooldown-live');
-  const backoff = createWrongBackoff(deps.sleep);
+  /**
+   * Ends the backoff's current wait early (review ruling, as #9's Forgot): [Cancel send] and the X work during the
+   * cooldown. The wait is this page's memory (D11), so cutting it short gives nothing away — the cancel then runs
+   * through exclusive() as usual, once the attempt that held the gate has settled.
+   */
+  let preempt: (() => void) | null = null;
+  const backoffSleep = (ms: number) =>
+    new Promise<void>(resolve => {
+      preempt = resolve;
+      void deps.sleep(ms).then(resolve);
+    }).finally(() => {
+      preempt = null;
+    });
+  const backoff = createWrongBackoff(backoffSleep);
+  /** The attempt holding the gate (a Confirm or passkey run), which a cancel in the cooldown waits for. */
+  let attempt: Promise<unknown> | null = null;
   let challengeId = '';
   let described: Description | null = null;
   /** `undescribable` only: the send's account, valid by itself — what [Cancel send] discards. */
@@ -87,9 +102,10 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
     field.disabled = busy || !entry;
     confirm.disabled = busy || !entry;
     passkey.disabled = busy || !entry || pk === null;
-    cancel.disabled = busy || !canCancel;
+    // During the cooldown the gate is held by a settled wrong attempt's wait: Cancel and the X pre-empt it (ruling).
+    cancel.disabled = (busy && !cooling) || !canCancel;
     unlock.disabled = busy || !offerUnlock;
-    x.disabled = busy || !(canCancel || view === 'notice');
+    x.disabled = (busy && !(cooling && canCancel)) || !(canCancel || view === 'notice');
     x.setAttribute('aria-label', canCancel && !closeOnly && described?.kind !== 'settings' ? REAUTH.cancel : REAUTH.close);
   };
   const helper = (text: string, error: boolean) => {
@@ -169,6 +185,9 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
           deps.go(target);
           return;
         }
+        // Unreachable while challenge.ts and resumeTarget check the same alphabet — and if they ever differ, a
+        // proven send must fail closed: never "Confirmed. You can close this tab." for a send that went nowhere.
+        return helper(COMMON.failedTryAgain, false);
       }
       return notice(REAUTH.settingsConfirmed);
     }
@@ -186,7 +205,7 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
 
   const proveWithPassword = () => {
     if (!open() || field.value === '') return;
-    void exclusive(deps, render, async () => {
+    attempt = exclusive(deps, render, async () => {
       if (!open() || field.value === '') return;
       typed = field.value;
       field.value = '';
@@ -201,7 +220,7 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
   };
   const proveWithPasskey = () => {
     if (!open() || pk === null) return;
-    void exclusive(deps, render, async () => {
+    attempt = exclusive(deps, render, async () => {
       const key = pk;
       if (!open() || key === null) return;
       field.value = '';
@@ -219,8 +238,9 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
     });
   };
   /** [Cancel send], and the X while there is something to cancel. */
-  const doCancel = () => {
+  const doCancel = (): void => {
     if (!canCancel) return;
+    if (stopCooldown !== null) return cancelInCooldown();
     void exclusive(deps, render, async () => {
       if (!canCancel) return;
       if (described?.kind === 'settings' || closeOnly) return deps.closeTab();
@@ -234,6 +254,19 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
       notice(REAUTH.cancelled);
       deps.closeTab();
     });
+  };
+  /**
+   * Cancel or the X in the cooldown: stop the countdown, end the wait, then cancel once the attempt has settled.
+   * Runs once however many clicks: endCooldown() ends the cooldown at the first, so a second click goes to
+   * exclusive(), which the still-held gate refuses.
+   */
+  const cancelInCooldown = () => {
+    const held = attempt;
+    if (held === null) return;
+    endCooldown();
+    render();
+    preempt?.();
+    void held.then(doCancel);
   };
   /** The top bar's X: Cancel while there is something to cancel; in any other notice, only a close (L4). */
   const doX = () => {

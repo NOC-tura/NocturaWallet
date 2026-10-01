@@ -27,6 +27,14 @@ vi.mock('../../vault/passkey', async importOriginal => {
   };
 });
 
+// Review follow-up 2: a send whose validated account resumeTarget refuses (unreachable while both check the same
+// alphabet) must fail closed. `refuseResume` forces that branch; every other test runs the real resumeTarget.
+let refuseResume = false;
+vi.mock('../page', async importOriginal => {
+  const actual = await importOriginal<typeof import('../page')>();
+  return {...actual, resumeTarget: (account: string) => (refuseResume ? null : actual.resumeTarget(account))};
+});
+
 const M = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const K0 = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
 const PW = 'correct horse battery';
@@ -49,6 +57,7 @@ beforeEach(() => {
   loadPage();
   prfOutputs.length = 0;
   vi.mocked(evaluatePrf).mockClear();
+  refuseResume = false;
 });
 
 const wallet = () => createEnvelope({mnemonic: M, password: PW, scheme: 'slip10', accounts: [{index: 0, name: 'A', publicKey: K0}], kdf: testKdf});
@@ -638,5 +647,90 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
     force('ra-cancel');
     await new Promise(r => setTimeout(r, 5));
     expect([b.h.sent.map(m => m.type), b.h.closed]).toEqual([['vault.challengeInfo'], 0]);
+  });
+});
+
+describe('#10: review follow-ups (cooldown cancel ruling, the fail-closed hand-over)', () => {
+  /**
+   * A prepared send in the cooldown: the 500 ms floor resolves at once, every backoff wait never does — so a cancel
+   * that completes proves the wait was pre-empted, not waited out.
+   */
+  async function cooling(o: {refuse?: boolean} = {}) {
+    const {h, id} = await prepared();
+    h.deps.sleep = ms => (ms === 500 ? Promise.resolve() : new Promise<void>(() => undefined));
+    if (o.refuse === true) {
+      const inner = h.deps.send;
+      h.deps.send = async m => ((m as {type: string}).type === 'wallet.discardPrepared' ? {ok: false, error: 'failed'} : inner(m));
+    }
+    await mountReauth(h.deps).show(id);
+    confirmWith('wrong wrong wrong wrong');
+    await h.until(() => text(el('ra-helper')) === 'That did not confirm it.' && !h.deps.gate.isBusy());
+    confirmWith('wrong wrong wrong wrong');
+    await h.until(() => visible(el('ra-cooldown')));
+    expect(h.deps.gate.isBusy()).toBe(true);
+    return {h, id};
+  }
+
+  it('ruling: [Cancel send] works during the cooldown — the wait ends, one discard, "Send cancelled…", the tab closes', async () => {
+    const {h, id} = await cooling();
+    expect(visible(el('ra-cancel'))).toBe(true);
+    expect(el<HTMLButtonElement>('ra-cancel').disabled).toBe(false);
+    expect(el<HTMLButtonElement>('ra-x').disabled).toBe(false);
+    click(el('ra-cancel'));
+    // The countdown stops at the click.
+    expect(visible(el('ra-cooldown'))).toBe(false);
+    await h.until(() => h.closed > 0);
+    expect(h.sent.filter(m => m.type === 'wallet.discardPrepared')).toEqual([{type: 'wallet.discardPrepared', account: ACCOUNT.publicKey}]);
+    expect(text(el('ra-notice-line'))).toBe('Send cancelled. Nothing was sent.');
+    expect(await stillPrepared(h)).toBe(false);
+    expect(await challengeInfo(h.ext, h.wallet.now(), id)).toBeNull();
+    expect(h.timers.pending()).toBe(0);
+    expect(text(el('ra-cooldown-live'))).toBe('');
+  });
+
+  it('ruling: a double click in the cooldown (Cancel, Cancel, X) still sends one discard and closes once', async () => {
+    const {h} = await cooling();
+    click(el('ra-cancel'));
+    force('ra-cancel');
+    force('ra-x');
+    await h.until(() => h.closed > 0 && !h.deps.gate.isBusy());
+    force('ra-cancel');
+    await new Promise(r => setTimeout(r, 5));
+    expect(h.sent.filter(m => m.type === 'wallet.discardPrepared')).toHaveLength(1);
+    expect(h.closed).toBe(1);
+  });
+
+  it('ruling: after the pre-empted cooldown Confirm is not left on a dead screen — hidden, disabled, and a lifted one runs nothing', async () => {
+    const {h} = await cooling();
+    click(el('ra-x'));
+    await h.until(() => h.closed > 0 && !h.deps.gate.isBusy());
+    expect([visible(el('ra-confirm')), el<HTMLButtonElement>('ra-confirm').disabled, visible(el('ra-entry')), visible(el('ra-paused'))]).toEqual([false, true, false, false]);
+    const proofs = h.sent.filter(m => m.type === 'vault.status').length;
+    type(el<HTMLInputElement>('ra-password'), PW);
+    force('ra-confirm');
+    await new Promise(r => setTimeout(r, 5));
+    expect(h.sent.filter(m => m.type === 'vault.status').length).toBe(proofs);
+  });
+
+  it('ruling: a discard refused after the pre-empted cooldown keeps the screen and says so — no "cancelled"', async () => {
+    const {h} = await cooling({refuse: true});
+    click(el('ra-cancel'));
+    await h.until(() => text(el('ra-helper')) === 'Something went wrong. Try again.' && !h.deps.gate.isBusy());
+    expect(h.closed).toBe(0);
+    expect(text(document.body)).not.toMatch(/cancelled/i);
+    expect([visible(el('ra-cooldown')), visible(el('ra-entry')), visible(el('ra-cancel'))]).toEqual([false, true, true]);
+    expect(await stillPrepared(h)).toBe(true);
+  });
+
+  it('a proven send whose resume target is refused fails closed: "Something went wrong. Try again.", never "Confirmed…"', async () => {
+    const {h, broadcast} = await shown();
+    refuseResume = true;
+    confirmWith(PW);
+    await h.until(() => h.sent.some(m => m.type === 'vault.reauthOk') && !h.deps.gate.isBusy());
+    expect(text(el('ra-helper'))).toBe('Something went wrong. Try again.');
+    expect(h.went).toEqual([]);
+    expect(text(document.body)).not.toContain('Confirmed. You can close this tab.');
+    expect(visible(el('ra-notice'))).toBe(false);
+    nothingSent(h, broadcast);
   });
 });
