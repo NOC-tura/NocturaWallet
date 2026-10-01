@@ -3,14 +3,25 @@ import type {PageDeps} from '../page';
 import {storedVault} from '../stored';
 import {COMMON, PASSWORD, WELCOME} from '../strings';
 import {mountConfirm} from './confirm';
-import {mountPassword} from './password';
+import type {PasswordScreen} from './password';
 import {mountPasskey} from './passkey';
 import {mountSeed} from './seed';
 import {mountIntro, mountWelcome} from './welcome';
 
+/**
+ * Runs a store of the wallet (`finishOnboarding`) as the page's one store in flight: while it runs, #1 shown
+ * by a restore from the back/forward cache offers nothing (Task 8 fix round 2, N1), and #1 reads again once
+ * it settles. The create run's own store and the import run's (Task 9) both go through it.
+ */
+export type Storing = <T>(work: () => Promise<T>) => Promise<T>;
+
 export interface CreateRun {
+  /** Shows #1 (`welcome`) or #2 (`intro`, `?mode=create`). */
+  start(at: 'welcome' | 'intro'): void;
   /** What the run still references (plan-2 review H2): the new phrase, #5's password held for #6. */
   holds(): {phrase: boolean; password: boolean};
+  /** The page's store tracker (see `Storing`), for the import run that shares this page. */
+  storing: Storing;
 }
 
 /**
@@ -22,8 +33,10 @@ export interface CreateRun {
  * it). `pagehide` drops the phrase as well (fix round 1: the page may be kept in the back/forward cache,
  * `persisted` or not), and a page restored from that cache starts again at #1. Every end hands over to the UI tab's #7 (`wallet.html#/created`), which shows its locked variant
  * when the keys did not reach the background.
+ * Mounted once per page (Task 9): #5 is the page's one PasswordScreen, shared with the import run, and #1's
+ * "I have a wallet" hands over to that run in the same page — dropping the phrase a #3 visit generated first.
  */
-export function startCreateRun(deps: PageDeps, o: {at: 'welcome' | 'intro'; importRun(): void}): CreateRun {
+export function createCreateRun(deps: PageDeps, o: {password: PasswordScreen; importRun(): void}): CreateRun {
   let mnemonic: string | null = null;
   let password: string | null = null;
   let storing = false;
@@ -53,6 +66,16 @@ export function startCreateRun(deps: PageDeps, o: {at: 'welcome' | 'intro'; impo
   deps.onReturn(why => {
     if (why === 'restored') toWelcome();
   });
+  const whileStoring: Storing = async work => {
+    storing = true;
+    try {
+      return await work();
+    } finally {
+      storing = false;
+      // N1: a store that settles while #1 is up (a restore from the back/forward cache) — #1 reads again.
+      if (onWelcome) void welcome.show();
+    }
+  };
 
   const welcome = mountWelcome(deps, {
     create: () => {
@@ -61,13 +84,15 @@ export function startCreateRun(deps: PageDeps, o: {at: 'welcome' | 'intro'; impo
     },
     import: () => {
       onWelcome = false;
+      // Task 9 carry: the create run ends here — the phrase a #3 visit generated is not the wallet being imported.
+      mnemonic = null;
       o.importRun();
     },
   });
   const intro = mountIntro({back: toWelcome, continue: () => seed.show(words())});
   const seed = mountSeed(deps, {back: () => intro.show(), done: () => confirm.show(words())});
   const confirm = mountConfirm(deps, {back: () => seed.show(words()), done: () => passwordStep()});
-  const pw = mountPassword(deps);
+  const pw = o.password;
   const passkey = mountPasskey(deps, {done: () => deps.go('wallet.html#/created')});
 
   const passwordStep = () =>
@@ -78,17 +103,9 @@ export function startCreateRun(deps: PageDeps, o: {at: 'welcome' | 'intro'; impo
       finish: async chosen => {
         const phrase = mnemonic;
         if (phrase === null) return {line: PASSWORD.failed, stop: true};
-        storing = true;
         leftWhileStoring = false;
         const started = generation;
-        let out: Awaited<ReturnType<typeof finishOnboarding>>;
-        try {
-          out = await finishOnboarding({...deps.store, send: deps.send, kdf: deps.kdf}, {mnemonic: phrase, password: chosen, scheme: 'slip10', indexes: [0]});
-        } finally {
-          storing = false;
-          // N1: a store that settles while #1 is up (a restore from the back/forward cache) — #1 reads again.
-          if (onWelcome) void welcome.show();
-        }
+        const out = await whileStoring(() => finishOnboarding({...deps.store, send: deps.send, kdf: deps.kdf}, {mnemonic: phrase, password: chosen, scheme: 'slip10', indexes: [0]}));
         if (out === 'created' || out === 'created-locked' || out === 'exists') mnemonic = null;
         // The page was left (pagehide) while this ran: the run was dropped, and #1 shows what is stored now.
         if (started !== generation) return null;
@@ -102,27 +119,33 @@ export function startCreateRun(deps: PageDeps, o: {at: 'welcome' | 'intro'; impo
           deps.go('wallet.html#/created');
           return null;
         }
-        if (out === 'exists') return stopped();
+        if (out === 'exists') return existsLines(deps);
         return {line: out === 'weak-password' ? PASSWORD.weak : out === 'invalid-mnemonic' ? PASSWORD.invalid : PASSWORD.failed, stop: false};
       },
     });
 
-  /**
-   * finishOnboarding answers `exists` for anything stored — a damaged vault too (stored.ts). Read it again to
-   * say which, as #1 does (fix round 1, M1/M4): a wallet → "Open the Noctura icon to use it."; damaged → the
-   * damaged lines; unreadable → the reload line.
-   */
-  const stopped = async (): Promise<{line: string; help: string; stop: true}> => {
-    try {
-      const stored = storedVault(await deps.store.readEnvelope());
-      if (stored.kind === 'damaged') return {line: COMMON.damaged, help: COMMON.damagedHelp, stop: true};
-      return {line: COMMON.exists, help: WELCOME.useIt, stop: true};
-    } catch {
-      return {line: COMMON.unreadable, help: '', stop: true};
-    }
+  return {
+    start(at) {
+      if (at === 'welcome') toWelcome();
+      else intro.show();
+    },
+    holds: () => ({phrase: mnemonic !== null, password: password !== null}),
+    storing: whileStoring,
   };
+}
 
-  if (o.at === 'welcome') toWelcome();
-  else intro.show();
-  return {holds: () => ({phrase: mnemonic !== null, password: password !== null})};
+/**
+ * #5's lines when `finishOnboarding` answers `exists` — it does for anything stored, a damaged vault too
+ * (stored.ts) — read again to say which, as #1 does (Task 8 fix round 1, M1/M4): a wallet → "Open the
+ * Noctura icon to use it."; damaged → the damaged lines; unreadable → the reload line. Shared by the
+ * create and import runs.
+ */
+export async function existsLines(deps: PageDeps): Promise<{line: string; help: string; stop: true}> {
+  try {
+    const stored = storedVault(await deps.store.readEnvelope());
+    if (stored.kind === 'damaged') return {line: COMMON.damaged, help: COMMON.damagedHelp, stop: true};
+    return {line: COMMON.exists, help: WELCOME.useIt, stop: true};
+  } catch {
+    return {line: COMMON.unreadable, help: '', stop: true};
+  }
 }

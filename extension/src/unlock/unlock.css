@@ -81,6 +81,12 @@
 .vlt-gap-top-2 {
   margin-top: var(--space-2);
 }
+.vlt-gap-top-1 {
+  margin-top: 2px;
+}
+.vlt-gap-bottom-3 {
+  margin-bottom: var(--space-3);
+}
 .vlt-gap-top-3 {
   margin-top: var(--space-3);
 }
@@ -222,4 +228,59 @@
   .vlt-col .s-confirm .slot.wrong {
     animation: none;
   }
+}
+
+/* #8: the mockup's inline spacing; the phrase field inside the design's .ta-wrap (the design draws the
+   words in its mono cell grid, which this page shows under the field as the words are typed). */
+.vlt-import-lede {
+  padding: 0 var(--space-5) var(--space-4);
+}
+.vlt-banner-gap {
+  margin: 0 var(--space-5) var(--space-3);
+}
+.vlt-toast {
+  background: var(--bg-surface-2);
+  border-inline-start: 1px solid var(--info);
+}
+.vlt-strong {
+  color: var(--fg-primary);
+}
+.vlt-phrase {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  background: transparent;
+  border: 0;
+  color: var(--fg-primary);
+  font: 400 14px/22px var(--font-mono);
+}
+.vlt-phrase::placeholder {
+  color: var(--fg-tertiary);
+}
+.vlt-phrase:focus {
+  outline: none;
+}
+.vlt-col .s-import .ta-wrap .ta-grid {
+  margin-top: var(--space-3);
+}
+.vlt-valid {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: 0 var(--space-5) var(--space-3);
+}
+/* The scheme choice (B1b-1's two buttons, in the design's chrome: two .noc-card rows). */
+.vlt-choose {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--space-5) var(--space-4);
+}
+.vlt-choice {
+  width: 100%;
+  min-height: var(--touch-target-min);
+  text-align: start;
+  color: var(--fg-primary);
+  font: 500 15px/22px var(--font-body);
+  cursor: pointer;
 }

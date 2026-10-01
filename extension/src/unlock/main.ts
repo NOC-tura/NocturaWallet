@@ -16,10 +16,12 @@ import {startMode} from './modes';
 import {browserPageDeps} from './browser';
 import {passkeyOf} from './stored';
 
-// unlock.html?mode=welcome|create runs the create run (#1 → #6, screens/createRun.ts) in this page;
-// ?mode=import|reauth&challenge=…|accounts|reveal shows that mode's section; no mode is the unlock page
-// below, whose handlers stay registered either way (on a hidden section).
-startMode(pageMode(location.search), browserPageDeps());
+// unlock.html?mode=welcome|create|import (no source) runs the create and import runs (#1 → #6, #8 → #5,
+// screens/createRun.ts, importRun.ts) in this page; ?mode=import&source=…|reauth&challenge=…|accounts|reveal
+// shows that mode's section; no mode is the unlock page below, whose handlers stay registered either way
+// (on a hidden section).
+const deps = browserPageDeps();
+startMode(pageMode(location.search), deps);
 
 // The vault page renders only its own fixed strings — nothing from a dApp, a token or the
 // network (spec §1). Every status line below is one of the WORDS/literal strings in this file.
@@ -41,9 +43,9 @@ const readEnvelope = (): Promise<unknown> => readLocal(ENVELOPE_KEY);
 
 // Cardinal rule 6 (no double-submit): one busy flag for the whole page, not one per button —
 // while a passkey prompt is in flight the password form must not be submittable, and vice
-// versa. `runExclusive` marks it busy synchronously, before either action's first `await`.
-let busy = false;
-const gate: BusyGate = {isBusy: () => busy, setBusy: b => (busy = b)};
+// versa. `runExclusive` marks it busy synchronously, before either action's first `await`. It is the page's
+// one gate (PageDeps.gate, Task 9), the same the plan-2 screens and the B1b-1 sections use.
+const gate: BusyGate = deps.gate;
 
 // Spec §2: consecutive wrong outcomes add a growing wait before the buttons come back. It runs
 // inside runExclusive + withButtonsDisabled, so both buttons stay disabled and the gate held.

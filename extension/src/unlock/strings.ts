@@ -92,6 +92,17 @@ export const PASSWORD = {
   failed: 'Something went wrong. Nothing was saved.',
 } as const;
 
+/** #8 import. */
+export const IMPORT = {
+  idleTitle: (seconds: number): string => `Auto-clearing in ${seconds} s`,
+  count: (n: number, of: number): string => `${n} of ${of} words entered.`,
+  valid: (n: number): string => `Valid ${n}-word BIP-39 phrase · checksum OK`,
+  checking: 'Checking which addresses hold funds…',
+  bothFunded: 'Both address types on this phrase hold funds. Choose the one to use.',
+  unresolved: 'Balances could not be checked. Choose the address type to use.',
+  invalid: 'That is not a valid 12- or 24-word recovery phrase.',
+} as const;
+
 /** #6 biometric-setup → passkey (D9). */
 export const PASSKEY = {
   adding: 'Waiting for your passkey…',

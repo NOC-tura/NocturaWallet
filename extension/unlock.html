@@ -298,6 +298,47 @@
         </div>
       </section>
 
+      <!-- #8 import (spec §3.8): the phrase only (D17); the restore (#39) and retry (#40) paths add their states. -->
+      <section id="v-import" class="screen s-import" hidden>
+        <div class="top-bar">
+          <button id="imp-back" type="button" class="icon-btn" aria-label="Back"><svg width="22" height="22" aria-hidden="true"><use href="#i-arrow-left" /></svg></button>
+          <span class="title noc-h2">Import wallet</span>
+        </div>
+        <p class="noc-body vlt-lede vlt-import-lede">Bring an existing wallet onto this device.</p>
+        <div id="imp-toast" class="banner info toast vlt-toast" role="status" hidden>
+          <svg width="16" height="16" aria-hidden="true"><use href="#i-clip" /></svg>
+          <div class="noc-body-sm vlt-strong"><b>Pasted from clipboard.</b> Noctura cannot clear your clipboard — clear it yourself.</div>
+        </div>
+        <div id="imp-idle" class="banner warning vlt-banner-gap" role="alert" hidden>
+          <svg width="16" height="16" aria-hidden="true"><use href="#i-warn" /></svg>
+          <div>
+            <div class="noc-body-sm"><b id="imp-idle-title"></b></div>
+            <div class="noc-caption vlt-lede vlt-gap-top-1">No activity for 60 s — phrase will be wiped from this field.</div>
+          </div>
+        </div>
+        <div class="ta-wrap">
+          <textarea id="imp-phrase" class="vlt-phrase" autocomplete="off" autocapitalize="none" spellcheck="false" rows="4" aria-label="Recovery phrase" placeholder="Enter your 12 or 24-word recovery phrase, separated by spaces."></textarea>
+          <div id="imp-grid" class="ta-grid" hidden></div>
+        </div>
+        <p id="imp-count" class="noc-caption noc-numeral vlt-muted vlt-pad vlt-gap-bottom-3" hidden></p>
+        <p id="imp-valid" class="noc-caption vlt-success vlt-valid" hidden><svg width="14" height="14" aria-hidden="true"><use href="#i-check" /></svg><span id="imp-valid-text"></span></p>
+        <div class="banner info vlt-banner-gap">
+          <svg width="16" height="16" aria-hidden="true"><use href="#i-info" /></svg>
+          <div class="noc-body-sm">This phrase is also the root of the Noctura phone app's future private (shielded) keys — anyone who gets it from this browser gets those too. Accounts after the first one exist only in this extension until the phone app supports more than one account.</div>
+        </div>
+        <p id="imp-line" class="noc-body vlt-pad vlt-center" role="status" hidden></p>
+        <div id="imp-choose" class="vlt-choose" hidden>
+          <p id="imp-choose-why" class="noc-body"></p>
+          <button id="imp-choose-slip10" type="button" class="noc-card vlt-choice">Standard (Phantom/Solflare)</button>
+          <button id="imp-choose-cli" type="button" class="noc-card vlt-choice">Solana CLI (solana-keygen)</button>
+        </div>
+        <div class="vlt-grow"></div>
+        <div class="sticky-bar">
+          <button id="imp-continue" type="button" class="btn btn-primary" disabled>Continue</button>
+          <button id="imp-keep" type="button" class="btn btn-tertiary" hidden>Keep working — reset timer</button>
+        </div>
+      </section>
+
     </main>
     <script type="module" src="./src/unlock/main.ts"></script>
   </body>

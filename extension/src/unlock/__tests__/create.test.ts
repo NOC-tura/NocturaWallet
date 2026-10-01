@@ -7,7 +7,7 @@ import {getSession} from '../../background/session';
 import {RESET_MS, confirmPlan, mountConfirm, randomBelow} from '../screens/confirm';
 import {MISMATCH_CLEAR_MS, mountPassword} from '../screens/password';
 import {mountPasskey} from '../screens/passkey';
-import {startCreateRun} from '../screens/createRun';
+import {createCreateRun} from '../screens/createRun';
 import {mountSeed} from '../screens/seed';
 import {HOLD_MS, TICK_MS} from '../view/hold';
 import {click, el, harness, loadPage, testKdf, text, type, unstyled, visible, type Harness} from './pageHarness';
@@ -94,6 +94,12 @@ const idle = (h: Harness) => h.until(() => !h.deps.gate.isBusy());
 async function press(h: Harness, id: string): Promise<void> {
   await h.until(() => !el<HTMLButtonElement>(id).disabled);
   click(el(id));
+}
+/** The create run, mounted with its own #5 (Task 9: the runs share one PasswordScreen per page), started at `at`. */
+function startRun(h: Harness, at: 'welcome' | 'intro', importRun: () => void = () => undefined) {
+  const run = createCreateRun(h.deps, {password: mountPassword(h.deps), importRun});
+  run.start(at);
+  return run;
 }
 
 describe('#4 seed-confirm: the plan', () => {
@@ -910,7 +916,7 @@ describe('the create run, end to end in one page, against the real background', 
 
   it('#1 → #2 → #3 → #4 → #5 → #6 → Skip → wallet.html#/created; the stored wallet is the phrase shown on #3; nothing holds it after', async () => {
     const h = await harness({mnemonic: PHRASE});
-    const run = startCreateRun(h.deps, {at: 'welcome', importRun: () => undefined});
+    const run = startRun(h, 'welcome');
     expect(run.holds()).toEqual({phrase: false, password: false});
     await h.until(() => visible(el('wel-actions')));
     const shownWords = await toPassword(h);
@@ -932,7 +938,7 @@ describe('the create run, end to end in one page, against the real background', 
 
   it('Scope 15, with the real gate and no manual idle: #1’s Create → #2 → #3’s gate shows Continue disabled while #1’s floor runs, then enables it', async () => {
     const h = await harness({mnemonic: PHRASE});
-    startCreateRun(h.deps, {at: 'welcome', importRun: () => undefined});
+    startRun(h, 'welcome');
     await h.until(() => visible(el('wel-actions')) && !el<HTMLButtonElement>('wel-create').disabled);
     click(el('wel-create'));
     expect(h.deps.gate.isBusy()).toBe(true);
@@ -948,7 +954,7 @@ describe('the create run, end to end in one page, against the real background', 
 
   it('Scope 15 backwards: #3’s Cancel → #2 → back → #1 enables Create once the gate frees', async () => {
     const h = await harness({mnemonic: PHRASE});
-    startCreateRun(h.deps, {at: 'intro', importRun: () => undefined});
+    startRun(h, 'intro');
     click(el('int-continue'));
     await h.until(() => !el<HTMLButtonElement>('sg-cancel').disabled);
     click(el('sg-cancel'));
@@ -961,16 +967,31 @@ describe('the create run, end to end in one page, against the real background', 
   it('starts at #2 for ?mode=create; #1’s Import hands over to the import run', async () => {
     const h = await harness();
     const imports: number[] = [];
-    startCreateRun(h.deps, {at: 'intro', importRun: () => imports.push(1)});
+    startRun(h, 'intro', () => imports.push(1));
     expect(visible(el('v-intro'))).toBe(true);
     click(el('int-back'));
     await press(h, 'wel-import');
     expect(imports).toEqual([1]);
   });
 
+  it('Task 9 carry: #1’s Import drops the phrase a #3 visit generated — the import run starts with nothing of the create run held', async () => {
+    const h = await harness({mnemonic: PHRASE});
+    const imports: number[] = [];
+    const run = startRun(h, 'intro', () => imports.push(1));
+    click(el('int-continue'));
+    await press(h, 'sg-continue');
+    expect(run.holds().phrase).toBe(true);
+    await press(h, 'seed-back');
+    click(el('int-back'));
+    await press(h, 'wel-import');
+    expect(imports).toEqual([1]);
+    expect(run.holds()).toEqual({phrase: false, password: false});
+    expect(leaked()).toEqual([]);
+  });
+
   it('back from #5 → #4 (a new plan for the same phrase), back from #4 → #3: the same phrase throughout', async () => {
     const h = await harness({mnemonic: PHRASE});
-    const run = startCreateRun(h.deps, {at: 'welcome', importRun: () => undefined});
+    const run = startRun(h, 'welcome');
     await h.until(() => visible(el('wel-actions')));
     await toPassword(h);
     await press(h, 'pw-back');
@@ -990,7 +1011,7 @@ describe('the create run, end to end in one page, against the real background', 
 
   it('the tab hidden while the wallet is stored: #6 does not hold the password; it asks for it again', async () => {
     const h = await harness({mnemonic: PHRASE});
-    const run = startCreateRun(h.deps, {at: 'welcome', importRun: () => undefined});
+    const run = startRun(h, 'welcome');
     await h.until(() => visible(el('wel-actions')));
     await toPassword(h);
     click(el('pw-cta'));
@@ -1005,7 +1026,7 @@ describe('the create run, end to end in one page, against the real background', 
 
   it('the tab hidden on #6 drops the held password; Add then asks for it', async () => {
     const h = await harness({mnemonic: PHRASE});
-    const run = startCreateRun(h.deps, {at: 'welcome', importRun: () => undefined});
+    const run = startRun(h, 'welcome');
     await h.until(() => visible(el('wel-actions')));
     await toPassword(h);
     click(el('pw-cta'));
@@ -1022,7 +1043,7 @@ describe('the create run, end to end in one page, against the real background', 
       mnemonic: PHRASE,
       send: inner => async m => ((m as {type: string}).type === 'vault.setKeys' ? {ok: false, error: 'failed'} : inner(m)),
     });
-    const run = startCreateRun(h.deps, {at: 'welcome', importRun: () => undefined});
+    const run = startRun(h, 'welcome');
     await h.until(() => visible(el('wel-actions')));
     await toPassword(h);
     click(el('pw-cta'));
@@ -1034,7 +1055,7 @@ describe('the create run, end to end in one page, against the real background', 
 
   it('M1: a wallet stored meanwhile (exists): "Open the Noctura icon to use it." as #1 says it, no CTA, the phrase dropped', async () => {
     const h = await harness({mnemonic: PHRASE});
-    const run = startCreateRun(h.deps, {at: 'welcome', importRun: () => undefined});
+    const run = startRun(h, 'welcome');
     await h.until(() => visible(el('wel-actions')));
     await toPassword(h);
     // Another tab finished first.
@@ -1051,7 +1072,7 @@ describe('the create run, end to end in one page, against the real background', 
 
   it('M4: a damaged vault stored meanwhile (null): the damaged lines, never "A wallet already exists"', async () => {
     const h = await harness({mnemonic: PHRASE});
-    const run = startCreateRun(h.deps, {at: 'welcome', importRun: () => undefined});
+    const run = startRun(h, 'welcome');
     await h.until(() => visible(el('wel-actions')));
     await toPassword(h);
     await h.ext.local.set(VAULT_KEY, null);
@@ -1068,7 +1089,7 @@ describe('the create run, end to end in one page, against the real background', 
 
   it('pagehide (the page may go into the back/forward cache): the run drops the phrase and the password, no word left in the DOM; restored, it starts again at #1', async () => {
     const h = await harness({mnemonic: PHRASE});
-    const run = startCreateRun(h.deps, {at: 'welcome', importRun: () => undefined});
+    const run = startRun(h, 'welcome');
     await h.until(() => visible(el('wel-actions')));
     await press(h, 'wel-create');
     click(el('int-continue'));
@@ -1107,7 +1128,7 @@ describe('the create run, end to end in one page, against the real background', 
         return inner(m);
       },
     });
-    startCreateRun(h.deps, {at: 'welcome', importRun: () => undefined});
+    startRun(h, 'welcome');
     await h.until(() => visible(el('wel-actions')));
     await toPassword(h);
     click(el('pw-cta'));
@@ -1132,7 +1153,7 @@ describe('the create run, end to end in one page, against the real background', 
 
   it('pagehide while the wallet is stored: the run drops the phrase; the store that lands afterwards does not move the run on', async () => {
     const h = await harness({mnemonic: PHRASE});
-    const run = startCreateRun(h.deps, {at: 'welcome', importRun: () => undefined});
+    const run = startRun(h, 'welcome');
     await h.until(() => visible(el('wel-actions')));
     await toPassword(h);
     click(el('pw-cta'));
@@ -1155,7 +1176,7 @@ describe('the create run, end to end in one page, against the real background', 
       mnemonic: PHRASE,
       send: inner => async m => ((m as {type: string}).type === 'vault.storeEnvelope' ? {ok: false, error: 'failed'} : inner(m)),
     });
-    const run = startCreateRun(h.deps, {at: 'welcome', importRun: () => undefined});
+    const run = startRun(h, 'welcome');
     await h.until(() => visible(el('wel-actions')));
     await toPassword(h);
     click(el('pw-cta'));

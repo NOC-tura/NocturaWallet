@@ -7,8 +7,9 @@ import {createWrongBackoff, runExclusive, type BusyGate} from './orchestrate';
 import {backgroundVaultStore} from './vaultStore';
 import type {PageMode} from './mode';
 import type {PageDeps} from './page';
-import {startCreateRun} from './screens/createRun';
-import {showScreen} from './view/dom';
+import {createCreateRun} from './screens/createRun';
+import {createImportRun} from './screens/importRun';
+import {mountPassword} from './screens/password';
 import {workerKdf} from '../vault/kdf';
 import {evaluatePrf} from '../vault/passkey';
 import {unb64} from '../vault/bytes';
@@ -80,9 +81,9 @@ const say = (text: string): void => {
   $('status').textContent = text;
 };
 const store = backgroundVaultStore(send, () => readLocal(ENVELOPE_KEY));
-// Cardinal rule 6: one busy flag for the page; runExclusive sets it before the first await.
-let busy = false;
-const gate: BusyGate = {isBusy: () => busy, setBusy: b => (busy = b)};
+// Cardinal rule 6: ONE busy flag for the page — the page's own gate (PageDeps.gate), which startMode hands the
+// B1b-1 sections too (Task 9: no second, module-level gate). runExclusive sets it before the first await.
+let gate: BusyGate = {isBusy: () => true, setBusy: () => undefined};
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 /** The user's own words, one list item each, as text. */
@@ -102,16 +103,15 @@ function legacy(shown: (typeof SECTIONS)[number] | null): void {
 }
 
 export function startMode(mode: PageMode, deps: PageDeps): void {
-  if (mode.mode === 'welcome' || mode.mode === 'create') {
+  gate = deps.gate;
+  if (mode.mode === 'welcome' || mode.mode === 'create' || (mode.mode === 'import' && mode.source === null)) {
     legacy(null);
-    startCreateRun(deps, {
-      at: mode.mode === 'welcome' ? 'welcome' : 'intro',
-      importRun: () => {
-        showScreen(null);
-        legacy('import');
-        startImport();
-      },
-    });
+    // Each screen is mounted once per page; the runs share #5 and the page's store tracker.
+    const password = mountPassword(deps);
+    const create = createCreateRun(deps, {password, importRun: () => imports.show()});
+    const imports = createImportRun(deps, {password, back: () => create.start('welcome'), storing: create.storing});
+    if (mode.mode === 'import') imports.show();
+    else create.start(mode.mode === 'welcome' ? 'welcome' : 'intro');
     return;
   }
   const shown = mode.mode === 'unlock' || mode.mode === 'forgot' ? 'unlock-section' : mode.mode;
