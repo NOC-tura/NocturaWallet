@@ -1,6 +1,6 @@
 import {openProven, type ReauthFactor} from '../vault/reauth';
-import type {EnvelopeV1} from '../vault/envelope';
 import {lockOnMismatch, sessionKeys} from './reauthFlow';
+import {storedVault} from './stored';
 import type {Send} from './types';
 
 export type RevealOutcome =
@@ -15,11 +15,12 @@ export type RevealOutcome =
  */
 export async function runReveal(deps: {readEnvelope(): Promise<unknown>; send: Send}, factor: ReauthFactor): Promise<RevealOutcome> {
   try {
-    const raw = await deps.readEnvelope();
-    if (raw === undefined || raw === null) return {outcome: 'no-wallet'};
+    const stored = storedVault(await deps.readEnvelope());
+    if (stored.kind === 'none') return {outcome: 'no-wallet'};
+    if (stored.kind === 'damaged') return {outcome: 'damaged'};
     const session = await sessionKeys(deps.send);
     if (session === null) return {outcome: 'not-unlocked'};
-    const proven = await openProven(raw as EnvelopeV1, factor, session);
+    const proven = await openProven(stored.env, factor, session);
     if (proven.outcome === 'mismatch') return {outcome: await lockOnMismatch(deps.send)};
     if (proven.outcome !== 'ok') return {outcome: proven.outcome};
     proven.dataKey.fill(0);

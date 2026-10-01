@@ -75,11 +75,11 @@ describe('runReauth (the vault page proves the factor, the background is told)',
     expect(await runReauth(deps, ID, {password: PASSWORD, kdf})).toBe('failed');
   });
 
-  it('a damaged envelope is named, and the background is told nothing past the status read', async () => {
+  it('a damaged envelope is named, and the background is told nothing — not even the status read (stored.ts)', async () => {
     const {deps, env, sent} = await setup(MNEMONIC);
     const damaged = {...env, password: {wrapped: 'AAAA'}};
     expect(await runReauth({...deps, readEnvelope: async () => damaged}, ID, {password: PASSWORD, kdf})).toBe('damaged');
-    expect(sent.map(m => m.type)).toEqual(['vault.status']);
+    expect(sent).toEqual([]);
   });
 
   it('zeroes the data key it unwrapped', async () => {

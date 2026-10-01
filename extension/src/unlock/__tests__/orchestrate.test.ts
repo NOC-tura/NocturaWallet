@@ -8,22 +8,36 @@ import {
   type BusyGate,
   type Outcome,
 } from '../orchestrate';
+import {base64} from '@scure/base';
 import type {EnvelopeV1} from '../../vault/envelope';
 
+// Well-formed (checkEnvelope accepts it: production Argon2id, every byte string its length), so the
+// read is a wallet; unlockFlow is a stub, so nothing here is decrypted.
+const bytes = (n: number) => base64.encode(new Uint8Array(n));
 const FAKE_ENV: EnvelopeV1 = {
   v: 1,
   scheme: 'slip10',
-  kdf: {alg: 'argon2id', m: 1, t: 1, p: 1, salt: ''},
-  seed: {iv: '', ct: ''},
-  password: {wrapped: ''},
-  accounts: [],
+  kdf: {alg: 'argon2id', m: 65536, t: 3, p: 1, salt: bytes(16)},
+  seed: {iv: bytes(12), ct: bytes(48)},
+  password: {wrapped: bytes(40)},
+  accounts: [{index: 0, name: 'A', publicKey: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk'}],
 };
 
 describe('attemptUnlock — the caller-owned prfOutput is zeroed on every path', () => {
-  it('zeroes prfOutput when the envelope read resolves null (no wallet on this browser)', async () => {
+  it('zeroes prfOutput when nothing is stored (no wallet on this browser)', async () => {
     const prfOutput = new Uint8Array(32).fill(7);
-    const r = await attemptUnlock({envelope: async () => null, send: async () => ({ok: true}), unlockFlow: async () => 'unlocked'}, {prfOutput});
+    const r = await attemptUnlock({readEnvelope: async () => undefined, send: async () => ({ok: true}), unlockFlow: async () => 'unlocked'}, {prfOutput});
     expect(r).toBe('no-wallet');
+    expect(Array.from(prfOutput)).toEqual(new Array(32).fill(0));
+  });
+
+  // Plan-1 carry: the background calls a stored null (or any non-envelope) stored-invalid; the page
+  // used to call it "no wallet" and offer setup over it. It is damaged, never sent to unlockFlow.
+  it.each([null, [], 'v1', {...FAKE_ENV, accounts: []}])('a stored %j is damaged, not "no wallet", and zeroes prfOutput', async stored => {
+    const prfOutput = new Uint8Array(32).fill(7);
+    const unlockFlow = vi.fn(async () => 'unlocked' as const);
+    expect(await attemptUnlock({readEnvelope: async () => stored, send: async () => ({ok: true}), unlockFlow}, {prfOutput})).toBe('damaged');
+    expect(unlockFlow).not.toHaveBeenCalled();
     expect(Array.from(prfOutput)).toEqual(new Array(32).fill(0));
   });
 
@@ -32,7 +46,7 @@ describe('attemptUnlock — the caller-owned prfOutput is zeroed on every path',
     expect(
       await attemptUnlock(
         {
-          envelope: async () => {
+          readEnvelope: async () => {
             throw new Error('Extension context invalidated.');
           },
           send: async () => ({ok: true}),
@@ -48,7 +62,7 @@ describe('attemptUnlock — the caller-owned prfOutput is zeroed on every path',
     let sawEnv: EnvelopeV1 | undefined;
     const r = await attemptUnlock(
       {
-        envelope: async () => FAKE_ENV,
+        readEnvelope: async () => FAKE_ENV,
         send: async () => ({ok: true}),
         unlockFlow: async deps => {
           sawEnv = deps.env;
@@ -63,7 +77,7 @@ describe('attemptUnlock — the caller-owned prfOutput is zeroed on every path',
 
   it('leaves a password factor alone (nothing to zero)', async () => {
     const r = await attemptUnlock(
-      {envelope: async () => FAKE_ENV, send: async () => ({ok: true}), unlockFlow: async () => 'unlocked'},
+      {readEnvelope: async () => FAKE_ENV, send: async () => ({ok: true}), unlockFlow: async () => 'unlocked'},
       {password: 'correct horse battery', kdf: async () => new Uint8Array(32)},
     );
     expect(r).toBe('unlocked');
@@ -75,7 +89,7 @@ describe('attemptPasskeyUnlock', () => {
     let called = false;
     const r = await attemptPasskeyUnlock({
       evaluatePrf: async () => null,
-      envelope: async () => FAKE_ENV,
+      readEnvelope: async () => FAKE_ENV,
       send: async () => ({ok: true}),
       unlockFlow: async () => {
         called = true;
@@ -91,21 +105,21 @@ describe('attemptPasskeyUnlock', () => {
       evaluatePrf: async () => {
         throw new Error('NotAllowedError');
       },
-      envelope: async () => FAKE_ENV,
+      readEnvelope: async () => FAKE_ENV,
       send: async () => ({ok: true}),
       unlockFlow: async () => 'unlocked',
     });
     expect(r).toBe('unavailable');
   });
 
-  it('zeroes the PRF output evaluatePrf produced even when the envelope read comes back null', async () => {
+  it('zeroes the PRF output evaluatePrf produced even when nothing is stored', async () => {
     let captured: Uint8Array | undefined;
     const r = await attemptPasskeyUnlock({
       evaluatePrf: async () => {
         captured = new Uint8Array(32).fill(3);
         return captured;
       },
-      envelope: async () => null,
+      readEnvelope: async () => undefined,
       send: async () => ({ok: true}),
       unlockFlow: async () => 'unlocked',
     });
@@ -117,7 +131,7 @@ describe('attemptPasskeyUnlock', () => {
   it('unlocks end-to-end when the PRF output and the envelope are both good', async () => {
     const r = await attemptPasskeyUnlock({
       evaluatePrf: async () => new Uint8Array(32).fill(1),
-      envelope: async () => FAKE_ENV,
+      readEnvelope: async () => FAKE_ENV,
       send: async () => ({ok: true}),
       unlockFlow: async () => 'unlocked',
     });
@@ -195,6 +209,25 @@ describe('wrong-password backoff (spec §2: an increasing delay on top of the Ar
     for (let i = 0; i < 5; i++) await backoff.run(async () => 'wrong' as Outcome, () => waits++);
     expect(slept).toEqual([1000, 2000, 4000, 8000]);
     expect(waits).toBe(4);
+  });
+
+  // #9's cooldown card counts the wait down: the page is told its length (B1b-2a §3.9).
+  it('tells onWait how long the wait is', async () => {
+    const backoff = createWrongBackoff(async () => undefined);
+    const told: number[] = [];
+    for (let i = 0; i < 4; i++) await backoff.run(async () => 'wrong' as Outcome, ms => told.push(ms));
+    expect(told).toEqual([1000, 2000, 4000]);
+  });
+
+  it("resets on #40's factor proof ('proven'), as on unlocked", async () => {
+    const {slept, sleep} = recordingSleep();
+    const backoff = createWrongBackoff(sleep);
+    await backoff.run(async () => 'wrong', () => undefined);
+    await backoff.run(async () => 'wrong', () => undefined);
+    await backoff.run(async () => 'proven', () => undefined);
+    await backoff.run(async () => 'wrong', () => undefined);
+    await backoff.run(async () => 'wrong', () => undefined);
+    expect(slept).toEqual([1000, 1000]);
   });
 
   it('resets on unlocked', async () => {

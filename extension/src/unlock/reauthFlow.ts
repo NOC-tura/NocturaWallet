@@ -1,5 +1,5 @@
 import {reauthenticate, type ReauthFactor, type SessionKeys} from '../vault/reauth';
-import type {EnvelopeV1} from '../vault/envelope';
+import {storedVault} from './stored';
 import type {Send} from './types';
 
 export type ReauthPageOutcome = 'confirmed' | 'wrong' | 'not-unlocked' | 'mismatch-locked' | 'damaged' | 'no-wallet' | 'failed';
@@ -39,11 +39,12 @@ export async function runReauth(
   factor: ReauthFactor,
 ): Promise<ReauthPageOutcome> {
   try {
-    const raw = await deps.readEnvelope();
-    if (raw === undefined || raw === null) return 'no-wallet';
+    const stored = storedVault(await deps.readEnvelope());
+    if (stored.kind === 'none') return 'no-wallet';
+    if (stored.kind === 'damaged') return 'damaged';
     const session = await sessionKeys(deps.send);
     if (session === null) return 'not-unlocked';
-    const outcome = await reauthenticate(raw as EnvelopeV1, factor, session);
+    const outcome = await reauthenticate(stored.env, factor, session);
     if (outcome === 'mismatch') return await lockOnMismatch(deps.send);
     if (outcome !== 'ok') return outcome;
     const r = await deps.send({type: 'vault.reauthOk', challengeId});

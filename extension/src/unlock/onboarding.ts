@@ -7,6 +7,7 @@ import {
 import {deriveSessionAccounts} from '../vault/accounts';
 import {registerPasskey, type CredentialsApi} from '../vault/passkey';
 import {envelopeRevision} from '../shared/envelopeRevision';
+import {storedVault} from './stored';
 import type {Send, VaultStore} from './types';
 
 /** Spec §2: at least 12 characters. Recovery is the seed phrase and nothing else. */
@@ -111,7 +112,8 @@ export async function detectImport(send: Send, mnemonic: string): Promise<Detect
 
 export type FinishOutcome = 'created' | 'created-locked' | 'exists' | 'weak-password' | 'invalid-mnemonic' | 'failed';
 
-const present = (x: unknown): boolean => x !== undefined && x !== null;
+/** Any stored v1_vault — a damaged one too — is a wallet onboarding must not write over (stored.ts). */
+const present = (x: unknown): boolean => storedVault(x).kind !== 'none';
 
 /**
  * Encrypt and store a new or imported wallet, then hand the background its signing keys. Never
@@ -151,9 +153,10 @@ export type PasskeyOutcome = 'added' | 'unsupported' | 'wrong' | 'no-wallet' | '
 type Unwrapped = {dataKey: Uint8Array; env: EnvelopeV1} | Exclude<PasskeyOutcome, 'added' | 'unsupported'>;
 
 async function openWithPassword(deps: VaultStore, factor: {password: string; kdf: Kdf}): Promise<Unwrapped> {
-  const raw = await deps.readEnvelope();
-  if (!present(raw)) return 'no-wallet';
-  const env = raw as EnvelopeV1;
+  const stored = storedVault(await deps.readEnvelope());
+  if (stored.kind === 'none') return 'no-wallet';
+  if (stored.kind === 'damaged') return 'damaged';
+  const env = stored.env;
   try {
     return {dataKey: await unlockWithPassword(env, factor.password, factor.kdf), env};
   } catch (e) {

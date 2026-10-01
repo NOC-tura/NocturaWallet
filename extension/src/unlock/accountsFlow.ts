@@ -5,6 +5,7 @@ import {deriveSessionAccounts} from '../vault/accounts';
 import {envelopeRevision} from '../shared/envelopeRevision';
 import {MAX_ACCOUNTS} from '../shared/envelopeRules';
 import {lockOnMismatch, sessionKeys} from './reauthFlow';
+import {storedVault} from './stored';
 import type {Send, VaultStore} from './types';
 
 export type AccountsOutcome =
@@ -33,9 +34,10 @@ type Named = {index: number; name: string}[];
  * stored envelope moved in between; the caller decides whether to run again.
  */
 async function attempt(deps: Deps, factor: ReauthFactor, change: (env: EnvelopeV1) => Named | AccountsOutcome): Promise<AccountsOutcome | 'busy'> {
-  const raw = await deps.readEnvelope();
-  if (raw === undefined || raw === null) return 'no-wallet';
-  const env = raw as EnvelopeV1;
+  const stored = storedVault(await deps.readEnvelope());
+  if (stored.kind === 'none') return 'no-wallet';
+  if (stored.kind === 'damaged') return 'damaged';
+  const env = stored.env;
   const session = await sessionKeys(deps.send);
   if (session === null) return 'not-unlocked';
   const proven = await openProven(env, factor, session);

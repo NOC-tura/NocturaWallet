@@ -29,9 +29,7 @@ const WORDS: Record<Outcome | 'unavailable', string> = {
   unavailable: 'This device cannot unlock the wallet with a passkey; your password still works.',
 };
 
-async function envelope(): Promise<EnvelopeV1 | null> {
-  return ((await readLocal(ENVELOPE_KEY)) as EnvelopeV1 | undefined) ?? null;
-}
+const readEnvelope = (): Promise<unknown> => readLocal(ENVELOPE_KEY);
 
 // Cardinal rule 6 (no double-submit): one busy flag for the whole page, not one per button —
 // while a passkey prompt is in flight the password form must not be submittable, and vice
@@ -71,7 +69,7 @@ async function withButtonsDisabled<T>(action: () => Promise<T>): Promise<T> {
 async function handlePasswordSubmit(): Promise<void> {
   const password = pw.value;
   const result = await runExclusive(gate, () =>
-    withButtonsDisabled(() => backoff.run(() => attemptUnlock({envelope, send, unlockFlow}, {password, kdf: workerKdf}), showWaiting)),
+    withButtonsDisabled(() => backoff.run(() => attemptUnlock({readEnvelope, send, unlockFlow}, {password, kdf: workerKdf}), showWaiting)),
   );
   if (result !== 'busy') status.textContent = WORDS[result];
 }
@@ -88,7 +86,7 @@ async function handlePasskeyClick(pk: NonNullable<EnvelopeV1['passkey']>): Promi
         () =>
           attemptPasskeyUnlock({
             evaluatePrf: () => evaluatePrf(navigator.credentials, unb64(pk.credentialId), unb64(pk.prfSalt)),
-            envelope,
+            readEnvelope,
             send,
             unlockFlow,
           }),
@@ -99,8 +97,8 @@ async function handlePasskeyClick(pk: NonNullable<EnvelopeV1['passkey']>): Promi
   if (result !== 'busy') status.textContent = WORDS[result];
 }
 
-void envelope().then(env => {
-  const pk = env?.passkey;
+void readEnvelope().then(raw => {
+  const pk = (raw as EnvelopeV1 | undefined)?.passkey;
   if (!pk) return;
   passkeyBtn.hidden = false;
   passkeyBtn.addEventListener('click', () => void handlePasskeyClick(pk));

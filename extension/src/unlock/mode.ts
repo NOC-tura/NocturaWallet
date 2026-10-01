@@ -1,13 +1,38 @@
-export type PageMode = {mode: 'unlock'} | {mode: 'welcome'} | {mode: 'create'} | {mode: 'import'} | {mode: 'accounts'} | {mode: 'reveal'} | {mode: 'reauth'; challengeId: string};
+/** #8's two E5 paths (spec B1b-2a §1.2): #39's restore (seed proof) and #40's "Try a different seed" (password first). */
+export type ImportSource = 'forgot' | 'retry';
+/** Where a finished unlock hands over (#7, #40): a UI-tab route, never a URL. */
+export type ReturnTo = 'created' | 'imported';
 
-/** unlock.html?mode=…; anything unknown or malformed is the plain unlock page. */
+export type PageMode =
+  | {mode: 'unlock'; returnTo: ReturnTo | null}
+  | {mode: 'welcome'}
+  | {mode: 'create'}
+  | {mode: 'import'; source: ImportSource | null}
+  | {mode: 'forgot'}
+  | {mode: 'accounts'}
+  | {mode: 'reveal'}
+  | {mode: 'reauth'; challengeId: string};
+
+const SOURCES: readonly string[] = ['forgot', 'retry'];
+const RETURNS: readonly string[] = ['created', 'imported'];
+
+/**
+ * unlock.html?mode=…; anything unknown or malformed is the plain unlock page. `source` and `return`
+ * are closed enums: an unknown value is dropped (a plain import, an unlock with no hand-over), never
+ * followed — no parameter names a URL, and none can start a destructive path by itself (§1.2).
+ */
 export function pageMode(search: string): PageMode {
   const p = new URLSearchParams(search);
   const m = p.get('mode');
-  if (m === 'welcome' || m === 'create' || m === 'import' || m === 'accounts' || m === 'reveal') return {mode: m};
+  if (m === 'welcome' || m === 'create' || m === 'forgot' || m === 'accounts' || m === 'reveal') return {mode: m};
+  if (m === 'import') {
+    const source = p.get('source') ?? '';
+    return {mode: 'import', source: SOURCES.includes(source) ? (source as ImportSource) : null};
+  }
   if (m === 'reauth') {
     const id = p.get('challenge') ?? '';
-    return /^[0-9a-f]{32}$/.test(id) ? {mode: 'reauth', challengeId: id} : {mode: 'unlock'};
+    return /^[0-9a-f]{32}$/.test(id) ? {mode: 'reauth', challengeId: id} : {mode: 'unlock', returnTo: null};
   }
-  return {mode: 'unlock'};
+  const back = p.get('return') ?? '';
+  return {mode: 'unlock', returnTo: RETURNS.includes(back) ? (back as ReturnTo) : null};
 }
