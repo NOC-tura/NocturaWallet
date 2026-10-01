@@ -17,12 +17,14 @@
 // (never bundled, wherever it sits). The HTML entries at the package root are checked as well:
 // each may load only its own page's entry (ENTRIES), so no other file can become a bundle root.
 //
-// Limits, deliberate: the source rule reads text, so a comment that spells out a vault import
-// trips it (fail-closed); a computed specifier (`import('../' + 'vault/x')`) is out of reach of
-// any static check — the bundle markers below are the backstop for both.
+// Limits, deliberate: module references are read with the TypeScript parser (comments and strings
+// are not code); a computed specifier (`import('../' + 'vault/x')`) is out of reach of any static check
+// and is refused in the vault page's own walk. The bundle markers and the vault page's chunk module map
+// (dist/app.modules.json, vaultPageModuleViolations) are the backstop.
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import {dirname, join, posix, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import ts from 'typescript';
 
 const VAULT_ALLOWED = /^src\/(unlock|vault)\//;
 // The vault page's own modules (unlockFlow, orchestrate, main) hold the seed while they run:
@@ -91,11 +93,43 @@ export const MARKUP_EVASIONS = [
   // `el.inner\u0048TML = s`: an escaped identifier spells a sink no name pattern sees. A string can
   // use the character itself.
   [/\\u/, 'uses a \\u escape'],
-  [/\bReflect\b|\bObject\s*\.\s*(?:assign|defineProperty|defineProperties|getOwnPropertyDescriptors?|setPrototypeOf)\b/, 'sets properties reflectively'],
+  // Reflection by any access — dot, bracket string or destructuring key (`Object['defineProperty']`,
+  // `const {defineProperty: dp} = Object`, `el.__lookupSetter__('…')`): the names themselves are refused.
+  [/\b(?:Reflect|assign|defineProperty|defineProperties|getOwnPropertyDescriptors?|setPrototypeOf|__proto__|__lookupSetter__|__defineSetter__|__lookupGetter__|__defineGetter__)\b/, 'sets properties reflectively'],
   [/\bdocument\s*(?:\?\.\s*)?\[/, 'indexes document'],
   [/\bsetAttribute(?:NS)?\s*\(\s*(?!(['"])[\w:-]+\1\s*,)/, 'sets an attribute named by a computed value'],
+  // An HTML document by another door (fix round 2): a Blob or a data: URL typed text/html, parsed by an
+  // XHR with responseType 'document' or shown through an object URL. Every responseType and object URL
+  // is refused; text/html is refused in any spelling the parser can fold (htmlTyped below).
   [/data:\s*text\/html/i, 'names a data:text/html URL'],
+  [/\bresponseType\b/, 'sets an XHR responseType'],
+  [/\bcreateObjectURL\b/, 'creates an object URL'],
 ];
+
+const TEXT_HTML = /text\s*\/\s*html/i;
+/**
+ * Does the module name the text/html type — in a comment or string as written, or assembled from string
+ * pieces (`'text/ht' + 'ml'`, `` `text/${x}html` ``)? Every `+` chain and template is read with its
+ * literal pieces joined (what is not a literal is left out: fail-closed).
+ */
+function htmlTyped(text, path) {
+  if (TEXT_HTML.test(text)) return true;
+  const pieces = node => {
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
+    if (ts.isTemplateExpression(node)) return node.head.text + node.templateSpans.map(sp => pieces(sp.expression) + sp.literal.text).join('');
+    if (ts.isParenthesizedExpression(node)) return pieces(node.expression);
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) return pieces(node.left) + pieces(node.right);
+    return '';
+  };
+  let found = false;
+  const visit = node => {
+    if (found) return;
+    if ((ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) || ts.isTemplateExpression(node)) found = TEXT_HTML.test(pieces(node));
+    ts.forEachChild(node, visit);
+  };
+  visit(parse(text, path));
+  return found;
+}
 
 // A string that exists only in the vault's envelope code (the passkey-wrap HKDF info).
 export const VAULT_MARKER = 'noctura-ext-v1/passkey-wrap';
@@ -129,26 +163,67 @@ const MARKERS = [
   ['wordlist', WORDLIST_MARKER],
 ];
 
-// `import X from`, `import {a, type B} from`, `import * as n from`, `import type … from`,
-// `export {a} from`, `export * from`, `export * as n from`, `export type {…} from`. The clause
-// grammar is spelled out (not `[^;]*`) so one statement's match cannot swallow the next.
-const FROM_CLAUSE =
-  /\b(import|export)\s+(type\s+)?((?:[\w$]+\s*,\s*)?(?:\{[^}]*\}|\*(?:\s+as\s+[\w$]+)?|[\w$]+))\s*from\s*(['"`])([^'"`]+)\4/g;
-// Every other way to name a module: `import 'x'`, `import('x')`, `require('x')`, and a worker
-// or asset `new URL('x', import.meta.url)`. A template literal counts up to its first `${`.
-const OTHER_REFERENCES = [
-  /\bimport\s*(['"`])([^'"`]+)\1/g,
-  /\bimport\s*\(\s*(['"`])([^'"`$]*)/g,
-  /\brequire\s*\(\s*(['"`])([^'"`$]*)/g,
-  /\bnew\s+URL\s*\(\s*(['"`])([^'"`$]*)/g,
-];
+// Module references are found with the TypeScript parser, not with patterns (Task 5 review, fix round
+// 2): a comment between tokens (`import(/*x*/'../app/engine')`, `import {e} /*c*/ from …`) hid an import
+// from every regex this gate used to have, and Vite bundled it. The parser sees what the bundler sees:
+// static imports and re-exports, `import x = require()`, dynamic `import()`, `require()`, and a worker or
+// asset `new URL('x', import.meta.url)` (`import('x').T` in a type is recorded as type-only). A specifier
+// that is not one plain string — a template with `${…}`, a concatenation, a variable — is recorded as
+// '' (computed). Comments and strings are never read as code.
+const SCRIPT_KIND = {'.tsx': ts.ScriptKind.TSX, '.jsx': ts.ScriptKind.JSX, '.js': ts.ScriptKind.JS, '.mjs': ts.ScriptKind.JS, '.cjs': ts.ScriptKind.JS};
 
-/** Every module a source file names, with whether that reference is type-only (erased). */
-function moduleReferences(text) {
+function parse(text, path) {
+  const ext = /\.[cm]?[jt]sx?$/.exec(path)?.[0] ?? '.ts';
+  return ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, SCRIPT_KIND[ext] ?? ts.ScriptKind.TS);
+}
+
+const literalText = node =>
+  node !== undefined && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) ? node.text : '';
+const isImportMeta = node => node !== undefined && ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword;
+const isImportMetaUrl = node => node !== undefined && ts.isPropertyAccessExpression(node) && isImportMeta(node.expression) && node.name.text === 'url';
+
+/**
+ * Every module a source file names, with whether that reference is type-only (erased). `bundled` is
+ * false only for a `new URL('x')` without `import.meta.url` (a runtime URL, which no bundler follows).
+ */
+function moduleReferences(text, path = 'x.ts') {
   const refs = [];
-  for (const m of text.matchAll(FROM_CLAUSE)) refs.push({spec: m[5], typeOnly: m[2] !== undefined, kind: m[1], clause: m[3]});
-  for (const re of OTHER_REFERENCES) for (const m of text.matchAll(re)) refs.push({spec: m[2], typeOnly: false, kind: null, clause: null});
+  const visit = node => {
+    if (ts.isImportDeclaration(node)) {
+      refs.push({spec: literalText(node.moduleSpecifier), typeOnly: node.importClause?.isTypeOnly === true, bundled: true});
+    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier !== undefined) {
+      refs.push({spec: literalText(node.moduleSpecifier), typeOnly: node.isTypeOnly, bundled: true});
+    } else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
+      refs.push({spec: literalText(node.moduleReference.expression), typeOnly: node.isTypeOnly, bundled: true});
+    } else if (ts.isImportTypeNode(node)) {
+      const arg = node.argument;
+      refs.push({spec: ts.isLiteralTypeNode(arg) ? literalText(arg.literal) : '', typeOnly: true, bundled: true});
+    } else if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === 'require'))) {
+      refs.push({spec: literalText(node.arguments[0]), typeOnly: false, bundled: true});
+    } else if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'URL' && (node.arguments?.length ?? 0) > 0) {
+      const [first, second] = node.arguments ?? [];
+      const withMeta = isImportMetaUrl(second);
+      if (withMeta || literalText(first) !== '') refs.push({spec: literalText(first), typeOnly: false, bundled: withMeta});
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(parse(text, path));
   return refs;
+}
+
+/**
+ * Every `import.meta` use other than `import.meta.url` (fix round 2): `import.meta.glob('../app/x.ts')`
+ * makes Vite bundle the files it names with no import statement at all. The vault page may name
+ * import.meta.url only (its worker's URL).
+ */
+function importMetaMisuses(text, path) {
+  const out = [];
+  const visit = node => {
+    if (isImportMeta(node) && !isImportMetaUrl(node.parent)) out.push(node.parent.getText().slice(0, 40));
+    ts.forEachChild(node, visit);
+  };
+  visit(parse(text, path));
+  return out;
 }
 
 /**
@@ -214,12 +289,6 @@ const VAULT_PAGE_FILES = [
 export const VAULT_PAGE_PACKAGES = ['@noble/curves', '@noble/hashes', '@scure/base', '@scure/bip39', 'micro-key-producer'];
 const RESOLVE_EXTENSIONS = ['', '.ts', '.tsx', '.mts', '.js', '.mjs', '/index.ts', '/index.tsx'];
 const MODULE_SPECIFIER = /^[\w@.\/-]+$/;
-// The loose reference patterns also match prose (`mode === 'import' || …`, 'Continue to import'): a
-// "specifier" with whitespace in it is prose. Anything else is a reference — and one that is not a
-// plain module specifier (a query `../app/x?v`, a hash or subpath import `#app`, a scheme
-// `virtual:app`, an empty computed prefix) is refused, never skipped (Task 5 review I1: Vite bundled
-// `../app/engine?v` into the vault page with every gate green).
-const PROSE = /\s/;
 // A specifier-shaped token that carries a backslash (checked before the prose filter below, which
 // would otherwise skip it): no bundler treats `\` as a separator the same way on every platform.
 const BACKSLASH_SPECIFIER = /^[\w@.\/\\-]*\\[\w@.\/\\-]*$/;
@@ -240,11 +309,13 @@ export function vaultPageViolations(read, exists, entry = VAULT_PAGE_ENTRY) {
     if (!VAULT_PAGE_FILES.some(re => re.test(path))) out.push(`the vault page reaches ${path} — only vault-page code may be bundled with the seed`);
     if (!SOURCE_EXT.test(path)) continue; // a stylesheet carries no code and imports nothing we follow
     const text = read(path) ?? '';
-    for (const ref of moduleReferences(text)) {
-      // Prose (whitespace) is skipped; every other reference that is not a plain module specifier is
-      // refused (PROSE above). A specifier computed past its first literal part is out of any static
-      // reach (the bundle checks are the backstop); its empty or partial prefix is refused here.
-      if (ref.typeOnly || PROSE.test(ref.spec)) continue;
+    for (const use of importMetaMisuses(text, path)) out.push(`${path}: the vault page uses ${use} — only import.meta.url is allowed (import.meta.glob bundles files without an import)`);
+    for (const ref of moduleReferences(text, path)) {
+      // Every reference that is not one plain module specifier is refused, never skipped (Task 5 review
+      // I1: Vite bundled `../app/engine?v` into the vault page with every gate green): a query, a hash or
+      // subpath import (`#app`), a scheme (`virtual:app`), a computed specifier (''). The built-chunk
+      // module map (vaultPageModuleViolations) is the authoritative backstop.
+      if (ref.typeOnly || !ref.bundled) continue;
       if (BACKSLASH_SPECIFIER.test(ref.spec)) {
         out.push(`${path}: the vault page imports ${ref.spec} — a specifier may not contain a backslash`);
         continue;
@@ -272,17 +343,17 @@ export function sourceViolations(files) {
   for (const {path, text} of files) {
     // Only `import type` / `export type` is erased; an inline `{type A}` is not — under
     // verbatimModuleSyntax it survives as a side-effect import — so it counts as a value import.
-    const values = moduleReferences(text).filter(r => !r.typeOnly);
+    const refs = moduleReferences(text, path);
+    const values = refs.filter(r => !r.typeOnly);
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesVault(path, r.spec))) out.push(`${path}: imports the vault`);
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesCoreKeys(path, r.spec))) out.push(`${path}: imports core/keys (seed code)`);
     if (!UNLOCK_ALLOWED.test(path) && values.some(r => namesUnlock(path, r.spec))) out.push(`${path}: imports the vault page (src/unlock)`);
-    // Prose a loose pattern matched ('Continue to import', in the vault page's own strings) has
-    // whitespace and is not an import; every other reference is one, whatever it carries (`?v`, `#x`,
-    // `virtual:`) — the vault-page walk filters the same way (PROSE).
-    if (STANDALONE.includes(path) && values.some(r => !PROSE.test(r.spec))) out.push(`${path}: imports a module — it must stand alone`);
+    // Any value reference, whatever it carries (`?v`, `#x`, `virtual:`, computed); prose in a string is
+    // not code to the parser ('Continue to import').
+    if (STANDALONE.includes(path) && values.length > 0) out.push(`${path}: imports a module — it must stand alone`);
     // src/shared/ is reachable from the vault page: it may never reach UI code (B1b-2a M4).
     // Deliberately all references, type-only ones too — stricter than the stand-alone rule above.
-    if (/^src\/shared\//.test(path) && moduleReferences(text).some(r => namesUiCode(path, r.spec))) out.push(`${path}: imports UI code (src/app, ../web) — src/shared is vault-page reachable`);
+    if (/^src\/shared\//.test(path) && refs.some(r => namesUiCode(path, r.spec))) out.push(`${path}: imports UI code (src/app, ../web) — src/shared is vault-page reachable`);
     if (path === LOCAL_READER_PATH) {
       if (TOUCHES_SESSION.test(text)) out.push(`${path}: touches storage.session — it may read storage.local only`);
       if (WRITES_STORAGE.test(text)) out.push(`${path}: writes storage — it may only read`);
@@ -296,6 +367,7 @@ export function sourceViolations(files) {
     if (UNLOCK_ALLOWED.test(path)) {
       if (SETS_MARKUP.test(text)) out.push(`${path}: writes markup — the vault page sets text only (textContent)`);
       for (const [re, what] of MARKUP_EVASIONS) if (re.test(text)) out.push(`${path}: ${what} — the vault page sets text only (textContent)`);
+      if (htmlTyped(text, path)) out.push(`${path}: names the text/html type — the vault page sets text only (textContent)`);
     }
     if (!BACKGROUND_OWNED_ALLOWED.test(path)) {
       for (const key of BACKGROUND_OWNED_KEYS) if (text.includes(key)) out.push(`${path}: names ${key}, which only the background may write`);
@@ -371,7 +443,15 @@ const BUILT_SESSION = /storage\s*(?:\?\.|\.)\s*session\b|storage\s*\[\s*['"`]ses
 // source spelling the source rule cannot see — a minifier folds `'inner' + 'HTML'` back into the name.
 // A legitimate dependency naming one must be reported and decided, never allow-listed here silently.
 export const BUILT_MARKUP =
-  /\b(?:innerHTML|outerHTML|insertAdjacentHTML|createContextualFragment|DOMParser|setHTMLUnsafe|setHTML|parseHTMLUnsafe|srcdoc|execCommand)\b|\.\s*write(?:ln)?\s*\(|\[\s*["'`]write(?:ln)?["'`]\s*\]/;
+  /\b(?:innerHTML|outerHTML|insertAdjacentHTML|createContextualFragment|DOMParser|setHTMLUnsafe|setHTML|parseHTMLUnsafe|srcdoc|execCommand|responseType|createObjectURL)\b|\.\s*write(?:ln)?\s*\(|\[\s*["'`]write(?:ln)?["'`]\s*\]|[tT][eE][xX][tT]\/[hH][tT][mM][lL]/;
+// Reflection in a built chunk. A legitimate dependency the vault page loads uses it: @noble/curves
+// (abstract/modular.js, the Field constructor) calls `Object.defineProperty(this, 'sqrt', {value: …})`,
+// which lands in a chunk unlock.html reaches. So what is refused is reflection that could reach a sink
+// unnamed: a property name that is not one plain string literal, a reflective function taken as a value
+// (`const d = Object.defineProperty`), and the plural forms. A literal name that is a sink trips
+// BUILT_MARKUP by name.
+export const BUILT_REFLECTION =
+  /\b(?:defineProperty|getOwnPropertyDescriptor)\b(?!\s*\(\s*[\w$.]+\s*,\s*(["'`])[\w$]+\1\s*[,)])|\b(?:__lookupSetter__|__defineSetter__|__lookupGetter__|__defineGetter__)\b(?!\s*\(\s*(["'`])[\w$]+\2\s*[,)])|\b(?:defineProperties|getOwnPropertyDescriptors)\b/;
 const BUILT_URL = /\bnew\s+URL\s*\(\s*(['"`])([^'"`$]+)\1\s*,\s*import\.meta\.url/g;
 
 function builtReferences(text) {
@@ -460,6 +540,8 @@ export function bundleViolations(distApp) {
           if (text.includes(REACT_MARKER)) out.push(`${file} (reachable from unlock.html) contains React — the vault page must stay plain DOM`);
           const sink = BUILT_MARKUP.exec(text);
           if (sink) out.push(`${file} (reachable from unlock.html) names a markup sink (${sink[0]}) — the vault page sets text only`);
+          const reflect = BUILT_REFLECTION.exec(text);
+          if (reflect) out.push(`${file} (reachable from unlock.html) uses reflection by a computed name (${reflect[0]}) — the vault page sets text only`);
         }
       }
     }
@@ -495,6 +577,51 @@ export function bundleViolations(distApp) {
       }
     }
   }
+  return [...out, ...problems];
+}
+
+// ── What the bundler put in the vault page (fix round 2, the authoritative backstop) ──────────────
+// vite.config.ts's chunkModules plugin writes dist/app.modules.json: for every built chunk (the KDF
+// worker's too), the source modules it carries, package-relative. However a module got in — a comment
+// inside an import, import.meta.glob, a query — it is listed here. Every module of every chunk the vault
+// page loads must be vault-page code (VAULT_PAGE_FILES), the page itself, or a file of one of the five
+// packages (VAULT_PAGE_PACKAGES, not a package nested inside one). A Vite virtual module (`\0…`) is
+// refused too: none is bundled today (modulePreload is off), and a new one is a decision to make here.
+function vaultPageModuleAllowed(id) {
+  const path = id.replace(/[?#].*$/, '');
+  if (path === 'unlock.html' || VAULT_PAGE_FILES.some(re => re.test(path))) return true;
+  const pkg = /^node_modules\/((?:@[^/]+\/)?[^/]+)\/(.+)$/.exec(path);
+  return pkg !== null && VAULT_PAGE_PACKAGES.includes(pkg[1]) && !pkg[2].split('/').includes('node_modules');
+}
+
+/** `modules`: the parsed dist/app.modules.json (chunk file → module ids), or undefined when it is missing. */
+export function vaultPageModuleViolations(distApp, modules) {
+  if (modules === undefined) return ['INCONCLUSIVE: no chunk module map (app.modules.json next to dist/app) — the build must write one'];
+  const out = [];
+  const problems = new Set();
+  const seen = new Set();
+  const html = existsSync(join(distApp, 'unlock.html')) ? readFileSync(join(distApp, 'unlock.html'), 'utf8') : '';
+  for (const m of html.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/g)) {
+    const r = resolveBuilt(distApp, 'unlock.html', m[1]);
+    if (r.problem) {
+      problems.add(r.problem);
+      continue;
+    }
+    for (const file of reachable(distApp, r.target, problems)) {
+      if (!/\.m?js$/.test(file)) continue;
+      const ids = modules[file];
+      if (!Array.isArray(ids)) {
+        out.push(`${file} (reachable from unlock.html) is not in the chunk module map — what it carries is unknown`);
+        continue;
+      }
+      for (const id of ids) {
+        seen.add(id);
+        if (!vaultPageModuleAllowed(id)) out.push(`${file} (reachable from unlock.html) carries ${JSON.stringify(id)} — only vault-page code and its five packages may be bundled with the seed`);
+      }
+    }
+  }
+  // Positive control: the map really describes the vault page (its entry module is in a chunk it loads).
+  if (!seen.has(VAULT_PAGE_ENTRY)) out.push(`INCONCLUSIVE: no chunk reachable from unlock.html carries ${VAULT_PAGE_ENTRY} in the module map — the check would pass trivially`);
   return [...out, ...problems];
 }
 
@@ -535,6 +662,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   for (const d of ['app', 'chrome', 'firefox']) {
     for (const p of bundleViolations(join(ROOT, 'dist', d))) problems.push(`dist/${d}: ${p}`);
   }
+  // dist/chrome and dist/firefox are copies of dist/app (scripts/build.mjs): one module map covers all three.
+  const mapPath = join(ROOT, 'dist', 'app.modules.json');
+  const modules = existsSync(mapPath) ? JSON.parse(readFileSync(mapPath, 'utf8')) : undefined;
+  for (const p of vaultPageModuleViolations(join(ROOT, 'dist', 'app'), modules)) problems.push(`dist/app: ${p}`);
   for (const browser of ['chrome', 'firefox']) {
     const m = JSON.parse(readFileSync(join(ROOT, 'dist', browser, 'manifest.json'), 'utf8'));
     for (const p of manifestViolations(m)) problems.push(`dist/${browser}/manifest.json: ${p}`);
@@ -543,5 +674,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     for (const p of problems) console.error(p);
     process.exit(1);
   }
-  console.log('vault isolation ok: sources, built popup/background and both manifests carry no path to the vault; no page reaches storage.session');
+  console.log('vault isolation ok: sources, built popup/background and both manifests carry no path to the vault; no page reaches storage.session; every module bundled into the vault page is vault-page code or one of its five packages');
 }

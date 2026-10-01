@@ -21,6 +21,8 @@ export function selectorsOf(sheets: readonly string[]): string[] {
     for (const m of css.matchAll(/([^{}]+)\{/g)) {
       const prelude = (m[1] ?? '').trim();
       if (prelude === '' || prelude.startsWith('@')) continue;
+      // Known limit (review M5): a plain comma split also cuts inside `:is(.a, .b)` / `:not(.a, .b)`; the
+      // pieces are invalid selectors, matches() throws on them and they style nothing — fails closed.
       for (const sel of prelude.split(',')) {
         const s = sel.trim();
         if (s !== '' && !/^(from|to|\d+(\.\d+)?%)$/.test(s)) out.push(s);
@@ -30,7 +32,13 @@ export function selectorsOf(sheets: readonly string[]): string[] {
   return out;
 }
 
-/** The selector without pseudo-classes and pseudo-elements; a compound they emptied becomes `*`. */
+/**
+ * The selector without pseudo-classes and pseudo-elements; a compound they emptied becomes `*`.
+ * Known limit (review M5): the arguments go with them — `.card:not(.ring)` becomes `.card`, and
+ * `:is()`/`:where()` lose theirs too. For :not() and :has() that would fail OPEN (a class named only
+ * inside one would count as styled), so unstyledClasses requires the class to be named outside them;
+ * a class named only inside `:is()`/`:where()` still counts where the rest of the selector matches.
+ */
 function structural(selector: string): string {
   const s = selector
     .replace(/::?[a-zA-Z-]+(\((?:[^()]|\([^()]*\))*\))?/g, ' ')
@@ -63,7 +71,8 @@ export function unstyledClasses(root: Element, selectors: readonly string[]): st
     for (const c of el.classList) {
       const named = new RegExp(`\\.${c.replace(/[^\w-]/g, '\\$&')}(?![\\w-])`);
       const ok = selectors.some(s => {
-        if (!named.test(s)) return false;
+        // Named outside :not()/:has(): inside one, the class does not style the element (see structural).
+        if (!named.test(s.replace(/:(?:not|has)\((?:[^()]|\([^()]*\))*\)/g, ''))) return false;
         try {
           const sel = structural(s);
           // matches() on each descendant: a selector's ancestors may lie above `el` (querySelector

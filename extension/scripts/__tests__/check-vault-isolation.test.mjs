@@ -3,7 +3,7 @@ import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
-  bundleViolations, htmlViolations, listSourceFiles, manifestViolations, sourceViolations, vaultPageViolations,
+  bundleViolations, htmlViolations, listSourceFiles, manifestViolations, sourceViolations, vaultPageModuleViolations, vaultPageViolations,
   BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, REACT_MARKER, VAULT_MARKER, WORDLIST_MARKER,
 } from '../check-vault-isolation.mjs';
 import {render} from '../../manifest/source.mjs';
@@ -488,14 +488,74 @@ describe('vault isolation (built output)', () => {
     ['document.execCommand("insertHTML",!1,t)', 'execCommand'],
     ['r.writeln(t)', '.writeln('],
     ['document["write"](t)', '["write"]'],
+    // Fix round 2.
+    ['e.responseType="document"', 'responseType'],
+    ['new Blob([t],{type:"text/html"})', 'text/html'],
+    ['URL.createObjectURL(t)', 'createObjectURL'],
   ])('fails when a chunk the vault page loads names a markup sink: %s', (code, sink) => {
     write('assets/base-1.js', `export const n=(e,t)=>{${code}};`);
     expect(bundleViolations(dir)).toEqual([`assets/base-1.js (reachable from unlock.html) names a markup sink (${sink}) — the vault page sets text only`]);
   });
 
+  it.each([
+    ['const d=Object.defineProperty;d(e,t,{set:n})', 'defineProperty'],
+    ['Object.defineProperty(e,t,{set:n})', 'defineProperty'],
+    ['Object.getOwnPropertyDescriptor(Element.prototype,t)', 'getOwnPropertyDescriptor'],
+    ['Object.getOwnPropertyDescriptors(e)', 'getOwnPropertyDescriptors'],
+    ['Object.defineProperties(e,t)', 'defineProperties'],
+    ['e.__lookupSetter__(t)', '__lookupSetter__'],
+  ])('fails when a chunk the vault page loads uses reflection by a computed name: %s', (code, name) => {
+    write('assets/base-1.js', `export const n=(e,t,n)=>{${code}};`);
+    expect(bundleViolations(dir)).toEqual([`assets/base-1.js (reachable from unlock.html) uses reflection by a computed name (${name}) — the vault page sets text only`]);
+  });
+
+  it('reflection with one literal, non-sink name is allowed — @noble/curves’ Field does it (negative control)', () => {
+    write('assets/base-1.js', 'export const n=function(t){Object.defineProperty(this,"sqrt",{value:t.sqrt,enumerable:!0})};');
+    expect(bundleViolations(dir)).toEqual([]);
+  });
+
   it('a markup sink in a chunk only the popup loads is not the vault page’s (negative control)', () => {
     write('assets/send-1.js', 'export const t=e=>{e.innerHTML="";return 1};');
     expect(bundleViolations(dir)).toEqual([]);
+  });
+
+  // Fix round 2: the authoritative backstop — what the bundler itself says each chunk carries.
+  const MAP = () => ({
+    'assets/unlock-1.js': ['../core/keys/mnemonic.ts', 'node_modules/@scure/bip39/index.js', 'src/unlock/main.ts', 'src/unlock/unlock.css', 'src/vault/envelope.ts', 'unlock.html'],
+    'assets/base-1.js': ['node_modules/@scure/base/index.js'],
+    'assets/popup-1.js': ['src/app/popup.tsx', 'node_modules/react/index.js'],
+  });
+  it('passes when every module of every chunk the vault page loads is vault-page code or one of its packages', () => {
+    expect(vaultPageModuleViolations(dir, MAP())).toEqual([]);
+  });
+
+  it.each([
+    ['src/app/engine.ts', 'assets/unlock-1.js'],
+    ['src/app/engine.ts?v', 'assets/unlock-1.js'],
+    ['../web/src/ui/AddressGroups.tsx', 'assets/base-1.js'],
+    ['node_modules/react/index.js', 'assets/base-1.js'],
+    ['node_modules/@scure/base/node_modules/evil/index.js', 'assets/base-1.js'],
+    ['node_modules/@solana/web3.js/lib/index.browser.esm.js', 'assets/unlock-1.js'],
+    ['\0virtual:app', 'assets/unlock-1.js'],
+  ])('fails when a chunk the vault page loads carries %s', (id, chunk) => {
+    const map = MAP();
+    map[chunk] = [...map[chunk], id];
+    expect(vaultPageModuleViolations(dir, map)).toEqual([`${chunk} (reachable from unlock.html) carries ${JSON.stringify(id)} — only vault-page code and its five packages may be bundled with the seed`]);
+  });
+
+  it('fails a reachable chunk missing from the map, a missing map, and a map that does not describe the vault page', () => {
+    const map = MAP();
+    delete map['assets/base-1.js'];
+    expect(vaultPageModuleViolations(dir, map)).toEqual(['assets/base-1.js (reachable from unlock.html) is not in the chunk module map — what it carries is unknown']);
+    expect(vaultPageModuleViolations(dir, undefined)).toEqual(['INCONCLUSIVE: no chunk module map (app.modules.json next to dist/app) — the build must write one']);
+    const empty = {...MAP(), 'assets/unlock-1.js': ['unlock.html']};
+    expect(vaultPageModuleViolations(dir, empty)).toEqual(['INCONCLUSIVE: no chunk reachable from unlock.html carries src/unlock/main.ts in the module map — the check would pass trivially']);
+  });
+
+  it('UI code in a chunk only the popup loads is not the vault page’s (negative control)', () => {
+    const map = MAP();
+    map['assets/popup-1.js'].push('src/app/engine.ts');
+    expect(vaultPageModuleViolations(dir, map)).toEqual([]);
   });
 
   it('is INCONCLUSIVE — a failure — when no built file carries the React 18 marker (React upgraded or gone)', () => {
@@ -753,8 +813,9 @@ describe('the vault page import allowlist', () => {
         "import {a} from '@scure/base/../../../app/leak';",
         "import {b} from '@noble/hashes/./sha2.js';",
         "import {c} from 'micro-key-producer/..';",
-        "import {d} from '@scure/base\\..\\x';",
-        "import {e} from './modes\\x';",
+        // Literal backslashes in the specifier (escaped in the module source: the parser reads the string's value).
+        "import {d} from '@scure/base\\\\..\\\\x';",
+        "import {e} from './modes\\\\x';",
       ].join('\n'),
     });
     expect(vaultPageViolations(read, exists)).toEqual([
@@ -790,6 +851,37 @@ describe('the vault page import allowlist', () => {
     expect(vaultPageViolations(read, exists)).toEqual([refused('../app/engine?v'), refused('#app'), refused('virtual:app'), refused('../app/x?y'), refused('')]);
   });
 
+  // Fix round 2: the reviewer's forms that put src/app/engine into unlock-*.js past the regex reader.
+  // The parser reads them as the bundler does: each reaches src/app, or names import.meta beyond .url.
+  const REACHES_ENGINE = ['the vault page reaches src/app/engine.ts — only vault-page code may be bundled with the seed'];
+  it.each([
+    "const a = import(/*x*/'../app/engine');",
+    "import {e} /*c*/ from '../app/engine';",
+    "import {e} from /*c*/ '../app/engine';",
+    "const a = import(/* @vite-ignore */ '../app/engine');",
+    "export {e} /*c*/ from '../app/engine';",
+  ])('a comment inside an import hides nothing: %s', code => {
+    const [read, exists] = tree({'src/unlock/main.ts': code, 'src/app/engine.ts': ''});
+    expect(vaultPageViolations(read, exists)).toEqual(REACHES_ENGINE);
+  });
+
+  it.each([
+    ["const m = import.meta.glob('../app/engine.ts', {eager: true});", 'import.meta.glob'],
+    ["const m = import.meta.glob('../app/engine.ts');", 'import.meta.glob'],
+    ["const m = import.meta['glob']('../app/engine.ts');", "import.meta['glob']"],
+    ['const m = import.meta.env;', 'import.meta.env'],
+  ])('the vault page may name import.meta.url only: %s', (code, use) => {
+    const [read, exists] = tree({'src/unlock/main.ts': code});
+    expect(vaultPageViolations(read, exists)).toEqual([`src/unlock/main.ts: the vault page uses ${use} — only import.meta.url is allowed (import.meta.glob bundles files without an import)`]);
+  });
+
+  it('a computed specifier behind @vite-ignore is refused; the worker URL is not (negative control)', () => {
+    const [read, exists] = tree({'src/unlock/main.ts': 'const w = import(/* @vite-ignore */ p);'});
+    expect(vaultPageViolations(read, exists)).toEqual(["src/unlock/main.ts: the vault page imports '' — a query, hash, scheme or computed specifier is refused, never skipped"]);
+    const [read2, exists2] = tree({'src/unlock/main.ts': "const w = new Worker(new URL('../vault/kdf.worker.ts', import.meta.url), {type: 'module'});\nconst u = new URL('https://example.invalid/');", 'src/vault/kdf.worker.ts': ''});
+    expect(vaultPageViolations(read2, exists2)).toEqual([]);
+  });
+
   it('does not follow a type-only import, nor prose that looks like one', () => {
     const [read, exists] = tree({'src/unlock/main.ts': "import type {X} from '../app/x';\nif (mode === 'import' || m === 'accounts') run();"});
     expect(vaultPageViolations(read, exists)).toEqual([]);
@@ -816,6 +908,10 @@ describe('stand-alone modules (review M4)', () => {
       "import {a} from '#app';",
       "import {b} from 'virtual:app';",
       "export * from '../app/x?y';",
+      // Fix round 2: comments inside the statement.
+      "const a = import(/*x*/'../app/engine');",
+      "import {e} /*c*/ from '../app/engine';",
+      "import {e} from /*c*/ '../app/engine';",
     ]) {
       expect(sourceViolations([f('src/unlock/strings.ts', code)])).toEqual(['src/unlock/strings.ts: imports a module — it must stand alone']);
     }
@@ -918,6 +1014,21 @@ describe('plan 2: the vault-page screens stay inside the boundary', () => {
     ["document['wr' + 'ite'](s);", 'indexes document'],
     ['el.setAttribute(name, s);', 'sets an attribute named by a computed value'],
     ["frame.src = 'data:text/html,' + s;", 'names a data:text/html URL'],
+    // Fix round 2: reflection by bracket, destructuring and the legacy accessors.
+    ["const dp = Object['defineProperty'];", 'sets properties reflectively'],
+    ["const g = Object['getOwnPropertyDescriptor'];", 'sets properties reflectively'],
+    ['const {defineProperty: dp} = Object;', 'sets properties reflectively'],
+    ['const set = el.__lookupSetter__(k);', 'sets properties reflectively'],
+    ["el.__defineSetter__('x', f);", 'sets properties reflectively'],
+    ["Object['assign'](el, x);", 'sets properties reflectively'],
+    // Fix round 2: an HTML document through a Blob, an XHR or an object URL, in any spelling.
+    ["const b = new Blob([s], {type: 'text/html'});", 'names the text/html type'],
+    ["const t = 'text/ht' + 'ml';", 'names the text/html type'],
+    ["const t = 'text/' + x + 'html';", 'names the text/html type'],
+    ['const t = `text/${x}html`;', 'names the text/html type'],
+    ["frame.src = 'data:text/ht' + 'ml,' + s;", 'names the text/html type'],
+    ["xhr.responseType = 'document';", 'sets an XHR responseType'],
+    ['frame.src = URL.createObjectURL(b);', 'creates an object URL'],
   ])('the vault page may not reach a sink by another spelling: %s', (code, what) => {
     expect(sourceViolations([f('src/unlock/view/x.ts', code)])).toContain(WHY(what));
   });
@@ -935,6 +1046,8 @@ describe('plan 2: the vault-page screens stay inside the boundary', () => {
       'const v = /x/.exec(s)?.[1];',
       "el.textContent = 'don’t';",
       "frame.src = 'unlock.html';",
+      "const kind = 'text/' + 'plain';",
+      "const label = `type: ${x}`;",
     ].join('\n');
     expect(sourceViolations([f('src/unlock/view/x.ts', code)])).toEqual([]);
   });

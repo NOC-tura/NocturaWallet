@@ -31,6 +31,12 @@ describe('ancestor-aware class coverage (plan-1 lesson: the class gate ignores a
     expect(unstyledClasses(apart, ['.cooldown-card', '.cooldown-card .ring', '.cooldown-card .ring + .timer'])).toEqual(['div.timer: .timer matches no rule in place']);
   });
 
+  it('a class named only inside :not() or :has() does not style the element (review M5: fails closed)', () => {
+    expect(unstyledClasses(html('<div class="card ring"></div>').firstElementChild!, ['.card', '.card:not(.ring)'])).toEqual(['div.card.ring: .ring matches no rule in place']);
+    expect(unstyledClasses(html('<div class="card"><i class="ring"></i></div>').firstElementChild!, ['.card', '.card:has(.ring)'])).toEqual(['i.ring: .ring matches no rule in place']);
+    expect(unstyledClasses(html('<div class="card ring"></div>').firstElementChild!, ['.card', '.ring:not(.x)'])).toEqual([]);
+  });
+
   it('pseudo-classes and pseudo-elements count as styling the element', () => {
     expect(unstyledClasses(html('<button class="btn"></button>').firstElementChild!, sels)).toEqual([]);
     expect(unstyledClasses(html('<i class="copy-btn"></i>').firstElementChild!, sels)).toEqual([]);
