@@ -62,6 +62,15 @@
 .vlt-gap-6 {
   margin-bottom: var(--space-6);
 }
+.vlt-pad-top {
+  padding-top: var(--space-3);
+}
+.vlt-gap-top-2 {
+  margin-top: var(--space-2);
+}
+.vlt-gap-top-5 {
+  margin-top: var(--space-5);
+}
 .vlt-pad {
   padding: 0 var(--space-5);
 }

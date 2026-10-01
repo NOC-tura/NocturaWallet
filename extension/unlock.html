@@ -22,10 +22,75 @@
         <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
         <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
         <symbol id="i-alert-triangle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+        <symbol id="i-fingerprint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 11c0 5-1.5 8-3 10"/><path d="M16 13.5c-.5 4-2 6-3 7.5"/><path d="M8 11c0-2 2-4 4-4s4 2 4 4c0 2-1 4-2 6"/><path d="M5 11c0-4 3-7 7-7s7 3 7 7"/><path d="M3 14c0-1.5.5-3 1-4"/><path d="M21 14c-.5 0-1 1-2 3"/></symbol>
         <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
       </defs>
     </svg>
     <main id="vault" class="vlt-col">
+      <!-- #1 welcome (spec §3.1). The CTAs stay hidden until the vault read says there is no wallet. -->
+      <section id="v-welcome" class="screen s-welcome" hidden>
+        <div class="hero">
+          <div class="logo" aria-hidden="true"><span class="mark">N</span></div>
+          <div>
+            <h1 class="wordmark">Noctura</h1>
+            <p class="noc-body tagline vlt-gap-top-2">A Solana wallet built for private, non-custodial holding.</p>
+          </div>
+          <div class="badges">
+            <span class="trust-chip"><svg width="14" height="14" aria-hidden="true"><use href="#i-lock" /></svg>E2E encrypted</span>
+            <span class="trust-chip"><svg width="14" height="14" aria-hidden="true"><use href="#i-key" /></svg>Non-custodial</span>
+          </div>
+          <div id="wel-notice" class="vlt-notice" role="status" hidden>
+            <p id="wel-notice-line" class="noc-body"></p>
+            <p id="wel-notice-help" class="noc-body-sm vlt-lede"></p>
+          </div>
+        </div>
+        <div id="wel-actions" hidden>
+          <p class="noc-caption terms">By continuing you agree to the Terms and Privacy Policy.</p>
+          <div class="sticky-bar">
+            <button id="wel-create" type="button" class="btn btn-primary">Create new wallet</button>
+            <button id="wel-import" type="button" class="btn btn-secondary">I have a wallet</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- #2 security-intro (spec §3.2). -->
+      <section id="v-intro" class="screen s-secintro" hidden>
+        <div class="top-bar">
+          <button id="int-back" type="button" class="icon-btn" aria-label="Back"><svg width="22" height="22" aria-hidden="true"><use href="#i-arrow-left" /></svg></button>
+          <span class="title noc-overline vlt-muted">Onboarding</span>
+          <span class="step noc-body-sm noc-numeral">1 / 5</span>
+        </div>
+        <div class="scroll-area vlt-pad-top">
+          <h1 class="noc-h1 vlt-gap-2">Three layers protect your wallet</h1>
+          <p class="noc-body vlt-lede vlt-gap-6">You hold the keys. We never can.</p>
+          <div class="layer-card">
+            <div class="layer-icon"><svg width="22" height="22" aria-hidden="true"><use href="#i-key" /></svg></div>
+            <div>
+              <h3 class="noc-h3">Password</h3>
+              <p class="noc-body-sm">At least 12 characters you choose. It unlocks the wallet in this browser and is asked again before sends to new addresses or large amounts.</p>
+            </div>
+          </div>
+          <div class="layer-card">
+            <div class="layer-icon"><svg width="22" height="22" aria-hidden="true"><use href="#i-fingerprint" /></svg></div>
+            <div>
+              <h3 class="noc-h3">Passkey (optional)</h3>
+              <p class="noc-body-sm">A fingerprint, face or security key as a shortcut. Your password still works for everything.</p>
+            </div>
+          </div>
+          <div class="layer-card">
+            <div class="layer-icon"><svg width="22" height="22" aria-hidden="true"><use href="#i-shield-lock" /></svg></div>
+            <div>
+              <h3 class="noc-h3">Recovery seed</h3>
+              <p class="noc-body-sm">24 words. Written offline. The only way back if this browser's data is lost.</p>
+            </div>
+          </div>
+          <p class="noc-caption vlt-muted vlt-gap-top-5">If you lose all three, no one — not Noctura, not a Solana validator — can recover your funds. That's the point.</p>
+        </div>
+        <div class="sticky-bar">
+          <button id="int-continue" type="button" class="btn btn-primary">Continue</button>
+        </div>
+      </section>
+
       <section id="unlock-section">
         <h1>Unlock Noctura</h1>
         <form id="pw">

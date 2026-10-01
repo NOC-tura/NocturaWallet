@@ -25,6 +25,11 @@ export const COMMON = {
   passkeyUnavailableConfirm: 'This device cannot confirm with a passkey; your password still works.',
 } as const;
 
+/** #1 welcome. */
+export const WELCOME = {
+  useIt: 'Open the Noctura icon to use it.',
+} as const;
+
 /** #5 create password (D7). */
 export const PASSWORD = {
   longEnough: 'Long enough',
