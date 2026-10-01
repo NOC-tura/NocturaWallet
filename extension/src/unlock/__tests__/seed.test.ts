@@ -8,12 +8,21 @@ const WORDS = 'legend frost marble river coral anchor valid echo raven melody pr
 const HELD = HOLD_MS + TICK_MS;
 const NUMS = WORDS.map((_, i) => String(i + 1).padStart(2, '0'));
 
-/** How often each phrase word occurs in the page's text (static copy may use some of them: "current", "valid"…). Letters only bound a word: a cell reads "01legend". */
-const counts = (): number[] => WORDS.map(w => (document.body.textContent?.match(new RegExp(`(?<![a-z])${w}(?![a-z])`, 'g')) ?? []).length);
+/**
+ * Everything the page carries as strings: document.body's text (hidden sections included) and every
+ * attribute value of every element in it (review follow-up 2: a word in a data-* attribute, an aria-label
+ * or a title is in the DOM as much as one in a text node).
+ */
+const pageStrings = (): string => [document.body.textContent ?? '', ...[...document.body.querySelectorAll('*')].flatMap(e => [...e.attributes].map(a => a.value))].join('\n');
+/** How often each phrase word occurs in the page's strings (static copy may use some of them: "current", "valid"…). Letters only bound a word: a cell reads "01legend". */
+const counts = (): number[] => {
+  const all = pageStrings();
+  return WORDS.map(w => (all.match(new RegExp(`(?<![a-z])${w}(?![a-z])`, 'g')) ?? []).length);
+};
 let baseline: number[] = [];
 /**
- * The phrase words the page's text carries beyond its own static copy — anywhere in document.body,
- * hidden sections included (Task 4 carry: the blur is CSS only, so text in the DOM is text in the DOM).
+ * The phrase words the page carries beyond its own static copy — anywhere in document.body, text or
+ * attribute, hidden sections included (Task 4 carry: the blur is CSS only, so text in the DOM is text in the DOM).
  */
 const leaked = (): string[] => {
   const now = counts();
@@ -220,6 +229,50 @@ describe('#3 seed-display: blurred → revealed → confirmed', () => {
     h.timers.advance(HELD);
     h.leave();
     expect(grid().classList.contains('is-blurred')).toBe(true);
+  });
+
+  it('only the primary button holds: a right-button press reveals nothing, even held past 2 s', async () => {
+    const {h} = await setup();
+    click(el('sg-continue'));
+    await idle(h);
+    grid().dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 2}));
+    h.timers.advance(HELD * 2);
+    expect(grid().classList.contains('is-blurred')).toBe(true);
+    expect(leaked()).toEqual([]);
+    expect(h.timers.pending()).toBe(0);
+    expect(el<HTMLButtonElement>('seed-cta').disabled).toBe(true);
+  });
+
+  it('a context menu during a hold releases it: no reveal, and a reveal already shown ends', async () => {
+    const {h} = await setup();
+    click(el('sg-continue'));
+    await idle(h);
+    down();
+    h.timers.advance(HOLD_MS - 500);
+    grid().dispatchEvent(new MouseEvent('contextmenu', {bubbles: true}));
+    h.timers.advance(HELD);
+    expect(grid().classList.contains('is-blurred')).toBe(true);
+    expect(leaked()).toEqual([]);
+    down();
+    h.timers.advance(HELD);
+    expect(leaked()).toEqual(WORDS);
+    grid().dispatchEvent(new MouseEvent('contextmenu', {bubbles: true}));
+    expect(leaked()).toEqual([]);
+    expect(grid().classList.contains('is-blurred')).toBe(true);
+  });
+
+  it('the CTA acts only after a full hold, whatever its disabled says (a stray click on a re-enabled button)', async () => {
+    const {h, calls, seed} = await setup();
+    click(el('sg-continue'));
+    await idle(h);
+    const cta = el<HTMLButtonElement>('seed-cta');
+    expect(cta.disabled).toBe(true);
+    cta.disabled = false;
+    click(cta);
+    await idle(h);
+    expect(calls).toEqual([]);
+    expect(visible(el('v-seed'))).toBe(true);
+    expect(seed.holds()).toBe(true);
   });
 
   it('back → #2, the words leave the DOM; showing #3 again starts at the gate', async () => {

@@ -96,11 +96,14 @@ export function mountSeed(deps: PageDeps, next: {back(): void; done(): void}): S
   const press = () => hold?.press();
   const release = () => hold?.release();
 
+  // Only the primary button (mouse left, touch, pen tip) holds: a right or middle press opens a menu or
+  // scrolls, never the phrase. A context menu (a long press on touch included) releases (review follow-up 1).
   grid.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
     e.preventDefault();
     press();
   });
-  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) grid.addEventListener(ev, release);
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel', 'contextmenu']) grid.addEventListener(ev, release);
   grid.addEventListener('keydown', e => {
     if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) {
       e.preventDefault();
