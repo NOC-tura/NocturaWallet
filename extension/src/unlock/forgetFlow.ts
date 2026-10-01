@@ -26,6 +26,26 @@ import type {Send, VaultStore} from './types';
  */
 const minted = new WeakSet<object>();
 
+/**
+ * Fix round 1 (review item 1, controller addition): the WeakSet records an object's identity, not
+ * its contents — a minted proof whose fields could be reassigned (`proof.mnemonic = OTHER`) would
+ * still pass. So every minted proof is frozen all the way down, over a private copy of the envelope
+ * (the caller's read object is never frozen), and restoreWallet re-derives the keys anyway.
+ */
+function deepFreeze<T>(x: T): T {
+  if (typeof x === 'object' && x !== null && !Object.isFrozen(x)) {
+    Object.freeze(x);
+    for (const v of Object.values(x)) deepFreeze(v);
+  }
+  return x;
+}
+
+/** Does this phrase derive, under the envelope's OWN scheme, every stored account's key, in order? */
+async function derivesEveryKey(mnemonic: string, env: EnvelopeV1): Promise<boolean> {
+  const keys = await derivePublicKeys(mnemonic, env.scheme, env.accounts.map(a => a.index));
+  return keys.length === env.accounts.length && keys.every((k, i) => k === env.accounts[i]?.publicKey);
+}
+
 export interface SeedProof {
   readonly kind: 'seed';
   readonly env: EnvelopeV1;
@@ -47,13 +67,11 @@ export async function proveSeed(readEnvelope: () => Promise<unknown>, phrase: st
     if (stored.kind === 'none') return {outcome: 'no-wallet'};
     if (stored.kind === 'damaged') return {outcome: 'damaged'};
     if (!acceptedPhrase(phrase)) return {outcome: 'invalid-mnemonic'};
-    const {env} = stored;
+    const env = structuredClone(stored.env);
     const mnemonic = normalizeMnemonicInput(phrase);
     // Under the stored scheme only: the same phrase under the other scheme is another wallet.
-    const keys = await derivePublicKeys(mnemonic, env.scheme, env.accounts.map(a => a.index));
-    const same = keys.length === env.accounts.length && keys.every((k, i) => k === env.accounts[i]?.publicKey);
-    if (!same) return {outcome: 'not-this-wallet'};
-    const proof: SeedProof = Object.freeze({kind: 'seed', env, revision: envelopeRevision(env), mnemonic});
+    if (!(await derivesEveryKey(mnemonic, env))) return {outcome: 'not-this-wallet'};
+    const proof: SeedProof = deepFreeze({kind: 'seed', env, revision: envelopeRevision(env), mnemonic});
     minted.add(proof);
     return {outcome: 'match', proof};
   } catch {
@@ -82,7 +100,7 @@ export async function proveFactor(readEnvelope: () => Promise<unknown>, factor: 
       return {outcome: 'failed'};
     }
     key.fill(0);
-    const proof: FactorProof = Object.freeze({kind: 'factor', revision: envelopeRevision(stored.env)});
+    const proof: FactorProof = deepFreeze({kind: 'factor', revision: envelopeRevision(stored.env)});
     minted.add(proof);
     return {outcome: 'proven', proof};
   } catch {
@@ -96,6 +114,12 @@ export async function proveFactor(readEnvelope: () => Promise<unknown>, factor: 
 export type ForgetRefusal = 'send-open' | 'busy' | 'unlocked' | 'funded' | 'unreachable' | 'coordinator-refused' | 'no-wallet' | 'damaged' | 'failed';
 const NAMED: readonly string[] = ['send-open', 'busy', 'unlocked', 'funded', 'unreachable', 'coordinator-refused', 'no-wallet'];
 
+/**
+ * The one builder of the message, and deliberately NOT exported: that is the boundary — a screen
+ * can reach vault.forgetWallet only through restoreWallet (seed proof, always a replacement) or
+ * replaceEmptyWallet (factor proof, always the guard). The source test over src/unlock is a
+ * tripwire for a file that writes the message itself, not a proof that none can.
+ */
 async function forget(send: Send, message: {type: 'vault.forgetWallet'; expectedRevision: string; replacement?: EnvelopeV1; guard?: 'unfunded'}): Promise<'forgotten' | ForgetRefusal> {
   try {
     const r = await send(message);
@@ -107,7 +131,7 @@ async function forget(send: Send, message: {type: 'vault.forgetWallet'; expected
   }
 }
 
-export type RestoreOutcome = 'restored' | 'restored-locked' | 'weak-password' | ForgetRefusal;
+export type RestoreOutcome = 'restored' | 'restored-locked' | 'weak-password' | 'not-this-wallet' | ForgetRefusal;
 
 /**
  * #39's restore (D35): the seed-proven wallet, re-encrypted under a new password with the stored
@@ -121,6 +145,11 @@ export async function restoreWallet(deps: {send: Send; kdf: Kdf}, proof: SeedPro
   const {env, mnemonic} = proof;
   let replacement: EnvelopeV1;
   try {
+    // Fix round 1 (review item 1(b)): the phrase about to be encrypted must derive, under the stored
+    // scheme, every key of the envelope it replaces — checked here, immediately before encrypting,
+    // and not only when the proof was minted. The background's C4 binds only {index, publicKey}, so
+    // a replacement encrypting another phrase under this wallet's keys would brick it.
+    if (!(await derivesEveryKey(mnemonic, env))) return 'not-this-wallet';
     replacement = await createEnvelope({mnemonic, password, scheme: env.scheme, accounts: env.accounts.map(a => ({index: a.index, name: a.name, publicKey: a.publicKey})), kdf: deps.kdf});
   } catch {
     return 'failed';

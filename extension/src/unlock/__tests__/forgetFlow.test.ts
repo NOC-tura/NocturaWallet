@@ -1,8 +1,9 @@
 import {readFileSync, readdirSync, statSync} from 'node:fs';
 import {join, relative, sep} from 'node:path';
 import {argon2idAsync} from '@noble/hashes/argon2.js';
-import {createEnvelope, decryptMnemonic, unlockWithPassword, type EnvelopeV1, type Kdf} from '../../vault/envelope';
+import {addPasskeyWrap, createEnvelope, decryptMnemonic, unlockWithPassword, type EnvelopeV1, type Kdf} from '../../vault/envelope';
 import {derivePublicKeys} from '../../vault/accounts';
+import {unwrapDataKey} from '../../vault/reauth';
 import {envelopeRevision} from '../../shared/envelopeRevision';
 import {VAULT_KEY} from '../../background/accountsStore';
 import {handleMessage} from '../../background/messages';
@@ -14,6 +15,18 @@ import {proveFactor, proveSeed, replaceEmptyWallet, restoreWallet, type FactorPr
 import {commitWallet, prepareWallet} from '../onboarding';
 import {backgroundVaultStore} from '../vaultStore';
 import type {Send} from '../types';
+
+// Fix round 1: pass-through spies, so a test can see the data key proveFactor unwrapped (review item 2)
+// and make restoreWallet's re-derivation disagree with a genuine proof (review item 1(b)). Every other
+// call runs the real code.
+vi.mock('../../vault/accounts', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../vault/accounts')>();
+  return {...actual, derivePublicKeys: vi.fn(actual.derivePublicKeys)};
+});
+vi.mock('../../vault/reauth', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../vault/reauth')>();
+  return {...actual, unwrapDataKey: vi.fn(actual.unwrapDataKey)};
+});
 
 // Spec B1b-2a E5, the vault page's half: the two proofs, and the only two ways this page may send
 // vault.forgetWallet. Run against the REAL background (handleMessage over an in-memory storage), so
@@ -47,6 +60,17 @@ async function background(env: EnvelopeV1 | undefined, balances: (owner: string)
   return {ext, send, sent, read, store: backgroundVaultStore(send, read)};
 }
 
+/** A stored wallet with a passkey wrap whose PRF output is `prf`. */
+async function passkeyWallet(prf: Uint8Array): Promise<EnvelopeV1> {
+  const env = await storedWallet(M, 'slip10', [0]);
+  const dataKey = await unlockWithPassword(env, OLD_PW, kdf);
+  try {
+    return await addPasskeyWrap(env, dataKey, prf.slice(), new Uint8Array(16).fill(1), new Uint8Array(32).fill(2));
+  } finally {
+    dataKey.fill(0);
+  }
+}
+
 describe('the seed proof (#39 → #8 restore)', () => {
   it('accepts the stored wallet’s phrase — slip10 with several accounts, and cli — sending nothing', async () => {
     const slip = await background(await storedWallet(M, 'slip10', [0, 1, 3]));
@@ -72,6 +96,19 @@ describe('the seed proof (#39 → #8 restore)', () => {
     expect(await proveSeed(async () => null, M)).toEqual({outcome: 'damaged'});
     const b = await background(await storedWallet(M, 'slip10', [0]));
     expect(await proveSeed(b.read, 'abandon abandon')).toEqual({outcome: 'invalid-mnemonic'});
+  });
+
+  it('refuses a wallet whose middle account is another seed’s key (fix round 1, review item 3)', async () => {
+    const mine = await derivePublicKeys(M, 'slip10', [0, 1, 2]);
+    const theirs = await derivePublicKeys(OTHER, 'slip10', [1]);
+    const accounts = [
+      {index: 0, name: 'Account 1', publicKey: mine[0] ?? ''},
+      {index: 1, name: 'Account 2', publicKey: theirs[0] ?? ''},
+      {index: 2, name: 'Account 3', publicKey: mine[2] ?? ''},
+    ];
+    const b = await background(await createEnvelope({mnemonic: M, password: OLD_PW, scheme: 'slip10', accounts, kdf}));
+    expect(await proveSeed(b.read, M)).toEqual({outcome: 'not-this-wallet'});
+    expect(b.sent).toEqual([]);
   });
 });
 
@@ -134,6 +171,65 @@ describe('restoreWallet: the seed-proven replacement (E5 with `replacement`, D40
     const refusing: Send = async m => ((m as {type: string}).type === 'vault.forgetWallet' ? {ok: false, error} : {ok: true});
     expect(await restoreWallet({send: refusing, kdf}, proven.proof, NEW_PW)).toBe(outcome);
   });
+
+  // Fix round 1, review item 1: each case starts from a GENUINE proof, so a mint that recorded only
+  // revisions (or a proof whose fields could be reassigned) would let another phrase be encrypted under
+  // this wallet's keys — the background's C4 binds only {index, publicKey}.
+  describe('after a genuine proof exists, nothing else proves the seed', () => {
+    async function genuine() {
+      const env = await storedWallet(M, 'slip10', [0, 1]);
+      const b = await background(env);
+      const proven = await proveSeed(b.read, M);
+      if (proven.outcome !== 'match') throw new Error(proven.outcome);
+      const unchanged = async () => {
+        expect(b.sent).toEqual([]);
+        expect(JSON.stringify(await b.read())).toBe(JSON.stringify(env));
+      };
+      return {env, b, proof: proven.proof, unchanged};
+    }
+
+    it('a spread copy of it carrying another phrase', async () => {
+      const {b, proof, unchanged} = await genuine();
+      expect(await restoreWallet({send: b.send, kdf}, {...proof, mnemonic: OTHER}, NEW_PW)).toBe('failed');
+      await unchanged();
+    });
+
+    it('a frozen literal with its revision', async () => {
+      const {b, proof, unchanged} = await genuine();
+      const forged: SeedProof = Object.freeze({kind: 'seed', env: proof.env, revision: proof.revision, mnemonic: OTHER});
+      expect(await restoreWallet({send: b.send, kdf}, forged, NEW_PW)).toBe('failed');
+      await unchanged();
+    });
+
+    it('the genuine proof itself cannot be altered — its phrase, its envelope, its accounts', async () => {
+      const {proof, unchanged} = await genuine();
+      expect(() => {
+        (proof as {mnemonic: string}).mnemonic = OTHER;
+      }).toThrow(TypeError);
+      expect(() => {
+        (proof.env as {scheme: string}).scheme = 'cli';
+      }).toThrow(TypeError);
+      expect(() => {
+        (proof.env.accounts as unknown[]).push({index: 9, name: '', publicKey: RECIPIENT});
+      }).toThrow(TypeError);
+      expect(() => {
+        (proof.env.accounts[1] as {publicKey: string}).publicKey = RECIPIENT;
+      }).toThrow(TypeError);
+      expect(proof.mnemonic).toBe(M);
+      expect(proof.env.accounts).toHaveLength(2);
+      await unchanged();
+    });
+
+    it('restoreWallet re-derives every key from the phrase it is about to encrypt, under the stored scheme', async () => {
+      const {env, b, proof, unchanged} = await genuine();
+      const derive = vi.mocked(derivePublicKeys);
+      derive.mockClear();
+      derive.mockImplementationOnce(async () => [env.accounts[0]?.publicKey ?? '', RECIPIENT]);
+      expect(await restoreWallet({send: b.send, kdf}, proof, NEW_PW)).toBe('not-this-wallet');
+      expect(derive).toHaveBeenCalledWith(M, 'slip10', [0, 1]);
+      await unchanged();
+    });
+  });
 });
 
 describe('the factor proof (#40 → #8 retry: the password of the wallet being replaced)', () => {
@@ -149,6 +245,33 @@ describe('the factor proof (#40 → #8 retry: the password of the wallet being r
     const prfOutput = new Uint8Array(32).fill(5);
     expect(await proveFactor(async () => undefined, {prfOutput})).toEqual({outcome: 'no-wallet'});
     expect(prfOutput.every(b => b === 0)).toBe(true);
+  });
+
+  it.each([
+    ['proven', 5, false],
+    ['wrong', 6, false],
+    ['damaged', 5, true],
+  ] as const)('zeroes a passkey PRF output when the outcome is %s (fix round 1, review item 4)', async (outcome, fill, damaged) => {
+    const env = await passkeyWallet(new Uint8Array(32).fill(5));
+    const b = await background(damaged ? {...env, accounts: []} : env);
+    const prfOutput = new Uint8Array(32).fill(fill);
+    expect((await proveFactor(b.read, {prfOutput})).outcome).toBe(outcome);
+    expect(prfOutput.every(x => x === 0)).toBe(true);
+    expect(b.sent).toEqual([]);
+  });
+
+  it('zeroes the data key it unwrapped once the password is proven; a wrong one never yields a key (fix round 1, review item 2)', async () => {
+    const b = await background(await storedWallet(M, 'slip10', [0]));
+    const unwrap = vi.mocked(unwrapDataKey);
+    unwrap.mockClear();
+    expect((await proveFactor(b.read, {password: OLD_PW, kdf})).outcome).toBe('proven');
+    expect(unwrap).toHaveBeenCalledTimes(1);
+    const key = await (unwrap.mock.results[0]?.value as Promise<Uint8Array>);
+    expect(key).toHaveLength(32);
+    expect(key.every(x => x === 0)).toBe(true);
+    unwrap.mockClear();
+    expect(await proveFactor(b.read, {password: 'not the password at all', kdf})).toEqual({outcome: 'wrong'});
+    await expect(unwrap.mock.results[0]?.value as Promise<Uint8Array>).rejects.toThrow();
   });
 });
 
@@ -209,12 +332,40 @@ describe('replaceEmptyWallet: the factor-proven delete is ALWAYS guarded (C6), t
     expect(b.sent.filter(m => m.type === 'vault.forgetWallet')).toHaveLength(1);
     expect(await b.read()).toEqual(third);
   });
+
+  it('a store whose reply was lost: the retry finds this wallet stored and goes on to the keys (fix round 1, review item 7)', async () => {
+    const old = await storedWallet(M, 'slip10', [0]);
+    const b = await background(old);
+    const proven = await proveFactor(b.read, {password: OLD_PW, kdf});
+    if (proven.outcome !== 'proven') throw new Error(proven.outcome);
+    const next = await prepareWallet(kdf, {mnemonic: OTHER, password: NEW_PW, scheme: 'slip10', indexes: [0]});
+    let lose = true;
+    // The background stores B, then the reply never arrives (the worker restarted after the write).
+    const lossy: Send = async m => {
+      const r = await b.send(m);
+      if ((m as {type: string}).type === 'vault.storeEnvelope' && lose) {
+        lose = false;
+        throw new Error('reply lost');
+      }
+      return r;
+    };
+    const store = backgroundVaultStore(lossy, b.read);
+    expect(await replaceEmptyWallet({...store, send: lossy}, proven.proof, next)).toBe('store-failed');
+    expect(envelopeRevision((await b.read()) as EnvelopeV1)).toBe(envelopeRevision(next.env));
+    // [Try again]: the background answers wallet-exists — about B itself — so it is not "exists".
+    expect(await commitWallet({...store, send: lossy}, next)).toBe('created');
+    expect((await getSession(b.ext))?.map(a => a.publicKey)).toEqual(next.session.map(a => a.publicKey));
+    expect(b.sent.filter(m => m.type === 'vault.forgetWallet')).toHaveLength(1);
+  });
 });
 
 // Only forgetFlow.ts may build vault.forgetWallet: every other vault-page file is held to it, so a
-// screen cannot send an unguarded factor-proven delete by writing the message itself.
+// screen cannot send an unguarded factor-proven delete by writing the message itself. This is a
+// TRIPWIRE, not a proof — a file can always spell a string some other way. The boundary is that
+// forgetFlow's `forget` is not exported. Fix round 1 (review item 6): the bare token `forgetWallet` is
+// matched, so a message assembled as `'vault.' + 'forgetWallet'` (or a type naming it) also trips.
 describe('the message is built in one place', () => {
-  it('no src/unlock source file but forgetFlow.ts names vault.forgetWallet', () => {
+  it('no src/unlock source file but forgetFlow.ts names forgetWallet', () => {
     const root = join(__dirname, '..');
     const files: string[] = [];
     const walk = (dir: string) => {
@@ -227,6 +378,6 @@ describe('the message is built in one place', () => {
     };
     walk(root);
     expect(files).toContain('forgetFlow.ts');
-    expect(files.filter(f => readFileSync(join(root, f), 'utf8').includes('vault.forgetWallet'))).toEqual(['forgetFlow.ts']);
+    expect(files.filter(f => /\bforgetWallet\b/.test(readFileSync(join(root, f), 'utf8')))).toEqual(['forgetFlow.ts']);
   });
 });

@@ -138,12 +138,22 @@ export async function prepareWallet(kdf: Kdf, input: {mnemonic: string; password
  * The first write (expectedRevision null: the background stores it only while no wallet is stored),
  * then the keys. 'exists' when a wallet landed first; 'created-locked' when the store held but the
  * keys did not reach the background.
+ *
+ * Fix round 1 (review item 7): a store whose reply was lost (the send threw after the background had
+ * stored THIS wallet) is retried by [Try again], and the background then answers 'wallet-exists' —
+ * about our own wallet. So on 'wallet-exists' the stored envelope is read: when its revision is this
+ * wallet's (every field but the names: the same ciphertext and wraps, so the same wallet), the store
+ * did land and the run goes on to the keys, instead of a false "a wallet already exists".
  */
 export async function commitWallet(deps: VaultStore & {send: Send}, wallet: PreparedWallet): Promise<Exclude<FinishOutcome, 'weak-password' | 'invalid-mnemonic'>> {
   try {
     const stored = await deps.storeEnvelope(null, wallet.env);
-    if (stored === 'wallet-exists') return 'exists';
-    if (stored !== 'stored') return 'failed';
+    if (stored === 'wallet-exists') {
+      const now = storedVault(await deps.readEnvelope());
+      if (now.kind !== 'wallet' || envelopeRevision(now.env) !== envelopeRevision(wallet.env)) return 'exists';
+    } else if (stored !== 'stored') {
+      return 'failed';
+    }
   } catch {
     return 'failed';
   }
