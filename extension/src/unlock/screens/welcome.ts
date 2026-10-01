@@ -17,7 +17,18 @@ import {byId, setText, showScreen, shown} from '../view/dom';
  * gate — a second click on either inside the 500 ms floor does nothing, same as every other button on
  * this page. Task 8's callers (`next.create`/`next.import`) need no gate of their own.
  */
-export function mountWelcome(deps: PageDeps, next: {create(): void; import(): void}): {show(): Promise<void>} {
+export interface WelcomeScreen {
+  /** Reads what is stored, then offers the CTAs or says why not. */
+  show(): Promise<void>;
+  /**
+   * #1 with nothing offered and nothing said (Task 8 fix round 2, N1): a wallet may be being stored right
+   * now (a store frozen by the back/forward cache, resumed on restore), so neither "none" nor "exists" is
+   * known yet. The caller runs show() again once that store settles.
+   */
+  hold(): void;
+}
+
+export function mountWelcome(deps: PageDeps, next: {create(): void; import(): void}): WelcomeScreen {
   const createBtn = byId<HTMLButtonElement>('wel-create');
   const importBtn = byId<HTMLButtonElement>('wel-import');
   // Fix round 1 item 3: whether the CTAs are offered this show() at all — a hidden parent stops a
@@ -52,20 +63,29 @@ export function mountWelcome(deps: PageDeps, next: {create(): void; import(): vo
     shown(byId('wel-terms'), on);
     shown(byId('wel-actions'), on);
   };
+  /** Each show()/hold() bumps it: a read that settles after a newer one began is not shown. */
+  let seq = 0;
+  const neutral = () => {
+    seq += 1;
+    showScreen('v-welcome');
+    offered = false;
+    showCtas(false);
+    shown(byId('wel-notice'), false);
+    render();
+    return seq;
+  };
   return {
+    hold: () => void neutral(),
     async show() {
-      showScreen('v-welcome');
-      offered = false;
-      showCtas(false);
-      shown(byId('wel-notice'), false);
-      render();
+      const mine = neutral();
       let raw: unknown;
       try {
         raw = await deps.store.readEnvelope();
       } catch {
-        notice(COMMON.unreadable, '');
+        if (mine === seq) notice(COMMON.unreadable, '');
         return;
       }
+      if (mine !== seq) return;
       const stored = storedVault(raw);
       if (stored.kind === 'none') {
         offered = true;

@@ -54,6 +54,8 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
   let note = false;
   /** A mismatch is showing (its line, the shake, both step dots wide) until the field is cleared or typed in. */
   let mismatch = false;
+  /** The mismatched entry, until the field is cleared or typed in (fix round 2, M2): what a new keystroke must not extend. */
+  let wrong = '';
   let clearing: number | null = null;
   /** Focus the field once the gate frees (a disabled field cannot take focus). */
   let refocus = false;
@@ -101,6 +103,7 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
     field.classList.remove('is-error');
     note = false;
     mismatch = false;
+    wrong = '';
   };
 
   const submit = () => {
@@ -124,6 +127,7 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
       if (second !== first) {
         note = true;
         mismatch = true;
+        wrong = second;
         helper(PASSWORD.mismatch, true);
         field.classList.add('is-error');
         stopClearing();
@@ -132,6 +136,7 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
           field.value = '';
           field.classList.remove('is-error');
           mismatch = false;
+          wrong = '';
           refocus = true;
           render();
         }, MISMATCH_CLEAR_MS);
@@ -166,8 +171,15 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
   field.addEventListener('input', () => {
     if (note) {
       note = false;
-      // Typing after a mismatch is a new attempt: the pending clear must not wipe it.
-      if (mismatch) stopClearing();
+      // Typing after a mismatch is a new attempt: the pending clear must not wipe it, and the masked wrong
+      // entry must not prefix it. Appended to it (a keystroke, a paste at the caret) → only the addition is
+      // kept; cut from it (Backspace) → empty; typed over it (a selection replaced) → the new text stands.
+      if (mismatch) {
+        stopClearing();
+        const v = field.value;
+        field.value = v.startsWith(wrong) ? v.slice(wrong.length) : wrong.startsWith(v) ? '' : v;
+        wrong = '';
+      }
       mismatch = false;
       field.classList.remove('is-error');
       helper(step === 'enter' ? PASSWORD.enterHelper : '', false);
@@ -231,6 +243,6 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
       render();
       showScreen('v-password');
     },
-    holds: () => first !== '' || field.value !== '',
+    holds: () => first !== '' || wrong !== '' || field.value !== '',
   };
 }

@@ -323,6 +323,56 @@ describe('#4 seed-confirm: the screen', () => {
   });
 });
 
+describe('#4 seed-confirm: positions are checked (fix round 2, N2)', () => {
+  async function fresh() {
+    loadPage();
+    const h = await harness();
+    mountConfirm(h.deps, {back: () => undefined, done: () => undefined}).show(WORDS);
+    const slots = () => [...el('cnf-slots').querySelectorAll('.slot')];
+    const position = (i: number) => Number(/#(\d+)/.exec(text(slots()[i]?.querySelector('.label') ?? null))?.[1]);
+    const right = (i: number) => WORDS[position(i) - 1] ?? '';
+    const button = (w: string) => [...el('cnf-pool').querySelectorAll('button')].find(b => text(b) === w) as HTMLButtonElement;
+    return {h, slots, right, button};
+  }
+
+  it('slot 2’s word picked for slot 1 is wrong — a word of the plan is not enough — and the slots then reset', async () => {
+    const {h, slots, right, button} = await fresh();
+    click(button(right(1)));
+    expect(slots()[0]?.classList.contains('wrong')).toBe(true);
+    expect(text(el('cnf-lede'))).toBe("That's not the right word — let's start over.");
+    expect(visible(el('cnf-helper'))).toBe(true);
+    h.timers.advance(RESET_MS);
+    expect(slots().every(x => x.classList.contains('empty'))).toBe(true);
+    expect(text(el('cnf-lede'))).toBe('Tap the correct word for each position.');
+  });
+
+  it('the three right words in any wrong order never reach "Phrase verified"', async () => {
+    for (const order of [
+      [1, 0, 2],
+      [0, 2, 1],
+      [2, 1, 0],
+      [1, 2, 0],
+      [2, 0, 1],
+    ]) {
+      const {h, right, button} = await fresh();
+      const words = order.map(i => right(i));
+      for (const w of words) {
+        await idle(h);
+        if (!button(w).disabled) click(button(w));
+      }
+      await idle(h);
+      expect(el<HTMLButtonElement>('cnf-cta').disabled).toBe(true);
+      // Even with `disabled` lifted (a stray event), Confirm finds the slots incomplete.
+      el<HTMLButtonElement>('cnf-cta').disabled = false;
+      click(el('cnf-cta'));
+      await idle(h);
+      expect(visible(el('cnf-success'))).toBe(false);
+      h.timers.advance(RESET_MS);
+      expect(visible(el('cnf-success'))).toBe(false);
+    }
+  });
+});
+
 describe('#4 seed-confirm: a repeated word (I1)', () => {
   it('23 × abandon + art: picks go by pool index, so a word that fills one slot is still offered for the next', async () => {
     const h = await harness();
@@ -566,6 +616,36 @@ describe('#5 create password (D7)', () => {
     expect(field.disabled).toBe(false);
     expect(visible(cta)).toBe(true);
     expect(screen.holds()).toBe(false);
+  });
+
+  it('M2 (fix round 2): the first keystroke after a mismatch does not extend the masked wrong entry', async () => {
+    const {h, field, cta, screen} = await shown();
+    const mismatched = async () => {
+      type(field, `${PW}!`);
+      click(cta);
+      await h.until(() => text(el('pw-helper')) === "Passwords don't match — try again.");
+      await idle(h);
+    };
+    await toConfirm(h, field, cta);
+    // Appended (the caret at the end, as after the submit): only the new keystroke is kept…
+    await mismatched();
+    type(field, `${PW}!x`);
+    expect(field.value).toBe('x');
+    expect(text(el('pw-helper'))).toBe('');
+    // …and the 600 ms clear, now cancelled, does not wipe it.
+    h.timers.advance(MISMATCH_CLEAR_MS);
+    expect(field.value).toBe('x');
+    // Cut from it (Backspace): empty.
+    type(field, '');
+    await mismatched();
+    type(field, PW);
+    expect(field.value).toBe('');
+    // Typed over it (the whole entry selected and replaced): the new text stands.
+    await mismatched();
+    type(field, 'y');
+    expect(field.value).toBe('y');
+    type(field, '');
+    expect(screen.holds()).toBe(true);
   });
 
   it('back: from confirm to enter (the first password dropped), from enter to the run’s back; never inside the floor', async () => {
@@ -1011,6 +1091,43 @@ describe('the create run, end to end in one page, against the real background', 
     click(el('int-continue'));
     await press(h, 'sg-continue');
     expect(run.holds().phrase).toBe(true);
+  }, 30_000);
+
+  it('N1 (fix round 2): restored from the back/forward cache while the store is still in flight — #1 offers nothing until it lands, then says the wallet exists', async () => {
+    let storeStarted = false;
+    let releaseStore: () => void = () => undefined;
+    const h = await harness({
+      mnemonic: PHRASE,
+      send: inner => async m => {
+        if ((m as {type: string}).type === 'vault.storeEnvelope') {
+          storeStarted = true;
+          // The cache froze the page mid-store; the message resumes only after the restore.
+          await new Promise<void>(r => (releaseStore = r));
+        }
+        return inner(m);
+      },
+    });
+    startCreateRun(h.deps, {at: 'welcome', importRun: () => undefined});
+    await h.until(() => visible(el('wel-actions')));
+    await toPassword(h);
+    click(el('pw-cta'));
+    await h.until(() => storeStarted);
+    h.leave('pagehide');
+    h.back('restored');
+    const offered = () => visible(el('wel-actions')) || visible(el('wel-terms')) || !el<HTMLButtonElement>('wel-create').disabled || !el<HTMLButtonElement>('wel-import').disabled;
+    expect(visible(el('v-welcome'))).toBe(true);
+    expect(offered()).toBe(false);
+    // Every pending read gets its chance to settle: still nothing offered while the store is in flight.
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 1));
+      expect(offered()).toBe(false);
+    }
+    expect(visible(el('wel-notice'))).toBe(false);
+    releaseStore();
+    await h.until(() => visible(el('wel-notice')));
+    expect(text(el('wel-notice-line'))).toBe('A wallet already exists in this browser. Nothing was changed.');
+    expect(offered()).toBe(false);
+    expect(visible(el('v-passkey'))).toBe(false);
   }, 30_000);
 
   it('pagehide while the wallet is stored: the run drops the phrase; the store that lands afterwards does not move the run on', async () => {

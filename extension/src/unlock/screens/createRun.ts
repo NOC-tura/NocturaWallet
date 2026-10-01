@@ -42,12 +42,29 @@ export function startCreateRun(deps: PageDeps, o: {at: 'welcome' | 'intro'; impo
       generation += 1;
     }
   });
+  /** #1 is the screen up (the run's own record: #1 is shown only through `toWelcome`). */
+  let onWelcome = false;
+  const toWelcome = () => {
+    onWelcome = true;
+    // N1: while a store is in flight, #1 offers nothing — it re-reads once the store settles.
+    if (storing) welcome.hold();
+    else void welcome.show();
+  };
   deps.onReturn(why => {
-    if (why === 'restored') void welcome.show();
+    if (why === 'restored') toWelcome();
   });
 
-  const welcome = mountWelcome(deps, {create: () => intro.show(), import: () => o.importRun()});
-  const intro = mountIntro({back: () => void welcome.show(), continue: () => seed.show(words())});
+  const welcome = mountWelcome(deps, {
+    create: () => {
+      onWelcome = false;
+      intro.show();
+    },
+    import: () => {
+      onWelcome = false;
+      o.importRun();
+    },
+  });
+  const intro = mountIntro({back: toWelcome, continue: () => seed.show(words())});
   const seed = mountSeed(deps, {back: () => intro.show(), done: () => confirm.show(words())});
   const confirm = mountConfirm(deps, {back: () => seed.show(words()), done: () => passwordStep()});
   const pw = mountPassword(deps);
@@ -69,6 +86,8 @@ export function startCreateRun(deps: PageDeps, o: {at: 'welcome' | 'intro'; impo
           out = await finishOnboarding({...deps.store, send: deps.send, kdf: deps.kdf}, {mnemonic: phrase, password: chosen, scheme: 'slip10', indexes: [0]});
         } finally {
           storing = false;
+          // N1: a store that settles while #1 is up (a restore from the back/forward cache) — #1 reads again.
+          if (onWelcome) void welcome.show();
         }
         if (out === 'created' || out === 'created-locked' || out === 'exists') mnemonic = null;
         // The page was left (pagehide) while this ran: the run was dropped, and #1 shows what is stored now.
@@ -103,7 +122,7 @@ export function startCreateRun(deps: PageDeps, o: {at: 'welcome' | 'intro'; impo
     }
   };
 
-  if (o.at === 'welcome') void welcome.show();
+  if (o.at === 'welcome') toWelcome();
   else intro.show();
   return {holds: () => ({phrase: mnemonic !== null, password: password !== null})};
 }
