@@ -58,7 +58,7 @@ function PendingStrip({p, now, onOpen}: {p: Pending; now: number; onOpen: () => 
   );
 }
 
-/** A failed balance read with nothing to show — a controller addition (final review I1), awaiting the owner's copy. */
+/** A balance read that failed with 'failed' (final review I1; over shown balances, owner decision 2026-10-01) — copy confirmed by the owner 2026-10-01. */
 export const BALANCES_FAILED_TEXT = 'Could not read your balances. Try again.';
 const HIDDEN_ROW = '••••••';
 const DOTS = [0, 1, 2, 3, 4, 5];
@@ -85,7 +85,7 @@ export function Home({onReceive, onActivity, onAccounts}: {onReceive: () => void
   const away = mode === 'offline' || mode === 'unreachable';
   const long = sustained(m.net, now);
   const b = m.balances;
-  /** The balances shown are not a fresh read of now (the cache, or a read made before going away). */
+  /** The balances shown are not a fresh read of now (the cache, a failed refresh, or a read made before going away). */
   const stale = b !== null && (m.stale || away || refused);
   const priceAt = m.prices?.at ?? null;
   const pricesStale = m.pricesStale && priceAt !== null;
@@ -93,8 +93,11 @@ export function Home({onReceive, onActivity, onAccounts}: {onReceive: () => void
   const heroStale = b !== null && (stale || pricesStale);
   /** #42 reconnecting: fresh balances have landed, the price read still runs. */
   const syncing = mode === 'reconnecting' && m.refreshing;
-  /** The first read answered with a failure that has no banner of its own ('failed'): say so, with nothing to show. */
-  const readFailed = b === null && m.settled && !away && !refused;
+  /**
+   * A balance read answered with a failure that has no banner of its own ('failed'): say so — over
+   * "—" when nothing is shown, or over the stale balances (owner decision 2026-10-01).
+   */
+  const readFailed = m.settled && !away && !refused && (b === null || m.balanceError === 'failed');
   const open = m.pending.find(p => p.account === account?.publicKey && (p.state === 'pending' || p.state === 'stuck'));
 
   const top = (
@@ -173,7 +176,7 @@ export function Home({onReceive, onActivity, onAccounts}: {onReceive: () => void
       ? joined(approx, 're-fetching prices')
       : away && long
         ? joined(approx, 'prices may have moved')
-        : away && m.lastSync !== null
+        : (away || readFailed) && m.lastSync !== null
           ? joined(approx, `last synced ${stamp(m.lastSync, now)}`)
           : null;
   const priceStamp = (note: typeof rowNote): boolean => priceAt !== null && ((note === 'cached' && away) || (note === null && pricesStale));

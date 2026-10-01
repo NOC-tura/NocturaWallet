@@ -26,9 +26,18 @@ export interface WalletModel {
   wallet: WalletState | null;
   account: Account | null;
   balances: Balances | null;
-  /** When `balances` were read; with `stale`, they came from the cache (E4) and no fresh read has replaced them. */
+  /**
+   * When `balances` were read. `stale`: they are not a fresh read of now — they came from the cache
+   * (E4), or the last balance read failed with them on screen (owner decision 2026-10-01, §5.1) — and
+   * no successful read has replaced them.
+   */
   balancesAt: number | null;
   stale: boolean;
+  /**
+   * The refusal code of the selected account's last balance read, null after a success (or before
+   * any read). 'failed' over shown balances adds #11's failed-read line; a good read clears it.
+   */
+  balanceError: string | null;
   prices: Prices | null;
   /** `prices` came from the cache (E4) and no fresh wallet.prices has replaced them: never shown as current. */
   pricesStale: boolean;
@@ -101,6 +110,7 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
   const [balances, setBalances] = useState<Balances | null>(null);
   const [balancesAt, setBalancesAt] = useState<number | null>(null);
   const [stale, setStale] = useState(false);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
   const [prices, setPrices] = useState<Prices | null>(null);
   const [pricesStale, setPricesStale] = useState(false);
   const [pending, setPending] = useState<Pending[]>([]);
@@ -167,8 +177,15 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
         setBalances(b.data);
         setBalancesAt(now());
         setStale(false);
+        setBalanceError(null);
         succeeded();
-      } else failed(b.error);
+      } else {
+        // Whatever is on screen is no longer current (§5.1, owner decision 2026-10-01): marked stale
+        // as cached values are. `lastSync` stays at the last good read; nothing replaces the values.
+        setStale(true);
+        setBalanceError(b.error);
+        failed(b.error);
+      }
       const p = await priceRead;
       if (accountRef.current?.publicKey !== a.publicKey) return;
       if (p.ok) {
@@ -199,6 +216,7 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
       accountRef.current = a;
       // This account has not been read yet: the skeleton (when nothing is cached) until its read answers.
       setSettled(false);
+      setBalanceError(null);
       const c = await engine.cached(a.publicKey);
       if (c.ok) {
         if (c.data.balances !== null) {
@@ -238,6 +256,7 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
         setBalances(null);
         setBalancesAt(null);
         setStale(false);
+        setBalanceError(null);
         setPrices(null);
         setPricesStale(false);
         setPending([]);
@@ -336,6 +355,6 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
     return r.ok && phaseRef.current !== 'unlocked';
   }, [engine, applyState]);
 
-  const model: WalletModel = {surface, engine, platform, phase, wallet, account, balances, balancesAt, stale, prices, pricesStale, pending, net, lastSync, refreshing, settled, now, report: failed, reached, refresh, reload, lock};
+  const model: WalletModel = {surface, engine, platform, phase, wallet, account, balances, balancesAt, stale, balanceError, prices, pricesStale, pending, net, lastSync, refreshing, settled, now, report: failed, reached, refresh, reload, lock};
   return <Ctx.Provider value={model}>{children}</Ctx.Provider>;
 }

@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import {act, fireEvent, screen, waitFor, within} from '@testing-library/react';
 import {renderInWallet, walletReader, type WalletOptions} from './harness';
-import {Home} from '../screens/Home';
+import {BALANCES_FAILED_TEXT, Home} from '../screens/Home';
+import {ago, stamp} from '../format';
 import {useWallet, type WalletModel} from '../WalletContext';
 import {BALANCE_CACHE_KEY, PRICE_CACHE_KEY} from '../../background/balanceCache';
 import {PENDING_KEY} from '../../background/pendingStore';
@@ -152,6 +153,111 @@ describe('#11 dashboard', () => {
     expect(await screen.findByText('1.0000 SOL')).toBeTruthy();
     expect(screen.getByText('Total balance')).toBeTruthy();
     expect(document.querySelector('.hero')?.classList.contains('s8-stale')).toBe(false);
+  });
+
+  // Owner decision 2026-10-01 (delegated to the controller, spec §5.1): a failed refresh over fresh
+  // balances marks them stale exactly as cached ones (E4); lastSync stays at the last good read.
+  it('a failed refresh (\'failed\') over fresh balances: the stale marks, the failed-read line and "last synced"; lastSync does not move; a good read clears both', async () => {
+    let t = Date.now();
+    let fail = false;
+    const reader = walletReader({
+      getBalance: async () => {
+        if (fail) throw new RpcMalformed('getBalance: no result');
+        return 62_482_100_000n;
+      },
+    });
+    const {model} = await renderHomeWithModel({reader, now: () => t});
+    expect(await screen.findByText('$10,112')).toBeTruthy();
+    const synced = model().lastSync;
+    expect(synced).not.toBeNull();
+    expect(document.querySelector('.hero')?.classList.contains('s8-stale')).toBe(false);
+    const refresh = screen.getByRole('button', {name: 'Refresh'}) as HTMLButtonElement;
+    await waitFor(() => expect(refresh.disabled).toBe(false));
+    t += 120_000;
+    fail = true;
+    fireEvent.click(refresh);
+    expect(await screen.findByText(BALANCES_FAILED_TEXT)).toBeTruthy();
+    expect(model().stale).toBe(true);
+    expect(model().lastSync).toBe(synced);
+    expect(document.querySelector('.hero')?.classList.contains('s8-stale')).toBe(true);
+    expect(document.querySelector('.hero .s8-stale-mark')).toBeTruthy();
+    expect(document.querySelector('.tokens')?.classList.contains('s8-stale')).toBe(true);
+    // The screen's clock ticks each second through the model's now().
+    expect(await screen.findByText(`Total balance · cached ${ago(synced ?? 0, t)}`, undefined, {timeout: 2_500})).toBeTruthy();
+    expect(screen.getByText(`≈ 67.41 SOL · last synced ${stamp(synced ?? 0, t)}`)).toBeTruthy();
+    expect(screen.getByText('62.4821 SOL · cached')).toBeTruthy();
+    // The balances stay, never zero or "failed" in their place (§7.3); no network banner.
+    expect(screen.getByText('$10,112')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('$0.00');
+    expect(screen.queryByText('Could not reach the Noctura server')).toBeNull();
+    expect(screen.queryByText(REFUSED_TEXT)).toBeNull();
+    t += 1_000;
+    fail = false;
+    await waitFor(() => expect(refresh.disabled).toBe(false));
+    fireEvent.click(refresh);
+    await waitFor(() => expect(screen.queryByText(BALANCES_FAILED_TEXT)).toBeNull());
+    expect(model().stale).toBe(false);
+    expect(model().lastSync).toBe(t);
+    expect(screen.getByText('Total balance')).toBeTruthy();
+    expect(document.querySelector('.hero')?.classList.contains('s8-stale')).toBe(false);
+    expect(screen.queryByText(/last synced/)).toBeNull();
+    expect(screen.getByText('62.4821 SOL')).toBeTruthy();
+  });
+
+  it('a refresh that answers \'unreachable\' over fresh balances: #42\u2019s banner and the stale marks, no failed-read line; lastSync does not move; a good read clears the marks', async () => {
+    let t = Date.now();
+    let down = false;
+    const reader = walletReader({
+      getBalance: async () => {
+        if (down) throw new RequestUnreachable('u', 'no answer');
+        return 62_482_100_000n;
+      },
+    });
+    const {model} = await renderHomeWithModel({reader, now: () => t});
+    expect(await screen.findByText('$10,112')).toBeTruthy();
+    const synced = model().lastSync;
+    const refresh = screen.getByRole('button', {name: 'Refresh'}) as HTMLButtonElement;
+    await waitFor(() => expect(refresh.disabled).toBe(false));
+    t += 5_000;
+    down = true;
+    fireEvent.click(refresh);
+    expect(await screen.findByText('Could not reach the Noctura server')).toBeTruthy();
+    await waitFor(() => expect(model().stale).toBe(true));
+    expect(model().lastSync).toBe(synced);
+    expect(document.querySelector('.hero')?.classList.contains('s8-stale')).toBe(true);
+    expect(screen.getByText('62.4821 SOL · cached')).toBeTruthy();
+    expect(screen.queryByText(BALANCES_FAILED_TEXT)).toBeNull();
+    t += 1_000;
+    down = false;
+    await waitFor(() => expect(refresh.disabled).toBe(false));
+    fireEvent.click(refresh);
+    expect(await screen.findByText('Connected · syncing')).toBeTruthy();
+    await waitFor(() => expect(model().stale).toBe(false));
+    expect(model().lastSync).toBe(t);
+    expect(document.querySelector('.hero')?.classList.contains('s8-stale')).toBe(false);
+    expect(screen.queryByText(BALANCES_FAILED_TEXT)).toBeNull();
+  });
+
+  it('a 403 refresh over fresh balances: the D26 banner over stale balances; lastSync does not move', async () => {
+    let refused = false;
+    const reader = walletReader({
+      getBalance: async () => {
+        if (refused) throw new RpcForbidden('getBalance');
+        return 62_482_100_000n;
+      },
+    });
+    const {model} = await renderHomeWithModel({reader});
+    expect(await screen.findByText('$10,112')).toBeTruthy();
+    const synced = model().lastSync;
+    const refresh = screen.getByRole('button', {name: 'Refresh'}) as HTMLButtonElement;
+    await waitFor(() => expect(refresh.disabled).toBe(false));
+    refused = true;
+    fireEvent.click(refresh);
+    expect(await screen.findByText(REFUSED_TEXT)).toBeTruthy();
+    expect(model().stale).toBe(true);
+    expect(model().lastSync).toBe(synced);
+    expect(screen.getByText('62.4821 SOL · cached')).toBeTruthy();
+    expect(screen.queryByText(BALANCES_FAILED_TEXT)).toBeNull();
   });
 
   it('hidden balance: every layer hidden, and remembered in this page\u2019s localStorage', async () => {
