@@ -354,6 +354,11 @@ describe('#8 → #5 → #40: the plain import run, against the real background',
     expect(visible(el('imp-line'))).toBe(false);
     expect(el<HTMLButtonElement>('imp-continue').disabled).toBe(true);
     expect(unstyled('v-import')).toEqual([]);
+    // Continue belongs to the typing phase: a stray one during the choice checks nothing again.
+    force('imp-continue');
+    await new Promise(r2 => setTimeout(r2, 20));
+    expect(h.sent.filter(m => m.type === 'wallet.probeBalances')).toHaveLength(1);
+    expect(visible(el('imp-choose'))).toBe(true);
     click(el('imp-choose-cli'));
     await setPassword(h);
     expect(((await h.ext.local.get(VAULT_KEY)) as EnvelopeV1).accounts.map(a => a.publicKey)).toEqual([KCLI]);
@@ -375,9 +380,12 @@ describe('#8 → #5 → #40: the plain import run, against the real background',
     h.wake();
     await h.until(() => !h.deps.gate.isBusy());
     click(el('imp-choose-cli'));
+    // The pick holds the page's gate for its floor: #5, shown inside it, offers nothing until it frees.
+    expect(h.deps.gate.isBusy()).toBe(true);
     force('imp-choose-slip10');
     force('imp-back');
     await h.until(() => visible(el('v-password')));
+    expect(el<HTMLButtonElement>('pw-back').disabled).toBe(true);
     expect(visible(el('v-import'))).toBe(false);
     h.wake();
     await h.until(() => !h.deps.gate.isBusy());
@@ -415,10 +423,15 @@ describe('#8 → #5 → #40: the plain import run, against the real background',
     expect(el<HTMLTextAreaElement>('imp-phrase').value).toBe('');
     expect(visible(el('imp-choose'))).toBe(false);
     expect(leaked()).toEqual([]);
-    // A stray pick after the wipe moves nothing on.
+    // A stray pick after the wipe moves nothing on, and #8 still takes a new phrase.
     force('imp-choose-slip10');
     await new Promise(r2 => setTimeout(r2, 5));
     expect(visible(el('v-password'))).toBe(false);
+    expect(el<HTMLTextAreaElement>('imp-phrase').disabled).toBe(false);
+    // So does a stray Continue: the phrase is gone, nothing is checked.
+    force('imp-continue');
+    await new Promise(r2 => setTimeout(r2, 5));
+    expect(visible(el('imp-line'))).toBe(false);
   });
 
   it('back from #5 returns to #8 with the phrase still in the field; the run no longer holds it', async () => {
