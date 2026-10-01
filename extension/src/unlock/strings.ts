@@ -25,6 +25,12 @@ export const COMMON = {
   passkeyUnavailableConfirm: 'This device cannot confirm with a passkey; your password still works.',
 } as const;
 
+/** #5 create password (D7). */
+export const PASSWORD = {
+  longEnough: 'Long enough',
+  lengthOf: (n: number): string => `${n} of 12 characters`,
+} as const;
+
 /** #9's cooldown card (and #10's, which reuses it): "0:12", and the design's helper line. */
 export const clockText = (seconds: number): string => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 export const cooldownLabel = (seconds: number): string => `Cooldown · ${Math.floor(seconds / 60)} minutes ${seconds % 60} seconds remaining`;
