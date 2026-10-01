@@ -451,3 +451,47 @@ a.btn {
 .app-content .s-success .copy-btn {
   cursor: pointer;
 }
+
+/* #40: the mockup's inline spacing and the empty state's info ring (index.html #40, no-assets-empty). */
+.app-onb-imported {
+  padding: var(--space-3) var(--space-5) 0;
+}
+.s8-success-hero .ring.app-onb-info {
+  background: color-mix(in oklab, var(--info) 14%, transparent);
+}
+.s8-success-hero .ring-inner.app-onb-info {
+  background: var(--info);
+}
+.app-onb-rule {
+  height: 1px;
+  background: color-mix(in oklab, var(--fg-disabled) 60%, transparent);
+  margin: var(--space-3) 0;
+}
+.app-onb-reasons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+}
+.app-onb-reasons p,
+.app-onb-reasons ul {
+  margin: 0;
+}
+.app-onb-reasons ul {
+  padding-left: var(--space-5);
+}
+.app-onb-chip {
+  margin-top: var(--space-4);
+}
+.app-onb-chip-label {
+  margin-bottom: 4px;
+}
+.app-onb-foot {
+  margin-top: var(--space-5);
+  text-align: center;
+}
+.app-content .s8-addr-chip button {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}

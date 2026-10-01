@@ -18,8 +18,8 @@ describe('the router', () => {
 
   it('the pushable screens are a closed list with no send; the hand-over screens are first routes only', () => {
     expect([...SCREENS].sort()).toEqual(['about', 'receive', 'tab', 'tx']);
-    expect([...TAB_ONLY].sort()).toEqual(['created', 'resume']);
-    for (const route of [{screen: 'created'}, {screen: 'resume', account: ADDR}] as Route[]) expect(routeReducer(HOME, {type: 'push', route})).toBe(HOME);
+    expect([...TAB_ONLY].sort()).toEqual(['created', 'imported', 'resume']);
+    for (const route of [{screen: 'created'}, {screen: 'imported'}, {screen: 'resume', account: ADDR}] as Route[]) expect(routeReducer(HOME, {type: 'push', route})).toBe(HOME);
   });
 
   it.each(['send', 'resume', 'send/resume', 'confirm'])('refuses a pushed "%s" route: the stack is unchanged', screen => {
@@ -39,8 +39,9 @@ describe('the router', () => {
     },
   );
 
-  it('the tab reads #/created (#7) and #/send/resume?account=<address> (the plan-2 stand-in); the popup ignores the hash', () => {
+  it('the tab reads #/created (#7), #/imported (#40) and #/send/resume?account=<address> (the plan-2 stand-in); the popup ignores the hash', () => {
     expect(firstRoute('tab', '#/created')).toEqual([{screen: 'created'}]);
+    expect(firstRoute('tab', '#/imported')).toEqual([{screen: 'imported'}]);
     expect(firstRoute('tab', `#/send/resume?account=${ADDR}`)).toEqual([{screen: 'resume', account: ADDR}]);
     expect(firstRoute('popup', '#/created')).toEqual(HOME);
     expect(firstRoute()).toEqual(HOME);

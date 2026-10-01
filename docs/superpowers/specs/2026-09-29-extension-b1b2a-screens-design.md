@@ -1144,10 +1144,23 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   - `single-account-N-tokens`: "Wallet imported"; "1 account · N tokens recovered. Welcome back.";
     "Total value recovered" + the market total (SOL + USDC + USDT) "≈ X SOL"; one row per token
     held (TokenTile, name, amount, USD; NOC's value reads "$… at stage price"); "Your wallet
-    address" in groups of four + `CopyButton`; then **"Wallet is ready — open the Noctura icon"**
-    (D10) and `[Close this tab]`.
+    address" in groups of four + `CopyButton` ("Copied" / "Copy failed", honest), and under it #7's
+    "Copying puts the address on your clipboard. Noctura does not clear it afterwards." (**controller
+    addition** — confirmed by the owner 2026-10-01, plan-2 review M3); then **"Wallet is ready — open
+    the Noctura icon"** (D10) and `[Close this tab]`. One token held reads "1 token" (**controller
+    addition**, confirmed by the owner 2026-10-01). "≈ X SOL" is truncated, never rounded up — one
+    `approxSol` shared with #11 (plan-1 ruling L6; plan-2 review M1).
   - `multi-account-N-tokens`: "N accounts · M tokens recovered."; "across N accounts"; rows summed
-    over accounts ("Solana · N accounts").
+    over accounts ("Solana · N accounts"). Past six accounts the copy claims only what was read:
+    "N accounts · M tokens recovered from the first 6." and "across the first 6 of N accounts"
+    (**controller addition** — confirmed by the owner 2026-10-01, plan-2 review M2). With more than
+    six accounts and nothing held on the six read, the screen is this state with "0 tokens", never
+    `no-assets-empty` (not every account was read) and so without `[Try a different seed]`.
+  - **Reads:** the tab's provider is quiet on this route (as on #7): no open sequence, no
+    `activity.ping`, and its `refresh()` — the `online` event's — reads nothing. #40 makes its own
+    explicit reads, the balances one account at a time then the prices, on mount, on its refresh
+    button, and on `[Try a different seed]`; each failure is reported to the model (`report`), so a
+    403 sets the D26 cool-down and nothing on the page reads again.
   - `no-assets-empty` — shown **only when every account's balance read succeeded** and all four
     tokens are zero on every account (review R2-L5); if any read failed, the `unreachable` state
     shows instead, never "empty": "Wallet imported · empty"; "Your seed checked out, but this wallet
@@ -1176,6 +1189,13 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   - `[Open wallet]` becomes the D10 line.
   - Long-press menu and 30 s clipboard clear dropped.
   - The `v1_imported` MMKV annotation does not apply.
+  - The "Previous wallet replaced" 4-second toast (the design's atomic-replace annotation) is not
+    built: every hand-over reaches the same `wallet.html#/imported` — a plain import, #39's restore
+    (the same wallet, re-stored), the D41 retry's completion (a replacement) and the D41 retry's
+    Back (no replacement) — so the tab cannot know a wallet was replaced, and the background keeps
+    no record of it. A hash that said so would let the URL assert a fact the screen cannot check
+    (§1.6: the hash only chooses a screen). The vault page names the replacement before it happens
+    (#8 `source=retry`: "Confirm with the password of the wallet you are replacing").
 
 ---
 

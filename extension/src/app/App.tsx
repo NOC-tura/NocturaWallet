@@ -14,6 +14,7 @@ import {TxDetail} from './screens/TxDetail';
 import {Settings} from './screens/Settings';
 import {About} from './screens/About';
 import {Created} from './screens/Created';
+import {Imported} from './screens/Imported';
 import {Resume} from './screens/Resume';
 
 function Shell({first}: {first: Route[]}) {
@@ -43,8 +44,8 @@ function Shell({first}: {first: Route[]}) {
 
   if (m.phase === 'loading') return <div className="app-content" aria-busy="true" />;
   // The UI tab's hand-over screens show their own locked and no-wallet states (§3.7, §3.12).
-  if (route.screen === 'created' || route.screen === 'resume') {
-    return <main className="app-content">{route.screen === 'created' ? <Created /> : <Resume />}</main>;
+  if (route.screen === 'created' || route.screen === 'imported' || route.screen === 'resume') {
+    return <main className="app-content">{route.screen === 'created' ? <Created /> : route.screen === 'imported' ? <Imported /> : <Resume />}</main>;
   }
   if (m.phase === 'no-wallet') return <NoWallet />;
   if (m.phase === 'locked') return <Locked />;
