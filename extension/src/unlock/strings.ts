@@ -155,6 +155,15 @@ export const RESTORE = {
   setUp: 'Set up a wallet',
 } as const;
 
+/** #8 on #40's "Try a different seed" path (D41, E5 with the unfunded guard, C6). */
+export const RETRY = {
+  funded: 'This wallet now holds funds. Nothing was changed.',
+  unreachable: 'Balances could not be checked, so nothing was changed. Try again later.',
+  /** The D26 banner text (§7.2). */
+  refused: 'The server is not answering for now — try again in 10 minutes.',
+  storeFailed: 'The new wallet was not saved. Try again.',
+} as const;
+
 /** #6 biometric-setup → passkey (D9). */
 export const PASSKEY = {
   adding: 'Waiting for your passkey…',

@@ -639,7 +639,7 @@ describe('#1 → #8 in one page', () => {
     await h.until(() => visible(el('wel-actions')));
     await press(h, 'wel-import');
     expect(visible(el('v-import'))).toBe(true);
-    expect(visible(el('import'))).toBe(false);
+    expect(document.getElementById('import')).toBeNull();
     await press(h, 'imp-back');
     await h.until(() => visible(el('wel-actions')));
     expect(visible(el('v-import'))).toBe(false);
@@ -650,7 +650,7 @@ describe('#1 → #8 in one page', () => {
     const h = await harness();
     startMode({mode: 'import', source: null}, h.deps);
     expect(visible(el('v-import'))).toBe(true);
-    expect(visible(el('import'))).toBe(false);
+    expect(document.getElementById('import')).toBeNull();
     expect(visible(el('status'))).toBe(false);
   });
 
@@ -731,18 +731,4 @@ describe('#1 → #8 in one page', () => {
     expect(h.went).toEqual([]);
   }, 30_000);
 
-  it('a retry import (#40, B1b-1 section until Task 13) runs under the page’s one gate too', async () => {
-    const {startMode} = await import('../modes');
-    const h = await harness();
-    startMode({mode: 'import', source: 'retry'}, h.deps);
-    expect(visible(el('import'))).toBe(true);
-    h.deps.gate.setBusy(true);
-    click(el('import-btn'));
-    await new Promise(r => setTimeout(r, 5));
-    expect(text(el('status'))).toBe('');
-    h.deps.gate.setBusy(false);
-    click(el('import-btn'));
-    await h.until(() => text(el('status')) !== '');
-    expect(text(el('status'))).toBe('The password must be at least 12 characters.');
-  });
 });

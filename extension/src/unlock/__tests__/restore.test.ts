@@ -668,12 +668,12 @@ describe('the restore run in the page (startMode)', () => {
     const h = await harness({vault: await storedWallet()});
     startMode({mode: 'forgot'}, h.deps);
     expect(visible(el('v-forgot'))).toBe(true);
-    expect(visible(el('import'))).toBe(false);
+    expect(document.getElementById('import')).toBeNull();
     loadPage();
     const r = await harness({vault: await storedWallet()});
     startMode({mode: 'import', source: 'forgot'}, r.deps);
     expect(visible(el('v-import'))).toBe(true);
-    expect(visible(el('import'))).toBe(false);
+    expect(document.getElementById('import')).toBeNull();
     type(el<HTMLTextAreaElement>('imp-phrase'), OTHER);
     click(el('imp-continue'));
     await r.until(() => visible(el('imp-notice')) && !r.deps.gate.isBusy());

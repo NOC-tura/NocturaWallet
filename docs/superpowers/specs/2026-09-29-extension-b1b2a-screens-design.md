@@ -959,13 +959,18 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   - **`&source=retry` (#40's "Try a different seed", D41):** before the phrase field, a password
     step: "Confirm with the password of the wallet you are replacing" + `[Confirm]` /
     `[Confirm with passkey]`; `wrong` → "That did not confirm it."; then #8 as a normal import. At
-    the finish, `vault.forgetWallet {expectedRevision, guard: 'unfunded'}`: `send-open` / `busy` as
-    below; `funded` → "This wallet now holds funds. Nothing was changed." (C6); `unreachable` →
+    the finish, `vault.forgetWallet {expectedRevision, guard: 'unfunded'}`: `send-open` / `busy` /
+    `unlocked` as below (`[Start again]` restarts this path); `funded` → "This wallet now holds funds. Nothing was changed." (C6); `unreachable` →
     "Balances could not be checked, so nothing was changed. Try again later."; `coordinator-refused`
     → the D26 banner text. A failed first write after the delete → "The new wallet was not saved.
     Try again." + `[Try again]` (phrase and password kept in page memory); a `[Try again]` answered
     `wallet-exists` → "A wallet already exists in this browser. Nothing was changed." and the flow
-    stops (review R2-L6).
+    stops (review R2-L6). Any other failure of the delete ("Something went wrong. Try again." + `[Try again]`) may have
+    landed with its reply lost, so `[Try again]` never re-sends it blind: it reads the vault first —
+    gone → the first write alone; still the proven revision → the guarded delete again; anything else →
+    `busy` (Task 13 implementer addition, no new copy — for the controller's review). A tab hidden behind
+    (or during) a `[Try again]` drops B prepared with its password (§3.5, L5); B is encrypted again under
+    the password typed next.
   - **Restore path from #39 (`&source=forgot`, E5), extension-only states:**
     - `checking-match`: "Checking this phrase against the wallet in this browser…" (the seed
       proof, local, no network);

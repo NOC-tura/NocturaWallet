@@ -1,5 +1,4 @@
 import {ENVELOPE_KEY} from './unlockFlow';
-import {MIN_PASSWORD_LENGTH, detectImport, finishOnboarding, indexesFor, type Candidate, type FinishOutcome, type ProbeResult} from './onboarding';
 import {addAccount, removeAccount, type AccountsOutcome} from './accountsFlow';
 import {runReveal, type RevealOutcome} from './revealFlow';
 import {createWrongBackoff, runExclusive, type BusyGate} from './orchestrate';
@@ -12,6 +11,7 @@ import {mountPassword} from './screens/password';
 import {mountForgot} from './screens/forgot';
 import {mountReauth} from './screens/reauth';
 import {createRestoreRun} from './screens/restoreRun';
+import {createRetryRun} from './screens/retryRun';
 import {mountUnlock} from './screens/unlock';
 import {workerKdf} from '../vault/kdf';
 import {send} from '../ui/send';
@@ -23,18 +23,6 @@ import {readLocal} from '../shared/readLocal';
 // proof (textContent, never markup). This page never touches the network: import asks the
 // background (wallet.probeBalances, public keys only), and every write of the envelope is the
 // background's (vault.storeEnvelope).
-const FINISH_WORDS: Record<FinishOutcome, string> = {
-  created: 'Wallet created. You can close this tab.',
-  'created-locked': 'Wallet created. Unlock it to use it.',
-  exists: 'A wallet already exists in this browser. Nothing was changed.',
-  'weak-password': 'The password must be at least 12 characters.',
-  'invalid-mnemonic': 'That is not a valid 12- or 24-word recovery phrase.',
-  failed: 'Something went wrong. Nothing was saved.',
-};
-const CHOOSE_WORDS = {
-  'both-funded': 'Both address types on this phrase hold funds. Choose the one to use.',
-  unresolved: 'Balances could not be checked. Choose the address type to use.',
-} as const;
 const ACCOUNTS_WORDS: Record<AccountsOutcome, string> = {
   done: 'Done. The accounts are updated.',
   'done-locked': 'The accounts were changed, and the wallet has been locked. Unlock it to use them.',
@@ -61,7 +49,7 @@ const REVEAL_WORDS: Record<RevealOutcome['outcome'], string> = {
 };
 const WAIT = 'That did not confirm it. Wait a moment before trying again.';
 // The B1b-1 thin sections the plan-2 screens have not replaced yet.
-const SECTIONS = ['import', 'accounts', 'reveal'] as const;
+const SECTIONS = ['accounts', 'reveal'] as const;
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const say = (text: string): void => {
@@ -111,10 +99,15 @@ export function startMode(mode: PageMode, deps: PageDeps): void {
     mountForgot(deps).show();
     return;
   }
-  // #39's restore (Task 12) replaces the B1b-1 section for `source=forgot`; `source=retry` stays on it until Task 13.
+  // #39's restore (Task 12) and #40's "Try a different seed" (Task 13): the two E5 paths on #8.
   if (mode.mode === 'import' && mode.source === 'forgot') {
     legacy(null);
     void createRestoreRun(deps, {password: mountPassword(deps)}).show();
+    return;
+  }
+  if (mode.mode === 'import' && mode.source === 'retry') {
+    legacy(null);
+    void createRetryRun(deps, {password: mountPassword(deps)}).show();
     return;
   }
   if (mode.mode === 'unlock') {
@@ -122,53 +115,14 @@ export function startMode(mode: PageMode, deps: PageDeps): void {
     void mountUnlock(deps).show(mode.returnTo);
     return;
   }
-  legacy(mode.mode);
-  if (mode.mode === 'import') startImport();
-  if (mode.mode === 'accounts') startAccounts();
-  if (mode.mode === 'reveal') startReveal();
-}
-
-function startImport(): void {
-  let pending: {mnemonic: string; password: string; candidates: Candidate[]; probe: ProbeResult} | null = null;
-  const finish = async (scheme: 'slip10' | 'cli'): Promise<void> => {
-    const p = pending;
-    if (p === null) return;
-    pending = null;
-    $('choose').hidden = true;
-    say('Importing…');
-    const outcome = await finishOnboarding({...store, send, kdf: workerKdf}, {mnemonic: p.mnemonic, password: p.password, scheme, indexes: indexesFor(scheme, p.candidates, p.probe)});
-    say(FINISH_WORDS[outcome]);
-  };
-  $('import-btn').addEventListener('click', () => {
-    void runExclusive(gate, async () => {
-      const phrase = $<HTMLTextAreaElement>('phrase');
-      const pw = $<HTMLInputElement>('imp-password');
-      const pw2 = $<HTMLInputElement>('imp-password2');
-      const mnemonic = phrase.value;
-      const password = pw.value;
-      const repeated = pw2.value;
-      pw.value = '';
-      pw2.value = '';
-      if (password.length < MIN_PASSWORD_LENGTH) return say(FINISH_WORDS['weak-password']);
-      if (password !== repeated) return say('The two passwords are not the same.');
-      say('Checking which addresses hold funds…');
-      // Only 12 or 24 words, refused before anything is sent (detectImport).
-      const detected = await detectImport(send, mnemonic);
-      if (detected.outcome === 'invalid-mnemonic') return say(FINISH_WORDS['invalid-mnemonic']);
-      phrase.value = '';
-      const {candidates, probe, choice} = detected;
-      pending = {mnemonic, password, candidates, probe};
-      if ('choose' in choice) {
-        $('choose-why').textContent = CHOOSE_WORDS[choice.choose];
-        $('choose').hidden = false;
-        say('');
-        return;
-      }
-      await finish(choice.scheme);
-    });
-  });
-  $('choose-slip10').addEventListener('click', () => void runExclusive(gate, () => finish('slip10')));
-  $('choose-cli').addEventListener('click', () => void runExclusive(gate, () => finish('cli')));
+  if (mode.mode === 'accounts') {
+    legacy('accounts');
+    startAccounts();
+  }
+  if (mode.mode === 'reveal') {
+    legacy('reveal');
+    startReveal();
+  }
 }
 
 function startAccounts(): void {
