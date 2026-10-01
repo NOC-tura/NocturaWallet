@@ -73,6 +73,18 @@ describe('the add-account form, restyled (spec §1.2 accounts)', () => {
     expect(text(el('acc-helper'))).toBe('Enter the number of the account to remove (1, 2, …).');
   });
 
+  it('remove with no valid number still takes the typed password out of the field', async () => {
+    const h = await unlockedWallet();
+    mountAccounts(h.deps).show();
+    type(el<HTMLInputElement>('acc-password'), PW);
+    type(el<HTMLInputElement>('acc-remove-index'), '0');
+    click(el('acc-remove'));
+    expect(el<HTMLInputElement>('acc-password').value).toBe('');
+    expect(carries(PASSWORD)).toEqual([]);
+    await h.until(() => text(el('acc-helper')) === 'Enter the number of the account to remove (1, 2, …).');
+    expect(h.sent.filter(m => m.type === 'vault.status')).toHaveLength(0);
+  });
+
   it('remove stays the B1b-1 flow: account 2 removed with the password', async () => {
     const h = await unlockedWallet();
     mountAccounts(h.deps).show();
@@ -167,14 +179,27 @@ describe('the reveal form, restyled with the tokens (spec §1.2 reveal)', () => 
     gone(screen);
   }, 30_000);
 
-  it('leaving the screen (any other screen shown) takes it out', async () => {
+  it('leaving the screen (any other screen shown) takes it out in the same turn — no tick for an observer', async () => {
     const h = await unlockedWallet();
     const screen = mountReveal(h.deps);
     screen.show();
     await shownPhrase(h, screen);
     type(el<HTMLInputElement>('rev-password'), PW);
     showScreen('v-unlock');
-    await h.until(() => el('rev-words').children.length === 0);
+    gone(screen);
+  }, 30_000);
+
+  it('a bounce — another screen, then reveal again in the same turn — still dropped the phrase', async () => {
+    const h = await unlockedWallet();
+    const screen = mountReveal(h.deps);
+    screen.show();
+    await shownPhrase(h, screen);
+    type(el<HTMLInputElement>('rev-password'), PW);
+    showScreen('v-unlock');
+    showScreen('v-reveal');
+    gone(screen);
+    // Nor does anything bring it back a tick later.
+    await new Promise(r => setTimeout(r, 0));
     gone(screen);
   }, 30_000);
 

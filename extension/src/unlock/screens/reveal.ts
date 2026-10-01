@@ -2,7 +2,7 @@ import {createWrongBackoff} from '../orchestrate';
 import {exclusive, type PageDeps} from '../page';
 import {runReveal} from '../revealFlow';
 import {COMMON, REVEAL} from '../strings';
-import {byId, h, setText, showScreen} from '../view/dom';
+import {byId, h, onHidden, setText, showScreen} from '../view/dom';
 
 export interface RevealScreen {
   show(): void;
@@ -18,8 +18,9 @@ export interface RevealScreen {
  * designed screen. The phrase is shown after a proof (runReveal: re-authentication, the data key zeroed
  * at once, a passkey's PRF output zeroed on every path), as text, one list item per word. It leaves the
  * DOM — never only CSS-hidden — on [Hide], when the tab is hidden, on `pagehide` and when the screen is
- * left (anything that hides #v-reveal): it comes back only with a new proof. A proof that settles after
- * one of those renders nothing (`gen`), so a phrase never lands in a hidden tab.
+ * left (showScreen's onHidden hook, in the same turn; a MutationObserver on #v-reveal's `hidden` is the
+ * backstop): it comes back only with a new proof. A proof that settles after one of those renders
+ * nothing (`gen`), so a phrase never lands in a hidden tab.
  *
  * The password leaves the field at the click and is handed to the proof in the same turn; a hidden tab
  * or `pagehide` empties the field (§3.5). Rule 6: the page's one `exclusive()` gate.
@@ -72,7 +73,9 @@ export function mountReveal(deps: PageDeps): RevealScreen {
   // Leaving the page (closing the tab, navigating, the back/forward cache) or hiding it (another tab, a
   // minimised window) drops the words and the typed password.
   deps.onLeave(drop);
-  // Leaving the screen: whatever hides #v-reveal (showScreen of another screen) drops the words too.
+  // Leaving the screen: showScreen of another screen drops the words in the same turn (onHidden). The
+  // observer is the backstop for anything else that hides #v-reveal (a microtask later).
+  onHidden('v-reveal', drop);
   new MutationObserver(() => {
     if (section.hidden) drop();
   }).observe(section, {attributes: true, attributeFilter: ['hidden']});

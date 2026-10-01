@@ -1,4 +1,4 @@
-import {mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -1517,12 +1517,20 @@ describe('plan 2: the real vault page reaches every screen it builds (positive c
         return hit;
       }),
     ).toEqual([]);
-    const screens = ['welcome', 'seed', 'confirm', 'password', 'passkey', 'createRun', 'importScreen', 'importRun', 'restoreRun', 'retryRun', 'forgot', 'unlock', 'reauth', 'accounts', 'reveal'];
-    const views = ['dom', 'words', 'hold', 'meter', 'cooldown'];
+    // Every module in screens/ and view/ as the folders hold it (Task 14 review): a new screen nothing
+    // reaches — an orphan the allowlist never sees — fails here without anyone adding it to a list.
+    const modules = dir => readdirSync(join(root, dir)).filter(n => /\.ts$/.test(n) && !/\.test\.ts$/.test(n)).map(n => `${dir}/${n}`);
+    const screens = modules('src/unlock/screens');
+    const views = modules('src/unlock/view');
+    // The readdir is not empty or short by accident: the folders hold exactly plan 2's screens (Tasks 6–14)
+    // and views — a module added or removed there is named here too, and each named one must be reached.
+    const named = ['welcome', 'seed', 'confirm', 'password', 'passkey', 'createRun', 'importScreen', 'importRun', 'restoreRun', 'retryRun', 'forgot', 'unlock', 'reauth', 'accounts', 'reveal'];
+    expect([...screens].sort()).toEqual(named.map(n => `src/unlock/screens/${n}.ts`).sort());
+    expect([...views].sort()).toEqual(['dom', 'words', 'hold', 'meter', 'cooldown'].map(n => `src/unlock/view/${n}.ts`).sort());
     expect(resolved).toEqual(
       expect.arrayContaining([
-        ...screens.map(n => `src/unlock/screens/${n}.ts`),
-        ...views.map(n => `src/unlock/view/${n}.ts`),
+        ...screens,
+        ...views,
         'src/unlock/strings.ts',
         'src/unlock/forgetFlow.ts',
         'src/unlock/challenge.ts',

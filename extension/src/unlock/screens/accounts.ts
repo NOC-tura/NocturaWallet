@@ -44,8 +44,9 @@ export function mountAccounts(deps: PageDeps): {show(): void} {
   remove.addEventListener('click', () =>
     void exclusive(deps, render, async () => {
       const n = Number(byId<HTMLInputElement>('acc-remove-index').value);
-      if (!Number.isSafeInteger(n) || n < 1) return say(ACCOUNTS.whichToRemove);
+      // The password leaves the field at the click on every branch, the refused number included.
       const f = factor();
+      if (!Number.isSafeInteger(n) || n < 1) return say(ACCOUNTS.whichToRemove);
       say(ACCOUNTS.removing);
       say(ACCOUNTS.outcome[await backoff.run(() => removeAccount(store, f, n - 1), () => say(COMMON.waitConfirm))]);
     }),

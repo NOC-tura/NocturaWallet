@@ -46,11 +46,26 @@ export const SCREENS = [
 ] as const;
 export type ScreenId = (typeof SCREENS)[number];
 
-/** Shows one screen and hides the others (null: none — a B1b-1 section takes the page); the tab starts it at the top. */
+/** What each screen drops when it is left: run by showScreen, synchronously, before it returns. */
+const leaveHooks = new Map<ScreenId, (() => void)[]>();
+
+/**
+ * `f` runs whenever `id` goes from shown to hidden through showScreen — in the same turn, so a screen that
+ * holds a secret (the reveal form's phrase) drops it before anything else runs, even when the screen is
+ * shown again straight after (a bounce).
+ */
+export function onHidden(id: ScreenId, f: () => void): void {
+  leaveHooks.set(id, [...(leaveHooks.get(id) ?? []), f]);
+}
+
+/** Shows one screen and hides the others (null: none); the tab starts it at the top. A screen left runs its onHidden hooks. */
 export function showScreen(id: ScreenId | null): void {
   for (const s of SCREENS) {
     const el = document.getElementById(s);
-    if (el !== null) el.hidden = s !== id;
+    if (el === null) continue;
+    const left = !el.hidden && s !== id;
+    el.hidden = s !== id;
+    if (left) for (const f of leaveHooks.get(s) ?? []) f();
   }
   if (typeof window.scrollTo === 'function') window.scrollTo(0, 0);
 }
