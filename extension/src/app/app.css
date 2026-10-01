@@ -404,3 +404,50 @@ a.btn {
 .s8-sheet .grabber-hit .grabber {
   display: block;
 }
+
+/* #7 and #40 in the UI tab (plan 2): the mockups' inline spacing, as classes. */
+.app-onb-title {
+  margin: 0 0 var(--space-2);
+}
+.app-onb-lede {
+  max-width: 300px;
+  margin: 0 auto;
+}
+.app-onb-eyebrow {
+  margin-bottom: 6px;
+}
+.app-onb-help {
+  margin-top: var(--space-3);
+}
+.app-onb-next {
+  margin: var(--space-3) var(--space-5);
+}
+/* #7's "Next steps" eyebrow sits --space-2 above its list (the address eyebrow's is 6px). */
+.app-onb-next .app-onb-eyebrow {
+  margin-bottom: var(--space-2);
+}
+.app-onb-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.app-onb-steps li {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+.app-onb-arrow {
+  color: var(--accent);
+  flex: 0 0 18px;
+  line-height: 22px;
+  padding-top: 2px;
+}
+.app-onb-grow {
+  flex: 1 1 auto;
+}
+.app-content .s-success .copy-btn {
+  cursor: pointer;
+}

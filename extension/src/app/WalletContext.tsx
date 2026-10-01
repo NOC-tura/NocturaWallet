@@ -99,7 +99,25 @@ const online = (): boolean => (typeof navigator === 'undefined' ? true : navigat
  * while a send of this account is open, and activity.ping on user input at most every 30 s. Nothing
  * else reads the network by itself: refresh is on open and on the refresh button (D2).
  */
-export function WalletProvider({engine, platform, surface, now = systemNow, children}: {engine: Engine; platform: Platform; surface: Surface; now?: () => number; children: ReactNode}) {
+export function WalletProvider({
+  engine,
+  platform,
+  surface,
+  now = systemNow,
+  quiet = false,
+  children,
+}: {
+  engine: Engine;
+  platform: Platform;
+  surface: Surface;
+  now?: () => number;
+  /**
+   * The UI tab's hand-over screens (#7, #40, the resume stand-in): the state only — no cached, pending,
+   * balance or price read on open. #40 reads what it shows itself; #7 reads nothing from the network.
+   */
+  quiet?: boolean;
+  children: ReactNode;
+}) {
   const [phase, setPhaseState] = useState<Phase>('loading');
   const phaseRef = useRef<Phase>('loading');
   const setPhase = useCallback((p: Phase) => {
@@ -267,12 +285,12 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
       // Read again on open, on unlock, and when the selected account changed (a select here, or an
       // account list changed elsewhere) — otherwise the 5 s poll only watches the lock.
       const key = w.accounts.find(x => x.index === w.selected)?.publicKey ?? null;
-      if (!wasUnlocked || fresh || key !== shownKey.current) {
+      if (!quiet && (!wasUnlocked || fresh || key !== shownKey.current)) {
         shownKey.current = key;
         await openUnlocked(w);
       }
     },
-    [engine, openUnlocked, setPhase],
+    [engine, openUnlocked, setPhase, quiet],
   );
 
   const reload = useCallback(() => applyState(true), [applyState]);

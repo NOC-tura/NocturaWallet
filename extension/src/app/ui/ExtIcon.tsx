@@ -32,9 +32,16 @@ export type ExtIconName =
   | 'trend-up'
   | 'doc'
   | 'copy'
-  | 'swap';
+  | 'swap'
+  | 'arrow-right';
 
 const PATHS: Record<ExtIconName, ReactNode> = {
+  'arrow-right': (
+    <>
+      <path d="M5 12h14" />
+      <path d="m12 5 7 7-7 7" />
+    </>
+  ),
   'trend-up': (
     <>
       <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
