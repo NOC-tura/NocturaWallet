@@ -12,6 +12,19 @@
   display: none !important;
 }
 
+/* Fix round 1 item 2: the design resets `* { margin: 0; padding: 0 }` (index.html:98); web's
+   design-system.css and design-ext.css never do (neither is the design's own stylesheet), so every
+   heading, paragraph and card title here still carried its UA margin (measured: h1.wordmark 21px,
+   tagline/terms 12-15px, .layer-card h3 17px, p 13px, #2's lede 15px) — taller than the mockup, and
+   #2's third card fell below the fold. `:where()` keeps this at ZERO specificity, so it behaves
+   exactly like the design's `*` and never beats a design class's own margin/padding (a plain
+   `.vlt-col *` would be (0,1,0) and, placed after a design rule, would win instead). */
+:where(.vlt-col) *,
+:where(.vlt-col) {
+  margin: 0;
+  padding: 0;
+}
+
 /* The icon sprite takes no room. */
 .vlt-sprite {
   position: absolute;

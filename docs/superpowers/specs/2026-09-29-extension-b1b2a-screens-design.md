@@ -750,19 +750,27 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
 
 - **Purpose:** entry; create or import. **Where:** vault page, `?mode=welcome` (opened on install
   and by the popup with no wallet).
-- **State `idle`:** logo (BrandMark look, vault-local SVG) + wordmark "Noctura" (`.noc-h1`); tagline
-  "A Solana wallet built for private, non-custodial holding."; trust chips "E2E encrypted" ·
-  "Non-custodial"; terms line "By continuing you agree to the Terms and Privacy Policy." above the
-  CTAs; `[Create new wallet]` `.btn-primary`; `[I have a wallet]` `.btn-secondary`.
+- **State `idle`:** logo — the mockup's `span.mark` "N" (index.html:4498) — + wordmark "Noctura"
+  (`.noc-h1`); tagline "A Solana wallet built for private, non-custodial holding."; trust chips "E2E
+  encrypted" · "Non-custodial"; terms line "By continuing you agree to the Terms and Privacy Policy."
+  above the CTAs; `[Create new wallet]` `.btn-primary`; `[I have a wallet]` `.btn-secondary`.
 - **Extension-only state `exists`** (a wallet is already stored): "A wallet already exists in this
   browser. Nothing was changed." + "Open the Noctura icon to use it." No CTAs.
+- **Extension-only state `damaged`** (a stored value that fails validation, a stored `null`
+  included): "This wallet's stored data is damaged." + "Your funds stay on Solana; your recovery
+  phrase still controls them. To use them here, remove Noctura from this browser, install it again
+  and import the phrase." (owner-confirmed copy, 2026-10-01, plan 2 carry 3). No CTAs; repairing it
+  is #37's (B1b-2b).
+- **Extension-only state `unreadable`** (the storage read itself throws): "This wallet's stored data
+  could not be read. Reload this page." No help line, no CTAs.
 - **Engine:** `readLocal('v1_vault')` presence (the vault page's one storage read).
 - **Navigation:** Create → #2 (same page); I have a wallet → #8.
 - **Differs from the design:**
   - "ZK-private" chip removed (D6).
   - "Terms" and "Privacy Policy" are plain text, not links, until the privacy policy exists (a
     release gate, parent §5 / B1e). The sentence stays.
-  - `exists` state added (the engine never overwrites a wallet).
+  - `exists`, `damaged` and `unreadable` states added (the engine never overwrites a wallet, and a
+    damaged or unreadable one is never silently treated as absent).
 
 ### 3.2 #2 security-intro
 
