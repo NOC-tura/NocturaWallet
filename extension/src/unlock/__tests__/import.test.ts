@@ -651,7 +651,7 @@ describe('#1 → #8 in one page', () => {
     startMode({mode: 'import', source: null}, h.deps);
     expect(visible(el('v-import'))).toBe(true);
     expect(document.getElementById('import')).toBeNull();
-    expect(visible(el('status'))).toBe(false);
+    expect(document.getElementById('status')).toBeNull();
   });
 
   it('one page gate: #2 → #3 → #2 → #1 → Import — #8 runs under the same gate #1 used', async () => {

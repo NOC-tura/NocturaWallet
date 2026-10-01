@@ -89,27 +89,6 @@
         </div>
       </section>
 
-      <section id="accounts" hidden>
-        <h1>Accounts</h1>
-        <label for="acc-password">Password</label>
-        <input id="acc-password" type="password" autocomplete="current-password" minlength="12" />
-        <button id="add-account" type="button">Add an account</button>
-        <label for="remove-index">Account number to remove</label>
-        <input id="remove-index" type="number" min="1" />
-        <button id="remove-account" type="button">Remove the account</button>
-      </section>
-      <section id="reveal" hidden>
-        <h1>Your recovery phrase</h1>
-        <p>Anyone who sees these words can take everything in this wallet. There is no copy button, on purpose.</p>
-        <form id="reveal-form">
-          <label for="reveal-password">Password</label>
-          <input id="reveal-password" type="password" autocomplete="current-password" minlength="12" required />
-          <button id="reveal-btn" type="submit">Show the phrase</button>
-        </form>
-        <ol id="reveal-words"></ol>
-        <button id="reveal-hide" type="button">Hide</button>
-      </section>
-      <p id="status" role="status"></p>
       <!-- #3 seed-display, its pre-reveal gate (spec §3.3): the word grid is not in the DOM until the gate is passed. -->
       <section id="v-seed-gate" class="screen s-seed-modal" hidden>
         <div id="sg-backdrop" class="modal-backdrop"></div>
@@ -464,6 +443,51 @@
         <div class="sticky-bar">
           <button id="rp-confirm" type="button" class="btn btn-primary">Confirm</button>
           <button id="rp-passkey" type="button" class="btn btn-secondary" hidden>Confirm with passkey</button>
+        </div>
+      </section>
+
+      <!-- The add-account form (spec §1.2 `accounts`): restyled; remove stays the B1b-1 form (B1b-2b designs the manager). -->
+      <section id="v-accounts" class="screen s-pin" hidden>
+        <div class="top-bar">
+          <span class="title noc-overline vlt-muted">Accounts</span>
+        </div>
+        <div class="pin-head">
+          <div class="vlt-lock-tile" aria-hidden="true"><svg width="28" height="28"><use href="#i-key" /></svg></div>
+          <h1 class="noc-h1">Accounts</h1>
+          <form id="acc-form" class="vlt-field-row">
+            <input id="acc-password" class="vlt-input" type="password" autocomplete="current-password" aria-label="Password" />
+          </form>
+        </div>
+        <p id="acc-helper" class="noc-caption pin-helper" aria-live="polite"></p>
+        <div class="vlt-pad vlt-stack">
+          <label for="acc-remove-index" class="noc-body-sm vlt-lede">Account number to remove</label>
+          <input id="acc-remove-index" class="vlt-input" type="number" min="1" />
+          <button id="acc-remove" type="button" class="btn btn-secondary">Remove the account</button>
+        </div>
+        <div class="pin-spacer"></div>
+        <div class="sticky-bar">
+          <button id="acc-add" type="button" class="btn btn-primary">Add an account</button>
+        </div>
+      </section>
+
+      <!-- The B1b-1 reveal form (spec §1.2 `reveal`): restyled with the tokens only; B1b-2b builds the designed screen. -->
+      <section id="v-reveal" class="screen s-pin" hidden>
+        <div class="top-bar">
+          <span class="title noc-overline vlt-muted">Recovery phrase</span>
+        </div>
+        <div class="pin-head">
+          <h1 class="noc-h1">Your recovery phrase</h1>
+          <p class="noc-body vlt-lede">Anyone who sees these words can take everything in this wallet. There is no copy button, on purpose.</p>
+          <form id="rev-form" class="vlt-field-row">
+            <input id="rev-password" class="vlt-input" type="password" autocomplete="current-password" aria-label="Password" />
+          </form>
+        </div>
+        <p id="rev-helper" class="noc-caption pin-helper" aria-live="polite"></p>
+        <ol id="rev-words" class="vlt-words"></ol>
+        <div class="pin-spacer"></div>
+        <div class="sticky-bar">
+          <button id="rev-show" type="button" class="btn btn-primary">Show the phrase</button>
+          <button id="rev-hide" type="button" class="btn btn-secondary">Hide</button>
         </div>
       </section>
 

@@ -1497,3 +1497,38 @@ describe('plan 2: the vault-page screens stay inside the boundary', () => {
     expect(sourceViolations([f('src/app/x.tsx', 'el.innerHTML = s;')])).toEqual([]);
   });
 });
+
+// Task 14: every vault-page screen is reached from the real entry — and so held to the allowlist above.
+describe('plan 2: the real vault page reaches every screen it builds (positive control of the boundary)', () => {
+  it('main.ts → modes.ts → each screen, its views, strings, the E5 and E3 halves', () => {
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+    const read = rel => {
+      try {
+        return readFileSync(join(root, rel), 'utf8');
+      } catch {
+        return undefined;
+      }
+    };
+    const resolved = [];
+    expect(
+      vaultPageViolations(read, rel => {
+        const hit = read(rel) !== undefined;
+        if (hit) resolved.push(rel);
+        return hit;
+      }),
+    ).toEqual([]);
+    const screens = ['welcome', 'seed', 'confirm', 'password', 'passkey', 'createRun', 'importScreen', 'importRun', 'restoreRun', 'retryRun', 'forgot', 'unlock', 'reauth', 'accounts', 'reveal'];
+    const views = ['dom', 'words', 'hold', 'meter', 'cooldown'];
+    expect(resolved).toEqual(
+      expect.arrayContaining([
+        ...screens.map(n => `src/unlock/screens/${n}.ts`),
+        ...views.map(n => `src/unlock/view/${n}.ts`),
+        'src/unlock/strings.ts',
+        'src/unlock/forgetFlow.ts',
+        'src/unlock/challenge.ts',
+        'src/unlock/stored.ts',
+        'src/unlock/page.ts',
+      ]),
+    );
+  });
+});

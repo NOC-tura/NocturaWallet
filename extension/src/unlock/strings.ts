@@ -164,6 +164,42 @@ export const RETRY = {
   storeFailed: 'The new wallet was not saved. Try again.',
 } as const;
 
+/** The add-account form (the B1b-1 words, kept). */
+export const ACCOUNTS = {
+  adding: 'Adding an account…',
+  removing: 'Removing the account…',
+  whichToRemove: 'Enter the number of the account to remove (1, 2, …).',
+  outcome: {
+    done: 'Done. The accounts are updated.',
+    'done-locked': 'The accounts were changed, and the wallet has been locked. Unlock it to use them.',
+    'done-not-locked': 'The accounts were changed, but the wallet could not be locked. Lock it now from the Noctura menu.',
+    wrong: 'That did not confirm it.',
+    'mismatch-locked': 'That did not match this wallet, so the wallet has been locked.',
+    damaged: "This wallet's stored data is damaged.",
+    'not-unlocked': 'The wallet is locked. Unlock it first, then try again.',
+    'no-wallet': 'No wallet on this browser yet.',
+    'cli-single': 'A Solana CLI wallet has exactly one account.',
+    'last-account': 'The last account cannot be removed.',
+    'no-such-account': 'There is no account with that number.',
+    'too-many-accounts': 'This wallet already has the most accounts it can hold.',
+    failed: 'Something went wrong.',
+  },
+} as const;
+
+/** The reveal form (the B1b-1 words, kept). */
+export const REVEAL = {
+  checking: 'Checking…',
+  outcome: {
+    shown: 'Write them down, in order, and keep them offline. Noctura never copies them anywhere.',
+    wrong: 'That did not confirm it.',
+    'not-unlocked': 'The wallet is locked. Unlock it first, then try again.',
+    'mismatch-locked': 'That did not match this wallet, so the wallet has been locked.',
+    damaged: "This wallet's stored data is damaged.",
+    'no-wallet': 'No wallet on this browser yet.',
+    failed: 'Something went wrong. Try again.',
+  },
+} as const;
+
 /** #6 biometric-setup → passkey (D9). */
 export const PASSKEY = {
   adding: 'Waiting for your passkey…',
