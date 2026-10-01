@@ -30,6 +30,28 @@ export const WELCOME = {
   useIt: 'Open the Noctura icon to use it.',
 } as const;
 
+/** #3 seed-display. */
+export const SEED = {
+  lede: '24 words. Write them down on paper, in order. This is the only backup.',
+  ledeConfirmed: 'Phrase locked in. Tap continue to verify a few words.',
+  holdTitle: 'Press and hold to reveal',
+  holdBody: 'Make sure no one is looking over your shoulder. Hold for 2 seconds. Auto re-blurs after 20 s for safety.',
+  stillTitle: 'Still looking?',
+  stillBody: 'Press and hold again to keep viewing. Releasing now is fine — your hand is remembering enough.',
+  written: "I've written it down",
+  continue: 'Continue',
+  chip: (seconds: number): string => `${seconds} s`,
+  chipTail: '· auto-blur',
+  chipLate: '— still memorizing?',
+  /**
+   * What a blurred cell holds instead of its word (Task 4 carry: the blur is CSS only, so the words are in
+   * the DOM only while revealed). Never read: the blur draws it as the design's blurred term, and the grid
+   * is one role="button" whose children assistive technology does not read. One fixed length, so the DOM
+   * says nothing about the words' lengths either.
+   */
+  blurredTerm: 'xxxxxx',
+} as const;
+
 /** #5 create password (D7). */
 export const PASSWORD = {
   longEnough: 'Long enough',

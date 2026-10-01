@@ -159,6 +159,54 @@
         <button id="reveal-hide" type="button">Hide</button>
       </section>
       <p id="status" role="status"></p>
+      <!-- #3 seed-display, its pre-reveal gate (spec §3.3): the word grid is not in the DOM until the gate is passed. -->
+      <section id="v-seed-gate" class="screen s-seed-modal" hidden>
+        <div id="sg-backdrop" class="modal-backdrop"></div>
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="sg-title">
+          <div class="modal-icon"><svg width="28" height="28" aria-hidden="true"><use href="#i-shield-lock" /></svg></div>
+          <h2 id="sg-title" class="noc-h2">About to show your recovery phrase</h2>
+          <p class="body noc-body">Move to a private place. Anyone who sees these 24 words can spend everything in this wallet, forever.</p>
+          <div class="shield-callout">
+            <svg width="14" height="14" aria-hidden="true"><use href="#i-shield-lock" /></svg>
+            <span class="noc-caption">We can't recover this for you if someone takes it. Your only copy is the one you write by hand.</span>
+          </div>
+          <div class="ctas">
+            <button id="sg-continue" type="button" class="btn btn-primary">I'm in a safe place — continue</button>
+            <button id="sg-cancel" type="button" class="btn btn-secondary">Cancel — go back</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- #3 seed-display (spec §3.3): press and hold to reveal; the 20 s auto-blur. The cells hold the words only while revealed. -->
+      <section id="v-seed" class="screen s-seed" hidden>
+        <div class="top-bar">
+          <button id="seed-back" type="button" class="icon-btn" aria-label="Back"><svg width="22" height="22" aria-hidden="true"><use href="#i-arrow-left" /></svg></button>
+          <span class="title noc-overline vlt-muted">Onboarding</span>
+          <span class="step noc-body-sm noc-numeral">2 / 5</span>
+        </div>
+        <div class="scroll-area">
+          <h1 class="noc-h1 vlt-gap-2">Recovery phrase</h1>
+          <p id="seed-lede" class="noc-body vlt-lede vlt-gap-4"></p>
+          <div id="seed-grid" class="seed-grid is-blurred" tabindex="0" role="button" aria-label="Press and hold to reveal the recovery phrase">
+            <span id="seed-chip" class="auto-blur-chip" aria-hidden="true" hidden>
+              <svg width="11" height="11" aria-hidden="true"><use href="#i-clock" /></svg>
+              <span id="seed-chip-n" class="noc-numeral"></span><span id="seed-chip-tail" class="vlt-dim"></span>
+            </span>
+            <span id="seed-stamp" class="confirm-stamp" hidden><svg width="12" height="12" aria-hidden="true"><use href="#i-check" /></svg>Acknowledged</span>
+            <div id="seed-overlay" class="reveal-overlay">
+              <div class="icon"><svg width="26" height="26" aria-hidden="true"><use id="seed-overlay-icon" href="#i-eye-off" /></svg></div>
+              <h3 id="seed-overlay-title" class="noc-h3"></h3>
+              <p id="seed-overlay-body" class="noc-body-sm"></p>
+            </div>
+          </div>
+          <span id="seed-live" class="vlt-sr" aria-live="polite"></span>
+          <p id="seed-helper" class="noc-caption vlt-muted vlt-gap-top-3" hidden>Holding to reveal · Auto-blurs at 20 s for safety. Screen readers announce at 10 s and 5 s only.</p>
+        </div>
+        <div class="sticky-bar">
+          <button id="seed-cta" type="button" class="btn btn-primary" disabled></button>
+        </div>
+      </section>
+
     </main>
     <script type="module" src="./src/unlock/main.ts"></script>
   </body>

@@ -31,6 +31,7 @@ export function shown(el: HTMLElement, on: boolean): void {
 export const SCREENS = [
   'v-welcome',
   'v-intro',
+  'v-seed-gate',
   'v-seed',
   'v-confirm',
   'v-password',
