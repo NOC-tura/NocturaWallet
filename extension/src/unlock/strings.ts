@@ -52,10 +52,52 @@ export const SEED = {
   blurredTerm: 'xxxxxx',
 } as const;
 
+/** #4 seed-confirm. */
+export const CONFIRM = {
+  lede: 'Tap the correct word for each position.',
+  wrongLede: "That's not the right word — let's start over.",
+  slot: (position: number): string => `Word #${position}`,
+  select: '— select —',
+  wrongHelper: (position: number): string => `Word #${position} was wrong. Slots will reset in a moment.`,
+  confirm: 'Confirm',
+  continue: 'Continue',
+} as const;
+
 /** #5 create password (D7). */
 export const PASSWORD = {
   longEnough: 'Long enough',
   lengthOf: (n: number): string => `${n} of 12 characters`,
+  onboarding: 'Onboarding',
+  recovery: 'Recovery',
+  stepCreate: '4 / 5',
+  stepImport: 'Import · 2 / 2',
+  stepRestore: 'Restore · 2 / 2',
+  enterTitle: 'Create a password',
+  enterLede: "At least 12 characters. You'll need it to unlock the wallet and to confirm risky sends.",
+  enterHelper: 'Choose something long and memorable — a few unrelated words work well.',
+  confirmTitle: 'Confirm your password',
+  confirmLede: 'Enter the same password to verify.',
+  mismatch: "Passwords don't match — try again.",
+  show: 'Show password',
+  hide: 'Hide password',
+  /**
+   * Controller addition — confirmed by the owner 2026-10-01 (plan Scope 19, review L5): a hidden tab drops what
+   * #5 held (§3.5's memory rule), and #5 then says so.
+   */
+  newPasswordToRetry: 'Enter a new password to try again.',
+  /** finishOnboarding's outcomes (the B1b-1 strings). */
+  exists: 'A wallet already exists in this browser. Nothing was changed.',
+  weak: 'The password must be at least 12 characters.',
+  invalid: 'That is not a valid 12- or 24-word recovery phrase.',
+  failed: 'Something went wrong. Nothing was saved.',
+} as const;
+
+/** #6 biometric-setup → passkey (D9). */
+export const PASSKEY = {
+  adding: 'Waiting for your passkey…',
+  added: 'Passkey added.',
+  unsupported: 'This device cannot unlock the wallet with a passkey; your password still works.',
+  failed: 'Something went wrong. Your password still works.',
 } as const;
 
 /** #9's cooldown card (and #10's, which reuses it): "0:12", and the design's helper line. */

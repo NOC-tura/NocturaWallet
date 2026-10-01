@@ -32,6 +32,29 @@ export function resumeTarget(account: string): PageTarget | null {
   return ADDRESS.test(account) ? `wallet.html#/send/resume?account=${account}` : null;
 }
 
+/**
+ * The page's one busy gate (cardinal rule 6), which also tells every mounted screen when it frees up:
+ * an action started on one screen may end on another (#5's store shows #6; #1's Create shows #2, whose
+ * Continue shows #3 inside #1's 500 ms floor), and that screen's buttons must come back too — a screen
+ * rendered while the gate was held drew them disabled (plan Scope 15).
+ */
+export interface PageGate extends BusyGate {
+  onIdle(f: () => void): void;
+}
+
+export function createPageGate(): PageGate {
+  let busy = false;
+  const idle: (() => void)[] = [];
+  return {
+    isBusy: () => busy,
+    setBusy: b => {
+      busy = b;
+      if (!b) for (const f of idle) f();
+    },
+    onIdle: f => void idle.push(f),
+  };
+}
+
 /** What every vault-page screen is given: the background, the stored vault, the KDF, the clock and the tab. */
 export interface PageDeps {
   send: Send;
@@ -43,13 +66,18 @@ export interface PageDeps {
   timers: Timers;
   sleep(ms: number): Promise<void>;
   /** One busy flag for the whole page (cardinal rule 6): a passkey prompt and a password submit cannot race. */
-  gate: BusyGate;
+  gate: PageGate;
   /** Same-tab navigation (location.replace): the tab moves on and the page's memory goes with it. */
   go(target: PageTarget): void;
   /** window.close(); the screen hides [Close this tab] if the tab is still here a moment later. */
   closeTab(): void;
   /** pagehide, and visibilitychange to hidden: where a screen drops what it holds (spec §3.5 memory rule). */
   onLeave(f: () => void): void;
+  /**
+   * visibilitychange to visible, and pageshow: the tab is shown again. A screen that took the user's words
+   * out of the DOM when the tab was hidden (#4) puts its own state back (the run still holds the phrase).
+   */
+  onReturn(f: () => void): void;
 }
 
 /** Rule 6 for the vault page (spec §7.6): the gate is held at least this long after a click. */
@@ -62,7 +90,7 @@ export const LOCK_MS = 500;
  * refused. `render` runs when the gate is taken and when it is released: a screen derives every
  * button's `disabled` from its own state and `gate.isBusy()`.
  */
-export function exclusive<T>(deps: Pick<PageDeps, 'gate' | 'sleep'>, render: () => void, action: () => Promise<T>): Promise<T | 'busy'> {
+export function exclusive<T>(deps: {gate: BusyGate; sleep(ms: number): Promise<void>}, render: () => void, action: () => Promise<T>): Promise<T | 'busy'> {
   return runExclusive(deps.gate, async () => {
     const floor = deps.sleep(LOCK_MS);
     render();

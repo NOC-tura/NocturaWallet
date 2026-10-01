@@ -98,22 +98,6 @@
         </form>
         <button id="passkey" type="button" hidden>Unlock with passkey</button>
       </section>
-      <section id="welcome" hidden>
-        <h1>Noctura</h1>
-        <p><a id="welcome-create" href="unlock.html?mode=create">Create a wallet</a></p>
-        <p><a id="welcome-import" href="unlock.html?mode=import">Import a wallet</a></p>
-      </section>
-      <section id="create" hidden>
-        <h1>Create a wallet</h1>
-        <p>Write these 24 words down, in order. They are the only way to recover this wallet.</p>
-        <ol id="words"></ol>
-        <label><input id="saved" type="checkbox" /> I wrote the words down</label>
-        <label for="new-password">Password (at least 12 characters)</label>
-        <input id="new-password" type="password" autocomplete="new-password" minlength="12" />
-        <label for="new-password2">Repeat the password</label>
-        <input id="new-password2" type="password" autocomplete="new-password" minlength="12" />
-        <button id="create-btn" type="button">Create wallet</button>
-      </section>
       <section id="import" hidden>
         <h1>Import a wallet</h1>
         <label for="phrase">Recovery phrase (12 or 24 words)</label>
@@ -204,6 +188,109 @@
         </div>
         <div class="sticky-bar">
           <button id="seed-cta" type="button" class="btn btn-primary" disabled></button>
+        </div>
+      </section>
+
+      <!-- #4 seed-confirm (spec §3.4): three random slots, one pool of nine words. The slots and the pool are filled only while offered. -->
+      <section id="v-confirm" class="screen s-confirm" hidden>
+        <div class="top-bar">
+          <button id="cnf-back" type="button" class="icon-btn" aria-label="Back"><svg width="22" height="22" aria-hidden="true"><use href="#i-arrow-left" /></svg></button>
+          <span class="title noc-overline vlt-muted">Onboarding</span>
+          <span class="step noc-body-sm noc-numeral">3 / 5</span>
+        </div>
+        <div id="cnf-main" class="scroll-area">
+          <h1 class="noc-h1 vlt-gap-2">Confirm phrase</h1>
+          <p id="cnf-lede" class="noc-body vlt-lede vlt-gap-4"></p>
+          <div id="cnf-slots" class="slots"></div>
+          <p id="cnf-helper" class="noc-caption vlt-danger vlt-pad-y" role="alert" hidden></p>
+          <div id="cnf-pool" class="pool"></div>
+        </div>
+        <div id="cnf-success" class="success-state" hidden>
+          <div class="ring"><svg width="36" height="36" aria-hidden="true"><use href="#i-check" /></svg></div>
+          <div>
+            <h2 class="noc-h2 vlt-gap-2">Phrase verified</h2>
+            <p class="noc-body vlt-lede vlt-narrow">All three words matched. Now lock the wallet with a password.</p>
+          </div>
+        </div>
+        <div class="sticky-bar">
+          <button id="cnf-cta" type="button" class="btn btn-primary" disabled></button>
+        </div>
+      </section>
+
+      <!-- #5 pin-create → create password (spec §3.5, D7): also the import path's and the restore path's password. -->
+      <section id="v-password" class="screen s-pin" hidden>
+        <div class="top-bar">
+          <button id="pw-back" type="button" class="icon-btn" aria-label="Back"><svg width="22" height="22" aria-hidden="true"><use href="#i-arrow-left" /></svg></button>
+          <span id="pw-eyebrow" class="title noc-overline vlt-muted"></span>
+          <span id="pw-step" class="step noc-body-sm noc-numeral"></span>
+        </div>
+        <div class="pin-head">
+          <div class="step-dot"><i id="pw-dot-1"></i><i id="pw-dot-2"></i></div>
+          <h1 id="pw-title" class="noc-h1"></h1>
+          <p id="pw-lede" class="noc-body vlt-lede vlt-narrow"></p>
+          <form id="pw-form" class="vlt-field-row">
+            <input id="pw-field" class="vlt-input" type="password" autocomplete="new-password" minlength="12" aria-label="Password" />
+            <button id="pw-toggle" type="button" class="icon-btn" aria-label="Show password"><svg width="20" height="20" aria-hidden="true"><use id="pw-toggle-icon" href="#i-eye-on" /></svg></button>
+          </form>
+          <div id="pw-meter" class="vlt-meter" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <p id="pw-meter-label" class="noc-caption vlt-muted"></p>
+        </div>
+        <p id="pw-helper" class="noc-caption pin-helper" aria-live="polite"></p>
+        <div id="pw-creating" class="vlt-notice" role="status" hidden>
+          <p class="noc-body">Creating your wallet…</p>
+          <p class="noc-body-sm vlt-lede">Securing your password takes a few seconds.</p>
+          <progress class="noc-progress" aria-label="Creating your wallet"></progress>
+        </div>
+        <div class="pin-spacer"></div>
+        <div class="sticky-bar">
+          <button id="pw-cta" type="button" class="btn btn-primary">Continue</button>
+        </div>
+      </section>
+
+      <!-- #6 biometric-setup → passkey (spec §3.6, D9). No back arrow: the wallet is already stored (plan Scope 12). -->
+      <section id="v-passkey" class="screen s-bio" hidden>
+        <div class="top-bar">
+          <span class="title noc-overline vlt-muted">Onboarding</span>
+          <span class="step noc-body-sm noc-numeral">5 / 5</span>
+        </div>
+        <div class="hero-icon"><svg width="56" height="56" aria-hidden="true"><use href="#i-key" /></svg></div>
+        <div class="vlt-pad-6 vlt-center">
+          <h1 class="noc-h1 vlt-gap-2">Unlock Noctura with a passkey</h1>
+          <p class="noc-body vlt-lede vlt-narrow-300">Adds convenience. Your password always works too — keep it safe.</p>
+        </div>
+        <div class="vlt-features">
+          <div class="feature-row">
+            <div class="icon"><svg width="18" height="18" aria-hidden="true"><use href="#i-check" /></svg></div>
+            <div>
+              <div class="noc-body-lg">Faster unlock</div>
+              <div class="noc-body-sm vlt-lede">Use your fingerprint, face or security key instead of typing your password.</div>
+            </div>
+          </div>
+          <div class="feature-row">
+            <div class="icon"><svg width="18" height="18" aria-hidden="true"><use href="#i-shield-lock" /></svg></div>
+            <div>
+              <div class="noc-body-lg">Password still works</div>
+              <div class="noc-body-sm vlt-lede">If the passkey is unavailable, your password unlocks the wallet and confirms everything.</div>
+            </div>
+          </div>
+          <div class="feature-row">
+            <div class="icon"><svg width="18" height="18" aria-hidden="true"><use href="#i-info" /></svg></div>
+            <div>
+              <div class="noc-body-lg">Where your passkey lives</div>
+              <div class="noc-body-sm vlt-lede">A passkey synced to Google, Apple or a password manager keeps its secret in that provider's cloud. Other extensions allowed on wallet.noc-tura.io can ask for it too.</div>
+            </div>
+          </div>
+        </div>
+        <form id="pk-ask" class="vlt-pad vlt-gap-top-5" hidden>
+          <p class="noc-body-sm vlt-lede vlt-gap-2">Enter your password to add the passkey.</p>
+          <input id="pk-password" class="vlt-input" type="password" autocomplete="current-password" aria-label="Password" />
+        </form>
+        <p id="pk-line" class="noc-body vlt-center vlt-pad vlt-gap-top-5" role="status" hidden></p>
+        <div class="vlt-grow"></div>
+        <div class="sticky-bar">
+          <button id="pk-add" type="button" class="btn btn-primary">Add a passkey</button>
+          <button id="pk-skip" type="button" class="btn btn-secondary">Skip — use password only</button>
+          <button id="pk-continue" type="button" class="btn btn-primary" hidden>Continue</button>
         </div>
       </section>
 

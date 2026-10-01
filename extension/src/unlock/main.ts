@@ -13,11 +13,13 @@ import {readLocal} from '../shared/readLocal';
 import type {EnvelopeV1} from '../vault/envelope';
 import {pageMode} from './mode';
 import {startMode} from './modes';
+import {browserPageDeps} from './browser';
 import {passkeyOf} from './stored';
 
-// unlock.html?mode=create|import|reauth&challenge=…|accounts|reveal shows that mode's section; no
-// mode is the unlock page below, whose handlers stay registered either way (on a hidden section).
-startMode(pageMode(location.search));
+// unlock.html?mode=welcome|create runs the create run (#1 → #6, screens/createRun.ts) in this page;
+// ?mode=import|reauth&challenge=…|accounts|reveal shows that mode's section; no mode is the unlock page
+// below, whose handlers stay registered either way (on a hidden section).
+startMode(pageMode(location.search), browserPageDeps());
 
 // The vault page renders only its own fixed strings — nothing from a dApp, a token or the
 // network (spec §1). Every status line below is one of the WORDS/literal strings in this file.

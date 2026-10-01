@@ -1,11 +1,14 @@
 import {ENVELOPE_KEY} from './unlockFlow';
-import {MIN_PASSWORD_LENGTH, detectImport, finishOnboarding, indexesFor, newMnemonic, type Candidate, type FinishOutcome, type ProbeResult} from './onboarding';
+import {MIN_PASSWORD_LENGTH, detectImport, finishOnboarding, indexesFor, type Candidate, type FinishOutcome, type ProbeResult} from './onboarding';
 import {addAccount, removeAccount, type AccountsOutcome} from './accountsFlow';
 import {runReauth, type ReauthPageOutcome} from './reauthFlow';
 import {runReveal, type RevealOutcome} from './revealFlow';
 import {createWrongBackoff, runExclusive, type BusyGate} from './orchestrate';
 import {backgroundVaultStore} from './vaultStore';
 import type {PageMode} from './mode';
+import type {PageDeps} from './page';
+import {startCreateRun} from './screens/createRun';
+import {showScreen} from './view/dom';
 import {workerKdf} from '../vault/kdf';
 import {evaluatePrf} from '../vault/passkey';
 import {unb64} from '../vault/bytes';
@@ -69,8 +72,8 @@ const REVEAL_WORDS: Record<RevealOutcome['outcome'], string> = {
 };
 const WAIT = 'That did not confirm it. Wait a moment before trying again.';
 const UNREADABLE = "This wallet's stored data could not be read. Reload this page.";
-// `welcome` (B1b-2a plan 1, minimal): two links to create and import, fixed strings in unlock.html. Plan 2 replaces it with #1.
-const SECTIONS = ['unlock-section', 'welcome', 'create', 'import', 'reauth', 'accounts', 'reveal'] as const;
+// The B1b-1 thin sections the plan-2 screens have not replaced yet.
+const SECTIONS = ['unlock-section', 'import', 'reauth', 'accounts', 'reveal'] as const;
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const say = (text: string): void => {
@@ -93,48 +96,30 @@ function showWords(list: HTMLElement, words: readonly string[]): void {
   );
 }
 
-export function startMode(mode: PageMode): void {
-  const shown = mode.mode === 'unlock' ? 'unlock-section' : mode.mode;
+function legacy(shown: (typeof SECTIONS)[number] | null): void {
   for (const id of SECTIONS) $(id).hidden = id !== shown;
-  if (mode.mode === 'create') startCreate();
+  $('status').hidden = shown === null;
+}
+
+export function startMode(mode: PageMode, deps: PageDeps): void {
+  if (mode.mode === 'welcome' || mode.mode === 'create') {
+    legacy(null);
+    startCreateRun(deps, {
+      at: mode.mode === 'welcome' ? 'welcome' : 'intro',
+      importRun: () => {
+        showScreen(null);
+        legacy('import');
+        startImport();
+      },
+    });
+    return;
+  }
+  const shown = mode.mode === 'unlock' || mode.mode === 'forgot' ? 'unlock-section' : mode.mode;
+  legacy(shown);
   if (mode.mode === 'import') startImport();
   if (mode.mode === 'reauth') startReauth(mode.challengeId);
   if (mode.mode === 'accounts') startAccounts();
   if (mode.mode === 'reveal') startReveal();
-}
-
-function startCreate(): void {
-  let mnemonic: string | null = newMnemonic();
-  const words = $('words');
-  showWords(words, mnemonic.split(' '));
-  const button = $<HTMLButtonElement>('create-btn');
-  button.addEventListener('click', () => {
-    void runExclusive(gate, async () => {
-      // The fields are cleared only once the attempt goes ahead: a click the busy gate or the
-      // checkbox turns away leaves what was typed.
-      if (mnemonic === null) return;
-      if (!$<HTMLInputElement>('saved').checked) return say('Write the words down first, then tick the box.');
-      const pw = $<HTMLInputElement>('new-password');
-      const pw2 = $<HTMLInputElement>('new-password2');
-      const password = pw.value;
-      const repeated = pw2.value;
-      pw.value = '';
-      pw2.value = '';
-      if (password !== repeated) return say('The two passwords are not the same.');
-      button.disabled = true;
-      say('Creating the wallet…');
-      try {
-        const outcome = await finishOnboarding({...store, send, kdf: workerKdf}, {mnemonic, password, scheme: 'slip10', indexes: [0]});
-        say(FINISH_WORDS[outcome]);
-        if (outcome === 'created' || outcome === 'created-locked' || outcome === 'exists') {
-          words.replaceChildren();
-          mnemonic = null;
-        }
-      } finally {
-        button.disabled = false;
-      }
-    });
-  });
 }
 
 function startImport(): void {

@@ -8,8 +8,7 @@ import {handleMessage} from '../../background/messages';
 import {fakeDeps, fakeReader} from '../../background/__tests__/fakeDeps';
 import {fakeExt} from '../../background/__tests__/fakeExt';
 import type {WalletDeps} from '../../background/deps';
-import type {BusyGate} from '../orchestrate';
-import type {PageDeps, PageTarget} from '../page';
+import {createPageGate, type PageDeps, type PageTarget} from '../page';
 import {backgroundVaultStore} from '../vaultStore';
 import type {Send} from '../types';
 import {VAULT_PAGE_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
@@ -39,18 +38,25 @@ export interface Harness {
   sent: {type: string; [k: string]: unknown}[];
   went: PageTarget[];
   closed: number;
+  /** pagehide, or the tab hidden: runs every `onLeave` callback. */
   leave(): void;
+  /** The tab shown again (visibilitychange to visible, pageshow): runs every `onReturn` callback. */
+  back(): void;
+  /** With `holdSleep`: resolves every pending sleep (the 500 ms floor, a backoff wait). */
+  wake(): void;
   /** Lets pending work run until `done()` holds (the page awaits the background and the KDF); fails after 10 s. */
   until(done: () => boolean): Promise<void>;
 }
 
 /**
  * A vault page wired to the REAL background (handleMessage over an in-memory storage, fake chain
- * reader), with a manual clock. `vault` is what v1_vault holds (absent when undefined). `sleep`
- * resolves at once: the 500 ms floor and the backoff waits are asserted through the clock where a
- * test needs them.
+ * reader), with a manual clock and the page's real gate (createPageGate). `vault` is what v1_vault holds
+ * (absent when undefined). `sleep` resolves at once — or, with `holdSleep`, only on `wake()`: the 500 ms
+ * floor and the backoff waits are asserted through the clock where a test needs them.
  */
-export async function harness(o: {vault?: unknown; reader?: Partial<WalletDeps['reader']>; send?: (inner: Send) => Send; credentials?: CredentialsApi; mnemonic?: string} = {}): Promise<Harness> {
+export async function harness(
+  o: {vault?: unknown; reader?: Partial<WalletDeps['reader']>; send?: (inner: Send) => Send; credentials?: CredentialsApi; mnemonic?: string; holdSleep?: boolean} = {},
+): Promise<Harness> {
   const ext = fakeExt();
   if ('vault' in o && o.vault !== undefined) await ext.local.set(VAULT_KEY, o.vault);
   const wallet = fakeDeps({reader: fakeReader({getBalance: async () => 0n, getTokenAccountsByOwner: async () => [], ...o.reader})});
@@ -62,9 +68,10 @@ export async function harness(o: {vault?: unknown; reader?: Partial<WalletDeps['
   const send = o.send === undefined ? inner : o.send(inner);
   const read = () => ext.local.get(VAULT_KEY);
   const timers = fakeTimers();
-  let busy = false;
-  const gate: BusyGate = {isBusy: () => busy, setBusy: b => (busy = b)};
+  const gate = createPageGate();
   const leaves: (() => void)[] = [];
+  const returns: (() => void)[] = [];
+  const sleeping: (() => void)[] = [];
   const h: Harness = {
     ext,
     wallet,
@@ -80,13 +87,16 @@ export async function harness(o: {vault?: unknown; reader?: Partial<WalletDeps['
       randomBytes: n => crypto.getRandomValues(new Uint8Array(n)),
       newMnemonic: () => o.mnemonic ?? 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art',
       timers,
-      sleep: async () => undefined,
+      sleep: () => (o.holdSleep === true ? new Promise<void>(r => sleeping.push(r)) : Promise.resolve()),
       gate,
       go: t => void h.went.push(t),
       closeTab: () => void (h.closed += 1),
       onLeave: f => void leaves.push(f),
+      onReturn: f => void returns.push(f),
     },
     leave: () => leaves.forEach(f => f()),
+    back: () => returns.forEach(f => f()),
+    wake: () => sleeping.splice(0).forEach(r => r()),
     until: async done => {
       const end = Date.now() + 10_000;
       while (!done()) {

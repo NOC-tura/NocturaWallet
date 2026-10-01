@@ -29,6 +29,9 @@ export function mountWelcome(deps: PageDeps, next: {create(): void; import(): vo
     createBtn.disabled = disabled;
     importBtn.disabled = disabled;
   };
+  // Scope 15: show() may run while another screen's action holds the page gate (#3's Cancel → #2 → back
+  // inside #3's 500 ms floor); the gate's release then re-renders the CTAs.
+  deps.gate.onIdle(render);
   createBtn.addEventListener('click', () => {
     if (offered) void exclusive(deps, render, async () => next.create());
   });

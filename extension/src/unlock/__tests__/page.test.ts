@@ -1,4 +1,4 @@
-import {LOCK_MS, exclusive, resumeTarget} from '../page';
+import {LOCK_MS, createPageGate, exclusive, resumeTarget} from '../page';
 import type {BusyGate} from '../orchestrate';
 
 // Spec §7.6, rule 6 on the vault page: the page's one busy gate, plus the same 500 ms floor.
@@ -74,6 +74,34 @@ describe('exclusive (rule 6)', () => {
     p.sleeps.forEach(r => r());
     await second;
     expect(p.busy()).toBe(false);
+  });
+});
+
+describe('createPageGate', () => {
+  it('tells every screen when the page frees up (an action begun on #5 ends on #6)', () => {
+    const gate = createPageGate();
+    const idle: string[] = [];
+    gate.onIdle(() => idle.push('a'));
+    gate.onIdle(() => idle.push('b'));
+    gate.setBusy(true);
+    expect(gate.isBusy()).toBe(true);
+    expect(idle).toEqual([]);
+    gate.setBusy(false);
+    expect(idle).toEqual(['a', 'b']);
+  });
+
+  it('exclusive() on the page gate: a screen shown while the gate is held re-renders once it frees (Scope 15)', async () => {
+    const gate = createPageGate();
+    const sleeps: (() => void)[] = [];
+    const deps = {gate, sleep: () => new Promise<void>(r => sleeps.push(r))};
+    const other: boolean[] = [];
+    gate.onIdle(() => other.push(gate.isBusy()));
+    const first = exclusive(deps, () => undefined, async () => undefined);
+    await Promise.resolve();
+    expect(other).toEqual([]);
+    sleeps.forEach(r => r());
+    await first;
+    expect(other).toEqual([false]);
   });
 });
 

@@ -46,8 +46,8 @@ export const SCREENS = [
 ] as const;
 export type ScreenId = (typeof SCREENS)[number];
 
-/** Shows one screen and hides the others; the tab starts it at the top. */
-export function showScreen(id: ScreenId): void {
+/** Shows one screen and hides the others (null: none — a B1b-1 section takes the page); the tab starts it at the top. */
+export function showScreen(id: ScreenId | null): void {
   for (const s of SCREENS) {
     const el = document.getElementById(s);
     if (el !== null) el.hidden = s !== id;

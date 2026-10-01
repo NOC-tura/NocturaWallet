@@ -3,6 +3,7 @@ import {readFileSync, rmSync} from 'node:fs';
 import {BLOCKHASH_LIFETIME, installFakeCoordinator, type FakeCoordinator} from './fakeCoordinator';
 import {makeEnvelope, E2E_PASSWORD} from './makeEnvelope';
 import {containNocTura, containSolscan, expectContained, launchContained} from './launch';
+import {createWallet} from './vaultPage';
 // Read from the source rather than imported: core/ has no package.json "type", so Playwright's loader
 // on Node 22 (CI) treats core/solana/rpc.ts as CommonJS and cannot take a named export from it.
 // The same literal the RPC-method gate parses; not found means it moved — fail loudly.
@@ -100,16 +101,9 @@ function onlyTheSimulatedCoordinator(fake: FakeCoordinator, solscan: {hits: stri
 test('create a wallet, unlock it, re-authenticate a first send, send SOL: pending → confirmed', async () => {
   const {ctx, fake, id, popup, sw, profile, solscan, nocTura} = await launch();
   try {
-    // 1. Onboarding: the vault page's create mode.
+    // 1. Onboarding: the vault page's create run (#2 → #3 → #4 → #5 → #6), handed over to #7.
     const vault = await ctx.newPage();
-    await vault.goto(`chrome-extension://${id}/unlock.html?mode=create`);
-    await expect(vault.locator('#words li')).toHaveCount(24);
-    await vault.check('#saved');
-    await vault.fill('#new-password', NEW_PASSWORD);
-    await vault.fill('#new-password2', NEW_PASSWORD);
-    await vault.click('#create-btn');
-    await expect(vault.locator('#status')).toHaveText('Wallet created. You can close this tab.', {timeout: 60_000});
-    await expect(vault.locator('#words li')).toHaveCount(0);
+    await createWallet(vault, id, NEW_PASSWORD);
 
     // 2. Lock, then unlock with the password (B1a's unlock mode).
     expect((await msg(popup, {type: 'vault.lock'})).ok).toBe(true);
