@@ -8,14 +8,17 @@ import {parsePatch, readSettings, weakens, writeSettings, type Settings} from '.
 import {cleanName, readWalletView, renameAccount} from './accountsStore';
 import {consumeChallenge, issueChallenge} from './reauthChallenges';
 import {digestOf} from './digest';
-import {isAddress, parseIntent, preparedFor, prepareSend} from './prepare';
+import {discardPrepared, isAddress, parseIntent, preparedFor, prepareSend} from './prepare';
+import {isKnownRecipient, lastSentAt} from './knownRecipients';
+import {MAINNET_FEE_TREASURY} from '../../../core/fees/transferMarkup';
 import {sendPrepared} from './send';
 import {resend, startPoller} from './pending';
 import {isOpen, readPending, viewOf} from './pendingStore';
 import {createHistory, type History} from './history';
 import {ResendRefused, SendRefused, SentUnconfirmed} from './sendTypes';
+import {readCachedBalances, readCachedPrices, writeCachedBalances, writeCachedPrices, type PriceView} from './balanceCache';
 import {readWalletBalances, WALLET_TOKENS} from '../../../core/solana/balances';
-import {RpcForbidden} from '../../../core/solana/rpc';
+import {RequestUnreachable, RpcForbidden} from '../../../core/solana/rpc';
 
 export type Result = {ok: true; data?: unknown} | {ok: false; error: string; data?: unknown};
 
@@ -29,6 +32,10 @@ export const WALLET_TYPES = [
   'wallet.pending',
   'wallet.preparedFor',
   'wallet.history',
+  'wallet.prices',
+  'wallet.cached',
+  'wallet.recipientInfo',
+  'wallet.discardPrepared',
   'accounts.rename',
   'accounts.select',
   'settings.get',
@@ -72,8 +79,9 @@ function historyFor(deps: WalletDeps): History {
 /**
  * Every refusal is a fixed code. A 403 — and the latch refusing during the cool-down that follows
  * one (RpcCoolingDown, a subclass) — is 'coordinator-refused': terminal, never retried. A send
- * recorded (and possibly broadcast) whose state could not be read back is 'check-pending'. Anything
- * unexpected is 'failed', never a thrown error across the message boundary.
+ * recorded (and possibly broadcast) whose state could not be read back is 'check-pending'. A request
+ * that got no answer is 'unreachable'. Anything unexpected is 'failed', never a thrown error across
+ * the message boundary.
  */
 function failure(e: unknown): Result {
   if (e instanceof SendRefused) {
@@ -84,6 +92,8 @@ function failure(e: unknown): Result {
   // Recorded and possibly broadcast: not 'failed' — the screens send the user to wallet.pending.
   if (e instanceof SentUnconfirmed) return {ok: false, error: 'check-pending', data: {id: e.id, signature: e.signature}};
   if (e instanceof RpcForbidden) return {ok: false, error: 'coordinator-refused'};
+  // No answer at all (a timeout, or the fetch rejecting): the screens say "could not reach", never "failed".
+  if (e instanceof RequestUnreachable) return {ok: false, error: 'unreachable'};
   return {ok: false, error: 'failed'};
 }
 
@@ -128,6 +138,53 @@ async function probe(deps: WalletDeps, keys: unknown): Promise<Result> {
   return {ok: true, data: {resolved: true, balances}};
 }
 
+/** The stored envelope's account addresses (none without a wallet): the cache writers' check, read inside their mutex. */
+const envelopeKeys = async (ext: Ext): Promise<string[]> => (await readWalletView(ext))?.accounts.map(a => a.publicKey) ?? [];
+
+/** USD per whole token, re-validated: finite and > 0, else null — never 0 (E1). */
+const usd = (x: unknown): number | null => (typeof x === 'number' && Number.isFinite(x) && x > 0 ? x : null);
+
+/**
+ * wallet.prices (E1): SOL, USDC and USDT from /wallet/prices, NOC at the presale stage price from
+ * /stats. The two reads are independent: one failing nulls only its own fields; both failing is the
+ * first read's refusal. A 403 from either is never swallowed. The reply is cached (E4).
+ */
+async function prices(ext: Ext, deps: WalletDeps): Promise<Result> {
+  const [market, stage] = await Promise.allSettled([deps.prices(), deps.stagePrice()]);
+  for (const r of [market, stage]) if (r.status === 'rejected' && r.reason instanceof RpcForbidden) throw r.reason;
+  if (market.status === 'rejected' && stage.status === 'rejected') throw market.reason;
+  const m = market.status === 'fulfilled' ? market.value : {};
+  const data: PriceView = {
+    sol: usd(m.solana),
+    usdc: usd(m.usdc),
+    usdt: usd(m.usdt),
+    noc: stage.status === 'fulfilled' ? usd(stage.value) : null,
+    at: deps.now(),
+  };
+  // Best effort: a storage hiccup must not turn fresh prices into 'failed'. The wallet check runs
+  // inside the cache's mutex (see writeCachedPrices).
+  await writeCachedPrices(ext, () => envelopeKeys(ext), data).catch(() => undefined);
+  return {ok: true, data};
+}
+
+/**
+ * wallet.recipientInfo (E6): what #12 may say about a recipient before anything is prepared. Local
+ * only — no network. Refused while locked: it reveals whom this wallet has paid. A hint: prepareSend
+ * recomputes everything that decides.
+ */
+async function recipientInfo(ext: Ext, account: unknown, recipient: unknown): Promise<Result> {
+  if (!isAddress(account) || !isAddress(recipient)) return MALFORMED;
+  const session = await getSession(ext);
+  if (session === null) return {ok: false, error: 'locked'};
+  const view = await readWalletView(ext);
+  const own = view?.accounts.find(a => a.publicKey === recipient);
+  const label = own !== undefined ? {kind: 'own' as const, index: own.index, name: own.name} : recipient === MAINNET_FEE_TREASURY ? {kind: 'treasury' as const} : null;
+  return {
+    ok: true,
+    data: {known: await isKnownRecipient(ext, session, recipient), lastSentAt: await lastSentAt(ext, recipient), label, self: recipient === account},
+  };
+}
+
 async function setSettings(ext: Ext, deps: WalletDeps, msg: Record<string, unknown>): Promise<Result> {
   const patch = parsePatch(msg.patch);
   if (patch === null) return MALFORMED;
@@ -141,7 +198,7 @@ async function setSettings(ext: Ext, deps: WalletDeps, msg: Record<string, unkno
       if (typeof id !== 'string' || !(await consumeChallenge(ext, deps.now(), id, digest))) {
         // A lock may have landed since the check above: never issue a challenge into a locked session.
         if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
-        const challengeId = await issueChallenge(ext, deps, digest);
+        const challengeId = await issueChallenge(ext, deps, digest, {kind: 'settings', autoLockMinutes: patch.autoLockMinutes ?? null, reauthUsdCents: patch.reauthUsdCents ?? null});
         // …nor keep one a lock raced past (issueChallenge wrote after the lock's clear): as in
         // prepareSend, remove just the challenges, under the mutex the lock takes — never lock()
         // or clearSession() here, which would wait on this very mutex.
@@ -190,7 +247,21 @@ export async function handleWallet(ext: Ext, deps: WalletDeps, type: WalletType,
         const {account} = msg;
         if (!isAddress(account)) return MALFORMED;
         const b = await readWalletBalances(deps.reader, account);
-        return {ok: true, data: {sol: b.sol.toString(), noc: b.noc.toString(), usdc: b.usdc.toString(), usdt: b.usdt.toString()}};
+        const data = {sol: b.sol.toString(), noc: b.noc.toString(), usdc: b.usdc.toString(), usdt: b.usdt.toString()};
+        // E4: the last good read, for the next popup to show (stale) at once. Best effort.
+        // The envelope is read inside the cache's mutex (see writeCachedBalances).
+        await writeCachedBalances(ext, () => envelopeKeys(ext), account, data, deps.now()).catch(() => undefined);
+        return {ok: true, data};
+      }
+      case 'wallet.prices':
+        return await prices(ext, deps);
+      case 'wallet.cached': {
+        const {account} = msg;
+        if (!isAddress(account)) return MALFORMED;
+        // Not served while locked: a locked popup shows no balances.
+        if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
+        const [balances, cachedPrices] = await Promise.all([readCachedBalances(ext, account), readCachedPrices(ext)]);
+        return {ok: true, data: {balances, prices: cachedPrices}};
       }
       case 'wallet.probeBalances':
         return await probe(deps, msg.publicKeys);
@@ -206,6 +277,14 @@ export async function handleWallet(ext: Ext, deps: WalletDeps, type: WalletType,
         if (session === null) return {ok: false, error: 'locked'};
         if (!session.some(a => a.publicKey === account)) return {ok: false, error: 'unknown-account'};
         return {ok: true, data: await prepareSend(ext, deps, account, intent, challengeId === undefined ? {} : {challengeId})};
+      }
+      case 'wallet.recipientInfo':
+        return await recipientInfo(ext, msg.account, msg.recipient);
+      case 'wallet.discardPrepared': {
+        const {account} = msg;
+        if (!isAddress(account)) return MALFORMED;
+        await discardPrepared(ext, account);
+        return {ok: true};
       }
       case 'wallet.preparedFor': {
         const {account} = msg;
@@ -228,7 +307,8 @@ export async function handleWallet(ext: Ext, deps: WalletDeps, type: WalletType,
       case 'wallet.history': {
         const {account, before} = msg;
         if (!isAddress(account) || (before !== undefined && !isSignature(before))) return MALFORMED;
-        return {ok: true, data: await historyFor(deps).page(account, before)};
+        const {items, next} = await historyFor(deps).page(account, before);
+        return {ok: true, data: {items, next}};
       }
       case 'accounts.rename': {
         const {index} = msg;

@@ -6,6 +6,7 @@ import {
 import {PENDING_KEY, readPending, type PendingRecord} from '../pendingStore';
 import {knownRecipients} from '../knownRecipients';
 import {lock} from '../autolock';
+import {VAULT_KEY} from '../accountsStore';
 import type {WalletDeps} from '../deps';
 import {BroadcastRejected, BroadcastSubstituted, BroadcastUnavailable, firstSignature} from '../../../../core/solana/broadcast';
 import {RpcCoolingDown, RpcForbidden} from '../../../../core/solana/rpc';
@@ -257,6 +258,8 @@ describe('pollOnce', () => {
 
   it('confirmed: the state, and the recipient becomes known', async () => {
     const {ext, deps} = await submitted();
+    // The recipient becomes known only for an account of the stored wallet (review M1).
+    await ext.local.set(VAULT_KEY, {v: 1, scheme: 'slip10', accounts: [{index: 0, name: 'Account 1', publicKey: ACCOUNT.publicKey}]});
     deps.reader = fakeReader({getSignatureStatuses: async () => [confirmed], getBlockHeight: async () => 900});
     expect(await pollOnce(ext, deps)).toBe(false);
     expect((await readPending(ext))[0]?.state).toBe('confirmed');

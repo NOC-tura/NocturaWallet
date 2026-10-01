@@ -1,25 +1,81 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "WebWorker"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable",
+      "WebWorker"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
     "noUnusedLocals": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
-    "types": ["vitest/globals", "node"],
+    "types": [
+      "vitest/globals",
+      "node",
+      "vite/client"
+    ],
     "baseUrl": ".",
     "paths": {
-      "@noble/curves/*": ["./node_modules/@noble/curves/*"],
-      "@noble/hashes/*": ["./node_modules/@noble/hashes/*"],
-      "@scure/base": ["./node_modules/@scure/base"],
-      "@scure/bip39": ["./node_modules/@scure/bip39"],
-      "@scure/bip39/*": ["./node_modules/@scure/bip39/*"],
-      "micro-key-producer/*": ["./node_modules/micro-key-producer/*"],
-      "@solana/web3.js": ["./node_modules/@solana/web3.js"],
-      "buffer": ["./node_modules/buffer"]
-    }
+      "@noble/curves/*": [
+        "./node_modules/@noble/curves/*"
+      ],
+      "@noble/hashes/*": [
+        "./node_modules/@noble/hashes/*"
+      ],
+      "@scure/base": [
+        "./node_modules/@scure/base"
+      ],
+      "@scure/bip39": [
+        "./node_modules/@scure/bip39"
+      ],
+      "@scure/bip39/*": [
+        "./node_modules/@scure/bip39/*"
+      ],
+      "micro-key-producer/*": [
+        "./node_modules/micro-key-producer/*"
+      ],
+      "@solana/web3.js": [
+        "./node_modules/@solana/web3.js"
+      ],
+      "buffer": [
+        "./node_modules/buffer"
+      ],
+      "react": [
+        "./node_modules/@types/react"
+      ],
+      "react/*": [
+        "./node_modules/@types/react/*"
+      ],
+      "react-dom": [
+        "./node_modules/@types/react-dom"
+      ],
+      "react-dom/*": [
+        "./node_modules/@types/react-dom/*"
+      ],
+      "@testing-library/react": [
+        "./node_modules/@testing-library/react"
+      ],
+      "qrcode-generator": [
+        "./node_modules/qrcode-generator"
+      ]
+    },
+    "jsx": "react-jsx"
   },
-  "include": ["src", "e2e", "../core/keys", "../core/util", "../core/solana", "../core/fees", "../core/portfolio"]
+  "include": [
+    "src",
+    "e2e",
+    "../core/keys",
+    "../core/util",
+    "../core/solana",
+    "../core/fees",
+    "../core/portfolio",
+    "../web/src/ui/AddressGroups.tsx",
+    "../web/src/ui/CopyButton.tsx",
+    "../web/src/ui/Icon.tsx",
+    "../web/src/ui/BrandMark.tsx"
+  ]
 }

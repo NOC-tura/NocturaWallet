@@ -101,7 +101,8 @@ export const DEPS_FILE = 'src/background/deps.ts';
 // never on rpc.ts itself composing it).
 export const RPC_PATH_LITERAL = '/api/v1/rpc';
 
-const EXTENSIONS = ['', '.ts', '.mts', '.mjs', '.js', '/index.ts'];
+// .tsx: the React screens (B1b-2a) and ../web/src/ui/*, which they import and which this gate follows.
+const EXTENSIONS = ['', '.ts', '.tsx', '.mts', '.mjs', '.js', '/index.ts', '/index.tsx'];
 const FROM_SPEC = /\bfrom\s*(['"`])([^'"`]+)\1/g;
 const CALL_SPEC = /\bimport\s*\(?\s*(['"`])([^'"`$]+)\1/g;
 

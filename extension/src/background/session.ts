@@ -21,11 +21,32 @@ export const sessionMutex = createMutex();
  * critical section is deciding what a lock left behind waits for it, instead of being undone by it.
  */
 export async function setSession(ext: Ext, accounts: SessionAccount[]): Promise<void> {
-  // Rebuild each account as exactly this shape before it touches storage — whatever the caller
-  // validated (or didn't) is not what gets persisted. A stray field on the input object (e.g. an
-  // accidental `seed`) must never reach storage.session.
-  const clean = accounts.map(a => ({index: a.index, publicKey: a.publicKey, secretKey: a.secretKey}));
-  await sessionMutex(() => ext.session.set(SESSION_KEY, {accounts: clean}));
+  await sessionMutex(() => ext.session.set(SESSION_KEY, {accounts: cleanAccounts(accounts)}));
+}
+
+/**
+ * Rebuild each account as exactly this shape before it touches storage — whatever the caller
+ * validated (or didn't) is not what gets persisted. A stray field on the input object (e.g. an
+ * accidental `seed`) must never reach storage.session.
+ */
+function cleanAccounts(accounts: SessionAccount[]): SessionAccount[] {
+  return accounts.map(a => ({index: a.index, publicKey: a.publicKey, secretKey: a.secretKey}));
+}
+
+/**
+ * setSession, only if `check` holds at the moment of the write: the check and the write run in ONE
+ * sessionMutex section. vault.setKeys binds its keys to v1_vault this way (B1b-2a review H1): the
+ * forget's vault write runs under sessionMutex too, so an unlock and a forget are totally ordered —
+ * keys read against the old envelope can never be written after the wallet was forgotten. `check`
+ * runs inside sessionMutex and must not take it (not re-entrant). False: nothing was written.
+ */
+export async function setSessionIf(ext: Ext, accounts: SessionAccount[], check: () => Promise<boolean>): Promise<boolean> {
+  const clean = cleanAccounts(accounts);
+  return sessionMutex(async () => {
+    if (!(await check())) return false;
+    await ext.session.set(SESSION_KEY, {accounts: clean});
+    return true;
+  });
 }
 
 export async function getSession(ext: Ext): Promise<SessionAccount[] | null> {

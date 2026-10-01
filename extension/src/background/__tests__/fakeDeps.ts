@@ -10,6 +10,7 @@ export function fakeReader(overrides: Partial<SolanaReader> = {}): SolanaReader 
   return {
     getBalance: unexpected('getBalance'),
     getAccountExists: unexpected('getAccountExists'),
+    getAccountKind: unexpected('getAccountKind'),
     getMultipleLamports: unexpected('getMultipleLamports'),
     getLatestBlockhash: unexpected('getLatestBlockhash'),
     getBlockHeight: unexpected('getBlockHeight'),

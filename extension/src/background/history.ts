@@ -20,8 +20,20 @@ export interface HistoryView {
   failed: boolean;
 }
 
+/**
+ * `next` is the LAST signature of the getSignaturesForAddress page when that page had
+ * HISTORY_PAGE_SIZE entries, else null (review fix round 1, #1). It is deliberately NOT derived from
+ * `items`: a signature not yet indexed (getTransaction answers null) is skipped from `items` without
+ * shrinking the page, so a full signature page with one unindexed entry must still offer "Load more"
+ * and must still resume from the RPC page's real end — not from the last row that happened to decode.
+ */
+export interface HistoryPage {
+  items: HistoryView[];
+  next: string | null;
+}
+
 export interface History {
-  page(owner: string, before?: string): Promise<HistoryView[]>;
+  page(owner: string, before?: string): Promise<HistoryPage>;
 }
 
 const toView = (e: HistoryEntry): HistoryView => ({
@@ -48,7 +60,7 @@ export function createHistory(deps: Pick<WalletDeps, 'reader' | 'now' | 'sleep'>
     return deps.reader.getTransaction(signature);
   }
 
-  async function page(owner: string, before?: string): Promise<HistoryView[]> {
+  async function page(owner: string, before?: string): Promise<HistoryPage> {
     const opts = before === undefined ? {limit: HISTORY_PAGE_SIZE} : {limit: HISTORY_PAGE_SIZE, before};
     const signatures = await deps.reader.getSignaturesForAddress(owner, opts);
     const out: HistoryView[] = [];
@@ -67,7 +79,9 @@ export function createHistory(deps: Pick<WalletDeps, 'reader' | 'now' | 'sleep'>
       }
       out.push(toView(entry));
     }
-    return out;
+    // The RPC page's own last signature, not out's — see the HistoryPage doc comment.
+    const next = signatures.length === HISTORY_PAGE_SIZE ? (signatures[signatures.length - 1]?.signature ?? null) : null;
+    return {items: out, next};
   }
 
   // One page at a time, so two popups cannot double the getTransaction rate.

@@ -1,20 +1,22 @@
 import {defineConfig, type Plugin} from 'vite';
 import type {UserConfig} from 'vitest/config';
+import react from '@vitejs/plugin-react';
 import {resolve, sep} from 'node:path';
 
-// core/ is imported by relative path, and a bare import in a core/ file would otherwise resolve
-// upwards from core/ — to the repository root's node_modules (the app's copies) locally, and to
-// nothing in CI, which installs only extension/. This resolves every bare import made BY a core/
-// file as if it were made from this package, and touches nothing else: a dependency's own imports
-// (@solana/web3.js 1.x needs @noble v1, this package has v2) resolve normally, next to it.
-const CORE = resolve(__dirname, '../core');
+// core/ and web/src/ui/ are imported by relative path, and a bare import in one of their files would
+// otherwise resolve upwards from there — to web/node_modules or the repository root's node_modules
+// locally (a second React: hooks break), and to nothing in CI, which installs only extension/. This
+// resolves every bare import made BY a core/ or web/src/ui/ file as if it were made from this package,
+// and touches nothing else: a dependency's own imports (@solana/web3.js 1.x needs @noble v1, this
+// package has v2) resolve normally, next to it.
+const SHARED = [resolve(__dirname, '../core'), resolve(__dirname, '../web/src/ui')];
 const HERE = resolve(__dirname, 'package.json');
-function coreResolvesFromHere(): Plugin {
+function sharedResolvesFromHere(): Plugin {
   return {
-    name: 'noctura:core-resolves-from-extension',
+    name: 'noctura:shared-resolves-from-extension',
     enforce: 'pre',
     async resolveId(source, importer, options) {
-      if (importer === undefined || !importer.startsWith(CORE + sep)) return null;
+      if (importer === undefined || !SHARED.some(dir => importer.startsWith(dir + sep))) return null;
       if (source.startsWith('.') || source.startsWith('/') || source.startsWith('\0')) return null;
       return this.resolve(source, HERE, {...options, skipSelf: true});
     },
@@ -23,7 +25,7 @@ function coreResolvesFromHere(): Plugin {
 
 export default defineConfig({
   base: './',
-  plugins: [coreResolvesFromHere()],
+  plugins: [sharedResolvesFromHere(), react()],
   server: {fs: {allow: [resolve(__dirname, '..')]}},
   build: {
     outDir: 'dist/app',
@@ -34,6 +36,7 @@ export default defineConfig({
       input: {
         background: resolve(__dirname, 'src/background/index.ts'),
         popup: resolve(__dirname, 'popup.html'),
+        wallet: resolve(__dirname, 'wallet.html'),
         unlock: resolve(__dirname, 'unlock.html'),
       },
       output: {
@@ -46,10 +49,13 @@ export default defineConfig({
   },
   worker: {format: 'es'},
   test: {
+    // node by default; the component tests say `// @vitest-environment happy-dom` on their first line
+    // (vitest 5 has no environmentMatchGlobs).
     environment: 'node',
     globals: true,
     include: [
       'src/**/*.test.ts',
+      'src/**/*.test.tsx',
       'manifest/**/*.test.mjs',
       'scripts/**/*.test.mjs',
       '../core/keys/**/*.test.ts',

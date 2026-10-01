@@ -188,4 +188,18 @@ describe('the RPC method gate', () => {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
     expect(checkRepo(root)).toEqual([]);
   });
+
+  // B1b-2a §1.3: the screens are .tsx and import ../web/src/ui; the gate follows both, and those files may not fetch.
+  it('follows .tsx imports into ../web/src/ui, where a fetch is a violation', () => {
+    const files = {
+      'src/app/popup.tsx': "import {CopyButton} from '../../../web/src/ui/CopyButton';",
+      '../web/src/ui/CopyButton.tsx': "export function CopyButton() { return fetch('https://example.invalid'); }",
+    };
+    const {files: seen, problems} = reachable(['src/app/popup.tsx'], p => files[p], p => p in files);
+    expect(problems).toEqual([]);
+    expect(seen).toContain('../web/src/ui/CopyButton.tsx');
+    expect(networkViolations(seen.map(p => f(p, files[p])))).toEqual([
+      `../web/src/ui/CopyButton.tsx: calls the global fetch directly, bypassing the coordinator client (only ${DEPS_FILE} may)`,
+    ]);
+  });
 });

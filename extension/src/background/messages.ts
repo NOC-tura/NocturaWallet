@@ -2,11 +2,13 @@ import {ed25519} from '@noble/curves/ed25519.js';
 import {base58, base64} from '@scure/base';
 import type {Ext} from '../ext';
 import type {SessionAccount} from '../vault/accounts';
-import {getSession, setSession} from './session';
+import {getSession, setSessionIf} from './session';
 import {armAutolock, lock} from './autolock';
 import type {WalletDeps} from './deps';
-import {satisfyChallenge} from './reauthChallenges';
-import {storeEnvelope} from './accountsStore';
+import {CHALLENGE_ID, challengeInfo, satisfyChallenge} from './reauthChallenges';
+import {forgetWallet, readWalletView, storeEnvelope} from './accountsStore';
+import {isOpen, readPending} from './pendingStore';
+import {startPoller} from './pending';
 import {WALLET_TYPES, handleWallet, isWalletType, type Result} from './walletApi';
 
 /** What the browser reports about a message's origin (runtime.MessageSender). */
@@ -24,12 +26,14 @@ export interface Sender {
  * sets — never the URL the message claims, and never "has a tab", which a full-tab
  * extension page also has.
  */
-export const PRIVILEGED = ['vault.setKeys', 'vault.lock', 'vault.status', 'vault.reauthOk', 'vault.storeEnvelope', 'activity.ping', ...WALLET_TYPES] as const;
+export const PRIVILEGED = ['vault.setKeys', 'vault.lock', 'vault.status', 'vault.reauthOk', 'vault.storeEnvelope', 'vault.challengeInfo', 'vault.forgetWallet', 'activity.ping', ...WALLET_TYPES] as const;
 /**
- * Only the vault page itself may hand over keys, report a re-authentication it proved, or hand over
- * the envelope it re-encrypted (the background is the one writer of v1_vault).
+ * Only the vault page itself may hand over keys, report a re-authentication it proved, hand over
+ * the envelope it re-encrypted (the background is the one writer of v1_vault), or read what a
+ * re-authentication is for (vault.challengeInfo, B1b-2a E3), or forget the wallet it proved
+ * (vault.forgetWallet, E5): the popup and the tab cannot.
  */
-const VAULT_PAGE_ONLY: readonly string[] = ['vault.setKeys', 'vault.reauthOk', 'vault.storeEnvelope'];
+const VAULT_PAGE_ONLY: readonly string[] = ['vault.setKeys', 'vault.reauthOk', 'vault.storeEnvelope', 'vault.challengeInfo', 'vault.forgetWallet'];
 export const PAGE: readonly string[] = [];
 
 function isOwnPage(ext: Ext, s: Sender): boolean {
@@ -102,10 +106,22 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
     case 'vault.setKeys': {
       const accounts = (msg as {accounts?: unknown}).accounts;
       if (!validAccounts(accounts)) return {ok: false, error: 'malformed'};
+      // The keys must be the stored wallet's (B1b-2a review H1): every {index, publicKey} handed over is
+      // one the envelope records. Every vault-page flow stores the envelope before it hands over keys
+      // (onboarding and D41's retry: storeEnvelope then setKeys; #39's restore: forgetWallet with the
+      // same-key replacement, then setKeys; add account: storeEnvelope then setKeys; unlock: the
+      // envelope exists), so this refuses only keys of no stored wallet. The envelope is read inside
+      // the same sessionMutex section as the session write (setSessionIf), the section vault.forgetWallet
+      // writes the vault in: keys bound to a wallet a forget removes meanwhile are never written.
+      const bound = async (): Promise<boolean> => {
+        const view = await readWalletView(ext);
+        const stored = new Map((view?.accounts ?? []).map(a => [a.index, a.publicKey]));
+        return accounts.every(a => stored.get(a.index) === a.publicKey);
+      };
       // Fail closed: keys in storage.session with no alarm armed would never auto-lock, while
       // the vault page reports "Unlock failed". Anything that throws after the write undoes it.
       try {
-        await setSession(ext, accounts);
+        if (!(await setSessionIf(ext, accounts, bound))) return {ok: false, error: 'unknown-account'};
         await armAutolock(ext);
       } catch (e) {
         await lock(ext);
@@ -129,6 +145,37 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       if (typeof challengeId !== 'string') return {ok: false, error: 'malformed'};
       if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
       return (await satisfyChallenge(ext, deps.now(), challengeId)) ? {ok: true} : {ok: false, error: 'unknown-challenge'};
+    }
+    case 'vault.challengeInfo': {
+      if (deps === undefined) return {ok: false, error: 'unavailable'};
+      const challengeId = (msg as {challengeId?: unknown}).challengeId;
+      if (typeof challengeId !== 'string' || !CHALLENGE_ID.test(challengeId)) return {ok: false, error: 'malformed'};
+      if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
+      // The description comes only from here, never from the vault page's URL (E3).
+      const about = await challengeInfo(ext, deps.now(), challengeId);
+      return about === null ? {ok: false, error: 'unknown-challenge'} : {ok: true, data: about};
+    }
+    case 'vault.forgetWallet': {
+      if (deps === undefined) return {ok: false, error: 'unavailable'};
+      const {expectedRevision, replacement, guard} = msg as {expectedRevision?: unknown; replacement?: unknown; guard?: unknown};
+      let r: Awaited<ReturnType<typeof forgetWallet>>;
+      try {
+        r = await forgetWallet(ext, deps, {expectedRevision, replacement, guard});
+      } catch {
+        // A storage failure: the steps before the vault write leave the wallet in place (locked at most).
+        return {ok: false, error: 'failed'};
+      }
+      if (r !== 'forgotten') return {ok: false, error: r};
+      // After the commit point, so never 'failed' (the vault is already removed or replaced): a send
+      // that passed its session check before the lock may have appended a record after the clear — it
+      // is kept, and watched without keys. If this read fails, the 30 s alarm, the next wallet.*
+      // message or a service-worker start resumes the polling.
+      try {
+        if ((await readPending(ext)).some(isOpen)) void startPoller(ext, deps);
+      } catch (e) {
+        console.warn('vault.forgetWallet: forgotten, but the pending check after it failed', e);
+      }
+      return {ok: true};
     }
     case 'vault.storeEnvelope': {
       const {expectedRevision, envelope} = msg as {expectedRevision?: unknown; envelope?: unknown};

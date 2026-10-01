@@ -1,6 +1,6 @@
 import type {JsonGetter} from '../../../core/ports';
 import type {Ext} from '../ext';
-import {API_BASE, RpcHttpError, createForbiddenLatch, createRpc, solanaReader, type FetchLike, type ForbiddenLatch, type LatchStore, type SolanaReader} from '../../../core/solana/rpc';
+import {API_BASE, RequestUnreachable, RpcHttpError, createForbiddenLatch, createRpc, solanaReader, type FetchLike, type ForbiddenLatch, type LatchStore, type SolanaReader} from '../../../core/solana/rpc';
 import {PRESALE_STAGE_PRICES} from '../../../core/presale/stagePrices';
 import {broadcastSigned} from '../../../core/solana/broadcast';
 import {fetchUsdPrices} from '../../../core/portfolio/prices';
@@ -65,10 +65,12 @@ export const REQUEST_TIMEOUT_MS = 20_000;
 /** The broadcast route forwards to the network before answering: a little longer. */
 export const BROADCAST_TIMEOUT_MS = 30_000;
 
-/** A coordinator request got no answer in time. Not a 403: it never trips the cool-down. */
-export class RequestTimedOut extends Error {
+export {RequestUnreachable};
+
+/** A coordinator request got no answer in time. Not a 403: it never trips the cool-down. Unreachable, like a rejected fetch. */
+export class RequestTimedOut extends RequestUnreachable {
   constructor(url: string, ms: number) {
-    super(`${url}: no answer within ${ms} ms; aborted`);
+    super(url, `no answer within ${ms} ms; aborted`);
     this.name = 'RequestTimedOut';
   }
 }
@@ -77,7 +79,8 @@ export class RequestTimedOut extends Error {
  * globalThis.fetch with a deadline covering the response AND its body: the request is aborted and
  * the promise rejected when the deadline passes — even if the fetch ignored the abort — so the
  * latch moves on to the next request. The timer is cleared as soon as the body is read (or the
- * fetch fails), so a finished request leaves nothing behind.
+ * fetch fails), so a finished request leaves nothing behind. A fetch that rejects (DNS, offline, a
+ * reset connection) becomes RequestUnreachable, as a deadline does: "no answer", never "failed".
  */
 export function timedFetch(ms: number): FetchLike {
   return async (url, init) => {
@@ -104,7 +107,8 @@ export function timedFetch(ms: number): FetchLike {
       };
     } catch (e) {
       done();
-      throw e;
+      if (e instanceof RequestUnreachable) throw e;
+      throw new RequestUnreachable(url, `the request failed (${e instanceof Error ? e.message : String(e)})`);
     }
   };
 }

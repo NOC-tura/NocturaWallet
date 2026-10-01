@@ -9,6 +9,8 @@ const RPC = 'https://api.noc-tura.io/api/v1/rpc';
 const BROADCAST = 'https://api.noc-tura.io/api/v1/tx/broadcast';
 const PRICES = 'https://api.noc-tura.io/api/v1/wallet/prices';
 const STATS = 'https://api.noc-tura.io/api/v1/stats';
+/** rpcResult's answer for a method it does not implement (listed in `unexpected` too). */
+const METHOD_NOT_FOUND: unique symbol = Symbol('method not found');
 
 export interface FakeCoordinator {
   /** 'confirm': a signature is confirmed at its second status check. 'expire': the network never sees it. */
@@ -24,6 +26,21 @@ export interface FakeCoordinator {
   historyChecks: {signature: string; at: number}[];
   /** Anything the fake was asked that it does not implement, or asked in the wrong shape. */
   unexpected: string[];
+  /**
+   * B1b-2a: 'ok' answers; 'forbidden' answers every request 403 (the D26 cool-down); 'unreachable'
+   * aborts every request — no answer at all (#42).
+   */
+  network: 'ok' | 'forbidden' | 'unreachable';
+  /** SOL per address, lamports; anything unlisted holds 10 SOL. */
+  lamports: Map<string, number>;
+  /** What getAccountInfo says an address is (E2); anything unlisted does not exist. */
+  accountKinds: Map<string, 'wallet' | 'program' | 'other'>;
+  /** The simulation's error switch (E2): err set and accounts null, as the real RPC answers. */
+  simulateError: boolean;
+  /** Every simulateTransaction's requested addresses (null = the field was missing). */
+  simulations: (string[] | null)[];
+  /** Per owner, newest first: the signatures getSignaturesForAddress pages through, and each getTransaction result. */
+  history: Map<string, {signature: string; tx: unknown}[]>;
 }
 
 /** Compact-u16: the signature count that opens a serialized transaction. */
@@ -35,6 +52,38 @@ function shortVec(bytes: Uint8Array): {value: number; size: number} {
     if ((b & 0x80) === 0) return {value, size: size + 1};
   }
   return {value, size: 3};
+}
+
+/**
+ * The static keys and instructions of a serialized v0 transaction: signature count and slots, then
+ * the message (0x80 prefix, 3-byte header, keys, blockhash, instructions). Read by hand: the E2E runs
+ * under Playwright's loader, where @solana/web3.js's CommonJS dependencies do not load.
+ */
+function parseV0(wire: Uint8Array): {keys: string[]; instructions: {program: number; accounts: number[]; data: Uint8Array}[]} {
+  let at = 0;
+  const vec = (): number => {
+    const {value, size} = shortVec(wire.subarray(at));
+    at += size;
+    return value;
+  };
+  const signatures = vec();
+  at += 64 * signatures;
+  if (wire[at] !== 0x80) throw new Error('not a v0 message');
+  at += 4;
+  const keys: string[] = [];
+  for (let n = vec(), i = 0; i < n; i++, at += 32) keys.push(base58.encode(wire.subarray(at, at + 32)));
+  at += 32;
+  const instructions: {program: number; accounts: number[]; data: Uint8Array}[] = [];
+  for (let n = vec(), i = 0; i < n; i++) {
+    const program = wire[at++] ?? 0;
+    const accounts: number[] = [];
+    const count = vec();
+    for (let j = 0; j < count; j++) accounts.push(wire[at++] ?? 0);
+    const len = vec();
+    instructions.push({program, accounts, data: wire.slice(at, at + len)});
+    at += len;
+  }
+  return {keys, instructions};
 }
 
 /**
@@ -53,6 +102,12 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     broadcastWires: [],
     historyChecks: [],
     unexpected: [],
+    network: 'ok',
+    lamports: new Map(),
+    accountKinds: new Map(),
+    simulateError: false,
+    simulations: [],
+    history: new Map(),
   };
   const statusChecks = new Map<string, number>();
   const context = () => ({slot: fake.blockHeight + 50});
@@ -68,35 +123,83 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     }),
   });
 
+  const lamportsOf = (address: string): number => fake.lamports.get(address) ?? 10_000_000_000;
+
+  /**
+   * What a node answers: the requested accounts after the transaction, WITHOUT the fee (the engine
+   * accepts either form, E2) — the payer's lamports less every System transfer it makes. Its error
+   * switch answers err with accounts: null, as the real RPC does (review H2).
+   */
+  const simulate = (params: unknown[]): unknown => {
+    const config = params[1] as {accounts?: {encoding?: string; addresses?: unknown}} | undefined;
+    const addresses = Array.isArray(config?.accounts?.addresses) ? (config.accounts.addresses as string[]) : null;
+    fake.simulations.push(addresses);
+    if (addresses === null || config?.accounts?.encoding !== 'base64') fake.unexpected.push('simulateTransaction without accounts {encoding: base64, addresses}');
+    if (fake.simulateError) return {context: context(), value: {err: {InstructionError: [2, {Custom: 1}]}, logs: [], accounts: null, unitsConsumed: 0, returnData: null}};
+    const {keys, instructions} = parseV0(base64.decode(params[0] as string));
+    const payer = keys[0] ?? '';
+    let out = 0;
+    for (const ix of instructions) {
+      const data = ix.data;
+      if (keys[ix.program] === '11111111111111111111111111111111' && data[0] === 2 && keys[ix.accounts[0] ?? -1] === payer) {
+        out += Number(new DataView(data.buffer, data.byteOffset, data.byteLength).getBigUint64(4, true));
+      }
+    }
+    const accounts = (addresses ?? []).map(a =>
+      a === payer ? {lamports: lamportsOf(payer) - out, owner: '11111111111111111111111111111111', data: ['', 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 0} : null,
+    );
+    return {context: context(), value: {err: null, logs: ['Program 11111111111111111111111111111111 success'], accounts, unitsConsumed: 450, returnData: null}};
+  };
+
   const rpcResult = (method: string, params: unknown[]): unknown => {
     switch (method) {
       case 'getBalance':
-        return {context: context(), value: 10_000_000_000};
+        return {context: context(), value: lamportsOf(params[0] as string)};
       case 'getLatestBlockhash':
         return {context: context(), value: {blockhash: base58.encode(randomBytes(32)), lastValidBlockHeight: fake.blockHeight + BLOCKHASH_LIFETIME}};
       case 'getRecentPrioritizationFees':
         return [];
       case 'simulateTransaction':
-        return {context: context(), value: {err: null, logs: ['Program 11111111111111111111111111111111 success'], accounts: null, unitsConsumed: 450, returnData: null}};
+        return simulate(params);
       case 'getTokenAccountsByOwner':
         return {context: context(), value: []};
       case 'getMultipleAccounts':
         return {context: context(), value: (params[0] as unknown[]).map(() => null)};
-      case 'getAccountInfo':
-        return {context: context(), value: null};
+      case 'getAccountInfo': {
+        const kind = fake.accountKinds.get(params[0] as string);
+        if (kind === undefined) return {context: context(), value: null};
+        const owner = kind === 'wallet' ? '11111111111111111111111111111111' : 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+        return {context: context(), value: {lamports: 1_000_000, owner, executable: kind === 'program', data: ['', 'base64'], rentEpoch: 0, space: 0}};
+      }
       case 'getBlockHeight':
         return fake.blockHeight;
       case 'getSignatureStatuses': {
         const config = params[1] as {searchTransactionHistory?: boolean} | undefined;
         return signatureStatuses(params[0] as string[], config?.searchTransactionHistory === true);
       }
-      case 'getSignaturesForAddress':
-        return [];
-      case 'getTransaction':
+      case 'getSignaturesForAddress': {
+        const list = fake.history.get(params[0] as string) ?? [];
+        const o = params[1] as {limit?: number; before?: string} | undefined;
+        // An unknown `before` is an empty page, as a node answers — never a restart at page 0.
+        const at = o?.before === undefined ? -1 : list.findIndex(e => e.signature === o.before);
+        if (o?.before !== undefined && at < 0) return [];
+        // Each entry as the node reports it: the transaction's own err and blockTime, when it has them.
+        return list.slice(at + 1, at + 1 + (o?.limit ?? 10)).map(e => {
+          const t = e.tx as {blockTime?: unknown; meta?: {err?: unknown}} | null;
+          const blockTime = typeof t?.blockTime === 'number' ? t.blockTime : null;
+          return {signature: e.signature, slot: 1, err: t?.meta?.err ?? null, memo: null, blockTime, confirmationStatus: 'finalized'};
+        });
+      }
+      case 'getTransaction': {
+        for (const list of fake.history.values()) {
+          const hit = list.find(e => e.signature === params[0]);
+          if (hit !== undefined) return hit.tx;
+        }
         return null;
+      }
       default:
         fake.unexpected.push(`rpc ${method}`);
-        return null;
+        return METHOD_NOT_FOUND;
     }
   };
 
@@ -105,12 +208,24 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
   await ctx.route('https://api.noc-tura.io/**', async route => {
     const req = route.request();
     const url = req.url();
+    // B1b-2a: the two failure switches, counted as hits (the request did leave the extension).
+    if (fake.network === 'unreachable') {
+      fake.hits.push({url, rpcMethod: null});
+      return route.abort('internetdisconnected');
+    }
+    if (fake.network === 'forbidden') {
+      fake.hits.push({url, rpcMethod: null});
+      return json(route, 403, {error: 'forbidden'});
+    }
     if (url === RPC && req.method() === 'POST') {
       const body = JSON.parse(req.postData() ?? '{}') as {jsonrpc?: string; id?: number; method?: string; params?: unknown[]};
       const method = body.method ?? '';
       fake.hits.push({url, rpcMethod: method});
       if (body.jsonrpc !== '2.0' || !Array.isArray(body.params)) fake.unexpected.push(`rpc ${method}: not a JSON-RPC 2.0 request`);
-      return json(route, 200, {jsonrpc: '2.0', id: body.id ?? 0, result: rpcResult(method, body.params ?? [])});
+      const result = rpcResult(method, body.params ?? []);
+      // A method the fake does not implement answers as a node does: JSON-RPC -32601, never a result.
+      if (result === METHOD_NOT_FOUND) return json(route, 200, {jsonrpc: '2.0', id: body.id ?? 0, error: {code: -32601, message: 'Method not found'}});
+      return json(route, 200, {jsonrpc: '2.0', id: body.id ?? 0, result});
     }
     fake.hits.push({url, rpcMethod: null});
     if (url === BROADCAST && req.method() === 'POST') {

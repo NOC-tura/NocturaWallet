@@ -10,11 +10,13 @@ export interface SendIntent {
 export type SendRefusal =
   | 'locked'
   | 'unknown-account'
+  | 'self-send'
   | 'in-flight'
   | 'split-balance'
   | 'insufficient-token'
   | 'insufficient-sol'
   | 'simulation-failed'
+  | 'simulation-mismatch'
   | 'unknown-prepared'
   | 'prepared-expired'
   | 'prepared-invalid'

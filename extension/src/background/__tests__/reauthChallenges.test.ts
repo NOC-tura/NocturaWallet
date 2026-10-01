@@ -1,6 +1,7 @@
+import {SETTINGS_ABOUT} from './fixtures';
 import {lock} from '../autolock';
 import {REAUTH_KEY} from '../session';
-import {CHALLENGE_TTL_MS, challengeReusable, challengeSatisfied, consumeChallenge, issueChallenge, satisfyChallenge} from '../reauthChallenges';
+import {CHALLENGE_TTL_MS, challengeSatisfied, consumeChallenge, issueChallenge, satisfyChallenge} from '../reauthChallenges';
 import {fakeDeps} from './fakeDeps';
 import {fakeExt} from './fakeExt';
 
@@ -8,7 +9,7 @@ describe('re-auth challenges', () => {
   it('issue → satisfy → consume once, with the same digest (positive control)', async () => {
     const ext = fakeExt();
     const deps = fakeDeps();
-    const id = await issueChallenge(ext, deps, 'd1');
+    const id = await issueChallenge(ext, deps, 'd1', SETTINGS_ABOUT);
     expect(id).toMatch(/^[0-9a-f]{32}$/);
     expect(await challengeSatisfied(ext, deps.now(), id, 'd1')).toBe(false);
     expect(await satisfyChallenge(ext, deps.now(), id)).toBe(true);
@@ -20,7 +21,7 @@ describe('re-auth challenges', () => {
   it('an unsatisfied challenge cannot be consumed, and stays usable', async () => {
     const ext = fakeExt();
     const deps = fakeDeps();
-    const id = await issueChallenge(ext, deps, 'd1');
+    const id = await issueChallenge(ext, deps, 'd1', SETTINGS_ABOUT);
     expect(await consumeChallenge(ext, deps.now(), id, 'd1')).toBe(false);
     await satisfyChallenge(ext, deps.now(), id);
     expect(await consumeChallenge(ext, deps.now(), id, 'd1')).toBe(true);
@@ -29,7 +30,7 @@ describe('re-auth challenges', () => {
   it('a different digest never consumes it — and burns it', async () => {
     const ext = fakeExt();
     const deps = fakeDeps();
-    const id = await issueChallenge(ext, deps, 'd1');
+    const id = await issueChallenge(ext, deps, 'd1', SETTINGS_ABOUT);
     await satisfyChallenge(ext, deps.now(), id);
     expect(await consumeChallenge(ext, deps.now(), id, 'd2')).toBe(false);
     expect(await consumeChallenge(ext, deps.now(), id, 'd1')).toBe(false);
@@ -38,8 +39,8 @@ describe('re-auth challenges', () => {
   it('expires after two minutes, satisfied or not', async () => {
     const ext = fakeExt();
     const deps = fakeDeps();
-    const a = await issueChallenge(ext, deps, 'd');
-    const b = await issueChallenge(ext, deps, 'd');
+    const a = await issueChallenge(ext, deps, 'd', SETTINGS_ABOUT);
+    const b = await issueChallenge(ext, deps, 'd', SETTINGS_ABOUT);
     expect(await satisfyChallenge(ext, deps.now() + CHALLENGE_TTL_MS - 1, b)).toBe(true);
     expect(await satisfyChallenge(ext, deps.now() + CHALLENGE_TTL_MS, a)).toBe(false);
     expect(await consumeChallenge(ext, deps.now() + CHALLENGE_TTL_MS, b, 'd')).toBe(false);
@@ -53,7 +54,7 @@ describe('re-auth challenges', () => {
   it('ids that name inherited properties, or are malformed, are refused by every function', async () => {
     const ext = fakeExt();
     const deps = fakeDeps();
-    const real = await issueChallenge(ext, deps, 'd');
+    const real = await issueChallenge(ext, deps, 'd', SETTINGS_ABOUT);
     await satisfyChallenge(ext, deps.now(), real);
     const hostile = ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'valueOf', 'xyz', '', 'F'.repeat(32), 'f'.repeat(31), 'f'.repeat(33), `${real} `];
     for (const id of hostile) {
@@ -87,14 +88,14 @@ describe('re-auth challenges', () => {
   });
 
   it('issueChallenge refuses to bind an empty digest', async () => {
-    await expect(issueChallenge(fakeExt(), fakeDeps(), '')).rejects.toThrow();
+    await expect(issueChallenge(fakeExt(), fakeDeps(), '', SETTINGS_ABOUT)).rejects.toThrow();
   });
 
   it('consume succeeds at TTL − 1 and fails at TTL', async () => {
     const ext = fakeExt();
     const deps = fakeDeps();
-    const a = await issueChallenge(ext, deps, 'd');
-    const b = await issueChallenge(ext, deps, 'd');
+    const a = await issueChallenge(ext, deps, 'd', SETTINGS_ABOUT);
+    const b = await issueChallenge(ext, deps, 'd', SETTINGS_ABOUT);
     await satisfyChallenge(ext, deps.now(), a);
     await satisfyChallenge(ext, deps.now(), b);
     expect(await challengeSatisfied(ext, deps.now() + CHALLENGE_TTL_MS - 1, a, 'd')).toBe(true);
@@ -106,9 +107,9 @@ describe('re-auth challenges', () => {
   it('issueChallenge prunes expired entries', async () => {
     const ext = fakeExt();
     const deps = fakeDeps();
-    const old = await issueChallenge(ext, deps, 'd');
+    const old = await issueChallenge(ext, deps, 'd', SETTINGS_ABOUT);
     deps.clock.t += CHALLENGE_TTL_MS;
-    const fresh = await issueChallenge(ext, deps, 'd');
+    const fresh = await issueChallenge(ext, deps, 'd', SETTINGS_ABOUT);
     expect(Object.keys((await ext.session.get(REAUTH_KEY)) as object)).toEqual([fresh]);
     expect(old).not.toBe(fresh);
   });
@@ -128,7 +129,7 @@ describe('re-auth challenges', () => {
       }
       return realGet(k);
     };
-    const issuing = issueChallenge(ext, deps, 'd');
+    const issuing = issueChallenge(ext, deps, 'd', SETTINGS_ABOUT);
     await readStarted;
     const locking = lock(ext);
     // Give the lock every chance to run ahead of the pending write.
@@ -139,23 +140,5 @@ describe('re-auth challenges', () => {
     ext.session.get = realGet;
     expect(await ext.session.get(REAUTH_KEY)).toBeUndefined();
     expect(await satisfyChallenge(ext, deps.now(), id)).toBe(false);
-  });
-});
-
-describe('challengeReusable (a re-prepared send keeps its proof)', () => {
-  it('true for a live challenge with the same digest, proven or not; false for another digest, an expired or unknown id', async () => {
-    const ext = fakeExt();
-    const deps = fakeDeps();
-    const id = await issueChallenge(ext, deps, 'd1');
-    expect(await challengeReusable(ext, deps.now(), id, 'd1')).toBe(true);
-    await satisfyChallenge(ext, deps.now(), id);
-    expect(await challengeReusable(ext, deps.now(), id, 'd1')).toBe(true);
-    expect(await challengeReusable(ext, deps.now(), id, 'd2')).toBe(false);
-    expect(await challengeReusable(ext, deps.now(), 'f'.repeat(32), 'd1')).toBe(false);
-    expect(await challengeReusable(ext, deps.now(), '__proto__', 'd1')).toBe(false);
-    expect(await challengeReusable(ext, deps.now() + CHALLENGE_TTL_MS, id, 'd1')).toBe(false);
-    // Reading it neither consumes nor changes it.
-    expect(await consumeChallenge(ext, deps.now(), id, 'd1')).toBe(true);
-    expect(await challengeReusable(ext, deps.now(), id, 'd1')).toBe(false);
   });
 });

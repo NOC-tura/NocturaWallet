@@ -2,14 +2,16 @@
   "name": "noctura-extension",
   "private": true,
   "type": "module",
-  "engines": {"node": ">=22.12.0"},
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "build": "tsc --noEmit && node scripts/build.mjs",
     "test": "vitest run",
     "e2e": "playwright test",
     "csp": "node scripts/check-csp.mjs dist/app",
     "secrets": "test -d dist/app && test -d dist/chrome && test -d dist/firefox && node ../web/scripts/check-no-secrets.mjs --bundle dist/app dist/chrome dist/firefox",
-    "gates": "node scripts/check-permissions.mjs && node scripts/check-vault-isolation.mjs && node scripts/check-rpc-methods.mjs",
+    "gates": "node scripts/check-permissions.mjs && node scripts/check-vault-isolation.mjs && node scripts/check-rpc-methods.mjs && node scripts/check-no-tge-date.mjs && node scripts/check-fonts.mjs && node scripts/check-classes.mjs",
     "reproducible": "node scripts/verify-reproducible.mjs",
     "verify": "rm -rf dist && npm run build && npm run test && npm run csp && npm run secrets && npm run gates && npm run reproducible"
   },
@@ -20,11 +22,20 @@
     "@scure/bip39": "^2.0.1",
     "@solana/web3.js": "^1.99.0",
     "buffer": "^6.0.3",
-    "micro-key-producer": "^0.8.5"
+    "micro-key-producer": "^0.8.5",
+    "qrcode-generator": "2.0.4",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "^22.7.0",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "happy-dom": "^20.14.5",
     "typescript": "^5.5.0",
     "vite": "^8.3.0",
     "vitest": "^5.0.1"

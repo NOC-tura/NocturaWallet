@@ -29,7 +29,7 @@ const VAULT_ALLOWED = /^src\/(unlock|vault)\//;
 // they are vault code too, and only the vault page itself may import them.
 const UNLOCK_ALLOWED = /^src\/unlock\//;
 // The one entry each HTML page at the package root may load.
-export const ENTRIES = {'popup.html': 'src/popup/main.ts', 'unlock.html': 'src/unlock/main.ts'};
+export const ENTRIES = {'popup.html': 'src/app/popup.tsx', 'wallet.html': 'src/app/tab.tsx', 'unlock.html': 'src/unlock/main.ts'};
 // node_modules/, dist/, e2e/ and scripts/ are skipped only at the package ROOT — a nested
 // src/popup/scripts/ is ordinary source a page can bundle, not this package's own tooling.
 // __tests__/ is skipped at any depth (never bundled, wherever it sits). See the header.
@@ -51,6 +51,12 @@ const EXT_IMPORT_ALLOWED = /^src\/background\//;
 const LOCAL_READER = 'src/shared/readLocal';
 const LOCAL_READER_PATH = `${LOCAL_READER}.ts`;
 const LOCAL_READER_ALLOWED = /^src\/unlock\//;
+// Modules that may import nothing (B1b-2a review M4; a type-only import is erased and allowed, as it
+// always was for readLocal): the vault page's storage
+// reader, and the two pure modules the vault page shares — amounts and its fixed strings. The vault
+// page may reach all of src/shared/, so a shared file importing UI code would carry it in through an
+// allowed door; a stand-alone module cannot.
+export const STANDALONE = [LOCAL_READER_PATH, 'src/shared/amount.ts', 'src/unlock/strings.ts'];
 // A storage write in any spelling: a call (`.set(`), a bracket (`['set']`), a destructured name.
 const WRITES_STORAGE = /(?:\?\.|\.)\s*(?:set|remove|clear)\s*\(|\[\s*['"`](?:set|remove|clear)['"`]\s*\]|[{,]\s*(?:set|remove|clear)\s*[,}:=]/;
 const TOUCHES_SESSION = /storage\s*(?:\?\.|\.)\s*session\b|storage\s*\[\s*['"`]session['"`]\s*\]/;
@@ -65,7 +71,8 @@ const LISTENS_RUNTIME = /\bon(?:Message|Connect)(?:External)?\b/;
 const LISTEN_ALLOWED = /^src\/background\//;
 // storage.local keys only the background writes (plan B1b-1): no other file may even name them —
 // a popup writing v1_settings could undo a re-authenticated setting without re-authenticating.
-export const BACKGROUND_OWNED_KEYS = ['v1_settings', 'v1_known_recipients', 'v1_pending', 'v1_forbidden_until'];
+// B1b-2a E4 adds the two caches: a popup writing one could show a balance the chain never had.
+export const BACKGROUND_OWNED_KEYS = ['v1_settings', 'v1_known_recipients', 'v1_pending', 'v1_forbidden_until', 'v1_balance_cache', 'v1_price_cache'];
 const BACKGROUND_OWNED_ALLOWED = /^src\/background\//;
 
 // A string that exists only in the vault's envelope code (the passkey-wrap HKDF info).
@@ -86,6 +93,11 @@ export const KDF_MARKER = '(memory) must be at least 8*p bytes';
 // checked against a real Vite build): generateMnemonic and validateMnemonic carry it into the vault
 // page, and nothing else may carry it.
 export const WORDLIST_MARKER = 'abandon\nability\nable\nabout';
+// React 18's internal export name, present only in react / react-dom 18 (React 19 renamed it). The
+// vault page is plain DOM (spec B1b-2a S1): no file it loads may carry React. The marker must also be
+// present in SOME built file (the popup's), or a React upgrade would make the rule pass trivially —
+// that INCONCLUSIVE is what an upgrade trips, and the fix is to update this marker.
+export const REACT_MARKER = '__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED';
 const MARKERS = [
   ['envelope', VAULT_MARKER],
   ['derivation', DERIVATION_MARKER],
@@ -153,6 +165,74 @@ function namesLocalReader(fromPath, spec) {
   return target !== null && target.replace(/\.[cm]?[jt]s$/, '') === LOCAL_READER;
 }
 
+function namesUiCode(fromPath, spec) {
+  const target = resolveSource(fromPath, spec);
+  return target !== null && (target === 'src/app' || target.startsWith('src/app/') || target.startsWith('../web/'));
+}
+
+// ── The vault page's import allowlist (B1b-2a §1.2) ─────────────────────────────────────────────
+// Every file reachable from the vault page's entry, following relative imports (into ../core and
+// ../web too), must be vault-page code or a stylesheet; every package it imports must be one of the
+// five the vault needs. So src/app/**, react, react-dom and ../web/src/ui/** can never reach the page
+// that holds the seed. Type-only imports are erased and not followed.
+export const VAULT_PAGE_ENTRY = 'src/unlock/main.ts';
+const VAULT_PAGE_FILES = [
+  /^src\/unlock\//,
+  /^src\/vault\//,
+  /^src\/shared\//,
+  /^src\/ui\/send\.ts$/,
+  /^src\/styles\/[^/]+\.css$/,
+  /^\.\.\/web\/src\/styles\/design-system\.css$/,
+  /^\.\.\/core\/keys\//,
+  /^\.\.\/core\/util\//,
+];
+export const VAULT_PAGE_PACKAGES = ['@noble/curves', '@noble/hashes', '@scure/base', '@scure/bip39', 'micro-key-producer'];
+const RESOLVE_EXTENSIONS = ['', '.ts', '.tsx', '.mts', '.js', '.mjs', '/index.ts', '/index.tsx'];
+const MODULE_SPECIFIER = /^[\w@.\/-]+$/;
+// A specifier-shaped token that carries a backslash (checked before the prose filter below, which
+// would otherwise skip it): no bundler treats `\` as a separator the same way on every platform.
+const BACKSLASH_SPECIFIER = /^[\w@.\/\\-]*\\[\w@.\/\\-]*$/;
+const packageOf = spec => (spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]);
+// `@scure/base/../../../app/leak` has an allowed package name but names a file outside it.
+const packageSubpathEscapes = spec => spec.split('/').slice(spec.startsWith('@') ? 2 : 1).some(s => s === '.' || s === '..');
+
+/** `read(path)` → text or undefined; `exists(path)` → boolean. Paths package-relative, / separators. */
+export function vaultPageViolations(read, exists, entry = VAULT_PAGE_ENTRY) {
+  const out = [];
+  const seen = new Set();
+  const stack = [entry];
+  if (read(entry) === undefined) return [`INCONCLUSIVE: the vault page entry ${entry} does not exist`];
+  while (stack.length > 0) {
+    const path = stack.pop();
+    if (seen.has(path)) continue;
+    seen.add(path);
+    if (!VAULT_PAGE_FILES.some(re => re.test(path))) out.push(`the vault page reaches ${path} — only vault-page code may be bundled with the seed`);
+    if (!SOURCE_EXT.test(path)) continue; // a stylesheet carries no code and imports nothing we follow
+    const text = read(path) ?? '';
+    for (const ref of moduleReferences(text)) {
+      // The loose patterns above also match prose (`mode === 'import' || …`); a module specifier has
+      // no spaces or operators. A computed specifier is out of any static reach (the bundle checks are
+      // the backstop).
+      if (ref.typeOnly) continue;
+      if (BACKSLASH_SPECIFIER.test(ref.spec)) {
+        out.push(`${path}: the vault page imports ${ref.spec} — a specifier may not contain a backslash`);
+        continue;
+      }
+      if (!MODULE_SPECIFIER.test(ref.spec)) continue;
+      const target = resolveSource(path, ref.spec);
+      if (target === null) {
+        if (!VAULT_PAGE_PACKAGES.includes(packageOf(ref.spec))) out.push(`${path}: the vault page imports the package ${ref.spec}`);
+        else if (packageSubpathEscapes(ref.spec)) out.push(`${path}: the vault page imports ${ref.spec} — a package path may not contain a . or .. segment`);
+        continue;
+      }
+      const file = RESOLVE_EXTENSIONS.map(e => target + e).find(exists);
+      if (file === undefined) out.push(`${path} imports ${ref.spec}, which does not resolve to a file`);
+      else stack.push(file);
+    }
+  }
+  return out;
+}
+
 export function sourceViolations(files) {
   const out = [];
   for (const {path, text} of files) {
@@ -162,10 +242,13 @@ export function sourceViolations(files) {
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesVault(path, r.spec))) out.push(`${path}: imports the vault`);
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesCoreKeys(path, r.spec))) out.push(`${path}: imports core/keys (seed code)`);
     if (!UNLOCK_ALLOWED.test(path) && values.some(r => namesUnlock(path, r.spec))) out.push(`${path}: imports the vault page (src/unlock)`);
+    if (STANDALONE.includes(path) && values.length > 0) out.push(`${path}: imports a module — it must stand alone`);
+    // src/shared/ is reachable from the vault page: it may never reach UI code (B1b-2a M4).
+    // Deliberately all references, type-only ones too — stricter than the stand-alone rule above.
+    if (/^src\/shared\//.test(path) && moduleReferences(text).some(r => namesUiCode(path, r.spec))) out.push(`${path}: imports UI code (src/app, ../web) — src/shared is vault-page reachable`);
     if (path === LOCAL_READER_PATH) {
       if (TOUCHES_SESSION.test(text)) out.push(`${path}: touches storage.session — it may read storage.local only`);
       if (WRITES_STORAGE.test(text)) out.push(`${path}: writes storage — it may only read`);
-      if (values.length > 0) out.push(`${path}: imports a module — it must stand alone`);
     } else if (!SESSION_ALLOWED.test(path) && (TOUCHES_SESSION.test(text) || TOUCHES_STORAGE.test(text))) {
       out.push(`${path}: touches storage outside src/ext.ts and the background`);
     }
@@ -310,6 +393,10 @@ export function bundleViolations(distApp) {
     }
   }
 
+  if (!js.some(p => readFileSync(join(distApp, p), 'utf8').includes(REACT_MARKER))) {
+    out.push(`INCONCLUSIVE: the React marker "${REACT_MARKER}" is in no built JS file — React 19 renamed it: update REACT_MARKER, or the no-React-in-the-vault-page rule passes trivially`);
+  }
+
   // The other direction: the vault page may not load the background entry. Importing background.js
   // runs it — its runtime listeners and its poller — inside the vault page (a Rolldown runtime helper
   // placed in background.js once made the unlock bundle import it, and every marker check passed).
@@ -318,7 +405,13 @@ export function bundleViolations(distApp) {
     for (const m of html.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/g)) {
       const r = resolveBuilt(distApp, 'unlock.html', m[1]);
       if (r.problem) problems.add(r.problem);
-      else if (reachable(distApp, r.target, problems).includes('background.js')) out.push(`the vault page (${r.target}) reaches background.js — it would run the background`);
+      else {
+        const files = reachable(distApp, r.target, problems);
+        if (files.includes('background.js')) out.push(`the vault page (${r.target}) reaches background.js — it would run the background`);
+        for (const file of files) {
+          if (/\.m?js$/.test(file) && readFileSync(join(distApp, file), 'utf8').includes(REACT_MARKER)) out.push(`${file} (reachable from unlock.html) contains React — the vault page must stay plain DOM`);
+        }
+      }
     }
   }
 
@@ -384,7 +477,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const files = listSourceFiles(ROOT).map(path => ({path, text: readFileSync(join(ROOT, path), 'utf8')}));
   const pages = readdirSync(ROOT).filter(e => /\.html?$/i.test(e)).map(path => ({path, text: readFileSync(join(ROOT, path), 'utf8')}));
-  const problems = [...sourceViolations(files), ...htmlViolations(pages)];
+  const readRel = rel => {
+    const abs = join(ROOT, rel);
+    return existsSync(abs) && statSync(abs).isFile() ? readFileSync(abs, 'utf8') : undefined;
+  };
+  const problems = [...sourceViolations(files), ...htmlViolations(pages), ...vaultPageViolations(readRel, rel => readRel(rel) !== undefined)];
   for (const d of ['app', 'chrome', 'firefox']) {
     for (const p of bundleViolations(join(ROOT, 'dist', d))) problems.push(`dist/${d}: ${p}`);
   }

@@ -12,14 +12,15 @@ describe('background start', () => {
     const on = (name: string) => ({addListener: () => void listeners.push(name)});
     const area = () => ({get: async () => ({}), set: async () => undefined, remove: async () => undefined, clear: async () => undefined});
     vi.stubGlobal('chrome', {
-      runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on('onMessage'), onStartup: on('onStartup')},
+      runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on('onMessage'), onStartup: on('onStartup'), onInstalled: on('onInstalled')},
+      tabs: {create: async () => undefined},
       storage: {session: {...area(), setAccessLevel: async (o: unknown) => void accessLevels.push(o)}, local: area()},
       alarms: {create: () => undefined, clear: async () => true, onAlarm: on('onAlarm')},
       windows: {getAll: async () => [], onRemoved: on('onRemoved')},
     });
     await import('../index');
     expect(accessLevels).toEqual([{accessLevel: 'TRUSTED_CONTEXTS'}]);
-    expect(listeners.sort()).toEqual(['onAlarm', 'onMessage', 'onRemoved', 'onStartup']);
+    expect(listeners.sort()).toEqual(['onAlarm', 'onInstalled', 'onMessage', 'onRemoved', 'onStartup']);
   });
 
   // Fable re-review: pinSessionAccess() was fired with `void`, not awaited or caught — a
@@ -33,7 +34,8 @@ describe('background start', () => {
     const warnings: unknown[] = [];
     vi.spyOn(console, 'warn').mockImplementation((...args) => void warnings.push(args));
     vi.stubGlobal('chrome', {
-      runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on('onMessage'), onStartup: on('onStartup')},
+      runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on('onMessage'), onStartup: on('onStartup'), onInstalled: on('onInstalled')},
+      tabs: {create: async () => undefined},
       storage: {
         session: {
           ...area(),
@@ -50,7 +52,7 @@ describe('background start', () => {
     // Let the rejected pinSessionAccess() promise's .catch handler run.
     await Promise.resolve();
     await Promise.resolve();
-    expect(listeners.sort()).toEqual(['onAlarm', 'onMessage', 'onRemoved', 'onStartup']);
+    expect(listeners.sort()).toEqual(['onAlarm', 'onInstalled', 'onMessage', 'onRemoved', 'onStartup']);
     expect(warnings).toEqual([['storage.session access level not pinned', expect.any(Error)]]);
   });
 
@@ -83,7 +85,8 @@ describe('background start', () => {
       });
       const on = () => ({addListener: () => undefined});
       vi.stubGlobal('chrome', {
-        runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on(), onStartup: on()},
+        runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on(), onStartup: on(), onInstalled: on()},
+        tabs: {create: async () => undefined},
         storage: {
           session: {get: async () => ({}), set: async () => undefined, remove: async () => undefined, clear: async () => undefined, setAccessLevel: async () => undefined},
           local: {
@@ -128,7 +131,8 @@ describe('background start', () => {
     const on = () => ({addListener: () => undefined});
     const area = () => ({get: async () => ({}), set: async () => undefined, remove: async () => undefined, clear: async () => undefined});
     vi.stubGlobal('chrome', {
-      runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on(), onStartup: on()},
+      runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on(), onStartup: on(), onInstalled: on()},
+      tabs: {create: async () => undefined},
       storage: {session: {...area(), setAccessLevel: async () => undefined}, local: area()},
       alarms: {create: (name: string) => void created.push(name), clear: async () => true, onAlarm: on()},
       windows: {getAll: async () => [], onRemoved: on()},
@@ -138,5 +142,32 @@ describe('background start', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(created).toEqual([]);
+  });
+
+  // B1b-2a §1.1: a fresh install opens the welcome page once — not on an update, not on a browser update.
+  it('opens unlock.html?mode=welcome on install only', async () => {
+    let installed: ((d: {reason: string}) => void) | undefined;
+    const opened: string[] = [];
+    const on = () => ({addListener: () => undefined});
+    const area = () => ({get: async () => ({}), set: async () => undefined, remove: async () => undefined, clear: async () => undefined});
+    vi.stubGlobal('chrome', {
+      runtime: {
+        id: 'x',
+        getURL: (p: string) => `https://ext.example/${p}`,
+        onMessage: on(),
+        onStartup: on(),
+        onInstalled: {addListener: (cb: (d: {reason: string}) => void) => void (installed = cb)},
+      },
+      tabs: {create: async (o: {url: string}) => void opened.push(o.url)},
+      storage: {session: area(), local: area()},
+      alarms: {create: () => undefined, clear: async () => true, onAlarm: on()},
+      windows: {getAll: async () => [], onRemoved: on()},
+    });
+    await import('../index');
+    installed?.({reason: 'update'});
+    installed?.({reason: 'chrome_update'});
+    expect(opened).toEqual([]);
+    installed?.({reason: 'install'});
+    expect(opened).toEqual(['https://ext.example/unlock.html?mode=welcome']);
   });
 });

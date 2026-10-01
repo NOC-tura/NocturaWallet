@@ -278,7 +278,7 @@ describe('handleWallet', () => {
   it('wallet.history refuses a malformed page cursor without a request (review M6)', async () => {
     const sig = base58.encode(new Uint8Array(64).fill(7));
     const reader = fakeReader({getSignaturesForAddress: async () => []});
-    expect(await handleWallet(fakeExt(), fakeDeps({reader}), 'wallet.history', {account: ACCOUNT.publicKey, before: sig})).toEqual({ok: true, data: []});
+    expect(await handleWallet(fakeExt(), fakeDeps({reader}), 'wallet.history', {account: ACCOUNT.publicKey, before: sig})).toEqual({ok: true, data: {items: [], next: null}});
     // fakeDeps' own reader throws on any call, so a request here would answer 'failed', not 'malformed'.
     for (const before of ['nope', base58.encode(new Uint8Array(32).fill(7)), 42]) {
       expect(await handleWallet(fakeExt(), fakeDeps(), 'wallet.history', {account: ACCOUNT.publicKey, before})).toEqual({ok: false, error: 'malformed'});

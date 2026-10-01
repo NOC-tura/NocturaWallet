@@ -1,7 +1,7 @@
 import {test, expect} from '@playwright/test';
 import {rmSync} from 'node:fs';
 import {makeEnvelope, E2E_PASSWORD} from './makeEnvelope';
-import {expectContained, launchContained} from './launch';
+import {containNocTura, containSolscan, expectContained, launchContained} from './launch';
 
 declare const chrome: {storage: {local: {set(o: object): Promise<void>}; session: {get(k: null): Promise<object>; clear(): Promise<void>}}};
 
@@ -9,11 +9,9 @@ test('unlocking in the vault page puts only signing keys into session storage', 
   // Contained like the wallet E2E: noc-tura.io does not resolve in this browser, and a route
   // records (and aborts) anything addressed to it — unlocking needs no network at all.
   const {ctx, profile} = await launchContained('noctura-e2e-');
-  const contacted: string[] = [];
-  await ctx.route(/^https?:\/\/([^/]*\.)?noc-tura\.io(\/|$)/, route => {
-    contacted.push(route.request().url());
-    return route.abort();
-  });
+  const nocTura = await containNocTura(ctx);
+  // The explorer's host too (review M6): routed, counted, asserted empty at the end.
+  const solscan = await containSolscan(ctx);
   try {
     await expectContained(ctx);
     const sw = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent('serviceworker'));
@@ -53,7 +51,8 @@ test('unlocking in the vault page puts only signing keys into session storage', 
     await page.click('#unlock');
     await expect(page.locator('#status')).toHaveText("This wallet's stored data is damaged.", {timeout: 60_000});
     expect(await sw.evaluate(() => chrome.storage.session.get(null))).toEqual({});
-    expect(contacted).toEqual([]);
+    expect(nocTura.hits).toEqual([]);
+    expect(solscan.hits).toEqual([]);
   } finally {
     await ctx.close();
     rmSync(profile, {recursive: true, force: true});
