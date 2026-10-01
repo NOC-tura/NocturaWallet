@@ -46,6 +46,35 @@ describe('exclusive (rule 6)', () => {
     expect(p.renders[0]).toBe(true);
     expect(p.renders.at(-1)).toBe(false);
   });
+
+  it('a rejecting action still holds the gate for the floor; the gate then frees for a second press', async () => {
+    const p = page();
+    let runs = 0;
+    const boom = new Error('boom');
+    let reject: (e: unknown) => void = () => undefined;
+    const action = () => (runs++, new Promise<void>((_, rj) => (reject = rj)));
+    const first = exclusive(p, p.render, action);
+    expect(await exclusive(p, p.render, action)).toBe('busy');
+    expect(runs).toBe(1);
+    reject(boom);
+    // The action settled (rejected), but the 500 ms floor has not: the button stays locked.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(p.busy()).toBe(true);
+    expect(await exclusive(p, p.render, action)).toBe('busy');
+    expect(runs).toBe(1);
+    p.sleeps.forEach(r => r());
+    await expect(first).rejects.toBe(boom);
+    expect(p.busy()).toBe(false);
+    // The gate is free again: a second press runs the action.
+    const second = exclusive(p, p.render, async () => void runs++);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(runs).toBe(2);
+    p.sleeps.forEach(r => r());
+    await second;
+    expect(p.busy()).toBe(false);
+  });
 });
 
 describe('resumeTarget', () => {
