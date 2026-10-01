@@ -120,7 +120,10 @@ export const RUNTIME_CSS = [
   [/\b(?:createElementNS\s*\(\s*[^,()]*,\s*|createElement\s*\(\s*|h\s*\(\s*)(['"`])(?:style|link)\1/i, 'creates a <style> or <link> element'],
   [/\b(?:CSSStyleSheet|CSSRule|adoptedStyleSheets|styleSheets|insertRule|replaceSync)\b|\.\s*sheet\b/, 'builds a stylesheet at run time'],
   [/\bsetAttribute(?:NS)?\s*\(\s*(?:[^,()]*,\s*)?(['"`])style\1/i, 'sets a style attribute'],
-  [/\b(?:cssText|attributeStyleMap)\b/, 'writes CSS declarations'],
+  [/\b(?:cssText|attributeStyleMap|setProperty)\b/, 'writes CSS declarations'],
+  // An element's inline style, by any access (`.style`, `?.style`, `['style']`, a destructuring key). A
+  // CSSOM write is allowed by the CSP, so only this rule keeps it out; the vault page toggles classes.
+  [/(?:\?\.|\.)\s*style\b|\[\s*(['"`])style\1\s*\]|[{,]\s*style\s*[,}:=]/, 'reaches an element’s inline style'],
 ];
 
 /**
@@ -617,10 +620,11 @@ export const BUILT_MARKUP =
 export const BUILT_REFLECTION =
   /\b(?:defineProperty|getOwnPropertyDescriptor)\b(?!\s*\(\s*[\w$.]+\s*,\s*(["'`])[\w$]+\1\s*[,)])|\b(?:__lookupSetter__|__defineSetter__|__lookupGetter__|__defineGetter__)\b(?!\s*\(\s*(["'`])[\w$]+\2\s*[,)])|\b(?:defineProperties|getOwnPropertyDescriptors)\b/;
 // CSS built at run time in a chunk the vault page loads (fix round 4): a <style> or <link> element, a
-// constructed or adopted sheet, an inserted rule, a style attribute, declaration text. A computed
+// constructed or adopted sheet, an inserted rule, a style attribute, declaration text, an element's inline
+// style (`.style`, `["style"]`, `setProperty`). A computed
 // createElement is the h() helper's (dom.ts) and is not refused here; the source rule checks its callers.
 export const BUILT_STYLE =
-  /createElement(?:NS)?\(\s*(?:[^,()]*,\s*)?(["'`])(?:style|link)\1|\b(?:CSSStyleSheet|CSSRule|adoptedStyleSheets|styleSheets|insertRule|replaceSync|cssText|attributeStyleMap)\b|setAttribute(?:NS)?\(\s*(?:[^,()]*,\s*)?(["'`])style\2/i;
+  /createElement(?:NS)?\(\s*(?:[^,()]*,\s*)?(["'`])(?:style|link)\1|\b(?:CSSStyleSheet|CSSRule|adoptedStyleSheets|styleSheets|insertRule|replaceSync|cssText|attributeStyleMap)\b|setAttribute(?:NS)?\(\s*(?:[^,()]*,\s*)?(["'`])style\2|\.style\b|\[\s*(["'`])style\3\s*\]|\bsetProperty\b/i;
 const BUILT_URL = /\bnew\s+URL\s*\(\s*(['"`])([^'"`$]+)\1\s*,\s*import\.meta\.url/g;
 
 function builtReferences(text) {

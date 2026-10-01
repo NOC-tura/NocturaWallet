@@ -558,6 +558,10 @@ describe('vault isolation (built output)', () => {
     ['e.setAttribute("style",t)', 'setAttribute("style"'],
     ['e.cssText=t', 'cssText'],
     ['e.attributeStyleMap.set("color",t)', 'attributeStyleMap'],
+    ['e.style.backgroundImage=t', '.style'],
+    ['e.style.setProperty("--x",t)', '.style'],
+    ['e["style"].color=t', '["style"]'],
+    ['n.setProperty("color",t)', 'setProperty'],
   ])('fails when a chunk the vault page loads builds CSS at run time: %s', (code, name) => {
     write('assets/base-1.js', `export const n=(e,t,n)=>{${code}};`);
     expect(bundleViolations(dir)).toEqual([`assets/base-1.js (reachable from unlock.html) builds CSS at run time (${name}) — the vault page is styled by its built stylesheets only`]);
@@ -1356,6 +1360,16 @@ describe('plan 2: the vault-page screens stay inside the boundary', () => {
     ['const e = document.createElement(tag);', 'creates an element by a computed tag'],
     ["const e = document.createElementNS(ns, 'svg' + x);", 'creates an element by a computed tag'],
     ['const e = h(tag);', 'creates an element by a computed tag'],
+    // An element's inline style, by any access (the CSP allows a CSSOM write; the ruling refuses it here).
+    ["document.body.style.backgroundImage = 'url(https://example.invalid/a)';", 'reaches an element’s inline style'],
+    ["el.style['background-image'] = v;", 'reaches an element’s inline style'],
+    ['el?.style.color = v;', 'reaches an element’s inline style'],
+    ["el.style = 'background:url(https://example.invalid/a)';", 'reaches an element’s inline style'],
+    ["el['style'].color = v;", 'reaches an element’s inline style'],
+    ['const {style} = el;', 'reaches an element’s inline style'],
+    ['const {style: s} = el;', 'reaches an element’s inline style'],
+    ["el.style.setProperty('--vlt-ring', '0.5');", 'reaches an element’s inline style'],
+    ["decl.setProperty('background-image', v);", 'writes CSS declarations'],
   ])('the vault page may not build CSS at run time: %s', (code, what) => {
     expect(sourceViolations([f('src/unlock/view/x.ts', code)])).toContain(CSS_WHY(what));
   });
@@ -1374,6 +1388,8 @@ describe('plan 2: the vault-page screens stay inside the boundary', () => {
       'src/unlock/view/dom.ts: creates an element by a computed tag — the vault page is styled by its three named sheets only',
     ]);
     expect(sourceViolations([f('src/unlock/view/x.ts', "const a = h('div', 'x'); const b = document.createElement('li'); el.classList.toggle('is-held', on); el.hidden = true;")])).toEqual([]);
+    // Prose and names that merely contain the word are not an inline style (negative control).
+    expect(sourceViolations([f('src/unlock/view/x.ts', "// restyled with the tokens only\nconst label = 'style guide'; const styled = true; const lifestyle = 1;")])).toEqual([]);
   });
 
   it('what the vault page’s own code writes is allowed: destructuring, typed arrays, tuples, plain-named brackets, literal attributes (negative controls)', () => {
