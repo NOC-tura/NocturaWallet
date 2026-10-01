@@ -113,7 +113,8 @@ export function WalletProvider({
   now?: () => number;
   /**
    * The UI tab's hand-over screens (#7, #40, the resume stand-in): the state only — no cached, pending,
-   * balance or price read on open. #40 reads what it shows itself; #7 reads nothing from the network.
+   * balance or price read on open, none later (refresh() is a no-op, so the online event reads
+   * nothing), and no activity.ping. #40 reads what it shows itself; #7 reads nothing from the network.
    */
   quiet?: boolean;
   children: ReactNode;
@@ -182,6 +183,9 @@ export function WalletProvider({
    * "Connected · syncing" while the price read still runs (#42 reconnecting: "re-fetching prices").
    */
   const refresh = useCallback(async () => {
+    // A quiet provider (the UI tab's hand-over screens) reads nothing but the state — whatever asks
+    // for a refresh (the online event, a screen's button): Scope 16, D38 (Task 15 fix round 1, I-1).
+    if (quiet) return;
     const a = accountRef.current;
     if (a === null || netRef.current.mode === 'refused') return;
     refreshingRef.current = true;
@@ -218,7 +222,7 @@ export function WalletProvider({
       refreshingRef.current = false;
       setRefreshing(false);
     }
-  }, [engine, now, failed, succeeded]);
+  }, [engine, now, failed, succeeded, quiet]);
 
   const readPending = useCallback(async () => {
     const r = await engine.pending();
@@ -312,9 +316,10 @@ export function WalletProvider({
     return () => clearInterval(t);
   }, [open, readPending]);
 
-  // activity.ping on user input, at most every 30 s (the idle timer, parent §2).
+  // activity.ping on user input, at most every 30 s (the idle timer, parent §2). Never on a quiet
+  // provider: a hand-over page does not keep the wallet unlocked (Task 15 fix round 1, m-1 ruling).
   useEffect(() => {
-    if (phase !== 'unlocked') return;
+    if (phase !== 'unlocked' || quiet) return;
     let last = now();
     const onInput = () => {
       if (now() - last < PING_EVERY_MS) return;
@@ -327,7 +332,7 @@ export function WalletProvider({
       document.removeEventListener('pointerdown', onInput);
       document.removeEventListener('keydown', onInput);
     };
-  }, [phase, engine, now]);
+  }, [phase, engine, now, quiet]);
 
   // The browser's own connectivity events: offline shows #42 at once; online refreshes.
   useEffect(() => {

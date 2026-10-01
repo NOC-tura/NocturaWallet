@@ -1,6 +1,11 @@
 // @vitest-environment happy-dom
-import {act, cleanup, fireEvent, screen, waitFor} from '@testing-library/react';
+import {act, cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react';
+import {App} from '../App';
+import {createEngine} from '../engine';
 import {renderApp} from './appHarness';
+import {setupWallet} from './harness';
+import {USE_IT_LINE} from '../screens/Created';
+import {WELCOME} from '../../unlock/strings';
 import {ACCOUNT} from '../../background/__tests__/fixtures';
 import {CLOSE_CHECK_MS} from '../ui/useCloseTab';
 import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
@@ -127,4 +132,89 @@ describe('the resume stand-in (wallet.html#/send/resume?account=…)', () => {
     expect(await screen.findByText('TOKENS')).toBeTruthy();
     expect(screen.queryByText('Open the Noctura icon to continue.')).toBeNull();
   });
+});
+
+// Task 15 fix round 1 (I-1, m-1): a quiet provider reads the state only, whatever happens in the page —
+// the browser's online event, a tab coming back into view or focus, user input (no activity.ping: a
+// hand-over page does not keep the wallet unlocked).
+const STAND_IN = `#/send/resume?account=${ACCOUNT.publicKey}`;
+async function pageEvents(): Promise<void> {
+  await act(async () => {
+    window.dispatchEvent(new Event('offline'));
+    window.dispatchEvent(new Event('online'));
+    Object.defineProperty(document, 'visibilityState', {value: 'visible', configurable: true});
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('focus'));
+    window.dispatchEvent(new Event('pageshow'));
+    // Past the 30 s ping pacing, then input.
+    vi.setSystemTime(Date.now() + 31_000);
+    fireEvent.pointerDown(document);
+    fireEvent.keyDown(document, {key: 'a'});
+  });
+  await act(async () => {
+    vi.advanceTimersByTime(50);
+  });
+}
+
+describe('a quiet provider stays quiet (fix round 1)', () => {
+  it.each([
+    ['#7', '#/created', 'Wallet created'],
+    ['the stand-in', STAND_IN, 'Open the Noctura icon to continue.'],
+  ])('%s: online, visibility, focus, pageshow and input send wallet.state only', async (_name, hash, text) => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    try {
+      const sent: string[] = [];
+      await renderApp({surface: 'tab', hash, spy: m => void sent.push((m as {type: string}).type)});
+      await screen.findByText(text);
+      await pageEvents();
+      expect(new Set(sent)).toEqual(new Set(['wallet.state']));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('negative control: the same events on #/home refresh and ping', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    try {
+      const sent: string[] = [];
+      await renderApp({surface: 'tab', hash: '#/home', spy: m => void sent.push((m as {type: string}).type)});
+      await screen.findByText('TOKENS');
+      await waitFor(() => expect(sent).toContain('activity.ping'));
+      const before = sent.length;
+      await pageEvents();
+      await waitFor(() => expect(sent.slice(before)).toEqual(expect.arrayContaining(['wallet.balances', 'wallet.prices', 'activity.ping'])));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('the hand-over screens without a wallet or an account (fix round 1)', () => {
+  it('m-3: the stand-in with no wallet shows the tab’s no-wallet screen', async () => {
+    await renderApp({surface: 'tab', hash: STAND_IN, wallet: false});
+    expect(await screen.findByText('No wallet on this browser yet.')).toBeTruthy();
+    expect(screen.queryByText('Open the Noctura icon to continue.')).toBeNull();
+  });
+
+  it('#7 with no wallet shows the tab’s no-wallet screen too', async () => {
+    await renderApp({surface: 'tab', hash: '#/created', wallet: false});
+    expect(await screen.findByText('No wallet on this browser yet.')).toBeTruthy();
+  });
+
+  it('m-2: #7 on an unlocked wallet with no account fails closed — the neutral line and [Close this tab], no [Unlock]', async () => {
+    const w = await setupWallet({surface: 'tab'});
+    const engine = createEngine(async m => {
+      const r = (await w.transport(m)) as {ok?: boolean; data?: Record<string, unknown>};
+      return (m as {type: string}).type === 'wallet.state' && r.ok === true ? {...r, data: {...r.data, accounts: [], selected: null}} : r;
+    }, async () => undefined);
+    render(<App surface="tab" engine={engine} platform={w.platform} hash="#/created" />);
+    expect(await screen.findByText('Open the Noctura icon to use it.')).toBeTruthy();
+    expect(screen.getByRole('button', {name: 'Close this tab'})).toBeTruthy();
+    expect(screen.queryByRole('button', {name: 'Unlock'})).toBeNull();
+    expect(screen.queryByText('Wallet created. Unlock it to use it.')).toBeNull();
+  });
+});
+
+it('the neutral line is the vault page’s WELCOME.useIt, word for word', () => {
+  expect(USE_IT_LINE).toBe(WELCOME.useIt);
 });

@@ -8,6 +8,8 @@ import {NoWallet} from './NoWallet';
 
 /** D10, applied to #7 as to #40 (§11.8): a tab cannot reliably open the action popup. */
 export const READY_LINE = 'Wallet is ready — open the Noctura icon';
+/** The vault page's WELCOME.useIt, in English (the UI bundle does not import the vault page's strings). */
+export const USE_IT_LINE = 'Open the Noctura icon to use it.';
 
 /**
  * #7 onboard-success (spec §3.7), in the UI tab at `#/created` — where the vault page hands over after
@@ -21,13 +23,29 @@ export function Created() {
   const tab = useCloseTab(m.platform);
   if (m.phase === 'no-wallet') return <NoWallet />;
   const account = m.wallet?.accounts.find(a => a.index === 0) ?? m.wallet?.accounts[0] ?? null;
-  if (m.phase === 'locked' || account === null) {
+  if (m.phase === 'locked') {
     return (
       <div className="screen app-center">
         <p className="noc-body">Wallet created. Unlock it to use it.</p>
         <div className="app-center-actions">
           {/* Rule 6 (§7.6): one hand-over per tap. */}
           <LockedButton onPress={() => m.platform.navigate('unlock.html?mode=unlock&return=created')}>Unlock</LockedButton>
+        </div>
+      </div>
+    );
+  }
+  if (account === null) {
+    // Unlocked but no account to show: fail closed with the vault page's own neutral line (WELCOME.useIt)
+    // — no address, no [Unlock] that would bring the user back here (Task 15 fix round 1, m-2).
+    return (
+      <div className="screen app-center">
+        <p className="noc-body">{USE_IT_LINE}</p>
+        <div className="app-center-actions">
+          {tab.refused ? null : (
+            <LockedButton className="btn btn-secondary" onPress={tab.close}>
+              Close this tab
+            </LockedButton>
+          )}
         </div>
       </div>
     );
