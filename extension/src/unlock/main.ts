@@ -8,6 +8,7 @@ import {readLocal} from '../shared/readLocal';
 import type {EnvelopeV1} from '../vault/envelope';
 import {pageMode} from './mode';
 import {startMode} from './modes';
+import {passkeyOf} from './stored';
 
 // unlock.html?mode=create|import|reauth&challenge=…|accounts|reveal shows that mode's section; no
 // mode is the unlock page below, whose handlers stay registered either way (on a hidden section).
@@ -98,7 +99,7 @@ async function handlePasskeyClick(pk: NonNullable<EnvelopeV1['passkey']>): Promi
 }
 
 void readEnvelope().then(raw => {
-  const pk = (raw as EnvelopeV1 | undefined)?.passkey;
+  const pk = passkeyOf(raw);
   if (!pk) return;
   passkeyBtn.hidden = false;
   passkeyBtn.addEventListener('click', () => void handlePasskeyClick(pk));

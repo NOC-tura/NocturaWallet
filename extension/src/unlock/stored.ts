@@ -20,3 +20,15 @@ export function storedVault(raw: unknown): StoredVault {
     return {kind: 'damaged'};
   }
 }
+
+/**
+ * The passkey a bootstrap may offer a button for — only when the stored vault reads as a whole,
+ * undamaged wallet (storedVault). Fix round 1 item 2: main.ts and modes.ts (startReauth) used to
+ * cast the raw storage read straight to `EnvelopeV1 | undefined` and read `.passkey` off it, which
+ * would show a passkey button over a damaged vault that happened to carry a passkey-shaped field.
+ * Both now call this instead.
+ */
+export function passkeyOf(raw: unknown): EnvelopeV1['passkey'] | undefined {
+  const stored = storedVault(raw);
+  return stored.kind === 'wallet' ? stored.env.passkey : undefined;
+}

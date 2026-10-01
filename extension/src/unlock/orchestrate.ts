@@ -98,18 +98,26 @@ export function wrongDelayMs(consecutiveWrong: number): number {
 }
 
 export interface WrongBackoff {
-  /** `onWait(ms)` is told how long the wait will be, so a page can show its countdown (#9's cooldown card). */
+  /**
+   * `onWait(ms)` is told how long the wait will be, so a page can show its countdown (#9's
+   * cooldown card). `ms` is a LOWER BOUND on the actual wait: it is read before `sleep(ms)` runs,
+   * so it never includes whatever `onWait` itself costs (a DOM write, a thrown error) — `run`
+   * sleeps the full `ms` regardless of what `onWait` does (see below).
+   */
   run<T extends string>(action: () => Promise<T>, onWait: (ms: number) => void): Promise<T>;
 }
 
 /**
  * Spec §2: wrong passwords get an increasing delay on top of the Argon2id cost. The streak lives
  * in this page's memory; a proven factor (`'unlocked'`, and re-authentication's `'confirmed'`,
- * the accounts' `'done'`/`'done-locked'`/`'done-not-locked'`, the reveal's `'shown'`) resets it, `'wrong'` extends it and every other
+ * the accounts' `'done'`/`'done-locked'`/`'done-not-locked'`, the reveal's `'shown'`, and #40's
+ * factor proof `'proven'`) resets it, `'wrong'` extends it and every other
  * outcome (`'damaged'` and `'mismatch-locked'` included — neither is a guess) leaves it as it is.
  * The delay runs INSIDE `run`, so a caller that wraps `run` in `runExclusive` keeps the busy
  * gate (and the disabled buttons) held for the whole wait. `sleep` is injected so the sequence is
- * testable without a clock.
+ * testable without a clock. `onWait` runs in a `try/finally` around `sleep`: a throwing `onWait`
+ * (a page bug in the countdown UI) must never skip the delay itself — that would let a page defeat
+ * the backoff just by breaking its own display of it.
  */
 /** Outcomes that proved the factor: unlocked, re-auth confirmed, accounts changed (even if then locked), phrase shown, #40's factor proof. */
 const PROVEN: readonly string[] = ['unlocked', 'confirmed', 'done', 'done-locked', 'done-not-locked', 'shown', 'proven'];
@@ -120,14 +128,17 @@ export function createWrongBackoff(sleep: (ms: number) => Promise<void>): WrongB
     async run(action, onWait) {
       const outcome = await action();
       // A proven factor ends the streak — it unlocked the vault, confirmed a re-authentication,
-      // changed the accounts or showed the phrase.
+      // changed the accounts, showed the phrase or proved a factor (#40).
       if (PROVEN.includes(outcome)) streak = 0;
       if (outcome !== 'wrong') return outcome;
       streak += 1;
       const ms = wrongDelayMs(streak);
       if (ms > 0) {
-        onWait(ms);
-        await sleep(ms);
+        try {
+          onWait(ms);
+        } finally {
+          await sleep(ms);
+        }
       }
       return outcome;
     },

@@ -33,7 +33,15 @@ describe('attemptUnlock — the caller-owned prfOutput is zeroed on every path',
 
   // Plan-1 carry: the background calls a stored null (or any non-envelope) stored-invalid; the page
   // used to call it "no wallet" and offer setup over it. It is damaged, never sent to unlockFlow.
-  it.each([null, [], 'v1', {...FAKE_ENV, accounts: []}])('a stored %j is damaged, not "no wallet", and zeroes prfOutput', async stored => {
+  // An object table, not a bare array: it.each spreads a row that is itself an array (e.g. `[]`) into
+  // zero title arguments, printing "undefined" for that case (Fable review, fix round 1 item 6) — a
+  // named `$label` field sidesteps that rather than relying on the row's own shape.
+  it.each([
+    {label: 'null', stored: null},
+    {label: '[]', stored: []},
+    {label: '"v1"', stored: 'v1'},
+    {label: 'an envelope with no accounts', stored: {...FAKE_ENV, accounts: []}},
+  ])('a stored $label is damaged, not "no wallet", and zeroes prfOutput', async ({stored}) => {
     const prfOutput = new Uint8Array(32).fill(7);
     const unlockFlow = vi.fn(async () => 'unlocked' as const);
     expect(await attemptUnlock({readEnvelope: async () => stored, send: async () => ({ok: true}), unlockFlow}, {prfOutput})).toBe('damaged');
@@ -217,6 +225,22 @@ describe('wrong-password backoff (spec §2: an increasing delay on top of the Ar
     const told: number[] = [];
     for (let i = 0; i < 4; i++) await backoff.run(async () => 'wrong' as Outcome, ms => told.push(ms));
     expect(told).toEqual([1000, 2000, 4000]);
+  });
+
+  // Fix round 1 item 3: a throwing onWait (a page bug in the countdown UI) must never skip the
+  // delay itself — that would let a broken display defeat the backoff.
+  it('still sleeps the full delay when onWait throws', async () => {
+    const {slept, sleep} = recordingSleep();
+    const backoff = createWrongBackoff(sleep);
+    // The first consecutive wrong has no delay (ms === 0, §2) — onWait is not even called — so the
+    // throwing onWait has to be the second, where wrongDelayMs(2) === 1000.
+    await backoff.run(async () => 'wrong' as Outcome, () => undefined);
+    await expect(
+      backoff.run(async () => 'wrong' as Outcome, () => {
+        throw new Error('countdown UI bug');
+      }),
+    ).rejects.toThrow('countdown UI bug');
+    expect(slept).toEqual([1000]);
   });
 
   it("resets on #40's factor proof ('proven'), as on unlocked", async () => {

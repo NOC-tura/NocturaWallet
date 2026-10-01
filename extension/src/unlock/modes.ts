@@ -9,9 +9,9 @@ import type {PageMode} from './mode';
 import {workerKdf} from '../vault/kdf';
 import {evaluatePrf} from '../vault/passkey';
 import {unb64} from '../vault/bytes';
-import type {EnvelopeV1} from '../vault/envelope';
 import {send} from '../ui/send';
 import {readLocal} from '../shared/readLocal';
+import {passkeyOf} from './stored';
 
 // Thin page modes for B1b-1 (the owner's screens arrive in B1b-2). The vault page renders only its
 // own fixed strings (spec §1): every status line is a literal below, and the only other text it
@@ -194,7 +194,7 @@ function startReauth(challengeId: string): void {
     });
   });
   void store.readEnvelope().then(raw => {
-    const pk = (raw as EnvelopeV1 | undefined)?.passkey;
+    const pk = passkeyOf(raw);
     if (!pk) return;
     const button = $<HTMLButtonElement>('reauth-passkey');
     button.hidden = false;
