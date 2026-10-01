@@ -24,6 +24,15 @@
 // boundary is the browser's (the extension CSP: style-src, img-src and font-src 'self', fix round 4); the
 // CSS rules here — the sheets read by scripts/css-scan.mjs, the page's HTML parsed, the code's runtime
 // CSS refused — are the backstop that names an escape before a reviewer has to find it.
+//
+// Known limits of that backstop (fix round 5), each accepted because under the CSP it can at most change
+// how the vault page looks, never load anything (no remote sheet, image or font; no inline <style> or
+// style attribute):
+// - a member read of `.style` by a name computed at run time (`body[location.hash.slice(1)]`) — the
+//   computed-member rules see a computed write or call, not every computed read;
+// - a type cast into the `--vlt-` formatter (`ringShare(x as unknown as number)`) — the rule trusts the
+//   parameter's `number` type, which only tsc enforces;
+// - an aliased `h` (`import {h as make}`) — the computed-tag rule checks calls of `h` by that name only.
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import {dirname, join, posix, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -121,6 +130,10 @@ export const RUNTIME_CSS = [
   [/\b(?:CSSStyleSheet|CSSRule|adoptedStyleSheets|styleSheets|insertRule|replaceSync)\b|\.\s*sheet\b/, 'builds a stylesheet at run time'],
   [/\bsetAttribute(?:NS)?\s*\(\s*(?:[^,()]*,\s*)?(['"`])style\1/i, 'sets a style attribute'],
   [/\b(?:cssText|attributeStyleMap|setProperty)\b/, 'writes CSS declarations'],
+  // createElement taken as a value (fix round 5): `document.createElement.bind(document)('style')`,
+  // `const ce = d.createElement; ce.call(d, 'style')` — the tag is then out of the call rules' sight.
+  // dom.ts's h() calls it directly, which this does not touch.
+  [/\bcreateElement(?:NS)?\b(?!\s*\()/, 'takes createElement as a value'],
   // An element's inline style, by any access (`.style`, `?.style`, `['style']`, a destructuring key). A
   // CSSOM write is allowed by the CSP, so only this rule keeps it out; the vault page toggles classes.
   [/(?:\?\.|\.)\s*style\b|\[\s*(['"`])style\1\s*\]|[{,]\s*style\s*[,}:=]/, 'reaches an element’s inline style'],
@@ -719,10 +732,10 @@ export const BUILT_REFLECTION =
   /\b(?:defineProperty|getOwnPropertyDescriptor)\b(?!\s*\(\s*[\w$.]+\s*,\s*(["'`])[\w$]+\1\s*[,)])|\b(?:__lookupSetter__|__defineSetter__|__lookupGetter__|__defineGetter__)\b(?!\s*\(\s*(["'`])[\w$]+\2\s*[,)])|\b(?:defineProperties|getOwnPropertyDescriptors)\b/;
 // CSS built at run time in a chunk the vault page loads (fix round 4): a <style> or <link> element, a
 // constructed or adopted sheet, an inserted rule, a style attribute, declaration text, an element's inline
-// style (`.style`, `["style"]`, `setProperty`). A computed
+// style (`.style`, `["style"]`, `setProperty`), createElement taken as a value (fix round 5). A computed
 // createElement is the h() helper's (dom.ts) and is not refused here; the source rule checks its callers.
 export const BUILT_STYLE =
-  /createElement(?:NS)?\(\s*(?:[^,()]*,\s*)?(["'`])(?:style|link)\1|\b(?:CSSStyleSheet|CSSRule|adoptedStyleSheets|styleSheets|insertRule|replaceSync|cssText|attributeStyleMap)\b|setAttribute(?:NS)?\(\s*(?:[^,()]*,\s*)?(["'`])style\2|\.style\b|\[\s*(["'`])style\3\s*\]|\bsetProperty\b/i;
+  /createElement(?:NS)?\(\s*(?:[^,()]*,\s*)?(["'`])(?:style|link)\1|\b(?:CSSStyleSheet|CSSRule|adoptedStyleSheets|styleSheets|insertRule|replaceSync|cssText|attributeStyleMap)\b|setAttribute(?:NS)?\(\s*(?:[^,()]*,\s*)?(["'`])style\2|\.style\b|\[\s*(["'`])style\3\s*\]|\bsetProperty\b|\bcreateElement(?:NS)?\b\s*[^\s(]/i;
 const BUILT_VLT_WRITE = /\.style\.setProperty\((["'`])--vlt-[a-z-]+\1,/g;
 const BUILT_URL = /\bnew\s+URL\s*\(\s*(['"`])([^'"`$]+)\1\s*,\s*import\.meta\.url/g;
 

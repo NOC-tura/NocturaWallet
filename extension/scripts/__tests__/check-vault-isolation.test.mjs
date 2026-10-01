@@ -588,6 +588,16 @@ describe('vault isolation (built output)', () => {
     expect(bundleViolations(dir)).toEqual([`assets/base-1.js (reachable from unlock.html) builds CSS at run time (${name}) — the vault page is styled by its built stylesheets only`]);
   });
 
+  // Fix round 5: createElement taken as a value in a chunk the vault page loads.
+  it.each([
+    ['const s=document.createElement.bind(document)("style")', 'createElement.'],
+    ['const c=n.createElement;c.call(n,"style")', 'createElement;'],
+    ['const{createElement:c}=document', 'createElement:'],
+  ])('fails when a chunk the vault page loads takes createElement as a value: %s', (code, name) => {
+    write('assets/base-1.js', `export const n=(n,t,e)=>{${code}};`);
+    expect(bundleViolations(dir)).toEqual([`assets/base-1.js (reachable from unlock.html) builds CSS at run time (${name}) — the vault page is styled by its built stylesheets only`]);
+  });
+
   it('a computed createElement is the h() helper’s, and is not CSS (negative control); CSS in a popup-only chunk is not the vault page’s', () => {
     write('assets/base-1.js', 'export const n=(e,t)=>{const r=document.createElement(e);return r.className=t,r};');
     write('assets/send-1.js', 'export const t=e=>{const s=document.createElement("style");return s};');
@@ -1381,6 +1391,11 @@ describe('plan 2: the vault-page screens stay inside the boundary', () => {
     ['const e = document.createElement(tag);', 'creates an element by a computed tag'],
     ["const e = document.createElementNS(ns, 'svg' + x);", 'creates an element by a computed tag'],
     ['const e = h(tag);', 'creates an element by a computed tag'],
+    // Fix round 5: createElement taken as a value, then called with 'style' out of the gate's sight.
+    ["const s = document.createElement.bind(document)('style');", 'takes createElement as a value'],
+    ["const ce = d.createElement; ce.call(d, 'style');", 'takes createElement as a value'],
+    ["const {createElement} = document;", 'takes createElement as a value'],
+    ["const ns = document.createElementNS.apply(document, args);", 'takes createElement as a value'],
     // An element's inline style, by any access (the CSP allows a CSSOM write; the ruling refuses it here).
     ["document.body.style.backgroundImage = 'url(https://example.invalid/a)';", 'reaches an element’s inline style'],
     ["el.style['background-image'] = v;", 'reaches an element’s inline style'],

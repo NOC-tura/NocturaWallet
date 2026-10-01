@@ -186,7 +186,7 @@ mutation test in `scripts/__tests__`):
   covers `<script>`. A Vite-injected `<link rel="stylesheet">` is not a script and stays allowed.
 - `BACKGROUND_OWNED_KEYS` gains `v1_balance_cache` and `v1_price_cache` (E4).
 - `vault.challengeInfo` (E3) and `vault.forgetWallet` (E5) join `VAULT_PAGE_ONLY`.
-- *The browser keeps CSS off the vault page (controller hardening, 2026-10-01).* A stylesheet on the
+- *The browser keeps every CSS *load* off the vault page (controller hardening, 2026-10-01).* A stylesheet on the
   page that holds the seed and the password is an exfiltration surface: an attribute selector on an
   input's value plus a `url()` reads the field. Three review rounds of the text gates each found a new
   spelling that reached the built page, so the extension CSP now enforces it in the browser: it gains
@@ -206,7 +206,11 @@ mutation test in `scripts/__tests__`):
   #9/#10's conic-gradient cooldown ring): exactly `<el>.style.setProperty('--vlt-<name>', <value>)`,
   the name a literal matching `^--vlt-[a-z-]+$`, the value formatted from a number inside the same
   module (`ringShare(n: number)` in `view/cooldown.ts`), never a string parameter, `url(`, `var(` or
-  a quote; the built chunks may carry only that literal shape.
+  a quote; the built chunks may carry only that literal shape. `createElement` taken as a value
+  (`.bind`, `.call`, a destructured or assigned reference) is refused too. The gates are a backstop,
+  with known limits: a member read of `.style` by a name computed at run time
+  (`body[location.hash…]`), a type cast into the `--vlt-` formatter, and an aliased `h`. Under the
+  CSP each of these can at most change how the page looks, never load anything.
 - *Fonts from the vault page (review L5).* `design-system.css` loads `/fonts/*.woff2` by an
   absolute path. With Vite's `base: './'` a `public/` asset referenced absolutely stays
   `/fonts/…`, which resolves against the extension origin's root from any page, the vault page
