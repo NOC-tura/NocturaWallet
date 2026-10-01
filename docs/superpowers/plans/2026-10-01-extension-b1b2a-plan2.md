@@ -5195,7 +5195,7 @@ export function mountConfirm(deps: PageDeps, next: {back(): void; done(): void})
     if (resetting !== null || success) return;
     const at = filled.findIndex(x => x === null);
     if (at < 0) return;
-    filled[at] = w;
+    filled.splice(at, 1, w);
     if (w !== plan.slots[at]?.word) {
       resetting = deps.timers.setTimeout(() => {
         resetting = null;
