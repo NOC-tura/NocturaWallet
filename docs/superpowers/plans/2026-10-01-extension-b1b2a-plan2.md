@@ -22,21 +22,21 @@
 
 **Not in plan 2 (plan 3's, spec §12 item 3):** #12, #19, #20, #21, #43's opener, #44, #54, `wallet.send` from any screen, the popup's `preparedFor` resume, E2E specs 4, 5 and 11. Plan 2 adds no engine change: every message it uses (`vault.challengeInfo`, `vault.forgetWallet`, `wallet.discardPrepared`, `wallet.probeBalances`, the B1b-1 vault messages) merged in plan 1.
 
-**Departures, decisions and contradictions — stated.** The plan-2 review (Fable, `.superpowers/sdd/b1b2a-plan2-review-1.md`: approve after fixes) ruled on each contradiction below; each ruling is quoted with the item, and every spec amendment it names is a spec-editing step (Tasks 12 and 18). **Every controller addition is marked "controller addition — awaiting the owner"** in the code comments and the spec: the owner has not confirmed any of them yet.
+**Departures, decisions and contradictions — stated.** The plan-2 review (Fable, `.superpowers/sdd/b1b2a-plan2-review-1.md`: approve after fixes) ruled on each contradiction below; each ruling is quoted with the item, and every spec amendment it names is a spec-editing step (Tasks 12 and 18). **Every controller addition is marked "controller addition — confirmed by the owner 2026-10-01"** in the code comments and the spec: the owner has not confirmed any of them yet.
 1. **#3's CTA** reads "I've written it down" (disabled until one full hold) and, in `confirmed`, "Continue" — as the design's 3e draws it. Spec §3.3 writes "`confirmed`: … `[I've written it down]` → #4"; both labels go to #4. **Ruled (ruling 1): the plan is right** (the design is binding); Task 18 amends §3.3's `confirmed` line to "`[Continue]` → #4", noting that 3b–3d read "I've written it down".
 2. **#4's pool** is one pool of nine words: each slot's word with two BIP-39 distractors of the same first letter, none of them a phrase word — the design's 4a rows ("orchid coral circle / vendor voyage vintage / lift linger latch"). Spec §3.4's "1 correct + 8 BIP-39 distractors per slot" is read as "of the nine, one is right for each slot". **Ruled (ruling 6): the plan is right**; Task 18 rewords §3.4 to "a pool of nine: each slot's word with two BIP-39 distractors of the same first letter, none a phrase word".
 3. **#8 keeps an editable field.** The design draws the words only in the mono cell grid; a browser needs a field to type and correct a phrase. The field sits inside the design's `.ta-wrap`, the grid shows the words typed so far under it, and the counter targets 12 words up to 12, then 24. Spec Differs entry added (Task 18).
 4. **#10's "Network fee" includes the priority fee.** Spec §4.5 defines the fee rows "the same on #19, #20, #10", but `vault.challengeInfo`'s `about` (E3, merged) carries `networkLamports` and no `priorityLamports`, so #10 cannot split them. A zero Noctura fee shows its reason line (the carried rule, §4.5); §3.10's "each its own line when non-zero" is read as applying to the fee amounts. `charged` with a zero fee is not described (fail closed). **Ruled (ruling 2): accepted for plan 2** — "Network fee" = `networkLamports` (priority included) on #10, declared in §3.10's Differs. The controller asked for `about` to be extended with `priorityLamports` (validated in the closed alphabet) *unless the review ruled otherwise*; it did, and the plan follows it: plan 2 is UI-only (§12 — "plan 2 adds no engine change"), and the field would change the merged E3 record the background validates key by key (`isAbout`'s exact 11 keys), the challenge store, its tests and the page renderer together — the engine change belongs with the screens that need the split, #19 and #20, which plan 3 builds. Plan 3's carry list has it (end of this plan). The reason-line reading is right: the amounts appear when non-zero, a zero Noctura fee always shows its reason, and `charged` with 0 fails closed.
 5. **E5 `busy` has two copies in the spec** (E5 step 5's "…Nothing was deleted; the wallet is locked. Start again." and #8's "The wallet changed while you were typing. Start again."); the page cannot tell a step-1 `busy` (nothing locked) from a step-5 one (locked), so it always shows #8's line, which is true in both. **Ruled (ruling 3): one line, #8's**; Task 12 amends E5 step 5's page sentence to point at §3.8's line (the `unlocked` line stays separate).
-6. **The vault page reads a stored null as damaged** (carry 3): `src/unlock/stored.ts` gives the background's three answers (absent = no wallet; an envelope = a wallet; anything else = damaged). Every flow reads through it. **What the page shows instead of a repair** (#37 is B1b-2b): "This wallet's stored data is damaged." + "Your funds stay on Solana; your recovery phrase still controls them." with no setup and no password field — on #1, #9, #10, #8 (restore/retry). The plan-2 review's copy verdict: true, but it left the user no next step while #37 is B1b-2b, so the line now reads "Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase." (the second sentence is the spec's own `not-this-wallet` advice) — **controller addition — awaiting the owner**.
-7. **E5's `unlocked`** (carry 4) gets its own line on #39's restore and #40's retry (both on #8): "The wallet was unlocked while this was running, so nothing was deleted. Start again." + `[Start again]` — **controller addition — awaiting the owner**, added to the spec (Task 12). The review: true and clear; accepted.
+6. **The vault page reads a stored null as damaged** (carry 3): `src/unlock/stored.ts` gives the background's three answers (absent = no wallet; an envelope = a wallet; anything else = damaged). Every flow reads through it. **What the page shows instead of a repair** (#37 is B1b-2b): "This wallet's stored data is damaged." + "Your funds stay on Solana; your recovery phrase still controls them." with no setup and no password field — on #1, #9, #10, #8 (restore/retry). The plan-2 review's copy verdict: true, but it left the user no next step while #37 is B1b-2b, so the line now reads "Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase." (the second sentence is the spec's own `not-this-wallet` advice) — **controller addition — confirmed by the owner 2026-10-01**.
+7. **E5's `unlocked`** (carry 4) gets its own line on #39's restore and #40's retry (both on #8): "The wallet was unlocked while this was running, so nothing was deleted. Start again." + `[Start again]` — **controller addition — confirmed by the owner 2026-10-01**, added to the spec (Task 12). The review: true and clear; accepted.
 8. **Spec E2E 10's "'Verified · sent before' on #12 (D40)"** cannot run in plan 2 (#12 is plan 3's). Spec 10 checks the engine message #12 reads instead: `wallet.recipientInfo` answers `known: true` for the recipient after the restore. **Ruled (ruling 4): accepted for plan 2**; Task 18 records it in §8.5, and plan 3 restores "Verified · sent before" on #12, folded into spec 11 (plan-3 carry).
 9. **Spec E2E 1's `document.fonts.check('16px Geist')`** returns true when no face named Geist exists at all. Spec 1 also asserts that `document.fonts.load('16px Geist')` loads at least one face. **Ruled (ruling 5): `load()` → ≥ 1 face is the real assertion, `check()` stays beside it**; Task 18 amends §1.2's last bullet and §8.5 spec 1.
-10. **#39's step copy** the spec does not give (step 1's card 2 and card 3 bodies, step 2's lede and card 3, step 3's card 3) is adapted from the design's sentences with the spec's own words (Task 12) — **controller adaptations — awaiting the owner**, listed in the spec's #39 Differs (Task 18). **Ruled (ruling 7): accepted**; the step-2 lede "Type or paste the 12 or 24 words, in order." is true and clear (the design's "type the first 3 letters" describes a picker #8 lacks).
+10. **#39's step copy** the spec does not give (step 1's card 2 and card 3 bodies, step 2's lede and card 3, step 3's card 3) is adapted from the design's sentences with the spec's own words (Task 12) — **controller adaptations — confirmed by the owner 2026-10-01**, listed in the spec's #39 Differs (Task 18). **Ruled (ruling 7): accepted**; the step-2 lede "Type or paste the 12 or 24 words, in order." is true and clear (the design's "type the first 3 letters" describes a picker #8 lacks).
 11. **The design's `.s-secintro` scope on #39 and #40 is not carried**: none of its rules applies to their cards, and the plan's ancestor-aware coverage check (Task 5) flags a class that styles nothing.
-12. **#6 has no back arrow** (the wallet is already stored when it shows); **#5 on the restore path** reads "Recovery" (#39's eyebrow) with "Restore · 2 / 2"; **#10's cooldown button** reads "Confirm paused" and **a settings challenge's cancel** reads "Cancel" (only closes the tab; the challenge simply expires — noted in the spec) — the last two are **controller additions — awaiting the owner** (review: both clear; accepted).
-13. **`[Start again]`** (the button the `busy`/`unlocked` lines offer: → #39 on the restore path, → the retry path's start on the retry path) is a **controller addition — awaiting the owner** (review: clear; accepted).
-14. **#40 reads at most six accounts** — spec §3.12's Engine line says so ("sequential, ≤ 6"); what it did not say is what the screen says past six. **Ruled (ruling 8): keep `MAX_READ = 6`, and the copy never claims accounts it did not read** (review M2): past six, "N accounts · M tokens recovered from the first 6." and "across the first 6 of N accounts" — **controller addition — awaiting the owner**; a wallet with more never shows `no-assets-empty`. Its "≈ X SOL" is truncated, never rounded up (plan-1 ruling L6, review M1); under the address chip, #7's "Copying puts the address on your clipboard. Noctura does not clear it afterwards." (the carried rule; the spec's #40 copy omitted it — **controller addition — awaiting the owner**, review M3). The address is in groups of four, not the design's 6+6 `.ck` highlight (§11.7); one token reads "1 token" (**controller addition — awaiting the owner**; review: accepted).
+12. **#6 has no back arrow** (the wallet is already stored when it shows); **#5 on the restore path** reads "Recovery" (#39's eyebrow) with "Restore · 2 / 2"; **#10's cooldown button** reads "Confirm paused" and **a settings challenge's cancel** reads "Cancel" (only closes the tab; the challenge simply expires — noted in the spec) — the last two are **controller additions — confirmed by the owner 2026-10-01** (review: both clear; accepted).
+13. **`[Start again]`** (the button the `busy`/`unlocked` lines offer: → #39 on the restore path, → the retry path's start on the retry path) is a **controller addition — confirmed by the owner 2026-10-01** (review: clear; accepted).
+14. **#40 reads at most six accounts** — spec §3.12's Engine line says so ("sequential, ≤ 6"); what it did not say is what the screen says past six. **Ruled (ruling 8): keep `MAX_READ = 6`, and the copy never claims accounts it did not read** (review M2): past six, "N accounts · M tokens recovered from the first 6." and "across the first 6 of N accounts" — **controller addition — confirmed by the owner 2026-10-01**; a wallet with more never shows `no-assets-empty`. Its "≈ X SOL" is truncated, never rounded up (plan-1 ruling L6, review M1); under the address chip, #7's "Copying puts the address on your clipboard. Noctura does not clear it afterwards." (the carried rule; the spec's #40 copy omitted it — **controller addition — confirmed by the owner 2026-10-01**, review M3). The address is in groups of four, not the design's 6+6 `.ck` highlight (§11.7); one token reads "1 token" (**controller addition — confirmed by the owner 2026-10-01**; review: accepted).
 15. **The vault page's 500 ms floor** (rule 6, §7.6) is `exclusive()` in `src/unlock/page.ts`: the page's one busy gate held until the action settles and 500 ms have passed. The gate also tells every mounted screen when it frees up — an action begun on #5 ends on #6, whose buttons must come back (the dry run caught #6's Skip staying disabled).
 16. **The UI tab's hand-over screens run a quiet provider** (`WalletProvider quiet`): `wallet.state` only — #7 reads nothing from the network, #40 reads its own balances (one account at a time) and the prices, the resume stand-in reads nothing. Without it, #40 would read account 0 twice.
 17. **Two departures from plan 1's gates, both tightenings:** the vault isolation gate forbids writing markup in `src/unlock` (`innerHTML`, `outerHTML`, `insertAdjacentHTML`, `createContextualFragment`, `DOMParser`, `srcdoc`, `document.write`); the class gate now covers `unlock.html` and `src/unlock` (a vault-page class must be a literal string). Its stand-alone rule now ignores prose that a loose pattern reads as an import ("Continue to import" in `strings.ts`) — the vault-page walk already filtered the same way; a real import still fails (fixture).
@@ -44,9 +44,9 @@
 19. **What holds the seed, the keys and the password, and for how long** (review H2; the brief's priority 1). Stated per run, each with a test:
     - **the create run's phrase** — `createCreateRun`'s closure, from #3's first show until the wallet is stored (`created`, `created-locked`, `exists`), and with the page. #3 and #4 drop their own references whenever they are left (#3's `clear()` empties its `words`; #4 empties its plan) — after the store nothing on the page holds it (Tasks 7, 8).
     - **the phrase on #8** (plain import, restore, retry) — kept while the page is open, **a hidden tab included**: §3.5's hidden-tab rule is the password's, and dropping the phrase under an open #5 would end the run on an untrue "That is not a valid 12- or 24-word recovery phrase." (review M4). It goes when the wallet is stored, at every other end of the run, on Back (into the field, not memory), and with the page (`pagehide`). The restore run's seed proof holds the phrase too and has the same lifetime (review H2(c): allowed, stated).
-    - **passwords** — #5's typed passwords and the one a `[Try again]` holds go when the tab is hidden (§3.5's rule wins over E5's "kept while this page stays open"; review L5); #5 then reads "Enter a new password to try again." (**controller addition — awaiting the owner**). #6's password (held for the passkey) goes when #6 ends or the tab is hidden (#6 then asks for it once more).
+    - **passwords** — #5's typed passwords and the one a `[Try again]` holds go when the tab is hidden (§3.5's rule wins over E5's "kept while this page stays open"; review L5); #5 then reads "Enter a new password to try again." (**controller addition — confirmed by the owner 2026-10-01**). #6's password (held for the passkey) goes when #6 ends or the tab is hidden (#6 then asks for it once more).
     - **the retry run's B prepared** (`PreparedWallet`: B's envelope **and its session secret keys**) — exists only behind a pending `[Try again]`; it goes at every end of the run (stored, every `stop`, every notice, Back) **and whenever the tab is hidden**, with the password it was encrypted under — B is encrypted again under the password typed next. **The factor proof** (a revision stamp: no key material — the data key is zeroed at once) goes at every end of the run and on Back; it is **kept on a hidden tab**, like the phrase, because dropping it there would end an open #5 on "Something went wrong" — a departure from the review's literal "drop next/proof on hidden unless a retry is pending", made for the same reason as M4, with the key material (B prepared) dropped on hidden unconditionally. `RetryRun.holds()` reports the three references; the retry tests assert them after every terminal outcome (Task 13).
-20. **#10's `undescribable` is still a prepared send** (review H1): `[Cancel send]` discards it by its account, re-validated by itself, then says "Send cancelled. Nothing was sent."; when even the account is not an address the button reads `[Close]` and the line is "Nothing was sent. Start the send again from the Noctura icon." — never "cancelled" (**both controller additions — awaiting the owner**). In every other notice with nothing to cancel the top bar's X closes the tab and claims nothing (review L4).
+20. **#10's `undescribable` is still a prepared send** (review H1): `[Cancel send]` discards it by its account, re-validated by itself, then says "Send cancelled. Nothing was sent."; when even the account is not an address the button reads `[Close]` and the line is "Nothing was sent. Start the send again from the Noctura icon." — never "cancelled" (**both controller additions — confirmed by the owner 2026-10-01**). In every other notice with nothing to cancel the top bar's X closes the tab and claims nothing (review L4).
 21. **A latent bug the review fixes surfaced** (Task 13): before H2, a `[Try again]` after a hidden tab re-used B prepared under the password §3.5 had just dropped — the user typed a new password and B was stored under the old one. Dropping B prepared on hidden fixes it; a test stores B under the new password and proves the old one fails.
 
 ## Global Constraints
@@ -1833,7 +1833,7 @@ Create `extension/src/unlock/strings.ts`:
 export const COMMON = {
   damaged: "This wallet's stored data is damaged.",
   /**
-   * Controller addition — awaiting the owner (plan 2, carry 3; its next step per the plan-2 review): what the
+   * Controller addition — confirmed by the owner 2026-10-01 (plan 2, carry 3; its next step per the plan-2 review): what the
    * page says beside `damaged` where nothing can repair it yet (#37 is B1b-2b).
    */
   damagedHelp: 'Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase.',
@@ -3426,7 +3426,7 @@ git commit -m "feat(extension): the vault page’s shell — the design classes 
 - Consumes: Tasks 1, 3, 4, 5.
 - Produces: `src/unlock/screens/welcome.ts`: `mountWelcome(deps: PageDeps, next: {create(): void; import(): void}): {show(): Promise<void>}`; `mountIntro(next: {back(): void; continue(): void}): {show(): void}`; `strings.ts`: `WELCOME.useIt`; test helpers `loadPage()`, `harness(o)`, `testKdf`, `UNLOCK_SENDER`, `text`, `el`, `visible`, `unstyled(screenId)`, `click`, `type`
 
-Spec §3.1 and §3.2. #1 replaces plan 1's minimal `welcome` section (wired in Task 8). What is stored decides first, and the CTAs stay hidden until the vault read says there is no wallet: a wallet → `exists` ("A wallet already exists in this browser. Nothing was changed." + "Open the Noctura icon to use it.", no CTAs); a damaged vault (null included, Task 1) → "This wallet's stored data is damaged." + "Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase." (controller addition — awaiting the owner, Scope 6; the next step per the plan-2 review), no CTAs. Idle: the design's logo, wordmark and tagline; two trust chips (no "ZK-private", D6); the terms line as plain text (B1e); `[Create new wallet]` and `[I have a wallet]`. #2: eyebrow "Onboarding", "1 / 5", the three adapted layer cards (D7, D9), the footer, Continue → #3, back → #1. `src/unlock/__tests__/pageHarness.ts` (new) loads the real `unlock.html` into happy-dom and wires a page to the real background.
+Spec §3.1 and §3.2. #1 replaces plan 1's minimal `welcome` section (wired in Task 8). What is stored decides first, and the CTAs stay hidden until the vault read says there is no wallet: a wallet → `exists` ("A wallet already exists in this browser. Nothing was changed." + "Open the Noctura icon to use it.", no CTAs); a damaged vault (null included, Task 1) → "This wallet's stored data is damaged." + "Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase." (controller addition — confirmed by the owner 2026-10-01, Scope 6; the next step per the plan-2 review), no CTAs. Idle: the design's logo, wordmark and tagline; two trust chips (no "ZK-private", D6); the terms line as plain text (B1e); `[Create new wallet]` and `[I have a wallet]`. #2: eyebrow "Onboarding", "1 / 5", the three adapted layer cards (D7, D9), the footer, Continue → #3, back → #1. `src/unlock/__tests__/pageHarness.ts` (new) loads the real `unlock.html` into happy-dom and wires a page to the real background.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -7655,7 +7655,7 @@ git commit -m "feat(extension): #9 unlock — the cooldown card, passkey, return
 - Consumes: Tasks 1, 3, 4, 5, 8, 10; `runReauth` (Task 3), the resume target (Task 4).
 - Produces: `src/unlock/screens/reauth.ts`: `mountReauth(deps): {show(challengeId: string): Promise<void>}`; `strings.ts`: `REAUTH.aboutSend`, `aboutChange`, `to`, `cancelSend`, `cancel`, `close`, `nothingSent`
 
-Spec §3.10 (D7, D11, D12, D38, D39, E3, E7). `loading` ("Reading the details…") → `vault.challengeInfo` (Task 3). `idle`: the top bar's X and "Confirm with password", "You are about to send", the exact amount and the token from the page's own table, "To" + the **full recipient in groups of four**, "Network fee" and the Noctura-fee line (or its reason) and "New token account" when non-zero (Scope 4), "Enter your password", one fixed line per engine reason, `[Confirm]`, `[Confirm with passkey]` when the envelope has one, `[Cancel send]`. `error` ("That did not confirm it."), `cooldown` (#9's card with "That did not confirm it. Wait a moment before trying again." and `[Confirm paused]`, controller addition), `undescribable` ("The details of this action could not be shown." with **only** `[Cancel send]` — no Confirm, no field; it discards the send by the account `readChallenge` re-validated by itself, and when even that is not an address the button is `[Close]` with "Nothing was sent. Start the send again from the Noctura icon." — no "cancelled" — both controller additions awaiting the owner, plan-2 review H1), `not-unlocked` (+ `[Unlock]` → `?mode=unlock`, no return target, M7), `mismatch-locked`, `expired` (from `challengeInfo` **or** `vault.reauthOk`, D39), `damaged`, `no-wallet`. `confirmed` → `location.replace('wallet.html#/send/resume?account=…')` in the same tab — **nothing is sent from #10** (D38). `[Cancel send]` and the X → `wallet.discardPrepared {account}` first; only when the background says ok: "Send cancelled. Nothing was sent." and the tab closes; a refused discard says "Something went wrong. Try again." and keeps the screen. A settings challenge (B1b-2b's) shows "You are about to change" and its lines; confirmed → "Confirmed. You can close this tab."; its cancel ("Cancel", controller addition — awaiting the owner) only closes the tab and the challenge simply expires. In every other notice (`expired`, `not-unlocked`, `mismatch-locked`, `damaged`, `no-wallet`) the top bar's X closes the tab and claims nothing (plan-2 review L4). Rule 6: a second `[Cancel send]` (or the X) before the first settles sends one `wallet.discardPrepared` (M6). `wallet.spec.ts`'s re-authentication goes through #10 and asserts the hand-over URL and that nothing was broadcast.
+Spec §3.10 (D7, D11, D12, D38, D39, E3, E7). `loading` ("Reading the details…") → `vault.challengeInfo` (Task 3). `idle`: the top bar's X and "Confirm with password", "You are about to send", the exact amount and the token from the page's own table, "To" + the **full recipient in groups of four**, "Network fee" and the Noctura-fee line (or its reason) and "New token account" when non-zero (Scope 4), "Enter your password", one fixed line per engine reason, `[Confirm]`, `[Confirm with passkey]` when the envelope has one, `[Cancel send]`. `error` ("That did not confirm it."), `cooldown` (#9's card with "That did not confirm it. Wait a moment before trying again." and `[Confirm paused]`, controller addition), `undescribable` ("The details of this action could not be shown." with **only** `[Cancel send]` — no Confirm, no field; it discards the send by the account `readChallenge` re-validated by itself, and when even that is not an address the button is `[Close]` with "Nothing was sent. Start the send again from the Noctura icon." — no "cancelled" — both controller additions, confirmed by the owner 2026-10-01, plan-2 review H1), `not-unlocked` (+ `[Unlock]` → `?mode=unlock`, no return target, M7), `mismatch-locked`, `expired` (from `challengeInfo` **or** `vault.reauthOk`, D39), `damaged`, `no-wallet`. `confirmed` → `location.replace('wallet.html#/send/resume?account=…')` in the same tab — **nothing is sent from #10** (D38). `[Cancel send]` and the X → `wallet.discardPrepared {account}` first; only when the background says ok: "Send cancelled. Nothing was sent." and the tab closes; a refused discard says "Something went wrong. Try again." and keeps the screen. A settings challenge (B1b-2b's) shows "You are about to change" and its lines; confirmed → "Confirmed. You can close this tab."; its cancel ("Cancel", controller addition — confirmed by the owner 2026-10-01) only closes the tab and the challenge simply expires. In every other notice (`expired`, `not-unlocked`, `mismatch-locked`, `damaged`, `no-wallet`) the top bar's X closes the tab and claims nothing (plan-2 review L4). Rule 6: a second `[Cancel send]` (or the X) before the first settles sends one `wallet.discardPrepared` (M6). `wallet.spec.ts`'s re-authentication goes through #10 and asserts the hand-over URL and that nothing was broadcast.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -8292,11 +8292,11 @@ index 2aeee3c..7ba60b6 100644
 +  aboutChange: 'You are about to change',
 +  to: 'To',
 +  cancelSend: 'Cancel send',
-+  /** Controller addition — awaiting the owner (plan review H1): #10 could not tell which send to drop. */
++  /** Controller addition — confirmed by the owner 2026-10-01 (plan review H1): #10 could not tell which send to drop. */
 +  close: 'Close',
-+  /** Controller addition — awaiting the owner (plan review H1): no "cancelled" the page cannot vouch for. */
++  /** Controller addition — confirmed by the owner 2026-10-01 (plan review H1): no "cancelled" the page cannot vouch for. */
 +  nothingSent: 'Nothing was sent. Start the send again from the Noctura icon.',
-+  /** Controller addition — awaiting the owner (plan 2): a settings confirmation (B1b-2b) is not a send. */
++  /** Controller addition — confirmed by the owner 2026-10-01 (plan 2): a settings confirmation (B1b-2b) is not a send. */
 +  cancel: 'Cancel',
    networkFee: 'Network fee',
    nocturaFee: 'Noctura fee',
@@ -8406,7 +8406,7 @@ index f88da9e..455ee1f 100644
 +        <button id="ra-cancel" type="button" class="btn btn-tertiary forgot-link" hidden></button>
 +        <div class="sticky-bar">
 +          <button id="ra-confirm" type="button" class="btn btn-primary" hidden>Confirm</button>
-+          <!-- "Confirm paused": controller addition — awaiting the owner (mirrors #9's "Unlock paused"). -->
++          <!-- "Confirm paused": controller addition — confirmed by the owner 2026-10-01 (mirrors #9's "Unlock paused"). -->
 +          <button id="ra-paused" type="button" class="btn btn-secondary" disabled hidden>Confirm paused</button>
 +          <button id="ra-passkey" type="button" class="btn btn-secondary" hidden>Confirm with passkey</button>
 +          <button id="ra-unlock" type="button" class="btn btn-primary" hidden>Unlock</button>
@@ -8514,7 +8514,7 @@ git commit -m "feat(extension): #10 unlock-send — the closed-alphabet descript
 - Consumes: Tasks 2, 4, 5, 8, 9, 10.
 - Produces: `src/unlock/screens/forgot.ts`: `mountForgot(deps: Pick<PageDeps, 'go'>): {show(): void}`; `src/unlock/screens/restoreRun.ts`: `createRestoreRun(deps, o: {password: PasswordScreen}): {show(): Promise<void>}`; `ImportScreen.notice(line, help, action: {label; run()} | null)`; `PasswordRun.finish(password): Promise<{line: string; then: 'retype' | 'retry' | 'stop'} | null>`; `strings.ts`: `FORGOT`, `RESTORE`, `PASSWORD.continue`, `PASSWORD.tryAgain`, `PASSWORD.newPasswordToRetry`; `pageHarness.ts`: `inner` throws `forgetWallet without replacement or guard`
 
-Spec §3.11 and §3.8's restore path (D35, D40, E5). #39: all three cards visible, the highlighted one moving 1 → 2 → 3 with each step's copy (Scope 10), walked in order so the step-2 warning is always seen (review L1); `[Continue to import]` → `?mode=import&source=forgot`; `[Cancel]` and back from step 1 → #9. The restore run: the stored vault read first (none → "No wallet on this browser yet." + `[Set up a wallet]`; damaged → the damaged lines); #8 → `checking-match` ("Checking this phrase against the wallet in this browser…", local, no network) → the seed proof (Task 2): `not-this-wallet` replaces the field with the two lines and `[Try another phrase]`, nothing sent; a match → #5 "Recovery" / "Restore · 2 / 2" (no scheme choice) → `restoreWallet`: `restored` → `wallet.html#/imported`; `send-open` → its line on #5 and `[Try again]` with the password **kept in page memory** (#5's new `retry` step); `busy` / `unlocked` (carry 4: "The wallet was unlocked while this was running, so nothing was deleted. Start again.", controller addition) → #8 with the line and `[Start again]` → #39. #5's `finish` answer becomes `then: 'retype' | 'retry' | 'stop'`; `ImportScreen` gains `notice()`. A hidden tab drops the password a `[Try again]` was holding — §3.5's rule wins over E5's "kept while this page stays open" — and #5 then reads "Enter a new password to try again." (controller addition — awaiting the owner; plan-2 review L5). Back from #5 returns to #8 with the phrase in the field, as the plain import does (L3). The seed proof (it holds the phrase) lives from the match to the run's end, a hidden tab included (Scope 19). The page harness now refuses any `vault.forgetWallet` with neither `replacement` nor `guard: 'unfunded'`, so every screen test enforces E5's rule at the boundary — not only the source grep (plan-2 review M5). The spec's E5 step-5 note and §3.8 restore list get the `unlocked` line (Step 5).
+Spec §3.11 and §3.8's restore path (D35, D40, E5). #39: all three cards visible, the highlighted one moving 1 → 2 → 3 with each step's copy (Scope 10), walked in order so the step-2 warning is always seen (review L1); `[Continue to import]` → `?mode=import&source=forgot`; `[Cancel]` and back from step 1 → #9. The restore run: the stored vault read first (none → "No wallet on this browser yet." + `[Set up a wallet]`; damaged → the damaged lines); #8 → `checking-match` ("Checking this phrase against the wallet in this browser…", local, no network) → the seed proof (Task 2): `not-this-wallet` replaces the field with the two lines and `[Try another phrase]`, nothing sent; a match → #5 "Recovery" / "Restore · 2 / 2" (no scheme choice) → `restoreWallet`: `restored` → `wallet.html#/imported`; `send-open` → its line on #5 and `[Try again]` with the password **kept in page memory** (#5's new `retry` step); `busy` / `unlocked` (carry 4: "The wallet was unlocked while this was running, so nothing was deleted. Start again.", controller addition) → #8 with the line and `[Start again]` → #39. #5's `finish` answer becomes `then: 'retype' | 'retry' | 'stop'`; `ImportScreen` gains `notice()`. A hidden tab drops the password a `[Try again]` was holding — §3.5's rule wins over E5's "kept while this page stays open" — and #5 then reads "Enter a new password to try again." (controller addition — confirmed by the owner 2026-10-01; plan-2 review L5). Back from #5 returns to #8 with the phrase in the field, as the plain import does (L3). The seed proof (it holds the phrase) lives from the match to the run's end, a hidden tab included (Scope 19). The page harness now refuses any `vault.forgetWallet` with neither `replacement` nor `guard: 'unfunded'`, so every screen test enforces E5's rule at the boundary — not only the source grep (plan-2 review M5). The spec's E5 step-5 note and §3.8 restore list get the `unlocked` line (Step 5).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -8772,7 +8772,7 @@ describe('#8 restore path (E5 with replacement, D35, D40)', () => {
 
   it.each([
     ['busy', 'The wallet changed while you were typing. Start again.'],
-    // Carry 4 (controller addition — awaiting the owner): an unlock landed mid-forget — the wallet is NOT locked, so not the busy line.
+    // Carry 4 (controller addition — confirmed by the owner 2026-10-01): an unlock landed mid-forget — the wallet is NOT locked, so not the busy line.
     ['unlocked', 'The wallet was unlocked while this was running, so nothing was deleted. Start again.'],
   ])('%s: back to #8 with "%s" and [Start again] → #39', async (error, line) => {
     const h = await restoring({send: inner => async m => ((m as {type: string}).type === 'vault.forgetWallet' ? {ok: false, error} : inner(m))});
@@ -9245,7 +9245,7 @@ index 7ba60b6..8b53d85 100644
 +  continue: 'Continue',
 +  tryAgain: 'Try again',
 +  /**
-+   * Controller addition — awaiting the owner (plan review L5): a hidden tab drops the password a
++   * Controller addition — confirmed by the owner 2026-10-01 (plan review L5): a hidden tab drops the password a
 +   * [Try again] was holding (§3.5's rule wins over E5's "kept while this page stays open").
 +   */
 +  newPasswordToRetry: 'Enter a new password to try again.',
@@ -9262,7 +9262,7 @@ index 7ba60b6..8b53d85 100644
 +  title: {1: 'Forgot your password?', 2: 'Enter your words', 3: 'Set a new password'},
 +  lede: {
 +    1: 'Your recovery phrase is the only way back. Three steps to restore.',
-+    /** Controller addition — awaiting the owner (plan 2): the design's "Pick from the BIP-39 wordlist. Type the first 3 letters…" describes a picker #8 does not have. */
++    /** Controller addition — confirmed by the owner 2026-10-01 (plan 2): the design's "Pick from the BIP-39 wordlist. Type the first 3 letters…" describes a picker #8 does not have. */
 +    2: 'Type or paste the 12 or 24 words, in order.',
 +    3: "Once your phrase is verified against this wallet, you'll choose a new password (at least 12 characters). The old password stops working.",
 +  },
@@ -9271,7 +9271,7 @@ index 7ba60b6..8b53d85 100644
 +    2: 'Done — you confirmed you have your words.',
 +    3: 'Done.',
 +  },
-+  /** Controller addition — awaiting the owner (plan 2): the cards' step copy, adapted from the design (spec §3.11 Differs). */
++  /** Controller addition — confirmed by the owner 2026-10-01 (plan 2): the cards' step copy, adapted from the design (spec §3.11 Differs). */
 +  card2: {
 +    1: "You'll be taken to the import screen. Type or paste your words.",
 +    2: "You'll be taken to the import screen. Type or paste your words.",
@@ -9294,9 +9294,9 @@ index 7ba60b6..8b53d85 100644
 +  sendOpen: 'A transaction from this wallet is still pending. Wait until it confirms or expires — about two minutes — then try again.',
 +  tryAgain: 'Try again',
 +  busy: 'The wallet changed while you were typing. Start again.',
-+  /** Controller addition — awaiting the owner (plan 2, carry 4): E5's `unlocked` — an unlock landed mid-forget. The `busy` line would say the wallet is locked, which is false here. */
++  /** Controller addition — confirmed by the owner 2026-10-01 (plan 2, carry 4): E5's `unlocked` — an unlock landed mid-forget. The `busy` line would say the wallet is locked, which is false here. */
 +  unlocked: 'The wallet was unlocked while this was running, so nothing was deleted. Start again.',
-+  /** Controller addition — awaiting the owner (plan 2): the button the two "Start again" lines offer — back to #39. */
++  /** Controller addition — confirmed by the owner 2026-10-01 (plan 2): the button the two "Start again" lines offer — back to #39. */
 +  startAgain: 'Start again',
 +  setUp: 'Set up a wallet',
 +} as const;
@@ -9442,7 +9442,7 @@ index be18eb1..07e38c6 100644
 +     were typing. Start again." (true in both; plan-2 review ruling 3). An `unlocked` here has changed
 +     the same, but the wallet is unlocked again. #39's restore and #40's retry (both on #8) say
 +     instead: "The wallet was unlocked while this was running, so nothing was deleted. Start again." +
-+     `[Start again]` → #39 — **controller addition — awaiting the owner**.
++     `[Start again]` → #39 — **controller addition — confirmed by the owner 2026-10-01**.
    6. **The vault write:** `v1_vault` removed, or overwritten by `replacement`. A crash before this
       write leaves the old wallet in place and locked, and the operation can be repeated. There is
       never half a wallet.
@@ -9455,10 +9455,10 @@ index be18eb1..07e38c6 100644
 +        expires — about two minutes — then try again." + `[Try again]`; the phrase stays in page
 +        memory while this page stays open; the password too, until the tab is hidden — §3.5's rule
 +        wins (plan-2 review L5): a hidden tab drops it and #5 reads "Enter a new password to try
-+        again." (**controller addition — awaiting the owner**);
++        again." (**controller addition — confirmed by the owner 2026-10-01**);
        - `busy` → "The wallet changed while you were typing. Start again." → #39;
 +      - `unlocked` (an unlock landed mid-forget, E5 step 5) → "The wallet was unlocked while this was
-+        running, so nothing was deleted. Start again." → #39 — **controller addition — awaiting the owner**;
++        running, so nothing was deleted. Start again." → #39 — **controller addition — confirmed by the owner 2026-10-01**;
        - `ok` → `vault.setKeys` → UI tab `#/imported`.
  - **Navigation:** Continue → (scheme) → #5 (import variant) → `created` → UI tab `#/imported`; on
    the restore path, as above.
@@ -11704,7 +11704,7 @@ git commit -m "feat(extension): the UI tab’s hand-over routes — #7 at #/crea
 - Consumes: Task 15; plan 1's `valuation`, `TOKEN_INFO`, `showAmount`, `showUsd`, `TokenTile`, `Skeleton`, `RefusedBanner`, `LockedButton`.
 - Produces: `src/app/format.ts`: `approxSol(usd: number, solUsd: number): string` (Home uses it too); `src/app/screens/Imported.tsx`: `Imported`, `MAX_READ = 6`, `CLIPBOARD_LINE`; `Route` gains `{screen: 'imported'}`; `firstRoute('tab', '#/imported')`
 
-Spec §3.12. `loading`: the ring + "Checking what this wallet holds…" + skeleton rows. Then up to six accounts' balances, one at a time, and the prices (Scope 14): `single-account` ("Wallet imported", "1 account · N tokens recovered. Welcome back.", "Total value recovered" + the market total — SOL + USDC + USDT, NOC outside it — and "≈ X SOL", **truncated, never rounded up** (plan-1 ruling L6, now one `approxSol` in `format.ts` shared with Home; plan-2 review M1), a row per token held with NOC's value "… at stage price", "Your wallet address" in groups of four + copy and, under it, #7's "Copying puts the address on your clipboard. Noctura does not clear it afterwards." (the carried rule; controller addition — awaiting the owner, M3), the D10 line + `[Close this tab]`); `multi-account` ("N accounts · M tokens recovered.", "across N accounts · ≈ X SOL", rows summed with "Solana · N accounts"; past `MAX_READ` the copy claims only what was read — "N accounts · M tokens recovered from the first 6." and "across the first 6 of N accounts", controller addition — awaiting the owner, M2); `no-assets-empty` — **only when every read succeeded** and all four tokens are zero on every account (R2-L5): the info ring, "Wallet imported · empty", the adapted sub, "Recovered" / "0 tokens" / "N account · address derivation succeeded", the three reasons with the engine's real paths (adapted), the address, "You can send SOL to this address to fund the wallet.", the D10 line and `[Try a different seed]` (`LockedButton`): it re-reads every account first; anything arrived → the funded state and the button gone; all still zero → `unlock.html?mode=import&source=retry` in this tab (a double click re-reads once and navigates once — rule 6, M6); `unreachable` ("Balances could not be read right now." + refresh — never "empty"); `refused` (the D26 banner, refresh disabled); `locked` ("Wallet imported. Unlock it to see what was recovered." + `[Unlock]` → `?mode=unlock&return=imported`).
+Spec §3.12. `loading`: the ring + "Checking what this wallet holds…" + skeleton rows. Then up to six accounts' balances, one at a time, and the prices (Scope 14): `single-account` ("Wallet imported", "1 account · N tokens recovered. Welcome back.", "Total value recovered" + the market total — SOL + USDC + USDT, NOC outside it — and "≈ X SOL", **truncated, never rounded up** (plan-1 ruling L6, now one `approxSol` in `format.ts` shared with Home; plan-2 review M1), a row per token held with NOC's value "… at stage price", "Your wallet address" in groups of four + copy and, under it, #7's "Copying puts the address on your clipboard. Noctura does not clear it afterwards." (the carried rule; controller addition — confirmed by the owner 2026-10-01, M3), the D10 line + `[Close this tab]`); `multi-account` ("N accounts · M tokens recovered.", "across N accounts · ≈ X SOL", rows summed with "Solana · N accounts"; past `MAX_READ` the copy claims only what was read — "N accounts · M tokens recovered from the first 6." and "across the first 6 of N accounts", controller addition — confirmed by the owner 2026-10-01, M2); `no-assets-empty` — **only when every read succeeded** and all four tokens are zero on every account (R2-L5): the info ring, "Wallet imported · empty", the adapted sub, "Recovered" / "0 tokens" / "N account · address derivation succeeded", the three reasons with the engine's real paths (adapted), the address, "You can send SOL to this address to fund the wallet.", the D10 line and `[Try a different seed]` (`LockedButton`): it re-reads every account first; anything arrived → the funded state and the button gone; all still zero → `unlock.html?mode=import&source=retry` in this tab (a double click re-reads once and navigates once — rule 6, M6); `unreachable` ("Balances could not be read right now." + refresh — never "empty"); `refused` (the D26 banner, refresh disabled); `locked` ("Wallet imported. Unlock it to see what was recovered." + `[Unlock]` → `?mode=unlock&return=imported`).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -12183,7 +12183,7 @@ function AddressChip({address}: {address: string}) {
           <ExtIcon name={copied === 'copied' ? 'check' : copied === 'failed' ? 'close' : 'copy'} size={20} />
         </button>
       </div>
-      {/* Controller addition — awaiting the owner (plan-2 review M3): #7's line under #40's chip. */}
+      {/* Controller addition — confirmed by the owner 2026-10-01 (plan-2 review M3): #7's line under #40's chip. */}
       <p className="noc-caption app-dim app-onb-help">{CLIPBOARD_LINE}</p>
     </>
   );
@@ -12333,9 +12333,9 @@ export function Imported() {
   // Truncated, never rounded up (plan-1 ruling L6; plan-2 review M1).
   const approx = v.total !== null && solUsd !== null ? approxSol(v.total, solUsd) : null;
   const holders = (t: Token) => read.per.filter(b => b[KEY[t]] > 0n).length;
-  // "1 token" (singular): controller addition — awaiting the owner.
+  // "1 token" (singular): controller addition — confirmed by the owner 2026-10-01.
   const tokens = held.length === 1 ? '1 token' : `${held.length} tokens`;
-  // Past MAX_READ the copy claims only what was read (plan-2 review M2 — controller addition, awaiting the owner).
+  // Past MAX_READ the copy claims only what was read (plan-2 review M2 — controller addition, confirmed by the owner 2026-10-01).
   const sub = n === 1 ? `1 account · ${tokens} recovered. Welcome back.` : allRead ? `${n} accounts · ${tokens} recovered.` : `${n} accounts · ${tokens} recovered from the first ${MAX_READ}.`;
   const across = allRead ? `across ${n} accounts` : `across the first ${MAX_READ} of ${n} accounts`;
   const delta = n === 1 ? approx : [across, approx].filter(x => x !== null).join(' · ');
@@ -13435,7 +13435,7 @@ index 967c29b..9cc56a2 100644
 +    `stored-invalid`) shows "This wallet's stored data is damaged." + "Your funds stay on Solana; your
 +    recovery phrase still controls them. To use them here, remove Noctura from this browser, install
 +    it again and import the phrase." and no CTAs — **the second line is a controller addition —
-+    awaiting the owner** (its next step added per the plan-2 review); repairing a damaged vault is
++    confirmed by the owner 2026-10-01** (its next step added per the plan-2 review); repairing a damaged vault is
 +    #37's (B1b-2b).
  
  ### 3.2 #2 security-intro
@@ -13527,7 +13527,7 @@ index 967c29b..9cc56a2 100644
 +    `[Cancel send]`, E3, which discards the send by its account — the one field re-validated by
 +    itself; when even that is not an address: + "Nothing was sent. Start the send again from the
 +    Noctura icon." and `[Close]`, which closes the tab and claims no cancel — **controller addition —
-+    awaiting the owner**, plan-2 review H1); `not-unlocked` ("The wallet locked while you were confirming. Unlock it
++    confirmed by the owner 2026-10-01**, plan-2 review H1); `not-unlocked` ("The wallet locked while you were confirming. Unlock it
      and start the send again." + `[Unlock]` → `?mode=unlock`, with no return target: the lock
      cleared the prepared send, so there is nothing to resume, as §7.1 says; review M7);
      `mismatch-locked` ("That did not match this wallet, so the wallet has been
@@ -13543,7 +13543,7 @@ index 967c29b..9cc56a2 100644
 +    described. Fees are exact and ungrouped ("0.00000505 SOL"); the design's thin grouping is listed
 +    for the visual review (plan-1 L7). The cooldown's disabled button reads "Confirm paused" and a
 +    settings challenge's cancel reads "Cancel" (it only closes the tab; the challenge simply
-+    expires) — **both controller additions — awaiting the owner**. A discard the background refuses
++    expires) — **both controller additions — confirmed by the owner 2026-10-01**. A discard the background refuses
 +    says "Something went wrong. Try again." and keeps the screen: "Send cancelled" is shown only when
 +    it is true — including `undescribable` (H1, above). In `expired`, `not-unlocked`,
 +    `mismatch-locked` and every other notice with nothing to cancel, the top bar's X closes the tab
@@ -13555,7 +13555,7 @@ index 967c29b..9cc56a2 100644
      "A passkey is not carried over; you can add one again later." (passkey management is B1b-2b).
    - "24 words" becomes "12 or 24 words" (import accepts both).
    - "#36 change-pin" is not a step: import sets the password itself.
-+  - **Plan 2 (controller adaptations of the design's step copy — awaiting the owner):** step 1's
++  - **Plan 2 (controller adaptations of the design's step copy — confirmed by the owner 2026-10-01):** step 1's
 +    card 2 "You'll be taken to the import screen. Type or paste your words." and card 3 "Once your phrase is verified against this
 +    wallet, you'll choose a new password (at least 12 characters). The old password stops working.";
 +    step 2's title "Enter your words", lede "Type or paste the 12 or 24 words, in order." (the design's
@@ -13573,12 +13573,12 @@ index 967c29b..9cc56a2 100644
 +  - **Plan 2:** the address is in groups of four at equal weight (`AddressGroups`), not the design's
 +    first-6/last-6 `.ck` highlight (§11.7's poisoning note). Under it, #7's line "Copying puts the
 +    address on your clipboard. Noctura does not clear it afterwards." — the carried rule, missing
-+    from this section's copy (**controller addition — awaiting the owner**, plan-2 review M3). One
-+    token reads "1 token" (**controller addition — awaiting the owner**). "≈ X SOL" is truncated,
++    from this section's copy (**controller addition — confirmed by the owner 2026-10-01**, plan-2 review M3). One
++    token reads "1 token" (**controller addition — confirmed by the owner 2026-10-01**). "≈ X SOL" is truncated,
 +    never rounded up (plan-1 ruling L6, as #11; plan-2 review M1). Balances are read for the first
 +    six accounts (≤ 6, above); past six the copy claims only what was read: "N accounts · M tokens
 +    recovered from the first 6." and "across the first 6 of N accounts" (**controller addition —
-+    awaiting the owner**, plan-2 review M2), and a wallet with more never shows `no-assets-empty`. The empty
++    confirmed by the owner 2026-10-01**, plan-2 review M2), and a wallet with more never shows `no-assets-empty`. The empty
 +    state's sticky bar is the D10 line and `[Try a different seed]`, as listed above (no `[Close this
 +    tab]` there).
  
