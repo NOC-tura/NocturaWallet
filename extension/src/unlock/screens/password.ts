@@ -15,9 +15,10 @@ export interface PasswordRun {
   back(): void;
   /**
    * Stores the wallet with this password (seconds: Argon2id). Returns null when it went on (the caller
-   * moved the page on), or the line to show; `stop` when nothing more can be tried here.
+   * moved the page on), or the line to show; `stop` when nothing more can be tried here — the line then
+   * replaces the field, with `help` (what to do instead) under it.
    */
-  finish(password: string): Promise<{line: string; stop: boolean} | null>;
+  finish(password: string): Promise<{line: string; help?: string; stop: boolean} | null>;
 }
 
 export interface PasswordScreen {
@@ -51,13 +52,16 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
   let first = '';
   /** The helper shows a line typing should clear (a mismatch, a refusal, the hidden-tab line). */
   let note = false;
+  /** A mismatch is showing (its line, the shake, both step dots wide) until the field is cleared or typed in. */
+  let mismatch = false;
   let clearing: number | null = null;
   /** Focus the field once the gate frees (a disabled field cannot take focus). */
   let refocus = false;
 
   const render = () => {
     const busy = deps.gate.isBusy();
-    byId('pw-dot-1').classList.toggle('active', step === 'enter');
+    // The design's mismatch state (5c's notes): both step dots wide.
+    byId('pw-dot-1').classList.toggle('active', step === 'enter' || mismatch);
     byId('pw-dot-2').classList.toggle('active', step !== 'enter');
     setText(byId('pw-title'), step === 'enter' ? PASSWORD.enterTitle : PASSWORD.confirmTitle);
     setText(byId('pw-lede'), step === 'enter' ? PASSWORD.enterLede : PASSWORD.confirmLede);
@@ -65,9 +69,14 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
     shown(byId('pw-meter-label'), step === 'enter');
     renderMeter(byId('pw-meter'), byId('pw-meter-label'), field.value.length);
     shown(byId('pw-creating'), step === 'creating');
+    shown(byId('pw-form'), step !== 'stopped');
+    shown(byId('pw-helper'), step !== 'stopped');
+    shown(byId('pw-notice'), step === 'stopped');
     const open = step === 'enter' || step === 'confirm';
-    field.disabled = busy || !open;
-    toggle.disabled = busy || !open;
+    // Fix round 1 (M2): the field follows the step, not the 500 ms floor — keystrokes typed right after
+    // Continue are kept; only the buttons wait for the gate.
+    field.disabled = !open;
+    toggle.disabled = !open;
     back.disabled = busy || !open;
     shown(cta, step !== 'stopped');
     cta.disabled = busy || !open || (step === 'enter' ? field.value.length < MIN_PASSWORD_LENGTH : field.value.length === 0);
@@ -91,6 +100,7 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
     field.value = '';
     field.classList.remove('is-error');
     note = false;
+    mismatch = false;
   };
 
   const submit = () => {
@@ -113,6 +123,7 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
       const second = field.value;
       if (second !== first) {
         note = true;
+        mismatch = true;
         helper(PASSWORD.mismatch, true);
         field.classList.add('is-error');
         stopClearing();
@@ -120,9 +131,11 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
           clearing = null;
           field.value = '';
           field.classList.remove('is-error');
+          mismatch = false;
           refocus = true;
           render();
         }, MISMATCH_CLEAR_MS);
+        render();
         return;
       }
       step = 'creating';
@@ -137,7 +150,11 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
         step = 'off';
         return;
       }
-      helper(out.line, true);
+      if (out.stop) {
+        setText(byId('pw-notice-line'), out.line);
+        setText(byId('pw-notice-help'), out.help ?? '');
+        shown(byId('pw-notice-help'), (out.help ?? '') !== '');
+      } else helper(out.line, true);
       note = !out.stop;
       // A refusal that can be retried keeps nothing typed: the run starts again at enter.
       step = out.stop ? 'stopped' : 'enter';
@@ -149,6 +166,9 @@ export function mountPassword(deps: PageDeps): PasswordScreen {
   field.addEventListener('input', () => {
     if (note) {
       note = false;
+      // Typing after a mismatch is a new attempt: the pending clear must not wipe it.
+      if (mismatch) stopClearing();
+      mismatch = false;
       field.classList.remove('is-error');
       helper(step === 'enter' ? PASSWORD.enterHelper : '', false);
     }

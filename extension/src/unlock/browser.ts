@@ -34,15 +34,18 @@ export function browserPageDeps(): PageDeps {
     closeTab: () => window.close(),
     // Spec §3.5's memory rule: both the page going away and the tab being hidden drop what a screen holds.
     onLeave: f => {
-      window.addEventListener('pagehide', f);
+      window.addEventListener('pagehide', () => f('pagehide'));
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') f();
+        if (document.visibilityState === 'hidden') f('hidden');
       });
     },
     onReturn: f => {
-      window.addEventListener('pageshow', f);
+      // Only a page restored from the back/forward cache: the first load's pageshow is not a return.
+      window.addEventListener('pageshow', e => {
+        if (e.persisted) f('restored');
+      });
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') f();
+        if (document.visibilityState === 'visible') f('visible');
       });
     },
   };

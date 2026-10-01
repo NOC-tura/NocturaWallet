@@ -42,11 +42,18 @@ export async function holdToReveal(vault: Page): Promise<string[]> {
   return words;
 }
 
-/** #4: picks each slot's word from the pool. */
+/**
+ * #4: picks each slot's word from the pool — by its index among the pool's buttons, the first unused one
+ * with that word (a phrase may repeat a word, so a pool may too; a by-name locator would be ambiguous).
+ */
 export async function confirmWords(vault: Page, words: readonly string[]): Promise<void> {
+  const pool = vault.locator('#cnf-pool button');
   for (const label of await vault.locator('#cnf-slots .label').allTextContents()) {
-    const n = Number(/#(\d+)/.exec(label)?.[1]);
-    await vault.locator('#cnf-pool').getByRole('button', {name: words[n - 1], exact: true}).click();
+    const word = words[Number(/#(\d+)/.exec(label)?.[1]) - 1];
+    const buttons = await pool.evaluateAll(bs => bs.map(b => ({text: b.textContent ?? '', used: b.classList.contains('used')})));
+    const at = buttons.findIndex(b => b.text === word && !b.used);
+    expect(at).toBeGreaterThanOrEqual(0);
+    await pool.nth(at).click();
   }
 }
 

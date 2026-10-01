@@ -38,10 +38,10 @@ export interface Harness {
   sent: {type: string; [k: string]: unknown}[];
   went: PageTarget[];
   closed: number;
-  /** pagehide, or the tab hidden: runs every `onLeave` callback. */
-  leave(): void;
-  /** The tab shown again (visibilitychange to visible, pageshow): runs every `onReturn` callback. */
-  back(): void;
+  /** The tab hidden (default), or `pagehide`: runs every `onLeave` callback with that reason. */
+  leave(why?: 'hidden' | 'pagehide'): void;
+  /** The tab shown again (default), or `restored` from the back/forward cache: runs every `onReturn` callback. */
+  back(why?: 'visible' | 'restored'): void;
   /** With `holdSleep`: resolves every pending sleep (the 500 ms floor, a backoff wait). */
   wake(): void;
   /** Lets pending work run until `done()` holds (the page awaits the background and the KDF); fails after 10 s. */
@@ -69,8 +69,8 @@ export async function harness(
   const read = () => ext.local.get(VAULT_KEY);
   const timers = fakeTimers();
   const gate = createPageGate();
-  const leaves: (() => void)[] = [];
-  const returns: (() => void)[] = [];
+  const leaves: ((why: 'hidden' | 'pagehide') => void)[] = [];
+  const returns: ((why: 'visible' | 'restored') => void)[] = [];
   const sleeping: (() => void)[] = [];
   const h: Harness = {
     ext,
@@ -94,8 +94,8 @@ export async function harness(
       onLeave: f => void leaves.push(f),
       onReturn: f => void returns.push(f),
     },
-    leave: () => leaves.forEach(f => f()),
-    back: () => returns.forEach(f => f()),
+    leave: (why = 'hidden') => leaves.forEach(f => f(why)),
+    back: (why = 'visible') => returns.forEach(f => f(why)),
     wake: () => sleeping.splice(0).forEach(r => r()),
     until: async done => {
       const end = Date.now() + 10_000;

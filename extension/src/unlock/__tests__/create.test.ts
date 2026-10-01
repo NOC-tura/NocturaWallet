@@ -18,6 +18,37 @@ const PW = 'a long enough password';
 const ACCOUNT = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
 const HELD = HOLD_MS + TICK_MS;
 
+/** Seeded random bytes (xorshift32): many different plans, the same on every run. */
+function seededBytes(seed: number) {
+  let x = seed >>> 0 || 1;
+  return (n: number) =>
+    Uint8Array.from({length: n}, () => {
+      x ^= x << 13;
+      x >>>= 0;
+      x ^= x >>> 17;
+      x ^= x << 5;
+      x >>>= 0;
+      return x & 0xff;
+    });
+}
+/**
+ * Can every slot be filled with its own word from a pool button no other slot used (I1: picks go by pool
+ * index)? Greedy is exact here: buttons with the same word are interchangeable.
+ */
+function completable(plan: {slots: {word: string}[]; pool: string[]}): boolean {
+  const free = plan.pool.map(() => true);
+  return plan.slots.every(s => {
+    const at = plan.pool.findIndex((w, i) => w === s.word && free.at(i) === true);
+    if (at < 0) return false;
+    free.splice(at, 1, false);
+    return true;
+  });
+}
+/** A phrase that repeats words (BIP-39 allows it): six words, four times each. */
+const REPEATS = Array.from({length: 24}, (_, i) => ['legal', 'legal', 'zoo', 'zone', 'legal', 'zebra'].at(i % 6) ?? '');
+/** The repo's test vector: 23 × "abandon" and "art" — fewer than three distinct words. */
+const ABANDON = [...Array.from({length: 23}, () => 'abandon'), 'art'];
+
 /** Deterministic "random" bytes: a counter, so a plan is reproducible. */
 function counterBytes() {
   let c = 7;
@@ -101,6 +132,31 @@ describe('#4 seed-confirm: the plan', () => {
     expect([...places].sort()).toEqual([0, 1, 2]);
     expect(asked.size).toBe(24);
   });
+
+  it('I1: a phrase that repeats words — slot words always distinct, the pool nine distinct words, every plan completable (1000 seeded plans)', () => {
+    const bad: number[] = [];
+    for (let seed = 1; seed <= 1000; seed++) {
+      const plan = confirmPlan(REPEATS, seededBytes(seed));
+      const ok =
+        new Set(plan.slots.map(x => x.word)).size === 3 &&
+        new Set(plan.pool).size === 9 &&
+        plan.slots.every(x => x.word === REPEATS[x.position - 1]) &&
+        completable(plan);
+      if (!ok) bad.push(seed);
+    }
+    expect(bad).toEqual([]);
+  }, 30_000);
+
+  it('I1: fewer than three distinct words (23 × abandon + art, or 24 × abandon) — distinct positions, and every plan still completable (1000 seeded plans each)', () => {
+    const bad: string[] = [];
+    for (const [name, phrase] of [['abandon+art', ABANDON], ['24 abandon', Array.from({length: 24}, () => 'abandon')]] as const) {
+      for (let seed = 1; seed <= 1000; seed++) {
+        const plan = confirmPlan(phrase, seededBytes(seed));
+        if (new Set(plan.slots.map(x => x.position)).size !== 3 || plan.pool.length !== 9 || !completable(plan)) bad.push(`${name}/${seed}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  }, 30_000);
 
   it('randomBelow rejects the biased top of the range instead of folding it (no modulo bias)', () => {
     const seq = [Uint8Array.of(0xff, 0xff, 0xff, 0xff), Uint8Array.of(0, 0, 0, 5)];
@@ -266,7 +322,39 @@ describe('#4 seed-confirm: the screen', () => {
   });
 });
 
+describe('#4 seed-confirm: a repeated word (I1)', () => {
+  it('23 × abandon + art: picks go by pool index, so a word that fills one slot is still offered for the next', async () => {
+    const h = await harness();
+    const calls: string[] = [];
+    mountConfirm(h.deps, {back: () => undefined, done: () => calls.push('done')}).show(ABANDON);
+    for (const label of [...el('cnf-slots').querySelectorAll('.label')].map(text)) {
+      const word = ABANDON[Number(/#(\d+)/.exec(label)?.[1]) - 1];
+      await idle(h);
+      const b = [...el('cnf-pool').querySelectorAll('button')].find(x => text(x) === word && !x.classList.contains('used')) as HTMLButtonElement;
+      expect(b).toBeDefined();
+      click(b);
+    }
+    await idle(h);
+    expect(el<HTMLButtonElement>('cnf-cta').disabled).toBe(false);
+    click(el('cnf-cta'));
+    expect(visible(el('cnf-success'))).toBe(true);
+  });
+});
+
 describe('#4 seed-confirm: leaving', () => {
+  it('pagehide: #4 ends and drops its plan; the page restored shows no word again', async () => {
+    const h = await harness();
+    const screen = mountConfirm(h.deps, {back: () => undefined, done: () => undefined});
+    screen.show(WORDS);
+    h.leave('pagehide');
+    expect(screen.holds()).toBe(false);
+    expect(leaked()).toEqual([]);
+    h.back('restored');
+    h.back('visible');
+    expect(leaked()).toEqual([]);
+    expect(el('cnf-pool').children).toHaveLength(0);
+  });
+
   it('back → #3: the words are out of the DOM and the screen holds no plan', async () => {
     const h = await harness();
     const calls: string[] = [];
@@ -351,12 +439,16 @@ describe('#5 create password (D7)', () => {
     expect(text(el('pw-helper'))).toBe("Passwords don't match — try again.");
     expect(el('pw-helper').classList.contains('error')).toBe(true);
     expect(field.classList.contains('is-error')).toBe(true);
+    // The design's mismatch state: both step dots wide.
+    expect(el('pw-dot-1').classList.contains('active')).toBe(true);
+    expect(el('pw-dot-2').classList.contains('active')).toBe(true);
     expect(unstyled('v-password')).toEqual([]);
     h.timers.advance(MISMATCH_CLEAR_MS - 1);
     expect(field.value).toBe(`${PW}!`);
     h.timers.advance(1);
     expect(field.value).toBe('');
     expect(field.classList.contains('is-error')).toBe(false);
+    expect(el('pw-dot-1').classList.contains('active')).toBe(false);
     expect(text(el('pw-title'))).toBe('Confirm your password');
     expect(finished).toEqual([]);
     // The confirm step goes on: the same password now matches.
@@ -367,15 +459,20 @@ describe('#5 create password (D7)', () => {
     expect(finished).toEqual([PW]);
   });
 
-  it('creating: "Creating your wallet…" with the progress bar, every control disabled; then the store runs once (rule 6)', async () => {
+  it('creating: "Creating your wallet…" with the progress bar, every control disabled — and rule 6’s lock itself, tested past a lifted `disabled`', async () => {
     let release: () => void = () => undefined;
-    const {h, field, cta, finished, screen} = await shown(() => new Promise(r => (release = () => r(null))), {holdSleep: true});
+    const {h, field, cta, finished, screen} = await shown(() => new Promise(r => (release = () => r({line: 'Something went wrong. Nothing was saved.', stop: false}))), {holdSleep: true});
     type(field, PW);
     click(cta);
+    // Inside the floor of the enter step's Continue: a second click (disabled lifted, as a stray event would)
+    // must not run the confirm step — no mismatch from an empty confirm field.
+    cta.disabled = false;
+    click(cta);
+    expect(text(el('pw-helper'))).toBe('');
+    expect(field.classList.contains('is-error')).toBe(false);
     h.wake();
     await h.until(() => text(el('pw-title')) === 'Confirm your password' && !h.deps.gate.isBusy());
     type(field, PW);
-    click(cta);
     click(cta);
     await h.until(() => finished.length === 1);
     expect(visible(el('pw-creating'))).toBe(true);
@@ -385,26 +482,59 @@ describe('#5 create password (D7)', () => {
     expect(field.disabled).toBe(true);
     expect(el<HTMLButtonElement>('pw-back').disabled).toBe(true);
     expect(el<HTMLButtonElement>('pw-toggle').disabled).toBe(true);
-    // The screen no longer holds the password it handed to the store.
     expect(screen.holds()).toBe(false);
-    release();
+    cta.disabled = false;
     click(cta);
-    await new Promise(r => setTimeout(r, 5));
-    // Settled, but inside the 500 ms floor: a second click does nothing.
     click(cta);
     expect(finished).toEqual([PW]);
     expect(unstyled('v-password')).toEqual([]);
+    // The store settles with a refusal that can be retried; inside the 500 ms floor a new attempt is refused…
+    release();
+    await h.until(() => text(el('pw-helper')) === 'Something went wrong. Nothing was saved.');
+    type(field, PW);
+    cta.disabled = false;
+    click(cta);
+    expect(text(el('pw-title'))).toBe('Create a password');
+    expect(field.value).toBe(PW);
+    // …and taken once the floor has passed.
+    h.wake();
+    await h.until(() => !h.deps.gate.isBusy());
+    click(cta);
+    expect(text(el('pw-title'))).toBe('Confirm your password');
+    expect(finished).toEqual([PW]);
   });
 
-  it('a refusal shows its line; "exists" stops with no CTA and holds nothing', async () => {
-    const {h, field, cta, screen} = await shown(async () => ({line: 'A wallet already exists in this browser. Nothing was changed.', stop: true}));
+  it('M2: keystrokes typed right after Continue (inside the floor) are kept; only Continue waits', async () => {
+    const {h, field, cta, finished} = await shown(async () => null, {holdSleep: true});
+    type(field, PW);
+    click(cta);
+    expect(text(el('pw-title'))).toBe('Confirm your password');
+    expect(h.deps.gate.isBusy()).toBe(true);
+    expect(field.disabled).toBe(false);
+    type(field, PW);
+    expect(field.value).toBe(PW);
+    expect(cta.disabled).toBe(true);
+    h.wake();
+    await h.until(() => !cta.disabled);
+    click(cta);
+    await h.until(() => finished.length === 1);
+    expect(finished).toEqual([PW]);
+  });
+
+  it('a refusal that stops: its line and help replace the field; no CTA; nothing held', async () => {
+    const {h, field, cta, screen} = await shown(async () => ({line: 'A wallet already exists in this browser. Nothing was changed.', help: 'Open the Noctura icon to use it.', stop: true}));
     await toConfirm(h, field, cta);
     type(field, PW);
     click(cta);
-    await h.until(() => text(el('pw-helper')) === 'A wallet already exists in this browser. Nothing was changed.');
+    await h.until(() => visible(el('pw-notice')));
+    expect(text(el('pw-notice'))).toBe('A wallet already exists in this browser. Nothing was changed. Open the Noctura icon to use it.');
     expect(visible(cta)).toBe(false);
+    expect(visible(el('pw-form'))).toBe(false);
+    expect(visible(el('pw-helper'))).toBe(false);
     expect(field.disabled).toBe(true);
+    expect(el<HTMLButtonElement>('pw-back').disabled).toBe(true);
     expect(screen.holds()).toBe(false);
+    expect(unstyled('v-password')).toEqual([]);
   });
 
   it('a refusal that can be retried starts again at enter, with nothing typed kept', async () => {
@@ -461,10 +591,11 @@ describe('#5 create password (D7)', () => {
     const h = await harness();
     h.deps.gate.setBusy(true);
     mountPassword(h.deps).show({eyebrow: 'Onboarding', step: '4 / 5', back: () => undefined, finish: async () => null});
-    const field = el<HTMLInputElement>('pw-field');
-    expect(field.disabled).toBe(true);
+    type(el<HTMLInputElement>('pw-field'), PW);
+    expect(el<HTMLButtonElement>('pw-cta').disabled).toBe(true);
+    expect(el<HTMLButtonElement>('pw-back').disabled).toBe(true);
     h.deps.gate.setBusy(false);
-    expect(field.disabled).toBe(false);
+    expect(el<HTMLButtonElement>('pw-cta').disabled).toBe(false);
     expect(el<HTMLButtonElement>('pw-back').disabled).toBe(false);
   });
 });
@@ -671,9 +802,9 @@ describe('the create run, end to end in one page, against the real background', 
     }
     await press(h, 'cnf-cta');
     await press(h, 'cnf-cta');
-    await h.until(() => !el<HTMLInputElement>('pw-field').disabled);
+    // M2: the field takes typing at once; Continue waits for the gate (#4's Continue floor).
     type(el<HTMLInputElement>('pw-field'), PW);
-    click(el('pw-cta'));
+    await press(h, 'pw-cta');
     await h.until(() => text(el('pw-title')) === 'Confirm your password' && !h.deps.gate.isBusy());
     type(el<HTMLInputElement>('pw-field'), PW);
     return shownWords;
@@ -803,35 +934,85 @@ describe('the create run, end to end in one page, against the real background', 
     expect(visible(el('v-passkey'))).toBe(false);
   }, 30_000);
 
-  it('a wallet stored meanwhile (exists): the line, no CTA, and the phrase dropped', async () => {
+  it('M1: a wallet stored meanwhile (exists): "Open the Noctura icon to use it." as #1 says it, no CTA, the phrase dropped', async () => {
     const h = await harness({mnemonic: PHRASE});
-    const run = startCreateRun(h.deps, {at: 'intro', importRun: () => undefined});
+    const run = startCreateRun(h.deps, {at: 'welcome', importRun: () => undefined});
+    await h.until(() => visible(el('wel-actions')));
+    await toPassword(h);
+    // Another tab finished first.
+    await h.ext.local.set(VAULT_KEY, await createEnvelope({mnemonic: PHRASE, password: PW, scheme: 'slip10', accounts: [{index: 0, name: 'A', publicKey: ACCOUNT}], kdf: testKdf}));
+    click(el('pw-cta'));
+    await h.until(() => visible(el('pw-notice')));
+    expect(text(el('pw-notice'))).toBe('A wallet already exists in this browser. Nothing was changed. Open the Noctura icon to use it.');
+    expect(visible(el('pw-cta'))).toBe(false);
+    expect(visible(el('pw-form'))).toBe(false);
+    expect(run.holds()).toEqual({phrase: false, password: false});
+    expect(h.went).toEqual([]);
+    expect(unstyled('v-password')).toEqual([]);
+  }, 30_000);
+
+  it('M4: a damaged vault stored meanwhile (null): the damaged lines, never "A wallet already exists"', async () => {
+    const h = await harness({mnemonic: PHRASE});
+    const run = startCreateRun(h.deps, {at: 'welcome', importRun: () => undefined});
+    await h.until(() => visible(el('wel-actions')));
+    await toPassword(h);
+    await h.ext.local.set(VAULT_KEY, null);
+    click(el('pw-cta'));
+    await h.until(() => visible(el('pw-notice')));
+    expect(text(el('pw-notice-line'))).toBe("This wallet's stored data is damaged.");
+    expect(text(el('pw-notice-help'))).toBe(
+      'Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase.',
+    );
+    expect(text(el('v-password'))).not.toMatch(/already exists/);
+    expect(visible(el('pw-cta'))).toBe(false);
+    expect(run.holds()).toEqual({phrase: false, password: false});
+  }, 30_000);
+
+  it('pagehide (the page may go into the back/forward cache): the run drops the phrase and the password, no word left in the DOM; restored, it starts again at #1', async () => {
+    const h = await harness({mnemonic: PHRASE});
+    const run = startCreateRun(h.deps, {at: 'welcome', importRun: () => undefined});
+    await h.until(() => visible(el('wel-actions')));
+    await press(h, 'wel-create');
     click(el('int-continue'));
     await press(h, 'sg-continue');
     el('seed-grid').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}));
     h.timers.advance(HELD);
-    el('seed-grid').dispatchEvent(new PointerEvent('pointerup', {bubbles: true}));
-    await press(h, 'seed-cta');
-    for (const s of [...el('cnf-slots').querySelectorAll('.label')].map(text)) {
-      const n = Number(/#(\d+)/.exec(s)?.[1]);
-      const b = () => [...el('cnf-pool').querySelectorAll('button')].find(x => text(x) === WORDS[n - 1]) as HTMLButtonElement;
-      await h.until(() => !b().disabled);
-      click(b());
-    }
-    await press(h, 'cnf-cta');
-    await press(h, 'cnf-cta');
-    // Another tab finished first.
-    await h.ext.local.set(VAULT_KEY, await createEnvelope({mnemonic: PHRASE, password: PW, scheme: 'slip10', accounts: [{index: 0, name: 'A', publicKey: ACCOUNT}], kdf: testKdf}));
-    await h.until(() => !el<HTMLInputElement>('pw-field').disabled);
-    type(el<HTMLInputElement>('pw-field'), PW);
-    click(el('pw-cta'));
-    await h.until(() => text(el('pw-title')) === 'Confirm your password' && !h.deps.gate.isBusy());
-    type(el<HTMLInputElement>('pw-field'), PW);
-    click(el('pw-cta'));
-    await h.until(() => text(el('pw-helper')) === 'A wallet already exists in this browser. Nothing was changed.');
-    expect(visible(el('pw-cta'))).toBe(false);
+    expect(leaked().length).toBeGreaterThan(0);
+    // A hidden tab keeps the phrase (Scope 19) …
+    h.leave('hidden');
+    expect(run.holds().phrase).toBe(true);
+    // … pagehide does not.
+    h.leave('pagehide');
     expect(run.holds()).toEqual({phrase: false, password: false});
-    expect(h.went).toEqual([]);
+    expect(leaked()).toEqual([]);
+    h.back('restored');
+    await h.until(() => visible(el('wel-actions')));
+    expect(visible(el('v-welcome'))).toBe(true);
+    // A new run: a new phrase is generated when #3 is reached again.
+    await press(h, 'wel-create');
+    click(el('int-continue'));
+    await press(h, 'sg-continue');
+    expect(run.holds().phrase).toBe(true);
+  }, 30_000);
+
+  it('pagehide while the wallet is stored: the run drops the phrase; the store that lands afterwards does not move the run on', async () => {
+    const h = await harness({mnemonic: PHRASE});
+    const run = startCreateRun(h.deps, {at: 'welcome', importRun: () => undefined});
+    await h.until(() => visible(el('wel-actions')));
+    await toPassword(h);
+    click(el('pw-cta'));
+    await h.until(() => visible(el('pw-creating')));
+    h.leave('pagehide');
+    expect(run.holds()).toEqual({phrase: false, password: false});
+    // The store lands (it was already running), but the run was dropped: no #6, no password held.
+    // The gate frees only once the store has settled (and its floor passed).
+    await h.until(() => !h.deps.gate.isBusy());
+    expect(await h.ext.local.get(VAULT_KEY)).toBeDefined();
+    expect(visible(el('v-passkey'))).toBe(false);
+    expect(run.holds()).toEqual({phrase: false, password: false});
+    h.back('restored');
+    await h.until(() => visible(el('wel-notice')));
+    expect(text(el('wel-notice-line'))).toBe('A wallet already exists in this browser. Nothing was changed.');
   }, 30_000);
 
   it('a store that fails keeps the phrase for another try and holds no password', async () => {

@@ -115,7 +115,11 @@ export function mountSeed(deps: PageDeps, next: {back(): void; done(): void}): S
   });
   grid.addEventListener('blur', release);
   window.addEventListener('blur', release);
-  deps.onLeave(release);
+  // Hidden: release (re-blur). pagehide: the page may sit in the back/forward cache — the phrase goes too.
+  deps.onLeave(why => {
+    release();
+    if (why === 'pagehide') clear();
+  });
   // Scope 15 (Task 7 carry): show() may run while another screen's action holds the page gate (#1's Create
   // → #2 → #3 inside #1's 500 ms floor); the gate's own release then re-renders #3's buttons.
   deps.gate.onIdle(render);

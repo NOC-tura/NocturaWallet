@@ -793,6 +793,10 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
 ### 3.3 #3 seed-display
 
 - **Engine:** `newMnemonic()` in the page (24 words), in memory only; nothing is sent.
+- **Memory:** the phrase lives in the create run's closure from #3's first show until the wallet is
+  stored. A hidden tab keeps it (and re-blurs the grid); **`pagehide` drops the phrase** (and #5's
+  password), whatever `persisted` says — the browser may keep the page in its back/forward cache — and
+  a page restored from that cache starts again at #1 (Task 8 fix round 1, controller addition).
 - **States:**
   - `pre-reveal modal`: route tag hidden; "About to show your recovery phrase"; "Move to a private
     place. Anyone who sees these 24 words can spend everything in this wallet, forever."; callout

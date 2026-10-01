@@ -71,13 +71,18 @@ export interface PageDeps {
   go(target: PageTarget): void;
   /** window.close(); the screen hides [Close this tab] if the tab is still here a moment later. */
   closeTab(): void;
-  /** pagehide, and visibilitychange to hidden: where a screen drops what it holds (spec §3.5 memory rule). */
-  onLeave(f: () => void): void;
   /**
-   * visibilitychange to visible, and pageshow: the tab is shown again. A screen that took the user's words
-   * out of the DOM when the tab was hidden (#4) puts its own state back (the run still holds the phrase).
+   * pagehide, and visibilitychange to hidden: where a screen drops what it holds (spec §3.5 memory rule).
+   * `pagehide` also drops the create run's phrase (fix round 1): the page may be kept in the back/forward
+   * cache, so leaving it must not leave the phrase behind, whatever `persisted` says.
    */
-  onReturn(f: () => void): void;
+  onLeave(f: (why: 'hidden' | 'pagehide') => void): void;
+  /**
+   * The tab shown again: `visible` (visibilitychange) — a screen that took the user's words out of the DOM
+   * when the tab was hidden (#4) puts its own state back; `restored` (pageshow from the back/forward cache)
+   * — the run dropped its phrase on pagehide and starts again from #1.
+   */
+  onReturn(f: (why: 'visible' | 'restored') => void): void;
 }
 
 /** Rule 6 for the vault page (spec §7.6): the gate is held at least this long after a click. */

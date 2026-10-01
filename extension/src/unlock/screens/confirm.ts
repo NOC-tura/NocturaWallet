@@ -25,11 +25,23 @@ export function randomBelow(randomBytes: (n: number) => Uint8Array, n: number): 
  * slot one correct word and eight that are not. As the design draws it (4a: "orchid coral circle / vendor
  * voyage vintage / lift linger latch"), each row is a slot's word with two BIP-39 distractors starting
  * with the same letter, none of them a word of this phrase. Generated once per visit of #4.
+ *
+ * A BIP-39 phrase may repeat a word (fix round 1, I1): the three positions are chosen so their WORDS differ,
+ * which makes the nine pool words distinct. Only a phrase with fewer than three distinct words (the
+ * "abandon … art" test vector) can repeat a slot word; the screen tracks picks by pool index, so even that
+ * plan stays completable.
  */
 export function confirmPlan(words: readonly string[], randomBytes: (n: number) => Uint8Array): ConfirmPlan {
-  const picked = new Set<number>();
-  while (picked.size < 3) picked.add(randomBelow(randomBytes, words.length) + 1);
-  const slots = [...picked].sort((a, b) => a - b).map(position => ({position, word: words[position - 1] ?? ''}));
+  const repeatsAllowed = new Set(words).size < 3;
+  const picked: number[] = [];
+  while (picked.length < 3) {
+    const position = randomBelow(randomBytes, words.length) + 1;
+    const word = words[position - 1] ?? '';
+    if (picked.includes(position)) continue;
+    if (!repeatsAllowed && picked.some(p => words[p - 1] === word)) continue;
+    picked.push(position);
+  }
+  const slots = picked.sort((a, b) => a - b).map(position => ({position, word: words[position - 1] ?? ''}));
   const used = new Set(words);
   const pool: string[] = [];
   for (const {word} of slots) {
@@ -82,15 +94,19 @@ export function mountConfirm(deps: PageDeps, next: {back(): void; done(): void})
   const helper = byId('cnf-helper');
   let phase: 'off' | 'pick' | 'success' = 'off';
   let plan: ConfirmPlan = {slots: [], pool: []};
-  let filled: (string | null)[] = [];
+  /** Per slot, the pool index picked for it (an index, not a word: a pool may hold a word twice — I1). */
+  let filled: (number | null)[] = [];
   let resetting: number | null = null;
   /** The tab is hidden: nothing of the phrase in the DOM until it is shown again. */
   let concealed = false;
 
-  const complete = () => plan.slots.length > 0 && plan.slots.every((s, i) => filled.at(i) === s.word);
+  const wordAt = (i: number | null | undefined): string | null => (i === null || i === undefined ? null : (plan.pool.at(i) ?? null));
+  const complete = () => plan.slots.length > 0 && plan.slots.every((s, i) => wordAt(filled.at(i)) === s.word);
+  /** The slot holding a wrong pick, or -1. */
+  const wrongSlot = () => filled.findIndex((x, i) => x !== null && wordAt(x) !== plan.slots.at(i)?.word);
   const slotCells = () =>
     plan.slots.map((s, i) => {
-      const value = filled.at(i) ?? null;
+      const value = wordAt(filled.at(i));
       const wrong = value !== null && value !== s.word;
       const cell = h('div', 'slot');
       cell.classList.toggle('empty', value === null);
@@ -103,17 +119,18 @@ export function mountConfirm(deps: PageDeps, next: {back(): void; done(): void})
       return cell;
     });
   const poolButtons = (busy: boolean) => {
-    const usedWords = new Set(filled.filter((w): w is string => w !== null));
-    const wrongWord = filled.find((w, i) => w !== null && w !== plan.slots.at(i)?.word) ?? null;
-    return plan.pool.map(w => {
+    const at = wrongSlot();
+    const wrongIndex = at >= 0 ? (filled.at(at) ?? null) : null;
+    return plan.pool.map((w, index) => {
+      const used = filled.includes(index);
       const b = h('button', 'word-btn', w);
       b.type = 'button';
-      b.classList.toggle('used', usedWords.has(w));
-      b.classList.toggle('dim', usedWords.has(w));
-      b.classList.toggle('vlt-wrong-word', w === wrongWord);
-      b.disabled = busy || usedWords.has(w) || resetting !== null;
+      b.classList.toggle('used', used);
+      b.classList.toggle('dim', used);
+      b.classList.toggle('vlt-wrong-word', index === wrongIndex);
+      b.disabled = busy || used || resetting !== null;
       b.addEventListener('click', () => {
-        if (phase === 'pick') void exclusive(deps, render, async () => pick(w));
+        if (phase === 'pick') void exclusive(deps, render, async () => pick(index));
       });
       return b;
     });
@@ -124,7 +141,7 @@ export function mountConfirm(deps: PageDeps, next: {back(): void; done(): void})
     const offered = phase === 'pick' && !concealed;
     slotsEl.replaceChildren(...(offered ? slotCells() : []));
     poolEl.replaceChildren(...(offered ? poolButtons(busy) : []));
-    const wrongAt = filled.findIndex((w, i) => w !== null && w !== plan.slots.at(i)?.word);
+    const wrongAt = wrongSlot();
     setText(lede, wrongAt >= 0 ? CONFIRM.wrongLede : CONFIRM.lede);
     lede.classList.toggle('vlt-danger', wrongAt >= 0);
     lede.classList.toggle('vlt-lede', wrongAt < 0);
@@ -149,12 +166,12 @@ export function mountConfirm(deps: PageDeps, next: {back(): void; done(): void})
     slotsEl.replaceChildren();
     poolEl.replaceChildren();
   };
-  const pick = (w: string) => {
-    if (resetting !== null || concealed || filled.includes(w)) return;
+  const pick = (index: number) => {
+    if (resetting !== null || concealed || filled.includes(index)) return;
     const at = filled.findIndex(x => x === null);
     if (at < 0) return;
-    filled.splice(at, 1, w);
-    if (w !== plan.slots.at(at)?.word) {
+    filled.splice(at, 1, index);
+    if (wordAt(index) !== plan.slots.at(at)?.word) {
       resetting = deps.timers.setTimeout(() => {
         resetting = null;
         filled = plan.slots.map(() => null);
@@ -190,8 +207,13 @@ export function mountConfirm(deps: PageDeps, next: {back(): void; done(): void})
     }
   });
   deps.gate.onIdle(render);
-  deps.onLeave(() => {
+  deps.onLeave(why => {
     concealed = true;
+    // pagehide: the page may sit in the back/forward cache — #4 ends and drops its plan (the run restarts).
+    if (why === 'pagehide') {
+      phase = 'off';
+      drop();
+    }
     render();
   });
   deps.onReturn(() => {

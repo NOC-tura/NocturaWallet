@@ -13,34 +13,35 @@ afterEach(() => {
 
 // Spec §3.5's memory rule: what a screen holds is dropped on pagehide AND on visibilitychange to hidden.
 describe('browserPageDeps: the page leaving and coming back', () => {
-  it('onLeave runs on pagehide', () => {
+  it('onLeave runs on pagehide, saying so', () => {
     const deps = browserPageDeps();
     const left: string[] = [];
-    deps.onLeave(() => left.push('left'));
+    deps.onLeave(why => left.push(why));
     window.dispatchEvent(new Event('pagehide'));
-    expect(left).toEqual(['left']);
+    expect(left).toEqual(['pagehide']);
   });
 
-  it('onLeave runs on visibilitychange to hidden, and not on visibilitychange to visible', () => {
+  it('onLeave runs on visibilitychange to hidden ("hidden"), and not on visibilitychange to visible', () => {
     const deps = browserPageDeps();
     const left: string[] = [];
-    deps.onLeave(() => left.push('left'));
+    deps.onLeave(why => left.push(why));
     visibility('visible');
     expect(left).toEqual([]);
     visibility('hidden');
-    expect(left).toEqual(['left']);
+    expect(left).toEqual(['hidden']);
   });
 
-  it('onReturn runs on visibilitychange to visible and on pageshow, never on hidden', () => {
+  it('onReturn: "visible" on visibilitychange to visible; "restored" on a pageshow from the back/forward cache; nothing on the first load’s pageshow or on hidden', () => {
     const deps = browserPageDeps();
     const back: string[] = [];
-    deps.onReturn(() => back.push('back'));
+    deps.onReturn(why => back.push(why));
     visibility('hidden');
+    window.dispatchEvent(Object.assign(new Event('pageshow'), {persisted: false}));
     expect(back).toEqual([]);
     visibility('visible');
-    expect(back).toEqual(['back']);
-    window.dispatchEvent(new Event('pageshow'));
-    expect(back).toEqual(['back', 'back']);
+    expect(back).toEqual(['visible']);
+    window.dispatchEvent(Object.assign(new Event('pageshow'), {persisted: true}));
+    expect(back).toEqual(['visible', 'restored']);
   });
 
   it('one page gate for the whole page, which tells screens when it frees', () => {
