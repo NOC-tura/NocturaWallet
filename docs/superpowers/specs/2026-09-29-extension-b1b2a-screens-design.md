@@ -1492,7 +1492,7 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     has no banner of its own (`failed`, not `unreachable` or `coordinator-refused`) and nothing is
     cached → #11's layout with "—" (never the skeleton, never "$0.00"), Receive (D36), the refresh
     button, and the danger line "Could not read your balances. Try again." — **a controller
-    addition (final review), awaiting the owner's copy**. A good refresh replaces it.
+    addition (final review), confirmed by the owner 2026-10-01**. A good refresh replaces it.
   - `loaded`: as above.
   - `hidden balance`: eye toggled → "Tap eye to reveal" in place of the total, "••••SOL" /
     "••••NOC", rows "•••••• SOL" / "••••". Persisted per S4 (`localStorage`
@@ -1502,6 +1502,17 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   - **extension-only `stale`**: cached values (E4) with the design's #42 stale treatment (0.6
     opacity, `--fg-secondary` meta) and the caption "Total balance · cached 2 min ago", until the
     fresh read lands.
+  - **extension-only `stale after a failed refresh`** — **owner decision 2026-10-01 (delegated to
+    the controller)**: any failed balance read while balances are shown (`failed`, `unreachable`,
+    a timeout, or `coordinator-refused`) marks them stale exactly as cached values are (E4): the same
+    0.6-opacity treatment, the caption "Total balance · cached 2 min ago" (the age of the last good
+    read), rows "· cached", and the existing "last synced 09:41:13" hero line. `lastSync` stays at
+    the last successful read and never moves forward on a failure. A `failed` read (a non-network
+    error) also shows the danger line "Could not read your balances. Try again." with the stale
+    balances (until now it appeared only when nothing was cached). The #42 and D26 banners behave
+    as before; this only adds the stale mark under them, and the 403 state stays sticky (a success
+    never clears refused). A later successful read clears the stale mark and the line. Never zero or
+    "failed" in place of a balance (§7.3).
   - **extension-only `pending strip`**: an open send of this account → a `.banner.info` strip
     "Sending 2.48 SOL · pending" (or "· taking longer than usual") → #21/#54.
   - **extension-only `resume`**: a live resumable prepared send → the popup opens #20 (§1.6).
@@ -1622,7 +1633,7 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   "v0.1.0" (`.noc-mono`, from `runtime.getManifest()`) → #38. Rows are `.s7-row`, 56 px.
   A failed "Lock now" (vault.lock not ok, or the wallet still unlocked on the re-read) shows the
   danger line "Could not lock the wallet. Try again." and re-enables the row — **a controller addition
-  (Task 16 review, rule 7), awaiting the owner's copy**.
+  (Task 16 review, rule 7), confirmed by the owner 2026-10-01**.
 - **#38 about:** wordmark "noctura." (`.s7-wordmark`, the dot in `--accent-shielded`); "Solana
   wallet for your browser — your keys stay on this device." **→ adapted** (design "…transparent and
   shielded modes in one app…", D4); "v0.1.0" (mono); "Resources": "noc-tura.io" as plain text
@@ -2053,6 +2064,43 @@ visible):
    not tried live) — the reader accepts `null` for exactly those entries and E2's test covers it.
    JSON numbers for lamports are exact only below 2^53 (≈ 9 million SOL) — above that the reader
    refuses as malformed rather than compute on a rounded value.
+   **Full-drain simulation — answered by the coordinator team 2026-10-01** (their measurements;
+   the wallet side contacted no server):
+   - *Measured, drained non-payer:* through `/api/v1/rpc` with an extension `Origin`, HTTP 200,
+     `err: null`. One deterministic simulation: an existing account A (the payer) sends 1 000 000
+     lamports to a new account B, and B sends exactly 1 000 000 to a new account C. B, drained to
+     exactly 0, appears in `value.accounts` as an **object, not `null`**: `lamports: 0`, `owner` the
+     System Program, `data` empty base64, `space: 0`, `rentEpoch` u64 max (rounded by JSON). B was
+     not the fee payer and did not exist before.
+   - *Measured, the payer itself drained ("send everything"):* three simulations (two outcomes below)
+     through the same route, all HTTP 200; the payer a quiet, pre-existing System account (one of the project's own fee payers),
+     so the payer is the drained account.
+     1. The payer sends `balance − 5 000` to a new address and ends at exactly 0: `err: null`, fee
+        5 000; `accounts[0]` (the payer) is an **object** — `lamports: 0`, owner the System
+        Program, `space: 0`, `executable: false`; `accounts[1]` (the new account) holds the amount
+        sent; `postBalances[0] = 0`. A payer that ends at 0 is `{lamports: 0}`, not `null`.
+     2. The payer is left with 1 000 lamports (below rent exemption): `err:
+        {"InsufficientFundsForRent": {"account_index": 0}}`, fee 5 000; **every** element of
+        `value.accounts` is `null`, the recipient's included; `postBalances[0] = balance − fee`, so
+        the transfer was not applied. The logs show the System Program transfer as "success": the
+        rent check fails after execution, so the logs do not reveal the refusal.
+   - *Rules:* a System Program sender may end at exactly 0, but a remainder of 1 … 890 879 lamports
+     is refused by the simulation — **measured for the payer** (case 2). A recipient that does not
+     exist yet must receive at least 890 880 lamports (the rent-exempt minimum of a 0-data account)
+     — **the coordinator's knowledge, not measured**.
+   - *Reader rules for plan 3:* decide on `err`, never on `accounts` or the logs. A non-null `err`
+     → `simulation-failed`, with `accounts` allowed to be `null` (the existing H2 rule; the reader
+     returns `{err, accounts: null}` whatever `accounts` holds). `InsufficientFundsForRent` for the
+     sender maps to its own #19 copy in plan 3 — and the max-send must never produce it. Such a
+     transaction would still be charged its fee if broadcast, so refusing before broadcast matters.
+   - *Consequences for plan 3:* the reader in `core/solana/rpc.ts` (`simulatedAccount`) already
+     accepts `lamports: 0` and never reads `rentEpoch`, so a drained payer is not refused as
+     malformed (unit tests decode the measured drained object and the refused shape). Max-send must
+     either drain to exactly 0 or leave at least the rent-exempt minimum — never a 1 … 890 879
+     lamport remainder (§4.2's MAX keeps the minimum). A send to a new recipient below 890 880
+     lamports must be refused before simulation with its own copy, to be decided in plan 3 (the
+     engine's `recipient-below-rent` and `sender-below-rent` checks in `prepare.ts` and the §4.4
+     drafts are the starting point).
 6. **#42 disabled Receive although the address is local.** *Resolved by D36:* Receive enabled,
    Send disabled, recorded as a deviation.
 9. **Explorer target** (design solscan.io, `web/` explorer.solana.com). *Resolved by D37:* Solscan,

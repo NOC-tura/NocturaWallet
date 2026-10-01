@@ -249,6 +249,25 @@ describe('solanaReader', () => {
       }
     });
 
+    // Spec §11.5, measured by the coordinator team 2026-10-01: an account drained to exactly 0 is an
+    // object, not null — lamports 0, System-owned, empty data, space 0, rentEpoch u64 max as JSON.
+    it('a drained account (lamports 0, rentEpoch u64 max as a JSON number) decodes to lamports 0n, not malformed', async () => {
+      const drained: unknown = JSON.parse(`{"lamports":0,"owner":"${SYSTEM}","data":["","base64"],"executable":false,"rentEpoch":18446744073709551615,"space":0}`);
+      const {r} = reader(() => ok({context: {slot: 5}, value: {err: null, logs: [], unitsConsumed: 300, accounts: [drained]}}));
+      const out = await r.simulateTransaction('AQID', {accounts: [OWNER]});
+      expect(out.accounts).toEqual([{lamports: 0n, owner: SYSTEM, data: new Uint8Array(0)}]);
+    });
+
+    // Spec §11.5, measured 2026-10-01: a payer left below rent exemption answers err
+    // InsufficientFundsForRent with EVERY account null; the outcome is decided on err alone.
+    it('a payer left below rent: err InsufficientFundsForRent with every account null → {err, accounts: null}', async () => {
+      const err = {InsufficientFundsForRent: {account_index: 0}};
+      const {r} = reader(() => ok({context: {slot: 5}, value: {err, logs: ['Program 11111111111111111111111111111111 success'], unitsConsumed: 150, accounts: [null, null]}}));
+      const out = await r.simulateTransaction('AQID', {accounts: [OWNER, MINT]});
+      expect(out.err).toEqual(err);
+      expect(out.accounts).toBeNull();
+    });
+
     it('refuses lamports a JSON number cannot hold exactly (above 2^53), and data that is not [base64, "base64"]', async () => {
       const bad = [{...acct(1), lamports: 2 ** 53}, {...acct(1), lamports: -1}, {...acct(1), data: 'AQID'}, {...acct(1), data: ['AQID', 'base58']}, {...acct(1), owner: 7}];
       for (const a of bad) {
