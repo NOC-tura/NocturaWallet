@@ -7,7 +7,7 @@ import {CLOSE_CHECK_MS} from '../ui/useCloseTab';
 import {CLIPBOARD_LINE, MAX_READ} from '../screens/Imported';
 import {renderApp} from './appHarness';
 import {ENV, setupWallet, walletReader} from './harness';
-import {ACCOUNT} from '../../background/__tests__/fixtures';
+import {ACCOUNT, RECIPIENT} from '../../background/__tests__/fixtures';
 import {clearSession, setSession} from '../../background/session';
 import {RequestUnreachable, RpcForbidden} from '../../../../core/solana/rpc';
 import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
@@ -316,5 +316,83 @@ describe('#40 reads only what it shows (Task 16 carries)', () => {
     expect(await screen.findByText('Open the Noctura icon to use it.')).toBeTruthy();
     expect(screen.queryByRole('button', {name: 'Unlock'})).toBeNull();
     expect(new Set(sent)).toEqual(new Set(['wallet.state']));
+  });
+});
+
+// Task 16 fix round 1 (items 1 and 2): a failed re-read never navigates, and a read that answered for
+// one account but not another is never "empty" — on the first read or on the re-read.
+describe('#40: a failed or partial read is never empty and never leaves for the retry path (fix round 1)', () => {
+  it.each([
+    ['unreachable', () => new RequestUnreachable('getBalance', 'offline'), 'Balances could not be read right now.'],
+    ['a 403', () => new RpcForbidden('getBalance'), 'The server is not answering for now — try again in 10 minutes.'],
+  ])('[Try a different seed] whose re-read fails (%s): no navigation, the failure state shown', async (_name, error, text) => {
+    let calls = 0;
+    const reader = walletReader({
+      getBalance: async () => {
+        if (calls++ === 0) return 0n;
+        throw error();
+      },
+      getTokenAccountsByOwner: async () => [],
+    });
+    const {platform} = await renderApp({surface: 'tab', hash: '#/imported', env: ONE, accounts: [ACCOUNT], reader});
+    fireEvent.click(await screen.findByRole('button', {name: 'Try a different seed'}));
+    expect(await screen.findByText(text)).toBeTruthy();
+    await new Promise(r => setTimeout(r, 20));
+    expect(platform.navigated).toEqual([]);
+    expect(screen.queryByText('Wallet imported · empty')).toBeNull();
+    expect(screen.queryByRole('button', {name: 'Try a different seed'})).toBeNull();
+  });
+
+  it('two accounts, the first zero and the second unanswered: "Balances could not be read right now.", never empty', async () => {
+    const reader = walletReader({
+      getBalance: async owner => {
+        if (owner === RECIPIENT) throw new RequestUnreachable('getBalance', 'offline');
+        return 0n;
+      },
+      getTokenAccountsByOwner: async () => [],
+    });
+    await renderApp({surface: 'tab', hash: '#/imported', reader});
+    expect(await screen.findByText('Balances could not be read right now.')).toBeTruthy();
+    expect(screen.queryByText('Wallet imported · empty')).toBeNull();
+  });
+
+  it('two accounts, the re-read answers for the first and not the second: the unreachable state, no navigation', async () => {
+    let second = 0;
+    const reader = walletReader({
+      getBalance: async owner => {
+        if (owner === RECIPIENT && second++ > 0) throw new RequestUnreachable('getBalance', 'offline');
+        return 0n;
+      },
+      getTokenAccountsByOwner: async () => [],
+    });
+    const {platform} = await renderApp({surface: 'tab', hash: '#/imported', reader});
+    fireEvent.click(await screen.findByRole('button', {name: 'Try a different seed'}));
+    expect(await screen.findByText('Balances could not be read right now.')).toBeTruthy();
+    await new Promise(r => setTimeout(r, 20));
+    expect(platform.navigated).toEqual([]);
+    expect(screen.queryByText('Wallet imported · empty')).toBeNull();
+  });
+
+  // Rule 6 on the unreachable state's Refresh (item 4). The behaviour is what is pinned: a double click
+  // reads once. Limitation, measured: the first click's load() swaps the state to loading in the same
+  // act(), so the button is gone before the second click — this test passes with a plain <button> too;
+  // the LockedButton is the second guard, not separately provable here.
+  it('a double click on Refresh reads once', async () => {
+    let fail = true;
+    const reader = walletReader({
+      getBalance: async () => {
+        if (fail) throw new RequestUnreachable('getBalance', 'offline');
+        return 0n;
+      },
+      getTokenAccountsByOwner: async () => [],
+    });
+    const sent: string[] = [];
+    await renderApp({surface: 'tab', hash: '#/imported', env: ONE, accounts: [ACCOUNT], reader, spy: m => void sent.push((m as {type: string}).type)});
+    const refresh = await screen.findByRole('button', {name: 'Refresh'});
+    fail = false;
+    fireEvent.click(refresh);
+    fireEvent.click(refresh);
+    expect(await screen.findByText('Wallet imported · empty')).toBeTruthy();
+    expect(sent.filter(t => t === 'wallet.balances')).toHaveLength(2);
   });
 });

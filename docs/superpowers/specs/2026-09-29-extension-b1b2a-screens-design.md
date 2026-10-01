@@ -1154,8 +1154,10 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     over accounts ("Solana · N accounts"). Past six accounts the copy claims only what was read:
     "N accounts · M tokens recovered from the first 6." and "across the first 6 of N accounts"
     (**controller addition** — confirmed by the owner 2026-10-01, plan-2 review M2). With more than
-    six accounts and nothing held on the six read, the screen is this state with "0 tokens", never
-    `no-assets-empty` (not every account was read) and so without `[Try a different seed]`.
+    six accounts and nothing held on the six read, the screen is this state — "N accounts · 0 tokens
+    recovered from the first 6." and a $0.00 total — never `no-assets-empty` (not every account was
+    read) and so without `[Try a different seed]` (**controller addition, awaiting the owner's
+    confirmation** — Task 16 fix round 1).
   - **Reads:** the tab's provider is quiet on this route (as on #7): no open sequence, no
     `activity.ping`, and its `refresh()` — the `online` event's — reads nothing. #40 makes its own
     explicit reads, the balances one account at a time then the prices, on mount, on its refresh
@@ -1189,6 +1191,15 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   - `[Open wallet]` becomes the D10 line.
   - Long-press menu and 30 s clipboard clear dropped.
   - The `v1_imported` MMKV annotation does not apply.
+  - **→ adapted:** the address is shown whole in groups of four (`AddressGroups`, as #7 and #13),
+    not as the design's continuous string with the first and last six highlighted (`.ck`).
+  - NOC's sub-label is "Noctura": the design's "Noctura · pre-TGE" suffix is dropped (no TGE wording
+    or date on this screen).
+  - The footer captions are dropped: the `v1_imported` / haptic note (single-account) and "3
+    derivation paths scanned (m/44'/501'/0/0/0..2)" (multi-account) — design annotations, and the
+    second is not the engine's paths (the empty state's third reason names the real ones).
+  - The empty state's footer keeps "You can send SOL to this address to fund the wallet." and drops
+    its second sentence, "Or tap "Open wallet" to keep going." — there is no `[Open wallet]` (D10).
   - The "Previous wallet replaced" 4-second toast (the design's atomic-replace annotation) is not
     built: every hand-over reaches the same `wallet.html#/imported` — a plain import, #39's restore
     (the same wallet, re-stored), the D41 retry's completion (a replacement) and the D41 retry's

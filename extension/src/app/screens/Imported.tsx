@@ -176,9 +176,10 @@ export function Imported() {
         {refused ? <RefusedBanner /> : null}
         <div className="app-center">
           {refused ? null : <p className="noc-body">Balances could not be read right now.</p>}
-          <button type="button" className="icon-btn" aria-label="Refresh" disabled={refused} onClick={() => void load()}>
+          {/* Rule 6 (§7.6): one refresh per tap (fix round 1, item 4). */}
+          <LockedButton className="icon-btn" label="Refresh" disabled={refused} onPress={load}>
             <ExtIcon name="refresh" size={20} />
-          </button>
+          </LockedButton>
         </div>
         <AddressChip address={first.publicKey} />
       </div>
@@ -239,6 +240,9 @@ export function Imported() {
   // "1 token" (singular): controller addition — confirmed by the owner 2026-10-01.
   const tokens = held.length === 1 ? '1 token' : `${held.length} tokens`;
   // Past MAX_READ the copy claims only what was read (plan-2 review M2 — controller addition, confirmed by the owner 2026-10-01).
+  // More than MAX_READ accounts with nothing held on those read: this funded layout with "N accounts · 0 tokens
+  // recovered from the first 6." and a $0.00 total — never "empty", since not every account was read.
+  // Controller addition, AWAITING the owner's confirmation (Task 16 fix round 1, item 3).
   const sub = n === 1 ? `1 account · ${tokens} recovered. Welcome back.` : allRead ? `${n} accounts · ${tokens} recovered.` : `${n} accounts · ${tokens} recovered from the first ${MAX_READ}.`;
   const across = allRead ? `across ${n} accounts` : `across the first ${MAX_READ} of ${n} accounts`;
   const delta = n === 1 ? approx : [across, approx].filter(x => x !== null).join(' · ');
