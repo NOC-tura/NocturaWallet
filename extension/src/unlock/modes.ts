@@ -11,6 +11,7 @@ import {evaluatePrf} from '../vault/passkey';
 import {unb64} from '../vault/bytes';
 import {send} from '../ui/send';
 import {readLocal} from '../shared/readLocal';
+import {REAUTH} from './strings';
 import {passkeyOf} from './stored';
 
 // Thin page modes for B1b-1 (the owner's screens arrive in B1b-2). The vault page renders only its
@@ -36,6 +37,7 @@ const REAUTH_WORDS: Record<ReauthPageOutcome | 'unavailable', string> = {
   wrong: 'That did not confirm it.',
   'not-unlocked': 'The wallet is locked. Unlock it first, then try again.',
   'mismatch-locked': 'That did not match this wallet, so the wallet has been locked.',
+  expired: REAUTH.expired,
   damaged: "This wallet's stored data is damaged.",
   'no-wallet': 'No wallet on this browser yet.',
   failed: 'Something went wrong. Try again.',

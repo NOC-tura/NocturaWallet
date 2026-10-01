@@ -2,7 +2,7 @@ import {reauthenticate, type ReauthFactor, type SessionKeys} from '../vault/reau
 import {storedVault} from './stored';
 import type {Send} from './types';
 
-export type ReauthPageOutcome = 'confirmed' | 'wrong' | 'not-unlocked' | 'mismatch-locked' | 'damaged' | 'no-wallet' | 'failed';
+export type ReauthPageOutcome = 'confirmed' | 'wrong' | 'not-unlocked' | 'mismatch-locked' | 'expired' | 'damaged' | 'no-wallet' | 'failed';
 
 /** The session's PUBLIC keys, from vault.status — never its secret keys. Null while locked. */
 export async function sessionKeys(send: Send): Promise<SessionKeys | null> {
@@ -48,7 +48,12 @@ export async function runReauth(
     if (outcome === 'mismatch') return await lockOnMismatch(deps.send);
     if (outcome !== 'ok') return outcome;
     const r = await deps.send({type: 'vault.reauthOk', challengeId});
-    return r.ok ? 'confirmed' : 'failed';
+    if (r.ok) return 'confirmed';
+    // D39: the challenge expired (or was discarded) while the password was typed — #10's `expired`,
+    // never `failed`. A lock that landed after the status read is `not-unlocked`.
+    if (r.error === 'unknown-challenge') return 'expired';
+    if (r.error === 'locked') return 'not-unlocked';
+    return 'failed';
   } catch {
     return 'failed';
   } finally {
