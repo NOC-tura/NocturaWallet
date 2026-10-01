@@ -91,6 +91,17 @@ describe('the seed proof (#39 → #8 restore)', () => {
     expect([...b.sent, ...crossed.sent]).toEqual([]);
   });
 
+  it('the caller’s read object is never frozen: the proof holds its own copy (fix round 2, N3)', async () => {
+    const env = await storedWallet(M, 'slip10', [0, 1]);
+    const proven = await proveSeed(async () => env, M);
+    if (proven.outcome !== 'match') throw new Error(proven.outcome);
+    expect(proven.proof.env).not.toBe(env);
+    expect(proven.proof.env).toEqual(env);
+    expect(Object.isFrozen(env)).toBe(false);
+    expect(Object.isFrozen(env.accounts)).toBe(false);
+    expect(Object.isFrozen(env.accounts[0])).toBe(false);
+  });
+
   it('no wallet, a damaged one, and a phrase import refuses are named as such', async () => {
     expect(await proveSeed(async () => undefined, M)).toEqual({outcome: 'no-wallet'});
     expect(await proveSeed(async () => null, M)).toEqual({outcome: 'damaged'});
@@ -229,6 +240,23 @@ describe('restoreWallet: the seed-proven replacement (E5 with `replacement`, D40
       expect(derive).toHaveBeenCalledWith(M, 'slip10', [0, 1]);
       await unchanged();
     });
+
+    it('a cli wallet is re-derived under cli, not slip10 (fix round 2, N1)', async () => {
+      const env = await storedWallet(M, 'cli', [0]);
+      const b = await background(env);
+      const proven = await proveSeed(b.read, M);
+      if (proven.outcome !== 'match') throw new Error(proven.outcome);
+      const derive = vi.mocked(derivePublicKeys);
+      derive.mockClear();
+      derive.mockImplementationOnce(async () => [RECIPIENT]);
+      expect(await restoreWallet({send: b.send, kdf}, proven.proof, NEW_PW)).toBe('not-this-wallet');
+      expect(derive).toHaveBeenCalledWith(M, 'cli', [0]);
+      expect(b.sent).toEqual([]);
+      expect(JSON.stringify(await b.read())).toBe(JSON.stringify(env));
+      // With the real derivation the same cli proof restores: the stored scheme is the one used.
+      expect(await restoreWallet({send: b.send, kdf}, proven.proof, NEW_PW)).toBe('restored');
+      expect(((await b.read()) as EnvelopeV1).scheme).toBe('cli');
+    });
   });
 });
 
@@ -356,6 +384,19 @@ describe('replaceEmptyWallet: the factor-proven delete is ALWAYS guarded (C6), t
     expect(await commitWallet({...store, send: lossy}, next)).toBe('created');
     expect((await getSession(b.ext))?.map(a => a.publicKey)).toEqual(next.session.map(a => a.publicKey));
     expect(b.sent.filter(m => m.type === 'vault.forgetWallet')).toHaveLength(1);
+  });
+
+  it('wallet-exists over the SAME keys under another password is still "exists": the revision decides, not the keys (fix round 2, N2)', async () => {
+    // Stored: M under OLD_PW. Ours: M under NEW_PW — the same public keys, a different envelope.
+    const stored = await storedWallet(M, 'slip10', [0]);
+    const b = await background(stored);
+    const ours = await prepareWallet(kdf, {mnemonic: M, password: NEW_PW, scheme: 'slip10', indexes: [0]});
+    expect(ours.env.accounts.map(a => a.publicKey)).toEqual(stored.accounts.map(a => a.publicKey));
+    expect(envelopeRevision(ours.env)).not.toBe(envelopeRevision(stored));
+    expect(await commitWallet({...b.store, send: b.send}, ours)).toBe('exists');
+    expect(b.sent.map(m => m.type)).toEqual(['vault.storeEnvelope']);
+    expect(await getSession(b.ext)).toBeNull();
+    expect(JSON.stringify(await b.read())).toBe(JSON.stringify(stored));
   });
 });
 
