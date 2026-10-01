@@ -221,11 +221,24 @@ describe('#4 seed-confirm: the screen', () => {
     click(el('cnf-cta'));
     await idle(h);
     expect(calls).toEqual(['done']);
-    // #4 has ended: its buttons do nothing until it is shown again.
+    // #4 has ended: its buttons do nothing until it is shown again — even with `disabled` lifted (a stray
+    // event; happy-dom, like a browser, drops a click on a disabled button, so only the phase guard is tested here).
+    el<HTMLButtonElement>('cnf-cta').disabled = false;
+    el<HTMLButtonElement>('cnf-back').disabled = false;
     click(el('cnf-cta'));
     click(el('cnf-back'));
     await idle(h);
     expect(calls).toEqual(['done']);
+  });
+
+  it('a used word cannot be picked again, even when its button is not disabled (a stray event)', async () => {
+    const {h, slots, right, button, pick} = await shown();
+    await pick(right(0));
+    await idle(h);
+    button(right(0)).disabled = false;
+    click(button(right(0)));
+    expect(text(slots()[1]?.querySelector('.value') ?? null)).toBe('— select —');
+    expect(slots()[1]?.classList.contains('empty')).toBe(true);
   });
 
   it('the tab hidden (onLeave) takes every word out of the DOM, a pending reset included; shown again (onReturn), the same plan and progress come back', async () => {
