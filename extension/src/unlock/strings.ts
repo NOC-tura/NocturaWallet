@@ -101,6 +101,11 @@ export const IMPORT = {
   bothFunded: 'Both address types on this phrase hold funds. Choose the one to use.',
   unresolved: 'Balances could not be checked. Choose the address type to use.',
   invalid: 'That is not a valid 12- or 24-word recovery phrase.',
+  /**
+   * Controller addition — NOT yet confirmed by the owner (Task 9 fix round 1, review item 5): what the screen-reader
+   * live region says once when the idle timer wipes the field (the banner's per-second countdown is not announced).
+   */
+  wipedLive: 'The phrase was wiped from this field.',
 } as const;
 
 /** #6 biometric-setup → passkey (D9). */

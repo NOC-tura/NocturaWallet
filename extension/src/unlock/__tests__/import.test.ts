@@ -3,6 +3,7 @@ import {readFileSync, readdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {createEnvelope, decryptMnemonic, unlockWithPassword, type EnvelopeV1} from '../../vault/envelope';
 import {VAULT_KEY} from '../../background/accountsStore';
+import {importCandidates} from '../onboarding';
 import {IDLE_WARN_MS, IDLE_WIPE_MS, mountImport} from '../screens/importScreen';
 import {createImportRun} from '../screens/importRun';
 import {mountPassword} from '../screens/password';
@@ -100,12 +101,68 @@ describe('#8 import: the screen (spec §3.8)', () => {
     expect(text(el('imp-count'))).toBe('13 of 24 words entered.');
   });
 
-  it('twelve words with a bad checksum are not a phrase: Continue stays off, the counter stays', async () => {
+  it('invalid-mnemonic inline (ruling 3): twelve list words with a bad checksum — the refusal line, no counter, Continue off', async () => {
     const {field, cta} = await shown();
     type(field, 'abandon '.repeat(12).trim());
     expect(el('imp-grid').querySelectorAll('.w:not(.empty)')).toHaveLength(12);
-    expect(text(el('imp-count'))).toBe('12 of 12 words entered.');
+    expect(visible(el('imp-invalid'))).toBe(true);
+    expect(text(el('imp-invalid'))).toBe('That is not a valid 12- or 24-word recovery phrase.');
+    expect(visible(el('imp-count'))).toBe(false);
     expect(visible(el('imp-valid'))).toBe(false);
+    expect(cta.disabled).toBe(true);
+    expect(unstyled('v-import')).toEqual([]);
+  });
+
+  it('invalid-mnemonic inline: a typo in a 12-word phrase', async () => {
+    const {field, cta} = await shown();
+    type(field, M.replace('about', 'abuot'));
+    expect(text(el('imp-invalid'))).toBe('That is not a valid 12- or 24-word recovery phrase.');
+    expect(cta.disabled).toBe(true);
+    // Corrected, it is the phrase again.
+    type(field, M);
+    expect(visible(el('imp-invalid'))).toBe(false);
+    expect(cta.disabled).toBe(false);
+  });
+
+  it('invalid-mnemonic inline: 25 words — the refusal, the grid capped at 24 cells, never "25 of 24"', async () => {
+    const {field, cta} = await shown();
+    type(field, `${PHRASE} wonder`);
+    expect(visible(el('imp-invalid'))).toBe(true);
+    expect(el('imp-grid').querySelectorAll('.w')).toHaveLength(24);
+    expect(visible(el('imp-count'))).toBe(false);
+    expect(text(el('v-import'))).not.toContain('of 24 words');
+    expect(cta.disabled).toBe(true);
+  });
+
+  it('invalid-mnemonic inline: from 12 words on, a finished word not on the BIP-39 list; the word still being typed is not judged', async () => {
+    const {field} = await shown();
+    const twelve = WORDS.slice(0, 12).join(' ');
+    type(field, `${twelve} wo`);
+    expect(visible(el('imp-invalid'))).toBe(false);
+    expect(text(el('imp-count'))).toBe('13 of 24 words entered.');
+    type(field, `${twelve} wonderz `);
+    expect(visible(el('imp-invalid'))).toBe(true);
+    expect(visible(el('imp-count'))).toBe(false);
+    // Below 12 words nothing is judged yet.
+    type(field, 'wonderz sauce ');
+    expect(visible(el('imp-invalid'))).toBe(false);
+    expect(text(el('imp-count'))).toBe('2 of 12 words entered.');
+  });
+
+  it('NFKD (fix round 1, item 6): a precomposed or a decomposed accent reads as the plain word; a Cyrillic homoglyph is refused', async () => {
+    const {field, cta} = await shown();
+    const precomposed = String.fromCharCode(0xe1); // a with acute, one code point
+    const decomposed = `a${String.fromCharCode(0x301)}`; // a + combining acute
+    for (const a of [precomposed, decomposed]) {
+      type(field, M.replace('abandon', `${a}bandon`));
+      expect(text(el('imp-grid').querySelector('.w'))).toBe('01 abandon');
+      expect(text(el('imp-valid'))).toBe('Valid 12-word BIP-39 phrase · checksum OK');
+      expect(cta.disabled).toBe(false);
+    }
+    const cyrillicA = String.fromCharCode(0x430);
+    type(field, M.replace('abandon', `${cyrillicA}bandon`));
+    expect(text(el('imp-grid').querySelector('.w'))).toBe('01 bandon');
+    expect(visible(el('imp-invalid'))).toBe(true);
     expect(cta.disabled).toBe(true);
   });
 
@@ -200,14 +257,21 @@ describe('#8 import: the screen (spec §3.8)', () => {
     expect(text(el('imp-keep'))).toBe('Keep working — reset timer');
     expect(visible(el('imp-keep'))).toBe(true);
     expect(unstyled('v-import')).toEqual([]);
+    // Item 5: a polite status, the per-second title hidden from screen readers; the live region speaks once.
+    expect(el('imp-idle').getAttribute('role')).toBe('status');
+    expect(el('imp-idle-title').closest('[aria-hidden="true"]')).not.toBeNull();
+    expect(el('imp-idle-live').getAttribute('aria-live')).toBe('polite');
+    expect(text(el('imp-idle-live'))).toBe('Auto-clearing in 12 s');
     h.timers.advance(1_000);
     expect(text(el('imp-idle-title'))).toBe('Auto-clearing in 11 s');
+    expect(text(el('imp-idle-live'))).toBe('Auto-clearing in 12 s');
     click(el('imp-keep'));
     expect(visible(el('imp-idle'))).toBe(false);
     h.timers.advance(IDLE_WARN_MS);
     expect(visible(el('imp-idle'))).toBe(true);
     h.timers.advance(IDLE_WIPE_MS - IDLE_WARN_MS);
     expect(field.value).toBe('');
+    expect(text(el('imp-idle-live'))).toBe('The phrase was wiped from this field.');
     expect(visible(el('imp-grid'))).toBe(false);
     expect(el('imp-grid').children).toHaveLength(0);
     expect(visible(el('imp-count'))).toBe(false);
@@ -315,6 +379,13 @@ describe('#8 → #5 → #40: the plain import run, against the real background',
     const {h, r} = await run(none);
     await h.until(() => visible(el('v-password')));
     expect(r.holds()).toEqual({phrase: true});
+    // Fix round 1, item 1: the probe is the background's public-key read, exactly — nothing else rides on it.
+    const keys = (await importCandidates(M)).map(c => c.publicKey);
+    expect(keys).toContain(K0);
+    expect(keys).toContain(KCLI);
+    expect(h.sent).toEqual([{type: 'wallet.probeBalances', publicKeys: keys}]);
+    // And no message carries a word of the phrase.
+    for (const m of h.sent) expect(JSON.stringify(m)).not.toMatch(/(?<![a-z])(abandon|about)(?![a-z])/);
     // The field and grid were emptied when the run moved on to #5.
     expect(el<HTMLTextAreaElement>('imp-phrase').value).toBe('');
     expect(el('imp-grid').children).toHaveLength(0);
@@ -345,6 +416,54 @@ describe('#8 → #5 → #40: the plain import run, against the real background',
     probe.release?.();
     await h.until(() => visible(el('v-password')));
   }, 30_000);
+
+  /** Holds the probe until `release`; `pending` once the run has sent it. */
+  function heldProbe() {
+    const probe: {release: (() => void) | null} = {release: null};
+    const send: NonNullable<Parameters<typeof harness>[0]>['send'] = inner => async m => {
+      if ((m as {type: string}).type === 'wallet.probeBalances') await new Promise<void>(res => (probe.release = res));
+      return inner(m);
+    };
+    return {probe, send};
+  }
+
+  it('pagehide while the probe runs (item 2): once it lands nothing moves on — no line, no choice, no #5, nothing held', async () => {
+    const {probe, send} = heldProbe();
+    const {h, r} = await run({}, {phrase: PHRASE, send});
+    await h.until(() => probe.release !== null);
+    h.leave('pagehide');
+    probe.release?.();
+    await h.until(() => !h.deps.gate.isBusy());
+    await new Promise(r2 => setTimeout(r2, 20));
+    expect(r.holds()).toEqual({phrase: false});
+    expect(visible(el('imp-line'))).toBe(false);
+    expect(visible(el('imp-choose'))).toBe(false);
+    expect(visible(el('v-password'))).toBe(false);
+    expect(el<HTMLTextAreaElement>('imp-phrase').value).toBe('');
+    expect(leaked()).toEqual([]);
+  });
+
+  it('a probe that hangs (ruling 7): the idle timer still runs — at 60 s the field is wiped and the run ends; the late answer moves nothing on', async () => {
+    const {probe, send} = heldProbe();
+    const {h, r} = await run({}, {phrase: PHRASE, send});
+    await h.until(() => probe.release !== null);
+    h.timers.advance(IDLE_WARN_MS);
+    expect(visible(el('imp-idle'))).toBe(true);
+    // Continue holds the gate while the probe runs: there is nothing to keep working on.
+    expect(visible(el('imp-keep'))).toBe(false);
+    h.timers.advance(IDLE_WIPE_MS - IDLE_WARN_MS);
+    expect(el<HTMLTextAreaElement>('imp-phrase').value).toBe('');
+    expect(leaked()).toEqual([]);
+    expect(visible(el('imp-line'))).toBe(false);
+    probe.release?.();
+    await h.until(() => !h.deps.gate.isBusy());
+    await new Promise(r2 => setTimeout(r2, 20));
+    expect(r.holds()).toEqual({phrase: false});
+    expect(visible(el('imp-choose'))).toBe(false);
+    expect(visible(el('v-password'))).toBe(false);
+    // #8 is ready for a new phrase.
+    expect(el<HTMLTextAreaElement>('imp-phrase').disabled).toBe(false);
+  });
 
   it('balances that cannot be read: the user chooses, in the design’s chrome — here the Solana CLI key', async () => {
     const {h} = await run({});

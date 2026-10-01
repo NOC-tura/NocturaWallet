@@ -1,3 +1,4 @@
+import {wordlist} from '@scure/bip39/wordlists/english.js';
 import {acceptedPhrase} from '../onboarding';
 import {exclusive, type PageDeps} from '../page';
 import {IMPORT} from '../strings';
@@ -9,6 +10,26 @@ export const IDLE_WARN_MS = 48_000;
 export const IDLE_WIPE_MS = 60_000;
 
 export type Scheme = 'slip10' | 'cli';
+
+const BIP39 = new Set(wordlist);
+/** The grid's cells stop at the longest phrase this wallet imports. */
+const MAX_WORDS = 24;
+
+/**
+ * `invalid-mnemonic` inline (spec §3.8; fix round 1, ruling 3): not a phrase this wallet imports, said as soon as
+ * that is certain — 12 or 24 words that fail the checksum, more than 24 words, or (from 12 words on) a finished
+ * word that is not on the BIP-39 list. The word still being typed (no space after it yet) is not judged until the
+ * count is 12 or 24. Words are read as import reads them (`phraseWords`: NFKD, then a-z only), so a Cyrillic
+ * homoglyph is not the Latin word it looks like.
+ */
+export function invalidPhrase(text: string): boolean {
+  if (acceptedPhrase(text)) return false;
+  const words = phraseWords(text);
+  const n = words.length;
+  if (n === 12 || n === 24 || n > MAX_WORDS) return true;
+  const finished = /\s$/.test(text) ? words : words.slice(0, -1);
+  return n >= 12 && finished.some(w => !BIP39.has(w));
+}
 
 export interface ImportScreen {
   /** Shows #8; `phrase` puts back what the run held (back from #5). */
@@ -39,11 +60,11 @@ export interface ImportScreen {
  * running), `choosing`. The field follows the phase, not the gate (Task 8's M2): keystrokes inside a
  * floor are kept. The scheme choice ends `next` (and so frees the gate) — a pick is its own gated action.
  *
- * The idle timer runs whenever the field holds something the user can act on (typing, choosing); at 60 s
- * the field and grid are emptied and an open choice ends with null. A hidden tab keeps the phrase (Scope 19,
+ * The idle timer runs whenever the field holds the phrase (typing, checking, choosing); at 60 s the field
+ * and grid are emptied, an open choice ends with null, and the run is told (`wiped`). A hidden tab keeps the phrase (Scope 19,
  * review M4); `pagehide` empties everything (the page may sit in the back/forward cache).
  */
-export function mountImport(deps: PageDeps, handlers: {back(): void; next(phrase: string): Promise<void>}): ImportScreen {
+export function mountImport(deps: PageDeps, handlers: {back(): void; next(phrase: string): Promise<void>; wiped?(): void}): ImportScreen {
   const field = byId<HTMLTextAreaElement>('imp-phrase');
   const grid = byId('imp-grid');
   const cta = byId<HTMLButtonElement>('imp-continue');
@@ -56,22 +77,30 @@ export function mountImport(deps: PageDeps, handlers: {back(): void; next(phrase
   let idle: number | null = null;
   let pasted = false;
   let choosing: ((s: Scheme | null) => void) | null = null;
+  /** Polite announcements only (the banner's per-second title is aria-hidden), as #3's chip does. */
+  const live = byId('imp-idle-live');
 
   const render = () => {
     const busy = deps.gate.isBusy();
     const words = phraseWords(field.value);
     const valid = acceptedPhrase(field.value);
-    grid.replaceChildren(...(words.length > 0 ? phraseCells(words) : []));
+    const invalid = invalidPhrase(field.value);
+    grid.replaceChildren(...(words.length > 0 ? phraseCells(words.slice(0, MAX_WORDS)) : []));
     shown(grid, words.length > 0);
     shown(byId('imp-valid'), valid);
     setText(byId('imp-valid-text'), valid ? IMPORT.valid(words.length) : '');
-    shown(byId('imp-count'), words.length > 0 && !valid);
-    setText(byId('imp-count'), words.length > 0 && !valid ? IMPORT.count(words.length, words.length <= 12 ? 12 : 24) : '');
+    const counting = words.length > 0 && !valid && !invalid;
+    shown(byId('imp-count'), counting);
+    setText(byId('imp-count'), counting ? IMPORT.count(words.length, words.length <= 12 ? 12 : 24) : '');
+    shown(byId('imp-invalid'), invalid);
+    setText(byId('imp-invalid'), invalid ? IMPORT.invalid : '');
     const open = phase === 'typing' || phase === 'choosing';
     field.disabled = phase !== 'typing';
     cta.disabled = busy || phase !== 'typing' || !valid;
     back.disabled = busy || !open;
     keep.disabled = busy || !open;
+    // During `checking` the timer runs (ruling 7) but the gate is Continue's: nothing to keep working on yet.
+    if (phase === 'checking') shown(keep, false);
     slip10.disabled = busy || phase !== 'choosing';
     cli.disabled = busy || phase !== 'choosing';
   };
@@ -101,11 +130,16 @@ export function mountImport(deps: PageDeps, handlers: {back(): void; next(phrase
     shown(byId('imp-toast'), false);
     line(null);
   };
-  /** The idle wipe (60 s): the field and grid emptied; the screen stays up, ready for a new phrase. */
+  /**
+   * The idle wipe (60 s): the field and grid emptied; the screen stays up, ready for a new phrase. During
+   * `checking` (a probe that hangs, ruling 7) and `choosing` this ends the run's attempt: `wiped` tells the run.
+   */
   const wipe = () => {
     empty();
-    if (phase === 'choosing') phase = 'typing';
+    if (phase === 'choosing' || phase === 'checking') phase = 'typing';
+    setText(live, IMPORT.wipedLive);
     render();
+    handlers.wiped?.();
   };
   /** The screen is no longer the run's: Back, the run moved on to #5, pagehide. */
   const end = () => {
@@ -117,15 +151,19 @@ export function mountImport(deps: PageDeps, handlers: {back(): void; next(phrase
     lastInput = deps.timers.now();
     shown(byId('imp-idle'), false);
     shown(keep, false);
+    setText(live, '');
     if (field.value === '') return stopIdle();
     if (idle !== null) return;
     idle = deps.timers.setInterval(() => {
       const quiet = deps.timers.now() - lastInput;
       if (quiet >= IDLE_WIPE_MS) return wipe();
       if (quiet >= IDLE_WARN_MS) {
-        setText(byId('imp-idle-title'), IMPORT.idleTitle(Math.ceil((IDLE_WIPE_MS - quiet) / 1000)));
+        const seconds = Math.ceil((IDLE_WIPE_MS - quiet) / 1000);
+        setText(byId('imp-idle-title'), IMPORT.idleTitle(seconds));
+        // Screen readers hear the warning once, when it starts (fix round 1, item 5) — not every second.
+        if (byId('imp-idle').hidden) setText(live, IMPORT.idleTitle(seconds));
         shown(byId('imp-idle'), true);
-        shown(keep, true);
+        shown(keep, phase !== 'checking');
       }
     }, 1_000);
   };
@@ -163,7 +201,8 @@ export function mountImport(deps: PageDeps, handlers: {back(): void; next(phrase
     if (phase !== 'typing') return;
     void exclusive(deps, render, async () => {
       if (phase !== 'typing' || !acceptedPhrase(field.value)) return;
-      stopIdle();
+      // Ruling 7: the idle timer keeps running while the background checks — a probe that hangs still ends in the wipe.
+      watchIdle();
       phase = 'checking';
       render();
       try {

@@ -980,6 +980,19 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     (D1; the clipboard half is false too).
   - FLAG_SECURE dropped.
   - Added: the D8 banner, the scheme choice and the password step.
+  - The D8 banner shows in every #8 state, `paste-detected` and `idle-timer-active` included, though the
+    design's 8b and 8d draw no banner there: it is an addition (D8), and what it says holds whenever a
+    phrase is in the field (plan-2 Task 9 review, drift item).
+  - The design's Android note — predictive back surfaces "Discard imported data?" when text is present —
+    does not apply: an extension tab has no system back gesture. The back arrow empties the field and
+    goes back without a prompt (plan-2 Task 9 review, drift item).
+  - `invalid-mnemonic` is shown inline under the field as soon as it is certain (12 or 24 words with a
+    bad checksum, more than 24 words, or from 12 words on a finished word not on the BIP-39 list), with
+    `[Continue]` disabled; the grid stops at 24 cells (plan-2 Task 9 review, ruling 3).
+  - `idle-timer-active`: the banner is a polite status whose per-second countdown screen readers do not
+    hear; a separate live region says "Auto-clearing in 12 s" once and, at the wipe, "The phrase was
+    wiped from this field." (**controller addition — not yet confirmed by the owner**). The timer also
+    runs while `checking` (ruling 7): a probe that hangs still ends in the wipe.
 
 ### 3.9 #9 unlock
 

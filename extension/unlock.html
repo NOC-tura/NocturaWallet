@@ -309,18 +309,20 @@
           <svg width="16" height="16" aria-hidden="true"><use href="#i-clip" /></svg>
           <div class="noc-body-sm vlt-strong"><b>Pasted from clipboard.</b> Noctura cannot clear your clipboard — clear it yourself.</div>
         </div>
-        <div id="imp-idle" class="banner warning vlt-banner-gap" role="alert" hidden>
+        <div id="imp-idle" class="banner warning vlt-banner-gap" role="status" hidden>
           <svg width="16" height="16" aria-hidden="true"><use href="#i-warn" /></svg>
           <div>
-            <div class="noc-body-sm"><b id="imp-idle-title"></b></div>
+            <div class="noc-body-sm" aria-hidden="true"><b id="imp-idle-title" class="noc-numeral"></b></div>
             <div class="noc-caption vlt-lede vlt-gap-top-1">No activity for 60 s — phrase will be wiped from this field.</div>
           </div>
         </div>
+        <span id="imp-idle-live" class="vlt-sr" aria-live="polite"></span>
         <div class="ta-wrap">
-          <textarea id="imp-phrase" class="vlt-phrase" autocomplete="off" autocapitalize="none" spellcheck="false" rows="4" aria-label="Recovery phrase" placeholder="Enter your 12 or 24-word recovery phrase, separated by spaces."></textarea>
+          <textarea id="imp-phrase" class="noc-mono vlt-phrase" autocomplete="off" autocapitalize="none" spellcheck="false" rows="4" aria-label="Recovery phrase" placeholder="Enter your 12 or 24-word recovery phrase, separated by spaces."></textarea>
           <div id="imp-grid" class="ta-grid" hidden></div>
         </div>
         <p id="imp-count" class="noc-caption noc-numeral vlt-muted vlt-pad vlt-gap-bottom-3" hidden></p>
+        <p id="imp-invalid" class="noc-caption vlt-danger vlt-pad vlt-gap-bottom-3" role="status" hidden></p>
         <p id="imp-valid" class="noc-caption vlt-success vlt-valid" hidden><svg width="14" height="14" aria-hidden="true"><use href="#i-check" /></svg><span id="imp-valid-text"></span></p>
         <div class="banner info vlt-banner-gap">
           <svg width="16" height="16" aria-hidden="true"><use href="#i-info" /></svg>

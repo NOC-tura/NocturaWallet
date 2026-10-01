@@ -32,7 +32,7 @@ export function createImportRun(deps: PageDeps, o: {password: PasswordScreen; ba
   const pw = o.password;
   const storing: Storing = o.storing ?? (work => work());
   let phrase: string | null = null;
-  /** Bumped by pagehide: work that settles after the page was left must not move the run on. */
+  /** Bumped by pagehide and by #8's idle wipe: work that settles after either must not move the run on. */
   let generation = 0;
   deps.onLeave(why => {
     if (why !== 'pagehide') return;
@@ -81,6 +81,11 @@ export function createImportRun(deps: PageDeps, o: {password: PasswordScreen; ba
     back: () => {
       phrase = null;
       o.back();
+    },
+    // The idle wipe (60 s) on #8 — a hung probe or an open choice included (ruling 7): the attempt ends here.
+    wiped: () => {
+      phrase = null;
+      generation += 1;
     },
     next: async typed => {
       const started = generation;
