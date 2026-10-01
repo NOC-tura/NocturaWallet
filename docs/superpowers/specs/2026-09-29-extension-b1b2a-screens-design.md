@@ -965,12 +965,15 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     → the D26 banner text. A failed first write after the delete → "The new wallet was not saved.
     Try again." + `[Try again]` (phrase and password kept in page memory); a `[Try again]` answered
     `wallet-exists` → "A wallet already exists in this browser. Nothing was changed." and the flow
-    stops (review R2-L6). Any other failure of the delete ("Something went wrong. Try again." + `[Try again]`) may have
+    stops (review R2-L6), with the shared `exists` treatment (`existsLines`, as on create and plain
+    import): the help line "Open the Noctura icon to use it." under it — or, when the stored vault
+    reads as damaged, the damaged lines; unreadable, the reload line. Any other failure of the delete ("Something went wrong. Try again." + `[Try again]`) may have
     landed with its reply lost, so `[Try again]` never re-sends it blind: it reads the vault first —
     gone → the first write alone; still the proven revision → the guarded delete again; anything else →
-    `busy` (Task 13 implementer addition, no new copy — for the controller's review). A tab hidden behind
+    `busy` (controller addition, ruled 2026-10-01; no new copy). A tab hidden behind
     (or during) a `[Try again]` drops B prepared with its password (§3.5, L5); B is encrypted again under
-    the password typed next.
+    the password typed next. Once the delete has landed, #8 hides Back: there is no wallet left to
+    prove, so the only ways on are finishing B or leaving (controller ruling, 2026-10-01).
   - **Restore path from #39 (`&source=forgot`, E5), extension-only states:**
     - `checking-match`: "Checking this phrase against the wallet in this browser…" (the seed
       proof, local, no network);

@@ -70,7 +70,11 @@ export interface ImportScreen {
  * and grid are emptied, an open choice ends with null, and the run is told (`wiped`). A hidden tab keeps the phrase (Scope 19,
  * review M4); `pagehide` empties everything (the page may sit in the back/forward cache).
  */
-export function mountImport(deps: PageDeps, handlers: {back(): void; next(phrase: string): Promise<void>; wiped?(): void}): ImportScreen {
+/**
+ * `backable` (the retry run, Task 13 follow-up ruling): whether Back is offered at all — once the wallet being
+ * replaced is deleted, #8 has no way back to its password step; the only ways on are finishing or leaving.
+ */
+export function mountImport(deps: PageDeps, handlers: {back(): void; next(phrase: string): Promise<void>; wiped?(): void; backable?(): boolean}): ImportScreen {
   const field = byId<HTMLTextAreaElement>('imp-phrase');
   const grid = byId('imp-grid');
   const cta = byId<HTMLButtonElement>('imp-continue');
@@ -112,7 +116,9 @@ export function mountImport(deps: PageDeps, handlers: {back(): void; next(phrase
     act.disabled = busy || phase !== 'notice';
     field.disabled = phase !== 'typing';
     cta.disabled = busy || phase !== 'typing' || !valid;
-    back.disabled = busy || !(open || phase === 'notice');
+    const backable = handlers.backable?.() ?? true;
+    shown(back, backable);
+    back.disabled = busy || !backable || !(open || phase === 'notice');
     keep.disabled = busy || !open;
     // During `checking` the timer runs (ruling 7) but the gate is Continue's: nothing to keep working on yet.
     if (phase === 'checking') shown(keep, false);
@@ -205,9 +211,10 @@ export function mountImport(deps: PageDeps, handlers: {back(): void; next(phrase
     });
   });
   back.addEventListener('click', () => {
-    if (phase !== 'typing' && phase !== 'choosing' && phase !== 'notice') return;
+    const allowed = () => (phase === 'typing' || phase === 'choosing' || phase === 'notice') && (handlers.backable?.() ?? true);
+    if (!allowed()) return;
     void exclusive(deps, render, async () => {
-      if (phase !== 'typing' && phase !== 'choosing' && phase !== 'notice') return;
+      if (!allowed()) return;
       end();
       handlers.back();
     });

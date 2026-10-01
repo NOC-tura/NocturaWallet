@@ -39,7 +39,8 @@ type Action = {label: string; run(): void};
  * `funded`, `unreachable`, `coordinator-refused`), any notice — and with the page (`pagehide`; a page
  * restored from the back/forward cache starts again at the password step). A hidden tab keeps them (the
  * hidden-tab rule is the password's, §3.5). Back from #5 puts the phrase back in #8's field (not memory);
- * Back from #8 drops the proof. B prepared (`next`: its envelope AND its session secret keys) exists only
+ * Back from #8 drops the proof — offered only until the delete lands: after it there is no wallet to prove,
+ * so #8 hides Back and the only ways on are finishing B or leaving (ruling, Task 13 review). B prepared (`next`: its envelope AND its session secret keys) exists only
  * behind a pending [Try again], and goes at every end and whenever the tab is hidden — while the run waits
  * on it too: the password it was encrypted under is dropped then (§3.5, L5), so B is encrypted again under
  * the password typed next — never stored under one the user was told to replace.
@@ -175,7 +176,7 @@ export function createRetryRun(deps: PageDeps, o: {password: PasswordScreen}): R
   };
 
   /** The delete-then-store, or what a [Try again] after an earlier answer still needs. */
-  const write = async (wallet: PreparedWallet, held: FactorProof): Promise<ReplaceOutcome> => {
+  const write = async (wallet: PreparedWallet, held: FactorProof, started: number): Promise<ReplaceOutcome> => {
     const send = {...deps.store, send: deps.send};
     if (deleted) return commitWallet(send, wallet);
     if (uncertain) {
@@ -185,6 +186,8 @@ export function createRetryRun(deps: PageDeps, o: {password: PasswordScreen}): R
       } catch {
         return 'failed';
       }
+      // The page was left (pagehide) during the read: the run was dropped; nothing more is sent.
+      if (started !== generation) return 'failed';
       const stored = storedVault(raw);
       if (stored.kind === 'none') {
         // The delete landed; its reply was lost. Never a second delete: the store alone.
@@ -223,7 +226,7 @@ export function createRetryRun(deps: PageDeps, o: {password: PasswordScreen}): R
     }
     // Held only while the write runs and behind its [Try again]; a hidden tab takes it (onLeave).
     next = seen === leaves ? wallet : null;
-    const out = await write(wallet, held);
+    const out = await write(wallet, held, started);
     // The page was left (pagehide) while this ran: the run was dropped; a restored page starts again.
     if (started !== generation) return null;
     /** A [Try again] answer: B prepared stays only if the tab was not hidden meanwhile (its password went then). */
@@ -318,6 +321,8 @@ export function createRetryRun(deps: PageDeps, o: {password: PasswordScreen}): R
       phrase = null;
       generation += 1;
     },
+    // Ruling (Task 13 review): once the proven wallet is deleted there is no factor step to go back to.
+    backable: () => !deleted,
     next: async typed => {
       const started = generation;
       screen.line(IMPORT.checking);

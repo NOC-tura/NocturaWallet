@@ -383,6 +383,76 @@ describe('#8 retry path: the password of the wallet being replaced (D41, E5 fact
     await unlockWithPassword((await h.ext.local.get(VAULT_KEY)) as EnvelopeV1, B_PW, testKdf);
   }, 30_000);
 
+  it('pagehide while [Try again] reads the vault after a lost delete reply: nothing is sent afterwards', async () => {
+    let lose = true;
+    let hold = false;
+    let reading = false;
+    let release: () => void = () => undefined;
+    const {h} = await retrying({
+      send: inner => async m => {
+        const r = await inner(m);
+        if ((m as {type: string}).type === 'vault.forgetWallet' && lose) {
+          lose = false;
+          throw new Error('the reply was lost');
+        }
+        return r;
+      },
+      read: stored => async () => {
+        if (hold) {
+          hold = false;
+          reading = true;
+          await new Promise<void>(r => (release = r));
+        }
+        return stored();
+      },
+    });
+    await prove(h, A_PW);
+    await importB(h);
+    expect(text(el('pw-helper'))).toBe('Something went wrong. Try again.');
+    const before = asked.length;
+    hold = true;
+    click(el('pw-cta'));
+    await h.until(() => reading);
+    h.leave('pagehide');
+    release();
+    await idle(h);
+    await new Promise(r => setTimeout(r, 30));
+    expect(asked.slice(before)).toEqual([]);
+    expect(h.went).toEqual([]);
+    expect(run.holds()).toEqual(NOTHING);
+  }, 30_000);
+
+  it('ruling: once the delete has landed, #8 offers no Back to the password step (lifted, it does nothing)', async () => {
+    const fail = {on: true};
+    const {h} = await retrying({send: failingStore(fail)});
+    await prove(h, A_PW);
+    await phraseB(h);
+    // Before the delete, Back is offered.
+    expect(el('imp-back').hidden).toBe(false);
+    await newPassword(h, B_PW);
+    expect(text(el('pw-helper'))).toBe('The new wallet was not saved. Try again.');
+    // Back from #5's [Try again] → #8 with B in the field — and no Back there.
+    click(el('pw-back'));
+    await idle(h);
+    expect(visible(el('v-import'))).toBe(true);
+    expect(el<HTMLTextAreaElement>('imp-phrase').value).toBe(B);
+    expect(visible(el('imp-back'))).toBe(false);
+    el('imp-back').hidden = false;
+    el<HTMLButtonElement>('imp-back').disabled = false;
+    click(el('imp-back'));
+    await idle(h);
+    expect(visible(el('v-retry'))).toBe(false);
+    expect(visible(el('v-import'))).toBe(true);
+    expect(el<HTMLTextAreaElement>('imp-phrase').value).toBe(B);
+    // The way on: finish B (the store alone, no second delete).
+    fail.on = false;
+    click(el('imp-continue'));
+    await h.until(() => visible(el('v-password')) && !h.deps.gate.isBusy());
+    await newPassword(h, B_PW);
+    expect(h.went).toEqual(['wallet.html#/imported']);
+    expect(forgets()).toHaveLength(1);
+  }, 30_000);
+
   it('a failed delete that did not land: [Try again] finds the proven wallet still stored and deletes under the guard again', async () => {
     let fail = true;
     const {h} = await retrying({send: inner => async m => ((m as {type: string}).type === 'vault.forgetWallet' && fail ? ((fail = false), {ok: false, error: 'failed'}) : inner(m))});
