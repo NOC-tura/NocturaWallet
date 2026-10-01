@@ -12,6 +12,11 @@ describe('ancestor-aware class coverage (plan-1 lesson: the class gate ignores a
   it('a class styled only under an ancestor passes inside it and fails outside it', () => {
     expect(unstyledClasses(html('<div class="s8-success-hero"><div class="ring"></div></div>').firstElementChild!, ['.s8-success-hero', ...sels])).toEqual([]);
     expect(unstyledClasses(html('<div class="s-success"><div class="ring"></div></div>').firstElementChild!, ['.s-success', ...sels])).toEqual(['div.ring: .ring matches no rule in place']);
+    // A second, styled class on the same element does not style the first (review I3): the rule must NAME
+    // the class it is counted for.
+    expect(unstyledClasses(html('<div class="s-success"><div class="ring banner"></div></div>').firstElementChild!, ['.s-success', ...sels])).toEqual([
+      'div.ring.banner: .ring matches no rule in place',
+    ]);
   });
 
   it('a scope class counts when a rule it scopes matches inside it — and not when nothing inside matches', () => {

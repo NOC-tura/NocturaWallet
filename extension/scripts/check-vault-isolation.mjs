@@ -76,7 +76,26 @@ export const BACKGROUND_OWNED_KEYS = ['v1_settings', 'v1_known_recipients', 'v1_
 const BACKGROUND_OWNED_ALLOWED = /^src\/background\//;
 // The vault page renders only fixed strings and the user's own words, as text (B1b-2a §1.2 item 3):
 // no file in src/unlock may parse or write markup, so nothing it shows can become an element.
-export const SETS_MARKUP = /\b(?:innerHTML|outerHTML|insertAdjacentHTML|createContextualFragment|DOMParser|srcdoc)\b|\bdocument\s*\.\s*write(?:ln)?\b/;
+// Every sink by name (a `.write(`/`.writeln(` call on anything: `document` can be aliased).
+export const SETS_MARKUP =
+  /\b(?:innerHTML|outerHTML|insertAdjacentHTML|createContextualFragment|DOMParser|srcdoc|setHTMLUnsafe|setHTML|parseHTMLUnsafe|execCommand)\b|\bdocument\s*\.\s*write(?:ln)?\b|\.\s*write(?:ln)?\s*\(/;
+// A name need not be spelled (Task 5 review I2): src/unlock may not reach a property by a computed
+// name at all — conservative on purpose, since a static check cannot tell `el[k] = s` from an array
+// write. A bracket holding one plain quoted name (`x['href']`) is not computed (a sink's name there
+// trips SETS_MARKUP); a declaration's destructuring (`const [a, b] =`) and a tuple type (`: [A, B] =`)
+// are not member writes. The built chunks the vault page loads are checked too (BUILT_MARKUP).
+const COMPUTED_MEMBER = String.raw`(?<!\b(?:const|let|var)\s*|:\s*)\[(?!\s*(['"])[\w$-]*\1\s*\])(?!\s*\])[^\]]+\][\]\s]*`;
+export const MARKUP_EVASIONS = [
+  [new RegExp(`${COMPUTED_MEMBER}(?:\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?|[-+*/%&|^])?=(?![=>])`), 'writes a computed property'],
+  [new RegExp(`${COMPUTED_MEMBER}(?:\\?\\.\\s*)?\\(`), 'calls a computed property'],
+  // `el.inner\u0048TML = s`: an escaped identifier spells a sink no name pattern sees. A string can
+  // use the character itself.
+  [/\\u/, 'uses a \\u escape'],
+  [/\bReflect\b|\bObject\s*\.\s*(?:assign|defineProperty|defineProperties|getOwnPropertyDescriptors?|setPrototypeOf)\b/, 'sets properties reflectively'],
+  [/\bdocument\s*(?:\?\.\s*)?\[/, 'indexes document'],
+  [/\bsetAttribute(?:NS)?\s*\(\s*(?!(['"])[\w:-]+\1\s*,)/, 'sets an attribute named by a computed value'],
+  [/data:\s*text\/html/i, 'names a data:text/html URL'],
+];
 
 // A string that exists only in the vault's envelope code (the passkey-wrap HKDF info).
 export const VAULT_MARKER = 'noctura-ext-v1/passkey-wrap';
@@ -132,10 +151,13 @@ function moduleReferences(text) {
   return refs;
 }
 
-/** Where a specifier points, as a path relative to the package (`src/vault/kdf`), or null. */
+/**
+ * Where a specifier points, as a path relative to the package (`src/vault/kdf`), or null. A query or
+ * hash (`../vault/x?v`, `./y#z`) is dropped first: the bundler loads the same file with it.
+ */
 function resolveSource(fromPath, spec) {
   if (spec.startsWith('./') || spec.startsWith('../') || spec === '.' || spec === '..') {
-    return posix.normalize(posix.join(posix.dirname(fromPath), spec));
+    return posix.normalize(posix.join(posix.dirname(fromPath), spec.replace(/[?#].*$/, '')));
   }
   return null;
 }
@@ -192,6 +214,12 @@ const VAULT_PAGE_FILES = [
 export const VAULT_PAGE_PACKAGES = ['@noble/curves', '@noble/hashes', '@scure/base', '@scure/bip39', 'micro-key-producer'];
 const RESOLVE_EXTENSIONS = ['', '.ts', '.tsx', '.mts', '.js', '.mjs', '/index.ts', '/index.tsx'];
 const MODULE_SPECIFIER = /^[\w@.\/-]+$/;
+// The loose reference patterns also match prose (`mode === 'import' || …`, 'Continue to import'): a
+// "specifier" with whitespace in it is prose. Anything else is a reference — and one that is not a
+// plain module specifier (a query `../app/x?v`, a hash or subpath import `#app`, a scheme
+// `virtual:app`, an empty computed prefix) is refused, never skipped (Task 5 review I1: Vite bundled
+// `../app/engine?v` into the vault page with every gate green).
+const PROSE = /\s/;
 // A specifier-shaped token that carries a backslash (checked before the prose filter below, which
 // would otherwise skip it): no bundler treats `\` as a separator the same way on every platform.
 const BACKSLASH_SPECIFIER = /^[\w@.\/\\-]*\\[\w@.\/\\-]*$/;
@@ -213,15 +241,18 @@ export function vaultPageViolations(read, exists, entry = VAULT_PAGE_ENTRY) {
     if (!SOURCE_EXT.test(path)) continue; // a stylesheet carries no code and imports nothing we follow
     const text = read(path) ?? '';
     for (const ref of moduleReferences(text)) {
-      // The loose patterns above also match prose (`mode === 'import' || …`); a module specifier has
-      // no spaces or operators. A computed specifier is out of any static reach (the bundle checks are
-      // the backstop).
-      if (ref.typeOnly) continue;
+      // Prose (whitespace) is skipped; every other reference that is not a plain module specifier is
+      // refused (PROSE above). A specifier computed past its first literal part is out of any static
+      // reach (the bundle checks are the backstop); its empty or partial prefix is refused here.
+      if (ref.typeOnly || PROSE.test(ref.spec)) continue;
       if (BACKSLASH_SPECIFIER.test(ref.spec)) {
         out.push(`${path}: the vault page imports ${ref.spec} — a specifier may not contain a backslash`);
         continue;
       }
-      if (!MODULE_SPECIFIER.test(ref.spec)) continue;
+      if (!MODULE_SPECIFIER.test(ref.spec)) {
+        out.push(`${path}: the vault page imports '${ref.spec}' — a query, hash, scheme or computed specifier is refused, never skipped`);
+        continue;
+      }
       const target = resolveSource(path, ref.spec);
       if (target === null) {
         if (!VAULT_PAGE_PACKAGES.includes(packageOf(ref.spec))) out.push(`${path}: the vault page imports the package ${ref.spec}`);
@@ -245,9 +276,10 @@ export function sourceViolations(files) {
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesVault(path, r.spec))) out.push(`${path}: imports the vault`);
     if (!VAULT_ALLOWED.test(path) && values.some(r => namesCoreKeys(path, r.spec))) out.push(`${path}: imports core/keys (seed code)`);
     if (!UNLOCK_ALLOWED.test(path) && values.some(r => namesUnlock(path, r.spec))) out.push(`${path}: imports the vault page (src/unlock)`);
-    // A module specifier has no spaces or operators: prose a loose pattern matched ('Continue to import',
-    // in the vault page's own strings) is not an import (the vault-page walk filters the same way).
-    if (STANDALONE.includes(path) && values.some(r => MODULE_SPECIFIER.test(r.spec) || BACKSLASH_SPECIFIER.test(r.spec))) out.push(`${path}: imports a module — it must stand alone`);
+    // Prose a loose pattern matched ('Continue to import', in the vault page's own strings) has
+    // whitespace and is not an import; every other reference is one, whatever it carries (`?v`, `#x`,
+    // `virtual:`) — the vault-page walk filters the same way (PROSE).
+    if (STANDALONE.includes(path) && values.some(r => !PROSE.test(r.spec))) out.push(`${path}: imports a module — it must stand alone`);
     // src/shared/ is reachable from the vault page: it may never reach UI code (B1b-2a M4).
     // Deliberately all references, type-only ones too — stricter than the stand-alone rule above.
     if (/^src\/shared\//.test(path) && moduleReferences(text).some(r => namesUiCode(path, r.spec))) out.push(`${path}: imports UI code (src/app, ../web) — src/shared is vault-page reachable`);
@@ -261,7 +293,10 @@ export function sourceViolations(files) {
       out.push(`${path}: imports ${LOCAL_READER}, the vault page's storage reader`);
     }
     if (!LISTEN_ALLOWED.test(path) && LISTENS_RUNTIME.test(text)) out.push(`${path}: listens for runtime messages outside the background`);
-    if (UNLOCK_ALLOWED.test(path) && SETS_MARKUP.test(text)) out.push(`${path}: writes markup — the vault page sets text only (textContent)`);
+    if (UNLOCK_ALLOWED.test(path)) {
+      if (SETS_MARKUP.test(text)) out.push(`${path}: writes markup — the vault page sets text only (textContent)`);
+      for (const [re, what] of MARKUP_EVASIONS) if (re.test(text)) out.push(`${path}: ${what} — the vault page sets text only (textContent)`);
+    }
     if (!BACKGROUND_OWNED_ALLOWED.test(path)) {
       for (const key of BACKGROUND_OWNED_KEYS) if (text.includes(key)) out.push(`${path}: names ${key}, which only the background may write`);
     }
@@ -332,6 +367,11 @@ const BUILT_IMPORT = /\b(?:from|import)\s*\(?\s*(['"`])([^'"`$]+)\1/g;
 // storage.session in a built file: the property (minified `r.storage.session`), a bracketed key,
 // or ext.ts's access pin.
 const BUILT_SESSION = /storage\s*(?:\?\.|\.)\s*session\b|storage\s*\[\s*['"`]session['"`]\s*\]|\bsetAccessLevel\b/;
+// A markup sink in a built chunk the vault page loads (Task 5 review I2): the backstop for every
+// source spelling the source rule cannot see — a minifier folds `'inner' + 'HTML'` back into the name.
+// A legitimate dependency naming one must be reported and decided, never allow-listed here silently.
+export const BUILT_MARKUP =
+  /\b(?:innerHTML|outerHTML|insertAdjacentHTML|createContextualFragment|DOMParser|setHTMLUnsafe|setHTML|parseHTMLUnsafe|srcdoc|execCommand)\b|\.\s*write(?:ln)?\s*\(|\[\s*["'`]write(?:ln)?["'`]\s*\]/;
 const BUILT_URL = /\bnew\s+URL\s*\(\s*(['"`])([^'"`$]+)\1\s*,\s*import\.meta\.url/g;
 
 function builtReferences(text) {
@@ -415,7 +455,11 @@ export function bundleViolations(distApp) {
         const files = reachable(distApp, r.target, problems);
         if (files.includes('background.js')) out.push(`the vault page (${r.target}) reaches background.js — it would run the background`);
         for (const file of files) {
-          if (/\.m?js$/.test(file) && readFileSync(join(distApp, file), 'utf8').includes(REACT_MARKER)) out.push(`${file} (reachable from unlock.html) contains React — the vault page must stay plain DOM`);
+          if (!/\.m?js$/.test(file)) continue;
+          const text = readFileSync(join(distApp, file), 'utf8');
+          if (text.includes(REACT_MARKER)) out.push(`${file} (reachable from unlock.html) contains React — the vault page must stay plain DOM`);
+          const sink = BUILT_MARKUP.exec(text);
+          if (sink) out.push(`${file} (reachable from unlock.html) names a markup sink (${sink[0]}) — the vault page sets text only`);
         }
       }
     }

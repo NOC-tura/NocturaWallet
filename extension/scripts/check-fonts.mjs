@@ -47,14 +47,22 @@ export function vaultPageFontViolations(distApp) {
   const page = join(distApp, 'unlock.html');
   if (!existsSync(page)) return ['unlock.html is missing from the build'];
   const html = readFileSync(page, 'utf8');
+  const out = [];
+  let geist = false;
   for (const m of html.matchAll(/<link\b[^>]*\brel\s*=\s*["']stylesheet["'][^>]*>/gi)) {
     const href = /\bhref\s*=\s*["']([^"']+)["']/i.exec(m[0])?.[1];
+    // A link without an href, or to another origin, is skipped: it cannot carry the bundled Geist, so
+    // a page with only such links still fails below (fails closed; the CSP refuses other origins).
     if (href === undefined || /^[a-z][a-z0-9+.-]*:|^\/\//i.test(href)) continue;
     const css = join(distApp, posix.normalize(href.replace(/^\//, '')));
-    if (!existsSync(css)) continue;
-    for (const u of readFileSync(css, 'utf8').matchAll(/url\(\s*['"]?([^'")]+\.woff2)['"]?\s*\)/g)) if (target(u[1]) === 'fonts/Geist-Variable.woff2') return [];
+    if (!existsSync(css)) {
+      out.push(`unlock.html links ${href}, which is not in the build`);
+      continue;
+    }
+    for (const u of readFileSync(css, 'utf8').matchAll(/url\(\s*['"]?([^'")]+\.woff2)['"]?\s*\)/g)) if (target(u[1]) === 'fonts/Geist-Variable.woff2') geist = true;
   }
-  return ['unlock.html loads no stylesheet that names fonts/Geist-Variable.woff2 — the vault page would render in a fallback font'];
+  if (!geist) out.push('unlock.html loads no stylesheet that names fonts/Geist-Variable.woff2 — the vault page would render in a fallback font');
+  return out;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

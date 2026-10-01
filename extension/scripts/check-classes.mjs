@@ -199,8 +199,14 @@ export const VAULT_SHEETS = ['../web/src/styles/design-system.css', 'src/styles/
 
 /**
  * Classes named in unlock.html (`html: true`) or in a src/unlock module, and any computed class expression.
- * Known blind spot: h()'s tag is matched only as a single-quoted literal (`h('div', …)`, the one form
- * Prettier writes today); a template-literal or computed tag hides that call's class from this gate.
+ * Read: `h('tag', cls)`, `.className = cls` and `+=`, every argument of `classList.add|remove|replace`,
+ * the first of `classList.toggle` (its second is the force flag), and `setAttribute('class', cls)`.
+ * Known blind spots: h()'s tag is matched only as a single-quoted literal (`h('div', …)`, the one form
+ * Prettier writes today), so a template-literal or computed tag hides that call's class; an argument
+ * list is read up to its first `)`, so a call inside one (`add('a', f(x))`) is reported as a computed
+ * `f(x` rather than parsed; `classList.value =`, `setAttributeNS(…, 'class', …)` and `toggleAttribute`
+ * are not read (src/unlock uses none; a computed property write is refused by the vault-isolation
+ * gate's MARKUP_EVASIONS).
  */
 export function vaultClassUses(src, html) {
   const classes = [];
@@ -216,8 +222,12 @@ export function vaultClassUses(src, html) {
     else computed.push(a);
   };
   for (const m of src.matchAll(/\bh\(\s*'[a-z0-9]+'\s*,\s*([^,)]+)/g)) take(m[1]);
-  for (const m of src.matchAll(/\.className\s*=\s*([^;\n]+)/g)) take(m[1]);
-  for (const m of src.matchAll(/\bclassList\.(?:add|remove|toggle)\(\s*([^,)]+)/g)) take(m[1]);
+  for (const m of src.matchAll(/\.className\s*\+?=(?!=)\s*([^;\n]+)/g)) take(m[1]);
+  for (const m of src.matchAll(/\bclassList\.(add|remove|replace|toggle)\(([^)]*)\)?/g)) {
+    const args = m[2].split(',').filter(a => a.trim() !== '');
+    for (const a of m[1] === 'toggle' ? args.slice(0, 1) : args) take(a);
+  }
+  for (const m of src.matchAll(/\bsetAttribute\(\s*(['"])class\1\s*,\s*([^)]+)\)?/g)) take(m[2]);
   return {classes, computed};
 }
 

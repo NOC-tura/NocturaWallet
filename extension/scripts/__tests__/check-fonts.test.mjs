@@ -62,4 +62,10 @@ describe('the font gate: the vault page (plan 2)', () => {
     write('assets/unlock-1.css', '@font-face{src:url(../fonts/GeistMono-Variable.woff2)}');
     expect(vaultPageFontViolations(dir)).toHaveLength(1);
   });
+
+  it('fails a stylesheet unlock.html links that is not in the build, even when another one loads Geist (review M3)', () => {
+    write('unlock.html', '<head><link rel="stylesheet" href="./assets/unlock-1.css"><link rel="stylesheet" href="./assets/gone-1.css"></head>');
+    write('assets/unlock-1.css', '@font-face{src:url(../fonts/Geist-Variable.woff2)}');
+    expect(vaultPageFontViolations(dir)).toEqual(['unlock.html links ./assets/gone-1.css, which is not in the build']);
+  });
 });

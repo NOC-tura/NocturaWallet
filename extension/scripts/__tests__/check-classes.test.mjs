@@ -80,6 +80,16 @@ describe('the class gate: the vault page', () => {
     expect(vaultClassUses(code, false)).toEqual({classes: ['word', 'num', 'slot', 'filled', 'filled', 'is-error'], computed: []});
   });
 
+  it('reads every argument of classList.add/remove/replace, toggle’s first, className +=, and setAttribute(\'class\', …) (review M4)', () => {
+    const code = "el.classList.add('a', 'b');\nel.classList.remove('c');\nel.classList.replace('d', 'e');\nel.classList.toggle('f', on);\nel.className += ' g';\nel.setAttribute('class', 'h i');";
+    expect(vaultClassUses(code, false)).toEqual({classes: ['g', 'a', 'b', 'c', 'd', 'e', 'f', 'h', 'i'], computed: []});
+    const computed = "el.classList.add('a', tone);\nel.classList.replace('d', next);\nel.className += ` ${x}`;\nel.setAttribute('class', cls);";
+    expect(vaultClassUses(computed, false)).toEqual({classes: ['a', 'd'], computed: ['` ${x}`', 'tone', 'next', 'cls']});
+    expect(vaultClassViolations([{path: 'src/unlock/screens/x.ts', text: "el.classList.add('screen', 'vlt-planted-nowhere');"}], new Set(['screen']))).toEqual([
+      'src/unlock/screens/x.ts: class "vlt-planted-nowhere" is defined in no stylesheet the vault page loads',
+    ]);
+  });
+
   it('refuses a planted class and a computed one; accepts the DOM helper’s own parameter, there only', () => {
     const files = [
       {path: 'unlock.html', text: '<div class="screen vlt-planted-nowhere"></div>'},
