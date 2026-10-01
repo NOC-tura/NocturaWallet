@@ -277,7 +277,7 @@ export async function prepareSend(
   const solRequired = (token.mint === null ? amount : 0n) + networkLamports + rent + markupLamports;
   if (solRequired > solBalance) throw new SendRefused('insufficient-sol', `${solRequired} lamports needed, ${solBalance} held`);
   // Rent-exempt minimums (review M4): the runtime refuses a transfer that leaves the sender with
-  // 1…889 879 lamports, or creates a system account with less than 890 880 — refuse it here, with a
+  // 1…890 879 lamports, or creates a system account with less than 890 880 — refuse it here, with a
   // reason, rather than as an opaque simulation failure.
   const remainder = solBalance - solRequired;
   if (remainder > 0n && remainder < SYSTEM_ACCOUNT_RENT_LAMPORTS) {
