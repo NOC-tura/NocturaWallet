@@ -28,10 +28,18 @@ describe('the app before #11', () => {
     expect(await screen.findByText('Welcome back')).toBeTruthy();
     expect(screen.getByText('Unlock Noctura to continue. Unlocking opens in a new tab.')).toBeTruthy();
     expect(document.querySelector('input[type="password"]')).toBeNull();
-    // Plan 1: no "Forgot password?" until #39 exists (plan 2).
-    expect(screen.queryByText('Forgot password?')).toBeNull();
     fireEvent.click(screen.getByRole('button', {name: 'Unlock'}));
     expect(platform.opened).toEqual(['unlock.html?mode=unlock']);
+    expect(platform.closed).toBe(1);
+  });
+
+  // §4.1, plan 2 (the plan-1 stand-in removed): "Forgot password?" opens #39 in a tab.
+  it('locked: "Forgot password?" opens #39 (?mode=forgot) in a tab; the popup closes', async () => {
+    const {platform} = await renderApp({unlocked: false});
+    const forgot = await screen.findByRole('button', {name: 'Forgot password?'});
+    expect(forgot.className).toBe('btn btn-tertiary');
+    fireEvent.click(forgot);
+    expect(platform.opened).toEqual(['unlock.html?mode=forgot']);
     expect(platform.closed).toBe(1);
   });
 
@@ -41,6 +49,13 @@ describe('the app before #11', () => {
     const {platform} = await renderApp({unlocked: false, surface: 'tab'});
     fireEvent.click(await screen.findByRole('button', {name: 'Unlock'}));
     expect(platform.opened).toEqual(['unlock.html?mode=unlock']);
+    expect(platform.closed).toBe(0);
+  });
+
+  it('locked, tab: "Forgot password?" opens #39 and does not close the tab', async () => {
+    const {platform} = await renderApp({unlocked: false, surface: 'tab'});
+    fireEvent.click(await screen.findByRole('button', {name: 'Forgot password?'}));
+    expect(platform.opened).toEqual(['unlock.html?mode=forgot']);
     expect(platform.closed).toBe(0);
   });
 

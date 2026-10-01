@@ -89,15 +89,6 @@
         </div>
       </section>
 
-      <section id="unlock-section">
-        <h1>Unlock Noctura</h1>
-        <form id="pw">
-          <label for="password">Password</label>
-          <input id="password" type="password" autocomplete="current-password" minlength="12" required />
-          <button id="unlock" type="submit">Unlock</button>
-        </form>
-        <button id="passkey" type="button" hidden>Unlock with passkey</button>
-      </section>
       <section id="import" hidden>
         <h1>Import a wallet</h1>
         <label for="phrase">Recovery phrase (12 or 24 words)</label>
@@ -338,6 +329,47 @@
         <div class="sticky-bar">
           <button id="imp-continue" type="button" class="btn btn-primary" disabled>Continue</button>
           <button id="imp-keep" type="button" class="btn btn-tertiary" hidden>Keep working — reset timer</button>
+        </div>
+      </section>
+
+      <!-- #9 unlock (spec §3.9, D7, D11): a password field replaces the keypad; the engine's backoff only. The
+           cooldown's per-second figures are not a live region: #unl-cooldown-live says the wait once (design note F). -->
+      <section id="v-unlock" class="screen s-pin" hidden>
+        <div id="unl-entry">
+          <div class="pin-head">
+            <div id="unl-tile" class="vlt-lock-tile" aria-hidden="true"><svg width="28" height="28"><use href="#i-lock" /></svg></div>
+            <h1 class="noc-h1">Welcome back</h1>
+            <p class="noc-body vlt-lede">Enter your password to unlock.</p>
+            <form id="unl-form" class="vlt-field-row">
+              <input id="unl-password" class="vlt-input" type="password" autocomplete="current-password" aria-label="Password" />
+            </form>
+          </div>
+          <p id="unl-helper" class="noc-caption pin-helper" aria-live="polite"></p>
+        </div>
+        <div id="unl-cooldown" hidden>
+          <div class="vlt-pad-cooldown">
+            <h1 class="noc-h1 vlt-center vlt-gap-2">Wait a moment</h1>
+            <p class="noc-body vlt-lede vlt-center vlt-narrow-300 vlt-gap-5">That did not unlock the wallet. Wait a moment before trying again.</p>
+          </div>
+          <div class="cooldown-card">
+            <div id="unl-ring" class="ring"></div>
+            <div id="unl-timer" class="timer noc-numeral"></div>
+            <div id="unl-cooldown-label" class="noc-body-sm label"></div>
+          </div>
+        </div>
+        <span id="unl-cooldown-live" class="vlt-sr" aria-live="polite"></span>
+        <div id="unl-notice" class="vlt-notice" role="status" hidden>
+          <p id="unl-notice-line" class="noc-body"></p>
+          <p id="unl-notice-help" class="noc-body-sm vlt-lede"></p>
+        </div>
+        <div class="pin-spacer"></div>
+        <button id="unl-forgot" type="button" class="btn btn-tertiary forgot-link">Forgot password?</button>
+        <div id="unl-actions" class="sticky-bar">
+          <button id="unl-submit" type="button" class="btn btn-primary">Unlock</button>
+          <button id="unl-paused" type="button" class="btn btn-secondary" disabled hidden>Unlock paused</button>
+          <button id="unl-passkey" type="button" class="btn btn-secondary" hidden>Unlock with passkey</button>
+          <button id="unl-setup" type="button" class="btn btn-primary" hidden>Set up a wallet</button>
+          <button id="unl-close" type="button" class="btn btn-secondary" hidden>Close this tab</button>
         </div>
       </section>
 

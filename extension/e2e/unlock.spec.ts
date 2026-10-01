@@ -22,9 +22,9 @@ test('unlocking in the vault page puts only signing keys into session storage', 
 
     const page = await ctx.newPage();
     await page.goto(`chrome-extension://${id}/unlock.html`);
-    await page.fill('#password', E2E_PASSWORD);
-    await page.click('#unlock');
-    await expect(page.locator('#status')).toHaveText('Unlocked. You can close this tab.', {timeout: 60_000});
+    await page.fill('#unl-password', E2E_PASSWORD);
+    await page.click('#unl-submit');
+    await expect(page.locator('#unl-notice-line')).toHaveText('Unlocked.', {timeout: 60_000});
 
     const session = await sw.evaluate(() => chrome.storage.session.get(null));
     const json = JSON.stringify(session);
@@ -39,17 +39,18 @@ test('unlocking in the vault page puts only signing keys into session storage', 
 
     // Negative control: a wrong password sends nothing and leaves the session untouched.
     await sw.evaluate(() => chrome.storage.session.clear());
-    await page.fill('#password', 'wrong horse battery staple');
-    await page.click('#unlock');
-    await expect(page.locator('#status')).toHaveText('That did not unlock the wallet.', {timeout: 60_000});
+    await page.reload();
+    await page.fill('#unl-password', 'wrong horse battery staple');
+    await page.click('#unl-submit');
+    await expect(page.locator('#unl-helper')).toHaveText('That did not unlock the wallet.', {timeout: 60_000});
     expect(await sw.evaluate(() => chrome.storage.session.get(null))).toEqual({});
 
-    // A malformed stored envelope is named as damaged — not a wrong password — and sends nothing.
+    // A malformed stored envelope is named as damaged — before any password is typed, so never as a
+    // wrong password — and sends nothing.
     await sw.evaluate(e => chrome.storage.local.set({v1_vault: e}), {...env, password: {wrapped: 'AAAA'}});
     await page.reload();
-    await page.fill('#password', E2E_PASSWORD);
-    await page.click('#unlock');
-    await expect(page.locator('#status')).toHaveText("This wallet's stored data is damaged.", {timeout: 60_000});
+    await expect(page.locator('#unl-notice-line')).toHaveText("This wallet's stored data is damaged.", {timeout: 60_000});
+    await expect(page.locator('#unl-password')).toBeHidden();
     expect(await sw.evaluate(() => chrome.storage.session.get(null))).toEqual({});
     expect(nocTura.hits).toEqual([]);
     expect(solscan.hits).toEqual([]);

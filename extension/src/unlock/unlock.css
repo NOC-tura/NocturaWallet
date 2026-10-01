@@ -106,6 +106,12 @@
   max-width: 300px;
   margin: 0 auto;
 }
+.vlt-gap-5 {
+  margin-bottom: var(--space-5);
+}
+.vlt-pad-cooldown {
+  padding: var(--space-7) var(--space-5) 0;
+}
 .vlt-features {
   margin-top: var(--space-7);
   padding: 0 var(--space-2);
@@ -283,4 +289,25 @@
   color: var(--fg-primary);
   font: 500 15px/22px var(--font-body);
   cursor: pointer;
+}
+
+/* #9, #10: the design's 56 px lock tile (inline in the mockup): --accent on --accent-tint, --danger after a
+   wrong password. */
+.vlt-lock-tile {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-icon-hero);
+  background: var(--accent-tint);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  margin-bottom: var(--space-4);
+}
+.vlt-lock-tile.is-error {
+  background: color-mix(in oklab, var(--danger) 18%, transparent);
+  color: var(--danger);
+}
+/* The cooldown ring shows the share of the wait still to run (the design draws 64 %). */
+.vlt-col .cooldown-card .ring {
+  background: conic-gradient(var(--warning) calc(var(--vlt-ring, 1) * 100%), var(--bg-surface-3) 0);
 }

@@ -3,7 +3,7 @@ import {readFileSync, rmSync} from 'node:fs';
 import {BLOCKHASH_LIFETIME, installFakeCoordinator, type FakeCoordinator} from './fakeCoordinator';
 import {makeEnvelope, E2E_PASSWORD} from './makeEnvelope';
 import {containNocTura, containSolscan, expectContained, launchContained} from './launch';
-import {createWallet} from './vaultPage';
+import {createWallet, unlockWith} from './vaultPage';
 // Read from the source rather than imported: core/ has no package.json "type", so Playwright's loader
 // on Node 22 (CI) treats core/solana/rpc.ts as CommonJS and cannot take a named export from it.
 // The same literal the RPC-method gate parses; not found means it moved — fail loudly.
@@ -108,10 +108,7 @@ test('create a wallet, unlock it, re-authenticate a first send, send SOL: pendin
     // 2. Lock, then unlock with the password (B1a's unlock mode).
     expect((await msg(popup, {type: 'vault.lock'})).ok).toBe(true);
     expect(((await msg(popup, {type: 'wallet.state'})).data as {unlocked: boolean}).unlocked).toBe(false);
-    await vault.goto(`chrome-extension://${id}/unlock.html`);
-    await vault.fill('#password', NEW_PASSWORD);
-    await vault.click('#unlock');
-    await expect(vault.locator('#status')).toHaveText('Unlocked. You can close this tab.', {timeout: 60_000});
+    await unlockWith(vault, id, NEW_PASSWORD);
     const state = (await msg(popup, {type: 'wallet.state'})).data as {hasWallet: boolean; unlocked: boolean; accounts: {publicKey: string}[]};
     expect(state.hasWallet).toBe(true);
     expect(state.unlocked).toBe(true);
@@ -170,10 +167,7 @@ test('an unconfirmed send expires: "no funds moved", nothing re-sent, and only t
     fake.mode = 'expire';
     await sw.evaluate(({env, recipient}) => chrome.storage.local.set({v1_vault: env, v1_known_recipients: [recipient]}), {env: await makeEnvelope(), recipient: RECIPIENT});
     const vault = await ctx.newPage();
-    await vault.goto(`chrome-extension://${id}/unlock.html`);
-    await vault.fill('#password', E2E_PASSWORD);
-    await vault.click('#unlock');
-    await expect(vault.locator('#status')).toHaveText('Unlocked. You can close this tab.', {timeout: 60_000});
+    await unlockWith(vault, id, E2E_PASSWORD);
 
     const intent = {token: 'SOL', recipient: RECIPIENT, amount: '1000000'};
     const {signature, id: pendingId} = await prepareAndSend(popup, E2E_ACCOUNT, intent);

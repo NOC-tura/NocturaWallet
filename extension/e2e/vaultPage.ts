@@ -65,3 +65,11 @@ export async function setPassword(vault: Page, password: string): Promise<void> 
   await vault.locator('#pw-field').fill(password);
   await vault.locator('#pw-cta').click();
 }
+
+/** #9: unlocks with the password and waits for "Unlocked." (no return target). */
+export async function unlockWith(vault: Page, id: string, password: string): Promise<void> {
+  await vault.goto(`chrome-extension://${id}/unlock.html`);
+  await vault.locator('#unl-password').fill(password);
+  await vault.locator('#unl-submit').click();
+  await expect(vault.locator('#unl-notice-line')).toHaveText('Unlocked.', {timeout: 60_000});
+}

@@ -10,6 +10,7 @@ import type {PageDeps} from './page';
 import {createCreateRun} from './screens/createRun';
 import {createImportRun} from './screens/importRun';
 import {mountPassword} from './screens/password';
+import {mountUnlock} from './screens/unlock';
 import {workerKdf} from '../vault/kdf';
 import {evaluatePrf} from '../vault/passkey';
 import {unb64} from '../vault/bytes';
@@ -74,7 +75,7 @@ const REVEAL_WORDS: Record<RevealOutcome['outcome'], string> = {
 const WAIT = 'That did not confirm it. Wait a moment before trying again.';
 const UNREADABLE = "This wallet's stored data could not be read. Reload this page.";
 // The B1b-1 thin sections the plan-2 screens have not replaced yet.
-const SECTIONS = ['unlock-section', 'import', 'reauth', 'accounts', 'reveal'] as const;
+const SECTIONS = ['import', 'reauth', 'accounts', 'reveal'] as const;
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const say = (text: string): void => {
@@ -114,8 +115,12 @@ export function startMode(mode: PageMode, deps: PageDeps): void {
     else create.start(mode.mode === 'welcome' ? 'welcome' : 'intro');
     return;
   }
-  const shown = mode.mode === 'unlock' || mode.mode === 'forgot' ? 'unlock-section' : mode.mode;
-  legacy(shown);
+  if (mode.mode === 'unlock' || mode.mode === 'forgot') {
+    legacy(null);
+    void mountUnlock(deps).show(mode.mode === 'unlock' ? mode.returnTo : null);
+    return;
+  }
+  legacy(mode.mode);
   if (mode.mode === 'import') startImport();
   if (mode.mode === 'reauth') startReauth(mode.challengeId);
   if (mode.mode === 'accounts') startAccounts();

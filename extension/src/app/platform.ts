@@ -10,7 +10,7 @@ interface PlatformApi {
 }
 
 /** Every extension page the UI opens. A closed list: nothing here builds a URL from data. */
-export type ExtensionPage = 'unlock.html?mode=welcome' | 'unlock.html?mode=unlock' | 'unlock.html?mode=accounts';
+export type ExtensionPage = 'unlock.html?mode=welcome' | 'unlock.html?mode=unlock' | 'unlock.html?mode=forgot' | 'unlock.html?mode=accounts';
 
 export interface Platform {
   openPage(page: ExtensionPage): void;

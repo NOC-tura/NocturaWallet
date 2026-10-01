@@ -116,6 +116,16 @@ export const PASSKEY = {
   failed: 'Something went wrong. Your password still works.',
 } as const;
 
+/** #9 unlock (D7, D11). */
+export const UNLOCK = {
+  unlocking: 'Unlocking…',
+  wrong: 'That did not unlock the wallet.',
+  failed: 'Unlock failed. Try again.',
+  unlocked: 'Unlocked.',
+  openIcon: 'Open the Noctura icon to continue.',
+  unavailable: 'This device cannot unlock the wallet with a passkey; your password still works.',
+} as const;
+
 /** #9's cooldown card (and #10's, which reuses it): "0:12", and the design's helper line. */
 export const clockText = (seconds: number): string => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 export const cooldownLabel = (seconds: number): string => `Cooldown · ${Math.floor(seconds / 60)} minutes ${seconds % 60} seconds remaining`;
