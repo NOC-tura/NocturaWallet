@@ -28,7 +28,10 @@ export type ChallengeAbout =
       token: 'SOL' | 'NOC' | 'USDC' | 'USDT';
       recipient: string;
       amount: string;
+      /** The whole network fee: 5 000 per signature plus the priority fee. */
       networkLamports: string;
+      /** The priority part of networkLamports (plan 3, carry 1): #10 shows the base fee and the priority as two rows, as #19 and #20 do. */
+      priorityLamports: string;
       markupLamports: string;
       markupReason: FeeReason;
       rentLamports: string;
@@ -38,7 +41,10 @@ export type ChallengeAbout =
   | {kind: 'settings'; autoLockMinutes: number | null; reauthUsdCents: number | null};
 
 /** The fields a re-prepare of the same intent may refresh; the identity fields (account, token, recipient, amount) never change. */
-export type SendAboutRefresh = Pick<Extract<ChallengeAbout, {kind: 'send'}>, 'networkLamports' | 'markupLamports' | 'markupReason' | 'rentLamports' | 'reasons' | 'thresholdCents'>;
+export type SendAboutRefresh = Pick<
+  Extract<ChallengeAbout, {kind: 'send'}>,
+  'networkLamports' | 'priorityLamports' | 'markupLamports' | 'markupReason' | 'rentLamports' | 'reasons' | 'thresholdCents'
+>;
 
 interface Challenge {
   digest: string;
@@ -72,13 +78,15 @@ function isAbout(x: unknown): x is ChallengeAbout {
     ADDRESS.test(a.recipient) &&
     typeof a.token === 'string' &&
     TOKENS.includes(a.token) &&
-    [a.amount, a.networkLamports, a.markupLamports, a.rentLamports].every(v => typeof v === 'string' && DIGITS.test(v)) &&
+    [a.amount, a.networkLamports, a.priorityLamports, a.markupLamports, a.rentLamports].every(v => typeof v === 'string' && DIGITS.test(v)) &&
+    // The priority is a part of the network fee, never more: the base fee row is their difference.
+    BigInt(a.priorityLamports as string) <= BigInt(a.networkLamports as string) &&
     typeof a.markupReason === 'string' &&
     FEE_REASONS.includes(a.markupReason) &&
     Array.isArray(a.reasons) &&
     (a.reasons as unknown[]).every(r => typeof r === 'string' && REASONS.includes(r)) &&
     isInt(a.thresholdCents) &&
-    Object.keys(a).length === 11
+    Object.keys(a).length === 12
   );
 }
 
@@ -147,6 +155,7 @@ export async function rebaseChallenge(ext: Ext, now: number, id: string, digest:
       recipient: c.about.recipient,
       amount: c.about.amount,
       networkLamports: refresh.networkLamports,
+      priorityLamports: refresh.priorityLamports,
       markupLamports: refresh.markupLamports,
       markupReason: refresh.markupReason,
       rentLamports: refresh.rentLamports,

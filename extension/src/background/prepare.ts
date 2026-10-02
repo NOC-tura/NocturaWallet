@@ -342,6 +342,7 @@ export async function prepareSend(
   // E3: what #10 shows, bound to the challenge by the same values the digest was computed from.
   const refresh: SendAboutRefresh = {
     networkLamports: fees.networkLamports,
+    priorityLamports: fees.priorityLamports,
     markupLamports: fees.markupLamports,
     markupReason: fees.markupReason,
     rentLamports: fees.rentLamports,

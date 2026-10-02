@@ -488,7 +488,7 @@ test('visual: #10 — the action from the background, and each of its states', a
     const bad = 'cd'.repeat(16);
     await h.sw.evaluate(
       async ({b, about}) => chrome.storage.session.set({v1_reauth: {[b]: {digest: 'd', issuedAt: Date.now(), expiresAt: Date.now() + 120_000, satisfied: false, about}}}),
-      {b: bad, about: {kind: 'send', account: E2E_ACCOUNTS[0], token: 'SOL', recipient: RECIPIENT, amount: '1', networkLamports: '5000', markupLamports: '0', markupReason: 'charged', rentLamports: '0', reasons: ['first-send'], thresholdCents: 10_000}},
+      {b: bad, about: {kind: 'send', account: E2E_ACCOUNTS[0], token: 'SOL', recipient: RECIPIENT, amount: '1', networkLamports: '5000', priorityLamports: '0', markupLamports: '0', markupReason: 'charged', rentLamports: '0', reasons: ['first-send'], thresholdCents: 10_000}},
     );
     await p.goto(`chrome-extension://${h.id}/unlock.html?mode=reauth&challenge=${bad}`);
     await expect(text(p, '#ra-notice-line')).toHaveText('The details of this action could not be shown.');

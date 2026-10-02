@@ -433,7 +433,9 @@ simulation: {
 - **Store change** (`reauthChallenges.ts`): a challenge record gains `about`, written by the same
   `issueChallenge` call that binds the digest, from the same parsed values:
   - send: `{kind: 'send', account, token: 'SOL'|'NOC'|'USDC'|'USDT', recipient, amount (base units),
-    networkLamports, markupLamports, markupReason, rentLamports, reasons, thresholdCents}`;
+    networkLamports, priorityLamports, markupLamports, markupReason, rentLamports, reasons,
+    thresholdCents}` (`priorityLamports` added by plan 3, carry 1: the part of `networkLamports` that
+    is the priority fee, never more than it);
   - settings: `{kind: 'settings', autoLockMinutes: number | null, reauthUsdCents: number | null}`.
   When `prepareSend` reuses a live challenge (`rebaseChallenge`), it refreshes the fee fields
   of `about` from the new prepare. The digest and the identity fields never change. `isChallenge`
@@ -1150,23 +1152,25 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   - **`[Cancel send]` closes the tab** (review L2). The design returns to #20, but the popup that
     showed #20 closed when this tab opened, and a tab cannot reopen it. It discards the prepared send
     first (E7), so nothing is left to resume.
-  - **Plan 2:** "Network fee" is `networkLamports` — priority included: `about` (E3) carries no
-    `priorityLamports`, so #10 cannot split it as §4.5's fee rows do on #19 and #20 (plan-2 review
-    ruling 2: plan 2 is UI-only, §12; plan 3, which builds #19/#20's rows, may add
-    `priorityLamports` to `about` so the three screens agree). The amounts appear when non-zero; a
-    zero Noctura fee shows its reason line (the carried rule), and `charged` with a zero fee is not
-    described. Fees are exact and ungrouped ("0.00000505 SOL"); the design's thin grouping (plan-1
-    L7) is not applied — an exact lamport amount reads unambiguously without it, and #19/#20's rows
-    (plan 3) decide the grouping for all three screens. The cooldown's disabled button reads "Confirm paused" and a
+  - **Plan 3 (carry 1):** `about` (E3) carries `priorityLamports` (a twelfth key, digits, never more
+    than `networkLamports`; the background's `isAbout` and the page's closed-alphabet renderer both
+    check it), so #10 shows §4.5's fee rows exactly as #19 and #20 do: "Network fee" (the base fee,
+    `networkLamports − priorityLamports`), "Priority", "New token account" when non-zero, then
+    "Noctura fee" or, when it is zero, its reason line (the carried rule); `charged` with a zero fee
+    is not described. The amounts are exact and ungrouped ("0.000005 SOL") on all three screens, as
+    the #19 and #20 mockups draw them; only #27's fee line keeps the design's grouped form (plan-1
+    L7). (Plan 2 showed one "Network fee" row with the priority included, plan-2 review ruling 2.)
+    The cooldown's disabled button reads "Confirm paused" and a
     settings challenge's cancel reads "Cancel" (it only closes the tab; the challenge simply
     expires) — **both controller additions — confirmed by the owner 2026-10-01**. A discard the background refuses
     says "Something went wrong. Try again." and keeps the screen: "Send cancelled" is shown only when
     it is true — including `undescribable` (H1, above). In `expired`, `not-unlocked`,
     `mismatch-locked` and every other notice with nothing to cancel, the top bar's X closes the tab
     and claims nothing (plan-2 review L4).
-  - **Plan 2 (visual pass):** #10a draws two intent rows ("To", "Network fee"); here each fee is
-    its own row (network, Noctura fee or its reason line, new-token-account cost), ungrouped, as
-    above — the mockup's one fee row does not describe a send that pays more than the network.
+  - **Plan 2 (visual pass), as plan 3 left it:** #10a draws two intent rows ("To", "Network fee");
+    here each fee is its own row (base fee, priority, new-token-account cost, Noctura fee or its
+    reason line), ungrouped, as above — the mockup's one fee row does not describe a send that pays
+    more than the network.
   - **Plan 2 (visual pass):** the To value is the recipient in groups of four (`AddressGroups`,
     whose own `.addr-groups` mono face draws it) inside a `.noc-body-sm .noc-numeral` value span;
     the design puts `.noc-mono .noc-body-sm` on the value span itself. The rendered face is mono
