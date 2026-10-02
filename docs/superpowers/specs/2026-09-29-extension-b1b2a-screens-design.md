@@ -1225,10 +1225,9 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     working. A passkey is not carried over; you can add one again later." The FLAG_SECURE hints are
     removed (D1). The mockup's `.s-secintro` scope is not carried: none of its rules applies to #39's
     cards.
-  - **Step 3's card 2 keeps the design's "Done — seed verified against your existing public key."**
-    — **design copy kept, under question, awaiting the owner**: at step 3 nothing has been verified
-    yet (the seed proof runs on #8, after `[Continue to import]`), so the line reads as false there
-    (Task 12 owner question). It is not changed until the owner rules.
+  - **Step 3's card 2 reads "Next — your seed is checked against your existing public key."**
+    → adapted (owner decision 2026-10-02): the design's "Done — seed verified against your existing
+    public key." reads as false at step 3, since the seed proof runs on #8, after `[Continue to import]`.
 
 ### 3.12 #40 import-success (UI tab `#/imported`)
 

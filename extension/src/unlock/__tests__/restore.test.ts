@@ -87,7 +87,7 @@ describe('#39 forgot password (spec §3.11)', () => {
     expect(text(el('fg-lede'))).toBe("Once your phrase is verified against this wallet, you'll choose a new password (at least 12 characters). The old password stops working.");
     expect(cards().map(c => c.className)).toEqual(['s8-step-card vlt-gap-bottom-3 vlt-done', 's8-step-card vlt-gap-bottom-3 vlt-done', 's8-step-card active']);
     expect(text(el('fg-card-1-body'))).toBe('Done.');
-    expect(text(el('fg-card-2-body'))).toBe('Done — seed verified against your existing public key.');
+    expect(text(el('fg-card-2-body'))).toBe('Next — your seed is checked against your existing public key.');
     expect(text(el('fg-card-3-body'))).toBe("You'll choose a new password. The old password stops working. A passkey is not carried over; you can add one again later.");
     expect(visible(el('fg-warn'))).toBe(false);
     expect(text(el('fg-next'))).toBe('Continue to import');
