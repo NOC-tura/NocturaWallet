@@ -176,7 +176,7 @@ describe('browserDeps request timeouts (CrowdSec answers some users with silence
     const ext = fakeExt();
     const deps = {...fakeDeps(), broadcast: browserDeps(ext).broadcast};
     let done = false;
-    const view = submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}}).then(v => {
+    const view = submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}, fee: null}).then(v => {
       done = true;
       return v;
     });

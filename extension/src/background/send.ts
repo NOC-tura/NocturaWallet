@@ -58,9 +58,10 @@ export async function sendPrepared(ext: Ext, deps: WalletDeps, id: string): Prom
     wire: signPrepared(prepared, account),
     lastValidBlockHeight: prepared.lastValidBlockHeight,
     intent: prepared.intent,
-    // What this transaction pays: its network fee (5 000 per signature plus the priority fee, both fixed by
-    // the signed compute-unit price and limit) and the Noctura fee when one is charged — #21's "Fee paid".
-    feeLamports: (BigInt(prepared.shown.fees.networkLamports) + BigInt(prepared.shown.fees.markupLamports)).toString(),
+    // What this transaction pays, in two parts: its network fee (5 000 per signature plus the priority fee,
+    // both fixed by the signed compute-unit price and limit) and the Noctura fee ('0' when none is charged).
+    // Apart, because a landed-but-failed transaction pays the first and gets the second rolled back.
+    fee: {networkLamports: prepared.shown.fees.networkLamports, markupLamports: prepared.shown.fees.markupLamports},
   });
   // An approved signature resets the idle timer (spec §2) — best effort: the transaction is out,
   // and a failed re-arm must not turn its answer into "failed".

@@ -38,7 +38,7 @@ async function submitted(over: Partial<WalletDeps> = {}) {
   const ext = fakeExt();
   await unlocked(ext);
   const deps = depsWith(over);
-  const view = await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT});
+  const view = await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT, fee: null});
   return {ext, deps, view};
 }
 
@@ -59,7 +59,7 @@ describe('submitSigned', () => {
       seen.push((await readPending(ext)).length);
       return firstSignature(wire);
     };
-    const view = await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT});
+    const view = await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT, fee: null});
     expect(seen).toEqual([1]);
     expect(await ext.local.get(PENDING_KEY)).toHaveLength(1);
     expect(view).toMatchObject({state: 'pending', detail: null, expiryNullSeenAt: null, signature: firstSignature(signedWire())});
@@ -73,7 +73,7 @@ describe('submitSigned', () => {
 
   it('allows one open send per account — a second is refused and never broadcast', async () => {
     const {ext, deps} = await submitted();
-    await expect(submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(2n), lastValidBlockHeight: 1000, intent: INTENT})).rejects.toMatchObject({code: 'in-flight'});
+    await expect(submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(2n), lastValidBlockHeight: 1000, intent: INTENT, fee: null})).rejects.toMatchObject({code: 'in-flight'});
     expect(deps.broadcasts).toHaveLength(1);
   });
 
@@ -81,8 +81,8 @@ describe('submitSigned', () => {
     const ext = fakeExt();
     const deps = depsWith();
     const results = await Promise.allSettled([
-      submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT}),
-      submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(2n), lastValidBlockHeight: 1000, intent: INTENT}),
+      submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT, fee: null}),
+      submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(2n), lastValidBlockHeight: 1000, intent: INTENT, fee: null}),
     ]);
     expect(results.map(r => r.status).sort()).toEqual(['fulfilled', 'rejected']);
     expect(results.find(r => r.status === 'rejected')).toMatchObject({reason: {code: 'in-flight'}});
@@ -155,7 +155,7 @@ describe('submitSigned — the poller survives a failure after the record is wri
       throw new Error('alarms down');
     };
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const view = await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT});
+    const view = await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT, fee: null});
     expect(deps.broadcasts).toHaveLength(1);
     expect([...deps.broadcasts[0]!]).toEqual([...signedWire()]);
     expect(view.state).toBe('pending');
@@ -174,7 +174,7 @@ describe('submitSigned — the poller survives a failure after the record is wri
       deps.broadcasts.push(wire);
       return firstSignature(wire);
     };
-    await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT});
+    await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT, fee: null});
     expect(armedAtBroadcast).toEqual([true]);
   });
 
@@ -191,7 +191,7 @@ describe('submitSigned — the poller survives a failure after the record is wri
     };
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     // Recorded and broadcast: never the storage error ("failed", nothing sent) — SentUnconfirmed, naming the transaction.
-    await expect(submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT})).rejects.toMatchObject({
+    await expect(submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT, fee: null})).rejects.toMatchObject({
       name: 'SentUnconfirmed',
       signature: firstSignature(signedWire()),
     });

@@ -35,12 +35,21 @@ export interface PendingRecord {
   expiryNullSeenAt: number | null;
   failure: PendingFailure | null;
   /**
-   * What the transaction pays if it lands, base units (plan 3): its network fee plus the Noctura fee when
-   * charged, as prepared — exact, the compute-unit price and limit are signed. #21's "Fee paid". Null on a
-   * record from before plan 3, and for any stored value that is not digits: a display field never drops a
-   * record (a pending send must never be hidden).
+   * What the transaction pays, in two parts, base units (plan 3; follow-up ruling): the network fee
+   * (5 000 per signature plus the priority fee — exact, the compute-unit price and limit are signed) and the
+   * Noctura fee ('0' when none is charged), as prepared. Kept apart because a transaction that lands and
+   * fails still pays the network fee while its markup transfer is rolled back: a single sum cannot be shown
+   * truthfully for it (display rule: spec §4.5, "Fee paid"). Required, typed `| null`, so no writer can leave
+   * it out by accident. Null on a record from before plan 3, and for any stored value that is not exactly two
+   * digit strings: a display field never drops a record (a pending send must never be hidden).
    */
-  feeLamports: string | null;
+  fee: PendingFee | null;
+}
+
+/** The two parts of what a pending send pays, base-unit decimal strings. */
+export interface PendingFee {
+  networkLamports: string;
+  markupLamports: string;
 }
 
 /** What leaves the background: everything but the signed bytes. */
@@ -55,8 +64,8 @@ const serial = createMutex();
 const STATES: readonly string[] = ['pending', 'stuck', 'confirmed', 'failed', 'expired'];
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 
-/** A stored element is a claim: only an exact record shape is read; anything else is dropped. `failure` and `feeLamports` are checked by recordOf. */
-function isRecord(x: unknown): x is Omit<PendingRecord, 'failure' | 'feeLamports'> & {failure?: unknown; feeLamports?: unknown} {
+/** A stored element is a claim: only an exact record shape is read; anything else is dropped. `failure` and `fee` are checked by recordOf. */
+function isRecord(x: unknown): x is Omit<PendingRecord, 'failure' | 'fee'> & {failure?: unknown; fee?: unknown} {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
   const r = x as Record<string, unknown>;
   const i = r.intent as Record<string, unknown> | null;
@@ -82,14 +91,24 @@ function isRecord(x: unknown): x is Omit<PendingRecord, 'failure' | 'feeLamports
 
 /**
  * A record from before E8 has no `failure`: it reads as null, so no migration is needed. Any other value drops the
- * record. `feeLamports` (plan 3) reads as null when it is missing or not digits — the record itself is kept.
+ * record. `fee` (plan 3) reads as null when it is missing or not two digit strings — the record itself is kept.
  */
 function recordOf(x: unknown): PendingRecord | null {
   if (!isRecord(x)) return null;
-  const fee = typeof x.feeLamports === 'string' && /^\d{1,20}$/.test(x.feeLamports) ? x.feeLamports : null;
+  const fee = feeOf(x.fee);
   const f = x.failure;
-  if (f === undefined || f === null) return {...x, failure: null, feeLamports: fee};
-  return f === 'landed' || f === 'not-sent' ? {...x, failure: f, feeLamports: fee} : null;
+  if (f === undefined || f === null) return {...x, failure: null, fee};
+  return f === 'landed' || f === 'not-sent' ? {...x, failure: f, fee} : null;
+}
+
+const DIGITS = /^\d{1,20}$/;
+
+/** Exactly two base-unit digit strings, copied (never the stored object itself); anything else is null. */
+function feeOf(x: unknown): PendingFee | null {
+  if (typeof x !== 'object' || x === null || Array.isArray(x)) return null;
+  const {networkLamports, markupLamports} = x as Record<string, unknown>;
+  if (typeof networkLamports !== 'string' || typeof markupLamports !== 'string' || !DIGITS.test(networkLamports) || !DIGITS.test(markupLamports)) return null;
+  return {networkLamports, markupLamports};
 }
 
 export async function readPending(ext: Ext): Promise<PendingRecord[]> {
@@ -120,7 +139,7 @@ export function viewOf(r: PendingRecord): PendingView {
     intent: r.intent,
     expiryNullSeenAt: r.expiryNullSeenAt,
     failure: r.failure,
-    feeLamports: r.feeLamports,
+    fee: r.fee === null ? null : {networkLamports: r.fee.networkLamports, markupLamports: r.fee.markupLamports},
   };
 }
 

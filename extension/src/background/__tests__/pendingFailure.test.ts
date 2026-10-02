@@ -17,7 +17,7 @@ async function submitted(broadcast?: WalletDeps['broadcast']) {
   const ext = fakeExt();
   await unlocked(ext);
   const deps = fakeDeps({broadcast: broadcast ?? (async wire => firstSignature(wire))});
-  const view = await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT});
+  const view = await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT, fee: null});
   return {ext, deps, view};
 }
 
@@ -74,5 +74,32 @@ describe('PendingRecord.failure (E8)', () => {
     const read = await readPending(ext);
     expect(read.map(r => [r.id, r.failure])).toEqual([['r1', null]]);
     expect(viewOf(read[0]!).failure).toBeNull();
+  });
+});
+
+// Plan 3 follow-up: the record keeps both fee parts whatever the poller writes — the display rule (spec §4.5,
+// feePaidLamports in the UI engine) decides what is shown as paid, never a writer zeroing a part.
+describe('PendingRecord.fee survives every writer (plan 3)', () => {
+  const FEE = {networkLamports: '5050', markupLamports: '20000'};
+  async function withFee() {
+    const ext = fakeExt();
+    await unlocked(ext);
+    const deps = fakeDeps({broadcast: async wire => firstSignature(wire)});
+    await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT, fee: FEE});
+    return {ext, deps};
+  }
+
+  it('landed with an error: failed/landed, both parts kept', async () => {
+    const {ext, deps} = await withFee();
+    deps.reader = fakeReader({getSignatureStatuses: async () => [landedWithErr], getBlockHeight: async () => 900});
+    await pollOnce(ext, deps);
+    expect((await readPending(ext))[0]).toMatchObject({state: 'failed', failure: 'landed', fee: FEE});
+  });
+
+  it('confirmed: both parts kept', async () => {
+    const {ext, deps} = await withFee();
+    deps.reader = fakeReader({getSignatureStatuses: async () => [{err: null, confirmationStatus: 'finalized'}], getBlockHeight: async () => 900});
+    await pollOnce(ext, deps);
+    expect((await readPending(ext))[0]).toMatchObject({state: 'confirmed', fee: FEE});
   });
 });

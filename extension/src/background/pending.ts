@@ -4,7 +4,7 @@ import type {WalletDeps} from './deps';
 import {addKnownRecipient} from './knownRecipients';
 import {readWalletView} from './accountsStore';
 import {randomId} from './digest';
-import {inFlightFor, isOpen, readPending, updatePending, viewOf, type PendingRecord, type PendingView} from './pendingStore';
+import {inFlightFor, isOpen, readPending, updatePending, viewOf, type PendingFee, type PendingRecord, type PendingView} from './pendingStore';
 import {ResendRefused, SendRefused, SentUnconfirmed, type ResendRefusal, type SendIntent} from './sendTypes';
 import {BroadcastRejected, BroadcastSubstituted, firstSignature} from '../../../core/solana/broadcast';
 import {RpcCoolingDown, RpcForbidden, type SignatureStatus} from '../../../core/solana/rpc';
@@ -66,7 +66,7 @@ async function deliver(ext: Ext, deps: WalletDeps, record: PendingRecord, attemp
 export async function submitSigned(
   ext: Ext,
   deps: WalletDeps,
-  input: {account: string; wire: Uint8Array; lastValidBlockHeight: number; intent: SendIntent; feeLamports?: string},
+  input: {account: string; wire: Uint8Array; lastValidBlockHeight: number; intent: SendIntent; fee: PendingFee | null},
 ): Promise<PendingView> {
   const now = deps.now();
   const record: PendingRecord = {
@@ -82,7 +82,7 @@ export async function submitSigned(
     intent: input.intent,
     expiryNullSeenAt: null,
     failure: null,
-    feeLamports: input.feeLamports ?? null,
+    fee: input.fee,
   };
   const guard = {refused: false};
   await updatePending(ext, records => {

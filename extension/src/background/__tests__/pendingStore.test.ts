@@ -53,19 +53,35 @@ describe('pendingStore', () => {
   });
 });
 
-// Plan 3: the fee a record pays is a display field. A record from before it, or one with a value that is not
-// digits, reads with feeLamports null — and is kept: a pending send must never be hidden.
-describe('PendingRecord.feeLamports (plan 3)', () => {
-  it('missing or malformed reads as null and the record is kept; digits read as they are', async () => {
+// Plan 3: the fee a record pays is a display field, in two parts (network, markup). A record from before it, or
+// one whose value is not exactly two digit strings, reads with fee null — and is kept: a pending send must never
+// be hidden.
+describe('PendingRecord.fee (plan 3)', () => {
+  it('missing or malformed reads as null and the record is kept; two digit strings read as they are', async () => {
     const ext = fakeExt();
-    const {feeLamports: _drop, ...before} = record({id: 'old'});
-    await ext.local.set(PENDING_KEY, [before, record({id: 'bad', feeLamports: 'lots' as unknown as string}), record({id: 'num', feeLamports: 5050 as unknown as string}), record({id: 'ok', feeLamports: '5050'})]);
-    expect((await readPending(ext)).map(r => [r.id, r.feeLamports])).toEqual([
-      ['old', null],
-      ['bad', null],
-      ['num', null],
-      ['ok', '5050'],
+    const {fee: _drop, ...before} = record({id: 'old'});
+    const bad = (id: string, fee: unknown) => record({id, fee: fee as PendingRecord['fee']});
+    const fee = {networkLamports: '5050', markupLamports: '20000'};
+    await ext.local.set(PENDING_KEY, [
+      before,
+      bad('sum', '25050'),
+      bad('num', {networkLamports: 5050, markupLamports: '0'}),
+      bad('word', {networkLamports: '5050', markupLamports: 'lots'}),
+      bad('half', {networkLamports: '5050'}),
+      bad('neg', {networkLamports: '-1', markupLamports: '0'}),
+      bad('arr', ['5050', '0']),
+      record({id: 'ok', fee}),
     ]);
-    expect(viewOf((await readPending(ext))[3]!).feeLamports).toBe('5050');
+    expect((await readPending(ext)).map(r => [r.id, r.fee])).toEqual([
+      ['old', null],
+      ['sum', null],
+      ['num', null],
+      ['word', null],
+      ['half', null],
+      ['neg', null],
+      ['arr', null],
+      ['ok', fee],
+    ]);
+    expect(viewOf((await readPending(ext))[7]!).fee).toEqual(fee);
   });
 });

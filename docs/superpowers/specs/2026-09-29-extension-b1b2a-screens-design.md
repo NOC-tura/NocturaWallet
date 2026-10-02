@@ -1591,9 +1591,20 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     **→ adapted** (only when this screen saw the change live; the design's "in 2 blocks · finalized
     in < 13 s" needs data the engine does not keep); Amount/USD; To; "Tx hash" (full, mono, Copy);
     "Fee paid" = the prepared network fee (exact: the compute-unit price and limit are signed) +
-    Noctura fee when charged; `[View details]` → #27 (by signature, §6.3); `[Done]` → #11 (popup) /
+    Noctura fee when charged — read from the pending record's `fee` through `feePaidLamports`, never
+    summed by the screen (display rule below); `[View details]` → #27 (by signature, §6.3); `[Done]` → #11 (popup) /
     "Done — open the Noctura icon any time." + `[Close this tab]` (tab).
   - `failed` (`failed`) → #44. `expired` (`expired`) → #44's expired state.
+  - **Fee display rule (plan 3 follow-up, controller ruling).** The pending record stores the fee in
+    two parts, `fee: {networkLamports, markupLamports} | null` (digit strings; a required field typed
+    `| null`; a malformed or missing value reads as null and the record is always kept), because a
+    transaction that lands and fails still pays the network fee while its markup transfer is rolled
+    back with it — no single sum is true in every state. What is paid, by state
+    (`feePaidLamports`, `src/app/engine.ts`): `confirmed` → network + markup; `failed` with
+    `failure: 'landed'` → network only; `failure: 'not-sent'`, `expired` → nothing; anything not yet
+    settled (`pending`, `stuck`) or a `failed` record from an older build (`failure: null`) → nothing
+    claimed. On #21 the "Fee paid" row appears **only in `success`**; whether #44 shows the network
+    fee for a landed failure is carried to its task (#44), under this rule.
   - **extension-only `check-pending`**: "Checking whether it was sent…" while `wallet.pending` is
     read; if no record is found: "We could not confirm whether it was sent. Check Activity before
     trying again." + `[Open Activity]`.

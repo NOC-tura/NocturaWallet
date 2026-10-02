@@ -10,6 +10,7 @@ import {PENDING_KEY, readPending} from '../pendingStore';
 import type {SessionAccount} from '../../vault/accounts';
 import {AUTOLOCK_ALARM} from '../autolock';
 import {firstSignature} from '../../../../core/solana/broadcast';
+import {MAINNET_FEE_TREASURY} from '../../../../core/fees/transferMarkup';
 import {fakeDeps} from './fakeDeps';
 import {fakeExt} from './fakeExt';
 import {ACCOUNT, PUB, RECIPIENT, chargedByWire, pendingRecord, sendReader, signedWire, unlocked} from './fixtures';
@@ -252,7 +253,7 @@ describe('the views #20 and #21 read (plan 3)', () => {
     expect((await preparedFor(ext, deps, ACCOUNT.publicKey))?.validUntil).toBe(prepared.validUntil);
   });
 
-  it('the pending record carries the fee it pays: network fee plus the Noctura fee', async () => {
+  it('the pending record carries the fee it pays in two parts: network fee and Noctura fee', async () => {
     const ext = fakeExt();
     await unlocked(ext);
     await ext.local.set(KNOWN_RECIPIENTS_KEY, [RECIPIENT]);
@@ -260,8 +261,8 @@ describe('the views #20 and #21 read (plan 3)', () => {
     deps.broadcast = async wire => firstSignature(wire);
     const prepared = await prepareSend(ext, deps, ACCOUNT.publicKey, INTENT);
     const view = await sendPrepared(ext, deps, prepared.id);
-    expect(view.feeLamports).toBe((BigInt(prepared.fees.networkLamports) + BigInt(prepared.fees.markupLamports)).toString());
-    expect((await readPending(ext))[0]?.feeLamports).toBe(view.feeLamports);
+    expect(view.fee).toEqual({networkLamports: prepared.fees.networkLamports, markupLamports: prepared.fees.markupLamports});
+    expect((await readPending(ext))[0]?.fee).toEqual(view.fee);
   });
 });
 
@@ -311,12 +312,13 @@ describe('send invariants (plan 3)', () => {
     expect(deps.broadcasts).toHaveLength(0);
   });
 
-  it('feeLamports is what the broadcast bytes charge (signatures × 5 000 + signed priority fee), a digit string', async () => {
+  it('fee is what the broadcast bytes charge (network: signatures × 5 000 + signed priority fee; no markup), digit strings', async () => {
     const {ext, deps, view} = await setup(true);
     const sent = await sendPrepared(ext, deps, view.id);
-    expect(sent.feeLamports).toMatch(/^\d+$/);
-    expect(BigInt(sent.feeLamports!)).toBe(chargedByWire(deps.broadcasts[0]!));
-    expect((await readPending(ext))[0]?.feeLamports).toBe(sent.feeLamports);
+    const {network, markup} = chargedByWire(deps.broadcasts[0]!, MAINNET_FEE_TREASURY);
+    expect(sent.fee).toEqual({networkLamports: network.toString(), markupLamports: markup.toString()});
+    expect(sent.fee?.markupLamports).toBe('0');
+    expect((await readPending(ext))[0]?.fee).toEqual(sent.fee);
   });
 
   it('validUntil is the engine clock at prepare plus 30 s — neither the wall clock nor the time of a later read', async () => {
