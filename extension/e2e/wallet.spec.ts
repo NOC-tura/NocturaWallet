@@ -3,6 +3,7 @@ import {readFileSync, rmSync} from 'node:fs';
 import {BLOCKHASH_LIFETIME, installFakeCoordinator, type FakeCoordinator} from './fakeCoordinator';
 import {makeEnvelope, E2E_PASSWORD} from './makeEnvelope';
 import {containNocTura, containSolscan, expectContained, launchContained} from './launch';
+import {createWallet, recordSent, sentFrom, unlockWith} from './vaultPage';
 // Read from the source rather than imported: core/ has no package.json "type", so Playwright's loader
 // on Node 22 (CI) treats core/solana/rpc.ts as CommonJS and cannot take a named export from it.
 // The same literal the RPC-method gate parses; not found means it moved — fail loudly.
@@ -58,14 +59,37 @@ async function pendingRecord(page: Page, signature: string): Promise<PendingView
 }
 const pendingState = async (page: Page, signature: string): Promise<string | undefined> => (await pendingRecord(page, signature))?.state;
 
-/** Re-authenticate a challenge through the real vault page in reauth mode. */
-async function reauthenticate(ctx: BrowserContext, id: string, challengeId: string, password: string): Promise<void> {
+/**
+ * Re-authenticate a challenge through the real vault page (#10). After the proof the same tab hands
+ * over to the UI tab's resume route (D38) — nothing is sent from the vault page.
+ */
+async function reauthenticate(ctx: BrowserContext, fake: FakeCoordinator, id: string, challengeId: string, password: string, account: string): Promise<void> {
   const vault = await ctx.newPage();
   try {
+    await recordSent(vault);
     await vault.goto(`chrome-extension://${id}/unlock.html?mode=reauth&challenge=${challengeId}`);
-    await vault.fill('#reauth-password', password);
-    await vault.click('#reauth-btn');
-    await expect(vault.locator('#status')).toHaveText('Confirmed. You can close this tab.', {timeout: 60_000});
+    await expect(vault.locator('#ra-about')).toHaveText('You are about to send');
+    await vault.fill('#ra-password', password);
+    await vault.click('#ra-confirm');
+    await vault.waitForURL(`chrome-extension://${id}/wallet.html#/send/resume?account=${account}`, {timeout: 60_000});
+    // The resume stand-in, in a real browser (plan-2 review M7): it renders, and it sends nothing.
+    await expect(vault.getByText('Open the Noctura icon to continue.')).toBeVisible();
+    // Not one instant (Task 17 review 3): the stand-in stays open for a polled 3 s window, and at every sample
+    // nothing was broadcast and the tab never asked for a send. The recorder covers this one tab only (the
+    // vault page and the stand-in it hands over to); the popup's own sends below are not in it.
+    const quietUntil = Date.now() + 3_000;
+    await expect
+      .poll(
+        async () => {
+          const sent = (await sentFrom(vault)).map(m => m.type);
+          if (sent.includes('wallet.send') || fake.broadcasts.length > 0) return 'sent';
+          return Date.now() >= quietUntil ? 'quiet' : 'waiting';
+        },
+        {timeout: 10_000, intervals: [250]},
+      )
+      .toBe('quiet');
+    // The recorder saw the proof, so it ran.
+    expect((await sentFrom(vault)).map(m => m.type)).toContain('vault.reauthOk');
   } finally {
     await vault.close();
   }
@@ -100,24 +124,14 @@ function onlyTheSimulatedCoordinator(fake: FakeCoordinator, solscan: {hits: stri
 test('create a wallet, unlock it, re-authenticate a first send, send SOL: pending → confirmed', async () => {
   const {ctx, fake, id, popup, sw, profile, solscan, nocTura} = await launch();
   try {
-    // 1. Onboarding: the vault page's create mode.
+    // 1. Onboarding: the vault page's create run (#2 → #3 → #4 → #5 → #6), handed over to #7.
     const vault = await ctx.newPage();
-    await vault.goto(`chrome-extension://${id}/unlock.html?mode=create`);
-    await expect(vault.locator('#words li')).toHaveCount(24);
-    await vault.check('#saved');
-    await vault.fill('#new-password', NEW_PASSWORD);
-    await vault.fill('#new-password2', NEW_PASSWORD);
-    await vault.click('#create-btn');
-    await expect(vault.locator('#status')).toHaveText('Wallet created. You can close this tab.', {timeout: 60_000});
-    await expect(vault.locator('#words li')).toHaveCount(0);
+    await createWallet(vault, id, NEW_PASSWORD);
 
     // 2. Lock, then unlock with the password (B1a's unlock mode).
     expect((await msg(popup, {type: 'vault.lock'})).ok).toBe(true);
     expect(((await msg(popup, {type: 'wallet.state'})).data as {unlocked: boolean}).unlocked).toBe(false);
-    await vault.goto(`chrome-extension://${id}/unlock.html`);
-    await vault.fill('#password', NEW_PASSWORD);
-    await vault.click('#unlock');
-    await expect(vault.locator('#status')).toHaveText('Unlocked. You can close this tab.', {timeout: 60_000});
+    await unlockWith(vault, id, NEW_PASSWORD);
     const state = (await msg(popup, {type: 'wallet.state'})).data as {hasWallet: boolean; unlocked: boolean; accounts: {publicKey: string}[]};
     expect(state.hasWallet).toBe(true);
     expect(state.unlocked).toBe(true);
@@ -135,7 +149,9 @@ test('create a wallet, unlock it, re-authenticate a first send, send SOL: pendin
     expect(await msg(popup, {type: 'wallet.send', id: view.id})).toEqual({ok: false, error: 'reauth-required', data: {challengeId}});
     expect(fake.broadcasts).toEqual([]);
 
-    await reauthenticate(ctx, id, challengeId, NEW_PASSWORD);
+    await reauthenticate(ctx, fake, id, challengeId, NEW_PASSWORD, account);
+    // The vault page broadcast nothing: the send waits for a tap (D38).
+    expect(fake.broadcasts).toEqual([]);
 
     // A popup reopened after the re-authentication finds the prepared send and its challenge.
     expect(await msg(popup, {type: 'wallet.preparedFor', account})).toMatchObject({ok: true, data: {intent, reauth: {challengeId}}});
@@ -176,10 +192,7 @@ test('an unconfirmed send expires: "no funds moved", nothing re-sent, and only t
     fake.mode = 'expire';
     await sw.evaluate(({env, recipient}) => chrome.storage.local.set({v1_vault: env, v1_known_recipients: [recipient]}), {env: await makeEnvelope(), recipient: RECIPIENT});
     const vault = await ctx.newPage();
-    await vault.goto(`chrome-extension://${id}/unlock.html`);
-    await vault.fill('#password', E2E_PASSWORD);
-    await vault.click('#unlock');
-    await expect(vault.locator('#status')).toHaveText('Unlocked. You can close this tab.', {timeout: 60_000});
+    await unlockWith(vault, id, E2E_PASSWORD);
 
     const intent = {token: 'SOL', recipient: RECIPIENT, amount: '1000000'};
     const {signature, id: pendingId} = await prepareAndSend(popup, E2E_ACCOUNT, intent);

@@ -1,10 +1,12 @@
 import type {EnvelopeV1, Kdf} from '../vault/envelope';
+import {storedVault} from './stored';
 
 export type Factor = {password: string; kdf: Kdf} | {prfOutput: Uint8Array};
 export type Outcome = 'unlocked' | 'wrong' | 'failed' | 'damaged' | 'no-wallet';
 
 export interface AttemptUnlockDeps {
-  envelope(): Promise<EnvelopeV1 | null>;
+  /** v1_vault as stored: undefined when absent (src/unlock/stored.ts). */
+  readEnvelope(): Promise<unknown>;
   send(m: unknown): Promise<{ok: boolean; error?: string}>;
   unlockFlow(deps: {env: EnvelopeV1; send(m: unknown): Promise<{ok: boolean; error?: string}>}, factor: Factor): Promise<'unlocked' | 'wrong' | 'failed' | 'damaged'>;
 }
@@ -15,8 +17,8 @@ export interface AttemptUnlockDeps {
  *
  * Zeroes `factor.prfOutput`, when the factor is a passkey PRF output, in a `finally` that wraps
  * the ENTIRE attempt, including the envelope read. This matters because `unlockFlow` only ever
- * gets to do its own zeroing when it is actually called: a missing wallet (`envelope()` resolves
- * `null`) or a broken extension context (`envelope()` rejects — e.g. "Extension context
+ * gets to do its own zeroing when it is actually called: a missing or damaged wallet (`readEnvelope()`
+ * resolves `undefined`, or something that is not an envelope) or a broken extension context (`readEnvelope()` rejects — e.g. "Extension context
  * invalidated", which can happen if the extension reloads while a passkey prompt the person is
  * still answering is open) both return or throw before `unlockFlow` is ever reached, and without
  * this outer `finally` the caller's PRF output would never be zeroed on those paths. Zeroing here
@@ -25,9 +27,12 @@ export interface AttemptUnlockDeps {
  */
 export async function attemptUnlock(deps: AttemptUnlockDeps, factor: Factor): Promise<Outcome> {
   try {
-    const env = await deps.envelope();
-    if (!env) return 'no-wallet';
-    return await deps.unlockFlow({env, send: deps.send}, factor);
+    // Only an absent v1_vault is "no wallet"; a stored value that is not an envelope (null included)
+    // is damaged, as the background says (stored.ts, plan-1 carry).
+    const stored = storedVault(await deps.readEnvelope());
+    if (stored.kind === 'none') return 'no-wallet';
+    if (stored.kind === 'damaged') return 'damaged';
+    return await deps.unlockFlow({env: stored.env, send: deps.send}, factor);
   } catch {
     // Same rule as unlockFlow: an unexpected throw is a failed attempt, never an escaping
     // exception that would leave the page reading "Unlocking…".
@@ -93,20 +98,29 @@ export function wrongDelayMs(consecutiveWrong: number): number {
 }
 
 export interface WrongBackoff {
-  run<T extends string>(action: () => Promise<T>, onWait: () => void): Promise<T>;
+  /**
+   * `onWait(ms)` is told how long the wait will be, so a page can show its countdown (#9's
+   * cooldown card). `ms` is a LOWER BOUND on the actual wait: it is read before `sleep(ms)` runs,
+   * so it never includes whatever `onWait` itself costs (a DOM write, a thrown error) — `run`
+   * sleeps the full `ms` regardless of what `onWait` does (see below).
+   */
+  run<T extends string>(action: () => Promise<T>, onWait: (ms: number) => void): Promise<T>;
 }
 
 /**
  * Spec §2: wrong passwords get an increasing delay on top of the Argon2id cost. The streak lives
  * in this page's memory; a proven factor (`'unlocked'`, and re-authentication's `'confirmed'`,
- * the accounts' `'done'`/`'done-locked'`/`'done-not-locked'`, the reveal's `'shown'`) resets it, `'wrong'` extends it and every other
+ * the accounts' `'done'`/`'done-locked'`/`'done-not-locked'`, the reveal's `'shown'`, and #40's
+ * factor proof `'proven'`) resets it, `'wrong'` extends it and every other
  * outcome (`'damaged'` and `'mismatch-locked'` included — neither is a guess) leaves it as it is.
  * The delay runs INSIDE `run`, so a caller that wraps `run` in `runExclusive` keeps the busy
  * gate (and the disabled buttons) held for the whole wait. `sleep` is injected so the sequence is
- * testable without a clock.
+ * testable without a clock. `onWait` runs in a `try/finally` around `sleep`: a throwing `onWait`
+ * (a page bug in the countdown UI) must never skip the delay itself — that would let a page defeat
+ * the backoff just by breaking its own display of it.
  */
-/** Outcomes that proved the factor: unlocked, re-auth confirmed, accounts changed (even if then locked), phrase shown. */
-const PROVEN: readonly string[] = ['unlocked', 'confirmed', 'done', 'done-locked', 'done-not-locked', 'shown'];
+/** Outcomes that proved the factor: unlocked, re-auth confirmed, accounts changed (even if then locked), phrase shown, #40's factor proof. */
+const PROVEN: readonly string[] = ['unlocked', 'confirmed', 'done', 'done-locked', 'done-not-locked', 'shown', 'proven'];
 
 export function createWrongBackoff(sleep: (ms: number) => Promise<void>): WrongBackoff {
   let streak = 0;
@@ -114,14 +128,17 @@ export function createWrongBackoff(sleep: (ms: number) => Promise<void>): WrongB
     async run(action, onWait) {
       const outcome = await action();
       // A proven factor ends the streak — it unlocked the vault, confirmed a re-authentication,
-      // changed the accounts or showed the phrase.
+      // changed the accounts, showed the phrase or proved a factor (#40).
       if (PROVEN.includes(outcome)) streak = 0;
       if (outcome !== 'wrong') return outcome;
       streak += 1;
       const ms = wrongDelayMs(streak);
       if (ms > 0) {
-        onWait();
-        await sleep(ms);
+        try {
+          onWait(ms);
+        } finally {
+          await sleep(ms);
+        }
       }
       return outcome;
     },

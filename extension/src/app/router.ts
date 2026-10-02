@@ -1,18 +1,30 @@
 import type {Tab} from './ui/TabBar';
+import type {Surface} from './WalletContext';
 
 /**
  * In-memory navigation (spec §1.6): a stack of routes in a reducer — push, pop, replace, back to a
  * tab. No router library, and no route that acts: every value a screen shows comes from the
- * background. Plan 1's routes only; plan 3 adds the send flow.
+ * background. Plan 3 adds the send flow.
  *
- * Resume (§1.6 step 3) is absent in plan 1 by design (review M8): there is no send screen, so no route
- * may lead into a send or a resumed one. The list below is closed, and the reducer refuses anything
- * outside it — a forged or future route leaves the stack as it was rather than dangling.
+ * The pushable screens are a closed list, and the reducer refuses anything outside it — a forged or
+ * future route leaves the stack as it was rather than dangling. The UI tab's hand-over screens (#7
+ * `created`, #40 `imported`, and plan 2's `resume` stand-in) are first routes only: chosen by the tab's
+ * hash, never pushed.
  */
-export type Route = {screen: 'tab'; tab: Tab} | {screen: 'receive'} | {screen: 'tx'; signature: string} | {screen: 'about'};
+export type Route =
+  | {screen: 'tab'; tab: Tab}
+  | {screen: 'receive'}
+  | {screen: 'tx'; signature: string}
+  | {screen: 'about'}
+  | {screen: 'created'}
+  | {screen: 'imported'}
+  | {screen: 'resume'; account: string};
 export type RouteAction = {type: 'push'; route: Route} | {type: 'pop'} | {type: 'tab'; tab: Tab};
 
 export const SCREENS: ReadonlySet<string> = new Set<Route['screen']>(['tab', 'receive', 'tx', 'about']);
+/** The UI tab's hand-over screens: a first route from `location.hash`, never pushed. */
+export const TAB_ONLY: ReadonlySet<string> = new Set<Route['screen']>(['created', 'imported', 'resume']);
+const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const TABS: ReadonlySet<string> = new Set<Tab>(['home', 'activity', 'settings']);
 
 function isRoute(r: unknown): r is Route {
@@ -36,10 +48,17 @@ export function routeReducer(stack: Route[], action: RouteAction): Route[] {
 }
 
 /**
- * The tab surface's first route, from `location.hash`. Plan 1 has one route, `#/home` (#11 in a
- * column); any other hash shows it too — `#/send`, `#/send/resume` included. The hash only ever
- * chooses a screen — it never acts.
+ * The first route (spec §1.6). The popup always starts at #11. The tab reads `location.hash`: `#/created`
+ * (#7), `#/imported` (#40), `#/send/resume?account=<address>` (the hand-over from #10 — plan 2 shows
+ * "Open the Noctura icon to continue." there; plan 3 makes it #20) and `#/home`; anything else is #11
+ * too. The hash only ever chooses a screen — it never acts, and the account is only an address.
  */
-export function firstRoute(): Route[] {
+export function firstRoute(surface: Surface = 'popup', hash = ''): Route[] {
+  if (surface === 'tab') {
+    if (hash === '#/created') return [{screen: 'created'}];
+    if (hash === '#/imported') return [{screen: 'imported'}];
+    const resume = /^#\/send\/resume\?account=([^&#]*)$/.exec(hash);
+    if (resume !== null && ADDRESS.test(resume[1] ?? '')) return [{screen: 'resume', account: resume[1] ?? ''}];
+  }
   return [{screen: 'tab', tab: 'home'}];
 }

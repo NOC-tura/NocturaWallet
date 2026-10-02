@@ -61,7 +61,7 @@ test('the fake coordinator: -32601 for a method it lacks; an unknown `before` is
       JSON.parse(await swFetch(sw, 'https://api.noc-tura.io/api/v1/rpc', {jsonrpc: '2.0', id: 7, method, params})) as {id: number; result?: unknown; error?: {code: number}};
 
     const missing = await rpc('getSlotLeaders', [0, 1]);
-    expect(missing).toEqual({jsonrpc: '2.0', id: 7, error: {code: -32601, message: 'Method not found'}});
+    expect(missing).toEqual({jsonrpc: '2.0', id: 7, error: {code: -32601, message: 'Method not allowed'}});
     expect('result' in missing).toBe(false);
     expect(fake.unexpected).toEqual(['rpc getSlotLeaders']);
     fake.unexpected.length = 0;

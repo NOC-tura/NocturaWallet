@@ -185,12 +185,91 @@ export function classViolations(files = listScreens().map(path => ({path, text: 
   return out;
 }
 
+// ── The vault page (plan 2) ───────────────────────────────────────────────────────────────────
+// unlock.html and src/unlock are plain DOM (spec S1): no className= JSX. The page names classes in
+// its markup (`class="…"`) and in code only through the DOM helper `h(tag, '…')`, `.className = '…'`
+// and `classList.add|remove|toggle('…')`. In the vault page a class must be one literal string: a
+// computed one is refused outright (nothing to list, nothing to check).
+
+/** `h` itself assigns its parameter (`el.className = cls`): the one computed class the gate accepts, there only. */
+const HELPER = {path: 'src/unlock/view/dom.ts', expr: 'cls'};
+
+/** The stylesheets src/unlock/main.ts imports, relative to the package. */
+export const VAULT_SHEETS = ['../web/src/styles/design-system.css', 'src/styles/design-ext.css', 'src/unlock/unlock.css'];
+
+/**
+ * Classes named in unlock.html (`html: true`) or in a src/unlock module, and any computed class expression.
+ * Read: `h('tag', cls)`, `.className = cls` and `+=`, every argument of `classList.add|remove|replace`,
+ * the first of `classList.toggle` (its second is the force flag), and `setAttribute('class', cls)`.
+ * Known blind spots: h()'s tag is matched only as a single-quoted literal (`h('div', …)`, the one form
+ * Prettier writes today), so a template-literal or computed tag hides that call's class; an argument
+ * list is read up to its first `)`, so a call inside one (`add('a', f(x))`) is reported as a computed
+ * `f(x` rather than parsed; `classList.value =`, `setAttributeNS(…, 'class', …)` and `toggleAttribute`
+ * are not read (src/unlock uses none; a computed property write is refused by the vault-isolation
+ * gate's MARKUP_EVASIONS).
+ */
+export function vaultClassUses(src, html) {
+  const classes = [];
+  const computed = [];
+  if (html) {
+    for (const m of src.matchAll(/\bclass\s*=\s*(["'])([^"']*)\1/g)) classes.push(...words(m[2]));
+    return {classes, computed};
+  }
+  const take = arg => {
+    const a = arg.trim();
+    const lit = /^(['"])([^'"]*)\1$/.exec(a);
+    if (lit) classes.push(...words(lit[2]));
+    else computed.push(a);
+  };
+  for (const m of src.matchAll(/\bh\(\s*'[a-z0-9]+'\s*,\s*([^,)]+)/g)) take(m[1]);
+  for (const m of src.matchAll(/\.className\s*\+?=(?!=)\s*([^;\n]+)/g)) take(m[1]);
+  for (const m of src.matchAll(/\bclassList\.(add|remove|replace|toggle)\(([^)]*)\)?/g)) {
+    const args = m[2].split(',').filter(a => a.trim() !== '');
+    for (const a of m[1] === 'toggle' ? args.slice(0, 1) : args) take(a);
+  }
+  for (const m of src.matchAll(/\bsetAttribute\(\s*(['"])class\1\s*,\s*([^)]+)\)?/g)) take(m[2]);
+  return {classes, computed};
+}
+
+/** unlock.html and every .ts under src/unlock/ except the tests, relative to the package. */
+export function listVaultFiles(root = ROOT) {
+  const out = [];
+  const walkTs = dir => {
+    for (const e of readdirSync(dir, {withFileTypes: true})) {
+      if (e.name === '__tests__') continue;
+      const p = join(dir, e.name);
+      if (e.isDirectory()) walkTs(p);
+      else if (e.name.endsWith('.ts')) out.push(relative(root, p).split(sep).join('/'));
+    }
+  };
+  if (existsSync(join(root, 'src', 'unlock'))) walkTs(join(root, 'src', 'unlock'));
+  return ['unlock.html', ...out.sort()];
+}
+
+function loadVaultDefined() {
+  const all = new Set();
+  for (const sheet of VAULT_SHEETS) for (const c of definedClasses(readFileSync(join(ROOT, sheet), 'utf8'))) all.add(c);
+  return all;
+}
+
+/** One line per vault-page class defined in no vault stylesheet, and per computed class. */
+export function vaultClassViolations(files = listVaultFiles().map(path => ({path, text: readFileSync(join(ROOT, path), 'utf8')})), defined = loadVaultDefined()) {
+  const out = [];
+  for (const {path, text} of files) {
+    const {classes, computed} = vaultClassUses(text, path.endsWith('.html'));
+    for (const c of new Set(classes)) if (!defined.has(c)) out.push(`${path}: class "${c}" is defined in no stylesheet the vault page loads`);
+    for (const e of computed) if (e !== "''" && !(path === HELPER.path && e === HELPER.expr)) out.push(`${path}: computed class ${e} — the vault page names classes as literal strings only`);
+  }
+  return out;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const files = listScreens();
-  const problems = classViolations();
+  const vaultFiles = listVaultFiles();
+  const problems = [...classViolations(), ...vaultClassViolations()];
   if (problems.length > 0) {
     for (const p of problems) console.error(p);
     process.exit(1);
   }
-  console.log(`classes ok: every class in ${files.length} src/app files is defined by ${SHEETS.join(', ')}`);
+  console.log(`classes ok: every class in ${files.length} src/app files is defined by ${SHEETS.join(', ')}; every class in ${vaultFiles.length} vault-page files by ${VAULT_SHEETS.join(', ')}`);
 }

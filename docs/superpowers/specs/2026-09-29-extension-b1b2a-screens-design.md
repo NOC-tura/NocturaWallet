@@ -143,6 +143,12 @@ new mnemonic never crosses a navigation.
 | `accounts` | add-account form | restyled; remove stays the B1b-1 form (B1b-2b designs the manager) |
 | `reveal` | B1b-1 reveal form | restyled with the tokens only; B1b-2b builds the designed screen |
 
+The accounts and reveal password fields keep B1b-1's visible `<label for>` "Password" (plan-2 visual
+pass: Task 14 had replaced it with an `aria-label`, which names the field for a screen reader but
+tells a sighted user nothing on a form with no other instruction). `minlength` and `required` stay
+dropped, as on #9 and #10: the page answers a short or empty password in its own helper line, and the
+browser's validation bubble would answer instead with words this spec does not have.
+
 **How the design's look gets there without importing non-vault code:**
 1. **CSS only is shared.** `src/unlock/main.ts` imports two stylesheets:
    `../../../web/src/styles/design-system.css` (the one source of the tokens and type tiers) and
@@ -186,12 +192,39 @@ mutation test in `scripts/__tests__`):
   covers `<script>`. A Vite-injected `<link rel="stylesheet">` is not a script and stays allowed.
 - `BACKGROUND_OWNED_KEYS` gains `v1_balance_cache` and `v1_price_cache` (E4).
 - `vault.challengeInfo` (E3) and `vault.forgetWallet` (E5) join `VAULT_PAGE_ONLY`.
+- *The browser keeps every CSS *load* off the vault page (controller hardening, 2026-10-01).* A stylesheet on the
+  page that holds the seed and the password is an exfiltration surface: an attribute selector on an
+  input's value plus a `url()` reads the field. Three review rounds of the text gates each found a new
+  spelling that reached the built page, so the extension CSP now enforces it in the browser: it gains
+  `default-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none';
+  form-action 'none'; frame-ancestors 'none'` (script-src, object-src and connect-src unchanged; the
+  full policy is in the parent spec, §5). No inline `<style>`/`style=""`, no remote sheet, image or
+  font. The gate stays as the backstop: the vault page's sheets are read by a tokenizer
+  (`scripts/css-scan.mjs`: comments removed to nothing, strings and escapes read whole) — every
+  `url()` one of the two Geist faces, no `@import`, no `image-set()`/`image()`/`cross-fade()`/`src()`,
+  no backslash, in the sources and in the built text; every CSS language Vite compiles is a sheet,
+  and any non-`.css` sheet reaching the vault page is refused; `unlock.html` carries no `<style>`,
+  no `style` attribute and no `<link>` in source, and in the build only links its own built
+  stylesheets; and `src/unlock` (sources) and the chunks `unlock.html` loads (build) create no
+  `<style>`/`<link>` element, construct or adopt no sheet, insert no rule and set no style
+  attribute, declaration text or inline style (`.style`, `setProperty` — a CSSOM write the CSP
+  allows; the vault page toggles classes instead). One exception (controller ruling, 2026-10-01, for
+  #9/#10's conic-gradient cooldown ring): exactly `<el>.style.setProperty('--vlt-<name>', <value>)`,
+  the name a literal matching `^--vlt-[a-z-]+$`, the value formatted from a number inside the same
+  module (`ringShare(n: number)` in `view/cooldown.ts`), never a string parameter, `url(`, `var(` or
+  a quote; the built chunks may carry only that literal shape. `createElement` taken as a value
+  (`.bind`, `.call`, a destructured or assigned reference) is refused too. The gates are a backstop,
+  with known limits: a member read of `.style` by a name computed at run time
+  (`body[location.hash…]`), a type cast into the `--vlt-` formatter, and an aliased `h`. Under the
+  CSP each of these can at most change how the page looks, never load anything.
 - *Fonts from the vault page (review L5).* `design-system.css` loads `/fonts/*.woff2` by an
   absolute path. With Vite's `base: './'` a `public/` asset referenced absolutely stays
   `/fonts/…`, which resolves against the extension origin's root from any page, the vault page
   included. The build test asserts both woff2 files exist at `dist/app/fonts/` and that the
-  built `unlock` CSS names `/fonts/Geist-Variable.woff2`. E2E spec 1 asserts
-  `document.fonts.check('16px Geist')` is true on `unlock.html`.
+  built `unlock` CSS names `/fonts/Geist-Variable.woff2`. E2E spec 1 asserts on `unlock.html` that
+  `document.fonts.load('16px Geist')` resolves to at least one face — the real assertion, since
+  `document.fonts.check()` is also true when no face named Geist exists at all — and keeps
+  `check('16px Geist')` beside it (plan-2 review ruling 5).
 
 ### 1.3 The UI bundle (popup and tab)
 
@@ -557,11 +590,12 @@ simulation: {
      revision with `expectedRevision` (`busy` if it moved), and, under `sessionMutex`, confirm
      `getSession() === null` (**`unlocked`** if an unlock landed since step 3; `vault.setKeys` does
      not take `serial`, so this is the one race left inside the section). A `busy` here has changed
-     nothing but the lock and the removal of closed pending records. The page says: "The wallet
-     changed while this was running. Nothing was deleted; the wallet is locked. Start again." An
-     `unlocked` here has changed the same, but the wallet is unlocked again, so that line would be
-     false. **Note for plan 2:** #39 and #40 need their own line for `unlocked` — the `busy` copy
-     says "the wallet is locked", which is false here (owner's copy to come).
+     nothing but the lock and the removal of closed pending records. The page cannot tell a step-1
+     `busy` from a step-5 one, so it shows one line for both: §3.8's "The wallet changed while you
+     were typing. Start again." (true in both; plan-2 review ruling 3). An `unlocked` here has changed
+     the same, but the wallet is unlocked again. #39's restore and #40's retry (both on #8) say
+     instead: "The wallet was unlocked while this was running, so nothing was deleted. Start again." +
+     `[Start again]` → #39 — **controller addition — confirmed by the owner 2026-10-01**.
   6. **The vault write:** `v1_vault` removed, or overwritten by `replacement`. A crash before this
      write leaves the old wallet in place and locked, and the operation can be repeated. There is
      never half a wallet.
@@ -725,19 +759,27 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
 
 - **Purpose:** entry; create or import. **Where:** vault page, `?mode=welcome` (opened on install
   and by the popup with no wallet).
-- **State `idle`:** logo (BrandMark look, vault-local SVG) + wordmark "Noctura" (`.noc-h1`); tagline
-  "A Solana wallet built for private, non-custodial holding."; trust chips "E2E encrypted" ·
-  "Non-custodial"; terms line "By continuing you agree to the Terms and Privacy Policy." above the
-  CTAs; `[Create new wallet]` `.btn-primary`; `[I have a wallet]` `.btn-secondary`.
+- **State `idle`:** logo — the mockup's `span.mark` "N" (index.html:4498) — + wordmark "Noctura"
+  (`.noc-h1`); tagline "A Solana wallet built for private, non-custodial holding."; trust chips "E2E
+  encrypted" · "Non-custodial"; terms line "By continuing you agree to the Terms and Privacy Policy."
+  above the CTAs; `[Create new wallet]` `.btn-primary`; `[I have a wallet]` `.btn-secondary`.
 - **Extension-only state `exists`** (a wallet is already stored): "A wallet already exists in this
   browser. Nothing was changed." + "Open the Noctura icon to use it." No CTAs.
+- **Extension-only state `damaged`** (a stored value that fails validation, a stored `null`
+  included): "This wallet's stored data is damaged." + "Your funds stay on Solana; your recovery
+  phrase still controls them. To use them here, remove Noctura from this browser, install it again
+  and import the phrase." (owner-confirmed copy, 2026-10-01, plan 2 carry 3). No CTAs; repairing it
+  is #37's (B1b-2b).
+- **Extension-only state `unreadable`** (the storage read itself throws): "This wallet's stored data
+  could not be read. Reload this page." No help line, no CTAs.
 - **Engine:** `readLocal('v1_vault')` presence (the vault page's one storage read).
 - **Navigation:** Create → #2 (same page); I have a wallet → #8.
 - **Differs from the design:**
   - "ZK-private" chip removed (D6).
   - "Terms" and "Privacy Policy" are plain text, not links, until the privacy policy exists (a
     release gate, parent §5 / B1e). The sentence stays.
-  - `exists` state added (the engine never overwrites a wallet).
+  - `exists`, `damaged` and `unreadable` states added (the engine never overwrites a wallet, and a
+    damaged or unreadable one is never silently treated as absent).
 
 ### 3.2 #2 security-intro
 
@@ -760,6 +802,10 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
 ### 3.3 #3 seed-display
 
 - **Engine:** `newMnemonic()` in the page (24 words), in memory only; nothing is sent.
+- **Memory:** the phrase lives in the create run's closure from #3's first show until the wallet is
+  stored. A hidden tab keeps it (and re-blurs the grid); **`pagehide` drops the phrase** (and #5's
+  password), whatever `persisted` says — the browser may keep the page in its back/forward cache — and
+  a page restored from that cache starts again at #1 (Task 8 fix round 1, controller addition).
 - **States:**
   - `pre-reveal modal`: route tag hidden; "About to show your recovery phrase"; "Move to a private
     place. Anyone who sees these 24 words can spend everything in this wallet, forever."; callout
@@ -775,13 +821,16 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     disabled.
   - `revealed · countdown`: chip "13 s · auto-blur" (`--warning` above 5 s; at ≤ 5 s "5 s — still
     memorizing?" in `--danger`); helper "Holding to reveal · Auto-blurs at 20 s for safety. Screen
-    readers announce at 10 s and 5 s only." **→ adapted** ("TalkBack" → "Screen readers"; the chip
-    has `aria-live="polite"`, throttled to 10 s and 5 s); CTA active.
+    readers announce at 10 s and 5 s only." **→ adapted** ("TalkBack" → "Screen readers"); the chip
+    itself is `aria-hidden="true"`, and a separate `.vlt-sr` polite live region (`#seed-live`) says
+    the countdown at 10 s and 5 s only, and is emptied on every state change; CTA active.
   - `re-blurred at 20 s`: "Still looking?" / "Press and hold again to keep viewing. Releasing now is
     fine — your hand is remembering enough." **→ adapted** ("Tap-and-hold" → "Press and hold"); the
     hold resets and must be released and pressed again.
   - `confirmed`: lede "Phrase locked in. Tap continue to verify a few words."; grid re-blurred;
-    stamp "Acknowledged" (`.noc-overline`, `--success`); `[I've written it down]` → #4.
+    stamp "Acknowledged" (`.noc-overline`, `--success`); `[Continue]` → #4. (3b–3d read "I've
+    written it down", disabled until one full hold; 3e reads "Continue" — the design is binding,
+    plan-2 review ruling 1.)
 - **Mechanics:** hold timer 30 ms ticks to 2 s; `pointerup`/`pointerleave`/`blur`/`keyup` re-blur;
   the 20 s auto-blur fires even while held; every timer is cleared on leaving the step.
   `prefers-reduced-motion` removes the blur transition.
@@ -790,12 +839,24 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     (D1).
   - FLAG_SECURE, haptics and the predictive-back exit modal dropped (no browser equivalent).
     Leaving the page discards the mnemonic, and a new visit generates a new one.
+  - **Plan 2:** the CTA reads "I've written it down" (disabled until one full hold) and, in
+    `confirmed`, "Continue" — as 3e draws it; both go to #4. The design's route tag on the gate is
+    not shown. The chip's countdown is announced at 10 s and 5 s through a separate live region (the
+    chip itself is aria-hidden). Leaving #3 or #4 takes their words out of the DOM.
+  - **Plan 2:** outside `revealed` the 24 cells hold the fixed stand-in "xxxxxx" under the blur, not
+    the real words blurred as 3b, 3d and 3e draw them: the blur is CSS only, so a real word under it
+    would be in the DOM (and in a screenshot with the filter off) whenever the grid is blurred. The
+    words are in the DOM exactly while `revealed` (Task 4 carry). Seen blurred, the cells read as an
+    even grey texture of one length, not 24 shapes of different lengths (visual pass, 03-blurred and
+    03-confirmed against 3b and 3e).
 
 ### 3.4 #4 seed-confirm
 
 - **States:** `empty` (step "3 / 5", "Confirm phrase", "Tap the correct word for each position.",
-  slots "Word #5" / "Word #12" / "Word #19" with "— select —", a pool of 9 words: 1 correct + 8
-  BIP-39 distractors per slot, generated once, `[Confirm]` disabled); `partial-correct` (filled
+  slots "Word #5" / "Word #12" / "Word #19" with "— select —", a pool of nine: each slot's word
+  with two BIP-39 distractors of the same first letter, none a phrase word, generated once
+  (`screen.md`'s "1 correct + 8 distractors" counts from one slot's point of view; plan-2 review
+  ruling 6), `[Confirm]` disabled); `partial-correct` (filled
   slots, used buttons dimmed); `wrong-answer` (lede "That's not the right word — let's start
   over." in `--danger`, slot flips `--danger` with the 320 ms shake, helper "Word #12 was wrong.
   Slots will reset in a moment.", reset after ~700 ms); `success` (96 px ring, "Phrase
@@ -804,6 +865,10 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
 - The slot numbers are random (3 distinct of 1–24), the pools come from the page's wordlist, and
   "Tap" stays because a click is a tap.
 - **Differs:** the success copy as marked; the FLAG_SECURE note dropped (D1).
+  - **Plan 2 (visual pass):** a pick is checked at once (a wrong one resets the slots), so a filled
+    slot is always a verified one and is drawn as 4b/4c draw `.correct` (the `--success` dashed
+    border on `--bg-surface-2`). 4b's `.filled` look — the latest pick tinted, not yet verified — is
+    not used: no pick here is ever unverified.
 
 ### 3.5 #5 pin-create → create password (D7)
 
@@ -826,6 +891,14 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     `invalid-mnemonic`, `failed` ("Something went wrong. Nothing was saved.").
 - **On the import path** this same screen appears after #8 with the step counter "Import · 2 / 2"
   **→ adapted** (the design's import path has no PIN step; the extension needs a password).
+- **On #39's restore path** it appears after #8 with "Recovery" / "Restore · 2 / 2", and gains one
+  extension-only state, **`retry`** (a refusal the same password may answer later — `send-open`, §3.8):
+  the refusal's line in the helper and `[Try again]`, which runs the restore again with the password
+  held in page memory. In `retry` the form and the lede are hidden (the lede would ask for a field that
+  is not there); Back is offered and drops the held password, returning to #8 with the phrase in the
+  field (plan-2 review L3). A tab hidden while the restore runs counts as hidden: a `retry` answer then
+  holds nothing, and #5 goes back to `enter` with "Enter a new password to try again." (§3.5's rule,
+  L5) — as it does when the tab is hidden behind `[Try again]` (Task 12, **controller addition**).
 - **Navigation:** `created` → #6 (create path) or the UI tab `#/imported` (import path, no #6
   prompt; D9 puts the passkey step on #6 only). `created-locked` → the UI tab
   (`#/created` or `#/imported`), which shows its locked variant.
@@ -836,7 +909,11 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   the passkey."). JS strings cannot be zeroed; this is stated in a comment and in §8's review list.
 - **Differs:**
   - The 6 PIN dots and keypad are replaced by a password field and confirm field (D7).
-  - The step dots keep the design's two-step indicator.
+  - The step dots keep the design's two-step indicator. In `mismatch` both dots are wide, as 5c's
+    state note says ("both step dots wide"); the 5c mockup itself draws only dot 2 wide.
+  - **Plan 2:** on #39's restore path the eyebrow reads "Recovery" (#39's), with "Restore · 2 / 2";
+    `send-open` and a failed store keep the password in the page behind `[Try again]` (the field
+    hidden), as E5 asks.
   - FLAG_SECURE dropped (D1).
 
 ### 3.6 #6 biometric-setup → passkey (D9)
@@ -862,6 +939,7 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
 - **Navigation:** any end → the UI tab `wallet.html#/created`.
 - **Differs:** copy as marked; the fingerprint icon becomes a key icon; the native BiometricPrompt
   becomes the browser's WebAuthn prompt.
+  **Plan 2:** the back arrow is not drawn — the wallet is already stored when #6 shows.
 
 ### 3.7 #7 onboard-success (UI tab `#/created`)
 
@@ -885,6 +963,10 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   - `[Open wallet]` replaced by the D10 line: a tab cannot reliably open the action popup in both
     browsers.
   - The 30 s clipboard clear is not built (spec §4).
+  - **Plan 2 (visual pass):** the address is in groups of four (`AddressGroups`, spec §3), not the
+    design's continuous string, at the class map's `.noc-mono` + `.noc-body` size (15 px).
+  - **Plan 2 (visual pass):** the sticky bar holds the D10 line above `[Close this tab]`, and stays
+    at the bottom of the tab while the screen scrolls, as the phone frame pins it.
 
 ### 3.8 #8 import
 
@@ -913,13 +995,21 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   - **`&source=retry` (#40's "Try a different seed", D41):** before the phrase field, a password
     step: "Confirm with the password of the wallet you are replacing" + `[Confirm]` /
     `[Confirm with passkey]`; `wrong` → "That did not confirm it."; then #8 as a normal import. At
-    the finish, `vault.forgetWallet {expectedRevision, guard: 'unfunded'}`: `send-open` / `busy` as
-    below; `funded` → "This wallet now holds funds. Nothing was changed." (C6); `unreachable` →
+    the finish, `vault.forgetWallet {expectedRevision, guard: 'unfunded'}`: `send-open` / `busy` /
+    `unlocked` as below (`[Start again]` restarts this path); `funded` → "This wallet now holds funds. Nothing was changed." (C6); `unreachable` →
     "Balances could not be checked, so nothing was changed. Try again later."; `coordinator-refused`
     → the D26 banner text. A failed first write after the delete → "The new wallet was not saved.
     Try again." + `[Try again]` (phrase and password kept in page memory); a `[Try again]` answered
     `wallet-exists` → "A wallet already exists in this browser. Nothing was changed." and the flow
-    stops (review R2-L6).
+    stops (review R2-L6), with the shared `exists` treatment (`existsLines`, as on create and plain
+    import): the help line "Open the Noctura icon to use it." under it — or, when the stored vault
+    reads as damaged, the damaged lines; unreadable, the reload line. Any other failure of the delete ("Something went wrong. Try again." + `[Try again]`) may have
+    landed with its reply lost, so `[Try again]` never re-sends it blind: it reads the vault first —
+    gone → the first write alone; still the proven revision → the guarded delete again; anything else →
+    `busy` (controller addition, ruled 2026-10-01; no new copy). A tab hidden behind
+    (or during) a `[Try again]` drops B prepared with its password (§3.5, L5); B is encrypted again under
+    the password typed next. Once the delete has landed, #8 hides Back: there is no wallet left to
+    prove, so the only ways on are finishing B or leaving (controller ruling, 2026-10-01).
   - **Restore path from #39 (`&source=forgot`, E5), extension-only states:**
     - `checking-match`: "Checking this phrase against the wallet in this browser…" (the seed
       proof, local, no network);
@@ -930,9 +1020,15 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
       the flow goes to #5 with the step counter "Restore · 2 / 2";
     - at the finish, `vault.forgetWallet {expectedRevision, replacement}`:
       - `send-open` → "A transaction from this wallet is still pending. Wait until it confirms or
-        expires — about two minutes — then try again." + `[Try again]`; the phrase and password
-        stay in page memory while this page stays open;
+        expires — about two minutes — then try again." + `[Try again]`; the phrase stays in page
+        memory while this page stays open; the password too, until the tab is hidden — §3.5's rule
+        wins (plan-2 review L5): a hidden tab drops it and #5 reads "Enter a new password to try
+        again." (**controller addition — confirmed by the owner 2026-10-01**); a tab hidden while the
+        restore runs drops it too, and #5 reads the same line; Back from `[Try again]` returns to #8 with
+        the phrase in the field (§3.5's `retry`);
       - `busy` → "The wallet changed while you were typing. Start again." → #39;
+      - `unlocked` (an unlock landed mid-forget, E5 step 5) → "The wallet was unlocked while this was
+        running, so nothing was deleted. Start again." → #39 — **controller addition — confirmed by the owner 2026-10-01**;
       - `ok` → `vault.setKeys` → UI tab `#/imported`.
 - **Navigation:** Continue → (scheme) → #5 (import variant) → `created` → UI tab `#/imported`; on
   the restore path, as above.
@@ -943,6 +1039,32 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     (D1; the clipboard half is false too).
   - FLAG_SECURE dropped.
   - Added: the D8 banner, the scheme choice and the password step.
+  - The D8 banner shows in every #8 state, `paste-detected` and `idle-timer-active` included, though the
+    design's 8b and 8d draw no banner there: it is an addition (D8), and what it says holds whenever a
+    phrase is in the field (plan-2 Task 9 review, drift item).
+  - The design's Android note — predictive back surfaces "Discard imported data?" when text is present —
+    does not apply: an extension tab has no system back gesture. The back arrow empties the field and
+    goes back without a prompt (plan-2 Task 9 review, drift item).
+  - `invalid-mnemonic` is shown inline under the field as soon as it is certain (12 or 24 words with a
+    bad checksum, more than 24 words, or from 12 words on a finished word not on the BIP-39 list), with
+    `[Continue]` disabled; the grid stops at 24 cells (plan-2 Task 9 review, ruling 3).
+  - `idle-timer-active`: the banner is a polite status whose per-second countdown screen readers do not
+    hear; a separate live region says "Auto-clearing in 12 s" once and, at the wipe, "The phrase was
+    wiped from this field." (**controller addition — awaiting the owner**). The timer also
+    runs while `checking` (ruling 7): a probe that hangs still ends in the wipe.
+  - **Plan 2:** the phrase stays editable in a field (inside the design's `.ta-wrap`), and the mono
+    cell grid shows the words typed so far under it; the counter targets 12 words up to 12, then 24
+    ("9 of 12 words entered."). The restore and retry refusals replace the field with their line and
+    one button; `busy` and `unlocked` offer `[Start again]` (confirmed by the owner 2026-10-01, E5) —
+    to #39 (restore) or the retry path's start (retry).
+  - **Plan 2 (plan-2 review M4, L3, H2):** the phrase stays in page memory while this page is open, a
+    hidden tab included — §3.5's hidden-tab rule is the password's, and dropping the phrase under an
+    open #5 would end the run on an untrue "That is not a valid 12- or 24-word recovery phrase." It
+    goes when the wallet is stored, at every other end of the run, and with the page. Back from #5
+    returns to #8 with the phrase in the field on every path (plain import, restore, retry). On the
+    retry path the new wallet prepared under #5's password (its envelope and its session keys) is
+    kept only behind a pending `[Try again]`, and goes when the tab is hidden, with that password;
+    the factor proof goes at every end of the run.
 
 ### 3.9 #9 unlock
 
@@ -970,6 +1092,12 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   - The attempt counter and "Cycle 1 of 2" line are removed (D11).
   - The keypad is replaced by a password field (D7).
   - FLAG_SECURE dropped (D1).
+  - **Plan 2:** the cooldown card keeps the design's helper line, its integers in `.noc-numeral`
+    ("Cooldown · 12 seconds remaining"); the ring shows the share of the wait left. **Controller
+    adjustment (Task 18 ruling):** the design's template ("2 minutes 45 seconds") is pluralised —
+    "1 minute", "1 second" — and a zero part is left out: "Cooldown · 1 second remaining", "Cooldown · 1
+    minute 5 seconds remaining", "Cooldown · 1 minute remaining" (the wait is ≤ 30 s, so in practice
+    only the seconds show). #10's cooldown uses the same line.
 
 ### 3.10 #10 unlock-send (re-authentication)
 
@@ -993,7 +1121,10 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   - `cooldown`: #9's cooldown card with "That did not confirm it. Wait a moment before trying
     again." (the design reuses #9's cooldown on #10).
   - **extension-only:** `undescribable` ("The details of this action could not be shown." + only
-    `[Cancel send]`, E3); `not-unlocked` ("The wallet locked while you were confirming. Unlock it
+    `[Cancel send]`, E3, which discards the send by its account — the one field re-validated by
+    itself; when even that is not an address: + "Nothing was sent. Start the send again from the
+    Noctura icon." and `[Close]`, which closes the tab and claims no cancel — **controller addition —
+    confirmed by the owner 2026-10-01**, plan-2 review H1); `not-unlocked` ("The wallet locked while you were confirming. Unlock it
     and start the send again." + `[Unlock]` → `?mode=unlock`, with no return target: the lock
     cleared the prepared send, so there is nothing to resume, as §7.1 says; review M7);
     `mismatch-locked` ("That did not match this wallet, so the wallet has been
@@ -1019,6 +1150,31 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   - **`[Cancel send]` closes the tab** (review L2). The design returns to #20, but the popup that
     showed #20 closed when this tab opened, and a tab cannot reopen it. It discards the prepared send
     first (E7), so nothing is left to resume.
+  - **Plan 2:** "Network fee" is `networkLamports` — priority included: `about` (E3) carries no
+    `priorityLamports`, so #10 cannot split it as §4.5's fee rows do on #19 and #20 (plan-2 review
+    ruling 2: plan 2 is UI-only, §12; plan 3, which builds #19/#20's rows, may add
+    `priorityLamports` to `about` so the three screens agree). The amounts appear when non-zero; a
+    zero Noctura fee shows its reason line (the carried rule), and `charged` with a zero fee is not
+    described. Fees are exact and ungrouped ("0.00000505 SOL"); the design's thin grouping (plan-1
+    L7) is not applied — an exact lamport amount reads unambiguously without it, and #19/#20's rows
+    (plan 3) decide the grouping for all three screens. The cooldown's disabled button reads "Confirm paused" and a
+    settings challenge's cancel reads "Cancel" (it only closes the tab; the challenge simply
+    expires) — **both controller additions — confirmed by the owner 2026-10-01**. A discard the background refuses
+    says "Something went wrong. Try again." and keeps the screen: "Send cancelled" is shown only when
+    it is true — including `undescribable` (H1, above). In `expired`, `not-unlocked`,
+    `mismatch-locked` and every other notice with nothing to cancel, the top bar's X closes the tab
+    and claims nothing (plan-2 review L4).
+  - **Plan 2 (visual pass):** #10a draws two intent rows ("To", "Network fee"); here each fee is
+    its own row (network, Noctura fee or its reason line, new-token-account cost), ungrouped, as
+    above — the mockup's one fee row does not describe a send that pays more than the network.
+  - **Plan 2 (visual pass):** the To value is the recipient in groups of four (`AddressGroups`,
+    whose own `.addr-groups` mono face draws it) inside a `.noc-body-sm .noc-numeral` value span;
+    the design puts `.noc-mono .noc-body-sm` on the value span itself. The rendered face is mono
+    either way; the class sits one level down.
+  - **Plan 2 (visual pass):** the reason lines are fixed strings set as text, so "5 %" and "$100"
+    carry no `.noc-numeral` span (the design wraps the "5" in one). The tabular-figures difference
+    is not visible at this size; splitting the fixed strings to style a digit is not worth a second
+    source of the copy.
 
 ### 3.11 #39 forgot-pin → "Forgot password?"
 
@@ -1055,6 +1211,24 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     "A passkey is not carried over; you can add one again later." (passkey management is B1b-2b).
   - "24 words" becomes "12 or 24 words" (import accepts both).
   - "#36 change-pin" is not a step: import sets the password itself.
+  - **The back arrow walks back through the steps** (3 → 2 → 1), and goes to #9 only from step 1;
+    the design sends Back straight to #9. With the cards walked in order (L1), Back is the way to
+    re-read a step (Task 12).
+  - **Step 2's CTA reads "Continue"**, not the design's "Continue to import": step 2 leads to step
+    3, not to #8 (plan-mandated, with L1); "Continue to import" is step 3's.
+  - **Plan 2 (controller adaptations of the design's step copy — confirmed by the owner 2026-10-01):**
+    step 1's card 2 "You'll be taken to the import screen. Type or paste your words." and card 3
+    "Once your phrase is verified against this wallet, you'll choose a new password (at least 12
+    characters). The old password stops working."; step 2's title "Enter your words", lede "Type or
+    paste the 12 or 24 words, in order." (the design's word picker does not exist) and card 3 "After
+    your phrase is verified."; step 3's card 3 "You'll choose a new password. The old password stops
+    working. A passkey is not carried over; you can add one again later." The FLAG_SECURE hints are
+    removed (D1). The mockup's `.s-secintro` scope is not carried: none of its rules applies to #39's
+    cards.
+  - **Step 3's card 2 keeps the design's "Done — seed verified against your existing public key."**
+    — **design copy kept, under question, awaiting the owner**: at step 3 nothing has been verified
+    yet (the seed proof runs on #8, after `[Continue to import]`), so the line reads as false there
+    (Task 12 owner question). It is not changed until the owner rules.
 
 ### 3.12 #40 import-success (UI tab `#/imported`)
 
@@ -1066,10 +1240,25 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   - `single-account-N-tokens`: "Wallet imported"; "1 account · N tokens recovered. Welcome back.";
     "Total value recovered" + the market total (SOL + USDC + USDT) "≈ X SOL"; one row per token
     held (TokenTile, name, amount, USD; NOC's value reads "$… at stage price"); "Your wallet
-    address" in groups of four + `CopyButton`; then **"Wallet is ready — open the Noctura icon"**
-    (D10) and `[Close this tab]`.
+    address" in groups of four + `CopyButton` ("Copied" / "Copy failed", honest), and under it #7's
+    "Copying puts the address on your clipboard. Noctura does not clear it afterwards." (**controller
+    addition** — confirmed by the owner 2026-10-01, plan-2 review M3); then **"Wallet is ready — open
+    the Noctura icon"** (D10) and `[Close this tab]`. One token held reads "1 token" (**controller
+    addition**, confirmed by the owner 2026-10-01). "≈ X SOL" is truncated, never rounded up — one
+    `approxSol` shared with #11 (plan-1 ruling L6; plan-2 review M1).
   - `multi-account-N-tokens`: "N accounts · M tokens recovered."; "across N accounts"; rows summed
-    over accounts ("Solana · N accounts").
+    over accounts ("Solana · N accounts"). Past six accounts the copy claims only what was read:
+    "N accounts · M tokens recovered from the first 6." and "across the first 6 of N accounts"
+    (**controller addition** — confirmed by the owner 2026-10-01, plan-2 review M2). With more than
+    six accounts and nothing held on the six read, the screen is this state — "N accounts · 0 tokens
+    recovered from the first 6." and a $0.00 total — never `no-assets-empty` (not every account was
+    read) and so without `[Try a different seed]` (**controller addition, awaiting the owner's
+    confirmation** — Task 16 fix round 1).
+  - **Reads:** the tab's provider is quiet on this route (as on #7): no open sequence, no
+    `activity.ping`, and its `refresh()` — the `online` event's — reads nothing. #40 makes its own
+    explicit reads, the balances one account at a time then the prices, on mount, on its refresh
+    button, and on `[Try a different seed]`; each failure is reported to the model (`report`), so a
+    403 sets the D26 cool-down and nothing on the page reads again.
   - `no-assets-empty` — shown **only when every account's balance read succeeded** and all four
     tokens are zero on every account (review R2-L5); if any read failed, the `unreachable` state
     shows instead, never "empty": "Wallet imported · empty"; "Your seed checked out, but this wallet
@@ -1086,7 +1275,9 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     repeats the check at the moment of deletion, whatever the page saw.
   - **extension-only:** `locked` ("Wallet imported. Unlock it to see what was recovered." +
     `[Unlock]` → `?mode=unlock&return=imported`); `refused` (D26 banner); `unreachable`
-    ("Balances could not be read right now." + refresh).
+    ("Balances could not be read right now." + refresh). In both, under the message and the address,
+    the sticky bar with the D10 line and `[Close this tab]`: the wallet is stored whatever the read
+    said, so the user is never left without the way on (controller ruling, Task 18 fix round 1).
 - **Differs:**
   - "+ N more tokens" overflow row not built (the engine knows 4 tokens).
   - BONK/JUP rows impossible (4 tokens).
@@ -1098,6 +1289,29 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   - `[Open wallet]` becomes the D10 line.
   - Long-press menu and 30 s clipboard clear dropped.
   - The `v1_imported` MMKV annotation does not apply.
+  - **→ adapted:** the address is shown whole in groups of four (`AddressGroups`, as #7 and #13),
+    not as the design's continuous string with the first and last six highlighted (`.ck`).
+  - NOC's sub-label is "Noctura": the design's "Noctura · pre-TGE" suffix is dropped (no TGE wording
+    or date on this screen).
+  - The footer captions are dropped: the `v1_imported` / haptic note (single-account) and "3
+    derivation paths scanned (m/44'/501'/0/0/0..2)" (multi-account) — design annotations, and the
+    second is not the engine's paths (the empty state's third reason names the real ones).
+  - The empty state's footer keeps "You can send SOL to this address to fund the wallet." and drops
+    its second sentence, "Or tap "Open wallet" to keep going." — there is no `[Open wallet]` (D10).
+  - The "Previous wallet replaced" 4-second toast (the design's atomic-replace annotation) is not
+    built: every hand-over reaches the same `wallet.html#/imported` — a plain import, #39's restore
+    (the same wallet, re-stored), the D41 retry's completion (a replacement) and the D41 retry's
+    Back (no replacement) — so the tab cannot know a wallet was replaced, and the background keeps
+    no record of it. A hash that said so would let the URL assert a fact the screen cannot check
+    (§1.6: the hash only chooses a screen). The vault page names the replacement before it happens
+    (#8 `source=retry`: "Confirm with the password of the wallet you are replacing").
+  - **Plan 2 (visual pass):** the address keeps the design's chip colour and size (`--fg-secondary`,
+    12/16) in groups of four; only the first-6/last-6 `.ck` accent is not drawn (above).
+  - **Plan 2 (visual pass):** the copy button is the accent icon on the chip, with no chrome of its
+    own (48 px hit area); the mockup's light square is the browser's default button style, which the
+    design's CSS never sets. The refresh in `unreachable`/`refused` is a 48 px icon button.
+  - **Plan 2 (visual pass):** the sticky bar (the D10 line with `[Close this tab]`, or with
+    `[Try a different seed]` when empty) stays at the bottom of the tab while the screen scrolls.
 
 ---
 
@@ -1109,8 +1323,8 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   (primary) → `tabs.create('unlock.html?mode=unlock')` + `window.close()`; "Forgot password?" →
   `?mode=forgot`. No password field: the password only ever exists in the vault page (D12).
 - **Differs:** a derived screen. The password field and keypad are in the tab (D12).
-  - **Plan-1 stand-in:** "Forgot password?" is absent until #39's `?mode=forgot` exists — deferred to
-    plan 2 (ruling from the plan review; Task 17 fix round 1).
+  - "Forgot password?" (`.btn-tertiary`) → `?mode=forgot` in a tab, as #9 — built in plan 2 (the
+    plan-1 stand-in is gone).
 
 ### 4.2 #12 send
 
@@ -1929,8 +2143,9 @@ The popup is opened as `chrome-extension://<id>/popup.html` in a page sized 412 
 cannot click the toolbar action; stated). Specs:
 1. **Onboarding create:** welcome → #2 → #3 (modal, hold 2 s, confirmed) → #4 (picks the right
    words from the page's own grid) → #5 (password, confirm) → #6 skip → `wallet.html#/created` shows
-   the address; the popup then shows #11. On `unlock.html`, `document.fonts.check('16px Geist')` is
-   true (review L5).
+   the address; the popup then shows #11. On `unlock.html`, `document.fonts.load('16px Geist')`
+   resolves to at least one face and `document.fonts.check('16px Geist')` is true (review L5;
+   plan-2 review ruling 5: `check()` alone passes when no Geist face exists).
 2. **Import:** #8 paste a fixture phrase → scheme auto → #5 → `#/imported` with the fake's balances.
 3. **Unlock:** popup locked screen → tab → wrong password → cooldown → right password → popup #11.
 4. **Send with re-auth:** #11 → #12 → #43 pick SOL → #19 shows the balance delta and "After" from
@@ -1954,7 +2169,10 @@ cannot click the toolbar action; stated). Specs:
     password?" → #39 → `[Continue to import]` → #8 with a *different* valid phrase →
     `not-this-wallet`, and the stored envelope is byte-identical afterwards → the right phrase → #5
     new password → `#/imported` shows both accounts; the old password no longer unlocks and the new
-    one does; an address sent to before the restore is still "Verified · sent before" on #12 (D40).
+    one does; an address sent to before the restore is still known (D40) — in plan 2 asserted
+    through the engine's `wallet.recipientInfo` (#12 is plan 3's); plan 3 restores the on-screen
+    "Verified · sent before" check, folded into spec 11, which already drives #12 after a confirmed
+    send (plan-2 review ruling 4).
     A second run with a pending send open (the fake in `expire` mode, before expiry) gets
     `send-open` and the envelope is unchanged; after expiry the restore goes through.
 11. **#12 recipient hints (E6):** a first-time address shows the state-6 banner and "Review &
@@ -1984,6 +2202,19 @@ the mockups are 412 × 916 phone frames with status bars. The reviewer checks, p
    content that cannot scroll clear;
 7. dark theme only (the design is dark).
 The review's findings are recorded in the PR. The screenshots are CI artifacts, not committed.
+
+**Plan 2's pass** (`e2e/visual-vault.spec.ts`, 59 vault-page, #7 and #40 shots at 412 × 916; findings
+in the PR) found these differences that hold on every screen, declared here once:
+- `.btn-primary` carries web's `design-system.css` glow (`inset 0 1px 0 …, var(--glow-accent)`) and a
+  disabled `.btn` is `--elev-2` with a 1 px `--border-strong` ring and `--fg-tertiary` text; the
+  mockups' own CSS draws no glow and a flat `--bg-surface-3` disabled button. `design-system.css` is
+  the one source of `.btn*` for the popup, the tab and the vault page (§1.2, §1.7), so the vault page
+  does not fork it.
+- The column is the tab's full 412 px; the mockups' screen sits inside a ~10 px phone bezel, so every
+  horizontal measure here is ~20 px wider. No status bar or gesture pill is drawn.
+- A full-page capture keeps a sticky bar where the viewport ended: where a shot shows the bar over
+  content, the content scrolls clear in the page (`08-choose-scheme` asserts it; `40-no-assets-empty-end`
+  shows the scrolled end).
 
 ---
 

@@ -4,9 +4,10 @@ import {deriveTransparentKeypair} from '../../../core/keys/transparent';
 import {
   CorruptEnvelope, UnsafeKdfParams, WrongPassword, addPasskeyWrap, createEnvelope, unlockWithPassword, type EnvelopeV1, type Kdf,
 } from '../vault/envelope';
-import {deriveSessionAccounts} from '../vault/accounts';
+import {deriveSessionAccounts, type SessionAccount} from '../vault/accounts';
 import {registerPasskey, type CredentialsApi} from '../vault/passkey';
 import {envelopeRevision} from '../shared/envelopeRevision';
+import {storedVault} from './stored';
 import type {Send, VaultStore} from './types';
 
 /** Spec §2: at least 12 characters. Recovery is the seed phrase and nothing else. */
@@ -111,7 +112,58 @@ export async function detectImport(send: Send, mnemonic: string): Promise<Detect
 
 export type FinishOutcome = 'created' | 'created-locked' | 'exists' | 'weak-password' | 'invalid-mnemonic' | 'failed';
 
-const present = (x: unknown): boolean => x !== undefined && x !== null;
+/** Any stored v1_vault — a damaged one too — is a wallet onboarding must not write over (stored.ts). */
+const present = (x: unknown): boolean => storedVault(x).kind !== 'none';
+
+/**
+ * A new or imported wallet, encrypted and ready to store: the envelope and the signing keys to hand
+ * the background once it is stored. Built before any vault write, so #40's "Try a different seed"
+ * (D41) can delete the old wallet and store this one at once, and retry the store alone (E5).
+ */
+export interface PreparedWallet {
+  env: EnvelopeV1;
+  session: SessionAccount[];
+}
+
+/** Derive and encrypt; the Argon2id run (seconds) happens here. The phrase is stored normalised. */
+export async function prepareWallet(kdf: Kdf, input: {mnemonic: string; password: string; scheme: 'slip10' | 'cli'; indexes: number[]}): Promise<PreparedWallet> {
+  const mnemonic = normalizeMnemonicInput(input.mnemonic);
+  const session = await deriveSessionAccounts(mnemonic, input.scheme, input.indexes);
+  const accounts = session.map(a => ({index: a.index, name: `Account ${a.index + 1}`, publicKey: a.publicKey}));
+  const env = await createEnvelope({mnemonic, password: input.password, scheme: input.scheme, accounts, kdf});
+  return {env, session};
+}
+
+/**
+ * The first write (expectedRevision null: the background stores it only while no wallet is stored),
+ * then the keys. 'exists' when a wallet landed first; 'created-locked' when the store held but the
+ * keys did not reach the background.
+ *
+ * Fix round 1 (review item 7): a store whose reply was lost (the send threw after the background had
+ * stored THIS wallet) is retried by [Try again], and the background then answers 'wallet-exists' —
+ * about our own wallet. So on 'wallet-exists' the stored envelope is read: when its revision is this
+ * wallet's (every field but the names: the same ciphertext and wraps, so the same wallet), the store
+ * did land and the run goes on to the keys, instead of a false "a wallet already exists".
+ */
+export async function commitWallet(deps: VaultStore & {send: Send}, wallet: PreparedWallet): Promise<Exclude<FinishOutcome, 'weak-password' | 'invalid-mnemonic'>> {
+  try {
+    const stored = await deps.storeEnvelope(null, wallet.env);
+    if (stored === 'wallet-exists') {
+      const now = storedVault(await deps.readEnvelope());
+      if (now.kind !== 'wallet' || envelopeRevision(now.env) !== envelopeRevision(wallet.env)) return 'exists';
+    } else if (stored !== 'stored') {
+      return 'failed';
+    }
+  } catch {
+    return 'failed';
+  }
+  try {
+    const r = await deps.send({type: 'vault.setKeys', accounts: wallet.session});
+    return r.ok ? 'created' : 'created-locked';
+  } catch {
+    return 'created-locked';
+  }
+}
 
 /**
  * Encrypt and store a new or imported wallet, then hand the background its signing keys. Never
@@ -128,19 +180,7 @@ export async function finishOnboarding(
   if (!acceptedPhrase(input.mnemonic)) return 'invalid-mnemonic';
   try {
     if (present(await deps.readEnvelope())) return 'exists';
-    const mnemonic = normalizeMnemonicInput(input.mnemonic);
-    const session = await deriveSessionAccounts(mnemonic, input.scheme, input.indexes);
-    const accounts = session.map(a => ({index: a.index, name: `Account ${a.index + 1}`, publicKey: a.publicKey}));
-    const env = await createEnvelope({mnemonic, password: input.password, scheme: input.scheme, accounts, kdf: deps.kdf});
-    const stored = await deps.storeEnvelope(null, env);
-    if (stored === 'wallet-exists') return 'exists';
-    if (stored !== 'stored') return 'failed';
-    try {
-      const r = await deps.send({type: 'vault.setKeys', accounts: session});
-      return r.ok ? 'created' : 'created-locked';
-    } catch {
-      return 'created-locked';
-    }
+    return await commitWallet(deps, await prepareWallet(deps.kdf, input));
   } catch {
     return 'failed';
   }
@@ -151,9 +191,10 @@ export type PasskeyOutcome = 'added' | 'unsupported' | 'wrong' | 'no-wallet' | '
 type Unwrapped = {dataKey: Uint8Array; env: EnvelopeV1} | Exclude<PasskeyOutcome, 'added' | 'unsupported'>;
 
 async function openWithPassword(deps: VaultStore, factor: {password: string; kdf: Kdf}): Promise<Unwrapped> {
-  const raw = await deps.readEnvelope();
-  if (!present(raw)) return 'no-wallet';
-  const env = raw as EnvelopeV1;
+  const stored = storedVault(await deps.readEnvelope());
+  if (stored.kind === 'none') return 'no-wallet';
+  if (stored.kind === 'damaged') return 'damaged';
+  const env = stored.env;
   try {
     return {dataKey: await unlockWithPassword(env, factor.password, factor.kdf), env};
   } catch (e) {

@@ -38,10 +38,17 @@ describe('links out of the UI', () => {
     }
   });
 
-  it('no page navigation but the explorer link: no location.href / .assign( / .replace( / bare location =', () => {
+  // Plan 2: the UI tab hands over to the vault page in the same tab (#7's and #40's [Unlock], #40's
+  // [Try a different seed]) — through platform.ts's navigate(), whose target is the closed ExtensionPage list.
+  it('no page navigation but the explorer link and platform.ts’s navigate(): no location.href / .assign( / .replace( / bare location =', () => {
     for (const {path, text} of sources) {
+      if (path === 'platform.ts') continue;
       expect(`${path}: ${LOCATION_REDIRECT.test(text)}`).toBe(`${path}: false`);
     }
+    const platform = sources.find(s => s.path === 'platform.ts')?.text ?? '';
+    expect([...platform.matchAll(new RegExp(LOCATION_REDIRECT, 'g'))].map(m => m[0])).toEqual(['location.assign(']);
+    expect(platform).toMatch(/navigate: page => location\.assign\(page\)/);
+    expect(platform).toMatch(/navigate\(page: ExtensionPage\): void;/);
   });
 
   it('no URL but Solscan’s and the extension’s own pages', () => {

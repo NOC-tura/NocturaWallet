@@ -148,6 +148,11 @@ body:has(.app-popup) {
 .app-muted {
   color: var(--fg-secondary);
 }
+/* #40 empty's "0 tokens" (index.html: inline --fg-secondary): the design's card rule sets --fg-primary at
+   two classes and out-ranked .app-muted (visual pass). */
+.s8-recovered-card .total.app-muted {
+  color: var(--fg-secondary);
+}
 .app-dim {
   color: var(--fg-tertiary);
 }
@@ -403,4 +408,135 @@ a.btn {
 }
 .s8-sheet .grabber-hit .grabber {
   display: block;
+}
+
+/* #7 and #40 in the UI tab (plan 2): the mockups' inline spacing, as classes. */
+.app-onb-title {
+  margin: 0 0 var(--space-2);
+}
+.app-onb-lede {
+  max-width: 300px;
+  margin: 0 auto;
+}
+.app-onb-eyebrow {
+  margin-bottom: 6px;
+}
+.app-onb-help {
+  margin-top: var(--space-3);
+}
+.app-onb-next {
+  margin: var(--space-3) var(--space-5);
+}
+/* #7's "Next steps" eyebrow sits --space-2 above its list (the address eyebrow's is 6px). */
+.app-onb-next .app-onb-eyebrow {
+  margin-bottom: var(--space-2);
+}
+.app-onb-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.app-onb-steps li {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+.app-onb-arrow {
+  color: var(--accent);
+  flex: 0 0 18px;
+  line-height: 22px;
+}
+/* The design's svg is a block 2px down inside the 22px line (index.html #7). Inline, as padding on the
+   span, the icon sat on the text baseline and made each row 4px taller than the mockup's (visual pass). */
+.app-onb-arrow svg {
+  display: block;
+  margin-top: 2px;
+}
+.app-onb-grow {
+  flex: 1 1 auto;
+}
+.app-content .s-success .copy-btn {
+  cursor: pointer;
+}
+/* #7's address at the class map's tier, `.noc-mono` + `.noc-body` (15 px): web's AddressGroups draws 12 px
+   (visual pass). The groups of four stay (§3.7). */
+.app-content .s-success .addr-mono .addr-groups {
+  font-size: 15px;
+  line-height: 22px;
+}
+
+/* #40: the mockup's inline spacing and the empty state's info ring (index.html #40, no-assets-empty). */
+.app-onb-imported {
+  padding: var(--space-3) var(--space-5) 0;
+}
+/* The design resets every margin (`*`, index.html:98); here the sub line kept its UA 1em and stood 13px
+   further from the title than the mockup's --space-3 gap (visual pass). */
+.app-content .s8-success-hero .sub {
+  margin: 0;
+}
+/* #7's and #40's sticky bar stays at the bottom of the tab while the screen scrolls, as the mockups draw it
+   (the phone frame pins it); in the flow, #40's empty state pushed [Try a different seed] below the fold.
+   #40's bar spans the column as the design's does, outside the screen's side padding (visual pass). */
+.app-content .s-success > .sticky-bar,
+.app-content .app-onb-imported > .sticky-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-top: auto;
+}
+.app-content .app-onb-imported > .sticky-bar {
+  margin-inline: calc(-1 * var(--space-5));
+}
+/* #40's address as the design draws it (`.s8-addr-chip .addr`: --fg-secondary, 12/16); web's AddressGroups
+   sets --fg-primary at 12/20 on its own element. #7's address keeps its own rule (fix round 1). */
+.app-content .s8-addr-chip .addr .addr-groups {
+  color: var(--fg-secondary);
+  line-height: 16px;
+}
+/* #40's refresh: web's .icon-btn is 36 px; the design's icon buttons are the 48 px touch target. */
+.app-onb-imported .icon-btn {
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+}
+.s8-success-hero .ring.app-onb-info {
+  background: color-mix(in oklab, var(--info) 14%, transparent);
+}
+.s8-success-hero .ring-inner.app-onb-info {
+  background: var(--info);
+}
+.app-onb-rule {
+  height: 1px;
+  background: color-mix(in oklab, var(--fg-disabled) 60%, transparent);
+  margin: var(--space-3) 0;
+}
+.app-onb-reasons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+}
+.app-onb-reasons p,
+.app-onb-reasons ul {
+  margin: 0;
+}
+.app-onb-reasons ul {
+  padding-left: var(--space-5);
+}
+.app-onb-chip {
+  margin-top: var(--space-4);
+}
+.app-onb-chip-label {
+  margin-bottom: 4px;
+}
+.app-onb-foot {
+  margin-top: var(--space-5);
+  text-align: center;
+}
+.app-content .s8-addr-chip button {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
 }

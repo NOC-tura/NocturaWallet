@@ -1,7 +1,7 @@
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {fontViolations} from '../check-fonts.mjs';
+import {fontViolations, vaultPageFontViolations} from '../check-fonts.mjs';
 
 describe('the font gate', () => {
   let dir;
@@ -32,5 +32,40 @@ describe('the font gate', () => {
     ]);
     write('assets/mount-1.css', '@font-face{src:url(../../fonts/Geist-Variable.woff2)}');
     expect(fontViolations(dir)).toContain('INCONCLUSIVE: no built CSS loads fonts/Geist-Variable.woff2');
+  });
+});
+
+describe('the font gate: the vault page (plan 2)', () => {
+  let dir;
+  const write = (rel, text) => {
+    mkdirSync(join(dir, rel, '..'), {recursive: true});
+    writeFileSync(join(dir, rel), text);
+  };
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'fonts-vault-'));
+  });
+  afterEach(() => rmSync(dir, {recursive: true, force: true}));
+
+  it('passes when a stylesheet unlock.html links names fonts/Geist-Variable.woff2', () => {
+    write('unlock.html', '<head><link rel="stylesheet" crossorigin href="./assets/unlock-1.css"></head>');
+    write('assets/unlock-1.css', '@font-face{src:url(../fonts/Geist-Variable.woff2)}');
+    expect(vaultPageFontViolations(dir)).toEqual([]);
+  });
+
+  it('fails a vault page with no stylesheet, or one that loads no Geist', () => {
+    write('unlock.html', '<head></head>');
+    expect(vaultPageFontViolations(dir)).toHaveLength(1);
+    write('unlock.html', '<head><link rel="stylesheet" href="./assets/unlock-1.css"></head>');
+    write('assets/unlock-1.css', '.x{color:red}');
+    expect(vaultPageFontViolations(dir)).toEqual(['unlock.html loads no stylesheet that names fonts/Geist-Variable.woff2 — the vault page would render in a fallback font']);
+    // Another bundled face is not Geist: the mono face alone still fails.
+    write('assets/unlock-1.css', '@font-face{src:url(../fonts/GeistMono-Variable.woff2)}');
+    expect(vaultPageFontViolations(dir)).toHaveLength(1);
+  });
+
+  it('fails a stylesheet unlock.html links that is not in the build, even when another one loads Geist (review M3)', () => {
+    write('unlock.html', '<head><link rel="stylesheet" href="./assets/unlock-1.css"><link rel="stylesheet" href="./assets/gone-1.css"></head>');
+    write('assets/unlock-1.css', '@font-face{src:url(../fonts/Geist-Variable.woff2)}');
+    expect(vaultPageFontViolations(dir)).toEqual(['unlock.html links ./assets/gone-1.css, which is not in the build']);
   });
 });

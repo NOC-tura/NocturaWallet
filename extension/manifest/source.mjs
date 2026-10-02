@@ -21,7 +21,21 @@ export const HOST_PERMISSIONS = [
 // nothing fetches the extension's own origin (the kdf worker is loaded as a script, not fetched).
 // No wallet.noc-tura.io: that host is the passkey relying-party ID only — a WebAuthn ceremony is
 // not a fetch and is not governed by connect-src — never a fetch target.
-export const EXTENSION_CSP = "script-src 'self'; object-src 'self'; connect-src https://api.noc-tura.io";
+//
+// Controller hardening (2026-10-01): the browser keeps CSS off the vault page (the page holding the
+// seed and the password). A stylesheet is an exfiltration surface there — an attribute selector on an
+// input's value plus a url() reads the field one character at a time — and three review rounds of the
+// text gates (scripts/check-vault-isolation.mjs) each found a new spelling that reached the built page.
+// So: `style-src 'self'` (no inline <style>, no style="", no remote sheet; a CSSOM write such as React's
+// style={{}} is not inline CSS and stays allowed), `img-src 'self' data:` and `font-src 'self'` (a
+// url() can load nothing from elsewhere), `default-src 'self'` for every directive not named, and
+// `base-uri`/`form-action`/`frame-ancestors 'none'` (no <base> rewrite, no form submission anywhere —
+// every form is handled in script — and no page of ours can be framed). The text gates stay as the
+// backstop. Never loosen this with 'unsafe-inline' or a wildcard: check-permissions.mjs pins every
+// directive independently of this line.
+export const EXTENSION_CSP =
+  "default-src 'self'; script-src 'self'; object-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; " +
+  "connect-src https://api.noc-tura.io; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
 // The minimum browsers (plan: Chrome 122, Firefox 150). The permissions gate compares the built
 // manifests against these, so a lowered floor cannot arrive by a hand edit either.

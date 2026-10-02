@@ -14,7 +14,17 @@ describe('manifest source', () => {
   });
 
   it('forbids eval and remote script in extension pages, and connects only to the coordinator', () => {
-    expect(EXTENSION_CSP).toBe("script-src 'self'; object-src 'self'; connect-src https://api.noc-tura.io");
+    expect(EXTENSION_CSP).toBe(
+      "default-src 'self'; script-src 'self'; object-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; " +
+        "connect-src https://api.noc-tura.io; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    );
+  });
+
+  // Controller hardening (2026-10-01): the browser, not a text gate, keeps CSS off the vault page —
+  // no inline <style>/style="", no remote stylesheet, image or font (a stylesheet with an attribute
+  // selector and a url() can read the password field).
+  it('names no unsafe-inline, unsafe-eval, unsafe-hashes or wildcard source', () => {
+    expect(EXTENSION_CSP).not.toMatch(/unsafe-|\*|\bhttp:|\bblob:|\bfilesystem:/);
   });
 
   it('renders a Chrome MV3 service worker', () => {

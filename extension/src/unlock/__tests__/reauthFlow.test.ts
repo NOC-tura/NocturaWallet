@@ -12,7 +12,7 @@ const K0 = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
 const kdf: Kdf = (pw, salt) => argon2idAsync(pw, salt, {m: 64, t: 1, p: 1, dkLen: 32});
 const ID = 'cd'.repeat(16);
 
-async function setup(sessionMnemonic: string | null, reply: (type: string) => {ok: boolean} = () => ({ok: true})) {
+async function setup(sessionMnemonic: string | null, reply: (type: string) => {ok: boolean; error?: string} = () => ({ok: true})) {
   const session = sessionMnemonic === null ? [] : await deriveSessionAccounts(sessionMnemonic, 'slip10', [0]);
   const env: EnvelopeV1 = await createEnvelope({mnemonic: MNEMONIC, password: PASSWORD, scheme: 'slip10', accounts: [{index: 0, name: 'A', publicKey: K0}], kdf});
   const sent: {type: string; challengeId?: string}[] = [];
@@ -75,11 +75,22 @@ describe('runReauth (the vault page proves the factor, the background is told)',
     expect(await runReauth(deps, ID, {password: PASSWORD, kdf})).toBe('failed');
   });
 
-  it('a damaged envelope is named, and the background is told nothing past the status read', async () => {
+  // D39 (plan-1 carry): the challenge expired while the password was typed — #10 says "expired", never
+  // "failed"; a lock between the status read and the confirmation is "not-unlocked".
+  it("vault.reauthOk answered unknown-challenge is 'expired'; locked is 'not-unlocked'; any other refusal 'failed'", async () => {
+    const expired = await setup(MNEMONIC, type => (type === 'vault.reauthOk' ? {ok: false, error: 'unknown-challenge'} : {ok: true}));
+    expect(await runReauth(expired.deps, ID, {password: PASSWORD, kdf})).toBe('expired');
+    const locked = await setup(MNEMONIC, type => (type === 'vault.reauthOk' ? {ok: false, error: 'locked'} : {ok: true}));
+    expect(await runReauth(locked.deps, ID, {password: PASSWORD, kdf})).toBe('not-unlocked');
+    const other = await setup(MNEMONIC, type => (type === 'vault.reauthOk' ? {ok: false, error: 'malformed'} : {ok: true}));
+    expect(await runReauth(other.deps, ID, {password: PASSWORD, kdf})).toBe('failed');
+  });
+
+  it('a damaged envelope is named, and the background is told nothing — not even the status read (stored.ts)', async () => {
     const {deps, env, sent} = await setup(MNEMONIC);
     const damaged = {...env, password: {wrapped: 'AAAA'}};
     expect(await runReauth({...deps, readEnvelope: async () => damaged}, ID, {password: PASSWORD, kdf})).toBe('damaged');
-    expect(sent.map(m => m.type)).toEqual(['vault.status']);
+    expect(sent).toEqual([]);
   });
 
   it('zeroes the data key it unwrapped', async () => {

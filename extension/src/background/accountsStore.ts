@@ -7,7 +7,7 @@ import {isOpen, updatePending} from './pendingStore';
 import {KNOWN_RECIPIENTS_KEY} from './knownRecipients';
 import {SETTINGS_KEY} from './settings';
 import {clearCaches} from './balanceCache';
-import {ENVELOPE_BYTES, ENVELOPE_KDF_MAX, ENVELOPE_KDF_MIN, MAX_ACCOUNTS, b64Length, cleanName} from '../shared/envelopeRules';
+import {ENVELOPE_BYTES, ENVELOPE_KDF_MAX, ENVELOPE_KDF_MIN, MAX_ACCOUNTS, accountsPolicyOk, b64Length, cleanName} from '../shared/envelopeRules';
 import {envelopeRevision} from '../shared/envelopeRevision';
 import {readWalletBalances} from '../../../core/solana/balances';
 import {RpcForbidden} from '../../../core/solana/rpc';
@@ -133,14 +133,17 @@ function envelopeShape(x: unknown): StoredEnvelope | null {
     if (!bytesAtLeast(credentialId, ENVELOPE_BYTES.minCredentialId) || !bytesExactly(prfSalt, ENVELOPE_BYTES.prfSalt) || !bytesExactly(wrapped, ENVELOPE_BYTES.wrapped)) return null;
     pk = {credentialId, prfSalt, wrapped};
   }
-  if (!Array.isArray(x.accounts) || x.accounts.length === 0 || x.accounts.length > MAX_ACCOUNTS) return null;
+  if (!Array.isArray(x.accounts) || x.accounts.length > MAX_ACCOUNTS) return null;
   const accounts: AccountView[] = [];
   for (const a of x.accounts as unknown[]) {
-    if (!isObj(a) || !isInt(a.index) || a.index < 0 || !isStr(a.publicKey) || a.publicKey === '') return null;
-    if (!isStr(a.name) || accounts.some(b => b.index === a.index)) return null;
+    if (!isObj(a) || !isInt(a.index) || a.index < 0 || !isStr(a.publicKey) || !isStr(a.name)) return null;
     accounts.push({index: a.index, name: a.name, publicKey: a.publicKey});
   }
-  if (x.scheme === 'cli' && (accounts.length !== 1 || accounts[0]?.index !== 0)) return null;
+  // The policy rules beyond "well-shaped" — at most MAX_ACCOUNTS, no duplicate indexes, no empty
+  // publicKey, a cli wallet is exactly account 0 — are shared with the vault page's storedVault
+  // (src/shared/envelopeRules.ts accountsPolicyOk), so neither side can call a wallet the other calls
+  // damaged.
+  if (!accountsPolicyOk(x.scheme, accounts)) return null;
   return {
     v: 1,
     scheme: x.scheme,

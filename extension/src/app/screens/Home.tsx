@@ -1,7 +1,7 @@
 import {useState} from 'react';
 import {useWallet, sustained, type NetMode} from '../WalletContext';
 import {valuation} from '../valuation';
-import {TOKEN_INFO, ago, agoLong, showAmount, showUsd, stamp, usdParts} from '../format';
+import {TOKEN_INFO, approxSol, ago, agoLong, showAmount, showUsd, stamp, usdParts} from '../format';
 import {formatAmount} from '../../shared/amount';
 import {HIDE_BALANCES_KEY, readPref, writePref} from '../prefs';
 import {useNow} from '../useNow';
@@ -169,7 +169,7 @@ export function Home({onReceive, onActivity, onAccounts}: {onReceive: () => void
   const rowNote = b === null ? null : mode === 'reconnecting' ? 'live' : long ? 'stale' : stale ? 'cached' : null;
   const solPrice = m.prices?.sol ?? null;
   // Truncated, never rounded up (review L6).
-  const approx = total !== null && solPrice !== null ? `≈ ${(Math.floor((total / solPrice) * 100) / 100).toFixed(2)} SOL` : null;
+  const approx = total !== null && solPrice !== null ? approxSol(total, solPrice) : null;
   const heroLine = hidden
     ? null
     : syncing

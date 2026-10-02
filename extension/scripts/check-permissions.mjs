@@ -31,6 +31,43 @@ export function connectSrcViolations(csp) {
   return [];
 }
 
+// Every directive of the extension CSP, pinned here independent of source.mjs (controller hardening,
+// 2026-10-01; the reason is at EXTENSION_CSP). The CSP must be exactly these directives, each once, each
+// with exactly this value: a missing, loosened, repeated or extra directive fails.
+export const REQUIRED_CSP = [
+  ['default-src', "'self'"],
+  ['script-src', "'self'"],
+  ['object-src', "'self'"],
+  ['style-src', "'self'"],
+  ['img-src', "'self' data:"],
+  ['font-src', "'self'"],
+  ['connect-src', REQUIRED_CONNECT_SRC.join(' ')],
+  ['base-uri', "'none'"],
+  ['form-action', "'none'"],
+  ['frame-ancestors', "'none'"],
+];
+
+/** Every way `csp` differs from REQUIRED_CSP, directive by directive. */
+export function cspViolations(csp) {
+  const out = [];
+  const got = new Map();
+  for (const raw of (csp ?? '').split(';')) {
+    const [name, ...sources] = raw.trim().split(/\s+/).filter(Boolean);
+    if (name === undefined) continue;
+    const key = name.toLowerCase();
+    if (got.has(key)) out.push(`directive ${key} appears twice`);
+    else got.set(key, sources.join(' '));
+  }
+  for (const [name, want] of REQUIRED_CSP) {
+    const value = got.get(name);
+    if (value !== want) out.push(`${name} is "${value ?? '(missing)'}", want exactly "${want}"`);
+  }
+  for (const [name, value] of got) {
+    if (!REQUIRED_CSP.some(([d]) => d === name)) out.push(`unexpected directive "${`${name} ${value}`.trim()}"`);
+  }
+  return out;
+}
+
 export function comparePermissions(manifest, browser) {
   const problems = [];
   const want = PERMISSIONS.map(p => p.value).join(',');
@@ -42,7 +79,7 @@ export function comparePermissions(manifest, browser) {
   if (manifest.content_security_policy?.extension_pages !== EXTENSION_CSP) {
     problems.push(`CSP differs: ${manifest.content_security_policy?.extension_pages}`);
   }
-  problems.push(...connectSrcViolations(manifest.content_security_policy?.extension_pages));
+  problems.push(...cspViolations(manifest.content_security_policy?.extension_pages));
   if (manifest.content_scripts !== undefined) problems.push('content_scripts present (not before B1c)');
   if (browser === 'chrome' && manifest.minimum_chrome_version !== MIN_CHROME_VERSION) {
     problems.push(`chrome: minimum_chrome_version differs: ${manifest.minimum_chrome_version}`);

@@ -1,0 +1,420 @@
+/*
+ * The vault page's own layout (spec B1b-2a §1.1: "full tab; a 412 px column centred on --bg-base"), on
+ * top of web's design-system.css (tokens, type, buttons) and design-ext.css (the design's screen
+ * classes, extracted from index.html — never edited by hand). Only what the phone mockups cannot say,
+ * under `vlt-` names: the tab column, the password field that replaces the design's PIN keypad (D7),
+ * the length meter, and the spacing the mockups write inline. Colours are tokens only.
+ */
+
+/* `hidden` must hide: the design's classes set `display` (.screen, .sticky-bar, .auto-blur-chip …), and an
+   author `display` beats the browser's own [hidden] rule. The page shows and hides with the attribute. */
+[hidden] {
+  display: none !important;
+}
+
+/* Fix round 1 item 2: the design resets `* { margin: 0; padding: 0 }` (index.html:98); web's
+   design-system.css and design-ext.css never do (neither is the design's own stylesheet), so every
+   heading, paragraph and card title here still carried its UA margin (measured: h1.wordmark 21px,
+   tagline/terms 12-15px, .layer-card h3 17px, p 13px, #2's lede 15px) — taller than the mockup, and
+   #2's third card fell below the fold. `:where()` keeps this at ZERO specificity, so it behaves
+   exactly like the design's `*` and never beats a design class's own margin/padding (a plain
+   `.vlt-col *` would be (0,1,0) and, placed after a design rule, would win instead). */
+:where(.vlt-col) *,
+:where(.vlt-col) {
+  margin: 0;
+  padding: 0;
+}
+
+/* The icon sprite takes no room. */
+.vlt-sprite {
+  position: absolute;
+}
+
+/* The column: the design's 412 px phone width, centred, as tall as the tab. */
+.vlt-col {
+  width: 412px;
+  max-width: 100%;
+  min-height: 100vh;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-base);
+  /* The design's body sets no line-height (index.html:99, `normal`); web's body sets 22px. Text with no
+     type tier of its own — #8's word cells, for one — inherited 22px and stood taller than the mockup. */
+  line-height: normal;
+}
+/* A screen fills the tab and scrolls with it (the mockups clip a fixed phone frame instead). */
+.vlt-col > .screen {
+  min-height: 100vh;
+  overflow: visible;
+}
+.vlt-col .scroll-area {
+  overflow: visible;
+}
+.vlt-col .sticky-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-top: auto;
+}
+/* A bar whose every button is hidden (#10's notices: expired, cancelled, undescribable) is not drawn: the
+   design never draws an empty bar, and its top rule and padding were left standing (visual pass). */
+.vlt-col .sticky-bar:not(:has(> :not([hidden]))) {
+  display: none;
+}
+.vlt-col .top-bar .step {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The mockups' inline spacing and tones, as classes (the CSP allows inline styles; classes keep the
+   coverage gate able to see every one). */
+.vlt-lede {
+  color: var(--fg-secondary);
+}
+.vlt-muted {
+  color: var(--fg-tertiary);
+}
+.vlt-gap-2 {
+  margin: 0 0 var(--space-2);
+}
+.vlt-gap-4 {
+  margin-bottom: var(--space-4);
+}
+.vlt-gap-6 {
+  margin-bottom: var(--space-6);
+}
+.vlt-pad-top {
+  padding-top: var(--space-3);
+}
+.vlt-gap-top-2 {
+  margin-top: var(--space-2);
+}
+.vlt-gap-top-1 {
+  margin-top: 2px;
+}
+.vlt-gap-bottom-3 {
+  margin-bottom: var(--space-3);
+}
+.vlt-gap-top-3 {
+  margin-top: var(--space-3);
+}
+.vlt-gap-top-5 {
+  margin-top: var(--space-5);
+}
+.vlt-pad-y {
+  padding: var(--space-2) 0;
+}
+.vlt-pad-6 {
+  padding: 0 var(--space-6);
+}
+.vlt-narrow {
+  max-width: 280px;
+}
+.vlt-narrow-300 {
+  max-width: 300px;
+  margin: 0 auto;
+}
+.vlt-gap-5 {
+  margin-bottom: var(--space-5);
+}
+.vlt-pad-cooldown {
+  padding: var(--space-7) var(--space-5) 0;
+}
+.vlt-features {
+  margin-top: var(--space-7);
+  padding: 0 var(--space-2);
+}
+.vlt-pad {
+  padding: 0 var(--space-5);
+}
+.vlt-danger {
+  color: var(--danger);
+}
+.vlt-success {
+  color: var(--success);
+}
+.vlt-center {
+  text-align: center;
+}
+.vlt-grow {
+  flex: 1;
+}
+/* A state message that replaces a screen's content (exists, damaged, no wallet, closed). */
+.vlt-notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-7) var(--space-6);
+  text-align: center;
+}
+
+/* #3: the chip's "· auto-blur" at the design's 0.7 opacity; a live region only screen readers hear. */
+.vlt-dim {
+  opacity: 0.7;
+}
+.vlt-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* The grid takes presses; the design's word cells are not text to select while blurred. */
+.vlt-col .s-seed .seed-grid {
+  touch-action: none;
+  user-select: none;
+  cursor: pointer;
+}
+
+/* #4: the wrong pick, as the mockup colours it inline (4c). Reduced motion: colour only (design note). */
+.vlt-col .s-confirm .word-btn.vlt-wrong-word {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.vlt-col .s-confirm .slot.wrong .value {
+  color: var(--danger);
+}
+/* A pick is checked at once, so a filled slot is a correct one: drawn as 4b/4c draw a verified slot
+   (`.correct`: --bg-surface-2, the --success dashed border), without `.filled`'s accent tint stacked on it —
+   no mockup draws both (visual pass). */
+.vlt-col .s-confirm .slot.filled.correct {
+  background: var(--bg-surface-2);
+}
+.vlt-col .s-confirm .word-btn {
+  cursor: pointer;
+}
+
+/* #5 (and #6's re-ask): the password field that replaces the design's PIN keypad (D7), with the design's
+   input look (#8's .pwd-input: 52 px, --bg-surface-3, the accent border on focus). */
+.vlt-field-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  margin-top: var(--space-5);
+}
+.vlt-input {
+  flex: 1;
+  width: 100%;
+  height: 52px;
+  padding: 0 var(--space-4);
+  background: var(--bg-surface-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--fg-primary);
+  font: 400 15px/22px var(--font-body);
+}
+.vlt-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.vlt-input.is-error {
+  border-color: var(--danger);
+  animation: shake 320ms cubic-bezier(0.2, 0, 0, 1);
+}
+/* The show/hide toggle: the design's .top-bar .icon-btn look, beside the field. */
+.vlt-field-row .icon-btn {
+  flex: 0 0 auto;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  color: var(--fg-secondary);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+/* #5's length meter (D7): four bars, filling at 3/6/9/12 characters. */
+.vlt-meter {
+  display: flex;
+  gap: var(--space-2);
+  width: 100%;
+  margin-top: var(--space-3);
+}
+.vlt-meter i {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-surface-3);
+}
+.vlt-meter i.filled {
+  background: var(--accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .vlt-input.is-error,
+  .vlt-col .s-confirm .slot.wrong {
+    animation: none;
+  }
+}
+
+/* #8: the mockup's inline spacing; the phrase field inside the design's .ta-wrap (the design draws the
+   words in its mono cell grid, which this page shows under the field as the words are typed). */
+.vlt-import-lede {
+  padding: 0 var(--space-5) var(--space-4);
+}
+.vlt-banner-gap {
+  margin: 0 var(--space-5) var(--space-3);
+}
+.vlt-toast {
+  background: var(--bg-surface-2);
+  border-inline-start: 1px solid var(--info);
+}
+.vlt-strong {
+  color: var(--fg-primary);
+}
+.vlt-phrase {
+  width: 100%;
+  min-height: 96px;
+  resize: none; /* the design draws no resize grip on #8's field (visual pass) */
+  background: transparent;
+  border: 0;
+  color: var(--fg-primary);
+  font: 400 14px/22px var(--font-mono);
+}
+.vlt-phrase::placeholder {
+  color: var(--fg-tertiary);
+}
+.vlt-phrase:focus {
+  outline: none;
+}
+.vlt-col .s-import .ta-wrap .ta-grid {
+  margin-top: var(--space-3);
+}
+.vlt-valid {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: 0 var(--space-5) var(--space-3);
+}
+/* The scheme choice (B1b-1's two buttons, in the design's chrome: two .noc-card rows). */
+.vlt-choose {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--space-5) var(--space-4);
+}
+.vlt-choice {
+  width: 100%;
+  min-height: var(--touch-target-min);
+  text-align: start;
+  color: var(--fg-primary);
+  font: 500 15px/22px var(--font-body);
+  cursor: pointer;
+}
+
+/* #9, #10: the design's 56 px lock tile (inline in the mockup): --accent on --accent-tint, --danger after a
+   wrong password. */
+.vlt-lock-tile {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-icon-hero);
+  background: var(--accent-tint);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  margin-bottom: var(--space-4);
+}
+.vlt-lock-tile.is-error {
+  background: color-mix(in oklab, var(--danger) 18%, transparent);
+  color: var(--danger);
+}
+/* The cooldown ring shows the share of the wait still to run (the design draws 64 %). */
+.vlt-col .cooldown-card .ring {
+  background: conic-gradient(var(--warning) calc(var(--vlt-ring, 1) * 100%), var(--bg-surface-3) 0);
+}
+/* 9c: the design gives the cooldown's "Forgot password?" its own padding-bottom (inline in the mockup). */
+.vlt-col .s-pin .forgot-link.vlt-forgot-cool {
+  padding-bottom: var(--space-3);
+}
+
+/* #10: the mockup's inline layout — an empty slot opposite the X, the amount and its symbol on one
+   baseline, the password head pulled up under the intent card. */
+.vlt-bar-spacer {
+  width: var(--touch-target-min);
+}
+.vlt-amount {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+/* #10's `.pin-head` with the mockup's inline `padding-top:0`. Written as `.vlt-pin-head-tight` alone it lost
+   to the design's `.s-pin .pin-head` (two classes) and kept --space-7: 32px more than 10a (visual pass). */
+.vlt-col .s-pin .pin-head.vlt-pin-head-tight {
+  padding-top: 0;
+}
+.vlt-col .s-pin .intent-row .value .addr-groups {
+  justify-content: flex-end;
+}
+
+/* #39: the done cards at the mockup's 0.55 opacity; the warning card's title in --warning (inline in the
+   mockup), scoped by the design's own `.s8-step-card.warn` — (0,2,1) above its `.s8-step-card h3` colour. */
+.vlt-col .s8-step-card.vlt-done {
+  opacity: 0.55;
+}
+.s8-step-card.warn h3 {
+  color: var(--warning);
+}
+
+/* The B1b-1 accounts and reveal forms, in tokens only (B1b-2b designs both screens). */
+.vlt-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+/* In a column a `flex: 1` field has a zero basis and lost its 52 px height (the accounts form's number
+   field drew ~20 px tall, under the 48 px touch target — visual pass). */
+.vlt-stack .vlt-input {
+  flex: 0 0 auto;
+}
+/* The accounts and reveal forms' visible "Password" label (B1b-1's <label for>, restored in the visual
+   pass: an aria-label alone names the field for a screen reader but tells a sighted user nothing). */
+.vlt-col .vlt-field-label {
+  margin-top: var(--space-3);
+  /* Above the field's start edge, not centred with the pin-head's column (fix round 1). */
+  align-self: stretch;
+  text-align: start;
+}
+/* #5 `creating`: the indeterminate `.noc-progress`. web's styles fill only a determinate bar's value, so an
+   indeterminate one drew an empty track (fix round 1). A 40 % accent fill moves across the well, by CSS
+   animation only; with reduced motion it stands still at the start. */
+.vlt-col .noc-progress:indeterminate {
+  background:
+    linear-gradient(90deg, color-mix(in oklab, var(--accent) 70%, #6f4fd8), var(--accent)) 0 0 / 40% 100% no-repeat,
+    var(--well);
+  animation: vlt-indeterminate 1.4s ease-in-out infinite alternate;
+}
+.vlt-col .noc-progress:indeterminate::-moz-progress-bar {
+  background: transparent;
+}
+@keyframes vlt-indeterminate {
+  from {
+    background-position: 0% 0, 0 0;
+  }
+  to {
+    background-position: 100% 0, 0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vlt-col .noc-progress:indeterminate {
+    animation: none;
+    background-position: 0% 0, 0 0;
+  }
+}
+.vlt-col .vlt-field-row.vlt-field-row-labelled {
+  margin-top: 0;
+}
+.vlt-words {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-auto-flow: column;
+  grid-template-rows: repeat(12, auto);
+  gap: var(--space-2) var(--space-4);
+  margin: 0 var(--space-5);
+  padding-left: var(--space-5);
+  font: 500 14px/22px var(--font-mono);
+  color: var(--fg-primary);
+}

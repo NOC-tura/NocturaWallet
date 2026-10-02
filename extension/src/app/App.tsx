@@ -2,7 +2,7 @@ import {useEffect, useLayoutEffect, useReducer, useRef, useState} from 'react';
 import {WalletProvider, useWallet, type Surface} from './WalletContext';
 import {createEngine, type Engine, type HistoryItem} from './engine';
 import {browserPlatform, type Platform} from './platform';
-import {firstRoute, routeReducer} from './router';
+import {TAB_ONLY, firstRoute, routeReducer, type Route} from './router';
 import {TabBar} from './ui/TabBar';
 import {Home} from './screens/Home';
 import {Locked} from './screens/Locked';
@@ -13,10 +13,13 @@ import {Activity} from './screens/Activity';
 import {TxDetail} from './screens/TxDetail';
 import {Settings} from './screens/Settings';
 import {About} from './screens/About';
+import {Created} from './screens/Created';
+import {Imported} from './screens/Imported';
+import {Resume} from './screens/Resume';
 
-function Shell() {
+function Shell({first}: {first: Route[]}) {
   const m = useWallet();
-  const [stack, go] = useReducer(routeReducer, undefined, firstRoute);
+  const [stack, go] = useReducer(routeReducer, first);
   const [accounts, setAccounts] = useState(false);
   const [txItems, setTxItems] = useState<Record<string, HistoryItem>>({});
   const route = stack[stack.length - 1] ?? {screen: 'tab', tab: 'home'};
@@ -40,6 +43,10 @@ function Shell() {
   }, [stack.length, accounts]);
 
   if (m.phase === 'loading') return <div className="app-content" aria-busy="true" />;
+  // The UI tab's hand-over screens show their own locked and no-wallet states (§3.7, §3.12).
+  if (route.screen === 'created' || route.screen === 'imported' || route.screen === 'resume') {
+    return <main className="app-content">{route.screen === 'created' ? <Created /> : route.screen === 'imported' ? <Imported /> : <Resume />}</main>;
+  }
   if (m.phase === 'no-wallet') return <NoWallet />;
   if (m.phase === 'locked') return <Locked />;
 
@@ -80,13 +87,16 @@ function Shell() {
 }
 
 /** The popup (412 × 600) and the tab (wallet.html, a 412 px column) are one app (spec §1.1). */
-export function App({surface, engine, platform = browserPlatform}: {surface: Surface; engine?: Engine; platform?: Platform}) {
+export function App({surface, engine, platform = browserPlatform, hash = typeof location === 'undefined' ? '' : location.hash}: {surface: Surface; engine?: Engine; platform?: Platform; hash?: string}) {
   // One client for the life of the page: the provider's effects key on it.
   const [client] = useState<Engine>(() => engine ?? createEngine());
+  // The first route is read once (§1.6): the tab's hash chooses a screen, and never acts.
+  const [first] = useState<Route[]>(() => firstRoute(surface, hash));
+  const handOver = TAB_ONLY.has(first[0]?.screen ?? '');
   return (
     <div className={`app app-${surface}`}>
-      <WalletProvider engine={client} platform={platform} surface={surface}>
-        <Shell />
+      <WalletProvider engine={client} platform={platform} surface={surface} quiet={handOver}>
+        <Shell first={first} />
       </WalletProvider>
     </div>
   );

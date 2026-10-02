@@ -1,7 +1,9 @@
 import {defineConfig, type Plugin} from 'vite';
 import type {UserConfig} from 'vitest/config';
 import react from '@vitejs/plugin-react';
-import {resolve, sep} from 'node:path';
+import {writeFileSync} from 'node:fs';
+import {relative, resolve, sep} from 'node:path';
+import {isStylesheet, scanCss} from './scripts/css-scan.mjs';
 
 // core/ and web/src/ui/ are imported by relative path, and a bare import in one of their files would
 // otherwise resolve upwards from there — to web/node_modules or the repository root's node_modules
@@ -23,9 +25,58 @@ function sharedResolvesFromHere(): Plugin {
   };
 }
 
+// What each built chunk and stylesheet carries, for the vault-isolation gate (Task 5 review I1(b), N1):
+// the authoritative answer to "what did the bundler put in the vault page", whatever spelling imported
+// it. Written NEXT TO the build directory (dist/app.modules.json), never inside it: it is not an
+// extension resource and no package (dist/chrome, dist/firefox) carries it. The worker build feeds the
+// same map. Shape:
+//   chunks:  JS chunk file → the modules it carries (package-relative)
+//   css:     CSS asset file → the stylesheet modules it was built from (the chunk whose importedCss it is)
+//   chunkCss: JS chunk file → the CSS assets it loads
+//   cssRefs: stylesheet module → its RAW source as scripts/css-scan.mjs reads it (@import and url() targets,
+//            other URL-loading functions, whether it has a backslash), read before Vite's CSS plugin inlines
+//            an @import (an @import'ed file never becomes a module of its own). Every CSS language Vite
+//            compiles counts as a stylesheet (fix round 4), not only .css.
+const CHUNK_MODULES = new Map<string, string[]>();
+const CSS_SOURCES = new Map<string, string[]>();
+const CHUNK_CSS = new Map<string, string[]>();
+const CSS_REFS = new Map<string, {imports: string[]; urls: string[]; loaders: string[]; escapes: boolean}>();
+const moduleId = (id: string) => (id.startsWith('\0') ? id : relative(__dirname, id).split(sep).join('/'));
+const sorted = <T,>(m: Map<string, T>) => Object.fromEntries([...m].sort(([a], [b]) => a.localeCompare(b)));
+function chunkModules(write: boolean): Plugin {
+  return {
+    name: 'noctura:chunk-modules',
+    apply: 'build',
+    enforce: 'pre',
+    transform(code, id) {
+      const path = id.replace(/[?#].*$/, '');
+      if (!isStylesheet(path)) return null;
+      CSS_REFS.set(moduleId(path), scanCss(code));
+      return null;
+    },
+    generateBundle(_options, bundle) {
+      for (const file of Object.values(bundle)) {
+        if (file.type !== 'chunk') continue;
+        const ids = file.moduleIds.map(moduleId);
+        CHUNK_MODULES.set(file.fileName, [...ids].sort());
+        const css = [...(file.viteMetadata?.importedCss ?? [])].sort();
+        CHUNK_CSS.set(file.fileName, css);
+        const sheets = ids.filter(m => isStylesheet(m)).sort();
+        // A chunk's importedCss is the stylesheet built from its own CSS modules (one per chunk).
+        for (const asset of css) CSS_SOURCES.set(asset, [...(CSS_SOURCES.get(asset) ?? []), ...sheets].sort());
+      }
+    },
+    writeBundle(options) {
+      if (!write || options.dir === undefined) return;
+      const out = {chunks: sorted(CHUNK_MODULES), css: sorted(CSS_SOURCES), chunkCss: sorted(CHUNK_CSS), cssRefs: sorted(CSS_REFS)};
+      writeFileSync(`${options.dir}.modules.json`, `${JSON.stringify(out, null, 2)}\n`);
+    },
+  };
+}
+
 export default defineConfig({
   base: './',
-  plugins: [sharedResolvesFromHere(), react()],
+  plugins: [sharedResolvesFromHere(), react(), chunkModules(true)],
   server: {fs: {allow: [resolve(__dirname, '..')]}},
   build: {
     outDir: 'dist/app',
@@ -47,7 +98,7 @@ export default defineConfig({
       },
     },
   },
-  worker: {format: 'es'},
+  worker: {format: 'es', plugins: () => [chunkModules(false)]},
   test: {
     // node by default; the component tests say `// @vitest-environment happy-dom` on their first line
     // (vitest 5 has no environmentMatchGlobs).

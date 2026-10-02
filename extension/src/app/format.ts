@@ -43,6 +43,13 @@ export const showUsd = (usd: number): string => {
   return `${p.whole}${p.cents}`;
 };
 
+/**
+ * "≈ 67.41 SOL": a USD value in SOL, truncated to the cent of a SOL — never rounded up (review L6).
+ * The inputs are floats (USD is display-only), so at an exact boundary the result can read up to one
+ * cent of a SOL low (2.3 may show 2.29) — never high.
+ */
+export const approxSol = (usd: number, solUsd: number): string => `≈ ${(Math.floor((usd / solUsd) * 100) / 100).toFixed(2)} SOL`;
+
 /** The first four and the last four characters, at equal weight — a scanning aid in lists only (spec §11.7). */
 export const shortAddress = (a: string): string => `${a.slice(0, 4)}…${a.slice(-4)}`;
 /** The first two groups of four, then "…" (the account switcher). */

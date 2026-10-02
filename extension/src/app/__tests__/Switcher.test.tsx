@@ -38,7 +38,7 @@ function stubEngine(accounts: Account[], selected: number): Engine {
 
 const stubPlatform = (): Platform & {opened: string[]} => {
   const opened: string[] = [];
-  return {opened, openPage: p => opened.push(p), closeWindow: () => undefined, version: () => '0.1.0'};
+  return {opened, openPage: p => opened.push(p), navigate: () => undefined, closeWindow: () => undefined, version: () => '0.1.0'};
 };
 
 // Spec §5.2 (D14): the switcher, derived from #43's sheet, opened from #11's account button.

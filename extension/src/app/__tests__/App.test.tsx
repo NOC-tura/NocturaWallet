@@ -28,10 +28,18 @@ describe('the app before #11', () => {
     expect(await screen.findByText('Welcome back')).toBeTruthy();
     expect(screen.getByText('Unlock Noctura to continue. Unlocking opens in a new tab.')).toBeTruthy();
     expect(document.querySelector('input[type="password"]')).toBeNull();
-    // Plan 1: no "Forgot password?" until #39 exists (plan 2).
-    expect(screen.queryByText('Forgot password?')).toBeNull();
     fireEvent.click(screen.getByRole('button', {name: 'Unlock'}));
     expect(platform.opened).toEqual(['unlock.html?mode=unlock']);
+    expect(platform.closed).toBe(1);
+  });
+
+  // §4.1, plan 2 (the plan-1 stand-in removed): "Forgot password?" opens #39 in a tab.
+  it('locked: "Forgot password?" opens #39 (?mode=forgot) in a tab; the popup closes', async () => {
+    const {platform} = await renderApp({unlocked: false});
+    const forgot = await screen.findByRole('button', {name: 'Forgot password?'});
+    expect(forgot.className).toBe('btn btn-tertiary');
+    fireEvent.click(forgot);
+    expect(platform.opened).toEqual(['unlock.html?mode=forgot']);
     expect(platform.closed).toBe(1);
   });
 
@@ -42,6 +50,27 @@ describe('the app before #11', () => {
     fireEvent.click(await screen.findByRole('button', {name: 'Unlock'}));
     expect(platform.opened).toEqual(['unlock.html?mode=unlock']);
     expect(platform.closed).toBe(0);
+  });
+
+  it('locked, tab: "Forgot password?" opens #39 and does not close the tab', async () => {
+    const {platform} = await renderApp({unlocked: false, surface: 'tab'});
+    fireEvent.click(await screen.findByRole('button', {name: 'Forgot password?'}));
+    expect(platform.opened).toEqual(['unlock.html?mode=forgot']);
+    expect(platform.closed).toBe(0);
+  });
+
+  // Final review item 5 (rule 6): both buttons are LockedButtons — a double click opens one tab.
+  it.each([
+    ['Unlock', 'unlock.html?mode=unlock'],
+    ['Forgot password?', 'unlock.html?mode=forgot'],
+  ])('locked, tab: a double click on "%s" opens one tab', async (name, page) => {
+    const {platform} = await renderApp({unlocked: false, surface: 'tab'});
+    const button = (await screen.findByRole('button', {name})) as HTMLButtonElement;
+    fireEvent.click(button);
+    fireEvent.click(button);
+    button.click();
+    expect(platform.opened).toEqual([page]);
+    expect(button.disabled).toBe(true);
   });
 
   it('unlocked: #11 with the tab bar Home / Activity / Settings (D3)', async () => {

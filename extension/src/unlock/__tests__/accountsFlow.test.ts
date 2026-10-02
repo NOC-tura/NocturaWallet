@@ -84,7 +84,8 @@ describe('accounts in the vault page', () => {
     expect(await addAccount(full.deps, {password: PASSWORD, kdf})).toBe('too-many-accounts');
     expect(full.store.calls).toHaveLength(0);
     expect(full.sent.map(m => m.type)).toEqual(['vault.status']);
-  });
+    // Deriving 100 keys takes ~6 s under a parallel run's CPU load — past vitest's 5 s default.
+  }, 30_000);
 
   it('a cli wallet has exactly one account', async () => {
     const cli = await wallet([0], 'cli');

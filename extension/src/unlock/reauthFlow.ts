@@ -1,8 +1,8 @@
 import {reauthenticate, type ReauthFactor, type SessionKeys} from '../vault/reauth';
-import type {EnvelopeV1} from '../vault/envelope';
+import {storedVault} from './stored';
 import type {Send} from './types';
 
-export type ReauthPageOutcome = 'confirmed' | 'wrong' | 'not-unlocked' | 'mismatch-locked' | 'damaged' | 'no-wallet' | 'failed';
+export type ReauthPageOutcome = 'confirmed' | 'wrong' | 'not-unlocked' | 'mismatch-locked' | 'expired' | 'damaged' | 'no-wallet' | 'failed';
 
 /** The session's PUBLIC keys, from vault.status — never its secret keys. Null while locked. */
 export async function sessionKeys(send: Send): Promise<SessionKeys | null> {
@@ -39,15 +39,21 @@ export async function runReauth(
   factor: ReauthFactor,
 ): Promise<ReauthPageOutcome> {
   try {
-    const raw = await deps.readEnvelope();
-    if (raw === undefined || raw === null) return 'no-wallet';
+    const stored = storedVault(await deps.readEnvelope());
+    if (stored.kind === 'none') return 'no-wallet';
+    if (stored.kind === 'damaged') return 'damaged';
     const session = await sessionKeys(deps.send);
     if (session === null) return 'not-unlocked';
-    const outcome = await reauthenticate(raw as EnvelopeV1, factor, session);
+    const outcome = await reauthenticate(stored.env, factor, session);
     if (outcome === 'mismatch') return await lockOnMismatch(deps.send);
     if (outcome !== 'ok') return outcome;
     const r = await deps.send({type: 'vault.reauthOk', challengeId});
-    return r.ok ? 'confirmed' : 'failed';
+    if (r.ok) return 'confirmed';
+    // D39: the challenge expired (or was discarded) while the password was typed — #10's `expired`,
+    // never `failed`. A lock that landed after the status read is `not-unlocked`.
+    if (r.error === 'unknown-challenge') return 'expired';
+    if (r.error === 'locked') return 'not-unlocked';
+    return 'failed';
   } catch {
     return 'failed';
   } finally {

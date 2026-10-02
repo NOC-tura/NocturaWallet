@@ -49,8 +49,10 @@ export function walletReader(over: Partial<SolanaReader> = {}): SolanaReader {
 export interface Wallet {
   ext: ReturnType<typeof fakeExt>;
   deps: ReturnType<typeof fakeDeps>;
-  platform: Platform & {opened: string[]; closed: number};
+  platform: Platform & {opened: string[]; navigated: string[]; closed: number};
   engine: Engine;
+  /** The real background, as the client's transport. */
+  transport: Transport;
 }
 
 export interface WalletOptions {
@@ -77,11 +79,16 @@ export async function setupWallet(o: WalletOptions = {}): Promise<Wallet> {
   const sleep = (ms: number) => (ms >= 2_000 ? new Promise<void>(() => undefined) : Promise.resolve());
   const deps = fakeDeps({reader: o.reader ?? walletReader(), sleep, ...o.deps});
   const opened: string[] = [];
+  const navigated: string[] = [];
   const platform = {
     opened,
+    navigated,
     closed: 0,
     openPage(page: string) {
       opened.push(page);
+    },
+    navigate(page: string) {
+      navigated.push(page);
     },
     closeWindow() {
       platform.closed += 1;
@@ -89,7 +96,7 @@ export async function setupWallet(o: WalletOptions = {}): Promise<Wallet> {
     version: () => '0.1.0',
   };
   const transport: Transport = m => handleMessage(ext, m, POPUP, deps);
-  return {ext, deps, platform, engine: createEngine(transport, async () => undefined)};
+  return {ext, deps, platform, transport, engine: createEngine(transport, async () => undefined)};
 }
 
 /** One screen inside the real provider (the open sequence runs as in the popup). */

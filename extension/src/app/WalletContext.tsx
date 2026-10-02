@@ -99,7 +99,26 @@ const online = (): boolean => (typeof navigator === 'undefined' ? true : navigat
  * while a send of this account is open, and activity.ping on user input at most every 30 s. Nothing
  * else reads the network by itself: refresh is on open and on the refresh button (D2).
  */
-export function WalletProvider({engine, platform, surface, now = systemNow, children}: {engine: Engine; platform: Platform; surface: Surface; now?: () => number; children: ReactNode}) {
+export function WalletProvider({
+  engine,
+  platform,
+  surface,
+  now = systemNow,
+  quiet = false,
+  children,
+}: {
+  engine: Engine;
+  platform: Platform;
+  surface: Surface;
+  now?: () => number;
+  /**
+   * The UI tab's hand-over screens (#7, #40, the resume stand-in): the state only — no cached, pending,
+   * balance or price read on open, none later (refresh() is a no-op, so the online event reads
+   * nothing), and no activity.ping. #40 reads what it shows itself; #7 reads nothing from the network.
+   */
+  quiet?: boolean;
+  children: ReactNode;
+}) {
   const [phase, setPhaseState] = useState<Phase>('loading');
   const phaseRef = useRef<Phase>('loading');
   const setPhase = useCallback((p: Phase) => {
@@ -164,6 +183,9 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
    * "Connected · syncing" while the price read still runs (#42 reconnecting: "re-fetching prices").
    */
   const refresh = useCallback(async () => {
+    // A quiet provider (the UI tab's hand-over screens) reads nothing but the state — whatever asks
+    // for a refresh (the online event, a screen's button): Scope 16, D38 (Task 15 fix round 1, I-1).
+    if (quiet) return;
     const a = accountRef.current;
     if (a === null || netRef.current.mode === 'refused') return;
     refreshingRef.current = true;
@@ -200,7 +222,7 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
       refreshingRef.current = false;
       setRefreshing(false);
     }
-  }, [engine, now, failed, succeeded]);
+  }, [engine, now, failed, succeeded, quiet]);
 
   const readPending = useCallback(async () => {
     const r = await engine.pending();
@@ -267,12 +289,12 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
       // Read again on open, on unlock, and when the selected account changed (a select here, or an
       // account list changed elsewhere) — otherwise the 5 s poll only watches the lock.
       const key = w.accounts.find(x => x.index === w.selected)?.publicKey ?? null;
-      if (!wasUnlocked || fresh || key !== shownKey.current) {
+      if (!quiet && (!wasUnlocked || fresh || key !== shownKey.current)) {
         shownKey.current = key;
         await openUnlocked(w);
       }
     },
-    [engine, openUnlocked, setPhase],
+    [engine, openUnlocked, setPhase, quiet],
   );
 
   const reload = useCallback(() => applyState(true), [applyState]);
@@ -294,9 +316,10 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
     return () => clearInterval(t);
   }, [open, readPending]);
 
-  // activity.ping on user input, at most every 30 s (the idle timer, parent §2).
+  // activity.ping on user input, at most every 30 s (the idle timer, parent §2). Never on a quiet
+  // provider: a hand-over page does not keep the wallet unlocked (Task 15 fix round 1, m-1 ruling).
   useEffect(() => {
-    if (phase !== 'unlocked') return;
+    if (phase !== 'unlocked' || quiet) return;
     let last = now();
     const onInput = () => {
       if (now() - last < PING_EVERY_MS) return;
@@ -309,7 +332,7 @@ export function WalletProvider({engine, platform, surface, now = systemNow, chil
       document.removeEventListener('pointerdown', onInput);
       document.removeEventListener('keydown', onInput);
     };
-  }, [phase, engine, now]);
+  }, [phase, engine, now, quiet]);
 
   // The browser's own connectivity events: offline shows #42 at once; online refreshes.
   useEffect(() => {

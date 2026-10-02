@@ -1,8 +1,16 @@
-import {ago, agoLong, clock, dateSection, feeUsd, stamp, shortAddress, showAmount, showFee, showSol, twoGroups, usdParts} from '../format';
+import {ago, agoLong, approxSol, clock, dateSection, feeUsd, stamp, shortAddress, showAmount, showFee, showSol, twoGroups, usdParts} from '../format';
 import {valuation} from '../valuation';
 
 // The words and numbers the screens print, from one place.
 describe('format', () => {
+  // Plan-1 ruling L6, now shared by Home and #40 (plan-2 review M1): a SOL equivalent is truncated.
+  it('approxSol truncates to the cent of a SOL, never rounds up', () => {
+    expect(approxSol(10_112.52, 150)).toBe('≈ 67.41 SOL');
+    expect(approxSol(20_225.05, 150)).toBe('≈ 134.83 SOL');
+    expect(approxSol(299.99, 100)).toBe('≈ 2.99 SOL');
+    expect(approxSol(0, 150)).toBe('≈ 0.00 SOL');
+  });
+
   it('token amounts as the design prints them, truncated', () => {
     expect(showAmount('SOL', 62_482_199_999n)).toBe('62.4821');
     expect(showAmount('NOC', 4_200_000_000_000n)).toBe('4,200.00');

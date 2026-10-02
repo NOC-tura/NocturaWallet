@@ -31,8 +31,10 @@ export interface FakeCoordinator {
    * aborts every request — no answer at all (#42).
    */
   network: 'ok' | 'forbidden' | 'unreachable';
-  /** SOL per address, lamports; anything unlisted holds 10 SOL. */
+  /** SOL per address, lamports; anything unlisted holds `defaultLamports`. */
   lamports: Map<string, number>;
+  /** What an unlisted address holds (10 SOL unless a spec sets an empty chain). */
+  defaultLamports: number;
   /** What getAccountInfo says an address is (E2); anything unlisted does not exist. */
   accountKinds: Map<string, 'wallet' | 'program' | 'other'>;
   /** The simulation's error switch (E2): err set and accounts null, as the real RPC answers. */
@@ -41,6 +43,11 @@ export interface FakeCoordinator {
   simulations: (string[] | null)[];
   /** Per owner, newest first: the signatures getSignaturesForAddress pages through, and each getTransaction result. */
   history: Map<string, {signature: string; tx: unknown}[]>;
+  /**
+   * Holds every answer until the returned function is called — how a visual spec keeps a loading
+   * state (#40's, #8's "Checking…") on screen deterministically while it is asserted and shot.
+   */
+  hold(): () => void;
 }
 
 /** Compact-u16: the signature count that opens a serialized transaction. */
@@ -94,6 +101,7 @@ function parseV0(wire: Uint8Array): {keys: string[]; instructions: {program: num
  * current height, as a real node does.
  */
 export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeCoordinator> {
+  let held: Promise<void> | null = null;
   const fake: FakeCoordinator = {
     mode: 'confirm',
     blockHeight: FAKE_START_HEIGHT,
@@ -104,10 +112,19 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     unexpected: [],
     network: 'ok',
     lamports: new Map(),
+    defaultLamports: 10_000_000_000,
     accountKinds: new Map(),
     simulateError: false,
     simulations: [],
     history: new Map(),
+    hold: () => {
+      let release: () => void = () => undefined;
+      held = new Promise<void>(r => (release = r));
+      return () => {
+        held = null;
+        release();
+      };
+    },
   };
   const statusChecks = new Map<string, number>();
   const context = () => ({slot: fake.blockHeight + 50});
@@ -123,7 +140,7 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     }),
   });
 
-  const lamportsOf = (address: string): number => fake.lamports.get(address) ?? 10_000_000_000;
+  const lamportsOf = (address: string): number => fake.lamports.get(address) ?? fake.defaultLamports;
 
   /**
    * What a node answers: the requested accounts after the transaction, WITHOUT the fee (the engine
@@ -164,7 +181,15 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       case 'getTokenAccountsByOwner':
         return {context: context(), value: []};
       case 'getMultipleAccounts':
-        return {context: context(), value: (params[0] as unknown[]).map(() => null)};
+        // Each address as the node reports it: a system account holding its lamports, or null when it holds
+        // none (the import probe reads balances this way — the same `lamports` table as getBalance).
+        return {
+          context: context(),
+          value: (params[0] as string[]).map(a => {
+            const lamports = lamportsOf(a);
+            return lamports > 0 ? {lamports, owner: '11111111111111111111111111111111', data: ['', 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 0} : null;
+          }),
+        };
       case 'getAccountInfo': {
         const kind = fake.accountKinds.get(params[0] as string);
         if (kind === undefined) return {context: context(), value: null};
@@ -206,6 +231,7 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
   const json = (route: Route, status: number, body: unknown) => route.fulfill({status, contentType: 'application/json', body: JSON.stringify(body)});
 
   await ctx.route('https://api.noc-tura.io/**', async route => {
+    if (held !== null) await held;
     const req = route.request();
     const url = req.url();
     // B1b-2a: the two failure switches, counted as hits (the request did leave the extension).
@@ -223,8 +249,11 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       fake.hits.push({url, rpcMethod: method});
       if (body.jsonrpc !== '2.0' || !Array.isArray(body.params)) fake.unexpected.push(`rpc ${method}: not a JSON-RPC 2.0 request`);
       const result = rpcResult(method, body.params ?? []);
-      // A method the fake does not implement answers as a node does: JSON-RPC -32601, never a result.
-      if (result === METHOD_NOT_FOUND) return json(route, 200, {jsonrpc: '2.0', id: body.id ?? 0, error: {code: -32601, message: 'Method not found'}});
+      // A method the fake does not implement answers as the coordinator's proxy answers a method outside its
+      // allowlist (docs/superpowers/specs/2026-09-29-coordinator-broadcast-route.md §3): JSON-RPC -32601
+      // "Method not allowed", never a result. The rest of the fake stays lenient on purpose: it checks no
+      // params shapes beyond what `unexpected` lists.
+      if (result === METHOD_NOT_FOUND) return json(route, 200, {jsonrpc: '2.0', id: body.id ?? 0, error: {code: -32601, message: 'Method not allowed'}});
       return json(route, 200, {jsonrpc: '2.0', id: body.id ?? 0, result});
     }
     fake.hits.push({url, rpcMethod: null});

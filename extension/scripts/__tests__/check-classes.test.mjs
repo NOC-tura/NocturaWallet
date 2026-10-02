@@ -1,6 +1,6 @@
 import {dirname, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DYNAMIC, SHEETS, classUses, classViolations, definedClasses, listScreens} from '../check-classes.mjs';
+import {DYNAMIC, SHEETS, VAULT_SHEETS, classUses, classViolations, definedClasses, listScreens, listVaultFiles, vaultClassUses, vaultClassViolations} from '../check-classes.mjs';
 
 // Every class a screen names must be styled by one of the three stylesheets the app loads
 // (design-system.css, design-ext.css, app.css): a class defined nowhere is a design element that
@@ -68,5 +68,49 @@ describe('the class gate: the app', () => {
     expect(SHEETS).toEqual(['../web/src/styles/design-system.css', 'src/styles/design-ext.css', 'src/app/app.css']);
     expect(Object.keys(DYNAMIC).length).toBeGreaterThan(0);
     expect(classViolations()).toEqual([]);
+  });
+});
+
+// Plan 2: the vault page (unlock.html + src/unlock) is plain DOM; its classes are checked against the
+// three stylesheets it loads, and a class there must be a literal.
+describe('the class gate: the vault page', () => {
+  it('reads class="" in the page, and h(tag, …), className = … and classList calls in its code', () => {
+    expect(vaultClassUses('<section class="screen s-welcome" hidden><p class=\'noc-caption terms\'>x</p></section>', true)).toEqual({classes: ['screen', 's-welcome', 'noc-caption', 'terms'], computed: []});
+    const code = "h('div', 'word');\nh('span', 'num', two(i));\nel.className = 'slot filled';\nbar.classList.toggle('filled', on);\nel.classList.add('is-error');";
+    expect(vaultClassUses(code, false)).toEqual({classes: ['word', 'num', 'slot', 'filled', 'filled', 'is-error'], computed: []});
+  });
+
+  it('reads every argument of classList.add/remove/replace, toggle’s first, className +=, and setAttribute(\'class\', …) (review M4)', () => {
+    const code = "el.classList.add('a', 'b');\nel.classList.remove('c');\nel.classList.replace('d', 'e');\nel.classList.toggle('f', on);\nel.className += ' g';\nel.setAttribute('class', 'h i');";
+    expect(vaultClassUses(code, false)).toEqual({classes: ['g', 'a', 'b', 'c', 'd', 'e', 'f', 'h', 'i'], computed: []});
+    const computed = "el.classList.add('a', tone);\nel.classList.replace('d', next);\nel.className += ` ${x}`;\nel.setAttribute('class', cls);";
+    expect(vaultClassUses(computed, false)).toEqual({classes: ['a', 'd'], computed: ['` ${x}`', 'tone', 'next', 'cls']});
+    expect(vaultClassViolations([{path: 'src/unlock/screens/x.ts', text: "el.classList.add('screen', 'vlt-planted-nowhere');"}], new Set(['screen']))).toEqual([
+      'src/unlock/screens/x.ts: class "vlt-planted-nowhere" is defined in no stylesheet the vault page loads',
+    ]);
+  });
+
+  it('refuses a planted class and a computed one; accepts the DOM helper’s own parameter, there only', () => {
+    const files = [
+      {path: 'unlock.html', text: '<div class="screen vlt-planted-nowhere"></div>'},
+      {path: 'src/unlock/screens/x.ts', text: "h('div', tone);\nel.className = `slot ${state}`;"},
+      {path: 'src/unlock/view/dom.ts', text: 'if (cls !== \'\') el.className = cls;'},
+      {path: 'src/unlock/view/other.ts', text: 'el.className = cls;'},
+    ];
+    expect(vaultClassViolations(files, new Set(['screen']))).toEqual([
+      'unlock.html: class "vlt-planted-nowhere" is defined in no stylesheet the vault page loads',
+      'src/unlock/screens/x.ts: computed class tone — the vault page names classes as literal strings only',
+      'src/unlock/screens/x.ts: computed class `slot ${state}` — the vault page names classes as literal strings only',
+      'src/unlock/view/other.ts: computed class cls — the vault page names classes as literal strings only',
+    ]);
+  });
+
+  it('reads unlock.html and every src/unlock module but the tests; the real page passes', () => {
+    const files = listVaultFiles(ROOT);
+    expect(files[0]).toBe('unlock.html');
+    expect(files).toEqual(expect.arrayContaining(['src/unlock/main.ts', 'src/unlock/view/dom.ts']));
+    expect(files.some(f => f.includes('__tests__'))).toBe(false);
+    expect(VAULT_SHEETS).toEqual(['../web/src/styles/design-system.css', 'src/styles/design-ext.css', 'src/unlock/unlock.css']);
+    expect(vaultClassViolations()).toEqual([]);
   });
 });
