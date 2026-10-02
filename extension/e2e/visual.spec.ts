@@ -20,6 +20,7 @@ test('visual: the plan-1 screens and states at 412 × 600', async () => {
     await h.sw.evaluate(() => (globalThis as unknown as {chrome: {storage: {session: {clear(): Promise<void>}}}}).chrome.storage.session.clear());
     const locked = await h.openPopup();
     await expect(locked.getByText('Welcome back')).toBeVisible();
+    await expect(locked.getByRole('button', {name: 'Forgot password?'})).toBeVisible();
     await shot(locked, '09-locked');
     await locked.close();
 

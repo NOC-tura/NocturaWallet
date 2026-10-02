@@ -43,6 +43,11 @@ export interface FakeCoordinator {
   simulations: (string[] | null)[];
   /** Per owner, newest first: the signatures getSignaturesForAddress pages through, and each getTransaction result. */
   history: Map<string, {signature: string; tx: unknown}[]>;
+  /**
+   * Holds every answer until the returned function is called — how a visual spec keeps a loading
+   * state (#40's, #8's "Checking…") on screen deterministically while it is asserted and shot.
+   */
+  hold(): () => void;
 }
 
 /** Compact-u16: the signature count that opens a serialized transaction. */
@@ -96,6 +101,7 @@ function parseV0(wire: Uint8Array): {keys: string[]; instructions: {program: num
  * current height, as a real node does.
  */
 export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeCoordinator> {
+  let held: Promise<void> | null = null;
   const fake: FakeCoordinator = {
     mode: 'confirm',
     blockHeight: FAKE_START_HEIGHT,
@@ -111,6 +117,14 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     simulateError: false,
     simulations: [],
     history: new Map(),
+    hold: () => {
+      let release: () => void = () => undefined;
+      held = new Promise<void>(r => (release = r));
+      return () => {
+        held = null;
+        release();
+      };
+    },
   };
   const statusChecks = new Map<string, number>();
   const context = () => ({slot: fake.blockHeight + 50});
@@ -217,6 +231,7 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
   const json = (route: Route, status: number, body: unknown) => route.fulfill({status, contentType: 'application/json', body: JSON.stringify(body)});
 
   await ctx.route('https://api.noc-tura.io/**', async route => {
+    if (held !== null) await held;
     const req = route.request();
     const url = req.url();
     // B1b-2a: the two failure switches, counted as hits (the request did leave the extension).

@@ -246,6 +246,21 @@ describe('the reveal form, restyled with the tokens (spec §1.2 reveal)', () => 
   }, 30_000);
 });
 
+describe('the two password fields are labelled where a sighted user sees it (Task 18 visual pass)', () => {
+  it('accounts and reveal: a visible <label for> "Password", no aria-label standing in, no minlength or required', () => {
+    for (const id of ['acc-password', 'rev-password']) {
+      const field = el<HTMLInputElement>(id);
+      const label = document.querySelector<HTMLLabelElement>(`label[for="${id}"]`);
+      expect(text(label)).toBe('Password');
+      expect(field.hasAttribute('aria-label')).toBe(false);
+      // The page's own checks answer a short or empty password in its helper line; the browser's
+      // validation bubble would answer instead, with words the spec does not have.
+      expect(field.hasAttribute('minlength')).toBe(false);
+      expect(field.hasAttribute('required')).toBe(false);
+    }
+  });
+});
+
 describe('the dispatcher: each mode shows its one screen', () => {
   it.each<[PageMode, string]>([
     [{mode: 'welcome'}, 'v-welcome'],

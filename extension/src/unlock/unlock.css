@@ -39,6 +39,9 @@
   display: flex;
   flex-direction: column;
   background: var(--bg-base);
+  /* The design's body sets no line-height (index.html:99, `normal`); web's body sets 22px. Text with no
+     type tier of its own — #8's word cells, for one — inherited 22px and stood taller than the mockup. */
+  line-height: normal;
 }
 /* A screen fills the tab and scrolls with it (the mockups clip a fixed phone frame instead). */
 .vlt-col > .screen {
@@ -53,6 +56,11 @@
   bottom: 0;
   z-index: 1;
   margin-top: auto;
+}
+/* A bar whose every button is hidden (#10's notices: expired, cancelled, undescribable) is not drawn: the
+   design never draws an empty bar, and its top rule and padding were left standing (visual pass). */
+.vlt-col .sticky-bar:not(:has(> :not([hidden]))) {
+  display: none;
 }
 .vlt-col .top-bar .step {
   font-variant-numeric: tabular-nums;
@@ -167,6 +175,12 @@
 .vlt-col .s-confirm .slot.wrong .value {
   color: var(--danger);
 }
+/* A pick is checked at once, so a filled slot is a correct one: drawn as 4b/4c draw a verified slot
+   (`.correct`: --bg-surface-2, the --success dashed border), without `.filled`'s accent tint stacked on it —
+   no mockup draws both (visual pass). */
+.vlt-col .s-confirm .slot.filled.correct {
+  background: var(--bg-surface-2);
+}
 .vlt-col .s-confirm .word-btn {
   cursor: pointer;
 }
@@ -254,7 +268,7 @@
 .vlt-phrase {
   width: 100%;
   min-height: 96px;
-  resize: vertical;
+  resize: none; /* the design draws no resize grip on #8's field (visual pass) */
   background: transparent;
   border: 0;
   color: var(--fg-primary);
@@ -327,7 +341,9 @@
   gap: var(--space-2);
   margin-bottom: var(--space-3);
 }
-.vlt-pin-head-tight {
+/* #10's `.pin-head` with the mockup's inline `padding-top:0`. Written as `.vlt-pin-head-tight` alone it lost
+   to the design's `.s-pin .pin-head` (two classes) and kept --space-7: 32px more than 10a (visual pass). */
+.vlt-col .s-pin .pin-head.vlt-pin-head-tight {
   padding-top: 0;
 }
 .vlt-col .s-pin .intent-row .value .addr-groups {
@@ -348,6 +364,19 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+/* In a column a `flex: 1` field has a zero basis and lost its 52 px height (the accounts form's number
+   field drew ~20 px tall, under the 48 px touch target — visual pass). */
+.vlt-stack .vlt-input {
+  flex: 0 0 auto;
+}
+/* The accounts and reveal forms' visible "Password" label (B1b-1's <label for>, restored in the visual
+   pass: an aria-label alone names the field for a screen reader but tells a sighted user nothing). */
+.vlt-col .vlt-field-label {
+  margin-top: var(--space-3);
+}
+.vlt-col .vlt-field-row.vlt-field-row-labelled {
+  margin-top: 0;
 }
 .vlt-words {
   display: grid;

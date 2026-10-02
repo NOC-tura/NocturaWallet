@@ -148,6 +148,11 @@ body:has(.app-popup) {
 .app-muted {
   color: var(--fg-secondary);
 }
+/* #40 empty's "0 tokens" (index.html: inline --fg-secondary): the design's card rule sets --fg-primary at
+   two classes and out-ranked .app-muted (visual pass). */
+.s8-recovered-card .total.app-muted {
+  color: var(--fg-secondary);
+}
 .app-dim {
   color: var(--fg-tertiary);
 }
@@ -443,7 +448,12 @@ a.btn {
   color: var(--accent);
   flex: 0 0 18px;
   line-height: 22px;
-  padding-top: 2px;
+}
+/* The design's svg is a block 2px down inside the 22px line (index.html #7). Inline, as padding on the
+   span, the icon sat on the text baseline and made each row 4px taller than the mockup's (visual pass). */
+.app-onb-arrow svg {
+  display: block;
+  margin-top: 2px;
 }
 .app-onb-grow {
   flex: 1 1 auto;
@@ -451,10 +461,39 @@ a.btn {
 .app-content .s-success .copy-btn {
   cursor: pointer;
 }
+/* #7's address at the class map's tier, `.noc-mono` + `.noc-body` (15 px): web's AddressGroups draws 12 px
+   (visual pass). The groups of four stay (§3.7). */
+.app-content .s-success .addr-mono .addr-groups {
+  font-size: 15px;
+  line-height: 22px;
+}
 
 /* #40: the mockup's inline spacing and the empty state's info ring (index.html #40, no-assets-empty). */
 .app-onb-imported {
   padding: var(--space-3) var(--space-5) 0;
+}
+/* The design resets every margin (`*`, index.html:98); here the sub line kept its UA 1em and stood 13px
+   further from the title than the mockup's --space-3 gap (visual pass). */
+.app-content .s8-success-hero .sub {
+  margin: 0;
+}
+/* #7's and #40's sticky bar stays at the bottom of the tab while the screen scrolls, as the mockups draw it
+   (the phone frame pins it); in the flow, #40's empty state pushed [Try a different seed] below the fold.
+   #40's bar spans the column as the design's does, outside the screen's side padding (visual pass). */
+.app-content .s-success > .sticky-bar,
+.app-content .app-onb-imported > .sticky-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-top: auto;
+}
+.app-content .app-onb-imported > .sticky-bar {
+  margin-inline: calc(-1 * var(--space-5));
+}
+/* #40's refresh: web's .icon-btn is 36 px; the design's icon buttons are the 48 px touch target. */
+.app-onb-imported .icon-btn {
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
 }
 .s8-success-hero .ring.app-onb-info {
   background: color-mix(in oklab, var(--info) 14%, transparent);
