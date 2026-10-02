@@ -320,6 +320,22 @@ describe('decodeHistoryEntry', () => {
       expect(e).toMatchObject({kind: 'sent', token: 'USDC', amount: 12_000_000n, counterparty: OTHER, failed: true});
     });
 
+    // Fix round 1 follow-up: the send flow builds one fee transfer; two make it something else. The amount is not
+    // pinned (it follows the fee policy of its day).
+    it('two transfers to the Noctura treasury beside the one transfer stay "other"; one, of any amount, is the send', () => {
+      const keys = [OWNER, OTHER, MAINNET_FEE_TREASURY, SYSTEM];
+      const two = decodeHistoryEntry(OWNER, 'sig', tx({...failedKeys, keys, instructions: [sysTransfer(OWNER, OTHER, 1_000_000), sysTransfer(OWNER, MAINNET_FEE_TREASURY, 20_000), sysTransfer(OWNER, MAINNET_FEE_TREASURY, 20_000)]}));
+      expect(two).toMatchObject(OTHER_SHAPE);
+      const one = decodeHistoryEntry(OWNER, 'sig', tx({...failedKeys, keys, instructions: [sysTransfer(OWNER, OTHER, 1_000_000), sysTransfer(OWNER, MAINNET_FEE_TREASURY, 123_456_789)]}));
+      expect(one).toMatchObject({kind: 'sent', token: 'SOL', amount: 1_000_000n, counterparty: OTHER, failed: true});
+    });
+
+    // On purpose: every transfer to the treasury is read as the fee, so a deliberate send there is `other`.
+    it('a deliberate send to the treasury address alone stays "other" (by design)', () => {
+      const e = decodeHistoryEntry(OWNER, 'sig', tx({...failedKeys, keys: [OWNER, MAINNET_FEE_TREASURY, SYSTEM, OTHER], instructions: [sysTransfer(OWNER, MAINNET_FEE_TREASURY, 5_000_000_000)]}));
+      expect(e).toMatchObject(OTHER_SHAPE);
+    });
+
     // Fix round 1, M1: only the classic Token program; the wallet's mints are classic.
     it('a Token-2022 TransferChecked, even of the NOC mint, stays "other"', () => {
       const e = decodeHistoryEntry(OWNER, 'sig', tx({...failedKeys, keys: splKeys, instructions: [splChecked(OWNER, {programId: TOKEN_2022})], ...nocBalances}));

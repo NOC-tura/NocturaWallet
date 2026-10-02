@@ -118,7 +118,8 @@ interface Attempt {
  *
  * - this owner paid for it (the first key);
  * - every top-level instruction is on an allowlist: ComputeBudget, Memo, System advanceNonce, the Noctura fee's
- *   System transfer from the owner to the treasury, an associated-token-account create for the transfer's
+ *   System transfer from the owner to the treasury (at most ONE; its amount is not pinned — it follows the fee
+ *   policy of its day, which the decoder cannot know), an associated-token-account create for the transfer's
  *   destination, and the one transfer itself. Anything else (a swap, a Jito tip beside one, a wrap, a
  *   createAccount, a transferWithSeed, an unparsed instruction) makes it a dApp transaction, not a send;
  * - EXACTLY ONE transfer, so a batch is never summed into one send to its first recipient: a System transfer
@@ -126,6 +127,9 @@ interface Attempt {
  *   owner AND whose source account the owner owns (M2: a delegate's transfer is not the owner's send), of a mint
  *   the wallet knows (from the source's balance entry; an instruction mint that disagrees is `other`);
  * - an amount above zero, read exactly (M4).
+ *
+ * On purpose, a deliberate send TO the treasury address is never the one transfer: every transfer there is read
+ * as the fee, so such a failed transaction decodes as `other` (fix round 1 follow-up).
  *
  * The recipient wallet is the destination's balance-entry owner or, for a destination created in the same
  * transaction, the create's wallet — only when the destination is that wallet's derived ATA for the mint (M3);
@@ -136,6 +140,7 @@ function attemptedSend(owner: string, keys: readonly (string | null)[], instruct
   if (keys[0] !== owner) return null;
   const transfers: Attempt[] = [];
   const creates: {account: string; wallet: string}[] = [];
+  let feeTransfers = 0;
   for (const ix of instructions) {
     const id = ix.programId;
     if (id === COMPUTE_BUDGET_PROGRAM || (typeof id === 'string' && MEMO_PROGRAMS.includes(id))) continue;
@@ -147,7 +152,11 @@ function attemptedSend(owner: string, keys: readonly (string | null)[], instruct
       if (parsed.type !== 'transfer' || info.source !== owner || typeof info.destination !== 'string') return null;
       const lamports = exactU64(info.lamports);
       if (lamports === null) return null;
-      if (info.destination === MAINNET_FEE_TREASURY) continue;
+      if (info.destination === MAINNET_FEE_TREASURY) {
+        // One fee transfer at most: a second one is not something the send flow builds.
+        if (++feeTransfers > 1) return null;
+        continue;
+      }
       transfers.push({token: 'SOL', mint: null, amount: lamports, counterparty: info.destination, destination: info.destination});
       continue;
     }
