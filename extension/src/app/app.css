@@ -596,3 +596,6 @@ a.btn {
   padding: 0;
   justify-content: flex-start;
 }
+.s-send .recipient-row .input-actions button.app-danger {
+  color: var(--danger);
+}

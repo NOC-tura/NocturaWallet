@@ -63,6 +63,7 @@ describe('#12 send', () => {
     expect(screen.getByRole('alert').textContent).toBe(` ${SEND_TEXT.invalid}`);
     expect(document.querySelector('.recipient-row')?.classList.contains('app-row-error')).toBe(true);
     expect(document.querySelector('.recipient-row .input')?.classList.contains('invalid')).toBe(true);
+    expect(screen.getByRole('button', {name: 'Clear recipient'}).classList.contains('app-danger')).toBe(true);
     expect(document.querySelector('.fee-row .line .r')?.textContent).toBe('—');
     expect(document.querySelector('.amount-row')?.classList.contains('app-row-dim')).toBe(true);
     expect(cta().disabled).toBe(true);
@@ -122,6 +123,9 @@ describe('#12 send', () => {
     type('Recipient', COUNTERPARTY);
     type('Amount', '12');
     expect(await screen.findByText(SEND_TEXT.firstTitle)).toBeTruthy();
+    // Design state 6: the banner is role="status" (a warning to read, not an alert), and the field carries no action.
+    expect(screen.getByText(SEND_TEXT.firstTitle).closest('.banner')?.getAttribute('role')).toBe('status');
+    expect(document.querySelector('.recipient-row .input-actions button')).toBeNull();
     expect(screen.getByText(SEND_TEXT.firstLine)).toBeTruthy();
     expect(screen.getByText(SEND_TEXT.neverSent, {exact: false})).toBeTruthy();
     const groups = [...document.querySelectorAll('.app-send-addr .addr-groups > span')].map(s => s.textContent);
@@ -249,7 +253,7 @@ describe('#12 send', () => {
   });
 
   it('paste fills the field; a refused clipboard says how to paste instead', async () => {
-    await renderSend();
+    await renderSend(known(COUNTERPARTY, null));
     await loaded();
     Object.defineProperty(navigator, 'clipboard', {value: {readText: async () => ` ${COUNTERPARTY}\n`}, configurable: true});
     fireEvent.click(screen.getByRole('button', {name: 'Paste'}));
@@ -258,6 +262,94 @@ describe('#12 send', () => {
     Object.defineProperty(navigator, 'clipboard', {value: {readText: async () => Promise.reject(new Error('NotAllowedError'))}, configurable: true});
     fireEvent.click(screen.getByRole('button', {name: 'Paste'}));
     expect(await screen.findByText(SEND_TEXT.pasteRefused)).toBeTruthy();
+  });
+
+  // Fix round 1, #2: the clipboard is read on the user's gesture only — never on mount.
+  it('the clipboard is not read until Paste is clicked', async () => {
+    const readText = vi.fn(async () => COUNTERPARTY);
+    Object.defineProperty(navigator, 'clipboard', {value: {readText}, configurable: true});
+    await renderSend(known(COUNTERPARTY, null));
+    await loaded();
+    type('Amount', '0.01');
+    expect(readText).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', {name: 'Paste'}));
+    await waitFor(() => expect(field('Recipient').value).toBe(COUNTERPARTY));
+    expect(readText).toHaveBeenCalledTimes(1);
+  });
+
+  // Fix round 1, #4: a paste that answers after the user typed, or after #12 left, is dropped.
+  it('a late paste is dropped once the user has typed, and after #12 left', async () => {
+    let answer: (t: string) => void = () => undefined;
+    Object.defineProperty(navigator, 'clipboard', {value: {readText: () => new Promise<string>(r => (answer = r))}, configurable: true});
+    const w = await setupWallet(known(COUNTERPARTY, null));
+    const tree = (shown: boolean) => (
+      <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
+        {shown ? <Send draft={null} notice={null} {...nav} /> : <div>gone</div>}
+      </WalletProvider>
+    );
+    const {rerender} = render(tree(true));
+    await loaded();
+    fireEvent.click(screen.getByRole('button', {name: 'Paste'}));
+    type('Recipient', RECIPIENT);
+    await act(async () => answer(COUNTERPARTY));
+    expect(field('Recipient').value).toBe(RECIPIENT);
+    // After #12 left: the answer has nowhere to land, and nothing throws.
+    fireEvent.click(screen.getByRole('button', {name: 'Clear recipient'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Paste'}));
+    rerender(tree(false));
+    await act(async () => answer(COUNTERPARTY));
+    expect(screen.getByText('gone')).toBeTruthy();
+  });
+
+  // Fix round 1, #3: an invisible character never passes as part of an address.
+  it('an address with a zero-width space after it is invalid', async () => {
+    await renderSend();
+    await loaded();
+    type('Recipient', `${COUNTERPARTY}\u200b`);
+    expect(screen.getByRole('alert').textContent).toBe(` ${SEND_TEXT.invalid}`);
+    expect(cta().disabled).toBe(true);
+  });
+
+  // Fix round 1, #1: the sending account is refused from the text itself, even when E6 fails (or has not answered).
+  it('the sending account with E6 failing: the self line, the CTA disabled, onReview never called', async () => {
+    const w = await setupWallet();
+    const engine = createEngine(async m => {
+      const msg = m as {type?: string};
+      if (msg.type === 'wallet.recipientInfo') return {ok: false, error: 'malformed'};
+      return w.transport(m);
+    }, async () => undefined);
+    render(
+      <WalletProvider engine={engine} platform={w.platform} surface="popup">
+        <Send draft={null} notice={null} {...nav} />
+      </WalletProvider>,
+    );
+    await loaded();
+    type('Recipient', ACCOUNT.publicKey);
+    type('Amount', '0.01');
+    expect(screen.getByText(SEND_TEXT.self, {exact: false})).toBeTruthy();
+    expect(cta().disabled).toBe(true);
+    cta().disabled = false;
+    fireEvent.click(cta());
+    expect(nav.onReview).not.toHaveBeenCalled();
+  });
+
+  // Fix round 1, #5: an amount that does not parse says so (controller addition, awaiting the owner).
+  it('an amount that does not parse: the invalid-amount line, the CTA disabled', async () => {
+    await renderSend(known(COUNTERPARTY, null));
+    await loaded();
+    fireEvent.click(screen.getByRole('button', {name: 'Token: SOL'}));
+    fireEvent.click(within(screen.getByRole('dialog', {name: 'Choose a token'})).getByText('USD Coin'));
+    type('Recipient', COUNTERPARTY);
+    type('Amount', '1.1234567');
+    expect(document.querySelector('.amount-row .helper.error')?.textContent).toBe(' Not a valid amount — digits, with up to 6 decimals');
+    expect(document.querySelector('.amount-row')?.classList.contains('app-row-error')).toBe(true);
+    expect(cta().disabled).toBe(true);
+    type('Amount', '1.123456');
+    expect(document.querySelector('.amount-row .helper.error')).toBeNull();
+    for (const bad of ['abc', '1,5', '-1', '.5']) {
+      type('Amount', bad);
+      expect(screen.getByText(SEND_TEXT.invalidAmount(6))).toBeTruthy();
+    }
   });
 
   it('a recipientInfo reply for an address the field no longer holds is dropped (the generation check)', async () => {

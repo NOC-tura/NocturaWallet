@@ -41,6 +41,8 @@ export const SEND_TEXT = {
   pasteRefused: 'Paste with Ctrl+V (⌘V on a Mac).',
   /** §4.5's loop guard sends the user back here with it. */
   startAgain: 'Something went wrong — start the send again.',
+  /** Controller addition (plan 3 fix round 1) — awaiting the owner: §4.2 gives no copy for an amount that does not parse. */
+  invalidAmount: (decimals: number): string => `Not a valid amount — digits, with up to ${decimals} decimals`,
 } as const;
 
 const EMPTY_DRAFT: Draft = {token: 'SOL', recipient: '', amount: ''};
@@ -98,6 +100,9 @@ export function Send({
   const invalid = address !== '' && !valid;
   const key = account?.publicKey ?? null;
 
+  // A paste that answers after the user typed, cleared or left is dropped (the same generation idea as E6's).
+  const pasteGeneration = useRef(0);
+
   // E6, each time the field holds a valid address: local, no network. A reply for an address the field no longer
   // holds — or after the screen left — is dropped (the generation check).
   const generation = useRef(0);
@@ -114,6 +119,7 @@ export function Send({
   useEffect(
     () => () => {
       generation.current += 1;
+      pasteGeneration.current += 1;
     },
     [],
   );
@@ -121,12 +127,14 @@ export function Send({
   const decimals = TOKEN_INFO[token].decimals;
   const parsed = parseAmount(amountText, decimals);
   const amount = parsed !== null && parsed > 0n ? parsed : null;
+  const badAmount = amountText !== '' && parsed === null;
   const balance = m.balances === null ? null : m.balances[balanceKey(token)];
   const short = amount !== null && balance !== null && amount > balance ? amount - balance : null;
   const solShort = token !== 'SOL' && m.balances !== null && m.balances.sol < BASE_FEE_LAMPORTS;
   const refused = m.net.mode === 'refused';
   const open = m.pending.find(p => p.account === key && (p.state === 'pending' || p.state === 'stuck'));
-  const self = info?.self === true;
+  // The sending account itself is refused from the text alone — never only on E6's answer, which may fail or come late.
+  const self = (key !== null && address === key) || info?.self === true;
   const firstTime = valid && info !== null && !info.known && !self;
   const reasons = valid && amount !== null ? predictReasons({known: info?.known ?? false, token, amount, balance, prices: m.prices, thresholdCents: threshold}) : [];
   // A send the CTA refuses anyway (short, or no SOL for the fee) predicts nothing: the design's state 4 reads
@@ -142,13 +150,19 @@ export function Send({
     setMaxText(text);
   };
   const paste = async () => {
+    const mine = ++pasteGeneration.current;
     setPasteRefused(false);
     try {
       const text = await navigator.clipboard.readText();
-      setRecipient(text.trim());
+      if (pasteGeneration.current === mine) setRecipient(text.trim());
     } catch {
-      setPasteRefused(true);
+      if (pasteGeneration.current === mine) setPasteRefused(true);
     }
+  };
+  const edit = (text: string) => {
+    pasteGeneration.current += 1;
+    setRecipient(text);
+    setPasteRefused(false);
   };
   const review = () => {
     if (!ready || amount === null) return;
@@ -164,14 +178,14 @@ export function Send({
     );
   } else if (pasteRefused && address === '') {
     helper = <div className="helper warn">{SEND_TEXT.pasteRefused}</div>;
+  } else if (valid && self) {
+    helper = (
+      <div className="helper error" role="alert">
+        <ExtIcon name="alert" size={12} /> {SEND_TEXT.self}
+      </div>
+    );
   } else if (valid && info !== null) {
-    if (self) {
-      helper = (
-        <div className="helper error" role="alert">
-          <ExtIcon name="alert" size={12} /> {SEND_TEXT.self}
-        </div>
-      );
-    } else if (!info.known) {
+    if (!info.known) {
       helper = (
         <div className="helper warn">
           <ExtIcon name="alert" size={12} /> {SEND_TEXT.neverSent}
@@ -237,7 +251,7 @@ export function Send({
           </div>
         )}
         {firstTime ? (
-          <Banner tone="warning" title={SEND_TEXT.firstTitle}>
+          <Banner tone="warning" role="status" title={SEND_TEXT.firstTitle}>
             {SEND_TEXT.firstLine}
           </Banner>
         ) : null}
@@ -261,18 +275,16 @@ export function Send({
               autoComplete="off"
               spellCheck={false}
               value={recipient}
-              onChange={e => {
-                setRecipient(e.target.value);
-                setPasteRefused(false);
-              }}
+              onChange={e => edit(e.target.value)}
             />
             <div className="input-actions">
               {recipient === '' ? (
                 <button type="button" aria-label="Paste" onClick={() => void paste()}>
                   <ExtIcon name="clip" size={18} />
                 </button>
-              ) : (
-                <button type="button" aria-label="Clear recipient" onClick={() => setRecipient('')}>
+              ) : firstTime ? null : (
+                // Design state 6 draws no field action; state 3 tints Clear --danger.
+                <button type="button" aria-label="Clear recipient" className={invalid ? 'app-danger' : undefined} onClick={() => edit('')}>
                   <ExtIcon name="close" size={18} />
                 </button>
               )}
@@ -285,14 +297,14 @@ export function Send({
             </div>
           ) : null}
         </div>
-        <div className={`row amount-row${invalid ? ' app-row-dim' : short !== null ? ' app-row-error' : ''}`}>
+        <div className={`row amount-row${invalid ? ' app-row-dim' : short !== null || badAmount ? ' app-row-error' : ''}`}>
           <label className="lbl noc-overline" htmlFor="send-amount">
             Amount
           </label>
           <div className="amount-line">
             <input
               id="send-amount"
-              className={`amount noc-balance-lg noc-numeral${short !== null ? ' app-danger' : ''}`}
+              className={`amount noc-balance-lg noc-numeral${short !== null || badAmount ? ' app-danger' : ''}`}
               placeholder="0.000000"
               inputMode="decimal"
               autoComplete="off"
@@ -305,6 +317,11 @@ export function Send({
           </div>
           {available}
           {token === 'SOL' && maxText !== null && amountText === maxText ? <div className="helper ok">{SEND_TEXT.maxHelper}</div> : null}
+          {badAmount ? (
+            <div className="helper error" role="alert">
+              <ExtIcon name="alert" size={12} /> {SEND_TEXT.invalidAmount(decimals)}
+            </div>
+          ) : null}
           {short === null ? null : (
             <div className="helper error" role="alert">
               <ExtIcon name="alert" size={12} /> Insufficient balance — short by <span className="noc-numeral">{`${showExact(token, short)} ${token}`}</span>

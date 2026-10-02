@@ -1391,6 +1391,16 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     anyway (short, or no SOL for the fee) predicts no re-authentication. "· ≈ $…" on the available line
     is the typed amount's value (design state 5). The priority line stays in the first-time state (the
     design's state 6 draws only the network fee).
+  - **Plan 3 fix round 1:** an amount that does not parse reads "Not a valid amount — digits, with up
+    to N decimals" (N = the token's decimals), the amount row in `--danger`, CTA disabled — **controller
+    addition — awaiting the owner** (§4.2 gives no copy for it). The sending account is refused from the
+    field's text itself (the address equals the account's key), not only from E6's `self`, so a failed or
+    late E6 reply never lets it through. Matched to the design rather than listed: the Clear button is
+    tinted `--danger` in the invalid state (state 3), and the first-time state draws no field action
+    (state 6: no Clear, no Paste). Still differs: in the insufficient and sent-before states the design
+    draws the recipient truncated "9rsR…hN4q" with an Edit button; #12 keeps the full address in the
+    editable field with Clear — the field is the input, and a truncated address is one the user can no
+    longer check or correct in place.
   - Priority chips Normal/Fast/Instant removed (D15). The engine picks, and the fee shows on #19.
   - `.sol` resolution and its state "marko.sol → Resolved …" removed (D16).
   - Scan icon removed (D13).

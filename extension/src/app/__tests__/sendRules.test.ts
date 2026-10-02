@@ -37,6 +37,12 @@ describe('the send flow’s rules', () => {
     for (const bad of ['', `0${RECIPIENT.slice(1)}`, RECIPIENT.slice(0, 31), `${RECIPIENT} `, `${RECIPIENT}x`, 'marko.sol', '1'.repeat(45), 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz']) {
       expect(`${bad}: ${isAddressText(bad)}`).toBe(`${bad}: false`);
     }
+    // Fix round 1, #3: the invisible characters a paste can carry — before, after, and inside the address.
+    for (const z of ['\u200b', '\u200c', '\u200d', '\ufeff']) {
+      for (const bad of [`${RECIPIENT}${z}`, `${z}${RECIPIENT}`, `${RECIPIENT.slice(0, 10)}${z}${RECIPIENT.slice(10)}`]) {
+        expect(`${JSON.stringify(bad)}: ${isAddressText(bad)}`).toBe(`${JSON.stringify(bad)}: false`);
+      }
+    }
   });
 
   it('a route draft is the user’s own text, bounded; an intent is a known token, an address and a positive u64', () => {
