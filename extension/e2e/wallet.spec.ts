@@ -3,7 +3,7 @@ import {readFileSync, rmSync} from 'node:fs';
 import {BLOCKHASH_LIFETIME, installFakeCoordinator, type FakeCoordinator} from './fakeCoordinator';
 import {makeEnvelope, E2E_PASSWORD} from './makeEnvelope';
 import {containNocTura, containSolscan, expectContained, launchContained} from './launch';
-import {createWallet, unlockWith} from './vaultPage';
+import {createWallet, recordSent, sentFrom, unlockWith} from './vaultPage';
 // Read from the source rather than imported: core/ has no package.json "type", so Playwright's loader
 // on Node 22 (CI) treats core/solana/rpc.ts as CommonJS and cannot take a named export from it.
 // The same literal the RPC-method gate parses; not found means it moved — fail loudly.
@@ -63,14 +63,22 @@ const pendingState = async (page: Page, signature: string): Promise<string | und
  * Re-authenticate a challenge through the real vault page (#10). After the proof the same tab hands
  * over to the UI tab's resume route (D38) — nothing is sent from the vault page.
  */
-async function reauthenticate(ctx: BrowserContext, id: string, challengeId: string, password: string, account: string): Promise<void> {
+async function reauthenticate(ctx: BrowserContext, fake: FakeCoordinator, id: string, challengeId: string, password: string, account: string): Promise<void> {
   const vault = await ctx.newPage();
   try {
+    await recordSent(vault);
     await vault.goto(`chrome-extension://${id}/unlock.html?mode=reauth&challenge=${challengeId}`);
     await expect(vault.locator('#ra-about')).toHaveText('You are about to send');
     await vault.fill('#ra-password', password);
     await vault.click('#ra-confirm');
     await vault.waitForURL(`chrome-extension://${id}/wallet.html#/send/resume?account=${account}`, {timeout: 60_000});
+    // The resume stand-in, in a real browser (plan-2 review M7): it renders, and it sends nothing.
+    await expect(vault.getByText('Open the Noctura icon to continue.')).toBeVisible();
+    expect(fake.broadcasts).toEqual([]);
+    // Neither #10 nor the stand-in in the same tab ever asked for a send (the recorder saw the proof, so it ran).
+    const sent = (await sentFrom(vault)).map(m => m.type);
+    expect(sent).toContain('vault.reauthOk');
+    expect(sent).not.toContain('wallet.send');
   } finally {
     await vault.close();
   }
@@ -130,7 +138,7 @@ test('create a wallet, unlock it, re-authenticate a first send, send SOL: pendin
     expect(await msg(popup, {type: 'wallet.send', id: view.id})).toEqual({ok: false, error: 'reauth-required', data: {challengeId}});
     expect(fake.broadcasts).toEqual([]);
 
-    await reauthenticate(ctx, id, challengeId, NEW_PASSWORD, account);
+    await reauthenticate(ctx, fake, id, challengeId, NEW_PASSWORD, account);
     // The vault page broadcast nothing: the send waits for a tap (D38).
     expect(fake.broadcasts).toEqual([]);
 

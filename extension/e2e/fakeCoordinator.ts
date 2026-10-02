@@ -31,8 +31,10 @@ export interface FakeCoordinator {
    * aborts every request — no answer at all (#42).
    */
   network: 'ok' | 'forbidden' | 'unreachable';
-  /** SOL per address, lamports; anything unlisted holds 10 SOL. */
+  /** SOL per address, lamports; anything unlisted holds `defaultLamports`. */
   lamports: Map<string, number>;
+  /** What an unlisted address holds (10 SOL unless a spec sets an empty chain). */
+  defaultLamports: number;
   /** What getAccountInfo says an address is (E2); anything unlisted does not exist. */
   accountKinds: Map<string, 'wallet' | 'program' | 'other'>;
   /** The simulation's error switch (E2): err set and accounts null, as the real RPC answers. */
@@ -104,6 +106,7 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     unexpected: [],
     network: 'ok',
     lamports: new Map(),
+    defaultLamports: 10_000_000_000,
     accountKinds: new Map(),
     simulateError: false,
     simulations: [],
@@ -123,7 +126,7 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     }),
   });
 
-  const lamportsOf = (address: string): number => fake.lamports.get(address) ?? 10_000_000_000;
+  const lamportsOf = (address: string): number => fake.lamports.get(address) ?? fake.defaultLamports;
 
   /**
    * What a node answers: the requested accounts after the transaction, WITHOUT the fee (the engine
@@ -164,7 +167,15 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       case 'getTokenAccountsByOwner':
         return {context: context(), value: []};
       case 'getMultipleAccounts':
-        return {context: context(), value: (params[0] as unknown[]).map(() => null)};
+        // Each address as the node reports it: a system account holding its lamports, or null when it holds
+        // none (the import probe reads balances this way — the same `lamports` table as getBalance).
+        return {
+          context: context(),
+          value: (params[0] as string[]).map(a => {
+            const lamports = lamportsOf(a);
+            return lamports > 0 ? {lamports, owner: '11111111111111111111111111111111', data: ['', 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 0} : null;
+          }),
+        };
       case 'getAccountInfo': {
         const kind = fake.accountKinds.get(params[0] as string);
         if (kind === undefined) return {context: context(), value: null};
