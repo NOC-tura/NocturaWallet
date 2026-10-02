@@ -186,9 +186,9 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
         <div className="scroll">
           <div className="amount-card app-failed">
             {/*
-              The 'FAILED · SENT' arm cannot be reached in plan 1: core/solana/history.ts decodes every
-              failed transaction as `other` with no token, so this reads "FAILED" and "—" — the plan-1
-              stand-in declared in spec §6.3 Differs (owner decision in plan 3). Kept for that decision.
+              A failed send carries what it tried to send (core/solana/history.ts, plan 3 owner question 1,
+              option A): "FAILED · SENT" and "— SOL", as 27d draws a failed card. Any other failed transaction
+              has no kind or token to name: "FAILED" and "—".
             */}
             <div className="eyebrow noc-overline">{item.kind === 'sent' ? 'FAILED · SENT' : 'FAILED'}</div>
             <div className="amt noc-balance-lg noc-numeral">{item.token === null ? '—' : `— ${item.token}`}</div>

@@ -62,24 +62,25 @@ test('visual: the plan-1 screens and states at 412 × 600', async () => {
 
     await p.getByRole('button', {name: 'Activity'}).click();
     // All five rows, the slowest (~5 s a page at 2 getTransaction/s) last.
-    for (const t of ['Sent SOL', 'Received USDC', 'Presale purchase', 'Other transaction', 'Failed · transaction']) await expect(p.getByText(t)).toBeVisible({timeout: 30_000});
+    for (const t of ['Sent SOL', 'Received USDC', 'Presale purchase', 'Other transaction', 'Failed · sent SOL']) await expect(p.getByText(t, {exact: true})).toBeVisible({timeout: 30_000});
     await shot(p, '26-loaded-mixed');
     await p.locator('main.app-content').evaluate(e => e.scrollTo(0, e.scrollHeight));
-    await expect(p.getByText('Failed · transaction')).toBeInViewport();
+    await expect(p.getByText('Failed · sent SOL')).toBeInViewport();
     await shot(p, '26-loaded-mixed-end');
     await p.getByRole('tab', {name: 'Sent'}).click();
     await expect(p.getByRole('tab', {name: 'Sent'})).toHaveAttribute('aria-selected', 'true');
-    await expect(p.locator('button.tx-row .pri')).toHaveText(['Sent SOL']);
+    // A failed send is a send (plan 3, owner question 1, option A): it shows under "Sent", marked Failed.
+    await expect(p.locator('button.tx-row .pri')).toHaveText(['Sent SOL', 'Failed · sent SOL']);
     await shot(p, '26-filter-sent');
     await p.getByRole('tab', {name: 'All'}).click();
     const details = [
       ['Sent SOL', 'SENT', '27-transparent-send'],
       ['Received USDC', 'RECEIVED', '27-received'],
-      ['Failed · transaction', 'FAILED', '27-failed'],
+      ['Failed · sent SOL', 'FAILED · SENT', '27-failed'],
       ['Presale purchase', 'PRESALE PURCHASE', '27-purchase'],
     ] as const;
     for (const [title, eyebrow, name] of details) {
-      await p.getByText(title).click();
+      await p.getByText(title, {exact: true}).click();
       await expect(p.locator('.amount-card .eyebrow')).toHaveText(eyebrow);
       // Opened at the top (fix round 1, A1): the top bar is in view, not scrolled past.
       await expect(p.getByText('Transaction', {exact: true})).toBeInViewport();

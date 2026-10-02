@@ -1916,12 +1916,19 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     They are a scanning aid; verification surfaces (#20, #27, #10, #13) show the full address (§11
     conflict 7).
   - Pull-to-refresh becomes the button (D2).
-  - **Plan-1 stand-in — failed rows** (Task 17 fix round 1): `core/solana/history.ts` decodes every
-    failed transaction as `other` with no token or amount (`if (failed) return other;`), so a failed
-    row reads "Failed · transaction" / "the network fee was charged" / "—" (red `.ic.fail` with the
-    ✕ glyph), not "Failed · sent SOL"; and the **Sent filter does not include failed sends** (a failed
-    row matches only "All"). The design's failed row ("— SOL" with the fee in dollars beneath) needs
-    the attempted kind and token, which the decoder does not keep. Owner decision in plan 3.
+  - **Failed rows — plan 3, owner question 1, built with the recommended option A (pending the owner's
+    answer):** `core/solana/history.ts` reads what a failed transaction tried to send from its own
+    instructions — exactly one transfer from this account (a System transfer, or an SPL
+    TransferChecked/Transfer of a token the wallet knows), which paid for it (its first key); a batch
+    of transfers or an unknown mint stays `other` (plan-3 review H1: #27's `[Try again]` proposes what
+    was decoded). Only top-level instructions are read: a transfer a program makes for this account
+    (an inner, CPI instruction — a dApp's wrapped transfer) stays "Failed · transaction", the honest
+    limit of option A — so a failed send reads "Failed · sent SOL" / "the network fee was charged" / "— SOL"
+    (red `.ic.fail` with the ✕ glyph), as 26b draws the failed row, and shows under "Sent" as well as
+    "All". A failed transaction this account did not sign, or one that is not a transfer, still reads
+    "Failed · transaction" / … / "—" and shows under "All" only. The design's fee in dollars under the
+    amount is not shown: no row carries fiat (above). (Plan 1 decoded every failed transaction as
+    `other`.)
   - **Purchase row:** the design has no purchase row; it follows 26b's swap row (`.ic.swap` with
     `#i-swap`).
   - **Other row:** the design's no-funds row (`.ic` neutral, `#i-doc`, 26b) is used, but its amount
@@ -1963,10 +1970,11 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   - The 6+6 checksum highlight is replaced by groups of four (spec §3).
   - The shielded/dApp state 27b is hidden (D4, B1c).
   - Fiat is labelled "now" as marked.
-  - **Plan-1 stand-in — failed** (Task 17 fix round 1; see §6.2's failed-rows entry): the decoder
-    gives a failed transaction as `other` with no token, so #27 reads eyebrow "FAILED" (not "FAILED ·
-    SENT") and amount "—" (not "— SOL"); `[Try again]` is absent until the send flow (plan 3).
-    `TxDetail.tsx` keeps the "FAILED · SENT" arm for that decision. Owner decision in plan 3.
+  - **Failed — plan 3, owner question 1, option A** (see §6.2's failed-rows entry): a failed send reads
+    eyebrow "FAILED · SENT" and amount "— SOL", with `[Try again]` → #19 for the same intent when the
+    decoded recipient and amount are known (the engine re-checks everything on prepare, and #20 shows
+    the whole address and its first-send warning before one tap sends); any other failed transaction
+    reads "FAILED" and "—", with no `[Try again]`.
   - 27d's "Reason", "Tried to swap", "Slippage limit" and "Observed move" rows are a swap's; a failed
     transfer has none of them (no swaps, and no failure reason in `HistoryView`).
   - `received`: "To" shows the full address in groups with Copy (a verification surface, §11

@@ -135,7 +135,7 @@ describe('#27 tx-detail', () => {
     expect(screen.getByText('0.000 005 SOL')).toBeTruthy();
   });
 
-  it('a failed transaction: the danger pill and banner, the fee charged; no Try again in plan 1', async () => {
+  it('a failed transaction that was not a send: "FAILED", a dash, the danger pill and banner, the fee charged; no Try again', async () => {
     const w = renderInWallet(<TxDetail signature={sig(5)} item={item({signature: sig(5), kind: 'other', token: null, amount: null, counterparty: null, failed: true})} onBack={() => undefined} />);
     await w;
     expect(await screen.findByText('FAILED')).toBeTruthy();
@@ -146,6 +146,16 @@ describe('#27 tx-detail', () => {
     expect(screen.getByText('The transaction failed on chain. The network fee was charged; the amount did not move.')).toBeTruthy();
     expect(screen.getByText('Network fee charged')).toBeTruthy();
     expect(screen.queryByText('Try again')).toBeNull();
+  });
+
+  // Plan 3, owner question 1 (option A): the engine reads what a failed send tried to send.
+  it('a failed send: "FAILED · SENT" and "— SOL", the danger pill and banner, the fee charged', async () => {
+    await renderInWallet(<TxDetail signature={sig(5)} item={item({signature: sig(5), amount: 1_000_000n, counterparty: COUNTERPARTY, failed: true})} onBack={() => undefined} />);
+    expect(await screen.findByText('FAILED · SENT')).toBeTruthy();
+    expect(document.querySelector('.amount-card .amt')?.textContent).toBe('— SOL');
+    expect(await screen.findByText('Fee charged · $0.0007')).toBeTruthy();
+    expect(document.querySelector('.status-pill.fail')?.textContent).toBe('Failed');
+    expect(screen.getByText('The transaction failed on chain. The network fee was charged; the amount did not move.')).toBeTruthy();
   });
 
   it('a presale purchase and an other: their eyebrows and the decoded fields that exist', async () => {
