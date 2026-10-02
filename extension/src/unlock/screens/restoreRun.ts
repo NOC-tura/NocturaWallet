@@ -36,8 +36,9 @@ function sameWallet(a: EnvelopeV1, b: EnvelopeV1): boolean {
  * A `failed` answer may be a lost reply over a restore that landed (final review item 1, retryRun's model):
  * the stored vault is read first, and again before a [Try again] sends anything. A new revision of the same
  * wallet (its scheme and every account, in order) is our restore → handed over as restored-locked
- * (#/imported); still the proven revision → [Try again] with the same proof; anything else (another
- * wallet, none, damaged, unreadable) → `busy`. Our own restore is never answered "The wallet changed".
+ * (#/imported); still the proven revision → [Try again] with the same proof; no wallet and a damaged one
+ * get their own lines, as retryRun says them (ruling, final review concern 2); anything else (another
+ * wallet, unreadable) → `busy`. Our own restore is never answered "The wallet changed".
  *
  * What holds the phrase, and for how long (Scope 19): #8's field while it is typed; the seed proof — the
  * phrase inside it — from the match until the run ends: restored, every notice, Back from #5 (the phrase
@@ -74,7 +75,7 @@ export function createRestoreRun(deps: PageDeps, o: {password: PasswordScreen}):
   };
 
   /** After a `failed` answer: did the replacement land (a new revision of this wallet), is the proven one still stored, or neither? */
-  const landed = async (held: SeedProof): Promise<'landed' | 'proven' | 'other'> => {
+  const landed = async (held: SeedProof): Promise<'landed' | 'proven' | 'none' | 'damaged' | 'other'> => {
     let raw: unknown;
     try {
       raw = await deps.store.readEnvelope();
@@ -82,7 +83,7 @@ export function createRestoreRun(deps: PageDeps, o: {password: PasswordScreen}):
       return 'other';
     }
     const stored = storedVault(raw);
-    if (stored.kind !== 'wallet') return 'other';
+    if (stored.kind !== 'wallet') return stored.kind;
     if (envelopeRevision(stored.env) === held.revision) return 'proven';
     return sameWallet(stored.env, held.env) ? 'landed' : 'other';
   };
@@ -103,6 +104,14 @@ export function createRestoreRun(deps: PageDeps, o: {password: PasswordScreen}):
       if (started !== generation) return null;
       if (now === 'landed') {
         restored();
+        return null;
+      }
+      if (now === 'none') {
+        notice(COMMON.noWallet, '', setUp);
+        return null;
+      }
+      if (now === 'damaged') {
+        notice(COMMON.damaged, COMMON.damagedHelp, null);
         return null;
       }
       if (now === 'other') {
@@ -143,9 +152,17 @@ export function createRestoreRun(deps: PageDeps, o: {password: PasswordScreen}):
         // A lost reply may hide a restore that landed: the vault says which.
         const now = await landed(held);
         if (started !== generation) return null;
+        // Landed: restored, whether the keys reached the background unknown — handed over as restored-locked.
         if (now === 'landed') {
-          // Restored; whether the keys reached the background is unknown — handed over as restored-locked.
           restored();
+          return null;
+        }
+        if (now === 'none') {
+          notice(COMMON.noWallet, '', setUp);
+          return null;
+        }
+        if (now === 'damaged') {
+          notice(COMMON.damaged, COMMON.damagedHelp, null);
           return null;
         }
         if (now === 'other') {

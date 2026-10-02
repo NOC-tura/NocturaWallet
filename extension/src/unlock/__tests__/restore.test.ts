@@ -741,8 +741,6 @@ describe('#8 restore path: a lost reply (final review item 1)', () => {
 
   it.each([
     ['another wallet stored meanwhile', 'other'],
-    ['the stored vault gone', 'none'],
-    ['the stored vault damaged', 'damaged'],
     ['the vault unreadable', 'unreadable'],
   ])('anything else after a failed answer (%s): busy — back to #8 with [Start again]', async (_name, what) => {
     let unreadable = false;
@@ -756,9 +754,7 @@ describe('#8 restore path: a lost reply (final review item 1)', () => {
         if (what === 'other') {
           const keys = await derivePublicKeys(OTHER, 'slip10', [0]);
           await h.ext.local.set(VAULT_KEY, await createEnvelope({mnemonic: OTHER, password: OLD_PW, scheme: 'slip10', accounts: [{index: 0, name: 'Main', publicKey: keys[0] ?? ''}], kdf: testKdf}));
-        } else if (what === 'none') await h.ext.local.remove(VAULT_KEY);
-        else if (what === 'damaged') await h.ext.local.set(VAULT_KEY, null);
-        else unreadable = true;
+        } else unreadable = true;
         throw new Error('the reply was lost');
       },
     });
@@ -770,6 +766,67 @@ describe('#8 restore path: a lost reply (final review item 1)', () => {
     expect([run.holds(), pw.holds()]).toEqual([{proof: false}, false]);
     expect(h.went).toEqual([]);
     // The one replacement was answered by the wrapper (never reached the background), and nothing was sent again.
+    expect(h.sent).toEqual([]);
+  }, 30_000);
+});
+
+// Ruling (final review, concern 2): the true lines, as retryRun says them — not `busy`.
+describe('#8 restore path: the vault gone or damaged after a failed answer', () => {
+  const failsAfter = (change: (h: Harness) => Promise<void>, ref: {h: Harness | null}) => (inner: Send): Send => async m => {
+    if ((m as {type: string}).type !== 'vault.forgetWallet') return inner(m);
+    if (ref.h !== null) await change(ref.h);
+    throw new Error('the reply was lost');
+  };
+
+  it('gone: the no-wallet line and [Set up a wallet] → welcome, nothing held, nothing sent again', async () => {
+    const ref: {h: Harness | null} = {h: null};
+    const h = await restoring({send: failsAfter(x => x.ext.local.remove(VAULT_KEY), ref)});
+    ref.h = h;
+    await phrase(h, M);
+    await newPassword(h);
+    await h.until(() => visible(el('imp-notice')) && !h.deps.gate.isBusy());
+    expect(text(el('imp-notice-line'))).toBe('No wallet on this browser yet.');
+    expect(visible(el('imp-notice-help'))).toBe(false);
+    expect(text(el('imp-action'))).toBe('Set up a wallet');
+    expect([run.holds(), pw.holds()]).toEqual([{proof: false}, false]);
+    expect(h.sent).toEqual([]);
+    click(el('imp-action'));
+    await idle(h);
+    expect(h.went).toEqual(['unlock.html?mode=welcome']);
+  }, 30_000);
+
+  it('damaged: the damaged lines, no action, nothing held, nothing sent again', async () => {
+    const ref: {h: Harness | null} = {h: null};
+    const h = await restoring({send: failsAfter(x => x.ext.local.set(VAULT_KEY, null), ref)});
+    ref.h = h;
+    await phrase(h, M);
+    await newPassword(h);
+    await h.until(() => visible(el('imp-notice')) && !h.deps.gate.isBusy());
+    expect(text(el('imp-notice'))).toBe("This wallet's stored data is damaged. Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase.");
+    expect(visible(el('imp-action'))).toBe(false);
+    expect([run.holds(), pw.holds()]).toEqual([{proof: false}, false]);
+    expect(h.sent).toEqual([]);
+    expect(h.went).toEqual([]);
+  }, 30_000);
+});
+
+describe('#8 restore path: the vault gone or damaged before a [Try again] resends', () => {
+  it.each([
+    ['gone', 'No wallet on this browser yet.', 'Set up a wallet'],
+    ['damaged', "This wallet's stored data is damaged.", null],
+  ])('%s: [Try again] reads the vault first and says so — nothing sent', async (what, line, label) => {
+    const h = await restoring({send: inner => async m => ((m as {type: string}).type === 'vault.forgetWallet' ? Promise.reject(new Error('never delivered')) : inner(m))});
+    await phrase(h, M);
+    await newPassword(h);
+    await h.until(() => text(el('pw-cta')) === 'Try again' && !h.deps.gate.isBusy());
+    if (what === 'gone') await h.ext.local.remove(VAULT_KEY);
+    else await h.ext.local.set(VAULT_KEY, null);
+    click(el('pw-cta'));
+    await h.until(() => visible(el('imp-notice')) && !h.deps.gate.isBusy());
+    expect(text(el('imp-notice-line'))).toBe(line);
+    expect(visible(el('imp-action'))).toBe(label !== null);
+    if (label !== null) expect(text(el('imp-action'))).toBe(label);
+    expect([run.holds(), pw.holds()]).toEqual([{proof: false}, false]);
     expect(h.sent).toEqual([]);
   }, 30_000);
 });
