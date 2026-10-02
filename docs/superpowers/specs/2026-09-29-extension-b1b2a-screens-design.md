@@ -1921,7 +1921,15 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     instructions — exactly one transfer from this account (a System transfer, or an SPL
     TransferChecked/Transfer of a token the wallet knows), which paid for it (its first key); a batch
     of transfers or an unknown mint stays `other` (plan-3 review H1: #27's `[Try again]` proposes what
-    was decoded). Only top-level instructions are read: a transfer a program makes for this account
+    was decoded). Only a PURE send is decoded (Task 4 fix round 1, I1): every top-level instruction
+    must be ComputeBudget, Memo, System advanceNonce, the Noctura fee's transfer to the treasury, an
+    associated-token-account create for the transfer's destination, or the one transfer itself —
+    a swap, a tip beside one, a wrap, a createAccount or a transferWithSeed makes it `other`. The SPL
+    transfer must be under the classic Token program (Token-2022 is `other`), from a source account
+    this account owns (a delegate's transfer is `other`), of more than zero, read exactly (a JSON
+    number above 2^53 is unreadable: `other`); a created destination names its wallet only when it is
+    that wallet's derived ATA for the mint (otherwise the recipient is unknown). Only top-level
+    instructions are read: a transfer a program makes for this account
     (an inner, CPI instruction — a dApp's wrapped transfer) stays "Failed · transaction", the honest
     limit of option A — so a failed send reads "Failed · sent SOL" / "the network fee was charged" / "— SOL"
     (red `.ic.fail` with the ✕ glyph), as 26b draws the failed row, and shows under "Sent" as well as
