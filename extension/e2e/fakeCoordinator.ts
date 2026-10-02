@@ -234,8 +234,11 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       fake.hits.push({url, rpcMethod: method});
       if (body.jsonrpc !== '2.0' || !Array.isArray(body.params)) fake.unexpected.push(`rpc ${method}: not a JSON-RPC 2.0 request`);
       const result = rpcResult(method, body.params ?? []);
-      // A method the fake does not implement answers as a node does: JSON-RPC -32601, never a result.
-      if (result === METHOD_NOT_FOUND) return json(route, 200, {jsonrpc: '2.0', id: body.id ?? 0, error: {code: -32601, message: 'Method not found'}});
+      // A method the fake does not implement answers as the coordinator's proxy answers a method outside its
+      // allowlist (docs/superpowers/specs/2026-09-29-coordinator-broadcast-route.md §3): JSON-RPC -32601
+      // "Method not allowed", never a result. The rest of the fake stays lenient on purpose: it checks no
+      // params shapes beyond what `unexpected` lists.
+      if (result === METHOD_NOT_FOUND) return json(route, 200, {jsonrpc: '2.0', id: body.id ?? 0, error: {code: -32601, message: 'Method not allowed'}});
       return json(route, 200, {jsonrpc: '2.0', id: body.id ?? 0, result});
     }
     fake.hits.push({url, rpcMethod: null});

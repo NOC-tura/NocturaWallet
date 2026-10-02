@@ -32,10 +32,31 @@ export async function createWallet(vault: Page, id: string, password: string, o:
   return words;
 }
 
-/** #3: a real press-and-hold, past the 2 s hold; returns the 24 words read while they are revealed. */
+/** How long into #3's 2 s hold the words must still be hidden (Task 17 review 2). */
+const STILL_HIDDEN_MS = 1_500;
+
+/**
+ * #3: a real press-and-hold, past the 2 s hold; returns the 24 words read while they are revealed. Before the
+ * reveal, a polled check (never a fixed sleep) that nothing shows for the first 1.5 s of the hold: the clock
+ * starts BEFORE the press, so a sample that sees the chip under 1.5 s proves an early reveal, never a slow runner.
+ */
 export async function holdToReveal(vault: Page): Promise<string[]> {
   await vault.locator('#seed-grid').hover();
+  const pressed = Date.now();
   await vault.mouse.down();
+  let early = false;
+  await expect
+    .poll(
+      async () => {
+        const shown = await vault.locator('#seed-chip').isVisible();
+        const elapsed = Date.now() - pressed;
+        if (shown && elapsed < STILL_HIDDEN_MS) early = true;
+        return early || elapsed >= STILL_HIDDEN_MS;
+      },
+      {timeout: 10_000, intervals: [100]},
+    )
+    .toBe(true);
+  expect(early).toBe(false);
   await expect(vault.locator('#seed-chip')).toBeVisible({timeout: 5_000});
   const words = await vault.locator('#seed-grid .term').allTextContents();
   await vault.mouse.up();
@@ -107,7 +128,8 @@ export interface SentMessage {
 }
 
 /**
- * Records, in the tab's sessionStorage, every runtime message the tab's pages send — across the tab's
+ * Records, in the tab's sessionStorage, every runtime message the tab's pages send — this one tab only (the
+ * vault page and whatever it hands over to in the same tab); messages from any other page are not seen — across the tab's
  * same-origin navigations (the vault page hands over to wallet.html in the same tab). Install it before
  * the tab's first navigation. Only the message's type, the forget guard and whether a replacement rode
  * along are kept: a vault.setKeys carries signing keys, and they are never copied anywhere.

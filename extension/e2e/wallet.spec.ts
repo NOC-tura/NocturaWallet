@@ -74,11 +74,22 @@ async function reauthenticate(ctx: BrowserContext, fake: FakeCoordinator, id: st
     await vault.waitForURL(`chrome-extension://${id}/wallet.html#/send/resume?account=${account}`, {timeout: 60_000});
     // The resume stand-in, in a real browser (plan-2 review M7): it renders, and it sends nothing.
     await expect(vault.getByText('Open the Noctura icon to continue.')).toBeVisible();
-    expect(fake.broadcasts).toEqual([]);
-    // Neither #10 nor the stand-in in the same tab ever asked for a send (the recorder saw the proof, so it ran).
-    const sent = (await sentFrom(vault)).map(m => m.type);
-    expect(sent).toContain('vault.reauthOk');
-    expect(sent).not.toContain('wallet.send');
+    // Not one instant (Task 17 review 3): the stand-in stays open for a polled 3 s window, and at every sample
+    // nothing was broadcast and the tab never asked for a send. The recorder covers this one tab only (the
+    // vault page and the stand-in it hands over to); the popup's own sends below are not in it.
+    const quietUntil = Date.now() + 3_000;
+    await expect
+      .poll(
+        async () => {
+          const sent = (await sentFrom(vault)).map(m => m.type);
+          if (sent.includes('wallet.send') || fake.broadcasts.length > 0) return 'sent';
+          return Date.now() >= quietUntil ? 'quiet' : 'waiting';
+        },
+        {timeout: 10_000, intervals: [250]},
+      )
+      .toBe('quiet');
+    // The recorder saw the proof, so it ran.
+    expect((await sentFrom(vault)).map(m => m.type)).toContain('vault.reauthOk');
   } finally {
     await vault.close();
   }

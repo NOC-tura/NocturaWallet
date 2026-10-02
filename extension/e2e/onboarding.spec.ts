@@ -9,6 +9,8 @@ import {createWallet, importWallet, pastePhrase, recordSent, sentFrom, setPasswo
 const OTHER = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
 /** OTHER's SLIP-0010 account 0 (derived once with src/vault/accounts.ts). */
 const OTHER_ACCOUNT = 'BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX';
+/** E2E_MNEMONIC's Solana CLI key (solana-keygen's derivation; derived once with src/vault/accounts.ts, scheme 'cli'). */
+const E2E_CLI_ACCOUNT = 'EHqmfkN89RJ7Y33CXM6uCzhVeuywHoJXZZLszBHHZy7o';
 const NEW_PASSWORD = 'a brand new e2e password';
 const RECIPIENT = '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4';
 
@@ -19,7 +21,7 @@ declare const chrome: {
 const stored = (sw: Worker): Promise<string> => sw.evaluate(async () => JSON.stringify((await chrome.storage.local.get('v1_vault')).v1_vault));
 const msg = async (page: Page, m: unknown) => (await page.evaluate(x => chrome.runtime.sendMessage(x), m)) as {ok: boolean; error?: string; data?: unknown};
 const groups = async (page: Page, scope: string): Promise<string> => (await page.locator(`${scope} .addr-groups > span`).allTextContents()).join('');
-/** The vault.forgetWallet messages the recorded tab sent, as recordSent logged them. */
+/** The vault.forgetWallet messages the recorded tab sent, as recordSent logged them (that one tab only: the vault page and the UI tab it hands over to). */
 const forgets = async (page: Page) => (await sentFrom(page)).filter(m => m.type === 'vault.forgetWallet');
 
 test('1 · onboarding create: #1 → #2 → #3 → #4 → #5 → #6 → #7 shows the address; then the popup is #11; the vault page has Geist', async () => {
@@ -46,32 +48,59 @@ test('1 · onboarding create: #1 → #2 → #3 → #4 → #5 → #6 → #7 shows
   }
 });
 
-test('2 · import: #8 paste → the scheme detected → #5 → #40 with the fake’s balances', async () => {
+/**
+ * #8 paste → the scheme detected from the probe's balances → #5 → #40. Detection must change the outcome
+ * (Task 17 review 1): a probe that reads nothing falls back to slip10 / [0], so each case funds something
+ * that fallback would not import.
+ */
+async function importDetected(h: Harness): Promise<{vault: Page; scheme: string; accounts: string[]}> {
+  const vault = await h.ctx.newPage();
+  await vault.goto(`chrome-extension://${h.id}/unlock.html?mode=import`);
+  await pastePhrase(vault, E2E_MNEMONIC);
+  await expect(vault.getByText('Pasted from clipboard. Noctura cannot clear your clipboard — clear it yourself.')).toBeVisible();
+  await expect(vault.getByText('Valid 12-word BIP-39 phrase · checksum OK')).toBeVisible();
+  await vault.locator('#imp-continue').click();
+  // No choice was offered (exactly one scheme is funded): the run went straight on to #5.
+  await expect(vault.locator('#pw-step')).toHaveText('Import · 2 / 2', {timeout: 30_000});
+  await expect(vault.locator('#imp-choose')).toBeHidden();
+  await setPassword(vault, NEW_PASSWORD);
+  await vault.waitForURL(/\/wallet\.html#\/imported$/, {timeout: 60_000});
+  await expect(vault.getByText('Wallet imported', {exact: true})).toBeVisible({timeout: 30_000});
+  // The probe read the balances (getMultipleAccounts), which is what the scheme and the accounts came from.
+  expect(h.fake.hits.some(x => x.rpcMethod === 'getMultipleAccounts')).toBe(true);
+  const env = JSON.parse(await stored(h.sw)) as {scheme: string; accounts: {publicKey: string}[]};
+  return {vault, scheme: env.scheme, accounts: env.accounts.map(a => a.publicKey)};
+}
+
+test('2 · import: #8 paste → the scheme detected (slip10, accounts 0 … the highest funded) → #5 → #40 with the fake’s balances', async () => {
   const h = await launchPopup('noctura-e2e-import-');
   try {
-    // Only SLIP-0010 account 0 holds anything: detection picks slip10 by itself, accounts 0 … 0.
+    // SLIP-0010 accounts 0 and 1 hold SOL, the CLI key nothing: slip10, accounts [0, 1] — never the fallback's [0].
     h.fake.defaultLamports = 0;
     h.fake.lamports.set(E2E_ACCOUNTS[0], 10_000_000_000);
-    const vault = await h.ctx.newPage();
-    await vault.goto(`chrome-extension://${h.id}/unlock.html?mode=import`);
-    await pastePhrase(vault, E2E_MNEMONIC);
-    await expect(vault.getByText('Pasted from clipboard. Noctura cannot clear your clipboard — clear it yourself.')).toBeVisible();
-    await expect(vault.getByText('Valid 12-word BIP-39 phrase · checksum OK')).toBeVisible();
-    await vault.locator('#imp-continue').click();
-    // The scheme was detected: no choice was offered, the run went straight on to #5.
-    await expect(vault.locator('#pw-step')).toHaveText('Import · 2 / 2', {timeout: 30_000});
-    await expect(vault.locator('#imp-choose')).toBeHidden();
-    await setPassword(vault, NEW_PASSWORD);
-    await vault.waitForURL(/\/wallet\.html#\/imported$/, {timeout: 60_000});
-    await expect(vault.getByText('Wallet imported', {exact: true})).toBeVisible({timeout: 30_000});
+    h.fake.lamports.set(E2E_ACCOUNTS[1], 2_500_000_000);
+    const {vault, ...detected} = await importDetected(h);
+    expect(detected).toEqual({scheme: 'slip10', accounts: [...E2E_ACCOUNTS]});
+    await expect(vault.getByText('2 accounts · 1 token recovered.')).toBeVisible();
+    await expect(vault.locator('.s8-token-row .amt')).toHaveText(['12.5000']);
+    await expect(vault.locator('.s8-token-row .sec')).toHaveText(['Solana · 2 accounts']);
+    expect(await groups(vault, '.s8-addr-chip')).toBe(E2E_ACCOUNTS[0]);
+    contained(h);
+  } finally {
+    await h.close();
+  }
+});
+
+test('2 · import: only the Solana CLI key holds funds → the cli scheme, detected', async () => {
+  const h = await launchPopup('noctura-e2e-import-cli-');
+  try {
+    h.fake.defaultLamports = 0;
+    h.fake.lamports.set(E2E_CLI_ACCOUNT, 10_000_000_000);
+    const {vault, ...detected} = await importDetected(h);
+    expect(detected).toEqual({scheme: 'cli', accounts: [E2E_CLI_ACCOUNT]});
     await expect(vault.getByText('1 account · 1 token recovered. Welcome back.')).toBeVisible();
     await expect(vault.locator('.s8-token-row .amt')).toHaveText(['10.0000']);
-    expect(await groups(vault, '.s8-addr-chip')).toBe(E2E_ACCOUNTS[0]);
-    // Detected from the balances the probe read (getMultipleAccounts: account 0 funded, the CLI key empty): slip10, account 0 only.
-    expect(h.fake.hits.some(x => x.rpcMethod === 'getMultipleAccounts')).toBe(true);
-    const env = JSON.parse(await stored(h.sw)) as {scheme: string; accounts: {publicKey: string}[]};
-    expect(env.scheme).toBe('slip10');
-    expect(env.accounts.map(a => a.publicKey)).toEqual([E2E_ACCOUNTS[0]]);
+    expect(await groups(vault, '.s8-addr-chip')).toBe(E2E_CLI_ACCOUNT);
     contained(h);
   } finally {
     await h.close();
@@ -171,8 +200,9 @@ test('10 · forgot password → restore (E5): a different phrase changes nothing
     // The old password no longer unlocks; the new one does.
     expect(await tryUnlock(vault, h.id, E2E_PASSWORD)).toBe('That did not unlock the wallet.');
     expect(await tryUnlock(vault, h.id, NEW_PASSWORD)).toBe('Unlocked.');
-    // D40: the same wallet was proven, so its known recipients stay. (#12's "Verified · sent before" hint
-    // is plan 3's screen; the engine message it reads is checked here.)
+    // D40: the same wallet was proven, so its known recipients stay. #12's "Verified · sent before" hint is
+    // deferred to plan 3 (its screen is not built yet), so for now spec 10 checks it at the engine level: the
+    // wallet.recipientInfo message that hint will read.
     const ui = await h.ctx.newPage();
     await ui.goto(`chrome-extension://${h.id}/wallet.html#/home`);
     expect(await msg(ui, {type: 'wallet.recipientInfo', account: E2E_ACCOUNTS[0], recipient: RECIPIENT})).toMatchObject({ok: true, data: {known: true}});
