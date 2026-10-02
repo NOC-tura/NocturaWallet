@@ -144,11 +144,32 @@ describe('shape checks: a reply of the wrong shape is failed', () => {
   it('pending: an unknown state or failure value', async () => {
     const p = {
       id: 'r1', account: acc, signature: '5'.repeat(88), lastValidBlockHeight: 1, createdAt: 1, lastSentAt: 1, state: 'pending', detail: null,
-      intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}, expiryNullSeenAt: null, failure: null,
+      intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}, expiryNullSeenAt: null, failure: null, feeLamports: '5050',
     };
     expect((await engineAnswering({ok: true, data: [p]}).pending()).ok).toBe(true);
     expect(await engineAnswering({ok: true, data: [{...p, state: 'lost'}]}).pending()).toEqual({ok: false, error: 'failed'});
     expect(await engineAnswering({ok: true, data: [{...p, failure: 'maybe'}]}).pending()).toEqual({ok: false, error: 'failed'});
+    // Plan 3: the fee paid is a base-unit string or null, nothing else.
+    expect((await engineAnswering({ok: true, data: [{...p, feeLamports: null}]}).pending()).ok).toBe(true);
+    expect(await engineAnswering({ok: true, data: [{...p, feeLamports: 5050}]}).pending()).toEqual({ok: false, error: 'failed'});
+    expect(await engineAnswering({ok: true, data: [{...p, feeLamports: undefined}]}).pending()).toEqual({ok: false, error: 'failed'});
+  });
+
+  // Plan 3: #20 reads whether the challenge is proven and when the quote ends; anything else is failed.
+  it('prepareSend: reauth.proven must be a boolean and validUntil a time', async () => {
+    const view = {
+      id: 'ab'.repeat(16),
+      fees: {networkLamports: '5050', priorityLamports: '50', rentLamports: '0', markupLamports: '0', markupReason: 'status-unknown'},
+      solRequiredLamports: '1005050',
+      reauth: {challengeId: 'cd'.repeat(16), reasons: ['first-send'], proven: false},
+      validUntil: 1_030_000,
+      simulation: {slot: 1, elapsedMs: 2, instructions: 3, programs: ['compute-budget', 'system'], recipient: 'wallet', sol: {before: '10', after: '9'}, token: null},
+    };
+    const intent = {token: 'SOL' as const, recipient: RECIPIENT, amount: 1n};
+    expect(await engineAnswering({ok: true, data: view}).prepareSend(acc, intent)).toMatchObject({ok: true, data: {reauth: {proven: false}, validUntil: 1_030_000}});
+    for (const bad of [{...view, reauth: {...view.reauth, proven: 'yes'}}, {...view, reauth: {challengeId: view.reauth.challengeId, reasons: ['first-send']}}, {...view, validUntil: -1}, {...view, validUntil: undefined}]) {
+      expect(await engineAnswering({ok: true, data: bad}).prepareSend(acc, intent)).toEqual({ok: false, error: 'failed'});
+    }
   });
 });
 

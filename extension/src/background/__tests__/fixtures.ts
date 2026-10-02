@@ -108,6 +108,7 @@ export const pendingRecord = (over: Partial<PendingRecord> = {}): PendingRecord 
   intent: {token: 'SOL', recipient: 'R', amount: '1'},
   expiryNullSeenAt: null,
   failure: null,
+  feeLamports: null,
   ...over,
 });
 
@@ -126,3 +127,29 @@ export function signedWire(lamports = 1n): Uint8Array {
 
 /** A well-formed `about` for challenges whose action a test does not care about. */
 export const SETTINGS_ABOUT: ChallengeAbout = {kind: 'settings', autoLockMinutes: null, reauthUsdCents: null};
+
+const COMPUTE_BUDGET = 'ComputeBudget111111111111111111111111111111';
+
+/**
+ * What a signed transaction charges the payer beyond the amount it moves, read from the broadcast bytes alone —
+ * independent of prepare's arithmetic: 5 000 lamports per required signature, plus the priority fee its signed
+ * compute-unit price and limit fix (µlamports × limit, rounded up to a lamport), plus every System transfer to
+ * `treasury` (the Noctura fee) when one is given.
+ */
+export function chargedByWire(wire: Uint8Array, treasury?: string): bigint {
+  const message = VersionedTransaction.deserialize(wire).message;
+  const keys = message.staticAccountKeys.map(k => k.toBase58());
+  let limit: bigint | null = null;
+  let price: bigint | null = null;
+  let toTreasury = 0n;
+  for (const ix of message.compiledInstructions) {
+    const program = keys[ix.programIdIndex];
+    const d = ix.data;
+    const view = new DataView(d.buffer, d.byteOffset, d.byteLength);
+    if (program === COMPUTE_BUDGET && d[0] === 2) limit = BigInt(view.getUint32(1, true));
+    if (program === COMPUTE_BUDGET && d[0] === 3) price = u64(d, 1);
+    if (program === SYSTEM && treasury !== undefined && view.getUint32(0, true) === 2 && keys[ix.accountKeyIndexes[1]!] === treasury) toTreasury += u64(d, 4);
+  }
+  if (limit === null || price === null) throw new Error('chargedByWire: no signed compute-unit price and limit');
+  return 5_000n * BigInt(message.header.numRequiredSignatures) + (price * limit + 999_999n) / 1_000_000n + toTreasury;
+}

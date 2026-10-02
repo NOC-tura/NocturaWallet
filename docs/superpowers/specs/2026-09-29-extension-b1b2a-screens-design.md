@@ -1518,7 +1518,10 @@ point here. **One user tap per broadcast, always (D38; review B1).**
      `wallet.html#/send/resume?account=…`.
   3. **Resume** (that tab, or a reopened popup; also any other opener of that hash): read
      `wallet.preparedFor(account)`. If `expired`, `wallet.prepareSend(account, intent,
-     challengeId)` with the carried challenge (re-based, D39). **Then show #20** (`confirmed` if a
+     challengeId)` with the carried challenge (re-based, D39). `expired` is also true when the send's
+     challenge is already dead, however young the send (plan 3, review M1: a re-based challenge ends at
+     C5's 10-minute cap, not 120 s after the send was prepared); the re-prepare then gets a fresh
+     challenge, and the tap opens #10 for it — once. **Then show #20** (`confirmed` if a
      re-auth was just proven, `resume` otherwise) **and wait for a tap.** No code path from a resume
      calls `wallet.send` without a tap. After the tap, step 1 or 2 applies.
   4. `wallet.send` refusals:

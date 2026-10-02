@@ -60,7 +60,10 @@ export interface Prepared {
   id: string;
   fees: {networkLamports: bigint; priorityLamports: bigint; rentLamports: bigint; markupLamports: bigint; markupReason: FeeReason};
   solRequiredLamports: bigint;
-  reauth: {challengeId: string; reasons: ReauthReason[]} | null;
+  /** `proven`: the vault page proved this challenge and it is live — a tap on #20 may send now (the engine still checks). */
+  reauth: {challengeId: string; reasons: ReauthReason[]; proven: boolean} | null;
+  /** Epoch ms after which this prepared send is no longer sendable: #20's "Quote valid N s". */
+  validUntil: number;
   simulation: Simulation;
 }
 export type Resumable = Prepared & {intent: Intent; expired: boolean};
@@ -77,6 +80,8 @@ export interface Pending {
   intent: Intent;
   expiryNullSeenAt: number | null;
   failure: 'landed' | 'not-sent' | null;
+  /** What it pays if it lands (network fee + Noctura fee), lamports; null for a record from before plan 3. */
+  feeLamports: bigint | null;
 }
 export type HistoryKind = 'sent' | 'received' | 'purchase' | 'other';
 export interface HistoryItem {
@@ -270,11 +275,11 @@ function preparedOf(x: unknown): Prepared | undefined {
   if (o.reauth !== null) {
     const r = obj(o.reauth);
     const reasons = all(r?.reasons, v => oneOf(v, REASONS));
-    if (r === undefined || typeof r.challengeId !== 'string' || !HEX32.test(r.challengeId) || reasons === undefined) return undefined;
-    reauth = {challengeId: r.challengeId, reasons};
+    if (r === undefined || typeof r.challengeId !== 'string' || !HEX32.test(r.challengeId) || reasons === undefined || typeof r.proven !== 'boolean') return undefined;
+    reauth = {challengeId: r.challengeId, reasons, proven: r.proven};
   }
-  if (Object.values(fees).some(v => v === undefined) || solRequiredLamports === undefined || simulation === undefined) return undefined;
-  return {id: o.id, fees: fees as Prepared['fees'], solRequiredLamports, reauth, simulation};
+  if (Object.values(fees).some(v => v === undefined) || solRequiredLamports === undefined || simulation === undefined || !isTime(o.validUntil)) return undefined;
+  return {id: o.id, fees: fees as Prepared['fees'], solRequiredLamports, reauth, validUntil: o.validUntil, simulation};
 }
 
 function resumableOf(x: unknown): Resumable | null | undefined {
@@ -294,7 +299,8 @@ function pendingOf(x: unknown): Pending | undefined {
   const intent = intentOf(o.intent);
   const failure = o.failure === null ? null : oneOf(o.failure, ['landed', 'not-sent'] as const);
   const expiry = o.expiryNullSeenAt === null ? null : isTime(o.expiryNullSeenAt) ? o.expiryNullSeenAt : undefined;
-  if (state === undefined || intent === undefined || failure === undefined || expiry === undefined) return undefined;
+  const feeLamports = o.feeLamports === null ? null : units(o.feeLamports);
+  if (state === undefined || intent === undefined || failure === undefined || expiry === undefined || feeLamports === undefined) return undefined;
   if (!isInt(o.lastValidBlockHeight) || !isTime(o.createdAt) || !isTime(o.lastSentAt) || !(o.detail === null || typeof o.detail === 'string')) return undefined;
   return {
     id: o.id,
@@ -308,6 +314,7 @@ function pendingOf(x: unknown): Pending | undefined {
     intent,
     expiryNullSeenAt: expiry,
     failure,
+    feeLamports,
   };
 }
 

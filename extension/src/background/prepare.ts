@@ -8,7 +8,7 @@ import {EXTENSION_FEE_INPUTS} from './feePolicy';
 import {isKnownRecipient} from './knownRecipients';
 import {readSettings} from './settings';
 import {sendReauthReasons, usdMicros, type SendReauthReason} from './reauthPolicy';
-import {CHALLENGE_TTL_MS, dropChallengesFor, issueChallenge, rebaseChallenge, type SendAboutRefresh} from './reauthChallenges';
+import {CHALLENGE_TTL_MS, challengeInfo, challengeSatisfied, dropChallengesFor, issueChallenge, rebaseChallenge, type SendAboutRefresh} from './reauthChallenges';
 import {digestOf, randomId} from './digest';
 import {SendRefused, type SendIntent} from './sendTypes';
 import {estimatePriorityFee} from '../../../core/solana/priorityFee';
@@ -82,7 +82,14 @@ export interface PreparedView {
   id: string;
   fees: {networkLamports: string; priorityLamports: string; rentLamports: string; markupLamports: string; markupReason: FeeReason};
   solRequiredLamports: string;
-  reauth: {challengeId: string; reasons: SendReauthReason[]} | null;
+  /**
+   * `proven` (plan 3): the vault page has proven this challenge and it is still live for this intent — what
+   * wallet.send checks first (challengeSatisfied). #20 reads it to know a tap may send now; without it a
+   * resumed #20 could only open #10 again. It never decides anything: wallet.send consumes the proof itself.
+   */
+  reauth: {challengeId: string; reasons: SendReauthReason[]; proven: boolean} | null;
+  /** When this prepared send stops being sendable (createdAt + PREPARED_TTL_MS, epoch ms): #20's "Quote valid N s" counts it down (D39). */
+  validUntil: number;
   simulation: SimulationView;
 }
 
@@ -422,15 +429,17 @@ export async function prepareSend(
     const keep = (await loadPrepared(ext)).filter(p => p.account !== account && now - p.createdAt < CHALLENGE_TTL_MS).slice(-(MAX_PREPARED - 1));
     await ext.session.set(PREPARED_KEY, [...keep, prepared]);
   });
-  return viewOf(prepared);
+  return viewOf(ext, deps, prepared);
 }
 
-function viewOf(p: PreparedSend): PreparedView {
+async function viewOf(ext: Ext, deps: Pick<WalletDeps, 'now'>, p: PreparedSend): Promise<PreparedView> {
+  const proven = p.challengeId !== null && (await challengeSatisfied(ext, deps.now(), p.challengeId, p.intentDigest));
   return {
     id: p.id,
     fees: p.shown.fees,
     solRequiredLamports: p.shown.solRequiredLamports,
-    reauth: p.challengeId === null ? null : {challengeId: p.challengeId, reasons: p.shown.reasons},
+    reauth: p.challengeId === null ? null : {challengeId: p.challengeId, reasons: p.shown.reasons, proven},
+    validUntil: p.createdAt + PREPARED_TTL_MS,
     simulation: p.shown.simulation,
   };
 }
@@ -440,13 +449,20 @@ function viewOf(p: PreparedSend): PreparedView {
  * re-authentication can resume. Past PREPARED_TTL_MS it is still reported — `expired`, not
  * sendable — while its challenge can live (CHALLENGE_TTL_MS): the popup then prepares the same
  * intent again with that challengeId instead of asking for a second re-authentication.
+ *
+ * A send whose challenge is already dead is `expired` too, however young the send (plan-3 review M1): a re-based
+ * challenge ends at issuedAt + CHALLENGE_MAX_LIFE_MS (C5's cap), so `createdAt + CHALLENGE_TTL_MS` is not its
+ * life. Reported live, the resume would show #20, open #10 for a challenge #10 calls expired, and the icon would
+ * bring the same dead send back. Reported expired, the resume prepares again carrying the id; rebaseChallenge
+ * refuses a dead one, a fresh challenge is issued, and the next tap opens a live #10 — once, so no loop.
  */
 export async function preparedFor(ext: Ext, deps: Pick<WalletDeps, 'now'>, account: string): Promise<ResumableView | null> {
   const now = deps.now();
   const mine = (await loadPrepared(ext)).filter(p => p.account === account && now - p.createdAt < CHALLENGE_TTL_MS);
   const newest = mine.reduce<PreparedSend | null>((a, p) => (a === null || p.createdAt >= a.createdAt ? p : a), null);
   if (newest === null) return null;
-  return {...viewOf(newest), intent: newest.intent, expired: now - newest.createdAt >= PREPARED_TTL_MS};
+  const challengeDead = newest.challengeId !== null && (await challengeInfo(ext, now, newest.challengeId)) === null;
+  return {...(await viewOf(ext, deps, newest)), intent: newest.intent, expired: challengeDead || now - newest.createdAt >= PREPARED_TTL_MS};
 }
 
 /**

@@ -66,7 +66,7 @@ async function deliver(ext: Ext, deps: WalletDeps, record: PendingRecord, attemp
 export async function submitSigned(
   ext: Ext,
   deps: WalletDeps,
-  input: {account: string; wire: Uint8Array; lastValidBlockHeight: number; intent: SendIntent},
+  input: {account: string; wire: Uint8Array; lastValidBlockHeight: number; intent: SendIntent; feeLamports?: string},
 ): Promise<PendingView> {
   const now = deps.now();
   const record: PendingRecord = {
@@ -82,6 +82,7 @@ export async function submitSigned(
     intent: input.intent,
     expiryNullSeenAt: null,
     failure: null,
+    feeLamports: input.feeLamports ?? null,
   };
   const guard = {refused: false};
   await updatePending(ext, records => {

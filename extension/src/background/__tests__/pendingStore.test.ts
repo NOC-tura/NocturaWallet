@@ -52,3 +52,20 @@ describe('pendingStore', () => {
     expect(after.at(-1)?.id).toBe(`c${MAX_RECORDS + 4}`);
   });
 });
+
+// Plan 3: the fee a record pays is a display field. A record from before it, or one with a value that is not
+// digits, reads with feeLamports null — and is kept: a pending send must never be hidden.
+describe('PendingRecord.feeLamports (plan 3)', () => {
+  it('missing or malformed reads as null and the record is kept; digits read as they are', async () => {
+    const ext = fakeExt();
+    const {feeLamports: _drop, ...before} = record({id: 'old'});
+    await ext.local.set(PENDING_KEY, [before, record({id: 'bad', feeLamports: 'lots' as unknown as string}), record({id: 'num', feeLamports: 5050 as unknown as string}), record({id: 'ok', feeLamports: '5050'})]);
+    expect((await readPending(ext)).map(r => [r.id, r.feeLamports])).toEqual([
+      ['old', null],
+      ['bad', null],
+      ['num', null],
+      ['ok', '5050'],
+    ]);
+    expect(viewOf((await readPending(ext))[3]!).feeLamports).toBe('5050');
+  });
+});

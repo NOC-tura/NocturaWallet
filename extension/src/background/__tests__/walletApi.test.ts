@@ -105,6 +105,18 @@ describe('handleWallet', () => {
     expect(await handleWallet(ext, deps, 'wallet.send', {id})).toEqual({ok: false, error: 'reauth-required', data: {challengeId: reauth.challengeId}});
   });
 
+  // Plan 3: the quote's end is the engine's own; a validUntil (or proven) the page sends is never read.
+  it('wallet.prepareSend ignores a validUntil or reauth the page sends: validUntil is the engine clock + 30 s, proven its own', async () => {
+    const ext = fakeExt();
+    await unlocked(ext);
+    const deps = fakeDeps({reader: sendReader()});
+    const intent = {token: 'SOL', recipient: RECIPIENT, amount: '1000'};
+    const prep = await handleWallet(ext, deps, 'wallet.prepareSend', {account: ACCOUNT.publicKey, intent, validUntil: 9e15, reauth: {proven: true}, proven: true});
+    expect(prep).toMatchObject({ok: true, data: {validUntil: deps.now() + PREPARED_TTL_MS, reauth: {proven: false}}});
+    const {id} = prep.data as {id: string};
+    expect(await handleWallet(ext, deps, 'wallet.send', {id, proven: true, validUntil: 9e15})).toMatchObject({ok: false, error: 'reauth-required'});
+  });
+
   it('wallet.prepareSend carries a challengeId into a re-prepare; wallet.preparedFor resumes a reopened popup', async () => {
     const ext = fakeExt();
     await unlocked(ext);

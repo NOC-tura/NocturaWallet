@@ -34,6 +34,13 @@ export interface PendingRecord {
   /** When a full-history status check past expiry first came back null; `expired` needs a second one ≥ 2 s later. */
   expiryNullSeenAt: number | null;
   failure: PendingFailure | null;
+  /**
+   * What the transaction pays if it lands, base units (plan 3): its network fee plus the Noctura fee when
+   * charged, as prepared — exact, the compute-unit price and limit are signed. #21's "Fee paid". Null on a
+   * record from before plan 3, and for any stored value that is not digits: a display field never drops a
+   * record (a pending send must never be hidden).
+   */
+  feeLamports: string | null;
 }
 
 /** What leaves the background: everything but the signed bytes. */
@@ -48,8 +55,8 @@ const serial = createMutex();
 const STATES: readonly string[] = ['pending', 'stuck', 'confirmed', 'failed', 'expired'];
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 
-/** A stored element is a claim: only an exact record shape is read; anything else is dropped. `failure` is checked by recordOf. */
-function isRecord(x: unknown): x is Omit<PendingRecord, 'failure'> & {failure?: unknown} {
+/** A stored element is a claim: only an exact record shape is read; anything else is dropped. `failure` and `feeLamports` are checked by recordOf. */
+function isRecord(x: unknown): x is Omit<PendingRecord, 'failure' | 'feeLamports'> & {failure?: unknown; feeLamports?: unknown} {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
   const r = x as Record<string, unknown>;
   const i = r.intent as Record<string, unknown> | null;
@@ -73,12 +80,16 @@ function isRecord(x: unknown): x is Omit<PendingRecord, 'failure'> & {failure?: 
   );
 }
 
-/** A record from before E8 has no `failure`: it reads as null, so no migration is needed. Any other value drops the record. */
+/**
+ * A record from before E8 has no `failure`: it reads as null, so no migration is needed. Any other value drops the
+ * record. `feeLamports` (plan 3) reads as null when it is missing or not digits — the record itself is kept.
+ */
 function recordOf(x: unknown): PendingRecord | null {
   if (!isRecord(x)) return null;
+  const fee = typeof x.feeLamports === 'string' && /^\d{1,20}$/.test(x.feeLamports) ? x.feeLamports : null;
   const f = x.failure;
-  if (f === undefined || f === null) return {...x, failure: null};
-  return f === 'landed' || f === 'not-sent' ? {...x, failure: f} : null;
+  if (f === undefined || f === null) return {...x, failure: null, feeLamports: fee};
+  return f === 'landed' || f === 'not-sent' ? {...x, failure: f, feeLamports: fee} : null;
 }
 
 export async function readPending(ext: Ext): Promise<PendingRecord[]> {
@@ -109,6 +120,7 @@ export function viewOf(r: PendingRecord): PendingView {
     intent: r.intent,
     expiryNullSeenAt: r.expiryNullSeenAt,
     failure: r.failure,
+    feeLamports: r.feeLamports,
   };
 }
 

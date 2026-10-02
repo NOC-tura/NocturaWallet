@@ -337,10 +337,12 @@ describe('prepareSend', () => {
     const first = await prepareSend(ext, deps, ACCOUNT.publicKey, SOL_INTENT);
     const challengeId = first.reauth!.challengeId;
     const again = await prepareSend(ext, deps, ACCOUNT.publicKey, SOL_INTENT, {challengeId});
-    expect(again.reauth).toEqual({challengeId, reasons: ['first-send']});
+    expect(again.reauth).toEqual({challengeId, reasons: ['first-send'], proven: false});
     await satisfyChallenge(ext, deps.now(), challengeId);
     const third = await prepareSend(ext, deps, ACCOUNT.publicKey, SOL_INTENT, {challengeId});
     expect(third.reauth?.challengeId).toBe(challengeId);
+    // Plan 3: the proof carried into the re-prepare is reported, so #20's next tap sends instead of asking again.
+    expect(third.reauth?.proven).toBe(true);
     expect((await peekPrepared(ext, third.id))?.challengeId).toBe(challengeId);
     expect(Object.keys((await ext.session.get(REAUTH_KEY)) as object)).toEqual([challengeId]);
   });
@@ -355,6 +357,8 @@ describe('prepareSend', () => {
     const other = await prepareSend(ext, deps, ACCOUNT.publicKey, {...SOL_INTENT, amount: '2000000'}, {challengeId});
     expect(other.reauth?.challengeId).toBeDefined();
     expect(other.reauth?.challengeId).not.toBe(challengeId);
+    // A new challenge is a new grant: not proven, whatever the carried one was.
+    expect(other.reauth?.proven).toBe(false);
     const otherRecipient = await prepareSend(ext, deps, ACCOUNT.publicKey, {...SOL_INTENT, recipient: HOLDING_SMALL}, {challengeId});
     expect(otherRecipient.reauth?.challengeId).not.toBe(challengeId);
     const junk = await prepareSend(ext, deps, ACCOUNT.publicKey, SOL_INTENT, {challengeId: '__proto__'});
