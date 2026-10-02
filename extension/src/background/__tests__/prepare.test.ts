@@ -167,7 +167,8 @@ describe('prepareSend', () => {
         throw new Error('must not simulate');
       },
     });
-    await expect(prepareSend(ext, fakeDeps({reader}), ACCOUNT.publicKey, {token: 'NOC', recipient: RECIPIENT, amount: '160'})).rejects.toMatchObject({code: 'split-balance'});
+    // The detail is the largest single holding, in base units: #19 says "Send at most N" from it (plan 3).
+    await expect(prepareSend(ext, fakeDeps({reader}), ACCOUNT.publicKey, {token: 'NOC', recipient: RECIPIENT, amount: '160'})).rejects.toMatchObject({code: 'split-balance', detail: '100'});
   });
 
   it('refuses when SOL cannot cover the amount and the fees', async () => {

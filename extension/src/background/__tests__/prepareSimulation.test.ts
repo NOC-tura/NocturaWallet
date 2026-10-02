@@ -1,4 +1,6 @@
-import {preparedFor, prepareSend} from '../prepare';
+import {base64} from '@scure/base';
+import {VersionedTransaction} from '@solana/web3.js';
+import {preparedFor, prepareSend, rentRefusal} from '../prepare';
 import {handleWallet} from '../walletApi';
 import {KNOWN_RECIPIENTS_KEY} from '../knownRecipients';
 import {RpcMalformed, createForbiddenLatch, createRpc, solanaReader, type SimulationOutcome, type SolanaReader} from '../../../../core/solana/rpc';
@@ -200,5 +202,73 @@ describe('prepareSend: the simulation (E2)', () => {
     const r = await handleWallet(ext, fakeDeps({reader}), 'wallet.prepareSend', {account: ACCOUNT.publicKey, intent: SOL_INTENT});
     expect(r).toMatchObject({ok: false, error: 'simulation-mismatch'});
     expect((r as {data: {detail: string}}).data.detail).toContain('1005050');
+  });
+});
+
+// Spec §11.5 (the coordinator's measured full-drain facts, plan 3 carry 2): a payer left with 1 … 890 879
+// lamports gets err {InsufficientFundsForRent: {account_index: 0}}, every accounts entry null, and logs that
+// read "success". The engine decides on err alone and gives it the rent refusal's own code (and so #19's own
+// copy); an index that is neither the sender nor the recipient, or any other shape, stays simulation-failed.
+describe('prepareSend: a simulation refused for rent (§11.5)', () => {
+  /** A reader whose simulation answers `err(keys)` — keys are the transaction's own account keys — with accounts: null. */
+  function refusing(err: (keys: string[]) => unknown, overrides: Partial<SolanaReader> = {}) {
+    const base = sendReader(overrides);
+    const reader: SolanaReader = {
+      ...base,
+      simulateTransaction: async tx => {
+        const keys = VersionedTransaction.deserialize(base64.decode(tx)).message.staticAccountKeys.map(k => k.toBase58());
+        return {err: err(keys), logs: ['Program 11111111111111111111111111111111 success'], unitsConsumed: 150, slot: SIMULATED_SLOT, accounts: null};
+      },
+    };
+    return reader;
+  }
+
+  it('the sender’s index is sender-below-rent, whatever the logs say; the detail names the simulation', async () => {
+    const ext = await setup();
+    const reader = refusing(() => ({InsufficientFundsForRent: {account_index: 0}}));
+    const r = await handleWallet(ext, fakeDeps({reader}), 'wallet.prepareSend', {account: ACCOUNT.publicKey, intent: SOL_INTENT});
+    expect(r).toEqual({ok: false, error: 'sender-below-rent', data: {detail: 'the simulation refused it for rent: {"InsufficientFundsForRent":{"account_index":0}}'}});
+  });
+
+  it('the recipient’s index is recipient-below-rent', async () => {
+    const ext = await setup();
+    const reader = refusing(keys => ({InsufficientFundsForRent: {account_index: keys.indexOf(RECIPIENT)}}));
+    await expect(prepareSend(ext, fakeDeps({reader}), ACCOUNT.publicKey, SOL_INTENT)).rejects.toMatchObject({code: 'recipient-below-rent'});
+  });
+
+  it('any other index, an index past the keys, or another shape stays simulation-failed (negative controls)', async () => {
+    const ext = await setup();
+    for (const err of [
+      (keys: string[]) => ({InsufficientFundsForRent: {account_index: keys.indexOf('11111111111111111111111111111111')}}),
+      (keys: string[]) => ({InsufficientFundsForRent: {account_index: keys.length}}),
+      () => ({InsufficientFundsForRent: {account_index: '0'}}),
+      () => ({InsufficientFundsForRent: {account_index: -1}}),
+      () => ({InsufficientFundsForRent: {account_index: 0}, InstructionError: [2, {Custom: 1}]}),
+      () => 'InsufficientFundsForRent',
+      () => ({InstructionError: [2, {Custom: 1}]}),
+    ]) {
+      await expect(prepareSend(ext, fakeDeps({reader: refusing(err)}), ACCOUNT.publicKey, SOL_INTENT)).rejects.toMatchObject({code: 'simulation-failed'});
+    }
+  });
+
+  it('rentRefusal decides on err and the keys only', () => {
+    const keys = [ACCOUNT.publicKey, RECIPIENT, '11111111111111111111111111111111'];
+    expect(rentRefusal({InsufficientFundsForRent: {account_index: 0}}, keys, ACCOUNT.publicKey, RECIPIENT)).toBe('sender-below-rent');
+    expect(rentRefusal({InsufficientFundsForRent: {account_index: 1}}, keys, ACCOUNT.publicKey, RECIPIENT)).toBe('recipient-below-rent');
+    expect(rentRefusal({InsufficientFundsForRent: {account_index: 2}}, keys, ACCOUNT.publicKey, RECIPIENT)).toBeNull();
+    for (const err of [null, undefined, 7, [], {InsufficientFundsForRent: null}, {InsufficientFundsForRent: []}, {InsufficientFundsForRent: {account_index: 0.5}}]) {
+      expect(rentRefusal(err, keys, ACCOUNT.publicKey, RECIPIENT)).toBeNull();
+    }
+  });
+
+  it('a new recipient below 890 880 lamports is refused before anything is simulated', async () => {
+    const ext = await setup();
+    const reader = sendReader({
+      getAccountKind: async () => 'missing',
+      simulateTransaction: async () => {
+        throw new Error('must not simulate');
+      },
+    });
+    await expect(prepareSend(ext, fakeDeps({reader}), ACCOUNT.publicKey, {...SOL_INTENT, amount: '890879'})).rejects.toMatchObject({code: 'recipient-below-rent'});
   });
 });

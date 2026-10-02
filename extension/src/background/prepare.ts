@@ -184,6 +184,28 @@ function tokenAccountOf(a: SimulatedAccount | null): {mint: string; owner: strin
   return {mint: base58.encode(a.data.subarray(0, 32)), owner: base58.encode(a.data.subarray(32, 64)), amount: view.getBigUint64(64, true)};
 }
 
+/**
+ * A simulation the runtime refused for rent (spec §11.5, measured by the coordinator 2026-10-01): `err` is
+ * `{InsufficientFundsForRent: {account_index: n}}`, n indexing the transaction's account keys; every entry of
+ * `accounts` is null and the logs still read "success" (the rent check runs after execution). So the refusal
+ * is decided on `err` alone, never on `accounts` or the logs: the sender's index is `sender-below-rent`, the
+ * recipient's `recipient-below-rent` — the same codes, and so the same #19 copy, as the checks above that
+ * refuse before simulating. Any other account, or any other shape, is null (the caller's simulation-failed).
+ */
+export function rentRefusal(err: unknown, keys: readonly string[], sender: string, recipient: string): 'sender-below-rent' | 'recipient-below-rent' | null {
+  if (typeof err !== 'object' || err === null || Array.isArray(err)) return null;
+  const top = err as Record<string, unknown>;
+  if (Object.keys(top).length !== 1) return null;
+  const inner = top.InsufficientFundsForRent;
+  if (typeof inner !== 'object' || inner === null || Array.isArray(inner)) return null;
+  const index = (inner as Record<string, unknown>).account_index;
+  if (typeof index !== 'number' || !Number.isSafeInteger(index) || index < 0) return null;
+  const key = keys[index];
+  if (key === sender) return 'sender-below-rent';
+  if (key === recipient) return 'recipient-below-rent';
+  return null;
+}
+
 async function loadPrepared(ext: Ext): Promise<PreparedSend[]> {
   const v = await ext.session.get(PREPARED_KEY);
   // An entry of another shape (an older build's) is not ours to sign or show.
@@ -245,7 +267,9 @@ export async function prepareSend(
     try {
       source = selectSourceTokenAccount(holdings.map(h => ({pubkey: h.pubkey, amount: h.amount})), amount);
     } catch (e) {
-      if (e instanceof SplitTokenBalance) throw new SendRefused('split-balance', e.message);
+      // The detail is the largest single holding in base units (plan 3): #19's "Send at most N" reads it as a
+      // number, never SplitTokenBalance's free text.
+      if (e instanceof SplitTokenBalance) throw new SendRefused('split-balance', holdings.reduce((max, h) => (h.amount > max ? h.amount : max), 0n).toString());
       if (e instanceof InsufficientTokenBalance) throw new SendRefused('insufficient-token', e.message);
       throw e;
     }
@@ -292,7 +316,12 @@ export async function prepareSend(
   const started = deps.now();
   const simulated = await deps.reader.simulateTransaction(base64.encode(new VersionedTransaction(message).serialize()), {accounts: addresses});
   const elapsedMs = Math.max(0, deps.now() - started);
-  if (simulated.err !== null) throw new SendRefused('simulation-failed', JSON.stringify(simulated.err));
+  if (simulated.err !== null) {
+    const rent = rentRefusal(simulated.err, message.staticAccountKeys.map(k => k.toBase58()), account, intent.recipient);
+    // Such a transaction would still be charged its fee if broadcast: refused here, with the rent copy (§11.5).
+    if (rent !== null) throw new SendRefused(rent, `the simulation refused it for rent: ${JSON.stringify(simulated.err)}`);
+    throw new SendRefused('simulation-failed', JSON.stringify(simulated.err));
+  }
   const senderAfter = simulated.accounts?.[0] ?? null;
   if (senderAfter === null) throw new SendRefused('simulation-mismatch', 'the simulation does not show the sending account');
   // SOL leaving the wallet must be exactly what this send costs: with the network fee in the simulated
