@@ -14,16 +14,16 @@
 
 1. **Builds:** #12 send (every design state 1–7, E6's hints), #43 from #12's chip, #19 tx-simulate, #20 tx-confirm (flow and resume entries), #21 tx-status, #54 tx-stuck, #44 tx-failed, #11's cancelled toast; the flow's routes; E2E specs 4, 5, 11; the visual pass of every state (42 shots).
 2. **Stand-ins removed (each with a test):** #11 gets its Send quick action (Task 14); the pending strip opens that send at #21/#54 (Task 14); #26's PENDING rows open it (Task 14); #27 gets `[Try again]` for a failed send (Task 14) and #44 has it from birth (Task 11); `src/app/screens/Resume.tsx` — plan 2's `#/send/resume?account=` stand-in — is **deleted** and the route renders #20's resume entry (Task 13); plan 2's "Network fee includes the priority" on #10 is replaced by the split rows (Task 1).
-3. **Owner questions** (each built with the recommended option, each reversible on its own):
-   - **Q1 — failed history rows (carry 3).** Plan 1 shows every failed transaction as "Failed · transaction" (All only). **A (recommended, built in Task 4):** decode what a failed transaction tried to send from its own instructions, only when this account paid for it (its first key) — "Failed · sent SOL" / "— SOL", shown under Sent; #27 "FAILED · SENT" with `[Try again]`. B: keep plan 1's rows (drop Task 4 and Task 14's #27 `[Try again]`). C: label only the failed sends this extension recorded itself (the pending store), others stay generic — loses sends made before install or from another device.
-   - **Q2 — the rent copy (carry 2).** Recommended: accept the two controller additions in §4.4 (listed below).
-   - **Q3 — #20 in the UI tab.** Recommended: accept "…in this tab…" for the two lines that say a new tab opens (it does not, in the tab).
-   - **Q4 — #12's small copy.** Recommended: accept the paste fallback line and the two sent-before forms ("· today", "· last 1 day ago").
-4. **Proposed copy — every line a controller addition, marked so in the code and in the spec (owner to confirm):**
-   - #19 `sender-below-rent`: "This would leave less than 0.00089088 SOL in your account, and Solana does not allow that. Keep at least that much SOL there."
+3. **Owner questions** — none answered yet; each is built with the recommended option (the review's verdict) and each is reversible on its own:
+   - **Q1 — failed history rows (carry 3).** **A (recommended; review: build A with H1 applied — built in Task 4):** decode what a failed transaction tried to send from its own top-level instructions, only when this account paid for it (its first key) and only when it carries exactly one transfer of a known token — "Failed · sent SOL" / "— SOL", shown under Sent; #27 "FAILED · SENT" with `[Try again]`. A batch, an unknown mint or a program's inner transfer stays "Failed · transaction". B (the documented fallback): keep plan 1's rows (drop Task 4 and Task 14's #27 `[Try again]`). C: label only the failed sends recorded in this browser's pending store — strictly worse than A (loses sends from before install or another device).
+   - **Q2 — the rent copy (carry 2).** Recommended (review: accept): the two lines below, the first in the review's wording. MAX keeps the rent minimum by design; closing an account to exactly 0 is a product decision not taken here (stated in §4.2).
+   - **Q3 — #20 in the UI tab.** Recommended (review: accept): "…in this tab…" for the two lines that would otherwise say a new tab opens.
+   - **Q4 — #12's small copy.** Recommended (review: accept the paste line and "· today"; "· last 1 day ago" rejected → "· yesterday").
+4. **Proposed copy — every line a controller addition — awaiting the owner, marked so in the code and in the spec:**
+   - #19 `sender-below-rent`: "This would leave less than 0.00089088 SOL in your account, which Solana does not allow. Send less, so at least that much stays."
    - #19 `recipient-below-rent`: "This address has no Solana account yet. A new account needs at least 0.00089088 SOL, so send at least that much."
    - #12 paste refused: "Paste with Ctrl+V (⌘V on a Mac)."
-   - #12 sent-before: "Verified · sent before · today" and "Verified · sent before · last 1 day ago" (the design gives only "last 12 days ago").
+   - #12 sent-before: "Verified · sent before · today" and "Verified · sent before · yesterday" (the design gives only "last 12 days ago").
    - #20 in the UI tab: "You'll confirm with your password (or passkey) in this tab before this is sent." and "Confirmation opens in this tab."
 5. **Spec contradictions this plan resolves (and writes into the spec):** §4.5 step 1 sends only on `reauth === null`, so a resumed #20 after #10 could only open #10 again — the engine now reports `reauth.proven` and step 1 is "null **or** proven" (Task 3); #21's "Fee paid" had no source after a reopened popup — the record keeps `feeLamports` (Task 3); #20's "Quote valid N s" had no deadline in the view — `validUntil` (Task 3); #19's "Send at most N" read `SplitTokenBalance`'s free text — the refusal now carries N as digits (Task 2); the "opens a new tab" lines are wrong in the UI tab (Q3).
 6. **Departures** — each is in that screen's Differs entry in the spec (the diffs are in the tasks): §3.10 (#10's fee rows), §4.2 (#12: paste permission, the chip's tile, the CTA's typed amount, priority line in state 6), §4.4 (#19: no instruction count, no RPC-drop timing, After = read balance − `solRequiredLamports`, the rent copy), §4.5 (#20: dollars per fee row, `[Refresh]` beside the line, the tab lines, banners' tones), §4.6 (#21: "Waiting for confirmation" kept, no developer caption, Fee paid from the record), §4.7 (#44: insufficient-fee, slippage and the RPC picker removed — the engine cannot report them), §4.8 (#54: MM:SS at any age, 54b/54d/54e layouts, no "Speed up" — D15), §5.1 (#11), §6.2/§6.3 (failed rows, option A), §1.6 (the quiet provider on the resume route).
@@ -58,11 +58,12 @@ Every task's requirements include these.
 
 ## One tap per broadcast — how D38 is held (carry 6)
 
-1. **One caller.** `engine.send(` appears only in `src/app/screens/Confirm.tsx`, inside `tap()`, and `tap` is only the Send button's `onPress` (`Confirm.test.tsx` › "one caller of wallet.send (source backstop)" walks every file under `src/`). The backstop is not the proof — the behaviour tests and mutations are:
+1. **One caller.** `engine.send(` appears only in `src/app/screens/Confirm.tsx`, in `send(view, tapAt)`, which only `tap()` calls, and `tap` is only the Send button's `onPress`. `Confirm.test.tsx` › "one caller of wallet.send (source backstop over all of src/)" walks **every file under `src/`** except tests — the vault page and the background included — and fails on any `send(` method call other than the vault page's `deps.send` outside Confirm.tsx, and on the name `wallet.send` in any form (quoted, object-literal value, bare) outside `src/background/` and `src/app/engine.ts`; fixtures prove each form is caught and the negative controls are not (M9h, M9i). A scan can be defeated by string assembly, so the backstop is not the proof — the behaviour tests and mutations are:
 2. **No send without a tap, whatever opened #20:** `Confirm.test.tsx` › "no resume sends before a tap" (reauth null, proven, resumed after expiry, opened as the tab — 10 s untouched, zero `wallet.send`); `sendFlow.test.tsx` › "after #10 … no send in 10 s; one tap sends once"; E2E spec 4's 3 s quiet window after #10. Mutation M9b (an effect that sends on resume) turns 16 component tests and E2E spec 4 red.
 3. **The resume route reads only through `wallet.preparedFor`;** the hash selects the screen and carries no data (`firstRoute` keeps only a valid address; M13a). A resume with `reauth: null` shows "You have a send waiting." and waits.
 4. **An unproven challenge never sends:** the tap opens #10 (M9e). **A proven one sends without a second #10.**
-5. **Rule 6 on the tap**, with `disabled` lifted: one press → one `wallet.send`. While it is in flight, [Cancel], Back and Esc do nothing (M9d2, M9g).
+5. **Rule 6 on the tap**, with `disabled` lifted: one press → one `wallet.send`. While it is in flight, [Cancel], Back and Esc do nothing (M9d2, M9g). A stale unproven view re-reads `preparedFor` once inside the same tap and sends if now proven (review L2, M9k) — never a second #10 for a satisfied challenge.
+7. **No resume loop on a dead challenge** (review M1): a challenge past C5's 10-minute cap makes `preparedFor` report `expired`, so the resume re-prepares with a fresh challenge and one tap opens a live #10 (M3d).
 6. **C5:** one automatic re-prepare at the quote's end, then `[Refresh]` (M9a) — a re-prepare never sends; after `prepared-expired` the user taps again.
 
 ## File map
@@ -71,7 +72,7 @@ Every task's requirements include these.
 |---|---|---|
 | `core/solana/__tests__/history.test.ts` | 4 | modified |
 | `core/solana/history.ts` | 4 | modified |
-| `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md` | 1, 4, 7, 8, 9, 10, 11, 12, 13, 14 | modified |
+| `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md` | 1, 3, 4, 7, 8, 9, 10, 11, 12, 13, 14, 15 | modified |
 | `extension/e2e/fakeCoordinator.ts` | 15, 17 | modified |
 | `extension/e2e/popup.spec.ts` | 4 | modified |
 | `extension/e2e/send.spec.ts` | 15 | created |
@@ -97,6 +98,7 @@ Every task's requirements include these.
 | `extension/src/app/__tests__/TokenSheet.test.tsx` | 7 | modified |
 | `extension/src/app/__tests__/TxDetail.test.tsx` | 4, 14 | modified |
 | `extension/src/app/__tests__/engine.test.ts` | 3 | modified |
+| `extension/src/app/__tests__/format.test.ts` | 9 | modified |
 | `extension/src/app/__tests__/harness.tsx` | 8 | modified |
 | `extension/src/app/__tests__/router.test.ts` | 13 | modified |
 | `extension/src/app/__tests__/sendFlow.test.tsx` | 13 | created |
@@ -104,7 +106,9 @@ Every task's requirements include these.
 | `extension/src/app/__tests__/sendStyles.test.tsx` | 5 | created |
 | `extension/src/app/app.css` | 7, 8, 9, 10, 11, 12, 13, 14 | modified |
 | `extension/src/app/engine.ts` | 3 | modified |
+| `extension/src/app/format.ts` | 9 | modified |
 | `extension/src/app/history.ts` | 4 | modified |
+| `extension/src/app/mount.tsx` | 13 | modified |
 | `extension/src/app/platform.ts` | 9 | modified |
 | `extension/src/app/prefs.ts` | 9 | modified |
 | `extension/src/app/router.ts` | 13 | modified |
@@ -881,6 +885,7 @@ MSG
 ### Task 3: The send engine's gaps: `reauth.proven`, `validUntil`, the pending record's `feeLamports`
 
 **Files:**
+- Modify: `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md`
 - Modify: `extension/src/app/__tests__/engine.test.ts`
 - Modify: `extension/src/app/engine.ts`
 - Modify: `extension/src/background/__tests__/fixtures.ts`
@@ -901,6 +906,7 @@ Three facts #20 and #21 need and the engine did not report — each derived from
 - **`reauth.proven`** — the engine's own `challengeSatisfied` for this intent. Spec §4.5 step 1 sends on `reauth === null`; without `proven`, #20 resumed after #10 could only open #10 again (a spec contradiction this plan resolves: step 1 is "`reauth === null` **or** a proven challenge"). It decides nothing: `wallet.send` consumes the proof itself.
 - **`validUntil`** — `createdAt + PREPARED_TTL_MS`, so #20's "Quote valid N s" counts the engine's own deadline (D39).
 - **`feeLamports`** on the pending record — network fee plus the Noctura fee when charged, exact (the compute-unit price and limit are signed): #21's "Fee paid", also after a reopened popup. A stored value that is not digits reads as null and **keeps** the record (a pending send is never hidden); a record from before plan 3 reads null. The extension charges no Noctura fee today (`feePolicy.ts`: status unknown), so `sendFeeCharged.test.ts` swaps in a charging policy with `vi.mock` — the only way to tell "network fee" from "network fee + Noctura fee" (dry-run catch: without it M3c survived).
+- **A dead challenge makes the send `expired` (review M1).** `preparedFor` used `createdAt + CHALLENGE_TTL_MS` as the challenge's life, but a re-based challenge ends at `issuedAt + 10 min` (C5's cap), so a young send could carry a dead one: the resume showed #20, the tap opened #10, #10 said "expired", and the icon brought the same dead send back. Now `preparedFor` reports `expired: true` when `challengeInfo` finds the challenge dead; the resume re-prepares carrying the id, `rebaseChallenge` refuses it, a fresh challenge is issued, and the next tap opens a live #10 — once. Tested here (the engine) and end to end in Task 9.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -1028,11 +1034,15 @@ Modify `extension/src/background/__tests__/send.test.ts`:
 
 ```diff
 diff --git a/extension/src/background/__tests__/send.test.ts b/extension/src/background/__tests__/send.test.ts
-index 0bf072c..80281d6 100644
+index 0bf072c..dc29d29 100644
 --- a/extension/src/background/__tests__/send.test.ts
 +++ b/extension/src/background/__tests__/send.test.ts
-@@ -6,7 +6,7 @@ import {peekPrepared, preparedFor, prepareSend, PREPARED_TTL_MS, sendIntentDiges
- import {CHALLENGE_TTL_MS, challengeSatisfied, consumeChallenge, satisfyChallenge} from '../reauthChallenges';
+@@ -3,10 +3,10 @@ import {base58, base64} from '@scure/base';
+ import {VersionedTransaction} from '@solana/web3.js';
+ import {sendPrepared, signPrepared} from '../send';
+ import {peekPrepared, preparedFor, prepareSend, PREPARED_TTL_MS, sendIntentDigest} from '../prepare';
+-import {CHALLENGE_TTL_MS, challengeSatisfied, consumeChallenge, satisfyChallenge} from '../reauthChallenges';
++import {CHALLENGE_MAX_LIFE_MS, CHALLENGE_TTL_MS, challengeInfo, challengeSatisfied, consumeChallenge, satisfyChallenge} from '../reauthChallenges';
  import {KNOWN_RECIPIENTS_KEY} from '../knownRecipients';
  import {PREPARED_KEY, setSession} from '../session';
 -import {PENDING_KEY} from '../pendingStore';
@@ -1040,7 +1050,7 @@ index 0bf072c..80281d6 100644
  import type {SessionAccount} from '../../vault/accounts';
  import {AUTOLOCK_ALARM} from '../autolock';
  import {firstSignature} from '../../../../core/solana/broadcast';
-@@ -194,3 +194,44 @@ describe('preparedFor (a reopened popup resumes)', () => {
+@@ -194,3 +194,73 @@ describe('preparedFor (a reopened popup resumes)', () => {
      expect(await preparedFor(ext, deps, ACCOUNT.publicKey)).toBeNull();
    });
  });
@@ -1061,6 +1071,35 @@ index 0bf072c..80281d6 100644
 +    // Past its 120 s life the proof is gone: preparedFor no longer reports the send at all.
 +    deps.clock.t += CHALLENGE_TTL_MS;
 +    expect(await preparedFor(ext, deps, ACCOUNT.publicKey)).toBeNull();
++  });
++
++  it('a young send whose challenge reached C5’s 10-minute cap is reported expired; prepared again, it gets a fresh live challenge, and is then live (review M1)', async () => {
++    const ext = fakeExt();
++    await unlocked(ext);
++    const deps = fakeDeps({reader: sendReader()});
++    const start = deps.clock.t;
++    let view = await prepareSend(ext, deps, ACCOUNT.publicKey, INTENT);
++    const old = view.reauth!.challengeId;
++    await satisfyChallenge(ext, deps.now(), old);
++    // Kept alive by re-prepares carrying the challenge (each rebases it) up to 10 s before the cap.
++    while (deps.clock.t + 100_000 < start + CHALLENGE_MAX_LIFE_MS - 10_000) {
++      deps.clock.t += 100_000;
++      view = await prepareSend(ext, deps, ACCOUNT.publicKey, INTENT, {challengeId: old});
++      expect(view.reauth?.challengeId).toBe(old);
++    }
++    deps.clock.t = start + CHALLENGE_MAX_LIFE_MS - 10_000;
++    view = await prepareSend(ext, deps, ACCOUNT.publicKey, INTENT, {challengeId: old});
++    expect(view.reauth).toMatchObject({challengeId: old, proven: true});
++    // 20 s on: the send is 20 s old (its 120 s window open), but the challenge passed its cap.
++    deps.clock.t += 20_000;
++    expect(await challengeInfo(ext, deps.now(), old)).toBeNull();
++    const resumed = await preparedFor(ext, deps, ACCOUNT.publicKey);
++    expect(resumed).toMatchObject({expired: true, reauth: {challengeId: old, proven: false}});
++    // Prepared again carrying it: a fresh challenge, unproven, live — and preparedFor no longer says expired.
++    const fresh = await prepareSend(ext, deps, ACCOUNT.publicKey, INTENT, {challengeId: old});
++    expect(fresh.reauth?.challengeId).not.toBe(old);
++    expect(fresh.reauth?.proven).toBe(false);
++    expect(await preparedFor(ext, deps, ACCOUNT.publicKey)).toMatchObject({expired: false, reauth: {challengeId: fresh.reauth?.challengeId}});
 +  });
 +
 +  it('validUntil is the prepare time plus the 30 s prepared life, in the view and in preparedFor', async () => {
@@ -1124,7 +1163,7 @@ it('a charged Noctura fee is part of the pending record’s feeLamports (network
 ```bash
 npx vitest run src/app/__tests__/engine.test.ts src/background/__tests__/fixtures.ts src/background/__tests__/pendingStore.test.ts src/background/__tests__/prepare.test.ts src/background/__tests__/send.test.ts src/background/__tests__/sendFeeCharged.test.ts
 ```
-Expected (dry run): FAIL — Test Files 5 failed (5) · Tests 9 failed | 64 passed (73) (the code this task adds does not exist yet, or the behaviour is the old one).
+Expected (dry run): FAIL — Test Files 5 failed (5) · Tests 10 failed | 64 passed (74) (the code this task adds does not exist yet, or the behaviour is the old one).
 
 - [ ] **Step 3: Write the implementation.**
 
@@ -1282,7 +1321,7 @@ Modify `extension/src/background/prepare.ts`:
 
 ```diff
 diff --git a/extension/src/background/prepare.ts b/extension/src/background/prepare.ts
-index 174a82d..5a207f3 100644
+index 174a82d..f0d875f 100644
 --- a/extension/src/background/prepare.ts
 +++ b/extension/src/background/prepare.ts
 @@ -8,7 +8,7 @@ import {EXTENSION_FEE_INPUTS} from './feePolicy';
@@ -1290,7 +1329,7 @@ index 174a82d..5a207f3 100644
  import {readSettings} from './settings';
  import {sendReauthReasons, usdMicros, type SendReauthReason} from './reauthPolicy';
 -import {CHALLENGE_TTL_MS, dropChallengesFor, issueChallenge, rebaseChallenge, type SendAboutRefresh} from './reauthChallenges';
-+import {CHALLENGE_TTL_MS, challengeSatisfied, dropChallengesFor, issueChallenge, rebaseChallenge, type SendAboutRefresh} from './reauthChallenges';
++import {CHALLENGE_TTL_MS, challengeInfo, challengeSatisfied, dropChallengesFor, issueChallenge, rebaseChallenge, type SendAboutRefresh} from './reauthChallenges';
  import {digestOf, randomId} from './digest';
  import {SendRefused, type SendIntent} from './sendTypes';
  import {estimatePriorityFee} from '../../../core/solana/priorityFee';
@@ -1331,12 +1370,25 @@ index 174a82d..5a207f3 100644
      simulation: p.shown.simulation,
    };
  }
-@@ -439,7 +448,7 @@ export async function preparedFor(ext: Ext, deps: Pick<WalletDeps, 'now'>, accou
+@@ -433,13 +442,20 @@ function viewOf(p: PreparedSend): PreparedView {
+  * re-authentication can resume. Past PREPARED_TTL_MS it is still reported — `expired`, not
+  * sendable — while its challenge can live (CHALLENGE_TTL_MS): the popup then prepares the same
+  * intent again with that challengeId instead of asking for a second re-authentication.
++ *
++ * A send whose challenge is already dead is `expired` too, however young the send (plan-3 review M1): a re-based
++ * challenge ends at issuedAt + CHALLENGE_MAX_LIFE_MS (C5's cap), so `createdAt + CHALLENGE_TTL_MS` is not its
++ * life. Reported live, the resume would show #20, open #10 for a challenge #10 calls expired, and the icon would
++ * bring the same dead send back. Reported expired, the resume prepares again carrying the id; rebaseChallenge
++ * refuses a dead one, a fresh challenge is issued, and the next tap opens a live #10 — once, so no loop.
+  */
+ export async function preparedFor(ext: Ext, deps: Pick<WalletDeps, 'now'>, account: string): Promise<ResumableView | null> {
+   const now = deps.now();
    const mine = (await loadPrepared(ext)).filter(p => p.account === account && now - p.createdAt < CHALLENGE_TTL_MS);
    const newest = mine.reduce<PreparedSend | null>((a, p) => (a === null || p.createdAt >= a.createdAt ? p : a), null);
    if (newest === null) return null;
 -  return {...viewOf(newest), intent: newest.intent, expired: now - newest.createdAt >= PREPARED_TTL_MS};
-+  return {...(await viewOf(ext, deps, newest)), intent: newest.intent, expired: now - newest.createdAt >= PREPARED_TTL_MS};
++  const challengeDead = newest.challengeId !== null && (await challengeInfo(ext, now, newest.challengeId)) === null;
++  return {...(await viewOf(ext, deps, newest)), intent: newest.intent, expired: challengeDead || now - newest.createdAt >= PREPARED_TTL_MS};
  }
  
  /**
@@ -1361,15 +1413,38 @@ index 18b3c9f..c8052a8 100644
    // and a failed re-arm must not turn its answer into "failed".
 ```
 
-- [ ] **Step 4: Run them green, then the whole suite.**
+- [ ] **Step 4: The spec's entries for this task.**
+
+Modify `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md`:
+
+```diff
+diff --git a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
+index 3e44ce5..cc5bfa1 100644
+--- a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
++++ b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
+@@ -1518,7 +1518,10 @@ point here. **One user tap per broadcast, always (D38; review B1).**
+      `wallet.html#/send/resume?account=…`.
+   3. **Resume** (that tab, or a reopened popup; also any other opener of that hash): read
+      `wallet.preparedFor(account)`. If `expired`, `wallet.prepareSend(account, intent,
+-     challengeId)` with the carried challenge (re-based, D39). **Then show #20** (`confirmed` if a
++     challengeId)` with the carried challenge (re-based, D39). `expired` is also true when the send's
++     challenge is already dead, however young the send (plan 3, review M1: a re-based challenge ends at
++     C5's 10-minute cap, not 120 s after the send was prepared); the re-prepare then gets a fresh
++     challenge, and the tap opens #10 for it — once. **Then show #20** (`confirmed` if a
+      re-auth was just proven, `resume` otherwise) **and wait for a tap.** No code path from a resume
+      calls `wallet.send` without a tap. After the tap, step 1 or 2 applies.
+   4. `wallet.send` refusals:
+```
+
+- [ ] **Step 5: Run them green, then the whole suite.**
 
 ```bash
 npx vitest run src/app/__tests__/engine.test.ts src/background/__tests__/fixtures.ts src/background/__tests__/pendingStore.test.ts src/background/__tests__/prepare.test.ts src/background/__tests__/send.test.ts src/background/__tests__/sendFeeCharged.test.ts
 npx tsc --noEmit && npx vitest run
 ```
-Expected (dry run): Test Files 5 passed (5) · Tests 73 passed (73); tsc clean; whole suite Test Files 102 passed (102) · Tests 1807 passed (1807).
+Expected (dry run): Test Files 5 passed (5) · Tests 74 passed (74); tsc clean; whole suite Test Files 102 passed (102) · Tests 1808 passed (1808).
 
-- [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
+- [ ] **Step 6: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
 Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/node_modules` and `web/node_modules` into it (never `git worktree`, never the repository's own files). Run from the copy's `extension/`.
 
@@ -1397,10 +1472,18 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/
   ```
   `npx vitest run src/background/__tests__/sendFeeCharged.test.ts` — Expected: **red** (1 failed (1)).
 
-- [ ] **Step 6: Commit.**
+- **M3d** — `extension/src/background/prepare.ts`:
+
+  ```diff
+  -   const challengeDead = newest.challengeId !== null && (await challengeInfo(ext, now, newest.challengeId)) === null;
+  +   const challengeDead = false;
+  ```
+  `npx vitest run src/background/__tests__/send.test.ts src/app/__tests__/Confirm.test.tsx` — Expected: **red** (2 failed | 48 passed (50)).
+
+- [ ] **Step 7: Commit.**
 
 ```bash
-git add extension/src/app/__tests__/engine.test.ts extension/src/app/engine.ts extension/src/background/__tests__/fixtures.ts extension/src/background/__tests__/pendingStore.test.ts extension/src/background/__tests__/prepare.test.ts extension/src/background/__tests__/send.test.ts extension/src/background/__tests__/sendFeeCharged.test.ts extension/src/background/pending.ts extension/src/background/pendingStore.ts extension/src/background/prepare.ts extension/src/background/send.ts
+git add docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md extension/src/app/__tests__/engine.test.ts extension/src/app/engine.ts extension/src/background/__tests__/fixtures.ts extension/src/background/__tests__/pendingStore.test.ts extension/src/background/__tests__/prepare.test.ts extension/src/background/__tests__/send.test.ts extension/src/background/__tests__/sendFeeCharged.test.ts extension/src/background/pending.ts extension/src/background/pendingStore.ts extension/src/background/prepare.ts extension/src/background/send.ts
 git commit -F - <<'MSG'
 feat(extension): the engine reports a proven challenge, the quote's end and the fee a send pays
 
@@ -1427,16 +1510,18 @@ MSG
 
 Carry 3, **built under the recommended option A, pending the owner's answer (Scope, owner question 1)**. Plan 1 decoded every failed transaction as `other` ("Failed · transaction", All only). Option A reads what a failed transaction tried to send from its own instructions, only when this account signed it (its first key): "Failed · sent SOL" / "the network fee was charged" / "— SOL" as 26b draws it, under "Sent" as well as "All"; #27 reads "FAILED · SENT" and "— SOL". Nothing moved, so no balance changes. If the owner picks B (keep plan 1's rows), drop this task and Task 14's `[Try again]` on #27; nothing else depends on it. Two E2E files asserted `getByText('Sent SOL')`, which now also matches "Failed · sent SOL": they use `exact: true`. A transaction the owner signed only as a token authority while another account paid (its first key) stays `other` — the owner paid no fee (dry-run catch: M4a survived without that case).
 
+**Exactly one transfer, of a known mint (review H1, controller ruling).** #27's `[Try again]` proposes what was decoded, so a failed batch (1 SOL to A and 1 SOL to B) must never read as "2 SOL to A": a failed transaction is `sent` only when it carries exactly one transfer from the owner (System, or SPL of a mint `tokenForMint` knows) — two transfers, a token plus a SOL transfer, or an unknown mint decode as `other`. Only top-level instructions are read: a transfer a program makes for the owner (an inner, CPI instruction — a dApp's wrapped transfer) stays "Failed · transaction"; the spec's §6.2 entry says so as the honest limit of option A.
+
 - [ ] **Step 1: Write the failing tests.**
 
 Modify `core/solana/__tests__/history.test.ts`:
 
 ```diff
 diff --git a/core/solana/__tests__/history.test.ts b/core/solana/__tests__/history.test.ts
-index 06e85d0..7903513 100644
+index 06e85d0..4eb6e3e 100644
 --- a/core/solana/__tests__/history.test.ts
 +++ b/core/solana/__tests__/history.test.ts
-@@ -90,9 +90,73 @@ describe('decodeHistoryEntry', () => {
+@@ -90,9 +90,100 @@ describe('decodeHistoryEntry', () => {
      expect(usdt).toMatchObject({kind: 'purchase', token: 'USDT', amount: 25_000_000n});
    });
  
@@ -1507,6 +1592,33 @@ index 06e85d0..7903513 100644
 +        instructions: [{program: 'spl-token', parsed: {type: 'transferChecked', info: {source: 'SrcAta111', destination: 'DestAta111', authority: OWNER, mint: NOC, tokenAmount: {amount: '2000', decimals: 9}}}}],
 +      }));
 +      expect(relayed).toMatchObject({kind: 'other', failed: true});
++    });
++
++    // Plan-3 review H1: #27's [Try again] proposes what was decoded, so a batch is never summed into one send.
++    it('more than one transfer from the owner (two System transfers, or a token and a SOL transfer), or an unknown mint, stays "other"', () => {
++      const twoSol = decodeHistoryEntry(OWNER, 'sig', tx({
++        ...failedKeys,
++        keys: [OWNER, OTHER, 'Second1111', SYSTEM],
++        instructions: [sysTransfer(OWNER, OTHER, 1_000_000_000), sysTransfer(OWNER, 'Second1111', 1_000_000_000), sysTransfer(OWNER, MAINNET_FEE_TREASURY, 20_000)],
++      }));
++      expect(twoSol).toMatchObject({kind: 'other', failed: true, token: null, amount: null, counterparty: null});
++      const tokenAndSol = decodeHistoryEntry(OWNER, 'sig', tx({
++        ...failedKeys,
++        keys: [OWNER, 'SrcAta111', 'DestAta111', OTHER],
++        instructions: [
++          {program: 'spl-token', parsed: {type: 'transferChecked', info: {source: 'SrcAta111', destination: 'DestAta111', authority: OWNER, mint: NOC, tokenAmount: {amount: '2000', decimals: 9}}}},
++          sysTransfer(OWNER, OTHER, 1_000_000),
++        ],
++        preToken: [tb(1, NOC, OWNER, '5000'), tb(2, NOC, OTHER, '0')],
++        postToken: [tb(1, NOC, OWNER, '5000'), tb(2, NOC, OTHER, '0')],
++      }));
++      expect(tokenAndSol).toMatchObject({kind: 'other', failed: true});
++      const unknownMint = decodeHistoryEntry(OWNER, 'sig', tx({
++        ...failedKeys,
++        keys: [OWNER, 'SrcAta111', 'DestAta111', SYSTEM],
++        instructions: [{program: 'spl-token', parsed: {type: 'transferChecked', info: {source: 'SrcAta111', destination: 'DestAta111', authority: OWNER, mint: 'UnknownMint1111111111111111111111111111111', tokenAmount: {amount: '2000', decimals: 9}}}}],
++      }));
++      expect(unknownMint).toMatchObject({kind: 'other', failed: true, token: null});
 +    });
 +
    });
@@ -1700,7 +1812,7 @@ index 8000585..c45950f 100644
 ```bash
 npx vitest run ../core/solana/__tests__/history.test.ts src/app/__tests__/Activity.test.tsx src/app/__tests__/TxDetail.test.tsx
 ```
-Expected (dry run): FAIL — Test Files 2 failed | 1 passed (3) · Tests 8 failed | 54 passed (62) (the code this task adds does not exist yet, or the behaviour is the old one).
+Expected (dry run): FAIL — Test Files 2 failed | 1 passed (3) · Tests 8 failed | 55 passed (63) (the code this task adds does not exist yet, or the behaviour is the old one).
 
 - [ ] **Step 3: Write the implementation.**
 
@@ -1708,7 +1820,7 @@ Modify `core/solana/history.ts`:
 
 ```diff
 diff --git a/core/solana/history.ts b/core/solana/history.ts
-index fdae98a..9f8de80 100644
+index fdae98a..e81c97b 100644
 --- a/core/solana/history.ts
 +++ b/core/solana/history.ts
 @@ -10,7 +10,10 @@ export interface HistoryEntry {
@@ -1723,7 +1835,7 @@ index fdae98a..9f8de80 100644
    amount: bigint | null;
    counterparty: string | null;
    feeLamports: bigint;
-@@ -57,12 +60,56 @@ function systemTransfers(instructions: Json[]): {source: string; destination: st
+@@ -57,12 +60,65 @@ function systemTransfers(instructions: Json[]): {source: string; destination: st
    return out;
  }
  
@@ -1740,13 +1852,18 @@ index fdae98a..9f8de80 100644
 +/**
 + * What a FAILED transaction tried to send (plan 3, owner question 1, option A): nothing moved, so the balance
 + * changes say nothing — but its own instructions do. Only for a transaction this owner paid for and signed (the
-+ * first key), and only a transfer: SPL TransferChecked or Transfer whose authority is the owner (the mint from the
-+ * instruction or from the source account's balance entry; the recipient wallet from the destination's balance
-+ * entry, or from an associated-token-account create for it in the same transaction), else System transfers from
-+ * the owner (the Noctura fee's transfer to the treasury left out). Anything else is null: the caller's `other`.
++ * first key), and only when it carries EXACTLY ONE transfer from the owner (plan-3 review H1: #27's [Try again]
++ * proposes this intent, so a batch is never summed into one send to its first recipient): an SPL TransferChecked
++ * or Transfer whose authority is the owner, of a mint the wallet knows (the mint from the instruction or from the
++ * source account's balance entry; the recipient wallet from the destination's balance entry, or from an
++ * associated-token-account create for it in the same transaction), or one System transfer from the owner (the
++ * Noctura fee's transfer to the treasury left out). Top-level instructions only: a transfer a program makes for
++ * the owner (an inner, CPI instruction) is not read, so a dApp's wrapped transfer stays `other`. Anything else
++ * is null: the caller's `other`.
 + */
-+function attemptedSend(owner: string, keys: readonly (string | null)[], instructions: Json[], meta: Json): {token: WalletToken | null; mint: string | null; amount: bigint; counterparty: string | null} | null {
++function attemptedSend(owner: string, keys: readonly (string | null)[], instructions: Json[], meta: Json): {token: WalletToken; mint: string | null; amount: bigint; counterparty: string | null} | null {
 +  if (keys[0] !== owner) return null;
++  const found: {token: WalletToken | null; mint: string | null; amount: bigint; counterparty: string | null}[] = [];
 +  for (const ix of instructions) {
 +    if (ix.program !== 'spl-token' || !isObj(ix.parsed) || (ix.parsed.type !== 'transferChecked' && ix.parsed.type !== 'transfer') || !isObj(ix.parsed.info)) continue;
 +    const info = ix.parsed.info;
@@ -1761,11 +1878,15 @@ index fdae98a..9f8de80 100644
 +        }
 +      }
 +    }
-+    if (amount > 0n) return {token: mint === null ? null : tokenForMint(mint), mint, amount, counterparty};
++    if (amount > 0n) found.push({token: mint === null ? null : tokenForMint(mint), mint, amount, counterparty});
 +  }
-+  const out = systemTransfers(instructions).filter(tr => tr.source === owner && tr.destination !== MAINNET_FEE_TREASURY);
-+  if (out.length === 0) return null;
-+  return {token: 'SOL', mint: null, amount: out.reduce((sum, tr) => sum + tr.lamports, 0n), counterparty: out[0]?.destination ?? null};
++  for (const tr of systemTransfers(instructions)) {
++    if (tr.source === owner && tr.destination !== MAINNET_FEE_TREASURY) found.push({token: 'SOL', mint: null, amount: tr.lamports, counterparty: tr.destination});
++  }
++  const only = found.length === 1 ? found[0] : undefined;
++  // One transfer, of a token the wallet knows: an unknown mint is not a send the wallet can name or repeat.
++  if (only === undefined || only.token === null) return null;
++  return {...only, token: only.token};
 +}
 +
  /**
@@ -1780,7 +1901,7 @@ index fdae98a..9f8de80 100644
   * One entry per transaction: when a transaction moves both a token and SOL for the owner (a token
   * send that also paid rent for the recipient's account, or the markup), only the token leg is
   * reported — the SOL leg is not a separate entry (plan "Scope" item 12).
-@@ -77,7 +124,11 @@ export function decodeHistoryEntry(owner: string, signature: string, tx: unknown
+@@ -77,7 +133,11 @@ export function decodeHistoryEntry(owner: string, signature: string, tx: unknown
    const failed = meta.err !== null && meta.err !== undefined;
    const base = {signature, blockTime: typeof t.blockTime === 'number' ? t.blockTime : null, feeLamports, failed};
    const other: HistoryEntry = {...base, kind: 'other', token: null, mint: null, amount: null, counterparty: null};
@@ -1867,10 +1988,10 @@ Modify `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md`:
 
 ```diff
 diff --git a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-index 3e44ce5..c5b2135 100644
+index cc5bfa1..3f99a53 100644
 --- a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
 +++ b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-@@ -1902,12 +1902,15 @@ point here. **One user tap per broadcast, always (D38; review B1).**
+@@ -1905,12 +1905,19 @@ point here. **One user tap per broadcast, always (D38; review B1).**
      They are a scanning aid; verification surfaces (#20, #27, #10, #13) show the full address (§11
      conflict 7).
    - Pull-to-refresh becomes the button (D2).
@@ -1882,8 +2003,12 @@ index 3e44ce5..c5b2135 100644
 -    the attempted kind and token, which the decoder does not keep. Owner decision in plan 3.
 +  - **Failed rows — plan 3, owner question 1, built with the recommended option A (pending the owner's
 +    answer):** `core/solana/history.ts` reads what a failed transaction tried to send from its own
-+    instructions — a System transfer, or an SPL TransferChecked/Transfer, signed by this account (its
-+    first key) — so a failed send reads "Failed · sent SOL" / "the network fee was charged" / "— SOL"
++    instructions — exactly one transfer from this account (a System transfer, or an SPL
++    TransferChecked/Transfer of a token the wallet knows), which paid for it (its first key); a batch
++    of transfers or an unknown mint stays `other` (plan-3 review H1: #27's `[Try again]` proposes what
++    was decoded). Only top-level instructions are read: a transfer a program makes for this account
++    (an inner, CPI instruction — a dApp's wrapped transfer) stays "Failed · transaction", the honest
++    limit of option A — so a failed send reads "Failed · sent SOL" / "the network fee was charged" / "— SOL"
 +    (red `.ic.fail` with the ✕ glyph), as 26b draws the failed row, and shows under "Sent" as well as
 +    "All". A failed transaction this account did not sign, or one that is not a transfer, still reads
 +    "Failed · transaction" / … / "—" and shows under "All" only. The design's fee in dollars under the
@@ -1892,7 +2017,7 @@ index 3e44ce5..c5b2135 100644
    - **Purchase row:** the design has no purchase row; it follows 26b's swap row (`.ic.swap` with
      `#i-swap`).
    - **Other row:** the design's no-funds row (`.ic` neutral, `#i-doc`, 26b) is used, but its amount
-@@ -1949,10 +1952,11 @@ point here. **One user tap per broadcast, always (D38; review B1).**
+@@ -1952,10 +1959,11 @@ point here. **One user tap per broadcast, always (D38; review B1).**
    - The 6+6 checksum highlight is replaced by groups of four (spec §3).
    - The shielded/dApp state 27b is hidden (D4, B1c).
    - Fiat is labelled "now" as marked.
@@ -1916,7 +2041,7 @@ index 3e44ce5..c5b2135 100644
 npx vitest run ../core/solana/__tests__/history.test.ts src/app/__tests__/Activity.test.tsx src/app/__tests__/TxDetail.test.tsx
 npx tsc --noEmit && npx vitest run
 ```
-Expected (dry run): Test Files 3 passed (3) · Tests 62 passed (62); tsc clean; whole suite Test Files 102 passed (102) · Tests 1813 passed (1813).
+Expected (dry run): Test Files 3 passed (3) · Tests 63 passed (63); tsc clean; whole suite Test Files 102 passed (102) · Tests 1815 passed (1815).
 
 - [ ] **Step 6: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -1928,7 +2053,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/
   -   if (keys[0] !== owner) return null;
   + (deleted)
   ```
-  `npx vitest run ../core/solana/__tests__/history.test.ts` — Expected: **red** (1 failed | 11 passed (12)).
+  `npx vitest run ../core/solana/__tests__/history.test.ts` — Expected: **red** (1 failed | 12 passed (13)).
 
 - **M4b** — `extension/src/app/history.ts`:
 
@@ -1937,6 +2062,22 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/
   + 'Failed · transaction'
   ```
   `npx vitest run src/app/__tests__/Activity.test.tsx` — Expected: **red** (5 failed | 23 passed (28)).
+
+- **M4c** — `core/solana/history.ts`:
+
+  ```diff
+  -   const only = found.length === 1 ? found[0] : undefined;
+  +   const only = found.length >= 1 ? {...found[0]!, amount: found.reduce((sum, f) => sum + f.amount, 0n)} : undefined;
+  ```
+  `npx vitest run ../core/solana/__tests__/history.test.ts src/app/__tests__/TxDetail.test.tsx` — Expected: **red** (2 failed | 35 passed (37)).
+
+- **M4d** — `core/solana/history.ts`:
+
+  ```diff
+  -   if (only === undefined || only.token === null) return null;
+  +   if (only === undefined) return null;
+  ```
+  `npx vitest run ../core/solana/__tests__/history.test.ts` — Expected: **red** (1 failed | 12 passed (13)).
 
 - [ ] **Step 7: Commit.**
 
@@ -2055,7 +2196,7 @@ Expected: `df829f1cadacc9f4fe51d4019acde4dd91066edca852277e92ecdd3a87063411`, `1
 npx vitest run src/app/__tests__/sendStyles.test.tsx
 npx tsc --noEmit && npx vitest run
 ```
-Expected (dry run): Test Files 1 passed (1) · Tests 2 passed (2); tsc clean; whole suite Test Files 103 passed (103) · Tests 1815 passed (1815).
+Expected (dry run): Test Files 1 passed (1) · Tests 2 passed (2); tsc clean; whole suite Test Files 103 passed (103) · Tests 1817 passed (1817).
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -2094,7 +2235,7 @@ Pure functions, so every screen and test agrees on one definition:
 - **MAX (carry 2, max-send half):** for SOL, `balance − worst fee − 890 880` (worst fee = 5 000 base + the priority ceiling at 1 000 CU + the markup ceiling = 45 000 lamports), floored at 0 — the account keeps at least the rent-exempt minimum, never a 1..890 879 remainder; a token sends its whole balance. A property test over 5 000 balances checks the remainder is never in the dust band.
 - **`predictReasons`** calls `sendReauthReasons`, the engine's own rule, so #12's "Review & unlock to send" is a prediction of the same decision (the engine still decides; a parity test pins it).
 - **`feeRows`** is §4.5's one definition of the fee rows for #19 and #20 (and #10 mirrors it).
-- **`sentBeforeText`** gives E6's hint: "Verified · sent before · last N days ago"; "· today" and "· last 1 day ago" are **controller additions** (the design gives only "last 12 days ago").
+- **`sentBeforeText`** gives E6's hint: "Verified · sent before · last N days ago"; "· today" and "· yesterday" are **controller additions — awaiting the owner** (the design gives only "last 12 days ago"; the review rejected "last 1 day ago").
 
 - [ ] **Step 1: Write the failing test.**
 
@@ -2237,7 +2378,7 @@ describe('the send flow’s rules', () => {
     const now = new Date(2026, 9, 2, 9, 41).getTime();
     expect(sentBeforeText(null, now)).toBe('Verified · sent before');
     expect(sentBeforeText(new Date(2026, 9, 2, 0, 5).getTime(), now)).toBe('Verified · sent before · today');
-    expect(sentBeforeText(new Date(2026, 9, 1, 23, 59).getTime(), now)).toBe('Verified · sent before · last 1 day ago');
+    expect(sentBeforeText(new Date(2026, 9, 1, 23, 59).getTime(), now)).toBe('Verified · sent before · yesterday');
     expect(sentBeforeText(new Date(2026, 8, 20, 12, 0).getTime(), now)).toBe('Verified · sent before · last 12 days ago');
   });
 });
@@ -2414,14 +2555,15 @@ const dayStart = (t: number): number => {
 
 /**
  * "Verified · sent before · last 12 days ago" (#12 design state 3; local calendar days, cardinal rule 3), or
- * "Verified · sent before" with no date. "· today" and "last 1 day ago" — controller addition (plan 3; owner to
- * confirm): the design gives only the plural form.
+ * "Verified · sent before" with no date. "· today" and "· yesterday" — controller addition — awaiting the owner
+ * (plan 3; the review rejected "last 1 day ago"): the design gives only the plural form.
  */
 export function sentBeforeText(lastSentAt: number | null, now: number): string {
   if (lastSentAt === null) return 'Verified · sent before';
   const days = Math.max(0, Math.round((dayStart(now) - dayStart(lastSentAt)) / 86_400_000));
   if (days === 0) return 'Verified · sent before · today';
-  return `Verified · sent before · last ${days} ${days === 1 ? 'day' : 'days'} ago`;
+  if (days === 1) return 'Verified · sent before · yesterday';
+  return `Verified · sent before · last ${days} days ago`;
 }
 ```
 
@@ -2431,7 +2573,7 @@ export function sentBeforeText(lastSentAt: number | null, now: number): string {
 npx vitest run src/app/__tests__/sendRules.test.ts
 npx tsc --noEmit && npx vitest run
 ```
-Expected (dry run): Test Files 1 passed (1) · Tests 10 passed (10); tsc clean; whole suite Test Files 104 passed (104) · Tests 1825 passed (1825).
+Expected (dry run): Test Files 1 passed (1) · Tests 10 passed (10); tsc clean; whole suite Test Files 104 passed (104) · Tests 1827 passed (1827).
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -2449,6 +2591,14 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/
 
   ```diff
   -   if (days === 0) return 'Verified · sent before · today';
+  + (deleted)
+  ```
+  `npx vitest run src/app/__tests__/sendRules.test.ts` — Expected: **red** (1 failed | 9 passed (10)).
+
+- **M6c** — `extension/src/app/send/rules.ts`:
+
+  ```diff
+  -   if (days === 1) return 'Verified · sent before · yesterday';
   + (deleted)
   ```
   `npx vitest run src/app/__tests__/sendRules.test.ts` — Expected: **red** (1 failed | 9 passed (10)).
@@ -2480,7 +2630,7 @@ MSG
 - Consumes: Task 6; `wallet.recipientInfo` (E6), `TokenSheet` (#43, plan 1), `useWallet` (balances, prices, net mode, pending).
 - Produces: `src/app/screens/Send.tsx` (`Send`, `SEND_TEXT`); `src/app/ui/useEscape.ts`; ExtIcon `clip`, `alert`; `TokenSheet`'s `balances: Balances | null`.
 
-Spec §4.2 and index.html #s12 (states 1–7), #s43. Every state: idle; invalid recipient; insufficient ("short by" the exact BigInt difference); SPL with less SOL than the base fee; sent-before (E6); own account / fee treasury labels and the sending account refused; first-time recipient (design state 6: banner, groups of four, "Never sent here before", the re-auth amount line, "Review & unlock to send"); over 5 %; pending (banner + [View it]); stale balances; refused (D26); MAX; #43 from the chip. The CTA hands #19 the draft and the intent in base units through a `LockedButton` (rule 6). E6's reply is generation-checked (a reply for an address the field no longer holds is dropped). Paste reads the clipboard only when the browser allows; otherwise "Paste with Ctrl+V (⌘V on a Mac)." — **controller addition**. No autofocus.
+Spec §4.2 and index.html #s12 (states 1–7), #s43. Every state: idle; invalid recipient; insufficient ("short by" the exact BigInt difference); SPL with less SOL than the base fee; sent-before (E6); own account / fee treasury labels and the sending account refused; first-time recipient (design state 6: banner, groups of four, "Never sent here before", the re-auth amount line, "Review & unlock to send"); over 5 %; pending (banner + [View it]); stale balances; refused (D26); MAX; #43 from the chip. The CTA hands #19 the draft and the intent in base units through a `LockedButton` (rule 6). E6's reply is generation-checked (a reply for an address the field no longer holds is dropped). Paste reads the clipboard only when the browser allows; otherwise "Paste with Ctrl+V (⌘V on a Mac)." — **controller addition — awaiting the owner**. The CTA carries the amount as typed (design state 4) but never "Send 1. SOL" mid-typing (review L6). No autofocus.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -2713,6 +2863,22 @@ describe('#12 send', () => {
     expect(nav.onReview).toHaveBeenCalledWith({token: 'SOL', recipient: COUNTERPARTY, amount: '0.01'}, {token: 'SOL', recipient: COUNTERPARTY, amount: 10_000_000n});
   });
 
+  it('mid-typing "1." the CTA reads "Send 1 SOL", never "Send 1. SOL" (review L6); "1.50" stays as typed', async () => {
+    // A $1 000 threshold, so 1 SOL ($150 at the test price, under 5 % of 62.48) predicts no re-authentication.
+    await renderSend({
+      before: async ext => {
+        await ext.local.set(KNOWN_RECIPIENTS_KEY, [{address: COUNTERPARTY, at: null}]);
+        await ext.local.set('v1_settings', {autoLockMinutes: 5, reauthUsdCents: 100_000, selectedAccount: 0});
+      },
+    });
+    await loaded();
+    type('Recipient', COUNTERPARTY);
+    type('Amount', '1.');
+    await waitFor(() => expect(cta().textContent).toBe('Send 1 SOL'));
+    type('Amount', '1.50');
+    await waitFor(() => expect(cta().textContent).toBe('Send 1.50 SOL'));
+  });
+
   it('Esc and the back arrow go back to #11', async () => {
     await renderSend();
     await loaded();
@@ -2927,6 +3093,7 @@ export const SEND_TEXT = {
   pending: 'A send from this account is still pending. Wait until it confirms or expires.',
   reviewUnlock: 'Review & unlock to send',
   /** Controller addition (plan 3; owner to confirm): a browser may refuse a page reading the clipboard. */
+  /** Controller addition — awaiting the owner (plan 3): the browser refused the clipboard read. */
   pasteRefused: 'Paste with Ctrl+V (⌘V on a Mac).',
   /** §4.5's loop guard sends the user back here with it. */
   startAgain: 'Something went wrong — start the send again.',
@@ -3102,7 +3269,8 @@ export function Send({
       &nbsp;{SEND_TEXT.reviewUnlock}
     </>
   ) : amount !== null ? (
-    `Send ${amountText} ${token}`
+    // The amount as typed (design state 4: "Send 75.000000 SOL") — but never "Send 1. SOL" mid-typing (review L6).
+    `Send ${amountText.endsWith('.') ? amountText.slice(0, -1) : amountText} ${token}`
   ) : (
     `Send ${token}`
   );
@@ -3331,18 +3499,21 @@ Modify `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md`:
 
 ```diff
 diff --git a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-index c5b2135..0de157a 100644
+index 3f99a53..13c6f81 100644
 --- a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
 +++ b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-@@ -1378,6 +1378,16 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
+@@ -1378,6 +1378,19 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
    **→ adapted** (design regex allows 6 decimals; rule 2: exact base units via BigInt).
  - **CTA:** `LockedButton` (rule 6) → push #19 with `{token, recipient, amount}`.
  - **Differs, loudly:**
 +  - **Plan 3:** the paste button reads the clipboard only when the browser allows it (the extension has
 +    no clipboard permission, parent §4); when it refuses, the helper says "Paste with Ctrl+V (⌘V on a
-+    Mac)." — **controller addition (plan 3; owner to confirm)**. The sent-before hint reads "Verified ·
-+    sent before · today" on the day of the last send and "… · last 1 day ago" for one day — **controller
-+    additions (plan 3; owner to confirm)**: the design gives only "last 12 days ago". The token chip's
++    Mac)." — **controller addition — awaiting the owner**. The sent-before hint reads "Verified · sent
++    before · today" on the day of the last send and "Verified · sent before · yesterday" for one day —
++    **controller additions — awaiting the owner** (the review rejected "last 1 day ago"): the design gives
++    only "last 12 days ago". There is no "send everything" on #12: MAX keeps the rent-exempt minimum by
++    design, and closing an account to exactly 0 is a product decision not taken here (plan-3 review, Q2).
++    The CTA never reads "Send 1. SOL" while the decimal point is being typed (review L6). The token chip's
 +    tile is each token's own (#43's and #11's colours): the design's chip draws SOL only. The CTA carries
 +    the amount as typed ("Send 75.000000 SOL", design state 4) once it parses; an amount the CTA refuses
 +    anyway (short, or no SOL for the fee) predicts no re-authentication. "· ≈ $…" on the available line
@@ -3359,7 +3530,7 @@ index c5b2135..0de157a 100644
 npx vitest run src/app/__tests__/Send.test.tsx src/app/__tests__/TokenSheet.test.tsx
 npx tsc --noEmit && npx vitest run
 ```
-Expected (dry run): Test Files 2 passed (2) · Tests 21 passed (21); tsc clean; whole suite Test Files 105 passed (105) · Tests 1844 passed (1844).
+Expected (dry run): Test Files 2 passed (2) · Tests 22 passed (22); tsc clean; whole suite Test Files 105 passed (105) · Tests 1847 passed (1847).
 
 - [ ] **Step 6: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -3372,7 +3543,15 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/
   -       if (r.ok) setInfo(r.data);
   +       if (r.ok) setInfo(r.data);
   ```
-  `npx vitest run src/app/__tests__/Send.test.tsx` — Expected: **red** (1 failed | 17 passed (18)).
+  `npx vitest run src/app/__tests__/Send.test.tsx` — Expected: **red** (1 failed | 18 passed (19)).
+
+- **M7b** — `extension/src/app/screens/Send.tsx`:
+
+  ```diff
+  - amountText.endsWith('.') ? amountText.slice(0, -1) : amountText
+  + amountText
+  ```
+  `npx vitest run src/app/__tests__/Send.test.tsx` — Expected: **red** (1 failed | 18 passed (19)).
 
 - [ ] **Step 7: The §8 visual checklist for this screen.** Task 17 shoots every state of this screen; after it, the opus-tier reviewer checks them against index.html with the checklist in Task 17. Nothing to run here; the component tests above already assert every string.
 
@@ -3402,7 +3581,7 @@ MSG
 - Consumes: Tasks 2, 3, 6, 7; `wallet.prepareSend`, `wallet.preparedFor`, `wallet.discardPrepared` (E7), `wallet.cached`.
 - Produces: `src/app/screens/Review.tsx` (`Review`, `REVIEW_TEXT`); harness `sendingReader()` and the `gate` option; ExtIcon `cpu`, `check-circle`; `check-classes.mjs` DYNAMIC gains `${c.tone}`.
 
-Spec §4.4 and #s19. States: simulating (the live "Building call", the skeleton, "Simulating…" disabled); ready (the three checks, the balance delta from the engine's fee rows, "After" = the engine's read balance less `solRequiredLamports`, the slot, Continue); ready SPL with a new token account (rent row, both Afters); failed with each refusal's copy — `split-balance` ("Send at most N", N from Task 2's detail), `insufficient-*`, `sender-below-rent` / `recipient-below-rent` (**controller additions**, carry 2), `unreachable` (server line + last known state + Retry), `coordinator-refused` (D26, Retry disabled), `in-flight` (pending banner + [View it]). Cancel, the back arrow and Esc **discard first** (E7), then #12; a prepare that lands after the screen was left is discarded too (generation check). Back from #20 shows a live prepared send of the same intent again; an expired one is re-prepared carrying its challenge (D39).
+Spec §4.4 and #s19. States: simulating (the live "Building call", the skeleton, "Simulating…" disabled); ready (the three checks, the balance delta from the engine's fee rows, "After" = the engine's read balance less `solRequiredLamports`, the slot, Continue); ready SPL with a new token account (rent row, both Afters); failed with each refusal's copy — `split-balance` ("Send at most N", N from Task 2's detail), `insufficient-*`, `sender-below-rent` ("This would leave less than 0.00089088 SOL in your account, which Solana does not allow. Send less, so at least that much stays." — the review's wording) / `recipient-below-rent` (**controller additions — awaiting the owner**, carry 2; a simulation refusal's detail says "the simulation refused it for rent", so support can tell it from the pre-check — review L8), `unreachable` (server line + last known state + Retry), `coordinator-refused` (D26, Retry disabled), `in-flight` (pending banner + [View it]). Cancel, the back arrow and Esc **discard first** (E7), then #12; a prepare that lands after the screen was left is discarded too (generation check). Back from #20 shows a live prepared send of the same intent again; an expired one is re-prepared carrying its challenge (D39).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -3861,9 +4040,9 @@ export const REVIEW_TEXT = {
   /** §4.5 (R2-M3): #20 sends the user back here when the engine consumed the send against an expired proof. */
   confirmationExpired: 'Your confirmation expired — review again',
   pending: 'A send from this account is still pending. Wait until it confirms or expires.',
-  /** Controller addition (plan 3, carry 2; owner to confirm) — the engine's check and the simulation's InsufficientFundsForRent alike. */
-  senderBelowRent: 'This would leave less than 0.00089088 SOL in your account, and Solana does not allow that. Keep at least that much SOL there.',
-  /** Controller addition (plan 3, carry 2; owner to confirm): refused before anything is simulated. */
+  /** Controller addition — awaiting the owner (plan 3, carry 2; review wording) — the engine's check and the simulation's InsufficientFundsForRent alike. */
+  senderBelowRent: 'This would leave less than 0.00089088 SOL in your account, which Solana does not allow. Send less, so at least that much stays.',
+  /** Controller addition — awaiting the owner (plan 3, carry 2): refused before anything is simulated, or by the simulation. */
   recipientBelowRent: 'This address has no Solana account yet. A new account needs at least 0.00089088 SOL, so send at least that much.',
 } as const;
 
@@ -4299,10 +4478,10 @@ Modify `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md`:
 
 ```diff
 diff --git a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-index 0de157a..9cf7227 100644
+index 13c6f81..2c9c58c 100644
 --- a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
 +++ b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-@@ -1451,12 +1451,20 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
+@@ -1454,12 +1454,20 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
        again.";
      - `insufficient-sol`: "Not enough SOL for the network fee" + detail;
      - `insufficient-token` / `split-balance`: "This token is spread across several accounts in
@@ -4318,18 +4497,18 @@ index 0de157a..9cf7227 100644
 +    - `sender-below-rent` — the engine's own check before simulating, **and** a simulation the runtime
 +      refused with `InsufficientFundsForRent` at the sender's index (§11.5; plan 3 maps it by the
 +      account index, deciding on `err` alone): "This would leave less than 0.00089088 SOL in your
-+      account, and Solana does not allow that. Keep at least that much SOL there." — **controller
-+      addition (plan 3, carry 2; owner to confirm)**: the draft's "or send everything" is dropped, since
++      account, which Solana does not allow. Send less, so at least that much stays." — **controller
++      addition — awaiting the owner** (plan 3, carry 2; the review's wording): the draft's "or send everything" is dropped, since
 +      MAX keeps the minimum and nothing on #12 sends everything;
 +    - `recipient-below-rent` — refused before anything is simulated (a SOL send to an address with no
 +      account, below 890 880 lamports), or the simulation's `InsufficientFundsForRent` at the
 +      recipient's index: "This address has no Solana account yet. A new account needs at least
-+      0.00089088 SOL, so send at least that much." — **controller addition (plan 3, carry 2; owner to
-+      confirm)**;
++      0.00089088 SOL, so send at least that much." — **controller addition — awaiting the owner**
++      (plan 3, carry 2);
      - `in-flight`: #12's pending banner;
      - `failed`: "Something went wrong while checking this transfer.";
      - `coordinator-refused`: the D26 banner (§7.2), and Retry disabled;
-@@ -1468,6 +1476,16 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
+@@ -1471,6 +1479,16 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
      `wallet.discardPrepared {account}` (E7) first, so a prepared send and its challenge never
      outlive the review the user abandoned. Continuing to #20 keeps them.
  - **Differs:**
@@ -4354,7 +4533,7 @@ index 0de157a..9cf7227 100644
 npx vitest run src/app/__tests__/Review.test.tsx src/app/__tests__/harness.tsx
 npx tsc --noEmit && npx vitest run
 ```
-Expected (dry run): Test Files 1 passed (1) · Tests 22 passed (22); tsc clean; whole suite Test Files 106 passed (106) · Tests 1866 passed (1866).
+Expected (dry run): Test Files 1 passed (1) · Tests 22 passed (22); tsc clean; whole suite Test Files 106 passed (106) · Tests 1869 passed (1869).
 
 - [ ] **Step 6: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -4397,7 +4576,9 @@ MSG
 **Files:**
 - Modify: `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md`
 - Create: `extension/src/app/__tests__/Confirm.test.tsx`
+- Modify: `extension/src/app/__tests__/format.test.ts`
 - Modify: `extension/src/app/app.css`
+- Modify: `extension/src/app/format.ts`
 - Modify: `extension/src/app/platform.ts`
 - Modify: `extension/src/app/prefs.ts`
 - Create: `extension/src/app/screens/Confirm.tsx`
@@ -4407,15 +4588,18 @@ MSG
 - Produces: `src/app/screens/Confirm.tsx` (`Confirm`, `CONFIRM_TEXT`); `platform.ts`'s `reauthPage(challengeId)`; `prefs.ts`'s `CONFIRM_STRIKE_KEY`.
 
 Spec §4.5 and #s20 — the security core of the plan (carry 6):
-- **`tap()` is the only caller of `engine.send`, and only the Send button's `onPress` calls `tap()`** (a source backstop test walks `src/` and fails on any other `engine.send(`). No effect, timer, resume or event sends.
-- `reauth === null` or `reauth.proven` → one `wallet.send` → #21 on the record. An unproven challenge → #10 (`unlock.html?mode=reauth&challenge=<id>`): a new tab from the popup, which closes; the same tab in the UI tab. Nothing is sent.
+- **`tap()` is the only way to `engine.send`, and only the Send button's `onPress` calls `tap()`.** `engine.send` sits in `send(view, tapAt)`, which only `tap()` calls. The source backstop (review M2) walks **all of `src/`** (tests aside): a `send(` method call other than the vault page's `deps.send` appears only in `screens/Confirm.tsx`, and the message name `wallet.send` — any quote, as an object-literal value (`send({type: 'wallet.send'})`) or bare — only in `src/background/` and `src/app/engine.ts`, with fixtures for each form and negative controls. It is the backstop; the behaviour tests and mutations are the proof. No effect, timer, resume or event sends.
+- `reauth === null` or `reauth.proven` → one `wallet.send` → #21 on the record. An unproven view first re-reads `preparedFor` once (review L2: the challenge may have been proven from another surface since) and sends if the engine now says proven for this very prepared send — still one tap. Otherwise → #10 (`unlock.html?mode=reauth&challenge=<id>`): a new tab from the popup, which closes; the same tab in the UI tab. Nothing is sent.
 - **The resume entry reads the prepared send only through `wallet.preparedFor`**; the hash only chose the screen. An expired one is re-prepared carrying its challenge (D39). "You have a send waiting." / "Confirmed. Review the fresh quote and send." — and nothing is sent until a tap (a 10 s untouched test across all entries asserts zero `wallet.send`).
-- **C5:** at the quote's end it re-prepares once by itself ("Updated with a fresh network quote"); untouched, "Quote expired — refresh" disables Send beside `[Refresh]`; any pointer or key input allows one more.
+- **C5:** at the quote's end it re-prepares once by itself ("Updated with a fresh network quote"); untouched, "Quote expired — refresh" disables Send beside `[Refresh]`; any pointer or key input allows one more. Not while a send from this account is open (review L1: the engine would answer `in-flight` and move an untouched #20 to #19).
+- **A resume whose challenge died at C5's cap** (Task 3, review M1) is prepared again with a fresh challenge, and the tap opens #10 for that one — once, no loop (an end-to-end component test).
+- The fee rows' dollars read "< $0.0001" below a hundredth of a cent, never "$0.0000" (review L3, `format.ts`'s `feeUsd`); a test parses the rendered rows and amount back to lamports and compares them with `solRequiredLamports` (review L4).
+- The `reauth-required`-without-a-challengeId test drives the state, not the clock-call count (review M5): the challenge's life ends the moment `takePrepared` removes the prepared send, between the engine's peek and its consume.
 - Every `wallet.send` answer: `check-pending` (→ #21 on its record, never "nothing sent"), `failed`, `prepared-expired` (fresh values, a new tap), `reauth-required` with a challengeId (the loop guard: first "did not carry over", the second time in a row → #12 with "Something went wrong — start the send again."; the strike survives the #10 round trip in `localStorage`, UI state only), without one (→ #19 "Your confirmation expired"), `unknown-prepared`/`in-flight` (a record made since → #21, else #19), `unreachable`, `coordinator-refused`, `locked`.
 - **While a tap's send is in flight, [Cancel], the back arrow and Esc do nothing** (dry-run catch: a cancel there would discard nothing and show "No fees charged" over a broadcast).
-- `[Cancel]` discards (E7) → #11's toast; a [Cancel] that lands during C5's re-prepare discards what that prepare makes (dry-run catch: M9f survived until the test was added). No autofocus; Enter does nothing. Tab-surface lines "…in this tab…" are **controller additions**.
+- `[Cancel]` discards (E7) → #11's toast; a [Cancel] that lands during C5's re-prepare discards what that prepare makes (dry-run catch: M9f survived until the test was added). No autofocus; Enter does nothing. Tab-surface lines "…in this tab…" are **controller additions — awaiting the owner**.
 
-- [ ] **Step 1: Write the failing test.**
+- [ ] **Step 1: Write the failing tests.**
 
 Create `extension/src/app/__tests__/Confirm.test.tsx`:
 
@@ -4433,7 +4617,8 @@ import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {CONFIRM_STRIKE_KEY} from '../prefs';
 import {KNOWN_RECIPIENTS_KEY} from '../../background/knownRecipients';
 import {PENDING_KEY} from '../../background/pendingStore';
-import {satisfyChallenge} from '../../background/reauthChallenges';
+import {PREPARED_KEY} from '../../background/session';
+import {CHALLENGE_MAX_LIFE_MS, satisfyChallenge} from '../../background/reauthChallenges';
 import {firstSignature} from '../../../../core/solana/broadcast';
 import {ACCOUNT, RECIPIENT, pendingRecord} from '../../background/__tests__/fixtures';
 import {COUNTERPARTY} from '../../../e2e/historyFixtures';
@@ -4515,13 +4700,21 @@ describe('#20 tx-confirm — what it shows', () => {
     const fees = [...document.querySelectorAll('.fee-row')].map(r => [...r.children].map(c => c.textContent));
     expect(fees).toEqual([
       ['Network fee', '0.000005 SOL', '$0.0007'],
-      ['Priority', '0.00000005 SOL', '$0.0000'],
+      ['Priority', '0.00000005 SOL', '< $0.0001'],
       ['No Noctura fee (status unknown)', '', ''],
       ['Total', '0.01000505 SOL', '$1.50'],
     ]);
     // Spec §4.5: the SOL rows and the amount add up to the engine's own total.
     const prepared = await w.engine.preparedFor(ACCOUNT.publicKey);
     expect(prepared.ok && prepared.data?.solRequiredLamports).toBe(10_000_000n + 5_000n + 50n);
+    // …and so do the rows as RENDERED (review L4): a dropped or mis-shown row fails here, not only on #19.
+    const lamports = (sol: string) => {
+      const [whole, frac = ''] = sol.replace(/ SOL$/, '').split('.');
+      return BigInt(whole ?? '0') * 1_000_000_000n + BigInt(frac.padEnd(9, '0'));
+    };
+    const rendered = [...document.querySelectorAll('.fee-row:not(.total) .val')].map(v => v.textContent ?? '').filter(t => t !== '');
+    const shownAmount = lamports((document.querySelector('.review-card .head .amount')?.textContent ?? '') + ' SOL');
+    expect(rendered.reduce((sum, t) => sum + lamports(t), shownAmount)).toBe(prepared.ok ? prepared.data?.solRequiredLamports : -1n);
     expect(document.querySelector('.app-quote')?.textContent).toMatch(/^Quote valid (29|30) s · slot 271 408 921$/);
     expect(send.textContent).toBe('Send 0.0100 SOL');
     expect(send.disabled).toBe(false);
@@ -4571,6 +4764,22 @@ describe('#20 tx-confirm — what it shows', () => {
     await renderConfirm({known: false, entry: 'resume'});
     await sendButton();
     expect(screen.getByText(CONFIRM_TEXT.resume)).toBeTruthy();
+  });
+
+  it('pending + the quote’s end: no automatic re-prepare (the engine would say in-flight) — #20 stays, untouched (review L1)', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const record = pendingRecord({id: 'p1', account: ACCOUNT.publicKey, signature: '5'.repeat(88), createdAt: Date.now(), intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}});
+    const w = await renderConfirm({afterPrepare: ext => ext.local.set(PENDING_KEY, [record])});
+    expect(await screen.findByText(CONFIRM_TEXT.pending)).toBeTruthy();
+    await act(async () => {
+      vi.advanceTimersByTime(31_000);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(w.sent.filter(t => t === 'wallet.prepareSend')).toEqual([]);
+    expect(nav.onReview).not.toHaveBeenCalled();
+    expect(screen.getByText(CONFIRM_TEXT.pending)).toBeTruthy();
   });
 
   it('pending: a send from this account is open → Send disabled, and its press does nothing even with `disabled` lifted', async () => {
@@ -4688,6 +4897,50 @@ describe('#20 tx-confirm — what it shows', () => {
     await waitFor(async () => expect(await w.engine.preparedFor(ACCOUNT.publicKey)).toEqual({ok: true, data: null}));
   });
 
+  it('a resume whose challenge passed C5’s 10-minute cap (the send itself young): prepared again with a fresh challenge, the tap opens #10 for THAT one — once, no loop, nothing sent (review M1)', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const w = await setupWallet({reader: sendingReader(), deps: {now: () => Date.now()}});
+    const start = Date.now();
+    const first = await w.engine.prepareSend(ACCOUNT.publicKey, SMALL);
+    const old = first.ok ? (first.data.reauth?.challengeId ?? '') : '';
+    await satisfyChallenge(w.ext, Date.now(), old);
+    // Kept alive by re-prepares carrying it (each rebases it), the last 10 s before the cap.
+    while (Date.now() + 100_000 < start + CHALLENGE_MAX_LIFE_MS - 10_000) {
+      vi.advanceTimersByTime(100_000);
+      expect((await w.engine.prepareSend(ACCOUNT.publicKey, SMALL, old)).ok).toBe(true);
+    }
+    vi.advanceTimersByTime(start + CHALLENGE_MAX_LIFE_MS - 10_000 - Date.now());
+    expect((await w.engine.prepareSend(ACCOUNT.publicKey, SMALL, old)).ok).toBe(true);
+    vi.advanceTimersByTime(20_000);
+    const asked: unknown[] = [];
+    const sent: string[] = [];
+    const engine = createEngine(m => {
+      const type = (m as {type: string}).type;
+      sent.push(type);
+      if (type === 'wallet.prepareSend') asked.push((m as {challengeId?: unknown}).challengeId);
+      return w.transport(m);
+    }, async () => undefined);
+    render(
+      <WalletProvider engine={engine} platform={w.platform} surface="popup">
+        <Confirm account={ACCOUNT.publicKey} entry="resume" {...nav} />
+      </WalletProvider>,
+    );
+    const send = await sendButton();
+    expect(asked).toEqual([old]);
+    const now = await w.engine.preparedFor(ACCOUNT.publicKey);
+    const fresh = now.ok ? now.data?.reauth?.challengeId : undefined;
+    expect(fresh).toMatch(/^[0-9a-f]{32}$/);
+    expect(fresh).not.toBe(old);
+    expect(screen.queryByText(CONFIRM_TEXT.confirmed)).toBeNull();
+    fireEvent.click(send);
+    await waitFor(() => expect(w.platform.opened).toEqual([`unlock.html?mode=reauth&challenge=${fresh}`]));
+    await act(async () => {
+      vi.advanceTimersByTime(5_000);
+    });
+    expect(asked).toEqual([old]);
+    expect(sent.filter(t => t === 'wallet.send')).toEqual([]);
+  });
+
   it('nothing to resume (discarded, or gone with its challenge): the flow starts at #12', async () => {
     await renderConfirm({prepare: false, entry: 'resume'});
     await waitFor(() => expect(nav.onStartAgain).toHaveBeenCalledWith(null));
@@ -4767,6 +5020,17 @@ describe('#20 — one tap per broadcast (D38) and every answer of wallet.send', 
     expect(t.sends()).toBe(0);
   });
 
+  it('a stale unproven view (proven from another surface since #20 read it): the one tap re-reads, then sends — no second #10 (review L2)', async () => {
+    const w = await renderConfirm({known: false});
+    const send = await sendButton();
+    expect(screen.queryByText(CONFIRM_TEXT.confirmed)).toBeNull();
+    await satisfyChallenge(w.ext, Date.now(), w.challengeId ?? '');
+    fireEvent.click(send);
+    await waitFor(() => expect(nav.onTrack).toHaveBeenCalledTimes(1));
+    expect(w.sends()).toBe(1);
+    expect(w.platform.opened).toEqual([]);
+  });
+
   it('a proven challenge: the tap sends — no second re-authentication', async () => {
     const w = await renderConfirm({known: false, prove: true, entry: 'resume'});
     fireEvent.click(await sendButton());
@@ -4840,9 +5104,18 @@ describe('#20 — one tap per broadcast (D38) and every answer of wallet.send', 
   it('reauth-required WITHOUT a challengeId (the engine consumed the send against a proof past its life, R2-M3): back to #19 with "Your confirmation expired"', async () => {
     const w = await renderConfirm({known: false, prove: true});
     const send = await sendButton();
-    // The real background: the proof holds when sendPrepared peeks, and is past its life when it consumes it.
-    let calls = 0;
-    w.deps.now = () => Date.now() + (calls++ >= 2 ? 200_000 : 0);
+    // The real background, driven by its state (review M5): the proof holds when sendPrepared peeks; the moment
+    // takePrepared removes the prepared send — between the peek and consumeChallenge — the challenge's life ends.
+    const area = w.ext.session;
+    const write = area.set.bind(area);
+    let armed = true;
+    area.set = async (key, value) => {
+      await write(key, value);
+      if (key !== PREPARED_KEY || !armed) return;
+      armed = false;
+      const store = (await area.get('v1_reauth')) as Record<string, {expiresAt: number}>;
+      await write('v1_reauth', Object.fromEntries(Object.entries(store).map(([k, c]) => [k, {...c, expiresAt: Date.now() - 1}])));
+    };
     fireEvent.click(send);
     await waitFor(() => expect(nav.onReview).toHaveBeenCalledWith(SMALL, 'confirmation-expired'));
     expect(await w.engine.pending()).toEqual({ok: true, data: []});
@@ -4896,36 +5169,88 @@ describe('#20 — one tap per broadcast (D38) and every answer of wallet.send', 
 
 // Carry 6 (D38): #20's tap() is the only caller of engine.send in the UI, and tap is wired to one Send button —
 // a source backstop beside the behavioural tests above (which an auto-send effect fails).
-describe('one caller of wallet.send (source backstop)', () => {
-  const APP = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-  const strip = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+// The backstop, not the proof (the behaviour tests and mutations above are): over the WHOLE of src/ (tests aside),
+// a call to a `send` method other than the vault page's `deps.send` appears only in #20's tap(), and the message
+// name `wallet.send` — in any quote, as an object-literal value or bare — only in the background and in the UI
+// engine's one client method. Not a security gate on its own (review M2): string assembly would defeat any scan.
+const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const strip = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1');
+function sendSites(files: {path: string; text: string}[]): string[] {
+  const out: string[] = [];
+  for (const {path, text} of files) {
+    const code = strip(text);
+    const calls = [...code.matchAll(/(\w+)?\s*(?:\.\s*send|\[\s*['"`]send['"`]\s*\])\s*\(/g)].filter(m => m[1] !== 'deps');
+    if (calls.length > 0 && path !== 'app/screens/Confirm.tsx') out.push(`${path}: a send( call`);
+    const named = /wallet\.send\b/.test(code);
+    if (named && !path.startsWith('background/') && path !== 'app/engine.ts') out.push(`${path}: names wallet.send`);
+  }
+  return out;
+}
+
+describe('one caller of wallet.send (source backstop over all of src/)', () => {
   const files = (dir: string): string[] =>
     readdirSync(dir).flatMap(e => {
       const p = join(dir, e);
       if (statSync(p).isDirectory()) return e === '__tests__' ? [] : files(p);
-      return /\.(ts|tsx)$/.test(e) ? [p] : [];
+      return /\.(ts|tsx|mjs|js)$/.test(e) ? [p] : [];
     });
-  it('engine.send( appears only in screens/Confirm.tsx, inside tap(); tap is only the Send button’s onPress', () => {
-    const all = files(APP).map(p => relative(APP, p));
-    // Positive control: the walk reads the real tree.
-    expect(all).toEqual(expect.arrayContaining(['screens/Confirm.tsx', 'screens/Send.tsx', 'engine.ts', 'App.tsx']));
-    const uses = all.flatMap(f => [...strip(readFileSync(resolve(APP, f), 'utf8')).matchAll(/\.send\(/g)].map(() => f));
-    expect(uses).toEqual(['screens/Confirm.tsx']);
-    const confirm = strip(readFileSync(resolve(APP, 'screens/Confirm.tsx'), 'utf8'));
+  it('fixtures: each form outside its two homes is caught; the vault page’s deps.send, the background and comments are not', () => {
+    expect(sendSites([{path: 'unlock/screens/x.ts', text: "await deps.send({type:'wallet.send', id})"}])).toEqual(['unlock/screens/x.ts: names wallet.send']);
+    expect(sendSites([{path: 'app/screens/Home.tsx', text: 'void engine.send(id);'}])).toEqual(['app/screens/Home.tsx: a send( call']);
+    expect(sendSites([{path: 'app/screens/Home.tsx', text: "void engine['send'](id);"}])).toEqual(['app/screens/Home.tsx: a send( call']);
+    expect(sendSites([{path: 'app/ui/x.tsx', text: 'chrome.runtime.sendMessage({type: "wallet.send", id})'}])).toEqual(['app/ui/x.tsx: names wallet.send']);
+    expect(sendSites([{path: 'shared/x.ts', text: 'const t = `wallet.send`;'}])).toEqual(['shared/x.ts: names wallet.send']);
+    // Negative controls.
+    expect(sendSites([{path: 'unlock/reauthFlow.ts', text: "const r = await deps.send({type: 'vault.reauthOk', challengeId});"}])).toEqual([]);
+    expect(sendSites([{path: 'background/walletApi.ts', text: "case 'wallet.send': {"}])).toEqual([]);
+    expect(sendSites([{path: 'app/engine.ts', text: "send: id => call({type: 'wallet.send', id}, SEND, pendingOf),"}])).toEqual([]);
+    expect(sendSites([{path: 'app/screens/Home.tsx', text: '// never wallet.send here; engine.send(x) is #20’s\n/* engine.send(y) */'}])).toEqual([]);
+  });
+
+  it('the real tree: engine.send( only in screens/Confirm.tsx inside tap(), tap only the Send button’s onPress; wallet.send named only in background/ and app/engine.ts', () => {
+    const all = files(SRC).map(p => ({path: relative(SRC, p), text: readFileSync(p, 'utf8')}));
+    // Positive control: the walk reads the real tree, the vault page and the background included.
+    expect(all.map(f => f.path)).toEqual(expect.arrayContaining(['app/screens/Confirm.tsx', 'app/engine.ts', 'unlock/reauthFlow.ts', 'background/walletApi.ts']));
+    expect(sendSites(all)).toEqual([]);
+    const confirm = strip(readFileSync(resolve(SRC, 'app/screens/Confirm.tsx'), 'utf8'));
+    expect([...confirm.matchAll(/\.send\(/g)]).toHaveLength(1);
     const body = confirm.slice(confirm.indexOf('const tap = async () => {'), confirm.indexOf('const refused ='));
     expect(body).toContain('engine.send(view.id)');
+    // engine.send sits in `send`, which only tap() calls (twice: the proven-now path and the plain one).
+    const tapBody = confirm.slice(confirm.indexOf('const tap = async () => {'), confirm.indexOf('const send = async'));
+    expect([...confirm.matchAll(/\bsend\(view, tapAt\)/g)].length).toBe(2);
+    expect([...tapBody.matchAll(/\bsend\(view, tapAt\)/g)].length).toBe(2);
     expect([...confirm.matchAll(/\btap\b/g)].length).toBe(2);
     expect(confirm).toContain('onPress={tap}');
   });
 });
 ```
 
+Modify `extension/src/app/__tests__/format.test.ts`:
+
+```diff
+diff --git a/extension/src/app/__tests__/format.test.ts b/extension/src/app/__tests__/format.test.ts
+index 196c85c..932196a 100644
+--- a/extension/src/app/__tests__/format.test.ts
++++ b/extension/src/app/__tests__/format.test.ts
+@@ -34,6 +34,9 @@ describe('format', () => {
+     expect(feeUsd(0.00075)).toBe('$0.0007');
+     expect(feeUsd(0.0123)).toBe('$0.01');
+     expect(feeUsd(null)).toBe('—');
++    // A fee that is not zero never reads as $0.0000 (plan-3 review L3); zero itself does.
++    expect(feeUsd(0.0000075)).toBe('< $0.0001');
++    expect(feeUsd(0)).toBe('$0.0000');
+   });
+ 
+   it('the hero’s dollars and cents, floored', () => {
+```
+
 - [ ] **Step 2: Run them and watch them fail.**
 
 ```bash
-npx vitest run src/app/__tests__/Confirm.test.tsx
+npx vitest run src/app/__tests__/Confirm.test.tsx src/app/__tests__/format.test.ts
 ```
-Expected (dry run): FAIL — Test Files 1 failed (1) · Tests no tests (the code this task adds does not exist yet, or the behaviour is the old one).
+Expected (dry run): FAIL — Test Files 2 failed (2) · Tests 1 failed | 8 passed (9) (the code this task adds does not exist yet, or the behaviour is the old one).
 
 - [ ] **Step 3: Write the implementation.**
 
@@ -4966,6 +5291,23 @@ index 634c7d6..72cff72 100644
 +  flex-direction: column;
 +  gap: 2px;
 +}
+```
+
+Modify `extension/src/app/format.ts`:
+
+```diff
+diff --git a/extension/src/app/format.ts b/extension/src/app/format.ts
+index ae72ae3..09c9e56 100644
+--- a/extension/src/app/format.ts
++++ b/extension/src/app/format.ts
+@@ -29,6 +29,8 @@ export function showFee(lamports: bigint): string {
+ export function feeUsd(usd: number | null): string {
+   if (usd === null) return '—';
+   if (usd >= 0.01) return showUsd(usd);
++  // Below a hundredth of a cent the four places would read "$0.0000" for a fee that is not zero (plan-3 review L3).
++  if (usd > 0 && usd < 0.0001) return '< $0.0001';
+   return `$${(Math.floor(usd * 10_000 + 1e-9) / 10_000).toFixed(4)}`;
+ }
 ```
 
 Modify `extension/src/app/platform.ts`:
@@ -5057,10 +5399,12 @@ export const CONFIRM_TEXT = {
   /** D22, in the popup: the proof is taken by #10 in a tab of its own. */
   reauthLine: "You'll confirm with your password (or passkey) in a new tab before this is sent.",
   /** Controller addition (plan 3; owner to confirm): #20 in the UI tab hands over to #10 in the same tab. */
+  /** Controller addition — awaiting the owner (plan 3): in the UI tab #10 opens in this same tab. */
   reauthLineTab: "You'll confirm with your password (or passkey) in this tab before this is sent.",
   /** D12, under the CTA. */
   opensTab: 'Confirmation opens in a new tab.',
   /** Controller addition (plan 3; owner to confirm): the same, from the UI tab. */
+  /** Controller addition — awaiting the owner (plan 3): as above. */
   opensHere: 'Confirmation opens in this tab.',
 } as const;
 
@@ -5192,7 +5536,9 @@ export function Confirm({
   // The quote's end (the 30 s prepared life, D39): re-prepare once by itself, then wait for [Refresh] (C5).
   const expiredNow = view !== null && now >= view.validUntil;
   useEffect(() => {
-    if (!expiredNow || view === null || busy || quoteDead) return;
+    // While a send from this account is open the engine would answer `in-flight` and move an untouched #20 to #19;
+    // Send is disabled anyway, so the quote waits (plan-3 review L1).
+    if (!expiredNow || view === null || busy || quoteDead || open !== null) return;
     if (auto.current <= 0) {
       setQuoteDead(true);
       return;
@@ -5201,7 +5547,7 @@ export function Confirm({
     void reprepare(view.intent, view.reauth?.challengeId).then(ok => {
       if (ok) setNotice('updated');
     });
-  }, [expiredNow, view, busy, quoteDead, reprepare]);
+  }, [expiredNow, view, busy, quoteDead, open, reprepare]);
 
   const refresh = async () => {
     if (view === null) return;
@@ -5242,6 +5588,12 @@ export function Confirm({
     if (view === null || busy || quoteDead) return;
     const tapAt = clock();
     if (view.reauth !== null && !view.reauth.proven) {
+      // The view may be stale: the challenge proven from another surface since this #20 read it (plan-3 review L2).
+      // Read once more — still this one tap — and send if the engine now says proven for this very prepared send.
+      const fresh = await engine.preparedFor(account);
+      if (left.current) return;
+      const latest = fresh.ok ? fresh.data : null;
+      if (latest !== null && latest.id === view.id && latest.reauth?.proven === true && !latest.expired) return send(view, tapAt);
       const page = reauthPage(view.reauth.challengeId);
       if (page === null) return onStartAgain(draftOf(view.intent));
       if (surface === 'popup') {
@@ -5250,6 +5602,11 @@ export function Confirm({
       } else platform.navigate(page);
       return;
     }
+    return send(view, tapAt);
+  };
+
+  /** The one wallet.send (D38): reached only from the Send button's handler above, and from nowhere else. */
+  const send = async (view: Resumable, tapAt: number) => {
     sending.current = true;
     setInFlight(true);
     const r = await engine.send(view.id);
@@ -5462,10 +5819,10 @@ Modify `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md`:
 
 ```diff
 diff --git a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-index 9cf7227..3a81018 100644
+index 2c9c58c..799dfec 100644
 --- a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
 +++ b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-@@ -1540,8 +1540,10 @@ point here. **One user tap per broadcast, always (D38; review B1).**
+@@ -1543,8 +1543,10 @@ point here. **One user tap per broadcast, always (D38; review B1).**
    - **extension-only `pending`**: a send from this account is open → Send disabled with "A send
      from this account is still pending." (review L6).
  - **Send sequence** (the rule 6 lock is held from the tap until the reply):
@@ -5478,7 +5835,7 @@ index 9cf7227..3a81018 100644
       closes (focus leaves it). In the tab, #10 → `confirmed` → the same tab loads
       `wallet.html#/send/resume?account=…`.
    3. **Resume** (that tab, or a reopened popup; also any other opener of that hash): read
-@@ -1559,7 +1561,9 @@ point here. **One user tap per broadcast, always (D38; review B1).**
+@@ -1565,7 +1567,9 @@ point here. **One user tap per broadcast, always (D38; review B1).**
         C5's 10-minute cap) → back to #19 with "Your confirmation expired — review again" (review
         R2-M3). The client accepts both shapes, and both are tested against the real
         `handleMessage`.
@@ -5489,7 +5846,7 @@ index 9cf7227..3a81018 100644
         `confirmed` resume for the same intent, the screen shows "Your
         confirmation did not carry over. Confirm again." once. A second time in a row goes back to
         #12 with the draft and "Something went wrong — start the send again." A tab is never opened
-@@ -1583,6 +1587,17 @@ point here. **One user tap per broadcast, always (D38; review B1).**
+@@ -1589,6 +1593,20 @@ point here. **One user tap per broadcast, always (D38; review B1).**
    tap event; `prepared-expired` after a tap never calls `wallet.send` again without a second tap.
    Mutation: an auto-send on resume must fail these tests.
  - **Differs:**
@@ -5500,8 +5857,11 @@ index 9cf7227..3a81018 100644
 +    selected account's balances for a token (omitted while they are unknown). "Quote expired — refresh"
 +    disables Send and puts `[Refresh]` beside the line. In the UI tab (#20 after #10), #10 opens in the
 +    same tab, so the two lines read "You'll confirm with your password (or passkey) in this tab before
-+    this is sent." and "Confirmation opens in this tab." — **controller additions (plan 3; owner to
-+    confirm)**. "Confirmed…", "You have a send waiting." and the "Updated…" lines are info banners; "Your
++    this is sent." and "Confirmation opens in this tab." — **controller additions — awaiting the
++    owner**. A fee row's dollars below $0.0001 read "< $0.0001", never "$0.0000" (review L3). While a
++    send from this account is open, the quote's end does not re-prepare (review L1); a tap on an unproven
++    view reads `preparedFor` once more and sends if the challenge was proven elsewhere meanwhile (review
++    L2) — still one tap. "Confirmed…", "You have a send waiting." and the "Updated…" lines are info banners; "Your
 +    confirmation did not carry over…" a warning banner. A fee row's label has no `.lbl` class (only the
 +    Total's is styled in the design's CSS).
    - Priority chip strip removed (D15).
@@ -5512,10 +5872,10 @@ index 9cf7227..3a81018 100644
 - [ ] **Step 5: Run them green, then the whole suite.**
 
 ```bash
-npx vitest run src/app/__tests__/Confirm.test.tsx
+npx vitest run src/app/__tests__/Confirm.test.tsx src/app/__tests__/format.test.ts
 npx tsc --noEmit && npx vitest run
 ```
-Expected (dry run): Test Files 1 passed (1) · Tests 26 passed (26); tsc clean; whole suite Test Files 107 passed (107) · Tests 1892 passed (1892).
+Expected (dry run): Test Files 2 passed (2) · Tests 39 passed (39); tsc clean; whole suite Test Files 107 passed (107) · Tests 1899 passed (1899).
 
 - [ ] **Step 6: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -5527,7 +5887,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/
   -     if (auto.current <= 0) {
   +     if (auto.current <= -100) {
   ```
-  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (1 failed | 24 passed (25)).
+  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (1 failed | 29 passed (30)).
 
 - **M9b** — `extension/src/app/screens/Confirm.tsx`:
 
@@ -5536,7 +5896,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/
   +       else apply(v);
   +       if (v.reauth === null || v.reauth.proven) void engine.send(v.id);
   ```
-  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (16 failed | 9 passed (25)).
+  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (16 failed | 14 passed (30)).
 
 - **M9c** — `extension/src/app/screens/Confirm.tsx`:
 
@@ -5544,7 +5904,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/
   -         if (readPref(CONFIRM_STRIKE_KEY) === data.challengeId) {
   +         if (readPref(CONFIRM_STRIKE_KEY) === 'never') {
   ```
-  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (1 failed | 24 passed (25)).
+  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (1 failed | 29 passed (30)).
 
 - **M9d** — `extension/src/app/screens/Confirm.tsx`:
 
@@ -5552,7 +5912,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/
   -     if (cancelling.current || sending.current) return;
   +     if (cancelling.current) return;
   ```
-  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: green (26 passed (26)) — **masked, by design**: the Cancel button's `disabled={inFlight}` prop already blocks the click (React drops clicks on a disabled prop even when the DOM attribute is lifted). The guard is the second line of defence; M9d2 removes both and is red.
+  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: green (30 passed (30)) — **masked, by design**: the Cancel button's `disabled={inFlight}` prop already blocks the click (React drops clicks on a disabled prop even when the DOM attribute is lifted). The guard is the second line of defence; M9d2 removes both and is red.
 
 - **M9d2** — `extension/src/app/screens/Confirm.tsx`:
 
@@ -5562,7 +5922,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/
   -  disabled={inFlight} onClick={() => void cancel()}
   +  onClick={() => void cancel()}
   ```
-  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (1 failed | 25 passed (26)).
+  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (1 failed | 29 passed (30)).
 
 - **M9g** — `extension/src/app/screens/Confirm.tsx`:
 
@@ -5570,7 +5930,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/
   -     if (view === null || left.current || sending.current) return;
   +     if (view === null || left.current) return;
   ```
-  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (1 failed | 25 passed (26)).
+  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (1 failed | 29 passed (30)).
 
 - **M9e** — `extension/src/app/screens/Confirm.tsx`:
 
@@ -5578,7 +5938,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/
   -     if (view.reauth !== null && !view.reauth.proven) {
   +     if (view.reauth !== null) {
   ```
-  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (5 failed | 20 passed (25)).
+  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (2 failed | 28 passed (30)).
 
 - **M9f** — `extension/src/app/screens/Confirm.tsx`:
 
@@ -5586,14 +5946,75 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/
   -         if (r.ok && cancelled.current) void engine.discardPrepared(account);
   + (deleted)
   ```
-  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (1 failed | 25 passed (26)).
+  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (1 failed | 29 passed (30)).
+
+- **M9h** — `extension/src/app/screens/Home.tsx`:
+
+  ```diff
+  - export function Home(
+  + function sneak(e: {send: (id: string) => unknown}) {
+  +   void e.send('x');
+  + }
+  + void sneak;
+  + export function Home(
+  ```
+  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (1 failed | 29 passed (30)).
+
+- **M9i** — `extension/src/unlock/reauthFlow.ts`:
+
+  ```diff
+  -     const r = await deps.send({type: 'vault.reauthOk', challengeId});
+  +     const r = await deps.send({type: 'vault.reauthOk', challengeId});
+  +     void deps.send({type: 'wallet.send', id: challengeId});
+  ```
+  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (1 failed | 29 passed (30)).
+
+- **M9j** — `extension/src/app/screens/Confirm.tsx`:
+
+  ```diff
+  -     if (!expiredNow || view === null || busy || quoteDead || open !== null) return;
+  +     if (!expiredNow || view === null || busy || quoteDead) return;
+  ```
+  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (1 failed | 29 passed (30)).
+
+- **M9k** — `extension/src/app/screens/Confirm.tsx`:
+
+  ```diff
+  -       if (latest !== null && latest.id === view.id && latest.reauth?.proven === true && !latest.expired) return send(view, tapAt);
+  +       void latest;
+  ```
+  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (2 failed | 28 passed (30)).
+
+- **M9l** — `extension/src/app/screens/Confirm.tsx`:
+
+  ```diff
+  -           return onReview(view.intent, 'confirmation-expired');
+  +           return onStartAgain(draftOf(view.intent));
+  ```
+  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (1 failed | 29 passed (30)).
+
+- **M9m** — `extension/src/app/format.ts`:
+
+  ```diff
+  -   if (usd > 0 && usd < 0.0001) return '< $0.0001';
+  + (deleted)
+  ```
+  `npx vitest run src/app/__tests__/format.test.ts src/app/__tests__/Confirm.test.tsx` — Expected: **red** (2 failed | 37 passed (39)).
+
+- **M9n** — `extension/src/app/screens/Confirm.tsx`:
+
+  ```diff
+  -           {rows.map(f => (
+  +           {rows.filter(f => f.label !== 'Priority').map(f => (
+  ```
+  `npx vitest run src/app/__tests__/Confirm.test.tsx` — Expected: **red** (1 failed | 29 passed (30)).
 
 - [ ] **Step 7: The §8 visual checklist for this screen.** Task 17 shoots every state of this screen; after it, the opus-tier reviewer checks them against index.html with the checklist in Task 17. Nothing to run here; the component tests above already assert every string.
 
 - [ ] **Step 8: Commit.**
 
 ```bash
-git add docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md extension/src/app/__tests__/Confirm.test.tsx extension/src/app/app.css extension/src/app/platform.ts extension/src/app/prefs.ts extension/src/app/screens/Confirm.tsx
+git add docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md extension/src/app/__tests__/Confirm.test.tsx extension/src/app/__tests__/format.test.ts extension/src/app/app.css extension/src/app/format.ts extension/src/app/platform.ts extension/src/app/prefs.ts extension/src/app/screens/Confirm.tsx
 git commit -F - <<'MSG'
 feat(extension): #20 tx-confirm — one tap per broadcast, the quote's life with one automatic refresh, the resume entry
 
@@ -5613,7 +6034,7 @@ MSG
 - Consumes: Task 3's record; `wallet.resend` (the same signed bytes, refused within 2 s); `Pending.state`.
 - Produces: `src/app/screens/Stuck.tsx` (`Stuck`, `STUCK_TEXT`, `mmss`).
 
-Spec §4.8 and #s54. Stuck (the 90 s chip, "Pending for MM:SS", the honest banner, the original's card, the two cards, Send again, Close); sending-again (54b's layout, held); sent-again (the same hash, "Watching"); expired ("Not confirmed — no funds moved." and why; [Try again] = a fresh prepare of the same intent at #19; [Done]). "Send again (same transaction)" re-sends the SAME bytes through a `LockedButton` (rule 6); the engine's 2 s refusal shows "Wait a moment before sending again."; the 403 cool-down disables it. No "Speed up" (D15: priority is automatic). Every await checks `alive`.
+Spec §4.8 and #s54. Stuck (the 90 s chip, "Pending for MM:SS", the honest banner, the original's card, the two cards, Send again, Close); sending-again (54b's layout, held); sent-again (the same hash, "Watching"); expired ("Not confirmed — no funds moved." and why; [Try again] = a fresh prepare of the same intent at #19; [Done]). "Send again (same transaction)" re-sends the SAME bytes through a `LockedButton` (rule 6); the engine's 2 s refusal shows "Wait a moment before sending again."; the 403 cool-down disables it. No "Speed up" (D15: priority is automatic). Every await checks `alive`. **Rule 6 is asserted on what reaches the network (review M3):** the held test asserts exactly one broadcast of the stored bytes; a second test presses twice inside one `act()` — so neither `disabled` nor the screen's "sending" layout can intervene — with an engine clock that moves 5 s per read, so a second resend would NOT be `too-soon`: only `LockedButton`'s synchronous lock stops it (M10b removes that lock and is red).
 
 - [ ] **Step 1: Write the failing test.**
 
@@ -5706,11 +6127,13 @@ describe('#54 stuck-tx — the safe variant', () => {
   it('Send again re-sends the SAME bytes: sending again → "Sent again", the same hash, Watching; once per tap (rule 6, `disabled` lifted)', async () => {
     let release: () => void = () => undefined;
     const held = new Promise<void>(r => (release = r));
+    const sentWires: string[] = [];
     const w = await renderStuck(view(), {
       before: ext => ext.local.set(PENDING_KEY, [stored()]),
       deps: {
         now: () => CREATED + 94_000,
         broadcast: async wire => {
+          sentWires.push(base64.encode(wire));
           await held;
           return firstSignature(wire);
         },
@@ -5731,6 +6154,8 @@ describe('#54 stuck-tx — the safe variant', () => {
     expect(screen.getAllByText(STUCK_TEXT.sentTitle).length).toBeGreaterThan(0);
     expect(screen.getByText(STUCK_TEXT.watching)).toBeTruthy();
     expect(unstyledClasses(document.querySelector('.s-stuck')!, SELECTORS)).toEqual([]);
+    // Exactly one broadcast — of the stored bytes (the cardinal failure the design's #54 note names is a double one).
+    expect(sentWires).toEqual([base64.encode(WIRE)]);
     // One resend reached the background; the record's lastSentAt moved, its signature did not.
     const records = (await w.ext.local.get(PENDING_KEY)) as {signature: string; lastSentAt: number}[];
     expect(records.map(r => [r.signature, r.lastSentAt])).toEqual([[SIGNATURE, CREATED + 94_000]]);
@@ -5738,6 +6163,33 @@ describe('#54 stuck-tx — the safe variant', () => {
     fireEvent.click(screen.getByRole('button', {name: STUCK_TEXT.done}));
     expect(nav.onActivity).toHaveBeenCalledTimes(1);
     expect(nav.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('a second press the engine would NOT refuse (its clock moves 5 s per read, past the 2 s rule): only the lock stops it — one broadcast (review M3)', async () => {
+    let t = CREATED + 94_000;
+    const sentWires: string[] = [];
+    await renderStuck(view(), {
+      before: ext => ext.local.set(PENDING_KEY, [stored()]),
+      deps: {
+        now: () => (t += 5_000),
+        broadcast: async wire => {
+          sentWires.push(base64.encode(wire));
+          return firstSignature(wire);
+        },
+      },
+    });
+    const again = (await screen.findByRole('button', {name: STUCK_TEXT.sendAgain})) as HTMLButtonElement;
+    // Both presses inside one act(): React renders nothing between them, so neither the button's `disabled`
+    // nor the screen's own "sending" layout can stop the second — only LockedButton's synchronous lock does.
+    act(() => {
+      again.click();
+      again.click();
+    });
+    expect(await screen.findByText(STUCK_TEXT.sentLine)).toBeTruthy();
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 50));
+    });
+    expect(sentWires).toEqual([base64.encode(WIRE)]);
   });
 
   it('the engine refuses too soon (2 s): "Wait a moment before sending again." and the stuck layout stays', async () => {
@@ -6143,10 +6595,10 @@ Modify `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md`:
 
 ```diff
 diff --git a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-index 3a81018..c794647 100644
+index 799dfec..f95c4e9 100644
 --- a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
 +++ b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-@@ -1724,6 +1724,15 @@ point here. **One user tap per broadcast, always (D38; review B1).**
+@@ -1733,6 +1733,15 @@ point here. **One user tap per broadcast, always (D38; review B1).**
      record's current state screen; `unknown` → "This transaction is no longer tracked." + `[Open
      Activity]`.
  - **Differs, loudly:**
@@ -6170,7 +6622,7 @@ index 3a81018..c794647 100644
 npx vitest run src/app/__tests__/Stuck.test.tsx
 npx tsc --noEmit && npx vitest run
 ```
-Expected (dry run): Test Files 1 passed (1) · Tests 7 passed (7); tsc clean; whole suite Test Files 108 passed (108) · Tests 1899 passed (1899).
+Expected (dry run): Test Files 1 passed (1) · Tests 8 passed (8); tsc clean; whole suite Test Files 108 passed (108) · Tests 1907 passed (1907).
 
 - [ ] **Step 6: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -6183,7 +6635,15 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/
   +     void m.engine.resend(record.id);
   +     const r = await m.engine.resend(record.id);
   ```
-  `npx vitest run src/app/__tests__/Stuck.test.tsx` — Expected: **red** (1 failed | 6 passed (7)).
+  `npx vitest run src/app/__tests__/Stuck.test.tsx` — Expected: **red** (2 failed | 6 passed (8)).
+
+- **M10b** — `extension/src/app/ui/LockedButton.tsx`:
+
+  ```diff
+  -     if (busy.current || disabled) return;
+  +     if (disabled) return;
+  ```
+  `npx vitest run src/app/__tests__/Stuck.test.tsx` — Expected: **red** (1 failed | 7 passed (8)).
 
 - [ ] **Step 7: The §8 visual checklist for this screen.** Task 17 shoots every state of this screen; after it, the opus-tier reviewer checks them against index.html with the checklist in Task 17. Nothing to run here; the component tests above already assert every string.
 
@@ -6212,7 +6672,7 @@ MSG
 - Consumes: Task 3's record (`failure`, E8); `ExplorerLink` (#27, Solscan, checked).
 - Produces: `src/app/screens/Failed.tsx` (`Failed`, `FAILED_TEXT`, `failedKind`); `src/app/ui/CancelledToast.tsx` (`CancelledToast`, `CANCELLED_TEXT`, `CANCELLED_MS`); `ExplorerLink` gains `label`/`icon`.
 
-Spec §4.7 and #s44: `failedKind` — expired → blockhash-expired; `failure: 'landed'` → rejected-by-program (the fee was charged, the amount did not move); `'not-sent'` → network-error; otherwise generic. `[Try again]` (a `LockedButton`) is a fresh prepare of the same intent at #19; `[Edit transaction]`, the back arrow and Esc go to #12 with the draft. Removed loudly (Differs): insufficient-fee (never reported, D15), slippage (no swaps), the RPC picker. The toast "Transaction cancelled. No fees charged." shows 1.8 s on #11 after #20's Cancel.
+Spec §4.7 and #s44: `failedKind` — expired → blockhash-expired; `failure: 'landed'` → rejected-by-program (the fee was charged, the amount did not move); `'not-sent'` → network-error; otherwise generic. `[Try again]` (a `LockedButton`) is a fresh prepare of the same intent at #19; `[Edit transaction]`, the back arrow and Esc go to #12 with the draft. **`[View details]` → #27 (review M4, controller ruling: restored)** on `rejected-by-program` only — the one #44 state whose transaction is on chain; #27 opens by signature and already says when it is not in the recent history yet. Removed loudly (Differs): insufficient-fee (never reported, D15), slippage (no swaps), the RPC picker. The toast "Transaction cancelled. No fees charged." shows 1.8 s on #11 after #20's Cancel.
 
 - [ ] **Step 1: Write the failing test.**
 
@@ -6233,7 +6693,7 @@ import type {Pending} from '../engine';
 
 // Spec §4.7 (#44): the state from `failure` (E8, C3), `detail` only the caption.
 const SELECTORS = selectorsOf(UI_SHEETS);
-const nav = {onTryAgain: vi.fn(), onEdit: vi.fn()};
+const nav = {onTryAgain: vi.fn(), onEdit: vi.fn(), onDetails: vi.fn()};
 const INTENT = {token: 'SOL' as const, recipient: RECIPIENT, amount: 2_480_000_000n};
 const record = (over: Partial<Pending>): Pending => ({
   id: 'r1',
@@ -6278,7 +6738,7 @@ describe('#44 tx-failed', () => {
     expect(unstyledClasses(document.querySelector('.screen')!, SELECTORS)).toEqual([]);
   });
 
-  it('rejected-by-program (failed, landed): "Rejected", the fee-charged sentence, the engine detail in mono; [Try again], [View on explorer]', async () => {
+  it('rejected-by-program (failed, landed): "Rejected", the fee-charged sentence, the engine detail in mono; [Try again], [View details] → #27, [View on explorer]', async () => {
     const detail = 'Landed but failed ({"InstructionError":[2,{"Custom":1}]}): the network fee was paid, nothing was sent.';
     await renderFailed(record({failure: 'landed', detail}));
     expect(await screen.findByText(FAILED_TEXT.rejectedHead)).toBeTruthy();
@@ -6289,6 +6749,8 @@ describe('#44 tx-failed', () => {
     expect([link.getAttribute('href'), link.getAttribute('target'), link.getAttribute('rel')]).toEqual([`https://solscan.io/tx/${sig(7)}`, '_blank', 'noopener noreferrer']);
     expect(document.body.textContent).not.toContain('Your funds are unchanged');
     expect(unstyledClasses(document.querySelector('.screen')!, SELECTORS)).toEqual([]);
+    fireEvent.click(screen.getByRole('button', {name: FAILED_TEXT.details}));
+    expect(nav.onDetails).toHaveBeenCalledWith(sig(7));
   });
 
   it('network-error (failed, not-sent): "Couldn\'t send", the engine detail as the caption; [Try again]', async () => {
@@ -6298,6 +6760,8 @@ describe('#44 tx-failed', () => {
     expect(text()).toEqual([FAILED_TEXT.notSentHead, detail, 'Reason · network-error']);
     expect(screen.getByRole('button', {name: FAILED_TEXT.tryAgain})).toBeTruthy();
     expect(screen.queryByRole('link')).toBeNull();
+    // Nothing reached the chain: no [View details] (only rejected-by-program has a transaction to show).
+    expect(screen.queryByRole('button', {name: FAILED_TEXT.details})).toBeNull();
   });
 
   it('generic (failed with no failure, an older build’s record): "Transaction failed", the detail, [View on explorer] only', async () => {
@@ -6424,6 +6888,7 @@ export const FAILED_TEXT = {
   genericHead: 'Transaction failed',
   tryAgain: 'Try again',
   edit: 'Edit transaction',
+  details: 'View details',
   explorer: 'View on explorer',
 } as const;
 
@@ -6443,7 +6908,7 @@ export function failedKind(p: Pending): Kind {
  * swaps), the RPC picker (reads and broadcast are fixed to the coordinator). `[Try again]` is a fresh prepare of
  * the same intent at #19 (rule 6: a LockedButton); the explorer link is Solscan's, checked (§6.5).
  */
-export function Failed({record, onTryAgain, onEdit}: {record: Pending; onTryAgain: (intent: Intent) => void; onEdit: (draft: Draft) => void}) {
+export function Failed({record, onTryAgain, onEdit, onDetails}: {record: Pending; onTryAgain: (intent: Intent) => void; onEdit: (draft: Draft) => void; onDetails: (signature: string) => void}) {
   const m = useWallet();
   const kind = failedKind(record);
   const refused = m.net.mode === 'refused';
@@ -6519,7 +6984,14 @@ export function Failed({record, onTryAgain, onEdit}: {record: Pending; onTryAgai
             {FAILED_TEXT.edit}
           </button>
         ) : kind === 'rejected-by-program' ? (
-          explorer
+          <>
+            {/* The design's [View details] → #27 (screen.md #44), only here: the one #44 state whose transaction is on chain. */}
+            <button type="button" className="btn btn-secondary" onClick={() => onDetails(record.signature)}>
+              <ExtIcon name="doc" size={18} />
+              {FAILED_TEXT.details}
+            </button>
+            {explorer}
+          </>
         ) : null}
       </div>
     </div>
@@ -6586,17 +7058,20 @@ Modify `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md`:
 
 ```diff
 diff --git a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-index c794647..7b22ac1 100644
+index f95c4e9..9102231 100644
 --- a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
 +++ b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-@@ -1679,6 +1679,13 @@ point here. **One user tap per broadcast, always (D38; review B1).**
+@@ -1688,6 +1688,16 @@ point here. **One user tap per broadcast, always (D38; review B1).**
      (1.8 s), after #20's `[Cancel]` (E7 discarded the prepared send, so the sentence is true). #10's
      Cancel shows its own line in the vault tab instead (§3.10, E7).
  - **Differs, loudly:**
 +  - **Plan 3:** in `blockhash-expired` the design's hero sub ("Solana rotated past the blockhash …") is
 +    the reason banner's body under "Reason · blockhash-expired", since the engine's line takes the sub;
 +    the banner's slot-age body and meta line are not built (the engine keeps the height, not the slot
-+    age). `network-error` offers `[Try again]` only and `generic` `[View on explorer]` only, with no
++    age). `rejected-by-program` offers `[Try again]`, the design's `[View details]` → #27 (by signature;
++    #27 already says when it is not in the recent history yet) and `[View on explorer]` — `[View
++    details]` only there, the one #44 state whose transaction is on chain (review M4). `network-error`
++    offers `[Try again]` only and `generic` `[View on explorer]` only, with no
 +    reason banner (the engine names no reason for an older build's record). The back arrow and Esc go to
 +    #12 with the transaction prefilled, as the design's annotation says (the same as `[Edit
 +    transaction]`). The cancelled toast is the design's own `.s9-toast-cancelled` pill with its ✕.
@@ -6611,7 +7086,7 @@ index c794647..7b22ac1 100644
 npx vitest run src/app/__tests__/Failed.test.tsx
 npx tsc --noEmit && npx vitest run
 ```
-Expected (dry run): Test Files 1 passed (1) · Tests 8 passed (8); tsc clean; whole suite Test Files 109 passed (109) · Tests 1907 passed (1907).
+Expected (dry run): Test Files 1 passed (1) · Tests 8 passed (8); tsc clean; whole suite Test Files 109 passed (109) · Tests 1915 passed (1915).
 
 - [ ] **Step 6: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -6624,6 +7099,14 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/
   +   if (p.failure === 'landed') return 'network-error';
   ```
   `npx vitest run src/app/__tests__/Failed.test.tsx` — Expected: **red** (2 failed | 6 passed (8)).
+
+- **M11b** — `extension/src/app/screens/Failed.tsx`:
+
+  ```diff
+  - onClick={() => onDetails(record.signature)}
+  + onClick={() => undefined}
+  ```
+  `npx vitest run src/app/__tests__/Failed.test.tsx` — Expected: **red** (1 failed | 7 passed (8)).
 
 - [ ] **Step 7: The §8 visual checklist for this screen.** Task 17 shoots every state of this screen; after it, the opus-tier reviewer checks them against index.html with the checklist in Task 17. Nothing to run here; the component tests above already assert every string.
 
@@ -7056,7 +7539,7 @@ export function Status({
   useEscape(onDone, success);
 
   if (record !== null && (record.state === 'failed' || (record.state === 'expired' && !stuckShown.current))) {
-    return <Failed record={record} onTryAgain={onTryAgain} onEdit={onEdit} />;
+    return <Failed record={record} onTryAgain={onTryAgain} onEdit={onEdit} onDetails={onDetails} />;
   }
   if (record !== null && (record.state === 'expired' || ((record.state === 'stuck' || now - record.createdAt >= STUCK_AFTER_MS || stuckShown.current) && record.state !== 'confirmed'))) {
     stuckShown.current = true;
@@ -7231,10 +7714,10 @@ Modify `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md`:
 
 ```diff
 diff --git a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-index 7b22ac1..01dd8f3 100644
+index 9102231..d9c9afc 100644
 --- a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
 +++ b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-@@ -1641,6 +1641,14 @@ point here. **One user tap per broadcast, always (D38; review B1).**
+@@ -1650,6 +1650,14 @@ point here. **One user tap per broadcast, always (D38; review B1).**
      still watching. \"Send again\" re-sends the same transaction.") shows as a caption under the
      status.
  - **Differs:**
@@ -7257,7 +7740,7 @@ index 7b22ac1..01dd8f3 100644
 npx vitest run src/app/__tests__/Status.test.tsx
 npx tsc --noEmit && npx vitest run
 ```
-Expected (dry run): Test Files 1 passed (1) · Tests 11 passed (11); tsc clean; whole suite Test Files 110 passed (110) · Tests 1918 passed (1918).
+Expected (dry run): Test Files 1 passed (1) · Tests 11 passed (11); tsc clean; whole suite Test Files 110 passed (110) · Tests 1926 passed (1926).
 
 - [ ] **Step 6: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -7304,6 +7787,7 @@ MSG
 - Modify: `extension/src/app/__tests__/router.test.ts`
 - Create: `extension/src/app/__tests__/sendFlow.test.tsx`
 - Modify: `extension/src/app/app.css`
+- Modify: `extension/src/app/mount.tsx`
 - Modify: `extension/src/app/router.ts`
 - Delete: `extension/src/app/screens/Resume.tsx`
 
@@ -7311,7 +7795,7 @@ MSG
 - Consumes: Tasks 7–12; `router.ts` (`firstRoute`, `routeReducer`), `App.tsx`'s Shell, the quiet provider (plan 2).
 - Produces: routes `send`, `review`, `confirm`, `status` and the first route `resume`; actions `replace`, `reset`; `FLOW`, `TAB_ONLY`; `Resume.tsx` deleted; App's `onLeaveHandOver`; the popup's open-sequence resume.
 
-Spec §1.6 and §4.5. `#/send/resume?account=<address>` now renders #20's resume entry (the stand-in `Resume.tsx` is deleted); the hash only selects the screen and carries no data (a non-address account is #11). The tab's provider stays **quiet** on the hand-over route — the state plus what #20 reads itself — and becomes a wallet surface when the user moves on (#21, #19 or #12). A popup opened while a prepared send waits shows #20 resume (once, and only if the user has not gone anywhere). The flow's pushed routes carry only what the user typed (draft, intent) and which account/record to read — never a prepared send. `e2e/wallet.spec.ts`'s reauthenticate helper now expects #20's "Confirmed. Review the fresh quote and send." and taps once.
+Spec §1.6 and §4.5. `#/send/resume?account=<address>` now renders #20's resume entry (the stand-in `Resume.tsx` is deleted); the hash only selects the screen and carries no data (a non-address account is #11). The tab's provider stays **quiet** on the hand-over route — the state plus what #20 reads itself — and becomes a wallet surface when the user moves on (#21, #19 or #12). A popup opened while a prepared send waits shows #20 resume (once, and only if the user has not gone anywhere). The flow's pushed routes carry only what the user typed (draft, intent) and which account/record to read — never a prepared send. `e2e/wallet.spec.ts`'s reauthenticate helper now expects #20's "Confirmed. Review the fresh quote and send." and taps once. `mount.tsx`'s StrictMode note gains review L7: in `vite dev` an expired resume may re-prepare twice — harmless, absent from production, not to be "fixed".
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -7930,6 +8414,26 @@ index 4237342..c23c973 100644
 +}
 ```
 
+Modify `extension/src/app/mount.tsx`:
+
+```diff
+diff --git a/extension/src/app/mount.tsx b/extension/src/app/mount.tsx
+index 0f1ffc7..3408c97 100644
+--- a/extension/src/app/mount.tsx
++++ b/extension/src/app/mount.tsx
+@@ -9,7 +9,9 @@ import type {Surface} from './WalletContext';
+ /**
+  * StrictMode runs every effect twice in development builds only (mount, unmount, mount): the provider's
+  * open sequence may then read twice in `vite dev`. Production builds — what the extension ships — run
+- * each effect once (review L10).
++ * each effect once (review L10). The same holds for #20's mount effect (plan-3 review L7): in `vite dev` an
++ * expired resume may re-prepare twice — harmless (the newer prepared send wins; a tap on the older id lands on
++ * #19) and absent from production. Do not "fix" it in production code.
+  */
+ export function mount(surface: Surface): void {
+   const root = document.getElementById('root');
+```
+
 Modify `extension/src/app/router.ts`:
 
 ```diff
@@ -8028,7 +8532,7 @@ Modify `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md`:
 
 ```diff
 diff --git a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-index 01dd8f3..2a6caed 100644
+index d9c9afc..1872946 100644
 --- a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
 +++ b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
 @@ -307,7 +307,12 @@ mutation test in `scripts/__tests__`):
@@ -8052,7 +8556,7 @@ index 01dd8f3..2a6caed 100644
 npx vitest run src/app/__tests__/Created.test.tsx src/app/__tests__/router.test.ts src/app/__tests__/sendFlow.test.tsx
 npx tsc --noEmit && npx vitest run
 ```
-Expected (dry run): Test Files 3 passed (3) · Tests 43 passed (43); tsc clean; whole suite Test Files 111 passed (111) · Tests 1924 passed (1924).
+Expected (dry run): Test Files 3 passed (3) · Tests 43 passed (43); tsc clean; whole suite Test Files 111 passed (111) · Tests 1932 passed (1932).
 
 - [ ] **Step 6: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -8064,7 +8568,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/
   - if (resume !== null && ADDRESS.test(resume[1] ?? ''))
   + if (resume !== null)
   ```
-  `npx vitest run src/app/__tests__/sendFlow.test.tsx src/app/__tests__/router.test.ts` — Expected: **red** (3 failed | 26 passed (29)).
+  `npx vitest run src/app/__tests__/sendFlow.test.tsx src/app/__tests__/router.test.ts` — Expected: **red** (3 failed | 27 passed (30)).
 
 - **M13b** — `extension/src/app/App.tsx`:
 
@@ -8072,7 +8576,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/
   -     if (!TAB_ONLY.has(route.screen)) onLeaveHandOver();
   +     onLeaveHandOver();
   ```
-  `npx vitest run src/app/__tests__/sendFlow.test.tsx` — Expected: **red** (2 failed | 7 passed (9)).
+  `npx vitest run src/app/__tests__/sendFlow.test.tsx` — Expected: **red** (2 failed | 8 passed (10)).
 
 - **M13c** — `extension/src/app/App.tsx`:
 
@@ -8086,7 +8590,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` and link `extension/
 
 ```bash
 git rm -q extension/src/app/screens/Resume.tsx
-git add docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md extension/e2e/wallet.spec.ts extension/src/app/App.tsx extension/src/app/__tests__/Created.test.tsx extension/src/app/__tests__/router.test.ts extension/src/app/__tests__/sendFlow.test.tsx extension/src/app/app.css extension/src/app/router.ts
+git add docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md extension/e2e/wallet.spec.ts extension/src/app/App.tsx extension/src/app/__tests__/Created.test.tsx extension/src/app/__tests__/router.test.ts extension/src/app/__tests__/sendFlow.test.tsx extension/src/app/app.css extension/src/app/mount.tsx extension/src/app/router.ts
 git commit -F - <<'MSG'
 feat(extension): the send flow's routes; #/send/resume is #20, read through preparedFor only — the stand-in removed
 
@@ -8113,7 +8617,7 @@ MSG
 - Consumes: Tasks 4, 12, 13; `Home`, `Activity`, `TxDetail`.
 - Produces: `Home({onSend, onReceive, onPending, onAccounts})`, `Activity({onTx, onReceive, onPending})`, `TxDetail({…, onTryAgain})`.
 
-Spec §5.1, §6.2, §6.3. #11's Send quick action opens #12 (disabled offline, unreachable and refused — D36 keeps Receive); the skeleton draws two quick actions; the pending strip opens that send at #21/#54; #26's PENDING rows are buttons that open it; #27's failed send gets `[Try again]` → #19 for the same intent (option A's decoded recipient and amount; the engine re-checks everything and #20 shows the whole address before one tap).
+Spec §5.1, §6.2, §6.3. #11's Send quick action opens #12 (disabled offline, unreachable and refused — D36 keeps Receive); the skeleton draws two quick actions; the pending strip opens that send at #21/#54; #26's PENDING rows are buttons that open it; #27's failed send gets `[Try again]` → #19 for the same intent — offered only for a `sent` decode (exactly one transfer of a known token, Task 4), never for `other`: a test decodes a failed two-transfer transaction through the real decoder and asserts "FAILED", a dash and no `[Try again]` (review H1). The engine re-checks everything on prepare and #20 shows the whole address before one tap.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -8334,7 +8838,7 @@ Modify `extension/src/app/__tests__/TxDetail.test.tsx`:
 
 ```diff
 diff --git a/extension/src/app/__tests__/TxDetail.test.tsx b/extension/src/app/__tests__/TxDetail.test.tsx
-index c45950f..ba298b7 100644
+index c45950f..7b95c75 100644
 --- a/extension/src/app/__tests__/TxDetail.test.tsx
 +++ b/extension/src/app/__tests__/TxDetail.test.tsx
 @@ -1,5 +1,5 @@
@@ -8344,7 +8848,15 @@ index c45950f..ba298b7 100644
  import {base58} from '@scure/base';
  import {renderInWallet, setupWallet, walletReader} from './harness';
  import {ExplorerLink, TxDetail} from '../screens/TxDetail';
-@@ -13,6 +13,8 @@ import {COUNTERPARTY, otherTx, sentSol, sig} from '../../../e2e/historyFixtures'
+@@ -7,12 +7,16 @@ import {explorerUrl} from '../explorer';
+ import {useWallet, WalletProvider} from '../WalletContext';
+ import {REFUSED_TEXT} from '../ui/Banner';
+ import {RequestUnreachable, RpcForbidden} from '../../../../core/solana/rpc';
++import {decodeHistoryEntry} from '../../../../core/solana/history';
++import {MAINNET_FEE_TREASURY} from '../../../../core/fees/transferMarkup';
+ import type {Engine, HistoryItem} from '../engine';
+ import {ACCOUNT, RECIPIENT} from '../../background/__tests__/fixtures';
+ import {COUNTERPARTY, otherTx, sentSol, sig} from '../../../e2e/historyFixtures';
  
  // Spec §6.3 (#27) and §6.5 (the one external link).
  const NOW = Math.floor(Date.now() / 1000);
@@ -8353,7 +8865,7 @@ index c45950f..ba298b7 100644
  const item = (over: Partial<HistoryItem>): HistoryItem => ({
    signature: sig(1),
    blockTime: NOW,
-@@ -26,7 +28,7 @@ const item = (over: Partial<HistoryItem>): HistoryItem => ({
+@@ -26,7 +30,7 @@ const item = (over: Partial<HistoryItem>): HistoryItem => ({
    ...over,
  });
  const show = async (i: HistoryItem) => {
@@ -8362,7 +8874,7 @@ index c45950f..ba298b7 100644
    // The account is read by the provider's open sequence; its address then appears on the page.
    await waitFor(() => expect(document.body.textContent).toContain(ACCOUNT.publicKey));
    return w;
-@@ -70,7 +72,7 @@ describe('#27 tx-detail', () => {
+@@ -70,7 +74,7 @@ describe('#27 tx-detail', () => {
    // wallet" in the accent, and the pill "Confirmed · 8h ago" (format.ts's ago, the injected clock).
    it('a receive as 27c draws it: success amount, the Type row, "Your wallet" in accent, "Confirmed · <age>"', async () => {
      const at = 1_780_000_000;
@@ -8371,7 +8883,7 @@ index c45950f..ba298b7 100644
        now: () => (at + 8 * 3_600) * 1000,
      });
      await waitFor(() => expect(document.body.textContent).toContain(ACCOUNT.publicKey));
-@@ -97,7 +99,7 @@ describe('#27 tx-detail', () => {
+@@ -97,7 +101,7 @@ describe('#27 tx-detail', () => {
    });
  
    it('no price: the fee line reads "· —", never a made-up dollar value', async () => {
@@ -8380,7 +8892,7 @@ index c45950f..ba298b7 100644
        deps: {
          prices: async () => {
            throw new Error('down');
-@@ -129,14 +131,14 @@ describe('#27 tx-detail', () => {
+@@ -129,14 +133,14 @@ describe('#27 tx-detail', () => {
    });
  
    it('failed, as 27d: the eyebrow and card in danger, "Fee charged · $…", the grouped fee', async () => {
@@ -8397,7 +8909,7 @@ index c45950f..ba298b7 100644
      await w;
      expect(await screen.findByText('FAILED')).toBeTruthy();
      // No token is known for a failed row: a dash, never "— SOL" (review L3).
-@@ -145,12 +147,12 @@ describe('#27 tx-detail', () => {
+@@ -145,12 +149,12 @@ describe('#27 tx-detail', () => {
      expect(document.querySelector('.status-pill.fail')?.textContent).toBe('Failed');
      expect(screen.getByText('The transaction failed on chain. The network fee was charged; the amount did not move.')).toBeTruthy();
      expect(screen.getByText('Network fee charged')).toBeTruthy();
@@ -8412,10 +8924,25 @@ index c45950f..ba298b7 100644
      expect(await screen.findByText('FAILED · SENT')).toBeTruthy();
      expect(document.querySelector('.amount-card .amt')?.textContent).toBe('— SOL');
      expect(await screen.findByText('Fee charged · $0.0007')).toBeTruthy();
-@@ -158,8 +160,27 @@ describe('#27 tx-detail', () => {
+@@ -158,8 +162,42 @@ describe('#27 tx-detail', () => {
      expect(screen.getByText('The transaction failed on chain. The network fee was charged; the amount did not move.')).toBeTruthy();
    });
  
++  // Plan-3 review H1: a failed batch (two transfers) is not one send — decoded "other", it offers no [Try again].
++  it('a failed transaction with two transfers from this account: "FAILED", a dash, and no [Try again]', async () => {
++    const transfer = (destination: string, lamports: number) => ({program: 'system', programId: '11111111111111111111111111111111', parsed: {type: 'transfer', info: {source: ACCOUNT.publicKey, destination, lamports}}});
++    const decoded = decodeHistoryEntry(ACCOUNT.publicKey, sig(6), {
++      blockTime: NOW,
++      meta: {err: {InstructionError: [0, {Custom: 1}]}, fee: 5000, preBalances: [3_000_000_000, 0, 0, 1], postBalances: [2_999_995_000, 0, 0, 1], preTokenBalances: [], postTokenBalances: []},
++      transaction: {message: {accountKeys: [ACCOUNT.publicKey, COUNTERPARTY, RECIPIENT, MAINNET_FEE_TREASURY].map(k => ({pubkey: k, signer: false, writable: true})), instructions: [transfer(COUNTERPARTY, 1_000_000_000), transfer(RECIPIENT, 1_000_000_000)]}},
++    });
++    expect(decoded).toMatchObject({kind: 'other', failed: true});
++    await renderInWallet(<TxDetail signature={sig(6)} item={decoded} onBack={() => undefined} onTryAgain={tryAgain} />);
++    expect(await screen.findByText('FAILED')).toBeTruthy();
++    expect(screen.queryByText('FAILED · SENT')).toBeNull();
++    expect(screen.queryByRole('button', {name: 'Try again'})).toBeNull();
++  });
++
 +  // Plan 3 (owner question 1, option A): [Try again] → #19 with what the failed send tried, when it is known.
 +  it('a failed send offers [Try again] with its intent — once per tap (rule 6, `disabled` lifted); none without a recipient or for another kind', async () => {
 +    await renderInWallet(<TxDetail signature={sig(5)} item={item({signature: sig(5), amount: 1_000_000n, counterparty: COUNTERPARTY, failed: true})} onBack={() => undefined} onTryAgain={tryAgain} />);
@@ -8441,7 +8968,7 @@ index c45950f..ba298b7 100644
      expect(await screen.findByText('PRESALE PURCHASE')).toBeTruthy();
      expect(screen.getByText('−1.0000 SOL')).toBeTruthy();
      // Fix round 2 (#3): the purchase's fee line carries its dollars too (12136's form).
-@@ -171,14 +192,14 @@ describe('#27 tx-detail', () => {
+@@ -171,14 +209,14 @@ describe('#27 tx-detail', () => {
        getSignaturesForAddress: async () => [{signature: sig(1), blockTime: NOW, err: null}],
        getTransaction: async () => sentSol(ACCOUNT.publicKey, RECIPIENT, 2_480_000_000, NOW),
      });
@@ -8458,7 +8985,7 @@ index c45950f..ba298b7 100644
      expect(await screen.findByText('This transaction is not in the recent history yet.')).toBeTruthy();
      expect(screen.getByRole('link', {name: 'Explorer'})).toBeTruthy();
      await waitFor(() => expect(pages).toBe(1));
-@@ -195,7 +216,7 @@ describe('#27 tx-detail', () => {
+@@ -195,7 +233,7 @@ describe('#27 tx-detail', () => {
        },
        getTransaction: async () => otherTx(ACCOUNT.publicKey, NOW),
      });
@@ -8467,7 +8994,7 @@ index c45950f..ba298b7 100644
      expect(await screen.findByText('This transaction is not in the recent history yet.')).toBeTruthy();
      expect(screen.getByRole('link', {name: 'Explorer'})).toBeTruthy();
      expect(calls).toBe(3);
-@@ -212,7 +233,7 @@ describe('#27 tx-detail', () => {
+@@ -212,7 +250,7 @@ describe('#27 tx-detail', () => {
      const engine: Engine = {...w.engine, history: (account, before) => (calls.push(account), w.engine.history(account, before))};
      render(
        <WalletProvider engine={engine} platform={w.platform} surface="popup">
@@ -8476,7 +9003,7 @@ index c45950f..ba298b7 100644
        </WalletProvider>,
      );
      await screen.findByText('This transaction is not in the recent history yet.');
-@@ -239,7 +260,7 @@ describe('#27 tx-detail', () => {
+@@ -239,7 +277,7 @@ describe('#27 tx-detail', () => {
        },
        getTransaction: async s => txs[s] ?? null,
      });
@@ -8485,7 +9012,7 @@ index c45950f..ba298b7 100644
      expect(await screen.findByText('SENT')).toBeTruthy();
      expect(seenBefore).toEqual([undefined, list1[9]]);
    });
-@@ -254,7 +275,7 @@ describe('#27 a malformed searchError', () => {
+@@ -254,7 +292,7 @@ describe('#27 a malformed searchError', () => {
      const engine: Engine = {...w.engine, history: async () => ({ok: false, error: 'malformed'})};
      render(
        <WalletProvider engine={engine} platform={w.platform} surface="popup">
@@ -8494,7 +9021,7 @@ index c45950f..ba298b7 100644
        </WalletProvider>,
      );
      expect(await screen.findByText('Could not read this transaction.')).toBeTruthy();
-@@ -287,7 +308,7 @@ describe('#27 network failure while searching', () => {
+@@ -287,7 +325,7 @@ describe('#27 network failure while searching', () => {
      await renderInWallet(
        <>
          <NetModeProbe />
@@ -8503,7 +9030,7 @@ index c45950f..ba298b7 100644
        </>,
        {reader},
      );
-@@ -312,7 +333,7 @@ describe('#27 network failure while searching', () => {
+@@ -312,7 +350,7 @@ describe('#27 network failure while searching', () => {
      await renderInWallet(
        <>
          <NetModeProbe />
@@ -8512,7 +9039,7 @@ index c45950f..ba298b7 100644
        </>,
        {reader},
      );
-@@ -363,7 +384,7 @@ describe('#27 and the model: a successful search reports itself (m.reached)', ()
+@@ -363,7 +401,7 @@ describe('#27 and the model: a successful search reports itself (m.reached)', ()
      await renderInWallet(
        <>
          <NetModeProbe />
@@ -8528,7 +9055,7 @@ index c45950f..ba298b7 100644
 ```bash
 npx vitest run src/app/__tests__/Activity.test.tsx src/app/__tests__/App.test.tsx src/app/__tests__/Home.test.tsx src/app/__tests__/Switcher.test.tsx src/app/__tests__/TxDetail.test.tsx
 ```
-Expected (dry run): FAIL — Test Files 4 failed | 1 passed (5) · Tests 6 failed | 101 passed (107) (the code this task adds does not exist yet, or the behaviour is the old one).
+Expected (dry run): FAIL — Test Files 4 failed | 1 passed (5) · Tests 6 failed | 102 passed (108) (the code this task adds does not exist yet, or the behaviour is the old one).
 
 - [ ] **Step 3: Write the implementation.**
 
@@ -8787,10 +9314,10 @@ Modify `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md`:
 
 ```diff
 diff --git a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-index 2a6caed..ab0ea53 100644
+index 1872946..98e55bc 100644
 --- a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
 +++ b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
-@@ -1822,8 +1822,9 @@ point here. **One user tap per broadcast, always (D38; review B1).**
+@@ -1834,8 +1834,9 @@ point here. **One user tap per broadcast, always (D38; review B1).**
    - **Cold skeleton (from Task 12):** the real top bar instead of skeleton circles; no mode-toggle
      bar (D4); no "See all" skeleton; the quick-action skeleton shows only the actions that exist —
      Receive in plan 1, Receive + Send from plan 3.
@@ -8809,7 +9336,7 @@ index 2a6caed..ab0ea53 100644
 npx vitest run src/app/__tests__/Activity.test.tsx src/app/__tests__/App.test.tsx src/app/__tests__/Home.test.tsx src/app/__tests__/Switcher.test.tsx src/app/__tests__/TxDetail.test.tsx
 npx tsc --noEmit && npx vitest run
 ```
-Expected (dry run): Test Files 5 passed (5) · Tests 107 passed (107); tsc clean; whole suite Test Files 111 passed (111) · Tests 1926 passed (1926).
+Expected (dry run): Test Files 5 passed (5) · Tests 108 passed (108); tsc clean; whole suite Test Files 111 passed (111) · Tests 1935 passed (1935).
 
 - [ ] **Step 6: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -8839,6 +9366,7 @@ MSG
 ### Task 15: E2E specs 4 and 11 — the send with re-authentication, and #12's hints (carry 5)
 
 **Files:**
+- Modify: `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md`
 - Modify: `extension/e2e/fakeCoordinator.ts`
 - Create: `extension/e2e/send.spec.ts`
 - Create: `extension/e2e/sendHelpers.ts`
@@ -9173,7 +9701,27 @@ export async function startSend(h: Harness, amount: string, o: {firstTime: boole
 }
 ```
 
-- [ ] **Step 2: Run the E2E — contained, then offline.**
+- [ ] **Step 2: The spec's entries for this task.**
+
+Modify `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md`:
+
+```diff
+diff --git a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
+index 98e55bc..daa7f41 100644
+--- a/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
++++ b/docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md
+@@ -2280,6 +2280,9 @@ cannot click the toolbar action; stated). Specs:
+     account 0 → at the finish `funded`, "This wallet now holds funds. Nothing was changed.", and the
+     stored envelope is byte-identical.
+ Every spec asserts `fake.unexpected` is empty and `hits > 0` (routing proven).
++**Plan 3:** specs 4, 5 and 11 send SOL; no E2E sends a token (component tests cover SPL sends against the
++real background, and the fake's jsonParsed token accounts feed #11 and #43). A token-send E2E is owed when
++the first token-send path is exercised on a device (plan-3 review, author's gaps).
+ 
+ ### 8.6 Visual fidelity against the design
+```
+
+- [ ] **Step 3: Run the E2E — contained, then offline.**
 
 ```bash
 npm run build && npx playwright test e2e/send.spec.ts
@@ -9181,12 +9729,12 @@ unshare -rn env PATH="$PATH" npx playwright test e2e/send.spec.ts   # if the run
 ```
 Expected (dry run): every test passes in both launches; every spec ends with `contained(h)`.
 
-- [ ] **Step 3: The E2E mutation (D38, carry 6).** In the scratch copy, make #20 send by itself on a resume — in `src/app/screens/Confirm.tsx`, after `      else apply(v);` add `      if (v.reauth === null || v.reauth.proven) void engine.send(v.id);` — then `npm run build && npx playwright test e2e/send.spec.ts -g "4 ·"`. Expected: **red** at spec 4's quiet window (`Expected: "quiet"`, `Received: "sent"`). Discard the copy.
+- [ ] **Step 4: The E2E mutation (D38, carry 6).** In the scratch copy, make #20 send by itself on a resume — in `src/app/screens/Confirm.tsx`, after `      else apply(v);` add `      if (v.reauth === null || v.reauth.proven) void engine.send(v.id);` — then `npm run build && npx playwright test e2e/send.spec.ts -g "4 ·"`. Expected: **red** at spec 4's quiet window (`Expected: "quiet"`, `Received: "sent"`). Discard the copy.
 
-- [ ] **Step 4: Commit.**
+- [ ] **Step 5: Commit.**
 
 ```bash
-git add extension/e2e/fakeCoordinator.ts extension/e2e/send.spec.ts extension/e2e/sendHelpers.ts
+git add docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md extension/e2e/fakeCoordinator.ts extension/e2e/send.spec.ts extension/e2e/sendHelpers.ts
 git commit -F - <<'MSG'
 test(extension): E2E specs 4 and 11 — one tap per broadcast after #10, the hints on #12 (carry 5)
 
@@ -9444,7 +9992,7 @@ test('visual: #11 with Send, #12’s states, #43, #19’s states', async () => {
     // #19 failed: a remainder below the rent minimum (refused before simulating).
     await p.getByLabel('Amount').fill('9.9999');
     await p.locator('.sticky-bar button').click();
-    await expect(p.getByText('This would leave less than 0.00089088 SOL in your account, and Solana does not allow that. Keep at least that much SOL there.')).toBeVisible({timeout: 30_000});
+    await expect(p.getByText('This would leave less than 0.00089088 SOL in your account, which Solana does not allow. Send less, so at least that much stays.')).toBeVisible({timeout: 30_000});
     await expect(p.getByRole('button', {name: 'Retry simulation'})).toHaveCount(0);
     await shot(p, '19-failed-rent');
     await cancelToSend(p);
@@ -9640,7 +10188,7 @@ Expected (dry run): every test passes in both launches; every spec ends with `co
 
 - [ ] **Step 3: The opus-tier visual review.**
 
-For each shot in `extension/test-results/visual/`, open the same state in `/home/user/Downloads/index.html` and check, in order: (1) the top bar — title, step pill ("3 OF 4", "4 OF 4", SLOW, CONFIRMED, "90 s TIMEOUT"), back/close glyph; (2) every string against the spec's copy (the component tests already assert them — a mismatch here is a styling bug hiding text); (3) the design class in place (rings, pills, banners, the review card's high-value red, the fee block's columns, the sticky bar); (4) addresses in groups of four, monospace; amounts exact, ungrouped lamports on #19/#20/#10; (5) disabled states visibly disabled (Simulating…, Waiting for confirmation, Send under a pending send or an expired quote); (6) nothing clipped at 412 px, no horizontal scroll (the `-end` shots show the bottom). Shots: 11-loaded-send, 12-idle, 12-invalid-recipient, 12-insufficient, 12-max, 12-first-time(-end), 43-default, 19-simulating, 19-ready(-end), 19-failed-simulation, 19-failed-rent, 19-failed-unreachable, 20-first-time(-end), 20-high-value(-end), 10-idle-priority, 20-confirmed(-end), 20-quote-expired(-end), 20-resume, 21-broadcasting(-end), 21-slow(-end), 54-stuck(-end), 26-pending-row, 54-sending-again, 54-sent-again, 54-expired, 21-success(-end), 44-network-error, 44-rejected-by-program(-end), 44-blockhash-expired(-end), 44-user-cancelled-toast. Each finding is fixed or declared in that screen's Differs entry, and listed in the PR description.
+For each shot in `extension/test-results/visual/`, open the same state in `/home/user/Downloads/index.html` and check, in order: (1) the top bar — title, step pill ("3 OF 4", "4 OF 4", SLOW, CONFIRMED, "90 s TIMEOUT"), back/close glyph; (2) every string against the spec's copy (the component tests already assert them — a mismatch here is a styling bug hiding text); (3) the design class in place (rings, pills, banners, the review card's high-value red, the fee block's columns, the sticky bar); (4) addresses in groups of four, monospace; amounts exact, ungrouped lamports on #19/#20/#10; (5) disabled states visibly disabled (Simulating…, Waiting for confirmation, Send under a pending send or an expired quote); (6) nothing clipped at 412 px, no horizontal scroll (the `-end` shots show the bottom). (7) #20's fee dollars: the priority row reads "< $0.0001", never "$0.0000" (review L3); #44 rejected-by-program shows [Try again], [View details] and [View on explorer] (review M4). Shots: 11-loaded-send, 12-idle, 12-invalid-recipient, 12-insufficient, 12-max, 12-first-time(-end), 43-default, 19-simulating, 19-ready(-end), 19-failed-simulation, 19-failed-rent, 19-failed-unreachable, 20-first-time(-end), 20-high-value(-end), 10-idle-priority, 20-confirmed(-end), 20-quote-expired(-end), 20-resume, 21-broadcasting(-end), 21-slow(-end), 54-stuck(-end), 26-pending-row, 54-sending-again, 54-sent-again, 54-expired, 21-success(-end), 44-network-error, 44-rejected-by-program(-end), 44-blockhash-expired(-end), 44-user-cancelled-toast. Each finding is fixed or declared in that screen's Differs entry, and listed in the PR description.
 
 - [ ] **Step 4: Commit.**
 
@@ -9653,6 +10201,19 @@ Co-Authored-By: <the executing model's own line>
 MSG
 ```
 
+## Review 1 (Fable 5.1) — how each finding was applied
+
+Verdict: approve after fixes (0 Blocker, 1 High, 5 Medium, 10 Low); the money path was spot-checked and holds. Every finding is applied in the tasks above, each with a test and a named mutation:
+
+- **H1** (Tasks 4, 14) — a failed transaction is `sent` only with exactly one transfer from the owner, of a known mint; a batch, a token-plus-SOL pair and an unknown mint decode `other`; #27's `[Try again]` only for a `sent` decode; §6.2 states that inner (CPI) instructions are not read. Tests: `history.test.ts` (three negative cases), `TxDetail.test.tsx` (a real two-transfer decode → "FAILED", no `[Try again]`). Mutations M4c (keep the sum — red in both files), M4d (accept an unknown mint).
+- **M1** (Tasks 3, 9) — `preparedFor` reports `expired` when the challenge is dead by its real expiry (C5's cap), not by `createdAt + 120 s`; the resume re-prepares with a fresh challenge; one tap opens a live #10; no loop. Tests: `send.test.ts` (engine) and `Confirm.test.tsx` (end to end, the dead-challenge resume through the real background). Mutation M3d.
+- **M2** (Task 9) — the backstop walks all of `src/` and catches the object-literal and bracket forms; fixtures and negative controls; the plan names its scope truthfully. Mutations M9h (a sneaked `.send(` in Home), M9i (`deps.send({type: 'wallet.send'})` in the vault page).
+- **M3** (Task 10) — the held test asserts exactly one broadcast; a second test makes a second press NOT too soon, so only the lock stops it. Mutation M10b (LockedButton's ref guard removed) is red there.
+- **M4** (Task 11) — `[View details]` → #27 restored on `rejected-by-program` only (the controller's ruling); §4.7 says so. Mutation M11b.
+- **M5** (Task 9) — the reauth-required-without-id test drives the stored state (the challenge's life ends when `takePrepared` writes), not the number of `deps.now()` calls. Mutation M9l.
+- **L1** (Task 9) — no automatic re-prepare while a send is open; test; M9j. **L2** — the stale-proof re-read; test; M9k. **L3** — "< $0.0001" (`format.ts`), listed for Task 17's reviewer; M9m. **L4** — the DOM-derived sum; M9n. **L5** — "yesterday" (Task 6); M6c. **L6** — never "Send 1. SOL" (Task 7); M7b. **L7** — the StrictMode note in `mount.tsx` (Task 13). **L8** — no change: the simulation's rent refusal already says "the simulation refused it for rent" in its detail. **L9** — M12b kept as an equivalent mutant. **L10** — M9d kept as masked by design; M9d2 is the control.
+- **Copy verdicts** — the sender-below-rent wording changed to the review's; "· yesterday" replaces "· last 1 day ago"; every proposed line stays "controller addition — awaiting the owner" (Scope 3–4). **Author's gaps** — §8.5 records that a token-send E2E is owed when the first token-send path is exercised on a device.
+
 ## Before the PR (the standing rules)
 
 - [ ] Reproduce CI with **only** `web/` and `extension/` installed, on Node 22.12 (`PATH="$(dirname $(npx -y -p node@22.12.0 node -e 'console.log(process.execPath)')):$PATH"`): `npm ci --ignore-scripts` in both, `npm run verify` in both, `npm run e2e` in `extension/` — in a normal launch and under `unshare -rn` if the runner has it. Task 4 touches `core/`: web's verify runs its tests. No task touches the root `src/`; the dry run ran the root `tsc` and `jest` anyway.
@@ -9664,21 +10225,23 @@ MSG
 
 - **Spec coverage.** §4.2 #12 (Task 7), §4.3 #43 (Task 7), §4.4 #19 (Task 8), §4.5 #20 and its resume (Tasks 9, 13), §4.6 #21 (Task 12), §4.7 #44 (Task 11), §4.8 #54 (Task 10), §5.1/§6.2/§6.3 stand-ins (Tasks 4, 14), §1.6 (Task 13), §8.5 specs 4, 5, 11 (Tasks 15, 16), §8.6 (Task 17), §11.5 (Tasks 2, 6, 15). D38 (Tasks 9, 13, 15 — the section above), D39 (Tasks 3, 8, 9), C5 (Task 9), E2 (Task 8's After), E3 (Task 1), E6 (Tasks 6, 7, 15), E7 (Tasks 8, 9, 15), E8 (Tasks 11, 12). Carries: 1 → Task 1; 2 → Tasks 2, 6, 8; 3 → Tasks 4, 14 (owner Q1); 4 → Task 5 (+ every screen test); 5 → Task 15; 6 → Tasks 9, 13, 15.
 - **Rule 6.** Send (#12 CTA), Continue and Retry (#19), Send and Refresh (#20), Send again (#54), Try again (#44, #27), Close this tab (#21) are `LockedButton`s, each with a double-press test that lifts `disabled`.
-- **Generation checks.** #12's E6 reply (M7a); #19's prepare after leaving (M8a); #20's re-prepare after Cancel (M9f), its open-sequence reads (`left`), the in-flight send (M9d2, M9g); #21's poll (`alive`; M12b is equivalent — stated); #54's resend (`alive`); the popup's resume check (M13c).
+- **Generation checks.** #12's E6 reply (M7a); #19's prepare after leaving (M8a); #20's re-prepare after Cancel (M9f), its open-sequence reads (`left`), the in-flight send (M9d2, M9g), the stale-proof re-read (`left` after the await); #21's poll (`alive`; M12b is equivalent — stated); #54's resend (`alive`); the popup's resume check (M13c).
 - **Placeholders.** None: every step has its code, its command and its expected output; the one generated file has its generator and its hash.
 - **Type consistency.** `PreparedView`, `Pending`, `Intent`, `Draft`, `Route`, `RouteAction` and `Platform` are used as each task's Interfaces block states; the replay proved each task compiles and passes on its own predecessor.
 
 ## Dry-run findings (each fixed in the code above)
 
-The end state was applied task by task to a scratch copy (git-archive, outside the repository) on Node 22.12 with only `web/` and `extension/` installed; then: extension `npm run verify` (tsc, build, vitest 111 files / 1926 tests passed, CSP, secrets, every gate, reproducible build) — green; E2E contained 31 passed of 31, and under `unshare -rn` 31 passed of 31; web `npm run verify` — 507 passed (507) tests (plus its script tests), green; root `tsc` clean and `jest` 1 skipped, 1228 passed, 1229 total; the repo-wide TGE gate clean. Every named mutation was run as stated.
+The end state was applied task by task to a scratch copy (git-archive, outside the repository) on Node 22.12 with only `web/` and `extension/` installed; then: extension `npm run verify` (tsc, build, vitest 111 files / 1935 tests passed, CSP, secrets, every gate, reproducible build) — green; E2E contained 31 passed of 31, and under `unshare -rn` 31 passed of 31; web `npm run verify` — 508 passed (508) tests (plus its script tests), green; root `tsc` clean and `jest` 1 skipped, 1228 passed, 1229 total; the repo-wide TGE gate clean. Every named mutation was run as stated.
 
 1. **#20's Cancel during an in-flight send** would discard nothing (the send holds the prepared send) and show "Transaction cancelled. No fees charged." over a broadcast. Fixed: while the tap's `wallet.send` is in flight, Cancel is disabled and Cancel/Back/Esc are inert (Task 9, M9d2/M9g).
 2. **Playwright's clock is the whole context's**, not the page's: every page opened after a clock popup ran ahead of the background, so #20 found its quote already expired ("Quote expired — refresh") and Send stayed disabled. Fixed: the visual spec shoots the confirmed send first, on the real clock (Task 17).
-3. **Survivors that became tests:** M3c (the Noctura fee in `feeLamports` — the extension charges none today, so a `vi.mock` policy test), M4a (a failed transfer signed only as token authority while another account paid), M9f (Cancel during C5's re-prepare), M13c (a user who moved on before `preparedFor` answered). M9d alone is masked by the `disabled` prop by design; M12b is equivalent.
-4. **E2E strictness:** "Sent SOL" also matched "Failed · sent SOL" after Task 4 (exact matching); `getByLabel('Recipient')` also matched "Clear recipient" (exact); #19's Cancel left `.sticky-bar button` ambiguous until #12 was back (wait for #12); the plan-2 wallet spec expected the resume stand-in's text (now #20's "Confirmed…", Task 13).
-5. **Unstyled classes the ancestor-aware check caught:** `.lbl` on #20's non-total fee rows, `.mono` inside a detail value, `.app-secondary` scoped too narrowly; and a dynamic `${c.tone}` class the gate could not see (added to `check-classes.mjs`'s DYNAMIC list).
-6. **Arithmetic the tests had wrong first** (MAX 62.48116412, SPL After 62.48005247, the NOC dollar line) — corrected against the engine, not the other way round.
-7. **The fake coordinator answered simulations without the fee**; spec §11.5 measured a node answering with it. The fake now applies 5 000 per signature plus the priority fee, and spec 4 asserts #19's "After" from the fake's own number.
+3. **One transient failure in the replay** (review 1's re-run): the whole-suite run after Task 15 — which changes no file vitest runs (only `e2e/` and the spec) — reported 1 failed of 1935 once; the same tree passed three full runs and `npm run verify`. Not reproduced, so not identified; the candidates are pre-existing tests that run near vitest's 5 s default under load (`create.test.ts`'s 1000-plan cases at 3.4–4.7 s, `envelopeKat.test.ts` at 4.9–5.2 s, plan 1 and 2 code). Recorded, not changed: raising those timeouts is outside plan 3.
+4. **Review 1's re-run:** the reworked tests caught that a second press on #54 can never reach the lock through `fireEvent` — React re-renders between events, so the button is disabled (or replaced by the "sending" layout) first; the M3 test presses twice inside one `act()`, and only then does removing the lock (M10b) turn it red. Removing only one of `LockedButton`'s two layers stays green by design (the ref and the `disabled` state each hold).
+5. **Survivors that became tests:** M3c (the Noctura fee in `feeLamports` — the extension charges none today, so a `vi.mock` policy test), M4a (a failed transfer signed only as token authority while another account paid), M9f (Cancel during C5's re-prepare), M13c (a user who moved on before `preparedFor` answered). M9d alone is masked by the `disabled` prop by design; M12b is equivalent.
+6. **E2E strictness:** "Sent SOL" also matched "Failed · sent SOL" after Task 4 (exact matching); `getByLabel('Recipient')` also matched "Clear recipient" (exact); #19's Cancel left `.sticky-bar button` ambiguous until #12 was back (wait for #12); the plan-2 wallet spec expected the resume stand-in's text (now #20's "Confirmed…", Task 13).
+7. **Unstyled classes the ancestor-aware check caught:** `.lbl` on #20's non-total fee rows, `.mono` inside a detail value, `.app-secondary` scoped too narrowly; and a dynamic `${c.tone}` class the gate could not see (added to `check-classes.mjs`'s DYNAMIC list).
+8. **Arithmetic the tests had wrong first** (MAX 62.48116412, SPL After 62.48005247, the NOC dollar line) — corrected against the engine, not the other way round.
+9. **The fake coordinator answered simulations without the fee**; spec §11.5 measured a node answering with it. The fake now applies 5 000 per signature plus the priority fee, and spec 4 asserts #19's "After" from the fake's own number.
 
 ## Execution handoff
 
