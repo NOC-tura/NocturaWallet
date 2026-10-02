@@ -2,7 +2,6 @@ import {parseAmount} from '../../shared/amount';
 import {sendReauthReasons, usdMicros} from '../../background/reauthPolicy';
 import {
   BASE_FEE_LAMPORTS,
-  FEE_DISCOUNTED_TEXT,
   FEE_REASON_TEXT,
   MARKUP_CEILING_LAMPORTS,
   PRIORITY_CEILING_MICRO_LAMPORTS,
@@ -145,13 +144,11 @@ describe('the send flow’s rules', () => {
       {label: 'New token account', lamports: 2_039_280n},
       {label: 'Noctura fee', lamports: 20_000n},
     ]);
-    // Fix round 1, item 4: `charged` at zero (a 100 % staking discount) still says why — never no line at all.
+    // Spec §4.5 / carry 1: `charged` with a zero fee is not described (#10 refuses it; the extension cannot produce it).
     expect(feeRows({networkLamports: 5_000n, priorityLamports: 0n, rentLamports: 0n, markupLamports: 0n, markupReason: 'charged'})).toEqual([
       {label: 'Network fee', lamports: 5_000n},
       {label: 'Priority', lamports: 0n},
-      {label: 'No Noctura fee (staking discount)', lamports: null},
     ]);
-    expect(FEE_DISCOUNTED_TEXT).toBe('No Noctura fee (staking discount)');
     expect(Object.values(FEE_REASON_TEXT)).toEqual(['No Noctura fee before TGE', 'No Noctura fee (zero-fee eligible)', 'No Noctura fee (status unknown)']);
   });
 
