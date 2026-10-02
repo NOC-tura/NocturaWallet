@@ -47,6 +47,9 @@ declare const chrome: {
 async function vaultTab(h: Harness, path: string, o: {passkeyCreate?: 'null'} = {}): Promise<Page> {
   const page = await h.ctx.newPage();
   await page.setViewportSize({width: 412, height: 916});
+  // A settled blank document first: installing the clock into a page still being created failed once
+  // ("Cannot read properties of undefined (reading 'controller')", fix round 1 run).
+  await page.goto('about:blank');
   await page.clock.install();
   await page.addInitScript(stub => {
     type Held = {hold: boolean; queue: (() => void)[]};
@@ -91,7 +94,11 @@ test('visual: the create run — #1, #2, #3, #4, #5, #6 and #7', async () => {
     const p = await vaultTab(h, 'unlock.html?mode=welcome', {passkeyCreate: 'null'});
     await expect(p.getByText('A Solana wallet built for private, non-custodial holding.')).toBeVisible();
     await expect(text(p, '.trust-chip')).toHaveText(['E2E encrypted', 'Non-custodial']);
-    await shot(p, '01-welcome-idle');
+    // The terms line and both CTAs are unhidden by the page's one vault read: idle is after it (fix round 1).
+    await expect(p.locator('#wel-terms')).toBeVisible();
+    await expect(p.locator('#wel-terms')).toHaveText('By continuing you agree to the Terms and Privacy Policy.');
+    await expect(p.locator('#wel-import')).toBeVisible();
+    await shot(p, '01-welcome-idle', {ready: p.locator('#wel-create')});
     await p.locator('#wel-create').click();
     await expect(p.getByText('Three layers protect your wallet')).toBeVisible();
     await shot(p, '02-security-intro', {ready: p.locator('#int-continue')});
@@ -334,7 +341,22 @@ test('visual: #9, #39, the restore and retry steps, the accounts and reveal form
     await p.locator('#unl-submit').click();
     await expect(p.locator('#unl-cooldown').getByText('Wait a moment', {exact: true})).toBeVisible({timeout: 60_000});
     await expect(text(p, '#unl-timer')).toHaveText('0:01');
+    await expect(text(p, '#unl-cooldown-label')).toHaveText('Cooldown · 1 second remaining');
+    await expect(p.locator('#unl-paused')).toHaveText('Unlock paused');
+    await expect(p.locator('#unl-paused')).toBeDisabled();
     await shot(p, '09-cooldown');
+    await p.clock.runFor(1_600);
+    // The next wrong password waits 2 s: one second in, the ring has half of its arc left (fix round 1).
+    await expect(p.locator('#unl-submit')).toBeEnabled();
+    await p.locator('#unl-password').fill('not the password at all');
+    await p.locator('#unl-submit').click();
+    await expect(text(p, '#unl-timer')).toHaveText('0:02', {timeout: 60_000});
+    await p.clock.runFor(1_000);
+    await expect(text(p, '#unl-timer')).toHaveText('0:01');
+    await expect(text(p, '#unl-cooldown-label')).toHaveText('Cooldown · 1 second remaining');
+    await expect(p.locator('#unl-paused')).toHaveText('Unlock paused');
+    await expect(p.locator('#unl-ring')).toHaveAttribute('style', /--vlt-ring:\s*0\.5/);
+    await shot(p, '09-cooldown-mid');
     await p.clock.runFor(1_600);
     await p.clock.resume();
     await expect(p.locator('#unl-submit')).toBeEnabled();
@@ -352,6 +374,18 @@ test('visual: #9, #39, the restore and retry steps, the accounts and reveal form
       await expect(text(p, '#fg-title')).toHaveText(title);
       await expect(text(p, '#fg-step')).toHaveText(`${n} / 3`);
       await shot(p, `39-step-${n}-card`, {ready: p.locator('#fg-next')});
+      if (n < 3) {
+        // The rest of the step, scrolled to its end under the sticky bar (fix round 1).
+        await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+        const last = p.locator('#v-forgot .scroll-area > :not([hidden])').last();
+        await expect(last).toBeInViewport();
+        // Checklist 6: at the end the sticky bar covers none of it.
+        const lastBottom = await last.evaluate(e => e.getBoundingClientRect().bottom);
+        const barTop = await p.locator('#v-forgot .sticky-bar').evaluate(e => e.getBoundingClientRect().top);
+        expect(lastBottom).toBeLessThanOrEqual(barTop);
+        await shot(p, `39-step-${n}-card-end`, {fullPage: false});
+        await p.evaluate(() => window.scrollTo(0, 0));
+      }
       if (n < 3) await p.locator('#fg-next').click();
     }
     await p.locator('#fg-next').click();
@@ -428,7 +462,23 @@ test('visual: #10 — the action from the background, and each of its states', a
     await p.locator('#ra-password').fill('not the password at all');
     await p.locator('#ra-confirm').click();
     await expect(p.locator('#ra-cooldown').getByText('Wait a moment', {exact: true})).toBeVisible({timeout: 60_000});
+    await expect(text(p, '#ra-timer')).toHaveText('0:01');
+    await expect(text(p, '#ra-cooldown-label')).toHaveText('Cooldown · 1 second remaining');
+    await expect(p.locator('#ra-paused')).toHaveText('Confirm paused');
+    await expect(p.locator('#ra-paused')).toBeDisabled();
     await shot(p, '10-cooldown');
+    await p.clock.runFor(1_600);
+    // The next wrong password waits 2 s: one second in, half of the arc is left (fix round 1).
+    await expect(p.locator('#ra-confirm')).toBeEnabled();
+    await p.locator('#ra-password').fill('not the password at all');
+    await p.locator('#ra-confirm').click();
+    await expect(text(p, '#ra-timer')).toHaveText('0:02', {timeout: 60_000});
+    await p.clock.runFor(1_000);
+    await expect(text(p, '#ra-timer')).toHaveText('0:01');
+    await expect(text(p, '#ra-cooldown-label')).toHaveText('Cooldown · 1 second remaining');
+    await expect(p.locator('#ra-paused')).toHaveText('Confirm paused');
+    await expect(p.locator('#ra-ring')).toHaveAttribute('style', /--vlt-ring:\s*0\.5/);
+    await shot(p, '10-cooldown-mid');
     await p.clock.runFor(1_600);
     await p.clock.resume();
 

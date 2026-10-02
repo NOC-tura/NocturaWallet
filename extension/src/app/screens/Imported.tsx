@@ -182,6 +182,16 @@ export function Imported() {
           </LockedButton>
         </div>
         <AddressChip address={first.publicKey} />
+        {/* The wallet is stored whatever the read said: the way on is the same as when it answered (Task 18 ruling). */}
+        <div className="app-onb-grow" />
+        <div className="sticky-bar">
+          <p className="noc-body app-center-text">{READY_LINE}</p>
+          {tab.refused ? null : (
+            <LockedButton className="btn btn-secondary" onPress={tab.close}>
+              Close this tab
+            </LockedButton>
+          )}
+        </div>
       </div>
     );
   }

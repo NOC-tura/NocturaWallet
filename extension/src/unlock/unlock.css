@@ -374,6 +374,35 @@
    pass: an aria-label alone names the field for a screen reader but tells a sighted user nothing). */
 .vlt-col .vlt-field-label {
   margin-top: var(--space-3);
+  /* Above the field's start edge, not centred with the pin-head's column (fix round 1). */
+  align-self: stretch;
+  text-align: start;
+}
+/* #5 `creating`: the indeterminate `.noc-progress`. web's styles fill only a determinate bar's value, so an
+   indeterminate one drew an empty track (fix round 1). A 40 % accent fill moves across the well, by CSS
+   animation only; with reduced motion it stands still at the start. */
+.vlt-col .noc-progress:indeterminate {
+  background:
+    linear-gradient(90deg, color-mix(in oklab, var(--accent) 70%, #6f4fd8), var(--accent)) 0 0 / 40% 100% no-repeat,
+    var(--well);
+  animation: vlt-indeterminate 1.4s ease-in-out infinite alternate;
+}
+.vlt-col .noc-progress:indeterminate::-moz-progress-bar {
+  background: transparent;
+}
+@keyframes vlt-indeterminate {
+  from {
+    background-position: 0% 0, 0 0;
+  }
+  to {
+    background-position: 100% 0, 0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vlt-col .noc-progress:indeterminate {
+    animation: none;
+    background-position: 0% 0, 0 0;
+  }
 }
 .vlt-col .vlt-field-row.vlt-field-row-labelled {
   margin-top: 0;

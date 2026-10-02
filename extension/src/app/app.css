@@ -490,6 +490,12 @@ a.btn {
 .app-content .app-onb-imported > .sticky-bar {
   margin-inline: calc(-1 * var(--space-5));
 }
+/* #40's address as the design draws it (`.s8-addr-chip .addr`: --fg-secondary, 12/16); web's AddressGroups
+   sets --fg-primary at 12/20 on its own element. #7's address keeps its own rule (fix round 1). */
+.app-content .s8-addr-chip .addr .addr-groups {
+  color: var(--fg-secondary);
+  line-height: 16px;
+}
 /* #40's refresh: web's .icon-btn is 36 px; the design's icon buttons are the 48 px touch target. */
 .app-onb-imported .icon-btn {
   width: var(--touch-target-min);

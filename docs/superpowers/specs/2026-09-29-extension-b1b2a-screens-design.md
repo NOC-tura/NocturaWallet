@@ -1275,7 +1275,9 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     repeats the check at the moment of deletion, whatever the page saw.
   - **extension-only:** `locked` ("Wallet imported. Unlock it to see what was recovered." +
     `[Unlock]` → `?mode=unlock&return=imported`); `refused` (D26 banner); `unreachable`
-    ("Balances could not be read right now." + refresh).
+    ("Balances could not be read right now." + refresh). In both, under the message and the address,
+    the sticky bar with the D10 line and `[Close this tab]`: the wallet is stored whatever the read
+    said, so the user is never left without the way on (controller ruling, Task 18 fix round 1).
 - **Differs:**
   - "+ N more tokens" overflow row not built (the engine knows 4 tokens).
   - BONK/JUP rows impossible (4 tokens).
@@ -1303,6 +1305,8 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     no record of it. A hash that said so would let the URL assert a fact the screen cannot check
     (§1.6: the hash only chooses a screen). The vault page names the replacement before it happens
     (#8 `source=retry`: "Confirm with the password of the wallet you are replacing").
+  - **Plan 2 (visual pass):** the address keeps the design's chip colour and size (`--fg-secondary`,
+    12/16) in groups of four; only the first-6/last-6 `.ck` accent is not drawn (above).
   - **Plan 2 (visual pass):** the copy button is the accent icon on the chip, with no chrome of its
     own (48 px hit area); the mockup's light square is the browser's default button style, which the
     design's CSS never sets. The refresh in `unreachable`/`refused` is a 48 px icon button.

@@ -140,6 +140,23 @@ describe('#40 import-success (wallet.html#/imported)', () => {
     expect(await screen.findByText('Wallet imported · empty')).toBeTruthy();
   });
 
+  it.each([
+    ['unreachable', () => new RequestUnreachable('getBalance', 'offline'), 'Balances could not be read right now.'],
+    ['refused (a 403)', () => new RpcForbidden('getBalance'), 'The server is not answering for now — try again in 10 minutes.'],
+  ])('%s: the wallet is stored, so the D10 line and [Close this tab] are there under the message (Task 18 ruling)', async (_name, error, line) => {
+    const reader = walletReader({
+      getBalance: async () => {
+        throw error();
+      },
+    });
+    const {platform} = await renderApp({surface: 'tab', hash: '#/imported', env: ONE, accounts: [ACCOUNT], reader});
+    expect(await screen.findByText(line)).toBeTruthy();
+    expect(screen.getByText('Wallet is ready — open the Noctura icon')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Close this tab'}));
+    expect(platform.closed).toBe(1);
+    expect(styled()).toEqual([]);
+  });
+
   it('a 403: the D26 banner and the refresh disabled (nothing retries)', async () => {
     const reader = walletReader({
       getBalance: async () => {
