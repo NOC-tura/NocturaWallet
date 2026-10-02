@@ -2,6 +2,7 @@ import {parseAmount} from '../../shared/amount';
 import {sendReauthReasons, usdMicros} from '../../background/reauthPolicy';
 import {
   BASE_FEE_LAMPORTS,
+  FEE_DISCOUNTED_TEXT,
   FEE_REASON_TEXT,
   MARKUP_CEILING_LAMPORTS,
   PRIORITY_CEILING_MICRO_LAMPORTS,
@@ -77,6 +78,20 @@ describe('the send flow’s rules', () => {
     expect(maxSendable('SOL', 100n)).toBe(0n);
   });
 
+  // Fix round 1, item 3: the exact edges of the bound, and the worst fee the engine can actually charge.
+  it('MAX at its exact edges: worst + rent → 0, one lamport more → 1, one less → 0; the ceiling fee is the worst case', () => {
+    const edge = WORST_SOL_FEE_LAMPORTS + RENT_EXEMPT_LAMPORTS;
+    expect(edge).toBe(935_880n);
+    expect(maxSendable('SOL', edge)).toBe(0n);
+    expect(maxSendable('SOL', edge + 1n)).toBe(1n);
+    expect(maxSendable('SOL', edge - 1n)).toBe(0n);
+    const ceilingFee = networkFeeLamports(1, CEILING.normal, computeUnitLimitFor({kind: 'sol'})) + TRANSFER_MARKUP_LAMPORTS;
+    expect(ceilingFee).toBe(WORST_SOL_FEE_LAMPORTS);
+    for (const balance of [edge + 1n, 62_482_100_000n]) {
+      expect(balance - maxSendable('SOL', balance) - ceilingFee).toBe(RENT_EXEMPT_LAMPORTS);
+    }
+  });
+
   // Spec §8.4 / §11.5: MAX never produces a sender-below-rent amount — a property over balances and every fee the
   // engine can charge (any priority up to the ceiling, the Noctura fee charged or not).
   it('MAX never leaves 1 … 890 879 lamports, whatever the real fee (property, 5 000 cases)', () => {
@@ -130,6 +145,13 @@ describe('the send flow’s rules', () => {
       {label: 'New token account', lamports: 2_039_280n},
       {label: 'Noctura fee', lamports: 20_000n},
     ]);
+    // Fix round 1, item 4: `charged` at zero (a 100 % staking discount) still says why — never no line at all.
+    expect(feeRows({networkLamports: 5_000n, priorityLamports: 0n, rentLamports: 0n, markupLamports: 0n, markupReason: 'charged'})).toEqual([
+      {label: 'Network fee', lamports: 5_000n},
+      {label: 'Priority', lamports: 0n},
+      {label: 'No Noctura fee (staking discount)', lamports: null},
+    ]);
+    expect(FEE_DISCOUNTED_TEXT).toBe('No Noctura fee (staking discount)');
     expect(Object.values(FEE_REASON_TEXT)).toEqual(['No Noctura fee before TGE', 'No Noctura fee (zero-fee eligible)', 'No Noctura fee (status unknown)']);
   });
 
@@ -163,11 +185,50 @@ describe('the send flow’s rules', () => {
     expect(usdOf('SOL', 1n, null)).toBeNull();
   });
 
-  it('"Verified · sent before" with the local calendar days since, or without a date', () => {
-    const now = new Date(2026, 9, 2, 9, 41).getTime();
-    expect(sentBeforeText(null, now)).toBe('Verified · sent before');
-    expect(sentBeforeText(new Date(2026, 9, 2, 0, 5).getTime(), now)).toBe('Verified · sent before · today');
-    expect(sentBeforeText(new Date(2026, 9, 1, 23, 59).getTime(), now)).toBe('Verified · sent before · yesterday');
-    expect(sentBeforeText(new Date(2026, 8, 20, 12, 0).getTime(), now)).toBe('Verified · sent before · last 12 days ago');
+  // Fix round 1, items 1–2: the local calendar is pinned, never the machine's (CI runs in UTC, where a
+  // UTC-calendar bug passes). Fixtures are explicit UTC instants; each zone first proves it took effect
+  // (process.env.TZ is honoured by vitest's forks pool, not by worker threads — the control fails loudly).
+  function inZone(zone: string, control: {at: number; hour: number}, body: () => void): void {
+    const saved = process.env.TZ;
+    process.env.TZ = zone;
+    try {
+      expect(`${zone}: ${new Date(control.at).getHours()}`).toBe(`${zone}: ${control.hour}`);
+      body();
+    } finally {
+      if (saved === undefined) delete process.env.TZ;
+      else process.env.TZ = saved;
+    }
+  }
+  const UTC = Date.UTC;
+
+  it('"Verified · sent before" with the local calendar days since (Europe/Ljubljana, UTC+2), or without a date', () => {
+    inZone('Europe/Ljubljana', {at: UTC(2026, 9, 2, 7, 41), hour: 9}, () => {
+      const now = UTC(2026, 9, 2, 7, 41); // Fri 2 Oct 09:41 CEST
+      expect(sentBeforeText(null, now)).toBe('Verified · sent before');
+      expect(sentBeforeText(UTC(2026, 9, 1, 22, 5), now)).toBe('Verified · sent before · today'); // 00:05 local; 1 Oct in UTC
+      expect(sentBeforeText(UTC(2026, 9, 1, 21, 59), now)).toBe('Verified · sent before · yesterday'); // 23:59 local
+      expect(sentBeforeText(UTC(2026, 8, 30, 22, 30), now)).toBe('Verified · sent before · yesterday'); // 1 Oct 00:30 local; 30 Sep in UTC
+      expect(sentBeforeText(UTC(2026, 8, 20, 10, 0), now)).toBe('Verified · sent before · last 12 days ago');
+    });
+  });
+
+  it('"Verified · sent before" in a far zone (Pacific/Auckland, UTC+13), across its September DST change', () => {
+    inZone('Pacific/Auckland', {at: UTC(2026, 9, 1, 20, 41), hour: 9}, () => {
+      const now = UTC(2026, 9, 1, 20, 41); // Fri 2 Oct 09:41 NZDT — still 1 Oct in UTC
+      expect(sentBeforeText(UTC(2026, 9, 1, 11, 5), now)).toBe('Verified · sent before · today'); // 00:05 local
+      expect(sentBeforeText(UTC(2026, 9, 1, 10, 59), now)).toBe('Verified · sent before · yesterday'); // 23:59 local; same UTC day
+      expect(sentBeforeText(UTC(2026, 8, 20, 0, 0), now)).toBe('Verified · sent before · last 12 days ago'); // 20 Sep 12:00 NZST, a 23-hour day between
+    });
+  });
+
+  it('"Verified · sent before" across a 23-hour and a 25-hour day (Europe/Ljubljana DST)', () => {
+    inZone('Europe/Ljubljana', {at: UTC(2026, 2, 30, 7, 0), hour: 9}, () => {
+      // 29 Mar 2026 is 23 hours long: Mon 30 Mar 09:00 CEST after Sun 29 Mar 08:00 CEST is yesterday.
+      expect(sentBeforeText(UTC(2026, 2, 29, 6, 0), UTC(2026, 2, 30, 7, 0))).toBe('Verified · sent before · yesterday');
+      expect(sentBeforeText(UTC(2026, 2, 20, 11, 0), UTC(2026, 2, 30, 7, 0))).toBe('Verified · sent before · last 10 days ago');
+      // 25 Oct 2026 is 25 hours long: Mon 26 Oct 09:00 CET after Sun 25 Oct 12:00 CET is yesterday.
+      expect(sentBeforeText(UTC(2026, 9, 25, 11, 0), UTC(2026, 9, 26, 8, 0))).toBe('Verified · sent before · yesterday');
+      expect(sentBeforeText(UTC(2026, 9, 20, 10, 0), UTC(2026, 9, 26, 8, 0))).toBe('Verified · sent before · last 6 days ago');
+    });
   });
 });

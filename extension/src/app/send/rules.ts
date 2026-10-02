@@ -109,7 +109,7 @@ export function percentOf(amount: bigint, balance: bigint | null): number | null
   return Number((amount * 100n) / balance);
 }
 
-/** A token amount's value in USD for display only (never a decision); null without a price. */
+/** A token amount's value in USD for display only (never a decision); null without a price. The float conversion is lossy — never feed it back into an amount or a rule. */
 export function usdOf(token: Token, amount: bigint, prices: Prices | null): number | null {
   const p = unitPrice(token, prices);
   if (p === undefined) return null;
@@ -125,6 +125,12 @@ export const FEE_REASON_TEXT: Record<Exclude<FeeReason, 'charged'>, string> = {
   'status-unknown': 'No Noctura fee (status unknown)',
 };
 
+/**
+ * `charged` with a zero fee: effectiveFee (core/fees/transferMarkup.ts) reaches it only through a 100 % staking
+ * discount, so that is the reason it gives — a zero Noctura fee is never silent (fix round 1, item 4).
+ */
+export const FEE_DISCOUNTED_TEXT = 'No Noctura fee (staking discount)';
+
 export interface FeeRow {
   label: string;
   /** Lamports; null for the reason line of a zero Noctura fee. */
@@ -133,7 +139,7 @@ export interface FeeRow {
 
 /**
  * "Network fee" = network − priority (the base fee), "Priority", "New token account" when non-zero, then
- * "Noctura fee" when non-zero or its reason line. Their lamports and the amount (for SOL) sum to
+ * "Noctura fee" when non-zero, otherwise always a reason line. Their lamports and the amount (for SOL) sum to
  * solRequiredLamports — the engine's own total.
  */
 export function feeRows(fees: Prepared['fees']): FeeRow[] {
@@ -143,7 +149,7 @@ export function feeRows(fees: Prepared['fees']): FeeRow[] {
   ];
   if (fees.rentLamports > 0n) rows.push({label: 'New token account', lamports: fees.rentLamports});
   if (fees.markupLamports > 0n) rows.push({label: 'Noctura fee', lamports: fees.markupLamports});
-  else if (fees.markupReason !== 'charged') rows.push({label: FEE_REASON_TEXT[fees.markupReason], lamports: null});
+  else rows.push({label: fees.markupReason === 'charged' ? FEE_DISCOUNTED_TEXT : FEE_REASON_TEXT[fees.markupReason], lamports: null});
   return rows;
 }
 
