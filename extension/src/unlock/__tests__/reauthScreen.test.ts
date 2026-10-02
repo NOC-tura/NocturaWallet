@@ -207,7 +207,7 @@ describe('#10 unlock-send (spec §3.10)', () => {
     await h.until(() => !h.deps.gate.isBusy());
     confirmWith('wrong wrong wrong wrong');
     await h.until(() => visible(el('ra-cooldown')));
-    expect(text(el('ra-cooldown'))).toBe('Wait a moment That did not confirm it. Wait a moment before trying again. 0:01 Cooldown · 0 minutes 1 seconds remaining');
+    expect(text(el('ra-cooldown'))).toBe('Wait a moment That did not confirm it. Wait a moment before trying again. 0:01 Cooldown · 1 second remaining');
     expect(text(el('ra-paused'))).toBe('Confirm paused');
     expect(el<HTMLButtonElement>('ra-paused').disabled).toBe(true);
     expect(unstyled('v-reauth')).toEqual([]);
@@ -477,11 +477,11 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
     expect(el('ra-ring').style.getPropertyValue('--vlt-ring')).toBe('1');
     expect(el('ra-cooldown').querySelector('[aria-live]')).toBeNull();
     expect(el('ra-cooldown-live').getAttribute('aria-live')).toBe('polite');
-    expect(text(el('ra-cooldown-live'))).toBe('Cooldown · 0 minutes 1 seconds remaining');
+    expect(text(el('ra-cooldown-live'))).toBe('Cooldown · 1 second remaining');
     h.timers.advance(1_000);
     expect(text(el('ra-timer'))).toBe('0:00');
     expect(el('ra-ring').style.getPropertyValue('--vlt-ring')).toBe('0');
-    expect(text(el('ra-cooldown-live'))).toBe('Cooldown · 0 minutes 1 seconds remaining');
+    expect(text(el('ra-cooldown-live'))).toBe('Cooldown · 1 second remaining');
     h.wake();
     await h.until(() => !visible(el('ra-cooldown')));
     expect(text(el('ra-cooldown-live'))).toBe('');

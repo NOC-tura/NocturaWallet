@@ -1092,8 +1092,12 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   - The attempt counter and "Cycle 1 of 2" line are removed (D11).
   - The keypad is replaced by a password field (D7).
   - FLAG_SECURE dropped (D1).
-  - **Plan 2:** the cooldown card keeps the design's helper line ("Cooldown · 0 minutes 12 seconds
-    remaining"); the ring shows the share of the wait left.
+  - **Plan 2:** the cooldown card keeps the design's helper line, its integers in `.noc-numeral`
+    ("Cooldown · 12 seconds remaining"); the ring shows the share of the wait left. **Controller
+    adjustment (Task 18 ruling):** the design's template ("2 minutes 45 seconds") is pluralised —
+    "1 minute", "1 second" — and a zero part is left out: "Cooldown · 1 second remaining", "Cooldown · 1
+    minute 5 seconds remaining", "Cooldown · 1 minute remaining" (the wait is ≤ 30 s, so in practice
+    only the seconds show). #10's cooldown uses the same line.
 
 ### 3.10 #10 unlock-send (re-authentication)
 

@@ -220,9 +220,24 @@ export const UNLOCK = {
 
 /** #9's cooldown card (and #10's, which reuses it): "0:12", and the design's helper line. */
 export const clockText = (seconds: number): string => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-/** The helper line's fixed words, around its two `.noc-numeral` integers (view/cooldown.ts builds it from these). */
-export const COOLDOWN_LABEL = {head: 'Cooldown · ', minutes: ' minutes ', tail: ' seconds remaining'} as const;
-export const cooldownLabel = (seconds: number): string => `${COOLDOWN_LABEL.head}${Math.floor(seconds / 60)}${COOLDOWN_LABEL.minutes}${seconds % 60}${COOLDOWN_LABEL.tail}`;
+/** One piece of the helper line: fixed words, or an integer the view sets in a `.noc-numeral` span. */
+export type CooldownPart = string | number;
+/**
+ * The helper line in order, its fixed words around its integers (view/cooldown.ts builds it from these):
+ * "Cooldown · 12 seconds remaining", "Cooldown · 1 minute 5 seconds remaining". **Controller adjustment
+ * (Task 18 ruling):** the design's template ("2 minutes 45 seconds") is pluralised — "1 minute", "1 second" —
+ * a zero-minute part is left out, and so is a zero-second part after a minute ("1 minute remaining").
+ */
+export const cooldownParts = (seconds: number): CooldownPart[] => {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  const out: CooldownPart[] = ['Cooldown · '];
+  if (m > 0) out.push(m, m === 1 ? ' minute' : ' minutes');
+  if (m === 0 || s > 0) out.push(...(m > 0 ? [' '] : []), s, s === 1 ? ' second' : ' seconds');
+  out.push(' remaining');
+  return out;
+};
+export const cooldownLabel = (seconds: number): string => cooldownParts(seconds).join('');
 
 /** #10 unlock-send (re-authentication). */
 export const REAUTH = {

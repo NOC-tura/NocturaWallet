@@ -5,6 +5,7 @@ import {lengthMeter, renderMeter} from '../view/meter';
 import {startCooldown} from '../view/cooldown';
 import {closeOrHide, h} from '../view/dom';
 import {fakeTimers} from './fakeTimers';
+import {cooldownLabel, cooldownParts} from '../strings';
 
 describe('the vault page’s DOM twins of the design', () => {
   const ADDR = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
@@ -58,7 +59,7 @@ describe('the vault page’s DOM twins of the design', () => {
     const parts = {timer: h('div'), label: h('div'), ring: h('div')};
     const stop = startCooldown(t, 12_000, parts);
     expect(parts.timer.textContent).toBe('0:12');
-    expect(parts.label.textContent).toBe('Cooldown · 0 minutes 12 seconds remaining');
+    expect(parts.label.textContent).toBe('Cooldown · 12 seconds remaining');
     expect(parts.ring.style.getPropertyValue('--vlt-ring')).toBe('1');
     t.advance(3_000);
     expect(parts.timer.textContent).toBe('0:09');
@@ -76,14 +77,24 @@ describe('the vault page’s DOM twins of the design', () => {
       ['SPAN', 'noc-numeral', '1'],
       ['SPAN', 'noc-numeral', '15'],
     ]);
-    expect(parts.label.textContent).toBe('Cooldown · 1 minutes 15 seconds remaining');
+    expect(parts.label.textContent).toBe('Cooldown · 1 minute 15 seconds remaining');
     expect(parts.label.querySelectorAll('*')).toHaveLength(2);
     t.advance(16_000);
-    expect(numerals()).toEqual([
-      ['SPAN', 'noc-numeral', '0'],
-      ['SPAN', 'noc-numeral', '59'],
-    ]);
-    expect(parts.label.textContent).toBe('Cooldown · 0 minutes 59 seconds remaining');
+    // Under a minute the minute part is gone, and its numeral span with it.
+    expect(numerals()).toEqual([['SPAN', 'noc-numeral', '59']]);
+    expect(parts.label.textContent).toBe('Cooldown · 59 seconds remaining');
+    t.advance(58_000);
+    expect(parts.label.textContent).toBe('Cooldown · 1 second remaining');
+  });
+
+  it('cooldownLabel: pluralised, the zero-minute part left out (controller adjustment, Task 18 ruling)', () => {
+    expect(cooldownLabel(1)).toBe('Cooldown · 1 second remaining');
+    expect(cooldownLabel(2)).toBe('Cooldown · 2 seconds remaining');
+    expect(cooldownLabel(60)).toBe('Cooldown · 1 minute remaining');
+    expect(cooldownLabel(65)).toBe('Cooldown · 1 minute 5 seconds remaining');
+    expect(cooldownLabel(61)).toBe('Cooldown · 1 minute 1 second remaining');
+    expect(cooldownLabel(165)).toBe('Cooldown · 2 minutes 45 seconds remaining');
+    expect(cooldownParts(65)).toEqual(['Cooldown · ', 1, ' minute', ' ', 5, ' seconds', ' remaining']);
   });
 
   it('closeOrHide: closes, and hides the button when the tab is still here afterwards', () => {

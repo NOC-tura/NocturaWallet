@@ -1,4 +1,4 @@
-import {COOLDOWN_LABEL, clockText} from '../strings';
+import {clockText, cooldownParts} from '../strings';
 import {h} from './dom';
 import type {Timers} from '../page';
 
@@ -16,26 +16,17 @@ function ringShare(share: number): string {
  * #9's cooldown card (and #10's): the engine's wrong-password wait (≤ 30 s, page memory, D11), counted
  * down once a second — "0:12", the design's helper line, and the ring's remaining share (`--vlt-ring`,
  * read by unlock.css's conic gradient). Returns a stop function; the caller stops it when the wait ends.
- * The helper line is built once from text nodes and two `.noc-numeral` spans (the design's annotation B: the
- * minute and second integers are numerals); each tick sets only the spans' text — never markup.
+ * The helper line is built from text nodes and `.noc-numeral` spans (the design's annotation B: the minute
+ * and second integers are numerals), from `cooldownParts` on every tick — its words change with the
+ * numbers ("1 second", "2 seconds"); every piece is set as text, never markup.
  */
 export function startCooldown(timers: Timers, ms: number, parts: {timer: HTMLElement; label: HTMLElement; ring: HTMLElement}): () => void {
   const until = timers.now() + ms;
-  const minutes = h('span', 'noc-numeral');
-  const seconds = h('span', 'noc-numeral');
-  parts.label.replaceChildren(
-    document.createTextNode(COOLDOWN_LABEL.head),
-    minutes,
-    document.createTextNode(COOLDOWN_LABEL.minutes),
-    seconds,
-    document.createTextNode(COOLDOWN_LABEL.tail),
-  );
   const paint = () => {
     const left = Math.max(0, until - timers.now());
     const secs = Math.ceil(left / 1000);
     parts.timer.textContent = clockText(secs);
-    minutes.textContent = String(Math.floor(secs / 60));
-    seconds.textContent = String(secs % 60);
+    parts.label.replaceChildren(...cooldownParts(secs).map(p => (typeof p === 'number' ? h('span', 'noc-numeral', String(p)) : document.createTextNode(p))));
     parts.ring.style.setProperty('--vlt-ring', ringShare(ms === 0 ? 0 : left / ms));
   };
   paint();

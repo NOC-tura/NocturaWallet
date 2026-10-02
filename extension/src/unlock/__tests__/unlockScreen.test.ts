@@ -129,7 +129,7 @@ describe('#9 unlock (spec §3.9)', () => {
     await h.until(() => !h.deps.gate.isBusy());
     submit('wrong wrong wrong wrong');
     await h.until(() => visible(el('unl-cooldown')));
-    expect(text(el('unl-cooldown'))).toBe('Wait a moment That did not unlock the wallet. Wait a moment before trying again. 0:01 Cooldown · 0 minutes 1 seconds remaining');
+    expect(text(el('unl-cooldown'))).toBe('Wait a moment That did not unlock the wallet. Wait a moment before trying again. 0:01 Cooldown · 1 second remaining');
     expect(visible(el('unl-paused'))).toBe(true);
     expect(el<HTMLButtonElement>('unl-paused').disabled).toBe(true);
     expect(text(el('unl-paused'))).toBe('Unlock paused');
@@ -302,11 +302,11 @@ describe('#9 unlock: what the brief left implicit (carried rules)', () => {
     expect(el('unl-cooldown').querySelector('[aria-live]')).toBeNull();
     expect(el('unl-cooldown').getAttribute('role')).toBeNull();
     expect(el('unl-cooldown-live').getAttribute('aria-live')).toBe('polite');
-    expect(text(el('unl-cooldown-live'))).toBe('Cooldown · 0 minutes 1 seconds remaining');
+    expect(text(el('unl-cooldown-live'))).toBe('Cooldown · 1 second remaining');
     h.timers.advance(1_000);
     expect(text(el('unl-timer'))).toBe('0:00');
     expect(el('unl-ring').style.getPropertyValue('--vlt-ring')).toBe('0');
-    expect(text(el('unl-cooldown-live'))).toBe('Cooldown · 0 minutes 1 seconds remaining');
+    expect(text(el('unl-cooldown-live'))).toBe('Cooldown · 1 second remaining');
     h.wake();
     await h.until(() => !visible(el('unl-cooldown')));
     expect(text(el('unl-cooldown-live'))).toBe('');
