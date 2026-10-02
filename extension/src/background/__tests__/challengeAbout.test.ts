@@ -130,6 +130,15 @@ describe('the challenge describes its action (E3)', () => {
     await expect(issueChallenge(fakeExt(), fakeDeps(), 'd', {...SEND_ABOUT, account: 7} as unknown as ChallengeAbout)).rejects.toThrow();
   });
 
+  it('a priority equal to the whole network fee (no base fee) is accepted and read back', async () => {
+    // The bound is "never more than", not "less than": priority === network describes a real send.
+    const ext = fakeExt();
+    const deps = fakeDeps();
+    const about: ChallengeAbout = {...SEND_ABOUT, networkLamports: '50'};
+    const id = await issueChallenge(ext, deps, 'd', about);
+    expect(await challengeInfo(ext, deps.now(), id)).toEqual(about);
+  });
+
   it('a re-prepare past issuedAt + 10 min issues a new challenge', async () => {
     const ext = fakeExt();
     await unlocked(ext);
