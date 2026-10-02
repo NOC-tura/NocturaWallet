@@ -230,10 +230,29 @@ describe('prepareSend: a simulation refused for rent (§11.5)', () => {
     expect(r).toEqual({ok: false, error: 'sender-below-rent', data: {detail: 'the simulation refused it for rent: {"InsufficientFundsForRent":{"account_index":0}}'}});
   });
 
-  it('the recipient’s index is recipient-below-rent', async () => {
+  it('the recipient’s index is recipient-below-rent when the recipient did not exist before the send', async () => {
     const ext = await setup();
-    const reader = refusing(keys => ({InsufficientFundsForRent: {account_index: keys.indexOf(RECIPIENT)}}));
+    const reader = refusing(keys => ({InsufficientFundsForRent: {account_index: keys.indexOf(RECIPIENT)}}), {getAccountKind: async () => 'missing'});
     await expect(prepareSend(ext, fakeDeps({reader}), ACCOUNT.publicKey, SOL_INTENT)).rejects.toMatchObject({code: 'recipient-below-rent'});
+  });
+
+  // Review follow-up: an account that already existed before the send is never the "new account" case —
+  // receiving funds does not create it, so the #19 "a new account needs at least…" copy would be false.
+  // Such a refusal still happened (the node did refuse it, for some other reason this simulation cannot
+  // name), so it falls through to the generic simulation-failed answer rather than a wrong rent copy.
+  it('the recipient’s index, when the recipient already existed, falls through to simulation-failed', async () => {
+    const ext = await setup();
+    // sendReader's own default: getAccountKind resolves 'wallet' — the recipient already exists.
+    const reader = refusing(keys => ({InsufficientFundsForRent: {account_index: keys.indexOf(RECIPIENT)}}));
+    await expect(prepareSend(ext, fakeDeps({reader}), ACCOUNT.publicKey, SOL_INTENT)).rejects.toMatchObject({code: 'simulation-failed'});
+  });
+
+  // Review follow-up: the SPL path's fee payer is the sender too, at account index 0 (same as the SOL
+  // path) — a rent refusal there must map the same way, regardless of which instructions the message holds.
+  it('an SPL send: the sender is still the payer at index 0, so a rent refusal there is sender-below-rent', async () => {
+    const ext = await setup();
+    const reader = refusing(() => ({InsufficientFundsForRent: {account_index: 0}}), {getTokenAccountsByOwner: nocHoldings});
+    await expect(prepareSend(ext, fakeDeps({reader}), ACCOUNT.publicKey, NOC_INTENT)).rejects.toMatchObject({code: 'sender-below-rent'});
   });
 
   it('any other index, an index past the keys, or another shape stays simulation-failed (negative controls)', async () => {
@@ -251,13 +270,18 @@ describe('prepareSend: a simulation refused for rent (§11.5)', () => {
     }
   });
 
-  it('rentRefusal decides on err and the keys only', () => {
+  it('rentRefusal decides on err, the keys, and whether the recipient was new, only', () => {
     const keys = [ACCOUNT.publicKey, RECIPIENT, '11111111111111111111111111111111'];
-    expect(rentRefusal({InsufficientFundsForRent: {account_index: 0}}, keys, ACCOUNT.publicKey, RECIPIENT)).toBe('sender-below-rent');
-    expect(rentRefusal({InsufficientFundsForRent: {account_index: 1}}, keys, ACCOUNT.publicKey, RECIPIENT)).toBe('recipient-below-rent');
-    expect(rentRefusal({InsufficientFundsForRent: {account_index: 2}}, keys, ACCOUNT.publicKey, RECIPIENT)).toBeNull();
+    expect(rentRefusal({InsufficientFundsForRent: {account_index: 0}}, keys, ACCOUNT.publicKey, RECIPIENT, true)).toBe('sender-below-rent');
+    // The sender's index is sender-below-rent whether or not the recipient was new — recipientMissing
+    // only gates the recipient's own branch.
+    expect(rentRefusal({InsufficientFundsForRent: {account_index: 0}}, keys, ACCOUNT.publicKey, RECIPIENT, false)).toBe('sender-below-rent');
+    expect(rentRefusal({InsufficientFundsForRent: {account_index: 1}}, keys, ACCOUNT.publicKey, RECIPIENT, true)).toBe('recipient-below-rent');
+    // Review follow-up: an existing recipient is not the "new account" case — null (simulation-failed).
+    expect(rentRefusal({InsufficientFundsForRent: {account_index: 1}}, keys, ACCOUNT.publicKey, RECIPIENT, false)).toBeNull();
+    expect(rentRefusal({InsufficientFundsForRent: {account_index: 2}}, keys, ACCOUNT.publicKey, RECIPIENT, true)).toBeNull();
     for (const err of [null, undefined, 7, [], {InsufficientFundsForRent: null}, {InsufficientFundsForRent: []}, {InsufficientFundsForRent: {account_index: 0.5}}]) {
-      expect(rentRefusal(err, keys, ACCOUNT.publicKey, RECIPIENT)).toBeNull();
+      expect(rentRefusal(err, keys, ACCOUNT.publicKey, RECIPIENT, true)).toBeNull();
     }
   });
 

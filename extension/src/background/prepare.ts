@@ -190,9 +190,16 @@ function tokenAccountOf(a: SimulatedAccount | null): {mint: string; owner: strin
  * `accounts` is null and the logs still read "success" (the rent check runs after execution). So the refusal
  * is decided on `err` alone, never on `accounts` or the logs: the sender's index is `sender-below-rent`, the
  * recipient's `recipient-below-rent` — the same codes, and so the same #19 copy, as the checks above that
- * refuse before simulating. Any other account, or any other shape, is null (the caller's simulation-failed).
+ * refuse before simulating.
+ *
+ * `recipientMissing` carries that same pre-check's own fact: the recipient had no account before this send.
+ * Only then is the recipient's index the "new account" refusal; an account that already existed is never
+ * created by receiving funds, so that copy would be false for it — such a refusal falls through to the
+ * caller's generic simulation-failed instead (review follow-up, carry 2).
+ *
+ * Any other account, or any other shape, is null (the caller's simulation-failed).
  */
-export function rentRefusal(err: unknown, keys: readonly string[], sender: string, recipient: string): 'sender-below-rent' | 'recipient-below-rent' | null {
+export function rentRefusal(err: unknown, keys: readonly string[], sender: string, recipient: string, recipientMissing: boolean): 'sender-below-rent' | 'recipient-below-rent' | null {
   if (typeof err !== 'object' || err === null || Array.isArray(err)) return null;
   const top = err as Record<string, unknown>;
   if (Object.keys(top).length !== 1) return null;
@@ -202,7 +209,7 @@ export function rentRefusal(err: unknown, keys: readonly string[], sender: strin
   if (typeof index !== 'number' || !Number.isSafeInteger(index) || index < 0) return null;
   const key = keys[index];
   if (key === sender) return 'sender-below-rent';
-  if (key === recipient) return 'recipient-below-rent';
+  if (key === recipient && recipientMissing) return 'recipient-below-rent';
   return null;
 }
 
@@ -317,7 +324,7 @@ export async function prepareSend(
   const simulated = await deps.reader.simulateTransaction(base64.encode(new VersionedTransaction(message).serialize()), {accounts: addresses});
   const elapsedMs = Math.max(0, deps.now() - started);
   if (simulated.err !== null) {
-    const rent = rentRefusal(simulated.err, message.staticAccountKeys.map(k => k.toBase58()), account, intent.recipient);
+    const rent = rentRefusal(simulated.err, message.staticAccountKeys.map(k => k.toBase58()), account, intent.recipient, !recipientExists);
     // Such a transaction would still be charged its fee if broadcast: refused here, with the rent copy (§11.5).
     if (rent !== null) throw new SendRefused(rent, `the simulation refused it for rent: ${JSON.stringify(simulated.err)}`);
     throw new SendRefused('simulation-failed', JSON.stringify(simulated.err));
