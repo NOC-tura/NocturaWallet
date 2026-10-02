@@ -1464,12 +1464,20 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
       again.";
     - `insufficient-sol`: "Not enough SOL for the network fee" + detail;
     - `insufficient-token` / `split-balance`: "This token is spread across several accounts in
-      your wallet. Send at most N, or move it into one account first." (split) / "Not enough
-      <TOKEN> in this account." (insufficient);
-    - `sender-below-rent`: "This would leave less than 0.00089088 SOL in your account. Keep at least
-      that much, or send everything.";
-    - `recipient-below-rent`: "A new Solana account needs at least 0.00089088 SOL. Send at least
-      that much.";
+      your wallet. Send at most N, or move it into one account first." (split; N is the largest single
+      holding, which the engine's refusal carries as its detail in base units since plan 3) / "Not
+      enough <TOKEN> in this account." (insufficient);
+    - `sender-below-rent` — the engine's own check before simulating, **and** a simulation the runtime
+      refused with `InsufficientFundsForRent` at the sender's index (§11.5; plan 3 maps it by the
+      account index, deciding on `err` alone): "This would leave less than 0.00089088 SOL in your
+      account, which Solana does not allow. Send less, so at least that much stays." — **controller
+      addition — confirmed by the owner 2026-10-02** (plan 3, carry 2; the review's wording): the draft's "or send everything" is dropped, since
+      MAX keeps the minimum and nothing on #12 sends everything;
+    - `recipient-below-rent` — refused before anything is simulated (a SOL send to an address with no
+      account, below 890 880 lamports), or the simulation's `InsufficientFundsForRent` at the
+      recipient's index: "This address has no Solana account yet. A new account needs at least
+      0.00089088 SOL, so send at least that much." — **controller addition — confirmed by the owner 2026-10-02**
+      (plan 3, carry 2);
     - `in-flight`: #12's pending banner;
     - `failed`: "Something went wrong while checking this transfer.";
     - `coordinator-refused`: the D26 banner (§7.2), and Retry disabled;
@@ -1480,7 +1488,23 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   - **Leaving #19 towards #12** (`[Cancel]` in any state, the back arrow, Esc) calls
     `wallet.discardPrepared {account}` (E7) first, so a prepared send and its challenge never
     outlive the review the user abandoned. Continuing to #20 keeps them.
+  - **Continue hands over only the prepared send shown (plan 3, implementer addition):** it re-reads
+    `wallet.preparedFor` first. When the account's newest prepared send is another one (a prepare that an
+    older run, or an abandoned review, left in flight landed after it, or that review's late discard
+    removed it) or has expired, #19 reviews again (the live one of this intent, or a fresh prepare)
+    instead of opening #20, because #20 shows whatever `wallet.preparedFor` answers. A prepare that lands for an
+    account no longer shown is discarded, the same as one that lands after the screen was left.
 - **Differs:**
+  - **Plan 3:** the simulating footer reads "Noctura server · simulateTransaction" without "· N
+    instructions": the count is known only once the engine has built the message, which is what
+    `simulating` waits for. A failed state has no step pill (the design's "RPC drop · timed out 5.2 s"
+    names a timing the engine does not report); the eyebrow is "Couldn't simulate" (for `unreachable`,
+    "Could not reach the Noctura server", or "You're offline" when the browser says so) and the cause is
+    the danger banner below it. "After" is the balance the engine read less its own total
+    (`solRequiredLamports`): the simulated post-state, fee included whichever form the node answered in
+    (E2 accepts both). The last known state's age reads "9 min ago" (format.ts's one age form, as #11).
+    A zero Noctura fee's reason line has no amount. The recipient check's warning badge reads
+    "WARNING".
   - **`[Continue anyway]` removed (D21)**, and with it the design's "proceed at your own risk"
     wording.
   - "3 retries attempted · last error ETIMEDOUT after 5.2 s" replaced by the single cause line.

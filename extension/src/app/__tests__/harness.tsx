@@ -12,7 +12,7 @@ import type {SolanaReader} from '../../../../core/solana/rpc';
 import {WALLET_TOKENS} from '../../../../core/solana/balances';
 import {fakeDeps, fakeReader} from '../../background/__tests__/fakeDeps';
 import {fakeExt} from '../../background/__tests__/fakeExt';
-import {ACCOUNT, RECIPIENT} from '../../background/__tests__/fixtures';
+import {ACCOUNT, HOLDING_LARGE, HOLDING_SMALL, RECIPIENT, sendReader} from '../../background/__tests__/fixtures';
 
 /**
  * The screens against the REAL background (handleMessage, fake Ext, fake deps) — the same wiring as
@@ -46,6 +46,24 @@ export function walletReader(over: Partial<SolanaReader> = {}): SolanaReader {
   });
 }
 
+/**
+ * walletReader's wallet, able to send (plan 3): quiet fees, a blockhash valid to height 1000, the recipient an
+ * existing wallet, and a simulation consistent with the transaction it is given (E2, the background fixtures'
+ * sendReader) — with the harness's balances and real token-account addresses, filtered by mint as the RPC does.
+ */
+export function sendingReader(over: Partial<SolanaReader> = {}): SolanaReader {
+  const holdings = (owner: string) => [
+    {pubkey: HOLDING_LARGE, mint: NOC, owner, amount: 4_200_000_000_000n, decimals: 9},
+    {pubkey: HOLDING_SMALL, mint: USDC, owner, amount: 740_210_000n, decimals: 6},
+  ];
+  return sendReader({
+    getBalance: async () => 62_482_100_000n,
+    getTokenAccountsByOwner: async (owner, filter) => holdings(owner).filter(h => !('mint' in filter) || h.mint === filter.mint),
+    getSignaturesForAddress: async () => [],
+    ...over,
+  });
+}
+
 export interface Wallet {
   ext: ReturnType<typeof fakeExt>;
   deps: ReturnType<typeof fakeDeps>;
@@ -66,6 +84,11 @@ export interface WalletOptions {
   before?: (ext: ReturnType<typeof fakeExt>) => Promise<void>;
   /** The provider's clock (default: Date.now). */
   now?: () => number;
+  /**
+   * Sees every message the client sends, before the background does; may hold it (return a promise) — how a
+   * test keeps a state on screen, or counts what a screen asked (plan 3).
+   */
+  gate?: (m: unknown) => Promise<void> | void;
 }
 
 /** A background with this wallet in it, a client wired to it, and a spy platform. */
@@ -96,7 +119,11 @@ export async function setupWallet(o: WalletOptions = {}): Promise<Wallet> {
     version: () => '0.1.0',
   };
   const transport: Transport = m => handleMessage(ext, m, POPUP, deps);
-  return {ext, deps, platform, transport, engine: createEngine(transport, async () => undefined)};
+  const gated: Transport = async m => {
+    await o.gate?.(m);
+    return transport(m);
+  };
+  return {ext, deps, platform, transport, engine: createEngine(o.gate === undefined ? transport : gated, async () => undefined)};
 }
 
 /** One screen inside the real provider (the open sequence runs as in the popup). */

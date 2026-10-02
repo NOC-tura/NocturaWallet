@@ -599,3 +599,17 @@ a.btn {
 .s-send .recipient-row .input-actions button.app-danger {
   color: var(--danger);
 }
+
+/* #19 review (plan 3): index.html #s19's inline styles — the failed eyebrow's glyph in --danger, and the After
+   row's rule above it, its label in the body face in --fg-secondary. */
+.s-sim .intent-card .eyebrow.app-failed svg {
+  color: var(--danger);
+}
+.s-sim .delta-row.app-after {
+  border-top: 1px solid color-mix(in oklab, var(--fg-disabled) 50%, transparent);
+  padding-top: var(--space-2);
+  margin-top: 4px;
+}
+.s-sim .delta-row.app-after .lbl {
+  color: var(--fg-secondary);
+}
