@@ -15,11 +15,11 @@
 1. **Builds:** #12 send (every design state 1–7, E6's hints), #43 from #12's chip, #19 tx-simulate, #20 tx-confirm (flow and resume entries), #21 tx-status, #54 tx-stuck, #44 tx-failed, #11's cancelled toast; the flow's routes; E2E specs 4, 5, 11; the visual pass of every state (42 shots).
 2. **Stand-ins removed (each with a test):** #11 gets its Send quick action (Task 14); the pending strip opens that send at #21/#54 (Task 14); #26's PENDING rows open it (Task 14); #27 gets `[Try again]` for a failed send (Task 14) and #44 has it from birth (Task 11); `src/app/screens/Resume.tsx` — plan 2's `#/send/resume?account=` stand-in — is **deleted** and the route renders #20's resume entry (Task 13); plan 2's "Network fee includes the priority" on #10 is replaced by the split rows (Task 1).
 3. **Owner questions** — none answered yet; each is built with the recommended option (the review's verdict) and each is reversible on its own:
-   - **Q1 — failed history rows (carry 3).** **A (recommended; review: build A with H1 applied — built in Task 4):** decode what a failed transaction tried to send from its own top-level instructions, only when this account paid for it (its first key) and only when it carries exactly one transfer of a known token — "Failed · sent SOL" / "— SOL", shown under Sent; #27 "FAILED · SENT" with `[Try again]`. A batch, an unknown mint or a program's inner transfer stays "Failed · transaction". B (the documented fallback): keep plan 1's rows (drop Task 4 and Task 14's #27 `[Try again]`). C: label only the failed sends recorded in this browser's pending store — strictly worse than A (loses sends from before install or another device).
+   - **Q1 — failed history rows (carry 3). OWNER CHOSE A (2026-10-02).** **A (recommended; review: build A with H1 applied — built in Task 4):** decode what a failed transaction tried to send from its own top-level instructions, only when this account paid for it (its first key) and only when it carries exactly one transfer of a known token — "Failed · sent SOL" / "— SOL", shown under Sent; #27 "FAILED · SENT" with `[Try again]`. A batch, an unknown mint or a program's inner transfer stays "Failed · transaction". B (the documented fallback): keep plan 1's rows (drop Task 4 and Task 14's #27 `[Try again]`). C: label only the failed sends recorded in this browser's pending store — strictly worse than A (loses sends from before install or another device).
    - **Q2 — the rent copy (carry 2).** Recommended (review: accept): the two lines below, the first in the review's wording. MAX keeps the rent minimum by design; closing an account to exactly 0 is a product decision not taken here (stated in §4.2).
    - **Q3 — #20 in the UI tab.** Recommended (review: accept): "…in this tab…" for the two lines that would otherwise say a new tab opens.
    - **Q4 — #12's small copy.** Recommended (review: accept the paste line and "· today"; "· last 1 day ago" rejected → "· yesterday").
-4. **Proposed copy — every line a controller addition — awaiting the owner, marked so in the code and in the spec:**
+4. **Proposed copy — every line a controller addition — confirmed by the owner 2026-10-02, marked so in the code and in the spec:**
    - #19 `sender-below-rent`: "This would leave less than 0.00089088 SOL in your account, which Solana does not allow. Send less, so at least that much stays."
    - #19 `recipient-below-rent`: "This address has no Solana account yet. A new account needs at least 0.00089088 SOL, so send at least that much."
    - #12 paste refused: "Paste with Ctrl+V (⌘V on a Mac)."
@@ -2235,7 +2235,7 @@ Pure functions, so every screen and test agrees on one definition:
 - **MAX (carry 2, max-send half):** for SOL, `balance − worst fee − 890 880` (worst fee = 5 000 base + the priority ceiling at 1 000 CU + the markup ceiling = 45 000 lamports), floored at 0 — the account keeps at least the rent-exempt minimum, never a 1..890 879 remainder; a token sends its whole balance. A property test over 5 000 balances checks the remainder is never in the dust band.
 - **`predictReasons`** calls `sendReauthReasons`, the engine's own rule, so #12's "Review & unlock to send" is a prediction of the same decision (the engine still decides; a parity test pins it).
 - **`feeRows`** is §4.5's one definition of the fee rows for #19 and #20 (and #10 mirrors it).
-- **`sentBeforeText`** gives E6's hint: "Verified · sent before · last N days ago"; "· today" and "· yesterday" are **controller additions — awaiting the owner** (the design gives only "last 12 days ago"; the review rejected "last 1 day ago").
+- **`sentBeforeText`** gives E6's hint: "Verified · sent before · last N days ago"; "· today" and "· yesterday" are **controller additions — confirmed by the owner 2026-10-02** (the design gives only "last 12 days ago"; the review rejected "last 1 day ago").
 
 - [ ] **Step 1: Write the failing test.**
 
@@ -2555,7 +2555,7 @@ const dayStart = (t: number): number => {
 
 /**
  * "Verified · sent before · last 12 days ago" (#12 design state 3; local calendar days, cardinal rule 3), or
- * "Verified · sent before" with no date. "· today" and "· yesterday" — controller addition — awaiting the owner
+ * "Verified · sent before" with no date. "· today" and "· yesterday" — controller addition — confirmed by the owner 2026-10-02
  * (plan 3; the review rejected "last 1 day ago"): the design gives only the plural form.
  */
 export function sentBeforeText(lastSentAt: number | null, now: number): string {
@@ -2630,7 +2630,7 @@ MSG
 - Consumes: Task 6; `wallet.recipientInfo` (E6), `TokenSheet` (#43, plan 1), `useWallet` (balances, prices, net mode, pending).
 - Produces: `src/app/screens/Send.tsx` (`Send`, `SEND_TEXT`); `src/app/ui/useEscape.ts`; ExtIcon `clip`, `alert`; `TokenSheet`'s `balances: Balances | null`.
 
-Spec §4.2 and index.html #s12 (states 1–7), #s43. Every state: idle; invalid recipient; insufficient ("short by" the exact BigInt difference); SPL with less SOL than the base fee; sent-before (E6); own account / fee treasury labels and the sending account refused; first-time recipient (design state 6: banner, groups of four, "Never sent here before", the re-auth amount line, "Review & unlock to send"); over 5 %; pending (banner + [View it]); stale balances; refused (D26); MAX; #43 from the chip. The CTA hands #19 the draft and the intent in base units through a `LockedButton` (rule 6). E6's reply is generation-checked (a reply for an address the field no longer holds is dropped). Paste reads the clipboard only when the browser allows; otherwise "Paste with Ctrl+V (⌘V on a Mac)." — **controller addition — awaiting the owner**. The CTA carries the amount as typed (design state 4) but never "Send 1. SOL" mid-typing (review L6). No autofocus.
+Spec §4.2 and index.html #s12 (states 1–7), #s43. Every state: idle; invalid recipient; insufficient ("short by" the exact BigInt difference); SPL with less SOL than the base fee; sent-before (E6); own account / fee treasury labels and the sending account refused; first-time recipient (design state 6: banner, groups of four, "Never sent here before", the re-auth amount line, "Review & unlock to send"); over 5 %; pending (banner + [View it]); stale balances; refused (D26); MAX; #43 from the chip. The CTA hands #19 the draft and the intent in base units through a `LockedButton` (rule 6). E6's reply is generation-checked (a reply for an address the field no longer holds is dropped). Paste reads the clipboard only when the browser allows; otherwise "Paste with Ctrl+V (⌘V on a Mac)." — **controller addition — confirmed by the owner 2026-10-02**. The CTA carries the amount as typed (design state 4) but never "Send 1. SOL" mid-typing (review L6). No autofocus.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -3093,7 +3093,7 @@ export const SEND_TEXT = {
   pending: 'A send from this account is still pending. Wait until it confirms or expires.',
   reviewUnlock: 'Review & unlock to send',
   /** Controller addition (plan 3; owner to confirm): a browser may refuse a page reading the clipboard. */
-  /** Controller addition — awaiting the owner (plan 3): the browser refused the clipboard read. */
+  /** Controller addition — confirmed by the owner 2026-10-02 (plan 3): the browser refused the clipboard read. */
   pasteRefused: 'Paste with Ctrl+V (⌘V on a Mac).',
   /** §4.5's loop guard sends the user back here with it. */
   startAgain: 'Something went wrong — start the send again.',
@@ -3508,9 +3508,9 @@ index 3f99a53..13c6f81 100644
  - **Differs, loudly:**
 +  - **Plan 3:** the paste button reads the clipboard only when the browser allows it (the extension has
 +    no clipboard permission, parent §4); when it refuses, the helper says "Paste with Ctrl+V (⌘V on a
-+    Mac)." — **controller addition — awaiting the owner**. The sent-before hint reads "Verified · sent
++    Mac)." — **controller addition — confirmed by the owner 2026-10-02**. The sent-before hint reads "Verified · sent
 +    before · today" on the day of the last send and "Verified · sent before · yesterday" for one day —
-+    **controller additions — awaiting the owner** (the review rejected "last 1 day ago"): the design gives
++    **controller additions — confirmed by the owner 2026-10-02** (the review rejected "last 1 day ago"): the design gives
 +    only "last 12 days ago". There is no "send everything" on #12: MAX keeps the rent-exempt minimum by
 +    design, and closing an account to exactly 0 is a product decision not taken here (plan-3 review, Q2).
 +    The CTA never reads "Send 1. SOL" while the decimal point is being typed (review L6). The token chip's
@@ -3581,7 +3581,7 @@ MSG
 - Consumes: Tasks 2, 3, 6, 7; `wallet.prepareSend`, `wallet.preparedFor`, `wallet.discardPrepared` (E7), `wallet.cached`.
 - Produces: `src/app/screens/Review.tsx` (`Review`, `REVIEW_TEXT`); harness `sendingReader()` and the `gate` option; ExtIcon `cpu`, `check-circle`; `check-classes.mjs` DYNAMIC gains `${c.tone}`.
 
-Spec §4.4 and #s19. States: simulating (the live "Building call", the skeleton, "Simulating…" disabled); ready (the three checks, the balance delta from the engine's fee rows, "After" = the engine's read balance less `solRequiredLamports`, the slot, Continue); ready SPL with a new token account (rent row, both Afters); failed with each refusal's copy — `split-balance` ("Send at most N", N from Task 2's detail), `insufficient-*`, `sender-below-rent` ("This would leave less than 0.00089088 SOL in your account, which Solana does not allow. Send less, so at least that much stays." — the review's wording) / `recipient-below-rent` (**controller additions — awaiting the owner**, carry 2; a simulation refusal's detail says "the simulation refused it for rent", so support can tell it from the pre-check — review L8), `unreachable` (server line + last known state + Retry), `coordinator-refused` (D26, Retry disabled), `in-flight` (pending banner + [View it]). Cancel, the back arrow and Esc **discard first** (E7), then #12; a prepare that lands after the screen was left is discarded too (generation check). Back from #20 shows a live prepared send of the same intent again; an expired one is re-prepared carrying its challenge (D39).
+Spec §4.4 and #s19. States: simulating (the live "Building call", the skeleton, "Simulating…" disabled); ready (the three checks, the balance delta from the engine's fee rows, "After" = the engine's read balance less `solRequiredLamports`, the slot, Continue); ready SPL with a new token account (rent row, both Afters); failed with each refusal's copy — `split-balance` ("Send at most N", N from Task 2's detail), `insufficient-*`, `sender-below-rent` ("This would leave less than 0.00089088 SOL in your account, which Solana does not allow. Send less, so at least that much stays." — the review's wording) / `recipient-below-rent` (**controller additions — confirmed by the owner 2026-10-02**, carry 2; a simulation refusal's detail says "the simulation refused it for rent", so support can tell it from the pre-check — review L8), `unreachable` (server line + last known state + Retry), `coordinator-refused` (D26, Retry disabled), `in-flight` (pending banner + [View it]). Cancel, the back arrow and Esc **discard first** (E7), then #12; a prepare that lands after the screen was left is discarded too (generation check). Back from #20 shows a live prepared send of the same intent again; an expired one is re-prepared carrying its challenge (D39).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -4040,9 +4040,9 @@ export const REVIEW_TEXT = {
   /** §4.5 (R2-M3): #20 sends the user back here when the engine consumed the send against an expired proof. */
   confirmationExpired: 'Your confirmation expired — review again',
   pending: 'A send from this account is still pending. Wait until it confirms or expires.',
-  /** Controller addition — awaiting the owner (plan 3, carry 2; review wording) — the engine's check and the simulation's InsufficientFundsForRent alike. */
+  /** Controller addition — confirmed by the owner 2026-10-02 (plan 3, carry 2; review wording) — the engine's check and the simulation's InsufficientFundsForRent alike. */
   senderBelowRent: 'This would leave less than 0.00089088 SOL in your account, which Solana does not allow. Send less, so at least that much stays.',
-  /** Controller addition — awaiting the owner (plan 3, carry 2): refused before anything is simulated, or by the simulation. */
+  /** Controller addition — confirmed by the owner 2026-10-02 (plan 3, carry 2): refused before anything is simulated, or by the simulation. */
   recipientBelowRent: 'This address has no Solana account yet. A new account needs at least 0.00089088 SOL, so send at least that much.',
 } as const;
 
@@ -4498,12 +4498,12 @@ index 13c6f81..2c9c58c 100644
 +      refused with `InsufficientFundsForRent` at the sender's index (§11.5; plan 3 maps it by the
 +      account index, deciding on `err` alone): "This would leave less than 0.00089088 SOL in your
 +      account, which Solana does not allow. Send less, so at least that much stays." — **controller
-+      addition — awaiting the owner** (plan 3, carry 2; the review's wording): the draft's "or send everything" is dropped, since
++      addition — confirmed by the owner 2026-10-02** (plan 3, carry 2; the review's wording): the draft's "or send everything" is dropped, since
 +      MAX keeps the minimum and nothing on #12 sends everything;
 +    - `recipient-below-rent` — refused before anything is simulated (a SOL send to an address with no
 +      account, below 890 880 lamports), or the simulation's `InsufficientFundsForRent` at the
 +      recipient's index: "This address has no Solana account yet. A new account needs at least
-+      0.00089088 SOL, so send at least that much." — **controller addition — awaiting the owner**
++      0.00089088 SOL, so send at least that much." — **controller addition — confirmed by the owner 2026-10-02**
 +      (plan 3, carry 2);
      - `in-flight`: #12's pending banner;
      - `failed`: "Something went wrong while checking this transfer.";
@@ -4597,7 +4597,7 @@ Spec §4.5 and #s20 — the security core of the plan (carry 6):
 - The `reauth-required`-without-a-challengeId test drives the state, not the clock-call count (review M5): the challenge's life ends the moment `takePrepared` removes the prepared send, between the engine's peek and its consume.
 - Every `wallet.send` answer: `check-pending` (→ #21 on its record, never "nothing sent"), `failed`, `prepared-expired` (fresh values, a new tap), `reauth-required` with a challengeId (the loop guard: first "did not carry over", the second time in a row → #12 with "Something went wrong — start the send again."; the strike survives the #10 round trip in `localStorage`, UI state only), without one (→ #19 "Your confirmation expired"), `unknown-prepared`/`in-flight` (a record made since → #21, else #19), `unreachable`, `coordinator-refused`, `locked`.
 - **While a tap's send is in flight, [Cancel], the back arrow and Esc do nothing** (dry-run catch: a cancel there would discard nothing and show "No fees charged" over a broadcast).
-- `[Cancel]` discards (E7) → #11's toast; a [Cancel] that lands during C5's re-prepare discards what that prepare makes (dry-run catch: M9f survived until the test was added). No autofocus; Enter does nothing. Tab-surface lines "…in this tab…" are **controller additions — awaiting the owner**.
+- `[Cancel]` discards (E7) → #11's toast; a [Cancel] that lands during C5's re-prepare discards what that prepare makes (dry-run catch: M9f survived until the test was added). No autofocus; Enter does nothing. Tab-surface lines "…in this tab…" are **controller additions — confirmed by the owner 2026-10-02**.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -5399,12 +5399,12 @@ export const CONFIRM_TEXT = {
   /** D22, in the popup: the proof is taken by #10 in a tab of its own. */
   reauthLine: "You'll confirm with your password (or passkey) in a new tab before this is sent.",
   /** Controller addition (plan 3; owner to confirm): #20 in the UI tab hands over to #10 in the same tab. */
-  /** Controller addition — awaiting the owner (plan 3): in the UI tab #10 opens in this same tab. */
+  /** Controller addition — confirmed by the owner 2026-10-02 (plan 3): in the UI tab #10 opens in this same tab. */
   reauthLineTab: "You'll confirm with your password (or passkey) in this tab before this is sent.",
   /** D12, under the CTA. */
   opensTab: 'Confirmation opens in a new tab.',
   /** Controller addition (plan 3; owner to confirm): the same, from the UI tab. */
-  /** Controller addition — awaiting the owner (plan 3): as above. */
+  /** Controller addition — confirmed by the owner 2026-10-02 (plan 3): as above. */
   opensHere: 'Confirmation opens in this tab.',
 } as const;
 
@@ -10212,7 +10212,7 @@ Verdict: approve after fixes (0 Blocker, 1 High, 5 Medium, 10 Low); the money pa
 - **M4** (Task 11) — `[View details]` → #27 restored on `rejected-by-program` only (the controller's ruling); §4.7 says so. Mutation M11b.
 - **M5** (Task 9) — the reauth-required-without-id test drives the stored state (the challenge's life ends when `takePrepared` writes), not the number of `deps.now()` calls. Mutation M9l.
 - **L1** (Task 9) — no automatic re-prepare while a send is open; test; M9j. **L2** — the stale-proof re-read; test; M9k. **L3** — "< $0.0001" (`format.ts`), listed for Task 17's reviewer; M9m. **L4** — the DOM-derived sum; M9n. **L5** — "yesterday" (Task 6); M6c. **L6** — never "Send 1. SOL" (Task 7); M7b. **L7** — the StrictMode note in `mount.tsx` (Task 13). **L8** — no change: the simulation's rent refusal already says "the simulation refused it for rent" in its detail. **L9** — M12b kept as an equivalent mutant. **L10** — M9d kept as masked by design; M9d2 is the control.
-- **Copy verdicts** — the sender-below-rent wording changed to the review's; "· yesterday" replaces "· last 1 day ago"; every proposed line stays "controller addition — awaiting the owner" (Scope 3–4). **Author's gaps** — §8.5 records that a token-send E2E is owed when the first token-send path is exercised on a device.
+- **Copy verdicts** — the sender-below-rent wording changed to the review's; "· yesterday" replaces "· last 1 day ago"; every proposed line stays "controller addition — confirmed by the owner 2026-10-02" (Scope 3–4). **Author's gaps** — §8.5 records that a token-send E2E is owed when the first token-send path is exercised on a device.
 
 ## Before the PR (the standing rules)
 
