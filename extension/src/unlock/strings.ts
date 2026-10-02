@@ -126,10 +126,17 @@ export const FORGOT = {
     2: 'Done — you confirmed you have your words.',
     3: 'Done.',
   },
-  /** Controller addition — confirmed by the owner 2026-10-01 (plan 2): the cards' step copy, adapted from the design (spec §3.11 Differs). */
+  /**
+   * Controller addition — confirmed by the owner 2026-10-01 (plan 2): steps 1 and 2, the cards' step copy adapted
+   * from the design (spec §3.11 Differs). Step 3 is NOT: see its own note.
+   */
   card2: {
     1: "You'll be taken to the import screen. Type or paste your words.",
     2: "You'll be taken to the import screen. Type or paste your words.",
+    /**
+     * The design's copy, kept under question — AWAITING THE OWNER, not confirmed (spec §3.11 Differs; Task 12 owner
+     * question): at step 3 nothing has been verified yet (the seed proof runs on #8), so the line reads as false there.
+     */
     3: 'Done — seed verified against your existing public key.',
   },
   card3: {

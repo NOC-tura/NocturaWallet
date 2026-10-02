@@ -1,3 +1,5 @@
+import type {EnvelopeV1} from '../../vault/envelope';
+import {envelopeRevision} from '../../shared/envelopeRevision';
 import {proveSeed, restoreWallet, type SeedProof} from '../forgetFlow';
 import type {PageDeps} from '../page';
 import {storedVault} from '../stored';
@@ -14,6 +16,11 @@ export interface RestoreRun {
 
 type Action = {label: string; run(): void};
 
+/** The same wallet: the scheme and every account (index and key, in order) — what a replacement keeps (C4). */
+function sameWallet(a: EnvelopeV1, b: EnvelopeV1): boolean {
+  return a.scheme === b.scheme && a.accounts.length === b.accounts.length && a.accounts.every((x, i) => x.index === b.accounts[i]?.index && x.publicKey === b.accounts[i]?.publicKey);
+}
+
 /**
  * #39 → #8 → #5 — the restore (spec §3.8 "Restore path from #39", E5 with `replacement`, D35, D40).
  * The phrase typed on #8 is proven against the stored wallet in this page (the seed proof: every stored
@@ -25,6 +32,12 @@ type Action = {label: string; run(): void};
  * (`send-open`): the password stays in #5's memory behind [Try again] until the tab is hidden (§3.5's
  * rule; then "Enter a new password to try again."). `busy` and `unlocked` (nothing was deleted) go back
  * to #8 with their line and [Start again] → #39.
+ *
+ * A `failed` answer may be a lost reply over a restore that landed (final review item 1, retryRun's model):
+ * the stored vault is read first, and again before a [Try again] sends anything. A new revision of the same
+ * wallet (its scheme and every account, in order) is our restore → handed over as restored-locked
+ * (#/imported); still the proven revision → [Try again] with the same proof; anything else (another
+ * wallet, none, damaged, unreadable) → `busy`. Our own restore is never answered "The wallet changed".
  *
  * What holds the phrase, and for how long (Scope 19): #8's field while it is typed; the seed proof — the
  * phrase inside it — from the match until the run ends: restored, every notice, Back from #5 (the phrase
@@ -38,11 +51,14 @@ export function createRestoreRun(deps: PageDeps, o: {password: PasswordScreen}):
   const setUp: Action = {label: RESTORE.setUp, run: () => deps.go('unlock.html?mode=welcome')};
   const tryAnother: Action = {label: RESTORE.tryAnother, run: () => screen.show()};
   let proof: SeedProof | null = null;
+  /** The last replacement's answer was `failed` (a lost reply?): it may have landed; read before sending again. */
+  let uncertain = false;
   /** Bumped by pagehide: work that settles after the page was left must not move the run on. */
   let generation = 0;
   deps.onLeave(why => {
     if (why !== 'pagehide') return;
     proof = null;
+    uncertain = false;
     generation += 1;
   });
   deps.onReturn(why => {
@@ -52,22 +68,56 @@ export function createRestoreRun(deps: PageDeps, o: {password: PasswordScreen}):
   /** Ends the attempt on #8: the proof dropped, the line (and help) in place of the field. */
   const notice = (line: string, help: string, action: Action | null) => {
     proof = null;
+    uncertain = false;
     screen.show();
     screen.notice(line, help, action);
+  };
+
+  /** After a `failed` answer: did the replacement land (a new revision of this wallet), is the proven one still stored, or neither? */
+  const landed = async (held: SeedProof): Promise<'landed' | 'proven' | 'other'> => {
+    let raw: unknown;
+    try {
+      raw = await deps.store.readEnvelope();
+    } catch {
+      return 'other';
+    }
+    const stored = storedVault(raw);
+    if (stored.kind !== 'wallet') return 'other';
+    if (envelopeRevision(stored.env) === held.revision) return 'proven';
+    return sameWallet(stored.env, held.env) ? 'landed' : 'other';
+  };
+  /** The restore is done (or landed with its reply lost): the run ends on #/imported. */
+  const restored = () => {
+    proof = null;
+    uncertain = false;
+    deps.go('wallet.html#/imported');
   };
 
   const restore = async (password: string): Promise<PasswordRefusal | null> => {
     const held = proof;
     if (held === null) return {line: COMMON.failedTryAgain, then: 'stop'};
     const started = generation;
+    if (uncertain) {
+      // The last replacement may have landed since: never sent twice blind.
+      const now = await landed(held);
+      if (started !== generation) return null;
+      if (now === 'landed') {
+        restored();
+        return null;
+      }
+      if (now === 'other') {
+        notice(RESTORE.busy, '', startAgain);
+        return null;
+      }
+      uncertain = false;
+    }
     const out = await restoreWallet({send: deps.send, kdf: deps.kdf}, held, password);
     // The page was left (pagehide) while this ran: the run was dropped; a restored page starts again.
     if (started !== generation) return null;
     switch (out) {
       case 'restored':
       case 'restored-locked':
-        proof = null;
-        deps.go('wallet.html#/imported');
+        restored();
         return null;
       case 'weak-password':
         return {line: PASSWORD.weak, then: 'retype'};
@@ -89,14 +139,29 @@ export function createRestoreRun(deps: PageDeps, o: {password: PasswordScreen}):
       case 'damaged':
         notice(COMMON.damaged, COMMON.damagedHelp, null);
         return null;
-      default:
+      default: {
+        // A lost reply may hide a restore that landed: the vault says which.
+        const now = await landed(held);
+        if (started !== generation) return null;
+        if (now === 'landed') {
+          // Restored; whether the keys reached the background is unknown — handed over as restored-locked.
+          restored();
+          return null;
+        }
+        if (now === 'other') {
+          notice(RESTORE.busy, '', startAgain);
+          return null;
+        }
+        uncertain = true;
         return {line: COMMON.failedTryAgain, then: 'retry'};
+      }
     }
   };
 
   const toPhrase = () => {
     const words = proof?.mnemonic ?? '';
     proof = null;
+    uncertain = false;
     screen.show({phrase: words});
   };
 
@@ -112,6 +177,7 @@ export function createRestoreRun(deps: PageDeps, o: {password: PasswordScreen}):
       if (started !== generation) return;
       if (r.outcome === 'match') {
         proof = r.proof;
+        uncertain = false;
         screen.clear();
         o.password.show({eyebrow: PASSWORD.recovery, step: PASSWORD.stepRestore, back: toPhrase, finish: restore});
         return;
@@ -126,6 +192,7 @@ export function createRestoreRun(deps: PageDeps, o: {password: PasswordScreen}):
   /** #8, after the stored vault is read: no wallet and a damaged one are said before any phrase is typed. */
   const read = async () => {
     proof = null;
+    uncertain = false;
     screen.show();
     let raw: unknown;
     try {

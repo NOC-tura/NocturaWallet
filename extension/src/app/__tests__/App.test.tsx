@@ -59,6 +59,20 @@ describe('the app before #11', () => {
     expect(platform.closed).toBe(0);
   });
 
+  // Final review item 5 (rule 6): both buttons are LockedButtons — a double click opens one tab.
+  it.each([
+    ['Unlock', 'unlock.html?mode=unlock'],
+    ['Forgot password?', 'unlock.html?mode=forgot'],
+  ])('locked, tab: a double click on "%s" opens one tab', async (name, page) => {
+    const {platform} = await renderApp({unlocked: false, surface: 'tab'});
+    const button = (await screen.findByRole('button', {name})) as HTMLButtonElement;
+    fireEvent.click(button);
+    fireEvent.click(button);
+    button.click();
+    expect(platform.opened).toEqual([page]);
+    expect(button.disabled).toBe(true);
+  });
+
   it('unlocked: #11 with the tab bar Home / Activity / Settings (D3)', async () => {
     await renderApp();
     expect(await screen.findByText('TOKENS')).toBeTruthy();

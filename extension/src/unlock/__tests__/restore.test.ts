@@ -662,7 +662,157 @@ describe('#8 restore path: every other outcome (fix round 1)', () => {
   });
 });
 
+// Final review item 1: a `failed` answer may be a lost reply over a restore that landed. The run reads the
+// vault first (retryRun's model) and never answers its own restore with "The wallet changed while you were typing".
+describe('#8 restore path: a lost reply (final review item 1)', () => {
+  const SOMETHING = 'Something went wrong. Try again.';
+  const BUSY = 'The wallet changed while you were typing. Start again.';
+  /** The replacement reaches the background (it lands), and the reply is lost on the way back. */
+  const landsThenLost = (inner: Send): Send => async m => {
+    if ((m as {type: string}).type !== 'vault.forgetWallet') return inner(m);
+    await inner(m);
+    throw new Error('the reply was lost');
+  };
+
+  it('the restore landed, its reply lost: handed over as restored-locked (#/imported) — one forgetWallet, no busy line, nothing held', async () => {
+    const h = await restoring({send: landsThenLost});
+    await phrase(h, M);
+    await newPassword(h);
+    await h.until(() => h.went.length > 0 || (visible(el('imp-notice')) && !h.deps.gate.isBusy()) || (text(el('pw-cta')) === 'Try again' && !h.deps.gate.isBusy()));
+    expect(text(el('imp-notice-line'))).not.toBe(BUSY);
+    expect(h.went).toEqual(['wallet.html#/imported']);
+    expect(forgets(h)).toHaveLength(1);
+    expect(h.sent.map(m => m.type)).toEqual(['vault.forgetWallet']);
+    expect([run.holds(), pw.holds()]).toEqual([{proof: false}, false]);
+    const env = (await h.ext.local.get(VAULT_KEY)) as EnvelopeV1;
+    expect(await decryptMnemonic(env, await unlockWithPassword(env, NEW_PW, testKdf))).toBe(M);
+  }, 30_000);
+
+  it('the replacement never arrived (the vault still holds the proven revision): [Try again] with the same proof, which restores', async () => {
+    let lost = true;
+    const h = await restoring({
+      send: inner => async m => {
+        if ((m as {type: string}).type === 'vault.forgetWallet' && lost) {
+          lost = false;
+          throw new Error('never delivered');
+        }
+        return inner(m);
+      },
+    });
+    await phrase(h, M);
+    await newPassword(h);
+    await h.until(() => text(el('pw-cta')) === 'Try again' && !h.deps.gate.isBusy());
+    expect(text(el('pw-helper'))).toBe(SOMETHING);
+    expect([run.holds(), pw.holds()]).toEqual([{proof: true}, true]);
+    expect(h.went).toEqual([]);
+    click(el('pw-cta'));
+    await h.until(() => h.went.length > 0);
+    expect(h.went).toEqual(['wallet.html#/imported']);
+    // `sent` records what reached the background: the lost first message never did.
+    expect(forgets(h)).toHaveLength(1);
+    const env = (await h.ext.local.get(VAULT_KEY)) as EnvelopeV1;
+    expect(await decryptMnemonic(env, await unlockWithPassword(env, NEW_PW, testKdf))).toBe(M);
+  }, 30_000);
+
+  it('the replacement landed late, after [Try again] was offered: [Try again] reads the vault first — handed over, never sent twice, no busy line', async () => {
+    let late: (() => Promise<unknown>) | null = null;
+    const h = await restoring({
+      send: inner => async m => {
+        if ((m as {type: string}).type === 'vault.forgetWallet' && late === null) {
+          late = () => inner(m);
+          throw new Error('the reply was lost');
+        }
+        return inner(m);
+      },
+    });
+    await phrase(h, M);
+    await newPassword(h);
+    await h.until(() => text(el('pw-cta')) === 'Try again' && !h.deps.gate.isBusy());
+    expect(text(el('pw-helper'))).toBe(SOMETHING);
+    // The first message reaches the background only now.
+    await (late as unknown as () => Promise<unknown>)();
+    click(el('pw-cta'));
+    await h.until(() => h.went.length > 0 || (visible(el('imp-notice')) && !h.deps.gate.isBusy()));
+    expect(text(el('imp-notice-line'))).not.toBe(BUSY);
+    expect(h.went).toEqual(['wallet.html#/imported']);
+    expect(forgets(h)).toHaveLength(1);
+    expect([run.holds(), pw.holds()]).toEqual([{proof: false}, false]);
+  }, 30_000);
+
+  it.each([
+    ['another wallet stored meanwhile', 'other'],
+    ['the stored vault gone', 'none'],
+    ['the stored vault damaged', 'damaged'],
+    ['the vault unreadable', 'unreadable'],
+  ])('anything else after a failed answer (%s): busy — back to #8 with [Start again]', async (_name, what) => {
+    let unreadable = false;
+    const h = await restoring({
+      read: stored => async () => {
+        if (unreadable) throw new Error('storage');
+        return stored();
+      },
+      send: inner => async m => {
+        if ((m as {type: string}).type !== 'vault.forgetWallet') return inner(m);
+        if (what === 'other') {
+          const keys = await derivePublicKeys(OTHER, 'slip10', [0]);
+          await h.ext.local.set(VAULT_KEY, await createEnvelope({mnemonic: OTHER, password: OLD_PW, scheme: 'slip10', accounts: [{index: 0, name: 'Main', publicKey: keys[0] ?? ''}], kdf: testKdf}));
+        } else if (what === 'none') await h.ext.local.remove(VAULT_KEY);
+        else if (what === 'damaged') await h.ext.local.set(VAULT_KEY, null);
+        else unreadable = true;
+        throw new Error('the reply was lost');
+      },
+    });
+    await phrase(h, M);
+    await newPassword(h);
+    await h.until(() => visible(el('imp-notice')) && !h.deps.gate.isBusy());
+    expect(text(el('imp-notice-line'))).toBe(BUSY);
+    expect(text(el('imp-action'))).toBe('Start again');
+    expect([run.holds(), pw.holds()]).toEqual([{proof: false}, false]);
+    expect(h.went).toEqual([]);
+    // The one replacement was answered by the wrapper (never reached the background), and nothing was sent again.
+    expect(h.sent).toEqual([]);
+  }, 30_000);
+});
+
 describe('the restore run in the page (startMode)', () => {
+  // Final review item 3 (rule 6): #8 and #5 on the restore path run under the page's ONE gate.
+  it('#8 → #5 under one gate: neither #8’s Continue nor #5’s CTA acts while the page’s gate is held', async () => {
+    const {startMode} = await import('../modes');
+    const h = await harness({vault: await storedWallet()});
+    startMode({mode: 'import', source: 'forgot'}, h.deps);
+    await h.until(() => visible(el('imp-field')) && !h.deps.gate.isBusy());
+    type(el<HTMLTextAreaElement>('imp-phrase'), M);
+    h.deps.gate.setBusy(true);
+    el<HTMLButtonElement>('imp-continue').disabled = false;
+    click(el('imp-continue'));
+    await new Promise(r => setTimeout(r, 30));
+    expect(text(el('imp-line'))).toBe('');
+    expect(visible(el('v-password'))).toBe(false);
+    h.deps.gate.setBusy(false);
+    click(el('imp-continue'));
+    await h.until(() => visible(el('v-password')) && !h.deps.gate.isBusy());
+    type(el<HTMLInputElement>('pw-field'), NEW_PW);
+    h.deps.gate.setBusy(true);
+    el<HTMLButtonElement>('pw-cta').disabled = false;
+    click(el('pw-cta'));
+    await new Promise(r => setTimeout(r, 30));
+    expect(text(el('pw-title'))).toBe('Create a password');
+    h.deps.gate.setBusy(false);
+    click(el('pw-cta'));
+    await h.until(() => text(el('pw-title')) === 'Confirm your password' && !h.deps.gate.isBusy());
+    type(el<HTMLInputElement>('pw-field'), NEW_PW);
+    h.deps.gate.setBusy(true);
+    el<HTMLButtonElement>('pw-cta').disabled = false;
+    click(el('pw-cta'));
+    await new Promise(r => setTimeout(r, 30));
+    expect(h.sent).toEqual([]);
+    h.deps.gate.setBusy(false);
+    click(el('pw-cta'));
+    await h.until(() => h.went.length > 0);
+    expect(h.went).toEqual(['wallet.html#/imported']);
+    expect(forgets(h)).toHaveLength(1);
+  }, 30_000);
+
   it('?mode=forgot shows #39; ?mode=import&source=forgot shows #8 on the restore path — not the B1b-1 section', async () => {
     const {startMode} = await import('../modes');
     const h = await harness({vault: await storedWallet()});

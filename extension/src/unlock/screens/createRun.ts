@@ -31,8 +31,10 @@ export interface CreateRun {
  * failed store keeps it for another try. The password #5 sets is held for #6's passkey and dropped when
  * #6 ends or the tab is hidden (a tab hidden while the wallet is being stored counts: #6 then asks for
  * it). `pagehide` drops the phrase as well (fix round 1: the page may be kept in the back/forward cache,
- * `persisted` or not), and a page restored from that cache starts again at #1. Every end hands over to the UI tab's #7 (`wallet.html#/created`), which shows its locked variant
- * when the keys did not reach the background.
+ * `persisted` or not), and a page restored from that cache starts again at #1. A stored wallet hands over to the UI tab's #7 (`wallet.html#/created`; `created`
+ * via #6, `created-locked` at once), which shows its locked variant when the keys did not reach the background.
+ * The other answers stay on #5: `exists` with its lines (the run stops there), `weak-password` and `failed`
+ * (and `invalid-mnemonic`) with the field to type again.
  * Mounted once per page (Task 9): #5 is the page's one PasswordScreen, shared with the import run, and #1's
  * "I have a wallet" hands over to that run in the same page — dropping the phrase a #3 visit generated first.
  */

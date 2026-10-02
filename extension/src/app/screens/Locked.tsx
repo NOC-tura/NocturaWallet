@@ -1,9 +1,11 @@
 import {useWallet} from '../WalletContext';
 import {ExtIcon} from '../ui/ExtIcon';
+import {LockedButton} from '../ui/LockedButton';
 
 /**
  * The popup's locked screen (spec §4.1, derived from #9): no password field — the password only ever
  * exists in the vault page (D12), so [Unlock] opens it in a tab, and "Forgot password?" opens #39 there.
+ * Both are LockedButtons (cardinal rule 6): a double click opens one tab.
  */
 export function Locked() {
   const {platform, surface} = useWallet();
@@ -21,12 +23,12 @@ export function Locked() {
       <h1 className="noc-h1">Welcome back</h1>
       <p className="noc-body app-muted">Unlock Noctura to continue. Unlocking opens in a new tab.</p>
       <div className="app-center-actions">
-        <button type="button" className="btn btn-primary" onClick={open('unlock.html?mode=unlock')}>
+        <LockedButton className="btn btn-primary" onPress={open('unlock.html?mode=unlock')}>
           Unlock
-        </button>
-        <button type="button" className="btn btn-tertiary" onClick={open('unlock.html?mode=forgot')}>
+        </LockedButton>
+        <LockedButton className="btn btn-tertiary" onPress={open('unlock.html?mode=forgot')}>
           Forgot password?
-        </button>
+        </LockedButton>
       </div>
     </div>
   );
