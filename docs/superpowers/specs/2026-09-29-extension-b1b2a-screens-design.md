@@ -1378,6 +1378,19 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   **→ adapted** (design regex allows 6 decimals; rule 2: exact base units via BigInt).
 - **CTA:** `LockedButton` (rule 6) → push #19 with `{token, recipient, amount}`.
 - **Differs, loudly:**
+  - **Plan 3:** the paste button reads the clipboard only when the browser allows it (the extension has
+    no clipboard permission, parent §4); when it refuses, the helper says "Paste with Ctrl+V (⌘V on a
+    Mac)." — **controller addition — confirmed by the owner 2026-10-02**. The sent-before hint reads "Verified · sent
+    before · today" on the day of the last send and "Verified · sent before · yesterday" for one day —
+    **controller additions — confirmed by the owner 2026-10-02** (the review rejected "last 1 day ago"): the design gives
+    only "last 12 days ago". There is no "send everything" on #12: MAX keeps the rent-exempt minimum by
+    design, and closing an account to exactly 0 is a product decision not taken here (plan-3 review, Q2).
+    The CTA never reads "Send 1. SOL" while the decimal point is being typed (review L6). The token chip's
+    tile is each token's own (#43's and #11's colours): the design's chip draws SOL only. The CTA carries
+    the amount as typed ("Send 75.000000 SOL", design state 4) once it parses; an amount the CTA refuses
+    anyway (short, or no SOL for the fee) predicts no re-authentication. "· ≈ $…" on the available line
+    is the typed amount's value (design state 5). The priority line stays in the first-time state (the
+    design's state 6 draws only the network fee).
   - Priority chips Normal/Fast/Instant removed (D15). The engine picks, and the fee shows on #19.
   - `.sol` resolution and its state "marko.sol → Resolved …" removed (D16).
   - Scan icon removed (D13).

@@ -6,10 +6,11 @@ import type {Balances, Prices, Token} from '../engine';
 
 /**
  * #43 token selector (D18: the design's bottom sheet, as a list of the four tokens). Built in plan 1
- * with the sheet it shares with the account switcher; #12 opens it in plan 3.
+ * with the sheet it shares with the account switcher; #12 opens it (plan 3). With no balances read yet
+ * (`null`), each row's amount and value read "—" — never 0 (§7.3).
  */
-export function TokenSheet({balances, prices, selected, onSelect, onClose}: {balances: Balances; prices: Prices | null; selected: Token; onSelect: (t: Token) => void; onClose: () => void}) {
-  const v = valuation(balances, prices);
+export function TokenSheet({balances, prices, selected, onSelect, onClose}: {balances: Balances | null; prices: Prices | null; selected: Token; onSelect: (t: Token) => void; onClose: () => void}) {
+  const v = balances === null ? null : valuation(balances, prices);
   return (
     <Sheet title="Choose a token" onClose={onClose}>
       <div className="list">
@@ -30,8 +31,11 @@ export function TokenSheet({balances, prices, selected, onSelect, onClose}: {bal
               <span className="sec">{TOKEN_INFO[t].name}</span>
             </span>
             <span>
-              <span className="amt">{showAmount(t, v.rows[t].base)}</span>
-              <span className="fiat">{v.rows[t].usd === null ? '—' : showUsd(v.rows[t].usd)}{t === 'NOC' ? ' at stage price' : ''}</span>
+              <span className="amt">{v === null ? '—' : showAmount(t, v.rows[t].base)}</span>
+              <span className="fiat">
+                {v === null || v.rows[t].usd === null ? '—' : showUsd(v.rows[t].usd)}
+                {t === 'NOC' && v !== null && v.rows[t].usd !== null ? ' at stage price' : ''}
+              </span>
             </span>
           </button>
         ))}

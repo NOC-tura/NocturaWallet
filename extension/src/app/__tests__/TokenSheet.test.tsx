@@ -29,4 +29,13 @@ describe('#43 token selector', () => {
     expect(onClose).toHaveBeenCalledTimes(2);
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
+
+  // Plan 3: #12 may open the sheet before the first balance read answers (or after it failed): never a 0.
+  it('with no balances read: every amount and value reads "—", and NOC claims no stage price', () => {
+    render(<TokenSheet balances={null} prices={prices} selected="NOC" onSelect={() => undefined} onClose={() => undefined} />);
+    const dialog = screen.getByRole('dialog', {name: 'Choose a token'});
+    expect([...dialog.querySelectorAll('.amt')].map(a => a.textContent)).toEqual(['—', '—', '—', '—']);
+    expect([...dialog.querySelectorAll('.fiat')].map(a => a.textContent)).toEqual(['—', '—', '—', '—']);
+    expect(dialog.querySelector('.sel .pri')?.textContent).toBe('NOC');
+  });
 });
