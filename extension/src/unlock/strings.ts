@@ -105,7 +105,7 @@ export const IMPORT = {
   unresolved: 'Balances could not be checked. Choose the address type to use.',
   invalid: 'That is not a valid 12- or 24-word recovery phrase.',
   /**
-   * Controller addition — NOT yet confirmed by the owner (Task 9 fix round 1, review item 5): what the screen-reader
+   * Controller addition — confirmed by the owner 2026-10-02 (Task 9 fix round 1, review item 5): what the screen-reader
    * live region says once when the idle timer wipes the field (the banner's per-second countdown is not announced).
    */
   wipedLive: 'The phrase was wiped from this field.',
@@ -134,10 +134,10 @@ export const FORGOT = {
     1: "You'll be taken to the import screen. Type or paste your words.",
     2: "You'll be taken to the import screen. Type or paste your words.",
     /**
-     * The design's copy, kept under question — AWAITING THE OWNER, not confirmed (spec §3.11 Differs; Task 12 owner
-     * question): at step 3 nothing has been verified yet (the seed proof runs on #8), so the line reads as false there.
+     * Owner decision 2026-10-02 (spec §3.11 Differs): the design's "Done — seed verified…" read as false at step 3 —
+     * nothing is verified until #8 runs the seed proof — so the line says what happens next.
      */
-    3: 'Done — seed verified against your existing public key.',
+    3: 'Next — your seed is checked against your existing public key.',
   },
   card3: {
     1: "Once your phrase is verified against this wallet, you'll choose a new password (at least 12 characters). The old password stops working.",

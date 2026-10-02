@@ -252,7 +252,7 @@ export function Imported() {
   // Past MAX_READ the copy claims only what was read (plan-2 review M2 — controller addition, confirmed by the owner 2026-10-01).
   // More than MAX_READ accounts with nothing held on those read: this funded layout with "N accounts · 0 tokens
   // recovered from the first 6." and a $0.00 total — never "empty", since not every account was read.
-  // Controller addition, AWAITING the owner's confirmation (Task 16 fix round 1, item 3).
+  // Controller addition, confirmed by the owner 2026-10-02 (Task 16 fix round 1, item 3).
   const sub = n === 1 ? `1 account · ${tokens} recovered. Welcome back.` : allRead ? `${n} accounts · ${tokens} recovered.` : `${n} accounts · ${tokens} recovered from the first ${MAX_READ}.`;
   const across = allRead ? `across ${n} accounts` : `across the first ${MAX_READ} of ${n} accounts`;
   const delta = n === 1 ? approx : [across, approx].filter(x => x !== null).join(' · ');

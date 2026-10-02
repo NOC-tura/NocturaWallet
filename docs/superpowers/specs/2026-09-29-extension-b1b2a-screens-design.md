@@ -1050,7 +1050,7 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     `[Continue]` disabled; the grid stops at 24 cells (plan-2 Task 9 review, ruling 3).
   - `idle-timer-active`: the banner is a polite status whose per-second countdown screen readers do not
     hear; a separate live region says "Auto-clearing in 12 s" once and, at the wipe, "The phrase was
-    wiped from this field." (**controller addition — awaiting the owner**). The timer also
+    wiped from this field." (**controller addition — confirmed by the owner 2026-10-02**). The timer also
     runs while `checking` (ruling 7): a probe that hangs still ends in the wipe.
   - **Plan 2:** the phrase stays editable in a field (inside the design's `.ta-wrap`), and the mono
     cell grid shows the words typed so far under it; the counter targets 12 words up to 12, then 24
@@ -1225,10 +1225,9 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     working. A passkey is not carried over; you can add one again later." The FLAG_SECURE hints are
     removed (D1). The mockup's `.s-secintro` scope is not carried: none of its rules applies to #39's
     cards.
-  - **Step 3's card 2 keeps the design's "Done — seed verified against your existing public key."**
-    — **design copy kept, under question, awaiting the owner**: at step 3 nothing has been verified
-    yet (the seed proof runs on #8, after `[Continue to import]`), so the line reads as false there
-    (Task 12 owner question). It is not changed until the owner rules.
+  - **Step 3's card 2 reads "Next — your seed is checked against your existing public key."**
+    → adapted (owner decision 2026-10-02): the design's "Done — seed verified against your existing
+    public key." reads as false at step 3, since the seed proof runs on #8, after `[Continue to import]`.
 
 ### 3.12 #40 import-success (UI tab `#/imported`)
 
@@ -1252,8 +1251,8 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     (**controller addition** — confirmed by the owner 2026-10-01, plan-2 review M2). With more than
     six accounts and nothing held on the six read, the screen is this state — "N accounts · 0 tokens
     recovered from the first 6." and a $0.00 total — never `no-assets-empty` (not every account was
-    read) and so without `[Try a different seed]` (**controller addition, awaiting the owner's
-    confirmation** — Task 16 fix round 1).
+    read) and so without `[Try a different seed]` (**controller addition, confirmed by the owner 2026-10-02**
+    — Task 16 fix round 1).
   - **Reads:** the tab's provider is quiet on this route (as on #7): no open sequence, no
     `activity.ping`, and its `refresh()` — the `online` event's — reads nothing. #40 makes its own
     explicit reads, the balances one account at a time then the prices, on mount, on its refresh
