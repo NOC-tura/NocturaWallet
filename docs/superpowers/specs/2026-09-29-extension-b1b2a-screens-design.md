@@ -1050,7 +1050,7 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     `[Continue]` disabled; the grid stops at 24 cells (plan-2 Task 9 review, ruling 3).
   - `idle-timer-active`: the banner is a polite status whose per-second countdown screen readers do not
     hear; a separate live region says "Auto-clearing in 12 s" once and, at the wipe, "The phrase was
-    wiped from this field." (**controller addition — awaiting the owner**). The timer also
+    wiped from this field." (**controller addition — confirmed by the owner 2026-10-02**). The timer also
     runs while `checking` (ruling 7): a probe that hangs still ends in the wipe.
   - **Plan 2:** the phrase stays editable in a field (inside the design's `.ta-wrap`), and the mono
     cell grid shows the words typed so far under it; the counter targets 12 words up to 12, then 24
@@ -1252,8 +1252,8 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     (**controller addition** — confirmed by the owner 2026-10-01, plan-2 review M2). With more than
     six accounts and nothing held on the six read, the screen is this state — "N accounts · 0 tokens
     recovered from the first 6." and a $0.00 total — never `no-assets-empty` (not every account was
-    read) and so without `[Try a different seed]` (**controller addition, awaiting the owner's
-    confirmation** — Task 16 fix round 1).
+    read) and so without `[Try a different seed]` (**controller addition, confirmed by the owner 2026-10-02**
+    — Task 16 fix round 1).
   - **Reads:** the tab's provider is quiet on this route (as on #7): no open sequence, no
     `activity.ping`, and its `refresh()` — the `online` event's — reads nothing. #40 makes its own
     explicit reads, the balances one account at a time then the prices, on mount, on its refresh

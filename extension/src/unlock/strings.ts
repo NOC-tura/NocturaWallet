@@ -105,7 +105,7 @@ export const IMPORT = {
   unresolved: 'Balances could not be checked. Choose the address type to use.',
   invalid: 'That is not a valid 12- or 24-word recovery phrase.',
   /**
-   * Controller addition — NOT yet confirmed by the owner (Task 9 fix round 1, review item 5): what the screen-reader
+   * Controller addition — confirmed by the owner 2026-10-02 (Task 9 fix round 1, review item 5): what the screen-reader
    * live region says once when the idle timer wipes the field (the banner's per-second countdown is not announced).
    */
   wipedLive: 'The phrase was wiped from this field.',
