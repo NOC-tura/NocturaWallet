@@ -628,9 +628,6 @@ a.btn {
   display: block;
   margin-bottom: 2px;
 }
-.s-conf .first-time-banner .app-secondary {
-  color: var(--fg-secondary);
-}
 .s-conf .review-card.high-value .eyebrow {
   color: var(--danger);
 }
@@ -682,4 +679,75 @@ a.btn {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+/* #21 status (plan 3): index.html #s21's inline styles — the success amount at 36/42, the coloured stage label
+   and top-bar step (CONFIRMED, SLOW), the pulsing status dot, the stuck watcher's head, the reassurance line. */
+.app-secondary {
+  color: var(--fg-secondary);
+}
+.s-stat .amount-card .amount.app-amount-big {
+  font-size: 36px;
+  line-height: 42px;
+}
+.s-stat .stage-label.app-success,
+.s-stat .top-bar .step.app-success {
+  color: var(--success);
+}
+.s-stat .stage-label.app-warning,
+.s-stat .top-bar .step.app-warning,
+.s-stat .meta-row .val.app-warning {
+  color: var(--warning);
+}
+.s-stat .meta-row .val.app-live {
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.s-stat .meta-row .val.app-live::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: zk-pulse 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .s-stat .meta-row .val.app-live::before {
+    animation: none;
+  }
+}
+.s-stat .meta-row .copy {
+  border: 0;
+  cursor: pointer;
+}
+/* The design's invisible copy cell on a row without one: the value column lines up with the rows that have it. */
+.s-stat .meta-row .copy.app-ghost {
+  opacity: 0;
+  pointer-events: none;
+  cursor: default;
+}
+.s-stat .stuck-watch .app-watch-head {
+  font: 500 12px/16px var(--font-body);
+  color: var(--fg-primary);
+}
+/* "You can close this window …": the design's 11/16 --fg-tertiary centred line, tabular. */
+.app-close-note {
+  font: 400 11px/16px var(--font-body);
+  color: var(--fg-tertiary);
+  padding: var(--space-3) 0;
+  margin: 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.app-reassure {
+  margin: var(--space-1) var(--space-4) 0;
+}
+.app-reassure b {
+  color: var(--fg-secondary);
+  font-weight: 600;
+}
+.app-tab-done {
+  margin: 0 var(--space-5) var(--space-4);
 }

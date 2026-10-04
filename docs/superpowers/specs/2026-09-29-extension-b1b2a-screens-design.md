@@ -1705,7 +1705,19 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     still watching. \"Send again\" re-sends the same transaction.") shows as a caption under the
     status.
 - **Differs:**
-  - "Slot" row removed (not in `PendingView`).
+  - **Plan 3:** the slow state's disabled CTA keeps "Waiting for confirmation" (the design's "Waiting
+    for inclusion · 1:23" names a mempool the engine cannot see), and its stuck-watch box shows "Recovery
+    options will appear in" with the countdown, without the design's developer caption ("Silent watcher
+    routes to stuck-tx after 90 s …"). The To and hash rows' copy buttons keep the design's 32 px chip;
+    the rows without one keep the design's invisible cell, so the values line up. "Fee paid" is
+    `feePaidLamports` of the pending record's split `fee` (network fee + Noctura fee once confirmed — kept
+    on the record so a reopened popup shows it too), shown only in `success`; a record from before plan 3
+    has no such row. An id the engine no longer tracks reads "This transaction is no longer tracked." (#54's
+    line) with `[Open Activity]`. Each read of `wallet.pending` is dropped when the screen has moved on
+    (unmounted, another id, another account selected, a newer read already applied), and the reads stop
+    once the record is settled (`confirmed`, `failed`, `expired`), so no later answer moves the screen.
+    Whether an `expired` record goes to #44 or to #54's expired layout is decided by whether #54 was shown,
+    never by the page's clock.
   - "Confirmed in 2 blocks · finalized" replaced as marked.
   - The back arrow stays disabled while broadcasting (design); closing the popup is allowed and
     said so.
