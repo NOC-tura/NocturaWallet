@@ -12,6 +12,18 @@ import type {Pending} from '../engine';
 
 // Spec §4.7 (#44): the state from `failure` (E8, C3), `detail` only the caption.
 const SELECTORS = selectorsOf(UI_SHEETS);
+// The spec's exact strings (§4.7), as literals: a wrong FAILED_TEXT constant must not pass by being compared with itself.
+const SPEC = {
+  expiredHead: 'Recent blockhash expired',
+  expiredSub: 'Not confirmed — no funds moved.',
+  expiredWhy: 'Solana rotated past the blockhash before your transaction reached a leader. Tap retry — the wallet will fetch a fresh one.',
+  expiredFoot: 'No fees were charged. Retry is a fresh transaction with a new blockhash — same recipient, same amount.',
+  rejectedHead: 'Program rejected the transaction',
+  rejectedSub: 'The on-chain program returned an error. The network fee was charged; the amount did not move.',
+  notSentHead: "Couldn't send",
+  genericHead: 'Transaction failed',
+};
+const caption = () => document.querySelector('.scroll-area > .noc-caption')?.textContent ?? null;
 const nav = {onTryAgain: vi.fn(), onEdit: vi.fn(), onDetails: vi.fn()};
 const INTENT = {token: 'SOL' as const, recipient: RECIPIENT, amount: 2_480_000_000n};
 const record = (over: Partial<Pending>): Pending => ({
@@ -38,9 +50,9 @@ afterEach(() => vi.clearAllMocks());
 describe('#44 tx-failed', () => {
   it('blockhash-expired (engine `expired`): the hero, the reason, the payload kept, the footer; [Try again] and [Edit transaction]', async () => {
     await renderFailed(record({state: 'expired', detail: 'Not confirmed — no funds moved.'}));
-    expect(await screen.findByText(FAILED_TEXT.expiredHead)).toBeTruthy();
-    expect(text()).toEqual([FAILED_TEXT.expiredHead, FAILED_TEXT.expiredSub, 'Reason · blockhash-expired']);
-    expect(document.querySelector('.s9-reason-banner .body')?.textContent).toBe(FAILED_TEXT.expiredWhy);
+    expect(await screen.findByText(SPEC.expiredHead)).toBeTruthy();
+    expect(text()).toEqual([SPEC.expiredHead, SPEC.expiredSub, 'Reason · blockhash-expired']);
+    expect(document.querySelector('.s9-reason-banner .body')?.textContent).toBe(SPEC.expiredWhy);
     expect(screen.getByText(FAILED_TEXT.payload)).toBeTruthy();
     const rows = [...document.querySelectorAll('.s9-payload-card .row')].map(r => [r.querySelector('.k')?.textContent, r.querySelector('.v')?.textContent]);
     expect(rows).toEqual([
@@ -48,7 +60,7 @@ describe('#44 tx-failed', () => {
       ['Amount', '2.4800 SOL'],
       ['Valid until block', '1150'],
     ]);
-    expect(screen.getByText(FAILED_TEXT.expiredFoot)).toBeTruthy();
+    expect(caption()).toBe(SPEC.expiredFoot);
     expect(document.querySelector('.top-bar .step')?.textContent).toBe('Failed');
     expect(screen.getByRole('button', {name: FAILED_TEXT.tryAgain})).toBeTruthy();
     fireEvent.click(screen.getByRole('button', {name: FAILED_TEXT.edit}));
@@ -61,8 +73,9 @@ describe('#44 tx-failed', () => {
   it('rejected-by-program (failed, landed): "Rejected", the fee-charged sentence, the engine detail in mono; [Try again], [View details] → #27, [View on explorer]', async () => {
     const detail = 'Landed but failed ({"InstructionError":[2,{"Custom":1}]}): the network fee was paid, nothing was sent.';
     await renderFailed(record({failure: 'landed', detail}));
-    expect(await screen.findByText(FAILED_TEXT.rejectedHead)).toBeTruthy();
-    expect(text()).toEqual([FAILED_TEXT.rejectedHead, FAILED_TEXT.rejectedSub, 'Reason · rejected-by-program']);
+    expect(await screen.findByText(SPEC.rejectedHead)).toBeTruthy();
+    expect(text()).toEqual([SPEC.rejectedHead, SPEC.rejectedSub, 'Reason · rejected-by-program']);
+    expect(caption()).toBeNull();
     expect(document.querySelector('.s9-reason-banner .meta')?.textContent).toBe(detail);
     expect(document.querySelector('.top-bar .step')?.textContent).toBe('Rejected');
     const link = screen.getByRole('link', {name: FAILED_TEXT.explorer}) as HTMLAnchorElement;
@@ -76,8 +89,9 @@ describe('#44 tx-failed', () => {
   it('network-error (failed, not-sent): "Couldn\'t send", the engine detail as the caption; [Try again]', async () => {
     const detail = 'The network refused this transaction (rejected: Blockhash not found). No funds moved.';
     await renderFailed(record({failure: 'not-sent', detail}));
-    expect(await screen.findByText(FAILED_TEXT.notSentHead)).toBeTruthy();
-    expect(text()).toEqual([FAILED_TEXT.notSentHead, detail, 'Reason · network-error']);
+    expect(await screen.findByText(SPEC.notSentHead)).toBeTruthy();
+    expect(text()).toEqual([SPEC.notSentHead, detail, 'Reason · network-error']);
+    expect(caption()).toBeNull();
     expect(screen.getByRole('button', {name: FAILED_TEXT.tryAgain})).toBeTruthy();
     expect(screen.queryByRole('link')).toBeNull();
     // Nothing reached the chain: no [View details] (only rejected-by-program has a transaction to show).
@@ -86,8 +100,9 @@ describe('#44 tx-failed', () => {
 
   it('generic (failed with no failure, an older build’s record): "Transaction failed", the detail, [View on explorer] only', async () => {
     await renderFailed(record({detail: 'Something odd.'}));
-    expect(await screen.findByText(FAILED_TEXT.genericHead)).toBeTruthy();
-    expect(text()).toEqual([FAILED_TEXT.genericHead, 'Something odd.', null]);
+    expect(await screen.findByText(SPEC.genericHead)).toBeTruthy();
+    expect(text()).toEqual([SPEC.genericHead, 'Something odd.', null]);
+    expect(caption()).toBeNull();
     expect(screen.getByRole('link', {name: FAILED_TEXT.explorer})).toBeTruthy();
     expect(screen.queryByRole('button', {name: FAILED_TEXT.tryAgain})).toBeNull();
   });
@@ -131,19 +146,38 @@ describe('#44 tx-failed', () => {
     expect(nav.onTryAgain).toHaveBeenCalledWith(INTENT);
   });
 
-  it('fees (spec §4.5 display rule): no state shows an amount as paid — rejected says the network fee was charged, in words; the markup never appears', async () => {
+  it('fees (spec §4.5 display rule): no state shows an amount as paid; only rejected says a fee was charged (the network fee, in words); expired and not-sent never claim one', async () => {
     // fee: network 5 050 + markup 20 000 lamports. Neither part, nor their sum, is printed in any state.
-    for (const p of [record({state: 'expired', detail: 'Not confirmed — no funds moved.'}), record({failure: 'landed', detail: 'x'}), record({failure: 'not-sent', detail: 'x'}), record({detail: 'x'})]) {
+    const states = {
+      expired: record({state: 'expired', detail: 'Not confirmed — no funds moved.'}),
+      landed: record({failure: 'landed', detail: 'x'}),
+      notSent: record({failure: 'not-sent', detail: 'The network refused this transaction (rejected: x). No funds moved.'}),
+      cooling: record({failure: 'not-sent', detail: 'Not sent: the coordinator is cooling down after an earlier HTTP 403. No funds moved.', detailCode: 'cooling'}),
+      generic: record({detail: 'x'}),
+    };
+    for (const [name, p] of Object.entries(states)) {
       cleanup();
       await renderFailed(p);
       await screen.findByRole('heading');
-      expect(document.body.textContent).not.toMatch(/0\.00000505|0\.00002|0\.00002505|Fee paid|Network fee/);
+      const body = document.body.textContent ?? '';
+      expect(body).not.toMatch(/0\.00000505|0\.00002|0\.00002505|fee paid|network fee \d|network fee:/i);
+      // A claim that a fee was charged/paid: only rejected-by-program makes one. "No fees were charged" is the opposite claim.
+      const claims = /(?<!no )fees? (was|were|has been|have been)? ?(charged|paid)/i.test(body);
+      expect([name, claims]).toEqual([name, name === 'landed']);
     }
-    expect(document.body.textContent).not.toContain('fee was charged');
     cleanup();
-    await renderFailed(record({failure: 'landed', detail: 'x'}));
-    expect(await screen.findByText(FAILED_TEXT.rejectedSub)).toBeTruthy();
-    expect(FAILED_TEXT.rejectedSub).toContain('The network fee was charged');
+    await renderFailed(states.landed);
+    expect(await screen.findByText(SPEC.rejectedSub)).toBeTruthy();
+  });
+
+  it('the expired sub is the engine record\'s own line; the spec\'s line only when an expired record has none', async () => {
+    await renderFailed(record({state: 'expired', detail: 'Expired before it landed — nothing moved.'}));
+    await screen.findByText(SPEC.expiredHead);
+    expect(text()[1]).toBe('Expired before it landed — nothing moved.');
+    cleanup();
+    await renderFailed(record({state: 'expired', detail: null}));
+    await screen.findByText(SPEC.expiredHead);
+    expect(text()[1]).toBe(SPEC.expiredSub);
   });
 
   it('the back arrow and Esc go to #12 with the form kept (the design’s exit)', async () => {
@@ -155,12 +189,27 @@ describe('#44 tx-failed', () => {
 });
 
 describe('#44’s user-cancelled toast', () => {
+  it('unmounted before 1.8 s: its timer is cleared — nothing fires afterwards', async () => {
+    vi.useFakeTimers();
+    try {
+      const done = vi.fn();
+      const view = render(<CancelledToast onDone={done} />);
+      await act(async () => void vi.advanceTimersByTime(CANCELLED_MS - 100));
+      view.unmount();
+      await act(async () => void vi.advanceTimersByTime(CANCELLED_MS * 2));
+      expect(done).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('"Transaction cancelled. No fees charged." in the design’s pill, gone after 1.8 s', async () => {
     vi.useFakeTimers();
     try {
       const done = vi.fn();
       render(<CancelledToast onDone={done} />);
-      expect(screen.getByRole('status').textContent).toBe(CANCELLED_TEXT);
+      expect([screen.getByRole('status').textContent, CANCELLED_TEXT, CANCELLED_MS]).toEqual(['Transaction cancelled. No fees charged.', 'Transaction cancelled. No fees charged.', 1_800]);
       expect(document.querySelector('.s9-toast-cancelled')).not.toBeNull();
       await act(async () => void vi.advanceTimersByTime(CANCELLED_MS - 1));
       expect(done).not.toHaveBeenCalled();

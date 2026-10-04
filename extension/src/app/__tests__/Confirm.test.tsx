@@ -453,6 +453,35 @@ describe('#20 — one tap per broadcast (D38) and every answer of wallet.send', 
     expect(w.sent.filter(t => t === 'wallet.discardPrepared')).toEqual([]);
   });
 
+  it('[Send] after [Cancel] while the discard is still out sends nothing, and the cancel completes (review fix 1): pressed in one act(), and one microtask apart', async () => {
+    for (const order of ['one act()', 'one microtask apart'] as const) {
+      cleanup();
+      vi.clearAllMocks();
+      let release: () => void = () => undefined;
+      const held = new Promise<void>(r => (release = r));
+      const w = await renderConfirm({gate: async m => (m.type === 'wallet.discardPrepared' ? held : undefined)});
+      const send = await sendButton();
+      const cancel = screen.getByRole('button', {name: 'Cancel'});
+      if (order === 'one act()') {
+        act(() => {
+          fireEvent.click(cancel);
+          fireEvent.click(send);
+        });
+      } else {
+        fireEvent.click(cancel);
+        await Promise.resolve();
+        send.disabled = false;
+        fireEvent.click(send);
+      }
+      await act(async () => new Promise(r => setTimeout(r, 50)));
+      release();
+      await waitFor(() => expect(nav.onCancelled).toHaveBeenCalledTimes(1));
+      await act(async () => new Promise(r => setTimeout(r, 50)));
+      expect(w.sends()).toBe(0);
+      expect(nav.onTrack).not.toHaveBeenCalled();
+    }
+  });
+
   it('an unproven challenge: the tap opens #10 for it — a new tab from the popup (which closes), this tab in the UI tab — and sends nothing', async () => {
     const w = await renderConfirm({known: false});
     fireEvent.click(await sendButton());

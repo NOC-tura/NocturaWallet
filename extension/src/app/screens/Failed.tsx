@@ -50,7 +50,9 @@ export function Failed({record, onTryAgain, onEdit, onDetails}: {record: Pending
   // The design's back arrow returns to #12 with the form kept: the same as [Edit transaction].
   useEscape(edit);
   const head = kind === 'blockhash-expired' ? FAILED_TEXT.expiredHead : kind === 'rejected-by-program' ? FAILED_TEXT.rejectedHead : kind === 'network-error' ? FAILED_TEXT.notSentHead : FAILED_TEXT.genericHead;
-  const sub = kind === 'blockhash-expired' ? FAILED_TEXT.expiredSub : kind === 'rejected-by-program' ? FAILED_TEXT.rejectedSub : record.detail ?? '';
+  // The engine's own line is the sub (expired: its NOT_CONFIRMED; not-sent, generic: its detail); rejected keeps the
+  // spec's adapted sentence (its detail is the error, shown in the banner). expiredSub only when an expired record has none.
+  const sub = kind === 'rejected-by-program' ? FAILED_TEXT.rejectedSub : kind === 'blockhash-expired' ? record.detail ?? FAILED_TEXT.expiredSub : record.detail ?? '';
   const tryAgain = (
     <LockedButton className="btn btn-primary" disabled={refused} onPress={() => onTryAgain(record.intent)}>
       <ExtIcon name="refresh" size={18} />

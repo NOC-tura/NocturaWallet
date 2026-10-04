@@ -256,7 +256,8 @@ export function Confirm(props: ConfirmProps) {
    * that). An unproven challenge opens #10 instead (spec §4.5 step 2).
    */
   const tap = async () => {
-    if (view === null || busy || quoteDead || open !== null || sending.current) return;
+    // A [Cancel] already pressed (its discard may still be out) or a screen already left: no send, ever (D38, E7).
+    if (view === null || busy || quoteDead || open !== null || sending.current || left.current || cancelling.current) return;
     const tapAt = clock();
     if (view.reauth !== null && !view.reauth.proven) {
       // The view may be stale: the challenge proven from another surface since this #20 read it (plan-3 review L2).

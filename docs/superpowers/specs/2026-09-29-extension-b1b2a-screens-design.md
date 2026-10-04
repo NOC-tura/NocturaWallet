@@ -1761,7 +1761,13 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     on a transaction that never landed it would read as paid, beside "No fees were charged."
   - **Plan 3 (Task 11) — the cancelled toast's trigger:** #20's `[Cancel]` is refused while a send is out
     (Task 9) and also once a send has answered and moved on from #20, so "No fees charged" never
-    follows a send that may have been broadcast.
+    follows a send that may have been broadcast. The other way round too (fix round 1): once `[Cancel]` is
+    pressed, `[Send]` sends nothing, even while the discard is still out.
+  - **Plan 3 (Task 11) — `.s-secintro` not on #44's root.** The design's screen carries it, but its only rules
+    (`.s-secintro .step-pill`, `.layer-card`, `.layer-icon`) style elements #44 does not have, so it would change
+    nothing and the class gate refuses a class with no rule in place.
+  - **Plan 3 (Task 11) — the expired sub** is the engine record's own line (`detail`, its "Not confirmed — no
+    funds moved."), as `network-error` shows its detail; the spec's line is the fallback only for a record without one.
   - **`insufficient-fee` state removed.** The engine never reports "fee too low", and priority is
     automatic (D15).
   - `rejected-by-program`'s Jupiter slippage content and `[Adjust slippage and retry]` removed
