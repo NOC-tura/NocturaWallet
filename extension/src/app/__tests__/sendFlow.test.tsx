@@ -604,4 +604,28 @@ describe('#11’s Send, the pending strip, #26’s PENDING rows, #27’s [Try ag
     expect((await screen.findByLabelText('Recipient') as HTMLInputElement).value).toBe(COUNTERPARTY);
     expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('0.001');
   });
+
+  // Fix round 1 #1: #27 carries its owner; with another account selected it offers no [Try again] (and #27 stays).
+  it('another account selected while a failed send’s #27 is open: #27 stays, no [Try again], nothing prepared', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const at = Math.floor(Date.now() / 1000);
+    const w = await app({
+      prepare: false,
+      known: true,
+      reader: {
+        getSignaturesForAddress: async () => [{signature: sig(5), blockTime: at, err: {InstructionError: [0, 'Custom']}}],
+        getTransaction: async () => failedTx(ACCOUNT.publicKey, at),
+      },
+    });
+    fireEvent.click(await screen.findByRole('button', {name: /Activity/}));
+    await waitFor(() => expect(document.querySelector('button.tx-row:not([data-pending])')).not.toBeNull());
+    fireEvent.click(document.querySelector('button.tx-row:not([data-pending])') as HTMLButtonElement);
+    expect(await screen.findByRole('button', {name: 'Try again'})).toBeTruthy();
+    expect((await w.engine.select(SECOND.index)).ok).toBe(true);
+    await act(async () => void vi.advanceTimersByTime(STATE_POLL_MS + 50));
+    await waitFor(() => expect(screen.queryByRole('button', {name: 'Try again'})).toBeNull());
+    expect(screen.getByText('FAILED · SENT')).toBeTruthy();
+    expect(count(w, 'wallet.prepareSend')).toBe(0);
+    expect(w.sends()).toBe(0);
+  });
 });

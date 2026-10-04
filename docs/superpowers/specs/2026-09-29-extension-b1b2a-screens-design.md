@@ -1919,7 +1919,8 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     never clears refused). A later successful read clears the stale mark and the line. Never zero or
     "failed" in place of a balance (§7.3).
   - **extension-only `pending strip`**: an open send of this account → a `.banner.info` strip
-    "Sending 2.48 SOL · pending" (or "· taking longer than usual") → #21/#54.
+    "Sending 2.48 SOL · pending" (or "· taking longer than usual") → #21/#54, #44 on failure or expiry
+    before #54 (the record decides, read afresh by #21).
   - **extension-only `resume`**: a live resumable prepared send → the popup opens #20 (§1.6).
   - `offline` / `refused`: §5.4.
   - **extension-only `no price`**: prices unknown → the total reads "—" with "Prices unavailable";
@@ -1939,7 +1940,7 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     bar (D4); no "See all" skeleton; the quick-action skeleton shows only the actions that exist —
     Receive in plan 1, Receive + Send from plan 3.
   - **Plan 3:** the Send quick action opens #12 (disabled offline, unreachable and refused — D36 keeps
-    Receive); the pending strip opens that send at #21/#54; a popup opened while a prepared send waits
+    Receive); the pending strip opens that send at #21/#54, #44 on failure or expiry before #54; a popup opened while a prepared send waits
     shows #20 in resume mode (§4.5). (Plan 1 had no Send and no resume, and its strip opened Activity.)
   - The bottom nav is Home / Activity / Settings (D3), not Home/Portfolio/NFTs/Profile.
   - Pull-to-refresh becomes the refresh button (D2).
@@ -2080,7 +2081,8 @@ point here. **One user tap per broadcast, always (D38; review B1).**
 - **States:** `cold-mount skeleton` (5 rows over 2 sections); `loaded mixed`; `filter Sent`
   (sent-only, same grouping; filters apply to loaded rows and "Load more" continues); **filter
   Received / Purchases** (same pattern); **extension-only `pending rows`**: a "PENDING" section on
-  top with open sends ("Sending 2.48 SOL" / "waiting · 1 m 12 s") → #21/#54; empty → #41;
+  top with open sends ("Sending 2.48 SOL" / "waiting · 1 m 12 s") → #21/#54, #44 on failure or
+  expiry before #54; empty → #41;
   `unreachable` / `refused` → #42/D26 banner over whatever loaded.
 - **Differs:**
   - "Swaps" and "Shielded" chips removed (no swaps; D4). "Purchases" added (D24).
@@ -2158,6 +2160,11 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     decoded recipient and amount are known (the engine re-checks everything on prepare, and #20 shows
     the whole address and its first-send warning before one tap sends); any other failed transaction
     reads "FAILED" and "—", with no `[Try again]`.
+  - **27d's `[Try again]`** carries the refresh glyph (`#i-refresh`, as #44's) and routes to #19 — a fresh
+    prepare, reviewed again — not to the design's `tx-confirm` (#20) "with original payload re-loaded"
+    (D23: a retry is a new transaction, never the old payload). It is offered only while the account that
+    made the transaction is the one selected (#27's route carries that account; fix round 1), and is
+    disabled in the 403 cool-down (D26).
   - 27d's "Reason", "Tried to swap", "Slippage limit" and "Observed move" rows are a swap's; a failed
     transfer has none of them (no swaps, and no failure reason in `HistoryView`).
   - `received`: "To" shows the full address in groups with Copy (a verification surface, §11

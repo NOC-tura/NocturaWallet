@@ -169,8 +169,10 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
       screen = (
         <Activity
           onTx={item => {
+            // #27 carries the owner: the account whose history Activity showed (fix round 1).
+            if (selected === null) return;
             setTxItems(t => ({...t, [item.signature]: item}));
-            go({type: 'push', route: {screen: 'tx', signature: item.signature}});
+            go({type: 'push', route: {screen: 'tx', signature: item.signature, account: selected}});
           }}
           onReceive={() => go({type: 'push', route: {screen: 'receive'}})}
           onPending={p => go({type: 'push', route: {screen: 'status', account: p.account, id: p.id, since: p.createdAt}})}
@@ -182,13 +184,17 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
   } else if (route.screen === 'receive') {
     screen = <Receive onBack={() => go({type: 'pop'})} />;
   } else if (route.screen === 'tx') {
+    // [Try again] proposes the failed send again from the account that made it — only while that account is the one
+    // selected (fix round 1): another account selected since #27 opened offers none, and a tap that raced it does nothing.
+    const owner = route.account;
     screen = (
       <TxDetail
         signature={route.signature}
         item={txItems[route.signature]}
+        canRetry={owner === selected}
         onBack={() => go({type: 'pop'})}
         onTryAgain={intent => {
-          if (selected !== null) toReview(selected, intent, null);
+          if (owner === selected) toReview(owner, intent, null);
         }}
       />
     );
@@ -230,7 +236,7 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
         id={route.id}
         since={route.since}
         onDone={() => go({type: 'reset', routes: [HOME]})}
-        onDetails={signature => go({type: 'push', route: {screen: 'tx', signature}})}
+        onDetails={signature => go({type: 'push', route: {screen: 'tx', signature, account}})}
         onActivity={() => go({type: 'tab', tab: 'activity'})}
         onTryAgain={intent => toReview(account, intent, null)}
         onEdit={draft => toSend(draft, null)}

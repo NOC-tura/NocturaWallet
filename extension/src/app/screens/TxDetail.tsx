@@ -72,7 +72,20 @@ export function ExplorerLink({signature, label = 'Explorer', icon = true}: {sign
  * with what it tried to send, when the decoder knows the recipient and the amount (plan 3, owner question 1,
  * option A): #19 prepares it afresh and #20 shows the whole address before one tap sends.
  */
-export function TxDetail({signature, item: given, onBack, onTryAgain}: {signature: string; item?: HistoryItem; onBack: () => void; onTryAgain: (intent: Intent) => void}) {
+export function TxDetail({
+  signature,
+  item: given,
+  canRetry,
+  onBack,
+  onTryAgain,
+}: {
+  signature: string;
+  item?: HistoryItem;
+  /** False while another account than the transaction's owner is selected: no [Try again] (fix round 1). */
+  canRetry: boolean;
+  onBack: () => void;
+  onTryAgain: (intent: Intent) => void;
+}) {
   const m = useWallet();
   const now = useNow(30_000, m.now);
   const [item, setItem] = useState<HistoryItem | null | undefined>(given);
@@ -184,7 +197,7 @@ export function TxDetail({signature, item: given, onBack, onTryAgain}: {signatur
   const hash = <Address address={item.signature} label="Copy hash" />;
 
   if (item.failed) {
-    const retry: Intent | null = item.kind === 'sent' && item.token !== null && item.counterparty !== null && item.amount !== null && item.amount > 0n ? {token: item.token, recipient: item.counterparty, amount: item.amount} : null;
+    const retry: Intent | null = canRetry && item.kind === 'sent' && item.token !== null && item.counterparty !== null && item.amount !== null && item.amount > 0n ? {token: item.token, recipient: item.counterparty, amount: item.amount} : null;
     return (
       <div className="screen s-txd">
         {top}

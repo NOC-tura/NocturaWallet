@@ -95,6 +95,12 @@ describe('the router', () => {
 
   it('refuses a route of a known screen with a malformed shape', () => {
     expect(routeReducer(HOME, {type: 'push', route: {screen: 'tx'} as unknown as Route})).toBe(HOME);
+    // #27 (fix round 1): the signature and its owner, exactly — no owner, a non-address owner or an extra key is refused whole.
+    const tx = {screen: 'tx', signature: 'sig', account: ADDR} as const;
+    expect(routeReducer(HOME, {type: 'push', route: tx})).toEqual([...HOME, tx]);
+    for (const bad of [{screen: 'tx', signature: 'sig'}, {screen: 'tx', signature: 'sig', account: 'not-an-address'}, {...tx, signature: ''}, {...tx, intent: {}}]) {
+      expect(routeReducer(HOME, {type: 'push', route: bad as unknown as Route})).toBe(HOME);
+    }
     expect(routeReducer(HOME, {type: 'tab', tab: 'send' as unknown as 'home'})).toBe(HOME);
   });
 

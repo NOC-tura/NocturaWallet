@@ -19,7 +19,7 @@ import {isDraft, isIntent, type Draft} from './send/rules';
 export type Route =
   | {screen: 'tab'; tab: Tab}
   | {screen: 'receive'}
-  | {screen: 'tx'; signature: string}
+  | {screen: 'tx'; signature: string; account: string}
   | {screen: 'about'}
   | {screen: 'send'; draft: Draft | null; notice: 'start-again' | null}
   | {screen: 'review'; account: string; intent: Intent; notice: 'confirmation-expired' | null}
@@ -49,7 +49,8 @@ function isRoute(r: unknown): r is Route {
   const o = r as Record<string, unknown>;
   if (typeof o.screen !== 'string' || !SCREENS.has(o.screen)) return false;
   if (o.screen === 'tab') return typeof o.tab === 'string' && TABS.has(o.tab);
-  if (o.screen === 'tx') return typeof o.signature === 'string' && o.signature.length > 0;
+  // #27 carries the account whose history the signature came from: its [Try again] is offered only while that account is selected (fix round 1).
+  if (o.screen === 'tx') return only(o, ['screen', 'signature', 'account']) && typeof o.signature === 'string' && o.signature.length > 0 && isAddress(o.account);
   if (o.screen === 'send') return only(o, ['screen', 'draft', 'notice']) && (o.draft === null || isDraft(o.draft)) && (o.notice === null || o.notice === 'start-again');
   if (o.screen === 'review') return only(o, ['screen', 'account', 'intent', 'notice']) && isAddress(o.account) && isIntent(o.intent) && (o.notice === null || o.notice === 'confirmation-expired');
   if (o.screen === 'confirm') {
