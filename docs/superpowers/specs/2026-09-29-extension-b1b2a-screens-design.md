@@ -1566,8 +1566,10 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   - **extension-only `pending`**: a send from this account is open → Send disabled with "A send
     from this account is still pending." (review L6).
 - **Send sequence** (the rule 6 lock is held from the tap until the reply):
-  1. Tap with `reauth === null` → `wallet.send(id)`.
-  2. Tap with `reauth !== null` → `tabs.create('unlock.html?mode=reauth&challenge=<id>')`. The popup
+  1. Tap with `reauth === null`, **or with a proven challenge** (plan 3: `reauth.proven`, the engine's own
+     `challengeSatisfied`, reported by `prepareSend` and `preparedFor` — without it a resumed #20 could
+     only open #10 again) → `wallet.send(id)`. In short: reauth null or proven → send.
+  2. Tap with an unproven `reauth` → `tabs.create('unlock.html?mode=reauth&challenge=<id>')`. The popup
      closes (focus leaves it). In the tab, #10 → `confirmed` → the same tab loads
      `wallet.html#/send/resume?account=…`.
   3. **Resume** (that tab, or a reopened popup; also any other opener of that hash): read
@@ -1588,7 +1590,9 @@ point here. **One user tap per broadcast, always (D38; review B1).**
        C5's 10-minute cap) → back to #19 with "Your confirmation expired — review again" (review
        R2-M3). The client accepts both shapes, and both are tested against the real
        `handleMessage`.
-     - **Loop guard** (for `reauth-required` with a challengeId): if it happens right after a
+     - **Loop guard** (for `reauth-required` with a challengeId; plan 3 remembers the strike's challenge
+       in the UI's `localStorage`, `noctura.ui.v1.confirmStrike`, because the round trip through #10 may
+       close the popup that saw it — UI state with no security meaning, S4): if it happens right after a
        `confirmed` resume for the same intent, the screen shows "Your
        confirmation did not carry over. Confirm again." once. A second time in a row goes back to
        #12 with the draft and "Something went wrong — start the send again." A tab is never opened
@@ -1611,7 +1615,33 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   (confirmed, expired, popup reopen, hash opened by another page) never calls `wallet.send` before a
   tap event; `prepared-expired` after a tap never calls `wallet.send` again without a second tap.
   Mutation: an auto-send on resume must fail these tests.
+- **The prepared send #19 handed over (plan 3, Task 8 ruling):** #19's Continue passes the id of the
+  prepared send it showed. On that flow entry #20 reads `wallet.preparedFor` and, when it answers another
+  id (a superseded prepare landed between the Continue and #20) or none, refuses: back to #19, which
+  reviews again; nothing is shown or sent. #20's own re-prepares (C5, `[Refresh]`, `prepared-expired`)
+  move the expected id to the send they made. The resume entry stays id-less and reads only
+  `wallet.preparedFor` (step 3).
+- **While a tap's send is in flight** `[Cancel]` is disabled and the back arrow and Esc do nothing until
+  it answers (a cancel there would discard nothing and say "No fees charged" over a broadcast). An answer
+  that arrives after #20 went (unmounted, another account) navigates nothing; so does any later await of
+  #20 (`preparedFor`, `prepareSend`, `pending`). `unreachable` from `wallet.send` is reported (#42) and
+  #21 looks for the record from the tap on — never "nothing sent"; `coordinator-refused` is reported
+  (D26) and #20 stays.
 - **Differs:**
+  - **Plan 3:** each fee row keeps the design's dollars column — at today's SOL price, four places
+    truncated below a cent, as #27's fee line ("$0.0007"); a zero Noctura fee's reason row has none; the
+    Total's dollars add the token's value for an SPL send. The high-value line carries cents ("≈ $600.00
+    USD · 6 % of your balance"); the share uses the balance the engine read for a SOL send, and the
+    selected account's balances for a token (omitted while they are unknown). "Quote expired — refresh"
+    disables Send and puts `[Refresh]` beside the line. In the UI tab (#20 after #10), #10 opens in the
+    same tab, so the two lines read "You'll confirm with your password (or passkey) in this tab before
+    this is sent." and "Confirmation opens in this tab." — **controller additions — confirmed by the
+    owner 2026-10-02**. A fee row's dollars below $0.0001 read "< $0.0001", never "$0.0000" (review L3).
+    While a send from this account is open, the quote's end does not re-prepare (review L1); a tap on an
+    unproven view reads `preparedFor` once more and sends if the challenge was proven elsewhere meanwhile
+    (review L2) — still one tap. "Confirmed…", "You have a send waiting." and the "Updated…" lines are
+    info banners; "Your confirmation did not carry over…" a warning banner. A fee row's label has no
+    `.lbl` class (only the Total's is styled in the design's CSS).
   - Priority chip strip removed (D15).
   - "Save as — Add to address book? · Add · Skip" removed (B1b-2b, #15).
   - The typed-CONFIRM field removed (D22).

@@ -34,6 +34,9 @@ describe('format', () => {
     expect(feeUsd(0.00075)).toBe('$0.0007');
     expect(feeUsd(0.0123)).toBe('$0.01');
     expect(feeUsd(null)).toBe('—');
+    // A fee that is not zero never reads as $0.0000 (plan-3 review L3); zero itself does.
+    expect(feeUsd(0.0000075)).toBe('< $0.0001');
+    expect(feeUsd(0)).toBe('$0.0000');
   });
 
   it('the hero’s dollars and cents, floored', () => {

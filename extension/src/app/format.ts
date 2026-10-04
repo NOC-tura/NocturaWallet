@@ -29,6 +29,8 @@ export function showFee(lamports: bigint): string {
 export function feeUsd(usd: number | null): string {
   if (usd === null) return '—';
   if (usd >= 0.01) return showUsd(usd);
+  // Below a hundredth of a cent the four places would read "$0.0000" for a fee that is not zero (plan-3 review L3).
+  if (usd > 0 && usd < 0.0001) return '< $0.0001';
   return `$${(Math.floor(usd * 10_000 + 1e-9) / 10_000).toFixed(4)}`;
 }
 

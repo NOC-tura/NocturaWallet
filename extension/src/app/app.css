@@ -613,3 +613,32 @@ a.btn {
 .s-sim .delta-row.app-after .lbl {
   color: var(--fg-secondary);
 }
+
+/* #20 confirm (plan 3): index.html #s20's inline styles — the quote line (11/14, --fg-tertiary, centred, tabular),
+   the first-time banner's title on its own line and its caption in --fg-secondary, the high-value eyebrow in
+   --danger and its fiat line in --fg-secondary — and the From/To values as a name over the address in groups of four. */
+.app-quote {
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--fg-tertiary);
+  padding: var(--space-2);
+  text-align: center;
+}
+.s-conf .first-time-banner .app-block {
+  display: block;
+  margin-bottom: 2px;
+}
+.s-conf .first-time-banner .app-secondary {
+  color: var(--fg-secondary);
+}
+.s-conf .review-card.high-value .eyebrow {
+  color: var(--danger);
+}
+.s-conf .review-card.high-value .fiat {
+  color: var(--fg-secondary);
+}
+.s-conf .detail-row .val.app-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

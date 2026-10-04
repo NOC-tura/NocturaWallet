@@ -17,7 +17,16 @@ export type ExtensionPage =
   | 'unlock.html?mode=accounts'
   | 'unlock.html?mode=unlock&return=created'
   | 'unlock.html?mode=unlock&return=imported'
-  | 'unlock.html?mode=import&source=retry';
+  | 'unlock.html?mode=import&source=retry'
+  | `unlock.html?mode=reauth&challenge=${string}`;
+
+/**
+ * #20's re-authentication page (spec §4.5 step 2): the one page built from data — a challenge id, checked as 32
+ * lowercase hex first (what the background issues). Anything else is null: no page opens.
+ */
+export function reauthPage(challengeId: string): ExtensionPage | null {
+  return /^[0-9a-f]{32}$/.test(challengeId) ? `unlock.html?mode=reauth&challenge=${challengeId}` : null;
+}
 
 export interface Platform {
   /** A new tab (the popup closes itself after). */
