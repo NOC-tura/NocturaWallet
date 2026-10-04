@@ -1758,9 +1758,11 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     engine `detail` (`.noc-mono`, ≤ 240 chars); `[Try again]` → #19; `[View on explorer]` →
     solscan (S5).
   - `network-error` (`state: 'failed'`, `failure: 'not-sent'`: the route's 400 rejection or the
-    cool-down): "Couldn't send"; the engine `detail` ("The network refused this transaction (…). No
-    funds moved." / "Not sent: the coordinator is cooling down after an earlier HTTP 403. No funds
-    moved."); "Reason · network-error"; `[Try again]` → #19 (disabled during the cool-down, D26).
+    cool-down), in 44d's layout: hero "Couldn't send"; hero sub "Funds are unchanged — the request never
+    reached a leader." (44d's sub, its second sentence verbatim); the reason banner "Reason ·
+    network-error" with the engine `detail` as its body, where 44d puts the cause ("The network refused
+    this transaction (…). No funds moved." / "Not sent: the coordinator is cooling down after an earlier
+    HTTP 403. No funds moved."); `[Try again]` → #19 (disabled during the cool-down, D26).
   - **extension-only generic** (`state: 'failed'`, `failure: null`, only from a record written by
     an older build): "Transaction failed" + `detail`; `[View on explorer]`.
   - `user-cancelled toast`: back on #11, the pill toast "Transaction cancelled. No fees charged."
@@ -1792,6 +1794,11 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     nothing and the class gate refuses a class with no rule in place.
   - **Plan 3 (Task 11) — the expired sub** is the engine record's own line (`detail`, its "Not confirmed — no
     funds moved."), as `network-error` shows its detail; the spec's line is the fallback only for a record without one.
+  - **Plan 3 (Task 17 fix round 1) — `network-error`'s sub:** 44d's first sentence ("Couldn't reach Solana
+    mainnet through your current RPC.") is not used: the extension has no user-chosen RPC, and in both `not-sent`
+    cases the route answered (a preflight refusal) or nothing was sent (the cool-down). Its second sentence is
+    true of both and is used verbatim. 44d's head "RPC timed out" stays "Couldn't send", and 44d's meta line
+    (rpc · http · timeout) is not built: the engine names no RPC and no timing.
   - **`insufficient-fee` state removed.** The engine never reports "fee too low", and priority is
     automatic (D15).
   - `rejected-by-program`'s Jupiter slippage content and `[Adjust slippage and retry]` removed
@@ -2446,6 +2453,14 @@ in the PR) found these differences that hold on every screen, declared here once
 the design's plain `.title` and `.step` (a `.noc-h1` title wrapped and clipped on #54; a `.noc-overline` step read
 "3 OF 4", "90 S TIMEOUT"). Its other differences are declared in §4.6 and §4.8, or carried to the controller in the
 PR.
+
+Fix round 1 (CSS in `src/app/app.css`, the hand-written sheet): every UI screen's direct `.top-bar` and
+`.sticky-bar` are `position: sticky`, so the title and the CTAs stay in view while the content scrolls, as §1.4
+and the mockups' frame have it. This applies to every flow screen, and to #13's and #27's bars, which the selector
+also reaches. `e2e/visual-send.spec.ts` asserts it for every flow screen. Also in that round: #20's headline (no
+UA margin; the recipient centred at 16/24 mono) and #54 sent-again's "Watching" in `--success`. **Same as the
+design:** `word-break: break-all` on `.s-sim .check-row .copy .meta` and `.s-conf .detail-row .val` breaks prose
+mid-word ("cha nged", "Noctur a's"), as the design's own render does ("Ski p", "62.48 21").
 
 ---
 

@@ -763,3 +763,34 @@ a.btn {
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+/* Plan 3 (Task 17 fix round 1, C1): a screen's top bar and action bar stay in view while its content scrolls (spec
+   §1.4; the mockups' phone frame pins both). The content region scrolls the whole screen here, so without this
+   #19's [Continue to confirm], #20's [Send] and #21's, #44's and #54's CTAs sat below the fold at 412 × 600. */
+.app-content > .screen > .top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-base);
+}
+.app-content > .screen > .sticky-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: auto;
+}
+/* C2: #20's headline as index.html #s20 draws it — the design resets every margin (an h1 kept its UA margin), and
+   the recipient is centred at 16/24 mono; web's .addr-groups sets its own 12/20 and is unchanged elsewhere. */
+.app-content .s-conf .headline {
+  margin: 0;
+}
+.s-conf .headline .recipient .addr-groups {
+  justify-content: center;
+  font-size: 16px;
+  line-height: 24px;
+}
+/* C3: #54 sent-again's "Status · Watching" in --success (54d); the design's grid value rule (4 classes) outranks
+   the one-class .app-success. */
+.s-stuck .progress-state .meta-grid .v.app-success {
+  color: var(--success);
+}

@@ -19,6 +19,9 @@ export const FAILED_TEXT = {
   rejectedHead: 'Program rejected the transaction',
   rejectedSub: 'The on-chain program returned an error. The network fee was charged; the amount did not move.',
   notSentHead: "Couldn't send",
+  // index.html #s44 network-error (44d): its hero sub's second sentence, verbatim. The first ("Couldn't reach Solana
+  // mainnet through your current RPC.") names a user-chosen RPC the extension does not have, and the route did answer.
+  notSentSub: 'Funds are unchanged — the request never reached a leader.',
   genericHead: 'Transaction failed',
   tryAgain: 'Try again',
   edit: 'Edit transaction',
@@ -50,9 +53,17 @@ export function Failed({record, onTryAgain, onEdit, onDetails}: {record: Pending
   // The design's back arrow returns to #12 with the form kept: the same as [Edit transaction].
   useEscape(edit);
   const head = kind === 'blockhash-expired' ? FAILED_TEXT.expiredHead : kind === 'rejected-by-program' ? FAILED_TEXT.rejectedHead : kind === 'network-error' ? FAILED_TEXT.notSentHead : FAILED_TEXT.genericHead;
-  // The engine's own line is the sub (expired: its NOT_CONFIRMED; not-sent, generic: its detail); rejected keeps the
-  // spec's adapted sentence (its detail is the error, shown in the banner). expiredSub only when an expired record has none.
-  const sub = kind === 'rejected-by-program' ? FAILED_TEXT.rejectedSub : kind === 'blockhash-expired' ? record.detail ?? FAILED_TEXT.expiredSub : record.detail ?? '';
+  // The sub: expired, the engine's own line (its NOT_CONFIRMED; expiredSub only when the record has none); rejected, the
+  // spec's adapted sentence; not-sent, 44d's own sub (its cause, the engine detail, is the reason banner's body, as 44d
+  // draws it); generic, the detail.
+  const sub =
+    kind === 'rejected-by-program'
+      ? FAILED_TEXT.rejectedSub
+      : kind === 'blockhash-expired'
+        ? record.detail ?? FAILED_TEXT.expiredSub
+        : kind === 'network-error'
+          ? FAILED_TEXT.notSentSub
+          : record.detail ?? '';
   const tryAgain = (
     <LockedButton className="btn btn-primary" disabled={refused} onPress={() => onTryAgain(record.intent)}>
       <ExtIcon name="refresh" size={18} />
@@ -85,6 +96,7 @@ export function Failed({record, onTryAgain, onEdit, onDetails}: {record: Pending
           <div className="s9-reason-banner">
             <span className="label">Reason · {kind}</span>
             {kind === 'blockhash-expired' ? <p className="body">{FAILED_TEXT.expiredWhy}</p> : null}
+            {kind === 'network-error' && record.detail !== null ? <p className="body">{record.detail}</p> : null}
             {kind === 'rejected-by-program' && record.detail !== null ? <span className="meta">{record.detail.slice(0, 240)}</span> : null}
           </div>
         )}

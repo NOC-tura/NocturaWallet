@@ -18,6 +18,35 @@ const shot = async (page: Page, name: string, end = false) => {
   await page.screenshot({path: `${DIR}/${name}-end.png`});
   await page.locator('main.app-content').evaluate(e => e.scrollTo(0, 0));
 };
+/**
+ * Task 17 fix round 1 (C1, spec §1.4): the bars are pinned. With the content at its top, the action bar and the
+ * screen's primary CTA lie inside the 600 px popup, no scroll needed; with the content scrolled to its end (`scrolls`:
+ * a screen taller than the popup, asserted so the check is not vacuous), the top bar is still at the top and the action
+ * bar still in view.
+ */
+const pinned = async (p: Page, cta: string, o: {scrolls?: boolean} = {}) => {
+  const main = p.locator('main.app-content');
+  const bar = p.locator('main.app-content > .screen > .sticky-bar');
+  const top = p.locator('main.app-content > .screen > .top-bar');
+  const inView = async (what: string, box: {x: number; y: number; width: number; height: number} | null) => {
+    expect(box, what).not.toBeNull();
+    expect(box?.y ?? -1, what).toBeGreaterThanOrEqual(0);
+    expect((box?.y ?? 601) + (box?.height ?? 0), what).toBeLessThanOrEqual(600);
+  };
+  await main.evaluate(e => e.scrollTo(0, 0));
+  await inView(`${cta}: the CTA`, await p.getByRole('button', {name: cta, exact: true}).boundingBox());
+  await inView(`${cta}: the action bar`, await bar.boundingBox());
+  if (o.scrolls === true) {
+    expect(await main.evaluate(e => e.scrollHeight > e.clientHeight + 40), `${cta}: a screen taller than the popup`).toBe(true);
+    await main.evaluate(e => e.scrollTo(0, e.scrollHeight));
+    expect(await main.evaluate(e => e.scrollTop), `${cta}: scrolled`).toBeGreaterThan(0);
+    const t = await top.boundingBox();
+    await inView(`${cta}: the top bar after the scroll`, t);
+    expect(t?.y ?? -1, `${cta}: the top bar at the top`).toBeLessThanOrEqual(1);
+    await inView(`${cta}: the action bar after the scroll`, await bar.boundingBox());
+    await main.evaluate(e => e.scrollTo(0, 0));
+  }
+};
 const toSend = async (p: Page) => {
   await expect(p.getByText('10.0000 SOL', {exact: true})).toBeVisible({timeout: 30_000});
   await p.getByRole('button', {name: 'Send', exact: true}).click();
@@ -49,6 +78,7 @@ test('visual: #11 with Send, #12’s states, #43, #19’s states', async () => {
     await p.getByRole('button', {name: 'Send', exact: true}).click();
     await expect(p.getByText('Set automatically — shown on the next step')).toBeVisible();
     await expect(p.getByLabel('Recipient', {exact: true})).toHaveAttribute('placeholder', 'Solana address');
+    await pinned(p, 'Send SOL');
     await shot(p, '12-idle');
     await p.getByLabel('Recipient', {exact: true}).fill('7xKXtgZASfW87dQQQbadinput123');
     await expect(p.getByText('Not a valid Solana address — check length & characters')).toBeVisible();
@@ -62,6 +92,7 @@ test('visual: #11 with Send, #12’s states, #43, #19’s states', async () => {
     await fill(p, RECIPIENT, '0.5');
     await expect(p.getByText('First-time recipient')).toBeVisible();
     await expect(p.locator('.available')).toHaveText('≈ $75.00 · 5% of balance — re-auth required');
+    await pinned(p, 'Review & unlock to send', {scrolls: true});
     await shot(p, '12-first-time', true);
     await p.getByLabel('Amount').fill('75');
     await expect(p.getByText(/Insufficient balance — short by/)).toBeVisible();
@@ -75,10 +106,12 @@ test('visual: #11 with Send, #12’s states, #43, #19’s states', async () => {
     await p.locator('.sticky-bar button').click();
     await expect(p.getByText('Simulating on Solana mainnet')).toBeVisible();
     await expect(p.getByRole('button', {name: 'Simulating…'})).toBeDisabled();
+    await pinned(p, 'Simulating…');
     await shot(p, '19-simulating');
     release();
     await expect(p.getByText('Simulation passed')).toBeVisible({timeout: 30_000});
     await expect(p.getByText('Recipient is a regular wallet')).toBeVisible();
+    await pinned(p, 'Continue to confirm', {scrolls: true});
     await shot(p, '19-ready', true);
     await cancelToSend(p);
     // #19 failed: the network would reject it.
@@ -102,6 +135,8 @@ test('visual: #11 with Send, #12’s states, #43, #19’s states', async () => {
     await p.locator('.sticky-bar button').click();
     await expect(p.getByText('No answer from the Noctura server within 20 s.')).toBeVisible({timeout: 30_000});
     await expect(p.getByText('Cannot verify recipient type')).toBeVisible();
+    await pinned(p, 'Retry simulation', {scrolls: true});
+    await pinned(p, 'Cancel');
     await shot(p, '19-failed-unreachable');
     h.fake.network = 'ok';
     contained(h);
@@ -121,6 +156,7 @@ test('visual: #20’s states — first-time, high-value, the proof in #10 with i
     await p.getByRole('button', {name: 'Continue to confirm'}).click();
     await expect(p.getByText("You've never sent to this address")).toBeVisible();
     await expect(p.getByText('Confirmation opens in a new tab.')).toBeVisible();
+    await pinned(p, 'Send 0.0100 SOL', {scrolls: true});
     await shot(p, '20-first-time', true);
     await p.getByRole('button', {name: 'Back'}).click();
     await expect(p.getByText('Simulation passed')).toBeVisible({timeout: 30_000});
@@ -130,6 +166,7 @@ test('visual: #20’s states — first-time, high-value, the proof in #10 with i
     await p.getByRole('button', {name: 'Continue to confirm'}).click();
     await expect(p.getByText('High-value transfer')).toBeVisible();
     await expect(p.getByText("You'll confirm with your password (or passkey) in a new tab before this is sent.")).toBeVisible();
+    await pinned(p, 'Send 1.0000 SOL', {scrolls: true});
     await shot(p, '20-high-value', true);
     // The proof: #10 in a new tab, its fee rows as §4.5 defines them (the priority row, plan 3 carry 1).
     const opened = h.ctx.waitForEvent('page');
@@ -143,6 +180,7 @@ test('visual: #20’s states — first-time, high-value, the proof in #10 with i
     await tab.click('#ra-confirm');
     await expect(tab.getByText('Confirmed. Review the fresh quote and send.')).toBeVisible({timeout: 60_000});
     await tab.setViewportSize({width: 412, height: 600});
+    await pinned(tab, 'Send 1.0000 SOL', {scrolls: true});
     await shot(tab, '20-confirmed', true);
     await tab.close();
     // The quote ends untouched, on a popup whose clock runs ahead: one automatic re-prepare, then "Quote expired —
@@ -176,6 +214,7 @@ test('visual: #21 and #54 — broadcasting, slow, stuck, sending again, sent aga
     await r.getByRole('button', {name: 'Continue to confirm'}).click();
     await r.getByRole('button', {name: 'Send 0.0100 SOL'}).click();
     await expect(r.getByText('Sent successfully')).toBeVisible({timeout: 30_000});
+    await pinned(r, 'Done', {scrolls: true});
     await shot(r, '21-success', true);
     await r.close();
     h.fake.mode = 'expire';
@@ -189,6 +228,7 @@ test('visual: #21 and #54 — broadcasting, slow, stuck, sending again, sent aga
     await shot(p, '20-resume');
     await p.getByRole('button', {name: 'Send 0.0100 SOL'}).click();
     await expect(p.getByText('Broadcasting transaction…')).toBeVisible({timeout: 30_000});
+    await pinned(p, 'Waiting for confirmation', {scrolls: true});
     await shot(p, '21-broadcasting', true);
     await p.clock.fastForward(83_000);
     await expect(p.getByText('Taking longer than usual')).toBeVisible();
@@ -197,6 +237,7 @@ test('visual: #21 and #54 — broadcasting, slow, stuck, sending again, sent aga
     await p.clock.resume();
     await p.clock.fastForward(8_000);
     await expect(p.getByText('Transaction stuck')).toBeVisible();
+    await pinned(p, 'Send again (same transaction)', {scrolls: true});
     await shot(p, '54-stuck', true);
     // #26's pending row, from a second popup.
     const other = await h.openPopup();
@@ -212,10 +253,20 @@ test('visual: #21 and #54 — broadcasting, slow, stuck, sending again, sent aga
     await shot(p, '54-sending-again');
     release();
     await expect(p.getByText('The same transaction was sent to the network again. Its signature is unchanged, so only one copy can land.')).toBeVisible({timeout: 30_000});
+    // C3: "Status · Watching" in --success, as 54d draws it — the computed colour, not merely the class.
+    const watching = await p.locator('.s-stuck .meta-grid .v', {hasText: 'Watching'}).evaluate(e => {
+      const probe = document.body.appendChild(document.createElement('span'));
+      probe.style.color = 'var(--success)';
+      const colors = {watching: getComputedStyle(e).color, success: getComputedStyle(probe).color};
+      probe.remove();
+      return colors;
+    });
+    expect(watching.watching).toBe(watching.success);
     await shot(p, '54-sent-again');
     const pending = (await msg(p, {type: 'wallet.pending'})).data as {lastValidBlockHeight: number}[];
     h.fake.blockHeight = (pending[0]?.lastValidBlockHeight ?? 0) + 33;
     await expect(p.getByText('Not confirmed — no funds moved.')).toBeVisible({timeout: 45_000});
+    await pinned(p, 'Try again');
     await shot(p, '54-expired');
     contained(h);
   } finally {
@@ -240,6 +291,10 @@ test('visual: #44 — blockhash expired, rejected by the program, refused by the
     await send(a);
     await expect(a.getByText("Couldn't send")).toBeVisible({timeout: 30_000});
     await expect(a.getByText('Reason · network-error')).toBeVisible();
+    // C4: 44d's layout — its sub, and the cause (the route's refusal) as the reason banner's body.
+    await expect(a.getByText('Funds are unchanged — the request never reached a leader.')).toBeVisible();
+    await expect(a.locator('.s9-reason-banner .body')).toHaveText('The network refused this transaction (rejected: Blockhash not found). No funds moved.');
+    await pinned(a, 'Try again');
     await shot(a, '44-network-error');
     h.fake.broadcastReject = false;
     await a.close();
@@ -248,6 +303,7 @@ test('visual: #44 — blockhash expired, rejected by the program, refused by the
     const b = await h.openPopup();
     await send(b);
     await expect(b.getByText('Program rejected the transaction')).toBeVisible({timeout: 30_000});
+    await pinned(b, 'Try again', {scrolls: true});
     await shot(b, '44-rejected-by-program', true);
     await b.close();
     // Never seen, past its blockhash before #54 showed: blockhash-expired.
@@ -258,6 +314,7 @@ test('visual: #44 — blockhash expired, rejected by the program, refused by the
     const pending = (await msg(c, {type: 'wallet.pending'})).data as {lastValidBlockHeight: number; state: string}[];
     h.fake.blockHeight = (pending.find(r => r.state === 'pending')?.lastValidBlockHeight ?? 0) + 33;
     await expect(c.getByText('Recent blockhash expired')).toBeVisible({timeout: 45_000});
+    await pinned(c, 'Try again', {scrolls: true});
     await shot(c, '44-blockhash-expired', true);
     await c.close();
     // #11's cancelled toast after #20's Cancel, under a paused clock (1.8 s).

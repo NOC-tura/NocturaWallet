@@ -21,6 +21,8 @@ const SPEC = {
   rejectedHead: 'Program rejected the transaction',
   rejectedSub: 'The on-chain program returned an error. The network fee was charged; the amount did not move.',
   notSentHead: "Couldn't send",
+  // index.html #s44 network-error's hero sub, its second sentence verbatim (Task 17 fix round 1, C4).
+  notSentSub: 'Funds are unchanged — the request never reached a leader.',
   genericHead: 'Transaction failed',
 };
 const caption = () => document.querySelector('.scroll-area > .noc-caption')?.textContent ?? null;
@@ -86,11 +88,15 @@ describe('#44 tx-failed', () => {
     expect(nav.onDetails).toHaveBeenCalledWith(sig(7));
   });
 
-  it('network-error (failed, not-sent): "Couldn\'t send", the engine detail as the caption; [Try again]', async () => {
+  it('network-error (failed, not-sent): "Couldn\'t send", the design\'s sub, the engine detail as the reason banner\'s body (44d); [Try again]', async () => {
     const detail = 'The network refused this transaction (rejected: Blockhash not found). No funds moved.';
     await renderFailed(record({failure: 'not-sent', detail}));
     expect(await screen.findByText(SPEC.notSentHead)).toBeTruthy();
-    expect(text()).toEqual([SPEC.notSentHead, detail, 'Reason · network-error']);
+    expect(text()).toEqual([SPEC.notSentHead, SPEC.notSentSub, 'Reason · network-error']);
+    // 44d puts the cause in the banner's body (`.s9-reason-banner .body`), never an empty label box.
+    expect(document.querySelector('.s9-reason-banner .body')?.textContent).toBe(detail);
+    expect(document.querySelector('.s9-reason-banner .meta')).toBeNull();
+    expect(unstyledClasses(document.querySelector('.screen')!, SELECTORS)).toEqual([]);
     expect(caption()).toBeNull();
     expect(screen.getByRole('button', {name: FAILED_TEXT.tryAgain})).toBeTruthy();
     expect(screen.queryByRole('link')).toBeNull();
