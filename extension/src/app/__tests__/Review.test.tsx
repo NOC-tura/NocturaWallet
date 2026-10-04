@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import {useEffect} from 'react';
 import {act, cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react';
 import {renderInWallet, sendingReader, setupWallet, type Wallet, type WalletOptions} from './harness';
 import {REVIEW_TEXT, Review} from '../screens/Review';
@@ -73,7 +74,7 @@ describe('#19 tx-simulate', () => {
     expect(checks).toEqual([
       ['check-row ok', 'No interactions with unknown contracts', 'SystemProgram · transfer only', 'PASS'],
       ['check-row ok', 'No token approvals granted', 'Native SOL transfer · zero allowances changed', 'PASS'],
-      ['check-row ok', 'Recipient is a regular wallet', `no executable account at ${COUNTERPARTY.slice(0, 4)}…`, 'PASS'],
+      ['check-row ok', 'Recipient is a regular wallet', `no executable account at ${COUNTERPARTY.slice(0, 4)}…${COUNTERPARTY.slice(-4)}`, 'PASS'],
     ]);
     expect(rows('delta-card')).toEqual([
       ['Sending', '− 0.0100 SOL'],
@@ -150,6 +151,21 @@ describe('#19 tx-simulate', () => {
     expect(await screen.findByText('This token is spread across several accounts in your wallet. Send at most 7.0000 NOC, or move it into one account first.')).toBeTruthy();
     expect(screen.queryByRole('button', {name: REVIEW_TEXT.retry})).toBeNull();
     cleanup();
+    // A holding above 2^53 base units: N is read as a BigInt, every unit exact (a Number would read …992).
+    const huge = 9_007_199_254_740_993n;
+    await renderReview(
+      {...NOC, amount: huge + 1n},
+      {
+        reader: sendingReader({
+          getTokenAccountsByOwner: async owner => [
+            {pubkey: 'FpV5mr137k3GfLJqqWnZer12v2KxZfEEQzxXb6sJLABU', mint: 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW', owner, amount: huge, decimals: 9},
+            {pubkey: '4G8U5nQtNciNaEL7Zimb4DhqeanDMevXp7MLtFvUojwF', mint: 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW', owner, amount: 6_000_000_000n, decimals: 9},
+          ],
+        }),
+      },
+    );
+    expect(await screen.findByText('This token is spread across several accounts in your wallet. Send at most 9,007,199.254740993 NOC, or move it into one account first.')).toBeTruthy();
+    cleanup();
     // More than the 4 200 NOC held in all: insufficient, naming the token.
     await renderReview({...NOC, amount: 5_000_000_000_000n});
     expect(await screen.findByText('Not enough NOC in this account.')).toBeTruthy();
@@ -217,6 +233,25 @@ describe('#19 tx-simulate', () => {
     expect(screen.queryByText('The network would reject this transfer')).toBeNull();
   });
 
+  it('the D26 banner only for a coordinator-refused refusal: a refused net mode does not hide another refusal’s copy', async () => {
+    function Refuse() {
+      const {report} = useWallet();
+      useEffect(() => report('coordinator-refused'), [report]);
+      return null;
+    }
+    await renderInWallet(
+      <>
+        <Refuse />
+        <Review account={ACCOUNT.publicKey} intent={SOL} notice={null} {...nav} />
+      </>,
+      {reader: sendingReader({getLatestBlockhash: async () => Promise.reject(new Error('boom'))}), before: knownRecipient},
+    );
+    expect(await screen.findByText('Something went wrong while checking this transfer.')).toBeTruthy();
+    expect(screen.queryByText(REFUSED_TEXT)).toBeNull();
+    // The app is in the D26 state: Retry offered (a retry can help this refusal) but disabled.
+    expect((screen.getByRole('button', {name: REVIEW_TEXT.retry}) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('failed — in-flight: #12’s pending banner with [View it], no Retry', async () => {
     const record = pendingRecord({id: 'p1', account: ACCOUNT.publicKey, signature: '5'.repeat(88), createdAt: Date.now(), intent: {token: 'SOL', recipient: COUNTERPARTY, amount: '1'}});
     await renderReview(SOL, {
@@ -261,6 +296,48 @@ describe('#19 tx-simulate', () => {
     expect(nav.onConfirm).toHaveBeenCalledTimes(1);
   });
 
+  it('Continue hands #20 the id of the prepared send it showed (the binding #20 checks)', async () => {
+    const w = await renderReview(SOL);
+    await ready();
+    const held = await w.engine.preparedFor(ACCOUNT.publicKey);
+    const id = held.ok ? held.data?.id : undefined;
+    expect(id).toMatch(/^[0-9a-f]{32}$/);
+    fireEvent.click(screen.getByRole('button', {name: REVIEW_TEXT.continue}));
+    await waitFor(() => expect(nav.onConfirm).toHaveBeenCalledWith(id));
+  });
+
+  it('Continue after the same intent was prepared again elsewhere: the newer send is shown, then handed over by its own id', async () => {
+    const w = await renderReview(SOL);
+    await ready();
+    const shown = await w.engine.preparedFor(ACCOUNT.publicKey);
+    const again = await w.engine.prepareSend(ACCOUNT.publicKey, SOL);
+    const [oldId, newId] = [shown.ok ? shown.data?.id : undefined, again.ok ? again.data.id : undefined];
+    expect(newId).not.toBe(oldId);
+    fireEvent.click(screen.getByRole('button', {name: REVIEW_TEXT.continue}));
+    await new Promise(r => setTimeout(r, 20));
+    expect(nav.onConfirm).not.toHaveBeenCalled();
+    // The live one of this intent is shown again, not prepared anew (the two: #19's first and the test's own).
+    expect(w.prepares()).toHaveLength(2);
+    await continueEnabled();
+    fireEvent.click(screen.getByRole('button', {name: REVIEW_TEXT.continue}));
+    await waitFor(() => expect(nav.onConfirm).toHaveBeenCalledWith(newId));
+    expect(nav.onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('Continue past the prepared send’s 30 s life: reviewed again (prepared anew), never handed to #20 expired', async () => {
+    const w = await renderReview(SOL);
+    await ready();
+    w.deps.clock.t += 30_000;
+    fireEvent.click(screen.getByRole('button', {name: REVIEW_TEXT.continue}));
+    await waitFor(() => expect(w.prepares()).toHaveLength(2));
+    await ready();
+    expect(nav.onConfirm).not.toHaveBeenCalled();
+    const fresh = await w.engine.preparedFor(ACCOUNT.publicKey);
+    await continueEnabled();
+    fireEvent.click(screen.getByRole('button', {name: REVIEW_TEXT.continue}));
+    await waitFor(() => expect(nav.onConfirm).toHaveBeenCalledWith(fresh.ok ? fresh.data?.id : 'none'));
+  });
+
   it('Continue hands over only the prepared send shown: one the background replaced since is reviewed again, never passed to #20', async () => {
     const w = await renderReview(SOL);
     await ready();
@@ -277,19 +354,82 @@ describe('#19 tx-simulate', () => {
     await waitFor(() => expect(nav.onConfirm).toHaveBeenCalledTimes(1));
   });
 
-  it('Cancel, the back arrow and Esc discard the prepared send first (E7), then go back to #12 — once', async () => {
-    for (const leave of ['Cancel', 'Back', 'Escape']) {
-      vi.clearAllMocks();
-      const w = await renderReview(SOL);
-      await ready();
-      if (leave === 'Escape') fireEvent.keyDown(document, {key: 'Escape'});
-      else fireEvent.click(screen.getAllByRole('button', {name: leave})[0]!);
-      fireEvent.click(screen.getAllByRole('button', {name: 'Cancel'})[0]!);
-      await waitFor(() => expect(nav.onCancel).toHaveBeenCalledTimes(1));
-      expect(w.sent.filter(x => x.type === 'wallet.discardPrepared')).toHaveLength(1);
-      expect(await w.engine.preparedFor(ACCOUNT.publicKey)).toEqual({ok: true, data: null});
-      cleanup();
-    }
+  /** One press of each way back: only that press, nothing else that could discard. */
+  const press = (leave: 'Cancel' | 'Back' | 'Escape') => {
+    if (leave === 'Escape') fireEvent.keyDown(document, {key: 'Escape'});
+    else fireEvent.click(screen.getByRole('button', {name: leave}));
+  };
+  it.each(['Cancel', 'Back', 'Escape'] as const)('%s alone discards the prepared send first (E7), then goes back to #12', async leave => {
+    let discarded = false;
+    const w = await renderReview(SOL);
+    await ready();
+    nav.onCancel.mockImplementation(() => {
+      // Back to #12 only once the discard has answered.
+      discarded = w.sent.some(x => x.type === 'wallet.discardPrepared');
+    });
+    press(leave);
+    await waitFor(() => expect(nav.onCancel).toHaveBeenCalledTimes(1));
+    expect(discarded).toBe(true);
+    expect(w.sent.filter(x => x.type === 'wallet.discardPrepared')).toHaveLength(1);
+    expect(await w.engine.preparedFor(ACCOUNT.publicKey)).toEqual({ok: true, data: null});
+    nav.onCancel.mockReset();
+  });
+
+  it('a double press of the ways back leaves once: one discard, one #12 (rule 6)', async () => {
+    const w = await renderReview(SOL);
+    await ready();
+    press('Cancel');
+    press('Cancel');
+    press('Back');
+    press('Escape');
+    await waitFor(() => expect(nav.onCancel).toHaveBeenCalledTimes(1));
+    await new Promise(r => setTimeout(r, 20));
+    expect(nav.onCancel).toHaveBeenCalledTimes(1);
+    expect(w.sent.filter(x => x.type === 'wallet.discardPrepared')).toHaveLength(1);
+  });
+
+  it('a discard that fails keeps the user on #19 with a line, never back to #12 with the prepared send left behind; trying again leaves', async () => {
+    let failures = 2; // the engine retries a thrown transport once
+    const w = await renderReview(SOL, {
+      gate: m => {
+        if ((m as {type: string}).type !== 'wallet.discardPrepared' || failures === 0) return undefined;
+        failures -= 1;
+        return Promise.reject(new Error('service worker restarting'));
+      },
+    });
+    await ready();
+    press('Cancel');
+    expect(await screen.findByText(REVIEW_TEXT.leaveFailed)).toBeTruthy();
+    expect(nav.onCancel).not.toHaveBeenCalled();
+    expect(screen.getByText(REVIEW_TEXT.passed)).toBeTruthy();
+    press('Back');
+    await waitFor(() => expect(nav.onCancel).toHaveBeenCalledTimes(1));
+    expect(await w.engine.preparedFor(ACCOUNT.publicKey)).toEqual({ok: true, data: null});
+  });
+
+  it('a discard that fails while simulating: the cut-off simulation starts again, so the screen is never stuck', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(r => (release = r));
+    let first = true;
+    let failures = 2;
+    await renderReview(SOL, {
+      gate: m => {
+        const type = (m as {type: string}).type;
+        if (type === 'wallet.discardPrepared' && failures > 0) {
+          failures -= 1;
+          return Promise.reject(new Error('service worker restarting'));
+        }
+        if (type !== 'wallet.prepareSend' || !first) return undefined;
+        first = false;
+        return held;
+      },
+    });
+    await screen.findByText(REVIEW_TEXT.simulating);
+    press('Cancel');
+    expect(await screen.findByText(REVIEW_TEXT.leaveFailed)).toBeTruthy();
+    await ready();
+    await act(async () => release());
+    expect(nav.onCancel).not.toHaveBeenCalled();
   });
 
   it('a prepare that lands after the screen was left is discarded too: nothing outlives the review', async () => {
@@ -394,9 +534,17 @@ describe('#19 tx-simulate', () => {
         const held = await w.engine.preparedFor(ACCOUNT.publicKey);
         expect(held.ok && held.data?.intent.amount).toBe(10_000_000n);
       });
-      // The old draft's prepared send landed last in the background; the screen still shows the new draft …
+      // The old draft's prepared send landed last in the background; the screen still shows the new draft — its
+      // intent, and what the engine prepared for it: B's delta, B's After (A's would read 62.47209495) …
       expect(amountShown()).toBe('0.0200 SOL');
       expect(screen.getByText(REVIEW_TEXT.passed)).toBeTruthy();
+      expect(rows('delta-card')).toEqual([
+        ['Sending', '− 0.0200 SOL'],
+        ['Network fee', '− 0.000005 SOL'],
+        ['Priority', '− 0.00000005 SOL'],
+        ['No Noctura fee (status unknown)', null],
+        ['After', '62.46209495 SOL'],
+      ]);
       // … and Continue does not hand the old one to #20: it prepares the new draft again.
       fireEvent.click(screen.getByRole('button', {name: REVIEW_TEXT.continue}));
       await waitFor(() => expect(sent.filter(x => x.type === 'wallet.prepareSend').map(x => x.intent?.amount)).toEqual(['10000000', '20000000', '20000000']));

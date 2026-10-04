@@ -1438,7 +1438,7 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
       PASS;
     - "No token approvals granted" / "Native SOL transfer · zero allowances changed" or "Token
       transfer · zero allowances changed" — PASS;
-    - "Recipient is a regular wallet" / "no executable account at <first group>…" — PASS for
+    - "Recipient is a regular wallet" / "no executable account at <first four>…<last four>" (the design's "Gabc…xyz9") — PASS for
       `wallet`; for `new`: "Recipient is a new address" / "no account exists yet — this transfer
       creates it" — PASS; for `program`: "Recipient is a program, not a wallet" / "funds sent to a
       program address may not be recoverable" — WARNING (orange); for `other`: "Recipient is not a
@@ -1493,7 +1493,14 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     older run, or an abandoned review, left in flight landed after it, or that review's late discard
     removed it) or has expired, #19 reviews again (the live one of this intent, or a fresh prepare)
     instead of opening #20, because #20 shows whatever `wallet.preparedFor` answers. A prepare that lands for an
-    account no longer shown is discarded, the same as one that lands after the screen was left.
+    account no longer shown is discarded, the same as one that lands after the screen was left. Continue hands
+    #20 the id of the prepared send it showed (plan 3 Task 8 fix round 1 ruling); #20 refuses a flow entry
+    whose `wallet.preparedFor` answers another id.
+  - **A discard that fails (plan 3, controller addition):** when leaving, #19 does not go back. It shows "Something went
+    wrong. Try again." (danger banner) and stays, so a prepared send and its challenge are never left behind;
+    a simulation that the leaving cut off is started again. The D26 banner appears only for a `coordinator-refused`
+    refusal, never because the app's net state is refused (a stale mode must not hide another refusal's
+    copy); in that state Retry is disabled whatever the code.
 - **Differs:**
   - **Plan 3:** the simulating footer reads "Noctura server · simulateTransaction" without "· N
     instructions": the count is known only once the engine has built the message, which is what

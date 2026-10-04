@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, useState, type ReactNode} from 'react';
 import {useWallet} from '../WalletContext';
-import {ago, showAmount} from '../format';
+import {ago, shortAddress, showAmount} from '../format';
 import {feeRows, sameIntent, showExact, showLamports} from '../send/rules';
 import {AddressGroups} from '../../../../web/src/ui/AddressGroups';
 import {TopBar} from '../ui/TopBar';
@@ -33,6 +33,8 @@ export const REVIEW_TEXT = {
   senderBelowRent: 'This would leave less than 0.00089088 SOL in your account, which Solana does not allow. Send less, so at least that much stays.',
   /** Controller addition — confirmed by the owner 2026-10-02 (plan 3, carry 2): refused before anything is simulated, or by the simulation. */
   recipientBelowRent: 'This address has no Solana account yet. A new account needs at least 0.00089088 SOL, so send at least that much.',
+  /** Leaving failed: the prepared send could not be discarded (E7), so #19 stays (the COMMON form of a failed action). */
+  leaveFailed: 'Something went wrong. Try again.',
 } as const;
 
 /** A refusal #19 shows, from the engine's code (spec §4.4). */
@@ -70,7 +72,8 @@ export function Review({
   intent: Intent;
   notice: 'confirmation-expired' | null;
   onCancel: () => void;
-  onConfirm: () => void;
+  /** Hands over the prepared send this screen showed, by id: #20 refuses a flow entry whose preparedFor is another. */
+  onConfirm: (preparedId: string) => void;
   onViewPending: (p: Pending) => void;
 }) {
   const m = useWallet();
@@ -82,6 +85,7 @@ export function Review({
   const [startedAt, setStartedAt] = useState(clock);
   const [cache, setCache] = useState<{sol: bigint; at: number} | null>(null);
   const [open, setOpen] = useState<Pending | null>(null);
+  const [leaveFailed, setLeaveFailed] = useState(false);
   const now = useNow(prepared === null && failure === null ? 100 : 30_000, clock);
   /** The run in flight; a reply for an older run, or after the screen was left, is dropped. */
   const run = useRef(0);
@@ -141,11 +145,19 @@ export function Review({
   const leaving = useRef(false);
   const leave = async () => {
     if (leaving.current) return;
+    const busy = prepared === null && failure === null;
     leaving.current = true;
     left.current = true;
     run.current += 1;
-    await engine.discardPrepared(account);
-    onCancel();
+    setLeaveFailed(false);
+    const r = await engine.discardPrepared(account);
+    if (r.ok) return onCancel();
+    // Not discarded: never leave a prepared send and its challenge behind (E7). Stay, say so, and let the user try
+    // again; a simulation the leaving cut off is started again, so the screen is never stuck on "Simulating…".
+    leaving.current = false;
+    left.current = false;
+    setLeaveFailed(true);
+    if (busy) void simulate(false);
   };
   useEscape(() => void leave());
 
@@ -162,7 +174,7 @@ export function Review({
     const mine = run.current;
     const current = await engine.preparedFor(account);
     if (run.current !== mine) return;
-    if (current.ok && current.data !== null && current.data.id === shown.id && !current.data.expired && sameIntent(current.data.intent, intent)) return onConfirm();
+    if (current.ok && current.data !== null && current.data.id === shown.id && !current.data.expired && sameIntent(current.data.intent, intent)) return onConfirm(shown.id);
     await simulate(false);
   };
 
@@ -187,10 +199,18 @@ export function Review({
       {REVIEW_TEXT.cancel}
     </button>
   );
-  const expiredNotice = notice === 'confirmation-expired' ? <Banner tone="warning" title={REVIEW_TEXT.confirmationExpired} /> : null;
+  const expiredNotice = (
+    <>
+      {leaveFailed ? <Banner tone="danger" title={REVIEW_TEXT.leaveFailed} /> : null}
+      {notice === 'confirmation-expired' ? <Banner tone="warning" title={REVIEW_TEXT.confirmationExpired} /> : null}
+    </>
+  );
 
   if (failure !== null) {
-    const refused = failure.code === 'coordinator-refused' || m.net.mode === 'refused';
+    // The D26 banner only for this refusal's own code: a refused net mode left from another read must not hide
+    // another refusal's copy. Retry stays disabled while the app is in the D26 state, whatever the code.
+    const refused = failure.code === 'coordinator-refused';
+    const retryOff = refused || m.net.mode === 'refused';
     const unreachable = failure.code === 'unreachable';
     const online = typeof navigator === 'undefined' || navigator.onLine !== false;
     const eyebrow = unreachable ? (online ? 'Could not reach the Noctura server' : "You're offline") : REVIEW_TEXT.couldNot;
@@ -212,7 +232,7 @@ export function Review({
       );
     } else banner = failureBanner(failure, token);
     const retry = NO_RETRY.has(failure.code) ? null : (
-      <LockedButton className="btn btn-primary" disabled={refused} onPress={() => simulate(true)}>
+      <LockedButton className="btn btn-primary" disabled={retryOff} onPress={() => simulate(true)}>
         <ExtIcon name="refresh" size={18} />
         {REVIEW_TEXT.retry}
       </LockedButton>
@@ -317,7 +337,7 @@ export function Review({
     },
     {tone: 'ok', ttl: 'No token approvals granted', meta: sol ? 'Native SOL transfer · zero allowances changed' : 'Token transfer · zero allowances changed', mono: false, badge: 'PASS'},
     sim.recipient === 'wallet'
-      ? {tone: 'ok', ttl: 'Recipient is a regular wallet', meta: `no executable account at ${intent.recipient.slice(0, 4)}…`, mono: true, badge: 'PASS'}
+      ? {tone: 'ok', ttl: 'Recipient is a regular wallet', meta: `no executable account at ${shortAddress(intent.recipient)}`, mono: true, badge: 'PASS'}
       : sim.recipient === 'new'
         ? {tone: 'ok', ttl: 'Recipient is a new address', meta: 'no account exists yet — this transfer creates it', mono: false, badge: 'PASS'}
         : sim.recipient === 'program'
