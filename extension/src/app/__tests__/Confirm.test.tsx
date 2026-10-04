@@ -483,6 +483,8 @@ describe('#20 — one tap per broadcast (D38) and every answer of wallet.send', 
     await w.ext.session.set('v1_reauth', Object.fromEntries(Object.entries(store).map(([k, c]) => [k, {...c, satisfied: false}])));
     fireEvent.click(send);
     expect(await screen.findByText(CONFIRM_TEXT.notCarried)).toBeTruthy();
+    // The send answered: [Cancel] is live again (it is disabled only while a send is out).
+    expect((screen.getByRole('button', {name: 'Cancel'}) as HTMLButtonElement).disabled).toBe(false);
     expect(localStorage.getItem(CONFIRM_STRIKE_KEY)).toBe(w.challengeId);
     expect(w.platform.opened).toEqual([]);
     await act(async () => new Promise(r => setTimeout(r, 600)));
