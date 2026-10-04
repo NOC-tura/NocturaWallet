@@ -190,6 +190,7 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
     screen = (
       <TxDetail
         signature={route.signature}
+        account={owner}
         item={txItems[route.signature]}
         canRetry={owner === selected}
         onBack={() => go({type: 'pop'})}

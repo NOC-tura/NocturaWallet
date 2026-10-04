@@ -17,7 +17,7 @@ import {clearSession, setSession} from '../../background/session';
 import {STATE_POLL_MS, type Surface} from '../WalletContext';
 import {firstSignature} from '../../../../core/solana/broadcast';
 import {ACCOUNT} from '../../background/__tests__/fixtures';
-import {COUNTERPARTY, failedTx, sig} from '../../../e2e/historyFixtures';
+import {COUNTERPARTY, failedTx, sentSol, sig} from '../../../e2e/historyFixtures';
 import type {SolanaReader} from '../../../../core/solana/rpc';
 import {SEND_TEXT} from '../screens/Send';
 
@@ -629,3 +629,81 @@ describe('#11’s Send, the pending strip, #26’s PENDING rows, #27’s [Try ag
     expect(w.sends()).toBe(0);
   });
 });
+
+// Fix round 2: #27 opened from #21 reads the history of the account #21 follows (the route's owner), never the selected one.
+describe('#27 from #21 reads its owner’s history', () => {
+  /** A's send through the flow, confirmed; A's history lists its signature (B's lists nothing). Each history read's address is kept. */
+  async function confirmedFromA(o: {gate?: (type: string) => Promise<void> | void} = {}) {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const asked: string[] = [];
+    let sentSig: string | null = null;
+    const at = Math.floor(Date.now() / 1000);
+    const w = await app({
+      known: true,
+      gate: o.gate,
+      reader: {
+        getSignaturesForAddress: async address => {
+          asked.push(address);
+          return address === ACCOUNT.publicKey && sentSig !== null ? [{signature: sentSig, blockTime: at, err: null}] : [];
+        },
+        getTransaction: async () => sentSol(ACCOUNT.publicKey, COUNTERPARTY, 10_000_000, at),
+      },
+    });
+    fireEvent.click(await sendButton());
+    expect(await screen.findByText(STATUS_TEXT.broadcasting)).toBeTruthy();
+    const records = (await w.ext.local.get('v1_pending')) as {signature: string}[];
+    sentSig = records[0]?.signature ?? null;
+    expect(sentSig).not.toBeNull();
+    await setRecords(w, r => ({...r, state: 'confirmed'}));
+    await act(async () => void vi.advanceTimersByTime(2_000));
+    expect(await screen.findByRole('button', {name: STATUS_TEXT.details})).toBeTruthy();
+    // Another account (B) selected in another window: #21 stays with A's send.
+    expect((await w.engine.select(SECOND.index)).ok).toBe(true);
+    await act(async () => void vi.advanceTimersByTime(STATE_POLL_MS + 50));
+    return {w, asked};
+  }
+  /** #27 shows A's send as A's: SENT, the amount out, From = A's address, To = the counterparty. */
+  const framedAsA = async () => {
+    expect(await screen.findByText('SENT')).toBeTruthy();
+    expect(screen.queryByText('RECEIVED')).toBeNull();
+    expect(screen.getByText('−0.0100 SOL')).toBeTruthy();
+    const groups = [...document.querySelectorAll('.addr-groups')].map(g => [...g.children].map(c => c.textContent).join(''));
+    expect(groups.slice(0, 2)).toEqual([ACCOUNT.publicKey, COUNTERPARTY]);
+  };
+
+  it('A’s send, B selected: View details → #27 searches A’s history and frames the row as A’s send', async () => {
+    const {asked} = await confirmedFromA();
+    const before = asked.length;
+    fireEvent.click(screen.getByRole('button', {name: STATUS_TEXT.details}));
+    await framedAsA();
+    expect(asked.length).toBeGreaterThan(before);
+    expect(asked.slice(before).every(a => a === ACCOUNT.publicKey)).toBe(true);
+    expect(screen.queryByText('This transaction is not in the recent history yet.')).toBeNull();
+  });
+
+  it('the account switches back mid-search: the search goes on for A — its answer lands, framed as A’s', async () => {
+    let hold: (() => void) | null = null;
+    let holding = false;
+    const {w, asked} = await confirmedFromA({
+      gate: type => {
+        if (type !== 'wallet.history' || !holding) return;
+        holding = false;
+        return new Promise<void>(resolve => (hold = resolve));
+      },
+    });
+    const before = asked.length;
+    holding = true;
+    fireEvent.click(screen.getByRole('button', {name: STATUS_TEXT.details}));
+    await waitFor(() => expect(hold).not.toBeNull());
+    // Mid-search: A selected again, then B — neither restarts nor redirects the search.
+    expect((await w.engine.select(ACCOUNT.index)).ok).toBe(true);
+    await act(async () => void vi.advanceTimersByTime(STATE_POLL_MS + 50));
+    expect((await w.engine.select(SECOND.index)).ok).toBe(true);
+    await act(async () => void vi.advanceTimersByTime(STATE_POLL_MS + 50));
+    (hold as unknown as () => void)();
+    await framedAsA();
+    expect(asked.slice(before).every(a => a === ACCOUNT.publicKey)).toBe(true);
+    expect(count(w, 'wallet.history')).toBe(1);
+  });
+});
+

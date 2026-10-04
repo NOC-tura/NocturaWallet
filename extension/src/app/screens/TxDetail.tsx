@@ -74,12 +74,19 @@ export function ExplorerLink({signature, label = 'Explorer', icon = true}: {sign
  */
 export function TxDetail({
   signature,
+  account: owner,
   item: given,
   canRetry,
   onBack,
   onTryAgain,
 }: {
   signature: string;
+  /**
+   * The account whose transaction this is — #27's route carries it (#26's account, or the account #21 follows). The
+   * search, the From/To framing and the sender's name read it, never the selected account (fix round 2): #27 opened
+   * from #21 for A while B is selected still shows A's transaction as A's.
+   */
+  account: string;
   item?: HistoryItem;
   /** False while another account than the transaction's owner is selected: no [Try again] (fix round 1). */
   canRetry: boolean;
@@ -97,8 +104,6 @@ export function TxDetail({
    * banner instead, with the explorer link kept (the signature is already known).
    */
   const [searchError, setSearchError] = useState<string | null>(null);
-  const account = m.account;
-  const owner = account?.publicKey ?? '';
 
   /**
    * The by-signature search. Unreachable in plan 1 (final review M4): App opens #27 only from an
@@ -106,12 +111,16 @@ export function TxDetail({
    * plumbing for #21 in plan 3, which opens #27 with a signature only; its tests
    * (TxDetail.test.tsx) keep it honest until then.
    */
+  // The provider's open sequence has run (an account is known): the search starts after it, as before fix round 2, so
+  // the open sequence's own reads never land after the search's report and overwrite it (review fix round 1 #4a).
+  // Only a readiness flag — the lookup never reads the selected account, and a switch (non-null to non-null) is no
+  // change here.
+  const ready = m.account !== null;
   useEffect(() => {
-    if (given !== undefined) return;
-    // The open sequence has not set the account yet: wait for it rather than search with ''
-    // (review fix round 1 #4a) — the effect re-runs once `account` is set, below.
-    if (account === null) return;
-    const ownerKey = account.publicKey;
+    if (given !== undefined || !ready) return;
+    // The owner comes from the route, an address the router checked (fix round 2) — never '' and never the selected
+    // account: another account selected mid-search changes nothing here, and the search goes on for the owner.
+    const ownerKey = owner;
     let alive = true;
     void (async () => {
       let before: string | undefined;
@@ -135,7 +144,7 @@ export function TxDetail({
     return () => {
       alive = false;
     };
-  }, [given, account, signature, m.engine]);
+  }, [given, ready, owner, signature, m.engine]);
 
   const top = <TopBar title="Transaction" onBack={onBack} titleClass="noc-h3" />;
   if (item === undefined) {
@@ -181,6 +190,8 @@ export function TxDetail({
   }
 
   const accounts = m.wallet?.accounts ?? [];
+  /** The owner's own entry (its name on the From row), when it is one of this wallet's accounts. */
+  const ownerAccount = accounts.find(a => a.publicKey === owner);
   const labelOf = (address: string | null): string | null => {
     if (address === null) return null;
     const own = accounts.find(a => a.publicKey === address);
@@ -295,7 +306,7 @@ export function TxDetail({
           {sent ? (
             <>
               <Row label="From">
-                <span className="noc-body-sm">{account?.name}</span>
+                <span className="noc-body-sm">{ownerAccount?.name}</span>
                 <Address address={owner} label="Copy sender" />
               </Row>
               <Row label="To">
