@@ -1797,17 +1797,32 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     one-row grid ("Tx hash"); its head and sub are the spec's two lines. A non-null engine `detail`
     shows as a caption under the warning banner. The hash on the original's card is short (first four …
     last four) with the design's 24 px `.copy-chip`, which copies it whole.
-  - **Plan 3 (Task 10):** `sent-again` only when the re-send was acknowledged (the engine's record comes
-    back with `detail` null). A re-send the route did not acknowledge answers ok with the engine's
-    `detail` (the first copy may still land): #54 stays in `stuck` with that line under the CTAs — never
-    "Sent again", never "nothing sent" — and when that detail is the HTTP 403 one, or the cool-down after
-    a 403, the popup enters the D26 state (`report('coordinator-refused')`), which disables Send again.
-    A `coordinator-refused` / `unreachable` reply goes through `report` too; `failed` leaves `stuck`
-    as it was. No fee is shown on any layout (54e's "Fee charged" row is dropped): `feePaidLamports` is
+  - **Plan 3 (Task 10):** a resend answer is read by its own `state` first: one no longer open (a poll
+    moved the record meanwhile) claims nothing about the re-send — `expired` shows the expired layout,
+    `confirmed` / `failed` (and a `not-open` refusal) show only the neutral top bar "Transaction" until the
+    poll routes to #21 / #44; #54 handed a `confirmed` or `failed` record renders the same. `sent-again`
+    only when the re-send was acknowledged (the record comes back open with `detailCode` null). A re-send
+    the route did not acknowledge answers ok with a `detailCode` (`forbidden`, `cooling`, `unacked`,
+    `substituted`) and the engine's `detail` (the first copy may still land): #54 stays in `stuck` with
+    that line under the CTAs — never "Sent again", never "nothing sent" — and for `forbidden` or
+    `cooling` the popup enters the D26 state (`report('coordinator-refused')`), which disables Send again.
+    The screen chooses on the code, never on the text. A `coordinator-refused` / `unreachable` reply goes
+    through `report` too; `failed` leaves `stuck` as it was. `stuck` and `sending-again` are one tree, so
+    the Send again `LockedButton` stays mounted (disabled) through the resend and its 500 ms floor holds.
+    The counter is `aria-live="polite"`. No fee is shown on any layout (54e's "Fee charged" row is dropped): `feePaidLamports` is
     null for `stuck` and `expired`, and a re-send pays nothing new. `expired` is the engine's state
     only; the screen never derives it from the clock or the block height. A resend's answer is dropped
     when the screen unmounted, another record or state was handed in, or another account was selected
     meanwhile.
+  - **Plan 3 (Task 10 fix round 1), design details not built:** 54b's sub line ("Submitting replacement
+    payload at … µ-lamports / CU. Expect first confirmation in 1.5 s on average.") is dropped — it states a
+    new fee and a timing the re-send of the same bytes does not have; 54b's spinner inside the CTA is not
+    drawn (no design class for it; the `LockedButton`'s `is-busy` state and the progress ring carry it), and
+    the CTA keeps its label "Send again (same transaction)". 54a's speed-up icon on the primary CTA is not
+    used (the action is not a speed-up; no icon). 54e's `[View in Activity]` is not on the `expired`
+    layout: its CTAs are the spec's `[Try again]` and `[Done]`.
+  - **→ adapted:** the recipient on the original's card is shown in groups of four (AddressGroups, as on
+    every other screen of this flow), not the design's first-6 / last-6 in `--accent`.
   - **"Speed up" (a higher priority fee) and "Cancel with replacement" (a 0 SOL self-transfer) are
     not built (D23).** Both are new transactions with new signatures while the original can
     still land. The design's line "Solana enforces single-execution by tx hash — only one settles"

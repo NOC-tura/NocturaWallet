@@ -7,8 +7,7 @@ import {ExtIcon} from '../ui/ExtIcon';
 import {RefusedBanner} from '../ui/Banner';
 import {LockedButton} from '../ui/LockedButton';
 import {useCopy} from '../ui/useCopy';
-import {COOLING_AGAIN_DETAIL, FORBIDDEN_DETAIL} from '../../background/sendTypes';
-import type {Intent, Pending} from '../engine';
+import type {Intent, Pending, PendingState} from '../engine';
 
 /** The fixed strings #54 shows (spec §4.8, D23); adapted ones are marked there. */
 export const STUCK_TEXT = {
@@ -63,19 +62,27 @@ function HashCopy({signature, variant}: {signature: string; variant: 'chip' | 'l
   );
 }
 
+const OPEN: readonly PendingState[] = ['pending', 'stuck'];
+
 /**
  * #54 stuck-tx, the safe variant (spec §4.8, D23): the design's layout, only the levers differ. "Send again"
  * re-sends the SAME signed bytes (wallet.resend: same signature, it can land at most once); "Wait for expiry"
  * explains what happens without a tap. "Speed up" and "Cancel with replacement" are not built — both are new
  * transactions while the original can still land. The record comes from #21's 2 s poll; when it confirms or
- * fails, #21 shows that instead; when it expires, this screen shows its expired layout — the engine's `expired`, never
- * a judgement of the screen's own. No fee is shown on any of its layouts: none of them has paid one (feePaidLamports
- * is null for stuck and expired, and a re-send pays nothing new).
+ * fails, #21 shows that instead (until then this screen shows only its neutral top bar); when it expires, this
+ * screen shows its expired layout — the engine's `expired` (the record's, or a resend answer's), never a judgement of
+ * the screen's own. No fee is shown on any of its layouts: none of them has paid one (feePaidLamports is null for
+ * stuck and expired, and a re-send pays nothing new).
  */
 export function Stuck({record, now, onClose, onActivity, onTryAgain}: {record: Pending; now: number; onClose: () => void; onActivity: () => void; onTryAgain: (intent: Intent) => void}) {
   const m = useWallet();
   const [phase, setPhase] = useState<'stuck' | 'sending' | 'sent' | 'untracked'>('stuck');
   const [line, setLine] = useState<string | null>(null);
+  /**
+   * The record's state as a resend answered it, when that is no longer open (a poll moved it meanwhile), or
+   * `not-open` (refused for that reason): it overrides an open `record.state` until the poll hands in the new one.
+   */
+  const [moved, setMoved] = useState<PendingState | 'not-open' | null>(null);
   /**
    * Bumped when what a resend answers for is gone — unmount, another record or state handed in, another account
    * selected: an answer to an older generation is dropped, and the screen starts again from its stuck layout.
@@ -86,6 +93,7 @@ export function Stuck({record, now, onClose, onActivity, onTryAgain}: {record: P
   useEffect(() => {
     setPhase('stuck');
     setLine(null);
+    setMoved(null);
     return () => {
       gen.current += 1;
     };
@@ -94,6 +102,7 @@ export function Stuck({record, now, onClose, onActivity, onTryAgain}: {record: P
   const amount = `${showExact(record.intent.token, record.intent.amount)} ${record.intent.token}`;
   const {mm, ss} = mmss(record.createdAt, now);
   const hash = shortAddress(record.signature);
+  const state = OPEN.includes(record.state) ? moved ?? record.state : record.state;
 
   const sendAgain = async () => {
     const g = gen.current;
@@ -101,22 +110,25 @@ export function Stuck({record, now, onClose, onActivity, onTryAgain}: {record: P
     setPhase('sending');
     const r = await m.engine.resend(record.id);
     if (gen.current !== g) return;
+    setPhase('stuck');
     if (r.ok) {
-      // Acknowledged: the route took the same bytes (the engine clears `detail`). Otherwise the engine's own words
-      // say why, and the screen stays stuck — the bytes may still have reached the network, so never "Sent again"
-      // and never "nothing sent". A 403 (or the cool-down after one) is the D26 state for the whole popup.
-      if (r.data.detail === null) return setPhase('sent');
-      setPhase('stuck');
+      // The answer's own state first: a poll may have moved the record meanwhile (confirmed, failed, expired) —
+      // then nothing about this re-send is claimed and the poll routes.
+      if (!OPEN.includes(r.data.state)) return setMoved(r.data.state);
+      // Acknowledged: the route took the same bytes. Otherwise the engine's own words say why, and the screen stays
+      // stuck — the bytes may still have reached the network, so never "Sent again" and never "nothing sent". A 403
+      // (or the cool-down after one) is the D26 state for the whole popup. Chosen on the code, never the text.
+      if (r.data.detailCode === null) return setPhase('sent');
       setLine(r.data.detail);
-      if (r.data.detail === FORBIDDEN_DETAIL || r.data.detail === COOLING_AGAIN_DETAIL) m.report('coordinator-refused');
+      if (r.data.detailCode === 'forbidden' || r.data.detailCode === 'cooling') m.report('coordinator-refused');
       return;
     }
-    setPhase('stuck');
     if (r.error === 'too-soon') setLine(STUCK_TEXT.tooSoon);
     else if (r.error === 'unknown') setPhase('untracked');
+    else if (r.error === 'not-open') setMoved('not-open');
     else if (r.error === 'coordinator-refused' || r.error === 'unreachable') m.report(r.error);
-    // not-open: the record has moved on — #21's next poll shows its state. failed / malformed: the outcome is not
-    // known, so the stuck layout stays as it was (it claims nothing about this re-send) and the 2 s poll goes on.
+    // failed / malformed: the outcome is not known, so the stuck layout stays as it was (it claims nothing about this
+    // re-send) and the 2 s poll goes on.
   };
 
   const top = (title: string, close: boolean) => (
@@ -129,7 +141,7 @@ export function Stuck({record, now, onClose, onActivity, onTryAgain}: {record: P
     </div>
   );
 
-  if (record.state === 'expired') {
+  if (state === 'expired') {
     return (
       <div className="screen s-stuck">
         {top(STUCK_TEXT.expiredTitle, true)}
@@ -152,6 +164,15 @@ export function Stuck({record, now, onClose, onActivity, onTryAgain}: {record: P
             {STUCK_TEXT.done}
           </button>
         </div>
+      </div>
+    );
+  }
+
+  // Confirmed, failed, or refused as no longer open: #21 (success) or #44 shows it — here only the neutral top bar.
+  if (state !== 'pending' && state !== 'stuck') {
+    return (
+      <div className="screen s-stuck" aria-busy="true">
+        {top(STUCK_TEXT.expiredTitle, true)}
       </div>
     );
   }
@@ -202,111 +223,105 @@ export function Stuck({record, now, onClose, onActivity, onTryAgain}: {record: P
     );
   }
 
-  if (phase === 'sending') {
-    return (
-      <div className="screen s-stuck">
-        {top(STUCK_TEXT.sendingTitle, false)}
-        <div className="progress-state">
-          <div className="ring" />
-          <div className="head">{STUCK_TEXT.sendingLine}</div>
-        </div>
-        <div className="orig-card app-dim-card">
-          <div className="head">
-            <span className="label">{STUCK_TEXT.stillPending}</span>
-            <span className="pill app-pill-warning noc-numeral">
-              {mm}:{ss} elapsed
-            </span>
-          </div>
-          <div className="row">
-            <span className="k">Amount</span>
-            <span className="v amount noc-numeral">{amount}</span>
-          </div>
-          <div className="row">
-            <span className="k">Tx hash</span>
-            <span className="v mono noc-mono">{hash}</span>
-          </div>
-        </div>
-        <div className="sticky-bar">
-          <button type="button" className="btn btn-primary" disabled>
-            {STUCK_TEXT.sendAgain}
-          </button>
-          <button type="button" className="btn btn-secondary" disabled>
-            {STUCK_TEXT.close}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+  // stuck and sending share one tree, so the Send again LockedButton stays mounted (disabled) while the resend is out
+  // and its 500 ms floor holds when the stuck layout comes back (rule 6).
+  const sending = phase === 'sending';
   return (
     <div className="screen s-stuck">
-      {top(STUCK_TEXT.title, true)}
-      {refused ? <RefusedBanner /> : null}
-      <div className="pending-counter">
-        <div className="label">{STUCK_TEXT.pendingFor}</div>
-        <div className="time">
-          <span className="mm">{mm}</span>
-          <span className="sep">:</span>
-          <span className="ss">{ss}</span>
-        </div>
-      </div>
-      <div className="warn-banner" role="status">
-        <ExtIcon name="alert-triangle" size={16} />
-        <div className="body">
-          <b>{STUCK_TEXT.bannerBold}</b>
-          <br />
-          {STUCK_TEXT.bannerLine}
-        </div>
-      </div>
-      {record.detail === null || record.detail === line ? null : <p className="noc-caption app-muted">{record.detail}</p>}
-      <div className="orig-card">
-        <div className="head">
-          <span className="label">{STUCK_TEXT.original}</span>
-          <span className="pill">Send</span>
-        </div>
-        <div className="row">
-          <span className="k">Amount</span>
-          <span className="v amount noc-numeral">{amount}</span>
-        </div>
-        <div className="row">
-          <span className="k">Recipient</span>
-          <span className="v mono noc-mono">
-            <AddressGroups address={record.intent.recipient} />
-          </span>
-        </div>
-        <div className="row">
-          <span className="k">Tx hash</span>
-          <span className="v mono noc-mono">
-            {hash}
-            <HashCopy signature={record.signature} variant="chip" />
-          </span>
-        </div>
-        <div className="row">
-          <span className="k">Valid until block</span>
-          <span className="v noc-numeral">{record.lastValidBlockHeight}</span>
-        </div>
-      </div>
-      <div className="recovery-card recommended">
-        <div className="rec-head">
-          <span className="name">{STUCK_TEXT.againName}</span>
-          <span className="recommended-pill">{STUCK_TEXT.recommended}</span>
-        </div>
-        <div className="what">{STUCK_TEXT.againWhat}</div>
-      </div>
-      <div className="recovery-card">
-        <div className="rec-head">
-          <span className="name">{STUCK_TEXT.waitName}</span>
-        </div>
-        <div className="what">{STUCK_TEXT.waitWhat}</div>
-      </div>
+      {sending ? top(STUCK_TEXT.sendingTitle, false) : top(STUCK_TEXT.title, true)}
+      {sending ? (
+        <>
+          <div className="progress-state">
+            <div className="ring" />
+            <div className="head">{STUCK_TEXT.sendingLine}</div>
+          </div>
+          <div className="orig-card app-dim-card">
+            <div className="head">
+              <span className="label">{STUCK_TEXT.stillPending}</span>
+              <span className="pill app-pill-warning noc-numeral">
+                {mm}:{ss} elapsed
+              </span>
+            </div>
+            <div className="row">
+              <span className="k">Amount</span>
+              <span className="v amount noc-numeral">{amount}</span>
+            </div>
+            <div className="row">
+              <span className="k">Tx hash</span>
+              <span className="v mono noc-mono">{hash}</span>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          {refused ? <RefusedBanner /> : null}
+          <div className="pending-counter" aria-live="polite">
+            <div className="label">{STUCK_TEXT.pendingFor}</div>
+            <div className="time">
+              <span className="mm">{mm}</span>
+              <span className="sep">:</span>
+              <span className="ss">{ss}</span>
+            </div>
+          </div>
+          <div className="warn-banner" role="status">
+            <ExtIcon name="alert-triangle" size={16} />
+            <div className="body">
+              <b>{STUCK_TEXT.bannerBold}</b>
+              <br />
+              {STUCK_TEXT.bannerLine}
+            </div>
+          </div>
+          {record.detail === null || record.detail === line ? null : <p className="noc-caption app-muted">{record.detail}</p>}
+          <div className="orig-card">
+            <div className="head">
+              <span className="label">{STUCK_TEXT.original}</span>
+              <span className="pill">Send</span>
+            </div>
+            <div className="row">
+              <span className="k">Amount</span>
+              <span className="v amount noc-numeral">{amount}</span>
+            </div>
+            <div className="row">
+              <span className="k">Recipient</span>
+              <span className="v mono noc-mono">
+                <AddressGroups address={record.intent.recipient} />
+              </span>
+            </div>
+            <div className="row">
+              <span className="k">Tx hash</span>
+              <span className="v mono noc-mono">
+                {hash}
+                <HashCopy signature={record.signature} variant="chip" />
+              </span>
+            </div>
+            <div className="row">
+              <span className="k">Valid until block</span>
+              <span className="v noc-numeral">{record.lastValidBlockHeight}</span>
+            </div>
+          </div>
+          <div className="recovery-card recommended">
+            <div className="rec-head">
+              <span className="name">{STUCK_TEXT.againName}</span>
+              <span className="recommended-pill">{STUCK_TEXT.recommended}</span>
+            </div>
+            <div className="what">{STUCK_TEXT.againWhat}</div>
+          </div>
+          <div className="recovery-card">
+            <div className="rec-head">
+              <span className="name">{STUCK_TEXT.waitName}</span>
+            </div>
+            <div className="what">{STUCK_TEXT.waitWhat}</div>
+          </div>
+        </>
+      )}
       <div className="sticky-bar">
-        <LockedButton className="btn btn-primary" disabled={refused} onPress={sendAgain}>
+        <LockedButton className="btn btn-primary" disabled={refused || sending} onPress={sendAgain}>
           {STUCK_TEXT.sendAgain}
         </LockedButton>
-        <button type="button" className="btn btn-secondary" onClick={onClose}>
+        <button type="button" className="btn btn-secondary" disabled={sending} onClick={onClose}>
           {STUCK_TEXT.close}
         </button>
-        {line === null ? null : (
+        {line === null || sending ? null : (
           <p className="noc-caption app-warning app-center-text" role="alert">
             {line}
           </p>

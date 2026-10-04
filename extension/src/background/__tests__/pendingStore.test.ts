@@ -53,6 +53,28 @@ describe('pendingStore', () => {
   });
 });
 
+// Task 10 fix round 1: detailCode is a display field too — a record from before it, or with an unknown code, reads
+// with detailCode null and is kept.
+describe('PendingRecord.detailCode', () => {
+  it('missing or unknown reads as null and the record is kept; each known code reads as it is', async () => {
+    const ext = fakeExt();
+    const {detailCode: _code, ...before} = record({id: 'old'});
+    const known = (['forbidden', 'cooling', 'unacked', 'substituted'] as const).map(c => record({id: c, detailCode: c}));
+    await ext.local.set(PENDING_KEY, [before, {...record({id: 'odd'}), detailCode: 'refused'}, {...record({id: 'num'}), detailCode: 3}, ...known]);
+    const read = await readPending(ext);
+    expect(read.map(r => [r.id, r.detailCode])).toEqual([
+      ['old', null],
+      ['odd', null],
+      ['num', null],
+      ['forbidden', 'forbidden'],
+      ['cooling', 'cooling'],
+      ['unacked', 'unacked'],
+      ['substituted', 'substituted'],
+    ]);
+    expect(viewOf(read[3]!).detailCode).toBe('forbidden');
+  });
+});
+
 // Plan 3: the fee a record pays is a display field, in two parts (network, markup). A record from before it, or
 // one whose value is not exactly two digit strings, reads with fee null — and is kept: a pending send must never
 // be hidden.

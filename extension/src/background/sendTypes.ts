@@ -37,9 +37,9 @@ export class SendRefused extends Error {
 }
 
 /**
- * A pending record's `detail` when the coordinator refused a broadcast with HTTP 403, or refused to try during the
- * cool-down after one (on a re-send). The re-send still answers ok — the first copy may land — so #54 reads these to
- * put the popup into the D26 state (spec §4.8), never matching any other text.
+ * A pending record's `detail` text when the coordinator refused a broadcast with HTTP 403, or refused to try during the
+ * cool-down after one (on a re-send) — display only: screens choose on the record's `detailCode` (`forbidden`,
+ * `cooling`), never on this text.
  */
 export const FORBIDDEN_DETAIL = 'The coordinator answered HTTP 403: not acknowledged; still watching, not retried automatically.';
 export const COOLING_AGAIN_DETAIL = 'Not sent again: cooling down after an earlier HTTP 403; still watching the first copy.';

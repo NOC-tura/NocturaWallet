@@ -17,6 +17,15 @@ export type PendingState = 'pending' | 'stuck' | 'confirmed' | 'failed' | 'expir
  * this, never from `detail`.
  */
 export type PendingFailure = 'landed' | 'not-sent';
+/**
+ * What `detail` says about the last broadcast, as a code (plan 3, Task 10 fix-round ruling): `forbidden` — the
+ * coordinator answered HTTP 403; `cooling` — not sent, the cool-down after an earlier 403; `unacked` — no
+ * acknowledgement (no answer, or a refusal on a re-send); `substituted` — answered with another signature. Null when
+ * the last broadcast was acknowledged, and whenever `detail` is about something else (a landing, expiry, a refusal of a
+ * first broadcast by the route). Written beside `detail` every time; screens choose on this, never on the text.
+ */
+export type DetailCode = 'forbidden' | 'cooling' | 'unacked' | 'substituted';
+export const DETAIL_CODES: readonly DetailCode[] = ['forbidden', 'cooling', 'unacked', 'substituted'];
 
 /** A signed send, from before its broadcast until confirmed, failed or expired (spec §4 "No double spend"). */
 export interface PendingRecord {
@@ -30,6 +39,8 @@ export interface PendingRecord {
   lastSentAt: number;
   state: PendingState;
   detail: string | null;
+  /** See DetailCode. A stored value that is missing (a record from before it) or unknown reads as null; the record is kept. */
+  detailCode: DetailCode | null;
   intent: SendIntent;
   /** When a full-history status check past expiry first came back null; `expired` needs a second one ≥ 2 s later. */
   expiryNullSeenAt: number | null;
@@ -65,7 +76,7 @@ const STATES: readonly string[] = ['pending', 'stuck', 'confirmed', 'failed', 'e
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 
 /** A stored element is a claim: only an exact record shape is read; anything else is dropped. `failure` and `fee` are checked by recordOf. */
-function isRecord(x: unknown): x is Omit<PendingRecord, 'failure' | 'fee'> & {failure?: unknown; fee?: unknown} {
+function isRecord(x: unknown): x is Omit<PendingRecord, 'failure' | 'fee' | 'detailCode'> & {failure?: unknown; fee?: unknown; detailCode?: unknown} {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
   const r = x as Record<string, unknown>;
   const i = r.intent as Record<string, unknown> | null;
@@ -96,9 +107,10 @@ function isRecord(x: unknown): x is Omit<PendingRecord, 'failure' | 'fee'> & {fa
 function recordOf(x: unknown): PendingRecord | null {
   if (!isRecord(x)) return null;
   const fee = feeOf(x.fee);
+  const detailCode = DETAIL_CODES.find(c => c === x.detailCode) ?? null;
   const f = x.failure;
-  if (f === undefined || f === null) return {...x, failure: null, fee};
-  return f === 'landed' || f === 'not-sent' ? {...x, failure: f, fee} : null;
+  if (f === undefined || f === null) return {...x, failure: null, fee, detailCode};
+  return f === 'landed' || f === 'not-sent' ? {...x, failure: f, fee, detailCode} : null;
 }
 
 const DIGITS = /^\d{1,20}$/;
@@ -136,6 +148,7 @@ export function viewOf(r: PendingRecord): PendingView {
     lastSentAt: r.lastSentAt,
     state: r.state,
     detail: r.detail,
+    detailCode: r.detailCode,
     intent: r.intent,
     expiryNullSeenAt: r.expiryNullSeenAt,
     failure: r.failure,

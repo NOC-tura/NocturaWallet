@@ -143,7 +143,7 @@ describe('shape checks: a reply of the wrong shape is failed', () => {
 
   it('pending: an unknown state or failure value', async () => {
     const p = {
-      id: 'r1', account: acc, signature: '5'.repeat(88), lastValidBlockHeight: 1, createdAt: 1, lastSentAt: 1, state: 'pending', detail: null,
+      id: 'r1', account: acc, signature: '5'.repeat(88), lastValidBlockHeight: 1, createdAt: 1, lastSentAt: 1, state: 'pending', detail: null, detailCode: null,
       intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}, expiryNullSeenAt: null, failure: null, fee: {networkLamports: '5050', markupLamports: '0'},
     };
     expect((await engineAnswering({ok: true, data: [p]}).pending()).ok).toBe(true);
@@ -157,6 +157,16 @@ describe('shape checks: a reply of the wrong shape is failed', () => {
       expect(await engineAnswering({ok: true, data: [{...p, fee}]}).pending()).toEqual({ok: false, error: 'failed'});
     }
     expect(await engineAnswering({ok: true, data: [withoutFee]}).pending()).toEqual({ok: false, error: 'failed'});
+    // Task 10 fix round 1: detailCode is a closed enum or null, and the field must be there.
+    for (const detailCode of ['forbidden', 'cooling', 'unacked', 'substituted'] as const) {
+      expect(await engineAnswering({ok: true, data: [{...p, detailCode}]}).pending()).toMatchObject({ok: true, data: [{detailCode}]});
+    }
+    for (const detailCode of [undefined, 'refused', 'FORBIDDEN', 3, {}]) {
+      expect(await engineAnswering({ok: true, data: [{...p, detailCode}]}).pending()).toEqual({ok: false, error: 'failed'});
+    }
+    const {detailCode: _code, ...withoutCode} = p;
+    expect(await engineAnswering({ok: true, data: [withoutCode]}).pending()).toEqual({ok: false, error: 'failed'});
+    expect(await engineAnswering({ok: true, data: {...p, detailCode: 'other'}}).resend('r1')).toEqual({ok: false, error: 'failed'});
   });
 
   // Plan 3 follow-up ruling: what is shown as paid follows the state — a landed-but-failed send paid the network

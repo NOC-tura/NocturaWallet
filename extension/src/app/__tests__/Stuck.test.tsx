@@ -31,6 +31,7 @@ const view = (over: Partial<Pending> = {}): Pending => ({
   lastSentAt: CREATED,
   state: 'stuck',
   detail: null,
+  detailCode: null,
   intent: {token: 'SOL', recipient: RECIPIENT, amount: 2_480_000_000n},
   expiryNullSeenAt: null,
   failure: null,
@@ -104,6 +105,7 @@ describe('#54 stuck-tx — the safe variant', () => {
     expect(screen.getByText(STUCK_TEXT.chip)).toBeTruthy();
     expect(screen.getByText(STUCK_TEXT.pendingFor)).toBeTruthy();
     expect(document.querySelector('.pending-counter .time')?.textContent).toBe('01:34');
+    expect(document.querySelector('.pending-counter')?.getAttribute('aria-live')).toBe('polite');
     expect(document.querySelector('.warn-banner .body')?.textContent).toBe(`${STUCK_TEXT.bannerBold}${STUCK_TEXT.bannerLine}`);
     const rows = [...document.querySelectorAll('.orig-card .row')].map(r => [r.querySelector('.k')?.textContent, r.querySelector('.v')?.textContent]);
     expect(rows).toEqual([
@@ -141,13 +143,16 @@ describe('#54 stuck-tx — the safe variant', () => {
     });
     const again = (await screen.findByRole('button', {name: STUCK_TEXT.sendAgain})) as HTMLButtonElement;
     fireEvent.click(again);
+    // The same LockedButton stays mounted through sending (fix round 1), disabled.
+    expect(screen.getByRole('button', {name: STUCK_TEXT.sendAgain})).toBe(again);
+    expect(again.disabled).toBe(true);
     again.disabled = false;
     fireEvent.click(again);
     expect(await screen.findByText(STUCK_TEXT.sendingLine)).toBeTruthy();
     expect(screen.getByText(STUCK_TEXT.sendingTitle)).toBeTruthy();
     expect(screen.getByText('01:34 elapsed')).toBeTruthy();
     expect(screen.getByText(STUCK_TEXT.stillPending)).toBeTruthy();
-    expect((screen.getByRole('button', {name: STUCK_TEXT.sendAgain}) as HTMLButtonElement).disabled).toBe(true);
+    expect(again.className).toContain('is-busy');
     expect(unstyledClasses(document.querySelector('.s-stuck')!, SELECTORS)).toEqual([]);
     await act(async () => release());
     expect(await screen.findByText(STUCK_TEXT.sentLine)).toBeTruthy();
@@ -375,12 +380,95 @@ describe('#54 stuck-tx — the safe variant', () => {
     expect(screen.queryByText(STUCK_TEXT.sentLine)).toBeNull();
     expect(screen.getByText(`${other.slice(0, 4)}…${other.slice(-4)}`, {exact: false})).toBeTruthy();
     // ... and its state changing (stuck → expired) mid-resend: the engine's expired layout, not the old answer's.
+    // (The same LockedButton: its 500 ms floor from the first press runs out first.)
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 600));
+    });
     fireEvent.click(screen.getByRole('button', {name: STUCK_TEXT.sendAgain}));
     expect(await screen.findByText(STUCK_TEXT.sendingLine)).toBeTruthy();
     w.show(view({id: 'r2', signature: other, state: 'expired'}));
     await w.answer({ok: true, data: view({id: 'r2', signature: other})});
     expect(screen.getByText(STUCK_TEXT.expiredHead)).toBeTruthy();
     expect(screen.queryByText(STUCK_TEXT.sentLine)).toBeNull();
+  });
+
+  // Fix round 1 (review item 1): the answer's own state first — a poll can have moved the record meanwhile.
+  it('a resend answered with the record already expired (a poll moved it): the engine’s expired layout — never its line under an enabled Send again', async () => {
+    const w = await mountStuck(view());
+    fireEvent.click(screen.getByRole('button', {name: STUCK_TEXT.sendAgain}));
+    await w.answer({ok: true, data: view({state: 'expired', detail: 'Not confirmed — no funds moved.', lastSentAt: CREATED + 94_000})});
+    expect(screen.getByText(STUCK_TEXT.expiredHead)).toBeTruthy();
+    expect(screen.queryByRole('button', {name: STUCK_TEXT.sendAgain})).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(STUCK_TEXT.sentLine)).toBeNull();
+  });
+
+  it('a resend answered with the record already confirmed: never "Sent again" — the neutral top bar until the poll routes to #21', async () => {
+    const w = await mountStuck(view());
+    fireEvent.click(screen.getByRole('button', {name: STUCK_TEXT.sendAgain}));
+    await w.answer({ok: true, data: view({state: 'confirmed', lastSentAt: CREATED + 94_000})});
+    expect(screen.queryByText(STUCK_TEXT.sentLine)).toBeNull();
+    expect(screen.queryAllByText(STUCK_TEXT.sentTitle)).toHaveLength(0);
+    expect(screen.queryByRole('button', {name: STUCK_TEXT.sendAgain})).toBeNull();
+    expect(screen.queryByText(STUCK_TEXT.pendingFor)).toBeNull();
+    expect(document.querySelector('.s-stuck')?.getAttribute('aria-busy')).toBe('true');
+  });
+
+  // Review item 6: a record that is no longer open shows nothing misleading; the parent routes.
+  it('a confirmed or failed record, or a resend refused not-open: no Send again, no counter, no "no funds moved", no "Sent again"', async () => {
+    for (const state of ['confirmed', 'failed'] as const) {
+      await renderStuck(view({state, failure: state === 'failed' ? 'landed' : null, detail: state === 'failed' ? 'Landed but failed' : null}));
+      expect(await screen.findByText(STUCK_TEXT.expiredTitle)).toBeTruthy();
+      expect(screen.queryByRole('button', {name: STUCK_TEXT.sendAgain})).toBeNull();
+      expect(screen.queryByText(STUCK_TEXT.pendingFor)).toBeNull();
+      expect(screen.queryByText(STUCK_TEXT.sentLine)).toBeNull();
+      expect(document.body.textContent).not.toMatch(/no funds moved|Fee/i);
+      expect(unstyledClasses(document.querySelector('.s-stuck')!, SELECTORS)).toEqual([]);
+      document.body.innerHTML = '';
+    }
+    const w = await mountStuck(view());
+    fireEvent.click(screen.getByRole('button', {name: STUCK_TEXT.sendAgain}));
+    await w.answer({ok: false, error: 'not-open'});
+    expect(screen.queryByRole('button', {name: STUCK_TEXT.sendAgain})).toBeNull();
+    expect(screen.queryByText(STUCK_TEXT.pendingFor)).toBeNull();
+    expect(screen.getByText(STUCK_TEXT.expiredTitle)).toBeTruthy();
+  });
+
+  // Review item 3: the record's state is in the generation key.
+  it('every await checks its generation — the record moved state mid-resend (pending → confirmed): the late answer is dropped, nothing reported', async () => {
+    const w = await mountStuck(view({state: 'pending'}));
+    fireEvent.click(screen.getByRole('button', {name: STUCK_TEXT.sendAgain}));
+    expect(await screen.findByText(STUCK_TEXT.sendingLine)).toBeTruthy();
+    w.show(view({state: 'confirmed'}));
+    await w.answer({ok: false, error: 'coordinator-refused'});
+    expect(screen.getByTestId('net').textContent).toBe('online');
+  });
+
+  // Review item 4.
+  it('[Try again] pressed twice inside one act(): one fresh prepare (rule 6)', async () => {
+    await renderStuck(view({state: 'expired'}));
+    const again = (await screen.findByRole('button', {name: STUCK_TEXT.tryAgain})) as HTMLButtonElement;
+    act(() => {
+      again.click();
+      again.click();
+    });
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 50));
+    });
+    expect(nav.onTryAgain).toHaveBeenCalledTimes(1);
+  });
+
+  // Review item 5: one LockedButton across stuck and sending, so its 500 ms floor holds after a fast answer.
+  it('Send again stays the same locked button through sending: a fast refusal leaves it busy until 500 ms, then live', async () => {
+    await renderStuck(view(), {before: ext => ext.local.set(PENDING_KEY, [stored({lastSentAt: CREATED + 93_500})])});
+    const again = (await screen.findByRole('button', {name: STUCK_TEXT.sendAgain})) as HTMLButtonElement;
+    fireEvent.click(again);
+    expect(await screen.findByText(STUCK_TEXT.tooSoon)).toBeTruthy();
+    const after = screen.getByRole('button', {name: STUCK_TEXT.sendAgain}) as HTMLButtonElement;
+    expect(after).toBe(again);
+    expect(after.disabled).toBe(true);
+    expect(after.className).toContain('is-busy');
+    await waitFor(() => expect(after.disabled).toBe(false), {timeout: 2_000});
   });
 
   it('the counter: minutes and seconds since the send was made', () => {

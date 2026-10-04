@@ -68,6 +68,7 @@ export interface Prepared {
 }
 export type Resumable = Prepared & {intent: Intent; expired: boolean};
 export type PendingState = 'pending' | 'stuck' | 'confirmed' | 'failed' | 'expired';
+export type DetailCode = 'forbidden' | 'cooling' | 'unacked' | 'substituted';
 export interface Pending {
   id: string;
   account: string;
@@ -77,6 +78,8 @@ export interface Pending {
   lastSentAt: number;
   state: PendingState;
   detail: string | null;
+  /** What `detail` says about the last broadcast, as a code (background DetailCode): screens choose on this, never on the text. */
+  detailCode: DetailCode | null;
   intent: Intent;
   expiryNullSeenAt: number | null;
   failure: 'landed' | 'not-sent' | null;
@@ -295,6 +298,7 @@ function resumableOf(x: unknown): Resumable | null | undefined {
 }
 
 const STATES = ['pending', 'stuck', 'confirmed', 'failed', 'expired'] as const;
+const DETAIL_CODES = ['forbidden', 'cooling', 'unacked', 'substituted'] as const;
 function pendingOf(x: unknown): Pending | undefined {
   const o = obj(x);
   if (o === undefined || typeof o.id !== 'string' || !isAddress(o.account) || typeof o.signature !== 'string' || !SIGNATURE.test(o.signature)) return undefined;
@@ -303,7 +307,8 @@ function pendingOf(x: unknown): Pending | undefined {
   const failure = o.failure === null ? null : oneOf(o.failure, ['landed', 'not-sent'] as const);
   const expiry = o.expiryNullSeenAt === null ? null : isTime(o.expiryNullSeenAt) ? o.expiryNullSeenAt : undefined;
   const fee = feeOf(o.fee);
-  if (state === undefined || intent === undefined || failure === undefined || expiry === undefined || fee === undefined) return undefined;
+  const detailCode = o.detailCode === null ? null : oneOf(o.detailCode, DETAIL_CODES);
+  if (state === undefined || intent === undefined || failure === undefined || expiry === undefined || fee === undefined || detailCode === undefined) return undefined;
   if (!isInt(o.lastValidBlockHeight) || !isTime(o.createdAt) || !isTime(o.lastSentAt) || !(o.detail === null || typeof o.detail === 'string')) return undefined;
   return {
     id: o.id,
@@ -314,6 +319,7 @@ function pendingOf(x: unknown): Pending | undefined {
     lastSentAt: o.lastSentAt,
     state,
     detail: o.detail,
+    detailCode,
     intent,
     expiryNullSeenAt: expiry,
     failure,
