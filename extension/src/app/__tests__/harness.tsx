@@ -1,5 +1,5 @@
 import type {ReactElement} from 'react';
-import {render} from '@testing-library/react';
+import {cleanup, render} from '@testing-library/react';
 import {createEngine, type Engine, type Transport} from '../engine';
 import type {Platform} from '../platform';
 import {WalletProvider, type Surface} from '../WalletContext';
@@ -91,6 +91,24 @@ export interface WalletOptions {
   gate?: (m: unknown) => Promise<void> | void;
 }
 
+/**
+ * Every engine call a test's screens made that has not answered yet. After each test the tree is unmounted and these
+ * are drained (bounded by a real-clock wait: some background calls sleep forever by design), so no answer lands after
+ * the test file's environment is torn down (the `window is not defined` flake, Task 12 fix round 1).
+ */
+const inFlight = new Set<Promise<unknown>>();
+const realSetTimeout = globalThis.setTimeout;
+export const DRAIN_MS = 200;
+export async function drainInFlight(): Promise<void> {
+  if (inFlight.size === 0) return;
+  await Promise.race([Promise.allSettled([...inFlight]), new Promise<void>(r => realSetTimeout(r, DRAIN_MS))]);
+  inFlight.clear();
+}
+afterEach(async () => {
+  cleanup();
+  await drainInFlight();
+});
+
 /** A background with this wallet in it, a client wired to it, and a spy platform. */
 export async function setupWallet(o: WalletOptions = {}): Promise<Wallet> {
   const ext = fakeExt();
@@ -118,7 +136,12 @@ export async function setupWallet(o: WalletOptions = {}): Promise<Wallet> {
     },
     version: () => '0.1.0',
   };
-  const transport: Transport = m => handleMessage(ext, m, POPUP, deps);
+  const transport: Transport = m => {
+    const p = handleMessage(ext, m, POPUP, deps);
+    inFlight.add(p);
+    void p.finally(() => inFlight.delete(p)).catch(() => undefined);
+    return p;
+  };
   const gated: Transport = async m => {
     await o.gate?.(m);
     return transport(m);

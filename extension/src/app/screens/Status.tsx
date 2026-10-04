@@ -71,23 +71,20 @@ interface Props {
 }
 
 /**
- * #21 tx-status (spec §4.6), and the screen #54 and #44 grow out of. Each generation — this account, this id, this
- * selected account — is its own mount: when any of them changes, the old one unmounts (its reads are dropped) and a
- * fresh one starts from "Checking…", so nothing an older read answers can land on the new one.
+ * #21 tx-status (spec §4.6), and the screen #54 and #44 grow out of. Each send it follows — this account, this id,
+ * this tap — is its own mount: when one of them changes, the old one unmounts (its reads are dropped) and a fresh one
+ * starts from "Checking…". Another account selected is NOT a new mount (fix round 1): the screen keeps what it has
+ * seen — #54 shown, the confirmation seen live, a settled record — and only drops the reads that were out.
  */
 export function Status(props: Props) {
-  const m = useWallet();
-  const selected = m.account?.publicKey ?? null;
-  // Another account selected (not the first read of this one: null → an account is no switch).
-  const last = useRef<string | null>(null);
-  const [switches, setSwitches] = useState(0);
-  useEffect(() => {
-    if (selected === null) return;
-    if (last.current !== null && last.current !== selected) setSwitches(n => n + 1);
-    last.current = selected;
-  }, [selected]);
-  return <Tracked key={`${props.account}|${props.id ?? ''}|${props.since}|${switches}`} {...props} />;
+  return <Tracked key={`${props.account}|${props.id ?? ''}|${props.since}`} {...props} />;
 }
+
+/**
+ * With no id (a lost answer), how long after the screen opens a record may still be adopted: the reads stop after it,
+ * and a record made after it is never this send (fix round 1).
+ */
+export const LOOKUP_MS = 10_000;
 
 interface Seen {
   /** A wallet.pending answer has been applied. */
@@ -119,6 +116,11 @@ function Tracked({account, id, since, onDone, onDetails, onActivity, onTryAgain,
   const sawOpen = useRef(false);
   const trackedRef = useRef<string | null>(id);
   const gen = useRef(0);
+  /** A wallet.pending read failed before any answered: the check-pending line, and a way out (fix round 1). */
+  const [readFailed, setReadFailed] = useState(false);
+  const openedAt = useRef(clock());
+  // Another account selected: the reads restart in a new generation (one still out is dropped); what was seen stays.
+  const selected = m.account?.publicKey ?? null;
 
   useEffect(() => {
     if (settled.current) return;
@@ -130,11 +132,16 @@ function Tracked({account, id, since, onDone, onDetails, onActivity, onTryAgain,
       asked += 1;
       const mine = asked;
       const r = await engine.pending();
-      if (gen.current !== g || mine < applied || !r.ok) return;
+      if (gen.current !== g || mine < applied) return;
+      if (!r.ok) {
+        setReadFailed(true);
+        return;
+      }
       applied = mine;
       let t = trackedRef.current;
-      if (t === null) {
-        const found = r.data.find(p => p.account === account && p.createdAt >= since);
+      const looking = t === null;
+      if (t === null && clock() - openedAt.current <= LOOKUP_MS) {
+        const found = r.data.find(p => p.account === account && p.createdAt >= since && p.createdAt <= openedAt.current + LOOKUP_MS);
         if (found !== undefined) {
           t = found.id;
           trackedRef.current = t;
@@ -146,7 +153,9 @@ function Tracked({account, id, since, onDone, onDetails, onActivity, onTryAgain,
       setSeen({read: true, tracked: t, record: rec});
       // Settled: stop here, in this answer — not on the next render — so nothing more is asked and no read still out
       // (an older one) can land.
-      if (rec !== null && !OPEN.includes(rec.state)) {
+      // No record from the tap on within LOOKUP_MS: the check-pending line stays and nothing later is adopted.
+      const gaveUp = looking && t === null && clock() - openedAt.current >= LOOKUP_MS;
+      if ((rec !== null && !OPEN.includes(rec.state)) || gaveUp) {
         settled.current = true;
         gen.current += 1;
         clearInterval(timer);
@@ -158,7 +167,7 @@ function Tracked({account, id, since, onDone, onDetails, onActivity, onTryAgain,
       gen.current += 1;
       clearInterval(timer);
     };
-  }, [engine, account, since, clock]);
+  }, [engine, account, since, clock, selected]);
 
   const record = seen.record;
   const success = record?.state === 'confirmed';
@@ -173,12 +182,13 @@ function Tracked({account, id, since, onDone, onDetails, onActivity, onTryAgain,
   if (record !== null && toStuck) return <Stuck record={record} now={now} onClose={onDone} onActivity={onActivity} onTryAgain={onTryAgain} />;
 
   if (record === null) {
-    const unsure = seen.read && seen.tracked === null;
+    // A failed read before any answered: the outcome is not known, so the check-pending line and a way out.
+    const unsure = (seen.read && seen.tracked === null) || (!seen.read && readFailed);
     const untracked = seen.read && seen.tracked !== null;
     return (
       <div className="screen s-stat">
         <div className="top-bar">
-          <button type="button" className="icon-btn" aria-label="Close" disabled={!seen.read} onClick={onDone}>
+          <button type="button" className="icon-btn" aria-label="Close" disabled={!seen.read && !readFailed} onClick={onDone}>
             <ExtIcon name="close" size={22} />
           </button>
           <div className="title noc-h1">{STATUS_TEXT.sending}</div>
@@ -203,14 +213,15 @@ function Tracked({account, id, since, onDone, onDetails, onActivity, onTryAgain,
 
   const token = record.intent.token;
   const usd = usdOf(token, record.intent.amount, m.prices);
-  const amountCard = (big: boolean) => (
+  // The fiat line: --fg-secondary on success and slow, --fg-tertiary while broadcasting (index.html #s21).
+  const amountCard = (big: boolean, dim: boolean) => (
     <div className="amount-card">
       <span className="eyebrow">Amount</span>
       <div className="amount-line">
         <span className={`amount noc-numeral${big ? ' noc-balance-lg app-amount-big' : ''}`}>{showExact(token, record.intent.amount)}</span>
         <span className="ticker">{token}</span>
       </div>
-      {usd === null ? null : <span className={`noc-caption noc-numeral ${big ? 'app-secondary' : 'app-dim'}`}>≈ {showUsd(usd)} USD</span>}
+      {usd === null ? null : <span className={`noc-caption noc-numeral ${dim ? 'app-dim' : 'app-secondary'}`}>≈ {showUsd(usd)} USD</span>}
     </div>
   );
   const toRow = (
@@ -249,7 +260,7 @@ function Tracked({account, id, since, onDone, onDetails, onActivity, onTryAgain,
             </div>
             <div className="stage-label app-success">{STATUS_TEXT.sentOk}</div>
             {confirmedAt === null ? null : <div className="stage-sub">Confirmed in {Math.max(1, Math.round((confirmedAt - record.createdAt) / 1000))} s</div>}
-            {amountCard(true)}
+            {amountCard(true, false)}
             <div className="meta-grid">
               {toRow}
               {hashRow}
@@ -304,7 +315,7 @@ function Tracked({account, id, since, onDone, onDetails, onActivity, onTryAgain,
           </div>
           <div className={`stage-label${slow ? ' app-warning' : ''}`}>{slow ? STATUS_TEXT.slowLabel : STATUS_TEXT.broadcasting}</div>
           <div className={`stage-sub${slow ? ' is-warn' : ''}`}>{slow ? STATUS_TEXT.slowSub : STATUS_TEXT.submitted}</div>
-          {amountCard(false)}
+          {amountCard(false, !slow)}
           <div className="meta-grid">
             {toRow}
             {slow ? hashRow : null}

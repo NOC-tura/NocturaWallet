@@ -1716,8 +1716,12 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     line) with `[Open Activity]`. Each read of `wallet.pending` is dropped when the screen has moved on
     (unmounted, another id, another account selected, a newer read already applied), and the reads stop
     once the record is settled (`confirmed`, `failed`, `expired`), so no later answer moves the screen.
-    Whether an `expired` record goes to #44 or to #54's expired layout is decided by whether #54 was shown,
-    never by the page's clock.
+    Another account selected (here or in another window) keeps what the screen has seen — #54 shown, the
+    confirmation seen live, a settled record — and only restarts the reads. Whether an `expired` record goes
+    to #44 or to #54's expired layout is decided by whether #54 was shown, never by the page's clock. With no
+    id (a lost answer), a record is adopted only within 10 s of the screen opening (and made within it);
+    after that the reads stop and the check-pending line stays with `[Open Activity]`. A `wallet.pending`
+    read that fails before any answered shows the check-pending line, `[Open Activity]` and an enabled Close.
   - "Confirmed in 2 blocks · finalized" replaced as marked.
   - The back arrow stays disabled while broadcasting (design); closing the popup is allowed and
     said so.

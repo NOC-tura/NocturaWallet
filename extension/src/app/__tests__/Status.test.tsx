@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {act, cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react';
 import {renderInWallet, setupWallet, type Wallet} from './harness';
-import {SLOW_AFTER_MS, STATUS_TEXT, STUCK_AFTER_MS, Status} from '../screens/Status';
+import {LOOKUP_MS, SLOW_AFTER_MS, STATUS_TEXT, STUCK_AFTER_MS, Status} from '../screens/Status';
 import {STUCK_TEXT} from '../screens/Stuck';
 import {FAILED_TEXT} from '../screens/Failed';
 import {CLOSE_CHECK_MS} from '../ui/useCloseTab';
@@ -15,6 +15,12 @@ import type {Engine, Pending} from '../engine';
 // Spec §4.6 (#21): the pending record re-read every 2 s from wallet.pending, matched by id; #54 at 90 s or
 // `stuck`, #44 on `failed` (and `expired` when #54 was never shown).
 const SELECTORS = selectorsOf(UI_SHEETS);
+type PendingReply = Awaited<ReturnType<Engine['pending']>>;
+const probe: {m: WalletModel | null} = {m: null};
+function Spy() {
+  probe.m = useWallet();
+  return null;
+}
 const nav = {onDone: vi.fn(), onDetails: vi.fn(), onActivity: vi.fn(), onTryAgain: vi.fn(), onEdit: vi.fn()};
 const SIGNATURE = sig(3);
 // The record's split fee (Task 3): 5 050 network + 20 000 Noctura fee — paid only once confirmed.
@@ -24,7 +30,13 @@ const rec = (over: Partial<PendingRecord> = {}) =>
 
 async function renderStatus(records: PendingRecord[], o: {id?: string | null; since?: number; surface?: Surface} = {}): Promise<Wallet & {reads: () => number}> {
   let reads = 0;
-  const w = await renderInWallet(<Status account={ACCOUNT.publicKey} id={o.id === undefined ? 'r1' : o.id} since={o.since ?? 0} {...nav} />, {
+  const ui = (
+    <>
+      <Spy />
+      <Status account={ACCOUNT.publicKey} id={o.id === undefined ? 'r1' : o.id} since={o.since ?? 0} {...nav} />
+    </>
+  );
+  const w = await renderInWallet(ui, {
     surface: o.surface,
     before: ext => ext.local.set(PENDING_KEY, records),
     gate: m => {
@@ -34,6 +46,19 @@ async function renderStatus(records: PendingRecord[], o: {id?: string | null; si
   return {...w, reads: () => reads};
 }
 const set = (w: Wallet, records: PendingRecord[]) => w.ext.local.set(PENDING_KEY, records);
+/** Another account selected and the provider re-read (what the 5 s state poll does after a switch elsewhere). */
+async function switchTo(w: Wallet, index: number, key: string) {
+  expect((await w.engine.select(index)).ok).toBe(true);
+  await act(async () => {
+    await probe.m!.reload();
+  });
+  await waitFor(() => expect(probe.m!.account?.publicKey).toBe(key));
+}
+const away = async (w: Wallet) => {
+  await switchTo(w, 1, RECIPIENT);
+  await switchTo(w, 0, ACCOUNT.publicKey);
+  await act(async () => void vi.advanceTimersByTime(4_000));
+};
 const meta = () => [...document.querySelectorAll('.meta-row')].map(r => [r.querySelector('.lbl')?.textContent, r.querySelector('.val')?.textContent]);
 
 afterEach(() => {
@@ -230,18 +255,102 @@ describe('#21 tx-status', () => {
     expect(screen.queryByText(STUCK_TEXT.untracked)).toBeNull();
     expect(w.reads()).toBe(settled);
   });
+
+  // Fix round 1, item 1: another account selected (elsewhere; the 5 s state poll picks it up) and back never wipes what
+  // the screen has seen.
+  it('A → B → A after #54 expired: still #54’s expired layout, never #44’s', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const w = await renderStatus([rec({state: 'stuck'})]);
+    expect(await screen.findByText(STUCK_TEXT.title)).toBeTruthy();
+    await set(w, [rec({state: 'expired', detail: 'Not confirmed — no funds moved.'})]);
+    await act(async () => void vi.advanceTimersByTime(2_000));
+    expect(await screen.findByText(STUCK_TEXT.expiredHead)).toBeTruthy();
+    await away(w);
+    expect(screen.getByText(STUCK_TEXT.expiredHead)).toBeTruthy();
+    expect(screen.queryByText(FAILED_TEXT.expiredHead)).toBeNull();
+  });
+
+  it('A → B → A after a live success: "Confirmed in N s" stays', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const created = Date.now();
+    const w = await renderStatus([rec({createdAt: created})]);
+    await screen.findByText(STATUS_TEXT.broadcasting);
+    await set(w, [rec({createdAt: created, state: 'confirmed'})]);
+    await act(async () => void vi.advanceTimersByTime(2_000));
+    expect(await screen.findByText(/^Confirmed in \d+ s$/)).toBeTruthy();
+    await away(w);
+    expect(screen.getByText(STATUS_TEXT.sentOk)).toBeTruthy();
+    expect(screen.getByText(/^Confirmed in \d+ s$/)).toBeTruthy();
+  });
+
+  it('A → B → A after the record was trimmed from the store: the success stays, never "no longer tracked"', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const w = await renderStatus([rec({state: 'confirmed'})]);
+    expect(await screen.findByText(STATUS_TEXT.sentOk)).toBeTruthy();
+    await set(w, []);
+    await away(w);
+    expect(screen.getByText(STATUS_TEXT.sentOk)).toBeTruthy();
+    expect(screen.queryByText(STUCK_TEXT.untracked)).toBeNull();
+  });
+
+  // Item 3: a lost answer adopts only within LOOKUP_MS of opening; then the reads stop and nothing later is adopted.
+  it('with no id: a record made within the window is adopted; none by LOOKUP_MS → the reads stop, and a send made later is never this one', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const since = Date.now();
+    const w = await renderStatus([], {id: null, since});
+    expect(await screen.findByText(STATUS_TEXT.unsure)).toBeTruthy();
+    await act(async () => void vi.advanceTimersByTime(4_000));
+    await set(w, [rec({id: 'late-but-in-window', createdAt: Date.now()})]);
+    await act(async () => void vi.advanceTimersByTime(2_000));
+    expect(await screen.findByText(STATUS_TEXT.broadcasting)).toBeTruthy();
+    cleanup();
+    const since2 = Date.now();
+    const w2 = await renderStatus([], {id: null, since: since2});
+    expect(await screen.findByText(STATUS_TEXT.unsure)).toBeTruthy();
+    await act(async () => void vi.advanceTimersByTime(LOOKUP_MS + 2_000));
+    const stopped = w2.reads();
+    await set(w2, [rec({id: 'minutes-later', createdAt: Date.now() + 120_000})]);
+    await act(async () => void vi.advanceTimersByTime(10_000));
+    expect(w2.reads()).toBe(stopped);
+    expect(screen.getByText(STATUS_TEXT.unsure)).toBeTruthy();
+    expect(screen.queryByText(STATUS_TEXT.broadcasting)).toBeNull();
+    expect(screen.getByRole('button', {name: STATUS_TEXT.openActivity})).toBeTruthy();
+  });
+
+  // Item 2: a failed read never leaves the screen without a way out.
+  it('wallet.pending failing: the check-pending line, [Open Activity], and Close enabled — never "nothing sent"', async () => {
+    const w = await setupWallet();
+    const engine: Engine = {...w.engine, pending: async () => ({ok: false, error: 'failed'})};
+    render(
+      <WalletProvider engine={engine} platform={w.platform} surface="tab">
+        <Status account={ACCOUNT.publicKey} id="r1" since={0} {...nav} />
+      </WalletProvider>,
+    );
+    expect(await screen.findByText(STATUS_TEXT.unsure)).toBeTruthy();
+    const close = screen.getByRole('button', {name: 'Close'}) as HTMLButtonElement;
+    expect(close.disabled).toBe(false);
+    fireEvent.click(close);
+    expect(nav.onDone).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', {name: STATUS_TEXT.openActivity}));
+    expect(nav.onActivity).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).not.toMatch(/nothing (was )?sent/i);
+  });
+
+  it('the slow state’s USD line is --fg-secondary (design), broadcasting’s --fg-tertiary', async () => {
+    await renderStatus([rec({createdAt: Date.now() - 83_000})]);
+    await screen.findByText(STATUS_TEXT.slowLabel);
+    expect(document.querySelector('.amount-card .noc-caption')?.classList.contains('app-secondary')).toBe(true);
+    cleanup();
+    await renderStatus([rec()]);
+    await screen.findByText(STATUS_TEXT.broadcasting);
+    expect(document.querySelector('.amount-card .noc-caption')?.classList.contains('app-dim')).toBe(true);
+  });
 });
 
 // ── Every await checks its generation ─────────────────────────────────────────────────────────────
 // wallet.pending answered by the test (held until answered, in order of asking) once `hold` is on. The records belong
 // to the account that is NOT selected, so the provider's own 2 s poll stays off and the held reads are the screen's.
 
-type PendingReply = Awaited<ReturnType<Engine['pending']>>;
-const probe: {m: WalletModel | null} = {m: null};
-function Spy() {
-  probe.m = useWallet();
-  return null;
-}
 const view = (over: Partial<Pending> = {}): Pending => ({
   id: 'r1',
   account: RECIPIENT,
