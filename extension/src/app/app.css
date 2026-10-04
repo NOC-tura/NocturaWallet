@@ -645,3 +645,29 @@ a.btn {
 .s-conf .high-value-banner .app-danger {
   color: var(--danger);
 }
+
+/* #54 stuck (plan 3): index.html #s54's inline styles — the original's card dimmed while it is re-sent, its
+   elapsed pill in --warning — and the hash's copy controls as buttons (the chip, and 54d's accent "Copy"). */
+.s-stuck .orig-card.app-dim-card {
+  opacity: 0.6;
+}
+.s-stuck .orig-card .head .pill.app-pill-warning {
+  color: var(--warning);
+  background: color-mix(in oklab, var(--warning) 12%, transparent);
+}
+.s-stuck .orig-card .copy-chip {
+  border: 0;
+  cursor: pointer;
+}
+.s-stuck .new-tx-hash .app-hash-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--touch-target-min);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}

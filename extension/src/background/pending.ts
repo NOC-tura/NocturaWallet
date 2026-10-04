@@ -5,7 +5,7 @@ import {addKnownRecipient} from './knownRecipients';
 import {readWalletView} from './accountsStore';
 import {randomId} from './digest';
 import {inFlightFor, isOpen, readPending, updatePending, viewOf, type PendingFee, type PendingRecord, type PendingView} from './pendingStore';
-import {ResendRefused, SendRefused, SentUnconfirmed, type ResendRefusal, type SendIntent} from './sendTypes';
+import {COOLING_AGAIN_DETAIL, FORBIDDEN_DETAIL, ResendRefused, SendRefused, SentUnconfirmed, type ResendRefusal, type SendIntent} from './sendTypes';
 import {BroadcastRejected, BroadcastSubstituted, firstSignature} from '../../../core/solana/broadcast';
 import {RpcCoolingDown, RpcForbidden, type SignatureStatus} from '../../../core/solana/rpc';
 
@@ -52,9 +52,9 @@ async function deliver(ext: Ext, deps: WalletDeps, record: PendingRecord, attemp
     } else if (attempt === 'first' && e instanceof RpcCoolingDown) {
       await patch(ext, record.id, r => ({...r, state: 'failed', failure: 'not-sent', detail: 'Not sent: the coordinator is cooling down after an earlier HTTP 403. No funds moved.'}));
     } else if (e instanceof RpcCoolingDown) {
-      await patch(ext, record.id, r => ({...r, detail: 'Not sent again: cooling down after an earlier HTTP 403; still watching the first copy.'}));
+      await patch(ext, record.id, r => ({...r, detail: COOLING_AGAIN_DETAIL}));
     } else if (e instanceof RpcForbidden) {
-      await patch(ext, record.id, r => ({...r, detail: 'The coordinator answered HTTP 403: not acknowledged; still watching, not retried automatically.'}));
+      await patch(ext, record.id, r => ({...r, detail: FORBIDDEN_DETAIL}));
     } else if (e instanceof BroadcastSubstituted) {
       await patch(ext, record.id, r => ({...r, detail: 'The coordinator answered with another signature; watching this transaction’s own signature.'}));
     } else {
