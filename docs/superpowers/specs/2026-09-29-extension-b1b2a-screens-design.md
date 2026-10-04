@@ -1393,7 +1393,7 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
     design's state 6 draws only the network fee).
   - **Plan 3 fix round 1:** an amount that does not parse reads "Not a valid amount — digits, with up
     to N decimals" (N = the token's decimals), the amount row in `--danger`, CTA disabled — **controller
-    addition — awaiting the owner** (§4.2 gives no copy for it). The sending account is refused from the
+    addition — confirmed by the owner 2026-10-04** (§4.2 gives no copy for it). The sending account is refused from the
     field's text itself (the address equals the account's key), not only from E6's `self`, so a failed or
     late E6 reply never lets it through. Matched to the design rather than listed: the Clear button is
     tinted `--danger` in the invalid state (state 3), and the first-time state draws no field action

@@ -41,7 +41,7 @@ export const SEND_TEXT = {
   pasteRefused: 'Paste with Ctrl+V (⌘V on a Mac).',
   /** §4.5's loop guard sends the user back here with it. */
   startAgain: 'Something went wrong — start the send again.',
-  /** Controller addition (plan 3 fix round 1) — awaiting the owner: §4.2 gives no copy for an amount that does not parse. */
+  /** Controller addition (plan 3 fix round 1) — confirmed by the owner 2026-10-04: §4.2 gives no copy for an amount that does not parse. */
   invalidAmount: (decimals: number): string => `Not a valid amount — digits, with up to ${decimals} decimals`,
 } as const;
 

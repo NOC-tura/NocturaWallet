@@ -333,7 +333,7 @@ describe('#12 send', () => {
     expect(nav.onReview).not.toHaveBeenCalled();
   });
 
-  // Fix round 1, #5: an amount that does not parse says so (controller addition, awaiting the owner).
+  // Fix round 1, #5: an amount that does not parse says so (controller addition, confirmed by the owner 2026-10-04).
   it('an amount that does not parse: the invalid-amount line, the CTA disabled', async () => {
     await renderSend(known(COUNTERPARTY, null));
     await loaded();
