@@ -29,8 +29,13 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
   const [stack, go] = useReducer(routeReducer, first);
   const [accounts, setAccounts] = useState(false);
   const [txItems, setTxItems] = useState<Record<string, HistoryItem>>({});
-  /** #20's [Cancel] discarded the prepared send (E7): #11 shows "Transaction cancelled. No fees charged." */
-  const [cancelled, setCancelled] = useState(false);
+  /**
+   * #20's [Cancel] discarded the prepared send (E7): #11 shows "Transaction cancelled. No fees charged." — on the one
+   * stack the cancel's reset made, and on no other (fix round 1): `reset` keeps the routes array it is given, so any
+   * later stack change (a push, a tab, a return to #11 by another way, a send's Done) is another array and the toast
+   * is gone for good.
+   */
+  const [cancelledOn, setCancelledOn] = useState<Route[] | null>(null);
   const route = stack[stack.length - 1] ?? HOME;
   const content = useRef<HTMLElement>(null);
   const stackRef = useRef(stack);
@@ -58,6 +63,34 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [stack.length, accounts, route.screen]);
+
+  // §7.1 ruling (fix round 1): a lock ends the flow. #19, #20 and #21 do not survive it — on unlock the app is at #12
+  // holding the draft (the user's own text, from #12 or #19's intent), or at #11 when there is none. Nothing then
+  // prepares by itself: #12 prepares only on Continue. Decided when the lock is seen, while the flow is not shown.
+  useEffect(() => {
+    if (m.phase !== 'locked') return;
+    const now = stackRef.current;
+    const top = now[now.length - 1];
+    if (top === undefined || !FLOW.has(top.screen)) return;
+    const at = [...now].reverse().find(r => r.screen === 'send' || r.screen === 'review');
+    const draft = at?.screen === 'review' ? draftOf(at.intent) : at?.screen === 'send' ? at.draft : null;
+    go({type: 'reset', routes: draft === null ? [HOME] : [HOME, {screen: 'send', draft, notice: null}]});
+  }, [m.phase]);
+
+  // Ruling (fix round 1): another account selected (here or in another window) ends a flow begun for the one before —
+  // #12, #19 and #20 go back to #11, so #20 can never show one account's balance against another's send. #21 (and the
+  // #54/#44 it grows into) stays: it follows a record already sent, and shows that record's own account.
+  const lastSelected = useRef<string | null>(null);
+  const selectedNow = m.account?.publicKey ?? null;
+  useEffect(() => {
+    if (selectedNow === null) return;
+    const before = lastSelected.current;
+    lastSelected.current = selectedNow;
+    if (before === null || before === selectedNow) return;
+    const now = stackRef.current;
+    const top = now[now.length - 1];
+    if (top !== undefined && (top.screen === 'send' || top.screen === 'review' || top.screen === 'confirm' || top.screen === 'resume')) go({type: 'reset', routes: [HOME]});
+  }, [selectedNow]);
 
   // Spec §1.6 step 3: a popup opened while a prepared send waits shows #20 in resume mode — which reads it again
   // and waits for a tap (D38). Once per popup, and only while the user has not gone anywhere yet.
@@ -101,8 +134,9 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
         else toReview(account, intent, null);
       }}
       onCancelled={() => {
-        setCancelled(true);
-        go({type: 'reset', routes: [HOME]});
+        const routes: Route[] = [HOME];
+        setCancelledOn(routes);
+        go({type: 'reset', routes});
       }}
       onTrack={(id, since) => toStatus(account, id, since)}
       onReview={(intent, notice) => toReview(account, intent, notice)}
@@ -195,7 +229,7 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
         {screen}
       </main>
       {route.screen === 'tab' ? <TabBar active={route.tab} onChange={tab => go({type: 'tab', tab})} /> : null}
-      {cancelled && route.screen === 'tab' ? <CancelledToast onDone={() => setCancelled(false)} /> : null}
+      {cancelledOn === stack && route.screen === 'tab' ? <CancelledToast onDone={() => setCancelledOn(null)} /> : null}
       {accounts ? <Switcher onClose={() => setAccounts(false)} /> : null}
     </>
   );

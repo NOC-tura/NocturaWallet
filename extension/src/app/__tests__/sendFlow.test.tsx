@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import {act, cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react';
-import {sendingReader, setupWallet, type Wallet} from './harness';
+import {WalletProvider} from '../WalletContext';
+import {Send} from '../screens/Send';
+import {SECOND, sendingReader, setupWallet, type Wallet} from './harness';
 import {App} from '../App';
 import {createEngine, type Intent} from '../engine';
 import {CONFIRM_TEXT} from '../screens/Confirm';
@@ -216,6 +218,9 @@ describe('the popup resumes a waiting send (§1.6 step 3)', () => {
     await act(async () => void vi.advanceTimersByTime(2_000));
     fireEvent.click(await screen.findByRole('button', {name: STATUS_TEXT.done}));
     expect(await screen.findByText('TOKENS')).toBeTruthy();
+    // Fix round 1: #11 after a broadcast never says "No fees charged".
+    await act(async () => void vi.advanceTimersByTime(50));
+    expect(screen.queryByText(CANCELLED_TEXT)).toBeNull();
   });
 });
 
@@ -361,5 +366,133 @@ describe('the flow’s routes (Tasks 8–12 carries)', () => {
     expect(await screen.findByText(REVIEW_TEXT.passed)).toBeTruthy();
     expect(count(w, 'wallet.prepareSend')).toBe(prepares + 1);
     expect(w.sent).not.toContain('wallet.resend');
+  });
+});
+
+describe('fix round 1: the toast, a lock, another account, no account', () => {
+  it('Cancel → #11 left at once → back to #11: the toast is gone, not shown again', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    await app();
+    expect(await screen.findByText(CONFIRM_TEXT.resume)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
+    expect(await screen.findByText(CANCELLED_TEXT)).toBeTruthy();
+    // Within the toast's 1.8 s: Receive, then back.
+    fireEvent.click(screen.getByRole('button', {name: 'Receive'}));
+    expect(screen.queryByText(CANCELLED_TEXT)).toBeNull();
+    fireEvent.click(await screen.findByRole('button', {name: 'Back'}));
+    expect(await screen.findByText('TOKENS')).toBeTruthy();
+    expect(screen.queryByText(CANCELLED_TEXT)).toBeNull();
+    // A tab change that lands on #11 is another stack too.
+    fireEvent.click(screen.getByRole('button', {name: /Activity/}));
+    fireEvent.click(screen.getByRole('button', {name: /Home/}));
+    expect(await screen.findByText('TOKENS')).toBeTruthy();
+    expect(screen.queryByText(CANCELLED_TEXT)).toBeNull();
+  });
+
+  /** Lock (the session cleared, seen by the 5 s state poll), then unlock again. */
+  async function lockAndUnlock(w: Wallet): Promise<void> {
+    await clearSession(w.ext);
+    await act(async () => void vi.advanceTimersByTime(STATE_POLL_MS + 50));
+    expect(await screen.findByText('Welcome back')).toBeTruthy();
+    await setSession(w.ext, [ACCOUNT, SECOND]);
+    await act(async () => void vi.advanceTimersByTime(STATE_POLL_MS + 50));
+  }
+
+  it('§7.1: a lock at #19 — unlocked, #12 holds the draft; no #19, and nothing prepares by itself', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const w = await app({known: true});
+    expect(await screen.findByText(CONFIRM_TEXT.resume)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Back'}));
+    expect(await screen.findByText(REVIEW_TEXT.passed)).toBeTruthy();
+    const prepares = count(w, 'wallet.prepareSend');
+    const reads = count(w, 'wallet.preparedFor');
+    await lockAndUnlock(w);
+    expect(await screen.findByText('Send', {selector: '.title'})).toBeTruthy();
+    expect((screen.getByLabelText('Recipient') as HTMLInputElement).value).toBe(COUNTERPARTY);
+    expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('0.01');
+    await act(async () => void vi.advanceTimersByTime(1_000));
+    expect(screen.queryByText(REVIEW_TEXT.title)).toBeNull();
+    expect(count(w, 'wallet.prepareSend')).toBe(prepares);
+    expect(count(w, 'wallet.preparedFor')).toBe(reads);
+  });
+
+  it('§7.1: a lock at #20 (resumed, no draft) — unlocked, #11; no #20, nothing read or prepared for it', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const w = await app({known: true});
+    expect(await screen.findByText(CONFIRM_TEXT.resume)).toBeTruthy();
+    const prepares = count(w, 'wallet.prepareSend');
+    const reads = count(w, 'wallet.preparedFor');
+    await lockAndUnlock(w);
+    expect(await screen.findByText('TOKENS')).toBeTruthy();
+    await act(async () => void vi.advanceTimersByTime(1_000));
+    expect(screen.queryByText(CONFIRM_TEXT.title)).toBeNull();
+    expect(count(w, 'wallet.prepareSend')).toBe(prepares);
+    expect(count(w, 'wallet.preparedFor')).toBe(reads);
+    expect(w.sends()).toBe(0);
+  });
+
+  it('another account selected in another window: #19 for the old account → #11', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const w = await app({known: true});
+    expect(await screen.findByText(CONFIRM_TEXT.resume)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Back'}));
+    expect(await screen.findByText(REVIEW_TEXT.passed)).toBeTruthy();
+    expect((await w.engine.select(SECOND.index)).ok).toBe(true);
+    await act(async () => void vi.advanceTimersByTime(STATE_POLL_MS + 50));
+    expect(await screen.findByText('TOKENS')).toBeTruthy();
+    expect(screen.queryByText(REVIEW_TEXT.title)).toBeNull();
+  });
+
+  it('another account selected in another window: #20 (resumed) → #11 — never B’s balance against A’s send', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const w = await app({known: true});
+    expect(await screen.findByText(CONFIRM_TEXT.resume)).toBeTruthy();
+    expect((await w.engine.select(SECOND.index)).ok).toBe(true);
+    await act(async () => void vi.advanceTimersByTime(STATE_POLL_MS + 50));
+    expect(await screen.findByText('TOKENS')).toBeTruthy();
+    expect(screen.queryByText(CONFIRM_TEXT.title)).toBeNull();
+    expect(w.sends()).toBe(0);
+  });
+
+  it('another account selected while #21 follows a sent record: #21 stays', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const w = await app({known: true});
+    fireEvent.click(await sendButton());
+    expect(await screen.findByText(STATUS_TEXT.broadcasting)).toBeTruthy();
+    expect((await w.engine.select(SECOND.index)).ok).toBe(true);
+    await act(async () => void vi.advanceTimersByTime(STATE_POLL_MS + 50));
+    expect(screen.getByText(STATUS_TEXT.broadcasting)).toBeTruthy();
+    expect(screen.queryByText('TOKENS')).toBeNull();
+  });
+
+  it('#12 with no account known yet: Continue is disabled (and stays so for a click), nothing is prepared', async () => {
+    const w = await setupWallet({reader: sendingReader(), before: async ext => void (await ext.local.set(KNOWN_RECIPIENTS_KEY, [COUNTERPARTY]))});
+    const asked: string[] = [];
+    const engine = createEngine(async m => {
+      const type = (m as {type: string}).type;
+      asked.push(type);
+      const r = (await w.transport(m)) as {ok: boolean; data?: Record<string, unknown>};
+      return type === 'wallet.state' && r.ok ? {...r, data: {...r.data, selected: null}} : r;
+    }, async () => undefined);
+    const reviewed: unknown[] = [];
+    render(
+      <WalletProvider engine={engine} platform={w.platform} surface="popup">
+        <Send draft={{token: 'SOL', recipient: COUNTERPARTY, amount: '0.01'}} notice={null} onBack={() => undefined} onReview={(d, i) => void reviewed.push([d, i])} onViewPending={() => undefined} />
+      </WalletProvider>,
+    );
+    expect(await screen.findByText('Send', {selector: '.title'})).toBeTruthy();
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 50));
+    });
+    const cta = document.querySelector('.sticky-bar button') as HTMLButtonElement;
+    expect(cta.disabled).toBe(true);
+    // Rule 6's lesson: lift `disabled` so the click reaches the handler — it still refuses.
+    cta.disabled = false;
+    fireEvent.click(cta);
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 50));
+    });
+    expect(reviewed).toEqual([]);
+    expect(asked).not.toContain('wallet.prepareSend');
   });
 });
