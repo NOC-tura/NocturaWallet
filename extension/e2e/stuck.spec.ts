@@ -2,6 +2,14 @@ import {test, expect} from '@playwright/test';
 import {contained, launchPopup} from './popupHarness';
 import {msg, realWallet, startSend} from './sendHelpers';
 
+/** The list's one entry — or the spec fails here, clearly, never on a fallback value. */
+function only<T>(list: T[], what: string): T {
+  expect(list, what).toHaveLength(1);
+  const [one] = list;
+  if (one === undefined) throw new Error(`no ${what}`);
+  return one;
+}
+
 // Spec B1b-2a §8.5, plan 3: spec 5 — a send the network never sees: #21 → #54 at 90 s, "Send again" re-sends the
 // SAME signed bytes (D23), and only once its blockhash has expired (two null full-history checks) is a new
 // attempt offered. The popup runs on Playwright's clock so its 90 s pass at once; the background keeps real time.
@@ -16,11 +24,9 @@ test('5 · stuck → send again (the same bytes) → expire: #21 → #54 at 90 s
     await popup.getByRole('button', {name: 'Continue to confirm'}).click();
     await popup.getByRole('button', {name: 'Send 0.0100 SOL'}).click();
     await expect(popup.getByText('Broadcasting transaction…')).toBeVisible({timeout: 30_000});
-    expect(h.fake.broadcastWires).toHaveLength(1);
-    const first = h.fake.broadcastWires[0];
-    const signature = h.fake.broadcasts[0];
-    const created = (await msg(popup, {type: 'wallet.pending'})).data as {createdAt: number}[];
-    const createdAt = created[0]?.createdAt ?? 0;
+    const first = only(h.fake.broadcastWires, 'broadcast wire');
+    const signature = only(h.fake.broadcasts, 'broadcast signature');
+    const {createdAt} = only((await msg(popup, {type: 'wallet.pending'})).data as {createdAt: number}[], 'pending record');
     // The popup's clock paused, so each of #21's timed states holds while it is asserted, its counters exact. 80 s:
     // "Taking longer than usual", 10 s to the recovery options; 89 s: still #21, 1 s left; 90 s: #54.
     await popup.clock.pauseAt(createdAt + 80_000);
@@ -48,14 +54,17 @@ test('5 · stuck → send again (the same bytes) → expire: #21 → #54 at 90 s
     // Nothing has asked the full history yet: the checks below are the expiry's, caused by the height moved here.
     expect(h.fake.historyChecks).toEqual([]);
     // Past the blockhash's life with margin: two null full-history checks ≥ 2 s apart, then expired.
-    const pending = (await msg(popup, {type: 'wallet.pending'})).data as {lastValidBlockHeight: number}[];
-    h.fake.blockHeight = (pending[0]?.lastValidBlockHeight ?? 0) + 33;
+    const {lastValidBlockHeight} = only((await msg(popup, {type: 'wallet.pending'})).data as {lastValidBlockHeight: number}[], 'pending record');
+    h.fake.blockHeight = lastValidBlockHeight + 33;
     await expect(popup.getByText('Not confirmed — no funds moved.')).toBeVisible({timeout: 45_000});
     await expect(popup.getByText('Its blockhash expired and two checks found it on no block. You can now make a new attempt.')).toBeVisible();
     // Offered only after two null checks of this signature, at least 2 s apart — never after one.
     const checks = h.fake.historyChecks.filter(c => c.signature === signature);
     expect(checks.length).toBeGreaterThanOrEqual(2);
-    expect((checks.at(-1)?.at ?? 0) - (checks[0]?.at ?? 0)).toBeGreaterThanOrEqual(2_000);
+    const [earliest] = checks;
+    const latest = checks.at(-1);
+    if (earliest === undefined || latest === undefined) throw new Error('no full-history checks');
+    expect(latest.at - earliest.at).toBeGreaterThanOrEqual(2_000);
     expect(h.fake.historyChecks.map(c => c.signature)).toEqual(checks.map(c => c.signature));
     expect(h.fake.broadcastWires).toEqual([first, first]);
     // [Try again] → #19 with the same intent: a fresh prepare (a new simulation, a new blockhash).

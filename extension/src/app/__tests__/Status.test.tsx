@@ -109,6 +109,23 @@ describe('#21 tx-status', () => {
     expect(unstyledClasses(document.querySelector('.s-stat')!, SELECTORS)).toEqual([]);
   });
 
+  it('the slow warning starts at exactly 80 s: absent at 79 999 ms, present at 80 000 ms (fix round 1)', async () => {
+    // Only Date is faked, and held: the age is exact on every render, while the timers (useNow's 1 s re-read, the 2 s
+    // reads) run in real time. The boundary is written as literals, never read from SLOW_AFTER_MS.
+    const at = Date.now();
+    vi.useFakeTimers({toFake: ['Date']});
+    vi.setSystemTime(at);
+    await renderStatus([rec({createdAt: at - 79_999})]);
+    expect(await screen.findByText(STATUS_TEXT.broadcasting)).toBeTruthy();
+    expect(screen.queryByText(STATUS_TEXT.slowLabel)).toBeNull();
+    expect(screen.queryByText(STATUS_TEXT.slow)).toBeNull();
+    vi.setSystemTime(at + 1);
+    expect(await screen.findByText(STATUS_TEXT.slowLabel, {}, {timeout: 3_000})).toBeTruthy();
+    expect(screen.getByText(STATUS_TEXT.slow)).toBeTruthy();
+    expect(screen.queryByText(STATUS_TEXT.broadcasting)).toBeNull();
+    expect(screen.queryByText(STUCK_TEXT.title)).toBeNull();
+  });
+
   it('at 90 s, or when the engine says stuck, #54 takes over', async () => {
     await renderStatus([rec({createdAt: Date.now() - STUCK_AFTER_MS})]);
     expect(await screen.findByText(STUCK_TEXT.title)).toBeTruthy();
