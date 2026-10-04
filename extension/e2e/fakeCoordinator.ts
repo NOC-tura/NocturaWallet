@@ -41,6 +41,14 @@ export interface FakeCoordinator {
   simulateError: boolean;
   /** Every simulateTransaction's requested addresses (null = the field was missing). */
   simulations: (string[] | null)[];
+  /** Plan 3: the payer's lamports after each simulated transaction, fee included — what the node answered. */
+  simulatedPayerAfter: number[];
+  /**
+   * Plan 3: SPL token accounts per owner, answered by getTokenAccountsByOwner in the node's jsonParsed shape
+   * (what core/solana/rpc.ts reads: pubkey, account.data.parsed.info.{mint, owner, tokenAmount.{amount,
+   * decimals}}). No E2E sends a token: they are for the balances #11 and #43 show.
+   */
+  tokenAccounts: Map<string, {pubkey: string; mint: string; amount: string; decimals: number}[]>;
   /** Per owner, newest first: the signatures getSignaturesForAddress pages through, and each getTransaction result. */
   history: Map<string, {signature: string; tx: unknown}[]>;
   /**
@@ -66,7 +74,7 @@ function shortVec(bytes: Uint8Array): {value: number; size: number} {
  * the message (0x80 prefix, 3-byte header, keys, blockhash, instructions). Read by hand: the E2E runs
  * under Playwright's loader, where @solana/web3.js's CommonJS dependencies do not load.
  */
-function parseV0(wire: Uint8Array): {keys: string[]; instructions: {program: number; accounts: number[]; data: Uint8Array}[]} {
+function parseV0(wire: Uint8Array): {signers: number; keys: string[]; instructions: {program: number; accounts: number[]; data: Uint8Array}[]} {
   let at = 0;
   const vec = (): number => {
     const {value, size} = shortVec(wire.subarray(at));
@@ -76,6 +84,8 @@ function parseV0(wire: Uint8Array): {keys: string[]; instructions: {program: num
   const signatures = vec();
   at += 64 * signatures;
   if (wire[at] !== 0x80) throw new Error('not a v0 message');
+  // The header's first byte: the required signatures (each pays the 5 000-lamport base fee).
+  const signers = wire[at + 1] ?? 0;
   at += 4;
   const keys: string[] = [];
   for (let n = vec(), i = 0; i < n; i++, at += 32) keys.push(base58.encode(wire.subarray(at, at + 32)));
@@ -90,13 +100,14 @@ function parseV0(wire: Uint8Array): {keys: string[]; instructions: {program: num
     instructions.push({program, accounts, data: wire.slice(at, at + len)});
     at += len;
   }
-  return {keys, instructions};
+  return {signers, keys, instructions};
 }
 
 /**
  * A simulated coordinator: the read proxy for the methods the engine uses, the broadcast route
  * with the contract this plan defines (docs/superpowers/specs/2026-09-29-coordinator-broadcast-route.md),
- * prices and /stats. 10 SOL, no token accounts, quiet fees, simulation always passes. Every
+ * prices and /stats. 10 SOL, no token accounts unless a spec lists some, quiet fees, a simulation that applies the
+ * fee and the System transfers. Every
  * getLatestBlockhash hands out a fresh blockhash valid for BLOCKHASH_LIFETIME blocks from the
  * current height, as a real node does.
  */
@@ -116,6 +127,8 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     accountKinds: new Map(),
     simulateError: false,
     simulations: [],
+    simulatedPayerAfter: [],
+    tokenAccounts: new Map(),
     history: new Map(),
     hold: () => {
       let release: () => void = () => undefined;
@@ -143,9 +156,11 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
   const lamportsOf = (address: string): number => fake.lamports.get(address) ?? fake.defaultLamports;
 
   /**
-   * What a node answers: the requested accounts after the transaction, WITHOUT the fee (the engine
-   * accepts either form, E2) — the payer's lamports less every System transfer it makes. Its error
-   * switch answers err with accounts: null, as the real RPC does (review H2).
+   * What a node answers: the requested accounts after the transaction WITH its fee paid, as the coordinator
+   * measured a real node answer (spec §11.5: a payer that sends `balance − 5 000` ends at exactly 0) — the
+   * payer's lamports less every System transfer it makes, less 5 000 per signature and the priority fee its
+   * ComputeBudget instructions set (price × limit / 10⁶, rounded up). Its error switch answers err with
+   * accounts: null, as the real RPC does (review H2).
    */
   const simulate = (params: unknown[]): unknown => {
     const config = params[1] as {accounts?: {encoding?: string; addresses?: unknown}} | undefined;
@@ -153,20 +168,48 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     fake.simulations.push(addresses);
     if (addresses === null || config?.accounts?.encoding !== 'base64') fake.unexpected.push('simulateTransaction without accounts {encoding: base64, addresses}');
     if (fake.simulateError) return {context: context(), value: {err: {InstructionError: [2, {Custom: 1}]}, logs: [], accounts: null, unitsConsumed: 0, returnData: null}};
-    const {keys, instructions} = parseV0(base64.decode(params[0] as string));
+    const {signers, keys, instructions} = parseV0(base64.decode(params[0] as string));
     const payer = keys[0] ?? '';
     let out = 0;
+    let price = 0n;
+    let limit = 0n;
     for (const ix of instructions) {
       const data = ix.data;
-      if (keys[ix.program] === '11111111111111111111111111111111' && data[0] === 2 && keys[ix.accounts[0] ?? -1] === payer) {
-        out += Number(new DataView(data.buffer, data.byteOffset, data.byteLength).getBigUint64(4, true));
-      }
+      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      if (keys[ix.program] === '11111111111111111111111111111111' && data[0] === 2 && keys[ix.accounts[0] ?? -1] === payer) out += Number(view.getBigUint64(4, true));
+      if (keys[ix.program] === 'ComputeBudget111111111111111111111111111111' && data[0] === 2) limit = BigInt(view.getUint32(1, true));
+      if (keys[ix.program] === 'ComputeBudget111111111111111111111111111111' && data[0] === 3) price = view.getBigUint64(1, true);
     }
+    const fee = 5_000 * signers + Number((price * limit + 999_999n) / 1_000_000n);
+    const after = lamportsOf(payer) - out - fee;
+    fake.simulatedPayerAfter.push(after);
     const accounts = (addresses ?? []).map(a =>
-      a === payer ? {lamports: lamportsOf(payer) - out, owner: '11111111111111111111111111111111', data: ['', 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 0} : null,
+      a === payer ? {lamports: after, owner: '11111111111111111111111111111111', data: ['', 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 0} : null,
     );
     return {context: context(), value: {err: null, logs: ['Program 11111111111111111111111111111111 success'], accounts, unitsConsumed: 450, returnData: null}};
   };
+
+  /** getTokenAccountsByOwner in the node's jsonParsed shape, filtered by `mint` or `programId` as a node filters. */
+  const tokenAccountsOf = (owner: string, filter: {mint?: string; programId?: string} | undefined): unknown[] =>
+    (fake.tokenAccounts.get(owner) ?? [])
+      .filter(t => filter?.mint === undefined || t.mint === filter.mint)
+      // Every listed account is owned by the classic SPL Token program: another programId (Token-2022) matches none.
+      .filter(() => filter?.programId === undefined || filter.programId === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
+      .map(t => ({
+        pubkey: t.pubkey,
+        account: {
+          data: {
+            parsed: {info: {isNative: false, mint: t.mint, owner, state: 'initialized', tokenAmount: {amount: t.amount, decimals: t.decimals, uiAmount: Number(t.amount) / 10 ** t.decimals, uiAmountString: String(Number(t.amount) / 10 ** t.decimals)}}, type: 'account'},
+            program: 'spl-token',
+            space: 165,
+          },
+          executable: false,
+          lamports: 2_039_280,
+          owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+          rentEpoch: 18446744073709552000,
+          space: 165,
+        },
+      }));
 
   const rpcResult = (method: string, params: unknown[]): unknown => {
     switch (method) {
@@ -179,7 +222,7 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       case 'simulateTransaction':
         return simulate(params);
       case 'getTokenAccountsByOwner':
-        return {context: context(), value: []};
+        return {context: context(), value: tokenAccountsOf(params[0] as string, params[1] as {mint?: string; programId?: string} | undefined)};
       case 'getMultipleAccounts':
         // Each address as the node reports it: a system account holding its lamports, or null when it holds
         // none (the import probe reads balances this way — the same `lamports` table as getBalance).

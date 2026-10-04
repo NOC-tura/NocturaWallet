@@ -2399,6 +2399,9 @@ cannot click the toolbar action; stated). Specs:
     account 0 → at the finish `funded`, "This wallet now holds funds. Nothing was changed.", and the
     stored envelope is byte-identical.
 Every spec asserts `fake.unexpected` is empty and `hits > 0` (routing proven).
+**Plan 3:** specs 4, 5 and 11 send SOL; no E2E sends a token (component tests cover SPL sends against the
+real background, and the fake's jsonParsed token accounts feed #11 and #43). A token-send E2E is owed when
+the first token-send path is exercised on a device (plan-3 review, author's gaps).
 
 ### 8.6 Visual fidelity against the design
 
