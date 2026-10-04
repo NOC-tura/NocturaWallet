@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {fireEvent, screen, waitFor} from '@testing-library/react';
+import {cleanup, fireEvent, screen, waitFor} from '@testing-library/react';
 import {renderApp} from './appHarness';
 import {walletReader} from './harness';
 import {PENDING_KEY} from '../../background/pendingStore';
@@ -136,12 +136,16 @@ describe('navigation (spec §1.6: an in-memory stack; no route acts)', () => {
     expect(scroller().scrollTop).toBe(0);
   });
 
-  it('the pending strip opens Activity (plan-1 stand-in), where the send is in PENDING', async () => {
-    await renderApp({
-      before: ext => ext.local.set(PENDING_KEY, [pendingRecord({account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '2480000000'}, createdAt: Date.now()})]),
-    });
+  it('the pending strip opens the open send at #21; Activity’s PENDING row opens it too', async () => {
+    const record = pendingRecord({id: 'ab'.repeat(16), account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '2480000000'}, createdAt: Date.now()});
+    await renderApp({before: ext => ext.local.set(PENDING_KEY, [record])});
     fireEvent.click(await screen.findByText('Sending 2.48 SOL · pending'));
-    expect(await screen.findByText('PENDING')).toBeTruthy();
+    expect(await screen.findByText('Broadcasting transaction…')).toBeTruthy();
+    cleanup();
+    await renderApp({before: ext => ext.local.set(PENDING_KEY, [record])});
+    fireEvent.click(await screen.findByRole('button', {name: 'Activity'}));
+    fireEvent.click(await screen.findByText('Sending 2.48 SOL'));
+    expect(await screen.findByText('Broadcasting transaction…')).toBeTruthy();
   });
 
   it('the avatar opens the account switcher; Settings → Accounts opens it too', async () => {

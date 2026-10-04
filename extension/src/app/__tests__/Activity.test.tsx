@@ -33,7 +33,7 @@ function historyReader(n = 5) {
   });
 }
 
-const nav = {onTx: vi.fn(), onReceive: vi.fn()};
+const nav = {onTx: vi.fn(), onReceive: vi.fn(), onPending: vi.fn()};
 async function openActivity(reader = historyReader(), before?: NonNullable<Parameters<typeof renderInWallet>[1]>['before']) {
   return renderInWallet(<Activity {...nav} />, {reader, before});
 }
@@ -206,13 +206,15 @@ describe('#26 activity', () => {
     expect(screen.queryByText('Could not reach the Noctura server')).toBeNull();
   });
 
-  it('open sends on top, in a PENDING section', async () => {
+  it('open sends on top, in a PENDING section — a row opens its send (#21/#54)', async () => {
     await openActivity(historyReader(), ext =>
-      ext.local.set(PENDING_KEY, [pendingRecord({account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '2480000000'}, createdAt: Date.now() - 72_000})]),
+      ext.local.set(PENDING_KEY, [pendingRecord({id: 'p1', account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '2480000000'}, createdAt: Date.now() - 72_000})]),
     );
     expect(await screen.findByText('PENDING')).toBeTruthy();
     expect(screen.getByText('Sending 2.48 SOL')).toBeTruthy();
     expect(screen.getByText(/^waiting · 1 m \d+ s$/)).toBeTruthy();
+    fireEvent.click(screen.getByText('Sending 2.48 SOL'));
+    expect(nav.onPending).toHaveBeenCalledWith(expect.objectContaining({id: 'p1'}));
   });
 
   it('unreachable and refused show their banners over what loaded', async () => {
@@ -250,7 +252,7 @@ describe('#26 activity', () => {
     });
     await renderInWallet(
       <>
-        <Home onReceive={() => undefined} onActivity={() => undefined} onAccounts={() => undefined} />
+        <Home onReceive={() => undefined} onSend={() => undefined} onPending={() => undefined} onAccounts={() => undefined} />
         <Activity {...nav} />
       </>,
       {reader},
@@ -275,7 +277,7 @@ describe('#26 activity', () => {
     const w = await setupWallet({reader});
     const {rerender} = render(
       <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
-        <Home onReceive={() => undefined} onActivity={() => undefined} onAccounts={() => undefined} />
+        <Home onReceive={() => undefined} onSend={() => undefined} onPending={() => undefined} onAccounts={() => undefined} />
       </WalletProvider>,
     );
     await screen.findByText(REFUSED_TEXT);
@@ -285,7 +287,7 @@ describe('#26 activity', () => {
     rerender(
       <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
         <>
-          <Home onReceive={() => undefined} onActivity={() => undefined} onAccounts={() => undefined} />
+          <Home onReceive={() => undefined} onSend={() => undefined} onPending={() => undefined} onAccounts={() => undefined} />
           <Activity {...nav} />
         </>
       </WalletProvider>,
@@ -525,7 +527,7 @@ describe('#41 empty activity', () => {
     });
     await renderInWallet(
       <>
-        <Home onReceive={() => undefined} onActivity={() => undefined} onAccounts={() => undefined} />
+        <Home onReceive={() => undefined} onSend={() => undefined} onPending={() => undefined} onAccounts={() => undefined} />
         <Activity {...nav} />
       </>,
       {reader},

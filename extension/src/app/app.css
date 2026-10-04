@@ -757,3 +757,9 @@ a.btn {
   bottom: calc(80px + var(--space-4));
   z-index: 5;
 }
+
+/* #11's Send quick action, disabled offline and in the cool-down (#42: 0.55, index.html #s42). */
+.s-dash .quick .qa:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

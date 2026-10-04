@@ -1938,8 +1938,9 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   - **Cold skeleton (from Task 12):** the real top bar instead of skeleton circles; no mode-toggle
     bar (D4); no "See all" skeleton; the quick-action skeleton shows only the actions that exist —
     Receive in plan 1, Receive + Send from plan 3.
-  - **Plan-1 stand-in:** no Send quick action and no resume until plan 3 (§12); the pending strip
-    shows the state text and opens Activity.
+  - **Plan 3:** the Send quick action opens #12 (disabled offline, unreachable and refused — D36 keeps
+    Receive); the pending strip opens that send at #21/#54; a popup opened while a prepared send waits
+    shows #20 in resume mode (§4.5). (Plan 1 had no Send and no resume, and its strip opened Activity.)
   - The bottom nav is Home / Activity / Settings (D3), not Home/Portfolio/NFTs/Profile.
   - Pull-to-refresh becomes the refresh button (D2).
 

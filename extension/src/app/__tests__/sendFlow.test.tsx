@@ -17,7 +17,9 @@ import {clearSession, setSession} from '../../background/session';
 import {STATE_POLL_MS, type Surface} from '../WalletContext';
 import {firstSignature} from '../../../../core/solana/broadcast';
 import {ACCOUNT} from '../../background/__tests__/fixtures';
-import {COUNTERPARTY} from '../../../e2e/historyFixtures';
+import {COUNTERPARTY, failedTx, sig} from '../../../e2e/historyFixtures';
+import type {SolanaReader} from '../../../../core/solana/rpc';
+import {SEND_TEXT} from '../screens/Send';
 
 // The send flow wired into the shell (spec §1.6, §4.5): the UI tab's resume route is #20 (D38), the popup resumes a
 // waiting send on open, and every way between the flow's screens. One tap per broadcast, whatever opened #20.
@@ -25,12 +27,12 @@ const INTENT: Intent = {token: 'SOL', recipient: COUNTERPARTY, amount: 10_000_00
 const RESUME = `#/send/resume?account=${ACCOUNT.publicKey}`;
 
 async function app(
-  o: {surface?: Surface; hash?: string; prepare?: boolean; prove?: boolean; known?: boolean; gate?: (type: string) => Promise<void> | void} = {},
+  o: {surface?: Surface; hash?: string; prepare?: boolean; prove?: boolean; known?: boolean; gate?: (type: string) => Promise<void> | void; reader?: Partial<SolanaReader>} = {},
 ): Promise<Wallet & {sent: string[]; sends: () => number}> {
   const sent: string[] = [];
   const w = await setupWallet({
     surface: o.surface,
-    reader: sendingReader(),
+    reader: sendingReader(o.reader),
     deps: {now: () => Date.now(), broadcast: async wire => firstSignature(wire)},
     before: async ext => {
       if (o.known === true) await ext.local.set(KNOWN_RECIPIENTS_KEY, [COUNTERPARTY]);
@@ -494,5 +496,112 @@ describe('fix round 1: the toast, a lock, another account, no account', () => {
     });
     expect(reviewed).toEqual([]);
     expect(asked).not.toContain('wallet.prepareSend');
+  });
+});
+
+// Task 14: plan 1's stand-ins removed — #11's Send, the pending strip, #26's PENDING rows and #27's [Try again], wired.
+describe('#11’s Send, the pending strip, #26’s PENDING rows, #27’s [Try again]', () => {
+  /** A send made through the flow (#20's one tap), then the popup closed (#21 has no way back) and opened again: #11, the open send in its strip. */
+  async function openSendAtHome() {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const w = await app({known: true});
+    fireEvent.click(await sendButton());
+    expect(await screen.findByText(STATUS_TEXT.broadcasting)).toBeTruthy();
+    cleanup();
+    render(<App surface="popup" engine={w.engine} platform={w.platform} hash="" />);
+    expect(await screen.findByText('Sending 0.01 SOL · pending')).toBeTruthy();
+    return w;
+  }
+  /** The popup opened again, at #11. */
+  const reopen = (w: Wallet) => {
+    cleanup();
+    render(<App surface="popup" engine={w.engine} platform={w.platform} hash="" />);
+  };
+
+  it('#11’s Send opens #12; with nothing open, nothing is prepared until Continue', async () => {
+    const w = await app({prepare: false});
+    fireEvent.click(await screen.findByRole('button', {name: 'Send'}));
+    expect(await screen.findByText('Send', {selector: '.title'})).toBeTruthy();
+    expect(count(w, 'wallet.prepareSend')).toBe(0);
+  });
+
+  it('a send open for the account: #11’s Send opens #12, which refuses a second send and offers [View it] → #21', async () => {
+    const w = await openSendAtHome();
+    const prepares = count(w, 'wallet.prepareSend');
+    fireEvent.click(screen.getByRole('button', {name: 'Send'}));
+    expect(await screen.findByText(SEND_TEXT.pending)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'View it'}));
+    expect(await screen.findByText(STATUS_TEXT.broadcasting)).toBeTruthy();
+    expect(count(w, 'wallet.prepareSend')).toBe(prepares);
+    expect(w.sends()).toBe(1);
+  });
+
+  it('the strip opens #21 while broadcasting; #26’s PENDING row opens it too', async () => {
+    const w = await openSendAtHome();
+    fireEvent.click(screen.getByText('Sending 0.01 SOL · pending'));
+    expect(await screen.findByText(STATUS_TEXT.broadcasting)).toBeTruthy();
+    reopen(w);
+    fireEvent.click(await screen.findByRole('button', {name: /Activity/}));
+    fireEvent.click(await screen.findByText('Sending 0.01 SOL'));
+    expect(await screen.findByText(STATUS_TEXT.broadcasting)).toBeTruthy();
+    expect(w.sends()).toBe(1);
+  });
+
+  it('the record says stuck: the strip reads "taking longer than usual" and opens #54', async () => {
+    const w = await openSendAtHome();
+    await setRecords(w, r => ({...r, state: 'stuck'}));
+    reopen(w);
+    fireEvent.click(await screen.findByText('Sending 0.01 SOL · taking longer than usual'));
+    expect(await screen.findByText(STUCK_TEXT.title)).toBeTruthy();
+  });
+
+  it('a stale strip (the record failed since #11 last read it) opens #44 from the record, not #21 from the strip', async () => {
+    const w = await openSendAtHome();
+    await setRecords(w, r => ({...r, state: 'failed', failure: 'not-sent', detail: 'The network did not take it.'}));
+    fireEvent.click(screen.getByText('Sending 0.01 SOL · pending'));
+    expect(await screen.findByText(FAILED_TEXT.notSentHead)).toBeTruthy();
+    expect(screen.queryByText(STATUS_TEXT.broadcasting)).toBeNull();
+    expect(w.sent).not.toContain('wallet.resend');
+  });
+
+  it('#20 [Cancel] → #11 with the toast; Send → #12 → back: the toast is not shown again', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    await app();
+    expect(await screen.findByText(CONFIRM_TEXT.resume)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
+    expect(await screen.findByText(CANCELLED_TEXT)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Send'}));
+    expect(await screen.findByText('Send', {selector: '.title'})).toBeTruthy();
+    expect(screen.queryByText(CANCELLED_TEXT)).toBeNull();
+    fireEvent.click(screen.getByRole('button', {name: 'Back'}));
+    expect(await screen.findByText('TOKENS')).toBeTruthy();
+    expect(screen.queryByText(CANCELLED_TEXT)).toBeNull();
+  });
+
+  it('#26 → a failed send’s #27 → [Try again] → #19 for its recipient and amount, a fresh prepare — never a resend, nothing sent', async () => {
+    const at = Math.floor(Date.now() / 1000);
+    const w = await app({
+      prepare: false,
+      known: true,
+      reader: {
+        getSignaturesForAddress: async () => [{signature: sig(5), blockTime: at, err: {InstructionError: [0, 'Custom']}}],
+        getTransaction: async () => failedTx(ACCOUNT.publicKey, at),
+      },
+    });
+    fireEvent.click(await screen.findByRole('button', {name: /Activity/}));
+    await waitFor(() => expect(document.querySelector('button.tx-row:not([data-pending])')).not.toBeNull());
+    fireEvent.click(document.querySelector('button.tx-row:not([data-pending])') as HTMLButtonElement);
+    expect(await screen.findByText('FAILED · SENT')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Try again'}));
+    expect(await screen.findByText(REVIEW_TEXT.passed)).toBeTruthy();
+    expect(document.body.textContent).toContain(COUNTERPARTY);
+    expect(document.body.textContent).toContain('0.001');
+    expect(count(w, 'wallet.prepareSend')).toBe(1);
+    expect(w.sent).not.toContain('wallet.resend');
+    expect(w.sends()).toBe(0);
+    // Cancel at #19 → #12, holding the fresh draft of that intent.
+    fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
+    expect((await screen.findByLabelText('Recipient') as HTMLInputElement).value).toBe(COUNTERPARTY);
+    expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('0.001');
   });
 });

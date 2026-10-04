@@ -46,7 +46,7 @@ function HomeWithSwitcher() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Home onReceive={() => undefined} onActivity={() => undefined} onAccounts={() => setOpen(true)} />
+      <Home onReceive={() => undefined} onSend={() => undefined} onPending={() => undefined} onAccounts={() => setOpen(true)} />
       {open ? <Switcher onClose={() => setOpen(false)} /> : null}
     </>
   );

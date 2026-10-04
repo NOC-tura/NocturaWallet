@@ -157,7 +157,14 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
   let screen;
   if (route.screen === 'tab') {
     if (route.tab === 'home') {
-      screen = <Home onReceive={() => go({type: 'push', route: {screen: 'receive'}})} onActivity={() => go({type: 'tab', tab: 'activity'})} onAccounts={() => setAccounts(true)} />;
+      screen = (
+        <Home
+          onSend={() => go({type: 'push', route: {screen: 'send', draft: null, notice: null}})}
+          onReceive={() => go({type: 'push', route: {screen: 'receive'}})}
+          onPending={p => go({type: 'push', route: {screen: 'status', account: p.account, id: p.id, since: p.createdAt}})}
+          onAccounts={() => setAccounts(true)}
+        />
+      );
     } else if (route.tab === 'activity') {
       screen = (
         <Activity
@@ -166,6 +173,7 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
             go({type: 'push', route: {screen: 'tx', signature: item.signature}});
           }}
           onReceive={() => go({type: 'push', route: {screen: 'receive'}})}
+          onPending={p => go({type: 'push', route: {screen: 'status', account: p.account, id: p.id, since: p.createdAt}})}
         />
       );
     } else {
@@ -174,7 +182,16 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
   } else if (route.screen === 'receive') {
     screen = <Receive onBack={() => go({type: 'pop'})} />;
   } else if (route.screen === 'tx') {
-    screen = <TxDetail signature={route.signature} item={txItems[route.signature]} onBack={() => go({type: 'pop'})} />;
+    screen = (
+      <TxDetail
+        signature={route.signature}
+        item={txItems[route.signature]}
+        onBack={() => go({type: 'pop'})}
+        onTryAgain={intent => {
+          if (selected !== null) toReview(selected, intent, null);
+        }}
+      />
+    );
   } else if (route.screen === 'send') {
     screen = (
       <Send

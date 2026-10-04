@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {fireEvent, render, screen, waitFor} from '@testing-library/react';
+import {cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react';
 import {base58} from '@scure/base';
 import {renderInWallet, setupWallet, walletReader} from './harness';
 import {ExplorerLink, TxDetail} from '../screens/TxDetail';
@@ -7,12 +7,16 @@ import {explorerUrl} from '../explorer';
 import {useWallet, WalletProvider} from '../WalletContext';
 import {REFUSED_TEXT} from '../ui/Banner';
 import {RequestUnreachable, RpcForbidden} from '../../../../core/solana/rpc';
+import {decodeHistoryEntry} from '../../../../core/solana/history';
+import {MAINNET_FEE_TREASURY} from '../../../../core/fees/transferMarkup';
 import type {Engine, HistoryItem} from '../engine';
 import {ACCOUNT, RECIPIENT} from '../../background/__tests__/fixtures';
 import {COUNTERPARTY, otherTx, sentSol, sig} from '../../../e2e/historyFixtures';
 
 // Spec §6.3 (#27) and §6.5 (the one external link).
 const NOW = Math.floor(Date.now() / 1000);
+const tryAgain = vi.fn();
+afterEach(() => vi.clearAllMocks());
 const item = (over: Partial<HistoryItem>): HistoryItem => ({
   signature: sig(1),
   blockTime: NOW,
@@ -26,7 +30,7 @@ const item = (over: Partial<HistoryItem>): HistoryItem => ({
   ...over,
 });
 const show = async (i: HistoryItem) => {
-  const w = await renderInWallet(<TxDetail signature={i.signature} item={i} onBack={() => undefined} />);
+  const w = await renderInWallet(<TxDetail signature={i.signature} item={i} onBack={() => undefined} onTryAgain={tryAgain} />);
   // The account is read by the provider's open sequence; its address then appears on the page.
   await waitFor(() => expect(document.body.textContent).toContain(ACCOUNT.publicKey));
   return w;
@@ -70,7 +74,7 @@ describe('#27 tx-detail', () => {
   // wallet" in the accent, and the pill "Confirmed · 8h ago" (format.ts's ago, the injected clock).
   it('a receive as 27c draws it: success amount, the Type row, "Your wallet" in accent, "Confirmed · <age>"', async () => {
     const at = 1_780_000_000;
-    await renderInWallet(<TxDetail signature={sig(2)} item={item({signature: sig(2), blockTime: at, kind: 'received', token: 'USDC', amount: 250_000_000n, counterparty: COUNTERPARTY})} onBack={() => undefined} />, {
+    await renderInWallet(<TxDetail signature={sig(2)} item={item({signature: sig(2), blockTime: at, kind: 'received', token: 'USDC', amount: 250_000_000n, counterparty: COUNTERPARTY})} onBack={() => undefined} onTryAgain={tryAgain} />, {
       now: () => (at + 8 * 3_600) * 1000,
     });
     await waitFor(() => expect(document.body.textContent).toContain(ACCOUNT.publicKey));
@@ -97,7 +101,7 @@ describe('#27 tx-detail', () => {
   });
 
   it('no price: the fee line reads "· —", never a made-up dollar value', async () => {
-    await renderInWallet(<TxDetail signature={sig(1)} item={item({})} onBack={() => undefined} />, {
+    await renderInWallet(<TxDetail signature={sig(1)} item={item({})} onBack={() => undefined} onTryAgain={tryAgain} />, {
       deps: {
         prices: async () => {
           throw new Error('down');
@@ -129,14 +133,14 @@ describe('#27 tx-detail', () => {
   });
 
   it('failed, as 27d: the eyebrow and card in danger, "Fee charged · $…", the grouped fee', async () => {
-    await renderInWallet(<TxDetail signature={sig(5)} item={item({signature: sig(5), kind: 'other', token: null, amount: null, counterparty: null, failed: true})} onBack={() => undefined} />);
+    await renderInWallet(<TxDetail signature={sig(5)} item={item({signature: sig(5), kind: 'other', token: null, amount: null, counterparty: null, failed: true})} onBack={() => undefined} onTryAgain={tryAgain} />);
     expect(await screen.findByText('Fee charged · $0.0007')).toBeTruthy();
     expect(document.querySelector('.amount-card')?.classList.contains('app-failed')).toBe(true);
     expect(screen.getByText('0.000 005 SOL')).toBeTruthy();
   });
 
   it('a failed transaction that was not a send: "FAILED", a dash, the danger pill and banner, the fee charged; no Try again', async () => {
-    const w = renderInWallet(<TxDetail signature={sig(5)} item={item({signature: sig(5), kind: 'other', token: null, amount: null, counterparty: null, failed: true})} onBack={() => undefined} />);
+    const w = renderInWallet(<TxDetail signature={sig(5)} item={item({signature: sig(5), kind: 'other', token: null, amount: null, counterparty: null, failed: true})} onBack={() => undefined} onTryAgain={tryAgain} />);
     await w;
     expect(await screen.findByText('FAILED')).toBeTruthy();
     // No token is known for a failed row: a dash, never "— SOL" (review L3).
@@ -145,12 +149,12 @@ describe('#27 tx-detail', () => {
     expect(document.querySelector('.status-pill.fail')?.textContent).toBe('Failed');
     expect(screen.getByText('The transaction failed on chain. The network fee was charged; the amount did not move.')).toBeTruthy();
     expect(screen.getByText('Network fee charged')).toBeTruthy();
-    expect(screen.queryByText('Try again')).toBeNull();
+    expect(screen.queryByRole('button', {name: 'Try again'})).toBeNull();
   });
 
   // Plan 3, owner question 1 (option A): the engine reads what a failed send tried to send.
   it('a failed send: "FAILED · SENT" and "— SOL", the danger pill and banner, the fee charged', async () => {
-    await renderInWallet(<TxDetail signature={sig(5)} item={item({signature: sig(5), amount: 1_000_000n, counterparty: COUNTERPARTY, failed: true})} onBack={() => undefined} />);
+    await renderInWallet(<TxDetail signature={sig(5)} item={item({signature: sig(5), amount: 1_000_000n, counterparty: COUNTERPARTY, failed: true})} onBack={() => undefined} onTryAgain={tryAgain} />);
     expect(await screen.findByText('FAILED · SENT')).toBeTruthy();
     expect(document.querySelector('.amount-card .amt')?.textContent).toBe('— SOL');
     expect(await screen.findByText('Fee charged · $0.0007')).toBeTruthy();
@@ -158,8 +162,49 @@ describe('#27 tx-detail', () => {
     expect(screen.getByText('The transaction failed on chain. The network fee was charged; the amount did not move.')).toBeTruthy();
   });
 
+  // Plan-3 review H1: a failed batch (two transfers) is not one send — decoded "other", it offers no [Try again].
+  it('a failed transaction with two transfers from this account: "FAILED", a dash, and no [Try again]', async () => {
+    const transfer = (destination: string, lamports: number) => ({program: 'system', programId: '11111111111111111111111111111111', parsed: {type: 'transfer', info: {source: ACCOUNT.publicKey, destination, lamports}}});
+    const decoded = decodeHistoryEntry(ACCOUNT.publicKey, sig(6), {
+      blockTime: NOW,
+      meta: {err: {InstructionError: [0, {Custom: 1}]}, fee: 5000, preBalances: [3_000_000_000, 0, 0, 1], postBalances: [2_999_995_000, 0, 0, 1], preTokenBalances: [], postTokenBalances: []},
+      transaction: {message: {accountKeys: [ACCOUNT.publicKey, COUNTERPARTY, RECIPIENT, MAINNET_FEE_TREASURY].map(k => ({pubkey: k, signer: false, writable: true})), instructions: [transfer(COUNTERPARTY, 1_000_000_000), transfer(RECIPIENT, 1_000_000_000)]}},
+    });
+    expect(decoded).toMatchObject({kind: 'other', failed: true});
+    await renderInWallet(<TxDetail signature={sig(6)} item={decoded} onBack={() => undefined} onTryAgain={tryAgain} />);
+    expect(await screen.findByText('FAILED')).toBeTruthy();
+    expect(screen.queryByText('FAILED · SENT')).toBeNull();
+    expect(screen.queryByRole('button', {name: 'Try again'})).toBeNull();
+  });
+
+  // Plan 3 (owner question 1, option A): [Try again] → #19 with what the failed send tried, when it is known.
+  it('a failed send offers [Try again] with its intent — once per tap (rule 6, `disabled` lifted); none without a recipient or for another kind', async () => {
+    await renderInWallet(<TxDetail signature={sig(5)} item={item({signature: sig(5), amount: 1_000_000n, counterparty: COUNTERPARTY, failed: true})} onBack={() => undefined} onTryAgain={tryAgain} />);
+    const again = (await screen.findByRole('button', {name: 'Try again'})) as HTMLButtonElement;
+    fireEvent.click(again);
+    again.disabled = false;
+    fireEvent.click(again);
+    expect(tryAgain).toHaveBeenCalledTimes(1);
+    expect(tryAgain).toHaveBeenCalledWith({token: 'SOL', recipient: COUNTERPARTY, amount: 1_000_000n});
+    cleanup();
+    await renderInWallet(<TxDetail signature={sig(5)} item={item({signature: sig(5), amount: 1_000_000n, counterparty: null, failed: true})} onBack={() => undefined} onTryAgain={tryAgain} />);
+    await screen.findByText('FAILED · SENT');
+    expect(screen.queryByRole('button', {name: 'Try again'})).toBeNull();
+    cleanup();
+    await renderInWallet(<TxDetail signature={sig(1)} item={item({})} onBack={() => undefined} onTryAgain={tryAgain} />);
+    await screen.findByText('SENT');
+    expect(screen.queryByRole('button', {name: 'Try again'})).toBeNull();
+  });
+
+  // Task 14 carry: only a `sent` decode proposes a send — a failed row of another kind with every field known does not.
+  it('a failed receive with a token, a counterparty and an amount: no [Try again]', async () => {
+    await renderInWallet(<TxDetail signature={sig(5)} item={item({signature: sig(5), kind: 'received', token: 'USDC', amount: 250_000_000n, counterparty: COUNTERPARTY, failed: true})} onBack={() => undefined} onTryAgain={tryAgain} />);
+    await screen.findByText('Fee charged · $0.0007');
+    expect(screen.queryByRole('button', {name: 'Try again'})).toBeNull();
+  });
+
   it('a presale purchase and an other: their eyebrows and the decoded fields that exist', async () => {
-    renderInWallet(<TxDetail signature={sig(3)} item={item({signature: sig(3), kind: 'purchase', amount: 1_000_000_000n, counterparty: null})} onBack={() => undefined} />);
+    renderInWallet(<TxDetail signature={sig(3)} item={item({signature: sig(3), kind: 'purchase', amount: 1_000_000_000n, counterparty: null})} onBack={() => undefined} onTryAgain={tryAgain} />);
     expect(await screen.findByText('PRESALE PURCHASE')).toBeTruthy();
     expect(screen.getByText('−1.0000 SOL')).toBeTruthy();
     // Fix round 2 (#3): the purchase's fee line carries its dollars too (12136's form).
@@ -171,14 +216,14 @@ describe('#27 tx-detail', () => {
       getSignaturesForAddress: async () => [{signature: sig(1), blockTime: NOW, err: null}],
       getTransaction: async () => sentSol(ACCOUNT.publicKey, RECIPIENT, 2_480_000_000, NOW),
     });
-    await renderInWallet(<TxDetail signature={sig(1)} onBack={() => undefined} />, {reader});
+    await renderInWallet(<TxDetail signature={sig(1)} onBack={() => undefined} onTryAgain={tryAgain} />, {reader});
     expect(await screen.findByText('SENT')).toBeTruthy();
   });
 
   it('not in the recent history: the line, and still the explorer link', async () => {
     let pages = 0;
     const reader = walletReader({getSignaturesForAddress: async () => (pages++, [])});
-    await renderInWallet(<TxDetail signature={sig(8)} onBack={() => undefined} />, {reader});
+    await renderInWallet(<TxDetail signature={sig(8)} onBack={() => undefined} onTryAgain={tryAgain} />, {reader});
     expect(await screen.findByText('This transaction is not in the recent history yet.')).toBeTruthy();
     expect(screen.getByRole('link', {name: 'Explorer'})).toBeTruthy();
     await waitFor(() => expect(pages).toBe(1));
@@ -195,7 +240,7 @@ describe('#27 tx-detail', () => {
       },
       getTransaction: async () => otherTx(ACCOUNT.publicKey, NOW),
     });
-    await renderInWallet(<TxDetail signature={sig(9999)} onBack={() => undefined} />, {reader});
+    await renderInWallet(<TxDetail signature={sig(9999)} onBack={() => undefined} onTryAgain={tryAgain} />, {reader});
     expect(await screen.findByText('This transaction is not in the recent history yet.')).toBeTruthy();
     expect(screen.getByRole('link', {name: 'Explorer'})).toBeTruthy();
     expect(calls).toBe(3);
@@ -212,7 +257,7 @@ describe('#27 tx-detail', () => {
     const engine: Engine = {...w.engine, history: (account, before) => (calls.push(account), w.engine.history(account, before))};
     render(
       <WalletProvider engine={engine} platform={w.platform} surface="popup">
-        <TxDetail signature={sig(1)} onBack={() => undefined} />
+        <TxDetail signature={sig(1)} onBack={() => undefined} onTryAgain={tryAgain} />
       </WalletProvider>,
     );
     await screen.findByText('This transaction is not in the recent history yet.');
@@ -239,7 +284,7 @@ describe('#27 tx-detail', () => {
       },
       getTransaction: async s => txs[s] ?? null,
     });
-    await renderInWallet(<TxDetail signature={target} onBack={() => undefined} />, {reader});
+    await renderInWallet(<TxDetail signature={target} onBack={() => undefined} onTryAgain={tryAgain} />, {reader});
     expect(await screen.findByText('SENT')).toBeTruthy();
     expect(seenBefore).toEqual([undefined, list1[9]]);
   });
@@ -254,7 +299,7 @@ describe('#27 a malformed searchError', () => {
     const engine: Engine = {...w.engine, history: async () => ({ok: false, error: 'malformed'})};
     render(
       <WalletProvider engine={engine} platform={w.platform} surface="popup">
-        <TxDetail signature={sig(1)} onBack={() => undefined} />
+        <TxDetail signature={sig(1)} onBack={() => undefined} onTryAgain={tryAgain} />
       </WalletProvider>,
     );
     expect(await screen.findByText('Could not read this transaction.')).toBeTruthy();
@@ -287,7 +332,7 @@ describe('#27 network failure while searching', () => {
     await renderInWallet(
       <>
         <NetModeProbe />
-        <TxDetail signature={sig(1)} onBack={() => undefined} />
+        <TxDetail signature={sig(1)} onBack={() => undefined} onTryAgain={tryAgain} />
       </>,
       {reader},
     );
@@ -312,7 +357,7 @@ describe('#27 network failure while searching', () => {
     await renderInWallet(
       <>
         <NetModeProbe />
-        <TxDetail signature={sig(1)} onBack={() => undefined} />
+        <TxDetail signature={sig(1)} onBack={() => undefined} onTryAgain={tryAgain} />
       </>,
       {reader},
     );
@@ -363,7 +408,7 @@ describe('#27 and the model: a successful search reports itself (m.reached)', ()
     await renderInWallet(
       <>
         <NetModeProbe />
-        <TxDetail signature={sig(1)} onBack={() => undefined} />
+        <TxDetail signature={sig(1)} onBack={() => undefined} onTryAgain={tryAgain} />
       </>,
       {reader},
     );

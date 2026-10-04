@@ -9,7 +9,8 @@ import {ExtIcon} from '../ui/ExtIcon';
 import {useCopy} from '../ui/useCopy';
 import {useNow} from '../useNow';
 import {Banner, RefusedBanner} from '../ui/Banner';
-import type {HistoryItem} from '../engine';
+import {LockedButton} from '../ui/LockedButton';
+import type {HistoryItem, Intent} from '../engine';
 import {MAINNET_FEE_TREASURY} from '../../../../core/fees/transferMarkup';
 
 /** At most this many history pages are read to find a signature the list has not loaded. */
@@ -67,9 +68,11 @@ export function ExplorerLink({signature, label = 'Explorer', icon = true}: {sign
 /**
  * #27 tx-detail (spec §6.3), from the #26 row (or, when only the signature is known, the first
  * FIND_PAGES history pages). No Block or Memo rows (not in HistoryView, G13), no Save (address book,
- * B1b-2b), no share (D19); fiat is today's price and says "now". Plan-1 stand-in: no [Try again].
+ * B1b-2b), no share (D19); fiat is today's price and says "now". A failed send offers [Try again] → #19
+ * with what it tried to send, when the decoder knows the recipient and the amount (plan 3, owner question 1,
+ * option A): #19 prepares it afresh and #20 shows the whole address before one tap sends.
  */
-export function TxDetail({signature, item: given, onBack}: {signature: string; item?: HistoryItem; onBack: () => void}) {
+export function TxDetail({signature, item: given, onBack, onTryAgain}: {signature: string; item?: HistoryItem; onBack: () => void; onTryAgain: (intent: Intent) => void}) {
   const m = useWallet();
   const now = useNow(30_000, m.now);
   const [item, setItem] = useState<HistoryItem | null | undefined>(given);
@@ -181,6 +184,7 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
   const hash = <Address address={item.signature} label="Copy hash" />;
 
   if (item.failed) {
+    const retry: Intent | null = item.kind === 'sent' && item.token !== null && item.counterparty !== null && item.amount !== null && item.amount > 0n ? {token: item.token, recipient: item.counterparty, amount: item.amount} : null;
     return (
       <div className="screen s-txd">
         {top}
@@ -207,6 +211,12 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
             </Row>
           </div>
           <div className="actions-row">
+            {retry === null ? null : (
+              <LockedButton className="btn btn-primary" disabled={m.net.mode === 'refused'} onPress={() => onTryAgain(retry)}>
+                <ExtIcon name="refresh" size={16} />
+                Try again
+              </LockedButton>
+            )}
             <ExplorerLink signature={item.signature} />
           </div>
         </div>
