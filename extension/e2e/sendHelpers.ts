@@ -53,10 +53,16 @@ export async function startSend(h: Harness, amount: string, o: {firstTime: boole
   await popup.getByLabel('Recipient', {exact: true}).fill(RECIPIENT);
   await popup.getByLabel('Amount').fill(amount);
   if (o.firstTime) {
-    // Spec 11's first half: a first-time address shows design state 6, and the CTA says a proof comes.
-    await expect(popup.getByText('First-time recipient')).toBeVisible();
-    await expect(popup.getByText('Never sent here before')).toBeVisible();
-    await expect(popup.locator('.sticky-bar button')).toHaveText(/Review & unlock to send/);
+    // Spec 11's first half: a first-time address shows design state 6 (spec §4.2, the merged #12), every string
+    // exact — the banner's two lines, the helper, the whole address in groups of four under the field, the amount
+    // line's "— re-auth required" (the first-time sends are 0.01 SOL: $1.50 at the fake's $150, 0 % of 10 SOL), and the CTA.
+    const banner = popup.locator('.banner.warning');
+    await expect(banner.locator('.banner-title')).toHaveText('First-time recipient');
+    await expect(banner.locator('.banner-line')).toHaveText('Re-auth (password) required before broadcast · verify the address character-by-character below.');
+    await expect(popup.locator('.recipient-row .helper.warn')).toHaveText('Never sent here before');
+    expect(await popup.locator('.app-send-addr .addr-groups > span').allTextContents()).toEqual(RECIPIENT.match(/.{1,4}/g));
+    await expect(popup.locator('.amount-row .available')).toHaveText('≈ $1.50 · 0% of balance — re-auth required');
+    await expect(popup.locator('.sticky-bar button')).toHaveText('Review & unlock to send');
   }
   await popup.locator('.sticky-bar button').click();
   await expect(popup.getByText('Simulation passed')).toBeVisible({timeout: 30_000});

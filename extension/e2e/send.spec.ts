@@ -43,8 +43,9 @@ test('4 · send with re-authentication: #11 → #12 → #43 → #19 → #20 → 
     // D38: the same tab shows #20 confirmed with a fresh preview — and nothing is broadcast without a tap.
     await tab.waitForURL(`chrome-extension://${h.id}/wallet.html#/send/resume?account=${ACCOUNT}`, {timeout: 60_000});
     await expect(tab.getByText('Confirmed. Review the fresh quote and send.')).toBeVisible();
-    const quietUntil = Date.now() + 3_000;
-    await expect.poll(async () => (h.fake.broadcasts.length > 0 ? 'sent' : Date.now() >= quietUntil ? 'quiet' : 'waiting'), {timeout: 10_000, intervals: [250]}).toBe('quiet');
+    // 10 s of quiet before the tap (fix round 1: 3 s let a self-send delayed by 4 s through).
+    const quietUntil = Date.now() + 10_000;
+    await expect.poll(async () => (h.fake.broadcasts.length > 0 ? 'sent' : Date.now() >= quietUntil ? 'quiet' : 'waiting'), {timeout: 20_000, intervals: [250]}).toBe('quiet');
     await tab.getByRole('button', {name: 'Send 0.0100 SOL'}).click();
     await expect(tab.getByText('Sent successfully')).toBeVisible({timeout: 30_000});
     await expect(tab.getByText('Done — open the Noctura icon any time.')).toBeVisible();
@@ -59,11 +60,15 @@ test('4 · send with re-authentication: #11 → #12 → #43 → #19 → #20 → 
     await again.getByRole('button', {name: 'Send 1.0000 SOL'}).click();
     const cancelTab = await second;
     await expect(cancelTab.locator('#ra-cancel')).toHaveText('Cancel send', {timeout: 30_000});
+    // The positive control: before the cancel, the send is prepared and waits for its proof.
+    const ui = await h.ctx.newPage();
+    await ui.goto(`chrome-extension://${h.id}/wallet.html#/home`);
+    const before = await msg(ui, {type: 'wallet.preparedFor', account: ACCOUNT});
+    expect(before.ok).toBe(true);
+    expect(before.data).not.toBeNull();
     const closed = cancelTab.waitForEvent('close');
     await cancelTab.click('#ra-cancel');
     await closed;
-    const ui = await h.ctx.newPage();
-    await ui.goto(`chrome-extension://${h.id}/wallet.html#/home`);
     expect(await msg(ui, {type: 'wallet.preparedFor', account: ACCOUNT})).toEqual({ok: true, data: null});
     expect(h.fake.broadcasts).toHaveLength(1);
     contained(h);

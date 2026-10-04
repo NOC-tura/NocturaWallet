@@ -221,8 +221,16 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
         return [];
       case 'simulateTransaction':
         return simulate(params);
-      case 'getTokenAccountsByOwner':
+      case 'getTokenAccountsByOwner': {
+        // A node needs a filter (mint or programId), and answers the parsed shape only for encoding jsonParsed —
+        // without it the accounts come back as base64 bytes, which core/solana/rpc.ts cannot read. Either mistake is
+        // listed in `unexpected`, so contained(h) fails on it.
+        const filter = params[1] as {mint?: unknown; programId?: unknown} | undefined;
+        const config = params[2] as {encoding?: unknown} | undefined;
+        if (typeof filter?.mint !== 'string' && typeof filter?.programId !== 'string') fake.unexpected.push('getTokenAccountsByOwner without a mint or programId filter');
+        if (config?.encoding !== 'jsonParsed') fake.unexpected.push('getTokenAccountsByOwner without encoding jsonParsed');
         return {context: context(), value: tokenAccountsOf(params[0] as string, params[1] as {mint?: string; programId?: string} | undefined)};
+      }
       case 'getMultipleAccounts':
         // Each address as the node reports it: a system account holding its lamports, or null when it holds
         // none (the import probe reads balances this way — the same `lamports` table as getBalance).
