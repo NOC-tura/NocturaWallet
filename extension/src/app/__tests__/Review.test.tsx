@@ -53,6 +53,10 @@ describe('#19 tx-simulate', () => {
     expect(await screen.findByText(REVIEW_TEXT.simulating)).toBeTruthy();
     expect(screen.getByText('Review transfer')).toBeTruthy();
     expect(screen.getByText('3 of 4')).toBeTruthy();
+    // index.html #s19: the top bar's title and step are the design's plain `.title` and `.step` (no type class: a
+    // `.noc-h1` title wrapped and clipped on #54, a `.noc-overline` step read "3 OF 4") — Task 17 visual pass.
+    expect(document.querySelector('.top-bar .title')?.className).toBe('title');
+    expect(document.querySelector('.top-bar .step')?.className).toBe('step');
     expect(document.querySelector('.intent-card .amount')?.textContent).toBe('0.0100 SOL');
     expect([...document.querySelectorAll('.intent-card .to .addr-groups > span')].map(s => s.textContent)).toEqual(COUNTERPARTY.match(/.{1,4}/g));
     expect(document.querySelector('.step-pill')?.textContent).toMatch(/^Building call · \d+ ms$/);

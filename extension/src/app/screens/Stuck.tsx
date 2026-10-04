@@ -136,8 +136,8 @@ export function Stuck({record, now, onClose, onActivity, onTryAgain}: {record: P
       <button type="button" className="icon-btn" aria-label="Close" disabled={!close} onClick={onClose}>
         <ExtIcon name="close" size={22} />
       </button>
-      <div className="title noc-h1">{title}</div>
-      {title === STUCK_TEXT.title ? <span className="step noc-overline">{STUCK_TEXT.chip}</span> : null}
+      <div className="title">{title}</div>
+      {title === STUCK_TEXT.title ? <span className="step">{STUCK_TEXT.chip}</span> : null}
     </div>
   );
 

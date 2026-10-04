@@ -1727,6 +1727,9 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     id (a lost answer), a record is adopted only within 10 s of the screen opening (and made within it);
     after that the reads stop and the check-pending line stays with `[Open Activity]`. A `wallet.pending`
     read that fails before any answered shows the check-pending line, `[Open Activity]` and an enabled Close.
+  - **Plan 3 (Task 17 visual pass):** the slow state's "Tx hash" row shows the whole signature, the same row as
+    `success` (which this section defines as full); the design draws "5kAj9N…b81e" in both. `success` has no
+    "Slot" row: the pending record (`PendingView`) keeps no slot.
   - "Confirmed in 2 blocks · finalized" replaced as marked.
   - The back arrow stays disabled while broadcasting (design); closing the popup is allowed and
     said so.
@@ -1867,6 +1870,9 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     the CTA keeps its label "Send again (same transaction)". 54a's speed-up icon on the primary CTA is not
     used (the action is not a speed-up; no icon). 54e's `[View in Activity]` is not on the `expired`
     layout: its CTAs are the spec's `[Try again]` and `[Done]`.
+  - **Plan 3 (Task 17 visual pass):** `sent-again`'s hash line holds the short hash (first four … last four), so
+    the `.new-tx-hash` chip is as wide as its content and centred, where 54d's long "new hash · …" line runs the
+    column's width; its Copy link keeps the 48 px touch target, so the chip is taller than 54d's.
   - **→ adapted:** the recipient on the original's card is shown in groups of four (AddressGroups, as on
     every other screen of this flow), not the design's first-6 / last-6 in `--accent`.
   - **"Speed up" (a higher priority fee) and "Cancel with replacement" (a 0 SOL self-transfer) are
@@ -2433,6 +2439,13 @@ in the PR) found these differences that hold on every screen, declared here once
 - A full-page capture keeps a sticky bar where the viewport ended: where a shot shows the bar over
   content, the content scrolls clear in the page (`08-choose-scheme` asserts it; `40-no-assets-empty-end`
   shows the scrolled end).
+
+**Plan 3's pass** (`e2e/visual-send.spec.ts`, 42 shots of #11, #12, #43, #19, #20, #10, #21, #54, #26 and #44 at
+412 × 600, #10 at 412 × 916; findings in the PR) fixed in the markup: #43 is rendered beside #12, not inside
+`.s-send` (whose `.s-send .row` drew the sheet's rows as #12's cards); the top bars of #19, #20, #21 and #54 carry
+the design's plain `.title` and `.step` (a `.noc-h1` title wrapped and clipped on #54; a `.noc-overline` step read
+"3 OF 4", "90 S TIMEOUT"). Its other differences are declared in §4.6 and §4.8, or carried to the controller in the
+PR.
 
 ---
 

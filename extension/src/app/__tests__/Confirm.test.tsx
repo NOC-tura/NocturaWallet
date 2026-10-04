@@ -92,6 +92,10 @@ describe('#20 tx-confirm — what it shows', () => {
     const w = await renderConfirm();
     const send = await sendButton();
     expect(screen.getByText('4 of 4')).toBeTruthy();
+    // index.html #s20: the top bar's title and step are the design's plain `.title` and `.step` (no type class: a
+    // `.noc-h1` title wrapped and clipped on #54, a `.noc-overline` step read "4 OF 4") — Task 17 visual pass.
+    expect(document.querySelector('.top-bar .title')?.className).toBe('title');
+    expect(document.querySelector('.top-bar .step')?.className).toBe('step');
     const headline = document.querySelector('.headline') as HTMLElement;
     expect(headline.textContent).toBe(`Send 0.0100 SOL to ${COUNTERPARTY.match(/.{1,4}/g)?.join('')}`);
     expect(document.querySelector('.review-card .eyebrow')?.textContent).toBe(CONFIRM_TEXT.about);

@@ -72,6 +72,10 @@ describe('#21 tx-status', () => {
     expect(await screen.findByText(STATUS_TEXT.broadcasting)).toBeTruthy();
     expect(screen.getByText(STATUS_TEXT.sending)).toBeTruthy();
     expect(screen.getByText(STATUS_TEXT.submitted)).toBeTruthy();
+    // index.html #s21: the top bar's title and step are the design's plain `.title` and `.step` (no type class: a
+    // `.noc-h1` title wrapped and clipped on #54, a `.noc-overline` step read "SLOW") — Task 17 visual pass.
+    expect(document.querySelector('.top-bar .title')?.className).toBe('title');
+    expect(document.querySelector('.top-bar .step')?.className).toBe('step');
     expect(document.querySelector('.ring')?.className).toBe('ring broadcasting');
     expect(document.querySelector('.amount-card .amount')?.textContent).toBe('2.4800');
     expect(document.querySelector('.amount-card .noc-caption')?.textContent).toBe('≈ $372.00 USD');
@@ -96,6 +100,8 @@ describe('#21 tx-status', () => {
     await renderStatus([rec({createdAt: Date.now() - 83_000})]);
     expect(await screen.findByText(STATUS_TEXT.slowLabel)).toBeTruthy();
     expect(screen.getByText(STATUS_TEXT.slow)).toBeTruthy();
+    expect(document.querySelector('.top-bar .title')?.className).toBe('title');
+    expect(document.querySelector('.top-bar .step')?.className).toBe('step app-warning');
     expect(document.querySelector('.ring')?.className).toBe('ring stuck');
     expect(screen.getByText(STATUS_TEXT.slowSub)).toBeTruthy();
     expect(meta()).toEqual([
@@ -146,6 +152,8 @@ describe('#21 tx-status', () => {
     expect(await screen.findByText(STATUS_TEXT.sentOk)).toBeTruthy();
     expect(screen.getByText(STATUS_TEXT.sent)).toBeTruthy();
     expect(screen.getByText(STATUS_TEXT.confirmed)).toBeTruthy();
+    expect(document.querySelector('.top-bar .title')?.className).toBe('title');
+    expect(document.querySelector('.top-bar .step')?.className).toBe('step app-success');
     expect(document.querySelector('.ring')?.className).toBe('ring success');
     expect(screen.getByText(/^Confirmed in \d+ s$/).textContent).toMatch(/^Confirmed in (9|10|11) s$/);
     expect(document.querySelector('.amount-card .amount')?.classList.contains('app-amount-big')).toBe(true);

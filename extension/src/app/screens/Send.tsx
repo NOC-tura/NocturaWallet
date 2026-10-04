@@ -234,122 +234,125 @@ export function Send({
   );
 
   return (
-    <div className="screen s-send">
-      <TopBar title="Send" onBack={onBack} />
-      <div className="scroll">
-        {refused ? <RefusedBanner /> : null}
-        {notice === 'start-again' ? <Banner tone="danger" title={SEND_TEXT.startAgain} /> : null}
-        {open === undefined ? null : (
-          <div className="banner info" role="status">
-            <ExtIcon name="info" size={18} />
-            <div>
-              <div className="noc-body-sm banner-title">{SEND_TEXT.pending}</div>
-              <button type="button" className="btn btn-tertiary app-btn-inline" onClick={() => onViewPending(open)}>
-                View it
-              </button>
-            </div>
-          </div>
-        )}
-        {firstTime ? (
-          <Banner tone="warning" role="status" title={SEND_TEXT.firstTitle}>
-            {SEND_TEXT.firstLine}
-          </Banner>
-        ) : null}
-        <div className="row">
-          <div className="lbl noc-overline">Token</div>
-          <button type="button" className="token-chip" aria-label={`Token: ${token}`} onClick={() => setSheet(true)}>
-            <span className={`app-chip-ico s8-tok ${token.toLowerCase()}`} aria-hidden="true" />
-            <span className="noc-body-lg">{token}</span>
-            <ExtIcon name="chevron-down" size={16} />
-          </button>
-        </div>
-        <div className={`row recipient-row${invalid || self ? ' app-row-error' : ''}`}>
-          <label className="lbl noc-overline" htmlFor="send-recipient">
-            Recipient
-          </label>
-          <div className="field">
-            <input
-              id="send-recipient"
-              className={`input noc-mono${invalid ? ' invalid' : ''}`}
-              placeholder="Solana address"
-              autoComplete="off"
-              spellCheck={false}
-              value={recipient}
-              onChange={e => edit(e.target.value)}
-            />
-            <div className="input-actions">
-              {recipient === '' ? (
-                <button type="button" aria-label="Paste" onClick={() => void paste()}>
-                  <ExtIcon name="clip" size={18} />
+    <>
+      <div className="screen s-send">
+        <TopBar title="Send" onBack={onBack} />
+        <div className="scroll">
+          {refused ? <RefusedBanner /> : null}
+          {notice === 'start-again' ? <Banner tone="danger" title={SEND_TEXT.startAgain} /> : null}
+          {open === undefined ? null : (
+            <div className="banner info" role="status">
+              <ExtIcon name="info" size={18} />
+              <div>
+                <div className="noc-body-sm banner-title">{SEND_TEXT.pending}</div>
+                <button type="button" className="btn btn-tertiary app-btn-inline" onClick={() => onViewPending(open)}>
+                  View it
                 </button>
-              ) : firstTime ? null : (
-                // Design state 6 draws no field action; state 3 tints Clear --danger.
-                <button type="button" aria-label="Clear recipient" className={invalid ? 'app-danger' : undefined} onClick={() => edit('')}>
-                  <ExtIcon name="close" size={18} />
-                </button>
-              )}
-            </div>
-          </div>
-          {helper}
-          {firstTime ? (
-            <div className="app-send-addr noc-mono">
-              <AddressGroups address={address} />
-            </div>
-          ) : null}
-        </div>
-        <div className={`row amount-row${invalid ? ' app-row-dim' : short !== null || badAmount ? ' app-row-error' : ''}`}>
-          <label className="lbl noc-overline" htmlFor="send-amount">
-            Amount
-          </label>
-          <div className="amount-line">
-            <input
-              id="send-amount"
-              className={`amount noc-balance-lg noc-numeral${short !== null || badAmount ? ' app-danger' : ''}`}
-              placeholder="0.000000"
-              inputMode="decimal"
-              autoComplete="off"
-              value={amountText}
-              onChange={e => setAmountText(e.target.value.trim())}
-            />
-            <button type="button" className="max-chip" disabled={invalid || balance === null} onClick={max}>
-              MAX
-            </button>
-          </div>
-          {available}
-          {token === 'SOL' && maxText !== null && amountText === maxText ? <div className="helper ok">{SEND_TEXT.maxHelper}</div> : null}
-          {badAmount ? (
-            <div className="helper error" role="alert">
-              <ExtIcon name="alert" size={12} /> {SEND_TEXT.invalidAmount(decimals)}
-            </div>
-          ) : null}
-          {short === null ? null : (
-            <div className="helper error" role="alert">
-              <ExtIcon name="alert" size={12} /> Insufficient balance — short by <span className="noc-numeral">{`${showExact(token, short)} ${token}`}</span>
+              </div>
             </div>
           )}
-          {solShort ? (
-            <div className="helper error" role="alert">
-              <ExtIcon name="alert" size={12} /> {SEND_TEXT.feeWarning}
-            </div>
+          {firstTime ? (
+            <Banner tone="warning" role="status" title={SEND_TEXT.firstTitle}>
+              {SEND_TEXT.firstLine}
+            </Banner>
           ) : null}
+          <div className="row">
+            <div className="lbl noc-overline">Token</div>
+            <button type="button" className="token-chip" aria-label={`Token: ${token}`} onClick={() => setSheet(true)}>
+              <span className={`app-chip-ico s8-tok ${token.toLowerCase()}`} aria-hidden="true" />
+              <span className="noc-body-lg">{token}</span>
+              <ExtIcon name="chevron-down" size={16} />
+            </button>
+          </div>
+          <div className={`row recipient-row${invalid || self ? ' app-row-error' : ''}`}>
+            <label className="lbl noc-overline" htmlFor="send-recipient">
+              Recipient
+            </label>
+            <div className="field">
+              <input
+                id="send-recipient"
+                className={`input noc-mono${invalid ? ' invalid' : ''}`}
+                placeholder="Solana address"
+                autoComplete="off"
+                spellCheck={false}
+                value={recipient}
+                onChange={e => edit(e.target.value)}
+              />
+              <div className="input-actions">
+                {recipient === '' ? (
+                  <button type="button" aria-label="Paste" onClick={() => void paste()}>
+                    <ExtIcon name="clip" size={18} />
+                  </button>
+                ) : firstTime ? null : (
+                  // Design state 6 draws no field action; state 3 tints Clear --danger.
+                  <button type="button" aria-label="Clear recipient" className={invalid ? 'app-danger' : undefined} onClick={() => edit('')}>
+                    <ExtIcon name="close" size={18} />
+                  </button>
+                )}
+              </div>
+            </div>
+            {helper}
+            {firstTime ? (
+              <div className="app-send-addr noc-mono">
+                <AddressGroups address={address} />
+              </div>
+            ) : null}
+          </div>
+          <div className={`row amount-row${invalid ? ' app-row-dim' : short !== null || badAmount ? ' app-row-error' : ''}`}>
+            <label className="lbl noc-overline" htmlFor="send-amount">
+              Amount
+            </label>
+            <div className="amount-line">
+              <input
+                id="send-amount"
+                className={`amount noc-balance-lg noc-numeral${short !== null || badAmount ? ' app-danger' : ''}`}
+                placeholder="0.000000"
+                inputMode="decimal"
+                autoComplete="off"
+                value={amountText}
+                onChange={e => setAmountText(e.target.value.trim())}
+              />
+              <button type="button" className="max-chip" disabled={invalid || balance === null} onClick={max}>
+                MAX
+              </button>
+            </div>
+            {available}
+            {token === 'SOL' && maxText !== null && amountText === maxText ? <div className="helper ok">{SEND_TEXT.maxHelper}</div> : null}
+            {badAmount ? (
+              <div className="helper error" role="alert">
+                <ExtIcon name="alert" size={12} /> {SEND_TEXT.invalidAmount(decimals)}
+              </div>
+            ) : null}
+            {short === null ? null : (
+              <div className="helper error" role="alert">
+                <ExtIcon name="alert" size={12} /> Insufficient balance — short by <span className="noc-numeral">{`${showExact(token, short)} ${token}`}</span>
+              </div>
+            )}
+            {solShort ? (
+              <div className="helper error" role="alert">
+                <ExtIcon name="alert" size={12} /> {SEND_TEXT.feeWarning}
+              </div>
+            ) : null}
+          </div>
+          <div className={`row fee-row${invalid ? ' app-row-dim' : ''}`}>
+            <div className="line">
+              <span className="l noc-body-sm">Network fee</span>
+              <span className="r noc-body-sm noc-numeral">{invalid ? '—' : `~${showLamports(BASE_FEE_LAMPORTS)} SOL`}</span>
+            </div>
+            <div className="line muted">
+              <span className="l noc-body-sm">Priority</span>
+              <span className="r noc-body-sm">{SEND_TEXT.priority}</span>
+            </div>
+          </div>
         </div>
-        <div className={`row fee-row${invalid ? ' app-row-dim' : ''}`}>
-          <div className="line">
-            <span className="l noc-body-sm">Network fee</span>
-            <span className="r noc-body-sm noc-numeral">{invalid ? '—' : `~${showLamports(BASE_FEE_LAMPORTS)} SOL`}</span>
-          </div>
-          <div className="line muted">
-            <span className="l noc-body-sm">Priority</span>
-            <span className="r noc-body-sm">{SEND_TEXT.priority}</span>
-          </div>
+        <div className="sticky-bar">
+          <LockedButton className="btn btn-primary" disabled={!ready} onPress={review}>
+            {label}
+          </LockedButton>
         </div>
       </div>
-      <div className="sticky-bar">
-        <LockedButton className="btn btn-primary" disabled={!ready} onPress={review}>
-          {label}
-        </LockedButton>
-      </div>
+      {/* #43 beside #12, not inside `.s-send`: there `.s-send .row` (#12's cards) would style the sheet's rows (Task 17). */}
       {sheet ? <TokenSheet balances={m.balances} prices={m.prices} selected={token} onSelect={setToken} onClose={() => setSheet(false)} /> : null}
-    </div>
+    </>
   );
 }

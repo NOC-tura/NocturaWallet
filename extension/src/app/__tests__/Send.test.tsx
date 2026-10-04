@@ -202,6 +202,10 @@ describe('#12 send', () => {
     await loaded();
     fireEvent.click(screen.getByRole('button', {name: 'Token: SOL'}));
     const sheet = screen.getByRole('dialog', {name: 'Choose a token'});
+    // The sheet is #12's sibling, never inside `.s-send`: there `.s-send .row` (#12's card: --bg-surface-1, radius,
+    // 12 px apart) styled #43's rows as cards, which the design's `.s8-sheet .row` list does not draw (Task 17 visual pass).
+    expect(sheet.closest('.s-send')).toBeNull();
+    expect(document.querySelector('.s-send')).not.toBeNull();
     expect([...sheet.querySelectorAll('.pri')].map(p => p.textContent)).toEqual(['SOL', 'NOC', 'USDC', 'USDT']);
     // 4 200 NOC × $0.1501 (the stage price), outside the market total.
     expect(within(sheet).getByText('$630.42 at stage price')).toBeTruthy();

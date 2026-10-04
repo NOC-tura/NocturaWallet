@@ -193,7 +193,7 @@ export function Review({
       {pill}
     </div>
   );
-  const top = <TopBar title={REVIEW_TEXT.title} onBack={() => void leave()} trailing={<span className="step noc-overline">{REVIEW_TEXT.step}</span>} />;
+  const top = <TopBar title={REVIEW_TEXT.title} titleClass="" onBack={() => void leave()} trailing={<span className="step">{REVIEW_TEXT.step}</span>} />;
   const cancel = (
     <button type="button" className="btn btn-tertiary" onClick={() => void leave()}>
       {REVIEW_TEXT.cancel}

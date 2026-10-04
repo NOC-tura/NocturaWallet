@@ -358,7 +358,7 @@ export function Confirm(props: ConfirmProps) {
   };
 
   const refused = m.net.mode === 'refused';
-  const top = <TopBar title={CONFIRM_TEXT.title} onBack={back} trailing={<span className="step noc-overline">{CONFIRM_TEXT.step}</span>} />;
+  const top = <TopBar title={CONFIRM_TEXT.title} titleClass="" onBack={back} trailing={<span className="step">{CONFIRM_TEXT.step}</span>} />;
   if (view === null) {
     return (
       <div className="screen s-conf" aria-busy="true">

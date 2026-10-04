@@ -13,8 +13,13 @@ const STATS = 'https://api.noc-tura.io/api/v1/stats';
 const METHOD_NOT_FOUND: unique symbol = Symbol('method not found');
 
 export interface FakeCoordinator {
-  /** 'confirm': a signature is confirmed at its second status check. 'expire': the network never sees it. */
-  mode: 'confirm' | 'expire';
+  /**
+   * 'confirm': a signature is confirmed at its second status check. 'expire': the network never sees it.
+   * 'fail' (plan 3): it lands at its second check, confirmed WITH an error (#44's rejected-by-program).
+   */
+  mode: 'confirm' | 'expire' | 'fail';
+  /** Plan 3: the broadcast route refuses before forwarding — 400 `rejected` (#44's network-error). */
+  broadcastReject: boolean;
   /** What getBlockHeight answers; the test moves it past a blockhash's life to drive expiry. */
   blockHeight: number;
   hits: {url: string; rpcMethod: string | null}[];
@@ -115,6 +120,7 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
   let held: Promise<void> | null = null;
   const fake: FakeCoordinator = {
     mode: 'confirm',
+    broadcastReject: false,
     blockHeight: FAKE_START_HEIGHT,
     hits: [],
     broadcasts: [],
@@ -149,7 +155,10 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       if (fake.mode === 'expire') return null;
       const seen = (statusChecks.get(signature) ?? 0) + 1;
       statusChecks.set(signature, seen);
-      return seen >= 2 ? {slot: context().slot, confirmations: 1, err: null, status: {Ok: null}, confirmationStatus: 'confirmed'} : null;
+      if (seen < 2) return null;
+      return fake.mode === 'fail'
+        ? {slot: context().slot, confirmations: 1, err: {InstructionError: [2, {Custom: 1}]}, status: {Err: {InstructionError: [2, {Custom: 1}]}}, confirmationStatus: 'confirmed'}
+        : {slot: context().slot, confirmations: 1, err: null, status: {Ok: null}, confirmationStatus: 'confirmed'};
     }),
   });
 
@@ -315,6 +324,8 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       const {value: count, size} = shortVec(wire);
       if (count < 1 || wire.length < size + 64) return json(route, 400, {error: 'malformed', message: 'no signature'});
       const signature = base58.encode(wire.subarray(size, size + 64));
+      // The route's own refusal (a contract reason): nothing was forwarded, nothing recorded as broadcast.
+      if (fake.broadcastReject) return json(route, 400, {error: 'rejected', message: 'Blockhash not found'});
       fake.broadcasts.push(signature);
       fake.broadcastWires.push(transaction ?? '');
       return json(route, 200, {signature});

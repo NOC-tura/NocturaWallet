@@ -191,7 +191,7 @@ function Tracked({account, id, since, onDone, onDetails, onActivity, onTryAgain,
           <button type="button" className="icon-btn" aria-label="Close" disabled={!seen.read && !readFailed} onClick={onDone}>
             <ExtIcon name="close" size={22} />
           </button>
-          <div className="title noc-h1">{STATUS_TEXT.sending}</div>
+          <div className="title">{STATUS_TEXT.sending}</div>
         </div>
         <div className="scroll">
           <div className="hero">
@@ -250,8 +250,8 @@ function Tracked({account, id, since, onDone, onDetails, onActivity, onTryAgain,
           <button type="button" className="icon-btn" aria-label="Close" onClick={onDone}>
             <ExtIcon name="close" size={22} />
           </button>
-          <div className="title noc-h1">{STATUS_TEXT.sent}</div>
-          <span className="step noc-overline app-success">{STATUS_TEXT.confirmed}</span>
+          <div className="title">{STATUS_TEXT.sent}</div>
+          <span className="step app-success">{STATUS_TEXT.confirmed}</span>
         </div>
         <div className="scroll">
           <div className="hero">
@@ -305,8 +305,8 @@ function Tracked({account, id, since, onDone, onDetails, onActivity, onTryAgain,
         <button type="button" className="icon-btn" aria-label="Back" disabled>
           <ExtIcon name="back" size={22} />
         </button>
-        <div className="title noc-h1">{STATUS_TEXT.sending}</div>
-        <span className={`step noc-overline${slow ? ' app-warning' : ''}`}>{slow ? STATUS_TEXT.slow : ''}</span>
+        <div className="title">{STATUS_TEXT.sending}</div>
+        <span className={`step${slow ? ' app-warning' : ''}`}>{slow ? STATUS_TEXT.slow : ''}</span>
       </div>
       <div className="scroll">
         <div className="hero">

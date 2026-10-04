@@ -103,6 +103,10 @@ describe('#54 stuck-tx — the safe variant', () => {
     await renderStuck(view());
     expect(await screen.findByText(STUCK_TEXT.title)).toBeTruthy();
     expect(screen.getByText(STUCK_TEXT.chip)).toBeTruthy();
+    // index.html #s54: the top bar's title and step are the design's plain `.title` and `.step` (no type class: a
+    // `.noc-h1` title wrapped and clipped on #54, a `.noc-overline` step read "90 S TIMEOUT") — Task 17 visual pass.
+    expect(document.querySelector('.top-bar .title')?.className).toBe('title');
+    expect(document.querySelector('.top-bar .step')?.className).toBe('step');
     expect(screen.getByText(STUCK_TEXT.pendingFor)).toBeTruthy();
     expect(document.querySelector('.pending-counter .time')?.textContent).toBe('01:34');
     expect(document.querySelector('.pending-counter')?.getAttribute('aria-live')).toBe('polite');
