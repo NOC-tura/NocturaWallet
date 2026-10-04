@@ -307,7 +307,12 @@ mutation test in `scripts/__tests__`):
   and `#/home`, and the hash only chooses a screen: every value shown comes from the background.
   The address is validated like any address and only selects which `preparedFor` to read. **No
   hash causes an action.** Any extension page, or another extension opening `wallet.html#/send/…`,
-  can at most make #20 appear, and #20 waits for a tap (review B1, D38).
+  can at most make #20 appear, and #20 waits for a tap (review B1, D38). **Plan 3:** on that route the
+  tab's provider stays quiet — the state, and what #20 reads itself (`preparedFor`, `prepareSend` when the
+  quote has expired, `pending`, `prices`); once the user moves on from it (to #21, #19 or #12) the tab is a
+  wallet surface like the popup and runs the open sequence. The flow's pushed routes carry only what the
+  user typed (#12's draft, #19's intent) and which account and pending record a screen reads — never a
+  prepared send.
 
 ### 1.7 Design-system reuse from `web/`
 

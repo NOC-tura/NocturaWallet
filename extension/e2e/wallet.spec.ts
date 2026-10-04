@@ -61,7 +61,7 @@ const pendingState = async (page: Page, signature: string): Promise<string | und
 
 /**
  * Re-authenticate a challenge through the real vault page (#10). After the proof the same tab hands
- * over to the UI tab's resume route (D38) — nothing is sent from the vault page.
+ * over to the UI tab's resume route, #20 (D38) — nothing is sent from the vault page, nor from #20 untapped.
  */
 async function reauthenticate(ctx: BrowserContext, fake: FakeCoordinator, id: string, challengeId: string, password: string, account: string): Promise<void> {
   const vault = await ctx.newPage();
@@ -72,11 +72,11 @@ async function reauthenticate(ctx: BrowserContext, fake: FakeCoordinator, id: st
     await vault.fill('#ra-password', password);
     await vault.click('#ra-confirm');
     await vault.waitForURL(`chrome-extension://${id}/wallet.html#/send/resume?account=${account}`, {timeout: 60_000});
-    // The resume stand-in, in a real browser (plan-2 review M7): it renders, and it sends nothing.
-    await expect(vault.getByText('Open the Noctura icon to continue.')).toBeVisible();
-    // Not one instant (Task 17 review 3): the stand-in stays open for a polled 3 s window, and at every sample
-    // nothing was broadcast and the tab never asked for a send. The recorder covers this one tab only (the
-    // vault page and the stand-in it hands over to); the popup's own sends below are not in it.
+    // #20 confirmed, in the same tab (D38, plan 3): it renders the fresh preview, and it sends nothing.
+    await expect(vault.getByText('Confirmed. Review the fresh quote and send.')).toBeVisible();
+    // Not one instant (Task 17 review 3): #20 stays open for a polled 3 s window, and at every sample nothing
+    // was broadcast and the tab never asked for a send. The recorder covers this one tab only (the vault page
+    // and the #20 it hands over to); the popup's own sends below are not in it.
     const quietUntil = Date.now() + 3_000;
     await expect
       .poll(

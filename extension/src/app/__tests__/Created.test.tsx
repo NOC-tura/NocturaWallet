@@ -108,36 +108,9 @@ describe('#7 onboard-success (wallet.html#/created)', () => {
   });
 });
 
-// Spec §12 plan 2: #10's hand-over lands here; until plan 3 makes it #20 it says where to go — and sends nothing.
-describe('the resume stand-in (wallet.html#/send/resume?account=…)', () => {
-  it('"Open the Noctura icon to continue." — it prepares, reads and sends nothing', async () => {
-    const sent: string[] = [];
-    await renderApp({surface: 'tab', hash: `#/send/resume?account=${ACCOUNT.publicKey}`, spy: m => void sent.push((m as {type: string}).type)});
-    expect(await screen.findByText('Open the Noctura icon to continue.')).toBeTruthy();
-    await new Promise(r => setTimeout(r, 20));
-    expect(sent.filter(t => t !== 'wallet.state')).toEqual([]);
-    expect(screen.getByRole('button', {name: 'Close this tab'})).toBeTruthy();
-  });
-
-  it('[Close this tab] closes the tab, once per click window', async () => {
-    const {platform} = await renderApp({surface: 'tab', hash: `#/send/resume?account=${ACCOUNT.publicKey}`});
-    const close = await screen.findByRole('button', {name: 'Close this tab'});
-    fireEvent.click(close);
-    fireEvent.click(close);
-    expect(platform.closed).toBe(1);
-  });
-
-  it('an account that is not an address falls to #11: the hash only chooses a screen', async () => {
-    await renderApp({surface: 'tab', hash: '#/send/resume?account=not-an-address'});
-    expect(await screen.findByText('TOKENS')).toBeTruthy();
-    expect(screen.queryByText('Open the Noctura icon to continue.')).toBeNull();
-  });
-});
-
 // Task 15 fix round 1 (I-1, m-1): a quiet provider reads the state only, whatever happens in the page —
 // the browser's online event, a tab coming back into view or focus, user input (no activity.ping: a
 // hand-over page does not keep the wallet unlocked).
-const STAND_IN = `#/send/resume?account=${ACCOUNT.publicKey}`;
 async function pageEvents(): Promise<void> {
   await act(async () => {
     window.dispatchEvent(new Event('offline'));
@@ -157,10 +130,8 @@ async function pageEvents(): Promise<void> {
 }
 
 describe('a quiet provider stays quiet (fix round 1)', () => {
-  it.each([
-    ['#7', '#/created', 'Wallet created'],
-    ['the stand-in', STAND_IN, 'Open the Noctura icon to continue.'],
-  ])('%s: online, visibility, focus, pageshow and input send wallet.state only', async (_name, hash, text) => {
+  // Plan 3: the resume route is #20 now, which reads its own prepared send — its quiet test is in sendFlow.test.tsx.
+  it.each([['#7', '#/created', 'Wallet created']])('%s: online, visibility, focus, pageshow and input send wallet.state only', async (_name, hash, text) => {
     vi.useFakeTimers({shouldAdvanceTime: true});
     try {
       const sent: string[] = [];
@@ -190,12 +161,6 @@ describe('a quiet provider stays quiet (fix round 1)', () => {
 });
 
 describe('the hand-over screens without a wallet or an account (fix round 1)', () => {
-  it('m-3: the stand-in with no wallet shows the tab’s no-wallet screen', async () => {
-    await renderApp({surface: 'tab', hash: STAND_IN, wallet: false});
-    expect(await screen.findByText('No wallet on this browser yet.')).toBeTruthy();
-    expect(screen.queryByText('Open the Noctura icon to continue.')).toBeNull();
-  });
-
   it('#7 with no wallet shows the tab’s no-wallet screen too', async () => {
     await renderApp({surface: 'tab', hash: '#/created', wallet: false});
     expect(await screen.findByText('No wallet on this browser yet.')).toBeTruthy();

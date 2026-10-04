@@ -112,9 +112,10 @@ export function WalletProvider({
   surface: Surface;
   now?: () => number;
   /**
-   * The UI tab's hand-over screens (#7, #40, the resume stand-in): the state only — no cached, pending,
+   * The UI tab's hand-over screens (#7, #40, #20's resume entry): the state only — no cached, pending,
    * balance or price read on open, none later (refresh() is a no-op, so the online event reads
-   * nothing), and no activity.ping. #40 reads what it shows itself; #7 reads nothing from the network.
+   * nothing), and no activity.ping. #40 and #20 read what they show themselves; #7 reads nothing from
+   * the network. App drops `quiet` once the tab moves on from #20 (to #21, #19 or #12).
    */
   quiet?: boolean;
   children: ReactNode;

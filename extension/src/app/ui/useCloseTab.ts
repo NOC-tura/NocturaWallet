@@ -5,7 +5,7 @@ import type {Platform} from '../platform';
 export const CLOSE_CHECK_MS = 500;
 
 /**
- * [Close this tab] (#7, #40, the resume stand-in): window.close(), and the button hides when the tab is
+ * [Close this tab] (#7, #40, #21 in the UI tab): window.close(), and the button hides when the tab is
  * still here a moment later — a browser may refuse to close a tab it did not open (spec §3.7).
  */
 export function useCloseTab(platform: Platform): {refused: boolean; close(): void} {

@@ -751,3 +751,9 @@ a.btn {
 .app-tab-done {
   margin: 0 var(--space-5) var(--space-4);
 }
+
+/* #44's cancelled toast over #11 (plan 3): above the 80 px tab bar, over the content. */
+.app .s9-toast-cancelled {
+  bottom: calc(80px + var(--space-4));
+  z-index: 5;
+}

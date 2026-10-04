@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
-import {SCREENS, TAB_ONLY, firstRoute, routeReducer, type Route} from '../router';
+import {FLOW, SCREENS, TAB_ONLY, firstRoute, routeReducer, type Route} from '../router';
 
 const HOME: Route[] = [{screen: 'tab', tab: 'home'}];
 
 const ADDR = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
+const PREPARED = 'cd'.repeat(16);
 
-// Spec §1.6: an in-memory stack; "No hash causes an action." No route leads into the send flow until
-// plan 3; the resume hand-over is a plan-2 stand-in that only says where to go.
+// Spec §1.6: an in-memory stack; "No hash causes an action." The send flow's routes (plan 3) carry only what
+// the user typed and which account and record a screen reads; the tab's resume route is #20, first route only.
 describe('the router', () => {
   it('push, pop (never below the first route), and a tab resets the stack', () => {
     const s1 = routeReducer(HOME, {type: 'push', route: {screen: 'receive'}});
@@ -16,15 +17,80 @@ describe('the router', () => {
     expect(routeReducer([...s1, {screen: 'about'}], {type: 'tab', tab: 'activity'})).toEqual([{screen: 'tab', tab: 'activity'}]);
   });
 
-  it('the pushable screens are a closed list with no send; the hand-over screens are first routes only', () => {
-    expect([...SCREENS].sort()).toEqual(['about', 'receive', 'tab', 'tx']);
+  it('the pushable screens are a closed list; the hand-over screens are first routes only; the flow screens own their Esc', () => {
+    expect([...SCREENS].sort()).toEqual(['about', 'confirm', 'receive', 'review', 'send', 'status', 'tab', 'tx']);
     expect([...TAB_ONLY].sort()).toEqual(['created', 'imported', 'resume']);
+    expect([...FLOW].sort()).toEqual(['confirm', 'resume', 'review', 'send', 'status']);
     for (const route of [{screen: 'created'}, {screen: 'imported'}, {screen: 'resume', account: ADDR}] as Route[]) expect(routeReducer(HOME, {type: 'push', route})).toBe(HOME);
   });
 
-  it.each(['send', 'resume', 'send/resume', 'confirm'])('refuses a pushed "%s" route: the stack is unchanged', screen => {
+  it.each(['resume', 'send/resume', 'sign', 'broadcast'])('refuses a pushed "%s" route: the stack is unchanged', screen => {
     const forged = {screen} as unknown as Route;
     expect(routeReducer(HOME, {type: 'push', route: forged})).toBe(HOME);
+  });
+
+  it('the flow routes: a draft is the user’s text, an intent an address and a positive u64, a status id 32 hex or null', () => {
+    const ok: Route[] = [
+      {screen: 'send', draft: null, notice: null},
+      {screen: 'send', draft: {token: 'SOL', recipient: 'typed', amount: '1.'}, notice: 'start-again'},
+      {screen: 'review', account: ADDR, intent: {token: 'NOC', recipient: ADDR, amount: 1n}, notice: null},
+      {screen: 'confirm', account: ADDR, entry: 'flow', preparedId: PREPARED},
+      {screen: 'confirm', account: ADDR, entry: 'resume'},
+      {screen: 'status', account: ADDR, id: 'ab'.repeat(16), since: 1},
+      {screen: 'status', account: ADDR, id: null, since: 1},
+    ];
+    for (const route of ok) expect(routeReducer(HOME, {type: 'push', route})).toEqual([...HOME, route]);
+    const bad = [
+      {screen: 'send', draft: {token: 'BONK', recipient: '', amount: ''}, notice: null},
+      {screen: 'send', draft: null, notice: 'go'},
+      {screen: 'review', account: ADDR, intent: {token: 'SOL', recipient: ADDR, amount: 0n}, notice: null},
+      {screen: 'review', account: 'nope', intent: {token: 'SOL', recipient: ADDR, amount: 1n}, notice: null},
+      {screen: 'confirm', account: ADDR, entry: 'auto'},
+      // #20 from #19 is bound to the prepared send #19 showed, by id (Task 8); a resume is id-less.
+      {screen: 'confirm', account: ADDR, entry: 'flow'},
+      {screen: 'confirm', account: ADDR, entry: 'flow', preparedId: 'p1'},
+      {screen: 'confirm', account: ADDR, entry: 'resume', preparedId: PREPARED},
+      // A reference id only, never a prepared send: a route carrying anything more is refused whole.
+      {screen: 'confirm', account: ADDR, entry: 'flow', preparedId: PREPARED, prepared: {id: PREPARED, tx: 'AQ=='}},
+      {screen: 'review', account: ADDR, intent: {token: 'SOL', recipient: ADDR, amount: 1n}, notice: null, prepared: {}},
+      {screen: 'status', account: ADDR, id: 'r1', since: 1},
+      {screen: 'status', account: ADDR, id: null, since: Number.NaN},
+    ];
+    for (const route of bad) expect(routeReducer(HOME, {type: 'push', route: route as unknown as Route})).toBe(HOME);
+  });
+
+  it('replace swaps the top route; reset replaces the stack — each refused whole if any route is malformed', () => {
+    const send: Route = {screen: 'send', draft: null, notice: null};
+    const s1 = routeReducer([...HOME, send], {type: 'replace', route: {screen: 'send', draft: {token: 'SOL', recipient: 'a', amount: '1'}, notice: null}});
+    expect(s1).toEqual([...HOME, {screen: 'send', draft: {token: 'SOL', recipient: 'a', amount: '1'}, notice: null}]);
+    expect(routeReducer(s1, {type: 'reset', routes: [...HOME, {screen: 'status', account: ADDR, id: null, since: 5}]})).toEqual([...HOME, {screen: 'status', account: ADDR, id: null, since: 5}]);
+    expect(routeReducer(s1, {type: 'reset', routes: [...HOME, {screen: 'resume', account: ADDR}]})).toBe(s1);
+    expect(routeReducer(s1, {type: 'reset', routes: []})).toBe(s1);
+    expect(routeReducer(s1, {type: 'replace', route: {screen: 'created'}})).toBe(s1);
+  });
+
+  // Plan 1's "no send route from a hash", made true for plan 3: the flow's routes exist now, but only the app's own
+  // handlers push them. A hash reaches firstRoute alone, which yields #7, #40, Home or the id-less resume entry —
+  // never #19, #20-from-#19, #21 or #12, and never with an id or an amount. The resume entry it can select is #20,
+  // which reads wallet.preparedFor and waits for a tap (sendFlow.test.tsx: no wallet.send without one).
+  it.each([
+    '#/send',
+    '#/confirm',
+    '#/review',
+    '#/status',
+    `#/confirm?account=${ADDR}`,
+    `#/send/confirm?account=${ADDR}&entry=flow&preparedId=${PREPARED}`,
+    `#/send/resume?account=${ADDR}&preparedId=${PREPARED}`,
+    `#/send/resume?account=${ADDR}&send=1`,
+    `#/send/status?account=${ADDR}&id=${PREPARED}`,
+  ])('a hash selects no flow screen but the id-less resume entry: "%s" is Home', hash => {
+    expect(firstRoute('tab', hash)).toEqual(HOME);
+  });
+
+  it('the only flow screen a hash can select is resume, an account and nothing else', () => {
+    const r = firstRoute('tab', `#/send/resume?account=${ADDR}`);
+    expect(r).toEqual([{screen: 'resume', account: ADDR}]);
+    expect(Object.keys(r[0] ?? {}).sort()).toEqual(['account', 'screen']);
   });
 
   it('refuses a route of a known screen with a malformed shape', () => {
@@ -39,17 +105,11 @@ describe('the router', () => {
     },
   );
 
-  it('the tab reads #/created (#7), #/imported (#40) and #/send/resume?account=<address> (the plan-2 stand-in); the popup ignores the hash', () => {
+  it('the tab reads #/created (#7), #/imported (#40) and #/send/resume?account=<address> (#20 after #10); the popup ignores the hash', () => {
     expect(firstRoute('tab', '#/created')).toEqual([{screen: 'created'}]);
     expect(firstRoute('tab', '#/imported')).toEqual([{screen: 'imported'}]);
     expect(firstRoute('tab', `#/send/resume?account=${ADDR}`)).toEqual([{screen: 'resume', account: ADDR}]);
     expect(firstRoute('popup', '#/created')).toEqual(HOME);
     expect(firstRoute()).toEqual(HOME);
-  });
-
-  it('the Route type itself has no send screen', () => {
-    // @ts-expect-error — plan 2's Route has no 'send' screen (tsc fails this file if one is added).
-    const r: Route = {screen: 'send'};
-    expect(r.screen).toBe('send');
   });
 });
