@@ -671,3 +671,15 @@ a.btn {
   font: inherit;
   cursor: pointer;
 }
+
+/* #44 failed (plan 3): index.html #s44's inline styles — the eyebrow title in --fg-tertiary, the content with no
+   top padding — and the explorer link drawn as a button. */
+.app-fail-eyebrow {
+  color: var(--fg-tertiary);
+}
+.app-fail-body {
+  padding-top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}

@@ -439,6 +439,20 @@ describe('#20 — one tap per broadcast (D38) and every answer of wallet.send', 
     expect(w.sent.filter(t => t === 'wallet.discardPrepared')).toEqual([]);
   });
 
+  it('the cancelled toast cannot follow a send (Task 11 carry): once a tap\'s send has answered and moved on, [Cancel] reports no cancel and discards nothing', async () => {
+    const w = await renderConfirm();
+    fireEvent.click(await sendButton());
+    await waitFor(() => expect(nav.onTrack).toHaveBeenCalledTimes(1));
+    // Still mounted here (the navigation is a spy): the press reaches cancel() itself.
+    const cancel = screen.getByRole('button', {name: 'Cancel'}) as HTMLButtonElement;
+    cancel.disabled = false;
+    fireEvent.click(cancel);
+    await act(async () => new Promise(r => setTimeout(r, 50)));
+    expect(w.sends()).toBe(1);
+    expect(nav.onCancelled).not.toHaveBeenCalled();
+    expect(w.sent.filter(t => t === 'wallet.discardPrepared')).toEqual([]);
+  });
+
   it('an unproven challenge: the tap opens #10 for it — a new tab from the popup (which closes), this tab in the UI tab — and sends nothing', async () => {
     const w = await renderConfirm({known: false});
     fireEvent.click(await sendButton());

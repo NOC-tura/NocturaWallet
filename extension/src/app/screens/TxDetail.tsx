@@ -52,13 +52,14 @@ function Address({address, label}: {address: string; label: string}) {
   );
 }
 
-export function ExplorerLink({signature}: {signature: string}) {
+/** The one external link (§6.5): #27's [Explorer], and #44's [View on explorer] (plan 3) — one place builds the href. */
+export function ExplorerLink({signature, label = 'Explorer', icon = true}: {signature: string; label?: string; icon?: boolean}) {
   const href = explorerUrl(signature);
   if (href === null) return null;
   return (
     <a className="btn btn-secondary" href={href} target="_blank" rel="noopener noreferrer">
-      <ExtIcon name="link-out" size={16} />
-      Explorer
+      {icon ? <ExtIcon name="link-out" size={16} /> : null}
+      {label}
     </a>
   );
 }

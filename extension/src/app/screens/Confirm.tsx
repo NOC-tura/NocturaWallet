@@ -234,7 +234,9 @@ export function Confirm(props: ConfirmProps) {
 
   const cancelling = useRef(false);
   const cancel = async () => {
-    if (cancelling.current || sending.current) return;
+    // `left`: a send that answered and moved on (done()), the back arrow, or an unmount — "No fees charged" is never
+    // said after a broadcast may have happened (Task 11 carry), and nothing is discarded behind a screen that is gone.
+    if (cancelling.current || sending.current || left.current) return;
     cancelling.current = true;
     left.current = true;
     cancelled.current = true;

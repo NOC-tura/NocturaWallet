@@ -1743,6 +1743,25 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     (1.8 s), after #20's `[Cancel]` (E7 discarded the prepared send, so the sentence is true). #10's
     Cancel shows its own line in the vault tab instead (§3.10, E7).
 - **Differs, loudly:**
+  - **Plan 3:** in `blockhash-expired` the design's hero sub ("Solana rotated past the blockhash …") is
+    the reason banner's body under "Reason · blockhash-expired", since the engine's line takes the sub;
+    the banner's slot-age body and meta line are not built (the engine keeps the height, not the slot
+    age). `rejected-by-program` offers `[Try again]`, the design's `[View details]` → #27 (by signature;
+    #27 already says when it is not in the recent history yet) and `[View on explorer]` — `[View
+    details]` only there, the one #44 state whose transaction is on chain (review M4). `network-error`
+    offers `[Try again]` only and `generic` `[View on explorer]` only, with no
+    reason banner (the engine names no reason for an older build's record). The back arrow and Esc go to
+    #12 with the transaction prefilled, as the design's annotation says (the same as `[Edit
+    transaction]`). The cancelled toast is the design's own `.s9-toast-cancelled` pill with its ✕.
+  - **Plan 3 (Task 11) — fees on #44, the question carried from §4.6's display rule:** #44 prints no fee
+    amount in any state. `rejected-by-program` says in words that the network fee was charged (the
+    markup rolled back with the transaction; `feePaidLamports` is the network part only) and `[View
+    details]` → #27 shows the fee the chain recorded; `network-error` and `blockhash-expired` paid
+    nothing. The design's "Network fee 0.000050 SOL" row in the expired payload card is removed with it:
+    on a transaction that never landed it would read as paid, beside "No fees were charged."
+  - **Plan 3 (Task 11) — the cancelled toast's trigger:** #20's `[Cancel]` is refused while a send is out
+    (Task 9) and also once a send has answered and moved on from #20, so "No fees charged" never
+    follows a send that may have been broadcast.
   - **`insufficient-fee` state removed.** The engine never reports "fee too low", and priority is
     automatic (D15).
   - `rejected-by-program`'s Jupiter slippage content and `[Adjust slippage and retry]` removed
@@ -1750,7 +1769,7 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   - `network-error`'s RPC picker and `[Switch RPC and retry]` removed (reads and broadcast are fixed
     to the coordinator; #55 not planned).
   - The shielded variant is hidden (D4).
-  - `[View details]` → #27 is offered only when a history entry exists.
+  - `[View details]` → #27 is offered only in `rejected-by-program` (by signature; see the Plan 3 entry above).
 
 ### 4.8 #54 stuck-tx — the safe variant (D23)
 
