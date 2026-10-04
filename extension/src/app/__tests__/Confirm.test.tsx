@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {sendingReader, setupWallet, type Wallet, type WalletOptions} from './harness';
 import {CONFIRM_TEXT, Confirm, type ConfirmEntry} from '../screens/Confirm';
 import {createEngine, type Intent} from '../engine';
+import {showLamports} from '../send/rules';
 import {WalletProvider, type Surface} from '../WalletContext';
 import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {CONFIRM_STRIKE_KEY} from '../prefs';
@@ -122,6 +123,10 @@ describe('#20 tx-confirm — what it shows', () => {
     expect(document.querySelector('.app-quote')?.textContent).toMatch(/^Quote valid (29|30) s · slot 271 408 921$/);
     expect(send.textContent).toBe('Send 0.0100 SOL');
     expect(send.disabled).toBe(false);
+    expect(send.className).toBe('btn btn-primary');
+    // index.html #s20's headline label, the whole address in groups of four.
+    expect(headline.getAttribute('aria-label')).toBe(`Send 0.0100 SOL to recipient address ${COUNTERPARTY.match(/.{1,4}/g)?.join(' ')}`);
+    expect(document.querySelector('.high-value-banner')).toBeNull();
     expect(screen.getByRole('button', {name: 'Cancel'})).toBeTruthy();
     // Removed by decision: priority chips (D15), "Save as / Add to address book" (B1b-2b), typed CONFIRM (D22), DIRECT.
     expect(document.body.textContent).not.toMatch(/Normal|Fast|Instant|Save as|address book|Type CONFIRM|DIRECT|mainnet-beta/);
@@ -148,8 +153,21 @@ describe('#20 tx-confirm — what it shows', () => {
     expect(document.querySelector('.review-card .fiat')?.textContent).toBe('≈ $600.00 USD · 6 % of your balance');
     expect(screen.getByText(CONFIRM_TEXT.reauthLine)).toBeTruthy();
     expect(screen.getByText(CONFIRM_TEXT.opensTab)).toBeTruthy();
+    // The design's warning, kept beside the password line; "cancel now" in --danger; the CTA destructive, as drawn.
+    expect(document.querySelector('.high-value-banner .help')?.textContent).toBe(`${CONFIRM_TEXT.reauthLine} If you didn't initiate this — cancel now.`);
+    expect(document.querySelector('.high-value-banner .help .app-danger')?.textContent).toBe('cancel now');
+    expect(document.querySelector('.headline')?.getAttribute('aria-label')).toBe(`High-value transfer: Send 4.0000 SOL to recipient address ${COUNTERPARTY.match(/.{1,4}/g)?.join(' ')}`);
+    expect((await sendButton()).className).toBe('btn btn-destructive');
     expect((await sendButton()).disabled).toBe(false);
     expect(unstyledClasses(document.querySelector('.s-conf')!, SELECTORS)).toEqual([]);
+  });
+
+  it('high-value with the proof already made: the warning stays, the password line goes', async () => {
+    await renderConfirm({intent: LARGE, known: false, prove: true, entry: 'resume'});
+    await sendButton();
+    expect(document.querySelector('.high-value-banner .help')?.textContent).toBe("If you didn't initiate this — cancel now.");
+    expect(screen.queryByText(CONFIRM_TEXT.reauthLine)).toBeNull();
+    expect(document.querySelector('.headline')?.getAttribute('aria-label')).toBe(`High-value transfer: Send 4.0000 SOL to first-time recipient address ${COUNTERPARTY.match(/.{1,4}/g)?.join(' ')}`);
   });
 
   it('in the UI tab, the proof is taken in this tab: the lines say so (controller addition)', async () => {
@@ -387,7 +405,7 @@ describe('#20 — one tap per broadcast (D38) and every answer of wallet.send', 
     expect(localStorage.getItem(CONFIRM_STRIKE_KEY) ?? '').toBe('');
   });
 
-  it('while the tap’s send is in flight, [Cancel] (`disabled` lifted), the back arrow and Esc do nothing: no "cancelled, no fees" over a broadcast', async () => {
+  it('while the tap’s send is in flight, [Cancel], the back arrow and Esc do nothing — pressed in the same act() as the tap (before any re-render: the guard itself), then again on the disabled Cancel', async () => {
     let release: () => void = () => undefined;
     const held = new Promise<void>(r => (release = r));
     const w = await renderConfirm({
@@ -396,9 +414,19 @@ describe('#20 — one tap per broadcast (D38) and every answer of wallet.send', 
         return firstSignature(wire);
       },
     });
-    fireEvent.click(await sendButton());
-    await waitFor(() => expect(w.sends()).toBe(1));
+    const sendNow = await sendButton();
     const cancel = screen.getByRole('button', {name: 'Cancel'}) as HTMLButtonElement;
+    // One act(): React has not re-rendered Cancel as disabled yet, so these reach cancel()/back() themselves.
+    act(() => {
+      fireEvent.click(sendNow);
+      fireEvent.click(cancel);
+      fireEvent.click(screen.getByRole('button', {name: 'Back'}));
+      fireEvent.keyDown(document, {key: 'Escape'});
+    });
+    await waitFor(() => expect(w.sends()).toBe(1));
+    expect(nav.onCancelled).not.toHaveBeenCalled();
+    expect(nav.onBack).not.toHaveBeenCalled();
+    // Re-rendered: Cancel is disabled (React drops a click on it even with the DOM attribute lifted).
     await waitFor(() => expect(cancel.disabled).toBe(true));
     cancel.disabled = false;
     fireEvent.click(cancel);
@@ -644,6 +672,73 @@ describe('#20 — the prepared send #19 handed over (Task 8 ruling), and answers
     expect(w.platform.opened).toEqual([]);
   });
 
+  it('the quote ends while #20’s own tap’s send is out (fix round 1 probe): no re-prepare, no #19 — the answer reaches #21', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(r => (release = r));
+    const w = await renderConfirm({
+      broadcast: async wire => {
+        await held;
+        return firstSignature(wire);
+      },
+    });
+    await sendButton();
+    await act(async () => void vi.advanceTimersByTime(25_000));
+    fireEvent.click(await sendButton());
+    await waitFor(() => expect(w.sends()).toBe(1));
+    await act(async () => void vi.advanceTimersByTime(8_000));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(w.sent.filter(t => t === 'wallet.prepareSend')).toEqual([]);
+    // [Refresh] is not offered over a send in flight either (Send's quote line stays).
+    expect(screen.queryByRole('button', {name: CONFIRM_TEXT.refresh})).toBeNull();
+    release();
+    await waitFor(() => expect(nav.onTrack).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(40_000);
+    });
+    expect(nav.onReview).not.toHaveBeenCalled();
+    expect(w.sent.filter(t => t === 'wallet.prepareSend')).toEqual([]);
+    // Nothing left behind: the one prepared send went out, and no re-prepare made another.
+    expect(await w.engine.preparedFor(ACCOUNT.publicKey)).toEqual({ok: true, data: null});
+  });
+
+  it('C5 with new fees: the re-prepare’s rows are shown, and the next tap sends THAT prepared send (its id, its fee)', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    let priced = false;
+    const ids: string[] = [];
+    const w = await renderConfirm({
+      gate: m => {
+        if (m.type === 'wallet.send') ids.push((m as unknown as {id: string}).id);
+      },
+    });
+    // From now on the network asks for a priority fee: the re-prepare's quote differs from the first.
+    w.deps.reader.getRecentPrioritizationFees = async () => {
+      priced = true;
+      return Array.from({length: 20}, () => ({prioritizationFee: 1_000_000}));
+    };
+    await sendButton();
+    const before = [...document.querySelectorAll('.fee-row')].map(r => r.textContent);
+    await act(async () => void vi.advanceTimersByTime(30_000));
+    expect(await screen.findByText(CONFIRM_TEXT.updated)).toBeTruthy();
+    expect(priced).toBe(true);
+    const now = await w.engine.preparedFor(ACCOUNT.publicKey);
+    if (!now.ok || now.data === null) throw new Error('no prepared send');
+    const fresh = now.data;
+    expect(fresh.id).not.toBe(w.preparedId);
+    expect(fresh.fees.priorityLamports).not.toBe(50n);
+    const rows = [...document.querySelectorAll('.fee-row')].map(r => [...r.children].map(c => c.textContent));
+    expect(rows[1]?.slice(0, 2)).toEqual(['Priority', `${showLamports(fresh.fees.priorityLamports)} SOL`]);
+    expect(rows[3]?.slice(0, 2)).toEqual(['Total', `${showLamports(fresh.solRequiredLamports)} SOL`]);
+    expect([...document.querySelectorAll('.fee-row')].map(r => r.textContent)).not.toEqual(before);
+    fireEvent.click(await sendButton());
+    await waitFor(() => expect(nav.onTrack).toHaveBeenCalledTimes(1));
+    expect(ids).toEqual([fresh.id]);
+    const pending = await w.engine.pending();
+    expect(pending.ok && pending.data[0]?.fee).toEqual({networkLamports: fresh.fees.networkLamports, markupLamports: fresh.fees.markupLamports});
+  });
+
   it('a double tap inside one act(): exactly one wallet.send (rule 6, `disabled` lifted between)', async () => {
     const w = await renderConfirm();
     const send = await sendButton();
@@ -824,7 +919,7 @@ describe('one caller of wallet.send (source backstop over all of src/)', () => {
     readdirSync(dir).flatMap(e => {
       const p = join(dir, e);
       if (statSync(p).isDirectory()) return e === '__tests__' ? [] : files(p);
-      return /\.(ts|tsx|mjs|js)$/.test(e) ? [p] : [];
+      return /\.(ts|tsx|mts|cts|mjs|cjs|js|jsx)$/.test(e) ? [p] : [];
     });
   it('fixtures: each form outside its two homes is caught; the vault page’s deps.send, the background and comments are not', () => {
     expect(sendSites([{path: 'unlock/screens/x.ts', text: "await deps.send({type:'wallet.send', id})"}])).toEqual(['unlock/screens/x.ts: names wallet.send']);
@@ -870,6 +965,12 @@ describe('one caller of wallet.send (source backstop over all of src/)', () => {
     expect(sendSites(all)).toEqual([]);
     const confirm = strip(readFileSync(resolve(SRC, 'app/screens/Confirm.tsx'), 'utf8'));
     expect([...confirm.matchAll(/\.send\(/g)]).toHaveLength(1);
+    // Every `send(` in #20 (fix round 1): engine.send(view.id) and the two send(view, tapAt) — no third, however
+    // spelled; no bracket form; and the name `send` (outside strings) only those three and `const send`.
+    const code = unquote(readFileSync(resolve(SRC, 'app/screens/Confirm.tsx'), 'utf8'));
+    expect([...code.matchAll(/\bsend\s*\(/g)]).toHaveLength(3);
+    expect([...confirm.matchAll(/\[\s*['"`]send['"`]\s*\]/g)]).toHaveLength(0);
+    expect([...code.matchAll(/\bsend\b/g)]).toHaveLength(4);
     const body = confirm.slice(confirm.indexOf('const tap = async () => {'), confirm.indexOf('const refused ='));
     expect(body).toContain('engine.send(view.id)');
     // engine.send sits in `send`, which only tap() calls (twice: the proven-now path and the plain one).

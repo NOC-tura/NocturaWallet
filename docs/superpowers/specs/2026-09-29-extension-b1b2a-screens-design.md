@@ -1626,8 +1626,17 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   that arrives after #20 went (unmounted, another account) navigates nothing; so does any later await of
   #20 (`preparedFor`, `prepareSend`, `pending`). `unreachable` from `wallet.send` is reported (#42) and
   #21 looks for the record from the tap on — never "nothing sent"; `coordinator-refused` is reported
-  (D26) and #20 stays.
+  (D26) and #20 stays. The quote's end does not re-prepare (and `[Refresh]` does nothing) while #20's
+  own tap's send is out or once it has answered (fix round 1): a re-prepare then would be refused
+  `in-flight` and move a send that went out to #19 instead of #21.
 - **Differs:**
+  - **Plan 3, fix round 1:** the headline carries the design's `aria-label` ("Send 0.0100 SOL to recipient
+    address …", "High-value transfer: " before it, "first-time recipient" for a first send) with the
+    whole address in its groups of four, not the design's first-6 … last-6 (spec §3). The high-value
+    banner keeps the design's warning beside the password line: "If you didn't initiate this — cancel
+    now." with "cancel now" in `--danger` (**controller addition** — the design's sentence, adapted to
+    D22: the typed-CONFIRM head and the "> 5 %" explanation go with the typed field); with the proof
+    already made, only the warning stays. The high-value CTA is `btn-destructive` as drawn, enabled (D22).
   - **Plan 3:** each fee row keeps the design's dollars column — at today's SOL price, four places
     truncated below a cent, as #27's fee line ("$0.0007"); a zero Noctura fee's reason row has none; the
     Total's dollars add the token's value for an SPL send. The high-value line carries cents ("≈ $600.00

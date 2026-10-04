@@ -642,3 +642,6 @@ a.btn {
   flex-direction: column;
   gap: 2px;
 }
+.s-conf .high-value-banner .app-danger {
+  color: var(--danger);
+}

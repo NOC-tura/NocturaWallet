@@ -9,7 +9,7 @@ interface PlatformApi {
   tabs: {create(o: {url: string}): Promise<unknown> | void};
 }
 
-/** Every extension page the UI opens. A closed list: nothing here builds a URL from data. */
+/** Every fixed extension page the UI opens. A closed list: nothing here builds a URL from data (#20's one data-built page is a ReauthPage, below). */
 export type ExtensionPage =
   | 'unlock.html?mode=welcome'
   | 'unlock.html?mode=unlock'
@@ -17,22 +17,25 @@ export type ExtensionPage =
   | 'unlock.html?mode=accounts'
   | 'unlock.html?mode=unlock&return=created'
   | 'unlock.html?mode=unlock&return=imported'
-  | 'unlock.html?mode=import&source=retry'
-  | `unlock.html?mode=reauth&challenge=${string}`;
+  | 'unlock.html?mode=import&source=retry';
+
+declare const REAUTH_PAGE: unique symbol;
+/** #20's re-authentication page: a string only reauthPage() makes (the brand cannot be written by hand). */
+export type ReauthPage = string & {readonly [REAUTH_PAGE]: true};
 
 /**
  * #20's re-authentication page (spec §4.5 step 2): the one page built from data — a challenge id, checked as 32
  * lowercase hex first (what the background issues). Anything else is null: no page opens.
  */
-export function reauthPage(challengeId: string): ExtensionPage | null {
-  return /^[0-9a-f]{32}$/.test(challengeId) ? `unlock.html?mode=reauth&challenge=${challengeId}` : null;
+export function reauthPage(challengeId: string): ReauthPage | null {
+  return /^[0-9a-f]{32}$/.test(challengeId) ? (`unlock.html?mode=reauth&challenge=${challengeId}` as ReauthPage) : null;
 }
 
 export interface Platform {
   /** A new tab (the popup closes itself after). */
-  openPage(page: ExtensionPage): void;
+  openPage(page: ExtensionPage | ReauthPage): void;
   /** This tab moves to the page (the UI tab's #7 and #40 hand over to the vault page and back). */
-  navigate(page: ExtensionPage): void;
+  navigate(page: ExtensionPage | ReauthPage): void;
   closeWindow(): void;
   version(): string;
 }

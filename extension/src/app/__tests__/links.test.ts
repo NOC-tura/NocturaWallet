@@ -48,7 +48,11 @@ describe('links out of the UI', () => {
     const platform = sources.find(s => s.path === 'platform.ts')?.text ?? '';
     expect([...platform.matchAll(new RegExp(LOCATION_REDIRECT, 'g'))].map(m => m[0])).toEqual(['location.assign(']);
     expect(platform).toMatch(/navigate: page => location\.assign\(page\)/);
-    expect(platform).toMatch(/navigate\(page: ExtensionPage\): void;/);
+    // The closed list, plus #20's one data-built page — a branded ReauthPage only reauthPage() makes (Task 9 fix round 1).
+    expect(platform).toMatch(/navigate\(page: ExtensionPage \| ReauthPage\): void;/);
+    expect(platform).toMatch(/openPage\(page: ExtensionPage \| ReauthPage\): void;/);
+    expect([...platform.matchAll(/as ReauthPage\b/g)]).toHaveLength(1);
+    for (const {path, text} of sources) if (path !== 'platform.ts') expect(`${path}: ${/as ReauthPage\b/.test(text)}`).toBe(`${path}: false`);
   });
 
   it('no URL but Solscan’s and the extension’s own pages', () => {

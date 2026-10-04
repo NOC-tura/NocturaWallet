@@ -40,6 +40,9 @@ export const CONFIRM_TEXT = {
   opensTab: 'Confirmation opens in a new tab.',
   /** Controller addition — confirmed by the owner 2026-10-02 (plan 3): as above. */
   opensHere: 'Confirmation opens in this tab.',
+  /** index.html #s20 state 3's warning, kept beside the password line (review fix round 1): "If you didn't initiate this — cancel now." */
+  notYou: "If you didn't initiate this — ",
+  cancelNow: 'cancel now',
 } as const;
 
 const HEX32 = /^[0-9a-f]{32}$/;
@@ -201,8 +204,10 @@ export function Confirm(props: ConfirmProps) {
   const expiredNow = view !== null && now >= view.validUntil;
   useEffect(() => {
     // While a send from this account is open the engine would answer `in-flight` and move an untouched #20 to #19;
-    // Send is disabled anyway, so the quote waits (plan-3 review L1).
-    if (!expiredNow || view === null || busy || quoteDead || open !== null) return;
+    // Send is disabled anyway, so the quote waits (plan-3 review L1). So too while #20's OWN tap's send is out, and
+    // once that send has answered (fix round 1): a re-prepare then would be refused `in-flight` and move a send that
+    // went out to #19 instead of #21 — or, refused late, leave a fresh prepared send behind.
+    if (!expiredNow || view === null || busy || quoteDead || open !== null || inFlight || sending.current || left.current) return;
     if (auto.current <= 0) {
       setQuoteDead(true);
       return;
@@ -211,10 +216,10 @@ export function Confirm(props: ConfirmProps) {
     void reprepare(view.intent, view.reauth?.challengeId).then(ok => {
       if (ok) setNotice('updated');
     });
-  }, [expiredNow, view, busy, quoteDead, open, reprepare]);
+  }, [expiredNow, view, busy, quoteDead, open, inFlight, reprepare]);
 
   const refresh = async () => {
-    if (view === null) return;
+    if (view === null || sending.current || left.current) return;
     auto.current = 1;
     void engine.ping();
     if (await reprepare(view.intent, view.reauth?.challengeId)) setNotice('updated');
@@ -282,14 +287,23 @@ export function Confirm(props: ConfirmProps) {
     // The screen went while the send was out (unmounted, another account): the answer navigates nothing — the
     // pending strip and #26 show the send; handling it here would act on a screen that is gone.
     if (left.current || gen.current !== g) return;
-    if (r.ok) return onTrack(r.data.id, tapAt);
+    /** An answer that moves on from #20: the screen is done — no re-prepare, refresh, cancel or back after it. */
+    const done = () => {
+      left.current = true;
+    };
+    if (r.ok) {
+      done();
+      return onTrack(r.data.id, tapAt);
+    }
     const data = r.data as {challengeId?: unknown; id?: unknown} | undefined;
     switch (r.error) {
       case 'check-pending':
         // Recorded, maybe broadcast: never "nothing sent" — #21 tracks the record it names.
+        done();
         return onTrack(typeof data?.id === 'string' ? data.id : null, tapAt);
       case 'failed':
         // #21 looks for a record of this account created after the tap; without one, its check-pending wording.
+        done();
         return onTrack(null, tapAt);
       case 'prepared-expired':
         // The quote ended between the tap and the send: fresh values, and a new tap — the earlier one is never reused.
@@ -298,6 +312,7 @@ export function Confirm(props: ConfirmProps) {
       case 'reauth-required': {
         if (typeof data?.challengeId !== 'string' || !HEX32.test(data.challengeId)) {
           // The engine consumed the send against a proof that no longer holds (past C5's cap, R2-M3).
+          done();
           return onReview(view.intent, 'confirmation-expired');
         }
         // The prepared send is intact; its proof is missing — a confirmation that did not carry over. The loop guard
@@ -305,6 +320,7 @@ export function Confirm(props: ConfirmProps) {
         // same challenge — remembered across the #10 round trip, which may close this popup — stop, back to #12.
         if (readPref(CONFIRM_STRIKE_KEY) === data.challengeId) {
           writePref(CONFIRM_STRIKE_KEY, '');
+          done();
           return onStartAgain(draftOf(view.intent));
         }
         writePref(CONFIRM_STRIKE_KEY, data.challengeId);
@@ -318,6 +334,7 @@ export function Confirm(props: ConfirmProps) {
         // A second window, or a tap that raced the lock, may have sent it (R2-M2): track that record, else #19.
         const made = await madeSince(shownAt.current);
         if (left.current || gen.current !== g) return;
+        done();
         if (made !== null) return onTrack(made.id, tapAt);
         return onReview(view.intent, null);
       }
@@ -326,11 +343,13 @@ export function Confirm(props: ConfirmProps) {
         return;
       case 'unreachable':
         report(r.error);
+        done();
         return onTrack(null, tapAt);
       case 'locked':
         await reload();
         return;
       default:
+        done();
         return onStartAgain(draftOf(view.intent));
     }
   };
@@ -379,13 +398,15 @@ export function Confirm(props: ConfirmProps) {
     <Banner tone="info" title={CONFIRM_TEXT.resume} />
   ) : null;
   const needsProof = view.reauth !== null && !proven;
+  // index.html #s20's headline label ("Send 2.4800 SOL to recipient address …"), the whole address in its groups of four.
+  const headlineLabel = `${high ? `${CONFIRM_TEXT.highValue}: ` : ''}Send ${amount} ${token} to ${first ? 'first-time ' : ''}recipient address ${(intent.recipient.match(/.{1,4}/g) ?? []).join(' ')}`;
 
   return (
     <div className="screen s-conf">
       {top}
       <div className="scroll">
         {banner}
-        <h1 className="headline">
+        <h1 className="headline" aria-label={headlineLabel}>
           <span className="amount noc-numeral">Send {amount}</span> <span className="ticker">{token}</span> <span className="to-prefix">to</span>{' '}
           <span className="recipient noc-mono">
             <AddressGroups address={intent.recipient} />
@@ -399,9 +420,14 @@ export function Confirm(props: ConfirmProps) {
           </div>
           {fiat === '' ? null : <span className="fiat">{fiat}</span>}
         </div>
-        {high && needsProof ? (
+        {high ? (
           <div className="high-value-banner">
-            <span className="help">{surface === 'popup' ? CONFIRM_TEXT.reauthLine : CONFIRM_TEXT.reauthLineTab}</span>
+            <span className="help">
+              {needsProof ? <span>{surface === 'popup' ? CONFIRM_TEXT.reauthLine : CONFIRM_TEXT.reauthLineTab}</span> : null}
+              {needsProof ? ' ' : null}
+              {CONFIRM_TEXT.notYou}
+              <span className="app-danger">{CONFIRM_TEXT.cancelNow}</span>.
+            </span>
           </div>
         ) : null}
         {first ? (
@@ -456,7 +482,7 @@ export function Confirm(props: ConfirmProps) {
           {quoteDead ? (
             <>
               {CONFIRM_TEXT.quoteExpired}{' '}
-              <LockedButton className="btn btn-tertiary app-btn-inline" onPress={refresh} disabled={refused}>
+              <LockedButton className="btn btn-tertiary app-btn-inline" onPress={refresh} disabled={refused || inFlight}>
                 {CONFIRM_TEXT.refresh}
               </LockedButton>
             </>
@@ -466,7 +492,7 @@ export function Confirm(props: ConfirmProps) {
         </div>
       </div>
       <div className="sticky-bar">
-        <LockedButton className="btn btn-primary" disabled={open !== null || quoteDead || busy || refused} onPress={tap}>
+        <LockedButton className={high ? 'btn btn-destructive' : 'btn btn-primary'} disabled={open !== null || quoteDead || busy || refused} onPress={tap}>
           <ExtIcon name="send" size={18} />
           Send {amount} {token}
         </LockedButton>
