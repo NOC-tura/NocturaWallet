@@ -1634,7 +1634,7 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     address …", "High-value transfer: " before it, "first-time recipient" for a first send) with the
     whole address in its groups of four, not the design's first-6 … last-6 (spec §3). The high-value
     banner keeps the design's warning beside the password line: "If you didn't initiate this — cancel
-    now." with "cancel now" in `--danger` (**controller addition** — the design's sentence, adapted to
+    now." with "cancel now" in `--danger` (**controller addition, confirmed by the owner 2026-10-04** — the design's sentence, adapted to
     D22: the typed-CONFIRM head and the "> 5 %" explanation go with the typed field); with the proof
     already made, only the warning stays. The high-value CTA is `btn-destructive` as drawn, enabled (D22).
   - **Plan 3:** each fee row keeps the design's dollars column — at today's SOL price, four places

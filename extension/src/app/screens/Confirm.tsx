@@ -40,7 +40,7 @@ export const CONFIRM_TEXT = {
   opensTab: 'Confirmation opens in a new tab.',
   /** Controller addition — confirmed by the owner 2026-10-02 (plan 3): as above. */
   opensHere: 'Confirmation opens in this tab.',
-  /** index.html #s20 state 3's warning, kept beside the password line (review fix round 1): "If you didn't initiate this — cancel now." */
+  /** index.html #s20 state 3's warning, kept beside the password line (review fix round 1; confirmed by the owner 2026-10-04): "If you didn't initiate this — cancel now." */
   notYou: "If you didn't initiate this — ",
   cancelNow: 'cancel now',
 } as const;
