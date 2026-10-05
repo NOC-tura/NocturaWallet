@@ -134,6 +134,8 @@ describe('the popup resumes a waiting send (§1.6 step 3)', () => {
     fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
     expect(await screen.findByText(CANCELLED_TEXT)).toBeTruthy();
     expect(screen.getByText('TOKENS')).toBeTruthy();
+    // 44e: the content behind the toast is dimmed (app.css .app-toast-behind; the E2E asserts the computed .62).
+    expect(document.querySelector('main.app-content')?.classList.contains('app-toast-behind')).toBe(true);
     expect(await w.engine.preparedFor(ACCOUNT.publicKey)).toEqual({ok: true, data: null});
   });
 

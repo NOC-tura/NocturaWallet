@@ -780,12 +780,12 @@ a.btn {
   margin-top: auto;
 }
 /* C2: #20's headline as index.html #s20 draws it — the design resets every margin (an h1 kept its UA margin), and
-   the recipient is centred at 16/24 mono; web's .addr-groups sets its own 12/20 and is unchanged elsewhere. */
+   the recipient is 16/24 mono, centred with the line (the inline flow below); web's .addr-groups sets its own 12/20
+   and is unchanged elsewhere. */
 .app-content .s-conf .headline {
   margin: 0;
 }
 .s-conf .headline .recipient .addr-groups {
-  justify-content: center;
   font-size: 16px;
   line-height: 24px;
 }
@@ -793,4 +793,19 @@ a.btn {
    the one-class .app-success. */
 .s-stuck .progress-state .meta-grid .v.app-success {
   color: var(--success);
+}
+/* Task 17 fix round 2: index.html #s44 state 5 (44e) dims the content behind the cancelled toast (its scroll area at
+   opacity .62); the screen's own top row stays as it is, as the design's top bar does. */
+.app-content.app-toast-behind > .screen > :not(.top):not(.top-bar) {
+  opacity: 0.62;
+}
+/* #20's headline (index.html #s20): the recipient inherits the h1's 600 weight, as the design's .recipient does, and
+   its groups flow inline after "to" — each group an atomic inline box, so a line breaks only between groups. */
+.s-conf .headline .recipient .addr-groups {
+  display: inline;
+  font-weight: inherit;
+}
+.s-conf .headline .recipient .addr-groups > span {
+  display: inline-block;
+  margin-inline-end: 0.6ch;
 }

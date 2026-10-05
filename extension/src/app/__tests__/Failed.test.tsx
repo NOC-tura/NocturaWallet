@@ -82,6 +82,12 @@ describe('#44 tx-failed', () => {
     expect(document.querySelector('.top-bar .step')?.textContent).toBe('Rejected');
     const link = screen.getByRole('link', {name: FAILED_TEXT.explorer}) as HTMLAnchorElement;
     expect([link.getAttribute('href'), link.getAttribute('target'), link.getAttribute('rel')]).toEqual([`https://solscan.io/tx/${sig(7)}`, '_blank', 'noopener noreferrer']);
+    // 44c: the explorer link is the reason banner's own `.explorer` link, after its meta line; the bar holds two CTAs
+    // (§1.4: no bar stacks three) — Task 17 fix round 2.
+    expect(link.closest('.s9-reason-banner')).not.toBeNull();
+    expect(link.className).toBe('explorer');
+    expect(link.previousElementSibling?.className).toBe('meta');
+    expect([...document.querySelectorAll('.sticky-bar > *')].map(b => b.textContent)).toEqual([FAILED_TEXT.tryAgain, FAILED_TEXT.details]);
     expect(document.body.textContent).not.toContain('Your funds are unchanged');
     expect(unstyledClasses(document.querySelector('.screen')!, SELECTORS)).toEqual([]);
     fireEvent.click(screen.getByRole('button', {name: FAILED_TEXT.details}));

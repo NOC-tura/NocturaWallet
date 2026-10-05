@@ -260,7 +260,12 @@ mutation test in `scripts/__tests__`):
   Settings, D3) on the three tab screens, or a **sticky action bar** on flow screens.
 - Height budget: tab screens 600 − 56 − 80 = 464 px of content; a flow screen with one CTA
   (56 + 2 × 12 padding) leaves 464 px; with two stacked CTAs (2 × 56 + 8 + 24) it leaves 408 px.
-  No bar in B1b-2a stacks three CTAs: #19's third one ("Continue anyway") is gone by D21.
+  No bar in B1b-2a stacks three CTAs: #19's third one ("Continue anyway") is gone by D21, and #44's
+  `rejected-by-program` keeps `[View on explorer]` in its reason banner, as 44c does.
+  **Declared (Task 17 fix round 2):** #20's bar holds more than one CTA's worth. It has `[Send …]`, `[Cancel]`, and,
+  for a send that needs re-authentication, D12's line "Confirmation opens in a new tab." under them. That is about
+  200 px, which leaves about 344 px of content above it. Both bars are pinned (§8.6 plan 3), so the content scrolls
+  clear of them.
 - The mockups are 412 × 916. Content keeps the design's order and spacing and scrolls. Nothing
   is dropped to make it fit.
 - Touch targets keep the design's minimums (`--touch-target-min` 48 px on every control).
@@ -1635,6 +1640,9 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   own tap's send is out or once it has answered (fix round 1): a re-prepare then would be refused
   `in-flight` and move a send that went out to #19 instead of #21.
 - **Differs:**
+  - **Plan 3 (Task 17 fix round 2):** the headline's recipient takes the h1's 600 weight, as the design's
+    `.recipient` does, at 16/24 mono. Its groups flow inline after "to", centred. Each group is an atomic inline
+    box, so a line breaks only between groups and never inside one, where the design breaks anywhere (`break-all`).
   - **Plan 3, fix round 1:** the headline carries the design's `aria-label` ("Send 0.0100 SOL to recipient
     address …", "High-value transfer: " before it, "first-time recipient" for a first send) with the
     whole address in its groups of four, not the design's first-6 … last-6 (spec §3). The high-value
@@ -1773,7 +1781,9 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     the reason banner's body under "Reason · blockhash-expired", since the engine's line takes the sub;
     the banner's slot-age body and meta line are not built (the engine keeps the height, not the slot
     age). `rejected-by-program` offers `[Try again]`, the design's `[View details]` → #27 (by signature;
-    #27 already says when it is not in the recent history yet) and `[View on explorer]` — `[View
+    #27 already says when it is not in the recent history yet) and `[View on explorer]`. The last is 44c's own
+    `.explorer` link with its link-out glyph, inside the reason banner after the meta line (Task 17 fix round 2), so
+    the bar holds two CTAs, as 44c's does — `[View
     details]` only there, the one #44 state whose transaction is on chain (review M4). `network-error`
     offers `[Try again]` only and `generic` `[View on explorer]` only, with no
     reason banner (the engine names no reason for an older build's record). The back arrow and Esc go to
@@ -2458,7 +2468,15 @@ Fix round 1 (CSS in `src/app/app.css`, the hand-written sheet): every UI screen'
 `.sticky-bar` are `position: sticky`, so the title and the CTAs stay in view while the content scrolls, as §1.4
 and the mockups' frame have it. This applies to every flow screen, and to #13's and #27's bars, which the selector
 also reaches. `e2e/visual-send.spec.ts` asserts it for every flow screen. Also in that round: #20's headline (no
-UA margin; the recipient centred at 16/24 mono) and #54 sent-again's "Watching" in `--success`. **Same as the
+UA margin; the recipient centred at 16/24 mono) and #54 sent-again's "Watching" in `--success`. Fix round 2:
+- #43's rows read name, then symbol, as the design's "All tokens" list does.
+- #11's content behind the cancelled toast is dimmed to .62 (44e), with the top row as it is.
+- Every shot's key copy is asserted in the popup and clear of the pinned bars.
+- **Declared:** #19's progress line (`.m3-prog`) and its footer ("Noctura server · simulateTransaction", "Simulated
+  against slot …") stay in the scrolling content. They are not pinned with the top bar, so on a long #19 they scroll
+  away; the mockups' phone frame never shows them scrolled.
+
+**Same as the
 design:** `word-break: break-all` on `.s-sim .check-row .copy .meta` and `.s-conf .detail-row .val` breaks prose
 mid-word ("cha nged", "Noctur a's"), as the design's own render does ("Ski p", "62.48 21").
 

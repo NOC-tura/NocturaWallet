@@ -249,7 +249,8 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
 
   return (
     <>
-      <main className="app-content" ref={content}>
+      {/* 44e: the content behind the cancelled toast is dimmed (app.css .app-toast-behind). */}
+      <main className={cancelledOn === stack && route.screen === 'tab' ? 'app-content app-toast-behind' : 'app-content'} ref={content}>
         {screen}
       </main>
       {route.screen === 'tab' ? <TabBar active={route.tab} onChange={tab => go({type: 'tab', tab})} /> : null}

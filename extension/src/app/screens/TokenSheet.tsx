@@ -27,8 +27,9 @@ export function TokenSheet({balances, prices, selected, onSelect, onClose}: {bal
           >
             <TokenTile token={t} size={32} />
             <span>
-              <span className="pri">{t}</span>
-              <span className="sec">{TOKEN_INFO[t].name}</span>
+              {/* index.html #s43's "All tokens" rows: the name, then the symbol under it. */}
+              <span className="pri">{TOKEN_INFO[t].name}</span>
+              <span className="sec">{t}</span>
             </span>
             <span>
               <span className="amt">{v === null ? '—' : showAmount(t, v.rows[t].base)}</span>

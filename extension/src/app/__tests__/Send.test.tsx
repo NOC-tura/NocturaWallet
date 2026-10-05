@@ -206,10 +206,10 @@ describe('#12 send', () => {
     // 12 px apart) styled #43's rows as cards, which the design's `.s8-sheet .row` list does not draw (Task 17 visual pass).
     expect(sheet.closest('.s-send')).toBeNull();
     expect(document.querySelector('.s-send')).not.toBeNull();
-    expect([...sheet.querySelectorAll('.pri')].map(p => p.textContent)).toEqual(['SOL', 'NOC', 'USDC', 'USDT']);
+    expect([...sheet.querySelectorAll('.pri')].map(p => p.textContent)).toEqual(['Solana', 'Noctura', 'USD Coin', 'Tether']);
     // 4 200 NOC × $0.1501 (the stage price), outside the market total.
     expect(within(sheet).getByText('$630.42 at stage price')).toBeTruthy();
-    expect(sheet.querySelector('.sel .pri')?.textContent).toBe('SOL');
+    expect(sheet.querySelector('.sel .pri')?.textContent).toBe('Solana');
     fireEvent.keyDown(document, {key: 'Escape'});
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(nav.onBack).not.toHaveBeenCalled();

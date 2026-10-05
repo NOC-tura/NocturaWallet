@@ -98,6 +98,8 @@ export function Failed({record, onTryAgain, onEdit, onDetails}: {record: Pending
             {kind === 'blockhash-expired' ? <p className="body">{FAILED_TEXT.expiredWhy}</p> : null}
             {kind === 'network-error' && record.detail !== null ? <p className="body">{record.detail}</p> : null}
             {kind === 'rejected-by-program' && record.detail !== null ? <span className="meta">{record.detail.slice(0, 240)}</span> : null}
+            {/* 44c: the explorer link is the reason banner's own (.explorer, with its link-out glyph), after the meta line. */}
+            {kind === 'rejected-by-program' ? <ExplorerLink signature={record.signature} label={FAILED_TEXT.explorer} className="explorer" /> : null}
           </div>
         )}
         {kind === 'blockhash-expired' ? (
@@ -138,7 +140,6 @@ export function Failed({record, onTryAgain, onEdit, onDetails}: {record: Pending
               <ExtIcon name="doc" size={18} />
               {FAILED_TEXT.details}
             </button>
-            {explorer}
           </>
         ) : null}
       </div>
