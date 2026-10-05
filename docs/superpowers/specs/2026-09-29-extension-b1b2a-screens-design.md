@@ -1786,7 +1786,8 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     an older build): "Transaction failed" + `detail`; `[View on explorer]`.
   - `user-cancelled toast`: back on #11, the pill toast "Transaction cancelled. No fees charged."
     (1.8 s), after #20's `[Cancel]` (E7 discarded the prepared send, so the sentence is true). #10's
-    Cancel shows its own line in the vault tab instead (§3.10, E7).
+    Cancel shows its own line in the vault tab instead (§3.10, E7). The toast is the design's own
+    `.s9-toast-cancelled` pill with its ✕.
 - **Differs, loudly:**
   - **Plan 3:** in `blockhash-expired` the design's hero sub ("Solana rotated past the blockhash …") is
     the reason banner's body under "Reason · blockhash-expired", since the engine's line takes the sub;
@@ -1804,7 +1805,8 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     selected, but `[Try again]` and `[Edit transaction]` start a flow for that account. They are offered
     only while it is the selected account (a tap that raced another selection does nothing); otherwise
     they are not drawn, and the back arrow and Esc close to #11 instead of opening another account's #12
-    with this draft. `[View details]` and the explorer link stay. The cancelled toast is the design's own `.s9-toast-cancelled` pill with its ✕.
+    with this draft. `[View details]` and the explorer link stay. In `network-error`, whose only CTA is
+    `[Try again]`, the bar is then empty; the back arrow and Esc to #11 are the way out (no new copy).
   - **Plan 3 (Task 11) — fees on #44, the question carried from §4.6's display rule:** #44 prints no fee
     amount in any state. `rejected-by-program` says in words that the network fee was charged (the
     markup rolled back with the transaction; `feePaidLamports` is the network part only) and `[View
