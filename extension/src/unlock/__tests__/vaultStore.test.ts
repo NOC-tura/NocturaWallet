@@ -19,7 +19,7 @@ describe('backgroundVaultStore (the background is the one writer of v1_vault)', 
     ]);
   });
 
-  it.each(['busy', 'wallet-exists', 'stored-invalid', 'malformed', 'no-wallet'] as const)("passes the background's '%s' through", async error => {
+  it.each(['busy', 'wallet-exists', 'stored-invalid', 'malformed', 'no-wallet', 'send-open'] as const)("passes the background's '%s' through", async error => {
     expect(await backgroundVaultStore(async () => ({ok: false, error}), async () => undefined).storeEnvelope(REV, ENV)).toBe(error);
   });
 
