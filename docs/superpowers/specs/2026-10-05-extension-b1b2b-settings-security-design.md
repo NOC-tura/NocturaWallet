@@ -1,8 +1,13 @@
 # Noctura Extension B1b-2b — settings & security, and the address book
 
-**Status:** draft **rev 2**, 2026-10-05. The owner approved the design (sections 1–3 of
+**Status:** draft **rev 3**, 2026-10-05. The owner approved the design (sections 1–3 of
 `.superpowers/sdd/b1b2b-approved-design.md`) and took decisions D1–D23. This spec still needs: the owner's answer on
-the controller rulings C1–C19 and on every string in §12; then each plan gets a Fable 5.1 review before SDD.
+the controller rulings C1–C20 and on every string in §12; then each plan gets a Fable 5.1 review before SDD.
+
+**Revision 3** applies every finding of Fable review 2 (`.superpowers/sdd/b1b2b-spec-review-2.md`: H1, M1, M2,
+L1–L7; verdict "approve after fixes"), with the coordinator's rulings: H1 keeps rev 2's #36 ruling and bounds it with a
+5-minute TTL (C20); "first account" is the lowest `index` on both sides (M1); the delete page compares the revision
+before any KDF run (M2). Where each finding landed: §11 "Revision 3" table.
 
 **Revision 2** applies every finding of the Fable 5.1 review `.superpowers/sdd/b1b2b-spec-review-1.md` (H1–H3, M1–M6,
 L1–L11; verdict "approve after fixes"), with the coordinator's rulings: **H1 is the owner's decision D23** (reveal and
@@ -86,7 +91,7 @@ password-only) keep from a passkey holder. `?mode=verify` would be the same leak
 correct word fixed while its distractors change each run, so repeated runs recover the phrase statistically. A passkey
 can already drain the wallet through sends (B1 §2); D23 keeps it from gaining the phrase.
 
-### Controller rulings (C1–C19) — each for the owner to confirm or overrule
+### Controller rulings (C1–C20) — each for the owner to confirm or overrule
 
 | # | ruling | why |
 |---|---|---|
@@ -106,9 +111,10 @@ can already drain the wallet through sends (B1 §2); D23 keeps it from gaining t
 | C14 | The remove-account page takes `&index=<digits>` and shows "Account N" plus the address from the stored envelope — **never the name** | Names are user text; the vault page shows only literals, the phrase, and closed-alphabet fields |
 | C15 | #35 keeps the design's score card **without** the ring and the number: headline + body only | D3 drops the ring and number; the card's headline still says whether anything is left to do |
 | C16 | #31's 2a row "Accounts · N accounts" becomes the design's "Profile" row (D22); the switcher stays reachable from #11's avatar | The design has one account row; 2a's was a stand-in (2a §6.1) |
-| C17 | (rev 2, review M1) **`?mode=delete` names the wallet it deletes.** #37 and the delete page both show the stored wallet's **first account address in groups of four** (`.noc-caption` "This wallet's first account" above it). The page reads the envelope at load, shows that address, and keeps the revision it showed; at proof time it re-reads: a different revision (another wallet, or any change) → the `changed` notice, nothing sent, the new address shown | A stale tab must not delete a wallet the user never saw on #37. The address is closed-alphabet text (as C14); the revision check makes "the wallet on screen" the only one a proof can delete |
-| C18 | (rev 2, review H3) **Dust floor** for #27c's "Save sender" warning: a received amount below **0.001 SOL**, **0.01 USDC / USDT** or **1 NOC** is "tiny" | Fable's suggested floors (SOL, stablecoins); 1 NOC added for the fourth token. The values only choose which warning shows; nothing is refused |
-| C19 | (rev 2, review H3, L8) **Contact names:** two contacts may not share a name, compared after Unicode NFKC and case-folding (`contacts.set` → `duplicate-name`); `cleanName` additionally refuses zero-width and format characters (U+00AD, U+200B–U+200F, U+2060–U+2064, U+FEFF) — for account names too | A look-alike "Binance" next to the real one in `pick` is the poisoning picture; "Mo\u200Bm" and "Mom" render the same. A stored account name that predates the rule is kept (`reencrypt.ts:37` keeps an unchanged stored name; `storeEnvelope` carries stored names) |
+| C17 | (rev 2, review M1) **`?mode=delete` names the wallet it deletes.** #37 and the delete page both show the stored wallet's **first account address in groups of four** (`.noc-caption` "This wallet's first account" above it). **"First account" is the account with the lowest `index`** on both sides — #37: `min` over `wallet.state.accounts[].index`; the page: `min` over the envelope's accounts — **never the display order** (E14) and never list position (rev 3, review M1). The page reads the envelope at load, shows that address, and keeps the revision it showed. **At the click, before any KDF run** (rev 3, review M2), it re-reads the envelope (`readLocal`), computes `envelopeRevision` and compares: a different revision (another wallet, or any change) → the `changed` notice, nothing proven, nothing sent, **never charged to the backoff**, the new address shown. Only on a match does `proveFactor` run (it re-reads again; a change in that window is E5's `busy`) | A stale tab must not delete a wallet the user never saw on #37. The address is closed-alphabet text (as C14); the revision check makes "the wallet on screen" the only one a proof can delete |
+| C18 | (rev 2, review H3) **Dust floor** for #27c's "Save sender" warning: a received amount below **0.001 SOL**, **0.01 USDC / USDT** or **1 NOC** is "tiny". In base units, compared with `BigInt` on the history item's `amount` string (`history.ts:45`; cardinal rule 2): **< 1 000 000** lamports, **< 10 000** (USDC/USDT, 6 dp), **< 1 000 000 000** (NOC, 9 dp). A received row whose `amount` is `null` (undecodable) counts as dust — fail closed (rev 3, review L2) | Fable's suggested floors (SOL, stablecoins); 1 NOC added for the fourth token. The values only choose which warning shows; nothing is refused |
+| C19 | (rev 2, review H3, L8) **Contact names:** two contacts may not share a name, compared after Unicode NFKC and case-folding (`contacts.set` → `duplicate-name`); `cleanName` additionally refuses every control and format character by Unicode category: `FORBIDDEN_IN_NAME = /[\p{Cc}\p{Cf}\u202A-\u202E\u2066-\u2069]/u` (rev 3, review L5 — the `u` flag; this covers U+00AD, U+200B–U+200F, U+2060–U+2064, U+FEFF and also U+061C, U+180E and the tag characters, which a hand list missed; U+034F and the variation selectors U+FE00–U+FE0F are category Mn and are refused by an explicit addition `\u034F\uFE00-\uFE0F`) — for account names too. **Limit, stated loudly (rev 3, review L4): the duplicate check does not catch cross-script confusables** — NFKC keeps Cyrillic "В" apart from Latin "B", so "Вinance" and "Binance" are two names. Names are typed by the user, so an attacker never writes one; the defence against a look-alike *address* is the full address in pick rows (§6.1), not the name check | A look-alike "Binance" next to the real one in `pick` is the poisoning picture; "Mo\u200Bm" and "Mom" render the same. A stored account name that predates the rule is kept (`reencrypt.ts:37` keeps an unchanged stored name; `storeEnvelope` carries stored names) |
+| C20 | (rev 3, review H1; coordinator ruling) **#36's held data key and fields live at most 5 minutes**, counted from the step-1 proof and **renewed by each keystroke in steps 2–3**. They survive `visibilitychange → hidden` (rev 2's ruling on review-1 M2, kept), but at the deadline they are zeroed and emptied and the page shows `dropped`. The deadline is re-checked on `visibilitychange → visible` and before every step change and every send (step 2's `[Continue]`, step 3's `[Change password]`) — a stale tab never offers a button that would act on an expired proof | Without a bound, a proven #36 tab left hidden while the popup keeps the session alive lets anyone at the keyboard set a password of their own without knowing the old one, then read the phrase (password-only by D23). Five minutes is enough to fetch a password from a manager and short enough that the proof still means "the person here knows the password" |
 
 ---
 
@@ -442,7 +448,9 @@ and any future flow that renders or tests the recovery phrase.
   - `contacts.list {}` → `{ok:true, data:{contacts: {address, name, lastSentAt: number | null, known: boolean}[], max:
     200}}`. `lastSentAt` from `lastSentAt(ext, address)` (`knownRecipients.ts:45-49`): #15's "last sent" column for free.
     `known` (rev 2, review H3) is `isKnownRecipient(ext, session, address)` — the same function prepare uses — so the
-    pick rows and the sheet can say "You have never sent to this address." truthfully.
+    pick rows and the sheet can say "You have never sent to this address." truthfully. The UI client's shape check
+    (`engine.ts`) requires a boolean and reads a **missing** `known` as `false` — the warning shows — never as `true`
+    (rev 3, review L3). It is `true` for the wallet's own accounts, whose "own" label wins anyway.
   - `contacts.set {address, name}` → `{ok:true, data:{created: boolean}}`. An existing address is renamed in place (its
     position kept); a new one is put first. Refusals: `malformed` (address or name), `duplicate-name` (rev 2, C19: another
     address already has this name, compared after NFKC and case-folding), `full` (a new address with 200 stored),
@@ -461,8 +469,9 @@ and any future flow that renders or tests the recovery phrase.
   whose contact is not `known`, and "…— it only sent to you." when saving from a received transfer (§6.2, §6.1); warns
   harder when that transfer is dust (C18, §6.3); refuses a second contact with the same name (C19); and shows the **full
   address in groups of four** in pick rows (§6.1), since poisoning works on truncation. Names are user text: `cleanName`
-  refuses controls, bidi overrides and (C19, review L8) zero-width and format characters (`envelopeRules.ts:38-46`, extended;
-  names are not otherwise normalised), the popup renders them through React (escaped), the label always carries the prefix "From
+  refuses controls, bidi overrides and (C19, review L8) every Unicode control and format character
+  (`envelopeRules.ts:38-46`, extended with `\p{Cc}\p{Cf}` under the `u` flag; names are not otherwise normalised, and
+  the duplicate-name check does not catch cross-script confusables — C19's stated limit), the popup renders them through React (escaped), the label always carries the prefix "From
   your address book:" (§6.3) so a name cannot pose as "Your account: …", and the vault page never shows one (#10 renders
   only closed-alphabet fields, 2a E3). Refused while locked because the list says whom the user pays (as E6). No import
   or export, so no new file format (D18).
@@ -507,7 +516,9 @@ three segments + "Step N of 3" (ix:14716, `.noc-caption .noc-numeral`).
   birthdays."); `autocomplete="new-password"` field with show/hide (2a #5 strings "Show password" / "Hide password");
   the length meter "N of 12 characters" / "Long enough" (2a #5, D7 of 2a); `[Continue]` (O01) enabled at 12.
 - **`step-2 checking`** (rev 2, review H2): at `[Continue]`, "Checking…" (REAUTH (2a)) while `isCurrentPassword` runs one
-  Argon2id over the new password with the stored salt (seconds, the cost of step 1); field and button disabled.
+  Argon2id over the new password with the stored salt (seconds, the cost of step 1); field and button disabled. **Never
+  charged to the backoff** (rev 3, review L1): a `true` is the expected path to O02, not a wrong attempt; there is no
+  cooldown on step 2, and the only cost is the Argon2id run.
 - **`step-2 same`**: that unwrap succeeded — the new password is the current one → "That is your current password. Choose a
   new one." (O02). Nothing of either password is kept for the check (E10).
 - **`step-3`** (36c, ix:14773-14803): "Confirm new password" **→ adapted** (ix:14789); "Enter the same password again."
@@ -525,20 +536,28 @@ three segments + "Step N of 3" (ix:14716, `.noc-caption .noc-numeral`).
 - **`failed`**: "Something went wrong. Your password was not changed." (O07).
 - **`cancel-confirm`** (ix:14918, back during steps 2–3): "Cancel password change?" **→ adapted** ("Cancel PIN change?");
   `[Keep changing]` (O08) / `[Cancel change]` (O09) → zero the data key, empty the fields, close the tab.
-- **`dropped`** (extension-only): the page was left during steps 2–3 (`pagehide`, including a back/forward-cache entry)
-  → the data key is zeroed and the fields emptied; a page restored from that cache starts at step 1 with "Enter your
-  current password again." (O10).
+- **`dropped`** (extension-only): the page was left during steps 2–3 (`pagehide`, including a back/forward-cache entry),
+  **or the 5-minute TTL ran out** (C20) → the data key is zeroed and the fields emptied; the page shows step 1 with
+  "Enter your current password again." (O10). A `vault.changePassword` answered `locked` zeroes the key the same way and
+  shows `not-unlocked`.
 
-**Memory (rev 2, ruling on review M2).** Step 1's proof yields the data key (a `Uint8Array`), held until step 3 sends, and
-zeroed **on `pagehide`, on leave (the X, `[Cancel change]`, any navigation) and after success** — **not** on
-`visibilitychange → hidden`. #36's fields are **not** emptied on `hidden` either. Reason: changing a password means
+**Memory (rev 2 ruling on review-1 M2, bounded in rev 3 by C20).** Step 1's proof yields the data key (a `Uint8Array`),
+held until step 3 sends, and zeroed **on `pagehide`, on leave (the X, `[Cancel change]`, any navigation), after success,
+and at the TTL** — **not** on `visibilitychange → hidden`. **TTL (C20, review-2 H1):** the key and the fields live at
+most 5 minutes from the step-1 proof; each keystroke in steps 2–3 renews the deadline. A timer zeroes them at the
+deadline, and the deadline is also re-checked on `visible` and before every step change and send, so a timer delayed by
+a throttled background tab cannot leave an expired proof usable. #36's fields are **not** emptied on `hidden` either. Reason: changing a password means
 switching to a password manager (another tab or window) to generate and store the new one; a page that dropped everything
 on `hidden` would send every such user back to step 1, every time. This is a declared exception to 2a's field rule (2a
 §3.5, review L7 of 2a), for #36 only; every other 2b mode keeps 2a's rule. The old password string is dropped at step 1's
 click and `proven.mnemonic` at once (E10; JS strings cannot be zeroed — stated in the review list). The new password lives
 in the two fields and the closure until the message is answered or the page is left. Component tests: "hidden → visible
 keeps step 2 and its fields"; "`pagehide` zeroes the held data key" (mutation: zero on `hidden` too → the first red; skip
-the zeroing → the second red).
+the zeroing → the second red); **rev 3 (C20):** "held key zeroed and fields emptied at 5 min with no keystroke"
+(fake timers; mutation: **no TTL → red**); "a keystroke at 4 min moves the deadline to 9 min"; "`visible` after the
+deadline shows `dropped` at once, with no `[Continue]` or `[Change password]` enabled" (mutation: check only in the timer
+→ red, with the timer suppressed as a throttled tab would); "`[Change password]` pressed past the deadline sends
+nothing".
 
 **Engine:** E10. **Navigation:** #31/#35 "Change password" → this tab; `done` → close.
 
@@ -551,14 +570,15 @@ the zeroing → the second red).
 - FLAG_SECURE, haptics and predictive back dropped (2a-D1); the `cancel-confirm` modal is opened by the X instead.
 - 36e itself is shown on #31 in the popup (C10), not as the tab's hand-back.
 - **Switching tabs keeps the change going** (M2 ruling): the fields and the held data key survive `hidden`, unlike every
-  other vault mode; they go on `pagehide`, on leave and after success.
+  other vault mode; they go on `pagehide`, on leave, after success, and **after 5 minutes without a keystroke** (C20).
 
 ### 3.2 #37's proof (`?mode=delete`; D9, D10, D11)
 
 The design's #37 is a popup screen (§5); this mode is the proof that follows its hold.
 
 - **`idle`**: top bar title "Delete wallet" (ix:14963); `.noc-h2` `--danger` "Delete this wallet?" (ix:14971);
-  `.noc-caption` "This wallet's first account" (O11) + the stored wallet's first account address in groups of four
+  `.noc-caption` "This wallet's first account" (O11) + the address of the stored account with the lowest `index` (C17) in
+  groups of four
   (`addressGroups`, read from the envelope at load; C17) — the same address #37 showed; `.noc-body` "Enter your password
   to delete this wallet from this browser. Your funds stay on Solana; your recovery phrase still controls them." (O12); password field; `[Delete wallet]` (ix:15000) as a `--danger` primary;
   `[Confirm with passkey]` (2a) when the envelope has one; `[Cancel]` (2a) → close the tab.
@@ -566,7 +586,8 @@ The design's #37 is a popup screen (§5); this mode is the proof that follows it
 - **`wrong`** / **`cooldown`**: 2a's.
 - **`deleted`**: `location.replace('unlock.html?mode=welcome')` → #1 with **no toast** ("the absence of the wallet IS the
   confirmation", ix:15138).
-- **`changed`** (rev 2, C17): at proof time the stored revision differs from the one shown → nothing is sent; "The wallet
+- **`changed`** (rev 2, C17; ordered in rev 3): at the click, **before any KDF run**, the re-read revision differs from
+  the one shown → nothing is proven or sent, **never charged to the backoff**; "The wallet
   in this browser changed. Check the address and try again." (O14); the address re-rendered from the new envelope; the
   field emptied; the proof buttons enabled again (a new proof deletes the wallet now shown). No wallet any more → `no-wallet`.
 - **`send-open`**: "A transaction from this wallet is still pending. Wait until it confirms or expires — about two minutes
@@ -579,9 +600,10 @@ The design's #37 is a popup screen (§5); this mode is the proof that follows it
 - **`failed`**: "Something went wrong. Nothing was deleted." (O16).
 - **`passkey-unavailable`**: COMMON `passkeyUnavailableConfirm` (2a).
 
-**Engine:** `proveFactor` → `deleteWallet` (E11). The page reads the envelope's public fields only (`readLocal.ts`), before
-any proof, to render the address (review §8 (a)); `proveFactor` re-reads it, and the page compares that revision with
-the one it rendered (C17) before calling `deleteWallet`.
+**Engine:** the click → `readLocal` + `envelopeRevision` compared with the rendered one (C17; `changed` on a mismatch,
+before any Argon2id or PRF run) → `proveFactor` → `deleteWallet` (E11) with `proof.revision`. The page reads the
+envelope's public fields only (`readLocal.ts`), before any proof, to render the address of the **lowest `index`**
+(review §8 (a); rev 3 M1); `proveFactor` re-reads it, and a change between the compare and the proof is E5's `busy`.
 
 **Differs, loudly:** the design deletes on the hold (ix:15138); here the hold opens this proof (D9). The design's
 "atomic … ~200 ms" (ix:15138, 15152) is E5's commit point (the vault write); the cleanup after it is best effort with the
@@ -805,7 +827,7 @@ Top bar back + `.noc-h1` "Security center" (ix:14398).
     a passkey" **→ adapted** (ix:14417 "Set up biometric unlock") → passkey screen.
   - no "Active protections" here: the design draws that section on 35b only (rev 2, review L7 — built faithfully). On
     35a the same facts are on screen anyway: the auto-lock and passkey metas in "Locks", the phrase as the tasks.
-  - overline "Locks" (ix:14422, 14513): the Auto-lock row, the app-lock row, the threshold row, "Passkey" (meta as above) →
+  - overline "Locks" (ix:14422, 14513): the Auto-lock row, the app-lock row, the threshold row, "Passkey" (meta "On" `--success` / "Off" `--warning`, ix:14425) →
     passkey screen, "Change password" **→ adapted** (ix:14426) → `?mode=password`.
   - overline "Danger zone" `--danger` (ix:14597) + the danger card (below).
 - **`all clear`** (35b, ix:14454-14498): card `.noc-h3` "Looks great" (ix:14475) / "All checks pass." **→ adapted**
@@ -826,7 +848,8 @@ Top bar back + `.noc-h1` "Security center" (ix:14398).
   `openPage(reauthPage(id))`; the popup closes; nothing is applied until #10. On every open #35 shows the **stored**
   value; it never shows a choice still waiting for #10. With several #10 tabs open, the last one confirmed wins (E9,
   review M6).
-- **`strengthening`**: `settings.set` → ok → the picker moves, the row meta and "Active protections" update.
+- **`strengthening`**: `settings.set` → ok → the picker moves and the Locks row's meta updates (and, on the all-clear
+  state, the "Active protections" auto-lock meta).
 - **`setting failed`** (any other refusal): `.field-msg` `--danger` "Could not save the setting. Try again." (O51); the
   picker keeps the old value.
 - **`value not a preset`** (a stored auto-lock of 2–59 other than the presets, or a threshold not among the four): no
@@ -918,7 +941,8 @@ Top bar back + `.noc-h1` "Delete wallet" (ix:14963). Warning card (36 % danger h
     **→ adapted** (ix:14981; plan 2: "Local settings, cached balances, your address book and the list of addresses you
     have sent to are **erased** and not recoverable."; no dApp connections, B1c);
   - (ix:14985, staking) omitted.
-  `.noc-caption` "This wallet's first account" (O11) + its address in groups of four (`AddressGroups`; C17, review M1) —
+  `.noc-caption` "This wallet's first account" (O11) + the address of the account with the **lowest `index`** — not the
+  first in display order (rev 3, review M1) — in groups of four (`AddressGroups`; C17, review M1) —
   the delete tab shows the same address and refuses to delete any other wallet.
   `.noc-overline` "Type **DELETE** to confirm" (ix:14991, DELETE `--danger`, letter-spacing .16em); input placeholder
   "Type DELETE here" (ix:14993), `autocapitalize="characters"`, `autocomplete="off"`, `spellcheck=false`; `.noc-caption`
@@ -1019,7 +1043,8 @@ contact" (ix:7388, `#i-plus`) → the sheet. `.search` input placeholder "Search
   address." (O72).
 - **`only sent to you`** (opened from #27c `[Save sender]`, the sender not `known`): the line reads instead "You have never
   sent to this address — it only sent to you." (O77).
-- **`dust`** (opened from #27c for a transfer below C18's floor, the sender not `known`): `.banner.danger` above the name
+- **`dust`** (opened from #27c for a transfer below C18's base-unit floor, or one whose amount is `null`, the sender not
+  `known`): `.banner.danger` above the name
   field "Tiny transfer — a common way to plant a look-alike address. Compare every character with an address you trust
   before saving." (O78) + the O77 line; `[Save]` reads "Save anyway" (O79). Not refused: the user may know the sender.
 - **`add · empty`** (from #15's `+`, "Add first contact", "Add new contact"): the address is an input (placeholder "Solana
@@ -1117,7 +1142,7 @@ the 500 ms floor. A component test per control: a second click inside 500 ms and
 (mutation: remove the lock → red).
 
 **Memory.** Every vault mode drops fields on `pagehide` and `visibilitychange → hidden`, except #36, which keeps them
-through `hidden` and zeroes its held data key on `pagehide`, on leave and after success (M2 ruling, §3.1); reveal/verify drop the phrase; the PRF output is zeroed on every path (existing flows). No 2b screen puts a word of
+through `hidden` and zeroes its held data key on `pagehide`, on leave, after success and at its 5-minute TTL (C20, §3.1); reveal/verify drop the phrase; the PRF output is zeroed on every path (existing flows). No 2b screen puts a word of
 the phrase in the popup, in a URL, in storage or in a message.
 
 ---
@@ -1153,7 +1178,10 @@ Each item: the test, then the mutation that must turn it red.
   `vault.forgetWallet`. Mutation: "add the guard" → the funded-delete test red; "export `forget`" → the source test red.
   **C17 (review M1):** the delete page renders the first account's address from the envelope; a different revision at
   proof time → `changed`, no `vault.forgetWallet` sent (mutation: "skip the revision compare" → red); after `send-open`
-  the `[Unlock]` button opens `?mode=unlock`.
+  the `[Unlock]` button opens `?mode=unlock`. **Rev 3:** with the wallet replaced under the tab, the old password typed →
+  `changed`, the KDF is never called (a spy on `kdf` counts 0) and the backoff is not charged (mutation: "compare after
+  `proveFactor`" → red, the outcome becomes `wrong`); the shown address is the lowest `index`'s when the display order
+  puts another account first (mutation: "first in display / list order" → red).
 - **E12:** `wallet.state.passkey` true/false/false-without-wallet; `vault.removePasskey` removes only `passkey` (every
   other byte identical), refusals `no-passkey`, `busy`, `locked`, `stored-invalid`; partition test. `storeEnvelope`
   refuses a dropped passkey and accepts a replaced one. Page: removal by password and by PRF; mismatch locks; one retry on
@@ -1181,6 +1209,10 @@ Each item: the test, then the mutation that must turn it red.
   equivalent; renaming a contact to its own name is fine; `cleanName` refuses each of U+00AD, U+200B–U+200F, U+2060–U+2064,
   U+FEFF (and an account rename with one → `malformed`); `contacts.list` carries `known` equal to `isKnownRecipient`.
   Mutations: "compare names case-sensitively" → the "binance" test red; "drop the format-character range" → its test red.
+  **Rev 3:** `cleanName` also refuses U+061C, U+180E, U+034F, U+FE0F and a tag character U+E0041 (L5); C18 in base units:
+  999 999 lamports → dust, 1 000 000 → not; 9 999 / 10 000 for USDC; 999 999 999 / 1 000 000 000 for NOC; `amount: null`
+  → dust (L2); the client reads a missing `known` as `false` (L3). Cross-script "Вinance" vs "Binance" is **accepted** —
+  a test pins the stated limit so a future change is a decision, not an accident (L4).
 - **Partition** (2a §8.1 form): `vault.changePassword`, `vault.removePasskey`, `vault.phraseVerified` refused from
   `/popup.html`, `/wallet.html` and a web origin; `accounts.order`, `contacts.*` refused from a web origin.
 
@@ -1224,13 +1256,16 @@ Each spec runs in a normal launch **and under `unshare -rn`** (no network namesp
     mismatch → confirm → `done` (the tab hidden and shown again between steps 2 and 3 keeps the step, M2); the stored envelope's `seed`,
     `accounts` and `passkey` are byte-identical and `kdf.salt` / `password.wrapped` changed; #31 shows "Just updated" and
     the toast once; lock → the old password fails, the new one unlocks, the passkey unlocks.
-15. **Delete a funded wallet:** the fake credits account 0 → #31 → Delete wallet → #37 shows "This wallet holds funds" and
-    the balance and the first account's address → "DEL" → "3 of 6 characters · keep going" → "DELETE" → Space held 1 s →
+15. **Delete a funded wallet:** the fake credits account 0 → a wallet with two accounts, and in the manager account 2
+    moved to the top (E14; rev 3, review M1) → #31 → Delete wallet → #37 shows "This wallet holds funds", the balance and
+    the address of the **lowest index** (account 1, not the top row) → "DEL" → "3 of 6 characters · keep going" → "DELETE" → Space held 1 s →
     tab shows the same address → wrong password (envelope unchanged) → right password → `?mode=welcome`; `storage.local` holds no `v1_vault`, `v1_settings`,
     `v1_known_recipients`, caches (plan 2: `v1_contacts`). Second run: a send open (fake `expire` mode) → `send-open`,
-    vault intact, wallet locked, `[Unlock]` opens `?mode=unlock` (M1). Third run (C17): with the delete tab open, the
-    envelope is replaced by another wallet's (an account added through `?mode=accounts` changes the revision) → the proof
-    shows `changed`, nothing deleted, the new state's address shown.
+    vault intact, wallet locked, `[Unlock]` opens `?mode=unlock` (M1). Third run (C17): with the delete tab open, an
+    account is added through `?mode=accounts` (same wallet, new revision) → the proof shows `changed`, nothing deleted.
+    **Fourth run (rev 3, review L7 — the hard case):** with the delete tab open on an unfunded wallet A, A is replaced by
+    wallet B through `?mode=import&source=retry` in another tab → the old tab, given A's password, shows `changed` with
+    B's lowest-index address; no `wrong`, no cooldown card; B's envelope byte-identical afterwards.
 16. **Reveal:** #31 → Recovery phrase → proof → modal → hold 2 s → the words equal the fixture → 20 s → "Still looking?"
     and no fixture word in the DOM; Ctrl+C during `revealed` is cancelled and leaves the clipboard as it was (the
     clipboard recipe above); → `confirmed` → `[Continue]` → check → success → #35 has no phrase tasks and shows
@@ -1296,7 +1331,7 @@ Findings go in the PR; screenshots are CI artifacts.
   `WalletView.passkey`, E5 step 7 + first write remove `v1_contacts`); `contacts.ts` (new, plan 2).
 - **Vault module:** `src/vault/envelope.ts` (`rewrapPassword`, and `isCurrentPassword` beside it — or in `passwordFlow.ts`
   over `unlockWithPassword`; either way it keeps no secret).
-- **Shared:** `src/shared/envelopeRules.ts` (`FORBIDDEN_IN_NAME` gains the zero-width and format ranges, C19).
+- **Shared:** `src/shared/envelopeRules.ts` (`FORBIDDEN_IN_NAME` becomes `/[\p{Cc}\p{Cf}\u034F\uFE00-\uFE0F\u202A-\u202E\u2066-\u2069]/u`, C19).
 - **Vault page:** `mode.ts`, `modes.ts`, `strings.ts`; `passwordFlow.ts`, `passkeyFlow.ts` (new); `forgetFlow.ts`
   (`deleteWallet`); `accountsFlow.ts` (index, `send-open`); `reauthFlow.ts` (`applied`); `screens/password.ts` reuse +
   `screens/changePassword.ts`, `screens/delete.ts`, `screens/passkeyManage.ts`, `screens/reveal.ts` (rewritten on
@@ -1359,7 +1394,32 @@ Findings go in the PR; screenshots are CI artifacts.
     passkey loss after a restore declared on #31 and #35.
 17. **(rev 2, review M2) 2a's field rule vs #36.** 2a empties vault-page fields on `hidden`; #36 would send every
     password-manager user back to step 1. **Ruled:** #36 keeps its fields and held key through `hidden` and drops them on
-    `pagehide`, on leave and after success; every other mode keeps 2a's rule.
+    `pagehide`, on leave and after success; every other mode keeps 2a's rule. **Bounded in rev 3 (review-2 H1, C20):** the
+    unbounded version let a hidden, proven tab outlive the user's attention for as long as the popup kept the session
+    alive; the key and fields now live at most 5 minutes, renewed by keystrokes in steps 2–3, re-checked on `visible`
+    and before every step and send.
+18. **(rev 3, review-2 M1) "First account" read in two orders.** #37 reads `wallet.state` (display order, E14), the page
+    reads the envelope (stored order). **Resolved:** the lowest `index` on both sides, never position (C17).
+19. **(rev 3, review-2 M2) C17's compare vs the KDF.** Compared after `proveFactor`, a replaced wallet would answer
+    `wrong` (charged to the backoff) and `changed` would be unreachable in the case it exists for. **Resolved:** the
+    revision is compared at the click, before any KDF run; `changed` is never charged (C17).
+20. **(rev 3, review-2 L4) The duplicate-name check vs confusables.** NFKC + case-folding does not merge cross-script
+    look-alikes. **Accepted and stated** in C19; the full address in pick rows is the defence for addresses.
+
+### Revision 3 — where each review-2 finding landed
+
+| finding | resolution |
+|---|---|
+| H1 #36 hidden tab unbounded | C20: 5-minute TTL from the step-1 proof, renewed by each keystroke in steps 2–3; zeroed + `dropped` at the deadline, re-checked on `visible` and before every step and send; tests named, mutation "no TTL → red" (§3.1, §7, §11 item 17) |
+| M1 "first account" in two orders | C17: lowest `index` on both sides, never display order (§3.2, §5); E2E 15 reorders before the address assertion; unit mutation |
+| M2 compare before the KDF | C17 and §3.2: re-read + `envelopeRevision` at the click before any Argon2id/PRF run; `changed` never charged to the backoff; kdf-spy test + mutation |
+| L1 step-2 check and the backoff | §3.1: never charged, no cooldown on step 2 |
+| L2 C18 base units, `null` | C18 floors as base-unit integers compared with `BigInt`; `amount: null` → dust (fail closed); boundary tests |
+| L3 `known` shape | E17: the client requires a boolean and reads a missing field as `false` |
+| L4 confusables | C19 states the cross-script limit loudly; a test pins it |
+| L5 hand list vs categories | C19, §10: `\p{Cc}\p{Cf}` with the `u` flag (+ U+034F, U+FE00–U+FE0F, category Mn) |
+| L6 stale "Active protections" sentences | §4.2: Locks row metas spelled out; `strengthening` updates the Locks meta |
+| L7 E2E 15 hard case | Fourth run: the wallet replaced under the tab → `changed` with the new address, no `wrong`, no cooldown |
 
 ### Revision 2 — where each review finding landed
 
@@ -1502,7 +1562,10 @@ not repeated here; the owner sees them in each screen's section.
   four (§3.5); #15's three; #12 idle, #20 first-time, #27a, #27c — plus the undrawn #6 manage, seed-verify and contact sheet.
 - **Placeholders:** none; every state has copy, an engine source and a destination.
 - **Engine claims checked against code:** every file:line above was read on `main` 2c9d88b.
-- **Ambiguity left for the owner:** C1–C19, §11 items 1, 4, 8, 9, 10, and §12 (88 strings).
+- **Ambiguity left for the owner:** C1–C20, §11 items 1, 4, 8, 9, 10, and §12 (88 strings).
+- **Rev 3 checks.** Every review-2 finding is in §11's "Revision 3" table and in the section it names. No new owner copy:
+  the TTL reuses `dropped`'s O10, and `changed` keeps O14. States unchanged at 150 (the TTL is a new way into `dropped`,
+  not a new state).
 - **Rev 2 checks.** Every finding of review 1 is in §11's "Revision 2" table. D23 removed the passkey from every place
   that rendered or tested the phrase: §1.2 rows, §3.4, §3.5, E16, §7's passkey row, §8.1/§8.2 (grep for "Confirm with
   passkey" now hits only delete, passkey remove and accounts). The one open item is §11 item 9: whether the pinned
