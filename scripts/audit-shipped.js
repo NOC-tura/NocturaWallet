@@ -11,7 +11,9 @@
  *
  * The only honest source for "what ships" is the bundle Metro produced. Its source map
  * lists every module that went in, so the packages named there are the shipped set, and
- * an advisory is reported only if its package is in it.
+ * an advisory is reported only if the package that CARRIES it is in it. A shipped package
+ * that is flagged only through a dependency (react-native, via Metro's braces) is printed
+ * as an info line and does not fail: the dependency is judged on whether it ships itself.
  *
  * Usage:
  *   node scripts/audit-shipped.js                       # builds the bundle, then audits
@@ -42,29 +44,83 @@ function packagesFromSourcemap(sources) {
   return found;
 }
 
-/** Advisories whose package is in `shipped` and at least `minSeverity`. */
+/**
+ * The advisories `npm audit` carries in `vulnerabilities`, one per (advisory, package).
+ *
+ * An entry's `via` mixes two things: advisory OBJECTS, which belong to the package that
+ * carries them (`name`), and bare package NAMES, which only say "a dependency of mine is
+ * vulnerable". The entry's own `severity` is the worst of both, so reading it alone makes
+ * react-native "high" because Metro's micromatch pulls in braces — none of which ships.
+ * Only the objects are advisories; this returns those and nothing else.
+ */
+function advisoriesIn(auditJson) {
+  const out = [];
+  const seen = new Set();
+  const vulns = (auditJson && auditJson.vulnerabilities) || {};
+  for (const [key, v] of Object.entries(vulns)) {
+    const via = Array.isArray(v && v.via) ? v.via : [];
+    for (const x of via) {
+      if (!x || typeof x !== 'object') continue;
+      const name = typeof x.name === 'string' && x.name ? x.name : key;
+      const id = `${x.source ?? x.url ?? x.title}|${name}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const carrier = vulns[name] || v;
+      out.push({
+        name,
+        severity: x.severity || v.severity,
+        title: x.title || '(untitled advisory)',
+        url: x.url || null,
+        range: x.range || null,
+        fixAvailable: carrier.fixAvailable,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Advisories whose OWN package is in `shipped` and at least `minSeverity`.
+ *
+ * The carrier is what decides, not the package that depends on it: a shipped leaf fails
+ * the gate however deep it sits (shipped code is shipped code), and a shipped package
+ * whose only problem is a build-time dependency does not — see transitiveOnly.
+ */
 function shippedAdvisories(auditJson, shipped, minSeverity = 'high') {
   const floor = SEVERITY_ORDER.indexOf(minSeverity);
   if (floor === -1) throw new Error(`unknown severity: ${minSeverity}`);
+  return advisoriesIn(auditJson)
+    .filter(a => shipped.has(a.name) && SEVERITY_ORDER.indexOf(a.severity) >= floor)
+    .sort((a, b) => SEVERITY_ORDER.indexOf(b.severity) - SEVERITY_ORDER.indexOf(a.severity));
+}
+
+/**
+ * Shipped packages `npm audit` rates at or above `minSeverity` only because of something
+ * they depend on, with no advisory of their own at that level. Not a failure — the
+ * dependency that carries the advisory is either shipped (and then reported by
+ * shippedAdvisories under its own name) or not shipped (and then never runs on a phone).
+ * Returned so the output can still say so, rather than going quiet about it.
+ */
+function transitiveOnly(auditJson, shipped, minSeverity = 'high') {
+  const floor = SEVERITY_ORDER.indexOf(minSeverity);
+  if (floor === -1) throw new Error(`unknown severity: ${minSeverity}`);
+  const own = new Set(
+    advisoriesIn(auditJson)
+      .filter(a => SEVERITY_ORDER.indexOf(a.severity) >= floor)
+      .map(a => a.name),
+  );
   const out = [];
   const vulns = (auditJson && auditJson.vulnerabilities) || {};
   for (const [name, v] of Object.entries(vulns)) {
-    if (!shipped.has(name)) continue;
-    const rank = SEVERITY_ORDER.indexOf(v.severity);
-    if (rank < floor) continue;
-    const via = Array.isArray(v.via) ? v.via : [];
-    const titled = via.find(x => x && typeof x === 'object' && x.title);
-    out.push({
-      name,
-      severity: v.severity,
-      title: titled ? titled.title : '(transitive)',
-      fixAvailable: v.fixAvailable,
-    });
+    if (!shipped.has(name) || own.has(name)) continue;
+    if (SEVERITY_ORDER.indexOf(v.severity) < floor) continue;
+    const via = (Array.isArray(v.via) ? v.via : []).filter(x => typeof x === 'string');
+    out.push({name, severity: v.severity, via});
   }
-  return out.sort((a, b) => SEVERITY_ORDER.indexOf(b.severity) - SEVERITY_ORDER.indexOf(a.severity));
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-module.exports = {SEVERITY_ORDER, packagesFromSourcemap, shippedAdvisories};
+module.exports = {SEVERITY_ORDER, packagesFromSourcemap, advisoriesIn, shippedAdvisories, transitiveOnly};
 
 if (require.main === module) {
   const {execFileSync} = require('node:child_process');
@@ -114,7 +170,15 @@ if (require.main === module) {
   const shipped = packagesFromSourcemap(JSON.parse(readFileSync(sourcemapPath, 'utf8')).sources);
   const hits = shippedAdvisories(JSON.parse(auditRaw), shipped, minSeverity);
 
+  const passengers = transitiveOnly(JSON.parse(auditRaw), shipped, minSeverity);
+
   console.log(`packages in the shipped bundle: ${shipped.size}`);
+  for (const p of passengers) {
+    console.log(`info: ${p.name} is rated ${p.severity} only through dependencies: ${p.via.join(', ')}`);
+  }
+  if (passengers.length > 0) {
+    console.log('info: not a failure by itself; each advisory is judged by whether the package carrying it ships.');
+  }
   if (hits.length === 0) {
     console.log(`no advisories at or above "${minSeverity}" in a package that ships.`);
     process.exit(0);
@@ -123,6 +187,7 @@ if (require.main === module) {
   for (const h of hits) {
     console.error(`  ${h.severity.padEnd(8)} ${h.name}`);
     console.error(`  ${''.padEnd(8)} ${h.title}`);
+    if (h.url) console.error(`  ${''.padEnd(8)} ${h.url} (affected: ${h.range})`);
     console.error(`  ${''.padEnd(8)} fix: ${JSON.stringify(h.fixAvailable)}\n`);
   }
   process.exit(1);

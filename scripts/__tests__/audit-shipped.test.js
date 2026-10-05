@@ -1,4 +1,4 @@
-const {packagesFromSourcemap, shippedAdvisories} = require('../audit-shipped');
+const {packagesFromSourcemap, shippedAdvisories, transitiveOnly} = require('../audit-shipped');
 
 /**
  * The gate exists because `npm audit --omit=dev` answers the wrong question for a
@@ -36,9 +36,17 @@ describe('packagesFromSourcemap', () => {
 describe('shippedAdvisories', () => {
   const audit = {
     vulnerabilities: {
-      'bigint-buffer': {severity: 'high', via: [{title: 'Buffer Overflow via toBigIntLE'}], fixAvailable: true},
+      'bigint-buffer': {
+        severity: 'high',
+        via: [{source: 1, name: 'bigint-buffer', title: 'Buffer Overflow via toBigIntLE', severity: 'high'}],
+        fixAvailable: true,
+      },
       metro: {severity: 'high', via: ['metro-config'], fixAvailable: true},
-      'some-lib': {severity: 'low', via: [{title: 'minor thing'}], fixAvailable: false},
+      'some-lib': {
+        severity: 'low',
+        via: [{source: 2, name: 'some-lib', title: 'minor thing', severity: 'low'}],
+        fixAvailable: false,
+      },
     },
   };
   const shipped = new Set(['bigint-buffer', 'some-lib']);
@@ -64,5 +72,76 @@ describe('shippedAdvisories', () => {
 
   it('refuses an unknown severity rather than silently passing everything', () => {
     expect(() => shippedAdvisories(audit, shipped, 'catastrophic')).toThrow(/unknown severity/);
+  });
+
+  it('reports a high carried by an advisory object that names its package even under another key', () => {
+    // npm keys an entry by package and names the carrier in the object; they agree in
+    // practice, but the object is the authority — it is what the advisory was filed against.
+    const odd = {vulnerabilities: {x: {severity: 'high', via: [{source: 9, name: 'bigint-buffer', title: 't', severity: 'high'}]}}};
+    expect(shippedAdvisories(odd, shipped, 'high').map(h => h.name)).toEqual(['bigint-buffer']);
+  });
+});
+
+/**
+ * The 2026-10-05 shape, copied from the real `npm audit --json`: react-native is rated
+ * high, but its `via` is only package NAMES — the advisories sit on build-time leaves
+ * (braces under Metro's micromatch). Counting the parent made a bundler advisory fail the
+ * shipped gate, which is the exact noise this gate exists to remove.
+ */
+describe('transitive ratings', () => {
+  const audit = {
+    vulnerabilities: {
+      'react-native': {
+        severity: 'high',
+        via: ['@react-native/community-cli-plugin', 'babel-jest', 'jest-environment-node'],
+        fixAvailable: false,
+      },
+      '@react-native/community-cli-plugin': {severity: 'high', via: ['metro'], fixAvailable: false},
+      metro: {severity: 'high', via: ['metro-file-map'], fixAvailable: false},
+      micromatch: {severity: 'high', via: ['braces'], fixAvailable: false},
+      braces: {
+        severity: 'high',
+        via: [{source: 1240992, name: 'braces', title: 'braces stack-exhaustion DoS', url: 'https://github.com/advisories/GHSA-vfj7-8cjw-p6xm', severity: 'high', range: '<=3.0.3'}],
+        fixAvailable: false,
+      },
+      ws: {
+        severity: 'high',
+        via: [
+          {source: 3, name: 'ws', title: 'a moderate one', severity: 'moderate'},
+          {source: 4, name: 'ws', title: 'a high one', severity: 'high'},
+        ],
+        fixAvailable: true,
+      },
+      'some-sdk': {severity: 'high', via: ['ws'], fixAvailable: true},
+    },
+  };
+
+  it('does NOT fail on a shipped package that is vulnerable only through a dependency that does not ship', () => {
+    expect(shippedAdvisories(audit, new Set(['react-native']), 'high')).toEqual([]);
+  });
+
+  it('still names that package as an info line, with the dependencies that rate it', () => {
+    expect(transitiveOnly(audit, new Set(['react-native']), 'high')).toEqual([
+      {name: 'react-native', severity: 'high', via: ['@react-native/community-cli-plugin', 'babel-jest', 'jest-environment-node']},
+    ]);
+  });
+
+  it('FAILS on a vulnerable leaf that ships, even when it is only reached transitively', () => {
+    // ws ships only because some-sdk pulls it in; it is the carrier, so it is reported.
+    const hits = shippedAdvisories(audit, new Set(['some-sdk', 'ws']), 'high');
+    expect(hits.map(h => h.name)).toEqual(['ws']);
+    expect(hits[0].title).toBe('a high one');
+    // …and the parent that only depends on it is info, not a second failure.
+    expect(transitiveOnly(audit, new Set(['some-sdk', 'ws']), 'high').map(p => p.name)).toEqual(['some-sdk']);
+  });
+
+  it('fails on braces itself the moment braces ships', () => {
+    const hits = shippedAdvisories(audit, new Set(['react-native', 'braces']), 'high');
+    expect(hits.map(h => [h.name, h.url])).toEqual([['braces', 'https://github.com/advisories/GHSA-vfj7-8cjw-p6xm']]);
+  });
+
+  it('judges each advisory at its own severity, not the entry\'s worst-of-all rating', () => {
+    expect(shippedAdvisories(audit, new Set(['ws']), 'high').map(h => h.title)).toEqual(['a high one']);
+    expect(shippedAdvisories(audit, new Set(['ws']), 'moderate').map(h => h.title).sort()).toEqual(['a high one', 'a moderate one']);
   });
 });
