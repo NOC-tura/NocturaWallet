@@ -118,6 +118,14 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
     };
   }, [surface, phase, selected, engine]);
 
+  // The UI tab's resume hash names the account whose send #10 confirmed. Another account selected (here or in another
+  // window, before or after the tab opened) ends that flow as an account switch does (final review M3, spec §1.6): #11,
+  // and #20 never mounts for it — nothing read for the hash's account, nothing sent. Its prepared send is left as it is.
+  const resumeElsewhere = route.screen === 'resume' && selected !== null && route.account !== selected;
+  useEffect(() => {
+    if (resumeElsewhere) go({type: 'reset', routes: [HOME]});
+  }, [resumeElsewhere]);
+
   /** The send flow's ways between its screens (spec §4). #19 always sits on #12 holding the draft, so Cancel returns to it. */
   const toReview = (account: string, intent: Intent, notice: 'confirmation-expired' | null) =>
     go({type: 'reset', routes: [HOME, {screen: 'send', draft: draftOf(intent), notice: null}, {screen: 'review', account, intent, notice}]});
@@ -228,7 +236,8 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
     screen = confirmFor(route.account, route.entry === 'flow' ? {entry: 'flow', preparedId: route.preparedId} : {entry: 'resume'});
   } else if (route.screen === 'resume') {
     // The UI tab's hand-over (D38): the hash chose this screen and carries no data — #20 reads wallet.preparedFor.
-    screen = confirmFor(route.account, {entry: 'resume'});
+    // Only for the selected account: until it is known, nothing; another one, the effect above ends the flow.
+    screen = route.account === selected ? confirmFor(route.account, {entry: 'resume'}) : <div className="screen s-conf" aria-busy="true" />;
   } else if (route.screen === 'status') {
     // #21 follows its record's account whoever is selected; #44's and #54's [Try again] and [Edit transaction] start a
     // flow for that account, so — #27's owner rule (final review I1) — only while it is the one selected, and a tap

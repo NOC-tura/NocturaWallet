@@ -27,7 +27,7 @@ const INTENT: Intent = {token: 'SOL', recipient: COUNTERPARTY, amount: 10_000_00
 const RESUME = `#/send/resume?account=${ACCOUNT.publicKey}`;
 
 async function app(
-  o: {surface?: Surface; hash?: string; prepare?: boolean; prove?: boolean; known?: boolean; gate?: (type: string) => Promise<void> | void; reader?: Partial<SolanaReader>} = {},
+  o: {surface?: Surface; hash?: string; prepare?: boolean; prove?: boolean; known?: boolean; select?: number; gate?: (type: string) => Promise<void> | void; reader?: Partial<SolanaReader>} = {},
 ): Promise<Wallet & {sent: string[]; sends: () => number}> {
   const sent: string[] = [];
   const w = await setupWallet({
@@ -43,6 +43,8 @@ async function app(
     if (!p.ok) throw new Error(p.error);
     if (o.prove === true && p.data.reauth !== null) await satisfyChallenge(w.ext, Date.now(), p.data.reauth.challengeId);
   }
+  // Another account selected before the page opens (in another window).
+  if (o.select !== undefined && !(await w.engine.select(o.select)).ok) throw new Error('select');
   const engine = createEngine(async m => {
     const type = (m as {type: string}).type;
     sent.push(type);
@@ -839,4 +841,24 @@ describe('final review: owner rule, discards under a lock, the resume hash, a pe
     expect(w.sends()).toBe(0);
   });
 
+  it('M3: the UI tab’s resume hash names A while B is selected: #11 — #20 never shows, nothing is read for A or sent; A’s prepared send is left as it was', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const w = await app({surface: 'tab', hash: RESUME, known: true, select: SECOND.index});
+    expect(await screen.findByText('TOKENS')).toBeTruthy();
+    await act(async () => void vi.advanceTimersByTime(10_000));
+    expect(screen.queryByText(CONFIRM_TEXT.title)).toBeNull();
+    expect(count(w, 'wallet.preparedFor')).toBe(0);
+    expect(count(w, 'wallet.prepareSend')).toBe(0);
+    expect(count(w, 'wallet.discardPrepared')).toBe(0);
+    expect(w.sends()).toBe(0);
+    const held = await w.engine.preparedFor(ACCOUNT.publicKey);
+    expect(held.ok && held.data !== null).toBe(true);
+  });
+
+  it('M3: the hash names the selected account: #20 as before (the comparison lets the right account through)', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const w = await app({surface: 'tab', hash: RESUME, known: true, select: ACCOUNT.index});
+    expect(await screen.findByText(CONFIRM_TEXT.resume)).toBeTruthy();
+    expect(w.sends()).toBe(0);
+  });
 });
