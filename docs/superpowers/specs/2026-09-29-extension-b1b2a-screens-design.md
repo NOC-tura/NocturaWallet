@@ -2475,6 +2475,10 @@ UA margin; the recipient centred at 16/24 mono) and #54 sent-again's "Watching" 
 - **Declared:** #19's progress line (`.m3-prog`) and its footer ("Noctura server · simulateTransaction", "Simulated
   against slot …") stay in the scrolling content. They are not pinned with the top bar, so on a long #19 they scroll
   away; the mockups' phone frame never shows them scrolled.
+- **Declared:** #43's close button keeps the sheet's tokenised close. The mockup's "square bordered" close is the
+  browser's unstyled default `<button>` (index.html gives it only a colour): a light-grey #efefef square of about
+  26 px. Matching it would bring a colour from outside the token palette onto the dark sheet, fall below the 48 px
+  touch target, and change the account switcher, which uses the same sheet.
 
 **Same as the
 design:** `word-break: break-all` on `.s-sim .check-row .copy .meta` and `.s-conf .detail-row .val` breaks prose
