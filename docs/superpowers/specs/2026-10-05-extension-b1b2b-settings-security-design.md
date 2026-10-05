@@ -1,8 +1,8 @@
 # Noctura Extension B1b-2b — settings & security, and the address book
 
-**Status:** draft **rev 3**, 2026-10-05. The owner approved the design (sections 1–3 of
-`.superpowers/sdd/b1b2b-approved-design.md`) and took decisions D1–D23. This spec still needs: the owner's answer on
-the controller rulings C1–C20 and on every string in §12; then each plan gets a Fable 5.1 review before SDD.
+**Status:** **approved rev 3**, 2026-10-05. The owner approved the design (sections 1–3 of
+`.superpowers/sdd/b1b2b-approved-design.md`), took decisions D1–D23, and on 2026-10-05 approved this spec with the
+controller rulings C1–C20 and confirmed every string in §12 (O01–O88). Each plan gets a Fable 5.1 review before SDD.
 
 **Revision 3** applies every finding of Fable review 2 (`.superpowers/sdd/b1b2b-spec-review-2.md`: H1, M1, M2,
 L1–L7; verdict "approve after fixes"), with the coordinator's rulings: H1 keeps rev 2's #36 ruling and bounds it with a
