@@ -21,6 +21,11 @@ export type Route =
   | {screen: 'receive'}
   | {screen: 'tx'; signature: string; account: string}
   | {screen: 'about'}
+  /** B1b-2b §1.4: #35 security center, the accounts manager, the passkey screen, #37 delete wallet — no data on any. */
+  | {screen: 'security'}
+  | {screen: 'accounts'}
+  | {screen: 'passkey'}
+  | {screen: 'delete'}
   | {screen: 'send'; draft: Draft | null; notice: 'start-again' | null}
   | {screen: 'review'; account: string; intent: Intent; notice: 'confirmation-expired' | null}
   | {screen: 'confirm'; account: string; entry: 'flow'; preparedId: string}
@@ -31,7 +36,9 @@ export type Route =
   | {screen: 'resume'; account: string};
 export type RouteAction = {type: 'push'; route: Route} | {type: 'pop'} | {type: 'tab'; tab: Tab} | {type: 'replace'; route: Route} | {type: 'reset'; routes: Route[]};
 
-export const SCREENS: ReadonlySet<string> = new Set<Route['screen']>(['tab', 'receive', 'tx', 'about', 'send', 'review', 'confirm', 'status']);
+export const SCREENS: ReadonlySet<string> = new Set<Route['screen']>(['tab', 'receive', 'tx', 'about', 'send', 'review', 'confirm', 'status', 'security', 'accounts', 'passkey', 'delete']);
+/** B1b-2b: the settings screens carry nothing but their name — no secret, no challenge, no address to act on. */
+const BARE: ReadonlySet<string> = new Set<Route['screen']>(['security', 'accounts', 'passkey', 'delete']);
 /** The send flow's screens: each handles Esc itself (#19 discards first, #20 keeps, #21 has no back while open). */
 export const FLOW: ReadonlySet<string> = new Set<Route['screen']>(['send', 'review', 'confirm', 'status', 'resume']);
 /** The UI tab's hand-over screens: a first route from `location.hash`, never pushed. */
@@ -49,6 +56,7 @@ function isRoute(r: unknown): r is Route {
   const o = r as Record<string, unknown>;
   if (typeof o.screen !== 'string' || !SCREENS.has(o.screen)) return false;
   if (o.screen === 'tab') return typeof o.tab === 'string' && TABS.has(o.tab);
+  if (BARE.has(o.screen)) return only(o, ['screen']);
   // #27 carries the account whose history the signature came from: its [Try again] is offered only while that account is selected (fix round 1).
   if (o.screen === 'tx') return only(o, ['screen', 'signature', 'account']) && typeof o.signature === 'string' && o.signature.length > 0 && isAddress(o.account);
   if (o.screen === 'send') return only(o, ['screen', 'draft', 'notice']) && (o.draft === null || isDraft(o.draft)) && (o.notice === null || o.notice === 'start-again');

@@ -50,9 +50,11 @@ describe('links out of the UI', () => {
     expect(platform).toMatch(/navigate: page => location\.assign\(page\)/);
     // The closed list, plus #20's one data-built page — a branded ReauthPage only reauthPage() makes (Task 9 fix round 1).
     expect(platform).toMatch(/navigate\(page: ExtensionPage \| ReauthPage\): void;/);
-    expect(platform).toMatch(/openPage\(page: ExtensionPage \| ReauthPage\): void;/);
+    // B1b-2b §1.3: and the accounts manager's remove page — a branded RemoveAccountPage only removeAccountPage() makes.
+    expect(platform).toMatch(/openPage\(page: ExtensionPage \| ReauthPage \| RemoveAccountPage\): void;/);
     expect([...platform.matchAll(/as ReauthPage\b/g)]).toHaveLength(1);
-    for (const {path, text} of sources) if (path !== 'platform.ts') expect(`${path}: ${/as ReauthPage\b/.test(text)}`).toBe(`${path}: false`);
+    expect([...platform.matchAll(/as RemoveAccountPage\b/g)]).toHaveLength(1);
+    for (const {path, text} of sources) if (path !== 'platform.ts') expect(`${path}: ${/as (?:ReauthPage|RemoveAccountPage)\b/.test(text)}`).toBe(`${path}: false`);
   });
 
   it('no URL but Solscan’s and the extension’s own pages', () => {

@@ -280,7 +280,7 @@ export function WalletProvider({
       if (!alive.current || !r.ok) return;
       const w = r.data;
       setWallet(prev => {
-        const changed = prev === null || prev.unlocked !== w.unlocked || prev.selected !== w.selected || JSON.stringify(prev.accounts) !== JSON.stringify(w.accounts);
+        const changed = prev === null || prev.unlocked !== w.unlocked || prev.selected !== w.selected || prev.passkey !== w.passkey || JSON.stringify(prev.accounts) !== JSON.stringify(w.accounts);
         return changed ? w : prev;
       });
       if (!w.hasWallet || !w.unlocked) {

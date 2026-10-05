@@ -27,11 +27,34 @@ async function wired(depsOver: Parameters<typeof fakeDeps>[0] = {}, unlocked = t
   return {ext, deps, engine: createEngine(transport, noSleep)};
 }
 
+describe('the B1b-2b client calls against the real background', () => {
+  it('settingsSet: a strengthening is written; a weakening is reauth-required with its challenge id; locked; malformed', async () => {
+    const {engine} = await wired();
+    expect(await engine.settingsSet({autoLockMinutes: 1})).toMatchObject({ok: true, data: {autoLockMinutes: 1}});
+    const weak = await engine.settingsSet({reauthUsdCents: 50_000});
+    expect(weak).toMatchObject({ok: false, error: 'reauth-required'});
+    expect((weak as {data?: {challengeId?: string}}).data?.challengeId).toMatch(/^[0-9a-f]{32}$/);
+    expect(await engine.settingsSet({autoLockMinutes: 61})).toEqual({ok: false, error: 'malformed'});
+    const locked = await wired({}, false);
+    expect(await locked.engine.settingsSet({autoLockMinutes: 60})).toEqual({ok: false, error: 'locked'});
+  });
+
+  it('order: ok for a permutation, stale for another set; wallet.state follows it', async () => {
+    const {engine, ext} = await wired();
+    await ext.local.set(VAULT_KEY, {...ENV, accounts: [...ENV.accounts, {index: 1, name: 'Two', publicKey: RECIPIENT}]});
+    expect(await engine.order([1, 0])).toEqual({ok: true, data: null});
+    const state = await engine.state();
+    expect(state.ok ? state.data.accounts.map(a => a.index) : null).toEqual([1, 0]);
+    expect(await engine.order([0])).toEqual({ok: false, error: 'stale'});
+    expect(await engine.order([0, 0])).toEqual({ok: false, error: 'malformed'});
+  });
+});
+
 describe('the message client against the real background', () => {
   it('state, settings, ping, lock', async () => {
     const {engine} = await wired();
-    expect(await engine.state()).toEqual({ok: true, data: {hasWallet: true, unlocked: true, scheme: 'slip10', accounts: ENV.accounts, selected: 0}});
-    expect(await engine.settings()).toEqual({ok: true, data: {autoLockMinutes: 5, reauthUsdCents: 10_000, selectedAccount: 0}});
+    expect(await engine.state()).toEqual({ok: true, data: {hasWallet: true, unlocked: true, scheme: 'slip10', accounts: ENV.accounts, selected: 0, passkey: false}});
+    expect(await engine.settings()).toEqual({ok: true, data: {autoLockMinutes: 5, reauthUsdCents: 10_000, selectedAccount: 0, accountOrder: null, phraseVerifiedAt: null, passwordChangedAt: null}});
     expect(await engine.ping()).toEqual({ok: true, data: null});
     expect(await engine.lock()).toEqual({ok: true, data: null});
     expect((await engine.state()).data).toMatchObject({unlocked: false});
@@ -119,10 +142,23 @@ describe('shape checks: a reply of the wrong shape is failed', () => {
   });
 
   it('state: an address outside base58, an unknown scheme', async () => {
-    const good = {hasWallet: true, unlocked: true, scheme: 'slip10', accounts: [{index: 0, name: 'A', publicKey: acc}], selected: 0};
+    const good = {hasWallet: true, unlocked: true, scheme: 'slip10', accounts: [{index: 0, name: 'A', publicKey: acc}], selected: 0, passkey: false};
     expect((await engineAnswering({ok: true, data: good}).state()).ok).toBe(true);
     expect(await engineAnswering({ok: true, data: {...good, accounts: [{index: 0, name: 'A', publicKey: '0OIl'}]}}).state()).toEqual({ok: false, error: 'failed'});
     expect(await engineAnswering({ok: true, data: {...good, scheme: 'bip32'}}).state()).toEqual({ok: false, error: 'failed'});
+  });
+
+  it('B1b-2b: state requires a boolean passkey; settings requires the three new fields', async () => {
+    const good = {hasWallet: true, unlocked: true, scheme: 'slip10', accounts: [{index: 0, name: 'A', publicKey: acc}], selected: 0, passkey: true};
+    expect(await engineAnswering({ok: true, data: good}).state()).toEqual({ok: true, data: good});
+    const {passkey: _p, ...missing} = good;
+    expect(await engineAnswering({ok: true, data: missing}).state()).toEqual({ok: false, error: 'failed'});
+    expect(await engineAnswering({ok: true, data: {...good, passkey: 'yes'}}).state()).toEqual({ok: false, error: 'failed'});
+    const settings = {autoLockMinutes: 5, reauthUsdCents: 10_000, selectedAccount: 0, accountOrder: [1, 0], phraseVerifiedAt: 3, passwordChangedAt: null};
+    expect(await engineAnswering({ok: true, data: settings}).settings()).toEqual({ok: true, data: settings});
+    for (const bad of [{accountOrder: [1, -1]}, {accountOrder: 'x'}, {phraseVerifiedAt: -1}, {passwordChangedAt: '1'}, {phraseVerifiedAt: undefined}]) {
+      expect(await engineAnswering({ok: true, data: {...settings, ...bad}}).settings()).toEqual({ok: false, error: 'failed'});
+    }
   });
 
   it('prices: zero is not a price (null is)', async () => {

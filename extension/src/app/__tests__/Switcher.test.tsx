@@ -16,7 +16,7 @@ import type {Platform} from '../platform';
 /** A fully self-contained Engine (no background involved): full control over the account list and every reply. */
 function stubEngine(accounts: Account[], selected: number): Engine {
   return {
-    state: async () => ({ok: true, data: {hasWallet: true, unlocked: true, scheme: 'slip10', accounts, selected}}),
+    state: async () => ({ok: true, data: {hasWallet: true, unlocked: true, scheme: 'slip10', accounts, selected, passkey: false}}),
     balances: async () => ({ok: true, data: {sol: 62_482_100_000n, noc: 4_200_000_000_000n, usdc: 740_210_000n, usdt: 0n}}),
     prices: async () => ({ok: true, data: {sol: 150, usdc: 1, usdt: 1, noc: 0.1501, at: 1}}),
     cached: async () => ({ok: true, data: {balances: null, prices: null}}),
@@ -30,7 +30,9 @@ function stubEngine(accounts: Account[], selected: number): Engine {
     discardPrepared: async () => ({ok: true, data: null}),
     rename: async () => ({ok: false, error: 'failed'}),
     select: async () => ({ok: true, data: null}),
-    settings: async () => ({ok: true, data: {autoLockMinutes: 5, reauthUsdCents: 0, selectedAccount: selected}}),
+    settings: async () => ({ok: true, data: {autoLockMinutes: 5, reauthUsdCents: 0, selectedAccount: selected, accountOrder: null, phraseVerifiedAt: null, passwordChangedAt: null}}),
+    settingsSet: async () => ({ok: false, error: 'failed'}),
+    order: async () => ({ok: false, error: 'failed'}),
     lock: async () => ({ok: true, data: null}),
     ping: async () => ({ok: true, data: null}),
   };
@@ -98,7 +100,7 @@ describe('the account switcher', () => {
   it('Add account opens the vault page’s accounts mode; a CLI wallet cannot add one', async () => {
     const {platform} = await open();
     fireEvent.click(screen.getByRole('button', {name: 'Add account'}));
-    expect(platform.opened).toEqual(['unlock.html?mode=accounts']);
+    expect(platform.opened).toEqual(['unlock.html?mode=accounts&op=add']);
   });
 
   it('a CLI wallet: Add account disabled, with the reason', async () => {

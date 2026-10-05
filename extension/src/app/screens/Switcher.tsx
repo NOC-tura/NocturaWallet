@@ -164,7 +164,7 @@ export function Switcher({onClose}: {onClose: () => void}) {
         })}
       </div>
       {selectError === null ? null : <p className="field-msg noc-danger" role="alert">{selectError}</p>}
-      <button type="button" className="btn btn-secondary" disabled={cli} onClick={() => m.platform.openPage('unlock.html?mode=accounts')}>
+      <button type="button" className="btn btn-secondary" disabled={cli} onClick={() => m.platform.openPage('unlock.html?mode=accounts&op=add')}>
         <ExtIcon name="plus" size={18} />
         Add account
       </button>
