@@ -749,7 +749,7 @@ describe('final review: owner rule, discards under a lock, the resume hash, a pe
     expect(w.sends()).toBe(1);
   });
 
-  it('I1: A’s send fails (#44, not sent) while B is selected: no [Try again]; a press that raced the switch prepares nothing', async () => {
+  it('I1: A’s send fails (#44, not sent) while B is selected: no [Try again], no [Edit transaction]; Esc closes to #11 — nothing prepared', async () => {
     const w = await sentThenB();
     await setRecords(w, r => ({...r, state: 'failed', failure: 'not-sent', detail: 'The network did not take it.'}));
     await act(async () => void vi.advanceTimersByTime(2_000));

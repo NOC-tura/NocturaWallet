@@ -44,6 +44,8 @@ interface Setup {
   preparedId?: string;
   /** Sees every message #20's client sends before the background does; may hold it. */
   gate?: (m: {type: string}) => Promise<void> | void;
+  /** The UI tab's quiet provider (the hand-over route): it reads no pending of its own, so every read is #20's. */
+  quiet?: boolean;
 }
 /** A wallet whose background holds a prepared send of `intent` (proven if asked), and #20 shown on it. */
 async function renderConfirm(o: Setup = {}): Promise<Wallet & {sent: string[]; sends: () => number; challengeId: string | null; preparedId: string}> {
@@ -72,7 +74,7 @@ async function renderConfirm(o: Setup = {}): Promise<Wallet & {sent: string[]; s
     return w.transport(m);
   }, async () => undefined);
   render(
-    <WalletProvider engine={engine} platform={w.platform} surface={o.surface ?? 'popup'}>
+    <WalletProvider engine={engine} platform={w.platform} surface={o.surface ?? 'popup'} quiet={o.quiet === true}>
       <Confirm account={ACCOUNT.publicKey} {...entryOf(o.entry ?? 'flow', o.preparedId ?? preparedId)} {...nav} />
     </WalletProvider>,
   );
@@ -484,27 +486,33 @@ describe('#20 — a failed discard, and a pending send settling while shown (fin
     expect(reads()).toBe(gone);
   });
 
-  it('M4: a re-read still out when the block lifted lands on nothing — an older "open" answer never puts it back', async () => {
+  it('M4: a re-read still out when the block lifted lands on nothing — a newer "open" answer after it never puts it back', async () => {
     vi.useFakeTimers({shouldAdvanceTime: true});
     const record = open();
-    let holding = false;
-    const held: (() => void)[] = [];
+    let reads = 0;
+    const releases: (() => void)[] = [];
+    // The UI tab's quiet provider: every wallet.pending is #20's. The first (at mount) answers; the next two re-reads
+    // are held, each until released, and answer what the background holds then.
     const w = await renderConfirm({
+      surface: 'tab',
+      quiet: true,
       afterPrepare: ext => ext.local.set(PENDING_KEY, [record]),
-      // While `holding`, every pending read (#20's and the provider's) waits at the client until released.
-      gate: m => (m.type === 'wallet.pending' && holding ? new Promise<void>(r => void held.push(r)) : undefined),
+      gate: m => {
+        if (m.type !== 'wallet.pending') return undefined;
+        reads += 1;
+        return reads === 2 || reads === 3 ? new Promise<void>(r => void releases.push(r)) : undefined;
+      },
     });
     expect(await screen.findByText(CONFIRM_TEXT.pending)).toBeTruthy();
-    holding = true;
-    await act(async () => void vi.advanceTimersByTime(PENDING_POLL_MS + 50));
-    expect(held.length).toBeGreaterThan(0);
-    holding = false;
+    await act(async () => void vi.advanceTimersByTime(PENDING_POLL_MS * 2 + 50));
+    expect(releases).toHaveLength(2);
+    // The older re-read answers first: settled — the block lifts.
     await w.ext.local.set(PENDING_KEY, [{...record, state: 'confirmed'}]);
-    await act(async () => void vi.advanceTimersByTime(PENDING_POLL_MS + 50));
+    await act(async () => releases[0]?.());
     await waitFor(() => expect(screen.queryByText(CONFIRM_TEXT.pending)).toBeNull());
-    // The held reads answer now, with the record open (as an older answer would have said it).
+    // The newer one, still out when the block lifted, answers "open": it lands on nothing.
     await w.ext.local.set(PENDING_KEY, [record]);
-    await act(async () => held.forEach(r => r()));
+    await act(async () => releases[1]?.());
     await act(async () => void vi.advanceTimersByTime(50));
     expect(screen.queryByText(CONFIRM_TEXT.pending)).toBeNull();
     expect((await sendButton()).disabled).toBe(false);
