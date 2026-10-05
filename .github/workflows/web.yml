@@ -73,9 +73,16 @@ jobs:
         working-directory: web
 
       # web/'s own tree, including the wallet-adapter dev dependencies. `high` here
-      # rather than the root's `critical`: this tree has no React Native in it, so a
-      # high is not drowned in advisories about a bundler that never runs on a phone.
+      # rather than the root's `critical`: React Native reaches this tree only through
+      # the wallet-adapter mobile adapter, which vite.config.ts aliases to a stub, so a
+      # high is rare enough here to be looked at one by one.
       # The root keeps its own threshold, and scripts/audit-shipped.js answers the
       # narrower question for the app.
-      - run: npm audit --audit-level=high
+      #
+      # Through scripts/check-audit.mjs rather than the bare `npm audit --audit-level=high`:
+      # any high or critical still fails, except an advisory listed in
+      # web/audit-exceptions.json — one GHSA id on one package, proven not to ship, with a
+      # reviewBy date. The gate fails when an exception expires, goes stale, or no longer
+      # names the affected package (SECURITY.md, "Dependency audit exceptions").
+      - run: node scripts/check-audit.mjs
         working-directory: web

@@ -1,0 +1,11 @@
+{
+  "exceptions": [
+    {
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "reason": "Bundler-only: reached via wallet-adapter-react -> wallet-adapter-mobile -> react-native -> metro -> micromatch; vite aliases the mobile adapter to a stub, and braces/micromatch/metro are absent from dist's source map. No fixed version exists.",
+      "reviewBy": "2026-11-05",
+      "decidedBy": "owner, 2026-10-05"
+    }
+  ]
+}
