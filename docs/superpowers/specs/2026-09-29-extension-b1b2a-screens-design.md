@@ -310,8 +310,11 @@ mutation test in `scripts/__tests__`):
   reset-to-tab. There is no router library. The tab surface reads its first route from
   `location.hash`. The only hashes are `#/created`, `#/imported`, `#/send/resume?account=<address>`
   and `#/home`, and the hash only chooses a screen: every value shown comes from the background.
-  The address is validated like any address and only selects which `preparedFor` to read. **No
-  hash causes an action.** Any extension page, or another extension opening `wallet.html#/send/…`,
+  The address is validated like any address and only selects which `preparedFor` to read. It must
+  also be the selected account (plan 3, final review M3): another account selected — before the tab
+  opened or while it is open — ends that flow as an account switch does (#11; #20 never mounts for
+  it, nothing is read for the hash's account and nothing is sent; its prepared send is left as it is).
+  Until the selection is known, the route shows nothing. **No hash causes an action.** Any extension page, or another extension opening `wallet.html#/send/…`,
   can at most make #20 appear, and #20 waits for a tap (review B1, D38). **Plan 3:** on that route the
   tab's provider stays quiet — the state, and what #20 reads itself (`preparedFor`, `prepareSend` when the
   quote has expired, `pending`, `prices`); once the user moves on from it (to #21, #19 or #12) the tab is a
@@ -1574,7 +1577,10 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   - **extension-only `resume`** (popup reopened with a live resumable): the same #20, with "You have
     a send waiting." Nothing is sent until a tap.
   - **extension-only `pending`**: a send from this account is open → Send disabled with "A send
-    from this account is still pending." (review L6).
+    from this account is still pending." (review L6). While the line is shown #20 re-reads
+    `wallet.pending` every 2 s (its own read, so the UI tab's quiet provider stays quiet); once that
+    send settles the line goes and Send is enabled, without leaving the screen (plan 3, final review
+    M4). A re-read answering after the block lifted, or after the screen went, is dropped.
 - **Send sequence** (the rule 6 lock is held from the tap until the reply):
   1. Tap with `reauth === null`, **or with a proven challenge** (plan 3: `reauth.proven`, the engine's own
      `challengeSatisfied`, reported by `prepareSend` and `preparedFor` — without it a resumed #20 could
@@ -1620,7 +1626,12 @@ point here. **One user tap per broadcast, always (D38; review B1).**
        #19 (review R2-M2).
 - **Cancel and back:** `[Cancel]` → `wallet.discardPrepared {account}` (C2) → #11 with the toast
   "Transaction cancelled. No fees charged." (true: nothing was signed). The back arrow → #19 with
-  the prepared send kept (not a cancel).
+  the prepared send kept (not a cancel). **Plan 3 (final review M1):** a discard that fails leaves the
+  prepared send and its challenge in place (E7), so there is no toast: #20 stays, shows #19's line
+  "Something went wrong. Try again." (the same approved string, a danger banner) and is live again —
+  Cancel, Send and the back arrow work as before. A discard still out when #20 goes (a lock, another
+  account) answers onto nothing: the lock's reset (§7.1, #12 with the draft) stands. #19's leaving
+  does the same.
 - **Client tests (review B1):** a resume with `reauth: null` never calls `wallet.send`; any resume
   (confirmed, expired, popup reopen, hash opened by another page) never calls `wallet.send` before a
   tap event; `prepared-expired` after a tap never calls `wallet.send` again without a second tap.
@@ -1788,7 +1799,12 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     offers `[Try again]` only and `generic` `[View on explorer]` only, with no
     reason banner (the engine names no reason for an older build's record). The back arrow and Esc go to
     #12 with the transaction prefilled, as the design's annotation says (the same as `[Edit
-    transaction]`). The cancelled toast is the design's own `.s9-toast-cancelled` pill with its ✕.
+    transaction]`).
+  - **Plan 3 (final review I1) — #27's owner rule on #44:** #21 follows its record's account whoever is
+    selected, but `[Try again]` and `[Edit transaction]` start a flow for that account. They are offered
+    only while it is the selected account (a tap that raced another selection does nothing); otherwise
+    they are not drawn, and the back arrow and Esc close to #11 instead of opening another account's #12
+    with this draft. `[View details]` and the explorer link stay. The cancelled toast is the design's own `.s9-toast-cancelled` pill with its ✕.
   - **Plan 3 (Task 11) — fees on #44, the question carried from §4.6's display rule:** #44 prints no fee
     amount in any state. `rejected-by-program` says in words that the network fee was charged (the
     markup rolled back with the transaction; `feePaidLamports` is the network part only) and `[View
@@ -1887,6 +1903,9 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     the CTA keeps its label "Send again (same transaction)". 54a's speed-up icon on the primary CTA is not
     used (the action is not a speed-up; no icon). 54e's `[View in Activity]` is not on the `expired`
     layout: its CTAs are the spec's `[Try again]` and `[Done]`.
+  - **Plan 3 (final review I1, M2):** the `expired` layout's `[Try again]` follows #27's owner rule — offered
+    only while the record's account is the selected one (`[Done]` alone otherwise) — and in the 403 cool-down
+    it is disabled under the D26 banner (§7.2), as on the `stuck` layout.
   - **Plan 3 (Task 17 visual pass):** `sent-again`'s hash line holds the short hash (first four … last four), so
     the `.new-tx-hash` chip is as wide as its content and centred, where 54d's long "new hash · …" line runs the
     column's width; its Copy link keeps the 48 px touch target, so the chip is taller than 54d's.
@@ -2187,7 +2206,7 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     prepare, reviewed again — not to the design's `tx-confirm` (#20) "with original payload re-loaded"
     (D23: a retry is a new transaction, never the old payload). It is offered only while the account that
     made the transaction is the one selected (#27's route carries that account; fix round 1), and is
-    disabled in the 403 cool-down (D26).
+    disabled in the 403 cool-down, with the D26 banner at the top of the content (§7.2; final review M2).
   - 27d's "Reason", "Tried to swap", "Slippage limit" and "Observed move" rows are a swap's; a failed
     transfer has none of them (no swaps, and no failure reason in `HistoryView`).
   - `received`: "To" shows the full address in groups with Copy (a verification surface, §11
