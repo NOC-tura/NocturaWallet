@@ -1,0 +1,85 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "braces": {
+      "name": "braces",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1240992,
+          "name": "braces",
+          "dependency": "braces",
+          "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns",
+          "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+          "severity": "high",
+          "range": "<=3.0.3"
+        }
+      ],
+      "range": "*",
+      "fixAvailable": false
+    },
+    "micromatch": {
+      "name": "micromatch",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "braces"
+      ],
+      "range": ">=0.2.0",
+      "fixAvailable": false
+    },
+    "metro-file-map": {
+      "name": "metro-file-map",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "micromatch"
+      ],
+      "range": "*",
+      "fixAvailable": false
+    },
+    "react-native": {
+      "name": "react-native",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@react-native/community-cli-plugin",
+        "@react-native/virtualized-lists"
+      ],
+      "range": ">=0.73.0-nightly-20230506-1af868c52",
+      "fixAvailable": false
+    },
+    "@solana/wallet-adapter-react": {
+      "name": "@solana/wallet-adapter-react",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": [
+        "@solana-mobile/wallet-adapter-mobile",
+        "@solana/wallet-adapter-base",
+        "@solana/wallet-standard-wallet-adapter-react",
+        "@solana/web3.js"
+      ],
+      "range": "*",
+      "fixAvailable": false
+    },
+    "uuid": {
+      "name": "uuid",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1119441,
+          "name": "uuid",
+          "dependency": "uuid",
+          "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided",
+          "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq",
+          "severity": "moderate",
+          "range": "<11.1.1"
+        }
+      ],
+      "range": "<11.1.1",
+      "fixAvailable": false
+    }
+  }
+}
