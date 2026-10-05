@@ -86,7 +86,7 @@ C6 below):
 | D41 | #40 "Try a different seed" is **built in B1b-2a** as designed, using E5 | #40, E5 (§11 item 13 records how, since C4 forbids a replacement with other keys) |
 | C2 | `wallet.discardPrepared {account}` (privileged, partition-tested): drops that account's prepared sends and any send challenge bound to their intent; called by #10 [Cancel send], #20 [Cancel], Esc/back past #19. After it, `preparedFor` returns null. No toast claim that cannot be true | E7, #10, #19, #20, #44 |
 | C3 | `failure: 'landed' \| 'not-sent' \| null` on PendingRecord/PendingView, set where the engine writes each `failed`; #44 keys on it, `detail` stays the caption | E8, #44 |
-| C5 | The challenge re-base (D39) is **capped**: a challenge records `issuedAt`, and no re-base extends it past `issuedAt + 10 min` (`CHALLENGE_MAX_LIFE_MS`). #20's automatic re-prepare at the quote's end runs **at most once without user input**; after that "Quote expired — refresh", and refresh is a tap (review R2-H1) | E3, §4.5 |
+| C5 | The challenge re-base (D39) is **capped**: a challenge records `issuedAt`, and no re-base extends it past `issuedAt + 10 min` (`CHALLENGE_MAX_LIFE_MS`). #20's automatic re-prepare at the quote's end runs **at most once without user input**; after that "Quote expired" and `[Refresh]`, and refresh is a tap (review R2-H1) | E3, §4.5 |
 | C6 | D41's delete is guarded **in the background**: `vault.forgetWallet {…, guard: 'unfunded'}` reads every envelope account's balances through `deps.reader` inside E5's critical section, before the lock; any non-zero → `funded`, any read failure → `unreachable` (a 403 stays `coordinator-refused`). The vault page still never touches the network (review R2-M4) | E5, #8 retry, #40 |
 | C4 | E5's `replacement` binding is enforced **in the background**: `replacement.scheme === stored.scheme` and identical `{index, publicKey}` sets, else `malformed`; mutation test | E5 |
 
@@ -470,7 +470,7 @@ simulation: {
     user input** (§4.5).
   - **The real consequence:** a user who re-authenticates while #20 is on screen keeps the proof as
     long as they keep interacting, up to 10 minutes after the challenge was issued. After one
-    automatic refresh, an untouched #20 shows "Quote expired — refresh", and the proof runs out 120 s
+    automatic refresh, an untouched #20 shows "Quote expired" and `[Refresh]`, and the proof runs out 120 s
     after that last prepare. Past 10 minutes, whatever happens, the next Send asks for a new
     re-authentication (`reauth-required`, §4.5).
   - A `vault.reauthOk` answered `unknown-challenge` (the challenge expired while the password was
@@ -1559,8 +1559,10 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     with USD; "Quote valid 28 s · slot 271 408 921" — the 30 s prepared life and nothing else (D39).
     At 0, #20 re-prepares by itself (a read, never a send) and shows the fresh values with "Updated
     with a fresh network quote" — **at most once without user input** (C5; review R2-H1). When that
-    quote also runs out with no input since, #20 shows "Quote expired — refresh" and a `[Refresh]`
-    button; the refresh is a tap, which also sends `activity.ping`. `[Send 2.4800 SOL]`
+    quote also runs out with no input since, #20 shows "Quote expired" and `[Refresh]`; the refresh
+    is a tap, which also sends `activity.ping`. **The "Updated…" banner hides once the quote has
+    expired again** (owner, 2026-10-05) — "Quote expired" is the only line shown then, no stale
+    banner above it. `[Send 2.4800 SOL]`
     (`LockedButton`); `[Cancel]`. **Send is never autofocused** in any state, `confirmed` and
     `resume` included (review R2-L4): Enter on a freshly loaded #20 does nothing.
   - `first-time recipient` (`first-send` in reasons): banner "You've never sent to this address" /
@@ -1665,7 +1667,7 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     truncated below a cent, as #27's fee line ("$0.0007"); a zero Noctura fee's reason row has none; the
     Total's dollars add the token's value for an SPL send. The high-value line carries cents ("≈ $600.00
     USD · 6 % of your balance"); the share uses the balance the engine read for a SOL send, and the
-    selected account's balances for a token (omitted while they are unknown). "Quote expired — refresh"
+    selected account's balances for a token (omitted while they are unknown). "Quote expired"
     disables Send and puts `[Refresh]` beside the line. In the UI tab (#20 after #10), #10 opens in the
     same tab, so the two lines read "You'll confirm with your password (or passkey) in this tab before
     this is sent." and "Confirmation opens in this tab." — **controller additions — confirmed by the
@@ -2722,7 +2724,7 @@ Still standing (each with the default this spec builds):
   only on a proven same-wallet replacement. **D41 vs C4 is not resolved by the letter of D41**:
   §11.13 states the disagreement and the build.
 - **Contradictions checked after round 2.**
-  - C5 vs D39: the re-base stays, and the cap bounds it. The copy on #20 ("Quote expired — refresh")
+  - C5 vs D39: the re-base stays, and the cap bounds it. The copy on #20 ("Quote expired" + `[Refresh]`)
     matches the one-automatic-re-prepare rule.
   - E5's `busy` copy ("Nothing was deleted") is now true, because the removals follow the vault
     write.

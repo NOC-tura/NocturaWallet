@@ -29,7 +29,8 @@ export const CONFIRM_TEXT = {
   updated: 'Updated with a fresh network quote',
   updatedReview: 'Updated with a fresh network quote — review and send',
   notCarried: 'Your confirmation did not carry over. Confirm again.',
-  quoteExpired: 'Quote expired — refresh',
+  /** The stale "Updated…" banner hides once this shows (owner, 2026-10-05). */
+  quoteExpired: 'Quote expired',
   refresh: 'Refresh',
   pending: 'A send from this account is still pending.',
   cancel: 'Cancel',
@@ -82,7 +83,8 @@ export type ConfirmProps = ConfirmEntry & {
  * broadcast (D38):** `wallet.send` is called from `tap()` and nowhere else, and `tap()` runs only from the Send
  * button's click; a refusal that needs new values (prepared-expired, a re-authentication) shows them and waits for
  * a new tap. Send is never focused (R2-L4). The quote's end re-prepares by itself at most once without user input
- * (C5); after that "Quote expired — refresh", and the refresh is a tap.
+ * (C5); after that "Quote expired" and `[Refresh]`, and the refresh is a tap. The stale "Updated with a fresh
+ * network quote" banner hides once the quote has expired again (owner, 2026-10-05).
  */
 export function Confirm(props: ConfirmProps) {
   const {account, entry, onBack, onCancelled, onTrack, onReview, onStartAgain, onSuperseded} = props;
@@ -432,7 +434,10 @@ export function Confirm(props: ConfirmProps) {
   ) : notice === 'updated-review' ? (
     <Banner tone="info" title={CONFIRM_TEXT.updatedReview} />
   ) : notice === 'updated' ? (
-    <Banner tone="info" title={CONFIRM_TEXT.updated} />
+    // Stays visible while the refreshed quote is still valid; hides — no banner at all, never a fallback to
+    // "Confirmed"/"resume" below — once it has expired again (owner, 2026-10-05): the quote-expired line below
+    // ("Quote expired" + [Refresh]) is the only thing shown then.
+    quoteDead ? null : <Banner tone="info" title={CONFIRM_TEXT.updated} />
   ) : proven ? (
     <Banner tone="info" title={CONFIRM_TEXT.confirmed} />
   ) : entry === 'resume' ? (

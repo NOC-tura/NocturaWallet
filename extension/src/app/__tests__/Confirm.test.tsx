@@ -236,7 +236,7 @@ describe('#20 tx-confirm — what it shows', () => {
     }
   });
 
-  it('C5: at the quote’s end it re-prepares once by itself ("Updated…"), then, untouched, "Quote expired — refresh" — and no further prepare', async () => {
+  it('C5: at the quote’s end it re-prepares once by itself ("Updated…"), then, untouched, "Quote expired" [Refresh] — the stale banner gone, and no further prepare', async () => {
     vi.useFakeTimers({shouldAdvanceTime: true});
     const w = await renderConfirm();
     await sendButton();
@@ -245,7 +245,11 @@ describe('#20 tx-confirm — what it shows', () => {
     await waitFor(() => expect(prepares()).toBe(1));
     expect(await screen.findByText(CONFIRM_TEXT.updated)).toBeTruthy();
     await act(async () => void vi.advanceTimersByTime(31_000));
-    expect(await screen.findByText(CONFIRM_TEXT.quoteExpired, {exact: false})).toBeTruthy();
+    // Owner, 2026-10-05: once expired again, the line reads "Quote expired" + [Refresh] (no doubled "refresh"),
+    // and the stale "Updated…" banner from the first auto re-prepare is gone — not replaced by any other banner.
+    await waitFor(() => expect(document.querySelector('.app-quote')?.textContent).toBe(`${CONFIRM_TEXT.quoteExpired} ${CONFIRM_TEXT.refresh}`));
+    expect(screen.queryByText(CONFIRM_TEXT.updated)).toBeNull();
+    expect(document.querySelector('.banner')).toBeNull();
     expect((await sendButton()).disabled).toBe(true);
     await act(async () => void vi.advanceTimersByTime(120_000));
     expect(prepares()).toBe(1);
@@ -255,6 +259,20 @@ describe('#20 tx-confirm — what it shows', () => {
     await waitFor(() => expect(prepares()).toBe(2));
     expect(w.sent).toContain('activity.ping');
     await waitFor(() => expect(document.querySelector('.app-quote')?.textContent).toMatch(/^Quote valid/));
+  });
+
+  it('owner, 2026-10-05: the "Updated…" banner stays visible while the refreshed quote is still valid, before it expires again', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const w = await renderConfirm();
+    await sendButton();
+    const prepares = () => w.sent.filter(t => t === 'wallet.prepareSend').length;
+    await act(async () => void vi.advanceTimersByTime(30_000));
+    await waitFor(() => expect(prepares()).toBe(1));
+    expect(await screen.findByText(CONFIRM_TEXT.updated)).toBeTruthy();
+    // Short of a second expiry: the banner stays, and the quote is not shown as expired yet.
+    await act(async () => void vi.advanceTimersByTime(10_000));
+    expect(screen.queryByText(CONFIRM_TEXT.updated)).toBeTruthy();
+    expect(screen.queryByText(CONFIRM_TEXT.quoteExpired, {exact: false})).toBeNull();
   });
 
   it('any input since the automatic re-prepare allows one more (C5: "with no input since")', async () => {

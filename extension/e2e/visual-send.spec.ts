@@ -220,16 +220,18 @@ test('visual: #20’s states — first-time, high-value, the proof in #10 with i
     await seen(tab, tab.getByText('Confirmed. Review the fresh quote and send.'));
     await shot(tab, '20-confirmed', true);
     await tab.close();
-    // The quote ends untouched, on a popup whose clock runs ahead: one automatic re-prepare, then "Quote expired —
-    // refresh" (C5). Shot and closed: a page whose clock is ahead of the background's cannot take a fresh quote.
+    // The quote ends untouched, on a popup whose clock runs ahead: one automatic re-prepare, then "Quote expired"
+    // + [Refresh] (C5), with the stale "Updated…" banner gone (owner, 2026-10-05). Shot and closed: a page whose
+    // clock is ahead of the background's cannot take a fresh quote.
     const q = await h.openPopup({clock: true});
     await expect(q.getByText('Confirmed. Review the fresh quote and send.')).toBeVisible({timeout: 30_000});
     await q.clock.fastForward(31_000);
     await expect(q.getByText('Updated with a fresh network quote')).toBeVisible({timeout: 30_000});
     await q.clock.fastForward(31_000);
-    await expect(q.getByText('Quote expired — refresh')).toBeVisible({timeout: 30_000});
+    await expect(q.getByText('Quote expired')).toBeVisible({timeout: 30_000});
     await expect(q.getByRole('button', {name: 'Refresh'})).toBeVisible();
-    await seen(q, q.getByText('Quote expired — refresh'));
+    await expect(q.getByText('Updated with a fresh network quote')).toHaveCount(0);
+    await seen(q, q.getByText('Quote expired'));
     await shot(q, '20-quote-expired', true);
     expect(h.fake.broadcasts).toEqual([]);
     contained(h);
