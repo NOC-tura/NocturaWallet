@@ -189,6 +189,12 @@ export const ACCOUNTS = {
     'last-account': 'The last account cannot be removed.',
     'no-such-account': 'There is no account with that number.',
     'too-many-accounts': 'This wallet already has the most accounts it can hold.',
+    /** O37 (B1b-2b E13). */
+    'bad-index': 'That is not an account number.',
+    /** O36 (B1b-2b E13). */
+    'index-taken': 'That account is already in this wallet.',
+    /** B1b-2b C5: RESTORE `sendOpen` (2a) → adapted, "wallet" → "account" (§3.6). */
+    'send-open': 'A transaction from this account is still pending. Wait until it confirms or expires — about two minutes — then try again.',
     failed: 'Something went wrong.',
   },
 } as const;

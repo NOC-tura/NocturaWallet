@@ -7,7 +7,7 @@ export type Send = (m: unknown) => Promise<{ok: boolean; error?: string; data?: 
  * The background's answer to vault.storeEnvelope (src/background/accountsStore.ts), plus 'failed'
  * for anything else: an error it does not name, or a message that never came back.
  */
-export type StoreOutcome = 'stored' | 'busy' | 'wallet-exists' | 'stored-invalid' | 'malformed' | 'no-wallet' | 'failed';
+export type StoreOutcome = 'stored' | 'busy' | 'wallet-exists' | 'stored-invalid' | 'malformed' | 'no-wallet' | 'send-open' | 'failed';
 
 /**
  * The envelope in storage.local. The vault page reads it (shared/readLocal) and never writes it: the

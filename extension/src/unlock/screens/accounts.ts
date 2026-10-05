@@ -1,4 +1,5 @@
-import {addAccount, removeAccount} from '../accountsFlow';
+import {addAccount, lowestFreeIndex, removeAccount} from '../accountsFlow';
+import {storedVault} from '../stored';
 import {createWrongBackoff} from '../orchestrate';
 import {exclusive, type PageDeps} from '../page';
 import {ACCOUNTS, COMMON} from '../strings';
@@ -33,7 +34,9 @@ export function mountAccounts(deps: PageDeps): {show(): void} {
     void exclusive(deps, render, async () => {
       const f = factor();
       say(ACCOUNTS.adding);
-      say(ACCOUNTS.outcome[await backoff.run(() => addAccount(store, f), () => say(COMMON.waitConfirm))]);
+      const stored = storedVault(await deps.store.readEnvelope());
+      const index = lowestFreeIndex(stored.kind === 'wallet' ? stored.env.accounts.map(a => a.index) : []);
+      say(ACCOUNTS.outcome[await backoff.run(() => addAccount(store, f, index), () => say(COMMON.waitConfirm))]);
     });
   deps.gate.onIdle(render);
   add.addEventListener('click', doAdd);

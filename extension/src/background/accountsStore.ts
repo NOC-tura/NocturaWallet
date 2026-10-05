@@ -3,7 +3,7 @@ import type {WalletDeps} from './deps';
 import {createMutex} from './mutex';
 import {lock} from './autolock';
 import {getSession, sessionMutex} from './session';
-import {isOpen, updatePending} from './pendingStore';
+import {isOpen, readPending, updatePending} from './pendingStore';
 import {KNOWN_RECIPIENTS_KEY} from './knownRecipients';
 import {SETTINGS_KEY, updateSettings} from './settings';
 import {clearCaches} from './balanceCache';
@@ -89,7 +89,7 @@ export async function renameAccount(ext: Ext, index: number, name: string): Prom
   });
 }
 
-export type StoreResult = 'stored' | 'malformed' | 'no-wallet' | 'wallet-exists' | 'busy' | 'stored-invalid';
+export type StoreResult = 'stored' | 'malformed' | 'no-wallet' | 'wallet-exists' | 'busy' | 'stored-invalid' | 'send-open';
 export type StoredEnvelope = {
   v: 1;
   scheme: 'slip10' | 'cli';
@@ -213,6 +213,11 @@ export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelop
       // B1b-2b C3: a stored passkey may be replaced (addPasskey) or carried (an account change), never dropped
       // here — removal is vault.removePasskey's alone, so a page bug that omitted the field cannot disable it.
       if (current.passkey !== undefined && next.passkey === undefined) return 'malformed';
+      // B1b-2b C5: an account this change drops must have no open send — its key leaves the session, and the poller
+      // would watch a send it could never re-send. The vault page cannot read v1_pending; this is the guard.
+      const kept = new Set(next.accounts.map(a => a.index));
+      const dropped = new Set(current.accounts.filter(a => !kept.has(a.index)).map(a => a.publicKey));
+      if (dropped.size > 0 && (await readPending(ext)).some(r => isOpen(r) && dropped.has(r.account))) return 'send-open';
       for (const a of current.accounts) names.set(a.index, a.name);
     }
     const accounts: AccountView[] = [];
