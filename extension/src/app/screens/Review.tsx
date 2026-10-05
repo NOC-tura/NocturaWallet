@@ -132,6 +132,15 @@ export function Review({
     [account, intent, engine, reload, report, clock],
   );
 
+  /** Mounted: the leaving's discard answers onto nothing once the screen is gone (final review M1). */
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
   useEffect(() => {
     left.current = false;
     void simulate(false);
@@ -151,6 +160,9 @@ export function Review({
     run.current += 1;
     setLeaveFailed(false);
     const r = await engine.discardPrepared(account);
+    // Unmounted while it discarded (a lock, another account): their reset stands — onCancel's pop would undo the
+    // lock's, dropping the #12 draft it keeps (§7.1; final review M1).
+    if (!mounted.current) return;
     if (r.ok) return onCancel();
     // Not discarded: never leave a prepared send and its challenge behind (E7). Stay, say so, and let the user try
     // again; a simulation the leaving cut off is started again, so the screen is never stuck on "Simulating…".

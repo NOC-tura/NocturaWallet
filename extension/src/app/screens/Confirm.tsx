@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {useWallet} from '../WalletContext';
+import {PENDING_POLL_MS, useWallet} from '../WalletContext';
 import {feeUsd, showUsd} from '../format';
 import {draftOf, feeRows, percentOf, showExact, showLamports, usdOf, type Draft} from '../send/rules';
 import {reauthPage} from '../platform';
@@ -10,6 +10,7 @@ import {Banner, RefusedBanner} from '../ui/Banner';
 import {LockedButton} from '../ui/LockedButton';
 import {useEscape} from '../ui/useEscape';
 import {useNow} from '../useNow';
+import {REVIEW_TEXT} from './Review';
 import {CONFIRM_STRIKE_KEY, readPref, writePref} from '../prefs';
 import {MAINNET_FEE_TREASURY} from '../../../../core/fees/transferMarkup';
 import type {Intent, Pending, Prices, Resumable} from '../engine';
@@ -95,6 +96,8 @@ export function Confirm(props: ConfirmProps) {
   const [ownPrices, setOwnPrices] = useState<Prices | null>(null);
   const [quoteDead, setQuoteDead] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** [Cancel]'s discard failed (E7): #20 stays, says so, and is live again — as #19 does (final review M1). */
+  const [cancelFailed, setCancelFailed] = useState(false);
   /**
    * A tap's wallet.send is in flight: [Cancel], the back arrow and Esc do nothing until it answers — a cancel then
    * would discard nothing (the send holds the prepared send) and say "No fees charged" over a broadcast.
@@ -187,6 +190,31 @@ export function Confirm(props: ConfirmProps) {
     // Read once per mount: the account is this route's.
   }, [account, engine]);
 
+  // A send from this account was open when #20 read it: re-read wallet.pending on the provider's 2 s cadence while the
+  // block is shown, so a send that settles lifts it without leaving the screen (final review M4). #20's own read — the
+  // UI tab's quiet provider reads no pending of its own. An answer for an older read, or after the block lifted or the
+  // screen went, is dropped.
+  const blocked = open !== null;
+  useEffect(() => {
+    if (!blocked) return;
+    let alive = true;
+    const g = gen.current;
+    let asked = 0;
+    let applied = 0;
+    const read = async () => {
+      const mine = ++asked;
+      const p = await engine.pending();
+      if (!alive || gen.current !== g || left.current || mine < applied || !p.ok) return;
+      applied = mine;
+      setOpen(p.data.find(x => x.account === account && (x.state === 'pending' || x.state === 'stuck')) ?? null);
+    };
+    const t = setInterval(() => void read(), PENDING_POLL_MS);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [blocked, engine, account]);
+
   // C5: any user input since the last automatic re-prepare allows one more.
   useEffect(() => {
     const input = () => {
@@ -240,8 +268,18 @@ export function Confirm(props: ConfirmProps) {
     cancelling.current = true;
     left.current = true;
     cancelled.current = true;
-    await engine.discardPrepared(account);
-    onCancelled();
+    setCancelFailed(false);
+    const g = gen.current;
+    const r = await engine.discardPrepared(account);
+    // Unmounted while it discarded (a lock, another account): their reset stands — the lock's keeps the #12 draft.
+    if (gen.current !== g) return;
+    if (r.ok) return onCancelled();
+    // Not discarded: the prepared send and its challenge are still there (E7), so never "Transaction cancelled" over
+    // them. Stay, say so, and let the user try again — the screen is live again, as #19 does (final review M1).
+    cancelling.current = false;
+    left.current = false;
+    cancelled.current = false;
+    setCancelFailed(true);
   };
 
   /** The pending record a send that was refused after the tap may still have made (R2-M2), or null. */
@@ -408,6 +446,7 @@ export function Confirm(props: ConfirmProps) {
     <div className="screen s-conf">
       {top}
       <div className="scroll">
+        {cancelFailed ? <Banner tone="danger" title={REVIEW_TEXT.leaveFailed} /> : null}
         {banner}
         <h1 className="headline" aria-label={headlineLabel}>
           <span className="amount noc-numeral">Send {amount}</span> <span className="ticker">{token}</span> <span className="to-prefix">to</span>{' '}

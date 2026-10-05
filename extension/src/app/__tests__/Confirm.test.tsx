@@ -7,7 +7,8 @@ import {sendingReader, setupWallet, type Wallet, type WalletOptions} from './har
 import {CONFIRM_TEXT, Confirm, type ConfirmEntry} from '../screens/Confirm';
 import {createEngine, type Intent} from '../engine';
 import {showLamports} from '../send/rules';
-import {WalletProvider, type Surface} from '../WalletContext';
+import {PENDING_POLL_MS, WalletProvider, type Surface} from '../WalletContext';
+import {REVIEW_TEXT} from '../screens/Review';
 import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {CONFIRM_STRIKE_KEY} from '../prefs';
 import {REFUSED_TEXT} from '../ui/Banner';
@@ -389,6 +390,124 @@ describe('#20 tx-confirm — what it shows', () => {
     expect(nav.onBack).toHaveBeenCalledTimes(1);
     expect((await v.engine.preparedFor(ACCOUNT.publicKey)).ok).toBe(true);
     expect(v.sent.filter(t => t === 'wallet.discardPrepared')).toEqual([]);
+  });
+});
+
+// Final whole-branch review (plan 3): M1 — #20's [Cancel] handles a failed discard as #19 does; M4 — a pending send
+// that settles while #20 is shown lifts its block without leaving the screen.
+describe('#20 — a failed discard, and a pending send settling while shown (final review)', () => {
+  /** The discard's transport throws twice (the engine retries a thrown transport once): `failed`. */
+  const failingDiscard = () => {
+    let failures = 2;
+    return (m: {type: string}) => {
+      if (m.type !== 'wallet.discardPrepared' || failures === 0) return undefined;
+      failures -= 1;
+      return Promise.reject(new Error('service worker restarting'));
+    };
+  };
+
+  it('M1: [Cancel] whose discard fails stays on #20 with the line (as #19 does) — no toast over a prepared send left behind; [Cancel] again cancels', async () => {
+    const w = await renderConfirm({gate: failingDiscard()});
+    await sendButton();
+    fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
+    expect(await screen.findByText(REVIEW_TEXT.leaveFailed)).toBeTruthy();
+    expect(nav.onCancelled).not.toHaveBeenCalled();
+    expect((await w.engine.preparedFor(ACCOUNT.publicKey)).ok).toBe(true);
+    expect(screen.getByText(CONFIRM_TEXT.title)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
+    await waitFor(() => expect(nav.onCancelled).toHaveBeenCalledTimes(1));
+    expect(await w.engine.preparedFor(ACCOUNT.publicKey)).toEqual({ok: true, data: null});
+  });
+
+  it('M1: after a failed discard the screen is live again: the back arrow goes back, one tap sends once', async () => {
+    const w = await renderConfirm({gate: failingDiscard()});
+    await sendButton();
+    fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
+    expect(await screen.findByText(REVIEW_TEXT.leaveFailed)).toBeTruthy();
+    fireEvent.click(await sendButton());
+    await waitFor(() => expect(nav.onTrack).toHaveBeenCalledTimes(1));
+    expect(w.sends()).toBe(1);
+    expect(nav.onCancelled).not.toHaveBeenCalled();
+    cleanup();
+    vi.clearAllMocks();
+    await renderConfirm({gate: failingDiscard()});
+    await sendButton();
+    fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
+    expect(await screen.findByText(REVIEW_TEXT.leaveFailed)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Back'}));
+    expect(nav.onBack).toHaveBeenCalledWith(SMALL);
+  });
+
+  it('M1: unmounted while the discard is out (a lock, another account): the late answer navigates nothing', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(r => (release = r));
+    await renderConfirm({gate: m => (m.type === 'wallet.discardPrepared' ? held : undefined)});
+    await sendButton();
+    fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
+    cleanup();
+    await act(async () => release());
+    await act(async () => new Promise(r => setTimeout(r, 50)));
+    expect(nav.onCancelled).not.toHaveBeenCalled();
+  });
+
+  const open = () => pendingRecord({id: 'p1', account: ACCOUNT.publicKey, signature: '5'.repeat(88), createdAt: Date.now(), intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}});
+
+  it('M4: the open send settles while #20 is shown — the next pending read lifts the block: the line goes, Send is enabled and sends on a tap', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const record = open();
+    const w = await renderConfirm({afterPrepare: ext => ext.local.set(PENDING_KEY, [record])});
+    expect(await screen.findByText(CONFIRM_TEXT.pending)).toBeTruthy();
+    expect((await sendButton()).disabled).toBe(true);
+    await w.ext.local.set(PENDING_KEY, [{...record, state: 'confirmed'}]);
+    await act(async () => void vi.advanceTimersByTime(PENDING_POLL_MS + 50));
+    await waitFor(() => expect(screen.queryByText(CONFIRM_TEXT.pending)).toBeNull());
+    await waitFor(async () => expect((await sendButton()).disabled).toBe(false));
+    // Only #20's own reads: no prepare by itself while the quote is live.
+    expect(w.sent.filter(t => t === 'wallet.prepareSend')).toEqual([]);
+    fireEvent.click(await sendButton());
+    await waitFor(() => expect(w.sends()).toBe(1));
+  });
+
+  it('M4: while it stays open the block stays, and the re-reads stop once #20 is gone', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const w = await renderConfirm({afterPrepare: ext => ext.local.set(PENDING_KEY, [open()])});
+    expect(await screen.findByText(CONFIRM_TEXT.pending)).toBeTruthy();
+    const reads = () => w.sent.filter(t => t === 'wallet.pending').length;
+    const first = reads();
+    await act(async () => void vi.advanceTimersByTime(PENDING_POLL_MS * 2 + 50));
+    expect(reads()).toBeGreaterThan(first);
+    expect(screen.getByText(CONFIRM_TEXT.pending)).toBeTruthy();
+    expect((await sendButton()).disabled).toBe(true);
+    cleanup();
+    const gone = reads();
+    await act(async () => void vi.advanceTimersByTime(PENDING_POLL_MS * 3));
+    expect(reads()).toBe(gone);
+  });
+
+  it('M4: a re-read still out when the block lifted lands on nothing — an older "open" answer never puts it back', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const record = open();
+    let holding = false;
+    const held: (() => void)[] = [];
+    const w = await renderConfirm({
+      afterPrepare: ext => ext.local.set(PENDING_KEY, [record]),
+      // While `holding`, every pending read (#20's and the provider's) waits at the client until released.
+      gate: m => (m.type === 'wallet.pending' && holding ? new Promise<void>(r => void held.push(r)) : undefined),
+    });
+    expect(await screen.findByText(CONFIRM_TEXT.pending)).toBeTruthy();
+    holding = true;
+    await act(async () => void vi.advanceTimersByTime(PENDING_POLL_MS + 50));
+    expect(held.length).toBeGreaterThan(0);
+    holding = false;
+    await w.ext.local.set(PENDING_KEY, [{...record, state: 'confirmed'}]);
+    await act(async () => void vi.advanceTimersByTime(PENDING_POLL_MS + 50));
+    await waitFor(() => expect(screen.queryByText(CONFIRM_TEXT.pending)).toBeNull());
+    // The held reads answer now, with the record open (as an older answer would have said it).
+    await w.ext.local.set(PENDING_KEY, [record]);
+    await act(async () => held.forEach(r => r()));
+    await act(async () => void vi.advanceTimersByTime(50));
+    expect(screen.queryByText(CONFIRM_TEXT.pending)).toBeNull();
+    expect((await sendButton()).disabled).toBe(false);
   });
 });
 

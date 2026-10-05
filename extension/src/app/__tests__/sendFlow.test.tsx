@@ -778,4 +778,65 @@ describe('final review: owner rule, discards under a lock, the resume hash, a pe
     expect(w.sent).not.toContain('wallet.resend');
   });
 
+  /** Lock (the session cleared, seen by the 5 s state poll). */
+  async function lock(w: Wallet): Promise<void> {
+    await clearSession(w.ext);
+    await act(async () => void vi.advanceTimersByTime(STATE_POLL_MS + 50));
+    expect(await screen.findByText('Welcome back')).toBeTruthy();
+  }
+  async function unlock(w: Wallet): Promise<void> {
+    await setSession(w.ext, [ACCOUNT, SECOND]);
+    await act(async () => void vi.advanceTimersByTime(STATE_POLL_MS + 50));
+  }
+  /** #12 holding the flow's draft (the §7.1 lock rule), and no cancelled toast over it. */
+  async function atDraft(): Promise<void> {
+    expect(await screen.findByText('Send', {selector: '.title'})).toBeTruthy();
+    expect((screen.getByLabelText('Recipient') as HTMLInputElement).value).toBe(COUNTERPARTY);
+    expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('0.01');
+    expect(screen.queryByText(CANCELLED_TEXT)).toBeNull();
+  }
+  /** A discard held at the client until `release`. */
+  function heldDiscard() {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(r => (release = r));
+    let holding = false;
+    return {gate: (type: string) => (type === 'wallet.discardPrepared' && holding ? held : undefined), hold: () => void (holding = true), release: () => release()};
+  }
+
+  it('M1: a lock while #20’s [Cancel] discards: the lock’s reset stands — unlocked, #12 holds the draft; no toast', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const d = heldDiscard();
+    const w = await app({known: true, gate: d.gate});
+    expect(await screen.findByText(CONFIRM_TEXT.resume)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Back'}));
+    expect(await screen.findByText(REVIEW_TEXT.passed)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: REVIEW_TEXT.continue}));
+    await sendButton();
+    d.hold();
+    fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
+    await lock(w);
+    await act(async () => d.release());
+    await act(async () => void vi.advanceTimersByTime(50));
+    await unlock(w);
+    await atDraft();
+    expect(w.sends()).toBe(0);
+  });
+
+  it('M1: a lock while #19’s [Cancel] discards: the lock’s reset stands — unlocked, #12 holds the draft (not popped to #11)', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const d = heldDiscard();
+    const w = await app({known: true, gate: d.gate});
+    expect(await screen.findByText(CONFIRM_TEXT.resume)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Back'}));
+    expect(await screen.findByText(REVIEW_TEXT.passed)).toBeTruthy();
+    d.hold();
+    fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
+    await lock(w);
+    await act(async () => d.release());
+    await act(async () => void vi.advanceTimersByTime(50));
+    await unlock(w);
+    await atDraft();
+    expect(w.sends()).toBe(0);
+  });
+
 });
