@@ -225,7 +225,10 @@ test('visual: #20’s states — first-time, high-value, the proof in #10 with i
     // clock is ahead of the background's cannot take a fresh quote.
     const q = await h.openPopup({clock: true});
     await expect(q.getByText('Confirmed. Review the fresh quote and send.')).toBeVisible({timeout: 30_000});
-    await q.clock.fastForward(31_000);
+    // Only just past the first quote's end: the background's re-prepare is stamped on its real clock, so a popup
+    // already 31 s ahead would see the fresh quote expired on arrival and "Updated…" could vanish before it is read.
+    const quote = (await msg(q, {type: 'wallet.preparedFor', account: ACCOUNT})).data as {validUntil: number};
+    await q.clock.fastForward(Math.max(1, quote.validUntil - (await q.evaluate(() => Date.now())) + 1_000));
     await expect(q.getByText('Updated with a fresh network quote')).toBeVisible({timeout: 30_000});
     await q.clock.fastForward(31_000);
     await expect(q.getByText('Quote expired')).toBeVisible({timeout: 30_000});
