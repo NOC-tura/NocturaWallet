@@ -6,7 +6,7 @@ import {getSession, setSessionIf} from './session';
 import {armAutolock, lock} from './autolock';
 import type {WalletDeps} from './deps';
 import {CHALLENGE_ID, challengeInfo, satisfyChallenge} from './reauthChallenges';
-import {forgetWallet, readWalletView, storeEnvelope} from './accountsStore';
+import {changePassword, forgetWallet, readWalletView, storeEnvelope} from './accountsStore';
 import {isOpen, readPending} from './pendingStore';
 import {startPoller} from './pending';
 import {WALLET_TYPES, applySettingsChallenge, handleWallet, isWalletType, type Result} from './walletApi';
@@ -26,14 +26,26 @@ export interface Sender {
  * sets — never the URL the message claims, and never "has a tab", which a full-tab
  * extension page also has.
  */
-export const PRIVILEGED = ['vault.setKeys', 'vault.lock', 'vault.status', 'vault.reauthOk', 'vault.storeEnvelope', 'vault.challengeInfo', 'vault.forgetWallet', 'activity.ping', ...WALLET_TYPES] as const;
+export const PRIVILEGED = [
+  'vault.setKeys',
+  'vault.lock',
+  'vault.status',
+  'vault.reauthOk',
+  'vault.storeEnvelope',
+  'vault.challengeInfo',
+  'vault.forgetWallet',
+  'vault.changePassword',
+  'activity.ping',
+  ...WALLET_TYPES,
+] as const;
 /**
  * Only the vault page itself may hand over keys, report a re-authentication it proved, hand over
  * the envelope it re-encrypted (the background is the one writer of v1_vault), or read what a
  * re-authentication is for (vault.challengeInfo, B1b-2a E3), or forget the wallet it proved
- * (vault.forgetWallet, E5): the popup and the tab cannot.
+ * (vault.forgetWallet, E5), or change the password it proved (vault.changePassword, B1b-2b E10): the popup and
+ * the tab cannot.
  */
-const VAULT_PAGE_ONLY: readonly string[] = ['vault.setKeys', 'vault.reauthOk', 'vault.storeEnvelope', 'vault.challengeInfo', 'vault.forgetWallet'];
+const VAULT_PAGE_ONLY: readonly string[] = ['vault.setKeys', 'vault.reauthOk', 'vault.storeEnvelope', 'vault.challengeInfo', 'vault.forgetWallet', 'vault.changePassword'];
 export const PAGE: readonly string[] = [];
 
 function isOwnPage(ext: Ext, s: Sender): boolean {
@@ -180,6 +192,16 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
         console.warn('vault.forgetWallet: forgotten, but the pending check after it failed', e);
       }
       return {ok: true};
+    }
+    case 'vault.changePassword': {
+      if (deps === undefined) return {ok: false, error: 'unavailable'};
+      const {expectedRevision, envelope} = msg as {expectedRevision?: unknown; envelope?: unknown};
+      try {
+        const r = await changePassword(ext, deps.now(), expectedRevision, envelope);
+        return r === 'changed' ? {ok: true} : {ok: false, error: r};
+      } catch {
+        return {ok: false, error: 'failed'};
+      }
     }
     case 'vault.storeEnvelope': {
       const {expectedRevision, envelope} = msg as {expectedRevision?: unknown; envelope?: unknown};
