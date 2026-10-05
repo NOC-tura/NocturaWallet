@@ -46,6 +46,7 @@ const SEND = (account: string): Extract<ChallengeAbout, {kind: 'send'}> => ({
   recipient: RECIPIENT,
   amount: '2480000000',
   networkLamports: '5050',
+  priorityLamports: '50',
   markupLamports: '0',
   markupReason: 'status-unknown',
   rentLamports: '0',
@@ -136,7 +137,8 @@ describe('#10 unlock-send (spec §3.10)', () => {
     const rows = [...el('ra-rows').querySelectorAll('.intent-row')];
     expect(rows.map(r => [text(r.querySelector('.label')), text(r.querySelector('.value'))])).toEqual([
       ['To', RECIPIENT],
-      ['Network fee', '0.00000505 SOL'],
+      ['Network fee', '0.000005 SOL'],
+      ['Priority', '0.00000005 SOL'],
       ['No Noctura fee (status unknown)', ''],
     ]);
     expect([...rows[0]!.querySelectorAll('.addr-groups > span')].map(text)).toEqual(RECIPIENT.match(/.{1,4}/g));

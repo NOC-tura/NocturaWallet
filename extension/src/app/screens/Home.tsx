@@ -6,6 +6,7 @@ import {formatAmount} from '../../shared/amount';
 import {HIDE_BALANCES_KEY, readPref, writePref} from '../prefs';
 import {useNow} from '../useNow';
 import {ExtIcon} from '../ui/ExtIcon';
+import {LockedButton} from '../ui/LockedButton';
 import {RefusedBanner} from '../ui/Banner';
 import {SkelCircle, SkelLine} from '../ui/Skeleton';
 import {TokenTile} from '../ui/TokenTile';
@@ -44,7 +45,7 @@ function NetBanner({mode, sustainedNow, lastSync, failures, now}: {mode: NetMode
   );
 }
 
-/** #11's pending strip (plan-1 stand-in: it opens Activity, not #21/#54). */
+/** #11's pending strip: an open send of this account, which opens #21 (or #54 once it is stuck). */
 function PendingStrip({p, now, onOpen}: {p: Pending; now: number; onOpen: () => void}) {
   const slow = p.state === 'stuck' || now - p.createdAt > 80_000;
   const amount = formatAmount(p.intent.amount, TOKEN_INFO[p.intent.token].decimals, {min: 0, max: TOKEN_INFO[p.intent.token].decimals});
@@ -65,11 +66,11 @@ const DOTS = [0, 1, 2, 3, 4, 5];
 const joined = (...parts: (string | null)[]): string => parts.filter((x): x is string => x !== null).join(' · ');
 
 /**
- * #11 dashboard (spec §5.1) with #42's offline states and the D26 refused state (§5.4). Plan-1
- * stand-ins, stated in the plan: no Send quick action (the send flow is plan 3), and the pending
- * strip opens Activity.
+ * #11 dashboard (spec §5.1) with #42's offline states and the D26 refused state (§5.4). Send opens #12 —
+ * disabled offline, while the server cannot be reached and in the 403 cool-down (D36: Receive stays, the
+ * address is local); the pending strip opens the open send at #21/#54.
  */
-export function Home({onReceive, onActivity, onAccounts}: {onReceive: () => void; onActivity: () => void; onAccounts: () => void}) {
+export function Home({onSend, onReceive, onPending, onAccounts}: {onSend: () => void; onReceive: () => void; onPending: (p: Pending) => void; onAccounts: () => void}) {
   const m = useWallet();
   const now = useNow(1_000, m.now);
   const [hidden, setHidden] = useState(() => readPref(HIDE_BALANCES_KEY) === '1');
@@ -130,10 +131,12 @@ export function Home({onReceive, onActivity, onAccounts}: {onReceive: () => void
           <SkelLine width={140} height={14} />
         </div>
         <div className="quick">
-          <div className="qa">
-            <SkelCircle />
-            <SkelLine width={42} height={10} />
-          </div>
+          {[34, 42].map(w => (
+            <div className="qa" key={w}>
+              <SkelCircle />
+              <SkelLine width={w} height={10} />
+            </div>
+          ))}
         </div>
         <div className="section-h">
           <h3 className="noc-overline">TOKENS</h3>
@@ -185,7 +188,7 @@ export function Home({onReceive, onActivity, onAccounts}: {onReceive: () => void
     <div className="screen s-dash">
       {top}
       {banner}
-      {open === undefined ? null : <PendingStrip p={open} now={now} onOpen={onActivity} />}
+      {open === undefined ? null : <PendingStrip p={open} now={now} onOpen={() => onPending(open)} />}
       <section className={`hero${heroStale ? ' s8-stale' : ''}`}>
         {heroStale ? <div className="s8-stale-mark" /> : null}
         <div className="label-row">
@@ -237,6 +240,13 @@ export function Home({onReceive, onActivity, onAccounts}: {onReceive: () => void
         </div>
       </section>
       <div className="quick">
+        {/* Rule 6: a double click opens #12 once. */}
+        <LockedButton className="qa" disabled={away || refused} onPress={onSend}>
+          <span className="icon">
+            <ExtIcon name="send" size={18} />
+          </span>
+          <span className="lbl">Send</span>
+        </LockedButton>
         <button type="button" className="qa" onClick={onReceive}>
           <span className="icon">
             <ExtIcon name="receive" size={18} />

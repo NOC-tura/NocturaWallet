@@ -1,4 +1,4 @@
-import {createEngine, RETRY_AFTER_MS, type Transport} from '../engine';
+import {createEngine, feePaidLamports, RETRY_AFTER_MS, type Transport} from '../engine';
 import {handleMessage} from '../../background/messages';
 import {VAULT_KEY} from '../../background/accountsStore';
 import {KNOWN_RECIPIENTS_KEY} from '../../background/knownRecipients';
@@ -143,12 +143,61 @@ describe('shape checks: a reply of the wrong shape is failed', () => {
 
   it('pending: an unknown state or failure value', async () => {
     const p = {
-      id: 'r1', account: acc, signature: '5'.repeat(88), lastValidBlockHeight: 1, createdAt: 1, lastSentAt: 1, state: 'pending', detail: null,
-      intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}, expiryNullSeenAt: null, failure: null,
+      id: 'r1', account: acc, signature: '5'.repeat(88), lastValidBlockHeight: 1, createdAt: 1, lastSentAt: 1, state: 'pending', detail: null, detailCode: null,
+      intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}, expiryNullSeenAt: null, failure: null, fee: {networkLamports: '5050', markupLamports: '0'},
     };
     expect((await engineAnswering({ok: true, data: [p]}).pending()).ok).toBe(true);
     expect(await engineAnswering({ok: true, data: [{...p, state: 'lost'}]}).pending()).toEqual({ok: false, error: 'failed'});
     expect(await engineAnswering({ok: true, data: [{...p, failure: 'maybe'}]}).pending()).toEqual({ok: false, error: 'failed'});
+    // Plan 3: the fee is two base-unit strings or null, nothing else — and the field must be there.
+    expect(await engineAnswering({ok: true, data: [p]}).pending()).toMatchObject({ok: true, data: [{fee: {networkLamports: 5050n, markupLamports: 0n}}]});
+    expect((await engineAnswering({ok: true, data: [{...p, fee: null}]}).pending()).ok).toBe(true);
+    const {fee: _omitted, ...withoutFee} = p;
+    for (const fee of [undefined, '5050', 5050, {networkLamports: '5050'}, {networkLamports: '5050', markupLamports: 0}, {networkLamports: 'x', markupLamports: '0'}]) {
+      expect(await engineAnswering({ok: true, data: [{...p, fee}]}).pending()).toEqual({ok: false, error: 'failed'});
+    }
+    expect(await engineAnswering({ok: true, data: [withoutFee]}).pending()).toEqual({ok: false, error: 'failed'});
+    // Task 10 fix round 1: detailCode is a closed enum or null, and the field must be there.
+    for (const detailCode of ['forbidden', 'cooling', 'unacked', 'substituted'] as const) {
+      expect(await engineAnswering({ok: true, data: [{...p, detailCode}]}).pending()).toMatchObject({ok: true, data: [{detailCode}]});
+    }
+    for (const detailCode of [undefined, 'refused', 'FORBIDDEN', 3, {}]) {
+      expect(await engineAnswering({ok: true, data: [{...p, detailCode}]}).pending()).toEqual({ok: false, error: 'failed'});
+    }
+    const {detailCode: _code, ...withoutCode} = p;
+    expect(await engineAnswering({ok: true, data: [withoutCode]}).pending()).toEqual({ok: false, error: 'failed'});
+    expect(await engineAnswering({ok: true, data: {...p, detailCode: 'other'}}).resend('r1')).toEqual({ok: false, error: 'failed'});
+  });
+
+  // Plan 3 follow-up ruling: what is shown as paid follows the state — a landed-but-failed send paid the network
+  // fee and had its markup rolled back; not-sent and expired paid nothing; a send not yet settled claims nothing.
+  it('feePaidLamports: confirmed = network + markup; failed/landed = network only; not-sent, expired, unsettled = null', () => {
+    const fee = {networkLamports: 5_050n, markupLamports: 20_000n};
+    expect(feePaidLamports({state: 'confirmed', failure: null, fee})).toBe(25_050n);
+    expect(feePaidLamports({state: 'failed', failure: 'landed', fee})).toBe(5_050n);
+    expect(feePaidLamports({state: 'failed', failure: 'not-sent', fee})).toBeNull();
+    expect(feePaidLamports({state: 'expired', failure: null, fee})).toBeNull();
+    expect(feePaidLamports({state: 'failed', failure: null, fee})).toBeNull();
+    expect(feePaidLamports({state: 'pending', failure: null, fee})).toBeNull();
+    expect(feePaidLamports({state: 'stuck', failure: null, fee})).toBeNull();
+    expect(feePaidLamports({state: 'confirmed', failure: null, fee: null})).toBeNull();
+  });
+
+  // Plan 3: #20 reads whether the challenge is proven and when the quote ends; anything else is failed.
+  it('prepareSend: reauth.proven must be a boolean and validUntil a time', async () => {
+    const view = {
+      id: 'ab'.repeat(16),
+      fees: {networkLamports: '5050', priorityLamports: '50', rentLamports: '0', markupLamports: '0', markupReason: 'status-unknown'},
+      solRequiredLamports: '1005050',
+      reauth: {challengeId: 'cd'.repeat(16), reasons: ['first-send'], proven: false},
+      validUntil: 1_030_000,
+      simulation: {slot: 1, elapsedMs: 2, instructions: 3, programs: ['compute-budget', 'system'], recipient: 'wallet', sol: {before: '10', after: '9'}, token: null},
+    };
+    const intent = {token: 'SOL' as const, recipient: RECIPIENT, amount: 1n};
+    expect(await engineAnswering({ok: true, data: view}).prepareSend(acc, intent)).toMatchObject({ok: true, data: {reauth: {proven: false}, validUntil: 1_030_000}});
+    for (const bad of [{...view, reauth: {...view.reauth, proven: 'yes'}}, {...view, reauth: {challengeId: view.reauth.challengeId, reasons: ['first-send']}}, {...view, validUntil: -1}, {...view, validUntil: undefined}]) {
+      expect(await engineAnswering({ok: true, data: bad}).prepareSend(acc, intent)).toEqual({ok: false, error: 'failed'});
+    }
   });
 });
 

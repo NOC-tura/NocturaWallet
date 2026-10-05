@@ -7,6 +7,7 @@ import {base58} from '@scure/base';
  */
 export const PRESALE_PROGRAM = '6nTTJwtDuxjv8C1JMsajYQapmPAGrC3QF1w5nu9LXJvt';
 export const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+export const SYSTEM_PROGRAM = '11111111111111111111111111111111';
 export const COUNTERPARTY = 'H4qZoWSv5iyeysmHzYnVfqVBtSfoJTZQJ33YtjAXm2N1';
 
 /** A well-formed transaction signature (64 bytes, base58), different for each n. */
@@ -20,7 +21,8 @@ const tx = (blockTime: number, meta: object, accountKeys: string[], instructions
 
 export function sentSol(owner: string, to: string, lamports: number, blockTime: number) {
   return tx(blockTime, {preBalances: [10_000_000_000, 0], postBalances: [10_000_000_000 - lamports - 5000, lamports]}, [owner, to], [
-    {program: 'system', parsed: {type: 'transfer', info: {source: owner, destination: to, lamports}}},
+    // jsonParsed always carries the programId; a failed send is decoded only from the System program's own id.
+    {program: 'system', programId: SYSTEM_PROGRAM, parsed: {type: 'transfer', info: {source: owner, destination: to, lamports}}},
   ]);
 }
 

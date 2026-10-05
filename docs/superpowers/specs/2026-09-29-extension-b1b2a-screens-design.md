@@ -86,7 +86,7 @@ C6 below):
 | D41 | #40 "Try a different seed" is **built in B1b-2a** as designed, using E5 | #40, E5 (§11 item 13 records how, since C4 forbids a replacement with other keys) |
 | C2 | `wallet.discardPrepared {account}` (privileged, partition-tested): drops that account's prepared sends and any send challenge bound to their intent; called by #10 [Cancel send], #20 [Cancel], Esc/back past #19. After it, `preparedFor` returns null. No toast claim that cannot be true | E7, #10, #19, #20, #44 |
 | C3 | `failure: 'landed' \| 'not-sent' \| null` on PendingRecord/PendingView, set where the engine writes each `failed`; #44 keys on it, `detail` stays the caption | E8, #44 |
-| C5 | The challenge re-base (D39) is **capped**: a challenge records `issuedAt`, and no re-base extends it past `issuedAt + 10 min` (`CHALLENGE_MAX_LIFE_MS`). #20's automatic re-prepare at the quote's end runs **at most once without user input**; after that "Quote expired — refresh", and refresh is a tap (review R2-H1) | E3, §4.5 |
+| C5 | The challenge re-base (D39) is **capped**: a challenge records `issuedAt`, and no re-base extends it past `issuedAt + 10 min` (`CHALLENGE_MAX_LIFE_MS`). #20's automatic re-prepare at the quote's end runs **at most once without user input**; after that "Quote expired" and `[Refresh]`, and refresh is a tap (review R2-H1) | E3, §4.5 |
 | C6 | D41's delete is guarded **in the background**: `vault.forgetWallet {…, guard: 'unfunded'}` reads every envelope account's balances through `deps.reader` inside E5's critical section, before the lock; any non-zero → `funded`, any read failure → `unreachable` (a 403 stays `coordinator-refused`). The vault page still never touches the network (review R2-M4) | E5, #8 retry, #40 |
 | C4 | E5's `replacement` binding is enforced **in the background**: `replacement.scheme === stored.scheme` and identical `{index, publicKey}` sets, else `malformed`; mutation test | E5 |
 
@@ -260,7 +260,12 @@ mutation test in `scripts/__tests__`):
   Settings, D3) on the three tab screens, or a **sticky action bar** on flow screens.
 - Height budget: tab screens 600 − 56 − 80 = 464 px of content; a flow screen with one CTA
   (56 + 2 × 12 padding) leaves 464 px; with two stacked CTAs (2 × 56 + 8 + 24) it leaves 408 px.
-  No bar in B1b-2a stacks three CTAs: #19's third one ("Continue anyway") is gone by D21.
+  No bar in B1b-2a stacks three CTAs: #19's third one ("Continue anyway") is gone by D21, and #44's
+  `rejected-by-program` keeps `[View on explorer]` in its reason banner, as 44c does.
+  **Declared (Task 17 fix round 2):** #20's bar holds more than one CTA's worth. It has `[Send …]`, `[Cancel]`, and,
+  for a send that needs re-authentication, D12's line "Confirmation opens in a new tab." under them. That is about
+  200 px, which leaves about 344 px of content above it. Both bars are pinned (§8.6 plan 3), so the content scrolls
+  clear of them.
 - The mockups are 412 × 916. Content keeps the design's order and spacing and scrolls. Nothing
   is dropped to make it fit.
 - Touch targets keep the design's minimums (`--touch-target-min` 48 px on every control).
@@ -305,9 +310,17 @@ mutation test in `scripts/__tests__`):
   reset-to-tab. There is no router library. The tab surface reads its first route from
   `location.hash`. The only hashes are `#/created`, `#/imported`, `#/send/resume?account=<address>`
   and `#/home`, and the hash only chooses a screen: every value shown comes from the background.
-  The address is validated like any address and only selects which `preparedFor` to read. **No
-  hash causes an action.** Any extension page, or another extension opening `wallet.html#/send/…`,
-  can at most make #20 appear, and #20 waits for a tap (review B1, D38).
+  The address is validated like any address and only selects which `preparedFor` to read. It must
+  also be the selected account (plan 3, final review M3): another account selected — before the tab
+  opened or while it is open — ends that flow as an account switch does (#11; #20 never mounts for
+  it, nothing is read for the hash's account and nothing is sent; its prepared send is left as it is).
+  Until the selection is known, the route shows nothing. **No hash causes an action.** Any extension page, or another extension opening `wallet.html#/send/…`,
+  can at most make #20 appear, and #20 waits for a tap (review B1, D38). **Plan 3:** on that route the
+  tab's provider stays quiet — the state, and what #20 reads itself (`preparedFor`, `prepareSend` when the
+  quote has expired, `pending`, `prices`); once the user moves on from it (to #21, #19 or #12) the tab is a
+  wallet surface like the popup and runs the open sequence. The flow's pushed routes carry only what the
+  user typed (#12's draft, #19's intent) and which account and pending record a screen reads — never a
+  prepared send.
 
 ### 1.7 Design-system reuse from `web/`
 
@@ -433,7 +446,9 @@ simulation: {
 - **Store change** (`reauthChallenges.ts`): a challenge record gains `about`, written by the same
   `issueChallenge` call that binds the digest, from the same parsed values:
   - send: `{kind: 'send', account, token: 'SOL'|'NOC'|'USDC'|'USDT', recipient, amount (base units),
-    networkLamports, markupLamports, markupReason, rentLamports, reasons, thresholdCents}`;
+    networkLamports, priorityLamports, markupLamports, markupReason, rentLamports, reasons,
+    thresholdCents}` (`priorityLamports` added by plan 3, carry 1: the part of `networkLamports` that
+    is the priority fee, never more than it);
   - settings: `{kind: 'settings', autoLockMinutes: number | null, reauthUsdCents: number | null}`.
   When `prepareSend` reuses a live challenge (`rebaseChallenge`), it refreshes the fee fields
   of `about` from the new prepare. The digest and the identity fields never change. `isChallenge`
@@ -455,7 +470,7 @@ simulation: {
     user input** (§4.5).
   - **The real consequence:** a user who re-authenticates while #20 is on screen keeps the proof as
     long as they keep interacting, up to 10 minutes after the challenge was issued. After one
-    automatic refresh, an untouched #20 shows "Quote expired — refresh", and the proof runs out 120 s
+    automatic refresh, an untouched #20 shows "Quote expired" and `[Refresh]`, and the proof runs out 120 s
     after that last prepare. Past 10 minutes, whatever happens, the next Send asks for a new
     re-authentication (`reauth-required`, §4.5).
   - A `vault.reauthOk` answered `unknown-challenge` (the challenge expired while the password was
@@ -1150,23 +1165,25 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   - **`[Cancel send]` closes the tab** (review L2). The design returns to #20, but the popup that
     showed #20 closed when this tab opened, and a tab cannot reopen it. It discards the prepared send
     first (E7), so nothing is left to resume.
-  - **Plan 2:** "Network fee" is `networkLamports` — priority included: `about` (E3) carries no
-    `priorityLamports`, so #10 cannot split it as §4.5's fee rows do on #19 and #20 (plan-2 review
-    ruling 2: plan 2 is UI-only, §12; plan 3, which builds #19/#20's rows, may add
-    `priorityLamports` to `about` so the three screens agree). The amounts appear when non-zero; a
-    zero Noctura fee shows its reason line (the carried rule), and `charged` with a zero fee is not
-    described. Fees are exact and ungrouped ("0.00000505 SOL"); the design's thin grouping (plan-1
-    L7) is not applied — an exact lamport amount reads unambiguously without it, and #19/#20's rows
-    (plan 3) decide the grouping for all three screens. The cooldown's disabled button reads "Confirm paused" and a
+  - **Plan 3 (carry 1):** `about` (E3) carries `priorityLamports` (a twelfth key, digits, never more
+    than `networkLamports`; the background's `isAbout` and the page's closed-alphabet renderer both
+    check it), so #10 shows §4.5's fee rows exactly as #19 and #20 do: "Network fee" (the base fee,
+    `networkLamports − priorityLamports`), "Priority", "New token account" when non-zero, then
+    "Noctura fee" or, when it is zero, its reason line (the carried rule); `charged` with a zero fee
+    is not described. The amounts are exact and ungrouped ("0.000005 SOL") on all three screens, as
+    the #19 and #20 mockups draw them; only #27's fee line keeps the design's grouped form (plan-1
+    L7). (Plan 2 showed one "Network fee" row with the priority included, plan-2 review ruling 2.)
+    The cooldown's disabled button reads "Confirm paused" and a
     settings challenge's cancel reads "Cancel" (it only closes the tab; the challenge simply
     expires) — **both controller additions — confirmed by the owner 2026-10-01**. A discard the background refuses
     says "Something went wrong. Try again." and keeps the screen: "Send cancelled" is shown only when
     it is true — including `undescribable` (H1, above). In `expired`, `not-unlocked`,
     `mismatch-locked` and every other notice with nothing to cancel, the top bar's X closes the tab
     and claims nothing (plan-2 review L4).
-  - **Plan 2 (visual pass):** #10a draws two intent rows ("To", "Network fee"); here each fee is
-    its own row (network, Noctura fee or its reason line, new-token-account cost), ungrouped, as
-    above — the mockup's one fee row does not describe a send that pays more than the network.
+  - **Plan 2 (visual pass), as plan 3 left it:** #10a draws two intent rows ("To", "Network fee");
+    here each fee is its own row (base fee, priority, new-token-account cost, Noctura fee or its
+    reason line), ungrouped, as above — the mockup's one fee row does not describe a send that pays
+    more than the network.
   - **Plan 2 (visual pass):** the To value is the recipient in groups of four (`AddressGroups`,
     whose own `.addr-groups` mono face draws it) inside a `.noc-body-sm .noc-numeral` value span;
     the design puts `.noc-mono .noc-body-sm` on the value span itself. The rendered face is mono
@@ -1374,6 +1391,29 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   **→ adapted** (design regex allows 6 decimals; rule 2: exact base units via BigInt).
 - **CTA:** `LockedButton` (rule 6) → push #19 with `{token, recipient, amount}`.
 - **Differs, loudly:**
+  - **Plan 3:** the paste button reads the clipboard only when the browser allows it (the extension has
+    no clipboard permission, parent §4); when it refuses, the helper says "Paste with Ctrl+V (⌘V on a
+    Mac)." — **controller addition — confirmed by the owner 2026-10-02**. The sent-before hint reads "Verified · sent
+    before · today" on the day of the last send and "Verified · sent before · yesterday" for one day —
+    **controller additions — confirmed by the owner 2026-10-02** (the review rejected "last 1 day ago"): the design gives
+    only "last 12 days ago". There is no "send everything" on #12: MAX keeps the rent-exempt minimum by
+    design, and closing an account to exactly 0 is a product decision not taken here (plan-3 review, Q2).
+    The CTA never reads "Send 1. SOL" while the decimal point is being typed (review L6). The token chip's
+    tile is each token's own (#43's and #11's colours): the design's chip draws SOL only. The CTA carries
+    the amount as typed ("Send 75.000000 SOL", design state 4) once it parses; an amount the CTA refuses
+    anyway (short, or no SOL for the fee) predicts no re-authentication. "· ≈ $…" on the available line
+    is the typed amount's value (design state 5). The priority line stays in the first-time state (the
+    design's state 6 draws only the network fee).
+  - **Plan 3 fix round 1:** an amount that does not parse reads "Not a valid amount — digits, with up
+    to N decimals" (N = the token's decimals), the amount row in `--danger`, CTA disabled — **controller
+    addition — confirmed by the owner 2026-10-04** (§4.2 gives no copy for it). The sending account is refused from the
+    field's text itself (the address equals the account's key), not only from E6's `self`, so a failed or
+    late E6 reply never lets it through. Matched to the design rather than listed: the Clear button is
+    tinted `--danger` in the invalid state (state 3), and the first-time state draws no field action
+    (state 6: no Clear, no Paste). Still differs: in the insufficient and sent-before states the design
+    draws the recipient truncated "9rsR…hN4q" with an Edit button; #12 keeps the full address in the
+    editable field with Clear — the field is the input, and a truncated address is one the user can no
+    longer check or correct in place.
   - Priority chips Normal/Fast/Instant removed (D15). The engine picks, and the fee shows on #19.
   - `.sol` resolution and its state "marko.sol → Resolved …" removed (D16).
   - Scan icon removed (D13).
@@ -1411,7 +1451,7 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
       PASS;
     - "No token approvals granted" / "Native SOL transfer · zero allowances changed" or "Token
       transfer · zero allowances changed" — PASS;
-    - "Recipient is a regular wallet" / "no executable account at <first group>…" — PASS for
+    - "Recipient is a regular wallet" / "no executable account at <first four>…<last four>" (the design's "Gabc…xyz9") — PASS for
       `wallet`; for `new`: "Recipient is a new address" / "no account exists yet — this transfer
       creates it" — PASS; for `program`: "Recipient is a program, not a wallet" / "funds sent to a
       program address may not be recoverable" — WARNING (orange); for `other`: "Recipient is not a
@@ -1437,12 +1477,20 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
       again.";
     - `insufficient-sol`: "Not enough SOL for the network fee" + detail;
     - `insufficient-token` / `split-balance`: "This token is spread across several accounts in
-      your wallet. Send at most N, or move it into one account first." (split) / "Not enough
-      <TOKEN> in this account." (insufficient);
-    - `sender-below-rent`: "This would leave less than 0.00089088 SOL in your account. Keep at least
-      that much, or send everything.";
-    - `recipient-below-rent`: "A new Solana account needs at least 0.00089088 SOL. Send at least
-      that much.";
+      your wallet. Send at most N, or move it into one account first." (split; N is the largest single
+      holding, which the engine's refusal carries as its detail in base units since plan 3) / "Not
+      enough <TOKEN> in this account." (insufficient);
+    - `sender-below-rent` — the engine's own check before simulating, **and** a simulation the runtime
+      refused with `InsufficientFundsForRent` at the sender's index (§11.5; plan 3 maps it by the
+      account index, deciding on `err` alone): "This would leave less than 0.00089088 SOL in your
+      account, which Solana does not allow. Send less, so at least that much stays." — **controller
+      addition — confirmed by the owner 2026-10-02** (plan 3, carry 2; the review's wording): the draft's "or send everything" is dropped, since
+      MAX keeps the minimum and nothing on #12 sends everything;
+    - `recipient-below-rent` — refused before anything is simulated (a SOL send to an address with no
+      account, below 890 880 lamports), or the simulation's `InsufficientFundsForRent` at the
+      recipient's index: "This address has no Solana account yet. A new account needs at least
+      0.00089088 SOL, so send at least that much." — **controller addition — confirmed by the owner 2026-10-02**
+      (plan 3, carry 2);
     - `in-flight`: #12's pending banner;
     - `failed`: "Something went wrong while checking this transfer.";
     - `coordinator-refused`: the D26 banner (§7.2), and Retry disabled;
@@ -1453,7 +1501,30 @@ classes. Each vault-page state's copy is a literal in `src/unlock/strings.ts`.
   - **Leaving #19 towards #12** (`[Cancel]` in any state, the back arrow, Esc) calls
     `wallet.discardPrepared {account}` (E7) first, so a prepared send and its challenge never
     outlive the review the user abandoned. Continuing to #20 keeps them.
+  - **Continue hands over only the prepared send shown (plan 3, implementer addition):** it re-reads
+    `wallet.preparedFor` first. When the account's newest prepared send is another one (a prepare that an
+    older run, or an abandoned review, left in flight landed after it, or that review's late discard
+    removed it) or has expired, #19 reviews again (the live one of this intent, or a fresh prepare)
+    instead of opening #20, because #20 shows whatever `wallet.preparedFor` answers. A prepare that lands for an
+    account no longer shown is discarded, the same as one that lands after the screen was left. Continue hands
+    #20 the id of the prepared send it showed (plan 3 Task 8 fix round 1 ruling); #20 refuses a flow entry
+    whose `wallet.preparedFor` answers another id.
+  - **A discard that fails (plan 3, controller addition):** when leaving, #19 does not go back. It shows "Something went
+    wrong. Try again." (danger banner) and stays, so a prepared send and its challenge are never left behind;
+    a simulation that the leaving cut off is started again. The D26 banner appears only for a `coordinator-refused`
+    refusal, never because the app's net state is refused (a stale mode must not hide another refusal's
+    copy); in that state Retry is disabled whatever the code.
 - **Differs:**
+  - **Plan 3:** the simulating footer reads "Noctura server · simulateTransaction" without "· N
+    instructions": the count is known only once the engine has built the message, which is what
+    `simulating` waits for. A failed state has no step pill (the design's "RPC drop · timed out 5.2 s"
+    names a timing the engine does not report); the eyebrow is "Couldn't simulate" (for `unreachable`,
+    "Could not reach the Noctura server", or "You're offline" when the browser says so) and the cause is
+    the danger banner below it. "After" is the balance the engine read less its own total
+    (`solRequiredLamports`): the simulated post-state, fee included whichever form the node answered in
+    (E2 accepts both). The last known state's age reads "9 min ago" (format.ts's one age form, as #11).
+    A zero Noctura fee's reason line has no amount. The recipient check's warning badge reads
+    "WARNING".
   - **`[Continue anyway]` removed (D21)**, and with it the design's "proceed at your own risk"
     wording.
   - "3 retries attempted · last error ETIMEDOUT after 5.2 s" replaced by the single cause line.
@@ -1488,8 +1559,10 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     with USD; "Quote valid 28 s · slot 271 408 921" — the 30 s prepared life and nothing else (D39).
     At 0, #20 re-prepares by itself (a read, never a send) and shows the fresh values with "Updated
     with a fresh network quote" — **at most once without user input** (C5; review R2-H1). When that
-    quote also runs out with no input since, #20 shows "Quote expired — refresh" and a `[Refresh]`
-    button; the refresh is a tap, which also sends `activity.ping`. `[Send 2.4800 SOL]`
+    quote also runs out with no input since, #20 shows "Quote expired" and `[Refresh]`; the refresh
+    is a tap, which also sends `activity.ping`. **The "Updated…" banner hides once the quote has
+    expired again** (owner, 2026-10-05) — "Quote expired" is the only line shown then, no stale
+    banner above it. `[Send 2.4800 SOL]`
     (`LockedButton`); `[Cancel]`. **Send is never autofocused** in any state, `confirmed` and
     `resume` included (review R2-L4): Enter on a freshly loaded #20 does nothing.
   - `first-time recipient` (`first-send` in reasons): banner "You've never sent to this address" /
@@ -1506,15 +1579,23 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   - **extension-only `resume`** (popup reopened with a live resumable): the same #20, with "You have
     a send waiting." Nothing is sent until a tap.
   - **extension-only `pending`**: a send from this account is open → Send disabled with "A send
-    from this account is still pending." (review L6).
+    from this account is still pending." (review L6). While the line is shown #20 re-reads
+    `wallet.pending` every 2 s (its own read, so the UI tab's quiet provider stays quiet); once that
+    send settles the line goes and Send is enabled, without leaving the screen (plan 3, final review
+    M4). A re-read answering after the block lifted, or after the screen went, is dropped.
 - **Send sequence** (the rule 6 lock is held from the tap until the reply):
-  1. Tap with `reauth === null` → `wallet.send(id)`.
-  2. Tap with `reauth !== null` → `tabs.create('unlock.html?mode=reauth&challenge=<id>')`. The popup
+  1. Tap with `reauth === null`, **or with a proven challenge** (plan 3: `reauth.proven`, the engine's own
+     `challengeSatisfied`, reported by `prepareSend` and `preparedFor` — without it a resumed #20 could
+     only open #10 again) → `wallet.send(id)`. In short: reauth null or proven → send.
+  2. Tap with an unproven `reauth` → `tabs.create('unlock.html?mode=reauth&challenge=<id>')`. The popup
      closes (focus leaves it). In the tab, #10 → `confirmed` → the same tab loads
      `wallet.html#/send/resume?account=…`.
   3. **Resume** (that tab, or a reopened popup; also any other opener of that hash): read
      `wallet.preparedFor(account)`. If `expired`, `wallet.prepareSend(account, intent,
-     challengeId)` with the carried challenge (re-based, D39). **Then show #20** (`confirmed` if a
+     challengeId)` with the carried challenge (re-based, D39). `expired` is also true when the send's
+     challenge is already dead, however young the send (plan 3, review M1: a re-based challenge ends at
+     C5's 10-minute cap, not 120 s after the send was prepared); the re-prepare then gets a fresh
+     challenge, and the tap opens #10 for it — once. **Then show #20** (`confirmed` if a
      re-auth was just proven, `resume` otherwise) **and wait for a tap.** No code path from a resume
      calls `wallet.send` without a tap. After the tap, step 1 or 2 applies.
   4. `wallet.send` refusals:
@@ -1527,7 +1608,9 @@ point here. **One user tap per broadcast, always (D38; review B1).**
        C5's 10-minute cap) → back to #19 with "Your confirmation expired — review again" (review
        R2-M3). The client accepts both shapes, and both are tested against the real
        `handleMessage`.
-     - **Loop guard** (for `reauth-required` with a challengeId): if it happens right after a
+     - **Loop guard** (for `reauth-required` with a challengeId; plan 3 remembers the strike's challenge
+       in the UI's `localStorage`, `noctura.ui.v1.confirmStrike`, because the round trip through #10 may
+       close the popup that saw it — UI state with no security meaning, S4): if it happens right after a
        `confirmed` resume for the same intent, the screen shows "Your
        confirmation did not carry over. Confirm again." once. A second time in a row goes back to
        #12 with the draft and "Something went wrong — start the send again." A tab is never opened
@@ -1545,12 +1628,55 @@ point here. **One user tap per broadcast, always (D38; review B1).**
        #19 (review R2-M2).
 - **Cancel and back:** `[Cancel]` → `wallet.discardPrepared {account}` (C2) → #11 with the toast
   "Transaction cancelled. No fees charged." (true: nothing was signed). The back arrow → #19 with
-  the prepared send kept (not a cancel).
+  the prepared send kept (not a cancel). **Plan 3 (final review M1):** a discard that fails leaves the
+  prepared send and its challenge in place (E7), so there is no toast: #20 stays, shows #19's line
+  "Something went wrong. Try again." (the same approved string, a danger banner) and is live again —
+  Cancel, Send and the back arrow work as before. A discard still out when #20 goes (a lock, another
+  account) answers onto nothing: the lock's reset (§7.1, #12 with the draft) stands. #19's leaving
+  does the same.
 - **Client tests (review B1):** a resume with `reauth: null` never calls `wallet.send`; any resume
   (confirmed, expired, popup reopen, hash opened by another page) never calls `wallet.send` before a
   tap event; `prepared-expired` after a tap never calls `wallet.send` again without a second tap.
   Mutation: an auto-send on resume must fail these tests.
+- **The prepared send #19 handed over (plan 3, Task 8 ruling):** #19's Continue passes the id of the
+  prepared send it showed. On that flow entry #20 reads `wallet.preparedFor` and, when it answers another
+  id (a superseded prepare landed between the Continue and #20) or none, refuses: back to #19, which
+  reviews again; nothing is shown or sent. #20's own re-prepares (C5, `[Refresh]`, `prepared-expired`)
+  move the expected id to the send they made. The resume entry stays id-less and reads only
+  `wallet.preparedFor` (step 3).
+- **While a tap's send is in flight** `[Cancel]` is disabled and the back arrow and Esc do nothing until
+  it answers (a cancel there would discard nothing and say "No fees charged" over a broadcast). An answer
+  that arrives after #20 went (unmounted, another account) navigates nothing; so does any later await of
+  #20 (`preparedFor`, `prepareSend`, `pending`). `unreachable` from `wallet.send` is reported (#42) and
+  #21 looks for the record from the tap on — never "nothing sent"; `coordinator-refused` is reported
+  (D26) and #20 stays. The quote's end does not re-prepare (and `[Refresh]` does nothing) while #20's
+  own tap's send is out or once it has answered (fix round 1): a re-prepare then would be refused
+  `in-flight` and move a send that went out to #19 instead of #21.
 - **Differs:**
+  - **Plan 3 (Task 17 fix round 2):** the headline's recipient takes the h1's 600 weight, as the design's
+    `.recipient` does, at 16/24 mono. Its groups flow inline after "to", centred. Each group is an atomic inline
+    box, so a line breaks only between groups and never inside one, where the design breaks anywhere (`break-all`).
+  - **Plan 3, fix round 1:** the headline carries the design's `aria-label` ("Send 0.0100 SOL to recipient
+    address …", "High-value transfer: " before it, "first-time recipient" for a first send) with the
+    whole address in its groups of four, not the design's first-6 … last-6 (spec §3). The high-value
+    banner keeps the design's warning beside the password line: "If you didn't initiate this — cancel
+    now." with "cancel now" in `--danger` (**controller addition, confirmed by the owner 2026-10-04** — the design's sentence, adapted to
+    D22: the typed-CONFIRM head and the "> 5 %" explanation go with the typed field); with the proof
+    already made, only the warning stays. The high-value CTA is `btn-destructive` as drawn, enabled (D22).
+  - **Plan 3:** each fee row keeps the design's dollars column — at today's SOL price, four places
+    truncated below a cent, as #27's fee line ("$0.0007"); a zero Noctura fee's reason row has none; the
+    Total's dollars add the token's value for an SPL send. The high-value line carries cents ("≈ $600.00
+    USD · 6 % of your balance"); the share uses the balance the engine read for a SOL send, and the
+    selected account's balances for a token (omitted while they are unknown). "Quote expired"
+    disables Send and puts `[Refresh]` beside the line. In the UI tab (#20 after #10), #10 opens in the
+    same tab, so the two lines read "You'll confirm with your password (or passkey) in this tab before
+    this is sent." and "Confirmation opens in this tab." — **controller additions — confirmed by the
+    owner 2026-10-02**. A fee row's dollars below $0.0001 read "< $0.0001", never "$0.0000" (review L3).
+    While a send from this account is open, the quote's end does not re-prepare (review L1); a tap on an
+    unproven view reads `preparedFor` once more and sends if the challenge was proven elsewhere meanwhile
+    (review L2) — still one tap. "Confirmed…", "You have a send waiting." and the "Updated…" lines are
+    info banners; "Your confirmation did not carry over…" a warning banner. A fee row's label has no
+    `.lbl` class (only the Total's is styled in the design's CSS).
   - Priority chip strip removed (D15).
   - "Save as — Add to address book? · Add · Skip" removed (B1b-2b, #15).
   - The typed-CONFIRM field removed (D22).
@@ -1584,9 +1710,20 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     **→ adapted** (only when this screen saw the change live; the design's "in 2 blocks · finalized
     in < 13 s" needs data the engine does not keep); Amount/USD; To; "Tx hash" (full, mono, Copy);
     "Fee paid" = the prepared network fee (exact: the compute-unit price and limit are signed) +
-    Noctura fee when charged; `[View details]` → #27 (by signature, §6.3); `[Done]` → #11 (popup) /
+    Noctura fee when charged — read from the pending record's `fee` through `feePaidLamports`, never
+    summed by the screen (display rule below); `[View details]` → #27 (by signature, §6.3); `[Done]` → #11 (popup) /
     "Done — open the Noctura icon any time." + `[Close this tab]` (tab).
   - `failed` (`failed`) → #44. `expired` (`expired`) → #44's expired state.
+  - **Fee display rule (plan 3 follow-up, controller ruling).** The pending record stores the fee in
+    two parts, `fee: {networkLamports, markupLamports} | null` (digit strings; a required field typed
+    `| null`; a malformed or missing value reads as null and the record is always kept), because a
+    transaction that lands and fails still pays the network fee while its markup transfer is rolled
+    back with it — no single sum is true in every state. What is paid, by state
+    (`feePaidLamports`, `src/app/engine.ts`): `confirmed` → network + markup; `failed` with
+    `failure: 'landed'` → network only; `failure: 'not-sent'`, `expired` → nothing; anything not yet
+    settled (`pending`, `stuck`) or a `failed` record from an older build (`failure: null`) → nothing
+    claimed. On #21 the "Fee paid" row appears **only in `success`**; whether #44 shows the network
+    fee for a landed failure is carried to its task (#44), under this rule.
   - **extension-only `check-pending`**: "Checking whether it was sent…" while `wallet.pending` is
     read; if no record is found: "We could not confirm whether it was sent. Check Activity before
     trying again." + `[Open Activity]`.
@@ -1594,7 +1731,26 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     still watching. \"Send again\" re-sends the same transaction.") shows as a caption under the
     status.
 - **Differs:**
-  - "Slot" row removed (not in `PendingView`).
+  - **Plan 3:** the slow state's disabled CTA keeps "Waiting for confirmation" (the design's "Waiting
+    for inclusion · 1:23" names a mempool the engine cannot see), and its stuck-watch box shows "Recovery
+    options will appear in" with the countdown, without the design's developer caption ("Silent watcher
+    routes to stuck-tx after 90 s …"). The To and hash rows' copy buttons keep the design's 32 px chip;
+    the rows without one keep the design's invisible cell, so the values line up. "Fee paid" is
+    `feePaidLamports` of the pending record's split `fee` (network fee + Noctura fee once confirmed — kept
+    on the record so a reopened popup shows it too), shown only in `success`; a record from before plan 3
+    has no such row. An id the engine no longer tracks reads "This transaction is no longer tracked." (#54's
+    line) with `[Open Activity]`. Each read of `wallet.pending` is dropped when the screen has moved on
+    (unmounted, another id, another account selected, a newer read already applied), and the reads stop
+    once the record is settled (`confirmed`, `failed`, `expired`), so no later answer moves the screen.
+    Another account selected (here or in another window) keeps what the screen has seen — #54 shown, the
+    confirmation seen live, a settled record — and only restarts the reads. Whether an `expired` record goes
+    to #44 or to #54's expired layout is decided by whether #54 was shown, never by the page's clock. With no
+    id (a lost answer), a record is adopted only within 10 s of the screen opening (and made within it);
+    after that the reads stop and the check-pending line stays with `[Open Activity]`. A `wallet.pending`
+    read that fails before any answered shows the check-pending line, `[Open Activity]` and an enabled Close.
+  - **Plan 3 (Task 17 visual pass):** the slow state's "Tx hash" row shows the whole signature, the same row as
+    `success` (which this section defines as full); the design draws "5kAj9N…b81e" in both. `success` has no
+    "Slot" row: the pending record (`PendingView`) keeps no slot.
   - "Confirmed in 2 blocks · finalized" replaced as marked.
   - The back arrow stays disabled while broadcasting (design); closing the popup is allowed and
     said so.
@@ -1623,15 +1779,56 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     engine `detail` (`.noc-mono`, ≤ 240 chars); `[Try again]` → #19; `[View on explorer]` →
     solscan (S5).
   - `network-error` (`state: 'failed'`, `failure: 'not-sent'`: the route's 400 rejection or the
-    cool-down): "Couldn't send"; the engine `detail` ("The network refused this transaction (…). No
-    funds moved." / "Not sent: the coordinator is cooling down after an earlier HTTP 403. No funds
-    moved."); "Reason · network-error"; `[Try again]` → #19 (disabled during the cool-down, D26).
+    cool-down), in 44d's layout: hero "Couldn't send"; hero sub "Funds are unchanged — the request never
+    reached a leader." (44d's sub, its second sentence verbatim); the reason banner "Reason ·
+    network-error" with the engine `detail` as its body, where 44d puts the cause ("The network refused
+    this transaction (…). No funds moved." / "Not sent: the coordinator is cooling down after an earlier
+    HTTP 403. No funds moved."); `[Try again]` → #19 (disabled during the cool-down, D26).
   - **extension-only generic** (`state: 'failed'`, `failure: null`, only from a record written by
     an older build): "Transaction failed" + `detail`; `[View on explorer]`.
   - `user-cancelled toast`: back on #11, the pill toast "Transaction cancelled. No fees charged."
     (1.8 s), after #20's `[Cancel]` (E7 discarded the prepared send, so the sentence is true). #10's
-    Cancel shows its own line in the vault tab instead (§3.10, E7).
+    Cancel shows its own line in the vault tab instead (§3.10, E7). The toast is the design's own
+    `.s9-toast-cancelled` pill with its ✕.
 - **Differs, loudly:**
+  - **Plan 3:** in `blockhash-expired` the design's hero sub ("Solana rotated past the blockhash …") is
+    the reason banner's body under "Reason · blockhash-expired", since the engine's line takes the sub;
+    the banner's slot-age body and meta line are not built (the engine keeps the height, not the slot
+    age). `rejected-by-program` offers `[Try again]`, the design's `[View details]` → #27 (by signature;
+    #27 already says when it is not in the recent history yet) and `[View on explorer]`. The last is 44c's own
+    `.explorer` link with its link-out glyph, inside the reason banner after the meta line (Task 17 fix round 2), so
+    the bar holds two CTAs, as 44c's does — `[View
+    details]` only there, the one #44 state whose transaction is on chain (review M4). `network-error`
+    offers `[Try again]` only and `generic` `[View on explorer]` only, with no
+    reason banner (the engine names no reason for an older build's record). The back arrow and Esc go to
+    #12 with the transaction prefilled, as the design's annotation says (the same as `[Edit
+    transaction]`).
+  - **Plan 3 (final review I1) — #27's owner rule on #44:** #21 follows its record's account whoever is
+    selected, but `[Try again]` and `[Edit transaction]` start a flow for that account. They are offered
+    only while it is the selected account (a tap that raced another selection does nothing); otherwise
+    they are not drawn, and the back arrow and Esc close to #11 instead of opening another account's #12
+    with this draft. `[View details]` and the explorer link stay. In `network-error`, whose only CTA is
+    `[Try again]`, the bar is then empty; the back arrow and Esc to #11 are the way out (no new copy).
+  - **Plan 3 (Task 11) — fees on #44, the question carried from §4.6's display rule:** #44 prints no fee
+    amount in any state. `rejected-by-program` says in words that the network fee was charged (the
+    markup rolled back with the transaction; `feePaidLamports` is the network part only) and `[View
+    details]` → #27 shows the fee the chain recorded; `network-error` and `blockhash-expired` paid
+    nothing. The design's "Network fee 0.000050 SOL" row in the expired payload card is removed with it:
+    on a transaction that never landed it would read as paid, beside "No fees were charged."
+  - **Plan 3 (Task 11) — the cancelled toast's trigger:** #20's `[Cancel]` is refused while a send is out
+    (Task 9) and also once a send has answered and moved on from #20, so "No fees charged" never
+    follows a send that may have been broadcast. The other way round too (fix round 1): once `[Cancel]` is
+    pressed, `[Send]` sends nothing, even while the discard is still out.
+  - **Plan 3 (Task 11) — `.s-secintro` not on #44's root.** The design's screen carries it, but its only rules
+    (`.s-secintro .step-pill`, `.layer-card`, `.layer-icon`) style elements #44 does not have, so it would change
+    nothing and the class gate refuses a class with no rule in place.
+  - **Plan 3 (Task 11) — the expired sub** is the engine record's own line (`detail`, its "Not confirmed — no
+    funds moved."), as `network-error` shows its detail; the spec's line is the fallback only for a record without one.
+  - **Plan 3 (Task 17 fix round 1) — `network-error`'s sub:** 44d's first sentence ("Couldn't reach Solana
+    mainnet through your current RPC.") is not used: the extension has no user-chosen RPC, and in both `not-sent`
+    cases the route answered (a preflight refusal) or nothing was sent (the cool-down). Its second sentence is
+    true of both and is used verbatim. 44d's head "RPC timed out" stays "Couldn't send", and 44d's meta line
+    (rpc · http · timeout) is not built: the engine names no RPC and no timing.
   - **`insufficient-fee` state removed.** The engine never reports "fee too low", and priority is
     automatic (D15).
   - `rejected-by-program`'s Jupiter slippage content and `[Adjust slippage and retry]` removed
@@ -1639,7 +1836,7 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   - `network-error`'s RPC picker and `[Switch RPC and retry]` removed (reads and broadcast are fixed
     to the coordinator; #55 not planned).
   - The shielded variant is hidden (D4).
-  - `[View details]` → #27 is offered only when a history entry exists.
+  - `[View details]` → #27 is offered only in `rejected-by-program` (by signature; see the Plan 3 entry above).
 
 ### 4.8 #54 stuck-tx — the safe variant (D23)
 
@@ -1677,6 +1874,47 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     record's current state screen; `unknown` → "This transaction is no longer tracked." + `[Open
     Activity]`.
 - **Differs, loudly:**
+  - **Plan 3:** the counter is the design's MM:SS at any age (a send is open for minutes; the design's
+    "Hh Mm" form for an hour or more is not needed). `sending-again` is 54b's layout: the top bar reads
+    "Sending again…", the progress head "Re-sending the same transaction.", and the original's dimmed
+    card is labelled "Original (still pending)" with the elapsed pill "01:34 elapsed" (the design's
+    words). `sent-again` keeps 54d's hash line (the same hash, with an accent "Copy") and its grid's
+    "Tx hash" / "Status · Watching". `expired` uses 54e's layout with the top bar "Transaction" and a
+    one-row grid ("Tx hash"); its head and sub are the spec's two lines. A non-null engine `detail`
+    shows as a caption under the warning banner. The hash on the original's card is short (first four …
+    last four) with the design's 24 px `.copy-chip`, which copies it whole.
+  - **Plan 3 (Task 10):** a resend answer is read by its own `state` first: one no longer open (a poll
+    moved the record meanwhile) claims nothing about the re-send — `expired` shows the expired layout,
+    `confirmed` / `failed` (and a `not-open` refusal) show only the neutral top bar "Transaction" until the
+    poll routes to #21 / #44; #54 handed a `confirmed` or `failed` record renders the same. `sent-again`
+    only when the re-send was acknowledged (the record comes back open with `detailCode` null). A re-send
+    the route did not acknowledge answers ok with a `detailCode` (`forbidden`, `cooling`, `unacked`,
+    `substituted`) and the engine's `detail` (the first copy may still land): #54 stays in `stuck` with
+    that line under the CTAs — never "Sent again", never "nothing sent" — and for `forbidden` or
+    `cooling` the popup enters the D26 state (`report('coordinator-refused')`), which disables Send again.
+    The screen chooses on the code, never on the text. A `coordinator-refused` / `unreachable` reply goes
+    through `report` too; `failed` leaves `stuck` as it was. `stuck` and `sending-again` are one tree, so
+    the Send again `LockedButton` stays mounted (disabled) through the resend and its 500 ms floor holds.
+    The counter is `aria-live="polite"`. No fee is shown on any layout (54e's "Fee charged" row is dropped): `feePaidLamports` is
+    null for `stuck` and `expired`, and a re-send pays nothing new. `expired` is the engine's state
+    only; the screen never derives it from the clock or the block height. A resend's answer is dropped
+    when the screen unmounted, another record or state was handed in, or another account was selected
+    meanwhile.
+  - **Plan 3 (Task 10 fix round 1), design details not built:** 54b's sub line ("Submitting replacement
+    payload at … µ-lamports / CU. Expect first confirmation in 1.5 s on average.") is dropped — it states a
+    new fee and a timing the re-send of the same bytes does not have; 54b's spinner inside the CTA is not
+    drawn (no design class for it; the `LockedButton`'s `is-busy` state and the progress ring carry it), and
+    the CTA keeps its label "Send again (same transaction)". 54a's speed-up icon on the primary CTA is not
+    used (the action is not a speed-up; no icon). 54e's `[View in Activity]` is not on the `expired`
+    layout: its CTAs are the spec's `[Try again]` and `[Done]`.
+  - **Plan 3 (final review I1, M2):** the `expired` layout's `[Try again]` follows #27's owner rule — offered
+    only while the record's account is the selected one (`[Done]` alone otherwise) — and in the 403 cool-down
+    it is disabled under the D26 banner (§7.2), as on the `stuck` layout.
+  - **Plan 3 (Task 17 visual pass):** `sent-again`'s hash line holds the short hash (first four … last four), so
+    the `.new-tx-hash` chip is as wide as its content and centred, where 54d's long "new hash · …" line runs the
+    column's width; its Copy link keeps the 48 px touch target, so the chip is taller than 54d's.
+  - **→ adapted:** the recipient on the original's card is shown in groups of four (AddressGroups, as on
+    every other screen of this flow), not the design's first-6 / last-6 in `--accent`.
   - **"Speed up" (a higher priority fee) and "Cancel with replacement" (a 0 SOL self-transfer) are
     not built (D23).** Both are new transactions with new signatures while the original can
     still land. The design's line "Solana enforces single-execution by tx hash — only one settles"
@@ -1727,7 +1965,8 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     never clears refused). A later successful read clears the stale mark and the line. Never zero or
     "failed" in place of a balance (§7.3).
   - **extension-only `pending strip`**: an open send of this account → a `.banner.info` strip
-    "Sending 2.48 SOL · pending" (or "· taking longer than usual") → #21/#54.
+    "Sending 2.48 SOL · pending" (or "· taking longer than usual") → #21/#54, #44 on failure or expiry
+    before #54 (the record decides, read afresh by #21).
   - **extension-only `resume`**: a live resumable prepared send → the popup opens #20 (§1.6).
   - `offline` / `refused`: §5.4.
   - **extension-only `no price`**: prices unknown → the total reads "—" with "Prices unavailable";
@@ -1746,8 +1985,9 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   - **Cold skeleton (from Task 12):** the real top bar instead of skeleton circles; no mode-toggle
     bar (D4); no "See all" skeleton; the quick-action skeleton shows only the actions that exist —
     Receive in plan 1, Receive + Send from plan 3.
-  - **Plan-1 stand-in:** no Send quick action and no resume until plan 3 (§12); the pending strip
-    shows the state text and opens Activity.
+  - **Plan 3:** the Send quick action opens #12 (disabled offline, unreachable and refused — D36 keeps
+    Receive); the pending strip opens that send at #21/#54, #44 on failure or expiry before #54; a popup opened while a prepared send waits
+    shows #20 in resume mode (§4.5). (Plan 1 had no Send and no resume, and its strip opened Activity.)
   - The bottom nav is Home / Activity / Settings (D3), not Home/Portfolio/NFTs/Profile.
   - Pull-to-refresh becomes the refresh button (D2).
 
@@ -1887,7 +2127,8 @@ point here. **One user tap per broadcast, always (D38; review B1).**
 - **States:** `cold-mount skeleton` (5 rows over 2 sections); `loaded mixed`; `filter Sent`
   (sent-only, same grouping; filters apply to loaded rows and "Load more" continues); **filter
   Received / Purchases** (same pattern); **extension-only `pending rows`**: a "PENDING" section on
-  top with open sends ("Sending 2.48 SOL" / "waiting · 1 m 12 s") → #21/#54; empty → #41;
+  top with open sends ("Sending 2.48 SOL" / "waiting · 1 m 12 s") → #21/#54, #44 on failure or
+  expiry before #54; empty → #41;
   `unreachable` / `refused` → #42/D26 banner over whatever loaded.
 - **Differs:**
   - "Swaps" and "Shielded" chips removed (no swaps; D4). "Purchases" added (D24).
@@ -1898,12 +2139,27 @@ point here. **One user tap per broadcast, always (D38; review B1).**
     They are a scanning aid; verification surfaces (#20, #27, #10, #13) show the full address (§11
     conflict 7).
   - Pull-to-refresh becomes the button (D2).
-  - **Plan-1 stand-in — failed rows** (Task 17 fix round 1): `core/solana/history.ts` decodes every
-    failed transaction as `other` with no token or amount (`if (failed) return other;`), so a failed
-    row reads "Failed · transaction" / "the network fee was charged" / "—" (red `.ic.fail` with the
-    ✕ glyph), not "Failed · sent SOL"; and the **Sent filter does not include failed sends** (a failed
-    row matches only "All"). The design's failed row ("— SOL" with the fee in dollars beneath) needs
-    the attempted kind and token, which the decoder does not keep. Owner decision in plan 3.
+  - **Failed rows — plan 3, owner question 1, built with the recommended option A (pending the owner's
+    answer):** `core/solana/history.ts` reads what a failed transaction tried to send from its own
+    instructions — exactly one transfer from this account (a System transfer, or an SPL
+    TransferChecked/Transfer of a token the wallet knows), which paid for it (its first key); a batch
+    of transfers or an unknown mint stays `other` (plan-3 review H1: #27's `[Try again]` proposes what
+    was decoded). Only a PURE send is decoded (Task 4 fix round 1, I1): every top-level instruction
+    must be ComputeBudget, Memo, System advanceNonce, the Noctura fee's transfer to the treasury, an
+    associated-token-account create for the transfer's destination, or the one transfer itself —
+    a swap, a tip beside one, a wrap, a createAccount or a transferWithSeed makes it `other`. The SPL
+    transfer must be under the classic Token program (Token-2022 is `other`), from a source account
+    this account owns (a delegate's transfer is `other`), of more than zero, read exactly (a JSON
+    number above 2^53 is unreadable: `other`); a created destination names its wallet only when it is
+    that wallet's derived ATA for the mint (otherwise the recipient is unknown). Only top-level
+    instructions are read: a transfer a program makes for this account
+    (an inner, CPI instruction — a dApp's wrapped transfer) stays "Failed · transaction", the honest
+    limit of option A — so a failed send reads "Failed · sent SOL" / "the network fee was charged" / "— SOL"
+    (red `.ic.fail` with the ✕ glyph), as 26b draws the failed row, and shows under "Sent" as well as
+    "All". A failed transaction this account did not sign, or one that is not a transfer, still reads
+    "Failed · transaction" / … / "—" and shows under "All" only. The design's fee in dollars under the
+    amount is not shown: no row carries fiat (above). (Plan 1 decoded every failed transaction as
+    `other`.)
   - **Purchase row:** the design has no purchase row; it follows 26b's swap row (`.ic.swap` with
     `#i-swap`).
   - **Other row:** the design's no-funds row (`.ic` neutral, `#i-doc`, 26b) is used, but its amount
@@ -1945,10 +2201,16 @@ point here. **One user tap per broadcast, always (D38; review B1).**
   - The 6+6 checksum highlight is replaced by groups of four (spec §3).
   - The shielded/dApp state 27b is hidden (D4, B1c).
   - Fiat is labelled "now" as marked.
-  - **Plan-1 stand-in — failed** (Task 17 fix round 1; see §6.2's failed-rows entry): the decoder
-    gives a failed transaction as `other` with no token, so #27 reads eyebrow "FAILED" (not "FAILED ·
-    SENT") and amount "—" (not "— SOL"); `[Try again]` is absent until the send flow (plan 3).
-    `TxDetail.tsx` keeps the "FAILED · SENT" arm for that decision. Owner decision in plan 3.
+  - **Failed — plan 3, owner question 1, option A** (see §6.2's failed-rows entry): a failed send reads
+    eyebrow "FAILED · SENT" and amount "— SOL", with `[Try again]` → #19 for the same intent when the
+    decoded recipient and amount are known (the engine re-checks everything on prepare, and #20 shows
+    the whole address and its first-send warning before one tap sends); any other failed transaction
+    reads "FAILED" and "—", with no `[Try again]`.
+  - **27d's `[Try again]`** carries the refresh glyph (`#i-refresh`, as #44's) and routes to #19 — a fresh
+    prepare, reviewed again — not to the design's `tx-confirm` (#20) "with original payload re-loaded"
+    (D23: a retry is a new transaction, never the old payload). It is offered only while the account that
+    made the transaction is the one selected (#27's route carries that account; fix round 1), and is
+    disabled in the 403 cool-down, with the D26 banner at the top of the content (§7.2; final review M2).
   - 27d's "Reason", "Tried to swap", "Slippage limit" and "Observed move" rows are a swap's; a failed
     transfer has none of them (no swaps, and no failure reason in `HistoryView`).
   - `received`: "To" shows the full address in groups with Copy (a verification surface, §11
@@ -2183,6 +2445,15 @@ cannot click the toolbar action; stated). Specs:
     account 0 → at the finish `funded`, "This wallet now holds funds. Nothing was changed.", and the
     stored envelope is byte-identical.
 Every spec asserts `fake.unexpected` is empty and `hits > 0` (routing proven).
+**Plan 3:** specs 4, 5 and 11 send SOL. **Spec 13 (final review, carry d) sends a token:** #11 → #12 →
+#43 picks NOC → #19 → #20 → one tap → #21 success, to a known recipient under the threshold (no
+re-authentication). The fake serves the owner's NOC in two accounts — a non-canonical holding with the
+larger balance and the derived ATA with a smaller one — and the recipient has no NOC account. The spec
+decodes the one broadcast wire itself (no `core/` import) and asserts the transfer spends from the largest
+holding, never the derived ATA, with the owner as authority and the exact amount, and that the
+transaction creates the recipient's ATA (the Associated Token program's Create, for the recipient and NOC's mint) before the
+transfer goes to it. An on-device token send (the split-balance refusal included) is still owed before a
+user build.
 
 ### 8.6 Visual fidelity against the design
 
@@ -2214,6 +2485,33 @@ in the PR) found these differences that hold on every screen, declared here once
 - A full-page capture keeps a sticky bar where the viewport ended: where a shot shows the bar over
   content, the content scrolls clear in the page (`08-choose-scheme` asserts it; `40-no-assets-empty-end`
   shows the scrolled end).
+
+**Plan 3's pass** (`e2e/visual-send.spec.ts`, 42 shots of #11, #12, #43, #19, #20, #10, #21, #54, #26 and #44 at
+412 × 600, #10 at 412 × 916; findings in the PR) fixed in the markup: #43 is rendered beside #12, not inside
+`.s-send` (whose `.s-send .row` drew the sheet's rows as #12's cards); the top bars of #19, #20, #21 and #54 carry
+the design's plain `.title` and `.step` (a `.noc-h1` title wrapped and clipped on #54; a `.noc-overline` step read
+"3 OF 4", "90 S TIMEOUT"). Its other differences are declared in §4.6 and §4.8, or carried to the controller in the
+PR.
+
+Fix round 1 (CSS in `src/app/app.css`, the hand-written sheet): every UI screen's direct `.top-bar` and
+`.sticky-bar` are `position: sticky`, so the title and the CTAs stay in view while the content scrolls, as §1.4
+and the mockups' frame have it. This applies to every flow screen, and to #13's and #27's bars, which the selector
+also reaches. `e2e/visual-send.spec.ts` asserts it for every flow screen. Also in that round: #20's headline (no
+UA margin; the recipient centred at 16/24 mono) and #54 sent-again's "Watching" in `--success`. Fix round 2:
+- #43's rows read name, then symbol, as the design's "All tokens" list does.
+- #11's content behind the cancelled toast is dimmed to .62 (44e), with the top row as it is.
+- Every shot's key copy is asserted in the popup and clear of the pinned bars.
+- **Declared:** #19's progress line (`.m3-prog`) and its footer ("Noctura server · simulateTransaction", "Simulated
+  against slot …") stay in the scrolling content. They are not pinned with the top bar, so on a long #19 they scroll
+  away; the mockups' phone frame never shows them scrolled.
+- **Declared:** #43's close button keeps the sheet's tokenised close. The mockup's "square bordered" close is the
+  browser's unstyled default `<button>` (index.html gives it only a colour): a light-grey #efefef square of about
+  26 px. Matching it would bring a colour from outside the token palette onto the dark sheet, fall below the 48 px
+  touch target, and change the account switcher, which uses the same sheet.
+
+**Same as the
+design:** `word-break: break-all` on `.s-sim .check-row .copy .meta` and `.s-conf .detail-row .val` breaks prose
+mid-word ("cha nged", "Noctur a's"), as the design's own render does ("Ski p", "62.48 21").
 
 ---
 
@@ -2426,7 +2724,7 @@ Still standing (each with the default this spec builds):
   only on a proven same-wallet replacement. **D41 vs C4 is not resolved by the letter of D41**:
   §11.13 states the disagreement and the build.
 - **Contradictions checked after round 2.**
-  - C5 vs D39: the re-base stays, and the cap bounds it. The copy on #20 ("Quote expired — refresh")
+  - C5 vs D39: the re-base stays, and the cap bounds it. The copy on #20 ("Quote expired" + `[Refresh]`)
     matches the one-automatic-re-prepare rule.
   - E5's `busy` copy ("Nothing was deleted") is now true, because the removals follow the vault
     write.

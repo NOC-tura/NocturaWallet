@@ -13,12 +13,12 @@ import type {HistoryItem, Pending} from '../engine';
 /** wallet.history answers 10 per page (background HISTORY_PAGE_SIZE); "Load more" follows the reply's own `next` cursor (review fix round 1 #1), not this count. */
 export const PAGE_SIZE = 10;
 
-function PendingRow({p, now}: {p: Pending; now: number}) {
+function PendingRow({p, now, onOpen}: {p: Pending; now: number; onOpen: () => void}) {
   const secs = Math.max(0, Math.floor((now - p.createdAt) / 1000));
   const amount = formatAmount(p.intent.amount, TOKEN_INFO[p.intent.token].decimals, {min: 0, max: TOKEN_INFO[p.intent.token].decimals});
-  // Plan-1 stand-in: a pending row opens nothing (#21/#54 arrive with the send flow, plan 3).
+  // An open send opens #21 (or #54 once it is stuck).
   return (
-    <div className="tx-row" data-pending={p.id}>
+    <button type="button" className="tx-row" data-pending={p.id} onClick={onOpen}>
       <span className="ic send">
         <ExtIcon name="arrow-up-right" size={20} />
       </span>
@@ -30,7 +30,7 @@ function PendingRow({p, now}: {p: Pending; now: number}) {
           waiting · {Math.floor(secs / 60)} m {secs % 60} s
         </span>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -71,7 +71,7 @@ function Empty({refreshing, onReceive}: {refreshing: boolean; onReceive: () => v
  * the background), open sends on top. No fiat per row (it would need historical prices), no origin
  * badge (B1c), counterparties short at equal weight (a list is a scanning aid; #27 shows the whole address).
  */
-export function Activity({onTx, onReceive}: {onTx: (item: HistoryItem) => void; onReceive: () => void}) {
+export function Activity({onTx, onReceive, onPending}: {onTx: (item: HistoryItem) => void; onReceive: () => void; onPending: (p: Pending) => void}) {
   const m = useWallet();
   const now = useNow(1_000, m.now);
   const account = m.account;
@@ -213,7 +213,7 @@ export function Activity({onTx, onReceive}: {onTx: (item: HistoryItem) => void; 
           <>
             <div className="date-h noc-overline">PENDING</div>
             {open.map(p => (
-              <PendingRow key={p.id} p={p} now={now} />
+              <PendingRow key={p.id} p={p} now={now} onOpen={() => onPending(p)} />
             ))}
           </>
         ) : null}

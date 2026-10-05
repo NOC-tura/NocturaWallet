@@ -83,20 +83,21 @@ test('8 · activity: kinds, filters, a detail page, Load more, and the explorer 
     h.fake.history.set(MAIN.publicKey, list);
     const popup = await h.openPopup();
     await popup.getByRole('button', {name: 'Activity'}).click();
-    await expect(popup.getByText('Sent SOL')).toBeVisible({timeout: 30_000});
+    // Exact: "Failed · sent SOL" contains the words too (plan 3, owner question 1, option A).
+    await expect(popup.getByText('Sent SOL', {exact: true})).toBeVisible({timeout: 30_000});
     await expect(popup.getByText('Received USDC')).toBeVisible();
     await expect(popup.getByText('Presale purchase')).toBeVisible();
-    await expect(popup.getByText('Failed · transaction')).toBeVisible();
+    await expect(popup.getByText('Failed · sent SOL')).toBeVisible();
     await expect(popup.getByText(/^to Your account: Savings/)).toBeVisible();
 
     await popup.getByRole('tab', {name: 'Received'}).click();
-    await expect(popup.getByText('Sent SOL')).toHaveCount(0);
+    await expect(popup.getByText('Sent SOL', {exact: true})).toHaveCount(0);
     await popup.getByRole('tab', {name: 'All'}).click();
 
     await popup.getByRole('button', {name: 'Load more'}).click();
     await expect(popup.locator('button.tx-row')).toHaveCount(12, {timeout: 30_000});
 
-    await popup.getByText('Sent SOL').click();
+    await popup.getByText('Sent SOL', {exact: true}).click();
     await expect(popup.getByText('SENT', {exact: true})).toBeVisible();
     const link = popup.getByRole('link', {name: 'Explorer'});
     await expect(link).toHaveAttribute('href', `https://solscan.io/tx/${sig(1)}`);

@@ -16,6 +16,7 @@ const SEND: ChallengeAbout = {
   recipient: RECIPIENT,
   amount: '2480000000',
   networkLamports: '5050',
+  priorityLamports: '50',
   markupLamports: '0',
   markupReason: 'status-unknown',
   rentLamports: '0',
@@ -31,8 +32,11 @@ describe('describeChallenge: the closed-alphabet renderer', () => {
       amount: '2.4800',
       symbol: 'SOL',
       recipient: RECIPIENT,
+      // Spec §4.5's fee rows, the same on #19, #20 and #10 (plan 3, carry 1): the base fee is the network
+      // fee less its priority part; then the priority; then the Noctura fee's reason line.
       fees: [
-        {label: 'Network fee', value: '0.00000505 SOL'},
+        {label: 'Network fee', value: '0.000005 SOL'},
+        {label: 'Priority', value: '0.00000005 SOL'},
         {label: 'No Noctura fee (status unknown)', value: null},
       ],
       reasons: ['Re-auth required for the first send to a new address.', 'Re-auth required for transactions over $100.'],
@@ -45,14 +49,17 @@ describe('describeChallenge: the closed-alphabet renderer', () => {
       amount: '12.345678',
       symbol: 'USDC',
       fees: [
-        {label: 'Network fee', value: '0.00000505 SOL'},
-        {label: 'Noctura fee', value: '0.00002 SOL'},
+        {label: 'Network fee', value: '0.000005 SOL'},
+        {label: 'Priority', value: '0.00000005 SOL'},
         {label: 'New token account', value: '0.00203928 SOL'},
+        {label: 'Noctura fee', value: '0.00002 SOL'},
       ],
       reasons: ['Re-auth required for transactions over 5 % of balance.', 'Re-auth required to send your whole balance to a new address.'],
     });
     expect(describeChallenge({...SEND, reasons: ['over-usd-threshold'], thresholdCents: 12_550})).toMatchObject({reasons: ['Re-auth required for transactions over $125.50.']});
-    expect(describeChallenge({...SEND, markupReason: 'pre-tge'})).toMatchObject({fees: [{label: 'Network fee'}, {label: 'No Noctura fee before TGE', value: null}]});
+    expect(describeChallenge({...SEND, markupReason: 'pre-tge'})).toMatchObject({fees: [{label: 'Network fee'}, {label: 'Priority'}, {label: 'No Noctura fee before TGE', value: null}]});
+    // A priority equal to the whole network fee (no base fee) still describes; it is never negative.
+    expect(describeChallenge({...SEND, networkLamports: '50'})).toMatchObject({fees: [{label: 'Network fee', value: '0 SOL'}, {label: 'Priority', value: '0.00000005 SOL'}, {}]});
   });
 
   // Each field outside its alphabet → null → #10's "could not be shown" with only Cancel.
@@ -62,6 +69,9 @@ describe('describeChallenge: the closed-alphabet renderer', () => {
     ['an amount with a decimal point', {amount: '2.48'}],
     ['an amount of 21 digits', {amount: '1'.repeat(21)}],
     ['a negative fee', {networkLamports: '-5'}],
+    ['a priority with a decimal point', {priorityLamports: '0.5'}],
+    ['a priority as a number', {priorityLamports: 50}],
+    ['a priority larger than the network fee it is part of', {priorityLamports: '5051'}],
     ['a recipient with markup', {recipient: '<img src=x onerror=alert(1)>'}],
     ['a recipient with a 0 (outside base58)', {recipient: `0${RECIPIENT.slice(1)}`}],
     // ADDRESS's end anchor: a valid 32–44-char run with one more character tacked on must not pass by
@@ -91,6 +101,8 @@ describe('describeChallenge: the closed-alphabet renderer', () => {
   it('a missing field, another kind, and a non-object are not described', () => {
     const {thresholdCents: _drop, ...missing} = SEND;
     expect(describeChallenge(missing)).toBeNull();
+    const {priorityLamports: _noPriority, ...elevenKeys} = SEND;
+    expect(describeChallenge(elevenKeys)).toBeNull();
     expect(describeChallenge({...SEND, kind: 'sign'})).toBeNull();
     for (const x of [null, undefined, 'send', 7, [SEND]]) expect(describeChallenge(x)).toBeNull();
   });

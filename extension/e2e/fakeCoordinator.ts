@@ -11,10 +11,21 @@ const PRICES = 'https://api.noc-tura.io/api/v1/wallet/prices';
 const STATS = 'https://api.noc-tura.io/api/v1/stats';
 /** rpcResult's answer for a method it does not implement (listed in `unexpected` too). */
 const METHOD_NOT_FOUND: unique symbol = Symbol('method not found');
+const SYSTEM_PROGRAM = '11111111111111111111111111111111';
+const COMPUTE_BUDGET = 'ComputeBudget111111111111111111111111111111';
+export const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+export const ATA_PROGRAM = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
+/** The rent-exempt minimum of a 165-byte token account: what an associated-token-account Create takes from its payer. */
+export const TOKEN_ACCOUNT_RENT = 2_039_280;
 
 export interface FakeCoordinator {
-  /** 'confirm': a signature is confirmed at its second status check. 'expire': the network never sees it. */
-  mode: 'confirm' | 'expire';
+  /**
+   * 'confirm': a signature is confirmed at its second status check. 'expire': the network never sees it.
+   * 'fail' (plan 3): it lands at its second check, confirmed WITH an error (#44's rejected-by-program).
+   */
+  mode: 'confirm' | 'expire' | 'fail';
+  /** Plan 3: the broadcast route refuses before forwarding — 400 `rejected` (#44's network-error). */
+  broadcastReject: boolean;
   /** What getBlockHeight answers; the test moves it past a blockhash's life to drive expiry. */
   blockHeight: number;
   hits: {url: string; rpcMethod: string | null}[];
@@ -41,6 +52,15 @@ export interface FakeCoordinator {
   simulateError: boolean;
   /** Every simulateTransaction's requested addresses (null = the field was missing). */
   simulations: (string[] | null)[];
+  /** Plan 3: the payer's lamports after each simulated transaction, fee included — what the node answered. */
+  simulatedPayerAfter: number[];
+  /**
+   * Plan 3: SPL token accounts per owner, answered by getTokenAccountsByOwner in the node's jsonParsed shape
+   * (what core/solana/rpc.ts reads: pubkey, account.data.parsed.info.{mint, owner, tokenAmount.{amount,
+   * decimals}}). They feed the balances #11 and #43 show, and (final review, carry d) a token send's simulation:
+   * a requested token account comes back in its 165-byte layout after the transaction's transfers.
+   */
+  tokenAccounts: Map<string, {pubkey: string; mint: string; amount: string; decimals: number}[]>;
   /** Per owner, newest first: the signatures getSignaturesForAddress pages through, and each getTransaction result. */
   history: Map<string, {signature: string; tx: unknown}[]>;
   /**
@@ -48,6 +68,19 @@ export interface FakeCoordinator {
    * state (#40's, #8's "Checking…") on screen deterministically while it is asserted and shot.
    */
   hold(): () => void;
+}
+
+/**
+ * An initialized SPL token account's 165 bytes, as the node returns them in base64: mint (0–32), owner (32–64),
+ * amount u64 LE (64–72), no delegate, state 1 (initialized) at 108, not native, no close authority.
+ */
+function tokenAccountData(mint: string, owner: string, amount: bigint): Uint8Array {
+  const data = new Uint8Array(165);
+  data.set(base58.decode(mint), 0);
+  data.set(base58.decode(owner), 32);
+  new DataView(data.buffer).setBigUint64(64, amount, true);
+  data[108] = 1;
+  return data;
 }
 
 /** Compact-u16: the signature count that opens a serialized transaction. */
@@ -66,7 +99,7 @@ function shortVec(bytes: Uint8Array): {value: number; size: number} {
  * the message (0x80 prefix, 3-byte header, keys, blockhash, instructions). Read by hand: the E2E runs
  * under Playwright's loader, where @solana/web3.js's CommonJS dependencies do not load.
  */
-function parseV0(wire: Uint8Array): {keys: string[]; instructions: {program: number; accounts: number[]; data: Uint8Array}[]} {
+export function parseV0(wire: Uint8Array): {signers: number; keys: string[]; instructions: {program: number; accounts: number[]; data: Uint8Array}[]} {
   let at = 0;
   const vec = (): number => {
     const {value, size} = shortVec(wire.subarray(at));
@@ -76,6 +109,8 @@ function parseV0(wire: Uint8Array): {keys: string[]; instructions: {program: num
   const signatures = vec();
   at += 64 * signatures;
   if (wire[at] !== 0x80) throw new Error('not a v0 message');
+  // The header's first byte: the required signatures (each pays the 5 000-lamport base fee).
+  const signers = wire[at + 1] ?? 0;
   at += 4;
   const keys: string[] = [];
   for (let n = vec(), i = 0; i < n; i++, at += 32) keys.push(base58.encode(wire.subarray(at, at + 32)));
@@ -90,13 +125,14 @@ function parseV0(wire: Uint8Array): {keys: string[]; instructions: {program: num
     instructions.push({program, accounts, data: wire.slice(at, at + len)});
     at += len;
   }
-  return {keys, instructions};
+  return {signers, keys, instructions};
 }
 
 /**
  * A simulated coordinator: the read proxy for the methods the engine uses, the broadcast route
  * with the contract this plan defines (docs/superpowers/specs/2026-09-29-coordinator-broadcast-route.md),
- * prices and /stats. 10 SOL, no token accounts, quiet fees, simulation always passes. Every
+ * prices and /stats. 10 SOL, no token accounts unless a spec lists some, quiet fees, a simulation that applies the
+ * fee, the System transfers, an associated-token-account Create's rent and the SPL Token transfers. Every
  * getLatestBlockhash hands out a fresh blockhash valid for BLOCKHASH_LIFETIME blocks from the
  * current height, as a real node does.
  */
@@ -104,6 +140,7 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
   let held: Promise<void> | null = null;
   const fake: FakeCoordinator = {
     mode: 'confirm',
+    broadcastReject: false,
     blockHeight: FAKE_START_HEIGHT,
     hits: [],
     broadcasts: [],
@@ -116,6 +153,8 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     accountKinds: new Map(),
     simulateError: false,
     simulations: [],
+    simulatedPayerAfter: [],
+    tokenAccounts: new Map(),
     history: new Map(),
     hold: () => {
       let release: () => void = () => undefined;
@@ -136,16 +175,26 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       if (fake.mode === 'expire') return null;
       const seen = (statusChecks.get(signature) ?? 0) + 1;
       statusChecks.set(signature, seen);
-      return seen >= 2 ? {slot: context().slot, confirmations: 1, err: null, status: {Ok: null}, confirmationStatus: 'confirmed'} : null;
+      if (seen < 2) return null;
+      return fake.mode === 'fail'
+        ? {slot: context().slot, confirmations: 1, err: {InstructionError: [2, {Custom: 1}]}, status: {Err: {InstructionError: [2, {Custom: 1}]}}, confirmationStatus: 'confirmed'}
+        : {slot: context().slot, confirmations: 1, err: null, status: {Ok: null}, confirmationStatus: 'confirmed'};
     }),
   });
 
   const lamportsOf = (address: string): number => fake.lamports.get(address) ?? fake.defaultLamports;
 
   /**
-   * What a node answers: the requested accounts after the transaction, WITHOUT the fee (the engine
-   * accepts either form, E2) — the payer's lamports less every System transfer it makes. Its error
-   * switch answers err with accounts: null, as the real RPC does (review H2).
+   * What a node answers: the requested accounts after the transaction WITH its fee paid, as the coordinator
+   * measured a real node answer (spec §11.5: a payer that sends `balance − 5 000` ends at exactly 0) — the
+   * payer's lamports less every System transfer it makes, less 5 000 per signature and the priority fee its
+   * ComputeBudget instructions set (price × limit / 10⁶, rounded up), less the rent of each token account an
+   * associated-token-account Create makes for it. A requested token account (one listed in `tokenAccounts`) comes
+   * back owned by the Token program in its 165-byte layout (mint, owner, amount u64 LE at 64), its amount less what
+   * the transaction's Transfer / TransferChecked take from it; a transfer from an account not listed, or for more
+   * than it holds, fails as the Token program does (Custom 1, InsufficientFunds), and one to an account that is
+   * neither listed nor created earlier in the transaction fails as uninitialized. Its error switch answers err with
+   * accounts: null, as the real RPC does (review H2).
    */
   const simulate = (params: unknown[]): unknown => {
     const config = params[1] as {accounts?: {encoding?: string; addresses?: unknown}} | undefined;
@@ -153,20 +202,86 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     fake.simulations.push(addresses);
     if (addresses === null || config?.accounts?.encoding !== 'base64') fake.unexpected.push('simulateTransaction without accounts {encoding: base64, addresses}');
     if (fake.simulateError) return {context: context(), value: {err: {InstructionError: [2, {Custom: 1}]}, logs: [], accounts: null, unitsConsumed: 0, returnData: null}};
-    const {keys, instructions} = parseV0(base64.decode(params[0] as string));
+    const {signers, keys, instructions} = parseV0(base64.decode(params[0] as string));
     const payer = keys[0] ?? '';
     let out = 0;
-    for (const ix of instructions) {
+    let price = 0n;
+    let limit = 0n;
+    /** What each token account gives up in this transaction. */
+    const tokenOut = new Map<string, bigint>();
+    /** The token accounts an associated-token-account Create made earlier in this transaction. */
+    const created = new Set<string>();
+    for (const [i, ix] of instructions.entries()) {
       const data = ix.data;
-      if (keys[ix.program] === '11111111111111111111111111111111' && data[0] === 2 && keys[ix.accounts[0] ?? -1] === payer) {
-        out += Number(new DataView(data.buffer, data.byteOffset, data.byteLength).getBigUint64(4, true));
+      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      const program = keys[ix.program];
+      if (program === SYSTEM_PROGRAM && data[0] === 2 && keys[ix.accounts[0] ?? -1] === payer) out += Number(view.getBigUint64(4, true));
+      if (program === COMPUTE_BUDGET && data[0] === 2) limit = BigInt(view.getUint32(1, true));
+      if (program === COMPUTE_BUDGET && data[0] === 3) price = view.getBigUint64(1, true);
+      // Create (no data) and CreateIdempotent (1) fund a new token account from the payer; the idempotent form takes
+      // nothing when the account already exists.
+      if (program === ATA_PROGRAM && (data.length === 0 || data[0] === 0 || data[0] === 1) && keys[ix.accounts[0] ?? -1] === payer) {
+        const ata = keys[ix.accounts[1] ?? -1] ?? '';
+        if (data[0] !== 1 || tokenAccountAt(ata) === null) out += TOKEN_ACCOUNT_RENT;
+        created.add(ata);
+      }
+      // Transfer (3) and TransferChecked (12): the amount (u64 LE at 1) leaves the source (the first account).
+      if (program === TOKEN_PROGRAM && (data[0] === 3 || data[0] === 12)) {
+        const source = keys[ix.accounts[0] ?? -1] ?? '';
+        const held = tokenAccountAt(source);
+        const taken = (tokenOut.get(source) ?? 0n) + view.getBigUint64(1, true);
+        const failed = (err: unknown) => ({context: context(), value: {err: {InstructionError: [i, err]}, logs: [], accounts: null, unitsConsumed: 0, returnData: null}});
+        // The destination (second account of Transfer, third of TransferChecked) must be a token account: listed, or
+        // made by a Create before this instruction — otherwise the Token program refuses it as uninitialized.
+        const destination = keys[ix.accounts[data[0] === 12 ? 2 : 1] ?? -1] ?? '';
+        if (tokenAccountAt(destination) === null && !created.has(destination)) return failed('UninitializedAccount');
+        if (held === null || taken > BigInt(held.amount)) return failed({Custom: 1});
+        tokenOut.set(source, taken);
       }
     }
-    const accounts = (addresses ?? []).map(a =>
-      a === payer ? {lamports: lamportsOf(payer) - out, owner: '11111111111111111111111111111111', data: ['', 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 0} : null,
-    );
+    const fee = 5_000 * signers + Number((price * limit + 999_999n) / 1_000_000n);
+    const after = lamportsOf(payer) - out - fee;
+    fake.simulatedPayerAfter.push(after);
+    const accounts = (addresses ?? []).map(a => {
+      if (a === payer) return {lamports: after, owner: SYSTEM_PROGRAM, data: ['', 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 0};
+      const t = tokenAccountAt(a);
+      if (t === null) return null;
+      const amount = BigInt(t.amount) - (tokenOut.get(a) ?? 0n);
+      return {lamports: TOKEN_ACCOUNT_RENT, owner: TOKEN_PROGRAM, data: [base64.encode(tokenAccountData(t.mint, t.owner, amount)), 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 165};
+    });
     return {context: context(), value: {err: null, logs: ['Program 11111111111111111111111111111111 success'], accounts, unitsConsumed: 450, returnData: null}};
   };
+
+  /** A token account listed in `tokenAccounts`, with its owner, or null. */
+  const tokenAccountAt = (address: string): {mint: string; owner: string; amount: string} | null => {
+    for (const [owner, list] of fake.tokenAccounts) {
+      const t = list.find(x => x.pubkey === address);
+      if (t !== undefined) return {mint: t.mint, owner, amount: t.amount};
+    }
+    return null;
+  };
+
+  /** getTokenAccountsByOwner in the node's jsonParsed shape, filtered by `mint` or `programId` as a node filters. */
+  const tokenAccountsOf = (owner: string, filter: {mint?: string; programId?: string} | undefined): unknown[] =>
+    (fake.tokenAccounts.get(owner) ?? [])
+      .filter(t => filter?.mint === undefined || t.mint === filter.mint)
+      // Every listed account is owned by the classic SPL Token program: another programId (Token-2022) matches none.
+      .filter(() => filter?.programId === undefined || filter.programId === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
+      .map(t => ({
+        pubkey: t.pubkey,
+        account: {
+          data: {
+            parsed: {info: {isNative: false, mint: t.mint, owner, state: 'initialized', tokenAmount: {amount: t.amount, decimals: t.decimals, uiAmount: Number(t.amount) / 10 ** t.decimals, uiAmountString: String(Number(t.amount) / 10 ** t.decimals)}}, type: 'account'},
+            program: 'spl-token',
+            space: 165,
+          },
+          executable: false,
+          lamports: 2_039_280,
+          owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+          rentEpoch: 18446744073709552000,
+          space: 165,
+        },
+      }));
 
   const rpcResult = (method: string, params: unknown[]): unknown => {
     switch (method) {
@@ -178,8 +293,16 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
         return [];
       case 'simulateTransaction':
         return simulate(params);
-      case 'getTokenAccountsByOwner':
-        return {context: context(), value: []};
+      case 'getTokenAccountsByOwner': {
+        // A node needs a filter (mint or programId), and answers the parsed shape only for encoding jsonParsed —
+        // without it the accounts come back as base64 bytes, which core/solana/rpc.ts cannot read. Either mistake is
+        // listed in `unexpected`, so contained(h) fails on it.
+        const filter = params[1] as {mint?: unknown; programId?: unknown} | undefined;
+        const config = params[2] as {encoding?: unknown} | undefined;
+        if (typeof filter?.mint !== 'string' && typeof filter?.programId !== 'string') fake.unexpected.push('getTokenAccountsByOwner without a mint or programId filter');
+        if (config?.encoding !== 'jsonParsed') fake.unexpected.push('getTokenAccountsByOwner without encoding jsonParsed');
+        return {context: context(), value: tokenAccountsOf(params[0] as string, params[1] as {mint?: string; programId?: string} | undefined)};
+      }
       case 'getMultipleAccounts':
         // Each address as the node reports it: a system account holding its lamports, or null when it holds
         // none (the import probe reads balances this way — the same `lamports` table as getBalance).
@@ -192,6 +315,12 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
         };
       case 'getAccountInfo': {
         const kind = fake.accountKinds.get(params[0] as string);
+        // A token account listed in `tokenAccounts` exists (an associated token account the engine asks about included).
+        const token = tokenAccountAt(params[0] as string);
+        if (kind === undefined && token !== null) {
+          const data = base64.encode(tokenAccountData(token.mint, token.owner, BigInt(token.amount)));
+          return {context: context(), value: {lamports: TOKEN_ACCOUNT_RENT, owner: TOKEN_PROGRAM, executable: false, data: [data, 'base64'], rentEpoch: 0, space: 165}};
+        }
         if (kind === undefined) return {context: context(), value: null};
         const owner = kind === 'wallet' ? '11111111111111111111111111111111' : 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
         return {context: context(), value: {lamports: 1_000_000, owner, executable: kind === 'program', data: ['', 'base64'], rentEpoch: 0, space: 0}};
@@ -264,6 +393,8 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       const {value: count, size} = shortVec(wire);
       if (count < 1 || wire.length < size + 64) return json(route, 400, {error: 'malformed', message: 'no signature'});
       const signature = base58.encode(wire.subarray(size, size + 64));
+      // The route's own refusal (a contract reason): nothing was forwarded, nothing recorded as broadcast.
+      if (fake.broadcastReject) return json(route, 400, {error: 'rejected', message: 'Blockhash not found'});
       fake.broadcasts.push(signature);
       fake.broadcastWires.push(transaction ?? '');
       return json(route, 200, {signature});

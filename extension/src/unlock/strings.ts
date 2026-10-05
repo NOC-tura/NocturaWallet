@@ -266,6 +266,8 @@ export const REAUTH = {
   /** Controller addition — confirmed by the owner 2026-10-01 (plan 2): a settings confirmation (B1b-2b) is not a send. */
   cancel: 'Cancel',
   networkFee: 'Network fee',
+  /** Plan 3 (carry 1): the priority as its own row, as on #19 and #20 (spec §4.5's fee rows). */
+  priority: 'Priority',
   nocturaFee: 'Noctura fee',
   newTokenAccount: 'New token account',
   /** The carried rule: a zero Noctura fee always says why. */

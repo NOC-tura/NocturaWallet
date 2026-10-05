@@ -33,9 +33,48 @@ export type ExtIconName =
   | 'doc'
   | 'copy'
   | 'swap'
-  | 'arrow-right';
+  | 'arrow-right'
+  | 'clip'
+  | 'alert'
+  | 'cpu'
+  | 'check-circle';
 
 const PATHS: Record<ExtIconName, ReactNode> = {
+  // Plan 3: #12's paste button (#i-clip) and its helper lines' glyph (#i-alert).
+  clip: (
+    <>
+      <rect x="8" y="2" width="8" height="4" rx="1" />
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    </>
+  ),
+  alert: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="8" x2="12" y2="12" />
+      <line x1="12" y1="16" x2="12.01" y2="16" />
+    </>
+  ),
+  // #19's intent eyebrow: simulating (#i-cpu), passed (#i-check-circle).
+  cpu: (
+    <>
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <rect x="9" y="9" width="6" height="6" />
+      <line x1="9" y1="2" x2="9" y2="4" />
+      <line x1="15" y1="2" x2="15" y2="4" />
+      <line x1="9" y1="20" x2="9" y2="22" />
+      <line x1="15" y1="20" x2="15" y2="22" />
+      <line x1="20" y1="9" x2="22" y2="9" />
+      <line x1="20" y1="14" x2="22" y2="14" />
+      <line x1="2" y1="9" x2="4" y2="9" />
+      <line x1="2" y1="14" x2="4" y2="14" />
+    </>
+  ),
+  'check-circle': (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="9 12 12 15 17 9" />
+    </>
+  ),
   'arrow-right': (
     <>
       <path d="M5 12h14" />

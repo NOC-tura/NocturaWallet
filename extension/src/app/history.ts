@@ -10,11 +10,15 @@ export const FILTERS: readonly {value: Filter; text: string}[] = [
 ];
 export const isFilter = (x: string | null): x is Filter => x === 'all' || x === 'sent' || x === 'received' || x === 'purchases';
 
-/** D24: the filters apply to the rows already loaded; "Load more" continues underneath. */
+/**
+ * D24: the filters apply to the rows already loaded; "Load more" continues underneath. A failed send (the
+ * engine reads what it tried to send — plan 3, owner question 1, option A) is a send: it shows under "Sent" as
+ * well as "All", marked Failed. Any other failed transaction shows under "All" only.
+ */
 export function matches(item: HistoryItem, f: Filter): boolean {
   if (f === 'all') return true;
-  if (item.failed) return false;
   if (f === 'sent') return item.kind === 'sent';
+  if (item.failed) return false;
   if (f === 'received') return item.kind === 'received';
   return item.kind === 'purchase';
 }
@@ -43,10 +47,12 @@ export type RowTone = 'send' | 'recv' | 'swap' | 'fail' | 'plain';
  */
 export function rowText(item: HistoryItem, accounts: readonly Account[]): {title: string; meta: string; amount: string; tone: RowTone; mono: boolean} {
   if (item.failed) {
-    // The engine decodes a failed transaction as `other` with no token (core/solana/history.ts): the
-    // kind and token of what was attempted are not known here.
-    const what = item.kind === 'other' || item.token === null ? 'transaction' : `${item.kind} ${item.token}`;
-    return {title: `Failed · ${what}`, meta: 'the network fee was charged', amount: '—', tone: 'fail', mono: false};
+    // A failed send carries what it tried to send (core/solana/history.ts reads it from the instructions:
+    // plan 3, owner question 1, option A): "Failed · sent SOL" and "— SOL", as 26b draws the failed row. Any
+    // other failed transaction moved nothing we can name: "Failed · transaction" and "—". The design's fee in
+    // dollars under the amount is not shown — no row carries fiat (spec §6.2 Differs).
+    const sent = item.kind === 'sent' && item.token !== null;
+    return {title: sent ? `Failed · sent ${item.token}` : 'Failed · transaction', meta: 'the network fee was charged', amount: sent ? `— ${item.token}` : '—', tone: 'fail', mono: false};
   }
   const amount = (sign: string) => (item.amount === null || item.token === null ? '—' : `${sign}${showAmount(item.token, item.amount)}`);
   switch (item.kind) {

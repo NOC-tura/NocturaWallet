@@ -2,7 +2,7 @@
 import {act, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
 import {renderInWallet, setupWallet, walletReader} from './harness';
 import {Activity} from '../screens/Activity';
-import {rowText} from '../history';
+import {matches, rowText} from '../history';
 import {Home} from '../screens/Home';
 import {RECONNECTED_MS, useWallet, WalletProvider, type WalletModel} from '../WalletContext';
 import {PENDING_KEY} from '../../background/pendingStore';
@@ -33,7 +33,7 @@ function historyReader(n = 5) {
   });
 }
 
-const nav = {onTx: vi.fn(), onReceive: vi.fn()};
+const nav = {onTx: vi.fn(), onReceive: vi.fn(), onPending: vi.fn()};
 async function openActivity(reader = historyReader(), before?: NonNullable<Parameters<typeof renderInWallet>[1]>['before']) {
   return renderInWallet(<Activity {...nav} />, {reader, before});
 }
@@ -55,8 +55,10 @@ describe('#26 activity', () => {
     expect(within(received).getByText('+250.00')).toBeTruthy();
     expect(screen.getByText('Presale purchase')).toBeTruthy();
     expect(screen.getByText(/^no transfer to or from this account/)).toBeTruthy();
-    expect(screen.getByText('Failed · transaction')).toBeTruthy();
-    expect(screen.getByText(/^the network fee was charged · /)).toBeTruthy();
+    // Plan 3, owner question 1 (option A): a failed send reads as what it tried to send.
+    const failed = screen.getByText('Failed · sent SOL').closest('button') as HTMLElement;
+    expect(within(failed).getByText(/^the network fee was charged · /)).toBeTruthy();
+    expect(within(failed).getByText('— SOL')).toBeTruthy();
     expect(screen.getByText(/^TODAY · /)).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/\$\d|Wallet|Dapp|Swaps|Shielded/);
     fireEvent.click(sent);
@@ -76,7 +78,18 @@ describe('#26 activity', () => {
     expect(rowText({...base, kind: 'sent', token: 'SOL', amount: 1n, counterparty: null}, []).mono).toBe(false);
     expect(sec('Presale purchase').classList.contains('noc-mono')).toBe(false);
     expect(sec('Other transaction').classList.contains('noc-mono')).toBe(false);
-    expect(sec('Failed · transaction').classList.contains('noc-mono')).toBe(false);
+    expect(sec('Failed · sent SOL').classList.contains('noc-mono')).toBe(false);
+  });
+
+  // Plan 3, owner question 1 (option A): only a failed SEND names what it tried; any other failed transaction
+  // keeps the generic row, and shows under "All" only.
+  it('a failed transaction that is not a send stays "Failed · transaction" with a dash, and is not a send', () => {
+    const failedOther = {signature: sig(9), blockTime: null, kind: 'other', token: null, mint: null, amount: null, counterparty: null, feeLamports: 5_000n, failed: true} as const;
+    expect(rowText(failedOther, [])).toMatchObject({title: 'Failed · transaction', amount: '—', tone: 'fail'});
+    expect([matches(failedOther, 'all'), matches(failedOther, 'sent'), matches(failedOther, 'received'), matches(failedOther, 'purchases')]).toEqual([true, false, false, false]);
+    const failedSend = {...failedOther, kind: 'sent', token: 'USDC', amount: 12_000_000n, counterparty: COUNTERPARTY} as const;
+    expect(rowText(failedSend, [])).toMatchObject({title: 'Failed · sent USDC', amount: '— USDC', tone: 'fail'});
+    expect([matches(failedSend, 'all'), matches(failedSend, 'sent'), matches(failedSend, 'received')]).toEqual([true, true, false]);
   });
 
   // Found in fix round 1's visual pass: 26b's TODAY / YESTERDAY rows end in the time ("· 9:14 AM"),
@@ -104,7 +117,7 @@ describe('#26 activity', () => {
     expect(ic.querySelector('path[d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"]')).not.toBeNull();
     // The rest keep their tones: sent, recv (rotated in app.css), purchase in the swap tint, fail.
     const tone = (title: string) => ((screen.getByText(title).closest('button') as HTMLElement).querySelector('.ic') as HTMLElement).className;
-    expect([tone('Sent SOL'), tone('Received USDC'), tone('Presale purchase'), tone('Failed · transaction')]).toEqual(['ic send', 'ic recv', 'ic swap', 'ic fail']);
+    expect([tone('Sent SOL'), tone('Received USDC'), tone('Presale purchase'), tone('Failed · sent SOL')]).toEqual(['ic send', 'ic recv', 'ic swap', 'ic fail']);
     // Fix round 2 (#2): the purchase row follows 26b's swap row (11813): `.ic.swap` with #i-swap.
     const purchase = (screen.getByText('Presale purchase').closest('button') as HTMLElement).querySelector('.ic') as HTMLElement;
     expect([...purchase.querySelectorAll('path')].map(p => p.getAttribute('d'))).toEqual(['M3 8h13a4 4 0 0 1 0 8h-3', 'm7 4-4 4 4 4', 'M21 16H8a4 4 0 0 1 0-8h3', 'm17 20 4-4-4-4']);
@@ -116,7 +129,10 @@ describe('#26 activity', () => {
     expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual(['All', 'Sent', 'Received', 'Purchases']);
     fireEvent.click(screen.getByRole('tab', {name: 'Sent'}));
     expect(screen.getByText('Sent SOL')).toBeTruthy();
+    // A failed send is a send (plan 3, option A); the other kinds are not.
+    expect(screen.getByText('Failed · sent SOL')).toBeTruthy();
     expect(screen.queryByText('Received USDC')).toBeNull();
+    expect(screen.queryByText('Other transaction')).toBeNull();
     fireEvent.click(screen.getByRole('tab', {name: 'Received'}));
     expect(screen.getByText('Received USDC')).toBeTruthy();
     expect(screen.queryByText('Sent SOL')).toBeNull();
@@ -190,13 +206,15 @@ describe('#26 activity', () => {
     expect(screen.queryByText('Could not reach the Noctura server')).toBeNull();
   });
 
-  it('open sends on top, in a PENDING section', async () => {
+  it('open sends on top, in a PENDING section — a row opens its send (#21/#54)', async () => {
     await openActivity(historyReader(), ext =>
-      ext.local.set(PENDING_KEY, [pendingRecord({account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '2480000000'}, createdAt: Date.now() - 72_000})]),
+      ext.local.set(PENDING_KEY, [pendingRecord({id: 'p1', account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '2480000000'}, createdAt: Date.now() - 72_000})]),
     );
     expect(await screen.findByText('PENDING')).toBeTruthy();
     expect(screen.getByText('Sending 2.48 SOL')).toBeTruthy();
     expect(screen.getByText(/^waiting · 1 m \d+ s$/)).toBeTruthy();
+    fireEvent.click(screen.getByText('Sending 2.48 SOL'));
+    expect(nav.onPending).toHaveBeenCalledWith(expect.objectContaining({id: 'p1'}));
   });
 
   it('unreachable and refused show their banners over what loaded', async () => {
@@ -234,7 +252,7 @@ describe('#26 activity', () => {
     });
     await renderInWallet(
       <>
-        <Home onReceive={() => undefined} onActivity={() => undefined} onAccounts={() => undefined} />
+        <Home onReceive={() => undefined} onSend={() => undefined} onPending={() => undefined} onAccounts={() => undefined} />
         <Activity {...nav} />
       </>,
       {reader},
@@ -259,7 +277,7 @@ describe('#26 activity', () => {
     const w = await setupWallet({reader});
     const {rerender} = render(
       <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
-        <Home onReceive={() => undefined} onActivity={() => undefined} onAccounts={() => undefined} />
+        <Home onReceive={() => undefined} onSend={() => undefined} onPending={() => undefined} onAccounts={() => undefined} />
       </WalletProvider>,
     );
     await screen.findByText(REFUSED_TEXT);
@@ -269,7 +287,7 @@ describe('#26 activity', () => {
     rerender(
       <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
         <>
-          <Home onReceive={() => undefined} onActivity={() => undefined} onAccounts={() => undefined} />
+          <Home onReceive={() => undefined} onSend={() => undefined} onPending={() => undefined} onAccounts={() => undefined} />
           <Activity {...nav} />
         </>
       </WalletProvider>,
@@ -509,7 +527,7 @@ describe('#41 empty activity', () => {
     });
     await renderInWallet(
       <>
-        <Home onReceive={() => undefined} onActivity={() => undefined} onAccounts={() => undefined} />
+        <Home onReceive={() => undefined} onSend={() => undefined} onPending={() => undefined} onAccounts={() => undefined} />
         <Activity {...nav} />
       </>,
       {reader},

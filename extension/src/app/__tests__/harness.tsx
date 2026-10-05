@@ -1,5 +1,5 @@
 import type {ReactElement} from 'react';
-import {render} from '@testing-library/react';
+import {cleanup, render} from '@testing-library/react';
 import {createEngine, type Engine, type Transport} from '../engine';
 import type {Platform} from '../platform';
 import {WalletProvider, type Surface} from '../WalletContext';
@@ -12,7 +12,7 @@ import type {SolanaReader} from '../../../../core/solana/rpc';
 import {WALLET_TOKENS} from '../../../../core/solana/balances';
 import {fakeDeps, fakeReader} from '../../background/__tests__/fakeDeps';
 import {fakeExt} from '../../background/__tests__/fakeExt';
-import {ACCOUNT, RECIPIENT} from '../../background/__tests__/fixtures';
+import {ACCOUNT, HOLDING_LARGE, HOLDING_SMALL, RECIPIENT, sendReader} from '../../background/__tests__/fixtures';
 
 /**
  * The screens against the REAL background (handleMessage, fake Ext, fake deps) — the same wiring as
@@ -46,6 +46,24 @@ export function walletReader(over: Partial<SolanaReader> = {}): SolanaReader {
   });
 }
 
+/**
+ * walletReader's wallet, able to send (plan 3): quiet fees, a blockhash valid to height 1000, the recipient an
+ * existing wallet, and a simulation consistent with the transaction it is given (E2, the background fixtures'
+ * sendReader) — with the harness's balances and real token-account addresses, filtered by mint as the RPC does.
+ */
+export function sendingReader(over: Partial<SolanaReader> = {}): SolanaReader {
+  const holdings = (owner: string) => [
+    {pubkey: HOLDING_LARGE, mint: NOC, owner, amount: 4_200_000_000_000n, decimals: 9},
+    {pubkey: HOLDING_SMALL, mint: USDC, owner, amount: 740_210_000n, decimals: 6},
+  ];
+  return sendReader({
+    getBalance: async () => 62_482_100_000n,
+    getTokenAccountsByOwner: async (owner, filter) => holdings(owner).filter(h => !('mint' in filter) || h.mint === filter.mint),
+    getSignaturesForAddress: async () => [],
+    ...over,
+  });
+}
+
 export interface Wallet {
   ext: ReturnType<typeof fakeExt>;
   deps: ReturnType<typeof fakeDeps>;
@@ -66,7 +84,30 @@ export interface WalletOptions {
   before?: (ext: ReturnType<typeof fakeExt>) => Promise<void>;
   /** The provider's clock (default: Date.now). */
   now?: () => number;
+  /**
+   * Sees every message the client sends, before the background does; may hold it (return a promise) — how a
+   * test keeps a state on screen, or counts what a screen asked (plan 3).
+   */
+  gate?: (m: unknown) => Promise<void> | void;
 }
+
+/**
+ * Every engine call a test's screens made that has not answered yet. After each test the tree is unmounted and these
+ * are drained (bounded by a real-clock wait: some background calls sleep forever by design), so no answer lands after
+ * the test file's environment is torn down (the `window is not defined` flake, Task 12 fix round 1).
+ */
+const inFlight = new Set<Promise<unknown>>();
+const realSetTimeout = globalThis.setTimeout;
+export const DRAIN_MS = 200;
+export async function drainInFlight(): Promise<void> {
+  if (inFlight.size === 0) return;
+  await Promise.race([Promise.allSettled([...inFlight]), new Promise<void>(r => realSetTimeout(r, DRAIN_MS))]);
+  inFlight.clear();
+}
+afterEach(async () => {
+  cleanup();
+  await drainInFlight();
+});
 
 /** A background with this wallet in it, a client wired to it, and a spy platform. */
 export async function setupWallet(o: WalletOptions = {}): Promise<Wallet> {
@@ -95,8 +136,17 @@ export async function setupWallet(o: WalletOptions = {}): Promise<Wallet> {
     },
     version: () => '0.1.0',
   };
-  const transport: Transport = m => handleMessage(ext, m, POPUP, deps);
-  return {ext, deps, platform, transport, engine: createEngine(transport, async () => undefined)};
+  const transport: Transport = m => {
+    const p = handleMessage(ext, m, POPUP, deps);
+    inFlight.add(p);
+    void p.finally(() => inFlight.delete(p)).catch(() => undefined);
+    return p;
+  };
+  const gated: Transport = async m => {
+    await o.gate?.(m);
+    return transport(m);
+  };
+  return {ext, deps, platform, transport, engine: createEngine(o.gate === undefined ? transport : gated, async () => undefined)};
 }
 
 /** One screen inside the real provider (the open sequence runs as in the popup). */

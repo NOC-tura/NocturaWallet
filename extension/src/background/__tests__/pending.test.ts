@@ -38,7 +38,7 @@ async function submitted(over: Partial<WalletDeps> = {}) {
   const ext = fakeExt();
   await unlocked(ext);
   const deps = depsWith(over);
-  const view = await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT});
+  const view = await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT, fee: null});
   return {ext, deps, view};
 }
 
@@ -59,10 +59,10 @@ describe('submitSigned', () => {
       seen.push((await readPending(ext)).length);
       return firstSignature(wire);
     };
-    const view = await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT});
+    const view = await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT, fee: null});
     expect(seen).toEqual([1]);
     expect(await ext.local.get(PENDING_KEY)).toHaveLength(1);
-    expect(view).toMatchObject({state: 'pending', detail: null, expiryNullSeenAt: null, signature: firstSignature(signedWire())});
+    expect(view).toMatchObject({state: 'pending', detail: null, detailCode: null, expiryNullSeenAt: null, signature: firstSignature(signedWire())});
     expect('wire' in view).toBe(false);
   });
 
@@ -73,7 +73,7 @@ describe('submitSigned', () => {
 
   it('allows one open send per account — a second is refused and never broadcast', async () => {
     const {ext, deps} = await submitted();
-    await expect(submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(2n), lastValidBlockHeight: 1000, intent: INTENT})).rejects.toMatchObject({code: 'in-flight'});
+    await expect(submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(2n), lastValidBlockHeight: 1000, intent: INTENT, fee: null})).rejects.toMatchObject({code: 'in-flight'});
     expect(deps.broadcasts).toHaveLength(1);
   });
 
@@ -81,8 +81,8 @@ describe('submitSigned', () => {
     const ext = fakeExt();
     const deps = depsWith();
     const results = await Promise.allSettled([
-      submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT}),
-      submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(2n), lastValidBlockHeight: 1000, intent: INTENT}),
+      submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT, fee: null}),
+      submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(2n), lastValidBlockHeight: 1000, intent: INTENT, fee: null}),
     ]);
     expect(results.map(r => r.status).sort()).toEqual(['fulfilled', 'rejected']);
     expect(results.find(r => r.status === 'rejected')).toMatchObject({reason: {code: 'in-flight'}});
@@ -98,6 +98,7 @@ describe('submitSigned', () => {
     });
     expect(view.state).toBe('failed');
     expect(view.detail).toContain('No funds moved');
+    expect(view.detailCode).toBeNull();
   });
 
   it('a broadcast that is not acknowledged stays pending and says so', async () => {
@@ -108,6 +109,7 @@ describe('submitSigned', () => {
     });
     expect(view.state).toBe('pending');
     expect(view.detail).toContain('same transaction');
+    expect(view.detailCode).toBe('unacked');
   });
 });
 
@@ -120,9 +122,10 @@ describe('submitSigned — what a refused first broadcast means (route contract)
     });
     expect(view.state).toBe('pending');
     expect(view.detail).toContain('403');
+    expect(view.detailCode).toBe('forbidden');
     deps.reader = fakeReader({getSignatureStatuses: async () => [confirmed], getBlockHeight: async () => 900});
     await pollOnce(ext, deps);
-    expect((await readPending(ext))[0]?.state).toBe('confirmed');
+    expect((await readPending(ext))[0]).toMatchObject({state: 'confirmed', detail: null, detailCode: null});
   });
 
   it('refused by the cool-down before any request: failed — nothing was sent', async () => {
@@ -133,6 +136,7 @@ describe('submitSigned — what a refused first broadcast means (route contract)
     });
     expect(view.state).toBe('failed');
     expect(view.detail).toContain('No funds moved');
+    expect(view.detailCode).toBe('cooling');
   });
 
   it('a substituted signature: pending, watching our own signature', async () => {
@@ -143,6 +147,7 @@ describe('submitSigned — what a refused first broadcast means (route contract)
     });
     expect(view.state).toBe('pending');
     expect(view.detail).toContain('another signature');
+    expect(view.detailCode).toBe('substituted');
   });
 });
 
@@ -155,7 +160,7 @@ describe('submitSigned — the poller survives a failure after the record is wri
       throw new Error('alarms down');
     };
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const view = await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT});
+    const view = await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT, fee: null});
     expect(deps.broadcasts).toHaveLength(1);
     expect([...deps.broadcasts[0]!]).toEqual([...signedWire()]);
     expect(view.state).toBe('pending');
@@ -174,7 +179,7 @@ describe('submitSigned — the poller survives a failure after the record is wri
       deps.broadcasts.push(wire);
       return firstSignature(wire);
     };
-    await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT});
+    await submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT, fee: null});
     expect(armedAtBroadcast).toEqual([true]);
   });
 
@@ -191,7 +196,7 @@ describe('submitSigned — the poller survives a failure after the record is wri
     };
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     // Recorded and broadcast: never the storage error ("failed", nothing sent) — SentUnconfirmed, naming the transaction.
-    await expect(submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT})).rejects.toMatchObject({
+    await expect(submitSigned(ext, deps, {account: ACCOUNT.publicKey, wire: signedWire(), lastValidBlockHeight: 1000, intent: INTENT, fee: null})).rejects.toMatchObject({
       name: 'SentUnconfirmed',
       signature: firstSignature(signedWire()),
     });
@@ -266,12 +271,18 @@ describe('pollOnce', () => {
     expect((await knownRecipients(ext)).has(RECIPIENT)).toBe(true);
   });
 
-  it('landed but failed: failed, and the fee was paid', async () => {
-    const {ext, deps} = await submitted();
+  it('landed but failed: failed, and the fee was paid (the earlier unacknowledged code cleared with its text)', async () => {
+    const {ext, deps, view} = await submitted({
+      broadcast: async () => {
+        throw new BroadcastUnavailable(502);
+      },
+    });
+    expect(view.detailCode).toBe('unacked');
     deps.reader = fakeReader({getSignatureStatuses: async () => [{err: {InstructionError: [0, 'x']}, confirmationStatus: 'confirmed'}], getBlockHeight: async () => 900});
     await pollOnce(ext, deps);
     expect((await readPending(ext))[0]).toMatchObject({state: 'failed'});
     expect((await readPending(ext))[0]?.detail).toContain('network fee was paid');
+    expect((await readPending(ext))[0]?.detailCode).toBeNull();
   });
 
   it('within the margin past lastValidBlockHeight: no expiry check at all', async () => {
@@ -285,7 +296,11 @@ describe('pollOnce', () => {
   });
 
   it('past the margin: the first null full-history answer only marks it; a second ≥ 2 s later expires it — no funds moved', async () => {
-    const {ext, deps} = await submitted();
+    const {ext, deps} = await submitted({
+      broadcast: async () => {
+        throw new BroadcastUnavailable(502);
+      },
+    });
     const asked: (boolean | undefined)[] = [];
     deps.reader = unseenAt(EXPIRED_HEIGHT, asked);
     expect(await pollOnce(ext, deps)).toBe(true);
@@ -296,7 +311,7 @@ describe('pollOnce', () => {
     expect((await readPending(ext))[0]?.state).toBe('pending');
     deps.clock.t += 1;
     expect(await pollOnce(ext, deps)).toBe(false);
-    expect((await readPending(ext))[0]).toMatchObject({state: 'expired', detail: NOT_CONFIRMED});
+    expect((await readPending(ext))[0]).toMatchObject({state: 'expired', detail: NOT_CONFIRMED, detailCode: null});
   });
 
   it('past the margin but found in the full history on the second round: confirmed, not expired', async () => {
@@ -409,7 +424,10 @@ describe('resend', () => {
   });
 
   it('a RE-send answered 403, or refused by the cool-down, leaves the send pending', async () => {
-    for (const refusal of [new RpcForbidden('broadcast'), new RpcCoolingDown('broadcast')]) {
+    for (const [refusal, code] of [
+      [new RpcForbidden('broadcast'), 'forbidden'],
+      [new RpcCoolingDown('broadcast'), 'cooling'],
+    ] as const) {
       const {ext, deps, view} = await submitted();
       deps.broadcast = async () => {
         throw refusal;
@@ -418,6 +436,11 @@ describe('resend', () => {
       const again = await resend(ext, deps, view.id);
       expect(again.state).toBe('pending');
       expect(again.detail).toContain('403');
+      expect(again.detailCode).toBe(code);
+      // An acknowledged re-send clears both, together.
+      deps.broadcast = async wire => firstSignature(wire);
+      deps.clock.t += RESEND_MIN_INTERVAL_MS;
+      expect(await resend(ext, deps, view.id)).toMatchObject({detail: null, detailCode: null});
     }
   });
 

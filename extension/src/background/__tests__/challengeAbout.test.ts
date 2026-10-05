@@ -18,13 +18,22 @@ const SEND_ABOUT: ChallengeAbout = {
   recipient: RECIPIENT,
   amount: '1000000',
   networkLamports: '5050',
+  priorityLamports: '50',
   markupLamports: '0',
   markupReason: 'status-unknown',
   rentLamports: '0',
   reasons: ['first-send'],
   thresholdCents: 10_000,
 };
-const REFRESH: SendAboutRefresh = {networkLamports: '9050', markupLamports: '0', markupReason: 'status-unknown', rentLamports: '0', reasons: ['first-send', 'over-usd-threshold'], thresholdCents: 10_000};
+const REFRESH: SendAboutRefresh = {
+  networkLamports: '9050',
+  priorityLamports: '4050',
+  markupLamports: '0',
+  markupReason: 'status-unknown',
+  rentLamports: '0',
+  reasons: ['first-send', 'over-usd-threshold'],
+  thresholdCents: 10_000,
+};
 const SOL_INTENT = {token: 'SOL' as const, recipient: RECIPIENT, amount: '1000000'};
 
 describe('the challenge describes its action (E3)', () => {
@@ -40,6 +49,8 @@ describe('the challenge describes its action (E3)', () => {
       recipient: RECIPIENT,
       amount: '1000000',
       networkLamports: '5050',
+      // Plan 3, carry 1: the priority part of the network fee, for #10's own Priority row.
+      priorityLamports: '50',
       markupLamports: '0',
       markupReason: 'status-unknown',
       rentLamports: '0',
@@ -64,6 +75,8 @@ describe('the challenge describes its action (E3)', () => {
     expect(stored.digest).toBe(sendIntentDigest(ACCOUNT.publicKey, SOL_INTENT));
     expect(stored.about).toMatchObject({account: ACCOUNT.publicKey, recipient: RECIPIENT, amount: '1000000', token: 'SOL'});
     expect(stored.about).not.toMatchObject({networkLamports: '5050'});
+    // The priority is refreshed with the network fee it is part of (4 000 000 µlamports/CU × 1 000 CU = 4 000).
+    expect(stored.about).toMatchObject({networkLamports: '9000', priorityLamports: '4000'});
   });
 
   it('a stored record whose about has another shape is dropped', async () => {
@@ -81,6 +94,11 @@ describe('the challenge describes its action (E3)', () => {
       {...SEND_ABOUT, recipient: 'not-an-address'},
       {...SEND_ABOUT, account: '0'.repeat(32)},
       {...SEND_ABOUT, recipient: '1'.repeat(45)},
+      // Plan 3, carry 1: the twelfth key — missing, not digits, or larger than the network fee it is part of.
+      (({priorityLamports: _p, ...rest}) => rest)(SEND_ABOUT as Extract<ChallengeAbout, {kind: 'send'}>),
+      {...SEND_ABOUT, priorityLamports: '1.5'},
+      {...SEND_ABOUT, priorityLamports: 50},
+      {...SEND_ABOUT, priorityLamports: '5051'},
       {kind: 'settings'},
       null,
     ]) {
@@ -110,6 +128,15 @@ describe('the challenge describes its action (E3)', () => {
     await expect(issueChallenge(fakeExt(), fakeDeps(), 'd', {kind: 'settings'} as unknown as ChallengeAbout)).rejects.toThrow();
     await expect(issueChallenge(fakeExt(), fakeDeps(), 'd', {...SEND_ABOUT, recipient: 'not-an-address'})).rejects.toThrow();
     await expect(issueChallenge(fakeExt(), fakeDeps(), 'd', {...SEND_ABOUT, account: 7} as unknown as ChallengeAbout)).rejects.toThrow();
+  });
+
+  it('a priority equal to the whole network fee (no base fee) is accepted and read back', async () => {
+    // The bound is "never more than", not "less than": priority === network describes a real send.
+    const ext = fakeExt();
+    const deps = fakeDeps();
+    const about: ChallengeAbout = {...SEND_ABOUT, networkLamports: '50'};
+    const id = await issueChallenge(ext, deps, 'd', about);
+    expect(await challengeInfo(ext, deps.now(), id)).toEqual(about);
   });
 
   it('a re-prepare past issuedAt + 10 min issues a new challenge', async () => {
@@ -145,7 +172,7 @@ describe('rebaseChallenge (D39, C5)', () => {
     const c = ((await ext.session.get(REAUTH_KEY)) as Record<string, {expiresAt: number; satisfied: boolean; about: ChallengeAbout}>)[id]!;
     expect(c.satisfied).toBe(true);
     expect(c.expiresAt).toBe(deps.clock.t - 100_000 + CHALLENGE_TTL_MS);
-    expect(c.about).toMatchObject({networkLamports: '9050', reasons: ['first-send', 'over-usd-threshold'], amount: '1000000'});
+    expect(c.about).toMatchObject({networkLamports: '9050', priorityLamports: '4050', reasons: ['first-send', 'over-usd-threshold'], amount: '1000000'});
     expect(await challengeInfo(ext, deps.now(), id)).not.toBeNull();
   });
 
@@ -183,7 +210,13 @@ describe('rebaseChallenge (D39, C5)', () => {
     const id = await issueChallenge(ext, deps, 'd', SEND_ABOUT);
     const before = ((await ext.session.get(REAUTH_KEY)) as Record<string, unknown>)[id];
     deps.clock.t += 10_000;
-    for (const refresh of [{...REFRESH, thresholdCents: 1.5}, {...REFRESH, networkLamports: '-1'}, {...REFRESH, reasons: ['nope']}]) {
+    for (const refresh of [
+      {...REFRESH, thresholdCents: 1.5},
+      {...REFRESH, networkLamports: '-1'},
+      {...REFRESH, reasons: ['nope']},
+      {...REFRESH, priorityLamports: '9051'},
+      {...REFRESH, priorityLamports: undefined},
+    ]) {
       expect(await rebaseChallenge(ext, deps.now(), id, 'd', refresh as SendAboutRefresh)).toBe(false);
       expect(((await ext.session.get(REAUTH_KEY)) as Record<string, unknown>)[id]).toEqual(before);
     }

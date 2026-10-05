@@ -7,8 +7,9 @@ import type {Send} from './types';
  * from its URL and the description ONLY from the background (vault.challengeInfo), and renders nothing
  * untrusted: every field is re-validated here against a closed alphabet before any text is built —
  * the token in this page's own four-entry table, amounts ^\d{1,20}$, addresses the base58 alphabet at
- * 32–44 characters, each reason and fee reason one of its known codes mapped to a fixed string,
- * thresholds integers in range, and exactly the record's keys. Anything else is null: #10 then shows
+ * 32–44 characters, the priority no larger than the network fee it is part of, each reason and fee
+ * reason one of its known codes mapped to a fixed string, thresholds integers in range, and exactly the
+ * record's keys. Anything else is null: #10 then shows
  * "The details of this action could not be shown." with only Cancel — it never offers a confirmation
  * it cannot describe.
  */
@@ -16,7 +17,7 @@ const TOKENS = {SOL: 9, NOC: 9, USDC: 6, USDT: 6} as const;
 export type TokenSymbol = keyof typeof TOKENS;
 const DIGITS = /^\d{1,20}$/;
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-const SEND_KEYS = ['account', 'amount', 'kind', 'markupLamports', 'markupReason', 'networkLamports', 'reasons', 'recipient', 'rentLamports', 'thresholdCents', 'token'];
+const SEND_KEYS = ['account', 'amount', 'kind', 'markupLamports', 'markupReason', 'networkLamports', 'priorityLamports', 'reasons', 'recipient', 'rentLamports', 'thresholdCents', 'token'];
 const SETTINGS_KEYS = ['autoLockMinutes', 'kind', 'reauthUsdCents'];
 const own = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
 
@@ -48,11 +49,15 @@ const hasExactly = (o: Record<string, unknown>, keys: string[]): boolean => Obje
 
 function describeSend(a: Record<string, unknown>): SendDescription | null {
   if (!hasExactly(a, SEND_KEYS)) return null;
-  const {account, recipient, token, amount, networkLamports, markupLamports, markupReason, rentLamports, reasons, thresholdCents} = a;
+  const {account, recipient, token, amount, networkLamports, priorityLamports, markupLamports, markupReason, rentLamports, reasons, thresholdCents} = a;
   if (typeof account !== 'string' || !ADDRESS.test(account) || typeof recipient !== 'string' || !ADDRESS.test(recipient)) return null;
   if (typeof token !== 'string' || !own(TOKENS, token)) return null;
   const symbol = token as TokenSymbol;
-  if (![amount, networkLamports, markupLamports, rentLamports].every(v => typeof v === 'string' && DIGITS.test(v))) return null;
+  if (![amount, networkLamports, priorityLamports, markupLamports, rentLamports].every(v => typeof v === 'string' && DIGITS.test(v))) return null;
+  const network = BigInt(networkLamports as string);
+  const priority = BigInt(priorityLamports as string);
+  // The priority is a part of the network fee: a larger one describes no real transaction (fail closed).
+  if (priority > network) return null;
   if (!isInt(thresholdCents, 100, 100_000)) return null;
   // The background issues a 'send' challenge only when sendReauthReasons returned at least one
   // code (prepare.ts: `if (reasons.length > 0) { ... issueChallenge ... }`), and that function
@@ -64,7 +69,14 @@ function describeSend(a: Record<string, unknown>): SendDescription | null {
     else if (typeof r === 'string' && own(REAUTH.reason, r)) lines.push(REAUTH.reason[r as keyof typeof REAUTH.reason]);
     else return null;
   }
-  const fees: FeeLine[] = [{label: REAUTH.networkFee, value: sol(networkLamports as string)}];
+  // The fee rows as spec §4.5 defines them once for #19, #20 and #10 (plan 3, carry 1): the base fee (the
+  // network fee less its priority part), the priority, the new token account when there is one, then the
+  // Noctura fee — or, when it is zero, the line that says why.
+  const fees: FeeLine[] = [
+    {label: REAUTH.networkFee, value: sol((network - priority).toString())},
+    {label: REAUTH.priority, value: sol(priority.toString())},
+  ];
+  if (BigInt(rentLamports as string) > 0n) fees.push({label: REAUTH.newTokenAccount, value: sol(rentLamports as string)});
   if (BigInt(markupLamports as string) > 0n) {
     if (markupReason !== 'charged') return null;
     fees.push({label: REAUTH.nocturaFee, value: sol(markupLamports as string)});
@@ -73,7 +85,6 @@ function describeSend(a: Record<string, unknown>): SendDescription | null {
     if (typeof markupReason !== 'string' || !own(REAUTH.feeReason, markupReason)) return null;
     fees.push({label: REAUTH.feeReason[markupReason as keyof typeof REAUTH.feeReason], value: null});
   }
-  if (BigInt(rentLamports as string) > 0n) fees.push({label: REAUTH.newTokenAccount, value: sol(rentLamports as string)});
   const decimals = TOKENS[symbol];
   return {
     kind: 'send',

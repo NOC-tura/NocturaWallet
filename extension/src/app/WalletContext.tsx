@@ -112,9 +112,10 @@ export function WalletProvider({
   surface: Surface;
   now?: () => number;
   /**
-   * The UI tab's hand-over screens (#7, #40, the resume stand-in): the state only — no cached, pending,
+   * The UI tab's hand-over screens (#7, #40, #20's resume entry): the state only — no cached, pending,
    * balance or price read on open, none later (refresh() is a no-op, so the online event reads
-   * nothing), and no activity.ping. #40 reads what it shows itself; #7 reads nothing from the network.
+   * nothing), and no activity.ping. #40 and #20 read what they show themselves; #7 reads nothing from
+   * the network. App drops `quiet` once the tab moves on from #20 (to #21, #19 or #12).
    */
   quiet?: boolean;
   children: ReactNode;
@@ -141,6 +142,14 @@ export function WalletProvider({
   const netRef = useRef(net);
   netRef.current = net;
   const shownKey = useRef<string | null>(null);
+  /** False once the provider unmounts: an answer that arrives after it sets nothing (no render after teardown). */
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
   const account = useMemo(() => wallet?.accounts.find(a => a.index === wallet.selected) ?? null, [wallet]);
   const accountRef = useRef(account);
@@ -193,7 +202,7 @@ export function WalletProvider({
     try {
       const priceRead = engine.prices();
       const b = await engine.balances(a.publicKey);
-      if (accountRef.current?.publicKey !== a.publicKey) return;
+      if (!alive.current || accountRef.current?.publicKey !== a.publicKey) return;
       setSettled(true);
       if (b.ok) {
         setBalances(b.data);
@@ -209,7 +218,7 @@ export function WalletProvider({
         failed(b.error);
       }
       const p = await priceRead;
-      if (accountRef.current?.publicKey !== a.publicKey) return;
+      if (!alive.current || accountRef.current?.publicKey !== a.publicKey) return;
       if (p.ok) {
         setPrices(p.data);
         setPricesStale(false);
@@ -220,13 +229,13 @@ export function WalletProvider({
       }
     } finally {
       refreshingRef.current = false;
-      setRefreshing(false);
+      if (alive.current) setRefreshing(false);
     }
   }, [engine, now, failed, succeeded, quiet]);
 
   const readPending = useCallback(async () => {
     const r = await engine.pending();
-    if (r.ok) setPending(r.data);
+    if (alive.current && r.ok) setPending(r.data);
   }, [engine]);
 
   /** The open sequence for the unlocked wallet: cache first (stale), then pending, then fresh. */
@@ -240,6 +249,7 @@ export function WalletProvider({
       setSettled(false);
       setBalanceError(null);
       const c = await engine.cached(a.publicKey);
+      if (!alive.current) return;
       if (c.ok) {
         if (c.data.balances !== null) {
           const {at, ...b} = c.data.balances;
@@ -256,7 +266,9 @@ export function WalletProvider({
         if (c.data.prices !== null || c.data.balances !== null) setLastSync(c.data.balances?.at ?? c.data.prices?.at ?? null);
       }
       await readPending();
+      if (!alive.current) return;
       await refresh();
+      if (!alive.current) return;
       await engine.ping();
     },
     [engine, readPending, refresh],
@@ -265,7 +277,7 @@ export function WalletProvider({
   const applyState = useCallback(
     async (fresh: boolean) => {
       const r = await engine.state();
-      if (!r.ok) return;
+      if (!alive.current || !r.ok) return;
       const w = r.data;
       setWallet(prev => {
         const changed = prev === null || prev.unlocked !== w.unlocked || prev.selected !== w.selected || JSON.stringify(prev.accounts) !== JSON.stringify(w.accounts);

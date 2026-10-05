@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {act, fireEvent, screen, waitFor, within} from '@testing-library/react';
+import {act, cleanup, fireEvent, screen, waitFor, within} from '@testing-library/react';
 import {renderInWallet, walletReader, type WalletOptions} from './harness';
 import {BALANCES_FAILED_TEXT, Home} from '../screens/Home';
 import {ago, stamp} from '../format';
@@ -17,7 +17,7 @@ import {ACCOUNT, RECIPIENT, pendingRecord} from '../../background/__tests__/fixt
 const CACHE = {[ACCOUNT.publicKey]: {sol: '62482100000', noc: '4200000000000', usdc: '740210000', usdt: '0', at: Date.now() - 5_000}};
 const never = () => new Promise<never>(() => undefined);
 const setOnline = (value: boolean) => Object.defineProperty(navigator, 'onLine', {value, configurable: true});
-const nav = {onReceive: vi.fn(), onActivity: vi.fn(), onAccounts: vi.fn()};
+const nav = {onSend: vi.fn(), onReceive: vi.fn(), onPending: vi.fn(), onAccounts: vi.fn()};
 /** #11 inside the real provider; its three ways out are spies (App.test.tsx follows them). */
 const renderHome = (o: WalletOptions = {}) => renderInWallet(<Home {...nav} />, o);
 /** #11 plus a probe that hands the test the live model (to call refresh() and lock() as a screen would). */
@@ -70,10 +70,10 @@ describe('#11 dashboard', () => {
     expect(screen.getByRole('button', {name: 'Hide balance'})).toBeTruthy();
   });
 
-  it('what is deliberately absent: Send (plan 3), Swap, Buy, the bell, scan, 24 h change, the presale banner, See all', async () => {
+  it('what is deliberately absent: Swap, Buy, the bell, scan, 24 h change, the presale banner, See all', async () => {
     await renderHome();
     await screen.findByText('$10,112');
-    for (const gone of ['Send', 'Swap', 'Buy', 'See all', 'Transparent', 'Shielded']) expect(screen.queryByText(gone)).toBeNull();
+    for (const gone of ['Swap', 'Buy', 'See all', 'Transparent', 'Shielded']) expect(screen.queryByText(gone)).toBeNull();
     expect(screen.queryByLabelText('Notifications')).toBeNull();
     expect(screen.queryByLabelText('Scan')).toBeNull();
     expect(document.body.textContent).not.toMatch(/24h|Presale|Stage \d/);
@@ -84,7 +84,8 @@ describe('#11 dashboard', () => {
     await renderHome({reader: walletReader({getBalance: never})});
     expect(await screen.findByTestId('skeleton')).toBeTruthy();
     expect(document.querySelectorAll('.hero .skel-line').length).toBe(3);
-    expect(document.querySelectorAll('.quick .qa .skel-circle').length).toBe(1);
+    // Plan 3: the skeleton draws the actions that exist — Send and Receive (§5.1 Differs).
+    expect(document.querySelectorAll('.quick .qa .skel-circle').length).toBe(2);
     expect(screen.getByText('TOKENS')).toBeTruthy();
     expect(document.querySelectorAll('.tokens .row .skel-circle').length).toBe(4);
     expect(document.querySelector('[data-token]')).toBeNull();
@@ -291,12 +292,44 @@ describe('#11 dashboard', () => {
     expect(document.body.textContent).not.toContain('$0.00');
   });
 
-  it('pending strip: an open send of this account — its text, and it opens Activity (plan-1 stand-in)', async () => {
+  it('pending strip: an open send of this account — its text, and it opens that send (#21/#54)', async () => {
     await renderHome({
-      before: ext => ext.local.set(PENDING_KEY, [pendingRecord({account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '2480000000'}, createdAt: Date.now()})]),
+      before: ext => ext.local.set(PENDING_KEY, [pendingRecord({id: 'p1', account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '2480000000'}, createdAt: Date.now()})]),
     });
     fireEvent.click(await screen.findByText('Sending 2.48 SOL · pending'));
-    expect(nav.onActivity).toHaveBeenCalledTimes(1);
+    expect(nav.onPending).toHaveBeenCalledWith(expect.objectContaining({id: 'p1'}));
+  });
+
+  // Plan 3 (§5.1, §5.4, D36): the Send quick action opens #12; offline, unreachable and refused disable it — Receive stays.
+  it('Send opens #12; it is disabled offline, while the server cannot be reached, and in the 403 cool-down — Receive is not', async () => {
+    await renderHome();
+    await screen.findByText('$10,112');
+    expect([...document.querySelectorAll('.quick .qa .lbl')].map(l => l.textContent)).toEqual(['Send', 'Receive']);
+    fireEvent.click(screen.getByRole('button', {name: 'Send'}));
+    expect(nav.onSend).toHaveBeenCalledTimes(1);
+    for (const failing of [new RequestUnreachable('u', 'x'), new RpcForbidden('getBalance')]) {
+      cleanup();
+      await renderHome({
+        reader: walletReader({
+          getBalance: async () => {
+            throw failing;
+          },
+        }),
+        before: async ext => ext.local.set(BALANCE_CACHE_KEY, CACHE),
+      });
+      await waitFor(() => expect((screen.getByRole('button', {name: 'Send'}) as HTMLButtonElement).disabled).toBe(true));
+      expect((screen.getByRole('button', {name: 'Receive'}) as HTMLButtonElement).disabled).toBe(false);
+    }
+  });
+
+  // Rule 6 (Task 14 carry): Send is a LockedButton — a second click, `disabled` lifted, opens #12 no second time.
+  it('Send: a double click opens #12 once', async () => {
+    await renderHome();
+    const send = (await screen.findByRole('button', {name: 'Send'})) as HTMLButtonElement;
+    fireEvent.click(send);
+    send.disabled = false;
+    fireEvent.click(send);
+    expect(nav.onSend).toHaveBeenCalledTimes(1);
   });
 });
 

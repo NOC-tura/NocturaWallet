@@ -60,11 +60,15 @@ export interface Prepared {
   id: string;
   fees: {networkLamports: bigint; priorityLamports: bigint; rentLamports: bigint; markupLamports: bigint; markupReason: FeeReason};
   solRequiredLamports: bigint;
-  reauth: {challengeId: string; reasons: ReauthReason[]} | null;
+  /** `proven`: the vault page proved this challenge and it is live — a tap on #20 may send now (the engine still checks). */
+  reauth: {challengeId: string; reasons: ReauthReason[]; proven: boolean} | null;
+  /** Epoch ms after which this prepared send is no longer sendable: #20's "Quote valid N s". */
+  validUntil: number;
   simulation: Simulation;
 }
 export type Resumable = Prepared & {intent: Intent; expired: boolean};
 export type PendingState = 'pending' | 'stuck' | 'confirmed' | 'failed' | 'expired';
+export type DetailCode = 'forbidden' | 'cooling' | 'unacked' | 'substituted';
 export interface Pending {
   id: string;
   account: string;
@@ -74,9 +78,16 @@ export interface Pending {
   lastSentAt: number;
   state: PendingState;
   detail: string | null;
+  /** What `detail` says about the last broadcast, as a code (background DetailCode): screens choose on this, never on the text. */
+  detailCode: DetailCode | null;
   intent: Intent;
   expiryNullSeenAt: number | null;
   failure: 'landed' | 'not-sent' | null;
+  /**
+   * What it pays, in two parts, lamports: the network fee and the Noctura fee (0 when none is charged). Null
+   * for a record from before plan 3. Shown only through feePaidLamports, never summed by a screen.
+   */
+  fee: {networkLamports: bigint; markupLamports: bigint} | null;
 }
 export type HistoryKind = 'sent' | 'received' | 'purchase' | 'other';
 export interface HistoryItem {
@@ -270,11 +281,11 @@ function preparedOf(x: unknown): Prepared | undefined {
   if (o.reauth !== null) {
     const r = obj(o.reauth);
     const reasons = all(r?.reasons, v => oneOf(v, REASONS));
-    if (r === undefined || typeof r.challengeId !== 'string' || !HEX32.test(r.challengeId) || reasons === undefined) return undefined;
-    reauth = {challengeId: r.challengeId, reasons};
+    if (r === undefined || typeof r.challengeId !== 'string' || !HEX32.test(r.challengeId) || reasons === undefined || typeof r.proven !== 'boolean') return undefined;
+    reauth = {challengeId: r.challengeId, reasons, proven: r.proven};
   }
-  if (Object.values(fees).some(v => v === undefined) || solRequiredLamports === undefined || simulation === undefined) return undefined;
-  return {id: o.id, fees: fees as Prepared['fees'], solRequiredLamports, reauth, simulation};
+  if (Object.values(fees).some(v => v === undefined) || solRequiredLamports === undefined || simulation === undefined || !isTime(o.validUntil)) return undefined;
+  return {id: o.id, fees: fees as Prepared['fees'], solRequiredLamports, reauth, validUntil: o.validUntil, simulation};
 }
 
 function resumableOf(x: unknown): Resumable | null | undefined {
@@ -287,6 +298,7 @@ function resumableOf(x: unknown): Resumable | null | undefined {
 }
 
 const STATES = ['pending', 'stuck', 'confirmed', 'failed', 'expired'] as const;
+const DETAIL_CODES = ['forbidden', 'cooling', 'unacked', 'substituted'] as const;
 function pendingOf(x: unknown): Pending | undefined {
   const o = obj(x);
   if (o === undefined || typeof o.id !== 'string' || !isAddress(o.account) || typeof o.signature !== 'string' || !SIGNATURE.test(o.signature)) return undefined;
@@ -294,7 +306,9 @@ function pendingOf(x: unknown): Pending | undefined {
   const intent = intentOf(o.intent);
   const failure = o.failure === null ? null : oneOf(o.failure, ['landed', 'not-sent'] as const);
   const expiry = o.expiryNullSeenAt === null ? null : isTime(o.expiryNullSeenAt) ? o.expiryNullSeenAt : undefined;
-  if (state === undefined || intent === undefined || failure === undefined || expiry === undefined) return undefined;
+  const fee = feeOf(o.fee);
+  const detailCode = o.detailCode === null ? null : oneOf(o.detailCode, DETAIL_CODES);
+  if (state === undefined || intent === undefined || failure === undefined || expiry === undefined || fee === undefined || detailCode === undefined) return undefined;
   if (!isInt(o.lastValidBlockHeight) || !isTime(o.createdAt) || !isTime(o.lastSentAt) || !(o.detail === null || typeof o.detail === 'string')) return undefined;
   return {
     id: o.id,
@@ -305,10 +319,36 @@ function pendingOf(x: unknown): Pending | undefined {
     lastSentAt: o.lastSentAt,
     state,
     detail: o.detail,
+    detailCode,
     intent,
     expiryNullSeenAt: expiry,
     failure,
+    fee,
   };
+}
+
+/** `null`, or exactly two base-unit strings; a missing field or any other value is undefined (failed). */
+function feeOf(x: unknown): Pending['fee'] | undefined {
+  if (x === null) return null;
+  const f = obj(x);
+  const networkLamports = units(f?.networkLamports);
+  const markupLamports = units(f?.markupLamports);
+  if (networkLamports === undefined || markupLamports === undefined) return undefined;
+  return {networkLamports, markupLamports};
+}
+
+/**
+ * What a pending send has paid, by its state (spec §4.5, "Fee paid" display rule; plan 3 follow-up ruling):
+ * `confirmed` → network fee + Noctura fee; `failed` with `failure: 'landed'` → the network fee only (the
+ * transaction was included, so its fee was paid, but its markup transfer was rolled back with it);
+ * `not-sent`, `expired`, a `failed` record from an older build (`failure: null`), and anything not yet
+ * settled → null: nothing is claimed as paid. Null too for a record without a fee.
+ */
+export function feePaidLamports(p: Pick<Pending, 'state' | 'failure' | 'fee'>): bigint | null {
+  if (p.fee === null) return null;
+  if (p.state === 'confirmed') return p.fee.networkLamports + p.fee.markupLamports;
+  if (p.state === 'failed' && p.failure === 'landed') return p.fee.networkLamports;
+  return null;
 }
 
 function historyOf(x: unknown): HistoryItem | undefined {

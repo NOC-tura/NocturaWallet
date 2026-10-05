@@ -9,7 +9,8 @@ import {ExtIcon} from '../ui/ExtIcon';
 import {useCopy} from '../ui/useCopy';
 import {useNow} from '../useNow';
 import {Banner, RefusedBanner} from '../ui/Banner';
-import type {HistoryItem} from '../engine';
+import {LockedButton} from '../ui/LockedButton';
+import type {HistoryItem, Intent} from '../engine';
 import {MAINNET_FEE_TREASURY} from '../../../../core/fees/transferMarkup';
 
 /** At most this many history pages are read to find a signature the list has not loaded. */
@@ -52,13 +53,14 @@ function Address({address, label}: {address: string; label: string}) {
   );
 }
 
-export function ExplorerLink({signature}: {signature: string}) {
+/** The one external link (§6.5): #27's [Explorer], and #44's [View on explorer] (plan 3) — one place builds the href. */
+export function ExplorerLink({signature, label = 'Explorer', icon = true, className = 'btn btn-secondary'}: {signature: string; label?: string; icon?: boolean; className?: string}) {
   const href = explorerUrl(signature);
   if (href === null) return null;
   return (
-    <a className="btn btn-secondary" href={href} target="_blank" rel="noopener noreferrer">
-      <ExtIcon name="link-out" size={16} />
-      Explorer
+    <a className={className} href={href} target="_blank" rel="noopener noreferrer">
+      {icon ? <ExtIcon name="link-out" size={16} /> : null}
+      {label}
     </a>
   );
 }
@@ -66,9 +68,31 @@ export function ExplorerLink({signature}: {signature: string}) {
 /**
  * #27 tx-detail (spec §6.3), from the #26 row (or, when only the signature is known, the first
  * FIND_PAGES history pages). No Block or Memo rows (not in HistoryView, G13), no Save (address book,
- * B1b-2b), no share (D19); fiat is today's price and says "now". Plan-1 stand-in: no [Try again].
+ * B1b-2b), no share (D19); fiat is today's price and says "now". A failed send offers [Try again] → #19
+ * with what it tried to send, when the decoder knows the recipient and the amount (plan 3, owner question 1,
+ * option A): #19 prepares it afresh and #20 shows the whole address before one tap sends.
  */
-export function TxDetail({signature, item: given, onBack}: {signature: string; item?: HistoryItem; onBack: () => void}) {
+export function TxDetail({
+  signature,
+  account: owner,
+  item: given,
+  canRetry,
+  onBack,
+  onTryAgain,
+}: {
+  signature: string;
+  /**
+   * The account whose transaction this is — #27's route carries it (#26's account, or the account #21 follows). The
+   * search, the From/To framing and the sender's name read it, never the selected account (fix round 2): #27 opened
+   * from #21 for A while B is selected still shows A's transaction as A's.
+   */
+  account: string;
+  item?: HistoryItem;
+  /** False while another account than the transaction's owner is selected: no [Try again] (fix round 1). */
+  canRetry: boolean;
+  onBack: () => void;
+  onTryAgain: (intent: Intent) => void;
+}) {
   const m = useWallet();
   const now = useNow(30_000, m.now);
   const [item, setItem] = useState<HistoryItem | null | undefined>(given);
@@ -80,8 +104,6 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
    * banner instead, with the explorer link kept (the signature is already known).
    */
   const [searchError, setSearchError] = useState<string | null>(null);
-  const account = m.account;
-  const owner = account?.publicKey ?? '';
 
   /**
    * The by-signature search. Unreachable in plan 1 (final review M4): App opens #27 only from an
@@ -89,12 +111,16 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
    * plumbing for #21 in plan 3, which opens #27 with a signature only; its tests
    * (TxDetail.test.tsx) keep it honest until then.
    */
+  // The provider's open sequence has run (an account is known): the search starts after it, as before fix round 2, so
+  // the open sequence's own reads never land after the search's report and overwrite it (review fix round 1 #4a).
+  // Only a readiness flag — the lookup never reads the selected account, and a switch (non-null to non-null) is no
+  // change here.
+  const ready = m.account !== null;
   useEffect(() => {
-    if (given !== undefined) return;
-    // The open sequence has not set the account yet: wait for it rather than search with ''
-    // (review fix round 1 #4a) — the effect re-runs once `account` is set, below.
-    if (account === null) return;
-    const ownerKey = account.publicKey;
+    if (given !== undefined || !ready) return;
+    // The owner comes from the route, an address the router checked (fix round 2) — never '' and never the selected
+    // account: another account selected mid-search changes nothing here, and the search goes on for the owner.
+    const ownerKey = owner;
     let alive = true;
     void (async () => {
       let before: string | undefined;
@@ -118,7 +144,7 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
     return () => {
       alive = false;
     };
-  }, [given, account, signature, m.engine]);
+  }, [given, ready, owner, signature, m.engine]);
 
   const top = <TopBar title="Transaction" onBack={onBack} titleClass="noc-h3" />;
   if (item === undefined) {
@@ -164,6 +190,8 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
   }
 
   const accounts = m.wallet?.accounts ?? [];
+  /** The owner's own entry (its name on the From row), when it is one of this wallet's accounts. */
+  const ownerAccount = accounts.find(a => a.publicKey === owner);
   const labelOf = (address: string | null): string | null => {
     if (address === null) return null;
     const own = accounts.find(a => a.publicKey === address);
@@ -180,15 +208,18 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
   const hash = <Address address={item.signature} label="Copy hash" />;
 
   if (item.failed) {
+    const retry: Intent | null = canRetry && item.kind === 'sent' && item.token !== null && item.counterparty !== null && item.amount !== null && item.amount > 0n ? {token: item.token, recipient: item.counterparty, amount: item.amount} : null;
     return (
       <div className="screen s-txd">
         {top}
         <div className="scroll">
+          {/* §7.2 (D26; final review M2, carry c): the banner says why [Try again] is disabled. */}
+          {m.net.mode === 'refused' ? <RefusedBanner /> : null}
           <div className="amount-card app-failed">
             {/*
-              The 'FAILED · SENT' arm cannot be reached in plan 1: core/solana/history.ts decodes every
-              failed transaction as `other` with no token, so this reads "FAILED" and "—" — the plan-1
-              stand-in declared in spec §6.3 Differs (owner decision in plan 3). Kept for that decision.
+              A failed send carries what it tried to send (core/solana/history.ts, plan 3 owner question 1,
+              option A): "FAILED · SENT" and "— SOL", as 27d draws a failed card. Any other failed transaction
+              has no kind or token to name: "FAILED" and "—".
             */}
             <div className="eyebrow noc-overline">{item.kind === 'sent' ? 'FAILED · SENT' : 'FAILED'}</div>
             <div className="amt noc-balance-lg noc-numeral">{item.token === null ? '—' : `— ${item.token}`}</div>
@@ -206,6 +237,12 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
             </Row>
           </div>
           <div className="actions-row">
+            {retry === null ? null : (
+              <LockedButton className="btn btn-primary" disabled={m.net.mode === 'refused'} onPress={() => onTryAgain(retry)}>
+                <ExtIcon name="refresh" size={16} />
+                Try again
+              </LockedButton>
+            )}
             <ExplorerLink signature={item.signature} />
           </div>
         </div>
@@ -271,7 +308,7 @@ export function TxDetail({signature, item: given, onBack}: {signature: string; i
           {sent ? (
             <>
               <Row label="From">
-                <span className="noc-body-sm">{account?.name}</span>
+                <span className="noc-body-sm">{ownerAccount?.name}</span>
                 <Address address={owner} label="Copy sender" />
               </Row>
               <Row label="To">

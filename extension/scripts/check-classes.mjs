@@ -32,6 +32,8 @@ export const DYNAMIC = {
   'app-${surface}': ['app-popup', 'app-tab'],
   '${className}': [],
   '${titleClass}': [],
+  // Plan 3: #19's check rows (screens/Review.tsx) — PASS rows `ok`, the recipient warnings `warn`.
+  '${c.tone}': ['ok', 'warn'],
 };
 
 /** The text of the quoted string that starts at `i` (the quote), and the index after it. */

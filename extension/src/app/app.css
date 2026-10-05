@@ -540,3 +540,272 @@ a.btn {
   border: 0;
   cursor: pointer;
 }
+
+/*
+ * #12 send (plan 3): what index.html #s12 says in inline styles — the danger border and label of a row in
+ * error, the dimmed rows behind an invalid recipient, the danger amount, the warning available line, the
+ * helper glyph's alignment and colour — plus the extension's own pieces: the token chip's tile (each token's
+ * own colours, as #43 and #11 draw them), the recipient in groups of four under the field, the pending banner's
+ * button, and inputs where the mockup draws text.
+ */
+.s-send .banner {
+  margin-bottom: var(--space-3);
+}
+.s-send .row.app-row-error {
+  border: 1px solid var(--danger);
+}
+.s-send .row.app-row-error .lbl {
+  color: var(--danger);
+}
+.s-send .row.app-row-dim {
+  opacity: 0.5;
+}
+.s-send .amount-row .amount.app-danger {
+  color: var(--danger);
+}
+.s-send .amount-row .available.app-warning,
+.s-send .amount-row .available.app-warning b {
+  color: var(--warning);
+}
+.s-send .helper svg {
+  vertical-align: -2px;
+}
+.s-send .helper.ok svg {
+  color: var(--success);
+}
+.s-send .recipient-row .input {
+  min-width: 0;
+}
+.s-send input::placeholder {
+  color: var(--fg-tertiary);
+}
+.app-chip-ico {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.app-send-addr {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--fg-primary);
+}
+.app-btn-inline {
+  width: auto;
+  min-height: var(--touch-target-min);
+  padding: 0;
+  justify-content: flex-start;
+}
+.s-send .recipient-row .input-actions button.app-danger {
+  color: var(--danger);
+}
+
+/* #19 review (plan 3): index.html #s19's inline styles — the failed eyebrow's glyph in --danger, and the After
+   row's rule above it, its label in the body face in --fg-secondary. */
+.s-sim .intent-card .eyebrow.app-failed svg {
+  color: var(--danger);
+}
+.s-sim .delta-row.app-after {
+  border-top: 1px solid color-mix(in oklab, var(--fg-disabled) 50%, transparent);
+  padding-top: var(--space-2);
+  margin-top: 4px;
+}
+.s-sim .delta-row.app-after .lbl {
+  color: var(--fg-secondary);
+}
+
+/* #20 confirm (plan 3): index.html #s20's inline styles — the quote line (11/14, --fg-tertiary, centred, tabular),
+   the first-time banner's title on its own line and its caption in --fg-secondary, the high-value eyebrow in
+   --danger and its fiat line in --fg-secondary — and the From/To values as a name over the address in groups of four. */
+.app-quote {
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--fg-tertiary);
+  padding: var(--space-2);
+  text-align: center;
+}
+.s-conf .first-time-banner .app-block {
+  display: block;
+  margin-bottom: 2px;
+}
+.s-conf .review-card.high-value .eyebrow {
+  color: var(--danger);
+}
+.s-conf .review-card.high-value .fiat {
+  color: var(--fg-secondary);
+}
+.s-conf .detail-row .val.app-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.s-conf .high-value-banner .app-danger {
+  color: var(--danger);
+}
+
+/* #54 stuck (plan 3): index.html #s54's inline styles — the original's card dimmed while it is re-sent, its
+   elapsed pill in --warning — and the hash's copy controls as buttons (the chip, and 54d's accent "Copy"). */
+.s-stuck .orig-card.app-dim-card {
+  opacity: 0.6;
+}
+.s-stuck .orig-card .head .pill.app-pill-warning {
+  color: var(--warning);
+  background: color-mix(in oklab, var(--warning) 12%, transparent);
+}
+.s-stuck .orig-card .copy-chip {
+  border: 0;
+  cursor: pointer;
+}
+.s-stuck .new-tx-hash .app-hash-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--touch-target-min);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* #44 failed (plan 3): index.html #s44's inline styles — the eyebrow title in --fg-tertiary, the content with no
+   top padding — and the explorer link drawn as a button. */
+.app-fail-eyebrow {
+  color: var(--fg-tertiary);
+}
+.app-fail-body {
+  padding-top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* #21 status (plan 3): index.html #s21's inline styles — the success amount at 36/42, the coloured stage label
+   and top-bar step (CONFIRMED, SLOW), the pulsing status dot, the stuck watcher's head, the reassurance line. */
+.app-secondary {
+  color: var(--fg-secondary);
+}
+.s-stat .amount-card .amount.app-amount-big {
+  font-size: 36px;
+  line-height: 42px;
+}
+.s-stat .stage-label.app-success,
+.s-stat .top-bar .step.app-success {
+  color: var(--success);
+}
+.s-stat .stage-label.app-warning,
+.s-stat .top-bar .step.app-warning,
+.s-stat .meta-row .val.app-warning {
+  color: var(--warning);
+}
+.s-stat .meta-row .val.app-live {
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.s-stat .meta-row .val.app-live::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: zk-pulse 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .s-stat .meta-row .val.app-live::before {
+    animation: none;
+  }
+}
+.s-stat .meta-row .copy {
+  border: 0;
+  cursor: pointer;
+}
+/* The design's invisible copy cell on a row without one: the value column lines up with the rows that have it. */
+.s-stat .meta-row .copy.app-ghost {
+  opacity: 0;
+  pointer-events: none;
+  cursor: default;
+}
+.s-stat .stuck-watch .app-watch-head {
+  font: 500 12px/16px var(--font-body);
+  color: var(--fg-primary);
+}
+/* "You can close this window …": the design's 11/16 --fg-tertiary centred line, tabular. */
+.app-close-note {
+  font: 400 11px/16px var(--font-body);
+  color: var(--fg-tertiary);
+  padding: var(--space-3) 0;
+  margin: 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.app-reassure {
+  margin: var(--space-1) var(--space-4) 0;
+}
+.app-reassure b {
+  color: var(--fg-secondary);
+  font-weight: 600;
+}
+.app-tab-done {
+  margin: 0 var(--space-5) var(--space-4);
+}
+
+/* #44's cancelled toast over #11 (plan 3): above the 80 px tab bar, over the content. */
+.app .s9-toast-cancelled {
+  bottom: calc(80px + var(--space-4));
+  z-index: 5;
+}
+
+/* #11's Send quick action, disabled offline and in the cool-down (#42: 0.55, index.html #s42). */
+.s-dash .quick .qa:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Plan 3 (Task 17 fix round 1, C1): a screen's top bar and action bar stay in view while its content scrolls (spec
+   §1.4; the mockups' phone frame pins both). The content region scrolls the whole screen here, so without this
+   #19's [Continue to confirm], #20's [Send] and #21's, #44's and #54's CTAs sat below the fold at 412 × 600. */
+.app-content > .screen > .top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-base);
+}
+.app-content > .screen > .sticky-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: auto;
+}
+/* C2: #20's headline as index.html #s20 draws it — the design resets every margin (an h1 kept its UA margin), and
+   the recipient is 16/24 mono, centred with the line (the inline flow below); web's .addr-groups sets its own 12/20
+   and is unchanged elsewhere. */
+.app-content .s-conf .headline {
+  margin: 0;
+}
+.s-conf .headline .recipient .addr-groups {
+  font-size: 16px;
+  line-height: 24px;
+}
+/* C3: #54 sent-again's "Status · Watching" in --success (54d); the design's grid value rule (4 classes) outranks
+   the one-class .app-success. */
+.s-stuck .progress-state .meta-grid .v.app-success {
+  color: var(--success);
+}
+/* Task 17 fix round 2: index.html #s44 state 5 (44e) dims the content behind the cancelled toast (its scroll area at
+   opacity .62); the screen's own top row stays as it is, as the design's top bar does. */
+.app-content.app-toast-behind > .screen > :not(.top):not(.top-bar) {
+  opacity: 0.62;
+}
+/* #20's headline (index.html #s20): the recipient inherits the h1's 600 weight, as the design's .recipient does, and
+   its groups flow inline after "to" — each group an atomic inline box, so a line breaks only between groups. */
+.s-conf .headline .recipient .addr-groups {
+  display: inline;
+  font-weight: inherit;
+}
+.s-conf .headline .recipient .addr-groups > span {
+  display: inline-block;
+  margin-inline-end: 0.6ch;
+}

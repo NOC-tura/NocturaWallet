@@ -8,7 +8,7 @@ import {EXTENSION_FEE_INPUTS} from './feePolicy';
 import {isKnownRecipient} from './knownRecipients';
 import {readSettings} from './settings';
 import {sendReauthReasons, usdMicros, type SendReauthReason} from './reauthPolicy';
-import {CHALLENGE_TTL_MS, dropChallengesFor, issueChallenge, rebaseChallenge, type SendAboutRefresh} from './reauthChallenges';
+import {CHALLENGE_TTL_MS, challengeInfo, challengeSatisfied, dropChallengesFor, issueChallenge, rebaseChallenge, type SendAboutRefresh} from './reauthChallenges';
 import {digestOf, randomId} from './digest';
 import {SendRefused, type SendIntent} from './sendTypes';
 import {estimatePriorityFee} from '../../../core/solana/priorityFee';
@@ -82,7 +82,14 @@ export interface PreparedView {
   id: string;
   fees: {networkLamports: string; priorityLamports: string; rentLamports: string; markupLamports: string; markupReason: FeeReason};
   solRequiredLamports: string;
-  reauth: {challengeId: string; reasons: SendReauthReason[]} | null;
+  /**
+   * `proven` (plan 3): the vault page has proven this challenge and it is still live for this intent — what
+   * wallet.send checks first (challengeSatisfied). #20 reads it to know a tap may send now; without it a
+   * resumed #20 could only open #10 again. It never decides anything: wallet.send consumes the proof itself.
+   */
+  reauth: {challengeId: string; reasons: SendReauthReason[]; proven: boolean} | null;
+  /** When this prepared send stops being sendable (createdAt + PREPARED_TTL_MS, epoch ms): #20's "Quote valid N s" counts it down (D39). */
+  validUntil: number;
   simulation: SimulationView;
 }
 
@@ -184,6 +191,35 @@ function tokenAccountOf(a: SimulatedAccount | null): {mint: string; owner: strin
   return {mint: base58.encode(a.data.subarray(0, 32)), owner: base58.encode(a.data.subarray(32, 64)), amount: view.getBigUint64(64, true)};
 }
 
+/**
+ * A simulation the runtime refused for rent (spec §11.5, measured by the coordinator 2026-10-01): `err` is
+ * `{InsufficientFundsForRent: {account_index: n}}`, n indexing the transaction's account keys; every entry of
+ * `accounts` is null and the logs still read "success" (the rent check runs after execution). So the refusal
+ * is decided on `err` alone, never on `accounts` or the logs: the sender's index is `sender-below-rent`, the
+ * recipient's `recipient-below-rent` — the same codes, and so the same #19 copy, as the checks above that
+ * refuse before simulating.
+ *
+ * `recipientMissing` carries that same pre-check's own fact: the recipient had no account before this send.
+ * Only then is the recipient's index the "new account" refusal; an account that already existed is never
+ * created by receiving funds, so that copy would be false for it — such a refusal falls through to the
+ * caller's generic simulation-failed instead (review follow-up, carry 2).
+ *
+ * Any other account, or any other shape, is null (the caller's simulation-failed).
+ */
+export function rentRefusal(err: unknown, keys: readonly string[], sender: string, recipient: string, recipientMissing: boolean): 'sender-below-rent' | 'recipient-below-rent' | null {
+  if (typeof err !== 'object' || err === null || Array.isArray(err)) return null;
+  const top = err as Record<string, unknown>;
+  if (Object.keys(top).length !== 1) return null;
+  const inner = top.InsufficientFundsForRent;
+  if (typeof inner !== 'object' || inner === null || Array.isArray(inner)) return null;
+  const index = (inner as Record<string, unknown>).account_index;
+  if (typeof index !== 'number' || !Number.isSafeInteger(index) || index < 0) return null;
+  const key = keys[index];
+  if (key === sender) return 'sender-below-rent';
+  if (key === recipient && recipientMissing) return 'recipient-below-rent';
+  return null;
+}
+
 async function loadPrepared(ext: Ext): Promise<PreparedSend[]> {
   const v = await ext.session.get(PREPARED_KEY);
   // An entry of another shape (an older build's) is not ours to sign or show.
@@ -245,7 +281,9 @@ export async function prepareSend(
     try {
       source = selectSourceTokenAccount(holdings.map(h => ({pubkey: h.pubkey, amount: h.amount})), amount);
     } catch (e) {
-      if (e instanceof SplitTokenBalance) throw new SendRefused('split-balance', e.message);
+      // The detail is the largest single holding in base units (plan 3): #19's "Send at most N" reads it as a
+      // number, never SplitTokenBalance's free text.
+      if (e instanceof SplitTokenBalance) throw new SendRefused('split-balance', holdings.reduce((max, h) => (h.amount > max ? h.amount : max), 0n).toString());
       if (e instanceof InsufficientTokenBalance) throw new SendRefused('insufficient-token', e.message);
       throw e;
     }
@@ -292,7 +330,12 @@ export async function prepareSend(
   const started = deps.now();
   const simulated = await deps.reader.simulateTransaction(base64.encode(new VersionedTransaction(message).serialize()), {accounts: addresses});
   const elapsedMs = Math.max(0, deps.now() - started);
-  if (simulated.err !== null) throw new SendRefused('simulation-failed', JSON.stringify(simulated.err));
+  if (simulated.err !== null) {
+    const rent = rentRefusal(simulated.err, message.staticAccountKeys.map(k => k.toBase58()), account, intent.recipient, !recipientExists);
+    // Such a transaction would still be charged its fee if broadcast: refused here, with the rent copy (§11.5).
+    if (rent !== null) throw new SendRefused(rent, `the simulation refused it for rent: ${JSON.stringify(simulated.err)}`);
+    throw new SendRefused('simulation-failed', JSON.stringify(simulated.err));
+  }
   const senderAfter = simulated.accounts?.[0] ?? null;
   if (senderAfter === null) throw new SendRefused('simulation-mismatch', 'the simulation does not show the sending account');
   // SOL leaving the wallet must be exactly what this send costs: with the network fee in the simulated
@@ -342,6 +385,7 @@ export async function prepareSend(
   // E3: what #10 shows, bound to the challenge by the same values the digest was computed from.
   const refresh: SendAboutRefresh = {
     networkLamports: fees.networkLamports,
+    priorityLamports: fees.priorityLamports,
     markupLamports: fees.markupLamports,
     markupReason: fees.markupReason,
     rentLamports: fees.rentLamports,
@@ -385,15 +429,17 @@ export async function prepareSend(
     const keep = (await loadPrepared(ext)).filter(p => p.account !== account && now - p.createdAt < CHALLENGE_TTL_MS).slice(-(MAX_PREPARED - 1));
     await ext.session.set(PREPARED_KEY, [...keep, prepared]);
   });
-  return viewOf(prepared);
+  return viewOf(ext, deps, prepared);
 }
 
-function viewOf(p: PreparedSend): PreparedView {
+async function viewOf(ext: Ext, deps: Pick<WalletDeps, 'now'>, p: PreparedSend): Promise<PreparedView> {
+  const proven = p.challengeId !== null && (await challengeSatisfied(ext, deps.now(), p.challengeId, p.intentDigest));
   return {
     id: p.id,
     fees: p.shown.fees,
     solRequiredLamports: p.shown.solRequiredLamports,
-    reauth: p.challengeId === null ? null : {challengeId: p.challengeId, reasons: p.shown.reasons},
+    reauth: p.challengeId === null ? null : {challengeId: p.challengeId, reasons: p.shown.reasons, proven},
+    validUntil: p.createdAt + PREPARED_TTL_MS,
     simulation: p.shown.simulation,
   };
 }
@@ -403,13 +449,20 @@ function viewOf(p: PreparedSend): PreparedView {
  * re-authentication can resume. Past PREPARED_TTL_MS it is still reported — `expired`, not
  * sendable — while its challenge can live (CHALLENGE_TTL_MS): the popup then prepares the same
  * intent again with that challengeId instead of asking for a second re-authentication.
+ *
+ * A send whose challenge is already dead is `expired` too, however young the send (plan-3 review M1): a re-based
+ * challenge ends at issuedAt + CHALLENGE_MAX_LIFE_MS (C5's cap), so `createdAt + CHALLENGE_TTL_MS` is not its
+ * life. Reported live, the resume would show #20, open #10 for a challenge #10 calls expired, and the icon would
+ * bring the same dead send back. Reported expired, the resume prepares again carrying the id; rebaseChallenge
+ * refuses a dead one, a fresh challenge is issued, and the next tap opens a live #10 — once, so no loop.
  */
 export async function preparedFor(ext: Ext, deps: Pick<WalletDeps, 'now'>, account: string): Promise<ResumableView | null> {
   const now = deps.now();
   const mine = (await loadPrepared(ext)).filter(p => p.account === account && now - p.createdAt < CHALLENGE_TTL_MS);
   const newest = mine.reduce<PreparedSend | null>((a, p) => (a === null || p.createdAt >= a.createdAt ? p : a), null);
   if (newest === null) return null;
-  return {...viewOf(newest), intent: newest.intent, expired: now - newest.createdAt >= PREPARED_TTL_MS};
+  const challengeDead = newest.challengeId !== null && (await challengeInfo(ext, now, newest.challengeId)) === null;
+  return {...(await viewOf(ext, deps, newest)), intent: newest.intent, expired: challengeDead || now - newest.createdAt >= PREPARED_TTL_MS};
 }
 
 /**

@@ -2,17 +2,18 @@ import {ed25519} from '@noble/curves/ed25519.js';
 import {base58, base64} from '@scure/base';
 import {VersionedTransaction} from '@solana/web3.js';
 import {sendPrepared, signPrepared} from '../send';
-import {peekPrepared, preparedFor, prepareSend, PREPARED_TTL_MS, sendIntentDigest} from '../prepare';
-import {CHALLENGE_TTL_MS, challengeSatisfied, consumeChallenge, satisfyChallenge} from '../reauthChallenges';
+import {discardPrepared, peekPrepared, preparedFor, preparedIntegrity, prepareSend, PREPARED_TTL_MS, sendIntentDigest, type PreparedSend} from '../prepare';
+import {CHALLENGE_MAX_LIFE_MS, CHALLENGE_TTL_MS, challengeInfo, challengeSatisfied, consumeChallenge, satisfyChallenge} from '../reauthChallenges';
 import {KNOWN_RECIPIENTS_KEY} from '../knownRecipients';
 import {PREPARED_KEY, setSession} from '../session';
-import {PENDING_KEY} from '../pendingStore';
+import {PENDING_KEY, readPending} from '../pendingStore';
 import type {SessionAccount} from '../../vault/accounts';
 import {AUTOLOCK_ALARM} from '../autolock';
 import {firstSignature} from '../../../../core/solana/broadcast';
+import {MAINNET_FEE_TREASURY} from '../../../../core/fees/transferMarkup';
 import {fakeDeps} from './fakeDeps';
 import {fakeExt} from './fakeExt';
-import {ACCOUNT, PUB, RECIPIENT, pendingRecord, sendReader, signedWire, unlocked} from './fixtures';
+import {ACCOUNT, PUB, RECIPIENT, chargedByWire, pendingRecord, sendReader, signedWire, unlocked} from './fixtures';
 
 const INTENT = {token: 'SOL' as const, recipient: RECIPIENT, amount: '1000000'};
 
@@ -192,5 +193,142 @@ describe('preparedFor (a reopened popup resumes)', () => {
     const {ext, deps, view} = await setup(true);
     await sendPrepared(ext, deps, view.id);
     expect(await preparedFor(ext, deps, ACCOUNT.publicKey)).toBeNull();
+  });
+});
+
+// Plan 3: what #20 needs from the engine to take one tap per broadcast — whether the challenge is proven (so
+// a resumed #20 sends on a tap instead of opening #10 again), when the quote ends, and the fee #21 shows.
+describe('the views #20 and #21 read (plan 3)', () => {
+  it('reauth.proven follows the challenge: false when issued, true once the vault page proves it, false again for a new grant', async () => {
+    const ext = fakeExt();
+    await unlocked(ext);
+    const deps = fakeDeps({reader: sendReader()});
+    const first = await prepareSend(ext, deps, ACCOUNT.publicKey, INTENT);
+    const challengeId = first.reauth!.challengeId;
+    expect(first.reauth?.proven).toBe(false);
+    expect((await preparedFor(ext, deps, ACCOUNT.publicKey))?.reauth?.proven).toBe(false);
+    await satisfyChallenge(ext, deps.now(), challengeId);
+    expect((await preparedFor(ext, deps, ACCOUNT.publicKey))?.reauth?.proven).toBe(true);
+    // Past its 120 s life the proof is gone: preparedFor no longer reports the send at all.
+    deps.clock.t += CHALLENGE_TTL_MS;
+    expect(await preparedFor(ext, deps, ACCOUNT.publicKey)).toBeNull();
+  });
+
+  it('a young send whose challenge reached C5’s 10-minute cap is reported expired; prepared again, it gets a fresh live challenge, and is then live (review M1)', async () => {
+    const ext = fakeExt();
+    await unlocked(ext);
+    const deps = fakeDeps({reader: sendReader()});
+    const start = deps.clock.t;
+    let view = await prepareSend(ext, deps, ACCOUNT.publicKey, INTENT);
+    const old = view.reauth!.challengeId;
+    await satisfyChallenge(ext, deps.now(), old);
+    // Kept alive by re-prepares carrying the challenge (each rebases it) up to 10 s before the cap.
+    while (deps.clock.t + 100_000 < start + CHALLENGE_MAX_LIFE_MS - 10_000) {
+      deps.clock.t += 100_000;
+      view = await prepareSend(ext, deps, ACCOUNT.publicKey, INTENT, {challengeId: old});
+      expect(view.reauth?.challengeId).toBe(old);
+    }
+    deps.clock.t = start + CHALLENGE_MAX_LIFE_MS - 10_000;
+    view = await prepareSend(ext, deps, ACCOUNT.publicKey, INTENT, {challengeId: old});
+    expect(view.reauth).toMatchObject({challengeId: old, proven: true});
+    // 20 s on: the send is 20 s old (its 120 s window open), but the challenge passed its cap.
+    deps.clock.t += 20_000;
+    expect(await challengeInfo(ext, deps.now(), old)).toBeNull();
+    const resumed = await preparedFor(ext, deps, ACCOUNT.publicKey);
+    expect(resumed).toMatchObject({expired: true, reauth: {challengeId: old, proven: false}});
+    // Prepared again carrying it: a fresh challenge, unproven, live — and preparedFor no longer says expired.
+    const fresh = await prepareSend(ext, deps, ACCOUNT.publicKey, INTENT, {challengeId: old});
+    expect(fresh.reauth?.challengeId).not.toBe(old);
+    expect(fresh.reauth?.proven).toBe(false);
+    expect(await preparedFor(ext, deps, ACCOUNT.publicKey)).toMatchObject({expired: false, reauth: {challengeId: fresh.reauth?.challengeId}});
+  });
+
+  it('validUntil is the prepare time plus the 30 s prepared life, in the view and in preparedFor', async () => {
+    const ext = fakeExt();
+    await unlocked(ext);
+    const deps = fakeDeps({reader: sendReader()});
+    const prepared = await prepareSend(ext, deps, ACCOUNT.publicKey, INTENT);
+    expect(prepared.validUntil).toBe(deps.clock.t + PREPARED_TTL_MS);
+    deps.clock.t += 10_000;
+    expect((await preparedFor(ext, deps, ACCOUNT.publicKey))?.validUntil).toBe(prepared.validUntil);
+  });
+
+  it('the pending record carries the fee it pays in two parts: network fee and Noctura fee', async () => {
+    const ext = fakeExt();
+    await unlocked(ext);
+    await ext.local.set(KNOWN_RECIPIENTS_KEY, [RECIPIENT]);
+    const deps = fakeDeps({reader: sendReader()});
+    deps.broadcast = async wire => firstSignature(wire);
+    const prepared = await prepareSend(ext, deps, ACCOUNT.publicKey, INTENT);
+    const view = await sendPrepared(ext, deps, prepared.id);
+    expect(view.fee).toEqual({networkLamports: prepared.fees.networkLamports, markupLamports: prepared.fees.markupLamports});
+    expect((await readPending(ext))[0]?.fee).toEqual(view.fee);
+  });
+});
+
+// Plan 3, the send engine's invariants with the new fields in place: a proof authorises one intent once, a
+// prepared id is spent by any ending, and the fee a record carries is what the signed bytes charge.
+describe('send invariants (plan 3)', () => {
+  it('a proof authorises only its own intent: a stored send for another intent carrying the proven challenge is refused, nothing broadcast', async () => {
+    const {ext, deps, view} = await setup(false);
+    const proven = view.reauth!.challengeId;
+    await satisfyChallenge(ext, deps.now(), proven);
+    const other = await prepareSend(ext, deps, ACCOUNT.publicKey, {...INTENT, amount: '2000000'});
+    // Re-bound by hand to the proven challenge, with a recomputed integrity digest so only the digest binding stands.
+    const stored = (await ext.session.get(PREPARED_KEY)) as PreparedSend[];
+    await ext.session.set(PREPARED_KEY, stored.map(p => (p.id === other.id ? {...p, challengeId: proven, integrity: preparedIntegrity({...p, challengeId: proven})} : p)));
+    await expect(sendPrepared(ext, deps, other.id)).rejects.toMatchObject({code: 'reauth-required'});
+    expect(deps.broadcasts).toHaveLength(0);
+  });
+
+  it('a proof authorises once: after its send, a re-prepare carrying the same challenge is not proven and its send is refused', async () => {
+    const {ext, deps, view} = await setup(false);
+    const challengeId = view.reauth!.challengeId;
+    await satisfyChallenge(ext, deps.now(), challengeId);
+    expect((await sendPrepared(ext, deps, view.id)).state).toBe('pending');
+    // The open pending send would refuse a second prepare (one in flight per account); let it settle first.
+    await ext.local.set(PENDING_KEY, []);
+    const again = await prepareSend(ext, deps, ACCOUNT.publicKey, INTENT, {challengeId});
+    expect(again.reauth?.proven).toBe(false);
+    expect(again.reauth?.challengeId).not.toBe(challengeId);
+    await expect(sendPrepared(ext, deps, again.id)).rejects.toMatchObject({code: 'reauth-required'});
+    expect(deps.broadcasts).toHaveLength(1);
+  });
+
+  it('a prepared id is spent by a discard (#20 Cancel, #10 Cancel send): its send is refused, nothing broadcast', async () => {
+    const {ext, deps, view} = await setup(true);
+    await discardPrepared(ext, ACCOUNT.publicKey);
+    await expect(sendPrepared(ext, deps, view.id)).rejects.toMatchObject({code: 'unknown-prepared'});
+    expect(deps.broadcasts).toHaveLength(0);
+  });
+
+  it('a prepared id is spent by its expiry: refused as prepared-expired, and refused again even with the clock turned back', async () => {
+    const {ext, deps, view} = await setup(true);
+    const start = deps.clock.t;
+    deps.clock.t += PREPARED_TTL_MS;
+    await expect(sendPrepared(ext, deps, view.id)).rejects.toMatchObject({code: 'prepared-expired'});
+    deps.clock.t = start;
+    await expect(sendPrepared(ext, deps, view.id)).rejects.toMatchObject({code: 'unknown-prepared'});
+    expect(deps.broadcasts).toHaveLength(0);
+  });
+
+  it('fee is what the broadcast bytes charge (network: signatures × 5 000 + signed priority fee; no markup), digit strings', async () => {
+    const {ext, deps, view} = await setup(true);
+    const sent = await sendPrepared(ext, deps, view.id);
+    const {network, markup} = chargedByWire(deps.broadcasts[0]!, MAINNET_FEE_TREASURY);
+    expect(sent.fee).toEqual({networkLamports: network.toString(), markupLamports: markup.toString()});
+    expect(sent.fee?.markupLamports).toBe('0');
+    expect((await readPending(ext))[0]?.fee).toEqual(sent.fee);
+  });
+
+  it('validUntil is the engine clock at prepare plus 30 s — neither the wall clock nor the time of a later read', async () => {
+    const ext = fakeExt();
+    await unlocked(ext);
+    const deps = fakeDeps({reader: sendReader()});
+    deps.clock.t = 5_000_000;
+    const prepared = await prepareSend(ext, deps, ACCOUNT.publicKey, INTENT);
+    expect(prepared.validUntil).toBe(5_000_000 + PREPARED_TTL_MS);
+    deps.clock.t += PREPARED_TTL_MS + 1;
+    expect((await preparedFor(ext, deps, ACCOUNT.publicKey))?.validUntil).toBe(5_000_000 + PREPARED_TTL_MS);
   });
 });

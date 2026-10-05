@@ -2,9 +2,22 @@ import type {ReactNode} from 'react';
 import {ExtIcon, type ExtIconName} from './ExtIcon';
 
 /** The design's `.banner` (info | warning | danger), icon + title + optional line. */
-export function Banner({tone, title, children, icon}: {tone: 'info' | 'warning' | 'danger'; title: string; children?: ReactNode; icon?: ExtIconName}) {
+export function Banner({
+  tone,
+  title,
+  children,
+  icon,
+  role,
+}: {
+  tone: 'info' | 'warning' | 'danger';
+  title: string;
+  children?: ReactNode;
+  icon?: ExtIconName;
+  /** Default: `status` for info, `alert` otherwise; a screen whose design says otherwise passes it (#12 state 6: a warning, `status`). */
+  role?: 'status' | 'alert';
+}) {
   return (
-    <div className={`banner ${tone}`} role={tone === 'info' ? 'status' : 'alert'}>
+    <div className={`banner ${tone}`} role={role ?? (tone === 'info' ? 'status' : 'alert')}>
       <ExtIcon name={icon ?? (tone === 'info' ? 'info' : 'alert-triangle')} size={18} />
       <div>
         <div className="noc-body-sm banner-title">{title}</div>

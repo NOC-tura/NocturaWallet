@@ -1,4 +1,4 @@
-import {useRef, useState, type ReactNode} from 'react';
+import {useEffect, useRef, useState, type ReactNode} from 'react';
 
 /** Cardinal rule 6: no double submit — 500 ms at least, and never before the action settles. */
 export const LOCK_MS = 500;
@@ -28,6 +28,14 @@ export function LockedButton({
 }) {
   const busy = useRef(false);
   const [locked, setLocked] = useState(false);
+  /** False once unmounted: an action that settles after the screen went sets nothing. */
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const press = () => {
     if (busy.current || disabled) return;
     busy.current = true;
@@ -42,7 +50,7 @@ export function LockedButton({
     action = action.catch((e: unknown) => console.warn('action failed', e));
     void Promise.all([floor, action]).then(() => {
       busy.current = false;
-      setLocked(false);
+      if (alive.current) setLocked(false);
     });
   };
   return (
