@@ -2,6 +2,8 @@ import {base64} from '@scure/base';
 import {VAULT_KEY, changePassword, onlyPasswordChanged, storeEnvelope, type StoredEnvelope} from '../accountsStore';
 import {handleMessage} from '../messages';
 import {readSettings} from '../settings';
+import {lock} from '../autolock';
+import {getSession} from '../session';
 import {envelopeRevision} from '../../shared/envelopeRevision';
 import {fakeDeps} from './fakeDeps';
 import {fakeExt} from './fakeExt';
@@ -115,6 +117,35 @@ describe('vault.changePassword (E10)', () => {
     expect(await changePassword(await stored({env: {...STORED, seed: 'x'}}), 1, REV, CHANGED)).toBe('stored-invalid');
     expect(await changePassword(await stored(), 1, 'nope', CHANGED)).toBe('malformed');
     expect(await changePassword(await stored(), 1, REV, {...CHANGED, v: 2})).toBe('malformed');
+  });
+
+  it('fix round 1: an autolock fired between the session check and the write never lands between them', async () => {
+    // The lock fires while changePassword reads the stored envelope — after its session check, before its write.
+    // Held under sessionMutex, the lock waits for the write: the vault is never written on a locked session.
+    const ext = await stored();
+    const realGet = ext.local.get;
+    const realSet = ext.local.set;
+    let autolock: Promise<void> | undefined;
+    const sessionAtWrite: unknown[] = [];
+    ext.local.get = async k => {
+      if (k === VAULT_KEY && autolock === undefined) autolock = lock(ext);
+      return realGet(k);
+    };
+    ext.local.set = async (k, v) => {
+      if (k === VAULT_KEY) sessionAtWrite.push(await getSession(ext));
+      return realSet(k, v);
+    };
+    const r = await changePassword(ext, 1, REV, CHANGED);
+    await autolock;
+    expect(autolock).toBeDefined();
+    if (r === 'changed') {
+      expect(sessionAtWrite).toHaveLength(1);
+      expect(sessionAtWrite[0]).not.toBeNull();
+    } else {
+      expect(r).toBe('locked');
+      expect(await realGet(VAULT_KEY)).toEqual(STORED);
+    }
+    expect(await getSession(ext)).toBeNull();
   });
 
   it('storeEnvelope still refuses a password change (C2: sameWallet is unchanged)', async () => {

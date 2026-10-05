@@ -259,7 +259,8 @@ export function onlyPasswordChanged(current: StoredEnvelope, next: StoredEnvelop
  * vault.changePassword (E10, D8, C2). The vault page proved the current password against the session and re-wrapped
  * the same data key under the new one (rewrapPassword proves the wrap before it is sent); the background cannot check
  * a password, so it checks what it can: inside `serial` (the mutex every v1_vault write takes) — the shape; an
- * unlocked session (`locked` otherwise: the proof was against a session that is gone); the stored envelope present
+ * unlocked session (`locked` otherwise: the proof was against a session that is gone; held under sessionMutex through
+ * the write, so a lock cannot land between the check and the write); the stored envelope present
  * (`no-wallet`), well formed (`stored-invalid`) and at the proven revision (`busy`); onlyPasswordChanged
  * (`malformed`). The stored names are carried over (names are outside the revision). After the write — best effort,
  * never undoing it — `passwordChangedAt` is recorded (C10: #31's 36e reads it).
@@ -268,17 +269,22 @@ export async function changePassword(ext: Ext, now: number, expectedRevision: un
   if (!isStr(expectedRevision) || !REVISION.test(expectedRevision)) return 'malformed';
   const next = envelopeShape(envelope);
   if (next === null) return 'malformed';
-  const out = await serial(async (): Promise<ChangePasswordResult> => {
-    if ((await getSession(ext)) === null) return 'locked';
-    const stored = await ext.local.get(VAULT_KEY);
-    if (stored === undefined) return 'no-wallet';
-    const current = envelopeShape(stored);
-    if (current === null) return 'stored-invalid';
-    if (envelopeRevision(current) !== expectedRevision) return 'busy';
-    if (!onlyPasswordChanged(current, next)) return 'malformed';
-    await ext.local.set(VAULT_KEY, {...next, accounts: current.accounts});
-    return 'changed';
-  });
+  // Lock order serial → sessionMutex, as forgetWallet takes them (no path takes them the other way round). The
+  // session check and the write share one sessionMutex section (fix round 1): a lock (clearSession takes
+  // sessionMutex) is ordered wholly before the check — `locked` — or wholly after the write, never between them.
+  const out = await serial(() =>
+    sessionMutex(async (): Promise<ChangePasswordResult> => {
+      if ((await getSession(ext)) === null) return 'locked';
+      const stored = await ext.local.get(VAULT_KEY);
+      if (stored === undefined) return 'no-wallet';
+      const current = envelopeShape(stored);
+      if (current === null) return 'stored-invalid';
+      if (envelopeRevision(current) !== expectedRevision) return 'busy';
+      if (!onlyPasswordChanged(current, next)) return 'malformed';
+      await ext.local.set(VAULT_KEY, {...next, accounts: current.accounts});
+      return 'changed';
+    }),
+  );
   if (out === 'changed') {
     try {
       await updateSettings(ext, s => ({...s, passwordChangedAt: now}));

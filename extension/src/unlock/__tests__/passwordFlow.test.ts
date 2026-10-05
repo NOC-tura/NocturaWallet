@@ -3,6 +3,7 @@ import {deriveSessionAccounts} from '../../vault/accounts';
 import {VAULT_KEY} from '../../background/accountsStore';
 import {lock} from '../../background/autolock';
 import {setSession} from '../../background/session';
+import {vi} from 'vitest';
 import {changePassword, isCurrentPassword, proveCurrent} from '../passwordFlow';
 import {harness, testKdf} from './pageHarness';
 
@@ -12,6 +13,20 @@ const OTHER = 'legal winner thank year wave sausage worth useful legal winner th
 const K0 = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
 const OLD = 'correct horse battery';
 const NEW = 'a brand new long password';
+
+/** Every raw key WebCrypto exports (the unwrapped data key's own buffer), kept to check it was zeroed. */
+function exportedKeys() {
+  const proto = Object.getPrototypeOf(crypto.subtle) as SubtleCrypto;
+  const real = proto.exportKey;
+  const buffers: ArrayBuffer[] = [];
+  const spy = vi.spyOn(proto, 'exportKey').mockImplementation(async function (this: SubtleCrypto, format: KeyFormat, key: CryptoKey) {
+    const out = (await real.call(this, format as 'raw', key)) as ArrayBuffer;
+    buffers.push(out);
+    return out;
+  } as SubtleCrypto['exportKey']);
+  return {buffers, restore: () => spy.mockRestore()};
+}
+const allZero = (b: ArrayBuffer) => new Uint8Array(b).every(x => x === 0);
 
 async function setup(o: {session?: string | null; passkey?: boolean} = {}) {
   let env: EnvelopeV1 = await createEnvelope({mnemonic: M, password: OLD, scheme: 'slip10', accounts: [{index: 0, name: 'Main', publicKey: K0}], kdf: testKdf});
@@ -36,6 +51,24 @@ describe('proveCurrent (step 1)', () => {
     expect(JSON.stringify({...r.held, dataKey: null})).not.toContain('abandon');
     expect(Object.isFrozen(r.held)).toBe(true);
     expect(r.held.dataKey).toHaveLength(32);
+  });
+
+  it('fix round 1: a throw after the proof, before the held proof owns the key, zeroes the data key', async () => {
+    const {deps} = await setup();
+    const realFreeze = Object.freeze;
+    const freeze = vi.spyOn(Object, 'freeze').mockImplementation(<T>(o: T): Readonly<T> => {
+      if (typeof o === 'object' && o !== null && 'dataKey' in o) throw new Error('boom');
+      return realFreeze(o);
+    });
+    const keys = exportedKeys();
+    try {
+      expect((await proveCurrent(deps, OLD, testKdf)).outcome).toBe('failed');
+      expect(keys.buffers).toHaveLength(1);
+      expect(keys.buffers.every(allZero)).toBe(true);
+    } finally {
+      keys.restore();
+      freeze.mockRestore();
+    }
   });
 
   it('wrong, not-unlocked, mismatch-locked (the vault locks), damaged, no-wallet', async () => {
@@ -66,6 +99,23 @@ describe('isCurrentPassword (step 2 `same`, review H2)', () => {
     expect(await isCurrentPassword(env, NEW, kdf)).toBe(false);
     expect(keks).toHaveLength(2);
     expect(keks.every(k => k.every(b => b === 0))).toBe(true);
+  });
+});
+
+describe('isCurrentPassword zeroes the key it unwrapped (fix round 1)', () => {
+  it('true: the one exported data key is zeroed; false: AES-KW refuses, so no key was ever exported', async () => {
+    const {env} = await setup();
+    const keys = exportedKeys();
+    try {
+      expect(await isCurrentPassword(env, OLD, testKdf)).toBe(true);
+      expect(keys.buffers).toHaveLength(1);
+      expect(keys.buffers.every(allZero)).toBe(true);
+      expect(await isCurrentPassword(env, NEW, testKdf)).toBe(false);
+      expect(keys.buffers).toHaveLength(1);
+      expect(keys.buffers.every(allZero)).toBe(true);
+    } finally {
+      keys.restore();
+    }
   });
 });
 

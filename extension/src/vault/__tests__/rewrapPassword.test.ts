@@ -71,6 +71,47 @@ describe('rewrapPassword', () => {
     }
   });
 
+  it('fix round 1: zeroes every data-key copy it made — the unwrapped check and the slice — on success and on a refusal', async () => {
+    const proto = Object.getPrototypeOf(crypto.subtle) as SubtleCrypto;
+    const realExport = proto.exportKey;
+    const exported: ArrayBuffer[] = [];
+    const exportSpy = vi.spyOn(proto, 'exportKey').mockImplementation(async function (this: SubtleCrypto, format: KeyFormat, key: CryptoKey) {
+      const out = (await realExport.call(this, format as 'raw', key)) as ArrayBuffer;
+      exported.push(out);
+      return out;
+    } as SubtleCrypto['exportKey']);
+    const allZero = (b: ArrayBuffer | Uint8Array) => (b instanceof Uint8Array ? b : new Uint8Array(b)).every(x => x === 0);
+    /** Runs rewrapPassword with `key`, returning the copies it sliced from it and the keys it exported. */
+    const run = async (env: Awaited<ReturnType<typeof make>>, key: Uint8Array, refused: boolean) => {
+      exported.length = 0;
+      const slice = vi.spyOn(key, 'slice');
+      const call = rewrapPassword(env, key, NEW, kdf);
+      if (refused) await expect(call).rejects.toThrow();
+      else await call;
+      const copies = slice.mock.results.map(r => r.value as Uint8Array);
+      slice.mockRestore();
+      return {copies, keys: [...exported]};
+    };
+    try {
+      const env = await make();
+      const dk = await unlockWithPassword(env, OLD, kdf);
+      // Success.
+      const ok = await run(env, dk, false);
+      expect(ok.copies).toHaveLength(1);
+      expect(ok.keys).toHaveLength(1);
+      expect([...ok.copies, ...ok.keys].every(allZero)).toBe(true);
+      expect(dk.some(b => b !== 0)).toBe(true);
+      // Refusal: a key that does not open this seed (the unwrap check passes, the seed check throws).
+      const wrongKey = await unlockWithPassword(await make(OTHER), OLD, kdf);
+      const bad = await run(env, wrongKey, true);
+      expect(bad.copies).toHaveLength(1);
+      expect(bad.keys).toHaveLength(1);
+      expect([...bad.copies, ...bad.keys].every(allZero)).toBe(true);
+    } finally {
+      exportSpy.mockRestore();
+    }
+  });
+
   it('zeroes the KEK it derived', async () => {
     const env = await make();
     const dk = await unlockWithPassword(env, OLD, kdf);

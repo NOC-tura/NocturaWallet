@@ -38,9 +38,16 @@ export async function proveCurrent(deps: {readEnvelope(): Promise<unknown>; send
     const proven = await openProven(env, {password, kdf}, session);
     if (proven.outcome === 'mismatch') return {outcome: await lockOnMismatch(deps.send)};
     if (proven.outcome !== 'ok') return {outcome: proven.outcome};
-    // Only the data key is kept: `proven.mnemonic` is not read past this line.
-    const held: HeldProof = Object.freeze({env: Object.freeze(env), revision: envelopeRevision(env), dataKey: proven.dataKey});
-    return {outcome: 'proven', held};
+    // Only the data key is kept: `proven.mnemonic` is not read past this line. Until the held proof owns the key, any
+    // throw zeroes it (fix round 1): a key that is not handed over is never left behind.
+    let handedOver = false;
+    try {
+      const held: HeldProof = Object.freeze({env: Object.freeze(env), revision: envelopeRevision(env), dataKey: proven.dataKey});
+      handedOver = true;
+      return {outcome: 'proven', held};
+    } finally {
+      if (!handedOver) proven.dataKey.fill(0);
+    }
   } catch {
     return {outcome: 'failed'};
   }
