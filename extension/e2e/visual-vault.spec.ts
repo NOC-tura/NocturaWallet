@@ -188,7 +188,8 @@ test('visual: the create run — #1, #2, #3, #4, #5, #6 and #7', async () => {
     await p.locator('#pw-field').fill(PASSWORD);
     await p.locator('#pw-cta').click();
     await expect(p.getByText('Creating your wallet…')).toBeVisible();
-    await expect(p.getByText('Securing your password takes a few seconds.')).toBeVisible();
+    // Scoped: #36's `changing` section (B1b-2b) carries the same line, hidden.
+    await expect(p.locator('#pw-creating').getByText('Securing your password takes a few seconds.')).toBeVisible();
     await shot(p, '05-creating');
     await releaseKdf(p);
 

@@ -221,6 +221,39 @@ export const PASSKEY = {
   failed: 'Something went wrong. Your password still works.',
 } as const;
 
+/**
+ * #36 change-pin → change password (B1b-2b §3.1, D8, C20). Adapted from the design's PIN copy (2a-D7); O-numbers are
+ * the owner-confirmed controller additions (spec §12).
+ */
+export const CHANGE = {
+  stepOf: (n: 1 | 2 | 3): string => `Step ${n} of 3`,
+  title: {1: 'Enter current password', 2: 'Choose a new password', 3: 'Confirm new password'},
+  lede: {
+    1: "Verify it's you before changing your password.",
+    2: 'At least 12 characters. A few unrelated words work well.',
+    3: 'Enter the same password again.',
+  },
+  /** O01. */
+  continue: 'Continue',
+  /** O03. */
+  change: 'Change password',
+  checking: 'Checking…',
+  /** O02 (step-2 `same`). */
+  same: 'That is your current password. Choose a new one.',
+  /** 36d, adapted ("PINs don't match — try again"). */
+  mismatch: "Passwords don't match — try again",
+  /** 36e, adapted ("PIN updated"). */
+  updated: 'Password updated.',
+  /** O05. */
+  closeTab: 'You can close this tab.',
+  /** O06. */
+  passkeyStillWorks: 'Your passkey still works.',
+  /** O07. */
+  failed: 'Something went wrong. Your password was not changed.',
+  /** O10 (`dropped`: the page was left, or the 5-minute TTL ran out, C20). */
+  dropped: 'Enter your current password again.',
+} as const;
+
 /** #9 unlock (D7, D11). */
 export const UNLOCK = {
   unlocking: 'Unlocking…',

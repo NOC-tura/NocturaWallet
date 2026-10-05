@@ -493,6 +493,72 @@
         </div>
       </section>
 
+      <!-- #36 change-pin → change password (B1b-2b §3.1, D8, C20): three steps in the vault tab; the held proof lives 5 minutes. -->
+      <section id="v-change-password" class="screen s-pin" hidden>
+        <div class="top-bar">
+          <button id="cp-x" type="button" class="icon-btn" aria-label="Close"><svg width="22" height="22" aria-hidden="true"><use href="#i-x" /></svg></button>
+          <span class="title noc-h1">Change password</span>
+        </div>
+        <div id="cp-stepper" class="s7-stepper">
+          <span id="cp-seg-1" class="seg"></span><span id="cp-seg-2" class="seg"></span><span id="cp-seg-3" class="seg"></span>
+          <span id="cp-step" class="label noc-numeral"></span>
+        </div>
+        <div id="cp-entry" class="pin-head">
+          <h2 id="cp-title" class="noc-h2"></h2>
+          <p id="cp-lede" class="noc-body-sm vlt-lede vlt-narrow"></p>
+          <label for="cp-field" class="noc-body-sm vlt-lede vlt-field-label">Password</label>
+          <form id="cp-form" class="vlt-field-row vlt-field-row-labelled">
+            <input id="cp-field" class="vlt-input" type="password" autocomplete="current-password" />
+            <button id="cp-toggle" type="button" class="icon-btn" aria-label="Show password" hidden><svg width="20" height="20" aria-hidden="true"><use id="cp-toggle-icon" href="#i-eye-on" /></svg></button>
+          </form>
+          <div id="cp-meter" class="vlt-meter" aria-hidden="true" hidden><i></i><i></i><i></i><i></i></div>
+          <p id="cp-meter-label" class="noc-caption vlt-muted" hidden></p>
+        </div>
+        <p id="cp-helper" class="noc-caption pin-helper" aria-live="polite"></p>
+        <div id="cp-cooldown" hidden>
+          <div class="vlt-pad-cooldown">
+            <h1 class="noc-h1 vlt-center vlt-gap-2">Wait a moment</h1>
+            <p class="noc-body vlt-lede vlt-center vlt-narrow-300 vlt-gap-5">That did not confirm it. Wait a moment before trying again.</p>
+          </div>
+          <div class="cooldown-card">
+            <div id="cp-ring" class="ring"></div>
+            <div id="cp-timer" class="timer noc-numeral"></div>
+            <div id="cp-cooldown-label" class="noc-body-sm label"></div>
+          </div>
+        </div>
+        <span id="cp-cooldown-live" class="vlt-sr" aria-live="polite"></span>
+        <div id="cp-changing" class="vlt-notice" role="status" hidden>
+          <p class="noc-body">Updating your password…</p>
+          <p class="noc-body-sm vlt-lede">Securing your password takes a few seconds.</p>
+          <progress class="noc-progress" aria-label="Updating your password"></progress>
+        </div>
+        <div id="cp-notice" class="vlt-notice" role="status" hidden>
+          <p id="cp-notice-line" class="noc-body"></p>
+          <p id="cp-notice-help" class="noc-body-sm vlt-lede"></p>
+        </div>
+        <div class="pin-spacer"></div>
+        <div class="sticky-bar">
+          <button id="cp-cta" type="button" class="btn btn-primary"></button>
+          <button id="cp-paused" type="button" class="btn btn-secondary" disabled hidden>Confirm paused</button>
+          <button id="cp-again" type="button" class="btn btn-primary" hidden>Start again</button>
+          <button id="cp-unlock" type="button" class="btn btn-primary" hidden>Unlock</button>
+          <button id="cp-setup" type="button" class="btn btn-primary" hidden>Set up a wallet</button>
+          <button id="cp-close" type="button" class="btn btn-secondary" hidden>Close this tab</button>
+        </div>
+      </section>
+
+      <!-- #36's cancel-confirm (ix:14918; the X during steps 2–3): #3's modal chrome. -->
+      <section id="v-cp-cancel" class="screen s-seed-modal" hidden>
+        <div id="cpc-backdrop" class="modal-backdrop"></div>
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="cpc-title">
+          <h2 id="cpc-title" class="noc-h2">Cancel password change?</h2>
+          <div class="ctas">
+            <button id="cpc-keep" type="button" class="btn btn-primary">Keep changing</button>
+            <button id="cpc-cancel" type="button" class="btn btn-secondary">Cancel change</button>
+          </div>
+        </div>
+      </section>
+
     </main>
     <script type="module" src="./src/unlock/main.ts"></script>
   </body>

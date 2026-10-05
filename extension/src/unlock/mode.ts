@@ -11,7 +11,9 @@ export type PageMode =
   | {mode: 'forgot'}
   | {mode: 'accounts'}
   | {mode: 'reveal'}
-  | {mode: 'reauth'; challengeId: string};
+  | {mode: 'reauth'; challengeId: string}
+  /** B1b-2b §1.2: #36 change password (unlocked session, password only, D8). */
+  | {mode: 'password'};
 
 const SOURCES: readonly string[] = ['forgot', 'retry'];
 const RETURNS: readonly string[] = ['created', 'imported'];
@@ -24,7 +26,7 @@ const RETURNS: readonly string[] = ['created', 'imported'];
 export function pageMode(search: string): PageMode {
   const p = new URLSearchParams(search);
   const m = p.get('mode');
-  if (m === 'welcome' || m === 'create' || m === 'forgot' || m === 'accounts' || m === 'reveal') return {mode: m};
+  if (m === 'welcome' || m === 'create' || m === 'forgot' || m === 'accounts' || m === 'reveal' || m === 'password') return {mode: m};
   if (m === 'import') {
     const source = p.get('source') ?? '';
     return {mode: 'import', source: SOURCES.includes(source) ? (source as ImportSource) : null};

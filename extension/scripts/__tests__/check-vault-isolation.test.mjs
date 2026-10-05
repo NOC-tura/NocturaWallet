@@ -1524,7 +1524,9 @@ describe('plan 2: the real vault page reaches every screen it builds (positive c
     const views = modules('src/unlock/view');
     // The readdir is not empty or short by accident: the folders hold exactly plan 2's screens (Tasks 6–14)
     // and views — a module added or removed there is named here too, and each named one must be reached.
-    const named = ['welcome', 'seed', 'confirm', 'password', 'passkey', 'createRun', 'importScreen', 'importRun', 'restoreRun', 'retryRun', 'forgot', 'unlock', 'reauth', 'accounts', 'reveal'];
+    const named = ['welcome', 'seed', 'confirm', 'password', 'passkey', 'createRun', 'importScreen', 'importRun', 'restoreRun', 'retryRun', 'forgot', 'unlock', 'reauth', 'accounts', 'reveal',
+      // B1b-2b plan 1.
+      'changePassword'];
     expect([...screens].sort()).toEqual(named.map(n => `src/unlock/screens/${n}.ts`).sort());
     expect([...views].sort()).toEqual(['dom', 'words', 'hold', 'meter', 'cooldown'].map(n => `src/unlock/view/${n}.ts`).sort());
     expect(resolved).toEqual(
@@ -1536,6 +1538,7 @@ describe('plan 2: the real vault page reaches every screen it builds (positive c
         'src/unlock/challenge.ts',
         'src/unlock/stored.ts',
         'src/unlock/page.ts',
+        'src/unlock/passwordFlow.ts',
       ]),
     );
   });

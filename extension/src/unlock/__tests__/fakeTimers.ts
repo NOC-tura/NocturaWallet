@@ -4,7 +4,7 @@ import type {Timers} from '../page';
  * A manual clock for the vault page's timers: nothing runs until `advance(ms)`, which fires every due
  * timeout and interval in time order. Deterministic — no real time passes in a screen test.
  */
-export function fakeTimers(start = 1_000_000): Timers & {advance(ms: number): void; pending(): number} {
+export function fakeTimers(start = 1_000_000): Timers & {advance(ms: number): void; skip(ms: number): void; pending(): number} {
   let now = start;
   let next = 1;
   const jobs = new Map<number, {at: number; every: number | null; f: () => void}>();
@@ -39,6 +39,13 @@ export function fakeTimers(start = 1_000_000): Timers & {advance(ms: number): vo
         job.f();
       }
       now = end;
+    },
+    /**
+     * B1b-2b C20: the clock moves on and NO timer fires — a background tab whose timers the browser throttled. A screen
+     * that relies on its timer alone keeps whatever the timer was to drop.
+     */
+    skip(ms: number) {
+      now += ms;
     },
     pending: () => jobs.size,
   };
