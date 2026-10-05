@@ -5,9 +5,8 @@ import {ACCOUNT, OTHER_CHALLENGE, RECIPIENT, groups, msg, realWallet, sol, start
 
 // Spec B1b-2a §8.5, plan 3: specs 4 and 11 (spec 5 in stuck.spec.ts) — the send flow in the real extension (popup, vault page, UI tab)
 // against the contained fake coordinator. Every spec ends with contained(h): the fake saw the worker's requests,
-// nothing unexpected, Solscan and every other noc-tura.io name never contacted. The sends are SOL: the fake
-// models token accounts for the balances #43 shows, and no E2E sends a token (component tests cover SPL sends
-// against the real background).
+// nothing unexpected, Solscan and every other noc-tura.io name never contacted. The sends are SOL; spec 13
+// (tokenSend.spec.ts) sends a token.
 
 test('4 · send with re-authentication: #11 → #12 → #43 → #19 → #20 → #10 from the background → #20 confirmed, no broadcast → one tap → #21 — and a cancel on #10 discards', async () => {
   const h = await launchPopup('noctura-e2e-send-');

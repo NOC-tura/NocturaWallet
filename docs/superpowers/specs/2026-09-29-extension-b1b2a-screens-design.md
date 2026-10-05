@@ -2441,9 +2441,15 @@ cannot click the toolbar action; stated). Specs:
     account 0 → at the finish `funded`, "This wallet now holds funds. Nothing was changed.", and the
     stored envelope is byte-identical.
 Every spec asserts `fake.unexpected` is empty and `hits > 0` (routing proven).
-**Plan 3:** specs 4, 5 and 11 send SOL; no E2E sends a token (component tests cover SPL sends against the
-real background, and the fake's jsonParsed token accounts feed #11 and #43). A token-send E2E is owed when
-the first token-send path is exercised on a device (plan-3 review, author's gaps).
+**Plan 3:** specs 4, 5 and 11 send SOL. **Spec 13 (final review, carry d) sends a token:** #11 → #12 →
+#43 picks NOC → #19 → #20 → one tap → #21 success, to a known recipient under the threshold (no
+re-authentication). The fake serves the owner's NOC in two accounts — a non-canonical holding with the
+larger balance and the derived ATA with a smaller one — and the recipient has no NOC account. The spec
+decodes the one broadcast wire itself (no `core/` import) and asserts the transfer spends from the largest
+holding, never the derived ATA, with the owner as authority and the exact amount, and that the
+transaction creates the recipient's ATA (the Associated Token program's Create, for the recipient and NOC's mint) before the
+transfer goes to it. An on-device token send (the split-balance refusal included) is still owed before a
+user build.
 
 ### 8.6 Visual fidelity against the design
 

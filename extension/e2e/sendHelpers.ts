@@ -1,5 +1,9 @@
 import {expect, type Page} from '@playwright/test';
+import {ed25519} from '@noble/curves/ed25519.js';
+import {sha256} from '@noble/hashes/sha2.js';
+import {base58} from '@scure/base';
 import type {Harness} from './popupHarness';
+import {ATA_PROGRAM, TOKEN_PROGRAM} from './fakeCoordinator';
 import {E2E_ACCOUNTS, E2E_PASSWORD, makeEnvelope} from './makeEnvelope';
 import {unlockWith} from './vaultPage';
 
@@ -7,9 +11,41 @@ import {unlockWith} from './vaultPage';
 // only; nothing here is imported from core/ (the E2E rule).
 export const ACCOUNT = E2E_ACCOUNTS[0];
 export const RECIPIENT = '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4';
-const NOC_MINT = 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW';
-/** Any valid token-account address (an E2E-only constant). */
-const NOC_HOLDING = 'FpV5mr137k3GfLJqqWnZer12v2KxZfEEQzxXb6sJLABU';
+export const NOC_MINT = 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW';
+/** Any valid token-account address (an E2E-only constant): not the account's derived ATA. */
+export const NOC_HOLDING = 'FpV5mr137k3GfLJqqWnZer12v2KxZfEEQzxXb6sJLABU';
+
+/** Whether 32 bytes decode as an ed25519 point: a program-derived address must not. */
+function onCurve(bytes: Uint8Array): boolean {
+  try {
+    ed25519.Point.fromBytes(bytes);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The associated token address: the ATA program's program-derived address of [owner, Token program, mint] —
+ * sha256(seeds ‖ bump ‖ program ‖ "ProgramDerivedAddress") for the highest bump that lands off the curve. Derived
+ * here because the E2E imports nothing from core/.
+ */
+export function associatedTokenAddress(owner: string, mint: string): string {
+  const parts = [base58.decode(owner), base58.decode(TOKEN_PROGRAM), base58.decode(mint)];
+  const tail = [base58.decode(ATA_PROGRAM), new TextEncoder().encode('ProgramDerivedAddress')];
+  for (let bump = 255; bump >= 0; bump--) {
+    const all = [...parts, Uint8Array.of(bump), ...tail];
+    const bytes = new Uint8Array(all.reduce((n, p) => n + p.length, 0));
+    let at = 0;
+    for (const p of all) {
+      bytes.set(p, at);
+      at += p.length;
+    }
+    const hash = sha256(bytes);
+    if (!onCurve(hash)) return base58.encode(hash);
+  }
+  throw new Error('no off-curve bump');
+}
 /** A challenge id the background never issued: 32 lowercase hex. */
 export const OTHER_CHALLENGE = 'ab'.repeat(16);
 
