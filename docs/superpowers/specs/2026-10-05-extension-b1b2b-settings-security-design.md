@@ -1544,8 +1544,11 @@ longer used: "Active protections" shows only on the all-clear state, review L7).
 | O86 | "That is not a Solana address." | contact sheet |
 | O87 | "The address book is full (200 contacts). Delete one to add another." | contact sheet |
 | O88 | "From your address book: <name>" | #12, #20, #27 label |
+| O89 | "1 outstanding task." (owner, 2026-10-05, plan-1 review) | #35 card, the singular of "N outstanding tasks." |
+| O90 | "Close" (aria) (owner, 2026-10-05, plan-1 review) | the vault page's ✕ on #36 (`cp-x`) and the reveal/verify proof (`pp-x`) |
+| O91 | "Updating your password" (aria, on the progress element) (owner, 2026-10-05, plan-1 review) | #36 `changing` |
 
-**88 strings** (O01–O66 plan 1; O67–O88 plan 2). Adapted design strings (marked **→ adapted** in §§3–6) are
+**91 strings** (O01–O66 plan 1; O67–O88 plan 2; O89–O91 plan 1, added by the owner on 2026-10-05 after the plan-1 review). Adapted design strings (marked **→ adapted** in §§3–6) are
 not repeated here; the owner sees them in each screen's section.
 
 ---

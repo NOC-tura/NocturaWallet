@@ -2,13 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Revision 2 (2026-10-05):** Fable 5.1 review 1 applied — H1, M1–M4, L1–L9; where each landed is in "Review 1" at the end.
+
 **Goal:** Build spec §12's plan 1 of B1b-2b ("security"): the engine extensions E9–E16 with their refusals and partition tests; the vault-page modes `password` (#36), `delete` (#37's proof, C17), `passkey&op=add|remove`, `reveal`, `verify`, `accounts&op=add|remove` and #10's settings states; the popup screens #31 (full), #35, the accounts manager, the passkey screen and #37; E2E specs 14–18 (the PRF probe first); the visual pass of every state.
 
 **Architecture:** The background (`src/background/`) stays the only writer of `storage.local`: three new `v1_settings` fields (one rule: every write rebuilds all six by name, under `settingsMutex`), three new vault-page-only messages (`vault.changePassword`, `vault.removePasskey`, `vault.phraseVerified`), E9's branch in `vault.reauthOk` that applies a weakened setting itself, and the store refusals C3 (a stored passkey cannot be dropped by a store) and C5 (an account with an open send cannot be dropped). The vault page (`unlock.html`, DOM only, no React, under the vault-isolation gate) gains four screens and rewrites two; every secret it opens stays in that page and is zeroed or dropped on every path. The popup (React 18, `src/app/`) reads booleans and settings — never a key — and opens vault-page URLs it can only build from a closed list (`ExtensionPage`, `removeAccountPage(index)`).
 
 **Tech Stack:** TypeScript 5 strict, React 18, Vite, Vitest + happy-dom + Testing Library, Playwright (contained: `ctx.route` + `--host-resolver-rules`; CDP virtual authenticator with PRF), Argon2id (WASM worker) + AES-KW + AES-GCM (WebCrypto) for the envelope, WebAuthn PRF for the passkey wrap.
 
-**Spec:** `docs/superpowers/specs/2026-10-05-extension-b1b2b-settings-security-design.md` (rev 3, approved by the owner 2026-10-05 with C1–C20 and O01–O88) — §1 (pages, routes, partition, CSS), §2 E9–E16, §3.1–§3.7, §4.1–§4.4, §5, §7, §8.1–§8.4, §11; parents `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md` and `docs/superpowers/specs/2026-09-27-extension-b1-design.md` (rev 5). Design (binding): `/home/user/Downloads/index.html` + `screen.md` — #31, #35, #36, #37, #6, #3, #4, #10.
+**Spec:** `docs/superpowers/specs/2026-10-05-extension-b1b2b-settings-security-design.md` (rev 3, approved by the owner 2026-10-05 with C1–C20 and O01–O88; O89–O91 added by the owner the same day after this plan's review) — §1 (pages, routes, partition, CSS), §2 E9–E16, §3.1–§3.7, §4.1–§4.4, §5, §7, §8.1–§8.4, §11; parents `docs/superpowers/specs/2026-09-29-extension-b1b2a-screens-design.md` and `docs/superpowers/specs/2026-09-27-extension-b1-design.md` (rev 5). Design (binding): `/home/user/Downloads/index.html` + `screen.md` — #31, #35, #36, #37, #6, #3, #4, #10.
 
 ## Global Constraints
 
@@ -43,7 +45,7 @@ And, from the brief's binding lessons and CLAUDE.md:
 - **UI client (Task 7):** `engine.settingsSet`, `engine.order`, `WalletState.passkey`, `ExtensionPage` + `removeAccountPage` (C14), four bare routes, `PASSWORD_TOAST_KEY`.
 - **Vault-page modes (Tasks 8–12, plus Task 2 for #10):** `password` (#36), `delete`, `passkey&op=add|remove`, `reveal`, `verify`, `accounts&op=add|remove`, #10's settings outcomes.
 - **Popup screens (Tasks 13–17):** the passkey screen, the accounts manager, #37, #35, #31 (with 36e).
-- **E2E (Tasks 18–19):** the PRF probe (first), specs 14, 15 (×4), 16, 17, 18 (×2); the CSP spec over every new mode. **Visual pass (Task 20).**
+- **E2E (Tasks 18–19):** the PRF probe (the first E2E task), specs 14, 15 (×4), 16, 17, 18 (×2); the CSP spec over every new mode. **Visual pass (Task 20).**
 
 ### 2. Plan 2 (not in this plan) — and how it extends plan 1 without undoing it
 
@@ -53,23 +55,34 @@ Plan 2 = the address book: E17 (`v1_contacts`, `contacts.*`), #15, the contact s
 - **#37's 37a "erased" bullet** (`DELETE_TEXT.bulletErased`, Task 15) is the spec's plan-1 wording; plan 2 switches it to §5's plan-2 wording ("Local settings, cached balances, your address book and the list of addresses you have sent to are **erased** and not recoverable.") in the same task that adds the wipe.
 - **`settingsMutex` / `updateSettings`** (Task 1) is where plan 2's `contacts.*` must NOT go (contacts are their own key with their own mutex) — stated so nobody reuses it.
 - **Account names (C19):** plan 1 keeps 2a's `cleanName`; plan 2 widens `FORBIDDEN_IN_NAME` for contacts and account names together.
+- **The design-ext hash pin (review L6).** `src/__tests__/designExt2b.test.ts` (Task 8) pins `design-ext.css`'s SHA-256 (`541733…`). Plan 2's extraction (`.s-abook` and the contact sheet) changes the file, so plan 2 re-runs the script with its prefixes added and **re-pins the hash in the same task** — a red pin there is expected, not drift.
 
 ### 3. Departures (each loud; each is in the spec's Differs or §11 unless marked NEW)
 
-1. **NEW — "1 outstanding task." (singular) on #35's card.** The spec has "N outstanding tasks." (adapted from ix:14411) and the singular only for #31's meta (O43 "1 to do"). The singular sentence is **not in the O-list** — flagged for the owner; the plan uses it because "1 outstanding tasks." is wrong English. Remove the branch if the owner says so (one line in `Security.tsx`, one test).
+1. **"1 outstanding task." (singular) on #35's card — owner-confirmed O89.** The spec had "N outstanding tasks." (adapted from ix:14411) and the singular only for #31's meta (O43 "1 to do"); the plan uses the singular because "1 outstanding tasks." is wrong English. The owner confirmed it on 2026-10-05 (spec §12, O89).
 2. **NEW — 36e's toast is `position: fixed`,** not the design's absolute: in the popup the screen grows inside the scrolling region, so an absolute toast sat at the foot of the whole list, out of view (found by the dry run's visual pass). Same place on screen as the design (80 px + `--space-4` above the bottom, centred).
 3. **NEW — `.s7-pw`** is added to the design-ext extraction (§1.6's list does not name it): #37's DELETE field uses the design's `.s7-pw` wrapper.
 4. **#10's kind-neutral expired line (§11 item 4)** is unchanged: a settings challenge already gone when the tab loads shows 2a's send-worded `expired` line; the approved O40 pair shows when the proof outlived the challenge.
 5. **States reachable only with fault injection** — setting failed (O51), #36 `failed` (O07), delete `failed` (O16), passkey `failed` (O26) — are asserted in component tests, not shot (the real extension cannot be put in them without breaking it).
 6. **`PageMode`'s remove index is `number | null`**, not `number`: a malformed `index=` parses to `null` and the page says "There is no account with that number." — never coerced to 0.
 7. **#3's copy/select guards** (copy, cut, dragstart, selectstart, contextmenu refused on the grid while words are in the DOM) apply to onboarding #3 too — a hardening of 2a's screen, stated.
-8. **Verify's Back closes the tab** (there is no screen behind a verify that started in this tab).
+8. **Verify's Back closes the tab** (there is no screen behind a verify that started in this tab) — see 15 for its notice.
 9. **The cancel modal for #36 is its own section** (`v-cp-cancel`) using #3's modal chrome (the design draws it over #36; the vault page shows one section at a time).
 10. **The passkey page's cooldown omits the "Wait a moment" h1** (the page's title stays; the ring and the line show the wait).
 11. **The Switcher's balance loading moves into `useAccountBalances`** (shared with the manager and #37) — a refactor of 2a code, behaviour unchanged (the Switcher's tests stay green unchanged except a stub).
 12. **`LockedButton` gains `keepFocus` and `pressed`** (the manager's reorder keeps focus on the moved row; the pickers' aria-pressed).
 13. **The 'added'/'removed' passkey outcomes are not backoff PROVEN outcomes** (an existing negative control asserts 'added' leaves the streak) — unlike `applied`/`refused` (Task 2), which are.
-14. **NEW — the vault-isolation gate's passkey marker changes** (Task 13, a security gate — flagged for the controller). The gate proved that passkey code stays out of the popup by looking for the RP ID string `wallet.noc-tura.io` in built JS. The approved copy of the passkey screen's tip (2a's #6 line, reused by §4.4: "…Other extensions allowed on wallet.noc-tura.io can ask for it too.") puts that host into the popup bundle as prose, so the gate failed on copy, not code (found by the dry run's per-task replay: `npm run gates` red from Task 13). The marker becomes the WebAuthn PRF evaluation as Vite emits it, `extensions:{prf:{eval:{first:` (only `src/vault/passkey.ts` asks an authenticator for PRF; present in the real vault bundle, absent from the popup's — the gate's INCONCLUSIVE check fails the build if a future emitter changes it). A new gate test pins that the RP ID in popup prose passes; the existing "passkey marker alone fails" test now runs on the new marker; mutation M13b (the RP ID as the marker again) is red. The copy is not changed (it is the owner's).
+14. **NEW — the vault-isolation gate's passkey markers change** (Task 13, a security gate — flagged for the controller; rev 2 per review H1). The gate proved that passkey code stays out of the popup by looking for the RP ID string `wallet.noc-tura.io` in built JS. The approved copy of the passkey screen's tip (2a's #6 line, reused by §4.4: "…Other extensions allowed on wallet.noc-tura.io can ask for it too.") puts that host into the popup bundle as prose, so the gate failed on copy, not code (found by the dry run's per-task replay: `npm run gates` red from Task 13). Two markers replace it, each counted for presence (INCONCLUSIVE if no built JS carries it) and for leaks: **`passkey`** = the WebAuthn PRF evaluation as Vite emits it, `extensions:{prf:{eval:{first:` (only `src/vault/passkey.ts`), and **`webauthn`** = `navigator.credentials` (only `src/unlock/browser.ts` spells it; checked against the real build: in the unlock bundle, in no other built file). Together they catch any WebAuthn use outside the vault page — PRF or not, as the RP ID did — and prose cannot match either. Gate tests: the RP ID in popup prose passes; a non-PRF `navigator.credentials.get(…)` in a popup chunk fails (webauthn); the PRF marker alone fails (passkey); the manifest-only fixture is retargeted to the webauthn marker (review L1). Mutations M13b (the RP ID as the marker again) and M13c (the webauthn marker removed) are red. The copy is not changed (it is the owner's).
+15. **O29 is reused for verify's Back** (review L2): `mountPhrase`'s cancel is #4's Back in verify mode too, so a verify that never showed anything says "Nothing is shown. You can close this tab." (O29) — true, but O29's listed use is "reveal cancel". Declared for the owner.
+16. **#36 `failed` offers `[Start again]`** (review L3): spec §3.1 lists O07 alone; the plan shows O07 with 2a's `[Start again]` (back to step 1), as every other #36 notice that ends the flow does.
+
+### Owner-confirmed copy added by the plan (O89–O91, owner, 2026-10-05, plan-1 review)
+
+The plan needed three strings the approved O-list did not have (review L8 found the two AT labels). The owner confirmed all three on 2026-10-05; they are in the spec's §12 table as O89–O91.
+
+- **O89 "1 outstanding task."** — #35's card, the singular of "N outstanding tasks." (Task 16, `SECURITY_TEXT.outstanding`; Scope 3.1).
+- **O90 `aria-label="Close"`** — the vault page's ✕ on #36 (`cp-x`) and on the reveal/verify proof (`pp-x`) (Tasks 8, 11). The popup's `Sheet` already uses "Close"; the vault page did not.
+- **O91 `aria-label="Updating your password"`** — #36's `<progress>` (Task 8): O04 without its ellipsis.
 
 ### 4. Key and secret handling — where the seed, the data key and the PRF output live in each new flow (none reaches the popup)
 
@@ -83,7 +96,7 @@ The popup receives, over `wallet.state` and `settings.get`, only: account indexe
 | passkey add / replace (10) | the data key (password only, C4) and the new credential's PRF output | 2a's `addPasskey` in the vault page | both zeroed in `addPasskey`'s `finally` |
 | passkey remove (4, 10) | the factor's KEK / PRF output, to prove only | `removePasskey` → `openProven` locals | PRF output zeroed on every path; the message carries only `expectedRevision` |
 | delete (6, 9) | the factor's KEK / PRF output, to prove only (no session needed) | `proveFactor` locals; the proof object holds only `{kind: 'factor', revision}` | zeroed in `proveFactor`; the message carries only `expectedRevision` |
-| reveal (6, 11) | the phrase (password only, D23) | the #3 grid's DOM text and the seed screen's `words` | removed from the DOM on blur/release/leave/15 s ("Still looking?" has no word in the DOM — E2E spec 16 asserts it); `drop()` after the check |
+| reveal (6, 11) | the phrase (password only, D23) | the #3 grid's DOM text and the seed screen's `words` | removed from the DOM on blur/release/leave/20 s (2a's `REVEAL_MS`) ("Still looking?" has no word in the DOM — E2E spec 16 asserts it); `drop()` after the check |
 | verify (6, 11) | the phrase, to pick three words | the confirm screen's closure | dropped when the check passes or the page is left; `vault.phraseVerified` carries no data |
 | accounts add / remove (5, 12) | the data key and the phrase (`openProven`, password or passkey) | 2a's `accountsFlow` in the vault page; the derived account keys go only to the background session (`vault.setKeys` → `storage.session`, memory-only, 2a) | the data key zeroed in `finally`; the PRF output zeroed on every path (a `bad-index` before any proof); the store carries public keys only |
 
@@ -546,7 +559,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (indexes.length !== stored.size || !indexes.every(i => stored.has(i))) return {ok: false, error: 'stale'};
   + (deleted)
   ```
-  `timeout 300 npx vitest run src/background/__tests__/accountsOrder.test.ts` — Expected: **red** (dry run: 1 failed, 7 passed (8)).
+  `timeout 300 npx vitest run src/background/__tests__/accountsOrder.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - **M1b** — writeSettings drops phraseVerifiedAt (C7) — `extension/src/background/settings.ts`:
 
@@ -554,7 +567,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -     phraseVerifiedAt: s.phraseVerifiedAt,
   + (deleted)
   ```
-  `timeout 300 npx vitest run src/background/__tests__/settings.test.ts` — Expected: **red** (dry run: 1 failed, 5 passed (6)).
+  `timeout 300 npx vitest run src/background/__tests__/settings.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - [ ] **Step 6: Commit.**
 
@@ -1326,7 +1339,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (msg.challengeId !== undefined) return MALFORMED;
   + (deleted)
   ```
-  `timeout 300 npx vitest run src/background/__tests__/settingsApply.test.ts` — Expected: **red** (dry run: 1 failed, 12 passed (13)).
+  `timeout 300 npx vitest run src/background/__tests__/settingsApply.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - **M2b** — a send challenge applies as settings — `extension/src/background/reauthChallenges.ts`:
 
@@ -1334,7 +1347,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (c === undefined || c.about.kind !== 'settings') return 'unknown-challenge';
   + if (c === undefined) return 'unknown-challenge';
   ```
-  `timeout 300 npx vitest run src/background/__tests__/settingsApply.test.ts` — Expected: **red** (dry run: 1 failed, 12 passed (13)).
+  `timeout 300 npx vitest run src/background/__tests__/settingsApply.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - [ ] **Step 6: Commit.**
 
@@ -1378,7 +1391,7 @@ MSG
   - `export async function changePassword(deps: {send: Send; kdf: Kdf}, held: HeldProof, newPassword: string): Promise<ChangeOutcome>`
   - `export async function rewrapPassword(env: EnvelopeV1, dataKey: Uint8Array, password: string, kdf: Kdf): Promise<{salt: string; wrapped: string}>`
 
-The data key does not change; only its password wrap does. `rewrapPassword(env, dataKey, password, kdf)` draws a fresh 16-byte salt, keeps the stored Argon2id cost, wraps the data key under the new KEK and **opens the new wrap again before returning** (a wrap that does not round-trip throws). The background's `vault.changePassword` (vault page only) stores the new envelope only when `onlyPasswordChanged(current, next)` holds — same `v`, `scheme`, KDF alg/m/t/p, a **different** salt, a different wrap, the same seed iv/ct, the same passkey (all three fields) and the same accounts in the same order — at the revision the page proved (`busy` otherwise), with a session (`locked`), and then writes `passwordChangedAt` (best effort, after the store). The page's half (`passwordFlow.ts`): `proveCurrent` (password only — D8; proves against the session, a mismatch locks; keeps only the data key, drops the phrase), `isCurrentPassword` (step 2's "same password" check: one Argon2id with the stored salt), `changePassword` (zeroes the data key on every path).
+The data key does not change; only its password wrap does. `rewrapPassword(env, dataKey, password, kdf)` draws a fresh 16-byte salt, keeps the stored Argon2id cost, wraps the data key under the new KEK and **opens the new wrap again before returning** (a wrap that does not round-trip throws). The background's `vault.changePassword` (vault page only) stores the new envelope only when `onlyPasswordChanged(current, next)` holds — same `v`, `scheme`, KDF alg/m/t/p, a **different** salt, a different wrap, the same seed iv/ct, the same passkey (all three fields) and the same accounts in the same order — at the revision the page proved (`busy` otherwise), with a session (`locked`), and then writes `passwordChangedAt` (best effort, after the store). The page's half (`passwordFlow.ts`): `proveCurrent` (password only — D8; proves against the session, a mismatch locks; keeps only the data key, drops the phrase), `isCurrentPassword` (step 2's "same password" check: one Argon2id with the stored salt), `changePassword` (zeroes the data key on every path). **`HeldProof` is frozen, not minted** (review L4; spec E10 says "minted, frozen"): no WeakSet is kept, because a forged `HeldProof` gains nothing — `changePassword` can send only a wrap that `rewrapPassword` proved opens to the data key it was given and decrypts this envelope's seed, i.e. a holder of the real data key. `rewrapPassword`'s self-check has two halves, each with a test that a named mutation turns red: the seed half (a key that does not open this seed) and the unwrap half (the platform made to wrap a different key — review M4).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -1386,7 +1399,7 @@ Create `extension/src/background/__tests__/changePassword.test.ts`:
 
 ````ts
 import {base64} from '@scure/base';
-import {VAULT_KEY, changePassword, storeEnvelope} from '../accountsStore';
+import {VAULT_KEY, changePassword, onlyPasswordChanged, storeEnvelope, type StoredEnvelope} from '../accountsStore';
 import {handleMessage} from '../messages';
 import {readSettings} from '../settings';
 import {envelopeRevision} from '../../shared/envelopeRevision';
@@ -1447,6 +1460,15 @@ describe('vault.changePassword (E10)', () => {
     ['a key changed', {...CHANGED, accounts: [STORED.accounts[0], {index: 1, name: 'Savings', publicKey: K2}] as Env['accounts']}],
     ['an account added', {...CHANGED, accounts: [...STORED.accounts, {index: 2, name: 'Third', publicKey: K2}]}],
     ['the cost changed', {...CHANGED, kdf: {...CHANGED.kdf, t: 4}}],
+    // Review M4: one case per remaining clause of onlyPasswordChanged, each differing in that field alone.
+    ['the envelope version changed', {...CHANGED, v: 2}],
+    ['the KDF algorithm changed', {...CHANGED, kdf: {...CHANGED.kdf, alg: 'scrypt'}}],
+    ['the memory cost changed', {...CHANGED, kdf: {...CHANGED.kdf, m: 131072}}],
+    ['the parallelism changed', {...CHANGED, kdf: {...CHANGED.kdf, p: 2}}],
+    ['the passkey credential changed', {...CHANGED, passkey: {...PASSKEY, credentialId: B(16, 16)}}],
+    ['the passkey PRF salt changed', {...CHANGED, passkey: {...PASSKEY, prfSalt: B(32, 17)}}],
+    ['an account removed', {...CHANGED, accounts: [STORED.accounts[0]] as Env['accounts']}],
+    ['an index changed under the same key', {...CHANGED, accounts: [STORED.accounts[0], {index: 5, name: 'Savings', publicKey: K1}] as Env['accounts']}],
   ];
   for (const [what, env] of refused) {
     it(`malformed: ${what} — nothing is written`, async () => {
@@ -1456,6 +1478,15 @@ describe('vault.changePassword (E10)', () => {
       expect((await readSettings(ext)).passwordChangedAt).toBeNull();
     });
   }
+
+  // Review M4: the shape check (envelopeShape: v 1, alg argon2id) refuses these before the rule runs, so through the message
+  // they cannot fail; the rule is exported and its own clauses are held here, directly.
+  it('onlyPasswordChanged itself refuses a changed envelope version and a changed KDF algorithm', () => {
+    const cur = STORED as unknown as StoredEnvelope;
+    expect(onlyPasswordChanged(cur, CHANGED as unknown as StoredEnvelope)).toBe(true);
+    expect(onlyPasswordChanged(cur, {...CHANGED, v: 2} as unknown as StoredEnvelope)).toBe(false);
+    expect(onlyPasswordChanged(cur, {...CHANGED, kdf: {...CHANGED.kdf, alg: 'scrypt'}} as unknown as StoredEnvelope)).toBe(false);
+  });
 
   it('malformed: the scheme changed (a one-account wallet, so nothing but the scheme differs)', async () => {
     const one = {...STORED, accounts: [STORED.accounts[0]] as Env['accounts']};
@@ -1652,6 +1683,7 @@ describe('changePassword (step 3)', () => {
 Create `extension/src/vault/__tests__/rewrapPassword.test.ts`:
 
 ````ts
+import {vi} from 'vitest';
 import {argon2idAsync} from '@noble/hashes/argon2.js';
 import {WrongPassword, addPasskeyWrap, createEnvelope, decryptMnemonic, rewrapPassword, unlockWithPassword, unlockWithPrf, type Kdf} from '../envelope';
 
@@ -1705,6 +1737,25 @@ describe('rewrapPassword', () => {
     await expect(rewrapPassword(env, wrongKey, NEW, kdf)).rejects.toThrow();
   });
 
+  it('review M4: refuses a wrap that does not open to the data key it was given — the unwrap half of the self-check', async () => {
+    // AES-KW is deterministic, so a correct WebCrypto never produces this; the test makes the platform wrap a DIFFERENT
+    // key. The seed half of the self-check alone would pass (it decrypts with the caller's key, not the wrap's).
+    const env = await make();
+    const dk = await unlockWithPassword(env, OLD, kdf);
+    const proto = Object.getPrototypeOf(crypto.subtle) as SubtleCrypto;
+    const real = proto.wrapKey;
+    const stranger = await crypto.subtle.importKey('raw', crypto.getRandomValues(new Uint8Array(32)), 'AES-GCM', true, ['encrypt', 'decrypt']);
+    const spy = vi.spyOn(proto, 'wrapKey').mockImplementation(function (this: SubtleCrypto, format, _key, wrappingKey, alg) {
+      return real.call(this, format, stranger, wrappingKey, alg);
+    });
+    try {
+      await expect(rewrapPassword(env, dk, NEW, kdf)).rejects.toThrow('does not open to the same data key');
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('zeroes the KEK it derived', async () => {
     const env = await make();
     const dk = await unlockWithPassword(env, OLD, kdf);
@@ -1726,7 +1777,7 @@ describe('rewrapPassword', () => {
 cd extension
 npx vitest run src/background/__tests__/changePassword.test.ts src/background/__tests__/messages.test.ts src/unlock/__tests__/passwordFlow.test.ts src/vault/__tests__/rewrapPassword.test.ts
 ```
-Expected (dry run, these test files on Task 2's tree): **red** — Test Files 4 failed (4) · Tests 21 failed. (A file that imports a module this task creates fails to load: that counts as red.)
+Expected (dry run, these test files on Task 2's tree): **red** — Test Files 4 failed (4) · Tests 31 failed. (A file that imports a module this task creates fails to load: that counts as red.)
 
 - [ ] **Step 3: Implement.**
 
@@ -2038,7 +2089,7 @@ npx vitest run src/background/__tests__/changePassword.test.ts src/background/__
 npx tsc --noEmit && npx vitest run
 npm run gates
 ```
-Expected (dry run): own tests Test Files 4 passed (4) · Tests 55 passed (55); tsc clean; whole suite Test Files 118 passed (118) · Tests 2168 passed (2168); gates green.
+Expected (dry run): own tests Test Files 4 passed (4) · Tests 65 passed (65); tsc clean; whole suite Test Files 118 passed (118) · Tests 2178 passed (2178); gates green.
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -2050,7 +2101,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (b.salt === a.salt) return false;
   + (deleted)
   ```
-  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 1 failed, 15 passed (16)).
+  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - **M3b** — change password may swap the seed ciphertext — `extension/src/background/accountsStore.ts`:
 
@@ -2058,7 +2109,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (next.seed.iv !== current.seed.iv || next.seed.ct !== current.seed.ct) return false;
   + (deleted)
   ```
-  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 2 failed, 14 passed (16)).
+  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 2 failed (Playwright)).
 
 - **M3c** — a session mismatch does not lock — `extension/src/unlock/passwordFlow.ts`:
 
@@ -2066,7 +2117,143 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (proven.outcome === 'mismatch') return {outcome: await lockOnMismatch(deps.send)};
   + if (proven.outcome === 'mismatch') return {outcome: 'wrong'};
   ```
-  `timeout 300 npx vitest run src/unlock/__tests__/passwordFlow.test.ts` — Expected: **red** (dry run: 1 failed, 5 passed (6)).
+  `timeout 300 npx vitest run src/unlock/__tests__/passwordFlow.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
+
+- **M3d** — onlyPasswordChanged: clause v — `extension/src/background/accountsStore.ts`:
+
+  ```diff
+  - if (next.v !== current.v || next.scheme !== current.scheme) return false;
+  + if (next.scheme !== current.scheme) return false;
+  ```
+  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
+
+- **M3e** — onlyPasswordChanged: clause scheme — `extension/src/background/accountsStore.ts`:
+
+  ```diff
+  - if (next.v !== current.v || next.scheme !== current.scheme) return false;
+  + if (next.v !== current.v) return false;
+  ```
+  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
+
+- **M3f** — onlyPasswordChanged: clause kdf alg — `extension/src/background/accountsStore.ts`:
+
+  ```diff
+  - if (b.alg !== a.alg || b.m !== a.m || b.t !== a.t || b.p !== a.p) return false;
+  + if (b.m !== a.m || b.t !== a.t || b.p !== a.p) return false;
+  ```
+  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
+
+- **M3g** — onlyPasswordChanged: clause kdf m — `extension/src/background/accountsStore.ts`:
+
+  ```diff
+  - if (b.alg !== a.alg || b.m !== a.m || b.t !== a.t || b.p !== a.p) return false;
+  + if (b.alg !== a.alg || b.t !== a.t || b.p !== a.p) return false;
+  ```
+  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
+
+- **M3h** — onlyPasswordChanged: clause kdf t — `extension/src/background/accountsStore.ts`:
+
+  ```diff
+  - if (b.alg !== a.alg || b.m !== a.m || b.t !== a.t || b.p !== a.p) return false;
+  + if (b.alg !== a.alg || b.m !== a.m || b.p !== a.p) return false;
+  ```
+  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
+
+- **M3i** — onlyPasswordChanged: clause kdf p — `extension/src/background/accountsStore.ts`:
+
+  ```diff
+  - if (b.alg !== a.alg || b.m !== a.m || b.t !== a.t || b.p !== a.p) return false;
+  + if (b.alg !== a.alg || b.m !== a.m || b.t !== a.t) return false;
+  ```
+  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
+
+- **M3j** — onlyPasswordChanged: clause the wrap must change — `extension/src/background/accountsStore.ts`:
+
+  ```diff
+  - if (next.password.wrapped === current.password.wrapped) return false;
+  + (deleted)
+  ```
+  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
+
+- **M3k** — onlyPasswordChanged: clause seed iv — `extension/src/background/accountsStore.ts`:
+
+  ```diff
+  - if (next.seed.iv !== current.seed.iv || next.seed.ct !== current.seed.ct) return false;
+  + if (next.seed.ct !== current.seed.ct) return false;
+  ```
+  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
+
+- **M3l** — onlyPasswordChanged: clause seed ct — `extension/src/background/accountsStore.ts`:
+
+  ```diff
+  - if (next.seed.iv !== current.seed.iv || next.seed.ct !== current.seed.ct) return false;
+  + if (next.seed.iv !== current.seed.iv) return false;
+  ```
+  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
+
+- **M3m** — onlyPasswordChanged: clause passkey presence — `extension/src/background/accountsStore.ts`:
+
+  ```diff
+  - if ((p === undefined) !== (q === undefined)) return false;
+  + (deleted)
+  ```
+  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 2 failed (Playwright)).
+
+- **M3n** — onlyPasswordChanged: clause passkey credentialId — `extension/src/background/accountsStore.ts`:
+
+  ```diff
+  - (p.credentialId !== q.credentialId || p.prfSalt !== q.prfSalt || p.wrapped !== q.wrapped)
+  + (p.prfSalt !== q.prfSalt || p.wrapped !== q.wrapped)
+  ```
+  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
+
+- **M3o** — onlyPasswordChanged: clause passkey prfSalt — `extension/src/background/accountsStore.ts`:
+
+  ```diff
+  - (p.credentialId !== q.credentialId || p.prfSalt !== q.prfSalt || p.wrapped !== q.wrapped)
+  + (p.credentialId !== q.credentialId || p.wrapped !== q.wrapped)
+  ```
+  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
+
+- **M3p** — onlyPasswordChanged: clause passkey wrapped — `extension/src/background/accountsStore.ts`:
+
+  ```diff
+  - (p.credentialId !== q.credentialId || p.prfSalt !== q.prfSalt || p.wrapped !== q.wrapped)
+  + (p.credentialId !== q.credentialId || p.prfSalt !== q.prfSalt)
+  ```
+  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
+
+- **M3q** — onlyPasswordChanged: clause accounts length — `extension/src/background/accountsStore.ts`:
+
+  ```diff
+  - if (next.accounts.length !== current.accounts.length) return false;
+  + (deleted)
+  ```
+  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
+
+- **M3r** — onlyPasswordChanged: clause accounts index — `extension/src/background/accountsStore.ts`:
+
+  ```diff
+  - return next.accounts.every((x, i) => x.index === current.accounts[i]?.index && x.publicKey === current.accounts[i]?.publicKey);
+  + return next.accounts.every((x, i) => x.publicKey === current.accounts[i]?.publicKey);
+  ```
+  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
+
+- **M3s** — onlyPasswordChanged: clause accounts publicKey — `extension/src/background/accountsStore.ts`:
+
+  ```diff
+  - return next.accounts.every((x, i) => x.index === current.accounts[i]?.index && x.publicKey === current.accounts[i]?.publicKey);
+  + return next.accounts.every((x, i) => x.index === current.accounts[i]?.index);
+  ```
+  `timeout 300 npx vitest run src/background/__tests__/changePassword.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
+
+- **M3t** — rewrapPassword: the unwrap half of the self-check deleted — `extension/src/vault/envelope.ts`:
+
+  ```diff
+  - if (back.length !== dataKey.length || !back.every((b, i) => b === dataKey[i])) throw new Error('rewrapPassword: the new wrap does not open to the same data key');
+  + (deleted)
+  ```
+  `timeout 300 npx vitest run src/vault/__tests__/rewrapPassword.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - [ ] **Step 6: Commit.**
 
@@ -2580,7 +2767,7 @@ npx vitest run src/background/__tests__/accountsStore.test.ts src/background/__t
 npx tsc --noEmit && npx vitest run
 npm run gates
 ```
-Expected (dry run): own tests Test Files 5 passed (5) · Tests 89 passed (89); tsc clean; whole suite Test Files 120 passed (120) · Tests 2178 passed (2178); gates green.
+Expected (dry run): own tests Test Files 5 passed (5) · Tests 89 passed (89); tsc clean; whole suite Test Files 120 passed (120) · Tests 2188 passed (2188); gates green.
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -2592,7 +2779,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (current.passkey !== undefined && next.passkey === undefined) return 'malformed';
   + (deleted)
   ```
-  `timeout 300 npx vitest run src/background/__tests__/removePasskey.test.ts` — Expected: **red** (dry run: 1 failed, 4 passed (5)).
+  `timeout 300 npx vitest run src/background/__tests__/removePasskey.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - **M4b** — remove with no passkey stored writes — `extension/src/background/accountsStore.ts`:
 
@@ -2600,7 +2787,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (current.passkey === undefined) return 'no-passkey';
   + (deleted)
   ```
-  `timeout 300 npx vitest run src/background/__tests__/removePasskey.test.ts` — Expected: **red** (dry run: 1 failed, 4 passed (5)).
+  `timeout 300 npx vitest run src/background/__tests__/removePasskey.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - [ ] **Step 6: Commit.**
 
@@ -3138,7 +3325,7 @@ npx vitest run src/background/__tests__/storeSendOpen.test.ts src/unlock/__tests
 npx tsc --noEmit && npx vitest run
 npm run gates
 ```
-Expected (dry run): own tests Test Files 3 passed (3) · Tests 34 passed (34); tsc clean; whole suite Test Files 121 passed (121) · Tests 2187 passed (2187); gates green.
+Expected (dry run): own tests Test Files 3 passed (3) · Tests 34 passed (34); tsc clean; whole suite Test Files 121 passed (121) · Tests 2197 passed (2197); gates green.
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -3150,7 +3337,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (dropped.size > 0 && (await readPending(ext)).some(r => isOpen(r) && dropped.has(r.account))) return 'send-open';
   + (deleted)
   ```
-  `timeout 300 npx vitest run src/background/__tests__/storeSendOpen.test.ts` — Expected: **red** (dry run: 2 failed, 3 passed (5)).
+  `timeout 300 npx vitest run src/background/__tests__/storeSendOpen.test.ts` — Expected: **red** (dry run: 2 failed (Playwright)).
 
 - **M5b** — re-add over an existing index — `extension/src/unlock/accountsFlow.ts`:
 
@@ -3158,7 +3345,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (env.accounts.some(a => a.index === index)) return 'index-taken';
   + (deleted)
   ```
-  `timeout 300 npx vitest run src/unlock/__tests__/accountsFlow.test.ts` — Expected: **red** (dry run: 1 failed, 13 passed (14)).
+  `timeout 300 npx vitest run src/unlock/__tests__/accountsFlow.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - **M5c** — the hardened-index ceiling — `extension/src/unlock/accountsFlow.ts`:
 
@@ -3166,7 +3353,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - x >= 0 && x <= MAX_ACCOUNT_INDEX
   + x >= 0
   ```
-  `timeout 300 npx vitest run src/unlock/__tests__/accountsFlow.test.ts` — Expected: **red** (dry run: 1 failed, 13 passed (14)).
+  `timeout 300 npx vitest run src/unlock/__tests__/accountsFlow.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - [ ] **Step 6: Commit.**
 
@@ -3708,7 +3895,7 @@ npx vitest run src/background/__tests__/messages.test.ts src/background/__tests_
 npx tsc --noEmit && npx vitest run
 npm run gates
 ```
-Expected (dry run): own tests Test Files 6 passed (6) · Tests 134 passed (134); tsc clean; whole suite Test Files 123 passed (123) · Tests 2196 passed (2196); gates green.
+Expected (dry run): own tests Test Files 6 passed (6) · Tests 134 passed (134); tsc clean; whole suite Test Files 123 passed (123) · Tests 2206 passed (2206); gates green.
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -3722,7 +3909,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   + if (!minted.has(proof)) return 'failed';
   +   const r = await forget(send, {type: 'vault.forgetWallet', expectedRevision: proof.revision});
   ```
-  `timeout 300 npx vitest run src/unlock/__tests__/deleteWallet.test.ts` — Expected: **red** (dry run: 1 failed, 3 passed (4)).
+  `timeout 300 npx vitest run src/unlock/__tests__/deleteWallet.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - **M6b** — reveal opens with a PRF output beside the password (E16) — `extension/src/unlock/revealFlow.ts`:
 
@@ -3731,7 +3918,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -     return {outcome: 'failed'};
   +     if (cast.prfOutput instanceof Uint8Array) cast.prfOutput.fill(0);
   ```
-  `timeout 300 npx vitest run src/unlock/__tests__/revealFlow.test.ts` — Expected: **red** (dry run: 1 failed, 5 passed (6)).
+  `timeout 300 npx vitest run src/unlock/__tests__/revealFlow.test.ts` — Expected: **red** (dry run: E16 (D23): a passkey factor cast past the type is refused — failed, nothing read or sent, the PRF output zeroed | AssertionError: expected { outcome: 'wrong' } ).
 
 - [ ] **Step 6: Commit.**
 
@@ -4237,7 +4424,7 @@ npx vitest run src/app/__tests__/Switcher.test.tsx src/app/__tests__/engine.test
 npx tsc --noEmit && npx vitest run
 npm run gates
 ```
-Expected (dry run): own tests Test Files 5 passed (5) · Tests 74 passed (74); tsc clean; whole suite Test Files 123 passed (123) · Tests 2202 passed (2202); gates green.
+Expected (dry run): own tests Test Files 5 passed (5) · Tests 74 passed (74); tsc clean; whole suite Test Files 123 passed (123) · Tests 2212 passed (2212); gates green.
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -4249,7 +4436,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - index >= 0 && index <= MAX_ACCOUNT_INDEX ?
   + index >= 0 ?
   ```
-  `timeout 300 npx vitest run src/app/__tests__/platform.test.ts` — Expected: **red** (dry run: 1 failed, 3 passed (4)).
+  `timeout 300 npx vitest run src/app/__tests__/platform.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - **M7b** — the delete route keeps a query — `extension/src/app/router.ts`:
 
@@ -4257,7 +4444,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - ['security', 'accounts', 'passkey', 'delete']
   + ['security', 'accounts', 'passkey']
   ```
-  `timeout 300 npx vitest run src/app/__tests__/router.test.ts` — Expected: **red** (dry run: 1 failed, 30 passed (31)).
+  `timeout 300 npx vitest run src/app/__tests__/router.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - [ ] **Step 6: Commit.**
 
@@ -4297,7 +4484,7 @@ MSG
   - `export function mountChangePassword(deps: PageDeps): ChangePasswordScreen`
   - `export const CHANGE =`
 
-`?mode=password` mounts #36: step 1 (current password → `proveCurrent`), step 2 (new password: ≥ 12 characters with the meter; the current one again → O02 via `isCurrentPassword`), step 3 (confirm; a mismatch shows "Passwords don't match — try again" and clears after 700 ms), then `changing` and the notice (O05, plus O06 when a passkey is stored). The held proof lives at most 5 minutes (C20): a page-local timer **and** a deadline re-check after every await drop it (`dropped`, "Enter your current password again."); `pagehide` and the ✕ → "Cancel password change?" modal (its own section, `v-cp-cancel`, #3's modal chrome) also drop it. Every async path checks `held`/`phase` after each await. `design-ext.css` is regenerated (never hand-edited) with the `s7-picker`, `s7-tip`, `s7-score-card`, `s7-task`, `s7-stepper`, `s7-pw`, `s7-longpress`, `s7-toast` families; its hash is pinned.
+`?mode=password` mounts #36: step 1 (current password → `proveCurrent`), step 2 (new password: ≥ 12 characters with the meter; the current one again → O02 via `isCurrentPassword`), step 3 (confirm; a mismatch shows "Passwords don't match — try again" and clears after 600 ms — 2a's `MISMATCH_CLEAR_MS`, the design's 320 ms shake + 280 ms), then `changing` and the notice (O05, plus O06 when a passkey is stored). The held proof lives at most 5 minutes (C20): a page-local timer **and** a deadline re-check after every await drop it (`dropped`, "Enter your current password again."); `pagehide` and the ✕ → "Cancel password change?" modal (its own section, `v-cp-cancel`, #3's modal chrome) also drop it. Every async path checks `held`/`phase` after each await, and step 1's proof also checks a `generation` counter (review M1): `dropProof()` and a `pagehide` with nothing held both bump it, so a proof that settles after the user left is zeroed and the page shows `dropped`, never step 2. `restored` (back from the back/forward cache, timers frozen) re-checks the deadline like `visible`. `design-ext.css` is regenerated (never hand-edited) with the `s7-picker`, `s7-tip`, `s7-score-card`, `s7-task`, `s7-stepper`, `s7-pw`, `s7-longpress`, `s7-toast` families; its hash is pinned.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -4630,6 +4817,33 @@ describe('#36 memory (M2 ruling, C20)', () => {
     expect(changes(h)).toEqual([]);
   });
 
+  it('review M1: pagehide DURING step 1\'s proof — the proof that settles after is not kept: step 1 with O10, nothing held', async () => {
+    const {h, screen} = await shown();
+    const deps = h.deps as {kdf: Kdf};
+    deps.kdf = async (pw, salt, params) => {
+      // The user leaves while Argon2id runs (back/forward, a navigation): nothing is held yet.
+      h.leave('pagehide');
+      return testKdf(pw, salt, params);
+    };
+    await submit(h, OLD);
+    await h.until(() => text(el('cp-helper')) === 'Enter your current password again.');
+    expect(text(el('cp-step'))).toBe('Step 1 of 3');
+    expect(screen.holds()).toEqual({key: false, password: false});
+    // Restored from the back/forward cache: still step 1, and nothing to drop.
+    h.back('restored');
+    expect(text(el('cp-step'))).toBe('Step 1 of 3');
+  });
+
+  it('review M1: `restored` (back/forward cache, timers frozen) past the deadline drops the proof at once', async () => {
+    const {h, screen} = await shown();
+    await toStep2(h);
+    h.leave('hidden');
+    h.timers.skip(HOLD_TTL_MS + 1);
+    h.back('restored');
+    expect(screen.holds()).toEqual({key: false, password: false});
+    expect(text(el('cp-helper'))).toBe('Enter your current password again.');
+  });
+
   it('cancel-confirm: the X over step 2 asks; [Keep changing] returns with the field; [Cancel change] zeroes and closes', async () => {
     const {h, screen} = await shown();
     await toStep2(h);
@@ -4949,6 +5163,8 @@ export function mountChangePassword(deps: PageDeps): ChangePasswordScreen {
   const backoff = createWrongBackoff(deps.sleep);
   let phase: Phase = 'step1';
   let held: HeldProof | null = null;
+  /** Bumped whenever the proof is dropped or the page is left: a step-1 proof that settles after is not kept (review M1). */
+  let generation = 0;
   /** The new password from step 2, until step 3's send answers or the proof is dropped. */
   let chosen: string | null = null;
   /** Whether the held envelope had a passkey (the `done` line). */
@@ -5018,8 +5234,9 @@ export function mountChangePassword(deps: PageDeps): ChangePasswordScreen {
     shown(byId('cp-notice-help'), help !== '');
   };
 
-  /** Zero the held key and forget everything typed or chosen. */
+  /** Zero the held key and forget everything typed or chosen. Bumps `generation`: a proof still running is spent. */
   const dropProof = () => {
+    generation += 1;
     held?.dataKey.fill(0);
     held = null;
     chosen = null;
@@ -5082,6 +5299,8 @@ export function mountChangePassword(deps: PageDeps): ChangePasswordScreen {
       render();
       const flow = {readEnvelope: deps.store.readEnvelope, send: deps.send};
       let proof: HeldProof | null = null;
+      // Review M1: a `pagehide` during this KDF finds nothing held yet; the counter is how the settled proof learns it.
+      const mine = generation;
       const out = await backoff.run(async () => {
         const r = await proveCurrent(flow, password, deps.kdf);
         if (r.outcome !== 'proven') return r.outcome;
@@ -5093,6 +5312,10 @@ export function mountChangePassword(deps: PageDeps): ChangePasswordScreen {
       const p = proof as HeldProof | null;
       if (out === 'proven' && p !== null) {
         // The page was left (pagehide) or the proof otherwise dropped while it ran: nothing is kept.
+        if (mine !== generation) {
+          p.dataKey.fill(0);
+          return dropped();
+        }
         if (phase !== 'step1') return p.dataKey.fill(0);
         held = p;
         hadPasskey = p.env.passkey !== undefined;
@@ -5273,13 +5496,18 @@ export function mountChangePassword(deps: PageDeps): ChangePasswordScreen {
   deps.onLeave(why => {
     if (why === 'pagehide') {
       if (held !== null || chosen !== null) dropped();
-      else field.value = '';
+      else {
+        // Nothing held — but a step-1 proof may be running: it must not be kept when it settles (review M1).
+        generation += 1;
+        field.value = '';
+      }
       return;
     }
     if (phase === 'step1') field.value = '';
   });
   deps.onReturn(why => {
-    if (why === 'visible') expired();
+    // `restored`: back from the back/forward cache, where timers were frozen (review M1).
+    if (why === 'visible' || why === 'restored') expired();
   });
 
   return {
@@ -5451,7 +5679,7 @@ npx vitest run scripts/__tests__/check-vault-isolation.test.mjs src/__tests__/de
 npx tsc --noEmit && npx vitest run
 npm run gates
 ```
-Expected (dry run): own tests Test Files 3 passed (3) · Tests 394 passed (394); tsc clean; whole suite Test Files 125 passed (125) · Tests 2224 passed (2224); gates green.
+Expected (dry run): own tests Test Files 3 passed (3) · Tests 396 passed (396); tsc clean; whole suite Test Files 125 passed (125) · Tests 2236 passed (2236); gates green.
 
 - [ ] **Step 5: Copy and visual checklist (§8.4).** The copy above is the O-list's and the design's, verbatim, and the component tests assert each string. Every state below is shot in Task 20 and reviewed against index.html with §8.4's checklist (layout, type scale, tokens, spacing, the sticky bars, focus rings, the 412 px column):
 
@@ -5467,7 +5695,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (held !== proof || phase !== 'step2' || expired()) return;
   + if (held !== proof || phase !== 'step2') return;
   ```
-  `timeout 300 npx vitest run src/unlock/__tests__/changePasswordScreen.test.ts` — Expected: **red** (dry run: 1 failed, 19 passed (20)).
+  `timeout 300 npx vitest run src/unlock/__tests__/changePasswordScreen.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - **M8b** — the hold TTL doubled — `extension/src/unlock/screens/changePassword.ts`:
 
@@ -5475,7 +5703,26 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - deadline = deps.timers.now() + HOLD_TTL_MS;
   + deadline = deps.timers.now() + 2 * HOLD_TTL_MS;
   ```
-  `timeout 300 npx vitest run src/unlock/__tests__/changePasswordScreen.test.ts` — Expected: **red** (dry run: 3 failed, 17 passed (20)).
+  `timeout 300 npx vitest run src/unlock/__tests__/changePasswordScreen.test.ts` — Expected: **red** (dry run: 4 failed (Playwright)).
+
+- **M8c** — M1: a proof settling after pagehide is kept — `extension/src/unlock/screens/changePassword.ts`:
+
+  ```diff
+  -         if (mine !== generation) {
+  -           p.dataKey.fill(0);
+  -           return dropped();
+  -         }
+  + (deleted)
+  ```
+  `timeout 300 npx vitest run src/unlock/__tests__/changePasswordScreen.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
+
+- **M8d** — M1: restored does not re-check the deadline — `extension/src/unlock/screens/changePassword.ts`:
+
+  ```diff
+  - if (why === 'visible' || why === 'restored') expired();
+  + if (why === 'visible') expired();
+  ```
+  `timeout 300 npx vitest run src/unlock/__tests__/changePasswordScreen.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - [ ] **Step 7: Commit.**
 
@@ -6229,7 +6476,7 @@ npx vitest run scripts/__tests__/check-vault-isolation.test.mjs src/unlock/__tes
 npx tsc --noEmit && npx vitest run
 npm run gates
 ```
-Expected (dry run): own tests Test Files 2 passed (2) · Tests 383 passed (383); tsc clean; whole suite Test Files 126 passed (126) · Tests 2235 passed (2235); gates green.
+Expected (dry run): own tests Test Files 2 passed (2) · Tests 383 passed (383); tsc clean; whole suite Test Files 126 passed (126) · Tests 2247 passed (2247); gates green.
 
 - [ ] **Step 5: Copy and visual checklist (§8.4).** The copy above is the O-list's and the design's, verbatim, and the component tests assert each string. Every state below is shot in Task 20 and reviewed against index.html with §8.4's checklist (layout, type scale, tokens, spacing, the sticky bars, focus rings, the 412 px column):
 
@@ -6245,7 +6492,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (envelopeRevision(env) === shownRevision) return true;
   + if (envelopeRevision(env) !== '') return true;
   ```
-  `timeout 300 npx vitest run src/unlock/__tests__/deleteScreen.test.ts` — Expected: **red** (dry run: 2 failed, 9 passed (11)).
+  `timeout 300 npx vitest run src/unlock/__tests__/deleteScreen.test.ts` — Expected: **red** (dry run: 2 failed (Playwright)).
 
 - **M9b** — delete shows the top row, not the lowest index — `extension/src/unlock/screens/delete.ts`:
 
@@ -6253,7 +6500,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - addressGroups(firstAccount(env))
   + addressGroups(env.accounts[0]!.publicKey)
   ```
-  `timeout 300 npx vitest run src/unlock/__tests__/deleteScreen.test.ts` — Expected: **red** (dry run: 1 failed, 10 passed (11)).
+  `timeout 300 npx vitest run src/unlock/__tests__/deleteScreen.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - [ ] **Step 7: Commit.**
 
@@ -6917,7 +7164,7 @@ npx vitest run scripts/__tests__/check-vault-isolation.test.mjs src/unlock/__tes
 npx tsc --noEmit && npx vitest run
 npm run gates
 ```
-Expected (dry run): own tests Test Files 2 passed (2) · Tests 383 passed (383); tsc clean; whole suite Test Files 127 passed (127) · Tests 2246 passed (2246); gates green.
+Expected (dry run): own tests Test Files 2 passed (2) · Tests 383 passed (383); tsc clean; whole suite Test Files 127 passed (127) · Tests 2258 passed (2258); gates green.
 
 - [ ] **Step 5: Copy and visual checklist (§8.4).** The copy above is the O-list's and the design's, verbatim, and the component tests assert each string. Every state below is shot in Task 20 and reviewed against index.html with §8.4's checklist (layout, type scale, tokens, spacing, the sticky bars, focus rings, the 412 px column):
 
@@ -6933,7 +7180,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - shown(passkeyBtn, entry && !cooling && op === 'remove' && pk !== null);
   + shown(passkeyBtn, entry && !cooling && pk !== null);
   ```
-  `timeout 300 npx vitest run src/unlock/__tests__/passkeyManageScreen.test.ts` — Expected: **red** (dry run: 1 failed, 10 passed (11)).
+  `timeout 300 npx vitest run src/unlock/__tests__/passkeyManageScreen.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - [ ] **Step 7: Commit.**
 
@@ -6977,7 +7224,7 @@ MSG
   - `export function mountSeed(deps: PageDeps, next: {back(): void; done(): void}, chrome: SeedChrome = ONBOARDING): SeedScreen`
   - `export const PHRASE =`
 
-Both modes start on a password proof (`v-phrase-proof`, password only — D23). Reveal then runs #3 (pre-reveal modal → press-and-hold → 15 s → "Still looking?") and #4's three-word check; verify goes straight to the check. A passed check sends `vault.phraseVerified`; a refusal (locked meanwhile) shows O32. #3's grid now refuses copy, cut, drag, select and the context menu **while words are in the DOM** (listeners added with the words, removed with them) — this also hardens onboarding #3. `SeedChrome`/`ConfirmChrome` carry the eyebrow, the step label and the success copy so the same screens serve onboarding and these modes. Verify's Back closes the tab (there is nothing behind it).
+Both modes start on a password proof (`v-phrase-proof`, password only — D23). Reveal then runs #3 (pre-reveal modal → press-and-hold → 20 s → "Still looking?"; `REVEAL_MS`, `HOLD_MS` and `TICK_MS` are 2a's and are not changed) and #4's three-word check; verify goes straight to the check. A passed check sends `vault.phraseVerified`; a refusal (locked meanwhile) shows O32. #3's grid now refuses copy, cut, drag, select and the context menu **while words are in the DOM** (listeners added with the words, removed with them) — this also hardens onboarding #3. `SeedChrome`/`ConfirmChrome` carry the eyebrow, the step label and the success copy so the same screens serve onboarding and these modes. Verify's Back closes the tab (there is nothing behind it), with O29 (Scope 3.15). **Verify's proof is `runReveal`** (review M4): `mountPhrase` proves both kinds through it, so D23's boundary guard (Task 6) covers both modes — there is no second flow to guard.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -8214,7 +8461,7 @@ npx vitest run src/unlock/__tests__/accountsReveal.test.ts src/unlock/__tests__/
 npx tsc --noEmit && npx vitest run
 npm run gates
 ```
-Expected (dry run): own tests Test Files 2 passed (2) · Tests 35 passed (35); tsc clean; whole suite Test Files 128 passed (128) · Tests 2254 passed (2254); gates green.
+Expected (dry run): own tests Test Files 2 passed (2) · Tests 35 passed (35); tsc clean; whole suite Test Files 128 passed (128) · Tests 2266 passed (2266); gates green.
 
 - [ ] **Step 5: Copy and visual checklist (§8.4).** The copy above is the O-list's and the design's, verbatim, and the component tests assert each string. Every state below is shot in Task 20 and reviewed against index.html with §8.4's checklist (layout, type scale, tokens, spacing, the sticky bars, focus rings, the 412 px column):
 
@@ -8230,7 +8477,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -     for (const ev of GUARDED) grid.addEventListener(ev, guard);
   + (deleted)
   ```
-  `timeout 300 npx vitest run src/unlock/__tests__/phraseScreen.test.ts` — Expected: **red** (dry run: 1 failed, 12 passed (13)).
+  `timeout 300 npx vitest run src/unlock/__tests__/phraseScreen.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - **M11b** — verify does not record the fact — `extension/src/unlock/screens/reveal.ts`:
 
@@ -8238,7 +8485,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - void recordVerified(deps.send).then(
   + void Promise.resolve(true).then(
   ```
-  `timeout 300 npx vitest run src/unlock/__tests__/phraseScreen.test.ts` — Expected: **red** (dry run: 2 failed, 11 passed (13)).
+  `timeout 300 npx vitest run src/unlock/__tests__/phraseScreen.test.ts` — Expected: **red** (dry run: 2 failed (Playwright)).
 
 - [ ] **Step 7: Commit.**
 
@@ -9102,7 +9349,7 @@ npx vitest run src/unlock/__tests__/accountsReveal.test.ts src/unlock/__tests__/
 npx tsc --noEmit && npx vitest run
 npm run gates
 ```
-Expected (dry run): own tests Test Files 3 passed (3) · Tests 35 passed (35); tsc clean; whole suite Test Files 129 passed (129) · Tests 2262 passed (2262); gates green.
+Expected (dry run): own tests Test Files 3 passed (3) · Tests 35 passed (35); tsc clean; whole suite Test Files 129 passed (129) · Tests 2274 passed (2274); gates green.
 
 - [ ] **Step 5: Copy and visual checklist (§8.4).** The copy above is the O-list's and the design's, verbatim, and the component tests assert each string. Every state below is shot in Task 20 and reviewed against index.html with §8.4's checklist (layout, type scale, tokens, spacing, the sticky bars, focus rings, the 412 px column):
 
@@ -9118,7 +9365,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - env.accounts.find(a => a.index === index)
   + env.accounts[0]
   ```
-  `timeout 300 npx vitest run src/unlock/__tests__/accountsScreen.test.ts` — Expected: **red** (dry run: 1 failed, 10 passed (11)).
+  `timeout 300 npx vitest run src/unlock/__tests__/accountsScreen.test.ts` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - **M12b** — the add page pre-fills a 0-based number — `extension/src/unlock/screens/accounts.ts`:
 
@@ -9126,7 +9373,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - number.value = String(lowestFreeIndex(env.accounts.map(a => a.index)) + 1);
   + number.value = String(lowestFreeIndex(env.accounts.map(a => a.index)));
   ```
-  `timeout 300 npx vitest run src/unlock/__tests__/accountsScreen.test.ts` — Expected: **red** (dry run: 3 failed, 8 passed (11)).
+  `timeout 300 npx vitest run src/unlock/__tests__/accountsScreen.test.ts` — Expected: **red** (dry run: 3 failed (Playwright)).
 
 - [ ] **Step 7: Commit.**
 
@@ -9157,10 +9404,11 @@ MSG
 - Consumes: Task 7's `ExtensionPage` and `WalletState.passkey`; `LockedButton`; `TopBar`.
 - Produces (exact signatures, as exported):
   - `export const PASSKEY_MARKER = 'extensions:{prf:{eval:{first:';`
+  - `export const WEBAUTHN_MARKER = 'navigator.credentials';`
   - `export const PASSKEY_TEXT =`
   - `export function Passkey({onBack}: {onBack: () => void})`
 
-A bare route from #31 and #35. Off: "Unlock Noctura with a passkey", the lede, the three benefit rows, the synced-passkey tip, `[Add a passkey]` → `passkey&op=add`. On: "Passkey is on", `[Replace passkey]` → `passkey&op=add`, `[Remove passkey]` → `passkey&op=remove`. Each button is a `LockedButton` (rule 6) that opens the page and closes the popup. `ExtIcon` gains user, key, fingerprint, shield-check, database, trash, zap, arrow-up, arrow-down. **The vault-isolation gate's passkey marker changes** from the RP ID to the PRF evaluation as built (Scope 3.14): the approved tip names `wallet.noc-tura.io` in the popup's prose, which the old marker read as passkey code.
+A bare route from #31 and #35. Off: "Unlock Noctura with a passkey", the lede, the three benefit rows, the synced-passkey tip, `[Add a passkey]` → `passkey&op=add`. On: "Passkey is on", `[Replace passkey]` → `passkey&op=add`, `[Remove passkey]` → `passkey&op=remove`. Each button is a `LockedButton` (rule 6) that opens the page and closes the popup. `ExtIcon` gains user, key, fingerprint, shield-check, database, trash, zap, arrow-up, arrow-down. **The vault-isolation gate's passkey markers change** (Scope 3.14): the approved tip names `wallet.noc-tura.io` in the popup's prose, which the old marker (the RP ID) read as passkey code. Two markers replace it: the PRF evaluation as built (`extensions:{prf:{eval:{first:`) and the WebAuthn API itself (`navigator.credentials`, only `src/unlock/browser.ts` spells it — review H1), each with presence and leak fixtures; the manifest-only fixture is retargeted (review L1).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -9168,10 +9416,84 @@ Modify `extension/scripts/__tests__/check-vault-isolation.test.mjs`:
 
 ````diff
 diff --git a/extension/scripts/__tests__/check-vault-isolation.test.mjs b/extension/scripts/__tests__/check-vault-isolation.test.mjs
-index 8b5712a..306d2c9 100644
+index 8b5712a..17c7167 100644
 --- a/extension/scripts/__tests__/check-vault-isolation.test.mjs
 +++ b/extension/scripts/__tests__/check-vault-isolation.test.mjs
-@@ -915,6 +915,11 @@ describe('vault isolation (built output)', () => {
+@@ -4,7 +4,7 @@ import {dirname, join, resolve} from 'node:path';
+ import {fileURLToPath} from 'node:url';
+ import {
+   bundleViolations, htmlViolations, listSourceFiles, manifestViolations, sourceViolations, vaultPageModuleViolations, vaultPageViolations,
+-  BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, REACT_MARKER, VAULT_MARKER, WORDLIST_MARKER,
++  BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, REACT_MARKER, VAULT_MARKER, WEBAUTHN_MARKER, WORDLIST_MARKER,
+ } from '../check-vault-isolation.mjs';
+ import {render} from '../../manifest/source.mjs';
+ 
+@@ -490,7 +490,7 @@ describe('vault isolation (built output)', () => {
+     write('assets/react-1.js', `export const R="${REACT_MARKER}";`);
+     write('assets/send-1.js', 'export const t=()=>1;');
+     write('unlock.html', html('./assets/unlock-1.js'));
+-    write('assets/unlock-1.js', `import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
++    write('assets/unlock-1.js', `import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const n="${WEBAUTHN_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+     write('assets/kdf.worker-1.js', `throw Error("${KDF_MARKER}");`);
+   };
+ 
+@@ -867,16 +867,16 @@ describe('vault isolation (built output)', () => {
+ 
+   it('does not follow imports out of the unlock bundle (it may carry the vault)', () => {
+     write('assets/unlock-1.js', `import"./vault-1.js";`);
+-    write('assets/vault-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
++    write('assets/vault-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const n="${WEBAUTHN_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+     expect(bundleViolations(dir)).toEqual([]);
+   });
+ 
+   it('fails when the vault page imports the background entry, directly or through a chunk (it would run the background)', () => {
+-    write('assets/unlock-1.js', `import{t as x}from"../background.js";import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
++    write('assets/unlock-1.js', `import{t as x}from"../background.js";import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const n="${WEBAUTHN_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+     // …and through it the background's storage.session chunk (the rule below).
+     const viaBackground = 'assets/session-1.js (reachable from unlock.html) touches storage.session — only the background may';
+     expect(bundleViolations(dir)).toEqual(['the vault page (assets/unlock-1.js) reaches background.js — it would run the background', viaBackground]);
+-    write('assets/unlock-1.js', `import"./mid-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
++    write('assets/unlock-1.js', `import"./mid-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const n="${WEBAUTHN_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+     write('assets/mid-1.js', 'import"../background.js";');
+     expect(bundleViolations(dir)).toEqual(['the vault page (assets/unlock-1.js) reaches background.js — it would run the background', viaBackground]);
+   });
+@@ -889,9 +889,9 @@ describe('vault isolation (built output)', () => {
+   });
+ 
+   it('is INCONCLUSIVE — and fails — when any marker is in no built file', () => {
+-    const all = {i: VAULT_MARKER, d: DERIVATION_MARKER, b: BIP39_MARKER, r: PASSKEY_MARKER, w: WORDLIST_MARKER};
++    const all = {i: VAULT_MARKER, d: DERIVATION_MARKER, b: BIP39_MARKER, r: PASSKEY_MARKER, n: WEBAUTHN_MARKER, w: WORDLIST_MARKER};
+     const without = k => Object.entries(all).filter(([n]) => n !== k).map(([n, m]) => `const ${n}=\`${m}\`;`).join('');
+-    for (const [k, name, marker] of [['i', 'envelope', VAULT_MARKER], ['d', 'derivation', DERIVATION_MARKER], ['b', 'bip39', BIP39_MARKER], ['r', 'passkey', PASSKEY_MARKER], ['w', 'wordlist', WORDLIST_MARKER]]) {
++    for (const [k, name, marker] of [['i', 'envelope', VAULT_MARKER], ['d', 'derivation', DERIVATION_MARKER], ['b', 'bip39', BIP39_MARKER], ['r', 'passkey', PASSKEY_MARKER], ['n', 'webauthn', WEBAUTHN_MARKER], ['w', 'wordlist', WORDLIST_MARKER]]) {
+       write('assets/unlock-1.js', without(k));
+       expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the ${name} marker "${marker}" is in no built JS file — the check would pass trivially`]);
+     }
+@@ -900,12 +900,18 @@ describe('vault isolation (built output)', () => {
+     expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the kdf marker "${KDF_MARKER}" is in no built JS file — the check would pass trivially`]);
+   });
+ 
+-  // The built manifest names wallet.noc-tura.io (a host permission): a marker that only a
+-  // non-JS file carries must not count as present.
++  // Only JS files count: a marker that only a non-JS file carries (here the manifest, which really
++  // does name wallet.noc-tura.io as a host permission; B1b-2b review L1 retargeted this fixture when the
++  // passkey markers stopped being that host) must not count as present.
+   it('does not count a marker found only in a non-JS file (the manifest) as present', () => {
+-    write('assets/unlock-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+-    write('manifest.json', `{"host_permissions":["https://${PASSKEY_MARKER}/*"]}`);
+-    expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the passkey marker "${PASSKEY_MARKER}" is in no built JS file — the check would pass trivially`]);
++    write('assets/unlock-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
++    write('manifest.json', `{"host_permissions":["https://wallet.noc-tura.io/*"],"note":"${WEBAUTHN_MARKER}"}`);
++    expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the webauthn marker "${WEBAUTHN_MARKER}" is in no built JS file — the check would pass trivially`]);
++  });
++
++  it('B1b-2b review H1: a non-PRF WebAuthn call in a popup chunk fails (the webauthn marker alone)', () => {
++    write('assets/send-1.js', 'export const t=()=>navigator.credentials.get({publicKey:{rpId:"wallet.noc-tura.io",challenge:new Uint8Array(32)}});');
++    expect(bundleViolations(dir)).toEqual(['assets/send-1.js (reachable from assets/popup-1.js) contains vault code (webauthn)']);
+   });
+ 
+   it('fails on the passkey marker alone — the reproduced leak split passkey.ts into its own chunk', () => {
+@@ -915,6 +921,11 @@ describe('vault isolation (built output)', () => {
      expect(bundleViolations(dir)).toEqual(['assets/passkey-1.js (reachable from assets/prf-1.js) contains vault code (passkey)']);
    });
  
@@ -9183,6 +9505,15 @@ index 8b5712a..306d2c9 100644
    it('fails on the wordlist marker alone — generateMnemonic outside the vault page', () => {
      write('assets/send-1.js', `export const words=\`${WORDLIST_MARKER}\`;`);
      expect(bundleViolations(dir)).toEqual(['assets/send-1.js (reachable from assets/popup-1.js) contains vault code (wordlist)']);
+@@ -931,7 +942,7 @@ describe('vault isolation (built output)', () => {
+ 
+   // Final review minor 4: readLocal lived in src/ext.ts, so the vault page's bundle carried the
+   // whole of ext.ts (storage.session, setAccessLevel) in a shared chunk — every source rule passed.
+-  const UNLOCK_MARKERS = `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`;
++  const UNLOCK_MARKERS = `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const n="${WEBAUTHN_MARKER}";const w=\`${WORDLIST_MARKER}\`;`;
+   const SESSION = (file, from) => `${file} (reachable from ${from}) touches storage.session — only the background may`;
+ 
+   it('fails when the vault page reaches storage.session — the old layout: ext.ts in a shared chunk', () => {
 ````
 
 Create `extension/src/app/__tests__/Passkey.test.tsx`:
@@ -9259,7 +9590,7 @@ describe('the passkey screen', () => {
 cd extension
 npx vitest run scripts/__tests__/check-vault-isolation.test.mjs src/app/__tests__/Passkey.test.tsx
 ```
-Expected (dry run, these test files on Task 12's tree): **red** — Test Files 2 failed (2) · Tests 1 failed. (A file that imports a module this task creates fails to load: that counts as red.)
+Expected (dry run, these test files on Task 12's tree): **red** — Test Files 2 failed (2) · Tests 4 failed. (A file that imports a module this task creates fails to load: that counts as red.)
 
 - [ ] **Step 3: Implement.**
 
@@ -9267,10 +9598,10 @@ Modify `extension/scripts/check-vault-isolation.mjs`:
 
 ````diff
 diff --git a/extension/scripts/check-vault-isolation.mjs b/extension/scripts/check-vault-isolation.mjs
-index eb90f9d..5c074f4 100644
+index eb90f9d..88d0638 100644
 --- a/extension/scripts/check-vault-isolation.mjs
 +++ b/extension/scripts/check-vault-isolation.mjs
-@@ -303,9 +303,12 @@ export const DERIVATION_MARKER = 'ed25519 seed';
+@@ -303,9 +303,17 @@ export const DERIVATION_MARKER = 'ed25519 seed';
  // A string that exists only in @scure/bip39 (its phrase normalizer, which mnemonicToSeed and
  // validateMnemonic run): core/keys/mnemonic carries neither marker above.
  export const BIP39_MARKER = 'invalid mnemonic type: ';
@@ -9283,9 +9614,22 @@ index eb90f9d..5c074f4 100644
 +// that host in prose (#6's synced-passkey tip on the passkey screen), so the RP ID no longer
 +// proves that passkey CODE is in a bundle. Only JS files count — for presence and for leaks.
 +export const PASSKEY_MARKER = 'extensions:{prf:{eval:{first:';
++// B1b-2b plan 1 review H1: the PRF marker alone proves less than the RP ID did — a non-PRF WebAuthn
++// call (navigator.credentials.get/create) outside the vault page would pass it. The WebAuthn API
++// itself is the second passkey marker: only src/unlock/browser.ts spells it (checked against a real
++// build: the unlock bundle carries it, no other built file does). Prose cannot match it.
++export const WEBAUTHN_MARKER = 'navigator.credentials';
  // An error message of @noble/hashes' Argon2 parameter check: the KDF, found in the vault
  // worker only (checked against the real build: no other built file carries it).
  export const KDF_MARKER = '(memory) must be at least 8*p bytes';
+@@ -323,6 +331,7 @@ const MARKERS = [
+   ['derivation', DERIVATION_MARKER],
+   ['bip39', BIP39_MARKER],
+   ['passkey', PASSKEY_MARKER],
++  ['webauthn', WEBAUTHN_MARKER],
+   ['kdf', KDF_MARKER],
+   ['wordlist', WORDLIST_MARKER],
+ ];
 ````
 
 Modify `extension/src/app/App.tsx`:
@@ -9548,7 +9892,7 @@ npx vitest run scripts/__tests__/check-vault-isolation.test.mjs src/app/__tests_
 npx tsc --noEmit && npx vitest run
 npm run gates
 ```
-Expected (dry run): own tests Test Files 2 passed (2) · Tests 378 passed (378); tsc clean; whole suite Test Files 130 passed (130) · Tests 2268 passed (2268); gates green.
+Expected (dry run): own tests Test Files 2 passed (2) · Tests 379 passed (379); tsc clean; whole suite Test Files 130 passed (130) · Tests 2281 passed (2281); gates green.
 
 - [ ] **Step 5: Copy and visual checklist (§8.4).** The copy above is the O-list's and the design's, verbatim, and the component tests assert each string. Every state below is shot in Task 20 and reviewed against index.html with §8.4's checklist (layout, type scale, tokens, spacing, the sticky bars, focus rings, the 412 px column):
 
@@ -9564,7 +9908,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - <h1 className="noc-h1">{on ? PASSKEY_TEXT.onTitle : PASSKEY_TEXT.offTitle}</h1>
   + <h1 className="noc-h1">{PASSKEY_TEXT.offTitle}</h1>
   ```
-  `timeout 300 npx vitest run src/app/__tests__/Passkey.test.tsx` — Expected: **red** (dry run: 1 failed, 4 passed (5)).
+  `timeout 300 npx vitest run src/app/__tests__/Passkey.test.tsx` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - **M13b** — the passkey marker is the RP ID again (popup prose trips the gate) — `extension/scripts/check-vault-isolation.mjs`:
 
@@ -9572,7 +9916,15 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - export const PASSKEY_MARKER = 'extensions:{prf:{eval:{first:';
   + export const PASSKEY_MARKER = 'wallet.noc-tura.io';
   ```
-  `timeout 300 npx vitest run scripts/__tests__/check-vault-isolation.test.mjs` — Expected: **red** (dry run: 1 failed, 372 passed (373)).
+  `timeout 300 npx vitest run scripts/__tests__/check-vault-isolation.test.mjs` — Expected: **red** (dry run: 2 failed (Playwright)).
+
+- **M13c** — H1: the webauthn marker removed (a non-PRF WebAuthn call in the popup passes) — `extension/scripts/check-vault-isolation.mjs`:
+
+  ```diff
+  -   ['webauthn', WEBAUTHN_MARKER],
+  + (deleted)
+  ```
+  `timeout 300 npx vitest run scripts/__tests__/check-vault-isolation.test.mjs` — Expected: **red** (dry run: 3 failed (Playwright)).
 
 - [ ] **Step 7: Commit.**
 
@@ -9601,7 +9953,7 @@ MSG
 - Create: `extension/src/app/useAccountBalances.ts`
 
 **Interfaces:**
-- Consumes: Task 7's `engine.order`, `removeAccountPage`; the Switcher's rename errors; `valuation`.
+- Consumes: Task 7's `engine.order`, `removeAccountPage`; the Switcher's rename errors; `valuation`. (Review L5: `useAccountBalances` returns a `Record<address, RowBalance>` here; **Task 15 widens its return type** to `{rows, done, failed}` and patches both callers.)
 - Produces (exact signatures, as exported):
   - `export const ACCOUNTS_TEXT =`
   - `export function holdsLine(row: RowBalance | undefined, prices: Parameters<typeof valuation>[1]): string`
@@ -10378,7 +10730,7 @@ npx vitest run src/app/__tests__/AccountsManager.test.tsx src/app/__tests__/Lock
 npx tsc --noEmit && npx vitest run
 npm run gates
 ```
-Expected (dry run): own tests Test Files 2 passed (2) · Tests 17 passed (17); tsc clean; whole suite Test Files 131 passed (131) · Tests 2281 passed (2281); gates green.
+Expected (dry run): own tests Test Files 2 passed (2) · Tests 17 passed (17); tsc clean; whole suite Test Files 131 passed (131) · Tests 2294 passed (2294); gates green.
 
 - [ ] **Step 5: Copy and visual checklist (§8.4).** The copy above is the O-list's and the design's, verbatim, and the component tests assert each string. Every state below is shot in Task 20 and reviewed against index.html with §8.4's checklist (layout, type scale, tokens, spacing, the sticky bars, focus rings, the 412 px column):
 
@@ -10394,7 +10746,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - const last = accounts.length <= 1;
   + const last = false;
   ```
-  `timeout 300 npx vitest run src/app/__tests__/AccountsManager.test.tsx` — Expected: **red** (dry run: 1 failed, 10 passed (11)).
+  `timeout 300 npx vitest run src/app/__tests__/AccountsManager.test.tsx` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - **M14b** — keepFocus never refocuses — `extension/src/app/ui/LockedButton.tsx`:
 
@@ -10402,7 +10754,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - refocus.current = keepFocus && document.activeElement === self.current;
   + refocus.current = false;
   ```
-  `timeout 300 npx vitest run src/app/__tests__/LockedButton.test.tsx` — Expected: **red** (dry run: 1 failed, 5 passed (6)).
+  `timeout 300 npx vitest run src/app/__tests__/LockedButton.test.tsx` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - [ ] **Step 7: Commit.**
 
@@ -11237,7 +11589,7 @@ npx vitest run src/app/__tests__/DeleteWallet.test.tsx
 npx tsc --noEmit && npx vitest run
 npm run gates
 ```
-Expected (dry run): own tests Test Files 1 passed (1) · Tests 11 passed (11); tsc clean; whole suite Test Files 132 passed (132) · Tests 2292 passed (2292); gates green.
+Expected (dry run): own tests Test Files 1 passed (1) · Tests 11 passed (11); tsc clean; whole suite Test Files 132 passed (132) · Tests 2305 passed (2305); gates green.
 
 - [ ] **Step 5: Copy and visual checklist (§8.4).** The copy above is the O-list's and the design's, verbatim, and the component tests assert each string. Every state below is shot in Task 20 and reviewed against index.html with §8.4's checklist (layout, type scale, tokens, spacing, the sticky bars, focus rings, the 412 px column):
 
@@ -11253,7 +11605,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - a.index < low.index
   + a.index > low.index
   ```
-  `timeout 300 npx vitest run src/app/__tests__/DeleteWallet.test.tsx` — Expected: **red** (dry run: 1 failed, 10 passed (11)).
+  `timeout 300 npx vitest run src/app/__tests__/DeleteWallet.test.tsx` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - **M15b** — DELETE is case-insensitive — `extension/src/app/screens/DeleteWallet.tsx`:
 
@@ -11261,7 +11613,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - const matched = typed === WORD;
   + const matched = typed.toUpperCase() === WORD;
   ```
-  `timeout 300 npx vitest run src/app/__tests__/DeleteWallet.test.tsx` — Expected: **red** (dry run: 1 failed, 10 passed (11)).
+  `timeout 300 npx vitest run src/app/__tests__/DeleteWallet.test.tsx` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - [ ] **Step 7: Commit.**
 
@@ -11950,7 +12302,7 @@ npx vitest run src/app/__tests__/Security.test.tsx
 npx tsc --noEmit && npx vitest run
 npm run gates
 ```
-Expected (dry run): own tests Test Files 1 passed (1) · Tests 12 passed (12); tsc clean; whole suite Test Files 133 passed (133) · Tests 2304 passed (2304); gates green.
+Expected (dry run): own tests Test Files 1 passed (1) · Tests 12 passed (12); tsc clean; whole suite Test Files 133 passed (133) · Tests 2317 passed (2317); gates green.
 
 - [ ] **Step 5: Copy and visual checklist (§8.4).** The copy above is the O-list's and the design's, verbatim, and the component tests assert each string. Every state below is shot in Task 20 and reviewed against index.html with §8.4's checklist (layout, type scale, tokens, spacing, the sticky bars, focus rings, the 412 px column):
 
@@ -11966,7 +12318,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - ...(phraseVerifiedAt === null ? (['write', 'verify'] as const) : [])
   + ...(phraseVerifiedAt !== null ? (['write', 'verify'] as const) : [])
   ```
-  `timeout 300 npx vitest run src/app/__tests__/Security.test.tsx` — Expected: **red** (dry run: 4 failed, 8 passed (12)).
+  `timeout 300 npx vitest run src/app/__tests__/Security.test.tsx` — Expected: **red** (dry run: 4 failed (Playwright)).
 
 - **M16b** — a weakening opens nothing — `extension/src/app/screens/Security.tsx`:
 
@@ -11974,7 +12326,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (r.error === 'reauth-required') {
   + if (r.error === ('never' as string)) {
   ```
-  `timeout 300 npx vitest run src/app/__tests__/Security.test.tsx` — Expected: **red** (dry run: 2 failed, 10 passed (12)).
+  `timeout 300 npx vitest run src/app/__tests__/Security.test.tsx` — Expected: **red** (dry run: 2 failed (Playwright)).
 
 - [ ] **Step 7: Commit.**
 
@@ -12527,7 +12879,7 @@ npx vitest run src/app/__tests__/Settings.test.tsx
 npx tsc --noEmit && npx vitest run
 npm run gates
 ```
-Expected (dry run): own tests Test Files 1 passed (1) · Tests 14 passed (14); tsc clean; whole suite Test Files 133 passed (133) · Tests 2309 passed (2309); gates green.
+Expected (dry run): own tests Test Files 1 passed (1) · Tests 14 passed (14); tsc clean; whole suite Test Files 133 passed (133) · Tests 2322 passed (2322); gates green.
 
 - [ ] **Step 5: Copy and visual checklist (§8.4).** The copy above is the O-list's and the design's, verbatim, and the component tests assert each string. Every state below is shot in Task 20 and reviewed against index.html with §8.4's checklist (layout, type scale, tokens, spacing, the sticky bars, focus rings, the 412 px column):
 
@@ -12543,7 +12895,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - m.now() - at > PASSWORD_TOAST_WINDOW_MS || 
   + (deleted)
   ```
-  `timeout 300 npx vitest run src/app/__tests__/Settings.test.tsx` — Expected: **red** (dry run: 1 failed, 13 passed (14)).
+  `timeout 300 npx vitest run src/app/__tests__/Settings.test.tsx` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - **M17b** — 36e every time, not once — `extension/src/app/screens/Settings.tsx`:
 
@@ -12551,7 +12903,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - readPref(PASSWORD_TOAST_KEY) === String(at)
   + false
   ```
-  `timeout 300 npx vitest run src/app/__tests__/Settings.test.tsx` — Expected: **red** (dry run: 1 failed, 13 passed (14)).
+  `timeout 300 npx vitest run src/app/__tests__/Settings.test.tsx` — Expected: **red** (dry run: 1 failed (Playwright)).
 
 - [ ] **Step 7: Commit.**
 
@@ -12583,8 +12935,9 @@ MSG
   - `export const E2E_ACCOUNTS = ['HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk', 'Hh8QwFUA6MtVu1qAoq12ucvFHNwCcVTV7hpWjeY1Hztb', '7WktogJEd2wQ9eH2oWusmcoFTgeYi6rS632UviTBJ2jm'] as const;`
   - `export function makeEnvelope(o: {accounts?: 1 | 2 | 3} = {})`
   - `export async function addPrfAuthenticator(ctx: BrowserContext, page: Page): Promise<string>`
+  - `export async function withAuthenticatorFocus(page: Page, act: () => Promise<void>): Promise<void>`
 
-**The PRF probe runs first** (§11 item 9): the pinned Chromium's CDP virtual authenticator (`ctap2`, internal, resident key, UV, `hasPrf: true`) is asked for `create()` and `get()` with RP ID `wallet.noc-tura.io` inside the contained browser (the RP ID is resolved by nothing — `--host-resolver-rules` keeps it local) and must return a 32-byte PRF output. **Dry-run outcome: it does, in a normal launch and under `unshare -rn`.** If a future Chromium drops PRF from the virtual authenticator, the probe and spec 14's passkey steps **fail** — they never skip (mutation M18a/M18b prove it). Spec 14: wrong → right → same → new → mismatch → confirm; only the salt and the wrap changed in storage; 36e once; the old password fails, the new one and the passkey unlock. Spec 16: proof → modal → hold → words → "Still looking?" with no word in the DOM; Ctrl+C refused; → the check → verified; #35 all clear. `csp.spec` loads every new mode with zero CSP violations. `makeEnvelope` builds 1, 2 or 3 accounts.
+**The PRF probe is the first E2E task** (§11 item 9; Playwright may run the spec files in any order — both the probe and spec 14 fail loudly, never skip, so the order does not matter): the pinned Chromium's CDP virtual authenticator (`ctap2`, internal, resident key, UV, `hasPrf: true`) is asked for `create()` and `get()` with RP ID `wallet.noc-tura.io` inside the contained browser (the RP ID is resolved by nothing — `--host-resolver-rules` keeps it local) and must return a 32-byte PRF output. **Dry-run outcome: it does, in a normal launch and under `unshare -rn`.** If a future Chromium drops PRF from the virtual authenticator, the probe and spec 14's passkey steps **fail** — they never skip (mutation M18a/M18b prove it). Spec 14: wrong → right → same → new → mismatch → confirm; only the salt and the wrap changed in storage; 36e once; the old password fails, the new one and the passkey unlock. Spec 16: proof → modal → hold → words → "Still looking?" with no word in the DOM; Ctrl+C refused; → the check → verified; #35 all clear. `csp.spec` loads every new mode with zero CSP violations. `makeEnvelope` builds 1, 2 or 3 accounts. **Focus (review M2):** Chromium checks WebAuthn focus in the browser, and every popup or tab the test opens takes it; `withAuthenticatorFocus(page, act)` brings the tab to the front immediately before every action that drives `create()` or `get()` (`#pm-act` for add/replace, `#unl-passkey`), and `addPrfAuthenticator` does so at creation. Spec 16's Ctrl+C probe relies on `#seed-grid`'s `tabindex="0"` keeping the focus (review L7, stated in the spec's comment).
 
 - [ ] **Step 1: Write the specs and their helpers.**
 
@@ -12736,7 +13089,7 @@ import {test, expect, type Page, type Worker} from '@playwright/test';
 import {contained, launchPopup, type Harness} from './popupHarness';
 import {E2E_MNEMONIC, E2E_PASSWORD, makeEnvelope} from './makeEnvelope';
 import {confirmWords, tryUnlock, unlockWith} from './vaultPage';
-import {addPrfAuthenticator} from './virtualAuthenticator';
+import {addPrfAuthenticator, withAuthenticatorFocus} from './virtualAuthenticator';
 
 // Spec B1b-2b §8.3, plan 1: specs 14 and 16 (Task 18; 15, 17 and 18 are Task 19's) against the real extension (popup + vault tab) and the contained fake
 // coordinator. Every spec ends with contained(h). The passkey steps use the pinned virtual-authenticator recipe (M3);
@@ -12785,7 +13138,7 @@ async function unlockedWallet(h: Harness, accounts: 1 | 2 | 3 = 1, o: {passkey?:
   if (o.passkey === true) {
     await vault.goto(`chrome-extension://${h.id}/unlock.html?mode=passkey&op=add`);
     await vault.locator('#pm-password').fill(E2E_PASSWORD);
-    await vault.locator('#pm-act').click();
+    await withAuthenticatorFocus(vault, () => vault.locator('#pm-act').click());
     await expect(vault.locator('#pm-line')).toHaveText('Passkey added.', {timeout: 60_000});
   }
   return vault;
@@ -12853,7 +13206,8 @@ test('14 · change password: wrong → right → same → new → mismatch → c
     expect(await tryUnlock(vault, h.id, NEW_PASSWORD)).toBe('Unlocked.');
     expect((await msg(vault, {type: 'vault.lock'})).ok).toBe(true);
     await vault.goto(`chrome-extension://${h.id}/unlock.html`);
-    await vault.locator('#unl-passkey').click();
+    // Popups and tabs opened since took the window's focus (review M2).
+    await withAuthenticatorFocus(vault, () => vault.locator('#unl-passkey').click());
     await expect(vault.locator('#unl-notice-line')).toHaveText('Unlocked.', {timeout: 60_000});
     contained(h);
   } finally {
@@ -12897,6 +13251,8 @@ test('16 · reveal: proof → modal → hold → the words → "Still looking?" 
     await expect(tab.locator('#seed-chip')).toBeVisible({timeout: 10_000});
     expect(await tab.locator('#seed-grid .term').allTextContents()).toEqual(E2E_MNEMONIC.split(' '));
     // Ctrl+C while revealed: cancelled on the grid, and the clipboard (where readable here) still holds the sentinel.
+    // Review L7: `copy` goes to the focused element — this relies on #seed-grid's tabindex="0" (unlock.html) and on
+    // focus() + hover() + mouse.down() leaving the focus on the grid. A tabindex change must keep the grid focusable.
     await tab.keyboard.press('Control+c');
     await expect.poll(() => tab.evaluate(() => (window as unknown as {copies: boolean[]}).copies)).toEqual([true]);
     if (clipboard) expect(await tab.evaluate(() => navigator.clipboard.readText())).toBe('e2e-sentinel');
@@ -12949,6 +13305,15 @@ export async function addPrfAuthenticator(ctx: BrowserContext, page: Page): Prom
   await page.bringToFront();
   return authenticatorId;
 }
+
+/**
+ * Review M2: Chromium's WebAuthn focus check is browser-side, and every new popup or tab takes the window's focus.
+ * Every action that drives create() or get() brings its tab to the front first — a stated precondition, not timing.
+ */
+export async function withAuthenticatorFocus(page: Page, act: () => Promise<void>): Promise<void> {
+  await page.bringToFront();
+  await act();
+}
 ````
 
 - [ ] **Step 2: Type-check, build, and run them — contained, then under `unshare -rn`.**
@@ -12960,7 +13325,7 @@ npm run build
 npx playwright test e2e/csp.spec.ts e2e/onboarding.spec.ts e2e/passkeyProbe.spec.ts e2e/settings.spec.ts
 unshare -rn npx playwright test e2e/csp.spec.ts e2e/onboarding.spec.ts e2e/passkeyProbe.spec.ts e2e/settings.spec.ts
 ```
-Expected (dry run): tsc clean; whole vitest suite Test Files 133 passed (133) · Tests 2309 passed (2309); every listed spec passes in both launches (counts in "Dry-run record" below). An E2E spec is not "red first" — the code it drives exists; its red proof is the mutations in the next step.
+Expected (dry run): tsc clean; whole vitest suite Test Files 133 passed (133) · Tests 2322 passed (2322); every listed spec passes in both launches (counts in "Dry-run record" below). An E2E spec is not "red first" — the code it drives exists; its red proof is the mutations in the next step.
 
 - [ ] **Step 3: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -13013,7 +13378,7 @@ Modify `extension/e2e/settings.spec.ts`:
 
 ````diff
 diff --git a/extension/e2e/settings.spec.ts b/extension/e2e/settings.spec.ts
-index 2f040db..b887bf2 100644
+index 59977c8..8dc60e7 100644
 --- a/extension/e2e/settings.spec.ts
 +++ b/extension/e2e/settings.spec.ts
 @@ -1,10 +1,10 @@
@@ -13023,7 +13388,7 @@ index 2f040db..b887bf2 100644
 -import {confirmWords, tryUnlock, unlockWith} from './vaultPage';
 +import {E2E_ACCOUNTS, E2E_MNEMONIC, E2E_PASSWORD, makeEnvelope} from './makeEnvelope';
 +import {confirmWords, pastePhrase, setPassword, tryUnlock, unlockWith} from './vaultPage';
- import {addPrfAuthenticator} from './virtualAuthenticator';
+ import {addPrfAuthenticator, withAuthenticatorFocus} from './virtualAuthenticator';
  
 -// Spec B1b-2b §8.3, plan 1: specs 14 and 16 (Task 18; 15, 17 and 18 are Task 19's) against the real extension (popup + vault tab) and the contained fake
 +// Spec B1b-2b §8.3, plan 1: specs 14–18 against the real extension (popup + vault tab) and the contained fake
@@ -13055,7 +13420,7 @@ index 2f040db..b887bf2 100644
  /** The tab the popup opens (platform.openPage → tabs.create) while `act` runs. */
  async function opened(h: Harness, act: () => Promise<unknown>): Promise<Page> {
    const [tab] = await Promise.all([h.ctx.waitForEvent('page'), act()]);
-@@ -192,3 +206,255 @@ test('16 · reveal: proof → modal → hold → the words → "Still looking?"
+@@ -195,3 +209,255 @@ test('16 · reveal: proof → modal → hold → the words → "Still looking?"
      await h.close();
    }
  });
@@ -13322,7 +13687,7 @@ npm run build
 npx playwright test e2e/settings.spec.ts
 unshare -rn npx playwright test e2e/settings.spec.ts
 ```
-Expected (dry run): tsc clean; whole vitest suite Test Files 133 passed (133) · Tests 2309 passed (2309); every listed spec passes in both launches (counts in "Dry-run record" below). An E2E spec is not "red first" — the code it drives exists; its red proof is the mutations in the next step.
+Expected (dry run): tsc clean; whole vitest suite Test Files 133 passed (133) · Tests 2322 passed (2322); every listed spec passes in both launches (counts in "Dry-run record" below). An E2E spec is not "red first" — the code it drives exists; its red proof is the mutations in the next step.
 
 - [ ] **Step 3: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -13379,7 +13744,7 @@ import {MAIN, SAVINGS, contained, launchPopup, seedUnlockedWallet, type Harness}
 import {E2E_ACCOUNTS, E2E_MNEMONIC, E2E_PASSWORD, makeEnvelope} from './makeEnvelope';
 import {confirmWords, unlockWith} from './vaultPage';
 import {holdKdf, releaseKdf, shot, vaultTab} from './visualTab';
-import {addPrfAuthenticator} from './virtualAuthenticator';
+import {addPrfAuthenticator, withAuthenticatorFocus} from './virtualAuthenticator';
 
 // Spec B1b-2b §8.4, plan 1: every state of §§3–5 the real extension can be put in, rendered at the design's sizes —
 // the popup at 412 × 600, the vault tab in its 412 px column (412 × 916) — and saved for the opus-tier review against
@@ -13578,7 +13943,7 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     await shot(p, '06m-add-idle', {ready: p.locator('#pm-act')});
     await holdKdf(p);
     await p.locator('#pm-password').fill(E2E_PASSWORD);
-    await p.locator('#pm-act').click();
+    await withAuthenticatorFocus(p, () => p.locator('#pm-act').click());
     await expect(p.locator('#pm-line')).toHaveText('Waiting for your passkey…');
     await shot(p, '06m-adding');
     await releaseKdf(p);
@@ -13588,7 +13953,7 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     await expect(p.locator('#pm-title')).toHaveText('Replace your passkey');
     await shot(p, '06m-replace-idle', {ready: p.locator('#pm-act')});
     await p.locator('#pm-password').fill(E2E_PASSWORD);
-    await p.locator('#pm-act').click();
+    await withAuthenticatorFocus(p, () => p.locator('#pm-act').click());
     await expect(p.locator('#pm-line')).toHaveText('Passkey replaced.', {timeout: 60_000});
     await shot(p, '06m-replaced', {ready: p.locator('#pm-close')});
     await go('mode=passkey&op=remove');
@@ -13610,7 +13975,7 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     // A passkey again, for #36's `done` line and the delete page's passkey button.
     await go('mode=passkey&op=add');
     await p.locator('#pm-password').fill(E2E_PASSWORD);
-    await p.locator('#pm-act').click();
+    await withAuthenticatorFocus(p, () => p.locator('#pm-act').click());
     await expect(p.locator('#pm-line')).toHaveText('Passkey added.', {timeout: 60_000});
 
     // #36 · 36a–36e and the extension-only states.
@@ -14026,7 +14391,7 @@ npm run build
 npx playwright test e2e/visual-settings.spec.ts e2e/visual-vault.spec.ts
 unshare -rn npx playwright test e2e/visual-settings.spec.ts e2e/visual-vault.spec.ts
 ```
-Expected (dry run): tsc clean; whole vitest suite Test Files 133 passed (133) · Tests 2309 passed (2309); every listed spec passes in both launches (counts in "Dry-run record" below). An E2E spec is not "red first" — the code it drives exists; its red proof is the mutations in the next step.
+Expected (dry run): tsc clean; whole vitest suite Test Files 133 passed (133) · Tests 2322 passed (2322); every listed spec passes in both launches (counts in "Dry-run record" below). An E2E spec is not "red first" — the code it drives exists; its red proof is the mutations in the next step.
 
 - [ ] **Step 3: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -14057,13 +14422,15 @@ MSG
 
 The end state was built task by task in a scratch git repository outside the checkout (a `git archive` of this branch at db57fa9), one commit per task; the plan's code blocks are generated from those commits, and applying every block of this document in order onto a fresh archive of db57fa9 reproduces the dry-run tree byte for byte (165 blocks; no difference). Then:
 
-- **Per-task replay** (copied `node_modules`): each task's unit test files on its predecessor's tree — red for every task 1–17 (the counts are in each task's Step 2); at each task — `tsc` clean, the task's own tests green, the whole vitest suite green, `node scripts/build.mjs` + `npm run gates` green. Final: **Test Files 133 passed (133) · Tests 2309 passed (2309)**.
+- **Per-task replay** (copied `node_modules`): each task's unit test files on its predecessor's tree — red for every task 1–17 (the counts are in each task's Step 2); at each task — `tsc` clean, the task's own tests green, the whole vitest suite green, `node scripts/build.mjs` + `npm run gates` green. Final: **Test Files 133 passed (133) · Tests 2322 passed (2322)** (rev 2).
 - **E2E, contained, normal launch:** 44 passed (44) — the 2a/2b specs plus the PRF probe, specs 14, 15 ×4, 16, 17, 18 ×2, the CSP spec over every new mode and both visual specs.
 - **E2E under `unshare -rn`:** 44 passed (44) — the PRF probe included.
 - **CI reproduction on Node 22.12.0 / npm 11.6.2 with ONLY `web/` and `extension/` installed** (`npm ci --ignore-scripts`; no root `node_modules`): web `npm run verify` green (Test Files 43 passed (43) · Tests 548 passed (548), plus its script tests 3 passed); extension `npm run verify` green (build, vitest 133 files / 2309 tests, CSP, secrets, every gate, reproducible — chrome `sha256:b3441db4…`, firefox `sha256:84db4b32…`); `npm run e2e` 44 passed, and under `unshare -rn` 44 passed.
 - **Root:** `npx tsc --noEmit` clean; `npx jest` 180 suites passed, 1 skipped; 1234 tests passed, 1 skipped (no task touches the root).
 - **TGE gate:** `node scripts/check-no-tge-date.mjs` clean over the end state and this plan.
-- **Mutations:** every named mutation above was run alone in a scratch `git archive` copy under `timeout 300`; all 39 are red (each task's Step "Mutations" gives its count).
+- **Mutations:** every named mutation above was run alone in a scratch `git archive` copy under `timeout 300`; all 59 are red (rev 2: the 39 of rev 1 plus 16 clause mutations of `onlyPasswordChanged`, the unwrap half of `rewrapPassword`, the two M1 mutations and the H1 marker — each task's Step "Mutations" gives its count).
+
+**Rev 2 re-run (after review 1):** the per-task replay from Task 3 onward (every task after a changed one: Tasks 3, 8, 13, 18, 19, 20 changed) — each task's tests red on its predecessor and green on its own tree, tsc, gates; the whole suite 133 files / 2322 tests; E2E contained 44 passed (44) and under `unshare -rn` 44 passed (44); all 59 mutations red in a fresh `git archive` copy. One whole-suite run at Task 17 reported 1 failed of 2322 once; the same tree then passed three full runs in a row and Task 18's identical vitest tree passed — not reproduced, so not identified, and recorded rather than hidden (plan 3 of 2a recorded the same kind of transient). Root `tsc`/`jest`, web `verify` and the Node 22.12 CI reproduction were not re-run: rev 2 changes nothing under the root `src/`, `core/` or `web/`, and no dependency.
 
 What the dry run caught:
 
@@ -14077,22 +14444,40 @@ What the dry run caught:
 8. **Earlier, while building:** #10's settings branch must re-check the session before issuing the challenge (a test held it); `wallet.state.passkey` changed the expected shape in 2a tests; the accounts manager mounted before `wallet.state` answered and showed empty balance rows (`useAccountBalances` is keyed on the addresses); a reorder lost focus (`keepFocus`); the delete page's source test tripped on a comment that named the forget message (reworded).
 9. **Not caused by this plan, left untouched:** the repository's own `node_modules/` contains a self-referencing symlink `node_modules/node_modules` (dated 2026-09-29). The dry run never wrote to the repository's `node_modules`.
 
+## Review 1 (Fable 5.1) — how each finding was applied (rev 2)
+
+Verdict: approve after fixes (Critical 0, High 1, Medium 4, Low 9). Every finding is applied in the tasks above; each code change has a test and a named mutation, and the dry run was re-run for every changed task and for the full end state (Dry-run record, rev 2).
+
+- **H1** (Task 13, Scope 3.14) — a second passkey marker, `webauthn` = `navigator.credentials` (only `src/unlock/browser.ts`; verified against the real build: the unlock bundle only), presence + leak, beside the PRF marker. Gate fixtures: a non-PRF `navigator.credentials.get(…)` in a popup chunk fails; the RP ID in popup prose passes; INCONCLUSIVE when no built JS carries it. Mutation M13c (the marker removed) is red.
+- **M1** (Task 8) — #36's step-1 proof checks a `generation` counter bumped by `dropProof()` and by a `pagehide` with nothing held; a proof that settles after is zeroed and the page shows `dropped`. `onReturn('restored')` re-checks the deadline like `visible`. Tests: pagehide during step 1's KDF; `restored` past the deadline. Mutations M8c, M8d red.
+- **M2** (Tasks 18, 20) — `withAuthenticatorFocus(page, act)` (`e2e/virtualAuthenticator.ts`) brings the tab to the front before every WebAuthn-driving action: spec 14's passkey add and passkey unlock, the visual pass's add, replace and re-add.
+- **M3** (Tasks 8, 11, Scope §4) — the prose now matches the code: 20 s (2a's `REVEAL_MS`; Task 11 says `REVEAL_MS`, `HOLD_MS` and `TICK_MS` are not changed) and 600 ms (2a's `MISMATCH_CLEAR_MS`).
+- **M4** (Tasks 3, 11) — (a) one named mutation per clause of `onlyPasswordChanged`, M3d–M3s, each run and red. Running them found what the review assumed covered: eight clauses had no refusal case that differed in that field alone (version, algorithm, memory, parallelism, credential id, PRF salt, an account removed, an index changed under the same key). Each now has one; version and algorithm are refused by the shape check before the rule runs, so the rule's own clauses are held by a direct test of the exported `onlyPasswordChanged`. (b) `rewrapPassword`'s unwrap half has a failable test (the platform's `wrapKey` made to wrap a different key); M3t (that half deleted) is red. (c) Task 11 states that verify's proof is `runReveal` — one guard (D23, Task 6) for both modes.
+- **L1** (Task 13) — the manifest-only fixture now tests the webauthn marker found only in a non-JS file; its comment says why.
+- **L2** (Scope 3.15) — O29 on verify's Back declared for the owner.
+- **L3** (Scope 3.16) — #36 `failed` with `[Start again]` declared.
+- **L4** (Task 3) — `HeldProof` is frozen, not minted; the task says why a forged one gains nothing.
+- **L5** (Task 14) — the Interfaces block says Task 15 widens `useAccountBalances`' return type.
+- **L6** (Scope §2) — plan 2 re-pins the design-ext hash in the task that regenerates it.
+- **L7** (Task 18) — spec 16's comment names its dependency on `#seed-grid`'s `tabindex="0"`.
+- **L8** (Scope, "Owner-confirmed copy") — the two AT labels were listed beside "1 outstanding task." for the owner, who confirmed all three on 2026-10-05: O89–O91, added to the spec's §12 table in this revision's commit.
+- **L9** (Task 18, Scope 1) — "the first E2E task", not "runs first": Playwright may order the files differently, and both the probe and spec 14 fail, never skip.
+
 ## Before the PR (the standing rules)
 
 - [ ] Reproduce CI with **only** `web/` and `extension/` installed, on Node 22.12 (`PATH="$(dirname $(npx -y -p node@22.12.0 node -e 'console.log(process.execPath)')):$PATH"`), npm 11.6.2: `npm ci --ignore-scripts` in both, `npm run verify` in both, `npm run e2e` in `extension/` — in a normal launch and under `unshare -rn`.
 - [ ] No task touches the repository root's `src/` or `core/`; run the root `npx tsc --noEmit` and `npx jest` anyway (the dry run did).
 - [ ] `node scripts/check-no-tge-date.mjs` from the repository root — this plan and every file it adds are clean.
 - [ ] The opus-tier visual review of Task 20's shots (against index.html #31, #35, #36, #37, #6, #3, #4 with §8.4's checklist) is in the PR description: each finding fixed or declared in the spec's Differs.
-- [ ] The owner's answer on Scope 3.1 ("1 outstanding task.") is recorded; if it is "no", drop the singular branch in `Security.tsx` and its test line before merging.
 
 ## Self-review
 
 - **Spec coverage.** §1.2 pages and §1.3 routes (Task 7); §1.5 partition (Tasks 3, 4, 6 — `VAULT_PAGE_ONLY` + the vault-isolation named list, Tasks 8–11); §1.6 CSS (Task 8, hash pinned); E9 (Task 2), E10 (Tasks 3, 8), E11 (Tasks 6, 9), E12 (Tasks 4, 10, 13), E13 (Tasks 5, 12), E14 (Tasks 1, 14), E15 (Tasks 1, 6, 11), E16 (Tasks 6, 11); §3.1 (Task 8), §3.2 (Task 9), §3.3 (Task 10), §3.4–§3.5 (Task 11), §3.6 (Task 12), §3.7 (Task 2); §4.1 (Task 17), §4.2 (Task 16), §4.3 (Task 14), §4.4 (Task 13); §5 (Task 15); §8.1–§8.2 (every task's tests and mutations); §8.3 specs 14–18 (Tasks 18, 19; spec 19 is plan 2); §8.4 (Task 20); §11 items 4 (Scope 3.4), 9 (Task 18: PRF probe passes), 13 (Task 2: the range re-check), 17 (Task 8, C20), 18–19 (Tasks 9, 15, C17). C1 (Task 2), C2/C20 (Tasks 3, 8), C3/C4 (Tasks 4, 10), C5 (Tasks 5, 12, 19), C6 (Task 15's funded/unknown lines; the background's guard is 2a), C7 (Task 1), C8 (Tasks 6, 16, 17), C10 (Tasks 3, 17), C13 (Task 15), C14 (Tasks 7, 12, 14), C15 (Task 16), C17 (Tasks 9, 15, 19). C9, C11, C12, C16, C18, C19 are plan 2's or unchanged 2a behaviour (C11: E5's proof and `addPasskey` keep not comparing with the session, as ruled).
 - **Rule 6.** #31's rows, #35's options and rows, the passkey screen's buttons, the manager's moves/rename/remove/continue, #37's hold and Cancel are `LockedButton`s or the `HoldButton`; every vault-page action runs through `exclusive()`. Each has a double-press test with `disabled` lifted.
-- **Generation checks.** #36 after each await (`held !== proof`, phase, `expired()` — M8a kills its removal); the delete page's revision re-read before the KDF (C17); the passkey page's retry; reveal/verify's `drop()` on leave; the manager's and #37's balances (`useAccountBalances`: an `alive` flag, keyed on the addresses so a list that arrives after mount still loads); the manager's order write answered `stale` → re-read; #31's and #35's settings reads (`alive`); #31's toast timers cleared on unmount.
+- **Generation checks.** #36 after each await (`held !== proof`, phase, `expired()` — M8a kills its removal; step 1's `generation` counter for a `pagehide` during the KDF — M8c; `restored` — M8d); the delete page's revision re-read before the KDF (C17); the passkey page's retry; reveal/verify's `drop()` on leave; the manager's and #37's balances (`useAccountBalances`: an `alive` flag, keyed on the addresses so a list that arrives after mount still loads); the manager's order write answered `stale` → re-read; #31's and #35's settings reads (`alive`); #31's toast timers cleared on unmount.
 - **Placeholders.** None: every step has its code (new files in full, changes as exact diffs), its command and the dry run's expected output; the one generated file has its generator and its hash.
 - **Type consistency.** The Interfaces blocks are the exports as they compile; the replay compiled and tested every task on its own predecessor (Dry-run record).
-- **O-list.** Every visible string is O01–O66, a 2a string, or a design string the spec quotes; the one exception is flagged (Scope 3.1). The aria names "Move <name> up/down" and "Remove <name>" are O52–O54.
+- **O-list.** Every visible string is O01–O66, a 2a string, or a design string the spec quotes; the three the plan added — "1 outstanding task." and the AT labels "Close" (vault page) and "Updating your password" — are owner-confirmed O89–O91 (Scope). The aria names "Move <name> up/down" and "Remove <name>" are O52–O54.
 
 ## Execution handoff
 
