@@ -34,6 +34,17 @@ export interface WalletView {
 }
 
 const serial = createMutex();
+
+/**
+ * Everything a wallet owns in storage.local besides its envelope and the balance caches — removed together by a
+ * delete (vault.forgetWallet without a replacement, E5 step 7 / B1b-2b E11) and by a first write. The one list: plan 2
+ * adds v1_contacts (E17) here. `v1_forbidden_until` is not the wallet's (the coordinator's verdict) and is kept.
+ */
+const WALLET_DATA_KEYS: readonly string[] = [KNOWN_RECIPIENTS_KEY, SETTINGS_KEY];
+async function removeWalletData(ext: Ext): Promise<void> {
+  for (const key of WALLET_DATA_KEYS) await ext.local.remove(key);
+}
+
 type Json = Record<string, unknown>;
 const isObj = (x: unknown): x is Json => typeof x === 'object' && x !== null && !Array.isArray(x);
 
@@ -229,8 +240,7 @@ export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelop
     // A first write: recipients and settings left behind cannot belong to a wallet that does not exist
     // yet (a crash between vault.forgetWallet's vault write and its cleanup could leave them). E5.
     if (first) {
-      await ext.local.remove(KNOWN_RECIPIENTS_KEY);
-      await ext.local.remove(SETTINGS_KEY);
+      await removeWalletData(ext);
       // …and the caches of a wallet that no longer exists (review L1).
       await clearCaches(ext);
     }
@@ -481,10 +491,7 @@ export async function forgetWallet(
     // the next first write (storeEnvelope with expectedRevision null), which removes both before it
     // stores a new wallet (L1) — so nothing left here reaches the next wallet.
     try {
-      if (next === null) {
-        await ext.local.remove(KNOWN_RECIPIENTS_KEY);
-        await ext.local.remove(SETTINGS_KEY);
-      }
+      if (next === null) await removeWalletData(ext);
       await clearCaches(ext);
     } catch (e) {
       console.warn('forgetWallet: cleanup after the vault write failed; the next first write clears it', e);

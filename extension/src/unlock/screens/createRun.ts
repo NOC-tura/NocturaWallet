@@ -112,6 +112,14 @@ export function createCreateRun(deps: PageDeps, o: {password: PasswordScreen; im
         // The page was left (pagehide) while this ran: the run was dropped, and #1 shows what is stored now.
         if (started !== generation) return null;
         if (out === 'created') {
+          // B1b-2b C8 (E15): this wallet's phrase just passed #4's check — recorded once it is stored and its keys are
+          // in the session. A refusal is ignored: the fact is cosmetic (two #35 rows), and #6 must not wait on it.
+          try {
+            await deps.send({type: 'vault.phraseVerified'});
+          } catch {
+            // Not recorded: #35 asks the user to verify, which is true enough.
+          }
+          if (started !== generation) return null;
           // §3.5: held for #6 only — unless the tab was hidden meanwhile, which drops it (#6 asks again).
           password = leftWhileStoring ? null : chosen;
           passkey.show({get: () => password, drop: () => void (password = null)});

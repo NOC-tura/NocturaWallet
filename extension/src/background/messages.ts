@@ -2,8 +2,9 @@ import {ed25519} from '@noble/curves/ed25519.js';
 import {base58, base64} from '@scure/base';
 import type {Ext} from '../ext';
 import type {SessionAccount} from '../vault/accounts';
-import {getSession, setSessionIf} from './session';
+import {getSession, sessionMutex, setSessionIf} from './session';
 import {armAutolock, lock} from './autolock';
+import {readSettings, settingsMutex, writeSettings} from './settings';
 import type {WalletDeps} from './deps';
 import {CHALLENGE_ID, challengeInfo, satisfyChallenge} from './reauthChallenges';
 import {changePassword, forgetWallet, readWalletView, removePasskey, storeEnvelope} from './accountsStore';
@@ -36,6 +37,7 @@ export const PRIVILEGED = [
   'vault.forgetWallet',
   'vault.changePassword',
   'vault.removePasskey',
+  'vault.phraseVerified',
   'activity.ping',
   ...WALLET_TYPES,
 ] as const;
@@ -44,7 +46,8 @@ export const PRIVILEGED = [
  * the envelope it re-encrypted (the background is the one writer of v1_vault), or read what a
  * re-authentication is for (vault.challengeInfo, B1b-2a E3), or forget the wallet it proved
  * (vault.forgetWallet, E5), change the password it proved (vault.changePassword, B1b-2b E10) or remove the passkey
- * (vault.removePasskey, E12): the popup and the tab cannot.
+ * (vault.removePasskey, E12), or record that the phrase was verified (vault.phraseVerified, E15): the popup and the
+ * tab cannot.
  */
 const VAULT_PAGE_ONLY: readonly string[] = [
   'vault.setKeys',
@@ -54,6 +57,7 @@ const VAULT_PAGE_ONLY: readonly string[] = [
   'vault.forgetWallet',
   'vault.changePassword',
   'vault.removePasskey',
+  'vault.phraseVerified',
 ];
 export const PAGE: readonly string[] = [];
 
@@ -217,6 +221,26 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       try {
         const r = await removePasskey(ext, expectedRevision);
         return r === 'removed' ? {ok: true} : {ok: false, error: r};
+      } catch {
+        return {ok: false, error: 'failed'};
+      }
+    }
+    case 'vault.phraseVerified': {
+      // E15 (D15, C8): a fact, not a security guarantee — the background cannot check it, and it gates nothing; it
+      // only decides two #35 task rows and one protections row. Vault page only keeps the popup and the web out.
+      if (deps === undefined) return {ok: false, error: 'unavailable'};
+      try {
+        // Lock order settingsMutex → sessionMutex (walletApi's). The session check and the settings write share one
+        // sessionMutex section: a lock — and so a vault.forgetWallet, which locks first and removes v1_settings after —
+        // is ordered wholly before the check (`locked`) or wholly after the write (a delete then removes the fact).
+        const recorded = await settingsMutex(() =>
+          sessionMutex(async () => {
+            if ((await getSession(ext)) === null) return false;
+            await writeSettings(ext, {...(await readSettings(ext)), phraseVerifiedAt: deps.now()});
+            return true;
+          }),
+        );
+        return recorded ? {ok: true} : {ok: false, error: 'locked'};
       } catch {
         return {ok: false, error: 'failed'};
       }

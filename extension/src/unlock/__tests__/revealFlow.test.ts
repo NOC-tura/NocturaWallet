@@ -2,7 +2,7 @@ import {argon2idAsync} from '@noble/hashes/argon2.js';
 import {createEnvelope, type Kdf} from '../../vault/envelope';
 import * as envelopeModule from '../../vault/envelope';
 import {deriveSessionAccounts} from '../../vault/accounts';
-import {runReveal} from '../revealFlow';
+import {recordVerified, runReveal} from '../revealFlow';
 import type {Send} from '../types';
 
 const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -53,9 +53,34 @@ describe('runReveal (spec §2: the phrase, only after a proof, only in the vault
     const foreign = await setup(OTHER);
     expect(await runReveal(foreign.deps, {password: PASSWORD, kdf})).toEqual({outcome: 'mismatch-locked'});
     expect(foreign.sent.map(m => m.type)).toEqual(['vault.status', 'vault.lock']);
+    expect(await runReveal((await setup(null)).deps, {password: PASSWORD, kdf})).toEqual({outcome: 'not-unlocked'});
+  });
+
+  it('B1b-2b E16 (D23): a passkey factor cast past the type is refused — failed, nothing read or sent, the PRF output zeroed', async () => {
+    const {deps, sent} = await setup(MNEMONIC);
+    let reads = 0;
     const prfOutput = crypto.getRandomValues(new Uint8Array(32));
-    expect(await runReveal((await setup(null)).deps, {prfOutput})).toEqual({outcome: 'not-unlocked'});
+    const factor = {prfOutput} as unknown as {password: string; kdf: Kdf};
+    expect(await runReveal({...deps, readEnvelope: async () => (reads++, deps.readEnvelope())}, factor)).toEqual({outcome: 'failed'});
     expect(prfOutput.every(b => b === 0)).toBe(true);
+    expect(reads).toBe(0);
+    expect(sent).toEqual([]);
+    // Even beside a password: any prfOutput refuses.
+    const both = {password: PASSWORD, kdf, prfOutput: crypto.getRandomValues(new Uint8Array(32))};
+    expect(await runReveal(deps, both)).toEqual({outcome: 'failed'});
+    expect(both.prfOutput.every(b => b === 0)).toBe(true);
+  });
+
+  it('recordVerified: sends only the fact (no word of the phrase); true when the background says so', async () => {
+    const {deps, sent} = await setup(MNEMONIC);
+    expect(await recordVerified(deps.send)).toBe(true);
+    expect(sent).toEqual([{type: 'vault.phraseVerified'}]);
+    expect(await recordVerified(async () => ({ok: false, error: 'locked'}))).toBe(false);
+    expect(
+      await recordVerified(async () => {
+        throw new Error('gone');
+      }),
+    ).toBe(false);
   });
 
   it('no wallet, and a damaged envelope, show nothing', async () => {
