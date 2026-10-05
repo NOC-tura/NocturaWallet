@@ -111,7 +111,7 @@ export function displayOrder<T extends {index: number}>(accounts: readonly T[], 
 
 async function walletState(ext: Ext) {
   const [view, session, settings] = await Promise.all([readWalletView(ext), getSession(ext), readSettings(ext)]);
-  if (view === null) return {hasWallet: false, unlocked: false, scheme: null, accounts: [], selected: null};
+  if (view === null) return {hasWallet: false, unlocked: false, scheme: null, accounts: [], selected: null, passkey: false};
   const accounts = displayOrder(view.accounts, settings.accountOrder);
   // The selection is only ever an account that exists: in the envelope, and — while unlocked — in the
   // session too (an account removed in the vault page must not stay selected). Otherwise the first such
@@ -119,7 +119,7 @@ async function walletState(ext: Ext) {
   const inSession = (i: number) => session === null || session.some(a => a.index === i);
   const choices = accounts.map(a => a.index).filter(inSession);
   const selected = choices.includes(settings.selectedAccount) ? settings.selectedAccount : (choices[0] ?? accounts[0]?.index ?? null);
-  return {hasWallet: true, unlocked: session !== null, scheme: view.scheme, accounts, selected};
+  return {hasWallet: true, unlocked: session !== null, scheme: view.scheme, accounts, selected, passkey: view.passkey};
 }
 
 /** Balances for onboarding's candidate addresses: public keys in, public numbers out. */

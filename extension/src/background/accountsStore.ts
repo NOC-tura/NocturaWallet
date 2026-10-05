@@ -29,6 +29,8 @@ export interface AccountView {
 export interface WalletView {
   scheme: 'slip10' | 'cli';
   accounts: AccountView[];
+  /** B1b-2b E12: whether the stored envelope has a passkey wrap (#31's and #35's "Passkey · On/Off"). */
+  passkey: boolean;
 }
 
 const serial = createMutex();
@@ -45,12 +47,12 @@ function accountsOf(env: Json): AccountView[] | null {
   return out;
 }
 
-/** Public data only: the scheme and each account's index, name and address. Null without a wallet. */
+/** Public data only: the scheme, each account's index, name and address, and whether a passkey is enrolled. Null without a wallet. */
 export async function readWalletView(ext: Ext): Promise<WalletView | null> {
   const env = await ext.local.get(VAULT_KEY);
   if (!isObj(env) || (env.scheme !== 'slip10' && env.scheme !== 'cli')) return null;
   const accounts = accountsOf(env);
-  return accounts === null ? null : {scheme: env.scheme, accounts};
+  return accounts === null ? null : {scheme: env.scheme, accounts, passkey: isObj(env.passkey)};
 }
 
 export type RenameResult = 'renamed' | 'malformed' | 'unknown-account' | 'busy';
@@ -208,6 +210,9 @@ export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelop
       if (current === null) return 'stored-invalid';
       if (envelopeRevision(current) !== expectedRevision) return 'busy';
       if (!sameWallet(current, next)) return 'malformed';
+      // B1b-2b C3: a stored passkey may be replaced (addPasskey) or carried (an account change), never dropped
+      // here — removal is vault.removePasskey's alone, so a page bug that omitted the field cannot disable it.
+      if (current.passkey !== undefined && next.passkey === undefined) return 'malformed';
       for (const a of current.accounts) names.set(a.index, a.name);
     }
     const accounts: AccountView[] = [];
@@ -227,6 +232,36 @@ export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelop
     await ext.local.set(VAULT_KEY, {...next, accounts});
     return 'stored';
   });
+}
+
+export type RemovePasskeyResult = 'removed' | 'malformed' | 'locked' | 'no-wallet' | 'stored-invalid' | 'busy' | 'no-passkey';
+
+/**
+ * vault.removePasskey (B1b-2b E12, D12, C3). The vault page proved a factor (password or the passkey itself) against
+ * the session and sends only the revision it proved — no envelope: the background drops the `passkey` field itself and
+ * writes every other field and every name as stored, so a removal can carry no other change. Removal only takes a
+ * factor away, and the passkey is outside the AAD (no re-encryption). The authenticator keeps the credential; the
+ * page says so. Inside `serial` → `sessionMutex` (changePassword's lock order; the session check and the write share
+ * one sessionMutex section, so a lock cannot land between them): `malformed` (revision), `locked` (no session),
+ * `no-wallet`, `stored-invalid`, `busy` (another change landed: the page re-proves), `no-passkey` (nothing to remove;
+ * nothing written).
+ */
+export async function removePasskey(ext: Ext, expectedRevision: unknown): Promise<RemovePasskeyResult> {
+  if (!isStr(expectedRevision) || !REVISION.test(expectedRevision)) return 'malformed';
+  return serial(() =>
+    sessionMutex(async (): Promise<RemovePasskeyResult> => {
+      if ((await getSession(ext)) === null) return 'locked';
+      const stored = await ext.local.get(VAULT_KEY);
+      if (stored === undefined) return 'no-wallet';
+      const current = envelopeShape(stored);
+      if (current === null) return 'stored-invalid';
+      if (envelopeRevision(current) !== expectedRevision) return 'busy';
+      if (current.passkey === undefined) return 'no-passkey';
+      const {v, scheme, kdf, seed, password, accounts} = current;
+      await ext.local.set(VAULT_KEY, {v, scheme, kdf, seed, password, accounts});
+      return 'removed';
+    }),
+  );
 }
 
 export type ChangePasswordResult = 'changed' | 'malformed' | 'locked' | 'no-wallet' | 'stored-invalid' | 'busy';

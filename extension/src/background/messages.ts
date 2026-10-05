@@ -6,7 +6,7 @@ import {getSession, setSessionIf} from './session';
 import {armAutolock, lock} from './autolock';
 import type {WalletDeps} from './deps';
 import {CHALLENGE_ID, challengeInfo, satisfyChallenge} from './reauthChallenges';
-import {changePassword, forgetWallet, readWalletView, storeEnvelope} from './accountsStore';
+import {changePassword, forgetWallet, readWalletView, removePasskey, storeEnvelope} from './accountsStore';
 import {isOpen, readPending} from './pendingStore';
 import {startPoller} from './pending';
 import {WALLET_TYPES, applySettingsChallenge, handleWallet, isWalletType, type Result} from './walletApi';
@@ -35,6 +35,7 @@ export const PRIVILEGED = [
   'vault.challengeInfo',
   'vault.forgetWallet',
   'vault.changePassword',
+  'vault.removePasskey',
   'activity.ping',
   ...WALLET_TYPES,
 ] as const;
@@ -42,10 +43,18 @@ export const PRIVILEGED = [
  * Only the vault page itself may hand over keys, report a re-authentication it proved, hand over
  * the envelope it re-encrypted (the background is the one writer of v1_vault), or read what a
  * re-authentication is for (vault.challengeInfo, B1b-2a E3), or forget the wallet it proved
- * (vault.forgetWallet, E5), or change the password it proved (vault.changePassword, B1b-2b E10): the popup and
- * the tab cannot.
+ * (vault.forgetWallet, E5), change the password it proved (vault.changePassword, B1b-2b E10) or remove the passkey
+ * (vault.removePasskey, E12): the popup and the tab cannot.
  */
-const VAULT_PAGE_ONLY: readonly string[] = ['vault.setKeys', 'vault.reauthOk', 'vault.storeEnvelope', 'vault.challengeInfo', 'vault.forgetWallet', 'vault.changePassword'];
+const VAULT_PAGE_ONLY: readonly string[] = [
+  'vault.setKeys',
+  'vault.reauthOk',
+  'vault.storeEnvelope',
+  'vault.challengeInfo',
+  'vault.forgetWallet',
+  'vault.changePassword',
+  'vault.removePasskey',
+];
 export const PAGE: readonly string[] = [];
 
 function isOwnPage(ext: Ext, s: Sender): boolean {
@@ -199,6 +208,15 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       try {
         const r = await changePassword(ext, deps.now(), expectedRevision, envelope);
         return r === 'changed' ? {ok: true} : {ok: false, error: r};
+      } catch {
+        return {ok: false, error: 'failed'};
+      }
+    }
+    case 'vault.removePasskey': {
+      const {expectedRevision} = msg as {expectedRevision?: unknown};
+      try {
+        const r = await removePasskey(ext, expectedRevision);
+        return r === 'removed' ? {ok: true} : {ok: false, error: r};
       } catch {
         return {ok: false, error: 'failed'};
       }

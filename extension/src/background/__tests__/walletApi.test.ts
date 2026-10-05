@@ -25,13 +25,13 @@ const NOC = WALLET_TOKENS.NOC.mint as string;
 describe('handleWallet', () => {
   it('wallet.state: public account data, lock state and the selected account', async () => {
     const ext = fakeExt();
-    expect(await handleWallet(ext, fakeDeps(), 'wallet.state', {})).toEqual({ok: true, data: {hasWallet: false, unlocked: false, scheme: null, accounts: [], selected: null}});
+    expect(await handleWallet(ext, fakeDeps(), 'wallet.state', {})).toEqual({ok: true, data: {hasWallet: false, unlocked: false, scheme: null, accounts: [], selected: null, passkey: false}});
     await ext.local.set(VAULT_KEY, ENV);
     await unlocked(ext);
     await ext.local.set(SETTINGS_KEY, {selectedAccount: 3});
     await setSession(ext, [ACCOUNT, OTHER]);
     const r = await handleWallet(ext, fakeDeps(), 'wallet.state', {});
-    expect(r).toEqual({ok: true, data: {hasWallet: true, unlocked: true, scheme: 'slip10', accounts: ENV.accounts, selected: 3}});
+    expect(r).toEqual({ok: true, data: {hasWallet: true, unlocked: true, scheme: 'slip10', accounts: ENV.accounts, selected: 3, passkey: false}});
     expect(JSON.stringify(r)).not.toContain('secretKey');
   });
 
