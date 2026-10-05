@@ -192,7 +192,8 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
    * associated-token-account Create makes for it. A requested token account (one listed in `tokenAccounts`) comes
    * back owned by the Token program in its 165-byte layout (mint, owner, amount u64 LE at 64), its amount less what
    * the transaction's Transfer / TransferChecked take from it; a transfer from an account not listed, or for more
-   * than it holds, fails as the Token program does (Custom 1, InsufficientFunds). Its error switch answers err with
+   * than it holds, fails as the Token program does (Custom 1, InsufficientFunds), and one to an account that is
+   * neither listed nor created earlier in the transaction fails as uninitialized. Its error switch answers err with
    * accounts: null, as the real RPC does (review H2).
    */
   const simulate = (params: unknown[]): unknown => {
@@ -208,6 +209,8 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     let limit = 0n;
     /** What each token account gives up in this transaction. */
     const tokenOut = new Map<string, bigint>();
+    /** The token accounts an associated-token-account Create made earlier in this transaction. */
+    const created = new Set<string>();
     for (const [i, ix] of instructions.entries()) {
       const data = ix.data;
       const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -218,14 +221,21 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       // Create (no data) and CreateIdempotent (1) fund a new token account from the payer; the idempotent form takes
       // nothing when the account already exists.
       if (program === ATA_PROGRAM && (data.length === 0 || data[0] === 0 || data[0] === 1) && keys[ix.accounts[0] ?? -1] === payer) {
-        if (data[0] !== 1 || tokenAccountAt(keys[ix.accounts[1] ?? -1] ?? '') === null) out += TOKEN_ACCOUNT_RENT;
+        const ata = keys[ix.accounts[1] ?? -1] ?? '';
+        if (data[0] !== 1 || tokenAccountAt(ata) === null) out += TOKEN_ACCOUNT_RENT;
+        created.add(ata);
       }
       // Transfer (3) and TransferChecked (12): the amount (u64 LE at 1) leaves the source (the first account).
       if (program === TOKEN_PROGRAM && (data[0] === 3 || data[0] === 12)) {
         const source = keys[ix.accounts[0] ?? -1] ?? '';
         const held = tokenAccountAt(source);
         const taken = (tokenOut.get(source) ?? 0n) + view.getBigUint64(1, true);
-        if (held === null || taken > BigInt(held.amount)) return {context: context(), value: {err: {InstructionError: [i, {Custom: 1}]}, logs: [], accounts: null, unitsConsumed: 0, returnData: null}};
+        const failed = (err: unknown) => ({context: context(), value: {err: {InstructionError: [i, err]}, logs: [], accounts: null, unitsConsumed: 0, returnData: null}});
+        // The destination (second account of Transfer, third of TransferChecked) must be a token account: listed, or
+        // made by a Create before this instruction — otherwise the Token program refuses it as uninitialized.
+        const destination = keys[ix.accounts[data[0] === 12 ? 2 : 1] ?? -1] ?? '';
+        if (tokenAccountAt(destination) === null && !created.has(destination)) return failed('UninitializedAccount');
+        if (held === null || taken > BigInt(held.amount)) return failed({Custom: 1});
         tokenOut.set(source, taken);
       }
     }
