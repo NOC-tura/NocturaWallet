@@ -242,12 +242,13 @@ async function setSettings(ext: Ext, deps: WalletDeps, msg: Record<string, unkno
  * over whatever is stored now — the last confirmed proof wins, nothing re-bases or revokes another live challenge
  * (review M6). Then, outside the mutex, the auto-lock alarm is re-armed when it changed and a session exists.
  * Refusals: `unknown-challenge` (absent, expired, applied), `locked`, `malformed` (the challenge is burned, nothing
- * written), `failed` (storage).
+ * written), `failed` (a storage error up to and including the write; a re-arm that fails after it is only logged).
  */
 export async function applySettingsChallenge(ext: Ext, deps: Pick<WalletDeps, 'now'>, challengeId: string): Promise<Result> {
   const applied: {patch: SettingsPatch | null} = {patch: null};
+  let out: Result;
   try {
-    const out = await settingsMutex(async (): Promise<Result> => {
+    out = await settingsMutex(async (): Promise<Result> => {
       const taken = await takeSettingsChallenge(ext, deps.now(), challengeId);
       if (taken === 'unknown-challenge' || taken === 'locked') return {ok: false, error: taken};
       const raw: Record<string, number> = {};
@@ -259,11 +260,19 @@ export async function applySettingsChallenge(ext: Ext, deps: Pick<WalletDeps, 'n
       applied.patch = patch;
       return {ok: true, data: {applied: 'settings'}};
     });
-    if (out.ok && applied.patch?.autoLockMinutes !== undefined && (await getSession(ext)) !== null) await armAutolock(ext);
-    return out;
   } catch {
     return {ok: false, error: 'failed'};
   }
+  // The write happened: never answer `failed` now (#10 would say "Nothing was changed"). A re-arm that fails leaves
+  // the alarm already armed, which still locks — it fails safe.
+  if (out.ok && applied.patch?.autoLockMinutes !== undefined) {
+    try {
+      if ((await getSession(ext)) !== null) await armAutolock(ext);
+    } catch (e) {
+      console.warn('settings applied, but the idle timer was not re-armed', e);
+    }
+  }
+  return out;
 }
 
 async function selectAccount(ext: Ext, index: number): Promise<Result> {

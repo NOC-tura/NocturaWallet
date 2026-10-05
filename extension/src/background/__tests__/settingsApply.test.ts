@@ -3,7 +3,7 @@ import {handleWallet} from '../walletApi';
 import {readSettings} from '../settings';
 import {AUTOLOCK_ALARM, lock} from '../autolock';
 import {CHALLENGE_TTL_MS, challengeInfo, issueChallenge, takeSettingsChallenge} from '../reauthChallenges';
-import {REAUTH_KEY} from '../session';
+import {REAUTH_KEY, SESSION_KEY} from '../session';
 import {fakeDeps} from './fakeDeps';
 import {fakeExt} from './fakeExt';
 import {ACCOUNT, RECIPIENT, unlocked} from './fixtures';
@@ -148,5 +148,43 @@ describe('E9: settings applied on vault.reauthOk', () => {
     ext.local.set = set;
     expect((await readSettings(ext)).autoLockMinutes).toBe(5);
     expect(await ext.session.get(REAUTH_KEY)).toEqual({});
+  });
+
+  it('fix round 1: a re-arm that throws AFTER the write is still applied — never "failed" for a saved change', async () => {
+    const {ext, deps, challengeId} = await weaken({autoLockMinutes: 60});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    ext.alarms.create = () => {
+      throw new Error('alarms down');
+    };
+    expect(await reauthOk(ext, deps, challengeId)).toEqual({ok: true, data: {applied: 'settings'}});
+    expect((await readSettings(ext)).autoLockMinutes).toBe(60);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+});
+
+describe('takeSettingsChallenge (direct)', () => {
+  it('no session but the record kept: locked, and the record is not taken', async () => {
+    const ext = fakeExt();
+    await unlocked(ext);
+    const deps = fakeDeps();
+    const id = await issueChallenge(ext, deps, 'd', {kind: 'settings', autoLockMinutes: 15, reauthUsdCents: null});
+    await ext.session.remove(SESSION_KEY);
+    expect(await takeSettingsChallenge(ext, deps.now(), id)).toBe('locked');
+    expect(Object.keys((await ext.session.get(REAUTH_KEY)) as object)).toEqual([id]);
+    // Positive control: with the session back, the same record is taken.
+    await unlocked(ext);
+    expect(await takeSettingsChallenge(ext, deps.now(), id)).toEqual({autoLockMinutes: 15, reauthUsdCents: null});
+  });
+
+  it('expiry is filtered in the take itself: at issuedAt + CHALLENGE_TTL_MS it is unknown-challenge; one ms earlier it is taken', async () => {
+    const ext = fakeExt();
+    await unlocked(ext);
+    const deps = fakeDeps();
+    const issuedAt = deps.now();
+    const expired = await issueChallenge(ext, deps, 'd', {kind: 'settings', autoLockMinutes: 15, reauthUsdCents: null});
+    const fresh = await issueChallenge(ext, deps, 'd', {kind: 'settings', autoLockMinutes: 60, reauthUsdCents: null});
+    expect(await takeSettingsChallenge(ext, issuedAt + CHALLENGE_TTL_MS, expired)).toBe('unknown-challenge');
+    expect(await takeSettingsChallenge(ext, issuedAt + CHALLENGE_TTL_MS - 1, fresh)).toEqual({autoLockMinutes: 60, reauthUsdCents: null});
   });
 });
