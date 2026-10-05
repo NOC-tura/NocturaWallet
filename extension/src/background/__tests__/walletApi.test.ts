@@ -339,7 +339,7 @@ describe('handleWallet', () => {
     const deps = fakeDeps();
     const [a, b] = await Promise.all([handleWallet(ext, deps, 'accounts.select', {index: 3}), handleWallet(ext, deps, 'settings.set', {patch: {autoLockMinutes: 2}})]);
     expect([a.ok, b.ok]).toEqual([true, true]);
-    expect(await readSettings(ext)).toEqual({autoLockMinutes: 2, reauthUsdCents: 10_000, selectedAccount: 3});
+    expect(await readSettings(ext)).toMatchObject({autoLockMinutes: 2, reauthUsdCents: 10_000, selectedAccount: 3});
   });
 
   it('settings.set: strengthening applies at once; weakening needs a satisfied challenge for that exact patch', async () => {
