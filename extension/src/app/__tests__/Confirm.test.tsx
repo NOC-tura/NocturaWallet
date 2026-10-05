@@ -459,6 +459,8 @@ describe('#20 — a failed discard, and a pending send settling while shown (fin
     const record = open();
     const w = await renderConfirm({afterPrepare: ext => ext.local.set(PENDING_KEY, [record])});
     expect(await screen.findByText(CONFIRM_TEXT.pending)).toBeTruthy();
+    // The re-read's interval is set in an effect: flushed before the clock moves.
+    await act(async () => undefined);
     expect((await sendButton()).disabled).toBe(true);
     await w.ext.local.set(PENDING_KEY, [{...record, state: 'confirmed'}]);
     await act(async () => void vi.advanceTimersByTime(PENDING_POLL_MS + 50));
@@ -474,6 +476,8 @@ describe('#20 — a failed discard, and a pending send settling while shown (fin
     vi.useFakeTimers({shouldAdvanceTime: true});
     const w = await renderConfirm({afterPrepare: ext => ext.local.set(PENDING_KEY, [open()])});
     expect(await screen.findByText(CONFIRM_TEXT.pending)).toBeTruthy();
+    // The re-read's interval is set in an effect: flushed before the clock moves.
+    await act(async () => undefined);
     const reads = () => w.sent.filter(t => t === 'wallet.pending').length;
     const first = reads();
     await act(async () => void vi.advanceTimersByTime(PENDING_POLL_MS * 2 + 50));
@@ -504,6 +508,8 @@ describe('#20 — a failed discard, and a pending send settling while shown (fin
       },
     });
     expect(await screen.findByText(CONFIRM_TEXT.pending)).toBeTruthy();
+    // The re-read's interval is set in an effect: flushed before the clock moves.
+    await act(async () => undefined);
     await act(async () => void vi.advanceTimersByTime(PENDING_POLL_MS * 2 + 50));
     expect(releases).toHaveLength(2);
     // The older re-read answers first: settled — the block lifts.
