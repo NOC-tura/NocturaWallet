@@ -254,6 +254,17 @@ describe('wrong-password backoff (spec §2: an increasing delay on top of the Ar
     expect(slept).toEqual([1000, 1000]);
   });
 
+  it.each(['applied', 'refused'])("B1b-2b: resets on #10's '%s' (the proof held, as 'confirmed')", async proven => {
+    const {slept, sleep} = recordingSleep();
+    const backoff = createWrongBackoff(sleep);
+    await backoff.run(async () => 'wrong', () => undefined);
+    await backoff.run(async () => 'wrong', () => undefined);
+    await backoff.run(async () => proven, () => undefined);
+    await backoff.run(async () => 'wrong', () => undefined);
+    await backoff.run(async () => 'wrong', () => undefined);
+    expect(slept).toEqual([1000, 1000]);
+  });
+
   it('resets on unlocked', async () => {
     const {slept, sleep} = recordingSleep();
     const backoff = createWrongBackoff(sleep);

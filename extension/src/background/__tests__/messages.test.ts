@@ -1,4 +1,3 @@
-import {SETTINGS_ABOUT} from './fixtures';
 import {ed25519} from '@noble/curves/ed25519.js';
 import {base58, base64} from '@scure/base';
 import {PRIVILEGED, handleMessage} from '../messages';
@@ -220,10 +219,11 @@ describe('message partitions (B1b-1 types)', () => {
     const ext = vaultExt();
     const deps = fakeDeps();
     await handleMessage(ext, {type: 'vault.setKeys', accounts: ACC}, unlockPage);
-    const challengeId = await issueChallenge(ext, deps, 'd', SETTINGS_ABOUT);
+    // A settings challenge with a patch in range (B1b-2b E9: confirming it applies it).
+    const challengeId = await issueChallenge(ext, deps, 'd', {kind: 'settings', autoLockMinutes: 10, reauthUsdCents: null});
     expect(await handleMessage(ext, {type: 'vault.reauthOk', challengeId}, popup, deps)).toEqual({ok: false, error: 'forbidden'});
     expect(await handleMessage(ext, {type: 'vault.reauthOk', challengeId: 'f'.repeat(32)}, unlockPage, deps)).toEqual({ok: false, error: 'unknown-challenge'});
-    expect(await handleMessage(ext, {type: 'vault.reauthOk', challengeId}, unlockPage, deps)).toEqual({ok: true});
+    expect(await handleMessage(ext, {type: 'vault.reauthOk', challengeId}, unlockPage, deps)).toEqual({ok: true, data: {applied: 'settings'}});
     await handleMessage(ext, {type: 'vault.lock'}, popup);
     expect(await handleMessage(ext, {type: 'vault.reauthOk', challengeId}, unlockPage, deps)).toEqual({ok: false, error: 'locked'});
   });

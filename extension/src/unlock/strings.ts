@@ -254,7 +254,16 @@ export const REAUTH = {
   expired: 'This confirmation has expired. Start the send again from the Noctura icon.',
   checking: 'Checking…',
   cancelled: 'Send cancelled. Nothing was sent.',
-  settingsConfirmed: 'Confirmed. You can close this tab.',
+  /** O39 (B1b-2b E9, §3.7): the background applied the setting on this proof — replaces 2a's "Confirmed. You can close this tab." */
+  settingsApplied: 'Confirmed. The change is saved — you can close this tab.',
+  /** The approved design §3: a settings proof that outlived its challenge (§3.7 `settings-expired`). */
+  settingsExpired: 'Took too long — try again',
+  /** O40. */
+  settingsExpiredHelp: 'Nothing was changed. Choose the setting again in Security center.',
+  /** O41 (`settings-not-unlocked`). */
+  settingsNotUnlocked: 'The wallet locked while you were confirming. Nothing was changed. Unlock it and choose the setting again.',
+  /** O26 (`settings-failed`). */
+  settingsFailed: 'Something went wrong. Nothing was changed.',
   aboutSend: 'You are about to send',
   aboutChange: 'You are about to change',
   to: 'To',

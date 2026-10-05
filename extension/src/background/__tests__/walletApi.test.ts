@@ -3,7 +3,7 @@ import {handleWallet} from '../walletApi';
 import {SETTINGS_KEY, readSettings} from '../settings';
 import {VAULT_KEY} from '../accountsStore';
 import {KNOWN_RECIPIENTS_KEY} from '../knownRecipients';
-import {satisfyChallenge} from '../reauthChallenges';
+import {challengeInfo, satisfyChallenge} from '../reauthChallenges';
 import {AUTOLOCK_ALARM} from '../autolock';
 import {PREPARED_TTL_MS} from '../prepare';
 import {PREPARED_KEY, REAUTH_KEY, SESSION_KEY, setSession} from '../session';
@@ -342,7 +342,7 @@ describe('handleWallet', () => {
     expect(await readSettings(ext)).toMatchObject({autoLockMinutes: 2, reauthUsdCents: 10_000, selectedAccount: 3});
   });
 
-  it('settings.set: strengthening applies at once; weakening needs a satisfied challenge for that exact patch', async () => {
+  it('settings.set: strengthening applies at once; a weakening always answers reauth-required and writes nothing (E9 applies it)', async () => {
     const ext = fakeExt();
     await unlocked(ext);
     const deps = fakeDeps();
@@ -351,29 +351,21 @@ describe('handleWallet', () => {
     const ask = await handleWallet(ext, deps, 'settings.set', {patch: {autoLockMinutes: 30}});
     expect(ask).toMatchObject({ok: false, error: 'reauth-required'});
     const {challengeId} = ask.data as {challengeId: string};
-    expect(await handleWallet(ext, deps, 'settings.set', {patch: {autoLockMinutes: 30}, challengeId})).toMatchObject({ok: false, error: 'reauth-required'});
+    // A challenge the vault page satisfied is still not a way in through settings.set (C1).
     await satisfyChallenge(ext, deps.now(), challengeId);
-    expect(await handleWallet(ext, deps, 'settings.set', {patch: {autoLockMinutes: 60}, challengeId})).toMatchObject({ok: false, error: 'reauth-required'});
-    const second = await handleWallet(ext, deps, 'settings.set', {patch: {autoLockMinutes: 30}});
-    const id2 = (second.data as {challengeId: string}).challengeId;
-    await satisfyChallenge(ext, deps.now(), id2);
-    expect(await handleWallet(ext, deps, 'settings.set', {patch: {autoLockMinutes: 30}, challengeId: id2})).toMatchObject({ok: true, data: {autoLockMinutes: 30}});
-    expect(await handleWallet(ext, deps, 'settings.get', {})).toMatchObject({ok: true, data: {autoLockMinutes: 30}});
+    expect(await handleWallet(ext, deps, 'settings.set', {patch: {autoLockMinutes: 30}, challengeId})).toEqual({ok: false, error: 'malformed'});
+    expect(await handleWallet(ext, deps, 'settings.set', {patch: {autoLockMinutes: 30}})).toMatchObject({ok: false, error: 'reauth-required'});
+    expect(await handleWallet(ext, deps, 'settings.get', {})).toMatchObject({ok: true, data: {autoLockMinutes: 2}});
   });
 
-  it('settings.set: a challenge proved for one dollar threshold cannot raise it to another (the digest binds both fields)', async () => {
+  it('settings.set: each weakening binds its own patch — the threshold challenge describes exactly its own value', async () => {
     const ext = fakeExt();
     await unlocked(ext);
     const deps = fakeDeps();
     const ask = await handleWallet(ext, deps, 'settings.set', {patch: {reauthUsdCents: 20_000}});
     const {challengeId} = ask.data as {challengeId: string};
-    await satisfyChallenge(ext, deps.now(), challengeId);
-    expect(await handleWallet(ext, deps, 'settings.set', {patch: {reauthUsdCents: 100_000}, challengeId})).toMatchObject({ok: false, error: 'reauth-required'});
+    expect(await challengeInfo(ext, deps.now(), challengeId)).toEqual({kind: 'settings', autoLockMinutes: null, reauthUsdCents: 20_000});
     expect(await readSettings(ext)).toMatchObject({reauthUsdCents: 10_000});
-    const again = await handleWallet(ext, deps, 'settings.set', {patch: {reauthUsdCents: 20_000}});
-    const id2 = (again.data as {challengeId: string}).challengeId;
-    await satisfyChallenge(ext, deps.now(), id2);
-    expect(await handleWallet(ext, deps, 'settings.set', {patch: {reauthUsdCents: 20_000}, challengeId: id2})).toMatchObject({ok: true, data: {reauthUsdCents: 20_000}});
   });
 
   it('settings.set: a lock landing before the challenge is issued answers locked and leaves no challenge behind', async () => {

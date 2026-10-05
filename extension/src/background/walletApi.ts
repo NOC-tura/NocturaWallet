@@ -3,9 +3,9 @@ import type {Ext} from '../ext';
 import type {WalletDeps} from './deps';
 import {REAUTH_KEY, getSession, sessionMutex} from './session';
 import {armAutolock} from './autolock';
-import {parsePatch, readSettings, settingsMutex, updateSettings, weakens, writeSettings, type Settings} from './settings';
+import {parsePatch, readSettings, settingsMutex, updateSettings, weakens, writeSettings, type Settings, type SettingsPatch} from './settings';
 import {cleanName, readWalletView, renameAccount} from './accountsStore';
-import {consumeChallenge, issueChallenge} from './reauthChallenges';
+import {issueChallenge, takeSettingsChallenge} from './reauthChallenges';
 import {digestOf} from './digest';
 import {discardPrepared, isAddress, parseIntent, preparedFor, prepareSend} from './prepare';
 import {isKnownRecipient, lastSentAt} from './knownRecipients';
@@ -198,30 +198,34 @@ async function recipientInfo(ext: Ext, account: unknown, recipient: unknown): Pr
   };
 }
 
+/**
+ * settings.set. Strengthening writes at once, also while locked (it lowers nothing). A weakening always issues a
+ * challenge bound to the exact patch and answers `reauth-required`; it is applied only by vault.reauthOk (E9,
+ * applySettingsChallenge). C1: a message carrying `challengeId` is `malformed` — the re-call path is gone, so it
+ * cannot be a second door.
+ */
 async function setSettings(ext: Ext, deps: WalletDeps, msg: Record<string, unknown>): Promise<Result> {
+  if (msg.challengeId !== undefined) return MALFORMED;
   const patch = parsePatch(msg.patch);
   if (patch === null) return MALFORMED;
   const out = await settingsMutex(async (): Promise<Result> => {
     const current = await readSettings(ext);
     if (weakens(current, patch)) {
       if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
-      const digest = digestOf('settings', {autoLockMinutes: patch.autoLockMinutes ?? null, reauthUsdCents: patch.reauthUsdCents ?? null});
-      const id = msg.challengeId;
-      // Neither call runs inside sessionMutex here: each takes it itself (it is not re-entrant).
-      if (typeof id !== 'string' || !(await consumeChallenge(ext, deps.now(), id, digest))) {
-        // A lock may have landed since the check above: never issue a challenge into a locked session.
-        if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
-        const challengeId = await issueChallenge(ext, deps, digest, {kind: 'settings', autoLockMinutes: patch.autoLockMinutes ?? null, reauthUsdCents: patch.reauthUsdCents ?? null});
-        // …nor keep one a lock raced past (issueChallenge wrote after the lock's clear): as in
-        // prepareSend, remove just the challenges, under the mutex the lock takes — never lock()
-        // or clearSession() here, which would wait on this very mutex.
-        const lockedMeanwhile = await sessionMutex(async () => {
-          if ((await getSession(ext)) !== null) return false;
-          await ext.session.remove(REAUTH_KEY);
-          return true;
-        });
-        return lockedMeanwhile ? {ok: false, error: 'locked'} : {ok: false, error: 'reauth-required', data: {challengeId}};
-      }
+      const about = {autoLockMinutes: patch.autoLockMinutes ?? null, reauthUsdCents: patch.reauthUsdCents ?? null};
+      // A lock may have landed since the check above: never issue a challenge into a locked session.
+      if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
+      // issueChallenge takes sessionMutex itself (it is not re-entrant): never called inside it here.
+      const challengeId = await issueChallenge(ext, deps, digestOf('settings', about), {kind: 'settings', ...about});
+      // …nor keep one a lock raced past (issueChallenge wrote after the lock's clear): as in
+      // prepareSend, remove just the challenges, under the mutex the lock takes — never lock()
+      // or clearSession() here, which would wait on this very mutex.
+      const lockedMeanwhile = await sessionMutex(async () => {
+        if ((await getSession(ext)) !== null) return false;
+        await ext.session.remove(REAUTH_KEY);
+        return true;
+      });
+      return lockedMeanwhile ? {ok: false, error: 'locked'} : {ok: false, error: 'reauth-required', data: {challengeId}};
     }
     const next: Settings = {...current, ...patch};
     await writeSettings(ext, next);
@@ -229,6 +233,37 @@ async function setSettings(ext: Ext, deps: WalletDeps, msg: Record<string, unkno
   });
   if (out.ok && patch.autoLockMinutes !== undefined && (await getSession(ext)) !== null) await armAutolock(ext);
   return out;
+}
+
+/**
+ * E9 (D6): #10's Confirm satisfied a settings challenge — the background applies the patch it bound at issue. Inside
+ * settingsMutex (taken BEFORE sessionMutex, the existing order): take the challenge (deleted in the same section
+ * that reads it: applied exactly once), re-check the range (the stored `about` is checked only for integers), write
+ * over whatever is stored now — the last confirmed proof wins, nothing re-bases or revokes another live challenge
+ * (review M6). Then, outside the mutex, the auto-lock alarm is re-armed when it changed and a session exists.
+ * Refusals: `unknown-challenge` (absent, expired, applied), `locked`, `malformed` (the challenge is burned, nothing
+ * written), `failed` (storage).
+ */
+export async function applySettingsChallenge(ext: Ext, deps: Pick<WalletDeps, 'now'>, challengeId: string): Promise<Result> {
+  const applied: {patch: SettingsPatch | null} = {patch: null};
+  try {
+    const out = await settingsMutex(async (): Promise<Result> => {
+      const taken = await takeSettingsChallenge(ext, deps.now(), challengeId);
+      if (taken === 'unknown-challenge' || taken === 'locked') return {ok: false, error: taken};
+      const raw: Record<string, number> = {};
+      if (taken.autoLockMinutes !== null) raw.autoLockMinutes = taken.autoLockMinutes;
+      if (taken.reauthUsdCents !== null) raw.reauthUsdCents = taken.reauthUsdCents;
+      const patch = parsePatch(raw);
+      if (patch === null) return MALFORMED;
+      await writeSettings(ext, {...(await readSettings(ext)), ...patch});
+      applied.patch = patch;
+      return {ok: true, data: {applied: 'settings'}};
+    });
+    if (out.ok && applied.patch?.autoLockMinutes !== undefined && (await getSession(ext)) !== null) await armAutolock(ext);
+    return out;
+  } catch {
+    return {ok: false, error: 'failed'};
+  }
 }
 
 async function selectAccount(ext: Ext, index: number): Promise<Result> {

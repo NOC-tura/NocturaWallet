@@ -9,7 +9,7 @@ import {CHALLENGE_ID, challengeInfo, satisfyChallenge} from './reauthChallenges'
 import {forgetWallet, readWalletView, storeEnvelope} from './accountsStore';
 import {isOpen, readPending} from './pendingStore';
 import {startPoller} from './pending';
-import {WALLET_TYPES, handleWallet, isWalletType, type Result} from './walletApi';
+import {WALLET_TYPES, applySettingsChallenge, handleWallet, isWalletType, type Result} from './walletApi';
 
 /** What the browser reports about a message's origin (runtime.MessageSender). */
 export interface Sender {
@@ -144,6 +144,10 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       const challengeId = (msg as {challengeId?: unknown}).challengeId;
       if (typeof challengeId !== 'string') return {ok: false, error: 'malformed'};
       if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
+      // E9 (D6): a settings challenge is applied here, by the background, from the patch it bound at issue — the
+      // message carries only the id. A send challenge (or an unknown one) is satisfied as before (D38).
+      const about = await challengeInfo(ext, deps.now(), challengeId);
+      if (about?.kind === 'settings') return applySettingsChallenge(ext, deps, challengeId);
       return (await satisfyChallenge(ext, deps.now(), challengeId)) ? {ok: true} : {ok: false, error: 'unknown-challenge'};
     }
     case 'vault.challengeInfo': {
