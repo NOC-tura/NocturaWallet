@@ -45,13 +45,34 @@ export function failedKind(p: Pending): Kind {
  * swaps), the RPC picker (reads and broadcast are fixed to the coordinator). `[Try again]` is a fresh prepare of
  * the same intent at #19 (rule 6: a LockedButton); the explorer link is Solscan's, checked (§6.5).
  */
-export function Failed({record, onTryAgain, onEdit, onDetails}: {record: Pending; onTryAgain: (intent: Intent) => void; onEdit: (draft: Draft) => void; onDetails: (signature: string) => void}) {
+export function Failed({
+  record,
+  canRetry,
+  onTryAgain,
+  onEdit,
+  onDetails,
+  onClose,
+}: {
+  record: Pending;
+  /**
+   * The record's account is the selected one (#27's owner rule, Task 14; final review I1): only then are [Try again] and
+   * [Edit transaction] offered — each starts a flow for the record's account, which must not run under another's.
+   */
+  canRetry: boolean;
+  onTryAgain: (intent: Intent) => void;
+  onEdit: (draft: Draft) => void;
+  onDetails: (signature: string) => void;
+  /** The back arrow and Esc while another account is selected: #11, never that account's #12 with this draft. */
+  onClose: () => void;
+}) {
   const m = useWallet();
   const kind = failedKind(record);
   const refused = m.net.mode === 'refused';
   const edit = () => onEdit(draftOf(record.intent));
-  // The design's back arrow returns to #12 with the form kept: the same as [Edit transaction].
-  useEscape(edit);
+  // The design's back arrow returns to #12 with the form kept: the same as [Edit transaction] — while the record's
+  // account is selected. Otherwise it closes to #11.
+  const back = canRetry ? edit : onClose;
+  useEscape(back);
   const head = kind === 'blockhash-expired' ? FAILED_TEXT.expiredHead : kind === 'rejected-by-program' ? FAILED_TEXT.rejectedHead : kind === 'network-error' ? FAILED_TEXT.notSentHead : FAILED_TEXT.genericHead;
   // The sub: expired, the engine's own line (its NOT_CONFIRMED; expiredSub only when the record has none); rejected, the
   // spec's adapted sentence; not-sent, 44d's own sub (its cause, the engine detail, is the reason banner's body, as 44d
@@ -64,7 +85,7 @@ export function Failed({record, onTryAgain, onEdit, onDetails}: {record: Pending
         : kind === 'network-error'
           ? FAILED_TEXT.notSentSub
           : record.detail ?? '';
-  const tryAgain = (
+  const tryAgain = !canRetry ? null : (
     <LockedButton className="btn btn-primary" disabled={refused} onPress={() => onTryAgain(record.intent)}>
       <ExtIcon name="refresh" size={18} />
       {FAILED_TEXT.tryAgain}
@@ -75,7 +96,7 @@ export function Failed({record, onTryAgain, onEdit, onDetails}: {record: Pending
   return (
     <div className="screen">
       <div className="top-bar">
-        <button type="button" className="icon-btn" aria-label="Back" onClick={edit}>
+        <button type="button" className="icon-btn" aria-label="Back" onClick={back}>
           <ExtIcon name="back" size={22} />
         </button>
         <span className="title noc-overline app-fail-eyebrow">{FAILED_TEXT.eyebrow}</span>
@@ -129,7 +150,7 @@ export function Failed({record, onTryAgain, onEdit, onDetails}: {record: Pending
       </div>
       <div className="sticky-bar">
         {kind === 'generic' ? explorer : tryAgain}
-        {kind === 'blockhash-expired' ? (
+        {kind === 'blockhash-expired' && canRetry ? (
           <button type="button" className="btn btn-secondary" onClick={edit}>
             {FAILED_TEXT.edit}
           </button>

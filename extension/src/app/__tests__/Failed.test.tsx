@@ -26,7 +26,7 @@ const SPEC = {
   genericHead: 'Transaction failed',
 };
 const caption = () => document.querySelector('.scroll-area > .noc-caption')?.textContent ?? null;
-const nav = {onTryAgain: vi.fn(), onEdit: vi.fn(), onDetails: vi.fn()};
+const nav = {onTryAgain: vi.fn(), onEdit: vi.fn(), onDetails: vi.fn(), onClose: vi.fn()};
 const INTENT = {token: 'SOL' as const, recipient: RECIPIENT, amount: 2_480_000_000n};
 const record = (over: Partial<Pending>): Pending => ({
   id: 'r1',
@@ -44,7 +44,7 @@ const record = (over: Partial<Pending>): Pending => ({
   fee: {networkLamports: 5_050n, markupLamports: 20_000n},
   ...over,
 });
-const renderFailed = (p: Pending, o: WalletOptions = {}) => renderInWallet(<Failed record={p} {...nav} />, o);
+const renderFailed = (p: Pending, o: WalletOptions = {}, canRetry = true) => renderInWallet(<Failed record={p} canRetry={canRetry} {...nav} />, o);
 const text = () => [document.querySelector('.s9-fail-hero .head')?.textContent, document.querySelector('.s9-fail-hero .sub')?.textContent ?? null, document.querySelector('.s9-reason-banner .label')?.textContent ?? null];
 
 afterEach(() => vi.clearAllMocks());
@@ -197,6 +197,32 @@ describe('#44 tx-failed', () => {
     fireEvent.click(await screen.findByRole('button', {name: 'Back'}));
     fireEvent.keyDown(document, {key: 'Escape'});
     expect(nav.onEdit).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Final whole-branch review I1: #27's owner rule on #44 — the levers that start a flow are offered only while the
+// record's account is the selected one (`canRetry`).
+describe('#44 while another account is selected (canRetry false)', () => {
+  it.each([
+    ['blockhash-expired', record({state: 'expired', detail: null})],
+    ['rejected-by-program', record({failure: 'landed', detail: 'x'})],
+    ['network-error', record({failure: 'not-sent', detail: 'x'})],
+  ] as const)('%s: no [Try again], no [Edit transaction]; the back arrow and Esc close (never #12 with the draft)', async (_kind, p) => {
+    await renderFailed(p, {}, false);
+    await screen.findByRole('button', {name: 'Back'});
+    expect(screen.queryByRole('button', {name: FAILED_TEXT.tryAgain})).toBeNull();
+    expect(screen.queryByRole('button', {name: FAILED_TEXT.edit})).toBeNull();
+    fireEvent.click(screen.getByRole('button', {name: 'Back'}));
+    fireEvent.keyDown(document, {key: 'Escape'});
+    expect(nav.onClose).toHaveBeenCalledTimes(2);
+    expect(nav.onEdit).not.toHaveBeenCalled();
+    expect(nav.onTryAgain).not.toHaveBeenCalled();
+  });
+
+  it('rejected: [View details] stays (it opens #27, which has its own owner rule)', async () => {
+    await renderFailed(record({failure: 'landed', detail: 'x'}), {}, false);
+    fireEvent.click(await screen.findByRole('button', {name: FAILED_TEXT.details}));
+    expect(nav.onDetails).toHaveBeenCalledWith(sig(7));
   });
 });
 

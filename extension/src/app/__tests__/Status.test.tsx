@@ -21,7 +21,7 @@ function Spy() {
   probe.m = useWallet();
   return null;
 }
-const nav = {onDone: vi.fn(), onDetails: vi.fn(), onActivity: vi.fn(), onTryAgain: vi.fn(), onEdit: vi.fn()};
+const nav = {onDone: vi.fn(), onDetails: vi.fn(), onActivity: vi.fn(), onTryAgain: vi.fn(), onEdit: vi.fn(), canRetry: true};
 const SIGNATURE = sig(3);
 // The record's split fee (Task 3): 5 050 network + 20 000 Noctura fee — paid only once confirmed.
 const FEE = {networkLamports: '5050', markupLamports: '20000'};

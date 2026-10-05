@@ -74,7 +74,22 @@ const OPEN: readonly PendingState[] = ['pending', 'stuck'];
  * the screen's own. No fee is shown on any of its layouts: none of them has paid one (feePaidLamports is null for
  * stuck and expired, and a re-send pays nothing new).
  */
-export function Stuck({record, now, onClose, onActivity, onTryAgain}: {record: Pending; now: number; onClose: () => void; onActivity: () => void; onTryAgain: (intent: Intent) => void}) {
+export function Stuck({
+  record,
+  now,
+  canRetry,
+  onClose,
+  onActivity,
+  onTryAgain,
+}: {
+  record: Pending;
+  now: number;
+  /** The record's account is the selected one (#27's owner rule; final review I1): only then is the expired [Try again] offered. */
+  canRetry: boolean;
+  onClose: () => void;
+  onActivity: () => void;
+  onTryAgain: (intent: Intent) => void;
+}) {
   const m = useWallet();
   const [phase, setPhase] = useState<'stuck' | 'sending' | 'sent' | 'untracked'>('stuck');
   const [line, setLine] = useState<string | null>(null);
@@ -145,6 +160,8 @@ export function Stuck({record, now, onClose, onActivity, onTryAgain}: {record: P
     return (
       <div className="screen s-stuck">
         {top(STUCK_TEXT.expiredTitle, true)}
+        {/* §7.2 (D26; final review M2): the banner says why [Try again] is disabled. */}
+        {refused ? <RefusedBanner /> : null}
         <div className="progress-state done-cancelled">
           <div className="ring">
             <ExtIcon name="close" size={26} />
@@ -157,9 +174,11 @@ export function Stuck({record, now, onClose, onActivity, onTryAgain}: {record: P
           </div>
         </div>
         <div className="sticky-bar">
-          <LockedButton className="btn btn-primary" disabled={refused} onPress={() => onTryAgain(record.intent)}>
-            {STUCK_TEXT.tryAgain}
-          </LockedButton>
+          {canRetry ? (
+            <LockedButton className="btn btn-primary" disabled={refused} onPress={() => onTryAgain(record.intent)}>
+              {STUCK_TEXT.tryAgain}
+            </LockedButton>
+          ) : null}
           <button type="button" className="btn btn-secondary" onClick={onClose}>
             {STUCK_TEXT.done}
           </button>

@@ -230,17 +230,25 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
     // The UI tab's hand-over (D38): the hash chose this screen and carries no data — #20 reads wallet.preparedFor.
     screen = confirmFor(route.account, {entry: 'resume'});
   } else if (route.screen === 'status') {
+    // #21 follows its record's account whoever is selected; #44's and #54's [Try again] and [Edit transaction] start a
+    // flow for that account, so — #27's owner rule (final review I1) — only while it is the one selected, and a tap
+    // that raced another account's selection does nothing.
     const {account} = route;
     screen = (
       <Status
         account={account}
         id={route.id}
         since={route.since}
+        canRetry={account === selected}
         onDone={() => go({type: 'reset', routes: [HOME]})}
         onDetails={signature => go({type: 'push', route: {screen: 'tx', signature, account}})}
         onActivity={() => go({type: 'tab', tab: 'activity'})}
-        onTryAgain={intent => toReview(account, intent, null)}
-        onEdit={draft => toSend(draft, null)}
+        onTryAgain={intent => {
+          if (account === selected) toReview(account, intent, null);
+        }}
+        onEdit={draft => {
+          if (account === selected) toSend(draft, null);
+        }}
       />
     );
   } else {

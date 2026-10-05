@@ -213,6 +213,8 @@ export function TxDetail({
       <div className="screen s-txd">
         {top}
         <div className="scroll">
+          {/* §7.2 (D26; final review M2, carry c): the banner says why [Try again] is disabled. */}
+          {m.net.mode === 'refused' ? <RefusedBanner /> : null}
           <div className="amount-card app-failed">
             {/*
               A failed send carries what it tried to send (core/solana/history.ts, plan 3 owner question 1,

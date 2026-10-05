@@ -709,3 +709,73 @@ describe('#27 from #21 reads its owner’s history', () => {
   });
 });
 
+
+// Final whole-branch review (plan 3): the owner rule on #44 and #54, a lock during a discard, the resume hash's account,
+// and #20's pending block lifting while shown.
+describe('final review: owner rule, discards under a lock, the resume hash, a pending send settling', () => {
+  /** A's send through the flow (#20's one tap), #21 following it — then B selected in another window. */
+  async function sentThenB() {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const w = await app({known: true});
+    fireEvent.click(await sendButton());
+    expect(await screen.findByText(STATUS_TEXT.broadcasting)).toBeTruthy();
+    expect((await w.engine.select(SECOND.index)).ok).toBe(true);
+    await act(async () => void vi.advanceTimersByTime(STATE_POLL_MS + 50));
+    expect(screen.getByText(STATUS_TEXT.broadcasting)).toBeTruthy();
+    return w;
+  }
+
+  it('I1: A’s send fails (#44, blockhash expired) while B is selected: no [Try again], no [Edit transaction]; Back goes to #11, never B’s #12 — nothing prepared; A selected again, both return', async () => {
+    const w = await sentThenB();
+    await setRecords(w, r => ({...r, state: 'expired', detail: null}));
+    await act(async () => void vi.advanceTimersByTime(2_000));
+    expect(await screen.findByText(FAILED_TEXT.expiredHead)).toBeTruthy();
+    expect(screen.queryByRole('button', {name: FAILED_TEXT.tryAgain})).toBeNull();
+    expect(screen.queryByRole('button', {name: FAILED_TEXT.edit})).toBeNull();
+    // A selected again: the record's account is the selected one, and the levers come back.
+    expect((await w.engine.select(ACCOUNT.index)).ok).toBe(true);
+    await act(async () => void vi.advanceTimersByTime(STATE_POLL_MS + 50));
+    expect(await screen.findByRole('button', {name: FAILED_TEXT.tryAgain})).toBeTruthy();
+    expect(screen.getByRole('button', {name: FAILED_TEXT.edit})).toBeTruthy();
+    expect((await w.engine.select(SECOND.index)).ok).toBe(true);
+    await act(async () => void vi.advanceTimersByTime(STATE_POLL_MS + 50));
+    await waitFor(() => expect(screen.queryByRole('button', {name: FAILED_TEXT.tryAgain})).toBeNull());
+    fireEvent.click(screen.getByRole('button', {name: 'Back'}));
+    expect(await screen.findByText('TOKENS')).toBeTruthy();
+    expect(screen.queryByText('Send', {selector: '.title'})).toBeNull();
+    expect(count(w, 'wallet.prepareSend')).toBe(0);
+    expect(w.sends()).toBe(1);
+  });
+
+  it('I1: A’s send fails (#44, not sent) while B is selected: no [Try again]; a press that raced the switch prepares nothing', async () => {
+    const w = await sentThenB();
+    await setRecords(w, r => ({...r, state: 'failed', failure: 'not-sent', detail: 'The network did not take it.'}));
+    await act(async () => void vi.advanceTimersByTime(2_000));
+    expect(await screen.findByText(FAILED_TEXT.notSentHead)).toBeTruthy();
+    expect(screen.queryByRole('button', {name: FAILED_TEXT.tryAgain})).toBeNull();
+    expect(screen.queryByRole('button', {name: FAILED_TEXT.edit})).toBeNull();
+    fireEvent.keyDown(document, {key: 'Escape'});
+    expect(await screen.findByText('TOKENS')).toBeTruthy();
+    expect(count(w, 'wallet.prepareSend')).toBe(0);
+  });
+
+  it('I1: A’s send expires on #54 while B is selected: no [Try again] (only [Done]) — nothing prepared', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const w = await app({known: true});
+    fireEvent.click(await sendButton());
+    expect(await screen.findByText(STATUS_TEXT.broadcasting)).toBeTruthy();
+    await act(async () => void vi.advanceTimersByTime(91_000));
+    expect(await screen.findByText(STUCK_TEXT.title)).toBeTruthy();
+    expect((await w.engine.select(SECOND.index)).ok).toBe(true);
+    await act(async () => void vi.advanceTimersByTime(STATE_POLL_MS + 50));
+    await setRecords(w, r => ({...r, state: 'expired', detail: null}));
+    await act(async () => void vi.advanceTimersByTime(2_000));
+    expect(await screen.findByText(STUCK_TEXT.expiredHead)).toBeTruthy();
+    expect(screen.queryByRole('button', {name: STUCK_TEXT.tryAgain})).toBeNull();
+    fireEvent.click(screen.getByRole('button', {name: STUCK_TEXT.done}));
+    expect(await screen.findByText('TOKENS')).toBeTruthy();
+    expect(count(w, 'wallet.prepareSend')).toBe(0);
+    expect(w.sent).not.toContain('wallet.resend');
+  });
+
+});

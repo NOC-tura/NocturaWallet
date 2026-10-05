@@ -222,8 +222,11 @@ describe('#27 tx-detail', () => {
     );
     const again = (await screen.findByRole('button', {name: 'Try again'})) as HTMLButtonElement;
     expect(again.disabled).toBe(false);
+    expect(screen.queryByText(REFUSED_TEXT)).toBeNull();
     fireEvent.click(screen.getByRole('button', {name: 'refuse'}));
     await waitFor(() => expect(again.disabled).toBe(true));
+    // Final whole-branch review M2 (carry c): §7.2 — the D26 banner says why it is disabled.
+    expect(screen.getByText(REFUSED_TEXT)).toBeTruthy();
     again.disabled = false;
     fireEvent.click(again);
     expect(tryAgain).not.toHaveBeenCalled();

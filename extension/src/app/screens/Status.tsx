@@ -66,6 +66,8 @@ interface Props {
   onDone: () => void;
   onDetails: (signature: string) => void;
   onActivity: () => void;
+  /** The record's account is the selected one: #44's and #54's [Try again] / [Edit transaction] only then (final review I1). */
+  canRetry: boolean;
   onTryAgain: (intent: Intent) => void;
   onEdit: (draft: Draft) => void;
 }
@@ -101,7 +103,7 @@ interface Seen {
  * the read checks it is still its generation's (unmount, a settled record) and not older than one already applied;
  * once a record is settled (confirmed, failed, expired) the reads stop, so no later answer moves the screen.
  */
-function Tracked({account, id, since, onDone, onDetails, onActivity, onTryAgain, onEdit}: Props) {
+function Tracked({account, id, since, canRetry, onDone, onDetails, onActivity, onTryAgain, onEdit}: Props) {
   const m = useWallet();
   const {engine, now: clock, platform, surface} = m;
   const now = useNow(1_000, clock);
@@ -178,8 +180,8 @@ function Tracked({account, id, since, onDone, onDetails, onActivity, onTryAgain,
   }, [toStuck]);
   useEscape(onDone, success);
 
-  if (record !== null && toFailed) return <Failed record={record} onTryAgain={onTryAgain} onEdit={onEdit} onDetails={onDetails} />;
-  if (record !== null && toStuck) return <Stuck record={record} now={now} onClose={onDone} onActivity={onActivity} onTryAgain={onTryAgain} />;
+  if (record !== null && toFailed) return <Failed record={record} canRetry={canRetry} onTryAgain={onTryAgain} onEdit={onEdit} onDetails={onDetails} onClose={onDone} />;
+  if (record !== null && toStuck) return <Stuck record={record} now={now} canRetry={canRetry} onClose={onDone} onActivity={onActivity} onTryAgain={onTryAgain} />;
 
   if (record === null) {
     // A failed read before any answered: the outcome is not known, so the check-pending line and a way out.

@@ -15,7 +15,7 @@ import type {Engine, Pending} from '../engine';
 
 // Spec §4.8 (#54, D23): the design's layout, only the levers differ — "Send again" re-sends the same signed bytes.
 const SELECTORS = selectorsOf(UI_SHEETS);
-const nav = {onClose: vi.fn(), onActivity: vi.fn(), onTryAgain: vi.fn()};
+const nav = {onClose: vi.fn(), onActivity: vi.fn(), onTryAgain: vi.fn(), canRetry: true};
 const WIRE = signedWire(2_480_000_000n);
 const SIGNATURE = firstSignature(WIRE);
 const CREATED = 1_000_000_000_000;
@@ -226,6 +226,34 @@ describe('#54 stuck-tx — the safe variant', () => {
     fireEvent.click(screen.getByRole('button', {name: STUCK_TEXT.done}));
     expect(nav.onClose).toHaveBeenCalledTimes(1);
     expect(unstyledClasses(document.querySelector('.s-stuck')!, SELECTORS)).toEqual([]);
+  });
+
+  // Final whole-branch review I1: #27's owner rule on #54's expired layout.
+  it('expired while another account is selected (canRetry false): no [Try again] — [Done] only', async () => {
+    await renderInWallet(<Stuck record={view({state: 'expired'})} now={CREATED + 94_000} {...nav} canRetry={false} />, {before: ext => ext.local.set(PENDING_KEY, [stored({state: 'expired'})])});
+    expect(await screen.findByText(STUCK_TEXT.expiredHead)).toBeTruthy();
+    expect(screen.queryByRole('button', {name: STUCK_TEXT.tryAgain})).toBeNull();
+    fireEvent.click(screen.getByRole('button', {name: STUCK_TEXT.done}));
+    expect(nav.onClose).toHaveBeenCalledTimes(1);
+    expect(nav.onTryAgain).not.toHaveBeenCalled();
+  });
+
+  // Final whole-branch review M2 (carry c): §7.2 — the D26 banner on the screen whose button the cool-down disabled.
+  it('expired in the 403 cool-down (D26): the banner, and [Try again] disabled (a click, `disabled` lifted, proposes nothing)', async () => {
+    await renderStuck(view({state: 'expired'}), {
+      reader: walletReader({
+        getBalance: async () => {
+          throw new RpcForbidden('getBalance');
+        },
+      }),
+    });
+    expect(await screen.findByText(STUCK_TEXT.expiredHead)).toBeTruthy();
+    expect(await screen.findByText(REFUSED_TEXT)).toBeTruthy();
+    const again = screen.getByRole('button', {name: STUCK_TEXT.tryAgain}) as HTMLButtonElement;
+    expect(again.disabled).toBe(true);
+    again.disabled = false;
+    fireEvent.click(again);
+    expect(nav.onTryAgain).not.toHaveBeenCalled();
   });
 
   it('expired is the engine’s word, never the screen’s: a stuck record long past its block and clock stays stuck; an expired one is expired however young', async () => {
