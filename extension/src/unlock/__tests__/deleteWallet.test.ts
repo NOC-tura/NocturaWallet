@@ -2,7 +2,8 @@ import {readFileSync, readdirSync, statSync} from 'node:fs';
 import {join, relative, sep} from 'node:path';
 import {argon2idAsync} from '@noble/hashes/argon2.js';
 import {createEnvelope, type EnvelopeV1, type Kdf} from '../../vault/envelope';
-import {derivePublicKeys} from '../../vault/accounts';
+import {derivePublicKeys, deriveSessionAccounts} from '../../vault/accounts';
+import {getSession} from '../../background/session';
 import {VAULT_KEY} from '../../background/accountsStore';
 import {handleMessage} from '../../background/messages';
 import {KNOWN_RECIPIENTS_KEY} from '../../background/knownRecipients';
@@ -75,8 +76,12 @@ describe('deleteWallet (E11)', () => {
 
   it('send-open: refused, the vault intact (the background locked the wallet)', async () => {
     const b = await background({pending: true});
+    // Fix round 1 (M1): unlocked first, so "left locked" is a claim the test can see fail.
+    expect(await b.send({type: 'vault.setKeys', accounts: await deriveSessionAccounts(M, 'slip10', [0])})).toEqual({ok: true});
+    expect(await getSession(b.ext)).not.toBeNull();
     expect(await deleteWallet(b.send, await proof(b))).toBe('send-open');
     expect(await b.read()).toBeDefined();
+    expect(await getSession(b.ext)).toBeNull();
   });
 
   it('maps every refusal: busy, unlocked, no-wallet, damaged (stored-invalid), and the guard-only codes as failed', async () => {

@@ -71,6 +71,50 @@ describe('runReveal (spec §2: the phrase, only after a proof, only in the vault
     expect(both.prfOutput.every(b => b === 0)).toBe(true);
   });
 
+  it('fix round 1 (I1): refused on the key, not its value — prfOutput: undefined, and a getter read once', async () => {
+    const {deps, sent} = await setup(MNEMONIC);
+    let reads = 0;
+    const counted = {...deps, readEnvelope: async () => (reads++, deps.readEnvelope())};
+    // (a) the key present, its value undefined.
+    expect(await runReveal(counted, {password: PASSWORD, kdf, prfOutput: undefined} as unknown as {password: string; kdf: Kdf})).toEqual({outcome: 'failed'});
+    // (b) a getter that answers undefined first and the PRF after: read once, refused, nothing opened.
+    const prf = crypto.getRandomValues(new Uint8Array(32));
+    let gets = 0;
+    const sly = {password: 'not the password', kdf};
+    Object.defineProperty(sly, 'prfOutput', {enumerable: true, get: () => (gets++ === 0 ? undefined : prf)});
+    expect(await runReveal(counted, sly)).toEqual({outcome: 'failed'});
+    expect(gets).toBe(1);
+    // (c) the same getter the other way round: the bytes it handed over are zeroed.
+    const prf2 = crypto.getRandomValues(new Uint8Array(32));
+    let gets2 = 0;
+    const sly2 = {password: PASSWORD, kdf};
+    Object.defineProperty(sly2, 'prfOutput', {enumerable: true, get: () => (gets2++ === 0 ? prf2 : undefined)});
+    expect(await runReveal(counted, sly2)).toEqual({outcome: 'failed'});
+    expect(prf2.every(b => b === 0)).toBe(true);
+    expect(reads).toBe(0);
+    expect(sent).toEqual([]);
+  });
+
+  it('fix round 1 (I1): openProven gets a fresh password factor — a proxy whose `has` answers later cannot pick the passkey path', async () => {
+    const {deps} = await setup(MNEMONIC);
+    const prf = crypto.getRandomValues(new Uint8Array(32));
+    // A spy on the PRF path: it must never be chosen.
+    const spy = vi.spyOn(envelopeModule, 'unlockWithPrf').mockImplementation(async () => {
+      throw new Error('the passkey path was chosen');
+    });
+    let has = 0;
+    const proxy = new Proxy({password: 'not the password', kdf} as Record<string, unknown>, {
+      has: (t, k) => (k === 'prfOutput' ? has++ > 0 : k in t),
+      get: (t, k) => (k === 'prfOutput' ? prf : t[k as string]),
+    });
+    try {
+      expect(await runReveal(deps, proxy as unknown as {password: string; kdf: Kdf})).toEqual({outcome: 'wrong'});
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('recordVerified: sends only the fact (no word of the phrase); true when the background says so', async () => {
     const {deps, sent} = await setup(MNEMONIC);
     expect(await recordVerified(deps.send)).toBe(true);
