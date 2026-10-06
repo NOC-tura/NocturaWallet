@@ -149,12 +149,13 @@ export function mountChangePassword(deps: PageDeps): ChangePasswordScreen {
     if (ttl !== null) deps.timers.clearTimeout(ttl);
     ttl = deps.timers.setTimeout(() => {
       ttl = null;
-      if (held !== null) dropped();
+      // Fix round 1 (C1): while `changing` the proof belongs to changePassword — nothing here touches it.
+      if (held !== null && phase !== 'changing') dropped();
     }, HOLD_TTL_MS);
   };
-  /** True — and the proof is dropped — when the deadline has passed (whatever the timer did). */
+  /** True — and the proof is dropped — when the deadline has passed (whatever the timer did). Never while `changing` (C1). */
   const expired = (): boolean => {
-    if (held === null || deps.timers.now() < deadline) return false;
+    if (phase === 'changing' || held === null || deps.timers.now() < deadline) return false;
     dropped();
     return true;
   };
@@ -273,6 +274,10 @@ export function mountChangePassword(deps: PageDeps): ChangePasswordScreen {
       }
       const proof = held;
       const password = chosen;
+      // Fix round 1 (C1): ownership passes to changePassword BEFORE the await — it wraps this key after its Argon2id run
+      // and zeroes it in its own `finally`. A drop on this page (pagehide, the deadline seen on `visible`) must never
+      // zero the key mid-wrap: that stored a wrap of an all-zero key and bricked the wallet.
+      held = null;
       field.value = '';
       phase = 'changing';
       if (ttl !== null) deps.timers.clearTimeout(ttl);
@@ -280,7 +285,6 @@ export function mountChangePassword(deps: PageDeps): ChangePasswordScreen {
       render();
       // changePassword zeroes the data key on every path: the proof is spent either way.
       const out = await changePassword({send: deps.send, kdf: deps.kdf}, proof, password);
-      held = null;
       chosen = null;
       if (out === 'changed') {
         phase = 'done';
@@ -384,6 +388,8 @@ export function mountChangePassword(deps: PageDeps): ChangePasswordScreen {
   // The M2 ruling: a hidden tab keeps steps 2–3 and the held key (a password manager is in another tab). Step 1's typed
   // password follows 2a's rule. `pagehide` drops everything (the page may sit in the back/forward cache).
   deps.onLeave(why => {
+    // Fix round 1 (C1): the send is in flight and owns the proof; it finishes (or fails) on its own.
+    if (phase === 'changing') return;
     if (why === 'pagehide') {
       if (held !== null || chosen !== null) dropped();
       else {
@@ -393,9 +399,15 @@ export function mountChangePassword(deps: PageDeps): ChangePasswordScreen {
       }
       return;
     }
-    if (phase === 'step1') field.value = '';
+    if (phase === 'step1') {
+      field.value = '';
+      // Fix round 1 (M1): [Continue] follows the emptied field.
+      render();
+    }
   });
   deps.onReturn(why => {
+    // Fix round 1 (C1): never while `changing` — the proof is changePassword's.
+    if (phase === 'changing') return;
     // `restored`: back from the back/forward cache, where timers were frozen (review M1).
     if (why === 'visible' || why === 'restored') expired();
   });

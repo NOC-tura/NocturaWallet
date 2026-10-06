@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {addPasskeyWrap, createEnvelope, unlockWithPassword, type EnvelopeV1, type Kdf} from '../../vault/envelope';
+import {addPasskeyWrap, createEnvelope, decryptMnemonic, unlockWithPassword, type EnvelopeV1, type Kdf} from '../../vault/envelope';
 import {deriveSessionAccounts} from '../../vault/accounts';
 import {VAULT_KEY} from '../../background/accountsStore';
 import {setSession} from '../../background/session';
@@ -9,6 +9,26 @@ import {startMode} from '../modes';
 import {pageMode} from '../mode';
 import type {Send} from '../types';
 import {click, el, harness, loadPage, testKdf, text, type, unstyled, visible, type Harness} from './pageHarness';
+
+// Task 8 fix round 1 (I1): the real proveCurrent, with each proven data key's buffer kept so a test can see it zeroed.
+const proofs = vi.hoisted(() => ({keys: [] as Uint8Array[]}));
+vi.mock('../passwordFlow', async importOriginal => {
+  const actual = await importOriginal<typeof import('../passwordFlow')>();
+  return {
+    ...actual,
+    proveCurrent: async (...args: Parameters<typeof actual.proveCurrent>) => {
+      const r = await actual.proveCurrent(...args);
+      if (r.outcome === 'proven') proofs.keys.push(r.held.dataKey);
+      return r;
+    },
+  };
+});
+const lastKey = (): Uint8Array => {
+  const k = proofs.keys.at(-1);
+  if (k === undefined) throw new Error('no proof was made');
+  return k;
+};
+const zeroed = (k: Uint8Array) => k.every(b => b === 0);
 
 // B1b-2b §3.1 (#36, E10, D8, C20) against the REAL background and the real unlock.html.
 const M = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -223,7 +243,10 @@ describe('#36 memory (M2 ruling, C20)', () => {
     const {h, screen} = await shown();
     await toStep2(h);
     type(field(), 'half typed new');
+    const key = lastKey();
+    expect(zeroed(key)).toBe(false);
     h.leave('pagehide');
+    expect(zeroed(key)).toBe(true);
     expect(screen.holds()).toEqual({key: false, password: false});
     expect(text(el('cp-step'))).toBe('Step 1 of 3');
     expect(text(el('cp-helper'))).toBe('Enter your current password again.');
@@ -236,6 +259,7 @@ describe('#36 memory (M2 ruling, C20)', () => {
     h.timers.advance(HOLD_TTL_MS - 1);
     expect(screen.holds().key).toBe(true);
     h.timers.advance(1);
+    expect(zeroed(lastKey())).toBe(true);
     expect(screen.holds()).toEqual({key: false, password: false});
     expect(text(el('cp-helper'))).toBe('Enter your current password again.');
   });
@@ -333,9 +357,64 @@ describe('#36 memory (M2 ruling, C20)', () => {
     click(el('cp-x'));
     await h.until(() => visible(el('v-cp-cancel')));
     await idle(h);
+    const key = lastKey();
+    expect(zeroed(key)).toBe(false);
     click(el('cpc-cancel'));
     await h.until(() => h.closed === 1);
+    expect(zeroed(key)).toBe(true);
     expect(screen.holds()).toEqual({key: false, password: false});
+  });
+
+  /**
+   * Task 8 fix round 1 (C1): once step 3 sends, changePassword owns the proof. A drop during its Argon2id run must not
+   * zero the key it is about to wrap — that stored a wrap of an all-zero key, both self-checks passed, the page said
+   * "Password updated." and neither password opened the wallet again.
+   */
+  async function duringStep3Kdf(during: (h: Harness) => void) {
+    const {h, screen, env} = await shown();
+    await toStep3(h);
+    const original = await unlockWithPassword(env, OLD, testKdf);
+    const key = lastKey();
+    let mid: {held: boolean; changing: boolean; step: string; intact: boolean} | null = null;
+    const deps = h.deps as {kdf: Kdf};
+    deps.kdf = async (pw, salt, params) => {
+      during(h);
+      mid = {held: screen.holds().key, changing: visible(el('cp-changing')), step: text(el('cp-step')), intact: !zeroed(key)};
+      return testKdf(pw, salt, params);
+    };
+    await submit(h, NEW);
+    await h.until(() => text(el('cp-notice-line')) === 'Password updated.');
+    // The screen had handed the proof over (it holds nothing), the change kept going, and the key was intact.
+    expect(mid).toEqual({held: false, changing: true, step: 'Step 3 of 3', intact: true});
+    const after = (await h.ext.local.get(VAULT_KEY)) as EnvelopeV1;
+    const opened = await unlockWithPassword(after, NEW, testKdf);
+    expect(zeroed(opened)).toBe(false);
+    expect([...opened]).toEqual([...original]);
+    expect(await decryptMnemonic(after, opened)).toBe(M);
+    // changePassword zeroed the key it was handed once it answered.
+    expect(zeroed(key)).toBe(true);
+  }
+
+  it('C1: pagehide during step 3\'s KDF — the change completes with the ORIGINAL data key, the seed decrypts', async () => {
+    await duringStep3Kdf(h => h.leave('pagehide'));
+  });
+
+  it.each(['visible', 'restored'] as const)('C1: hidden → the deadline skipped → %s during step 3\'s KDF — the change completes with the ORIGINAL data key', async why => {
+    await duringStep3Kdf(h => {
+      h.leave('hidden');
+      h.timers.skip(HOLD_TTL_MS + 1);
+      h.back(why);
+    });
+  });
+
+  it('M1 (fix round 1): hidden at step 1 empties the field AND disables Continue', async () => {
+    const {h} = await shown();
+    await idle(h);
+    type(field(), OLD);
+    expect(cta().disabled).toBe(false);
+    h.leave('hidden');
+    expect(field().value).toBe('');
+    expect(cta().disabled).toBe(true);
   });
 
   it('the X at step 1 closes at once (nothing held)', async () => {

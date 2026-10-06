@@ -27,6 +27,22 @@ describe('rewrapPassword', () => {
     expect(dk.some(b => b !== 0)).toBe(true);
   });
 
+  it('fix round 1 (Task 8 C1): the caller zeroing its buffer DURING the KDF does not change what is wrapped — the private copy is', async () => {
+    const env = await make();
+    const dk = await unlockWithPassword(env, OLD, kdf);
+    const original = dk.slice();
+    const {salt, wrapped} = await rewrapPassword(env, dk, NEW, async (pw, s, params) => {
+      // The screen dropping its held proof while Argon2id runs.
+      dk.fill(0);
+      return kdf(pw, s, params);
+    });
+    const next = {...env, kdf: {...env.kdf, salt}, password: {wrapped}};
+    const opened = await unlockWithPassword(next, NEW, kdf);
+    expect([...opened]).toEqual([...original]);
+    expect(opened.some(b => b !== 0)).toBe(true);
+    expect(await decryptMnemonic(next, opened)).toBe(MNEMONIC);
+  });
+
   it('uses the stored cost: the KDF is asked for exactly the envelope’s m, t, p', async () => {
     const env = await make();
     const dk = await unlockWithPassword(env, OLD, kdf);
