@@ -497,3 +497,148 @@ describe('the accounts mode: carries', () => {
     expect(text(el('acc-helper'))).toBe(DONE);
   });
 });
+
+// Task 12 fix round 1 (review): the remove is bound to the address the page showed; two pins; the helper while cooling;
+// the unknown-index heading; Enter in the number field.
+describe('the accounts mode: fix round 1', () => {
+  const idle = (h: Harness) => h.until(() => !h.deps.gate.isBusy());
+  const OTHER = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
+  const CHANGED = 'The wallet in this browser changed. Check the address and try again.';
+  const shownAddress = () => [...el('acc-address').querySelectorAll('.addr-groups span')].map(s => s.textContent).join('');
+  /** Wallet B: another phrase under the SAME password, accounts 0 and 1. */
+  async function walletB() {
+    const keys = await deriveSessionAccounts(OTHER, 'slip10', [0, 1]);
+    const env = await createEnvelope({mnemonic: OTHER, password: PW, scheme: 'slip10', accounts: keys.map(k => ({index: k.index, name: `Account ${k.index + 1}`, publicKey: k.publicKey})), kdf: testKdf});
+    return {env, keys};
+  }
+
+  it('I1: another wallet swapped in after load (same password, unlocked) — nothing proven, O14, its address shown; never charged', async () => {
+    const {h} = await shown({op: 'remove', index: 1}, {indexes: [0, 1]});
+    const b = await walletB();
+    await h.ext.local.set(VAULT_KEY, b.env);
+    await setSession(h.ext, b.keys);
+    withPassword();
+    await h.until(() => text(el('acc-helper')) === CHANGED);
+    await idle(h);
+    expect(h.sent.filter(m => m.type === 'vault.status')).toEqual([]);
+    expect(h.sent.filter(m => m.type === 'vault.storeEnvelope')).toEqual([]);
+    expect(await stored(h)).toEqual(b.env);
+    expect(shownAddress()).toBe(b.keys[1]?.publicKey);
+    expect(visible(el('acc-act'))).toBe(true);
+    // Never charged to the backoff: the next wrong password is the FIRST wrong one — no cooldown.
+    withPassword('nope nope nope nope');
+    await h.until(() => text(el('acc-helper')) === 'That did not confirm it.');
+    await idle(h);
+    expect(visible(el('acc-cooldown'))).toBe(false);
+    // The address now on screen is the one a proof removes.
+    withPassword();
+    await h.until(() => text(el('acc-helper')) === DONE);
+    expect((await stored(h)).accounts.map(a => a.publicKey)).toEqual([b.keys[0]?.publicKey]);
+  });
+
+  it('I1: the passkey path compares before the prompt — the authenticator is never asked', async () => {
+    let gets = 0;
+    const credentials: CredentialsApi = {create: async () => null, get: async () => (gets++, {getClientExtensionResults: () => ({prf: {results: {first: PRF.slice().buffer}}})}) as unknown as Credential};
+    const {h} = await shown({op: 'remove', index: 1}, {indexes: [0, 1], passkey: true, credentials});
+    const b = await walletB();
+    await h.ext.local.set(VAULT_KEY, b.env);
+    await setSession(h.ext, b.keys);
+    click(el('acc-passkey'));
+    await h.until(() => text(el('acc-helper')) === CHANGED);
+    await idle(h);
+    expect(gets).toBe(0);
+    expect(h.sent.filter(m => m.type === 'vault.status')).toEqual([]);
+    expect(shownAddress()).toBe(b.keys[1]?.publicKey);
+    // B has no passkey: the reload offers none.
+    expect(visible(el('acc-passkey'))).toBe(false);
+  });
+
+  it('I1: swapped between the click’s check and the flow’s own read — refused at that read, before any proof; nothing locked', async () => {
+    const {h} = await shown({op: 'remove', index: 1}, {indexes: [0, 1]});
+    const b = await walletB();
+    const read = h.deps.store.readEnvelope;
+    let reads = 0;
+    h.deps.store.readEnvelope = async () => {
+      reads += 1;
+      if (reads === 2) await h.ext.local.set(VAULT_KEY, b.env);
+      return read();
+    };
+    withPassword();
+    await h.until(() => text(el('acc-helper')) === CHANGED);
+    await idle(h);
+    expect(h.sent.filter(m => m.type === 'vault.status')).toEqual([]);
+    expect(h.sent.filter(m => m.type === 'vault.storeEnvelope')).toEqual([]);
+    expect(h.sent.filter(m => m.type === 'vault.lock')).toEqual([]);
+    expect(await stored(h)).toEqual(b.env);
+    expect(shownAddress()).toBe(b.keys[1]?.publicKey);
+  });
+
+  it('pin (a): on an envelope ordered [0, 2, 1], index=1 shows AND removes envelope index 1 — never list position 1', async () => {
+    const {h, keys} = await shown({op: 'remove', index: 1}, {indexes: [0, 2, 1]});
+    const one = keys.find(k => k.index === 1)?.publicKey;
+    expect(text(el('acc-title'))).toBe('Remove Account 2?');
+    expect(shownAddress()).toBe(one);
+    withPassword();
+    await h.until(() => text(el('acc-helper')) === DONE);
+    const after = await stored(h);
+    expect(after.accounts.map(a => a.index)).toEqual([0, 2]);
+    expect(after.accounts.some(a => a.publicKey === one)).toBe(false);
+  });
+
+  it('pin (b): pagehide inside the store’s answer — the only message after it is vault.lock (no vault.setKeys)', async () => {
+    let hh: Harness | null = null;
+    const s = await shown(
+      {op: 'remove', index: 1},
+      {
+        indexes: [0, 1],
+        send: inner => async m => {
+          const r = await inner(m);
+          if ((m as {type: string}).type === 'vault.storeEnvelope') hh?.leave('pagehide');
+          return r;
+        },
+      },
+    );
+    hh = s.h;
+    withPassword();
+    await idle(s.h);
+    await new Promise(r => setTimeout(r, 20));
+    const types = s.h.sent.map(m => m.type);
+    const at = types.indexOf('vault.storeEnvelope');
+    expect(at).toBeGreaterThan(-1);
+    // After the store: vault.lock, then only the reload's own read (no message — readEnvelope reads storage).
+    expect(types.slice(at + 1)).toEqual(['vault.lock']);
+  });
+
+  it('the helper line is hidden while cooling (as delete and #6 manage)', async () => {
+    const {h} = await shown({op: 'add'}, {holdSleep: true});
+    withPassword('nope nope nope nope');
+    await h.until(() => text(el('acc-helper')) === 'That did not confirm it.');
+    h.wake();
+    await idle(h);
+    expect(visible(el('acc-helper'))).toBe(true);
+    withPassword('nope nope nope nope');
+    await h.until(() => visible(el('acc-cooldown')));
+    expect(visible(el('acc-helper'))).toBe(false);
+    h.wake();
+    await h.until(() => !h.deps.gate.isBusy() || (h.wake(), false));
+    expect(visible(el('acc-helper'))).toBe(true);
+  });
+
+  it('unknown-index leaves no empty heading', async () => {
+    await shown({op: 'remove', index: 7}, {indexes: [0, 1]});
+    expect(visible(el('acc-title'))).toBe(false);
+    loadPage();
+    await shown({op: 'remove', index: 1}, {indexes: [0, 1]});
+    expect(visible(el('acc-title'))).toBe(true);
+  });
+
+  it('Enter in the "Account number" field submits (the same gated action)', async () => {
+    const {h} = await shown({op: 'add'}, {indexes: [0, 1]});
+    type(el<HTMLInputElement>('acc-password'), PW);
+    type(el<HTMLInputElement>('acc-index'), '5');
+    el('acc-index').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true}));
+    await h.until(() => text(el('acc-helper')) === DONE);
+    expect((await stored(h)).accounts.map(a => a.index)).toEqual([0, 1, 4]);
+    expect(h.sent.filter(m => m.type === 'vault.status')).toHaveLength(1);
+  });
+});

@@ -1118,7 +1118,9 @@ It never replaces or hides the first-send warning.
 | case | where | copy | source |
 |---|---|---|---|
 | wrong factor | every vault mode | "That did not confirm it." → cooldown "That did not confirm it. Wait a moment before trying again." + "Confirm paused" | COMMON (2a) |
-| `busy` (revision moved) | #36, delete, passkey remove, accounts | "The wallet changed while you were typing. Start again." + `[Start again]` | RESTORE (2a) |
+| `busy` (revision moved) | #36, delete, passkey remove | "The wallet changed while you were typing. Start again." + `[Start again]` | RESTORE (2a) |
+| revision moved (accounts) | accounts add / remove | no `busy` outcome: the flow runs once more silently (a fresh read and a fresh proof, `accountsFlow.ts` `withProvenSeed`), and a second move is `failed` "Something went wrong." (Task 12 fix round 1 ruling: §7 corrected to the code) | ACCOUNTS (2a) |
+| shown address gone (accounts remove) | accounts remove | the envelope no longer holds the shown address at the URL's index (another wallet, or the account changed): the page re-reads and shows what is there now, "The wallet in this browser changed. Check the address and try again." — checked at the click before any KDF or passkey prompt, and on each read the flow proves against; never charged (Task 12 fix round 1, as C17) | O14 (reused) |
 | `send-open` (wallet) | delete | "A transaction from this wallet is still pending. Wait until it confirms or expires — about two minutes — then try again." + "The wallet has been locked. Nothing was deleted." | RESTORE (2a) + O15 |
 | `send-open` (account) | accounts remove, manager | "A transaction from this account is still pending. Wait until it confirms or expires — about two minutes — then try again." | → adapted |
 | `unlocked` mid-delete | delete | "The wallet was unlocked while this was running, so nothing was deleted. Start again." | RESTORE (2a) |

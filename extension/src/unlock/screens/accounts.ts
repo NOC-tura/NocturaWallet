@@ -7,7 +7,7 @@ import {createWrongBackoff} from '../orchestrate';
 import {exclusive, type PageDeps} from '../page';
 import {storedVault} from '../stored';
 import type {Send, VaultStore} from '../types';
-import {ACCOUNTS, COMMON, cooldownLabel} from '../strings';
+import {ACCOUNTS, COMMON, DELETE, cooldownLabel} from '../strings';
 import {byId, setText, showScreen, shown} from '../view/dom';
 import {startCooldown} from '../view/cooldown';
 import {addressGroups} from '../view/words';
@@ -83,6 +83,8 @@ export function mountAccounts(deps: PageDeps): AccountsScreen {
   let pk: NonNullable<EnvelopeV1['passkey']> | null = null;
   let typed: string | null = null;
   let stopCooldown: (() => void) | null = null;
+  /** remove: the address the page showed for the URL's index — the only account a proof from this page may remove. */
+  let shownKey: string | null = null;
   /** Bumped on `pagehide`: an action in flight that sees a new value stops before its next call out. */
   let generation = 0;
 
@@ -108,6 +110,8 @@ export function mountAccounts(deps: PageDeps): AccountsScreen {
     shown(part.passwordLabel, form);
     shown(part.form, form);
     shown(part.cooldown, cooling);
+    shown(helperEl, !cooling);
+    shown(part.title, (part.title.textContent ?? '') !== '');
     shown(part.paused, cooling);
     shown(act, form);
     setText(act, remove ? ACCOUNTS.remove : ACCOUNTS.add);
@@ -161,6 +165,7 @@ export function mountAccounts(deps: PageDeps): AccountsScreen {
     view = 'loading';
     actions = [];
     pk = null;
+    shownKey = null;
     endCooldown();
     helper('');
     help('');
@@ -184,11 +189,49 @@ export function mountAccounts(deps: PageDeps): AccountsScreen {
       if (index === null || account === undefined) return end(ACCOUNTS.outcome['no-such-account'], '', []);
       setText(part.title, ACCOUNTS.removeTitle(index + 1));
       part.address.replaceChildren(addressGroups(account.publicKey));
+      shownKey = account.publicKey;
     }
     pk = env.passkey ?? null;
     view = 'entry';
     render();
     field.focus();
+  };
+
+  /**
+   * Fix round 1 (review I1, as delete's C17): does `raw` still hold, at the URL's index, the address this page showed?
+   * Add binds nothing (it shows no address).
+   */
+  const holdsShown = (raw: unknown): boolean => {
+    if (op.op !== 'remove') return true;
+    const index = op.index;
+    const stored = storedVault(raw);
+    return stored.kind === 'wallet' && shownKey !== null && stored.env.accounts.find(a => a.index === index)?.publicKey === shownKey;
+  };
+  /** The wallet under the tab is not the one shown: read it again, show what is there now, and say so (O14). Never charged. */
+  const changed = async () => {
+    await load();
+    if (view === 'entry') helper(DELETE.changed);
+  };
+  /**
+   * At the click, before any KDF run or passkey prompt: the stored envelope still holds the shown address. False: the
+   * page was reloaded (and says why); nothing is proven, nothing sent.
+   */
+  const stillShown = async (mine: number): Promise<boolean> => {
+    if (op.op !== 'remove') return true;
+    let raw: unknown;
+    try {
+      raw = await deps.store.readEnvelope();
+    } catch {
+      await load();
+      return false;
+    }
+    if (mine !== generation) {
+      await load();
+      return false;
+    }
+    if (holdsShown(raw)) return true;
+    await changed();
+    return false;
   };
 
   /** What the flow's outcome leaves on screen. `opened`: the account indexes of the envelope the flow last read. */
@@ -221,17 +264,29 @@ export function mountAccounts(deps: PageDeps): AccountsScreen {
   };
 
   /** `factor`'s PRF output, if any, is the flow's from this call on: it zeroes it on every path. */
-  const run = async (factor: ReauthFactor, mine: number, index: number) => {
-    const current = op;
+  /** "Adding an account…" / "Removing the account…", from the click on (the shown-address check reads first). */
+  const working = () => {
     view = 'working';
-    helper(current.op === 'remove' ? ACCOUNTS.removing : ACCOUNTS.adding);
+    helper(op.op === 'remove' ? ACCOUNTS.removing : ACCOUNTS.adding);
     help('');
     render();
+  };
+  const run = async (factor: ReauthFactor, mine: number, index: number) => {
+    const current = op;
+    working();
     const flow = guarded(mine);
     let opened: number[] | null = null;
+    let moved = false;
     const read = flow.readEnvelope;
     flow.readEnvelope = async () => {
       const raw = await read();
+      // Fix round 1 (I1): every read the flow proves against (the first and the busy retry's) must still hold the shown
+      // address; the store is compare-and-set on THAT read's revision, so a change after it is the flow's `busy`. A
+      // refusal here is before the proof (the flow reads first) and ends as `failed`, which the backoff never charges.
+      if (!holdsShown(raw)) {
+        moved = true;
+        throw new Error('the wallet changed');
+      }
       const now = storedVault(raw);
       opened = now.kind === 'wallet' ? now.env.accounts.map(a => a.index) : null;
       return raw;
@@ -240,6 +295,7 @@ export function mountAccounts(deps: PageDeps): AccountsScreen {
     endCooldown();
     // Left (pagehide) while the action ran: nothing of its outcome is shown — the vault is read again (it may have landed).
     if (mine !== generation) return load();
+    if (moved) return changed();
     settle(out, index, opened);
     render();
   };
@@ -255,7 +311,10 @@ export function mountAccounts(deps: PageDeps): AccountsScreen {
       field.value = '';
       const password = typed;
       typed = null;
-      await run({password, kdf: deps.kdf}, generation, index);
+      const mine = generation;
+      working();
+      if (!(await stillShown(mine))) return;
+      await run({password, kdf: deps.kdf}, mine, index);
     });
   };
   const withPasskey = () => {
@@ -268,6 +327,7 @@ export function mountAccounts(deps: PageDeps): AccountsScreen {
       // A number that is not one is refused before the authenticator is asked (addAccount would refuse it after).
       if (op.op === 'add' && !isAccountIndex(index)) return helper(ACCOUNTS.outcome['bad-index']);
       const mine = generation;
+      if (!(await stillShown(mine))) return;
       let prfOutput: Uint8Array | null;
       try {
         prfOutput = await evaluatePrf(deps.credentials, unb64(key.credentialId), unb64(key.prfSalt));
@@ -296,6 +356,12 @@ export function mountAccounts(deps: PageDeps): AccountsScreen {
 
   deps.gate.onIdle(render);
   act.addEventListener('click', withPassword);
+  // Enter in the number field submits too (it stands outside the password's form): the same gated action.
+  number.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    withPassword();
+  });
   part.form.addEventListener('submit', e => {
     e.preventDefault();
     withPassword();
