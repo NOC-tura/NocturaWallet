@@ -115,4 +115,21 @@ describe('LockedButton', () => {
   it('holds for LOCK_MS = 500 by default', () => {
     expect(LOCK_MS).toBe(500);
   });
+
+  it('pressed: rendered as aria-pressed only when given — a plain LockedButton is no toggle (fix round 1, Minor 3)', () => {
+    render(
+      <>
+        <LockedButton onPress={async () => undefined}>Plain</LockedButton>
+        <LockedButton onPress={async () => undefined} pressed>
+          On
+        </LockedButton>
+        <LockedButton onPress={async () => undefined} pressed={false}>
+          Off
+        </LockedButton>
+      </>,
+    );
+    expect(screen.getByRole('button', {name: 'Plain'}).hasAttribute('aria-pressed')).toBe(false);
+    expect(screen.getByRole('button', {name: 'On'}).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', {name: 'Off'}).getAttribute('aria-pressed')).toBe('false');
+  });
 });

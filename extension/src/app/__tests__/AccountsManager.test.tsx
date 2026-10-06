@@ -287,6 +287,22 @@ describe('the accounts manager', () => {
     expect(h.count('accounts.select')).toBe(1);
   });
 
+  it('keyboard: the row select keeps the focus through its lock (fix round 1, Minor 2)', async () => {
+    await shown();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    const pick = () => screen.getByText('Savings', {selector: '.pri'}).closest('button') as HTMLButtonElement;
+    pick().focus();
+    fireEvent.click(pick());
+    // What a browser does to a focused button the lock disables: the page takes the focus.
+    const blip = document.createElement('input');
+    document.body.append(blip);
+    blip.focus();
+    blip.remove();
+    await waitFor(() => expect(pick().getAttribute('aria-pressed')).toBe('true'));
+    await waitFor(() => expect(pick().disabled).toBe(false), {timeout: 2_000});
+    expect(document.activeElement).toBe(pick());
+  });
+
   it('rename: a refused name says why (2a’s strings), and the editor stays', async () => {
     await shown();
     await waitFor(() => expect(names()).toHaveLength(3));

@@ -210,7 +210,7 @@ export function AccountsManager({onBack}: {onBack: () => void}) {
                   </div>
                 ) : (
                   <>
-                    <LockedButton className="app-account-pick" pressed={selected} onPress={() => select(a)}>
+                    <LockedButton className="app-account-pick" pressed={selected} keepFocus onPress={() => select(a)}>
                       <span className="avatar">{a.name.slice(0, 1).toUpperCase()}</span>
                       <span>
                         <span className="pri noc-body-lg">{a.name}</span>

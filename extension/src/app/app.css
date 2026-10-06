@@ -1119,3 +1119,30 @@ a.btn {
 .app-protections .s7-row .s7-glyph {
   color: var(--success);
 }
+/* 35c fix round 1: the card's head is the button that collapses it (the card replaced its row in place). */
+.app-content button.app-picker-head {
+  width: 100%;
+  padding: 0;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.app-picker-head > span:last-child {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.app-picker-head .noc-body {
+  color: var(--fg-primary);
+}
+/* ix:14522: the picker 6 px below the card's head. */
+.app-picker-card .s7-picker {
+  margin-top: 6px;
+}
+/* ix:14422, 14485: every overline after the first sits --space-3 below the list above it. */
+.app-overline.app-overline-next {
+  margin-top: var(--space-3);
+}

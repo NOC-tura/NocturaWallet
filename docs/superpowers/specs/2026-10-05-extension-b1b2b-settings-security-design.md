@@ -826,8 +826,9 @@ Rows `.s7-row` 56 px (glyph, `.s7-title`, `.s7-meta`, `.s7-chev`), group labels 
 
 Top bar back + `.noc-h1` "Security center" (ix:14398).
 
-**Facts:** `tasks` = [phrase not verified → "Write down your recovery phrase", "Verify recovery phrase"] + [no passkey →
-"Add a passkey"] (C8). All from `wallet.state.passkey` and `settings.get.phraseVerifiedAt`.
+**Facts:** `tasks` = [no passkey → "Add a passkey"] + [phrase not verified → "Write down your recovery phrase", "Verify
+recovery phrase"] (C8), in that order — the design's (ix:14417-14419: biometric, backup, verify; plan-1 Task 16 fix round
+1). All from `wallet.state.passkey` and `settings.get.phraseVerifiedAt`.
 
 - **`tasks outstanding`** (35a, ix:14389-14451):
   - `.s7-score-card.no-ring` (C15): `.noc-h3` "Improve your security" **→ adapted** (ix:14410 "Improve your score");

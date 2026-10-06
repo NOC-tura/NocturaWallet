@@ -6,6 +6,7 @@ import {WalletProvider, useWallet, type WalletModel} from '../WalletContext';
 import {ENV, renderInWallet, setupWallet} from './harness';
 import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {SETTINGS_KEY} from '../../background/settings';
+import type {Engine} from '../engine';
 
 // B1b-2b §4.2 (#35; D1–D5, C8, C15, E9).
 const SELECTORS = selectorsOf(UI_SHEETS);
@@ -15,13 +16,26 @@ async function shown(o: Parameters<typeof renderInWallet>[1] = {}) {
   const calls = {passkey: 0, delete: 0, back: 0};
   const w = await renderInWallet(<Security onBack={() => void calls.back++} onPasskey={() => void calls.passkey++} onDelete={() => void calls.delete++} />, o);
   await screen.findByText('Security center', {selector: '.top-bar .title'});
+  // The top bar shows while the settings are read (fix round 1, Minor 7): the screen is there once its card is.
+  await waitFor(() => expect(document.querySelector('.s7-score-card')).not.toBeNull());
   return {...w, calls};
 }
+const pressedOptions = () => [...document.querySelectorAll('.app-picker-card .opt[aria-pressed="true"]')].map(o => o.textContent);
+/** Collapses the open picker card (its head is the toggle): the row it replaced comes back. */
+const collapse = () => fireEvent.click(document.querySelector('.app-picker-head') as HTMLElement);
+/** What a browser does to a focused button the lock disables: the page takes the focus. */
+const blip = () => {
+  const i = document.createElement('input');
+  document.body.append(i);
+  i.focus();
+  i.remove();
+};
 const meta = (title: string) => screen.getByText(title, {selector: '.s7-title'}).parentElement?.querySelector('.s7-meta');
 
 describe('#35 security center', () => {
   it('securityTasks: both phrase rows follow the one fact (C8); the passkey row the passkey', () => {
-    expect(securityTasks(false, null)).toEqual(['write', 'verify', 'passkey']);
+    // The design's order (35a, ix:14417-14419; fix round 1, Minor 5): the passkey task first.
+    expect(securityTasks(false, null)).toEqual(['passkey', 'write', 'verify']);
     expect(securityTasks(true, null)).toEqual(['write', 'verify']);
     expect(securityTasks(false, 5)).toEqual(['passkey']);
     expect(securityTasks(true, 5)).toEqual([]);
@@ -33,7 +47,7 @@ describe('#35 security center', () => {
     expect(screen.getByText('Improve your security')).toBeTruthy();
     expect(screen.getByText('3 outstanding tasks.')).toBeTruthy();
     expect(screen.getByText('Outstanding tasks')).toBeTruthy();
-    expect([...document.querySelectorAll('.s7-task .label')].map(e => e.textContent)).toEqual(['Write down your recovery phrase', 'Verify recovery phrase', 'Add a passkey']);
+    expect([...document.querySelectorAll('.s7-task .label')].map(e => e.textContent)).toEqual(['Add a passkey', 'Write down your recovery phrase', 'Verify recovery phrase']);
     expect(screen.queryByText('Active protections')).toBeNull();
     expect(meta('Auto-lock')?.textContent).toBe('5 min');
     expect(screen.getByText('Locks when the browser closes')).toBeTruthy();
@@ -86,15 +100,29 @@ describe('#35 security center', () => {
     ]);
     expect(within(card).getByText('A longer time asks for your password in a new tab.')).toBeTruthy();
     expect(unstyledClasses(card, SELECTORS)).toEqual([]);
+    // Fix round 1, Minor 4: the card replaces the row in place — one "Auto-lock" title, the card's (ix:14516-14530).
+    expect(screen.queryByText('Auto-lock', {selector: '.s7-title'})).toBeNull();
+    expect(screen.getAllByText('Auto-lock')).toHaveLength(1);
+    const list = card.parentElement as HTMLElement;
+    expect(list.firstElementChild).toBe(card);
+    expect(card.nextElementSibling?.textContent).toBe('Locks when the browser closes');
+    // The row was focused and went: the focus goes to the card's head (the toggle), and back to the row on collapse.
+    expect(document.activeElement).toBe(card.querySelector('.app-picker-head'));
+    expect(card.querySelector('.app-picker-head')?.getAttribute('aria-expanded')).toBe('true');
+    collapse();
+    expect(document.querySelector('.app-picker-card')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByText('Auto-lock', {selector: '.s7-title'}).closest('button'));
   });
 
   it('strengthening (1 min) is written at once and the meta follows; nothing opens', async () => {
     const w = await shown();
     fireEvent.click(screen.getByText('Auto-lock', {selector: '.s7-title'}));
     fireEvent.click(screen.getByRole('button', {name: '1 min'}));
-    await waitFor(() => expect(meta('Auto-lock')?.textContent).toBe('1 min'));
+    await waitFor(() => expect(screen.getByRole('button', {name: '1 min'}).getAttribute('aria-pressed')).toBe('true'));
     expect(await w.ext.local.get(SETTINGS_KEY)).toMatchObject({autoLockMinutes: 1});
     expect(w.platform.opened).toEqual([]);
+    collapse();
+    expect(meta('Auto-lock')?.textContent).toBe('1 min');
   });
 
   it('weakening (15 min) opens #10 for the background’s challenge and closes; the stored value is unchanged', async () => {
@@ -105,6 +133,44 @@ describe('#35 security center', () => {
     expect(w.platform.opened[0]).toMatch(/^unlock\.html\?mode=reauth&challenge=[0-9a-f]{32}$/);
     expect(w.platform.closed).toBe(1);
     expect(await w.ext.local.get(SETTINGS_KEY)).toBeUndefined();
+    // M6 (fix round 1, I1): the screen shows the STORED value, never the choice waiting for #10.
+    await new Promise(r => setTimeout(r, 30));
+    expect(pressedOptions()).toEqual(['5 min']);
+    collapse();
+    expect(meta('Auto-lock')?.textContent).toBe('5 min');
+  });
+
+  it('M6 in the tab (the screen stays): a weakening opens #10, closes nothing, and the picker and meta keep the stored value', async () => {
+    const w = await shown({surface: 'tab'});
+    fireEvent.click(screen.getByText('Re-authentication threshold', {selector: '.s7-title'}));
+    fireEvent.click(screen.getByRole('button', {name: '$1,000'}));
+    await waitFor(() => expect(w.platform.opened).toHaveLength(1));
+    expect(w.platform.opened[0]).toMatch(/^unlock\.html\?mode=reauth&challenge=[0-9a-f]{32}$/);
+    expect(w.platform.closed).toBe(0);
+    await new Promise(r => setTimeout(r, 30));
+    expect(pressedOptions()).toEqual(['$100']);
+    collapse();
+    expect(meta('Re-authentication threshold')?.textContent).toBe('$100');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('reauth-required with no usable challenge id: O51, nothing opens (fix round 1, Minor 1)', async () => {
+    for (const data of [undefined, {challengeId: 'XYZ'}, {challengeId: 7}]) {
+      const w = await setupWallet();
+      const engine = {...w.engine, settingsSet: async () => ({ok: false as const, error: 'reauth-required' as const, data})};
+      render(
+        <WalletProvider engine={engine} platform={w.platform} surface="popup">
+          <Security onBack={() => undefined} onPasskey={() => undefined} onDelete={() => undefined} />
+        </WalletProvider>,
+      );
+      fireEvent.click(await screen.findByText('Auto-lock', {selector: '.s7-title'}));
+      fireEvent.click(screen.getByRole('button', {name: '15 min'}));
+      expect(await screen.findByText('Could not save the setting. Try again.')).toBeTruthy();
+      expect(w.platform.opened).toEqual([]);
+      expect(w.platform.closed).toBe(0);
+      expect(pressedOptions()).toEqual(['5 min']);
+      cleanup();
+    }
   });
 
   it('the threshold card (D5): $50 / $100 / $500 / $1,000, O48–O50; $500 is a weakening', async () => {
@@ -272,5 +338,111 @@ describe('#35 security center', () => {
     await act(async () => new Promise(r => setTimeout(r, 30)));
     expect(w.platform.opened).toEqual([]);
     expect(screen.queryByText('Could not save the setting. Try again.')).toBeNull();
+  });
+
+  it('keyboard: a picker option keeps the focus through its lock (fix round 1, Minor 2)', async () => {
+    await shown();
+    fireEvent.click(screen.getByText('Auto-lock', {selector: '.s7-title'}));
+    const one = screen.getByRole('button', {name: '1 min'}) as HTMLButtonElement;
+    one.focus();
+    fireEvent.click(one);
+    blip();
+    await waitFor(() => expect(one.disabled).toBe(false), {timeout: 2_000});
+    expect(document.activeElement).toBe(one);
+  });
+
+  it('35b: the Auto-lock row says it is expanded and scrolls the opened card into view (fix round 1, Minor 6)', async () => {
+    const scrolled: [Element, unknown][] = [];
+    const spy = vi.spyOn(HTMLElement.prototype, 'scrollIntoView').mockImplementation(function (this: HTMLElement, o?: unknown) {
+      scrolled.push([this, o]);
+    });
+    try {
+      await shown({env: WITH_PASSKEY, before: async ext => ext.local.set(SETTINGS_KEY, {phraseVerifiedAt: 5})});
+      const row = (screen.getByText('Active protections').nextElementSibling as HTMLElement).querySelector('.s7-row') as HTMLButtonElement;
+      expect(row.getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(row);
+      const card = document.querySelector('.app-picker-card') as HTMLElement;
+      expect(row.getAttribute('aria-expanded')).toBe('true');
+      expect(scrolled).toEqual([[card, {block: 'nearest'}]]);
+      fireEvent.click(row);
+      expect(row.getAttribute('aria-expanded')).toBe('false');
+      expect(document.querySelector('.app-picker-card')).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('35b: "Recovery phrase verified" carries the design’s #i-shield glyph (ix:14489)', async () => {
+    await shown({env: WITH_PASSKEY, before: async ext => ext.local.set(SETTINGS_KEY, {phraseVerifiedAt: 5})});
+    const svg = screen.getByText('Recovery phrase verified', {selector: '.s7-title'}).parentElement?.querySelector('.s7-glyph svg') as SVGElement;
+    expect(svg.innerHTML).toBe('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path>');
+  });
+
+  it('settings read failed: the top bar with Back, the approved line, and [Try again] reads again (fix round 1, Minor 7)', async () => {
+    const w = await setupWallet();
+    let reads = 0;
+    const engine = {...w.engine, settings: async () => (++reads === 1 ? {ok: false as const, error: 'failed' as const} : w.engine.settings())};
+    let back = 0;
+    render(
+      <WalletProvider engine={engine} platform={w.platform} surface="popup">
+        <Security onBack={() => void back++} onPasskey={() => undefined} onDelete={() => undefined} />
+      </WalletProvider>,
+    );
+    expect(await screen.findByText('Something went wrong. Try again.')).toBeTruthy();
+    expect(screen.getByText('Security center', {selector: '.top-bar .title'})).toBeTruthy();
+    expect(unstyledClasses(document.querySelector('.screen')!, SELECTORS)).toEqual([]);
+    fireEvent.click(screen.getByRole('button', {name: 'Back'}));
+    expect(back).toBe(1);
+    fireEvent.click(screen.getByRole('button', {name: 'Try again'}));
+    expect(await screen.findByText('Improve your security')).toBeTruthy();
+    expect(reads).toBe(2);
+    expect(screen.queryByText('Something went wrong. Try again.')).toBeNull();
+  });
+
+  /** A settings read held until the test releases it, answering `value` minutes. */
+  function heldRead(engine: Engine, value: number) {
+    let release: () => void = () => undefined;
+    let held = false;
+    const settings = async () => {
+      held = true;
+      await new Promise<void>(r => (release = r));
+      const r = await engine.settings();
+      return r.ok ? {...r, data: {...r.data, autoLockMinutes: value}} : r;
+    };
+    return {engine: {...engine, settings}, release: () => release(), isHeld: () => held};
+  }
+
+  it('settings read: an answer after the screen went sets nothing (fix round 1, Minor 8)', async () => {
+    const w = await setupWallet();
+    const h = heldRead(w.engine, 7);
+    const errors = vi.spyOn(console, 'error');
+    render(
+      <WalletProvider engine={h.engine} platform={w.platform} surface="popup">
+        <Security onBack={() => undefined} onPasskey={() => undefined} onDelete={() => undefined} />
+      </WalletProvider>,
+    );
+    await waitFor(() => expect(h.isHeld()).toBe(true));
+    cleanup();
+    h.release();
+    await new Promise(r => setTimeout(r, 30));
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
+  it('settings read: a read retired by a new engine (the effect’s cleanup) never overwrites the newer one (fix round 1, Minor 8)', async () => {
+    const w = await setupWallet();
+    const old = heldRead(w.engine, 7);
+    const ui = (engine: Engine) => (
+      <WalletProvider engine={engine} platform={w.platform} surface="popup">
+        <Security onBack={() => undefined} onPasskey={() => undefined} onDelete={() => undefined} />
+      </WalletProvider>
+    );
+    const {rerender} = render(ui(old.engine));
+    await waitFor(() => expect(old.isHeld()).toBe(true));
+    rerender(ui(w.engine));
+    await waitFor(() => expect(meta('Auto-lock')?.textContent).toBe('5 min'));
+    old.release();
+    await act(async () => new Promise(r => setTimeout(r, 30)));
+    expect(meta('Auto-lock')?.textContent).toBe('5 min');
   });
 });

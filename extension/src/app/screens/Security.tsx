@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode} from 'react';
 import {useWallet} from '../WalletContext';
 import {formatAmount} from '../../shared/amount';
 import {reauthPage, type ExtensionPage} from '../platform';
@@ -35,6 +35,9 @@ export const SECURITY_TEXT = {
   thresholdNote: 'A higher amount asks for your password in a new tab.',
   changePassword: 'Change password',
   saveFailed: 'Could not save the setting. Try again.',
+  /** A failed settings read: the existing approved line (Review's leaveFailed) and button (Failed's / Stuck's). */
+  readFailed: 'Something went wrong. Try again.',
+  tryAgain: 'Try again',
   danger: 'Danger zone',
   deleteTitle: 'Delete this wallet',
   deleteBody: "Removes the encrypted keys and local data from this browser. To restore, you'll need your recovery phrase.",
@@ -52,10 +55,13 @@ export function dollars(cents: number): string {
   return `$${formatAmount(BigInt(cents), 2, cents % 100 === 0 ? {min: 0, max: 0} : {min: 2, max: 2})}`;
 }
 
-/** The outstanding tasks, from real facts only (D3, D4, C8): the phrase not verified (both phrase rows), no passkey. */
+/**
+ * The outstanding tasks, from real facts only (D3, D4, C8): no passkey, the phrase not verified (both phrase rows) — in
+ * the design's order (35a, ix:14417-14419: biometric → passkey, then backup → write down, then verify).
+ */
 export type SecurityTask = 'write' | 'verify' | 'passkey';
 export function securityTasks(passkey: boolean, phraseVerifiedAt: number | null): SecurityTask[] {
-  return [...(phraseVerifiedAt === null ? (['write', 'verify'] as const) : []), ...(passkey ? [] : (['passkey'] as const))];
+  return [...(passkey ? [] : (['passkey'] as const)), ...(phraseVerifiedAt === null ? (['write', 'verify'] as const) : [])];
 }
 
 /**
@@ -71,7 +77,8 @@ export function securityTasks(passkey: boolean, phraseVerifiedAt: number | null)
 export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onPasskey: () => void; onDelete: () => void}) {
   const m = useWallet();
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [open, setOpen] = useState<'auto-lock' | 'threshold' | null>(null);
+  const [readFailed, setReadFailed] = useState(false);
+  const [open, setOpen] = useState<Card>(null);
   const [failed, setFailed] = useState(false);
   const passkey = m.wallet?.passkey === true;
 
@@ -89,21 +96,49 @@ export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onP
   /** Still here and unlocked. */
   const here = (): boolean => alive.current && phase.current === 'unlocked';
 
-  useEffect(() => {
-    let alive = true;
-    void m.engine.settings().then(r => {
-      if (alive && r.ok) setSettings(r.data);
-    });
-    return () => {
-      alive = false;
-    };
+  /** The settings read: only the newest one counts — an unmount or a new engine (the effect's cleanup) retires it. */
+  const reads = useRef(0);
+  const read = useCallback(async () => {
+    const n = ++reads.current;
+    setReadFailed(false);
+    const r = await m.engine.settings();
+    if (n !== reads.current) return;
+    if (r.ok) setSettings(r.data);
+    else setReadFailed(true);
   }, [m.engine]);
+  useEffect(() => {
+    void read();
+    return () => {
+      reads.current++;
+    };
+  }, [read]);
+
+  // 35c: an open card replaces its row in place and is scrolled into view (the 35b row stays where it is, so the tap visibly
+  // does something); a focus lost with the replaced row (or the collapsed card) goes to what took its place.
+  const card = useRef<HTMLDivElement>(null);
+  const cardHead = useRef<HTMLButtonElement>(null);
+  const rows = useRef<Record<Exclude<Card, null>, HTMLButtonElement | null>>({'auto-lock': null, threshold: null});
+  const wasOpen = useRef<Card>(null);
+  useLayoutEffect(() => {
+    const was = wasOpen.current;
+    wasOpen.current = open;
+    const lost = document.activeElement === null || document.activeElement === document.body;
+    if (open !== null) {
+      card.current?.scrollIntoView({block: 'nearest'});
+      if (lost) cardHead.current?.focus();
+    } else if (was !== null && lost) rows.current[was]?.focus();
+  }, [open]);
+  const toggle = (which: Exclude<Card, null>) => setOpen(open === which ? null : which);
 
   const openPage = (page: ExtensionPage | NonNullable<ReturnType<typeof reauthPage>>) => {
     m.platform.openPage(page);
     if (m.surface === 'popup') m.platform.closeWindow();
   };
-  /** A picker choice: a strengthening is written; a weakening goes to #10 (E9, C1); anything else says so (O51). */
+  /**
+   * A picker choice: a strengthening is written; a weakening goes to #10 (E9, C1) and the screen keeps the STORED value
+   * (M6: nothing is shown as chosen until #10 applies it); anything else — a challenge id that is no id included — says so
+   * (O51).
+   */
   const pick = async (key: 'autoLockMinutes' | 'reauthUsdCents', value: number) => {
     if (settings === null || settings[key] === value) return;
     setFailed(false);
@@ -119,10 +154,28 @@ export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onP
     setFailed(true);
   };
 
-  if (settings === null) return <div className="screen" aria-busy="true" />;
+  if (settings === null) {
+    return (
+      <div className="screen">
+        <TopBar title={SECURITY_TEXT.title} onBack={onBack} />
+        {readFailed ? (
+          <div className="app-security-body">
+            <p className="field-msg noc-danger" role="alert">
+              {SECURITY_TEXT.readFailed}
+            </p>
+            <LockedButton className="btn btn-secondary" onPress={read}>
+              {SECURITY_TEXT.tryAgain}
+            </LockedButton>
+          </div>
+        ) : (
+          <div className="app-security-body" aria-busy="true" />
+        )}
+      </div>
+    );
+  }
   const tasks = securityTasks(passkey, settings.phraseVerifiedAt);
-  const row = (icon: ExtIconName, title: string, meta: string | null, tone: 'warning' | 'success' | null, onPress: () => void, expanded?: boolean) => (
-    <button type="button" className="s7-row" onClick={onPress} aria-expanded={expanded}>
+  const row = (icon: ExtIconName, title: string, meta: string | null, tone: 'warning' | 'success' | null, onPress: () => void, expanded?: boolean, ref?: (b: HTMLButtonElement | null) => void) => (
+    <button type="button" className="s7-row" onClick={onPress} aria-expanded={expanded} ref={ref}>
       <span className="s7-glyph">
         <ExtIcon name={icon} size={20} />
       </span>
@@ -145,15 +198,36 @@ export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onP
       </span>
     </LockedButton>
   );
-  const task = (icon: ExtIconName, label: string, onPress: () => void) => (
-    <button type="button" className="s7-task" onClick={onPress}>
-      <ExtIcon name={icon} size={20} />
-      <span className="label">{label}</span>
-      <span className="chev">
-        <ExtIcon name="chevron-right" size={16} />
-      </span>
-    </button>
+  /** 35c's inline card (ix:14516-14530): its head collapses it again (the row it replaced comes back). */
+  const pickerCard = (which: Exclude<Card, null>, icon: ExtIconName, title: string, caption: string, picker: ReactNode, note: string) => (
+    <div className="app-picker-card" ref={card}>
+      <button type="button" className="app-picker-head" aria-expanded="true" ref={cardHead} onClick={() => toggle(which)}>
+        <span className="s7-glyph">
+          <ExtIcon name={icon} size={20} />
+        </span>
+        <span>
+          <span className="noc-body">{title}</span>
+          <span className="noc-caption app-dim">{caption}</span>
+        </span>
+      </button>
+      {picker}
+      <p className="noc-caption app-dim">{note}</p>
+    </div>
   );
+  const taskRow = (t: SecurityTask) =>
+    t === 'passkey' ? (
+      <button key={t} type="button" className="s7-task" onClick={onPasskey}>
+        <ExtIcon name="fingerprint" size={20} />
+        <span className="label">{SECURITY_TEXT.taskPasskey}</span>
+        <span className="chev">
+          <ExtIcon name="chevron-right" size={16} />
+        </span>
+      </button>
+    ) : t === 'write' ? (
+      <LockedButtonTask key={t} icon="database" label={SECURITY_TEXT.taskWrite} onPress={() => openPage('unlock.html?mode=reveal')} />
+    ) : (
+      <LockedButtonTask key={t} icon="shield-check" label={SECURITY_TEXT.taskVerify} onPress={() => openPage('unlock.html?mode=verify')} />
+    );
 
   return (
     <div className="screen">
@@ -169,63 +243,47 @@ export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onP
         {tasks.length > 0 ? (
           <>
             <p className="noc-overline app-dim app-overline">{SECURITY_TEXT.tasks}</p>
-            <div className="s7-list">
-              {tasks.includes('write') ? <LockedButtonTask icon="database" label={SECURITY_TEXT.taskWrite} onPress={() => openPage('unlock.html?mode=reveal')} /> : null}
-              {tasks.includes('verify') ? <LockedButtonTask icon="shield-check" label={SECURITY_TEXT.taskVerify} onPress={() => openPage('unlock.html?mode=verify')} /> : null}
-              {tasks.includes('passkey') ? task('fingerprint', SECURITY_TEXT.taskPasskey, onPasskey) : null}
-            </div>
+            <div className="s7-list">{tasks.map(taskRow)}</div>
           </>
         ) : (
           <>
             <p className="noc-overline app-dim app-overline">{SECURITY_TEXT.protections}</p>
             <div className="s7-list app-protections">
-              {row('lock', SECURITY_TEXT.autoLock, SECURITY_TEXT.minutes(settings.autoLockMinutes), 'success', () => setOpen(open === 'auto-lock' ? null : 'auto-lock'))}
+              {row('lock', SECURITY_TEXT.autoLock, SECURITY_TEXT.minutes(settings.autoLockMinutes), 'success', () => toggle('auto-lock'), open === 'auto-lock')}
               {row('fingerprint', SECURITY_TEXT.passkey, SECURITY_TEXT.on, 'success', onPasskey)}
-              {pageRow('shield-check', SECURITY_TEXT.verified, 'unlock.html?mode=verify', SECURITY_TEXT.yes, 'success')}
+              {pageRow('shield', SECURITY_TEXT.verified, 'unlock.html?mode=verify', SECURITY_TEXT.yes, 'success')}
             </div>
           </>
         )}
 
-        <p className="noc-overline app-dim app-overline">{SECURITY_TEXT.locks}</p>
+        <p className="noc-overline app-dim app-overline app-overline-next">{SECURITY_TEXT.locks}</p>
         <div className="s7-list">
-          {row('lock', SECURITY_TEXT.autoLock, SECURITY_TEXT.minutes(settings.autoLockMinutes), null, () => setOpen(open === 'auto-lock' ? null : 'auto-lock'), open === 'auto-lock')}
-          {open === 'auto-lock' ? (
-            <div className="app-picker-card">
-              <div className="app-picker-head">
-                <span className="s7-glyph">
-                  <ExtIcon name="lock" size={20} />
-                </span>
-                <div>
-                  <div className="noc-body">{SECURITY_TEXT.autoLock}</div>
-                  <div className="noc-caption app-dim">{SECURITY_TEXT.autoLockCaption}</div>
-                </div>
-              </div>
-              <Picker label={SECURITY_TEXT.autoLock} options={AUTOLOCK_OPTIONS} value={settings.autoLockMinutes} onPick={v => pick('autoLockMinutes', v)} />
-              <p className="noc-caption app-dim">{SECURITY_TEXT.autoLockNote}</p>
-            </div>
-          ) : null}
+          {open === 'auto-lock'
+            ? pickerCard(
+                'auto-lock',
+                'lock',
+                SECURITY_TEXT.autoLock,
+                SECURITY_TEXT.autoLockCaption,
+                <Picker label={SECURITY_TEXT.autoLock} options={AUTOLOCK_OPTIONS} value={settings.autoLockMinutes} onPick={v => pick('autoLockMinutes', v)} />,
+                SECURITY_TEXT.autoLockNote,
+              )
+            : row('lock', SECURITY_TEXT.autoLock, SECURITY_TEXT.minutes(settings.autoLockMinutes), null, () => toggle('auto-lock'), false, b => void (rows.current['auto-lock'] = b))}
           <div className="s7-row app-static app-no-chev">
             <span className="s7-glyph">
               <ExtIcon name="zap" size={20} />
             </span>
             <span className="s7-title">{SECURITY_TEXT.appLock}</span>
           </div>
-          {row('alert', SECURITY_TEXT.threshold, dollars(settings.reauthUsdCents), null, () => setOpen(open === 'threshold' ? null : 'threshold'), open === 'threshold')}
-          {open === 'threshold' ? (
-            <div className="app-picker-card">
-              <div className="app-picker-head">
-                <span className="s7-glyph">
-                  <ExtIcon name="alert" size={20} />
-                </span>
-                <div>
-                  <div className="noc-body">{SECURITY_TEXT.threshold}</div>
-                  <div className="noc-caption app-dim">{SECURITY_TEXT.thresholdCaption}</div>
-                </div>
-              </div>
-              <Picker label={SECURITY_TEXT.threshold} options={THRESHOLD_OPTIONS} value={settings.reauthUsdCents} onPick={v => pick('reauthUsdCents', v)} />
-              <p className="noc-caption app-dim">{SECURITY_TEXT.thresholdNote}</p>
-            </div>
-          ) : null}
+          {open === 'threshold'
+            ? pickerCard(
+                'threshold',
+                'alert',
+                SECURITY_TEXT.threshold,
+                SECURITY_TEXT.thresholdCaption,
+                <Picker label={SECURITY_TEXT.threshold} options={THRESHOLD_OPTIONS} value={settings.reauthUsdCents} onPick={v => pick('reauthUsdCents', v)} />,
+                SECURITY_TEXT.thresholdNote,
+              )
+            : row('alert', SECURITY_TEXT.threshold, dollars(settings.reauthUsdCents), null, () => toggle('threshold'), false, b => void (rows.current.threshold = b))}
           {row('fingerprint', SECURITY_TEXT.passkey, passkey ? SECURITY_TEXT.on : SECURITY_TEXT.off, passkey ? 'success' : 'warning', onPasskey)}
           {pageRow('key', SECURITY_TEXT.changePassword, 'unlock.html?mode=password')}
         </div>
@@ -251,6 +309,9 @@ export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onP
     </div>
   );
 }
+
+/** Which inline picker card is open (35c): at most one. */
+type Card = 'auto-lock' | 'threshold' | null;
 
 /** An outstanding task that opens a vault page: a LockedButton (rule 6) in `.s7-task`'s chrome. */
 function LockedButtonTask({icon, label, onPress}: {icon: ExtIconName; label: string; onPress: () => void}) {

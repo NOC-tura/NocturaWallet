@@ -9,7 +9,7 @@ export function Picker({options, value, onPick, label}: {options: readonly {valu
   return (
     <div className="s7-picker" role="group" aria-label={label}>
       {options.map(o => (
-        <LockedButton key={o.value} className={o.value === value ? 'opt sel app-picker-opt' : 'opt app-picker-opt'} pressed={o.value === value} onPress={() => onPick(o.value)}>
+        <LockedButton key={o.value} className={o.value === value ? 'opt sel app-picker-opt' : 'opt app-picker-opt'} pressed={o.value === value} keepFocus onPress={() => onPick(o.value)}>
           {o.label}
         </LockedButton>
       ))}
