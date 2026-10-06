@@ -15,7 +15,9 @@ export type PageMode =
   /** B1b-2b §1.2: #36 change password (unlocked session, password only, D8). */
   | {mode: 'password'}
   /** B1b-2b §1.2: #37's proof — no session needed (E5's factor proof), bound to the wallet it shows (C17). */
-  | {mode: 'delete'};
+  | {mode: 'delete'}
+  /** B1b-2b §1.2: #6 "manage" — add (or replace, C4) by password; remove by password or passkey (E12). */
+  | {mode: 'passkey'; op: 'add' | 'remove'};
 
 const SOURCES: readonly string[] = ['forgot', 'retry'];
 const RETURNS: readonly string[] = ['created', 'imported'];
@@ -33,6 +35,7 @@ export function pageMode(search: string): PageMode {
     const source = p.get('source') ?? '';
     return {mode: 'import', source: SOURCES.includes(source) ? (source as ImportSource) : null};
   }
+  if (m === 'passkey') return {mode: 'passkey', op: p.get('op') === 'remove' ? 'remove' : 'add'};
   if (m === 'reauth') {
     const id = p.get('challenge') ?? '';
     return /^[0-9a-f]{32}$/.test(id) ? {mode: 'reauth', challengeId: id} : {mode: 'unlock', returnTo: null};

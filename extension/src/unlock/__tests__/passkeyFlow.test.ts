@@ -67,6 +67,17 @@ describe('removePasskey (E12)', () => {
     expect((await stored(always.h)).passkey).toBeDefined();
   });
 
+  // Task 4 review carry: the passkey factor survives the busy retry (one prompt, two proofs) and is zeroed only at the end.
+  it('busy once by the passkey: the retry proves with the same PRF output — removed — and it is zeroed afterwards', async () => {
+    let busy = 1;
+    const once = await setup({send: inner => async m => ((m as {type: string}).type === 'vault.removePasskey' && busy-- > 0 ? {ok: false, error: 'busy'} : inner(m))});
+    const prfOutput = PRF.slice();
+    expect(await removePasskey(once.deps, {prfOutput})).toBe('removed');
+    expect(once.h.sent.filter(m => m.type === 'vault.status')).toHaveLength(2);
+    expect(prfOutput.every(b => b === 0)).toBe(true);
+    expect((await stored(once.h)).passkey).toBeUndefined();
+  });
+
   it('no-wallet and damaged from the read (nothing sent); the PRF output zeroed', async () => {
     const send: Send = async () => {
       throw new Error('must not send');

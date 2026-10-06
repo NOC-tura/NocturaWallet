@@ -1526,7 +1526,7 @@ describe('plan 2: the real vault page reaches every screen it builds (positive c
     // and views — a module added or removed there is named here too, and each named one must be reached.
     const named = ['welcome', 'seed', 'confirm', 'password', 'passkey', 'createRun', 'importScreen', 'importRun', 'restoreRun', 'retryRun', 'forgot', 'unlock', 'reauth', 'accounts', 'reveal',
       // B1b-2b plan 1.
-      'changePassword', 'delete'];
+      'changePassword', 'delete', 'passkeyManage'];
     expect([...screens].sort()).toEqual(named.map(n => `src/unlock/screens/${n}.ts`).sort());
     expect([...views].sort()).toEqual(['dom', 'words', 'hold', 'meter', 'cooldown'].map(n => `src/unlock/view/${n}.ts`).sort());
     expect(resolved).toEqual(
@@ -1539,6 +1539,7 @@ describe('plan 2: the real vault page reaches every screen it builds (positive c
         'src/unlock/stored.ts',
         'src/unlock/page.ts',
         'src/unlock/passwordFlow.ts',
+        'src/unlock/passkeyFlow.ts',
       ]),
     );
   });

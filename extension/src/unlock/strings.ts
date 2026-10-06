@@ -266,6 +266,39 @@ export const DELETE = {
   failed: 'Something went wrong. Nothing was deleted.',
 } as const;
 
+/** #6 "manage" in the vault tab: add, replace, remove (B1b-2b §3.3, E12, D12, D13, C3, C4). */
+export const MANAGE = {
+  addTitle: 'Unlock Noctura with a passkey',
+  addLede: 'Adds convenience. Your password always works too — keep it safe.',
+  /** O17. */
+  replaceTitle: 'Replace your passkey',
+  /** O18. */
+  replaceLede: 'The new passkey replaces the one this wallet uses now. The old one stays in your passkey manager until you delete it there.',
+  /** O20. */
+  removeTitle: 'Remove your passkey',
+  /** O21. */
+  removeLede: 'Confirm with your password or with the passkey itself. Your password keeps working.',
+  add: 'Add a passkey',
+  /** D13. */
+  replace: 'Replace passkey',
+  /** D13. */
+  remove: 'Remove passkey',
+  /** O19. */
+  replaced: 'Passkey replaced.',
+  /** O22. */
+  removing: 'Removing the passkey…',
+  /** O23. */
+  removed: 'Passkey removed.',
+  /** O24. */
+  removedHelp: 'It is still saved in your passkey manager (Google, Apple or your password manager). Delete it there if you no longer need it.',
+  /** O25. */
+  noPasskey: 'This wallet has no passkey. Nothing was changed.',
+  /** O26. */
+  failed: 'Something went wrong. Nothing was changed.',
+  /** O05. */
+  closeTab: 'You can close this tab.',
+} as const;
+
 /** #9 unlock (D7, D11). */
 export const UNLOCK = {
   unlocking: 'Unlocking…',

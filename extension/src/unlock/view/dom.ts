@@ -46,6 +46,7 @@ export const SCREENS = [
   'v-change-password',
   'v-cp-cancel',
   'v-delete',
+  'v-passkey-manage',
 ] as const;
 export type ScreenId = (typeof SCREENS)[number];
 
