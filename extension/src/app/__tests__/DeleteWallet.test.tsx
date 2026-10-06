@@ -190,8 +190,15 @@ describe('#37 delete wallet', () => {
     fireEvent.keyUp(hold, {key: ' '});
     w.advance(600);
     expect(w.platform.opened).toEqual([]);
+    // Held with the OS's key repeats: the repeats neither release nor restart it — it opens at the full second.
     fireEvent.keyDown(hold, {key: 'Enter'});
-    w.advance(1_020);
+    for (let i = 0; i < 10; i += 1) {
+      w.advance(90);
+      fireEvent.keyDown(hold, {key: 'Enter', repeat: true});
+    }
+    expect(w.platform.opened).toEqual([]);
+    expect(hold.textContent).toBe('Hold to delete · 0.1 s');
+    w.advance(120);
     expect(w.platform.opened).toEqual(['unlock.html?mode=delete']);
   });
 
