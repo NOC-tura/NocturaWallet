@@ -238,4 +238,32 @@ describe('the account switcher', () => {
     expect(within(rows[FRESH_ROWS] as HTMLElement).getByText('not checked yet')).toBeTruthy();
     expect(asked).not.toContain(many[FRESH_ROWS]?.publicKey);
   });
+
+  it('a pass that stops at "unreachable": the rows after the stop were never read — "not checked yet", not a blank (B1b-2b Task 15)', async () => {
+    const three: Account[] = Array.from({length: 3}, (_, i) => ({index: i, name: `A${i}`, publicKey: `PUB${i}${'Z'.repeat(40)}`.slice(0, 40)}));
+    const base = stubEngine(three, 0);
+    const asked: string[] = [];
+    const engine: Engine = {
+      ...base,
+      balances: async pk => {
+        asked.push(pk);
+        return pk === three[1]?.publicKey ? {ok: false, error: 'unreachable'} : base.balances(pk);
+      },
+    };
+    render(
+      <WalletProvider engine={engine} platform={stubPlatform()} surface="popup">
+        <HomeWithSwitcher />
+      </WalletProvider>,
+    );
+    await screen.findByText('$10,112');
+    fireEvent.click(screen.getByRole('button', {name: 'Accounts'}));
+    const sheet = await screen.findByRole('dialog', {name: 'Accounts'});
+    const rows = sheet.querySelectorAll('[data-account]');
+    await within(rows[0] as HTMLElement).findByText('62.4821 SOL · $10,112.52');
+    await waitFor(() => expect(asked).toContain(three[1]?.publicKey));
+    await waitFor(() => expect(within(rows[2] as HTMLElement).getByText('not checked yet')).toBeTruthy());
+    // The refused row itself was asked: blank, as before.
+    expect(within(rows[1] as HTMLElement).queryByText('not checked yet')).toBeNull();
+    expect(asked.filter(k => k === three[2]?.publicKey)).toHaveLength(0);
+  });
 });

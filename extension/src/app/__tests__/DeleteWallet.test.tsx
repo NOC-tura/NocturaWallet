@@ -293,7 +293,10 @@ describe('#37 delete wallet', () => {
       c.advance(600);
       fireEvent.pointerDown(b, {button: 0});
       fireEvent.keyDown(b, {key: ' '});
-      c.advance(420);
+      c.advance(300);
+      // Not restarted: the count goes on from the first press.
+      expect(b.textContent).toBe('Hold to delete · 0.1 s');
+      c.advance(120);
       expect(held).toBe(1);
       b.disabled = false;
       fireEvent.pointerDown(b, {button: 0});
@@ -321,6 +324,8 @@ describe('#37 delete wallet', () => {
       const w = await shown();
       const c = cancel();
       fireEvent.click(c);
+      // A LockedButton: locked at the click.
+      expect(c.disabled).toBe(true);
       c.disabled = false;
       fireEvent.click(c);
       expect(w.backs()).toBe(1);
