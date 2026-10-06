@@ -3,6 +3,7 @@ import {createEnvelope, type Kdf} from '../../vault/envelope';
 import * as envelopeModule from '../../vault/envelope';
 import {deriveSessionAccounts} from '../../vault/accounts';
 import {recordVerified, runReveal} from '../revealFlow';
+import {envelopeRevision} from '../../shared/envelopeRevision';
 import type {Send} from '../types';
 
 const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -26,7 +27,9 @@ async function setup(sessionMnemonic: string | null) {
 describe('runReveal (spec §2: the phrase, only after a proof, only in the vault page)', () => {
   it('shows the words after a proof — and tells the background nothing (positive control)', async () => {
     const {deps, sent} = await setup(MNEMONIC);
-    expect(await runReveal(deps, {password: PASSWORD, kdf})).toEqual({outcome: 'shown', words: MNEMONIC.split(' ')});
+    // m7: with the revision of the envelope it proved against (what vault.phraseVerified binds the fact to).
+    const revision = envelopeRevision((await deps.readEnvelope()) as envelopeModule.EnvelopeV1);
+    expect(await runReveal(deps, {password: PASSWORD, kdf})).toEqual({outcome: 'shown', words: MNEMONIC.split(' '), revision});
     expect(sent.map(m => m.type)).toEqual(['vault.status']);
     // Nothing of the phrase in any message.
     expect(JSON.stringify(sent)).not.toContain('abandon');
@@ -115,15 +118,17 @@ describe('runReveal (spec §2: the phrase, only after a proof, only in the vault
     }
   });
 
-  it('recordVerified: sends only the fact (no word of the phrase); true when the background says so', async () => {
+  it('recordVerified: sends only the fact and the proven revision (no word of the phrase); true when the background says so', async () => {
     const {deps, sent} = await setup(MNEMONIC);
-    expect(await recordVerified(deps.send)).toBe(true);
-    expect(sent).toEqual([{type: 'vault.phraseVerified'}]);
-    expect(await recordVerified(async () => ({ok: false, error: 'locked'}))).toBe(false);
+    const revision = 'a'.repeat(64);
+    expect(await recordVerified(deps.send, revision)).toBe(true);
+    expect(sent).toEqual([{type: 'vault.phraseVerified', expectedRevision: revision}]);
+    expect(await recordVerified(async () => ({ok: false, error: 'locked'}), revision)).toBe(false);
+    expect(await recordVerified(async () => ({ok: false, error: 'busy'}), revision)).toBe(false);
     expect(
       await recordVerified(async () => {
         throw new Error('gone');
-      }),
+      }, revision),
     ).toBe(false);
   });
 

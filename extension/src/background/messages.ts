@@ -7,7 +7,7 @@ import {armAutolock, lock} from './autolock';
 import {readSettings, settingsMutex, writeSettings} from './settings';
 import type {WalletDeps} from './deps';
 import {CHALLENGE_ID, challengeInfo, satisfyChallenge} from './reauthChallenges';
-import {changePassword, forgetWallet, readWalletView, removePasskey, storeEnvelope} from './accountsStore';
+import {changePassword, forgetWallet, provenRevisionIsStored, readWalletView, removePasskey, storeEnvelope} from './accountsStore';
 import {isOpen, readPending} from './pendingStore';
 import {startPoller} from './pending';
 import {WALLET_TYPES, applySettingsChallenge, handleWallet, isWalletType, type Result} from './walletApi';
@@ -229,18 +229,25 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       // E15 (D15, C8): a fact, not a security guarantee — the background cannot check it, and it gates nothing; it
       // only decides two #35 task rows and one protections row. Vault page only keeps the popup and the web out.
       if (deps === undefined) return {ok: false, error: 'unavailable'};
+      // The final review's m7: bound to the wallet whose phrase was checked — the page sends the revision it proved
+      // against; another one stored (a wallet deleted and another created meanwhile, or this one changed) is `busy`.
+      const {expectedRevision} = msg as {expectedRevision?: unknown};
       try {
-        // Lock order settingsMutex → sessionMutex (walletApi's). The session check and the settings write share one
-        // sessionMutex section: a lock — and so a vault.forgetWallet, which locks first and removes v1_settings after —
-        // is ordered wholly before the check (`locked`) or wholly after the write (a delete then removes the fact).
+        // Lock order settingsMutex → sessionMutex (walletApi's). The session check, the revision check and the
+        // settings write share one sessionMutex section: a lock — and so a vault.forgetWallet, which locks first and
+        // removes v1_settings after — is ordered wholly before the checks (`locked`) or wholly after the write (a
+        // delete then removes the fact).
         const recorded = await settingsMutex(() =>
           sessionMutex(async () => {
-            if ((await getSession(ext)) === null) return false;
+            const bound = await provenRevisionIsStored(ext, expectedRevision);
+            if (bound === 'malformed') return bound;
+            if ((await getSession(ext)) === null) return 'locked';
+            if (bound !== 'same') return bound;
             await writeSettings(ext, {...(await readSettings(ext)), phraseVerifiedAt: deps.now()});
-            return true;
+            return 'recorded';
           }),
         );
-        return recorded ? {ok: true} : {ok: false, error: 'locked'};
+        return recorded === 'recorded' ? {ok: true} : {ok: false, error: recorded};
       } catch {
         return {ok: false, error: 'failed'};
       }

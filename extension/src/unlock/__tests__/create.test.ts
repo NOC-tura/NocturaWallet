@@ -3,6 +3,7 @@ import {wordlist} from '@scure/bip39/wordlists/english.js';
 import {createEnvelope, decryptMnemonic, unlockWithPassword, unlockWithPrf, type EnvelopeV1} from '../../vault/envelope';
 import type {CredentialsApi} from '../../vault/passkey';
 import {VAULT_KEY} from '../../background/accountsStore';
+import {envelopeRevision} from '../../shared/envelopeRevision';
 import {getSession} from '../../background/session';
 import {RESET_MS, confirmPlan, mountConfirm, randomBelow} from '../screens/confirm';
 import {MISMATCH_CLEAR_MS, mountPassword} from '../screens/password';
@@ -932,6 +933,8 @@ describe('the create run, end to end in one page, against the real background', 
     // B1b-2b C8 (E15): the phrase passed #4 — recorded once the wallet is stored and its keys handed over.
     const types = h.sent.map(m => m.type);
     expect(types.indexOf('vault.phraseVerified')).toBeGreaterThan(types.indexOf('vault.setKeys'));
+    // The final review's m7: bound to the wallet just stored (the revision of the envelope this run created).
+    expect(h.sent.find(m => m.type === 'vault.phraseVerified')).toEqual({type: 'vault.phraseVerified', expectedRevision: envelopeRevision(env)});
     expect(await h.ext.local.get('v1_settings')).toMatchObject({phraseVerifiedAt: h.wallet.now()});
     // No word of the phrase is left in the DOM — text or attribute: #3 and #4 took theirs out when the run moved on.
     expect(leaked()).toEqual([]);

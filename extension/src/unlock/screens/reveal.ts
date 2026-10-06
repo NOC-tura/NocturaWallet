@@ -44,6 +44,8 @@ export function mountPhrase(deps: PageDeps, kind: 'reveal' | 'verify'): PhraseRu
   let view: 'proof' | 'notice' | 'phrase' = 'proof';
   let actions: readonly Action[] = [];
   let words: readonly string[] = [];
+  /** The revision of the envelope the shown words were opened from: vault.phraseVerified's binding (the final review's m7). */
+  let proven: string | null = null;
   /** Bumped whenever the phrase is dropped: a proof that settles after it shows nothing. */
   let generation = 0;
   let typed: string | null = null;
@@ -109,6 +111,7 @@ export function mountPhrase(deps: PageDeps, kind: 'reveal' | 'verify'): PhraseRu
   /** The phrase out of this closure (#3 and #4 take theirs out of the DOM themselves). */
   const drop = () => {
     words = [];
+    proven = null;
     generation += 1;
   };
   /** The modal's Cancel, its backdrop, #3's back: nothing is shown any more, and the tab closes. */
@@ -135,10 +138,11 @@ export function mountPhrase(deps: PageDeps, kind: 'reveal' | 'verify'): PhraseRu
       // Fix round 1 (M1): a refused close hides [Close this tab]; the success (or O32) stays on screen.
       done: () => closeOrHide(deps.closeTab, f => void deps.timers.setTimeout(f, CLOSE_CHECK_MS), byId('cnf-cta')),
       verified: () => {
-        // The check is finished: the phrase is no longer needed.
+        // The check is finished: the phrase is no longer needed. The revision it was opened from is taken first.
+        const revision = proven;
         drop();
         const mine = generation;
-        void recordVerified(deps.send).then(ok => {
+        void (revision === null ? Promise.resolve(false) : recordVerified(deps.send, revision)).then(ok => {
           // Left (pagehide) while the fact was being sent: the success state is gone, nothing is written to it.
           if (!ok && mine === generation) setText(byId('cnf-success-body'), PHRASE.notRecorded);
         });
@@ -167,12 +171,16 @@ export function mountPhrase(deps: PageDeps, kind: 'reveal' | 'verify'): PhraseRu
       helper(REVEAL.checking, false);
       const mine = generation;
       let shownWords: string[] = [];
+      let shownRevision: string | null = null;
       const out = await backoff.run(async () => {
         const password = typed ?? '';
         typed = null;
         // Password only (D23): the factor type admits nothing else, and runReveal refuses a cast-in PRF output.
         const r = await runReveal(guarded(mine), {password, kdf: deps.kdf});
-        if (r.outcome === 'shown') shownWords = r.words;
+        if (r.outcome === 'shown') {
+          shownWords = r.words;
+          shownRevision = r.revision;
+        }
         return r.outcome;
       }, cooldown);
       endCooldown();
@@ -181,6 +189,7 @@ export function mountPhrase(deps: PageDeps, kind: 'reveal' | 'verify'): PhraseRu
       if (mine !== generation) return helper('', false);
       if (out === 'shown') {
         words = shownWords;
+        proven = shownRevision;
         view = 'phrase';
         helper('', false);
         if (kind === 'reveal') seed.show(words);

@@ -249,6 +249,23 @@ export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelop
   });
 }
 
+/**
+ * vault.phraseVerified's binding (the final review's m7, a controller ruling): is the stored envelope still the one the
+ * verify page proved against? `malformed` (not a revision), `no-wallet`, `stored-invalid`, `busy` (another revision is
+ * stored: the wallet was replaced, or changed since the proof) or `same`. Read without `serial`: the caller holds
+ * sessionMutex with a session present, so no delete (which locks first, inside sessionMutex) and so no other wallet can
+ * land before its write; a store that lands meanwhile keeps the same wallet (sameWallet), so at worst it refuses a true
+ * fact — never records a false one.
+ */
+export async function provenRevisionIsStored(ext: Ext, expectedRevision: unknown): Promise<'same' | 'malformed' | 'no-wallet' | 'stored-invalid' | 'busy'> {
+  if (!isStr(expectedRevision) || !REVISION.test(expectedRevision)) return 'malformed';
+  const stored = await ext.local.get(VAULT_KEY);
+  if (stored === undefined) return 'no-wallet';
+  const current = envelopeShape(stored);
+  if (current === null) return 'stored-invalid';
+  return envelopeRevision(current) === expectedRevision ? 'same' : 'busy';
+}
+
 export type RemovePasskeyResult = 'removed' | 'malformed' | 'locked' | 'no-wallet' | 'stored-invalid' | 'busy' | 'no-passkey';
 
 /**

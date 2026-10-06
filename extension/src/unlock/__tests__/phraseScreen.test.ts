@@ -226,6 +226,23 @@ describe('verify: the check, never the grid', () => {
     await h.until(() => text(el('cnf-success-body')) === 'All three words matched, but this could not be saved. Try again later.');
   });
 
+  // The final review's m7 (a controller ruling): the fact is bound to the wallet whose phrase was checked. This tab sat
+  // in #4 while another tab deleted the wallet, created another and unlocked it: the real background refuses, O32 shows.
+  it('m7: the wallet replaced while the check was open — the background refuses (busy), O32, nothing recorded', async () => {
+    const {h} = await shown('verify');
+    await prove(h);
+    await h.until(() => visible(el('v-confirm')));
+    const keys = await deriveSessionAccounts(OTHER, 'slip10', [0]);
+    const other = await createEnvelope({mnemonic: OTHER, password: PW, scheme: 'slip10', accounts: [{index: 0, name: 'Main', publicKey: keys[0]?.publicKey ?? ''}], kdf: testKdf});
+    await h.ext.local.set('v1_vault', other);
+    await setSession(h.ext, keys);
+    await check(h);
+    await h.until(() => text(el('cnf-success-body')) === 'All three words matched, but this could not be saved. Try again later.');
+    const sent = h.sent.find(m => m.type === 'vault.phraseVerified') as {expectedRevision?: unknown} | undefined;
+    expect(sent?.expectedRevision).toMatch(/^[0-9a-f]{64}$/);
+    expect(((await h.ext.local.get('v1_settings')) as {phraseVerifiedAt?: unknown} | undefined)?.phraseVerifiedAt ?? null).toBeNull();
+  });
+
   it('Back from the check closes the tab (nothing to go back to) and drops the phrase', async () => {
     const {h, run} = await shown('verify');
     await prove(h);

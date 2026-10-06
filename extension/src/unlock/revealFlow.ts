@@ -3,9 +3,10 @@ import {openProven} from '../vault/reauth';
 import {lockOnMismatch, sessionKeys} from './reauthFlow';
 import {storedVault} from './stored';
 import type {Send} from './types';
+import {envelopeRevision} from '../shared/envelopeRevision';
 
 export type RevealOutcome =
-  | {outcome: 'shown'; words: string[]}
+  | {outcome: 'shown'; words: string[]; revision: string}
   | {outcome: 'wrong' | 'not-unlocked' | 'mismatch-locked' | 'damaged' | 'no-wallet' | 'failed'};
 
 /**
@@ -42,7 +43,8 @@ export async function runReveal(deps: {readEnvelope(): Promise<unknown>; send: S
     if (proven.outcome === 'mismatch') return {outcome: await lockOnMismatch(deps.send)};
     if (proven.outcome !== 'ok') return {outcome: proven.outcome};
     proven.dataKey.fill(0);
-    return {outcome: 'shown', words: proven.mnemonic.split(' ')};
+    // The revision of the envelope proven against: what vault.phraseVerified binds the fact to (the final review's m7).
+    return {outcome: 'shown', words: proven.mnemonic.split(' '), revision: envelopeRevision(stored.env)};
   } catch {
     return {outcome: 'failed'};
   }
@@ -50,11 +52,12 @@ export async function runReveal(deps: {readEnvelope(): Promise<unknown>; send: S
 
 /**
  * The verify check passed (B1b-2b E15, §3.5): the background records `phraseVerifiedAt`. True when it says so. Nothing of
- * the phrase is sent — only the fact.
+ * the phrase is sent — only the fact and the revision of the envelope the phrase was opened from (the final review's m7):
+ * the background records only while that envelope is still stored, so a wallet replaced meanwhile gets no false fact.
  */
-export async function recordVerified(send: Send): Promise<boolean> {
+export async function recordVerified(send: Send, revision: string): Promise<boolean> {
   try {
-    return (await send({type: 'vault.phraseVerified'})).ok;
+    return (await send({type: 'vault.phraseVerified', expectedRevision: revision})).ok;
   } catch {
     return false;
   }

@@ -27,13 +27,60 @@ const zero = () => fakeReader({getBalance: async () => 0n, getTokenAccountsByOwn
 describe('vault.phraseVerified (E15)', () => {
   it('sets phraseVerifiedAt to now; refused while locked (nothing written)', async () => {
     const ext = fakeExt();
+    await ext.local.set(VAULT_KEY, STORED);
     const deps = fakeDeps();
-    expect(await handleMessage(ext, {type: 'vault.phraseVerified'}, unlockPage, deps)).toEqual({ok: false, error: 'locked'});
+    expect(await handleMessage(ext, {type: 'vault.phraseVerified', expectedRevision: REV}, unlockPage, deps)).toEqual({ok: false, error: 'locked'});
     expect((await readSettings(ext)).phraseVerifiedAt).toBeNull();
     await unlocked(ext);
     deps.clock.t = 777;
-    expect(await handleMessage(ext, {type: 'vault.phraseVerified'}, unlockPage, deps)).toEqual({ok: true});
+    expect(await handleMessage(ext, {type: 'vault.phraseVerified', expectedRevision: REV}, unlockPage, deps)).toEqual({ok: true});
     expect((await readSettings(ext)).phraseVerifiedAt).toBe(777);
+  });
+
+  // The final review's m7 (a controller ruling): the fact is bound to the wallet whose phrase was checked — the page
+  // sends the revision it proved against, and the background records only while the stored envelope still has it.
+  it('m7: a verify tab left in #4 while the wallet was deleted and another created and unlocked records nothing on it', async () => {
+    const ext = fakeExt();
+    await ext.local.set(VAULT_KEY, STORED);
+    await unlocked(ext);
+    const deps = fakeDeps({reader: zero()});
+    // Another tab: delete, create a new wallet, unlock it.
+    expect(await forgetWallet(ext, deps, {expectedRevision: REV})).toBe('forgotten');
+    const other = {...STORED, kdf: {...STORED.kdf, salt: B(16, 9)}, seed: {iv: B(12, 8), ct: B(48, 7)}, password: {wrapped: B(40, 6)}};
+    expect(await storeEnvelope(ext, null, other)).toBe('stored');
+    await unlocked(ext);
+    deps.clock.t = 777;
+    // The old tab's success: proved against the deleted wallet.
+    expect(await handleMessage(ext, {type: 'vault.phraseVerified', expectedRevision: REV}, unlockPage, deps)).toEqual({ok: false, error: 'busy'});
+    expect((await readSettings(ext)).phraseVerifiedAt).toBeNull();
+    // The new wallet's own check records (the positive control).
+    const otherRev = envelopeRevision(other as Parameters<typeof envelopeRevision>[0]);
+    expect(await handleMessage(ext, {type: 'vault.phraseVerified', expectedRevision: otherRev}, unlockPage, deps)).toEqual({ok: true});
+    expect((await readSettings(ext)).phraseVerifiedAt).toBe(777);
+  });
+
+  it('m7: no revision, or not a revision, is malformed; no wallet stored is no-wallet; a damaged one stored-invalid — nothing written', async () => {
+    const ext = fakeExt();
+    await ext.local.set(VAULT_KEY, STORED);
+    await unlocked(ext);
+    for (const bad of [undefined, null, 7, 'abc', REV.toUpperCase(), `${REV}0`]) {
+      const msg = bad === undefined ? {type: 'vault.phraseVerified'} : {type: 'vault.phraseVerified', expectedRevision: bad};
+      expect(await handleMessage(ext, msg, unlockPage, fakeDeps())).toEqual({ok: false, error: 'malformed'});
+    }
+    await ext.local.remove(VAULT_KEY);
+    expect(await handleMessage(ext, {type: 'vault.phraseVerified', expectedRevision: REV}, unlockPage, fakeDeps())).toEqual({ok: false, error: 'no-wallet'});
+    await ext.local.set(VAULT_KEY, [1, 2]);
+    expect(await handleMessage(ext, {type: 'vault.phraseVerified', expectedRevision: REV}, unlockPage, fakeDeps())).toEqual({ok: false, error: 'stored-invalid'});
+    expect((await readSettings(ext)).phraseVerifiedAt).toBeNull();
+  });
+
+  it('m7: the same wallet changed since the proof (another account added meanwhile) is busy too — the page shows O32', async () => {
+    const ext = fakeExt();
+    const changed = {...STORED, seed: {iv: B(12, 5), ct: B(48, 5)}};
+    await ext.local.set(VAULT_KEY, changed);
+    await unlocked(ext);
+    expect(await handleMessage(ext, {type: 'vault.phraseVerified', expectedRevision: REV}, unlockPage, fakeDeps())).toEqual({ok: false, error: 'busy'});
+    expect((await readSettings(ext)).phraseVerifiedAt).toBeNull();
   });
 
   it('only from the vault page: the popup, wallet.html and a web origin are refused', async () => {
@@ -44,7 +91,7 @@ describe('vault.phraseVerified (E15)', () => {
       {id: ID, origin: ORIGIN, url: `${ORIGIN}/wallet.html`},
       {id: ID, origin: 'https://evil.example', url: 'https://evil.example/', tab: {}, frameId: 0},
     ]) {
-      expect(await handleMessage(ext, {type: 'vault.phraseVerified'}, sender, fakeDeps())).toEqual({ok: false, error: 'forbidden'});
+      expect(await handleMessage(ext, {type: 'vault.phraseVerified', expectedRevision: REV}, sender, fakeDeps())).toEqual({ok: false, error: 'forbidden'});
     }
     expect((await readSettings(ext)).phraseVerifiedAt).toBeNull();
   });
@@ -86,7 +133,7 @@ describe('vault.phraseVerified (E15)', () => {
       }
       return realGet(k);
     };
-    const r = await handleMessage(ext, {type: 'vault.phraseVerified'}, unlockPage, deps);
+    const r = await handleMessage(ext, {type: 'vault.phraseVerified', expectedRevision: REV}, unlockPage, deps);
     expect(deleting).toBeDefined();
     expect(await deleting).toBe('forgotten');
     expect(r).toEqual({ok: true});
