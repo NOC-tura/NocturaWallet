@@ -80,7 +80,7 @@ test('2 · import: #8 paste → the scheme detected (slip10, accounts 0 … the 
     h.fake.lamports.set(E2E_ACCOUNTS[0], 10_000_000_000);
     h.fake.lamports.set(E2E_ACCOUNTS[1], 2_500_000_000);
     const {vault, ...detected} = await importDetected(h);
-    expect(detected).toEqual({scheme: 'slip10', accounts: [...E2E_ACCOUNTS]});
+    expect(detected).toEqual({scheme: 'slip10', accounts: E2E_ACCOUNTS.slice(0, 2)});
     await expect(vault.getByText('2 accounts · 1 token recovered.')).toBeVisible();
     await expect(vault.locator('.s8-token-row .amt')).toHaveText(['12.5000']);
     await expect(vault.locator('.s8-token-row .sec')).toHaveText(['Solana · 2 accounts']);

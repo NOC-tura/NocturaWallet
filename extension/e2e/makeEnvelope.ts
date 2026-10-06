@@ -3,12 +3,12 @@ import {argon2idKdf} from '../src/vault/kdf';
 
 export const E2E_PASSWORD = 'correct horse battery staple';
 export const E2E_MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-/** E2E_MNEMONIC's SLIP-0010 accounts 0 and 1 (derived once with src/vault/accounts.ts; written here so the E2E imports no core/ code). */
-export const E2E_ACCOUNTS = ['HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk', 'Hh8QwFUA6MtVu1qAoq12ucvFHNwCcVTV7hpWjeY1Hztb'] as const;
+/** E2E_MNEMONIC's SLIP-0010 accounts 0, 1 and 2 (derived once with src/vault/accounts.ts; written here so the E2E imports no core/ code). */
+export const E2E_ACCOUNTS = ['HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk', 'Hh8QwFUA6MtVu1qAoq12ucvFHNwCcVTV7hpWjeY1Hztb', '7WktogJEd2wQ9eH2oWusmcoFTgeYi6rS632UviTBJ2jm'] as const;
 
-/** A real envelope at production parameters — the E2E exercises the real cost. One account, or the two of E2E_ACCOUNTS. */
-export function makeEnvelope(o: {accounts?: 1 | 2} = {}) {
-  const names = ['Account 1', 'Savings'];
+/** A real envelope at production parameters — the E2E exercises the real cost. The first one, two or three of E2E_ACCOUNTS. */
+export function makeEnvelope(o: {accounts?: 1 | 2 | 3} = {}) {
+  const names = ['Account 1', 'Savings', 'Account 3'];
   return createEnvelope({
     mnemonic: E2E_MNEMONIC,
     password: E2E_PASSWORD,

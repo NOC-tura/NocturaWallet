@@ -5,7 +5,8 @@ import {createWallet, pastePhrase} from './vaultPage';
 
 // Final review item 2: the vault page's boundary is the CSP (the source gates are a backstop). This walks the
 // create run and opens every other vault-page mode — unlock with the cooldown ring, forgot, import, the restore
-// (source=forgot) and retry (source=retry) paths, accounts, reveal, reauth, welcome — and expects no CSP
+// (source=forgot) and retry (source=retry) paths, accounts, reveal, verify, password, delete, passkey (add and remove),
+// reauth (a send and a settings change), welcome — and expects no CSP
 // violation at all: none reported to the page (`securitypolicyviolation`), none in the console. A positive
 // control in the same browser proves the watch sees one: an inline <style> and a remote <img> are both reported.
 const PASSWORD = 'a long enough password';
@@ -106,6 +107,19 @@ test('csp: every vault-page mode runs with zero CSP violations; an inline style 
     await p.goto(`${base}?mode=verify`);
     await expect(p.locator('#pp-title')).toHaveText('Verify your recovery phrase');
     await clean('verify');
+    // B1b-2b §3.1–§3.3: #36, #37's proof and the passkey actions.
+    await p.goto(`${base}?mode=password`);
+    await expect(p.locator('#cp-title')).toHaveText('Enter current password');
+    await clean('password');
+    await p.goto(`${base}?mode=delete`);
+    await expect(p.locator('#dl-address .addr-groups')).toBeVisible();
+    await clean('delete');
+    await p.goto(`${base}?mode=passkey&op=add`);
+    await expect(p.locator('#pm-title')).toHaveText('Unlock Noctura with a passkey');
+    await clean('passkey, add');
+    await p.goto(`${base}?mode=passkey&op=remove`);
+    await expect(p.locator('#pm-title')).toHaveText('Remove your passkey');
+    await clean('passkey, remove');
 
     // #10 with a live challenge: a send of 2.48 of the fake's 10 SOL to a new address.
     let challengeId: string | null = null;
@@ -118,6 +132,12 @@ test('csp: every vault-page mode runs with zero CSP violations; an inline style 
     await expect(p.locator('#ra-about')).toHaveText('You are about to send');
     await expect(p.locator('#ra-amount')).toHaveText('2.4800');
     await clean('reauth');
+    // B1b-2b §3.7 (E9): #10's settings kind — a weakening of auto-lock answers with a challenge; its tab renders the change.
+    const weaken = (await p.evaluate(m => chrome.runtime.sendMessage(m), {type: 'settings.set', patch: {autoLockMinutes: 15}})) as {ok: boolean; error?: string; data?: {challengeId?: string}};
+    expect(weaken.error).toBe('reauth-required');
+    await p.goto(`${base}?mode=reauth&challenge=${weaken.data?.challengeId ?? ''}`);
+    await expect(p.locator('#ra-about')).toHaveText('You are about to change');
+    await clean('reauth, settings');
 
     await p.goto(`${base}?mode=forgot`);
     await expect(p.locator('#fg-title')).toHaveText('Forgot your password?');
@@ -141,7 +161,7 @@ test('csp: every vault-page mode runs with zero CSP violations; an inline style 
     await expect(p.locator('#imp-phrase')).toBeVisible();
     await clean('import');
 
-    expect(seen).toHaveLength(11);
+    expect(seen).toHaveLength(16);
 
     // The positive control, on the same page and watch: an inline <style> and a remote <img> are both refused and reported.
     await p.evaluate(src => {
