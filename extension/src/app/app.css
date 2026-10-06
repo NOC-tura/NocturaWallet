@@ -841,3 +841,43 @@ a.btn {
 .app-bio-tip {
   margin: var(--space-4) var(--space-5) 0;
 }
+
+/* B1b-2b §4.3: the accounts manager — the switcher's rows (2a §5.2) on a pushed screen, with their tools. */
+.app-manager-body {
+  padding: 0 var(--space-4) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.app-manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.app-row-tools {
+  display: inline-flex;
+  align-items: center;
+}
+.app-row-tools .icon-btn {
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  color: var(--fg-secondary);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.app-row-tools .icon-btn span {
+  display: inline-flex;
+}
+.app-remove-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.app-remove-sheet p {
+  margin: 0;
+}

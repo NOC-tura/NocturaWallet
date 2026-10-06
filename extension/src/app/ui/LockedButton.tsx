@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState, type ReactNode} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, type ReactNode} from 'react';
 
 /** Cardinal rule 6: no double submit — 500 ms at least, and never before the action settles. */
 export const LOCK_MS = 500;
@@ -17,6 +17,7 @@ export function LockedButton({
   className = 'btn btn-primary',
   disabled = false,
   label,
+  keepFocus = false,
   wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)),
 }: {
   onPress: () => Promise<unknown> | void;
@@ -24,10 +25,25 @@ export function LockedButton({
   className?: string;
   disabled?: boolean;
   label?: string;
+  /**
+   * B1b-2b §4.3 (keyboard reorder): a button that had the focus when pressed takes it back once it is enabled again —
+   * the lock disables it, and a disabled (or moved) button loses the focus to the page. Only from the page: a focus the
+   * user moved elsewhere meanwhile is left where it is.
+   */
+  keepFocus?: boolean;
   wait?: (ms: number) => Promise<void>;
 }) {
   const busy = useRef(false);
   const [locked, setLocked] = useState(false);
+  const self = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false);
+  useLayoutEffect(() => {
+    if (!locked && !disabled && refocus.current) {
+      refocus.current = false;
+      const at = document.activeElement;
+      if (at === null || at === document.body) self.current?.focus();
+    }
+  }, [locked, disabled]);
   /** False once unmounted: an action that settles after the screen went sets nothing. */
   const alive = useRef(true);
   useEffect(() => {
@@ -39,6 +55,7 @@ export function LockedButton({
   const press = () => {
     if (busy.current || disabled) return;
     busy.current = true;
+    refocus.current = keepFocus && document.activeElement === self.current;
     setLocked(true);
     const floor = wait(LOCK_MS);
     let action: Promise<unknown>;
@@ -54,7 +71,7 @@ export function LockedButton({
     });
   };
   return (
-    <button type="button" className={`${className}${locked ? ' is-busy' : ''}`} disabled={disabled || locked} aria-label={label} onClick={press}>
+    <button ref={self} type="button" className={`${className}${locked ? ' is-busy' : ''}`} disabled={disabled || locked} aria-label={label} onClick={press}>
       {children}
     </button>
   );

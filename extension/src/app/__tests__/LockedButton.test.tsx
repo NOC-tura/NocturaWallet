@@ -50,6 +50,43 @@ describe('LockedButton', () => {
     await floor();
   });
 
+  // B1b-2b §4.3: the manager's ↑/↓ — a keyboard user pressing it keeps the focus on it once it is enabled again.
+  async function pressed(keepFocus: boolean, after: 'lost' | 'moved') {
+    let release: () => void = () => undefined;
+    const {unmount} = render(
+      <>
+        <LockedButton onPress={async () => undefined} keepFocus={keepFocus} wait={() => new Promise<void>(r => (release = r))}>
+          Move
+        </LockedButton>
+        <button type="button">Elsewhere</button>
+      </>,
+    );
+    const button = screen.getByRole('button', {name: 'Move'}) as HTMLButtonElement;
+    button.focus();
+    fireEvent.click(button);
+    if (after === 'moved') (screen.getByRole('button', {name: 'Elsewhere'}) as HTMLButtonElement).focus();
+    else {
+      // What a browser does to a focused button the lock disables (or a row the list moves): the page has the focus.
+      const blip = document.createElement('input');
+      document.body.append(blip);
+      blip.focus();
+      blip.remove();
+    }
+    await act(async () => release());
+    const at = document.activeElement === button ? 'button' : document.activeElement === document.body ? 'page' : 'elsewhere';
+    unmount();
+    return at;
+  }
+
+  it('keepFocus: a button focused when pressed takes the focus back from the page when the lock ends', async () => {
+    expect(await pressed(true, 'lost')).toBe('button');
+    expect(await pressed(false, 'lost')).toBe('page');
+  });
+
+  it('keepFocus never takes the focus from where the user moved it meanwhile', async () => {
+    expect(await pressed(true, 'moved')).toBe('elsewhere');
+  });
+
   it('holds for LOCK_MS = 500 by default', () => {
     expect(LOCK_MS).toBe(500);
   });
