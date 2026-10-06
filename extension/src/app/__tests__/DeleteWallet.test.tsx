@@ -7,6 +7,7 @@ import {ENV, renderInWallet, walletReader} from './harness';
 import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {PENDING_KEY} from '../../background/pendingStore';
 import {SETTINGS_KEY} from '../../background/settings';
+import {BALANCE_CACHE_KEY} from '../../background/balanceCache';
 import {ACCOUNT, RECIPIENT, pendingRecord} from '../../background/__tests__/fixtures';
 import {fakeReader} from '../../background/__tests__/fakeDeps';
 import {useWallet, type WalletModel} from '../WalletContext';
@@ -229,6 +230,18 @@ describe('#37 delete wallet', () => {
   it('balances unknown: a read failed — O65', async () => {
     await shown({reader: walletReader({getBalance: async () => Promise.reject(new Error('x'))})});
     expect(await screen.findByText(UNKNOWN)).toBeTruthy();
+  });
+
+  it('balances unknown: a fresh read failed although every account has a cached row — O65 still (the cache is not a check)', async () => {
+    const at = Date.now() - 5_000;
+    const row = {sol: '62482100000', noc: '0', usdc: '0', usdt: '0', at};
+    await shown({
+      reader: walletReader({getBalance: async () => Promise.reject(new Error('x'))}),
+      before: async ext => ext.local.set(BALANCE_CACHE_KEY, {[ACCOUNT.publicKey]: row, [RECIPIENT]: row}),
+    });
+    expect(await screen.findByText(UNKNOWN)).toBeTruthy();
+    // The cached rows still inform: 2 × 62.4821 SOL.
+    await waitFor(() => expect(document.querySelector('.app-delete-funds')?.textContent).toMatch(/^124\.9642 SOL/));
   });
 
   it('nothing funded and everything read: neither banner', async () => {
