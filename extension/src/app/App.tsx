@@ -15,6 +15,7 @@ import {Activity} from './screens/Activity';
 import {TxDetail} from './screens/TxDetail';
 import {Settings} from './screens/Settings';
 import {About} from './screens/About';
+import {Passkey} from './screens/Passkey';
 import {Created} from './screens/Created';
 import {Imported} from './screens/Imported';
 import {Send} from './screens/Send';
@@ -260,6 +261,8 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
         }}
       />
     );
+  } else if (route.screen === 'passkey') {
+    screen = <Passkey onBack={() => go({type: 'pop'})} />;
   } else {
     screen = <About onBack={() => go({type: 'pop'})} />;
   }

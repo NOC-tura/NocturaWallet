@@ -809,3 +809,35 @@ a.btn {
   display: inline-block;
   margin-inline-end: 0.6ch;
 }
+
+/* B1b-2b §4.4: the passkey screen — #6's chrome in the popup (index.html #s06's inline spacing, as classes). */
+.app-grow {
+  flex: 1 1 auto;
+}
+.app-content .s-bio .hero-icon {
+  margin: var(--space-5) auto var(--space-5);
+}
+.app-bio-head {
+  padding: 0 var(--space-6);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.app-bio-head h1,
+.app-bio-head p {
+  margin: 0;
+}
+.app-bio-features {
+  margin-top: var(--space-5);
+  padding: 0 var(--space-2);
+}
+.app-bio-features .noc-body-sm {
+  margin-top: 2px;
+}
+.app-bio-tip {
+  margin: var(--space-4) var(--space-5) 0;
+}
+.sticky-bar .app-center {
+  margin: 0;
+}

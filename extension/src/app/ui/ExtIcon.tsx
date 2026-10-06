@@ -37,9 +37,77 @@ export type ExtIconName =
   | 'clip'
   | 'alert'
   | 'cpu'
-  | 'check-circle';
+  | 'check-circle'
+  // B1b-2b plan 1: #31, #35, the accounts manager, the passkey screen, #37.
+  | 'user'
+  | 'key'
+  | 'fingerprint'
+  | 'shield-check'
+  | 'database'
+  | 'trash'
+  | 'zap'
+  | 'arrow-up'
+  | 'arrow-down';
 
 const PATHS: Record<ExtIconName, ReactNode> = {
+  // B1b-2b plan 1, from the design's sprite (#i-user, #i-key, #i-fingerprint, #i-shield-check, #i-database, #i-trash,
+  // #i-zap, #i-arrow-down); `arrow-up` is #i-arrow-down turned, drawn in the same style (the sprite lacks it).
+  user: (
+    <>
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </>
+  ),
+  key: (
+    <>
+      <circle cx="7.5" cy="15.5" r="3.5" />
+      <path d="m10 13 9-9 3 3-3 3 2 2-3 3-2-2-3 3" />
+    </>
+  ),
+  fingerprint: (
+    <>
+      <path d="M12 11c0 5-1.5 8-3 10" />
+      <path d="M16 13.5c-.5 4-2 6-3 7.5" />
+      <path d="M8 11c0-2 2-4 4-4s4 2 4 4c0 2-1 4-2 6" />
+      <path d="M5 11c0-4 3-7 7-7s7 3 7 7" />
+      <path d="M3 14c0-1.5.5-3 1-4" />
+      <path d="M21 14c-.5 0-1 1-2 3" />
+    </>
+  ),
+  'shield-check': (
+    <>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+      <polyline points="9 12 11 14 15 10" />
+    </>
+  ),
+  database: (
+    <>
+      <ellipse cx="12" cy="5" rx="9" ry="3" />
+      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+      <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3" />
+    </>
+  ),
+  trash: (
+    <>
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <line x1="10" y1="11" x2="10" y2="17" />
+      <line x1="14" y1="11" x2="14" y2="17" />
+    </>
+  ),
+  zap: <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />,
+  'arrow-down': (
+    <>
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <polyline points="19 12 12 19 5 12" />
+    </>
+  ),
+  'arrow-up': (
+    <>
+      <line x1="12" y1="19" x2="12" y2="5" />
+      <polyline points="5 12 12 5 19 12" />
+    </>
+  ),
   // Plan 3: #12's paste button (#i-clip) and its helper lines' glyph (#i-alert).
   clip: (
     <>

@@ -303,9 +303,17 @@ export const DERIVATION_MARKER = 'ed25519 seed';
 // A string that exists only in @scure/bip39 (its phrase normalizer, which mnemonicToSeed and
 // validateMnemonic run): core/keys/mnemonic carries neither marker above.
 export const BIP39_MARKER = 'invalid mnemonic type: ';
-// The passkey RP ID, which only src/vault/passkey.ts spells in code. The built manifest names
-// the same host (a host permission), so only JS files count — for presence and for leaks.
-export const PASSKEY_MARKER = 'wallet.noc-tura.io';
+// The WebAuthn PRF evaluation as the build emits it (src/vault/passkey.ts's evaluatePrf and
+// registerPasskey; checked against a real Vite build): no other code asks an authenticator for PRF.
+// B1b-2b: it was the RP ID, 'wallet.noc-tura.io' — but the owner-approved popup copy now names
+// that host in prose (#6's synced-passkey tip on the passkey screen), so the RP ID no longer
+// proves that passkey CODE is in a bundle. Only JS files count — for presence and for leaks.
+export const PASSKEY_MARKER = 'extensions:{prf:{eval:{first:';
+// B1b-2b plan 1 review H1: the PRF marker alone proves less than the RP ID did — a non-PRF WebAuthn
+// call (navigator.credentials.get/create) outside the vault page would pass it. The WebAuthn API
+// itself is the second passkey marker: only src/unlock/browser.ts spells it (checked against a real
+// build: the unlock bundle carries it, no other built file does). Prose cannot match it.
+export const WEBAUTHN_MARKER = 'navigator.credentials';
 // An error message of @noble/hashes' Argon2 parameter check: the KDF, found in the vault
 // worker only (checked against the real build: no other built file carries it).
 export const KDF_MARKER = '(memory) must be at least 8*p bytes';
@@ -323,6 +331,7 @@ const MARKERS = [
   ['derivation', DERIVATION_MARKER],
   ['bip39', BIP39_MARKER],
   ['passkey', PASSKEY_MARKER],
+  ['webauthn', WEBAUTHN_MARKER],
   ['kdf', KDF_MARKER],
   ['wordlist', WORDLIST_MARKER],
 ];

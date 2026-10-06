@@ -4,7 +4,7 @@ import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
   bundleViolations, htmlViolations, listSourceFiles, manifestViolations, sourceViolations, vaultPageModuleViolations, vaultPageViolations,
-  BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, REACT_MARKER, VAULT_MARKER, WORDLIST_MARKER,
+  BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, REACT_MARKER, VAULT_MARKER, WEBAUTHN_MARKER, WORDLIST_MARKER,
 } from '../check-vault-isolation.mjs';
 import {render} from '../../manifest/source.mjs';
 
@@ -490,7 +490,7 @@ describe('vault isolation (built output)', () => {
     write('assets/react-1.js', `export const R="${REACT_MARKER}";`);
     write('assets/send-1.js', 'export const t=()=>1;');
     write('unlock.html', html('./assets/unlock-1.js'));
-    write('assets/unlock-1.js', `import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+    write('assets/unlock-1.js', `import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const n="${WEBAUTHN_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
     write('assets/kdf.worker-1.js', `throw Error("${KDF_MARKER}");`);
   };
 
@@ -867,16 +867,16 @@ describe('vault isolation (built output)', () => {
 
   it('does not follow imports out of the unlock bundle (it may carry the vault)', () => {
     write('assets/unlock-1.js', `import"./vault-1.js";`);
-    write('assets/vault-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+    write('assets/vault-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const n="${WEBAUTHN_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
     expect(bundleViolations(dir)).toEqual([]);
   });
 
   it('fails when the vault page imports the background entry, directly or through a chunk (it would run the background)', () => {
-    write('assets/unlock-1.js', `import{t as x}from"../background.js";import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+    write('assets/unlock-1.js', `import{t as x}from"../background.js";import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const n="${WEBAUTHN_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
     // …and through it the background's storage.session chunk (the rule below).
     const viaBackground = 'assets/session-1.js (reachable from unlock.html) touches storage.session — only the background may';
     expect(bundleViolations(dir)).toEqual(['the vault page (assets/unlock-1.js) reaches background.js — it would run the background', viaBackground]);
-    write('assets/unlock-1.js', `import"./mid-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+    write('assets/unlock-1.js', `import"./mid-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const n="${WEBAUTHN_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
     write('assets/mid-1.js', 'import"../background.js";');
     expect(bundleViolations(dir)).toEqual(['the vault page (assets/unlock-1.js) reaches background.js — it would run the background', viaBackground]);
   });
@@ -889,9 +889,9 @@ describe('vault isolation (built output)', () => {
   });
 
   it('is INCONCLUSIVE — and fails — when any marker is in no built file', () => {
-    const all = {i: VAULT_MARKER, d: DERIVATION_MARKER, b: BIP39_MARKER, r: PASSKEY_MARKER, w: WORDLIST_MARKER};
+    const all = {i: VAULT_MARKER, d: DERIVATION_MARKER, b: BIP39_MARKER, r: PASSKEY_MARKER, n: WEBAUTHN_MARKER, w: WORDLIST_MARKER};
     const without = k => Object.entries(all).filter(([n]) => n !== k).map(([n, m]) => `const ${n}=\`${m}\`;`).join('');
-    for (const [k, name, marker] of [['i', 'envelope', VAULT_MARKER], ['d', 'derivation', DERIVATION_MARKER], ['b', 'bip39', BIP39_MARKER], ['r', 'passkey', PASSKEY_MARKER], ['w', 'wordlist', WORDLIST_MARKER]]) {
+    for (const [k, name, marker] of [['i', 'envelope', VAULT_MARKER], ['d', 'derivation', DERIVATION_MARKER], ['b', 'bip39', BIP39_MARKER], ['r', 'passkey', PASSKEY_MARKER], ['n', 'webauthn', WEBAUTHN_MARKER], ['w', 'wordlist', WORDLIST_MARKER]]) {
       write('assets/unlock-1.js', without(k));
       expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the ${name} marker "${marker}" is in no built JS file — the check would pass trivially`]);
     }
@@ -900,12 +900,18 @@ describe('vault isolation (built output)', () => {
     expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the kdf marker "${KDF_MARKER}" is in no built JS file — the check would pass trivially`]);
   });
 
-  // The built manifest names wallet.noc-tura.io (a host permission): a marker that only a
-  // non-JS file carries must not count as present.
+  // Only JS files count: a marker that only a non-JS file carries (here the manifest, which really
+  // does name wallet.noc-tura.io as a host permission; B1b-2b review L1 retargeted this fixture when the
+  // passkey markers stopped being that host) must not count as present.
   it('does not count a marker found only in a non-JS file (the manifest) as present', () => {
-    write('assets/unlock-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
-    write('manifest.json', `{"host_permissions":["https://${PASSKEY_MARKER}/*"]}`);
-    expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the passkey marker "${PASSKEY_MARKER}" is in no built JS file — the check would pass trivially`]);
+    write('assets/unlock-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+    write('manifest.json', `{"host_permissions":["https://wallet.noc-tura.io/*"],"note":"${WEBAUTHN_MARKER}"}`);
+    expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the webauthn marker "${WEBAUTHN_MARKER}" is in no built JS file — the check would pass trivially`]);
+  });
+
+  it('B1b-2b review H1: a non-PRF WebAuthn call in a popup chunk fails (the webauthn marker alone)', () => {
+    write('assets/send-1.js', 'export const t=()=>navigator.credentials.get({publicKey:{rpId:"wallet.noc-tura.io",challenge:new Uint8Array(32)}});');
+    expect(bundleViolations(dir)).toEqual(['assets/send-1.js (reachable from assets/popup-1.js) contains vault code (webauthn)']);
   });
 
   it('fails on the passkey marker alone — the reproduced leak split passkey.ts into its own chunk', () => {
@@ -913,6 +919,11 @@ describe('vault isolation (built output)', () => {
     write('assets/prf-1.js', 'import"./passkey-1.js";');
     write('assets/passkey-1.js', `const r="${PASSKEY_MARKER}";`);
     expect(bundleViolations(dir)).toEqual(['assets/passkey-1.js (reachable from assets/prf-1.js) contains vault code (passkey)']);
+  });
+
+  it('B1b-2b: the RP ID in popup prose (#6\'s synced-passkey tip) is not passkey code — the popup passes', () => {
+    write('assets/send-1.js', 'export const t=()=>1;export const tip="Other extensions allowed on wallet.noc-tura.io can ask for it too.";');
+    expect(bundleViolations(dir)).toEqual([]);
   });
 
   it('fails on the wordlist marker alone — generateMnemonic outside the vault page', () => {
@@ -931,7 +942,7 @@ describe('vault isolation (built output)', () => {
 
   // Final review minor 4: readLocal lived in src/ext.ts, so the vault page's bundle carried the
   // whole of ext.ts (storage.session, setAccessLevel) in a shared chunk — every source rule passed.
-  const UNLOCK_MARKERS = `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`;
+  const UNLOCK_MARKERS = `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const n="${WEBAUTHN_MARKER}";const w=\`${WORDLIST_MARKER}\`;`;
   const SESSION = (file, from) => `${file} (reachable from ${from}) touches storage.session — only the background may`;
 
   it('fails when the vault page reaches storage.session — the old layout: ext.ts in a shared chunk', () => {
