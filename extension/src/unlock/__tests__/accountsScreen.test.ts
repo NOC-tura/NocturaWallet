@@ -513,26 +513,30 @@ describe('the accounts mode: fix round 1', () => {
   }
 
   it('I1: another wallet swapped in after load (same password, unlocked) — nothing proven, O14, its address shown; never charged', async () => {
-    const {h} = await shown({op: 'remove', index: 1}, {indexes: [0, 1]});
+    // holdSleep: a backoff wait (a charge) would hold the cooldown card on screen until wake().
+    const {h} = await shown({op: 'remove', index: 1}, {indexes: [0, 1], holdSleep: true});
+    const settled = () => h.until(() => !h.deps.gate.isBusy() || (h.wake(), false));
     const b = await walletB();
     await h.ext.local.set(VAULT_KEY, b.env);
     await setSession(h.ext, b.keys);
     withPassword();
     await h.until(() => text(el('acc-helper')) === CHANGED);
-    await idle(h);
+    await settled();
     expect(h.sent.filter(m => m.type === 'vault.status')).toEqual([]);
     expect(h.sent.filter(m => m.type === 'vault.storeEnvelope')).toEqual([]);
     expect(await stored(h)).toEqual(b.env);
     expect(shownAddress()).toBe(b.keys[1]?.publicKey);
     expect(visible(el('acc-act'))).toBe(true);
-    // Never charged to the backoff: the next wrong password is the FIRST wrong one — no cooldown.
+    // Never charged to the backoff: a wrong password after it, then another, are the FIRST and SECOND wrong ones — the
+    // first gets no wait (a charge would have made it the second, with the cooldown card).
     withPassword('nope nope nope nope');
-    await h.until(() => text(el('acc-helper')) === 'That did not confirm it.');
-    await idle(h);
+    await h.until(() => text(el('acc-helper')) === 'That did not confirm it.' || visible(el('acc-cooldown')));
     expect(visible(el('acc-cooldown'))).toBe(false);
+    await settled();
     // The address now on screen is the one a proof removes.
     withPassword();
-    await h.until(() => text(el('acc-helper')) === DONE);
+    await h.until(() => text(el('acc-helper')) === DONE || (h.wake(), false));
+    await settled();
     expect((await stored(h)).accounts.map(a => a.publicKey)).toEqual([b.keys[0]?.publicKey]);
   });
 
