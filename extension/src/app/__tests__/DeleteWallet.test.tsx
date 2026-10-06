@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {useState} from 'react';
 import {act, cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react';
 import {DeleteWallet, firstAccount} from '../screens/DeleteWallet';
@@ -151,6 +153,12 @@ describe('#37 delete wallet', () => {
     fireEvent.pointerDown(hold, {button: 0});
     w.advance(600);
     expect(hold.textContent).toBe('Hold to delete · 0.4 s');
+    // Task 20 visual pass: the label and its count are ONE run beside the icon, as ix:15089 draws "Hold to delete · 0.4 s"
+    // — not two flex items, which the label's icon gap set 8 px apart ("delete ·  0.4 s").
+    const flexItems = [...(hold.querySelector('.app-hold-label') as HTMLElement).childNodes];
+    expect(flexItems.map(n => (n instanceof Element ? n.tagName.toLowerCase() : '#text'))).toEqual(['svg', 'span']);
+    expect(flexItems[1]?.textContent).toBe('Hold to delete · 0.4 s');
+    expect(flexItems[1] instanceof Element && flexItems[1].querySelector('.noc-numeral')?.textContent).toBe('0.4 s');
     expect((hold.querySelector('.fill') as HTMLElement).style.transform).toBe('scaleX(0.6)');
     expect(cancel().disabled).toBe(true);
     w.advance(300);
@@ -324,6 +332,56 @@ describe('#37 delete wallet', () => {
     fireEvent.click(cancel());
     expect(w.backs()).toBe(1);
     expect(field().value).toBe('');
+  });
+
+  // Task 20 (Task 15 M6): design-ext's `.s7-pw input {outline: 0}` left the EMPTY field with no focus indicator. app.css
+  // gives the focused field 37b's accent ring; a matched field keeps its success border. The real app.css is loaded (each
+  // color-mix(…) swapped for a plain colour, which happy-dom cannot parse — the selectors and their order are app.css's own).
+  // happy-dom matches `:focus` but not `:focus-within` (probed: `label.matches(':focus-within')` is false with its input
+  // focused), so the pseudo-class is stood in for by a class the test sets while the input has the focus. The real
+  // pseudo-class is checked computed in Chromium by e2e/visual-settings.spec.ts (37a-focused).
+  it('the empty DELETE field shows a focus ring (1 px accent border); unfocused it has none; matched keeps the success border', async () => {
+    const swap = (css: string): string => {
+      let out = '';
+      for (let i = 0; i < css.length; ) {
+        if (!css.startsWith('color-mix(', i)) {
+          out += css[i++];
+          continue;
+        }
+        let depth = 0;
+        let j = i + 'color-mix'.length;
+        do {
+          if (css[j] === '(') depth++;
+          else if (css[j] === ')') depth--;
+          j++;
+        } while (depth > 0);
+        out += 'rgb(0, 128, 0)';
+        i = j;
+      }
+      return out;
+    };
+    const style = document.createElement('style');
+    const css = swap(readFileSync(join(__dirname, '..', 'app.css'), 'utf8'));
+    expect(css).toContain('.s7-pw:focus-within');
+    style.textContent = `:root { --accent: rgb(1, 2, 3); }\n${css.replaceAll(':focus-within', '.focus-within-standin')}`;
+    document.head.append(style);
+    try {
+      await shown({env: ENV});
+      const label = field().closest('.s7-pw') as HTMLElement;
+      expect(getComputedStyle(label).borderTopStyle).not.toBe('solid');
+      field().focus();
+      expect(document.activeElement).toBe(field());
+      label.classList.add('focus-within-standin');
+      expect(getComputedStyle(label).borderTopWidth).toBe('1px');
+      expect(getComputedStyle(label).borderTopStyle).toBe('solid');
+      expect(getComputedStyle(label).borderTopColor).toBe('rgb(1, 2, 3)');
+      typeIn('DELETE');
+      field().focus();
+      expect(label.classList.contains('app-pw-ok')).toBe(true);
+      expect(getComputedStyle(label).borderTopColor).toBe('rgb(0, 128, 0)');
+    } finally {
+      style.remove();
+    }
   });
 
   it('Back leaves with the typed text wiped', async () => {

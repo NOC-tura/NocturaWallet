@@ -841,6 +841,13 @@ a.btn {
 .app-bio-tip {
   margin: var(--space-4) var(--space-5) 0;
 }
+/* Task 20 visual pass: a caption in a plan-1 action bar (#6 manage's note and "Confirmation opens in a new tab.", #37's)
+   takes the design's `margin: 0` (ix:15083's centred caption) — the bar's --space-3 gap is the only space. The UA's 1em
+   paragraph margins made #6 `on`'s bar 261 of the popup's 600 px and hid the lede under it. */
+.app-content .s-bio > .sticky-bar > p,
+.app-content .app-delete > .sticky-bar > p {
+  margin: 0;
+}
 
 /* B1b-2b §4.3: the accounts manager — the switcher's rows (2a §5.2) on a pushed screen, with their tools. */
 .app-manager-body {
@@ -966,6 +973,12 @@ a.btn {
 .s7-pw input::placeholder {
   color: var(--fg-tertiary);
   letter-spacing: 0.16em;
+}
+/* Task 20 (Task 15 M6): design-ext's `.s7-pw input {outline: 0}` leaves the empty field with no focus indicator. The
+   focused field takes the design's own focused look, 37b's accent ring (ix:15034, drawn with the caret). Before the
+   active/ok rules, which share its specificity: a matched field keeps its success border while focused. */
+.s7-pw:focus-within {
+  border: 1px solid var(--accent);
 }
 .s7-pw.app-pw-active {
   border: 1px solid var(--accent);

@@ -129,8 +129,11 @@ export function HoldButton({
       <span className="fill" aria-hidden="true" style={{transform: `scaleX(${share ?? 0})`}} />
       <span className="label app-hold-label">
         <ExtIcon name="trash" size={18} />
-        {left === null ? label : `${label} · `}
-        {left === null ? null : <span className="noc-numeral">{`${left.toFixed(1)} s`}</span>}
+        {/* One run beside the icon (ix:15089): the label's flex gap is for the icon, never between the words and the count. */}
+        <span>
+          {left === null ? label : `${label} · `}
+          {left === null ? null : <span className="noc-numeral">{`${left.toFixed(1)} s`}</span>}
+        </span>
       </span>
     </button>
   );
