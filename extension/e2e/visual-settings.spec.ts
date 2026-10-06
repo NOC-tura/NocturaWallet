@@ -79,6 +79,15 @@ async function toEnd(p: Page): Promise<void> {
   await main.evaluate(e => e.scrollTo(0, e.scrollHeight));
   await expect.poll(() => main.evaluate(e => e.scrollTop)).toBeGreaterThan(0);
 }
+/** Fix round 1 (visual review I1): #35's overline margins are computed, not just named (they once lost to the body reset). */
+async function overlineMargin(p: Page, text: string, px: string): Promise<void> {
+  await expect(p.locator('.app-security-body .app-overline', {hasText: text})).toHaveCSS('margin-top', px);
+}
+/** Fix round 1 (visual review M2): a busy page's X is drawn disabled (the popup's `.icon-btn:disabled`: opacity 0.4). */
+async function xDisabled(x: Locator): Promise<void> {
+  await expect(x).toBeDisabled();
+  await expect(x).toHaveCSS('opacity', '0.4');
+}
 /** The popup on #11, its first read answered (see settings.spec.ts: the offline start under `unshare -rn`). */
 async function popup(h: Harness, o: {clock?: boolean} = {}): Promise<Page> {
   const p = await h.openPopup(o);
@@ -110,6 +119,9 @@ test('visual: #31, #35, the passkey screen, the accounts manager and #37 in the 
     await p.locator('.app-content').evaluate(e => e.scrollTo(0, 0));
     await p.locator('.s7-title', {hasText: 'Security center'}).click();
     await expect(p.getByText('3 outstanding tasks.')).toBeVisible();
+    await overlineMargin(p, 'Outstanding tasks', '8px');
+    await overlineMargin(p, 'Locks', '12px');
+    await overlineMargin(p, 'Danger zone', '20px');
     await pop(p, '35a-tasks-outstanding', p.getByText('Improve your security'));
     await p.locator('.s7-title', {hasText: 'Auto-lock'}).click();
     await expect(p.getByText('When idle, lock the wallet after')).toBeVisible();
@@ -148,6 +160,8 @@ test('visual: #31, #35, the passkey screen, the accounts manager and #37 in the 
     await pop(p, '31a-passkey-on-verified', p.locator('.s7-row', {hasText: 'Profile'}));
     await p.locator('.s7-title', {hasText: 'Security center'}).click();
     await expect(p.getByText('Looks great')).toBeVisible();
+    await overlineMargin(p, 'Active protections', '8px');
+    await overlineMargin(p, 'Locks', '12px');
     await pop(p, '35b-all-clear', p.getByText('Active protections'));
     await p.getByRole('button', {name: 'Back'}).click();
     await p.locator('.s7-title', {hasText: 'Passkey'}).click();
@@ -214,6 +228,11 @@ test('visual: #31, #35, the passkey screen, the accounts manager and #37 in the 
     await expect(p.locator('.app-account-sub').getByText('10.0000 SOL · $1,500.00', {exact: true})).toHaveCount(2);
     const wrapped = await p.locator('.app-account-sub .sec').evaluateAll(es => es.filter(e => e.getBoundingClientRect().height > 18).map(e => e.textContent));
     expect(wrapped, 'an address or balance line wrapped').toEqual([]);
+    // Fix round 1 (visual review M1): the line starts under the name's text, not 6 px left of it.
+    const offsets = await p.locator('.app-account-row').evaluateAll(rows =>
+      rows.map(r => Math.round((r.querySelector('.app-account-sub .sec')?.getBoundingClientRect().left ?? -99) - (r.querySelector('.pri')?.getBoundingClientRect().left ?? 0))),
+    );
+    expect(offsets).toEqual(offsets.map(() => 0));
     await pop(p, '43m-accounts-list', p.locator('.app-account-row').first());
     await p.getByRole('button', {name: 'Remove Savings'}).click();
     await expect(p.getByText('Holds 10.0000 SOL · $1,500.00')).toBeVisible();
@@ -232,7 +251,9 @@ test('visual: #31, #35, the passkey screen, the accounts manager and #37 in the 
     await toSettings(p);
     await p.locator('.s7-title', {hasText: 'Delete wallet'}).click();
     await expect(p.getByText('This wallet holds funds')).toBeVisible({timeout: 30_000});
-    await pop(p, '37a-idle-funded', p.getByText('Delete this wallet?'));
+    await pop(p, '37a-idle', p.getByText('Delete this wallet?'));
+    // Fix round 1 (visual review M7): the funded state's own element — the banner — in view and clear of the bars.
+    await pop(p, '37a-idle-funded', p.locator('.banner', {hasText: 'This wallet holds funds'}));
     const field = p.getByRole('textbox', {name: 'Type DELETE here'});
     // Task 15 M6: the EMPTY field focused shows a ring (37b's accent border), computed in Chromium — design-ext's
     // `.s7-pw input {outline: 0}` had left it with none. The colour is the one 37b's typed state draws.
@@ -308,6 +329,9 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
       return Math.round((f?.y ?? 0) - ((a?.y ?? 0) + (a?.height ?? 0)));
     };
     const addGap = await gapBelow('#pm-ask');
+    // Fix round 1 (visual review M4): the field inset as the other vault pages' (--space-6: 24..388 in the 412 column).
+    const inset = await p.locator('#pm-password').boundingBox();
+    expect([Math.round(inset?.x ?? 0), Math.round((inset?.x ?? 0) + (inset?.width ?? 0))]).toEqual([24, 388]);
     await shot(p, '06m-add-idle', {ready: p.locator('#pm-act')});
     await holdKdf(p);
     await p.locator('#pm-password').fill(E2E_PASSWORD);
@@ -336,6 +360,7 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     await p.locator('#pm-password').fill(E2E_PASSWORD);
     await p.locator('#pm-act').click();
     await expect(p.locator('#pm-line')).toHaveText('Removing the passkey…');
+    await xDisabled(p.locator('#pm-x'));
     await shot(p, '06m-removing');
     await releaseKdf(p);
     await expect(p.locator('#pm-line')).toHaveText('Passkey removed.', {timeout: 60_000});
@@ -428,6 +453,7 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     await p.locator('#acc-password').fill(NEW_PASSWORD);
     await p.locator('#acc-act').click();
     await expect(p.locator('#acc-helper')).toHaveText('Adding an account…');
+    await xDisabled(p.locator('#acc-x'));
     await shot(p, 'accounts-adding');
     await releaseKdf(p);
     await expect(p.locator('#acc-helper')).toHaveText('Done. The accounts are updated.', {timeout: 60_000});
@@ -599,6 +625,7 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     await p.locator('#dl-password').fill(E2E_PASSWORD);
     await p.locator('#dl-delete').click();
     await expect(p.locator('#dl-helper')).toHaveText('Deleting…');
+    await xDisabled(p.locator('#dl-x'));
     await shot(p, 'delete-deleting');
     await releaseKdf(p);
     await expect(p.locator('#dl-notice-line')).toHaveText('A transaction from this wallet is still pending. Wait until it confirms or expires — about two minutes — then try again.', {timeout: 60_000});

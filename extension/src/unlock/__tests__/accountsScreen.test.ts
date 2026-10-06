@@ -99,6 +99,11 @@ describe('the accounts mode: add (C6)', () => {
     withPassword();
     await h.until(() => text(el('acc-helper')) === 'That account is already in this wallet.');
     await h.until(() => !h.deps.gate.isBusy());
+    // Fix round 1 (visual review M3): a refusal of the number is toned as the page's other refusals (2a's field error):
+    // the helper in --danger, the NUMBER field bordered — not the password field.
+    expect(el('acc-helper').classList.contains('error')).toBe(true);
+    expect(el('acc-index').classList.contains('is-error')).toBe(true);
+    expect(el('acc-password').classList.contains('is-error')).toBe(false);
     // index-taken is the flow's finding on the envelope it opened, after the proof: exactly one proof ran for it.
     const statuses = h.sent.filter(m => m.type === 'vault.status').length;
     expect(statuses).toBe(1);
@@ -106,6 +111,9 @@ describe('the accounts mode: add (C6)', () => {
       type(el<HTMLInputElement>('acc-index'), bad);
       withPassword();
       await h.until(() => text(el('acc-helper')) === 'That is not an account number.' && !h.deps.gate.isBusy());
+      expect(el('acc-helper').classList.contains('error')).toBe(true);
+      expect(el('acc-index').classList.contains('is-error')).toBe(true);
+      expect(el('acc-password').classList.contains('is-error')).toBe(false);
       el('acc-helper').textContent = '';
     }
     expect(h.sent.filter(m => m.type === 'vault.status')).toHaveLength(statuses);
@@ -521,6 +529,10 @@ describe('the accounts mode: fix round 1', () => {
     await setSession(h.ext, b.keys);
     withPassword();
     await h.until(() => text(el('acc-helper')) === CHANGED);
+    // Fix round 1 (visual review M3): O14 in the delete page's tone — a warning, no field error.
+    expect(el('acc-helper').classList.contains('warn')).toBe(true);
+    expect(el('acc-helper').classList.contains('error')).toBe(false);
+    expect(el('acc-password').classList.contains('is-error')).toBe(false);
     await settled();
     expect(h.sent.filter(m => m.type === 'vault.status')).toEqual([]);
     expect(h.sent.filter(m => m.type === 'vault.storeEnvelope')).toEqual([]);

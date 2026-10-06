@@ -867,11 +867,19 @@ a.btn {
 }
 /* Fix round 0b: the address and balance lines span the row under the name and tools, starting under the name (the
    avatar's 36 px + the pick's --space-3 gap, inside the row's --space-2 padding); the switcher's .sec type. */
+/* Fix round 1 (visual review M1): the select button's inline padding is set explicitly here (Chromium's UA 6 px, so
+   nothing moves) and the line below adds it, so the address starts exactly under the name. */
+.app-manager-list {
+  --app-pick-pad: 6px;
+}
+.app-manager-list .app-account-pick {
+  padding-inline: var(--app-pick-pad);
+}
 .app-account-sub {
   grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
-  padding-inline-start: calc(36px + var(--space-3));
+  padding-inline-start: calc(var(--app-pick-pad, 0px) + 36px + var(--space-3));
   margin-top: calc(-1 * var(--space-2));
 }
 .app-account-sub .sec {
@@ -1078,7 +1086,9 @@ a.btn {
 .s7-score-card.no-ring .noc-h3 {
   margin-bottom: 6px;
 }
-.app-overline {
+/* Fix round 1 (visual review I1): each overline rule is scoped to the body, so it beats the body's own `h3, p { margin: 0 }`
+   reset (0,1,1) — the bare `.app-overline` (0,1,0) lost to it and no overline margin ever applied (Danger zone 20 px short). */
+.app-security-body .app-overline {
   margin-top: var(--space-2);
 }
 .app-picker-card {
@@ -1118,7 +1128,7 @@ a.btn {
   position: absolute;
   inset: -8px 0;
 }
-.app-danger-overline {
+.app-security-body .app-danger-overline {
   margin-top: var(--space-5);
 }
 .app-danger-card {
@@ -1170,7 +1180,7 @@ a.btn {
   margin-top: 6px;
 }
 /* ix:14422, 14485: every overline after the first sits --space-3 below the list above it. */
-.app-overline.app-overline-next {
+.app-security-body .app-overline.app-overline-next {
   margin-top: var(--space-3);
 }
 

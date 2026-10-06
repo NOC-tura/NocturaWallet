@@ -128,10 +128,16 @@ export function mountAccounts(deps: PageDeps): AccountsScreen {
     cancel.disabled = busy && !cooling;
     x.disabled = busy && !cooling;
   };
-  const helper = (text: string, error = false) => {
+  /**
+   * `true`: a refusal (2a's field error) — the helper in --danger and the field it is about bordered (`on`: the password
+   * field, or the number field for O36/O37). `'warn'`: O14, the delete page's tone (fix round 1, visual review M3).
+   */
+  const helper = (text: string, tone: boolean | 'warn' = false, on: HTMLInputElement = field) => {
     setText(helperEl, text);
-    helperEl.classList.toggle('error', error);
-    field.classList.toggle('is-error', error);
+    helperEl.classList.toggle('error', tone === true);
+    helperEl.classList.toggle('warn', tone === 'warn');
+    field.classList.toggle('is-error', tone === true && on === field);
+    number.classList.toggle('is-error', tone === true && on === number);
   };
   const help = (text: string) => {
     setText(part.help, text);
@@ -210,7 +216,7 @@ export function mountAccounts(deps: PageDeps): AccountsScreen {
   /** The wallet under the tab is not the one shown: read it again, show what is there now, and say so (O14). Never charged. */
   const changed = async () => {
     await load();
-    if (view === 'entry') helper(DELETE.changed);
+    if (view === 'entry') helper(DELETE.changed, 'warn');
   };
   /**
    * At the click, before any KDF run or passkey prompt: the stored envelope still holds the shown address. False: the
@@ -247,7 +253,11 @@ export function mountAccounts(deps: PageDeps): AccountsScreen {
       view = 'entry';
       return helper(COMMON.wrongConfirm, true);
     }
-    if (out === 'bad-index' || out === 'index-taken' || out === 'send-open' || out === 'failed') {
+    if (out === 'bad-index' || out === 'index-taken') {
+      view = 'entry';
+      return helper(ACCOUNTS.outcome[out], true, number);
+    }
+    if (out === 'send-open' || out === 'failed') {
       view = 'entry';
       return helper(ACCOUNTS.outcome[out]);
     }
@@ -325,7 +335,7 @@ export function mountAccounts(deps: PageDeps): AccountsScreen {
       if (view !== 'entry' || key === null || index === null) return;
       field.value = '';
       // A number that is not one is refused before the authenticator is asked (addAccount would refuse it after).
-      if (op.op === 'add' && !isAccountIndex(index)) return helper(ACCOUNTS.outcome['bad-index']);
+      if (op.op === 'add' && !isAccountIndex(index)) return helper(ACCOUNTS.outcome['bad-index'], true, number);
       const mine = generation;
       if (!(await stillShown(mine))) return;
       let prfOutput: Uint8Array | null;

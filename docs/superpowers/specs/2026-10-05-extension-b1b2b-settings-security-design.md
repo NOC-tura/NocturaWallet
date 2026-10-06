@@ -886,6 +886,10 @@ recovery phrase"] (C8), in that order — the design's (ix:14417-14419: biometri
   waits for #10 (B1 §1, D6).
 - "Biometric unlock" → "Passkey"; "Change PIN" → "Change password"; "Recovery seed verified" → "Recovery phrase verified".
 - After #39's restore the "Add a passkey" task returns (a restore drops the passkey, E10/M5); declared, not hidden.
+- **35b's order (Task 20 fix round 1, visual review M5):** "Auto-lock" takes the first "Active protections" slot, the
+  design's "Encrypted backup · 47 d ago" (ix:14487, dropped with 2a-D17); and 35b continues with Locks and Danger zone after
+  Active protections, where the design's 35b frame ends at Active protections (ix:14485-14491) — the same screen as 35a,
+  so the locks and the delete stay reachable when every task is done.
 
 ### 4.3 Accounts manager (derived from the 2a switcher; no design; D16, D17, C6, C14)
 

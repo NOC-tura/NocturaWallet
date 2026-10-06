@@ -427,3 +427,9 @@
 .vlt-full {
   width: 100%;
 }
+
+/* Fix round 1 (visual review M2): a disabled top-bar X (busy) looks disabled — the popup's `.icon-btn:disabled` (app.css). */
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
