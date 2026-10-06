@@ -419,6 +419,38 @@ describe('the accounts manager', () => {
       expect(screen.queryByText('The accounts changed. Try again.')).toBeNull();
     });
 
+    /** The remove sheet's own wallet.pending read, held at the gate (Savings has an open send, so it would poll on). */
+    async function heldSheetRead() {
+      let armed = false;
+      const h = hold('wallet.pending', () => armed);
+      const w = await withModel({gate: h.gate, before: async ext => ext.local.set(PENDING_KEY, [OPEN_FROM_SAVINGS])});
+      await waitFor(() => expect(names()).toHaveLength(3));
+      await settle();
+      armed = true;
+      fireEvent.click(screen.getByRole('button', {name: 'Remove Savings'}));
+      await waitFor(() => expect(h.isHeld()).toBe(true));
+      return {...w, h};
+    }
+
+    it('sheet read · the sheet closed: no poll scheduled', async () => {
+      const {h} = await heldSheetRead();
+      fireEvent.click(within(screen.getByRole('dialog', {name: 'Remove Savings?'})).getByRole('button', {name: 'Cancel'}));
+      const before = h.count('wallet.pending');
+      h.release();
+      await act(async () => new Promise(r => setTimeout(r, 2_500)));
+      expect(h.count('wallet.pending')).toBe(before);
+    }, 10_000);
+
+    it('sheet read · lock: no poll scheduled', async () => {
+      const {h, model} = await heldSheetRead();
+      await act(async () => void (await model().lock()));
+      await waitFor(() => expect(model().phase).toBe('locked'));
+      const before = h.count('wallet.pending');
+      h.release();
+      await act(async () => new Promise(r => setTimeout(r, 2_500)));
+      expect(h.count('wallet.pending')).toBe(before);
+    }, 10_000);
+
     /** A rename held at the gate; '' is refused (`malformed`), a real name succeeds (and re-reads). */
     async function heldRename(value: string) {
       const h = hold('accounts.rename');
