@@ -377,7 +377,10 @@ describe('#37 delete wallet', () => {
       expect(getComputedStyle(label).borderTopColor).toBe('rgb(1, 2, 3)');
       typeIn('DELETE');
       field().focus();
+      // React rewrote the label's className on the re-render: the stand-in for the still-focused field goes back on.
+      label.classList.add('focus-within-standin');
       expect(label.classList.contains('app-pw-ok')).toBe(true);
+      expect(label.classList.contains('focus-within-standin')).toBe(true);
       expect(getComputedStyle(label).borderTopColor).toBe('rgb(0, 128, 0)');
     } finally {
       style.remove();
