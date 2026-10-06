@@ -344,6 +344,17 @@ describe('#37 delete wallet', () => {
       expect(b.textContent).toBe('Hold to delete');
     });
 
+    it('the hold: unmounted while held (Esc, a lock), its tick stops — nothing opens later', async () => {
+      const c = manualClock();
+      let held = 0;
+      const r = render(<HoldButton label="Hold to delete" holdMs={1_000} disabled={false} onHeld={() => void (held += 1)} clock={c.clock} />);
+      fireEvent.pointerDown(screen.getByRole('button'), {button: 0});
+      c.advance(600);
+      r.unmount();
+      c.advance(1_000);
+      expect(held).toBe(0);
+    });
+
     it('[Cancel]: one leave', async () => {
       const w = await shown();
       const c = cancel();
