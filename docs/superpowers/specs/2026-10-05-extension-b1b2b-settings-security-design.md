@@ -1319,6 +1319,41 @@ Opus review checks the first. Per state (2a §8.6's list, plus 2b's):
 10. #37's fill and countdown at a mid-hold frame (the test holds and screenshots at ~60 %).
 Findings go in the PR; screenshots are CI artifacts.
 
+**Differs, loudly (plan 1's visual pass, Task 20):**
+- **The new modes' common states are shared with 2a's pages** (pre-flight F4): `cooldown` (the #9/#10 cooldown card with
+  "Confirm paused"), `busy` ("The wallet changed while you were typing. Start again." + `[Start again]`), `not-unlocked`
+  ("The wallet is locked. Unlock it first, then try again." + `[Unlock]`) and `mismatch-locked` reuse 2a's markup and
+  strings unchanged in every new mode. Shot: `cooldown` once per surface style here (`36-cooldown`) and in 2a's
+  `visual-vault.spec.ts` (`09-cooldown`, `10-cooldown`, `10-cooldown-mid`); `not-unlocked` once here
+  (`accounts-not-unlocked`); `damaged` and `no-wallet` here (`delete-damaged`, `delete-no-wallet`) and in 2a (`09-damaged`,
+  `09-no-wallet`). **Not shot anywhere:** `busy` and `mismatch-locked` — each needs another page to change or swap the
+  wallet inside a running proof (a race the E2E cannot hold deterministically); the screen and flow tests assert them
+  (`changePasswordScreen`, `deleteScreen`, `passkeyManageScreen`, `accountsScreen`, `revealFlow`, `passwordFlow`). Not shot per mode: the shared states in the other modes (same markup, same strings). #10's own
+  `settings-not-unlocked` (O41) is shot (`10-settings-not-unlocked`).
+- **Not shot: states reachable only by fault injection** — #35 `setting failed` (O51) and its failed settings read
+  ("Something went wrong. Try again." with the top bar), #36 `failed` (O07), the delete page's `failed` (O16), the passkey
+  page's `failed` (O26), #10 `settings-failed` (O26), `passkey-unavailable`. Covered by the component tests.
+- **Fixed in the pass:** #37's empty DELETE field had no focus indicator (design-ext's `.s7-pw input {outline: 0}`): the
+  focused field now takes 37b's accent ring (app.css `.s7-pw:focus-within`); the bar captions on #6 manage and #37 take
+  the design's `margin: 0` (ix:15083) — the UA's paragraph margins made #6 `on`'s bar 261 px of the popup's 600 and hid
+  the lede under it (213 px now); #37's countdown is one run beside the icon ("Hold to delete · 0.4 s", ix:15089) — the
+  label's icon gap had set the count 8 px apart.
+- **The delete page and the passkey page have no top-bar X** (spec §3's general rule; ix:14963 draws a back control
+  before "Delete wallet"; #6 draws a top bar). Both offer `[Cancel]`, which closes the tab. The passkey page has no top bar
+  at all, so its hero sits one bar (56 px) higher than #6's. Adding the X is vault-page wiring (the close handler and its
+  busy state), not markup — left for the owner/controller.
+- **The accounts manager's rows are cramped at 412 px** (no design, §4.3): five 48 px tools (check, rename, up, down,
+  remove) leave the identity column about 90 px, so the two-group address wraps to two lines and the balance line to three.
+  Legible, every string present; the layout of a screen the design never drew is for the owner.
+- **The passkey remove page's field has no visible label** (only `aria-label="Password"`; the lede asks for the
+  password). The add/replace line "Enter your password to add the passkey." does not fit a removal and no approved line
+  exists for it.
+- **Keyboard focus can land under the sticky bar** on #37 (412 × 600): the browser scrolls a focused field into the
+  content region, which runs under the pinned action bar. The visual pass scrolls each state's element clear of the bars
+  first, as a person would (B1b-2a plan 3's `seen()`).
+- The 36e toast on the wide tab surface (wallet.html, 1280 × 800): centred on the 412 px column (`left: 50%` of the
+  viewport, the column centred), `--space-4` above the tab bar — shot as `36e-password-updated-tab-1280`.
+
 ---
 
 ## 9. Out of scope
