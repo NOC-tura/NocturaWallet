@@ -29,11 +29,11 @@ export const PASSKEY_TEXT = {
  * The passkey screen — #6's "manage" variant (spec B1b-2b §4.4, D12, D13): referenced by the design (ix:13616, 14659,
  * 14663), never drawn, so derived from #6's chrome. `off`: #6's offer, [Add a passkey]. `on`: "Passkey is on", the one-slot
  * rule, [Replace passkey] and [Remove passkey]. Every action is a proof, so each opens the vault tab (`passkey&op=…`) and
- * the popup closes; the screen itself reads only `wallet.state.passkey` (E12). Rule 6: LockedButton.
+ * the popup closes; the screen itself reads only `wallet.state.passkey` (E12), and shows nothing until it is known.
+ * Rule 6: LockedButton.
  */
 export function Passkey({onBack}: {onBack: () => void}) {
   const m = useWallet();
-  const on = m.wallet?.passkey === true;
   const open = (page: ExtensionPage) => {
     m.platform.openPage(page);
     if (m.surface === 'popup') m.platform.closeWindow();
@@ -49,6 +49,11 @@ export function Passkey({onBack}: {onBack: () => void}) {
       </div>
     </div>
   );
+  // Before the wallet's state arrives neither state is known: nothing is shown, never `off` as a guess (fix round 1, M4).
+  // Shell renders this screen only once unlocked, which the provider sets with the state; the guard keeps the
+  // component honest on its own.
+  if (m.wallet === null) return <div className="screen s-bio" aria-busy="true" />;
+  const on = m.wallet.passkey;
   return (
     <div className="screen s-bio">
       <TopBar title={PASSKEY_TEXT.title} onBack={onBack} />
@@ -76,12 +81,12 @@ export function Passkey({onBack}: {onBack: () => void}) {
             <LockedButton className="btn btn-secondary" onPress={() => open('unlock.html?mode=passkey&op=remove')}>
               {PASSKEY_TEXT.remove}
             </LockedButton>
-            <p className="noc-caption app-muted app-center">{PASSKEY_TEXT.removeNote}</p>
+            <p className="noc-caption app-muted app-center-text">{PASSKEY_TEXT.removeNote}</p>
           </>
         ) : (
           <LockedButton onPress={() => open('unlock.html?mode=passkey&op=add')}>{PASSKEY_TEXT.add}</LockedButton>
         )}
-        <p className="noc-caption app-muted app-center">{PASSKEY_TEXT.opensTab}</p>
+        <p className="noc-caption app-muted app-center-text">{PASSKEY_TEXT.opensTab}</p>
       </div>
     </div>
   );

@@ -38,6 +38,9 @@ describe('the passkey screen', () => {
     expect(screen.getByText('Where your passkey lives')).toBeTruthy();
     expect(screen.queryByText('Faster unlock')).toBeNull();
     expect(screen.getByText('Removing it here does not delete it from your passkey manager.')).toBeTruthy();
+    // Fix round 1 (M3): the on state's tip and its caption.
+    expect(screen.getByText('Your password always works too.')).toBeTruthy();
+    expect(screen.getByText('Confirmation opens in a new tab.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', {name: 'Replace passkey'}));
     await waitFor(() => expect(w.platform.opened).toEqual(['unlock.html?mode=passkey&op=add']));
     fireEvent.click(screen.getByRole('button', {name: 'Remove passkey'}));
@@ -52,6 +55,53 @@ describe('the passkey screen', () => {
     (add as HTMLButtonElement).disabled = false;
     fireEvent.click(add);
     expect(w.platform.opened).toHaveLength(1);
+  });
+
+  // Fix round 1 (M2): rule 6 for the on state's two actions, `disabled` lifted before the second click.
+  it.each([
+    ['Replace passkey', 'unlock.html?mode=passkey&op=add'],
+    ['Remove passkey', 'unlock.html?mode=passkey&op=remove'],
+  ])('rule 6: a second [%s] inside 500 ms opens nothing more', async (name, page) => {
+    const w = await renderInWallet(<Passkey onBack={() => undefined} />, {env: WITH_PASSKEY});
+    const button = await screen.findByRole('button', {name});
+    fireEvent.click(button);
+    (button as HTMLButtonElement).disabled = false;
+    fireEvent.click(button);
+    expect(w.platform.opened).toEqual([page]);
+    expect(w.platform.closed).toBe(1);
+  });
+
+  // Fix round 1 (I2): the captions are centred text — `app-center` is the centred-column layout (24 px of padding
+  // each), which grew the pinned bar.
+  it.each([
+    ['off', {}, 1],
+    ['on', {env: WITH_PASSKEY}, 2],
+  ])('%s: every caption in the pinned bar is app-center-text, never app-center', async (_state, o, n) => {
+    await renderInWallet(<Passkey onBack={() => undefined} />, o);
+    await screen.findByText('Confirmation opens in a new tab.');
+    const captions = [...document.querySelectorAll('.sticky-bar .noc-caption')];
+    expect(captions).toHaveLength(n);
+    for (const c of captions) {
+      expect(c.classList.contains('app-center-text')).toBe(true);
+      expect(c.classList.contains('app-center')).toBe(false);
+    }
+  });
+
+  // Fix round 1 (M4): before the wallet's state arrives the screen shows neither state — never `off` as a guess.
+  it('shows nothing (busy) until the wallet state arrives, then the stored state', async () => {
+    let release = () => undefined as void;
+    const held = new Promise<void>(r => {
+      release = r;
+    });
+    await renderInWallet(<Passkey onBack={() => undefined} />, {env: WITH_PASSKEY, gate: m => ((m as {type?: string}).type === 'wallet.state' ? held : undefined)});
+    await new Promise(r => setTimeout(r, 50));
+    expect(document.querySelector('.s-bio[aria-busy="true"]')).not.toBeNull();
+    expect(screen.queryByRole('heading')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByText('Unlock Noctura with a passkey')).toBeNull();
+    release();
+    expect(await screen.findByRole('heading', {name: 'Passkey is on'})).toBeTruthy();
+    expect(screen.queryByText('Unlock Noctura with a passkey')).toBeNull();
   });
 
   it('Back pops', async () => {

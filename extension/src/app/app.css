@@ -810,12 +810,12 @@ a.btn {
   margin-inline-end: 0.6ch;
 }
 
-/* B1b-2b §4.4: the passkey screen — #6's chrome in the popup (index.html #s06's inline spacing, as classes). */
+/* B1b-2b §4.4: the passkey screen — #6's 'bio' layout in the popup. The hero keeps design-ext.css's
+   `.s-bio .hero-icon` (--space-8 above, --space-7 below); #6's inline styles (index.html:5405-5409) as
+   classes: the head's --space-6 sides and --space-2 under the title, the lede's 300 px measure, the
+   features' --space-7 above. The tip is the spec's addition (D13), --space-4 below the rows. */
 .app-grow {
   flex: 1 1 auto;
-}
-.app-content .s-bio .hero-icon {
-  margin: var(--space-5) auto var(--space-5);
 }
 .app-bio-head {
   padding: 0 var(--space-6);
@@ -824,12 +824,15 @@ a.btn {
   flex-direction: column;
   gap: var(--space-2);
 }
-.app-bio-head h1,
-.app-bio-head p {
+.app-bio-head h1 {
   margin: 0;
 }
+.app-bio-head p {
+  max-width: 300px;
+  margin: 0 auto;
+}
 .app-bio-features {
-  margin-top: var(--space-5);
+  margin-top: var(--space-7);
   padding: 0 var(--space-2);
 }
 .app-bio-features .noc-body-sm {
@@ -837,7 +840,4 @@ a.btn {
 }
 .app-bio-tip {
   margin: var(--space-4) var(--space-5) 0;
-}
-.sticky-bar .app-center {
-  margin: 0;
 }
