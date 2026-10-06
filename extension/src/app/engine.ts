@@ -71,6 +71,8 @@ export interface Prepared {
 }
 export type Resumable = Prepared & {intent: Intent; expired: boolean};
 export type PendingState = 'pending' | 'stuck' | 'confirmed' | 'failed' | 'expired';
+/** An open send (the background's pendingStore.isOpen, the same rule): pending or stuck. */
+export const isOpen = (p: {state: PendingState}): boolean => p.state === 'pending' || p.state === 'stuck';
 export type DetailCode = 'forbidden' | 'cooling' | 'unacked' | 'substituted';
 export interface Pending {
   id: string;

@@ -902,7 +902,9 @@ Pushed screen (not a sheet: it holds reorder and remove). Top bar back + `.noc-h
 - **`remove confirm`** (`.s8-sheet`): title "Remove <name>?" (O57); the address in groups of four (`AddressGroups`); balance
   line "Holds 12.4821 SOL · 4,200 NOC · $1,234.56" (O58 for the "Holds" form) / "Holds no funds" (O59) / "Balance not
   checked" (O60); "Its funds stay on Solana; add it again to use them." (D16); `[Continue to remove]` (O61) →
-  `removeAccountPage(index)`; "Confirmation opens in a new tab." (2a); `[Cancel]`.
+  `removeAccountPage(index)`; "Confirmation opens in a new tab." (2a); `[Cancel]`. O58's amounts use the app's standard
+  amount format (`showAmount`, as every other balance: "4,200.00 NOC", not the example's "4,200 NOC"); the line is the
+  rows' last read, and a qualifier for a cached-only read is deferred (Task 14 review, fix round 1 ruling).
 - **`remove · last account`**: the trash button disabled; caption "The last account cannot be removed." (ACCOUNTS (2a)).
 - **`remove · send open`** (`wallet.pending` has an open record for the account): `[Continue to remove]` disabled and "A
   transaction from this account is still pending. Wait until it confirms or expires — about two minutes — then try

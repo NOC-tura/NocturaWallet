@@ -18,6 +18,7 @@ export function LockedButton({
   disabled = false,
   label,
   keepFocus = false,
+  focusElsewhere,
   wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)),
 }: {
   onPress: () => Promise<unknown> | void;
@@ -31,6 +32,11 @@ export function LockedButton({
    * user moved elsewhere meanwhile is left where it is.
    */
   keepFocus?: boolean;
+  /**
+   * keepFocus, when the button is disabled as the lock ends (a row moved to the end): the flag is dropped — it never takes
+   * the focus later — and this is asked to put the focus somewhere sensible instead (only while the page has it).
+   */
+  focusElsewhere?: () => void;
   wait?: (ms: number) => Promise<void>;
 }) {
   const busy = useRef(false);
@@ -38,11 +44,12 @@ export function LockedButton({
   const self = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false);
   useLayoutEffect(() => {
-    if (!locked && !disabled && refocus.current) {
-      refocus.current = false;
-      const at = document.activeElement;
-      if (at === null || at === document.body) self.current?.focus();
-    }
+    if (locked || !refocus.current) return;
+    refocus.current = false;
+    const at = document.activeElement;
+    if (at !== null && at !== document.body) return;
+    if (disabled) focusElsewhere?.();
+    else self.current?.focus();
   }, [locked, disabled]);
   /** False once unmounted: an action that settles after the screen went sets nothing. */
   const alive = useRef(true);

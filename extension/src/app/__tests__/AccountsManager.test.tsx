@@ -9,6 +9,8 @@ import {SETTINGS_KEY} from '../../background/settings';
 import {ACCOUNT, RECIPIENT, pendingRecord} from '../../background/__tests__/fixtures';
 import {fakeReader} from '../../background/__tests__/fakeDeps';
 import {useWallet, type WalletModel} from '../WalletContext';
+import {isOpen} from '../engine';
+import {isOpen as backgroundIsOpen} from '../../background/pendingStore';
 
 // B1b-2b §4.3 (D16, D17, C6, C14): the accounts manager against the real background.
 const SELECTORS = selectorsOf(UI_SHEETS);
@@ -150,6 +152,80 @@ describe('the accounts manager', () => {
     const sheet = await screen.findByRole('dialog', {name: 'Remove Savings?'});
     await waitFor(() => expect(within(sheet).getByText('A transaction from this account is still pending. Wait until it confirms or expires — about two minutes — then try again.')).toBeTruthy());
     expect((within(sheet).getByRole('button', {name: 'Continue to remove'}) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('remove · the send closes while the sheet is open: [Continue to remove] enables without leaving (the sheet re-reads wallet.pending)', async () => {
+    // Savings is not the selected account: the provider polls wallet.pending only for Main's sends, so the sheet reads its own.
+    const w = await shown({before: async ext => ext.local.set(PENDING_KEY, [OPEN_FROM_SAVINGS])});
+    await waitFor(() => expect(names()).toHaveLength(3));
+    fireEvent.click(screen.getByRole('button', {name: 'Remove Savings'}));
+    const sheet = await screen.findByRole('dialog', {name: 'Remove Savings?'});
+    const go = () => within(sheet).getByRole('button', {name: 'Continue to remove'}) as HTMLButtonElement;
+    await waitFor(() => expect(go().disabled).toBe(true));
+    await w.ext.local.set(PENDING_KEY, [{...OPEN_FROM_SAVINGS, state: 'confirmed'}]);
+    await waitFor(() => expect(go().disabled).toBe(false), {timeout: 4_000});
+    expect(within(sheet).queryByText(/still pending/)).toBeNull();
+  }, 10_000);
+
+  it('remove · a stuck send is open too: [Continue to remove] disabled', async () => {
+    await shown({before: async ext => ext.local.set(PENDING_KEY, [{...OPEN_FROM_SAVINGS, state: 'stuck'}])});
+    await waitFor(() => expect(names()).toHaveLength(3));
+    fireEvent.click(screen.getByRole('button', {name: 'Remove Savings'}));
+    const sheet = await screen.findByRole('dialog', {name: 'Remove Savings?'});
+    await waitFor(() => expect((within(sheet).getByRole('button', {name: 'Continue to remove'}) as HTMLButtonElement).disabled).toBe(true));
+  });
+
+  it('isOpen: the popup’s and the background’s open-send rule agree on every state', () => {
+    for (const state of ['pending', 'stuck', 'confirmed', 'failed', 'expired'] as const) {
+      expect(isOpen({state})).toBe(backgroundIsOpen(pendingRecord({state})));
+    }
+    expect(isOpen({state: 'stuck'})).toBe(true);
+  });
+
+  it('remove names the envelope index, never the display position', async () => {
+    const w = await shown({before: async ext => ext.local.set(SETTINGS_KEY, {accountOrder: [2, 0, 1]})});
+    await waitFor(() => expect(names()).toEqual(['Third', 'Main', 'Savings']));
+    fireEvent.click(screen.getByRole('button', {name: 'Remove Third'}));
+    fireEvent.click(within(await screen.findByRole('dialog', {name: 'Remove Third?'})).getByRole('button', {name: 'Continue to remove'}));
+    expect(w.platform.opened).toEqual(['unlock.html?mode=accounts&op=remove&index=2']);
+  });
+
+  it('a move reads no balances again (the rows are keyed on the set of addresses, not their order)', async () => {
+    const seen: {type: string; account?: string}[] = [];
+    await shown({gate: m => void seen.push(m as {type: string; account?: string})});
+    const reads = () => seen.filter(m => m.type === 'wallet.balances' && (m.account === RECIPIENT || m.account === THIRD)).length;
+    await waitFor(() => expect(reads()).toBe(2));
+    await settle();
+    fireEvent.click(screen.getByRole('button', {name: 'Move Main down'}));
+    await waitFor(() => expect(names()).toEqual(['Savings', 'Main', 'Third']));
+    await settle();
+    expect(reads()).toBe(2);
+  });
+
+  it('one move at a time: while a move is in flight every ↑/↓ is disabled', async () => {
+    const h = hold('accounts.order');
+    await shown({gate: h.gate});
+    await waitFor(() => expect(names()).toEqual(['Main', 'Savings', 'Third']));
+    fireEvent.click(screen.getByRole('button', {name: 'Move Main down'}));
+    await waitFor(() => expect(h.isHeld()).toBe(true));
+    for (const n of ['Move Third up', 'Move Savings up', 'Move Savings down']) expect((screen.getByRole('button', {name: n}) as HTMLButtonElement).disabled).toBe(true);
+    h.release();
+    await waitFor(() => expect((screen.getByRole('button', {name: 'Move Third up'}) as HTMLButtonElement).disabled).toBe(false));
+    expect(h.count('accounts.order')).toBe(1);
+  });
+
+  it('a row moved to the end: its ↓ is disabled, so the focus goes to the same row’s ↑', async () => {
+    await shown();
+    await waitFor(() => expect(names()).toEqual(['Main', 'Savings', 'Third']));
+    const down = () => screen.getByRole('button', {name: 'Move Main down'}) as HTMLButtonElement;
+    down().focus();
+    fireEvent.click(down());
+    await waitFor(() => expect(names()).toEqual(['Savings', 'Main', 'Third']));
+    await waitFor(() => expect(document.activeElement).toBe(down()));
+    fireEvent.click(down());
+    await waitFor(() => expect(names()).toEqual(['Savings', 'Third', 'Main']));
+    await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe('Move Main up'));
+    expect(down().disabled).toBe(true);
   });
 
   it('the last account: its trash button disabled, and "The last account cannot be removed."', async () => {
@@ -373,13 +449,12 @@ describe('the accounts manager', () => {
       expect(screen.queryByRole('alert')).toBeNull();
     });
 
-    it('rename · account switch: no error line', async () => {
+    it('rename · an account switch does not drop the answer: the editor gets its error (fix round 1, 6)', async () => {
       const {h, model} = await heldRename('');
       fireEvent.click(screen.getByText('Savings'));
       await waitFor(() => expect(model().wallet?.selected).toBe(1));
       h.release();
-      await settle();
-      expect(screen.queryByRole('alert')).toBeNull();
+      expect((await screen.findByRole('alert')).textContent).toBe('Names are 1 to 32 characters, without control characters.');
     });
 
     /** A select held at the gate. */

@@ -11,7 +11,7 @@ export type RowBalance = {b: Balances; at: number; fresh: boolean};
  * The account rows' balances (spec B1b-2a §5.2; shared by the switcher and the B1b-2b accounts manager): every account's
  * cached balances first, then a fresh read for the first FRESH_ROWS rows. No fresh pass during the 403 cool-down, nor
  * while offline or unreachable; a 403 or no answer ends the pass and is reported to the app (M4). Read once per set of
- * addresses: a rename changes names, not balances, and reads nothing again; an account added, removed or first known
+ * addresses: a rename changes names and a move the order, not balances, and neither reads again; an account added, removed or first known
  * (a screen mounted before the wallet state arrived) reads again.
  *
  * After every await the pass stops if the screen went (unmount) or the wallet locked meanwhile (B1b-2b, every async path
@@ -27,7 +27,11 @@ export function useAccountBalances(accounts: readonly Account[]): Record<string,
   // The live phase, the same way: a lock while the pass runs ends it.
   const phaseRef = useRef(m.phase);
   phaseRef.current = m.phase;
-  const keys = accounts.map(a => a.publicKey).join(',');
+  // The set of addresses, not their order: a move (B1b-2b E14) reorders the rows and reads nothing again.
+  const keys = accounts
+    .map(a => a.publicKey)
+    .sort()
+    .join(',');
 
   useEffect(() => {
     let alive = true;

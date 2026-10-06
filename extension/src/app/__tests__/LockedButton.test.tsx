@@ -87,6 +87,31 @@ describe('LockedButton', () => {
     expect(await pressed(true, 'moved')).toBe('elsewhere');
   });
 
+  it('keepFocus: disabled when the lock ends — the flag is cleared (never a late focus grab) and focusElsewhere is asked', async () => {
+    let release: () => void = () => undefined;
+    const elsewhere = vi.fn();
+    const ui = (disabled: boolean) => (
+      <LockedButton onPress={async () => undefined} keepFocus disabled={disabled} focusElsewhere={elsewhere} wait={() => new Promise<void>(r => (release = r))}>
+        Move
+      </LockedButton>
+    );
+    const {rerender} = render(ui(false));
+    const button = screen.getByRole('button', {name: 'Move'}) as HTMLButtonElement;
+    button.focus();
+    fireEvent.click(button);
+    rerender(ui(true));
+    const blip = document.createElement('input');
+    document.body.append(blip);
+    blip.focus();
+    blip.remove();
+    await act(async () => release());
+    expect(elsewhere).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(document.body);
+    rerender(ui(false));
+    expect(document.activeElement).toBe(document.body);
+    expect(elsewhere).toHaveBeenCalledTimes(1);
+  });
+
   it('holds for LOCK_MS = 500 by default', () => {
     expect(LOCK_MS).toBe(500);
   });

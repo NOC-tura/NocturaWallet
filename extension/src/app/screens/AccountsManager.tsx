@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
 import {AddressGroups} from '../../../../web/src/ui/AddressGroups';
-import {useWallet} from '../WalletContext';
+import {PENDING_POLL_MS, useWallet} from '../WalletContext';
 import {FRESH_ROWS, useAccountBalances, type RowBalance} from '../useAccountBalances';
 import {valuation} from '../valuation';
 import {ago, showAmount, showUsd, twoGroups} from '../format';
@@ -11,7 +11,7 @@ import {Sheet} from '../ui/Sheet';
 import {ExtIcon} from '../ui/ExtIcon';
 import {LockedButton} from '../ui/LockedButton';
 import {RENAME_ERRORS, RENAME_FAILED} from './Switcher';
-import type {Account, Token} from '../engine';
+import {isOpen, type Account, type Pending, type Token} from '../engine';
 
 /** The accounts manager's copy (B1b-2b §4.3): 2a's strings and the owner-confirmed O52–O61. */
 export const ACCOUNTS_TEXT = {
@@ -73,6 +73,10 @@ export function AccountsManager({onBack}: {onBack: () => void}) {
   const [renameError, setRenameError] = useState<string | null>(null);
   const [line, setLine] = useState<string | null>(null);
   const [removing, setRemoving] = useState<Account | null>(null);
+  /** The sheet's own wallet.pending read (null until it answers): the provider polls only the selected account's sends. */
+  const [sheetPending, setSheetPending] = useState<Pending[] | null>(null);
+  /** A move in flight: every ↑/↓ waits for it (two moves inside one round trip would each send an order of the same list). */
+  const [moving, setMoving] = useState(false);
   const cli = m.wallet?.scheme === 'cli';
   const last = accounts.length <= 1;
 
@@ -108,9 +112,9 @@ export function AccountsManager({onBack}: {onBack: () => void}) {
     await m.reload();
   };
   const save = async (a: Account) => {
-    const still = stamp();
+    // A rename names its account by index: a switch meanwhile does not concern it (fix round 1) — the screen and the lock only.
     const r = await m.engine.rename(a.index, name);
-    if (!still()) return;
+    if (!here()) return;
     if (r.ok) {
       setEditing(null);
       setRenameError(null);
@@ -127,15 +131,49 @@ export function AccountsManager({onBack}: {onBack: () => void}) {
     order.splice(to, 1, a);
     order.splice(at, 1, b);
     const still = stamp();
-    const r = await m.engine.order(order);
-    if (!still()) return;
-    await m.reload();
-    // Our own re-read may move the selection (an account removed elsewhere): from here, the screen and the lock only.
-    if (!here()) return;
-    if (!r.ok) return setLine(r.error === 'stale' ? ACCOUNTS_TEXT.stale : ACCOUNTS_TEXT.orderFailed);
-    setLine(null);
+    setMoving(true);
+    try {
+      const r = await m.engine.order(order);
+      if (!still()) return;
+      await m.reload();
+      // Our own re-read may move the selection (an account removed elsewhere): from here, the screen and the lock only.
+      if (!here()) return;
+      if (!r.ok) return setLine(r.error === 'stale' ? ACCOUNTS_TEXT.stale : ACCOUNTS_TEXT.orderFailed);
+      setLine(null);
+    } finally {
+      if (alive.current) setMoving(false);
+    }
   };
-  const sendOpen = (a: Account) => m.pending.some(p => p.account === a.publicKey && (p.state === 'pending' || p.state === 'stuck'));
+  /** keepFocus's fallback: a row moved to an end lost its pressed arrow, so the focus goes to the same row's other one. */
+  const otherArrow = (a: Account, label: string) => () => {
+    const row = document.querySelector(`.app-account-row[data-account="${a.index}"]`);
+    const other = [...(row?.querySelectorAll<HTMLButtonElement>('.app-row-tools button') ?? [])].find(b => b.getAttribute('aria-label') === label);
+    if (other !== undefined && !other.disabled) other.focus();
+  };
+  const sendOpen = (a: Account) => (sheetPending ?? m.pending).some(p => p.account === a.publicKey && isOpen(p));
+  const openRemove = (a: Account) => {
+    setSheetPending(null);
+    setRemoving(a);
+  };
+
+  // While the remove sheet is open: read wallet.pending at once, and again every PENDING_POLL_MS while the account has an
+  // open send (or the read failed), so [Continue to remove] enables when the send closes — without leaving the screen.
+  useEffect(() => {
+    if (removing === null) return;
+    let on = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const read = async () => {
+      const r = await m.engine.pending();
+      if (!on || !here()) return;
+      if (r.ok) setSheetPending(r.data);
+      if (!r.ok || r.data.some(p => p.account === removing.publicKey && isOpen(p))) timer = setTimeout(() => void read(), PENDING_POLL_MS);
+    };
+    void read();
+    return () => {
+      on = false;
+      clearTimeout(timer);
+    };
+  }, [removing]);
 
   return (
     <div className="screen">
@@ -196,13 +234,13 @@ export function AccountsManager({onBack}: {onBack: () => void}) {
                       >
                         <ExtIcon name="pencil" size={16} />
                       </LockedButton>
-                      <LockedButton className="icon-btn" keepFocus label={ACCOUNTS_TEXT.moveUp(a.name)} disabled={i === 0} onPress={() => move(i, -1)}>
+                      <LockedButton className="icon-btn" keepFocus focusElsewhere={otherArrow(a, ACCOUNTS_TEXT.moveDown(a.name))} label={ACCOUNTS_TEXT.moveUp(a.name)} disabled={moving || i === 0} onPress={() => move(i, -1)}>
                         <ExtIcon name="arrow-up" size={16} />
                       </LockedButton>
-                      <LockedButton className="icon-btn" keepFocus label={ACCOUNTS_TEXT.moveDown(a.name)} disabled={i === accounts.length - 1} onPress={() => move(i, 1)}>
+                      <LockedButton className="icon-btn" keepFocus focusElsewhere={otherArrow(a, ACCOUNTS_TEXT.moveUp(a.name))} label={ACCOUNTS_TEXT.moveDown(a.name)} disabled={moving || i === accounts.length - 1} onPress={() => move(i, 1)}>
                         <ExtIcon name="arrow-down" size={16} />
                       </LockedButton>
-                      <LockedButton className="icon-btn" label={ACCOUNTS_TEXT.remove(a.name)} disabled={last} onPress={() => setRemoving(a)}>
+                      <LockedButton className="icon-btn" label={ACCOUNTS_TEXT.remove(a.name)} disabled={last} onPress={() => openRemove(a)}>
                         <ExtIcon name="trash" size={16} />
                       </LockedButton>
                     </span>
