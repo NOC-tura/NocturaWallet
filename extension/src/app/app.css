@@ -1151,8 +1151,13 @@ a.btn {
 .s7-row.danger .s7-chev {
   color: var(--danger);
 }
-/* 36e on #31 (ix:14856): the Change password row with a 30 % success border, a 6 % success fill, its glyph in success. */
-.s7-row.app-just-updated {
+/*
+ * 36e on #31 (ix:14856): the Change password row with a 30 % success border, a 6 % success fill, its glyph in success.
+ * `.app-content button.s7-row.app-just-updated` (0,3,1), not `.s7-row.app-just-updated` (0,2,0): the row-button reset
+ * `.app-content button.s7-row { border: 0 }` (0,2,1) beat the shorter selector and the border never rendered (Task 17
+ * review I1; Settings.test.tsx computes the cascade).
+ */
+.app-content button.s7-row.app-just-updated {
   border: 1px solid color-mix(in oklab, var(--success) 30%, transparent);
   background: color-mix(in oklab, var(--success) 6%, var(--bg-surface-1));
 }

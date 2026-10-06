@@ -5,6 +5,8 @@ import {renderApp} from './appHarness';
 import {setupWallet} from './harness';
 import {App} from '../App';
 import {getSession} from '../../background/session';
+import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {PASSWORD_TOAST_KEY, readPref} from '../prefs';
 import {SETTINGS_KEY} from '../../background/settings';
 import {base64} from '@scure/base';
@@ -276,5 +278,157 @@ describe('Settings (#31, B1b-2b §4.1)', () => {
     await new Promise(r => setTimeout(r, 50));
     expect(readPref(PASSWORD_TOAST_KEY)).toBeNull();
     expect(screen.queryByText('Password updated')).toBeNull();
+  });
+
+  // Fix round 1 (review I1): the 36e border has to WIN the cascade, not just be named. happy-dom cascades by specificity but
+  // cannot parse color-mix(), so the real app.css is loaded with each color-mix(…) swapped for a plain colour: the selectors
+  // and their order are app.css's own. The row reset `.app-content button.s7-row { border: 0 }` beat `.s7-row.app-just-updated`.
+  it('36e: app.css gives the decorated row its 1 px border over the row reset (computed, real selectors)', () => {
+    const swap = (css: string): string => {
+      let out = '';
+      for (let i = 0; i < css.length; ) {
+        if (!css.startsWith('color-mix(', i)) {
+          out += css[i++];
+          continue;
+        }
+        let depth = 0;
+        let j = i + 'color-mix'.length;
+        do {
+          if (css[j] === '(') depth++;
+          else if (css[j] === ')') depth--;
+          j++;
+        } while (depth > 0);
+        out += 'rgb(0, 128, 0)';
+        i = j;
+      }
+      return out;
+    };
+    const style = document.createElement('style');
+    style.textContent = swap(readFileSync(join(__dirname, '..', 'app.css'), 'utf8'));
+    document.head.append(style);
+    document.body.innerHTML = '<main class="app-content"><button class="s7-row app-just-updated">a</button><button class="s7-row">b</button></main>';
+    const [decorated, plain] = [...document.querySelectorAll('button')] as HTMLButtonElement[];
+    expect(getComputedStyle(decorated!).borderTopWidth).toBe('1px');
+    expect(getComputedStyle(decorated!).borderTopStyle).toBe('solid');
+    expect(getComputedStyle(plain!).borderTopWidth).toBe('0px');
+    style.remove();
+    document.body.innerHTML = '';
+  });
+
+  it('36e: a passwordChangedAt in the future (a clock set back) shows no toast and remembers nothing (fix round 1, m4)', async () => {
+    localStorage.clear();
+    const w = await setupWallet({before: async ext => ext.local.set(SETTINGS_KEY, {passwordChangedAt: Date.now() + 60_000})});
+    render(
+      <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
+        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} />
+      </WalletProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('Security center').parentElement?.querySelector('.s7-meta')?.textContent).toBe('3 to do'));
+    await new Promise(r => setTimeout(r, 30));
+    expect(screen.queryByText('Password updated')).toBeNull();
+    expect(screen.getByText('Change password').closest('.s7-row')?.classList.contains('app-just-updated')).toBe(false);
+    expect(readPref(PASSWORD_TOAST_KEY)).toBeNull();
+  });
+
+  it('no wallet state yet: the Passkey row has no meta (not "Off") and no tip (fix round 1, m5)', async () => {
+    localStorage.clear();
+    const w = await setupWallet();
+    const engine = {...w.engine, state: () => new Promise<never>(() => undefined)};
+    render(
+      <WalletProvider engine={engine} platform={w.platform} surface="popup">
+        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} />
+      </WalletProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('Security center').parentElement?.querySelector('.s7-meta')?.textContent).not.toBe(''));
+    const meta = screen.getByText('Passkey', {selector: '.s7-title'}).parentElement?.querySelector('.s7-meta');
+    expect(meta?.textContent).toBe('');
+    expect(meta?.className).toBe('s7-meta');
+    expect(document.querySelector('.s7-tip')).toBeNull();
+  });
+
+  // Fix round 1 (m1): the tab stays open, so it reads the facts again when shown again; the popup reads them on open.
+  async function onSurface(surface: 'popup' | 'tab') {
+    localStorage.clear();
+    const w = await setupWallet();
+    let reads = 0;
+    const engine = {...w.engine, settings: () => (reads++, w.engine.settings())};
+    const r = render(
+      <WalletProvider engine={engine} platform={w.platform} surface={surface}>
+        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} />
+      </WalletProvider>,
+    );
+    const meta = (t: string) => screen.getByText(t, {selector: '.s7-title'}).parentElement?.querySelector('.s7-meta');
+    await waitFor(() => expect(meta('Recovery phrase')?.textContent).toBe('Not verified'));
+    // Meanwhile, in the vault tab: the phrase verified and the password changed.
+    await w.ext.local.set(SETTINGS_KEY, {phraseVerifiedAt: 1, passwordChangedAt: Date.now() - 1_000});
+    return {...r, meta, reads: () => reads};
+  }
+
+  it('tab: shown again (visibilitychange → visible, or focus), #31 reads the facts again — "Verified" and 36e', async () => {
+    const {meta} = await onSurface('tab');
+    document.dispatchEvent(new Event('visibilitychange'));
+    await waitFor(() => expect(meta('Recovery phrase')?.textContent).toBe('Verified'));
+    expect(await screen.findByText('Password updated')).toBeTruthy();
+    expect(meta('Security center')?.textContent).toBe('1 to do');
+  });
+
+  it('tab: a window focus reads them again too', async () => {
+    const {meta} = await onSurface('tab');
+    window.dispatchEvent(new Event('focus'));
+    await waitFor(() => expect(meta('Recovery phrase')?.textContent).toBe('Verified'));
+  });
+
+  it('tab: once #31 is gone, being shown again reads nothing', async () => {
+    const {unmount, reads} = await onSurface('tab');
+    const before = reads();
+    unmount();
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('focus'));
+    await new Promise(r => setTimeout(r, 30));
+    expect(reads()).toBe(before);
+  });
+
+  it('tab: a re-read overtaken by a newer one sets nothing from the older answer', async () => {
+    localStorage.clear();
+    const w = await setupWallet();
+    const answers: (() => void)[] = [];
+    let first = true;
+    const engine = {
+      ...w.engine,
+      settings: () => {
+        if (first) return (first = false), w.engine.settings();
+        return new Promise<Awaited<ReturnType<typeof w.engine.settings>>>(resolve => {
+          const at = answers.length;
+          answers.push(() => void w.engine.settings().then(r => resolve(r.ok && at === 0 ? {...r, data: {...r.data, phraseVerifiedAt: null}} : r)));
+        });
+      },
+    };
+    render(
+      <WalletProvider engine={engine} platform={w.platform} surface="tab">
+        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} />
+      </WalletProvider>,
+    );
+    const meta = () => screen.getByText('Recovery phrase', {selector: '.s7-title'}).parentElement?.querySelector('.s7-meta');
+    await waitFor(() => expect(meta()?.textContent).toBe('Not verified'));
+    await w.ext.local.set(SETTINGS_KEY, {phraseVerifiedAt: 1});
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('focus'));
+    expect(answers).toHaveLength(2);
+    answers[1]!();
+    await waitFor(() => expect(meta()?.textContent).toBe('Verified'));
+    // The older read answers last (rewritten to "not verified"): it is dropped.
+    answers[0]!();
+    await new Promise(r => setTimeout(r, 30));
+    expect(meta()?.textContent).toBe('Verified');
+  });
+
+  it('popup: being shown again reads nothing more (a popup reads on every open)', async () => {
+    const {reads, meta} = await onSurface('popup');
+    const before = reads();
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('focus'));
+    await new Promise(r => setTimeout(r, 30));
+    expect(reads()).toBe(before);
+    expect(meta('Recovery phrase')?.textContent).toBe('Not verified');
   });
 });

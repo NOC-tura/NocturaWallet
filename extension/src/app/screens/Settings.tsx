@@ -47,7 +47,7 @@ export const PASSWORD_TOAST_WINDOW_MS = 10 * 60_000;
  * Lock now. Advanced: Delete wallet → #37. About. The tip (O42) is a passkey suggestion shown only while there is none
  * (D22). 36e (C10): within ten minutes of a change the background recorded (`passwordChangedAt`), the first open shows
  * the "Password updated" toast (1.8 s) and the row's "Just updated" decoration (5 s), once per change (a UI pref keeps
- * the timestamp shown). Every row that opens a page is a LockedButton (rule 6). The rows #31 draws and the extension does
+ * the timestamp shown; a future stamp shows nothing). The tab reads the facts again when shown again. Every row that opens a page is a LockedButton (rule 6). The rows #31 draws and the extension does
  * not have are omitted (D22; the spec's Differs list).
  */
 export function Settings({
@@ -76,26 +76,47 @@ export function Settings({
 
   useEffect(() => {
     let alive = true;
+    /** Only the newest read counts: a slower, older answer sets nothing. */
+    let reads = 0;
     const timers: ReturnType<typeof setTimeout>[] = [];
-    void m.engine.settings().then(r => {
-      // Gone (unmounted, a new engine) while it read: nothing is set, toasted or remembered.
-      if (!alive) return;
-      // A failed read (the engine's only refusal here) leaves the metas empty; nothing is toasted.
-      if (!r.ok) return;
-      setStored(r.data);
-      const at = r.data.passwordChangedAt;
-      if (at === null || m.now() - at > PASSWORD_TOAST_WINDOW_MS || readPref(PASSWORD_TOAST_KEY) === String(at)) return;
-      writePref(PASSWORD_TOAST_KEY, String(at));
-      setToast(true);
-      setDecorated(true);
-      timers.push(setTimeout(() => alive && setToast(false), toastMs));
-      timers.push(setTimeout(() => alive && setDecorated(false), decorateMs));
-    });
+    const read = () => {
+      const n = ++reads;
+      void m.engine.settings().then(r => {
+        // Gone (unmounted, a new engine) or overtaken by a newer read while it read: nothing is set, toasted or remembered.
+        if (!alive || n !== reads) return;
+        // A failed read (the engine's only refusal here) leaves the metas empty; nothing is toasted.
+        if (!r.ok) return;
+        setStored(r.data);
+        const at = r.data.passwordChangedAt;
+        if (at === null) return;
+        const age = m.now() - at;
+        // A stamp from the future (a clock set back since) is no recent change: no toast (fix round 1, m4).
+        if (age < 0 || age > PASSWORD_TOAST_WINDOW_MS || readPref(PASSWORD_TOAST_KEY) === String(at)) return;
+        writePref(PASSWORD_TOAST_KEY, String(at));
+        for (const t of timers.splice(0)) clearTimeout(t);
+        setToast(true);
+        setDecorated(true);
+        timers.push(setTimeout(() => alive && setToast(false), toastMs));
+        timers.push(setTimeout(() => alive && setDecorated(false), decorateMs));
+      });
+    };
+    read();
+    // Fix round 1 (m1): the popup reads its facts on every open; the tab stays open, so it reads them again whenever it
+    // is shown again (a passkey added, the phrase verified or the password changed in the vault tab meanwhile).
+    const again = () => {
+      if (document.visibilityState === 'visible') read();
+    };
+    if (m.surface === 'tab') {
+      document.addEventListener('visibilitychange', again);
+      window.addEventListener('focus', again);
+    }
     return () => {
       alive = false;
       for (const t of timers) clearTimeout(t);
+      document.removeEventListener('visibilitychange', again);
+      window.removeEventListener('focus', again);
     };
-  }, [m.engine]);
+  }, [m.engine, m.surface]);
 
   // Rule 7, a controller ruling (2a review fix round 1 #6): Lock now never fails silently.
   const lockNow = async () => {
@@ -150,7 +171,14 @@ export function Settings({
             tone={tasks === null ? undefined : tasks === 0 ? 'success' : 'warning'}
             onPress={onSecurity}
           />
-          <ListRow icon="fingerprint" title={SETTINGS_TEXT.passkey} meta={passkey ? SETTINGS_TEXT.on : SETTINGS_TEXT.off} tone={passkey ? undefined : 'warning'} onPress={onPasskey} />
+          {/* No wallet state yet (fix round 1, m5): no meta rather than an "Off" that may be false. */}
+          <ListRow
+            icon="fingerprint"
+            title={SETTINGS_TEXT.passkey}
+            meta={m.wallet === null ? '' : passkey ? SETTINGS_TEXT.on : SETTINGS_TEXT.off}
+            tone={m.wallet === null || passkey ? undefined : 'warning'}
+            onPress={onPasskey}
+          />
           {pageRow('key', SETTINGS_TEXT.changePassword, 'unlock.html?mode=password', decorated ? {text: SETTINGS_TEXT.justUpdated, tone: 'success'} : null, decorated)}
           {pageRow(
             'database',
