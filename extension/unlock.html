@@ -559,6 +559,51 @@
         </div>
       </section>
 
+      <!-- #37's proof (B1b-2b §3.2, E11, C17): the password or passkey deletes the wallet whose first account it shows. -->
+      <section id="v-delete" class="screen s-pin" hidden>
+        <div class="top-bar">
+          <span class="title noc-h1">Delete wallet</span>
+        </div>
+        <div id="dl-entry" class="pin-head">
+          <h2 class="noc-h2 vlt-danger">Delete this wallet?</h2>
+          <p class="noc-caption vlt-muted">This wallet's first account</p>
+          <div id="dl-address" class="vlt-address"></div>
+          <p class="noc-body vlt-lede">Enter your password to delete this wallet from this browser. Your funds stay on Solana; your recovery phrase still controls them.</p>
+          <label for="dl-password" class="noc-body-sm vlt-lede vlt-field-label">Password</label>
+          <form id="dl-form" class="vlt-field-row vlt-field-row-labelled">
+            <input id="dl-password" class="vlt-input" type="password" autocomplete="current-password" />
+          </form>
+        </div>
+        <p id="dl-helper" class="noc-caption pin-helper" aria-live="polite"></p>
+        <div id="dl-cooldown" hidden>
+          <div class="vlt-pad-cooldown">
+            <h1 class="noc-h1 vlt-center vlt-gap-2">Wait a moment</h1>
+            <p class="noc-body vlt-lede vlt-center vlt-narrow-300 vlt-gap-5">That did not confirm it. Wait a moment before trying again.</p>
+          </div>
+          <div class="cooldown-card">
+            <div id="dl-ring" class="ring"></div>
+            <div id="dl-timer" class="timer noc-numeral"></div>
+            <div id="dl-cooldown-label" class="noc-body-sm label"></div>
+          </div>
+        </div>
+        <span id="dl-cooldown-live" class="vlt-sr" aria-live="polite"></span>
+        <div id="dl-notice" class="vlt-notice" role="status" hidden>
+          <p id="dl-notice-line" class="noc-body"></p>
+          <p id="dl-notice-help" class="noc-body-sm vlt-lede"></p>
+        </div>
+        <div class="pin-spacer"></div>
+        <div class="sticky-bar">
+          <button id="dl-delete" type="button" class="btn btn-destructive">Delete wallet</button>
+          <button id="dl-paused" type="button" class="btn btn-secondary" disabled hidden>Confirm paused</button>
+          <button id="dl-passkey" type="button" class="btn btn-secondary" hidden>Confirm with passkey</button>
+          <button id="dl-unlock" type="button" class="btn btn-primary" hidden>Unlock</button>
+          <button id="dl-again" type="button" class="btn btn-primary" hidden>Start again</button>
+          <button id="dl-setup" type="button" class="btn btn-primary" hidden>Set up a wallet</button>
+          <button id="dl-close" type="button" class="btn btn-secondary" hidden>Close this tab</button>
+          <button id="dl-cancel" type="button" class="btn btn-secondary">Cancel</button>
+        </div>
+      </section>
+
     </main>
     <script type="module" src="./src/unlock/main.ts"></script>
   </body>

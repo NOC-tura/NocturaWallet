@@ -254,6 +254,18 @@ export const CHANGE = {
   dropped: 'Enter your current password again.',
 } as const;
 
+/** #37's proof in the vault tab (B1b-2b §3.2, E11, C17). */
+export const DELETE = {
+  /** O13. */
+  deleting: 'Deleting…',
+  /** O14 (`changed`, C17): the wallet under the tab is not the one it showed — nothing proven, nothing sent. */
+  changed: 'The wallet in this browser changed. Check the address and try again.',
+  /** O15 (after `send-open`: E5 locked the wallet). */
+  lockedNothingDeleted: 'The wallet has been locked. Nothing was deleted.',
+  /** O16. */
+  failed: 'Something went wrong. Nothing was deleted.',
+} as const;
+
 /** #9 unlock (D7, D11). */
 export const UNLOCK = {
   unlocking: 'Unlocking…',

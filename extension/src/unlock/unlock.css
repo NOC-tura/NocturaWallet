@@ -418,3 +418,10 @@
   font: 500 14px/22px var(--font-mono);
   color: var(--fg-primary);
 }
+
+/* B1b-2b: an account address in groups of four under its caption (#37's proof, the remove page; C14, C17). */
+.vlt-address {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}

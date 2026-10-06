@@ -110,14 +110,14 @@ describe('deleteWallet (E11)', () => {
 
 // E11's boundary (spec §8.1): deleteWallet is the one path to a bare (no replacement, no guard) vault.forgetWallet, so
 // (1) the module's private `forget` must stay private — a screen that could call it would reach the bare message
-// without a factor proof; (2) only #37's page (screens/delete.ts, Task 9) may import deleteWallet. (2) is a TRIPWIRE
+// without a factor proof; (2) only #37's page (screens/delete.ts) may import deleteWallet. (2) is a TRIPWIRE
 // over source text (a file can spell a name some other way); (1) is checked on the module's runtime exports.
 describe('deleteWallet stays behind its proof', () => {
   it('forgetFlow exports exactly its proof minters and three proof-taking flows — never forget, never the minted set', () => {
     expect(Object.keys(forgetFlow).sort()).toEqual(['deleteWallet', 'proveFactor', 'proveSeed', 'replaceEmptyWallet', 'restoreWallet']);
   });
 
-  it('no extension source file but forgetFlow.ts (and, from Task 9, screens/delete.ts) names deleteWallet', () => {
+  it('exactly two extension source files name deleteWallet: forgetFlow.ts (which defines it) and screens/delete.ts (#37, its one importer)', () => {
     const src = join(__dirname, '..', '..');
     const files: string[] = [];
     const walk = (dir: string) => {
@@ -131,6 +131,7 @@ describe('deleteWallet stays behind its proof', () => {
     walk(src);
     expect(files).toContain('unlock/forgetFlow.ts');
     const naming = files.filter(f => /\bdeleteWallet\b/.test(readFileSync(join(src, f), 'utf8')));
-    expect(naming.filter(f => f !== 'unlock/screens/delete.ts')).toEqual(['unlock/forgetFlow.ts']);
+    expect(files).toContain('unlock/screens/delete.ts');
+    expect(naming.sort()).toEqual(['unlock/forgetFlow.ts', 'unlock/screens/delete.ts']);
   });
 });

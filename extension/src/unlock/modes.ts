@@ -2,6 +2,7 @@ import type {PageMode} from './mode';
 import type {PageDeps} from './page';
 import {mountAccounts} from './screens/accounts';
 import {mountChangePassword} from './screens/changePassword';
+import {mountDelete} from './screens/delete';
 import {createCreateRun} from './screens/createRun';
 import {mountForgot} from './screens/forgot';
 import {createImportRun} from './screens/importRun';
@@ -52,6 +53,9 @@ export function startMode(mode: PageMode, deps: PageDeps): void {
       return;
     case 'reveal':
       mountReveal(deps).show();
+      return;
+    case 'delete':
+      void mountDelete(deps).show();
       return;
     case 'password':
       mountChangePassword(deps).show();

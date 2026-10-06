@@ -45,6 +45,7 @@ export const SCREENS = [
   'v-reveal',
   'v-change-password',
   'v-cp-cancel',
+  'v-delete',
 ] as const;
 export type ScreenId = (typeof SCREENS)[number];
 
