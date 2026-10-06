@@ -20,6 +20,8 @@ const OTHER = 'legal winner thank year wave sausage worth useful legal winner th
 /** OTHER's SLIP-0010 account 0 (derived once with src/vault/accounts.ts). */
 const OTHER_ACCOUNT = 'BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX';
 const RECIPIENT = '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4';
+/** What spec 15's delete wipes (spec §8.3; plan 2 adds v1_contacts). */
+const WIPED = ['v1_vault', 'v1_settings', 'v1_known_recipients', 'v1_balance_cache', 'v1_price_cache'] as const;
 
 const local = (sw: Worker, key: string) => sw.evaluate(async k => (await chrome.storage.local.get(k))[k], key);
 const envOf = async (sw: Worker) => (await local(sw, 'v1_vault')) as Env | undefined;
@@ -284,6 +286,7 @@ test('18 · remove → re-add: account 2 removed after a proof (its balance and 
     await tab.locator('#acc-act').click();
     await expect(tab.locator('#acc-helper')).toHaveText('Done. The accounts are updated.', {timeout: 60_000});
     expect((await envOf(h.sw))?.accounts.map(a => a.index)).toEqual([0, 2]);
+    expect((await envOf(h.sw))?.accounts.map(a => a.publicKey)).toEqual([E2E_ACCOUNTS[0], E2E_ACCOUNTS[2]]);
 
     const manager = await settings(h);
     await manager.locator('.s7-title', {hasText: 'Profile'}).click();
@@ -306,6 +309,8 @@ test('18 · a send from account 2 still open: the remove is refused (send-open) 
   const h = await launchPopup('noctura-e2e-accounts-open-');
   try {
     const vault = await unlockedWallet(h, 2);
+    // The fake answers the poller's reads of the open send with `expire` from the moment it is written (as spec 15).
+    h.fake.mode = 'expire';
     // An open send from account 2, as the engine records one (the background refuses the store, C5).
     await h.sw.evaluate(
       ([account, recipient]) =>
@@ -314,7 +319,6 @@ test('18 · a send from account 2 still open: the remove is refused (send-open) 
         }),
       [E2E_ACCOUNTS[1], RECIPIENT] as const,
     );
-    h.fake.mode = 'expire';
     const before = JSON.stringify(await envOf(h.sw));
     await vault.goto(`chrome-extension://${h.id}/unlock.html?mode=accounts&op=remove&index=1`);
     await vault.locator('#acc-password').fill(E2E_PASSWORD);
@@ -332,7 +336,10 @@ test('18 · a send from account 2 still open: the remove is refused (send-open) 
   }
 });
 
-/** #31 → #37 → DELETE → the hold (Space on the focused CTA, 1 s) → the delete tab. */
+/**
+ * #31 → #37 → DELETE → the hold (Space on the focused CTA, 1 s) → the delete tab. Fix round 1 (review M1): the tab must
+ * not open within 800 ms of the key-down — a short hold would (the hold needs a full 1 s); the key is held to 1.2 s.
+ */
 async function toDeleteTab(h: Harness, popup: Page, o: {checkPartial?: boolean} = {}): Promise<Page> {
   await popup.locator('.s7-title', {hasText: 'Delete wallet'}).click();
   await expect(popup.getByText('Delete this wallet?')).toBeVisible();
@@ -345,13 +352,41 @@ async function toDeleteTab(h: Harness, popup: Page, o: {checkPartial?: boolean} 
   await expect(popup.getByText('Confirmation matched')).toBeVisible();
   const hold = popup.locator('.app-hold');
   await hold.focus();
-  return opened(h, async () => {
+  const pageAt: number[] = [];
+  const onPage = () => pageAt.push(Date.now());
+  h.ctx.on('page', onPage);
+  try {
+    const next = h.ctx.waitForEvent('page');
+    const down = Date.now();
     await popup.keyboard.down(' ');
-    // The popup closes itself once the proof page opens; the key-up may land on a closed page.
-    await popup.waitForTimeout(1_200).catch(() => undefined);
+    // A Node timer, not the popup's: the popup closes itself once the proof page opens (a short hold would close it early).
+    await new Promise(r => setTimeout(r, 800));
+    // Timestamps, not "nothing yet": a late timer cannot turn a correct 1 s hold into a failure.
+    expect(pageAt.filter(t => t - down < 800)).toEqual([]);
+    await new Promise(r => setTimeout(r, 400));
+    // The key-up may land on a closed page.
     await popup.keyboard.up(' ').catch(() => undefined);
-  });
+    const tab = await next;
+    await tab.waitForLoadState('domcontentloaded');
+    return tab;
+  } finally {
+    h.ctx.off('page', onPage);
+  }
 }
+/**
+ * Records, in a vault tab, whether #dl-cooldown was ever shown from now on (a MutationObserver on its `hidden`) — a
+ * cooldown that came and went before a retrying assertion looked would otherwise pass `toBeHidden()` (fix round 1, I2).
+ */
+const watchCooldown = (page: Page) =>
+  page.evaluate(() => {
+    const el = document.getElementById('dl-cooldown') as HTMLElement;
+    const w = window as unknown as {cooldownShown: boolean};
+    w.cooldownShown = !el.hidden;
+    new MutationObserver(() => {
+      if (!el.hidden) w.cooldownShown = true;
+    }).observe(el, {attributes: true, attributeFilter: ['hidden']});
+  });
+const cooldownShown = (page: Page) => page.evaluate(() => (window as unknown as {cooldownShown: boolean}).cooldownShown);
 
 test('15 · delete a funded wallet: #37 says so and names the lowest index (not the top row) → DELETE → 1 s hold → the tab shows the same address → wrong, then right → welcome; everything wiped', async () => {
   test.setTimeout(300_000);
@@ -374,6 +409,10 @@ test('15 · delete a funded wallet: #37 says so and names the lowest index (not 
     const tab = await toDeleteTab(h, popup, {checkPartial: true});
     await expect(tab).toHaveURL(/mode=delete$/);
     await expect(tab.locator('#dl-address .addr-groups > span')).toHaveText(E2E_ACCOUNTS[0].match(/.{1,4}/g) ?? []);
+    // Fix round 1 (review I1): every key the wipe must remove exists first, so each toBeUndefined() below proves a
+    // removal. The known recipients are written as the background writes them after a confirmed send ({address, at}).
+    await h.sw.evaluate(r => chrome.storage.local.set({v1_known_recipients: [{address: r, at: Date.now()}]}), RECIPIENT);
+    for (const key of WIPED) await expect.poll(() => local(h.sw, key), {message: key, timeout: 30_000}).toBeDefined();
     const before = JSON.stringify(await envOf(h.sw));
     await tab.locator('#dl-password').fill('not the password at all');
     await tab.locator('#dl-delete').click();
@@ -382,7 +421,7 @@ test('15 · delete a funded wallet: #37 says so and names the lowest index (not 
     await tab.locator('#dl-password').fill(E2E_PASSWORD);
     await tab.locator('#dl-delete').click();
     await tab.waitForURL(/mode=welcome$/, {timeout: 60_000});
-    for (const key of ['v1_vault', 'v1_settings', 'v1_known_recipients', 'v1_balance_cache', 'v1_price_cache']) expect(await local(h.sw, key), key).toBeUndefined();
+    for (const key of WIPED) expect(await local(h.sw, key), key).toBeUndefined();
     contained(h);
   } finally {
     await h.close();
@@ -426,6 +465,7 @@ test('15 · C17: the same wallet at a new revision under the delete tab (an acco
     const del = await h.ctx.newPage();
     await del.goto(`chrome-extension://${h.id}/unlock.html?mode=delete`);
     await expect(del.locator('#dl-address .addr-groups')).toBeVisible();
+    await watchCooldown(del);
     await vault.goto(`chrome-extension://${h.id}/unlock.html?mode=accounts&op=add`);
     await vault.locator('#acc-password').fill(E2E_PASSWORD);
     await vault.locator('#acc-act').click();
@@ -433,6 +473,11 @@ test('15 · C17: the same wallet at a new revision under the delete tab (an acco
     await del.locator('#dl-password').fill(E2E_PASSWORD);
     await del.locator('#dl-delete').click();
     await expect(del.locator('#dl-helper')).toHaveText('The wallet in this browser changed. Check the address and try again.', {timeout: 30_000});
+    // Fix round 1 (review M6): the gate released, no cooldown ever shown, and the address shown is the stored wallet's
+    // lowest index (still account 1: the added account has a higher index).
+    await expect(del.locator('#dl-delete')).toBeEnabled();
+    expect(await cooldownShown(del)).toBe(false);
+    expect(await groups(del, '#dl-address')).toBe(E2E_ACCOUNTS[0]);
     expect((await envOf(h.sw))?.accounts).toHaveLength(2);
     quiet(h);
   } finally {
@@ -448,7 +493,14 @@ test('15 · rev 3 (the hard case): wallet A replaced by wallet B under the tab �
     await h.sw.evaluate(e => chrome.storage.local.set({v1_vault: e}), await makeEnvelope());
     const del = await h.ctx.newPage();
     await del.goto(`chrome-extension://${h.id}/unlock.html?mode=delete`);
-    expect(await groups(del, '#dl-address')).toBe(E2E_ACCOUNTS[0]);
+    await expect(del.locator('#dl-address .addr-groups > span')).toHaveText(E2E_ACCOUNTS[0].match(/.{1,4}/g) ?? []);
+    // Fix round 1 (review I2): one wrong password first — streak 1, no wait (wrongDelayMs(1) = 0). Were `changed`
+    // charged to the backoff, the next outcome would be streak 2: a 1 s cooldown the watcher below records.
+    await del.locator('#dl-password').fill('not the password at all');
+    await del.locator('#dl-delete').click();
+    await expect(del.locator('#dl-helper')).toHaveText('That did not confirm it.', {timeout: 60_000});
+    await expect(del.locator('#dl-delete')).toBeEnabled();
+    await watchCooldown(del);
     // A replaced by B through #40's retry path (E5 with the unfunded guard) in another tab.
     const other = await h.ctx.newPage();
     await other.goto(`chrome-extension://${h.id}/unlock.html?mode=import&source=retry`);
@@ -466,8 +518,10 @@ test('15 · rev 3 (the hard case): wallet A replaced by wallet B under the tab �
     await del.locator('#dl-delete').click();
     await expect(del.locator('#dl-helper')).toHaveText('The wallet in this browser changed. Check the address and try again.', {timeout: 30_000});
     expect(await groups(del, '#dl-address')).toBe(OTHER_ACCOUNT);
+    // The gate released (a charged wait would hold it), and no cooldown was ever shown.
+    await expect(del.locator('#dl-delete')).toBeEnabled();
+    expect(await cooldownShown(del)).toBe(false);
     await expect(del.locator('#dl-cooldown')).toBeHidden();
-    await expect(del.locator('#dl-helper')).not.toHaveText('That did not confirm it.');
     expect(JSON.stringify(await envOf(h.sw))).toBe(b);
     contained(h);
   } finally {
