@@ -1,12 +1,13 @@
 import {test, expect, type ConsoleMessage, type Page} from '@playwright/test';
 import {contained, launchPopup, type Harness} from './popupHarness';
 import {E2E_ACCOUNTS, E2E_MNEMONIC, E2E_PASSWORD, makeEnvelope} from './makeEnvelope';
-import {createWallet, pastePhrase} from './vaultPage';
+import {confirmWords, createWallet, pastePhrase} from './vaultPage';
 
 // Final review item 2: the vault page's boundary is the CSP (the source gates are a backstop). This walks the
 // create run and opens every other vault-page mode — unlock with the cooldown ring, forgot, import, the restore
 // (source=forgot) and retry (source=retry) paths, accounts, reveal, verify, password, delete, passkey (add and remove),
-// reauth (a send and a settings change), welcome — and expects no CSP
+// reauth (a send and a settings change), welcome — walking reveal (modal, revealed), verify (check, success) and
+// password (steps 2–3 with the meter, done) past their first state — and expects no CSP
 // violation at all: none reported to the page (`securitypolicyviolation`), none in the console. A positive
 // control in the same browser proves the watch sees one: an inline <style> and a remote <img> are both reported.
 const PASSWORD = 'a long enough password';
@@ -104,13 +105,48 @@ test('csp: every vault-page mode runs with zero CSP violations; an inline style 
     await p.goto(`${base}?mode=reveal`);
     await expect(p.locator('#pp-title')).toHaveText('Show your recovery phrase');
     await clean('reveal');
+    // Fix round 1: past the first state — the modal, then the words revealed by a hold.
+    await p.locator('#pp-password').fill(E2E_PASSWORD);
+    await p.locator('#pp-continue').click();
+    await expect(p.locator('#v-seed-gate')).toBeVisible({timeout: 60_000});
+    await clean('reveal, modal');
+    await p.locator('#sg-continue').click();
+    await p.locator('#seed-grid').hover();
+    await p.mouse.down();
+    await expect(p.locator('#seed-chip')).toBeVisible({timeout: 10_000});
+    await expect(p.locator('#seed-grid .term').first()).toHaveText('abandon');
+    await clean('reveal, revealed');
+    await p.mouse.up();
     await p.goto(`${base}?mode=verify`);
     await expect(p.locator('#pp-title')).toHaveText('Verify your recovery phrase');
     await clean('verify');
+    // Fix round 1: the check (#4's slots and pool), then its success.
+    await p.locator('#pp-password').fill(E2E_PASSWORD);
+    await p.locator('#pp-continue').click();
+    await expect(p.locator('#cnf-eyebrow')).toHaveText('Recovery phrase', {timeout: 60_000});
+    await clean('verify, check');
+    await confirmWords(p, E2E_MNEMONIC.split(' '));
+    await p.locator('#cnf-cta').click();
+    await expect(p.locator('#cnf-success-title')).toHaveText('Recovery phrase verified');
+    await clean('verify, success');
     // B1b-2b §3.1–§3.3: #36, #37's proof and the passkey actions.
     await p.goto(`${base}?mode=password`);
     await expect(p.locator('#cp-title')).toHaveText('Enter current password');
     await clean('password');
+    // Fix round 1: #36 through to `done` (the last use of E2E_PASSWORD in this walk; nothing after it unlocks).
+    await p.locator('#cp-field').fill(E2E_PASSWORD);
+    await p.locator('#cp-cta').click();
+    await expect(p.locator('#cp-step')).toHaveText('Step 2 of 3', {timeout: 60_000});
+    await p.locator('#cp-field').fill(PASSWORD);
+    await expect(p.locator('#cp-meter-label')).toHaveText('Long enough');
+    await clean('password, step 2 + meter');
+    await p.locator('#cp-cta').click();
+    await expect(p.locator('#cp-step')).toHaveText('Step 3 of 3', {timeout: 60_000});
+    await clean('password, step 3');
+    await p.locator('#cp-field').fill(PASSWORD);
+    await p.locator('#cp-cta').click();
+    await expect(p.locator('#cp-notice-line')).toHaveText('Password updated.', {timeout: 60_000});
+    await clean('password, done');
     await p.goto(`${base}?mode=delete`);
     await expect(p.locator('#dl-address .addr-groups')).toBeVisible();
     await clean('delete');
@@ -161,7 +197,7 @@ test('csp: every vault-page mode runs with zero CSP violations; an inline style 
     await expect(p.locator('#imp-phrase')).toBeVisible();
     await clean('import');
 
-    expect(seen).toHaveLength(16);
+    expect(seen).toHaveLength(23);
 
     // The positive control, on the same page and watch: an inline <style> and a remote <img> are both refused and reported.
     await p.evaluate(src => {

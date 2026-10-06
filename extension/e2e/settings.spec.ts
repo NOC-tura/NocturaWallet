@@ -110,7 +110,8 @@ test('14 · change password: wrong → right → same → new → mismatch → c
     await again.close();
     const third = await settings(h);
     await expect(third.locator('.s7-title', {hasText: 'Change password'})).toBeVisible();
-    await third.waitForTimeout(500);
+    // The settings read is back (its metas drawn, and a toast would be set in the same answer): then no toast (fix round 1).
+    await expect(third.locator('.s7-row', {hasText: 'Recovery phrase'}).locator('.s7-meta')).toHaveText('Not verified');
     await expect(third.getByText('Password updated')).toHaveCount(0);
 
     // Lock: the old password fails, the new one unlocks, and the passkey (the same data key) unlocks.
@@ -168,11 +169,18 @@ test('16 · reveal: proof → modal → hold → the words → "Still looking?" 
     // focus() + hover() + mouse.down() leaving the focus on the grid. A tabindex change must keep the grid focusable.
     await tab.keyboard.press('Control+c');
     await expect.poll(() => tab.evaluate(() => (window as unknown as {copies: boolean[]}).copies)).toEqual([true]);
+    // Under the pinned Chromium the async clipboard API throws in the vault tab (normal launch and `unshare -rn`, checked in
+    // Task 18), so this sentinel branch does not run today: the coverage is the grid's `copy` being defaultPrevented
+    // (above) plus the permissions gate (check-permissions.mjs: exactly storage + alarms, no clipboardWrite).
     if (clipboard) expect(await tab.evaluate(() => navigator.clipboard.readText())).toBe('e2e-sentinel');
-    // Held past the 20 s auto-blur: "Still looking?", and no word of the phrase left in the DOM.
+    // Held past the 20 s auto-blur: "Still looking?", and no word of the phrase left in the DOM (fix round 1): every cell
+    // is the stand-in, no cell is any word of the phrase, and the whole document — text, attributes (aria-*, title, data-*)
+    // and all — carries no "abandon" (a word in no UI copy; "about" is, so it is no marker).
     await expect(tab.locator('#seed-overlay-title')).toHaveText('Still looking?', {timeout: 30_000});
-    expect(await tab.locator('#seed-grid .term').allTextContents()).not.toContain('abandon');
-    expect(await tab.evaluate(() => document.body.innerText.includes('abandon'))).toBe(false);
+    const terms = await tab.locator('#seed-grid .term').allTextContents();
+    expect(terms).toEqual(Array.from({length: 12}, () => 'xxxxxx'));
+    expect(terms.filter(t => E2E_MNEMONIC.split(' ').includes(t))).toEqual([]);
+    expect(await tab.evaluate(() => document.documentElement.outerHTML.includes('abandon'))).toBe(false);
     await tab.mouse.up();
     // Released after the auto-blur: "Still looking?" stays; one full hold happened, so the CTA is offered (#3's rule).
     await expect(tab.locator('#seed-cta')).toBeEnabled();
