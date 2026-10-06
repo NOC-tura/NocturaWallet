@@ -1334,20 +1334,18 @@ Findings go in the PR; screenshots are CI artifacts.
   ("Something went wrong. Try again." with the top bar), #36 `failed` (O07), the delete page's `failed` (O16), the passkey
   page's `failed` (O26), #10 `settings-failed` (O26), `passkey-unavailable`. Covered by the component tests.
 - **Fixed in the pass:** #37's empty DELETE field had no focus indicator (design-ext's `.s7-pw input {outline: 0}`): the
-  focused field now takes 37b's accent ring (app.css `.s7-pw:focus-within`); the bar captions on #6 manage and #37 take
-  the design's `margin: 0` (ix:15083) — the UA's paragraph margins made #6 `on`'s bar 261 px of the popup's 600 and hid
-  the lede under it (213 px now); #37's countdown is one run beside the icon ("Hold to delete · 0.4 s", ix:15089) — the
-  label's icon gap had set the count 8 px apart.
-- **The delete page and the passkey page have no top-bar X** (spec §3's general rule; ix:14963 draws a back control
-  before "Delete wallet"; #6 draws a top bar). Both offer `[Cancel]`, which closes the tab. The passkey page has no top bar
-  at all, so its hero sits one bar (56 px) higher than #6's. Adding the X is vault-page wiring (the close handler and its
-  busy state), not markup — left for the owner/controller.
-- **The accounts manager's rows are cramped at 412 px** (no design, §4.3): five 48 px tools (check, rename, up, down,
-  remove) leave the identity column about 90 px, so the two-group address wraps to two lines and the balance line to three.
-  Legible, every string present; the layout of a screen the design never drew is for the owner.
-- **The passkey remove page's field has no visible label** (only `aria-label="Password"`; the lede asks for the
-  password). The add/replace line "Enter your password to add the passkey." does not fit a removal and no approved line
-  exists for it.
+  focused field now takes 37b's accent ring (app.css `.s7-pw:focus-within`); every action bar's line takes the design's
+  `margin: 0` (index.html:98, ix:15083) — on #6 manage, #37 and, widened in fix round 0b, 2a's #20, #54, #7 and #40 — the
+  UA's paragraph margins made #6 `on`'s bar 261 px of the popup's 600 and hid the lede under it (213 px now); #37's
+  countdown is one run beside the icon ("Hold to delete · 0.4 s", ix:15089) — the label's icon gap had set the count 8 px
+  apart. Fix round 0b also gave the delete page and the passkey page the top-bar X of spec §3's general rule (the passkey
+  page #6's top bar, overline "Passkey", so its hero sits under a bar as #6's does), and the passkey remove page's field
+  the vault pages' visible "Password" label.
+- **The accounts manager's rows — a question for the owner** (no design, §4.3): five 48 px tools (check, rename, up,
+  down, remove) leave the name column about 90 px. Fix round 0b moved the address and balance lines out of that column onto
+  their own full-width line under the name and tools (still the select button's description, `aria-describedby`), so
+  neither wraps; the name stays beside the tools. Whether this is the layout the owner wants for a screen the design never
+  drew is asked at PR time.
 - **Keyboard focus can land under the sticky bar** on #37 (412 × 600): the browser scrolls a focused field into the
   content region, which runs under the pinned action bar. The visual pass scrolls each state's element clear of the bars
   first, as a person would (B1b-2a plan 3's `seen()`).

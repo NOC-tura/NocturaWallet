@@ -210,15 +210,10 @@ export function AccountsManager({onBack}: {onBack: () => void}) {
                   </div>
                 ) : (
                   <>
-                    <LockedButton className="app-account-pick" pressed={selected} keepFocus onPress={() => select(a)}>
+                    <LockedButton className="app-account-pick" pressed={selected} keepFocus describedBy={`account-sub-${a.index}`} onPress={() => select(a)}>
                       <span className="avatar">{a.name.slice(0, 1).toUpperCase()}</span>
                       <span>
                         <span className="pri noc-body-lg">{a.name}</span>
-                        <span className="sec noc-mono">{twoGroups(a.publicKey)}</span>
-                        <span className="sec noc-numeral">
-                          {row === undefined ? (reads.has(a.publicKey) ? '' : ACCOUNTS_TEXT.notCheckedYet) : `${showAmount('SOL', row.b.sol)} SOL${total === null ? '' : ` · ${showUsd(total)}`}`}
-                        </span>
-                        {row !== undefined && !row.fresh ? <span className="sec noc-caption">cached {ago(row.at, now)}</span> : null}
                       </span>
                       {selected ? <ExtIcon name="check" size={18} label="Selected" /> : null}
                     </LockedButton>
@@ -243,6 +238,15 @@ export function AccountsManager({onBack}: {onBack: () => void}) {
                       <LockedButton className="icon-btn" label={ACCOUNTS_TEXT.remove(a.name)} disabled={last} onPress={() => openRemove(a)}>
                         <ExtIcon name="trash" size={16} />
                       </LockedButton>
+                    </span>
+                    {/* Fix round 0b: the address and balance on their own full-width line under the name and tools — beside
+                        five 48 px tools they wrapped inside a ~90 px column. They still describe the row's select button. */}
+                    <span className="app-account-sub" id={`account-sub-${a.index}`}>
+                      <span className="sec noc-mono">{twoGroups(a.publicKey)}</span>
+                      <span className="sec noc-numeral">
+                        {row === undefined ? (reads.has(a.publicKey) ? '' : ACCOUNTS_TEXT.notCheckedYet) : `${showAmount('SOL', row.b.sol)} SOL${total === null ? '' : ` · ${showUsd(total)}`}`}
+                      </span>
+                      {row !== undefined && !row.fresh ? <span className="sec noc-caption">cached {ago(row.at, now)}</span> : null}
                     </span>
                   </>
                 )}

@@ -610,6 +610,7 @@
       <!-- #37's proof (B1b-2b §3.2, E11, C17): the password or passkey deletes the wallet whose first account it shows. -->
       <section id="v-delete" class="screen s-pin" hidden>
         <div class="top-bar">
+          <button id="dl-x" type="button" class="icon-btn" aria-label="Close"><svg width="22" height="22" aria-hidden="true"><use href="#i-x" /></svg></button>
           <span class="title noc-h1">Delete wallet</span>
         </div>
         <div id="dl-entry" class="pin-head">
@@ -654,6 +655,11 @@
 
       <!-- #6 "manage" (B1b-2b §3.3): add or replace a passkey (password), remove it (password or passkey). #6's chrome, no step counter. -->
       <section id="v-passkey-manage" class="screen s-bio" hidden>
+        <div class="top-bar">
+          <button id="pm-x" type="button" class="icon-btn" aria-label="Close"><svg width="22" height="22" aria-hidden="true"><use href="#i-x" /></svg></button>
+          <span class="title noc-overline vlt-muted">Passkey</span>
+          <span class="vlt-bar-spacer"></span>
+        </div>
         <div class="hero-icon"><svg width="56" height="56" aria-hidden="true"><use href="#i-key" /></svg></div>
         <div class="vlt-pad-6 vlt-center">
           <h1 id="pm-title" class="noc-h1 vlt-gap-2"></h1>
@@ -661,6 +667,7 @@
         </div>
         <form id="pm-form" class="vlt-pad vlt-gap-top-5">
           <p id="pm-ask" class="noc-body-sm vlt-lede vlt-gap-2">Enter your password to add the passkey.</p>
+          <label id="pm-password-label" for="pm-password" class="noc-body-sm vlt-lede vlt-field-label">Password</label>
           <input id="pm-password" class="vlt-input" type="password" autocomplete="current-password" aria-label="Password" />
         </form>
         <p id="pm-helper" class="noc-caption vlt-center vlt-pad vlt-gap-top-3" aria-live="polite"></p>

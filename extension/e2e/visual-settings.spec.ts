@@ -207,6 +207,9 @@ test('visual: #31, #35, the passkey screen, the accounts manager and #37 in the 
     await p.locator('.s7-title', {hasText: 'Profile'}).click();
     await expect(p.locator('.app-account-row .pri')).toHaveText(['Main', 'Savings']);
     await expect(p.getByText('10.0000 SOL · $1,500.00').first()).toBeVisible();
+    // Fix round 0b: the address and the balance each on one full-width line under the name and tools (they wrapped to two
+    // and three lines inside a ~90 px column beside five 48 px tools).
+    for (const line of await p.locator('.app-account-sub .sec').all()) expect((await line.boundingBox())?.height ?? 99, await line.textContent() ?? '').toBeLessThanOrEqual(18);
     await pop(p, '43m-accounts-list', p.locator('.app-account-row').first());
     await p.getByRole('button', {name: 'Remove Savings'}).click();
     await expect(p.getByText('Holds 10.0000 SOL · $1,500.00')).toBeVisible();
@@ -293,6 +296,9 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     // Passkey · add (idle, adding held, added), replace, remove (idle, removing held, removed), no passkey.
     await go('mode=passkey&op=add');
     await expect(p.locator('#pm-title')).toHaveText('Unlock Noctura with a passkey');
+    // Fix round 0b: #6's top bar with the X (spec §3), so the hero sits under a bar as #6's does.
+    await expect(p.locator('#pm-x')).toBeVisible();
+    await expect(p.locator('#v-passkey-manage .top-bar .title')).toHaveText('Passkey');
     await shot(p, '06m-add-idle', {ready: p.locator('#pm-act')});
     await holdKdf(p);
     await p.locator('#pm-password').fill(E2E_PASSWORD);
@@ -311,6 +317,9 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     await shot(p, '06m-replaced', {ready: p.locator('#pm-close')});
     await go('mode=passkey&op=remove');
     await expect(p.locator('#pm-title')).toHaveText('Remove your passkey');
+    // Fix round 0b: the remove field's visible label (the vault pages' "Password").
+    await expect(p.locator('#pm-password-label')).toHaveText('Password');
+    await expect(p.locator('#pm-password-label')).toBeVisible();
     await shot(p, '06m-remove-idle', {ready: p.locator('#pm-passkey')});
     await holdKdf(p);
     await p.locator('#pm-password').fill(E2E_PASSWORD);
@@ -555,7 +564,8 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     await unlockWith(p, h.id, NEW_PASSWORD);
     await go('mode=delete');
     await expect(p.locator('#dl-passkey')).toBeVisible();
-    await shot(p, 'delete-idle', {ready: p.locator('#dl-delete')});
+    await expect(p.locator('#dl-x')).toBeVisible();
+    await shot(p, 'delete-idle', {ready: p.locator('#dl-x')});
     await p.locator('#dl-password').fill('not the password at all');
     await p.locator('#dl-delete').click();
     await expect(p.locator('#dl-helper')).toHaveText('That did not confirm it.', {timeout: 60_000});

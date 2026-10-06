@@ -79,6 +79,24 @@ describe('the accounts manager', () => {
     expect(unstyledClasses(document.querySelector('.screen')!, SELECTORS)).toEqual([]);
   });
 
+  // Fix round 0b (the visual pass): beside five 48 px tools the identity column was ~90 px, so the address wrapped onto
+  // two lines and the balance onto three. The address and balance lines now sit on their own full-width line under the
+  // name-and-tools row — a sibling of the select button, spanning the row's grid — and still describe the select button.
+  it('the address and balance lines sit under the name and tools, full width, and describe the row select', async () => {
+    await shown();
+    await waitFor(() => expect(names()).toEqual(['Main', 'Savings', 'Third']));
+    const row = document.querySelector('.app-account-row[data-account="0"]') as HTMLElement;
+    const pick = row.querySelector('.app-account-pick') as HTMLButtonElement;
+    const sub = row.querySelector(':scope > .app-account-sub') as HTMLElement;
+    expect(sub).not.toBeNull();
+    expect(pick.contains(sub)).toBe(false);
+    expect(sub.querySelector('.sec.noc-mono')?.textContent).toMatch(/^\S{4} \S{4}…$/);
+    expect(pick.querySelector('.sec')).toBeNull();
+    expect(pick.getAttribute('aria-describedby')).toBe(sub.id);
+    expect(sub.id).not.toBe('');
+    expect([...row.children].map(c => c.className.split(' ')[0])).toEqual(['app-account-pick', 'app-row-tools', 'app-account-sub']);
+  });
+
   it('↓ writes accounts.order: the list follows and focus stays on the moved row’s same button', async () => {
     const w = await shown();
     await waitFor(() => expect(names()).toEqual(['Main', 'Savings', 'Third']));

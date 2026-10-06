@@ -46,6 +46,7 @@ export function mountPasskeyManage(deps: PageDeps): PasskeyManageScreen {
   const act = byId<HTMLButtonElement>('pm-act');
   const passkeyBtn = byId<HTMLButtonElement>('pm-passkey');
   const cancel = byId<HTMLButtonElement>('pm-cancel');
+  const x = byId<HTMLButtonElement>('pm-x');
   const buttons = {again: byId<HTMLButtonElement>('pm-again'), unlock: byId<HTMLButtonElement>('pm-unlock'), setup: byId<HTMLButtonElement>('pm-setup'), close: byId<HTMLButtonElement>('pm-close')};
   const helperEl = byId('pm-helper');
   const live = byId('pm-cooldown-live');
@@ -94,6 +95,8 @@ export function mountPasskeyManage(deps: PageDeps): PasskeyManageScreen {
     setText(act, op === 'remove' ? MANAGE.remove : replacing ? MANAGE.replace : MANAGE.add);
     shown(byId('pm-form'), (entry || view === 'working') && !cooling);
     shown(byId('pm-ask'), op === 'add');
+    // Fix round 0b: the remove page's field has the vault pages' visible label (the add line names the add).
+    shown(byId('pm-password-label'), op === 'remove');
     shown(helperEl, entry && !cooling);
     shown(byId('pm-cooldown'), cooling);
     shown(act, entry && !cooling);
@@ -109,6 +112,7 @@ export function mountPasskeyManage(deps: PageDeps): PasskeyManageScreen {
     }
     shown(cancel, view !== 'end' || actions.length === 0);
     cancel.disabled = busy && !cooling;
+    x.disabled = busy && !cooling;
   };
   const helper = (text: string, error: boolean) => {
     setText(helperEl, text);
@@ -266,12 +270,23 @@ export function mountPasskeyManage(deps: PageDeps): PasskeyManageScreen {
   });
   act.addEventListener('click', withPassword);
   passkeyBtn.addEventListener('click', withPasskey);
-  cancel.addEventListener('click', () => {
-    // During the cooldown the gate is held by the backoff's wait — [Cancel] closes the tab regardless (the wait ends
-    // in a wrong outcome; nothing is proven or sent).
-    if (stopCooldown !== null) return deps.closeTab();
-    void exclusive(deps, render, async () => deps.closeTab());
-  });
+  /**
+   * [Cancel] and the top bar's X (fix round 0b, spec §3's general rule). During the cooldown the gate is held by the
+   * backoff's wait — they close the tab regardless (the wait ends in a wrong outcome; nothing is proven or sent). The
+   * typed password goes and the generation moves, so a running call's held PRF output is zeroed and nothing is sent or
+   * stored after it — even if the browser refuses to close the tab.
+   */
+  const close = () => {
+    field.value = '';
+    generation += 1;
+    deps.closeTab();
+  };
+  const closing = () => {
+    if (stopCooldown !== null) return close();
+    void exclusive(deps, render, async () => close());
+  };
+  cancel.addEventListener('click', closing);
+  x.addEventListener('click', closing);
   buttons.close.addEventListener('click', () => {
     if (actions.includes('close')) void exclusive(deps, render, async () => deps.closeTab());
   });

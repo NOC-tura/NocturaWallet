@@ -20,6 +20,7 @@ export function LockedButton({
   keepFocus = false,
   focusElsewhere,
   pressed,
+  describedBy,
   wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)),
 }: {
   onPress: () => Promise<unknown> | void;
@@ -40,6 +41,8 @@ export function LockedButton({
   focusElsewhere?: () => void;
   /** A toggle's state (aria-pressed): B1b-2b's picker options and the accounts manager's row select. */
   pressed?: boolean;
+  /** aria-describedby: lines drawn outside the button that belong to it (the accounts manager's address and balance). */
+  describedBy?: string;
   wait?: (ms: number) => Promise<void>;
 }) {
   const busy = useRef(false);
@@ -81,7 +84,7 @@ export function LockedButton({
     });
   };
   return (
-    <button ref={self} type="button" className={`${className}${locked ? ' is-busy' : ''}`} disabled={disabled || locked} aria-label={label} aria-pressed={pressed} onClick={press}>
+    <button ref={self} type="button" className={`${className}${locked ? ' is-busy' : ''}`} disabled={disabled || locked} aria-label={label} aria-pressed={pressed} aria-describedby={describedBy} onClick={press}>
       {children}
     </button>
   );

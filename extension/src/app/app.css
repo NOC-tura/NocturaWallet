@@ -841,11 +841,11 @@ a.btn {
 .app-bio-tip {
   margin: var(--space-4) var(--space-5) 0;
 }
-/* Task 20 visual pass: a caption in a plan-1 action bar (#6 manage's note and "Confirmation opens in a new tab.", #37's)
-   takes the design's `margin: 0` (ix:15083's centred caption) — the bar's --space-3 gap is the only space. The UA's 1em
-   paragraph margins made #6 `on`'s bar 261 of the popup's 600 px and hid the lede under it. */
-.app-content .s-bio > .sticky-bar > p,
-.app-content .app-delete > .sticky-bar > p {
+/* Task 20 visual pass (widened in fix round 0b): a line in an action bar — #6 manage's note and "Confirmation opens in a
+   new tab.", #37's, #20's, #54's, #7's and #40's — takes the design's `margin: 0` (index.html:98 resets every
+   margin; ix:15083's centred caption): the bar's --space-3 gap is the only space. The UA's 1em paragraph margins made
+   #6 `on`'s bar 261 of the popup's 600 px and hid the lede under it. */
+.app-content .sticky-bar > p {
   margin: 0;
 }
 
@@ -864,6 +864,20 @@ a.btn {
 .app-row-tools {
   display: inline-flex;
   align-items: center;
+}
+/* Fix round 0b: the address and balance lines span the row under the name and tools, starting under the name (the
+   avatar's 36 px + the pick's --space-3 gap, inside the row's --space-2 padding); the switcher's .sec type. */
+.app-account-sub {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  padding-inline-start: calc(36px + var(--space-3));
+  margin-top: calc(-1 * var(--space-2));
+}
+.app-account-sub .sec {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--fg-tertiary);
 }
 .app-row-tools .icon-btn {
   width: var(--touch-target-min);

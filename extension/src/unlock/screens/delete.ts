@@ -54,6 +54,7 @@ export function mountDelete(deps: PageDeps): DeleteScreen {
   const del = byId<HTMLButtonElement>('dl-delete');
   const passkey = byId<HTMLButtonElement>('dl-passkey');
   const cancel = byId<HTMLButtonElement>('dl-cancel');
+  const x = byId<HTMLButtonElement>('dl-x');
   const buttons = {unlock: byId<HTMLButtonElement>('dl-unlock'), again: byId<HTMLButtonElement>('dl-again'), setup: byId<HTMLButtonElement>('dl-setup'), close: byId<HTMLButtonElement>('dl-close')};
   const helperEl = byId('dl-helper');
   const live = byId('dl-cooldown-live');
@@ -84,6 +85,7 @@ export function mountDelete(deps: PageDeps): DeleteScreen {
     del.disabled = busy || !entry;
     passkey.disabled = busy || !entry || pk === null;
     cancel.disabled = busy && !cooling;
+    x.disabled = busy && !cooling;
     for (const [name, b] of Object.entries(buttons)) {
       shown(b, view === 'notice' && actions.includes(name as Action));
       b.disabled = busy;
@@ -247,12 +249,24 @@ export function mountDelete(deps: PageDeps): DeleteScreen {
   });
   del.addEventListener('click', withPassword);
   passkey.addEventListener('click', withPasskey);
-  cancel.addEventListener('click', () => {
-    // Review M1: during the cooldown the gate is held by the backoff's wait — [Cancel] closes the tab regardless (the
-    // wait ends in a wrong outcome; nothing is proven or sent).
-    if (stopCooldown !== null) return deps.closeTab();
-    void exclusive(deps, render, async () => deps.closeTab());
-  });
+  /**
+   * [Cancel] and the top bar's X (fix round 0b, spec §3's general rule). Review M1: during the cooldown the gate is held by
+   * the backoff's wait — they close the tab regardless (the wait ends in a wrong outcome; nothing is proven or sent). The
+   * typed password goes, and the generation moves, so a proof or PRF output still held by a running call is dropped
+   * (zeroed) and nothing is sent after it — even if the browser refuses to close the tab.
+   */
+  const close = () => {
+    field.value = '';
+    typed = null;
+    generation += 1;
+    deps.closeTab();
+  };
+  const closing = () => {
+    if (stopCooldown !== null) return close();
+    void exclusive(deps, render, async () => close());
+  };
+  cancel.addEventListener('click', closing);
+  x.addEventListener('click', closing);
   buttons.unlock.addEventListener('click', () => {
     if (actions.includes('unlock')) void exclusive(deps, render, async () => deps.go('unlock.html?mode=unlock'));
   });

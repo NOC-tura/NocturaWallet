@@ -348,6 +348,39 @@ describe('#37’s proof: the delete page', () => {
     expect(forgets(h)).toEqual([]);
   });
 
+  // Fix round 0b (spec §3's general rule): the top bar's X, wired as [Cancel].
+  it("the top bar's X closes the tab, the typed password emptied", async () => {
+    const {h, screen} = await shown(await wallet());
+    expect(visible(el('dl-x'))).toBe(true);
+    expect(el('dl-x').getAttribute('aria-label')).toBe('Close');
+    type(el<HTMLInputElement>('dl-password'), PW);
+    click(el('dl-x'));
+    await h.until(() => h.closed === 1);
+    expect(screen.holds()).toBe(false);
+    expect(forgets(h)).toEqual([]);
+  });
+
+  it("the X during the cooldown closes the tab, and the held wait's end shows and sends nothing (generation moved)", async () => {
+    const {h} = await shown(await wallet(), {holdSleep: true});
+    type(el<HTMLInputElement>('dl-password'), 'nope nope nope nope');
+    click(el('dl-delete'));
+    await h.until(() => text(el('dl-helper')) === 'That did not confirm it.');
+    h.wake();
+    await idle(h);
+    type(el<HTMLInputElement>('dl-password'), 'nope nope nope nope');
+    click(el('dl-delete'));
+    await h.until(() => visible(el('dl-cooldown')));
+    expect(h.deps.gate.isBusy()).toBe(true);
+    expect(el<HTMLButtonElement>('dl-x').disabled).toBe(false);
+    click(el('dl-x'));
+    expect(h.closed).toBe(1);
+    h.wake();
+    await h.until(() => !h.deps.gate.isBusy() || (h.wake(), false));
+    // The browser may refuse the close: the page stays, but the wrong outcome the wait ended in is not shown.
+    expect(text(el('dl-helper'))).toBe('');
+    expect(forgets(h)).toEqual([]);
+  });
+
   it('a hidden tab empties the field', async () => {
     const {h, screen} = await shown(await wallet());
     type(el<HTMLInputElement>('dl-password'), PW);

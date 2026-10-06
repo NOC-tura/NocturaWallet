@@ -332,6 +332,50 @@ describe('#6 manage: leaving, retries and the cooldown', () => {
     expect(removes(h)).toEqual([]);
   });
 
+  // Fix round 0b: #6's top bar with the X (spec §3's general rule), wired as [Cancel].
+  it("the top bar's X closes the tab, the typed password emptied", async () => {
+    const {h, screen} = await shown('add');
+    expect(visible(el('pm-x'))).toBe(true);
+    expect(el('pm-x').getAttribute('aria-label')).toBe('Close');
+    type(el<HTMLInputElement>('pm-password'), PW);
+    click(el('pm-x'));
+    await h.until(() => h.closed === 1);
+    expect(screen.holds()).toBe(false);
+  });
+
+  it("the X during the cooldown closes the tab, and the held wait's end shows and removes nothing (generation moved)", async () => {
+    const {h} = await shown('remove', {passkey: true, holdSleep: true});
+    withPassword('nope nope nope nope');
+    await h.until(() => text(el('pm-helper')) === 'That did not confirm it.');
+    h.wake();
+    await idle(h);
+    withPassword('nope nope nope nope');
+    await h.until(() => visible(el('pm-cooldown')));
+    expect(h.deps.gate.isBusy()).toBe(true);
+    expect(el<HTMLButtonElement>('pm-x').disabled).toBe(false);
+    click(el('pm-x'));
+    expect(h.closed).toBe(1);
+    h.wake();
+    await h.until(() => !h.deps.gate.isBusy() || (h.wake(), false));
+    expect(text(el('pm-helper'))).not.toBe('That did not confirm it.');
+    expect(removes(h)).toEqual([]);
+  });
+
+  it('remove: the field has the vault pages\' visible "Password" label; add and replace keep their own line instead', async () => {
+    await shown('remove', {passkey: true});
+    const label = el<HTMLLabelElement>('pm-password-label');
+    expect(visible(label)).toBe(true);
+    expect(text(label)).toBe('Password');
+    expect(label.htmlFor).toBe('pm-password');
+    expect(visible(el('pm-ask'))).toBe(false);
+  });
+
+  it('add: the add line is the label; no second "Password" label', async () => {
+    await shown('add');
+    expect(visible(el('pm-ask'))).toBe(true);
+    expect(visible(el('pm-password-label'))).toBe(false);
+  });
+
   it('a hidden tab empties the field', async () => {
     const {h, screen} = await shown('remove', {passkey: true});
     type(el<HTMLInputElement>('pm-password'), PW);
