@@ -106,6 +106,10 @@ describe('#37 delete wallet', () => {
     await shown({before: async ext => ext.local.set(SETTINGS_KEY, {accountOrder: [1, 0]})});
     expect(firstAccount([{index: 1, name: 'B', publicKey: RECIPIENT}, {index: 0, name: 'A', publicKey: ACCOUNT.publicKey}])?.publicKey).toBe(ACCOUNT.publicKey);
     expect(firstAccount([])).toBeNull();
+    // Neither the first nor the last of the list: the lowest index wherever it stands.
+    const three = [{index: 2, name: 'C', publicKey: 'c'}, {index: 0, name: 'A', publicKey: 'a'}, {index: 1, name: 'B', publicKey: 'b'}];
+    expect(firstAccount(three)?.index).toBe(0);
+    expect(firstAccount([{index: 5, name: 'F', publicKey: 'f'}, {index: 3, name: 'D', publicKey: 'd'}, {index: 4, name: 'E', publicKey: 'e'}])?.index).toBe(3);
     await waitFor(() => expect([...document.querySelectorAll('.app-delete-first .addr-groups span')].map(s => s.textContent).join('')).toBe(ACCOUNT.publicKey));
     expect(screen.getByText("This wallet's first account")).toBeTruthy();
   });
