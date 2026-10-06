@@ -119,6 +119,25 @@ describe('the accounts mode: add (C6)', () => {
     expect(h.sent.filter(m => m.type === 'vault.status')).toHaveLength(statuses);
   });
 
+  // Task 20's deferred minor: the number field's error border (O36/O37) clears as the user corrects the number — the
+  // helper keeps saying what was wrong until the next try.
+  it('the number field\u2019s error border clears on input in it; typing the password does not clear it', async () => {
+    const {h} = await shown({op: 'add'}, {indexes: [0, 1]});
+    type(el<HTMLInputElement>('acc-index'), '1.5');
+    withPassword();
+    await h.until(() => text(el('acc-helper')) === 'That is not an account number.' && !h.deps.gate.isBusy());
+    expect(el('acc-index').classList.contains('is-error')).toBe(true);
+    type(el<HTMLInputElement>('acc-index'), '3');
+    expect(el('acc-index').classList.contains('is-error')).toBe(false);
+    expect(text(el('acc-helper'))).toBe('That is not an account number.');
+    // Typing in the password field does not clear a number refusal's border (it is about the number).
+    type(el<HTMLInputElement>('acc-index'), '1.5');
+    withPassword();
+    await h.until(() => el('acc-index').classList.contains('is-error') && !h.deps.gate.isBusy());
+    type(el<HTMLInputElement>('acc-password'), 'x');
+    expect(el('acc-index').classList.contains('is-error')).toBe(true);
+  });
+
   it('E16: the passkey proves an add', async () => {
     const credentials: CredentialsApi = {create: async () => null, get: async () => ({getClientExtensionResults: () => ({prf: {results: {first: PRF.slice().buffer}}})}) as unknown as Credential};
     const {h} = await shown({op: 'add'}, {passkey: true, credentials});

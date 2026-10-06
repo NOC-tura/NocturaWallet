@@ -376,6 +376,8 @@ export function mountAccounts(deps: PageDeps): AccountsScreen {
     e.preventDefault();
     withPassword();
   });
+  // Task 20's deferred minor: an O36/O37 border goes as the number is corrected (the helper stays until the next try).
+  number.addEventListener('input', () => number.classList.remove('is-error'));
   passkeyBtn.addEventListener('click', withPasskey);
   cancel.addEventListener('click', closing);
   x.addEventListener('click', closing);
