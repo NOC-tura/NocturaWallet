@@ -881,3 +881,135 @@ a.btn {
 .app-remove-sheet p {
   margin: 0;
 }
+
+/* B1b-2b §5: #37 delete wallet — index.html #s37's inline styles, as classes. */
+.app-delete-body {
+  padding: 0 var(--space-5) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.app-delete-body p,
+.app-delete-body ul {
+  margin: 0;
+}
+.app-delete-card {
+  background: color-mix(in oklab, var(--danger) 10%, var(--bg-surface-1));
+  border: 1px solid color-mix(in oklab, var(--danger) 36%, transparent);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.app-delete-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.app-delete-head h2 {
+  margin: 0;
+}
+.app-delete-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--danger) 18%, var(--bg-surface-2));
+  color: var(--danger);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 48px;
+}
+.app-delete-bullets {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.app-delete-bullets li {
+  color: var(--fg-secondary);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.app-delete-x {
+  color: var(--danger);
+  flex: 0 0 16px;
+  line-height: 18px;
+  padding-top: 2px;
+  display: flex;
+}
+.app-delete-first {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.app-delete-eyebrow {
+  margin-bottom: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.app-delete-word {
+  color: var(--danger);
+  letter-spacing: 0.16em;
+}
+.app-delete-help {
+  margin-top: 6px;
+}
+.app-delete-funds {
+  display: flex;
+  flex-direction: column;
+}
+.s7-pw input::placeholder {
+  color: var(--fg-tertiary);
+  letter-spacing: 0.16em;
+}
+.s7-pw.app-pw-active {
+  border: 1px solid var(--accent);
+}
+.s7-pw.app-pw-ok {
+  background: color-mix(in oklab, var(--success) 8%, var(--bg-surface-3));
+  border: 1px solid color-mix(in oklab, var(--success) 30%, transparent);
+}
+.s7-pw.app-pw-ok input {
+  font-weight: 600;
+}
+.s7-pw input {
+  letter-spacing: 0.16em;
+}
+/* 37a/37b: the gated CTA greyed at full opacity (ix:15000: --bg-surface-3, --fg-disabled, opacity 1). */
+.btn.app-delete-gated:disabled {
+  background: var(--bg-surface-3);
+  color: var(--fg-disabled);
+  opacity: 1;
+  box-shadow: none;
+}
+/* 37c: the hold CTA in --danger, its fill darkening as it is held (ix:15087-15088). The design's 600 ms transition is
+   for its own 600 ms hold: here the fill follows the 30 ms ticks of the owner's 1 s hold (D9). */
+.btn.s7-longpress.app-hold {
+  background: var(--danger);
+  color: var(--danger-on);
+  box-shadow: none;
+}
+.btn.s7-longpress.app-hold .fill {
+  background: color-mix(in oklab, #000 35%, transparent);
+  transition: none;
+}
+.app-hold-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn.s7-longpress.app-hold .fill {
+    display: none;
+  }
+}
+/* 37c: Cancel at the design's .45 while the CTA is pressed. */
+.app-delete .sticky-bar .btn-secondary:disabled {
+  opacity: 0.45;
+}

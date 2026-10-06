@@ -8,6 +8,23 @@ export const FRESH_ROWS = 10;
 export type RowBalance = {b: Balances; at: number; fresh: boolean};
 
 /**
+ * The rows, and how the pass went: `done` once it ended (never after an unmount or a lock); `failed` when a fresh read
+ * failed; `reads` the addresses this pass's fresh read covers — the first FRESH_ROWS rows when the pass started, cut to
+ * the ones it actually asked for when it stopped early (the 403 cool-down, offline, unreachable: before the first, or at
+ * a refusal). A row's "not checked yet" is decided from
+ * `reads`, never from its current position: a move (E14) brings a row into the first ten without reading it (Task 14
+ * review N1).
+ */
+export interface AccountBalances {
+  rows: Record<string, RowBalance>;
+  done: boolean;
+  failed: boolean;
+  reads: ReadonlySet<string>;
+}
+
+const NONE: ReadonlySet<string> = new Set();
+
+/**
  * The account rows' balances (spec B1b-2a §5.2; shared by the switcher and the B1b-2b accounts manager): every account's
  * cached balances first, then a fresh read for the first FRESH_ROWS rows. No fresh pass during the 403 cool-down, nor
  * while offline or unreachable; a 403 or no answer ends the pass and is reported to the app (M4). Read once per set of
@@ -17,9 +34,12 @@ export type RowBalance = {b: Balances; at: number; fresh: boolean};
  * After every await the pass stops if the screen went (unmount) or the wallet locked meanwhile (B1b-2b, every async path
  * guarded). An account switch does not stop it: the rows are per address, not per selected account.
  */
-export function useAccountBalances(accounts: readonly Account[]): Record<string, RowBalance> {
+export function useAccountBalances(accounts: readonly Account[]): AccountBalances {
   const m = useWallet();
   const [rows, setRows] = useState<Record<string, RowBalance>>({});
+  const [done, setDone] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [reads, setReads] = useState<ReadonlySet<string>>(NONE);
   // The live net mode (WalletContext's own netRef pattern): a ref, kept current every render, so the
   // async pass below reads what net.mode IS when it checks, not what it was when the effect started.
   const netRef = useRef(m.net);
@@ -44,7 +64,16 @@ export function useAccountBalances(accounts: readonly Account[]): Record<string,
       const mode = netRef.current.mode;
       return mode === 'refused' || mode === 'offline' || mode === 'unreachable';
     };
+    const fresh = accounts.slice(0, FRESH_ROWS);
+    setDone(false);
+    setFailed(false);
+    setReads(new Set(fresh.map(a => a.publicKey)));
     void (async () => {
+      await pass();
+      // Ended by itself (read everything, or stopped at a refusal) — not by an unmount or a lock.
+      if (!gone()) setDone(true);
+    })();
+    async function pass(): Promise<void> {
       for (const a of accounts) {
         const c = await m.engine.cached(a.publicKey);
         if (gone()) return;
@@ -53,9 +82,10 @@ export function useAccountBalances(accounts: readonly Account[]): Record<string,
           setRows(r => ({...r, [a.publicKey]: {b, at, fresh: false}}));
         }
       }
-      if (away()) return;
-      for (const a of accounts.slice(0, FRESH_ROWS)) {
-        if (away()) return;
+      // A pass that stops before the end of `fresh` read only the rows before the stop: `reads` says so.
+      const stopAt = (i: number): void => setReads(new Set(fresh.slice(0, i).map(a => a.publicKey)));
+      for (const [i, a] of fresh.entries()) {
+        if (away()) return stopAt(i);
         const f = await m.engine.balances(a.publicKey);
         if (gone()) return;
         if (f.ok) {
@@ -63,14 +93,15 @@ export function useAccountBalances(accounts: readonly Account[]): Record<string,
           continue;
         }
         // A 403 or no answer is the whole app's state (M4), and ends the pass: the next read would fare no better.
+        setFailed(true);
         m.report(f.error);
-        if (f.error === 'coordinator-refused' || f.error === 'unreachable') return;
+        if (f.error === 'coordinator-refused' || f.error === 'unreachable') return stopAt(i + 1);
       }
-    })();
+    }
     return () => {
       alive = false;
     };
     // Keyed on the addresses only, deliberately (see above). extension/ has no lint gate; this is a plain note.
   }, [keys]);
-  return rows;
+  return {rows, done, failed, reads};
 }

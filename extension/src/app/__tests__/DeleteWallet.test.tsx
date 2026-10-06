@@ -1,0 +1,438 @@
+// @vitest-environment happy-dom
+import {useState} from 'react';
+import {act, cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react';
+import {DeleteWallet, firstAccount} from '../screens/DeleteWallet';
+import {HoldButton, type HoldClock} from '../ui/HoldButton';
+import {ENV, renderInWallet, walletReader} from './harness';
+import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
+import {PENDING_KEY} from '../../background/pendingStore';
+import {SETTINGS_KEY} from '../../background/settings';
+import {ACCOUNT, RECIPIENT, pendingRecord} from '../../background/__tests__/fixtures';
+import {fakeReader} from '../../background/__tests__/fakeDeps';
+import {useWallet, type WalletModel} from '../WalletContext';
+
+// B1b-2b §5 (#37; D9, D11, C13, C17): typed DELETE and a 1 s hold open the vault tab's proof.
+const SELECTORS = selectorsOf(UI_SHEETS);
+
+/** A clock the test moves (the hold's fake timers): every tick the hold registered runs at each 30 ms step. */
+function manualClock() {
+  let t = 0;
+  const jobs = new Set<() => void>();
+  const clock: HoldClock = {now: () => t, every: (_ms, f) => (jobs.add(f), () => void jobs.delete(f))};
+  return {
+    clock,
+    advance: (ms: number) =>
+      act(() => {
+        for (let step = 0; step < ms; step += 30) {
+          t += 30;
+          for (const f of [...jobs]) f();
+        }
+      }),
+  };
+}
+async function shown(o: Parameters<typeof renderInWallet>[1] = {}) {
+  const c = manualClock();
+  let backs = 0;
+  let current: WalletModel | null = null;
+  function Probe() {
+    current = useWallet();
+    return null;
+  }
+  const w = await renderInWallet(
+    <>
+      <DeleteWallet onBack={() => void (backs += 1)} clock={c.clock} />
+      <Probe />
+    </>,
+    o,
+  );
+  await screen.findByText('Delete this wallet?');
+  const model = (): WalletModel => {
+    if (current === null) throw new Error('no model yet');
+    return current;
+  };
+  return {...w, ...c, model, backs: () => backs};
+}
+const field = () => screen.getByRole('textbox', {name: 'Type DELETE here'}) as HTMLInputElement;
+const typeIn = (v: string) => fireEvent.change(field(), {target: {value: v}});
+const cta = () => document.querySelector('.sticky-bar .btn-primary') as HTMLButtonElement;
+const holdCta = () => document.querySelector('.app-hold') as HTMLButtonElement;
+const cancel = () => screen.getByRole('button', {name: 'Cancel'}) as HTMLButtonElement;
+const settle = () => act(async () => new Promise(r => setTimeout(r, 30)));
+const FUNDED = 'This wallet holds funds';
+const UNKNOWN = 'Balances could not all be checked — this wallet may hold funds.';
+const SEND_OPEN = 'A transaction from this wallet is still pending. Wait until it confirms or expires — about two minutes — then try again.';
+
+/** Holds the first message of `type` matching `match` until released; counts every message by type. */
+function hold(type: string, match: (m: Record<string, unknown>) => boolean = () => true) {
+  let release: () => void = () => undefined;
+  let held = false;
+  const seen: Record<string, unknown>[] = [];
+  const gate = async (raw: unknown) => {
+    const m = raw as Record<string, unknown>;
+    seen.push(m);
+    if (!held && m.type === type && match(m)) {
+      held = true;
+      await new Promise<void>(r => (release = r));
+    }
+  };
+  const count = (t: string, f: (m: Record<string, unknown>) => boolean = () => true) => seen.filter(m => m.type === t && f(m)).length;
+  return {gate, release: () => release(), isHeld: () => held, count};
+}
+
+describe('#37 delete wallet', () => {
+  it('37a idle: the adapted copy, the two bullets (no staking, no dApps, no backup file), the typed field, the CTA greyed and disabled', async () => {
+    await shown();
+    expect(screen.getByText('Delete wallet', {selector: '.top-bar .title'})).toBeTruthy();
+    expect(document.querySelector('.app-delete-card .noc-body')?.textContent).toBe('This removes all encrypted keys and local data from this browser.');
+    expect([...document.querySelectorAll('.app-delete-card .noc-body b')].map(b => b.textContent)).toEqual(['all encrypted keys', 'local data']);
+    const bullets = [...document.querySelectorAll('.app-delete-bullets li')].map(li => li.textContent);
+    expect(bullets).toEqual([
+      "Your assets won't be lost on-chain — but you'll need your recovery phrase to access them again.",
+      'Local settings, cached balances and the list of addresses you have sent to are erased and not recoverable.',
+    ]);
+    expect(document.body.textContent).not.toMatch(/staking|dApp|backup file|seed phrase/);
+    expect(document.querySelector('.app-delete-eyebrow')?.textContent).toBe('Type DELETE to confirm');
+    expect(field().getAttribute('autocapitalize')).toBe('characters');
+    expect(field().getAttribute('autocomplete')).toBe('off');
+    expect(field().getAttribute('spellcheck')).toBe('false');
+    expect(screen.getByText('Case-sensitive · must match exactly.')).toBeTruthy();
+    expect(cta().textContent).toBe('Delete wallet');
+    expect(cta().disabled).toBe(true);
+    expect(unstyledClasses(document.querySelector('.screen')!, SELECTORS)).toEqual([]);
+  });
+
+  it('C17: the first account is the LOWEST index — not the first row of the display order', async () => {
+    await shown({before: async ext => ext.local.set(SETTINGS_KEY, {accountOrder: [1, 0]})});
+    expect(firstAccount([{index: 1, name: 'B', publicKey: RECIPIENT}, {index: 0, name: 'A', publicKey: ACCOUNT.publicKey}])?.publicKey).toBe(ACCOUNT.publicKey);
+    expect(firstAccount([])).toBeNull();
+    await waitFor(() => expect([...document.querySelectorAll('.app-delete-first .addr-groups span')].map(s => s.textContent).join('')).toBe(ACCOUNT.publicKey));
+    expect(screen.getByText("This wallet's first account")).toBeTruthy();
+  });
+
+  it('negative controls: "DELET", "delete", "DELETE " and "DEL" keep the CTA disabled', async () => {
+    await shown();
+    for (const v of ['DELET', 'delete', 'DELETE ', 'DEL', 'Delete']) {
+      typeIn(v);
+      expect(cta().disabled).toBe(true);
+      expect(document.querySelector('.app-hold')).toBeNull();
+    }
+  });
+
+  it('37b partial: the body collapses, "3 of 6 characters · keep going"; not a prefix: O66 (case-sensitive: "del" is not a prefix)', async () => {
+    await shown();
+    typeIn('DEL');
+    expect(document.querySelector('.app-delete-bullets')).toBeNull();
+    expect(document.querySelector('.app-delete-help')?.textContent).toBe('3 of 6 characters · keep going');
+    expect([...document.querySelectorAll('.app-delete-help .noc-numeral')].map(n => n.textContent)).toEqual(['3', '6']);
+    expect(document.querySelector('.s7-pw')?.classList.contains('app-pw-active')).toBe(true);
+    typeIn('DEX');
+    expect(screen.getByText('Type DELETE exactly — it is case-sensitive.')).toBeTruthy();
+    expect(screen.queryByText(/keep going/)).toBeNull();
+    typeIn('del');
+    expect(screen.getByText('Type DELETE exactly — it is case-sensitive.')).toBeTruthy();
+  });
+
+  it('37c matched: the hold copy, "Confirmation matched", the caption; a 0.9 s hold opens nothing; the full second opens the proof and closes', async () => {
+    const w = await shown();
+    typeIn('DELETE');
+    expect(screen.getByText('Hold the red button below — release to cancel, hold for the full second to delete.')).toBeTruthy();
+    expect(document.querySelector('.app-delete-eyebrow')?.textContent?.trim()).toBe('Confirmation matched');
+    expect(document.querySelector('.s7-pw')?.classList.contains('app-pw-ok')).toBe(true);
+    expect(screen.getByText('Hold the red button to delete · release to cancel')).toBeTruthy();
+    expect(screen.getByText('Confirmation opens in a new tab.')).toBeTruthy();
+    const hold = holdCta();
+    expect(hold.textContent).toBe('Hold to delete');
+    fireEvent.pointerDown(hold, {button: 0});
+    w.advance(600);
+    expect(hold.textContent).toBe('Hold to delete · 0.4 s');
+    expect((hold.querySelector('.fill') as HTMLElement).style.transform).toBe('scaleX(0.6)');
+    expect(cancel().disabled).toBe(true);
+    w.advance(300);
+    fireEvent.pointerUp(hold);
+    expect(w.platform.opened).toEqual([]);
+    expect(hold.textContent).toBe('Hold to delete');
+    expect((hold.querySelector('.fill') as HTMLElement).style.transform).toBe('scaleX(0)');
+    expect(cancel().disabled).toBe(false);
+    // A release long ago counts nothing toward the next hold.
+    w.advance(2_000);
+    expect(w.platform.opened).toEqual([]);
+    fireEvent.pointerDown(hold, {button: 0});
+    w.advance(1_020);
+    expect(w.platform.opened).toEqual(['unlock.html?mode=delete']);
+    expect(w.platform.closed).toBe(1);
+    expect(field().value).toBe('');
+  });
+
+  it('the pointer leaving the CTA, a cancel and a blur each release; a secondary button does not hold', async () => {
+    const w = await shown();
+    typeIn('DELETE');
+    const hold = holdCta();
+    for (const end of [() => fireEvent.pointerLeave(hold), () => fireEvent.pointerCancel(hold), () => fireEvent.blur(hold)]) {
+      fireEvent.pointerDown(hold, {button: 0});
+      w.advance(600);
+      end();
+      w.advance(600);
+      expect(w.platform.opened).toEqual([]);
+      expect(hold.textContent).toBe('Hold to delete');
+    }
+    fireEvent.pointerDown(hold, {button: 2});
+    w.advance(1_020);
+    expect(w.platform.opened).toEqual([]);
+  });
+
+  it('the keyboard: Space held on the focused CTA holds; keyup releases; key repeats are ignored', async () => {
+    const w = await shown();
+    typeIn('DELETE');
+    const hold = holdCta();
+    fireEvent.keyDown(hold, {key: ' '});
+    w.advance(500);
+    fireEvent.keyDown(hold, {key: ' ', repeat: true});
+    fireEvent.keyUp(hold, {key: ' '});
+    w.advance(600);
+    expect(w.platform.opened).toEqual([]);
+    fireEvent.keyDown(hold, {key: 'Enter'});
+    w.advance(1_020);
+    expect(w.platform.opened).toEqual(['unlock.html?mode=delete']);
+  });
+
+  it('funded (D11, C13): "This wallet holds funds", the summed balances, the USD total and O64 — above the overline — and the hold still works', async () => {
+    const w = await shown();
+    await waitFor(() => expect(screen.getByText(FUNDED)).toBeTruthy());
+    // Two accounts × walletReader (62.4821 SOL, 4 200 NOC, 740.21 USDC): 124.9642 SOL, 8,400.00 NOC, 1,480.42 USDC.
+    await waitFor(() => expect(document.querySelector('.app-delete-funds')?.textContent).toBe('124.9642 SOL8,400.00 NOC1,480.42 USDC$20,225.05They stay on Solana. Only your recovery phrase reaches them after this.'));
+    // §5: above the overline ("Type DELETE to confirm"), after the warning card and the first account (F13).
+    const banner = screen.getByText(FUNDED).closest('.banner') as HTMLElement;
+    const overline = document.querySelector('.app-delete-eyebrow') as HTMLElement;
+    expect(banner.compareDocumentPosition(overline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect((document.querySelector('.app-delete-first') as HTMLElement).compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The funds inform; they never gate (D11): the hold is still required, and still enough.
+    typeIn('DELETE');
+    expect(screen.getByText(FUNDED)).toBeTruthy();
+    const hold = holdCta();
+    expect(hold.disabled).toBe(false);
+    fireEvent.pointerDown(hold, {button: 0});
+    w.advance(900);
+    fireEvent.pointerUp(hold);
+    expect(w.platform.opened).toEqual([]);
+    fireEvent.pointerDown(hold, {button: 0});
+    w.advance(1_020);
+    expect(w.platform.opened).toEqual(['unlock.html?mode=delete']);
+  });
+
+  it('balances unknown: a read failed — O65', async () => {
+    await shown({reader: walletReader({getBalance: async () => Promise.reject(new Error('x'))})});
+    expect(await screen.findByText(UNKNOWN)).toBeTruthy();
+  });
+
+  it('nothing funded and everything read: neither banner', async () => {
+    await shown({reader: fakeReader({getBalance: async () => 0n, getTokenAccountsByOwner: async () => []})});
+    await settle();
+    await settle();
+    expect(screen.queryByText(FUNDED)).toBeNull();
+    expect(screen.queryByText(UNKNOWN)).toBeNull();
+  });
+
+  it('send open: the pending banner; the typed gate usable; the CTA disabled — and a hold with `disabled` lifted opens nothing', async () => {
+    const open = pendingRecord({account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}});
+    const w = await shown({before: async ext => ext.local.set(PENDING_KEY, [open])});
+    expect(await screen.findByText(SEND_OPEN)).toBeTruthy();
+    typeIn('DELETE');
+    const hold = holdCta();
+    expect(hold.disabled).toBe(true);
+    hold.disabled = false;
+    fireEvent.pointerDown(hold, {button: 0});
+    fireEvent.keyDown(hold, {key: 'Enter'});
+    w.advance(1_500);
+    expect(w.platform.opened).toEqual([]);
+    expect(hold.textContent).toBe('Hold to delete');
+  });
+
+  it('a stuck send is open too: the pending banner and the CTA disabled', async () => {
+    const stuck = pendingRecord({account: RECIPIENT, signature: '6'.repeat(88), state: 'stuck', intent: {token: 'SOL', recipient: ACCOUNT.publicKey, amount: '1'}});
+    await shown({before: async ext => ext.local.set(PENDING_KEY, [stuck])});
+    expect(await screen.findByText(SEND_OPEN)).toBeTruthy();
+    typeIn('DELETE');
+    expect(holdCta().disabled).toBe(true);
+  });
+
+  it('Cancel leaves with the typed text wiped', async () => {
+    const w = await shown({env: ENV});
+    typeIn('DELE');
+    fireEvent.click(cancel());
+    expect(w.backs()).toBe(1);
+    expect(field().value).toBe('');
+  });
+
+  it('Back leaves with the typed text wiped', async () => {
+    const w = await shown({env: ENV});
+    typeIn('DELETE');
+    fireEvent.click(screen.getByRole('button', {name: 'Back'}));
+    expect(w.backs()).toBe(1);
+    expect(field().value).toBe('');
+    expect(w.platform.opened).toEqual([]);
+  });
+
+  describe('rule 6: every action is protected (`disabled` lifted, a second press does nothing)', () => {
+    it('the gated [Delete wallet]: no action at all', async () => {
+      const w = await shown();
+      typeIn('DELET');
+      const gated = cta();
+      gated.disabled = false;
+      fireEvent.click(gated);
+      fireEvent.pointerDown(gated, {button: 0});
+      w.advance(1_500);
+      expect(w.platform.opened).toEqual([]);
+    });
+
+    it('the hold: a second press while held does not restart it; one open per completed hold, none after', async () => {
+      const c = manualClock();
+      let held = 0;
+      render(<HoldButton label="Hold to delete" holdMs={1_000} disabled={false} onHeld={() => void (held += 1)} clock={c.clock} />);
+      const b = screen.getByRole('button') as HTMLButtonElement;
+      fireEvent.pointerDown(b, {button: 0});
+      c.advance(600);
+      fireEvent.pointerDown(b, {button: 0});
+      fireEvent.keyDown(b, {key: ' '});
+      c.advance(420);
+      expect(held).toBe(1);
+      b.disabled = false;
+      fireEvent.pointerDown(b, {button: 0});
+      c.advance(1_500);
+      fireEvent.keyDown(b, {key: 'Enter'});
+      c.advance(1_500);
+      expect(held).toBe(1);
+    });
+
+    it('the hold: `disabled` while held releases it (a send opened meanwhile)', async () => {
+      const c = manualClock();
+      let held = 0;
+      const ui = (disabled: boolean) => <HoldButton label="Hold to delete" holdMs={1_000} disabled={disabled} onHeld={() => void (held += 1)} clock={c.clock} />;
+      const r = render(ui(false));
+      const b = screen.getByRole('button') as HTMLButtonElement;
+      fireEvent.pointerDown(b, {button: 0});
+      c.advance(600);
+      r.rerender(ui(true));
+      c.advance(1_000);
+      expect(held).toBe(0);
+      expect(b.textContent).toBe('Hold to delete');
+    });
+
+    it('[Cancel]: one leave', async () => {
+      const w = await shown();
+      const c = cancel();
+      fireEvent.click(c);
+      c.disabled = false;
+      fireEvent.click(c);
+      expect(w.backs()).toBe(1);
+    });
+
+    it('Back: one leave, and none after a Cancel', async () => {
+      const w = await shown();
+      const back = screen.getByRole('button', {name: 'Back'});
+      fireEvent.click(back);
+      fireEvent.click(back);
+      fireEvent.click(cancel());
+      expect(w.backs()).toBe(1);
+    });
+
+    it('[Cancel] while held: disabled, and with `disabled` lifted it does not leave', async () => {
+      const w = await shown();
+      typeIn('DELETE');
+      fireEvent.pointerDown(holdCta(), {button: 0});
+      w.advance(300);
+      const c = cancel();
+      expect(c.disabled).toBe(true);
+      c.disabled = false;
+      fireEvent.click(c);
+      expect(w.backs()).toBe(0);
+    });
+  });
+
+  it('send open from an account not selected: the screen reads wallet.pending itself, and the CTA enables when the send closes', async () => {
+    // Savings is not selected: the provider polls wallet.pending only for Main's sends.
+    const open = pendingRecord({account: RECIPIENT, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: ACCOUNT.publicKey, amount: '1'}});
+    const w = await shown({before: async ext => ext.local.set(PENDING_KEY, [open])});
+    typeIn('DELETE');
+    await waitFor(() => expect(holdCta().disabled).toBe(true));
+    await w.ext.local.set(PENDING_KEY, [{...open, state: 'confirmed'}]);
+    await waitFor(() => expect(holdCta().disabled).toBe(false), {timeout: 4_000});
+    expect(screen.queryByText(SEND_OPEN)).toBeNull();
+  }, 10_000);
+
+  describe('every await is guarded (the balances pass, the pending read)', () => {
+    it('lock mid-pass: the pass stops and says nothing (no "could not all be checked")', async () => {
+      const h = hold('wallet.balances', m => m.account === RECIPIENT);
+      const w = await shown({gate: h.gate});
+      await waitFor(() => expect(h.isHeld()).toBe(true));
+      await act(async () => void (await w.model().lock()));
+      await waitFor(() => expect(w.model().phase).toBe('locked'));
+      h.release();
+      await settle();
+      await settle();
+      expect(screen.queryByText(UNKNOWN)).toBeNull();
+    });
+
+    /** The provider settled first, then the screen mounts: the first wallet.pending after `armed` is the screen's own. */
+    async function heldPendingRead() {
+      let armed = false;
+      const h = hold('wallet.pending', () => armed);
+      const open = pendingRecord({account: RECIPIENT, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: ACCOUNT.publicKey, amount: '1'}});
+      let current: WalletModel | null = null;
+      let show: (on: boolean) => void = () => undefined;
+      function Host() {
+        const [on, setOn] = useState(false);
+        show = setOn;
+        current = useWallet();
+        return on ? <DeleteWallet onBack={() => undefined} /> : null;
+      }
+      const w = await renderInWallet(<Host />, {gate: h.gate, before: async ext => ext.local.set(PENDING_KEY, [open])});
+      await waitFor(() => expect(current?.phase).toBe('unlocked'));
+      await settle();
+      armed = true;
+      act(() => show(true));
+      await waitFor(() => expect(h.isHeld()).toBe(true));
+      const model = (): WalletModel => {
+        if (current === null) throw new Error('no model yet');
+        return current;
+      };
+      return {...w, h, model, hide: () => act(() => show(false))};
+    }
+
+    it('pending read · unmount: no poll scheduled', async () => {
+      const {h, hide} = await heldPendingRead();
+      hide();
+      const before = h.count('wallet.pending');
+      h.release();
+      await act(async () => new Promise(r => setTimeout(r, 2_500)));
+      expect(h.count('wallet.pending')).toBe(before);
+    }, 10_000);
+
+    it('pending read · lock: no poll scheduled', async () => {
+      const {h, model} = await heldPendingRead();
+      await act(async () => void (await model().lock()));
+      await waitFor(() => expect(model().phase).toBe('locked'));
+      const before = h.count('wallet.pending');
+      h.release();
+      await act(async () => new Promise(r => setTimeout(r, 2_500)));
+      expect(h.count('wallet.pending')).toBe(before);
+    }, 10_000);
+
+    it('pending read · positive control: unlocked and shown, the open send is polled again', async () => {
+      const {h} = await heldPendingRead();
+      const before = h.count('wallet.pending');
+      h.release();
+      await waitFor(() => expect(h.count('wallet.pending')).toBeGreaterThan(before), {timeout: 4_000});
+    }, 10_000);
+
+    it('unmount mid-pass: nothing read after', async () => {
+      // Savings is not selected: only the screen's pass reads it (the provider reads the selected account).
+      const h = hold('wallet.cached', m => m.account === RECIPIENT);
+      await shown({gate: h.gate});
+      await waitFor(() => expect(h.isHeld()).toBe(true));
+      cleanup();
+      h.release();
+      await settle();
+      expect(h.count('wallet.balances', m => m.account === RECIPIENT)).toBe(0);
+    });
+  });
+});

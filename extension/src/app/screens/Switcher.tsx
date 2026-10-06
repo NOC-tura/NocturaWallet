@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {useWallet} from '../WalletContext';
-import {FRESH_ROWS, useAccountBalances} from '../useAccountBalances';
+import {useAccountBalances} from '../useAccountBalances';
 import {valuation} from '../valuation';
 import {ago, showAmount, showUsd, twoGroups} from '../format';
 import {useNow} from '../useNow';
@@ -34,7 +34,7 @@ export function Switcher({onClose}: {onClose: () => void}) {
   const m = useWallet();
   const now = useNow(1_000, m.now);
   const accounts = m.wallet?.accounts ?? [];
-  const rows = useAccountBalances(accounts);
+  const {rows, reads} = useAccountBalances(accounts);
   const [editing, setEditing] = useState<number | null>(null);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +65,7 @@ export function Switcher({onClose}: {onClose: () => void}) {
   return (
     <Sheet title="Accounts" onClose={onClose}>
       <div className="list">
-        {accounts.map((a, i) => {
+        {accounts.map(a => {
           const row = rows[a.publicKey];
           const selected = a.index === m.wallet?.selected;
           const total = row === undefined ? null : valuation(row.b, m.prices).total;
@@ -99,7 +99,7 @@ export function Switcher({onClose}: {onClose: () => void}) {
                       <span className="pri noc-body-lg">{a.name}</span>
                       <span className="sec noc-mono">{twoGroups(a.publicKey)}</span>
                       <span className="sec noc-numeral">
-                        {row === undefined ? (i >= FRESH_ROWS ? 'not checked yet' : '') : `${showAmount('SOL', row.b.sol)} SOL${total === null ? '' : ` · ${showUsd(total)}`}`}
+                        {row === undefined ? (reads.has(a.publicKey) ? '' : 'not checked yet') : `${showAmount('SOL', row.b.sol)} SOL${total === null ? '' : ` · ${showUsd(total)}`}`}
                       </span>
                       {row !== undefined && !row.fresh ? <span className="sec noc-caption">cached {ago(row.at, now)}</span> : null}
                     </span>

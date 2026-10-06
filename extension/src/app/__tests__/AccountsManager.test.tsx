@@ -11,6 +11,8 @@ import {fakeReader} from '../../background/__tests__/fakeDeps';
 import {useWallet, type WalletModel} from '../WalletContext';
 import {isOpen} from '../engine';
 import {isOpen as backgroundIsOpen} from '../../background/pendingStore';
+import {ed25519} from '@noble/curves/ed25519.js';
+import {base58} from '@scure/base';
 
 // B1b-2b §4.3 (D16, D17, C6, C14): the accounts manager against the real background.
 const SELECTORS = selectorsOf(UI_SHEETS);
@@ -201,6 +203,30 @@ describe('the accounts manager', () => {
     await settle();
     expect(reads()).toBe(2);
   });
+
+  it('N1: a row moved into the first ten by a move still says "not checked yet" (decided from what the pass read, not the position)', async () => {
+    // Twelve accounts: the fresh pass reads the first ten; the twelfth has no cache and is never read.
+    const keys = Array.from({length: 12}, (_, i) => base58.encode(ed25519.getPublicKey(new Uint8Array(32).fill(i + 1))));
+    const env12 = {v: 1, scheme: 'slip10', accounts: keys.map((publicKey, index) => ({index, name: `A${index + 1}`, publicKey}))};
+    const seen: {type: string; account?: string}[] = [];
+    await shown({env: env12, gate: m => void seen.push(m as {type: string; account?: string})});
+    await waitFor(() => expect(names()).toHaveLength(12));
+    const line = (name: string) => document.querySelector(`.app-account-row[data-account="${Number(name.slice(1)) - 1}"] .sec.noc-numeral`)?.textContent;
+    await waitFor(() => expect(line('A10')).toMatch(/SOL/));
+    await settle();
+    expect(line('A12')).toBe('not checked yet');
+    // A12 up twice: from position 12 to position 10, inside the first FRESH_ROWS.
+    for (const at of [['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10', 'A12', 'A11'], ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A12', 'A10', 'A11']]) {
+      await waitFor(() => expect((screen.getByRole('button', {name: 'Move A12 up'}) as HTMLButtonElement).disabled).toBe(false), {timeout: 2_000});
+      fireEvent.click(screen.getByRole('button', {name: 'Move A12 up'}));
+      await waitFor(() => expect(names()).toEqual(at));
+    }
+    await settle();
+    expect(names().indexOf('A12')).toBeLessThan(10);
+    expect(line('A12')).toBe('not checked yet');
+    // …and nothing read it: the move reads no balances (keyed on the set of addresses).
+    expect(seen.filter(m => m.type === 'wallet.balances' && m.account === keys[11])).toHaveLength(0);
+  }, 10_000);
 
   it('one move at a time: while a move is in flight every ↑/↓ is disabled', async () => {
     const h = hold('accounts.order');

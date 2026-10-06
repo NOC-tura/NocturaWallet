@@ -1,7 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import {AddressGroups} from '../../../../web/src/ui/AddressGroups';
 import {PENDING_POLL_MS, useWallet} from '../WalletContext';
-import {FRESH_ROWS, useAccountBalances, type RowBalance} from '../useAccountBalances';
+import {useAccountBalances, type RowBalance} from '../useAccountBalances';
 import {valuation} from '../valuation';
 import {ago, showAmount, showUsd, twoGroups} from '../format';
 import {useNow} from '../useNow';
@@ -67,7 +67,7 @@ export function AccountsManager({onBack}: {onBack: () => void}) {
   const m = useWallet();
   const now = useNow(1_000, m.now);
   const accounts = m.wallet?.accounts ?? [];
-  const rows = useAccountBalances(accounts);
+  const {rows, reads} = useAccountBalances(accounts);
   const [editing, setEditing] = useState<number | null>(null);
   const [name, setName] = useState('');
   const [renameError, setRenameError] = useState<string | null>(null);
@@ -216,7 +216,7 @@ export function AccountsManager({onBack}: {onBack: () => void}) {
                         <span className="pri noc-body-lg">{a.name}</span>
                         <span className="sec noc-mono">{twoGroups(a.publicKey)}</span>
                         <span className="sec noc-numeral">
-                          {row === undefined ? (i >= FRESH_ROWS ? ACCOUNTS_TEXT.notCheckedYet : '') : `${showAmount('SOL', row.b.sol)} SOL${total === null ? '' : ` · ${showUsd(total)}`}`}
+                          {row === undefined ? (reads.has(a.publicKey) ? '' : ACCOUNTS_TEXT.notCheckedYet) : `${showAmount('SOL', row.b.sol)} SOL${total === null ? '' : ` · ${showUsd(total)}`}`}
                         </span>
                         {row !== undefined && !row.fresh ? <span className="sec noc-caption">cached {ago(row.at, now)}</span> : null}
                       </span>
