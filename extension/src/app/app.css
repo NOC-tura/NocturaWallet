@@ -1146,3 +1146,27 @@ a.btn {
 .app-overline.app-overline-next {
   margin-top: var(--space-3);
 }
+
+/* B1b-2b §4.1: #31's Delete wallet row tints its chevron too (31c, inline in the mockup). */
+.s7-row.danger .s7-chev {
+  color: var(--danger);
+}
+/* 36e on #31 (ix:14856): the Change password row with a 30 % success border, a 6 % success fill, its glyph in success. */
+.s7-row.app-just-updated {
+  border: 1px solid color-mix(in oklab, var(--success) 30%, transparent);
+  background: color-mix(in oklab, var(--success) 6%, var(--bg-surface-1));
+}
+.s7-row.app-just-updated .s7-glyph {
+  color: var(--success);
+}
+/*
+ * 36e's toast (`.s7-toast`, 1.8 s) above the popup's 80 px tab bar. Fixed, not the design's absolute: the
+ * screen grows with its content inside the scrolling region, so an absolute toast sat at the foot of the
+ * whole list, out of view (found by the plan's visual pass). The popup is the viewport (412 × 600) and the
+ * tab's column is 100vh, so the viewport's foot is the app's foot in both.
+ */
+.s7-toast.app-settings-toast {
+  position: fixed;
+  bottom: calc(80px + var(--space-4));
+  z-index: 2;
+}

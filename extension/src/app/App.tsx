@@ -191,7 +191,16 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
         />
       );
     } else {
-      screen = <Settings onAccounts={() => setAccounts(true)} onAbout={() => go({type: 'push', route: {screen: 'about'}})} />;
+      // C16: #31's Profile opens the accounts manager; the switcher stays on #11's avatar.
+      screen = (
+        <Settings
+          onProfile={() => go({type: 'push', route: {screen: 'accounts'}})}
+          onSecurity={() => go({type: 'push', route: {screen: 'security'}})}
+          onPasskey={() => go({type: 'push', route: {screen: 'passkey'}})}
+          onDelete={() => go({type: 'push', route: {screen: 'delete'}})}
+          onAbout={() => go({type: 'push', route: {screen: 'about'}})}
+        />
+      );
     }
   } else if (route.screen === 'receive') {
     screen = <Receive onBack={() => go({type: 'pop'})} />;

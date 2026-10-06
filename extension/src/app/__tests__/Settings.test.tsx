@@ -5,29 +5,133 @@ import {renderApp} from './appHarness';
 import {setupWallet} from './harness';
 import {App} from '../App';
 import {getSession} from '../../background/session';
+import {PASSWORD_TOAST_KEY, readPref} from '../prefs';
+import {SETTINGS_KEY} from '../../background/settings';
+import {base64} from '@scure/base';
+import {Settings} from '../screens/Settings';
+import {WalletProvider} from '../WalletContext';
+import {ENV} from './harness';
+import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 
-// Spec §6.1: the minimal Settings tab and #38 about.
-async function openSettings() {
-  const r = await renderApp();
+const SELECTORS = selectorsOf(UI_SHEETS);
+const B = (n: number) => base64.encode(new Uint8Array(n).fill(1));
+const WITH_PASSKEY = {...ENV, passkey: {credentialId: B(16), prfSalt: B(32), wrapped: B(40)}};
+const noop = () => undefined;
+
+// B1b-2b §4.1: the full #31 (the 2a minimal tab's rows kept: Lock now, About) and #38 about.
+async function openSettings(o: Parameters<typeof renderApp>[0] = {}) {
+  const r = await renderApp(o);
   await screen.findByText('TOKENS');
   fireEvent.click(screen.getByRole('button', {name: 'Settings'}));
   await screen.findByRole('heading', {name: 'Settings'});
   return r;
 }
 
-describe('Settings (minimal)', () => {
-  it('three groups: Accounts (with the count), Lock now, About Noctura (with the version); nothing else of #31', async () => {
+describe('Settings (#31, B1b-2b §4.1)', () => {
+  it('the groups and rows the extension has (D22): Account › Profile; Security › Security center, Passkey, Change password, Recovery phrase, Lock now; Advanced › Delete wallet; About', async () => {
     await openSettings();
-    expect(screen.getAllByText(/^(Account|Security|About)$/).map(e => e.textContent)).toEqual(['Account', 'Security', 'About']);
-    expect(screen.getByText('2 accounts')).toBeTruthy();
+    expect(screen.getAllByText(/^(Account|Security|Advanced|About)$/).map(e => e.textContent)).toEqual(['Account', 'Security', 'Advanced', 'About']);
+    expect([...document.querySelectorAll('.s7-row .s7-title')].map(e => e.textContent)).toEqual([
+      'Profile', 'Security center', 'Passkey', 'Change password', 'Recovery phrase', 'Lock now', 'Delete wallet', 'About Noctura',
+    ]);
     expect(screen.getByText('v0.1.0')).toBeTruthy();
-    for (const gone of ['Currency', 'Notifications', 'Change password', 'Backup', 'Delete wallet', 'Connections', 'Advanced']) expect(screen.queryByText(gone)).toBeNull();
+    for (const gone of ['Currency', 'Notifications', 'Material You accent', 'RPC endpoint', 'Connected dApps', 'Air-gap signing', 'Export transaction history', 'Diagnostics', 'Backup & restore', 'Biometric unlock', 'Change PIN', 'Address book', 'Accounts']) {
+      expect(screen.queryByText(gone)).toBeNull();
+    }
+    expect(document.querySelector('.s7-row.danger .s7-title')?.textContent).toBe('Delete wallet');
   });
 
-  it('Accounts opens the switcher', async () => {
+  it('31a, no passkey: the tip (O42), Profile = the selected account, "3 to do" and "Off" in --warning, "Not verified"', async () => {
     await openSettings();
-    fireEvent.click(screen.getByText('Accounts'));
-    expect(await screen.findByRole('dialog', {name: 'Accounts'})).toBeTruthy();
+    expect(document.querySelector('.s7-tip p')?.textContent).toBe('Tip — add a passkey to unlock with your fingerprint, face or security key. Your password always works too.');
+    const meta = (t: string) => screen.getByText(t, {selector: '.s7-title'}).parentElement?.querySelector('.s7-meta');
+    expect(meta('Profile')?.textContent).toBe('Main');
+    await waitFor(() => expect(meta('Security center')?.textContent).toBe('3 to do'));
+    expect(meta('Security center')?.classList.contains('noc-warning')).toBe(true);
+    expect(meta('Passkey')?.textContent).toBe('Off');
+    expect(meta('Passkey')?.classList.contains('noc-warning')).toBe(true);
+    expect(meta('Recovery phrase')?.textContent).toBe('Not verified');
+    expect(meta('Recovery phrase')?.classList.contains('noc-warning')).toBe(true);
+    expect(unstyledClasses(document.querySelector('.app-content .screen')!, SELECTORS)).toEqual([]);
+  });
+
+  it('passkey on and the phrase verified: no tip; "All done" in --success, "On", "Verified" in --fg-secondary', async () => {
+    await openSettings({env: WITH_PASSKEY, before: async ext => ext.local.set(SETTINGS_KEY, {phraseVerifiedAt: 1})});
+    const meta = (t: string) => screen.getByText(t, {selector: '.s7-title'}).parentElement?.querySelector('.s7-meta');
+    await waitFor(() => expect(meta('Security center')?.textContent).toBe('All done'));
+    expect(meta('Security center')?.classList.contains('noc-success')).toBe(true);
+    expect(meta('Passkey')?.textContent).toBe('On');
+    expect(meta('Recovery phrase')?.textContent).toBe('Verified');
+    expect(meta('Recovery phrase')?.className).toBe('s7-meta');
+    expect(document.querySelector('.s7-tip')).toBeNull();
+  });
+
+  it('the rows go where §4.1 says: Profile → the accounts manager; Security center → #35; Passkey → the passkey screen; Delete wallet → #37', async () => {
+    await openSettings();
+    fireEvent.click(screen.getByText('Profile'));
+    expect(await screen.findByRole('button', {name: 'Move Main down'})).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Back'}));
+    fireEvent.click(await screen.findByText('Security center'));
+    expect(await screen.findByText('Locks')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Back'}));
+    fireEvent.click(await screen.findByText('Passkey', {selector: '.s7-title'}));
+    expect(await screen.findByRole('heading', {name: 'Unlock Noctura with a passkey'})).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Back'}));
+    fireEvent.click(await screen.findByText('Delete wallet', {selector: '.s7-title'}));
+    expect(await screen.findByText('Delete this wallet?')).toBeTruthy();
+  });
+
+  it('Change password and Recovery phrase open their vault pages and the popup closes', async () => {
+    const w = await openSettings();
+    fireEvent.click(screen.getByText('Change password'));
+    expect(w.platform.opened).toEqual(['unlock.html?mode=password']);
+    expect(w.platform.closed).toBe(1);
+    fireEvent.click(screen.getByText('Recovery phrase'));
+    expect(w.platform.opened).toEqual(['unlock.html?mode=password', 'unlock.html?mode=reveal']);
+  });
+
+  // The toast's and the decoration's lengths are shortened for the test, but not to a few ms: a timer shorter than a busy
+  // run's observer tick removed the toast before findByText saw it (a flake seen once in the implementation).
+  it('36e (C10): a password changed in the last ten minutes — the toast and "Just updated" once; the next open shows neither', async () => {
+    localStorage.clear();
+    const now = Date.now();
+    const settings = {passwordChangedAt: now - 60_000};
+    const w = await setupWallet({before: async ext => ext.local.set(SETTINGS_KEY, settings)});
+    const {unmount} = render(
+      <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
+        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} toastMs={400} decorateMs={800} />
+      </WalletProvider>,
+    );
+    expect(await screen.findByText('Password updated')).toBeTruthy();
+    const row = screen.getByText('Change password').closest('.s7-row');
+    expect(row?.classList.contains('app-just-updated')).toBe(true);
+    expect(row?.querySelector('.s7-meta')?.textContent).toBe('Just updated');
+    expect(row?.querySelector('.s7-meta')?.classList.contains('noc-success')).toBe(true);
+    expect(unstyledClasses(document.querySelector('.s7-toast')!, SELECTORS)).toEqual([]);
+    await waitFor(() => expect(screen.queryByText('Password updated')).toBeNull());
+    await waitFor(() => expect(screen.getByText('Change password').closest('.s7-row')?.classList.contains('app-just-updated')).toBe(false));
+    unmount();
+    render(
+      <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
+        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} />
+      </WalletProvider>,
+    );
+    await screen.findByText('Change password');
+    await new Promise(r => setTimeout(r, 30));
+    expect(screen.queryByText('Password updated')).toBeNull();
+  });
+
+  it('36e: a change older than ten minutes shows nothing', async () => {
+    localStorage.clear();
+    const w = await setupWallet({before: async ext => ext.local.set(SETTINGS_KEY, {passwordChangedAt: Date.now() - 11 * 60_000})});
+    render(
+      <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
+        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} />
+      </WalletProvider>,
+    );
+    await screen.findByText('Change password');
+    await new Promise(r => setTimeout(r, 30));
+    expect(screen.queryByText('Password updated')).toBeNull();
   });
 
   it('Lock now locks the wallet and shows the locked screen', async () => {
@@ -111,5 +215,66 @@ describe('Settings (minimal)', () => {
     fireEvent.click(screen.getByText('Lock now'));
     expect(await screen.findByText('Welcome back')).toBeTruthy();
     expect(screen.queryByText(LOCK_FAILED)).toBeNull();
+  });
+
+  // Rule 6 (spec §7, every #31 row that opens something): a second tap inside 500 ms — with `disabled` lifted, since
+  // happy-dom drops clicks on a disabled button — opens nothing twice.
+  async function rows() {
+    localStorage.clear();
+    const w = await setupWallet();
+    const calls = {profile: 0, security: 0, passkey: 0, del: 0, about: 0};
+    render(
+      <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
+        <Settings
+          onProfile={() => void calls.profile++}
+          onSecurity={() => void calls.security++}
+          onPasskey={() => void calls.passkey++}
+          onDelete={() => void calls.del++}
+          onAbout={() => void calls.about++}
+        />
+      </WalletProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('Security center').parentElement?.querySelector('.s7-meta')?.textContent).toBe('3 to do'));
+    return {w, calls};
+  }
+  const twice = (title: string) => {
+    const button = screen.getByText(title, {selector: '.s7-title'}).closest('button') as HTMLButtonElement;
+    fireEvent.click(button);
+    button.disabled = false;
+    fireEvent.click(button);
+  };
+
+  it('rule 6: Profile, Security center, Passkey, Delete wallet and About each fire once for two taps inside 500 ms', async () => {
+    const {calls} = await rows();
+    for (const t of ['Profile', 'Security center', 'Passkey', 'Delete wallet', 'About Noctura']) twice(t);
+    expect(calls).toEqual({profile: 1, security: 1, passkey: 1, del: 1, about: 1});
+  });
+
+  it('rule 6: Change password and Recovery phrase each open their page once for two taps inside 500 ms', async () => {
+    const {w} = await rows();
+    twice('Change password');
+    twice('Recovery phrase');
+    expect(w.platform.opened).toEqual(['unlock.html?mode=password', 'unlock.html?mode=reveal']);
+  });
+
+  it('36e: a settings read answered after #31 went shows, remembers and decorates nothing', async () => {
+    localStorage.clear();
+    const w = await setupWallet({before: async ext => ext.local.set(SETTINGS_KEY, {passwordChangedAt: Date.now() - 60_000})});
+    let answer: () => void = noop;
+    const engine = {
+      ...w.engine,
+      settings: () => new Promise<Awaited<ReturnType<typeof w.engine.settings>>>(resolve => (answer = () => void w.engine.settings().then(resolve))),
+    };
+    const {unmount} = render(
+      <WalletProvider engine={engine} platform={w.platform} surface="popup">
+        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} />
+      </WalletProvider>,
+    );
+    await screen.findByText('Change password');
+    unmount();
+    answer();
+    await new Promise(r => setTimeout(r, 50));
+    expect(readPref(PASSWORD_TOAST_KEY)).toBeNull();
+    expect(screen.queryByText('Password updated')).toBeNull();
   });
 });
