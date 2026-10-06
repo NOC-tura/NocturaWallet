@@ -11,7 +11,7 @@ import {mountPassword} from './screens/password';
 import {mountReauth} from './screens/reauth';
 import {createRestoreRun} from './screens/restoreRun';
 import {createRetryRun} from './screens/retryRun';
-import {mountReveal} from './screens/reveal';
+import {mountPhrase} from './screens/reveal';
 import {mountUnlock} from './screens/unlock';
 
 /**
@@ -53,7 +53,8 @@ export function startMode(mode: PageMode, deps: PageDeps): void {
       mountAccounts(deps).show();
       return;
     case 'reveal':
-      mountReveal(deps).show();
+    case 'verify':
+      mountPhrase(deps, mode.mode).show();
       return;
     case 'passkey':
       void mountPasskeyManage(deps).show(mode.op);

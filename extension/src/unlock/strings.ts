@@ -32,7 +32,12 @@ export const WELCOME = {
 
 /** #3 seed-display. */
 export const SEED = {
-  lede: '24 words. Write them down on paper, in order. This is the only backup.',
+  /** #3's lede; the count adapted to the phrase (B1b-2b §3.4: 12 or 24 — import accepts both). */
+  lede: (n: number): string => `${n} words. Write them down on paper, in order. This is the only backup.`,
+  /** The pre-reveal modal's body, the count adapted the same way. */
+  gateBody: (n: number): string => `Move to a private place. Anyone who sees these ${n} words can spend everything in this wallet, forever.`,
+  onboarding: 'Onboarding',
+  step: '2 / 5',
   ledeConfirmed: 'Phrase locked in. Tap continue to verify a few words.',
   holdTitle: 'Press and hold to reveal',
   holdBody: 'Make sure no one is looking over your shoulder. Hold for 2 seconds. Auto re-blurs after 20 s for safety.',
@@ -61,6 +66,10 @@ export const CONFIRM = {
   wrongHelper: (position: number): string => `Word #${position} was wrong. Slots will reset in a moment.`,
   confirm: 'Confirm',
   continue: 'Continue',
+  onboarding: 'Onboarding',
+  step: '3 / 5',
+  verifiedTitle: 'Phrase verified',
+  verifiedBody: 'All three words matched. Now lock the wallet with a password.',
 } as const;
 
 /** #5 create password (D7). */
@@ -199,7 +208,31 @@ export const ACCOUNTS = {
   },
 } as const;
 
-/** The reveal form (the B1b-1 words, kept). */
+/** The reveal and verify modes (B1b-2b §3.4, §3.5, D14, D15, D23, C9). */
+export const PHRASE = {
+  /** 2a's top bar, now the #3/#4 eyebrow in place of "Onboarding · 2 / 5" (→ adapted). */
+  eyebrow: 'Recovery phrase',
+  /** O27. */
+  revealTitle: 'Show your recovery phrase',
+  /** O28. */
+  revealLede: 'Enter your password first. Nothing is shown until you press and hold.',
+  /** O30. */
+  verifyTitle: 'Verify your recovery phrase',
+  /** O31. */
+  verifyLede: 'Enter your password, then pick three words from your written copy.',
+  /** O29: the pre-reveal modal's Cancel when the browser keeps the tab open. */
+  nothingShown: 'Nothing is shown. You can close this tab.',
+  /** → adapted (ix:5162 "Phrase verified"; the approved design's wording). */
+  verifiedTitle: 'Recovery phrase verified',
+  /** → adapted (ix:5163 without "Now lock the wallet with a PIN.") + O05. */
+  verifiedBody: 'All three words matched. You can close this tab.',
+  /** O32 (`success-not-recorded`). */
+  notRecorded: 'All three words matched, but this could not be saved. Try again later.',
+  /** 2a's button. */
+  closeTab: 'Close this tab',
+} as const;
+
+/** The reveal proof's outcomes (the B1b-1 words, kept). */
 export const REVEAL = {
   checking: 'Checking…',
   outcome: {

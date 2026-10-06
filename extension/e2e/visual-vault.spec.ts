@@ -326,7 +326,7 @@ test('visual: #40 with two accounts, and the D26 state', async () => {
   }
 });
 
-test('visual: #9, #39, the restore and retry steps, the accounts and reveal forms', async () => {
+test('visual: #9, #39, the restore and retry steps, the accounts form', async () => {
   const h = await launchPopup('noctura-e2e-vis-unlock-');
   try {
     await h.sw.evaluate(async e => chrome.storage.local.set({v1_vault: e}), await makeEnvelope());
@@ -408,9 +408,6 @@ test('visual: #9, #39, the restore and retry steps, the accounts and reveal form
     await p.goto(`chrome-extension://${h.id}/unlock.html?mode=accounts`);
     await expect(p.getByRole('button', {name: 'Add an account'})).toBeVisible();
     await shot(p, 'accounts-form');
-    await p.goto(`chrome-extension://${h.id}/unlock.html?mode=reveal`);
-    await expect(p.locator('#v-reveal h1')).toHaveText('Your recovery phrase');
-    await shot(p, 'reveal-form');
 
     await h.sw.evaluate(() => chrome.storage.local.set({v1_vault: null}));
     await p.goto(`chrome-extension://${h.id}/unlock.html`);

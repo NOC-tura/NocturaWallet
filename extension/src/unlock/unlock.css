@@ -407,21 +407,16 @@
 .vlt-col .vlt-field-row.vlt-field-row-labelled {
   margin-top: 0;
 }
-.vlt-words {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  grid-auto-flow: column;
-  grid-template-rows: repeat(12, auto);
-  gap: var(--space-2) var(--space-4);
-  margin: 0 var(--space-5);
-  padding-left: var(--space-5);
-  font: 500 14px/22px var(--font-mono);
-  color: var(--fg-primary);
-}
+
 
 /* B1b-2b: an account address in groups of four under its caption (#37's proof, the remove page; C14, C17). */
 .vlt-address {
   width: 100%;
   display: flex;
   justify-content: center;
+}
+
+/* B1b-2b §3.4: a 12-word phrase on #3's grid is 2 × 6 (the design draws 24 as 2 × 12, column-major). */
+.vlt-col .s-seed .seed-grid.vlt-grid-12 {
+  grid-template-rows: repeat(6, auto);
 }

@@ -96,7 +96,7 @@
         <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="sg-title">
           <div class="modal-icon"><svg width="28" height="28" aria-hidden="true"><use href="#i-shield-lock" /></svg></div>
           <h2 id="sg-title" class="noc-h2">About to show your recovery phrase</h2>
-          <p class="body noc-body">Move to a private place. Anyone who sees these 24 words can spend everything in this wallet, forever.</p>
+          <p id="sg-body" class="body noc-body">Move to a private place. Anyone who sees these 24 words can spend everything in this wallet, forever.</p>
           <div class="shield-callout">
             <svg width="14" height="14" aria-hidden="true"><use href="#i-shield-lock" /></svg>
             <span class="noc-caption">We can't recover this for you if someone takes it. Your only copy is the one you write by hand.</span>
@@ -112,8 +112,8 @@
       <section id="v-seed" class="screen s-seed" hidden>
         <div class="top-bar">
           <button id="seed-back" type="button" class="icon-btn" aria-label="Back"><svg width="22" height="22" aria-hidden="true"><use href="#i-arrow-left" /></svg></button>
-          <span class="title noc-overline vlt-muted">Onboarding</span>
-          <span class="step noc-body-sm noc-numeral">2 / 5</span>
+          <span id="seed-eyebrow" class="title noc-overline vlt-muted">Onboarding</span>
+          <span id="seed-step" class="step noc-body-sm noc-numeral">2 / 5</span>
         </div>
         <div class="scroll-area">
           <h1 class="noc-h1 vlt-gap-2">Recovery phrase</h1>
@@ -142,8 +142,8 @@
       <section id="v-confirm" class="screen s-confirm" hidden>
         <div class="top-bar">
           <button id="cnf-back" type="button" class="icon-btn" aria-label="Back"><svg width="22" height="22" aria-hidden="true"><use href="#i-arrow-left" /></svg></button>
-          <span class="title noc-overline vlt-muted">Onboarding</span>
-          <span class="step noc-body-sm noc-numeral">3 / 5</span>
+          <span id="cnf-eyebrow" class="title noc-overline vlt-muted">Onboarding</span>
+          <span id="cnf-step" class="step noc-body-sm noc-numeral">3 / 5</span>
         </div>
         <div id="cnf-main" class="scroll-area">
           <h1 class="noc-h1 vlt-gap-2">Confirm phrase</h1>
@@ -155,8 +155,8 @@
         <div id="cnf-success" class="success-state" hidden>
           <div class="ring"><svg width="36" height="36" aria-hidden="true"><use href="#i-check" /></svg></div>
           <div>
-            <h2 class="noc-h2 vlt-gap-2">Phrase verified</h2>
-            <p class="noc-body vlt-lede vlt-narrow">All three words matched. Now lock the wallet with a password.</p>
+            <h2 id="cnf-success-title" class="noc-h2 vlt-gap-2">Phrase verified</h2>
+            <p id="cnf-success-body" class="noc-body vlt-lede vlt-narrow">All three words matched. Now lock the wallet with a password.</p>
           </div>
         </div>
         <div class="sticky-bar">
@@ -472,25 +472,44 @@
         </div>
       </section>
 
-      <!-- The B1b-1 reveal form (spec §1.2 `reveal`): restyled with the tokens only; B1b-2b builds the designed screen. -->
-      <section id="v-reveal" class="screen s-pin" hidden>
+      <!-- The reveal and verify proof (B1b-2b §3.4, §3.5, D14, D23): the PASSWORD only, before #3 or #4 shows anything. -->
+      <section id="v-phrase-proof" class="screen s-pin" hidden>
         <div class="top-bar">
+          <button id="pp-x" type="button" class="icon-btn" aria-label="Close"><svg width="22" height="22" aria-hidden="true"><use href="#i-x" /></svg></button>
           <span class="title noc-overline vlt-muted">Recovery phrase</span>
+          <span class="vlt-bar-spacer"></span>
         </div>
-        <div class="pin-head">
-          <h1 class="noc-h1">Your recovery phrase</h1>
-          <p class="noc-body vlt-lede">Anyone who sees these words can take everything in this wallet. There is no copy button, on purpose.</p>
-          <label for="rev-password" class="noc-body-sm vlt-lede vlt-field-label">Password</label>
-          <form id="rev-form" class="vlt-field-row vlt-field-row-labelled">
-            <input id="rev-password" class="vlt-input" type="password" autocomplete="current-password" />
+        <div id="pp-entry" class="pin-head">
+          <h1 id="pp-title" class="noc-h1"></h1>
+          <p id="pp-lede" class="noc-body vlt-lede vlt-narrow"></p>
+          <label for="pp-password" class="noc-body-sm vlt-lede vlt-field-label">Password</label>
+          <form id="pp-form" class="vlt-field-row vlt-field-row-labelled">
+            <input id="pp-password" class="vlt-input" type="password" autocomplete="current-password" />
           </form>
         </div>
-        <p id="rev-helper" class="noc-caption pin-helper" aria-live="polite"></p>
-        <ol id="rev-words" class="vlt-words"></ol>
+        <p id="pp-helper" class="noc-caption pin-helper" aria-live="polite"></p>
+        <div id="pp-cooldown" hidden>
+          <div class="vlt-pad-cooldown">
+            <h1 class="noc-h1 vlt-center vlt-gap-2">Wait a moment</h1>
+            <p class="noc-body vlt-lede vlt-center vlt-narrow-300 vlt-gap-5">That did not confirm it. Wait a moment before trying again.</p>
+          </div>
+          <div class="cooldown-card">
+            <div id="pp-ring" class="ring"></div>
+            <div id="pp-timer" class="timer noc-numeral"></div>
+            <div id="pp-cooldown-label" class="noc-body-sm label"></div>
+          </div>
+        </div>
+        <span id="pp-cooldown-live" class="vlt-sr" aria-live="polite"></span>
+        <div id="pp-notice" class="vlt-notice" role="status" hidden>
+          <p id="pp-notice-line" class="noc-body"></p>
+          <p id="pp-notice-help" class="noc-body-sm vlt-lede"></p>
+        </div>
         <div class="pin-spacer"></div>
         <div class="sticky-bar">
-          <button id="rev-show" type="button" class="btn btn-primary">Show the phrase</button>
-          <button id="rev-hide" type="button" class="btn btn-secondary">Hide</button>
+          <button id="pp-continue" type="button" class="btn btn-primary">Continue</button>
+          <button id="pp-paused" type="button" class="btn btn-secondary" disabled hidden>Confirm paused</button>
+          <button id="pp-unlock" type="button" class="btn btn-primary" hidden>Unlock</button>
+          <button id="pp-setup" type="button" class="btn btn-primary" hidden>Set up a wallet</button>
         </div>
       </section>
 

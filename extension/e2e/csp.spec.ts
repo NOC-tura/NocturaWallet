@@ -95,9 +95,13 @@ test('csp: every vault-page mode runs with zero CSP violations; an inline style 
     await p.goto(`${base}?mode=accounts`);
     await expect(p.getByRole('button', {name: 'Add an account'})).toBeVisible();
     await clean('accounts');
+    // B1b-2b §3.4 / §3.5: the reveal and verify modes' proof.
     await p.goto(`${base}?mode=reveal`);
-    await expect(p.locator('#v-reveal h1')).toHaveText('Your recovery phrase');
+    await expect(p.locator('#pp-title')).toHaveText('Show your recovery phrase');
     await clean('reveal');
+    await p.goto(`${base}?mode=verify`);
+    await expect(p.locator('#pp-title')).toHaveText('Verify your recovery phrase');
+    await clean('verify');
 
     // #10 with a live challenge: a send of 2.48 of the fake's 10 SOL to a new address.
     let challengeId: string | null = null;
@@ -133,7 +137,7 @@ test('csp: every vault-page mode runs with zero CSP violations; an inline style 
     await expect(p.locator('#imp-phrase')).toBeVisible();
     await clean('import');
 
-    expect(seen).toHaveLength(9);
+    expect(seen).toHaveLength(10);
 
     // The positive control, on the same page and watch: an inline <style> and a remote <img> are both refused and reported.
     await p.evaluate(src => {

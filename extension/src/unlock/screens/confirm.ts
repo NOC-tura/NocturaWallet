@@ -63,6 +63,16 @@ export function confirmPlan(words: readonly string[], randomBytes: (n: number) =
 /** The design's ~700 ms before the slots reset after a wrong pick. */
 export const RESET_MS = 700;
 
+/** What frames #4 (B1b-2b §3.5): onboarding's, or the verify check's (no step, its own success and a close). */
+export interface ConfirmChrome {
+  eyebrow: string;
+  step: string | null;
+  successTitle: string;
+  successBody: string;
+  successCta: string;
+}
+const ONBOARDING: ConfirmChrome = {eyebrow: CONFIRM.onboarding, step: CONFIRM.step, successTitle: CONFIRM.verifiedTitle, successBody: CONFIRM.verifiedBody, successCta: CONFIRM.continue};
+
 export interface ConfirmScreen {
   /** Opens #4 with a new plan for this phrase. */
   show(words: readonly string[]): void;
@@ -85,7 +95,7 @@ export interface ConfirmScreen {
  * `exclusive()` gate. `phase` is the `offered`-style guard (welcome.ts, seed.ts): a button acts only on
  * the step it belongs to, whatever its `hidden`/`disabled` say.
  */
-export function mountConfirm(deps: PageDeps, next: {back(): void; done(): void}): ConfirmScreen {
+export function mountConfirm(deps: PageDeps, next: {back(): void; done(): void; verified?(): void}, chrome: ConfirmChrome = ONBOARDING): ConfirmScreen {
   const cta = byId<HTMLButtonElement>('cnf-cta');
   const back = byId<HTMLButtonElement>('cnf-back');
   const slotsEl = byId('cnf-slots');
@@ -151,7 +161,7 @@ export function mountConfirm(deps: PageDeps, next: {back(): void; done(): void})
     shown(byId('cnf-success'), phase === 'success');
     cta.disabled = busy || !(phase === 'success' || (phase === 'pick' && resetting === null && complete()));
     back.disabled = busy || phase === 'off';
-    setText(cta, phase === 'success' ? CONFIRM.continue : CONFIRM.confirm);
+    setText(cta, phase === 'success' ? chrome.successCta : CONFIRM.confirm);
   };
 
   const stop = () => {
@@ -203,6 +213,8 @@ export function mountConfirm(deps: PageDeps, next: {back(): void; done(): void})
         phase = 'success';
         drop();
         render();
+        // B1b-2b E15: the verify check records the fact (the success body says whether it could).
+        next.verified?.();
       });
     }
   });
@@ -224,10 +236,16 @@ export function mountConfirm(deps: PageDeps, next: {back(): void; done(): void})
   return {
     show(words) {
       drop();
+      setText(byId('cnf-eyebrow'), chrome.eyebrow);
+      setText(byId('cnf-step'), chrome.step ?? '');
+      shown(byId('cnf-step'), chrome.step !== null);
+      setText(byId('cnf-success-title'), chrome.successTitle);
+      setText(byId('cnf-success-body'), chrome.successBody);
       plan = confirmPlan(words, deps.randomBytes);
       filled = plan.slots.map(() => null);
       phase = 'pick';
-      concealed = false;
+      // `concealed` is the tab's state (onLeave / onReturn), not the screen's: a show() while the tab is hidden — the
+      // verify proof settling in a background tab (B1b-2b §3.5) — puts no word in the DOM until the tab is shown again.
       render();
       showScreen('v-confirm');
     },
