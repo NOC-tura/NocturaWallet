@@ -470,9 +470,11 @@ describe('#37 delete wallet', () => {
       await shown({gate: h.gate});
       await waitFor(() => expect(h.isHeld()).toBe(true));
       cleanup();
+      const before = h.count('wallet.balances');
       h.release();
       await settle();
-      expect(h.count('wallet.balances', m => m.account === RECIPIENT)).toBe(0);
+      // The whole tree went (the provider too): no read at all after the release.
+      expect(h.count('wallet.balances')).toBe(before);
     });
   });
 });
