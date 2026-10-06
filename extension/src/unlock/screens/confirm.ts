@@ -12,6 +12,8 @@ export interface ConfirmPlan {
 
 /** A uniform integer in [0, n), from the page's random bytes (rejection sampling: no modulo bias). */
 export function randomBelow(randomBytes: (n: number) => Uint8Array, n: number): number {
+  // Fix round 1 (review I1): an empty range has no member — with n = 0 the limit is NaN and the loop below never ends.
+  if (!Number.isSafeInteger(n) || n <= 0 || n > 0x1_0000_0000) throw new RangeError('randomBelow: n must be an integer in [1, 2^32]');
   const limit = Math.floor(0x1_0000_0000 / n) * n;
   for (;;) {
     const b = randomBytes(4);
@@ -32,6 +34,8 @@ export function randomBelow(randomBytes: (n: number) => Uint8Array, n: number): 
  * plan stays completable.
  */
 export function confirmPlan(words: readonly string[], randomBytes: (n: number) => Uint8Array): ConfirmPlan {
+  // Fix round 1 (review I1): three distinct positions need three words; fewer would loop forever choosing them.
+  if (words.length < 3) throw new RangeError('confirmPlan: a phrase has at least three words');
   const repeatsAllowed = new Set(words).size < 3;
   const picked: number[] = [];
   while (picked.length < 3) {
@@ -70,6 +74,12 @@ export interface ConfirmChrome {
   successTitle: string;
   successBody: string;
   successCta: string;
+  /**
+   * Fix round 1 (review I1, M1): the success is the run's end (the reveal and verify modes). Back and the CTA both call
+   * `done` (which closes the tab) and the success stays on screen — never a way back into #3 with a dropped phrase,
+   * never a blank #4 when the browser refuses to close the tab.
+   */
+  final?: boolean;
 }
 const ONBOARDING: ConfirmChrome = {eyebrow: CONFIRM.onboarding, step: CONFIRM.step, successTitle: CONFIRM.verifiedTitle, successBody: CONFIRM.verifiedBody, successCta: CONFIRM.continue};
 
@@ -191,8 +201,14 @@ export function mountConfirm(deps: PageDeps, next: {back(): void; done(): void; 
     render();
   };
 
+  /** The final success's way out: the tab closes; the success (or O32) stays if the browser keeps it. */
+  const finish = () =>
+    void exclusive(deps, render, async () => {
+      if (phase === 'success') next.done();
+    });
   back.addEventListener('click', () => {
     if (phase === 'off') return;
+    if (phase === 'success' && chrome.final === true) return finish();
     void exclusive(deps, render, async () => {
       phase = 'off';
       drop();
@@ -200,7 +216,8 @@ export function mountConfirm(deps: PageDeps, next: {back(): void; done(): void; 
     });
   });
   cta.addEventListener('click', () => {
-    if (phase === 'success') {
+    if (phase === 'success' && chrome.final === true) finish();
+    else if (phase === 'success') {
       void exclusive(deps, render, async () => {
         phase = 'off';
         drop();
@@ -235,13 +252,16 @@ export function mountConfirm(deps: PageDeps, next: {back(): void; done(): void; 
 
   return {
     show(words) {
+      // First: a phrase that cannot make a plan throws here (the caller shows a failure), before anything changes.
+      const fresh = confirmPlan(words, deps.randomBytes);
       drop();
+      shown(cta, true);
       setText(byId('cnf-eyebrow'), chrome.eyebrow);
       setText(byId('cnf-step'), chrome.step ?? '');
       shown(byId('cnf-step'), chrome.step !== null);
       setText(byId('cnf-success-title'), chrome.successTitle);
       setText(byId('cnf-success-body'), chrome.successBody);
-      plan = confirmPlan(words, deps.randomBytes);
+      plan = fresh;
       filled = plan.slots.map(() => null);
       phase = 'pick';
       // `concealed` is the tab's state (onLeave / onReturn), not the screen's: a show() while the tab is hidden — the

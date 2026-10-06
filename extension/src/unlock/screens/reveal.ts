@@ -1,9 +1,9 @@
 import {createWrongBackoff} from '../orchestrate';
-import {exclusive, type PageDeps} from '../page';
+import {CLOSE_CHECK_MS, exclusive, type PageDeps} from '../page';
 import {recordVerified, runReveal} from '../revealFlow';
 import {COMMON, PHRASE, REVEAL, cooldownLabel} from '../strings';
 import type {Send} from '../types';
-import {byId, setText, showScreen, shown} from '../view/dom';
+import {byId, closeOrHide, setText, showScreen, shown} from '../view/dom';
 import {startCooldown} from '../view/cooldown';
 import {mountConfirm} from './confirm';
 import {mountSeed} from './seed';
@@ -118,12 +118,22 @@ export function mountPhrase(deps: PageDeps, kind: 'reveal' | 'verify'): PhraseRu
     deps.closeTab();
   };
 
-  const seed = mountSeed(deps, {back: cancel, done: () => confirm.show(words)}, {eyebrow: PHRASE.eyebrow, step: null});
+  /** #4 on the proven phrase; a phrase that cannot make a plan (fix round 1, I1) is a failure, never a hung page. */
+  const check = () => {
+    try {
+      confirm.show(words);
+    } catch {
+      drop();
+      notice(REVEAL.outcome.failed, '', []);
+    }
+  };
+  const seed = mountSeed(deps, {back: cancel, done: check}, {eyebrow: PHRASE.eyebrow, step: null});
   const confirm = mountConfirm(
     deps,
     {
       back: kind === 'reveal' ? () => seed.show(words) : cancel,
-      done: () => deps.closeTab(),
+      // Fix round 1 (M1): a refused close hides [Close this tab]; the success (or O32) stays on screen.
+      done: () => closeOrHide(deps.closeTab, f => void deps.timers.setTimeout(f, CLOSE_CHECK_MS), byId('cnf-cta')),
       verified: () => {
         // The check is finished: the phrase is no longer needed.
         drop();
@@ -134,7 +144,7 @@ export function mountPhrase(deps: PageDeps, kind: 'reveal' | 'verify'): PhraseRu
         });
       },
     },
-    {eyebrow: PHRASE.eyebrow, step: null, successTitle: PHRASE.verifiedTitle, successBody: PHRASE.verifiedBody, successCta: PHRASE.closeTab},
+    {eyebrow: PHRASE.eyebrow, step: null, successTitle: PHRASE.verifiedTitle, successBody: PHRASE.verifiedBody, successCta: PHRASE.closeTab, final: true},
   );
 
   const endCooldown = () => {
@@ -174,7 +184,7 @@ export function mountPhrase(deps: PageDeps, kind: 'reveal' | 'verify'): PhraseRu
         view = 'phrase';
         helper('', false);
         if (kind === 'reveal') seed.show(words);
-        else confirm.show(words);
+        else check();
         return;
       }
       if (out === 'wrong') return helper(COMMON.wrongConfirm, true);

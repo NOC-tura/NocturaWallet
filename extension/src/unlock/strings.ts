@@ -236,8 +236,6 @@ export const PHRASE = {
 export const REVEAL = {
   checking: 'Checking…',
   outcome: {
-    shown: 'Write them down, in order, and keep them offline. Noctura never copies them anywhere.',
-    wrong: 'That did not confirm it.',
     'not-unlocked': 'The wallet is locked. Unlock it first, then try again.',
     'mismatch-locked': 'That did not match this wallet, so the wallet has been locked.',
     damaged: "This wallet's stored data is damaged.",

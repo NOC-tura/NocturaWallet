@@ -5,6 +5,8 @@ import {setSession} from '../../background/session';
 import {HOLD_MS, REVEAL_MS, TICK_MS} from '../view/hold';
 import {showScreen} from '../view/dom';
 import {mountPhrase} from '../screens/reveal';
+import {confirmPlan, randomBelow} from '../screens/confirm';
+import {CLOSE_CHECK_MS} from '../page';
 import {pageMode} from '../mode';
 import type {Send} from '../types';
 import {click, el, harness, loadPage, testKdf, text, type, unstyled, visible, type Harness} from './pageHarness';
@@ -359,5 +361,98 @@ describe('leaving, the cooldown, and the words only where they are shown', () =>
     pending.answer?.({ok: false, error: 'locked'});
     await new Promise(r => setTimeout(r, 0));
     expect(text(el('cnf-success-body'))).toBe('All three words matched. You can close this tab.');
+  });
+});
+
+// Fix round 1 (Task 11 review I1, I2, M1, M2).
+describe('fix round 1: the end of the check, 3 of 3, the plan’s range, the guards removed', () => {
+  it.each(['reveal', 'verify'] as const)('%s: Back on the success closes the tab — never #3 again, never a hang', async kind => {
+    const {h, run} = await shown(kind);
+    await prove(h);
+    if (kind === 'reveal') {
+      await h.until(() => visible(el('v-seed-gate')));
+      await press(h, 'sg-continue');
+      el('seed-grid').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}));
+      h.timers.advance(HELD);
+      el('seed-grid').dispatchEvent(new PointerEvent('pointerup', {bubbles: true}));
+      await press(h, 'seed-cta');
+    }
+    await h.until(() => visible(el('v-confirm')));
+    await check(h);
+    await press(h, 'cnf-back');
+    await h.until(() => h.closed === 1);
+    expect(visible(el('v-seed-gate'))).toBe(false);
+    expect(visible(el('cnf-success'))).toBe(true);
+    expect(text(el('pp-notice-line'))).toBe('');
+    expect(run.holds().phrase).toBe(false);
+  });
+
+  it('[Close this tab] refused: the button is hidden, the success stays on screen', async () => {
+    const {h} = await shown('verify');
+    await prove(h);
+    await h.until(() => visible(el('v-confirm')));
+    await check(h);
+    await press(h, 'cnf-cta');
+    await h.until(() => h.closed === 1);
+    h.timers.advance(CLOSE_CHECK_MS);
+    expect(visible(el('cnf-cta'))).toBe(false);
+    expect(visible(el('cnf-success'))).toBe(true);
+    expect(text(el('cnf-success-title'))).toBe('Recovery phrase verified');
+    expect(text(el('cnf-success-body'))).toBe('All three words matched. You can close this tab.');
+  });
+
+  it('I2 (probe P4): two right words and Confirm with `disabled` lifted — not verified, nothing sent', async () => {
+    const {h} = await shown('verify');
+    await prove(h);
+    await h.until(() => visible(el('v-confirm')));
+    for (const s of [...el('cnf-slots').querySelectorAll('.label')].slice(0, 2).map(text)) {
+      const n = Number(/#(\d+)/.exec(s)?.[1]);
+      const b = () => [...el('cnf-pool').querySelectorAll('button')].find(x => text(x) === WORDS[n - 1] && !x.classList.contains('used')) as HTMLButtonElement;
+      await h.until(() => !b().disabled);
+      click(b());
+    }
+    await idle(h);
+    expect(el<HTMLButtonElement>('cnf-cta').disabled).toBe(true);
+    el<HTMLButtonElement>('cnf-cta').disabled = false;
+    click(el('cnf-cta'));
+    await idle(h);
+    await new Promise(r => setTimeout(r, 20));
+    expect(visible(el('cnf-success'))).toBe(false);
+    expect(h.sent.filter(m => m.type === 'vault.phraseVerified')).toEqual([]);
+  });
+
+  it('confirmPlan refuses fewer than three words and randomBelow an empty range — throws, never loops', () => {
+    const rb = (n: number) => crypto.getRandomValues(new Uint8Array(n));
+    expect(() => confirmPlan([], rb)).toThrow(RangeError);
+    expect(() => confirmPlan(['legal', 'winner'], rb)).toThrow(RangeError);
+    expect(() => randomBelow(rb, 0)).toThrow(RangeError);
+    expect(() => randomBelow(rb, -1)).toThrow(RangeError);
+    expect(() => randomBelow(rb, 1.5)).toThrow(RangeError);
+    expect(confirmPlan(WORDS, rb).slots).toHaveLength(3);
+  });
+
+  it('a plan that cannot be made is shown as a failure, the phrase dropped (the caller’s guard)', async () => {
+    const {h, run} = await shown('verify');
+    h.deps.randomBytes = () => {
+      throw new Error('no randomness');
+    };
+    await prove(h);
+    await h.until(() => text(el('pp-notice-line')) === 'Something went wrong. Try again.');
+    expect(visible(el('v-phrase-proof'))).toBe(true);
+    expect(run.holds().phrase).toBe(false);
+  });
+
+  it('M2: the grid guards are removed with the words — selectstart on the grid is allowed again after #3', async () => {
+    const {h} = await shown('reveal');
+    await prove(h);
+    await h.until(() => visible(el('v-seed-gate')));
+    await press(h, 'sg-continue');
+    expect(cancelable(el('seed-grid'), 'selectstart')).toBe(true);
+    el('seed-grid').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}));
+    h.timers.advance(HELD);
+    el('seed-grid').dispatchEvent(new PointerEvent('pointerup', {bubbles: true}));
+    await press(h, 'seed-cta');
+    await h.until(() => visible(el('v-confirm')));
+    for (const ev of ['copy', 'cut', 'dragstart', 'selectstart', 'contextmenu']) expect(cancelable(el('seed-grid'), ev)).toBe(false);
   });
 });
