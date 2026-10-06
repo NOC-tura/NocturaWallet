@@ -71,7 +71,8 @@ export function securityTasks(passkey: boolean, phraseVerifiedAt: number | null)
  * the danger zone (35d) → #37. A picker value BELOW the current one is written at once; one ABOVE weakens the wallet and
  * answers `reauth-required` — the vault tab's #10 confirms it and the background applies it (E9); the popup closes and
  * never shows a choice still waiting for #10: every open reads the stored value. Rule 6: LockedButton on every option,
- * every row that opens a page (35b's "Recovery phrase verified" too — pre-flight F9) and [Delete wallet]. A settings.set
+ * every row that opens a page (35b's "Recovery phrase verified" too — pre-flight F9), every row and task that pushes the
+ * passkey screen (the final review's m6) and [Delete wallet]. The tab reads the settings again when shown again. A settings.set
  * answered after the screen went or after a lock meanwhile sets, opens and shows nothing.
  */
 export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onPasskey: () => void; onDelete: () => void}) {
@@ -108,10 +109,21 @@ export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onP
   }, [m.engine]);
   useEffect(() => {
     void read();
+    // The final review's m5 (as #31, Task 17 m1): the popup reads on every open; the tab stays open, so it reads again
+    // whenever it is shown again (a weakening #10 applied in another tab meanwhile). Only the newest read counts.
+    const again = () => {
+      if (document.visibilityState === 'visible') void read();
+    };
+    if (m.surface === 'tab') {
+      document.addEventListener('visibilitychange', again);
+      window.addEventListener('focus', again);
+    }
     return () => {
       reads.current++;
+      document.removeEventListener('visibilitychange', again);
+      window.removeEventListener('focus', again);
     };
-  }, [read]);
+  }, [read, m.surface]);
 
   // 35c: an open card replaces its row in place and is scrolled into view (the 35b row stays where it is, so the tap visibly
   // does something); a focus lost with the replaced row (or the collapsed card) goes to what took its place.
@@ -174,8 +186,8 @@ export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onP
     );
   }
   const tasks = securityTasks(passkey, settings.phraseVerifiedAt);
-  const row = (icon: ExtIconName, title: string, meta: string | null, tone: 'warning' | 'success' | null, onPress: () => void, expanded?: boolean, ref?: (b: HTMLButtonElement | null) => void) => (
-    <button type="button" className="s7-row" onClick={onPress} aria-expanded={expanded} ref={ref}>
+  const rowInner = (icon: ExtIconName, title: string, meta: string | null, tone: 'warning' | 'success' | null) => (
+    <>
       <span className="s7-glyph">
         <ExtIcon name={icon} size={20} />
       </span>
@@ -184,7 +196,19 @@ export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onP
       <span className="s7-chev">
         <ExtIcon name="chevron-right" size={16} />
       </span>
+    </>
+  );
+  /** A row that opens its card in place (35c): a plain toggle, nothing is pushed. */
+  const row = (icon: ExtIconName, title: string, meta: string | null, tone: 'warning' | 'success' | null, onPress: () => void, expanded?: boolean, ref?: (b: HTMLButtonElement | null) => void) => (
+    <button type="button" className="s7-row" onClick={onPress} aria-expanded={expanded} ref={ref}>
+      {rowInner(icon, title, meta, tone)}
     </button>
+  );
+  /** The Passkey rows push the passkey screen: rule 6 (the final review's m6) — a double tap pushes it once. */
+  const passkeyRow = (meta: string, tone: 'warning' | 'success') => (
+    <LockedButton className="s7-row" onPress={onPasskey}>
+      {rowInner('fingerprint', SECURITY_TEXT.passkey, meta, tone)}
+    </LockedButton>
   );
   const pageRow = (icon: ExtIconName, title: string, page: ExtensionPage, meta: string | null = null, tone: 'success' | null = null) => (
     <LockedButton className="s7-row" onPress={() => openPage(page)}>
@@ -216,13 +240,7 @@ export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onP
   );
   const taskRow = (t: SecurityTask) =>
     t === 'passkey' ? (
-      <button key={t} type="button" className="s7-task" onClick={onPasskey}>
-        <ExtIcon name="fingerprint" size={20} />
-        <span className="label">{SECURITY_TEXT.taskPasskey}</span>
-        <span className="chev">
-          <ExtIcon name="chevron-right" size={16} />
-        </span>
-      </button>
+      <LockedButtonTask key={t} icon="fingerprint" label={SECURITY_TEXT.taskPasskey} onPress={onPasskey} />
     ) : t === 'write' ? (
       <LockedButtonTask key={t} icon="database" label={SECURITY_TEXT.taskWrite} onPress={() => openPage('unlock.html?mode=reveal')} />
     ) : (
@@ -250,7 +268,7 @@ export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onP
             <p className="noc-overline app-dim app-overline">{SECURITY_TEXT.protections}</p>
             <div className="s7-list app-protections">
               {row('lock', SECURITY_TEXT.autoLock, SECURITY_TEXT.minutes(settings.autoLockMinutes), 'success', () => toggle('auto-lock'), open === 'auto-lock')}
-              {row('fingerprint', SECURITY_TEXT.passkey, SECURITY_TEXT.on, 'success', onPasskey)}
+              {passkeyRow(SECURITY_TEXT.on, 'success')}
               {pageRow('shield', SECURITY_TEXT.verified, 'unlock.html?mode=verify', SECURITY_TEXT.yes, 'success')}
             </div>
           </>
@@ -284,7 +302,7 @@ export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onP
                 SECURITY_TEXT.thresholdNote,
               )
             : row('alert', SECURITY_TEXT.threshold, dollars(settings.reauthUsdCents), null, () => toggle('threshold'), false, b => void (rows.current.threshold = b))}
-          {row('fingerprint', SECURITY_TEXT.passkey, passkey ? SECURITY_TEXT.on : SECURITY_TEXT.off, passkey ? 'success' : 'warning', onPasskey)}
+          {passkeyRow(passkey ? SECURITY_TEXT.on : SECURITY_TEXT.off, passkey ? 'success' : 'warning')}
           {pageRow('key', SECURITY_TEXT.changePassword, 'unlock.html?mode=password')}
         </div>
         {failed ? (

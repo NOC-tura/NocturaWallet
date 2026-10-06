@@ -280,6 +280,32 @@ describe('#35 security center', () => {
     expect(w.calls.delete).toBe(1);
   });
 
+  // The final review's m6: the rows that push the passkey screen are LockedButtons too (as every ListRow, Task 17) — a
+  // double tap pushes it once, so one Back leaves it.
+  it('rule 6: "Add a passkey" and the Locks Passkey row push the passkey screen once for two clicks inside 500 ms', async () => {
+    for (const target of [() => screen.getByText('Add a passkey'), () => screen.getByText('Passkey', {selector: '.s7-title'})]) {
+      const w = await shown();
+      const b = target().closest('button') as HTMLButtonElement;
+      fireEvent.click(b);
+      b.disabled = false;
+      fireEvent.click(b);
+      expect(w.calls.passkey).toBe(1);
+      cleanup();
+    }
+  });
+
+  it('rule 6: 35b\u2019s Passkey protection row pushes the passkey screen once for two clicks inside 500 ms', async () => {
+    const w = await shown({env: WITH_PASSKEY, before: async ext => ext.local.set(SETTINGS_KEY, {phraseVerifiedAt: 5})});
+    const rows = screen.getAllByText('Passkey', {selector: '.s7-title'});
+    expect(rows).toHaveLength(2);
+    const b = rows[0]!.closest('button') as HTMLButtonElement;
+    expect(b.closest('.app-protections')).not.toBeNull();
+    fireEvent.click(b);
+    b.disabled = false;
+    fireEvent.click(b);
+    expect(w.calls.passkey).toBe(1);
+  });
+
   /** A weakening (15 min) whose reauth-required answer is held: the background's reply, delivered when the test says. */
   async function heldWeakening() {
     let release: () => void = () => undefined;
@@ -428,6 +454,88 @@ describe('#35 security center', () => {
     expect(back).toBe(1);
     h.release();
     expect(await screen.findByText('Improve your security')).toBeTruthy();
+  });
+
+  // The final review's m5 (as #31's Task 17 m1): the wallet tab stays open, so #35 reads its settings again when it is
+  // shown again — a weakening #10 applied in another tab meanwhile shows as stored, not as the old value.
+  async function securityOn(surface: 'popup' | 'tab') {
+    const w = await setupWallet();
+    let reads = 0;
+    const engine = {...w.engine, settings: () => (reads++, w.engine.settings())};
+    const r = render(
+      <WalletProvider engine={engine} platform={w.platform} surface={surface}>
+        <Security onBack={() => undefined} onPasskey={() => undefined} onDelete={() => undefined} />
+      </WalletProvider>,
+    );
+    await waitFor(() => expect(meta('Auto-lock')?.textContent).toBe('5 min'));
+    // Meanwhile, in the vault tab: #10 applied the weakening.
+    await w.ext.local.set(SETTINGS_KEY, {autoLockMinutes: 15, reauthUsdCents: 100_000});
+    return {...r, reads: () => reads};
+  }
+
+  it('tab: shown again (visibilitychange → visible), #35 reads its settings again — the applied weakening shows', async () => {
+    await securityOn('tab');
+    document.dispatchEvent(new Event('visibilitychange'));
+    await waitFor(() => expect(meta('Auto-lock')?.textContent).toBe('15 min'));
+    expect(meta('Re-authentication threshold')?.textContent).toBe('$1,000');
+  });
+
+  it('tab: a window focus reads them again too', async () => {
+    await securityOn('tab');
+    window.dispatchEvent(new Event('focus'));
+    await waitFor(() => expect(meta('Auto-lock')?.textContent).toBe('15 min'));
+  });
+
+  it('tab: once #35 is gone, being shown again reads nothing', async () => {
+    const {unmount, reads} = await securityOn('tab');
+    const before = reads();
+    unmount();
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('focus'));
+    await new Promise(r => setTimeout(r, 30));
+    expect(reads()).toBe(before);
+  });
+
+  it('popup: being shown again reads nothing more (a popup reads on every open)', async () => {
+    const {reads} = await securityOn('popup');
+    const before = reads();
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('focus'));
+    await new Promise(r => setTimeout(r, 30));
+    expect(reads()).toBe(before);
+    expect(meta('Auto-lock')?.textContent).toBe('5 min');
+  });
+
+  it('tab: a re-read overtaken by a newer one sets nothing from the older answer', async () => {
+    const w = await setupWallet();
+    const answers: (() => void)[] = [];
+    let first = true;
+    const engine = {
+      ...w.engine,
+      settings: () => {
+        if (first) return (first = false), w.engine.settings();
+        return new Promise<Awaited<ReturnType<typeof w.engine.settings>>>(resolve => {
+          const at = answers.length;
+          answers.push(() => void w.engine.settings().then(r => resolve(r.ok && at === 0 ? {...r, data: {...r.data, autoLockMinutes: 1}} : r)));
+        });
+      },
+    };
+    render(
+      <WalletProvider engine={engine} platform={w.platform} surface="tab">
+        <Security onBack={() => undefined} onPasskey={() => undefined} onDelete={() => undefined} />
+      </WalletProvider>,
+    );
+    await waitFor(() => expect(meta('Auto-lock')?.textContent).toBe('5 min'));
+    await w.ext.local.set(SETTINGS_KEY, {autoLockMinutes: 15});
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('focus'));
+    expect(answers).toHaveLength(2);
+    answers[1]!();
+    await waitFor(() => expect(meta('Auto-lock')?.textContent).toBe('15 min'));
+    // The older read answers last (rewritten to 1 min): it is dropped.
+    answers[0]!();
+    await new Promise(r => setTimeout(r, 30));
+    expect(meta('Auto-lock')?.textContent).toBe('15 min');
   });
 
   it('settings read: an answer after the screen went sets nothing (fix round 1, Minor 8)', async () => {
