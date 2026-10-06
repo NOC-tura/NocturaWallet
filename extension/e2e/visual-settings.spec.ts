@@ -209,7 +209,11 @@ test('visual: #31, #35, the passkey screen, the accounts manager and #37 in the 
     await expect(p.getByText('10.0000 SOL · $1,500.00').first()).toBeVisible();
     // Fix round 0b: the address and the balance each on one full-width line under the name and tools (they wrapped to two
     // and three lines inside a ~90 px column beside five 48 px tools).
-    for (const line of await p.locator('.app-account-sub .sec').all()) expect((await line.boundingBox())?.height ?? 99, await line.textContent() ?? '').toBeLessThanOrEqual(18);
+    // One snapshot after both balance lines have settled: the rows re-render as the fresh pass lands (a "cached … ago" line
+    // comes and goes), so per-element locators taken from `.all()` can point past the end and wait forever (round 0b run).
+    await expect(p.locator('.app-account-sub').getByText('10.0000 SOL · $1,500.00', {exact: true})).toHaveCount(2);
+    const wrapped = await p.locator('.app-account-sub .sec').evaluateAll(es => es.filter(e => e.getBoundingClientRect().height > 18).map(e => e.textContent));
+    expect(wrapped, 'an address or balance line wrapped').toEqual([]);
     await pop(p, '43m-accounts-list', p.locator('.app-account-row').first());
     await p.getByRole('button', {name: 'Remove Savings'}).click();
     await expect(p.getByText('Holds 10.0000 SOL · $1,500.00')).toBeVisible();
@@ -299,6 +303,11 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     // Fix round 0b: #6's top bar with the X (spec §3), so the hero sits under a bar as #6's does.
     await expect(p.locator('#pm-x')).toBeVisible();
     await expect(p.locator('#v-passkey-manage .top-bar .title')).toHaveText('Passkey');
+    const gapBelow = async (above: string) => {
+      const [a, f] = [await p.locator(above).boundingBox(), await p.locator('#pm-password').boundingBox()];
+      return Math.round((f?.y ?? 0) - ((a?.y ?? 0) + (a?.height ?? 0)));
+    };
+    const addGap = await gapBelow('#pm-ask');
     await shot(p, '06m-add-idle', {ready: p.locator('#pm-act')});
     await holdKdf(p);
     await p.locator('#pm-password').fill(E2E_PASSWORD);
@@ -320,6 +329,8 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     // Fix round 0b: the remove field's visible label (the vault pages' "Password").
     await expect(p.locator('#pm-password-label')).toHaveText('Password');
     await expect(p.locator('#pm-password-label')).toBeVisible();
+    // Set as the add line it stands in for: the same gap above the field.
+    expect(await gapBelow('#pm-password-label')).toBe(addGap);
     await shot(p, '06m-remove-idle', {ready: p.locator('#pm-passkey')});
     await holdKdf(p);
     await p.locator('#pm-password').fill(E2E_PASSWORD);

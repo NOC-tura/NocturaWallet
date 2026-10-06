@@ -77,6 +77,10 @@
 .vlt-gap-2 {
   margin: 0 0 var(--space-2);
 }
+/* Fix round 0b: a field label set as the line it stands in for (#6 manage remove: in the add line's box and gap). */
+.vlt-label-block {
+  display: block;
+}
 .vlt-gap-4 {
   margin-bottom: var(--space-4);
 }
