@@ -25,6 +25,7 @@ vi.mock('../../vault/passkey', async importOriginal => {
 
 // B1b-2b §3.3 (#6 "manage", E12, D12, D13, C3, C4) against the REAL background.
 const M = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+const OTHER = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
 const K0 = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
 const PW = 'correct horse battery';
 const OLD_PRF = crypto.getRandomValues(new Uint8Array(32));
@@ -39,11 +40,17 @@ function authenticator(prf: Uint8Array | null, id = new Uint8Array([7, 7, 7, 7])
     get: async () => ({getClientExtensionResults: () => (prf === null ? {} : {prf: {results: {first: prf.slice().buffer}}})}) as unknown as Credential,
   };
 }
-async function shown(op: 'add' | 'remove', o: {passkey?: boolean; unlocked?: boolean; credentials?: CredentialsApi; holdSleep?: boolean; send?: (inner: Send) => Send} = {}) {
+async function shown(
+  op: 'add' | 'remove',
+  // Fix round 1: `session` — the mnemonic the session holds (a mismatch); `vault` — what v1_vault holds instead of the
+  // wallet; `prepare` — runs on the harness before the screen mounts.
+  o: {passkey?: boolean; unlocked?: boolean; credentials?: CredentialsApi; holdSleep?: boolean; send?: (inner: Send) => Send; session?: string; vault?: unknown; prepare?: (h: Harness) => void} = {},
+) {
   let env: EnvelopeV1 = await createEnvelope({mnemonic: M, password: PW, scheme: 'slip10', accounts: [{index: 0, name: 'Main', publicKey: K0}], kdf: testKdf});
   if (o.passkey === true) env = await addPasskeyWrap(env, await unlockWithPassword(env, PW, testKdf), OLD_PRF.slice(), new Uint8Array([1, 2, 3]), crypto.getRandomValues(new Uint8Array(32)));
-  const h = await harness({vault: env, ...(o.credentials === undefined ? {} : {credentials: o.credentials}), ...(o.holdSleep === true ? {holdSleep: true} : {}), ...(o.send === undefined ? {} : {send: o.send})});
-  if (o.unlocked !== false) await setSession(h.ext, await deriveSessionAccounts(M, 'slip10', [0]));
+  const h = await harness({vault: 'vault' in o ? o.vault : env, ...(o.credentials === undefined ? {} : {credentials: o.credentials}), ...(o.holdSleep === true ? {holdSleep: true} : {}), ...(o.send === undefined ? {} : {send: o.send})});
+  if (o.unlocked !== false) await setSession(h.ext, await deriveSessionAccounts(o.session ?? M, 'slip10', [0]));
+  o.prepare?.(h);
   const screen = mountPasskeyManage(h.deps);
   await screen.show(op);
   return {h, screen, env};
@@ -233,7 +240,9 @@ describe('#6 manage: leaving, retries and the cooldown', () => {
     click(el('pm-passkey'));
     await idle(s.h);
     await new Promise(r => setTimeout(r, 20));
-    expect(reads).toBe(0);
+    // Fix round 1 (m2): the one read is the reload after the drop — no proof ran (it reads the session first).
+    expect(reads).toBe(1);
+    expect(s.h.sent.filter(m => m.type === 'vault.status')).toEqual([]);
     expect(removes(s.h)).toEqual([]);
     expect((await stored(s.h)).passkey).toBeDefined();
     const prf = prfs.outs.at(-1);
@@ -328,5 +337,175 @@ describe('#6 manage: leaving, retries and the cooldown', () => {
     type(el<HTMLInputElement>('pm-password'), PW);
     h.leave();
     expect(screen.holds()).toBe(false);
+  });
+});
+
+// Task 10 fix round 1 (review I1, m1–m4, m6).
+describe('#6 manage: fix round 1', () => {
+  const idle = (h: Harness) => h.until(() => !h.deps.gate.isBusy());
+  const removes = (h: Harness) => h.sent.filter(m => m.type === 'vault.removePasskey');
+  const counting = (prf: Uint8Array, id = new Uint8Array([7, 7, 7, 7])) => {
+    const real = authenticator(prf, id);
+    const c = {gets: 0, creates: 0, titleAtCreate: ''};
+    const credentials: CredentialsApi = {
+      create: async opts => {
+        c.creates += 1;
+        c.titleAtCreate = text(el('pm-title'));
+        return real.create(opts);
+      },
+      get: async opts => (c.gets++, real.get(opts)),
+    };
+    return {c, credentials};
+  };
+
+  it('I1 rule 6: a second [Confirm with passkey] inside the gate (`disabled` lifted) prompts once', async () => {
+    const {c, credentials} = counting(OLD_PRF);
+    const {h} = await shown('remove', {passkey: true, holdSleep: true, credentials});
+    click(el('pm-passkey'));
+    el<HTMLButtonElement>('pm-passkey').disabled = false;
+    click(el('pm-passkey'));
+    await h.until(() => removes(h).length > 0);
+    await new Promise(r => setTimeout(r, 20));
+    expect(c.gets).toBe(1);
+    expect(removes(h)).toHaveLength(1);
+    h.wake();
+  });
+
+  it('m1: a mismatch found after a pagehide still locks the session (vault.lock passes the guard); nothing removed', async () => {
+    const {h} = await shown('remove', {passkey: true, session: OTHER});
+    const kdf = h.deps.kdf;
+    h.deps.kdf = async (pw, salt, p) => {
+      h.leave('pagehide');
+      return kdf(pw, salt, p);
+    };
+    withPassword();
+    await idle(h);
+    await new Promise(r => setTimeout(r, 20));
+    expect(h.sent.filter(m => m.type === 'vault.lock')).toHaveLength(1);
+    expect(removes(h)).toEqual([]);
+    const status = await h.deps.send({type: 'vault.status'});
+    expect((status.data as {unlocked?: unknown}).unlocked).toBe(false);
+    expect((await stored(h)).passkey).toBeDefined();
+  });
+
+  it('m2: a removal that landed before the pagehide is not shown as the stale entry — the page reads the vault again', async () => {
+    let hh: Harness | null = null;
+    const s = await shown('remove', {
+      passkey: true,
+      send: inner => async m => {
+        const r = await inner(m);
+        if ((m as {type: string}).type === 'vault.removePasskey') hh?.leave('pagehide');
+        return r;
+      },
+    });
+    hh = s.h;
+    withPassword();
+    await idle(s.h);
+    await s.h.until(() => visible(el('pm-act')));
+    expect((await stored(s.h)).passkey).toBeUndefined();
+    // The reload saw no passkey: no [Confirm with passkey] for a passkey that is gone.
+    expect(visible(el('pm-passkey'))).toBe(false);
+    expect(text(el('pm-line'))).toBe('');
+  });
+
+  it('m2: back from the back/forward cache, the vault is read again (another tab removed the passkey)', async () => {
+    const {h, env} = await shown('remove', {passkey: true});
+    expect(visible(el('pm-passkey'))).toBe(true);
+    const {passkey: _p, ...rest} = await stored(h);
+    expect(_p).toBeDefined();
+    expect(env.passkey).toBeDefined();
+    await h.ext.local.set(VAULT_KEY, rest);
+    h.back('restored');
+    await h.until(() => !visible(el('pm-passkey')));
+    await idle(h);
+    expect(visible(el('pm-act'))).toBe(true);
+  });
+
+  it('m3: add, while another tab added a passkey since load — worded as a replace before the prompt and reported as one (O17, O19)', async () => {
+    const {c, credentials} = counting(NEW_PRF, new Uint8Array([9, 9]));
+    const {h, env} = await shown('add', {credentials});
+    expect(text(el('pm-title'))).toBe('Unlock Noctura with a passkey');
+    await h.ext.local.set(VAULT_KEY, await addPasskeyWrap(env, await unlockWithPassword(env, PW, testKdf), OLD_PRF.slice(), new Uint8Array([1, 2, 3]), crypto.getRandomValues(new Uint8Array(32))));
+    withPassword();
+    await h.until(() => text(el('pm-line')) === 'Passkey replaced.');
+    expect(c.titleAtCreate).toBe('Replace your passkey');
+    expect(text(el('pm-title'))).toBe('Replace your passkey');
+    await expect(unlockWithPrf(await stored(h), OLD_PRF.slice())).rejects.toThrow();
+    expect((await unlockWithPrf(await stored(h), NEW_PRF.slice())).length).toBe(32);
+  });
+
+  it('m4 C4: on a replace the passkey button is disabled as well as hidden; forced shown and enabled, a click prompts nothing', async () => {
+    const {c, credentials} = counting(OLD_PRF);
+    const {h} = await shown('add', {passkey: true, credentials});
+    const b = el<HTMLButtonElement>('pm-passkey');
+    expect(visible(b)).toBe(false);
+    expect(b.disabled).toBe(true);
+    b.hidden = false;
+    b.disabled = false;
+    click(b);
+    await idle(h);
+    await new Promise(r => setTimeout(r, 20));
+    expect(c.gets).toBe(0);
+    expect(removes(h)).toEqual([]);
+    expect((await stored(h)).passkey).toBeDefined();
+  });
+
+  it('m6: mismatch-locked', async () => {
+    const {h} = await shown('remove', {passkey: true, session: OTHER});
+    withPassword();
+    await h.until(() => text(el('pm-line')) === 'That did not match this wallet, so the wallet has been locked.');
+    expect((await stored(h)).passkey).toBeDefined();
+  });
+
+  it('m6: damaged (at load, and from the flow)', async () => {
+    const atLoad = await shown('remove', {vault: null});
+    expect(text(el('pm-line'))).toBe("This wallet's stored data is damaged.");
+    expect(text(el('pm-line-help'))).toBe('Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase.');
+    expect(visible(el('pm-act'))).toBe(false);
+    expect(visible(el('pm-cancel'))).toBe(true);
+    expect(atLoad.h.sent).toEqual([]);
+    loadPage();
+    const {h} = await shown('remove', {passkey: true});
+    await h.ext.local.set(VAULT_KEY, null);
+    withPassword();
+    await h.until(() => text(el('pm-line')) === "This wallet's stored data is damaged.");
+    expect(removes(h)).toEqual([]);
+  });
+
+  it('m6: no wallet — the notice and [Set up a wallet] (at load, and from the flow)', async () => {
+    const atLoad = await shown('add', {vault: undefined});
+    expect(text(el('pm-line'))).toBe('No wallet on this browser yet.');
+    expect(visible(el('pm-setup'))).toBe(true);
+    expect(text(el('pm-setup'))).toBe('Set up a wallet');
+    click(el('pm-setup'));
+    await atLoad.h.until(() => atLoad.h.went.length === 1);
+    expect(atLoad.h.went).toEqual(['unlock.html?mode=welcome']);
+    loadPage();
+    const {h} = await shown('remove', {passkey: true});
+    await h.ext.local.remove(VAULT_KEY);
+    withPassword();
+    await h.until(() => text(el('pm-line')) === 'No wallet on this browser yet.');
+    expect(visible(el('pm-setup'))).toBe(true);
+  });
+
+  it('m6: failed (O26) — the background refuses with an error it does not name', async () => {
+    const {h} = await shown('remove', {passkey: true, send: inner => async m => ((m as {type: string}).type === 'vault.removePasskey' ? {ok: false, error: 'weird'} : inner(m))});
+    withPassword();
+    await h.until(() => text(el('pm-line')) === 'Something went wrong. Nothing was changed.');
+    expect((await stored(h)).passkey).toBeDefined();
+  });
+
+  it('m6: unreadable — the read at load throws', async () => {
+    await shown('remove', {
+      passkey: true,
+      prepare: h => {
+        h.deps.store.readEnvelope = async () => {
+          throw new Error('storage');
+        };
+      },
+    });
+    expect(text(el('pm-line'))).toBe("This wallet's stored data could not be read. Reload this page.");
+    expect(visible(el('pm-act'))).toBe(false);
+    expect(visible(el('pm-cancel'))).toBe(true);
   });
 });

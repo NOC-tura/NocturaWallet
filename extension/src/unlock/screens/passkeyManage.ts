@@ -68,20 +68,21 @@ export function mountPasskeyManage(deps: PageDeps): PasskeyManageScreen {
   const guarded = (mine: number): VaultStore & {send: Send; credentials: CredentialsApi; randomBytes(n: number): Uint8Array} => ({
     readEnvelope: async () => (left(mine), deps.store.readEnvelope()),
     storeEnvelope: async (expectedRevision, env) => (left(mine), deps.store.storeEnvelope(expectedRevision, env)),
-    send: async m => (left(mine), deps.send(m)),
+    // Fix round 1 (m1): vault.lock passes even after the page was left — a mismatch found by a proof already running
+    // must still lock (it only moves the session the safe way); every other message is refused.
+    send: async m => ((m as {type?: unknown}).type === 'vault.lock' ? deps.send(m) : (left(mine), deps.send(m))),
     credentials: {
       create: async o => (left(mine), deps.credentials.create(o)),
       get: async o => (left(mine), deps.credentials.get(o)),
     },
     randomBytes: n => deps.randomBytes(n),
   });
-  /** Left while the action ran: nothing of its outcome is shown; the entry comes back (a back/forward-cache return). */
-  const dropped = () => {
-    view = 'entry';
-    line('');
-    helper('', false);
-    render();
-  };
+  /**
+   * Left while the action ran: nothing of its outcome is shown. Fix round 1 (m2): the outcome may have landed anyway (a
+   * send already on its way), so the page reads the vault again rather than show the entry it had (a back/forward-cache
+   * return then shows what is stored now).
+   */
+  const dropped = () => load();
 
   const render = () => {
     const busy = deps.gate.isBusy();
@@ -100,7 +101,8 @@ export function mountPasskeyManage(deps: PageDeps): PasskeyManageScreen {
     shown(passkeyBtn, entry && !cooling && op === 'remove' && pk !== null);
     field.disabled = busy || !entry;
     act.disabled = busy || !entry;
-    passkeyBtn.disabled = busy || !entry || pk === null;
+    // Fix round 1 (m4): C4 — never a factor for add or replace, disabled as well as hidden.
+    passkeyBtn.disabled = busy || !entry || pk === null || op !== 'remove';
     for (const [name, b] of Object.entries(buttons)) {
       shown(b, view === 'end' && actions.includes(name as Action));
       b.disabled = busy;
@@ -188,15 +190,28 @@ export function mountPasskeyManage(deps: PageDeps): PasskeyManageScreen {
       helper('', false);
       const mine = generation;
       if (op === 'remove') return runRemove({password, kdf: deps.kdf}, mine);
-      const replacing = pk !== null;
       view = 'working';
       line(PASSKEY.adding);
       render();
+      // Fix round 1 (m3): add or replace is decided by the envelope the flow OPENS, not by the one seen at load — another
+      // tab may have added a passkey since. Every read of the flow (the first, and the busy retry's) updates it, and the
+      // title says "Replace" before the passkey prompt when it is one.
+      const flow = guarded(mine);
+      const read = flow.readEnvelope;
+      flow.readEnvelope = async () => {
+        const raw = await read();
+        const now = storedVault(raw);
+        if (now.kind === 'wallet' && mine === generation) {
+          pk = now.env.passkey ?? null;
+          render();
+        }
+        return raw;
+      };
       // addPasskey owns the data keys and the new PRF output and zeroes them on every path.
-      const out = await backoff.run(() => addPasskey(guarded(mine), {password, kdf: deps.kdf}), cooldown);
+      const out = await backoff.run(() => addPasskey(flow, {password, kdf: deps.kdf}), cooldown);
       endCooldown();
       if (mine !== generation) return dropped();
-      added(out, replacing);
+      added(out, pk !== null);
     });
   };
   const withPasskey = () => {
@@ -268,6 +283,11 @@ export function mountPasskeyManage(deps: PageDeps): PasskeyManageScreen {
   });
   buttons.setup.addEventListener('click', () => {
     if (actions.includes('setup')) void exclusive(deps, render, async () => deps.go('unlock.html?mode=welcome'));
+  });
+  // Fix round 1 (m2): back from the back/forward cache, the vault is read again (it may have changed while the page sat
+  // there). An action still in flight reloads on its own (dropped()); an outcome on screen stays.
+  deps.onReturn(why => {
+    if (why === 'restored' && view === 'entry' && !deps.gate.isBusy()) void exclusive(deps, render, load);
   });
   deps.onLeave(why => {
     field.value = '';
