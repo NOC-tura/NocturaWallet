@@ -412,6 +412,24 @@ describe('#35 security center', () => {
     return {engine: {...engine, settings}, release: () => release(), isHeld: () => held};
   }
 
+  it('settings read in flight: the top bar with Back over a busy body — never a bare busy div (fix round 1, Minor 7)', async () => {
+    const w = await setupWallet();
+    const h = heldRead(w.engine, 5);
+    let back = 0;
+    render(
+      <WalletProvider engine={h.engine} platform={w.platform} surface="popup">
+        <Security onBack={() => void back++} onPasskey={() => undefined} onDelete={() => undefined} />
+      </WalletProvider>,
+    );
+    await waitFor(() => expect(h.isHeld()).toBe(true));
+    expect(screen.getByText('Security center', {selector: '.top-bar .title'})).toBeTruthy();
+    expect(document.querySelector('.app-security-body[aria-busy="true"]')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', {name: 'Back'}));
+    expect(back).toBe(1);
+    h.release();
+    expect(await screen.findByText('Improve your security')).toBeTruthy();
+  });
+
   it('settings read: an answer after the screen went sets nothing (fix round 1, Minor 8)', async () => {
     const w = await setupWallet();
     const h = heldRead(w.engine, 7);
