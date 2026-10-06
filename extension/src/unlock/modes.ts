@@ -50,7 +50,7 @@ export function startMode(mode: PageMode, deps: PageDeps): void {
       void mountReauth(deps).show(mode.challengeId);
       return;
     case 'accounts':
-      mountAccounts(deps).show();
+      void mountAccounts(deps).show(mode.op === 'add' ? {op: 'add'} : {op: 'remove', index: mode.index});
       return;
     case 'reveal':
     case 'verify':

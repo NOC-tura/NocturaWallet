@@ -180,11 +180,17 @@ export const RETRY = {
   storeFailed: 'The new wallet was not saved. Try again.',
 } as const;
 
-/** The add-account form (the B1b-1 words, kept). */
+/** The accounts mode (B1b-2b §3.6; the B1b-1 words kept). */
 export const ACCOUNTS = {
   adding: 'Adding an account…',
   removing: 'Removing the account…',
-  whichToRemove: 'Enter the number of the account to remove (1, 2, …).',
+  /** O33. */
+  addTitle: 'Add an account',
+  /** O38: N is the envelope index + 1 (index=0 → "Remove Account 1?", review L2). */
+  removeTitle: (n: number): string => `Remove Account ${n}?`,
+  /** 2a's buttons. */
+  add: 'Add an account',
+  remove: 'Remove the account',
   outcome: {
     done: 'Done. The accounts are updated.',
     'done-locked': 'The accounts were changed, and the wallet has been locked. Unlock it to use them.',

@@ -419,3 +419,7 @@
 .vlt-col .s-seed .seed-grid.vlt-grid-12 {
   grid-template-rows: repeat(6, auto);
 }
+/* B1b-2b §3.6: the accounts page's number field and the remove page's address span the head's column. */
+.vlt-full {
+  width: 100%;
+}

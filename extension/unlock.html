@@ -447,28 +447,56 @@
         </div>
       </section>
 
-      <!-- The add-account form (spec §1.2 `accounts`): restyled; remove stays the B1b-1 form (B1b-2b designs the manager). -->
+      <!-- The accounts mode (B1b-2b §3.6, C6, C14, E13, E16): add an account at a chosen number, or remove the one the
+           manager named — after a password or passkey proof. The remove page shows "Account N" and the address, never the name. -->
       <section id="v-accounts" class="screen s-pin" hidden>
         <div class="top-bar">
+          <button id="acc-x" type="button" class="icon-btn" aria-label="Close"><svg width="22" height="22" aria-hidden="true"><use href="#i-x" /></svg></button>
           <span class="title noc-overline vlt-muted">Accounts</span>
+          <span class="vlt-bar-spacer"></span>
         </div>
         <div class="pin-head">
           <div class="vlt-lock-tile" aria-hidden="true"><svg width="28" height="28"><use href="#i-key" /></svg></div>
-          <h1 class="noc-h1">Accounts</h1>
-          <label for="acc-password" class="noc-body-sm vlt-lede vlt-field-label">Password</label>
+          <h1 id="acc-title" class="noc-h1"></h1>
+          <div id="acc-add-fields" class="vlt-stack vlt-full">
+            <label for="acc-index" class="noc-body-sm vlt-lede vlt-field-label">Account number</label>
+            <input id="acc-index" class="vlt-input" type="number" min="1" inputmode="numeric" />
+            <p class="noc-caption vlt-muted">Adding a number this wallet had before brings back the same address.</p>
+          </div>
+          <div id="acc-remove-info" class="vlt-full" hidden>
+            <div id="acc-address" class="vlt-address"></div>
+            <p class="noc-body vlt-lede vlt-gap-top-3">Its funds stay on Solana; add it again to use them.</p>
+          </div>
+          <label id="acc-password-label" for="acc-password" class="noc-body-sm vlt-lede vlt-field-label">Password</label>
           <form id="acc-form" class="vlt-field-row vlt-field-row-labelled">
             <input id="acc-password" class="vlt-input" type="password" autocomplete="current-password" />
           </form>
         </div>
         <p id="acc-helper" class="noc-caption pin-helper" aria-live="polite"></p>
-        <div class="vlt-pad vlt-stack">
-          <label for="acc-remove-index" class="noc-body-sm vlt-lede">Account number to remove</label>
-          <input id="acc-remove-index" class="vlt-input" type="number" min="1" />
-          <button id="acc-remove" type="button" class="btn btn-secondary">Remove the account</button>
+        <p id="acc-help" class="noc-body-sm vlt-lede vlt-center vlt-pad vlt-gap-top-3" hidden></p>
+        <div id="acc-cooldown" hidden>
+          <div class="vlt-pad-cooldown">
+            <p class="noc-body vlt-lede vlt-center vlt-narrow-300 vlt-gap-5">That did not confirm it. Wait a moment before trying again.</p>
+          </div>
+          <div class="cooldown-card">
+            <div id="acc-ring" class="ring"></div>
+            <div id="acc-timer" class="timer noc-numeral"></div>
+            <div id="acc-cooldown-label" class="noc-body-sm label"></div>
+          </div>
+        </div>
+        <span id="acc-cooldown-live" class="vlt-sr" aria-live="polite"></span>
+        <div id="acc-only" class="banner info vlt-banner-gap">
+          <svg width="16" height="16" aria-hidden="true"><use href="#i-info" /></svg>
+          <div class="noc-body-sm">Accounts after the first one exist only in this extension until the phone app supports more than one account.</div>
         </div>
         <div class="pin-spacer"></div>
         <div class="sticky-bar">
-          <button id="acc-add" type="button" class="btn btn-primary">Add an account</button>
+          <button id="acc-act" type="button" class="btn btn-primary"></button>
+          <button id="acc-paused" type="button" class="btn btn-secondary" disabled hidden>Confirm paused</button>
+          <button id="acc-passkey" type="button" class="btn btn-secondary" hidden>Confirm with passkey</button>
+          <button id="acc-unlock" type="button" class="btn btn-primary" hidden>Unlock</button>
+          <button id="acc-setup" type="button" class="btn btn-primary" hidden>Set up a wallet</button>
+          <button id="acc-cancel" type="button" class="btn btn-secondary" hidden>Cancel</button>
         </div>
       </section>
 

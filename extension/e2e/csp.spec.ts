@@ -92,9 +92,13 @@ test('csp: every vault-page mode runs with zero CSP violations; an inline style 
     await expect(p.locator('#unl-notice-line')).toHaveText('Unlocked.', {timeout: 60_000});
     await clean('unlock + cooldown ring');
 
-    await p.goto(`${base}?mode=accounts`);
-    await expect(p.getByRole('button', {name: 'Add an account'})).toBeVisible();
-    await clean('accounts');
+    // B1b-2b §3.6: the accounts mode, add and remove.
+    await p.goto(`${base}?mode=accounts&op=add`);
+    await expect(p.locator('#acc-title')).toHaveText('Add an account');
+    await clean('accounts, add');
+    await p.goto(`${base}?mode=accounts&op=remove&index=0`);
+    await expect(p.locator('#acc-title')).toHaveText('Remove Account 1?');
+    await clean('accounts, remove');
     // B1b-2b §3.4 / §3.5: the reveal and verify modes' proof.
     await p.goto(`${base}?mode=reveal`);
     await expect(p.locator('#pp-title')).toHaveText('Show your recovery phrase');
@@ -137,7 +141,7 @@ test('csp: every vault-page mode runs with zero CSP violations; an inline style 
     await expect(p.locator('#imp-phrase')).toBeVisible();
     await clean('import');
 
-    expect(seen).toHaveLength(10);
+    expect(seen).toHaveLength(11);
 
     // The positive control, on the same page and watch: an inline <style> and a remote <img> are both refused and reported.
     await p.evaluate(src => {

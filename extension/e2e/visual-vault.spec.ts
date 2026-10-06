@@ -326,7 +326,7 @@ test('visual: #40 with two accounts, and the D26 state', async () => {
   }
 });
 
-test('visual: #9, #39, the restore and retry steps, the accounts form', async () => {
+test('visual: #9, #39, the restore and retry steps', async () => {
   const h = await launchPopup('noctura-e2e-vis-unlock-');
   try {
     await h.sw.evaluate(async e => chrome.storage.local.set({v1_vault: e}), await makeEnvelope());
@@ -403,11 +403,6 @@ test('visual: #9, #39, the restore and retry steps, the accounts form', async ()
     await p.goto(`chrome-extension://${h.id}/unlock.html?mode=import&source=retry`);
     await expect(p.getByText('Confirm with the password of the wallet you are replacing')).toBeVisible();
     await shot(p, '08-retry-password');
-
-    await unlockWith(p, h.id, E2E_PASSWORD);
-    await p.goto(`chrome-extension://${h.id}/unlock.html?mode=accounts`);
-    await expect(p.getByRole('button', {name: 'Add an account'})).toBeVisible();
-    await shot(p, 'accounts-form');
 
     await h.sw.evaluate(() => chrome.storage.local.set({v1_vault: null}));
     await p.goto(`chrome-extension://${h.id}/unlock.html`);

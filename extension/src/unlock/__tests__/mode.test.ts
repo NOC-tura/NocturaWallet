@@ -8,9 +8,25 @@ describe('pageMode', () => {
     expect(pageMode('?mode=create')).toEqual({mode: 'create'});
     expect(pageMode('?mode=import')).toEqual({mode: 'import', source: null});
     expect(pageMode('?mode=forgot')).toEqual({mode: 'forgot'});
-    expect(pageMode('?mode=accounts')).toEqual({mode: 'accounts'});
+    expect(pageMode('?mode=accounts')).toEqual({mode: 'accounts', op: 'add'});
     expect(pageMode('?mode=reveal')).toEqual({mode: 'reveal'});
+    expect(pageMode('?mode=verify')).toEqual({mode: 'verify'});
+    expect(pageMode('?mode=password')).toEqual({mode: 'password'});
+    expect(pageMode('?mode=delete')).toEqual({mode: 'delete'});
     expect(pageMode('?mode=export')).toEqual({mode: 'unlock', returnTo: null});
+  });
+
+  // B1b-2b §1.2 (L2): `index` is the envelope's own 0-based index; one that does not parse, or above 2^31 − 1, is null —
+  // the page names no account and offers nothing. `op` is a closed enum (anything else is add).
+  it('accounts: op=add|remove; index ^\\d{1,10}$ within the hardened limit', () => {
+    expect(pageMode('?mode=accounts&op=add')).toEqual({mode: 'accounts', op: 'add'});
+    expect(pageMode('?mode=accounts&op=forget')).toEqual({mode: 'accounts', op: 'add'});
+    expect(pageMode('?mode=accounts&op=remove&index=0')).toEqual({mode: 'accounts', op: 'remove', index: 0});
+    expect(pageMode('?mode=accounts&op=remove&index=2147483647')).toEqual({mode: 'accounts', op: 'remove', index: 2 ** 31 - 1});
+    for (const index of ['2147483648', '-1', '1.5', '', 'x', '12345678901', '0x10']) {
+      expect(pageMode(`?mode=accounts&op=remove&index=${index}`)).toEqual({mode: 'accounts', op: 'remove', index: null});
+    }
+    expect(pageMode('?mode=accounts&op=remove')).toEqual({mode: 'accounts', op: 'remove', index: null});
   });
 
   it('re-authentication needs a well-formed challenge id', () => {
