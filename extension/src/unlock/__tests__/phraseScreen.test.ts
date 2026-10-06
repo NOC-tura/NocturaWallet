@@ -381,6 +381,7 @@ describe('fix round 1: the end of the check, 3 of 3, the plan’s range, the gua
     await check(h);
     await press(h, 'cnf-back');
     await h.until(() => h.closed === 1);
+    await idle(h);
     expect(visible(el('v-seed-gate'))).toBe(false);
     expect(visible(el('cnf-success'))).toBe(true);
     expect(text(el('pp-notice-line'))).toBe('');
@@ -394,6 +395,8 @@ describe('fix round 1: the end of the check, 3 of 3, the plan’s range, the gua
     await check(h);
     await press(h, 'cnf-cta');
     await h.until(() => h.closed === 1);
+    // The gate's release re-renders: the success must survive it.
+    await idle(h);
     h.timers.advance(CLOSE_CHECK_MS);
     expect(visible(el('cnf-cta'))).toBe(false);
     expect(visible(el('cnf-success'))).toBe(true);
