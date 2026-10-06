@@ -11,6 +11,7 @@ import {BALANCE_CACHE_KEY} from '../../background/balanceCache';
 import {ACCOUNT, RECIPIENT, pendingRecord} from '../../background/__tests__/fixtures';
 import {fakeReader} from '../../background/__tests__/fakeDeps';
 import {useWallet, type WalletModel} from '../WalletContext';
+import {RequestUnreachable, RpcForbidden} from '../../../../core/solana/rpc';
 
 // B1b-2b §5 (#37; D9, D11, C13, C17): typed DELETE and a 1 s hold open the vault tab's proof.
 const SELECTORS = selectorsOf(UI_SHEETS);
@@ -168,6 +169,18 @@ describe('#37 delete wallet', () => {
     expect(field().value).toBe('');
   });
 
+  it('the full second, not less: released at 990 ms nothing opens', async () => {
+    const w = await shown();
+    typeIn('DELETE');
+    const hold = holdCta();
+    fireEvent.pointerDown(hold, {button: 0});
+    w.advance(990);
+    expect(hold.textContent).toBe('Hold to delete · 0.0 s');
+    fireEvent.pointerUp(hold);
+    w.advance(1_000);
+    expect(w.platform.opened).toEqual([]);
+  });
+
   it('the pointer leaving the CTA, a cancel and a blur each release; a secondary button does not hold', async () => {
     const w = await shown();
     typeIn('DELETE');
@@ -247,6 +260,32 @@ describe('#37 delete wallet', () => {
     // The cached rows still inform: 2 × 62.4821 SOL.
     await waitFor(() => expect(document.querySelector('.app-delete-funds')?.textContent).toMatch(/^124\.9642 SOL/));
   });
+
+  // Fix round 1, I1: a skipped fresh pass is not a check — stale cached zeros never read as "this wallet is empty".
+  for (const [why, error] of [
+    ['refused (the 403 cool-down)', () => new RpcForbidden('getBalance')],
+    ['unreachable', () => new RequestUnreachable('getBalance', 'timeout')],
+  ] as const) {
+    it(`fresh pass skipped (${why}), every account cached at zero: O65, not silence`, async () => {
+      const zero = {sol: '0', noc: '0', usdc: '0', usdt: '0', at: Date.now() - 3_600_000};
+      // The screen's pass waits on Savings' cached read until the provider's own fresh read has put the app into
+      // the refused / unreachable state: then the pass skips its fresh reads (useAccountBalances' `away`).
+      const h = hold('wallet.cached', m => m.account === RECIPIENT);
+      const w = await shown({
+        gate: h.gate,
+        reader: walletReader({getBalance: async () => Promise.reject(error())}),
+        before: async ext => ext.local.set(BALANCE_CACHE_KEY, {[ACCOUNT.publicKey]: zero, [RECIPIENT]: zero}),
+      });
+      await waitFor(() => expect(h.isHeld()).toBe(true));
+      await waitFor(() => expect(w.model().net.mode).toBe(why === 'unreachable' ? 'unreachable' : 'refused'));
+      const asked = h.count('wallet.balances');
+      h.release();
+      expect(await screen.findByText(UNKNOWN)).toBeTruthy();
+      // Skipped indeed: the screen asked for no fresh balance, and nothing funded is claimed.
+      expect(h.count('wallet.balances')).toBe(asked);
+      expect(screen.queryByText(FUNDED)).toBeNull();
+    });
+  }
 
   it('nothing funded and everything read: neither banner', async () => {
     await shown({reader: fakeReader({getBalance: async () => 0n, getTokenAccountsByOwner: async () => []})});
@@ -353,6 +392,76 @@ describe('#37 delete wallet', () => {
       r.unmount();
       c.advance(1_000);
       expect(held).toBe(0);
+    });
+
+    it('Enter held across a send opening and closing: the OS repeats that follow neither start nor complete a hold', async () => {
+      const c = manualClock();
+      let held = 0;
+      const ui = (disabled: boolean) => <HoldButton label="Hold to delete" holdMs={1_000} disabled={disabled} onHeld={() => void (held += 1)} clock={c.clock} />;
+      const r = render(ui(false));
+      const b = screen.getByRole('button') as HTMLButtonElement;
+      fireEvent.keyDown(b, {key: 'Enter'});
+      c.advance(300);
+      r.rerender(ui(true));
+      expect(b.textContent).toBe('Hold to delete');
+      r.rerender(ui(false));
+      for (let i = 0; i < 20; i += 1) {
+        fireEvent.keyDown(b, {key: 'Enter', repeat: true});
+        c.advance(90);
+      }
+      expect(b.textContent).toBe('Hold to delete');
+      expect(held).toBe(0);
+    });
+
+    it('unmounted mid-press: onPressing(false), so the screen does not keep Cancel disabled', async () => {
+      const c = manualClock();
+      const seen: boolean[] = [];
+      const r = render(<HoldButton label="Hold to delete" holdMs={1_000} disabled={false} onHeld={() => undefined} onPressing={p => void seen.push(p)} clock={c.clock} />);
+      fireEvent.pointerDown(screen.getByRole('button'), {button: 0});
+      c.advance(300);
+      r.unmount();
+      expect(seen).toEqual([true, false]);
+    });
+
+    it('on #37: the hold unmounted mid-press (the typed word edited) leaves Cancel enabled', async () => {
+      const w = await shown();
+      typeIn('DELETE');
+      fireEvent.pointerDown(holdCta(), {button: 0});
+      w.advance(300);
+      expect(cancel().disabled).toBe(true);
+      typeIn('DELET');
+      expect(document.querySelector('.app-hold')).toBeNull();
+      expect(cancel().disabled).toBe(false);
+      w.advance(1_000);
+      expect(w.platform.opened).toEqual([]);
+    });
+
+    it('a release that already happened wins: a tick already queued when the press ended (a stalled clock) completes nothing', async () => {
+      // A clock whose stop lands one step late: the tick queued before the release still runs once after it.
+      let t = 0;
+      const jobs = new Set<() => void>();
+      const late: (() => void)[] = [];
+      const clock: HoldClock = {now: () => t, every: (_ms, f) => (jobs.add(f), () => void late.push(() => jobs.delete(f)))};
+      const step = (ms: number) =>
+        act(() => {
+          t += ms;
+          for (const f of [...jobs]) f();
+          for (const drop of late.splice(0)) drop();
+        });
+      let held = 0;
+      render(<HoldButton label="Hold to delete" holdMs={1_000} disabled={false} onHeld={() => void (held += 1)} clock={clock} />);
+      const b = screen.getByRole('button') as HTMLButtonElement;
+      fireEvent.pointerDown(b, {button: 0});
+      step(900);
+      fireEvent.pointerUp(b);
+      // The stall: the queued tick runs after the release, with the clock past the full second.
+      step(300);
+      expect(held).toBe(0);
+      expect(b.textContent).toBe('Hold to delete');
+      // Positive control: held through on the same clock, it completes.
+      fireEvent.pointerDown(b, {button: 0});
+      step(1_000);
+      expect(held).toBe(1);
     });
 
     it('[Cancel]: one leave', async () => {

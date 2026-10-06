@@ -1,7 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import {AddressGroups} from '../../../../web/src/ui/AddressGroups';
 import {PENDING_POLL_MS, useWallet} from '../WalletContext';
-import {useAccountBalances} from '../useAccountBalances';
+import {FRESH_ROWS, useAccountBalances} from '../useAccountBalances';
 import {valuation} from '../valuation';
 import {showAmount, showUsd} from '../format';
 import {TopBar} from '../ui/TopBar';
@@ -72,7 +72,7 @@ function boldOdd(parts: readonly string[]) {
 export function DeleteWallet({onBack, clock = realClock}: {onBack: () => void; clock?: HoldClock}) {
   const m = useWallet();
   const accounts = m.wallet?.accounts ?? [];
-  const {rows, done, failed} = useAccountBalances(accounts);
+  const {rows, done, failed, reads} = useAccountBalances(accounts);
   const [typed, setTyped] = useState('');
   const [pressing, setPressing] = useState(false);
   /** The screen's own wallet.pending read (null until it answers). */
@@ -111,7 +111,9 @@ export function DeleteWallet({onBack, clock = realClock}: {onBack: () => void; c
   }
   const held = TOKENS.filter(t => sum[KEY[t]] > 0n);
   const total = held.length === 0 ? null : valuation(sum, m.prices).total;
-  const unknown = done && (failed || accounts.some(a => rows[a.publicKey] === undefined));
+  // O65 (fix round 1, I1): a fresh read failed, or was skipped (the 403 cool-down, unreachable, offline: the pass read fewer
+  // rows than it should have — stale cached zeros are not a check), or an account beyond the first 10 has no cache.
+  const unknown = done && (failed || reads.size < Math.min(accounts.length, FRESH_ROWS) || accounts.some(a => rows[a.publicKey] === undefined));
 
   /** Rule 6 for leaving: Back and Cancel leave once (a second pop would leave the caller too). */
   const left = useRef(false);

@@ -44,10 +44,18 @@ export function HoldButton({
   const [share, setShare] = useState<number | null>(null);
   const stop = useRef<(() => void) | null>(null);
   const done = useRef(false);
+  /**
+   * The press in progress (0: none). A release clears it first, before it stops the clock: a tick that still runs after
+   * the release (queued behind a stall, or a clock whose stop lands late) belongs to a press that ended, and completes
+   * nothing — a release that already happened always wins (fix round 1, M4).
+   */
+  const pressId = useRef(0);
+  const presses = useRef(0);
   const latest = useRef({onHeld, onPressing, disabled});
   latest.current = {onHeld, onPressing, disabled};
 
   const release = () => {
+    pressId.current = 0;
     if (stop.current === null) return;
     stop.current();
     stop.current = null;
@@ -57,11 +65,16 @@ export function HoldButton({
   const press = () => {
     if (latest.current.disabled || done.current || stop.current !== null) return;
     const started = clock.now();
+    presses.current += 1;
+    const id = presses.current;
+    pressId.current = id;
     setShare(0);
     latest.current.onPressing?.(true);
     stop.current = clock.every(HOLD_TICK_MS, () => {
+      if (pressId.current !== id) return;
       const held = clock.now() - started;
       if (held < holdMs) return setShare(held / holdMs);
+      pressId.current = 0;
       stop.current?.();
       stop.current = null;
       done.current = true;
@@ -70,7 +83,18 @@ export function HoldButton({
       latest.current.onHeld();
     });
   };
-  useEffect(() => () => stop.current?.(), []);
+  // Unmounted mid-press: the tick stops, and the owner hears the press ended (fix round 1, M3: #37's Cancel is not left
+  // disabled when the hold goes while pressed).
+  useEffect(
+    () => () => {
+      pressId.current = 0;
+      if (stop.current === null) return;
+      stop.current();
+      stop.current = null;
+      latest.current.onPressing?.(false);
+    },
+    [],
+  );
   useEffect(() => {
     if (disabled) release();
   }, [disabled]);

@@ -963,8 +963,10 @@ Top bar back + `.noc-h1` "Delete wallet" (ix:14963). Warning card (36 % danger h
 - **`funded`** (D11, C13; extension-only, any state): above the overline, `.banner.warning` "This wallet holds funds" (D11)
   + one line per token held, summed over the accounts read ("12.4821 SOL", "4,200 NOC", …) + the USD market total (2a
   valuation) + "They stay on Solana. Only your recovery phrase reaches them after this." (O64).
-- **`balances unknown`** (a read failed or an account beyond the first 10 has no cache): `.banner.warning` "Balances could
-  not all be checked — this wallet may hold funds." (O65).
+- **`balances unknown`** (a read failed, was skipped, or an account beyond the first 10 has no cache): `.banner.warning`
+  "Balances could not all be checked — this wallet may hold funds." (O65). "Skipped" (Task 15 fix round 1, I1): the fresh
+  pass read fewer than min(accounts, 10) rows — the 403 cool-down, unreachable or offline — so stale cached rows (even
+  zeros) never stand in for a check.
 - **`send open`** (`wallet.pending` has an open record): `.banner.warning` with RESTORE `sendOpen` (2a); the typed gate
   stays usable, `[Delete wallet]` stays disabled.
 - **`partial`** (37b, ix:15009-15050): the body collapses to "This removes all encrypted keys and local data from this
