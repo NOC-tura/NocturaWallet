@@ -299,9 +299,14 @@ describe('#37’s proof: the delete page', () => {
     };
     const s1 = await shown(await wallet(M, [0], {passkey: true}), {credentials});
     h = s1.h;
+    const read = s1.h.deps.store.readEnvelope;
+    let reads = 0;
+    s1.h.deps.store.readEnvelope = async () => (reads++, read());
     click(el('dl-passkey'));
     await idle(s1.h);
     await new Promise(r => setTimeout(r, 20));
+    // Only the click's compare read the envelope: no proof ran after the page was left.
+    expect(reads).toBe(1);
     expect(forgets(s1.h)).toEqual([]);
     expect(await s1.h.ext.local.get(VAULT_KEY)).toBeDefined();
     const prf = prfs.outs.at(-1);
