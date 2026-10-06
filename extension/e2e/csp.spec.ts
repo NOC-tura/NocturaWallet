@@ -52,6 +52,9 @@ async function watched(h: Harness): Promise<{page: Page; console: string[]}> {
 const violations = (p: Page): Promise<Violation[]> => p.evaluate(() => JSON.parse(sessionStorage.getItem('e2e_csp') ?? '[]') as Violation[]);
 
 test('csp: every vault-page mode runs with zero CSP violations; an inline style and a remote image are both reported (positive control)', async () => {
+  // About 10 Argon2id runs and 23 navigations in one walk: 1.5 min of the default 2 min alone on an
+  // idle machine (the final review's M5). A loaded runner under `unshare -rn` must not cross it.
+  test.setTimeout(300_000);
   const h = await launchPopup('noctura-e2e-csp-');
   try {
     const {page: p, console: lines} = await watched(h);

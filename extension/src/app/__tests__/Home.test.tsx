@@ -14,7 +14,9 @@ import {ACCOUNT, RECIPIENT, pendingRecord} from '../../background/__tests__/fixt
 // Spec §5.1 (#11) and §5.4 (#42 and the D26 refused state). Totals from walletReader: SOL
 // 62.4821 × $150 + USDC 740.21 × $1 = $10,112.52 (NOC at the stage price is outside it).
 // Synced a few seconds ago, today: the clock-time captions ("last synced 09:41:13") read as clock times.
-const CACHE = {[ACCOUNT.publicKey]: {sol: '62482100000', noc: '4200000000000', usdc: '740210000', usdt: '0', at: Date.now() - 5_000}};
+// Stamped when each test writes it, not at module load (the final review's M2): under a loaded full
+// suite a module-load stamp aged past a minute before the later tests ran ("cached 1 min ago").
+const cache = () => ({[ACCOUNT.publicKey]: {sol: '62482100000', noc: '4200000000000', usdc: '740210000', usdt: '0', at: Date.now() - 5_000}});
 const never = () => new Promise<never>(() => undefined);
 const setOnline = (value: boolean) => Object.defineProperty(navigator, 'onLine', {value, configurable: true});
 const nav = {onSend: vi.fn(), onReceive: vi.fn(), onPending: vi.fn(), onAccounts: vi.fn()};
@@ -146,7 +148,7 @@ describe('#11 dashboard', () => {
   it('stale: cached values at once, marked, until the fresh read lands', async () => {
     let answer: (v: bigint) => void = () => undefined;
     const reader = walletReader({getBalance: () => new Promise<bigint>(r => (answer = r))});
-    await renderHome({reader, before: async ext => ext.local.set(BALANCE_CACHE_KEY, CACHE)});
+    await renderHome({reader, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache())});
     expect(await screen.findByText(/^Total balance · cached \d+ (s|min|h|d) ago$/)).toBeTruthy();
     expect(document.querySelector('.hero')?.classList.contains('s8-stale')).toBe(true);
     expect(screen.getByText('62.4821 SOL · cached')).toBeTruthy();
@@ -315,7 +317,7 @@ describe('#11 dashboard', () => {
             throw failing;
           },
         }),
-        before: async ext => ext.local.set(BALANCE_CACHE_KEY, CACHE),
+        before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache()),
       });
       await waitFor(() => expect((screen.getByRole('button', {name: 'Send'}) as HTMLButtonElement).disabled).toBe(true));
       expect((screen.getByRole('button', {name: 'Receive'}) as HTMLButtonElement).disabled).toBe(false);
@@ -342,7 +344,7 @@ describe('#42 offline and the D26 refused state', () => {
         throw new RpcForbidden('getBalance');
       },
     });
-    await renderHome({reader, before: async ext => ext.local.set(BALANCE_CACHE_KEY, CACHE)});
+    await renderHome({reader, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache())});
     expect(await screen.findByText(REFUSED_TEXT)).toBeTruthy();
     expect((screen.getByRole('button', {name: 'Refresh'}) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText('62.4821 SOL · cached')).toBeTruthy();
@@ -355,7 +357,7 @@ describe('#42 offline and the D26 refused state', () => {
         throw new RequestUnreachable('u', 'no answer');
       },
     });
-    await renderHome({reader, before: async ext => ext.local.set(BALANCE_CACHE_KEY, CACHE)});
+    await renderHome({reader, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache())});
     expect(await screen.findByText('Could not reach the Noctura server')).toBeTruthy();
     expect(screen.getByText('Showing your last synced balances.')).toBeTruthy();
     expect(screen.queryByText(/offline/)).toBeNull();
@@ -370,7 +372,7 @@ describe('#42 offline and the D26 refused state', () => {
     });
     await renderHome({
       reader,
-      before: async ext => ext.local.set(BALANCE_CACHE_KEY, CACHE),
+      before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache()),
       deps: {
         prices: async () => {
           throw new RpcForbidden('/wallet/prices');
@@ -408,12 +410,13 @@ describe('#42 offline and the D26 refused state', () => {
       },
     });
     // The background's clock at today's time, so the fresh prices' `at` reads as a clock time.
-    await renderHome({reader, deps: {now: () => Date.now()}, before: async ext => ext.local.set(BALANCE_CACHE_KEY, CACHE)});
+    await renderHome({reader, deps: {now: () => Date.now()}, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache())});
     expect(await screen.findByText("You're offline")).toBeTruthy();
     expect(screen.getByText('Network just dropped · the Noctura server is unreachable')).toBeTruthy();
     expect(screen.getByText('Sending needs a network connection. Receiving works — your address is on this device. Use the refresh button to retry.')).toBeTruthy();
     // (62.4821 × $150 + 740.21) / $150 = 67.4168…: truncated to 67.41, never rounded up (review L6).
-    expect(screen.getByText(/^≈ 67\.41 SOL · last synced \d\d:\d\d:\d\d$/)).toBeTruthy();
+    // The hero line waits on the cache and price reads, which can land after the banner (M2).
+    expect(await screen.findByText(/^≈ 67\.41 SOL · last synced \d\d:\d\d:\d\d$/)).toBeTruthy();
     expect(screen.getByText(/^Total balance · cached \d+ s ago$/)).toBeTruthy();
     expect(document.querySelector('.hero .s8-stale-mark')).toBeTruthy();
     expect(screen.getByText('62.4821 SOL · cached')).toBeTruthy();
@@ -430,7 +433,7 @@ describe('#42 offline and the D26 refused state', () => {
         throw new RequestUnreachable('u', 'offline');
       },
     });
-    await renderHome({reader, before: async ext => ext.local.set(BALANCE_CACHE_KEY, CACHE)});
+    await renderHome({reader, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache())});
     await screen.findByText("You're offline");
     fireEvent.click(screen.getByRole('button', {name: 'Refresh'}));
     expect(await screen.findByText("You're offline · Showing cached data")).toBeTruthy();
@@ -455,7 +458,7 @@ describe('#42 offline and the D26 refused state', () => {
         return 62_482_100_000n;
       },
     });
-    await renderHome({reader, before: async ext => ext.local.set(BALANCE_CACHE_KEY, CACHE)});
+    await renderHome({reader, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache())});
     await screen.findByText('Could not reach the Noctura server');
     down = false;
     fireEvent.click(screen.getByRole('button', {name: 'Refresh'}));
@@ -476,7 +479,7 @@ describe('#42 offline and the D26 refused state', () => {
     });
     await renderHome({
       reader,
-      before: async ext => ext.local.set(BALANCE_CACHE_KEY, CACHE),
+      before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache()),
       deps: {
         prices: async () => {
           priceReads += 1;
@@ -498,7 +501,7 @@ describe('#42 offline and the D26 refused state', () => {
     await renderHome({
       reader: walletReader({getBalance: never}),
       before: async ext => {
-        await ext.local.set(BALANCE_CACHE_KEY, CACHE);
+        await ext.local.set(BALANCE_CACHE_KEY, cache());
         await ext.local.set(PRICE_CACHE_KEY, {sol: 100, usdc: 1, usdt: 1, noc: null, at: 1_000});
       },
     });
@@ -587,7 +590,7 @@ describe('#42 offline and the D26 refused state', () => {
         throw new RpcForbidden('getBalance');
       },
     });
-    const {model} = await renderHomeWithModel({reader, before: async ext => ext.local.set(BALANCE_CACHE_KEY, CACHE)});
+    const {model} = await renderHomeWithModel({reader, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache())});
     await screen.findByText(REFUSED_TEXT);
     await act(async () => {
       window.dispatchEvent(new Event('online'));
@@ -622,7 +625,7 @@ describe('#42 offline and the D26 refused state', () => {
         throw new RequestUnreachable('u', 'no answer');
       },
     });
-    await renderHome({reader, now: () => t, before: async ext => ext.local.set(BALANCE_CACHE_KEY, CACHE)});
+    await renderHome({reader, now: () => t, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache())});
     expect(await screen.findByText('Showing your last synced balances.')).toBeTruthy();
     expect(screen.queryByText(/^Stale · /)).toBeNull();
     t += 31_000;

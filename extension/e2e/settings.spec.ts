@@ -338,7 +338,8 @@ test('18 · a send from account 2 still open: the remove is refused (send-open) 
 
 /**
  * #31 → #37 → DELETE → the hold (Space on the focused CTA, 1 s) → the delete tab. Fix round 1 (review M1): the tab must
- * not open within 800 ms of the key-down — a short hold would (the hold needs a full 1 s); the key is held to 1.2 s.
+ * not open within 800 ms of the key-down — a short hold would (the hold needs a full 1 s). The key is held to 1.6 s
+ * (the final review's m9: 1.2 s left a starved popup's 30 ms hold tick 200 ms to land before the key-up).
  */
 async function toDeleteTab(h: Harness, popup: Page, o: {checkPartial?: boolean} = {}): Promise<Page> {
   await popup.locator('.s7-title', {hasText: 'Delete wallet'}).click();
@@ -363,7 +364,7 @@ async function toDeleteTab(h: Harness, popup: Page, o: {checkPartial?: boolean} 
     await new Promise(r => setTimeout(r, 800));
     // Timestamps, not "nothing yet": a late timer cannot turn a correct 1 s hold into a failure.
     expect(pageAt.filter(t => t - down < 800)).toEqual([]);
-    await new Promise(r => setTimeout(r, 400));
+    await new Promise(r => setTimeout(r, 800));
     // The key-up may land on a closed page.
     await popup.keyboard.up(' ').catch(() => undefined);
     const tab = await next;

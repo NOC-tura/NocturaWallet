@@ -183,7 +183,9 @@ test('visual: import — #8’s states, #5 import, and #40', async () => {
     await pastePhrase(p, E2E_MNEMONIC);
     await expect(p.getByText('Pasted from clipboard. Noctura cannot clear your clipboard — clear it yourself.')).toBeVisible();
     await expect(p.getByText('Valid 12-word BIP-39 phrase · checksum OK')).toBeVisible();
-    await shot(p, '08-paste-detected');
+    // The #imp-keep click above runs through the page's exclusive() gate (500 ms floor): wait for
+    // [Continue] to be enabled, or the shot can land inside the floor with every button disabled.
+    await shot(p, '08-paste-detected', {ready: p.locator('#imp-continue')});
 
     // The probe unanswered: "Checking…" held open, then the scheme choice (balances could not be checked).
     const release = h.fake.hold();
