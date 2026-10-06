@@ -272,6 +272,21 @@ describe('the accounts manager', () => {
     await waitFor(async () => expect(await w.ext.local.get(SETTINGS_KEY)).toMatchObject({selectedAccount: 1}));
   });
 
+  it('select is a LockedButton (rule 6): aria-pressed on the selected row; a second click inside 500 ms selects nothing more', async () => {
+    const h = hold('accounts.select');
+    await shown({gate: h.gate});
+    await waitFor(() => expect(names()).toHaveLength(3));
+    const pick = (name: string) => screen.getByText(name, {selector: '.pri'}).closest('button') as HTMLButtonElement;
+    expect([pick('Main'), pick('Savings'), pick('Third')].map(b => b.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false']);
+    fireEvent.click(pick('Savings'));
+    pick('Savings').disabled = false;
+    fireEvent.click(pick('Savings'));
+    h.release();
+    await waitFor(() => expect(pick('Savings').getAttribute('aria-pressed')).toBe('true'));
+    await settle();
+    expect(h.count('accounts.select')).toBe(1);
+  });
+
   it('rename: a refused name says why (2a’s strings), and the editor stays', async () => {
     await shown();
     await waitFor(() => expect(names()).toHaveLength(3));

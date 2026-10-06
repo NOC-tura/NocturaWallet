@@ -1013,3 +1013,109 @@ a.btn {
 .app-delete .sticky-bar .btn-secondary:disabled {
   opacity: 0.45;
 }
+
+/* B1b-2b §4.1/§4.2: #31's and #35's rows — a meta tinted where the design tints it (the design's `.s7-row .s7-meta`
+   colour is two classes; a one-class .noc-* tone alone lost to it). */
+.s7-row .s7-meta.noc-warning {
+  color: var(--warning);
+}
+.s7-row .s7-meta.noc-success {
+  color: var(--success);
+}
+.app-content button.s7-task {
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  border: 0;
+  cursor: pointer;
+}
+/* A static row (#35's app-lock line, D2): no chevron column. */
+.s7-row.app-no-chev {
+  grid-template-columns: 28px 1fr;
+}
+/* #35 (index.html #s35's inline layout, as classes). C15: the score card without its ring is one column. */
+.app-security-body {
+  padding: 0 var(--space-5) var(--space-7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.app-security-body h3,
+.app-security-body p {
+  margin: 0;
+}
+.s7-score-card.no-ring {
+  grid-template-columns: 1fr;
+}
+.s7-score-card.no-ring .noc-h3 {
+  margin-bottom: 6px;
+}
+.app-overline {
+  margin-top: var(--space-2);
+}
+.app-picker-card {
+  background: var(--bg-surface-1);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.app-picker-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.app-picker-head .s7-glyph {
+  color: var(--fg-secondary);
+  display: flex;
+}
+.app-picker-head .noc-caption {
+  margin-top: 2px;
+}
+/* ix:14647: picker options 32 px to the eye, 48 px to the pointer. */
+.s7-picker .opt.app-picker-opt {
+  position: relative;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+  min-height: 32px;
+}
+.s7-picker .opt.sel.app-picker-opt {
+  background: var(--accent);
+}
+.s7-picker .opt.app-picker-opt::after {
+  content: '';
+  position: absolute;
+  inset: -8px 0;
+}
+.app-danger-overline {
+  margin-top: var(--space-5);
+}
+.app-danger-card {
+  background: color-mix(in oklab, var(--danger) 8%, var(--bg-surface-1));
+  border: 1px solid color-mix(in oklab, var(--danger) 30%, transparent);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.app-danger-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--danger);
+}
+.btn.btn-secondary.app-danger-btn {
+  background: color-mix(in oklab, var(--danger) 12%, var(--bg-surface-2));
+  color: var(--danger);
+  border: 1px solid color-mix(in oklab, var(--danger) 30%, transparent);
+  align-self: flex-start;
+}
+/* 35b (ix:14486-14489): the active protections' glyphs in --success, as drawn. */
+.app-protections .s7-row .s7-glyph {
+  color: var(--success);
+}

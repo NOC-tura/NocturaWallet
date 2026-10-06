@@ -210,7 +210,7 @@ export function AccountsManager({onBack}: {onBack: () => void}) {
                   </div>
                 ) : (
                   <>
-                    <button type="button" className="app-account-pick" aria-pressed={selected} onClick={() => void select(a)}>
+                    <LockedButton className="app-account-pick" pressed={selected} onPress={() => select(a)}>
                       <span className="avatar">{a.name.slice(0, 1).toUpperCase()}</span>
                       <span>
                         <span className="pri noc-body-lg">{a.name}</span>
@@ -221,7 +221,7 @@ export function AccountsManager({onBack}: {onBack: () => void}) {
                         {row !== undefined && !row.fresh ? <span className="sec noc-caption">cached {ago(row.at, now)}</span> : null}
                       </span>
                       {selected ? <ExtIcon name="check" size={18} label="Selected" /> : null}
-                    </button>
+                    </LockedButton>
                     <span className="app-row-tools">
                       <LockedButton
                         className="icon-btn"

@@ -18,6 +18,7 @@ import {About} from './screens/About';
 import {Passkey} from './screens/Passkey';
 import {AccountsManager} from './screens/AccountsManager';
 import {DeleteWallet} from './screens/DeleteWallet';
+import {Security} from './screens/Security';
 import {Created} from './screens/Created';
 import {Imported} from './screens/Imported';
 import {Send} from './screens/Send';
@@ -261,6 +262,14 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
         onEdit={draft => {
           if (account === selected) toSend(draft, null);
         }}
+      />
+    );
+  } else if (route.screen === 'security') {
+    screen = (
+      <Security
+        onBack={() => go({type: 'pop'})}
+        onPasskey={() => go({type: 'push', route: {screen: 'passkey'}})}
+        onDelete={() => go({type: 'push', route: {screen: 'delete'}})}
       />
     );
   } else if (route.screen === 'delete') {
