@@ -173,8 +173,8 @@ function envelopeShape(x: unknown): StoredEnvelope | null {
  * cost), the password wrap, and the public key of any account in both envelopes. Only the seed
  * ciphertext, the account list and the passkey wrap may differ.
  *
- * B1 has no password-change flow. A future one rewrites the password wrap and may choose a new salt
- * or cost: it must revisit this rule (and its tests) rather than route around it.
+ * A password change (vault.changePassword, B1b-2b E10) rewrites the password wrap and chooses a new salt, so it does
+ * not come through here: it has its own narrower rule, onlyPasswordChanged, and this one stays unchanged.
  */
 function sameWallet(current: StoredEnvelope, next: StoredEnvelope): boolean {
   const {kdf: a} = current;

@@ -139,8 +139,9 @@ can already drain the wallet through sends (B1 §2); D23 keeps it from gaining t
 | #15 address book (plan 2) | popup, pushed | #31 "Address book"; #12's contact icon (pick mode) |
 | contact sheet (plan 2) | popup, `.s8-sheet` over #15, #20, #27 | #15 `+`, row tap, search's add; #20 "Add"; #27 `[Save]` / `[Save sender]` |
 
-The vault tab renders in 2a's 412 px column. Every vault-page string is a literal in `src/unlock/strings.ts`; every
-popup string lives in the screen's own `*_TEXT` table, as in 2a.
+The vault tab renders in 2a's 412 px column. Every vault-page string the scripts set is a literal in
+`src/unlock/strings.ts`; static copy that never changes may stand in `unlock.html`'s markup, as 2a's does (final docs
+pass, ruling F12). Every popup string lives in the screen's own `*_TEXT` table, as in 2a.
 
 ### 1.2 Vault-page modes (`src/unlock/mode.ts`, extended; closed enums)
 
@@ -406,8 +407,15 @@ check comes with a **named mutation** that must turn a test red (§8.1). E9–E1
 ### E15 — `phraseVerifiedAt` (D15, C7, C8)
 
 - **Store.** `Settings` gains `phraseVerifiedAt: number | null` (a safe integer ≥ 0, else `null`).
-- **`vault.phraseVerified {}`** (vault page only). `getSession` null → `locked`; else `updateSettings(s => ({...s,
-  phraseVerifiedAt: deps.now()}))`. **Reply** `{ok:true}`. **Refusals** `locked`, `failed`.
+- **`vault.phraseVerified {expectedRevision}`** (vault page only). Not a revision → `malformed`; `getSession` null →
+  `locked`; v1_vault absent → `no-wallet`, not an envelope → `stored-invalid`; another revision stored → `busy`; else
+  write `phraseVerifiedAt: deps.now()` — the checks and the write in one `settingsMutex` → `sessionMutex` section.
+  **Reply** `{ok:true}`. **Refusals** `malformed`, `locked`, `no-wallet`, `stored-invalid`, `busy`, `failed`.
+- **Bound to the wallet checked (final review m7, a controller ruling).** The sender sends the revision of the envelope
+  the phrase was opened from (§3.5's proof; the create run's own stored envelope). A verify tab left in #4 while another
+  tab deleted the wallet, created another and unlocked it gets `busy`, and the page shows O32 — no fact lands on a wallet
+  whose phrase was never checked. The same wallet changed since the proof (an account added) is `busy` too: a true fact
+  refused, never a false one recorded.
 - **Senders.** §3.4 / §3.5's check on success; and the create run (C8) once the wallet is stored and `vault.setKeys`
   answered ok (`createRun.ts`, after #5; a refusal there is ignored — the fact is cosmetic).
 - **Kept and cleared.** Kept by a change password, a passkey change, an account change and a restore (E5 keeps
@@ -853,7 +861,8 @@ recovery phrase"] (C8), in that order — the design's (ix:14417-14419: biometri
 - **`threshold expanded`** (extension-only, D5): row "Re-authentication threshold" (O48) meta "$100"; card `.noc-body`
   "Re-authentication threshold" (O48), `.noc-caption` "Ask for your password before sends worth more than" (O49),
   `.s7-picker` "$50" "$100" "$500" "$1,000" (D5); caption "A higher amount asks for your password in a new tab." (O50).
-- **`app-lock row`** (D2): a static `.s7-row` (no chevron, not a button), glyph lock, title "Locks when the browser
+- **`app-lock row`** (D2): a static `.s7-row` (no chevron, not a button), glyph `zap` (the design's, ix:14536; Task 16
+  ruling), title "Locks when the browser
   closes" (D2) — in the slot of the "App-lock timer" card (ix:14534-14541).
 - **`weakening`** (a picker value above the current): `settings.set` → `reauth-required {challengeId}` →
   `openPage(reauthPage(id))`; the popup closes; nothing is applied until #10. On every open #35 shows the **stored**
@@ -1216,7 +1225,8 @@ Each item: the test, then the mutation that must turn it red.
   `phraseVerifiedAt` and `passwordChangedAt` (C7). Mutation: `writeSettings` writing three fields → the "select keeps the
   order" test red.
 - **E15:** `vault.phraseVerified` sets the time; refused while locked and from the popup; kept by a restore, cleared by a
-  delete and a first write; the create run sends it after `setKeys`.
+  delete and a first write; the create run sends it after `setKeys`; a revision other than the stored one is `busy` and
+  records nothing (m7: a wallet replaced while #4 was open → O32). Mutation: the revision compare removed → red.
 - **E16 (D23):** the accounts flows accept a PRF factor; the PRF output is zeroed on every path. **`runReveal` and the
   verify flow refuse a `{prfOutput}` argument** (cast past the type) with `failed`, read no envelope, decrypt nothing and
   zero the PRF output; their screens render no passkey button with a passkey stored. Mutations: "accept any
@@ -1355,6 +1365,9 @@ Findings go in the PR; screenshots are CI artifacts.
   first, as a person would (B1b-2a plan 3's `seen()`).
 - The 36e toast on the wide tab surface (wallet.html, 1280 × 800): centred on the 412 px column (`left: 50%` of the
   viewport, the column centred), `--space-4` above the tab bar — shot as `36e-password-updated-tab-1280`.
+- **`unlock.css`'s `.icon-btn:disabled` also dims 2a's vault buttons** (T20a): the rule added for the new pages' disabled
+  top-bar X matches every `.icon-btn` on the vault page, so 2a's icon buttons draw dimmed while disabled too (inside the
+  busy gate). It is the popup's rule; 2a's shots are taken with `ready` (enabled) and are unaffected.
 
 ---
 
