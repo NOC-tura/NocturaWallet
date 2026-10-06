@@ -38,8 +38,16 @@ export function firstAccount(env: EnvelopeV1): string {
  * neither `replacement` nor `guard` (D11: a funded wallet is deleted too). Deleted → the welcome page, no toast (the
  * absence of the wallet IS the confirmation, ix:15138). A damaged vault cannot be deleted here (D10).
  *
- * The password leaves the field at the click; a hidden tab or `pagehide` empties the field (2a §3.5). Rule 6: the
- * page's one `exclusive()` gate on every button, guarded by `view`.
+ * Fix round 1 (review I1): the compare at the click and the proof are two reads — on the passkey path the whole OS
+ * prompt lies between them — so the proof's own revision (minted from proveFactor's read) is compared with the shown
+ * one again before the send: a mismatch is `changed` too (nothing sent, never charged; the proof is dropped).
+ *
+ * The password leaves the field at the click; a hidden tab or `pagehide` empties the field (2a §3.5). Fix round 1
+ * (review I3, the controller's ruling): a hidden tab does NOT cancel a delete already clicked — the click is the
+ * decision, as #36 while changing — but a `pagehide` (the page actually left) before the forget is sent aborts it:
+ * `generation` is bumped and every await before the send re-checks it (no forget; the proof and any PRF output
+ * dropped). Rule 6: the page's one `exclusive()` gate on every button, guarded by `view`; [Cancel] alone closes the tab
+ * during the cooldown (review M1: the gate is held through the backoff's wait).
  */
 export function mountDelete(deps: PageDeps): DeleteScreen {
   const field = byId<HTMLInputElement>('dl-password');
@@ -58,6 +66,8 @@ export function mountDelete(deps: PageDeps): DeleteScreen {
   let pk: NonNullable<EnvelopeV1['passkey']> | null = null;
   let stopCooldown: (() => void) | null = null;
   let typed: string | null = null;
+  /** Bumped on `pagehide`: a delete in flight that sees a new value stops before the send (review I3). */
+  let generation = 0;
 
   const render = () => {
     const busy = deps.gate.isBusy();
@@ -121,15 +131,19 @@ export function mountDelete(deps: PageDeps): DeleteScreen {
     }
     return stored.env;
   };
-  /** C17: the wallet under the tab is still the one on screen — checked before any KDF run or passkey prompt. */
-  const stillShown = async (): Promise<boolean> => {
-    const env = await readWallet();
-    if (env === null) return false;
-    if (envelopeRevision(env) === shownRevision) return true;
+  /** C17's `changed`: the wallet now stored goes on screen with O14 — nothing proven is kept, nothing charged. */
+  const changed = (env: EnvelopeV1) => {
     showWallet(env);
     field.value = '';
     helper(DELETE.changed, 'warn');
     render();
+  };
+  /** C17: the wallet under the tab is still the one on screen — checked before any KDF run or passkey prompt. */
+  const stillShown = async (mine: number): Promise<boolean> => {
+    const env = await readWallet();
+    if (mine !== generation || env === null) return false;
+    if (envelopeRevision(env) === shownRevision) return true;
+    changed(env);
     return false;
   };
   const endCooldown = () => {
@@ -143,8 +157,8 @@ export function mountDelete(deps: PageDeps): DeleteScreen {
     setText(live, cooldownLabel(Math.ceil(ms / 1000)));
     render();
   };
-  /** The proof and the delete, under the backoff (only a wrong factor is charged). */
-  const prove = async (factor: ReauthFactor) => {
+  /** The proof and the delete, under the backoff (only a wrong factor is charged). `mine`: the generation at the click. */
+  const prove = async (factor: ReauthFactor, mine: number) => {
     helper(DELETE.deleting, 'plain');
     let proof: FactorProof | null = null;
     const out = await backoff.run(async () => {
@@ -154,11 +168,19 @@ export function mountDelete(deps: PageDeps): DeleteScreen {
       return 'proven' as const;
     }, cooldown);
     endCooldown();
+    // The page was left (pagehide) while the proof ran: no forget; the proof (no secret in it) is dropped here.
+    if (mine !== generation) return helper('', 'plain');
     const p = proof as FactorProof | null;
     if (out === 'wrong') return helper(COMMON.wrongConfirm, 'error');
     if (out === 'no-wallet') return notice(COMMON.noWallet, '', ['setup']);
     if (out === 'damaged') return notice(COMMON.damaged, COMMON.damagedHelp, []);
     if (out !== 'proven' || p === null) return helper(DELETE.failed, 'plain');
+    // Review I1: the proof ran on its own read of the envelope — it must be the wallet on screen, or it is `changed`.
+    if (p.revision !== shownRevision) {
+      const env = await readWallet();
+      if (mine === generation && env !== null) changed(env);
+      return;
+    }
     const r = await deleteWallet(deps.send, p);
     if (r === 'deleted') return deps.go('unlock.html?mode=welcome');
     // E5 locked the wallet before it refused (review M1): the way back in, and the way out.
@@ -177,8 +199,9 @@ export function mountDelete(deps: PageDeps): DeleteScreen {
       field.value = '';
       const password = typed;
       typed = null;
-      if (!(await stillShown())) return;
-      await prove({password, kdf: deps.kdf});
+      const mine = generation;
+      if (!(await stillShown(mine))) return;
+      await prove({password, kdf: deps.kdf}, mine);
     });
   };
   const withPasskey = () => {
@@ -186,7 +209,8 @@ export function mountDelete(deps: PageDeps): DeleteScreen {
     void exclusive(deps, render, async () => {
       if (view !== 'entry') return;
       field.value = '';
-      if (!(await stillShown())) return;
+      const mine = generation;
+      if (!(await stillShown(mine))) return;
       const key = pk;
       if (key === null) return;
       let prfOutput: Uint8Array | null;
@@ -196,8 +220,10 @@ export function mountDelete(deps: PageDeps): DeleteScreen {
         prfOutput = null;
       }
       if (prfOutput === null) return helper(COMMON.passkeyUnavailableConfirm, 'plain');
+      // Left during the prompt: the PRF output is zeroed, nothing proven, nothing sent.
+      if (mine !== generation) return prfOutput.fill(0);
       // proveFactor zeroes the PRF output on every path.
-      await prove({prfOutput});
+      await prove({prfOutput}, mine);
     });
   };
   const load = async () => {
@@ -221,7 +247,12 @@ export function mountDelete(deps: PageDeps): DeleteScreen {
   });
   del.addEventListener('click', withPassword);
   passkey.addEventListener('click', withPasskey);
-  cancel.addEventListener('click', () => void exclusive(deps, render, async () => deps.closeTab()));
+  cancel.addEventListener('click', () => {
+    // Review M1: during the cooldown the gate is held by the backoff's wait — [Cancel] closes the tab regardless (the
+    // wait ends in a wrong outcome; nothing is proven or sent).
+    if (stopCooldown !== null) return deps.closeTab();
+    void exclusive(deps, render, async () => deps.closeTab());
+  });
   buttons.unlock.addEventListener('click', () => {
     if (actions.includes('unlock')) void exclusive(deps, render, async () => deps.go('unlock.html?mode=unlock'));
   });
@@ -234,8 +265,10 @@ export function mountDelete(deps: PageDeps): DeleteScreen {
   buttons.again.addEventListener('click', () => {
     if (actions.includes('again')) void exclusive(deps, render, load);
   });
-  deps.onLeave(() => {
+  deps.onLeave(why => {
     field.value = '';
+    // Review I3: hidden is not a cancel (the click decided); pagehide is — a delete in flight stops before its send.
+    if (why === 'pagehide') generation += 1;
   });
 
   return {

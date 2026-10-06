@@ -341,6 +341,25 @@ describe('#36 memory (M2 ruling, C20)', () => {
     expect(text(el('cp-helper'))).toBe('Enter your current password again.');
   });
 
+  // Task 9 fix round 1 (review M1): step 1's cooldown holds the gate through the backoff's wait; the X still closes.
+  it('the X during step 1\'s cooldown closes the tab', async () => {
+    const {h, screen} = await shown({holdSleep: true});
+    type(field(), 'nope nope nope nope');
+    click(cta());
+    await h.until(() => text(el('cp-helper')) === 'That did not confirm it.');
+    h.wake();
+    await idle(h);
+    type(field(), 'nope nope nope nope');
+    click(cta());
+    await h.until(() => visible(el('cp-cooldown')));
+    expect(h.deps.gate.isBusy()).toBe(true);
+    click(el('cp-x'));
+    expect(h.closed).toBe(1);
+    expect(screen.holds()).toEqual({key: false, password: false});
+    await h.until(() => !h.deps.gate.isBusy() || (h.wake(), false));
+    expect(changes(h)).toEqual([]);
+  });
+
   it('cancel-confirm: the X over step 2 asks; [Keep changing] returns with the field; [Cancel change] zeroes and closes', async () => {
     const {h, screen} = await shown();
     await toStep2(h);

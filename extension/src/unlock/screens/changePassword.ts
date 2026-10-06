@@ -312,6 +312,13 @@ export function mountChangePassword(deps: PageDeps): ChangePasswordScreen {
       return;
     }
     if (phase === 'changing') return;
+    // Fix round 1 (Task 9 review M1): during step 1's cooldown the gate is held by the backoff's wait — the X closes
+    // the tab regardless (nothing is held; the wait ends in a wrong outcome, and dropProof spends any proof).
+    if (stopCooldown !== null) {
+      dropProof();
+      deps.closeTab();
+      return;
+    }
     void exclusive(deps, render, async () => {
       dropProof();
       deps.closeTab();

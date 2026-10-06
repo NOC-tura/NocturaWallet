@@ -12,6 +12,20 @@ import {firstAccount, mountDelete} from '../screens/delete';
 import {pageMode} from '../mode';
 import {click, el, harness, loadPage, testKdf, text, type, unstyled, visible, type Harness} from './pageHarness';
 
+// Fix round 1 (I3): the real evaluatePrf, with each PRF output it hands the page kept so a test can see it zeroed.
+const prfs = vi.hoisted(() => ({outs: [] as Uint8Array[]}));
+vi.mock('../../vault/passkey', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../vault/passkey')>();
+  return {
+    ...actual,
+    evaluatePrf: async (...args: Parameters<typeof actual.evaluatePrf>) => {
+      const r = await actual.evaluatePrf(...args);
+      if (r !== null) prfs.outs.push(r);
+      return r;
+    },
+  };
+});
+
 // B1b-2b §3.2 (#37's proof, E11, C17) against the REAL background.
 const M = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const OTHER = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
@@ -59,6 +73,9 @@ describe('#37’s proof: the delete page', () => {
     expect(text(el('dl-entry'))).toContain("This wallet's first account");
     expect(text(el('dl-entry'))).toContain('Enter your password to delete this wallet from this browser. Your funds stay on Solana; your recovery phrase still controls them.');
     expect(text(el('dl-delete'))).toBe('Delete wallet');
+    // Fix round 1 (review M3): the design's trash icon before the label (ix:15000), from the page's sprite.
+    expect(el('dl-delete').querySelector('svg use')?.getAttribute('href')).toBe('#i-trash');
+    expect(document.getElementById('i-trash')?.tagName.toLowerCase()).toBe('symbol');
     expect(visible(el('dl-passkey'))).toBe(true);
     expect(text(el('dl-passkey'))).toBe('Confirm with passkey');
     expect(text(el('dl-cancel'))).toBe('Cancel');
@@ -179,6 +196,151 @@ describe('#37’s proof: the delete page', () => {
     expect(kdfRuns()).toBe(1);
     expect(forgets(h)).toHaveLength(1);
     h.wake();
+  });
+
+  // Fix round 1 (review I2): the passkey path's compare runs BEFORE the OS prompt — a changed wallet never prompts.
+  it('C17 on the passkey path: the wallet changed before the click → `changed`, credentials.get never called, nothing charged', async () => {
+    const a = await wallet(M, [0], {passkey: true});
+    let prompts = 0;
+    const credentials: CredentialsApi = {create: async () => null, get: async o => (prompts++, prfCredentials().get(o))};
+    const {h, kdfRuns, backoffWaits} = await shown(a, {credentials});
+    await h.ext.local.set(VAULT_KEY, await wallet(OTHER, [0], {passkey: true}));
+    click(el('dl-passkey'));
+    await h.until(() => text(el('dl-helper')) === 'The wallet in this browser changed. Check the address and try again.' && !h.deps.gate.isBusy());
+    expect([prompts, kdfRuns(), backoffWaits().length, forgets(h).length]).toEqual([0, 0, 0, 0]);
+  });
+
+  // Fix round 1 (review I1, the reviewer's probe A): the compare and the proof are two reads; the OS prompt lies between.
+  it('C17 mid-prompt (probe A): account 0 removed while the passkey prompt is open → `changed`, no forget, v1_vault intact, the new first address shown', async () => {
+    const a = await wallet(M, [0, 1], {passkey: true});
+    const moved = await reencryptForAccounts(a, await unlockWithPassword(a, PW, testKdf), [{index: 1, name: 'Account 2'}]);
+    let h: Harness | null = null;
+    const credentials: CredentialsApi = {
+      create: async () => null,
+      get: async o => {
+        await h?.ext.local.set(VAULT_KEY, moved);
+        return prfCredentials().get(o);
+      },
+    };
+    const s1 = await shown(a, {credentials});
+    h = s1.h;
+    click(el('dl-passkey'));
+    await s1.h.until(() => text(el('dl-helper')) === 'The wallet in this browser changed. Check the address and try again.' && !s1.h.deps.gate.isBusy());
+    expect(forgets(s1.h)).toEqual([]);
+    expect(await s1.h.ext.local.get(VAULT_KEY)).toEqual(moved);
+    expect([...el('dl-address').querySelectorAll('.addr-groups span')].map(x => x.textContent).join('')).toBe(firstAccount(moved));
+    expect(firstAccount(moved)).not.toBe(firstAccount(a));
+    expect(s1.backoffWaits()).toEqual([]);
+  });
+
+  it('C17 on the password path, between the click\'s compare and the proof\'s read → `changed`, no forget, v1_vault intact', async () => {
+    const a = await wallet(M, [0, 1]);
+    const moved = await reencryptForAccounts(a, await unlockWithPassword(a, PW, testKdf), [{index: 1, name: 'Account 2'}]);
+    const {h, backoffWaits} = await shown(a);
+    const read = h.deps.store.readEnvelope;
+    let reads = 0;
+    // The click's compare reads first; the wallet changes before proveFactor's own read.
+    h.deps.store.readEnvelope = async () => {
+      const r = await read();
+      if (++reads === 1) await h.ext.local.set(VAULT_KEY, moved);
+      return r;
+    };
+    type(el<HTMLInputElement>('dl-password'), PW);
+    click(el('dl-delete'));
+    await h.until(() => text(el('dl-helper')) === 'The wallet in this browser changed. Check the address and try again.' && !h.deps.gate.isBusy());
+    expect(forgets(h)).toEqual([]);
+    expect(await h.ext.local.get(VAULT_KEY)).toEqual(moved);
+    expect([...el('dl-address').querySelectorAll('.addr-groups span')].map(x => x.textContent).join('')).toBe(firstAccount(moved));
+    expect(backoffWaits()).toEqual([]);
+  });
+
+  it('C17 on the password path, mid-KDF (after the proof\'s read): E5 refuses the stale revision — `busy`, v1_vault intact', async () => {
+    const a = await wallet(M, [0, 1]);
+    const moved = await reencryptForAccounts(a, await unlockWithPassword(a, PW, testKdf), [{index: 1, name: 'Account 2'}]);
+    const {h} = await shown(a);
+    const kdf = h.deps.kdf;
+    h.deps.kdf = async (pw, salt, p) => {
+      await h.ext.local.set(VAULT_KEY, moved);
+      return kdf(pw, salt, p);
+    };
+    type(el<HTMLInputElement>('dl-password'), PW);
+    click(el('dl-delete'));
+    await h.until(() => visible(el('dl-notice')));
+    expect(text(el('dl-notice-line'))).toBe('The wallet changed while you were typing. Start again.');
+    expect(await h.ext.local.get(VAULT_KEY)).toEqual(moved);
+  });
+
+  // Fix round 1 (review I3, the controller's ruling): the click is the decision; leaving the page is not.
+  it('pagehide during the KDF: no forget, the wallet stays', async () => {
+    const {h} = await shown(await wallet());
+    const kdf = h.deps.kdf;
+    h.deps.kdf = async (pw, salt, p) => {
+      h.leave('pagehide');
+      return kdf(pw, salt, p);
+    };
+    type(el<HTMLInputElement>('dl-password'), PW);
+    click(el('dl-delete'));
+    await idle(h);
+    await new Promise(r => setTimeout(r, 20));
+    expect(forgets(h)).toEqual([]);
+    expect(h.went).toEqual([]);
+    expect(await h.ext.local.get(VAULT_KEY)).toBeDefined();
+  });
+
+  it('pagehide during the passkey prompt: no forget, the PRF output zeroed', async () => {
+    const out = PRF.slice();
+    let h: Harness | null = null;
+    const credentials: CredentialsApi = {
+      create: async () => null,
+      get: async () => {
+        h?.leave('pagehide');
+        return {getClientExtensionResults: () => ({prf: {results: {first: out.buffer}}})} as unknown as Credential;
+      },
+    };
+    const s1 = await shown(await wallet(M, [0], {passkey: true}), {credentials});
+    h = s1.h;
+    click(el('dl-passkey'));
+    await idle(s1.h);
+    await new Promise(r => setTimeout(r, 20));
+    expect(forgets(s1.h)).toEqual([]);
+    expect(await s1.h.ext.local.get(VAULT_KEY)).toBeDefined();
+    const prf = prfs.outs.at(-1);
+    expect(prf?.length).toBe(32);
+    expect(prf?.every(b => b === 0)).toBe(true);
+  });
+
+  it('a hidden tab during the KDF does not cancel the delete already clicked', async () => {
+    const {h} = await shown(await wallet());
+    const kdf = h.deps.kdf;
+    h.deps.kdf = async (pw, salt, p) => {
+      h.leave('hidden');
+      return kdf(pw, salt, p);
+    };
+    type(el<HTMLInputElement>('dl-password'), PW);
+    click(el('dl-delete'));
+    await h.until(() => h.went.length === 1);
+    expect(h.went).toEqual(['unlock.html?mode=welcome']);
+    expect(await h.ext.local.get(VAULT_KEY)).toBeUndefined();
+  });
+
+  // Fix round 1 (review M1): the backoff's wait holds the gate; [Cancel] must still close the tab.
+  it('[Cancel] during the cooldown closes the tab', async () => {
+    const {h} = await shown(await wallet(), {holdSleep: true});
+    type(el<HTMLInputElement>('dl-password'), 'nope nope nope nope');
+    click(el('dl-delete'));
+    await h.until(() => text(el('dl-helper')) === 'That did not confirm it.');
+    h.wake();
+    await idle(h);
+    type(el<HTMLInputElement>('dl-password'), 'nope nope nope nope');
+    click(el('dl-delete'));
+    await h.until(() => visible(el('dl-cooldown')));
+    expect(h.deps.gate.isBusy()).toBe(true);
+    expect(visible(el('dl-cancel'))).toBe(true);
+    click(el('dl-cancel'));
+    expect(h.closed).toBe(1);
+    h.wake();
+    await h.until(() => !h.deps.gate.isBusy() || (h.wake(), false));
+    expect(forgets(h)).toEqual([]);
   });
 
   it('a hidden tab empties the field', async () => {
