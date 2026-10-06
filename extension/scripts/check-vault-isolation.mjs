@@ -557,9 +557,11 @@ export function vaultPageViolations(read, exists, entry = VAULT_PAGE_ENTRY) {
 // The allowed area is the whole vault page, not only src/unlock/browser.ts: the vault-page screens pass the
 // injected `deps.credentials` along and src/vault/passkey.ts casts to PublicKeyCredential — vault code that
 // is bundled only into the vault page (nonVaultModuleViolations proves that on the build).
-// Known limit: a name computed at run time (`navigator['cred' + x]`, `Reflect.get(navigator, k)`) is out of
-// reach of any static rule. In src/ it cannot bring vault code with it (the module map); a WebAuthn call
-// spelled that way in popup code would be new code no marker or rule here sees — review is the backstop.
+// The string 'credentials' passed to any call (`Reflect.get(navigator, 'credentials')`, a descriptor lookup)
+// is refused too (fix round 2, N2). Known limit: only a name COMPUTED at run time (`navigator['cred' + x]`,
+// `Reflect.get(navigator, k)` with `k` built elsewhere) is invisible to a static rule. It cannot bring vault
+// code with it (the module map); a WebAuthn call spelled that way in popup code is new code no marker or
+// rule here sees — review is the backstop.
 const WEBAUTHN_ALLOWED = VAULT_ALLOWED;
 const WEBAUTHN_NAMES = new Set(['PublicKeyCredential', 'CredentialsContainer']);
 const keyText = name => {
@@ -587,6 +589,7 @@ function webAuthnReads(text, path) {
   const visit = node => {
     if (ts.isPropertyAccessExpression(node) && node.name.text === 'credentials') add('.credentials');
     else if (ts.isElementAccessExpression(node) && literalText(node.argumentExpression) === 'credentials') add("['credentials']");
+    else if ((ts.isCallExpression(node) || ts.isNewExpression(node)) && (node.arguments ?? []).some(a => literalText(a) === 'credentials')) add("'credentials' as a call argument");
     else if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent) && keyText(node.propertyName ?? node.name) === 'credentials') add('a credentials binding');
     else if (ts.isObjectLiteralExpression(node) && isAssignmentTarget(node)) {
       for (const prop of node.properties) {
@@ -598,7 +601,10 @@ function webAuthnReads(text, path) {
   visit(parse(text, path));
   return found;
 }
-/** Every file outside the vault page that reads WebAuthn; main() runs it on ../core too (bundled into the popup). */
+/**
+ * Every file outside the vault page that reads WebAuthn — the fast per-folder backstop (extension/ and ../core). What
+ * counts is bundledWebAuthnViolations, driven by the module map (fix round 2, N1).
+ */
 export function webAuthnViolations(files) {
   const out = [];
   for (const {path, text} of files) {
@@ -1056,17 +1062,17 @@ export function vaultPageModuleViolations(distApp, modules) {
 }
 
 // ── The reverse direction (B1b-2b plan 1 Task 13 fix round 1, review I1): the authoritative backstop ──
-// No chunk the background or any page but the vault page loads may carry a module of src/vault or
-// src/unlock, by the same module map: however the code is spelled, the bundler lists what it put where.
-// Positive control per entry: the map really describes it (its own entry module is in a chunk it loads).
+// No chunk the background or any page but the vault page loads may carry a module of src/vault, src/unlock
+// or core/keys (seed code), by the same module map: however the code is spelled, the bundler lists what it
+// put where. Positive control per entry: the map really describes it (its own entry module is in a chunk it
+// loads). An id is matched after a leading `\0` and any `?`/`#` suffix are stripped, anywhere in the path
+// (fix round 2, N3): `src/vault/x.ts`, `./src/vault/x.ts`, an absolute `/…/src/unlock/x.ts`, `\0src/vault/x.ts`.
 export const BACKGROUND_ENTRY = 'src/background/index.ts';
-const VAULT_CODE = /^src\/(?:vault|unlock)\//;
-export function nonVaultModuleViolations(distApp, modules) {
-  if (modules === undefined || modules === null || typeof modules.chunks !== 'object' || modules.chunks === null) {
-    return ['INCONCLUSIVE: no chunk module map (app.modules.json next to dist/app) — the build must write one'];
-  }
-  const out = [];
-  const problems = new Set();
+const VAULT_CODE = /(?:^|\/)src\/(?:vault|unlock)\/|(?:^|\/)core\/keys\//;
+const normalId = id => String(id).replace(/^\0/, '').replace(/[?#].*$/, '');
+
+/** Every chunk the background and every non-vault page reach, with the modules the map lists for it. */
+function nonVaultChunks(distApp, modules, problems) {
   const all = listFiles(distApp, /./).map(p => toPosix(relative(distApp, p)));
   // [what the positive control names, its required entry module, the built entry files]
   const roots = [];
@@ -1080,26 +1086,99 @@ export function nonVaultModuleViolations(distApp, modules) {
     }
     roots.push([page, ENTRIES[page], targets]);
   }
+  const out = [];
   for (const [name, entryModule, targets] of roots) {
-    const seen = new Set();
+    const chunks = [];
     for (const entry of targets) {
       for (const file of reachable(distApp, entry, problems)) {
         if (!/\.m?js$/.test(file)) continue;
         const ids = modules.chunks[file];
-        if (!Array.isArray(ids)) {
-          out.push(`${file} (reachable from ${entry}) is not in the chunk module map — what it carries is unknown`);
-          continue;
-        }
-        for (const id of ids) {
-          const path = String(id).replace(/[?#].*$/, '');
-          seen.add(path);
-          if (VAULT_CODE.test(path)) out.push(`${file} (reachable from ${entry}) carries ${JSON.stringify(id)} — vault code (src/vault, src/unlock) is bundled only into the vault page`);
-        }
+        chunks.push({entry, file, ids: Array.isArray(ids) ? ids : undefined});
+      }
+    }
+    out.push({name, entryModule, chunks});
+  }
+  return out;
+}
+
+const NO_MAP = 'INCONCLUSIVE: no chunk module map (app.modules.json next to dist/app) — the build must write one';
+const validMap = modules => modules !== undefined && modules !== null && typeof modules.chunks === 'object' && modules.chunks !== null;
+
+export function nonVaultModuleViolations(distApp, modules) {
+  if (!validMap(modules)) return [NO_MAP];
+  const out = [];
+  const problems = new Set();
+  for (const {name, entryModule, chunks} of nonVaultChunks(distApp, modules, problems)) {
+    const seen = new Set();
+    for (const {entry, file, ids} of chunks) {
+      if (ids === undefined) {
+        out.push(`${file} (reachable from ${entry}) is not in the chunk module map — what it carries is unknown`);
+        continue;
+      }
+      for (const id of ids) {
+        const path = normalId(id);
+        seen.add(path);
+        if (VAULT_CODE.test(path)) out.push(`${file} (reachable from ${entry}) carries ${JSON.stringify(id)} — vault code (src/vault, src/unlock, core/keys) is bundled only into the vault page`);
       }
     }
     if (entryModule !== undefined && !seen.has(entryModule)) out.push(`INCONCLUSIVE: no chunk reachable from ${name} carries ${entryModule} in the module map — the check would pass trivially`);
   }
   return [...new Set(out), ...problems];
+}
+
+// ── WebAuthn in what the bundler put outside the vault page (fix round 2, N1) ────────────────────────
+// The per-folder source rule reads extension/ and ../core; the popup also bundles ../web (AddressGroups.tsx),
+// and a WebAuthn read planted there passed every check. So the rule is driven by the module map: every module
+// of every chunk the background, the popup or the UI tab loads is resolved to its source file and parsed.
+// How each id is treated — every rule here, nothing implicit:
+//   - `\0…`                                  a virtual module (Rolldown's runtime): no file; skipped;
+//   - `__vite-browser-external` (`:name`)    Vite's empty stub for a Node built-in: no file; skipped;
+//   - any id with a `node_modules/` segment  a third-party package: not ours to parse; skipped;
+//   - src/vault, src/unlock, core/keys       vault code: refused by nonVaultModuleViolations already;
+//   - `*.html`                               a page entry: must be a readable file (htmlViolations checks it);
+//   - a stylesheet (scripts/css-scan.mjs)    must be a readable file; not code;
+//   - `*.[cm]?[jt]sx?`                       must be a readable file, and is parsed (webAuthnReads);
+//   - anything else                          INCONCLUSIVE: a module of a kind this rule does not know.
+// An id that should be a file and cannot be read is INCONCLUSIVE. `readSource(path)` returns the text of a
+// package-relative (or absolute) path, or undefined.
+const SCRIPT_MODULE = /\.[cm]?[jt]sx?$/;
+export function bundledWebAuthnViolations(distApp, modules, readSource) {
+  if (!validMap(modules)) return [NO_MAP];
+  const out = [];
+  const problems = new Set();
+  const done = new Set();
+  let parsed = 0;
+  for (const {chunks} of nonVaultChunks(distApp, modules, problems)) {
+    for (const {entry, file, ids} of chunks) {
+      if (ids === undefined) continue; // nonVaultModuleViolations reports it
+      for (const id of ids) {
+        const raw = String(id);
+        if (done.has(raw)) continue;
+        done.add(raw);
+        if (raw.startsWith('\0')) continue;
+        const path = normalId(raw);
+        if (path === '__vite-browser-external' || path.startsWith('__vite-browser-external:')) continue;
+        if (/(?:^|\/)node_modules\//.test(path)) continue;
+        if (VAULT_CODE.test(path)) continue;
+        const where = `${JSON.stringify(raw)} (in ${file}, reachable from ${entry})`;
+        const script = SCRIPT_MODULE.test(path);
+        if (!script && !/\.html?$/.test(path) && !isStylesheet(path)) {
+          out.push(`INCONCLUSIVE: ${where} is a module of a kind the WebAuthn rule does not know — it cannot be read for WebAuthn`);
+          continue;
+        }
+        const text = readSource(path);
+        if (typeof text !== 'string') {
+          out.push(`INCONCLUSIVE: ${where} does not resolve to a readable file — what it does is unknown`);
+          continue;
+        }
+        if (!script) continue;
+        parsed += 1;
+        for (const what of webAuthnReads(text, path)) out.push(`${where} reads WebAuthn (${what}) — only the vault page (src/unlock, src/vault) may`);
+      }
+    }
+  }
+  if (parsed === 0) out.push('INCONCLUSIVE: no script module outside the vault page was parsed — the WebAuthn rule would pass trivially');
+  return [...out, ...problems];
 }
 
 /** Could this web_accessible_resources pattern match an .html page? */
@@ -1144,6 +1223,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const modules = existsSync(mapPath) ? JSON.parse(readFileSync(mapPath, 'utf8')) : undefined;
   for (const p of vaultPageModuleViolations(join(ROOT, 'dist', 'app'), modules)) problems.push(`dist/app: ${p}`);
   for (const p of nonVaultModuleViolations(join(ROOT, 'dist', 'app'), modules)) problems.push(`dist/app: ${p}`);
+  // Module ids are package-relative (vite.config.ts's moduleId), or absolute: both resolve against ROOT.
+  const readSource = path => {
+    const abs = resolve(ROOT, path);
+    return existsSync(abs) && statSync(abs).isFile() ? readFileSync(abs, 'utf8') : undefined;
+  };
+  for (const p of bundledWebAuthnViolations(join(ROOT, 'dist', 'app'), modules, readSource)) problems.push(`dist/app: ${p}`);
   // ../core is bundled into the popup and the background: the WebAuthn rule reads it too (no core file is vault code).
   const CORE = resolve(ROOT, '..', 'core');
   const coreFiles = listSourceFiles(CORE).map(path => ({path: `../core/${path}`, text: readFileSync(join(CORE, path), 'utf8')}));
@@ -1157,5 +1242,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     for (const p of problems) console.error(p);
     process.exit(1);
   }
-  console.log('vault isolation ok: sources, built popup/background and both manifests carry no path to the vault; no chunk outside the vault page carries src/vault or src/unlock (module map), and no source outside it reads WebAuthn; no page reaches storage.session; every module bundled into the vault page is vault-page code or one of its five packages, and its stylesheets are the three named sheets, importing nothing and loading only the Geist faces; its HTML carries no inline CSS and links only its built sheets, and its code builds no CSS at run time');
+  console.log('vault isolation ok: sources, built popup/background and both manifests carry no path to the vault; no chunk outside the vault page carries src/vault, src/unlock or core/keys, and no module bundled outside it reads WebAuthn (module map); no page reaches storage.session; every module bundled into the vault page is vault-page code or one of its five packages, and its stylesheets are the three named sheets, importing nothing and loading only the Geist faces; its HTML carries no inline CSS and links only its built sheets, and its code builds no CSS at run time');
 }
