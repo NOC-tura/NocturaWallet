@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Revision 1 (2026-10-08):** written for the Fable 5.1 review; dry-run end state built and verified (Dry-run record).
+**Revision 2 (2026-10-08):** Fable 5.1 review 1 applied — H1, M2, M3, L1–L10; M1 is an owner decision, pending (Scope 3.10). Where each landed: "Review 1" at the end. The dry run was re-run for every changed task and the full end state (Dry-run record).
 
 **Goal:** Build spec §12's plan 2 of B1b-2b ("address book"): the engine extension E17 (`v1_contacts`, `contacts.list` / `contacts.set` / `contacts.remove`, the contact label) with C12, C18 and C19; #15 address book in its three design states and the extension's (search · no result, pick, full, load failed); the contact sheet (an `.s8-sheet` like #43); the hooks — #12's contact icon and the pick hand-back, #20's "Save as" row, #27's [Save] / [Save sender], #31's Connections › Address book, #37's plan-2 bullet, and the "From your address book: <name>" label on #12, #20 and #27; E2E spec 19 with its negative control; the visual pass of every plan-2 state.
 
@@ -62,13 +62,14 @@ And, from the brief's binding lessons and CLAUDE.md:
 3. **NEW — the sheet's actions are Cancel | Save side by side** (the design's `.sticky-bar.row` pattern), with "Delete contact" below on the edit sheet and Keep | Delete in its confirm. Stacked, the dust state still ran past the panel. The sheet is undrawn (D20); #43 has no action row to copy.
 4. **NEW — the delete confirm also shows the contact's name and address** under "Delete this contact?" (O82) — what is about to go; no new copy.
 5. **NEW — #27's received "From" row gets the full label** (own > treasury > contact), not only the contact label: §6.3 says the To/From label "adds the contact label"; giving the received From row the own/treasury labels too keeps one rule on both rows. 2a's received From row had no label.
-6. **NEW — Esc over an open sheet closes only the sheet.** App's Esc handler popped the pushed screen under any sheet (a double action). It now leaves Esc to an open modal dialog — on #15, and also on plan 1's accounts manager remove sheet, which had the same double action. #20's own Esc is paused while its contact sheet is open.
+6. **NEW — Esc over an open sheet closes only the sheet.** App's Esc handler popped the pushed screen under any sheet (a double action). It now leaves Esc to an open modal dialog — on #15, and also on plan 1's accounts manager remove sheet, which had the same double action (pinned on that surface too, review M3). #20's own Esc is paused while its contact sheet is open.
 7. **NEW — the shared `Sheet` opens on `data-autofocus`** when its content marks an element (the contact sheet's name, or the address field when empty); React's `autoFocus` ran before the Sheet's own focus effect and was overridden. Sheets without the marker focus their first control as before.
-8. **Rule 6 where a second press is invisible:** #20's Add, #27's Save, #15's `+` and every add button are LockedButtons; for Add and Save the lock itself is asserted. #15's `+` / add buttons (each opens the one sheet) and #20's **Skip** (it hides its own row on the tap) have no test of their own — no test can tell a lock from none there.
+8. **Rule 6 where a second press is invisible:** #20's Add, #27's Save, #15's `+` and every add button are LockedButtons; for Add and Save the lock itself is asserted. #15's `+` / add buttons (each opens the one sheet) and #20's **Skip** (it hides its own row on the tap) have no test of their own — no test can tell a lock from none there. **#15's rows are plain buttons** (review L9): a double tap on a standalone row opens the same edit sheet, on a pick row runs the same `reset` — idempotent, so not LockedButtons.
 9. **NEW — #15's `+` is disabled while the list loads or failed to load** (and when full, as specified): an add with an unknown count could not say "full" before the save.
-10. **The never-sent line on #27a can contradict a "SENT" record** (a spec consequence, flagged in the dry-run record): `known` is `v1_known_recipients`, written only by a confirmed send from this extension, so a send made by another wallet with the same seed (or before B1b-1's list existed) opens #27a's sheet with "You have never sent to this address." under a SENT transaction. Built to the spec (O72 for any address not `known`); the owner may want a different line for that case.
+10. **Owner decision pending (review M1) — the never-sent line on #27a under a "SENT" record.** `known` is `v1_known_recipients`, written only by a send this extension confirmed, so a send made by another wallet with the same seed (or before B1b-1's list existed) opens #27a's sheet with "You have never sent to this address." under a SENT transaction. **The line stays (fail closed):** a SENT row not in that list is another wallet's send **or a history row the coordinator served that this extension never produced** — a fabricated or replayed SENT row must never make the sheet look reassuring, so the history never feeds `known` under any variant. What the owner is asked is only the **wording** for that case (e.g. "This extension has never sent to this address.", true in both cases) — new copy, an owner string. Until the answer, O72 is built as written; if a new string is approved before Task 4 starts, it replaces O72 in `CONTACT_TEXT.neverSent` and in #15's pick rows.
 11. **Spec items built as written, declared in §6's Differs:** no pull-to-refresh (the list is local); the standalone row tap opens the edit sheet, not a filtered #27 (D21); no swipe actions, long-press menu or undo toast; persistence key `v1_contacts`, not `v1_address_book`; pick-mode rows show the full address and O72, not the drawn truncation and date; #10 and #19 show no contact label; #26's swipe and #40's long-press "Save to address book" are not built; #20's first-time check stays known-recipients only (D19); #39's copy does not gain "…and saved address-book entries" (a restore keeps contacts); #12's Scan QR stays omitted (2a-D13); `[Save sender]` is offered for every received transfer, with the warnings.
-12. **Not shot** in the visual pass (fault injection only; asserted by the component tests): #15 `load failed` (O74), the sheet's `failed` line.
+12. **Owner notes, no change (review L4, L10).** C19's `\p{Cf}` refuses ZWJ, ZWNJ and VS16, so "Bistro ❤️", a ZWJ emoji family and Persian or Indic names that need U+200C get 2a's name line, which does not say why — a second line would be new copy (L4). #20 and #27 choose add or edit from the book read at mount; an Add tapped after the same address was saved in another window renames that contact (`contacts.set` renames in place) — two windows, seconds apart, a label never trust; recorded so it is not mistaken for a hole (L10).
+13. **Not shot** in the visual pass (fault injection only; asserted by the component tests): #15 `load failed` (O74), the sheet's `failed` line.
 
 ### 4. The trust boundary — no address becomes "known"; where every address enters or leaves the book
 
@@ -1666,7 +1667,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -   if (o.screen === 'contacts') return only(o, ['screen', 'pick']) && typeof o.pick === 'boolean';
   +   if (o.screen === 'contacts') return typeof o.pick === 'boolean';
   ```
-  `timeout 300 npx vitest run src/app/__tests__/router.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 31 passed (32)).
+  `timeout 300 npx vitest run src/app/__tests__/router.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 32 passed (33)).
 
 - **M3d** — the floor itself counted as dust (C18 boundary) — `extension/src/app/addressBook.ts`:
 
@@ -1711,18 +1712,22 @@ MSG
 **Files:**
 - Create: `extension/src/app/__tests__/ContactSheet.test.tsx`
 - Modify: `extension/src/app/app.css`
+- Modify: `extension/src/app/screens/Switcher.tsx`
 - Create: `extension/src/app/ui/ContactSheet.tsx`
 - Modify: `extension/src/app/ui/Sheet.tsx`
 
 **Interfaces:**
 - Consumes: `Sheet` (`src/app/ui/Sheet.tsx`), `LockedButton`, `Banner`, `AddressGroups` (`web/src/ui/AddressGroups.tsx`), `isAddressText` (`src/app/send/rules.ts`), `cleanName`, `isDust`, `engine.recipientInfo` / `contactSet` / `contactRemove`, `SEND_TEXT.pasteRefused` (the plan-3 owner-confirmed paste line).
 - Produces (as exported):
-  - `src/app/ui/ContactSheet.tsx` (new): `export const CONTACT_TEXT`; `export type ContactSheetMode = {kind: 'add'; address: string | null; name?: string} | {kind: 'edit'; address: string; name: string}`; `export function ContactSheet(props: {mode: ContactSheetMode; received?: {token: Token | null; amount: bigint | null}; onSaved: (contact: {address: string; name: string}) => void; onDeleted?: (address: string) => void; onClose: () => void})`.
-  - `src/app/ui/Sheet.tsx`: `Sheet` gains `tall?: boolean` and opens on the element marked `data-autofocus` when its content has one.
+  - `src/app/ui/ContactSheet.tsx` (new): `export const CONTACT_TEXT`; `export type ContactSheetMode = {kind: 'add'; address: string | null; name?: string; typed?: string} | {kind: 'edit'; address: string; name: string}`; `export function ContactSheet(props: {mode: ContactSheetMode; received?: {token: Token | null; amount: bigint | null}; onSaved: (contact: {address: string; name: string}) => void; onDeleted?: (address: string) => void; onClose: () => void})`.
+  - `src/app/ui/Sheet.tsx`: `Sheet` gains `tall?: boolean`, opens on the element marked `data-autofocus` when its content has one, and runs its focus/key effect once (the latest `onClose` in a ref — review H1).
+  - `src/app/screens/Switcher.tsx`: `export const NAME_RULE` — 2a's name rule, used by `RENAME_ERRORS.malformed` and `CONTACT_TEXT.badName` (review L6).
 
 The sheet is where an address enters the book, so it says what is known about it (review H3). Every state shows the **full address in groups of four** (read-only when prefilled; under the field once a typed one is valid). "You have never sent to this address." (O72) shows for any address `wallet.recipientInfo` does not answer `known: true` — **including while it has not answered** (fail closed: silence never reads as known). Opened from #27c's "Save sender" (`received`), the line reads "…— it only sent to you." (O77), and for a transfer below C18's floor — or one whose amount or token could not be decoded — a `.banner.danger` (O78) sits above the name and Save reads "Save anyway" (O79): warned, not refused (the user may know the sender). Errors: a name `cleanName` refuses (checked before anything is sent; 2a's line, which C19's characters fall under), `duplicate-name` (O85), an address that is not one (O86, live, Save disabled), `full` (O87), anything else 2a's "Something went wrong. Try again.". Edit has the "Delete contact" tertiary in `--danger`, and its confirm "Delete this contact?" with [Keep] / [Delete] (O82–O84); the confirm also shows the name and the address it deletes (no new copy). Save and Delete are LockedButtons (rule 6); an answer that lands after the sheet closed calls nothing (`alive`, pinned by a test that hides the sheet while a save is held).
 
 Two changes to the shared `Sheet`, both found by the dry run: it focused its grabber on open, overriding React's `autoFocus` (which runs before the parent's effect) — it now focuses an element marked `data-autofocus` when there is one (the name when prefilled, the address field when empty); and at the design's 70 % the contact sheet's content (address, warnings, field, buttons) did not fit the 412 × 600 popup, so the body scrolled and the focused name field pushed **the address being saved** out of view — `tall` lets this sheet take the popup's height but 48 px, and Cancel / Save sit side by side (the design's `.sticky-bar.row` pattern; stacked, the dust state ran past the panel). Both are declared (Scope 3.2, 3.3); Task 10's visual pass asserts the address, the dust banner and "Save anyway" are all in view on open.
+
+**Review 1 (rev 2).** **H1:** the Sheet's effect was keyed on `onClose`, and every caller passes an inline one while the screen beneath re-renders on its clock (#20 every second, #15 and #27 every 30 s, #15 every 2 s with a send open): each render re-ran the effect, which focused `data-autofocus` again — on #15's add sheet the rest of a name was typed into the **address** field, on #20 a keyboard user could not stay on Save or Cancel. The effect now runs once and reads the latest `onClose` from a ref (as `useEscape` does); tests re-render a ticking parent and assert the caret stays in Name and on Cancel, and that Esc and the backdrop still reach the latest `onClose`; M4h (the `[onClose]` key back) is red. **M2:** the delete confirm swaps the content under the same Sheet (so its opener, for the focus on close, is kept); an effect moves the focus to Keep on entering it and back to "Delete contact" on Keep — it was left on `body`, from where Tab reached the screen behind the modal; M4i. **L1:** `typed` seeds the address input (#15's search query when it is an address, Task 5). **L2:** the typed-mode address groups lose their `aria-label` (the input is labelled; `getByLabel('Address')` stays unique). **L6:** the name rule is 2a's `NAME_RULE`, one literal.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -2048,6 +2053,72 @@ describe('the contact sheet: rule 6 and late answers', () => {
     expect(onSaved).not.toHaveBeenCalled();
   });
 });
+
+// Review H1: the screen under a sheet re-renders on its clock (#20 every second, #15 and #27 every 30 s) and passes an
+// inline onClose. The sheet's focus must survive those renders — never pulled back to data-autofocus — and Esc and the
+// backdrop must still reach the latest onClose.
+describe('the contact sheet under a re-rendering screen (review H1)', () => {
+  function Ticking({mode, onClose}: {mode: ContactSheetMode; onClose: () => void}) {
+    const [tick, setTick] = useState(0);
+    return (
+      <>
+        <button type="button" onClick={() => setTick(t => t + 1)}>
+          tick {tick}
+        </button>
+        <ContactSheet mode={mode} onSaved={() => undefined} onClose={() => onClose()} />
+      </>
+    );
+  }
+  const tick = (n = 3) => {
+    for (let i = 0; i < n; i++) act(() => void (screen.getByText(/^tick /) as HTMLButtonElement).click());
+  };
+
+  it('add · empty: the caret stays in Name across renders (never moved back to the address field)', async () => {
+    await renderInWallet(<Ticking mode={{kind: 'add', address: null}} onClose={() => undefined} />);
+    fireEvent.change(document.getElementById('contact-address')!, {target: {value: OTHER}});
+    nameField().focus();
+    tick();
+    expect(document.activeElement).toBe(nameField());
+  });
+
+  it('Cancel keeps the focus across renders', async () => {
+    await renderInWallet(<Ticking mode={{kind: 'add', address: SENDER}} onClose={() => undefined} />);
+    const cancel = screen.getByRole('button', {name: 'Cancel'});
+    cancel.focus();
+    tick();
+    expect(document.activeElement).toBe(cancel);
+  });
+
+  it('after many renders, Esc and the backdrop still call the latest onClose', async () => {
+    const onClose = vi.fn();
+    await renderInWallet(<Ticking mode={{kind: 'add', address: SENDER}} onClose={onClose} />);
+    tick(5);
+    fireEvent.keyDown(document, {key: 'Escape'});
+    fireEvent.click(screen.getByTestId('sheet-backdrop'));
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Review M2: the delete confirm keeps the focus inside the sheet.
+describe('the contact sheet: the focus through the delete confirm (review M2)', () => {
+  it('"Delete contact" → the focus on Keep; Keep → back on "Delete contact"', async () => {
+    await renderInWallet(sheet({mode: {kind: 'edit', address: SENDER, name: 'Supplier'}}), {before: ext => ext.local.set(CONTACTS_KEY, [{address: SENDER, name: 'Supplier'}])});
+    fireEvent.click(screen.getByRole('button', {name: 'Delete contact'}));
+    expect(document.activeElement).toBe(screen.getByRole('button', {name: 'Keep'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Keep'}));
+    expect(document.activeElement).toBe(screen.getByRole('button', {name: 'Delete contact'}));
+  });
+});
+
+// Review L1 (the sheet half): #15's search query, when it is an address, seeds the address field.
+describe('the contact sheet: add · empty seeded with an address (review L1)', () => {
+  it('`typed` fills the address input; the name stays empty', async () => {
+    await renderInWallet(sheet({mode: {kind: 'add', address: null, typed: OTHER}}));
+    expect((document.getElementById('contact-address') as HTMLInputElement).value).toBe(OTHER);
+    expect(nameField().value).toBe('');
+    expect(shownGroups()).toEqual(groupsOf(OTHER));
+  });
+});
 ````
 
 - [ ] **Step 2: Run them against the tree the previous task left — they must fail.**
@@ -2142,6 +2213,27 @@ index ffaa033..c36f8b7 100644
 +}
 ````
 
+Modify `extension/src/app/screens/Switcher.tsx`:
+
+````diff
+diff --git a/extension/src/app/screens/Switcher.tsx b/extension/src/app/screens/Switcher.tsx
+index 6a74f20..d5ac0e4 100644
+--- a/extension/src/app/screens/Switcher.tsx
++++ b/extension/src/app/screens/Switcher.tsx
+@@ -13,8 +13,10 @@ export {FRESH_ROWS} from '../useAccountBalances';
+ 
+ /** The rename refusals (2a §5.2), shared with the B1b-2b accounts manager's inline rename. */
+ export const RENAME_FAILED = 'Something went wrong.';
++/** 2a §5.2's name rule (the accounts' rename, and B1b-2b's contact sheet — one literal, so the two cannot drift). */
++export const NAME_RULE = 'Names are 1 to 32 characters, without control characters.';
+ export const RENAME_ERRORS: Record<string, string> = {
+-  malformed: 'Names are 1 to 32 characters, without control characters.',
++  malformed: NAME_RULE,
+   busy: 'The wallet is busy. Try again.',
+   'unknown-account': 'That account no longer exists.',
+   failed: RENAME_FAILED,
+````
+
 Create `extension/src/app/ui/ContactSheet.tsx`:
 
 ````tsx
@@ -2156,6 +2248,7 @@ import {Banner} from './Banner';
 import {ExtIcon} from './ExtIcon';
 import {LockedButton} from './LockedButton';
 import {SEND_TEXT} from '../screens/Send';
+import {NAME_RULE} from '../screens/Switcher';
 import type {Token} from '../engine';
 
 /** The contact sheet's copy (B1b-2b §6.2): "Add contact" (→ adapted, ix:7388's aria), O72, O75–O87, and 2a's strings. */
@@ -2176,7 +2269,7 @@ export const CONTACT_TEXT = {
   deleteQuestion: 'Delete this contact?',
   delete: 'Delete',
   keep: 'Keep',
-  badName: 'Names are 1 to 32 characters, without control characters.',
+  badName: NAME_RULE,
   duplicateName: 'Another contact already has this name.',
   badAddress: 'That is not a Solana address.',
   full: 'The address book is full (200 contacts). Delete one to add another.',
@@ -2184,11 +2277,12 @@ export const CONTACT_TEXT = {
 } as const;
 
 /**
- * What the sheet edits. `add` with an address: prefilled from #20, #27 or #15's search — the address read-only, in groups
- * of four. `add` with `null`: #15's `+` — the address is an input. `edit`: a saved contact (a #15 row, or #27 when the
- * counter-party is saved) — the address read-only; the address never changes once saved (C12).
+ * What the sheet edits. `add` with an address: prefilled from #20 or #27 — the address read-only, in groups of four.
+ * `add` with `null`: #15's `+` and "Add new contact" — the address is an input, seeded with `typed` (#15's search query
+ * when it is an address; review L1) and the name with `name` (the query otherwise). `edit`: a saved contact (a #15 row,
+ * or #27 when the counter-party is saved) — the address read-only; the address never changes once saved (C12).
  */
-export type ContactSheetMode = {kind: 'add'; address: string | null; name?: string} | {kind: 'edit'; address: string; name: string};
+export type ContactSheetMode = {kind: 'add'; address: string | null; name?: string; typed?: string} | {kind: 'edit'; address: string; name: string};
 
 /**
  * The contact sheet (B1b-2b §6.2; D20, C12, C18, C19; review H3): an `.s8-sheet` like #43 over #15, #20 and #27. A
@@ -2217,7 +2311,7 @@ export function ContactSheet({
   const m = useWallet();
   const {engine, reload} = m;
   const fixed = mode.address;
-  const [typed, setTyped] = useState('');
+  const [typed, setTyped] = useState(mode.kind === 'add' ? (mode.typed ?? '') : '');
   const [name, setName] = useState(mode.name ?? '');
   const [error, setError] = useState<{field: 'address' | 'name' | 'form'; text: string} | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -2238,6 +2332,19 @@ export function ContactSheet({
   // E6 for the address on the sheet, each time it is a valid one: whether this wallet ever sent there. Until it answers
   // (or when it cannot), the never-sent line shows — never a silence that reads as "known". A reply for an address the
   // field no longer holds is dropped.
+  // Review M2: the confirm swaps the sheet's content under the same Sheet (its opener, for the focus on close, is kept),
+  // so the focus is moved here — to Keep on entering it, back to "Delete contact" on Keep — never left on `body`, from
+  // where Tab would reach the screen behind the modal.
+  const keepRef = useRef<HTMLButtonElement>(null);
+  const deleteRef = useRef<HTMLButtonElement>(null);
+  const confirmedOnce = useRef(false);
+  useEffect(() => {
+    if (confirming) {
+      confirmedOnce.current = true;
+      keepRef.current?.focus();
+    } else if (confirmedOnce.current) deleteRef.current?.focus();
+  }, [confirming]);
+
   const generation = useRef(0);
   useEffect(() => {
     const mine = ++generation.current;
@@ -2308,7 +2415,7 @@ export function ContactSheet({
           </div>
           {message('form')}
           <div className="app-contact-actions">
-            <button type="button" className="btn btn-secondary" onClick={() => setConfirming(false)}>
+            <button type="button" className="btn btn-secondary" ref={keepRef} onClick={() => setConfirming(false)}>
               {CONTACT_TEXT.keep}
             </button>
             <LockedButton className="btn btn-destructive" onPress={remove}>
@@ -2362,7 +2469,7 @@ export function ContactSheet({
             {message('address')}
             {pasteRefused && typed === '' ? <p className="noc-caption noc-warning">{SEND_TEXT.pasteRefused}</p> : null}
             {valid ? (
-              <div className="app-contact-addr" aria-label={CONTACT_TEXT.address}>
+              <div className="app-contact-addr">
                 <AddressGroups address={address} />
               </div>
             ) : null}
@@ -2406,7 +2513,7 @@ export function ContactSheet({
           </LockedButton>
         </div>
         {mode.kind === 'edit' ? (
-          <button type="button" className="btn btn-tertiary noc-danger" onClick={() => setConfirming(true)}>
+          <button type="button" className="btn btn-tertiary noc-danger" ref={deleteRef} onClick={() => setConfirming(true)}>
             {CONTACT_TEXT.deleteContact}
           </button>
         ) : null}
@@ -2420,10 +2527,10 @@ Modify `extension/src/app/ui/Sheet.tsx`:
 
 ````diff
 diff --git a/extension/src/app/ui/Sheet.tsx b/extension/src/app/ui/Sheet.tsx
-index cce4128..9e12006 100644
+index cce4128..435fe62 100644
 --- a/extension/src/app/ui/Sheet.tsx
 +++ b/extension/src/app/ui/Sheet.tsx
-@@ -4,14 +4,18 @@ import {ExtIcon} from './ExtIcon';
+@@ -4,18 +4,29 @@ import {ExtIcon} from './ExtIcon';
  /**
   * The design's bottom sheet (`.s8-sheet`, #43): 70 % of the height at most, a grabber, a title and a
   * close button. Esc, the backdrop and the grabber close it; Tab stays inside it while it is open
@@ -2433,10 +2540,17 @@ index cce4128..9e12006 100644
 + * React's own autoFocus would run before this effect and be overridden — else on its first control.
 + * `tall`: the panel may take the popup's height but 48 px (the contact sheet: a full address, its warnings, a field and
 + * three buttons do not fit the design's 70 % at 412 × 600, and a scrolled panel hid the address it saves).
++ *
++ * The focus and key effect runs once, on mount (B1b-2b plan 2 review H1): the latest `onClose` is held in a ref, as
++ * useEscape holds its handler. Every caller passes an inline `onClose`, and the screen under a sheet re-renders on its
++ * clock (#20 every second) — an effect keyed on `onClose` re-ran each time, pulled the focus back to `data-autofocus` and
++ * so typed the rest of a name into #15's address field.
   */
 -export function Sheet({title, onClose, children}: {title: string; onClose: () => void; children: ReactNode}) {
 +export function Sheet({title, onClose, children, tall = false}: {title: string; onClose: () => void; children: ReactNode; tall?: boolean}) {
    const panel = useRef<HTMLDivElement>(null);
++  const close = useRef(onClose);
++  close.current = onClose;
    useEffect(() => {
      const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
      const focusables = (): HTMLElement[] => Array.from(panel.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input, a[href]') ?? []);
@@ -2445,7 +2559,17 @@ index cce4128..9e12006 100644
      const onKey = (e: KeyboardEvent) => {
        if (e.key === 'Escape') {
          e.preventDefault();
-@@ -40,7 +44,7 @@ export function Sheet({title, onClose, children}: {title: string; onClose: () =>
+-        onClose();
++        close.current();
+         return;
+       }
+       if (e.key !== 'Tab') return;
+@@ -36,11 +47,11 @@ export function Sheet({title, onClose, children}: {title: string; onClose: () =>
+       document.removeEventListener('keydown', onKey);
+       before?.focus();
+     };
+-  }, [onClose]);
++  }, []);
    return (
      <div className="app-sheet-layer">
        <div className="s8-sheet-overlay" data-testid="sheet-backdrop" onClick={onClose} />
@@ -2464,7 +2588,7 @@ npx vitest run src/app/__tests__/ContactSheet.test.tsx
 npx tsc --noEmit && npx vitest run
 node scripts/build.mjs && npm run gates
 ```
-Expected (dry run): own tests Test Files  1 passed (1) · Tests  29 passed (29); tsc clean; whole suite Test Files  136 passed (136) · Tests  2671 passed (2671); gates green.
+Expected (dry run): own tests Test Files  1 passed (1) · Tests  34 passed (34); tsc clean; whole suite Test Files  136 passed (136) · Tests  2676 passed (2676); gates green.
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -2476,7 +2600,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -   const warning = !valid || known === true ? null : (
   +   const warning = !valid || known !== false ? null : (
   ```
-  `timeout 300 npx vitest run src/app/__tests__/ContactSheet.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 27 passed (29)).
+  `timeout 300 npx vitest run src/app/__tests__/ContactSheet.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 32 passed (34)).
 
 - **M4b** — "only sent to you" and the dust banner wait for the answer (fail open) — `extension/src/app/ui/ContactSheet.tsx`:
 
@@ -2484,7 +2608,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -   const fromSender = received !== undefined && known !== true;
   +   const fromSender = received !== undefined && known === false;
   ```
-  `timeout 300 npx vitest run src/app/__tests__/ContactSheet.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  7 failed | 22 passed (29)).
+  `timeout 300 npx vitest run src/app/__tests__/ContactSheet.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  7 failed | 27 passed (34)).
 
 - **M4c** — the alive check after the save dropped — `extension/src/app/ui/ContactSheet.tsx`:
 
@@ -2493,7 +2617,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -     if (!alive.current) return;
   +     const r = await engine.contactSet(address, name);
   ```
-  `timeout 300 npx vitest run src/app/__tests__/ContactSheet.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 28 passed (29)).
+  `timeout 300 npx vitest run src/app/__tests__/ContactSheet.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 33 passed (34)).
 
 - **M4d** — Save without its lock (rule 6) — `extension/src/app/ui/ContactSheet.tsx`:
 
@@ -2505,7 +2629,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   +             {dust ? CONTACT_TEXT.saveAnyway : CONTACT_TEXT.save}
   +           </button>
   ```
-  `timeout 300 npx vitest run src/app/__tests__/ContactSheet.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 28 passed (29)).
+  `timeout 300 npx vitest run src/app/__tests__/ContactSheet.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 33 passed (34)).
 
 - **M4e** — the sheet ignores data-autofocus — `extension/src/app/ui/Sheet.tsx`:
 
@@ -2513,7 +2637,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -     (panel.current?.querySelector<HTMLElement>('[data-autofocus]') ?? focusables()[0])?.focus();
   +     focusables()[0]?.focus();
   ```
-  `timeout 300 npx vitest run src/app/__tests__/ContactSheet.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 27 passed (29)).
+  `timeout 300 npx vitest run src/app/__tests__/ContactSheet.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 32 passed (34)).
 
 - **M4f** — the name is no longer checked before the message — `extension/src/app/ui/ContactSheet.tsx`:
 
@@ -2521,7 +2645,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -     if (cleanName(name) === null) return setError({field: 'name', text: CONTACT_TEXT.badName});
   + (deleted)
   ```
-  `timeout 300 npx vitest run src/app/__tests__/ContactSheet.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  4 failed | 25 passed (29)).
+  `timeout 300 npx vitest run src/app/__tests__/ContactSheet.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  4 failed | 30 passed (34)).
 
 - **M4g** — the sheet not tall — `extension/src/app/ui/Sheet.tsx`:
 
@@ -2529,12 +2653,30 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - <div className={tall ? 's8-sheet app-sheet-tall' : 's8-sheet'}
   + <div className="s8-sheet"
   ```
-  `timeout 300 npx vitest run src/app/__tests__/ContactSheet.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 28 passed (29)).
+  `timeout 300 npx vitest run src/app/__tests__/ContactSheet.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 33 passed (34)).
+
+- **M4h** — the Sheet's focus effect keyed on onClose again (review H1: it re-runs on every render of the screen beneath) — `extension/src/app/ui/Sheet.tsx`:
+
+  ```diff
+  -   }, []);
+  +   }, [onClose]);
+  ```
+  `timeout 300 npx vitest run src/app/__tests__/ContactSheet.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 32 passed (34)).
+
+- **M4i** — the delete confirm moves no focus (review M2) — `extension/src/app/ui/ContactSheet.tsx`:
+
+  ```diff
+  -       keepRef.current?.focus();
+  -     } else if (confirmedOnce.current) deleteRef.current?.focus();
+  +       void keepRef;
+  +     } else if (confirmedOnce.current) void deleteRef;
+  ```
+  `timeout 300 npx vitest run src/app/__tests__/ContactSheet.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 33 passed (34)).
 
 - [ ] **Step 6: Commit.**
 
 ```bash
-git add extension/src/app/__tests__/ContactSheet.test.tsx extension/src/app/app.css extension/src/app/ui/ContactSheet.tsx extension/src/app/ui/Sheet.tsx
+git add extension/src/app/__tests__/ContactSheet.test.tsx extension/src/app/app.css extension/src/app/screens/Switcher.tsx extension/src/app/ui/ContactSheet.tsx extension/src/app/ui/Sheet.tsx
 git commit -F - <<'MSG'
 feat(extension): the contact sheet — prefilled, empty, edit, delete; never sent, only sent to you, dust
 
@@ -2552,10 +2694,13 @@ MSG
 - Modify: `extension/scripts/check-classes.mjs`
 - Modify: `extension/src/__tests__/designExt2b.test.ts`
 - Modify: `extension/src/app/App.tsx`
+- Modify: `extension/src/app/__tests__/App.test.tsx`
 - Create: `extension/src/app/__tests__/Contacts.test.tsx`
 - Modify: `extension/src/app/__tests__/Settings.test.tsx`
 - Create: `extension/src/app/__tests__/addressBookFlow.test.tsx`
+- Modify: `extension/src/app/__tests__/router.test.ts`
 - Modify: `extension/src/app/app.css`
+- Modify: `extension/src/app/router.ts`
 - Create: `extension/src/app/screens/Contacts.tsx`
 - Modify: `extension/src/app/screens/Settings.tsx`
 - Modify: `extension/src/app/ui/ExtIcon.tsx`
@@ -2566,7 +2711,8 @@ MSG
 - Produces (as exported):
   - `src/app/screens/Contacts.tsx` (new): `export const CONTACTS_TEXT`; `export function Contacts(props: {pick: boolean; onBack: () => void; onPick: (address: string) => void})`.
   - `src/app/screens/Settings.tsx`: `Settings` gains the required prop `onContacts: () => void`; `SETTINGS_TEXT` gains `connections`, `addressBook`.
-  - `src/app/App.tsx`: the `contacts` route renders `Contacts`; `pickRecipient(address)` (the hand-back, tested in Task 6); Esc over an open sheet closes only the sheet.
+  - `src/app/router.ts`: `export function pickStack(stack: readonly Route[], address: string): Route[] | null` — the hand-back's stack, null with no `send` route below (review L8).
+  - `src/app/App.tsx`: the `contacts` route renders `Contacts`; `pickRecipient(address)` resets to `pickStack`'s stack or pops (the hand-back, tested end to end in Task 6); Esc over an open sheet closes only the sheet.
   - `src/app/ui/ExtIcon.tsx`: `ExtIconName` gains `'search' | 'users' | 'link' | 'book' | 'bookmark'` (the design's sprite, path for path).
   - `src/styles/design-ext.css`: regenerated with `.s-abook` (SHA-256 `3092abb5608035c82f58c9097cdd23bc8b49f8d77f12c1622d8a304414caa4d7`, 1 771 lines).
 
@@ -2575,6 +2721,8 @@ MSG
 #31 gains the design's "Connections" group with "Address book" (`#i-link`, ix:13552) and its meta "N contacts" from `contacts.list` (a refused read leaves the meta empty; the row still opens #15). App: the `contacts` route, `pickRecipient` (Task 6 wires its entry and tests it), and **Esc over an open sheet closes only the sheet** — App's Esc handler popped the screen under any sheet; it now leaves Esc to an open `[role="dialog"][aria-modal="true"]` (this also fixes the accounts manager's remove sheet, which had the same double action — declared, Scope 3.6).
 
 2a's `e2e/visual.spec.ts` asserts #31's row list; it gains "Address book" (found by the dry run's full E2E run).
+
+**Review 1 (rev 2).** **M3:** the Esc change is pinned on plan 1's surface too — `App.test.tsx` opens the accounts manager's remove sheet, presses Esc (the sheet closes, the manager stays) and Esc again (#31); M5f runs both files. **L1:** "Add new contact "q" →" with a query that is an address seeds the sheet's address field and leaves the name empty (M5h). **L5:** a saved address that is one of this wallet's accounts says "Your account: <name>" (2a's) in its pick row, not "never" (M5i). **L8:** the hand-back's stack is `pickStack` in `router.ts`, unit-tested; with no `send` route below it is null and App pops, so a pick screen never has dead rows (M5j). **L9:** the rows are plain buttons — declared in Scope 3.8.
 
 **design-ext.css is regenerated, never edited** (plan 1 Scope §2: "plan 2 re-runs the script with its prefixes added and re-pins the hash in the same task — a red pin there is expected, not drift").
 
@@ -2605,6 +2753,37 @@ index 7665599..82da755 100644
  });
 ````
 
+Modify `extension/src/app/__tests__/App.test.tsx`:
+
+````diff
+diff --git a/extension/src/app/__tests__/App.test.tsx b/extension/src/app/__tests__/App.test.tsx
+index 1d0e773..e9d02a2 100644
+--- a/extension/src/app/__tests__/App.test.tsx
++++ b/extension/src/app/__tests__/App.test.tsx
+@@ -169,3 +169,21 @@ describe('navigation (spec §1.6: an in-memory stack; no route acts)', () => {
+     }
+   });
+ });
++
++// B1b-2b plan 2, Scope 3.6 (review M3): Esc over an open sheet closes only the sheet — pinned on plan 1's accounts manager
++// remove sheet too, which had the double action (the sheet closed AND the manager popped to #31).
++describe('Esc over a sheet on a pushed screen (plan 2)', () => {
++  it('the accounts manager’s remove sheet: Esc closes the sheet, the manager stays; Esc again leaves it', async () => {
++    await renderApp();
++    await screen.findByText('TOKENS');
++    fireEvent.click(screen.getByRole('button', {name: 'Settings'}));
++    fireEvent.click(await screen.findByText('Profile', {selector: '.s7-title'}));
++    fireEvent.click(await screen.findByRole('button', {name: 'Remove Savings'}));
++    expect(await screen.findByRole('dialog', {name: 'Remove Savings?'})).toBeTruthy();
++    fireEvent.keyDown(document, {key: 'Escape'});
++    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
++    expect(screen.getByRole('button', {name: 'Remove Savings'})).toBeTruthy();
++    fireEvent.keyDown(document, {key: 'Escape'});
++    expect(await screen.findByRole('heading', {name: 'Settings'})).toBeTruthy();
++  });
++});
+````
+
 Create `extension/src/app/__tests__/Contacts.test.tsx`:
 
 ````tsx
@@ -2618,6 +2797,7 @@ import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {CONTACTS_KEY} from '../../background/contacts';
 import {KNOWN_RECIPIENTS_KEY} from '../../background/knownRecipients';
 import {lock} from '../../background/autolock';
+import {RECIPIENT} from '../../background/__tests__/fixtures';
 
 // B1b-2b §6.1 (D18, D21, C12; review H3): #15 — populated, empty, search, no result, pick, full, load failed.
 const SELECTORS = selectorsOf(UI_SHEETS);
@@ -2705,6 +2885,18 @@ describe('#15 address book — standalone', () => {
     expect(screen.queryByText('No more matches.')).toBeNull();
     expect(screen.queryByText(/results? for/)).toBeNull();
     expect(screen.getByRole('button', {name: 'Add new contact "zed" →'})).toBeTruthy();
+  });
+
+  // Review L1: an address typed into the search, with no match, seeds the sheet's address field — not the name.
+  it('"Add new contact" for an address query: the address field holds it, the name is empty', async () => {
+    await show();
+    await waitFor(() => expect(rows()).toHaveLength(3));
+    fireEvent.change(screen.getByRole('textbox', {name: 'Search contacts'}), {target: {value: addr(9)}});
+    expect(screen.getByText(`No contacts match "${addr(9)}".`)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: `Add new contact "${addr(9)}" →`}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    expect((dialog.querySelector('#contact-address') as HTMLInputElement).value).toBe(addr(9));
+    expect((dialog.querySelector('#contact-name') as HTMLInputElement).value).toBe('');
   });
 
   it('D21: a row tap opens the edit sheet; a rename shows in the list; a delete removes the row', async () => {
@@ -2795,6 +2987,13 @@ describe('#15 address book — pick (from #12; review H3)', () => {
     expect(bistro?.querySelector('.when')?.className).toBe('when noc-caption noc-warning');
     expect(screen.queryByText('Gabc…xyz9')).toBeNull();
     expect(unstyledClasses(document.querySelector('.s-abook')!, SELECTORS)).toEqual([]);
+  });
+
+  // Review L5: a saved address that is one of this wallet's accounts says "Your account: <name>" in its pick row.
+  it('an own account saved as a contact: the pick row says "Your account: Savings", not a date or O72', async () => {
+    await show({pick: true}, {before: ext => ext.local.set(CONTACTS_KEY, [{address: RECIPIENT, name: 'Not my savings'}])});
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    expect(rows()[0]?.querySelector('.when')?.textContent).toBe('Your account: Savings');
   });
 
   it('a row tap hands the address back (no edit sheet)', async () => {
@@ -3049,13 +3248,47 @@ describe('#31 → #15 (plan 2)', () => {
 });
 ````
 
+Modify `extension/src/app/__tests__/router.test.ts`:
+
+````diff
+diff --git a/extension/src/app/__tests__/router.test.ts b/extension/src/app/__tests__/router.test.ts
+index 898da1f..75ab090 100644
+--- a/extension/src/app/__tests__/router.test.ts
++++ b/extension/src/app/__tests__/router.test.ts
+@@ -1,5 +1,5 @@
+ // @vitest-environment happy-dom
+-import {FLOW, SCREENS, TAB_ONLY, firstRoute, routeReducer, type Route} from '../router';
++import {FLOW, SCREENS, TAB_ONLY, firstRoute, pickStack, routeReducer, type Route} from '../router';
+ 
+ const HOME: Route[] = [{screen: 'tab', tab: 'home'}];
+ 
+@@ -47,6 +47,17 @@ describe('the router', () => {
+     }
+   });
+ 
++  // §1.4 (review M4) and plan 2 review L8: the pick hands the address back through the send route's own draft; with no
++  // send route below, null (App pops).
++  it('pickStack: the send route under #15 takes the address in its draft, the stack ends there; none below → null', () => {
++    const send: Route = {screen: 'send', draft: {token: 'NOC', recipient: '', amount: '2'}, notice: 'start-again'};
++    expect(pickStack([...HOME, send, {screen: 'contacts', pick: true}], ADDR)).toEqual([...HOME, {screen: 'send', draft: {token: 'NOC', recipient: ADDR, amount: '2'}, notice: null}]);
++    expect(pickStack([...HOME, {screen: 'send', draft: null, notice: null}, {screen: 'contacts', pick: true}], ADDR)).toEqual([...HOME, {screen: 'send', draft: {token: 'SOL', recipient: ADDR, amount: ''}, notice: null}]);
++    expect(pickStack([...HOME, {screen: 'contacts', pick: true}], ADDR)).toBeNull();
++    const back = pickStack([...HOME, send, {screen: 'contacts', pick: true}], ADDR);
++    expect(back === null ? null : routeReducer(HOME, {type: 'reset', routes: back})).toEqual(back);
++  });
++
+   it('the flow routes: a draft is the user’s text, an intent an address and a positive u64, a status id 32 hex or null', () => {
+     const ok: Route[] = [
+       {screen: 'send', draft: null, notice: null},
+````
+
 - [ ] **Step 2: Run them against the tree the previous task left — they must fail.**
 
 ```bash
 cd extension
-npx vitest run src/__tests__/designExt2b.test.ts src/app/__tests__/Contacts.test.tsx src/app/__tests__/Settings.test.tsx src/app/__tests__/addressBookFlow.test.tsx
+npx vitest run src/__tests__/designExt2b.test.ts src/app/__tests__/App.test.tsx src/app/__tests__/Contacts.test.tsx src/app/__tests__/Settings.test.tsx src/app/__tests__/addressBookFlow.test.tsx src/app/__tests__/router.test.ts
 ```
-Expected (dry run, these test files on Task 4's tree): **red** — Test Files  4 failed (4) · Tests  11 failed | 24 passed (35). (A file that imports a module this task creates fails to load: that counts as red.)
+Expected (dry run, these test files on Task 4's tree): **red** — Test Files  6 failed (6) · Tests  13 failed | 71 passed (84). (A file that imports a module this task creates fails to load: that counts as red.)
 
 - [ ] **Step 3: Implement.**
 
@@ -3102,9 +3335,18 @@ Modify `extension/src/app/App.tsx`:
 
 ````diff
 diff --git a/extension/src/app/App.tsx b/extension/src/app/App.tsx
-index 0b2d0ce..794f58d 100644
+index 0b2d0ce..82f02df 100644
 --- a/extension/src/app/App.tsx
 +++ b/extension/src/app/App.tsx
+@@ -2,7 +2,7 @@ import {useEffect, useLayoutEffect, useReducer, useRef, useState} from 'react';
+ import {WalletProvider, useWallet, type Surface} from './WalletContext';
+ import {createEngine, type Engine, type HistoryItem, type Intent} from './engine';
+ import {browserPlatform, type Platform} from './platform';
+-import {FLOW, TAB_ONLY, firstRoute, routeReducer, type Route} from './router';
++import {FLOW, TAB_ONLY, firstRoute, pickStack, routeReducer, type Route} from './router';
+ import {draftOf, type Draft} from './send/rules';
+ import {TabBar} from './ui/TabBar';
+ import {CancelledToast} from './ui/CancelledToast';
 @@ -19,6 +19,7 @@ import {Passkey} from './screens/Passkey';
  import {AccountsManager} from './screens/AccountsManager';
  import {DeleteWallet} from './screens/DeleteWallet';
@@ -3129,29 +3371,20 @@ index 0b2d0ce..794f58d 100644
      };
      document.addEventListener('keydown', onKey);
      return () => document.removeEventListener('keydown', onKey);
-@@ -130,6 +133,21 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
+@@ -130,6 +133,12 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
      if (resumeElsewhere) go({type: 'reset', routes: [HOME]});
    }, [resumeElsewhere]);
  
-+  /**
-+   * #15's pick hand-back (spec §1.4, review M4): the address goes into the `send` route's OWN draft — the route under
-+   * #15 — and the stack is reset to it, so #12 mounts again holding it and treats it exactly as a paste (isDraft checks
-+   * it like any draft; #12 asks wallet.recipientInfo and shows state 3 or 6). No route gains a key. Without a `send`
-+   * route below (never, from #12's icon) nothing happens.
-+   */
++  /** #15's pick hand-back (spec §1.4, review M4): router.ts pickStack; with no `send` route below, a plain pop (review L8). */
 +  const pickRecipient = (address: string) => {
-+    const now = stackRef.current;
-+    const at = now.map(r => r.screen).lastIndexOf('send');
-+    const below = now[at];
-+    if (below?.screen !== 'send') return;
-+    const draft: Draft = {...(below.draft ?? {token: 'SOL', recipient: '', amount: ''}), recipient: address};
-+    go({type: 'reset', routes: [...now.slice(0, at), {screen: 'send', draft, notice: null}]});
++    const routes = pickStack(stackRef.current, address);
++    go(routes === null ? {type: 'pop'} : {type: 'reset', routes});
 +  };
 +
    /** The send flow's ways between its screens (spec §4). #19 always sits on #12 holding the draft, so Cancel returns to it. */
    const toReview = (account: string, intent: Intent, notice: 'confirmation-expired' | null) =>
      go({type: 'reset', routes: [HOME, {screen: 'send', draft: draftOf(intent), notice: null}, {screen: 'review', account, intent, notice}]});
-@@ -199,6 +217,7 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
+@@ -199,6 +208,7 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
            onPasskey={() => go({type: 'push', route: {screen: 'passkey'}})}
            onDelete={() => go({type: 'push', route: {screen: 'delete'}})}
            onAbout={() => go({type: 'push', route: {screen: 'about'}})}
@@ -3159,7 +3392,7 @@ index 0b2d0ce..794f58d 100644
          />
        );
      }
-@@ -287,6 +306,8 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
+@@ -287,6 +297,8 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
      screen = <AccountsManager onBack={() => go({type: 'pop'})} />;
    } else if (route.screen === 'passkey') {
      screen = <Passkey onBack={() => go({type: 'pop'})} />;
@@ -3249,6 +3482,36 @@ index c36f8b7..56797b2 100644
 +}
 ````
 
+Modify `extension/src/app/router.ts`:
+
+````diff
+diff --git a/extension/src/app/router.ts b/extension/src/app/router.ts
+index 9ebd64d..4273fe9 100644
+--- a/extension/src/app/router.ts
++++ b/extension/src/app/router.ts
+@@ -91,6 +91,20 @@ export function routeReducer(stack: Route[], action: RouteAction): Route[] {
+   }
+ }
+ 
++/**
++ * #15's pick hand-back (spec §1.4, review M4): the address goes into the `send` route's OWN draft — the route under #15
++ * — and the stack ends there, so #12 mounts again holding it and treats it exactly as a paste (isDraft checks it like
++ * any draft). No route gains a key. Null when no `send` route is below (plan 2 review L8): the caller pops instead, so a
++ * pick screen never has dead rows.
++ */
++export function pickStack(stack: readonly Route[], address: string): Route[] | null {
++  const at = stack.map(r => r.screen).lastIndexOf('send');
++  const below = stack[at];
++  if (below?.screen !== 'send') return null;
++  const draft: Draft = {...(below.draft ?? {token: 'SOL', recipient: '', amount: ''}), recipient: address};
++  return [...stack.slice(0, at), {screen: 'send', draft, notice: null}];
++}
++
+ /**
+  * The first route (spec §1.6). The popup always starts at #11. The tab reads `location.hash`: `#/created`
+  * (#7), `#/imported` (#40), `#/send/resume?account=<address>` (the hand-over from #10: #20, which reads the
+````
+
 Create `extension/src/app/screens/Contacts.tsx`:
 
 ````tsx
@@ -3257,6 +3520,7 @@ import {useWallet} from '../WalletContext';
 import {useNow} from '../useNow';
 import {shortAddress} from '../format';
 import {avatarOf, initialOf, markParts, resultsLine, searchContacts, whenText} from '../addressBook';
+import {isAddressText} from '../send/rules';
 import {AddressGroups} from '../../../../web/src/ui/AddressGroups';
 import {ExtIcon} from '../ui/ExtIcon';
 import {LockedButton} from '../ui/LockedButton';
@@ -3371,7 +3635,10 @@ export function Contacts({pick, onBack, onPick}: {pick: boolean; onBack: () => v
   const empty = list.contacts.length === 0;
   const q = query.trim();
   const shown = searchContacts(list.contacts, q);
-  const addNew = () => setSheet({kind: 'add', address: null, name: q});
+  // Review L1: a query that is an address seeds the address field (the name stays empty); any other query is the name.
+  const addNew = () => setSheet(isAddressText(q) ? {kind: 'add', address: null, typed: q} : {kind: 'add', address: null, name: q});
+  /** Review L5: a saved address that is one of this wallet's accounts says so in a pick row (2a's "Your account: <name>"). */
+  const ownName = (address: string): string | null => m.wallet?.accounts.find(a => a.publicKey === address)?.name ?? null;
   const row = (c: Contact) =>
     pick ? (
       <button type="button" key={c.address} className="row app-abook-pick" onClick={() => onPick(c.address)}>
@@ -3386,7 +3653,13 @@ export function Contacts({pick, onBack, onPick}: {pick: boolean; onBack: () => v
             <AddressGroups address={c.address} />
           </span>
         </span>
-        {c.known ? <span className="when noc-body-sm">{whenText(c.lastSentAt, now)}</span> : <span className="when noc-caption noc-warning">{CONTACTS_TEXT.neverSent}</span>}
+        {ownName(c.address) !== null ? (
+          <span className="when noc-body-sm">{`Your account: ${ownName(c.address) ?? ''}`}</span>
+        ) : c.known ? (
+          <span className="when noc-body-sm">{whenText(c.lastSentAt, now)}</span>
+        ) : (
+          <span className="when noc-caption noc-warning">{CONTACTS_TEXT.neverSent}</span>
+        )}
       </button>
     ) : (
       <button type="button" key={c.address} className="row" onClick={() => setSheet({kind: 'edit', address: c.address, name: c.name})}>
@@ -3782,12 +4055,12 @@ index 116096a..0d39ade 100644
 
 ```bash
 cd extension
-npx vitest run src/__tests__/designExt2b.test.ts src/app/__tests__/Contacts.test.tsx src/app/__tests__/Settings.test.tsx src/app/__tests__/addressBookFlow.test.tsx
+npx vitest run src/__tests__/designExt2b.test.ts src/app/__tests__/App.test.tsx src/app/__tests__/Contacts.test.tsx src/app/__tests__/Settings.test.tsx src/app/__tests__/addressBookFlow.test.tsx src/app/__tests__/router.test.ts
 npx tsc --noEmit && npx vitest run
 node scripts/build.mjs && npm run gates
 npx playwright test e2e/visual.spec.ts
 ```
-Expected (dry run): own tests Test Files  4 passed (4) · Tests  48 passed (48); tsc clean; whole suite Test Files  138 passed (138) · Tests  2692 passed (2692); gates green; `e2e/visual.spec.ts` 1 passed.
+Expected (dry run): own tests Test Files  6 passed (6) · Tests  99 passed (99); tsc clean; whole suite Test Files  138 passed (138) · Tests  2701 passed (2701); gates green; `e2e/visual.spec.ts` 1 passed.
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -3799,15 +4072,15 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -             <AddressGroups address={c.address} />
   +             {c.address.length > 0 ? shortAddress(c.address) : <AddressGroups address={c.address} />}
   ```
-  `timeout 300 npx vitest run src/app/__tests__/Contacts.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 12 passed (13)).
+  `timeout 300 npx vitest run src/app/__tests__/Contacts.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 14 passed (15)).
 
 - **M5b** — pick rows never say O72 — `extension/src/app/screens/Contacts.tsx`:
 
   ```diff
-  -         {c.known ? <span className="when noc-body-sm">{whenText(c.lastSentAt, now)}</span> : <span className="when noc-caption noc-warning">{CONTACTS_TEXT.neverSent}</span>}
-  +         <span className="when noc-body-sm">{whenText(c.lastSentAt, now)}</span>
+  -           <span className="when noc-caption noc-warning">{CONTACTS_TEXT.neverSent}</span>
+  +           <span className="when noc-body-sm">{whenText(c.lastSentAt, now)}</span>
   ```
-  `timeout 300 npx vitest run src/app/__tests__/Contacts.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 12 passed (13)).
+  `timeout 300 npx vitest run src/app/__tests__/Contacts.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 14 passed (15)).
 
 - **M5c** — a standalone row tap picks instead of opening the edit sheet (D21) — `extension/src/app/screens/Contacts.tsx`:
 
@@ -3815,7 +4088,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - onClick={() => setSheet({kind: 'edit', address: c.address, name: c.name})}>
   + onClick={() => onPick(c.address)}>
   ```
-  `timeout 300 npx vitest run src/app/__tests__/Contacts.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 12 passed (13)).
+  `timeout 300 npx vitest run src/app/__tests__/Contacts.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 14 passed (15)).
 
 - **M5d** — full no longer disables the + — `extension/src/app/screens/Contacts.tsx`:
 
@@ -3823,7 +4096,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -         {top(!full)}
   +         {top(true)}
   ```
-  `timeout 300 npx vitest run src/app/__tests__/Contacts.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 12 passed (13)).
+  `timeout 300 npx vitest run src/app/__tests__/Contacts.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 14 passed (15)).
 
 - **M5e** — the alive check after the list read dropped — `extension/src/app/screens/Contacts.tsx`:
 
@@ -3831,15 +4104,15 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -     if (!alive.current || n !== reads.current) return;
   +     if (n !== reads.current) return;
   ```
-  `timeout 300 npx vitest run src/app/__tests__/Contacts.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 12 passed (13)).
+  `timeout 300 npx vitest run src/app/__tests__/Contacts.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 14 passed (15)).
 
-- **M5f** — Esc pops the screen under an open sheet — `extension/src/app/App.tsx`:
+- **M5f** — Esc pops the screen under an open sheet (on #15 AND on plan 1's accounts manager remove sheet, review M3) — `extension/src/app/App.tsx`:
 
   ```diff
   -       if (e.key === 'Escape' && document.querySelector('[role="dialog"][aria-modal="true"]') === null) go({type: 'pop'});
   +       if (e.key === 'Escape') go({type: 'pop'});
   ```
-  `timeout 300 npx vitest run src/app/__tests__/addressBookFlow.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 4 passed (5)).
+  `timeout 300 npx vitest run src/app/__tests__/addressBookFlow.test.tsx src/app/__tests__/App.test.tsx` — Expected: **red** (dry run: red, Test Files  2 failed (2) · Tests  2 failed | 19 passed (21)).
 
 - **M5g** — #31: a refused contacts.list reads "0 contacts" — `extension/src/app/screens/Settings.tsx`:
 
@@ -3849,10 +4122,34 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   ```
   `timeout 300 npx vitest run src/app/__tests__/Settings.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 28 passed (29)).
 
+- **M5h** — an address query seeds the name, not the address field (review L1) — `extension/src/app/screens/Contacts.tsx`:
+
+  ```diff
+  - setSheet(isAddressText(q) ?
+  + setSheet(isAddressText('') ?
+  ```
+  `timeout 300 npx vitest run src/app/__tests__/Contacts.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 14 passed (15)).
+
+- **M5i** — pick rows lose the own-account label (review L5) — `extension/src/app/screens/Contacts.tsx`:
+
+  ```diff
+  -         {ownName(c.address) !== null ? (
+  +         {ownName(c.address) === 'nobody' ? (
+  ```
+  `timeout 300 npx vitest run src/app/__tests__/Contacts.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 14 passed (15)).
+
+- **M5j** — pickStack invents a stack with no send route below (review L8) — `extension/src/app/router.ts`:
+
+  ```diff
+  -   if (below?.screen !== 'send') return null;
+  +   if (below?.screen !== 'send') return [...stack];
+  ```
+  `timeout 300 npx vitest run src/app/__tests__/router.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 32 passed (33)).
+
 - [ ] **Step 6: Commit.**
 
 ```bash
-git add extension/e2e/visual.spec.ts extension/scripts/check-classes.mjs extension/src/__tests__/designExt2b.test.ts extension/src/app/App.tsx extension/src/app/__tests__/Contacts.test.tsx extension/src/app/__tests__/Settings.test.tsx extension/src/app/__tests__/addressBookFlow.test.tsx extension/src/app/app.css extension/src/app/screens/Contacts.tsx extension/src/app/screens/Settings.tsx extension/src/app/ui/ExtIcon.tsx extension/src/styles/design-ext.css
+git add extension/e2e/visual.spec.ts extension/scripts/check-classes.mjs extension/src/__tests__/designExt2b.test.ts extension/src/app/App.tsx extension/src/app/__tests__/App.test.tsx extension/src/app/__tests__/Contacts.test.tsx extension/src/app/__tests__/Settings.test.tsx extension/src/app/__tests__/addressBookFlow.test.tsx extension/src/app/__tests__/router.test.ts extension/src/app/app.css extension/src/app/router.ts extension/src/app/screens/Contacts.tsx extension/src/app/screens/Settings.tsx extension/src/app/ui/ExtIcon.tsx extension/src/styles/design-ext.css
 git commit -F - <<'MSG'
 feat(extension): #15 address book (standalone, search, pick, full, load failed); #31 Connections › Address book; design-ext with .s-abook
 
@@ -4075,10 +4372,10 @@ Modify `extension/src/app/App.tsx`:
 
 ````diff
 diff --git a/extension/src/app/App.tsx b/extension/src/app/App.tsx
-index 794f58d..799116d 100644
+index 82f02df..1a77252 100644
 --- a/extension/src/app/App.tsx
 +++ b/extension/src/app/App.tsx
-@@ -250,6 +250,11 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
+@@ -241,6 +241,11 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
            if (selected !== null) go({type: 'push', route: {screen: 'review', account: selected, intent, notice: null}});
          }}
          onViewPending={p => go({type: 'push', route: {screen: 'status', account: p.account, id: p.id, since: p.createdAt}})}
@@ -4227,7 +4524,7 @@ npx vitest run src/app/__tests__/Send.test.tsx src/app/__tests__/addressBookFlow
 npx tsc --noEmit && npx vitest run
 node scripts/build.mjs && npm run gates
 ```
-Expected (dry run): own tests Test Files  3 passed (3) · Tests  77 passed (77); tsc clean; whole suite Test Files  138 passed (138) · Tests  2699 passed (2699); gates green.
+Expected (dry run): own tests Test Files  3 passed (3) · Tests  77 passed (77); tsc clean; whole suite Test Files  138 passed (138) · Tests  2708 passed (2708); gates green.
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -4236,8 +4533,8 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
 - **M6a** — the pick pops without the reset (the spec mutation, review M4) — `extension/src/app/App.tsx`:
 
   ```diff
-  -     go({type: 'reset', routes: [...now.slice(0, at), {screen: 'send', draft, notice: null}]});
-  +     void draft;
+  -     go(routes === null ? {type: 'pop'} : {type: 'reset', routes});
+  +     void routes;
   +     go({type: 'pop'});
   ```
   `timeout 300 npx vitest run src/app/__tests__/addressBookFlow.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 4 passed (5)).
@@ -4867,7 +5164,7 @@ npx vitest run src/app/__tests__/Confirm.test.tsx src/app/__tests__/sendFlow.tes
 npx tsc --noEmit && npx vitest run
 node scripts/build.mjs && npm run gates
 ```
-Expected (dry run): own tests Test Files  2 passed (2) · Tests  103 passed (103); tsc clean; whole suite Test Files  138 passed (138) · Tests  2709 passed (2709); gates green.
+Expected (dry run): own tests Test Files  2 passed (2) · Tests  103 passed (103); tsc clean; whole suite Test Files  138 passed (138) · Tests  2718 passed (2718); gates green.
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -5383,7 +5680,7 @@ npx vitest run src/app/__tests__/TxDetail.test.tsx
 npx tsc --noEmit && npx vitest run
 node scripts/build.mjs && npm run gates
 ```
-Expected (dry run): own tests Test Files  1 passed (1) · Tests  39 passed (39); tsc clean; whole suite Test Files  138 passed (138) · Tests  2721 passed (2721); gates green.
+Expected (dry run): own tests Test Files  1 passed (1) · Tests  39 passed (39); tsc clean; whole suite Test Files  138 passed (138) · Tests  2730 passed (2730); gates green.
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -5463,7 +5760,7 @@ MSG
 
 **19 · the positive run.** A real wallet (the makeEnvelope envelope, unlocked through the vault page, so #10 can prove the password) with a received 250 USDC in the fake's history → #26 → #27c → [Save sender] → the sheet: the full address, O77, no dust banner → "Client" → Save → the From label. #12 with that address: "From your address book: Client" **and** "Never sent here before" and the first-time banner (D19) → #19 → #20: the first-time banner, the To label, no "Save as" (it is saved) → [Send] → the #10 tab lists "Re-auth required for the first send to a new address." and shows no contact name (C12). Nothing is broadcast.
 
-**19 · the negative control (rev 2, review H3).** The poisoning picture: RECIPIENT is known (this wallet has paid it), and a **dust** transfer (0.005 USDC, under C18's 0.01) arrives from a look-alike — the same length, the same first four and last four characters, a different middle (the number plus 58^20, computed in the spec and asserted) → [Save sender] → the dust banner (O78), O77 and "Save anyway" → saved as "Binance" → #31 › Address book › `+` → another address named "binance" → O85 → #12 → the contact icon → the pick row for "Binance" shows the whole address in groups of four and O72 → picked → #12 holds it with "Never sent here before", the label and state 6's groups. Both runs end with `contained(h)`.
+**19 · the negative control (rev 2, review H3).** The poisoning picture: RECIPIENT is known (this wallet has paid it), and a **dust** transfer (0.005 USDC, under C18's 0.01) arrives from a look-alike — the same length, the same first four and last four characters, a different middle (the number plus 58^20, computed in the spec, guarded against overflowing 32 bytes — review L7 — and asserted) → [Save sender] → the dust banner (O78), O77 and "Save anyway" → saved as "Binance" → #31 › Address book › `+` → another address named "binance" → O85 → #12 → the contact icon → the pick row for "Binance" shows the whole address in groups of four and O72 → picked → #12 holds it with "Never sent here before", the label and state 6's groups. Both runs end with `contained(h)`.
 
 Spec 15's delete now also proves `v1_contacts` is removed — saved first through `contacts.set` from a wallet tab (the popup closed itself when it opened the delete tab), so the removal is not vacuous (plan 1 Task 19's I1 lesson).
 
@@ -5494,6 +5791,8 @@ function lookalike(address: string): string {
   let n = 0n;
   for (const b of bytes) n = (n << 8n) | BigInt(b);
   n += 58n ** 20n;
+  // Still 32 bytes (review L7): the encoding below would silently drop an overflow.
+  if (n >= 2n ** 256n) throw new Error('look-alike overflows 32 bytes');
   const out = new Uint8Array(32);
   for (let i = 31; i >= 0; i--) {
     out[i] = Number(n & 0xffn);
@@ -5666,7 +5965,7 @@ npx tsc --noEmit && npx vitest run
 node scripts/build.mjs && npm run gates
 npx playwright test e2e/contacts.spec.ts e2e/settings.spec.ts
 ```
-Expected (dry run): tsc clean; whole suite Test Files  138 passed (138) · Tests  2721 passed (2721); gates green; Playwright 2 passed (spec 19 ×2) and, with `-g '(^|\s)15 · '`, spec 15's four runs 4 passed — normal launch and under `unshare -rn`.
+Expected (dry run): tsc clean; whole suite Test Files  138 passed (138) · Tests  2730 passed (2730); gates green; Playwright 2 passed (spec 19 ×2) and, with `-g '(^|\s)15 · '`, spec 15's four runs 4 passed — normal launch and under `unshare -rn`.
 
 - [ ] **Step 3: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -5719,7 +6018,7 @@ MSG
 - Consumes: `shot` (`e2e/visualTab.ts`), `launchPopup`, `seedUnlockedWallet`, `contained`, `realWallet`, the history fixtures.
 - Produces (as exported): `e2e/visual-contacts.spec.ts` (new): 27 shots under `test-results/visual/` (a CI artifact).
 
-Two specs shoot every state the real extension can be put in, each asserting its own copy first: a screen state must be in the viewport and clear of the pinned bars (`pop`, plan 1's helper, which now scrolls a below-the-fold element in first), a sheet state inside the sheet's panel (`sheetShot`). **#15 and the sheet:** 15-empty; sheet-add-empty, sheet-bad-address (O86), sheet-bad-name (2a's line for "Mo\u200Bm"), sheet-add-typed-never-sent; 15-populated (the design's seven rows, their dates from local activity), 15-search-active, 15-search-no-result (O71); sheet-edit, sheet-duplicate-name (O85), sheet-delete-confirm; 31-connections-address-book ("7 contacts"); 37a-bullet-address-book; 15-full (O73). **The hooks:** 12-idle-contact-icon, 15-pick, 12-picked-contact; 20-first-time-save-as, sheet-add-prefilled-never-sent, 20-saved-label; 27a-save, 27c-save-sender, sheet-only-sent-to-you, 27c-from-label, sheet-dust and sheet-dust-save-anyway (the address, the banner and "Save anyway" all in view on open — the dry run's tall-sheet finding), sheet-full (O87, from #27c with 200 saved).
+Two specs shoot every state the real extension can be put in, each asserting its own copy first: a screen state must be in the viewport and clear of the pinned bars (`pop`, plan 1's helper, which now scrolls a below-the-fold element in first), a sheet state inside the sheet's panel (`sheetShot`). **#15 and the sheet:** 15-empty; sheet-add-empty, sheet-bad-address (O86), sheet-bad-name (2a's line for "Mo\u200Bm"), sheet-add-typed-never-sent; 15-populated (the design's seven rows, their dates from local activity), 15-search-active, 15-search-no-result (O71); sheet-edit, sheet-duplicate-name (O85), sheet-delete-confirm; 31-connections-address-book ("7 contacts"); 37a-bullet-address-book; 15-full (O73). **The hooks:** 12-idle-contact-icon, 15-pick, 12-picked-contact; 20-first-time-save-as, sheet-add-prefilled-never-sent, 20-saved-label; 27a-save, 27c-save-sender, sheet-only-sent-to-you, 27c-from-label, sheet-dust and sheet-dust-save-anyway (the address and "Save anyway" wholly in view on open, the banner at 95 % — the dry run's tall-sheet finding; review L3: the fonts are the bundled Geist faces the fonts gate pins, and the 95 % keeps one wrapped banner line under a fallback font from failing a product that is right), sheet-full (O87, from #27c with 200 saved).
 
 **Not shot** (fault injection only; the component tests assert them): #15 `load failed` (O74) and the sheet's `failed` line. **Reviewed against #43** (the design leaves the sheet undrawn, D20). The opus-tier review of the 27 shots against `index.html` (§8.4's checklist: tokens, type tiers, order, every string, Differs, ≥ 48 px, dark theme) is the execution's (Before the PR).
 
@@ -5995,8 +6294,10 @@ test('visual: the hooks — #12’s contact icon, #15 pick, #12 after a pick, #2
     const dust = p.getByRole('dialog', {name: 'Add contact'});
     await expect(dust.locator('.banner.danger')).toHaveText('Tiny transfer — a common way to plant a look-alike address. Compare every character with an address you trust before saving.');
     await expect(dust.getByRole('button', {name: 'Save anyway'})).toBeVisible();
-    // Opened with the focus in Name, the whole sheet is in view: the address it saves, the warnings and Save anyway.
-    for (const part of [dust.locator('.app-contact-addr'), dust.locator('.banner.danger'), dust.getByRole('button', {name: 'Save anyway'})]) await expect(part).toBeInViewport({ratio: 1});
+    // Opened with the focus in Name, the whole sheet is in view: the address it saves and Save anyway wholly, the banner
+    // at 95 % (review L3: one wrapped line under another font must not fail a product that is right).
+    for (const part of [dust.locator('.app-contact-addr'), dust.getByRole('button', {name: 'Save anyway'})]) await expect(part).toBeInViewport({ratio: 1});
+    await expect(dust.locator('.banner.danger')).toBeInViewport({ratio: 0.95});
     await sheetShot(p, 'sheet-dust', dust.locator('.banner.danger'));
     await sheetShot(p, 'sheet-dust-save-anyway', dust.getByRole('button', {name: 'Save anyway'}));
     await dust.getByRole('button', {name: 'Cancel'}).click();
@@ -6031,7 +6332,7 @@ npx tsc --noEmit && npx vitest run
 node scripts/build.mjs && npm run gates
 npx playwright test e2e/visual-contacts.spec.ts
 ```
-Expected (dry run): tsc clean; whole suite Test Files  138 passed (138) · Tests  2721 passed (2721); gates green; Playwright 2 passed (27 shots under `test-results/visual/`), normal launch and under `unshare -rn`.
+Expected (dry run): tsc clean; whole suite Test Files  138 passed (138) · Tests  2730 passed (2730); gates green; Playwright 2 passed (27 shots under `test-results/visual/`), normal launch and under `unshare -rn`.
 
 - [ ] **Step 3: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -6068,13 +6369,15 @@ MSG
 
 The end state was built task by task in a scratch git repository outside the checkout (a `git archive` of `feat/extension-b1b2b-plan2` at f183069 = `main` after PR #107), one commit per task; the plan's code blocks are generated from those commits. Then:
 
-- **Blocks reproduce the tree.** Applying every block of this document in order (54 blocks: new files written in full, diffs with `git apply --recount`) onto a fresh archive of the starting tree reproduces the dry-run tree byte for byte (`diff -r`: no difference).
-- **Per-task replay** (copied `node_modules`): each task's unit test files on its predecessor's tree — red for every task 1–8 (the counts are in each task's Step 2; Tasks 9–10 add E2E specs over built behaviour, made failable by their mutations); at each task `tsc` clean, the task's own tests green, the whole vitest suite green, `node scripts/build.mjs` + `npm run gates` green. Whole suite: 2 588 tests at Task 1 → **Test Files 138 passed (138) · Tests 2721 passed (2721)** at Task 10 (plan 1's merged tree: 133 files, 2 583 tests).
+- **Blocks reproduce the tree.** Applying every block of this document in order (59 blocks: new files written in full, diffs with `git apply --recount`) onto a fresh archive of the starting tree reproduces the dry-run tree byte for byte (`diff -r`: no difference).
+- **Per-task replay** (copied `node_modules`): each task's unit test files on its predecessor's tree — red for every task 1–8 (the counts are in each task's Step 2; Tasks 9–10 add E2E specs over built behaviour, made failable by their mutations); at each task `tsc` clean, the task's own tests green, the whole vitest suite green, `node scripts/build.mjs` + `npm run gates` green. Whole suite: 2 588 tests at Task 1 → **Test Files 138 passed (138) · Tests 2730 passed (2730)** at Task 10 (rev 2) (plan 1's merged tree: 133 files, 2 583 tests).
 - **E2E, contained, normal launch:** 48 passed (48) — plan 1's 44 plus spec 19 ×2 and the two visual-contacts specs (spec 15's first run asserts `v1_contacts` wiped).
 - **E2E under `unshare -rn`:** 48 passed (48).
-- **Extension `npm run verify`** (build, vitest 138 files / 2 721 tests, CSP, secrets, every gate, reproducible — chrome `sha256:c6505bc0…`, firefox `sha256:ab5b2a7b…`) green. **Web `npm run verify`** green (43 files / 548 tests + script tests 3). **Root:** `npx tsc --noEmit` clean; `npx jest` 180 suites passed, 1 skipped; 1 234 tests passed, 1 skipped (no task touches the root, `core/` or `web/`). **TGE gate:** clean over the end state and this plan.
-- **CI reproduction on Node 22.12.0 / npm 11.6.2 with ONLY `web/` and `extension/` installed** (`npm ci --ignore-scripts`; no root `node_modules`): web `npm run verify` green (43 files / 548 tests, script tests 3); extension `npm run verify` green (138 files / 2 721 tests, every gate, the same reproducible hashes); `npm run e2e` 48 passed, and under `unshare -rn` 48 passed.
-- **Mutations:** every named mutation above was run alone in a fresh `git archive` copy of the end state under `timeout 300`, `tsc` first (the E2E ones also built): **all 54 red** (M1a–M10b). Seven first forms did not compile (an import or a variable left unused, a regex `tsc` rejects without the `u` flag) and were rewritten as the compiling forms shown — INVALID was never counted as red.
+- **Extension `npm run verify`** (build, vitest 138 files / 2 730 tests, CSP, secrets, every gate, reproducible — chrome `sha256:c339a0de…`, firefox `sha256:5b080f42…`, rev 2) green. **Web `npm run verify`** green (43 files / 548 tests + script tests 3). **Root:** `npx tsc --noEmit` clean; `npx jest` 180 suites passed, 1 skipped; 1 234 tests passed, 1 skipped (no task touches the root, `core/` or `web/`). **TGE gate:** clean over the end state and this plan.
+- **CI reproduction on Node 22.12.0 / npm 11.6.2 with ONLY `web/` and `extension/` installed** (`npm ci --ignore-scripts`; no root `node_modules`): web `npm run verify` green (43 files / 548 tests, script tests 3); extension `npm run verify` green (rev 1: 138 files / 2 721 tests, every gate, the same reproducible hashes); `npm run e2e` 48 passed, and under `unshare -rn` 48 passed.
+- **Mutations:** every named mutation above was run alone in a fresh `git archive` copy of the end state under `timeout 300`, `tsc` first (the E2E ones also built): **all 59 red** (rev 2: rev 1's 54, with M5b and M6a rewritten for the changed code, plus M4h, M4i, M5h, M5i, M5j). Seven first forms did not compile (an import or a variable left unused, a regex `tsc` rejects without the `u` flag) and were rewritten as the compiling forms shown — INVALID was never counted as red.
+
+**Rev 2 re-run (after review 1):** the whole per-task replay again (Tasks 4 and 5 changed, 9 and 10 changed their specs; every later tree changed with them) — each task's tests red on its predecessor and green on its own tree, tsc, the whole suite and gates at every task; E2E contained 48 passed (48) and under `unshare -rn` 48 passed (48); extension and web `verify`, root `tsc` and `jest`, the TGE gate green; all 59 mutations red in fresh `git archive` copies; the 59 blocks reproduce the end state byte for byte. The Node 22.12 / npm 11.6.2 CI reproduction was not re-run: rev 2 changes no dependency, lockfile or `web/` file.
 
 What the dry run caught:
 
@@ -6088,18 +6391,38 @@ What the dry run caught:
 8. **The writing tool turned `\u200B` into the character itself** in the first drafts of three test files — invisible characters in source; every one is an escape now (`grep` for U+200B–U+200F, U+202A–U+202E, U+2066–U+2069 over the added files is empty).
 9. **Not caused by this plan:** the repository root's `node_modules/` holds a self-referencing `node_modules/node_modules` symlink (dated 2026-09-29), as plan 1 recorded; the dry run never wrote to any repository `node_modules`. The scratch directory held files of an older session (`mutations.json` of 2026-10-01); this run's results were kept apart.
 
+## Review 1 (Fable 5.1) — how each finding was applied (rev 2)
+
+Verdict: approve after fixes (Critical 0, High 1, Medium 3, Low 10). Every code change has a test and a named mutation; the dry run was re-run per task and for the full end state.
+
+- **H1** (Task 4) — `Sheet`'s focus/key effect runs once; the latest `onClose` lives in a ref. Tests: a ticking parent re-renders the sheet — the caret stays in Name (add · empty), the focus stays on Cancel, Esc and the backdrop still reach the latest `onClose`. M4h (`[onClose]` again) red.
+- **M1** (Scope 3.10) — **owner decision pending**, put to the owner by the controller before Task 4: O72 stays, fail closed; only the wording for the SENT case is asked; the history never feeds `known`.
+- **M2** (Task 4) — the delete confirm moves the focus to Keep and back to "Delete contact" (the Sheet stays mounted, so its opener is kept). Test + M4i.
+- **M3** (Task 5) — `App.test.tsx` pins Esc on plan 1's accounts manager remove sheet; M5f runs both files.
+- **L1** (Tasks 4–5) — an address query seeds the sheet's address field (`typed`), the name empty. Tests in both files; M5h.
+- **L2** (Task 4) — the typed-mode groups lose `aria-label="Address"`; `getByLabel('Address')` is unique in every state.
+- **L3** (Task 10) — the banner at `ratio: 0.95`, the address and "Save anyway" at 1; the fonts are the bundled Geist faces (`check-fonts.mjs`).
+- **L4** (Scope 3.12) — owner note: C19 refuses ZWJ/ZWNJ/VS16 names with 2a's line; any second line is owner copy.
+- **L5** (Task 5) — a pick row for an own account says "Your account: <name>". Test + M5i.
+- **L6** (Task 4) — `NAME_RULE` exported from `Switcher.tsx`, used by the rename errors and the sheet.
+- **L7** (Task 9) — `lookalike()` throws if the sum leaves 32 bytes.
+- **L8** (Task 5) — `pickStack` in `router.ts` (unit-tested); with no `send` route below, App pops. M5j.
+- **L9** (Scope 3.8) — #15's rows declared as plain (idempotent) buttons.
+- **L10** (Scope 3.12) — recorded: add vs edit is chosen from the book read at mount; no change.
+
 ## Before the PR (the standing rules)
 
 - [ ] Reproduce CI with **only** `web/` and `extension/` installed, on Node 22.12 (`PATH="$(dirname $(npx -y -p node@22.12.0 node -e 'console.log(process.execPath)')):$PATH"`), npm 11.6.2: `npm ci --ignore-scripts` in both, `npm run verify` in both, `npm run e2e` in `extension/` — in a normal launch and under `unshare -rn`.
 - [ ] No task touches the repository root's `src/`, `core/` or `web/`; run the root `npx tsc --noEmit` and `npx jest` anyway.
 - [ ] `node scripts/check-no-tge-date.mjs` from the repository root — this plan and every file it adds are clean.
 - [ ] The opus-tier visual review of Task 10's 27 shots (against index.html #15, #12, #20, #27, #31, #37 and #43 for the undrawn sheet, with §8.4's checklist), then an independent opus review of that review; each finding fixed or declared in the spec's Differs; the result in the PR description.
-- [ ] The owner question in the PR: **"1 contact"** (Scope 3.1); the tall contact sheet and its side-by-side actions (Scope 3.2–3.3); the received From row's label (3.5); the #27a never-sent line under a SENT record (3.10).
+- [ ] **Before Task 4:** the owner's answer on Scope 3.10 (review M1; the controller has asked). The owner questions in the PR: **"1 contact"** (Scope 3.1); the tall contact sheet and its side-by-side actions (3.2–3.3); the received From row's label (3.5); the L4 note (3.12).
 
 ## Self-review
 
 - **Spec coverage.** §1.4 (Task 3 route; Task 6 hand-back + M6a); §1.5 (Task 2: `contacts.*` privileged, partition tests, `BACKGROUND_OWNED_KEYS` + fixture); §1.6 (Task 5, hash re-pinned); E17 store, messages, label, lifecycle, security argument (Task 2; the client's L3 rule, Task 3); §5's bullet (Task 2); §6.1 every state (Task 5; pick, Task 6); §6.2 every state and error (Task 4); §6.3 #12 (Task 6), #20 (Task 7), #27 (Task 8), #31 (Task 5), #37 (Task 2); §7 rule 6 (Tasks 4–8) and the contacts errors; §8.1 E17 incl. C19 rev 3, C18 boundaries, the cross-script pin and the named spec mutations (M1a, M2a, M2b); §8.2 (the pick rows, O77/O78, Save as never for a known address, Send never focused, the hand-back); §8.3 spec 19 ×2 and spec 15's key (Task 9); §8.4 (Task 10). D18 (no notes, no import/export), D19 (parity, M2a/M9a), D20 (wipe/keep, the sheet), D21 (row → edit), C12 (locked, one per address, fixed address, newest first, precedence, no name on #10 — E2E 19 asserts it), C18 (base units, null = dust), C19.
-- **Rule 6.** Sheet Save / Delete and #12's contact icon have double-press tests with `disabled` lifted; #20's Add and #27's Save have the lock asserted (a second open is invisible); #15's `+` / add buttons and #20's Skip are LockedButtons without a test of their own — opening an open sheet, or hiding a hidden row, cannot be observed (Scope 3.8).
+- **Rule 6.** Sheet Save / Delete and #12's contact icon have double-press tests with `disabled` lifted; #20's Add and #27's Save have the lock asserted (a second open is invisible); #15's `+` / add buttons and #20's Skip are LockedButtons without a test of their own, and #15's rows are plain idempotent buttons — opening an open sheet, hiding a hidden row or repeating the same reset cannot be observed (Scope 3.8).
+- **Focus.** The Sheet's effect runs once per mount (review H1) — a re-render of the screen beneath never moves the focus; the delete confirm keeps the focus inside the sheet (M2).
 - **Generation checks.** The sheet (`alive` after save, delete and paste; `recipientInfo` by generation, keyed on address and account), #15 (`alive` + newest read), #20 (`gen`), #27 (`alive`), #31's count (`alive` + newest read) — the first four pinned by tests whose late answer would be observable.
 - **Placeholders.** None: every step has its code (new files in full, changes as exact diffs), its command and the dry run's expected output; the generated CSS has its generator and its hash.
 - **Type consistency.** The Interfaces blocks are the exports as they compile; the replay compiled and tested every task on its own predecessor.
