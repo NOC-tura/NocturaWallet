@@ -216,6 +216,9 @@ describe('verify: the check, never the grid', () => {
     expect(el('seed-grid').querySelectorAll('.term')).toHaveLength(0);
     await check(h);
     expect(text(el('cnf-success-title'))).toBe('Recovery phrase verified');
+    // 04r: the green ring with the check (D25 keeps it for the recorded success only).
+    expect(el('cnf-success').classList.contains('vlt-neutral')).toBe(false);
+    expect(el('cnf-success-icon').getAttribute('href')).toBe('#i-check');
   });
 
   it('success-not-recorded: the background refused the fact — O32', async () => {
@@ -224,6 +227,12 @@ describe('verify: the check, never the grid', () => {
     await h.until(() => visible(el('v-confirm')));
     await check(h);
     await h.until(() => text(el('cnf-success-body')) === 'All three words matched, but this could not be saved. Try again later.');
+    // D25 (owner, 2026-10-08): a neutral hero — the secondary tint and the info icon, never the green success ring. The
+    // copy is unchanged.
+    expect(text(el('cnf-success-title'))).toBe('Recovery phrase verified');
+    expect(el('cnf-success').classList.contains('vlt-neutral')).toBe(true);
+    expect(el('cnf-success-icon').getAttribute('href')).toBe('#i-info');
+    expect(unstyled('v-confirm')).toEqual([]);
   });
 
   // The final review's m7 (a controller ruling): the fact is bound to the wallet whose phrase was checked. This tab sat

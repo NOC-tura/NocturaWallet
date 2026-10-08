@@ -188,6 +188,25 @@
 .vlt-col .s-confirm .word-btn {
   cursor: pointer;
 }
+/* D25 (owner, 2026-10-08): verify-not-recorded (O32) is no success — the same hero, neutral: the design's neutral ring
+   (the secondary surface with the icon at --fg-secondary, as index.html's cancelled state, design-ext
+   `.done-cancelled .ring`), never the success tint. */
+.vlt-col .s-confirm .success-state.vlt-neutral .ring {
+  background: var(--bg-surface-3);
+  color: var(--fg-secondary);
+}
+/* D26 (owner, 2026-10-08): #36's done and the passkey done states reuse 04r's hero (`.s-confirm .success-state`, the
+   96 px success ring) inside their own screens; the wrapper takes the free height the screen's spacer had, so the ring
+   sits centred as on 04r. */
+.vlt-col .vlt-hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.vlt-col .vlt-hero:not([hidden]) ~ .pin-spacer,
+.vlt-col .vlt-hero:not([hidden]) ~ .vlt-grow {
+  display: none;
+}
 
 /* #5 (and #6's re-ask): the password field that replaces the design's PIN keypad (D7), with the design's
    input look (#8's .pwd-input: 52 px, --bg-surface-3, the accent border on focus). */

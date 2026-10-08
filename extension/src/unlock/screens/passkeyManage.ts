@@ -54,6 +54,8 @@ export function mountPasskeyManage(deps: PageDeps): PasskeyManageScreen {
   let op: 'add' | 'remove' = 'add';
   let view: View = 'loading';
   let actions: readonly Action[] = [];
+  /** The end is a success (added, replaced, removed): D26 draws it as 04r's hero. */
+  let success = false;
   /** The passkey stored at load: `add` then words a replace (C4); `remove` offers it as a factor. */
   let pk: NonNullable<EnvelopeV1['passkey']> | null = null;
   let stopCooldown: (() => void) | null = null;
@@ -93,6 +95,14 @@ export function mountPasskeyManage(deps: PageDeps): PasskeyManageScreen {
     setText(byId('pm-title'), op === 'remove' ? MANAGE.removeTitle : replacing ? MANAGE.replaceTitle : MANAGE.addTitle);
     setText(byId('pm-lede'), op === 'remove' ? MANAGE.removeLede : replacing ? MANAGE.replaceLede : MANAGE.addLede);
     setText(act, op === 'remove' ? MANAGE.remove : replacing ? MANAGE.replace : MANAGE.add);
+    // D26 (owner, 2026-10-08): a success end is 04r's hero in place of #6's key tile, title and lede.
+    const done = view === 'end' && success;
+    shown(byId('pm-done'), done);
+    shown(byId('pm-icon'), !done);
+    shown(byId('pm-head'), !done);
+    // D27 (owner, 2026-10-08): the remove primary is the delete page's danger button.
+    act.classList.toggle('btn-destructive', op === 'remove');
+    act.classList.toggle('btn-primary', op !== 'remove');
     shown(byId('pm-form'), (entry || view === 'working') && !cooling);
     shown(byId('pm-ask'), op === 'add');
     // Fix round 0b: the remove page's field has the vault pages' visible label (the add line names the add).
@@ -127,10 +137,19 @@ export function mountPasskeyManage(deps: PageDeps): PasskeyManageScreen {
   };
   const end = (text: string, help: string, next: readonly Action[]) => {
     view = 'end';
+    success = false;
     actions = next;
     field.value = '';
     helper('', false);
     line(text, help);
+    render();
+  };
+  /** A success end (D26): the hero carries the copy; the line under the form stays empty. */
+  const succeed = (title: string, body: string) => {
+    setText(byId('pm-done-title'), title);
+    setText(byId('pm-done-body'), body);
+    end('', '', ['close']);
+    success = true;
     render();
   };
   const endCooldown = () => {
@@ -146,7 +165,7 @@ export function mountPasskeyManage(deps: PageDeps): PasskeyManageScreen {
   };
 
   const added = (out: PasskeyOutcome, replacing: boolean) => {
-    if (out === 'added') return end(replacing ? MANAGE.replaced : PASSKEY.added, MANAGE.closeTab, ['close']);
+    if (out === 'added') return succeed(replacing ? MANAGE.replaced : PASSKEY.added, MANAGE.closeTab);
     if (out === 'wrong') {
       view = 'entry';
       line('');
@@ -158,7 +177,7 @@ export function mountPasskeyManage(deps: PageDeps): PasskeyManageScreen {
     end(PASSKEY.failed, '', []);
   };
   const removed = (out: RemovePasskeyOutcome) => {
-    if (out === 'removed') return end(MANAGE.removed, MANAGE.removedHelp, ['close']);
+    if (out === 'removed') return succeed(MANAGE.removed, MANAGE.removedHelp);
     if (out === 'wrong') {
       view = 'entry';
       line('');

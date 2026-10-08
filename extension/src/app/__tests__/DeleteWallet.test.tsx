@@ -65,6 +65,20 @@ const settle = () => act(async () => new Promise(r => setTimeout(r, 30)));
 const FUNDED = 'This wallet holds funds';
 const UNKNOWN = 'Balances could not all be checked — this wallet may hold funds.';
 const SEND_OPEN = 'A transaction from this wallet is still pending. Wait until it confirms or expires — about two minutes — then try again.';
+/**
+ * D29 (owner, 2026-10-08): the send-open banner is a bold title + a regular body, as the funds banner — the approved
+ * string split at its first sentence, no word added or dropped.
+ */
+const SEND_OPEN_TITLE = 'A transaction from this wallet is still pending.';
+const SEND_OPEN_BODY = 'Wait until it confirms or expires — about two minutes — then try again.';
+async function sendOpenBanner(): Promise<HTMLElement> {
+  const title = await screen.findByText(SEND_OPEN_TITLE, {selector: '.banner-title'});
+  const banner = title.closest('.banner.warning') as HTMLElement;
+  expect(banner).not.toBeNull();
+  expect(banner.querySelector('.banner-line')?.textContent).toBe(SEND_OPEN_BODY);
+  expect(`${title.textContent} ${banner.querySelector('.banner-line')?.textContent}`).toBe(SEND_OPEN);
+  return banner;
+}
 
 /** Holds the first message of `type` matching `match` until released; counts every message by type. */
 function hold(type: string, match: (m: Record<string, unknown>) => boolean = () => true) {
@@ -306,7 +320,7 @@ describe('#37 delete wallet', () => {
   it('send open: the pending banner; the typed gate usable; the CTA disabled — and a hold with `disabled` lifted opens nothing', async () => {
     const open = pendingRecord({account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}});
     const w = await shown({before: async ext => ext.local.set(PENDING_KEY, [open])});
-    expect(await screen.findByText(SEND_OPEN)).toBeTruthy();
+    await sendOpenBanner();
     typeIn('DELETE');
     const hold = holdCta();
     expect(hold.disabled).toBe(true);
@@ -321,7 +335,7 @@ describe('#37 delete wallet', () => {
   it('a stuck send is open too: the pending banner and the CTA disabled', async () => {
     const stuck = pendingRecord({account: RECIPIENT, signature: '6'.repeat(88), state: 'stuck', intent: {token: 'SOL', recipient: ACCOUNT.publicKey, amount: '1'}});
     await shown({before: async ext => ext.local.set(PENDING_KEY, [stuck])});
-    expect(await screen.findByText(SEND_OPEN)).toBeTruthy();
+    await sendOpenBanner();
     typeIn('DELETE');
     expect(holdCta().disabled).toBe(true);
   });
@@ -566,7 +580,7 @@ describe('#37 delete wallet', () => {
     await waitFor(() => expect(holdCta().disabled).toBe(true));
     await w.ext.local.set(PENDING_KEY, [{...open, state: 'confirmed'}]);
     await waitFor(() => expect(holdCta().disabled).toBe(false), {timeout: 4_000});
-    expect(screen.queryByText(SEND_OPEN)).toBeNull();
+    expect(screen.queryByText(SEND_OPEN_TITLE)).toBeNull();
   }, 10_000);
 
   describe('every await is guarded (the balances pass, the pending read)', () => {

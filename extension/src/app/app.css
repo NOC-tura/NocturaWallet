@@ -881,6 +881,8 @@ a.btn {
   flex-direction: column;
   padding-inline-start: calc(var(--app-pick-pad, 0px) + 36px + var(--space-3));
   margin-top: calc(-1 * var(--space-2));
+  /* D24: the line selects the row too (a click presses the row's select button). */
+  cursor: pointer;
 }
 .app-account-sub .sec {
   font-size: 13px;

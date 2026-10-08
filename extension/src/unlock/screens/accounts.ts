@@ -115,6 +115,9 @@ export function mountAccounts(deps: PageDeps): AccountsScreen {
     shown(part.paused, cooling);
     shown(act, form);
     setText(act, remove ? ACCOUNTS.remove : ACCOUNTS.add);
+    // D27 (owner, 2026-10-08): the remove primary is the delete page's danger button.
+    act.classList.toggle('btn-destructive', remove);
+    act.classList.toggle('btn-primary', !remove);
     shown(passkeyBtn, form && pk !== null);
     shown(cancel, remove && view !== 'end');
     for (const [name, b] of Object.entries(buttons)) {

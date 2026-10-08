@@ -3,6 +3,8 @@
 **Status:** **approved rev 3**, 2026-10-05. The owner approved the design (sections 1–3 of
 `.superpowers/sdd/b1b2b-approved-design.md`), took decisions D1–D23, and on 2026-10-05 approved this spec with the
 controller rulings C1–C20 and confirmed every string in §12 (O01–O88). Each plan gets a Fable 5.1 review before SDD.
+On 2026-10-08 the owner answered the plan-1 PR's questions (PR #107) with D24–D33 (table below); D24–D27 and D29 are
+built on that PR, the rest accepted as they stand.
 
 **Revision 3** applies every finding of Fable review 2 (`.superpowers/sdd/b1b2b-spec-review-2.md`: H1, M1, M2,
 L1–L7; verdict "approve after fixes"), with the coordinator's rulings: H1 keeps rev 2's #36 ruling and bounds it with a
@@ -82,6 +84,21 @@ shows that this spec does not build, with where it goes (CLAUDE.md: never silent
 | D21 | #15 standalone row tap → the edit sheet | §6.1 |
 | D22 | #31's out-of-scope rows omitted and listed in Differs; the tip is a passkey suggestion, shown only while there is no passkey; **Profile → accounts manager** (meta = the selected account's name) | §4.1 |
 | D23 | (owner, 2026-10-05, on review finding H1) **Reveal and verify accept the password only.** The passkey is accepted for the `accounts` mode (add / remove / re-add), the passkey actions (remove), delete's proof and sends (#10) — **never in a flow that renders or tests the recovery phrase** | E16, §1.2, §3.4, §3.5, §8.1 |
+
+### Owner decisions on PR #107 (D24–D33, 2026-10-08)
+
+| # | owner decision (substance) | status | applied here |
+|---|---|---|---|
+| D24 | Accounts manager row layout OK; **the address/balance line also selects the account** (the whole row) | built | §4.3 |
+| D25 | verify-not-recorded (O32): a **neutral hero**, not the green success ring | built | §3.5 |
+| D26 | #36 done (and the passkey done states): **the same ring hero as 04r** | built | §3.1, §3.3 |
+| D27 | Destructive vault CTAs red: account remove and passkey remove use **the danger style like delete** | built | §3.3, §3.6 |
+| D28 | 35b: Auto-lock in the "Encrypted backup" slot, Locks + Danger zone below — OK | accepted | §4.2 (35b's order, Task 20 fix round 1 M5, unchanged) |
+| D29 | #37 send-open banner: **bold title + regular body** (no copy change) | built | §5 |
+| D30 | A lost #10 reply → a false "Nothing was changed": accepted (rare; #35 shows the stored value) | accepted | §3.7, §4.2 |
+| D31 | A screen reader's browse mode cannot hold on #37: accepted, documented — **revisit in B1e** | accepted | §5, §9 |
+| D32 | #31 failed settings read: blank metas OK | accepted | §4.1 |
+| D33 | Change-password and passkey pages: no C17-style address binding needed | accepted | §3.1, §3.3 |
 
 **Deviation from the approved design (D23).** The approved design §1.7 reads "accounts and reveal modes also accept the
 passkey (carry)". D23 narrows it: the carry lands in `accounts` only. Why (review H1): a passkey that could open
@@ -538,7 +555,8 @@ three segments + "Step N of 3" (ix:14716, `.noc-caption .noc-numeral`).
   `creating`) with `.noc-progress`; every button disabled.
 - **`done`** (extension-only; 36e is drawn on #31, §4.1): "Password updated." **→ adapted** (ix:14863 "PIN updated");
   "You can close this tab." (O05); when the envelope has a passkey: "Your passkey still works." (O06); `[Close this tab]`
-  (2a).
+  (2a). **Drawn as 04r's hero (D26):** #4's `.s-confirm .success-state` markup — the 96 px success ring with the check,
+  the title as `.noc-h2`, the lines as the body — in place of the stepper and the plain notice (`#cp-done`).
 - **`busy`**: "The wallet changed while you were typing. Start again." (RESTORE (2a)) + `[Start again]` (2a) → step 1.
 - **`not-unlocked`**, **`mismatch-locked`**, **`damaged`**, **`no-wallet`**: common notices.
 - **`failed`**: "Something went wrong. Your password was not changed." (O07).
@@ -568,6 +586,9 @@ deadline shows `dropped` at once, with no `[Continue]` or `[Change password]` en
 nothing".
 
 **Engine:** E10. **Navigation:** #31/#35 "Change password" → this tab; `done` → close.
+
+**No address binding (D33):** unlike `?mode=delete` (C17), this page shows no account address: a password change keeps
+the wallet, its keys and its accounts, so there is no "wallet on screen" to bind the proof to.
 
 **Differs, loudly:**
 - PIN dots, the numeric IME and auto-advance become password fields with buttons (2a-D7): a password has no "6th digit".
@@ -636,28 +657,35 @@ Chrome: 2a's #6 `.s-bio` column, 56 px key icon, no step counter.
   keep it safe." (2a #6); "Enter your password to add the passkey." (2a, `unlock.html:235`); password field;
   `[Add a passkey]` (2a); `[Cancel]` (2a).
 - **`adding`**: "Waiting for your passkey…" (PASSKEY (2a)).
-- **`added`**: "Passkey added." (PASSKEY (2a)) + "You can close this tab." (O05) + `[Close this tab]` (2a).
+- **`added`**: "Passkey added." (PASSKEY (2a)) + "You can close this tab." (O05) + `[Close this tab]` (2a). Drawn as
+  04r's hero (D26): the ring with the check, the title and the line in `#pm-done`, in place of #6's key tile, title and
+  lede.
 - **`unsupported`**: PASSKEY `unsupported` (2a). **`failed`**: PASSKEY `failed` (2a). **`wrong`** / **`cooldown`**: 2a's.
 
 `op=add`, **a passkey stored** (replace, C4):
 - **`idle`**: `.noc-h1` "Replace your passkey" (O17); lede "The new passkey replaces the one this wallet uses now. The old
   one stays in your passkey manager until you delete it there." (O18); the password line and field as above;
   `[Replace passkey]` (D13); `[Cancel]`.
-- **`adding`** as above; **`replaced`**: "Passkey replaced." (O19) + "You can close this tab." (O05).
+- **`adding`** as above; **`replaced`**: "Passkey replaced." (O19) + "You can close this tab." (O05), as 04r's hero (D26).
 - **`unsupported`**, **`failed`**, **`wrong`**, **`cooldown`**: as add.
 
 `op=remove`:
 - **`idle`**: `.noc-h1` "Remove your passkey" (O20); lede "Confirm with your password or with the passkey itself. Your
-  password keeps working." (O21); password field; `[Remove passkey]` (D13); `[Confirm with passkey]` (2a); `[Cancel]`.
+  password keeps working." (O21); password field; `[Remove passkey]` (D13) as the delete page's danger button
+  (`btn btn-destructive`, D27); `[Confirm with passkey]` (2a); `[Cancel]`.
 - **`removing`**: "Removing the passkey…" (O22).
 - **`removed`**: "Passkey removed." (O23) + "It is still saved in your passkey manager (Google, Apple or your password
-  manager). Delete it there if you no longer need it." (O24) + `[Close this tab]`.
+  manager). Delete it there if you no longer need it." (O24) + `[Close this tab]`, as 04r's hero (D26). Only these
+  three successes get the hero; every other end keeps #6's head and the line under the form.
 - **`no-passkey`**: "This wallet has no passkey. Nothing was changed." (O25).
 - **`busy`** (E12's outcome after the one automatic retry; review L1): RESTORE `busy` (2a) + `[Start again]` (2a) → `idle`. **`not-unlocked`**, **`mismatch-locked`**,
   **`damaged`**, **`no-wallet`**: common. **`failed`**: "Something went wrong. Nothing was changed." (O26).
 - **`passkey-unavailable`**: COMMON `passkeyUnavailableConfirm` (2a).
 
 **Engine:** `addPasskey` (unchanged) for add/replace; E12 for remove.
+
+**No address binding (D33):** as #36, the passkey pages show no account address (no C17 binding): adding, replacing or
+removing the passkey changes only the wrap of the same wallet's data key.
 
 **Differs, loudly:** the "manage" variant is referenced but never drawn (ix:13616, 14659, 14663); these states derive
 from 2a's #6. The design's enrollment-change disclosure (ix:5427, 13452, 14430) has no passkey analogue and is not shown
@@ -721,7 +749,10 @@ phrase]` / `[Hide]`) is replaced.
   wording); "All three words matched." **→ adapted** (ix:5163 drops "Now lock the wallet with a PIN.") + "You can close
   this tab." (O05); `[Close this tab]` (2a). `vault.phraseVerified` (E15) is sent on entering this state.
 - **`success-not-recorded`** (extension-only; the message refused): "All three words matched, but this could not be saved.
-  Try again later." (O32).
+  Try again later." (O32). **A neutral hero (D25):** the same `.success-state` with the title unchanged, but the ring in
+  the design's neutral tint — the secondary surface `--bg-surface-3` with the icon at `--fg-secondary`, as index.html's
+  cancelled-state ring (design-ext `.done-cancelled .ring`) — and the info icon (`#i-info`) in place of the check
+  (`.success-state.vlt-neutral`); never the green success ring.
 
 **Engine:** `openProven` (proof) and `confirmPlan` (`screens/confirm.ts:34`); E15. In verify mode the phrase is opened for
 the check and never rendered; only the 9-word pool is shown, as on #4.
@@ -747,7 +778,8 @@ challenge instead of reveal"); this is #4's screen with a proof first. FLAG_SECU
 - **`idle`**: `.noc-h1` "Remove Account N?" (O38; the URL's `index` is the envelope's 0-based `index` field and N =
   `index + 1`, so `index=0` → "Remove Account 1?" — a named test, review L2); the address in groups of four (`view/words.ts`
   `addressGroups`, from the stored envelope); "Its funds stay on Solana; add it again to use them." (D16); "Password" field;
-  `[Remove the account]` (2a); `[Confirm with passkey]` (2a); `[Cancel]` (2a).
+  `[Remove the account]` (2a) as the delete page's danger button (`btn btn-destructive`, D27); `[Confirm with passkey]`
+  (2a); `[Cancel]` (2a).
 - **`removing`**: "Removing the account…" (ACCOUNTS (2a)).
 - **outcomes**: as add, plus `last-account`, `no-such-account` (2a), and `send-open` "A transaction from this account is
   still pending. Wait until it confirms or expires — about two minutes — then try again." **→ adapted** (RESTORE `sendOpen`
@@ -775,6 +807,10 @@ Changed or new for the settings kind:
 
 A challenge that is already gone **when the page loads** (`vault.challengeInfo` → `unknown-challenge`) cannot be known to
 be a settings one; the page keeps 2a's `expired` line (§11 item 4).
+
+**A lost reply (D30, accepted):** if the background applied the setting but its answer to `vault.reauthOk` never reached
+the page, the page shows `settings-failed`'s "Nothing was changed." although the change was saved. Rare (the reply is a
+local extension message), and #35 always shows the stored value, so the next open tells the truth.
 
 **Differs, loudly:** none beyond 2a's #10 list; the settings kind has no mockup of its own (2a built it from #10).
 
@@ -813,6 +849,8 @@ Rows `.s7-row` 56 px (glyph, `.s7-title`, `.s7-meta`, `.s7-chev`), group labels 
 
 **Engine:** `wallet.state` (accounts in display order, `selected`, `passkey`), `settings.get` (`phraseVerifiedAt`,
 `passwordChangedAt`), `contacts.list` (plan 2, for the count; a refusal hides the meta). The task count is §4.2's.
+**A failed `settings.get` (D32, accepted):** the metas that depend on it ("Security center"'s count, "Recovery phrase")
+stay blank; the rows still open their screens.
 
 **Differs, loudly:**
 - Omitted rows (D22): "Currency · USD" (2a-D27), "Notifications · 3 muted" (2a-D28), "Material You accent" and 31b's
@@ -898,7 +936,9 @@ recovery phrase"] (C8), in that order — the design's (ix:14417-14419: biometri
 - **35b's order (Task 20 fix round 1, visual review M5):** "Auto-lock" takes the first "Active protections" slot, the
   design's "Encrypted backup · 47 d ago" (ix:14487, dropped with 2a-D17); and 35b continues with Locks and Danger zone after
   Active protections, where the design's 35b frame ends at Active protections (ix:14485-14491) — the same screen as 35a,
-  so the locks and the delete stay reachable when every task is done.
+  so the locks and the delete stay reachable when every task is done. **Accepted by the owner (D28, 2026-10-08).**
+- A weakening's lost #10 reply shows "Nothing was changed." although it was saved (D30, accepted; §3.7); #35's stored
+  value is the truth on the next open.
 
 ### 4.3 Accounts manager (derived from the 2a switcher; no design; D16, D17, C6, C14)
 
@@ -906,7 +946,11 @@ Pushed screen (not a sheet: it holds reorder and remove). Top bar back + `.noc-h
 
 - **`list`**: one row per account in display order (E14): avatar initial, name `.noc-body-lg`, `twoGroups` address
   `.noc-mono`, balance "12.4821 SOL · $1,234.56", "cached 2 h ago" / "not checked yet" (2a §5.2, same fresh-read rule:
-  first 10 rows); the selected row's check. Row tap → `accounts.select` (2a). Per row: pencil → inline rename (2a §5.2,
+  first 10 rows); the selected row's check. Row tap → `accounts.select` (2a): **the whole row selects (D24)** — the
+  name line is the select button (a `LockedButton`, `aria-pressed`), and a click on the address/balance line presses that
+  same button, so it goes through the same lock (rule 6); the line stays the button's `aria-describedby` description and
+  is not a second button (the keyboard reaches the select through the button). The row tools below are separate
+  buttons: a tap on one never selects. Per row: pencil → inline rename (2a §5.2,
   its three error strings); `[↑]` / `[↓]` icon buttons, aria "Move <name> up" (O52) / "Move <name> down" (O53), disabled
   at the ends; trash icon, aria "Remove <name>" (O54). Bottom: `[Add account]` (2a) → `accounts&op=add`; for `cli`
   disabled with "A Solana CLI wallet has exactly one account." (2a).
@@ -981,8 +1025,11 @@ Top bar back + `.noc-h1` "Delete wallet" (ix:14963). Warning card (36 % danger h
   "Balances could not all be checked — this wallet may hold funds." (O65). "Skipped" (Task 15 fix round 1, I1): the fresh
   pass read fewer than min(accounts, 10) rows — the 403 cool-down, unreachable or offline — so stale cached rows (even
   zeros) never stand in for a check.
-- **`send open`** (`wallet.pending` has an open record): `.banner.warning` with RESTORE `sendOpen` (2a); the typed gate
-  stays usable, `[Delete wallet]` stays disabled.
+- **`send open`** (`wallet.pending` has an open record): `.banner.warning` with RESTORE `sendOpen` (2a), **drawn as the
+  funds banner (D29)**: the string's first sentence "A transaction from this wallet is still pending." as the bold
+  `.banner-title`, the rest "Wait until it confirms or expires — about two minutes — then try again." as the regular
+  `.banner-line` — the approved string split, no word changed; the typed gate stays usable, `[Delete wallet]` stays
+  disabled.
 - **`partial`** (37b, ix:15009-15050): the body collapses to "This removes all encrypted keys and local data from this
   browser." (ix:15029, adapted as above); ix:15030 (staking) omitted; input accent ring; helper "**3** of **6** characters
   · keep going" (ix:15038, `.noc-numeral`); CTA disabled. Typed text that is not a prefix of `DELETE` → helper "Type DELETE
@@ -998,6 +1045,9 @@ Top bar back + `.noc-h1` "Delete wallet" (ix:14963). Warning card (36 % danger h
 
 **Mechanics:** pointer down/up/leave, and **Space or Enter held** on the focused CTA (keydown starts, keyup cancels;
 repeat events ignored); `blur` cancels. `prefers-reduced-motion`: no fill animation, the label still counts (ix:15148).
+**Screen readers (D31, accepted; revisit in B1e):** a screen reader in browse mode sends a single click, not a held key,
+so it cannot complete the hold; the user switches to focus mode (Space/Enter then reach the button as held keys).
+Documented, not solved here.
 Balances: `wallet.cached` for every account, fresh `wallet.balances` for the first 10 (2a §5.2's rule), never a guard.
 
 **Engine:** `wallet.cached`, `wallet.balances`, `wallet.prices`, `wallet.pending`; then §3.2.
@@ -1381,6 +1431,8 @@ Findings go in the PR; screenshots are CI artifacts.
   names of removed accounts (E13, review L3).
 - **Accepted limits (rev 2):** wallets created before 2b show both phrase tasks until verified once — there is no fact to
   migrate from (E15, review L4); `accounts.order` is last-writer-wins between two popups (E14, review L9).
+- **Accepted limits (owner, 2026-10-08):** a lost #10 reply shows a false "Nothing was changed." (D30); a screen reader's
+  browse mode cannot hold #37's button (D31 → revisit in B1e); #31's metas stay blank when `settings.get` fails (D32).
 - **Later tracks:** B1c (connected dApps on #31, #37's "dApp connections"); B1d (presale); B1e (privacy policy, damaged-vault
   repair); B2 (shielded variants).
 - **Deferred carries, unchanged:** unbounded challenge issuance by privileged pages (the settings pickers are a second

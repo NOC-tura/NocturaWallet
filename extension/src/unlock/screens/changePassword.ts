@@ -85,7 +85,9 @@ export function mountChangePassword(deps: PageDeps): ChangePasswordScreen {
     shown(byId('cp-entry'), entry && !cooling);
     shown(byId('cp-cooldown'), cooling);
     shown(byId('cp-changing'), phase === 'changing');
-    shown(byId('cp-notice'), phase === 'notice' || phase === 'done');
+    shown(byId('cp-notice'), phase === 'notice');
+    // D26 (owner, 2026-10-08): done is 04r's hero, not a notice.
+    shown(byId('cp-done'), phase === 'done');
     shown(helperEl, entry && !cooling);
     const newPassword = phase === 'step2' || phase === 'step3';
     field.type = newPassword && reveal ? 'text' : 'password';
@@ -289,7 +291,8 @@ export function mountChangePassword(deps: PageDeps): ChangePasswordScreen {
       if (out === 'changed') {
         phase = 'done';
         action = 'close';
-        noticeLines(CHANGE.updated, hadPasskey ? `${CHANGE.closeTab} ${CHANGE.passkeyStillWorks}` : CHANGE.closeTab);
+        setText(byId('cp-done-title'), CHANGE.updated);
+        setText(byId('cp-done-body'), hadPasskey ? `${CHANGE.closeTab} ${CHANGE.passkeyStillWorks}` : CHANGE.closeTab);
         return render();
       }
       if (out === 'busy') return notice(RESTORE.busy, '', 'again');

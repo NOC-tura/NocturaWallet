@@ -39,6 +39,14 @@ export const DELETE_TEXT = {
   sendOpen: 'A transaction from this wallet is still pending. Wait until it confirms or expires — about two minutes — then try again.',
 } as const;
 
+/**
+ * D29 (owner, 2026-10-08): the send-open banner is a bold title + a regular body, as the funds banner. The one approved
+ * string (RESTORE `sendOpen`, 2a) is split at its first sentence — no word added or dropped.
+ */
+const SEND_OPEN_AT = DELETE_TEXT.sendOpen.indexOf('. ') + 1;
+export const SEND_OPEN_TITLE = DELETE_TEXT.sendOpen.slice(0, SEND_OPEN_AT);
+export const SEND_OPEN_BODY = DELETE_TEXT.sendOpen.slice(SEND_OPEN_AT + 1);
+
 export const WORD = 'DELETE';
 /** D9: the owner chose "the full second" (the design says both 600 ms and "the full second", ix:15072). */
 export const HOLD_MS = 1_000;
@@ -172,7 +180,11 @@ export function DeleteWallet({onBack, clock = realClock}: {onBack: () => void; c
           </Banner>
         ) : null}
         {unknown ? <Banner tone="warning" title={DELETE_TEXT.unknown} /> : null}
-        {sendOpen ? <Banner tone="warning" title={DELETE_TEXT.sendOpen} /> : null}
+        {sendOpen ? (
+          <Banner tone="warning" title={SEND_OPEN_TITLE}>
+            {SEND_OPEN_BODY}
+          </Banner>
+        ) : null}
         <div>
           {matched ? (
             <p className="noc-overline noc-success app-delete-eyebrow">

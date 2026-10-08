@@ -144,7 +144,12 @@ export function mountPhrase(deps: PageDeps, kind: 'reveal' | 'verify'): PhraseRu
         const mine = generation;
         void (revision === null ? Promise.resolve(false) : recordVerified(deps.send, revision)).then(ok => {
           // Left (pagehide) while the fact was being sent: the success state is gone, nothing is written to it.
-          if (!ok && mine === generation) setText(byId('cnf-success-body'), PHRASE.notRecorded);
+          if (!ok && mine === generation) {
+            setText(byId('cnf-success-body'), PHRASE.notRecorded);
+            // D25 (owner, 2026-10-08): not recorded is no success — a neutral hero (the secondary tint, the info icon).
+            byId('cnf-success').classList.add('vlt-neutral');
+            byId('cnf-success-icon').setAttribute('href', '#i-info');
+          }
         });
       },
     },

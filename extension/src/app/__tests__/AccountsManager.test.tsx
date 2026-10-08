@@ -305,6 +305,71 @@ describe('the accounts manager', () => {
     expect(h.count('accounts.select')).toBe(1);
   });
 
+  // D24 (owner, 2026-10-08): the whole row selects — the address/balance line as well as the name line.
+  describe('D24: the whole row selects the account', () => {
+    const sub = (index: number) => document.querySelector(`.app-account-row[data-account="${index}"] > .app-account-sub`) as HTMLElement;
+
+    it('a click on the address line selects the account', async () => {
+      const w = await shown();
+      await waitFor(() => expect(names()).toHaveLength(3));
+      fireEvent.click(sub(1).querySelector('.noc-mono') as HTMLElement);
+      await waitFor(async () => expect(await w.ext.local.get(SETTINGS_KEY)).toMatchObject({selectedAccount: 1}));
+      await waitFor(() => expect(screen.getByText('Savings', {selector: '.pri'}).closest('button')?.getAttribute('aria-pressed')).toBe('true'));
+    });
+
+    it('a click on the balance line selects the account', async () => {
+      const w = await shown();
+      await waitFor(() => expect(names()).toHaveLength(3));
+      await waitFor(() => expect(sub(2).querySelector('.noc-numeral')?.textContent).toMatch(/SOL/));
+      fireEvent.click(sub(2).querySelector('.noc-numeral') as HTMLElement);
+      await waitFor(async () => expect(await w.ext.local.get(SETTINGS_KEY)).toMatchObject({selectedAccount: 2}));
+    });
+
+    it('rule 6: the line goes through the same lock — line, line, name inside 500 ms send one accounts.select', async () => {
+      const h = hold('accounts.select');
+      await shown({gate: h.gate});
+      await waitFor(() => expect(names()).toHaveLength(3));
+      const pick = screen.getByText('Savings', {selector: '.pri'}).closest('button') as HTMLButtonElement;
+      fireEvent.click(sub(1));
+      expect(pick.disabled).toBe(true);
+      pick.disabled = false;
+      fireEvent.click(sub(1));
+      pick.disabled = false;
+      fireEvent.click(pick);
+      h.release();
+      await waitFor(() => expect(pick.getAttribute('aria-pressed')).toBe('true'));
+      await settle();
+      expect(h.count('accounts.select')).toBe(1);
+    });
+
+    it('the tools never select: pencil, ↑, ↓ and trash send no accounts.select', async () => {
+      const h = hold('accounts.select');
+      await shown({gate: h.gate});
+      await waitFor(() => expect(names()).toHaveLength(3));
+      fireEvent.click(screen.getByRole('button', {name: 'Move Savings down'}));
+      await waitFor(() => expect(names()).toEqual(['Main', 'Third', 'Savings']));
+      fireEvent.click(screen.getByRole('button', {name: 'Move Third up'}));
+      await waitFor(() => expect(names()).toEqual(['Third', 'Main', 'Savings']));
+      fireEvent.click(screen.getByRole('button', {name: 'Remove Savings'}));
+      fireEvent.click(within(await screen.findByRole('dialog', {name: 'Remove Savings?'})).getByRole('button', {name: 'Cancel'}));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      fireEvent.click(screen.getByRole('button', {name: 'Rename Savings'}));
+      expect(screen.getByRole('textbox', {name: 'Account name'})).toBeTruthy();
+      await settle();
+      expect(h.count('accounts.select')).toBe(0);
+    });
+
+    it('the line stays a description of the row select (aria-describedby), not a second button', async () => {
+      await shown();
+      await waitFor(() => expect(names()).toHaveLength(3));
+      const line = sub(1);
+      expect(line.tagName).not.toBe('BUTTON');
+      expect(line.querySelector('button')).toBeNull();
+      expect((line.closest('.app-account-row')?.querySelector('.app-account-pick') as HTMLElement).getAttribute('aria-describedby')).toBe(line.id);
+      expect(unstyledClasses(line.closest('.app-account-row') as HTMLElement, SELECTORS)).toEqual([]);
+    });
+  });
+
   it('keyboard: the row select keeps the focus through its lock (fix round 1, Minor 2)', async () => {
     await shown();
     await waitFor(() => expect(names()).toHaveLength(3));

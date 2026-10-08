@@ -28,3 +28,13 @@ it('unlock.css resets margin/padding inside the vault column at zero specificity
   // ever won the cascade; only the zero-specificity `:where()` form is allowed.
   expect(css).not.toContain('.vlt-col *');
 });
+
+// D25 (owner, 2026-10-08): verify-not-recorded (O32) is a neutral hero — the design's neutral ring (the secondary
+// surface, the icon at --fg-secondary: index.html's cancelled-state ring, design-ext `.done-cancelled .ring`), never the
+// success tint. happy-dom computes no cascade, so the rule's text is pinned (the E2E visual pass reads the computed colour).
+it('unlock.css: the neutral success hero uses the secondary surface and --fg-secondary', () => {
+  const css = readFileSync(join(__dirname, '..', 'unlock.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const m = /\.vlt-col \.s-confirm \.success-state\.vlt-neutral \.ring\s*\{([^{}]*)\}/.exec(css);
+  expect(m).not.toBeNull();
+  expect(m?.[1]?.replace(/\s+/g, '')).toBe('background:var(--bg-surface-3);color:var(--fg-secondary);');
+});

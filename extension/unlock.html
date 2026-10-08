@@ -153,7 +153,7 @@
           <div id="cnf-pool" class="pool"></div>
         </div>
         <div id="cnf-success" class="success-state" hidden>
-          <div class="ring"><svg width="36" height="36" aria-hidden="true"><use href="#i-check" /></svg></div>
+          <div class="ring"><svg width="36" height="36" aria-hidden="true"><use id="cnf-success-icon" href="#i-check" /></svg></div>
           <div>
             <h2 id="cnf-success-title" class="noc-h2 vlt-gap-2">Phrase verified</h2>
             <p id="cnf-success-body" class="noc-body vlt-lede vlt-narrow">All three words matched. Now lock the wallet with a password.</p>
@@ -584,6 +584,16 @@
           <p id="cp-notice-line" class="noc-body"></p>
           <p id="cp-notice-help" class="noc-body-sm vlt-lede"></p>
         </div>
+        <!-- D26 (owner, 2026-10-08): the done state is 04r's hero (#4's `.success-state`, the 96 px success ring). -->
+        <div id="cp-done" class="s-confirm vlt-hero" hidden>
+          <div class="success-state">
+            <div class="ring"><svg width="36" height="36" aria-hidden="true"><use href="#i-check" /></svg></div>
+            <div role="status">
+              <h2 id="cp-done-title" class="noc-h2 vlt-gap-2"></h2>
+              <p id="cp-done-body" class="noc-body vlt-lede vlt-narrow"></p>
+            </div>
+          </div>
+        </div>
         <div class="pin-spacer"></div>
         <div class="sticky-bar">
           <button id="cp-cta" type="button" class="btn btn-primary"></button>
@@ -660,8 +670,8 @@
           <span class="title noc-overline vlt-muted">Passkey</span>
           <span class="vlt-bar-spacer"></span>
         </div>
-        <div class="hero-icon"><svg width="56" height="56" aria-hidden="true"><use href="#i-key" /></svg></div>
-        <div class="vlt-pad-6 vlt-center">
+        <div id="pm-icon" class="hero-icon"><svg width="56" height="56" aria-hidden="true"><use href="#i-key" /></svg></div>
+        <div id="pm-head" class="vlt-pad-6 vlt-center">
           <h1 id="pm-title" class="noc-h1 vlt-gap-2"></h1>
           <p id="pm-lede" class="noc-body vlt-lede vlt-narrow-300"></p>
         </div>
@@ -684,6 +694,16 @@
         <span id="pm-cooldown-live" class="vlt-sr" aria-live="polite"></span>
         <p id="pm-line" class="noc-body vlt-center vlt-pad vlt-gap-top-5" role="status" hidden></p>
         <p id="pm-line-help" class="noc-body-sm vlt-lede vlt-center vlt-pad vlt-gap-top-3" hidden></p>
+        <!-- D26 (owner, 2026-10-08): the done state is 04r's hero (#4's `.success-state`, the 96 px success ring). -->
+        <div id="pm-done" class="s-confirm vlt-hero" hidden>
+          <div class="success-state">
+            <div class="ring"><svg width="36" height="36" aria-hidden="true"><use href="#i-check" /></svg></div>
+            <div role="status">
+              <h2 id="pm-done-title" class="noc-h2 vlt-gap-2"></h2>
+              <p id="pm-done-body" class="noc-body vlt-lede vlt-narrow"></p>
+            </div>
+          </div>
+        </div>
         <div class="vlt-grow"></div>
         <div class="sticky-bar">
           <button id="pm-act" type="button" class="btn btn-primary"></button>

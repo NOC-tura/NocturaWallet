@@ -148,7 +148,7 @@ test('csp: every vault-page mode runs with zero CSP violations; an inline style 
     await clean('password, step 3');
     await p.locator('#cp-field').fill(PASSWORD);
     await p.locator('#cp-cta').click();
-    await expect(p.locator('#cp-notice-line')).toHaveText('Password updated.', {timeout: 60_000});
+    await expect(p.locator('#cp-done-title')).toHaveText('Password updated.', {timeout: 60_000});
     await clean('password, done');
     await p.goto(`${base}?mode=delete`);
     await expect(p.locator('#dl-address .addr-groups')).toBeVisible();

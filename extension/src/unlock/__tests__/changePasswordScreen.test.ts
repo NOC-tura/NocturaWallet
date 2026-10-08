@@ -66,6 +66,20 @@ async function toStep3(h: Harness): Promise<void> {
 }
 const changes = (h: Harness) => h.sent.filter(m => m.type === 'vault.changePassword');
 
+
+/**
+ * D26 (owner, 2026-10-08): #36's done is 04r's hero — `.s-confirm .success-state` with the 96 px success ring and the
+ * check — not the plain notice; the stepper and the notice are hidden.
+ */
+function successHero(): void {
+  expect(visible(el('cp-done'))).toBe(true);
+  expect(el('cp-done').classList.contains('s-confirm')).toBe(true);
+  expect(el('cp-done').querySelector(':scope > .success-state > .ring use')?.getAttribute('href')).toBe('#i-check');
+  expect(visible(el('cp-notice'))).toBe(false);
+  expect(visible(el('cp-stepper'))).toBe(false);
+  expect(unstyled('v-change-password')).toEqual([]);
+}
+
 describe('#36 change password: the steps', () => {
   it('step-1: the adapted copy, the stepper at 1 of 3, a password field — and no passkey button', async () => {
     await shown({passkey: true});
@@ -178,8 +192,9 @@ describe('#36 change password: the steps', () => {
     const {h, screen, env} = await shown({passkey: true});
     await toStep3(h);
     await submit(h, NEW);
-    await h.until(() => text(el('cp-notice-line')) === 'Password updated.');
-    expect(text(el('cp-notice-help'))).toBe('You can close this tab. Your passkey still works.');
+    await h.until(() => text(el('cp-done-title')) === 'Password updated.');
+    expect(text(el('cp-done-body'))).toBe('You can close this tab. Your passkey still works.');
+    successHero();
     expect(visible(el('cp-close'))).toBe(true);
     const after = (await h.ext.local.get(VAULT_KEY)) as EnvelopeV1;
     expect([after.seed, after.passkey, after.accounts]).toEqual([env.seed, env.passkey, env.accounts]);
@@ -193,8 +208,9 @@ describe('#36 change password: the steps', () => {
     const {h} = await shown();
     await toStep3(h);
     await submit(h, NEW);
-    await h.until(() => text(el('cp-notice-line')) === 'Password updated.');
-    expect(text(el('cp-notice-help'))).toBe('You can close this tab.');
+    await h.until(() => text(el('cp-done-title')) === 'Password updated.');
+    expect(text(el('cp-done-body'))).toBe('You can close this tab.');
+    successHero();
   });
 
   it('busy (the envelope moved after step 1): RESTORE busy + [Start again] → step 1; locked → not-unlocked + [Unlock]', async () => {
@@ -402,7 +418,7 @@ describe('#36 memory (M2 ruling, C20)', () => {
       return testKdf(pw, salt, params);
     };
     await submit(h, NEW);
-    await h.until(() => text(el('cp-notice-line')) === 'Password updated.');
+    await h.until(() => text(el('cp-done-title')) === 'Password updated.');
     // The screen had handed the proof over (it holds nothing), the change kept going, and the key was intact.
     expect(mid).toEqual({held: false, changing: true, step: 'Step 3 of 3', intact: true});
     const after = (await h.ext.local.get(VAULT_KEY)) as EnvelopeV1;
@@ -479,7 +495,7 @@ describe('#36 rule 6', () => {
     field().disabled = false;
     type(field(), NEW);
     click(cta());
-    await wakeUntil(() => text(el('cp-notice-line')) === 'Password updated.' && !h.deps.gate.isBusy());
+    await wakeUntil(() => text(el('cp-done-title')) === 'Password updated.' && !h.deps.gate.isBusy());
     expect(changes(h)).toHaveLength(1);
   });
 });

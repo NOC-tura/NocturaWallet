@@ -76,6 +76,9 @@ describe('the accounts mode: add (C6)', () => {
     expect(text(el('acc-add-fields'))).toContain('Adding a number this wallet had before brings back the same address.');
     expect(text(el('acc-only'))).toBe('Accounts after the first one exist only in this extension until the phone app supports more than one account.');
     expect(text(el('acc-act'))).toBe('Add an account');
+    // D27: only the remove is a danger button; an add keeps the primary.
+    expect(el('acc-act').classList.contains('btn-primary')).toBe(true);
+    expect(el('acc-act').classList.contains('btn-destructive')).toBe(false);
     expect(visible(el('acc-passkey'))).toBe(false);
     expect(visible(el('acc-cancel'))).toBe(false);
     expect(unstyled('v-accounts')).toEqual([]);
@@ -156,6 +159,10 @@ describe('the accounts mode: remove (C14)', () => {
     expect(text(el('acc-remove-info'))).toContain('Its funds stay on Solana; add it again to use them.');
     expect(carries('Grandma savings')).toBe(false);
     expect(text(el('acc-act'))).toBe('Remove the account');
+    // D27 (owner, 2026-10-08): the remove primary is the delete page's danger button.
+    expect(el('acc-act').className).toBe(el('dl-delete').className);
+    expect(el('acc-act').classList.contains('btn-destructive')).toBe(true);
+    expect(el('acc-act').classList.contains('btn-primary')).toBe(false);
     expect(visible(el('acc-cancel'))).toBe(true);
     expect(visible(el('acc-only'))).toBe(false);
     expect(unstyled('v-accounts')).toEqual([]);

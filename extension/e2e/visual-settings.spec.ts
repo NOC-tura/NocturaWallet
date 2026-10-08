@@ -46,6 +46,44 @@ async function pop(page: Page, name: string, visible: Locator): Promise<void> {
   expect(await under(), `${name}: the state's element clear of the pinned bars`).toBeNull();
   await shot(page, name, {fullPage: false});
 }
+/** A computed style of the element. */
+const css = (l: Locator, prop: string) => l.evaluate((e, x) => getComputedStyle(e).getPropertyValue(x), prop);
+/** A design token resolved to the computed colour form (a throwaway element coloured with it). */
+const tokenColor = (p: Page, token: string) =>
+  p.evaluate(t => {
+    const e = document.createElement('div');
+    e.style.color = `var(${t})`;
+    document.body.append(e);
+    const c = getComputedStyle(e).color;
+    e.remove();
+    return c;
+  }, token);
+/**
+ * D26 (owner, 2026-10-08): a done state is 04r's hero — the hero visible, its ring the success tint, the check icon. The
+ * first call records the ring's computed colours; every later one (and 04r itself) must match them.
+ */
+let successRing: {bg: string; fg: string} | null = null;
+async function successHero(hero: Locator): Promise<void> {
+  await expect(hero).toBeVisible();
+  const ring = hero.locator('.success-state > .ring');
+  await expect(ring).toHaveCSS('width', '96px');
+  await expect(ring.locator('use')).toHaveAttribute('href', '#i-check');
+  const now = {bg: await css(ring, 'background-color'), fg: await css(ring, 'color')};
+  expect(now.fg).toBe(await tokenColor(hero.page(), '--success'));
+  if (successRing === null) successRing = now;
+  expect(now).toEqual(successRing);
+}
+/** The success ring's colours recorded by successHero (the not-recorded hero must differ from them). */
+function recordedRing(): {bg: string; fg: string} {
+  if (successRing === null) throw new Error('no success hero recorded yet');
+  return successRing;
+}
+/** D27 (owner, 2026-10-08): a remove primary is the delete page's danger button — its class and its computed colours. */
+async function dangerCta(p: Page, cta: Locator): Promise<void> {
+  await expect(cta).toHaveClass('btn btn-destructive');
+  const del = p.locator('#dl-delete');
+  for (const prop of ['background-color', 'color', 'border-top-color']) expect(await css(cta, prop), prop).toBe(await css(del, prop));
+}
 /**
  * Task 20 (Task 13 carry; B1b-2a plan 3's `pinned()` guard): with the content at its top, the screen's action bar and
  * every named control in it lie inside the 600 px popup — no scroll needed to reach them.
@@ -217,6 +255,9 @@ test('visual: #31, #35, the passkey screen, the accounts manager and #37 in the 
 
     // The accounts manager: the list, the remove sheet, the stale line.
     p = await popup(h);
+    // The clock is the context's: 36e's tab paused it above, and a paused clock never ends a LockedButton's 500 ms floor
+    // (D24's selects below wait for it). Real time from here.
+    await p.clock.resume();
     await toSettings(p);
     await p.locator('.s7-title', {hasText: 'Profile'}).click();
     await expect(p.locator('.app-account-row .pri')).toHaveText(['Main', 'Savings']);
@@ -234,6 +275,23 @@ test('visual: #31, #35, the passkey screen, the accounts manager and #37 in the 
     );
     expect(offsets).toEqual(offsets.map(() => 0));
     await pop(p, '43m-accounts-list', p.locator('.app-account-row').first());
+    // D24 (owner, 2026-10-08): the whole row selects — a click on Savings's address line selects Savings (the row's select
+    // button, aria-pressed), a click on Main's balance line selects Main again; a tool never selects.
+    const pick = (name: string) => p.locator('.app-account-pick', {has: p.locator('.pri', {hasText: name})});
+    await expect(p.locator('.app-account-sub').first()).toHaveCSS('cursor', 'pointer');
+    await p.locator('.app-account-row[data-account="1"] .app-account-sub .noc-mono').click();
+    await expect(pick('Savings')).toHaveAttribute('aria-pressed', 'true');
+    await expect(pick('Main')).toHaveAttribute('aria-pressed', 'false');
+    await pop(p, '43m-row-line-selected', p.locator('.app-account-row.sel'));
+    await expect(pick('Savings')).toBeEnabled();
+    await p.locator('.app-account-row[data-account="0"] .app-account-sub .noc-numeral').click();
+    await expect(pick('Main')).toHaveAttribute('aria-pressed', 'true');
+    await expect(pick('Main')).toBeEnabled();
+    await p.getByRole('button', {name: 'Rename Savings'}).click();
+    await expect(p.getByRole('textbox', {name: 'Account name'})).toBeVisible();
+    await expect(pick('Main')).toHaveAttribute('aria-pressed', 'true');
+    await p.getByRole('button', {name: 'Cancel'}).click();
+    await expect(p.getByRole('textbox', {name: 'Account name'})).toHaveCount(0);
     await p.getByRole('button', {name: 'Remove Savings'}).click();
     await expect(p.getByText('Holds 10.0000 SOL · $1,500.00')).toBeVisible();
     await pop(p, '43m-remove-sheet', p.getByRole('button', {name: 'Continue to remove'}));
@@ -290,8 +348,14 @@ test('visual: #31, #35, the passkey screen, the accounts manager and #37 in the 
     p = await popup(h);
     await toSettings(p);
     await p.locator('.s7-title', {hasText: 'Delete wallet'}).click();
-    await expect(p.getByText('A transaction from this wallet is still pending. Wait until it confirms or expires — about two minutes — then try again.')).toBeVisible();
-    await pop(p, '37-send-open', p.getByText('A transaction from this wallet is still pending', {exact: false}));
+    // D29 (owner, 2026-10-08): a bold title + a regular body, as the funds banner — the approved string split at its first
+    // sentence.
+    const sendOpen = p.locator('.banner.warning', {has: p.locator('.banner-title', {hasText: 'A transaction from this wallet is still pending.'})});
+    await expect(sendOpen.locator('.banner-title')).toHaveText('A transaction from this wallet is still pending.');
+    await expect(sendOpen.locator('.banner-line')).toHaveText('Wait until it confirms or expires — about two minutes — then try again.');
+    await expect(sendOpen.locator('.banner-title')).toHaveCSS('font-weight', '600');
+    await expect(sendOpen.locator('.banner-line')).toHaveCSS('font-weight', '400');
+    await pop(p, '37-send-open', sendOpen);
     await p.close();
     await h.sw.evaluate(() => chrome.storage.local.remove('v1_pending'));
     await h.sw.evaluate(() => chrome.storage.local.remove('v1_balance_cache'));
@@ -310,6 +374,7 @@ test('visual: #31, #35, the passkey screen, the accounts manager and #37 in the 
 
 test('visual: the vault tab — #36, #37’s proof, the passkey actions, accounts, reveal and verify, #10’s settings kind (412 px)', async () => {
   test.setTimeout(600_000);
+  successRing = null;
   const h = await launchPopup('noctura-e2e-vis-vault-2b-');
   try {
     await set(h.sw, {v1_vault: await makeEnvelope({accounts: 2})});
@@ -339,14 +404,19 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     await expect(p.locator('#pm-line')).toHaveText('Waiting for your passkey…');
     await shot(p, '06m-adding');
     await releaseKdf(p);
-    await expect(p.locator('#pm-line')).toHaveText('Passkey added.', {timeout: 60_000});
+    await expect(p.locator('#pm-done-title')).toHaveText('Passkey added.', {timeout: 60_000});
+    await expect(p.locator('#pm-done-body')).toHaveText('You can close this tab.');
+    await successHero(p.locator('#pm-done'));
+    await expect(p.locator('#pm-icon')).toBeHidden();
     await shot(p, '06m-added', {ready: p.locator('#pm-close')});
     await go('mode=passkey&op=add');
     await expect(p.locator('#pm-title')).toHaveText('Replace your passkey');
     await shot(p, '06m-replace-idle', {ready: p.locator('#pm-act')});
     await p.locator('#pm-password').fill(E2E_PASSWORD);
     await withAuthenticatorFocus(p, () => p.locator('#pm-act').click());
-    await expect(p.locator('#pm-line')).toHaveText('Passkey replaced.', {timeout: 60_000});
+    await expect(p.locator('#pm-done-title')).toHaveText('Passkey replaced.', {timeout: 60_000});
+    await expect(p.locator('#pm-done-body')).toHaveText('You can close this tab.');
+    await successHero(p.locator('#pm-done'));
     await shot(p, '06m-replaced', {ready: p.locator('#pm-close')});
     await go('mode=passkey&op=remove');
     await expect(p.locator('#pm-title')).toHaveText('Remove your passkey');
@@ -355,6 +425,8 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     await expect(p.locator('#pm-password-label')).toBeVisible();
     // Set as the add line it stands in for: the same gap above the field.
     expect(await gapBelow('#pm-password-label')).toBe(addGap);
+    await expect(p.locator('#pm-act')).toHaveText('Remove passkey');
+    await dangerCta(p, p.locator('#pm-act'));
     await shot(p, '06m-remove-idle', {ready: p.locator('#pm-passkey')});
     await holdKdf(p);
     await p.locator('#pm-password').fill(E2E_PASSWORD);
@@ -363,7 +435,9 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     await xDisabled(p.locator('#pm-x'));
     await shot(p, '06m-removing');
     await releaseKdf(p);
-    await expect(p.locator('#pm-line')).toHaveText('Passkey removed.', {timeout: 60_000});
+    await expect(p.locator('#pm-done-title')).toHaveText('Passkey removed.', {timeout: 60_000});
+    await expect(p.locator('#pm-done-body')).toHaveText('It is still saved in your passkey manager (Google, Apple or your password manager). Delete it there if you no longer need it.');
+    await successHero(p.locator('#pm-done'));
     await shot(p, '06m-removed', {ready: p.locator('#pm-close')});
     await go('mode=passkey&op=remove');
     await p.locator('#pm-password').fill(E2E_PASSWORD);
@@ -374,7 +448,7 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     await go('mode=passkey&op=add');
     await p.locator('#pm-password').fill(E2E_PASSWORD);
     await withAuthenticatorFocus(p, () => p.locator('#pm-act').click());
-    await expect(p.locator('#pm-line')).toHaveText('Passkey added.', {timeout: 60_000});
+    await expect(p.locator('#pm-done-title')).toHaveText('Passkey added.', {timeout: 60_000});
 
     // #36 · 36a–36e and the extension-only states.
     await go('mode=password');
@@ -430,8 +504,10 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     await expect(p.getByText('Updating your password…')).toBeVisible();
     await shot(p, '36-changing');
     await releaseKdf(p);
-    await expect(p.locator('#cp-notice-line')).toHaveText('Password updated.', {timeout: 60_000});
-    await expect(p.locator('#cp-notice-help')).toHaveText('You can close this tab. Your passkey still works.');
+    await expect(p.locator('#cp-done-title')).toHaveText('Password updated.', {timeout: 60_000});
+    await expect(p.locator('#cp-done-body')).toHaveText('You can close this tab. Your passkey still works.');
+    await successHero(p.locator('#cp-done'));
+    await expect(p.locator('#cp-notice')).toBeHidden();
     await shot(p, '36-done', {ready: p.locator('#cp-close')});
     // `dropped`: the 5-minute TTL (C20), a page-local timer, run on the page's own clock.
     await go('mode=password');
@@ -470,6 +546,8 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     await shot(p, 'accounts-bad-index', {ready: p.locator('#acc-act')});
     await go('mode=accounts&op=remove&index=0');
     await expect(p.locator('#acc-title')).toHaveText('Remove Account 1?');
+    await expect(p.locator('#acc-act')).toHaveText('Remove the account');
+    await dangerCta(p, p.locator('#acc-act'));
     await shot(p, 'accounts-remove-idle', {ready: p.locator('#acc-act')});
     await set(h.sw, openPending(E2E_ACCOUNTS[0]));
     await holdKdf(p);
@@ -580,6 +658,9 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     await confirmWords(p, E2E_MNEMONIC.split(' '));
     await p.locator('#cnf-cta').click();
     await expect(p.locator('#cnf-success-title')).toHaveText('Recovery phrase verified');
+    await expect(p.locator('#cnf-success-body')).toHaveText('All three words matched. You can close this tab.');
+    // D26: 04r is the hero the done states copied — the same ring, the same colours.
+    await successHero(p.locator('#v-confirm'));
     await shot(p, '04r-verified', {ready: p.locator('#cnf-cta')});
     await go('mode=verify');
     await expect(p.locator('#pp-title')).toHaveText('Verify your recovery phrase');
@@ -594,6 +675,13 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     await confirmWords(p, E2E_MNEMONIC.split(' '));
     await p.locator('#cnf-cta').click();
     await expect(p.locator('#cnf-success-body')).toHaveText('All three words matched, but this could not be saved. Try again later.');
+    await expect(p.locator('#cnf-success-title')).toHaveText('Recovery phrase verified');
+    // D25 (owner, 2026-10-08): a neutral hero — the secondary surface, the info icon at --fg-secondary, never the green ring.
+    const neutral = p.locator('#cnf-success .ring');
+    await expect(neutral.locator('use')).toHaveAttribute('href', '#i-info');
+    expect(await css(neutral, 'color')).toBe(await tokenColor(p, '--fg-secondary'));
+    expect(await css(neutral, 'background-color')).not.toBe(recordedRing().bg);
+    expect(await css(neutral, 'color')).not.toBe(recordedRing().fg);
     await shot(p, 'verify-not-recorded', {ready: p.locator('#cnf-cta')});
     await other.close();
 
@@ -612,7 +700,7 @@ test('visual: the vault tab — #36, #37’s proof, the passkey actions, account
     await go('mode=passkey&op=remove');
     await p.locator('#pm-password').fill(NEW_PASSWORD);
     await p.locator('#pm-act').click();
-    await expect(p.locator('#pm-line')).toHaveText('Passkey removed.', {timeout: 60_000});
+    await expect(p.locator('#pm-done-title')).toHaveText('Passkey removed.', {timeout: 60_000});
     await go('mode=delete');
     await expect(p.locator('#dl-address .addr-groups')).toBeVisible();
     await set(h.sw, {v1_vault: await makeEnvelope({accounts: 1})});

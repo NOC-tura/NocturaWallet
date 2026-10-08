@@ -61,6 +61,23 @@ const withPassword = (password = PW) => {
   click(el('pm-act'));
 };
 
+
+/**
+ * D26 (owner, 2026-10-08): a passkey done state (added, replaced, removed) is 04r's hero — `.s-confirm .success-state`
+ * with the 96 px success ring and the check — in place of #6's key tile, title and lede; the line under the form is empty.
+ */
+function successHero(): void {
+  expect(visible(el('pm-done'))).toBe(true);
+  expect(el('pm-done').classList.contains('s-confirm')).toBe(true);
+  expect(el('pm-done').querySelector(':scope > .success-state > .ring use')?.getAttribute('href')).toBe('#i-check');
+  expect(el('pm-done').querySelector('.success-state.vlt-neutral')).toBeNull();
+  expect(visible(el('pm-icon'))).toBe(false);
+  expect(visible(el('pm-head'))).toBe(false);
+  expect(visible(el('pm-line'))).toBe(false);
+  expect(visible(el('pm-close'))).toBe(true);
+  expect(unstyled('v-passkey-manage')).toEqual([]);
+}
+
 describe('#6 manage: add and replace (password only, C4)', () => {
   it('?mode=passkey&op=… is a closed enum (anything else is add)', () => {
     expect(pageMode('?mode=passkey&op=remove')).toEqual({mode: 'passkey', op: 'remove'});
@@ -84,8 +101,9 @@ describe('#6 manage: add and replace (password only, C4)', () => {
     const {h} = await shown('add', {credentials: authenticator(NEW_PRF)});
     withPassword();
     expect(text(el('pm-line'))).toBe('Waiting for your passkey…');
-    await h.until(() => text(el('pm-line')) === 'Passkey added.');
-    expect(text(el('pm-line-help'))).toBe('You can close this tab.');
+    await h.until(() => text(el('pm-done-title')) === 'Passkey added.');
+    expect(text(el('pm-done-body'))).toBe('You can close this tab.');
+    successHero();
     expect(visible(el('pm-close'))).toBe(true);
     const env = await stored(h);
     expect(env.passkey).toBeDefined();
@@ -97,11 +115,15 @@ describe('#6 manage: add and replace (password only, C4)', () => {
     expect(text(el('pm-title'))).toBe('Replace your passkey');
     expect(text(el('pm-lede'))).toBe('The new passkey replaces the one this wallet uses now. The old one stays in your passkey manager until you delete it there.');
     expect(text(el('pm-act'))).toBe('Replace passkey');
+    // D27: only the remove is a danger button; a replace keeps the primary.
+    expect(el('pm-act').classList.contains('btn-primary')).toBe(true);
+    expect(el('pm-act').classList.contains('btn-destructive')).toBe(false);
     // C4: a replace is password only — the stored passkey is never offered as the factor that enrols its successor.
     expect(visible(el('pm-passkey'))).toBe(false);
     withPassword();
-    await h.until(() => text(el('pm-line')) === 'Passkey replaced.');
-    expect(text(el('pm-line-help'))).toBe('You can close this tab.');
+    await h.until(() => text(el('pm-done-title')) === 'Passkey replaced.');
+    expect(text(el('pm-done-body'))).toBe('You can close this tab.');
+    successHero();
     const after = await stored(h);
     expect(after.passkey?.credentialId).not.toBe(env.passkey?.credentialId);
     await expect(unlockWithPrf(after, OLD_PRF.slice())).rejects.toThrow();
@@ -111,6 +133,9 @@ describe('#6 manage: add and replace (password only, C4)', () => {
     const none = await shown('add', {credentials: authenticator(null)});
     withPassword();
     await none.h.until(() => text(el('pm-line')) === 'This device cannot unlock the wallet with a passkey; your password still works.');
+    // D26: only a success gets the hero; a failure keeps #6's head and the line.
+    expect(visible(el('pm-done'))).toBe(false);
+    expect(visible(el('pm-head'))).toBe(true);
     loadPage();
     const wrong = await shown('add', {credentials: authenticator(NEW_PRF)});
     withPassword('nope nope nope nope');
@@ -125,6 +150,10 @@ describe('#6 manage: remove (password or passkey, E12)', () => {
     expect(text(el('pm-title'))).toBe('Remove your passkey');
     expect(text(el('pm-lede'))).toBe('Confirm with your password or with the passkey itself. Your password keeps working.');
     expect(text(el('pm-act'))).toBe('Remove passkey');
+    // D27 (owner, 2026-10-08): the remove primary is the delete page's danger button.
+    expect(el('pm-act').className).toBe(el('dl-delete').className);
+    expect(el('pm-act').classList.contains('btn-destructive')).toBe(true);
+    expect(el('pm-act').classList.contains('btn-primary')).toBe(false);
     expect(visible(el('pm-passkey'))).toBe(true);
     expect(visible(el('pm-ask'))).toBe(false);
   });
@@ -133,15 +162,16 @@ describe('#6 manage: remove (password or passkey, E12)', () => {
     const {h} = await shown('remove', {passkey: true});
     withPassword();
     expect(text(el('pm-line'))).toBe('Removing the passkey…');
-    await h.until(() => text(el('pm-line')) === 'Passkey removed.');
-    expect(text(el('pm-line-help'))).toBe('It is still saved in your passkey manager (Google, Apple or your password manager). Delete it there if you no longer need it.');
+    await h.until(() => text(el('pm-done-title')) === 'Passkey removed.');
+    expect(text(el('pm-done-body'))).toBe('It is still saved in your passkey manager (Google, Apple or your password manager). Delete it there if you no longer need it.');
+    successHero();
     expect((await stored(h)).passkey).toBeUndefined();
   });
 
   it('by the passkey itself: removed', async () => {
     const {h} = await shown('remove', {passkey: true, credentials: authenticator(OLD_PRF)});
     click(el('pm-passkey'));
-    await h.until(() => text(el('pm-line')) === 'Passkey removed.');
+    await h.until(() => text(el('pm-done-title')) === 'Passkey removed.');
     expect((await stored(h)).passkey).toBeUndefined();
   });
 
@@ -198,7 +228,7 @@ describe('#6 manage: leaving, retries and the cooldown', () => {
       send: inner => async m => ((m as {type: string}).type === 'vault.removePasskey' && busy-- > 0 ? {ok: false, error: 'busy'} : inner(m)),
     });
     click(el('pm-passkey'));
-    await h.until(() => text(el('pm-line')) === 'Passkey removed.');
+    await h.until(() => text(el('pm-done-title')) === 'Passkey removed.');
     // Two proofs (each reads the session), one prompt.
     expect(h.sent.filter(m => m.type === 'vault.status')).toHaveLength(2);
     expect((await stored(h)).passkey).toBeUndefined();
@@ -219,7 +249,8 @@ describe('#6 manage: leaving, retries and the cooldown', () => {
     await new Promise(r => setTimeout(r, 20));
     expect(removes(h)).toEqual([]);
     expect((await stored(h)).passkey).toBeDefined();
-    expect(text(el('pm-line'))).not.toBe('Passkey removed.');
+    expect(text(el('pm-done-title'))).not.toBe('Passkey removed.');
+    expect(visible(el('pm-done'))).toBe(false);
   });
 
   it('remove by the passkey, pagehide during the prompt: no proof runs, nothing sent, the PRF output zeroed', async () => {
@@ -258,7 +289,7 @@ describe('#6 manage: leaving, retries and the cooldown', () => {
       return kdf(pw, salt, p);
     };
     withPassword();
-    await h.until(() => text(el('pm-line')) === 'Passkey removed.');
+    await h.until(() => text(el('pm-done-title')) === 'Passkey removed.');
     expect((await stored(h)).passkey).toBeUndefined();
   });
 
@@ -277,7 +308,8 @@ describe('#6 manage: leaving, retries and the cooldown', () => {
     expect(creates).toBe(0);
     expect(h.sent.filter(m => m.type === 'vault.storeEnvelope')).toEqual([]);
     expect((await stored(h)).passkey).toBeUndefined();
-    expect(text(el('pm-line'))).not.toBe('Passkey added.');
+    expect(text(el('pm-done-title'))).not.toBe('Passkey added.');
+    expect(visible(el('pm-done'))).toBe(false);
   });
 
   it('replace, pagehide during the passkey prompt: nothing stored, the old passkey stays', async () => {
@@ -311,7 +343,7 @@ describe('#6 manage: leaving, retries and the cooldown', () => {
       return kdf(pw, salt, p);
     };
     withPassword();
-    await h.until(() => text(el('pm-line')) === 'Passkey added.');
+    await h.until(() => text(el('pm-done-title')) === 'Passkey added.');
     expect((await stored(h)).passkey).toBeDefined();
   });
 
@@ -471,7 +503,7 @@ describe('#6 manage: fix round 1', () => {
     expect(text(el('pm-title'))).toBe('Unlock Noctura with a passkey');
     await h.ext.local.set(VAULT_KEY, await addPasskeyWrap(env, await unlockWithPassword(env, PW, testKdf), OLD_PRF.slice(), new Uint8Array([1, 2, 3]), crypto.getRandomValues(new Uint8Array(32))));
     withPassword();
-    await h.until(() => text(el('pm-line')) === 'Passkey replaced.');
+    await h.until(() => text(el('pm-done-title')) === 'Passkey replaced.');
     expect(c.titleAtCreate).toBe('Replace your passkey');
     expect(text(el('pm-title'))).toBe('Replace your passkey');
     await expect(unlockWithPrf(await stored(h), OLD_PRF.slice())).rejects.toThrow();

@@ -240,8 +240,11 @@ export function AccountsManager({onBack}: {onBack: () => void}) {
                       </LockedButton>
                     </span>
                     {/* Fix round 0b: the address and balance on their own full-width line under the name and tools — beside
-                        five 48 px tools they wrapped inside a ~90 px column. They still describe the row's select button. */}
-                    <span className="app-account-sub" id={`account-sub-${a.index}`}>
+                        five 48 px tools they wrapped inside a ~90 px column. They still describe the row's select button.
+                        D24 (owner, 2026-10-08): the whole row selects, so a click on this line presses the row's select
+                        button — the same LockedButton, the same lock (rule 6). The line is a pointer target only: the
+                        keyboard reaches the select through the button itself, and the tools beside it stay their own. */}
+                    <span className="app-account-sub" id={`account-sub-${a.index}`} onClick={e => e.currentTarget.parentElement?.querySelector<HTMLButtonElement>(':scope > .app-account-pick')?.click()}>
                       <span className="sec noc-mono">{twoGroups(a.publicKey)}</span>
                       <span className="sec noc-numeral">
                         {row === undefined ? (reads.has(a.publicKey) ? '' : ACCOUNTS_TEXT.notCheckedYet) : `${showAmount('SOL', row.b.sol)} SOL${total === null ? '' : ` · ${showUsd(total)}`}`}

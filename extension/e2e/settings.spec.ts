@@ -69,7 +69,7 @@ async function unlockedWallet(h: Harness, accounts: 1 | 2 | 3 = 1, o: {passkey?:
     await vault.goto(`chrome-extension://${h.id}/unlock.html?mode=passkey&op=add`);
     await vault.locator('#pm-password').fill(E2E_PASSWORD);
     await withAuthenticatorFocus(vault, () => vault.locator('#pm-act').click());
-    await expect(vault.locator('#pm-line')).toHaveText('Passkey added.', {timeout: 60_000});
+    await expect(vault.locator('#pm-done-title')).toHaveText('Passkey added.', {timeout: 60_000});
   }
   return vault;
 }
@@ -112,8 +112,8 @@ test('14 · change password: wrong → right → same → new → mismatch → c
     await expect(tab.locator('#cp-field')).toHaveValue('', {timeout: 5_000});
     await tab.locator('#cp-field').fill(NEW_PASSWORD);
     await tab.locator('#cp-cta').click();
-    await expect(tab.locator('#cp-notice-line')).toHaveText('Password updated.', {timeout: 60_000});
-    await expect(tab.locator('#cp-notice-help')).toHaveText('You can close this tab. Your passkey still works.');
+    await expect(tab.locator('#cp-done-title')).toHaveText('Password updated.', {timeout: 60_000});
+    await expect(tab.locator('#cp-done-body')).toHaveText('You can close this tab. Your passkey still works.');
 
     const after = (await envOf(h.sw)) as Env;
     expect([after.seed, after.accounts, after.passkey]).toEqual([before.seed, before.accounts, before.passkey]);
