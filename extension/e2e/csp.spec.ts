@@ -1,11 +1,13 @@
 import {test, expect, type ConsoleMessage, type Page} from '@playwright/test';
 import {contained, launchPopup, type Harness} from './popupHarness';
 import {E2E_ACCOUNTS, E2E_MNEMONIC, E2E_PASSWORD, makeEnvelope} from './makeEnvelope';
-import {createWallet, pastePhrase} from './vaultPage';
+import {confirmWords, createWallet, pastePhrase} from './vaultPage';
 
 // Final review item 2: the vault page's boundary is the CSP (the source gates are a backstop). This walks the
 // create run and opens every other vault-page mode — unlock with the cooldown ring, forgot, import, the restore
-// (source=forgot) and retry (source=retry) paths, accounts, reveal, reauth, welcome — and expects no CSP
+// (source=forgot) and retry (source=retry) paths, accounts, reveal, verify, password, delete, passkey (add and remove),
+// reauth (a send and a settings change), welcome — walking reveal (modal, revealed), verify (check, success) and
+// password (steps 2–3 with the meter, done) past their first state — and expects no CSP
 // violation at all: none reported to the page (`securitypolicyviolation`), none in the console. A positive
 // control in the same browser proves the watch sees one: an inline <style> and a remote <img> are both reported.
 const PASSWORD = 'a long enough password';
@@ -50,6 +52,9 @@ async function watched(h: Harness): Promise<{page: Page; console: string[]}> {
 const violations = (p: Page): Promise<Violation[]> => p.evaluate(() => JSON.parse(sessionStorage.getItem('e2e_csp') ?? '[]') as Violation[]);
 
 test('csp: every vault-page mode runs with zero CSP violations; an inline style and a remote image are both reported (positive control)', async () => {
+  // About 10 Argon2id runs and 23 navigations in one walk: 1.5 min of the default 2 min alone on an
+  // idle machine (the final review's M5). A loaded runner under `unshare -rn` must not cross it.
+  test.setTimeout(300_000);
   const h = await launchPopup('noctura-e2e-csp-');
   try {
     const {page: p, console: lines} = await watched(h);
@@ -92,12 +97,68 @@ test('csp: every vault-page mode runs with zero CSP violations; an inline style 
     await expect(p.locator('#unl-notice-line')).toHaveText('Unlocked.', {timeout: 60_000});
     await clean('unlock + cooldown ring');
 
-    await p.goto(`${base}?mode=accounts`);
-    await expect(p.getByRole('button', {name: 'Add an account'})).toBeVisible();
-    await clean('accounts');
+    // B1b-2b §3.6: the accounts mode, add and remove.
+    await p.goto(`${base}?mode=accounts&op=add`);
+    await expect(p.locator('#acc-title')).toHaveText('Add an account');
+    await clean('accounts, add');
+    await p.goto(`${base}?mode=accounts&op=remove&index=0`);
+    await expect(p.locator('#acc-title')).toHaveText('Remove Account 1?');
+    await clean('accounts, remove');
+    // B1b-2b §3.4 / §3.5: the reveal and verify modes' proof.
     await p.goto(`${base}?mode=reveal`);
-    await expect(p.locator('#v-reveal h1')).toHaveText('Your recovery phrase');
+    await expect(p.locator('#pp-title')).toHaveText('Show your recovery phrase');
     await clean('reveal');
+    // Fix round 1: past the first state — the modal, then the words revealed by a hold.
+    await p.locator('#pp-password').fill(E2E_PASSWORD);
+    await p.locator('#pp-continue').click();
+    await expect(p.locator('#v-seed-gate')).toBeVisible({timeout: 60_000});
+    await clean('reveal, modal');
+    await p.locator('#sg-continue').click();
+    await p.locator('#seed-grid').hover();
+    await p.mouse.down();
+    await expect(p.locator('#seed-chip')).toBeVisible({timeout: 10_000});
+    await expect(p.locator('#seed-grid .term').first()).toHaveText('abandon');
+    await clean('reveal, revealed');
+    await p.mouse.up();
+    await p.goto(`${base}?mode=verify`);
+    await expect(p.locator('#pp-title')).toHaveText('Verify your recovery phrase');
+    await clean('verify');
+    // Fix round 1: the check (#4's slots and pool), then its success.
+    await p.locator('#pp-password').fill(E2E_PASSWORD);
+    await p.locator('#pp-continue').click();
+    await expect(p.locator('#cnf-eyebrow')).toHaveText('Recovery phrase', {timeout: 60_000});
+    await clean('verify, check');
+    await confirmWords(p, E2E_MNEMONIC.split(' '));
+    await p.locator('#cnf-cta').click();
+    await expect(p.locator('#cnf-success-title')).toHaveText('Recovery phrase verified');
+    await clean('verify, success');
+    // B1b-2b §3.1–§3.3: #36, #37's proof and the passkey actions.
+    await p.goto(`${base}?mode=password`);
+    await expect(p.locator('#cp-title')).toHaveText('Enter current password');
+    await clean('password');
+    // Fix round 1: #36 through to `done` (the last use of E2E_PASSWORD in this walk; nothing after it unlocks).
+    await p.locator('#cp-field').fill(E2E_PASSWORD);
+    await p.locator('#cp-cta').click();
+    await expect(p.locator('#cp-step')).toHaveText('Step 2 of 3', {timeout: 60_000});
+    await p.locator('#cp-field').fill(PASSWORD);
+    await expect(p.locator('#cp-meter-label')).toHaveText('Long enough');
+    await clean('password, step 2 + meter');
+    await p.locator('#cp-cta').click();
+    await expect(p.locator('#cp-step')).toHaveText('Step 3 of 3', {timeout: 60_000});
+    await clean('password, step 3');
+    await p.locator('#cp-field').fill(PASSWORD);
+    await p.locator('#cp-cta').click();
+    await expect(p.locator('#cp-done-title')).toHaveText('Password updated.', {timeout: 60_000});
+    await clean('password, done');
+    await p.goto(`${base}?mode=delete`);
+    await expect(p.locator('#dl-address .addr-groups')).toBeVisible();
+    await clean('delete');
+    await p.goto(`${base}?mode=passkey&op=add`);
+    await expect(p.locator('#pm-title')).toHaveText('Unlock Noctura with a passkey');
+    await clean('passkey, add');
+    await p.goto(`${base}?mode=passkey&op=remove`);
+    await expect(p.locator('#pm-title')).toHaveText('Remove your passkey');
+    await clean('passkey, remove');
 
     // #10 with a live challenge: a send of 2.48 of the fake's 10 SOL to a new address.
     let challengeId: string | null = null;
@@ -110,6 +171,12 @@ test('csp: every vault-page mode runs with zero CSP violations; an inline style 
     await expect(p.locator('#ra-about')).toHaveText('You are about to send');
     await expect(p.locator('#ra-amount')).toHaveText('2.4800');
     await clean('reauth');
+    // B1b-2b §3.7 (E9): #10's settings kind — a weakening of auto-lock answers with a challenge; its tab renders the change.
+    const weaken = (await p.evaluate(m => chrome.runtime.sendMessage(m), {type: 'settings.set', patch: {autoLockMinutes: 15}})) as {ok: boolean; error?: string; data?: {challengeId?: string}};
+    expect(weaken.error).toBe('reauth-required');
+    await p.goto(`${base}?mode=reauth&challenge=${weaken.data?.challengeId ?? ''}`);
+    await expect(p.locator('#ra-about')).toHaveText('You are about to change');
+    await clean('reauth, settings');
 
     await p.goto(`${base}?mode=forgot`);
     await expect(p.locator('#fg-title')).toHaveText('Forgot your password?');
@@ -133,7 +200,7 @@ test('csp: every vault-page mode runs with zero CSP violations; an inline style 
     await expect(p.locator('#imp-phrase')).toBeVisible();
     await clean('import');
 
-    expect(seen).toHaveLength(9);
+    expect(seen).toHaveLength(23);
 
     // The positive control, on the same page and watch: an inline <style> and a remote <img> are both refused and reported.
     await p.evaluate(src => {

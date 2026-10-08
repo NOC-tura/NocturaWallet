@@ -552,19 +552,66 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
     expect(h.went).toEqual([]);
   });
 
-  it('a settings challenge (B1b-2b): "You are about to change" and its lines; confirmed → "Confirmed. You can close this tab."', async () => {
-    const {h, broadcast} = await shown({kind: 'settings', autoLockMinutes: 5, reauthUsdCents: 25_000});
+  it('a settings challenge (B1b-2b E9): "You are about to change" and its lines; confirmed → applied by the background (O39)', async () => {
+    const {h, broadcast} = await shown({kind: 'settings', autoLockMinutes: 15, reauthUsdCents: 25_000});
     expect(text(el('ra-about'))).toBe('You are about to change');
     expect(visible(el('ra-amount-row'))).toBe(false);
-    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Auto-lock → 5 minutes', 'Re-authentication threshold → $250']);
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Auto-lock → 15 minutes', 'Re-authentication threshold → $250']);
     expect(el('ra-reasons').childElementCount).toBe(0);
     expect(text(el('ra-cancel'))).toBe('Cancel');
     expect(unstyled('v-reauth')).toEqual([]);
     confirmWith(PW);
     await h.until(() => visible(el('ra-notice')));
-    expect(text(el('ra-notice-line'))).toBe('Confirmed. You can close this tab.');
+    expect(text(el('ra-notice-line'))).toBe('Confirmed. The change is saved — you can close this tab.');
+    expect(text(document.body)).not.toContain('Confirmed. You can close this tab.');
+    // The background applied exactly the patch it bound — nothing was re-sent from this page.
+    expect(await h.ext.local.get('v1_settings')).toMatchObject({autoLockMinutes: 15, reauthUsdCents: 25_000});
+    expect(h.sent.filter(m => m.type === 'vault.reauthOk')).toHaveLength(1);
     expect(h.went).toEqual([]);
     nothingSent(h, broadcast);
+  });
+
+  it('§3.7 settings-expired: a settings proof that outlived its challenge — the approved line and O40, nothing changed', async () => {
+    const {h} = await shown({kind: 'settings', autoLockMinutes: 15, reauthUsdCents: null});
+    h.wallet.clock.t += CHALLENGE_TTL_MS;
+    confirmWith(PW);
+    await h.until(() => visible(el('ra-notice')));
+    expect(text(el('ra-notice-line'))).toBe('Took too long — try again');
+    expect(text(el('ra-notice-help'))).toBe('Nothing was changed. Choose the setting again in Security center.');
+    expect(text(document.body)).not.toContain('Start the send again');
+    expect(await h.ext.local.get('v1_settings')).toBeUndefined();
+  });
+
+  it('§3.7 settings-not-unlocked: locked mid-confirm — O41 with [Unlock], nothing changed', async () => {
+    const {h} = await shown({kind: 'settings', autoLockMinutes: 15, reauthUsdCents: null});
+    const inner = h.deps.send;
+    h.deps.send = async m => ((m as {type: string}).type === 'vault.reauthOk' ? {ok: false, error: 'locked'} : inner(m));
+    confirmWith(PW);
+    await h.until(() => visible(el('ra-notice')));
+    expect(text(el('ra-notice-line'))).toBe('The wallet locked while you were confirming. Nothing was changed. Unlock it and choose the setting again.');
+    expect(visible(el('ra-unlock'))).toBe(true);
+  });
+
+  it('§3.7 settings-failed: a malformed or failed apply — O26, never "Confirmed"', async () => {
+    for (const error of ['malformed', 'failed']) {
+      loadPage();
+      const {h} = await shown({kind: 'settings', autoLockMinutes: 15, reauthUsdCents: null});
+      const inner = h.deps.send;
+      h.deps.send = async m => ((m as {type: string}).type === 'vault.reauthOk' ? {ok: false, error} : inner(m));
+      confirmWith(PW);
+      await h.until(() => visible(el('ra-notice')));
+      expect(text(el('ra-notice-line'))).toBe('Something went wrong. Nothing was changed.');
+      expect(text(document.body)).not.toMatch(/Confirmed/);
+    }
+  });
+
+  it('a settings description answered {ok: true} with no data (no apply) is never called confirmed', async () => {
+    const {h} = await shown({kind: 'settings', autoLockMinutes: 15, reauthUsdCents: null});
+    const inner = h.deps.send;
+    h.deps.send = async m => ((m as {type: string}).type === 'vault.reauthOk' ? {ok: true} : inner(m));
+    confirmWith(PW);
+    await h.until(() => visible(el('ra-notice')));
+    expect(text(el('ra-notice-line'))).toBe('Something went wrong. Nothing was changed.');
   });
 
   it('a settings challenge’s Cancel only closes the tab: no discard, no "cancelled"', async () => {

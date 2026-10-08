@@ -1,6 +1,9 @@
 import type {PageMode} from './mode';
 import type {PageDeps} from './page';
 import {mountAccounts} from './screens/accounts';
+import {mountChangePassword} from './screens/changePassword';
+import {mountDelete} from './screens/delete';
+import {mountPasskeyManage} from './screens/passkeyManage';
 import {createCreateRun} from './screens/createRun';
 import {mountForgot} from './screens/forgot';
 import {createImportRun} from './screens/importRun';
@@ -8,7 +11,7 @@ import {mountPassword} from './screens/password';
 import {mountReauth} from './screens/reauth';
 import {createRestoreRun} from './screens/restoreRun';
 import {createRetryRun} from './screens/retryRun';
-import {mountReveal} from './screens/reveal';
+import {mountPhrase} from './screens/reveal';
 import {mountUnlock} from './screens/unlock';
 
 /**
@@ -47,10 +50,20 @@ export function startMode(mode: PageMode, deps: PageDeps): void {
       void mountReauth(deps).show(mode.challengeId);
       return;
     case 'accounts':
-      mountAccounts(deps).show();
+      void mountAccounts(deps).show(mode.op === 'add' ? {op: 'add'} : {op: 'remove', index: mode.index});
       return;
     case 'reveal':
-      mountReveal(deps).show();
+    case 'verify':
+      mountPhrase(deps, mode.mode).show();
+      return;
+    case 'passkey':
+      void mountPasskeyManage(deps).show(mode.op);
+      return;
+    case 'delete':
+      void mountDelete(deps).show();
+      return;
+    case 'password':
+      mountChangePassword(deps).show();
       return;
     case 'unlock':
       void mountUnlock(deps).show(mode.returnTo);

@@ -55,7 +55,19 @@ export interface Harness {
  * floor and the backoff waits are asserted through the clock where a test needs them.
  */
 export async function harness(
-  o: {vault?: unknown; reader?: Partial<WalletDeps['reader']>; send?: (inner: Send) => Send; credentials?: CredentialsApi; mnemonic?: string; holdSleep?: boolean} = {},
+  o: {
+    vault?: unknown;
+    reader?: Partial<WalletDeps['reader']>;
+    send?: (inner: Send) => Send;
+    credentials?: CredentialsApi;
+    mnemonic?: string;
+    holdSleep?: boolean;
+    /**
+     * B1b-2b E11: the delete mode's harness. Its one forget is #37's bare delete — so the tripwire inverts: a forget
+     * carrying a `replacement` or a `guard` throws instead.
+     */
+    deleteMode?: boolean;
+  } = {},
 ): Promise<Harness> {
   const ext = fakeExt();
   if ('vault' in o && o.vault !== undefined) await ext.local.set(VAULT_KEY, o.vault);
@@ -71,7 +83,9 @@ export async function harness(
   // Checked on the page's own send, before a test's `send` wrapper can answer in the background's place.
   const send: Send = async m => {
     const f = m as {type?: unknown; replacement?: unknown; guard?: unknown};
-    if (f.type === 'vault.forgetWallet' && f.replacement === undefined && f.guard !== 'unfunded') throw new Error('forgetWallet without replacement or guard');
+    if (o.deleteMode === true) {
+      if (f.type === 'vault.forgetWallet' && (f.replacement !== undefined || f.guard !== undefined)) throw new Error('the delete page sent a forgetWallet with a replacement or a guard');
+    } else if (f.type === 'vault.forgetWallet' && f.replacement === undefined && f.guard !== 'unfunded') throw new Error('forgetWallet without replacement or guard');
     return outer(m);
   };
   const read = () => ext.local.get(VAULT_KEY);

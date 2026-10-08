@@ -3,6 +3,7 @@ import {wordlist} from '@scure/bip39/wordlists/english.js';
 import {createEnvelope, decryptMnemonic, unlockWithPassword, unlockWithPrf, type EnvelopeV1} from '../../vault/envelope';
 import type {CredentialsApi} from '../../vault/passkey';
 import {VAULT_KEY} from '../../background/accountsStore';
+import {envelopeRevision} from '../../shared/envelopeRevision';
 import {getSession} from '../../background/session';
 import {RESET_MS, confirmPlan, mountConfirm, randomBelow} from '../screens/confirm';
 import {MISMATCH_CLEAR_MS, mountPassword} from '../screens/password';
@@ -929,6 +930,12 @@ describe('the create run, end to end in one page, against the real background', 
     expect((await getSession(h.ext))?.map(a => a.publicKey)).toEqual(env.accounts.map(a => a.publicKey));
     // H2: the phrase is dropped once stored; #5's password is held for #6 only.
     expect(run.holds()).toEqual({phrase: false, password: true});
+    // B1b-2b C8 (E15): the phrase passed #4 — recorded once the wallet is stored and its keys handed over.
+    const types = h.sent.map(m => m.type);
+    expect(types.indexOf('vault.phraseVerified')).toBeGreaterThan(types.indexOf('vault.setKeys'));
+    // The final review's m7: bound to the wallet just stored (the revision of the envelope this run created).
+    expect(h.sent.find(m => m.type === 'vault.phraseVerified')).toEqual({type: 'vault.phraseVerified', expectedRevision: envelopeRevision(env)});
+    expect(await h.ext.local.get('v1_settings')).toMatchObject({phraseVerifiedAt: h.wallet.now()});
     // No word of the phrase is left in the DOM — text or attribute: #3 and #4 took theirs out when the run moved on.
     expect(leaked()).toEqual([]);
     await press(h, 'pk-skip');
@@ -1170,6 +1177,53 @@ describe('the create run, end to end in one page, against the real background', 
     await h.until(() => visible(el('wel-notice')));
     expect(text(el('wel-notice-line'))).toBe('A wallet already exists in this browser. Nothing was changed.');
   }, 30_000);
+
+  it('B1b-2b C8: pagehide while vault.phraseVerified is in flight — the run was dropped: no #6, no password held', async () => {
+    let release = () => {};
+    const held = new Promise<void>(r => (release = r));
+    let asked = false;
+    const h = await harness({
+      mnemonic: PHRASE,
+      send: inner => async m => {
+        if ((m as {type: string}).type === 'vault.phraseVerified') {
+          asked = true;
+          await held;
+        }
+        return inner(m);
+      },
+    });
+    const run = startRun(h, 'welcome');
+    await h.until(() => visible(el('wel-actions')));
+    await toPassword(h);
+    click(el('pw-cta'));
+    await h.until(() => asked);
+    h.leave('pagehide');
+    release();
+    await h.until(() => !h.deps.gate.isBusy());
+    expect(await h.ext.local.get('v1_settings')).toMatchObject({phraseVerifiedAt: h.wallet.now()});
+    expect(visible(el('v-passkey'))).toBe(false);
+    expect(run.holds()).toEqual({phrase: false, password: false});
+  }, 30_000);
+
+  it('B1b-2b C8: vault.phraseVerified refused or thrown is ignored — #6 is shown, the password held for it', async () => {
+    for (const answer of ['refused', 'thrown'] as const) {
+      const h = await harness({
+        mnemonic: PHRASE,
+        send: inner => async m => {
+          if ((m as {type: string}).type !== 'vault.phraseVerified') return inner(m);
+          if (answer === 'thrown') throw new Error('gone');
+          return {ok: false, error: 'locked'};
+        },
+      });
+      const run = startRun(h, 'welcome');
+      await h.until(() => visible(el('wel-actions')));
+      await toPassword(h);
+      click(el('pw-cta'));
+      await h.until(() => visible(el('v-passkey')));
+      expect(run.holds()).toEqual({phrase: false, password: true});
+      expect((await h.ext.local.get('v1_settings')) as unknown).toBeUndefined();
+    }
+  }, 60_000);
 
   it('a store that fails keeps the phrase for another try and holds no password', async () => {
     const h = await harness({

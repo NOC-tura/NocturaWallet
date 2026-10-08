@@ -7,4 +7,5 @@ import {defineConfig} from '@playwright/test';
 // routing — and wallet.spec.ts asserts hits > 0, so a lost route fails the run either way.
 process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';
 
-export default defineConfig({testDir: 'e2e', timeout: 120_000, workers: 1});
+// A one-off failure keeps its trace (test-results/), so it can be diagnosed after the fact.
+export default defineConfig({testDir: 'e2e', timeout: 120_000, workers: 1, use: {trace: 'retain-on-failure'}});

@@ -1,8 +1,20 @@
 import {exclusive, type PageDeps} from '../page';
 import {SEED} from '../strings';
 import {createHold, type Hold, type HoldState} from '../view/hold';
-import {byId, setText, showScreen, shown} from '../view/dom';
+import {byId, onHidden, setText, showScreen, shown} from '../view/dom';
 import {seedWordCells} from '../view/words';
+
+/** What frames #3 (B1b-2b §3.4): onboarding's "Onboarding · 2 / 5", or the reveal mode's "Recovery phrase" with no step. */
+export interface SeedChrome {
+  eyebrow: string;
+  step: string | null;
+}
+const ONBOARDING: SeedChrome = {eyebrow: SEED.onboarding, step: SEED.step};
+/**
+ * D14: while the grid is up (blurred, revealed, still-looking, confirmed) these are cancelled ON THE GRID — never on
+ * the document, so a password manager can still fill a field elsewhere on the page (rev 2, review L5).
+ */
+const GUARDED = ['copy', 'cut', 'dragstart', 'selectstart', 'contextmenu'] as const;
 
 export interface SeedScreen {
   /** Opens #3 at its pre-reveal gate for this phrase (whatever an earlier show() left is taken out first). */
@@ -31,7 +43,7 @@ export interface SeedScreen {
  * `offered`-style guard (welcome.ts): a button acts only on the step it belongs to, whatever its
  * `hidden`/`disabled` say. The grid's press-and-hold is not a click action and is not gated.
  */
-export function mountSeed(deps: PageDeps, next: {back(): void; done(): void}): SeedScreen {
+export function mountSeed(deps: PageDeps, next: {back(): void; done(): void}, chrome: SeedChrome = ONBOARDING): SeedScreen {
   const grid = byId('seed-grid');
   const cta = byId<HTMLButtonElement>('seed-cta');
   const gateContinue = byId<HTMLButtonElement>('sg-continue');
@@ -67,7 +79,7 @@ export function mountSeed(deps: PageDeps, next: {back(): void; done(): void}): S
     byId('seed-overlay-icon').setAttribute('href', still ? '#i-clock' : '#i-eye-off');
     setText(byId('seed-overlay-title'), still ? SEED.stillTitle : SEED.holdTitle);
     setText(byId('seed-overlay-body'), still ? SEED.stillBody : SEED.holdBody);
-    setText(byId('seed-lede'), state === 'confirmed' ? SEED.ledeConfirmed : SEED.lede);
+    setText(byId('seed-lede'), state === 'confirmed' ? SEED.ledeConfirmed : SEED.lede(words.length));
     // A new countdown may announce 10 s again; an ended one leaves nothing for a screen reader to find.
     setText(live, '');
     setText(cta, state === 'confirmed' ? SEED.continue : SEED.written);
@@ -85,12 +97,14 @@ export function mountSeed(deps: PageDeps, next: {back(): void; done(): void}): S
    * Out of the DOM, timers cleared, and the screen's own reference dropped (H2 of the plan review): after
    * any way out of #3 the phrase is held only by the create run, which drops it once the wallet is stored.
    */
+  const guard = (e: Event) => e.preventDefault();
   const clear = () => {
     hold?.dispose();
     hold = null;
     words = [];
     phase = 'off';
     grid.querySelectorAll('.word').forEach(w => w.remove());
+    for (const ev of GUARDED) grid.removeEventListener(ev, guard);
     setText(live, '');
   };
   const press = () => hold?.press();
@@ -120,6 +134,18 @@ export function mountSeed(deps: PageDeps, next: {back(): void; done(): void}): S
     release();
     if (why === 'pagehide') clear();
   });
+  // B1b-2b §3.4: leaving the screen — any other screen shown (onHidden, in the same turn) or #v-seed hidden by anything
+  // else (the observer, a microtask later: the 2a reveal form's backstop) — re-blurs: no word stays in the DOM of a
+  // screen that is not shown. The phrase itself is kept for the run that owns it (the check still needs it).
+  const conceal = () => {
+    release();
+    if (phase === 'seed') cells(false);
+  };
+  onHidden('v-seed', conceal);
+  const section = byId('v-seed');
+  new MutationObserver(() => {
+    if (section.hidden) conceal();
+  }).observe(section, {attributes: true, attributeFilter: ['hidden']});
   // Scope 15 (Task 7 carry): show() may run while another screen's action holds the page gate (#1's Create
   // → #2 → #3 inside #1's 500 ms floor); the gate's own release then re-renders #3's buttons.
   deps.gate.onIdle(render);
@@ -137,6 +163,8 @@ export function mountSeed(deps: PageDeps, next: {back(): void; done(): void}): S
   button(byId('sg-backdrop'), 'gate', leave);
   button(gateContinue, 'gate', () => {
     phase = 'seed';
+    for (const ev of GUARDED) grid.addEventListener(ev, guard);
+    grid.classList.toggle('vlt-grid-12', words.length === 12);
     hold = createHold(deps.timers, {state: paint, tick});
     paint('blurred');
     showScreen('v-seed');
@@ -153,6 +181,10 @@ export function mountSeed(deps: PageDeps, next: {back(): void; done(): void}): S
       clear();
       words = w;
       phase = 'gate';
+      setText(byId('seed-eyebrow'), chrome.eyebrow);
+      setText(byId('seed-step'), chrome.step ?? '');
+      shown(byId('seed-step'), chrome.step !== null);
+      setText(byId('sg-body'), SEED.gateBody(w.length));
       showScreen('v-seed-gate');
       render();
     },

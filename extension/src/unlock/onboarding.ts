@@ -175,12 +175,18 @@ export async function commitWallet(deps: VaultStore & {send: Send}, wallet: Prep
 export async function finishOnboarding(
   deps: VaultStore & {send: Send; kdf: Kdf},
   input: {mnemonic: string; password: string; scheme: 'slip10' | 'cli'; indexes: number[]},
+  o: {created?: (revision: string) => void} = {},
 ): Promise<FinishOutcome> {
   if (input.password.length < MIN_PASSWORD_LENGTH) return 'weak-password';
   if (!acceptedPhrase(input.mnemonic)) return 'invalid-mnemonic';
   try {
     if (present(await deps.readEnvelope())) return 'exists';
-    return await commitWallet(deps, await prepareWallet(deps.kdf, input));
+    const wallet = await prepareWallet(deps.kdf, input);
+    const out = await commitWallet(deps, wallet);
+    // `created`: the revision of the envelope this run stored — the create run binds vault.phraseVerified to it (the
+    // final review's m7).
+    if (out === 'created') o.created?.(envelopeRevision(wallet.env));
+    return out;
   } catch {
     return 'failed';
   }

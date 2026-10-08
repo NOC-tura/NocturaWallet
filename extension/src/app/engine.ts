@@ -20,8 +20,11 @@ export interface WalletState {
   hasWallet: boolean;
   unlocked: boolean;
   scheme: 'slip10' | 'cli' | null;
+  /** In the display order (B1b-2b E14). */
   accounts: Account[];
   selected: number | null;
+  /** B1b-2b E12: the stored envelope has a passkey wrap. */
+  passkey: boolean;
 }
 export interface Balances {
   sol: bigint;
@@ -68,6 +71,8 @@ export interface Prepared {
 }
 export type Resumable = Prepared & {intent: Intent; expired: boolean};
 export type PendingState = 'pending' | 'stuck' | 'confirmed' | 'failed' | 'expired';
+/** An open send (the background's pendingStore.isOpen, the same rule): pending or stuck. */
+export const isOpen = (p: {state: PendingState}): boolean => p.state === 'pending' || p.state === 'stuck';
 export type DetailCode = 'forbidden' | 'cooling' | 'unacked' | 'substituted';
 export interface Pending {
   id: string;
@@ -115,7 +120,15 @@ export interface Settings {
   autoLockMinutes: number;
   reauthUsdCents: number;
   selectedAccount: number;
+  /** B1b-2b E14: the display order, by account index; null — envelope order. */
+  accountOrder: number[] | null;
+  /** B1b-2b E15: when the recovery phrase was last verified (epoch ms), or null. */
+  phraseVerifiedAt: number | null;
+  /** B1b-2b C10: when the password was last changed (epoch ms), or null. */
+  passwordChangedAt: number | null;
 }
+/** The two security settings settings.set may change (B1b-2b §4.2). */
+export type SettingsPatch = {autoLockMinutes?: number; reauthUsdCents?: number};
 export interface RecipientInfo {
   known: boolean;
   lastSentAt: number | null;
@@ -155,6 +168,13 @@ export interface Engine {
   rename(index: number, name: string): Promise<Reply<null, 'malformed' | 'unknown-account' | 'busy'>>;
   select(index: number): Promise<Reply<null, 'malformed' | 'unknown-account'>>;
   settings(): Promise<Reply<Settings, never>>;
+  /**
+   * settings.set (B1b-2b E9, C1): a strengthening is written at once; a weakening answers `reauth-required` with
+   * `data: {challengeId}` — #10 confirms it and the background applies it. The client never re-sends a patch with an id.
+   */
+  settingsSet(patch: SettingsPatch): Promise<Reply<Settings, 'malformed' | 'locked' | 'reauth-required'>>;
+  /** accounts.order (B1b-2b E14): a permutation of the stored indexes; `stale` when the set changed. */
+  order(order: number[]): Promise<Reply<null, 'malformed' | 'stale' | 'no-wallet'>>;
   lock(): Promise<Reply<null, never>>;
   ping(): Promise<Reply<null, never>>;
 }
@@ -200,8 +220,8 @@ export function walletStateOf(x: unknown): WalletState | undefined {
   const scheme = o.scheme === null ? null : oneOf(o.scheme, ['slip10', 'cli'] as const);
   const accounts = all(o.accounts, account);
   const selected = o.selected === null ? null : isInt(o.selected) ? o.selected : undefined;
-  if (scheme === undefined || accounts === undefined || selected === undefined) return undefined;
-  return {hasWallet: o.hasWallet, unlocked: o.unlocked, scheme, accounts, selected};
+  if (scheme === undefined || accounts === undefined || selected === undefined || typeof o.passkey !== 'boolean') return undefined;
+  return {hasWallet: o.hasWallet, unlocked: o.unlocked, scheme, accounts, selected, passkey: o.passkey};
 }
 
 function balancesOf(x: unknown): Balances | undefined {
@@ -378,7 +398,11 @@ function historyPageOf(x: unknown): HistoryPage | undefined {
 function settingsOf(x: unknown): Settings | undefined {
   const o = obj(x);
   if (o === undefined || !isInt(o.autoLockMinutes) || !isInt(o.reauthUsdCents) || !isInt(o.selectedAccount)) return undefined;
-  return {autoLockMinutes: o.autoLockMinutes, reauthUsdCents: o.reauthUsdCents, selectedAccount: o.selectedAccount};
+  const accountOrder = o.accountOrder === null ? null : all(o.accountOrder, v => (isInt(v) ? v : undefined));
+  const phraseVerifiedAt = o.phraseVerifiedAt === null ? null : isTime(o.phraseVerifiedAt) ? o.phraseVerifiedAt : undefined;
+  const passwordChangedAt = o.passwordChangedAt === null ? null : isTime(o.passwordChangedAt) ? o.passwordChangedAt : undefined;
+  if (accountOrder === undefined || phraseVerifiedAt === undefined || passwordChangedAt === undefined) return undefined;
+  return {autoLockMinutes: o.autoLockMinutes, reauthUsdCents: o.reauthUsdCents, selectedAccount: o.selectedAccount, accountOrder, phraseVerifiedAt, passwordChangedAt};
 }
 
 function recipientInfoOf(x: unknown): RecipientInfo | undefined {
@@ -463,6 +487,8 @@ export function createEngine(transport: Transport = runtimeSend, sleep: (ms: num
     rename: (index, name) => call({type: 'accounts.rename', index, name}, ['malformed', 'unknown-account', 'busy'], nothing),
     select: index => call({type: 'accounts.select', index}, ['malformed', 'unknown-account'], nothing),
     settings: () => call({type: 'settings.get'}, [], settingsOf),
+    settingsSet: patch => call({type: 'settings.set', patch}, ['malformed', 'locked', 'reauth-required'], settingsOf),
+    order: order => call({type: 'accounts.order', order}, ['malformed', 'stale', 'no-wallet'], nothing),
     lock: () => call({type: 'vault.lock'}, [], nothing),
     ping: () => call({type: 'activity.ping'}, [], nothing),
   };

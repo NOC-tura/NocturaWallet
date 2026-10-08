@@ -282,6 +282,40 @@ export async function addPasskeyWrap(
   }
 }
 
+/**
+ * B1b-2b E10 (D8): a new password wrap of the SAME data key — the change-password step. A fresh 16-byte salt, Argon2id
+ * at the envelope's STORED cost (never a new one: the cost is in the AAD), AES-KW of `dataKey`. Before anything is
+ * returned the new wrap is proven: it unwraps (under the same KEK) to `dataKey` byte for byte, and `dataKey` decrypts
+ * this envelope's seed — so a wrap of the wrong key, which would brick password unlock, is never handed out (as
+ * addPasskeyWrap proves the key first). The seed ciphertext, the IV and the passkey wrap are untouched: the AAD covers
+ * none of the salt and the wraps. Every KEK and copy is zeroed; throws on any mismatch.
+ *
+ * Task 8 fix round 1 (C1): everything after the entry works on a PRIVATE copy taken before the first await — the wrap,
+ * the byte comparison and the seed check — never on the caller's buffer, which its owner may zero while Argon2id runs
+ * (a wrap of an all-zero key passes both self-checks and bricks the wallet). The copy is zeroed on every path.
+ */
+export async function rewrapPassword(env: EnvelopeV1, dataKey: Uint8Array, password: string, kdf: Kdf): Promise<{salt: string; wrapped: string}> {
+  checkEnvelope(env);
+  assertArrayBufferBacked(dataKey);
+  const salt = random(16);
+  const key = dataKey.slice();
+  let kek: Uint8Array | undefined;
+  let back: Uint8Array | undefined;
+  try {
+    kek = await kdf(password, salt, {m: env.kdf.m, t: env.kdf.t, p: env.kdf.p});
+    assertArrayBufferBacked(kek);
+    const wrapped = await wrap(key, kek);
+    back = await unwrap(wrapped, kek);
+    if (back.length !== key.length || !back.every((b, i) => b === key[i])) throw new Error('rewrapPassword: the new wrap does not open to the same data key');
+    await decryptMnemonic(env, key);
+    return {salt: b64(salt), wrapped};
+  } finally {
+    kek?.fill(0);
+    back?.fill(0);
+    key.fill(0);
+  }
+}
+
 export async function unlockWithPrf(env: EnvelopeV1, prfOutput: Uint8Array): Promise<Uint8Array> {
   checkEnvelope(env);
   if (!env.passkey) throw new WrongPasskey();

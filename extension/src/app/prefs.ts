@@ -10,6 +10,11 @@ export const ACTIVITY_FILTER_KEY = 'noctura.ui.v1.activityFilter';
  * In localStorage because the round trip through #10 may close the popup that saw the first strike.
  */
 export const CONFIRM_STRIKE_KEY = 'noctura.ui.v1.confirmStrike';
+/**
+ * #31's 36e (B1b-2b C10): the `passwordChangedAt` whose "Password updated" toast this popup already showed — so it shows
+ * once per change. UI state only: the fact itself is the background's (a page could not forge a "Password updated").
+ */
+export const PASSWORD_TOAST_KEY = 'noctura.ui.v1.passwordToastSeen';
 
 export function readPref(key: string): string | null {
   try {

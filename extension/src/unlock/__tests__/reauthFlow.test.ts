@@ -70,20 +70,29 @@ describe('runReauth (the vault page proves the factor, the background is told)',
     expect(sent.map(m => m.type)).toEqual(['vault.status', 'vault.reauthOk']);
   });
 
-  it('a refused reauthOk (an expired challenge) is a failure', async () => {
+  it('a reauthOk refused without a named reason is `refused` (B1b-2b: the proof held, nothing was applied)', async () => {
     const {deps} = await setup(MNEMONIC, type => ({ok: type !== 'vault.reauthOk'}));
-    expect(await runReauth(deps, ID, {password: PASSWORD, kdf})).toBe('failed');
+    expect(await runReauth(deps, ID, {password: PASSWORD, kdf})).toBe('refused');
+  });
+
+  it("B1b-2b E9: {ok: true, data: {applied: 'settings'}} is 'applied'; {ok: true} with no data stays 'confirmed' (a send)", async () => {
+    const applied = await setup(MNEMONIC, type => (type === 'vault.reauthOk' ? ({ok: true, data: {applied: 'settings'}} as {ok: boolean}) : {ok: true}));
+    expect(await runReauth(applied.deps, ID, {password: PASSWORD, kdf})).toBe('applied');
+    const other = await setup(MNEMONIC, type => (type === 'vault.reauthOk' ? ({ok: true, data: {applied: 'send'}} as {ok: boolean}) : {ok: true}));
+    expect(await runReauth(other.deps, ID, {password: PASSWORD, kdf})).toBe('confirmed');
+    const plain = await setup(MNEMONIC);
+    expect(await runReauth(plain.deps, ID, {password: PASSWORD, kdf})).toBe('confirmed');
   });
 
   // D39 (plan-1 carry): the challenge expired while the password was typed — #10 says "expired", never
   // "failed"; a lock between the status read and the confirmation is "not-unlocked".
-  it("vault.reauthOk answered unknown-challenge is 'expired'; locked is 'not-unlocked'; any other refusal 'failed'", async () => {
+  it("vault.reauthOk answered unknown-challenge is 'expired'; locked is 'not-unlocked'; any other refusal 'refused'", async () => {
     const expired = await setup(MNEMONIC, type => (type === 'vault.reauthOk' ? {ok: false, error: 'unknown-challenge'} : {ok: true}));
     expect(await runReauth(expired.deps, ID, {password: PASSWORD, kdf})).toBe('expired');
     const locked = await setup(MNEMONIC, type => (type === 'vault.reauthOk' ? {ok: false, error: 'locked'} : {ok: true}));
     expect(await runReauth(locked.deps, ID, {password: PASSWORD, kdf})).toBe('not-unlocked');
     const other = await setup(MNEMONIC, type => (type === 'vault.reauthOk' ? {ok: false, error: 'malformed'} : {ok: true}));
-    expect(await runReauth(other.deps, ID, {password: PASSWORD, kdf})).toBe('failed');
+    expect(await runReauth(other.deps, ID, {password: PASSWORD, kdf})).toBe('refused');
   });
 
   it('a damaged envelope is named, and the background is told nothing — not even the status read (stored.ts)', async () => {

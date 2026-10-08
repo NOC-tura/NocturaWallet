@@ -17,10 +17,12 @@ import type {Send, VaultStore} from './types';
  *  - SEED proof (#39's restore): the phrase derives, under the STORED scheme, every stored account's
  *    key. Its only use is restoreWallet, whose message always carries a `replacement` — the same wallet
  *    re-encrypted under a new password (the background binds it, C4).
- *  - FACTOR proof (#40's "Try a different seed", D41): the password (or passkey) unwraps the stored
- *    data key; no session is needed. Its only use is replaceEmptyWallet, whose message ALWAYS carries
- *    `guard: 'unfunded'`. The background cannot enforce "a factor-proven delete only with the guard"
- *    — #37's delete (B1b-2b) has none — so this module does (plan-1 carry).
+ *  - FACTOR proof (#40's "Try a different seed", D41; #37's delete, B1b-2b E11): the password (or passkey)
+ *    unwraps the stored data key; no session is needed. Its two uses: replaceEmptyWallet, whose message ALWAYS
+ *    carries `guard: 'unfunded'`, and deleteWallet (#37), whose message carries neither the guard nor a
+ *    replacement — on purpose (D11: a funded wallet may be deleted; its seed still controls the funds). The
+ *    background cannot tell the two apart, so this module holds the boundary, and a source test holds
+ *    deleteWallet to its one importer (screens/delete.ts).
  * A proof is an object only proveSeed/proveFactor can mint (a WeakSet records each one): a value
  * that merely looks like a proof sends nothing.
  */
@@ -163,6 +165,23 @@ export async function restoreWallet(deps: {send: Send; kdf: Kdf}, proof: SeedPro
   } catch {
     return 'restored-locked';
   }
+}
+
+export type DeleteOutcome = 'deleted' | 'send-open' | 'busy' | 'unlocked' | 'no-wallet' | 'damaged' | 'failed';
+
+/**
+ * #37's delete (B1b-2b E11, D9, D11): the factor-proven wallet is removed — NO `replacement`, NO `guard`: a funded wallet
+ * is deleted too (#37 shows the funds first, C13). The proof is proveFactor's (password or passkey, no session, works
+ * locked). `funded`, `unreachable` and `coordinator-refused` cannot occur without the guard; if they ever did, they are
+ * `failed`. The background's E5 locks, refuses while a send is open (`send-open`, the wallet left locked), and removes the
+ * vault, the known recipients, the settings and the caches (plan 2 adds v1_contacts there).
+ */
+export async function deleteWallet(send: Send, proof: FactorProof): Promise<DeleteOutcome> {
+  if (!minted.has(proof) || proof.kind !== 'factor') return 'failed';
+  const r = await forget(send, {type: 'vault.forgetWallet', expectedRevision: proof.revision});
+  if (r === 'forgotten') return 'deleted';
+  if (r === 'funded' || r === 'unreachable' || r === 'coordinator-refused') return 'failed';
+  return r;
 }
 
 export type ReplaceOutcome = 'created' | 'created-locked' | 'exists' | 'store-failed' | ForgetRefusal;

@@ -1,6 +1,6 @@
 import type {Ext} from '../ext';
 import type {WalletDeps} from './deps';
-import {REAUTH_KEY, sessionMutex} from './session';
+import {REAUTH_KEY, getSession, sessionMutex} from './session';
 import {randomId} from './digest';
 import type {SendReauthReason} from './reauthPolicy';
 import type {FeeReason} from '../../../core/fees/transferMarkup';
@@ -209,6 +209,29 @@ export async function consumeChallenge(ext: Ext, now: number, id: string, digest
     store.delete(id);
     await save(ext, store);
     return c.digest === digest;
+  });
+}
+
+/** The patch a settings challenge was issued for (E9): the values parsePatch accepted at issue, null where unchanged. */
+export type SettingsChallengePatch = {autoLockMinutes: number | null; reauthUsdCents: number | null};
+
+/**
+ * B1b-2b E9 (D6): the background applies a weakening setting when #10's proof satisfies its challenge. Under
+ * sessionMutex, in ONE section: an unknown, expired or non-settings id is `unknown-challenge`; no session is
+ * `locked`; otherwise the record is DELETED (single use — a replayed vault.reauthOk finds nothing) and its patch
+ * returned. A send challenge is never taken here, and a settings challenge is never satisfied for a re-call
+ * (C1: settings.set no longer accepts a challengeId).
+ */
+export async function takeSettingsChallenge(ext: Ext, now: number, id: string): Promise<SettingsChallengePatch | 'unknown-challenge' | 'locked'> {
+  if (!CHALLENGE_ID.test(id)) return 'unknown-challenge';
+  return sessionMutex(async () => {
+    const store = live(await load(ext), now);
+    const c = store.get(id);
+    if (c === undefined || c.about.kind !== 'settings') return 'unknown-challenge';
+    if ((await getSession(ext)) === null) return 'locked';
+    store.delete(id);
+    await save(ext, store);
+    return {autoLockMinutes: c.about.autoLockMinutes, reauthUsdCents: c.about.reauthUsdCents};
   });
 }
 

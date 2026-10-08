@@ -1,4 +1,4 @@
-import {reauthPage} from '../platform';
+import {reauthPage, removeAccountPage} from '../platform';
 
 // #20's one extension page built from data (spec §4.5 step 2): only 32 lowercase hex characters make a page.
 describe('reauthPage', () => {
@@ -19,5 +19,17 @@ describe('reauthPage', () => {
     ]) {
       expect(reauthPage(id)).toBeNull();
     }
+  });
+});
+
+// B1b-2b §1.3 (C14): the accounts manager's remove page — the envelope's 0-based index, checked, never a name.
+describe('removeAccountPage', () => {
+  it('a safe integer in 0 … 2^31 − 1: the remove page for that index', () => {
+    expect(removeAccountPage(0)).toBe('unlock.html?mode=accounts&op=remove&index=0');
+    expect(removeAccountPage(2 ** 31 - 1)).toBe(`unlock.html?mode=accounts&op=remove&index=${2 ** 31 - 1}`);
+  });
+
+  it('anything else: null — no page', () => {
+    for (const index of [-1, 1.5, 2 ** 31, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 2]) expect(removeAccountPage(index)).toBeNull();
   });
 });

@@ -120,7 +120,7 @@ export interface WrongBackoff {
  * the backoff just by breaking its own display of it.
  */
 /** Outcomes that proved the factor: unlocked, re-auth confirmed, accounts changed (even if then locked), phrase shown, #40's factor proof. */
-const PROVEN: readonly string[] = ['unlocked', 'confirmed', 'done', 'done-locked', 'done-not-locked', 'shown', 'proven'];
+const PROVEN: readonly string[] = ['unlocked', 'confirmed', 'applied', 'refused', 'done', 'done-locked', 'done-not-locked', 'shown', 'proven'];
 
 export function createWrongBackoff(sleep: (ms: number) => Promise<void>): WrongBackoff {
   let streak = 0;

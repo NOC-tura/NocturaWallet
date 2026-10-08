@@ -1,7 +1,7 @@
 import type {EnvelopeV1} from '../vault/envelope';
 import type {Send, StoreOutcome, VaultStore} from './types';
 
-const NAMED: readonly StoreOutcome[] = ['busy', 'wallet-exists', 'stored-invalid', 'malformed', 'no-wallet'];
+const NAMED: readonly StoreOutcome[] = ['busy', 'wallet-exists', 'stored-invalid', 'malformed', 'no-wallet', 'send-open'];
 
 /**
  * The vault page's VaultStore: reads with the reader it is given, stores by sending

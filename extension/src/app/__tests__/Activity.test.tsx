@@ -34,8 +34,12 @@ function historyReader(n = 5) {
 }
 
 const nav = {onTx: vi.fn(), onReceive: vi.fn(), onPending: vi.fn()};
-async function openActivity(reader = historyReader(), before?: NonNullable<Parameters<typeof renderInWallet>[1]>['before']) {
-  return renderInWallet(<Activity {...nav} />, {reader, before});
+// The final review's M1: the rows are stamped from NOW (module load); a test that asserts their
+// date section reads them on a clock pinned to NOW too, or a run that crosses local midnight
+// between module load and render sees every row as "YESTERDAY".
+const AT_NOW = () => NOW * 1000 + 1_000;
+async function openActivity(reader = historyReader(), before?: NonNullable<Parameters<typeof renderInWallet>[1]>['before'], now?: () => number) {
+  return renderInWallet(<Activity {...nav} />, {reader, before, ...(now === undefined ? {} : {now})});
 }
 
 afterEach(() => {
@@ -45,7 +49,7 @@ afterEach(() => {
 
 describe('#26 activity', () => {
   it('rows per kind: sent (own account label), received, purchase, other, failed — no fiat, no origin badge', async () => {
-    await openActivity();
+    await openActivity(historyReader(), undefined, AT_NOW);
     expect(await screen.findByText('Sent SOL')).toBeTruthy();
     const sent = screen.getByText('Sent SOL').closest('button') as HTMLElement;
     expect(within(sent).getByText(/^to Your account: Savings · /)).toBeTruthy();
@@ -100,7 +104,7 @@ describe('#26 activity', () => {
       getSignaturesForAddress: async () => [{signature: sig(1), blockTime: NOW, err: null}, {signature: sig(4), blockTime: old, err: null}],
       getTransaction: async s => (s === sig(1) ? sentSol(ACCOUNT.publicKey, COUNTERPARTY, 1_000_000_000, NOW) : otherTx(ACCOUNT.publicKey, old)),
     });
-    await openActivity(reader);
+    await openActivity(reader, undefined, AT_NOW);
     await screen.findByText('Other transaction');
     const sec = (title: string) => ((screen.getByText(title).closest('button') as HTMLElement).querySelector('.sec') as HTMLElement).textContent;
     const time = new Date(NOW * 1000).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'});

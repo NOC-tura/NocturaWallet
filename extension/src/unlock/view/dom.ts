@@ -42,7 +42,11 @@ export const SCREENS = [
   'v-forgot',
   'v-reauth',
   'v-accounts',
-  'v-reveal',
+  'v-phrase-proof',
+  'v-change-password',
+  'v-cp-cancel',
+  'v-delete',
+  'v-passkey-manage',
 ] as const;
 export type ScreenId = (typeof SCREENS)[number];
 

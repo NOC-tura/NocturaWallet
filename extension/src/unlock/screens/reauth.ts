@@ -172,6 +172,14 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
   const settle = (out: ReauthPageOutcome | 'unavailable') => {
     endCooldown();
     field.value = '';
+    // B1b-2b E9 (§3.7): a settings description has its own end states — applied by the background, or nothing changed.
+    if (described?.kind === 'settings') {
+      if (out === 'applied') return notice(REAUTH.settingsApplied);
+      if (out === 'expired') return notice(REAUTH.settingsExpired, {help: REAUTH.settingsExpiredHelp});
+      if (out === 'not-unlocked') return notice(REAUTH.settingsNotUnlocked, {unlock: true});
+      // Never "Confirmed" for a setting the background did not say it applied (fail closed).
+      if (out === 'confirmed' || out === 'refused') return notice(REAUTH.settingsFailed);
+    }
     if (out === 'confirmed') {
       helper('', false);
       if (described?.kind === 'send') {
@@ -189,11 +197,11 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
         // proven send must fail closed: never "Confirmed. You can close this tab." for a send that went nowhere.
         return helper(COMMON.failedTryAgain, false);
       }
-      return notice(REAUTH.settingsConfirmed);
+      return helper(COMMON.failedTryAgain, false);
     }
     if (out === 'wrong') return helper(COMMON.wrongConfirm, true);
     if (out === 'unavailable') return helper(COMMON.passkeyUnavailableConfirm, false);
-    if (out === 'failed') return helper(COMMON.failedTryAgain, false);
+    if (out === 'failed' || out === 'refused' || out === 'applied') return helper(COMMON.failedTryAgain, false);
     if (out === 'expired') return notice(REAUTH.expired);
     if (out === 'not-unlocked') return notice(REAUTH.notUnlocked, {unlock: true});
     if (out === 'mismatch-locked') return notice(COMMON.mismatchLocked);

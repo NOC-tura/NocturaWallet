@@ -31,7 +31,7 @@ describe('accountsStore', () => {
     await ext.local.set(VAULT_KEY, {...ENV, accounts: 'x'});
     expect(await readWalletView(ext)).toBeNull();
     await ext.local.set(VAULT_KEY, ENV);
-    expect(await readWalletView(ext)).toEqual({scheme: 'slip10', accounts: ENV.accounts});
+    expect(await readWalletView(ext)).toEqual({scheme: 'slip10', accounts: ENV.accounts, passkey: false});
   });
 
   it('cleanName trims, and refuses empty, long, control and bidi-override names', () => {

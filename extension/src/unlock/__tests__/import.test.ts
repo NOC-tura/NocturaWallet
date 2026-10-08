@@ -391,6 +391,8 @@ describe('#8 → #5 → #40: the plain import run, against the real background',
     expect(el('imp-grid').children).toHaveLength(0);
     await setPassword(h);
     expect(h.went).toEqual(['wallet.html#/imported']);
+    // B1b-2b C8: a pasted phrase proves nothing about a written copy — no phraseVerified on import.
+    expect(h.sent.map(m => m.type)).not.toContain('vault.phraseVerified');
     const env = (await h.ext.local.get(VAULT_KEY)) as EnvelopeV1;
     expect(env.accounts.map(a => a.publicKey)).toEqual([K0]);
     expect(await decryptMnemonic(env, await unlockWithPassword(env, PW, testKdf))).toBe(M);

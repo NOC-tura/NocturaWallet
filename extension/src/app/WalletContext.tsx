@@ -1,5 +1,5 @@
 import {createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode} from 'react';
-import type {Account, Balances, Engine, Pending, Prices, WalletState} from './engine';
+import {isOpen, type Account, type Balances, type Engine, type Pending, type Prices, type WalletState} from './engine';
 import type {Platform} from './platform';
 
 export type Surface = 'popup' | 'tab';
@@ -280,7 +280,7 @@ export function WalletProvider({
       if (!alive.current || !r.ok) return;
       const w = r.data;
       setWallet(prev => {
-        const changed = prev === null || prev.unlocked !== w.unlocked || prev.selected !== w.selected || JSON.stringify(prev.accounts) !== JSON.stringify(w.accounts);
+        const changed = prev === null || prev.unlocked !== w.unlocked || prev.selected !== w.selected || prev.passkey !== w.passkey || JSON.stringify(prev.accounts) !== JSON.stringify(w.accounts);
         return changed ? w : prev;
       });
       if (!w.hasWallet || !w.unlocked) {
@@ -321,7 +321,7 @@ export function WalletProvider({
   const selectedKey = account?.publicKey ?? null;
 
   // wallet.pending every 2 s while a send of this account is open.
-  const open = pending.some(p => p.account === selectedKey && (p.state === 'pending' || p.state === 'stuck'));
+  const open = pending.some(p => p.account === selectedKey && isOpen(p));
   useEffect(() => {
     if (!open) return;
     const t = setInterval(() => void readPending(), PENDING_POLL_MS);

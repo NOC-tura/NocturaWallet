@@ -3,9 +3,9 @@ import type {WalletDeps} from './deps';
 import {createMutex} from './mutex';
 import {lock} from './autolock';
 import {getSession, sessionMutex} from './session';
-import {isOpen, updatePending} from './pendingStore';
+import {isOpen, readPending, updatePending} from './pendingStore';
 import {KNOWN_RECIPIENTS_KEY} from './knownRecipients';
-import {SETTINGS_KEY} from './settings';
+import {SETTINGS_KEY, updateSettings} from './settings';
 import {clearCaches} from './balanceCache';
 import {ENVELOPE_BYTES, ENVELOPE_KDF_MAX, ENVELOPE_KDF_MIN, MAX_ACCOUNTS, accountsPolicyOk, b64Length, cleanName} from '../shared/envelopeRules';
 import {envelopeRevision} from '../shared/envelopeRevision';
@@ -29,9 +29,22 @@ export interface AccountView {
 export interface WalletView {
   scheme: 'slip10' | 'cli';
   accounts: AccountView[];
+  /** B1b-2b E12: whether the stored envelope has a passkey wrap (#31's and #35's "Passkey · On/Off"). */
+  passkey: boolean;
 }
 
 const serial = createMutex();
+
+/**
+ * Everything a wallet owns in storage.local besides its envelope and the balance caches — removed together by a
+ * delete (vault.forgetWallet without a replacement, E5 step 7 / B1b-2b E11) and by a first write. The one list: plan 2
+ * adds v1_contacts (E17) here. `v1_forbidden_until` is not the wallet's (the coordinator's verdict) and is kept.
+ */
+const WALLET_DATA_KEYS: readonly string[] = [KNOWN_RECIPIENTS_KEY, SETTINGS_KEY];
+async function removeWalletData(ext: Ext): Promise<void> {
+  for (const key of WALLET_DATA_KEYS) await ext.local.remove(key);
+}
+
 type Json = Record<string, unknown>;
 const isObj = (x: unknown): x is Json => typeof x === 'object' && x !== null && !Array.isArray(x);
 
@@ -45,12 +58,12 @@ function accountsOf(env: Json): AccountView[] | null {
   return out;
 }
 
-/** Public data only: the scheme and each account's index, name and address. Null without a wallet. */
+/** Public data only: the scheme, each account's index, name and address, and whether a passkey is enrolled. Null without a wallet. */
 export async function readWalletView(ext: Ext): Promise<WalletView | null> {
   const env = await ext.local.get(VAULT_KEY);
   if (!isObj(env) || (env.scheme !== 'slip10' && env.scheme !== 'cli')) return null;
   const accounts = accountsOf(env);
-  return accounts === null ? null : {scheme: env.scheme, accounts};
+  return accounts === null ? null : {scheme: env.scheme, accounts, passkey: isObj(env.passkey)};
 }
 
 export type RenameResult = 'renamed' | 'malformed' | 'unknown-account' | 'busy';
@@ -87,8 +100,8 @@ export async function renameAccount(ext: Ext, index: number, name: string): Prom
   });
 }
 
-export type StoreResult = 'stored' | 'malformed' | 'no-wallet' | 'wallet-exists' | 'busy' | 'stored-invalid';
-type StoredEnvelope = {
+export type StoreResult = 'stored' | 'malformed' | 'no-wallet' | 'wallet-exists' | 'busy' | 'stored-invalid' | 'send-open';
+export type StoredEnvelope = {
   v: 1;
   scheme: 'slip10' | 'cli';
   kdf: {alg: 'argon2id'; m: number; t: number; p: number; salt: string};
@@ -160,8 +173,8 @@ function envelopeShape(x: unknown): StoredEnvelope | null {
  * cost), the password wrap, and the public key of any account in both envelopes. Only the seed
  * ciphertext, the account list and the passkey wrap may differ.
  *
- * B1 has no password-change flow. A future one rewrites the password wrap and may choose a new salt
- * or cost: it must revisit this rule (and its tests) rather than route around it.
+ * A password change (vault.changePassword, B1b-2b E10) rewrites the password wrap and chooses a new salt, so it does
+ * not come through here: it has its own narrower rule, onlyPasswordChanged, and this one stays unchanged.
  */
 function sameWallet(current: StoredEnvelope, next: StoredEnvelope): boolean {
   const {kdf: a} = current;
@@ -208,6 +221,14 @@ export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelop
       if (current === null) return 'stored-invalid';
       if (envelopeRevision(current) !== expectedRevision) return 'busy';
       if (!sameWallet(current, next)) return 'malformed';
+      // B1b-2b C3: a stored passkey may be replaced (addPasskey) or carried (an account change), never dropped
+      // here — removal is vault.removePasskey's alone, so a page bug that omitted the field cannot disable it.
+      if (current.passkey !== undefined && next.passkey === undefined) return 'malformed';
+      // B1b-2b C5: an account this change drops must have no open send — its key leaves the session, and the poller
+      // would watch a send it could never re-send. The vault page cannot read v1_pending; this is the guard.
+      const kept = new Set(next.accounts.map(a => a.index));
+      const dropped = new Set(current.accounts.filter(a => !kept.has(a.index)).map(a => a.publicKey));
+      if (dropped.size > 0 && (await readPending(ext)).some(r => isOpen(r) && dropped.has(r.account))) return 'send-open';
       for (const a of current.accounts) names.set(a.index, a.name);
     }
     const accounts: AccountView[] = [];
@@ -219,14 +240,126 @@ export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelop
     // A first write: recipients and settings left behind cannot belong to a wallet that does not exist
     // yet (a crash between vault.forgetWallet's vault write and its cleanup could leave them). E5.
     if (first) {
-      await ext.local.remove(KNOWN_RECIPIENTS_KEY);
-      await ext.local.remove(SETTINGS_KEY);
+      await removeWalletData(ext);
       // …and the caches of a wallet that no longer exists (review L1).
       await clearCaches(ext);
     }
     await ext.local.set(VAULT_KEY, {...next, accounts});
     return 'stored';
   });
+}
+
+/**
+ * vault.phraseVerified's binding (the final review's m7, a controller ruling): is the stored envelope still the one the
+ * verify page proved against? `malformed` (not a revision), `no-wallet`, `stored-invalid`, `busy` (another revision is
+ * stored: the wallet was replaced, or changed since the proof) or `same`. Read without `serial`: the caller holds
+ * sessionMutex with a session present, so no delete (which locks first, inside sessionMutex) and so no other wallet can
+ * land before its write; a store that lands meanwhile keeps the same wallet (sameWallet), so at worst it refuses a true
+ * fact — never records a false one.
+ */
+export async function provenRevisionIsStored(ext: Ext, expectedRevision: unknown): Promise<'same' | 'malformed' | 'no-wallet' | 'stored-invalid' | 'busy'> {
+  if (!isStr(expectedRevision) || !REVISION.test(expectedRevision)) return 'malformed';
+  const stored = await ext.local.get(VAULT_KEY);
+  if (stored === undefined) return 'no-wallet';
+  const current = envelopeShape(stored);
+  if (current === null) return 'stored-invalid';
+  return envelopeRevision(current) === expectedRevision ? 'same' : 'busy';
+}
+
+export type RemovePasskeyResult = 'removed' | 'malformed' | 'locked' | 'no-wallet' | 'stored-invalid' | 'busy' | 'no-passkey';
+
+/**
+ * vault.removePasskey (B1b-2b E12, D12, C3). The vault page proved a factor (password or the passkey itself) against
+ * the session and sends only the revision it proved — no envelope: the background drops the `passkey` field itself and
+ * writes every other field and every name as stored, so a removal can carry no other change. Removal only takes a
+ * factor away, and the passkey is outside the AAD (no re-encryption). The authenticator keeps the credential; the
+ * page says so. Inside `serial` → `sessionMutex` (changePassword's lock order; the session check and the write share
+ * one sessionMutex section, so a lock cannot land between them): `malformed` (revision), `locked` (no session),
+ * `no-wallet`, `stored-invalid`, `busy` (another change landed: the page re-proves), `no-passkey` (nothing to remove;
+ * nothing written).
+ */
+export async function removePasskey(ext: Ext, expectedRevision: unknown): Promise<RemovePasskeyResult> {
+  if (!isStr(expectedRevision) || !REVISION.test(expectedRevision)) return 'malformed';
+  return serial(() =>
+    sessionMutex(async (): Promise<RemovePasskeyResult> => {
+      if ((await getSession(ext)) === null) return 'locked';
+      const stored = await ext.local.get(VAULT_KEY);
+      if (stored === undefined) return 'no-wallet';
+      const current = envelopeShape(stored);
+      if (current === null) return 'stored-invalid';
+      if (envelopeRevision(current) !== expectedRevision) return 'busy';
+      if (current.passkey === undefined) return 'no-passkey';
+      const {v, scheme, kdf, seed, password, accounts} = current;
+      await ext.local.set(VAULT_KEY, {v, scheme, kdf, seed, password, accounts});
+      return 'removed';
+    }),
+  );
+}
+
+export type ChangePasswordResult = 'changed' | 'malformed' | 'locked' | 'no-wallet' | 'stored-invalid' | 'busy';
+
+/**
+ * B1b-2b E10 (C2): the one change vault.changePassword may make — a new salt and a new password wrap, nothing else.
+ * Holds exactly when `v`, `scheme` and `kdf.alg/m/t/p` are equal; `kdf.salt` DIFFERS; `password.wrapped` DIFFERS;
+ * `seed.iv` and `seed.ct` are equal; `passkey` is absent in both or equal field by field; and the account list has
+ * the same length with the same `index` and `publicKey` at every position (order included). storeEnvelope's
+ * sameWallet is left unchanged and still refuses any password or KDF change: this narrower rule revisits it without
+ * widening the path every account change and passkey enrolment uses.
+ */
+export function onlyPasswordChanged(current: StoredEnvelope, next: StoredEnvelope): boolean {
+  const a = current.kdf;
+  const b = next.kdf;
+  if (next.v !== current.v || next.scheme !== current.scheme) return false;
+  if (b.alg !== a.alg || b.m !== a.m || b.t !== a.t || b.p !== a.p) return false;
+  if (b.salt === a.salt) return false;
+  if (next.password.wrapped === current.password.wrapped) return false;
+  if (next.seed.iv !== current.seed.iv || next.seed.ct !== current.seed.ct) return false;
+  const p = current.passkey;
+  const q = next.passkey;
+  if ((p === undefined) !== (q === undefined)) return false;
+  if (p !== undefined && q !== undefined && (p.credentialId !== q.credentialId || p.prfSalt !== q.prfSalt || p.wrapped !== q.wrapped)) return false;
+  if (next.accounts.length !== current.accounts.length) return false;
+  return next.accounts.every((x, i) => x.index === current.accounts[i]?.index && x.publicKey === current.accounts[i]?.publicKey);
+}
+
+/**
+ * vault.changePassword (E10, D8, C2). The vault page proved the current password against the session and re-wrapped
+ * the same data key under the new one (rewrapPassword proves the wrap before it is sent); the background cannot check
+ * a password, so it checks what it can: inside `serial` (the mutex every v1_vault write takes) — the shape; an
+ * unlocked session (`locked` otherwise: the proof was against a session that is gone; held under sessionMutex through
+ * the write, so a lock cannot land between the check and the write); the stored envelope present
+ * (`no-wallet`), well formed (`stored-invalid`) and at the proven revision (`busy`); onlyPasswordChanged
+ * (`malformed`). The stored names are carried over (names are outside the revision). After the write — best effort,
+ * never undoing it — `passwordChangedAt` is recorded (C10: #31's 36e reads it).
+ */
+export async function changePassword(ext: Ext, now: number, expectedRevision: unknown, envelope: unknown): Promise<ChangePasswordResult> {
+  if (!isStr(expectedRevision) || !REVISION.test(expectedRevision)) return 'malformed';
+  const next = envelopeShape(envelope);
+  if (next === null) return 'malformed';
+  // Lock order serial → sessionMutex, as forgetWallet takes them (no path takes them the other way round). The
+  // session check and the write share one sessionMutex section (fix round 1): a lock (clearSession takes
+  // sessionMutex) is ordered wholly before the check — `locked` — or wholly after the write, never between them.
+  const out = await serial(() =>
+    sessionMutex(async (): Promise<ChangePasswordResult> => {
+      if ((await getSession(ext)) === null) return 'locked';
+      const stored = await ext.local.get(VAULT_KEY);
+      if (stored === undefined) return 'no-wallet';
+      const current = envelopeShape(stored);
+      if (current === null) return 'stored-invalid';
+      if (envelopeRevision(current) !== expectedRevision) return 'busy';
+      if (!onlyPasswordChanged(current, next)) return 'malformed';
+      await ext.local.set(VAULT_KEY, {...next, accounts: current.accounts});
+      return 'changed';
+    }),
+  );
+  if (out === 'changed') {
+    try {
+      await updateSettings(ext, s => ({...s, passwordChangedAt: now}));
+    } catch (e) {
+      console.warn('changePassword: changed, but passwordChangedAt was not recorded', e);
+    }
+  }
+  return out;
 }
 
 export type ForgetResult =
@@ -375,10 +508,7 @@ export async function forgetWallet(
     // the next first write (storeEnvelope with expectedRevision null), which removes both before it
     // stores a new wallet (L1) — so nothing left here reaches the next wallet.
     try {
-      if (next === null) {
-        await ext.local.remove(KNOWN_RECIPIENTS_KEY);
-        await ext.local.remove(SETTINGS_KEY);
-      }
+      if (next === null) await removeWalletData(ext);
       await clearCaches(ext);
     } catch (e) {
       console.warn('forgetWallet: cleanup after the vault write failed; the next first write clears it', e);

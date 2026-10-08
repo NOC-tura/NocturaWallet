@@ -3,10 +3,9 @@ import type {Ext} from '../ext';
 import type {WalletDeps} from './deps';
 import {REAUTH_KEY, getSession, sessionMutex} from './session';
 import {armAutolock} from './autolock';
-import {createMutex} from './mutex';
-import {parsePatch, readSettings, weakens, writeSettings, type Settings} from './settings';
+import {parsePatch, readSettings, settingsMutex, updateSettings, weakens, writeSettings, type Settings, type SettingsPatch} from './settings';
 import {cleanName, readWalletView, renameAccount} from './accountsStore';
-import {consumeChallenge, issueChallenge} from './reauthChallenges';
+import {issueChallenge, takeSettingsChallenge} from './reauthChallenges';
 import {digestOf} from './digest';
 import {discardPrepared, isAddress, parseIntent, preparedFor, prepareSend} from './prepare';
 import {isKnownRecipient, lastSentAt} from './knownRecipients';
@@ -38,6 +37,7 @@ export const WALLET_TYPES = [
   'wallet.discardPrepared',
   'accounts.rename',
   'accounts.select',
+  'accounts.order',
   'settings.get',
   'settings.set',
 ] as const;
@@ -49,13 +49,6 @@ const MAX_PROBE = 6;
 const MALFORMED: Result = {ok: false, error: 'malformed'};
 const histories = new WeakMap<WalletDeps, History>();
 const isIndex = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0;
-/**
- * Every read-modify-write of v1_settings (settings.set, accounts.select), one at a time: a select
- * that read the settings before a strengthening must not write the weaker value back after it.
- * Its own mutex, not sessionMutex (which is not re-entrant, and which the challenge calls inside
- * take); nothing under sessionMutex takes this one.
- */
-const settingsMutex = createMutex();
 
 /** A transaction signature: base58 of exactly 64 bytes (review M6 — a page cursor is never passed on unchecked). */
 function isSignature(x: unknown): x is string {
@@ -97,16 +90,36 @@ function failure(e: unknown): Result {
   return {ok: false, error: 'failed'};
 }
 
+/**
+ * E14 (D17): the envelope's accounts in the display order — the indexes of `order` that exist, in that order,
+ * then every account `order` does not name, in envelope order. The envelope, its AAD and the session never see it.
+ */
+export function displayOrder<T extends {index: number}>(accounts: readonly T[], order: readonly number[] | null): T[] {
+  if (order === null) return [...accounts];
+  const byIndex = new Map(accounts.map(a => [a.index, a]));
+  const out: T[] = [];
+  for (const i of order) {
+    const a = byIndex.get(i);
+    if (a !== undefined) {
+      out.push(a);
+      byIndex.delete(i);
+    }
+  }
+  for (const a of accounts) if (byIndex.has(a.index)) out.push(a);
+  return out;
+}
+
 async function walletState(ext: Ext) {
   const [view, session, settings] = await Promise.all([readWalletView(ext), getSession(ext), readSettings(ext)]);
-  if (view === null) return {hasWallet: false, unlocked: false, scheme: null, accounts: [], selected: null};
+  if (view === null) return {hasWallet: false, unlocked: false, scheme: null, accounts: [], selected: null, passkey: false};
+  const accounts = displayOrder(view.accounts, settings.accountOrder);
   // The selection is only ever an account that exists: in the envelope, and — while unlocked — in the
-  // session too (an account removed in the vault page must not stay selected). Otherwise the first
-  // such account: the session's first while unlocked, the envelope's first while locked.
-  const inView = (i: number) => view.accounts.some(a => a.index === i);
-  const choices = session === null ? view.accounts.map(a => a.index) : session.map(a => a.index).filter(inView);
-  const selected = choices.includes(settings.selectedAccount) ? settings.selectedAccount : (choices[0] ?? view.accounts[0]?.index ?? null);
-  return {hasWallet: true, unlocked: session !== null, scheme: view.scheme, accounts: view.accounts, selected};
+  // session too (an account removed in the vault page must not stay selected). Otherwise the first such
+  // account of the display order (E14).
+  const inSession = (i: number) => session === null || session.some(a => a.index === i);
+  const choices = accounts.map(a => a.index).filter(inSession);
+  const selected = choices.includes(settings.selectedAccount) ? settings.selectedAccount : (choices[0] ?? accounts[0]?.index ?? null);
+  return {hasWallet: true, unlocked: session !== null, scheme: view.scheme, accounts, selected, passkey: view.passkey};
 }
 
 /** Balances for onboarding's candidate addresses: public keys in, public numbers out. */
@@ -185,30 +198,34 @@ async function recipientInfo(ext: Ext, account: unknown, recipient: unknown): Pr
   };
 }
 
+/**
+ * settings.set. Strengthening writes at once, also while locked (it lowers nothing). A weakening always issues a
+ * challenge bound to the exact patch and answers `reauth-required`; it is applied only by vault.reauthOk (E9,
+ * applySettingsChallenge). C1: a message carrying `challengeId` is `malformed` — the re-call path is gone, so it
+ * cannot be a second door.
+ */
 async function setSettings(ext: Ext, deps: WalletDeps, msg: Record<string, unknown>): Promise<Result> {
+  if (msg.challengeId !== undefined) return MALFORMED;
   const patch = parsePatch(msg.patch);
   if (patch === null) return MALFORMED;
   const out = await settingsMutex(async (): Promise<Result> => {
     const current = await readSettings(ext);
     if (weakens(current, patch)) {
       if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
-      const digest = digestOf('settings', {autoLockMinutes: patch.autoLockMinutes ?? null, reauthUsdCents: patch.reauthUsdCents ?? null});
-      const id = msg.challengeId;
-      // Neither call runs inside sessionMutex here: each takes it itself (it is not re-entrant).
-      if (typeof id !== 'string' || !(await consumeChallenge(ext, deps.now(), id, digest))) {
-        // A lock may have landed since the check above: never issue a challenge into a locked session.
-        if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
-        const challengeId = await issueChallenge(ext, deps, digest, {kind: 'settings', autoLockMinutes: patch.autoLockMinutes ?? null, reauthUsdCents: patch.reauthUsdCents ?? null});
-        // …nor keep one a lock raced past (issueChallenge wrote after the lock's clear): as in
-        // prepareSend, remove just the challenges, under the mutex the lock takes — never lock()
-        // or clearSession() here, which would wait on this very mutex.
-        const lockedMeanwhile = await sessionMutex(async () => {
-          if ((await getSession(ext)) !== null) return false;
-          await ext.session.remove(REAUTH_KEY);
-          return true;
-        });
-        return lockedMeanwhile ? {ok: false, error: 'locked'} : {ok: false, error: 'reauth-required', data: {challengeId}};
-      }
+      const about = {autoLockMinutes: patch.autoLockMinutes ?? null, reauthUsdCents: patch.reauthUsdCents ?? null};
+      // A lock may have landed since the check above: never issue a challenge into a locked session.
+      if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
+      // issueChallenge takes sessionMutex itself (it is not re-entrant): never called inside it here.
+      const challengeId = await issueChallenge(ext, deps, digestOf('settings', about), {kind: 'settings', ...about});
+      // …nor keep one a lock raced past (issueChallenge wrote after the lock's clear): as in
+      // prepareSend, remove just the challenges, under the mutex the lock takes — never lock()
+      // or clearSession() here, which would wait on this very mutex.
+      const lockedMeanwhile = await sessionMutex(async () => {
+        if ((await getSession(ext)) !== null) return false;
+        await ext.session.remove(REAUTH_KEY);
+        return true;
+      });
+      return lockedMeanwhile ? {ok: false, error: 'locked'} : {ok: false, error: 'reauth-required', data: {challengeId}};
     }
     const next: Settings = {...current, ...patch};
     await writeSettings(ext, next);
@@ -218,10 +235,69 @@ async function setSettings(ext: Ext, deps: WalletDeps, msg: Record<string, unkno
   return out;
 }
 
+/**
+ * E9 (D6): #10's Confirm satisfied a settings challenge — the background applies the patch it bound at issue. Inside
+ * settingsMutex (taken BEFORE sessionMutex, the existing order): take the challenge (deleted in the same section
+ * that reads it: applied exactly once), re-check the range (the stored `about` is checked only for integers), write
+ * over whatever is stored now — the last confirmed proof wins, nothing re-bases or revokes another live challenge
+ * (review M6). Then, outside the mutex, the auto-lock alarm is re-armed when it changed and a session exists.
+ * Refusals: `unknown-challenge` (absent, expired, applied), `locked`, `malformed` (the challenge is burned, nothing
+ * written), `failed` (a storage error up to and including the write; a re-arm that fails after it is only logged).
+ */
+export async function applySettingsChallenge(ext: Ext, deps: Pick<WalletDeps, 'now'>, challengeId: string): Promise<Result> {
+  const applied: {patch: SettingsPatch | null} = {patch: null};
+  let out: Result;
+  try {
+    out = await settingsMutex(async (): Promise<Result> => {
+      const taken = await takeSettingsChallenge(ext, deps.now(), challengeId);
+      if (taken === 'unknown-challenge' || taken === 'locked') return {ok: false, error: taken};
+      const raw: Record<string, number> = {};
+      if (taken.autoLockMinutes !== null) raw.autoLockMinutes = taken.autoLockMinutes;
+      if (taken.reauthUsdCents !== null) raw.reauthUsdCents = taken.reauthUsdCents;
+      const patch = parsePatch(raw);
+      if (patch === null) return MALFORMED;
+      await writeSettings(ext, {...(await readSettings(ext)), ...patch});
+      applied.patch = patch;
+      return {ok: true, data: {applied: 'settings'}};
+    });
+  } catch {
+    return {ok: false, error: 'failed'};
+  }
+  // The write happened: never answer `failed` now (#10 would say "Nothing was changed"). A re-arm that fails leaves
+  // the alarm already armed, which still locks — it fails safe.
+  if (out.ok && applied.patch?.autoLockMinutes !== undefined) {
+    try {
+      if ((await getSession(ext)) !== null) await armAutolock(ext);
+    } catch (e) {
+      console.warn('settings applied, but the idle timer was not re-armed', e);
+    }
+  }
+  return out;
+}
+
 async function selectAccount(ext: Ext, index: number): Promise<Result> {
   const view = await readWalletView(ext);
   if (view === null || !view.accounts.some(a => a.index === index)) return {ok: false, error: 'unknown-account'};
-  await settingsMutex(async () => writeSettings(ext, {...(await readSettings(ext)), selectedAccount: index}));
+  await updateSettings(ext, s => ({...s, selectedAccount: index}));
+  return {ok: true};
+}
+
+/**
+ * accounts.order (E14, D17): a permutation of the stored envelope's index set, kept in v1_settings. No proof — the
+ * order never touches the envelope or the session; every action names an account by index or key, never by
+ * position. A different set (an account added or removed since the manager read it) is `stale`: an order is
+ * never written for a list the user did not see. Two popups moving rows at once are last-writer-wins (review L9).
+ */
+async function orderAccounts(ext: Ext, order: unknown): Promise<Result> {
+  if (!Array.isArray(order)) return MALFORMED;
+  const list = order as unknown[];
+  if (!list.every(isIndex) || new Set(list).size !== list.length) return MALFORMED;
+  const indexes = list as number[];
+  const view = await readWalletView(ext);
+  if (view === null) return {ok: false, error: 'no-wallet'};
+  const stored = new Set(view.accounts.map(a => a.index));
+  if (indexes.length !== stored.size || !indexes.every(i => stored.has(i))) return {ok: false, error: 'stale'};
+  await updateSettings(ext, s => ({...s, accountOrder: [...indexes]}));
   return {ok: true};
 }
 
@@ -322,6 +398,8 @@ export async function handleWallet(ext: Ext, deps: WalletDeps, type: WalletType,
         if (!isIndex(index)) return MALFORMED;
         return await selectAccount(ext, index);
       }
+      case 'accounts.order':
+        return await orderAccounts(ext, msg.order);
       case 'settings.get':
         return {ok: true, data: await readSettings(ext)};
       case 'settings.set':

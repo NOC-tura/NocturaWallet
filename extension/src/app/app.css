@@ -809,3 +809,408 @@ a.btn {
   display: inline-block;
   margin-inline-end: 0.6ch;
 }
+
+/* B1b-2b §4.4: the passkey screen — #6's 'bio' layout in the popup. The hero keeps design-ext.css's
+   `.s-bio .hero-icon` (--space-8 above, --space-7 below); #6's inline styles (index.html:5405-5409) as
+   classes: the head's --space-6 sides and --space-2 under the title, the lede's 300 px measure, the
+   features' --space-7 above. The tip is the spec's addition (D13), --space-4 below the rows. */
+.app-grow {
+  flex: 1 1 auto;
+}
+.app-bio-head {
+  padding: 0 var(--space-6);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.app-bio-head h1 {
+  margin: 0;
+}
+.app-bio-head p {
+  max-width: 300px;
+  margin: 0 auto;
+}
+.app-bio-features {
+  margin-top: var(--space-7);
+  padding: 0 var(--space-2);
+}
+.app-bio-features .noc-body-sm {
+  margin-top: 2px;
+}
+.app-bio-tip {
+  margin: var(--space-4) var(--space-5) 0;
+}
+/* Task 20 visual pass (widened in fix round 0b): a line in an action bar — #6 manage's note and "Confirmation opens in a
+   new tab.", #37's, #20's, #54's, #7's and #40's — takes the design's `margin: 0` (index.html:98 resets every
+   margin; ix:15083's centred caption): the bar's --space-3 gap is the only space. The UA's 1em paragraph margins made
+   #6 `on`'s bar 261 of the popup's 600 px and hid the lede under it. */
+.app-content .sticky-bar > p {
+  margin: 0;
+}
+
+/* B1b-2b §4.3: the accounts manager — the switcher's rows (2a §5.2) on a pushed screen, with their tools. */
+.app-manager-body {
+  padding: 0 var(--space-4) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.app-manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.app-row-tools {
+  display: inline-flex;
+  align-items: center;
+}
+/* Fix round 0b: the address and balance lines span the row under the name and tools, starting under the name (the
+   avatar's 36 px + the pick's --space-3 gap, inside the row's --space-2 padding); the switcher's .sec type. */
+/* Fix round 1 (visual review M1): the select button's inline padding is set explicitly here (Chromium's UA 6 px, so
+   nothing moves) and the line below adds it, so the address starts exactly under the name. */
+.app-manager-list {
+  --app-pick-pad: 6px;
+}
+.app-manager-list .app-account-pick {
+  padding-inline: var(--app-pick-pad);
+}
+.app-account-sub {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  padding-inline-start: calc(var(--app-pick-pad, 0px) + 36px + var(--space-3));
+  margin-top: calc(-1 * var(--space-2));
+  /* D24: the line selects the row too (a click presses the row's select button). */
+  cursor: pointer;
+}
+.app-account-sub .sec {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--fg-tertiary);
+}
+.app-row-tools .icon-btn {
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  color: var(--fg-secondary);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.app-row-tools .icon-btn span {
+  display: inline-flex;
+}
+.app-remove-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.app-remove-sheet p {
+  margin: 0;
+}
+
+/* B1b-2b §5: #37 delete wallet — index.html #s37's inline styles, as classes. */
+.app-delete-body {
+  padding: 0 var(--space-5) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.app-delete-body p,
+.app-delete-body ul {
+  margin: 0;
+}
+.app-delete-card {
+  background: color-mix(in oklab, var(--danger) 10%, var(--bg-surface-1));
+  border: 1px solid color-mix(in oklab, var(--danger) 36%, transparent);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.app-delete-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.app-delete-head h2 {
+  margin: 0;
+}
+.app-delete-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--danger) 18%, var(--bg-surface-2));
+  color: var(--danger);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 48px;
+}
+.app-delete-bullets {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.app-delete-bullets li {
+  color: var(--fg-secondary);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.app-delete-x {
+  color: var(--danger);
+  flex: 0 0 16px;
+  line-height: 18px;
+  padding-top: 2px;
+  display: flex;
+}
+.app-delete-first {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.app-delete-eyebrow {
+  margin-bottom: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.app-delete-word {
+  color: var(--danger);
+  letter-spacing: 0.16em;
+}
+.app-delete-help {
+  margin-top: 6px;
+}
+.app-delete-funds {
+  display: flex;
+  flex-direction: column;
+}
+.s7-pw input::placeholder {
+  color: var(--fg-tertiary);
+  letter-spacing: 0.16em;
+}
+/* Task 20 (Task 15 M6): design-ext's `.s7-pw input {outline: 0}` leaves the empty field with no focus indicator. The
+   focused field takes the design's own focused look, 37b's accent ring (ix:15034, drawn with the caret). Before the
+   active/ok rules, which share its specificity: a matched field keeps its success border while focused. */
+.s7-pw:focus-within {
+  border: 1px solid var(--accent);
+}
+.s7-pw.app-pw-active {
+  border: 1px solid var(--accent);
+}
+.s7-pw.app-pw-ok {
+  background: color-mix(in oklab, var(--success) 8%, var(--bg-surface-3));
+  border: 1px solid color-mix(in oklab, var(--success) 30%, transparent);
+}
+.s7-pw.app-pw-ok input {
+  font-weight: 600;
+}
+.s7-pw input {
+  letter-spacing: 0.16em;
+}
+/* 37a/37b: the gated CTA greyed at full opacity (ix:15000: --bg-surface-3, --fg-disabled, opacity 1). */
+.btn.app-delete-gated:disabled {
+  background: var(--bg-surface-3);
+  color: var(--fg-disabled);
+  opacity: 1;
+  box-shadow: none;
+}
+/* 37c: the hold CTA in --danger, its fill darkening as it is held (ix:15087-15088). The design's 600 ms transition is
+   for its own 600 ms hold: here the fill follows the 30 ms ticks of the owner's 1 s hold (D9). */
+.btn.s7-longpress.app-hold {
+  background: var(--danger);
+  color: var(--danger-on);
+  box-shadow: none;
+}
+.btn.s7-longpress.app-hold .fill {
+  background: color-mix(in oklab, #000 35%, transparent);
+  transition: none;
+}
+.app-hold-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn.s7-longpress.app-hold .fill {
+    display: none;
+  }
+}
+/* 37c: Cancel at the design's .45 while the CTA is pressed. */
+.app-delete .sticky-bar .btn-secondary:disabled {
+  opacity: 0.45;
+}
+
+/* B1b-2b §4.1/§4.2: #31's and #35's rows — a meta tinted where the design tints it (the design's `.s7-row .s7-meta`
+   colour is two classes; a one-class .noc-* tone alone lost to it). */
+.s7-row .s7-meta.noc-warning {
+  color: var(--warning);
+}
+.s7-row .s7-meta.noc-success {
+  color: var(--success);
+}
+.app-content button.s7-task {
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  border: 0;
+  cursor: pointer;
+}
+/* A static row (#35's app-lock line, D2): no chevron column. */
+.s7-row.app-no-chev {
+  grid-template-columns: 28px 1fr;
+}
+/* #35 (index.html #s35's inline layout, as classes). C15: the score card without its ring is one column. */
+.app-security-body {
+  padding: 0 var(--space-5) var(--space-7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.app-security-body h3,
+.app-security-body p {
+  margin: 0;
+}
+.s7-score-card.no-ring {
+  grid-template-columns: 1fr;
+}
+.s7-score-card.no-ring .noc-h3 {
+  margin-bottom: 6px;
+}
+/* Fix round 1 (visual review I1): each overline rule is scoped to the body, so it beats the body's own `h3, p { margin: 0 }`
+   reset (0,1,1) — the bare `.app-overline` (0,1,0) lost to it and no overline margin ever applied (Danger zone 20 px short). */
+.app-security-body .app-overline {
+  margin-top: var(--space-2);
+}
+.app-picker-card {
+  background: var(--bg-surface-1);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.app-picker-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.app-picker-head .s7-glyph {
+  color: var(--fg-secondary);
+  display: flex;
+}
+.app-picker-head .noc-caption {
+  margin-top: 2px;
+}
+/* ix:14647: picker options 32 px to the eye, 48 px to the pointer. */
+.s7-picker .opt.app-picker-opt {
+  position: relative;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+  min-height: 32px;
+}
+.s7-picker .opt.sel.app-picker-opt {
+  background: var(--accent);
+}
+.s7-picker .opt.app-picker-opt::after {
+  content: '';
+  position: absolute;
+  inset: -8px 0;
+}
+.app-security-body .app-danger-overline {
+  margin-top: var(--space-5);
+}
+.app-danger-card {
+  background: color-mix(in oklab, var(--danger) 8%, var(--bg-surface-1));
+  border: 1px solid color-mix(in oklab, var(--danger) 30%, transparent);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.app-danger-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--danger);
+}
+.btn.btn-secondary.app-danger-btn {
+  background: color-mix(in oklab, var(--danger) 12%, var(--bg-surface-2));
+  color: var(--danger);
+  border: 1px solid color-mix(in oklab, var(--danger) 30%, transparent);
+  align-self: flex-start;
+}
+/* 35b (ix:14486-14489): the active protections' glyphs in --success, as drawn. */
+.app-protections .s7-row .s7-glyph {
+  color: var(--success);
+}
+/* 35c fix round 1: the card's head is the button that collapses it (the card replaced its row in place). */
+.app-content button.app-picker-head {
+  width: 100%;
+  padding: 0;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.app-picker-head > span:last-child {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.app-picker-head .noc-body {
+  color: var(--fg-primary);
+}
+/* ix:14522: the picker 6 px below the card's head. */
+.app-picker-card .s7-picker {
+  margin-top: 6px;
+}
+/* ix:14422, 14485: every overline after the first sits --space-3 below the list above it. */
+.app-security-body .app-overline.app-overline-next {
+  margin-top: var(--space-3);
+}
+
+/* B1b-2b §4.1: #31's Delete wallet row tints its chevron too (31c, inline in the mockup). */
+.s7-row.danger .s7-chev {
+  color: var(--danger);
+}
+/*
+ * 36e on #31 (ix:14856): the Change password row with a 30 % success border, a 6 % success fill, its glyph in success.
+ * `.app-content button.s7-row.app-just-updated` (0,3,1), not `.s7-row.app-just-updated` (0,2,0): the row-button reset
+ * `.app-content button.s7-row { border: 0 }` (0,2,1) beat the shorter selector and the border never rendered (Task 17
+ * review I1; Settings.test.tsx computes the cascade).
+ */
+.app-content button.s7-row.app-just-updated {
+  border: 1px solid color-mix(in oklab, var(--success) 30%, transparent);
+  background: color-mix(in oklab, var(--success) 6%, var(--bg-surface-1));
+}
+.s7-row.app-just-updated .s7-glyph {
+  color: var(--success);
+}
+/*
+ * 36e's toast (`.s7-toast`, 1.8 s) above the popup's 80 px tab bar. Fixed, not the design's absolute: the
+ * screen grows with its content inside the scrolling region, so an absolute toast sat at the foot of the
+ * whole list, out of view (found by the plan's visual pass). The popup is the viewport (412 × 600) and the
+ * tab's column is 100vh, so the viewport's foot is the app's foot in both.
+ */
+.s7-toast.app-settings-toast {
+  position: fixed;
+  bottom: calc(80px + var(--space-4));
+  z-index: 2;
+}

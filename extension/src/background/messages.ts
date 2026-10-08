@@ -2,14 +2,15 @@ import {ed25519} from '@noble/curves/ed25519.js';
 import {base58, base64} from '@scure/base';
 import type {Ext} from '../ext';
 import type {SessionAccount} from '../vault/accounts';
-import {getSession, setSessionIf} from './session';
+import {getSession, sessionMutex, setSessionIf} from './session';
 import {armAutolock, lock} from './autolock';
+import {readSettings, settingsMutex, writeSettings} from './settings';
 import type {WalletDeps} from './deps';
 import {CHALLENGE_ID, challengeInfo, satisfyChallenge} from './reauthChallenges';
-import {forgetWallet, readWalletView, storeEnvelope} from './accountsStore';
+import {changePassword, forgetWallet, provenRevisionIsStored, readWalletView, removePasskey, storeEnvelope} from './accountsStore';
 import {isOpen, readPending} from './pendingStore';
 import {startPoller} from './pending';
-import {WALLET_TYPES, handleWallet, isWalletType, type Result} from './walletApi';
+import {WALLET_TYPES, applySettingsChallenge, handleWallet, isWalletType, type Result} from './walletApi';
 
 /** What the browser reports about a message's origin (runtime.MessageSender). */
 export interface Sender {
@@ -26,14 +27,38 @@ export interface Sender {
  * sets — never the URL the message claims, and never "has a tab", which a full-tab
  * extension page also has.
  */
-export const PRIVILEGED = ['vault.setKeys', 'vault.lock', 'vault.status', 'vault.reauthOk', 'vault.storeEnvelope', 'vault.challengeInfo', 'vault.forgetWallet', 'activity.ping', ...WALLET_TYPES] as const;
+export const PRIVILEGED = [
+  'vault.setKeys',
+  'vault.lock',
+  'vault.status',
+  'vault.reauthOk',
+  'vault.storeEnvelope',
+  'vault.challengeInfo',
+  'vault.forgetWallet',
+  'vault.changePassword',
+  'vault.removePasskey',
+  'vault.phraseVerified',
+  'activity.ping',
+  ...WALLET_TYPES,
+] as const;
 /**
  * Only the vault page itself may hand over keys, report a re-authentication it proved, hand over
  * the envelope it re-encrypted (the background is the one writer of v1_vault), or read what a
  * re-authentication is for (vault.challengeInfo, B1b-2a E3), or forget the wallet it proved
- * (vault.forgetWallet, E5): the popup and the tab cannot.
+ * (vault.forgetWallet, E5), change the password it proved (vault.changePassword, B1b-2b E10) or remove the passkey
+ * (vault.removePasskey, E12), or record that the phrase was verified (vault.phraseVerified, E15): the popup and the
+ * tab cannot.
  */
-const VAULT_PAGE_ONLY: readonly string[] = ['vault.setKeys', 'vault.reauthOk', 'vault.storeEnvelope', 'vault.challengeInfo', 'vault.forgetWallet'];
+const VAULT_PAGE_ONLY: readonly string[] = [
+  'vault.setKeys',
+  'vault.reauthOk',
+  'vault.storeEnvelope',
+  'vault.challengeInfo',
+  'vault.forgetWallet',
+  'vault.changePassword',
+  'vault.removePasskey',
+  'vault.phraseVerified',
+];
 export const PAGE: readonly string[] = [];
 
 function isOwnPage(ext: Ext, s: Sender): boolean {
@@ -144,6 +169,10 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       const challengeId = (msg as {challengeId?: unknown}).challengeId;
       if (typeof challengeId !== 'string') return {ok: false, error: 'malformed'};
       if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
+      // E9 (D6): a settings challenge is applied here, by the background, from the patch it bound at issue — the
+      // message carries only the id. A send challenge (or an unknown one) is satisfied as before (D38).
+      const about = await challengeInfo(ext, deps.now(), challengeId);
+      if (about?.kind === 'settings') return applySettingsChallenge(ext, deps, challengeId);
       return (await satisfyChallenge(ext, deps.now(), challengeId)) ? {ok: true} : {ok: false, error: 'unknown-challenge'};
     }
     case 'vault.challengeInfo': {
@@ -176,6 +205,52 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
         console.warn('vault.forgetWallet: forgotten, but the pending check after it failed', e);
       }
       return {ok: true};
+    }
+    case 'vault.changePassword': {
+      if (deps === undefined) return {ok: false, error: 'unavailable'};
+      const {expectedRevision, envelope} = msg as {expectedRevision?: unknown; envelope?: unknown};
+      try {
+        const r = await changePassword(ext, deps.now(), expectedRevision, envelope);
+        return r === 'changed' ? {ok: true} : {ok: false, error: r};
+      } catch {
+        return {ok: false, error: 'failed'};
+      }
+    }
+    case 'vault.removePasskey': {
+      const {expectedRevision} = msg as {expectedRevision?: unknown};
+      try {
+        const r = await removePasskey(ext, expectedRevision);
+        return r === 'removed' ? {ok: true} : {ok: false, error: r};
+      } catch {
+        return {ok: false, error: 'failed'};
+      }
+    }
+    case 'vault.phraseVerified': {
+      // E15 (D15, C8): a fact, not a security guarantee — the background cannot check it, and it gates nothing; it
+      // only decides two #35 task rows and one protections row. Vault page only keeps the popup and the web out.
+      if (deps === undefined) return {ok: false, error: 'unavailable'};
+      // The final review's m7: bound to the wallet whose phrase was checked — the page sends the revision it proved
+      // against; another one stored (a wallet deleted and another created meanwhile, or this one changed) is `busy`.
+      const {expectedRevision} = msg as {expectedRevision?: unknown};
+      try {
+        // Lock order settingsMutex → sessionMutex (walletApi's). The session check, the revision check and the
+        // settings write share one sessionMutex section: a lock — and so a vault.forgetWallet, which locks first and
+        // removes v1_settings after — is ordered wholly before the checks (`locked`) or wholly after the write (a
+        // delete then removes the fact).
+        const recorded = await settingsMutex(() =>
+          sessionMutex(async () => {
+            const bound = await provenRevisionIsStored(ext, expectedRevision);
+            if (bound === 'malformed') return bound;
+            if ((await getSession(ext)) === null) return 'locked';
+            if (bound !== 'same') return bound;
+            await writeSettings(ext, {...(await readSettings(ext)), phraseVerifiedAt: deps.now()});
+            return 'recorded';
+          }),
+        );
+        return recorded === 'recorded' ? {ok: true} : {ok: false, error: recorded};
+      } catch {
+        return {ok: false, error: 'failed'};
+      }
     }
     case 'vault.storeEnvelope': {
       const {expectedRevision, envelope} = msg as {expectedRevision?: unknown; envelope?: unknown};

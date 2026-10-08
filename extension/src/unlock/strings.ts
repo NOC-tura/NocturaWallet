@@ -32,7 +32,12 @@ export const WELCOME = {
 
 /** #3 seed-display. */
 export const SEED = {
-  lede: '24 words. Write them down on paper, in order. This is the only backup.',
+  /** #3's lede; the count adapted to the phrase (B1b-2b §3.4: 12 or 24 — import accepts both). */
+  lede: (n: number): string => `${n} words. Write them down on paper, in order. This is the only backup.`,
+  /** The pre-reveal modal's body, the count adapted the same way. */
+  gateBody: (n: number): string => `Move to a private place. Anyone who sees these ${n} words can spend everything in this wallet, forever.`,
+  onboarding: 'Onboarding',
+  step: '2 / 5',
   ledeConfirmed: 'Phrase locked in. Tap continue to verify a few words.',
   holdTitle: 'Press and hold to reveal',
   holdBody: 'Make sure no one is looking over your shoulder. Hold for 2 seconds. Auto re-blurs after 20 s for safety.',
@@ -61,6 +66,10 @@ export const CONFIRM = {
   wrongHelper: (position: number): string => `Word #${position} was wrong. Slots will reset in a moment.`,
   confirm: 'Confirm',
   continue: 'Continue',
+  onboarding: 'Onboarding',
+  step: '3 / 5',
+  verifiedTitle: 'Phrase verified',
+  verifiedBody: 'All three words matched. Now lock the wallet with a password.',
 } as const;
 
 /** #5 create password (D7). */
@@ -171,11 +180,17 @@ export const RETRY = {
   storeFailed: 'The new wallet was not saved. Try again.',
 } as const;
 
-/** The add-account form (the B1b-1 words, kept). */
+/** The accounts mode (B1b-2b §3.6; the B1b-1 words kept). */
 export const ACCOUNTS = {
   adding: 'Adding an account…',
   removing: 'Removing the account…',
-  whichToRemove: 'Enter the number of the account to remove (1, 2, …).',
+  /** O33. */
+  addTitle: 'Add an account',
+  /** O38: N is the envelope index + 1 (index=0 → "Remove Account 1?", review L2). */
+  removeTitle: (n: number): string => `Remove Account ${n}?`,
+  /** 2a's buttons. */
+  add: 'Add an account',
+  remove: 'Remove the account',
   outcome: {
     done: 'Done. The accounts are updated.',
     'done-locked': 'The accounts were changed, and the wallet has been locked. Unlock it to use them.',
@@ -189,16 +204,44 @@ export const ACCOUNTS = {
     'last-account': 'The last account cannot be removed.',
     'no-such-account': 'There is no account with that number.',
     'too-many-accounts': 'This wallet already has the most accounts it can hold.',
+    /** O37 (B1b-2b E13). */
+    'bad-index': 'That is not an account number.',
+    /** O36 (B1b-2b E13). */
+    'index-taken': 'That account is already in this wallet.',
+    /** B1b-2b C5: RESTORE `sendOpen` (2a) → adapted, "wallet" → "account" (§3.6). */
+    'send-open': 'A transaction from this account is still pending. Wait until it confirms or expires — about two minutes — then try again.',
     failed: 'Something went wrong.',
   },
 } as const;
 
-/** The reveal form (the B1b-1 words, kept). */
+/** The reveal and verify modes (B1b-2b §3.4, §3.5, D14, D15, D23, C9). */
+export const PHRASE = {
+  /** 2a's top bar, now the #3/#4 eyebrow in place of "Onboarding · 2 / 5" (→ adapted). */
+  eyebrow: 'Recovery phrase',
+  /** O27. */
+  revealTitle: 'Show your recovery phrase',
+  /** O28. */
+  revealLede: 'Enter your password first. Nothing is shown until you press and hold.',
+  /** O30. */
+  verifyTitle: 'Verify your recovery phrase',
+  /** O31. */
+  verifyLede: 'Enter your password, then pick three words from your written copy.',
+  /** O29: the pre-reveal modal's Cancel when the browser keeps the tab open. */
+  nothingShown: 'Nothing is shown. You can close this tab.',
+  /** → adapted (ix:5162 "Phrase verified"; the approved design's wording). */
+  verifiedTitle: 'Recovery phrase verified',
+  /** → adapted (ix:5163 without "Now lock the wallet with a PIN.") + O05. */
+  verifiedBody: 'All three words matched. You can close this tab.',
+  /** O32 (`success-not-recorded`). */
+  notRecorded: 'All three words matched, but this could not be saved. Try again later.',
+  /** 2a's button. */
+  closeTab: 'Close this tab',
+} as const;
+
+/** The reveal proof's outcomes (the B1b-1 words, kept). */
 export const REVEAL = {
   checking: 'Checking…',
   outcome: {
-    shown: 'Write them down, in order, and keep them offline. Noctura never copies them anywhere.',
-    wrong: 'That did not confirm it.',
     'not-unlocked': 'The wallet is locked. Unlock it first, then try again.',
     'mismatch-locked': 'That did not match this wallet, so the wallet has been locked.',
     damaged: "This wallet's stored data is damaged.",
@@ -213,6 +256,84 @@ export const PASSKEY = {
   added: 'Passkey added.',
   unsupported: 'This device cannot unlock the wallet with a passkey; your password still works.',
   failed: 'Something went wrong. Your password still works.',
+} as const;
+
+/**
+ * #36 change-pin → change password (B1b-2b §3.1, D8, C20). Adapted from the design's PIN copy (2a-D7); O-numbers are
+ * the owner-confirmed controller additions (spec §12).
+ */
+export const CHANGE = {
+  stepOf: (n: 1 | 2 | 3): string => `Step ${n} of 3`,
+  title: {1: 'Enter current password', 2: 'Choose a new password', 3: 'Confirm new password'},
+  lede: {
+    1: "Verify it's you before changing your password.",
+    2: 'At least 12 characters. A few unrelated words work well.',
+    3: 'Enter the same password again.',
+  },
+  /** O01. */
+  continue: 'Continue',
+  /** O03. */
+  change: 'Change password',
+  checking: 'Checking…',
+  /** O02 (step-2 `same`). */
+  same: 'That is your current password. Choose a new one.',
+  /** 36d, adapted ("PINs don't match — try again"). */
+  mismatch: "Passwords don't match — try again",
+  /** 36e, adapted ("PIN updated"). */
+  updated: 'Password updated.',
+  /** O05. */
+  closeTab: 'You can close this tab.',
+  /** O06. */
+  passkeyStillWorks: 'Your passkey still works.',
+  /** O07. */
+  failed: 'Something went wrong. Your password was not changed.',
+  /** O10 (`dropped`: the page was left, or the 5-minute TTL ran out, C20). */
+  dropped: 'Enter your current password again.',
+} as const;
+
+/** #37's proof in the vault tab (B1b-2b §3.2, E11, C17). */
+export const DELETE = {
+  /** O13. */
+  deleting: 'Deleting…',
+  /** O14 (`changed`, C17): the wallet under the tab is not the one it showed — nothing proven, nothing sent. */
+  changed: 'The wallet in this browser changed. Check the address and try again.',
+  /** O15 (after `send-open`: E5 locked the wallet). */
+  lockedNothingDeleted: 'The wallet has been locked. Nothing was deleted.',
+  /** O16. */
+  failed: 'Something went wrong. Nothing was deleted.',
+} as const;
+
+/** #6 "manage" in the vault tab: add, replace, remove (B1b-2b §3.3, E12, D12, D13, C3, C4). */
+export const MANAGE = {
+  addTitle: 'Unlock Noctura with a passkey',
+  addLede: 'Adds convenience. Your password always works too — keep it safe.',
+  /** O17. */
+  replaceTitle: 'Replace your passkey',
+  /** O18. */
+  replaceLede: 'The new passkey replaces the one this wallet uses now. The old one stays in your passkey manager until you delete it there.',
+  /** O20. */
+  removeTitle: 'Remove your passkey',
+  /** O21. */
+  removeLede: 'Confirm with your password or with the passkey itself. Your password keeps working.',
+  add: 'Add a passkey',
+  /** D13. */
+  replace: 'Replace passkey',
+  /** D13. */
+  remove: 'Remove passkey',
+  /** O19. */
+  replaced: 'Passkey replaced.',
+  /** O22. */
+  removing: 'Removing the passkey…',
+  /** O23. */
+  removed: 'Passkey removed.',
+  /** O24. */
+  removedHelp: 'It is still saved in your passkey manager (Google, Apple or your password manager). Delete it there if you no longer need it.',
+  /** O25. */
+  noPasskey: 'This wallet has no passkey. Nothing was changed.',
+  /** O26. */
+  failed: 'Something went wrong. Nothing was changed.',
+  /** O05. */
+  closeTab: 'You can close this tab.',
 } as const;
 
 /** #9 unlock (D7, D11). */
@@ -254,7 +375,16 @@ export const REAUTH = {
   expired: 'This confirmation has expired. Start the send again from the Noctura icon.',
   checking: 'Checking…',
   cancelled: 'Send cancelled. Nothing was sent.',
-  settingsConfirmed: 'Confirmed. You can close this tab.',
+  /** O39 (B1b-2b E9, §3.7): the background applied the setting on this proof — replaces 2a's "Confirmed. You can close this tab." */
+  settingsApplied: 'Confirmed. The change is saved — you can close this tab.',
+  /** The approved design §3: a settings proof that outlived its challenge (§3.7 `settings-expired`). */
+  settingsExpired: 'Took too long — try again',
+  /** O40. */
+  settingsExpiredHelp: 'Nothing was changed. Choose the setting again in Security center.',
+  /** O41 (`settings-not-unlocked`). */
+  settingsNotUnlocked: 'The wallet locked while you were confirming. Nothing was changed. Unlock it and choose the setting again.',
+  /** O26 (`settings-failed`). */
+  settingsFailed: 'Something went wrong. Nothing was changed.',
   aboutSend: 'You are about to send',
   aboutChange: 'You are about to change',
   to: 'To',

@@ -141,7 +141,7 @@ describe('every page flow reads a stored null as a damaged wallet, never as "no 
     const randomBytes = (n: number) => new Uint8Array(n);
     const credentials = {create: async () => null, get: async () => null};
     expect(await addPasskey({...store, credentials, randomBytes}, {password: PASSWORD, kdf})).toBe('damaged');
-    expect(await addAccount({...store, send}, {password: PASSWORD, kdf})).toBe('damaged');
+    expect(await addAccount({...store, send}, {password: PASSWORD, kdf}, 1)).toBe('damaged');
     expect(await runReveal({readEnvelope: store.readEnvelope, send}, {password: PASSWORD, kdf})).toEqual({outcome: 'damaged'});
     expect(await runReauth({readEnvelope: store.readEnvelope, send}, ID, {password: PASSWORD, kdf})).toBe('damaged');
     expect(sent).toEqual([]);
@@ -152,7 +152,7 @@ describe('every page flow reads a stored null as a damaged wallet, never as "no 
   it('an absent vault is still "no wallet" (negative control of the rule above)', async () => {
     const store = await memoryVault();
     const {send} = recorder();
-    expect(await addAccount({...store, send}, {password: PASSWORD, kdf})).toBe('no-wallet');
+    expect(await addAccount({...store, send}, {password: PASSWORD, kdf}, 1)).toBe('no-wallet');
     expect(await runReveal({readEnvelope: store.readEnvelope, send}, {password: PASSWORD, kdf})).toEqual({outcome: 'no-wallet'});
     expect(await runReauth({readEnvelope: store.readEnvelope, send}, ID, {password: PASSWORD, kdf})).toBe('no-wallet');
   });

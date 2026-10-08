@@ -2,7 +2,12 @@ import {reauthenticate, type ReauthFactor, type SessionKeys} from '../vault/reau
 import {storedVault} from './stored';
 import type {Send} from './types';
 
-export type ReauthPageOutcome = 'confirmed' | 'wrong' | 'not-unlocked' | 'mismatch-locked' | 'expired' | 'damaged' | 'no-wallet' | 'failed';
+/**
+ * `applied` (B1b-2b E9): the background applied a settings challenge's patch on this proof. `refused`: the proof
+ * held but vault.reauthOk was refused for another reason (`malformed`, `failed`) — for a settings challenge,
+ * nothing was changed.
+ */
+export type ReauthPageOutcome = 'confirmed' | 'applied' | 'refused' | 'wrong' | 'not-unlocked' | 'mismatch-locked' | 'expired' | 'damaged' | 'no-wallet' | 'failed';
 
 /** The session's PUBLIC keys, from vault.status — never its secret keys. Null while locked. */
 export async function sessionKeys(send: Send): Promise<SessionKeys | null> {
@@ -48,12 +53,13 @@ export async function runReauth(
     if (outcome === 'mismatch') return await lockOnMismatch(deps.send);
     if (outcome !== 'ok') return outcome;
     const r = await deps.send({type: 'vault.reauthOk', challengeId});
-    if (r.ok) return 'confirmed';
+    // A send description answers {ok: true} with no data (D38: #20 sends); a settings one says it was applied.
+    if (r.ok) return typeof r.data === 'object' && r.data !== null && (r.data as {applied?: unknown}).applied === 'settings' ? 'applied' : 'confirmed';
     // D39: the challenge expired (or was discarded) while the password was typed — #10's `expired`,
     // never `failed`. A lock that landed after the status read is `not-unlocked`.
     if (r.error === 'unknown-challenge') return 'expired';
     if (r.error === 'locked') return 'not-unlocked';
-    return 'failed';
+    return 'refused';
   } catch {
     return 'failed';
   } finally {

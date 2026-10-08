@@ -3,8 +3,8 @@ import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
-  bundleViolations, htmlViolations, listSourceFiles, manifestViolations, sourceViolations, vaultPageModuleViolations, vaultPageViolations,
-  BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, REACT_MARKER, VAULT_MARKER, WORDLIST_MARKER,
+  bundleViolations, htmlViolations, listSourceFiles, manifestViolations, nonVaultModuleViolations, bundledWebAuthnViolations, sourceViolations, vaultPageModuleViolations, vaultPageViolations, webAuthnViolations,
+  BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, REACT_MARKER, VAULT_MARKER, WEBAUTHN_MARKER, WORDLIST_MARKER,
 } from '../check-vault-isolation.mjs';
 import {render} from '../../manifest/source.mjs';
 
@@ -162,6 +162,55 @@ describe('vault isolation (source)', () => {
 
 // Fable review (Important 1): a file outside src/ — `extension/leak/prf.ts` — imported the
 // passkey module and popup.html loaded it; the source rule never saw it (it walked only src/).
+describe('vault isolation (WebAuthn outside the vault page — Task 13 fix round 1, review I1)', () => {
+  const W = (path, what) => `${path}: reads WebAuthn (${what}) — only the vault page (src/unlock, src/vault) may`;
+  it.each([
+    ['navigator.credentials.get({publicKey: {challenge}})', '.credentials'],
+    ['navigator?.credentials.get(x)', '.credentials'],
+    ['window.navigator.credentials?.create(x)', '.credentials'],
+    ["navigator['credentials'].get(x)", "['credentials']"],
+    ['navigator[`credentials`].get(x)', "['credentials']"],
+    ['let {credentials: n} = navigator; n.get(x);', 'a credentials binding'],
+    ['const {credentials} = navigator;', 'a credentials binding'],
+    ["const {['credentials']: n} = navigator;", 'a credentials binding'],
+    ['let n; ({credentials: n} = navigator);', 'a credentials binding'],
+    ['let n; [{credentials: n}] = [navigator];', 'a credentials binding'],
+    ['const f = ({credentials}: Navigator) => credentials;', 'a credentials binding'],
+    ['if (window.PublicKeyCredential) {}', 'PublicKeyCredential'],
+    ['let c: CredentialsContainer;', 'CredentialsContainer'],
+    // Fix round 2 (N2): the name as a call argument.
+    ["Reflect.get(navigator, 'credentials');", "'credentials' as a call argument"],
+    ['Reflect.get(navigator, `credentials`);', "'credentials' as a call argument"],
+    ["Object.getOwnPropertyDescriptor(Navigator.prototype, 'credentials');", "'credentials' as a call argument"],
+  ])('refuses %s outside the vault page', (text, what) => {
+    expect(webAuthnViolations([f('src/app/screens/Passkey.tsx', text)])).toEqual([W('src/app/screens/Passkey.tsx', what)]);
+    expect(sourceViolations([f('src/app/screens/Passkey.tsx', text)])).toEqual([W('src/app/screens/Passkey.tsx', what)]);
+    expect(webAuthnViolations([f('../core/solana/x.ts', text)])).toEqual([W('../core/solana/x.ts', what)]);
+  });
+
+  it('allows an object-literal key and a type member named credentials (core/solana/rpc.ts’s fetch init), and prose', () => {
+    for (const text of [
+      "opts.fetch(endpoint, {method: 'POST', body, credentials: 'omit'});",
+      "const credentials = 'omit'; fetch(u, {credentials});",
+      "type Init = {credentials?: 'omit'};",
+      "interface I { credentials: string }",
+      "const tip = 'navigator.credentials and PublicKeyCredential in prose';",
+      '// navigator.credentials in a comment',
+    ]) {
+      expect(webAuthnViolations([f('../core/solana/rpc.ts', text)])).toEqual([]);
+      expect(sourceViolations([f('src/background/deps.ts', text)])).toEqual([]);
+    }
+  });
+
+  it('allows the vault page and the vault folder (browser.ts, the screens’ deps.credentials, passkey.ts’s PublicKeyCredential)', () => {
+    expect(sourceViolations([
+      f('src/unlock/browser.ts', 'export const b = {credentials: navigator.credentials};'),
+      f('src/unlock/screens/reauth.ts', 'await evaluatePrf(deps.credentials, id, salt);'),
+      f('src/vault/passkey.ts', 'const ext = (cred as PublicKeyCredential).getClientExtensionResults();'),
+    ])).toEqual([]);
+  });
+});
+
 describe('vault isolation (files outside src/, and the vault page as a target)', () => {
   it('refuses the reproduced layout: leak/prf.ts importing ../src/vault/passkey', () => {
     expect(sourceViolations([f('leak/prf.ts', "import {evaluatePrf} from '../src/vault/passkey';")])).toEqual([
@@ -490,7 +539,7 @@ describe('vault isolation (built output)', () => {
     write('assets/react-1.js', `export const R="${REACT_MARKER}";`);
     write('assets/send-1.js', 'export const t=()=>1;');
     write('unlock.html', html('./assets/unlock-1.js'));
-    write('assets/unlock-1.js', `import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+    write('assets/unlock-1.js', `import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const n="${WEBAUTHN_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
     write('assets/kdf.worker-1.js', `throw Error("${KDF_MARKER}");`);
   };
 
@@ -680,6 +729,140 @@ describe('vault isolation (built output)', () => {
     expect(vaultPageModuleViolations(dir, empty)).toEqual(['INCONCLUSIVE: no chunk reachable from unlock.html carries src/unlock/main.ts in the module map — the check would pass trivially']);
   });
 
+  // B1b-2b plan 1 Task 13 fix round 1 (review I1): the reverse direction, by the same map. The webauthn marker is a
+  // spelling (`let{credentials:n}=navigator` and `navigator?.credentials` both passed it); the map is not.
+  const POPUP_MAP = () => {
+    const map = MAP();
+    map.chunks['background.js'] = ['src/background/index.ts', 'src/background/session.ts'];
+    map.chunks['assets/session-1.js'] = ['src/ext.ts'];
+    map.chunks['assets/send-1.js'] = ['src/app/screens/Send.tsx', '../core/solana/rpc.ts'];
+    return map;
+  };
+  it('I1: passes when no chunk the popup, the UI tab or the background loads carries src/vault or src/unlock', () => {
+    write('wallet.html', html('./assets/wallet-1.js'));
+    write('assets/wallet-1.js', 'import{t as e}from"./send-1.js";e();');
+    const map = POPUP_MAP();
+    map.chunks['assets/wallet-1.js'] = ['src/app/tab.tsx'];
+    expect(nonVaultModuleViolations(dir, map)).toEqual([]);
+  });
+
+  it.each([
+    ['src/vault/passkey.ts', 'assets/send-1.js', 'assets/popup-1.js'],
+    ['src/unlock/browser.ts', 'assets/send-1.js', 'assets/popup-1.js'],
+    ['src/unlock/browser.ts?v', 'assets/popup-1.js', 'assets/popup-1.js'],
+    ['src/vault/envelope.ts', 'assets/base-1.js', 'background.js'],
+    ['src/vault/kdf.ts', 'background.js', 'background.js'],
+    // Fix round 2 (N3): any spelling of the path the map can carry; (N4) core/keys is seed code.
+    ['./src/vault/envelope.ts', 'assets/send-1.js', 'assets/popup-1.js'],
+    ['/home/u/NocturaWallet/extension/src/unlock/browser.ts', 'assets/send-1.js', 'assets/popup-1.js'],
+    ['\0src/vault/passkey.ts', 'assets/send-1.js', 'assets/popup-1.js'],
+    ['\0/abs/extension/src/unlock/main.ts?x', 'background.js', 'background.js'],
+    ['../core/keys/mnemonic.ts', 'assets/send-1.js', 'assets/popup-1.js'],
+    ['../core/keys/transparent.ts', 'background.js', 'background.js'],
+  ])('I1: fails when %s is bundled into %s (reachable from %s)', (id, chunk, entry) => {
+    const map = POPUP_MAP();
+    map.chunks[chunk] = [...map.chunks[chunk], id];
+    expect(nonVaultModuleViolations(dir, map)).toContain(`${chunk} (reachable from ${entry}) carries ${JSON.stringify(id)} — vault code (src/vault, src/unlock, core/keys) is bundled only into the vault page`);
+  });
+
+  it('I1: the UI tab (wallet.html) is checked too', () => {
+    write('wallet.html', html('./assets/wallet-1.js'));
+    write('assets/wallet-1.js', 'export const w=1;');
+    const map = POPUP_MAP();
+    map.chunks['assets/wallet-1.js'] = ['src/app/tab.tsx', 'src/unlock/browser.ts'];
+    expect(nonVaultModuleViolations(dir, map)).toEqual(['assets/wallet-1.js (reachable from assets/wallet-1.js) carries "src/unlock/browser.ts" — vault code (src/vault, src/unlock, core/keys) is bundled only into the vault page']);
+  });
+
+  it('I1: fails closed — a missing map, a reachable chunk the map does not list, a map that does not describe the entries', () => {
+    expect(nonVaultModuleViolations(dir, undefined)).toEqual(['INCONCLUSIVE: no chunk module map (app.modules.json next to dist/app) — the build must write one']);
+    const map = POPUP_MAP();
+    delete map.chunks['assets/send-1.js'];
+    expect(nonVaultModuleViolations(dir, map)).toEqual(['assets/send-1.js (reachable from assets/popup-1.js) is not in the chunk module map — what it carries is unknown']);
+    const noEntry = POPUP_MAP();
+    noEntry.chunks['assets/popup-1.js'] = ['node_modules/react/index.js'];
+    noEntry.chunks['background.js'] = ['src/background/session.ts'];
+    expect(nonVaultModuleViolations(dir, noEntry)).toEqual([
+      'INCONCLUSIVE: no chunk reachable from background.js carries src/background/index.ts in the module map — the check would pass trivially',
+      'INCONCLUSIVE: no chunk reachable from popup.html carries src/app/popup.tsx in the module map — the check would pass trivially',
+    ]);
+  });
+
+  // Fix round 2 (N1): the WebAuthn rule driven by the module map — every module the background, the popup or
+  // the UI tab bundles is resolved and parsed, ../web included.
+  const SOURCES = {
+    'src/background/index.ts': 'export const b = 1;',
+    'src/background/session.ts': 'export const s = 1;',
+    'src/ext.ts': 'export const e = 1;',
+    'src/app/popup.tsx': 'export const p = 1;',
+    'src/app/app.css': '.x{}',
+    'src/app/screens/Send.tsx': 'export const t = 1;',
+    '../core/solana/rpc.ts': "export const r = (f, u) => f(u, {method: 'POST', credentials: 'omit'});",
+    '../web/src/ui/AddressGroups.tsx': 'export function AddressGroups() { return null; }',
+    'popup.html': '<!doctype html>',
+    '../web/src/styles/design-system.css': ':root{}',
+    'src/styles/design-ext.css': '.y{}',
+  };
+  const read = over => path => ({...SOURCES, ...over})[path];
+  const WEB_MAP = () => {
+    const map = POPUP_MAP();
+    map.chunks['assets/popup-1.js'] = ['popup.html', 'src/app/popup.tsx', 'src/app/app.css', 'node_modules/react/index.js'];
+    map.chunks['assets/send-1.js'] = [...map.chunks['assets/send-1.js'], '../web/src/ui/AddressGroups.tsx', '\0rolldown/runtime.js'];
+    map.chunks['background.js'] = [...map.chunks['background.js'], '__vite-browser-external'];
+    return map;
+  };
+  it('N1: passes when every module bundled outside the vault page is read and clean (virtual, browser-external and node_modules ids skipped)', () => {
+    expect(bundledWebAuthnViolations(dir, WEB_MAP(), read({}))).toEqual([]);
+  });
+
+  it('N1: a WebAuthn read in ../web (AddressGroups.tsx, bundled into the popup) fails', () => {
+    const planted = read({'../web/src/ui/AddressGroups.tsx': 'export function AddressGroups() { const {credentials: c} = navigator; void c.get({}); return null; }'});
+    expect(bundledWebAuthnViolations(dir, WEB_MAP(), planted)).toEqual([
+      '"../web/src/ui/AddressGroups.tsx" (in assets/send-1.js, reachable from assets/popup-1.js) reads WebAuthn (a credentials binding) — only the vault page (src/unlock, src/vault) may',
+    ]);
+  });
+
+  it('N1: the same in core, in src/app and in the background', () => {
+    for (const path of ['../core/solana/rpc.ts', 'src/app/screens/Send.tsx', 'src/background/session.ts']) {
+      const v = bundledWebAuthnViolations(dir, WEB_MAP(), read({[path]: "export const x = Reflect.get(navigator, 'credentials');"}));
+      expect(v).toHaveLength(1);
+      expect(v[0]).toMatch(new RegExp(`^"${path.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}" \\(in .*\\) reads WebAuthn \\('credentials' as a call argument\\)`));
+    }
+  });
+
+  it('N1: a node_modules id, a virtual id and the browser-external stub are not read (listed rules)', () => {
+    const map = WEB_MAP();
+    map.chunks['assets/send-1.js'].push('node_modules/evil/index.js', '../node_modules/x/y.js', '\0virtual:x');
+    // readSource would answer nothing for them: they are skipped, not INCONCLUSIVE.
+    expect(bundledWebAuthnViolations(dir, map, read({}))).toEqual([]);
+  });
+
+  it('N1: fails closed — an unreadable module, a module of an unknown kind, no map, nothing parsed', () => {
+    const map = WEB_MAP();
+    map.chunks['assets/send-1.js'].push('../web/src/ui/Gone.tsx', 'src/app/data.json');
+    expect(bundledWebAuthnViolations(dir, map, read({}))).toEqual([
+      'INCONCLUSIVE: "../web/src/ui/Gone.tsx" (in assets/send-1.js, reachable from assets/popup-1.js) does not resolve to a readable file — what it does is unknown',
+      'INCONCLUSIVE: "src/app/data.json" (in assets/send-1.js, reachable from assets/popup-1.js) is a module of a kind the WebAuthn rule does not know — it cannot be read for WebAuthn',
+    ]);
+    expect(bundledWebAuthnViolations(dir, WEB_MAP(), () => undefined)).toContain('INCONCLUSIVE: "../web/src/ui/AddressGroups.tsx" (in assets/send-1.js, reachable from assets/popup-1.js) does not resolve to a readable file — what it does is unknown');
+    expect(bundledWebAuthnViolations(dir, undefined, read({}))).toEqual(['INCONCLUSIVE: no chunk module map (app.modules.json next to dist/app) — the build must write one']);
+    const none = {chunks: {'background.js': ['\0x'], 'assets/base-1.js': [], 'assets/session-1.js': [], 'assets/popup-1.js': [], 'assets/send-1.js': []}};
+    expect(bundledWebAuthnViolations(dir, none, read({}))).toEqual(['INCONCLUSIVE: no script module outside the vault page was parsed — the WebAuthn rule would pass trivially']);
+  });
+
+  it('N1: vault code in a popup chunk is left to the reverse map check, not parsed (the allowance)', () => {
+    const map = WEB_MAP();
+    map.chunks['assets/send-1.js'].push('src/unlock/browser.ts');
+    expect(bundledWebAuthnViolations(dir, map, read({}))).toEqual([]);
+    expect(nonVaultModuleViolations(dir, map)).toContain('assets/send-1.js (reachable from assets/popup-1.js) carries "src/unlock/browser.ts" — vault code (src/vault, src/unlock, core/keys) is bundled only into the vault page');
+  });
+
+  it('I1: the vault page’s own chunks may carry vault code (negative control)', () => {
+    const map = POPUP_MAP();
+    map.chunks['assets/unlock-1.js'].push('src/unlock/browser.ts', 'src/vault/passkey.ts');
+    map.chunks['assets/kdf.worker-1.js'] = ['src/vault/kdf.worker.ts'];
+    expect(nonVaultModuleViolations(dir, map)).toEqual([]);
+  });
+
   it('UI code in a chunk only the popup loads is not the vault page’s (negative control)', () => {
     sheets();
     const map = MAP();
@@ -867,16 +1050,16 @@ describe('vault isolation (built output)', () => {
 
   it('does not follow imports out of the unlock bundle (it may carry the vault)', () => {
     write('assets/unlock-1.js', `import"./vault-1.js";`);
-    write('assets/vault-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+    write('assets/vault-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const n="${WEBAUTHN_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
     expect(bundleViolations(dir)).toEqual([]);
   });
 
   it('fails when the vault page imports the background entry, directly or through a chunk (it would run the background)', () => {
-    write('assets/unlock-1.js', `import{t as x}from"../background.js";import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+    write('assets/unlock-1.js', `import{t as x}from"../background.js";import"./base-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const n="${WEBAUTHN_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
     // …and through it the background's storage.session chunk (the rule below).
     const viaBackground = 'assets/session-1.js (reachable from unlock.html) touches storage.session — only the background may';
     expect(bundleViolations(dir)).toEqual(['the vault page (assets/unlock-1.js) reaches background.js — it would run the background', viaBackground]);
-    write('assets/unlock-1.js', `import"./mid-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+    write('assets/unlock-1.js', `import"./mid-1.js";const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const n="${WEBAUTHN_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
     write('assets/mid-1.js', 'import"../background.js";');
     expect(bundleViolations(dir)).toEqual(['the vault page (assets/unlock-1.js) reaches background.js — it would run the background', viaBackground]);
   });
@@ -889,9 +1072,9 @@ describe('vault isolation (built output)', () => {
   });
 
   it('is INCONCLUSIVE — and fails — when any marker is in no built file', () => {
-    const all = {i: VAULT_MARKER, d: DERIVATION_MARKER, b: BIP39_MARKER, r: PASSKEY_MARKER, w: WORDLIST_MARKER};
+    const all = {i: VAULT_MARKER, d: DERIVATION_MARKER, b: BIP39_MARKER, r: PASSKEY_MARKER, n: WEBAUTHN_MARKER, w: WORDLIST_MARKER};
     const without = k => Object.entries(all).filter(([n]) => n !== k).map(([n, m]) => `const ${n}=\`${m}\`;`).join('');
-    for (const [k, name, marker] of [['i', 'envelope', VAULT_MARKER], ['d', 'derivation', DERIVATION_MARKER], ['b', 'bip39', BIP39_MARKER], ['r', 'passkey', PASSKEY_MARKER], ['w', 'wordlist', WORDLIST_MARKER]]) {
+    for (const [k, name, marker] of [['i', 'envelope', VAULT_MARKER], ['d', 'derivation', DERIVATION_MARKER], ['b', 'bip39', BIP39_MARKER], ['r', 'passkey', PASSKEY_MARKER], ['n', 'webauthn', WEBAUTHN_MARKER], ['w', 'wordlist', WORDLIST_MARKER]]) {
       write('assets/unlock-1.js', without(k));
       expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the ${name} marker "${marker}" is in no built JS file — the check would pass trivially`]);
     }
@@ -900,12 +1083,18 @@ describe('vault isolation (built output)', () => {
     expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the kdf marker "${KDF_MARKER}" is in no built JS file — the check would pass trivially`]);
   });
 
-  // The built manifest names wallet.noc-tura.io (a host permission): a marker that only a
-  // non-JS file carries must not count as present.
+  // Only JS files count: a marker that only a non-JS file carries (here the manifest, which really
+  // does name wallet.noc-tura.io as a host permission; B1b-2b review L1 retargeted this fixture when the
+  // passkey markers stopped being that host) must not count as present.
   it('does not count a marker found only in a non-JS file (the manifest) as present', () => {
-    write('assets/unlock-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
-    write('manifest.json', `{"host_permissions":["https://${PASSKEY_MARKER}/*"]}`);
-    expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the passkey marker "${PASSKEY_MARKER}" is in no built JS file — the check would pass trivially`]);
+    write('assets/unlock-1.js', `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`);
+    write('manifest.json', `{"host_permissions":["https://wallet.noc-tura.io/*"],"note":"${WEBAUTHN_MARKER}"}`);
+    expect(bundleViolations(dir)).toEqual([`INCONCLUSIVE: the webauthn marker "${WEBAUTHN_MARKER}" is in no built JS file — the check would pass trivially`]);
+  });
+
+  it('B1b-2b review H1: a non-PRF WebAuthn call in a popup chunk fails (the webauthn marker alone)', () => {
+    write('assets/send-1.js', 'export const t=()=>navigator.credentials.get({publicKey:{rpId:"wallet.noc-tura.io",challenge:new Uint8Array(32)}});');
+    expect(bundleViolations(dir)).toEqual(['assets/send-1.js (reachable from assets/popup-1.js) contains vault code (webauthn)']);
   });
 
   it('fails on the passkey marker alone — the reproduced leak split passkey.ts into its own chunk', () => {
@@ -913,6 +1102,11 @@ describe('vault isolation (built output)', () => {
     write('assets/prf-1.js', 'import"./passkey-1.js";');
     write('assets/passkey-1.js', `const r="${PASSKEY_MARKER}";`);
     expect(bundleViolations(dir)).toEqual(['assets/passkey-1.js (reachable from assets/prf-1.js) contains vault code (passkey)']);
+  });
+
+  it('B1b-2b: the RP ID in popup prose (#6\'s synced-passkey tip) is not passkey code — the popup passes', () => {
+    write('assets/send-1.js', 'export const t=()=>1;export const tip="Other extensions allowed on wallet.noc-tura.io can ask for it too.";');
+    expect(bundleViolations(dir)).toEqual([]);
   });
 
   it('fails on the wordlist marker alone — generateMnemonic outside the vault page', () => {
@@ -931,7 +1125,7 @@ describe('vault isolation (built output)', () => {
 
   // Final review minor 4: readLocal lived in src/ext.ts, so the vault page's bundle carried the
   // whole of ext.ts (storage.session, setAccessLevel) in a shared chunk — every source rule passed.
-  const UNLOCK_MARKERS = `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const w=\`${WORDLIST_MARKER}\`;`;
+  const UNLOCK_MARKERS = `const i="${VAULT_MARKER}";const d="${DERIVATION_MARKER}";const b="${BIP39_MARKER}";const r="${PASSKEY_MARKER}";const n="${WEBAUTHN_MARKER}";const w=\`${WORDLIST_MARKER}\`;`;
   const SESSION = (file, from) => `${file} (reachable from ${from}) touches storage.session — only the background may`;
 
   it('fails when the vault page reaches storage.session — the old layout: ext.ts in a shared chunk', () => {
@@ -1524,7 +1718,9 @@ describe('plan 2: the real vault page reaches every screen it builds (positive c
     const views = modules('src/unlock/view');
     // The readdir is not empty or short by accident: the folders hold exactly plan 2's screens (Tasks 6–14)
     // and views — a module added or removed there is named here too, and each named one must be reached.
-    const named = ['welcome', 'seed', 'confirm', 'password', 'passkey', 'createRun', 'importScreen', 'importRun', 'restoreRun', 'retryRun', 'forgot', 'unlock', 'reauth', 'accounts', 'reveal'];
+    const named = ['welcome', 'seed', 'confirm', 'password', 'passkey', 'createRun', 'importScreen', 'importRun', 'restoreRun', 'retryRun', 'forgot', 'unlock', 'reauth', 'accounts', 'reveal',
+      // B1b-2b plan 1.
+      'changePassword', 'delete', 'passkeyManage'];
     expect([...screens].sort()).toEqual(named.map(n => `src/unlock/screens/${n}.ts`).sort());
     expect([...views].sort()).toEqual(['dom', 'words', 'hold', 'meter', 'cooldown'].map(n => `src/unlock/view/${n}.ts`).sort());
     expect(resolved).toEqual(
@@ -1536,6 +1732,8 @@ describe('plan 2: the real vault page reaches every screen it builds (positive c
         'src/unlock/challenge.ts',
         'src/unlock/stored.ts',
         'src/unlock/page.ts',
+        'src/unlock/passwordFlow.ts',
+        'src/unlock/passkeyFlow.ts',
       ]),
     );
   });

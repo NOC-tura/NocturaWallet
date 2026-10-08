@@ -21,7 +21,25 @@ export type AccountsOutcome =
   | 'last-account'
   | 'no-such-account'
   | 'too-many-accounts'
+  /** B1b-2b E13: the account number is not one (not a safe integer in 0 … 2^31 − 1). */
+  | 'bad-index'
+  /** B1b-2b E13: that account is already in the envelope. */
+  | 'index-taken'
+  /** B1b-2b C5: a send from an account this change drops is still open (the background refused the store). */
+  | 'send-open'
   | 'failed';
+
+/** The SLIP-0010 hardened limit of the account level (m/44'/501'/{account}'/0'): the highest index there is. */
+export const MAX_ACCOUNT_INDEX = 2 ** 31 - 1;
+export const isAccountIndex = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0 && x <= MAX_ACCOUNT_INDEX;
+
+/** C6: the lowest account index not in the list — what the add form pre-fills, so "add it again" is the default after a remove. */
+export function lowestFreeIndex(indexes: readonly number[]): number {
+  const taken = new Set(indexes);
+  let i = 0;
+  while (taken.has(i)) i += 1;
+  return i;
+}
 
 type Deps = VaultStore & {send: Send};
 /** The new account list: indexes and names only — reencryptForAccounts derives every public key. */
@@ -49,6 +67,7 @@ async function attempt(deps: Deps, factor: ReauthFactor, change: (env: EnvelopeV
     const reencrypted = await reencryptForAccounts(env, proven.dataKey, next);
     const stored = await deps.storeEnvelope(envelopeRevision(env), reencrypted);
     if (stored === 'busy') return 'busy';
+    if (stored === 'send-open') return 'send-open';
     if (stored === 'stored-invalid') return 'damaged';
     if (stored === 'no-wallet') return 'no-wallet';
     if (stored !== 'stored') return 'failed';
@@ -97,16 +116,27 @@ async function withProvenSeed(deps: Deps, factor: ReauthFactor, change: (env: En
   }
 }
 
-/** The next SLIP-0010 account (a cli wallet has exactly one). */
-export function addAccount(deps: Deps, factor: ReauthFactor): Promise<AccountsOutcome> {
+/**
+ * B1b-2b E13 (D16, C6): the SLIP-0010 account at `index` — any index not in the envelope, so an account removed earlier
+ * can be added again: reencryptForAccounts derives its key from the seed, so re-adding index N always yields the address
+ * N had (with the default name "Account N+1": a removed account's name is not kept, review L3). Appended to the
+ * envelope order (the display order is E14's). A bad index is refused before anything is read or proven; a cli wallet
+ * has exactly one account. A PRF output is zeroed on every path, a bad index included.
+ */
+export function addAccount(deps: Deps, factor: ReauthFactor, index: number): Promise<AccountsOutcome> {
+  if (!isAccountIndex(index)) {
+    if ('prfOutput' in factor) factor.prfOutput.fill(0);
+    return Promise.resolve('bad-index');
+  }
   return withProvenSeed(deps, factor, env => {
     if (env.scheme === 'cli') return 'cli-single';
     if (env.accounts.length >= MAX_ACCOUNTS) return 'too-many-accounts';
-    const next = Math.max(...env.accounts.map(a => a.index)) + 1;
-    return [...env.accounts.map(a => ({index: a.index, name: a.name})), {index: next, name: `Account ${next + 1}`}];
+    if (env.accounts.some(a => a.index === index)) return 'index-taken';
+    return [...env.accounts.map(a => ({index: a.index, name: a.name})), {index, name: `Account ${index + 1}`}];
   });
 }
 
+/** Removing an account (D16): allowed with funds (they stay on Solana); refused by the background while a send from it is open (C5). */
 export function removeAccount(deps: Deps, factor: ReauthFactor, index: number): Promise<AccountsOutcome> {
   return withProvenSeed(deps, factor, env => {
     if (!env.accounts.some(a => a.index === index)) return 'no-such-account';

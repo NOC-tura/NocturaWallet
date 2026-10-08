@@ -77,6 +77,10 @@
 .vlt-gap-2 {
   margin: 0 0 var(--space-2);
 }
+/* Fix round 0b: a field label set as the line it stands in for (#6 manage remove: in the add line's box and gap). */
+.vlt-label-block {
+  display: block;
+}
 .vlt-gap-4 {
   margin-bottom: var(--space-4);
 }
@@ -183,6 +187,25 @@
 }
 .vlt-col .s-confirm .word-btn {
   cursor: pointer;
+}
+/* D25 (owner, 2026-10-08): verify-not-recorded (O32) is no success — the same hero, neutral: the design's neutral ring
+   (the secondary surface with the icon at --fg-secondary, as index.html's cancelled state, design-ext
+   `.done-cancelled .ring`), never the success tint. */
+.vlt-col .s-confirm .success-state.vlt-neutral .ring {
+  background: var(--bg-surface-3);
+  color: var(--fg-secondary);
+}
+/* D26 (owner, 2026-10-08): #36's done and the passkey done states reuse 04r's hero (`.s-confirm .success-state`, the
+   96 px success ring) inside their own screens; the wrapper takes the free height the screen's spacer had, so the ring
+   sits centred as on 04r. */
+.vlt-col .vlt-hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.vlt-col .vlt-hero:not([hidden]) ~ .pin-spacer,
+.vlt-col .vlt-hero:not([hidden]) ~ .vlt-grow {
+  display: none;
 }
 
 /* #5 (and #6's re-ask): the password field that replaces the design's PIN keypad (D7), with the design's
@@ -407,14 +430,25 @@
 .vlt-col .vlt-field-row.vlt-field-row-labelled {
   margin-top: 0;
 }
-.vlt-words {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  grid-auto-flow: column;
-  grid-template-rows: repeat(12, auto);
-  gap: var(--space-2) var(--space-4);
-  margin: 0 var(--space-5);
-  padding-left: var(--space-5);
-  font: 500 14px/22px var(--font-mono);
-  color: var(--fg-primary);
+
+/* B1b-2b: an account address in groups of four under its caption (#37's proof, the remove page; C14, C17). */
+.vlt-address {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+/* B1b-2b §3.4: a 12-word phrase on #3's grid is 2 × 6 (the design draws 24 as 2 × 12, column-major). */
+.vlt-col .s-seed .seed-grid.vlt-grid-12 {
+  grid-template-rows: repeat(6, auto);
+}
+/* B1b-2b §3.6: the accounts page's number field and the remove page's address span the head's column. */
+.vlt-full {
+  width: 100%;
+}
+
+/* Fix round 1 (visual review M2): a disabled top-bar X (busy) looks disabled — the popup's `.icon-btn:disabled` (app.css). */
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }

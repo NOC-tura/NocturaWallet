@@ -185,6 +185,9 @@ test('visual: #20’s states — first-time, high-value, the proof in #10 with i
     await p.getByRole('button', {name: 'Continue to confirm'}).click();
     await expect(p.getByText("You've never sent to this address")).toBeVisible();
     await expect(p.getByText('Confirmation opens in a new tab.')).toBeVisible();
+    // B1b-2b fix round 0b: the bar's caption takes the design's margin 0 (index.html:98) — only the bar's gap spaces it.
+    await expect(p.getByText('Confirmation opens in a new tab.')).toHaveCSS('margin-top', '0px');
+    await expect(p.getByText('Confirmation opens in a new tab.')).toHaveCSS('margin-bottom', '0px');
     // Fix round 2: the headline's recipient at the h1's 600 weight, its first group on the line of "to" (inline flow).
     const group = p.locator('.headline .recipient .addr-groups > span').first();
     expect(await group.evaluate(x => getComputedStyle(x).fontWeight)).toBe('600');

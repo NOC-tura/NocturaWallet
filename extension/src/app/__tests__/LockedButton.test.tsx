@@ -50,7 +50,86 @@ describe('LockedButton', () => {
     await floor();
   });
 
+  // B1b-2b §4.3: the manager's ↑/↓ — a keyboard user pressing it keeps the focus on it once it is enabled again.
+  async function pressed(keepFocus: boolean, after: 'lost' | 'moved') {
+    let release: () => void = () => undefined;
+    const {unmount} = render(
+      <>
+        <LockedButton onPress={async () => undefined} keepFocus={keepFocus} wait={() => new Promise<void>(r => (release = r))}>
+          Move
+        </LockedButton>
+        <button type="button">Elsewhere</button>
+      </>,
+    );
+    const button = screen.getByRole('button', {name: 'Move'}) as HTMLButtonElement;
+    button.focus();
+    fireEvent.click(button);
+    if (after === 'moved') (screen.getByRole('button', {name: 'Elsewhere'}) as HTMLButtonElement).focus();
+    else {
+      // What a browser does to a focused button the lock disables (or a row the list moves): the page has the focus.
+      const blip = document.createElement('input');
+      document.body.append(blip);
+      blip.focus();
+      blip.remove();
+    }
+    await act(async () => release());
+    const at = document.activeElement === button ? 'button' : document.activeElement === document.body ? 'page' : 'elsewhere';
+    unmount();
+    return at;
+  }
+
+  it('keepFocus: a button focused when pressed takes the focus back from the page when the lock ends', async () => {
+    expect(await pressed(true, 'lost')).toBe('button');
+    expect(await pressed(false, 'lost')).toBe('page');
+  });
+
+  it('keepFocus never takes the focus from where the user moved it meanwhile', async () => {
+    expect(await pressed(true, 'moved')).toBe('elsewhere');
+  });
+
+  it('keepFocus: disabled when the lock ends — the flag is cleared (never a late focus grab) and focusElsewhere is asked', async () => {
+    let release: () => void = () => undefined;
+    const elsewhere = vi.fn();
+    const ui = (disabled: boolean) => (
+      <LockedButton onPress={async () => undefined} keepFocus disabled={disabled} focusElsewhere={elsewhere} wait={() => new Promise<void>(r => (release = r))}>
+        Move
+      </LockedButton>
+    );
+    const {rerender} = render(ui(false));
+    const button = screen.getByRole('button', {name: 'Move'}) as HTMLButtonElement;
+    button.focus();
+    fireEvent.click(button);
+    rerender(ui(true));
+    const blip = document.createElement('input');
+    document.body.append(blip);
+    blip.focus();
+    blip.remove();
+    await act(async () => release());
+    expect(elsewhere).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(document.body);
+    rerender(ui(false));
+    expect(document.activeElement).toBe(document.body);
+    expect(elsewhere).toHaveBeenCalledTimes(1);
+  });
+
   it('holds for LOCK_MS = 500 by default', () => {
     expect(LOCK_MS).toBe(500);
+  });
+
+  it('pressed: rendered as aria-pressed only when given — a plain LockedButton is no toggle (fix round 1, Minor 3)', () => {
+    render(
+      <>
+        <LockedButton onPress={async () => undefined}>Plain</LockedButton>
+        <LockedButton onPress={async () => undefined} pressed>
+          On
+        </LockedButton>
+        <LockedButton onPress={async () => undefined} pressed={false}>
+          Off
+        </LockedButton>
+      </>,
+    );
+    expect(screen.getByRole('button', {name: 'Plain'}).hasAttribute('aria-pressed')).toBe(false);
+    expect(screen.getByRole('button', {name: 'On'}).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', {name: 'Off'}).getAttribute('aria-pressed')).toBe('false');
   });
 });

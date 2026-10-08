@@ -1,34 +1,16 @@
-import {test, expect, type Locator, type Page, type Worker} from '@playwright/test';
-import {mkdirSync} from 'node:fs';
-import {MAIN, SAVINGS, contained, launchPopup, seedUnlockedWallet, type Harness} from './popupHarness';
+import {test, expect, type Page, type Worker} from '@playwright/test';
+import {MAIN, SAVINGS, contained, launchPopup, seedUnlockedWallet} from './popupHarness';
 import {E2E_ACCOUNTS, E2E_MNEMONIC, E2E_PASSWORD, makeEnvelope} from './makeEnvelope';
 import {confirmWords, pastePhrase, setPassword, unlockWith} from './vaultPage';
+import {holdKdf, releaseKdf, shot, vaultTab} from './visualTab';
 
-// Spec B1b-2a §8.6, plan 2: every vault-page state (#1–#6, #8–#10, #39, the accounts and reveal forms)
+// Spec B1b-2a §8.6, plan 2: every vault-page state (#1–#6, #8–#10, #39; the accounts and reveal modes are B1b-2b's visual-settings.spec.ts)
 // and the UI tab's #7 and #40, rendered by the real extension at the design's 412 px width (412 × 916,
 // the mockups' size), saved for the review against index.html (#sNN). Not a pixel diff: an opus-tier
 // reviewer compares each image with the same state using the plan's checklist. Every state asserts its
 // own copy before its shot; a state that lasts a moment (the hold, the cooldown, the wrong-word reset,
 // the mismatch clear) is shot under Playwright's paused clock, and a state that lasts as long as a
 // computation (creating, adding, checking, loading) is held open by the test — never raced.
-const DIR = 'test-results/visual';
-/**
- * The whole column (`fullPage`), except while #3 is held: a full-page capture resizes the view under the
- * pressed pointer, which the page reads as a release (pointerleave) — those shots are the 412 × 916
- * viewport, which holds the whole grid.
- *
- * `ready`: a control the state shows enabled, awaited first — a click runs through the page's one busy
- * gate with its 500 ms floor (rule 6), and a shot taken inside that floor draws every button disabled,
- * which is not the state (Task 18 visual pass: 03-pre-reveal-modal, 39's steps and others were). A
- * full-page shot also moves the pointer off the column first, so no button is drawn hovered.
- */
-async function shot(page: Page, name: string, o: {fullPage?: boolean; ready?: Locator} = {}): Promise<void> {
-  if (o.ready !== undefined) await expect(o.ready).toBeEnabled();
-  const fullPage = o.fullPage ?? true;
-  if (fullPage) await page.mouse.move(0, 0);
-  mkdirSync(DIR, {recursive: true});
-  await page.screenshot({path: `${DIR}/${name}.png`, fullPage});
-}
 const OTHER = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
 const PASSWORD = 'a long enough password';
 const RECIPIENT = '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4';
@@ -38,53 +20,6 @@ declare const chrome: {
   storage: {local: {set(o: object): Promise<void>; remove(k: string): Promise<void>}; session: {set(o: object): Promise<void>}};
 };
 
-/**
- * A vault-page tab at the mockups' size, with the clock installed (it follows real time until paused)
- * and the Argon2id worker's answer holdable: `holdKdf()` keeps the next KDF result back until
- * `releaseKdf()` — a test-only wrapper around this page's Worker, so "Creating your wallet…" and
- * "Waiting for your passkey…" stay on screen while they are asserted and shot.
- */
-async function vaultTab(h: Harness, path: string, o: {passkeyCreate?: 'null'} = {}): Promise<Page> {
-  const page = await h.ctx.newPage();
-  await page.setViewportSize({width: 412, height: 916});
-  // A settled blank document first: installing the clock into a page still being created failed once
-  // ("Cannot read properties of undefined (reading 'controller')", fix round 1 run).
-  await page.goto('about:blank');
-  await page.clock.install();
-  await page.addInitScript(stub => {
-    type Held = {hold: boolean; queue: (() => void)[]};
-    const state: Held = {hold: false, queue: []};
-    const w = window as unknown as {__kdf: Held; Worker: typeof Worker};
-    w.__kdf = state;
-    const Native = w.Worker;
-    w.Worker = class extends Native {
-      constructor(url: string | URL, options?: WorkerOptions) {
-        super(url, options);
-        let handler: ((e: MessageEvent) => void) | null = null;
-        super.onmessage = (e: MessageEvent) => {
-          if (state.hold) state.queue.push(() => handler?.(e));
-          else handler?.(e);
-        };
-        Object.defineProperty(this, 'onmessage', {set: (f: (e: MessageEvent) => void) => void (handler = f), get: () => handler});
-      }
-    } as typeof Worker;
-    if (stub === 'null') Object.defineProperty(navigator, 'credentials', {value: {create: async () => null, get: async () => null}});
-  }, o.passkeyCreate ?? '');
-  await page.goto(`chrome-extension://${h.id}/${path}`);
-  return page;
-}
-const holdKdf = (p: Page) => p.evaluate(() => void ((window as unknown as {__kdf: {hold: boolean}}).__kdf.hold = true));
-const releaseKdf = async (p: Page) => {
-  // The hold relies on kdf.ts assigning `worker.onmessage`. Were it to use addEventListener, nothing
-  // would be held and the "creating" / "adding" shots would race the answer — so the held answer must
-  // be there before it is released, and the spec fails loudly otherwise (plan-2 review L6).
-  await expect.poll(() => p.evaluate(() => (window as unknown as {__kdf: {queue: unknown[]}}).__kdf.queue.length), {timeout: 60_000}).toBe(1);
-  await p.evaluate(() => {
-    const k = (window as unknown as {__kdf: {hold: boolean; queue: (() => void)[]}}).__kdf;
-    k.hold = false;
-    k.queue.splice(0).forEach(f => f());
-  });
-};
 const text = (p: Page, sel: string) => p.locator(sel);
 const stored = (sw: Worker): Promise<string> => sw.evaluate(async () => JSON.stringify(((await (chrome.storage.local as unknown as {get(k: string): Promise<Record<string, unknown>>}).get('v1_vault')) as Record<string, unknown>).v1_vault));
 
@@ -188,7 +123,8 @@ test('visual: the create run — #1, #2, #3, #4, #5, #6 and #7', async () => {
     await p.locator('#pw-field').fill(PASSWORD);
     await p.locator('#pw-cta').click();
     await expect(p.getByText('Creating your wallet…')).toBeVisible();
-    await expect(p.getByText('Securing your password takes a few seconds.')).toBeVisible();
+    // Scoped: #36's `changing` section (B1b-2b) carries the same line, hidden.
+    await expect(p.locator('#pw-creating').getByText('Securing your password takes a few seconds.')).toBeVisible();
     await shot(p, '05-creating');
     await releaseKdf(p);
 
@@ -247,7 +183,9 @@ test('visual: import — #8’s states, #5 import, and #40', async () => {
     await pastePhrase(p, E2E_MNEMONIC);
     await expect(p.getByText('Pasted from clipboard. Noctura cannot clear your clipboard — clear it yourself.')).toBeVisible();
     await expect(p.getByText('Valid 12-word BIP-39 phrase · checksum OK')).toBeVisible();
-    await shot(p, '08-paste-detected');
+    // The #imp-keep click above runs through the page's exclusive() gate (500 ms floor): wait for
+    // [Continue] to be enabled, or the shot can land inside the floor with every button disabled.
+    await shot(p, '08-paste-detected', {ready: p.locator('#imp-continue')});
 
     // The probe unanswered: "Checking…" held open, then the scheme choice (balances could not be checked).
     const release = h.fake.hold();
@@ -325,7 +263,7 @@ test('visual: #40 with two accounts, and the D26 state', async () => {
   }
 });
 
-test('visual: #9, #39, the restore and retry steps, the accounts and reveal forms', async () => {
+test('visual: #9, #39, the restore and retry steps', async () => {
   const h = await launchPopup('noctura-e2e-vis-unlock-');
   try {
     await h.sw.evaluate(async e => chrome.storage.local.set({v1_vault: e}), await makeEnvelope());
@@ -402,14 +340,6 @@ test('visual: #9, #39, the restore and retry steps, the accounts and reveal form
     await p.goto(`chrome-extension://${h.id}/unlock.html?mode=import&source=retry`);
     await expect(p.getByText('Confirm with the password of the wallet you are replacing')).toBeVisible();
     await shot(p, '08-retry-password');
-
-    await unlockWith(p, h.id, E2E_PASSWORD);
-    await p.goto(`chrome-extension://${h.id}/unlock.html?mode=accounts`);
-    await expect(p.getByRole('button', {name: 'Add an account'})).toBeVisible();
-    await shot(p, 'accounts-form');
-    await p.goto(`chrome-extension://${h.id}/unlock.html?mode=reveal`);
-    await expect(p.locator('#v-reveal h1')).toHaveText('Your recovery phrase');
-    await shot(p, 'reveal-form');
 
     await h.sw.evaluate(() => chrome.storage.local.set({v1_vault: null}));
     await p.goto(`chrome-extension://${h.id}/unlock.html`);

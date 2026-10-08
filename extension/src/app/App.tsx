@@ -15,6 +15,10 @@ import {Activity} from './screens/Activity';
 import {TxDetail} from './screens/TxDetail';
 import {Settings} from './screens/Settings';
 import {About} from './screens/About';
+import {Passkey} from './screens/Passkey';
+import {AccountsManager} from './screens/AccountsManager';
+import {DeleteWallet} from './screens/DeleteWallet';
+import {Security} from './screens/Security';
 import {Created} from './screens/Created';
 import {Imported} from './screens/Imported';
 import {Send} from './screens/Send';
@@ -187,7 +191,16 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
         />
       );
     } else {
-      screen = <Settings onAccounts={() => setAccounts(true)} onAbout={() => go({type: 'push', route: {screen: 'about'}})} />;
+      // C16: #31's Profile opens the accounts manager; the switcher stays on #11's avatar.
+      screen = (
+        <Settings
+          onProfile={() => go({type: 'push', route: {screen: 'accounts'}})}
+          onSecurity={() => go({type: 'push', route: {screen: 'security'}})}
+          onPasskey={() => go({type: 'push', route: {screen: 'passkey'}})}
+          onDelete={() => go({type: 'push', route: {screen: 'delete'}})}
+          onAbout={() => go({type: 'push', route: {screen: 'about'}})}
+        />
+      );
     }
   } else if (route.screen === 'receive') {
     screen = <Receive onBack={() => go({type: 'pop'})} />;
@@ -260,6 +273,20 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
         }}
       />
     );
+  } else if (route.screen === 'security') {
+    screen = (
+      <Security
+        onBack={() => go({type: 'pop'})}
+        onPasskey={() => go({type: 'push', route: {screen: 'passkey'}})}
+        onDelete={() => go({type: 'push', route: {screen: 'delete'}})}
+      />
+    );
+  } else if (route.screen === 'delete') {
+    screen = <DeleteWallet onBack={() => go({type: 'pop'})} />;
+  } else if (route.screen === 'accounts') {
+    screen = <AccountsManager onBack={() => go({type: 'pop'})} />;
+  } else if (route.screen === 'passkey') {
+    screen = <Passkey onBack={() => go({type: 'pop'})} />;
   } else {
     screen = <About onBack={() => go({type: 'pop'})} />;
   }

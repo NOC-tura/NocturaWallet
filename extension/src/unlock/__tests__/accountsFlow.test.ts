@@ -6,7 +6,7 @@ import {deriveSessionAccounts} from '../../vault/accounts';
 import {envelopeRevision} from '../../shared/envelopeRevision';
 import {MAX_ACCOUNTS} from '../../shared/envelopeRules';
 import {storeEnvelope} from '../../background/accountsStore';
-import {addAccount, removeAccount} from '../accountsFlow';
+import {addAccount, isAccountIndex, lowestFreeIndex, removeAccount} from '../accountsFlow';
 import type {Send, VaultStore} from '../types';
 import {memoryVault} from './memoryVault';
 
@@ -42,7 +42,7 @@ async function wallet(indexes: number[], scheme: 'slip10' | 'cli' = 'slip10', se
 describe('accounts in the vault page', () => {
   it('adds the next SLIP-0010 account: re-encrypted under the same password, stored over the opened revision, new keys handed over (positive control)', async () => {
     const {deps, store, sent, opened} = await wallet([0]);
-    expect(await addAccount(deps, {password: PASSWORD, kdf})).toBe('done');
+    expect(await addAccount(deps, {password: PASSWORD, kdf}, 1)).toBe('done');
     expect(store.calls).toEqual([{expectedRevision: envelopeRevision(opened), outcome: 'stored'}]);
     const env = store.writes[0]!;
     const expected = await deriveSessionAccounts(MNEMONIC, 'slip10', [0, 1]);
@@ -74,14 +74,14 @@ describe('accounts in the vault page', () => {
     expect(refused.sent.map(m => m.type)).toEqual(['vault.status', 'vault.setKeys', 'vault.lock']);
     expect((await refused.store.stored())?.accounts.map(a => a.index)).toEqual([0]);
     const neither = await wallet([0], 'slip10', MNEMONIC, undefined, type => ({ok: type !== 'vault.setKeys' && type !== 'vault.lock'}));
-    expect(await addAccount(neither.deps, {password: PASSWORD, kdf})).toBe('done-not-locked');
+    expect(await addAccount(neither.deps, {password: PASSWORD, kdf}, 1)).toBe('done-not-locked');
     expect(neither.sent.map(m => m.type)).toEqual(['vault.status', 'vault.setKeys', 'vault.lock']);
     expect((await neither.store.stored())?.accounts.map(a => a.index)).toEqual([0, 1]);
   });
 
   it(`refuses an account past MAX_ACCOUNTS (${MAX_ACCOUNTS}) by name, before re-encrypting`, async () => {
     const full = await wallet(Array.from({length: MAX_ACCOUNTS}, (_, i) => i));
-    expect(await addAccount(full.deps, {password: PASSWORD, kdf})).toBe('too-many-accounts');
+    expect(await addAccount(full.deps, {password: PASSWORD, kdf}, 1)).toBe('too-many-accounts');
     expect(full.store.calls).toHaveLength(0);
     expect(full.sent.map(m => m.type)).toEqual(['vault.status']);
     // Deriving 100 keys takes ~6 s under a parallel run's CPU load — past vitest's 5 s default.
@@ -89,33 +89,41 @@ describe('accounts in the vault page', () => {
 
   it('a cli wallet has exactly one account', async () => {
     const cli = await wallet([0], 'cli');
-    expect(await addAccount(cli.deps, {password: PASSWORD, kdf})).toBe('cli-single');
+    expect(await addAccount(cli.deps, {password: PASSWORD, kdf}, 1)).toBe('cli-single');
     expect(cli.store.calls).toHaveLength(0);
+  });
+
+  it('B1b-2b E13: a cli wallet\'s account 0 can never be removed, nor added over; nothing is stored', async () => {
+    const cli = await wallet([0], 'cli');
+    expect(await removeAccount(cli.deps, {password: PASSWORD, kdf}, 0)).toBe('last-account');
+    expect(await addAccount(cli.deps, {password: PASSWORD, kdf}, 0)).toBe('cli-single');
+    expect(cli.store.calls).toHaveLength(0);
+    expect((await cli.store.stored())?.accounts.map(a => a.index)).toEqual([0]);
   });
 
   it('a wrong password changes nothing; a proof mismatch locks the vault and changes nothing', async () => {
     const w = await wallet([0]);
-    expect(await addAccount(w.deps, {password: 'nope nope nope nope', kdf})).toBe('wrong');
+    expect(await addAccount(w.deps, {password: 'nope nope nope nope', kdf}, 1)).toBe('wrong');
     expect(w.store.calls).toHaveLength(0);
     const foreign = await wallet([0], 'slip10', OTHER);
-    expect(await addAccount(foreign.deps, {password: PASSWORD, kdf})).toBe('mismatch-locked');
+    expect(await addAccount(foreign.deps, {password: PASSWORD, kdf}, 1)).toBe('mismatch-locked');
     expect(foreign.sent.map(m => m.type)).toEqual(['vault.status', 'vault.lock']);
     expect(foreign.store.calls).toHaveLength(0);
   });
 
   it('busy: the whole flow runs again once — a fresh read and a fresh proof — and stores over the NEW revision', async () => {
     const {deps, store, opened, sent} = await wallet([0]);
-    // Another tab adds account 1 between this flow's read and its store.
+    // Another tab adds account 3 between this flow's read and its store.
     let moved = '';
     store.setBeforeStore(async call => {
       if (call !== 0) return;
       const dk = await unlockWithPassword(opened, PASSWORD, kdf);
-      const next = await reencryptForAccounts(opened, dk, [{index: 0, name: 'Account 1'}, {index: 1, name: 'Account 2'}]);
+      const next = await reencryptForAccounts(opened, dk, [{index: 0, name: 'Account 1'}, {index: 2, name: 'Account 3'}]);
       dk.fill(0);
       moved = envelopeRevision(next);
       expect(await storeEnvelope(store.ext, envelopeRevision(opened), next)).toBe('stored');
     });
-    expect(await addAccount(deps, {password: PASSWORD, kdf})).toBe('done');
+    expect(await addAccount(deps, {password: PASSWORD, kdf}, 1)).toBe('done');
     expect(store.calls).toEqual([
       {expectedRevision: envelopeRevision(opened), outcome: 'busy'},
       {expectedRevision: moved, outcome: 'stored'},
@@ -123,8 +131,54 @@ describe('accounts in the vault page', () => {
     // Ours twice (the proof is re-run, not skipped), the other tab's once.
     expect(kdfCalls).toBe(3);
     expect(sent.filter(m => m.type === 'vault.status')).toHaveLength(2);
-    // The second attempt built on the other tab's envelope: 0, 1, and the new 2.
-    expect((await store.stored())?.accounts.map(a => a.index)).toEqual([0, 1, 2]);
+    // The second attempt built on the other tab's envelope: 0, 2, and ours appended — 1.
+    expect((await store.stored())?.accounts.map(a => a.index)).toEqual([0, 2, 1]);
+  });
+
+  it('B1b-2b E13: re-adding a removed middle account brings back the same address (explicit index, C6)', async () => {
+    const three = await wallet([0, 1, 2]);
+    const before = (await three.store.stored())!.accounts.find(a => a.index === 1)!.publicKey;
+    expect(await removeAccount(three.deps, {password: PASSWORD, kdf}, 1)).toBe('done');
+    expect((await three.store.stored())?.accounts.map(a => a.index)).toEqual([0, 2]);
+    expect(await addAccount(three.deps, {password: PASSWORD, kdf}, 1)).toBe('done');
+    const after = (await three.store.stored())!;
+    expect(after.accounts.map(a => a.index)).toEqual([0, 2, 1]);
+    expect(after.accounts.find(a => a.index === 1)).toEqual({index: 1, name: 'Account 2', publicKey: before});
+  });
+
+  it('B1b-2b E13: index-taken after a proof; bad-index before anything (no read, no proof, PRF zeroed)', async () => {
+    const two = await wallet([0, 1]);
+    expect(await addAccount(two.deps, {password: PASSWORD, kdf}, 1)).toBe('index-taken');
+    expect(await addAccount(two.deps, {password: PASSWORD, kdf}, 0)).toBe('index-taken');
+    expect(two.store.calls).toHaveLength(0);
+    expect((await two.store.stored())?.accounts.map(a => a.index)).toEqual([0, 1]);
+    for (const bad of [-1, 1.5, 2 ** 31, Number.NaN, Number.MAX_SAFE_INTEGER + 1]) {
+      const w = await wallet([0]);
+      const prfOutput = crypto.getRandomValues(new Uint8Array(32));
+      expect(await addAccount(w.deps, {prfOutput}, bad)).toBe('bad-index');
+      expect(prfOutput.every(b => b === 0)).toBe(true);
+      expect(w.sent).toEqual([]);
+      expect(kdfCalls).toBe(0);
+    }
+    // The hardened limit itself is an account number.
+    expect(isAccountIndex(2 ** 31 - 1)).toBe(true);
+    expect(isAccountIndex(2 ** 31)).toBe(false);
+  });
+
+  it('C6: lowestFreeIndex', () => {
+    expect(lowestFreeIndex([0])).toBe(1);
+    expect(lowestFreeIndex([0, 2])).toBe(1);
+    expect(lowestFreeIndex([1, 2])).toBe(0);
+    expect(lowestFreeIndex([0, 1, 2])).toBe(3);
+    expect(lowestFreeIndex([])).toBe(0);
+  });
+
+  it('C5: a remove the background refuses as send-open is `send-open`, and nothing changes', async () => {
+    const two = await wallet([0, 1]);
+    const refusing = vi.fn<VaultStore['storeEnvelope']>(async () => 'send-open');
+    expect(await removeAccount({...two.deps, storeEnvelope: refusing}, {password: PASSWORD, kdf}, 1)).toBe('send-open');
+    expect(refusing).toHaveBeenCalledTimes(1);
+    expect(two.sent.filter(m => m.type === 'vault.setKeys')).toHaveLength(0);
   });
 
   it('a passkey factor survives the retry and is zeroed only at the end', async () => {
@@ -138,7 +192,7 @@ describe('accounts in the vault page', () => {
       await storeEnvelope(store.ext, envelopeRevision(opened), next);
     });
     const prfOutput = prf.slice();
-    expect(await addAccount(deps, {prfOutput})).toBe('done');
+    expect(await addAccount(deps, {prfOutput}, 1)).toBe('done');
     expect(store.calls.map(c => c.outcome)).toEqual(['busy', 'stored']);
     expect(prfOutput.every(b => b === 0)).toBe(true);
   });
@@ -146,14 +200,14 @@ describe('accounts in the vault page', () => {
   it('busy twice gives up; a stored envelope the background cannot read is damaged, not retried; neither hands over keys', async () => {
     const {deps, sent} = await wallet([0]);
     const busy = vi.fn<VaultStore['storeEnvelope']>(async () => 'busy');
-    expect(await addAccount({...deps, storeEnvelope: busy}, {password: PASSWORD, kdf})).toBe('failed');
+    expect(await addAccount({...deps, storeEnvelope: busy}, {password: PASSWORD, kdf}, 1)).toBe('failed');
     expect(busy).toHaveBeenCalledTimes(2);
     expect(kdfCalls).toBe(2);
     const invalid = vi.fn<VaultStore['storeEnvelope']>(async () => 'stored-invalid');
-    expect(await addAccount({...deps, storeEnvelope: invalid}, {password: PASSWORD, kdf})).toBe('damaged');
+    expect(await addAccount({...deps, storeEnvelope: invalid}, {password: PASSWORD, kdf}, 1)).toBe('damaged');
     expect(invalid).toHaveBeenCalledTimes(1);
     const gone = vi.fn<VaultStore['storeEnvelope']>(async () => 'no-wallet');
-    expect(await addAccount({...deps, storeEnvelope: gone}, {password: PASSWORD, kdf})).toBe('no-wallet');
+    expect(await addAccount({...deps, storeEnvelope: gone}, {password: PASSWORD, kdf}, 1)).toBe('no-wallet');
     expect(sent.filter(m => m.type === 'vault.setKeys')).toHaveLength(0);
   });
 
@@ -168,7 +222,7 @@ describe('accounts in the vault page', () => {
     try {
       const ok = await wallet([0]);
       const refused = await wallet([0, 1]);
-      expect(await addAccount(ok.deps, {password: PASSWORD, kdf})).toBe('done');
+      expect(await addAccount(ok.deps, {password: PASSWORD, kdf}, 1)).toBe('done');
       expect(await removeAccount({...refused.deps, storeEnvelope: async () => 'busy'}, {password: PASSWORD, kdf}, 1)).toBe('failed');
       expect(await removeAccount({...refused.deps, storeEnvelope: async () => 'malformed'}, {password: PASSWORD, kdf}, 1)).toBe('failed');
       // One for the add, two for the busy remove (the proof re-run), one for the refused remove.
