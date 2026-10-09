@@ -1454,6 +1454,28 @@ describe('#20 and the address book: review fix round 1', () => {
     expect(w.sent.filter(t => t === 'contacts.list')).toHaveLength(2);
   });
 
+  // (b) fail closed: between the close and the re-read's answer #20 does not know the book, so no row (no Add to press
+  // on an address that may have been saved meanwhile); the row comes back once the answer says it is still not saved.
+  it('after a close, no row until the re-read answers; then back for an address still not saved', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(r => {
+      release = r;
+    });
+    let lists = 0;
+    await renderConfirm({known: false, gate: async m => (m.type === 'contacts.list' && ++lists > 1 ? held : undefined)});
+    await sendButton();
+    fireEvent.click(await screen.findByRole('button', {name: 'Add'}));
+    await screen.findByRole('dialog', {name: 'Add contact'});
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', {name: 'Cancel'}));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    expect(lists).toBe(2);
+    expect(row()).toBeNull();
+    expect(screen.queryByRole('button', {name: 'Add'})).toBeNull();
+    release();
+    await waitFor(() => expect(row()).not.toBeNull());
+  });
+
   it('M1 treasury > contact: a contact on the treasury address still reads "Noctura treasury"', async () => {
     await renderConfirm({intent: {token: 'SOL', recipient: MAINNET_FEE_TREASURY, amount: 10_000_000n}, before: ext => ext.local.set(CONTACTS_KEY, [{address: MAINNET_FEE_TREASURY, name: 'Not the treasury'}])});
     await sendButton();
