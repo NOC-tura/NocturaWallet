@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
-import {cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react';
+import {act, cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
 import {base58} from '@scure/base';
-import {renderInWallet, setupWallet, walletReader} from './harness';
+import {renderInWallet, setupWallet, walletReader, type WalletOptions} from './harness';
 import {ExplorerLink, TxDetail} from '../screens/TxDetail';
 import {explorerUrl} from '../explorer';
 import {useWallet, WalletProvider} from '../WalletContext';
@@ -11,6 +11,10 @@ import {decodeHistoryEntry} from '../../../../core/solana/history';
 import {MAINNET_FEE_TREASURY} from '../../../../core/fees/transferMarkup';
 import type {Engine, HistoryItem} from '../engine';
 import {ACCOUNT, RECIPIENT} from '../../background/__tests__/fixtures';
+import {CONTACTS_KEY} from '../../background/contacts';
+import {lock} from '../../background/autolock';
+import {KNOWN_RECIPIENTS_KEY} from '../../background/knownRecipients';
+import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {COUNTERPARTY, otherTx, sentSol, sig} from '../../../e2e/historyFixtures';
 
 // Spec §6.3 (#27) and §6.5 (the one external link).
@@ -51,8 +55,9 @@ describe('#27 tx-detail', () => {
     // The fee line as index.html 12136 draws it (Task 17 fix round 1, C8/C9): grouped, with its dollars.
     expect(await screen.findByText('0.000 005 SOL · $0.0007')).toBeTruthy();
     expect(screen.getByRole('button', {name: 'Copy recipient'})).toBeTruthy();
-    // Absent by decision: Block and Memo (G13), Save (B1b-2b), share (D19).
-    for (const gone of ['Block', 'Memo', 'Save', 'Share']) expect(screen.queryByText(gone)).toBeNull();
+    // Absent by decision: Block and Memo (G13), share (D19). Plan 2: [Save] beside [Explorer] (27a).
+    for (const gone of ['Block', 'Memo', 'Share']) expect(screen.queryByText(gone)).toBeNull();
+    expect(await screen.findByRole('button', {name: 'Save'})).toBeTruthy();
     expect((screen.getByRole('link', {name: 'Explorer'}) as HTMLAnchorElement).getAttribute('href')).toBe(`https://solscan.io/tx/${sig(1)}`);
   });
 
@@ -452,5 +457,347 @@ describe('#27 and the model: a successful search reports itself (m.reached)', ()
     release();
     expect(await screen.findByText('This transaction is not in the recent history yet.')).toBeTruthy();
     await waitFor(() => expect(screen.getByTestId('net-mode').textContent).toBe('reconnecting'));
+  });
+});
+
+// B1b-2b plan 2 (§6.3; review H3): #27's [Save] / [Save sender] and the contact label.
+describe('#27 and the address book', () => {
+  const SELECTORS = selectorsOf(UI_SHEETS);
+  const showWith = async (i: HistoryItem, before?: WalletOptions['before']) => {
+    const w = await renderInWallet(<TxDetail signature={i.signature} account={ACCOUNT.publicKey} item={i} onBack={() => undefined} canRetry onTryAgain={tryAgain} />, {before});
+    await screen.findByText('Transaction');
+    return w;
+  };
+  const actions = () => [...document.querySelectorAll('.actions-row > *')].map(e => e.textContent);
+  const sendTo = item({counterparty: COUNTERPARTY});
+  const receivedFrom = (over: Partial<HistoryItem> = {}) => item({kind: 'received', token: 'USDC', amount: 250_000_000n, counterparty: COUNTERPARTY, ...over});
+
+  it('27a: [Explorer] then [Save] (the bookmark icon); Save opens the add sheet prefilled with the recipient', async () => {
+    await showWith(sendTo);
+    await screen.findByRole('button', {name: 'Save'});
+    expect(actions()).toEqual(['Explorer', 'Save']);
+    expect(screen.getByRole('button', {name: 'Save'}).className).toBe('btn btn-secondary');
+    fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    expect([...dialog.querySelectorAll('.app-contact-addr .addr-groups > span')].map(x => x.textContent)).toEqual(COUNTERPARTY.match(/.{1,4}/g));
+    expect(unstyledClasses(document.querySelector('.s-txd')!, SELECTORS)).toEqual([]);
+  });
+
+  // Rule 6 (spec §7): #27's Save is a LockedButton — the lock is what is pinned (a second open looks the same).
+  it('rule 6: Save locks on the tap', async () => {
+    await showWith(sendTo);
+    const save = (await screen.findByRole('button', {name: 'Save'})) as HTMLButtonElement;
+    fireEvent.click(save);
+    expect(save.disabled).toBe(true);
+    expect(save.className).toBe('btn btn-secondary is-busy');
+  });
+
+  // The alive guard after the book read: a late `locked` must not reload after #27 went.
+  it('a book answer after #27 went does nothing: a late `locked` reloads nothing', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(r => {
+      release = r;
+    });
+    let gone = false;
+    const after: string[] = [];
+    let ext: Parameters<typeof lock>[0] | null = null;
+    await renderInWallet(<TxDetail signature={sendTo.signature} account={ACCOUNT.publicKey} item={sendTo} onBack={() => undefined} canRetry onTryAgain={tryAgain} />, {
+      before: async e => {
+        ext = e;
+      },
+      gate: async m => {
+        const type = (m as {type: string}).type;
+        if (gone) after.push(type);
+        if (type === 'contacts.list') await held;
+      },
+    });
+    await screen.findByText('Transaction');
+    await lock(ext!);
+    gone = true;
+    cleanup();
+    release();
+    await act(async () => new Promise(r => setTimeout(r, 30)));
+    expect(after).toEqual([]);
+  });
+
+  it('saved: the To label reads "From your address book: <name>", and Save opens the edit sheet', async () => {
+    const w = await showWith(sendTo);
+    fireEvent.click(await screen.findByRole('button', {name: 'Save'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    fireEvent.change(dialog.querySelector('#contact-name')!, {target: {value: 'Supplier'}});
+    fireEvent.click(within(dialog).getByRole('button', {name: 'Save'}));
+    expect(await screen.findByText('From your address book: Supplier')).toBeTruthy();
+    expect(await w.ext.local.get(CONTACTS_KEY)).toEqual([{address: COUNTERPARTY, name: 'Supplier'}]);
+    // Its 500 ms lock (rule 6) ends first.
+    const save = screen.getByRole('button', {name: 'Save'}) as HTMLButtonElement;
+    await waitFor(() => expect(save.disabled).toBe(false));
+    fireEvent.click(save);
+    const edit = await screen.findByRole('dialog', {name: 'Edit contact'});
+    expect((edit.querySelector('#contact-name') as HTMLInputElement).value).toBe('Supplier');
+  });
+
+  it('27c: [Save sender]; a sender never sent to → O77, no dust banner for 250 USDC; the From label once saved', async () => {
+    await showWith(receivedFrom());
+    fireEvent.click(await screen.findByRole('button', {name: 'Save sender'}));
+    expect(await screen.findByText('You have never sent to this address — it only sent to you.')).toBeTruthy();
+    expect(document.querySelector('.banner.danger')).toBeNull();
+    fireEvent.change(document.getElementById('contact-name')!, {target: {value: 'Client'}});
+    fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+    const from = (await screen.findByText('From your address book: Client')).closest('.detail-row');
+    expect(from?.querySelector('.lbl')?.textContent).toBe('From');
+  });
+
+  it.each([
+    ['0.009999 USDC', {token: 'USDC' as const, amount: 9_999n}],
+    ['0.000999999 SOL', {token: 'SOL' as const, amount: 999_999n}],
+    ['an undecodable amount', {amount: null}],
+  ])('27c dust (%s): the danger banner, O77 and "Save anyway"', async (_, over) => {
+    await showWith(receivedFrom(over));
+    fireEvent.click(await screen.findByRole('button', {name: 'Save sender'}));
+    await screen.findByRole('dialog', {name: 'Add contact'});
+    expect(document.querySelector('.banner.danger')?.textContent).toBe('Tiny transfer — a common way to plant a look-alike address. Compare every character with an address you trust before saving.');
+    expect(await screen.findByText('You have never sent to this address — it only sent to you.')).toBeTruthy();
+    expect(screen.getByRole('button', {name: 'Save anyway'})).toBeTruthy();
+  });
+
+  it('27c from a sender this wallet has paid: no warning', async () => {
+    await showWith(receivedFrom({amount: 1n}), ext => ext.local.set(KNOWN_RECIPIENTS_KEY, [{address: COUNTERPARTY, at: 1}]));
+    fireEvent.click(await screen.findByRole('button', {name: 'Save sender'}));
+    await screen.findByRole('dialog', {name: 'Add contact'});
+    await waitFor(() => expect(screen.queryByText(/You have never sent/)).toBeNull());
+    expect(document.querySelector('.banner.danger')).toBeNull();
+  });
+
+  it('no button on a purchase, an other, a failed transaction, or a row with no counter-party', async () => {
+    for (const i of [item({kind: 'purchase', counterparty: null}), item({kind: 'other', counterparty: COUNTERPARTY}), item({failed: true, counterparty: COUNTERPARTY}), item({counterparty: null})]) {
+      cleanup();
+      await showWith(i);
+      await act(async () => new Promise(r => setTimeout(r, 20)));
+      expect(screen.queryByRole('button', {name: /^Save/})).toBeNull();
+    }
+  });
+
+  it('the book unread (refused): no Save button, no contact label', async () => {
+    await renderInWallet(<TxDetail signature={sendTo.signature} account={ACCOUNT.publicKey} item={sendTo} onBack={() => undefined} canRetry onTryAgain={tryAgain} />, {
+      before: ext => ext.local.set(CONTACTS_KEY, [{address: COUNTERPARTY, name: 'Supplier'}]),
+      gate: m => {
+        if ((m as {type: string}).type === 'contacts.list') throw new Error('worker restarting');
+      },
+    });
+    await waitFor(() => expect(document.body.textContent).toContain(ACCOUNT.publicKey));
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    expect(screen.queryByRole('button', {name: 'Save'})).toBeNull();
+    expect(screen.queryByText(/From your address book/)).toBeNull();
+  });
+
+  it('own > contact: an own account saved as a contact keeps "Your account: Savings"', async () => {
+    await showWith(item({}), ext => ext.local.set(CONTACTS_KEY, [{address: RECIPIENT, name: 'Not my savings'}]));
+    await screen.findByRole('button', {name: 'Save'});
+    expect(screen.getByText('Your account: Savings')).toBeTruthy();
+    expect(screen.queryByText(/From your address book/)).toBeNull();
+  });
+
+  // Task 8 (D36): a SENT row the extension never confirmed — the history never feeds `known` — keeps O72, fail closed,
+  // and is not the received wording (no O77, no dust banner).
+  it('27a for a recipient this extension never paid: O72, not O77, no dust banner', async () => {
+    await showWith(sendTo);
+    fireEvent.click(await screen.findByRole('button', {name: 'Save'}));
+    await screen.findByRole('dialog', {name: 'Add contact'});
+    expect(await screen.findByText('You have never sent to this address.')).toBeTruthy();
+    expect(screen.queryByText(/it only sent to you/)).toBeNull();
+    expect(document.querySelector('.banner.danger')).toBeNull();
+    expect(within(screen.getByRole('dialog', {name: 'Add contact'})).getByRole('button', {name: 'Save'})).toBeTruthy();
+  });
+
+  // The threat model (address poisoning, §6.3, review H3): the user has paid PAID; a look-alike — the same first four and
+  // last four characters — sends dust. [Save sender] warns (O77, the dust banner, "Save anyway"), saving it is allowed,
+  // and the save never makes it known: the stored known list is unchanged, the engine still says `known: false`, and the
+  // edit sheet re-opened from #27 warns exactly as before.
+  it('poisoning: [Save sender] on dust from a look-alike of a paid address warns, and saving never makes it known', async () => {
+    const LOOKALIKE: string = 'H4qZ7Lp2Wc9tKqRbV3mXnYdE8sFgUhJk2PzT6vB4m2N1';
+    expect([LOOKALIKE.slice(0, 4), LOOKALIKE.slice(-4), LOOKALIKE === COUNTERPARTY]).toEqual([COUNTERPARTY.slice(0, 4), COUNTERPARTY.slice(-4), false]);
+    const KNOWN = [{address: COUNTERPARTY, at: 1}];
+    const w = await showWith(receivedFrom({counterparty: LOOKALIKE, token: 'SOL', amount: 1_000n}), ext => ext.local.set(KNOWN_RECIPIENTS_KEY, KNOWN));
+    const warned = async (title: string) => {
+      const dialog = await screen.findByRole('dialog', {name: title});
+      expect([...dialog.querySelectorAll('.app-contact-addr .addr-groups > span')].map(x => x.textContent).join('')).toBe(LOOKALIKE);
+      expect(await within(dialog).findByText('You have never sent to this address — it only sent to you.')).toBeTruthy();
+      expect(dialog.querySelector('.banner.danger')?.textContent).toBe('Tiny transfer — a common way to plant a look-alike address. Compare every character with an address you trust before saving.');
+      return dialog;
+    };
+    fireEvent.click(await screen.findByRole('button', {name: 'Save sender'}));
+    const dialog = await warned('Add contact');
+    fireEvent.change(dialog.querySelector('#contact-name')!, {target: {value: 'Binance'}});
+    fireEvent.click(within(dialog).getByRole('button', {name: 'Save anyway'}));
+    const label = await screen.findByText('From your address book: Binance');
+    expect(label.closest('.detail-row')?.querySelector('.lbl')?.textContent).toBe('From');
+    expect(await w.ext.local.get(CONTACTS_KEY)).toEqual([{address: LOOKALIKE, name: 'Binance'}]);
+    // Never known: the list the background writes is untouched, and its own answer is still "never sent".
+    expect(await w.ext.local.get(KNOWN_RECIPIENTS_KEY)).toEqual(KNOWN);
+    const info = await w.engine.recipientInfo(ACCOUNT.publicKey, LOOKALIKE);
+    expect(info.ok && info.data.known).toBe(false);
+    // Re-opened (now the edit sheet), it warns as before.
+    const again = screen.getByRole('button', {name: 'Save sender'}) as HTMLButtonElement;
+    await waitFor(() => expect(again.disabled).toBe(false));
+    fireEvent.click(again);
+    const edit = await warned('Edit contact');
+    expect((edit.querySelector('#contact-name') as HTMLInputElement).value).toBe('Binance');
+    expect(within(edit).getByRole('button', {name: 'Save anyway'})).toBeTruthy();
+  });
+
+  // D35: the received From row carries the full label — own > treasury > contact, as the sent To row.
+  it.each([
+    ['own', RECIPIENT, 'Your account: Savings'],
+    ['treasury', MAINNET_FEE_TREASURY, 'Noctura treasury'],
+  ])('the received From row: %s > contact', async (_, from, label) => {
+    await showWith(receivedFrom({counterparty: from}), ext => ext.local.set(CONTACTS_KEY, [{address: from, name: 'A contact'}]));
+    await screen.findByRole('button', {name: 'Save sender'});
+    expect(screen.getByText(label).closest('.detail-row')?.querySelector('.lbl')?.textContent).toBe('From');
+    expect(screen.queryByText(/From your address book/)).toBeNull();
+  });
+
+  it('treasury > contact on the sent To row', async () => {
+    await showWith(item({counterparty: MAINNET_FEE_TREASURY}), ext => ext.local.set(CONTACTS_KEY, [{address: MAINNET_FEE_TREASURY, name: 'Not the treasury'}]));
+    await screen.findByRole('button', {name: 'Save'});
+    expect(screen.getByText('Noctura treasury').closest('.detail-row')?.querySelector('.lbl')?.textContent).toBe('To');
+    expect(screen.queryByText(/From your address book/)).toBeNull();
+  });
+
+  // Task 7 fix round 1 (I1), carried: every close re-reads the book, and no Save is offered until that read answers. A
+  // contact saved elsewhere while the sheet was open is an edit, never a second "add" that would silently rename it.
+  it('a sheet close re-reads the book: no Save until it answers, then Save opens the edit sheet for an address saved meanwhile', async () => {
+    // The first book read once the sheet is open (the close's re-read) is held.
+    let armed = false;
+    let lists = 0;
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(r => {
+      release = r;
+    });
+    let ext: Parameters<typeof lock>[0] | null = null;
+    await renderInWallet(<TxDetail signature={sendTo.signature} account={ACCOUNT.publicKey} item={sendTo} onBack={() => undefined} canRetry onTryAgain={tryAgain} />, {
+      before: async e => {
+        ext = e;
+      },
+      gate: async m => {
+        if ((m as {type: string}).type !== 'contacts.list' || !armed) return;
+        if (++lists === 1) await held;
+      },
+    });
+    fireEvent.click(await screen.findByRole('button', {name: 'Save'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    armed = true;
+    // Saved elsewhere (another window) while this sheet is open.
+    await ext!.local.set(CONTACTS_KEY, [{address: COUNTERPARTY, name: 'Supplier'}]);
+    fireEvent.click(within(dialog).getByRole('button', {name: 'Cancel'}));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await act(async () => new Promise(r => setTimeout(r, 30)));
+    expect(lists).toBe(1);
+    expect(screen.queryByRole('button', {name: 'Save'})).toBeNull();
+    release();
+    expect(await screen.findByText('From your address book: Supplier')).toBeTruthy();
+    const save = screen.getByRole('button', {name: 'Save'}) as HTMLButtonElement;
+    await waitFor(() => expect(save.disabled).toBe(false));
+    fireEvent.click(save);
+    expect(await screen.findByRole('dialog', {name: 'Edit contact'})).toBeTruthy();
+  });
+
+  it('Delete from #27\'s edit sheet: the label goes, and Save opens the add sheet again', async () => {
+    await showWith(sendTo, ext => ext.local.set(CONTACTS_KEY, [{address: COUNTERPARTY, name: 'Supplier'}]));
+    expect(await screen.findByText('From your address book: Supplier')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+    const edit = await screen.findByRole('dialog', {name: 'Edit contact'});
+    fireEvent.click(within(edit).getByRole('button', {name: 'Delete contact'}));
+    fireEvent.click(await screen.findByRole('button', {name: 'Delete'}));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(screen.queryByText(/From your address book/)).toBeNull());
+    const save = (await screen.findByRole('button', {name: 'Save'})) as HTMLButtonElement;
+    await waitFor(() => expect(save.disabled).toBe(false));
+    fireEvent.click(save);
+    expect(await screen.findByRole('dialog', {name: 'Add contact'})).toBeTruthy();
+  });
+
+  // The positive control for the late-`locked` test above: while #27 is shown, a `locked` book answer reloads (a
+  // wallet.state read) — so that test's empty list is the guard, not a silent path.
+  it('a timely `locked` on the book read reloads (a wallet.state read)', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(r => {
+      release = r;
+    });
+    const sent: string[] = [];
+    let ext: Parameters<typeof lock>[0] | null = null;
+    await renderInWallet(<TxDetail signature={sendTo.signature} account={ACCOUNT.publicKey} item={sendTo} onBack={() => undefined} canRetry onTryAgain={tryAgain} />, {
+      before: async e => {
+        ext = e;
+      },
+      gate: async m => {
+        const type = (m as {type: string}).type;
+        sent.push(type);
+        if (type === 'contacts.list') await held;
+      },
+    });
+    await screen.findByText('Transaction');
+    await lock(ext!);
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    const before = sent.filter(t => t === 'wallet.state').length;
+    release();
+    await waitFor(() => expect(sent.filter(t => t === 'wallet.state').length).toBeGreaterThan(before));
+  });
+
+  // #27 stays when another account is selected (it shows the route owner's transaction): a book answer asked for before
+  // the switch is dropped — the switch reads the book afresh, and only that answer offers Save. The read out at the
+  // switch is a sheet close's re-read, so Save is hidden (stale) until an answer is taken.
+  it('another account selected while the book read is out: the old answer is dropped, the fresh read answers', async () => {
+    let armed = false;
+    let lists = 0;
+    let releaseOld: () => void = () => undefined;
+    let releaseNew: () => void = () => undefined;
+    const old = new Promise<void>(r => {
+      releaseOld = r;
+    });
+    const fresh = new Promise<void>(r => {
+      releaseNew = r;
+    });
+    function SwitchTo1() {
+      const m = useWallet();
+      return (
+        <button
+          type="button"
+          onClick={() =>
+            void (async () => {
+              await m.engine.select(1);
+              await m.reload();
+            })()
+          }
+        >
+          switch
+        </button>
+      );
+    }
+    await renderInWallet(
+      <>
+        <TxDetail signature={sendTo.signature} account={ACCOUNT.publicKey} item={sendTo} onBack={() => undefined} canRetry onTryAgain={tryAgain} />
+        <SwitchTo1 />
+      </>,
+      {
+        gate: async m => {
+          if ((m as {type: string}).type !== 'contacts.list' || !armed) return;
+          lists += 1;
+          await (lists === 1 ? old : fresh);
+        },
+      },
+    );
+    fireEvent.click(await screen.findByRole('button', {name: 'Save'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    armed = true;
+    fireEvent.click(within(dialog).getByRole('button', {name: 'Cancel'}));
+    await waitFor(() => expect(lists).toBe(1));
+    expect(screen.queryByRole('button', {name: 'Save'})).toBeNull();
+    fireEvent.click(screen.getByRole('button', {name: 'switch'}));
+    await waitFor(() => expect(lists).toBe(2));
+    releaseOld();
+    await act(async () => new Promise(r => setTimeout(r, 30)));
+    expect(screen.queryByRole('button', {name: 'Save'})).toBeNull();
+    releaseNew();
+    expect(await screen.findByRole('button', {name: 'Save'})).toBeTruthy();
   });
 });
