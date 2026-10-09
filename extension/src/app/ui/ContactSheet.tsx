@@ -132,12 +132,31 @@ export function ContactSheet({
   const fromSender = received !== undefined && known !== true;
   const dust = fromSender && isDust(received.token, received.amount);
 
+  /**
+   * Task 7 fix round 1 (I1): a save or a delete is out. The sheet cannot be closed until it answers — Esc, the backdrop,
+   * the grabber, ✕ and Cancel are ignored (Cancel and Keep are also disabled) — so a save never lands behind a closed
+   * sheet: #20 would go on offering "Add" for an address that is by then saved, and a second Add would silently rename it.
+   * The ref guards in the same frame; the state draws the disabled buttons.
+   */
+  const inFlight = useRef(false);
+  const [pending, setPending] = useState(false);
+  const settle = () => {
+    inFlight.current = false;
+    setPending(false);
+  };
+  const close = () => {
+    if (!inFlight.current) onClose();
+  };
+
   const save = async () => {
     setError(null);
     if (!valid) return setError({field: 'address', text: CONTACT_TEXT.badAddress});
     if (cleanName(name) === null) return setError({field: 'name', text: CONTACT_TEXT.badName});
+    inFlight.current = true;
+    setPending(true);
     const r = await engine.contactSet(address, name);
     if (!alive.current) return;
+    settle();
     if (r.ok) return onSaved({address, name: cleanName(name) ?? name});
     if (r.error === 'locked') return void reload();
     if (r.error === 'duplicate-name') return setError({field: 'name', text: CONTACT_TEXT.duplicateName});
@@ -149,8 +168,11 @@ export function ContactSheet({
   const remove = async () => {
     if (mode.kind !== 'edit') return;
     setError(null);
+    inFlight.current = true;
+    setPending(true);
     const r = await engine.contactRemove(mode.address);
     if (!alive.current) return;
+    settle();
     if (r.ok) {
       onDeleted?.(mode.address);
       return onClose();
@@ -186,7 +208,7 @@ export function ContactSheet({
 
   if (confirming && mode.kind === 'edit') {
     return (
-      <Sheet title={CONTACT_TEXT.editTitle} onClose={onClose} tall>
+      <Sheet title={CONTACT_TEXT.editTitle} onClose={close} tall>
         <div className="app-contact-sheet">
           <p className="noc-body app-contact-question">{CONTACT_TEXT.deleteQuestion}</p>
           <p className="noc-body-lg app-contact-name">{mode.name}</p>
@@ -196,7 +218,7 @@ export function ContactSheet({
           {message('form')}
           <div className="app-contact-actions">
             {/* Review fix round 1, M6: a failed delete's message belongs to the confirm; Keep leaves it there. */}
-            <button type="button" className="btn btn-secondary" ref={keepRef} onClick={keep}>
+            <button type="button" className="btn btn-secondary" ref={keepRef} disabled={pending} onClick={keep}>
               {CONTACT_TEXT.keep}
             </button>
             <LockedButton className="btn btn-destructive" onPress={remove}>
@@ -214,7 +236,7 @@ export function ContactSheet({
   const invalidTyped = fixed === null && address !== '' && !valid;
 
   return (
-    <Sheet title={mode.kind === 'edit' ? CONTACT_TEXT.editTitle : CONTACT_TEXT.addTitle} onClose={onClose} tall>
+    <Sheet title={mode.kind === 'edit' ? CONTACT_TEXT.editTitle : CONTACT_TEXT.addTitle} onClose={close} tall>
       <div className="app-contact-sheet">
         {fixed === null ? (
           <>
@@ -287,7 +309,7 @@ export function ContactSheet({
         {message('form')}
         {/* Cancel and Save side by side (the design's `.sticky-bar.row`): stacked, the dust state ran past the panel. */}
         <div className="app-contact-actions">
-          <button type="button" className="btn btn-secondary" onClick={onClose}>
+          <button type="button" className="btn btn-secondary" disabled={pending} onClick={close}>
             {CONTACT_TEXT.cancel}
           </button>
           <LockedButton className="btn btn-primary" disabled={!valid} onPress={save}>

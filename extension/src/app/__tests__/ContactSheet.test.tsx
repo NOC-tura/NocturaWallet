@@ -605,3 +605,84 @@ describe('the contact sheet: review fix round 1', () => {
     expect(screen.queryByText(CONTACT_TEXT.failed)).toBeNull();
   });
 });
+
+// Task 7 review fix round 1 (I1): the sheet cannot be closed while a save or a delete is out — every close path is
+// ignored (Cancel and Keep disabled) until the answer lands; after a failed answer it closes again.
+describe('the contact sheet: no close while a save or delete is out (Task 7 fix round 1)', () => {
+  const hold = (type: string) => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(r => {
+      release = r;
+    });
+    return {release, gate: (m: unknown) => ((m as {type: string}).type === type ? held : undefined)};
+  };
+  const tryEveryClose = () => {
+    fireEvent.keyDown(document, {key: 'Escape'});
+    fireEvent.click(screen.getByTestId('sheet-backdrop'));
+    for (const b of screen.getAllByRole('button', {name: 'Close'})) fireEvent.click(b);
+  };
+
+  it('save out: Esc, backdrop, grabber, ✕ and Cancel (disabled) do nothing; the answer hands the contact back', async () => {
+    const onSaved = vi.fn();
+    const onClose = vi.fn();
+    const h = hold('contacts.set');
+    await renderInWallet(sheet({onSaved, onClose}), {gate: h.gate});
+    fireEvent.change(nameField(), {target: {value: 'Supplier'}});
+    fireEvent.click(save());
+    const cancel = screen.getByRole('button', {name: 'Cancel'}) as HTMLButtonElement;
+    expect(cancel.disabled).toBe(true);
+    cancel.disabled = false;
+    fireEvent.click(cancel);
+    tryEveryClose();
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    expect(onClose).not.toHaveBeenCalled();
+    h.release();
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({address: SENDER, name: 'Supplier'}));
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('a failed save: the sheet closes again (Cancel enabled, Esc closes)', async () => {
+    const onClose = vi.fn();
+    await renderInWallet(sheet({onClose}), {
+      gate: m => {
+        if ((m as {type: string}).type === 'contacts.set') throw new Error('worker restarting');
+      },
+    });
+    fireEvent.change(nameField(), {target: {value: 'Supplier'}});
+    fireEvent.click(save());
+    expect(await screen.findByText(CONTACT_TEXT.failed)).toBeTruthy();
+    expect((screen.getByRole('button', {name: 'Cancel'}) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.keyDown(document, {key: 'Escape'});
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('delete out: Esc, backdrop, grabber, ✕ and Keep (disabled) do nothing; the answer closes once', async () => {
+    const onClose = vi.fn();
+    const onDeleted = vi.fn();
+    const h = hold('contacts.remove');
+    await renderInWallet(sheet({mode: {kind: 'edit', address: SENDER, name: 'Supplier'}, onClose, onDeleted}), {
+      before: ext => ext.local.set(CONTACTS_KEY, [{address: SENDER, name: 'Supplier'}]),
+      gate: h.gate,
+    });
+    fireEvent.click(screen.getByRole('button', {name: 'Delete contact'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Delete'}));
+    const keep = screen.getByRole('button', {name: 'Keep'}) as HTMLButtonElement;
+    expect(keep.disabled).toBe(true);
+    tryEveryClose();
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText(CONTACT_TEXT.deleteQuestion)).toBeTruthy();
+    h.release();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onDeleted).toHaveBeenCalledWith(SENDER);
+  });
+
+  it('idle (positive control): Esc, the backdrop and ✕ each close', async () => {
+    const onClose = vi.fn();
+    await renderInWallet(sheet({onClose}));
+    fireEvent.keyDown(document, {key: 'Escape'});
+    fireEvent.click(screen.getByTestId('sheet-backdrop'));
+    fireEvent.click(screen.getAllByRole('button', {name: 'Close'})[1]!);
+    expect(onClose).toHaveBeenCalledTimes(3);
+  });
+});

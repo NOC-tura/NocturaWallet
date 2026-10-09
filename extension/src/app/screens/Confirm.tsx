@@ -117,6 +117,11 @@ export function Confirm(props: ConfirmProps) {
   /** The Save-as row was answered on this #20 (Skip, or a save) — it does not come back. */
   const [saveAsDone, setSaveAsDone] = useState(false);
   const [adding, setAdding] = useState(false);
+  /**
+   * Task 7 fix round 1 (I1): the sheet closed and #20 has not read the book since — what it holds may be old (a save that
+   * landed, here or elsewhere). No Save-as row until the re-read answers: Add on an address saved by then would rename it.
+   */
+  const [bookStale, setBookStale] = useState(false);
   /** [Cancel]'s discard failed (E7): #20 stays, says so, and is live again — as #19 does (final review M1). */
   const [cancelFailed, setCancelFailed] = useState(false);
   /**
@@ -216,7 +221,10 @@ export function Confirm(props: ConfirmProps) {
     const g = gen.current;
     const r = await engine.contacts();
     if (gen.current !== g) return;
-    if (r.ok) setBook(r.data.contacts);
+    if (r.ok) {
+      setBook(r.data.contacts);
+      setBookStale(false);
+    }
     else if (r.error === 'locked') void reload();
   }, [engine, reload]);
   useEffect(() => {
@@ -458,7 +466,7 @@ export function Confirm(props: ConfirmProps) {
   const toLabel =
     own !== undefined ? `Your account: ${own.name}` : intent.recipient === MAINNET_FEE_TREASURY ? 'Noctura treasury' : contact !== undefined ? fromBook(contact.name) : null;
   // ix:9349: offered only for a first-time recipient that is not saved, while the book is known, once per #20.
-  const offerSave = first && book !== null && contact === undefined && !saveAsDone;
+  const offerSave = first && book !== null && !bookStale && contact === undefined && !saveAsDone;
   const rows = feeRows(view.fees);
   const solTotal = view.solRequiredLamports;
   const totalUsd = solUsd === null ? null : (Number(solTotal) / 1e9) * solUsd + (token === 'SOL' ? 0 : usd ?? Number.NaN);
@@ -606,7 +614,12 @@ export function Confirm(props: ConfirmProps) {
       {adding ? (
         <ContactSheet
           mode={{kind: 'add', address: intent.recipient}}
-          onClose={() => setAdding(false)}
+          onClose={() => {
+            // Every close re-reads the book (fix round 1, I1): the row comes back only for an address still not saved.
+            setAdding(false);
+            setBookStale(true);
+            void readBook();
+          }}
           onSaved={() => {
             setAdding(false);
             setSaveAsDone(true);
