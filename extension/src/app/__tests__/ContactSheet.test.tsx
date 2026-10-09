@@ -267,6 +267,10 @@ describe('the contact sheet: errors', () => {
         if (type === 'contacts.set' && ext !== null) await lock(ext);
       },
     });
+    // recipientInfo answers (unlocked) first, so the only wallet.state read after the set is the save's own reload.
+    await screen.findByText(CONTACT_TEXT.neverSent);
+    await waitFor(() => expect(sent).toContain('wallet.recipientInfo'));
+    await act(async () => new Promise(r => setTimeout(r, 50)));
     fireEvent.change(nameField(), {target: {value: 'Supplier'}});
     fireEvent.click(save());
     await waitFor(() => expect(sent).toContain('contacts.set'));
