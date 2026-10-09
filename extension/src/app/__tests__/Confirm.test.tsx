@@ -13,6 +13,8 @@ import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {CONFIRM_STRIKE_KEY} from '../prefs';
 import {REFUSED_TEXT} from '../ui/Banner';
 import {KNOWN_RECIPIENTS_KEY} from '../../background/knownRecipients';
+import {CONTACTS_KEY} from '../../background/contacts';
+import {lock} from '../../background/autolock';
 import {PENDING_KEY} from '../../background/pendingStore';
 import {PREPARED_KEY} from '../../background/session';
 import {CHALLENGE_MAX_LIFE_MS, satisfyChallenge} from '../../background/reauthChallenges';
@@ -135,7 +137,8 @@ describe('#20 tx-confirm — what it shows', () => {
     expect(headline.getAttribute('aria-label')).toBe(`Send 0.0100 SOL to recipient address ${COUNTERPARTY.match(/.{1,4}/g)?.join(' ')}`);
     expect(document.querySelector('.high-value-banner')).toBeNull();
     expect(screen.getByRole('button', {name: 'Cancel'})).toBeTruthy();
-    // Removed by decision: priority chips (D15), "Save as / Add to address book" (B1b-2b), typed CONFIRM (D22), DIRECT.
+    // Removed by decision: priority chips (D15), typed CONFIRM (D22), DIRECT. "Save as" (plan 2) is the first-time
+    // state's alone: a known recipient never offers it.
     expect(document.body.textContent).not.toMatch(/Normal|Fast|Instant|Save as|address book|Type CONFIRM|DIRECT|mainnet-beta/);
     expect(screen.queryByText(CONFIRM_TEXT.opensTab)).toBeNull();
     expect(unstyledClasses(document.querySelector('.s-conf')!, SELECTORS)).toEqual([]);
@@ -1177,5 +1180,200 @@ describe('one caller of wallet.send (source backstop over all of src/)', () => {
     expect([...tapBody.matchAll(/\bsend\(view, tapAt\)/g)].length).toBe(2);
     expect([...confirm.matchAll(/\btap\b/g)].length).toBe(2);
     expect(confirm).toContain('onPress={tap}');
+  });
+});
+
+// B1b-2b plan 2 (§6.3): #20's To label and the first-time state's "Save as" row (ix:9349-9350).
+describe('#20 and the address book', () => {
+  const row = () => document.querySelector('.detail-row.app-save-as');
+  const toLabel = () => [...document.querySelectorAll('.detail-row')].find(r => r.querySelector('.lbl')?.textContent === 'To')?.querySelector('.val .noc-body-sm')?.textContent ?? null;
+
+  it('first-time, not saved: "Save as — Add to address book? · Add · Skip"; the banner stays; Send is not focused', async () => {
+    const w = await renderConfirm({known: false});
+    const send = await sendButton();
+    await waitFor(() => expect(row()).not.toBeNull());
+    expect(row()?.querySelector('.lbl')?.textContent).toBe('Save as');
+    expect(row()?.querySelector('.val')?.textContent).toBe('Add to address book? · Add · Skip');
+    expect(screen.getByRole('button', {name: 'Add'}).className).toBe('app-text-btn noc-accent');
+    expect(screen.getByRole('button', {name: 'Skip'}).className).toBe('app-text-btn app-dim');
+    expect([...document.querySelectorAll('.detail-row .lbl')].map(l => l.textContent)).toEqual(['From', 'To', 'Save as', 'Network']);
+    expect(screen.getByText(CONFIRM_TEXT.firstTitle)).toBeTruthy();
+    expect(document.activeElement).not.toBe(send);
+    expect(send.disabled).toBe(false);
+    expect(unstyledClasses(document.querySelector('.s-conf')!, SELECTORS)).toEqual([]);
+    expect(w.sends()).toBe(0);
+  });
+
+  it('Add: the sheet prefilled (never sent); saved → the row hides and "From your address book: <name>" labels To; nothing sent', async () => {
+    const w = await renderConfirm({known: false});
+    const send = await sendButton();
+    fireEvent.click(await screen.findByRole('button', {name: 'Add'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    expect([...dialog.querySelectorAll('.app-contact-addr .addr-groups > span')].map(s => s.textContent)).toEqual(COUNTERPARTY.match(/.{1,4}/g));
+    expect(await screen.findByText('You have never sent to this address.')).toBeTruthy();
+    fireEvent.change(dialog.querySelector('#contact-name')!, {target: {value: 'Supplier'}});
+    fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+    await waitFor(() => expect(toLabel()).toBe('From your address book: Supplier'));
+    expect(row()).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).not.toBe(send);
+    // A contact is a label, never trust (D19): the first-time banner and the proof stay.
+    expect(screen.getByText(CONFIRM_TEXT.firstTitle)).toBeTruthy();
+    expect(screen.getByText(CONFIRM_TEXT.opensTab)).toBeTruthy();
+    expect(await w.ext.local.get(CONTACTS_KEY)).toEqual([{address: COUNTERPARTY, name: 'Supplier'}]);
+    expect(w.sends()).toBe(0);
+  });
+
+  // Rule 6 (spec §7): Add is a LockedButton — it locks on the tap (500 ms, until the action settles). Opening the sheet
+  // twice would look the same, so the lock itself is what is pinned. Skip hides its own row on the tap (nothing to press
+  // twice); it is a LockedButton too.
+  it('rule 6: Add locks on the tap', async () => {
+    await renderConfirm({known: false});
+    const add = (await screen.findByRole('button', {name: 'Add'})) as HTMLButtonElement;
+    fireEvent.click(add);
+    expect(add.disabled).toBe(true);
+    expect(add.className).toBe('app-text-btn noc-accent is-busy');
+  });
+
+  // The generation guard after the book read: a `locked` answer would reload (a wallet.state read) — after #20 went, it
+  // must not.
+  it('a book answer after #20 went does nothing: a late `locked` reloads nothing', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(r => {
+      release = r;
+    });
+    let gone = false;
+    const after: string[] = [];
+    const w = await renderConfirm({
+      known: false,
+      gate: async m => {
+        if (gone) after.push(m.type);
+        if (m.type === 'contacts.list') await held;
+      },
+    });
+    await sendButton();
+    await lock(w.ext);
+    gone = true;
+    cleanup();
+    release();
+    await act(async () => new Promise(r => setTimeout(r, 30)));
+    expect(after).toEqual([]);
+  });
+
+  it('Skip hides the row for this #20; nothing is saved', async () => {
+    const w = await renderConfirm({known: false});
+    fireEvent.click(await screen.findByRole('button', {name: 'Skip'}));
+    await waitFor(() => expect(row()).toBeNull());
+    expect(toLabel()).toBeNull();
+    expect(await w.ext.local.get(CONTACTS_KEY)).toBeUndefined();
+  });
+
+  it('Esc with the sheet open closes the sheet only: #20 stays, no back', async () => {
+    await renderConfirm({known: false});
+    fireEvent.click(await screen.findByRole('button', {name: 'Add'}));
+    await screen.findByRole('dialog', {name: 'Add contact'});
+    fireEvent.keyDown(document, {key: 'Escape'});
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(nav.onBack).not.toHaveBeenCalled();
+    expect(row()).not.toBeNull();
+  });
+
+  it('a first-time recipient already saved: the label, no row — the first-time banner stays (D19)', async () => {
+    await renderConfirm({known: false, before: ext => ext.local.set(CONTACTS_KEY, [{address: COUNTERPARTY, name: 'Supplier'}])});
+    await sendButton();
+    await waitFor(() => expect(toLabel()).toBe('From your address book: Supplier'));
+    expect(row()).toBeNull();
+    expect(screen.getByText(CONFIRM_TEXT.firstTitle)).toBeTruthy();
+  });
+
+  it('a known recipient: no row, even unsaved', async () => {
+    await renderConfirm();
+    await sendButton();
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    expect(row()).toBeNull();
+  });
+
+  it('own > contact: an own account saved as a contact keeps "Your account: <name>"', async () => {
+    await renderConfirm({intent: {token: 'SOL', recipient: RECIPIENT, amount: 10_000_000n}, before: ext => ext.local.set(CONTACTS_KEY, [{address: RECIPIENT, name: 'Not my savings'}])});
+    await sendButton();
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    expect(toLabel()).toBe('Your account: Savings');
+  });
+
+  it('the book not read (refused): no label, and no row — Add could rename a contact it cannot see', async () => {
+    await renderConfirm({
+      known: false,
+      gate: m => {
+        if (m.type === 'contacts.list') throw new Error('worker restarting');
+      },
+    });
+    await sendButton();
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    expect(row()).toBeNull();
+    expect(toLabel()).toBeNull();
+    expect(screen.getByText(CONFIRM_TEXT.firstTitle)).toBeTruthy();
+  });
+
+  // Send isolation (D38, the one-tap rule): the sheet on #20 is a label's editor, never a send's. Opening it and saving
+  // calls no wallet.send, prepares nothing, leaves the prepared send #20 stands for unchanged — and the one tap still
+  // sends it. Proven, so that any path that reached tap() would broadcast at once (and be counted).
+  it('send isolation: Add → Save sends nothing, prepares nothing, and the prepared send is the same one — Send still sends it on one tap', async () => {
+    const w = await renderConfirm({known: false, prove: true});
+    const send = await sendButton();
+    const before = await w.engine.preparedFor(ACCOUNT.publicKey);
+    expect(before.ok && before.data?.id).toBe(w.preparedId);
+    fireEvent.click(await screen.findByRole('button', {name: 'Add'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    fireEvent.change(dialog.querySelector('#contact-name')!, {target: {value: 'Supplier'}});
+    fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+    await waitFor(() => expect(toLabel()).toBe('From your address book: Supplier'));
+    await act(async () => new Promise(r => setTimeout(r, 30)));
+    expect(w.sends()).toBe(0);
+    expect(w.sent.filter(t => t === 'wallet.prepareSend' || t === 'wallet.discardPrepared')).toEqual([]);
+    const after = await w.engine.preparedFor(ACCOUNT.publicKey);
+    expect(after.ok && after.data?.id).toBe(w.preparedId);
+    expect(after.ok && after.data?.reauth?.proven).toBe(true);
+    expect(nav.onTrack).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(send);
+    expect(send.disabled).toBe(false);
+    fireEvent.click(send);
+    await waitFor(() => expect(nav.onTrack).toHaveBeenCalledTimes(1));
+    expect(w.sends()).toBe(1);
+  });
+
+  // D36 / §6.3: a label never hides the first-send warning, the high-value lines or the re-authentication CTA.
+  it('high-value and first-time, saved on #20: the label joins, the high-value line, the first-time banner and the proof CTA stay', async () => {
+    const w = await renderConfirm({intent: LARGE, known: false});
+    await sendButton();
+    fireEvent.click(await screen.findByRole('button', {name: 'Add'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    fireEvent.change(dialog.querySelector('#contact-name')!, {target: {value: 'Supplier'}});
+    fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+    await waitFor(() => expect(toLabel()).toBe('From your address book: Supplier'));
+    expect(document.querySelector('.review-card')?.classList.contains('high-value')).toBe(true);
+    expect(document.querySelector('.high-value-banner .help')?.textContent).toBe(`${CONFIRM_TEXT.reauthLine} If you didn't initiate this — cancel now.`);
+    expect(screen.getByText(CONFIRM_TEXT.firstTitle)).toBeTruthy();
+    expect(screen.getByText(CONFIRM_TEXT.opensTab)).toBeTruthy();
+    expect((await sendButton()).className).toBe('btn btn-destructive');
+    expect((await sendButton()).disabled).toBe(false);
+    expect(w.sends()).toBe(0);
+  });
+
+  // Rule 6 for Skip: the tap hides Skip's own row in the same render, so its lock is never drawn — nothing in the DOM can
+  // show it. The source is the observable: Skip is a LockedButton (Scope 3.8).
+  it('rule 6: Skip is a LockedButton (source pin — its row hides on the tap, so the lock cannot be seen)', () => {
+    const src = readFileSync(resolve(SRC, 'app/screens/Confirm.tsx'), 'utf8');
+    expect(src).toMatch(/<LockedButton className="app-text-btn app-dim" onPress=\{[^}]*\}>\s*\{CONFIRM_TEXT\.saveAsSkip\}\s*<\/LockedButton>/);
+    expect(src).toMatch(/<LockedButton className="app-text-btn noc-accent" onPress=\{[^}]*\}>\s*\{CONFIRM_TEXT\.saveAsAdd\}\s*<\/LockedButton>/);
+  });
+
+  it('Esc with no sheet open still goes back (the pause is only while the sheet is open)', async () => {
+    await renderConfirm({known: false});
+    fireEvent.click(await screen.findByRole('button', {name: 'Add'}));
+    await screen.findByRole('dialog', {name: 'Add contact'});
+    fireEvent.keyDown(document, {key: 'Escape'});
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    fireEvent.keyDown(document, {key: 'Escape'});
+    expect(nav.onBack).toHaveBeenCalledTimes(1);
   });
 });

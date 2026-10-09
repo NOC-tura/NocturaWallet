@@ -1358,3 +1358,21 @@ a.btn {
   color: var(--fg-secondary);
   margin-top: var(--space-1);
 }
+/*
+ * Plan 2 §6.3: #20's "Save as" row (ix:9349-9350) — the value in --fg-tertiary, "Add" in --accent and "Skip" in
+ * --fg-tertiary as two text buttons, each a 48 px target without a button's chrome.
+ */
+.s-conf .detail-row.app-save-as {
+  align-items: center;
+}
+.s-conf .detail-row .val.app-save-as-val {
+  color: var(--fg-tertiary);
+}
+.app-text-btn {
+  background: transparent;
+  border: 0;
+  padding: 0 var(--space-2);
+  min-height: var(--touch-target-min);
+  font: inherit;
+  cursor: pointer;
+}

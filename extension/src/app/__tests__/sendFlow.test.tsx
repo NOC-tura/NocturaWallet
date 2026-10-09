@@ -69,8 +69,9 @@ describe('the UI tab’s resume route is #20 (D38)', () => {
     await sendButton();
     await act(async () => void vi.advanceTimersByTime(10_000));
     expect(w.sends()).toBe(0);
-    // The quiet provider: the state, and what #20 reads itself — no cache, balances or ping on a hand-over route.
-    expect([...new Set(w.sent)].sort()).toEqual(['wallet.pending', 'wallet.preparedFor', 'wallet.prices', 'wallet.state']);
+    // The quiet provider: the state, and what #20 reads itself — no cache, balances or ping on a hand-over route. Plan 2:
+    // #20 reads the address book for its To label.
+    expect([...new Set(w.sent)].sort()).toEqual(['contacts.list', 'wallet.pending', 'wallet.preparedFor', 'wallet.prices', 'wallet.state']);
     fireEvent.click(await sendButton());
     expect(await screen.findByText(STATUS_TEXT.broadcasting)).toBeTruthy();
     expect(w.sends()).toBe(1);
