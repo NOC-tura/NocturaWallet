@@ -271,7 +271,9 @@ test('visual: #31’s Address book row, #15’s states and the contact sheet (41
     const radius = await css(ed, 'border-top-left-radius');
     await ed.getByLabel('Name').fill('Contact one');
     const cancel = ed.getByRole('button', {name: 'Cancel'});
-    await cancel.focus();
+    // Reached by the keyboard (Name → Tab → Cancel), so the focus is :focus-visible and the panel inherits it.
+    await p.keyboard.press('Tab');
+    await expect(cancel).toBeFocused();
     await ed.getByRole('button', {name: 'Save', exact: true}).dispatchEvent('click');
     await expect.poll(held.held).toBe(1);
     await expect(cancel).toBeDisabled();
@@ -422,6 +424,10 @@ test('visual: the hooks — #12’s contact icon, #15 pick, #12 after a pick, #2
     // 24 px gesture-bar allowance, which cut it).
     await expect(full.locator('.app-contact-addr')).toBeInViewport({ratio: 1});
     await expect(full.getByRole('button', {name: 'Save anyway'})).toBeInViewport({ratio: 1});
+    // ...without the panel having to scroll for it: since fix round 0b the sheet gives the focus back to "Save anyway"
+    // after its lock, and the browser scrolls a cut button into view — so the body itself must (all but) fit. Measured:
+    // 2 px over with the tall sheet's padding, 26 px with #43's gesture-bar allowance (M10f); 8 px separates the two.
+    expect(await full.locator('.app-sheet-body').evaluate(e => e.scrollHeight - e.clientHeight), 'the sheet body fits').toBeLessThanOrEqual(8);
     await sheetShot(p, 'sheet-full', full.getByText('The address book is full (200 contacts). Delete one to add another.'), full.getByRole('button', {name: 'Save anyway'}));
     contained(h);
   } finally {
