@@ -20,8 +20,8 @@ const OTHER = 'legal winner thank year wave sausage worth useful legal winner th
 /** OTHER's SLIP-0010 account 0 (derived once with src/vault/accounts.ts). */
 const OTHER_ACCOUNT = 'BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX';
 const RECIPIENT = '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4';
-/** What spec 15's delete wipes (spec §8.3; plan 2 adds v1_contacts). */
-const WIPED = ['v1_vault', 'v1_settings', 'v1_known_recipients', 'v1_balance_cache', 'v1_price_cache'] as const;
+/** What spec 15's delete wipes (spec §8.3), with plan 2's address book (E17, D20). */
+const WIPED = ['v1_vault', 'v1_settings', 'v1_known_recipients', 'v1_contacts', 'v1_balance_cache', 'v1_price_cache'] as const;
 
 const local = (sw: Worker, key: string) => sw.evaluate(async k => (await chrome.storage.local.get(k))[k], key);
 const envOf = async (sw: Worker) => (await local(sw, 'v1_vault')) as Env | undefined;
@@ -413,6 +413,12 @@ test('15 · delete a funded wallet: #37 says so and names the lowest index (not 
     // Fix round 1 (review I1): every key the wipe must remove exists first, so each toBeUndefined() below proves a
     // removal. The known recipients are written as the background writes them after a confirmed send ({address, at}).
     await h.sw.evaluate(r => chrome.storage.local.set({v1_known_recipients: [{address: r, at: Date.now()}]}), RECIPIENT);
+    // Plan 2: a contact, saved the way the UI saves one (contacts.set from the wallet tab; the wallet is unlocked — the
+    // popup closed itself when it opened the delete tab).
+    const ui = await h.ctx.newPage();
+    await ui.goto(`chrome-extension://${h.id}/wallet.html#/home`);
+    expect(await msg(ui, {type: 'contacts.set', address: RECIPIENT, name: 'Marko'})).toEqual({ok: true, data: {created: true}});
+    await ui.close();
     for (const key of WIPED) await expect.poll(() => local(h.sw, key), {message: key, timeout: 30_000}).toBeDefined();
     const before = JSON.stringify(await envOf(h.sw));
     await tab.locator('#dl-password').fill('not the password at all');
