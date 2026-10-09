@@ -123,10 +123,13 @@ describe('contacts.set / contacts.list / contacts.remove (E17)', () => {
     const locking = lock(ext);
     const setting = call(ext, 'contacts.set', {address: addr(1), name: 'A'});
     for (let i = 0; i < 20; i++) await new Promise(r => setTimeout(r, 0));
-    expect(await getSession(ext)).not.toBeNull(); // the lock has not cleared yet: the set is parked behind it
+    // Observe, then release before any assertion: a failed expect must not leave the module's mutexes held.
+    const midLock = (await getSession(ext)) !== null;
     release();
     await locking;
-    expect(await setting).toEqual({ok: false, error: 'locked'});
+    const result = await setting;
+    expect(midLock).toBe(true); // the lock had not cleared yet: the set was parked behind it
+    expect(result).toEqual({ok: false, error: 'locked'});
     expect(await ext.local.get(CONTACTS_KEY)).toBeUndefined();
   });
 
@@ -149,10 +152,12 @@ describe('contacts.set / contacts.list / contacts.remove (E17)', () => {
       locked = true;
     });
     for (let i = 0; i < 20; i++) await new Promise(r => setTimeout(r, 0));
-    expect(locked).toBe(false); // parked behind the set's sessionMutex section
+    const lockedMidWrite = locked;
     release();
-    expect(await setting).toEqual({ok: true, data: {created: true}});
+    const result = await setting;
     await locking;
+    expect(lockedMidWrite).toBe(false); // the lock was parked behind the set's sessionMutex section
+    expect(result).toEqual({ok: true, data: {created: true}});
     expect(await getSession(ext)).toBeNull();
     expect(await ext.local.get(CONTACTS_KEY)).toEqual([{address: addr(1), name: 'A'}]);
   });
