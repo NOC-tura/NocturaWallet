@@ -78,11 +78,20 @@ export function ContactSheet({
   const [name, setName] = useState(mode.name ?? '');
   const [error, setError] = useState<{field: 'address' | 'name' | 'form'; text: string} | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const [known, setKnown] = useState<boolean | null>(null);
+  /** recipientInfo's last answer, keyed by what it answered (`account|address`; review fix round 1, M3). */
+  const [answer, setAnswer] = useState<{for: string; known: boolean} | null>(null);
   const [pasteRefused, setPasteRefused] = useState(false);
   const address = fixed ?? typed.trim();
   const valid = isAddressText(address);
   const account = m.account?.publicKey ?? null;
+  /**
+   * What the sheet shows an answer for: this account and this address. `known` is the answer only when it was given for
+   * exactly that pair — otherwise null, which reads as "never sent" (fail closed). So a change of address or account
+   * (typing, Paste, an account switch) shows O72 in the same render, with no frame of the previous address's answer, and
+   * a late answer for an earlier address can never stand for the current one (review fix round 1, I2/M3).
+   */
+  const asked = valid && account !== null ? `${account}|${address}` : null;
+  const known = asked !== null && answer !== null && answer.for === asked ? answer.known : null;
   /** False once the sheet is gone: a late answer sets nothing and calls no callback. */
   const alive = useRef(true);
   useEffect(() => {
@@ -93,8 +102,9 @@ export function ContactSheet({
   }, []);
 
   // E6 for the address on the sheet, each time it is a valid one: whether this wallet ever sent there. Until it answers
-  // (or when it cannot), the never-sent line shows — never a silence that reads as "known". A reply for an address the
-  // field no longer holds is dropped.
+  // (or when it cannot — a failed read stores nothing; review fix round 1, I1), the never-sent line shows: never a
+  // silence that reads as "known". An answer is stored under the pair it was asked for, so one for an address the field
+  // no longer holds is never shown (`known` above).
   // Review M2: the confirm swaps the sheet's content under the same Sheet (its opener, for the focus on close, is kept),
   // so the focus is moved here — to Keep on entering it, back to "Delete contact" on Keep — never left on `body`, from
   // where Tab would reach the screen behind the modal.
@@ -109,14 +119,12 @@ export function ContactSheet({
     } else if (confirmedOnce.current) deleteRef.current?.querySelector('button')?.focus();
   }, [confirming]);
 
-  const generation = useRef(0);
   useEffect(() => {
-    const mine = ++generation.current;
-    setKnown(null);
     if (!valid || account === null) return;
+    const key = `${account}|${address}`;
     void engine.recipientInfo(account, address).then(r => {
-      if (!alive.current || generation.current !== mine) return;
-      if (r.ok) setKnown(r.data.known);
+      if (!alive.current) return;
+      if (r.ok) setAnswer({for: key, known: r.data.known});
       else if (r.error === 'locked') void reload();
     });
   }, [valid, address, account, engine, reload]);
@@ -151,13 +159,21 @@ export function ContactSheet({
     setError({field: 'form', text: CONTACT_TEXT.failed});
   };
 
+  /** Bumped by every edit of the address field and every Paste: a clipboard read that lands after either is dropped (M5). */
+  const pasteGen = useRef(0);
+  const keep = () => {
+    setError(null);
+    setConfirming(false);
+  };
+
   const paste = async () => {
+    const mine = ++pasteGen.current;
     setPasteRefused(false);
     try {
       const text = await navigator.clipboard.readText();
-      if (alive.current) setTyped(text.trim());
+      if (alive.current && pasteGen.current === mine) setTyped(text.trim());
     } catch {
-      if (alive.current) setPasteRefused(true);
+      if (alive.current && pasteGen.current === mine) setPasteRefused(true);
     }
   };
 
@@ -179,7 +195,8 @@ export function ContactSheet({
           </div>
           {message('form')}
           <div className="app-contact-actions">
-            <button type="button" className="btn btn-secondary" ref={keepRef} onClick={() => setConfirming(false)}>
+            {/* Review fix round 1, M6: a failed delete's message belongs to the confirm; Keep leaves it there. */}
+            <button type="button" className="btn btn-secondary" ref={keepRef} onClick={keep}>
               {CONTACT_TEXT.keep}
             </button>
             <LockedButton className="btn btn-destructive" onPress={remove}>
@@ -214,6 +231,7 @@ export function ContactSheet({
                 value={typed}
                 data-autofocus=""
                 onChange={e => {
+                  pasteGen.current += 1;
                   setTyped(e.target.value);
                   setPasteRefused(false);
                   if (error?.field === 'address') setError(null);

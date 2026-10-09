@@ -374,8 +374,9 @@ describe('the contact sheet: rule 6 and late answers', () => {
     expect(screen.queryByText(CONTACT_TEXT.failed)).toBeNull();
   });
 
-  // Pre-flight G1 (b): the generation check on recipientInfo. A was sent to (known), B never was; A's answer is held
-  // until after B's has landed, then released — it must not hide O72 for B.
+  // Pre-flight G1 (b): a late answer for an earlier address. A was sent to (known), B never was; A's answer is held
+  // until after B's has landed, then released — it must not hide O72 for B. (Fix round 1, M3: pinned by the answer's
+  // key — an answer stands only for the account|address it was asked for.)
   it('a stale known:true for an EARLIER address does not hide O72 for the current one', async () => {
     let release: () => void = () => undefined;
     const held = new Promise<void>(r => {
@@ -486,5 +487,121 @@ describe('the contact sheet: add · empty seeded with an address (review L1)', (
     expect((document.getElementById('contact-address') as HTMLInputElement).value).toBe(OTHER);
     expect(nameField().value).toBe('');
     expect(shownGroups()).toEqual(groupsOf(OTHER));
+  });
+});
+
+// Review fix round 1: the reviewer's probes P1–P5, adopted, and the M5 / M6 fixes.
+describe('the contact sheet: review fix round 1', () => {
+  const settle = () => act(async () => new Promise(r => setTimeout(r, 50)));
+
+  // I2 / M3: A is known; B's read fails. B must not inherit A's answer.
+  it('P1 a known A then a look-alike B whose read FAILS: O72 for B', async () => {
+    await renderInWallet(sheet({mode: {kind: 'add', address: null}}), {
+      before: ext => ext.local.set(KNOWN_RECIPIENTS_KEY, [{address: OTHER, at: 1}]),
+      gate: m => {
+        const x = m as {type: string; recipient?: string};
+        if (x.type === 'wallet.recipientInfo' && x.recipient === SENDER) throw new Error('worker restarting');
+      },
+    });
+    fireEvent.change(document.getElementById('contact-address')!, {target: {value: OTHER}});
+    await waitFor(() => expect(screen.queryByText(CONTACT_TEXT.neverSent)).toBeNull());
+    fireEvent.change(document.getElementById('contact-address')!, {target: {value: SENDER}});
+    // In the same render as the change — no frame of A's answer (M3).
+    expect(screen.getByText(CONTACT_TEXT.neverSent)).toBeTruthy();
+    await settle();
+    expect(shownGroups()).toEqual(groupsOf(SENDER));
+    expect(screen.getByText(CONTACT_TEXT.neverSent)).toBeTruthy();
+  });
+
+  // I1: a failed read stores nothing — fail closed, even for an address this wallet did send to.
+  it('P2 a failed recipientInfo read for a known address keeps O77, the dust banner and "Save anyway" (fail closed)', async () => {
+    await renderInWallet(sheet({received: {token: 'USDC', amount: 1n}}), {
+      before: ext => ext.local.set(KNOWN_RECIPIENTS_KEY, [{address: SENDER, at: 1}]),
+      gate: m => {
+        if ((m as {type: string}).type === 'wallet.recipientInfo') throw new Error('worker restarting');
+      },
+    });
+    await settle();
+    expect(screen.getByText(CONTACT_TEXT.onlySentToYou)).toBeTruthy();
+    expect(document.querySelector('.banner.danger')).not.toBeNull();
+    expect(save().textContent).toBe('Save anyway');
+  });
+
+  // M4: Esc reaches the latest onClose, not the closure of the first render.
+  it('P3 Esc reaches the LATEST onClose (not the first closure)', async () => {
+    const calls: number[] = [];
+    function Ticking({mode}: {mode: ContactSheetMode}) {
+      const [tick, setTick] = useState(0);
+      return (
+        <>
+          <button type="button" onClick={() => setTick(t => t + 1)}>
+            tick {tick}
+          </button>
+          <ContactSheet mode={mode} onSaved={() => undefined} onClose={() => calls.push(tick)} />
+        </>
+      );
+    }
+    await renderInWallet(<Ticking mode={{kind: 'add', address: SENDER}} />);
+    for (let i = 0; i < 3; i++) act(() => void (screen.getByText(/^tick /) as HTMLButtonElement).click());
+    fireEvent.keyDown(document, {key: 'Escape'});
+    expect(calls).toEqual([3]);
+  });
+
+  it('P4 duplicate-name in EDIT mode is surfaced (a rename to another contact’s name)', async () => {
+    await renderInWallet(sheet({mode: {kind: 'edit', address: SENDER, name: 'Supplier'}}), {
+      before: ext =>
+        ext.local.set(CONTACTS_KEY, [
+          {address: SENDER, name: 'Supplier'},
+          {address: OTHER, name: 'Binance'},
+        ]),
+    });
+    fireEvent.change(nameField(), {target: {value: 'BINANCE'}});
+    fireEvent.click(save());
+    expect(await screen.findByText(CONTACT_TEXT.duplicateName)).toBeTruthy();
+  });
+
+  it('P5 prefilled: the address is shown complete and is not editable (the only input is Name)', async () => {
+    await renderInWallet(sheet());
+    expect(shownGroups().join('')).toBe(SENDER);
+    expect(document.querySelectorAll('input')).toHaveLength(1);
+    expect(document.querySelector('input')).toBe(nameField());
+  });
+
+  // M5: the paste's own generation — a clipboard read that lands after the user typed does not overwrite the field.
+  it('M5 a clipboard read that lands after the user typed leaves the typed address', async () => {
+    let give: (t: string) => void = () => undefined;
+    await renderInWallet(sheet({mode: {kind: 'add', address: null}}));
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        readText: () =>
+          new Promise<string>(r => {
+            give = r;
+          }),
+      },
+      configurable: true,
+    });
+    fireEvent.click(screen.getByRole('button', {name: 'Paste'}));
+    const input = document.getElementById('contact-address') as HTMLInputElement;
+    fireEvent.change(input, {target: {value: OTHER}});
+    await act(async () => give(SENDER));
+    await settle();
+    expect(input.value).toBe(OTHER);
+    expect(shownGroups()).toEqual(groupsOf(OTHER));
+  });
+
+  // M6: a failed delete's message is the confirm's; Keep goes back to a clean edit sheet.
+  it('M6 Keep clears a failed delete’s message', async () => {
+    await renderInWallet(sheet({mode: {kind: 'edit', address: SENDER, name: 'Supplier'}}), {
+      before: ext => ext.local.set(CONTACTS_KEY, [{address: SENDER, name: 'Supplier'}]),
+      gate: m => {
+        if ((m as {type: string}).type === 'contacts.remove') throw new Error('worker restarting');
+      },
+    });
+    fireEvent.click(screen.getByRole('button', {name: 'Delete contact'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Delete'}));
+    expect(await screen.findByText(CONTACT_TEXT.failed)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Keep'}));
+    expect(nameField().value).toBe('Supplier');
+    expect(screen.queryByText(CONTACT_TEXT.failed)).toBeNull();
   });
 });
