@@ -100,6 +100,15 @@ shows that this spec does not build, with where it goes (CLAUDE.md: never silent
 | D32 | #31 failed settings read: blank metas OK | accepted | §4.1 |
 | D33 | Change-password and passkey pages: no C17-style address binding needed | accepted | §3.1, §3.3 |
 
+### Owner decisions on the plan-2 review (D34–D37, 2026-10-08)
+
+| # | owner decision (substance) | status | applied here |
+|---|---|---|---|
+| D34 | #31's Address book meta for one contact reads **"1 contact"** — confirmed as **O92** | built (plan 2) | §4.1, §12 |
+| D35 | Plan 2's departures **approved**: the contact sheet is tall (the popup's height but 48 px) with **Cancel \| Save side by side**; the delete confirm shows the contact's **name and address**; #27's received **From row carries the full label** (own > treasury > contact); **Esc over an open sheet closes only the sheet** (on every pushed screen, the accounts manager's remove sheet included); the sheet opens on **`data-autofocus`** | built (plan 2) | §6.2, §6.3 Differs |
+| D36 | **"Known" counts only sends confirmed by this extension.** #27a's sheet keeps O72, fail closed, with its wording unchanged, also under a SENT record from another wallet or from the history — the history never feeds `known` | built (plan 2) | E17, §6.2 |
+| D37 | Names with **ZWJ, ZWNJ or VS16** (some emoji, Persian/Indic names) are **refused** by C19 with 2a's name line — accepted | accepted | C19, §6.2 |
+
 **Deviation from the approved design (D23).** The approved design §1.7 reads "accounts and reveal modes also accept the
 passkey (carry)". D23 narrows it: the carry lands in `accounts` only. Why (review H1): a passkey that could open
 `?mode=reveal` would hand its holder the phrase — permanent, cross-device access that survives removing the passkey
@@ -1141,6 +1150,14 @@ contact" (ix:7388, `#i-plus`) → the sheet. `.search` input placeholder "Search
 **Differs, loudly:** the design leaves add/edit/delete undrawn ("placeholder per spec", ix:7532; sm:190); the sheet is
 derived (D20). No notes field (D18). The never-sent, only-sent-to-you and dust states are extension additions (review
 H3).
+- **Approved by the owner (D35, 2026-10-08):** the sheet is tall — up to the popup's height but 48 px, not #43's 70 %, so
+  the address being saved, the warnings and "Save anyway" stay in view; its actions are Cancel | Save side by side (the
+  design's `.sticky-bar.row`), "Delete contact" below; the delete confirm shows the contact's name and address under
+  O82; the sheet opens on the element marked `data-autofocus` (the name, or the empty address field); Esc over the sheet
+  closes only the sheet, never the screen under it.
+- **Owner decisions (D36, D37):** O72 keeps its wording and stays fail closed wherever `known` is false — "known" counts
+  only sends this extension confirmed, so a SENT record from another wallet (or from the history) still shows it; names
+  with ZWJ, ZWNJ or VS16 are refused (C19).
 
 ### 6.3 Hooks: #12, #20, #27, the label (D19, D20, C12)
 
@@ -1178,6 +1195,9 @@ It never replaces or hides the first-send warning.
 - #12's Scan QR (ix:6651) stays omitted (2a-D13).
 - `[Save sender]` is offered for every received transfer, as drawn (ix:12272), but the sheet it opens warns for a sender
   never sent to, and warns harder for dust (C18). The design offers it with no warning (review H3).
+- **Approved by the owner (D35, 2026-10-08):** #27's received "From" row carries the full label (own > treasury >
+  contact), not only the contact label; Esc over any open sheet (the contact sheet on #15, #20, #27; the accounts
+  manager's remove sheet) closes only the sheet.
 
 ---
 
@@ -1666,8 +1686,9 @@ longer used: "Active protections" shows only on the all-clear state, review L7).
 | O89 | "1 outstanding task." (owner, 2026-10-05, plan-1 review) | #35 card, the singular of "N outstanding tasks." |
 | O90 | "Close" (aria) (owner, 2026-10-05, plan-1 review) | the vault page's ✕ on #36 (`cp-x`) and the reveal/verify proof (`pp-x`) |
 | O91 | "Updating your password" (aria, on the progress element) (owner, 2026-10-05, plan-1 review) | #36 `changing` |
+| O92 | "1 contact" (owner, 2026-10-08, plan-2 review) | #31 Address book meta, the singular of "N contacts" (D34) |
 
-**91 strings** (O01–O66 plan 1; O67–O88 plan 2; O89–O91 plan 1, added by the owner on 2026-10-05 after the plan-1 review). Adapted design strings (marked **→ adapted** in §§3–6) are
+**92 strings** (O01–O66 plan 1; O67–O88 plan 2; O89–O91 plan 1, added by the owner on 2026-10-05 after the plan-1 review; O92 plan 2, added by the owner on 2026-10-08 after the plan-2 review). Adapted design strings (marked **→ adapted** in §§3–6) are
 not repeated here; the owner sees them in each screen's section.
 
 ---
