@@ -7,6 +7,7 @@ import {SEND_TEXT, Send} from '../screens/Send';
 import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {REFUSED_TEXT} from '../ui/Banner';
 import {KNOWN_RECIPIENTS_KEY} from '../../background/knownRecipients';
+import {CONTACTS_KEY} from '../../background/contacts';
 import {BALANCE_CACHE_KEY} from '../../background/balanceCache';
 import {PENDING_KEY} from '../../background/pendingStore';
 import {RpcForbidden} from '../../../../core/solana/rpc';
@@ -18,7 +19,7 @@ import type {Draft} from '../send/rules';
 // Spec §4.2 (#12) and §4.3 (#43, opened from it). The harness wallet: Main (ACCOUNT) sending, Savings
 // (RECIPIENT) its own second account; 62.4821 SOL, 4 200 NOC, 740.21 USDC; SOL $150.
 const SELECTORS = selectorsOf(UI_SHEETS);
-const nav = {onBack: vi.fn(), onReview: vi.fn(), onViewPending: vi.fn()};
+const nav = {onBack: vi.fn(), onReview: vi.fn(), onViewPending: vi.fn(), onBook: vi.fn()};
 const DAY = 86_400_000;
 
 function renderSend(o: WalletOptions & {draft?: Draft | null; notice?: 'start-again' | null} = {}) {
@@ -50,9 +51,11 @@ describe('#12 send', () => {
     ]);
     expect(cta().textContent).toBe('Send SOL');
     expect(cta().disabled).toBe(true);
-    // Removed by decision: priority chips (D15), .sol (D16), scan (D13), the address book (B1b-2b), shielded (D4).
-    for (const gone of [/\.sol/, /Normal|Fast|Instant/, /Scan|Address book|shielded|private/i]) expect(document.body.textContent).not.toMatch(gone);
-    expect(screen.queryByRole('button', {name: /Scan|Address book/})).toBeNull();
+    // Removed by decision: priority chips (D15), .sol (D16), scan (D13), shielded (D4). The empty field's actions are
+    // Paste and — plan 2, ix:6652 — Address book.
+    for (const gone of [/\.sol/, /Normal|Fast|Instant/, /Scan|shielded|private/i]) expect(document.body.textContent).not.toMatch(gone);
+    expect(screen.queryByRole('button', {name: /Scan/})).toBeNull();
+    expect([...document.querySelectorAll('.recipient-row .input-actions button')].map(b => b.getAttribute('aria-label'))).toEqual(['Paste', 'Address book']);
     expect(unstyledClasses(document.querySelector('.s-send')!, SELECTORS)).toEqual([]);
   });
 
@@ -474,5 +477,61 @@ describe('#12 send', () => {
     expect(field('Recipient').value).toBe(COUNTERPARTY);
     expect(field('Amount').value).toBe('12.5');
     expect(screen.getByRole('button', {name: 'Token: USDC'})).toBeTruthy();
+  });
+});
+
+// B1b-2b plan 2 (§6.3): #12's contact icon and the contact label.
+describe('#12 and the address book', () => {
+  it('the contact icon opens #15 with the draft kept (token and amount; the field is empty); typing hides it', async () => {
+    await renderSend();
+    await loaded();
+    type('Amount', '1.5');
+    fireEvent.click(screen.getByRole('button', {name: 'Address book'}));
+    expect(nav.onBook).toHaveBeenCalledWith({token: 'SOL', recipient: '', amount: '1.5'});
+    type('Recipient', 'x');
+    expect(screen.queryByRole('button', {name: 'Address book'})).toBeNull();
+  });
+
+  it('rule 6: a second tap on the contact icon inside 500 ms opens nothing more', async () => {
+    await renderSend();
+    const book = screen.getByRole('button', {name: 'Address book'}) as HTMLButtonElement;
+    fireEvent.click(book);
+    book.disabled = false;
+    fireEvent.click(book);
+    expect(nav.onBook).toHaveBeenCalledTimes(1);
+  });
+
+  it('a saved contact never sent to: "From your address book: <name>" above 2a’s "Never sent here before", and state 6 stays', async () => {
+    await renderSend({before: async ext => ext.local.set(CONTACTS_KEY, [{address: COUNTERPARTY, name: 'Supplier'}])});
+    await loaded();
+    type('Recipient', COUNTERPARTY);
+    const label = await screen.findByText('From your address book: Supplier');
+    expect(label.className).toBe('noc-caption app-contact-label');
+    const helper = screen.getByText(SEND_TEXT.neverSent, {exact: false});
+    expect(label.compareDocumentPosition(helper) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText(SEND_TEXT.firstTitle)).toBeTruthy();
+    expect(unstyledClasses(document.querySelector('.s-send')!, SELECTORS)).toEqual([]);
+  });
+
+  it('a saved contact sent to before: the label above "Verified · sent before · …"', async () => {
+    await renderSend({
+      before: async ext => {
+        await ext.local.set(CONTACTS_KEY, [{address: COUNTERPARTY, name: 'Supplier'}]);
+        await ext.local.set(KNOWN_RECIPIENTS_KEY, [{address: COUNTERPARTY, at: Date.now()}]);
+      },
+    });
+    await loaded();
+    type('Recipient', COUNTERPARTY);
+    expect(await screen.findByText('From your address book: Supplier')).toBeTruthy();
+    expect(screen.getByText(/Verified · sent before · today/)).toBeTruthy();
+    expect(screen.queryByText(SEND_TEXT.firstTitle)).toBeNull();
+  });
+
+  it('own > contact: an own account saved as a contact reads "Your account: Savings", no contact label', async () => {
+    await renderSend({before: async ext => ext.local.set(CONTACTS_KEY, [{address: RECIPIENT, name: 'Not my savings'}])});
+    await loaded();
+    type('Recipient', RECIPIENT);
+    expect(await screen.findByText(/Your account: Savings/)).toBeTruthy();
+    expect(screen.queryByText(/From your address book/)).toBeNull();
   });
 });

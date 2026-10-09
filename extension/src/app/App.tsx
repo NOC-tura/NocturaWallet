@@ -241,6 +241,11 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
           if (selected !== null) go({type: 'push', route: {screen: 'review', account: selected, intent, notice: null}});
         }}
         onViewPending={p => go({type: 'push', route: {screen: 'status', account: p.account, id: p.id, since: p.createdAt}})}
+        onBook={draft => {
+          // The draft is kept in the route under #15 (what the user typed), then #15 opens in pick mode (§1.4, M4).
+          go({type: 'replace', route: {screen: 'send', draft, notice: null}});
+          go({type: 'push', route: {screen: 'contacts', pick: true}});
+        }}
       />
     );
   } else if (route.screen === 'review') {

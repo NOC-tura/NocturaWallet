@@ -93,6 +93,12 @@ export function markParts(name: string, query: string): [string, string, string]
   return [name.slice(0, at), name.slice(at, at + q.length), name.slice(at + q.length)];
 }
 
+/**
+ * The label wherever a contact names an address (O88) — #12, #20, #27 — with the "From your address book:" prefix, so a
+ * name can never pose as "Your account: …" (spec §6.3, E17). Precedence own > treasury > contact is the caller's.
+ */
+export const fromBook = (name: string): string => `From your address book: ${name}`;
+
 /** #31's "Address book" meta: "N contacts" (ix:13552); "1 contact" for one (the singular — O92, owner-confirmed 2026-10-08). */
 export const contactsCount = (n: number): string => (n === 1 ? '1 contact' : `${n} contacts`);
 

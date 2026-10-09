@@ -483,7 +483,7 @@ describe('fix round 1: the toast, a lock, another account, no account', () => {
     const reviewed: unknown[] = [];
     render(
       <WalletProvider engine={engine} platform={w.platform} surface="popup">
-        <Send draft={{token: 'SOL', recipient: COUNTERPARTY, amount: '0.01'}} notice={null} onBack={() => undefined} onReview={(d, i) => void reviewed.push([d, i])} onViewPending={() => undefined} />
+        <Send draft={{token: 'SOL', recipient: COUNTERPARTY, amount: '0.01'}} notice={null} onBack={() => undefined} onReview={(d, i) => void reviewed.push([d, i])} onViewPending={() => undefined} onBook={() => undefined} />
       </WalletProvider>,
     );
     expect(await screen.findByText('Send', {selector: '.title'})).toBeTruthy();
