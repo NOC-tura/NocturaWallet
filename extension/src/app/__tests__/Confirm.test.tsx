@@ -51,7 +51,7 @@ interface Setup {
   quiet?: boolean;
 }
 /** A wallet whose background holds a prepared send of `intent` (proven if asked), and #20 shown on it. */
-async function renderConfirm(o: Setup = {}): Promise<Wallet & {sent: string[]; sends: () => number; challengeId: string | null; preparedId: string}> {
+async function renderConfirm(o: Setup = {}): Promise<Wallet & {sent: string[]; sends: () => number; challengeId: string | null; preparedId: string; setQuiet: (quiet: boolean) => void}> {
   const sent: string[] = [];
   const w = await setupWallet({
     reader: sendingReader(),
@@ -76,12 +76,15 @@ async function renderConfirm(o: Setup = {}): Promise<Wallet & {sent: string[]; s
     await o.gate?.(m as {type: string});
     return w.transport(m);
   }, async () => undefined);
-  render(
-    <WalletProvider engine={engine} platform={w.platform} surface={o.surface ?? 'popup'} quiet={o.quiet === true}>
+  const tree = (quiet: boolean) => (
+    <WalletProvider engine={engine} platform={w.platform} surface={o.surface ?? 'popup'} quiet={quiet}>
       <Confirm account={ACCOUNT.publicKey} {...entryOf(o.entry ?? 'flow', o.preparedId ?? preparedId)} {...nav} />
-    </WalletProvider>,
+    </WalletProvider>
   );
-  return {...w, engine, sent, sends: () => sent.filter(t => t === 'wallet.send').length, challengeId, preparedId};
+  const view = render(tree(o.quiet === true));
+  /** Re-renders the provider with another `quiet` (the UI tab's hand-over): its reload, and so #20's readBook, change. */
+  const setQuiet = (quiet: boolean) => view.rerender(tree(quiet));
+  return {...w, engine, sent, sends: () => sent.filter(t => t === 'wallet.send').length, challengeId, preparedId, setQuiet};
 }
 /** #20's entry props: a flow entry carries the id #19 handed over (Task 8 ruling); a resume carries none. */
 const entryOf = (entry: 'flow' | 'resume', preparedId: string): ConfirmEntry => (entry === 'flow' ? {entry, preparedId} : {entry});
@@ -1483,6 +1486,46 @@ describe('#20 and the address book: review fix round 1', () => {
     await act(async () => new Promise(r => setTimeout(r, 20)));
     expect(toLabel()).toBe('Noctura treasury');
     expect(screen.queryByText('From your address book: Not the treasury')).toBeNull();
+  });
+
+  // Task 8 fix round 1, m1 (as #27): only the latest book read is taken. A provider change (the hand-over's `quiet`)
+  // gives #20 a new readBook, which reads again while the first read is out; the first, holding the book from before a
+  // contact was saved, answers last — and changes nothing.
+  it('m1 the latest book read wins: an earlier read answering last with the older book changes nothing', async () => {
+    let hold = false;
+    let reached = false;
+    let release: () => void = () => undefined;
+    const old = new Promise<void>(r => {
+      release = r;
+    });
+    let lists = 0;
+    const w = await renderConfirm({
+      known: false,
+      afterPrepare: async ext => {
+        const get = ext.local.get.bind(ext.local);
+        ext.local.get = async (k: string) => {
+          const v = await get(k);
+          if (k === CONTACTS_KEY && hold) {
+            hold = false;
+            reached = true;
+            await old;
+          }
+          return v;
+        };
+        hold = true;
+      },
+      gate: async m => {
+        if (m.type === 'contacts.list') lists += 1;
+      },
+    });
+    await waitFor(() => expect(reached).toBe(true));
+    await w.ext.local.set(CONTACTS_KEY, [{address: COUNTERPARTY, name: 'Supplier'}]);
+    act(() => w.setQuiet(true));
+    await waitFor(() => expect(lists).toBe(2));
+    await waitFor(() => expect(toLabel()).toBe('From your address book: Supplier'));
+    release();
+    await act(async () => new Promise(r => setTimeout(r, 50)));
+    expect(toLabel()).toBe('From your address book: Supplier');
   });
 
   // M2: the generation guard's positive control — a `locked` answer while #20 is still shown reloads (a wallet.state read).

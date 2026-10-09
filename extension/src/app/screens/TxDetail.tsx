@@ -123,15 +123,15 @@ export function TxDetail({
    */
   const [bookStale, setBookStale] = useState(false);
   /**
-   * Bumped when #27 goes (unmount) and when another account is selected under it: a book answer to an older generation
-   * is dropped — it sets nothing and reloads nothing. #27 stays on a switch (it shows the route owner's transaction), so
-   * the switch reads the book afresh.
+   * Bumped by every book read, when #27 goes (unmount) and when another account is selected under it: only the answer
+   * to the latest read is taken (Task 8 fix round 1, m1) — an older one, answering late with an older book, sets nothing
+   * and reloads nothing. #27 stays on a switch (it shows the route owner's transaction), so the switch reads afresh.
    */
   const gen = useRef(0);
   const selected = m.account?.publicKey ?? null;
   const {engine, reload} = m;
   const readBook = useCallback(async () => {
-    const g = gen.current;
+    const g = ++gen.current;
     const r = await engine.contacts();
     if (gen.current !== g) return;
     if (r.ok) {
@@ -234,13 +234,17 @@ export function TxDetail({
   /** The owner's own entry (its name on the From row), when it is one of this wallet's accounts. */
   const ownerAccount = accounts.find(a => a.publicKey === owner);
   const savedAs = (address: string | null): Contact | undefined => (address === null ? undefined : book?.find(c => c.address === address));
-  /** own > treasury > contact (E17): a contact's name never stands in for "Your account" or the treasury. */
+  /**
+   * own > treasury > contact (E17): a contact's name never stands in for "Your account" or the treasury. No contact
+   * label while the book is being re-read after a sheet close (fix round 1, m2): a deleted contact's name is not shown
+   * from the old book, nor when that re-read fails. The own and treasury labels need no book and stay.
+   */
   const labelOf = (address: string | null): string | null => {
     if (address === null) return null;
     const own = accounts.find(a => a.publicKey === address);
     if (own !== undefined) return `Your account: ${own.name}`;
     if (address === MAINNET_FEE_TREASURY) return 'Noctura treasury';
-    const contact = savedAs(address);
+    const contact = bookStale ? undefined : savedAs(address);
     return contact === undefined ? null : fromBook(contact.name);
   };
   const price = item.token === null ? null : item.token === 'NOC' ? null : m.prices?.[item.token === 'SOL' ? 'sol' : item.token === 'USDC' ? 'usdc' : 'usdt'] ?? null;

@@ -216,11 +216,18 @@ export function Confirm(props: ConfirmProps) {
     // Read once per mount: the account is this route's.
   }, [account, engine]);
 
+  /**
+   * Bumped by every book read: only the latest read's answer is taken (Task 8 fix round 1, m1). A new readBook (the
+   * provider's reload changes with its `quiet`) reads again while an earlier read is out, and that one may answer last
+   * with an older book. Not `gen`: bumping it would also drop the prepare's and the send's answers.
+   */
+  const bookRead = useRef(0);
   // Plan 2: the address book, read once per mount (and again after a save) — an answer after the screen went is dropped.
   const readBook = useCallback(async () => {
     const g = gen.current;
+    const mine = ++bookRead.current;
     const r = await engine.contacts();
-    if (gen.current !== g) return;
+    if (gen.current !== g || bookRead.current !== mine) return;
     if (r.ok) {
       setBook(r.data.contacts);
       setBookStale(false);

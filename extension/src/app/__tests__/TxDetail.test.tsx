@@ -499,6 +499,7 @@ describe('#27 and the address book', () => {
       release = r;
     });
     let gone = false;
+    let lists = 0;
     const after: string[] = [];
     let ext: Parameters<typeof lock>[0] | null = null;
     await renderInWallet(<TxDetail signature={sendTo.signature} account={ACCOUNT.publicKey} item={sendTo} onBack={() => undefined} canRetry onTryAgain={tryAgain} />, {
@@ -508,15 +509,22 @@ describe('#27 and the address book', () => {
       gate: async m => {
         const type = (m as {type: string}).type;
         if (gone) after.push(type);
-        if (type === 'contacts.list') await held;
+        if (type === 'contacts.list') {
+          lists += 1;
+          await held;
+        }
       },
     });
     await screen.findByText('Transaction');
+    // Fix round 1 (I1): the provider's open sequence selects the account (null → A), which re-reads the book. Wait for
+    // that read, so it is held with the first — never sent during the unmount, after "gone".
+    await waitFor(() => expect(lists).toBe(2));
     await lock(ext!);
     gone = true;
     cleanup();
     release();
     await act(async () => new Promise(r => setTimeout(r, 30)));
+    // What the guard stops is the reload: a `wallet.state` read (its positive control is below).
     expect(after).toEqual([]);
   });
 
@@ -799,5 +807,150 @@ describe('#27 and the address book', () => {
     expect(screen.queryByRole('button', {name: 'Save'})).toBeNull();
     releaseNew();
     expect(await screen.findByRole('button', {name: 'Save'})).toBeTruthy();
+  });
+
+  // Fix round 1, I2 (reviewer P1): the label and the edit sheet need the exact address — case-sensitive, every character.
+  // A look-alike (same first four and last four) and a case variant of a saved address are strangers: no O88, and
+  // [Save sender] opens "Add contact", never the saved contact's edit sheet.
+  it.each([
+    ['a first-4/last-4 look-alike', 'H4qZ7Lp2Wc9tKqRbV3mXnYdE8sFgUhJk2PzT6vB4m2N1'],
+    ['a case variant', 'H4qZoWSV5iyeysmHzYnVfqVBtSfoJTZQJ33YtjAXm2N1'],
+  ])('exact address: %s of a saved contact gets no label, and [Save sender] opens Add', async (_, other) => {
+    expect([other.slice(0, 4), other.slice(-4), other === COUNTERPARTY]).toEqual([COUNTERPARTY.slice(0, 4), COUNTERPARTY.slice(-4), false]);
+    await showWith(receivedFrom({counterparty: other}), ext => ext.local.set(CONTACTS_KEY, [{address: COUNTERPARTY, name: 'Binance'}]));
+    fireEvent.click(await screen.findByRole('button', {name: 'Save sender'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    expect((dialog.querySelector('#contact-name') as HTMLInputElement).value).toBe('');
+    expect(screen.queryByText(/From your address book/)).toBeNull();
+  });
+
+  // Fix round 1, I3 (reviewer P2): after a save the book is re-read; until it answers there is no Save — also once the
+  // tap's 500 ms lock is over, when an "add" sheet from the old book would rename the contact just saved.
+  it('after a save, no Save until the re-read answers — past the 500 ms lock', async () => {
+    let armed = false;
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(r => {
+      release = r;
+    });
+    await renderInWallet(<TxDetail signature={sendTo.signature} account={ACCOUNT.publicKey} item={sendTo} onBack={() => undefined} canRetry onTryAgain={tryAgain} />, {
+      gate: async m => {
+        if ((m as {type: string}).type === 'contacts.list' && armed) await held;
+      },
+    });
+    fireEvent.click(await screen.findByRole('button', {name: 'Save'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    fireEvent.change(dialog.querySelector('#contact-name')!, {target: {value: 'Supplier'}});
+    armed = true;
+    fireEvent.click(within(dialog).getByRole('button', {name: 'Save'}));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await act(async () => new Promise(r => setTimeout(r, 700)));
+    expect(screen.queryByRole('button', {name: 'Save'})).toBeNull();
+    release();
+    expect(await screen.findByText('From your address book: Supplier')).toBeTruthy();
+    const save = screen.getByRole('button', {name: 'Save'}) as HTMLButtonElement;
+    await waitFor(() => expect(save.disabled).toBe(false));
+    fireEvent.click(save);
+    expect(await screen.findByRole('dialog', {name: 'Edit contact'})).toBeTruthy();
+  });
+
+  // Fix round 1, m1 (reviewer P3): only the latest book read is taken. The switch's read took the book before the save
+  // and answers after the post-save read: the book stays the post-save one (label kept, Save opens the edit sheet).
+  it('the latest read wins: an earlier read answering last with the pre-save book changes nothing', async () => {
+    let hold = false;
+    let reached = false;
+    let release: () => void = () => undefined;
+    const old = new Promise<void>(r => {
+      release = r;
+    });
+    function SwitchTo1() {
+      const m = useWallet();
+      return (
+        <button
+          type="button"
+          onClick={() =>
+            void (async () => {
+              await m.engine.select(1);
+              await m.reload();
+            })()
+          }
+        >
+          switch
+        </button>
+      );
+    }
+    await renderInWallet(
+      <>
+        <TxDetail signature={sendTo.signature} account={ACCOUNT.publicKey} item={sendTo} onBack={() => undefined} canRetry onTryAgain={tryAgain} />
+        <SwitchTo1 />
+      </>,
+      {
+        // The background's read of the book: the held one has read it (the old book) and answers when released.
+        before: async ext => {
+          const get = ext.local.get.bind(ext.local);
+          ext.local.get = async (k: string) => {
+            const v = await get(k);
+            if (k === CONTACTS_KEY && hold) {
+              hold = false;
+              reached = true;
+              await old;
+            }
+            return v;
+          };
+        },
+      },
+    );
+    fireEvent.click(await screen.findByRole('button', {name: 'Save'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    hold = true;
+    fireEvent.click(screen.getByRole('button', {name: 'switch'}));
+    await waitFor(() => expect(reached).toBe(true));
+    fireEvent.change(dialog.querySelector('#contact-name')!, {target: {value: 'Supplier'}});
+    fireEvent.click(within(dialog).getByRole('button', {name: 'Save'}));
+    expect(await screen.findByText('From your address book: Supplier')).toBeTruthy();
+    release();
+    await act(async () => new Promise(r => setTimeout(r, 50)));
+    expect(screen.getByText('From your address book: Supplier')).toBeTruthy();
+    const save = screen.getByRole('button', {name: 'Save'}) as HTMLButtonElement;
+    await waitFor(() => expect(save.disabled).toBe(false));
+    fireEvent.click(save);
+    expect(await screen.findByRole('dialog', {name: 'Edit contact'})).toBeTruthy();
+  });
+
+  // Fix round 1, m2 (reviewer P4): no contact label while the book is stale — a delete whose re-read fails does not keep
+  // showing the deleted contact's name from the old book.
+  it('a delete whose re-read fails: the contact label is gone (and Save with it)', async () => {
+    let fail = false;
+    await renderInWallet(<TxDetail signature={sendTo.signature} account={ACCOUNT.publicKey} item={sendTo} onBack={() => undefined} canRetry onTryAgain={tryAgain} />, {
+      before: ext => ext.local.set(CONTACTS_KEY, [{address: COUNTERPARTY, name: 'Supplier'}]),
+      gate: m => {
+        if ((m as {type: string}).type === 'contacts.list' && fail) throw new Error('worker restarting');
+      },
+    });
+    expect(await screen.findByText('From your address book: Supplier')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+    const edit = await screen.findByRole('dialog', {name: 'Edit contact'});
+    fireEvent.click(within(edit).getByRole('button', {name: 'Delete contact'}));
+    fail = true;
+    fireEvent.click(await screen.findByRole('button', {name: 'Delete'}));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await act(async () => new Promise(r => setTimeout(r, 30)));
+    expect(screen.queryByText(/From your address book/)).toBeNull();
+    expect(screen.queryByRole('button', {name: 'Save'})).toBeNull();
+  });
+
+  it('own and treasury labels need no book: they stay while it is stale', async () => {
+    let armed = false;
+    await renderInWallet(<TxDetail signature={sendTo.signature} account={ACCOUNT.publicKey} item={item({counterparty: MAINNET_FEE_TREASURY})} onBack={() => undefined} canRetry onTryAgain={tryAgain} />, {
+      gate: async m => {
+        if ((m as {type: string}).type === 'contacts.list' && armed) await new Promise<void>(() => undefined);
+      },
+    });
+    fireEvent.click(await screen.findByRole('button', {name: 'Save'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    armed = true;
+    fireEvent.click(within(dialog).getByRole('button', {name: 'Cancel'}));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.queryByRole('button', {name: 'Save'})).toBeNull();
+    expect(screen.getByText('Noctura treasury')).toBeTruthy();
   });
 });
