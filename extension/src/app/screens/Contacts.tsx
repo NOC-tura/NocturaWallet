@@ -131,6 +131,8 @@ export function Contacts({pick, onBack, onPick}: {pick: boolean; onBack: () => v
   const shown = searchContacts(list.contacts, q);
   // Review L1: a query that is an address seeds the address field (the name stays empty); any other query is the name.
   const addNew = () => setSheet(isAddressText(q) ? {kind: 'add', address: null, typed: q} : {kind: 'add', address: null, name: q});
+  /** Final review I1: a query that IS a saved address (exactly) is that contact, shown as its row — never offered as an add. */
+  const saved = list.contacts.some(c => c.address === q);
   /**
    * A pick row's label in the date's place, by the precedence own > treasury > contact (E17; Task 2 carry): a saved
    * address that is one of this wallet's accounts says "Your account: <name>" (2a's; review L5), the fee treasury "Noctura
@@ -207,9 +209,11 @@ export function Contacts({pick, onBack, onPick}: {pick: boolean; onBack: () => v
         {q === '' ? null : (
           <div className="app-abook-foot">
             <div className="noc-body-sm">{shown.length > 0 ? CONTACTS_TEXT.noMore : CONTACTS_TEXT.noMatch(q)}</div>
-            <LockedButton className="btn btn-tertiary" disabled={full} onPress={addNew}>
-              {CONTACTS_TEXT.addNew(q)}
-            </LockedButton>
+            {saved ? null : (
+              <LockedButton className="btn btn-tertiary" disabled={full} onPress={addNew}>
+                {CONTACTS_TEXT.addNew(q)}
+              </LockedButton>
+            )}
           </div>
         )}
       </div>
@@ -237,11 +241,13 @@ export function Contacts({pick, onBack, onPick}: {pick: boolean; onBack: () => v
       {sheet === null ? null : (
         <ContactSheet
           mode={sheet}
+          book={list.contacts}
           onClose={() => setSheet(null)}
-          onSaved={c => {
+          onSaved={(c, kind) => {
             setSheet(null);
-            // A contact added from #12's pick is the one the user wanted: picked at once (§6.1).
-            if (pick && sheet.kind === 'add') return onPick(c.address);
+            // A contact added from #12's pick is the one the user wanted: picked at once (§6.1). An add sheet that became a
+            // saved contact's edit sheet (final review I1) saved an edit: it is not picked; the list is read again.
+            if (pick && kind === 'add') return onPick(c.address);
             void load();
           }}
           onDeleted={() => void load()}

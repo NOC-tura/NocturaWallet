@@ -45,6 +45,9 @@ export const CONTACT_TEXT = {
  */
 export type ContactSheetMode = {kind: 'add'; address: string | null; name?: string; typed?: string} | {kind: 'edit'; address: string; name: string};
 
+/** A saved contact as the sheet needs it: its address and its stored name. */
+type Saved = {address: string; name: string};
+
 /**
  * The contact sheet (B1b-2b §6.2; D20, C12, C18, C19; review H3): an `.s8-sheet` like #43 over #15, #20 and #27. A
  * contact is a label, never trust, so the sheet is where an address enters the book and it says what is known about it:
@@ -58,24 +61,41 @@ export type ContactSheetMode = {kind: 'add'; address: string | null; name?: stri
  * reads only `known`, and a contact never makes an address known.
  */
 export function ContactSheet({
-  mode,
+  mode: opened,
+  book,
   received,
   onSaved,
   onDeleted,
   onClose,
 }: {
   mode: ContactSheetMode;
+  /**
+   * #15's book, when the sheet is #15's add sheet (`add` with no address; final review I1): an address typed or pasted
+   * that is already saved — exactly — turns the sheet into that contact's edit sheet, never a silent rename.
+   */
+  book?: readonly Saved[];
   /** Opened from #27c [Save sender]: what the sender sent (C18 decides dust). */
   received?: {token: Token | null; amount: bigint | null};
-  onSaved: (contact: {address: string; name: string}) => void;
+  /** `kind`: what the save was — an add, or an edit (also an add sheet that became a saved contact's edit sheet). */
+  onSaved: (contact: {address: string; name: string}, kind: 'add' | 'edit') => void;
   onDeleted?: (address: string) => void;
   onClose: () => void;
 }) {
   const m = useWallet();
   const {engine, reload} = m;
+  /**
+   * Final review I1: #15's add sheet (`add`, no address) whose address is already in the book becomes that contact's edit
+   * sheet — "Edit contact", the address read-only, the stored name, "Delete contact" — so a rename is always an explicit
+   * edit, never a silent overwrite (`contacts.set` renames in place, C12). The book is #15's (`book`) until Save re-reads
+   * it (`fresh`, the newest read): an address saved in another window meanwhile turns the sheet at Save, not saved over.
+   */
+  const typedAdd = opened.kind === 'add' && opened.address === null;
+  const [becameEdit, setBecameEdit] = useState<Saved | null>(null);
+  const [fresh, setFresh] = useState<readonly Saved[] | null>(null);
+  const mode: ContactSheetMode = becameEdit === null ? opened : {kind: 'edit', ...becameEdit};
   const fixed = mode.address;
-  const [typed, setTyped] = useState(mode.kind === 'add' ? (mode.typed ?? '') : '');
-  const [name, setName] = useState(mode.name ?? '');
+  const [typed, setTyped] = useState(opened.kind === 'add' ? (opened.typed ?? '') : '');
+  const [name, setName] = useState(opened.name ?? '');
   const [error, setError] = useState<{field: 'address' | 'name' | 'form'; text: string} | null>(null);
   const [confirming, setConfirming] = useState(false);
   /** recipientInfo's last answer, keyed by what it answered (`account|address`; review fix round 1, M3). */
@@ -129,6 +149,20 @@ export function ContactSheet({
     });
   }, [valid, address, account, engine, reload]);
 
+  /** The saved contact the add sheet's address is — an exact match only: a look-alike is a different address. */
+  const savedAs = typedAdd && becameEdit === null && valid ? (fresh ?? book ?? []).find(c => c.address === address) : undefined;
+  const nameRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (savedAs === undefined) return;
+    // The address field (focused while typing) goes once the sheet is the edit sheet: the focus moves to Name first, as
+    // the edit sheet opens — never left on `body`, from where Tab would reach the screen behind the modal.
+    nameRef.current?.focus();
+    setBecameEdit({address: savedAs.address, name: savedAs.name});
+    setName(savedAs.name);
+    setError(null);
+    setPasteRefused(false);
+  }, [savedAs]);
+
   const fromSender = received !== undefined && known !== true;
   const dust = fromSender && isDust(received.token, received.amount);
 
@@ -154,10 +188,23 @@ export function ContactSheet({
     if (cleanName(name) === null) return setError({field: 'name', text: CONTACT_TEXT.badName});
     inFlight.current = true;
     setPending(true);
+    if (typedAdd && becameEdit === null) {
+      // Final review I1: the book is read again right before the add — #15's copy may be older than another window's
+      // save. A saved address turns the sheet (the effect above) and nothing is saved; a failed read saves nothing.
+      const b = await engine.contacts();
+      if (!alive.current) return;
+      if (!b.ok) {
+        settle();
+        if (b.error === 'locked') return void reload();
+        return setError({field: 'form', text: CONTACT_TEXT.failed});
+      }
+      setFresh(b.data.contacts);
+      if (b.data.contacts.some(c => c.address === address)) return settle();
+    }
     const r = await engine.contactSet(address, name);
     if (!alive.current) return;
     settle();
-    if (r.ok) return onSaved({address, name: cleanName(name) ?? name});
+    if (r.ok) return onSaved({address, name: cleanName(name) ?? name}, mode.kind);
     if (r.error === 'locked') return void reload();
     if (r.error === 'duplicate-name') return setError({field: 'name', text: CONTACT_TEXT.duplicateName});
     if (r.error === 'malformed') return setError({field: 'name', text: CONTACT_TEXT.badName});
@@ -299,6 +346,7 @@ export function ContactSheet({
           maxLength={32}
           autoComplete="off"
           value={name}
+          ref={nameRef}
           {...(fixed === null ? {} : {'data-autofocus': ''})}
           onChange={e => {
             setName(e.target.value);

@@ -87,7 +87,7 @@ describe('the contact sheet: add · prefilled', () => {
     const w = await renderInWallet(sheet({onSaved}));
     fireEvent.change(nameField(), {target: {value: '  Supplier  '}});
     fireEvent.click(save());
-    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({address: SENDER, name: 'Supplier'}));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({address: SENDER, name: 'Supplier'}, 'add'));
     expect(await w.ext.local.get(CONTACTS_KEY)).toEqual([{address: SENDER, name: 'Supplier'}]);
   });
 
@@ -126,7 +126,7 @@ describe('the contact sheet from #27c "Save sender" (review H3, C18)', () => {
     expect(save().textContent).toBe('Save anyway');
     fireEvent.change(nameField(), {target: {value: 'Binance'}});
     fireEvent.click(save());
-    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({address: SENDER, name: 'Binance'}));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({address: SENDER, name: 'Binance'}, 'add'));
     expect(unstyledClasses(document.querySelector('.s8-sheet')!, SELECTORS)).toEqual([]);
   });
 
@@ -189,7 +189,7 @@ describe('the contact sheet: edit and delete', () => {
     expect(screen.getByRole('button', {name: 'Delete contact'}).className).toBe('btn btn-tertiary noc-danger');
     fireEvent.change(nameField(), {target: {value: 'Supplier GmbH'}});
     fireEvent.click(save());
-    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({address: SENDER, name: 'Supplier GmbH'}));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({address: SENDER, name: 'Supplier GmbH'}, 'edit'));
     expect(await w.ext.local.get(CONTACTS_KEY)).toEqual([{address: SENDER, name: 'Supplier GmbH'}]);
   });
 
@@ -637,7 +637,7 @@ describe('the contact sheet: no close while a save or delete is out (Task 7 fix 
     await act(async () => new Promise(r => setTimeout(r, 20)));
     expect(onClose).not.toHaveBeenCalled();
     h.release();
-    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({address: SENDER, name: 'Supplier'}));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({address: SENDER, name: 'Supplier'}, 'add'));
     expect(onClose).not.toHaveBeenCalled();
   });
 
@@ -721,5 +721,97 @@ describe('the contact sheet: no close while a save or delete is out (Task 7 fix 
     fireEvent.click(screen.getByTestId('sheet-backdrop'));
     fireEvent.click(screen.getAllByRole('button', {name: 'Close'})[1]!);
     expect(onClose).toHaveBeenCalledTimes(3);
+  });
+});
+
+// Final review I1: #15's add sheet (`add`, no address) reads the book again at Save. That read is an await like the others:
+// `locked` re-reads the wallet and saves nothing; an answer after the sheet went calls nothing.
+describe('the contact sheet: the re-read of the book at Save (final review I1)', () => {
+  const typedAdd: ContactSheetMode = {kind: 'add', address: null};
+  const fill = () => {
+    fireEvent.change(document.getElementById('contact-address')!, {target: {value: OTHER}});
+    fireEvent.change(nameField(), {target: {value: 'Mom'}});
+  };
+
+  it('the book given at open: a saved address typed in turns the sheet into its edit sheet; saving is an edit', async () => {
+    const onSaved = vi.fn();
+    const w = await renderInWallet(<ContactSheet mode={typedAdd} book={[{address: OTHER, name: 'Binance'}]} onSaved={onSaved} onClose={() => undefined} />, {
+      before: ext => ext.local.set(CONTACTS_KEY, [{address: OTHER, name: 'Binance'}]),
+    });
+    fireEvent.change(nameField(), {target: {value: 'Mom'}});
+    fireEvent.change(document.getElementById('contact-address')!, {target: {value: OTHER}});
+    expect(await screen.findByRole('dialog', {name: 'Edit contact'})).toBeTruthy();
+    expect(nameField().value).toBe('Binance');
+    fireEvent.change(nameField(), {target: {value: 'Mom'}});
+    fireEvent.click(save());
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({address: OTHER, name: 'Mom'}, 'edit'));
+    expect(await w.ext.local.get(CONTACTS_KEY)).toEqual([{address: OTHER, name: 'Mom'}]);
+  });
+
+  it('locked at the re-read: nothing saved, nothing handed back, the wallet re-read', async () => {
+    const onSaved = vi.fn();
+    const sent: string[] = [];
+    let ext: Parameters<typeof lock>[0] | null = null;
+    const w = await renderInWallet(<ContactSheet mode={typedAdd} book={[]} onSaved={onSaved} onClose={() => undefined} />, {
+      before: async e => {
+        ext = e;
+      },
+      gate: async m => {
+        const type = (m as {type: string}).type;
+        sent.push(type);
+        if (type === 'contacts.list' && ext !== null) await lock(ext);
+      },
+    });
+    fill();
+    await waitFor(() => expect(sent).toContain('wallet.recipientInfo'));
+    await act(async () => new Promise(r => setTimeout(r, 50)));
+    fireEvent.click(save());
+    await waitFor(() => expect(sent).toContain('contacts.list'));
+    await waitFor(() => expect(sent.lastIndexOf('wallet.state')).toBeGreaterThan(sent.indexOf('contacts.list')));
+    await act(async () => new Promise(r => setTimeout(r, 50)));
+    expect(sent).not.toContain('contacts.set');
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(await w.ext.local.get(CONTACTS_KEY)).toBeUndefined();
+  });
+
+  it('gone while the re-read was out: a late `locked` reloads nothing and nothing is saved', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(r => {
+      release = r;
+    });
+    let gone = false;
+    const after: string[] = [];
+    let ext: Parameters<typeof lock>[0] | null = null;
+    function Host() {
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(false)}>
+            hide
+          </button>
+          {open ? <ContactSheet mode={typedAdd} book={[]} onSaved={() => undefined} onClose={() => undefined} /> : null}
+        </>
+      );
+    }
+    await renderInWallet(<Host />, {
+      before: async e => {
+        ext = e;
+      },
+      gate: async m => {
+        const type = (m as {type: string}).type;
+        if (gone) after.push(type);
+        if (type === 'contacts.list') await held;
+      },
+    });
+    fill();
+    await act(async () => new Promise(r => setTimeout(r, 50)));
+    fireEvent.click(save());
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    await lock(ext!);
+    gone = true;
+    fireEvent.click(screen.getByRole('button', {name: 'hide'}));
+    release();
+    await act(async () => new Promise(r => setTimeout(r, 50)));
+    expect(after).toEqual([]);
   });
 });

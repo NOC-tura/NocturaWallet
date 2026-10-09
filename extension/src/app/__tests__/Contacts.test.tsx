@@ -403,3 +403,138 @@ describe('#15 address book — pick (from #12; review H3)', () => {
     await waitFor(() => expect(onPick).toHaveBeenCalledWith(addr(9)));
   });
 });
+
+// Final review I1: an address already in the book is never saved over from #15's add sheet. The add sheet that comes to
+// hold a saved address — pasted, typed, or saved meanwhile in another window — becomes that contact's edit sheet ("Edit
+// contact", its stored name); renaming it is then an explicit edit. A search for a saved address offers no add.
+describe('#15 address book — an address already saved (final review I1)', () => {
+  const BINANCE = TINA;
+  const binance = (ext: {local: {set(k: string, v: unknown): Promise<void>}}) => ext.local.set(CONTACTS_KEY, [{address: MARKO, name: 'Marko · Mom'}, {address: BINANCE, name: 'Binance'}]);
+  const field = (id: string) => document.getElementById(id) as HTMLInputElement | null;
+  const groups = () => [...document.querySelectorAll('.app-contact-addr .addr-groups > span')].map(s => s.textContent);
+
+  it('pasting the saved "Binance" address in the add sheet opens the edit sheet with "Binance"; saving "Mom" is an explicit edit', async () => {
+    const w = await show({}, {before: binance});
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    fireEvent.click(screen.getByRole('button', {name: 'Add contact'}));
+    await screen.findByRole('dialog', {name: 'Add contact'});
+    Object.defineProperty(navigator, 'clipboard', {value: {readText: async () => ` ${BINANCE}\n`}, configurable: true});
+    fireEvent.click(screen.getByRole('button', {name: 'Paste'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Edit contact'});
+    expect(screen.queryByRole('dialog', {name: 'Add contact'})).toBeNull();
+    expect(field('contact-name')?.value).toBe('Binance');
+    // The address is the saved one, read-only now, in groups of four; the sheet offers the edit sheet's Delete.
+    expect(field('contact-address')).toBeNull();
+    expect(groups()).toEqual(BINANCE.match(/.{1,4}/g));
+    expect(within(dialog).getByRole('button', {name: 'Delete contact'})).toBeTruthy();
+    expect(document.activeElement).toBe(field('contact-name'));
+    fireEvent.change(field('contact-name')!, {target: {value: 'Mom'}});
+    fireEvent.click(within(dialog).getByRole('button', {name: 'Save'}));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(await w.ext.local.get(CONTACTS_KEY)).toEqual([
+      {address: MARKO, name: 'Marko · Mom'},
+      {address: BINANCE, name: 'Mom'},
+    ]);
+    await waitFor(() => expect(rows()[1]?.querySelector('.name')?.textContent).toBe('Mom'));
+  });
+
+  it('typing the saved address does the same: the edit sheet with the stored name, the typed name replaced', async () => {
+    const w = await show({}, {before: binance});
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    fireEvent.click(screen.getByRole('button', {name: 'Add contact'}));
+    await screen.findByRole('dialog', {name: 'Add contact'});
+    fireEvent.change(field('contact-name')!, {target: {value: 'Mom'}});
+    fireEvent.change(field('contact-address')!, {target: {value: BINANCE}});
+    expect(await screen.findByRole('dialog', {name: 'Edit contact'})).toBeTruthy();
+    expect(field('contact-name')?.value).toBe('Binance');
+    expect(await w.ext.local.get(CONTACTS_KEY)).toEqual([
+      {address: MARKO, name: 'Marko · Mom'},
+      {address: BINANCE, name: 'Binance'},
+    ]);
+  });
+
+  it('a look-alike of the saved address (one character, or the case) stays an add: only an exact match is the contact', async () => {
+    await show({}, {before: binance});
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    fireEvent.click(screen.getByRole('button', {name: 'Add contact'}));
+    await screen.findByRole('dialog', {name: 'Add contact'});
+    for (const lookalike of [`${BINANCE.slice(0, 43)}y`, BINANCE.replace('fD2x', 'FD2x')]) {
+      fireEvent.change(field('contact-address')!, {target: {value: lookalike}});
+      await act(async () => new Promise(r => setTimeout(r, 20)));
+      expect(screen.getByRole('dialog', {name: 'Add contact'})).toBeTruthy();
+      expect(field('contact-name')?.value).toBe('');
+    }
+  });
+
+  it('search for the saved address: its row, "No more matches." — and no "Add new contact"', async () => {
+    await show({}, {before: binance});
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    fireEvent.change(screen.getByRole('textbox', {name: 'Search contacts'}), {target: {value: BINANCE}});
+    expect(rows().map(r => r.querySelector('.name')?.textContent)).toEqual(['Binance']);
+    expect(screen.getByText('No more matches.')).toBeTruthy();
+    expect(screen.queryByRole('button', {name: /^Add new contact/})).toBeNull();
+    // Positive control: a look-alike query (one character off) matches nothing and is offered as an add.
+    const lookalike = `${BINANCE.slice(0, 43)}y`;
+    fireEvent.change(screen.getByRole('textbox', {name: 'Search contacts'}), {target: {value: lookalike}});
+    expect(screen.getByRole('button', {name: `Add new contact "${lookalike}" →`})).toBeTruthy();
+  });
+
+  it('saved in another window while the add sheet was open: Save re-reads the book and opens the edit sheet — nothing is renamed', async () => {
+    const w = await show({}, {before: binance});
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    fireEvent.click(screen.getByRole('button', {name: 'Add contact'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    fireEvent.change(field('contact-address')!, {target: {value: addr(9)}});
+    fireEvent.change(field('contact-name')!, {target: {value: 'Mom'}});
+    // Another window saves the same address meanwhile.
+    await w.ext.local.set(CONTACTS_KEY, [{address: addr(9), name: 'Elsewhere'}, {address: MARKO, name: 'Marko · Mom'}, {address: BINANCE, name: 'Binance'}]);
+    fireEvent.click(within(dialog).getByRole('button', {name: 'Save'}));
+    expect(await screen.findByRole('dialog', {name: 'Edit contact'})).toBeTruthy();
+    expect(field('contact-name')?.value).toBe('Elsewhere');
+    await act(async () => new Promise(r => setTimeout(r, 30)));
+    expect((await w.ext.local.get(CONTACTS_KEY)) as {name: string}[]).toEqual([
+      {address: addr(9), name: 'Elsewhere'},
+      {address: MARKO, name: 'Marko · Mom'},
+      {address: BINANCE, name: 'Binance'},
+    ]);
+  });
+
+  it('a failed re-read at Save saves nothing: "Something went wrong. Try again." (fail closed)', async () => {
+    let fail = false;
+    const w = await show({}, {
+      before: binance,
+      gate: m => {
+        if ((m as {type: string}).type === 'contacts.list' && fail) throw new Error('worker restarting');
+      },
+    });
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    fireEvent.click(screen.getByRole('button', {name: 'Add contact'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    fireEvent.change(field('contact-address')!, {target: {value: addr(9)}});
+    fireEvent.change(field('contact-name')!, {target: {value: 'Mom'}});
+    fail = true;
+    fireEvent.click(within(dialog).getByRole('button', {name: 'Save'}));
+    expect(await within(dialog).findByText('Something went wrong. Try again.')).toBeTruthy();
+    expect(screen.getByRole('dialog', {name: 'Add contact'})).toBeTruthy();
+    expect(await w.ext.local.get(CONTACTS_KEY)).toEqual([
+      {address: MARKO, name: 'Marko · Mom'},
+      {address: BINANCE, name: 'Binance'},
+    ]);
+  });
+
+  it('pick: the saved address pasted in the add sheet is an edit — not a pick (an add from pick still is: above)', async () => {
+    const onPick = vi.fn();
+    const w = await show({pick: true, onPick}, {before: binance});
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    fireEvent.click(screen.getByRole('button', {name: 'Add contact'}));
+    await screen.findByRole('dialog', {name: 'Add contact'});
+    fireEvent.change(field('contact-address')!, {target: {value: BINANCE}});
+    const dialog = await screen.findByRole('dialog', {name: 'Edit contact'});
+    fireEvent.change(field('contact-name')!, {target: {value: 'Mom'}});
+    fireEvent.click(within(dialog).getByRole('button', {name: 'Save'}));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(async () => expect(((await w.ext.local.get(CONTACTS_KEY)) as {name: string}[]).map(c => c.name)).toEqual(['Marko · Mom', 'Mom']));
+    await act(async () => new Promise(r => setTimeout(r, 30)));
+    expect(onPick).not.toHaveBeenCalled();
+  });
+});
