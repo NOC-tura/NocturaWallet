@@ -58,6 +58,21 @@ describe('wallet.recipientInfo (E6)', () => {
     expect((await ask(await setup(), RECIPIENT)).data).toEqual({known: false, lastSentAt: null, label: null, self: false});
   });
 
+  // B1b-2b E17: a saved contact adds a label — own > treasury > contact — and never touches `known` (D19).
+  it('a contact labels an address {kind: contact, name}; known stays false', async () => {
+    const ext = await setup();
+    await handleWallet(ext, fakeDeps(), 'contacts.set', {address: RECIPIENT, name: 'Marko · Mom'});
+    expect((await ask(ext, RECIPIENT)).data).toEqual({known: false, lastSentAt: null, label: {kind: 'contact', name: 'Marko · Mom'}, self: false});
+  });
+
+  it('precedence own > treasury > contact: a contact saved for an own account or the treasury never replaces their label', async () => {
+    const ext = await setup();
+    await handleWallet(ext, fakeDeps(), 'contacts.set', {address: OTHER, name: 'Not my savings'});
+    await handleWallet(ext, fakeDeps(), 'contacts.set', {address: MAINNET_FEE_TREASURY, name: 'Not the treasury'});
+    expect((await ask(ext, OTHER)).data).toMatchObject({label: {kind: 'own', index: 1, name: 'Savings'}});
+    expect((await ask(ext, MAINNET_FEE_TREASURY)).data).toMatchObject({known: false, label: {kind: 'treasury'}});
+  });
+
   it('refused while locked, and for a malformed address', async () => {
     const ext = fakeExt();
     await ext.local.set(VAULT_KEY, ENV);

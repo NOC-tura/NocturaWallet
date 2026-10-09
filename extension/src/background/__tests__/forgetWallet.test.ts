@@ -6,6 +6,7 @@ import {PENDING_KEY, readPending, updatePending} from '../pendingStore';
 import {pollOnce} from '../pending';
 import {KNOWN_RECIPIENTS_KEY} from '../knownRecipients';
 import {SETTINGS_KEY} from '../settings';
+import {CONTACTS_KEY} from '../contacts';
 import {BALANCE_CACHE_KEY, PRICE_CACHE_KEY} from '../balanceCache';
 import {FORBIDDEN_UNTIL_KEY} from '../deps';
 import {AUTOLOCK_ALARM} from '../autolock';
@@ -46,6 +47,7 @@ async function setup(reader: SolanaReader = zero()) {
   await setSession(ext, [ACCOUNT]);
   await ext.local.set(KNOWN_RECIPIENTS_KEY, [{address: RECIPIENT, at: 1}]);
   await ext.local.set(SETTINGS_KEY, {autoLockMinutes: 2, reauthUsdCents: 5000, selectedAccount: 1});
+  await ext.local.set(CONTACTS_KEY, [{address: RECIPIENT, name: 'Marko'}]);
   await ext.local.set(BALANCE_CACHE_KEY, {});
   await ext.local.set(PRICE_CACHE_KEY, {});
   await ext.local.set(FORBIDDEN_UNTIL_KEY, 123);
@@ -95,13 +97,15 @@ describe('vault.forgetWallet — the stored wallet', () => {
 });
 
 describe('vault.forgetWallet — a delete (no replacement)', () => {
-  it('locks, removes the vault, the known recipients, the settings and both caches; keeps the 403 cool-down', async () => {
+  it('locks, removes the vault, the known recipients, the settings, the address book and both caches; keeps the 403 cool-down', async () => {
     const {ext, deps} = await setup();
+    expect(await ext.local.get(CONTACTS_KEY)).toEqual([{address: RECIPIENT, name: 'Marko'}]);
     expect(await forgetWallet(ext, deps, {expectedRevision: REV})).toBe('forgotten');
     expect(await vault(ext)).toBeUndefined();
     expect(await ext.session.get(SESSION_KEY)).toBeUndefined();
     expect(ext.alarmsSet.has(AUTOLOCK_ALARM)).toBe(false);
-    for (const key of [KNOWN_RECIPIENTS_KEY, SETTINGS_KEY, BALANCE_CACHE_KEY, PRICE_CACHE_KEY]) expect(await ext.local.get(key)).toBeUndefined();
+    // B1b-2b E17 (D20): the address book goes with the wallet.
+    for (const key of [KNOWN_RECIPIENTS_KEY, SETTINGS_KEY, CONTACTS_KEY, BALANCE_CACHE_KEY, PRICE_CACHE_KEY]) expect(await ext.local.get(key)).toBeUndefined();
     expect(await ext.local.get(FORBIDDEN_UNTIL_KEY)).toBe(123);
   });
 
@@ -121,6 +125,8 @@ describe('vault.forgetWallet — a restore (replacement, C4, D40)', () => {
     expect(await vault(ext)).toEqual(REPLACEMENT);
     expect(await ext.local.get(KNOWN_RECIPIENTS_KEY)).toEqual([{address: RECIPIENT, at: 1}]);
     expect(await ext.local.get(SETTINGS_KEY)).toEqual({autoLockMinutes: 2, reauthUsdCents: 5000, selectedAccount: 1});
+    // B1b-2b E17 (D20): a restore keeps the address book.
+    expect(await ext.local.get(CONTACTS_KEY)).toEqual([{address: RECIPIENT, name: 'Marko'}]);
     expect(await ext.local.get(BALANCE_CACHE_KEY)).toBeUndefined();
     expect(await ext.local.get(FORBIDDEN_UNTIL_KEY)).toBe(123);
     expect(await getSession(ext)).toBeNull();
@@ -299,15 +305,18 @@ describe('vault.forgetWallet — the unfunded guard (C6)', () => {
 });
 
 describe('a first write clears what a crashed delete left behind', () => {
-  it('vault.storeEnvelope with expectedRevision null removes leftover known recipients, settings and caches (L1)', async () => {
+  it('vault.storeEnvelope with expectedRevision null removes leftover known recipients, settings, contacts and caches (L1)', async () => {
     const ext = fakeExt();
     await ext.local.set(BALANCE_CACHE_KEY, {});
     await ext.local.set(PRICE_CACHE_KEY, {});
     await ext.local.set(KNOWN_RECIPIENTS_KEY, [{address: RECIPIENT, at: 1}]);
     await ext.local.set(SETTINGS_KEY, {autoLockMinutes: 60, reauthUsdCents: 100000, selectedAccount: 0});
+    await ext.local.set(CONTACTS_KEY, [{address: RECIPIENT, name: 'Left behind'}]);
     expect(await storeEnvelope(ext, null, STORED)).toBe('stored');
     expect(await ext.local.get(KNOWN_RECIPIENTS_KEY)).toBeUndefined();
     expect(await ext.local.get(SETTINGS_KEY)).toBeUndefined();
+    // B1b-2b E17: a book a crashed delete left behind never reaches the next wallet.
+    expect(await ext.local.get(CONTACTS_KEY)).toBeUndefined();
     expect(await ext.local.get(BALANCE_CACHE_KEY)).toBeUndefined();
     expect(await ext.local.get(PRICE_CACHE_KEY)).toBeUndefined();
   });

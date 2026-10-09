@@ -391,6 +391,13 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
       OWNED('src/app/popup.tsx', 'v1_forbidden_until'),
     ]);
   });
+  // B1b-2b E17: the address book is the background's — a popup file naming v1_contacts is a violation.
+  it('lets only the background name the address book key (v1_contacts)', () => {
+    const OWNED = (path, key) => `${path}: names ${key}, which only the background may write`;
+    expect(sourceViolations([f('src/background/contacts.ts', "export const CONTACTS_KEY = 'v1_contacts';")])).toEqual([]);
+    expect(sourceViolations([f('src/app/screens/Contacts.tsx', "const k = 'v1_contacts';")])).toEqual([OWNED('src/app/screens/Contacts.tsx', 'v1_contacts')]);
+    expect(sourceViolations([f('src/unlock/main.ts', '// v1_contacts')])).toEqual([OWNED('src/unlock/main.ts', 'v1_contacts')]);
+  });
   // B1b-2a E4: the balance and price caches are the background's too.
   it('lets only the background name the two cache keys', () => {
     const OWNED = (path, key) => `${path}: names ${key}, which only the background may write`;

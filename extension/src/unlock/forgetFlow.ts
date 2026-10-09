@@ -174,7 +174,7 @@ export type DeleteOutcome = 'deleted' | 'send-open' | 'busy' | 'unlocked' | 'no-
  * is deleted too (#37 shows the funds first, C13). The proof is proveFactor's (password or passkey, no session, works
  * locked). `funded`, `unreachable` and `coordinator-refused` cannot occur without the guard; if they ever did, they are
  * `failed`. The background's E5 locks, refuses while a send is open (`send-open`, the wallet left locked), and removes the
- * vault, the known recipients, the settings and the caches (plan 2 adds v1_contacts there).
+ * vault, the known recipients, the settings, the address book (B1b-2b E17) and the caches.
  */
 export async function deleteWallet(send: Send, proof: FactorProof): Promise<DeleteOutcome> {
   if (!minted.has(proof) || proof.kind !== 'factor') return 'failed';

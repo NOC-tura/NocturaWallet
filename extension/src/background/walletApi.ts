@@ -9,6 +9,7 @@ import {issueChallenge, takeSettingsChallenge} from './reauthChallenges';
 import {digestOf} from './digest';
 import {discardPrepared, isAddress, parseIntent, preparedFor, prepareSend} from './prepare';
 import {isKnownRecipient, lastSentAt} from './knownRecipients';
+import {MAX_CONTACTS, contactFor, listContacts, removeContact, setContact} from './contacts';
 import {MAINNET_FEE_TREASURY} from '../../../core/fees/transferMarkup';
 import {sendPrepared} from './send';
 import {resend, startPoller} from './pending';
@@ -40,6 +41,9 @@ export const WALLET_TYPES = [
   'accounts.order',
   'settings.get',
   'settings.set',
+  'contacts.list',
+  'contacts.set',
+  'contacts.remove',
 ] as const;
 export type WalletType = (typeof WALLET_TYPES)[number];
 export const isWalletType = (t: string): t is WalletType => (WALLET_TYPES as readonly string[]).includes(t);
@@ -183,7 +187,8 @@ async function prices(ext: Ext, deps: WalletDeps): Promise<Result> {
 /**
  * wallet.recipientInfo (E6): what #12 may say about a recipient before anything is prepared. Local
  * only — no network. Refused while locked: it reveals whom this wallet has paid. A hint: prepareSend
- * recomputes everything that decides.
+ * recomputes everything that decides. The label's precedence is own > treasury > contact (B1b-2b E17): a contact's
+ * name never stands in for "Your account" or the treasury. `known` is untouched by contacts (D19).
  */
 async function recipientInfo(ext: Ext, account: unknown, recipient: unknown): Promise<Result> {
   if (!isAddress(account) || !isAddress(recipient)) return MALFORMED;
@@ -191,7 +196,15 @@ async function recipientInfo(ext: Ext, account: unknown, recipient: unknown): Pr
   if (session === null) return {ok: false, error: 'locked'};
   const view = await readWalletView(ext);
   const own = view?.accounts.find(a => a.publicKey === recipient);
-  const label = own !== undefined ? {kind: 'own' as const, index: own.index, name: own.name} : recipient === MAINNET_FEE_TREASURY ? {kind: 'treasury' as const} : null;
+  const contact = own === undefined && recipient !== MAINNET_FEE_TREASURY ? await contactFor(ext, recipient) : null;
+  const label =
+    own !== undefined
+      ? {kind: 'own' as const, index: own.index, name: own.name}
+      : recipient === MAINNET_FEE_TREASURY
+        ? {kind: 'treasury' as const}
+        : contact !== null
+          ? {kind: 'contact' as const, name: contact.name}
+          : null;
   return {
     ok: true,
     data: {known: await isKnownRecipient(ext, session, recipient), lastSentAt: await lastSentAt(ext, recipient), label, self: recipient === account},
@@ -404,6 +417,19 @@ export async function handleWallet(ext: Ext, deps: WalletDeps, type: WalletType,
         return {ok: true, data: await readSettings(ext)};
       case 'settings.set':
         return await setSettings(ext, deps, msg);
+      // B1b-2b E17 (C12): every one refused while locked — the book says whom the user pays.
+      case 'contacts.list': {
+        const contacts = await listContacts(ext);
+        return contacts === 'locked' ? {ok: false, error: 'locked'} : {ok: true, data: {contacts, max: MAX_CONTACTS}};
+      }
+      case 'contacts.set': {
+        const r = await setContact(ext, msg.address, msg.name);
+        return typeof r === 'string' ? {ok: false, error: r} : {ok: true, data: r};
+      }
+      case 'contacts.remove': {
+        const r = await removeContact(ext, msg.address);
+        return r === 'removed' ? {ok: true} : {ok: false, error: r};
+      }
     }
   } catch (e) {
     return failure(e);

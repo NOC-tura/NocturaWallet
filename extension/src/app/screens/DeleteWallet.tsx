@@ -18,7 +18,8 @@ export const DELETE_TEXT = {
   /** ix:14973 → adapted ("device" → "browser"); the bold parts at 1 and 3. */
   body: ['This removes ', 'all encrypted keys', ' and ', 'local data', ' from this browser.'],
   bulletAssets: ["Your assets won't be lost on-chain — but you'll need your ", 'recovery phrase', ' to access them again.'],
-  bulletErased: ['Local settings, cached balances and the list of addresses you have sent to are ', 'erased', ' and not recoverable.'],
+  /** ix:14981 → adapted, plan 2's wording (spec §5): the address book is wiped with the rest (D20). */
+  bulletErased: ['Local settings, cached balances, your address book and the list of addresses you have sent to are ', 'erased', ' and not recoverable.'],
   holdBody: 'Hold the red button below — release to cancel, hold for the full second to delete.',
   firstAccount: "This wallet's first account",
   typeLead: 'Type ',
