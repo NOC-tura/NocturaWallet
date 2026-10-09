@@ -39,7 +39,8 @@ export function b64Length(x: unknown): number | null {
 // reader), and two invisible marks of category Mn: the combining grapheme joiner U+034F and the variation selectors
 // U+FE00\u2013U+FE0F. "Mo\u200bm" renders as "Mom"; a name may not. For contact names and account names alike. Names are not
 // otherwise normalised: cross-script look-alikes ("\u0412inance" with a Cyrillic \u0412) pass \u2014 C19's stated limit.
-const FORBIDDEN_IN_NAME = /[\p{Cc}\p{Cf}\u034f\ufe00-\ufe0f\u202a-\u202e\u2066-\u2069]/u;
+// Task 2 fix round 1: the line and paragraph separators (Zl U+2028, Zp U+2029) too — a name is one line.
+const FORBIDDEN_IN_NAME = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u034f\ufe00-\ufe0f\u202a-\u202e\u2066-\u2069]/u;
 
 /** A name as stored (an account's, a contact's): trimmed, 1..MAX_NAME_LENGTH, no control or format character (C19). Null otherwise. */
 export function cleanName(x: unknown): string | null {

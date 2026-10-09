@@ -30,6 +30,13 @@ describe('envelope rules shared by the vault page and the background', () => {
     expect(cleanName('Mom')).toBe('Mom');
   });
 
+  // Fix round 1 (Task 1, ruled): the line and paragraph separators (Zl, Zp) inside a name — a name is one line. At either
+  // end trim() removes them, as it does any line terminator.
+  it('C19: refuses U+2028 and U+2029 inside a name; trims them at the ends', () => {
+    for (const cp of [0x2028, 0x2029]) expect([cp.toString(16), cleanName(`Mo${String.fromCodePoint(cp)}m`)]).toEqual([cp.toString(16), null]);
+    expect(cleanName('\u2028Mom\u2029')).toBe('Mom');
+  });
+
   it('C19: accepts ordinary text in any script, punctuation and emoji \u2014 names are not otherwise normalised', () => {
     for (const ok of ['Marko \u00b7 Mom', 'Bistro Ljubljana', '\u017diga', '\u039c\u03b1\u03c1\u03af\u03b1', '\u0418\u0432\u0430\u043d', '\u674e\u96f7', 'caf\u00e9', 'Cold storage \ud83d\udd12', "O'Brien-Smith"]) expect(cleanName(ok)).toBe(ok);
   });

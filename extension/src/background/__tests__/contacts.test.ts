@@ -223,6 +223,16 @@ describe('C19: two contacts may not share a name (NFKC + case-folding)', () => {
     expect(nameKey('Ｍｏｍ')).toBe('mom');
   });
 
+  // Fix round 1, M1: upper-then-lower is not idempotent — the capital ẞ (U+1E9E) upper-cases to itself and lower-cases to
+  // ß, never to "ss". Lower, upper, lower reaches one key for all three spellings.
+  it('the fold is idempotent: "Straße", "STRASSE" and "STRAẞE" are one name, and a second contact cannot take it', async () => {
+    expect(new Set(['Straße', 'STRASSE', 'STRA\u1E9EE', 'strasse'].map(nameKey))).toEqual(new Set(['strasse']));
+    expect(nameKey(nameKey('STRA\u1E9EE'))).toBe(nameKey('STRA\u1E9EE'));
+    const ext = await setup();
+    expect(await call(ext, 'contacts.set', {address: addr(1), name: 'Straße'})).toEqual({ok: true, data: {created: true}});
+    for (const name of ['STRASSE', 'STRA\u1E9EE']) expect(await call(ext, 'contacts.set', {address: addr(2), name})).toEqual({ok: false, error: 'duplicate-name'});
+  });
+
   // Rev 3, review L4 — the stated limit, pinned so a change is a decision: a cross-script look-alike is another name.
   it('limit: "Вinance" (Cyrillic В) is accepted beside "Binance" — the full address in pick rows is the defence', async () => {
     const ext = await setup();

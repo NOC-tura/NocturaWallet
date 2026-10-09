@@ -34,11 +34,12 @@ const serial = createMutex();
 
 /**
  * C19: two contacts may not share a name, compared after Unicode NFKC and case-folding. JavaScript has no full case
- * fold; upper- then lower-casing folds what simple lower-casing misses ("Straße" and "STRASSE"). Cross-script look-alikes
- * are NOT folded together ("Вinance" with a Cyrillic В is another name) — the stated limit; a pick row's full address is
- * the defence for addresses.
+ * fold; lower-, upper- then lower-casing folds what simple lower-casing misses ("Straße" and "STRASSE") and is
+ * idempotent where upper-then-lower is not: the capital ẞ (U+1E9E) only reaches "ss" through ß (fix round 1, M1).
+ * Cross-script look-alikes are NOT folded together ("Вinance" with a Cyrillic В is another name) — the stated limit; a
+ * pick row's full address is the defence for addresses.
  */
-export const nameKey = (name: string): string => name.normalize('NFKC').toUpperCase().toLowerCase();
+export const nameKey = (name: string): string => name.normalize('NFKC').toLowerCase().toUpperCase().toLowerCase();
 
 /**
  * The stored list, re-validated: an entry is kept only with an address (base58, 32 bytes, canonical — prepare's

@@ -6,7 +6,7 @@ import {PENDING_KEY, readPending, updatePending} from '../pendingStore';
 import {pollOnce} from '../pending';
 import {KNOWN_RECIPIENTS_KEY} from '../knownRecipients';
 import {SETTINGS_KEY} from '../settings';
-import {CONTACTS_KEY} from '../contacts';
+import {CONTACTS_KEY, removeContact} from '../contacts';
 import {BALANCE_CACHE_KEY, PRICE_CACHE_KEY} from '../balanceCache';
 import {FORBIDDEN_UNTIL_KEY} from '../deps';
 import {AUTOLOCK_ALARM} from '../autolock';
@@ -97,6 +97,35 @@ describe('vault.forgetWallet — the stored wallet', () => {
 });
 
 describe('vault.forgetWallet — a delete (no replacement)', () => {
+  // Fix round 1, I2: a contacts.remove already inside its section when a delete arrives finishes wholly before the delete's
+  // lock, so the wipe that follows removes what it wrote. Without the remove's sessionMutex section the delete would
+  // finish first and the parked write would put a book back after the wipe.
+  it('a contacts.remove parked mid-write when a delete arrives: the delete waits, and the book is gone after forgotten', async () => {
+    const {ext, deps} = await setup();
+    await ext.local.set(CONTACTS_KEY, [{address: RECIPIENT, name: 'Marko'}, {address: K1, name: 'Old'}]);
+    let release = (): void => undefined;
+    const gate = new Promise<void>(r => {
+      release = r;
+    });
+    const set = ext.local.set;
+    ext.local.set = async (k, v) => {
+      if (k === CONTACTS_KEY) await gate;
+      await set(k, v);
+    };
+    const removing = removeContact(ext, K1);
+    for (let i = 0; i < 20; i++) await new Promise(r => setTimeout(r, 0));
+    const forgetting = forgetWallet(ext, deps, {expectedRevision: REV});
+    for (let i = 0; i < 20; i++) await new Promise(r => setTimeout(r, 0));
+    // Observe, then release before any assertion: a failed expect must not leave the module's mutexes held.
+    const vaultMidRemove = await vault(ext);
+    release();
+    const removed = await removing;
+    const forgotten = await forgetting;
+    expect(vaultMidRemove).toEqual(STORED); // the delete was parked behind the remove
+    expect([removed, forgotten]).toEqual(['removed', 'forgotten']);
+    expect(await ext.local.get(CONTACTS_KEY)).toBeUndefined();
+  });
+
   it('locks, removes the vault, the known recipients, the settings, the address book and both caches; keeps the 403 cool-down', async () => {
     const {ext, deps} = await setup();
     expect(await ext.local.get(CONTACTS_KEY)).toEqual([{address: RECIPIENT, name: 'Marko'}]);
