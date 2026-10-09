@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import {fireEvent, screen, waitFor, within} from '@testing-library/react';
+import {act, fireEvent, screen, waitFor, within} from '@testing-library/react';
 import {renderApp} from './appHarness';
 import {CONTACTS_KEY} from '../../background/contacts';
 import {KNOWN_RECIPIENTS_KEY} from '../../background/knownRecipients';
 import {ACCOUNT} from '../../background/__tests__/fixtures';
-import {sendingReader} from './harness';
+import {SECOND, sendingReader} from './harness';
+import {STATE_POLL_MS} from '../WalletContext';
 import {fromBook} from '../addressBook';
 import {SEND_TEXT} from '../screens/Send';
 import {REVIEW_TEXT} from '../screens/Review';
@@ -151,5 +152,75 @@ describe('#12 → #15 pick of a look-alike (address poisoning)', () => {
     const challenge = held.ok && held.data !== null ? held.data.reauth?.challengeId : 'none';
     await waitFor(() => expect(w.platform.opened).toEqual([`unlock.html?mode=reauth&challenge=${challenge}`]));
     expect(sent).not.toContain('wallet.send');
+  });
+});
+
+// Task 6 fix round 1: what a pick must carry (the token, MAX's amount) and what it must not outlive (the account).
+describe('#12 → #15 pick (fix round 1)', () => {
+  const BOOKED = 'H4qZoWSv5iyeysmHzYnVfqVBtSfoJTZQJ33YtjAXm2N1';
+  const book = (ext: {local: {set(k: string, v: unknown): Promise<void>}}) => ext.local.set(CONTACTS_KEY, [{address: BOOKED, name: 'Binance'}]);
+  afterEach(() => vi.useRealTimers());
+
+  async function toSend(o: Parameters<typeof renderApp>[0] = {}) {
+    const w = await renderApp({before: book, ...o});
+    fireEvent.click(await screen.findByRole('button', {name: /^Send$/}));
+    await screen.findByText('62.4821 SOL');
+    return w;
+  }
+  const openBook = async () => {
+    fireEvent.click(screen.getByRole('button', {name: 'Address book'}));
+    await screen.findByText('Address book', {selector: '.top-bar .title'});
+  };
+  const pick = async () => {
+    fireEvent.click((await screen.findByText('Binance')).closest('button') as HTMLButtonElement);
+    await screen.findByText('Send', {selector: '.title'});
+  };
+  const switchAccount = async (w: Awaited<ReturnType<typeof renderApp>>) => {
+    expect((await w.engine.select(SECOND.index)).ok).toBe(true);
+    await act(async () => void vi.advanceTimersByTime(STATE_POLL_MS + 50));
+  };
+
+  it('Q1 (I1): another account selected while #15 picks for #12 ends the flow — #11, and Send again is an empty #12, not A’s draft', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const w = await toSend();
+    fireEvent.change(screen.getByLabelText('Amount'), {target: {value: '0.5'}});
+    await openBook();
+    await switchAccount(w);
+    expect(await screen.findByText('TOKENS')).toBeTruthy();
+    expect(screen.queryByText('Address book', {selector: '.top-bar .title'})).toBeNull();
+    fireEvent.click(screen.getByRole('button', {name: /^Send$/}));
+    await screen.findByText('Send', {selector: '.title'});
+    expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('');
+  });
+
+  it('Q1 positive control: another account selected with #12 on top still ends the flow (#11)', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true});
+    const w = await toSend();
+    await switchAccount(w);
+    expect(await screen.findByText('TOKENS')).toBeTruthy();
+    expect(screen.queryByText('Send', {selector: '.title'})).toBeNull();
+  });
+
+  it('M1: the token chosen on #12 survives the pick (NOC stays NOC)', async () => {
+    await toSend();
+    fireEvent.click(screen.getByRole('button', {name: 'Token: SOL'}));
+    fireEvent.click(within(screen.getByRole('dialog', {name: 'Choose a token'})).getByText('Noctura'));
+    await openBook();
+    await pick();
+    expect(screen.getByRole('button', {name: 'Token: NOC'})).toBeTruthy();
+    expect((screen.getByLabelText('Recipient', {exact: true}) as HTMLInputElement).value).toBe(BOOKED);
+  });
+
+  it('M3: MAX’s amount survives the pick with its helper, exactly as after a paste', async () => {
+    await toSend();
+    fireEvent.click(screen.getByRole('button', {name: 'MAX'}));
+    expect(screen.getByText(SEND_TEXT.maxHelper)).toBeTruthy();
+    await openBook();
+    await pick();
+    expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('62.48116412');
+    expect(screen.getByText(SEND_TEXT.maxHelper)).toBeTruthy();
+    // Typed over, the helper goes (as before the pick).
+    fireEvent.change(screen.getByLabelText('Amount'), {target: {value: '1'}});
+    expect(screen.queryByText(SEND_TEXT.maxHelper)).toBeNull();
   });
 });

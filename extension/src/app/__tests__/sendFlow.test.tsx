@@ -540,6 +540,19 @@ describe('#11’s Send, the pending strip, #26’s PENDING rows, #27’s [Try ag
     expect(w.sends()).toBe(1);
   });
 
+  // Task 6 fix round 1 (I1): a switch ends the flow when a flow route is anywhere in the stack — but #21 on top of #12
+  // (opened from [View it]) follows a record already sent, and stays, as #21 alone does.
+  it('another account selected while #21 sits on #12 (from [View it]): #21 stays', async () => {
+    const w = await openSendAtHome();
+    fireEvent.click(screen.getByRole('button', {name: 'Send'}));
+    fireEvent.click(await screen.findByRole('button', {name: 'View it'}));
+    expect(await screen.findByText(STATUS_TEXT.broadcasting)).toBeTruthy();
+    expect((await w.engine.select(SECOND.index)).ok).toBe(true);
+    await act(async () => void vi.advanceTimersByTime(STATE_POLL_MS + 50));
+    expect(screen.getByText(STATUS_TEXT.broadcasting)).toBeTruthy();
+    expect(screen.queryByText('TOKENS')).toBeNull();
+  });
+
   it('the strip opens #21 while broadcasting; #26’s PENDING row opens it too', async () => {
     const w = await openSendAtHome();
     fireEvent.click(screen.getByText('Sending 0.01 SOL · pending'));

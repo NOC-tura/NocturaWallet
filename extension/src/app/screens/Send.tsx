@@ -82,10 +82,11 @@ export function Send({
   const [recipient, setRecipient] = useState(start.recipient);
   const [amountText, setAmountText] = useState(start.amount);
   const [sheet, setSheet] = useState(false);
-  const [info, setInfo] = useState<RecipientInfo | null>(null);
+  /** recipientInfo's last answer, keyed by what it answered (`account|address`; Task 6 fix round 1, M2). */
+  const [answer, setAnswer] = useState<{for: string; info: RecipientInfo} | null>(null);
   const [threshold, setThreshold] = useState<number | null>(null);
   const [pasteRefused, setPasteRefused] = useState(false);
-  const [maxText, setMaxText] = useState<string | null>(null);
+  const [maxText, setMaxText] = useState<string | null>(start.max === true ? start.amount : null);
   const account = m.account;
   const {engine, reload} = m;
 
@@ -106,6 +107,10 @@ export function Send({
   const valid = isAddressText(address);
   const invalid = address !== '' && !valid;
   const key = account?.publicKey ?? null;
+  // E6's answer is shown only for the pair it was given for: an answer for another address (or account) — the one the
+  // field held before, while this one's is still out — is never this address's label or "Verified" line.
+  const asked = valid && key !== null ? `${key}|${address}` : null;
+  const info = asked !== null && answer !== null && answer.for === asked ? answer.info : null;
 
   // A paste that answers after the user typed, cleared or left is dropped (the same generation idea as E6's).
   const pasteGeneration = useRef(0);
@@ -115,11 +120,11 @@ export function Send({
   const generation = useRef(0);
   useEffect(() => {
     const mine = ++generation.current;
-    setInfo(null);
     if (!valid || key === null) return;
+    const pair = `${key}|${address}`;
     void engine.recipientInfo(key, address).then(r => {
       if (generation.current !== mine) return;
-      if (r.ok) setInfo(r.data);
+      if (r.ok) setAnswer({for: pair, info: r.data});
       else if (r.error === 'locked') void reload();
     });
   }, [valid, address, key, engine, reload]);
@@ -296,7 +301,7 @@ export function Send({
                       <ExtIcon name="clip" size={18} />
                     </button>
                     {/* ix:6652; Scan QR (ix:6651) stays omitted (2a-D13). Rule 6: one #15 per tap. */}
-                    <LockedButton className="" label="Address book" onPress={() => onBook({token, recipient: '', amount: amountText})}>
+                    <LockedButton className="" label="Address book" onPress={() => onBook({token, recipient: '', amount: amountText, ...(maxText !== null && amountText === maxText ? {max: true as const} : {})})}>
                       <ExtIcon name="book" size={18} />
                     </LockedButton>
                   </>

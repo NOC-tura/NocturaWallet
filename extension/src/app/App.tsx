@@ -96,7 +96,10 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
     if (before === null || before === selectedNow) return;
     const now = stackRef.current;
     const top = now[now.length - 1];
-    if (top !== undefined && (top.screen === 'send' || top.screen === 'review' || top.screen === 'confirm' || top.screen === 'resume')) go({type: 'reset', routes: [HOME]});
+    // Any flow route in the stack, not only on top (Task 6 fix round 1, I1): #15 picking for #12 sits on A's draft, and a
+    // pick or Back would hand it to B. #21 (status) and #27 (tx) on top stay, as above.
+    const inFlow = now.some(r => r.screen === 'send' || r.screen === 'review' || r.screen === 'confirm' || r.screen === 'resume');
+    if (top !== undefined && inFlow && top.screen !== 'status' && top.screen !== 'tx') go({type: 'reset', routes: [HOME]});
   }, [selectedNow]);
 
   // Spec §1.6 step 3: a popup opened while a prepared send waits shows #20 in resume mode — which reads it again

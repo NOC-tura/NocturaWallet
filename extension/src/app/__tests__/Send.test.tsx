@@ -534,4 +534,43 @@ describe('#12 and the address book', () => {
     expect(await screen.findByText(/Your account: Savings/)).toBeTruthy();
     expect(screen.queryByText(/From your address book/)).toBeNull();
   });
+
+  it('M2 (fix round 1, Q2): the answer is keyed by account|address — edited to B while B’s answer never comes, neither A’s label nor A’s "Verified" shows', async () => {
+    const B = 'H4qZ7Lp2Wc9tKqRbV3mXnYdE8sFgUhJk2PzT6vB4m2N1';
+    await renderSend({
+      before: async ext => {
+        await ext.local.set(CONTACTS_KEY, [{address: COUNTERPARTY, name: 'Supplier'}]);
+        await ext.local.set(KNOWN_RECIPIENTS_KEY, [{address: COUNTERPARTY, at: Date.now()}]);
+      },
+      gate: m => ((m as {type: string; recipient?: string}).type === 'wallet.recipientInfo' && (m as {recipient?: string}).recipient === B ? new Promise<void>(() => undefined) : undefined),
+    });
+    await loaded();
+    type('Recipient', COUNTERPARTY);
+    expect(await screen.findByText('From your address book: Supplier')).toBeTruthy();
+    expect(screen.getByText(/Verified · sent before/)).toBeTruthy();
+    type('Recipient', B);
+    await act(async () => new Promise(r => setTimeout(r, 50)));
+    expect(field('Recipient').value).toBe(B);
+    expect(screen.queryByText(/From your address book/)).toBeNull();
+    expect(screen.queryByText(/Verified · sent before/)).toBeNull();
+  });
+
+  it('M3 (fix round 1): MAX’s amount is handed to #15 as MAX’s; a typed amount carries no `max`', async () => {
+    await renderSend();
+    await loaded();
+    fireEvent.click(screen.getByRole('button', {name: 'MAX'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Address book'}));
+    expect(nav.onBook).toHaveBeenCalledWith({token: 'SOL', recipient: '', amount: '62.48116412', max: true});
+    type('Amount', '62.48116');
+    await act(async () => new Promise(r => setTimeout(r, 550))); // past the first tap's lock (rule 6)
+    fireEvent.click(screen.getByRole('button', {name: 'Address book'}));
+    expect(nav.onBook).toHaveBeenLastCalledWith({token: 'SOL', recipient: '', amount: '62.48116'});
+  });
+
+  it('M3 (fix round 1): a draft carrying `max` shows the MAX helper for its amount; without it, none', async () => {
+    await renderSend({draft: {token: 'SOL', recipient: '', amount: '62.48116412', max: true}});
+    expect(await screen.findByText(SEND_TEXT.maxHelper)).toBeTruthy();
+    type('Amount', '1');
+    expect(screen.queryByText(SEND_TEXT.maxHelper)).toBeNull();
+  });
 });
