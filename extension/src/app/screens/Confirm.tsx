@@ -469,7 +469,9 @@ export function Confirm(props: ConfirmProps) {
   const fiat = [usd === null ? null : `≈ ${showUsd(usd)} USD`, high && percent !== null ? `${percent} % of your balance` : null].filter((x): x is string => x !== null).join(' · ');
   const from = m.wallet?.accounts.find(a => a.publicKey === account);
   const own = m.wallet?.accounts.find(a => a.publicKey === intent.recipient);
-  const contact = book?.find(c => c.address === intent.recipient);
+  // Final review M2 (#27's m2 rule): no contact label while the book is being re-read after a sheet close — a contact
+  // deleted or renamed elsewhere is not shown from the old book, nor when that re-read fails. Own and treasury need no book.
+  const contact = bookStale ? undefined : book?.find(c => c.address === intent.recipient);
   const toLabel =
     own !== undefined ? `Your account: ${own.name}` : intent.recipient === MAINNET_FEE_TREASURY ? 'Noctura treasury' : contact !== undefined ? fromBook(contact.name) : null;
   // ix:9349: offered only for a first-time recipient that is not saved, while the book is known, once per #20.

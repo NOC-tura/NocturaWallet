@@ -1543,6 +1543,52 @@ describe('#20 and the address book: review fix round 1', () => {
     await waitFor(() => expect(w.sent.filter(t => t === 'wallet.state').length).toBeGreaterThan(before));
   });
 
+  // Final review M2 (#27's m2 rule, as TxDetail's P4): no contact label while the book is stale. The label came from a
+  // book read while the sheet was open (the provider's change re-read it); the contact is deleted in another window, and
+  // the close's re-read fails — the deleted contact's name is not shown from the old book.
+  it('M2 no contact label while the book is stale: a contact deleted elsewhere, the close re-read fails → no label', async () => {
+    let fail = false;
+    const w = await renderConfirm({
+      known: false,
+      gate: m => {
+        if (m.type === 'contacts.list' && fail) throw new Error('worker restarting');
+      },
+    });
+    await sendButton();
+    fireEvent.click(await screen.findByRole('button', {name: 'Add'}));
+    await screen.findByRole('dialog', {name: 'Add contact'});
+    await w.ext.local.set(CONTACTS_KEY, [{address: COUNTERPARTY, name: 'Elsewhere'}]);
+    act(() => w.setQuiet(true));
+    await waitFor(() => expect(toLabel()).toBe('From your address book: Elsewhere'));
+    await w.ext.local.set(CONTACTS_KEY, []);
+    fail = true;
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', {name: 'Cancel'}));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await act(async () => new Promise(r => setTimeout(r, 30)));
+    expect(toLabel()).toBeNull();
+    expect(screen.queryByText(/From your address book/)).toBeNull();
+    expect(row()).toBeNull();
+  });
+
+  it('M2 own and treasury labels need no book: they stay while it is stale', async () => {
+    let armed = false;
+    await renderConfirm({
+      known: false,
+      intent: {token: 'SOL', recipient: MAINNET_FEE_TREASURY, amount: 10_000_000n},
+      gate: async m => {
+        if (m.type === 'contacts.list' && armed) await new Promise<void>(() => undefined);
+      },
+    });
+    await sendButton();
+    fireEvent.click(await screen.findByRole('button', {name: 'Add'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    armed = true;
+    fireEvent.click(within(dialog).getByRole('button', {name: 'Cancel'}));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(row()).toBeNull();
+    expect(toLabel()).toBe('Noctura treasury');
+  });
+
   // M3: the re-read after a save fails — the row stays hidden (saveAsDone), never offered again for an address now saved.
   it('M3 a failed re-read after a save keeps the row hidden', async () => {
     let lists = 0;
