@@ -4,18 +4,29 @@ import {ExtIcon} from './ExtIcon';
 /**
  * The design's bottom sheet (`.s8-sheet`, #43): 70 % of the height at most, a grabber, a title and a
  * close button. Esc, the backdrop and the grabber close it; Tab stays inside it while it is open
- * (focus trap), and focus returns to where it was when it closes.
+ * (focus trap), and focus returns to where it was when it closes. It opens with the focus on the
+ * element marked `data-autofocus` when its content has one (B1b-2b's contact sheet: the name field) —
+ * React's own autoFocus would run before this effect and be overridden — else on its first control.
+ * `tall`: the panel may take the popup's height but 48 px (the contact sheet: a full address, its warnings, a field and
+ * three buttons do not fit the design's 70 % at 412 × 600, and a scrolled panel hid the address it saves).
+ *
+ * The focus and key effect runs once, on mount (B1b-2b plan 2 review H1): the latest `onClose` is held in a ref, as
+ * useEscape holds its handler. Every caller passes an inline `onClose`, and the screen under a sheet re-renders on its
+ * clock (#20 every second) — an effect keyed on `onClose` re-ran each time, pulled the focus back to `data-autofocus` and
+ * so typed the rest of a name into #15's address field.
  */
-export function Sheet({title, onClose, children}: {title: string; onClose: () => void; children: ReactNode}) {
+export function Sheet({title, onClose, children, tall = false}: {title: string; onClose: () => void; children: ReactNode; tall?: boolean}) {
   const panel = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
     const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const focusables = (): HTMLElement[] => Array.from(panel.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input, a[href]') ?? []);
-    focusables()[0]?.focus();
+    (panel.current?.querySelector<HTMLElement>('[data-autofocus]') ?? focusables()[0])?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        close.current();
         return;
       }
       if (e.key !== 'Tab') return;
@@ -36,11 +47,11 @@ export function Sheet({title, onClose, children}: {title: string; onClose: () =>
       document.removeEventListener('keydown', onKey);
       before?.focus();
     };
-  }, [onClose]);
+  }, []);
   return (
     <div className="app-sheet-layer">
       <div className="s8-sheet-overlay" data-testid="sheet-backdrop" onClick={onClose} />
-      <div className="s8-sheet" role="dialog" aria-modal="true" aria-label={title} ref={panel}>
+      <div className={tall ? 's8-sheet app-sheet-tall' : 's8-sheet'} role="dialog" aria-modal="true" aria-label={title} ref={panel}>
         <button type="button" className="grabber-hit" aria-label="Close" onClick={onClose}>
           <span className="grabber" />
         </button>

@@ -1214,3 +1214,76 @@ a.btn {
   bottom: calc(80px + var(--space-4));
   z-index: 2;
 }
+
+/*
+ * B1b-2b plan 2 §6.2: the contact sheet (an .s8-sheet like #43, derived — the design leaves add/edit undrawn). The
+ * full address in groups of four on a surface-3 well, the field labels as #12's overlines, the never-sent line in
+ * --warning, Cancel | Save side by side (D35, the design's `.sticky-bar.row`), "Delete contact" below them.
+ */
+/* The contact sheet may take the popup's height but 48 px (Sheet's `tall`): at the design's 70 % the panel scrolled and
+   the focused name field pushed the address it saves out of view (dry run, visual pass). */
+.s8-sheet.app-sheet-tall {
+  max-height: calc(100% - var(--space-8));
+}
+.app-contact-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+.app-sheet-label {
+  color: var(--fg-tertiary);
+  margin-top: var(--space-2);
+}
+.app-contact-field {
+  position: relative;
+}
+.app-contact-field .app-input {
+  width: 100%;
+  padding-right: 52px;
+}
+.app-contact-field .icon-btn {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  color: var(--fg-secondary);
+}
+.app-contact-sheet > .app-input {
+  width: 100%;
+}
+.app-input.is-error {
+  border-color: var(--danger);
+}
+.app-contact-addr {
+  background: var(--bg-surface-3);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  color: var(--fg-primary);
+  word-break: break-all;
+}
+.app-contact-warn {
+  margin: 0;
+}
+.app-contact-sheet .field-msg,
+.app-contact-question,
+.app-contact-name {
+  margin: 0;
+}
+.app-contact-name {
+  color: var(--fg-primary);
+}
+.app-contact-actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.app-contact-actions .btn {
+  flex: 1;
+}
+.app-contact-delete {
+  /* Only a handle for the focus (review M2): "Delete contact" is a LockedButton, which takes no ref. */
+  display: contents;
+}
