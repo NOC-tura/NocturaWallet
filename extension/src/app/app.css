@@ -1352,6 +1352,9 @@ a.btn {
   padding: var(--space-5);
   text-align: center;
   color: var(--fg-tertiary);
+  /* "No contacts match "<address>"." (fix round 1, I1): a 44-character query wraps — `.app-content` hides overflow, so
+     unwrapped its end, where a look-alike differs, was cut off. */
+  overflow-wrap: anywhere;
 }
 .app-abook-foot .btn {
   margin-top: var(--space-3);

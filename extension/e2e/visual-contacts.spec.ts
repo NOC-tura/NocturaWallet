@@ -81,6 +81,27 @@ async function holdMessages(page: Page, type: string): Promise<{release(): Promi
     release: () => page.evaluate(() => (globalThis as unknown as {__held: (() => void)[]}).__held.splice(0).forEach(f => f())),
   };
 }
+/**
+ * Each element inside the 412 px column, not overflowing its own box, and no horizontal scroll (§8.4 item 6). A text
+ * line is also measured by its text's own range: a long unbreakable word overflows the line without widening its box.
+ */
+async function inColumn(page: Page, els: [string, Locator][]): Promise<void> {
+  for (const [what, el] of els) {
+    const box = await el.boundingBox();
+    expect(box?.x ?? -1, `${what}: inside the column`).toBeGreaterThanOrEqual(0);
+    expect((box?.x ?? 0) + (box?.width ?? 1e6), `${what}: inside the column`).toBeLessThanOrEqual(412);
+    expect(await el.evaluate(e => e.scrollWidth <= e.clientWidth), `${what}: no overflow`).toBe(true);
+    const text = await el.evaluate(e => {
+      const r = document.createRange();
+      r.selectNodeContents(e);
+      const b = r.getBoundingClientRect();
+      return {left: b.left, right: b.right};
+    });
+    expect(text.left, `${what}: its text inside the column`).toBeGreaterThanOrEqual(0);
+    expect(text.right, `${what}: its text inside the column`).toBeLessThanOrEqual(412);
+  }
+  expect(await page.evaluate(() => document.scrollingElement!.scrollWidth <= window.innerWidth), 'no horizontal scroll').toBe(true);
+}
 /** Where the focus is: the active element's role/name and whether it is inside the open sheet. */
 const focusAt = (page: Page) =>
   page.evaluate(() => {
@@ -148,6 +169,7 @@ test('visual: #31’s Address book row, #15’s states and the contact sheet (41
     await p.getByRole('button', {name: 'Add first contact'}).click();
     const sheet = p.getByRole('dialog', {name: 'Add contact'});
     await expect(sheet.getByPlaceholder('Solana address')).toBeFocused();
+    await expect(sheet.getByRole('button', {name: 'Save', exact: true}), 'no address yet: Save disabled').toBeDisabled();
     await sheetShot(p, 'sheet-add-empty', sheet.getByRole('button', {name: 'Save', exact: true}));
     await sheet.getByLabel('Address').fill('7xKX0OIl');
     await expect(sheet.getByText('That is not a Solana address.')).toBeVisible();
@@ -486,14 +508,23 @@ test('visual: poisoning — an exact address search with a case look-alike, a kn
     const count = p.locator('.app-abook-count');
     expect(await count.evaluate(e => (e as HTMLElement).innerText), 'the address drawn in its own case').toBe(`1 result for "${ALICE}"`);
     const addNew = p.getByRole('button', {name: `Add new contact "${ALICE}" →`});
-    for (const [what, el] of [['the count line', count], ['Add new contact', addNew]] as const) {
-      const box = await el.boundingBox();
-      expect(box?.x ?? -1, `${what}: inside the column`).toBeGreaterThanOrEqual(0);
-      expect((box?.x ?? 0) + (box?.width ?? 1e6), `${what}: inside the column`).toBeLessThanOrEqual(412);
-      expect(await el.evaluate(e => e.scrollWidth <= e.clientWidth), `${what}: no overflow`).toBe(true);
-    }
-    expect(await p.evaluate(() => document.scrollingElement!.scrollWidth <= window.innerWidth), 'no horizontal scroll').toBe(true);
+    await inColumn(p, [
+      ['the count line', count],
+      ['Add new contact', addNew],
+    ]);
     await pop(p, '15-search-exact-address', p.locator('.s-abook .row'));
+    // Fix round 1 (I1): an address that is not in the book — "No contacts match "<address>"." wraps inside the column, so
+    // its end (where a look-alike differs) is never clipped by `.app-content`.
+    const STRANGER = addr(2);
+    await p.getByRole('textbox', {name: 'Search contacts'}).fill(STRANGER);
+    const noMatch = p.getByText(`No contacts match "${STRANGER}".`);
+    await expect(noMatch).toBeVisible();
+    await expect(p.locator('.s-abook .row')).toHaveCount(0);
+    await inColumn(p, [
+      ['the no-match line', noMatch],
+      ['Add new contact', p.getByRole('button', {name: `Add new contact "${STRANGER}" →`})],
+    ]);
+    await pop(p, '15-search-address-no-result', noMatch);
     // Positive control: the look-alike's own address finds the look-alike alone.
     await p.getByRole('textbox', {name: 'Search contacts'}).fill(LOOKALIKE);
     await expect(p.locator('.s-abook .row .name')).toHaveText(['Alice (planted)']);

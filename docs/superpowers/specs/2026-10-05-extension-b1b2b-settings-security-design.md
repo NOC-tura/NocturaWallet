@@ -1457,7 +1457,7 @@ Findings go in the PR; screenshots are CI artifacts.
   top-bar X matches every `.icon-btn` on the vault page, so 2a's icon buttons draw dimmed while disabled too (inside the
   busy gate). It is the popup's rule; 2a's shots are taken with `ready` (enabled) and are unaffected.
 
-**Differs, loudly (plan 2's visual pass, Task 10; `e2e/visual-contacts.spec.ts`, 31 shots after fix round 0b):**
+**Differs, loudly (plan 2's visual pass, Task 10; `e2e/visual-contacts.spec.ts`, 32 shots after fix round 1):**
 - **Fixed in the pass** (app.css, each pinned by a Chromium computed-style or viewport assertion in the visual spec):
   #15 empty — the UA's `h3`/`p` margins (17 px) set the heading and its line apart (the design resets every margin,
   index.html:98), now `margin: 0`; the "+" in "Add first contact" took web's `.empty svg` `--fg-tertiary` and drew grey,
@@ -1468,7 +1468,8 @@ Findings go in the PR; screenshots are CI artifacts.
   "Save anyway stays in view" holds in that state too — a **controller ruling under D35** (not an open owner question).
   Fix round 0b: #15's search for a full address — the overline's uppercase drew the address case-folded (the very
   difference the exact search refuses to ignore) and both it and "Add new contact "<address>" →" ran past the column; an
-  address query's overline now keeps its case and wraps (`.app-abook-count-addr`), the foot button wraps.
+  address query's overline now keeps its case and wraps (`.app-abook-count-addr`); the foot — O71's "No contacts match
+  "<address>"." and the add button — wraps (fix round 1, I1: `.app-content` hides overflow, so the address's end was cut).
 - **Asserted, unchanged:** `.s-abook .search:focus-within .ic` takes `--accent` (pre-flight G4); `.app-contact-delete`
   is `display: contents` and "Delete contact" spans the Cancel | Save row (Task 4 carry); the dust state's address and
   "Save anyway" wholly in view on open, the banner at 95 % (D35).
@@ -1476,16 +1477,20 @@ Findings go in the PR; screenshots are CI artifacts.
   Chromium, a focused Cancel, Keep or Save disabled by the request gave the focus to `<body>`; after Keep, Tab then left
   the modal for #15's Back. `Sheet` now holds the focus on its panel (`tabindex="-1"`, drawn without a ring and with its
   own corners) while the control is disabled and gives it back when the control is enabled again (a failed answer);
-  Tab from the panel or from outside enters the sheet at its first control. This applies to every `Sheet` (#43, the
-  switcher, the accounts manager's remove sheet), none of which disables a focused control today. Pinned by `ui.test`,
-  `ContactSheet.test` and the visual spec.
+  Tab from the panel or from outside enters the sheet at its first control. This applies to every `Sheet`, and it is
+  **intended** there too: a `LockedButton` disables itself for at least 500 ms on every press (rule 6), and the
+  switcher's rename Save and the accounts manager's remove-sheet Continue are LockedButtons inside sheets — so during
+  their lock the panel now holds the focus and hands it back when the button is enabled again (before, Chromium dropped it
+  to `<body>`, outside the modal). #43 (TokenSheet) has no LockedButton. Pinned by `ui.test`, `ContactSheet.test` and the
+  visual spec. (Fix round 1, M1: rev 0b said none of these sheets disables a focused control — wrong.)
 - **For the owner (not changed): the sheet's Cancel and Keep** are `.btn-secondary` (`--bg-surface-2`) on the sheet's own
   `--bg-surface-2`, so they draw as text without a container — as the accounts manager's remove sheet (plan 1) does. The
   nearest drawn precedent does the same: #3's pre-reveal modal (ix:4670-4685) puts `.btn-secondary` "Cancel — go back"
   (ix:4683) on `.modal-card`, `--bg-surface-2` (index.html:583-593), with no container; the design draws no secondary
   button on an `.s8-sheet`.
 - **Shot in fix round 0b (poisoning):** an exact full-address search beside a planted case look-alike (one row;
-  `15-search-exact-address`), a known contact with no date (no date text; `15-known-no-date`), #15 pick for a never-sent
+  `15-search-exact-address`), an address not in the book (O71's line and the add button wrap inside the column, fix
+  round 1, I1; `15-search-address-no-result`), a known contact with no date (no date text; `15-known-no-date`), #15 pick for a never-sent
   treasury address (O72, not "Noctura treasury"; `15-pick-treasury-never-sent`) and for an own account ("Your account:
   Savings"; `15-pick-own-account`). **Covered by unit tests only, not shot:** #12's MAX helper carried through a pick
   and the account switch that ends the flow (Task 6; `Send`/`App` tests).
