@@ -1126,6 +1126,8 @@ contact" (ix:7388, `#i-plus`) → the sheet. `.search` input placeholder "Search
 - Pick-mode rows show the full address in groups of four and a never-sent warning, not the drawn truncation and date
   (review H3: poisoning works on truncation). The standalone list keeps the drawn rows.
 - The system keyboard mock (ix:7497) is the browser's.
+- Pick rows label an own account "Your account: <name>" (2a's; review L5) and the fee treasury "Noctura treasury" in the
+  date's place — the precedence own > treasury > contact (E17), exact matches only; the design draws no such row.
 
 ### 6.2 Contact sheet (`.s8-sheet` derived from #43 / the 2a switcher; D20, C12)
 
@@ -1247,6 +1249,9 @@ It never replaces or hides the first-send warning.
 #31 row that opens a page, the sheet's `[Save]` / `[Delete]`, #20's Add/Skip, #27's Save. Vault modes: `exclusive()` with
 the 500 ms floor. A component test per control: a second click inside 500 ms and before the promise settles does nothing
 (mutation: remove the lock → red).
+**Differs (pre-flight G2):** the "Skip" button, #15's `+` and its add buttons ("Add first contact", "Add new contact") are
+LockedButtons whose second press is invisible — the first opens a sheet (or leaves), and a second would open the same one —
+so their tests assert the lock itself (`disabled` + `is-busy` on the button right after the press) instead of a re-press.
 
 **Memory.** Every vault mode drops fields on `pagehide` and `visibilitychange → hidden`, except #36, which keeps them
 through `hidden` and zeroes its held data key on `pagehide`, on leave, after success and at its 5-minute TTL (C20, §3.1); reveal/verify drop the phrase; the PRF output is zeroed on every path (existing flows). No 2b screen puts a word of

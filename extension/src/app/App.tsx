@@ -2,7 +2,7 @@ import {useEffect, useLayoutEffect, useReducer, useRef, useState} from 'react';
 import {WalletProvider, useWallet, type Surface} from './WalletContext';
 import {createEngine, type Engine, type HistoryItem, type Intent} from './engine';
 import {browserPlatform, type Platform} from './platform';
-import {FLOW, TAB_ONLY, firstRoute, routeReducer, type Route} from './router';
+import {FLOW, TAB_ONLY, firstRoute, pickStack, routeReducer, type Route} from './router';
 import {draftOf, type Draft} from './send/rules';
 import {TabBar} from './ui/TabBar';
 import {CancelledToast} from './ui/CancelledToast';
@@ -19,6 +19,7 @@ import {Passkey} from './screens/Passkey';
 import {AccountsManager} from './screens/AccountsManager';
 import {DeleteWallet} from './screens/DeleteWallet';
 import {Security} from './screens/Security';
+import {Contacts} from './screens/Contacts';
 import {Created} from './screens/Created';
 import {Imported} from './screens/Imported';
 import {Send} from './screens/Send';
@@ -58,11 +59,13 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
     if (!TAB_ONLY.has(route.screen)) onLeaveHandOver();
   }, [route.screen, onLeaveHandOver]);
 
-  // Esc goes back one step on a pushed screen (a sheet handles its own Esc; a flow screen its own step).
+  // Esc goes back one step on a pushed screen (a sheet handles its own Esc; a flow screen its own step). A sheet open
+  // over a pushed screen (#15's contact sheet, the accounts manager's remove sheet) takes Esc alone: it closes, and the
+  // screen under it stays (plan 2).
   useEffect(() => {
     if (stack.length < 2 || accounts || FLOW.has(route.screen)) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') go({type: 'pop'});
+      if (e.key === 'Escape' && document.querySelector('[role="dialog"][aria-modal="true"]') === null) go({type: 'pop'});
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -129,6 +132,12 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
   useEffect(() => {
     if (resumeElsewhere) go({type: 'reset', routes: [HOME]});
   }, [resumeElsewhere]);
+
+  /** #15's pick hand-back (spec §1.4, review M4): router.ts pickStack; with no `send` route below, a plain pop (review L8). */
+  const pickRecipient = (address: string) => {
+    const routes = pickStack(stackRef.current, address);
+    go(routes === null ? {type: 'pop'} : {type: 'reset', routes});
+  };
 
   /** The send flow's ways between its screens (spec §4). #19 always sits on #12 holding the draft, so Cancel returns to it. */
   const toReview = (account: string, intent: Intent, notice: 'confirmation-expired' | null) =>
@@ -199,6 +208,7 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
           onPasskey={() => go({type: 'push', route: {screen: 'passkey'}})}
           onDelete={() => go({type: 'push', route: {screen: 'delete'}})}
           onAbout={() => go({type: 'push', route: {screen: 'about'}})}
+          onContacts={() => go({type: 'push', route: {screen: 'contacts', pick: false}})}
         />
       );
     }
@@ -287,6 +297,8 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
     screen = <AccountsManager onBack={() => go({type: 'pop'})} />;
   } else if (route.screen === 'passkey') {
     screen = <Passkey onBack={() => go({type: 'pop'})} />;
+  } else if (route.screen === 'contacts') {
+    screen = <Contacts pick={route.pick} onBack={() => go({type: 'pop'})} onPick={pickRecipient} />;
   } else {
     screen = <About onBack={() => go({type: 'pop'})} />;
   }

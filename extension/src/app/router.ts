@@ -92,6 +92,20 @@ export function routeReducer(stack: Route[], action: RouteAction): Route[] {
 }
 
 /**
+ * #15's pick hand-back (spec §1.4, review M4): the address goes into the `send` route's OWN draft — the route under #15
+ * — and the stack ends there, so #12 mounts again holding it and treats it exactly as a paste (isDraft checks it like
+ * any draft). No route gains a key. Null when no `send` route is below (plan 2 review L8): the caller pops instead, so a
+ * pick screen never has dead rows.
+ */
+export function pickStack(stack: readonly Route[], address: string): Route[] | null {
+  const at = stack.map(r => r.screen).lastIndexOf('send');
+  const below = stack[at];
+  if (below?.screen !== 'send') return null;
+  const draft: Draft = {...(below.draft ?? {token: 'SOL', recipient: '', amount: ''}), recipient: address};
+  return [...stack.slice(0, at), {screen: 'send', draft, notice: null}];
+}
+
+/**
  * The first route (spec §1.6). The popup always starts at #11. The tab reads `location.hash`: `#/created`
  * (#7), `#/imported` (#40), `#/send/resume?account=<address>` (the hand-over from #10: #20, which reads the
  * prepared send through wallet.preparedFor and waits for a tap — D38) and `#/home`; anything else is #11

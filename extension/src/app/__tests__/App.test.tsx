@@ -169,3 +169,21 @@ describe('navigation (spec §1.6: an in-memory stack; no route acts)', () => {
     }
   });
 });
+
+// B1b-2b plan 2, Scope 3.6 (review M3): Esc over an open sheet closes only the sheet — pinned on plan 1's accounts manager
+// remove sheet too, which had the double action (the sheet closed AND the manager popped to #31).
+describe('Esc over a sheet on a pushed screen (plan 2)', () => {
+  it('the accounts manager’s remove sheet: Esc closes the sheet, the manager stays; Esc again leaves it', async () => {
+    await renderApp();
+    await screen.findByText('TOKENS');
+    fireEvent.click(screen.getByRole('button', {name: 'Settings'}));
+    fireEvent.click(await screen.findByText('Profile', {selector: '.s7-title'}));
+    fireEvent.click(await screen.findByRole('button', {name: 'Remove Savings'}));
+    expect(await screen.findByRole('dialog', {name: 'Remove Savings?'})).toBeTruthy();
+    fireEvent.keyDown(document, {key: 'Escape'});
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByRole('button', {name: 'Remove Savings'})).toBeTruthy();
+    fireEvent.keyDown(document, {key: 'Escape'});
+    expect(await screen.findByRole('heading', {name: 'Settings'})).toBeTruthy();
+  });
+});

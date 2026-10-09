@@ -34,6 +34,8 @@ export const DYNAMIC = {
   '${titleClass}': [],
   // Plan 3: #19's check rows (screens/Review.tsx) — PASS rows `ok`, the recipient warnings `warn`.
   '${c.tone}': ['ok', 'warn'],
+  // B1b-2b plan 2: #15's avatar gradient (addressBook.ts AVATARS, ix:1440-1444).
+  '${avatarOf(c.address)}': ['violet', 'mint', 'coral', 'amber', 'blue'],
 };
 
 /** The text of the quoted string that starts at `i` (the quote), and the index after it. */

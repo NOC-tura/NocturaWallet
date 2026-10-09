@@ -48,9 +48,43 @@ export type ExtIconName =
   | 'trash'
   | 'zap'
   | 'arrow-up'
-  | 'arrow-down';
+  | 'arrow-down'
+  // B1b-2b plan 2: #15 (search, users, plus), #31's Address book row (link), #12's contact icon (book), #27's Save (bookmark).
+  | 'search'
+  | 'users'
+  | 'link'
+  | 'book'
+  | 'bookmark';
 
 const PATHS: Record<ExtIconName, ReactNode> = {
+  // B1b-2b plan 2, from the design's sprite: #i-search, #i-users, #i-link, #i-book, #i-bookmark.
+  search: (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m21 21-4.35-4.35" />
+    </>
+  ),
+  users: (
+    <>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </>
+  ),
+  link: (
+    <>
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </>
+  ),
+  book: (
+    <>
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    </>
+  ),
+  bookmark: <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />,
   // B1b-2b plan 1, from the design's sprite (#i-user, #i-key, #i-fingerprint, #i-shield-check, #i-database, #i-trash,
   // #i-zap, #i-arrow-down); `arrow-up` is #i-arrow-down turned, drawn in the same style (the sprite lacks it).
   user: (

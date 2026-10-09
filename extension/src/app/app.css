@@ -1287,3 +1287,69 @@ a.btn {
   /* Only a handle for the focus (review M2): "Delete contact" is a LockedButton, which takes no ref. */
   display: contents;
 }
+
+/*
+ * B1b-2b plan 2 §6.1: #15 address book on the design's .s-abook (design-ext.css). The rows are buttons here (a row
+ * opens the edit sheet, or picks), so the UA's button look is reset; the design's inline styles become classes: the
+ * accent "+", the result-count overline, the "No more matches." foot, the empty state's button and hint. Pick-mode rows
+ * carry the full address in groups of four, so they align to the top and the never-sent line wraps in the date's place.
+ */
+.s-abook .top-bar .icon-btn.app-abook-add {
+  color: var(--accent);
+}
+.s-abook .top-bar .icon-btn.app-abook-add:disabled {
+  color: var(--fg-tertiary);
+}
+.s-abook button.row {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.s-abook .row .meta > span {
+  display: block;
+}
+.s-abook .row.app-abook-pick {
+  align-items: flex-start;
+}
+.s-abook .row.app-abook-pick .when {
+  max-width: 120px;
+}
+.s-abook .search input:focus {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.s-abook .search:focus-within .ic {
+  color: var(--accent);
+}
+.app-abook-list {
+  display: flex;
+  flex-direction: column;
+}
+.app-abook-count {
+  color: var(--fg-tertiary);
+  padding: var(--space-1) var(--space-3) var(--space-2);
+}
+.app-abook-foot {
+  padding: var(--space-5);
+  text-align: center;
+  color: var(--fg-tertiary);
+}
+.app-abook-foot .btn {
+  margin-top: var(--space-3);
+}
+.s-abook .empty .app-abook-first {
+  width: auto;
+  padding: 0 var(--space-6);
+  margin-top: var(--space-3);
+}
+.s-abook .empty .noc-caption {
+  margin-top: var(--space-2);
+}
+.app-abook-full,
+.app-abook-failed {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+}

@@ -6,6 +6,7 @@ import {ListRow} from '../ui/ListRow';
 import {LockedButton} from '../ui/LockedButton';
 import {ExtIcon, type ExtIconName} from '../ui/ExtIcon';
 import {securityTasks} from './Security';
+import {contactsCount} from '../addressBook';
 import type {Settings as StoredSettings} from '../engine';
 
 /** #31's copy (B1b-2b §4.1): the design's strings adapted where marked, 2a's, and O42–O46. */
@@ -30,6 +31,9 @@ export const SETTINGS_TEXT = {
   verified: 'Verified',
   lockNow: 'Lock now',
   lockFailed: 'Could not lock the wallet. Try again.',
+  /** ix:13550: the group the address book row sits in (plan 2; Connected dApps and Air-gap omitted, D22). */
+  connections: 'Connections',
+  addressBook: 'Address book',
   advanced: 'Advanced',
   // Named deleteTitle: the source gate in the unlock tests allows the engine call's name in two files only.
   deleteTitle: 'Delete wallet',
@@ -48,7 +52,8 @@ export const PASSWORD_TOAST_WINDOW_MS = 10 * 60_000;
  * (D22). 36e (C10): within ten minutes of a change the background recorded (`passwordChangedAt`), the first open shows
  * the "Password updated" toast (1.8 s) and the row's "Just updated" decoration (5 s), once per change (a UI pref keeps
  * the timestamp shown; a future stamp shows nothing). The tab reads the facts again when shown again. Every row that opens a page is a LockedButton (rule 6). The rows #31 draws and the extension does
- * not have are omitted (D22; the spec's Differs list).
+ * not have are omitted (D22; the spec's Differs list). Plan 2: Connections › Address book (ix:13552), meta "N contacts"
+ * from contacts.list — a refusal leaves the meta empty; the row still opens #15.
  */
 export function Settings({
   onProfile,
@@ -56,6 +61,7 @@ export function Settings({
   onPasskey,
   onDelete,
   onAbout,
+  onContacts,
   toastMs = 1_800,
   decorateMs = 5_000,
 }: {
@@ -64,6 +70,8 @@ export function Settings({
   onPasskey: () => void;
   onDelete: () => void;
   onAbout: () => void;
+  /** Plan 2: Connections › Address book → #15 (standalone). */
+  onContacts: () => void;
   toastMs?: number;
   decorateMs?: number;
 }) {
@@ -72,6 +80,8 @@ export function Settings({
   const [stored, setStored] = useState<StoredSettings | null>(null);
   const [toast, setToast] = useState(false);
   const [decorated, setDecorated] = useState(false);
+  /** The book's size for the Address book meta; null until read, or when the read was refused (no meta then). */
+  const [contacts, setContacts] = useState<number | null>(null);
   const passkey = m.wallet?.passkey === true;
 
   useEffect(() => {
@@ -79,7 +89,12 @@ export function Settings({
     /** Only the newest read counts: a slower, older answer sets nothing. */
     let reads = 0;
     const timers: ReturnType<typeof setTimeout>[] = [];
+    let contactReads = 0;
     const read = () => {
+      const c = ++contactReads;
+      void m.engine.contacts().then(r => {
+        if (alive && c === contactReads) setContacts(r.ok ? r.data.contacts.length : null);
+      });
       const n = ++reads;
       void m.engine.settings().then(r => {
         // Gone (unmounted, a new engine) or overtaken by a newer read while it read: nothing is set, toasted or remembered.
@@ -203,6 +218,10 @@ export function Settings({
             {SETTINGS_TEXT.lockFailed}
           </p>
         ) : null}
+        <div className="s7-group-label">{SETTINGS_TEXT.connections}</div>
+        <div className="s7-list">
+          <ListRow icon="link" title={SETTINGS_TEXT.addressBook} meta={contacts === null ? '' : contactsCount(contacts)} onPress={onContacts} />
+        </div>
         <div className="s7-group-label">{SETTINGS_TEXT.advanced}</div>
         <div className="s7-list">
           <ListRow icon="trash" title={SETTINGS_TEXT.deleteTitle} onPress={onDelete} danger />
