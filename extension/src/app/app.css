@@ -1224,6 +1224,9 @@ a.btn {
    the focused name field pushed the address it saves out of view (dry run, visual pass). */
 .s8-sheet.app-sheet-tall {
   max-height: calc(100% - var(--space-8));
+  /* #43's panel keeps 24 px under its content for the phone's gesture bar, which the popup does not have: in the
+     contact sheet's longest state (dust + O87, from #27c with the book full) those 24 px cut "Save anyway" (Task 10). */
+  padding-bottom: var(--space-4);
 }
 .app-contact-sheet {
   display: flex;
@@ -1318,6 +1321,11 @@ a.btn {
 .s-abook .row.app-abook-pick .when {
   max-width: 120px;
 }
+/* O72 is `.noc-caption` --warning (§6.1): the design's `.s-abook .row .when` (--fg-tertiary) out-ranks `.noc-warning`
+   (Task 10's visual pass: drawn grey). */
+.s-abook .row .when.noc-warning {
+  color: var(--warning);
+}
 .s-abook .search input:focus {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
@@ -1347,6 +1355,17 @@ a.btn {
 }
 .s-abook .empty .noc-caption {
   margin-top: var(--space-2);
+}
+/* The design resets every margin (index.html:98); without it the UA's h3/p margins (17 px) set the heading and its line
+   apart from the icon and each other — the empty state's `gap` is the only spacing drawn (Task 10's visual pass). */
+.s-abook .empty h3,
+.s-abook .empty p {
+  margin: 0;
+}
+/* The web design system's `.empty svg` (--fg-tertiary, its own empty-state row) also reached the button's "+": the
+   design draws it in the button's ink (ix:7455 `currentColor` on --bg-base). */
+.s-abook .empty .app-abook-first svg {
+  color: inherit;
 }
 .app-abook-full,
 .app-abook-failed {

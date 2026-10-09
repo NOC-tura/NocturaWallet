@@ -1164,7 +1164,8 @@ contact" (ix:7388, `#i-plus`) → the sheet. `.search` input placeholder "Search
 derived (D20). No notes field (D18). The never-sent, only-sent-to-you and dust states are extension additions (review
 H3).
 - **Approved by the owner (D35, 2026-10-08):** the sheet is tall — up to the popup's height but 48 px, not #43's 70 %, so
-  the address being saved, the warnings and "Save anyway" stay in view; its actions are Cancel | Save side by side (the
+  the address being saved, the warnings and "Save anyway" stay in view (Task 10: its bottom padding is `--space-4`, not
+  #43's `--space-4` + 24 px gesture-bar allowance, which cut "Save anyway" in the longest state; §8.4); its actions are Cancel | Save side by side (the
   design's `.sticky-bar.row`), "Delete contact" below; the delete confirm shows the contact's name and address under
   O82; the sheet opens on the element marked `data-autofocus` (the name, or the empty address field); Esc over the sheet
   closes only the sheet, never the screen under it.
@@ -1454,6 +1455,30 @@ Findings go in the PR; screenshots are CI artifacts.
 - **`unlock.css`'s `.icon-btn:disabled` also dims 2a's vault buttons** (T20a): the rule added for the new pages' disabled
   top-bar X matches every `.icon-btn` on the vault page, so 2a's icon buttons draw dimmed while disabled too (inside the
   busy gate). It is the popup's rule; 2a's shots are taken with `ready` (enabled) and are unaffected.
+
+**Differs, loudly (plan 2's visual pass, Task 10; `e2e/visual-contacts.spec.ts`, 27 shots):**
+- **Fixed in the pass** (app.css, each pinned by a Chromium computed-style or viewport assertion in the visual spec):
+  #15 empty — the UA's `h3`/`p` margins (17 px) set the heading and its line apart (the design resets every margin,
+  index.html:98), now `margin: 0`; the "+" in "Add first contact" took web's `.empty svg` `--fg-tertiary` and drew grey,
+  now the button's ink (ix:7455). #15 pick — O72 drew `--fg-tertiary`: the design's `.s-abook .row .when` out-ranked
+  `.noc-warning`; now `--warning` as §6.1 says. The contact sheet (tall) — #43's panel keeps 24 px under its content for
+  the phone's gesture bar, which the popup has not; in the sheet's longest state (dust + O87, from #27c with the book
+  full) those 24 px cut "Save anyway" to 68 % of its height. The tall sheet's bottom padding is `--space-4`, so D35's
+  "Save anyway stays in view" holds in that state too.
+- **Asserted, unchanged:** `.s-abook .search:focus-within .ic` takes `--accent` (pre-flight G4); `.app-contact-delete`
+  is `display: contents` and "Delete contact" spans the Cancel | Save row (Task 4 carry); the dust state's address and
+  "Save anyway" wholly in view on open, the banner at 95 % (D35).
+- **For the owner (not changed): the focus under a request that is out** (Task 7 carry, measured in Chromium). A focused
+  Cancel, Keep or Save that the request disables gives the focus to `<body>`. Tab then resumes from that button: after
+  Cancel or Save it lands on "Delete contact", inside the sheet; after Keep (the delete confirm, Delete busy) it leaves the
+  sheet for #15's Back behind the modal — `Sheet`'s trap wraps Tab only from its own first or last control. Pinned as a
+  limitation in the visual spec, so a fix turns it red.
+- **For the owner (not changed):** the sheet's Cancel and Keep are `.btn-secondary` (`--bg-surface-2`) on the sheet's own
+  `--bg-surface-2`, so they draw as text without a container — as the accounts manager's remove sheet (plan 1) does. The
+  design draws no secondary button on a sheet.
+- **Not shot** (fault injection only; the component tests assert them): #15 `load failed` (O74), the sheet's `failed`
+  line; and the transient "request out" states (the sheet's disabled Cancel/Keep), which the spec holds and asserts but
+  does not shoot.
 
 ---
 
