@@ -196,6 +196,14 @@ body:has(.app-popup) {
 }
 
 /* Sheets: the design's .s8-sheet, laid over the whole app. */
+/* The panel takes the focus while a request disables the control that had it (Task 10 fix round 0b, C1): the dialog
+   itself is then the focus, drawn as the sheet it is — no ring around the whole panel, and not web's :focus-visible
+   radius, which would square the panel's top corners. */
+.s8-sheet:focus,
+.s8-sheet:focus-visible {
+  outline: 0;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+}
 .app-sheet-layer {
   position: absolute;
   inset: 0;
@@ -1347,6 +1355,18 @@ a.btn {
 }
 .app-abook-foot .btn {
   margin-top: var(--space-3);
+  /* "Add new contact "<address>" →" (fix round 0b): a 44-character query wraps inside the column, never past it. */
+  height: auto;
+  min-height: var(--touch-target-min);
+  padding-block: var(--space-2);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+/* An address query keeps its case in the overline (fix round 0b): uppercase would draw a case look-alike's difference
+   away — the difference the exact address search refuses to ignore (§6.1, Task 3 ruling M4) — and it wraps. */
+.app-abook-count.app-abook-count-addr {
+  text-transform: none;
+  overflow-wrap: anywhere;
 }
 .s-abook .empty .app-abook-first {
   width: auto;

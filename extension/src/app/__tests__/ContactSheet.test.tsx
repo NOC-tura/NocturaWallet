@@ -677,6 +677,43 @@ describe('the contact sheet: no close while a save or delete is out (Task 7 fix 
     expect(onDeleted).toHaveBeenCalledWith(SENDER);
   });
 
+  // Task 10 fix round 0b (C1): the focus stays in the sheet while a request disables the focused control.
+  it('save out with the focus on Cancel: the dialog holds the focus; a failed answer gives it back to Cancel', async () => {
+    let fail: () => void = () => undefined;
+    const out = new Promise<void>((_, reject) => {
+      fail = () => reject(new Error('worker restarting'));
+    });
+    await renderInWallet(sheet(), {gate: m => ((m as {type: string}).type === 'contacts.set' ? out : undefined)});
+    fireEvent.change(nameField(), {target: {value: 'Supplier'}});
+    const cancel = screen.getByRole('button', {name: 'Cancel'}) as HTMLButtonElement;
+    cancel.focus();
+    fireEvent.click(save());
+    expect(cancel.disabled).toBe(true);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('dialog', {name: CONTACT_TEXT.addTitle})));
+    fail();
+    expect(await screen.findByText(CONTACT_TEXT.failed)).toBeTruthy();
+    await waitFor(() => expect(document.activeElement).toBe(cancel));
+  });
+
+  it('delete out with the focus on Keep: the dialog holds the focus, Tab stays inside it', async () => {
+    const h = hold('contacts.remove');
+    await renderInWallet(sheet({mode: {kind: 'edit', address: SENDER, name: 'Supplier'}}), {
+      before: ext => ext.local.set(CONTACTS_KEY, [{address: SENDER, name: 'Supplier'}]),
+      gate: h.gate,
+    });
+    fireEvent.click(screen.getByRole('button', {name: 'Delete contact'}));
+    const keep = screen.getByRole('button', {name: 'Keep'}) as HTMLButtonElement;
+    expect(document.activeElement).toBe(keep);
+    fireEvent.click(screen.getByRole('button', {name: 'Delete'}));
+    expect(keep.disabled).toBe(true);
+    const dialog = screen.getByRole('dialog', {name: CONTACT_TEXT.editTitle});
+    await waitFor(() => expect(document.activeElement).toBe(dialog));
+    fireEvent.keyDown(document, {key: 'Tab'});
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).not.toBe(dialog);
+    h.release();
+  });
+
   it('idle (positive control): Esc, the backdrop and ✕ each close', async () => {
     const onClose = vi.fn();
     await renderInWallet(sheet({onClose}));

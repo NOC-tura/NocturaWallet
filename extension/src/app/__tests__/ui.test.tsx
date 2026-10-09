@@ -56,6 +56,72 @@ describe('Sheet (#43’s sheet)', () => {
     rerender(<button type="button">Opener</button>);
     expect(document.activeElement).toBe(screen.getByRole('button', {name: 'Opener'}));
   });
+
+  // Task 10 fix round 0b (C1): a focused control the sheet's own request disables (the contact sheet's Cancel, Keep,
+  // Save) left the focus on <body> in Chromium, and Tab from there reached the screen behind the modal. The panel
+  // (tabindex -1) takes the focus instead; Tab cycles inside; when the control is enabled again it gets the focus back.
+  const busySheet = (busy: boolean) => (
+    <Sheet title="Contact" onClose={() => undefined}>
+      <button type="button" disabled={busy}>
+        Cancel
+      </button>
+      <button type="button">Save</button>
+    </Sheet>
+  );
+  const flush = () => act(async () => new Promise(r => setTimeout(r, 0)));
+
+  it('a focused control disabled under the focus: the panel takes it; enabled again, the control gets it back', async () => {
+    const {rerender} = render(busySheet(false));
+    const dialog = screen.getByRole('dialog', {name: 'Contact'});
+    expect(dialog.getAttribute('tabindex')).toBe('-1');
+    const cancel = screen.getByRole('button', {name: 'Cancel'});
+    cancel.focus();
+    rerender(busySheet(true));
+    await flush();
+    expect(document.activeElement).toBe(dialog);
+    rerender(busySheet(false));
+    await flush();
+    expect(document.activeElement).toBe(cancel);
+  });
+
+  it('as Chromium does it: a disabled control whose focus already fell to <body> — the panel takes it', async () => {
+    const {rerender} = render(busySheet(false));
+    const cancel = screen.getByRole('button', {name: 'Cancel'});
+    cancel.focus();
+    rerender(busySheet(true));
+    cancel.blur();
+    await flush();
+    expect(document.activeElement).toBe(screen.getByRole('dialog', {name: 'Contact'}));
+  });
+
+  it('Tab and Shift+Tab from the panel (or from <body>) stay inside the sheet', async () => {
+    render(busySheet(true));
+    const dialog = screen.getByRole('dialog', {name: 'Contact'});
+    const [grabber] = screen.getAllByRole('button', {name: 'Close'});
+    dialog.focus();
+    fireEvent.keyDown(document, {key: 'Tab'});
+    expect(document.activeElement).toBe(grabber);
+    dialog.focus();
+    fireEvent.keyDown(document, {key: 'Tab', shiftKey: true});
+    expect(document.activeElement).toBe(screen.getByRole('button', {name: 'Save'}));
+    (document.activeElement as HTMLElement).blur();
+    expect(document.activeElement).toBe(document.body);
+    fireEvent.keyDown(document, {key: 'Tab'});
+    expect(document.activeElement).toBe(grabber);
+  });
+
+  it('a control the user moved away from is not pulled back (only a focus the panel holds)', async () => {
+    const {rerender} = render(busySheet(false));
+    const cancel = screen.getByRole('button', {name: 'Cancel'});
+    const save = screen.getByRole('button', {name: 'Save'});
+    cancel.focus();
+    rerender(busySheet(true));
+    await flush();
+    save.focus();
+    rerender(busySheet(false));
+    await flush();
+    expect(document.activeElement).toBe(save);
+  });
 });
 
 describe('QrCode (S6)', () => {

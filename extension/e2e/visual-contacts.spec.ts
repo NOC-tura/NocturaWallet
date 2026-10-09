@@ -1,6 +1,6 @@
 import {test, expect, type Locator, type Page, type Worker} from '@playwright/test';
 import {base58} from '@scure/base';
-import {contained, launchPopup, seedUnlockedWallet, type Harness} from './popupHarness';
+import {contained, launchPopup, SAVINGS, seedUnlockedWallet, type Harness} from './popupHarness';
 import {ACCOUNT, RECIPIENT, realWallet} from './sendHelpers';
 import {COUNTERPARTY, receivedUsdc, sentSol, sig} from './historyFixtures';
 import {shot} from './visualTab';
@@ -85,7 +85,7 @@ async function holdMessages(page: Page, type: string): Promise<{release(): Promi
 const focusAt = (page: Page) =>
   page.evaluate(() => {
     const a = document.activeElement;
-    return {tag: a?.tagName ?? null, text: (a?.textContent ?? '').trim(), label: a?.getAttribute('aria-label') ?? null, inSheet: a !== null && a.closest('.s8-sheet') !== null};
+    return {tag: a?.tagName ?? null, role: a?.getAttribute('role') ?? null, text: (a?.textContent ?? '').trim(), label: a?.getAttribute('aria-label') ?? null, inSheet: a !== null && a.closest('.s8-sheet') !== null};
   });
 /** A sheet shot: the state's element inside the sheet's panel and in the viewport (the panel scrolls its own body). */
 async function sheetShot(page: Page, name: string, visible: Locator, ready?: Locator): Promise<void> {
@@ -125,12 +125,6 @@ const toBook = async (p: Page) => {
 
 test('visual: #31’s Address book row, #15’s states and the contact sheet (412 × 600)', async () => {
   test.setTimeout(300_000);
-  let cancelFocus: unknown = null;
-  let keepFocus: unknown = null;
-  let cancelTab: unknown = null;
-  let keepTab: unknown = null;
-  let saveFocus: unknown = null;
-  let saveTab: unknown = null;
   const h = await launchPopup('noctura-e2e-vis-contacts-');
   try {
     await seedUnlockedWallet(h.sw);
@@ -257,23 +251,37 @@ test('visual: #31’s Address book row, #15’s states and the contact sheet (41
     await expect(p.getByRole('button', {name: 'Add contact'})).toBeDisabled();
     await pop(p, '15-full', p.getByText('The address book is full (200 contacts).'));
 
-    // Task 7 carry: in real Chromium, where the focus goes when a focused Cancel or Keep is disabled under it by a
-    // request that is out (the sheet ignores every close until it answers). The request is held; the press reaches the
-    // button without moving the focus (an activation that does not focus, as assistive technology may send).
+    // Task 7 carry, Task 10 fix round 0b (C1), in real Chromium: a focused Cancel, Keep or Save disabled under the focus
+    // by a request that is out (the sheet ignores every close until it answers). Chromium drops such a focus to <body>,
+    // and Tab from there reached the screen behind the modal (after Keep: #15's Back). Now the dialog itself takes the
+    // focus (tabindex -1, drawn without a ring and with its own corners), Tab enters the sheet at its first control, and
+    // once the answer closes the sheet the focus is back on the row that opened it. The request is held; the press
+    // reaches the button without moving the focus (an activation that does not focus, as assistive technology may send).
+    const onDialog = (what: string) =>
+      expect.poll(() => focusAt(p), {message: `${what}: the dialog holds the focus`}).toMatchObject({tag: 'DIV', role: 'dialog', inSheet: true});
+    const tabInside = async (what: string) => {
+      await p.keyboard.press('Tab');
+      expect(await focusAt(p), `${what}: Tab enters the sheet at its first control`).toMatchObject({tag: 'BUTTON', label: 'Close', inSheet: true});
+    };
+    const backOnRow = (name: string) =>
+      expect.poll(() => p.evaluate(() => document.activeElement?.closest('.s-abook .row')?.querySelector('.name')?.textContent ?? null), {message: `${name}: the focus back on its row`}).toBe(name);
     const held = await holdMessages(p, 'contacts.set');
     await p.locator('.s-abook .row', {hasText: 'Contact 1'}).first().click();
     const ed = p.getByRole('dialog', {name: 'Edit contact'});
+    const radius = await css(ed, 'border-top-left-radius');
     await ed.getByLabel('Name').fill('Contact one');
     const cancel = ed.getByRole('button', {name: 'Cancel'});
     await cancel.focus();
     await ed.getByRole('button', {name: 'Save', exact: true}).dispatchEvent('click');
     await expect.poll(held.held).toBe(1);
     await expect(cancel).toBeDisabled();
-    cancelFocus = await focusAt(p);
-    await p.keyboard.press('Tab');
-    cancelTab = await focusAt(p);
+    await onDialog('Cancel');
+    expect(await css(ed, 'outline-style'), 'the focused dialog: no ring').toBe('none');
+    expect(await css(ed, 'border-top-left-radius'), 'the focused dialog keeps its corners').toBe(radius);
+    await tabInside('Cancel');
     await held.release();
     await expect(ed).toHaveCount(0);
+    await backOnRow('Contact one');
     const heldRemove = await holdMessages(p, 'contacts.remove');
     await p.locator('.s-abook .row', {hasText: 'Contact 2'}).first().click();
     const del = p.getByRole('dialog', {name: 'Edit contact'});
@@ -283,9 +291,8 @@ test('visual: #31’s Address book row, #15’s states and the contact sheet (41
     await del.getByRole('button', {name: 'Delete', exact: true}).dispatchEvent('click');
     await expect.poll(heldRemove.held).toBe(1);
     await expect(keep).toBeDisabled();
-    keepFocus = await focusAt(p);
-    await p.keyboard.press('Tab');
-    keepTab = await focusAt(p);
+    await onDialog('Keep');
+    await tabInside('Keep');
     await heldRemove.release();
     await expect(del).toHaveCount(0);
     // The common path: Save pressed with the pointer (the focus on Save, which its own lock disables).
@@ -295,23 +302,11 @@ test('visual: #31’s Address book row, #15’s states and the contact sheet (41
     await ed3.getByLabel('Name').fill('Contact three');
     await ed3.getByRole('button', {name: 'Save', exact: true}).click();
     await expect.poll(heldClick.held).toBe(1);
-    saveFocus = await focusAt(p);
-    await p.keyboard.press('Tab');
-    saveTab = await focusAt(p);
+    await onDialog('Save');
+    await tabInside('Save');
     await heldClick.release();
     await expect(ed3).toHaveCount(0);
-    // What real Chromium does (measured, Task 10): a focused button disabled under it gives the focus to <body> — out of
-    // the sheet, in all three paths. Tab then resumes from where the focus was (the sequential-navigation starting
-    // point): after Cancel or Save it lands on "Delete contact", inside the sheet; after Keep — the confirm's last
-    // enabled-then-disabled control, Delete busy beside it — it leaves the sheet for the screen behind the modal (the
-    // top bar's Back): the Sheet's trap only wraps Tab from its own first or last control, never from <body>. A
-    // limitation written as a test (for the controller): a fix that keeps the focus in the sheet turns this red.
-    expect(cancelFocus, 'Cancel disabled under the focus').toMatchObject({tag: 'BODY', inSheet: false});
-    expect(cancelTab, 'Tab after Cancel').toMatchObject({tag: 'BUTTON', text: 'Delete contact', inSheet: true});
-    expect(saveFocus, 'Save (pointer) disabled under the focus').toMatchObject({tag: 'BODY', inSheet: false});
-    expect(saveTab, 'Tab after Save').toMatchObject({tag: 'BUTTON', text: 'Delete contact', inSheet: true});
-    expect(keepFocus, 'Keep disabled under the focus').toMatchObject({tag: 'BODY', inSheet: false});
-    expect(keepTab, 'Tab after Keep: out of the modal, on the Back behind it (limitation)').toMatchObject({tag: 'BUTTON', label: 'Back', inSheet: false});
+    await backOnRow('Contact three');
     contained(h);
   } finally {
     await h.close();
@@ -428,6 +423,95 @@ test('visual: the hooks — #12’s contact icon, #15 pick, #12 after a pick, #2
     await expect(full.locator('.app-contact-addr')).toBeInViewport({ratio: 1});
     await expect(full.getByRole('button', {name: 'Save anyway'})).toBeInViewport({ratio: 1});
     await sheetShot(p, 'sheet-full', full.getByText('The address book is full (200 contacts). Delete one to add another.'), full.getByRole('button', {name: 'Save anyway'}));
+    contained(h);
+  } finally {
+    await h.close();
+  }
+});
+
+/**
+ * Fix round 0b (controller): the poisoning-relevant states the first two specs did not reach. The fee treasury's address
+ * (core/fees MAINNET_FEE_TREASURY = core/presale MAINNET_SOL_TREASURY, written out here: e2e imports nothing from core/).
+ */
+const TREASURY = '6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd';
+/** `a` with one middle character's case swapped — still a canonical 32-byte address, a different one. */
+function caseVariant(a: string): string {
+  for (let i = 12; i < a.length - 4; i++) {
+    const c = a[i]!;
+    const swapped = c === c.toLowerCase() ? c.toUpperCase() : c.toLowerCase();
+    if (swapped === c) continue;
+    const v = a.slice(0, i) + swapped + a.slice(i + 1);
+    try {
+      if (base58.decode(v).length === 32 && base58.encode(base58.decode(v)) === v) return v;
+    } catch {
+      // not in base58's alphabet (I, O, l): the next character
+    }
+  }
+  throw new Error('no case variant');
+}
+
+test('visual: poisoning — an exact address search with a case look-alike, a known contact with no date, #15 pick for the treasury (never sent) and an own account', async () => {
+  test.setTimeout(300_000);
+  const h = await launchPopup('noctura-e2e-vis-contact-poison-');
+  try {
+    await seedUnlockedWallet(h.sw);
+    const ALICE = addr(1);
+    const LOOKALIKE = caseVariant(ALICE);
+    expect(LOOKALIKE).not.toBe(ALICE);
+    expect(LOOKALIKE.toLowerCase()).toBe(ALICE.toLowerCase());
+    await saveContacts(h, [
+      {address: ALICE, name: 'Alice'},
+      {address: LOOKALIKE, name: 'Alice (planted)'},
+      {address: TREASURY, name: 'Fees'},
+      {address: SAVINGS.publicKey, name: 'My savings'},
+    ]);
+    // Alice is known with no time (a B1b-1 entry: the bare address); the look-alike and the treasury were never paid.
+    await set(h.sw, {v1_known_recipients: [ALICE]});
+    let p = await popup(h);
+    await toBook(p);
+    // An exact full-address search (spec §6.1, Task 3 ruling M4): only the exact address — never its case look-alike.
+    await p.getByRole('textbox', {name: 'Search contacts'}).fill(ALICE);
+    await expect(p.getByText(`1 result for "${ALICE}"`)).toBeVisible();
+    await expect(p.locator('.s-abook .row')).toHaveCount(1);
+    await expect(p.locator('.s-abook .row .name')).toHaveText('Alice');
+    // Fix round 0b: the overline's uppercase (the design's "2 RESULTS FOR "MARK"") would draw the address case-folded —
+    // the very difference this search refuses to ignore — so an address query keeps its case; and neither that line nor
+    // "Add new contact "<address>" →" runs past the column (no horizontal scroll, §8.4 item 6).
+    const count = p.locator('.app-abook-count');
+    expect(await count.evaluate(e => (e as HTMLElement).innerText), 'the address drawn in its own case').toBe(`1 result for "${ALICE}"`);
+    const addNew = p.getByRole('button', {name: `Add new contact "${ALICE}" →`});
+    for (const [what, el] of [['the count line', count], ['Add new contact', addNew]] as const) {
+      const box = await el.boundingBox();
+      expect(box?.x ?? -1, `${what}: inside the column`).toBeGreaterThanOrEqual(0);
+      expect((box?.x ?? 0) + (box?.width ?? 1e6), `${what}: inside the column`).toBeLessThanOrEqual(412);
+      expect(await el.evaluate(e => e.scrollWidth <= e.clientWidth), `${what}: no overflow`).toBe(true);
+    }
+    expect(await p.evaluate(() => document.scrollingElement!.scrollWidth <= window.innerWidth), 'no horizontal scroll').toBe(true);
+    await pop(p, '15-search-exact-address', p.locator('.s-abook .row'));
+    // Positive control: the look-alike's own address finds the look-alike alone.
+    await p.getByRole('textbox', {name: 'Search contacts'}).fill(LOOKALIKE);
+    await expect(p.locator('.s-abook .row .name')).toHaveText(['Alice (planted)']);
+    await p.getByRole('button', {name: 'Clear search'}).click();
+    // A known contact whose last send has no time: no date text ("never" means only "not known"; Task 5 ruling).
+    const alice = p.locator('.s-abook .row', {has: p.locator('.name', {hasText: /^Alice$/})});
+    await expect(alice.locator('.when')).toHaveText('');
+    await expect(p.locator('.s-abook .row', {hasText: 'Alice (planted)'}).locator('.when')).toHaveText('never');
+    await pop(p, '15-known-no-date', alice);
+    await p.close();
+
+    // #15 pick from #12: the treasury never sent to says O72, not "Noctura treasury"; an own account says its label.
+    p = await popup(h);
+    await p.getByRole('button', {name: 'Send', exact: true}).click();
+    await p.getByRole('button', {name: 'Address book'}).click();
+    const fees = p.locator('.s-abook .row', {hasText: 'Fees'});
+    await expect(fees.locator('.when')).toHaveText('You have never sent to this address.');
+    await expect(fees).not.toContainText('Noctura treasury');
+    expect(await css(fees.locator('.when'), 'color'), 'O72 in --warning').toBe(await token(p, '--warning'));
+    await pop(p, '15-pick-treasury-never-sent', fees);
+    const own = p.locator('.s-abook .row', {hasText: 'My savings'});
+    await expect(own.locator('.when')).toHaveText('Your account: Savings');
+    await expect(own).not.toContainText('You have never sent to this address.');
+    await pop(p, '15-pick-own-account', own);
     contained(h);
   } finally {
     await h.close();

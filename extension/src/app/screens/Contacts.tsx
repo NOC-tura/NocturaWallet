@@ -202,7 +202,7 @@ export function Contacts({pick, onBack, onPick}: {pick: boolean; onBack: () => v
     body = (
       <div className="scroll app-abook-list">
         {full ? <p className="noc-caption app-warning app-abook-full">{CONTACTS_TEXT.full}</p> : null}
-        {q === '' ? null : shown.length > 0 ? <div className="noc-overline app-abook-count">{resultsLine(shown.length, q)}</div> : null}
+        {q === '' ? null : shown.length > 0 ? <div className={`noc-overline app-abook-count${isAddressText(q) ? ' app-abook-count-addr' : ''}`}>{resultsLine(shown.length, q)}</div> : null}
         {shown.map(row)}
         {q === '' ? null : (
           <div className="app-abook-foot">

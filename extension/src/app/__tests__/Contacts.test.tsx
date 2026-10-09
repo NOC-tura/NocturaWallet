@@ -348,6 +348,12 @@ describe('#15 address book — pick (from #12; review H3)', () => {
     expect(rows()).toHaveLength(1);
     expect([...(rows()[0]?.querySelectorAll('.addr .addr-groups > span') ?? [])].map(s => s.textContent)).toEqual(MARKO.match(/.{1,4}/g));
     expect(screen.getByText(`1 result for "${MARKO}"`)).toBeTruthy();
+    // Task 10 fix round 0b: an address query's overline keeps the address's case (app.css: no uppercase) — and is styled.
+    const count = screen.getByText(`1 result for "${MARKO}"`);
+    expect(count.classList.contains('app-abook-count-addr')).toBe(true);
+    expect(unstyledClasses(count, SELECTORS)).toEqual([]);
+    fireEvent.change(screen.getByRole('textbox', {name: 'Search contacts'}), {target: {value: 'marko'}});
+    expect(screen.getByText('3 results for "marko"').classList.contains('app-abook-count-addr')).toBe(false);
   });
 
   it('a row tap hands the address back (no edit sheet)', async () => {

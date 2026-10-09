@@ -34,16 +34,46 @@ export function Sheet({title, onClose, children, tall = false}: {title: string; 
       const first = list[0];
       const last = list[list.length - 1];
       if (first === undefined || last === undefined) return;
-      if (e.shiftKey && document.activeElement === first) {
+      const at = document.activeElement;
+      // From the panel itself (a control disabled under the focus) or from outside it, Tab enters the sheet, never the
+      // screen behind the modal (Task 10 fix round 0b, C1).
+      if (at === panel.current || at === null || !(panel.current?.contains(at) ?? false)) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+      } else if (e.shiftKey && at === first) {
         e.preventDefault();
         last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
+      } else if (!e.shiftKey && at === last) {
         e.preventDefault();
         first.focus();
       }
     };
     document.addEventListener('keydown', onKey);
+    /*
+     * Task 10 fix round 0b (C1): a focused control the sheet's own request disables (the contact sheet's Cancel, Keep and
+     * Save while a save or delete is out) drops the focus to <body> in Chromium — out of the modal. The panel (tabindex
+     * -1) takes it instead, and the control gets it back when it is enabled again (a failed answer), unless the focus
+     * has moved on meanwhile. The last control focused inside is tracked; `disabled` changes are watched.
+     */
+    const el = panel.current;
+    let held: HTMLElement | null = null;
+    const onFocusIn = (e: FocusEvent) => {
+      if (e.target instanceof HTMLElement && e.target !== el) held = e.target;
+    };
+    el?.addEventListener('focusin', onFocusIn);
+    const watch = new MutationObserver(records => {
+      for (const r of records) {
+        if (r.target !== held || !(r.target instanceof HTMLButtonElement || r.target instanceof HTMLInputElement)) continue;
+        const at = document.activeElement;
+        if (r.target.disabled) {
+          if (at === r.target || at === null || at === document.body) el?.focus();
+        } else if (at === el) r.target.focus();
+      }
+    });
+    if (el !== null) watch.observe(el, {subtree: true, attributes: true, attributeFilter: ['disabled']});
     return () => {
+      watch.disconnect();
+      el?.removeEventListener('focusin', onFocusIn);
       document.removeEventListener('keydown', onKey);
       before?.focus();
     };
@@ -51,7 +81,7 @@ export function Sheet({title, onClose, children, tall = false}: {title: string; 
   return (
     <div className="app-sheet-layer">
       <div className="s8-sheet-overlay" data-testid="sheet-backdrop" onClick={onClose} />
-      <div className={tall ? 's8-sheet app-sheet-tall' : 's8-sheet'} role="dialog" aria-modal="true" aria-label={title} ref={panel}>
+      <div className={tall ? 's8-sheet app-sheet-tall' : 's8-sheet'} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={panel}>
         <button type="button" className="grabber-hit" aria-label="Close" onClick={onClose}>
           <span className="grabber" />
         </button>
