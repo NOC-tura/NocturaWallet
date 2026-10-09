@@ -48,6 +48,15 @@ async function still(page: Page, name: string, ready?: Locator): Promise<void> {
   await page.mouse.move(0, 0);
   await shot(page, name, {fullPage: false, ...(ready === undefined ? {} : {ready})});
 }
+/**
+ * Final review M3: #15's "when" counts local calendar days from a seed to the popup's clock. Seeded in the last two minutes
+ * before local midnight, the popup (launched seconds later) could draw after it: the seed waits for the new day instead.
+ * The popup runs on this machine's clock and zone (no timezoneId is set).
+ */
+async function clearOfMidnight(): Promise<void> {
+  const left = new Date(new Date().setHours(24, 0, 0, 0)).getTime() - Date.now();
+  if (left < 120_000) await new Promise(r => setTimeout(r, left + 1_000));
+}
 /** A computed style in Chromium (happy-dom lacks `:focus-within` and the UA sheet). */
 const css = (l: Locator, prop: string) => l.evaluate((e, p) => getComputedStyle(e).getPropertyValue(p), prop);
 /** A token's computed value, as a colour the browser resolves (a probe element takes `color: var(--x)`). */
@@ -198,7 +207,10 @@ test('visual: #31’s Address book row, #15’s states and the contact sheet (41
       {address: addr(7), name: 'Daniel · Co-founder'},
     ];
     await saveContacts(h, book);
-    const now = Date.now();
+    // Final review M3: seeded at local noon N days back (no DST change moves a seed into another day), and never in the
+    // two minutes before local midnight — a popup drawn after the midnight that follows its seed counts a day more.
+    await clearOfMidnight();
+    const now = new Date(new Date().setHours(12, 0, 0, 0)).getTime();
     await set(h.sw, {
       v1_known_recipients: [
         {address: addr(1), at: now - 3 * DAY},

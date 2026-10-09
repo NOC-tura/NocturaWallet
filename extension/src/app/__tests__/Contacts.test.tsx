@@ -22,17 +22,23 @@ const BISTRO = '3jkLmUeyKhsnLj9SNQcdNhAFaapuTr5DPeR2S1PepT8c';
 const TINA = '8qWeRT6vqbDrdEwV1dwQi6AtEcY6CT7Xf3aRt8EXfD2x';
 const addr = (n: number): string => base58.encode(Uint8Array.from({length: 32}, (_, j) => (j === 0 ? n + 1 : 7)));
 const DAY = 86_400_000;
+/**
+ * Final review M3: one fixed clock for the seed and the screen — local noon today — so "3 days ago" depends neither on
+ * the wall clock crossing local midnight between the seed and the render, nor on a DST change inside the three days.
+ */
+const NOW = new Date(new Date().setHours(12, 0, 0, 0)).getTime();
+const clock = (): number => NOW;
 async function book(ext: {local: {set(k: string, v: unknown): Promise<void>}}): Promise<void> {
   await ext.local.set(CONTACTS_KEY, [
     {address: MARKO, name: 'Marko · Mom'},
     {address: BISTRO, name: 'Bistro · for Marketing'},
     {address: TINA, name: 'Tina'},
   ]);
-  await ext.local.set(KNOWN_RECIPIENTS_KEY, [{address: MARKO, at: Date.now() - 3 * DAY}]);
+  await ext.local.set(KNOWN_RECIPIENTS_KEY, [{address: MARKO, at: NOW - 3 * DAY}]);
 }
 const rows = () => [...document.querySelectorAll('.s-abook .row')] as HTMLElement[];
 const show = (o: {pick?: boolean; onPick?: (a: string) => void; onBack?: () => void} = {}, w: WalletOptions = {before: book}) =>
-  renderInWallet(<Contacts pick={o.pick ?? false} onBack={o.onBack ?? (() => undefined)} onPick={o.onPick ?? (() => undefined)} />, w);
+  renderInWallet(<Contacts pick={o.pick ?? false} onBack={o.onBack ?? (() => undefined)} onPick={o.onPick ?? (() => undefined)} />, {now: clock, ...w});
 
 describe('#15 address book — standalone', () => {
   it('populated: the drawn rows — avatar gradient + initial, name, first 4 … last 4, when — newest first; back, "Add contact", search', async () => {
@@ -253,6 +259,26 @@ describe('#15 address book — standalone', () => {
     expect(screen.queryByRole('button', {name: 'Clear search'})).toBeNull();
   });
 
+  // Final review M3: the wall clock crosses local midnight between the seed and the render. The seed and the screen share
+  // one clock (NOW), so the row still says "3 days ago" — seeded from Date.now() and read on the wall clock, it said 4.
+  it('M3 "3 days ago" holds when the seed and the render straddle local midnight', async () => {
+    const midnight = new Date(new Date().setHours(24, 0, 0, 0)).getTime();
+    vi.useFakeTimers({toFake: ['Date']});
+    try {
+      vi.setSystemTime(midnight - 50);
+      await show({}, {
+        before: async ext => {
+          await book(ext);
+          vi.setSystemTime(midnight + 50);
+        },
+      });
+      await waitFor(() => expect(rows()).toHaveLength(3));
+      expect(rows()[0]?.querySelector('.when')?.textContent).toBe('3 days ago');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('back pops', async () => {
     const onBack = vi.fn();
     await show({onBack});
@@ -322,7 +348,7 @@ describe('#15 address book — pick (from #12; review H3)', () => {
     await show({pick: true}, {
       before: async ext => {
         await ext.local.set(CONTACTS_KEY, [{address: MAINNET_FEE_TREASURY, name: 'Treasury?'}]);
-        await ext.local.set(KNOWN_RECIPIENTS_KEY, [{address: MAINNET_FEE_TREASURY, at: Date.now() - 3 * DAY}]);
+        await ext.local.set(KNOWN_RECIPIENTS_KEY, [{address: MAINNET_FEE_TREASURY, at: NOW - 3 * DAY}]);
       },
     });
     await waitFor(() => expect(rows()).toHaveLength(1));
