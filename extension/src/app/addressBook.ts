@@ -8,14 +8,20 @@ import type {Contact, Token} from './engine';
 /**
  * C18 (rev 2, review H3; rev 3, review L2): a received amount below these floors is "tiny" — 0.001 SOL, 0.01 USDC or
  * USDT, 1 NOC — in base units, compared as bigint (cardinal rule 2). It only chooses which warning #27c's "Save sender"
- * sheet shows (O78 + "Save anyway"); nothing is refused.
+ * sheet shows (O78 + "Save anyway"); nothing is refused. Frozen (Task 3 fix round 1, M3): no caller can widen a floor.
  */
-export const DUST_FLOOR: Readonly<Record<Token, bigint>> = {SOL: 1_000_000n, USDC: 10_000n, USDT: 10_000n, NOC: 1_000_000_000n};
+export const DUST_FLOOR: Readonly<Record<Token, bigint>> = Object.freeze({SOL: 1_000_000n, USDC: 10_000n, USDT: 10_000n, NOC: 1_000_000_000n});
 
-/** Dust (C18): below the token's floor — and, failing closed, an amount or a token the decoder could not read (null). */
+/**
+ * Dust (C18): below the token's floor — and, failing closed (Task 3 fix round 1, M3), an amount or a token the
+ * decoder could not read (null), or a token string that is not one of the four floors (`DUST_FLOOR[token]`
+ * undefined — the `Token` type promises this cannot happen, but the check holds even if that promise is broken).
+ */
 export function isDust(token: Token | null, amount: bigint | null): boolean {
   if (token === null || amount === null) return true;
-  return amount < DUST_FLOOR[token];
+  const floor = DUST_FLOOR[token];
+  if (floor === undefined) return true;
+  return amount < floor;
 }
 
 const dayStart = (t: number): number => {
@@ -56,10 +62,21 @@ export function avatarOf(address: string): (typeof AVATARS)[number] {
 /** The name's first character, upper-cased (a whole code point: an emoji or an astral letter is not cut in half). */
 export const initialOf = (name: string): string => (Array.from(name)[0] ?? '').toUpperCase();
 
-/** #15's search: by name or by address, case-insensitive (§6.1). An empty query matches everything. */
+/** The same base58 length check the engine uses for an address (not exported there): local to this module's own ruling. */
+const ADDRESS_SHAPED = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+/**
+ * #15's search: by name, case-insensitive substring — or, when the trimmed query is itself address-shaped, by
+ * **exact, case-sensitive equality against the address only** (Task 3 fix round 1, M4, controller ruling; spec
+ * §6.1). No substring and no case-folding for a full address: address poisoning is this plan's threat model, and a
+ * look-alike that only differs by a suffix or by case must never read as the trusted one. An empty query matches
+ * everything.
+ */
 export function searchContacts(contacts: readonly Contact[], query: string): Contact[] {
-  const q = query.trim().toLowerCase();
-  if (q === '') return [...contacts];
+  const trimmed = query.trim();
+  if (trimmed === '') return [...contacts];
+  if (ADDRESS_SHAPED.test(trimmed)) return contacts.filter(c => c.address === trimmed);
+  const q = trimmed.toLowerCase();
   return contacts.filter(c => c.name.toLowerCase().includes(q) || c.address.toLowerCase().includes(q));
 }
 

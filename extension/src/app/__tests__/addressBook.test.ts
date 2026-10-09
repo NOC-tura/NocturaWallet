@@ -1,10 +1,16 @@
 import {AVATARS, DUST_FLOOR, avatarOf, contactsCount, initialOf, isDust, markParts, resultsLine, searchContacts, whenText} from '../addressBook';
-import type {Contact} from '../engine';
+import type {Contact, Token} from '../engine';
+
+// Task 3 fix round 1, M1: pin a non-UTC zone before any date in this file is created. CI runs in UTC, where
+// `setHours` and `setUTCHours` agree on every instant — a mutation swapping one for the other would stay green
+// there. America/Santiago (UTC-3 or UTC-4, no half-hour offset) disagrees with UTC on every test timestamp below.
+process.env.TZ = 'America/Santiago';
 
 // B1b-2b §6: the address book's display rules. C18's floors are base units compared as bigint (rev 3, review L2).
 describe('C18: the dust floor, in base units', () => {
-  it('pins the four floors: 0.001 SOL, 0.01 USDC and USDT, 1 NOC', () => {
+  it('pins the four floors: 0.001 SOL, 0.01 USDC and USDT, 1 NOC; the table is frozen (fix round 1, M3)', () => {
     expect(DUST_FLOOR).toEqual({SOL: 1_000_000n, USDC: 10_000n, USDT: 10_000n, NOC: 1_000_000_000n});
+    expect(Object.isFrozen(DUST_FLOOR)).toBe(true);
   });
 
   it.each([
@@ -25,6 +31,12 @@ describe('C18: the dust floor, in base units', () => {
   it('fails closed: an amount or a token the decoder could not read is dust', () => {
     expect(isDust('SOL', null)).toBe(true);
     expect(isDust(null, 5_000_000_000n)).toBe(true);
+  });
+
+  // Fix round 1, M3: the `Token` type promises only the four floors exist, but the check holds even if that
+  // promise is broken (a future token added to the type without a floor, or a cast past the type).
+  it('fails closed: a token with no entry in the floor table is dust', () => {
+    expect(isDust('BONK' as Token, 5_000_000_000n)).toBe(true);
   });
 });
 
@@ -66,11 +78,36 @@ describe('#15 rows and search', () => {
     expect(searchContacts([MARKO, BISTRO, TINA], 'zzz')).toEqual([]);
   });
 
+  // Fix round 1, M4 (controller ruling, spec §6.1): an address-shaped query matches by exact, case-sensitive
+  // equality against the address only — never a substring, never case-folded. Address poisoning is the threat:
+  // a look-alike that only differs by a trailing run of characters, or only by case, must not surface as a match.
+  it('search: an address-shaped query is exact and case-sensitive, not substring or case-folded', () => {
+    expect(searchContacts([TINA], TINA.address)).toEqual([TINA]);
+    // A look-alike that only differs by its trailing characters (the poisoning pattern).
+    const lookAlikeSuffix = TINA.address.slice(0, -4) + 'zzzz';
+    expect(searchContacts([TINA], lookAlikeSuffix)).toEqual([]);
+    // TINA.address is already mixed-case, so lower-casing it is a genuine case variant, still address-shaped.
+    const caseVariant = TINA.address.toLowerCase();
+    expect(caseVariant).not.toBe(TINA.address);
+    expect(searchContacts([TINA], caseVariant)).toEqual([]);
+    // A name is never consulted once the query is address-shaped, even if it happens to equal the address as text.
+    const named = {...TINA, name: TINA.address.toUpperCase()};
+    expect(searchContacts([named], TINA.address.toUpperCase())).toEqual([]);
+  });
+
   it('markParts: the first case-insensitive match in the name, or null for an address match', () => {
     expect(markParts('Marko · Mom', 'mark')).toEqual(['', 'Mark', 'o · Mom']);
     expect(markParts('Bistro · for Marketing', 'mark')).toEqual(['Bistro · for ', 'Mark', 'eting']);
     expect(markParts('Tina', 'fd2x')).toBeNull();
     expect(markParts('Tina', '')).toBeNull();
+  });
+
+  // Fix round 1, M2: İ (U+0130) lower-cases to two code units ("i" + combining dot above) in JS's default
+  // (non-Turkish) locale, so `lower.length !== name.length` — the guard returns null rather than cutting at an
+  // index that no longer lines up with the original string, even though "stan" reads as a visual substring.
+  it('markParts: the length guard refuses a name whose case-fold changes length (İstanbul)', () => {
+    expect('İstanbul'.toLowerCase().length).not.toBe('İstanbul'.length);
+    expect(markParts('İstanbul', 'stan')).toBeNull();
   });
 
   it('avatar: one of the design’s five gradients, always the same for an address; the initial is one whole character', () => {

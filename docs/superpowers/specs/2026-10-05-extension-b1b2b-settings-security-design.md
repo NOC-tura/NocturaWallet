@@ -1096,6 +1096,13 @@ contact" (ix:7388, `#i-plus`) → the sheet. `.search` input placeholder "Search
   results for "q"" (ix:7480; "1 result for "q"" **→ adapted** singular); matches by name or address, case-insensitive, the
   name's match in `<mark>` (ix:7483, 7488); "No more matches." (ix:7492); `.btn-tertiary` "Add new contact "q" →" (ix:7493)
   → the sheet with the name pre-filled with the query (ix:7533).
+  - **Controller ruling (Task 3 fix round 1, M4):** this case-insensitive, substring rule is for a **name** query. When
+    the trimmed query is itself address-shaped (passes the same base58 length-32–44 check the client uses for an
+    address), the match is instead **exact, case-sensitive equality against the contact's address only** — no
+    substring, no case-folding, and the name field is not consulted. A look-alike address that differs only by a
+    suffix, or only by case, is not a match. Address poisoning is this plan's threat model (implementer-rules.md); a
+    case- or suffix-tolerant match on a full address would let a planted look-alike surface as if it were the
+    trusted one.
 - **`search · no result`** (extension-only): "No contacts match "q"." (O71) + the same tertiary button.
 - **`pick`** (from #12, ix:7530): the same screen, with two differences that make the pick a check, not a shortcut (rev 2,
   review H3): each row shows the **full address in groups of four** (`AddressGroups`, `.noc-mono`) under the name in

@@ -433,7 +433,7 @@ function recipientInfoOf(x: unknown): RecipientInfo | undefined {
     const l = obj(o.label);
     if (l?.kind === 'treasury') label = {kind: 'treasury'};
     else if (l?.kind === 'own' && isInt(l.index) && typeof l.name === 'string') label = {kind: 'own', index: l.index, name: l.name};
-    else if (l?.kind === 'contact' && typeof l.name === 'string') label = {kind: 'contact', name: l.name};
+    else if (l?.kind === 'contact' && typeof l.name === 'string' && l.name.length > 0) label = {kind: 'contact', name: l.name};
     else label = undefined;
   }
   if (lastSentAt === undefined || label === undefined) return undefined;
@@ -442,11 +442,13 @@ function recipientInfoOf(x: unknown): RecipientInfo | undefined {
 
 /**
  * A contact row. `known` must be a boolean when present; a MISSING `known` reads as false (rev 3, review L3): the
- * never-sent warning then shows — a reply can never make an address look sent-to by leaving the field out.
+ * never-sent warning then shows — a reply can never make an address look sent-to by leaving the field out. `name`
+ * must be a non-empty string (Task 3 fix round 1, M6): the background never stores an empty name (C19), so one in a
+ * reply is a shape violation, not a contact with no name shown.
  */
 function contactOf(x: unknown): Contact | undefined {
   const o = obj(x);
-  if (o === undefined || !isAddress(o.address) || typeof o.name !== 'string') return undefined;
+  if (o === undefined || !isAddress(o.address) || typeof o.name !== 'string' || o.name.length === 0) return undefined;
   const lastSentAt = o.lastSentAt === null ? null : isTime(o.lastSentAt) ? o.lastSentAt : undefined;
   const known = o.known === undefined ? false : typeof o.known === 'boolean' ? o.known : undefined;
   if (lastSentAt === undefined || known === undefined) return undefined;
