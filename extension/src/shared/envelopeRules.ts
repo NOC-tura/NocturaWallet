@@ -33,11 +33,15 @@ export function b64Length(x: unknown): number | null {
   }
 }
 
-// C0 and C1 controls, and the bidi embedding/override/isolate characters that can make an
-// account name read as something else.
-const FORBIDDEN_IN_NAME = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/;
+// B1b-2b C19 (review L5, L8): every Unicode control (Cc) and format (Cf) character, by category under the `u` flag \u2014
+// the C0/C1 controls, the soft hyphen U+00AD, the zero-width spaces and joiners U+200B\u2013U+200F, U+2060\u2013U+2064, the BOM
+// U+FEFF, U+061C, U+180E, the tag characters \u2014 the bidi embeddings, overrides and isolates (Cf too, named for the
+// reader), and two invisible marks of category Mn: the combining grapheme joiner U+034F and the variation selectors
+// U+FE00\u2013U+FE0F. "Mo\u200bm" renders as "Mom"; a name may not. For contact names and account names alike. Names are not
+// otherwise normalised: cross-script look-alikes ("\u0412inance" with a Cyrillic \u0412) pass \u2014 C19's stated limit.
+const FORBIDDEN_IN_NAME = /[\p{Cc}\p{Cf}\u034f\ufe00-\ufe0f\u202a-\u202e\u2066-\u2069]/u;
 
-/** An account name as stored: trimmed, 1..MAX_NAME_LENGTH, no controls or bidi overrides. Null otherwise. */
+/** A name as stored (an account's, a contact's): trimmed, 1..MAX_NAME_LENGTH, no control or format character (C19). Null otherwise. */
 export function cleanName(x: unknown): string | null {
   if (typeof x !== 'string') return null;
   const name = x.trim();
