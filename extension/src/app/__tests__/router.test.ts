@@ -18,7 +18,7 @@ describe('the router', () => {
   });
 
   it('the pushable screens are a closed list; the hand-over screens are first routes only; the flow screens own their Esc', () => {
-    expect([...SCREENS].sort()).toEqual(['about', 'accounts', 'confirm', 'delete', 'passkey', 'receive', 'review', 'security', 'send', 'status', 'tab', 'tx']);
+    expect([...SCREENS].sort()).toEqual(['about', 'accounts', 'confirm', 'contacts', 'delete', 'passkey', 'receive', 'review', 'security', 'send', 'status', 'tab', 'tx']);
     expect([...TAB_ONLY].sort()).toEqual(['created', 'imported', 'resume']);
     expect([...FLOW].sort()).toEqual(['confirm', 'resume', 'review', 'send', 'status']);
     for (const route of [{screen: 'created'}, {screen: 'imported'}, {screen: 'resume', account: ADDR}] as Route[]) expect(routeReducer(HOME, {type: 'push', route})).toBe(HOME);
@@ -35,6 +35,15 @@ describe('the router', () => {
       for (const extra of [{challengeId: 'ab'.repeat(16)}, {index: 1}, {address: ADDR}]) {
         expect(routeReducer(HOME, {type: 'push', route: {screen, ...extra} as unknown as Route})).toBe(HOME);
       }
+    }
+  });
+
+  // B1b-2b §1.4, plan 2: #15 carries `pick` and nothing else — never an address, a name or a draft (the pick hands the
+  // address back through the send route's own draft, review M4).
+  it('B1b-2b plan 2: contacts carries exactly {screen, pick: boolean}', () => {
+    for (const pick of [true, false]) expect(routeReducer(HOME, {type: 'push', route: {screen: 'contacts', pick}})).toEqual([...HOME, {screen: 'contacts', pick}]);
+    for (const bad of [{screen: 'contacts'}, {screen: 'contacts', pick: 'yes'}, {screen: 'contacts', pick: true, address: ADDR}, {screen: 'contacts', pick: false, draft: null}]) {
+      expect(routeReducer(HOME, {type: 'push', route: bad as unknown as Route})).toBe(HOME);
     }
   });
 

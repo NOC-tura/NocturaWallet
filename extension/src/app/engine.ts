@@ -132,8 +132,21 @@ export type SettingsPatch = {autoLockMinutes?: number; reauthUsdCents?: number};
 export interface RecipientInfo {
   known: boolean;
   lastSentAt: number | null;
-  label: {kind: 'own'; index: number; name: string} | {kind: 'treasury'} | null;
+  /** Precedence own > treasury > contact (B1b-2b E17): the background chooses; a contact's label never says "known". */
+  label: {kind: 'own'; index: number; name: string} | {kind: 'treasury'} | {kind: 'contact'; name: string} | null;
   self: boolean;
+}
+/** B1b-2b E17: a saved contact, with E6's facts about its address (never the book's: a contact is not "known", D19). */
+export interface Contact {
+  address: string;
+  name: string;
+  lastSentAt: number | null;
+  /** The background's `known` (isKnownRecipient). A reply without it reads as false — the never-sent warning shows (rev 3, L3). */
+  known: boolean;
+}
+export interface ContactList {
+  contacts: Contact[];
+  max: number;
 }
 
 type Network = 'unreachable' | 'coordinator-refused';
@@ -175,6 +188,12 @@ export interface Engine {
   settingsSet(patch: SettingsPatch): Promise<Reply<Settings, 'malformed' | 'locked' | 'reauth-required'>>;
   /** accounts.order (B1b-2b E14): a permutation of the stored indexes; `stale` when the set changed. */
   order(order: number[]): Promise<Reply<null, 'malformed' | 'stale' | 'no-wallet'>>;
+  /** contacts.list (B1b-2b E17): newest first; refused while locked (C12). */
+  contacts(): Promise<Reply<ContactList, 'locked'>>;
+  /** contacts.set: adds (`created: true`) or renames the contact saved for this address (C12, C19). */
+  contactSet(address: string, name: string): Promise<Reply<{created: boolean}, 'malformed' | 'duplicate-name' | 'full' | 'locked'>>;
+  /** contacts.remove: ok also when the address was not saved. */
+  contactRemove(address: string): Promise<Reply<null, 'malformed' | 'locked'>>;
   lock(): Promise<Reply<null, never>>;
   ping(): Promise<Reply<null, never>>;
 }
@@ -414,10 +433,36 @@ function recipientInfoOf(x: unknown): RecipientInfo | undefined {
     const l = obj(o.label);
     if (l?.kind === 'treasury') label = {kind: 'treasury'};
     else if (l?.kind === 'own' && isInt(l.index) && typeof l.name === 'string') label = {kind: 'own', index: l.index, name: l.name};
+    else if (l?.kind === 'contact' && typeof l.name === 'string') label = {kind: 'contact', name: l.name};
     else label = undefined;
   }
   if (lastSentAt === undefined || label === undefined) return undefined;
   return {known: o.known, lastSentAt, label, self: o.self};
+}
+
+/**
+ * A contact row. `known` must be a boolean when present; a MISSING `known` reads as false (rev 3, review L3): the
+ * never-sent warning then shows — a reply can never make an address look sent-to by leaving the field out.
+ */
+function contactOf(x: unknown): Contact | undefined {
+  const o = obj(x);
+  if (o === undefined || !isAddress(o.address) || typeof o.name !== 'string') return undefined;
+  const lastSentAt = o.lastSentAt === null ? null : isTime(o.lastSentAt) ? o.lastSentAt : undefined;
+  const known = o.known === undefined ? false : typeof o.known === 'boolean' ? o.known : undefined;
+  if (lastSentAt === undefined || known === undefined) return undefined;
+  return {address: o.address, name: o.name, lastSentAt, known};
+}
+
+function contactListOf(x: unknown): ContactList | undefined {
+  const o = obj(x);
+  const contacts = all(o?.contacts, contactOf);
+  if (o === undefined || contacts === undefined || !isInt(o.max)) return undefined;
+  return {contacts, max: o.max};
+}
+
+function createdOf(x: unknown): {created: boolean} | undefined {
+  const o = obj(x);
+  return o !== undefined && typeof o.created === 'boolean' ? {created: o.created} : undefined;
 }
 
 const nothing = (x: unknown): null | undefined => (x === undefined ? null : undefined);
@@ -489,6 +534,9 @@ export function createEngine(transport: Transport = runtimeSend, sleep: (ms: num
     settings: () => call({type: 'settings.get'}, [], settingsOf),
     settingsSet: patch => call({type: 'settings.set', patch}, ['malformed', 'locked', 'reauth-required'], settingsOf),
     order: order => call({type: 'accounts.order', order}, ['malformed', 'stale', 'no-wallet'], nothing),
+    contacts: () => call({type: 'contacts.list'}, ['locked'], contactListOf),
+    contactSet: (address, name) => call({type: 'contacts.set', address, name}, ['malformed', 'duplicate-name', 'full', 'locked'], createdOf),
+    contactRemove: address => call({type: 'contacts.remove', address}, ['malformed', 'locked'], nothing),
     lock: () => call({type: 'vault.lock'}, [], nothing),
     ping: () => call({type: 'activity.ping'}, [], nothing),
   };
