@@ -80,7 +80,11 @@ export function Contacts({pick, onBack, onPick}: {pick: boolean; onBack: () => v
     const n = ++reads.current;
     const r = await engine.contacts();
     if (!alive.current || n !== reads.current) return;
-    if (r.ok) return setList(r.data);
+    if (r.ok) {
+      // Fix round 1, M3: a book that became empty shows the empty state's search — empty and disabled, no stale query.
+      if (r.data.contacts.length === 0) setQuery('');
+      return setList(r.data);
+    }
     if (r.error === 'locked') return void reload();
     setList('failed');
   }, [engine, reload]);
@@ -130,13 +134,19 @@ export function Contacts({pick, onBack, onPick}: {pick: boolean; onBack: () => v
   /**
    * A pick row's label in the date's place, by the precedence own > treasury > contact (E17; Task 2 carry): a saved
    * address that is one of this wallet's accounts says "Your account: <name>" (2a's; review L5), the fee treasury "Noctura
-   * treasury" — both exact matches, never the contact's name. Otherwise null: the row says when, or O72 (fail closed).
+   * treasury" — both exact matches, never the contact's name. Only for a `known` address: a label never replaces or
+   * hides O72 (§6.3, D36; fix round 1, I1). Otherwise null: the row says when.
    */
   const labelOf = (address: string): string | null => {
     const own = m.wallet?.accounts.find(a => a.publicKey === address);
     if (own !== undefined) return CONTACTS_TEXT.own(own.name);
     return address === MAINNET_FEE_TREASURY ? CONTACTS_TEXT.treasury : null;
   };
+  /**
+   * When, for a known contact (fix round 1, M4): "never" means only "not known". A known address whose last send has no
+   * time (an own account, or a B1b-1 entry stored without one) shows no date text rather than "never".
+   */
+  const when = (c: Contact): string => (!c.known ? 'never' : c.lastSentAt === null ? '' : whenText(c.lastSentAt, now));
   const row = (c: Contact) =>
     pick ? (
       <button type="button" key={c.address} className="row app-abook-pick" onClick={() => onPick(c.address)}>
@@ -151,12 +161,10 @@ export function Contacts({pick, onBack, onPick}: {pick: boolean; onBack: () => v
             <AddressGroups address={c.address} />
           </span>
         </span>
-        {labelOf(c.address) !== null ? (
-          <span className="when noc-body-sm">{labelOf(c.address)}</span>
-        ) : c.known ? (
-          <span className="when noc-body-sm">{whenText(c.lastSentAt, now)}</span>
-        ) : (
+        {!c.known ? (
           <span className="when noc-caption noc-warning">{CONTACTS_TEXT.neverSent}</span>
+        ) : (
+          <span className="when noc-body-sm">{labelOf(c.address) ?? when(c)}</span>
         )}
       </button>
     ) : (
@@ -170,7 +178,7 @@ export function Contacts({pick, onBack, onPick}: {pick: boolean; onBack: () => v
           </span>
           <span className="addr noc-body-sm noc-mono">{shortAddress(c.address)}</span>
         </span>
-        <span className="when noc-body-sm">{whenText(c.lastSentAt, now)}</span>
+        <span className="when noc-body-sm">{when(c)}</span>
       </button>
     );
 

@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
-import {act, cleanup, fireEvent, screen, waitFor, within} from '@testing-library/react';
+import {act, cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
 import {base58} from '@scure/base';
 import {Contacts} from '../screens/Contacts';
 import {avatarOf} from '../addressBook';
-import {renderInWallet, type WalletOptions} from './harness';
+import {renderInWallet, setupWallet, type WalletOptions} from './harness';
+import {WalletProvider} from '../WalletContext';
+import type {Engine} from '../engine';
 import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {CONTACTS_KEY} from '../../background/contacts';
 import {KNOWN_RECIPIENTS_KEY} from '../../background/knownRecipients';
@@ -179,6 +181,78 @@ describe('#15 address book — standalone', () => {
     expect(source).not.toContain('You have never sent to this address.');
   });
 
+  // Fix round 1, M4 (ruling): "never" means only "not known". A known address with no last-send time (a B1b-1 entry, a
+  // plain string) shows no date text — in the list and in pick, where it is not O72 either.
+  it('a known contact with no lastSentAt (B1b-1 entry) shows no date text, not "never" — standalone and pick', async () => {
+    const legacy = async (ext: {local: {set(k: string, v: unknown): Promise<void>}}) => {
+      await ext.local.set(CONTACTS_KEY, [{address: MARKO, name: 'Marko · Mom'}, {address: TINA, name: 'Tina'}]);
+      await ext.local.set(KNOWN_RECIPIENTS_KEY, [MARKO]);
+    };
+    await show({}, {before: legacy});
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(rows().map(r => r.querySelector('.when')?.textContent)).toEqual(['', 'never']);
+    cleanup();
+    await show({pick: true}, {before: legacy});
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(rows().map(r => r.querySelector('.when')?.textContent)).toEqual(['', 'You have never sent to this address.']);
+  });
+
+  // Fix round 1, M1: only the newest list read counts. A slow, older answer (read while Tina was still saved) lands
+  // after the delete's own read — it must not bring Tina back.
+  it('a slow older list answer does not re-show a contact deleted later', async () => {
+    const w = await setupWallet({before: book});
+    let calls = 0;
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(r => {
+      release = r;
+    });
+    const engine: Engine = {
+      ...w.engine,
+      contacts: async () => {
+        calls += 1;
+        const answer = await w.engine.contacts();
+        if (calls === 2) await held;
+        return answer;
+      },
+    };
+    render(
+      <WalletProvider engine={engine} platform={w.platform} surface="popup">
+        <Contacts pick={false} onBack={() => undefined} onPick={() => undefined} />
+      </WalletProvider>,
+    );
+    await waitFor(() => expect(rows()).toHaveLength(3));
+    // A rename: its reload (read 2) answers with Tina still saved, and is held.
+    fireEvent.click(rows()[2]!);
+    const dialog = await screen.findByRole('dialog', {name: 'Edit contact'});
+    fireEvent.change(dialog.querySelector('#contact-name')!, {target: {value: 'Tina K.'}});
+    fireEvent.click(within(dialog).getByRole('button', {name: 'Save'}));
+    await waitFor(() => expect(calls).toBe(2));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // The delete: its reload (read 3) answers at once, without Tina.
+    fireEvent.click(rows()[2]!);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', {name: 'Delete contact'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Delete'}));
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    release();
+    await act(async () => new Promise(r => setTimeout(r, 30)));
+    expect(rows().map(r => r.querySelector('.name')?.textContent)).toEqual(['Marko · Mom', 'Bistro · for Marketing']);
+  });
+
+  // Fix round 1, M3: deleting the last contact under a search shows the empty state with an empty, disabled search.
+  it('the list becoming empty clears the query: the search is empty and disabled', async () => {
+    await show({}, {before: ext => ext.local.set(CONTACTS_KEY, [{address: TINA, name: 'Tina'}])});
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    fireEvent.change(screen.getByRole('textbox', {name: 'Search contacts'}), {target: {value: 'tin'}});
+    fireEvent.click(rows()[0]!);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', {name: 'Delete contact'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Delete'}));
+    expect(await screen.findByText('No saved contacts yet')).toBeTruthy();
+    const search = screen.getByRole('textbox', {name: 'Search contacts'}) as HTMLInputElement;
+    expect(search.value).toBe('');
+    expect(search.disabled).toBe(true);
+    expect(screen.queryByRole('button', {name: 'Clear search'})).toBeNull();
+  });
+
   it('back pops', async () => {
     const onBack = vi.fn();
     await show({onBack});
@@ -237,12 +311,43 @@ describe('#15 address book — pick (from #12; review H3)', () => {
     expect(rows()[0]?.querySelector('.when')?.textContent).toBe('Your account: Savings');
   });
 
-  // Task 2 carry: the precedence own > treasury > contact — the fee treasury saved as a contact reads "Noctura treasury".
-  it('the fee treasury saved as a contact: the pick row says "Noctura treasury", not a date or O72', async () => {
+  // Task 2 carry: the precedence own > treasury > contact — but a label never replaces or hides O72 (§6.3, D36; fix
+  // round 1, I1): the fee treasury never sent to says O72; once known, "Noctura treasury" in the date's place.
+  it('the fee treasury saved as a contact: never sent to → O72; known → "Noctura treasury", not a date', async () => {
     await show({pick: true}, {before: ext => ext.local.set(CONTACTS_KEY, [{address: MAINNET_FEE_TREASURY, name: 'Treasury?'}])});
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    expect(rows()[0]?.querySelector('.when')?.textContent).toBe('You have never sent to this address.');
+    expect(rows()[0]?.querySelector('.when')?.className).toBe('when noc-caption noc-warning');
+    cleanup();
+    await show({pick: true}, {
+      before: async ext => {
+        await ext.local.set(CONTACTS_KEY, [{address: MAINNET_FEE_TREASURY, name: 'Treasury?'}]);
+        await ext.local.set(KNOWN_RECIPIENTS_KEY, [{address: MAINNET_FEE_TREASURY, at: Date.now() - 3 * DAY}]);
+      },
+    });
     await waitFor(() => expect(rows()).toHaveLength(1));
     expect(rows()[0]?.querySelector('.when')?.textContent).toBe('Noctura treasury');
     expect(rows()[0]?.querySelector('.name')?.textContent).toBe('Treasury?');
+  });
+
+  // Fix round 1, M2 (address poisoning): look-alikes planted beside the trusted address — one differing only by case,
+  // one only in its last character. The trusted full address as the query matches it alone, exactly.
+  it('search by the trusted full address in pick: exactly one row — the trusted one, in groups of four — no look-alike', async () => {
+    const caseVariant = MARKO.replace('xyz9', 'Xyz9');
+    const suffixVariant = `${MARKO.slice(0, 43)}8`;
+    await show({pick: true}, {
+      before: ext =>
+        ext.local.set(CONTACTS_KEY, [
+          {address: caseVariant, name: 'Marko'},
+          {address: suffixVariant, name: 'Marko ·'},
+          {address: MARKO, name: 'Marko · Mom'},
+        ]),
+    });
+    await waitFor(() => expect(rows()).toHaveLength(3));
+    fireEvent.change(screen.getByRole('textbox', {name: 'Search contacts'}), {target: {value: MARKO}});
+    expect(rows()).toHaveLength(1);
+    expect([...(rows()[0]?.querySelectorAll('.addr .addr-groups > span') ?? [])].map(s => s.textContent)).toEqual(MARKO.match(/.{1,4}/g));
+    expect(screen.getByText(`1 result for "${MARKO}"`)).toBeTruthy();
   });
 
   it('a row tap hands the address back (no edit sheet)', async () => {

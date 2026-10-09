@@ -1126,8 +1126,12 @@ contact" (ix:7388, `#i-plus`) → the sheet. `.search` input placeholder "Search
 - Pick-mode rows show the full address in groups of four and a never-sent warning, not the drawn truncation and date
   (review H3: poisoning works on truncation). The standalone list keeps the drawn rows.
 - The system keyboard mock (ix:7497) is the browser's.
-- Pick rows label an own account "Your account: <name>" (2a's; review L5) and the fee treasury "Noctura treasury" in the
-  date's place — the precedence own > treasury > contact (E17), exact matches only; the design draws no such row.
+- Pick rows label a **known** own account "Your account: <name>" (2a's; review L5) and a **known** fee treasury "Noctura
+  treasury" in the date's place — the precedence own > treasury > contact (E17), exact matches only; the design draws no
+  such row. The label never replaces or hides O72 (§6.3, D36; Task 5 fix round 1, I1): a pick row that is not `known`
+  says O72 whatever it is.
+- **Controller ruling (Task 5 fix round 1, M4):** "never" means only "not known". A `known` contact whose `lastSentAt` is
+  null (an own account, or a B1b-1 known-recipient entry stored without a time) shows no `.when` text rather than "never".
 
 ### 6.2 Contact sheet (`.s8-sheet` derived from #43 / the 2a switcher; D20, C12)
 
