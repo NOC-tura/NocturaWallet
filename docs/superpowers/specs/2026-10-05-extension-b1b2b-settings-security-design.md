@@ -1505,8 +1505,8 @@ Findings go in the PR; screenshots are CI artifacts.
   nearest drawn precedent does the same: #3's pre-reveal modal (ix:4670-4685) puts `.btn-secondary` "Cancel — go back"
   (ix:4683) on `.modal-card`, `--bg-surface-2` (index.html:583-593), with no container; the design draws no secondary
   button on an `.s8-sheet`.
-- **Shot in fix round 0b (poisoning):** an exact full-address search beside a planted case look-alike (one row;
-  `15-search-exact-address`), an address not in the book (O71's line and the add button wrap inside the column, fix
+- **Shot in fix round 0b (poisoning):** an exact full-address search beside a planted case look-alike (one row and, since
+  the final review's I1, no "Add new contact"; `15-search-exact-address`), an address not in the book (O71's line and the add button wrap inside the column, fix
   round 1, I1; `15-search-address-no-result`), a known contact with no date (no date text; `15-known-no-date`), #15 pick for a never-sent
   treasury address (O72, not "Noctura treasury"; `15-pick-treasury-never-sent`) and for an own account ("Your account:
   Savings"; `15-pick-own-account`). **Covered by unit tests only, not shot:** #12's MAX helper carried through a pick

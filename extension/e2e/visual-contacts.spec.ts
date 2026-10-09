@@ -519,11 +519,11 @@ test('visual: poisoning — an exact address search with a case look-alike, a kn
     // "Add new contact "<address>" →" runs past the column (no horizontal scroll, §8.4 item 6).
     const count = p.locator('.app-abook-count');
     expect(await count.evaluate(e => (e as HTMLElement).innerText), 'the address drawn in its own case').toBe(`1 result for "${ALICE}"`);
-    const addNew = p.getByRole('button', {name: `Add new contact "${ALICE}" →`});
-    await inColumn(p, [
-      ['the count line', count],
-      ['Add new contact', addNew],
-    ]);
+    // Final review I1: a saved address is never offered as an add — no "Add new contact" under its exact search (the
+    // no-match search below draws that button with an address, in the column).
+    await expect(p.getByText('No more matches.')).toBeVisible();
+    await expect(p.getByRole('button', {name: /^Add new contact/})).toHaveCount(0);
+    await inColumn(p, [['the count line', count]]);
     await pop(p, '15-search-exact-address', p.locator('.s-abook .row'));
     // Fix round 1 (I1): an address that is not in the book — "No contacts match "<address>"." wraps inside the column, so
     // its end (where a look-alike differs) is never clipped by `.app-content`.
