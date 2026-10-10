@@ -9,7 +9,8 @@ import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {PASSWORD_TOAST_KEY, readPref} from '../prefs';
 import {SETTINGS_KEY} from '../../background/settings';
-import {base64} from '@scure/base';
+import {CONTACTS_KEY} from '../../background/contacts';
+import {base58, base64} from '@scure/base';
 import {Settings} from '../screens/Settings';
 import {WalletProvider} from '../WalletContext';
 import {ENV} from './harness';
@@ -30,14 +31,14 @@ async function openSettings(o: Parameters<typeof renderApp>[0] = {}) {
 }
 
 describe('Settings (#31, B1b-2b §4.1)', () => {
-  it('the groups and rows the extension has (D22): Account › Profile; Security › Security center, Passkey, Change password, Recovery phrase, Lock now; Advanced › Delete wallet; About', async () => {
+  it('the groups and rows the extension has (D22): Account › Profile; Security › Security center, Passkey, Change password, Recovery phrase, Lock now; Connections › Address book (plan 2); Advanced › Delete wallet; About', async () => {
     await openSettings();
-    expect(screen.getAllByText(/^(Account|Security|Advanced|About)$/).map(e => e.textContent)).toEqual(['Account', 'Security', 'Advanced', 'About']);
+    expect(screen.getAllByText(/^(Account|Security|Connections|Advanced|About)$/).map(e => e.textContent)).toEqual(['Account', 'Security', 'Connections', 'Advanced', 'About']);
     expect([...document.querySelectorAll('.s7-row .s7-title')].map(e => e.textContent)).toEqual([
-      'Profile', 'Security center', 'Passkey', 'Change password', 'Recovery phrase', 'Lock now', 'Delete wallet', 'About Noctura',
+      'Profile', 'Security center', 'Passkey', 'Change password', 'Recovery phrase', 'Lock now', 'Address book', 'Delete wallet', 'About Noctura',
     ]);
     expect(screen.getByText('v0.1.0')).toBeTruthy();
-    for (const gone of ['Currency', 'Notifications', 'Material You accent', 'RPC endpoint', 'Connected dApps', 'Air-gap signing', 'Export transaction history', 'Diagnostics', 'Backup & restore', 'Biometric unlock', 'Change PIN', 'Address book', 'Accounts']) {
+    for (const gone of ['Currency', 'Notifications', 'Material You accent', 'RPC endpoint', 'Connected dApps', 'Air-gap signing', 'Export transaction history', 'Diagnostics', 'Backup & restore', 'Biometric unlock', 'Change PIN', 'Accounts']) {
       expect(screen.queryByText(gone)).toBeNull();
     }
     expect(document.querySelector('.s7-row.danger .s7-title')?.textContent).toBe('Delete wallet');
@@ -101,7 +102,7 @@ describe('Settings (#31, B1b-2b §4.1)', () => {
     const w = await setupWallet({before: async ext => ext.local.set(SETTINGS_KEY, settings)});
     const {unmount} = render(
       <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
-        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} toastMs={400} decorateMs={800} />
+        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} onContacts={noop} toastMs={400} decorateMs={800} />
       </WalletProvider>,
     );
     expect(await screen.findByText('Password updated')).toBeTruthy();
@@ -115,7 +116,7 @@ describe('Settings (#31, B1b-2b §4.1)', () => {
     unmount();
     render(
       <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
-        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} />
+        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} onContacts={noop} />
       </WalletProvider>,
     );
     await screen.findByText('Change password');
@@ -128,7 +129,7 @@ describe('Settings (#31, B1b-2b §4.1)', () => {
     const w = await setupWallet({before: async ext => ext.local.set(SETTINGS_KEY, {passwordChangedAt: Date.now() - 11 * 60_000})});
     render(
       <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
-        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} />
+        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} onContacts={noop} />
       </WalletProvider>,
     );
     await screen.findByText('Change password');
@@ -224,7 +225,7 @@ describe('Settings (#31, B1b-2b §4.1)', () => {
   async function rows() {
     localStorage.clear();
     const w = await setupWallet();
-    const calls = {profile: 0, security: 0, passkey: 0, del: 0, about: 0};
+    const calls = {profile: 0, security: 0, passkey: 0, del: 0, about: 0, contacts: 0};
     render(
       <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
         <Settings
@@ -233,6 +234,7 @@ describe('Settings (#31, B1b-2b §4.1)', () => {
           onPasskey={() => void calls.passkey++}
           onDelete={() => void calls.del++}
           onAbout={() => void calls.about++}
+          onContacts={() => void calls.contacts++}
         />
       </WalletProvider>,
     );
@@ -246,10 +248,41 @@ describe('Settings (#31, B1b-2b §4.1)', () => {
     fireEvent.click(button);
   };
 
-  it('rule 6: Profile, Security center, Passkey, Delete wallet and About each fire once for two taps inside 500 ms', async () => {
+  it('rule 6: Profile, Security center, Passkey, Address book, Delete wallet and About each fire once for two taps inside 500 ms', async () => {
     const {calls} = await rows();
-    for (const t of ['Profile', 'Security center', 'Passkey', 'Delete wallet', 'About Noctura']) twice(t);
-    expect(calls).toEqual({profile: 1, security: 1, passkey: 1, del: 1, about: 1});
+    for (const t of ['Profile', 'Security center', 'Passkey', 'Address book', 'Delete wallet', 'About Noctura']) twice(t);
+    expect(calls).toEqual({profile: 1, security: 1, passkey: 1, del: 1, about: 1, contacts: 1});
+  });
+
+  // Plan 2 (§4.1, ix:13552): the Address book row's meta is the book's size; a refused read leaves it empty.
+  it.each([
+    [0, '0 contacts'],
+    [1, '1 contact'],
+    [7, '7 contacts'],
+  ])('Address book meta with %i saved: "%s"', async (n, text) => {
+    await openSettings({
+      before: ext =>
+        ext.local.set(
+          CONTACTS_KEY,
+          Array.from({length: n}, (_, i) => ({address: base58.encode(Uint8Array.from({length: 32}, (_, j) => (j === 0 ? i + 1 : 7))), name: `C${i}`})),
+        ),
+    });
+    const meta = () => screen.getByText('Address book', {selector: '.s7-title'}).parentElement?.querySelector('.s7-meta');
+    await waitFor(() => expect(meta()?.textContent).toBe(text));
+    expect(meta()?.classList.contains('noc-warning')).toBe(false);
+  });
+
+  it('Address book: a refused contacts.list leaves the meta empty, and the row still opens #15', async () => {
+    await openSettings({
+      gate: m => {
+        if ((m as {type: string}).type === 'contacts.list') throw new Error('worker restarting');
+      },
+    });
+    const row = screen.getByText('Address book', {selector: '.s7-title'});
+    await waitFor(() => expect(screen.getByText('Security center', {selector: '.s7-title'}).parentElement?.querySelector('.s7-meta')?.textContent).toBe('3 to do'));
+    expect(row.parentElement?.querySelector('.s7-meta')?.textContent).toBe('');
+    fireEvent.click(row);
+    expect(await screen.findByText('Address book', {selector: '.top-bar .title'})).toBeTruthy();
   });
 
   it('rule 6: Change password and Recovery phrase each open their page once for two taps inside 500 ms', async () => {
@@ -269,7 +302,7 @@ describe('Settings (#31, B1b-2b §4.1)', () => {
     };
     const {unmount} = render(
       <WalletProvider engine={engine} platform={w.platform} surface="popup">
-        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} />
+        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} onContacts={noop} />
       </WalletProvider>,
     );
     await screen.findByText('Change password');
@@ -320,7 +353,7 @@ describe('Settings (#31, B1b-2b §4.1)', () => {
     const w = await setupWallet({before: async ext => ext.local.set(SETTINGS_KEY, {passwordChangedAt: Date.now() + 60_000})});
     render(
       <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
-        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} />
+        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} onContacts={noop} />
       </WalletProvider>,
     );
     await waitFor(() => expect(screen.getByText('Security center').parentElement?.querySelector('.s7-meta')?.textContent).toBe('3 to do'));
@@ -336,7 +369,7 @@ describe('Settings (#31, B1b-2b §4.1)', () => {
     const engine = {...w.engine, state: () => new Promise<never>(() => undefined)};
     render(
       <WalletProvider engine={engine} platform={w.platform} surface="popup">
-        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} />
+        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} onContacts={noop} />
       </WalletProvider>,
     );
     await waitFor(() => expect(screen.getByText('Security center').parentElement?.querySelector('.s7-meta')?.textContent).not.toBe(''));
@@ -354,7 +387,7 @@ describe('Settings (#31, B1b-2b §4.1)', () => {
     const engine = {...w.engine, settings: () => (reads++, w.engine.settings())};
     const r = render(
       <WalletProvider engine={engine} platform={w.platform} surface={surface}>
-        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} />
+        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} onContacts={noop} />
       </WalletProvider>,
     );
     const meta = (t: string) => screen.getByText(t, {selector: '.s7-title'}).parentElement?.querySelector('.s7-meta');
@@ -405,7 +438,7 @@ describe('Settings (#31, B1b-2b §4.1)', () => {
     };
     render(
       <WalletProvider engine={engine} platform={w.platform} surface="tab">
-        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} />
+        <Settings onProfile={noop} onSecurity={noop} onPasskey={noop} onDelete={noop} onAbout={noop} onContacts={noop} />
       </WalletProvider>,
     );
     const meta = () => screen.getByText('Recovery phrase', {selector: '.s7-title'}).parentElement?.querySelector('.s7-meta');

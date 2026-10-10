@@ -23,6 +23,7 @@ import {LockedButton} from '../ui/LockedButton';
 import {useEscape} from '../ui/useEscape';
 import {useNow} from '../useNow';
 import {TokenSheet} from './TokenSheet';
+import {fromBook} from '../addressBook';
 import type {Balances, Intent, Pending, RecipientInfo, Token} from '../engine';
 
 /** The fixed strings #12 shows (spec §4.2); adapted ones are marked there. */
@@ -51,9 +52,12 @@ const balanceKey = (t: Token): keyof Balances => (t === 'SOL' ? 'sol' : t === 'N
 /**
  * #12 send (spec §4.2). Nothing is prepared here: the CTA hands the intent to #19, which prepares. The hints —
  * the recipient's (E6, local only), the predicted re-authentication, MAX — are hints; #19 and #20 show the
- * engine's own answers, which decide. Removed by decision: the priority chips (D15), `.sol` (D16), scan (D13),
- * the address book (B1b-2b) and the shielded variant (D4); the fee-loading state (the fee is known only once #19
- * prepares). Rule 6: the CTA is a LockedButton.
+ * engine's own answers, which decide. Removed by decision: the priority chips (D15), `.sol` (D16), scan (D13)
+ * and the shielded variant (D4); the fee-loading state (the fee is known only once #19 prepares). Rule 6: the CTA is a
+ * LockedButton. B1b-2b plan 2 (§6.3): the empty field's "Address book" icon (ix:6652) opens #15 in pick mode with the
+ * draft kept; a picked address comes back through the route's draft and is handled exactly as a paste. A saved
+ * contact adds "From your address book: <name>" above the helper, which is unchanged — "Never sent here before" stays
+ * for an address never sent to (a contact is not known, D19).
  */
 export function Send({
   draft,
@@ -61,12 +65,15 @@ export function Send({
   onBack,
   onReview,
   onViewPending,
+  onBook,
 }: {
   draft: Draft | null;
   notice: 'start-again' | null;
   onBack: () => void;
   onReview: (draft: Draft, intent: Intent) => void;
   onViewPending: (p: Pending) => void;
+  /** Plan 2: #15 in pick mode, holding what the user typed (the token and the amount; the field is empty). */
+  onBook: (draft: Draft) => void;
 }) {
   const m = useWallet();
   const now = useNow(30_000, m.now);
@@ -75,10 +82,11 @@ export function Send({
   const [recipient, setRecipient] = useState(start.recipient);
   const [amountText, setAmountText] = useState(start.amount);
   const [sheet, setSheet] = useState(false);
-  const [info, setInfo] = useState<RecipientInfo | null>(null);
+  /** recipientInfo's last answer, keyed by what it answered (`account|address`; Task 6 fix round 1, M2). */
+  const [answer, setAnswer] = useState<{for: string; info: RecipientInfo} | null>(null);
   const [threshold, setThreshold] = useState<number | null>(null);
   const [pasteRefused, setPasteRefused] = useState(false);
-  const [maxText, setMaxText] = useState<string | null>(null);
+  const [maxText, setMaxText] = useState<string | null>(start.max === true ? start.amount : null);
   const account = m.account;
   const {engine, reload} = m;
 
@@ -99,6 +107,10 @@ export function Send({
   const valid = isAddressText(address);
   const invalid = address !== '' && !valid;
   const key = account?.publicKey ?? null;
+  // E6's answer is shown only for the pair it was given for: an answer for another address (or account) — the one the
+  // field held before, while this one's is still out — is never this address's label or "Verified" line.
+  const asked = valid && key !== null ? `${key}|${address}` : null;
+  const info = asked !== null && answer !== null && answer.for === asked ? answer.info : null;
 
   // A paste that answers after the user typed, cleared or left is dropped (the same generation idea as E6's).
   const pasteGeneration = useRef(0);
@@ -108,11 +120,11 @@ export function Send({
   const generation = useRef(0);
   useEffect(() => {
     const mine = ++generation.current;
-    setInfo(null);
     if (!valid || key === null) return;
+    const pair = `${key}|${address}`;
     void engine.recipientInfo(key, address).then(r => {
       if (generation.current !== mine) return;
-      if (r.ok) setInfo(r.data);
+      if (r.ok) setAnswer({for: pair, info: r.data});
       else if (r.error === 'locked') void reload();
     });
   }, [valid, address, key, engine, reload]);
@@ -201,6 +213,10 @@ export function Send({
     }
   }
 
+  // E17's label for a saved contact (the background's precedence: own > treasury > contact) — above the helper, which
+  // stays what 2a says: "Never sent here before" for an address never sent to (D19).
+  const contactName = valid && !self && info?.label?.kind === 'contact' ? info.label.name : null;
+
   const percent = amount === null ? null : percentOf(amount, balance);
   let available;
   if (predicted && valid && !self) {
@@ -280,9 +296,15 @@ export function Send({
               />
               <div className="input-actions">
                 {recipient === '' ? (
-                  <button type="button" aria-label="Paste" onClick={() => void paste()}>
-                    <ExtIcon name="clip" size={18} />
-                  </button>
+                  <>
+                    <button type="button" aria-label="Paste" onClick={() => void paste()}>
+                      <ExtIcon name="clip" size={18} />
+                    </button>
+                    {/* ix:6652; Scan QR (ix:6651) stays omitted (2a-D13). Rule 6: one #15 per tap. */}
+                    <LockedButton className="" label="Address book" onPress={() => onBook({token, recipient: '', amount: amountText, ...(maxText !== null && amountText === maxText ? {max: true as const} : {})})}>
+                      <ExtIcon name="book" size={18} />
+                    </LockedButton>
+                  </>
                 ) : firstTime ? null : (
                   // Design state 6 draws no field action; state 3 tints Clear --danger.
                   <button type="button" aria-label="Clear recipient" className={invalid ? 'app-danger' : undefined} onClick={() => edit('')}>
@@ -291,6 +313,7 @@ export function Send({
                 )}
               </div>
             </div>
+            {contactName === null ? null : <div className="noc-caption app-contact-label">{fromBook(contactName)}</div>}
             {helper}
             {firstTime ? (
               <div className="app-send-addr noc-mono">

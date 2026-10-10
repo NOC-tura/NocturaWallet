@@ -13,7 +13,9 @@ import {useNow} from '../useNow';
 import {REVIEW_TEXT} from './Review';
 import {CONFIRM_STRIKE_KEY, readPref, writePref} from '../prefs';
 import {MAINNET_FEE_TREASURY} from '../../../../core/fees/transferMarkup';
-import type {Intent, Pending, Prices, Resumable} from '../engine';
+import {ContactSheet} from '../ui/ContactSheet';
+import {fromBook} from '../addressBook';
+import type {Contact, Intent, Pending, Prices, Resumable} from '../engine';
 
 /** The fixed strings #20 shows (spec §4.5); adapted ones are marked there. */
 export const CONFIRM_TEXT = {
@@ -45,6 +47,11 @@ export const CONFIRM_TEXT = {
   /** index.html #s20 state 3's warning, kept beside the password line (review fix round 1; confirmed by the owner 2026-10-04): "If you didn't initiate this — cancel now." */
   notYou: "If you didn't initiate this — ",
   cancelNow: 'cancel now',
+  /** B1b-2b plan 2 (ix:9349-9350): the first-time state's "Save as" row. */
+  saveAs: 'Save as',
+  saveAsAsk: 'Add to address book?',
+  saveAsAdd: 'Add',
+  saveAsSkip: 'Skip',
 } as const;
 
 const HEX32 = /^[0-9a-f]{32}$/;
@@ -85,6 +92,13 @@ export type ConfirmProps = ConfirmEntry & {
  * a new tap. Send is never focused (R2-L4). The quote's end re-prepares by itself at most once without user input
  * (C5); after that "Quote expired" and `[Refresh]`, and the refresh is a tap. The stale "Updated with a fresh
  * network quote" banner hides once the quote has expired again (owner, 2026-10-05).
+ *
+ * B1b-2b plan 2 (§6.3): the "To" row's label is own > treasury > contact ("From your address book: <name>", from
+ * contacts.list). While the reasons carry `first-send` and the address is not a contact, the design's "Save as" row
+ * (ix:9349-9350) offers "Add to address book? · Add · Skip": Add opens the contact sheet prefilled (it says the address
+ * was never sent to); a save hides the row and the label appears; Skip hides it for this #20. Neither touches Send, its
+ * focus rule or the first-time banner — the banner is informational, not a gate (ix:9565). The row needs the book read:
+ * without it (refused, or not answered yet) no row is offered, so Add can never rename a contact it could not see.
  */
 export function Confirm(props: ConfirmProps) {
   const {account, entry, onBack, onCancelled, onTrack, onReview, onStartAgain, onSuperseded} = props;
@@ -98,6 +112,16 @@ export function Confirm(props: ConfirmProps) {
   const [ownPrices, setOwnPrices] = useState<Prices | null>(null);
   const [quoteDead, setQuoteDead] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** Plan 2: the address book (contacts.list), for the To label and the Save-as row; null until read or when refused. */
+  const [book, setBook] = useState<Contact[] | null>(null);
+  /** The Save-as row was answered on this #20 (Skip, or a save) — it does not come back. */
+  const [saveAsDone, setSaveAsDone] = useState(false);
+  const [adding, setAdding] = useState(false);
+  /**
+   * Task 7 fix round 1 (I1): the sheet closed and #20 has not read the book since — what it holds may be old (a save that
+   * landed, here or elsewhere). No Save-as row until the re-read answers: Add on an address saved by then would rename it.
+   */
+  const [bookStale, setBookStale] = useState(false);
   /** [Cancel]'s discard failed (E7): #20 stays, says so, and is live again — as #19 does (final review M1). */
   const [cancelFailed, setCancelFailed] = useState(false);
   /**
@@ -192,6 +216,28 @@ export function Confirm(props: ConfirmProps) {
     // Read once per mount: the account is this route's.
   }, [account, engine]);
 
+  /**
+   * Bumped by every book read: only the latest read's answer is taken (Task 8 fix round 1, m1). A new readBook (the
+   * provider's reload changes with its `quiet`) reads again while an earlier read is out, and that one may answer last
+   * with an older book. Not `gen`: bumping it would also drop the prepare's and the send's answers.
+   */
+  const bookRead = useRef(0);
+  // Plan 2: the address book, read once per mount (and again after a save) — an answer after the screen went is dropped.
+  const readBook = useCallback(async () => {
+    const g = gen.current;
+    const mine = ++bookRead.current;
+    const r = await engine.contacts();
+    if (gen.current !== g || bookRead.current !== mine) return;
+    if (r.ok) {
+      setBook(r.data.contacts);
+      setBookStale(false);
+    }
+    else if (r.error === 'locked') void reload();
+  }, [engine, reload]);
+  useEffect(() => {
+    void readBook();
+  }, [readBook]);
+
   // A send from this account was open when #20 read it: re-read wallet.pending on the provider's 2 s cadence while the
   // block is shown, so a send that settles lifts it without leaving the screen (final review M4). #20's own read — the
   // UI tab's quiet provider reads no pending of its own. An answer for an older read, or after the block lifted or the
@@ -260,7 +306,8 @@ export function Confirm(props: ConfirmProps) {
     left.current = true;
     onBack(view.intent);
   };
-  useEscape(back);
+  // The contact sheet takes Esc itself while it is open (it closes; #20 stays).
+  useEscape(back, !adding);
 
   const cancelling = useRef(false);
   const cancel = async () => {
@@ -422,7 +469,13 @@ export function Confirm(props: ConfirmProps) {
   const fiat = [usd === null ? null : `≈ ${showUsd(usd)} USD`, high && percent !== null ? `${percent} % of your balance` : null].filter((x): x is string => x !== null).join(' · ');
   const from = m.wallet?.accounts.find(a => a.publicKey === account);
   const own = m.wallet?.accounts.find(a => a.publicKey === intent.recipient);
-  const toLabel = own !== undefined ? `Your account: ${own.name}` : intent.recipient === MAINNET_FEE_TREASURY ? 'Noctura treasury' : null;
+  // Final review M2 (#27's m2 rule): no contact label while the book is being re-read after a sheet close — a contact
+  // deleted or renamed elsewhere is not shown from the old book, nor when that re-read fails. Own and treasury need no book.
+  const contact = bookStale ? undefined : book?.find(c => c.address === intent.recipient);
+  const toLabel =
+    own !== undefined ? `Your account: ${own.name}` : intent.recipient === MAINNET_FEE_TREASURY ? 'Noctura treasury' : contact !== undefined ? fromBook(contact.name) : null;
+  // ix:9349: offered only for a first-time recipient that is not saved, while the book is known, once per #20.
+  const offerSave = first && book !== null && !bookStale && contact === undefined && !saveAsDone;
   const rows = feeRows(view.fees);
   const solTotal = view.solRequiredLamports;
   const totalUsd = solUsd === null ? null : (Number(solTotal) / 1e9) * solUsd + (token === 'SOL' ? 0 : usd ?? Number.NaN);
@@ -448,107 +501,141 @@ export function Confirm(props: ConfirmProps) {
   const headlineLabel = `${high ? `${CONFIRM_TEXT.highValue}: ` : ''}Send ${amount} ${token} to ${first ? 'first-time ' : ''}recipient address ${(intent.recipient.match(/.{1,4}/g) ?? []).join(' ')}`;
 
   return (
-    <div className="screen s-conf">
-      {top}
-      <div className="scroll">
-        {cancelFailed ? <Banner tone="danger" title={REVIEW_TEXT.leaveFailed} /> : null}
-        {banner}
-        <h1 className="headline" aria-label={headlineLabel}>
-          <span className="amount noc-numeral">Send {amount}</span> <span className="ticker">{token}</span> <span className="to-prefix">to</span>{' '}
-          <span className="recipient noc-mono">
-            <AddressGroups address={intent.recipient} />
-          </span>
-        </h1>
-        <div className={`review-card${high ? ' high-value' : ''}`}>
-          <span className="eyebrow">{high ? CONFIRM_TEXT.highValue : CONFIRM_TEXT.about}</span>
-          <div className="head">
-            <span className="amount noc-numeral">{amount}</span>
-            <span className="ticker">{token}</span>
-          </div>
-          {fiat === '' ? null : <span className="fiat">{fiat}</span>}
-        </div>
-        {high ? (
-          <div className="high-value-banner">
-            <span className="help">
-              {needsProof ? <span>{surface === 'popup' ? CONFIRM_TEXT.reauthLine : CONFIRM_TEXT.reauthLineTab}</span> : null}
-              {needsProof ? ' ' : null}
-              {CONFIRM_TEXT.notYou}
-              <span className="app-danger">{CONFIRM_TEXT.cancelNow}</span>.
+    <>
+      <div className="screen s-conf">
+        {top}
+        <div className="scroll">
+          {cancelFailed ? <Banner tone="danger" title={REVIEW_TEXT.leaveFailed} /> : null}
+          {banner}
+          <h1 className="headline" aria-label={headlineLabel}>
+            <span className="amount noc-numeral">Send {amount}</span> <span className="ticker">{token}</span> <span className="to-prefix">to</span>{' '}
+            <span className="recipient noc-mono">
+              <AddressGroups address={intent.recipient} />
             </span>
+          </h1>
+          <div className={`review-card${high ? ' high-value' : ''}`}>
+            <span className="eyebrow">{high ? CONFIRM_TEXT.highValue : CONFIRM_TEXT.about}</span>
+            <div className="head">
+              <span className="amount noc-numeral">{amount}</span>
+              <span className="ticker">{token}</span>
+            </div>
+            {fiat === '' ? null : <span className="fiat">{fiat}</span>}
           </div>
-        ) : null}
-        {first ? (
-          <div className="first-time-banner" role="note">
-            <ExtIcon name="alert-triangle" size={18} />
-            <div>
-              <b className="app-block">{CONFIRM_TEXT.firstTitle}</b>
-              <span className="noc-caption app-secondary">{CONFIRM_TEXT.firstLine}</span>
+          {high ? (
+            <div className="high-value-banner">
+              <span className="help">
+                {needsProof ? <span>{surface === 'popup' ? CONFIRM_TEXT.reauthLine : CONFIRM_TEXT.reauthLineTab}</span> : null}
+                {needsProof ? ' ' : null}
+                {CONFIRM_TEXT.notYou}
+                <span className="app-danger">{CONFIRM_TEXT.cancelNow}</span>.
+              </span>
+            </div>
+          ) : null}
+          {first ? (
+            <div className="first-time-banner" role="note">
+              <ExtIcon name="alert-triangle" size={18} />
+              <div>
+                <b className="app-block">{CONFIRM_TEXT.firstTitle}</b>
+                <span className="noc-caption app-secondary">{CONFIRM_TEXT.firstLine}</span>
+              </div>
+            </div>
+          ) : null}
+          <div className="detail-grid">
+            <div className="detail-row">
+              <span className="lbl">From</span>
+              <span className="val app-stack">
+                {from === undefined ? null : <span className="noc-body-sm">{from.name}</span>}
+                <span className="noc-mono">
+                  <AddressGroups address={account} />
+                </span>
+              </span>
+            </div>
+            <div className="detail-row">
+              <span className="lbl">To</span>
+              <span className="val app-stack">
+                {toLabel === null ? null : <span className="noc-body-sm">{toLabel}</span>}
+                <span className="noc-mono">
+                  <AddressGroups address={intent.recipient} />
+                </span>
+              </span>
+            </div>
+            {offerSave ? (
+              <div className="detail-row app-save-as">
+                <span className="lbl">{CONFIRM_TEXT.saveAs}</span>
+                <span className="val app-save-as-val">
+                  {CONFIRM_TEXT.saveAsAsk} ·{' '}
+                  <LockedButton className="app-text-btn noc-accent" onPress={() => setAdding(true)}>
+                    {CONFIRM_TEXT.saveAsAdd}
+                  </LockedButton>{' '}
+                  ·{' '}
+                  <LockedButton className="app-text-btn app-dim" onPress={() => setSaveAsDone(true)}>
+                    {CONFIRM_TEXT.saveAsSkip}
+                  </LockedButton>
+                </span>
+              </div>
+            ) : null}
+            <div className="detail-row">
+              <span className="lbl">Network</span>
+              <span className="val">{CONFIRM_TEXT.network}</span>
             </div>
           </div>
-        ) : null}
-        <div className="detail-grid">
-          <div className="detail-row">
-            <span className="lbl">From</span>
-            <span className="val app-stack">
-              {from === undefined ? null : <span className="noc-body-sm">{from.name}</span>}
-              <span className="noc-mono">
-                <AddressGroups address={account} />
-              </span>
-            </span>
-          </div>
-          <div className="detail-row">
-            <span className="lbl">To</span>
-            <span className="val app-stack">
-              {toLabel === null ? null : <span className="noc-body-sm">{toLabel}</span>}
-              <span className="noc-mono">
-                <AddressGroups address={intent.recipient} />
-              </span>
-            </span>
-          </div>
-          <div className="detail-row">
-            <span className="lbl">Network</span>
-            <span className="val">{CONFIRM_TEXT.network}</span>
-          </div>
-        </div>
-        <div className="fee-block">
-          <h3>Fees</h3>
-          {rows.map(f => (
-            <div className="fee-row" key={f.label}>
-              <span>{f.label}</span>
-              <span className="val noc-numeral">{f.lamports === null ? '' : `${showLamports(f.lamports)} SOL`}</span>
-              <span className="fiat noc-numeral">{f.lamports === null ? '' : feeUsd(solUsd === null ? null : (Number(f.lamports) / 1e9) * solUsd)}</span>
+          <div className="fee-block">
+            <h3>Fees</h3>
+            {rows.map(f => (
+              <div className="fee-row" key={f.label}>
+                <span>{f.label}</span>
+                <span className="val noc-numeral">{f.lamports === null ? '' : `${showLamports(f.lamports)} SOL`}</span>
+                <span className="fiat noc-numeral">{f.lamports === null ? '' : feeUsd(solUsd === null ? null : (Number(f.lamports) / 1e9) * solUsd)}</span>
+              </div>
+            ))}
+            <div className="fee-row total">
+              <span className="lbl">Total</span>
+              <span className="val noc-numeral">{token === 'SOL' ? `${showLamports(solTotal)} SOL` : `${amount} ${token} + ${showLamports(solTotal)} SOL`}</span>
+              <span className="fiat noc-numeral">{totalUsd === null || Number.isNaN(totalUsd) ? '—' : showUsd(totalUsd)}</span>
             </div>
-          ))}
-          <div className="fee-row total">
-            <span className="lbl">Total</span>
-            <span className="val noc-numeral">{token === 'SOL' ? `${showLamports(solTotal)} SOL` : `${amount} ${token} + ${showLamports(solTotal)} SOL`}</span>
-            <span className="fiat noc-numeral">{totalUsd === null || Number.isNaN(totalUsd) ? '—' : showUsd(totalUsd)}</span>
+          </div>
+          <div className="app-quote noc-caption noc-numeral">
+            {quoteDead ? (
+              <>
+                {CONFIRM_TEXT.quoteExpired}{' '}
+                <LockedButton className="btn btn-tertiary app-btn-inline" onPress={refresh} disabled={refused || inFlight}>
+                  {CONFIRM_TEXT.refresh}
+                </LockedButton>
+              </>
+            ) : (
+              `Quote valid ${seconds} s · slot ${view.simulation.slot.toLocaleString('en-US').replace(/,/g, ' ')}`
+            )}
           </div>
         </div>
-        <div className="app-quote noc-caption noc-numeral">
-          {quoteDead ? (
-            <>
-              {CONFIRM_TEXT.quoteExpired}{' '}
-              <LockedButton className="btn btn-tertiary app-btn-inline" onPress={refresh} disabled={refused || inFlight}>
-                {CONFIRM_TEXT.refresh}
-              </LockedButton>
-            </>
-          ) : (
-            `Quote valid ${seconds} s · slot ${view.simulation.slot.toLocaleString('en-US').replace(/,/g, ' ')}`
-          )}
+        <div className="sticky-bar">
+          <LockedButton className={high ? 'btn btn-destructive' : 'btn btn-primary'} disabled={open !== null || quoteDead || busy || refused} onPress={tap}>
+            <ExtIcon name="send" size={18} />
+            Send {amount} {token}
+          </LockedButton>
+          <button type="button" className="btn btn-tertiary" disabled={inFlight} onClick={() => void cancel()}>
+            {CONFIRM_TEXT.cancel}
+          </button>
+          {open !== null ? <p className="noc-caption app-muted app-center-text">{CONFIRM_TEXT.pending}</p> : null}
+          {open === null && needsProof ? <p className="noc-caption app-muted app-center-text">{surface === 'popup' ? CONFIRM_TEXT.opensTab : CONFIRM_TEXT.opensHere}</p> : null}
         </div>
       </div>
-      <div className="sticky-bar">
-        <LockedButton className={high ? 'btn btn-destructive' : 'btn btn-primary'} disabled={open !== null || quoteDead || busy || refused} onPress={tap}>
-          <ExtIcon name="send" size={18} />
-          Send {amount} {token}
-        </LockedButton>
-        <button type="button" className="btn btn-tertiary" disabled={inFlight} onClick={() => void cancel()}>
-          {CONFIRM_TEXT.cancel}
-        </button>
-        {open !== null ? <p className="noc-caption app-muted app-center-text">{CONFIRM_TEXT.pending}</p> : null}
-        {open === null && needsProof ? <p className="noc-caption app-muted app-center-text">{surface === 'popup' ? CONFIRM_TEXT.opensTab : CONFIRM_TEXT.opensHere}</p> : null}
-      </div>
-    </div>
+      {/* Beside `.s-conf`, not inside (as #43 beside #12): `.s-conf .detail-row` would style the sheet's rows. */}
+      {adding ? (
+        <ContactSheet
+          mode={{kind: 'add', address: intent.recipient}}
+          onClose={() => {
+            // Every close re-reads the book (fix round 1, I1): the row comes back only for an address still not saved.
+            setAdding(false);
+            setBookStale(true);
+            void readBook();
+          }}
+          onSaved={() => {
+            setAdding(false);
+            setSaveAsDone(true);
+            void readBook();
+          }}
+        />
+      ) : null}
+    </>
   );
 }

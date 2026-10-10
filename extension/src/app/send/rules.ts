@@ -14,6 +14,11 @@ export interface Draft {
   token: Token;
   recipient: string;
   amount: string;
+  /**
+   * Task 6 fix round 1 (M3): the amount is MAX's text — carried across #15's pick, which mounts #12 again, so MAX's
+   * helper stays as it does after a paste. Only `true`, or absent.
+   */
+  max?: true;
 }
 
 const TOKENS: readonly string[] = ['SOL', 'NOC', 'USDC', 'USDT'];
@@ -33,7 +38,7 @@ export function isAddressText(text: string): boolean {
 export function isDraft(x: unknown): x is Draft {
   if (typeof x !== 'object' || x === null) return false;
   const d = x as Record<string, unknown>;
-  return typeof d.token === 'string' && TOKENS.includes(d.token) && typeof d.recipient === 'string' && d.recipient.length <= 64 && typeof d.amount === 'string' && d.amount.length <= 40;
+  return typeof d.token === 'string' && TOKENS.includes(d.token) && typeof d.recipient === 'string' && d.recipient.length <= 64 && typeof d.amount === 'string' && d.amount.length <= 40 && (d.max === undefined || d.max === true);
 }
 
 /** An intent a route may carry to #19: a known token, an address, a positive amount of at most u64. */

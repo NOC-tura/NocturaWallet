@@ -13,8 +13,10 @@ export {FRESH_ROWS} from '../useAccountBalances';
 
 /** The rename refusals (2a §5.2), shared with the B1b-2b accounts manager's inline rename. */
 export const RENAME_FAILED = 'Something went wrong.';
+/** 2a §5.2's name rule (the accounts' rename, and B1b-2b's contact sheet — one literal, so the two cannot drift). */
+export const NAME_RULE = 'Names are 1 to 32 characters, without control characters.';
 export const RENAME_ERRORS: Record<string, string> = {
-  malformed: 'Names are 1 to 32 characters, without control characters.',
+  malformed: NAME_RULE,
   busy: 'The wallet is busy. Try again.',
   'unknown-account': 'That account no longer exists.',
   failed: RENAME_FAILED,

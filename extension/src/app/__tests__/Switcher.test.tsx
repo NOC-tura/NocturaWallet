@@ -33,6 +33,9 @@ function stubEngine(accounts: Account[], selected: number): Engine {
     settings: async () => ({ok: true, data: {autoLockMinutes: 5, reauthUsdCents: 0, selectedAccount: selected, accountOrder: null, phraseVerifiedAt: null, passwordChangedAt: null}}),
     settingsSet: async () => ({ok: false, error: 'failed'}),
     order: async () => ({ok: false, error: 'failed'}),
+    contacts: async () => ({ok: true, data: {contacts: [], max: 200}}),
+    contactSet: async () => ({ok: false, error: 'failed'}),
+    contactRemove: async () => ({ok: false, error: 'failed'}),
     lock: async () => ({ok: true, data: null}),
     ping: async () => ({ok: true, data: null}),
   };

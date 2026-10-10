@@ -69,8 +69,9 @@ describe('the UI tab’s resume route is #20 (D38)', () => {
     await sendButton();
     await act(async () => void vi.advanceTimersByTime(10_000));
     expect(w.sends()).toBe(0);
-    // The quiet provider: the state, and what #20 reads itself — no cache, balances or ping on a hand-over route.
-    expect([...new Set(w.sent)].sort()).toEqual(['wallet.pending', 'wallet.preparedFor', 'wallet.prices', 'wallet.state']);
+    // The quiet provider: the state, and what #20 reads itself — no cache, balances or ping on a hand-over route. Plan 2:
+    // #20 reads the address book for its To label.
+    expect([...new Set(w.sent)].sort()).toEqual(['contacts.list', 'wallet.pending', 'wallet.preparedFor', 'wallet.prices', 'wallet.state']);
     fireEvent.click(await sendButton());
     expect(await screen.findByText(STATUS_TEXT.broadcasting)).toBeTruthy();
     expect(w.sends()).toBe(1);
@@ -483,7 +484,7 @@ describe('fix round 1: the toast, a lock, another account, no account', () => {
     const reviewed: unknown[] = [];
     render(
       <WalletProvider engine={engine} platform={w.platform} surface="popup">
-        <Send draft={{token: 'SOL', recipient: COUNTERPARTY, amount: '0.01'}} notice={null} onBack={() => undefined} onReview={(d, i) => void reviewed.push([d, i])} onViewPending={() => undefined} />
+        <Send draft={{token: 'SOL', recipient: COUNTERPARTY, amount: '0.01'}} notice={null} onBack={() => undefined} onReview={(d, i) => void reviewed.push([d, i])} onViewPending={() => undefined} onBook={() => undefined} />
       </WalletProvider>,
     );
     expect(await screen.findByText('Send', {selector: '.title'})).toBeTruthy();
@@ -538,6 +539,19 @@ describe('#11’s Send, the pending strip, #26’s PENDING rows, #27’s [Try ag
     expect(await screen.findByText(STATUS_TEXT.broadcasting)).toBeTruthy();
     expect(count(w, 'wallet.prepareSend')).toBe(prepares);
     expect(w.sends()).toBe(1);
+  });
+
+  // Task 6 fix round 1 (I1): a switch ends the flow when a flow route is anywhere in the stack — but #21 on top of #12
+  // (opened from [View it]) follows a record already sent, and stays, as #21 alone does.
+  it('another account selected while #21 sits on #12 (from [View it]): #21 stays', async () => {
+    const w = await openSendAtHome();
+    fireEvent.click(screen.getByRole('button', {name: 'Send'}));
+    fireEvent.click(await screen.findByRole('button', {name: 'View it'}));
+    expect(await screen.findByText(STATUS_TEXT.broadcasting)).toBeTruthy();
+    expect((await w.engine.select(SECOND.index)).ok).toBe(true);
+    await act(async () => void vi.advanceTimersByTime(STATE_POLL_MS + 50));
+    expect(screen.getByText(STATUS_TEXT.broadcasting)).toBeTruthy();
+    expect(screen.queryByText('TOKENS')).toBeNull();
   });
 
   it('the strip opens #21 while broadcasting; #26’s PENDING row opens it too', async () => {

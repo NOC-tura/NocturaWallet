@@ -58,6 +58,27 @@ describe('accountsStore', () => {
     expect(((await ext.local.get(VAULT_KEY)) as typeof ENV).accounts[1]?.name).toBe('Savings');
   });
 
+  // B1b-2b C19: an account name takes the contacts' rule — a zero-width or format character is refused.
+  it('C19: a rename carrying a format character (U+200B, U+00AD, U+FEFF) is malformed, nothing written', async () => {
+    const ext = fakeExt();
+    await ext.local.set(VAULT_KEY, ENV);
+    for (const bad of ['Sa​vings', 'Sa­vings', 'Sa﻿vings']) {
+      expect(await renameAccount(ext, 1, bad)).toBe('malformed');
+      expect(await ext.local.get(VAULT_KEY)).toEqual(ENV);
+    }
+  });
+
+  // …and a stored name that predates the rule is carried, never refused: storeEnvelope keeps the stored name of every
+  // account present in both envelopes (spec C19).
+  it('C19: a stored name that predates the rule is kept by an account change', async () => {
+    const old = {...ENV, accounts: [{...ENV.accounts[0]!, name: 'Mo​m'}, ENV.accounts[1]!]};
+    const ext = fakeExt();
+    await ext.local.set(VAULT_KEY, old);
+    const next = {...old, seed: {iv: B(12, 21), ct: B(48, 22)}, accounts: [...old.accounts, {index: 2, name: 'Account 3', publicKey: K2}]};
+    expect(await storeEnvelope(ext, envelopeRevision(old as Parameters<typeof envelopeRevision>[0]), next)).toBe('stored');
+    expect(((await ext.local.get(VAULT_KEY)) as typeof ENV).accounts.map(a => a.name)).toEqual(['Mo​m', 'Account 2', 'Account 3']);
+  });
+
   it('refuses an unknown index and a missing wallet', async () => {
     const ext = fakeExt();
     expect(await renameAccount(ext, 0, 'x')).toBe('unknown-account');

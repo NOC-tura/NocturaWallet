@@ -6,6 +6,7 @@ import {getSession, sessionMutex} from './session';
 import {isOpen, readPending, updatePending} from './pendingStore';
 import {KNOWN_RECIPIENTS_KEY} from './knownRecipients';
 import {SETTINGS_KEY, updateSettings} from './settings';
+import {CONTACTS_KEY} from './contacts';
 import {clearCaches} from './balanceCache';
 import {ENVELOPE_BYTES, ENVELOPE_KDF_MAX, ENVELOPE_KDF_MIN, MAX_ACCOUNTS, accountsPolicyOk, b64Length, cleanName} from '../shared/envelopeRules';
 import {envelopeRevision} from '../shared/envelopeRevision';
@@ -37,10 +38,11 @@ const serial = createMutex();
 
 /**
  * Everything a wallet owns in storage.local besides its envelope and the balance caches — removed together by a
- * delete (vault.forgetWallet without a replacement, E5 step 7 / B1b-2b E11) and by a first write. The one list: plan 2
- * adds v1_contacts (E17) here. `v1_forbidden_until` is not the wallet's (the coordinator's verdict) and is kept.
+ * delete (vault.forgetWallet without a replacement, E5 step 7 / B1b-2b E11) and by a first write. The one list, with
+ * the address book (B1b-2b E17, D20: wiped on delete, kept on restore — a replacement does not come here).
+ * `v1_forbidden_until` is not the wallet's (the coordinator's verdict) and is kept.
  */
-const WALLET_DATA_KEYS: readonly string[] = [KNOWN_RECIPIENTS_KEY, SETTINGS_KEY];
+const WALLET_DATA_KEYS: readonly string[] = [KNOWN_RECIPIENTS_KEY, SETTINGS_KEY, CONTACTS_KEY];
 async function removeWalletData(ext: Ext): Promise<void> {
   for (const key of WALLET_DATA_KEYS) await ext.local.remove(key);
 }

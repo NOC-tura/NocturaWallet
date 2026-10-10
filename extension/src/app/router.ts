@@ -26,6 +26,11 @@ export type Route =
   | {screen: 'accounts'}
   | {screen: 'passkey'}
   | {screen: 'delete'}
+  /**
+   * B1b-2b §1.4, plan 2: #15 address book. `pick`: opened from #12's contact icon — a row tap hands the address back
+   * through the `send` route's own draft (a reset, review M4), never through a key of this route.
+   */
+  | {screen: 'contacts'; pick: boolean}
   | {screen: 'send'; draft: Draft | null; notice: 'start-again' | null}
   | {screen: 'review'; account: string; intent: Intent; notice: 'confirmation-expired' | null}
   | {screen: 'confirm'; account: string; entry: 'flow'; preparedId: string}
@@ -36,7 +41,7 @@ export type Route =
   | {screen: 'resume'; account: string};
 export type RouteAction = {type: 'push'; route: Route} | {type: 'pop'} | {type: 'tab'; tab: Tab} | {type: 'replace'; route: Route} | {type: 'reset'; routes: Route[]};
 
-export const SCREENS: ReadonlySet<string> = new Set<Route['screen']>(['tab', 'receive', 'tx', 'about', 'send', 'review', 'confirm', 'status', 'security', 'accounts', 'passkey', 'delete']);
+export const SCREENS: ReadonlySet<string> = new Set<Route['screen']>(['tab', 'receive', 'tx', 'about', 'send', 'review', 'confirm', 'status', 'security', 'accounts', 'passkey', 'delete', 'contacts']);
 /** B1b-2b: the settings screens carry nothing but their name — no secret, no challenge, no address to act on. */
 const BARE: ReadonlySet<string> = new Set<Route['screen']>(['security', 'accounts', 'passkey', 'delete']);
 /** The send flow's screens: each handles Esc itself (#19 discards first, #20 keeps, #21 has no back while open). */
@@ -57,6 +62,7 @@ function isRoute(r: unknown): r is Route {
   if (typeof o.screen !== 'string' || !SCREENS.has(o.screen)) return false;
   if (o.screen === 'tab') return typeof o.tab === 'string' && TABS.has(o.tab);
   if (BARE.has(o.screen)) return only(o, ['screen']);
+  if (o.screen === 'contacts') return only(o, ['screen', 'pick']) && typeof o.pick === 'boolean';
   // #27 carries the account whose history the signature came from: its [Try again] is offered only while that account is selected (fix round 1).
   if (o.screen === 'tx') return only(o, ['screen', 'signature', 'account']) && typeof o.signature === 'string' && o.signature.length > 0 && isAddress(o.account);
   if (o.screen === 'send') return only(o, ['screen', 'draft', 'notice']) && (o.draft === null || isDraft(o.draft)) && (o.notice === null || o.notice === 'start-again');
@@ -83,6 +89,20 @@ export function routeReducer(stack: Route[], action: RouteAction): Route[] {
     case 'reset':
       return action.routes.length > 0 && action.routes.every(isRoute) ? action.routes : stack;
   }
+}
+
+/**
+ * #15's pick hand-back (spec §1.4, review M4): the address goes into the `send` route's OWN draft — the route under #15
+ * — and the stack ends there, so #12 mounts again holding it and treats it exactly as a paste (isDraft checks it like
+ * any draft). No route gains a key. Null when no `send` route is below (plan 2 review L8): the caller pops instead, so a
+ * pick screen never has dead rows.
+ */
+export function pickStack(stack: readonly Route[], address: string): Route[] | null {
+  const at = stack.map(r => r.screen).lastIndexOf('send');
+  const below = stack[at];
+  if (below?.screen !== 'send') return null;
+  const draft: Draft = {...(below.draft ?? {token: 'SOL', recipient: '', amount: ''}), recipient: address};
+  return [...stack.slice(0, at), {screen: 'send', draft, notice: null}];
 }
 
 /**

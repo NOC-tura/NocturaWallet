@@ -49,6 +49,9 @@ describe('the send flow’s rules', () => {
     expect(isDraft({token: 'SOL', recipient: 'abc', amount: '1.'})).toBe(true);
     expect(isDraft({token: 'BONK', recipient: '', amount: ''})).toBe(false);
     expect(isDraft({token: 'SOL', recipient: 'x'.repeat(65), amount: ''})).toBe(false);
+    // Task 6 fix round 1 (M3): `max` carries "the amount is MAX's" across #15's pick — only `true`, or absent.
+    expect(isDraft({token: 'SOL', recipient: '', amount: '1', max: true})).toBe(true);
+    for (const max of [false, 'true', 1, null]) expect(isDraft({token: 'SOL', recipient: '', amount: '1', max})).toBe(false);
     expect(isIntent({token: 'NOC', recipient: RECIPIENT, amount: 1n})).toBe(true);
     for (const bad of [{token: 'NOC', recipient: RECIPIENT, amount: 0n}, {token: 'NOC', recipient: RECIPIENT, amount: 1}, {token: 'NOC', recipient: 'nope', amount: 1n}, {token: 'NOC', recipient: RECIPIENT, amount: 2n ** 64n}]) {
       expect(isIntent(bad)).toBe(false);

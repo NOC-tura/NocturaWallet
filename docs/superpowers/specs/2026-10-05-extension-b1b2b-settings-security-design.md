@@ -100,6 +100,15 @@ shows that this spec does not build, with where it goes (CLAUDE.md: never silent
 | D32 | #31 failed settings read: blank metas OK | accepted | §4.1 |
 | D33 | Change-password and passkey pages: no C17-style address binding needed | accepted | §3.1, §3.3 |
 
+### Owner decisions on the plan-2 review (D34–D37, 2026-10-08)
+
+| # | owner decision (substance) | status | applied here |
+|---|---|---|---|
+| D34 | #31's Address book meta for one contact reads **"1 contact"** — confirmed as **O92** | built (plan 2) | §4.1, §12 |
+| D35 | Plan 2's departures **approved**: the contact sheet is tall (the popup's height but 48 px) with **Cancel \| Save side by side**; the delete confirm shows the contact's **name and address**; #27's received **From row carries the full label** (own > treasury > contact); **Esc over an open sheet closes only the sheet** (on every pushed screen, the accounts manager's remove sheet included); the sheet opens on **`data-autofocus`** | built (plan 2) | §6.2, §6.3 Differs |
+| D36 | **"Known" counts only sends confirmed by this extension.** #27a's sheet keeps O72, fail closed, with its wording unchanged, also under a SENT record from another wallet or from the history — the history never feeds `known` | built (plan 2) | E17, §6.2 |
+| D37 | Names with **ZWJ, ZWNJ or VS16** (some emoji, Persian/Indic names) are **refused** by C19 with 2a's name line — accepted | accepted | C19, §6.2 |
+
 **Deviation from the approved design (D23).** The approved design §1.7 reads "accounts and reveal modes also accept the
 passkey (carry)". D23 narrows it: the carry lands in `accounts` only. Why (review H1): a passkey that could open
 `?mode=reveal` would hand its holder the phrase — permanent, cross-device access that survives removing the passkey
@@ -130,7 +139,7 @@ can already drain the wallet through sends (B1 §2); D23 keeps it from gaining t
 | C16 | #31's 2a row "Accounts · N accounts" becomes the design's "Profile" row (D22); the switcher stays reachable from #11's avatar | The design has one account row; 2a's was a stand-in (2a §6.1) |
 | C17 | (rev 2, review M1) **`?mode=delete` names the wallet it deletes.** #37 and the delete page both show the stored wallet's **first account address in groups of four** (`.noc-caption` "This wallet's first account" above it). **"First account" is the account with the lowest `index`** on both sides — #37: `min` over `wallet.state.accounts[].index`; the page: `min` over the envelope's accounts — **never the display order** (E14) and never list position (rev 3, review M1). The page reads the envelope at load, shows that address, and keeps the revision it showed. **At the click, before any KDF run** (rev 3, review M2), it re-reads the envelope (`readLocal`), computes `envelopeRevision` and compares: a different revision (another wallet, or any change) → the `changed` notice, nothing proven, nothing sent, **never charged to the backoff**, the new address shown. Only on a match does `proveFactor` run. It re-reads the envelope and mints `proof.revision` from its own read, and (Task 9 fix round 1, review I1) the page compares **that** revision with the shown one again before the send. A mismatch is `changed` too: nothing is sent, nothing is charged, and the proof is dropped. On the passkey path the whole OS prompt lies in that window. Only a change after `proveFactor`'s read (during its KDF, or before the forget lands) is E5's `busy` | A stale tab must not delete a wallet the user never saw on #37. The address is closed-alphabet text (as C14); the revision check makes "the wallet on screen" the only one a proof can delete |
 | C18 | (rev 2, review H3) **Dust floor** for #27c's "Save sender" warning: a received amount below **0.001 SOL**, **0.01 USDC / USDT** or **1 NOC** is "tiny". In base units, compared with `BigInt` on the history item's `amount` string (`history.ts:45`; cardinal rule 2): **< 1 000 000** lamports, **< 10 000** (USDC/USDT, 6 dp), **< 1 000 000 000** (NOC, 9 dp). A received row whose `amount` is `null` (undecodable) counts as dust — fail closed (rev 3, review L2) | Fable's suggested floors (SOL, stablecoins); 1 NOC added for the fourth token. The values only choose which warning shows; nothing is refused |
-| C19 | (rev 2, review H3, L8) **Contact names:** two contacts may not share a name, compared after Unicode NFKC and case-folding (`contacts.set` → `duplicate-name`); `cleanName` additionally refuses every control and format character by Unicode category: `FORBIDDEN_IN_NAME = /[\p{Cc}\p{Cf}\u202A-\u202E\u2066-\u2069]/u` (rev 3, review L5 — the `u` flag; this covers U+00AD, U+200B–U+200F, U+2060–U+2064, U+FEFF and also U+061C, U+180E and the tag characters, which a hand list missed; U+034F and the variation selectors U+FE00–U+FE0F are category Mn and are refused by an explicit addition `\u034F\uFE00-\uFE0F`) — for account names too. **Limit, stated loudly (rev 3, review L4): the duplicate check does not catch cross-script confusables** — NFKC keeps Cyrillic "В" apart from Latin "B", so "Вinance" and "Binance" are two names. Names are typed by the user, so an attacker never writes one; the defence against a look-alike *address* is the full address in pick rows (§6.1), not the name check | A look-alike "Binance" next to the real one in `pick` is the poisoning picture; "Mo\u200Bm" and "Mom" render the same. A stored account name that predates the rule is kept (`reencrypt.ts:37` keeps an unchanged stored name; `storeEnvelope` carries stored names) |
+| C19 | (rev 2, review H3, L8) **Contact names:** two contacts may not share a name, compared after Unicode NFKC and a case fold that runs **lower → upper → lower** (`contacts.ts` `nameKey`: `name.normalize('NFKC').toLowerCase().toUpperCase().toLowerCase()`; JavaScript has no full case fold: simple lower-casing keeps "Straße" and "STRASSE" apart, and upper-then-lower is not idempotent, since the capital ẞ U+1E9E reaches "ss" only through ß — the round trip folds "STRAẞE", "Straße" and "STRASSE" to one name; fix round 1 M1, recorded here by final review M1) (`contacts.set` → `duplicate-name`); `cleanName` additionally refuses every control and format character by Unicode category, the line and paragraph separators, and two invisible marks: `FORBIDDEN_IN_NAME = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u034F\uFE00-\uFE0F\u202A-\u202E\u2066-\u2069]/u` (`envelopeRules.ts`; rev 3, review L5 — the `u` flag; this covers U+00AD, U+200B–U+200F, U+2060–U+2064, U+FEFF and also U+061C, U+180E and the tag characters, which a hand list missed; U+034F and the variation selectors U+FE00–U+FE0F are category Mn and are refused by the explicit addition `\u034F\uFE00-\uFE0F`; Zl U+2028 and Zp U+2029 by Task 2's ruling — a name is one line) — for account names too. **Limit, stated loudly (rev 3, review L4): the duplicate check does not catch cross-script confusables** — NFKC keeps Cyrillic "В" apart from Latin "B", so "Вinance" and "Binance" are two names. Names are typed by the user, so an attacker never writes one; the defence against a look-alike *address* is the full address in pick rows (§6.1), not the name check | A look-alike "Binance" next to the real one in `pick` is the poisoning picture; "Mo\u200Bm" and "Mom" render the same. A stored account name that predates the rule is kept (`reencrypt.ts:37` keeps an unchanged stored name; `storeEnvelope` carries stored names) |
 | C20 | (rev 3, review H1; coordinator ruling) **#36's held data key and fields live at most 5 minutes**, counted from the step-1 proof and **renewed by each keystroke in steps 2–3**. They survive `visibilitychange → hidden` (rev 2's ruling on review-1 M2, kept), but at the deadline they are zeroed and emptied and the page shows `dropped`. The deadline is re-checked on `visibilitychange → visible` and before every step change and every send (step 2's `[Continue]`, step 3's `[Change password]`) — a stale tab never offers a button that would act on an expired proof | Without a bound, a proven #36 tab left hidden while the popup keeps the session alive lets anyone at the keyboard set a password of their own without knowing the old one, then read the phrase (password-only by D23). Five minutes is enough to fetch a password from a manager and short enough that the proof still means "the person here knows the password" |
 
 ---
@@ -495,7 +504,8 @@ and any future flow that renders or tests the recovery phrase.
   harder when that transfer is dust (C18, §6.3); refuses a second contact with the same name (C19); and shows the **full
   address in groups of four** in pick rows (§6.1), since poisoning works on truncation. Names are user text: `cleanName`
   refuses controls, bidi overrides and (C19, review L8) every Unicode control and format character
-  (`envelopeRules.ts:38-46`, extended with `\p{Cc}\p{Cf}` under the `u` flag; names are not otherwise normalised, and
+  (`envelopeRules.ts:38-46`, extended with `\p{Cc}\p{Cf}\p{Zl}\p{Zp}` and U+034F, U+FE00–U+FE0F under the `u` flag — C19's
+  regex; names are not otherwise normalised (the duplicate check compares NFKC and a lower → upper → lower fold), and
   the duplicate-name check does not catch cross-script confusables — C19's stated limit), the popup renders them through React (escaped), the label always carries the prefix "From
   your address book:" (§6.3) so a name cannot pose as "Your account: …", and the vault page never shows one (#10 renders
   only closed-alphabet fields, 2a E3). Refused while locked because the list says whom the user pays (as E6). No import
@@ -1087,6 +1097,17 @@ contact" (ix:7388, `#i-plus`) → the sheet. `.search` input placeholder "Search
   results for "q"" (ix:7480; "1 result for "q"" **→ adapted** singular); matches by name or address, case-insensitive, the
   name's match in `<mark>` (ix:7483, 7488); "No more matches." (ix:7492); `.btn-tertiary` "Add new contact "q" →" (ix:7493)
   → the sheet with the name pre-filled with the query (ix:7533).
+  - **Controller ruling (Task 3 fix round 1, M4):** this case-insensitive, substring rule is for a **name** query. When
+    the trimmed query is itself address-shaped (passes the same base58 length-32–44 check the client uses for an
+    address), the match is instead **exact, case-sensitive equality against the contact's address only** — no
+    substring, no case-folding, and the name field is not consulted. A look-alike address that differs only by a
+    suffix, or only by case, is not a match. Address poisoning is this plan's threat model (implementer-rules.md); a
+    case- or suffix-tolerant match on a full address would let a planted look-alike surface as if it were the
+    trusted one.
+  - **Controller ruling (final review I1):** an address query that equals a saved contact's address exactly shows that
+    contact's row and "No more matches." but **no "Add new contact "q" →"** — a saved address is never offered as an add
+    (`contacts.set` renames in place, C12, so an add of it was a silent rename). A look-alike (one character, or the
+    case) is not a match and is offered as usual.
 - **`search · no result`** (extension-only): "No contacts match "q"." (O71) + the same tertiary button.
 - **`pick`** (from #12, ix:7530): the same screen, with two differences that make the pick a check, not a shortcut (rev 2,
   review H3): each row shows the **full address in groups of four** (`AddressGroups`, `.noc-mono`) under the name in
@@ -1094,7 +1115,8 @@ contact" (ix:7388, `#i-plus`) → the sheet. `.search` input placeholder "Search
   `.noc-caption` `--warning` "You have never sent to this address." (O72). Row tap → back to #12 with the recipient set
   to the address (the draft's amount and token kept; the hand-back is §1.4's `reset`); #12 then runs exactly as after a
   paste (2a's state 6 warning included). The `+` and "Add new contact" still open the sheet; after a save in pick mode
-  the new contact is picked.
+  the new contact is picked — an add only: an add sheet that became a saved contact's edit sheet (§6.2, final review I1)
+  saved an edit, which is not picked; the list is read again.
 - **`full`** (200): the `+`, "Add first contact" and "Add new contact" buttons disabled; caption "The address book is full
   (200 contacts)." (O73).
 - **`load failed`**: "Could not load your contacts. Try again." (O74) + `[Try again]` (2a).
@@ -1110,6 +1132,12 @@ contact" (ix:7388, `#i-plus`) → the sheet. `.search` input placeholder "Search
 - Pick-mode rows show the full address in groups of four and a never-sent warning, not the drawn truncation and date
   (review H3: poisoning works on truncation). The standalone list keeps the drawn rows.
 - The system keyboard mock (ix:7497) is the browser's.
+- Pick rows label a **known** own account "Your account: <name>" (2a's; review L5) and a **known** fee treasury "Noctura
+  treasury" in the date's place — the precedence own > treasury > contact (E17), exact matches only; the design draws no
+  such row. The label never replaces or hides O72 (§6.3, D36; Task 5 fix round 1, I1): a pick row that is not `known`
+  says O72 whatever it is.
+- **Controller ruling (Task 5 fix round 1, M4):** "never" means only "not known". A `known` contact whose `lastSentAt` is
+  null (an own account, or a B1b-1 known-recipient entry stored without a time) shows no `.when` text rather than "never".
 
 ### 6.2 Contact sheet (`.s8-sheet` derived from #43 / the 2a switcher; D20, C12)
 
@@ -1128,6 +1156,17 @@ contact" (ix:7388, `#i-plus`) → the sheet. `.search` input placeholder "Search
 - **`add · empty`** (from #15's `+`, "Add first contact", "Add new contact"): the address is an input (placeholder "Solana
   address" (2a #12), Paste button aria "Paste" (2a)); once valid it is shown in groups of four under the field; the name
   pre-filled with the search query when there is one.
+  - **Controller ruling (final review I1): an address already saved turns the sheet into that contact's `edit` sheet.**
+    #15 passes its book to the sheet. When the typed or pasted address equals a saved contact's address **exactly**, the
+    sheet becomes the edit sheet for it — "Edit contact" (O80), the address read-only in groups of four, the **stored**
+    name prefilled (replacing what was typed), "Delete contact" — and the focus moves to Name. A rename is then an
+    explicit edit, never a silent overwrite (`contacts.set` renames in place, C12). At Save, the add sheet reads the book
+    again (`contacts.list`, the freshest read wins over #15's copy): an address saved meanwhile in another window turns the
+    sheet the same way and **nothing is saved**; a failed re-read saves nothing ("Something went wrong. Try again.", 2a), a
+    `locked` one reloads. A look-alike (one character, or the case) is a different address and stays an add. No new copy.
+    Not closed: the instant between that re-read and `contacts.set` (a `create`-only flag on `contacts.set` would close it
+    but needs owner copy for its refusal); #20's and #27's prefilled add sheets keep their own close-and-re-read guard
+    (Task 7 I1) and plan L10's two-window case.
 - **`edit`** (row tap, or #27 when already saved): title "Edit contact" (O80); address read-only; name pre-filled; `[Save]`;
   `.btn-tertiary` `--danger` "Delete contact" (O81).
 - **`delete confirm`** (inside the sheet): "Delete this contact?" (O82) + `[Delete]` (O83) / `[Keep]` (O84). Delete →
@@ -1141,6 +1180,16 @@ contact" (ix:7388, `#i-plus`) → the sheet. `.search` input placeholder "Search
 **Differs, loudly:** the design leaves add/edit/delete undrawn ("placeholder per spec", ix:7532; sm:190); the sheet is
 derived (D20). No notes field (D18). The never-sent, only-sent-to-you and dust states are extension additions (review
 H3).
+- **Approved by the owner (D35, 2026-10-08):** the sheet is tall — up to the popup's height but 48 px, not #43's 70 %, so
+  the address being saved, the warnings and "Save anyway" stay in view (**controller ruling under D35**, Task 10: its
+  bottom padding is `--space-4`, not #43's `--space-4` + 24 px gesture-bar allowance, which cut "Save anyway" in the
+  longest state; §8.4); its actions are Cancel | Save side by side (the
+  design's `.sticky-bar.row`), "Delete contact" below; the delete confirm shows the contact's name and address under
+  O82; the sheet opens on the element marked `data-autofocus` (the name, or the empty address field); Esc over the sheet
+  closes only the sheet, never the screen under it.
+- **Owner decisions (D36, D37):** O72 keeps its wording and stays fail closed wherever `known` is false — "known" counts
+  only sends this extension confirmed, so a SENT record from another wallet (or from the history) still shows it; names
+  with ZWJ, ZWNJ or VS16 are refused (C19).
 
 ### 6.3 Hooks: #12, #20, #27, the label (D19, D20, C12)
 
@@ -1178,6 +1227,9 @@ It never replaces or hides the first-send warning.
 - #12's Scan QR (ix:6651) stays omitted (2a-D13).
 - `[Save sender]` is offered for every received transfer, as drawn (ix:12272), but the sheet it opens warns for a sender
   never sent to, and warns harder for dust (C18). The design offers it with no warning (review H3).
+- **Approved by the owner (D35, 2026-10-08):** #27's received "From" row carries the full label (own > treasury >
+  contact), not only the contact label; Esc over any open sheet (the contact sheet on #15, #20, #27; the accounts
+  manager's remove sheet) closes only the sheet.
 
 ---
 
@@ -1220,6 +1272,9 @@ It never replaces or hides the first-send warning.
 #31 row that opens a page, the sheet's `[Save]` / `[Delete]`, #20's Add/Skip, #27's Save. Vault modes: `exclusive()` with
 the 500 ms floor. A component test per control: a second click inside 500 ms and before the promise settles does nothing
 (mutation: remove the lock → red).
+**Differs (pre-flight G2):** the "Skip" button, #15's `+` and its add buttons ("Add first contact", "Add new contact") are
+LockedButtons whose second press is invisible — the first opens a sheet (or leaves), and a second would open the same one —
+so their tests assert the lock itself (`disabled` + `is-busy` on the button right after the press) instead of a re-press.
 
 **Memory.** Every vault mode drops fields on `pagehide` and `visibilitychange → hidden`, except #36, which keeps them
 through `hidden` and zeroes its held data key on `pagehide`, on leave, after success and at its 5-minute TTL (C20, §3.1); reveal/verify drop the phrase; the PRF output is zeroed on every path (existing flows). No 2b screen puts a word of
@@ -1419,6 +1474,47 @@ Findings go in the PR; screenshots are CI artifacts.
   top-bar X matches every `.icon-btn` on the vault page, so 2a's icon buttons draw dimmed while disabled too (inside the
   busy gate). It is the popup's rule; 2a's shots are taken with `ready` (enabled) and are unaffected.
 
+**Differs, loudly (plan 2's visual pass, Task 10; `e2e/visual-contacts.spec.ts`, 32 shots after fix round 1):**
+- **Fixed in the pass** (app.css, each pinned by a Chromium computed-style or viewport assertion in the visual spec):
+  #15 empty — the UA's `h3`/`p` margins (17 px) set the heading and its line apart (the design resets every margin,
+  index.html:98), now `margin: 0`; the "+" in "Add first contact" took web's `.empty svg` `--fg-tertiary` and drew grey,
+  now the button's ink (ix:7455). #15 pick — O72 drew `--fg-tertiary`: the design's `.s-abook .row .when` out-ranked
+  `.noc-warning`; now `--warning` as §6.1 says. The contact sheet (tall) — #43's panel keeps 24 px under its content for
+  the phone's gesture bar, which the popup has not; in the sheet's longest state (dust + O87, from #27c with the book
+  full) those 24 px cut "Save anyway" to 68 % of its height. The tall sheet's bottom padding is `--space-4`, so D35's
+  "Save anyway stays in view" holds in that state too — a **controller ruling under D35** (not an open owner question).
+  Fix round 0b: #15's search for a full address — the overline's uppercase drew the address case-folded (the very
+  difference the exact search refuses to ignore) and both it and "Add new contact "<address>" →" ran past the column; an
+  address query's overline now keeps its case and wraps (`.app-abook-count-addr`); the foot — O71's "No contacts match
+  "<address>"." and the add button — wraps (fix round 1, I1: `.app-content` hides overflow, so the address's end was cut).
+- **Asserted, unchanged:** `.s-abook .search:focus-within .ic` takes `--accent` (pre-flight G4); `.app-contact-delete`
+  is `display: contents` and "Delete contact" spans the Cancel | Save row (Task 4 carry); the dust state's address and
+  "Save anyway" wholly in view on open, the banner at 95 % (D35).
+- **Fixed in fix round 0b (controller ruling, C1): the focus under a request that is out** (Task 7 carry). Measured in
+  Chromium, a focused Cancel, Keep or Save disabled by the request gave the focus to `<body>`; after Keep, Tab then left
+  the modal for #15's Back. `Sheet` now holds the focus on its panel (`tabindex="-1"`, drawn without a ring and with its
+  own corners) while the control is disabled and gives it back when the control is enabled again (a failed answer);
+  Tab from the panel or from outside enters the sheet at its first control. This applies to every `Sheet`, and it is
+  **intended** there too: a `LockedButton` disables itself for at least 500 ms on every press (rule 6), and the
+  switcher's rename Save and the accounts manager's remove-sheet Continue are LockedButtons inside sheets — so during
+  their lock the panel now holds the focus and hands it back when the button is enabled again (before, Chromium dropped it
+  to `<body>`, outside the modal). #43 (TokenSheet) has no LockedButton. Pinned by `ui.test`, `ContactSheet.test` and the
+  visual spec. (Fix round 1, M1: rev 0b said none of these sheets disables a focused control — wrong.)
+- **For the owner (not changed): the sheet's Cancel and Keep** are `.btn-secondary` (`--bg-surface-2`) on the sheet's own
+  `--bg-surface-2`, so they draw as text without a container — as the accounts manager's remove sheet (plan 1) does. The
+  nearest drawn precedent does the same: #3's pre-reveal modal (ix:4670-4685) puts `.btn-secondary` "Cancel — go back"
+  (ix:4683) on `.modal-card`, `--bg-surface-2` (index.html:583-593), with no container; the design draws no secondary
+  button on an `.s8-sheet`.
+- **Shot in fix round 0b (poisoning):** an exact full-address search beside a planted case look-alike (one row and, since
+  the final review's I1, no "Add new contact"; `15-search-exact-address`), an address not in the book (O71's line and the add button wrap inside the column, fix
+  round 1, I1; `15-search-address-no-result`), a known contact with no date (no date text; `15-known-no-date`), #15 pick for a never-sent
+  treasury address (O72, not "Noctura treasury"; `15-pick-treasury-never-sent`) and for an own account ("Your account:
+  Savings"; `15-pick-own-account`). **Covered by unit tests only, not shot:** #12's MAX helper carried through a pick
+  and the account switch that ends the flow (Task 6; `Send`/`App` tests).
+- **Not shot** (fault injection only; the component tests assert them): #15 `load failed` (O74), the sheet's `failed`
+  line; and the transient "request out" states (the sheet's disabled Cancel/Keep), which the spec holds and asserts but
+  does not shoot.
+
 ---
 
 ## 9. Out of scope
@@ -1450,7 +1546,7 @@ Findings go in the PR; screenshots are CI artifacts.
   `WalletView.passkey`, E5 step 7 + first write remove `v1_contacts`); `contacts.ts` (new, plan 2).
 - **Vault module:** `src/vault/envelope.ts` (`rewrapPassword`, and `isCurrentPassword` beside it — or in `passwordFlow.ts`
   over `unlockWithPassword`; either way it keeps no secret).
-- **Shared:** `src/shared/envelopeRules.ts` (`FORBIDDEN_IN_NAME` becomes `/[\p{Cc}\p{Cf}\u034F\uFE00-\uFE0F\u202A-\u202E\u2066-\u2069]/u`, C19).
+- **Shared:** `src/shared/envelopeRules.ts` (`FORBIDDEN_IN_NAME` becomes `/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u034F\uFE00-\uFE0F\u202A-\u202E\u2066-\u2069]/u`, C19).
 - **Vault page:** `mode.ts`, `modes.ts`, `strings.ts`; `passwordFlow.ts`, `passkeyFlow.ts` (new); `forgetFlow.ts`
   (`deleteWallet`); `accountsFlow.ts` (index, `send-open`); `reauthFlow.ts` (`applied`); `screens/password.ts` reuse +
   `screens/changePassword.ts`, `screens/delete.ts`, `screens/passkeyManage.ts`, `screens/reveal.ts` (rewritten on
@@ -1536,7 +1632,7 @@ Findings go in the PR; screenshots are CI artifacts.
 | L2 C18 base units, `null` | C18 floors as base-unit integers compared with `BigInt`; `amount: null` → dust (fail closed); boundary tests |
 | L3 `known` shape | E17: the client requires a boolean and reads a missing field as `false` |
 | L4 confusables | C19 states the cross-script limit loudly; a test pins it |
-| L5 hand list vs categories | C19, §10: `\p{Cc}\p{Cf}` with the `u` flag (+ U+034F, U+FE00–U+FE0F, category Mn) |
+| L5 hand list vs categories | C19, §10: `\p{Cc}\p{Cf}\p{Zl}\p{Zp}` with the `u` flag (+ U+034F, U+FE00–U+FE0F, category Mn); duplicates compared after NFKC and a lower → upper → lower fold |
 | L6 stale "Active protections" sentences | §4.2: Locks row metas spelled out; `strengthening` updates the Locks meta |
 | L7 E2E 15 hard case | Fourth run: the wallet replaced under the tab → `changed` with the new address, no `wrong`, no cooldown |
 
@@ -1666,8 +1762,9 @@ longer used: "Active protections" shows only on the all-clear state, review L7).
 | O89 | "1 outstanding task." (owner, 2026-10-05, plan-1 review) | #35 card, the singular of "N outstanding tasks." |
 | O90 | "Close" (aria) (owner, 2026-10-05, plan-1 review) | the vault page's ✕ on #36 (`cp-x`) and the reveal/verify proof (`pp-x`) |
 | O91 | "Updating your password" (aria, on the progress element) (owner, 2026-10-05, plan-1 review) | #36 `changing` |
+| O92 | "1 contact" (owner, 2026-10-08, plan-2 review) | #31 Address book meta, the singular of "N contacts" (D34) |
 
-**91 strings** (O01–O66 plan 1; O67–O88 plan 2; O89–O91 plan 1, added by the owner on 2026-10-05 after the plan-1 review). Adapted design strings (marked **→ adapted** in §§3–6) are
+**92 strings** (O01–O66 plan 1; O67–O88 plan 2; O89–O91 plan 1, added by the owner on 2026-10-05 after the plan-1 review; O92 plan 2, added by the owner on 2026-10-08 after the plan-2 review). Adapted design strings (marked **→ adapted** in §§3–6) are
 not repeated here; the owner sees them in each screen's section.
 
 ---

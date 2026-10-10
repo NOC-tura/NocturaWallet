@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {act, cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react';
+import {act, cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
 import {readFileSync, readdirSync, statSync} from 'node:fs';
 import {dirname, join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -13,6 +13,9 @@ import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {CONFIRM_STRIKE_KEY} from '../prefs';
 import {REFUSED_TEXT} from '../ui/Banner';
 import {KNOWN_RECIPIENTS_KEY} from '../../background/knownRecipients';
+import {CONTACTS_KEY} from '../../background/contacts';
+import {lock} from '../../background/autolock';
+import {MAINNET_FEE_TREASURY} from '../../../../core/fees/transferMarkup';
 import {PENDING_KEY} from '../../background/pendingStore';
 import {PREPARED_KEY} from '../../background/session';
 import {CHALLENGE_MAX_LIFE_MS, satisfyChallenge} from '../../background/reauthChallenges';
@@ -48,7 +51,7 @@ interface Setup {
   quiet?: boolean;
 }
 /** A wallet whose background holds a prepared send of `intent` (proven if asked), and #20 shown on it. */
-async function renderConfirm(o: Setup = {}): Promise<Wallet & {sent: string[]; sends: () => number; challengeId: string | null; preparedId: string}> {
+async function renderConfirm(o: Setup = {}): Promise<Wallet & {sent: string[]; sends: () => number; challengeId: string | null; preparedId: string; setQuiet: (quiet: boolean) => void}> {
   const sent: string[] = [];
   const w = await setupWallet({
     reader: sendingReader(),
@@ -73,12 +76,15 @@ async function renderConfirm(o: Setup = {}): Promise<Wallet & {sent: string[]; s
     await o.gate?.(m as {type: string});
     return w.transport(m);
   }, async () => undefined);
-  render(
-    <WalletProvider engine={engine} platform={w.platform} surface={o.surface ?? 'popup'} quiet={o.quiet === true}>
+  const tree = (quiet: boolean) => (
+    <WalletProvider engine={engine} platform={w.platform} surface={o.surface ?? 'popup'} quiet={quiet}>
       <Confirm account={ACCOUNT.publicKey} {...entryOf(o.entry ?? 'flow', o.preparedId ?? preparedId)} {...nav} />
-    </WalletProvider>,
+    </WalletProvider>
   );
-  return {...w, engine, sent, sends: () => sent.filter(t => t === 'wallet.send').length, challengeId, preparedId};
+  const view = render(tree(o.quiet === true));
+  /** Re-renders the provider with another `quiet` (the UI tab's hand-over): its reload, and so #20's readBook, change. */
+  const setQuiet = (quiet: boolean) => view.rerender(tree(quiet));
+  return {...w, engine, sent, sends: () => sent.filter(t => t === 'wallet.send').length, challengeId, preparedId, setQuiet};
 }
 /** #20's entry props: a flow entry carries the id #19 handed over (Task 8 ruling); a resume carries none. */
 const entryOf = (entry: 'flow' | 'resume', preparedId: string): ConfirmEntry => (entry === 'flow' ? {entry, preparedId} : {entry});
@@ -135,7 +141,8 @@ describe('#20 tx-confirm — what it shows', () => {
     expect(headline.getAttribute('aria-label')).toBe(`Send 0.0100 SOL to recipient address ${COUNTERPARTY.match(/.{1,4}/g)?.join(' ')}`);
     expect(document.querySelector('.high-value-banner')).toBeNull();
     expect(screen.getByRole('button', {name: 'Cancel'})).toBeTruthy();
-    // Removed by decision: priority chips (D15), "Save as / Add to address book" (B1b-2b), typed CONFIRM (D22), DIRECT.
+    // Removed by decision: priority chips (D15), typed CONFIRM (D22), DIRECT. "Save as" (plan 2) is the first-time
+    // state's alone: a known recipient never offers it.
     expect(document.body.textContent).not.toMatch(/Normal|Fast|Instant|Save as|address book|Type CONFIRM|DIRECT|mainnet-beta/);
     expect(screen.queryByText(CONFIRM_TEXT.opensTab)).toBeNull();
     expect(unstyledClasses(document.querySelector('.s-conf')!, SELECTORS)).toEqual([]);
@@ -1177,5 +1184,427 @@ describe('one caller of wallet.send (source backstop over all of src/)', () => {
     expect([...tapBody.matchAll(/\bsend\(view, tapAt\)/g)].length).toBe(2);
     expect([...confirm.matchAll(/\btap\b/g)].length).toBe(2);
     expect(confirm).toContain('onPress={tap}');
+  });
+});
+
+// B1b-2b plan 2 (§6.3): #20's To label and the first-time state's "Save as" row (ix:9349-9350).
+describe('#20 and the address book', () => {
+  const row = () => document.querySelector('.detail-row.app-save-as');
+  const toLabel = () => [...document.querySelectorAll('.detail-row')].find(r => r.querySelector('.lbl')?.textContent === 'To')?.querySelector('.val .noc-body-sm')?.textContent ?? null;
+
+  it('first-time, not saved: "Save as — Add to address book? · Add · Skip"; the banner stays; Send is not focused', async () => {
+    const w = await renderConfirm({known: false});
+    const send = await sendButton();
+    await waitFor(() => expect(row()).not.toBeNull());
+    expect(row()?.querySelector('.lbl')?.textContent).toBe('Save as');
+    expect(row()?.querySelector('.val')?.textContent).toBe('Add to address book? · Add · Skip');
+    expect(screen.getByRole('button', {name: 'Add'}).className).toBe('app-text-btn noc-accent');
+    expect(screen.getByRole('button', {name: 'Skip'}).className).toBe('app-text-btn app-dim');
+    expect([...document.querySelectorAll('.detail-row .lbl')].map(l => l.textContent)).toEqual(['From', 'To', 'Save as', 'Network']);
+    expect(screen.getByText(CONFIRM_TEXT.firstTitle)).toBeTruthy();
+    expect(document.activeElement).not.toBe(send);
+    expect(send.disabled).toBe(false);
+    expect(unstyledClasses(document.querySelector('.s-conf')!, SELECTORS)).toEqual([]);
+    expect(w.sends()).toBe(0);
+  });
+
+  it('Add: the sheet prefilled (never sent); saved → the row hides and "From your address book: <name>" labels To; nothing sent', async () => {
+    const w = await renderConfirm({known: false});
+    const send = await sendButton();
+    fireEvent.click(await screen.findByRole('button', {name: 'Add'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    expect([...dialog.querySelectorAll('.app-contact-addr .addr-groups > span')].map(s => s.textContent)).toEqual(COUNTERPARTY.match(/.{1,4}/g));
+    expect(await screen.findByText('You have never sent to this address.')).toBeTruthy();
+    fireEvent.change(dialog.querySelector('#contact-name')!, {target: {value: 'Supplier'}});
+    fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+    await waitFor(() => expect(toLabel()).toBe('From your address book: Supplier'));
+    expect(row()).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).not.toBe(send);
+    // A contact is a label, never trust (D19): the first-time banner and the proof stay.
+    expect(screen.getByText(CONFIRM_TEXT.firstTitle)).toBeTruthy();
+    expect(screen.getByText(CONFIRM_TEXT.opensTab)).toBeTruthy();
+    expect(await w.ext.local.get(CONTACTS_KEY)).toEqual([{address: COUNTERPARTY, name: 'Supplier'}]);
+    expect(w.sends()).toBe(0);
+  });
+
+  // Rule 6 (spec §7): Add is a LockedButton — it locks on the tap (500 ms, until the action settles). Opening the sheet
+  // twice would look the same, so the lock itself is what is pinned. Skip hides its own row on the tap (nothing to press
+  // twice); it is a LockedButton too.
+  it('rule 6: Add locks on the tap', async () => {
+    await renderConfirm({known: false});
+    const add = (await screen.findByRole('button', {name: 'Add'})) as HTMLButtonElement;
+    fireEvent.click(add);
+    expect(add.disabled).toBe(true);
+    expect(add.className).toBe('app-text-btn noc-accent is-busy');
+  });
+
+  // The generation guard after the book read: a `locked` answer would reload (a wallet.state read) — after #20 went, it
+  // must not.
+  it('a book answer after #20 went does nothing: a late `locked` reloads nothing', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(r => {
+      release = r;
+    });
+    let gone = false;
+    const after: string[] = [];
+    const w = await renderConfirm({
+      known: false,
+      gate: async m => {
+        if (gone) after.push(m.type);
+        if (m.type === 'contacts.list') await held;
+      },
+    });
+    await sendButton();
+    await lock(w.ext);
+    gone = true;
+    cleanup();
+    release();
+    await act(async () => new Promise(r => setTimeout(r, 30)));
+    expect(after).toEqual([]);
+  });
+
+  it('Skip hides the row for this #20; nothing is saved', async () => {
+    const w = await renderConfirm({known: false});
+    fireEvent.click(await screen.findByRole('button', {name: 'Skip'}));
+    await waitFor(() => expect(row()).toBeNull());
+    expect(toLabel()).toBeNull();
+    expect(await w.ext.local.get(CONTACTS_KEY)).toBeUndefined();
+  });
+
+  it('Esc with the sheet open closes the sheet only: #20 stays, no back', async () => {
+    await renderConfirm({known: false});
+    fireEvent.click(await screen.findByRole('button', {name: 'Add'}));
+    await screen.findByRole('dialog', {name: 'Add contact'});
+    fireEvent.keyDown(document, {key: 'Escape'});
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(nav.onBack).not.toHaveBeenCalled();
+    // Fix round 1: the close re-reads the book; the row is back once it answers (the address is still not saved).
+    await waitFor(() => expect(row()).not.toBeNull());
+  });
+
+  it('a first-time recipient already saved: the label, no row — the first-time banner stays (D19)', async () => {
+    await renderConfirm({known: false, before: ext => ext.local.set(CONTACTS_KEY, [{address: COUNTERPARTY, name: 'Supplier'}])});
+    await sendButton();
+    await waitFor(() => expect(toLabel()).toBe('From your address book: Supplier'));
+    expect(row()).toBeNull();
+    expect(screen.getByText(CONFIRM_TEXT.firstTitle)).toBeTruthy();
+  });
+
+  it('a known recipient: no row, even unsaved', async () => {
+    await renderConfirm();
+    await sendButton();
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    expect(row()).toBeNull();
+  });
+
+  it('own > contact: an own account saved as a contact keeps "Your account: <name>"', async () => {
+    await renderConfirm({intent: {token: 'SOL', recipient: RECIPIENT, amount: 10_000_000n}, before: ext => ext.local.set(CONTACTS_KEY, [{address: RECIPIENT, name: 'Not my savings'}])});
+    await sendButton();
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    expect(toLabel()).toBe('Your account: Savings');
+  });
+
+  it('the book not read (refused): no label, and no row — Add could rename a contact it cannot see', async () => {
+    await renderConfirm({
+      known: false,
+      gate: m => {
+        if (m.type === 'contacts.list') throw new Error('worker restarting');
+      },
+    });
+    await sendButton();
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    expect(row()).toBeNull();
+    expect(toLabel()).toBeNull();
+    expect(screen.getByText(CONFIRM_TEXT.firstTitle)).toBeTruthy();
+  });
+
+  // Send isolation (D38, the one-tap rule): the sheet on #20 is a label's editor, never a send's. Opening it and saving
+  // calls no wallet.send, prepares nothing, leaves the prepared send #20 stands for unchanged — and the one tap still
+  // sends it. Proven, so that any path that reached tap() would broadcast at once (and be counted).
+  it('send isolation: Add → Save sends nothing, prepares nothing, and the prepared send is the same one — Send still sends it on one tap', async () => {
+    const w = await renderConfirm({known: false, prove: true});
+    const send = await sendButton();
+    const before = await w.engine.preparedFor(ACCOUNT.publicKey);
+    expect(before.ok && before.data?.id).toBe(w.preparedId);
+    fireEvent.click(await screen.findByRole('button', {name: 'Add'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    fireEvent.change(dialog.querySelector('#contact-name')!, {target: {value: 'Supplier'}});
+    fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+    await waitFor(() => expect(toLabel()).toBe('From your address book: Supplier'));
+    await act(async () => new Promise(r => setTimeout(r, 30)));
+    expect(w.sends()).toBe(0);
+    expect(w.sent.filter(t => t === 'wallet.prepareSend' || t === 'wallet.discardPrepared')).toEqual([]);
+    const after = await w.engine.preparedFor(ACCOUNT.publicKey);
+    expect(after.ok && after.data?.id).toBe(w.preparedId);
+    expect(after.ok && after.data?.reauth?.proven).toBe(true);
+    expect(nav.onTrack).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(send);
+    expect(send.disabled).toBe(false);
+    fireEvent.click(send);
+    await waitFor(() => expect(nav.onTrack).toHaveBeenCalledTimes(1));
+    expect(w.sends()).toBe(1);
+  });
+
+  // D36 / §6.3: a label never hides the first-send warning, the high-value lines or the re-authentication CTA.
+  it('high-value and first-time, saved on #20: the label joins, the high-value line, the first-time banner and the proof CTA stay', async () => {
+    const w = await renderConfirm({intent: LARGE, known: false});
+    await sendButton();
+    fireEvent.click(await screen.findByRole('button', {name: 'Add'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    fireEvent.change(dialog.querySelector('#contact-name')!, {target: {value: 'Supplier'}});
+    fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+    await waitFor(() => expect(toLabel()).toBe('From your address book: Supplier'));
+    expect(document.querySelector('.review-card')?.classList.contains('high-value')).toBe(true);
+    expect(document.querySelector('.high-value-banner .help')?.textContent).toBe(`${CONFIRM_TEXT.reauthLine} If you didn't initiate this — cancel now.`);
+    expect(screen.getByText(CONFIRM_TEXT.firstTitle)).toBeTruthy();
+    expect(screen.getByText(CONFIRM_TEXT.opensTab)).toBeTruthy();
+    expect((await sendButton()).className).toBe('btn btn-destructive');
+    expect((await sendButton()).disabled).toBe(false);
+    expect(w.sends()).toBe(0);
+  });
+
+  // Rule 6 for Skip: the tap hides Skip's own row in the same render, so its lock is never drawn — nothing in the DOM can
+  // show it. The source is the observable: Skip is a LockedButton (Scope 3.8).
+  it('rule 6: Skip is a LockedButton (source pin — its row hides on the tap, so the lock cannot be seen)', () => {
+    const src = readFileSync(resolve(SRC, 'app/screens/Confirm.tsx'), 'utf8');
+    expect(src).toMatch(/<LockedButton className="app-text-btn app-dim" onPress=\{[^}]*\}>\s*\{CONFIRM_TEXT\.saveAsSkip\}\s*<\/LockedButton>/);
+    expect(src).toMatch(/<LockedButton className="app-text-btn noc-accent" onPress=\{[^}]*\}>\s*\{CONFIRM_TEXT\.saveAsAdd\}\s*<\/LockedButton>/);
+  });
+
+  it('Esc with no sheet open still goes back (the pause is only while the sheet is open)', async () => {
+    await renderConfirm({known: false});
+    fireEvent.click(await screen.findByRole('button', {name: 'Add'}));
+    await screen.findByRole('dialog', {name: 'Add contact'});
+    fireEvent.keyDown(document, {key: 'Escape'});
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    fireEvent.keyDown(document, {key: 'Escape'});
+    expect(nav.onBack).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Task 7 review fix round 1 (I1, M1–M3).
+describe('#20 and the address book: review fix round 1', () => {
+  const row = () => document.querySelector('.detail-row.app-save-as');
+  const toLabel = () => [...document.querySelectorAll('.detail-row')].find(r => r.querySelector('.lbl')?.textContent === 'To')?.querySelector('.val .noc-body-sm')?.textContent ?? null;
+  const holdSet = () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(r => {
+      release = r;
+    });
+    return {release, gate: (m: {type: string}) => (m.type === 'contacts.set' ? held : undefined)};
+  };
+  const addAndSave = async (name: string) => {
+    fireEvent.click(await screen.findByRole('button', {name: 'Add'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    fireEvent.change(dialog.querySelector('#contact-name')!, {target: {value: name}});
+    fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+  };
+
+  // P-A: Esc while the save is out does not close the sheet; when the save lands the row is gone and the label shows —
+  // there is no Add left to press, so no second contacts.set can rename the contact.
+  it('P-A: Esc during an in-flight save is ignored; the save lands → no row, the label, one contacts.set (no rename)', async () => {
+    const h = holdSet();
+    const w = await renderConfirm({known: false, gate: h.gate});
+    await sendButton();
+    await addAndSave('Supplier');
+    fireEvent.keyDown(document, {key: 'Escape'});
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    expect(screen.getByRole('dialog', {name: 'Add contact'})).toBeTruthy();
+    expect(nav.onBack).not.toHaveBeenCalled();
+    h.release();
+    await waitFor(() => expect(toLabel()).toBe('From your address book: Supplier'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(row()).toBeNull();
+    expect(screen.queryByRole('button', {name: 'Add'})).toBeNull();
+    expect(w.sent.filter(t => t === 'contacts.set')).toHaveLength(1);
+    expect(await w.ext.local.get(CONTACTS_KEY)).toEqual([{address: COUNTERPARTY, name: 'Supplier'}]);
+    expect(w.sends()).toBe(0);
+  });
+
+  // P-A2: every other close path while the save is out — Cancel (disabled), ✕ and the grabber, the backdrop.
+  it('P-A2: Cancel, ✕, the grabber and the backdrop during an in-flight save are ignored; the save lands → no row, no rename', async () => {
+    const h = holdSet();
+    const w = await renderConfirm({known: false, gate: h.gate});
+    await sendButton();
+    await addAndSave('Supplier');
+    const cancel = within(screen.getByRole('dialog')).getByRole('button', {name: 'Cancel'}) as HTMLButtonElement;
+    expect(cancel.disabled).toBe(true);
+    cancel.disabled = false;
+    fireEvent.click(cancel);
+    for (const b of within(screen.getByRole('dialog')).getAllByRole('button', {name: 'Close'})) fireEvent.click(b);
+    fireEvent.click(screen.getByTestId('sheet-backdrop'));
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    expect(screen.getByRole('dialog', {name: 'Add contact'})).toBeTruthy();
+    h.release();
+    await waitFor(() => expect(toLabel()).toBe('From your address book: Supplier'));
+    expect(row()).toBeNull();
+    expect(screen.queryByRole('button', {name: 'Add'})).toBeNull();
+    expect(w.sent.filter(t => t === 'contacts.set')).toHaveLength(1);
+    expect(await w.ext.local.get(CONTACTS_KEY)).toEqual([{address: COUNTERPARTY, name: 'Supplier'}]);
+  });
+
+  // (b): a close without a save re-reads the book too — here the address was saved elsewhere while the sheet was open.
+  it('every close re-reads the book: saved elsewhere while the sheet was open → Cancel → the label, no row', async () => {
+    const w = await renderConfirm({known: false});
+    await sendButton();
+    fireEvent.click(await screen.findByRole('button', {name: 'Add'}));
+    await screen.findByRole('dialog', {name: 'Add contact'});
+    await w.ext.local.set(CONTACTS_KEY, [{address: COUNTERPARTY, name: 'Elsewhere'}]);
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', {name: 'Cancel'}));
+    await waitFor(() => expect(toLabel()).toBe('From your address book: Elsewhere'));
+    expect(row()).toBeNull();
+    expect(w.sent.filter(t => t === 'contacts.list')).toHaveLength(2);
+  });
+
+  // (b) fail closed: between the close and the re-read's answer #20 does not know the book, so no row (no Add to press
+  // on an address that may have been saved meanwhile); the row comes back once the answer says it is still not saved.
+  it('after a close, no row until the re-read answers; then back for an address still not saved', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(r => {
+      release = r;
+    });
+    let lists = 0;
+    await renderConfirm({known: false, gate: async m => (m.type === 'contacts.list' && ++lists > 1 ? held : undefined)});
+    await sendButton();
+    fireEvent.click(await screen.findByRole('button', {name: 'Add'}));
+    await screen.findByRole('dialog', {name: 'Add contact'});
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', {name: 'Cancel'}));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    expect(lists).toBe(2);
+    expect(row()).toBeNull();
+    expect(screen.queryByRole('button', {name: 'Add'})).toBeNull();
+    release();
+    await waitFor(() => expect(row()).not.toBeNull());
+  });
+
+  it('M1 treasury > contact: a contact on the treasury address still reads "Noctura treasury"', async () => {
+    await renderConfirm({intent: {token: 'SOL', recipient: MAINNET_FEE_TREASURY, amount: 10_000_000n}, before: ext => ext.local.set(CONTACTS_KEY, [{address: MAINNET_FEE_TREASURY, name: 'Not the treasury'}])});
+    await sendButton();
+    await waitFor(() => expect(screen.getByText('Noctura treasury')).toBeTruthy());
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    expect(toLabel()).toBe('Noctura treasury');
+    expect(screen.queryByText('From your address book: Not the treasury')).toBeNull();
+  });
+
+  // Task 8 fix round 1, m1 (as #27): only the latest book read is taken. A provider change (the hand-over's `quiet`)
+  // gives #20 a new readBook, which reads again while the first read is out; the first, holding the book from before a
+  // contact was saved, answers last — and changes nothing.
+  it('m1 the latest book read wins: an earlier read answering last with the older book changes nothing', async () => {
+    let hold = false;
+    let reached = false;
+    let release: () => void = () => undefined;
+    const old = new Promise<void>(r => {
+      release = r;
+    });
+    let lists = 0;
+    const w = await renderConfirm({
+      known: false,
+      afterPrepare: async ext => {
+        const get = ext.local.get.bind(ext.local);
+        ext.local.get = async (k: string) => {
+          const v = await get(k);
+          if (k === CONTACTS_KEY && hold) {
+            hold = false;
+            reached = true;
+            await old;
+          }
+          return v;
+        };
+        hold = true;
+      },
+      gate: async m => {
+        if (m.type === 'contacts.list') lists += 1;
+      },
+    });
+    await waitFor(() => expect(reached).toBe(true));
+    await w.ext.local.set(CONTACTS_KEY, [{address: COUNTERPARTY, name: 'Supplier'}]);
+    act(() => w.setQuiet(true));
+    await waitFor(() => expect(lists).toBe(2));
+    await waitFor(() => expect(toLabel()).toBe('From your address book: Supplier'));
+    release();
+    await act(async () => new Promise(r => setTimeout(r, 50)));
+    expect(toLabel()).toBe('From your address book: Supplier');
+  });
+
+  // M2: the generation guard's positive control — a `locked` answer while #20 is still shown reloads (a wallet.state read).
+  it('M2 a timely `locked` on the book read reloads (a wallet.state read)', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(r => {
+      release = r;
+    });
+    const w = await renderConfirm({known: false, gate: async m => (m.type === 'contacts.list' ? held : undefined)});
+    await sendButton();
+    await lock(w.ext);
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    const before = w.sent.filter(t => t === 'wallet.state').length;
+    release();
+    await waitFor(() => expect(w.sent.filter(t => t === 'wallet.state').length).toBeGreaterThan(before));
+  });
+
+  // Final review M2 (#27's m2 rule, as TxDetail's P4): no contact label while the book is stale. The label came from a
+  // book read while the sheet was open (the provider's change re-read it); the contact is deleted in another window, and
+  // the close's re-read fails — the deleted contact's name is not shown from the old book.
+  it('M2 no contact label while the book is stale: a contact deleted elsewhere, the close re-read fails → no label', async () => {
+    let fail = false;
+    const w = await renderConfirm({
+      known: false,
+      gate: m => {
+        if (m.type === 'contacts.list' && fail) throw new Error('worker restarting');
+      },
+    });
+    await sendButton();
+    fireEvent.click(await screen.findByRole('button', {name: 'Add'}));
+    await screen.findByRole('dialog', {name: 'Add contact'});
+    await w.ext.local.set(CONTACTS_KEY, [{address: COUNTERPARTY, name: 'Elsewhere'}]);
+    act(() => w.setQuiet(true));
+    await waitFor(() => expect(toLabel()).toBe('From your address book: Elsewhere'));
+    await w.ext.local.set(CONTACTS_KEY, []);
+    fail = true;
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', {name: 'Cancel'}));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await act(async () => new Promise(r => setTimeout(r, 30)));
+    expect(toLabel()).toBeNull();
+    expect(screen.queryByText(/From your address book/)).toBeNull();
+    expect(row()).toBeNull();
+  });
+
+  it('M2 own and treasury labels need no book: they stay while it is stale', async () => {
+    let armed = false;
+    await renderConfirm({
+      known: false,
+      intent: {token: 'SOL', recipient: MAINNET_FEE_TREASURY, amount: 10_000_000n},
+      gate: async m => {
+        if (m.type === 'contacts.list' && armed) await new Promise<void>(() => undefined);
+      },
+    });
+    await sendButton();
+    fireEvent.click(await screen.findByRole('button', {name: 'Add'}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    armed = true;
+    fireEvent.click(within(dialog).getByRole('button', {name: 'Cancel'}));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(row()).toBeNull();
+    expect(toLabel()).toBe('Noctura treasury');
+  });
+
+  // M3: the re-read after a save fails — the row stays hidden (saveAsDone), never offered again for an address now saved.
+  it('M3 a failed re-read after a save keeps the row hidden', async () => {
+    let lists = 0;
+    const w = await renderConfirm({
+      known: false,
+      gate: m => {
+        if (m.type === 'contacts.list' && ++lists > 1) throw new Error('worker restarting');
+      },
+    });
+    await sendButton();
+    await addAndSave('Supplier');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(lists).toBeGreaterThanOrEqual(2));
+    await act(async () => new Promise(r => setTimeout(r, 30)));
+    expect(row()).toBeNull();
+    expect(screen.queryByRole('button', {name: 'Add'})).toBeNull();
+    expect(await w.ext.local.get(CONTACTS_KEY)).toEqual([{address: COUNTERPARTY, name: 'Supplier'}]);
   });
 });

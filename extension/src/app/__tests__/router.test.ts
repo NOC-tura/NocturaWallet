@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {FLOW, SCREENS, TAB_ONLY, firstRoute, routeReducer, type Route} from '../router';
+import {FLOW, SCREENS, TAB_ONLY, firstRoute, pickStack, routeReducer, type Route} from '../router';
 
 const HOME: Route[] = [{screen: 'tab', tab: 'home'}];
 
@@ -18,7 +18,7 @@ describe('the router', () => {
   });
 
   it('the pushable screens are a closed list; the hand-over screens are first routes only; the flow screens own their Esc', () => {
-    expect([...SCREENS].sort()).toEqual(['about', 'accounts', 'confirm', 'delete', 'passkey', 'receive', 'review', 'security', 'send', 'status', 'tab', 'tx']);
+    expect([...SCREENS].sort()).toEqual(['about', 'accounts', 'confirm', 'contacts', 'delete', 'passkey', 'receive', 'review', 'security', 'send', 'status', 'tab', 'tx']);
     expect([...TAB_ONLY].sort()).toEqual(['created', 'imported', 'resume']);
     expect([...FLOW].sort()).toEqual(['confirm', 'resume', 'review', 'send', 'status']);
     for (const route of [{screen: 'created'}, {screen: 'imported'}, {screen: 'resume', account: ADDR}] as Route[]) expect(routeReducer(HOME, {type: 'push', route})).toBe(HOME);
@@ -36,6 +36,26 @@ describe('the router', () => {
         expect(routeReducer(HOME, {type: 'push', route: {screen, ...extra} as unknown as Route})).toBe(HOME);
       }
     }
+  });
+
+  // B1b-2b §1.4, plan 2: #15 carries `pick` and nothing else — never an address, a name or a draft (the pick hands the
+  // address back through the send route's own draft, review M4).
+  it('B1b-2b plan 2: contacts carries exactly {screen, pick: boolean}', () => {
+    for (const pick of [true, false]) expect(routeReducer(HOME, {type: 'push', route: {screen: 'contacts', pick}})).toEqual([...HOME, {screen: 'contacts', pick}]);
+    for (const bad of [{screen: 'contacts'}, {screen: 'contacts', pick: 'yes'}, {screen: 'contacts', pick: true, address: ADDR}, {screen: 'contacts', pick: false, draft: null}]) {
+      expect(routeReducer(HOME, {type: 'push', route: bad as unknown as Route})).toBe(HOME);
+    }
+  });
+
+  // §1.4 (review M4) and plan 2 review L8: the pick hands the address back through the send route's own draft; with no
+  // send route below, null (App pops).
+  it('pickStack: the send route under #15 takes the address in its draft, the stack ends there; none below → null', () => {
+    const send: Route = {screen: 'send', draft: {token: 'NOC', recipient: '', amount: '2'}, notice: 'start-again'};
+    expect(pickStack([...HOME, send, {screen: 'contacts', pick: true}], ADDR)).toEqual([...HOME, {screen: 'send', draft: {token: 'NOC', recipient: ADDR, amount: '2'}, notice: null}]);
+    expect(pickStack([...HOME, {screen: 'send', draft: null, notice: null}, {screen: 'contacts', pick: true}], ADDR)).toEqual([...HOME, {screen: 'send', draft: {token: 'SOL', recipient: ADDR, amount: ''}, notice: null}]);
+    expect(pickStack([...HOME, {screen: 'contacts', pick: true}], ADDR)).toBeNull();
+    const back = pickStack([...HOME, send, {screen: 'contacts', pick: true}], ADDR);
+    expect(back === null ? null : routeReducer(HOME, {type: 'reset', routes: back})).toEqual(back);
   });
 
   it('the flow routes: a draft is the user’s text, an intent an address and a positive u64, a status id 32 hex or null', () => {

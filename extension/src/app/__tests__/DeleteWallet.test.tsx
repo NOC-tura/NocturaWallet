@@ -106,7 +106,8 @@ describe('#37 delete wallet', () => {
     const bullets = [...document.querySelectorAll('.app-delete-bullets li')].map(li => li.textContent);
     expect(bullets).toEqual([
       "Your assets won't be lost on-chain — but you'll need your recovery phrase to access them again.",
-      'Local settings, cached balances and the list of addresses you have sent to are erased and not recoverable.',
+      // Plan 2 (spec §5): the address book is erased with the rest (D20).
+      'Local settings, cached balances, your address book and the list of addresses you have sent to are erased and not recoverable.',
     ]);
     expect(document.body.textContent).not.toMatch(/staking|dApp|backup file|seed phrase/);
     expect(document.querySelector('.app-delete-eyebrow')?.textContent).toBe('Type DELETE to confirm');

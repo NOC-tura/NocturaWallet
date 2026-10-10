@@ -1,4 +1,4 @@
-import {useEffect, useState, type ReactNode} from 'react';
+import {useCallback, useEffect, useRef, useState, type ReactNode} from 'react';
 import {useWallet} from '../WalletContext';
 import {TOKEN_INFO, ago, feeUsd, fullDate, showAmount, showFee, showUsd} from '../format';
 import {explorerUrl} from '../explorer';
@@ -10,7 +10,9 @@ import {useCopy} from '../ui/useCopy';
 import {useNow} from '../useNow';
 import {Banner, RefusedBanner} from '../ui/Banner';
 import {LockedButton} from '../ui/LockedButton';
-import type {HistoryItem, Intent} from '../engine';
+import {ContactSheet, type ContactSheetMode} from '../ui/ContactSheet';
+import {fromBook} from '../addressBook';
+import type {Contact, HistoryItem, Intent} from '../engine';
 import {MAINNET_FEE_TREASURY} from '../../../../core/fees/transferMarkup';
 
 /** At most this many history pages are read to find a signature the list has not loaded. */
@@ -67,10 +69,17 @@ export function ExplorerLink({signature, label = 'Explorer', icon = true, classN
 
 /**
  * #27 tx-detail (spec §6.3), from the #26 row (or, when only the signature is known, the first
- * FIND_PAGES history pages). No Block or Memo rows (not in HistoryView, G13), no Save (address book,
- * B1b-2b), no share (D19); fiat is today's price and says "now". A failed send offers [Try again] → #19
- * with what it tried to send, when the decoder knows the recipient and the amount (plan 3, owner question 1,
- * option A): #19 prepares it afresh and #20 shows the whole address before one tap sends.
+ * FIND_PAGES history pages). No Block or Memo rows (not in HistoryView, G13), no share (D19); fiat is
+ * today's price and says "now". A failed send offers [Try again] → #19 with what it tried to send, when
+ * the decoder knows the recipient and the amount (plan 3, owner question 1, option A): #19 prepares it
+ * afresh and #20 shows the whole address before one tap sends.
+ *
+ * B1b-2b plan 2 (§6.3): beside [Explorer], [Save] on a send (27a, ix:12143) and [Save sender] on a receive (27c,
+ * ix:12272) open the contact sheet for the counter-party — prefilled, or the edit sheet when it is saved (ix:12384).
+ * From a receive the sheet warns: "…— it only sent to you." for a sender never sent to, and the dust banner with
+ * "Save anyway" below C18's floor (review H3). The To / From label is own > treasury > contact. Purchase, other and
+ * failed rows get no button; nor does any row while the book is unread (a refused read hides it) or is being re-read
+ * after the sheet closed (Task 7 fix round 1, I1): Save opens "add" or "edit" from a fresh read, never a stale one.
  */
 export function TxDetail({
   signature,
@@ -104,6 +113,38 @@ export function TxDetail({
    * banner instead, with the explorer link kept (the signature is already known).
    */
   const [searchError, setSearchError] = useState<string | null>(null);
+  /** Plan 2: the address book (labels, and whether the counter-party is saved); null until read, or refused. */
+  const [book, setBook] = useState<Contact[] | null>(null);
+  const [sheet, setSheet] = useState<ContactSheetMode | null>(null);
+  /**
+   * The sheet closed and #27 has not read the book since (Task 7 fix round 1, I1, carried): what it holds may be old — a
+   * save that landed, here or elsewhere. No Save button until the re-read answers: an "add" sheet for an address saved by
+   * then would silently rename it.
+   */
+  const [bookStale, setBookStale] = useState(false);
+  /**
+   * Bumped by every book read, when #27 goes (unmount) and when another account is selected under it: only the answer
+   * to the latest read is taken (Task 8 fix round 1, m1) — an older one, answering late with an older book, sets nothing
+   * and reloads nothing. #27 stays on a switch (it shows the route owner's transaction), so the switch reads afresh.
+   */
+  const gen = useRef(0);
+  const selected = m.account?.publicKey ?? null;
+  const {engine, reload} = m;
+  const readBook = useCallback(async () => {
+    const g = ++gen.current;
+    const r = await engine.contacts();
+    if (gen.current !== g) return;
+    if (r.ok) {
+      setBook(r.data.contacts);
+      setBookStale(false);
+    } else if (r.error === 'locked') void reload();
+  }, [engine, reload]);
+  useEffect(() => {
+    void readBook();
+    return () => {
+      gen.current += 1;
+    };
+  }, [readBook, selected]);
 
   /**
    * The by-signature search. Unreachable in plan 1 (final review M4): App opens #27 only from an
@@ -192,11 +233,19 @@ export function TxDetail({
   const accounts = m.wallet?.accounts ?? [];
   /** The owner's own entry (its name on the From row), when it is one of this wallet's accounts. */
   const ownerAccount = accounts.find(a => a.publicKey === owner);
+  const savedAs = (address: string | null): Contact | undefined => (address === null ? undefined : book?.find(c => c.address === address));
+  /**
+   * own > treasury > contact (E17): a contact's name never stands in for "Your account" or the treasury. No contact
+   * label while the book is being re-read after a sheet close (fix round 1, m2): a deleted contact's name is not shown
+   * from the old book, nor when that re-read fails. The own and treasury labels need no book and stay.
+   */
   const labelOf = (address: string | null): string | null => {
     if (address === null) return null;
     const own = accounts.find(a => a.publicKey === address);
     if (own !== undefined) return `Your account: ${own.name}`;
-    return address === MAINNET_FEE_TREASURY ? 'Noctura treasury' : null;
+    if (address === MAINNET_FEE_TREASURY) return 'Noctura treasury';
+    const contact = bookStale ? undefined : savedAs(address);
+    return contact === undefined ? null : fromBook(contact.name);
   };
   const price = item.token === null ? null : item.token === 'NOC' ? null : m.prices?.[item.token === 'SOL' ? 'sol' : item.token === 'USDC' ? 'usdc' : 'usdt'] ?? null;
   const fiat = item.amount === null || item.token === null || price === null ? null : (Number(item.amount) / 10 ** TOKEN_INFO[item.token].decimals) * price;
@@ -287,56 +336,91 @@ export function TxDetail({
   const sent = item.kind === 'sent';
   const token = item.token ?? 'SOL';
   const toLabel = labelOf(item.counterparty);
+  const counterparty = item.counterparty;
+  const saved = savedAs(counterparty);
+  const open = () => {
+    if (counterparty === null || book === null || bookStale) return;
+    setSheet(saved === undefined ? {kind: 'add', address: counterparty} : {kind: 'edit', address: counterparty, name: saved.name});
+  };
   return (
-    <div className="screen s-txd">
-      {top}
-      <div className="scroll">
-        <div className="amount-card">
-          <div className="eyebrow noc-overline">{sent ? 'SENT' : 'RECEIVED'}</div>
-          <div className={`amt noc-balance-lg noc-numeral${sent ? '' : ' app-amt-in'}`}>
-            {sent ? MINUS : '+'}
-            {item.amount === null ? '—' : showAmount(token, item.amount)} {token}
+    <>
+      <div className="screen s-txd">
+        {top}
+        <div className="scroll">
+          <div className="amount-card">
+            <div className="eyebrow noc-overline">{sent ? 'SENT' : 'RECEIVED'}</div>
+            <div className={`amt noc-balance-lg noc-numeral${sent ? '' : ' app-amt-in'}`}>
+              {sent ? MINUS : '+'}
+              {item.amount === null ? '—' : showAmount(token, item.amount)} {token}
+            </div>
+            {fiat === null ? null : <div className="fiat noc-body noc-numeral">≈ {showUsd(fiat)} now</div>}
+            {/* 27c carries the age ("Confirmed · 8h ago"); 27a does not. */}
+            <StatusPill text={!sent && item.blockTime !== null ? `Confirmed · ${ago(item.blockTime * 1000, now)}` : 'Confirmed'} />
           </div>
-          {fiat === null ? null : <div className="fiat noc-body noc-numeral">≈ {showUsd(fiat)} now</div>}
-          {/* 27c carries the age ("Confirmed · 8h ago"); 27a does not. */}
-          <StatusPill text={!sent && item.blockTime !== null ? `Confirmed · ${ago(item.blockTime * 1000, now)}` : 'Confirmed'} />
-        </div>
-        <div className="detail-card">
-          <Row label="Type">
-            <span className="noc-body">{token === 'SOL' ? 'Transfer' : `${token} transfer`}</span>
-          </Row>
-          {sent ? (
-            <>
-              <Row label="From">
-                <span className="noc-body-sm">{ownerAccount?.name}</span>
-                <Address address={owner} label="Copy sender" />
-              </Row>
-              <Row label="To">
-                {toLabel === null ? null : <span className="noc-body-sm">{toLabel}</span>}
-                {item.counterparty === null ? <span className="noc-body">—</span> : <Address address={item.counterparty} label="Copy recipient" />}
-              </Row>
-            </>
-          ) : (
-            <>
-              <Row label="From">{item.counterparty === null ? <span className="noc-body">—</span> : <Address address={item.counterparty} label="Copy sender" />}</Row>
-              <Row label="To">
-                <span className="noc-body-sm noc-accent">Your wallet</span>
-                <Address address={owner} label="Copy recipient" />
-              </Row>
-            </>
-          )}
-          <Row label="Hash">{hash}</Row>
-          <Row label="Network fee">
-            <span className="noc-body noc-numeral">{sent ? `${fee} · ${feeFiat}` : 'Paid by sender'}</span>
-          </Row>
-          <Row label="Date">
-            <span className="noc-body">{date}</span>
-          </Row>
-        </div>
-        <div className="actions-row">
-          <ExplorerLink signature={item.signature} />
+          <div className="detail-card">
+            <Row label="Type">
+              <span className="noc-body">{token === 'SOL' ? 'Transfer' : `${token} transfer`}</span>
+            </Row>
+            {sent ? (
+              <>
+                <Row label="From">
+                  <span className="noc-body-sm">{ownerAccount?.name}</span>
+                  <Address address={owner} label="Copy sender" />
+                </Row>
+                <Row label="To">
+                  {toLabel === null ? null : <span className="noc-body-sm">{toLabel}</span>}
+                  {item.counterparty === null ? <span className="noc-body">—</span> : <Address address={item.counterparty} label="Copy recipient" />}
+                </Row>
+              </>
+            ) : (
+              <>
+                <Row label="From">
+                  {toLabel === null ? null : <span className="noc-body-sm">{toLabel}</span>}
+                  {item.counterparty === null ? <span className="noc-body">—</span> : <Address address={item.counterparty} label="Copy sender" />}
+                </Row>
+                <Row label="To">
+                  <span className="noc-body-sm noc-accent">Your wallet</span>
+                  <Address address={owner} label="Copy recipient" />
+                </Row>
+              </>
+            )}
+            <Row label="Hash">{hash}</Row>
+            <Row label="Network fee">
+              <span className="noc-body noc-numeral">{sent ? `${fee} · ${feeFiat}` : 'Paid by sender'}</span>
+            </Row>
+            <Row label="Date">
+              <span className="noc-body">{date}</span>
+            </Row>
+          </div>
+          <div className="actions-row">
+            <ExplorerLink signature={item.signature} />
+            {book === null || bookStale || counterparty === null ? null : (
+              <LockedButton className="btn btn-secondary" onPress={open}>
+                <ExtIcon name="bookmark" size={16} />
+                {sent ? 'Save' : 'Save sender'}
+              </LockedButton>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+      {/* Beside `.s-txd`, not inside (as #43 beside #12). */}
+      {sheet === null ? null : (
+        <ContactSheet
+          mode={sheet}
+          received={sent ? undefined : {token: item.token, amount: item.amount}}
+          onClose={() => {
+            // Every close re-reads the book (Task 7 fix round 1, I1): Save comes back from a fresh read, never a stale one.
+            setSheet(null);
+            setBookStale(true);
+            void readBook();
+          }}
+          onSaved={() => {
+            setSheet(null);
+            setBookStale(true);
+            void readBook();
+          }}
+        />
+      )}
+    </>
   );
 }

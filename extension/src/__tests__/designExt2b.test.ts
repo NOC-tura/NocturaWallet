@@ -14,7 +14,14 @@ describe('design-ext.css (B1b-2b plan 1)', () => {
     expect(CSS).not.toContain('.s7-ring');
   });
 
+  // Plan 2 re-ran the extraction with `.s-abook` (#15, ix:1412-1490) added, and re-pins the hash here (plan 1 Scope §2).
+  it('carries #15’s address-book classes (plan 2)', () => {
+    for (const sel of ['.s-abook .search input', '.s-abook .row .ava.violet', '.s-abook .row .ava.blue', '.s-abook .row mark', '.s-abook .empty .ic']) {
+      expect(CSS).toContain(`${sel} `);
+    }
+  });
+
   it('is the extraction output, byte for byte (the hash the plan pins)', () => {
-    expect(createHash('sha256').update(CSS).digest('hex')).toBe('541733335b0e35945521c490435e6910c1a8e23663954f04a0fc4c7dbec1bd6f');
+    expect(createHash('sha256').update(CSS).digest('hex')).toBe('3092abb5608035c82f58c9097cdd23bc8b49f8d77f12c1622d8a304414caa4d7');
   });
 });

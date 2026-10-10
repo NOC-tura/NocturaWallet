@@ -50,6 +50,25 @@ describe('the B1b-2b client calls against the real background', () => {
   });
 });
 
+describe('the B1b-2b plan 2 client calls (E17) against the real background', () => {
+  it('contacts, contactSet, contactRemove: typed replies and refusals; recipientInfo carries the contact label', async () => {
+    const {engine} = await wired();
+    expect(await engine.contacts()).toEqual({ok: true, data: {contacts: [], max: 200}});
+    expect(await engine.contactSet(RECIPIENT, 'Marko')).toEqual({ok: true, data: {created: true}});
+    expect(await engine.contactSet(RECIPIENT, 'Marko · Mom')).toEqual({ok: true, data: {created: false}});
+    expect(await engine.contacts()).toEqual({ok: true, data: {contacts: [{address: RECIPIENT, name: 'Marko · Mom', lastSentAt: null, known: false}], max: 200}});
+    expect(await engine.recipientInfo(ACCOUNT.publicKey, RECIPIENT)).toEqual({ok: true, data: {known: false, lastSentAt: null, label: {kind: 'contact', name: 'Marko · Mom'}, self: false}});
+    expect(await engine.contactSet('nope', 'X')).toEqual({ok: false, error: 'malformed'});
+    expect(await engine.contactSet(ACCOUNT.publicKey, 'marko · MOM')).toEqual({ok: false, error: 'duplicate-name'});
+    expect(await engine.contactRemove(RECIPIENT)).toEqual({ok: true, data: null});
+    expect(await engine.contacts()).toEqual({ok: true, data: {contacts: [], max: 200}});
+    const locked = await wired({}, false);
+    expect(await locked.engine.contacts()).toEqual({ok: false, error: 'locked'});
+    expect(await locked.engine.contactSet(RECIPIENT, 'X')).toEqual({ok: false, error: 'locked'});
+    expect(await locked.engine.contactRemove(RECIPIENT)).toEqual({ok: false, error: 'locked'});
+  });
+});
+
 describe('the message client against the real background', () => {
   it('state, settings, ping, lock', async () => {
     const {engine} = await wired();
@@ -158,6 +177,42 @@ describe('shape checks: a reply of the wrong shape is failed', () => {
     expect(await engineAnswering({ok: true, data: settings}).settings()).toEqual({ok: true, data: settings});
     for (const bad of [{accountOrder: [1, -1]}, {accountOrder: 'x'}, {phraseVerifiedAt: -1}, {passwordChangedAt: '1'}, {phraseVerifiedAt: undefined}]) {
       expect(await engineAnswering({ok: true, data: {...settings, ...bad}}).settings()).toEqual({ok: false, error: 'failed'});
+    }
+  });
+
+  // B1b-2b E17, rev 3 review L3: `known` must be a boolean when present, and a MISSING `known` reads as false — the
+  // warning shows — never as true.
+  it('contacts: a missing known is false; any other non-boolean, a bad address, a bad lastSentAt, an empty name or no max is failed', async () => {
+    const row = {address: acc, name: 'Marko', lastSentAt: null, known: true};
+    expect(await engineAnswering({ok: true, data: {contacts: [row], max: 200}}).contacts()).toEqual({ok: true, data: {contacts: [row], max: 200}});
+    const {known: _k, ...noKnown} = row;
+    expect(await engineAnswering({ok: true, data: {contacts: [noKnown], max: 200}}).contacts()).toEqual({ok: true, data: {contacts: [{...row, known: false}], max: 200}});
+    for (const bad of [{known: 'yes'}, {known: 1}, {known: null}, {address: '0OIl'}, {name: 7}, {name: ''}, {lastSentAt: -1}, {lastSentAt: '5'}]) {
+      expect(await engineAnswering({ok: true, data: {contacts: [{...row, ...bad}], max: 200}}).contacts()).toEqual({ok: false, error: 'failed'});
+    }
+    expect(await engineAnswering({ok: true, data: {contacts: [row]}}).contacts()).toEqual({ok: false, error: 'failed'});
+    // Fix round 1, M5: max must be a non-negative integer, not merely present.
+    for (const max of [-1, 1.5, '200', Number.NaN, undefined]) {
+      expect(await engineAnswering({ok: true, data: {contacts: [row], max}}).contacts()).toEqual({ok: false, error: 'failed'});
+    }
+    expect(await engineAnswering({ok: true, data: {created: 'yes'}}).contactSet(acc, 'x')).toEqual({ok: false, error: 'failed'});
+    expect(await engineAnswering({ok: false, error: 'exploded'}).contactSet(acc, 'x')).toEqual({ok: false, error: 'failed'});
+  });
+
+  // Fix round 1, M5: contactRemove's reply carries no data (`nothing`) — any data at all, not only the wrong shape
+  // of it, is failed; a reply cannot smuggle a payload through a call whose success means nothing but "removed".
+  it('contactRemove: a reply carrying any data is failed, not just a reply of the wrong shape', async () => {
+    expect(await engineAnswering({ok: true, data: undefined}).contactRemove(acc)).toEqual({ok: true, data: null});
+    for (const data of [null, {}, {removed: true}, [], 0, '']) {
+      expect(await engineAnswering({ok: true, data}).contactRemove(acc)).toEqual({ok: false, error: 'failed'});
+    }
+  });
+
+  it('recipientInfo: a contact label needs a non-empty string name; an unknown label kind is failed', async () => {
+    const base = {known: false, lastSentAt: null, self: false};
+    expect(await engineAnswering({ok: true, data: {...base, label: {kind: 'contact', name: 'M'}}}).recipientInfo(acc, acc)).toEqual({ok: true, data: {...base, label: {kind: 'contact', name: 'M'}}});
+    for (const label of [{kind: 'contact'}, {kind: 'contact', name: 3}, {kind: 'contact', name: ''}, {kind: 'friend', name: 'M'}]) {
+      expect(await engineAnswering({ok: true, data: {...base, label}}).recipientInfo(acc, acc)).toEqual({ok: false, error: 'failed'});
     }
   });
 

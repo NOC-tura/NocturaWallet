@@ -3,7 +3,7 @@ import {handleWallet} from '../walletApi';
 import {handleMessage} from '../messages';
 import {VAULT_KEY} from '../accountsStore';
 import {PREPARED_KEY, REAUTH_KEY, setSession} from '../session';
-import {discardPrepared, preparedFor, prepareSend} from '../prepare';
+import {discardPrepared, isAddress, preparedFor, prepareSend} from '../prepare';
 import {challengeInfo, issueChallenge} from '../reauthChallenges';
 import {MAINNET_FEE_TREASURY} from '../../../../core/fees/transferMarkup';
 import {fakeDeps} from './fakeDeps';
@@ -56,6 +56,34 @@ describe('wallet.recipientInfo (E6)', () => {
 
   it('an unknown address: not known, no label', async () => {
     expect((await ask(await setup(), RECIPIENT)).data).toEqual({known: false, lastSentAt: null, label: null, self: false});
+  });
+
+  // B1b-2b E17: a saved contact adds a label — own > treasury > contact — and never touches `known` (D19).
+  it('a contact labels an address {kind: contact, name}; known stays false', async () => {
+    const ext = await setup();
+    await handleWallet(ext, fakeDeps(), 'contacts.set', {address: RECIPIENT, name: 'Marko · Mom'});
+    expect((await ask(ext, RECIPIENT)).data).toEqual({known: false, lastSentAt: null, label: {kind: 'contact', name: 'Marko · Mom'}, self: false});
+  });
+
+  it('precedence own > treasury > contact: a contact saved for an own account or the treasury never replaces their label', async () => {
+    const ext = await setup();
+    await handleWallet(ext, fakeDeps(), 'contacts.set', {address: OTHER, name: 'Not my savings'});
+    await handleWallet(ext, fakeDeps(), 'contacts.set', {address: MAINNET_FEE_TREASURY, name: 'Not the treasury'});
+    expect((await ask(ext, OTHER)).data).toMatchObject({label: {kind: 'own', index: 1, name: 'Savings'}});
+    expect((await ask(ext, MAINNET_FEE_TREASURY)).data).toMatchObject({known: false, label: {kind: 'treasury'}});
+  });
+
+  // Fix round 1, I1: the contact label matches the saved address exactly — never a look-alike sharing its first four and
+  // last four characters, never a case variant (base58 is case-sensitive: another case is another key).
+  it('the contact label is an exact match: an unsaved look-alike or case variant of a saved address has no label', async () => {
+    const LOOKALIKE: string = '9Y7FtteLhCKABAQtkYEFZs46rJgy1ixMA1JFMUepTki4';
+    const CASE_VARIANT: string = '9Y7FtteLhCjABAQtkYEFZs46rJgy1ixMA1JFMUepTki4';
+    for (const a of [LOOKALIKE, CASE_VARIANT]) expect([a.slice(0, 4), a.slice(-4), a === RECIPIENT, isAddress(a)]).toEqual([RECIPIENT.slice(0, 4), RECIPIENT.slice(-4), false, true]);
+    expect(CASE_VARIANT.toLowerCase()).toBe(RECIPIENT.toLowerCase());
+    const ext = await setup();
+    await handleWallet(ext, fakeDeps(), 'contacts.set', {address: RECIPIENT, name: 'Marko'});
+    expect((await ask(ext, RECIPIENT)).data).toMatchObject({label: {kind: 'contact', name: 'Marko'}});
+    for (const a of [LOOKALIKE, CASE_VARIANT]) expect([a, (await ask(ext, a)).data]).toEqual([a, {known: false, lastSentAt: null, label: null, self: false}]);
   });
 
   it('refused while locked, and for a malformed address', async () => {

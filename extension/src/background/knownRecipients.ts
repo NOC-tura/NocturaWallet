@@ -41,20 +41,40 @@ export async function knownRecipients(ext: Ext): Promise<Set<string>> {
   return new Set((await load(ext)).map(e => e.address));
 }
 
-/** When a send to this address last confirmed; null when never, or when only the B1b-1 format knows it. */
-export async function lastSentAt(ext: Ext, address: string): Promise<number | null> {
-  let at: number | null = null;
-  for (const e of await load(ext)) if (e.address === address) at = e.at;
-  return at;
+/** What E6 says about any recipient, from ONE read of the list: the rule for "known" and the last send's time. */
+export interface RecipientFacts {
+  known(recipient: string): boolean;
+  lastSentAt(recipient: string): number | null;
 }
 
 /**
- * The one rule for "known" (E6): one of the session's accounts, or an address a send has confirmed
- * to. prepareSend's `first-send` reason and wallet.recipientInfo both call this, so #12's hint and
- * #19/#20's reason cannot disagree.
+ * The one rule for "known" (E6): one of the session's accounts, or an address a send has confirmed to — nothing else
+ * (B1b-2b D19: a saved contact is never known; this module reads no contact). isKnownRecipient and lastSentAt are
+ * defined on it, and contacts.list (E17) asks it once for up to 200 contacts, so #15's never-sent warning, #12's hint
+ * and #19/#20's `first-send` reason cannot disagree.
+ */
+export async function recipientFacts(ext: Ext, session: readonly {publicKey: string}[]): Promise<RecipientFacts> {
+  const list = await load(ext);
+  const sent = new Set(list.map(e => e.address));
+  const last = new Map<string, number | null>();
+  for (const e of list) last.set(e.address, e.at);
+  return {
+    known: recipient => session.some(a => a.publicKey === recipient) || sent.has(recipient),
+    lastSentAt: recipient => last.get(recipient) ?? null,
+  };
+}
+
+/** When a send to this address last confirmed; null when never, or when only the B1b-1 format knows it. */
+export async function lastSentAt(ext: Ext, address: string): Promise<number | null> {
+  return (await recipientFacts(ext, [])).lastSentAt(address);
+}
+
+/**
+ * prepareSend's `first-send` reason and wallet.recipientInfo both call this, so #12's hint and #19/#20's reason cannot
+ * disagree. The rule is recipientFacts'.
  */
 export async function isKnownRecipient(ext: Ext, session: readonly {publicKey: string}[], recipient: string): Promise<boolean> {
-  return session.some(a => a.publicKey === recipient) || (await knownRecipients(ext)).has(recipient);
+  return (await recipientFacts(ext, session)).known(recipient);
 }
 
 export async function addKnownRecipient(ext: Ext, address: string, at: number): Promise<void> {

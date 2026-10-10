@@ -93,8 +93,9 @@ test('visual: the plan-1 screens and states at 412 × 600', async () => {
     }
 
     await p.getByRole('button', {name: 'Settings'}).click();
-    // B1b-2b plan 1 (#31 in full): the rows of every group; visual-settings.spec.ts shoots its states.
-    await expect(p.locator('.s7-row .s7-title')).toHaveText(['Profile', 'Security center', 'Passkey', 'Change password', 'Recovery phrase', 'Lock now', 'Delete wallet', 'About Noctura']);
+    // B1b-2b plan 1 (#31 in full) and plan 2 (Connections › Address book): the rows of every group; visual-settings.spec.ts
+    // and visual-contacts.spec.ts shoot their states.
+    await expect(p.locator('.s7-row .s7-title')).toHaveText(['Profile', 'Security center', 'Passkey', 'Change password', 'Recovery phrase', 'Lock now', 'Address book', 'Delete wallet', 'About Noctura']);
     await shot(p, '31-settings-minimal');
     await p.getByText('About Noctura').click();
     await expect(p.getByText('Solana wallet for your browser — your keys stay on this device.')).toBeVisible();
