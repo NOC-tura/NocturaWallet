@@ -1,4 +1,5 @@
 import type {Contact, Token} from './engine';
+import {MAX_NAME_LENGTH} from '../shared/envelopeRules';
 
 /**
  * The address book's display rules (B1b-2b §6): pure functions, no engine. What decides anything — a contact's
@@ -66,6 +67,26 @@ export const initialOf = (name: string): string => (Array.from(name)[0] ?? '').t
 const ADDRESS_SHAPED = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 /**
+ * #15's one "is this an address" test (final code review L2): the search, the results line and "Add new contact" all
+ * use it. Alphabet and length only, deliberately not the 32-byte decode — a near-miss (a truncated or mistyped paste)
+ * must still get the exact-equality search, never fall back to a substring match that would show the trusted contact.
+ */
+export const isAddressShaped = (text: string): boolean => ADDRESS_SHAPED.test(text);
+
+/**
+ * A search query as a pre-filled name (final code review L2): its first MAX_NAME_LENGTH UTF-16 units — the unit
+ * cleanName counts in — without splitting a code point (an emoji straddling the limit is dropped, not halved).
+ */
+export function clampName(text: string): string {
+  let out = '';
+  for (const ch of text) {
+    if (out.length + ch.length > MAX_NAME_LENGTH) break;
+    out += ch;
+  }
+  return out;
+}
+
+/**
  * #15's search: by name, case-insensitive substring — or, when the trimmed query is itself address-shaped, by
  * **exact, case-sensitive equality against the address only** (Task 3 fix round 1, M4, controller ruling; spec
  * §6.1). No substring and no case-folding for a full address: address poisoning is this plan's threat model, and a
@@ -75,7 +96,7 @@ const ADDRESS_SHAPED = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 export function searchContacts(contacts: readonly Contact[], query: string): Contact[] {
   const trimmed = query.trim();
   if (trimmed === '') return [...contacts];
-  if (ADDRESS_SHAPED.test(trimmed)) return contacts.filter(c => c.address === trimmed);
+  if (isAddressShaped(trimmed)) return contacts.filter(c => c.address === trimmed);
   const q = trimmed.toLowerCase();
   return contacts.filter(c => c.name.toLowerCase().includes(q) || c.address.toLowerCase().includes(q));
 }

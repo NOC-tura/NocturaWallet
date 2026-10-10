@@ -677,6 +677,35 @@ describe('the contact sheet: no close while a save or delete is out (Task 7 fix 
     expect(onDeleted).toHaveBeenCalledWith(SENDER);
   });
 
+  // Final code review L1: while a save is out, "Delete contact" is disabled — and a press that reaches it anyway opens no
+  // confirm and sends nothing: one write per sheet at a time, and the sheet never closes with one still out.
+  it('save out: "Delete contact" is disabled, a forced press opens no confirm and sends no remove; the saved name stays', async () => {
+    const onSaved = vi.fn();
+    const sent: string[] = [];
+    const h = hold('contacts.set');
+    const w = await renderInWallet(sheet({mode: {kind: 'edit', address: SENDER, name: 'Supplier'}, onSaved}), {
+      before: ext => ext.local.set(CONTACTS_KEY, [{address: SENDER, name: 'Supplier'}]),
+      gate: m => {
+        sent.push((m as {type: string}).type);
+        return h.gate(m);
+      },
+    });
+    fireEvent.change(nameField(), {target: {value: 'Supplier GmbH'}});
+    fireEvent.click(save());
+    const del = screen.getByRole('button', {name: 'Delete contact'}) as HTMLButtonElement;
+    expect(del.disabled).toBe(true);
+    del.disabled = false;
+    fireEvent.click(del);
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    expect(screen.queryByText(CONTACT_TEXT.deleteQuestion)).toBeNull();
+    expect(sent).not.toContain('contacts.remove');
+    h.release();
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({address: SENDER, name: 'Supplier GmbH'}, 'edit'));
+    await act(async () => new Promise(r => setTimeout(r, 20)));
+    expect(sent).not.toContain('contacts.remove');
+    expect(await w.ext.local.get(CONTACTS_KEY)).toEqual([{address: SENDER, name: 'Supplier GmbH'}]);
+  });
+
   // Task 10 fix round 0b (C1): the focus stays in the sheet while a request disables the focused control.
   it('save out with the focus on Cancel: the dialog holds the focus; a failed answer gives it back to Cancel', async () => {
     let fail: () => void = () => undefined;

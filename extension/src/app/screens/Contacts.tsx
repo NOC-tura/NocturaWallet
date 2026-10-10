@@ -2,8 +2,7 @@ import {useCallback, useEffect, useRef, useState, type ReactNode} from 'react';
 import {useWallet} from '../WalletContext';
 import {useNow} from '../useNow';
 import {shortAddress} from '../format';
-import {avatarOf, initialOf, markParts, resultsLine, searchContacts, whenText} from '../addressBook';
-import {isAddressText} from '../send/rules';
+import {avatarOf, clampName, initialOf, isAddressShaped, markParts, resultsLine, searchContacts, whenText} from '../addressBook';
 import {AddressGroups} from '../../../../web/src/ui/AddressGroups';
 import {ExtIcon} from '../ui/ExtIcon';
 import {LockedButton} from '../ui/LockedButton';
@@ -130,7 +129,9 @@ export function Contacts({pick, onBack, onPick}: {pick: boolean; onBack: () => v
   const q = query.trim();
   const shown = searchContacts(list.contacts, q);
   // Review L1: a query that is an address seeds the address field (the name stays empty); any other query is the name.
-  const addNew = () => setSheet(isAddressText(q) ? {kind: 'add', address: null, typed: q} : {kind: 'add', address: null, name: q});
+  // Final code review L2: "an address" is the search's own test (an address-shaped near-miss lands in the address
+  // field, where it reads invalid), and the name is cut to what a name may be (C19).
+  const addNew = () => setSheet(isAddressShaped(q) ? {kind: 'add', address: null, typed: q} : {kind: 'add', address: null, name: clampName(q)});
   /** Final review I1: a query that IS a saved address (exactly) is that contact, shown as its row — never offered as an add. */
   const saved = list.contacts.some(c => c.address === q);
   /**
@@ -204,7 +205,7 @@ export function Contacts({pick, onBack, onPick}: {pick: boolean; onBack: () => v
     body = (
       <div className="scroll app-abook-list">
         {full ? <p className="noc-caption app-warning app-abook-full">{CONTACTS_TEXT.full}</p> : null}
-        {q === '' ? null : shown.length > 0 ? <div className={`noc-overline app-abook-count${isAddressText(q) ? ' app-abook-count-addr' : ''}`}>{resultsLine(shown.length, q)}</div> : null}
+        {q === '' ? null : shown.length > 0 ? <div className={`noc-overline app-abook-count${isAddressShaped(q) ? ' app-abook-count-addr' : ''}`}>{resultsLine(shown.length, q)}</div> : null}
         {shown.map(row)}
         {q === '' ? null : (
           <div className="app-abook-foot">

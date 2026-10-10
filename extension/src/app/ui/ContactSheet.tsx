@@ -182,7 +182,9 @@ export function ContactSheet({
     if (!inFlight.current) onClose();
   };
 
+  // Final code review L1: one write per sheet at a time — a press that reaches Save or Delete while the other is out does nothing.
   const save = async () => {
+    if (inFlight.current) return;
     setError(null);
     if (!valid) return setError({field: 'address', text: CONTACT_TEXT.badAddress});
     if (cleanName(name) === null) return setError({field: 'name', text: CONTACT_TEXT.badName});
@@ -213,7 +215,7 @@ export function ContactSheet({
   };
 
   const remove = async () => {
-    if (mode.kind !== 'edit') return;
+    if (mode.kind !== 'edit' || inFlight.current) return;
     setError(null);
     inFlight.current = true;
     setPending(true);
@@ -268,7 +270,7 @@ export function ContactSheet({
             <button type="button" className="btn btn-secondary" ref={keepRef} disabled={pending} onClick={keep}>
               {CONTACT_TEXT.keep}
             </button>
-            <LockedButton className="btn btn-destructive" onPress={remove}>
+            <LockedButton className="btn btn-destructive" disabled={pending} onPress={remove}>
               {CONTACT_TEXT.delete}
             </LockedButton>
           </div>
@@ -366,7 +368,7 @@ export function ContactSheet({
         </div>
         {mode.kind === 'edit' ? (
           <div className="app-contact-delete" ref={deleteRef}>
-            <LockedButton className="btn btn-tertiary noc-danger" onPress={() => setConfirming(true)}>
+            <LockedButton className="btn btn-tertiary noc-danger" disabled={pending} onPress={() => setConfirming(true)}>
               {CONTACT_TEXT.deleteContact}
             </LockedButton>
           </div>

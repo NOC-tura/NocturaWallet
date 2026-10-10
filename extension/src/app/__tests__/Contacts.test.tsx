@@ -121,6 +121,37 @@ describe('#15 address book — standalone', () => {
     expect((dialog.querySelector('#contact-name') as HTMLInputElement).value).toBe('');
   });
 
+  // Final code review L2: #15 has one "is this an address" test (the search's: alphabet + length). An address-shaped
+  // query that is not a 32-byte key seeds the address field — where it reads invalid — never the name field.
+  it('"Add new contact" for an address-shaped query that is not a key: the address field holds it, the name is empty', async () => {
+    const notAKey = 'z'.repeat(44); // base58, 44 characters, 33 bytes once decoded
+    await show();
+    await waitFor(() => expect(rows()).toHaveLength(3));
+    fireEvent.change(screen.getByRole('textbox', {name: 'Search contacts'}), {target: {value: notAKey}});
+    fireEvent.click(screen.getByRole('button', {name: `Add new contact "${notAKey}" →`}));
+    const dialog = await screen.findByRole('dialog', {name: 'Add contact'});
+    expect((dialog.querySelector('#contact-address') as HTMLInputElement).value).toBe(notAKey);
+    expect((dialog.querySelector('#contact-name') as HTMLInputElement).value).toBe('');
+  });
+
+  // Final code review L2: a name query longer than a name may be is cut to 32 (C19) — never a whole code point split.
+  it('"Add new contact" for a long name query: the name is pre-filled to its first 32 characters', async () => {
+    await show();
+    await waitFor(() => expect(rows()).toHaveLength(3));
+    const long = 'The supplier we pay for paper each month';
+    fireEvent.change(screen.getByRole('textbox', {name: 'Search contacts'}), {target: {value: long}});
+    fireEvent.click(screen.getByRole('button', {name: `Add new contact "${long}" →`}));
+    expect(((await screen.findByRole('dialog', {name: 'Add contact'})).querySelector('#contact-name') as HTMLInputElement).value).toBe(long.slice(0, 32));
+    fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const astral = `${'x'.repeat(31)}\u{1F600} more`; // the emoji's two code units straddle the 32nd
+    fireEvent.change(screen.getByRole('textbox', {name: 'Search contacts'}), {target: {value: astral}});
+    const again = screen.getByRole('button', {name: `Add new contact "${astral}" →`}) as HTMLButtonElement;
+    await waitFor(() => expect(again.disabled).toBe(false)); // rule 6: the first press's 500 ms lock
+    fireEvent.click(again);
+    expect(((await screen.findByRole('dialog', {name: 'Add contact'})).querySelector('#contact-name') as HTMLInputElement).value).toBe('x'.repeat(31));
+  });
+
   it('D21: a row tap opens the edit sheet; a rename shows in the list; a delete removes the row', async () => {
     await show();
     await waitFor(() => expect(rows()).toHaveLength(3));
