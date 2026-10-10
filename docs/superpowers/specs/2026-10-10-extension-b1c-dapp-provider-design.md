@@ -124,8 +124,8 @@ A third partition beside the existing privileged ones (`messages.ts`):
 
 **Events** (background → port → relay → provider): `change {accounts}` only.
 
-**Privileged types** (only from `approve.html`, i.e. `sender.origin` = the extension and `sender.url` path
-`/approve.html`): `dapp.pending` → the request the window shows (§2.3), `dapp.decide {requestId, decision, …}`.
+**Privileged types** (only from `approve.html`: `sender.origin` = the extension's origin and the path of
+`sender.url` = `/approve.html` — for an extension's own page the browser sets both, unlike a web page's claim): `dapp.pending` → the request the window shows (§2.3), `dapp.decide {requestId, decision, …}`.
 **Privileged types from the popup/tab:** `dapp.grants.list`, `dapp.grants.revoke {origin}`, `dapp.grants.revokeAll`,
 `dapp.grants.restore {grant}` (the undo, §4.4), `dapp.blocked.list`, `dapp.blocked.remove {origin}`.
 
@@ -199,9 +199,9 @@ an open port gets `change {accounts: []}`. On unlock, open ports of origins with
   `next=approve` exit of the vault page's unlock mode).
 - The window reads its request with `dapp.pending` and answers with `dapp.decide`. `windows.onRemoved` for that id
   rejects the shown request (C4). Expiry is checked by an alarm every 30 s and on every queue access.
-- A tab that closes or navigates away (port disconnect + `tabs.onRemoved` is not needed: the request's
-  `sender.tab.id` is recorded and `webNavigation` is not used) — **ruling:** a request stays valid until answered or
-  expired even if its tab has gone; its answer then goes nowhere. Stated, not fixed: no new permission is spent on it.
+- **A tab that closes or navigates away** does not cancel its request: it stays valid until answered or expired, and
+  its answer then goes nowhere. Detecting it would need `webNavigation` or tab events, which this spec does not spend a
+  permission on — an accepted limit (§7). The window shows the origin, so the user sees whose request it is.
 - The window shows "1 more request waiting" (Q12) when the queue holds more.
 
 ### 2.4 Known domains and lookalikes (D2)
@@ -242,8 +242,7 @@ an open port gets `change {accounts: []}`. On unlock, open ports of origins with
    - d. digit/letter swaps `0→o`, `1→l`, `rn→m`, `vv→w` applied to `h`'s second-level label give a listed label.
 3. **Unknown:** everything else.
 
-Labels shorter than 4 characters are excluded from rule b (`orca` → `orc`? stays; `jup` is 3 → rule b off for it;
-rules c and d still apply). The whole classifier is a pure function with a table test (§8.1).
+Rule b applies only to listed labels of 4 or more characters (so not to `jup`; rules a, c and d still cover it). The whole classifier is a pure function with a table test (§8.1).
 
 ### 2.5 Blocked origins (D3)
 
@@ -432,13 +431,13 @@ Each item has a **named mutation** that must turn a test red, and a positive con
   lock rejects all, a blocked origin answered `rejected` with no queue entry.
 - **Classifier** (§2.4): a table — verified (`app.noc-tura.io`, `www.jup.ag`), lookalike by each rule a–d
   (`xn--phntom-ezv.app`, `jupp.ag`, `orca.io`, `jup.ag.evil.com`, `jup-ag.io`, `n0c-tura.io`, `rnagiceden.io`),
-  unknown (`example.com`, `solana-mint-hub.xyz`), and near-misses that must stay unknown (`ajup.agency.com`? — the
-  plan fixes the exact list); the punycode decoder against RFC 3492's sample strings.
+  unknown (`example.com`, `solana-mint-hub.xyz`), and near-misses that must stay unknown (`jupiter.com` — no listed
+  label within distance 1, `orchard.so`, `notcoin.io`); the punycode decoder against RFC 3492's sample strings.
 - **signMessage:** refused — a legacy transaction's bytes, a versioned transaction, a versioned message, **a UTF-8-valid
   legacy message that deserializes**, invalid UTF-8, a control char, each bidi char, the off-chain prefix, 4 KiB + 1,
   a SIWS header for another domain; accepted — a canonical SIWS message for the request's domain, a plain sentence
-  (positive controls); the keyword alert fires on "approve" and not on "approved-by"? (whole word: "approved" does not
-  fire — stated) ; the signature verifies with `ed25519.verify` against the granted key.
+  (positive controls); the keyword alert fires on "approve" and "Permit", and not on "approved" or "transference" (whole words
+  only — stated); the signature verifies with `ed25519.verify` against the granted key.
 - **#47 / #46 / #49 components:** every state of §3–§4 with its copy (verbatim strings), the graduated unlock (Connect
   `.btn-secondary` until each ack), "Until I revoke" disabled for unknown, lookalike CTA order, undo restores exactly,
   hold-to-disconnect, rule 6 on every CTA.
