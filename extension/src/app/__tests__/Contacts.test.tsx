@@ -136,14 +136,18 @@ describe('#15 address book — standalone', () => {
     await waitFor(() => expect(rows()).toHaveLength(2));
   });
 
+  // Final-fix follow-up (load flake): a page-wide getByRole('button', {name}) computed the accessible name of all 200
+  // row buttons (~240 ms of the test's ~420 ms alone; ×12 under a loaded parallel run it passed vitest's 5 s). The `+`
+  // is looked up in the top bar it lives in; the 200 rows stay (the cap is the point), so the timeout matches that work.
   it('full (200): the +, and "Add new contact", disabled; O73', async () => {
     await show({}, {before: ext => ext.local.set(CONTACTS_KEY, Array.from({length: 200}, (_, i) => ({address: addr(i), name: `C${i}`})))});
     expect(await screen.findByText('The address book is full (200 contacts).')).toBeTruthy();
-    expect((screen.getByRole('button', {name: 'Add contact'}) as HTMLButtonElement).disabled).toBe(true);
+    expect(rows()).toHaveLength(200);
+    expect((within(document.querySelector<HTMLElement>('.s-abook .top-bar')!).getByRole('button', {name: 'Add contact'}) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByRole('textbox', {name: 'Search contacts'}), {target: {value: 'C19'}});
     expect((screen.getByRole('button', {name: 'Add new contact "C19" →'}) as HTMLButtonElement).disabled).toBe(true);
     expect(unstyledClasses(document.querySelector('.s-abook')!, SELECTORS)).toEqual([]);
-  });
+  }, 20_000);
 
   it('load failed: O74 and Try again, which reads again', async () => {
     let fail = true;
