@@ -1,5 +1,6 @@
 import type {Contact, Token} from './engine';
 import {MAX_NAME_LENGTH} from '../shared/envelopeRules';
+import {BASE58_ADDRESS} from './send/rules';
 
 /**
  * The address book's display rules (B1b-2b §6): pure functions, no engine. What decides anything — a contact's
@@ -63,15 +64,13 @@ export function avatarOf(address: string): (typeof AVATARS)[number] {
 /** The name's first character, upper-cased (a whole code point: an emoji or an astral letter is not cut in half). */
 export const initialOf = (name: string): string => (Array.from(name)[0] ?? '').toUpperCase();
 
-/** The same base58 length check the engine uses for an address (not exported there): local to this module's own ruling. */
-const ADDRESS_SHAPED = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 /**
  * #15's one "is this an address" test (final code review L2): the search, the results line and "Add new contact" all
  * use it. Alphabet and length only, deliberately not the 32-byte decode — a near-miss (a truncated or mistyped paste)
  * must still get the exact-equality search, never fall back to a substring match that would show the trusted contact.
  */
-export const isAddressShaped = (text: string): boolean => ADDRESS_SHAPED.test(text);
+export const isAddressShaped = (text: string): boolean => BASE58_ADDRESS.test(text);
 
 /**
  * A search query as a pre-filled name (final code review L2): its first MAX_NAME_LENGTH UTF-16 units — the unit
@@ -103,13 +102,15 @@ export function searchContacts(contacts: readonly Contact[], query: string): Con
 
 /**
  * The name split around the first case-insensitive match of the query, for `<mark>` (ix:7483): null when the name does
- * not contain it (an address match), or when lower-casing changed the name's length (no safe index to cut at).
+ * not contain it (an address match), or when lower-casing changed the name's or the query's length (no safe index to
+ * cut at; final code review L3 for the query).
  */
 export function markParts(name: string, query: string): [string, string, string] | null {
   const q = query.trim();
   const lower = name.toLowerCase();
-  if (q === '' || lower.length !== name.length) return null;
-  const at = lower.indexOf(q.toLowerCase());
+  const ql = q.toLowerCase();
+  if (q === '' || lower.length !== name.length || ql.length !== q.length) return null;
+  const at = lower.indexOf(ql);
   if (at < 0) return null;
   return [name.slice(0, at), name.slice(at, at + q.length), name.slice(at + q.length)];
 }

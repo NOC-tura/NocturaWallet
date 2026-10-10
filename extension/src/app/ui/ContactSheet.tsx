@@ -224,7 +224,7 @@ export function ContactSheet({
     settle();
     if (r.ok) {
       onDeleted?.(mode.address);
-      return onClose();
+      return close();
     }
     if (r.error === 'locked') return void reload();
     setError({field: 'form', text: CONTACT_TEXT.failed});

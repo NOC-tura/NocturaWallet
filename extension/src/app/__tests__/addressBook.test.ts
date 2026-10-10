@@ -105,6 +105,13 @@ describe('#15 rows and search', () => {
   // Fix round 1, M2: İ (U+0130) lower-cases to two code units ("i" + combining dot above) in JS's default
   // (non-Turkish) locale, so `lower.length !== name.length` — the guard returns null rather than cutting at an
   // index that no longer lines up with the original string, even though "stan" reads as a visual substring.
+  // Final code review L3: the same guard for the QUERY — "İ" folds to "i" + U+0307 (two units), so a cut of q.length
+  // after matching the fold would mark "i" and leave the combining dot outside the <mark>.
+  it('markParts: the length guard refuses a query whose case-fold changes length (İ)', () => {
+    expect(markParts('ai\u0307b', 'İ')).toBeNull();
+    expect(markParts('ai\u0307b', 'i\u0307')).toEqual(['a', 'i\u0307', 'b']); // positive control: the folded query marks it
+  });
+
   it('markParts: the length guard refuses a name whose case-fold changes length (İstanbul)', () => {
     expect('İstanbul'.toLowerCase().length).not.toBe('İstanbul'.length);
     expect(markParts('İstanbul', 'stan')).toBeNull();
