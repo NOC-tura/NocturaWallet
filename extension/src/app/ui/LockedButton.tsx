@@ -84,7 +84,7 @@ export function LockedButton({
     });
   };
   return (
-    <button ref={self} type="button" className={`${className}${locked ? ' is-busy' : ''}`} disabled={disabled || locked} aria-label={label} aria-pressed={pressed} aria-describedby={describedBy} onClick={press}>
+    <button ref={self} type="button" className={[className, locked ? 'is-busy' : ''].filter(c => c !== '').join(' ') || undefined} disabled={disabled || locked} aria-label={label} aria-pressed={pressed} aria-describedby={describedBy} onClick={press}>
       {children}
     </button>
   );

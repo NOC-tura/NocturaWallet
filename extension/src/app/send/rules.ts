@@ -22,11 +22,12 @@ export interface Draft {
 }
 
 const TOKENS: readonly string[] = ['SOL', 'NOC', 'USDC', 'USDT'];
-const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+/** An address's shape: the base58 alphabet, 32–44 characters (#12's first test; #15's whole one, `isAddressShaped`). */
+export const BASE58_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 /** #12's recipient check (spec §4.2): the base58 alphabet, 32–44 characters, and exactly 32 bytes once decoded. */
 export function isAddressText(text: string): boolean {
-  if (!BASE58.test(text)) return false;
+  if (!BASE58_ADDRESS.test(text)) return false;
   try {
     return base58.decode(text).length === 32;
   } catch {

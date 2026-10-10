@@ -112,6 +112,20 @@ describe('LockedButton', () => {
     expect(elsewhere).toHaveBeenCalledTimes(1);
   });
 
+  // Final code review nit: an unstyled LockedButton (className="", #12's "Address book" icon) renders no class at all —
+  // never class="" — and its lock is plain "is-busy", never " is-busy".
+  it('className="": no class attribute; locked, just "is-busy"', async () => {
+    render(
+      <LockedButton className="" label="Address book" onPress={() => new Promise<void>(() => undefined)}>
+        @
+      </LockedButton>,
+    );
+    const button = screen.getByRole('button', {name: 'Address book'});
+    expect(button.hasAttribute('class')).toBe(false);
+    fireEvent.click(button);
+    expect(button.getAttribute('class')).toBe('is-busy');
+  });
+
   it('holds for LOCK_MS = 500 by default', () => {
     expect(LOCK_MS).toBe(500);
   });
