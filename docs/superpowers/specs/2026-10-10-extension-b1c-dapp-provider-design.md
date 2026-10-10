@@ -1,6 +1,6 @@
 # Noctura Extension B1c — the dApp provider (connect, sign, approve)
 
-**Status:** draft **rev 3**, 2026-10-10. The owner approved the design in conversation (sections 1–3) and took
+**Status:** **approved rev 3**, 2026-10-10 — the owner approved this spec, the strings of §10 (Q01–Q24) and the known list of §2.5. The owner approved the design in conversation (sections 1–3) and took
 decisions D1–D11. Rev 2 applied every finding of Fable 5.1 review 1 (`.superpowers/sdd/b1c-spec-review-1.md`: H1–H3,
 M1–M12, L1–L13); M1 and M2 were the owner's decisions D10 and D11. **Rev 3** applies every finding of Fable review 2
 (`.superpowers/sdd/b1c-spec-review-2.md`: H1–H2, M1–M10, L1–L13; verdict "approve after fixes"). Where each finding
