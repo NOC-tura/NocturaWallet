@@ -28,6 +28,8 @@ export const HOLD_TICK_MS = 30;
  */
 export function HoldButton({
   label,
+  heldLabel = label,
+  decimals = 1,
   holdMs,
   disabled,
   onHeld,
@@ -35,6 +37,10 @@ export function HoldButton({
   clock = realClock,
 }: {
   label: string;
+  /** B1c (#49d, ix:18902): the words before the count while held, when they differ from the rest label. */
+  heldLabel?: string;
+  /** Places of the count: #37 draws one ("0.4 s"), #49 two ("0.24 s"). */
+  decimals?: number;
   holdMs: number;
   disabled: boolean;
   onHeld: () => void;
@@ -131,8 +137,8 @@ export function HoldButton({
         <ExtIcon name="trash" size={18} />
         {/* One run beside the icon (ix:15089): the label's flex gap is for the icon, never between the words and the count. */}
         <span>
-          {left === null ? label : `${label} · `}
-          {left === null ? null : <span className="noc-numeral">{`${left.toFixed(1)} s`}</span>}
+          {left === null ? label : `${heldLabel} · `}
+          {left === null ? null : <span className="noc-numeral">{`${left.toFixed(decimals)} s`}</span>}
         </span>
       </span>
     </button>

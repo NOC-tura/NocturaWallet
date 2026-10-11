@@ -18,7 +18,7 @@ describe('the router', () => {
   });
 
   it('the pushable screens are a closed list; the hand-over screens are first routes only; the flow screens own their Esc', () => {
-    expect([...SCREENS].sort()).toEqual(['about', 'accounts', 'confirm', 'contacts', 'delete', 'passkey', 'receive', 'review', 'security', 'send', 'status', 'tab', 'tx']);
+    expect([...SCREENS].sort()).toEqual(['about', 'accounts', 'confirm', 'connected', 'contacts', 'delete', 'passkey', 'receive', 'review', 'security', 'send', 'status', 'tab', 'tx']);
     expect([...TAB_ONLY].sort()).toEqual(['created', 'imported', 'resume']);
     expect([...FLOW].sort()).toEqual(['confirm', 'resume', 'review', 'send', 'status']);
     for (const route of [{screen: 'created'}, {screen: 'imported'}, {screen: 'resume', account: ADDR}] as Route[]) expect(routeReducer(HOME, {type: 'push', route})).toBe(HOME);
@@ -29,8 +29,8 @@ describe('the router', () => {
     expect(routeReducer(HOME, {type: 'push', route: forged})).toBe(HOME);
   });
 
-  it('B1b-2b §1.4: security, accounts, passkey and delete carry exactly their name — any other key refuses the route', () => {
-    for (const screen of ['security', 'accounts', 'passkey', 'delete'] as const) {
+  it('B1b-2b §1.4 (and B1c §4.4’s connected): security, accounts, passkey, delete and connected carry exactly their name — any other key refuses the route', () => {
+    for (const screen of ['security', 'accounts', 'passkey', 'delete', 'connected'] as const) {
       expect(routeReducer(HOME, {type: 'push', route: {screen}})).toEqual([...HOME, {screen}]);
       for (const extra of [{challengeId: 'ab'.repeat(16)}, {index: 1}, {address: ADDR}]) {
         expect(routeReducer(HOME, {type: 'push', route: {screen, ...extra} as unknown as Route})).toBe(HOME);

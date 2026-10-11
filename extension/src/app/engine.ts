@@ -149,6 +149,31 @@ export interface ContactList {
   max: number;
 }
 
+/** B1c §4.4: one grant as #49 shows it (dapp.grants.list) — the name the background chose (C7), never the page's. */
+export interface DappInteraction {
+  type: 'connect' | 'signMessage' | 'signTransaction' | 'signAndSendTransaction';
+  at: number;
+  outcome: 'approved' | 'rejected';
+}
+export interface DappGrant {
+  origin: string;
+  host: string;
+  name: string;
+  /** On the known list (#49's dot, spec §9). */
+  verified: boolean;
+  account: string;
+  scope: 'session' | 'persistent';
+  connectedAt: number;
+  lastUsedAt: number;
+  recent: DappInteraction[];
+}
+export interface DappBlocked {
+  host: string;
+  blockedAt: number;
+  imitates: string | null;
+}
+export type DappUndoError = 'malformed' | 'locked' | 'unknown-token' | 'blocked' | 'granted' | 'unknown-account' | 'cap' | 'scope';
+
 type Network = 'unreachable' | 'coordinator-refused';
 type SendRefusal =
   | 'locked'
@@ -194,6 +219,14 @@ export interface Engine {
   contactSet(address: string, name: string): Promise<Reply<{created: boolean}, 'malformed' | 'duplicate-name' | 'full' | 'locked'>>;
   /** contacts.remove: ok also when the address was not saved. */
   contactRemove(address: string): Promise<Reply<null, 'malformed' | 'locked'>>;
+  /** B1c §1.4, §2.7, §4.4: #49's grants (both scopes), refused while locked. */
+  dappGrants(): Promise<Reply<DappGrant[], 'locked'>>;
+  /** Revokes at once; the background keeps the record five seconds behind the token (the popup holds only the token). */
+  dappRevoke(origin: string): Promise<Reply<{undoToken: string}, 'malformed' | 'locked' | 'unknown-origin'>>;
+  dappUndo(undoToken: string): Promise<Reply<null, DappUndoError>>;
+  dappRevokeAll(): Promise<Reply<null, 'locked'>>;
+  dappBlocked(): Promise<Reply<DappBlocked[], 'locked'>>;
+  dappUnblock(host: string): Promise<Reply<null, 'malformed' | 'locked'>>;
   lock(): Promise<Reply<null, never>>;
   ping(): Promise<Reply<null, never>>;
 }
@@ -469,6 +502,28 @@ function createdOf(x: unknown): {created: boolean} | undefined {
 
 const nothing = (x: unknown): null | undefined => (x === undefined ? null : undefined);
 
+const ORIGIN = /^https:\/\/[^\s/?#@]+$/;
+function interactionOf(x: unknown): DappInteraction | undefined {
+  const o = obj(x);
+  const type = oneOf(o?.type, ['connect', 'signMessage', 'signTransaction', 'signAndSendTransaction'] as const);
+  const outcome = oneOf(o?.outcome, ['approved', 'rejected'] as const);
+  return o !== undefined && type !== undefined && outcome !== undefined && isTime(o.at) ? {type, at: o.at, outcome} : undefined;
+}
+function dappGrantOf(x: unknown): DappGrant | undefined {
+  const o = obj(x);
+  const scope = oneOf(o?.scope, ['session', 'persistent'] as const);
+  const recent = all(o?.recent, interactionOf);
+  if (o === undefined || scope === undefined || recent === undefined) return undefined;
+  if (typeof o.origin !== 'string' || !ORIGIN.test(o.origin) || typeof o.host !== 'string' || o.host === '' || typeof o.name !== 'string' || o.name === '') return undefined;
+  if (typeof o.verified !== 'boolean' || !isAddress(o.account) || !isTime(o.connectedAt) || !isTime(o.lastUsedAt)) return undefined;
+  return {origin: o.origin, host: o.host, name: o.name, verified: o.verified, account: o.account, scope, connectedAt: o.connectedAt, lastUsedAt: o.lastUsedAt, recent};
+}
+function dappBlockedOf(x: unknown): DappBlocked | undefined {
+  const o = obj(x);
+  if (o === undefined || typeof o.host !== 'string' || o.host === '' || !isTime(o.blockedAt) || !(o.imitates === null || typeof o.imitates === 'string')) return undefined;
+  return {host: o.host, blockedAt: o.blockedAt, imitates: o.imitates};
+}
+
 // ── The transport ─────────────────────────────────────────────────────────────────────────────
 
 export type Transport = (message: unknown) => Promise<unknown>;
@@ -539,6 +594,12 @@ export function createEngine(transport: Transport = runtimeSend, sleep: (ms: num
     contacts: () => call({type: 'contacts.list'}, ['locked'], contactListOf),
     contactSet: (address, name) => call({type: 'contacts.set', address, name}, ['malformed', 'duplicate-name', 'full', 'locked'], createdOf),
     contactRemove: address => call({type: 'contacts.remove', address}, ['malformed', 'locked'], nothing),
+    dappGrants: () => call({type: 'dapp.grants.list'}, ['locked'], d => all(obj(d)?.grants, dappGrantOf)),
+    dappRevoke: origin => call({type: 'dapp.grants.revoke', origin}, ['malformed', 'locked', 'unknown-origin'], d => (typeof obj(d)?.undoToken === 'string' ? {undoToken: obj(d)?.undoToken as string} : undefined)),
+    dappUndo: undoToken => call({type: 'dapp.grants.undo', undoToken}, ['malformed', 'locked', 'unknown-token', 'blocked', 'granted', 'unknown-account', 'cap', 'scope'], nothing),
+    dappRevokeAll: () => call({type: 'dapp.grants.revokeAll'}, ['locked'], nothing),
+    dappBlocked: () => call({type: 'dapp.blocked.list'}, ['locked'], d => all(obj(d)?.blocked, dappBlockedOf)),
+    dappUnblock: host => call({type: 'dapp.blocked.remove', host}, ['malformed', 'locked'], nothing),
     lock: () => call({type: 'vault.lock'}, [], nothing),
     ping: () => call({type: 'activity.ping'}, [], nothing),
   };

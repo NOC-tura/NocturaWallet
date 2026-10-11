@@ -20,6 +20,7 @@ import {AccountsManager} from './screens/AccountsManager';
 import {DeleteWallet} from './screens/DeleteWallet';
 import {Security} from './screens/Security';
 import {Contacts} from './screens/Contacts';
+import {ConnectedApps} from './screens/ConnectedApps';
 import {Created} from './screens/Created';
 import {Imported} from './screens/Imported';
 import {Send} from './screens/Send';
@@ -212,6 +213,7 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
           onDelete={() => go({type: 'push', route: {screen: 'delete'}})}
           onAbout={() => go({type: 'push', route: {screen: 'about'}})}
           onContacts={() => go({type: 'push', route: {screen: 'contacts', pick: false}})}
+          onConnected={() => go({type: 'push', route: {screen: 'connected'}})}
         />
       );
     }
@@ -305,6 +307,8 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
     screen = <AccountsManager onBack={() => go({type: 'pop'})} />;
   } else if (route.screen === 'passkey') {
     screen = <Passkey onBack={() => go({type: 'pop'})} />;
+  } else if (route.screen === 'connected') {
+    screen = <ConnectedApps onBack={() => go({type: 'pop'})} />;
   } else if (route.screen === 'contacts') {
     screen = <Contacts pick={route.pick} onBack={() => go({type: 'pop'})} onPick={pickRecipient} />;
   } else {

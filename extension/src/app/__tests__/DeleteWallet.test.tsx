@@ -98,7 +98,7 @@ function hold(type: string, match: (m: Record<string, unknown>) => boolean = () 
 }
 
 describe('#37 delete wallet', () => {
-  it('37a idle: the adapted copy, the two bullets (no staking, no dApps, no backup file), the typed field, the CTA greyed and disabled', async () => {
+  it('37a idle: the adapted copy, the two bullets (no staking, no backup file; dApp connections from B1c), the typed field, the CTA greyed and disabled', async () => {
     await shown();
     expect(screen.getByText('Delete wallet', {selector: '.top-bar .title'})).toBeTruthy();
     expect(document.querySelector('.app-delete-card .noc-body')?.textContent).toBe('This removes all encrypted keys and local data from this browser.');
@@ -106,10 +106,10 @@ describe('#37 delete wallet', () => {
     const bullets = [...document.querySelectorAll('.app-delete-bullets li')].map(li => li.textContent);
     expect(bullets).toEqual([
       "Your assets won't be lost on-chain — but you'll need your recovery phrase to access them again.",
-      // Plan 2 (spec §5): the address book is erased with the rest (D20).
-      'Local settings, cached balances, your address book and the list of addresses you have sent to are erased and not recoverable.',
+      // Plan 2 (spec §5): the address book is erased with the rest (D20); B1c §4.2 (Q08): and the dApp connections.
+      'Local settings, cached balances, your address book, the list of addresses you have sent to, and dApp connections and blocked sites are erased and not recoverable.',
     ]);
-    expect(document.body.textContent).not.toMatch(/staking|dApp|backup file|seed phrase/);
+    expect(document.body.textContent).not.toMatch(/staking|backup file|seed phrase/);
     expect(document.querySelector('.app-delete-eyebrow')?.textContent).toBe('Type DELETE to confirm');
     expect(field().getAttribute('autocapitalize')).toBe('characters');
     expect(field().getAttribute('autocomplete')).toBe('off');

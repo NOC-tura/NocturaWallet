@@ -1639,3 +1639,142 @@ body:has(.app-window) {
   width: 100%;
   margin-top: var(--space-4);
 }
+
+/* B1c plan 1: #49 connected apps (spec §4.4) — index.html #s49's inline styles, as classes. The screen is the
+   design's `.screen`, positioned for its sheet and toast. */
+.app-connected {
+  position: relative;
+}
+.app-connected-body {
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-7);
+}
+.app-top-spacer {
+  width: 22px;
+}
+/* A row is one tap target (ix:18970, "entire row tap → opens detail sheet"); its body is the button a keyboard reaches. */
+.s10-app-row {
+  cursor: pointer;
+}
+.s10-app-row button.body.app-row-open {
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.app-row-action {
+  display: contents;
+}
+/* 49d: every row at .55 while the hold runs; the per-row Revoke at .45 and off (ix:18886). */
+.s10-app-row.app-row-dim {
+  opacity: 0.55;
+}
+.s10-app-row .revoke:disabled {
+  opacity: 0.45;
+}
+.s10-summary-bar .sort.app-hold-note {
+  color: var(--danger);
+  font-weight: 600;
+}
+.app-hold-helper {
+  margin-top: var(--space-5);
+  text-align: center;
+}
+/* Q10: the "This session" pill — the row's meta badge, in the neutral tint (the SHIELDED variant is B2). */
+.s10-app-row .meta .badge.app-session-pill {
+  background: color-mix(in oklab, var(--fg-tertiary) 14%, transparent);
+  color: var(--fg-secondary);
+}
+/* D3: a blocked site's tile, and [Unblock] in --accent (an undo, not a destructive action). */
+.s10-app-row .ico.app-tile-blocked {
+  background: var(--bg-surface-3);
+  color: var(--fg-secondary);
+}
+.s10-app-row .revoke.app-unblock {
+  color: var(--accent);
+}
+.app-connected-failed {
+  margin: var(--space-4) 0;
+}
+/* 49e's skeleton rows (ix:19015-19019): the drawn line widths and heights. */
+.s10-skel-row .skel-line {
+  height: 14px;
+}
+.s10-skel-row .skel-line.app-w60 {
+  width: 60%;
+}
+.s10-skel-row .skel-line.app-w70 {
+  width: 70%;
+}
+.s10-skel-row .skel-line.app-w52 {
+  width: 52%;
+}
+.s10-skel-row .skel-line.app-w64 {
+  width: 64%;
+}
+.s10-skel-row .skel-line.app-w58 {
+  width: 58%;
+}
+.s10-skel-row .skel-line.app-skel-sub {
+  width: 72%;
+  height: 10px;
+}
+.s10-skel-row .skel-line.app-skel-meta {
+  width: 56px;
+}
+/* 49c's sheet: its head tile in the row's gradient, the verified dot beside the name (ix:18866), the scrolling body
+   (ix:18872: max 360 px, --space-4 between groups), its group labels, and the destructive CTA (ix:18899). */
+.s10-sheet .head-row .ico.app-tile-tensor {
+  background: linear-gradient(135deg, oklch(72% 0.18 295), oklch(65% 0.16 320));
+}
+.s10-sheet .head-row .ico.app-tile-jup {
+  background: linear-gradient(135deg, oklch(78% 0.16 60), oklch(70% 0.14 30));
+}
+.s10-sheet .head-row .ico.app-tile-magic {
+  background: linear-gradient(135deg, oklch(76% 0.18 340), oklch(68% 0.16 10));
+}
+.s10-sheet .head-row .ico.app-tile-drift {
+  background: linear-gradient(135deg, oklch(80% 0.14 180), oklch(72% 0.16 220));
+}
+.s10-sheet .head-row .ico.app-tile-kamino {
+  background: linear-gradient(135deg, oklch(72% 0.16 200), oklch(64% 0.14 240));
+}
+.app-verified-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  display: inline-block;
+  margin-left: 2px;
+}
+.app-grant-sheet-body {
+  overflow-y: auto;
+  max-height: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.s10-sheet .group-label.app-group-label {
+  margin: 0 0 var(--space-2);
+}
+.app-light {
+  font-weight: 400;
+}
+.btn.app-revoke-one {
+  background: color-mix(in oklab, var(--danger) 14%, var(--bg-surface-2));
+  color: var(--danger);
+  border: 1px solid color-mix(in oklab, var(--danger) 36%, transparent);
+}
+.s10-sheet,
+.s10-sheet-overlay {
+  z-index: 10;
+}
+.s10-undo-toast {
+  z-index: 5;
+}
+.s10-undo-toast .undo-btn {
+  cursor: pointer;
+}

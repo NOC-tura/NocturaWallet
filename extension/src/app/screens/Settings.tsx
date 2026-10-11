@@ -31,8 +31,11 @@ export const SETTINGS_TEXT = {
   verified: 'Verified',
   lockNow: 'Lock now',
   lockFailed: 'Could not lock the wallet. Try again.',
-  /** ix:13550: the group the address book row sits in (plan 2; Connected dApps and Air-gap omitted, D22). */
+  /** ix:13550: the group (plan 2); B1c adds Connected dApps above Address book (ix:13552); Air-gap omitted (D22). */
   connections: 'Connections',
+  connectedDapps: 'Connected dApps',
+  /** Q07. */
+  connectedCount: (n: number): string => `${n} connected`,
   addressBook: 'Address book',
   advanced: 'Advanced',
   // Named deleteTitle: the source gate in the unlock tests allows the engine call's name in two files only.
@@ -53,7 +56,8 @@ export const PASSWORD_TOAST_WINDOW_MS = 10 * 60_000;
  * the "Password updated" toast (1.8 s) and the row's "Just updated" decoration (5 s), once per change (a UI pref keeps
  * the timestamp shown; a future stamp shows nothing). The tab reads the facts again when shown again. Every row that opens a page is a LockedButton (rule 6). The rows #31 draws and the extension does
  * not have are omitted (D22; the spec's Differs list). Plan 2: Connections › Address book (ix:13552), meta "N contacts"
- * from contacts.list — a refusal leaves the meta empty; the row still opens #15.
+ * from contacts.list — a refusal leaves the meta empty; the row still opens #15. B1c §4.1: Connections › Connected dApps
+ * above it (#i-plug), meta "<n> connected" (Q07) from dapp.grants.list — empty when none or refused; → #49.
  */
 export function Settings({
   onProfile,
@@ -62,6 +66,7 @@ export function Settings({
   onDelete,
   onAbout,
   onContacts,
+  onConnected,
   toastMs = 1_800,
   decorateMs = 5_000,
 }: {
@@ -72,6 +77,8 @@ export function Settings({
   onAbout: () => void;
   /** Plan 2: Connections › Address book → #15 (standalone). */
   onContacts: () => void;
+  /** B1c §4.1: Connections › Connected dApps → #49. */
+  onConnected: () => void;
   toastMs?: number;
   decorateMs?: number;
 }) {
@@ -82,6 +89,8 @@ export function Settings({
   const [decorated, setDecorated] = useState(false);
   /** The book's size for the Address book meta; null until read, or when the read was refused (no meta then). */
   const [contacts, setContacts] = useState<number | null>(null);
+  /** B1c §4.1 (review L12): the grants for Connected dApps' meta (persistent, and the session's while unlocked); null: none shown. */
+  const [grants, setGrants] = useState<number | null>(null);
   const passkey = m.wallet?.passkey === true;
 
   useEffect(() => {
@@ -90,7 +99,12 @@ export function Settings({
     let reads = 0;
     const timers: ReturnType<typeof setTimeout>[] = [];
     let contactReads = 0;
+    let grantReads = 0;
     const read = () => {
+      const g = ++grantReads;
+      void m.engine.dappGrants().then(r => {
+        if (alive && g === grantReads) setGrants(r.ok ? r.data.length : null);
+      });
       const c = ++contactReads;
       void m.engine.contacts().then(r => {
         if (alive && c === contactReads) setContacts(r.ok ? r.data.contacts.length : null);
@@ -220,6 +234,8 @@ export function Settings({
         ) : null}
         <div className="s7-group-label">{SETTINGS_TEXT.connections}</div>
         <div className="s7-list">
+          {/* Q07 when some are connected; empty when none (review L12) or when the read was refused. */}
+          <ListRow icon="plug" title={SETTINGS_TEXT.connectedDapps} meta={grants === null || grants === 0 ? '' : SETTINGS_TEXT.connectedCount(grants)} onPress={onConnected} />
           <ListRow icon="link" title={SETTINGS_TEXT.addressBook} meta={contacts === null ? '' : contactsCount(contacts)} onPress={onContacts} />
         </div>
         <div className="s7-group-label">{SETTINGS_TEXT.advanced}</div>

@@ -273,7 +273,7 @@ test('visual: #31’s Address book row, #15’s states and the contact sheet (41
     // #37 · the plan-2 bullet: the address book is erased with the rest.
     await p.locator('.s7-title', {hasText: 'Delete wallet'}).click();
     const bullet = p.locator('.app-delete-bullets li').nth(1);
-    await expect(bullet).toHaveText('Local settings, cached balances, your address book and the list of addresses you have sent to are erased and not recoverable.');
+    await expect(bullet).toHaveText('Local settings, cached balances, your address book, the list of addresses you have sent to, and dApp connections and blocked sites are erased and not recoverable.');
     await pop(p, '37a-bullet-address-book', bullet);
     await p.close();
 
