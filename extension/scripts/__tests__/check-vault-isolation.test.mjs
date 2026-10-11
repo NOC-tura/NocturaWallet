@@ -398,6 +398,15 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
     expect(sourceViolations([f('src/app/screens/Contacts.tsx', "const k = 'v1_contacts';")])).toEqual([OWNED('src/app/screens/Contacts.tsx', 'v1_contacts')]);
     expect(sourceViolations([f('src/unlock/main.ts', '// v1_contacts')])).toEqual([OWNED('src/unlock/main.ts', 'v1_contacts')]);
   });
+  // B1c (spec §2.1, review 1 L4): the dApp grants, blocked sites and limits are the background's — the approval window,
+  // the popup and the vault page reach them only through dapp.* messages.
+  it('lets only the background name the three dApp keys (v1_dapp_grants, v1_dapp_blocked, v1_dapp_limits)', () => {
+    const OWNED = (path, key) => `${path}: names ${key}, which only the background may write`;
+    expect(sourceViolations([f('src/background/dapp/grants.ts', "export const GRANTS_KEY = 'v1_dapp_grants';")])).toEqual([]);
+    expect(sourceViolations([f('src/approve/Approve.tsx', "const k = 'v1_dapp_grants';")])).toEqual([OWNED('src/approve/Approve.tsx', 'v1_dapp_grants')]);
+    expect(sourceViolations([f('src/app/screens/ConnectedApps.tsx', "const k = 'v1_dapp_blocked';")])).toEqual([OWNED('src/app/screens/ConnectedApps.tsx', 'v1_dapp_blocked')]);
+    expect(sourceViolations([f('src/unlock/main.ts', '// v1_dapp_limits')])).toEqual([OWNED('src/unlock/main.ts', 'v1_dapp_limits')]);
+  });
   // B1b-2a E4: the balance and price caches are the background's too.
   it('lets only the background name the two cache keys', () => {
     const OWNED = (path, key) => `${path}: names ${key}, which only the background may write`;

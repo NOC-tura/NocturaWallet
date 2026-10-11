@@ -88,7 +88,11 @@ const LISTEN_ALLOWED = /^src\/background\//;
 // a popup writing v1_settings could undo a re-authenticated setting without re-authenticating.
 // B1b-2a E4 adds the two caches: a popup writing one could show a balance the chain never had.
 // B1b-2b E17: the address book (v1_contacts) is the background's too — the popup reaches it only through contacts.*.
-export const BACKGROUND_OWNED_KEYS = ['v1_settings', 'v1_known_recipients', 'v1_pending', 'v1_forbidden_until', 'v1_balance_cache', 'v1_price_cache', 'v1_contacts'];
+// B1c (spec §2.1, review 1 L4): the dApp grants, blocked sites and limits — a page writing a grant would connect a site.
+export const BACKGROUND_OWNED_KEYS = [
+  'v1_settings', 'v1_known_recipients', 'v1_pending', 'v1_forbidden_until', 'v1_balance_cache', 'v1_price_cache', 'v1_contacts',
+  'v1_dapp_grants', 'v1_dapp_blocked', 'v1_dapp_limits',
+];
 const BACKGROUND_OWNED_ALLOWED = /^src\/background\//;
 // The vault page renders only fixed strings and the user's own words, as text (B1b-2a §1.2 item 3):
 // no file in src/unlock may parse or write markup, so nothing it shows can become an element.
