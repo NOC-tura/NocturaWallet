@@ -28,6 +28,7 @@ export function Approve({client, close}: {client: ApproveClient; close: () => vo
   const reads = useRef(0);
   const alive = useRef(true);
 
+  const lastRequestId = useRef<string | null>(null);
   const refresh = useCallback(async () => {
     const n = ++reads.current;
     const v = await client.pending();
@@ -37,6 +38,19 @@ export function Approve({client, close}: {client: ApproveClient; close: () => vo
       return;
     }
     setView(v);
+    /**
+     * Fix round 2 (same defect class as useArmed, found re-checking the budget-notice flake): the latch used to be
+     * set by a separate effect keyed on `view`, which runs a tick after this `setView` commits — so a render could
+     * paint `waiting` (straight from the new `view`) with the OLD `noticeSeen`. Setting both here, from the same
+     * `v`, in the same tick (React batches the two `setState` calls from one callback into one commit) closes the
+     * gap the same way the C15 fix did: compare against the fresh value directly, not a state only an effect sets.
+     */
+    if (v.request.requestId !== lastRequestId.current) {
+      lastRequestId.current = v.request.requestId;
+      setNoticeSeen(v.windowNotice);
+    } else if (v.windowNotice) {
+      setNoticeSeen(true);
+    }
   }, [client, close]);
 
   useEffect(() => {
@@ -62,18 +76,6 @@ export function Approve({client, close}: {client: ApproveClient; close: () => vo
   }, [refresh]);
 
   const request = view !== null && view.state !== 'none' ? view.request : null;
-  const requestId = request?.requestId ?? null;
-  const lastRequestId = useRef<string | null>(null);
-  useEffect(() => {
-    // A new head is a new screen (see the `key` below) — its own notice, if any, starts unseen.
-    if (requestId !== lastRequestId.current) {
-      lastRequestId.current = requestId;
-      setNoticeSeen(false);
-    }
-  }, [requestId]);
-  useEffect(() => {
-    if (view !== null && view.state !== 'none' && view.windowNotice) setNoticeSeen(true);
-  }, [view]);
 
   const decide = useCallback(
     async (d: Decision) => {

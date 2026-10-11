@@ -471,11 +471,12 @@ describe('controller ruling (a): busy is in the C15 key for #47', () => {
     // user — exactly what a slow, outdated `dapp.pending` resolving late would show. Assert the instant the button
     // reappears (not after a further sleep): the 500 ms re-arm must not have had time to finish by then.
     await w.ext.session.set(DAPP_SESSION_KEY, s);
-    await screen.findByRole('button', {name: 'Connect'}, {timeout: POLL_MS + 500});
-    // React corrects the stale `armed` (re-arming on the key change) in the effect pass right after the busy→false
-    // commit — one tick, not a further hold — so a short waitFor (not a bare synchronous check) is the non-flaky way
-    // to assert it without also tolerating a real failure to re-arm (the mutation never clears it at all).
-    await waitFor(() => expect((cta('Connect') as HTMLButtonElement).disabled).toBe(true), {timeout: 200});
+    // Fix round 2: useArmed derives `armed` by comparing the current key to the key the hold last finished for, so
+    // the busy→false key change disarms in the SAME render as the commit — no further tick needed, hence the bare
+    // synchronous check right on the element findByRole just resolved with (FR2-M1, which restores the old
+    // effect-only reset, turns this red).
+    const connect = await screen.findByRole('button', {name: 'Connect'}, {timeout: POLL_MS + 500});
+    expect((connect as HTMLButtonElement).disabled).toBe(true);
     await armedAfter();
     expect((cta('Connect') as HTMLButtonElement).disabled).toBe(false);
   });
