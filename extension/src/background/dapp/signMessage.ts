@@ -158,7 +158,9 @@ export async function finishSign(ext: Ext, deps: Pick<WalletDeps, 'now'>, reques
     if (e === undefined || e.state !== 'deciding' || e.decidedBy !== instance) return;
     // A lock answered the entry before this section (the check above). An account removed while its key was read is
     // still a signature computed — dropped here, never delivered (review 1 M4); `tx.session === null` is the narrowing.
-    if (signature === null || tx.session === null || !tx.session.some(a => a.publicKey === work.account)) {
+    // Fix round 1 (controller ruling, spec §2.7 "requests are refused from that moment"): a revoke — or a re-grant to
+    // a different account — during the key read must drop the computed signature the same way.
+    if (signature === null || tx.session === null || !tx.session.some(a => a.publicKey === work.account) || grantIn(tx, e.origin)?.account !== work.account) {
       answer(fx, e, {error: 'rejected'}, tx.now);
       return;
     }

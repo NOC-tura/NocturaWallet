@@ -282,6 +282,31 @@ describe('page.signMessage → #46 → the signature (§3.2 steps 1, 4, 7)', () 
     expect(c.page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
   });
 
+  // Fix round 1 (controller ruling, spec §2.7 "requests are refused from that moment"): a revoke during the key read
+  // drops the computed signature the same way as a lock or an account removal in between. The positive control — no
+  // revoke, the signature delivered — is the "Sign: an ed25519 signature..." test above.
+  it('a revoke during the key read: the computed signature is dropped, the page gets rejected only (fix round 1)', async () => {
+    const c = await setup();
+    const r = await c.sign('s', 'hello');
+    const requestId = String(r?.requestId);
+    const popup = {id: c.ext.runtimeId, origin: c.ext.extensionOrigin, url: `${c.ext.extensionOrigin}/popup.html`};
+    const get = c.ext.session.get;
+    let fired = false;
+    c.ext.session.get = async (k: string) => {
+      const inFinishSign = (new Error().stack ?? '').split('\n')[3]?.includes('finishSign') === true;
+      const v = await get(k);
+      if (!fired && k === 'v1_session' && inFinishSign) {
+        fired = true;
+        // The key is read; the grant is revoked (e.g. from #49) before the answer's section.
+        await handleMessage(c.ext, {type: 'dapp.grants.revoke', origin: DAPP}, popup, c.deps);
+      }
+      return v;
+    };
+    expect(await c.decide({requestId, decision: 'approve', account: ACCOUNT.publicKey})).toEqual({ok: true});
+    expect(fired).toBe(true);
+    expect(c.page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
+  });
+
   it('a host in cooldown (three rejections in ten minutes): the next sign request is rejected with no queue entry and no window (review 1 M2, C14)', async () => {
     const c = await setup();
     for (let i = 0; i < 3; i++) {
