@@ -770,7 +770,7 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
 | #48 ~900 ms honest skeleton | Approve waits for the real answer; no artificial minimum |
 | #48 "approving · shielded" | B2 |
 | #49 SHIELDED badge, "Last mode" cell, "Permissions reduced" | dropped (B2; no partial permissions) |
-| #49 relative times as "5 h ago", "~300 – 700 ms typical" | B1b's `whenText` (§4.4): day-granular ("today", "yesterday", "<n> days ago", …), same as #12's recipient hints |
+| #49 relative times as "5 h ago", "~300 – 700 ms typical" | the row meta and the detail sheet's "Last used" cell: B1b's `whenText` (§4.4), day-granular ("today", "yesterday", "<n> days ago", …), same as #12's recipient hints. "Last 3 interactions" keeps the design's own short form — `ago()` ("5 h ago", "2 d ago"), already used elsewhere in the popup (the offline counter) — granular enough to tell three same-day interactions apart, which `whenText` cannot |
 | #49 footer caption naming `v1_dapp_sessions` | dropped (an internal key; ours is `v1_dapp_grants`) |
 | #49e skeleton caption "Reading v1_dapp_sessions · re-verifying TLS certs · ~300 – 700 ms typical" | dropped, same reasoning as the footer row: "Loading sessions…" (Approve waits for the real read; no internal key, no invented timing or TLS-reverification claim) |
 | #49d hold helper "…will be wiped from v1_dapp_sessions · release the button to cancel" | dropped, same reasoning as the footer row: "…will be wiped · release the button to cancel" (no internal key named) |

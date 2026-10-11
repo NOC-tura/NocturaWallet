@@ -35,6 +35,8 @@ const grant = (origin: string, o: {scope?: string; lastUsedAt?: number; connecte
   lastUsedAt: o.lastUsedAt ?? Date.now(),
   recent: o.recent ?? [],
 });
+/** A computed style of the element (the `css()` helper pattern, visual-settings.spec.ts:50) — real Chromium, not happy-dom. */
+const css = (l: Locator, prop: string) => l.evaluate((e, x) => getComputedStyle(e).getPropertyValue(x), prop);
 
 /** A window state: its own copy first, then the shot (the pointer off the column; `ready`, a held CTA, awaited enabled). */
 async function still(win: Page, name: string, visible: Locator, ready?: Locator): Promise<void> {
@@ -126,6 +128,13 @@ test('visual · #47: 47a ×3, 47b ×4, lookalike (and its confirm), cap, connect
     const dapp = await openDapp(h.ctx, 'https://dapp.test');
     await fresh(h.sw);
     win = await windowFor(h, () => connect(dapp));
+    await expect(win.getByText('0 of 2 acknowledgments')).toBeVisible();
+    // Fix round 2, I2 (proven in Chromium, not happy-dom): the unacked domain-ack box's check glyph is transparent —
+    // `.s9-flag-banner .ack .box svg { color: inherit }` wins over the banner's own `svg { color: var(--warning) }`.
+    // Reverting that rule in a scratch copy turns this red (the svg's computed colour becomes the warning amber).
+    const domainBoxSvg = win.locator('.s9-flag-banner .ack .box svg');
+    await expect(domainBoxSvg).toBeVisible();
+    expect(await css(domainBoxSvg, 'color')).toBe('rgba(0, 0, 0, 0)');
     await still(win, '47b-initial', win.getByText('0 of 2 acknowledgments'), win.getByRole('button', {name: 'Reject'}));
 
     // New shot: 47b's own locked tap (two gates: the hint names both, unlike 47a's one-gate hint).
@@ -141,6 +150,9 @@ test('visual · #47: 47a ×3, 47b ×4, lookalike (and its confirm), cap, connect
     await still(win, '47b-scope-card', scope);
 
     await win.getByRole('checkbox', {name: 'I understand this domain is not on the verified list'}).click();
+    // Fix round 2, I2's positive control: acked, the same box's icon is no longer transparent (`.is-acked .box`'s
+    // own `background`/`color` now wins — the same element, a different class, a different real colour).
+    expect(await css(domainBoxSvg, 'color')).not.toBe('rgba(0, 0, 0, 0)');
     await still(win, '47b-domain-acked', win.getByText('1 of 2 acknowledgments'));
     await win.getByRole('checkbox', {name: /I've read these permissions/}).click();
     await still(win, '47b-fully-acked', win.getByText('Ready to connect · for this session'), win.getByRole('button', {name: 'Connect for this session'}));
@@ -289,7 +301,7 @@ test('visual · #46: verified (SIWS), unknown, keyword alert, lookalike and its 
     // New shot: the cooldown's Block this site (Q17) on a #46 sign request — C14's third request, same as 47's.
     await set(h.sw, {v1_dapp_limits: {rejections: [{key: 'host:dapp.test', at: Date.now()}, {key: 'host:dapp.test', at: Date.now()}], cooldowns: [], windows: [], notice: false}});
     win = await windowFor(h, () => sign(dapp, 'Sign in to the test dApp.'));
-    await still(win, '46-cooldown-block', win.getByRole('button', {name: 'Block this site'}));
+    await still(win, '46-cooldown-block', win.getByRole('button', {name: 'Block this site'}), win.getByRole('button', {name: 'Sign', exact: true}));
     await dismiss(win);
     contained(h);
     expect(server.unexpected).toEqual([]);
@@ -345,11 +357,14 @@ test('visual · #49 and #31: populated, sorted by name, detail, hold, undo toast
     await p.locator('.s10-app-row', {hasText: 'tensor.trade'}).locator('.name').click();
     await still(p, '49c-detail', p.getByRole('dialog', {name: 'Tensor'}));
     // New shot (fix round 1, review of I1): the sheet's own body scrolls now (it did not before the fix) — the
-    // Session grid and Last 3 interactions sit below the fold at 49c-detail's own scrollTop.
-    const last3 = p.getByText('Last 3 interactions');
-    await last3.scrollIntoViewIfNeeded();
-    await expect(last3).toBeVisible();
-    await expect(p.getByText('Session', {exact: true})).toBeVisible();
+    // Session grid and Last 3 interactions sit below the fold at 49c-detail's own scrollTop. Fix round 2, item 3:
+    // scrolled fully to the body's own end (not merely until "Last 3 interactions" first appears), and the LAST
+    // history row — not the heading — is what's asserted in the viewport: that is what proves the CTA below it
+    // (pinned at its own flex size, fix round 1 I1) never cuts the group off.
+    await p.locator('.app-grant-sheet-body').evaluate(e => void (e.scrollTop = e.scrollHeight));
+    const lastHistoryRow = p.locator('.s10-history .row').last();
+    await expect(lastHistoryRow).toBeInViewport();
+    await expect(p.getByText('Last 3 interactions')).toBeVisible();
     await shot(p, '49c-full', {fullPage: false});
     await p.getByRole('dialog').getByRole('button', {name: 'Close'}).click();
     const blocked = p.getByText('Blocked sites');
@@ -394,6 +409,15 @@ test('visual · #49 and #31: populated, sorted by name, detail, hold, undo toast
     });
     await p.locator('.s7-title', {hasText: 'Connected dApps'}).click();
     await still(p, '49-failed', p.getByText('Could not load your connections. Try again.'), p.getByRole('button', {name: 'Try again'}));
+
+    // New shot: #37's "erased" bullet — the sentence this plan adds ("…and dApp connections and blocked sites are
+    // erased and not recoverable.", DeleteWallet.tsx's `DELETE_TEXT.bulletErased`), explicitly asserted in the
+    // viewport before the shot (fix round 2, item 2: `visual-settings.spec.ts`'s existing 37a-idle is a
+    // viewport-only `pop()` shot framed on the title text, not asserted to carry this specific bullet into view).
+    await p.getByRole('button', {name: 'Back'}).click();
+    await p.locator('.s7-title', {hasText: 'Delete wallet'}).click();
+    const bullet = p.getByText('dApp connections and blocked sites are', {exact: false});
+    await pop(p, '37-dapp-bullet', bullet);
     contained(h);
     expect(server.unexpected).toEqual([]);
   } finally {
