@@ -101,16 +101,25 @@ export async function windowClosed(win: Page): Promise<void> {
   await expect.poll(() => win.isClosed(), {timeout: 10_000}).toBe(true);
 }
 
-/** `act` opens no window at all (§1.6, §2.6: answered at once): no new page appears while it runs and for a second after. */
+/**
+ * `act` opens no window at all (§1.6, §2.6: answered at once): no new page appears while it runs and for a second
+ * after. Races `act()` against a page actually opening (review fix M1) — awaiting `act()` alone meant a regression
+ * that queues a window (whose promise then never settles, since nothing drives it) failed only as this test's own
+ * 180 s timeout, with no indication why; this fails at once with "a window opened" instead.
+ */
 export async function noWindow<T>(ctx: BrowserContext, act: () => Promise<T>): Promise<T> {
   const opened: string[] = [];
   const seen = (p: Page) => void opened.push(p.url());
   ctx.on('page', seen);
   try {
-    const out = await act();
+    const regression = ctx.waitForEvent('page', {timeout: 0}).then(p => {
+      throw new Error(`a window opened: ${p.url()}`);
+    });
+    void regression.catch(() => undefined);
+    const out = await Promise.race([act(), regression]);
     await new Promise(r => setTimeout(r, 1_000));
     expect(opened).toEqual([]);
-    return out;
+    return out as T;
   } finally {
     ctx.off('page', seen);
   }

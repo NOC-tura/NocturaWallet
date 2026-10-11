@@ -75,7 +75,12 @@ test('B1c-19 · connect: Noctura found → #47b → both gates → the account; 
     // A verified origin, "Until I revoke".
     const jup = await openDapp(h.ctx, JUP);
     let pj!: Promise<unknown>;
+    let pjSettled = false;
     const win2 = await approvalWindow(h.ctx, () => (pj = connect(jup)));
+    pj.then(
+      () => (pjSettled = true),
+      () => (pjSettled = true),
+    );
     await expect(win2.getByText('Connect to Jupiter?')).toBeVisible();
     await win2.getByRole('checkbox').click();
     await win2.getByRole('radio', {name: /Until I revoke/}).click();
@@ -84,6 +89,8 @@ test('B1c-19 · connect: Noctura found → #47b → both gates → the account; 
     await connectBtn.focus();
     await win2.keyboard.press('Enter');
     await win2.waitForTimeout(700);
+    // M2: Enter leaving the window open isn't enough — the request itself must still be unanswered.
+    expect(pjSettled).toBe(false);
     expect(await win2.isClosed()).toBe(false);
     await connectBtn.click();
     expect(await pj).toEqual({ok: true, value: [ACCOUNT]});
@@ -113,8 +120,13 @@ test('B1c-19 · connect: Noctura found → #47b → both gates → the account; 
     // §2.3: the window polls every second (E2E allows two after the unlock lands).
     await expect(tab.locator('#unl-notice-line')).toHaveText('Unlocked.', {timeout: 60_000});
     await expect(locked.getByText('Connect to this app?')).toBeVisible({timeout: 2_000});
-    // The persistent grant is back without #47 (the unlock hook's change).
-    await expect.poll(() => changes(jup)).toContainEqual([ACCOUNT]);
+    // I2: the persistent grant re-announces exactly once more — the exact sequence, not merely "contains the
+    // account" (which was already true before the unlock and so proved nothing).
+    await expect.poll(() => changes(jup)).toEqual([[ACCOUNT], [], [ACCOUNT]]);
+    // I3: the session grant does NOT survive the lock — no re-announce for it, and an explicit connect still finds
+    // it gone. Both checked before connectUnknown(locked), which would grant `page` a brand-new session grant.
+    expect(await changes(page)).toEqual([[ACCOUNT], []]);
+    expect(await connect(page, true)).toEqual({ok: true, value: []});
     await connectUnknown(locked);
     expect(await pl).toEqual({ok: true, value: [ACCOUNT]});
     done(h, server);
@@ -259,14 +271,16 @@ test('B1c-24 · restart: #46 shown → the service worker is stopped (CDP) → S
     const workers = () => p.evaluate(() => chrome.runtime.getContexts({contextTypes: ['BACKGROUND']}).then(c => c.map(x => x.contextId)));
     const [before] = await workers();
     expect(before).toBeDefined();
+    const beforeId = before as string;
     // review 2 L11: stop the worker by closing its CDP target (ServiceWorker.stopAllWorkers from a page session left it
     // running in the dry run), from a plain tab's session.
     const tab = await h.ctx.newPage();
     const cdp = await h.ctx.newCDPSession(tab);
     const target = (await cdp.send('Target.getTargets')).targetInfos.find(t => t.type === 'service_worker');
     expect(await cdp.send('Target.closeTarget', {targetId: target!.targetId})).toEqual({success: true});
-    // Positive control: no background context runs now.
-    await expect.poll(workers).toEqual([]);
+    // Positive control: the OLD worker is gone (not "no worker at all" — the approval window's own 1 s poll can
+    // restart one within ~1 s, racing a `toEqual([])` check and making it flaky by construction — review fix I1).
+    await expect.poll(async () => (await workers()).includes(beforeId)).toBe(false);
     await w46.getByRole('button', {name: 'Sign', exact: true}).click();
     const r = (await pending) as {ok: boolean; value: {signature: string}};
     expect(r.ok).toBe(true);
