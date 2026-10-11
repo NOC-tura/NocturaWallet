@@ -117,3 +117,19 @@ export async function unblock(ext: Ext, deps: Pick<WalletDeps, 'now'>, host: unk
     return {ok: true as const};
   });
 }
+
+/**
+ * An account removed from the wallet (B1b E13; spec §2.1, review 2 M9): its grants are deleted (both scopes), those
+ * origins' queued requests answered `rejected`, and `change {accounts: []}` sent to them.
+ */
+export async function dropAccountGrants(ext: Ext, deps: Pick<WalletDeps, 'now'>, publicKeys: readonly string[]): Promise<void> {
+  const gone = new Set(publicKeys);
+  await queueAccess(ext, deps, (tx, fx) => {
+    for (const g of [...tx.s.grants, ...tx.grants]) {
+      if (!gone.has(g.account)) continue;
+      dropGrant(tx, g.origin);
+      fx.changes.set(g.origin, []);
+      rejectQueued(tx, fx, e => e.origin === g.origin);
+    }
+  });
+}

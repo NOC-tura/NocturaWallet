@@ -213,14 +213,15 @@ function sameWallet(current: StoredEnvelope, next: StoredEnvelope): boolean {
  * (every name is then new, so every name is cleaned); with anything stored, 'wallet-exists' and
  * nothing is written — onboarding never overwrites a wallet, nor a damaged value in its place. A
  * revision with no v1_vault stored is 'no-wallet'; with a value that is not an envelope (an array, a
- * string, null), 'stored-invalid'.
+ * string, null), 'stored-invalid'. B1c: `onDropped` hears the public keys of the accounts a stored change removed.
  */
-export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelope: unknown): Promise<StoreResult> {
+export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelope: unknown, onDropped?: (publicKeys: string[]) => void): Promise<StoreResult> {
   const first = expectedRevision === null;
   if (!first && !(isStr(expectedRevision) && REVISION.test(expectedRevision))) return 'malformed';
   const next = envelopeShape(envelope);
   if (next === null) return 'malformed';
-  return serial(async () => {
+  let droppedKeys: string[] = [];
+  const out = await serial(async (): Promise<StoreResult> => {
     const stored = await ext.local.get(VAULT_KEY);
     const names = new Map<number, string>();
     if (first) {
@@ -241,6 +242,7 @@ export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelop
       const dropped = new Set(current.accounts.filter(a => !kept.has(a.index)).map(a => a.publicKey));
       if (dropped.size > 0 && (await readPending(ext)).some(r => isOpen(r) && dropped.has(r.account))) return 'send-open';
       for (const a of current.accounts) names.set(a.index, a.name);
+      droppedKeys = [...dropped];
     }
     const accounts: AccountView[] = [];
     for (const a of next.accounts) {
@@ -258,6 +260,9 @@ export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelop
     await ext.local.set(VAULT_KEY, {...next, accounts});
     return 'stored';
   });
+  // B1c §2.1: the accounts this change removed, for their dApp grants (messages.ts).
+  if (out === 'stored' && droppedKeys.length > 0) onDropped?.(droppedKeys);
+  return out;
 }
 
 /**

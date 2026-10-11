@@ -6,7 +6,7 @@ import {SETTINGS_KEY} from '../../settings';
 import {GRANTS_KEY, MAX_GRANTS, type Grant} from '../grants';
 import {BLOCKED_KEY} from '../blocked';
 import {LIMITS_KEY} from '../limits';
-import {REQUEST_TTL_MS} from '../queue';
+import {REQUEST_TTL_MS, runUnlockHook} from '../queue';
 import {DAPP_SESSION_KEY, readDappSession, type Entry} from '../store';
 import {restartRuntime, runtimeFor} from '../ports';
 import {UNDO_MS} from '../grantsApi';
@@ -25,6 +25,8 @@ async function setup(o: {unlocked?: boolean} = {}) {
   const deps = fakeDeps();
   await ext.local.set(VAULT_KEY, {v: 1, scheme: 'slip10', accounts: [{index: 0, name: 'Main', publicKey: ACCOUNT.publicKey}, {index: 1, name: 'Savings', publicKey: RECIPIENT}]});
   if (o.unlocked !== false) await setSession(ext, [ACCOUNT, SECOND]);
+  // Written directly: the session's unlock hook runs before any page opens (as vault.setKeys runs it).
+  if (o.unlocked !== false) await runUnlockHook(ext, deps);
   const approve = {id: ext.runtimeId, origin: ext.extensionOrigin, url: `${ext.extensionOrigin}/approve.html`};
   const popup = {id: ext.runtimeId, origin: ext.extensionOrigin, url: `${ext.extensionOrigin}/popup.html`};
   const pend = async () => (await handleMessage(ext, {type: 'dapp.pending'}, approve, deps)) as {ok: boolean; data: Record<string, unknown> & {state: string; request: Record<string, unknown>}};
@@ -291,14 +293,15 @@ describe('a worker restart after the request was shown (§1.5 step 5)', () => {
     expect((await readDappSession(ext)).grants).toHaveLength(1);
   });
 
-  it('a lock between deciding and the effect: no grant is written', async () => {
+  it('a lock between deciding and the effect: no grant is written, the page gets rejected (the lock hook, §2.4)', async () => {
     const {ext, deps, decide} = await setup();
-    const {requestId} = await request(ext, deps, JUP);
+    const {page, requestId} = await request(ext, deps, JUP);
     // The decision arms the auto-lock between the deciding section and the grant section: a lock lands right there.
     ext.alarms.create = () => lock(ext);
     expect(await decide({requestId, decision: 'approve', account: ACCOUNT.publicKey, scope: 'persistent'})).toEqual({ok: true});
     expect(await ext.local.get(GRANTS_KEY)).toBeUndefined();
     expect((await readDappSession(ext)).grants).toEqual([]);
+    expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
   });
 });
 

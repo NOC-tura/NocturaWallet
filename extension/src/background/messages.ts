@@ -13,7 +13,8 @@ import {startPoller} from './pending';
 import {WALLET_TYPES, applySettingsChallenge, handleWallet, isWalletType, type Result} from './walletApi';
 import {PAGE_TYPES} from './dapp/pageApi';
 import {decide, decideRequestOf, pending} from './dapp/decide';
-import {listBlocked, listGrants, revokeAll, revokeGrant, undoRevoke, unblock} from './dapp/grantsApi';
+import {runUnlockHook} from './dapp/queue';
+import {dropAccountGrants, listBlocked, listGrants, revokeAll, revokeGrant, undoRevoke, unblock} from './dapp/grantsApi';
 
 /** What the browser reports about a message's origin (runtime.MessageSender). */
 export interface Sender {
@@ -176,6 +177,8 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
         await lock(ext);
         throw e;
       }
+      // B1c §2.4: the unlock hook. If it throws, the session stays unlocked and the next queue access runs it again.
+      await runUnlockHook(ext, deps ?? {now: Date.now}).catch(e => console.warn('dApp unlock hook failed; the next queue access runs it again', e));
       return {ok: true};
     }
     case 'vault.lock':
@@ -297,7 +300,10 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       return deps === undefined ? {ok: false, error: 'unavailable'} : unblock(ext, deps, (msg as {host?: unknown}).host);
     case 'vault.storeEnvelope': {
       const {expectedRevision, envelope} = msg as {expectedRevision?: unknown; envelope?: unknown};
-      const r = await storeEnvelope(ext, expectedRevision, envelope);
+      const dropped: string[] = [];
+      const r = await storeEnvelope(ext, expectedRevision, envelope, keys => void dropped.push(...keys));
+      // B1c §2.1 (review 2 M9): a removed account's dApp grants go with it.
+      if (r === 'stored' && dropped.length > 0) await dropAccountGrants(ext, deps ?? {now: Date.now}, dropped).catch(e => console.warn('dApp grants of a removed account not removed', e));
       return r === 'stored' ? {ok: true} : {ok: false, error: r};
     }
     default:

@@ -4,7 +4,7 @@ import {getSession, setSession} from '../../session';
 import {GRANTS_KEY, type Grant} from '../grants';
 import {BLOCKED_KEY} from '../blocked';
 import {LIMITS_KEY, WINDOW_BUDGET} from '../limits';
-import {DECIDING_TTL_MS, MAX_OPEN, QUEUE_ALARM, REQUEST_TTL_MS, ANSWER_TTL_MS} from '../queue';
+import {DECIDING_TTL_MS, MAX_OPEN, QUEUE_ALARM, REQUEST_TTL_MS, ANSWER_TTL_MS, runUnlockHook} from '../queue';
 import {DAPP_SESSION_KEY, readDappSession} from '../store';
 import {OPENING_STALE_MS, WINDOW_HEIGHT, WINDOW_WIDTH, ensureWindow, onApprovalWindowRemoved, onQueueAlarm} from '../window';
 import {restartRuntime, runtimeFor} from '../ports';
@@ -21,7 +21,9 @@ const grant = (origin: string, over: Partial<Grant> = {}): Grant => ({origin, ac
 async function setup(o: {unlocked?: boolean} = {}) {
   const ext = fakeExt();
   const deps = fakeDeps();
+  // Written directly: the session's unlock hook runs before any page opens (as vault.setKeys runs it).
   if (o.unlocked !== false) await setSession(ext, [ACCOUNT]);
+  if (o.unlocked !== false) await runUnlockHook(ext, deps);
   return {ext, deps};
 }
 const queue = async (ext: ReturnType<typeof fakeExt>) => (await readDappSession(ext)).queue;
@@ -504,12 +506,15 @@ describe('closing the last window locks instead of reopening (§2.4, review 2 L9
     expect(await getSession(ext)).toBeNull();
     // Exactly the one window the first queued request opened — none reopened for what was left.
     expect(ext.approval.created).toHaveLength(1);
-    // Both the shown request and the one still queued are delivered rejected to their ports, before the lock's
-    // clearSession wipes the dapp session (storage.session) that held them — so the stored queue is empty after,
-    // not because nothing happened, but because locking always discards the whole area (session.ts).
+    // Both the shown request and the one still queued are delivered rejected to their ports (this drain, before the
+    // lock). The lock hook (B1c §2.4) then wipes storage.session but writes the already-answered queue back, so a
+    // relay's resume still finds them — the stored queue is not emptied, both entries stay `answered`/`rejected`.
     expect(pageA.answersFor(String(a?.requestId))).toEqual([{requestId: a?.requestId, error: 'rejected'}]);
     expect(pageB.answersFor(String(b?.requestId))).toEqual([{requestId: b?.requestId, error: 'rejected'}]);
-    expect(await queue(ext)).toEqual([]);
+    expect((await queue(ext)).map(e => [e.requestId, e.state, e.answer])).toEqual([
+      [a?.requestId, 'answered', {error: 'rejected'}],
+      [b?.requestId, 'answered', {error: 'rejected'}],
+    ]);
   });
 
   it('positive control: with a browser window still open, the rest of the queue still gets a window', async () => {

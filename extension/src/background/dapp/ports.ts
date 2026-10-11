@@ -71,6 +71,13 @@ export interface LivePort extends PageOrigin {
 export interface Runtime {
   instance: string;
   ports: Set<LivePort>;
+  /**
+   * §2.4: the unlock hook ran for the current unlocked session in this instance. In memory, not in storage.session (a
+   * lock leaves nothing behind there but the answered queue): a lock clears it; a worker restart runs the hook again at
+   * its first queue access, which is harmless — it answers only what is still queued and repeats a `change` the pages
+   * already have.
+   */
+  hooked: boolean;
 }
 
 const runtimes = new WeakMap<Pick<Ext, 'runtimeId'>, Runtime>();
@@ -83,7 +90,7 @@ function randomHex(n: number): string {
 export function runtimeFor(ext: Pick<Ext, 'runtimeId'>): Runtime {
   let r = runtimes.get(ext);
   if (r === undefined) {
-    r = {instance: randomHex(16), ports: new Set()};
+    r = {instance: randomHex(16), ports: new Set(), hooked: false};
     runtimes.set(ext, r);
   }
   return r;
