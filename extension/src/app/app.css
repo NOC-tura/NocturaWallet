@@ -1699,7 +1699,8 @@ body:has(.app-window) {
 .app-connected-failed {
   margin: var(--space-4) 0;
 }
-/* 49e's skeleton rows (ix:19015-19019): the drawn line widths and heights. */
+/* 49e's skeleton rows (ix:18963-18967): the five rows' own name-line and sub-line widths — each row draws a
+   different pair (60/78, 70/64, 52/84, 64/70, 58/72), not one flat width repeated five times (review 1 I2b). */
 .s10-skel-row .skel-line {
   height: 14px;
 }
@@ -1719,11 +1720,40 @@ body:has(.app-window) {
   width: 58%;
 }
 .s10-skel-row .skel-line.app-skel-sub {
-  width: 72%;
   height: 10px;
+}
+.s10-skel-row .skel-line.app-skel-sub.app-sub78 {
+  width: 78%;
+}
+.s10-skel-row .skel-line.app-skel-sub.app-sub64 {
+  width: 64%;
+}
+.s10-skel-row .skel-line.app-skel-sub.app-sub84 {
+  width: 84%;
+}
+.s10-skel-row .skel-line.app-skel-sub.app-sub70 {
+  width: 70%;
+}
+.s10-skel-row .skel-line.app-skel-sub.app-sub72 {
+  width: 72%;
 }
 .s10-skel-row .skel-line.app-skel-meta {
   width: 56px;
+}
+/* 49e (ix:18962): the skeleton's own summary-bar line, "Loading sessions…" in --fg-tertiary; the sort slot is blank. */
+.s10-summary-bar .count.app-skel-loading {
+  color: var(--fg-tertiary);
+}
+/* 49c (ix:18849): the list dims to .4 behind the open detail sheet, in addition to the sheet's own overlay. */
+.app-dim-behind-sheet {
+  opacity: 0.4;
+}
+/* 49b (ix:18812): the empty state's own scroll-area is centred, not top-anchored like every other state's. */
+.app-connected-body-empty {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 480px;
 }
 /* 49c's sheet: its head tile in the row's gradient, the verified dot beside the name (ix:18866), the scrolling body
    (ix:18872: max 360 px, --space-4 between groups), its group labels, and the destructive CTA (ix:18899). */

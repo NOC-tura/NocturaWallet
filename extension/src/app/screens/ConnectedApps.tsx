@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useRef, useState, type ReactNode} from 'react';
 import {useWallet} from '../WalletContext';
 import {useNow} from '../useNow';
 import {ago} from '../format';
@@ -6,7 +6,7 @@ import {whenText} from '../addressBook';
 import {ExtIcon} from '../ui/ExtIcon';
 import {LockedButton} from '../ui/LockedButton';
 import {HoldButton, type HoldClock, realClock} from '../ui/HoldButton';
-import {useEscape} from '../ui/useEscape';
+import {useSheetFocus} from '../ui/Sheet';
 import type {DappBlocked, DappGrant, DappInteraction} from '../engine';
 
 /** #49's copy (B1c §4.4): the design's strings (ix:18705-19100) as the spec quotes them, Q10, Q13–Q15 and 2a's "Try again". */
@@ -44,7 +44,16 @@ export const CONNECTED_TEXT = {
   revokeThis: 'Revoke this connection',
   hold: (n: number): string => `Hold to disconnect all · ${n} ${n === 1 ? 'session' : 'sessions'}`,
   holdHeld: 'Hold to disconnect all',
-  holdHelper: (n: number): string => `All ${n} ${n === 1 ? 'session' : 'sessions'} will be wiped · release the button to cancel`,
+  /** 49d, review 1 I2f: the count is its own node (`.noc-numeral`), not flattened into the sentence. */
+  holdHelper: (n: number): ReactNode => (
+    <>
+      {'All '}
+      <span className="noc-numeral">{n}</span>
+      {` ${n === 1 ? 'session' : 'sessions'} will be wiped · release the button to cancel`}
+    </>
+  ),
+  /** 49d, review 1 I2e: while held, a row's meta drops the "Connected <date> ·" lead-in. */
+  metaHeld: (when: string): string => `last used ${when}`,
   disconnectAll: 'Disconnect all',
   emptyTitle: 'No connected apps',
   /** Q14. */
@@ -57,6 +66,8 @@ export const CONNECTED_TEXT = {
   /** Q15. */
   failed: 'Could not load your connections. Try again.',
   tryAgain: 'Try again',
+  /** 49e, review 1 I2a: the skeleton's own summary-bar line (--fg-tertiary). */
+  loadingSessions: 'Loading sessions…',
 } as const;
 
 /** #49d: the hold is #49's own 600 ms (§9; #37's is 1 s). */
@@ -97,21 +108,21 @@ export function siteLabel(origin: string, host: string): string {
 }
 type List = {grants: DappGrant[]; blocked: DappBlocked[]};
 
-/** 49c: the row's detail sheet — permissions, session, the last three interactions, [Revoke this connection]. */
+/**
+ * 49c: the row's detail sheet — permissions, session, the last three interactions, [Revoke this connection]. Design
+ * rev 1, I: the design's own `.s10-sheet` skin (its tile+domain head, not the generic `.s8-sheet` title bar), but the
+ * same shared behavior as every other sheet — Esc, the backdrop, a real focus trap and the focus restore —
+ * via `useSheetFocus`, rather than reimplementing a subset of it bespoke.
+ */
 function GrantSheet({grant, now, onClose, onRevoke}: {grant: DappGrant; now: number; onClose: () => void; onRevoke: () => Promise<void>}) {
   const panel = useRef<HTMLDivElement>(null);
-  useEscape(onClose);
-  useEffect(() => {
-    const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    panel.current?.querySelector<HTMLElement>('button')?.focus();
-    return () => before?.focus();
-  }, []);
+  useSheetFocus(panel, onClose);
   const day = isoDay(grant.connectedAt);
   const tile = tileOf(grant.host);
   return (
     <>
       <div className="s10-sheet-overlay" data-testid="sheet-backdrop" onClick={onClose} />
-      <div className="s10-sheet" role="dialog" aria-modal="true" aria-label={grant.name} ref={panel}>
+      <div className="s10-sheet" role="dialog" aria-modal="true" aria-label={grant.name} tabIndex={-1} ref={panel}>
         <div className="grabber" />
         <div className="head-row">
           <div className={tile === 'tensor' ? 'ico app-tile-tensor' : tile === 'jup' ? 'ico app-tile-jup' : tile === 'magic' ? 'ico app-tile-magic' : tile === 'drift' ? 'ico app-tile-drift' : 'ico app-tile-kamino'} aria-hidden="true">
@@ -228,6 +239,13 @@ export function ConnectedApps({onBack, clock = realClock}: {onBack: () => void; 
   /** Revoked here and not yet re-read: hidden at once (the design's optimistic remove). */
   const [gone, setGone] = useState<string[]>([]);
   const [toast, setToast] = useState<{name: string; token: string; until: number} | null>(null);
+  /**
+   * Review 1 I1: bumped after every completed hold, and passed to `HoldButton` as its `key` — a full remount, so its
+   * internal `done` ref (the hold is rule 6's own lock: once sprung, never again on that instance) is thrown away with
+   * it. Without this a `disconnectAll` that fails, or one a fresh grant outlives (arriving between the revoke and the
+   * re-read), left the same HoldButton instance permanently spent — held past 600 ms, nothing happened, ever again.
+   */
+  const [holdGen, setHoldGen] = useState(0);
   const reads = useRef(0);
   const alive = useRef(true);
   useEffect(() => {
@@ -263,9 +281,12 @@ export function ConnectedApps({onBack, clock = realClock}: {onBack: () => void; 
   const revoke = async (g: DappGrant) => {
     setGone(x => [...x, g.origin]);
     setOpen(null);
+    // Review 1 h: the deadline is taken before the await, not after — the background's own undo window (§2.7) starts
+    // the moment it revokes, and a slow reply must never hand back more than five seconds of UNDO.
+    const until = m.now() + UNDO_MS;
     const r = await engine.dappRevoke(g.origin);
     if (!alive.current) return;
-    if (r.ok) setToast({name: g.name, token: r.data.undoToken, until: m.now() + UNDO_MS});
+    if (r.ok) setToast({name: g.name, token: r.data.undoToken, until});
     await load();
   };
   const undo = async () => {
@@ -279,9 +300,14 @@ export function ConnectedApps({onBack, clock = realClock}: {onBack: () => void; 
     await engine.dappUnblock(host);
     if (alive.current) await load();
   };
+  /** Review 1 I1: a failed revokeAll shows Q15's existing failed state (no new string); either way the hold is reusable. */
   const disconnectAll = async () => {
-    await engine.dappRevokeAll();
-    if (alive.current) await load();
+    const r = await engine.dappRevokeAll();
+    if (!alive.current) return;
+    setHoldGen(k => k + 1);
+    if (!r.ok && r.error === 'locked') return void reload();
+    if (!r.ok) return setList('failed');
+    await load();
   };
 
   const top = (sorting: boolean) => (
@@ -305,12 +331,24 @@ export function ConnectedApps({onBack, clock = realClock}: {onBack: () => void; 
       <div className="screen app-connected" aria-busy="true">
         {top(false)}
         <div className="scroll-area app-connected-body">
-          {[60, 70, 52, 64, 58].map(w => (
-            <div className="s10-skel-row" key={w}>
+          {/* Review 1 I2a: the design's own summary bar sits above the skeleton rows too, reading "Loading sessions…". */}
+          <div className="s10-summary-bar">
+            <span className="count app-skel-loading">{CONNECTED_TEXT.loadingSessions}</span>
+            <span className="sort" />
+          </div>
+          {/* Review 1 I2b: the five sub-line widths the design draws (78/64/84/70/72 %), not one flat width for all. */}
+          {[
+            {w: 60, sub: 78},
+            {w: 70, sub: 64},
+            {w: 52, sub: 84},
+            {w: 64, sub: 70},
+            {w: 58, sub: 72},
+          ].map(row => (
+            <div className="s10-skel-row" key={row.w}>
               <div className="ico" />
               <div className="body">
-                <div className={w === 60 ? 'skel-line app-w60' : w === 70 ? 'skel-line app-w70' : w === 52 ? 'skel-line app-w52' : w === 64 ? 'skel-line app-w64' : 'skel-line app-w58'} />
-                <div className="skel-line app-skel-sub" />
+                <div className={row.w === 60 ? 'skel-line app-w60' : row.w === 70 ? 'skel-line app-w70' : row.w === 52 ? 'skel-line app-w52' : row.w === 64 ? 'skel-line app-w64' : 'skel-line app-w58'} />
+                <div className={row.sub === 78 ? 'skel-line app-skel-sub app-sub78' : row.sub === 64 ? 'skel-line app-skel-sub app-sub64' : row.sub === 84 ? 'skel-line app-skel-sub app-sub84' : row.sub === 70 ? 'skel-line app-skel-sub app-sub70' : 'skel-line app-skel-sub app-sub72'} />
               </div>
               <div className="skel-line app-skel-meta" />
             </div>
@@ -370,7 +408,8 @@ export function ConnectedApps({onBack, clock = realClock}: {onBack: () => void; 
       <>
         <div className="screen app-connected">
           {top(false)}
-          <div className="scroll-area app-connected-body">
+          {/* Review 1 I2g (ix:18812): the empty state's own scroll-area is centred, not top-anchored. */}
+          <div className="scroll-area app-connected-body app-connected-body-empty">
             <div className="s10-empty">
               <div className="ill">
                 <ExtIcon name="unlink" size={56} />
@@ -393,11 +432,14 @@ export function ConnectedApps({onBack, clock = realClock}: {onBack: () => void; 
   }
 
   const [count, label] = CONNECTED_TEXT.sessions(shown.length);
+  // Review 1 I2c: the Sort button is the 22 px spacer, not just dimmed, while the hold runs (49d) or the sheet is open (49c).
+  const sorting = !holding && openGrant === null;
   return (
     <>
       <div className="screen app-connected">
-        {top(true)}
-        <div className="scroll-area app-connected-body">
+        {top(sorting)}
+        {/* Review 1 I2d: the list dims to .4 behind 49c's sheet, in addition to its overlay. */}
+        <div className={openGrant === null ? 'scroll-area app-connected-body' : 'scroll-area app-connected-body app-dim-behind-sheet'}>
           <div className="s10-summary-bar">
             <span className="count">
               <b>{count}</b>
@@ -419,7 +461,7 @@ export function ConnectedApps({onBack, clock = realClock}: {onBack: () => void; 
                   </span>
                   <span className="domain">{siteLabel(g.origin, g.host)}</span>
                   <span className="meta">
-                    <span>{CONNECTED_TEXT.meta(isoDay(g.connectedAt), whenText(g.lastUsedAt, now))}</span>
+                    <span>{holding ? CONNECTED_TEXT.metaHeld(whenText(g.lastUsedAt, now)) : CONNECTED_TEXT.meta(isoDay(g.connectedAt), whenText(g.lastUsedAt, now))}</span>
                     {g.scope === 'session' ? <span className="badge app-session-pill">{CONNECTED_TEXT.sessionPill}</span> : null}
                   </span>
                 </button>
@@ -440,7 +482,9 @@ export function ConnectedApps({onBack, clock = realClock}: {onBack: () => void; 
           {blocked}
         </div>
         <div className="sticky-bar">
-          <HoldButton label={CONNECTED_TEXT.hold(shown.length)} heldLabel={CONNECTED_TEXT.holdHeld} decimals={2} holdMs={DISCONNECT_ALL_MS} disabled={false} onPressing={setHolding} onHeld={() => void disconnectAll()} clock={clock} />
+          {/* Review 1 I1: keyed on holdGen — a fresh instance after every completed hold, so a failed revokeAll (or
+              one a newly arrived grant outlives) never leaves this permanently spent. */}
+          <HoldButton key={holdGen} label={CONNECTED_TEXT.hold(shown.length)} heldLabel={CONNECTED_TEXT.holdHeld} decimals={2} holdMs={DISCONNECT_ALL_MS} disabled={false} onPressing={setHolding} onHeld={() => void disconnectAll()} clock={clock} />
         </div>
       </div>
       {toast === null ? null : <UndoToast toast={toast} now={now} onUndo={undo} />}
