@@ -484,3 +484,142 @@ describe('page.disconnect (C2)', () => {
     expect(await page.ask(connect('c1'))).toMatchObject({accepted: true});
   });
 });
+
+// Fix round 1, Important 1 (§2.4, review 2 L9): closing the approval window must not reopen one before the
+// browser-closed check has a chance to see the count it left behind — a reopen changes the count first and the
+// close is never seen as "the last window".
+describe('closing the last window locks instead of reopening (§2.4, review 2 L9, fix round 1)', () => {
+  it('closing the popup when it is the last window locks, delivers rejected to every live port, and opens no window', async () => {
+    const {ext, deps} = await setup();
+    const pageA = openPage(ext, deps, DAPP);
+    const pageB = openPage(ext, deps, OTHER, {tab: {id: 9}});
+    const a = await pageA.ask(connect('a'));
+    const b = await pageB.ask(connect('b'));
+    const s = await readDappSession(ext);
+    await ext.session.set(DAPP_SESSION_KEY, {...s, window: {id: 100, showing: a?.requestId}});
+    ext.approval.open.delete(100);
+    // The popup was the only window the browser had open.
+    ext.windows = 0;
+    expect(await onApprovalWindowRemoved(ext, deps, 100)).toBe(true);
+    expect(await getSession(ext)).toBeNull();
+    // Exactly the one window the first queued request opened — none reopened for what was left.
+    expect(ext.approval.created).toHaveLength(1);
+    // Both the shown request and the one still queued are delivered rejected to their ports, before the lock's
+    // clearSession wipes the dapp session (storage.session) that held them — so the stored queue is empty after,
+    // not because nothing happened, but because locking always discards the whole area (session.ts).
+    expect(pageA.answersFor(String(a?.requestId))).toEqual([{requestId: a?.requestId, error: 'rejected'}]);
+    expect(pageB.answersFor(String(b?.requestId))).toEqual([{requestId: b?.requestId, error: 'rejected'}]);
+    expect(await queue(ext)).toEqual([]);
+  });
+
+  it('positive control: with a browser window still open, the rest of the queue still gets a window', async () => {
+    const {ext, deps} = await setup();
+    const a = await openPage(ext, deps, DAPP).ask(connect('a'));
+    const b = await openPage(ext, deps, OTHER, {tab: {id: 9}}).ask(connect('b'));
+    const s = await readDappSession(ext);
+    await ext.session.set(DAPP_SESSION_KEY, {...s, window: {id: 100, showing: a?.requestId}});
+    ext.approval.open.delete(100);
+    expect(await onApprovalWindowRemoved(ext, deps, 100)).toBe(true);
+    expect(await getSession(ext)).not.toBeNull();
+    expect(ext.approval.created).toHaveLength(2);
+    expect((await queue(ext)).find(e => e.requestId === b?.requestId)?.state).toBe('queued');
+  });
+
+  it('a window id that is not ours returns false and touches neither the lock nor the queue', async () => {
+    const {ext, deps} = await setup();
+    ext.windows = 0;
+    expect(await onApprovalWindowRemoved(ext, deps, 555)).toBe(false);
+    expect(await getSession(ext)).not.toBeNull();
+    expect(ext.approval.created).toEqual([]);
+  });
+});
+
+// Fix round 1, promoted Minor 2 (Scope R11): only a user's own rejection — closing the window on a request it
+// showed — counts toward C14's cooldown. Every background refusal below must leave LIMITS.rejections untouched.
+describe('Scope R11 — only a user’s own rejection counts (fix round 1)', () => {
+  const rejectionsOf = async (ext: ReturnType<typeof fakeExt>): Promise<unknown[]> => ((await ext.local.get(LIMITS_KEY)) as {rejections?: unknown[]} | undefined)?.rejections ?? [];
+
+  it('a blocked-host refusal records no rejection', async () => {
+    const {ext, deps} = await setup();
+    await ext.local.set(BLOCKED_KEY, [{host: 'dapp.test', blockedAt: 1, imitates: null}]);
+    expect(await openPage(ext, deps, DAPP).ask(connect('c1'))).toEqual({id: 'c1', error: 'rejected'});
+    expect(await rejectionsOf(ext)).toEqual([]);
+  });
+
+  it('a cooldown refusal records no (additional) rejection', async () => {
+    const {ext, deps} = await setup();
+    await ext.local.set(LIMITS_KEY, {rejections: [], cooldowns: [{key: `tab:${TAB}`, until: deps.clock.t + 1}], windows: [], notice: false});
+    expect(await openPage(ext, deps, DAPP).ask(connect('c1'))).toEqual({id: 'c1', error: 'rejected'});
+    expect(await rejectionsOf(ext)).toEqual([]);
+  });
+
+  it('the C14 budget refusal records no rejection', async () => {
+    const {ext, deps} = await setup();
+    await ext.local.set(LIMITS_KEY, {rejections: [], cooldowns: [], windows: Array.from({length: WINDOW_BUDGET}, () => deps.clock.t), notice: false});
+    const page = openPage(ext, deps, DAPP);
+    const r = await page.ask(connect('c1'));
+    expect(page.answersFor(String(r?.requestId))).toEqual([{requestId: r?.requestId, error: 'rejected'}]);
+    expect(await rejectionsOf(ext)).toEqual([]);
+  });
+
+  it('an expiry (timeout) records no rejection', async () => {
+    const {ext, deps} = await setup();
+    const page = openPage(ext, deps, DAPP);
+    await page.ask(connect('c1'));
+    deps.clock.t += REQUEST_TTL_MS;
+    await onQueueAlarm(ext, deps);
+    expect(await rejectionsOf(ext)).toEqual([]);
+  });
+
+  it('a documentChanged cancel records no rejection', async () => {
+    const {ext, deps} = await setup();
+    const old = openPage(ext, deps, DAPP);
+    await old.ask(connect('c1'));
+    openPage(ext, deps, OTHER, {documentId: 'doc-2'});
+    await settle();
+    expect(await rejectionsOf(ext)).toEqual([]);
+  });
+
+  it('a page.disconnect records no rejection for the queued requests it cancels', async () => {
+    const {ext, deps} = await setup();
+    const page = openPage(ext, deps, DAPP);
+    await page.ask(connect('c1'));
+    await page.ask({type: 'page.disconnect', id: 'd1'});
+    expect(await rejectionsOf(ext)).toEqual([]);
+  });
+
+  it('positive control: a user closing the window on a shown request DOES record a rejection', async () => {
+    const {ext, deps} = await setup();
+    const page = openPage(ext, deps, DAPP);
+    const r = await page.ask(connect('c1'));
+    const s = await readDappSession(ext);
+    await ext.session.set(DAPP_SESSION_KEY, {...s, window: {id: 100, showing: r?.requestId}});
+    ext.approval.open.delete(100);
+    await onApprovalWindowRemoved(ext, deps, 100);
+    // withRejection counts both the host and the tab key for one rejection.
+    expect(await rejectionsOf(ext)).toHaveLength(2);
+  });
+});
+
+// Fix round 1, promoted Minor 3 (C9, D5): a relay id is scoped to its document too, not only its tab and origin.
+describe('C9 is also scoped to the document (fix round 1)', () => {
+  it('a new document in the same tab, re-using the same relay id, never gets the old document’s stored answer', async () => {
+    const {ext, deps} = await setup();
+    const docA = openPage(ext, deps, DAPP, {documentId: 'doc-a'});
+    const r = await docA.ask(connect('c1'));
+    // The window showed doc A's request, and the user closed the window: it is answered rejected.
+    const s = await readDappSession(ext);
+    await ext.session.set(DAPP_SESSION_KEY, {...s, window: {id: 100, showing: r?.requestId}});
+    ext.approval.open.delete(100);
+    await onApprovalWindowRemoved(ext, deps, 100);
+    expect(docA.answersFor(String(r?.requestId))).toEqual([{requestId: r?.requestId, error: 'rejected'}]);
+    // A fresh document in the SAME tab, re-using the SAME relay id (each document keeps its own counter, so a
+    // collision is only a coincidence, not a protocol guarantee) must never be handed doc A's stored answer.
+    const docB = openPage(ext, deps, DAPP, {documentId: 'doc-b'});
+    const r2 = await docB.ask(connect('c1'));
+    expect(r2).toMatchObject({id: 'c1', accepted: true});
+    expect(r2?.requestId).not.toBe(r?.requestId);
+    expect((await queue(ext)).find(e => e.requestId === r2?.requestId)).toMatchObject({documentId: 'doc-b', state: 'queued'});
+    expect(docB.answersFor(String(r?.requestId))).toEqual([]);
+  });
+});

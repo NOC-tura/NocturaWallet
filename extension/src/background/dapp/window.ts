@@ -1,5 +1,6 @@
 import type {Ext} from '../../ext';
 import type {WalletDeps} from '../deps';
+import {lock} from '../autolock';
 import {budgetLeft, withWindow} from './limits';
 import {headOf, queueAccess, rejectQueued, userRejected} from './queue';
 import {readDappSession} from './store';
@@ -57,11 +58,23 @@ export async function ensureWindow(ext: Ext, deps: Pick<WalletDeps, 'now'>): Pro
 }
 
 /**
- * windows.onRemoved for the approval window (§2.3, C4): closing it rejects only the request it was showing, and only if
- * that is still `queued` (a `deciding` one finishes; an answered one stays answered). Another window id is not ours. A
- * queue that still holds requests gets a window again (the budget applies).
+ * windows.onRemoved for the approval window (§2.3, §2.4, C4; fix round 1, review 2 L9/Important 1): closing it
+ * rejects only the request it was showing, and only if that is still `queued` (a `deciding` one finishes; an
+ * answered one stays answered). Another window id is not ours (returns `false`; nothing else happens here).
+ *
+ * The reopen-or-lock decision below must read `ext.windowCount()` BEFORE anything here can change it. The previous
+ * version called `ensureWindow` unconditionally once a request was still queued — its own `windows.create` could
+ * raise the count straight back to 1, so the browser-closed check that runs after it (index.ts's `onWindowRemoved`)
+ * would then see a non-zero count and never lock: the approval popup that was the user's only open window got
+ * silently replaced by a fresh one, on an unlocked wallet (§2.4: "closing the last browser window while [the popup]
+ * is open does not lock; closing the popup then does"). So: zero means no window exists to show anything to — drain
+ * the rest of the queue first (a background refusal, not the user's: Scope R11, it does not count toward C14's
+ * cooldown — and the one WAY to deliver it to any port still around, before storage.session goes), THEN lock:
+ * clearSession wipes the whole of storage.session, this extension's dApp queue included (session.ts), so locking
+ * first would silently discard it instead of answering it. Otherwise a window still exists, and the approval window
+ * reopens for what remains (C14's budget still applies).
  */
-export async function onApprovalWindowRemoved(ext: Ext, deps: Pick<WalletDeps, 'now'>, id: number): Promise<void> {
+export async function onApprovalWindowRemoved(ext: Ext, deps: Pick<WalletDeps, 'now'>, id: number): Promise<boolean> {
   const ours = await queueAccess(ext, deps, (tx, fx) => {
     if (tx.s.window?.id !== id) return false;
     const showing = tx.s.window.showing;
@@ -70,7 +83,14 @@ export async function onApprovalWindowRemoved(ext: Ext, deps: Pick<WalletDeps, '
     if (e?.state === 'queued') userRejected(tx, fx, e);
     return true;
   });
-  if (ours) await ensureWindow(ext, deps);
+  if (!ours) return false;
+  if ((await ext.windowCount()) === 0) {
+    await queueAccess(ext, deps, (tx, fx) => rejectQueued(tx, fx, () => true));
+    await lock(ext).catch(e => console.warn('dApp: lock after the last window closed failed', e));
+  } else {
+    await ensureWindow(ext, deps);
+  }
+  return true;
 }
 
 /**

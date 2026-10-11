@@ -43,12 +43,13 @@ api.alarms.onAlarm.addListener(a => {
   if (a.name === PENDING_ALARM) void onPendingAlarm(ext, deps).catch(e => console.warn('pending alarm tick failed', e));
   if (a.name === QUEUE_ALARM) void onQueueAlarm(ext, deps).catch(e => console.warn('dApp queue tick failed', e));
 });
-// The approval window first (closing it rejects the request it showed, §2.3), then the browser-closed lock: the
-// approval popup counts in windowCount, so closing the last browser window while it is open does not lock (review 2 L9).
+// The approval window first: it decides for itself whether to lock (and drain the queue) or reopen, from
+// ext.windowCount() as of right after the reject — before anything here could change that count (fix round 1,
+// Important 1; §2.4, review 2 L9). Only when the closed window was not ours does the plain browser-closed check run.
 api.windows.onRemoved.addListener(windowId => {
   void onApprovalWindowRemoved(ext, deps, windowId)
-    .catch(e => console.warn('dApp window removal failed', e))
-    .finally(() => onWindowRemoved(ext));
+    .then(ours => (ours ? undefined : onWindowRemoved(ext)))
+    .catch(e => console.warn('dApp window removal failed', e));
 });
 api.runtime.onStartup.addListener(() => {
   void lock(ext);

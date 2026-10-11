@@ -81,9 +81,15 @@ function enqueue(tx: Tx, deps: Pick<WalletDeps, 'randomBytes'>, live: LivePort, 
   return e;
 }
 
-/** The same request re-sent after a lost connection (same relay id, same tab and origin) is the same request (C9). */
+/**
+ * The same request re-sent after a lost connection (same relay id, same tab and origin) is the same request (C9).
+ * Fix round 1 (promoted Minor 3, D5): also the same document when both report one — a stored entry of document A
+ * is never document B's (a new document in the same tab, same relay id by coincidence), or document B could be
+ * handed A's answer, including an `{accounts}` approval granted to A. Neither reporting one (Firefox) falls back to
+ * (tabId, origin, pageId) alone, as before.
+ */
 function resent(tx: Tx, live: LivePort, id: string): Entry | null {
-  return tx.s.queue.find(e => owns(live, e) && e.pageId === id) ?? null;
+  return tx.s.queue.find(e => owns(live, e) && e.pageId === id && (e.documentId === null || live.documentId === null || e.documentId === live.documentId)) ?? null;
 }
 
 async function connect(ext: Ext, deps: WalletDeps, live: LivePort, id: string, silent: boolean): Promise<Reply> {
