@@ -751,6 +751,7 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
 | #46 non-UTF-8 → hex preview (design) vs refuse (B1 §3) | **refuse** (D9) |
 | #49 Disconnect all: hold (`index.html`) vs typed confirmation (B1 §3 **and** `screen.md` §49 — the two design files disagree) | **hold** (D9, `index.html`), at #49's own **600 ms** (#37's hold is 1 s; each screen keeps its drawn number) |
 | #46/#47 lookalike origin card names the imitated brand ("Phantom") | the card's name row is the host's label; the brand appears only in the banner (a brand name lends credit) |
+| origin card primary string is the design's highlighted decoded-Unicode form | the punycode host `h` as the browser reports it (§2.5 Display, review L10); the decoded Unicode appears only in the lookalike banner |
 | #47b unknown card: name row = SLD, domain row = host | kept as drawn (C7 refined: unknown → SLD + host) |
 | #47b scope card absent after the domain ack (mockups) | kept visible in every state; C12 enforces the scope |
 | #47 Android note: auto-ack when the permissions list scrolls to its end | dropped: a scroll is not consent |
@@ -769,7 +770,10 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
 | #48 ~900 ms honest skeleton | Approve waits for the real answer; no artificial minimum |
 | #48 "approving · shielded" | B2 |
 | #49 SHIELDED badge, "Last mode" cell, "Permissions reduced" | dropped (B2; no partial permissions) |
+| #49 relative times as "5 h ago", "~300 – 700 ms typical" | B1b's `whenText` (§4.4): day-granular ("today", "yesterday", "<n> days ago", …), same as #12's recipient hints |
 | #49 footer caption naming `v1_dapp_sessions` | dropped (an internal key; ours is `v1_dapp_grants`) |
+| #49e skeleton caption "Reading v1_dapp_sessions · re-verifying TLS certs · ~300 – 700 ms typical" | dropped, same reasoning as the footer row: "Loading sessions…" (Approve waits for the real read; no internal key, no invented timing or TLS-reverification claim) |
+| #49d hold helper "…will be wiped from v1_dapp_sessions · release the button to cancel" | dropped, same reasoning as the footer row: "…will be wiped · release the button to cancel" (no internal key named) |
 | #49 empty-state text and [Browse dApps] | Q14; the button dropped (D1) |
 | #49 pull-to-refresh | dropped: a popup has no pull gesture; the list re-reads on focus |
 | design frame 916 px high | the window is 720 px; the body scrolls, the sticky bar stays |

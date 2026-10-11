@@ -303,6 +303,13 @@ describe('#49 empty, blocked sites, loading, failure', () => {
     expect([initialsOf('Magic Eden'), initialsOf('Tensor'), initialsOf('solana-mint-hub'), initialsOf('x')]).toEqual(['ME', 'TE', 'SM', 'X']);
     expect(tileOf('jup.ag')).toBe(tileOf('jup.ag'));
   });
+
+  // Fix round 1, M-c: these five hosts are the design's own drawn tiles (ix:18705-19100's legend), not whichever one
+  // the hash happens to land them on — Tensor's row must be the violet tile drawn for Tensor, not possibly Jupiter's
+  // amber. Any other host still hashes (unchanged, and still deterministic — the assertion above).
+  it('fix round 1, M-c: the five known dApps get their own drawn tile, not the hash', () => {
+    expect([tileOf('tensor.trade'), tileOf('jup.ag'), tileOf('magiceden.io'), tileOf('drift.trade'), tileOf('kamino.finance')]).toEqual(['tensor', 'jup', 'magic', 'drift', 'kamino']);
+  });
 });
 
 describe('#49 the undo deadline (review 1, h)', () => {

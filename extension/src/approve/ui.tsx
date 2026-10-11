@@ -129,7 +129,12 @@ export function RiskConfirm({onCancel, onProceed, delay = CONFIRM_DELAY_MS}: {on
   }, [delay]);
   return (
     <Sheet title={WINDOW_TEXT.confirmTitle} onClose={onCancel} focusControl={false}>
-      <div className="sticky-bar row app-risk-actions">
+      {/* Fix round 1, C1: not `.sticky-bar row` — `.s8-sheet .row` (the generic 3-column list row, ix:18845) and
+          `.sticky-bar` (its own --bg-base band + border-top) both have the same two-class specificity as
+          `.sticky-bar.row` itself and land later in the sheet, so inside a sheet they silently win: the row
+          became a 3-column grid and a darker band. `.app-risk-actions` is its own rule, matching the design's
+          `.sticky-bar.row .btn` layout (ix:17669: two equal flex:1 buttons) without colliding with either. */}
+      <div className="app-risk-actions">
         <LockedButton className="btn btn-secondary" onPress={onCancel}>
           {WINDOW_TEXT.cancel}
         </LockedButton>

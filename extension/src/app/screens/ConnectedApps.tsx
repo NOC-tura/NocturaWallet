@@ -90,7 +90,22 @@ export function initialsOf(name: string): string {
 
 /** The design's five row gradients (ix:3885-3889), chosen from the host so a site keeps its colour. */
 export const TILES = ['tensor', 'jup', 'magic', 'drift', 'kamino'] as const;
+/**
+ * Fix round 1, M-c: the design draws these five tiles for these five real dApps — Tensor violet, Jupiter amber,
+ * Magic Eden pink, Drift teal, Kamino its own blue-teal (ix:18705-19100's tile legend) — not a free palette any
+ * host can land on. Before this, every host (including these five) was hashed, so Tensor's own row could land on
+ * the amber gradient drawn for Jupiter. Any other host still keeps the hash, same as before.
+ */
+const BRAND_TILES: Readonly<Partial<Record<string, (typeof TILES)[number]>>> = {
+  'tensor.trade': 'tensor',
+  'jup.ag': 'jup',
+  'magiceden.io': 'magic',
+  'drift.trade': 'drift',
+  'kamino.finance': 'kamino',
+};
 export function tileOf(host: string): (typeof TILES)[number] {
+  const brand = BRAND_TILES[host];
+  if (brand !== undefined) return brand;
   let sum = 0;
   for (let i = 0; i < host.length; i++) sum += host.charCodeAt(i);
   return TILES[sum % TILES.length] ?? 'tensor';

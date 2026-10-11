@@ -1465,6 +1465,13 @@ body:has(.app-window) {
 .app-approve-notice {
   margin-bottom: var(--space-4);
 }
+/* Fix round 1, M-a: Q24 (`.banner.warning`, design-ext.css's generic component) read at the full 15 px body size;
+   every other alert in this window (`.s9-flag-banner`, `.s9-domain-warn`, `.s9-struct-alert`) is the 13 px head /
+   12 px body tier. Matched to that tier, not the generic banner's own. */
+.app-approve-notice .banner-line {
+  font-size: 13px;
+  line-height: 18px;
+}
 .app-card-overline {
   margin-bottom: 4px;
 }
@@ -1607,6 +1614,17 @@ body:has(.app-window) {
   border-top-color: var(--bg-base);
   animation: spin var(--dur-spin) linear infinite;
 }
+/*
+ * Fix round 1, I2: `.s9-flag-banner.warn svg { color: var(--warning) }` (design-ext.css, ix:4076's own banner-icon
+ * rule — meant for the banner's top alert-triangle) also recolors the NESTED check icon inside the unacked domain
+ * `.ack .box`, defeating that box's own `color: transparent` — a color set directly on an element always wins over
+ * one only inherited from an ancestor, regardless of specificity, so the unacked box showed a warning-coloured
+ * check before anyone had acknowledged anything. Specific enough to beat the banner's own `svg` rule, and inherits
+ * the box's colour (transparent unacked, `--bg-base` once `.is-acked`) instead of hard-coding one.
+ */
+.s9-flag-banner .ack .box svg {
+  color: inherit;
+}
 /* Q01: the account picker, a card like the scope card, above "Stay connected". */
 .app-approve-account {
   display: flex;
@@ -1626,18 +1644,38 @@ body:has(.app-window) {
   border: 0;
   border-radius: var(--radius-md);
 }
-/* The 2-second confirm's two actions, inside the sheet. */
-.sticky-bar.app-risk-actions {
-  border-top: 0;
-  padding: var(--space-4) 0 0;
+/* The 2-second confirm's two actions, inside the sheet (fix round 1, C1): a plain flex row matching the design's
+   `.sticky-bar.row .btn` layout (ix:17669, two equal buttons), not the `.sticky-bar`/`.row` classes themselves —
+   `.s8-sheet .row` (a 3-column list-row grid) and `.sticky-bar` (its own surface band + border-top) are both
+   (0,2,0)-specific, tie with `.sticky-bar.row`, and win inside a sheet by source order. */
+.app-risk-actions {
+  display: flex;
+  gap: var(--space-3);
 }
-/* D11's locked window: the mark, the two lines and the origin card, centred. */
-.app-approve-locked .app-approve-scroll {
+.app-risk-actions .btn {
+  flex: 1;
+}
+/*
+ * D11's locked window: the mark, the two lines and the origin card, centred — but Q24 (when shown) is a sibling in
+ * normal flow above this group (fix round 1, M-b), not a child of it: a shared `justify-content: center` /
+ * `text-align: center` on the whole scroll area swept the banner's box into the centred group too, so it floated
+ * wherever that (short) group happened to land instead of sitting at the scroll area's own top inset, and its own
+ * text centred instead of reading left like every other banner in this app.
+ */
+.app-approve-locked-center {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
+  text-align: center;
+  gap: var(--space-4);
+  padding: var(--space-6) 0;
 }
 .app-approve-locked .app-origin-slot {
   width: 100%;
   margin-top: var(--space-4);
+  text-align: left;
 }
 
 /* B1c plan 1: #49 connected apps (spec §4.4) — index.html #s49's inline styles, as classes. The screen is the
@@ -1780,9 +1818,25 @@ body:has(.app-window) {
   display: inline-block;
   margin-left: 2px;
 }
+/*
+ * Fix round 1, I1: `.s10-sheet` is `display:flex; flex-direction:column; max-height:70%; overflow:hidden` with no
+ * flex-basis pinned on any child, so when the sheet's content exceeds 70% of the popup every child shrinks (default
+ * flex-shrink:1) — including `.app-revoke-one`, whose only vertical sizing is `.btn`'s `height` (a flex-basis, not a
+ * floor: with no vertical padding its automatic min-height is just the label's line box, so it shrank to ~28 px, well
+ * under the design's 56 dp), and the body's `.s10-perm-row`/`.s10-meta-grid`/`.s10-history` groups cut off with no way
+ * to reach them. `flex: 1 1 auto; min-height: 0` makes the body the ONLY flexible child — it absorbs all the
+ * available room and scrolls (`overflow-y: auto`) for the rest — while the grabber, head-row and CTA below are
+ * pinned at their natural size.
+ */
+.s10-sheet .grabber,
+.s10-sheet .head-row,
+.btn.app-revoke-one {
+  flex: 0 0 auto;
+}
 .app-grant-sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  max-height: 360px;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);

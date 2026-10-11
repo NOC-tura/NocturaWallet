@@ -55,6 +55,33 @@ async function dismiss(win: Page): Promise<void> {
   await closed;
 }
 
+/**
+ * A popup shot (fix round 1): the state's own element in the viewport AND clear of the pinned bars — not drawn under
+ * the top bar or the action bar (the B1b `pop` helper's pattern, visual-settings.spec.ts). `still()`'s
+ * `scrollIntoViewIfNeeded` no-ops when the element is already geometrically inside the viewport, which says nothing
+ * about a `position: sticky` bar painted on top of it (`49-blocked-section` landed byte-identical to `49a-populated`
+ * this way — the sticky action bar covered the heading, and nothing ever scrolled). The native `scrollIntoView`
+ * always scrolls; `under()` is re-checked after, not assumed.
+ */
+async function pop(page: Page, name: string, visible: Locator): Promise<void> {
+  const bars = page.locator('main.app-content > .screen > .top-bar, main.app-content > .screen > .sticky-bar, nav.app-tab-bar');
+  const under = async (): Promise<string | null> => {
+    const box = await visible.boundingBox();
+    if (box === null) return 'no box';
+    const el = await visible.elementHandle();
+    for (const bar of await bars.all()) {
+      const b = await bar.boundingBox();
+      if (b === null || (await bar.evaluate((e, x) => e.contains(x), el))) continue;
+      if (box.y < b.y + b.height && b.y < box.y + box.height) return await bar.evaluate(e => e.className);
+    }
+    return null;
+  };
+  if ((await under()) !== null) await visible.evaluate(e => e.scrollIntoView({block: 'center'}));
+  await expect(visible).toBeInViewport();
+  expect(await under(), `${name}: the state's element clear of the pinned bars`).toBeNull();
+  await shot(page, name, {fullPage: false});
+}
+
 async function scene(): Promise<{h: Harness; server: DappServer}> {
   const h = await launchPopup('noctura-e2e-visual-dapp-', {hosts: DAPP_HOSTS});
   const server = await serveDapp(h.ctx);
@@ -100,6 +127,19 @@ test('visual · #47: 47a ×3, 47b ×4, lookalike (and its confirm), cap, connect
     await fresh(h.sw);
     win = await windowFor(h, () => connect(dapp));
     await still(win, '47b-initial', win.getByText('0 of 2 acknowledgments'), win.getByRole('button', {name: 'Reject'}));
+
+    // New shot: 47b's own locked tap (two gates: the hint names both, unlike 47a's one-gate hint).
+    await win.getByRole('button', {name: 'Connect for this session', exact: true}).click({force: true});
+    await still(win, '47b-locked-tap', win.getByText('Acknowledge both gates to connect'));
+
+    // New shot: the scope card, scrolled into view — "Recommended for unknown" (Q19), "Until I revoke" disabled.
+    const scope = win.getByRole('radiogroup', {name: 'Recommended for unknown'});
+    await scope.scrollIntoViewIfNeeded();
+    await expect(win.getByText('Connection ends when the wallet locks · safest option for unknown domains')).toBeVisible();
+    const persistentOption = win.getByRole('radio', {name: /Until I revoke/});
+    await expect(persistentOption).toBeDisabled();
+    await still(win, '47b-scope-card', scope);
+
     await win.getByRole('checkbox', {name: 'I understand this domain is not on the verified list'}).click();
     await still(win, '47b-domain-acked', win.getByText('1 of 2 acknowledgments'));
     await win.getByRole('checkbox', {name: /I've read these permissions/}).click();
@@ -124,7 +164,7 @@ test('visual · #47: 47a ×3, 47b ×4, lookalike (and its confirm), cap, connect
     const phantom = await openDapp(h.ctx, 'https://xn--phntom-4nf.app');
     await fresh(h.sw);
     win = await windowFor(h, () => connect(phantom));
-    await still(win, '47-lookalike-idn', win.getByText('The Punycode form is', {exact: false}));
+    await still(win, '47-lookalike-idn', win.getByText('The Punycode form is', {exact: false}), win.getByRole('button', {name: 'Connect anyway (not recommended)'}));
     await dismiss(win);
 
     // Cap (Q16): 200 persistent grants.
@@ -147,7 +187,9 @@ test('visual · #47: 47a ×3, 47b ×4, lookalike (and its confirm), cap, connect
     }).toBe(1);
     await still(win, '47-queue-and-notice', win.getByText('2 more requests waiting'));
     for (let i = 0; i < 3; i++) await win.getByRole('button', {name: 'Close'}).click();
-    await win.waitForEvent('close');
+    // Fix round 1: `waitForEvent('close')` registered AFTER the clicks races the window's own close() (dry-run
+    // record item 5) — polled instead, same as `dismiss()`.
+    await windowClosed(win);
     await set(h.sw, {v1_dapp_limits: {rejections: [{key: 'host:dapp.test', at: Date.now()}, {key: 'host:dapp.test', at: Date.now()}], cooldowns: [], windows: [], notice: false}});
     win = await windowFor(h, () => connect(dapp));
     await still(win, '47-block-this-site', win.getByRole('button', {name: 'Block this site'}));
@@ -181,11 +223,12 @@ test('visual · #46: verified (SIWS), unknown, keyword alert, lookalike and its 
   try {
     const p = await h.openPopup();
     await expect(p.getByText('10.0000 SOL', {exact: true}).first()).toBeVisible({timeout: 30_000});
-    await set(h.sw, {v1_dapp_grants: ['https://jup.ag', 'https://dapp.test', 'https://tensr.trade'].map(o => grant(o))});
+    await set(h.sw, {v1_dapp_grants: ['https://jup.ag', 'https://dapp.test', 'https://tensr.trade', 'https://xn--phntom-4nf.app'].map(o => grant(o))});
     const jup = await openDapp(h.ctx, 'https://jup.ag');
     const dapp = await openDapp(h.ctx, 'https://dapp.test');
     const tensr = await openDapp(h.ctx, 'https://tensr.trade');
-    for (const pg of [jup, dapp, tensr]) await connect(pg, true);
+    const phantom = await openDapp(h.ctx, 'https://xn--phntom-4nf.app');
+    for (const pg of [jup, dapp, tensr, phantom]) await connect(pg, true);
 
     await fresh(h.sw);
     let win = await windowFor(h, () => sign(jup, siws('jup.ag')));
@@ -207,7 +250,7 @@ test('visual · #46: verified (SIWS), unknown, keyword alert, lookalike and its 
 
     await fresh(h.sw);
     win = await windowFor(h, () => sign(dapp, 'Sign in to the test dApp.'));
-    await still(win, '46-unknown', win.getByText("This won't broadcast or move funds. dapp will use the signature only to verify you own this wallet."));
+    await still(win, '46-unknown', win.getByText("This won't broadcast or move funds. dapp will use the signature only to verify you own this wallet."), win.getByRole('button', {name: 'Sign', exact: true}));
     await dismiss(win);
     await fresh(h.sw);
     win = await windowFor(h, () => sign(jup, "jup.ag asks you to approve the following terms:\n\nBy signing, you agree to Jupiter's terms of service and authorize the routing of swaps through any of the verified AMMs in the registry as of this signature timestamp."));
@@ -224,6 +267,13 @@ test('visual · #46: verified (SIWS), unknown, keyword alert, lookalike and its 
     await win.getByRole('button', {name: 'Cancel'}).click();
     await dismiss(win);
 
+    // New shot: rule a (the IDN phantom) signing — #46's own version of 47-lookalike-idn (the connect flow already
+    // shoots this rule; the sign flow had only rule b, tensr.trade, until now).
+    await fresh(h.sw);
+    win = await windowFor(h, () => sign(phantom, 'Welcome back! Click sign to confirm ownership of your wallet.'));
+    await still(win, '46-lookalike-idn', win.getByText('The Punycode form is', {exact: false}), win.getByRole('button', {name: 'Sign anyway (not recommended)'}));
+    await dismiss(win);
+
     // Review fix (Task 9 review fix round 1, item 4): a lookalike origin AND a SIWS domain mismatch together keep
     // the lookalike bar — [Reject and report] primary, plain [Reject] — never a Sign or a Sign-anyway escape hatch.
     await fresh(h.sw);
@@ -234,6 +284,12 @@ test('visual · #46: verified (SIWS), unknown, keyword alert, lookalike and its 
     await fresh(h.sw);
     win = await windowFor(h, () => sign(dapp, siws('jup.ag')));
     await still(win, '46-siws-mismatch', win.getByText('This sign-in message names jup.ag, not this site (dapp.test).'));
+    await dismiss(win);
+
+    // New shot: the cooldown's Block this site (Q17) on a #46 sign request — C14's third request, same as 47's.
+    await set(h.sw, {v1_dapp_limits: {rejections: [{key: 'host:dapp.test', at: Date.now()}, {key: 'host:dapp.test', at: Date.now()}], cooldowns: [], windows: [], notice: false}});
+    win = await windowFor(h, () => sign(dapp, 'Sign in to the test dApp.'));
+    await still(win, '46-cooldown-block', win.getByRole('button', {name: 'Block this site'}));
     await dismiss(win);
     contained(h);
     expect(server.unexpected).toEqual([]);
@@ -288,10 +344,16 @@ test('visual · #49 and #31: populated, sorted by name, detail, hold, undo toast
     await p.getByRole('button', {name: 'Sort'}).click();
     await p.locator('.s10-app-row', {hasText: 'tensor.trade'}).locator('.name').click();
     await still(p, '49c-detail', p.getByRole('dialog', {name: 'Tensor'}));
+    // New shot (fix round 1, review of I1): the sheet's own body scrolls now (it did not before the fix) — the
+    // Session grid and Last 3 interactions sit below the fold at 49c-detail's own scrollTop.
+    const last3 = p.getByText('Last 3 interactions');
+    await last3.scrollIntoViewIfNeeded();
+    await expect(last3).toBeVisible();
+    await expect(p.getByText('Session', {exact: true})).toBeVisible();
+    await shot(p, '49c-full', {fullPage: false});
     await p.getByRole('dialog').getByRole('button', {name: 'Close'}).click();
     const blocked = p.getByText('Blocked sites');
-    await blocked.scrollIntoViewIfNeeded();
-    await still(p, '49-blocked-section', blocked);
+    await pop(p, '49-blocked-section', blocked);
     // 49d: a mid-hold frame (~60 %) on the page's paused clock.
     await p.clock.pauseAt(await p.evaluate(() => Date.now() + 1_000));
     await p.locator('.app-hold').hover();
@@ -301,15 +363,37 @@ test('visual · #49 and #31: populated, sorted by name, detail, hold, undo toast
     await shot(p, '49d-hold', {fullPage: false});
     await p.mouse.move(0, 0);
     await p.mouse.up();
-    await p.clock.resume();
-    // 49e: the undo toast.
+    // 49e: the undo toast. Realigned (fix round 1): `revoke`'s deadline is `m.now() + 5_000` read fresh, but the
+    // toast displays ConnectedApps's own `useNow(1_000, …)` — ticks once a second, so on the very next render it is
+    // always at least slightly behind the fresh reading, and `Math.ceil` rounds the gap up to "undo · 6 s" (a probe
+    // outside this sequence, with no clock paused at all, hit the same "6 s" 5 of 5 runs — the stale tick, not the
+    // pause, is the cause). `fastForward` fires the overdue tick once while the clock is still paused, syncing
+    // useNow's `t` to the exact instant Revoke is clicked immediately after — `until - now` is then exactly 5 000 ms.
+    await p.clock.fastForward(1_000);
     await p.locator('.s10-app-row', {hasText: 'magiceden.io'}).getByRole('button', {name: 'Revoke'}).click();
     await still(p, '49e-undo-toast', p.getByText('Magic Eden revoked'));
+    await expect(p.locator('.s10-undo-toast .timer')).toHaveText('undo · 5 s');
+    await p.clock.resume();
     // 49b: empty (the blocked section stays below it).
     await p.evaluate(() => chrome.runtime.sendMessage({type: 'dapp.grants.revokeAll'}));
     await p.getByRole('button', {name: 'Back'}).click();
     await p.locator('.s7-title', {hasText: 'Connected dApps'}).click();
     await still(p, '49b-empty', p.getByText('No connected apps'));
+
+    // New shot: Q15's failure state. `dapp.grants.list`/`dapp.blocked.list` answered directly (not through the
+    // background) with a shape `call()` cannot parse as success and does not recognise as `locked` — the same
+    // "failed" `engine.dappGrants()` returns for any other read it cannot make sense of.
+    await p.getByRole('button', {name: 'Back'}).click();
+    await p.evaluate(() => {
+      const rt = (globalThis as unknown as {chrome: {runtime: {sendMessage(m: unknown): Promise<unknown>}}}).chrome.runtime;
+      const send = rt.sendMessage.bind(rt);
+      rt.sendMessage = (m: unknown) => {
+        const t = (m as {type?: string}).type;
+        return t === 'dapp.grants.list' || t === 'dapp.blocked.list' ? Promise.resolve({ok: false, error: 'unreachable'}) : send(m);
+      };
+    });
+    await p.locator('.s7-title', {hasText: 'Connected dApps'}).click();
+    await still(p, '49-failed', p.getByText('Could not load your connections. Try again.'), p.getByRole('button', {name: 'Try again'}));
     contained(h);
     expect(server.unexpected).toEqual([]);
   } finally {

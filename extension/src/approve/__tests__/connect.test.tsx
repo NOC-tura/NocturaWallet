@@ -481,3 +481,33 @@ describe('controller ruling (a): busy is in the C15 key for #47', () => {
     expect((cta('Connect') as HTMLButtonElement).disabled).toBe(false);
   });
 });
+
+/*
+ * Task 12 fix round 1, I2: `.s9-flag-banner.warn svg { color: var(--warning) }` (design-ext.css's own banner-icon
+ * rule, meant for the banner's top alert-triangle) also recoloured the NESTED check icon inside the unacked domain
+ * `.ack .box`, defeating that box's own `color: transparent` — a colour set directly on an element always wins over
+ * one only inherited from an ancestor, regardless of specificity, so the box showed a warning-coloured check before
+ * anyone had acknowledged anything. Fixed with a more specific rule (app.css's `.s9-flag-banner .ack .box svg {
+ * color: inherit }`), verified pixel-for-pixel against a real Chromium (the visual pass's 47b-initial,
+ * 47-lookalike-gates, 47-queue-and-notice, 47-block-this-site shots, and a one-off computed-style probe during this
+ * fix). happy-dom's own cascade engine does NOT reliably resolve a 4-part descendant selector against a 3-part one
+ * here — confirmed empirically (a throwaway test with the same shape as this bug got the LOWER-specificity rule's
+ * colour from happy-dom, the opposite of a real browser) — so this asserts the state the CSS switches on
+ * (`.is-acked`), the same way every other test in this file reads the component, rather than a cascade result
+ * happy-dom cannot be trusted to reproduce.
+ */
+describe('fix round 1, I2: the unacked domain-ack box carries no `.is-acked` (its check is CSS-gated on that class)', () => {
+  it('unacked → `ack` only, no `.is-acked`; acking sets it, unticking clears it', async () => {
+    const w = await openWindow();
+    await w.connect('https://dapp.test');
+    w.show();
+    await screen.findByText('0 of 2 acknowledgments');
+    const domainAck = screen.getByRole('checkbox', {name: 'I understand this domain is not on the verified list'});
+    expect(domainAck.className).toBe('ack');
+    expect(domainAck.querySelector('.box svg')).toBeTruthy();
+    fireEvent.click(domainAck);
+    expect(domainAck.className).toBe('ack is-acked');
+    fireEvent.click(domainAck);
+    expect(domainAck.className).toBe('ack');
+  });
+});
