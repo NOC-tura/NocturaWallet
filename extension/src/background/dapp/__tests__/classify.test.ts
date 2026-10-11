@@ -68,6 +68,17 @@ describe('the origin classifier', () => {
     expect(kind('jup.io')).toBe('unknown');
   });
 
+  it('fix round 1 (controller ruling): rules b, c, d also run on the skeleton, not only the raw host', () => {
+    // xn--phntom-4nf.com decodes to ph\u0430ntom.com (Cyrillic \u0430): too far from any known label on the raw
+    // string, but edit distance 0 on the skeleton against phantom.app's own skeleton.
+    expect(imitates('xn--phntom-4nf.com')).toEqual(['edit', 'phantom.app']);
+    // xn--jp-ag-1ua.io decodes to j\u00F9p-ag.io (combining-mark \u00F9): the skeleton collapses the mark, and the
+    // hyphenated skeleton of jup.ag is then embedded in it.
+    expect(imitates('xn--jp-ag-1ua.io')).toEqual(['embedded', 'jup.ag']);
+    // xn--phntom-app-0qi.com decodes to ph\u0430ntom-app.com: the hyphenated skeleton of phantom.app is embedded.
+    expect(imitates('xn--phntom-app-0qi.com')).toEqual(['embedded', 'phantom.app']);
+  });
+
   it('unknown: everything else — including jupp.ag (the 4-character floor) and a two-label public suffix', () => {
     for (const h of ['example.com', 'solana-mint-hub.xyz', 'jupiter.com', 'orchard.so', 'notcoin.io', 'jupp.ag', 'orca.co.uk', 'dapp.test']) {
       expect([h, classify(h)]).toEqual([h, {kind: 'unknown', international: false}]);
