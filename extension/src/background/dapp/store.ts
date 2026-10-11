@@ -68,7 +68,17 @@ export interface DappSession {
   undo: Undo[];
 }
 
-export const EMPTY_SESSION: DappSession = {queue: [], grants: [], window: null, opening: null, undo: []};
+/** A fresh, unshared value every call (fix round 1, CRITICAL 1): `readDappSession`'s "nothing stored" branch
+ * used to return `{...EMPTY_SESSION}`, a shallow copy whose `queue`/`grants`/`undo` were still this module's own
+ * arrays — a section doing `tx.s.queue.push(...)` (the one write pattern this file exists to support) mutated
+ * `EMPTY_SESSION.queue` itself, for the worker's life, and a lock clearing storage.session did not undo that: the
+ * next "nothing stored" read handed back the same, now-polluted array, unvalidated. `EMPTY_SESSION` below stays one
+ * instance for comparisons only; nothing may be handed this reference to mutate. */
+function emptySession(): DappSession {
+  return {queue: [], grants: [], window: null, opening: null, undo: []};
+}
+
+export const EMPTY_SESSION: DappSession = emptySession();
 
 const isTime = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0;
 const isStr = (x: unknown): x is string => typeof x === 'string';
@@ -126,7 +136,7 @@ export function entryOf(x: unknown): Entry | null {
 
 export async function readDappSession(ext: Ext): Promise<DappSession> {
   const v = await ext.session.get(DAPP_SESSION_KEY);
-  if (typeof v !== 'object' || v === null) return {...EMPTY_SESSION};
+  if (typeof v !== 'object' || v === null) return emptySession();
   const o = v as Record<string, unknown>;
   const queue = Array.isArray(o.queue) ? (o.queue as unknown[]).map(entryOf).filter((e): e is Entry => e !== null) : [];
   const w = o.window as {id?: unknown; showing?: unknown} | null | undefined;
@@ -179,6 +189,27 @@ export async function dappSection<T>(ext: Ext, now: number, fn: (tx: Tx) => Prom
       if (JSON.stringify(tx.blocked) !== before.blocked) await ext.local.set(BLOCKED_KEY, tx.blocked);
       if (JSON.stringify(tx.limits) !== before.limits) await ext.local.set(LIMITS_KEY, tx.limits);
       return out;
+    }),
+  );
+}
+
+/**
+ * Removes the three dApp-owned storage.local keys, under the same lock order a dappSection uses (fix round 1,
+ * IMPORTANT 1): accountsStore's removeWalletData (forgetWallet step 7, and storeEnvelope's first-write backstop)
+ * used to remove them with a plain `ext.local.remove`, outside dappMutex and sessionMutex — a dappSection already
+ * in flight reads the old lists before the remove and writes them back (unchanged, or changed by the caller's own
+ * edit) after it, undoing the delete or the first-write's cleanup. Going through dappMutex here queues this call
+ * behind any open dappSection (and any open dappSection behind this call), so the two can never interleave: either
+ * the section's whole read-modify-write finishes first and this then removes its result, or this finishes first
+ * and the next section starts from nothing. Never call this from inside a dappSection's callback — dappMutex is
+ * not re-entrant.
+ */
+export async function wipeDappStores(ext: Ext): Promise<void> {
+  return dappMutex(() =>
+    sessionMutex(async () => {
+      await ext.local.remove(GRANTS_KEY);
+      await ext.local.remove(BLOCKED_KEY);
+      await ext.local.remove(LIMITS_KEY);
     }),
   );
 }

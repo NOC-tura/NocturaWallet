@@ -11,6 +11,7 @@ import {clearCaches} from './balanceCache';
 import {GRANTS_KEY} from './dapp/grants';
 import {BLOCKED_KEY} from './dapp/blocked';
 import {LIMITS_KEY} from './dapp/limits';
+import {wipeDappStores} from './dapp/store';
 import {ENVELOPE_BYTES, ENVELOPE_KDF_MAX, ENVELOPE_KDF_MIN, MAX_ACCOUNTS, accountsPolicyOk, b64Length, cleanName} from '../shared/envelopeRules';
 import {envelopeRevision} from '../shared/envelopeRevision';
 import {readWalletBalances} from '../../../core/solana/balances';
@@ -47,8 +48,12 @@ const serial = createMutex();
  * `v1_forbidden_until` is not the wallet's (the coordinator's verdict) and is kept.
  */
 export const WALLET_DATA_KEYS: readonly string[] = [KNOWN_RECIPIENTS_KEY, SETTINGS_KEY, CONTACTS_KEY, GRANTS_KEY, BLOCKED_KEY, LIMITS_KEY];
+/** The three dApp keys among WALLET_DATA_KEYS: removed only through wipeDappStores (fix round 1, IMPORTANT 1) —
+ * never by a plain ext.local.remove, which an in-flight dappSection's write-back could undo. */
+const DAPP_DATA_KEYS: ReadonlySet<string> = new Set([GRANTS_KEY, BLOCKED_KEY, LIMITS_KEY]);
 async function removeWalletData(ext: Ext): Promise<void> {
-  for (const key of WALLET_DATA_KEYS) await ext.local.remove(key);
+  for (const key of WALLET_DATA_KEYS) if (!DAPP_DATA_KEYS.has(key)) await ext.local.remove(key);
+  await wipeDappStores(ext);
 }
 
 type Json = Record<string, unknown>;

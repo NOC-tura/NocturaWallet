@@ -23,7 +23,14 @@ export interface Limits {
   notice: boolean;
 }
 
-export const EMPTY_LIMITS: Limits = {rejections: [], cooldowns: [], windows: [], notice: false};
+/** A fresh, unshared value every call (fix round 1, CRITICAL 1): `EMPTY_LIMITS` below is one instance for
+ * comparisons, never a value a caller may mutate — `limitsOf`'s "nothing stored" branch must not hand out
+ * this same instance, or a section that mutates its `limits` in place pollutes every future "no limits". */
+function emptyLimits(): Limits {
+  return {rejections: [], cooldowns: [], windows: [], notice: false};
+}
+
+export const EMPTY_LIMITS: Limits = emptyLimits();
 
 const isTime = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0;
 const KEY = /^(host:[^\s/?#@]{1,253}|tab:\d{1,10})$/;
@@ -35,7 +42,7 @@ export const tabKey = (tabId: number): string => `tab:${tabId}`;
 
 /** The stored value, re-validated and pruned to the window; anything else reads as no limits at all. */
 export function limitsOf(x: unknown, now: number): Limits {
-  if (typeof x !== 'object' || x === null) return EMPTY_LIMITS;
+  if (typeof x !== 'object' || x === null) return emptyLimits();
   const o = x as Record<string, unknown>;
   const list = (v: unknown): unknown[] => (Array.isArray(v) ? (v as unknown[]) : []);
   const rejections = list(o.rejections)

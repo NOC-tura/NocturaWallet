@@ -1,8 +1,8 @@
 import {GRANTS_KEY, MAX_GRANTS, grantsOf, withRecent, type Grant} from '../grants';
 import {BLOCKED_KEY, MAX_BLOCKED, blockedOf, isBlocked, withBlock, withoutBlock} from '../blocked';
 import {COOLDOWN_MS, EMPTY_LIMITS, LIMITS_KEY, LIMIT_WINDOW_MS, WINDOW_BUDGET, budgetLeft, inCooldown, limitsOf, rejectionsOf, withRejection, withWindow} from '../limits';
-import {DAPP_SESSION_KEY, EMPTY_SESSION, dappSection, dropGrant, grantIn, putGrant, readDappSession, type Entry} from '../store';
-import {setSession} from '../../session';
+import {DAPP_SESSION_KEY, EMPTY_SESSION, dappSection, dropGrant, grantIn, putGrant, readDappSession, wipeDappStores, type Entry} from '../store';
+import {clearSession, setSession} from '../../session';
 import {fakeExt} from '../../__tests__/fakeExt';
 import {ACCOUNT} from '../../__tests__/fixtures';
 
@@ -137,5 +137,67 @@ describe('dappSection — the queue mutex (store.ts)', () => {
     const ext = fakeExt();
     await ext.session.set(DAPP_SESSION_KEY, {queue: [entry(), {...entry(), state: 'weird'}, {...entry(), answer: {error: 'internal text'}}], window: {id: 'x'}});
     expect(await readDappSession(ext)).toEqual({...EMPTY_SESSION, queue: [entry()]});
+  });
+});
+
+// Review fix round 1.
+describe('fix round 1', () => {
+  // CRITICAL 1: readDappSession's "nothing stored" branch used to return `{...EMPTY_SESSION}`, a shallow copy
+  // whose queue/grants/undo were still EMPTY_SESSION's own arrays — a section's `tx.s.queue.push(...)` mutated
+  // the module's shared constant, and a lock (clearSession) clearing storage.session did not undo that: the next
+  // "nothing stored" read handed back the same, now-polluted array, unvalidated.
+  it('a lock clearing storage.session leaves the next read truly empty, not a polluted shared array', async () => {
+    const ext = fakeExt();
+    await dappSection(ext, T, tx => {
+      tx.s.queue.push(entry());
+    });
+    expect((await readDappSession(ext)).queue).toEqual([entry()]); // the write-back did its job
+    await clearSession(ext); // the lock hook's clear, over the same storage.session
+    // A fresh literal, not EMPTY_SESSION: under the bug, the "nothing stored" branch hands back a shallow copy
+    // sharing EMPTY_SESSION's own arrays, so EMPTY_SESSION itself is polluted too — comparing against the module
+    // constant would (wrongly) pass by comparing the polluted value to itself.
+    expect(await readDappSession(ext)).toEqual({queue: [], grants: [], window: null, opening: null, undo: []});
+  });
+
+  // Same bug, limits.ts: limitsOf's "nothing stored" branch returned EMPTY_LIMITS itself (not even a shallow copy).
+  it('two reads of an empty limits store are never the same mutable object', () => {
+    const l1 = limitsOf(undefined, T);
+    l1.rejections.push({key: 'host:evil.test', at: T});
+    // A fresh literal, not EMPTY_LIMITS: under the bug, l1 IS EMPTY_LIMITS, so comparing the next read against the
+    // module constant would (wrongly) pass — both sides are the same, now-polluted object.
+    expect(limitsOf(undefined, T)).toEqual({rejections: [], cooldowns: [], windows: [], notice: false});
+  });
+
+  // IMPORTANT 1: removeWalletData used to remove the three dApp keys with a plain ext.local.remove, outside
+  // dappMutex/sessionMutex — a dappSection already in flight reads the old lists before that remove and writes
+  // them back after it, undoing the delete (or the first write's cleanup). wipeDappStores takes the same lock
+  // order a dappSection does, so the two can never interleave.
+  it('wipeDappStores waits for an open dappSection — it cannot settle until the section releases the mutex', async () => {
+    const ext = fakeExt();
+    await ext.local.set(GRANTS_KEY, [grant('https://jup.ag')]);
+    let started: () => void = () => {};
+    const startedP = new Promise<void>(r => {
+      started = r;
+    });
+    let release: () => void = () => {};
+    const gate = new Promise<void>(r => {
+      release = r;
+    });
+    const sectionDone = dappSection(ext, T, async tx => {
+      putGrant(tx, grant('https://new.test'));
+      started();
+      await gate;
+    });
+    await startedP; // the section now holds dappMutex and sessionMutex, paused inside its callback
+    let wipeSettled = false;
+    const wipeDone = wipeDappStores(ext).then(() => {
+      wipeSettled = true;
+    });
+    // A macrotask flush: every microtask a plain (unprotected) remove could ride on has had its turn.
+    await new Promise(r => setTimeout(r, 0));
+    expect(wipeSettled).toBe(false);
+    release();
+    await Promise.all([sectionDone, wipeDone]);
+    for (const key of [GRANTS_KEY, BLOCKED_KEY, LIMITS_KEY]) expect(await ext.local.get(key)).toBeUndefined();
   });
 });
