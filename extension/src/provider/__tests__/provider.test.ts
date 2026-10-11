@@ -12,13 +12,18 @@ const A = base58.encode(ed25519.getPublicKey(new Uint8Array(32).fill(1)));
 const B = base58.encode(ed25519.getPublicKey(new Uint8Array(32).fill(2)));
 
 /** A window as the provider sees it: an EventTarget with location.origin, crypto and postMessage (recorded). */
-function fakeWindow() {
+function fakeWindow(origin: string = ORIGIN) {
   const target = new EventTarget();
   const posted: {m: Record<string, unknown>; to: string}[] = [];
   const win = Object.assign(target, {
-    location: {origin: ORIGIN},
+    location: {origin},
     crypto: globalThis.crypto,
-    postMessage: (m: Record<string, unknown>, to: string) => void posted.push({m, to}),
+    postMessage: (m: Record<string, unknown>, to: string) => {
+      // Review 1 IMPORTANT: compliant browsers throw a SyntaxError for postMessage's targetOrigin when it is the
+      // literal string 'null' (an opaque origin's serialization) rather than a parseable URL.
+      if (to === 'null') throw new DOMException('Invalid target origin', 'SyntaxError');
+      posted.push({m, to});
+    },
   });
   /** A message event as the browser dispatches one (window.postMessage from this window: source = window). */
   const dispatch = (data: unknown, o: {source?: unknown; origin?: string} = {}) =>
@@ -83,6 +88,15 @@ describe('the Noctura wallet (Wallet Standard)', () => {
     expect(wallet.accounts).toEqual([]);
     w.dispatch({source: 'noctura-relay', id, result: {accounts: [A]}});
     expect((await pending).accounts.map(a => a.address)).toEqual([A]);
+  });
+
+  // Review 1 IMPORTANT: an opaque-origin page's postMessage(data, 'null') throws a raw SyntaxError in real browsers —
+  // the provider must turn this into a NocturaError, never let the DOMException itself reach the dApp.
+  it('an opaque-origin page: connect rejects unauthorized instead of a raw DOMException, and nothing is sent', async () => {
+    const w = fakeWindow('null');
+    const wallet = new NocturaWallet(createBridge(w.win));
+    await expect(wallet.features['standard:connect'].connect()).rejects.toMatchObject({name: 'NocturaError', code: 4100});
+    expect(w.posted).toEqual([]);
   });
 
   it('a refusal becomes an Error with a stable code and a fixed English message (C10); an unknown code is invalid-request', async () => {

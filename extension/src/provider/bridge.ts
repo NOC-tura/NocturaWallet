@@ -59,7 +59,16 @@ export function createBridge(win: Window): Bridge {
       const id = newId();
       return new Promise((resolve, reject) => {
         waiting.set(id, {resolve, reject});
-        win.postMessage({source: FROM_PROVIDER, id, type, payload}, win.location.origin);
+        try {
+          win.postMessage({source: FROM_PROVIDER, id, type, payload}, win.location.origin);
+        } catch {
+          // Review 1 IMPORTANT: on an opaque-origin page (`location.origin === 'null'`) some browsers throw a
+          // SyntaxError for that targetOrigin rather than following postMessage's "null" serialization — the relay
+          // could never have served this origin anyway (ports.ts' origin rule), so surface the same stable code
+          // (C10), never a raw DOMException.
+          waiting.delete(id);
+          reject(new NocturaError('unauthorized'));
+        }
       });
     },
     onChange(listener) {

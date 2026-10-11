@@ -48,7 +48,24 @@ export function startRelay(env: RelayEnv): void {
   /** Accepted requests whose answer has not come: requestId → the page's id. */
   const awaited = new Map<string, string>();
 
-  const toPage = (m: Record<string, unknown>) => win.postMessage({source: FROM_RELAY, ...m}, win.location.origin);
+  /**
+   * Review 1 IMPORTANT: ports.ts' origin rule serves only an `https:` top-frame origin — it disconnects anything
+   * else at once, with no answer. A non-https page (http:, file:, an http://localhost dev server) or an opaque one
+   * (a sandboxed frame: `location.origin === 'null'`) can therefore never be served; connecting anyway would just
+   * retry forever (0.5/1/2 s, then every `visibilitychange`) while the page's promise never settles. So: answer
+   * locally, without ever opening a port, whenever this document could not be served.
+   */
+  const servable = () => win.location.protocol === 'https:' && win.location.origin !== 'null';
+
+  const toPage = (m: Record<string, unknown>) => {
+    try {
+      win.postMessage({source: FROM_RELAY, ...m}, win.location.origin);
+    } catch {
+      // Defensive, same cause as the IMPORTANT fix above: an opaque document's targetOrigin ('null') throws a
+      // SyntaxError in compliant browsers. Nothing could be delivered to it anyway (its own provider's postMessage
+      // would already have thrown first) — never let this escape the event listener uncaught.
+    }
+  };
   const send = (m: Record<string, unknown>) => {
     try {
       port?.postMessage(m);
@@ -70,6 +87,19 @@ export function startRelay(env: RelayEnv): void {
     unaccepted.delete(pageId);
     if ('error' in m) toPage({id: pageId, error: m.error});
     else toPage({id: pageId, result: m.result});
+  };
+
+  /**
+   * Review 1 promoted Minor: an orphaned content script (the extension updated or reloaded) sees its
+   * `runtime.connect` throw ("Extension context invalidated") — nothing here can recover a dead extension context,
+   * so every request still outstanding is answered a stable code (C10) instead of hanging forever.
+   */
+  const failPending = () => {
+    for (const id of unaccepted.keys()) toPage({id, error: 'timeout'});
+    for (const id of awaited.values()) toPage({id, error: 'timeout'});
+    unaccepted.clear();
+    awaited.clear();
+    keepAlive();
   };
 
   const onPortMessage = (m: unknown) => {
@@ -108,7 +138,14 @@ export function startRelay(env: RelayEnv): void {
     if (port !== null) return;
     // Document.prerendering (Chrome 108+; absent elsewhere, where a page is never prerendered).
     if ((doc as Document & {prerendering?: boolean}).prerendering === true) return;
-    const p = env.connect(PAGE_PORT);
+    let p: PortLike;
+    try {
+      p = env.connect(PAGE_PORT);
+    } catch {
+      // Review 1 promoted Minor: the extension context is gone — this content script is orphaned, permanently.
+      failPending();
+      return;
+    }
     port = p;
     p.onMessage.addListener(onPortMessage);
     p.onDisconnect.addListener(() => {
@@ -131,6 +168,11 @@ export function startRelay(env: RelayEnv): void {
     const d: unknown = e.data;
     if (!isObj(d) || d.source !== FROM_PROVIDER || typeof d.type !== 'string' || typeof d.id !== 'string' || !PAGE_ID.test(d.id)) return;
     if (!(METHOD_TYPES as readonly string[]).includes(d.type)) return;
+    if (!servable()) {
+      // The background would disconnect this port at once with no answer (ports.ts' origin rule) — never connect.
+      toPage({id: d.id, error: 'unauthorized'});
+      return;
+    }
     const payload = isObj(d.payload) ? d.payload : {};
     const m = {...payload, type: d.type, id: d.id};
     asked = true;
