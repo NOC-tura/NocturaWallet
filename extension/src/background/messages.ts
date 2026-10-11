@@ -12,6 +12,8 @@ import {isOpen, readPending} from './pendingStore';
 import {startPoller} from './pending';
 import {WALLET_TYPES, applySettingsChallenge, handleWallet, isWalletType, type Result} from './walletApi';
 import {PAGE_TYPES} from './dapp/pageApi';
+import {decide, decideRequestOf, pending} from './dapp/decide';
+import {listBlocked, listGrants, revokeAll, revokeGrant, undoRevoke, unblock} from './dapp/grantsApi';
 
 /** What the browser reports about a message's origin (runtime.MessageSender). */
 export interface Sender {
@@ -45,6 +47,15 @@ export const PRIVILEGED = [
   'vault.phraseVerified',
   'activity.ping',
   ...WALLET_TYPES,
+  // B1c §1.4: the approval window's two, and #49's.
+  'dapp.pending',
+  'dapp.decide',
+  'dapp.grants.list',
+  'dapp.grants.revoke',
+  'dapp.grants.undo',
+  'dapp.grants.revokeAll',
+  'dapp.blocked.list',
+  'dapp.blocked.remove',
 ] as const;
 /**
  * Only the vault page itself may hand over keys, report a re-authentication it proved, hand over
@@ -64,6 +75,10 @@ const VAULT_PAGE_ONLY: readonly string[] = [
   'vault.removePasskey',
   'vault.phraseVerified',
 ];
+/** B1c §1.4: the approval window's messages come from approve.html only (sender.origin ours, the path /approve.html). */
+const APPROVE_PAGE_ONLY: readonly string[] = ['dapp.pending', 'dapp.decide'];
+/** …and #49's from the popup or the UI tab only — never the approval window a site caused, nor the vault page. */
+const WALLET_UI_ONLY: readonly string[] = ['dapp.grants.list', 'dapp.grants.revoke', 'dapp.grants.undo', 'dapp.grants.revokeAll', 'dapp.blocked.list', 'dapp.blocked.remove'];
 export const PAGE: readonly string[] = PAGE_TYPES;
 
 function isOwnPage(ext: Ext, s: Sender): boolean {
@@ -133,6 +148,8 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
   if (!privileged) return {ok: false, error: 'forbidden'};
   if (!isOwnPage(ext, sender)) return {ok: false, error: 'forbidden'};
   if (VAULT_PAGE_ONLY.includes(type) && pagePath(ext, sender) !== '/unlock.html') return {ok: false, error: 'forbidden'};
+  if (APPROVE_PAGE_ONLY.includes(type) && pagePath(ext, sender) !== '/approve.html') return {ok: false, error: 'forbidden'};
+  if (WALLET_UI_ONLY.includes(type) && pagePath(ext, sender) !== '/popup.html' && pagePath(ext, sender) !== '/wallet.html') return {ok: false, error: 'forbidden'};
 
   switch (type) {
     case 'vault.setKeys': {
@@ -259,6 +276,25 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
         return {ok: false, error: 'failed'};
       }
     }
+    case 'dapp.pending':
+      return deps === undefined ? {ok: false, error: 'unavailable'} : {ok: true, data: await pending(ext, deps)};
+    case 'dapp.decide': {
+      if (deps === undefined) return {ok: false, error: 'unavailable'};
+      const d = decideRequestOf(msg as Record<string, unknown>);
+      return d === null ? {ok: false, error: 'malformed'} : decide(ext, deps, d);
+    }
+    case 'dapp.grants.list':
+      return deps === undefined ? {ok: false, error: 'unavailable'} : listGrants(ext, deps);
+    case 'dapp.grants.revoke':
+      return deps === undefined ? {ok: false, error: 'unavailable'} : revokeGrant(ext, deps, (msg as {origin?: unknown}).origin);
+    case 'dapp.grants.undo':
+      return deps === undefined ? {ok: false, error: 'unavailable'} : undoRevoke(ext, deps, (msg as {undoToken?: unknown}).undoToken);
+    case 'dapp.grants.revokeAll':
+      return deps === undefined ? {ok: false, error: 'unavailable'} : revokeAll(ext, deps);
+    case 'dapp.blocked.list':
+      return deps === undefined ? {ok: false, error: 'unavailable'} : listBlocked(ext, deps);
+    case 'dapp.blocked.remove':
+      return deps === undefined ? {ok: false, error: 'unavailable'} : unblock(ext, deps, (msg as {host?: unknown}).host);
     case 'vault.storeEnvelope': {
       const {expectedRevision, envelope} = msg as {expectedRevision?: unknown; envelope?: unknown};
       const r = await storeEnvelope(ext, expectedRevision, envelope);
