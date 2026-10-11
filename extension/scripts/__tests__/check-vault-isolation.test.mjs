@@ -398,6 +398,18 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
     expect(sourceViolations([f('src/app/screens/Contacts.tsx', "const k = 'v1_contacts';")])).toEqual([OWNED('src/app/screens/Contacts.tsx', 'v1_contacts')]);
     expect(sourceViolations([f('src/unlock/main.ts', '// v1_contacts')])).toEqual([OWNED('src/unlock/main.ts', 'v1_contacts')]);
   });
+  // B1c §1.2: the relay may listen on the port it connected — and in no other way; nobody else may.
+  it('lets the relay listen on its own port only: p.onMessage and its PortLike member; runtime.onMessage and onConnect stay refused', () => {
+    const LISTENS = path => `${path}: listens for runtime messages outside the background`;
+    const member = 'export interface PortLike {\n  onMessage: {addListener(cb: (m: unknown) => void): void};\n}';
+    expect(sourceViolations([f('src/relay/relay.ts', `${member}\np.onMessage.addListener(onPortMessage);`)])).toEqual([]);
+    expect(sourceViolations([f('src/relay/relay.ts', 'chrome.runtime.onMessage.addListener(x);')])).toEqual([LISTENS('src/relay/relay.ts')]);
+    expect(sourceViolations([f('src/relay/relay.ts', 'chrome.runtime.onConnect.addListener(x);')])).toEqual([LISTENS('src/relay/relay.ts')]);
+    expect(sourceViolations([f('src/relay/relay.ts', 'port.onMessageExternal.addListener(x);')])).toEqual([LISTENS('src/relay/relay.ts')]);
+    expect(sourceViolations([f('src/app/x.ts', 'p.onMessage.addListener(x);')])).toEqual([LISTENS('src/app/x.ts')]);
+    expect(sourceViolations([f('src/approve/x.ts', 'p.onMessage.addListener(x);')])).toEqual([LISTENS('src/approve/x.ts')]);
+  });
+
   // B1c (spec §2.1, review 1 L4): the dApp grants, blocked sites and limits are the background's — the approval window,
   // the popup and the vault page reach them only through dapp.* messages.
   it('lets only the background name the three dApp keys (v1_dapp_grants, v1_dapp_blocked, v1_dapp_limits)', () => {

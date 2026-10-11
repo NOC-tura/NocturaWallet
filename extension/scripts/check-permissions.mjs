@@ -68,6 +68,21 @@ export function cspViolations(csp) {
   return out;
 }
 
+// B1c §1.7, §6.2 (review L4): the two content scripts, pinned here independently of source.mjs — the matches, the
+// world, run_at and all_frames of each, in this order, and nothing else. `<all_urls>` reaches every page, so a widened
+// entry (all frames, a third script, the isolated relay moved into the page's world) is a decision, never an edit.
+export const REQUIRED_CONTENT_SCRIPTS = [
+  {matches: ['<all_urls>'], js: ['provider.js'], run_at: 'document_start', all_frames: false, world: 'MAIN'},
+  {matches: ['<all_urls>'], js: ['relay.js'], run_at: 'document_start', all_frames: false, world: 'ISOLATED'},
+];
+
+/** Every way a manifest's content_scripts differ from REQUIRED_CONTENT_SCRIPTS (key order ignored, nothing extra allowed). */
+export function contentScriptViolations(scripts) {
+  const norm = x => JSON.stringify(x, Object.keys(x ?? {}).sort());
+  if (!Array.isArray(scripts) || scripts.length !== REQUIRED_CONTENT_SCRIPTS.length) return [`content_scripts must be exactly the provider and the relay, got ${JSON.stringify(scripts)}`];
+  return scripts.flatMap((got, i) => (norm(got) === norm(REQUIRED_CONTENT_SCRIPTS[i]) ? [] : [`content_scripts[${i}] is ${JSON.stringify(got)}, want ${JSON.stringify(REQUIRED_CONTENT_SCRIPTS[i])}`]));
+}
+
 export function comparePermissions(manifest, browser) {
   const problems = [];
   const want = PERMISSIONS.map(p => p.value).join(',');
@@ -80,7 +95,7 @@ export function comparePermissions(manifest, browser) {
     problems.push(`CSP differs: ${manifest.content_security_policy?.extension_pages}`);
   }
   problems.push(...cspViolations(manifest.content_security_policy?.extension_pages));
-  if (manifest.content_scripts !== undefined) problems.push('content_scripts present (not before B1c)');
+  problems.push(...contentScriptViolations(manifest.content_scripts));
   if (browser === 'chrome' && manifest.minimum_chrome_version !== MIN_CHROME_VERSION) {
     problems.push(`chrome: minimum_chrome_version differs: ${manifest.minimum_chrome_version}`);
   }

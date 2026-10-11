@@ -84,6 +84,13 @@ const TOUCHES_STORAGE = /(?:\?\.|\.)\s*storage\b|\[\s*['"`]storage['"`]\s*\]|[{,
 // lowercase `onmessage` and `sendMessage` are different identifiers.
 const LISTENS_RUNTIME = /\bon(?:Message|Connect)(?:External)?\b/;
 const LISTEN_ALLOWED = /^src\/background\//;
+// B1c §1.2: the relay holds its own runtime.connect port — a port's listener hears only what is posted on THAT port,
+// never a runtime.sendMessage broadcast (how vault.setKeys travels). So src/relay may name onMessage in exactly two
+// spellings: its PortLike member and the listener on the port it connected (`p.onMessage.addListener(`). Everything
+// else — runtime.onMessage, onConnect, the External variants, any other spelling — stays refused there too.
+const PORT_LISTEN_ALLOWED = /^src\/relay\//;
+const PORT_LISTENER_SPELLINGS = [/^ {2}onMessage: \{addListener\(cb: \(m: unknown\) => void\): void\};$/gm, /\bp\.onMessage\.addListener\(/g];
+const withoutPortListeners = text => PORT_LISTENER_SPELLINGS.reduce((t, re) => t.replace(re, ' '), text);
 // storage.local keys only the background writes (plan B1b-1): no other file may even name them —
 // a popup writing v1_settings could undo a re-authenticated setting without re-authenticating.
 // B1b-2a E4 adds the two caches: a popup writing one could show a balance the chain never had.
@@ -644,7 +651,8 @@ export function sourceViolations(files) {
     if (!LOCAL_READER_ALLOWED.test(path) && values.some(r => namesLocalReader(path, r.spec))) {
       out.push(`${path}: imports ${LOCAL_READER}, the vault page's storage reader`);
     }
-    if (!LISTEN_ALLOWED.test(path) && LISTENS_RUNTIME.test(text)) out.push(`${path}: listens for runtime messages outside the background`);
+    const listenText = PORT_LISTEN_ALLOWED.test(path) ? withoutPortListeners(text) : text;
+    if (!LISTEN_ALLOWED.test(path) && LISTENS_RUNTIME.test(listenText)) out.push(`${path}: listens for runtime messages outside the background`);
     if (UNLOCK_ALLOWED.test(path)) {
       if (SETS_MARKUP.test(text)) out.push(`${path}: writes markup — the vault page sets text only (textContent)`);
       for (const [re, what] of MARKUP_EVASIONS) if (re.test(text)) out.push(`${path}: ${what} — the vault page sets text only (textContent)`);
