@@ -20,8 +20,8 @@ const OTHER = 'legal winner thank year wave sausage worth useful legal winner th
 /** OTHER's SLIP-0010 account 0 (derived once with src/vault/accounts.ts). */
 const OTHER_ACCOUNT = 'BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX';
 const RECIPIENT = '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4';
-/** What spec 15's delete wipes (spec §8.3), with plan 2's address book (E17, D20). */
-const WIPED = ['v1_vault', 'v1_settings', 'v1_known_recipients', 'v1_contacts', 'v1_balance_cache', 'v1_price_cache'] as const;
+/** What spec 15's delete wipes (spec §8.3), with plan 2's address book (E17, D20) and B1c's dApp grants, blocks and limits (C11, C14). */
+const WIPED = ['v1_vault', 'v1_settings', 'v1_known_recipients', 'v1_contacts', 'v1_dapp_grants', 'v1_dapp_blocked', 'v1_dapp_limits', 'v1_balance_cache', 'v1_price_cache'] as const;
 
 const local = (sw: Worker, key: string) => sw.evaluate(async k => (await chrome.storage.local.get(k))[k], key);
 const envOf = async (sw: Worker) => (await local(sw, 'v1_vault')) as Env | undefined;
@@ -419,6 +419,14 @@ test('15 · delete a funded wallet: #37 says so and names the lowest index (not 
     await ui.goto(`chrome-extension://${h.id}/wallet.html#/home`);
     expect(await msg(ui, {type: 'contacts.set', address: RECIPIENT, name: 'Marko'})).toEqual({ok: true, data: {created: true}});
     await ui.close();
+    // B1c: a grant, a block and a cooldown, as the background stores them (the dApp flow itself is dapp.spec.ts's).
+    await h.sw.evaluate(a =>
+      chrome.storage.local.set({
+        v1_dapp_grants: [{origin: 'https://jup.ag', account: a, scope: 'persistent', connectedAt: Date.now(), lastUsedAt: Date.now(), recent: []}],
+        v1_dapp_blocked: [{host: 'tensr.trade', blockedAt: Date.now(), imitates: 'tensor.trade'}],
+        v1_dapp_limits: {rejections: [], cooldowns: [{key: 'host:tensr.trade', until: Date.now() + 600_000}], windows: [], notice: false},
+      }),
+    E2E_ACCOUNTS[0]);
     for (const key of WIPED) await expect.poll(() => local(h.sw, key), {message: key, timeout: 30_000}).toBeDefined();
     const before = JSON.stringify(await envOf(h.sw));
     await tab.locator('#dl-password').fill('not the password at all');
