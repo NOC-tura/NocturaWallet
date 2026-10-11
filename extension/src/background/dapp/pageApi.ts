@@ -5,6 +5,7 @@ import {inCooldown} from './limits';
 import {PAGE_PORT, owns, pageOrigin, runtimeFor, type LivePort, type PortLike} from './ports';
 import {MAX_OPEN, documentChanged, isOpenEntry, newRequestId, queueAccess, rejectQueued} from './queue';
 import {dropGrant, grantIn, putGrant, type Entry, type ErrorCode, type Tx} from './store';
+import {checkMessage, checkSiws, signRequestOf} from './signMessage';
 import {ensureWindow} from './window';
 
 /**
@@ -122,6 +123,37 @@ async function connect(ext: Ext, deps: WalletDeps, live: LivePort, id: string, s
   });
 }
 
+/**
+ * page.signMessage (§3.2): the checks in the spec's order — each refusal before any window — then queued. A SIWS
+ * message naming another domain is queued too (#46 shows Q20 and only [Reject]); one naming another address is not.
+ */
+async function signMessage(ext: Ext, deps: WalletDeps, live: LivePort, id: string, m: Record<string, unknown>): Promise<Reply> {
+  const req = signRequestOf(m);
+  return queueAccess(ext, deps, (tx, fx): Reply => {
+    documentChanged(tx, fx, live);
+    const again = resent(tx, live, id);
+    if (again !== null) {
+      if (again.state === 'answered') fx.answered.push(again);
+      return {id, accepted: true, requestId: again.requestId};
+    }
+    if (req === null) return {id, error: 'invalid-request'};
+    // 1. Only the granted account of a granted origin, while unlocked (§2.2: a sign request while locked is unauthorized).
+    if (grantedAccount(tx, live.origin) !== req.account) return {id, error: 'unauthorized'};
+    // 2.
+    const checked = checkMessage(req.bytes);
+    if ('refused' in checked) return {id, error: 'invalid-request'};
+    // 3.
+    const siws = checkSiws(checked.text, live.origin, req.account);
+    if (siws.siws && !siws.addressOk) return {id, error: 'invalid-request'};
+    if (isBlocked(tx.blocked, live.host) || inCooldown(tx.limits, live.host, live.tabId, tx.now)) return {id, error: 'rejected'};
+    const refused = admit(tx, live);
+    if (refused !== null) return {id, error: refused};
+    touch(tx, live.origin);
+    const message = typeof m.message === 'string' ? m.message : '';
+    return {id, accepted: true, requestId: enqueue(tx, deps, live, id, {type: 'signMessage', account: req.account, message}).requestId};
+  });
+}
+
 /** C2: a dApp's disconnect removes its grant, whichever the scope; its queued requests are answered `rejected`. */
 async function disconnect(ext: Ext, deps: WalletDeps, live: LivePort, id: string): Promise<Reply> {
   return queueAccess(ext, deps, (tx, fx): Reply => {
@@ -174,6 +206,13 @@ export async function onPageMessage(ext: Ext, deps: WalletDeps, live: LivePort, 
     case 'page.connect': {
       if (id === null || typeof m.silent !== 'boolean') return invalid();
       const r = await connect(ext, deps, live, id, m.silent);
+      reply(live, r);
+      if ('accepted' in r) await ensureWindow(ext, deps);
+      return;
+    }
+    case 'page.signMessage': {
+      if (id === null) return invalid();
+      const r = await signMessage(ext, deps, live, id, m);
       reply(live, r);
       if ('accepted' in r) await ensureWindow(ext, deps);
       return;

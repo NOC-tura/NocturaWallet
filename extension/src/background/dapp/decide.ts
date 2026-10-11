@@ -12,6 +12,8 @@ import {inCooldown, rejectionsOf, REJECTIONS_FOR_COOLDOWN} from './limits';
 import {runtimeFor} from './ports';
 import {answer, headOf, isOpenEntry, queueAccess, rejectQueued, userRejected, type Effects} from './queue';
 import {dropGrant, grantIn, putGrant, type Decision, type Entry, type Tx} from './store';
+import {base64} from '@scure/base';
+import {checkMessage, checkSiws, finishSign, homoglyphRanges, keywordIn} from './signMessage';
 
 /**
  * The approval window's two messages (spec §1.4, §2.3, C13, C17): `dapp.pending` — what the window shows — and
@@ -59,6 +61,20 @@ export interface ConnectDetail {
   cap: boolean;
 }
 
+/** #46's details (§3.2 steps 4–6): the granted account, the text as text, its length, the keyword alert, the marks, a SIWS mismatch. */
+export interface SignDetail {
+  account: AccountChoice;
+  text: string;
+  /** Characters (code points), for "Message · UTF-8 (<n> chars)". */
+  chars: number;
+  /** The first structured-approval keyword (rule 6), or null. */
+  keyword: string | null;
+  /** UTF-16 ranges of `text` to <mark>: the keyword's occurrences, and — for a lookalike origin — every homoglyph. */
+  marks: {start: number; end: number}[];
+  /** Rule 3: the domain a SIWS message names when it is not this site's (Q20: no Sign), else null. */
+  siwsMismatch: string | null;
+}
+
 export interface RequestView {
   requestId: string;
   type: Entry['type'];
@@ -69,6 +85,7 @@ export interface RequestView {
   offerBlock: boolean;
   /** Null while locked: the locked screen shows the origin card only (D11). */
   connect: ConnectDetail | null;
+  sign: SignDetail | null;
 }
 
 export type PendingView =
@@ -84,21 +101,37 @@ async function choices(ext: Ext, tx: Tx): Promise<{accounts: AccountChoice[]; se
   return {accounts: accounts.map(a => ({index: a.index, name: a.name, publicKey: a.publicKey})), selected};
 }
 
+function signDetail(e: Entry, site: SiteView, account: AccountChoice): SignDetail | null {
+  if (e.message === null || e.account === null) return null;
+  const checked = checkMessage(base64.decode(e.message));
+  if ('refused' in checked) return null;
+  const text = checked.text;
+  const keyword = keywordIn(text);
+  const siws = checkSiws(text, e.origin, e.account);
+  const marks = [...(keyword?.ranges ?? []), ...(site.kind === 'lookalike' ? homoglyphRanges(text) : [])].sort((a, b) => a.start - b.start);
+  return {account, text, chars: [...text].length, keyword: keyword?.word ?? null, marks, siwsMismatch: siws.siws && !siws.domainOk ? siws.domain : null};
+}
+
 async function viewOf(ext: Ext, tx: Tx, e: Entry): Promise<RequestView> {
   const unlocked = tx.session !== null;
+  const site = siteView(e.host);
   let connect: ConnectDetail | null = null;
-  if (unlocked && e.type === 'connect') {
+  let sign: SignDetail | null = null;
+  if (unlocked) {
     const c = await choices(ext, tx);
-    connect = {...c, cap: grantIn(tx, e.origin) === null && tx.grants.length >= MAX_GRANTS};
+    if (e.type === 'connect') connect = {...c, cap: grantIn(tx, e.origin) === null && tx.grants.length >= MAX_GRANTS};
+    const named = c.accounts.find(a => a.publicKey === e.account);
+    if (e.type === 'signMessage' && named !== undefined) sign = signDetail(e, site, named);
   }
   return {
     requestId: e.requestId,
     type: e.type,
     origin: e.origin,
     host: e.host,
-    site: siteView(e.host),
+    site,
     offerBlock: rejectionsOf(tx.limits, e.host, e.tabId) >= REJECTIONS_FOR_COOLDOWN - 1,
     connect,
+    sign,
   };
 }
 
@@ -120,7 +153,7 @@ export async function pending(ext: Ext, deps: Pick<WalletDeps, 'now'>): Promise<
   });
 }
 
-export type DecideError = 'malformed' | 'not-head' | 'expired' | 'locked' | 'unknown-account' | 'scope' | 'blocked' | 'cap' | 'no-grant' | 'account';
+export type DecideError = 'malformed' | 'not-head' | 'expired' | 'locked' | 'unknown-account' | 'scope' | 'blocked' | 'cap' | 'no-grant' | 'account' | 'siws-mismatch';
 export interface DecideRequest {
   requestId: string;
   decision: Decision;
@@ -176,6 +209,13 @@ function approvalRefused(tx: Tx, e: Entry, d: DecideRequest): DecideError | null
     // review 2 M9: the grant must still be held for the request's account.
     if (grantIn(tx, e.origin)?.account !== e.account) return 'no-grant';
     if (d.account !== e.account) return 'account';
+    // §3.2 rule 3: a sign-in message for another domain has no Sign (C13: the window's missing button is not the check).
+    if (e.message !== null) {
+      const checked = checkMessage(base64.decode(e.message));
+      if (!('text' in checked)) return 'malformed';
+      const siws = checkSiws(checked.text, e.origin, e.account ?? '');
+      if (siws.siws && !siws.domainOk) return 'siws-mismatch';
+    }
   }
   return null;
 }
@@ -230,6 +270,6 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
   if (typeof out === 'string' && out !== 'done') return {ok: false, error: out};
   // §2.2: a decision in the window is a user action — it arms the auto-lock timer (page requests never do).
   if ((await getSession(ext)) !== null) await armAutolock(ext).catch(e => console.warn('dApp decide: the idle timer was not re-armed', e));
-  if (typeof out === 'object') await finishConnect(ext, deps, d.requestId, instance);
+  if (typeof out === 'object') await (out.approved === 'connect' ? finishConnect : finishSign)(ext, deps, d.requestId, instance);
   return {ok: true};
 }

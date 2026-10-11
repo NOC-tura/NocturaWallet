@@ -81,6 +81,7 @@ describe('dapp.pending (§2.3, §4.3)', () => {
           selected: 1,
           cap: false,
         },
+        sign: null,
       },
     });
     // The window now shows it: closing the window rejects this one.
@@ -439,10 +440,22 @@ describe('#49’s messages: list, revoke + undo, revoke all, blocked, unblock (�
     await decide({requestId, decision: 'approve', account: ACCOUNT.publicKey, scope: 'session'});
     const a = openPage(ext, deps, JUP, {tab: {id: 2}});
     const b = openPage(ext, deps, DAPP, {tab: {id: 3}});
+    // Review 1 M3: a queued request of each granted origin (signMessage — the granted origins' only queued kind) — and
+    // a queued connect of an ungranted origin, left as it is (positive control).
+    const hello = 'aGVsbG8=';
+    const ra = await a.ask({type: 'page.signMessage', id: 'sa', account: ACCOUNT.publicKey, message: hello});
+    const rb = await b.ask({type: 'page.signMessage', id: 'sb', account: ACCOUNT.publicKey, message: hello});
+    const {requestId: ungranted} = await request(ext, deps, 'https://other.test', 4);
+    expect([ra?.accepted, rb?.accepted]).toEqual([true, true]);
     expect(await ui({type: 'dapp.grants.revokeAll'})).toEqual({ok: true});
     expect(await ext.local.get(GRANTS_KEY)).toEqual([]);
     expect((await readDappSession(ext)).grants).toEqual([]);
     expect([a.changes(), b.changes()]).toEqual([[[]], [[]]]);
+    expect([a.answersFor(String(ra?.requestId)), b.answersFor(String(rb?.requestId))]).toEqual([
+      [{requestId: ra?.requestId, error: 'rejected'}],
+      [{requestId: rb?.requestId, error: 'rejected'}],
+    ]);
+    expect((await readDappSession(ext)).queue.find(e => e.requestId === ungranted)?.state).toBe('queued');
   });
 
   it('unblock removes the block only: the grant the block revoked does not come back — the next connect opens #47 again', async () => {

@@ -293,10 +293,17 @@ describe('an account removed (§2.1, review 2 M9)', () => {
     await runUnlockHook(ext, deps);
     const gone = openPage(ext, deps, JUP);
     const kept = openPage(ext, deps, 'https://keep.test', {tab: {id: 8}});
+    // Review 1 M3: a queued sign request of each origin — the removed account's is rejected, the kept one waits.
+    const hello = 'aGVsbG8=';
+    const rg = await gone.ask({type: 'page.signMessage', id: 'g', account: RECIPIENT, message: hello});
+    const rk = await kept.ask({type: 'page.signMessage', id: 'k', account: ACCOUNT.publicKey, message: hello});
+    expect([rg?.accepted, rk?.accepted]).toEqual([true, true]);
     const unlock = {id: ext.runtimeId, origin: ext.extensionOrigin, url: `${ext.extensionOrigin}/unlock.html`};
     const next = {...STORED, seed: {iv: B(12, 9), ct: B(48, 9)}, accounts: [STORED.accounts[0]]};
     expect(await handleMessage(ext, {type: 'vault.storeEnvelope', expectedRevision: envelopeRevision(STORED as Parameters<typeof envelopeRevision>[0]), envelope: next}, unlock, deps)).toEqual({ok: true});
-    expect(await ext.local.get(GRANTS_KEY)).toEqual([grant('https://keep.test')]);
+    expect(((await ext.local.get(GRANTS_KEY)) as Grant[]).map(g => g.origin)).toEqual(['https://keep.test']);
     expect([gone.changes(), kept.changes()]).toEqual([[[]], []]);
+    expect(gone.answersFor(String(rg?.requestId))).toEqual([{requestId: rg?.requestId, error: 'rejected'}]);
+    expect((await readDappSession(ext)).queue.find(e => e.requestId === rk?.requestId)?.state).toBe('queued');
   });
 });
