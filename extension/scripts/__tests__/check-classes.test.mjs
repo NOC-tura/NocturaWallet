@@ -56,12 +56,13 @@ describe('the class gate: the app', () => {
     expect(classViolations(files, new Set(['banner', 'info', 'warning']))).toEqual(['src/app/ui/Banner.tsx: class "danger" (a value of ${tone}) is defined in no stylesheet']);
   });
 
-  it('reads every .tsx under src/app/ except the tests', () => {
+  it('reads every .tsx under src/app/ and src/approve/ (B1c: the approval window loads the same sheets) except the tests', () => {
     const files = listScreens(ROOT);
     expect(files).toContain('src/app/screens/Activity.tsx');
     expect(files).toContain('src/app/ui/Sheet.tsx');
+    expect(files).toContain('src/approve/Connect.tsx');
     expect(files.some(f => f.includes('__tests__'))).toBe(false);
-    expect(files.every(f => f.startsWith('src/app/') && f.endsWith('.tsx'))).toBe(true);
+    expect(files.every(f => (f.startsWith('src/app/') || f.startsWith('src/approve/')) && f.endsWith('.tsx'))).toBe(true);
   });
 
   it('the real app: every class it names is defined by design-system.css, design-ext.css or app.css', () => {

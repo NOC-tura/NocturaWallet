@@ -89,6 +89,8 @@ export default defineConfig({
         popup: resolve(__dirname, 'popup.html'),
         wallet: resolve(__dirname, 'wallet.html'),
         unlock: resolve(__dirname, 'unlock.html'),
+        // B1c §1.7: the approval window.
+        approve: resolve(__dirname, 'approve.html'),
       },
       output: {
         // The manifest names background.js; a hash there would change the manifest.

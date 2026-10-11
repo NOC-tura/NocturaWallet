@@ -6,7 +6,8 @@ import {ExtIcon} from './ExtIcon';
  * close button. Esc, the backdrop and the grabber close it; Tab stays inside it while it is open
  * (focus trap), and focus returns to where it was when it closes. It opens with the focus on the
  * element marked `data-autofocus` when its content has one (B1b-2b's contact sheet: the name field) —
- * React's own autoFocus would run before this effect and be overridden — else on its first control.
+ * React's own autoFocus would run before this effect and be overridden — else on its first control; `focusControl`
+ * false (the approval window's 2-second confirm, C15: no control focused when it opens) puts it on the panel itself.
  * `tall`: the panel may take the popup's height but 48 px (the contact sheet: a full address, its warnings, a field and
  * three buttons do not fit the design's 70 % at 412 × 600, and a scrolled panel hid the address it saves).
  *
@@ -15,14 +16,17 @@ import {ExtIcon} from './ExtIcon';
  * clock (#20 every second) — an effect keyed on `onClose` re-ran each time, pulled the focus back to `data-autofocus` and
  * so typed the rest of a name into #15's address field.
  */
-export function Sheet({title, onClose, children, tall = false}: {title: string; onClose: () => void; children: ReactNode; tall?: boolean}) {
+export function Sheet({title, onClose, children, tall = false, focusControl = true}: {title: string; onClose: () => void; children: ReactNode; tall?: boolean; focusControl?: boolean}) {
   const panel = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
+  // Read once, on mount, like everything the effect below uses.
+  const focusFirst = useRef(focusControl);
   useEffect(() => {
     const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const focusables = (): HTMLElement[] => Array.from(panel.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input, a[href]') ?? []);
-    (panel.current?.querySelector<HTMLElement>('[data-autofocus]') ?? focusables()[0])?.focus();
+    if (focusFirst.current) (panel.current?.querySelector<HTMLElement>('[data-autofocus]') ?? focusables()[0])?.focus();
+    else panel.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();

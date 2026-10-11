@@ -44,7 +44,7 @@ const VAULT_ALLOWED = /^src\/(unlock|vault)\//;
 // they are vault code too, and only the vault page itself may import them.
 const UNLOCK_ALLOWED = /^src\/unlock\//;
 // The one entry each HTML page at the package root may load.
-export const ENTRIES = {'popup.html': 'src/app/popup.tsx', 'wallet.html': 'src/app/tab.tsx', 'unlock.html': 'src/unlock/main.ts'};
+export const ENTRIES = {'popup.html': 'src/app/popup.tsx', 'wallet.html': 'src/app/tab.tsx', 'unlock.html': 'src/unlock/main.ts', 'approve.html': 'src/approve/main.tsx'};
 // node_modules/, dist/, e2e/ and scripts/ are skipped only at the package ROOT — a nested
 // src/popup/scripts/ is ordinary source a page can bundle, not this package's own tooling.
 // __tests__/ is skipped at any depth (never bundled, wherever it sits). See the header.

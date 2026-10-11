@@ -1418,3 +1418,216 @@ a.btn {
   font: inherit;
   cursor: pointer;
 }
+
+/* B1c plan 1: the approval window (approve.html, spec §4.3) — #46 and #47's inline styles as classes. */
+/* The window is 412 × 720 outside (§2.3); the app fills what is inside it, never a horizontal scroll. */
+html:has(.app-window),
+body:has(.app-window) {
+  height: 100%;
+  overflow: hidden;
+}
+.app.app-window {
+  width: 100%;
+  height: 100vh;
+}
+.app-approve {
+  min-height: 0;
+}
+/* The body scrolls, the sticky bar stays (§9: the design frame is 916 px high, the window 720). */
+.app-approve-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-4);
+  display: flex;
+  flex-direction: column;
+}
+.app-approve-title {
+  margin: 0 0 var(--space-2);
+}
+.app-approve-lede {
+  margin: 0 0 var(--space-5);
+}
+/* The origin card: --space-3 above a banner, --space-4 above the cards (ix:17716, 17803). */
+.app-origin-slot {
+  margin-bottom: var(--space-3);
+}
+.app-origin-slot:has(+ .s9-perm-card),
+.app-origin-slot:has(+ .s9-msg-card) {
+  margin-bottom: var(--space-4);
+}
+.app-approve-scroll > .s9-flag-banner,
+.app-approve-scroll > .s9-domain-warn,
+.app-approve-scroll > .s9-struct-alert,
+.app-approve-scroll > .s9-perm-card,
+.app-approve-scroll > .s9-msg-card,
+.app-approve-notice {
+  margin-bottom: var(--space-4);
+}
+.app-card-overline {
+  margin-bottom: 4px;
+}
+/* The origin card's border by tier (47b: --warning 32 %; lookalike: --danger 40 %, ix:17507) and its initials tile (C6). */
+.s9-origin-card.app-origin-unknown {
+  border: 1px solid color-mix(in oklab, var(--warning) 32%, transparent);
+}
+.s9-origin-card.app-origin-lookalike {
+  border: 1px solid color-mix(in oklab, var(--danger) 40%, transparent);
+}
+.s9-origin-card .ico.app-ico-verified {
+  background: linear-gradient(135deg, var(--accent), var(--accent-shielded));
+}
+.s9-origin-card .ico.app-ico-unknown {
+  background: var(--bg-surface-3);
+  color: var(--fg-secondary);
+}
+.s9-origin-card .ico.app-ico-lookalike {
+  background: color-mix(in oklab, var(--danger) 24%, var(--bg-surface-3));
+  color: var(--danger);
+}
+.app-origin-text {
+  min-width: 0;
+}
+/* The in-progress state (#46 ix:17617-17640): the origin card at .55, the message at .7. */
+.app-busy-dim {
+  opacity: 0.55;
+}
+.app-busy-dim-msg {
+  opacity: 0.7;
+}
+/* The design's rows and toggles are buttons here: the UA's button look reset, the design's own borders kept. */
+.app-approve button.s9-ack-row {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.app-approve button.s9-scope-row {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  background: transparent;
+  border: 0;
+}
+.app-approve .s9-flag-banner button.ack {
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  border: 0;
+}
+.s9-scope-row .pri,
+.s9-scope-row .sec {
+  display: block;
+}
+/* 47b: "Until I revoke" at .55 and refused (ix:17907). */
+.app-approve button.s9-scope-row.app-scope-off {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+/* 47b's "1 of 2 acknowledgments": the amber dot (ix:18252). */
+.s9-gate-status.app-gate-partial .dot {
+  background: var(--warning);
+}
+/* A tap on the locked Connect shakes the unmet gate (#47 E); two names, so a second tap shakes again. */
+.app-shake {
+  animation: shake 320ms cubic-bezier(0.2, 0, 0, 1);
+}
+.app-shake-again {
+  animation: app-shake-again 320ms cubic-bezier(0.2, 0, 0, 1);
+}
+@keyframes app-shake-again {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-6px);
+  }
+  40% {
+    transform: translateX(6px);
+  }
+  60% {
+    transform: translateX(-4px);
+  }
+  80% {
+    transform: translateX(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shake,
+  .app-shake-again,
+  .app-ring-spinner {
+    animation: none;
+  }
+}
+/* C15: the confirming CTA's Enter guard wraps it without a box of its own. */
+.app-confirm-wrap {
+  display: contents;
+}
+/* "Reject and report" / "I understand the risk": --danger, as #46's lookalike draws its primary (ix:17543). */
+.btn.app-btn-danger {
+  background: var(--danger);
+  color: var(--danger-on);
+}
+/* The sticky bar's 1 : 1.4 (ix:17554). */
+.sticky-bar.row .btn.app-cta-wide {
+  flex: 1.4;
+}
+.app-approve-hint,
+.app-approve-waiting {
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-2);
+  text-align: center;
+}
+.app-approve-block {
+  display: flex;
+  justify-content: center;
+  padding: 0 var(--space-5) var(--space-2);
+}
+/* #46's ring spinner (ix:17635), as a class. */
+.app-ring-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2.5px solid color-mix(in oklab, var(--bg-base) 30%, transparent);
+  border-top-color: var(--bg-base);
+  animation: spin var(--dur-spin) linear infinite;
+}
+/* Q01: the account picker, a card like the scope card, above "Stay connected". */
+.app-approve-account {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
+  background: var(--bg-surface-1);
+  border-radius: var(--radius-lg);
+}
+.app-approve-account select {
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-3);
+  font: inherit;
+  color: var(--fg-primary);
+  background: var(--bg-surface-3);
+  border: 0;
+  border-radius: var(--radius-md);
+}
+/* The 2-second confirm's two actions, inside the sheet. */
+.sticky-bar.app-risk-actions {
+  border-top: 0;
+  padding: var(--space-4) 0 0;
+}
+/* D11's locked window: the mark, the two lines and the origin card, centred. */
+.app-approve-locked .app-approve-scroll {
+  justify-content: center;
+}
+.app-approve-locked .app-origin-slot {
+  width: 100%;
+  margin-top: var(--space-4);
+}
