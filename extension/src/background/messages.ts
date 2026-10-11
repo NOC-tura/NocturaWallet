@@ -11,6 +11,7 @@ import {changePassword, forgetWallet, provenRevisionIsStored, readWalletView, re
 import {isOpen, readPending} from './pendingStore';
 import {startPoller} from './pending';
 import {WALLET_TYPES, applySettingsChallenge, handleWallet, isWalletType, type Result} from './walletApi';
+import {PAGE_TYPES} from './dapp/pageApi';
 
 /** What the browser reports about a message's origin (runtime.MessageSender). */
 export interface Sender {
@@ -19,13 +20,17 @@ export interface Sender {
   url?: string;
   tab?: unknown;
   frameId?: number;
+  /** B1c: Chrome 106+ (§2.3) — the document, and its lifecycle (C16). */
+  documentId?: string;
+  documentLifecycle?: string;
 }
 
 /**
  * Two partitions (spec §1). Privileged types come only from this extension's own pages;
- * page types (none until B1c) only from https top frames. `sender.origin` is what the browser
- * sets — never the URL the message claims, and never "has a tab", which a full-tab
- * extension page also has.
+ * page types only from https top frames, and only on the `noctura-page` port (B1c §1.3, §1.4:
+ * dapp/pageApi.ts) — never through runtime.sendMessage, so here a page type is refused from
+ * anyone, an extension page included. `sender.origin` is what the browser sets — never the URL
+ * the message claims, and never "has a tab", which a full-tab extension page also has.
  */
 export const PRIVILEGED = [
   'vault.setKeys',
@@ -59,7 +64,7 @@ const VAULT_PAGE_ONLY: readonly string[] = [
   'vault.removePasskey',
   'vault.phraseVerified',
 ];
-export const PAGE: readonly string[] = [];
+export const PAGE: readonly string[] = PAGE_TYPES;
 
 function isOwnPage(ext: Ext, s: Sender): boolean {
   return s.id === ext.runtimeId && s.origin === ext.extensionOrigin;
@@ -124,7 +129,9 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
   const type = (msg as {type: string}).type;
   const privileged = (PRIVILEGED as readonly string[]).includes(type);
   if (!privileged && !PAGE.includes(type)) return {ok: false, error: 'unknown type'};
-  if (privileged && !isOwnPage(ext, sender)) return {ok: false, error: 'forbidden'};
+  // B1c §1.4: page types travel on the page port only.
+  if (!privileged) return {ok: false, error: 'forbidden'};
+  if (!isOwnPage(ext, sender)) return {ok: false, error: 'forbidden'};
   if (VAULT_PAGE_ONLY.includes(type) && pagePath(ext, sender) !== '/unlock.html') return {ok: false, error: 'forbidden'};
 
   switch (type) {
