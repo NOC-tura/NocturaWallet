@@ -100,14 +100,18 @@ async function connect(ext: Ext, deps: WalletDeps, live: LivePort, id: string, s
       if (again.state === 'answered') fx.answered.push(again);
       return {id, accepted: true, requestId: again.requestId};
     }
-    const account = grantedAccount(tx, live.origin);
-    // §2.2: a silent connect never opens a window and never tells "locked" from "not granted".
+    // Fix round 1 item 2 (D3): a blocked host's lingering grant (a restore keeps both the block and the grant) must
+    // never surface the account — silent or explicit — so the block is checked before the grant is even read, not
+    // only before an explicit connect's window-or-reject branch below.
+    const blocked = isBlocked(tx.blocked, live.host);
+    const account = blocked ? null : grantedAccount(tx, live.origin);
+    // §2.2: a silent connect never opens a window and never tells "locked" from "not granted" — nor "blocked".
     if (silent) {
       if (account !== null) touch(tx, live.origin);
       return {id, result: {accounts: account === null ? [] : [account]}};
     }
     // §2.6, C14: a blocked or cooling-down host is answered at once — no window, no queue entry.
-    if (isBlocked(tx.blocked, live.host) || inCooldown(tx.limits, live.host, live.tabId, tx.now)) return {id, error: 'rejected'};
+    if (blocked || inCooldown(tx.limits, live.host, live.tabId, tx.now)) return {id, error: 'rejected'};
     if (account !== null) {
       touch(tx, live.origin);
       return {id, result: {accounts: [account]}};

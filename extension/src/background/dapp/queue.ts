@@ -69,18 +69,18 @@ export function rejectQueued(tx: Tx, fx: Effects, match: (e: Entry) => boolean, 
 }
 
 /**
- * The housekeeping of every access: the unlock hook when it has not run for this session in this instance (unlockHook.ts;
- * true when it ran — the caller marks it done inside the section, and clears it again if the commit fails); a `queued`
- * or `deciding` entry older than five minutes is answered `timeout` (C4, counted from
- * arrivedAt by the background's clock — `queued` or `deciding`); a `deciding` entry another instance wrote is a restart
- * (C17, §1.5 step 2 — nothing left the extension: answered `rejected`), and so is one of this instance still `deciding`
- * DECIDING_TTL_MS after it was written (review 1 M1); an answered entry nobody acked is dropped ten minutes after its
- * answer; an expired undo record is dropped.
+ * The housekeeping of every access: a `queued` or `deciding` entry older than five minutes is answered `timeout` (C4,
+ * counted from arrivedAt by the background's clock); a `deciding` entry another instance wrote is a restart (C17,
+ * §1.5 step 2 — nothing left the extension: answered `rejected`), and so is one of this instance still `deciding`
+ * DECIDING_TTL_MS after it was written (review 1 M1); THEN the unlock hook, when it has not run for this session in
+ * this instance (unlockHook.ts; true when it ran — the caller marks it done inside the section, and clears it again
+ * if the commit fails) — fix round 1 item 4 (C4): the hook must run AFTER the TTL/restart sweep above, never before,
+ * so a `queued` connect already past REQUEST_TTL_MS is answered `timeout` by the sweep and is no longer `queued` by
+ * the time the hook looks for one to grant; an answered entry nobody acked is dropped ten minutes after its answer;
+ * an expired undo record is dropped.
  */
 export function sweep(tx: Tx, fx: Effects, rt: Pick<Runtime, 'instance' | 'hooked'>): boolean {
-  // §2.4: the unlock hook, on the first access of an unlocked session (again if it threw last time).
   const hook = tx.session !== null && !rt.hooked;
-  if (hook) unlockWork(tx, fx.changes, (e, a) => answer(fx, e, a, tx.now));
   const instance = rt.instance;
   for (const e of tx.s.queue) {
     // C4 "queued or shown": five minutes from arrivedAt, whatever the open state (review 1 M1).
@@ -88,6 +88,9 @@ export function sweep(tx: Tx, fx: Effects, rt: Pick<Runtime, 'instance' | 'hooke
     // C17: another instance's `deciding` is a restart; this instance's, DECIDING_TTL_MS after it was written, a dead effect.
     else if (e.state === 'deciding' && (e.decidedBy !== instance || e.decidingAt === null || tx.now - e.decidingAt >= DECIDING_TTL_MS)) answer(fx, e, {error: 'rejected'}, tx.now);
   }
+  // §2.4: the unlock hook, on the first access of an unlocked session (again if it threw last time) — after expiry
+  // above, so it never grants a connect the sweep just timed out.
+  if (hook) unlockWork(tx, fx.changes, (e, a) => answer(fx, e, a, tx.now));
   tx.s.queue = tx.s.queue.filter(e => e.state !== 'answered' || e.answeredAt === null || tx.now - e.answeredAt < ANSWER_TTL_MS);
   tx.s.undo = tx.s.undo.filter(u => u.expiresAt > tx.now);
   return hook;

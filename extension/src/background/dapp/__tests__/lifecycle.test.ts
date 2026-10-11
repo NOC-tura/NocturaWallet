@@ -122,6 +122,16 @@ describe('connect (§2.2) — silent and explicit, with and without a grant, loc
     expect(await queue(ext)).toEqual([]);
   });
 
+  // Fix round 1, item 2 (D3): a lingering grant (a restore keeps both the block and the grant) must never let a
+  // blocked host learn the account, silent or explicit — the block is checked before the grant is even read.
+  it('a blocked host with a lingering grant: silent connect returns [], explicit is rejected, regardless of the grant', async () => {
+    const {ext, deps} = await setup();
+    await ext.local.set(GRANTS_KEY, [grant(DAPP)]);
+    await ext.local.set(BLOCKED_KEY, [{host: 'dapp.test', blockedAt: 1, imitates: null}]);
+    expect(await openPage(ext, deps, DAPP).ask(connect('s1', true))).toEqual({id: 's1', result: {accounts: []}});
+    expect(await openPage(ext, deps, DAPP, {tab: {id: 9}}).ask(connect('c1'))).toEqual({id: 'c1', error: 'rejected'});
+  });
+
   it('explicit with a grant while unlocked: the account at once, no window (§2.2 row 3)', async () => {
     const {ext, deps} = await setup();
     await ext.local.set(GRANTS_KEY, [grant(DAPP)]);

@@ -12,7 +12,8 @@ import {envelopeRevision} from '../../../shared/envelopeRevision';
 import {fakeExt, memKV} from '../../__tests__/fakeExt';
 import {fakeDeps, fakeReader} from '../../__tests__/fakeDeps';
 import {ACCOUNT} from '../../__tests__/fixtures';
-import {runUnlockHook} from '../queue';
+import {REQUEST_TTL_MS, runUnlockHook} from '../queue';
+import {onApprovalWindowRemoved} from '../window';
 import {openPage} from './pageHarness';
 
 const DAPP = 'https://dapp.test';
@@ -160,6 +161,19 @@ describe('the lock hook — one test per caller', () => {
     expect(c.page.answersFor(c.requestId)).toHaveLength(1);
   });
 
+  // Fix round 1, item 3 (promoted Minor; Scope R11): the real sequence is windows.remove (afterLock) then the browser's
+  // own onRemoved event for THAT window id — which must find the lock already got there first (the write-back nulled
+  // `window`), so it is not ours: no rejection recorded (nothing is still `queued` to reject anyway, but the window
+  // must not read as still open), nothing reopened, and a second lock still resolves cleanly.
+  it('the window onApprovalWindowRemoved fires for after a lock: not ours, no rejection recorded, nothing reopened, a second lock resolves', async () => {
+    const c = await scene();
+    await lock(c.ext);
+    expect(await onApprovalWindowRemoved(c.ext, c.deps, 100)).toBe(false);
+    expect(await c.ext.local.get(GRANTS_KEY)).toEqual([grant(JUP)]);
+    expect(c.ext.approval.created).toHaveLength(1);
+    await expect(lock(c.ext)).resolves.toBeUndefined();
+  });
+
   it('the approval popup counts as a window: closing the last browser window while it is open does not lock (review 2 L9)', async () => {
     const c = await scene();
     c.ext.windows = 1;
@@ -216,6 +230,9 @@ describe('the unlock hook (§2.4, D5)', () => {
     await c.setKeys();
     expect(c.page.answersFor(c.requestId)).toEqual([]);
     expect((await readDappSession(c.ext)).queue.find(e => e.requestId === c.requestId)?.state).toBe('queued');
+    // Fix round 1, item 1: the `change` loop must skip a blocked host's grant too — the page must learn neither the
+    // account nor the unlock timing (D3).
+    expect(c.page.changes()).toEqual([]);
   });
 
   // Review 1 L6: the flag is now written inside the hook's section. The interleaving the review describes (a lock's whole
@@ -253,6 +270,15 @@ describe('the unlock hook (§2.4, D5)', () => {
     expect(c.page.answersFor(c.requestId)).toEqual([]);
     await c.unknown.ask({type: 'page.connect', id: 's', silent: true});
     expect(c.page.answersFor(c.requestId)).toEqual([{requestId: c.requestId, result: {accounts: [ACCOUNT.publicKey]}}]);
+  });
+
+  // Fix round 1, item 4 (promoted Minor; C4): the TTL sweep must run before the unlock hook gets a look at the
+  // queue — a connect already past REQUEST_TTL_MS while still locked must time out, never be granted late.
+  it('a queued connect already past its TTL times out instead of being granted by the unlock hook (C4)', async () => {
+    const c = await lockedWithQueuedGrantedConnect();
+    c.deps.clock.t += REQUEST_TTL_MS;
+    expect(await c.setKeys()).toEqual({ok: true});
+    expect(c.page.answersFor(c.requestId)).toEqual([{requestId: c.requestId, error: 'timeout'}]);
   });
 });
 
