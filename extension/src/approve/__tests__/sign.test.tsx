@@ -83,6 +83,10 @@ describe('#46 sign-message', () => {
     // and report" assertion, fix round 1 M1).
     expect(cta('Reject and report').className).toBe('btn btn-destructive');
     expect(screen.queryByRole('button', {name: 'Sign'})).toBeNull();
+    // Fix round 1, item 1: the lookalike phone never carries the disclaimer — it must not vouch that a phishing
+    // origin "will use the signature only to verify you own this wallet" (the idle·verified and unknown-origin
+    // tests above are the positive control: the same disclaimer does show there).
+    expect(document.querySelector('.s9-disclaimer')).toBeNull();
     expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
     await armedAfter();
     fireEvent.click(cta('Sign anyway (not recommended)'));
@@ -104,6 +108,75 @@ describe('#46 sign-message', () => {
     fireEvent.click(cta('Reject'));
     await waitFor(() => expect(w.closed.n).toBe(1));
     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
+  });
+
+  // Fix round 1, item 5: the SIWS-mismatch Reject must be disabled while busy too, like every other CTA — forced
+  // into `deciding` directly (as the signing-in-progress test below does), since the real decide() flow never
+  // routes a reject/report through `deciding` on its own; this is the defensive invariant, not the common path.
+  it('a sign-in message for another domain, forced into deciding: Reject (and ✕) are disabled too', async () => {
+    const w = await openWindow();
+    const {requestId} = await w.sign('https://dapp.test', siws('jup.ag'));
+    const s = await readDappSession(w.ext);
+    await w.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => (e.requestId === requestId ? {...e, state: 'deciding', decidedBy: runtimeFor(w.ext).instance, decidingAt: w.deps.clock.t} : e))});
+    w.show();
+    await screen.findByText('This sign-in message names jup.ag, not this site (dapp.test).');
+    expect((cta('Reject') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', {name: 'Close'}) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  // Fix round 1, item 4 (promoted): a lookalike origin signing a SIWS message for yet another domain — both
+  // warnings fire at once. The lookalike bar must win, not the mismatch-only bar: [Reject and report] primary,
+  // plain [Reject], and never a Sign or a Sign-anyway escape hatch.
+  it('lookalike AND a SIWS domain mismatch together: the Q20 banner stays, and the bar is still the lookalike one', async () => {
+    const w = await openWindow();
+    const {page, requestId} = await w.sign('https://tensr.trade', siws('jup.ag'));
+    w.show();
+    await screen.findByText('Sign this message?');
+    // Both banners show (the lookalike's own, then Q20) — neither one silently wins over the other.
+    expect([...document.querySelectorAll('.s9-domain-warn .body')].map(e => e.textContent)).toEqual([
+      'This domain is not tensor.tradeIt looks like tensor.trade but is a different site.',
+      'This sign-in message names jup.ag, not this site (tensr.trade).',
+    ]);
+    expect(cta('Reject and report').className).toBe('btn btn-destructive');
+    expect(cta('Reject')).toBeTruthy();
+    expect(screen.queryByRole('button', {name: 'Sign'})).toBeNull();
+    expect(screen.queryByRole('button', {name: 'Sign anyway (not recommended)'})).toBeNull();
+    expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
+    fireEvent.click(cta('Reject and report'));
+    await waitFor(() => expect(w.closed.n).toBe(1));
+    expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
+  });
+
+  // Fix round 1, item 2 (promoted): the account held this request is unlocked no more — decide.ts's viewOf leaves
+  // `sign` null while the request itself is still live (the wallet is not fully locked: another account still is).
+  it('request.sign === null (the account unlocked no more): the bare top bar and a Reject-only exit, never a blank window', async () => {
+    const w = await openWindow();
+    const {page, requestId} = await w.sign('https://jup.ag', 'hello');
+    const {setSession} = await import('../../background/session');
+    const {SECOND} = await import('./windowHarness');
+    await setSession(w.ext, [SECOND]);
+    w.show();
+    await screen.findByText('Sign this message?');
+    expect(screen.getAllByRole('button').map(b => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Close', 'Reject']);
+    expect(document.querySelector('.s9-msg-preview')).toBeNull();
+    fireEvent.click(cta('Reject'));
+    await waitFor(() => expect(w.closed.n).toBe(1));
+    expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
+  });
+
+  // Fix round 1, item 3 (promoted): the message renders as text, never HTML — React's string child already
+  // guarantees this, but it is the exact invariant a future refactor (e.g. reaching for dangerouslySetInnerHTML)
+  // could break, so it is pinned here.
+  it('the message renders as text, never HTML: a script-looking message stays inert', async () => {
+    const w = await openWindow();
+    const message = '<img src=x onerror=alert(1)>';
+    await w.sign('https://jup.ag', message);
+    w.show();
+    await screen.findByText('Sign this message?');
+    const preview = document.querySelector('.s9-msg-preview')!;
+    expect([...preview.children].every(el => el.tagName === 'MARK')).toBe(true);
+    expect(preview.querySelector('img')).toBeNull();
+    expect(preview.textContent).toBe(message);
   });
 
   it('signing-in-progress: "Signing", "Signing…" with the ring, the card at .55 and the message at .7, every CTA and ✕ disabled', async () => {
@@ -157,8 +230,11 @@ describe('controller ruling (a): busy is in the C15 key for #46', () => {
     // user — exactly what a slow, outdated `dapp.pending` resolving late would show. Assert the instant the button
     // reappears (not after a further sleep): the 500 ms re-arm must not have had time to finish by then.
     await w.ext.session.set(DAPP_SESSION_KEY, s);
-    const sign = await screen.findByRole('button', {name: 'Sign'}, {timeout: POLL_MS + 500});
-    expect((sign as HTMLButtonElement).disabled).toBe(true);
+    await screen.findByRole('button', {name: 'Sign'}, {timeout: POLL_MS + 500});
+    // React corrects the stale `armed` (re-arming on the key change) in the effect pass right after the busy→false
+    // commit — one tick, not a further hold — so a short waitFor (not a bare synchronous check) is the non-flaky way
+    // to assert it without also tolerating a real failure to re-arm (mutation M9e never clears it at all).
+    await waitFor(() => expect((cta('Sign') as HTMLButtonElement).disabled).toBe(true), {timeout: 200});
     await armedAfter();
     expect((cta('Sign') as HTMLButtonElement).disabled).toBe(false);
   });
