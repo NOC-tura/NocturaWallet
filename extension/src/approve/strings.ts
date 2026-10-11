@@ -87,3 +87,24 @@ export const CONNECT_TEXT = {
   /** Q16. */
   cap: 'You have 200 connected apps. Revoke one in Settings first.',
 } as const;
+
+export const SIGN_TEXT = {
+  overline: 'Signature request',
+  overlineLookalike: 'Suspicious origin',
+  overlineSigning: 'Signing',
+  title: 'Sign this message?',
+  lede: 'A signature proves you control this wallet. It does not move funds and does not broadcast a transaction.',
+  ledeShort: 'A signature proves you control this wallet.',
+  label: (chars: number): string => `Message · UTF-8 (${chars} chars)`,
+  labelLookalike: 'Message preview',
+  labelKeyword: 'Message · with structured-approval flag',
+  disclaimer: (name: string): string => `This won't broadcast or move funds. ${name} will use the signature only to verify you own this wallet.`,
+  alertHead: 'This message includes an authorization',
+  alertLead: 'Detected keyword: ',
+  alertTail: ". Even though signing won't broadcast, the dApp may use this signature off-chain to authorize a future action. Read the full message before signing.",
+  /** Q20. */
+  siwsMismatch: (domain: string, host: string): string => `This sign-in message names ${domain}, not this site (${host}).`,
+  sign: 'Sign',
+  signing: 'Signing…',
+  signAnyway: 'Sign anyway (not recommended)',
+} as const;

@@ -1,6 +1,7 @@
 import {render} from '@testing-library/react';
 import {ed25519} from '@noble/curves/ed25519.js';
 import {base58, base64} from '@scure/base';
+import {GRANTS_KEY} from '../../background/dapp/grants';
 import {Approve} from '../Approve';
 import {createClient, type ApproveClient} from '../client';
 import {handleMessage} from '../../background/messages';
@@ -51,11 +52,20 @@ export async function openWindow(o: {unlocked?: boolean} = {}) {
     const r = await page.ask({type: 'page.connect', id: `c${tab}`, silent: false});
     return {page, requestId: String(r?.requestId)};
   };
+  /** A page holding a session-free persistent grant for ACCOUNT that asks to sign `message` (UTF-8). */
+  const sign = async (origin: string, message: string): Promise<{page: Page; requestId: string}> => {
+    const grants = ((await ext.local.get(GRANTS_KEY)) as unknown[] | undefined) ?? [];
+    await ext.local.set(GRANTS_KEY, [...grants, {origin, account: ACCOUNT.publicKey, scope: 'persistent', connectedAt: 1, lastUsedAt: 1, recent: []}]);
+    const page = openPage(ext, deps, origin, {tab: {id: tab++}});
+    const r = await page.ask({type: 'page.signMessage', id: `s${tab}`, account: ACCOUNT.publicKey, message: base64.encode(new TextEncoder().encode(message))});
+    if (r?.accepted !== true) throw new Error(`sign request not queued: ${JSON.stringify(r)}`);
+    return {page, requestId: String(r.requestId)};
+  };
   const show = () =>
     render(
       <div className="app app-window">
         <Approve client={client} close={() => void (closed.n += 1)} />
       </div>,
     );
-  return {ext, deps, client, closed, sent, connect, show, unlock: () => handleMessage(ext, {type: 'vault.setKeys', accounts: [ACCOUNT, SECOND]}, {...approve, url: `${ext.extensionOrigin}/unlock.html`}, deps)};
+  return {ext, deps, client, closed, sent, connect, sign, show, unlock: () => handleMessage(ext, {type: 'vault.setKeys', accounts: [ACCOUNT, SECOND]}, {...approve, url: `${ext.extensionOrigin}/unlock.html`}, deps)};
 }

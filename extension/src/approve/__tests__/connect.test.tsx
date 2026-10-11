@@ -8,7 +8,7 @@ import {readDappSession} from '../../background/dapp/store';
 import {REQUEST_TTL_MS} from '../../background/dapp/queue';
 import {SETTINGS_KEY} from '../../background/settings';
 import {ACCOUNT} from '../../background/__tests__/fixtures';
-import {Approve} from '../Approve';
+import {Approve, POLL_MS} from '../Approve';
 import {ARM_MS} from '../useArmed';
 import {CONFIRM_DELAY_MS} from '../ui';
 import {pendingOf, type ApproveClient} from '../client';
@@ -315,6 +315,9 @@ describe('C15 — no CTA focused, held 500 ms after focus and each state change,
     // Fix round 1, M3: Space is a button's other activation key — it must be refused too, on Connect but never on Reject.
     expect(fireEvent.keyDown(cta('Connect'), {key: ' '})).toBe(false);
     expect(fireEvent.keyDown(cta('Reject'), {key: ' '})).toBe(true);
+    // Task 9 controller ruling (b): Gecko dispatches a held Space's click on keyup, not keydown — refuse it there too.
+    expect(fireEvent.keyUp(cta('Connect'), {key: ' '})).toBe(false);
+    expect(fireEvent.keyUp(cta('Reject'), {key: ' '})).toBe(true);
   });
 });
 
@@ -444,5 +447,33 @@ describe('fix round 1 — I3: a null first read still polls; M2: busy clears onl
     expect(closed.n).toBe(0);
     release?.();
     await waitFor(() => expect(closed.n).toBe(1));
+  });
+});
+
+// Task 9 controller ruling (a): the C15 armed key folds in busy/in-progress for Connect too, so a stale poll that
+// clears busy (without the user doing anything) can never leave Connect already armed from before the busy window.
+describe('controller ruling (a): busy is in the C15 key for #47', () => {
+  it('Connect goes disabled the instant a stale poll clears busy; armed again only after a fresh 500 ms hold', async () => {
+    const w = await openWindow();
+    const {requestId} = await w.connect('https://jup.ag');
+    w.show();
+    await screen.findByText('Connect to Jupiter?');
+    fireEvent.click(screen.getByRole('checkbox'));
+    await armedAfter();
+    expect((cta('Connect') as HTMLButtonElement).disabled).toBe(false);
+    const s = await readDappSession(w.ext);
+    const {DAPP_SESSION_KEY} = await import('../../background/dapp/store');
+    const {runtimeFor} = await import('../../background/dapp/ports');
+    await w.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => (e.requestId === requestId ? {...e, state: 'deciding', decidedBy: runtimeFor(w.ext).instance, decidingAt: w.deps.clock.t} : e))});
+    await new Promise(r => setTimeout(r, POLL_MS + 50));
+    await screen.findByRole('button', {name: 'Connecting…'});
+    // The stale poll: the background's own state goes back to a plain request (not deciding) with no action from the
+    // user — exactly what a slow, outdated `dapp.pending` resolving late would show. Assert the instant the button
+    // reappears (not after a further sleep): the 500 ms re-arm must not have had time to finish by then.
+    await w.ext.session.set(DAPP_SESSION_KEY, s);
+    const connect = await screen.findByRole('button', {name: 'Connect'}, {timeout: POLL_MS + 500});
+    expect((connect as HTMLButtonElement).disabled).toBe(true);
+    await armedAfter();
+    expect((cta('Connect') as HTMLButtonElement).disabled).toBe(false);
   });
 });

@@ -45,7 +45,9 @@ export function Connect({
   const [hint, setHint] = useState(false);
   /** Which gate shakes, and a counter so a second tap shakes again. */
   const [shake, setShake] = useState<{gate: 'perms' | 'domain'; n: number} | null>(null);
-  const armed = useArmed([request.requestId, permsAck, domainAck, scope, account, confirming, anyway].join('|'));
+  /** Controller ruling (task 9): busy/in-progress folds into the key too — a stale poll that clears it after
+   * setBusy(false) must re-start the 500 ms hold like any other state change, never leave Connect already armed. */
+  const armed = useArmed([request.requestId, permsAck, domainAck, scope, account, confirming, anyway, busy].join('|'));
 
   const chosen = detail?.accounts.find(a => a.index === account) ?? detail?.accounts[0];
   const verified = kind === 'verified';

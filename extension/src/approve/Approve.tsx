@@ -2,6 +2,7 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import type {ApproveClient, Decision, PendingView} from './client';
 import {Connect} from './Connect';
 import {Locked} from './Locked';
+import {Sign} from './Sign';
 
 /** §2.3 (review 2 M3, review 1 L1): the window polls this often while it shows anything — so an unlock, an expiry or a new head reaches it. */
 export const POLL_MS = 1_000;
@@ -94,6 +95,7 @@ export function Approve({client, close}: {client: ApproveClient; close: () => vo
   if (view === null || view.state === 'none' || request === null) return <div className="screen app-approve" aria-busy="true" />;
   if (view.state === 'locked') return <Locked request={request} waiting={view.waiting} notice={noticeSeen} onReject={() => decide({decision: 'reject'})} />;
   const inProgress = busy || view.state === 'deciding';
-  // A new head is a new screen: its gates, scope and account start over (keyed by request).
+  // A new head is a new screen: its gates, scope, account and confirm start over (keyed by request).
+  if (request.type === 'signMessage') return <Sign key={request.requestId} request={request} waiting={view.waiting} notice={noticeSeen} busy={inProgress} onDecide={decide} />;
   return <Connect key={request.requestId} request={request} waiting={view.waiting} notice={noticeSeen} busy={inProgress} onDecide={decide} />;
 }

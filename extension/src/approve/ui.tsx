@@ -95,7 +95,9 @@ export function LookalikeBanner({site, host}: {site: Site; host: string}) {
 /**
  * A confirming CTA (C15, rule 6): a LockedButton held until `armed`, and neither Enter nor Space ever confirms — the
  * key's default action (a click, on either key for a `<button>`) is prevented while focus is on it (fix round 1, M3:
- * Space was left open). Reject does not use this: it is never held.
+ * Space was left open). Reject does not use this: it is never held. Task 9's controller ruling (b): Gecko fires a held
+ * Space's click on keyup, not keydown, so Space is refused there too — Enter never needs it, since Enter's click
+ * fires on keydown in every engine.
  */
 export function ConfirmButton({armed, onPress, className, children}: {armed: boolean; onPress: () => Promise<unknown> | void; className: string; children: ReactNode}) {
   return (
@@ -103,6 +105,9 @@ export function ConfirmButton({armed, onPress, className, children}: {armed: boo
       className="app-confirm-wrap"
       onKeyDownCapture={e => {
         if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') e.preventDefault();
+      }}
+      onKeyUpCapture={e => {
+        if (e.key === ' ' || e.key === 'Spacebar') e.preventDefault();
       }}
     >
       <LockedButton className={className} disabled={!armed} onPress={onPress}>
