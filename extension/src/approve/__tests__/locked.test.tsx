@@ -2,6 +2,7 @@
 import {cleanup, fireEvent, screen, waitFor} from '@testing-library/react';
 import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {GRANTS_KEY} from '../../background/dapp/grants';
+import {LIMITS_KEY} from '../../background/dapp/limits';
 import {ACCOUNT} from '../../background/__tests__/fixtures';
 import {openWindow} from './windowHarness';
 
@@ -53,5 +54,19 @@ describe('the locked window (D11)', () => {
     fireEvent.click(await screen.findByRole('button', {name: 'Reject'}));
     await waitFor(() => expect(w.closed.n).toBe(1));
     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
+  });
+
+  // Fix round 1, I1: the background clears its one-shot notice flag on the very read that first sees it, locked or
+  // not (decide.ts's `pending`) — the window must latch it, so it is not lost to the screen the user cannot act on.
+  it('Q24 shows on the locked screen too, and survives into the unlocked screen once it does', async () => {
+    const w = await openWindow({unlocked: false});
+    await w.connect('https://dapp.test');
+    await w.ext.local.set(LIMITS_KEY, {rejections: [], cooldowns: [], windows: [], notice: true});
+    w.show();
+    await screen.findByText('Noctura is locked');
+    expect(screen.getByText('Too many requests from sites in the last few minutes — some were declined without asking you.')).toBeTruthy();
+    expect(await w.unlock()).toEqual({ok: true});
+    await screen.findByText('Connect to this app?', {}, {timeout: WITHIN_MS});
+    expect(screen.getByText('Too many requests from sites in the last few minutes — some were declined without asking you.')).toBeTruthy();
   });
 });

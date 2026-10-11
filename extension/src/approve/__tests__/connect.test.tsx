@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {act, cleanup, fireEvent, screen, waitFor, within} from '@testing-library/react';
+import {act, cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
 import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {GRANTS_KEY, MAX_GRANTS, type Grant} from '../../background/dapp/grants';
 import {BLOCKED_KEY} from '../../background/dapp/blocked';
@@ -8,9 +8,10 @@ import {readDappSession} from '../../background/dapp/store';
 import {REQUEST_TTL_MS} from '../../background/dapp/queue';
 import {SETTINGS_KEY} from '../../background/settings';
 import {ACCOUNT} from '../../background/__tests__/fixtures';
+import {Approve} from '../Approve';
 import {ARM_MS} from '../useArmed';
 import {CONFIRM_DELAY_MS} from '../ui';
-import {pendingOf} from '../client';
+import {pendingOf, type ApproveClient} from '../client';
 import {SECOND, openWindow} from './windowHarness';
 
 const SELECTORS = selectorsOf(UI_SHEETS);
@@ -171,7 +172,8 @@ describe('#47 lookalike — the flipped bar, the 2-second confirm, 47b’s gates
     expect(text('.s9-domain-warn .body')).toBe('This domain is not tensor.tradeIt looks like tensor.trade but is a different site.');
     expect(document.querySelector('.s9-ack-row')).toBeNull();
     const report = cta('Reject and report');
-    expect(report.className).toBe('btn btn-primary app-btn-danger');
+    // Fix round 1, M1: btn-destructive, not the duplicate app-btn-danger (see the "Connect anyway" test below).
+    expect(report.className).toBe('btn btn-destructive');
     expect(cta('Connect anyway (not recommended)').className).toBe('btn btn-tertiary noc-body-sm app-dim');
     expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
     fireEvent.click(report);
@@ -198,7 +200,11 @@ describe('#47 lookalike — the flipped bar, the 2-second confirm, 47b’s gates
     await armedAfter();
     fireEvent.click(cta('Connect anyway (not recommended)'));
     const sheet = await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
-    expect((within(sheet).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement).disabled).toBe(true);
+    const understandBtn = within(sheet).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement;
+    expect(understandBtn.disabled).toBe(true);
+    // Fix round 1, M1: btn-destructive (design-system.css), not the duplicate app-btn-danger class — the duplicate's
+    // specificity tied .btn[disabled] and so lost to source order, leaving it looking live while held/disabled.
+    expect(understandBtn.className).toBe('btn btn-destructive');
     fireEvent.click(within(sheet).getByRole('button', {name: 'Cancel'}));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await armedAfter();
@@ -237,7 +243,7 @@ describe('#47 — the cap, the cooldown offer, the window chrome (§2.1, C14, Q1
     expect(((await w.ext.local.get(BLOCKED_KEY)) as {host: string}[]).map(b => b.host)).toEqual(['dapp.test']);
   });
 
-  it('"1 more request waiting" / "2 more requests waiting" (Q12); the budget notice once (Q24)', async () => {
+  it('"1 more request waiting" / "2 more requests waiting" (Q12); the budget notice latches once shown, across every later poll, until the head changes (Q24, fix round 1 I1)', async () => {
     const w = await openWindow();
     await w.connect('https://jup.ag');
     await w.connect('https://a.test');
@@ -247,7 +253,9 @@ describe('#47 — the cap, the cooldown offer, the window chrome (§2.1, C14, Q1
     expect(screen.getByText('Too many requests from sites in the last few minutes — some were declined without asking you.')).toBeTruthy();
     await w.connect('https://b.test');
     expect(await screen.findByText('2 more requests waiting', {}, {timeout: 2500})).toBeTruthy();
-    expect(screen.queryByText(/Too many requests/)).toBeNull();
+    // The background's own flag is one-shot (cleared on the read that first saw it); this is still the same head
+    // (jup.ag), so the window must still be showing it — not only on the poll that first saw it.
+    expect(screen.getByText('Too many requests from sites in the last few minutes — some were declined without asking you.')).toBeTruthy();
   });
 
   // Review Focus 2: the popup revokes (or the page disconnects) while the window shows that origin's request.
@@ -304,6 +312,9 @@ describe('C15 — no CTA focused, held 500 ms after focus and each state change,
     cta('Connect').focus();
     expect(fireEvent.keyDown(cta('Connect'), {key: 'Enter'})).toBe(false);
     expect(fireEvent.keyDown(cta('Reject'), {key: 'Enter'})).toBe(true);
+    // Fix round 1, M3: Space is a button's other activation key — it must be refused too, on Connect but never on Reject.
+    expect(fireEvent.keyDown(cta('Connect'), {key: ' '})).toBe(false);
+    expect(fireEvent.keyDown(cta('Reject'), {key: ' '})).toBe(true);
   });
 });
 
@@ -362,6 +373,9 @@ describe('the in-progress state and the client’s shape check', () => {
     w.show();
     const busy = await screen.findByRole('button', {name: 'Connecting…'});
     expect((busy as HTMLButtonElement).disabled).toBe(true);
+    // Fix round 1, I2: the busy-CTA class that keeps the accent fill against design-system.css's `.btn[disabled]`
+    // (happy-dom cannot compute the cascade itself — the class is the assertion; Task 12's visual pass shoots it).
+    expect(busy.className).toBe('btn btn-primary app-cta-wide app-cta-busy');
     expect(busy.querySelector('.app-ring-spinner')).not.toBeNull();
     expect((cta('Reject') as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', {name: 'Close'}) as HTMLButtonElement).disabled).toBe(true);
@@ -373,5 +387,62 @@ describe('the in-progress state and the client’s shape check', () => {
     expect(pendingOf({state: 'request', waiting: 0, windowNotice: false, request: {requestId: 'x'}})).toBeNull();
     expect(pendingOf({state: 'weird'})).toBeNull();
     expect(pendingOf(null)).toBeNull();
+  });
+});
+
+describe('fix round 1 — I3: a null first read still polls; M2: busy clears only after the refresh', () => {
+  it('I3: a first dapp.pending that resolves null (malformed, or the background momentarily unreachable) does not leave the window blank — the next poll renders the request', async () => {
+    const w = await openWindow();
+    await w.connect('https://jup.ag');
+    let calls = 0;
+    const flaky: ApproveClient = {
+      pending: () => {
+        calls += 1;
+        return calls === 1 ? Promise.resolve(null) : w.client.pending();
+      },
+      decide: (requestId, d) => w.client.decide(requestId, d),
+    };
+    render(
+      <div className="app app-window">
+        <Approve client={flaky} close={() => undefined} />
+      </div>,
+    );
+    expect(await screen.findByText('Connect to Jupiter?', {}, {timeout: 2_000})).toBeTruthy();
+    expect(calls).toBeGreaterThanOrEqual(2);
+  });
+
+  it('M2: busy (Connect shows "Connecting…", disabled) stays true until the post-decide refresh resolves — not as soon as dapp.decide itself does', async () => {
+    const w = await openWindow();
+    await w.connect('https://jup.ag');
+    let release: (() => void) | undefined;
+    let pendingCalls = 0;
+    const gated: ApproveClient = {
+      // Call 1 is the window's own mount read; call 2 is the refresh `decide`'s `finally` awaits — gate only that one.
+      pending: () => {
+        pendingCalls += 1;
+        if (pendingCalls === 2) return new Promise(resolve => (release = () => resolve(w.client.pending())));
+        return w.client.pending();
+      },
+      decide: (requestId, d) => w.client.decide(requestId, d),
+    };
+    const closed = {n: 0};
+    render(
+      <div className="app app-window">
+        <Approve client={gated} close={() => void (closed.n += 1)} />
+      </div>,
+    );
+    await screen.findByText('Connect to Jupiter?');
+    fireEvent.click(screen.getByRole('checkbox'));
+    await armedAfter();
+    fireEvent.click(cta('Connect'));
+    await waitFor(() => expect(screen.queryByRole('button', {name: 'Connecting…'})).not.toBeNull());
+    // client.decide() itself (not gated) has long since settled; the gated refresh has not — busy must still hold.
+    await new Promise(r => setTimeout(r, 100));
+    const busy = screen.getByRole('button', {name: 'Connecting…'});
+    expect((busy as HTMLButtonElement).disabled).toBe(true);
+    expect((cta('Reject') as HTMLButtonElement).disabled).toBe(true);
+    expect(closed.n).toBe(0);
+    release?.();
+    await waitFor(() => expect(closed.n).toBe(1));
   });
 });

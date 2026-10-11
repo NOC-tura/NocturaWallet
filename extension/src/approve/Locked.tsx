@@ -1,18 +1,20 @@
 import {ExtIcon} from '../app/ui/ExtIcon';
 import {LockedButton} from '../app/ui/LockedButton';
 import type {RequestView} from './client';
-import {OriginCard, Waiting} from './ui';
+import {BudgetNotice, OriginCard, Waiting} from './ui';
 import {WINDOW_TEXT} from './strings';
 
 /**
  * The locked window (spec §4.3, D11): the Noctura mark, Q22, Q23, the request's origin card, and [Reject]. No password
  * field and no link into the vault page — the user learns one rule: the password is typed only after clicking the
- * Noctura icon. The window polls every second; when the unlock lands it shows the request.
+ * Noctura icon. The window polls every second; when the unlock lands it shows the request. `notice` (fix round 1, I1):
+ * Q24 is latched by `Approve`, so it shows here too, not only once the window has unlocked.
  */
-export function Locked({request, waiting, onReject}: {request: RequestView; waiting: number; onReject: () => Promise<unknown>}) {
+export function Locked({request, waiting, notice, onReject}: {request: RequestView; waiting: number; notice: boolean; onReject: () => Promise<unknown>}) {
   return (
     <div className="screen app-approve app-approve-locked">
       <div className="scroll-area app-approve-scroll app-center">
+        {notice ? <BudgetNotice /> : null}
         <div className="app-lock-tile" aria-hidden="true">
           <ExtIcon name="lock" size={28} />
         </div>

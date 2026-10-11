@@ -258,7 +258,7 @@ export function Connect({
         </div>
       ) : preConfirm ? (
         <div className="sticky-bar">
-          <LockedButton className="btn btn-primary app-btn-danger" onPress={report} disabled={disabled}>
+          <LockedButton className="btn btn-destructive" onPress={report} disabled={disabled}>
             <ExtIcon name="close" size={18} />
             {WINDOW_TEXT.rejectAndReport}
           </LockedButton>
@@ -272,7 +272,7 @@ export function Connect({
             {WINDOW_TEXT.reject}
           </LockedButton>
           {busy ? (
-            <button type="button" className="btn btn-primary app-cta-wide" disabled>
+            <button type="button" className="btn btn-primary app-cta-wide app-cta-busy" disabled>
               <Spinner />
               {CONNECT_TEXT.connecting}
             </button>

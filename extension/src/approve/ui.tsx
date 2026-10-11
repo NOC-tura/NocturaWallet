@@ -93,15 +93,16 @@ export function LookalikeBanner({site, host}: {site: Site; host: string}) {
 }
 
 /**
- * A confirming CTA (C15, rule 6): a LockedButton held until `armed`, and Enter never confirms — the key's default action
- * (a click) is prevented while focus is on it. Reject does not use this: it is never held.
+ * A confirming CTA (C15, rule 6): a LockedButton held until `armed`, and neither Enter nor Space ever confirms — the
+ * key's default action (a click, on either key for a `<button>`) is prevented while focus is on it (fix round 1, M3:
+ * Space was left open). Reject does not use this: it is never held.
  */
 export function ConfirmButton({armed, onPress, className, children}: {armed: boolean; onPress: () => Promise<unknown> | void; className: string; children: ReactNode}) {
   return (
     <span
       className="app-confirm-wrap"
       onKeyDownCapture={e => {
-        if (e.key === 'Enter') e.preventDefault();
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') e.preventDefault();
       }}
     >
       <LockedButton className={className} disabled={!armed} onPress={onPress}>
@@ -127,7 +128,7 @@ export function RiskConfirm({onCancel, onProceed, delay = CONFIRM_DELAY_MS}: {on
         <LockedButton className="btn btn-secondary" onPress={onCancel}>
           {WINDOW_TEXT.cancel}
         </LockedButton>
-        <ConfirmButton armed={ready && armed} className="btn btn-primary app-btn-danger" onPress={onProceed}>
+        <ConfirmButton armed={ready && armed} className="btn btn-destructive" onPress={onProceed}>
           {WINDOW_TEXT.understand}
         </ConfirmButton>
       </div>

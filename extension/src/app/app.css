@@ -1569,14 +1569,22 @@ body:has(.app-window) {
 .app-confirm-wrap {
   display: contents;
 }
-/* "Reject and report" / "I understand the risk": --danger, as #46's lookalike draws its primary (ix:17543). */
-.btn.app-btn-danger {
-  background: var(--danger);
-  color: var(--danger-on);
-}
 /* The sticky bar's 1 : 1.4 (ix:17554). */
 .sticky-bar.row .btn.app-cta-wide {
   flex: 1.4;
+}
+/*
+ * Fix round 1, I2: design-system.css's `.btn[disabled]` (one class + one attribute) outranks `.btn-primary` (one
+ * class), so the in-progress "Connecting…" CTA — a plain disabled <button>, never a LockedButton — rendered grey
+ * instead of the accent fill the design draws for it (ix:17605-17610, annotation 17639), and the ring
+ * (`.app-ring-spinner`, which reads in --bg-base against a lighter fill) went invisible on that grey. Two classes
+ * plus the attribute outrank `.btn[disabled]` and restore the accent fill the ring expects.
+ */
+.btn.app-cta-busy[disabled] {
+  background: var(--accent);
+  color: var(--bg-base);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), var(--glow-accent);
+  cursor: progress;
 }
 .app-approve-hint,
 .app-approve-waiting {
