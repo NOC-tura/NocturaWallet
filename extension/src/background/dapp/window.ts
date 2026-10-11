@@ -73,6 +73,10 @@ export async function ensureWindow(ext: Ext, deps: Pick<WalletDeps, 'now'>): Pro
  * clearSession wipes the whole of storage.session, this extension's dApp queue included (session.ts), so locking
  * first would silently discard it instead of answering it. Otherwise a window still exists, and the approval window
  * reopens for what remains (C14's budget still applies).
+ *
+ * Fix round 2 (Important 1): the lock must happen whenever the count is zero, whatever the drain did — a storage
+ * error, a quota failure or a bad stored shape there must never leave the wallet unlocked after its last window
+ * closed. The drain's own failure is only logged; it is not this call's reason to skip the lock.
  */
 export async function onApprovalWindowRemoved(ext: Ext, deps: Pick<WalletDeps, 'now'>, id: number): Promise<boolean> {
   const ours = await queueAccess(ext, deps, (tx, fx) => {
@@ -85,8 +89,13 @@ export async function onApprovalWindowRemoved(ext: Ext, deps: Pick<WalletDeps, '
   });
   if (!ours) return false;
   if ((await ext.windowCount()) === 0) {
-    await queueAccess(ext, deps, (tx, fx) => rejectQueued(tx, fx, () => true));
-    await lock(ext).catch(e => console.warn('dApp: lock after the last window closed failed', e));
+    try {
+      await queueAccess(ext, deps, (tx, fx) => rejectQueued(tx, fx, () => true));
+    } catch (e) {
+      console.warn('dApp: draining the queue before the last-window lock failed', e);
+    } finally {
+      await lock(ext).catch(e => console.warn('dApp: lock after the last window closed failed', e));
+    }
   } else {
     await ensureWindow(ext, deps);
   }

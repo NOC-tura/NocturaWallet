@@ -532,6 +532,32 @@ describe('closing the last window locks instead of reopening (§2.4, review 2 L9
     expect(await getSession(ext)).not.toBeNull();
     expect(ext.approval.created).toEqual([]);
   });
+
+  // Fix round 2, Important 1(b): a storage failure in the drain must not skip the lock — fail closed.
+  it('(b) our window closed as the last one, and the drain throws — still locks', async () => {
+    const {ext, deps} = await setup();
+    const page = openPage(ext, deps, DAPP);
+    const r = await page.ask(connect('c1'));
+    const s = await readDappSession(ext);
+    await ext.session.set(DAPP_SESSION_KEY, {...s, window: {id: 100, showing: r?.requestId}});
+    ext.approval.open.delete(100);
+    ext.windows = 0;
+    // The first read (determining "ours") succeeds; the second (the drain, inside the windowCount === 0 branch)
+    // throws — a storage error, a quota failure, a bad stored shape.
+    let calls = 0;
+    const realGet = ext.session.get.bind(ext.session);
+    ext.session.get = async key => {
+      if (key === DAPP_SESSION_KEY) {
+        calls += 1;
+        if (calls === 2) throw new Error('storage exploded mid-drain');
+      }
+      return realGet(key);
+    };
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    await expect(onApprovalWindowRemoved(ext, deps, 100)).resolves.toBe(true);
+    warnSpy.mockRestore();
+    expect(await getSession(ext)).toBeNull();
+  });
 });
 
 // Fix round 1, promoted Minor 2 (Scope R11): only a user's own rejection — closing the window on a request it
@@ -565,26 +591,32 @@ describe('Scope R11 — only a user’s own rejection counts (fix round 1)', () 
   it('an expiry (timeout) records no rejection', async () => {
     const {ext, deps} = await setup();
     const page = openPage(ext, deps, DAPP);
-    await page.ask(connect('c1'));
+    const r = await page.ask(connect('c1'));
     deps.clock.t += REQUEST_TTL_MS;
     await onQueueAlarm(ext, deps);
+    // Not vacuous: the cancellation this test is about actually happened.
+    expect(page.answersFor(String(r?.requestId))).toEqual([{requestId: r?.requestId, error: 'timeout'}]);
     expect(await rejectionsOf(ext)).toEqual([]);
   });
 
   it('a documentChanged cancel records no rejection', async () => {
     const {ext, deps} = await setup();
     const old = openPage(ext, deps, DAPP);
-    await old.ask(connect('c1'));
+    const r = await old.ask(connect('c1'));
     openPage(ext, deps, OTHER, {documentId: 'doc-2'});
     await settle();
+    // Not vacuous: the cancellation this test is about actually happened.
+    expect(old.answersFor(String(r?.requestId))).toEqual([{requestId: r?.requestId, error: 'rejected'}]);
     expect(await rejectionsOf(ext)).toEqual([]);
   });
 
   it('a page.disconnect records no rejection for the queued requests it cancels', async () => {
     const {ext, deps} = await setup();
     const page = openPage(ext, deps, DAPP);
-    await page.ask(connect('c1'));
+    const r = await page.ask(connect('c1'));
     await page.ask({type: 'page.disconnect', id: 'd1'});
+    // Not vacuous: the cancellation this test is about actually happened.
+    expect(page.answersFor(String(r?.requestId))).toEqual([{requestId: r?.requestId, error: 'rejected'}]);
     expect(await rejectionsOf(ext)).toEqual([]);
   });
 
