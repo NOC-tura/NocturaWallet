@@ -4,7 +4,9 @@
 decisions D1–D11. Rev 2 applied every finding of Fable 5.1 review 1 (`.superpowers/sdd/b1c-spec-review-1.md`: H1–H3,
 M1–M12, L1–L13); M1 and M2 were the owner's decisions D10 and D11. **Rev 3** applies every finding of Fable review 2
 (`.superpowers/sdd/b1c-spec-review-2.md`: H1–H2, M1–M10, L1–L13; verdict "approve after fixes"). Where each finding
-landed: §11. Next: owner review of this spec → one plan per part, each with its own Fable review.
+landed: §11. **Rev 3.1** (plan 1's Fable review 1, L7): two text corrections the plan's rulings R2 and R9 showed —
+§2.5/§6.1's IDN example (`xn--phntom-4nf.app`; the design's `xn--phntom-ezv.app` is not a Cyrillic "phantom") and §1.4's
+`dapp.blocked.remove {host}`. No rule changed. Next: owner review of this spec → one plan per part, each with its own Fable review.
 
 **What this is.** The extension becomes a wallet any Solana site can use through Wallet Standard: connect, disconnect,
 events, `signMessage`, `signTransaction`, `signAndSendTransaction`, on `solana:mainnet` only. It builds the design's
@@ -164,7 +166,7 @@ shows it (a `deciding` head is returned as `{deciding: true}` with its origin, n
 `{locked: true}`, or `{none: true}`, plus `{windowNotice?}` (Q24) and `{waiting: n}`; `dapp.decide {requestId,
 decision: 'approve' | 'reject' | 'report' | 'block', account?, scope?}` (review 2 L4).
 **Privileged, from the popup/tab:** `dapp.grants.list`, `dapp.grants.revoke {origin}` → `{undoToken}`,
-`dapp.grants.undo {undoToken}`, `dapp.grants.revokeAll`, `dapp.blocked.list`, `dapp.blocked.remove {origin}`.
+`dapp.grants.undo {undoToken}`, `dapp.grants.revokeAll`, `dapp.blocked.list`, `dapp.blocked.remove {host}` (blocks are by host, §2.6; rev 3.1).
 
 ### 1.5 The request lifecycle (review H1)
 
@@ -363,7 +365,8 @@ each character through `confusables.ts` (Unicode `confusables.txt`, entries whos
    subdomain of a listed domain (`xn--….jup.ag`) is verified (review 2 L13).
 2. **Lookalike** (in order; the first hit names the listed domain it imitates):
    - a. **IDN:** some label of `h` starts with `xn--`, and `skel` of **any two consecutive labels** of `h` equals a listed
-     domain (catches `xn--phntom-ezv.app` and `xn--phntom-ezv.app.evil.com`, review M4.3);
+     domain (catches `xn--phntom-4nf.app` and `xn--phntom-4nf.app.evil.com`, review M4.3 — "phantom" with a Cyrillic
+     a, U+0430; rev 3.1: the design's `xn--phntom-ezv.app` decodes to a Tibetan letter, U+0F58, and is not a lookalike);
    - b. **Edit distance:** the label left of `h`'s TLD is within Damerau–Levenshtein distance 1 of a listed domain's
      second-level label of 4+ characters, `h` not verified. Distance 0 with another TLD counts: `orca.io`,
      `magiceden.us`, `jito.wtf` are lookalikes even where the brand owns them — stated, accepted (review 1 M4.4): the
@@ -650,7 +653,7 @@ Each item has a **named mutation** that must turn a test red, and a positive con
   revoke/disconnect/block reject the origin's queued requests, a blocked host answered with no entry, the `opening`
   marker cleared on failure and when stale.
 - **Classifier (§2.5):** a table — verified (`app.noc-tura.io`, `www.jup.ag`); lookalike by each rule
-  (`xn--phntom-ezv.app`, `xn--phntom-ezv.app.evil.com`, a combining-mark `xn--` form of `jup.ag`, `tensr.trade`,
+  (`xn--phntom-4nf.app`, `xn--phntom-4nf.app.evil.com`, a combining-mark `xn--` form of `jup.ag`, `tensr.trade`,
   `orcaa.so`, `orca.io`, `jup.ag.evil.com`, `jup-ag.io`, `app-noc-tura-io.com`, `n0c-tura.io`, `rnagiceden.io`); unknown
   (`example.com`, `solana-mint-hub.xyz`, `jupiter.com`, `orchard.so`, `notcoin.io`, `jupp.ag` — the 4-char floor,
   `orca.co.uk`); verified wins over IDN (`xn--….jup.ag`); an unknown `xn--` host gets Q18;

@@ -4,6 +4,8 @@
 
 **Revision 1 (2026-10-10):** first issue, dry-run in full (every task replayed red → green, the whole suite, the build and every gate at every task; 105 named mutations; the E2E end state in a normal launch and under `unshare -rn`). Next: the owner reads Scope §3 (every controller ruling, listed again at the end for the owner), then a Fable 5.1 review (owner rule: every plan goes to a Fable review before execution).
 
+**Revision 2 (2026-10-11):** applies every finding of Fable 5.1 review 1 (`.superpowers/sdd/b1c-plan1-review-1.md`, verdict "approve after fixes": M1–M5, L1–L10, and the change to R33) — where each landed: "Review 1 (Fable 5.1) — how each finding was applied" at the end. Changed: Tasks 2–11 (code and tests), Scope R8, R33, R35, R36 and the new R37–R39, Review Focus 2, the Global Constraints' mutation line; the spec gets rev 3.1 (L7: two text corrections, no rule changed). Every task re-replayed and every named mutation re-run on the new end state (Dry-run record). The owner copy checks R5, R21, R24 and R31 are still pending with the owner.
+
 **Goal:** Build B1c spec plan 1 ("B1c-1 — connection", the spec's header table): the MAIN-world Wallet Standard provider and the isolated-world relay (content scripts on `<all_urls>`, top frame, `document_start`); the background's `PAGE` partition with its origin rule for messages and ports; the request lifecycle (queue, port delivery, resume/ack, keepalive, `deciding`, the lock hook = `lock()` rewritten, the unlock hook); the limits (per host and per tab, the rejection cooldown, the window budget, `documentId`); grants (session and persistent, the cap of 200, the undo token); the approval window `approve.html` (polling, the locked screen, #47 in every state incl. the lookalike, #46 in every state); the classifier (the known list, an own RFC 3492 decoder, Unicode confusables, rules a–d); blocked hosts; #49, #31's "Connected dApps" row and #37's bullet; `signMessage`; the gates (§6.2); E2E B1c-19 … B1c-24 with a real test dApp; the visual pass of every B1c-1 state. Plan 1 advertises only `standard:connect`, `standard:disconnect`, `standard:events` and `solana:signMessage` (D10) — no transaction, no #48, no decoder, no red flag (B1c-2, B1c-3).
 
 **Architecture:** Spec §1's four layers, each its own bundle. **[1] The provider** (`src/provider/`, `provider.js`, MAIN world) registers one wallet "Noctura" with `@wallet-standard/wallet` and holds nothing but the accounts the background last sent; it talks to the relay with `window.postMessage(…, location.origin)`. **[2] The relay** (`src/relay/`, `relay.js`, isolated world) forwards exactly the five method types, opens its `noctura-page` port lazily (never while prerendering), and reconnects + resumes; it decides nothing. **[3] The background** (`src/background/dapp/`) is the only decider: the origin rule on `port.sender` (`sender.id`, a tab, frame 0, `https:`, an active document — never `sender.url`), one FIFO queue in `storage.session` under one queue mutex (`dappSection` = its own mutex, then `sessionMutex`), the grants (`v1_dapp_grants` in `storage.local`, session grants in `storage.session`), the blocks (`v1_dapp_blocked`) and the limits (`v1_dapp_limits`), the classifier, `signMessage`'s checks, and the lock hook — `autolock.ts`'s `lock()` itself — that answers the queue in the same `sessionMutex` section that clears the session. **[4] The approval window** (`approve.html`, `src/approve/`, React on the popup's three sheets) holds no state and no listener: it polls `dapp.pending` and sends `dapp.decide`, which the background validates as if it were untrusted (C13). The popup gains #49 (`src/app/screens/ConnectedApps.tsx`) and its row on #31. No new permission; CSP unchanged (C6).
@@ -28,7 +30,7 @@ Every task's requirements include these.
 
 And, from the brief's binding lessons and CLAUDE.md:
 
-- **Mutations:** `git archive HEAD | tar -x -C "$(mktemp -d <scratch>/mut.XXXXXX)"`, `node_modules` linked FROM the copy (`ln -s <repo>/extension/node_modules <copy>/extension/node_modules`, the same for `web/` and the root), every run under `timeout 300`. A mutation that does not compile (`tsc`) or does not build is INVALID, not red. Never `git worktree`, never the repository's own files or its `node_modules`, never `pkill` with a pattern that can match your own shell — kill by task id or exact PID only (this dry run's own `pkill -f replay.py` killed the shell that ran it, again).
+- **Mutations:** `git archive HEAD | tar -x -C "$(mktemp -d <scratch>/mut.XXXXXX)"`, `node_modules` linked FROM the copy (`ln -s <repo>/extension/node_modules <copy>/extension/node_modules`, the same for `web/` and the root), every run under `timeout 300`. **Linked is right for unit mutations and for the E2E ones (M11a, M11b: they need only the build). Anything that runs `npm run gates` or reads the build's module maps needs `extension/node_modules` COPIED into the scratch copy (`cp -a`)** — or run there from the real tree: Vite resolves a linked `node_modules` to its real path, and the module maps then name modules outside the package (the dry run's per-task replay copies it for that reason; review 1 L8). A mutation that does not compile (`tsc`) or does not build is INVALID, not red. Never `git worktree`, never the repository's own files or its `node_modules`, never `pkill` with a pattern that can match your own shell — kill by task id or exact PID only (this dry run's own `pkill -f replay.py` killed the shell that ran it, again).
 - **Rule 6:** every confirming, rejecting, revoking, blocking and opening control is a `LockedButton` (popup and approval window). Tests lift `disabled` before a second click (happy-dom drops clicks on disabled buttons); where a second press is indistinguishable from the first, the lock itself is asserted.
 - **C15 on top of rule 6 in the approval window:** no CTA focused at open; the confirming CTAs (Connect, Sign, Connect/Sign anyway, I understand the risk) held 500 ms after the window gains focus and after each state change; Reject never held; Enter never confirms.
 - **Every async path checks its generation / `alive` after each await** — the window's poll (`reads` + `alive`), #49's reads and actions, #31's count — and the background re-checks its own state in every section that writes an effect (a `deciding` entry is still this instance's; the session still unlocked; the account still in it).
@@ -45,7 +47,7 @@ And, from the brief's binding lessons and CLAUDE.md:
 Five inputs the spec implies and no first draft of a task exercised — each now has its test in the owning task (named there).
 
 1. **A site on an IP literal with a port** (`https://[2001:db8::1]:8443`): the origin rule, the stores' re-validation (`[` `]` and `:` in the origin and host), the block list and the limits keys must all keep it — a too-tight pattern would silently drop its grant on the next read. Tests: Task 2 (`store.test.ts`, "an IP literal and a port"), Task 3 (`lifecycle.test.ts`, "an IP-literal origin with a port").
-2. **The request answered elsewhere while the window shows it** (the page disconnects, the popup revokes, the user blocks in another window): the window still shows it (it polls only while locked, deciding or "n more waiting"); its Connect must be refused (`not-head`), the window must move on and close, and the page must get exactly one answer. Test: Task 8 (`connect.test.tsx`, "a request answered elsewhere while shown").
+2. **The request answered elsewhere while the window shows it** (the page disconnects, the popup revokes, the user blocks in another window): the window still shows it until its next poll (one a second, R33); its Connect must be refused (`not-head`), the window must move on and close, and the page must get exactly one answer. Test: Task 8 (`connect.test.tsx`, "a request answered elsewhere while shown").
 3. **The tab reloads or navigates while its request is queued** (Chrome's `documentId`): the old document's request is answered `rejected`; a document that stays, or a browser that reports no `documentId`, cancels nothing. Tests: Task 3 (`lifecycle.test.ts`, "a document that goes away", with its negative control).
 4. **The user switches the popup's active account while a site is connected** (C1): the site keeps the granted account — silent connects and `change` events never follow the popup. Test: Task 4 (`decide.test.ts`, "approve, this session only": the silent connect returns the granted account, not the active one).
 5. **A message at the 4 KiB edge in multi-byte text**: the limit is UTF-8 bytes, not characters — 2 048 two-byte characters pass, one more byte is refused before any window. Test: Task 6 (`signMessage.test.ts`, "the 4 KiB limit counts UTF-8 bytes").
@@ -85,7 +87,7 @@ The spec leaves these open or the dry run found them; each is the most secure de
 - **R5 — rule a's sentence for a script outside the named list** reads "a non-Latin letter" (the template's `<script name> letter` has no name to put there); a Latin letter with a mark reads "a Latin letter (U+00F9), not a Latin "u"". **Owner copy check.**
 - **R6 — no development origin at all.** §1.3 says a `NOCTURA_DEV` build *may* accept `http://localhost`; plan 1 builds no such variant (E2E serves its dApp on `https` through `ctx.route`), and the dev-origin gate pins that `background.js` names neither `localhost` nor `127.0.0.1`.
 - **R7 — page types are refused on `runtime.sendMessage` from anyone**, an extension page included; they are accepted only on the `noctura-page` port (spec §1.4 says "on the port").
-- **R8 — `dapp.grants.*` and `dapp.blocked.*` come from the popup or the tab only and are refused while locked** (the list says which sites the user connects to — as `contacts.*`, B1b-2b C12); `dapp.pending`/`dapp.decide` from `approve.html` only. The approval window cannot list, revoke or unblock.
+- **R8 — `dapp.grants.*` and `dapp.blocked.*` come from the popup or the tab only and are refused while locked** (the list says which sites the user connects to — as `contacts.*`, B1b-2b C12); `dapp.pending`/`dapp.decide` from `approve.html` only. The approval window cannot list, revoke or unblock. **Rev 2 (review 1 L2):** the window's "Reject and report" and "Block this site" are refused while locked too (`locked`, like an approval) — every write of the user's lists needs an unlocked wallet; the locked screen offers only [Reject], which stays accepted (M4z).
 - **R9 — `dapp.blocked.remove` takes `{host}`**, not `{origin}`: §2.6 keys blocks by host.
 - **R10 — the unlock hook's "ran" flag lives in the background's memory**, not in `storage.session`. Storing it put a `v1_dapp_session` key into a freshly unlocked session, which B1b's E2E (`unlock.spec.ts`: "only signing keys") rightly refused — the dry run's first find. A lock clears the flag; a worker restart re-runs the hook at its first queue access, which answers only what is still queued and repeats a `change` the pages already have.
 - **R11 — what counts toward C14's cooldown:** user rejections only — Reject, ✕, closing the window, Reject and report, Block this site; not a lock, an expiry, the budget or any background refusal.
@@ -110,10 +112,13 @@ The spec leaves these open or the dry run found them; each is the most secure de
 - **R30 — B1c-24 stops the worker by closing its CDP target.** `ServiceWorker.stopAllWorkers` from a page session left the extension's worker running (the dry run's find, proved by `runtime.getContexts`); `Target.closeTarget` stops it — the spec's alternative ("or closing the service-worker Target"). Positive control: no background context while stopped, a different one after.
 - **R31 — #37's bullet:** "Local settings, cached balances, your address book, the list of addresses you have sent to, and dApp connections and blocked sites are erased and not recoverable." (Q08 placed where the design reserves "dApp connections"). **Owner copy check.**
 - **R32 — `npm audit`** is not clean on `main` (4 moderate: `@solana/web3.js` → `jayson` → `stream-json`, `uuid`); the three `@wallet-standard` packages add none. Recorded, not fixed here (a web3.js 3 migration is breaking).
-- **R33 — the window polls only as §2.3 says** (locked, deciding, "n more waiting"): a request that arrives while it shows one with nothing behind it appears as "1 more request waiting" on the next poll trigger (focus, visibility, a decision). Stated limit; the visual pass triggers focus.
+- **R33 — the window polls every second while it shows anything** (rev 2, review 1 L1: §2.3's "an unlock, an expiry or a new head reaches it within 1 s" taken literally, over its narrower list of states): an expiry of the shown request, a request arriving behind it and an unlock all reach the window within a second. One `dapp.pending` a second is cheap, and the window exists only while something is pending (M8j).
 - **R34 — the account picker (Q01, undrawn)** is a native `<select>` in a card styled as the scope card, above "Stay connected"; options "<name> · <first 4>…<last 4>" (B1b's `shortAddress`, not the mockup's 5 + 4).
-- **R35 — the origin card shows the host** (`h`, §2.5 Display), without a port, for an origin that has one.
-- **R36 — `Grant.recent` and `lastUsedAt`:** a silent or immediate connect moves `lastUsedAt` but records no interaction (only decisions in the window are interactions); a rejected sign request of a granted origin is recorded.
+- **R35 — the origin card and #49 show the host, with the port when the origin has an explicit one** (rev 2, review 1 L5): `https://dapp.test` and `https://dapp.test:8443` are two grants (C8) and must not look alike; §2.5 Display's `h` with `:port` appended — real sites, with no explicit port, look exactly as before (M8m, M10g). Blocks stay by host (§2.6).
+- **R36 — `Grant.recent` and `lastUsedAt`:** a silent or immediate connect moves `lastUsedAt` but records no interaction (only decisions in the window are interactions); a rejected sign request of a granted origin is recorded. **Rev 2 (review 1 L3):** `lastUsedAt` moves at most once a minute per grant (`LAST_USED_STEP_MS`), so a page's loop of silent connects is not a `storage.local` write each (M3u).
+- **R37 — the wallet icon is the owner's PNG mark, not an SVG** (spec §1.1 says `data:image/svg+xml`; review 1 M5). The reason is the artwork: the owner's mark exists only as the 96 px raster `web/public/noc-mark.png` — the owner replaced the drawn "N" with it on 2026-09-26 (`web/src/ui/BrandMark.tsx`). An SVG would either redraw the logo (not the owner's artwork) or wrap the same PNG in an SVG `<image>` (the spec's letter and none of its point: still a raster, larger, and an SVG document every dApp then renders). Wallet Standard's `WalletIcon` type allows `data:image/png;base64,…`. **For the owner:** if a vector mark exists or is wanted, switching is two lines of Task 7's `gen-icon.mjs` (the source file and the media type) and the icon test's expected bytes.
+- **R38 — a `deciding` entry has a deadline** (review 1 M1; the spec's C4 says "queued or shown" and §1.5 names no deadline for an effect): five minutes from `arrivedAt` apply to a `deciding` entry too (`timeout`), and one of this instance still `deciding` 30 s after `decidingAt` is a dead effect — answered `rejected`, like C17's restart (nothing left the extension; the effect's own sections refuse to answer an entry no longer `deciding`). Without it a thrown effect wedged the queue: the head stayed "Signing…", its host's next request was `request-pending`, and the window's poll kept the worker alive (M3s, M3t).
+- **R39 — Firefox's `port.sender.origin`** (review 1 L9): the whole PAGE partition keys on it; the E2E run only Chromium. A line of B1e's manual Firefox run: "`port.sender.origin` is present on a content-script port and equals the page's origin" — if it is missing, the partition fails closed (no dApp support on Firefox, no exposure).
 
 Spec items built as written and declared in its §9 are not repeated here (D1, D3, D8, D9, the dropped design text, the 720 px window, the dropped scroll-to-acknowledge).
 
@@ -838,7 +843,7 @@ MSG
 
 ### Task 2: The stores: grants (session + persistent, the cap, `recent`), blocked hosts, the limits (cooldown per host and per tab, the window budget), the session state and the queue mutex; wiped on delete, kept on restore; the gate owns the keys
 
-**Spec:** §2.1, §2.6, C3, C11, C14 (counters), §2.3 ("under the queue mutex"); §6.1 "Grants" (delete wipes, restore keeps), "Queue and limits" (the counters); §6.2 vault-isolation (`BACKGROUND_OWNED_KEYS` + fixture); Review Focus 1
+**Spec:** §2.1, §2.6, C3, C11, C14 (counters), §2.3 ("under the queue mutex"); §6.1 "Grants" (delete wipes, restore keeps), "Queue and limits" (the counters); §6.2 vault-isolation (`BACKGROUND_OWNED_KEYS` + fixture); Review Focus 1; plan review 1 M1 (`decidingAt`)
 
 **Files:**
 - Test: `extension/scripts/__tests__/check-vault-isolation.test.mjs`
@@ -857,7 +862,7 @@ MSG
   - `grants.ts`: `GRANTS_KEY = 'v1_dapp_grants'`, `MAX_GRANTS = 200`, `RECENT_KEPT = 3`, `type RequestType = 'connect' | 'signMessage' | 'signTransaction' | 'signAndSendTransaction'`, `interface Recent {type; at; outcome: 'approved' | 'rejected'}`, `interface Grant {origin; account; scope: 'session' | 'persistent'; connectedAt; lastUsedAt; recent: Recent[]}`, `grantOf(x, scope)`, `grantsOf(x, scope, max)`, `withRecent(g, type, at, outcome)`.
   - `blocked.ts`: `BLOCKED_KEY = 'v1_dapp_blocked'`, `MAX_BLOCKED = 200`, `interface Blocked {host; blockedAt; imitates: string | null}`, `blockedOf(x)`, `isBlocked(list, host)`, `withBlock(list, host, imitates, now)`, `withoutBlock(list, host)`.
   - `limits.ts`: `LIMITS_KEY = 'v1_dapp_limits'`, `LIMIT_WINDOW_MS`, `REJECTIONS_FOR_COOLDOWN = 3`, `COOLDOWN_MS`, `WINDOW_BUDGET = 10`, `interface Limits {rejections; cooldowns; windows; notice}`, `EMPTY_LIMITS`, `hostKey`, `tabKey`, `limitsOf(x, now)`, `prune`, `rejectionsOf(l, host, tabId)`, `withRejection(l, host, tabId, now)`, `inCooldown(l, host, tabId, now)`, `budgetLeft(l, now)`, `withWindow(l, now)`.
-  - `store.ts`: `DAPP_SESSION_KEY = 'v1_dapp_session'`, `type ErrorCode`, `ERROR_CODES`, `type Answer`, `type EntryType = 'connect' | 'signMessage'`, `type Decision = 'approve' | 'reject' | 'report' | 'block'`, `interface Entry`, `interface Undo`, `interface DappSession {queue; grants; window; opening; undo}`, `EMPTY_SESSION`, `entryOf`, `readDappSession(ext)`, `interface Tx {s; grants; blocked; limits; session; now}`, `dappSection<T>(ext, now, fn)`, `grantIn(tx, origin)`, `dropGrant(tx, origin)`, `putGrant(tx, g)`.
+  - `store.ts`: `DAPP_SESSION_KEY = 'v1_dapp_session'`, `type ErrorCode`, `ERROR_CODES`, `type Answer`, `type EntryType = 'connect' | 'signMessage'`, `type Decision = 'approve' | 'reject' | 'report' | 'block'`, `interface Entry` (with `decidingAt: number | null`, rev 2), `interface Undo`, `interface DappSession {queue; grants; window; opening; undo}`, `EMPTY_SESSION`, `entryOf`, `readDappSession(ext)`, `interface Tx {s; grants; blocked; limits; session; now}`, `dappSection<T>(ext, now, fn)`, `grantIn(tx, origin)`, `dropGrant(tx, origin)`, `putGrant(tx, g)`.
   - `accountsStore.ts`: `WALLET_DATA_KEYS` exported, with the three keys.
 
 Everything the request lifecycle writes, and the one section that writes it. `dappSection` is THE queue mutex the spec names: its own mutex, then `sessionMutex`; inside, it reads the session state, the three `storage.local` keys and the session (locked or not), runs the caller's change, and writes back only what changed. So a check and the write it guards are never split by a lock (§2.3 "unlocked", `setSessionIf`'s pattern), and the lock hook — which runs inside `sessionMutex` — is totally ordered with every section. Every stored value is re-validated on read and never "repaired": a bad entry is dropped (an IP-literal origin or host is kept — Review Focus 1). The three keys join `WALLET_DATA_KEYS` (C11: a delete or a first write removes them, a restore keeps them) and the gate's `BACKGROUND_OWNED_KEYS` (no popup, window or vault-page file may name them).
@@ -977,7 +982,7 @@ const T = 1_000_000_000;
 const grant = (origin: string, over: Partial<Grant> = {}): Grant => ({origin, account: ACCOUNT.publicKey, scope: 'persistent', connectedAt: T, lastUsedAt: T, recent: [], ...over});
 const entry = (over: Partial<Entry> = {}): Entry => ({
   requestId: 'r1', pageId: 'p1', origin: 'https://dapp.test', host: 'dapp.test', tabId: 7, documentId: null, type: 'connect', account: null,
-  message: null, arrivedAt: T, state: 'queued', decidedBy: null, decision: null, answer: null, answeredAt: null, ...over,
+  message: null, arrivedAt: T, state: 'queued', decidedBy: null, decidingAt: null, decision: null, answer: null, answeredAt: null, ...over,
 });
 
 // Spec §2.1, §2.6, C14 — the stores the request lifecycle writes, and the one section that writes them.
@@ -1442,6 +1447,8 @@ export interface Entry {
   state: 'queued' | 'deciding' | 'answered';
   /** The worker instance that wrote `deciding` (C17): another instance's `deciding` entry is a restart. */
   decidedBy: string | null;
+  /** When `deciding` was written (review 1 M1): an effect that has not answered DECIDING_TTL_MS later is dead. */
+  decidingAt: number | null;
   decision: {kind: Decision; account: string | null; scope: Grant['scope'] | null} | null;
   answer: Answer | null;
   answeredAt: number | null;
@@ -1496,6 +1503,7 @@ export function entryOf(x: unknown): Entry | null {
   if (!isStr(o.requestId) || !isStr(o.pageId) || !isStr(o.origin) || !isStr(o.host) || !isTime(o.tabId) || !isNullStr(o.documentId)) return null;
   if ((o.type !== 'connect' && o.type !== 'signMessage') || !isNullStr(o.account) || !isNullStr(o.message) || !isTime(o.arrivedAt)) return null;
   if (!isStr(o.state) || !STATES.includes(o.state) || !isNullStr(o.decidedBy) || (o.answeredAt !== null && !isTime(o.answeredAt))) return null;
+  if (o.decidingAt !== null && !isTime(o.decidingAt)) return null;
   const decision = decisionOf(o.decision);
   const answer = answerOf(o.answer);
   if (decision === undefined || answer === undefined) return null;
@@ -1512,6 +1520,7 @@ export function entryOf(x: unknown): Entry | null {
     arrivedAt: o.arrivedAt,
     state: o.state as Entry['state'],
     decidedBy: o.decidedBy,
+    decidingAt: o.decidingAt,
     decision,
     answer,
     answeredAt: o.answeredAt as number | null,
@@ -1675,7 +1684,7 @@ MSG
 
 ### Task 3: The PAGE partition and the request lifecycle: the origin rule for ports and messages, the port registry, the queue (C3, C4, C9, C17's restart rule, documentId), delivery, resume and ack, the approval window's opening, connect and disconnect
 
-**Spec:** §1.3, §1.4 (page messages, events), §1.5 steps 1, 3–6, §1.6, §2.2 (connect rows), §2.3 (opening the window, a document that goes away, `windows.onRemoved`, expiry), C2, C3, C4, C8, C9, C14 (the budget), C16, C17 (the restart rule); §5; §6.1 "Origin rule", "Partitions", "Lifecycle", "Queue and limits"; Review Focus 1, 3
+**Spec:** §1.3, §1.4 (page messages, events), §1.5 steps 1, 3–6, §1.6, §2.2 (connect rows), §2.3 (opening the window, a document that goes away, `windows.onRemoved`, expiry), C2, C3, C4, C8, C9, C14 (the budget), C16, C17 (the restart rule); §5; §6.1 "Origin rule", "Partitions", "Lifecycle", "Queue and limits"; Review Focus 1, 3; plan review 1 M1, L3, L10
 
 **Files:**
 - Test: `extension/src/background/__tests__/fakeExt.ts`
@@ -1696,13 +1705,13 @@ MSG
   - `ext.ts`: `interface WindowsApi {create(o: {page; width; height}): Promise<number | null>; exists(id): Promise<boolean>; remove(id): Promise<void>}`, `Ext.dappWindows`.
   - `fakeExt.ts`: `fakeExt().approval: FakeWindows` (`created`, `removed`, `open`, `failNext`, `hold()`).
   - `ports.ts`: `PAGE_PORT = 'noctura-page'`, `interface PageSenderInfo`, `interface PortLike`, `interface PageOrigin {tabId; origin; host; documentId}`, `pageOrigin(ext, sender)`, `interface LivePort`, `interface Runtime {instance; ports}`, `runtimeFor(ext)`, `restartRuntime(ext)` (tests only), `deliver(ext, entries)`, `sendChange(ext, changes)`, `liveOrigins(ext)`, `owns(p, e)`.
-  - `queue.ts`: `REQUEST_TTL_MS`, `ANSWER_TTL_MS`, `MAX_OPEN = 5`, `QUEUE_ALARM = 'dapp-queue'`, `QUEUE_TICK_MINUTES`, `isOpenEntry`, `headOf(tx)`, `newRequestId(deps)`, `interface Effects {answered; changes}`, `answer(fx, e, a, now)`, `userRejected(tx, fx, e)`, `rejectQueued(tx, fx, match)`, `sweep(tx, fx, instance)`, `documentChanged(tx, fx, p)`, `queueAccess(ext, deps, fn)`.
+  - `queue.ts`: `REQUEST_TTL_MS`, `DECIDING_TTL_MS = 30_000` (rev 2), `ANSWER_TTL_MS`, `MAX_OPEN = 5`, `QUEUE_ALARM = 'dapp-queue'`, `QUEUE_TICK_MINUTES`, `isOpenEntry`, `headOf(tx)`, `newRequestId(deps)`, `interface Effects {answered; changes}`, `answer(fx, e, a, now)`, `userRejected(tx, fx, e)`, `rejectQueued(tx, fx, match)`, `sweep(tx, fx, instance)`, `documentChanged(tx, fx, p)`, `queueAccess(ext, deps, fn)`.
   - `window.ts`: `APPROVE_PAGE`, `WINDOW_WIDTH = 412`, `WINDOW_HEIGHT = 720`, `OPENING_STALE_MS`, `ensureWindow(ext, deps)`, `onApprovalWindowRemoved(ext, deps, id)`, `onQueueAlarm(ext, deps)`.
-  - `pageApi.ts`: `PAGE_TYPES`, `type PageType`, `MAX_RESUME`, `onPageMessage(ext, deps, live, m)`, `acceptPagePort(ext, deps, port): LivePort | null`.
+  - `pageApi.ts`: `PAGE_TYPES`, `type PageType`, `MAX_RESUME`, `LAST_USED_STEP_MS = 60_000` (rev 2), `onPageMessage(ext, deps, live, m)`, `acceptPagePort(ext, deps, port): LivePort | null`.
   - `messages.ts`: `Sender` gains `documentId?`, `documentLifecycle?`; `PAGE = PAGE_TYPES`.
   - `pageHarness.ts` (tests): `fakePort`, `TAB`, `senderFor`, `interface Page {port; live; ask; answersFor; changes}`, `openPage(ext, deps, origin, over?)`, `settle()`.
 
-Spec §1.3–§1.5 as code. A port named `noctura-page` whose `port.sender` passes the origin rule — this extension's id, a tab, frame 0, an `https:` origin exactly as the browser serialises it (no path, no credentials; an IP literal with a port is fine), an active document where the browser reports one, and **never** `sender.url` — is registered keyed `(tabId, origin)`; any other port is disconnected at once. Page types arrive only on the port: through `runtime.sendMessage` they are refused from anyone (R7). Every access to the queue is one `queueAccess`: a `dappSection` that first sweeps (C4's expiry from `arrivedAt`, C17's rule — a `deciding` entry another worker instance wrote is answered `rejected` —, the ten-minute cleanup, expired undo records), then the caller's change; after the commit, answers are delivered on every live port of that `(tabId, origin)` and `change` events sent, and the 30-second expiry alarm re-armed while anything is queued. A request is idempotent by the relay's own id (C9): re-sent after a lost connection, it is the same entry. C3: one open request per host and per tab, five in total. A new port or request from a tab whose `documentId` changed answers the old document's queued requests `rejected` (§2.3; Firefox reports none — the per-tab caps bound it). The window opens in three steps around an `opening` marker (§2.3): a failed `windows.create` clears it in a `finally`, a marker older than 10 s is stale, a recorded id is checked with `windows.get` first; beyond C14's budget every request that would need the window is rejected with no window and the next one carries the notice (R12). Closing the window rejects only the request it showed (and counts it for C14), then reopens for the rest (R13).
+Spec §1.3–§1.5 as code. A port named `noctura-page` whose `port.sender` passes the origin rule — this extension's id, a tab, frame 0, an `https:` origin exactly as the browser serialises it (no path, no credentials; an IP literal with a port is fine), an active document where the browser reports one, and **never** `sender.url` — is registered keyed `(tabId, origin)`; any other port is disconnected at once. Page types arrive only on the port: through `runtime.sendMessage` they are refused from anyone (R7). Every access to the queue is one `queueAccess`: a `dappSection` that first sweeps (C4's expiry from `arrivedAt` — "queued or shown": a `deciding` entry too —, C17's rule — a `deciding` entry another worker instance wrote is answered `rejected`, and so is one of this instance still `deciding` 30 s after it was written: its effect died between its sections (review 1 M1, R38) —, the ten-minute cleanup, expired undo records), then the caller's change; after the commit, answers are delivered on every live port of that `(tabId, origin)` and `change` events sent, and the 30-second expiry alarm re-armed while anything is queued. A request is idempotent by the relay's own id (C9): re-sent after a lost connection, it is the same entry. C3: one open request per host and per tab, five in total. An accepted request moves its grant's `lastUsedAt` at most once a minute (review 1 L3, R36). A new port or request from a tab whose `documentId` changed answers the old document's queued requests `rejected` (§2.3; Firefox reports none — the per-tab caps bound it). The window opens in three steps around an `opening` marker (§2.3): a failed `windows.create` clears it in a `finally`, a marker older than 10 s is stale, a recorded id is checked with `windows.get` first; beyond C14's budget every request that would need the window is rejected with no window and the next one carries the notice (R12). Closing the window rejects only the request it showed (and counts it for C14), then reopens for the rest (R13).
 
 `page.signMessage` is not handled yet (Task 6): until then it is refused as `invalid-request` like any other unknown type. The unlock hook comes in Task 5; the window's `dapp.pending` (which records the shown request) in Task 4 — this task's tests set `showing` themselves.
 
@@ -1869,11 +1878,11 @@ import {getSession, setSession} from '../../session';
 import {GRANTS_KEY, type Grant} from '../grants';
 import {BLOCKED_KEY} from '../blocked';
 import {LIMITS_KEY, WINDOW_BUDGET} from '../limits';
-import {MAX_OPEN, QUEUE_ALARM, REQUEST_TTL_MS, ANSWER_TTL_MS} from '../queue';
+import {DECIDING_TTL_MS, MAX_OPEN, QUEUE_ALARM, REQUEST_TTL_MS, ANSWER_TTL_MS} from '../queue';
 import {DAPP_SESSION_KEY, readDappSession} from '../store';
 import {OPENING_STALE_MS, WINDOW_HEIGHT, WINDOW_WIDTH, ensureWindow, onApprovalWindowRemoved, onQueueAlarm} from '../window';
 import {restartRuntime, runtimeFor} from '../ports';
-import {acceptPagePort} from '../pageApi';
+import {LAST_USED_STEP_MS, acceptPagePort} from '../pageApi';
 import {fakeExt} from '../../__tests__/fakeExt';
 import {fakeDeps} from '../../__tests__/fakeDeps';
 import {ACCOUNT} from '../../__tests__/fixtures';
@@ -2143,15 +2152,71 @@ describe('expiry (C4) and the worker-restart rule (C17)', () => {
     const page = openPage(ext, deps, DAPP);
     const r = await page.ask(connect('c1'));
     const s = await readDappSession(ext);
-    await ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => ({...e, state: 'deciding', decidedBy: 'a-dead-instance', decision: {kind: 'approve', account: ACCOUNT.publicKey, scope: 'session'}}))});
+    await ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => ({...e, state: 'deciding', decidedBy: 'a-dead-instance', decidingAt: deps.clock.t, decision: {kind: 'approve', account: ACCOUNT.publicKey, scope: 'session'}}))});
     await page.ask(connect('s', true));
     expect(page.answersFor(String(r?.requestId))).toEqual([{requestId: r?.requestId, error: 'rejected'}]);
     // Positive control: this instance's own deciding entry is left alone (its effect is running).
     const t = await openPage(ext, deps, OTHER, {tab: {id: 9}}).ask(connect('c2'));
     const s2 = await readDappSession(ext);
-    await ext.session.set(DAPP_SESSION_KEY, {...s2, queue: s2.queue.map(e => (e.requestId === t?.requestId ? {...e, state: 'deciding', decidedBy: runtimeFor(ext).instance} : e))});
+    await ext.session.set(DAPP_SESSION_KEY, {...s2, queue: s2.queue.map(e => (e.requestId === t?.requestId ? {...e, state: 'deciding', decidedBy: runtimeFor(ext).instance, decidingAt: deps.clock.t} : e))});
     await page.ask(connect('s2', true));
     expect((await queue(ext)).find(e => e.requestId === t?.requestId)?.state).toBe('deciding');
+  });
+});
+
+describe('a deciding entry that never answers (review 1 M1)', () => {
+  /** A request of DAPP made `deciding` by this instance at the clock's now, as dapp.decide writes it — and then nothing. */
+  async function stuck() {
+    const {ext, deps} = await setup();
+    const page = openPage(ext, deps, DAPP);
+    const r = await page.ask(connect('c1'));
+    const requestId = String(r?.requestId);
+    const s = await readDappSession(ext);
+    const decision = {kind: 'approve', account: ACCOUNT.publicKey, scope: 'session'};
+    await ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => ({...e, state: 'deciding', decidedBy: runtimeFor(ext).instance, decidingAt: deps.clock.t, decision}))});
+    return {ext, deps, page, requestId};
+  }
+
+  it('this instance’s deciding entry is answered rejected DECIDING_TTL_MS after deciding — not a millisecond before — and the host may ask again', async () => {
+    const c = await stuck();
+    c.deps.clock.t += DECIDING_TTL_MS - 1;
+    await onQueueAlarm(c.ext, c.deps);
+    expect(c.page.answersFor(c.requestId)).toEqual([]);
+    expect((await queue(c.ext))[0]?.state).toBe('deciding');
+    // While it is deciding the host's next request is request-pending (C3) — the wedge the deadline ends.
+    expect(await c.page.ask(connect('c2'))).toEqual({id: 'c2', error: 'request-pending'});
+    c.deps.clock.t += 1;
+    await onQueueAlarm(c.ext, c.deps);
+    expect(c.page.answersFor(c.requestId)).toEqual([{requestId: c.requestId, error: 'rejected'}]);
+    expect(await c.page.ask(connect('c3'))).toMatchObject({accepted: true});
+  });
+
+  it('C4 "queued or shown": a deciding entry is answered timeout five minutes after it arrived, even when deciding began a moment ago', async () => {
+    const c = await stuck();
+    c.deps.clock.t += REQUEST_TTL_MS - 10;
+    const s = await readDappSession(c.ext);
+    await c.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => ({...e, decidingAt: c.deps.clock.t}))});
+    c.deps.clock.t += 10;
+    await onQueueAlarm(c.ext, c.deps);
+    expect(c.page.answersFor(c.requestId)).toEqual([{requestId: c.requestId, error: 'timeout'}]);
+  });
+});
+
+describe('lastUsedAt (§2.1, review 1 L3)', () => {
+  it('moves at most once a minute: a loop of silent connects is not a grant write each', async () => {
+    const {ext, deps} = await setup();
+    await ext.local.set(GRANTS_KEY, [grant(DAPP)]);
+    const page = openPage(ext, deps, DAPP);
+    const used = async () => ((await ext.local.get(GRANTS_KEY)) as Grant[])[0]?.lastUsedAt;
+    const t0 = deps.clock.t;
+    await page.ask(connect('s1', true));
+    expect(await used()).toBe(t0);
+    deps.clock.t += LAST_USED_STEP_MS - 1;
+    for (let i = 0; i < 5; i++) await page.ask(connect(`s${i + 2}`, true));
+    expect(await used()).toBe(t0);
+    deps.clock.t += 1;
+    await page.ask(connect('s9', true));
+    expect(await used()).toBe(t0 + LAST_USED_STEP_MS);
   });
 });
 
@@ -2370,6 +2435,11 @@ export function openPage(ext: ReturnType<typeof fakeExt>, deps: WalletDeps, orig
 }
 
 /** Lets the background's fire-and-forget work (a port's document check) finish. */
+/**
+ * Lets fire-and-forget work finish: a port message runs a queue access (two mutexes, five storage reads, the writes,
+ * the delivery, the alarm), each await one turn of the fake chrome.* — 20 macrotask turns is about twice what the
+ * longest chain here needs (a port open that answers an old document's request, then opens the window).
+ */
 export async function settle(): Promise<void> {
   for (let i = 0; i < 20; i++) await new Promise<void>(r => setTimeout(r, 0));
 }
@@ -2432,10 +2502,14 @@ function grantedAccount(tx: Tx, origin: string): string | null {
   return g.account;
 }
 
-/** `lastUsedAt` moves on every accepted request (§2.1). */
+/**
+ * `lastUsedAt` moves on accepted requests (§2.1) — at most once a minute per grant (review 1 L3): a page's loop of
+ * silent connects is not a storage write each, and #49 shows the time to the minute at best.
+ */
+export const LAST_USED_STEP_MS = 60_000;
 function touch(tx: Tx, origin: string): void {
   const g = grantIn(tx, origin);
-  if (g !== null) putGrant(tx, {...g, lastUsedAt: tx.now});
+  if (g !== null && tx.now - g.lastUsedAt >= LAST_USED_STEP_MS) putGrant(tx, {...g, lastUsedAt: tx.now});
 }
 
 /** A request the user must answer, after C3's caps; null when it was queued, else the immediate refusal. */
@@ -2458,6 +2532,7 @@ function enqueue(tx: Tx, deps: Pick<WalletDeps, 'randomBytes'>, live: LivePort, 
     arrivedAt: tx.now,
     state: 'queued',
     decidedBy: null,
+    decidingAt: null,
     decision: null,
     answer: null,
     answeredAt: null,
@@ -2744,6 +2819,12 @@ import {dappSection, grantIn, putGrant, type Answer, type Entry, type Tx} from '
  * re-armed. Nothing is delivered before it is stored, so a resume always finds what a port missed.
  */
 export const REQUEST_TTL_MS = 5 * 60_000;
+/**
+ * Review 1 M1: a `deciding` entry of this instance is an effect in flight (a grant write, a signature: milliseconds).
+ * One still `deciding` this long after it was written died between its sections (a thrown storage call) — it is
+ * answered `rejected` (nothing left the extension), so the queue, the window and the page move on.
+ */
+export const DECIDING_TTL_MS = 30_000;
 export const ANSWER_TTL_MS = 10 * 60_000;
 /** "Open" = queued or deciding (C3); at most this many in total — the next gets `busy`. */
 export const MAX_OPEN = 5;
@@ -2793,14 +2874,17 @@ export function rejectQueued(tx: Tx, fx: Effects, match: (e: Entry) => boolean, 
 
 /**
  * The housekeeping of every access: a `queued` entry older than five minutes is answered `timeout` (C4, counted from
- * arrivedAt by the background's clock); a `deciding` entry another instance wrote is a restart (C17, §1.5 step 2 —
- * nothing left the extension: answered `rejected`); an answered entry nobody acked is dropped ten minutes after its
+ * arrivedAt by the background's clock — `queued` or `deciding`); a `deciding` entry another instance wrote is a restart
+ * (C17, §1.5 step 2 — nothing left the extension: answered `rejected`), and so is one of this instance still `deciding`
+ * DECIDING_TTL_MS after it was written (review 1 M1); an answered entry nobody acked is dropped ten minutes after its
  * answer; an expired undo record is dropped.
  */
 export function sweep(tx: Tx, fx: Effects, instance: string): void {
   for (const e of tx.s.queue) {
-    if (e.state === 'queued' && tx.now - e.arrivedAt >= REQUEST_TTL_MS) answer(fx, e, {error: 'timeout'}, tx.now);
-    else if (e.state === 'deciding' && e.decidedBy !== instance) answer(fx, e, {error: 'rejected'}, tx.now);
+    // C4 "queued or shown": five minutes from arrivedAt, whatever the open state (review 1 M1).
+    if (isOpenEntry(e) && tx.now - e.arrivedAt >= REQUEST_TTL_MS) answer(fx, e, {error: 'timeout'}, tx.now);
+    // C17: another instance's `deciding` is a restart; this instance's, DECIDING_TTL_MS after it was written, a dead effect.
+    else if (e.state === 'deciding' && (e.decidedBy !== instance || e.decidingAt === null || tx.now - e.decidingAt >= DECIDING_TTL_MS)) answer(fx, e, {error: 'rejected'}, tx.now);
   }
   tx.s.queue = tx.s.queue.filter(e => e.state !== 'answered' || e.answeredAt === null || tx.now - e.answeredAt < ANSWER_TTL_MS);
   tx.s.undo = tx.s.undo.filter(u => u.expiresAt > tx.now);
@@ -3115,7 +3199,7 @@ npx vitest run src/background/__tests__/start.test.ts src/background/dapp/__test
 npx tsc --noEmit && npx vitest run
 node scripts/build.mjs && npm run gates
 ```
-Expected (dry run): own tests Test Files  2 passed (2) · Tests  39 passed (39); tsc clean; whole suite Test Files  143 passed (143) · Tests  2884 passed (2884); the build and every gate green.
+Expected (dry run): own tests Test Files  2 passed (2) · Tests  42 passed (42); tsc clean; whole suite Test Files  143 passed (143) · Tests  2887 passed (2887); the build and every gate green.
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -3126,14 +3210,14 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   ```diff
   -   if (s.frameId !== 0) return null;
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 33 passed (34)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 36 passed (37)).
 
 - **M3b** — the origin rule without the lifecycle (a prerendered page asks, C16) — `extension/src/background/dapp/ports.ts`:
 
   ```diff
   -   if (s.documentLifecycle !== undefined && s.documentLifecycle !== 'active') return null;
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 33 passed (34)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 36 passed (37)).
 
 - **M3c** — the origin rule accepts http: — `extension/src/background/dapp/ports.ts`:
 
@@ -3141,14 +3225,14 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (u.protocol !== 'https:' || u.hostname === ''
   + if (u.hostname === ''
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 33 passed (34)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 36 passed (37)).
 
 - **M3d** — a page type accepted on runtime.sendMessage (R7) — `extension/src/background/messages.ts`:
 
   ```diff
   -   if (!privileged) return {ok: false, error: 'forbidden'};
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 33 passed (34)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 36 passed (37)).
 
 - **M3e** — page.resume ignores ownership (a foreign id resumes) — `extension/src/background/dapp/pageApi.ts`:
 
@@ -3156,7 +3240,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (e === undefined || !owns(live, e)) return {requestId, unknown: true};
   + if (e === undefined) return {requestId, unknown: true};
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 33 passed (34)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 36 passed (37)).
 
 - **M3f** — page.ack ignores ownership — `extension/src/background/dapp/pageApi.ts`:
 
@@ -3164,7 +3248,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - e.state === 'answered' && owns(live, e))
   + e.state === 'answered')
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 33 passed (34)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 36 passed (37)).
 
 - **M3g** — documentId ignored (a reloaded tab keeps its request) — `extension/src/background/dapp/queue.ts`:
 
@@ -3172,7 +3256,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -   if (p.documentId === null) return;
   +   return;
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 33 passed (34)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 36 passed (37)).
 
 - **M3h** — no per-tab cap (C3) — `extension/src/background/dapp/pageApi.ts`:
 
@@ -3180,7 +3264,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (open.some(e => e.host === live.host || e.tabId === live.tabId)) return 'request-pending';
   + if (open.some(e => e.host === live.host)) return 'request-pending';
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 33 passed (34)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 36 passed (37)).
 
 - **M3i** — a sixth open request is queued (C3's five) — `extension/src/background/dapp/pageApi.ts`:
 
@@ -3188,7 +3272,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (open.length >= MAX_OPEN) return 'busy';
   + if (open.length > MAX_OPEN) return 'busy';
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 33 passed (34)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 36 passed (37)).
 
 - **M3j** — the opening marker kept when windows.create fails — `extension/src/background/dapp/window.ts`:
 
@@ -3198,7 +3282,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   +       if (id !== null) tx.s.opening = null;
   +       if (id !== null) tx.s.window = {id, showing: null};
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Tests  2 failed | 32 passed (34) · FAIL  src/background/dapp/__tests__/lifecycle.test.ts > the approval window (§2.3, C14) > the alarm opens a window for a head that has none (a failed create is not left waiting)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Tests  2 failed | 35 passed (37) · FAIL  src/background/dapp/__tests__/lifecycle.test.ts > the approval window (§2.3, C14) > the alarm opens a window for a head that has none (a failed create is not left waiting)).
 
 - **M3k** — a stale opening marker is never stale — `extension/src/background/dapp/window.ts`:
 
@@ -3206,7 +3290,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - export const OPENING_STALE_MS = 10_000;
   + export const OPENING_STALE_MS = Number.POSITIVE_INFINITY;
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 33 passed (34)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 36 passed (37)).
 
 - **M3l** — closing the window rejects every queued request, not only the shown one — `extension/src/background/dapp/window.ts`:
 
@@ -3216,31 +3300,30 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   +     for (const e of tx.s.queue) if (e.state === 'queued') userRejected(tx, fx, e);
   +     void showing;
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 33 passed (34)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 36 passed (37)).
 
 - **M3m** — no expiry (C4) — `extension/src/background/dapp/queue.ts`:
 
   ```diff
-  -     if (e.state === 'queued' && tx.now - e.arrivedAt >= REQUEST_TTL_MS) answer(fx, e, {error: 'timeout'}, tx.now);
-  -     else if
-  +     if
+  -     if (isOpenEntry(e) && tx.now - e.arrivedAt >= REQUEST_TTL_MS) answer(fx, e, {error: 'timeout'}, tx.now);
+  +     if (false) answer(fx, e, {error: 'timeout'}, tx.now);
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 33 passed (34)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 35 passed (37)).
 
 - **M3n** — no restart rule (C17: another instance's deciding entry stays) — `extension/src/background/dapp/queue.ts`:
 
   ```diff
-  -     else if (e.state === 'deciding' && e.decidedBy !== instance) answer(fx, e, {error: 'rejected'}, tx.now);
-  +     void instance;
+  - (e.decidedBy !== instance || e.decidingAt === null
+  + (instance === '' || e.decidingAt === null
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 33 passed (34)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 36 passed (37)).
 
 - **M3o** — an unacked answer is never deleted — `extension/src/background/dapp/queue.ts`:
 
   ```diff
   -   tx.s.queue = tx.s.queue.filter(e => e.state !== 'answered' || e.answeredAt === null || tx.now - e.answeredAt < ANSWER_TTL_MS);
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  16 failed | 18 passed (34)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  18 failed | 19 passed (37)).
 
 - **M3p** — a blocked or cooling host still queues (§2.6) — `extension/src/background/dapp/pageApi.ts`:
 
@@ -3249,7 +3332,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -     if (account !== null) {
   +     if (account !== null) {
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 32 passed (34)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 35 passed (37)).
 
 - **M3q** — page.disconnect leaves a persistent grant (C2) — `extension/src/background/dapp/pageApi.ts`:
 
@@ -3259,7 +3342,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   +     const dropped = tx.s.grants.find(g => g.origin === live.origin) ?? null;
   +     tx.s.grants = tx.s.grants.filter(g => g.origin !== live.origin);
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 33 passed (34)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 36 passed (37)).
 
 - **M3r** — an answer delivered to every port of the origin, any tab — `extension/src/background/dapp/ports.ts`:
 
@@ -3267,7 +3350,31 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - const owns = (p: PageOrigin, e: Pick<Entry, 'tabId' | 'origin'>): boolean => p.tabId === e.tabId && p.origin === e.origin;
   + const owns = (p: PageOrigin, e: Pick<Entry, 'tabId' | 'origin'>): boolean => p.origin === e.origin;
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 32 passed (34)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 35 passed (37)).
+
+- **M3s** — a deciding entry never expires by C4 (only queued ones do) — `extension/src/background/dapp/queue.ts`:
+
+  ```diff
+  - if (isOpenEntry(e) && tx.now - e.arrivedAt >= REQUEST_TTL_MS)
+  + if (e.state === 'queued' && tx.now - e.arrivedAt >= REQUEST_TTL_MS)
+  ```
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 36 passed (37)).
+
+- **M3t** — no deadline for this instance's deciding entry (a dead effect wedges the queue) — `extension/src/background/dapp/queue.ts`:
+
+  ```diff
+  -  || e.decidingAt === null || tx.now - e.decidingAt >= DECIDING_TTL_MS)) answer
+  + )) answer
+  ```
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 36 passed (37)).
+
+- **M3u** — lastUsedAt written on every accepted request (no one-minute step) — `extension/src/background/dapp/pageApi.ts`:
+
+  ```diff
+  - if (g !== null && tx.now - g.lastUsedAt >= LAST_USED_STEP_MS) putGrant
+  + if (g !== null) putGrant
+  ```
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lifecycle.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 36 passed (37)).
 
 - [ ] **Step 6: Commit.**
 
@@ -3282,7 +3389,7 @@ MSG
 
 ### Task 4: `dapp.pending` and `dapp.decide` (§2.3's table, `deciding`, the connect effect, reject / report / block) and #49's messages (list, revoke with a single-shot undo token, revoke all, blocked list, unblock)
 
-**Spec:** §1.4 (privileged messages), §1.5 step 2, §2.1 (cap), §2.3 (`dapp.decide` validations, cooldown and budget, revoke / block / disconnect reject the queue), §2.6, §2.7, §3.1 outcomes, §4.3 (`pending`'s states), C1, C2, C12, C13, C14 (Q17's offer), C17; §6.1 "Decide", "Undo"; Review Focus 4; Scope R8, R9, R11
+**Spec:** §1.4 (privileged messages), §1.5 step 2, §2.1 (cap), §2.3 (`dapp.decide` validations, cooldown and budget, revoke / block / disconnect reject the queue), §2.6, §2.7, §3.1 outcomes, §4.3 (`pending`'s states), C1, C2, C12, C13, C14 (Q17's offer), C17; §6.1 "Decide", "Undo"; Review Focus 4; Scope R8, R9, R11; plan review 1 M3, M4, L2
 
 **Files:**
 - Test: `extension/src/background/__tests__/messages.test.ts`
@@ -3298,7 +3405,7 @@ MSG
   - `grantsApi.ts`: `UNDO_MS = 5_000`, `interface GrantView`, `listGrants`, `revokeGrant`, `type UndoError`, `undoRevoke`, `revokeAll`, `listBlocked`, `unblock`.
   - `messages.ts`: eight privileged types (`dapp.pending`, `dapp.decide` — `/approve.html` only; `dapp.grants.list|revoke|undo|revokeAll`, `dapp.blocked.list|remove` — `/popup.html` or `/wallet.html` only).
 
-The window decides nothing (C13): every `dapp.decide` is checked here, one refusal per row of §2.3's table, in order — head (the queue head and `queued`; a `deciding` one is never decided twice), expiry, unlocked (read inside the section, so no grant is written after a lock), account, scope (C12: `persistent` only for a verified origin), blocked / cooldown, the cap (Q16), and — for a sign request (Task 6) — the grant still held and the same account. An approval writes `deciding` (with this worker's instance) in the same section that passed the checks; only then does the effect run, in a later section that writes the grant and the answer together and first confirms the entry is still this instance's `deciding` one and the session still unlocked (§1.5 step 2). Reject counts for C14 per host and per tab; "Reject and report" and "Block this site" block the host (with what it imitates), revoke every grant of that host in both scopes (`change []`) and reject its queued requests (§2.6). A decision is a user action: it arms the auto-lock (§2.2). `dapp.pending` returns the head as the window shows it — `locked` while locked (the origin card only, D11), `deciding` (never decidable), `none` — with the account picker's choices (the wallet's unlocked accounts in display order, the active one chosen — only a default, C1), the cap, Q17's offer (two rejections already), how many wait (Q12) and the budget notice once (Q24); it records which request the window shows. #49's messages are refused while locked (R8); revoke answers an undo token and keeps the record five seconds in `storage.session` (the popup never holds a grant); undo is single-shot and refused in every case §2.7 lists.
+The window decides nothing (C13): every `dapp.decide` is checked here, one refusal per row of §2.3's table, in order — head (the queue head and `queued`; a `deciding` one is never decided twice), expiry, unlocked (read inside the section, so no grant is written after a lock), account, scope (C12: `persistent` only for a verified origin), blocked / cooldown, the cap (Q16), and — for a sign request (Task 6) — the grant still held and the same account. An approval writes `deciding` (with this worker's instance and the time, `decidingAt`) in the same section that passed the checks; only then does the effect run, in a later section that writes the grant and the answer together and first confirms the entry is still this instance's `deciding` one, the account still in the session and the host not blocked meanwhile (§1.5 step 2; each re-check has its test and mutation — review 1 M4). Reject counts for C14 per host and per tab; "Reject and report" and "Block this site" block the host (with what it imitates), revoke every grant of that host in both scopes (`change []`) and reject its queued requests (§2.6) — and, like every write of the user's lists, are refused while locked (review 1 L2, R8); revoke all rejects the revoked origins' queued requests too (review 1 M3; tested in Task 6, which brings the queued sign request). A decision is a user action: it arms the auto-lock (§2.2). `dapp.pending` returns the head as the window shows it — `locked` while locked (the origin card only, D11), `deciding` (never decidable), `none` — with the account picker's choices (the wallet's unlocked accounts in display order, the active one chosen — only a default, C1), the cap, Q17's offer (two rejections already), how many wait (Q12) and the budget notice once (Q24); it records which request the window shows. #49's messages are refused while locked (R8); revoke answers an undo token and keeps the record five seconds in `storage.session` (the popup never holds a grant); undo is single-shot and refused in every case §2.7 lists.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -3331,7 +3438,7 @@ import {GRANTS_KEY, MAX_GRANTS, type Grant} from '../grants';
 import {BLOCKED_KEY} from '../blocked';
 import {LIMITS_KEY} from '../limits';
 import {REQUEST_TTL_MS} from '../queue';
-import {DAPP_SESSION_KEY, readDappSession} from '../store';
+import {DAPP_SESSION_KEY, readDappSession, type Entry} from '../store';
 import {restartRuntime, runtimeFor} from '../ports';
 import {UNDO_MS} from '../grantsApi';
 import {fakeExt} from '../../__tests__/fakeExt';
@@ -3499,6 +3606,25 @@ describe('dapp.decide — a connect (§3.1 outcomes)', () => {
     expect(await decide({requestId: b, decision: 'block'})).toEqual({ok: true});
     expect(((await ext.local.get(BLOCKED_KEY)) as {host: string; imitates: string | null}[])[0]).toEqual({host: 'unknown.test', blockedAt: deps.clock.t, imitates: null});
   });
+
+  it('block answers the host’s other queued requests rejected — every port of it (review 1 M3; seeded: C3 admits one open request per host)', async () => {
+    const {ext, deps, decide} = await setup();
+    const {page, requestId} = await request(ext, deps, 'https://tensr.trade');
+    const other = openPage(ext, deps, 'https://tensr.trade:8443', {tab: {id: 31}});
+    // Through the page path the host's second request never queues (C3) — so the queue is seeded as a later change of
+    // C3, or a restored session, could leave it.
+    expect(await other.ask({type: 'page.connect', id: 'o', silent: false})).toEqual({id: 'o', error: 'request-pending'});
+    const s = await readDappSession(ext);
+    const head = s.queue[0] as Entry;
+    const second: Entry = {...head, requestId: 'S'.repeat(22), pageId: 'o2', origin: 'https://tensr.trade:8443', tabId: 31};
+    const elsewhere: Entry = {...head, requestId: 'E'.repeat(22), pageId: 'e2', origin: JUP, host: 'jup.ag', tabId: 32};
+    await ext.session.set(DAPP_SESSION_KEY, {...s, queue: [head, second, elsewhere]});
+    expect(await decide({requestId, decision: 'block'})).toEqual({ok: true});
+    expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
+    expect(other.answersFor(second.requestId)).toEqual([{requestId: second.requestId, error: 'rejected'}]);
+    // Positive control: another host's request is left queued.
+    expect((await readDappSession(ext)).queue.find(e => e.requestId === elsewhere.requestId)?.state).toBe('queued');
+  });
 });
 
 describe('dapp.decide — §2.3’s refusals, one row each', () => {
@@ -3525,6 +3651,10 @@ describe('dapp.decide — §2.3’s refusals, one row each', () => {
     const {ext, deps, decide} = await setup({unlocked: false});
     const {requestId} = await request(ext, deps, DAPP);
     expect(await decide({requestId, decision: 'approve', account: ACCOUNT.publicKey, scope: 'session'})).toEqual({ok: false, error: 'locked'});
+    // Review 1 L2: report and block write the user's lists — refused while locked too; nothing blocked.
+    expect(await decide({requestId, decision: 'report'})).toEqual({ok: false, error: 'locked'});
+    expect(await decide({requestId, decision: 'block'})).toEqual({ok: false, error: 'locked'});
+    expect(await ext.local.get(BLOCKED_KEY)).toBeUndefined();
     // Reject works while locked (the locked screen's [Reject]).
     expect(await decide({requestId, decision: 'reject'})).toEqual({ok: true});
   });
@@ -3566,7 +3696,7 @@ describe('dapp.decide — §2.3’s refusals, one row each', () => {
     const {ext, deps, decide, pend} = await setup();
     const {requestId} = await request(ext, deps, DAPP);
     const s = await readDappSession(ext);
-    await ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => ({...e, state: 'deciding', decidedBy: runtimeFor(ext).instance}))});
+    await ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => ({...e, state: 'deciding', decidedBy: runtimeFor(ext).instance, decidingAt: deps.clock.t}))});
     expect(await decide({requestId, decision: 'approve', account: ACCOUNT.publicKey, scope: 'session'})).toEqual({ok: false, error: 'not-head'});
     expect(await decide({requestId, decision: 'reject'})).toEqual({ok: false, error: 'not-head'});
     expect((await pend()).data.state).toBe('deciding');
@@ -3600,6 +3730,29 @@ describe('a worker restart after the request was shown (§1.5 step 5)', () => {
     expect(await decide({requestId, decision: 'approve', account: ACCOUNT.publicKey, scope: 'persistent'})).toEqual({ok: true});
     expect(await ext.local.get(GRANTS_KEY)).toBeUndefined();
     expect((await readDappSession(ext)).grants).toEqual([]);
+  });
+});
+
+describe('the effect section’s own re-checks (review 1 M4)', () => {
+  it('a block between deciding and the grant: rejected, no grant written (review 1 M4 — the effect section re-checks the block)', async () => {
+    const {ext, deps, decide} = await setup();
+    const {page, requestId} = await request(ext, deps, JUP);
+    // Between the sections (the auto-lock is armed there) another window blocks the host.
+    ext.alarms.create = async () => ext.local.set(BLOCKED_KEY, [{host: 'jup.ag', blockedAt: 1, imitates: null}]);
+    expect(await decide({requestId, decision: 'approve', account: ACCOUNT.publicKey, scope: 'persistent'})).toEqual({ok: true});
+    expect(await ext.local.get(GRANTS_KEY)).toBeUndefined();
+    expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
+  });
+
+  it('an account removed between deciding and the grant: rejected, no grant for it (review 1 M4)', async () => {
+    const {ext, deps, decide} = await setup();
+    const {page, requestId} = await request(ext, deps, JUP);
+    // The removal leaves the session without ACCOUNT (as vault.storeEnvelope does); a deciding entry is not `queued`,
+    // so dropAccountGrants's rejection does not reach it — the effect's own re-check must.
+    ext.alarms.create = async () => setSession(ext, [SECOND]);
+    expect(await decide({requestId, decision: 'approve', account: ACCOUNT.publicKey, scope: 'persistent'})).toEqual({ok: true});
+    expect(await ext.local.get(GRANTS_KEY)).toBeUndefined();
+    expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
   });
 });
 
@@ -3886,7 +4039,9 @@ async function finishConnect(ext: Ext, deps: Pick<WalletDeps, 'now'>, requestId:
     const e = tx.s.queue.find(x => x.requestId === requestId);
     if (e === undefined || e.state !== 'deciding' || e.decidedBy !== instance || e.decision === null) return;
     const {account, scope} = e.decision;
-    // The section's own checks again: a lock, a block or an account removed since `deciding` was written end it here.
+    // The section's own checks again: a block or an account removed since `deciding` was written end it here (each
+    // tested, review 1 M4). A lock cannot reach this line — the lock hook answers a `deciding` entry first — so
+    // `tx.session === null` is the type's narrowing and a second line of defence.
     if (account === null || scope === null || tx.session === null || !tx.session.some(a => a.publicKey === account) || isBlocked(tx.blocked, e.host)) {
       answer(fx, e, {error: 'rejected'}, tx.now);
       return;
@@ -3910,6 +4065,9 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
       return 'done';
     }
     if (d.decision === 'report' || d.decision === 'block') {
+      // Review 1 L2: a block writes the user's lists (it revokes grants) — refused while locked, as #49's messages are
+      // (R8); the locked screen offers only [Reject].
+      if (tx.session === null) return 'locked';
       userRejected(tx, fx, e);
       blockHost(tx, fx, e.host);
       return 'done';
@@ -3918,6 +4076,7 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
     if (refused !== null) return refused;
     e.state = 'deciding';
     e.decidedBy = instance;
+    e.decidingAt = tx.now;
     e.decision = {kind: 'approve', account: d.account, scope: e.type === 'connect' ? d.scope : null};
     return {approved: e.type};
   });
@@ -4140,7 +4299,7 @@ npx vitest run src/background/__tests__/messages.test.ts src/background/dapp/__t
 npx tsc --noEmit && npx vitest run
 node scripts/build.mjs && npm run gates
 ```
-Expected (dry run): own tests Test Files  2 passed (2) · Tests  56 passed (56); tsc clean; whole suite Test Files  144 passed (144) · Tests  2912 passed (2912); the build and every gate green.
+Expected (dry run): own tests Test Files  2 passed (2) · Tests  59 passed (59); tsc clean; whole suite Test Files  144 passed (144) · Tests  2918 passed (2918); the build and every gate green.
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -4152,14 +4311,14 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (e === undefined || headOf(tx) !== e || e.state !== 'queued') return 'not-head';
   + if (e === undefined || e.state !== 'queued') return 'not-head';
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 27 passed (28)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
 
 - **M4b** — decide does not tell an expired request (§2.3 "expiry" row) — `extension/src/background/dapp/decide.ts`:
 
   ```diff
   -     if (e?.state === 'answered' && e.answer !== null && 'error' in e.answer && e.answer.error === 'timeout') return 'expired';
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 27 passed (28)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
 
 - **M4c** — decide does not check the lock at the write ("unlocked" row) — `extension/src/background/dapp/decide.ts`:
 
@@ -4169,7 +4328,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   +   if (tx.session === null) return 'unknown-account';
   +   if (d.account === null
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 27 passed (28)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
 
 - **M4d** — decide accepts an account outside the session ("account" row) — `extension/src/background/dapp/decide.ts`:
 
@@ -4177,14 +4336,14 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (d.account === null || !tx.session.some(a => a.publicKey === d.account)) return 'unknown-account';
   + if (d.account === null) return 'unknown-account';
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 27 passed (28)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
 
 - **M4e** — persistent scope for an unknown or lookalike origin (C12, "scope" row) — `extension/src/background/dapp/decide.ts`:
 
   ```diff
   -     if (d.scope === 'persistent' && classify(e.host).kind !== 'verified') return 'scope';
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 27 passed (28)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
 
 - **M4f** — decide ignores a block or cooldown ("blocked" row) — `extension/src/background/dapp/decide.ts`:
 
@@ -4192,14 +4351,14 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -   if (isBlocked(tx.blocked, e.host) || inCooldown(tx.limits, e.host, e.tabId, tx.now)) return 'blocked';
   +   if ((isBlocked(tx.blocked, e.host) || inCooldown(tx.limits, e.host, e.tabId, tx.now)) && false) return 'blocked';
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 27 passed (28)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
 
 - **M4g** — no cap (Q16) — `extension/src/background/dapp/decide.ts`:
 
   ```diff
   -   if (e.type === 'connect' && grantIn(tx, e.origin) === null && tx.grants.length >= MAX_GRANTS) return 'cap';
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 27 passed (28)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
 
 - **M4k** — Reject and report does not block (D3) — `extension/src/background/dapp/decide.ts`:
 
@@ -4208,7 +4367,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -       blockHost(tx, fx, e.host);
   +       userRejected(tx, fx, e);
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 26 passed (28)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  3 failed | 28 passed (31)).
 
 - **M4l** — blocking keeps the grant (§2.6, spec mutation "keep the grant") — `extension/src/background/dapp/decide.ts`:
 
@@ -4222,7 +4381,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   +     fx.changes.set(origin, []);
   +   }
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 26 passed (28)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 29 passed (31)).
 
 - **M4n** — undo is not single-shot — `extension/src/background/dapp/grantsApi.ts`:
 
@@ -4231,7 +4390,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -     if (record === undefined
   +     if (record === undefined
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 27 passed (28)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
 
 - **M4o** — undo overwrites a grant approved meanwhile (review 2 L10) — `extension/src/background/dapp/grantsApi.ts`:
 
@@ -4239,7 +4398,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -     if (grantIn(tx, g.origin) !== null) return {ok: false, error: 'granted'};
   +     if (grantIn(tx, g.origin) !== null && false) return {ok: false, error: 'granted'};
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 27 passed (28)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
 
 - **M4p** — undo restores a blocked host — `extension/src/background/dapp/grantsApi.ts`:
 
@@ -4247,7 +4406,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -     if (isBlocked(tx.blocked, host)) return {ok: false, error: 'blocked'};
   +     if (isBlocked(tx.blocked, host) && false) return {ok: false, error: 'blocked'};
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 27 passed (28)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
 
 - **M4q** — undo restores an account no longer in the wallet — `extension/src/background/dapp/grantsApi.ts`:
 
@@ -4255,7 +4414,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -     if (!wallet.has(g.account) || !tx.session.some(a => a.publicKey === g.account)) return {ok: false, error: 'unknown-account'};
   +     if ((!wallet.has(g.account) || !tx.session.some(a => a.publicKey === g.account)) && false) return {ok: false, error: 'unknown-account'};
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 27 passed (28)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
 
 - **M4r** — undo past the cap — `extension/src/background/dapp/grantsApi.ts`:
 
@@ -4263,21 +4422,21 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -     if (g.scope === 'persistent' && tx.grants.length >= MAX_GRANTS) return {ok: false, error: 'cap'};
   +     if (g.scope === 'persistent' && tx.grants.length >= MAX_GRANTS && false) return {ok: false, error: 'cap'};
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 27 passed (28)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
 
 - **M4s** — undo of a persistent grant for a non-verified origin (C12 on restore) — `extension/src/background/dapp/grantsApi.ts`:
 
   ```diff
   -     if (g.scope === 'persistent' && siteView(host).kind !== 'verified') return {ok: false, error: 'scope'};
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 27 passed (28)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
 
 - **M4t** — dapp.pending does not record the shown request — `extension/src/background/dapp/decide.ts`:
 
   ```diff
   -     if (tx.s.window !== null) tx.s.window = {...tx.s.window, showing: h.requestId};
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 27 passed (28)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
 
 - **M4u** — dapp.pending / dapp.decide from any own page — `extension/src/background/messages.ts`:
 
@@ -4285,7 +4444,44 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -   if (APPROVE_PAGE_ONLY.includes(type) && pagePath(ext, sender) !== '/approve.html') return {ok: false, error: 'forbidden'};
   +   if (APPROVE_PAGE_ONLY.includes(type) && pagePath(ext, sender) !== '/approve.html' && false) return {ok: false, error: 'forbidden'};
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 27 passed (28)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
+
+- **M4v** — the connect effect writes the grant although the host was blocked meanwhile — `extension/src/background/dapp/decide.ts`:
+
+  ```diff
+  -  || isBlocked(tx.blocked, e.host)) {
+  -       answer(fx, e, {error: 'rejected'}, tx.now);
+  + ) {
+  +       answer(fx, e, {error: 'rejected'}, tx.now);
+  ```
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
+
+- **M4w** — the connect effect writes a grant for an account removed meanwhile — `extension/src/background/dapp/decide.ts`:
+
+  ```diff
+  - tx.session === null || !tx.session.some(a => a.publicKey === account) || isBlocked
+  + tx.session === null || isBlocked
+  ```
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
+
+- **M4x** — block leaves the host's other queued requests — `extension/src/background/dapp/decide.ts`:
+
+  ```diff
+  -   rejectQueued(tx, fx, e => e.host === host);
+  +   rejectQueued(tx, fx, e => e.host === host && false);
+  ```
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
+
+- **M4z** — report / block accepted while locked — `extension/src/background/dapp/decide.ts`:
+
+  ```diff
+  -       if (tx.session === null) return 'locked';
+  -       userRejected(tx, fx, e);
+  -       blockHost
+  +       userRejected(tx, fx, e);
+  +       blockHost
+  ```
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
 
 - [ ] **Step 6: Commit.**
 
@@ -4300,7 +4496,7 @@ MSG
 
 ### Task 5: The lock hook (`lock()` rewritten — one `sessionMutex` section — and every caller), the unlock hook, an account removed
 
-**Spec:** §2.4 (both hooks, the caller list, the second pass), §2.1 (an account removed), §2.2 (D5), §5 ("the wallet locks while a window is open"), D4, D5, review 2 M6, M7, M9; §6.1 "Unlock hook", "Lock hook"; Scope R10
+**Spec:** §2.4 (both hooks, the caller list, the second pass), §2.1 (an account removed), §2.2 (D5), §5 ("the wallet locks while a window is open"), D4, D5, review 2 M6, M7, M9; §6.1 "Unlock hook", "Lock hook"; Scope R10; plan review 1 M4, L6
 
 **Files:**
 - Modify: `extension/src/background/accountsStore.ts`
@@ -4326,7 +4522,7 @@ MSG
   - `grantsApi.ts`: `dropAccountGrants(ext, deps, publicKeys)`.
   - `accountsStore.ts`: `storeEnvelope(ext, expectedRevision, envelope, onDropped?)`.
 
-`lock()` is the hook (review 2 M6): one `sessionMutex` section reads the queue, the recorded window and which open ports' origins hold a grant, clears the whole session area with `ext.session.clear()` (not `clearSession`, which would take the mutex again), and writes back the answered entries plus every formerly open one answered `rejected` (a `deciding` one as a restart — nothing has left the extension), so a relay's resume still finds them. Then the alarm is cleared, the window closed (`windows.remove`, errors ignored — closing it fires `onWindowRemoved`, whose second lock finds nothing and does not throw) and `change []` sent to granted origins' ports only (review M3). Every caller keeps calling `lock()` from outside `sessionMutex`: the auto-lock alarm, `vault.lock` (and the vault page's `lockOnMismatch`), `onStartup`, `onWindowRemoved`, `forgetWallet`, `vault.setKeys`'s failure path — a test each. The unlock hook (review 2 M7) is part of the first queue access of an unlocked session in this background instance (R10): each queued connect of a persistent-grant origin is answered `{accounts: [granted]}` — the grant, the account and the block re-checked at that moment — and `change [granted]` goes to those origins' open ports; the rest waits for the window's next poll. `vault.setKeys` makes that access right after `setSessionIf` and the auto-lock; if it throws, the session stays unlocked and the next access runs it again. An account removed by `vault.storeEnvelope` takes its grants with it (both scopes, `change []`, queued requests rejected — review 2 M9).
+`lock()` is the hook (review 2 M6): one `sessionMutex` section reads the queue, the recorded window and which open ports' origins hold a grant, clears the whole session area with `ext.session.clear()` (not `clearSession`, which would take the mutex again), and writes back the answered entries plus every formerly open one answered `rejected` (a `deciding` one as a restart — nothing has left the extension), so a relay's resume still finds them. Then the alarm is cleared, the window closed (`windows.remove`, errors ignored — closing it fires `onWindowRemoved`, whose second lock finds nothing and does not throw) and `change []` sent to granted origins' ports only (review M3). Every caller keeps calling `lock()` from outside `sessionMutex`: the auto-lock alarm, `vault.lock` (and the vault page's `lockOnMismatch`), `onStartup`, `onWindowRemoved`, `forgetWallet`, `vault.setKeys`'s failure path — a test each. The unlock hook (review 2 M7) is part of the first queue access of an unlocked session in this background instance (R10): each queued connect of a persistent-grant origin is answered `{accounts: [granted]}` — the grant, the account and the block re-checked at that moment — and `change [granted]` goes to those origins' open ports; the rest waits for the window's next poll. `vault.setKeys` makes that access right after `setSessionIf` and the auto-lock; if it throws, the session stays unlocked and the next access runs it again. The hook's flag is written inside the section (review 1 L6) and cleared again if the commit fails. An account removed by `vault.storeEnvelope` takes its grants with it (both scopes, `change []`, queued requests rejected — review 2 M9; the queued case is tested in Task 6, review 1 M3).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -4342,7 +4538,7 @@ diff --git a/extension/src/background/dapp/__tests__/decide.test.ts b/extension/
  import {LIMITS_KEY} from '../limits';
 -import {REQUEST_TTL_MS} from '../queue';
 +import {REQUEST_TTL_MS, runUnlockHook} from '../queue';
- import {DAPP_SESSION_KEY, readDappSession} from '../store';
+ import {DAPP_SESSION_KEY, readDappSession, type Entry} from '../store';
  import {restartRuntime, runtimeFor} from '../ports';
  import {UNDO_MS} from '../grantsApi';
 @@ -25,6 +25,8 @@ async function setup(o: {unlocked?: boolean} = {}) {
@@ -4354,7 +4550,7 @@ diff --git a/extension/src/background/dapp/__tests__/decide.test.ts b/extension/
    const approve = {id: ext.runtimeId, origin: ext.extensionOrigin, url: `${ext.extensionOrigin}/approve.html`};
    const popup = {id: ext.runtimeId, origin: ext.extensionOrigin, url: `${ext.extensionOrigin}/popup.html`};
    const pend = async () => (await handleMessage(ext, {type: 'dapp.pending'}, approve, deps)) as {ok: boolean; data: Record<string, unknown> & {state: string; request: Record<string, unknown>}};
-@@ -268,14 +270,15 @@ describe('a worker restart after the request was shown (§1.5 step 5)', () => {
+@@ -291,14 +293,15 @@ describe('a worker restart after the request was shown (§1.5 step 5)', () => {
      expect((await readDappSession(ext)).grants).toHaveLength(1);
    });
  
@@ -4384,8 +4580,8 @@ diff --git a/extension/src/background/dapp/__tests__/lifecycle.test.ts b/extensi
  import {GRANTS_KEY, type Grant} from '../grants';
  import {BLOCKED_KEY} from '../blocked';
  import {LIMITS_KEY, WINDOW_BUDGET} from '../limits';
--import {MAX_OPEN, QUEUE_ALARM, REQUEST_TTL_MS, ANSWER_TTL_MS} from '../queue';
-+import {MAX_OPEN, QUEUE_ALARM, REQUEST_TTL_MS, ANSWER_TTL_MS, runUnlockHook} from '../queue';
+-import {DECIDING_TTL_MS, MAX_OPEN, QUEUE_ALARM, REQUEST_TTL_MS, ANSWER_TTL_MS} from '../queue';
++import {DECIDING_TTL_MS, MAX_OPEN, QUEUE_ALARM, REQUEST_TTL_MS, ANSWER_TTL_MS, runUnlockHook} from '../queue';
  import {DAPP_SESSION_KEY, readDappSession} from '../store';
  import {OPENING_STALE_MS, WINDOW_HEIGHT, WINDOW_WIDTH, ensureWindow, onApprovalWindowRemoved, onQueueAlarm} from '../window';
  import {restartRuntime, runtimeFor} from '../ports';
@@ -4411,6 +4607,7 @@ import {lock, onWindowRemoved, AUTOLOCK_ALARM} from '../../autolock';
 import {SESSION_KEY, getSession, setSession} from '../../session';
 import {VAULT_KEY, forgetWallet} from '../../accountsStore';
 import {GRANTS_KEY, type Grant} from '../grants';
+import {BLOCKED_KEY} from '../blocked';
 import {DAPP_SESSION_KEY, readDappSession} from '../store';
 import {runtimeFor} from '../ports';
 import {envelopeRevision} from '../../../shared/envelopeRevision';
@@ -4550,7 +4747,7 @@ describe('the lock hook — one test per caller', () => {
     const c = await scene();
     const s = await readDappSession(c.ext);
     const answered = {...s.queue[0]!, requestId: 'B'.repeat(22), state: 'answered' as const, answer: {result: {accounts: ['x']}}, answeredAt: 5};
-    await c.ext.session.set(DAPP_SESSION_KEY, {...s, queue: [{...s.queue[0]!, state: 'deciding', decidedBy: runtimeFor(c.ext).instance}, answered]});
+    await c.ext.session.set(DAPP_SESSION_KEY, {...s, queue: [{...s.queue[0]!, state: 'deciding', decidedBy: runtimeFor(c.ext).instance, decidingAt: c.deps.clock.t}, answered]});
     await lock(c.ext);
     expect((await readDappSession(c.ext)).queue.map(e => [e.state, e.answer])).toEqual([
       ['answered', {error: 'rejected'}],
@@ -4614,6 +4811,34 @@ describe('the unlock hook (§2.4, D5)', () => {
     expect(c.page.answersFor(c.requestId)).toEqual([]);
   });
 
+  it('the block re-checked at that moment: a restored grant of a blocked host is not restored (review 1 M4)', async () => {
+    const c = await lockedWithQueuedGrantedConnect();
+    // A block and a grant both kept by a restore (delete wipes both, restore keeps both): the host was blocked while locked.
+    await c.ext.local.set(BLOCKED_KEY, [{host: 'jup.ag', blockedAt: 1, imitates: null}]);
+    await c.setKeys();
+    expect(c.page.answersFor(c.requestId)).toEqual([]);
+    expect((await readDappSession(c.ext)).queue.find(e => e.requestId === c.requestId)?.state).toBe('queued');
+  });
+
+  // Review 1 L6: the flag is now written inside the hook's section. The interleaving the review describes (a lock's whole
+  // section between the commit and a flag write after it) cannot be produced here — the lock's section awaits storage
+  // first — so no test tells the two placements apart; this one pins the outcome both must keep.
+  it('a lock queued while the unlock hook commits: the wallet ends locked and the hook flag cleared', async () => {
+    const c = await lockedWithQueuedGrantedConnect();
+    const set = c.ext.session.set.bind(c.ext.session);
+    let locking: Promise<void> | null = null;
+    c.ext.session.set = async (k, v) => {
+      await set(k, v);
+      // The hook's commit writes the dApp session; a lock asks for the mutex right then and runs as soon as it is free.
+      if (k === DAPP_SESSION_KEY && locking === null && (await getSession(c.ext)) !== null) locking = lock(c.ext);
+    };
+    expect(await c.setKeys()).toEqual({ok: true});
+    expect(locking).not.toBeNull();
+    await locking;
+    expect(await getSession(c.ext)).toBeNull();
+    expect(runtimeFor(c.ext).hooked).toBe(false);
+  });
+
   it('if the hook throws, the session stays unlocked and the next queue access runs it again', async () => {
     const c = await lockedWithQueuedGrantedConnect();
     const get = c.ext.local.get.bind(c.ext.local);
@@ -4659,7 +4884,7 @@ describe('an account removed (§2.1, review 2 M9)', () => {
 cd extension
 npx vitest run src/background/dapp/__tests__/decide.test.ts src/background/dapp/__tests__/lifecycle.test.ts src/background/dapp/__tests__/lockHook.test.ts
 ```
-Expected (dry run, these test files on the previous task's tree): **red** — Test Files  3 failed (3) · Tests  70 failed | 6 passed (76). (A file that imports a module this task creates fails to load: that counts as red.)
+Expected (dry run, these test files on the previous task's tree): **red** — Test Files  3 failed (3) · Tests  77 failed | 7 passed (84). (A file that imports a module this task creates fails to load: that counts as red.)
 
 - [ ] **Step 3: Implement.**
 
@@ -4874,15 +5099,17 @@ diff --git a/extension/src/background/dapp/queue.ts b/extension/src/background/d
  
  /**
   * The request queue (spec §1.5, §2.3; C3, C4, C9, C17): one FIFO queue across origins in storage.session, decided one
-@@ -62,18 +63,24 @@ export function rejectQueued(tx: Tx, fx: Effects, match: (e: Entry) => boolean,
+@@ -68,13 +69,19 @@ export function rejectQueued(tx: Tx, fx: Effects, match: (e: Entry) => boolean,
  }
  
  /**
 - * The housekeeping of every access: a `queued` entry older than five minutes is answered `timeout` (C4, counted from
 + * The housekeeping of every access: the unlock hook when it has not run for this session in this instance (unlockHook.ts;
-+ * true when it ran — the caller marks it done once the section commits); a `queued` entry older than five minutes is answered `timeout` (C4, counted from
-  * arrivedAt by the background's clock); a `deciding` entry another instance wrote is a restart (C17, §1.5 step 2 —
-  * nothing left the extension: answered `rejected`); an answered entry nobody acked is dropped ten minutes after its
++ * true when it ran — the caller marks it done inside the section, and clears it again if the commit fails); a `queued`
++ * or `deciding` entry older than five minutes is answered `timeout` (C4, counted from
+  * arrivedAt by the background's clock — `queued` or `deciding`); a `deciding` entry another instance wrote is a restart
+  * (C17, §1.5 step 2 — nothing left the extension: answered `rejected`), and so is one of this instance still `deciding`
+  * DECIDING_TTL_MS after it was written (review 1 M1); an answered entry nobody acked is dropped ten minutes after its
   * answer; an expired undo record is dropped.
   */
 -export function sweep(tx: Tx, fx: Effects, instance: string): void {
@@ -4892,8 +5119,9 @@ diff --git a/extension/src/background/dapp/queue.ts b/extension/src/background/d
 +  if (hook) unlockWork(tx, fx.changes, (e, a) => answer(fx, e, a, tx.now));
 +  const instance = rt.instance;
    for (const e of tx.s.queue) {
-     if (e.state === 'queued' && tx.now - e.arrivedAt >= REQUEST_TTL_MS) answer(fx, e, {error: 'timeout'}, tx.now);
-     else if (e.state === 'deciding' && e.decidedBy !== instance) answer(fx, e, {error: 'rejected'}, tx.now);
+     // C4 "queued or shown": five minutes from arrivedAt, whatever the open state (review 1 M1).
+     if (isOpenEntry(e) && tx.now - e.arrivedAt >= REQUEST_TTL_MS) answer(fx, e, {error: 'timeout'}, tx.now);
+@@ -83,6 +90,7 @@ export function sweep(tx: Tx, fx: Effects, instance: string): void {
    }
    tx.s.queue = tx.s.queue.filter(e => e.state !== 'answered' || e.answeredAt === null || tx.now - e.answeredAt < ANSWER_TTL_MS);
    tx.s.undo = tx.s.undo.filter(u => u.expiresAt > tx.now);
@@ -4901,23 +5129,37 @@ diff --git a/extension/src/background/dapp/queue.ts b/extension/src/background/d
  }
  
  /**
-@@ -95,16 +102,28 @@ async function tick(ext: Ext, queued: boolean): Promise<void> {
+@@ -104,16 +112,37 @@ async function tick(ext: Ext, queued: boolean): Promise<void> {
  /** One queue access (see the header). `fn` runs inside the section, after the sweep. */
  export async function queueAccess<T>(ext: Ext, deps: Pick<WalletDeps, 'now'>, fn: (tx: Tx, fx: Effects) => T | Promise<T>): Promise<T> {
    const fx: Effects = {answered: [], changes: new Map()};
 -  const instance = runtimeFor(ext).instance;
 +  const rt = runtimeFor(ext);
    let queued = false;
-+  let hooked = false;
-   const out = await dappSection(ext, deps.now(), async tx => {
+-  const out = await dappSection(ext, deps.now(), async tx => {
 -    sweep(tx, fx, instance);
-+    hooked = sweep(tx, fx, rt);
-     const r = await fn(tx, fx);
-     queued = tx.s.queue.length > 0;
-     return r;
-   });
-+  // Only once the section committed: a hook whose writes failed runs again at the next access.
-+  if (hooked) rt.hooked = true;
+-    const r = await fn(tx, fx);
+-    queued = tx.s.queue.length > 0;
+-    return r;
+-  });
++  let hooked = false;
++  let out: T;
++  try {
++    out = await dappSection(ext, deps.now(), async tx => {
++      hooked = sweep(tx, fx, rt);
++      const r = await fn(tx, fx);
++      queued = tx.s.queue.length > 0;
++      // Review 1 L6: inside the section (under sessionMutex), so a lock — which clears the flag in its own section —
++      // can never run between the hook's commit and this write.
++      if (hooked) rt.hooked = true;
++      return r;
++    });
++  } catch (err) {
++    // The commit failed (or fn threw): the hook did not happen — run it again at the next access. Clearing is the
++    // safe direction even if a lock ran meanwhile (a locked session never runs the hook).
++    if (hooked) rt.hooked = false;
++    throw err;
++  }
    deliver(ext, fx.answered);
    sendChange(ext, fx.changes);
    await tick(ext, queued).catch(e => console.warn('dApp queue: the expiry tick was not armed', e));
@@ -5012,7 +5254,7 @@ npx vitest run src/background/dapp/__tests__/decide.test.ts src/background/dapp/
 npx tsc --noEmit && npx vitest run
 node scripts/build.mjs && npm run gates
 ```
-Expected (dry run): own tests Test Files  3 passed (3) · Tests  76 passed (76); tsc clean; whole suite Test Files  145 passed (145) · Tests  2926 passed (2926); the build and every gate green.
+Expected (dry run): own tests Test Files  3 passed (3) · Tests  84 passed (84); tsc clean; whole suite Test Files  145 passed (145) · Tests  2934 passed (2934); the build and every gate green.
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -5028,7 +5270,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   +   void ext.session.clear();
   + });
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 13 passed (14)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 15 passed (16)).
 
 - **M5b** — the lock hook does not answer queued requests — `extension/src/background/dapp/lockHook.ts`:
 
@@ -5038,14 +5280,14 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   +     if (e.state !== 'deciding') return e;
   +     const done
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  7 failed | 7 passed (14)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  7 failed | 9 passed (16)).
 
 - **M5c** — the lock hook leaves the window open — `extension/src/background/dapp/lockHook.ts`:
 
   ```diff
   -   if (o.windowId !== null) await ext.dappWindows.remove(o.windowId).catch(() => undefined);
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  6 failed | 8 passed (14)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  6 failed | 10 passed (16)).
 
 - **M5d** — change [] to every open port, granted or not (review M3) — `extension/src/background/dapp/lockHook.ts`:
 
@@ -5054,7 +5296,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   +   const notify = [...liveOrigins(ext)];
   +   void granted;
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  5 failed | 9 passed (14)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  5 failed | 11 passed (16)).
 
 - **M5e** — vault.setKeys without the unlock hook (spec mutation) — `extension/src/background/messages.ts`:
 
@@ -5062,7 +5304,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -       await runUnlockHook(ext, deps ?? {now: Date.now}).catch(e => console.warn('dApp unlock hook failed; the next queue access runs it again', e));
   +       void runUnlockHook;
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  3 failed | 11 passed (14)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  4 failed | 12 passed (16)).
 
 - **M5f** — the unlock hook sends no change — `extension/src/background/dapp/unlockHook.ts`:
 
@@ -5070,7 +5312,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -   for (const g of tx.grants) if (usable(g.account)) changes.set(g.origin, [g.account]);
   +   void changes;
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 13 passed (14)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 15 passed (16)).
 
 - **M5g** — the unlock hook restores a grant whose account left the session — `extension/src/background/dapp/unlockHook.ts`:
 
@@ -5078,7 +5320,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - if (g === undefined || !usable(g.account) || isBlocked(tx.blocked, e.host)) continue;
   + if (g === undefined || isBlocked(tx.blocked, e.host)) continue;
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 13 passed (14)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 15 passed (16)).
 
 - **M5h** — a lock does not reset the hook (a second unlock runs nothing) — `extension/src/background/dapp/lockHook.ts`:
 
@@ -5086,7 +5328,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -   runtimeFor(ext).hooked = false;
   +   void runtimeFor;
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 13 passed (14)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 14 passed (16)).
 
 - **M5i** — an account removed keeps its grants (review 2 M9) — `extension/src/background/accountsStore.ts`:
 
@@ -5094,7 +5336,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -   if (out === 'stored' && droppedKeys.length > 0) onDropped?.(droppedKeys);
   +   if (out === 'stored' && droppedKeys.length > 0 && false) onDropped?.(droppedKeys);
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 13 passed (14)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 15 passed (16)).
 
 - **M5j** — the lock keeps the undo buffer (§2.7's "locked" refusal) — `extension/src/background/dapp/lockHook.ts`:
 
@@ -5102,7 +5344,15 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -   if (kept.length > 0) await ext.session.set(DAPP_SESSION_KEY, {...EMPTY_SESSION, queue: kept});
   +   if (kept.length > 0 || s.undo.length > 0) await ext.session.set(DAPP_SESSION_KEY, {...EMPTY_SESSION, queue: kept, undo: s.undo});
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 27 passed (28)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
+
+- **M5k** — the unlock hook restores a grant of a blocked host — `extension/src/background/dapp/unlockHook.ts`:
+
+  ```diff
+  -  || isBlocked(tx.blocked, e.host)) continue;
+  +  || (isBlocked(tx.blocked, e.host) && false)) continue;
+  ```
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 15 passed (16)).
 
 - [ ] **Step 6: Commit.**
 
@@ -5117,10 +5367,11 @@ MSG
 
 ### Task 6: `signMessage`: rules 1–6 in order, each refusal by its reason; SIWS (the address line, the domain authority, Q20); the keywords and the homoglyph marks; the signature through `deciding`
 
-**Spec:** §3.2 (steps 1–7), §1.4 (`page.signMessage`), §2.3 ("grant still held", "signMessage" rows), C17, D9, review M5, review 2 L5, L6, M10.2; §6.1 "signMessage"; Review Focus 5; Scope R20
+**Spec:** §3.2 (steps 1–7), §1.4 (`page.signMessage`), §2.3 ("grant still held", "signMessage" rows), C17, D9, review M5, review 2 L5, L6, M10.2; §6.1 "signMessage"; Review Focus 5; Scope R20; plan review 1 M2, M3, M4
 
 **Files:**
 - Test: `extension/src/background/dapp/__tests__/decide.test.ts`
+- Test: `extension/src/background/dapp/__tests__/lockHook.test.ts`
 - Test: `extension/src/background/dapp/__tests__/signMessage.test.ts` (new)
 - Modify: `extension/src/background/dapp/decide.ts`
 - Modify: `extension/src/background/dapp/pageApi.ts`
@@ -5133,7 +5384,7 @@ MSG
   - `decide.ts`: `interface SignDetail {account; text; chars; keyword; marks; siwsMismatch}`, `RequestView.sign`, `DecideError` gains `'siws-mismatch'`.
   - `pageApi.ts`: `page.signMessage`.
 
-The page's bytes are checked in the spec's order and every refusal test asserts its **reason** (`checkMessage` returns it), so a later rule can never mask an earlier one (review M5): more than 4 KiB (UTF-8 bytes, not characters); bytes that deserialize as a legacy Message or Transaction, a VersionedTransaction or a VersionedMessage — the required artifact is a printable, valid-UTF-8 legacy Message of 3 205 bytes that deserializes, refused *because* it deserializes (spec mutation M6a); the off-chain prefix (checked before UTF-8, so `\xff` reads as `offchain`); invalid UTF-8 (fatal, `ignoreBOM` so a BOM stays visible to the next rule); a control character other than `\n`, `\t` and a `\r` right before `\n`; any `\p{Cf}`. Rule 1 (`unauthorized` unless the origin holds a grant for exactly this account, unlocked) runs before them. A SIWS first line makes the second line the account (else `invalid-request`, no window) and the domain this origin's authority (`host`, or `host:port` with an explicit port); a mismatch is queued and #46 shows Q20 with only [Reject] — and the background refuses Sign too (R20). The keywords are whole words (maximal runs of ASCII letters), case-insensitive; the view carries the ranges to `<mark>` (the keyword's occurrences, and for a lookalike origin every non-ASCII character `skel` maps to Latin). Sign: `deciding` → read the granted account's key → ed25519 over the exact bytes → `answered {signature, signedMessage}` (base64) in a section that confirms the entry is still this instance's `deciding` one — a lock or a restart in between leaves only `rejected` (tested both ways).
+The page's bytes are checked in the spec's order and every refusal test asserts its **reason** (`checkMessage` returns it), so a later rule can never mask an earlier one (review M5): more than 4 KiB (UTF-8 bytes, not characters); bytes that deserialize as a legacy Message or Transaction, a VersionedTransaction or a VersionedMessage — the required artifact is a printable, valid-UTF-8 legacy Message of 3 205 bytes that deserializes, refused *because* it deserializes (spec mutation M6a); the off-chain prefix (checked before UTF-8, so `\xff` reads as `offchain`); invalid UTF-8 (fatal, `ignoreBOM` so a BOM stays visible to the next rule); a control character other than `\n`, `\t` and a `\r` right before `\n`; any `\p{Cf}`. Rule 1 (`unauthorized` unless the origin holds a grant for exactly this account, unlocked) runs before them. A SIWS first line makes the second line the account (else `invalid-request`, no window) and the domain this origin's authority (`host`, or `host:port` with an explicit port); a mismatch is queued and #46 shows Q20 with only [Reject] — and the background refuses Sign too (R20). The keywords are whole words (maximal runs of ASCII letters), case-insensitive; the view carries the ranges to `<mark>` (the keyword's occurrences, and for a lookalike origin every non-ASCII character `skel` maps to Latin). Sign: `deciding` → read the granted account's key → ed25519 over the exact bytes → `answered {signature, signedMessage}` (base64) in a section that confirms the entry is still this instance's `deciding` one and its account still in the session — a lock, a restart or the account's removal in between leaves only `rejected` (each tested). A blocked or cooling-down host's sign request is rejected with no entry and no window (review 1 M2). Now that a granted origin can have a queued request, revoke all and an account's removal are tested to reject it (review 1 M3).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -5151,6 +5402,56 @@ diff --git a/extension/src/background/dapp/__tests__/decide.test.ts b/extension/
        },
      });
      // The window now shows it: closing the window rejects this one.
+@@ -382,10 +383,22 @@ describe('#49’s messages: list, revoke + undo, revoke all, blocked, unblock (
+     await decide({requestId, decision: 'approve', account: ACCOUNT.publicKey, scope: 'session'});
+     const a = openPage(ext, deps, JUP, {tab: {id: 2}});
+     const b = openPage(ext, deps, DAPP, {tab: {id: 3}});
++    // Review 1 M3: a queued request of each granted origin (signMessage — the granted origins' only queued kind) — and
++    // a queued connect of an ungranted origin, left as it is (positive control).
++    const hello = 'aGVsbG8=';
++    const ra = await a.ask({type: 'page.signMessage', id: 'sa', account: ACCOUNT.publicKey, message: hello});
++    const rb = await b.ask({type: 'page.signMessage', id: 'sb', account: ACCOUNT.publicKey, message: hello});
++    const {requestId: ungranted} = await request(ext, deps, 'https://other.test', 4);
++    expect([ra?.accepted, rb?.accepted]).toEqual([true, true]);
+     expect(await ui({type: 'dapp.grants.revokeAll'})).toEqual({ok: true});
+     expect(await ext.local.get(GRANTS_KEY)).toEqual([]);
+     expect((await readDappSession(ext)).grants).toEqual([]);
+     expect([a.changes(), b.changes()]).toEqual([[[]], [[]]]);
++    expect([a.answersFor(String(ra?.requestId)), b.answersFor(String(rb?.requestId))]).toEqual([
++      [{requestId: ra?.requestId, error: 'rejected'}],
++      [{requestId: rb?.requestId, error: 'rejected'}],
++    ]);
++    expect((await readDappSession(ext)).queue.find(e => e.requestId === ungranted)?.state).toBe('queued');
+   });
+ 
+   it('unblock removes the block only: the grant the block revoked does not come back — the next connect opens #47 again', async () => {
+````
+
+Modify `extension/src/background/dapp/__tests__/lockHook.test.ts`:
+
+````diff
+diff --git a/extension/src/background/dapp/__tests__/lockHook.test.ts b/extension/src/background/dapp/__tests__/lockHook.test.ts
+--- a/extension/src/background/dapp/__tests__/lockHook.test.ts
++++ b/extension/src/background/dapp/__tests__/lockHook.test.ts
+@@ -267,10 +267,17 @@ describe('an account removed (§2.1, review 2 M9)', () => {
+     await runUnlockHook(ext, deps);
+     const gone = openPage(ext, deps, JUP);
+     const kept = openPage(ext, deps, 'https://keep.test', {tab: {id: 8}});
++    // Review 1 M3: a queued sign request of each origin — the removed account's is rejected, the kept one waits.
++    const hello = 'aGVsbG8=';
++    const rg = await gone.ask({type: 'page.signMessage', id: 'g', account: RECIPIENT, message: hello});
++    const rk = await kept.ask({type: 'page.signMessage', id: 'k', account: ACCOUNT.publicKey, message: hello});
++    expect([rg?.accepted, rk?.accepted]).toEqual([true, true]);
+     const unlock = {id: ext.runtimeId, origin: ext.extensionOrigin, url: `${ext.extensionOrigin}/unlock.html`};
+     const next = {...STORED, seed: {iv: B(12, 9), ct: B(48, 9)}, accounts: [STORED.accounts[0]]};
+     expect(await handleMessage(ext, {type: 'vault.storeEnvelope', expectedRevision: envelopeRevision(STORED as Parameters<typeof envelopeRevision>[0]), envelope: next}, unlock, deps)).toEqual({ok: true});
+-    expect(await ext.local.get(GRANTS_KEY)).toEqual([grant('https://keep.test')]);
++    expect(((await ext.local.get(GRANTS_KEY)) as Grant[]).map(g => g.origin)).toEqual(['https://keep.test']);
+     expect([gone.changes(), kept.changes()]).toEqual([[[]], []]);
++    expect(gone.answersFor(String(rg?.requestId))).toEqual([{requestId: rg?.requestId, error: 'rejected'}]);
++    expect((await readDappSession(ext)).queue.find(e => e.requestId === rk?.requestId)?.state).toBe('queued');
+   });
+ });
 ````
 
 Create `extension/src/background/dapp/__tests__/signMessage.test.ts`:
@@ -5377,7 +5678,7 @@ describe('page.signMessage → #46 → the signature (§3.2 steps 1, 4, 7)', () 
     const r = await c.sign('s', 'hello');
     const requestId = String(r?.requestId);
     const s = await readDappSession(c.ext);
-    await c.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => ({...e, state: 'deciding', decidedBy: 'the-dead-instance', decision: {kind: 'approve', account: ACCOUNT.publicKey, scope: null}}))});
+    await c.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => ({...e, state: 'deciding', decidedBy: 'the-dead-instance', decidingAt: c.deps.clock.t, decision: {kind: 'approve', account: ACCOUNT.publicKey, scope: null}}))});
     expect(runtimeFor(c.ext).instance).not.toBe('the-dead-instance');
     expect(await c.page.ask({type: 'page.resume', requestIds: [requestId]})).toEqual({resume: [{requestId, error: 'rejected'}]});
     expect(await c.decide({requestId, decision: 'approve', account: ACCOUNT.publicKey})).toEqual({ok: false, error: 'not-head'});
@@ -5419,6 +5720,41 @@ describe('page.signMessage → #46 → the signature (§3.2 steps 1, 4, 7)', () 
     expect(c.page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
   });
 
+  it('an account removed while its key is read: the signature computed is dropped, the page gets rejected (review 1 M4)', async () => {
+    const c = await setup();
+    const r = await c.sign('s', 'hello');
+    const requestId = String(r?.requestId);
+    const get = c.ext.session.get;
+    let fired = false;
+    c.ext.session.get = async (k: string) => {
+      const inFinishSign = (new Error().stack ?? '').split('\n')[3]?.includes('finishSign') === true;
+      const v = await get(k);
+      if (!fired && k === 'v1_session' && inFinishSign) {
+        fired = true;
+        // The key is read; the account leaves the session before the answer's section (vault.storeEnvelope's removal).
+        await setSession(c.ext, [{index: 1, publicKey: RECIPIENT, secretKey: ACCOUNT.secretKey}]);
+      }
+      return v;
+    };
+    expect(await c.decide({requestId, decision: 'approve', account: ACCOUNT.publicKey})).toEqual({ok: true});
+    expect(fired).toBe(true);
+    expect(c.page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
+  });
+
+  it('a host in cooldown (three rejections in ten minutes): the next sign request is rejected with no queue entry and no window (review 1 M2, C14)', async () => {
+    const c = await setup();
+    for (let i = 0; i < 3; i++) {
+      const r = await c.sign(`r${i}`, `hello ${i}`);
+      // Positive control: each of the three was queued (the grant and the checks hold).
+      expect(r).toMatchObject({accepted: true});
+      expect(await c.decide({requestId: String(r?.requestId), decision: 'reject'})).toEqual({ok: true});
+    }
+    const windowsBefore = c.ext.approval.created.length;
+    expect(await c.sign('r3', 'hello 3')).toEqual({id: 'r3', error: 'rejected'});
+    expect((await readDappSession(c.ext)).queue.filter(e => e.state !== 'answered')).toEqual([]);
+    expect(c.ext.approval.created.length).toBe(windowsBefore);
+  });
+
   it('decide rows for a sign request: the grant no longer held, another account (review 2 M9)', async () => {
     const c = await setup();
     const r = await c.sign('s', 'hello');
@@ -5445,9 +5781,9 @@ describe('page.signMessage → #46 → the signature (§3.2 steps 1, 4, 7)', () 
 
 ```bash
 cd extension
-npx vitest run src/background/dapp/__tests__/decide.test.ts src/background/dapp/__tests__/signMessage.test.ts
+npx vitest run src/background/dapp/__tests__/decide.test.ts src/background/dapp/__tests__/lockHook.test.ts src/background/dapp/__tests__/signMessage.test.ts
 ```
-Expected (dry run, these test files on the previous task's tree): **red** — Test Files  2 failed (2) · Tests  1 failed | 27 passed (28). (A file that imports a module this task creates fails to load: that counts as red.)
+Expected (dry run, these test files on the previous task's tree): **red** — Test Files  3 failed (3) · Tests  3 failed | 44 passed (47). (A file that imports a module this task creates fails to load: that counts as red.)
 
 - [ ] **Step 3: Implement.**
 
@@ -5559,7 +5895,7 @@ diff --git a/extension/src/background/dapp/decide.ts b/extension/src/background/
    }
    return null;
  }
-@@ -224,6 +264,6 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
+@@ -230,6 +270,6 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
    if (typeof out === 'string' && out !== 'done') return {ok: false, error: out};
    // §2.2: a decision in the window is a user action — it arms the auto-lock timer (page requests never do).
    if ((await getSession(ext)) !== null) await armAutolock(ext).catch(e => console.warn('dApp decide: the idle timer was not re-armed', e));
@@ -5583,7 +5919,7 @@ diff --git a/extension/src/background/dapp/pageApi.ts b/extension/src/background
  import {ensureWindow} from './window';
  
  /**
-@@ -107,6 +108,37 @@ async function connect(ext: Ext, deps: WalletDeps, live: LivePort, id: string, s
+@@ -112,6 +113,37 @@ async function connect(ext: Ext, deps: WalletDeps, live: LivePort, id: string, s
    });
  }
  
@@ -5621,7 +5957,7 @@ diff --git a/extension/src/background/dapp/pageApi.ts b/extension/src/background
  /** C2: a dApp's disconnect removes its grant, whichever the scope; its queued requests are answered `rejected`. */
  async function disconnect(ext: Ext, deps: WalletDeps, live: LivePort, id: string): Promise<Reply> {
    return queueAccess(ext, deps, (tx, fx): Reply => {
-@@ -163,6 +195,13 @@ export async function onPageMessage(ext: Ext, deps: WalletDeps, live: LivePort,
+@@ -168,6 +200,13 @@ export async function onPageMessage(ext: Ext, deps: WalletDeps, live: LivePort,
        if ('accepted' in r) await ensureWindow(ext, deps);
        return;
      }
@@ -5798,7 +6134,9 @@ export async function finishSign(ext: Ext, deps: Pick<WalletDeps, 'now'>, reques
   await queueAccess(ext, deps, (tx, fx) => {
     const e = tx.s.queue.find(x => x.requestId === requestId);
     if (e === undefined || e.state !== 'deciding' || e.decidedBy !== instance) return;
-    if (signature === null || tx.session === null) {
+    // A lock answered the entry before this section (the check above). An account removed while its key was read is
+    // still a signature computed — dropped here, never delivered (review 1 M4); `tx.session === null` is the narrowing.
+    if (signature === null || tx.session === null || !tx.session.some(a => a.publicKey === work.account)) {
       answer(fx, e, {error: 'rejected'}, tx.now);
       return;
     }
@@ -5813,11 +6151,11 @@ export async function finishSign(ext: Ext, deps: Pick<WalletDeps, 'now'>, reques
 
 ```bash
 cd extension
-npx vitest run src/background/dapp/__tests__/decide.test.ts src/background/dapp/__tests__/signMessage.test.ts
+npx vitest run src/background/dapp/__tests__/decide.test.ts src/background/dapp/__tests__/lockHook.test.ts src/background/dapp/__tests__/signMessage.test.ts
 npx tsc --noEmit && npx vitest run
 node scripts/build.mjs && npm run gates
 ```
-Expected (dry run): own tests Test Files  2 passed (2) · Tests  50 passed (50); tsc clean; whole suite Test Files  146 passed (146) · Tests  2948 passed (2948); the build and every gate green.
+Expected (dry run): own tests Test Files  3 passed (3) · Tests  71 passed (71); tsc clean; whole suite Test Files  146 passed (146) · Tests  2958 passed (2958); the build and every gate green.
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -5828,21 +6166,21 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   ```diff
   -     if (grantIn(tx, e.origin)?.account !== e.account) return 'no-grant';
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 20 passed (21)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 23 passed (24)).
 
 - **M6l** — a sign request approved for another account ("signMessage" row) — `extension/src/background/dapp/decide.ts`:
 
   ```diff
   -     if (d.account !== e.account) return 'account';
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 20 passed (21)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 23 passed (24)).
 
 - **M6m** — no deciding state (C17, spec mutation) — `extension/src/background/dapp/decide.ts`:
 
   ```diff
   -     e.state = 'deciding';
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 19 passed (21)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  4 failed | 20 passed (24)).
 
 - **M6n** — revoke leaves the queue (spec mutation) — `extension/src/background/dapp/grantsApi.ts`:
 
@@ -5853,7 +6191,23 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   +     fx.changes.set(origin, []);
   +     const token
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 20 passed (21)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 23 passed (24)).
+
+- **M6q** — revoke all leaves the origins' queued requests — `extension/src/background/dapp/grantsApi.ts`:
+
+  ```diff
+  -     rejectQueued(tx, fx, e => origins.has(e.origin));
+  +     rejectQueued(tx, fx, e => origins.has(e.origin) && false);
+  ```
+  `timeout 300 npx vitest run src/background/dapp/__tests__/decide.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 30 passed (31)).
+
+- **M6r** — an account removed leaves its origins' queued requests — `extension/src/background/dapp/grantsApi.ts`:
+
+  ```diff
+  -       rejectQueued(tx, fx, e => e.origin === g.origin);
+  +       rejectQueued(tx, fx, e => e.origin === g.origin && false);
+  ```
+  `timeout 300 npx vitest run src/background/dapp/__tests__/lockHook.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 15 passed (16)).
 
 - **M6a** — no deserialization check (spec mutation: the artifact test red, the others unchanged) — `extension/src/background/dapp/signMessage.ts`:
 
@@ -5861,7 +6215,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -   if (deserializes(bytes)) return {refused: 'transaction'};
   +   if (deserializes(bytes) && false) return {refused: 'transaction'};
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 20 passed (22)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 22 passed (24)).
 
 - **M6b** — the off-chain prefix checked after UTF-8 (its reason masked) — `extension/src/background/dapp/signMessage.ts`:
 
@@ -5871,7 +6225,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   +   if (bytes.length >= OFFCHAIN.length && OFFCHAIN.every((b, i) => bytes[i] === b) && false) return {refused: 'offchain'};
   +   let text: string;
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 21 passed (22)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 23 passed (24)).
 
 - **M6c** — a BOM swallowed by the decoder (never reaches the format rule) — `extension/src/background/dapp/signMessage.ts`:
 
@@ -5879,7 +6233,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - {fatal: true, ignoreBOM: true}
   + {fatal: true}
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 20 passed (21)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 23 passed (24)).
 
 - **M6d** — a lone \r accepted — `extension/src/background/dapp/signMessage.ts`:
 
@@ -5887,14 +6241,14 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - \u001F\u007F-\u009F]|\r(?!\n)/
   + \u001F\u007F-\u009F]/
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 20 passed (21)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 23 passed (24)).
 
 - **M6e** — format characters accepted (review 2 L6) — `extension/src/background/dapp/signMessage.ts`:
 
   ```diff
   -   if (/\p{Cf}/u.test(text)) return {refused: 'format'};
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 20 passed (21)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 23 passed (24)).
 
 - **M6f** — a SIWS message for another address queued — `extension/src/background/dapp/pageApi.ts`:
 
@@ -5902,7 +6256,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -     if (siws.siws && !siws.addressOk) return {id, error: 'invalid-request'};
   +     if (siws.siws && !siws.addressOk && false) return {id, error: 'invalid-request'};
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 21 passed (22)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 23 passed (24)).
 
 - **M6g** — the SIWS authority ignores the port (review 2 L5) — `extension/src/background/dapp/signMessage.ts`:
 
@@ -5910,7 +6264,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -   return u.port === '' ? u.hostname : `${u.hostname}:${u.port}`;
   +   return u.hostname;
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 20 passed (21)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 23 passed (24)).
 
 - **M6h** — keywords matched inside words — `extension/src/background/dapp/signMessage.ts`:
 
@@ -5918,7 +6272,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -   for (const m of text.matchAll(/[A-Za-z]+/g)) {
   +   for (const m of text.matchAll(/[A-Za-z]+?/g)) {
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 19 passed (21)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 22 passed (24)).
 
 - **M6i** — a SIWS mismatch approvable in the background (R20) — `extension/src/background/dapp/decide.ts`:
 
@@ -5926,22 +6280,40 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -       if (siws.siws && !siws.domainOk) return 'siws-mismatch';
   +       if (siws.siws && !siws.domainOk && false) return 'siws-mismatch';
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 21 passed (22)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 23 passed (24)).
 
 - **M6j** — the signature delivered although a lock answered the entry meanwhile — `extension/src/background/dapp/signMessage.ts`:
 
   ```diff
   -     if (e === undefined || e.state !== 'deciding' || e.decidedBy !== instance) return;
-  -     if (signature === null
+  -     // A lock answered
   +     if (e === undefined) return;
-  +     if (signature === null
+  +     // A lock answered
   ```
-  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 21 passed (22)).
+  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 23 passed (24)).
+
+- **M6o** — a blocked or cooling-down host's sign request is queued — `extension/src/background/dapp/pageApi.ts`:
+
+  ```diff
+  -     if (isBlocked(tx.blocked, live.host) || inCooldown(tx.limits, live.host, live.tabId, tx.now)) return {id, error: 'rejected'};
+  -     const refused = admit(tx, live);
+  +     if ((isBlocked(tx.blocked, live.host) || inCooldown(tx.limits, live.host, live.tabId, tx.now)) && false) return {id, error: 'rejected'};
+  +     const refused = admit(tx, live);
+  ```
+  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 23 passed (24)).
+
+- **M6p** — the signature delivered for an account removed while its key was read — `extension/src/background/dapp/signMessage.ts`:
+
+  ```diff
+  -  || tx.session === null || !tx.session.some(a => a.publicKey === work.account)) {
+  +  || tx.session === null) {
+  ```
+  `timeout 300 npx vitest run src/background/dapp/__tests__/signMessage.test.ts` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 23 passed (24)).
 
 - [ ] **Step 6: Commit.**
 
 ```bash
-git add extension/src/background/dapp/__tests__/decide.test.ts extension/src/background/dapp/__tests__/signMessage.test.ts extension/src/background/dapp/decide.ts extension/src/background/dapp/pageApi.ts extension/src/background/dapp/signMessage.ts
+git add extension/src/background/dapp/__tests__/decide.test.ts extension/src/background/dapp/__tests__/lockHook.test.ts extension/src/background/dapp/__tests__/signMessage.test.ts extension/src/background/dapp/decide.ts extension/src/background/dapp/pageApi.ts extension/src/background/dapp/signMessage.ts
 git commit -F - <<'MSG'
 feat(extension): B1c signMessage — rules 1–6 by reason, SIWS, keywords, the signature through deciding
 
@@ -5951,7 +6323,7 @@ MSG
 
 ### Task 7: The page bundles and the gates: the provider (Wallet Standard, plan 1's four features), the relay, the content-script build, the manifest's `<all_urls>` content scripts, the permissions pin, the page-bundle and dev-origin gate, the relay's port-listener allowance; the new dependencies
 
-**Spec:** §1.1, §1.2, §1.7, §6.2 (permissions, page-bundle, vault-isolation, dev-origin, CSP), §6.1 "Relay", D6, D10, C9, C16, review L4, L5, L13, review 2 M1, M5, M8; Scope R6, R32
+**Spec:** §1.1, §1.2, §1.7, §6.2 (permissions, page-bundle, vault-isolation, dev-origin, CSP), §6.1 "Relay", D6, D10, C9, C16, review L4, L5, L13, review 2 M1, M5, M8; Scope R6, R32; plan review 1 L10; Scope R37
 
 **Files:**
 - Test: `extension/manifest/__tests__/source.test.mjs`
@@ -6649,7 +7021,11 @@ export function pageBundleViolations(name, modules) {
   return out;
 }
 
-/** A content script must be a classic script: no top-level import or export statement. */
+/**
+ * A content script must be a classic script: no top-level import or export statement. The pattern is textual: a
+ * minified `}import(` (a dynamic import) would match too — none is built today; a hit means "look", then fix the
+ * bundle or the pattern, never silence the gate (review 1 L10).
+ */
 export function classicScriptViolations(name, text) {
   if (typeof text !== 'string') return [`${name}.js is missing`];
   return /(^|[;}\n])\s*(import\s*[{*\w"'`]|export\s*[{*\w])/.test(text) ? [`${name}.js is an ES module — a content script must be a classic script`] : [];
@@ -7249,7 +7625,7 @@ npx vitest run manifest/__tests__/source.test.mjs scripts/__tests__/check-page-b
 npx tsc --noEmit && npx vitest run
 node scripts/build.mjs && npm run gates
 ```
-Expected (dry run): own tests Test Files  6 passed (6) · Tests  478 passed (478); tsc clean; whole suite Test Files  149 passed (149) · Tests  2975 passed (2975); the build and every gate green.
+Expected (dry run): own tests Test Files  6 passed (6) · Tests  478 passed (478); tsc clean; whole suite Test Files  149 passed (149) · Tests  2985 passed (2985); the build and every gate green.
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -7358,7 +7734,7 @@ MSG
 
 ### Task 8: The approval window (`approve.html`): the client, polling, the locked screen (D11), the in-progress state, Q12 / Q24 / Q17, C15 — and #47 in every state (47a, 47b, the lookalike with its 2-second confirm, the cap); the design's #46–#49 classes extracted; the gates know `src/approve`
 
-**Spec:** §3.1 (all), §4.3 (all), §2.3 (polling), §1.7 (the entry, the isolation fixtures), C5, C12, C13, C15, D11, review 1 M12, review 2 M3, L8; §6.1 "Screens" (#47, C15, the locked window); §6.2 vault-isolation (`src/approve`); Review Focus 2; Scope R14–R18, R28, R33–R35
+**Spec:** §3.1 (all), §4.3 (all), §2.3 (polling), §1.7 (the entry, the isolation fixtures), C5, C12, C13, C15, D11, review 1 M12, review 2 M3, L8; §6.1 "Screens" (#47, C15, the locked window); §6.2 vault-isolation (`src/approve`); Review Focus 2; Scope R14–R18, R28, R33–R35; plan review 1 L1, L4, L5; Scope R33, R35
 
 **Files:**
 - Create: `extension/approve.html`
@@ -7368,6 +7744,7 @@ MSG
 - Modify: `extension/scripts/check-vault-isolation.mjs`
 - Test: `extension/src/__tests__/designExt2b.test.ts`
 - Modify: `extension/src/app/app.css`
+- Modify: `extension/src/app/ui/Sheet.tsx`
 - Create: `extension/src/approve/Approve.tsx`
 - Create: `extension/src/approve/Connect.tsx`
 - Create: `extension/src/approve/Locked.tsx`
@@ -7390,10 +7767,11 @@ MSG
   - `src/approve/useArmed.ts`: `ARM_MS = 500`, `useArmed(state, ms?)`.
   - `src/approve/ui.tsx`: `WindowTop`, `OriginCard`, `LookalikeBanner`, `ConfirmButton`, `CONFIRM_DELAY_MS = 2_000`, `RiskConfirm`, `BudgetNotice`, `Waiting`, `BlockSite`, `Spinner`.
   - `src/approve/strings.ts`: `WINDOW_TEXT`, `CONNECT_TEXT`.
+  - `src/approve/ui.tsx`: `siteLabel(origin, host)` (rev 2); `src/app/ui/Sheet.tsx`: `focusControl?: boolean` (default true).
   - `src/approve/Locked.tsx`: `Locked`; `src/approve/Connect.tsx`: `Connect`; `src/approve/Approve.tsx`: `POLL_MS = 1_000`, `Approve({client, close})`.
   - `windowHarness.tsx` (tests): `SECOND`, `ENV`, `openWindow(o?)` → `{ext, deps, client, closed, sent, connect, show, unlock}`.
 
-`approve.html` is the popup's React shell on the popup's three sheets (design-system, design-ext, app.css); it holds no state and no listener and touches no storage (the vault-isolation gate's general rules now cover `src/approve`, and `ENTRIES` binds the page to its entry). It asks `dapp.pending` on mount, on `focus` and `visibilitychange`, after each decision, and every second while it shows the locked screen, a deciding request or "n more waiting" (§2.3) — only the newest answer counts, nothing is set after unmount, `none` closes the window. Locked (D11): the lock tile, the wordmark, Q22, Q23, the request's origin card and [Reject] — no input of any kind, no link. #47: 47a (one gate, both scopes, the account picker, Q02 / Q03), 47b (two gates in order — R14 —, "Until I revoke" disabled with the design's warning, Q19, Q18 for an `xn--` host), the lookalike (the flipped bar, Q05 or rule a's sentence, the 2-second confirm, then 47b's gates — R15) and the cap (R16). Connect is `.btn-secondary` with `aria-disabled` until every gate clears — a tap shakes the unmet gate and shows the hint — then `.btn-primary`; C15: no CTA focused at open, the confirming CTAs held 500 ms after focus and after each state change (the request, both acks, the scope, the account, the confirm), Enter's default prevented on them, Reject never held. The design's #46/#47/#49 classes are extracted into `design-ext.css` (generated, re-pinned); `app.css` turns the mockups' inline styles into classes.
+`approve.html` is the popup's React shell on the popup's three sheets (design-system, design-ext, app.css); it holds no state and no listener and touches no storage (the vault-isolation gate's general rules now cover `src/approve`, and `ENTRIES` binds the page to its entry). It asks `dapp.pending` on mount, on `focus` and `visibilitychange`, after each decision, and every second while it shows anything (§2.3; review 1 L1, R33 — so an expiry reaches it too) — only the newest answer counts, nothing is set after unmount, `none` closes the window. Locked (D11): the lock tile, the wordmark, Q22, Q23, the request's origin card and [Reject] — no input of any kind, no link. #47: 47a (one gate, both scopes, the account picker, Q02 / Q03), 47b (two gates in order — R14 —, "Until I revoke" disabled with the design's warning, Q19, Q18 for an `xn--` host), the lookalike (the flipped bar, Q05 or rule a's sentence, the 2-second confirm, then 47b's gates — R15) and the cap (R16). The origin card shows the host, with the port when the origin has one (review 1 L5, R35). Connect is `.btn-secondary` with `aria-disabled` until every gate clears — a tap shakes the unmet gate and shows the hint — then `.btn-primary`; C15: no CTA focused at open, the confirming CTAs held 500 ms after focus and after each state change (the request, both acks, the scope, the account, the confirm), Enter's default prevented on them, Reject never held; the 2-second confirm opens with the focus on its panel, no control (B1b's `Sheet` gains `focusControl`), and "I understand the risk" is held again whenever the window regains focus (review 1 L4). The design's #46/#47/#49 classes are extracted into `design-ext.css` (generated, re-pinned); `app.css` turns the mockups' inline styles into classes.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -7490,6 +7868,7 @@ import {GRANTS_KEY, MAX_GRANTS, type Grant} from '../../background/dapp/grants';
 import {BLOCKED_KEY} from '../../background/dapp/blocked';
 import {LIMITS_KEY} from '../../background/dapp/limits';
 import {readDappSession} from '../../background/dapp/store';
+import {REQUEST_TTL_MS} from '../../background/dapp/queue';
 import {SETTINGS_KEY} from '../../background/settings';
 import {ACCOUNT} from '../../background/__tests__/fixtures';
 import {ARM_MS} from '../useArmed';
@@ -7791,6 +8170,50 @@ describe('C15 — no CTA focused, held 500 ms after focus and each state change,
   });
 });
 
+describe('review 1: the confirm sheet (L4), the port on the card (L5), an expiry on screen (L1)', () => {
+  it('the 2-second confirm opens with no control focused, and "I understand the risk" is held again after the window regains focus', async () => {
+    const w = await openWindow();
+    await w.connect('https://tensr.trade');
+    w.show();
+    await screen.findByText('Connect to this app?');
+    await armedAfter();
+    fireEvent.click(cta('Connect anyway (not recommended)'));
+    const sheet = await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
+    expect(document.activeElement).toBe(sheet);
+    await new Promise(r => setTimeout(r, CONFIRM_DELAY_MS + 50));
+    const understand = () => within(sheet).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement;
+    expect(understand().disabled).toBe(false);
+    act(() => void window.dispatchEvent(new Event('focus')));
+    expect(understand().disabled).toBe(true);
+    await armedAfter();
+    expect(understand().disabled).toBe(false);
+  });
+
+  it('an origin with an explicit port shows host:port on the card; one without shows the host', async () => {
+    const w = await openWindow();
+    await w.connect('https://dapp.test:8443');
+    w.show();
+    await screen.findByText('Connect to this app?');
+    expect(text('.s9-origin-card .dom')).toBe('dapp.test:8443');
+    cleanup();
+    const v = await openWindow();
+    await v.connect('https://dapp.test');
+    v.show();
+    await screen.findByText('Connect to this app?');
+    expect(text('.s9-origin-card .dom')).toBe('dapp.test');
+  });
+
+  it('a single shown request that expires: the window learns it within two seconds and closes (nothing else waiting)', async () => {
+    const w = await openWindow();
+    const {page, requestId} = await w.connect('https://jup.ag');
+    w.show();
+    await screen.findByText('Connect to Jupiter?');
+    w.deps.clock.t += REQUEST_TTL_MS;
+    await waitFor(() => expect(w.closed.n).toBe(1), {timeout: 2_000});
+    expect(page.answersFor(requestId)).toEqual([{requestId, error: 'timeout'}]);
+  });
+});
+
 describe('the in-progress state and the client’s shape check', () => {
   it('a deciding head: "Connecting…" with the ring, every CTA and ✕ disabled, the origin card at .55', async () => {
     const w = await openWindow();
@@ -7798,7 +8221,7 @@ describe('the in-progress state and the client’s shape check', () => {
     const s = await readDappSession(w.ext);
     const {DAPP_SESSION_KEY} = await import('../../background/dapp/store');
     const {runtimeFor} = await import('../../background/dapp/ports');
-    await w.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => (e.requestId === requestId ? {...e, state: 'deciding', decidedBy: runtimeFor(w.ext).instance} : e))});
+    await w.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => (e.requestId === requestId ? {...e, state: 'deciding', decidedBy: runtimeFor(w.ext).instance, decidingAt: w.deps.clock.t} : e))});
     w.show();
     const busy = await screen.findByRole('button', {name: 'Connecting…'});
     expect((busy as HTMLButtonElement).disabled).toBe(true);
@@ -8320,6 +8743,44 @@ diff --git a/extension/src/app/app.css b/extension/src/app/app.css
 +}
 ````
 
+Modify `extension/src/app/ui/Sheet.tsx`:
+
+````diff
+diff --git a/extension/src/app/ui/Sheet.tsx b/extension/src/app/ui/Sheet.tsx
+--- a/extension/src/app/ui/Sheet.tsx
++++ b/extension/src/app/ui/Sheet.tsx
+@@ -6,7 +6,8 @@ import {ExtIcon} from './ExtIcon';
+  * close button. Esc, the backdrop and the grabber close it; Tab stays inside it while it is open
+  * (focus trap), and focus returns to where it was when it closes. It opens with the focus on the
+  * element marked `data-autofocus` when its content has one (B1b-2b's contact sheet: the name field) —
+- * React's own autoFocus would run before this effect and be overridden — else on its first control.
++ * React's own autoFocus would run before this effect and be overridden — else on its first control; `focusControl`
++ * false (the approval window's 2-second confirm, C15: no control focused when it opens) puts it on the panel itself.
+  * `tall`: the panel may take the popup's height but 48 px (the contact sheet: a full address, its warnings, a field and
+  * three buttons do not fit the design's 70 % at 412 × 600, and a scrolled panel hid the address it saves).
+  *
+@@ -15,14 +16,17 @@ import {ExtIcon} from './ExtIcon';
+  * clock (#20 every second) — an effect keyed on `onClose` re-ran each time, pulled the focus back to `data-autofocus` and
+  * so typed the rest of a name into #15's address field.
+  */
+-export function Sheet({title, onClose, children, tall = false}: {title: string; onClose: () => void; children: ReactNode; tall?: boolean}) {
++export function Sheet({title, onClose, children, tall = false, focusControl = true}: {title: string; onClose: () => void; children: ReactNode; tall?: boolean; focusControl?: boolean}) {
+   const panel = useRef<HTMLDivElement>(null);
+   const close = useRef(onClose);
+   close.current = onClose;
++  // Read once, on mount, like everything the effect below uses.
++  const focusFirst = useRef(focusControl);
+   useEffect(() => {
+     const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+     const focusables = (): HTMLElement[] => Array.from(panel.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input, a[href]') ?? []);
+-    (panel.current?.querySelector<HTMLElement>('[data-autofocus]') ?? focusables()[0])?.focus();
++    if (focusFirst.current) (panel.current?.querySelector<HTMLElement>('[data-autofocus]') ?? focusables()[0])?.focus();
++    else panel.current?.focus();
+     const onKey = (e: KeyboardEvent) => {
+       if (e.key === 'Escape') {
+         e.preventDefault();
+````
+
 Create `extension/src/approve/Approve.tsx`:
 
 ````tsx
@@ -8328,14 +8789,14 @@ import type {ApproveClient, Decision, PendingView} from './client';
 import {Connect} from './Connect';
 import {Locked} from './Locked';
 
-/** §2.3 (review 2 M3): the window polls this often while it shows the locked screen, a deciding request, or "n more waiting". */
+/** §2.3 (review 2 M3, review 1 L1): the window polls this often while it shows anything — so an unlock, an expiry or a new head reaches it. */
 export const POLL_MS = 1_000;
 
 /**
  * approve.html's one component (spec §2.3, §4.3; C5, C13, D11). The window holds no state and no listener: it asks
- * `dapp.pending` on mount, on focus and visibilitychange, after each decision, and every POLL_MS while it shows the
- * locked screen, a deciding request or "n more waiting" — so an unlock, an expiry or a new head reaches it within a
- * second. `none` closes the window. A decision runs through `dapp.decide`; the background validates it as if this page
+ * `dapp.pending` on mount, on focus and visibilitychange, after each decision, and every POLL_MS while it shows a
+ * request (review 1 L1, R33: one read a second, and the window exists only while something is pending) — so an unlock,
+ * an expiry or a new head reaches it within a second. `none` closes the window. A decision runs through `dapp.decide`; the background validates it as if this page
  * were untrusted (C13), and the window then asks again. Only the newest answer counts (a slower, older one sets
  * nothing), and nothing is set after the window unmounts.
  */
@@ -8371,7 +8832,7 @@ export function Approve({client, close}: {client: ApproveClient; close: () => vo
     };
   }, [refresh]);
 
-  const polling = view !== null && view.state !== 'none' && (view.state === 'locked' || view.state === 'deciding' || view.waiting > 0);
+  const polling = view !== null && view.state !== 'none';
   useEffect(() => {
     if (!polling) return;
     const t = setInterval(() => void refresh(), POLL_MS);
@@ -8566,7 +9027,7 @@ export function Connect({
               : CONNECT_TEXT.lede}
         </p>
         <div className={busy ? 'app-origin-slot app-busy-dim' : 'app-origin-slot'}>
-          <OriginCard site={request.site} host={request.host} />
+          <OriginCard site={request.site} origin={request.origin} host={request.host} />
         </div>
         {kind === 'lookalike' ? <LookalikeBanner site={request.site} host={request.host} /> : null}
         {cap ? (
@@ -8736,7 +9197,7 @@ export function Locked({request, waiting, onReject}: {request: RequestView; wait
         <h1 className="noc-h1">{WINDOW_TEXT.lockedTitle}</h1>
         <p className="noc-body app-muted">{WINDOW_TEXT.lockedBody}</p>
         <div className="app-origin-slot">
-          <OriginCard site={request.site} host={request.host} />
+          <OriginCard site={request.site} origin={request.origin} host={request.host} />
         </div>
       </div>
       <Waiting n={waiting} />
@@ -9037,6 +9498,7 @@ import {LockedButton} from '../app/ui/LockedButton';
 import {Sheet} from '../app/ui/Sheet';
 import type {Site} from './client';
 import {WINDOW_TEXT} from './strings';
+import {useArmed} from './useArmed';
 
 /**
  * The approval window's shared pieces (spec §3.1, §3.2, §4.3): the top bar (✕ = Reject), the origin card, the lookalike
@@ -9057,6 +9519,18 @@ export function WindowTop({overline, tone, onClose, disabled}: {overline: string
   );
 }
 
+/**
+ * What the origin card shows (§2.5 Display, review 1 L5, R35): the host, with the port when the origin has an explicit
+ * one — `https://dapp.test` and `https://dapp.test:8443` are two grants (C8) and must not look alike.
+ */
+export function siteLabel(origin: string, host: string): string {
+  try {
+    return new URL(origin).host;
+  } catch {
+    return host;
+  }
+}
+
 /** The name's first character (C6: no favicon — the domain's initial; "?" for an unknown origin, as 47b draws it). */
 const initial = (name: string): string => (Array.from(name)[0] ?? '?').toUpperCase();
 
@@ -9064,7 +9538,7 @@ const initial = (name: string): string => (Array.from(name)[0] ?? '?').toUpperCa
  * The origin card (§2.5 Display, C7): the name the background chose (the list's for a verified host, else the host's
  * second-level label — never the imitated brand's), and the host exactly as the browser reports it, in mono.
  */
-export function OriginCard({site, host}: {site: Site; host: string}) {
+export function OriginCard({site, origin, host}: {site: Site; origin: string; host: string}) {
   return (
     <div className={site.kind === 'verified' ? 's9-origin-card' : site.kind === 'unknown' ? 's9-origin-card app-origin-unknown' : 's9-origin-card app-origin-lookalike'}>
       <div className={site.kind === 'verified' ? 'ico app-ico-verified' : site.kind === 'unknown' ? 'ico app-ico-unknown' : 'ico app-ico-lookalike'} aria-hidden="true">
@@ -9072,7 +9546,7 @@ export function OriginCard({site, host}: {site: Site; host: string}) {
       </div>
       <div className="app-origin-text">
         <div className="name">{site.name}</div>
-        <div className="dom">{host}</div>
+        <div className="dom">{siteLabel(origin, host)}</div>
       </div>
       <div className={site.kind === 'verified' ? 'badge verified' : site.kind === 'unknown' ? 'badge unknown' : 'badge danger'}>
         <ExtIcon name={site.kind === 'verified' ? 'shield-check' : 'alert-triangle'} size={12} />
@@ -9135,17 +9609,19 @@ export function ConfirmButton({armed, onPress, className, children}: {armed: boo
 export const CONFIRM_DELAY_MS = 2_000;
 export function RiskConfirm({onCancel, onProceed, delay = CONFIRM_DELAY_MS}: {onCancel: () => void; onProceed: () => Promise<unknown> | void; delay?: number}) {
   const [ready, setReady] = useState(false);
+  // C15 inside the sheet too (review 1 L4): held 500 ms again whenever the window regains focus.
+  const armed = useArmed('risk-confirm');
   useEffect(() => {
     const t = setTimeout(() => setReady(true), delay);
     return () => clearTimeout(t);
   }, [delay]);
   return (
-    <Sheet title={WINDOW_TEXT.confirmTitle} onClose={onCancel}>
+    <Sheet title={WINDOW_TEXT.confirmTitle} onClose={onCancel} focusControl={false}>
       <div className="sticky-bar row app-risk-actions">
         <LockedButton className="btn btn-secondary" onPress={onCancel}>
           {WINDOW_TEXT.cancel}
         </LockedButton>
-        <ConfirmButton armed={ready} className="btn btn-primary app-btn-danger" onPress={onProceed}>
+        <ConfirmButton armed={ready && armed} className="btn btn-primary app-btn-danger" onPress={onProceed}>
           {WINDOW_TEXT.understand}
         </ConfirmButton>
       </div>
@@ -9386,7 +9862,7 @@ npx vitest run scripts/__tests__/check-classes.test.mjs scripts/__tests__/check-
 npx tsc --noEmit && npx vitest run
 node scripts/build.mjs && npm run gates
 ```
-Expected (dry run): own tests Test Files  5 passed (5) · Tests  453 passed (453); tsc clean; whole suite Test Files  151 passed (151) · Tests  2998 passed (2998); the build and every gate green.
+Expected (dry run): own tests Test Files  5 passed (5) · Tests  456 passed (456); tsc clean; whole suite Test Files  151 passed (151) · Tests  3011 passed (3011); the build and every gate green.
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -9400,7 +9876,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   +     setArmed(true);
   +     window.addEventListener('focus', hold);
   ```
-  `timeout 300 npx vitest run src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 15 passed (17)).
+  `timeout 300 npx vitest run src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 18 passed (20)).
 
 - **M8b** — Enter confirms (C15) — `extension/src/approve/ui.tsx`:
 
@@ -9408,7 +9884,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -         if (e.key === 'Enter') e.preventDefault();
   +         void e;
   ```
-  `timeout 300 npx vitest run src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 16 passed (17)).
+  `timeout 300 npx vitest run src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 19 passed (20)).
 
 - **M8c** — 47b's "Until I revoke" selectable (C12 in the window) — `extension/src/approve/Connect.tsx`:
 
@@ -9416,7 +9892,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -                 disabled={disabled || twoGates}
   +                 disabled={disabled}
   ```
-  `timeout 300 npx vitest run src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 15 passed (17)).
+  `timeout 300 npx vitest run src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 18 passed (20)).
 
 - **M8d** — 47b's gates in any order (R14) — `extension/src/approve/Connect.tsx`:
 
@@ -9426,13 +9902,13 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   +     if (false) {
   +       setShake
   ```
-  `timeout 300 npx vitest run src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 16 passed (17)).
+  `timeout 300 npx vitest run src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 19 passed (20)).
 
 - **M8e** — no polling on the locked screen (D11: the unlock never reaches the window) — `extension/src/approve/Approve.tsx`:
 
   ```diff
-  - (view.state === 'locked' || view.state === 'deciding' || view.waiting > 0)
-  + (view.state === 'deciding' || view.waiting > 0)
+  -   const polling = view !== null && view.state !== 'none';
+  +   const polling = view !== null && view.state !== 'none' && view.state !== 'locked';
   ```
   `timeout 300 npx vitest run src/approve/__tests__/locked.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 2 passed (4)).
 
@@ -9445,7 +9921,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -     }
   +     if (v.state === 'none') return;
   ```
-  `timeout 300 npx vitest run src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  7 failed | 10 passed (17)).
+  `timeout 300 npx vitest run src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  8 failed | 12 passed (20)).
 
 - **M8g** — the lookalike bar not flipped — `extension/src/approve/Connect.tsx`:
 
@@ -9453,7 +9929,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -   const preConfirm = kind === 'lookalike' && !anyway;
   +   const preConfirm = false;
   ```
-  `timeout 300 npx vitest run src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 15 passed (17)).
+  `timeout 300 npx vitest run src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  3 failed | 17 passed (20)).
 
 - **M8h** — no poll after a decision (the next head never shows) — `extension/src/approve/Approve.tsx`:
 
@@ -9462,7 +9938,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -         await refresh();
   +         if (alive.current) setBusy(false);
   ```
-  `timeout 300 npx vitest run src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  7 failed | 10 passed (17)).
+  `timeout 300 npx vitest run src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  3 failed | 17 passed (20)).
 
 - **M8i** — the window polls every 5 s (the locked window's two seconds after the unlock lands) — `extension/src/approve/Approve.tsx`:
 
@@ -9472,10 +9948,42 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   ```
   `timeout 300 npx vitest run src/approve/__tests__/locked.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  2 failed | 2 passed (4)).
 
+- **M8j** — the window polls only while locked, deciding or with more waiting (an expiry never reaches it) — `extension/src/approve/Approve.tsx`:
+
+  ```diff
+  -   const polling = view !== null && view.state !== 'none';
+  +   const polling = view !== null && view.state !== 'none' && (view.state === 'locked' || view.state === 'deciding' || view.waiting > 0);
+  ```
+  `timeout 300 npx vitest run src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 19 passed (20)).
+
+- **M8k** — the confirm sheet focuses its first control — `extension/src/approve/ui.tsx`:
+
+  ```diff
+  -  onClose={onCancel} focusControl={false}>
+  +  onClose={onCancel}>
+  ```
+  `timeout 300 npx vitest run src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 19 passed (20)).
+
+- **M8l** — "I understand the risk" not held again when the window regains focus — `extension/src/approve/ui.tsx`:
+
+  ```diff
+  - armed={ready && armed}
+  + armed={ready && (armed || true)}
+  ```
+  `timeout 300 npx vitest run src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 19 passed (20)).
+
+- **M8m** — the origin card drops the port — `extension/src/approve/ui.tsx`:
+
+  ```diff
+  - <div className="dom">{siteLabel(origin, host)}</div>
+  + <div className="dom">{siteLabel(origin.replace(/:\d+$/, ''), host)}</div>
+  ```
+  `timeout 300 npx vitest run src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 19 passed (20)).
+
 - [ ] **Step 6: Commit.**
 
 ```bash
-git add extension/approve.html extension/scripts/__tests__/check-classes.test.mjs extension/scripts/__tests__/check-vault-isolation.test.mjs extension/scripts/check-classes.mjs extension/scripts/check-vault-isolation.mjs extension/src/__tests__/designExt2b.test.ts extension/src/app/app.css extension/src/approve/Approve.tsx extension/src/approve/Connect.tsx extension/src/approve/Locked.tsx extension/src/approve/__tests__/connect.test.tsx extension/src/approve/__tests__/locked.test.tsx extension/src/approve/__tests__/windowHarness.tsx extension/src/approve/client.ts extension/src/approve/main.tsx extension/src/approve/strings.ts extension/src/approve/ui.tsx extension/src/approve/useArmed.ts extension/src/styles/design-ext.css extension/vite.config.ts
+git add extension/approve.html extension/scripts/__tests__/check-classes.test.mjs extension/scripts/__tests__/check-vault-isolation.test.mjs extension/scripts/check-classes.mjs extension/scripts/check-vault-isolation.mjs extension/src/__tests__/designExt2b.test.ts extension/src/app/app.css extension/src/app/ui/Sheet.tsx extension/src/approve/Approve.tsx extension/src/approve/Connect.tsx extension/src/approve/Locked.tsx extension/src/approve/__tests__/connect.test.tsx extension/src/approve/__tests__/locked.test.tsx extension/src/approve/__tests__/windowHarness.tsx extension/src/approve/client.ts extension/src/approve/main.tsx extension/src/approve/strings.ts extension/src/approve/ui.tsx extension/src/approve/useArmed.ts extension/src/styles/design-ext.css extension/vite.config.ts
 git commit -F - <<'MSG'
 feat(extension): B1c approval window — polling, locked screen, C15, #47 in every state
 
@@ -9485,7 +9993,7 @@ MSG
 
 ### Task 9: #46 sign-message in every state: verified / unknown, the keyword alert, the lookalike with its 2-second confirm, the SIWS mismatch (Q20), signing
 
-**Spec:** §3.2 steps 4–7, §4.3 (`deciding` → "Signing…"), C15, review M10.1, review 2 M10.1, M10.2; §6.1 "Screens" (#46); Scope R19
+**Spec:** §3.2 steps 4–7, §4.3 (`deciding` → "Signing…"), C15, review M10.1, review 2 M10.1, M10.2; §6.1 "Screens" (#46); Scope R19; plan review 1 L5
 
 **Files:**
 - Modify: `extension/src/approve/Approve.tsx`
@@ -9618,7 +10126,7 @@ describe('#46 sign-message', () => {
     const w = await openWindow();
     const {requestId} = await w.sign('https://jup.ag', 'jup.ag asks you to approve the following terms.');
     const s = await readDappSession(w.ext);
-    await w.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => (e.requestId === requestId ? {...e, state: 'deciding', decidedBy: runtimeFor(w.ext).instance} : e))});
+    await w.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => (e.requestId === requestId ? {...e, state: 'deciding', decidedBy: runtimeFor(w.ext).instance, decidingAt: w.deps.clock.t} : e))});
     w.show();
     const busy = await screen.findByRole('button', {name: 'Signing…'});
     expect(text('.top-bar .title')).toBe('Signing');
@@ -9708,7 +10216,7 @@ diff --git a/extension/src/approve/Approve.tsx b/extension/src/approve/Approve.t
  import {Locked} from './Locked';
 +import {Sign} from './Sign';
  
- /** §2.3 (review 2 M3): the window polls this often while it shows the locked screen, a deciding request, or "n more waiting". */
+ /** §2.3 (review 2 M3, review 1 L1): the window polls this often while it shows anything — so an unlock, an expiry or a new head reaches it. */
  export const POLL_MS = 1_000;
 @@ -71,6 +72,7 @@ export function Approve({client, close}: {client: ApproveClient; close: () => vo
    if (view === null || view.state === 'none' || request === null) return <div className="screen app-approve" aria-busy="true" />;
@@ -9776,7 +10284,7 @@ export function Sign({request, waiting, notice, busy, onDecide}: {request: Reque
         <h1 className="noc-h1 app-approve-title">{SIGN_TEXT.title}</h1>
         {busy ? null : <p className="noc-body-sm app-muted app-approve-lede">{lookalike ? SIGN_TEXT.ledeShort : SIGN_TEXT.lede}</p>}
         <div className={busy ? 'app-origin-slot app-busy-dim' : 'app-origin-slot'}>
-          <OriginCard site={request.site} host={request.host} />
+          <OriginCard site={request.site} origin={request.origin} host={request.host} />
         </div>
         {lookalike ? <LookalikeBanner site={request.site} host={request.host} /> : null}
         {mismatch !== null ? (
@@ -9902,7 +10410,7 @@ npx vitest run src/approve/__tests__/sign.test.tsx
 npx tsc --noEmit && npx vitest run
 node scripts/build.mjs && npm run gates
 ```
-Expected (dry run): own tests Test Files  1 passed (1) · Tests  7 passed (7); tsc clean; whole suite Test Files  152 passed (152) · Tests  3005 passed (3005); the build and every gate green.
+Expected (dry run): own tests Test Files  1 passed (1) · Tests  7 passed (7); tsc clean; whole suite Test Files  152 passed (152) · Tests  3018 passed (3018); the build and every gate green.
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -9940,7 +10448,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - export const CONFIRM_DELAY_MS = 2_000;
   + export const CONFIRM_DELAY_MS = 0;
   ```
-  `timeout 300 npx vitest run src/approve/__tests__/sign.test.tsx src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  2 failed (2) · Tests  2 failed | 22 passed (24)).
+  `timeout 300 npx vitest run src/approve/__tests__/sign.test.tsx src/approve/__tests__/connect.test.tsx` — Expected: **red** (dry run: red, Test Files  2 failed (2) · Tests  3 failed | 24 passed (27)).
 
 - [ ] **Step 6: Commit.**
 
@@ -9955,7 +10463,7 @@ MSG
 
 ### Task 10: #49 connected apps in every state (populated, sort, the detail sheet, revoke with the undo toast, hold to disconnect all, blocked sites, empty, skeleton, failed); #31's Connected dApps row (Q07); #37's bullet (Q08)
 
-**Spec:** §4.1, §4.2, §4.4 (all), §2.7 (the popup holds only the token), §9 (#49 rows), D1, D3, D9, C6, C7; §6.1 "Screens" (#49); Scope R21–R27
+**Spec:** §4.1, §4.2, §4.4 (all), §2.7 (the popup holds only the token), §9 (#49 rows), D1, D3, D9, C6, C7; §6.1 "Screens" (#49); Scope R21–R27; plan review 1 L5; Scope R35
 
 **Files:**
 - Test: `extension/e2e/visual-contacts.spec.ts`
@@ -9980,7 +10488,7 @@ MSG
 - Produces (as exported):
   - `engine.ts`: `interface DappInteraction`, `interface DappGrant`, `interface DappBlocked`, `type DappUndoError`; `Engine.dappGrants()`, `dappRevoke(origin)`, `dappUndo(token)`, `dappRevokeAll()`, `dappBlocked()`, `dappUnblock(host)`.
   - `router.ts`: `{screen: 'connected'}` (bare).
-  - `screens/ConnectedApps.tsx`: `CONNECTED_TEXT`, `DISCONNECT_ALL_MS = 600`, `UNDO_MS = 5_000`, `isoDay(at)`, `initialsOf(name)`, `TILES`, `tileOf(host)`, `ConnectedApps({onBack, clock?})`.
+  - `screens/ConnectedApps.tsx`: `CONNECTED_TEXT`, `DISCONNECT_ALL_MS = 600`, `UNDO_MS = 5_000`, `isoDay(at)`, `siteLabel(origin, host)` (rev 2), `initialsOf(name)`, `TILES`, `tileOf(host)`, `ConnectedApps({onBack, clock?})`.
   - `HoldButton`: `heldLabel?`, `decimals?`; `ExtIcon`: `plug`, `sort`, `unlink`.
   - `Settings`: `onConnected` prop; `SETTINGS_TEXT.connectedDapps`, `connectedCount(n)`.
   - `DeleteWallet`: `DELETE_TEXT.bulletErased` with Q08.
@@ -10100,6 +10608,14 @@ describe('#49 connected apps — populated, sort, detail sheet', () => {
     fireEvent.click(screen.getByRole('button', {name: 'Sort'}));
     expect(document.querySelector('.s10-summary-bar .sort')?.textContent).toBe('Sorted by last used');
     expect(names()).toEqual(['Tensor', 'Jupiter']);
+  });
+
+  it('an origin with an explicit port: the row and the sheet show host:port (review 1 L5); one without, the host', async () => {
+    await renderInWallet(<ConnectedApps onBack={() => undefined} clock={manualClock().clock} />, {now: () => NOW, before: async ext => ext.local.set(GRANTS_KEY, [grant('https://dapp.test:8443'), grant('https://jup.ag', {lastUsedAt: NOW - DAY})])});
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(rows().map(r => r.querySelector('.domain')?.textContent)).toEqual(['dapp.test:8443', 'jup.ag']);
+    fireEvent.click(rows()[0]!.querySelector('.app-row-open')!);
+    expect((await screen.findByRole('dialog')).querySelector('.domain')?.textContent).toBe('dapp.test:8443');
   });
 
   it('49c: a row tap opens the detail sheet — permissions with the grant date, the session cells, the last interactions', async () => {
@@ -10882,6 +11398,15 @@ export function tileOf(host: string): (typeof TILES)[number] {
 }
 
 type Sort = 'used' | 'name';
+
+/** The host, with the port when the origin has an explicit one (review 1 L5, R35): two ports are two grants (C8). */
+export function siteLabel(origin: string, host: string): string {
+  try {
+    return new URL(origin).host;
+  } catch {
+    return host;
+  }
+}
 type List = {grants: DappGrant[]; blocked: DappBlocked[]};
 
 /** 49c: the row's detail sheet — permissions, session, the last three interactions, [Revoke this connection]. */
@@ -10909,7 +11434,7 @@ function GrantSheet({grant, now, onClose, onRevoke}: {grant: DappGrant; now: num
               {grant.name}
               {grant.verified ? <span className="app-verified-dot" /> : null}
             </div>
-            <div className="domain">{grant.host}</div>
+            <div className="domain">{siteLabel(grant.origin, grant.host)}</div>
           </div>
           <button type="button" className="icon-btn" aria-label={CONNECTED_TEXT.close} onClick={onClose}>
             <ExtIcon name="close" size={20} />
@@ -11204,7 +11729,7 @@ export function ConnectedApps({onBack, clock = realClock}: {onBack: () => void; 
                     <span className="name">{g.name}</span>
                     {g.verified ? <span className="verified-dot" /> : null}
                   </span>
-                  <span className="domain">{g.host}</span>
+                  <span className="domain">{siteLabel(g.origin, g.host)}</span>
                   <span className="meta">
                     <span>{CONNECTED_TEXT.meta(isoDay(g.connectedAt), whenText(g.lastUsedAt, now))}</span>
                     {g.scope === 'session' ? <span className="badge app-session-pill">{CONNECTED_TEXT.sessionPill}</span> : null}
@@ -11443,7 +11968,7 @@ npx vitest run src/app/__tests__/ConnectedApps.test.tsx src/app/__tests__/Delete
 npx tsc --noEmit && npx vitest run
 node scripts/build.mjs && npm run gates
 ```
-Expected (dry run): own tests Test Files  5 passed (5) · Tests  125 passed (125); tsc clean; whole suite Test Files  153 passed (153) · Tests  3020 passed (3020); the build and every gate green.
+Expected (dry run): own tests Test Files  5 passed (5) · Tests  126 passed (126); tsc clean; whole suite Test Files  153 passed (153) · Tests  3034 passed (3034); the build and every gate green.
 
 - [ ] **Step 5: Mutations (scratch copy outside the repository, `timeout 300`, each alone, then discard the copy).**
 
@@ -11456,7 +11981,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -     setToast(null);
   +     const token = toast.token;
   ```
-  `timeout 300 npx vitest run src/app/__tests__/ConnectedApps.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 11 passed (12)).
+  `timeout 300 npx vitest run src/app/__tests__/ConnectedApps.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 12 passed (13)).
 
 - **M10b** — #49's hold at #37's 1 s — `extension/src/app/screens/ConnectedApps.tsx`:
 
@@ -11464,7 +11989,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - export const DISCONNECT_ALL_MS = 600;
   + export const DISCONNECT_ALL_MS = 1_000;
   ```
-  `timeout 300 npx vitest run src/app/__tests__/ConnectedApps.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 11 passed (12)).
+  `timeout 300 npx vitest run src/app/__tests__/ConnectedApps.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 12 passed (13)).
 
 - **M10c** — rows not dimmed while held — `extension/src/app/screens/ConnectedApps.tsx`:
 
@@ -11472,7 +11997,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - <div className={holding ? 's10-app-row app-row-dim' : 's10-app-row'}
   + <div className={holding ? 's10-app-row' : 's10-app-row'}
   ```
-  `timeout 300 npx vitest run src/app/__tests__/ConnectedApps.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 11 passed (12)).
+  `timeout 300 npx vitest run src/app/__tests__/ConnectedApps.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 12 passed (13)).
 
 - **M10d** — #31's meta "0 connected" (review L12) — `extension/src/app/screens/Settings.tsx`:
 
@@ -11488,7 +12013,7 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   - (sort === 'name' ? a.name.localeCompare(b.name) || a.host.localeCompare(b.host) : b.lastUsedAt - a.lastUsedAt)
   + (b.lastUsedAt - a.lastUsedAt)
   ```
-  `timeout 300 npx vitest run src/app/__tests__/ConnectedApps.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 11 passed (12)).
+  `timeout 300 npx vitest run src/app/__tests__/ConnectedApps.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 12 passed (13)).
 
 - **M10f** — the hold completes without revoking — `extension/src/app/screens/ConnectedApps.tsx`:
 
@@ -11497,7 +12022,15 @@ Make the copy with `git archive HEAD | tar -x -C <scratch>` (a unique `mktemp -d
   -     await engine.dappRevokeAll();
   +   const disconnectAll = async () => {
   ```
-  `timeout 300 npx vitest run src/app/__tests__/ConnectedApps.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 11 passed (12)).
+  `timeout 300 npx vitest run src/app/__tests__/ConnectedApps.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 12 passed (13)).
+
+- **M10g** — #49's row drops the port — `extension/src/app/screens/ConnectedApps.tsx`:
+
+  ```diff
+  - <span className="domain">{siteLabel(g.origin, g.host)}</span>
+  + <span className="domain">{g.host}</span>
+  ```
+  `timeout 300 npx vitest run src/app/__tests__/ConnectedApps.test.tsx` — Expected: **red** (dry run: red, Test Files  1 failed (1) · Tests  1 failed | 12 passed (13)).
 
 - [ ] **Step 6: Commit.**
 
@@ -11512,7 +12045,7 @@ MSG
 
 ### Task 11: E2E B1c-19 … B1c-24 with a real test dApp (`@wallet-standard/app`'s `getWallets()`), contained; spec 15 wipes the dApp keys
 
-**Spec:** §6.3 (19–24), §6.1 (C11's wipe through spec 15), §2.2, §2.6, §2.7, §3.2, §4.3, D11, C15, C16; Scope R29, R30
+**Spec:** §6.3 (19–24), §6.1 (C11's wipe through spec 15), §2.2, §2.6, §2.7, §3.2, §4.3, D11, C15, C16; Scope R29, R30; plan review 1 L9; Scope R39
 
 **Files:**
 - Test: `extension/e2e/dapp.spec.ts` (new)
@@ -11549,7 +12082,8 @@ import {DAPP_HOSTS, approvalWindow, changes, connect, features, names, noWindow,
 // through ctx.route at https://dapp.test, https://jup.ag (a verified host), https://tensr.trade (a lookalike) and an xn--
 // host. Titles carry "B1c-NN · " (B1b's spec 19 already owns "19 · "): run one with -g 'B1c-19 · '. Every spec ends
 // contained: the coordinator route saw the popup's reads, nothing unexpected, Solscan and noc-tura.io untouched, the dApp
-// route served only its own paths.
+// route served only its own paths. Chromium only: Firefox's port.sender.origin for a content-script port — which the
+// whole PAGE partition keys on — is a line of B1e's manual Firefox run (review 1 L9), not exercised here.
 declare const chrome: {
   runtime: {sendMessage(m: unknown): Promise<unknown>; getContexts(filter: object): Promise<{contextId: string}[]>};
   storage: {local: {set(o: object): Promise<void>}};
@@ -12454,29 +12988,29 @@ MSG
 
 ## Dry-run record (each finding fixed in the code above)
 
-The end state was built task by task in a scratch git repository outside the checkout (a `git archive` of `feat/extension-b1c-plan1` at adbddc9 — `main` plus the spec commits), one commit per task; the plan's code blocks are generated from those commits (new files in full, changes as the commit's own diff). Then:
+The end state was built task by task in a scratch git repository outside the checkout (a `git archive` of `feat/extension-b1c-plan1` at adbddc9 — `main` plus the spec commits), one commit per task; the plan's code blocks are generated from those commits (new files in full, changes as the commit's own diff), and applying them in order to that tree reproduces the end state byte for byte. **Revision 2** rebuilt that repository in a fresh scratch directory: each task's commit is rev 1's tree plus every review-1 change of that task and the ones before it, so a change lands in the task that owns its file and every later task carries it. Every number below is rev 2's. Then:
 
-- **Per-task replay** (each task's tree from `git archive`, `extension/node_modules` copied — a linked one makes Vite resolve modules outside the package and the gates' module maps fail): each task's unit-test files on its predecessor's tree, then on its own tree, with `tsc`, the whole suite, `node scripts/build.mjs` and `npm run gates` at every task. Red for every task 1–10 (Tasks 11–12 add E2E specs over built behaviour, made failable by their mutations); `tsc` clean, own tests green, whole suite green, the build and every gate green at every task. The starting tree: Test Files  138 passed (138) · Tests  2821 passed (2821). The end state: Test Files  153 passed (153) · Tests  3020 passed (3020).
+- **Per-task replay** (each task's tree from `git archive`, `extension/node_modules` copied — a linked one makes Vite resolve modules outside the package and the gates' module maps fail): each task's unit-test files on its predecessor's tree, then on its own tree, with `tsc`, the whole suite, `node scripts/build.mjs` and `npm run gates` at every task. Red for every task 1–10 (Tasks 11–12 add E2E specs over built behaviour, made failable by their mutations); `tsc` clean, own tests green, whole suite green, the build and every gate green at every task. The starting tree: Test Files  138 passed (138) · Tests  2821 passed (2821). The end state: Test Files  153 passed (153) · Tests  3034 passed (3034).
 
 | task | own tests on the previous tree | own tests | whole suite |
 |---|---|---|---|
 | 1 | red: Test Files  3 failed (3) · Tests  no tests | Test Files  3 passed (3) · Tests  17 passed (17) | Test Files  141 passed (141) · Tests  2838 passed (2838) |
 | 2 | red: Test Files  3 failed (3) · Tests  1 failed \| 414 passed (415) | Test Files  3 passed (3) · Tests  456 passed (456) | Test Files  142 passed (142) · Tests  2850 passed (2850) |
-| 3 | red: Test Files  2 failed (2) · Tests  2 failed \| 3 passed (5) | Test Files  2 passed (2) · Tests  39 passed (39) | Test Files  143 passed (143) · Tests  2884 passed (2884) |
-| 4 | red: Test Files  2 failed (2) · Tests  1 failed \| 27 passed (28) | Test Files  2 passed (2) · Tests  56 passed (56) | Test Files  144 passed (144) · Tests  2912 passed (2912) |
-| 5 | red: Test Files  3 failed (3) · Tests  70 failed \| 6 passed (76) | Test Files  3 passed (3) · Tests  76 passed (76) | Test Files  145 passed (145) · Tests  2926 passed (2926) |
-| 6 | red: Test Files  2 failed (2) · Tests  1 failed \| 27 passed (28) | Test Files  2 passed (2) · Tests  50 passed (50) | Test Files  146 passed (146) · Tests  2948 passed (2948) |
-| 7 | red: Test Files  6 failed (6) · Tests  3 failed \| 451 passed (454) | Test Files  6 passed (6) · Tests  478 passed (478) | Test Files  149 passed (149) · Tests  2975 passed (2975) |
-| 8 | red: Test Files  5 failed (5) · Tests  4 failed \| 428 passed (432) | Test Files  5 passed (5) · Tests  453 passed (453) | Test Files  151 passed (151) · Tests  2998 passed (2998) |
-| 9 | red: Test Files  1 failed (1) · Tests  7 failed (7) | Test Files  1 passed (1) · Tests  7 passed (7) | Test Files  152 passed (152) · Tests  3005 passed (3005) |
-| 10 | red: Test Files  4 failed \| 1 passed (5) · Tests  8 failed \| 105 passed (113) | Test Files  5 passed (5) · Tests  125 passed (125) | Test Files  153 passed (153) · Tests  3020 passed (3020) |
-| 11 | — | — | Test Files  153 passed (153) · Tests  3020 passed (3020) |
-| 12 | — | — | Test Files  153 passed (153) · Tests  3020 passed (3020) |
+| 3 | red: Test Files  2 failed (2) · Tests  2 failed \| 3 passed (5) | Test Files  2 passed (2) · Tests  42 passed (42) | Test Files  143 passed (143) · Tests  2887 passed (2887) |
+| 4 | red: Test Files  2 failed (2) · Tests  1 failed \| 27 passed (28) | Test Files  2 passed (2) · Tests  59 passed (59) | Test Files  144 passed (144) · Tests  2918 passed (2918) |
+| 5 | red: Test Files  3 failed (3) · Tests  77 failed \| 7 passed (84) | Test Files  3 passed (3) · Tests  84 passed (84) | Test Files  145 passed (145) · Tests  2934 passed (2934) |
+| 6 | red: Test Files  3 failed (3) · Tests  3 failed \| 44 passed (47) | Test Files  3 passed (3) · Tests  71 passed (71) | Test Files  146 passed (146) · Tests  2958 passed (2958) |
+| 7 | red: Test Files  6 failed (6) · Tests  3 failed \| 451 passed (454) | Test Files  6 passed (6) · Tests  478 passed (478) | Test Files  149 passed (149) · Tests  2985 passed (2985) |
+| 8 | red: Test Files  5 failed (5) · Tests  4 failed \| 428 passed (432) | Test Files  5 passed (5) · Tests  456 passed (456) | Test Files  151 passed (151) · Tests  3011 passed (3011) |
+| 9 | red: Test Files  1 failed (1) · Tests  7 failed (7) | Test Files  1 passed (1) · Tests  7 passed (7) | Test Files  152 passed (152) · Tests  3018 passed (3018) |
+| 10 | red: Test Files  4 failed \| 1 passed (5) · Tests  8 failed \| 105 passed (113) | Test Files  5 passed (5) · Tests  126 passed (126) | Test Files  153 passed (153) · Tests  3034 passed (3034) |
+| 11 | — | — | Test Files  153 passed (153) · Tests  3034 passed (3034) |
+| 12 | — | — | Test Files  153 passed (153) · Tests  3034 passed (3034) |
 
-- **Extension `npm run verify`** on the end state (build, vitest, CSP, secrets, every gate incl. the new page-bundle gate, reproducible): green — 153 files, 3020 tests; chrome 25 files `sha256:aa4442ac…7217d`, firefox 25 files `sha256:b443040a…aeff6`.
+- **Extension `npm run verify`** on the end state (build, vitest, CSP, secrets, every gate incl. the new page-bundle gate, reproducible): green — 153 files, 3034 tests (rev 1: 3020); chrome 25 files `sha256:9c5a7156…be972c18e`, firefox 25 files `sha256:31a0661d…aa93f91de`.
 - **E2E, contained, normal launch:** 58 passed (58) — B1b's 49 (incl. spec 15 with the three dApp keys) plus `dapp.spec.ts` 6 and `visual-dapp.spec.ts` 3. **Under `unshare -rn`:** 58 passed (58), the same specs with no network namespace route out.
-- **Root and web:** untouched by every task; on the end state the root `npx tsc --noEmit` is clean, the root `npx jest` passes (180 suites, 1234 tests, 1 skipped as on `main`), web `npm run verify` is green (43 files, 548 tests; 1 file, 3 tests). Not done in the dry run: the CI reproduction on Node 22.12 with only `web/` and `extension/` installed — it stays in "Before the PR".
-- **Mutations:** every named mutation above was run alone in a fresh `git archive` copy of the end state (`node_modules` linked), `tsc` first, unit mutations under `timeout 300`, the E2E ones (`M11a`, `M11b`) with the build under `timeout 600`: **105 of 105 red**. The first full run had twenty that did not compile (item 14) and three that stayed green (item 13); every one is red in its final form above, re-run alone after its fix.
+- **Root and web:** untouched by every task (rev 1 and rev 2); on rev 2's end state the root `npx tsc --noEmit` is clean, the root `npx jest` passes (180 suites, 1234 tests, 1 skipped as on `main`), web `npm run verify` is green (43 files, 548 tests; 1 file, 3 tests). Not done in the dry run: the CI reproduction on Node 22.12 with only `web/` and `extension/` installed — it stays in "Before the PR".
+- **Mutations:** every named mutation above was run alone in a fresh `git archive` copy of the end state (`node_modules` linked), `tsc` first, unit mutations under `timeout 300`, the E2E ones (`M11a`, `M11b`) with the build under `timeout 600`: **122 of 122 red**. Rev 1's first full run had twenty that did not compile (item 14) and three that stayed green (item 13); every one is red in its final form above. Rev 2 adds seventeen (M3s–M3u, M4v–M4x, M4z, M5k, M6o–M6r, M8j–M8m, M10g) and re-anchors four whose lines it changed (M3m, M3n, M6j, M8e); the whole set was re-run on rev 2's end state.
 
 What the dry run caught:
 
@@ -12488,13 +13022,16 @@ What the dry run caught:
 6. **The class gate reads a string argument as a class (Task 8):** `shakeClass('perms')` inside a `className` expression flagged "perms". The shake state is precomputed as numbers.
 7. **`.s-secintro` styles nothing outside the vault page (Task 8):** `unstyledClasses` refused it on the window's screens (R28).
 8. **Playwright will not click an `aria-disabled` button (Task 12):** #47's locked Connect is `aria-disabled` by design (the tap shakes the gate); the visual pass clicks it with `force: true`, as a person can.
-9. **The window does not poll with nothing waiting (Task 12):** two requests arriving after its first read showed only on the next poll trigger (R33); the visual pass triggers focus, as a user returning to the window does.
+9. **The window does not poll with nothing waiting (Task 12):** two requests arriving after its first read showed only on the next poll trigger (R33); the visual pass triggers focus, as a user returning to the window does. (Rev 2: the window now polls whenever it shows a request — R33 — so this limit is gone; the focus trigger stays, harmless.)
 10. **A fake second keypair (Task 5):** `vault.setKeys` refuses a secret key that does not derive its address; the hook tests use a real second keypair (32 × 0x02).
 11. **"Permit2" holds the word "Permit" (Task 6):** a word is a maximal run of ASCII letters (§3.2 step 6); the test was wrong, the rule right.
 12. **The writing tool turned `\u` escapes into the characters (Tasks 1, 6, 8, 9):** `classify.ts`'s format-character class held literal bidi characters in the first draft. Every added file was re-escaped; the Global Constraints' `grep` over the added files is empty.
 13. **Three tests passed their own mutation (Tasks 6, 8, 10).** M6j: the lock test locks before `finishSign`'s first section, so the second section's deciding check never ran — a new test locks and unlocks during the key read, between the sections. M10e: the sort test's grants were in the same order by name and by last use — it now uses two that differ, both ways. The window's poll (first named M11b on E2E B1c-19, green there because the unlock took long enough for a 5 s poll to land inside the wait): the unit test's deadline was `POLL_MS * 2`, which a slower poll widens — it is the literal two seconds now, and the mutation is Task 8's M8i.
 14. **Twenty mutations did not compile (Tasks 1–7, 9).** Deleting a check left its import or constant unused (`noUnusedLocals`), and deleting the locked check left `tx.session` possibly null — `tsc` refused the mutant before any test ran. Each now neutralises the check in place (`&& false`, `void name`, `'$&'`, a different error code), so the mutant compiles and the test is what turns red.
-15. **Not caused by this plan:** `npm audit` is not clean on `main` (R32). The dry run's own `pkill -f replay.py` killed the shell that ran it — the standing rule (kill by PID) exists for exactly this.
+15. **Rev 2 — the unlock flag's interleaving cannot be produced (review 1 L6).** The flag is now written inside the hook's section and cleared if the commit fails. A mutation moving it back after the section stays green: the lock's section awaits storage before it clears the flag, so no test can put the whole lock between the commit and a write right after it — the review could not provoke it either. The test pins the outcome both placements keep, says so in a comment, and no mutation is named for it (a check is a check only if a mutation proves it).
+16. **Rev 2 — block's queue rejection is unreachable through the page path (review 1 M3).** C3 admits one open request per host, and the head is the one being blocked; the review's "a second request from another tab" is `request-pending`. The test seeds the second entry (another port of the host) and proves the page path refuses it first (positive control); M4x is red on it.
+17. **Rev 2 — two re-check halves are narrowing, not tests (review 1 M4).** In `finishConnect` and `finishSign`, `tx.session === null` cannot be reached: a lock answers a `deciding` entry before either section runs (the lock tests). Both stay as the type's narrowing and are stated so in the code; the halves a test can reach — the account removed meanwhile (connect and sign) and the host blocked meanwhile (connect) — have their tests and mutations (M4v, M4w, M6p).
+18. **Not caused by this plan:** `npm audit` is not clean on `main` (R32). The dry run's own `pkill -f replay.py` killed the shell that ran it — the standing rule (kill by PID) exists for exactly this.
 
 ## Before the PR (the standing rules)
 
@@ -12502,14 +13039,14 @@ What the dry run caught:
 - [ ] No task touches the repository root's `src/`, `core/` or `web/`; run the root `npx tsc --noEmit` and `npx jest` anyway, and web's `npm run verify`.
 - [ ] `node scripts/check-no-tge-date.mjs` from the repository root — this plan and every file it adds are clean.
 - [ ] The opus-tier visual review of Task 12's 37 shots against index.html (#46 ix:17442-17686, #47 ix:17686-18261, #49 ix:18705-19100 with its DS class map, #31 ix:13552), then an independent opus review of that review; each finding fixed or declared in the spec's §9; the result in the PR description.
-- [ ] The owner has read Scope §3 (R1–R36) — in particular the copy checks R5, R21, R24, R31 and the spec fix R2 — and the Fable 5.1 review of this plan is applied (owner rule).
+- [ ] The owner has read Scope §3 (R1–R39) — in particular the copy checks R5, R21, R24, R31 (still pending), the icon ruling R37 and the spec fix R2 (now in spec rev 3.1) — and the Fable 5.1 review of this plan is applied (rev 2; owner rule).
 - [ ] The PR says loudly: B1c-1 is a merge-to-`main` milestone, not a release (D10); no store build carries B1c until B1c-2 and B1c-3 are merged; the `<all_urls>` update consequences are B1e gates (§6.5).
 
 ## Self-review
 
-- **Spec coverage.** §1.1 (Task 7: one wallet, plan 1's four features, the icon, targetOrigin; the stated limits in Scope §4); §1.2 (Task 7: the five types, lazy port, prerender, reconnect + resume, ping, ack; `page.*` from the page dropped — M7a); §1.3 (Task 3: the origin rule for ports, partitions, keyed from `port.sender`; R6 for dev builds); §1.4 (Tasks 3, 4, 6: every page and privileged message; events only to granted origins — M5d); §1.5 (Tasks 3, 4, 6: queue entry, `deciding` before any effect, the restart rule, delivery, resume, ack, ten-minute cleanup, five minutes from `arrivedAt`); §1.6 (Tasks 3, 7: the six codes, fixed English messages); §1.7 (Task 7: content scripts, the reason, no new permission, CSP unchanged; Task 8: `approve.html`, `src/approve` in the isolation gate); §2.1 (Tasks 2, 4, 5: grants, cap, `recent`, an account removed, the keys); §2.2 (Tasks 3, 5: every row — B1c-19 too); §2.3 (Tasks 3, 4, 8: opening, polling, `documentId`, `onRemoved`, next head, Q12, expiry, every `dapp.decide` row, cooldown and budget, revoke / disconnect / block / removal reject the queue); §2.4 (Task 5: both hooks, every caller, the second pass, the popup counts as a window); §2.5 (Task 1: list, rules, Q18, Display); §2.6 (Tasks 2, 4: by host, revoke on block, no window, unblock keeps nothing); §2.7 (Task 4: token, single-shot, every refusal); §3.1 (Task 8: 47a, 47b, lookalike, cap, outcomes, C15); §3.2 (Tasks 6, 9: rules 1–7, every state); §4.1–§4.4 (Tasks 8, 10); §5 (every row has a test — the closed tab and timing are §7's accepted limits); §6.1 (every item, with its mutation); §6.2 (Task 7: permissions pin, page-bundle gate, isolation fixtures, dev-origin gate; CSP gate unchanged); §6.3 19–24 (Task 11); §6.4 (Task 12, B1c-1's states); §7 and §9 (Scope §3 adds R1–R36).
+- **Spec coverage.** §1.1 (Task 7: one wallet, plan 1's four features, the icon, targetOrigin; the stated limits in Scope §4); §1.2 (Task 7: the five types, lazy port, prerender, reconnect + resume, ping, ack; `page.*` from the page dropped — M7a); §1.3 (Task 3: the origin rule for ports, partitions, keyed from `port.sender`; R6 for dev builds); §1.4 (Tasks 3, 4, 6: every page and privileged message; events only to granted origins — M5d); §1.5 (Tasks 3, 4, 6: queue entry, `deciding` before any effect, the restart rule, delivery, resume, ack, ten-minute cleanup, five minutes from `arrivedAt` for `queued` and `deciding`, the 30-second deadline of a dead effect — R38); §1.6 (Tasks 3, 7: the six codes, fixed English messages); §1.7 (Task 7: content scripts, the reason, no new permission, CSP unchanged; Task 8: `approve.html`, `src/approve` in the isolation gate); §2.1 (Tasks 2, 4, 5: grants, cap, `recent`, an account removed, the keys); §2.2 (Tasks 3, 5: every row — B1c-19 too); §2.3 (Tasks 3, 4, 8: opening, polling, `documentId`, `onRemoved`, next head, Q12, expiry, every `dapp.decide` row, cooldown and budget, revoke / disconnect / block / removal reject the queue); §2.4 (Task 5: both hooks, every caller, the second pass, the popup counts as a window); §2.5 (Task 1: list, rules, Q18, Display); §2.6 (Tasks 2, 4: by host, revoke on block, no window, unblock keeps nothing); §2.7 (Task 4: token, single-shot, every refusal); §3.1 (Task 8: 47a, 47b, lookalike, cap, outcomes, C15); §3.2 (Tasks 6, 9: rules 1–7, every state); §4.1–§4.4 (Tasks 8, 10); §5 (every row has a test — the closed tab and timing are §7's accepted limits); §6.1 (every item, with its mutation); §6.2 (Task 7: permissions pin, page-bundle gate, isolation fixtures, dev-origin gate; CSP gate unchanged); §6.3 19–24 (Task 11); §6.4 (Task 12, B1c-1's states); §7 and §9 (Scope §3 adds R1–R39).
 - **Rule 6 and C15.** Every confirming, rejecting, revoking, blocking and opening control is a `LockedButton`; the confirming ones also go through `ConfirmButton` (held 500 ms, Enter prevented — M8a, M8b, and Enter in a real browser in B1c-19). Ack rows, scope rows, the account picker, the Sort button and the sheet's close are toggles or idempotent, not LockedButtons (a second tap is indistinguishable or undoes the first).
-- **Generation checks.** The window (`reads` + `alive`, M8h), #49 (`reads` + `alive` after every read and action), #31's count; in the background, every effect section re-checks its entry is still this instance's `deciding` one (M6j; the connect lock test).
+- **Generation checks.** The window (`reads` + `alive`, M8h), #49 (`reads` + `alive` after every read and action), #31's count; in the background, every effect section re-checks its entry is still this instance's `deciding` one (M6j; the connect lock test), the account still in the session (M4w, M6p) and, for a connect, the host not blocked (M4v); the unlock hook re-checks grant, account and block (M5k).
 - **Placeholders.** None: every step has its code (new files in full, changes as exact diffs, three generated files with their scripts and pinned hashes), its command and the dry run's expected output.
 - **Type consistency.** The Interfaces blocks are the exports as they compile; the replay compiled and tested every task on its own predecessor.
 - **Copy.** Every visible string is the spec's (§3, §4, Q01–Q24) or the design's own as the spec quotes it, except the rulings flagged for the owner: R5 ("a non-Latin letter"), R21 (singulars), R24 (the history row words), R31 (#37's sentence).
@@ -12517,3 +13054,26 @@ What the dry run caught:
 ## Execution handoff
 
 Plan complete. Execute with superpowers:subagent-driven-development (a fresh implementer per task, the two-stage review between tasks; Tasks 3–6 — the partition, the lifecycle, the decide table, the hooks and the signature — reviewed as the security core; Task 12's shots reviewed by an opus-tier reviewer), or superpowers:executing-plans in one session with checkpoints. Every plan goes to a Fable 5.1 review before execution (owner rule).
+
+## Review 1 (Fable 5.1) — how each finding was applied
+
+Review: `.superpowers/sdd/b1c-plan1-review-1.md` (rev 1 at 5182fa0; verdict "approve after fixes", no High). Every finding applied; the tasks below were re-replayed and every mutation re-run (Dry-run record).
+
+| finding | what changed | where it landed |
+|---|---|---|
+| **M1** a `deciding` entry never expires | `Entry.decidingAt` (written with `deciding`); the sweep answers a `deciding` entry `timeout` five minutes after `arrivedAt` (C4 "queued or shown") and `rejected` 30 s after `decidingAt` when it is this instance's (`DECIDING_TTL_MS`) | Task 2 `store.ts`; Task 3 `queue.ts` `sweep` + two `lifecycle.test.ts` tests ("a deciding entry that never answers"); Task 4 `decide.ts`; Scope R38; mutations M3s, M3t |
+| **M2** sign request from a cooling-down host untested | a test: three rejected sign requests, the fourth `rejected` with no entry and no window (positive control: the three were queued) | Task 6 `signMessage.test.ts`; M6o |
+| **M3** block / revoke all / account removal leave the queue | tests with a queued request of each kind: block (seeded — the page path cannot queue a second request of one host, item 16), revoke all (two origins' sign requests; an ungranted origin's connect left queued), account removal (the removed account's origin rejected, the kept one queued) | block: Task 4 `decide.test.ts` (M4x); revoke all and account removal need a queued sign request, so their tests land in Task 6 (`decide.test.ts` M6q, `lockHook.test.ts` M6r) |
+| **M4** the effect sections' re-checks untested | `finishConnect`: tests for a block and an account removal between the sections; `finishSign`: the account re-check added (an account removed while its key is read) and tested; `unlockWork`: a test for a restored block; the unreachable `tx.session === null` halves stated as narrowing (item 17) | Task 4 (M4v, M4w); Task 6 `signMessage.ts` + test (M6p); Task 5 (M5k) |
+| **M5** icon PNG, spec says SVG | kept, with its reason — the owner's mark exists only as a raster | Scope R37 (for the owner) |
+| **L1** / **R33** an expiry does not reach the window | the window polls every second while it shows anything; a test: a single shown request expires and the window closes within two seconds | Task 8 `Approve.tsx` + `connect.test.tsx`; R33 rewritten; Review Focus 2; M8j (M8e re-anchored) |
+| **L2** report / block accepted while locked | refused while locked (`locked`), as every write of the user's lists; [Reject] still accepted | Task 4 `decide.ts` + the "unlocked" row's test; R8; M4z |
+| **L3** `lastUsedAt` written on every request | at most once a minute per grant (`LAST_USED_STEP_MS`); a test with a loop of silent connects | Task 3 `pageApi.ts` + `lifecycle.test.ts`; R36; M3u |
+| **L4** the confirm sheet focuses a control; not re-held on focus | `Sheet` gains `focusControl` (false: the panel takes the focus); `RiskConfirm` uses `useArmed`; a test for both | Task 8 `Sheet.tsx`, `ui.tsx`, `connect.test.tsx`; M8k, M8l |
+| **L5** the port dropped from the card and #49 | `siteLabel(origin, host)`: `host:port` when the origin has an explicit port | Task 8 `ui.tsx` (+ Task 9's `Sign.tsx` call) + test (M8m); Task 10 `ConnectedApps.tsx` + test (M10g); R35 |
+| **L6** the unlock flag set outside the section | set inside the section, cleared if the commit fails; the interleaving cannot be produced, so the test pins the outcome and no mutation is claimed | Task 5 `queue.ts`, `lockHook.test.ts`; item 15 |
+| **L7** spec text vs R2, R9 | spec rev 3.1: §2.5 and §6.1's IDN example is `xn--phntom-4nf.app` (the design's `xn--phntom-ezv.app` decodes to a Tibetan letter); §1.4's `dapp.blocked.remove {host}` | `docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md` (this commit) |
+| **L8** linked vs copied `node_modules` | stated: linked for unit and E2E mutations; copied for anything that runs the gates or reads module maps | Global Constraints (Mutations) |
+| **L9** Firefox `port.sender.origin` | a line of B1e's manual Firefox run; the E2E spec's header says it exercises Chromium only | Scope R39; Task 11 `dapp.spec.ts` header |
+| **L10** nits | why `settle()` takes 20 turns (Task 3 `pageHarness.ts`); the classic-script pattern's `}import(` limit — a hit means look (Task 7 `check-page-bundles.mjs`); B1c-24's `contextId` check holds on the floor Chrome 122 and R30's positive control is kept as written (Task 11, unchanged) | as listed |
+| the ruling table | R1–R32, R34 accepted as written; R33, R35, R36 changed as above; R37–R39 added | Scope §3 |
