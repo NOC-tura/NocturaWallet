@@ -69,10 +69,10 @@ export async function ensureWindow(ext: Ext, deps: Pick<WalletDeps, 'now'>): Pro
  * silently replaced by a fresh one, on an unlocked wallet (§2.4: "closing the last browser window while [the popup]
  * is open does not lock; closing the popup then does"). So: zero means no window exists to show anything to — drain
  * the rest of the queue first (a background refusal, not the user's: Scope R11, it does not count toward C14's
- * cooldown — and the one WAY to deliver it to any port still around, before storage.session goes), THEN lock:
- * clearSession wipes the whole of storage.session, this extension's dApp queue included (session.ts), so locking
- * first would silently discard it instead of answering it. Otherwise a window still exists, and the approval window
- * reopens for what remains (C14's budget still applies).
+ * cooldown), THEN lock; the lock then finds nothing open. (The lock would answer them as well — lockHook.ts answers
+ * every open entry `rejected` and writes it back for resume — so the order no longer decides whether they are
+ * answered; it makes these answers the drain's, delivered before the keys go.) Otherwise a window still exists, and
+ * the approval window reopens for what remains (C14's budget still applies).
  *
  * Fix round 2 (Important 1): the lock must happen whenever the count is zero, whatever the drain did — a storage
  * error, a quota failure or a bad stored shape there must never leave the wallet unlocked after its last window

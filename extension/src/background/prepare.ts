@@ -413,12 +413,13 @@ export async function prepareSend(
     challengeId,
   };
   const prepared: PreparedSend = {...bound, integrity: preparedIntegrity(bound), shown: {fees, solRequiredLamports: solRequired.toString(), reasons, simulation}};
-  // Under sessionMutex, the one lock (clearSession) takes: a lock that landed while this send was
-  // being read, simulated or challenged is seen here, and nothing is written back after it.
+  // Under sessionMutex, the mutex the lock takes (lock() clears storage.session in one section of it,
+  // lockHook.ts): a lock that landed while this send was being read, simulated or challenged is seen
+  // here, and nothing is written back after it.
   await sessionMutex(async () => {
     if ((await getSession(ext)) === null) {
       // Locked meanwhile. A challenge issued after the lock's clear would outlive it: remove just
-      // that (PREPARED_KEY was never written). Never clear the area — clearSession would wait on
+      // that (PREPARED_KEY was never written). Never clear the area — lock() or clearSession would wait on
       // this very mutex, and a direct clear() could wipe a session written since (fix round 1).
       await ext.session.remove(REAUTH_KEY);
       throw new SendRefused('locked');

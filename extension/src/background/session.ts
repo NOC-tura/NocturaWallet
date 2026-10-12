@@ -10,9 +10,10 @@ export const PREPARED_KEY = 'v1_prepared';
 export const REAUTH_KEY = 'v1_reauth';
 
 /**
- * Serialises every read-modify-write of storage.session with clearSession (lock), so a write that
- * read the store before a lock cannot put it back after the lock. Not re-entrant: code running
- * inside it must not call clearSession or lock().
+ * Serialises every read-modify-write of storage.session with the lock — lock() (autolock.ts) clears the
+ * area inside one section of this mutex (dapp/lockHook.ts lockInSection) — so a write that read the store
+ * before a lock cannot put it back after the lock. Not re-entrant: code running inside it must not call
+ * lock() or clearSession() (which takes it too).
  */
 export const sessionMutex = createMutex();
 
@@ -55,7 +56,7 @@ export async function getSession(ext: Ext): Promise<SessionAccount[] | null> {
 }
 
 export async function clearSession(ext: Ext): Promise<void> {
-  // Clears the whole storage.session area, not just SESSION_KEY — lock() must leave nothing
-  // behind, including any key another part of the extension may have written there.
+  // Clears the whole storage.session area, not just SESSION_KEY. Not the lock: lock() (autolock.ts) clears the
+  // area itself, inside its own sessionMutex section, together with the dApp queue's write-back (lockHook.ts).
   await sessionMutex(() => ext.session.clear());
 }

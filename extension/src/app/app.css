@@ -1694,8 +1694,9 @@ body:has(.app-window) {
   text-align: left;
 }
 
-/* B1c plan 1: #49 connected apps (spec §4.4) — index.html #s49's inline styles, as classes. The screen is the
-   design's `.screen`, positioned for its sheet and toast. */
+/* B1c plan 1: #49 connected apps (spec §4.4) — index.html #s49's inline styles, as classes. `position: relative` (the
+   design's `.screen` already has it) positions neither 49c's sheet nor 49e's toast: both render after this screen, as its siblings (ConnectedApps.tsx),
+   so their containing block is `.app` — laid over the whole popup, like every .s8-sheet. */
 .app-connected {
   position: relative;
 }

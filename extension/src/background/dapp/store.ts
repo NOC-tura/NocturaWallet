@@ -8,12 +8,12 @@ import {LIMITS_KEY, limitsOf, type Limits} from './limits';
 
 /**
  * The dApp provider's state (spec §1.5, §2). storage.session holds what dies with the session — the request queue,
- * the session grants, the approval window's id and its `opening` marker, the undo buffer — under one key, `v1_dapp`;
+ * the session grants, the approval window's id and its `opening` marker, the undo buffer — under one key, `v1_dapp_session`;
  * storage.local holds the persistent grants (grants.ts), the blocks (blocked.ts) and the limits (limits.ts).
  *
  * dappSection is THE queue mutex the spec names: every read-modify-write of any of them runs inside one, which takes
  * this module's mutex and then sessionMutex (lock order: dappMutex → sessionMutex; nothing under sessionMutex takes
- * dappMutex — the lock hook, which runs inside sessionMutex, reads and rewrites `v1_dapp` itself and never takes it).
+ * dappMutex — the lock hook, which runs inside sessionMutex, reads and rewrites `v1_dapp_session` itself and never takes it).
  * A section sees the session (locked or not) as of the moment it runs, so a check and the write it guards are never
  * split by a lock (setSessionIf's pattern, §2.3 "unlocked").
  */

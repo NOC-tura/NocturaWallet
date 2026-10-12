@@ -112,8 +112,8 @@ function live(store: Store, now: number): Store {
   return new Map([...store].filter(([, c]) => c.expiresAt > now));
 }
 
-// Every read-modify-write runs under sessionMutex, the one clearSession (lock) takes: a lock can
-// never land between a read and its write and be undone by the write.
+// Every read-modify-write runs under sessionMutex, the mutex lock() clears the session in (one section,
+// lockHook.ts): a lock can never land between a read and its write and be undone by the write.
 
 /** A new challenge for the action whose digest is given; the vault page proves, the action consumes. */
 export async function issueChallenge(ext: Ext, deps: Pick<WalletDeps, 'now' | 'randomBytes'>, digest: string, about: ChallengeAbout): Promise<string> {

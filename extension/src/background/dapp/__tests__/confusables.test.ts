@@ -12,7 +12,7 @@ describe('confusables.ts', () => {
     expect(CONFUSABLES.get(0x6d)).toBe('rn'); // confusables.txt's own prototype for m
     expect(CONFUSABLES.get(0x31)).toBe('l');
     expect(CONFUSABLES.size).toBe(792);
-    // Every target is Latin a–z / 0-9 only.
+    // Every target is Latin a–z / 0–9 only.
     for (const t of CONFUSABLES.values()) expect(t).toMatch(/^[a-z0-9]+$/);
   });
 

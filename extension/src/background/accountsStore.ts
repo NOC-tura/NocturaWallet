@@ -353,8 +353,8 @@ export async function changePassword(ext: Ext, now: number, expectedRevision: un
   const next = envelopeShape(envelope);
   if (next === null) return 'malformed';
   // Lock order serial → sessionMutex, as forgetWallet takes them (no path takes them the other way round). The
-  // session check and the write share one sessionMutex section (fix round 1): a lock (clearSession takes
-  // sessionMutex) is ordered wholly before the check — `locked` — or wholly after the write, never between them.
+  // session check and the write share one sessionMutex section (fix round 1): a lock (lock() clears the
+  // session inside one sessionMutex section) is ordered wholly before the check — `locked` — or wholly after the write, never between them.
   const out = await serial(() =>
     sessionMutex(async (): Promise<ChangePasswordResult> => {
       if ((await getSession(ext)) === null) return 'locked';

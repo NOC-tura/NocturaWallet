@@ -23,7 +23,8 @@ export const HOLD_TICK_MS = 30;
  * it; pointer up, leave or cancel, keyup and blur release it — back to the rest label, the fill reset. `disabled` (the
  * prop, not the DOM attribute) refuses a press and releases a hold in progress. Held for `holdMs` it calls `onHeld` once:
  * the hold itself is rule 6's lock (one call per completed hold, none after, and a second press while held neither
- * restarts nor doubles it). While held the label counts the seconds left with one decimal ("Hold to delete · 0.4 s");
+ * restarts nor doubles it). While held the label counts the seconds left with `decimals` places — #37's one ("Hold to delete · 0.4 s"),
+ * #49's two;
  * `prefers-reduced-motion` hides the fill (app.css), the count still runs.
  */
 export function HoldButton({

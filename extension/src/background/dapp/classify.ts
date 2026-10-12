@@ -48,7 +48,7 @@ export function skel(x: string): string {
   return out.toLowerCase();
 }
 
-/** Optimal-string-alignment (restricted Damerau—Levenshtein) distance: insertions, deletions, substitutions, adjacent swaps. */
+/** Optimal-string-alignment (restricted Damerau–Levenshtein) distance: insertions, deletions, substitutions, adjacent swaps. */
 export function editDistance(a: string, b: string): number {
   const d: number[][] = Array.from({length: a.length + 1}, (_, i) => Array.from({length: b.length + 1}, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));
   const at = (i: number, j: number): number => d[i]?.[j] ?? Number.POSITIVE_INFINITY;
