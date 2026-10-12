@@ -68,6 +68,19 @@ describe('the origin rule, for ports (§1.3, §6.1)', () => {
     expect((await queue(ext)).map(e => [e.origin, e.host])).toEqual([['https://[2001:db8::1]:8443', '[2001:db8::1]']]);
   });
 
+  // Final review I3: a trailing-dot host is a distinct origin to the browser, but the same site — blocks, cooldowns
+  // and C3's per-host cap all key on the host string, so `dapp.test.` would sidestep every one of them. Refused.
+  it('refuses a trailing-dot host (with or without a port) — the same host without the dot is accepted (positive control)', async () => {
+    const {ext, deps} = await setup();
+    for (const origin of ['https://dapp.test.', 'https://dapp.test.:8443', 'https://jup.ag.']) {
+      const port = fakePort(senderFor(ext, origin));
+      expect([origin, acceptPagePort(ext, deps, port)]).toEqual([origin, null]);
+      expect(port.disconnected).toBe(true);
+    }
+    expect(acceptPagePort(ext, deps, fakePort(senderFor(ext, 'https://dapp.test:8443')))).toMatchObject({host: 'dapp.test'});
+    expect(acceptPagePort(ext, deps, fakePort(senderFor(ext, DAPP)))).toMatchObject({host: 'dapp.test'});
+  });
+
   it('keys the port from sender.origin — a forged sender.url is never read', async () => {
     const {ext, deps} = await setup();
     const live = acceptPagePort(ext, deps, fakePort(senderFor(ext, 'https://evil.test', {url: 'https://jup.ag/'})));

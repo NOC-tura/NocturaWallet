@@ -42,7 +42,7 @@ export interface PageOrigin {
 /**
  * The origin rule, for messages and for ports alike (§1.3; B1 §3, review M3, C16): this extension's own content
  * script (`sender.id`), in a tab, in the top frame, from an `https:` origin, of an active document where the browser
- * reports the lifecycle. Opaque and `null` origins are refused, and `sender.url` is never read (no fallback). The
+ * reports the lifecycle. Opaque and `null` origins and trailing-dot hosts are refused, and `sender.url` is never read (no fallback). The
  * store build accepts no `http://localhost` (the dev-origin gate). Null: refused.
  */
 export function pageOrigin(ext: Pick<Ext, 'runtimeId'>, s: PageSenderInfo | undefined): PageOrigin | null {
@@ -60,6 +60,9 @@ export function pageOrigin(ext: Pick<Ext, 'runtimeId'>, s: PageSenderInfo | unde
   }
   // Exactly an origin, as the browser serialises one: no path, no credentials, nothing the parser had to repair.
   if (u.protocol !== 'https:' || u.hostname === '' || `${u.protocol}//${u.host}` !== s.origin) return null;
+  // Final review I3: a trailing-dot FQDN (`dapp.test.`) is a distinct origin to the browser but the same site; blocks,
+  // cooldowns and C3's per-host cap all key on the host string, so it would sidestep each. Refused, not normalised.
+  if (u.hostname.endsWith('.')) return null;
   return {tabId, origin: s.origin, host: u.hostname, documentId: typeof s.documentId === 'string' ? s.documentId : null};
 }
 
