@@ -1,6 +1,7 @@
 /**
  * Every string the approval window shows (spec §3.1, §3.2, §4.3, §10): the design's own (index.html #46 ix:17442-17686,
- * #47 ix:17686-18261), as the spec quotes them, and the owner-confirmed Q01–Q24. Nothing else is shown.
+ * #47 ix:17686-18261), as the spec quotes them, the owner-confirmed Q01–Q24 and the owner-delegated Q26 (rev 3.2).
+ * Nothing else is shown.
  */
 export const WINDOW_TEXT = {
   close: 'Close',
@@ -13,7 +14,7 @@ export const WINDOW_TEXT = {
   /** Q24. */
   budgetNotice: 'Too many requests from sites in the last few minutes — some were declined without asking you.',
   badge: {verified: 'Verified', unknown: 'Unknown', lookalike: 'Lookalike'},
-  /** The lookalike banner (§3.1): its head, rule a's line, rule b–d's line (Q05). */
+  /** The lookalike banner (§3.1): its head, rule a's line, rules b–e's line (Q05). */
   notThis: (domain: string): string => `This domain is not ${domain}`,
   idnLead: 'The "',
   idnIs: (script: string | null, codePoint: string): string => `" in this URL is ${script === null ? 'a non-Latin' : /^[AEIOU]/.test(script) ? `an ${script}` : `a ${script}`} letter (${codePoint}), not a Latin "`,
@@ -107,4 +108,6 @@ export const SIGN_TEXT = {
   sign: 'Sign',
   signing: 'Signing…',
   signAnyway: 'Sign anyway (not recommended)',
+  /** Q26 (rev 3.2): `request.sign === null` — the Reject-only exit says why. */
+  cannotSign: 'This request can no longer be signed. Reject it and ask the site to try again.',
 } as const;

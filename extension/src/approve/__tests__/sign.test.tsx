@@ -159,6 +159,10 @@ describe('#46 sign-message', () => {
     await screen.findByText('Sign this message?');
     expect(screen.getAllByRole('button').map(b => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Close', 'Reject']);
     expect(document.querySelector('.s9-msg-preview')).toBeNull();
+    // Rev 3.2 (Q26, owner-delegated 2026-10-12): the line under the title says why, in the lede's body tier.
+    const why = document.querySelector('.app-approve-title + p');
+    expect([why?.textContent, why?.className]).toEqual(['This request can no longer be signed. Reject it and ask the site to try again.', 'noc-body-sm app-muted app-approve-lede']);
+    expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
     fireEvent.click(cta('Reject'));
     await waitFor(() => expect(w.closed.n).toBe(1));
     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);

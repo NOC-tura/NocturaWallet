@@ -33,7 +33,7 @@ function preview(text: string, marks: readonly {start: number; end: number}[]): 
  *    mismatch together (fix round 1, item 4) keep the lookalike bar instead — [Reject and report] primary, plain
  *    [Reject] — still never a Sign or a Sign-anyway escape hatch;
  *  - `request.sign === null` (fix round 1, item 2: the account unlocked no more, or the message now refused): the
- *    bare top bar and a Reject-only exit, never a blank window with no ✕ and no Reject;
+ *    bare top bar, Q26 under the title (rev 3.2) and a Reject-only exit, never a blank window with no ✕ and no Reject;
  *  - signing: "Signing", "Signing…" with the ring, the origin card at .55 and the message at .7, every CTA and ✕ off.
  * C15 holds Sign, Sign anyway and I understand the risk; Reject (and Reject and report) are never held, but are
  * disabled while busy like every other CTA (fix round 1, item 5). The armed key folds in `busy` too (controller
@@ -49,8 +49,8 @@ export function Sign({request, waiting, notice, busy, onDecide}: {request: Reque
   /**
    * Fix round 1, item 2 (promoted): `sign` is null when the account is no longer unlocked, or the message was
    * refused (decide.ts's viewOf/signDetail) — the request itself is still live. A blank window with no ✕ and no
-   * Reject would trap the user; show the bare top bar and a Reject-only exit instead of inventing design copy this
-   * degenerate state never drew.
+   * Reject would trap the user; show the bare top bar and a Reject-only exit. The design never drew this state: its
+   * one line, Q26, is the owner-delegated string of rev 3.2, set in the lede's own body tier under the title.
    */
   if (detail === null) {
     return (
@@ -59,6 +59,7 @@ export function Sign({request, waiting, notice, busy, onDecide}: {request: Reque
         <div className="scroll-area app-approve-scroll">
           {notice ? <BudgetNotice /> : null}
           <h1 className="noc-h1 app-approve-title">{SIGN_TEXT.title}</h1>
+          <p className="noc-body-sm app-muted app-approve-lede">{SIGN_TEXT.cannotSign}</p>
         </div>
         <Waiting n={waiting} />
         <div className="sticky-bar">
