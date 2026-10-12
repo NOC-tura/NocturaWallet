@@ -231,9 +231,11 @@ describe('controller ruling (a): busy is in the C15 key for #46', () => {
     // reappears (not after a further sleep): the 500 ms re-arm must not have had time to finish by then.
     await w.ext.session.set(DAPP_SESSION_KEY, s);
     // Fix round 2: useArmed derives `armed` by comparing the current key to the key the hold last finished for, so
-    // the busy→false key change disarms in the SAME render as the commit — no further tick needed, hence the bare
-    // synchronous check right on the element findByRole just resolved with (mutation M9e, and FR2-M1 which restores
-    // the old effect-only reset, both turn this red).
+    // the busy→false key change disarms in the SAME render as the commit. Mutation M9e (busy dropped from the key)
+    // turns this red, but this window-level check is NOT the proof of the same-render disarm: findByRole resolves
+    // after React has flushed, so FR2-M1 (the old effect-only reset) turns it red only about 1 run in 10 (task 9
+    // report). The deterministic proof is useArmed.test.tsx, which FR2-M1 turns red every run (8/8); this test
+    // pins the outcome the window must keep — disabled at once, then re-armed after the hold.
     const sign = await screen.findByRole('button', {name: 'Sign'}, {timeout: POLL_MS + 500});
     expect((sign as HTMLButtonElement).disabled).toBe(true);
     await armedAfter();
