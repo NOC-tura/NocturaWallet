@@ -78,6 +78,13 @@ const VAULT_PAGE_ONLY: readonly string[] = [
 ];
 /** B1c §1.4: the approval window's messages come from approve.html only (sender.origin ours, the path /approve.html). */
 const APPROVE_PAGE_ONLY: readonly string[] = ['dapp.pending', 'dapp.decide'];
+/**
+ * Final review I2 — and approve.html may send nothing else: an INCLUSIVE list for that sender (the plan's trust-boundary
+ * table: the window shows what dapp.pending says and sends dapp.decide). It is the one extension page a site can cause
+ * to exist; if a rendering bug ever let it run script, it must not keep the wallet unlocked (activity.ping), read or
+ * change the vault's state (vault.status, vault.lock) or reach the popup's routes (wallet.*, contacts.*, accounts.*).
+ */
+const APPROVE_PAGE_ALLOWED: readonly string[] = APPROVE_PAGE_ONLY;
 /** …and #49's from the popup or the UI tab only — never the approval window a site caused, nor the vault page. */
 const WALLET_UI_ONLY: readonly string[] = ['dapp.grants.list', 'dapp.grants.revoke', 'dapp.grants.undo', 'dapp.grants.revokeAll', 'dapp.blocked.list', 'dapp.blocked.remove'];
 export const PAGE: readonly string[] = PAGE_TYPES;
@@ -148,6 +155,7 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
   // B1c §1.4: page types travel on the page port only.
   if (!privileged) return {ok: false, error: 'forbidden'};
   if (!isOwnPage(ext, sender)) return {ok: false, error: 'forbidden'};
+  if (pagePath(ext, sender) === '/approve.html' && !APPROVE_PAGE_ALLOWED.includes(type)) return {ok: false, error: 'forbidden'};
   if (VAULT_PAGE_ONLY.includes(type) && pagePath(ext, sender) !== '/unlock.html') return {ok: false, error: 'forbidden'};
   if (APPROVE_PAGE_ONLY.includes(type) && pagePath(ext, sender) !== '/approve.html') return {ok: false, error: 'forbidden'};
   if (WALLET_UI_ONLY.includes(type) && pagePath(ext, sender) !== '/popup.html' && pagePath(ext, sender) !== '/wallet.html') return {ok: false, error: 'forbidden'};

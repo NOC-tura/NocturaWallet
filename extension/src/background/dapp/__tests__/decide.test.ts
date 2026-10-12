@@ -1,6 +1,6 @@
 import {handleMessage} from '../../messages';
 import {lock} from '../../autolock';
-import {setSession} from '../../session';
+import {getSession, setSession} from '../../session';
 import {VAULT_KEY} from '../../accountsStore';
 import {SETTINGS_KEY} from '../../settings';
 import {GRANTS_KEY, MAX_GRANTS, type Grant} from '../grants';
@@ -52,6 +52,31 @@ describe('who may ask (§1.4)', () => {
     expect(await handleMessage(ext, {type: 'dapp.pending'}, approve, deps)).toEqual({ok: true, data: {state: 'none'}});
     for (const s of [approve, unlock, web]) expect(await handleMessage(ext, {type: 'dapp.grants.list'}, s, deps)).toEqual({ok: false, error: 'forbidden'});
     for (const s of [popup, tab]) expect(await handleMessage(ext, {type: 'dapp.grants.list'}, s, deps)).toEqual({ok: true, data: {grants: []}});
+  });
+});
+
+// Final review I2: approve.html is the one extension page a site can cause to exist — it may send its two types and
+// nothing else (an inclusive allow-list for that sender). Every other privileged type is refused before its handler
+// runs, so nothing below changes state (the session stays, no alarm is armed).
+describe('approve.html may send dapp.pending and dapp.decide only (final review I2)', () => {
+  it('refuses activity.ping, vault.lock, vault.status, wallet.send, contacts.set, accounts.select from the approval window', async () => {
+    const {ext, deps, approve, popup} = await setup();
+    const refused = [
+      {type: 'activity.ping'},
+      {type: 'vault.lock'},
+      {type: 'vault.status'},
+      {type: 'wallet.state'},
+      {type: 'wallet.send', to: RECIPIENT, amount: '1'},
+      {type: 'contacts.set', contacts: []},
+      {type: 'accounts.select', index: 1},
+    ];
+    for (const m of refused) expect([m.type, await handleMessage(ext, m, approve, deps)]).toEqual([m.type, {ok: false, error: 'forbidden'}]);
+    expect(await getSession(ext)).not.toBeNull();
+    expect(ext.alarmsSet.size).toBe(0);
+    // Positive controls: the window's own two pass; the popup's vault.status is not affected by the window's list.
+    expect(await handleMessage(ext, {type: 'dapp.pending'}, approve, deps)).toEqual({ok: true, data: {state: 'none'}});
+    expect(await handleMessage(ext, {type: 'dapp.decide', requestId: 'A'.repeat(22), decision: 'reject'}, approve, deps)).not.toEqual({ok: false, error: 'forbidden'});
+    expect(await handleMessage(ext, {type: 'vault.status'}, popup, deps)).toMatchObject({ok: true});
   });
 });
 
