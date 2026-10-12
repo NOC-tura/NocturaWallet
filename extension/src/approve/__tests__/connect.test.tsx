@@ -258,6 +258,21 @@ describe('#47 — the cap, the cooldown offer, the window chrome (§2.1, C14, Q1
     expect(screen.getByText('Too many requests from sites in the last few minutes — some were declined without asking you.')).toBeTruthy();
   });
 
+  // Final-fix item 8 (Q24, spec §4.3 "once"): the latch is per head — the head changing resets it in the same commit
+  // that shows the new head. Mutation `prev || v.windowNotice` (a latch that never resets) turns this red.
+  it('the budget notice is dropped the moment the head changes (Q24 latch reset)', async () => {
+    const w = await openWindow();
+    await w.connect('https://jup.ag');
+    await w.connect('https://a.test');
+    await w.ext.local.set(LIMITS_KEY, {rejections: [], cooldowns: [], windows: [], notice: true});
+    w.show();
+    await screen.findByText('Connect to Jupiter?');
+    expect(screen.getByText('Too many requests from sites in the last few minutes — some were declined without asking you.')).toBeTruthy();
+    fireEvent.click(cta('Reject'));
+    await screen.findByText('Connect to this app?');
+    expect(screen.queryByText('Too many requests from sites in the last few minutes — some were declined without asking you.')).toBeNull();
+  });
+
   // Review Focus 2: the popup revokes (or the page disconnects) while the window shows that origin's request.
   it('a request answered elsewhere while shown (the page disconnected): Connect is refused as not-head, the window moves on and closes', async () => {
     const w = await openWindow();
