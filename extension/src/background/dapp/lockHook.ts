@@ -1,4 +1,5 @@
 import type {Ext} from '../../ext';
+import {BLOCKED_KEY, blockedOf, isBlocked} from './blocked';
 import {GRANTS_KEY, MAX_GRANTS, grantsOf} from './grants';
 import {deliver, liveOrigins, runtimeFor, sendChange} from './ports';
 import {DAPP_SESSION_KEY, EMPTY_SESSION, readDappSession, type Entry} from './store';
@@ -12,7 +13,8 @@ import {DAPP_SESSION_KEY, EMPTY_SESSION, readDappSession, type Entry} from './st
  *  3. write back the answered entries plus every formerly open entry answered `rejected` (a `deciding` one as a
  *     restart, §1.5 — nothing has left the extension), so a relay's resume still finds them;
  * then, outside it: 4. close the approval window (errors ignored); 5. deliver the answers and send `change []` to the
- * ports of origins that held a grant — and only to those (review M3: an ungranted page learns nothing of lock timing).
+ * ports of origins that held a grant — and only to those (review M3: an ungranted page learns nothing of lock timing),
+ * never a blocked host's (final review m1).
  * `inSection` runs inside the caller's sessionMutex section; it never takes a mutex (sessionMutex is not re-entrant).
  *
  * Fail-closed (fix round 2, Important 1(a) — start.test.ts "the browser-closed lock still fires when the dApp
@@ -28,13 +30,25 @@ export interface LockOutcome {
   notify: string[];
 }
 
+/** The host of a stored grant's origin ('' if it is not a URL — then it matches no block). Local: decide.ts imports autolock.ts. */
+function hostOf(origin: string): string {
+  try {
+    return new URL(origin).hostname;
+  } catch {
+    return '';
+  }
+}
+
 export async function lockInSection(ext: Ext, now: number): Promise<LockOutcome> {
   let s = EMPTY_SESSION;
   let notify: string[] = [];
   try {
     s = await readDappSession(ext);
     const persistent = grantsOf(await ext.local.get(GRANTS_KEY), 'persistent', MAX_GRANTS);
-    const granted = new Set([...s.grants, ...persistent].map(g => g.origin));
+    // Final review m1 (D3, symmetric to the unlock hook): a blocked host's lingering grant (a restore keeps both the
+    // block and the grant) learns nothing — not even the lock's timing.
+    const blocked = blockedOf(await ext.local.get(BLOCKED_KEY));
+    const granted = new Set([...s.grants, ...persistent].filter(g => !isBlocked(blocked, hostOf(g.origin))).map(g => g.origin));
     notify = [...liveOrigins(ext)].filter(o => granted.has(o));
   } catch (e) {
     console.warn('dApp lock hook: reading the session before the clear failed; locking anyway, with nothing to answer', e);

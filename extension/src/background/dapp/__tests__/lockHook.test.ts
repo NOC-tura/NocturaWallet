@@ -6,6 +6,7 @@ import {SESSION_KEY, getSession, setSession} from '../../session';
 import {VAULT_KEY, forgetWallet} from '../../accountsStore';
 import {GRANTS_KEY, type Grant} from '../grants';
 import {BLOCKED_KEY} from '../blocked';
+import {LIMITS_KEY} from '../limits';
 import {DAPP_SESSION_KEY, readDappSession} from '../store';
 import {runtimeFor} from '../ports';
 import {envelopeRevision} from '../../../shared/envelopeRevision';
@@ -24,6 +25,7 @@ const PUB2 = ed25519.getPublicKey(SEED2);
 const SECOND = {index: 1, publicKey: base58.encode(PUB2), secretKey: base64.encode(new Uint8Array([...SEED2, ...PUB2]))};
 const RECIPIENT = SECOND.publicKey;
 const grant = (origin: string, over: Partial<Grant> = {}): Grant => ({origin, account: ACCOUNT.publicKey, scope: 'persistent', connectedAt: 1, lastUsedAt: 1, recent: [], ...over});
+const rejectionsOf = async (ext: ReturnType<typeof fakeExt>): Promise<unknown[]> => ((await ext.local.get(LIMITS_KEY)) as {rejections?: unknown[]} | undefined)?.rejections ?? [];
 const B = (n: number, fill: number) => base64.encode(new Uint8Array(n).fill(fill));
 const STORED = {
   v: 1,
@@ -142,6 +144,19 @@ describe('the lock hook — one test per caller', () => {
     }
   });
 
+  // Final review m1 (symmetric to the unlock hook's fix round 1 item 1, D3): a block and a grant both kept by a restore
+  // — the blocked host's page must not learn the lock's timing through change [] either.
+  it('a blocked host’s lingering grant gets no change [] at the lock; an unblocked granted page still does (positive control)', async () => {
+    const c = await scene();
+    await c.ext.local.set(GRANTS_KEY, [grant(JUP), grant('https://keep.test')]);
+    await c.ext.local.set(BLOCKED_KEY, [{host: 'jup.ag', blockedAt: 1, imitates: null}]);
+    const keep = openPage(c.ext, c.deps, 'https://keep.test', {tab: {id: 10}});
+    await lock(c.ext);
+    expect(c.granted.changes()).toEqual([]);
+    expect(keep.changes()).toEqual([[]]);
+    expect(await getSession(c.ext)).toBeNull();
+  });
+
   it('a deciding entry is answered rejected by the lock (a restart: nothing left the extension); an answered one is kept as it was', async () => {
     const c = await scene();
     const s = await readDappSession(c.ext);
@@ -167,8 +182,14 @@ describe('the lock hook — one test per caller', () => {
   // must not read as still open), nothing reopened, and a second lock still resolves cleanly.
   it('the window onApprovalWindowRemoved fires for after a lock: not ours, no rejection recorded, nothing reopened, a second lock resolves', async () => {
     const c = await scene();
+    // The window showed DAPP's request: were the removal taken as the user's, withRejection would record host + tab.
+    await c.ext.session.set(DAPP_SESSION_KEY, {...(await readDappSession(c.ext)), window: {id: 100, showing: c.requestId}});
     await lock(c.ext);
-    expect(await onApprovalWindowRemoved(c.ext, c.deps, 100)).toBe(false);
+    const ours = await onApprovalWindowRemoved(c.ext, c.deps, 100);
+    // Final-fix item 5: falsifiable — C14's own counter, not the grants (which this scene could never touch). Checked
+    // before `ours` so a lock that kept the window and the queued entry fails HERE, on the rejection it recorded.
+    expect(await rejectionsOf(c.ext)).toEqual([]);
+    expect(ours).toBe(false);
     expect(await c.ext.local.get(GRANTS_KEY)).toEqual([grant(JUP)]);
     expect(c.ext.approval.created).toHaveLength(1);
     await expect(lock(c.ext)).resolves.toBeUndefined();
@@ -301,7 +322,8 @@ describe('an account removed (§2.1, review 2 M9)', () => {
     const unlock = {id: ext.runtimeId, origin: ext.extensionOrigin, url: `${ext.extensionOrigin}/unlock.html`};
     const next = {...STORED, seed: {iv: B(12, 9), ct: B(48, 9)}, accounts: [STORED.accounts[0]]};
     expect(await handleMessage(ext, {type: 'vault.storeEnvelope', expectedRevision: envelopeRevision(STORED as Parameters<typeof envelopeRevision>[0]), envelope: next}, unlock, deps)).toEqual({ok: true});
-    expect(((await ext.local.get(GRANTS_KEY)) as Grant[]).map(g => g.origin)).toEqual(['https://keep.test']);
+    expect(await ext.local.get(GRANTS_KEY)).toMatchObject([{origin: 'https://keep.test', account: ACCOUNT.publicKey}]);
+    expect(await ext.local.get(GRANTS_KEY)).toHaveLength(1);
     expect([gone.changes(), kept.changes()]).toEqual([[[]], []]);
     expect(gone.answersFor(String(rg?.requestId))).toEqual([{requestId: rg?.requestId, error: 'rejected'}]);
     expect((await readDappSession(ext)).queue.find(e => e.requestId === rk?.requestId)?.state).toBe('queued');
