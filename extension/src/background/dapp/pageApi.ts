@@ -93,14 +93,23 @@ function resent(tx: Tx, live: LivePort, id: string): Entry | null {
   return tx.s.queue.find(e => owns(live, e) && e.pageId === id && (e.documentId === null || live.documentId === null || e.documentId === live.documentId)) ?? null;
 }
 
+/**
+ * The reply to a re-sent request (C9). Final review I1: one answered meanwhile is answered inline, under the page's id —
+ * never `accepted` plus a delivery. The relay re-sends only a request it never saw accepted, so it does not await this
+ * requestId yet and drops an answer keyed by it (relay.ts); a delivery would reach it before this reply (queueAccess
+ * delivers inside itself) and the page's promise would never settle. The entry is never acked then; the TTL sweep
+ * drops it (ANSWER_TTL_MS), and a further re-send gets the same answer again.
+ */
+function resentReply(again: Entry, id: string): Reply {
+  if (again.state === 'answered' && again.answer !== null) return {id, ...again.answer};
+  return {id, accepted: true, requestId: again.requestId};
+}
+
 async function connect(ext: Ext, deps: WalletDeps, live: LivePort, id: string, silent: boolean): Promise<Reply> {
   return queueAccess(ext, deps, (tx, fx): Reply => {
     documentChanged(tx, fx, live);
     const again = resent(tx, live, id);
-    if (again !== null) {
-      if (again.state === 'answered') fx.answered.push(again);
-      return {id, accepted: true, requestId: again.requestId};
-    }
+    if (again !== null) return resentReply(again, id);
     // Fix round 1 item 2 (D3): a blocked host's lingering grant (a restore keeps both the block and the grant) must
     // never surface the account — silent or explicit — so the block is checked before the grant is even read, not
     // only before an explicit connect's window-or-reject branch below.
@@ -132,10 +141,7 @@ async function signMessage(ext: Ext, deps: WalletDeps, live: LivePort, id: strin
   return queueAccess(ext, deps, (tx, fx): Reply => {
     documentChanged(tx, fx, live);
     const again = resent(tx, live, id);
-    if (again !== null) {
-      if (again.state === 'answered') fx.answered.push(again);
-      return {id, accepted: true, requestId: again.requestId};
-    }
+    if (again !== null) return resentReply(again, id);
     if (req === null) return {id, error: 'invalid-request'};
     // 1. Only the granted account of a granted origin, while unlocked (§2.2: a sign request while locked is unauthorized).
     if (grantedAccount(tx, live.origin) !== req.account) return {id, error: 'unauthorized'};
