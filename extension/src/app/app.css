@@ -1601,11 +1601,12 @@ body:has(.app-window) {
 }
 /*
  * Fix round 2, item 6 (controller ruling): Q12's line sits in normal flow right after `.app-approve-scroll`
- * (`overflow-y: auto`), which clips its own content at its own box edge — but clipping affects what paints, not
- * where a child's own box is laid out, so a row can straddle that edge with its own last line's ascenders still
- * inside the clipped region. With `.app-approve-waiting` itself fully transparent, that sliver read as "2 more
- * requests waiting" overlapping the row above it (worst in 47-queue-and-notice, where the gates card's three rows
- * leave none to spare). An opaque, flex-pinned line never shows what is behind it, in any state that shows it.
+ * (`overflow-y: auto`). That scroll area clips its own content at its own edge, so nothing of it ever paints over
+ * this line — what read as "2 more requests waiting" overlapping the row above (47-queue-and-notice) was a row CUT at
+ * that clip edge, sitting flush against this text with no gap. The guard is the gap: `padding-top` puts space between
+ * the clip edge and the text, and `flex: 0 0 auto` keeps the line from shrinking so that padding is never eaten.
+ * The opaque background and the z-index are not what fixes it (the final review's reading; nothing paints behind or
+ * over this box to hide) — kept only as harmless belt and braces.
  */
 .app-approve-waiting {
   flex: 0 0 auto;
