@@ -160,6 +160,88 @@ describe('#49 revoke and undo (§2.7, 49e)', () => {
   });
 });
 
+describe('#49 an undo the background refuses (rev 3.2, Q25 — owner-delegated 2026-10-12)', () => {
+  const Q25 = 'Could not undo — Jupiter stays disconnected.';
+  /** #49 over the real background, but with `dappUndo` answered by `undo` (every other call is the real one). */
+  async function withUndo(undo: Engine['dappUndo'], o: {now?: () => number; gate?: (m: unknown) => void} = {}) {
+    const w = await setupWallet({before: async ext => seed(ext), ...(o.gate === undefined ? {} : {gate: o.gate})});
+    const engine: Engine = {...w.engine, dappUndo: undo};
+    render(
+      <WalletProvider engine={engine} platform={w.platform} surface="popup" now={o.now ?? (() => NOW)}>
+        <ConnectedApps onBack={() => undefined} clock={manualClock().clock} />
+      </WalletProvider>,
+    );
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    return w;
+  }
+  const revokeJupiter = async () => {
+    fireEvent.click(within(rows()[0]!).getByRole('button', {name: 'Revoke'}));
+    return screen.findByText('Jupiter revoked');
+  };
+
+  it('a real refusal (the host was blocked meanwhile): the toast says Q25 — no countdown, no UNDO — and the grant stays revoked', async () => {
+    const w = await show();
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    fireEvent.click(within(rows()[0]!).getByRole('button', {name: 'Revoke'}));
+    const toast = await screen.findByRole('status');
+    await w.ext.local.set(BLOCKED_KEY, [{host: 'jup.ag', blockedAt: NOW, imitates: null}]);
+    fireEvent.click(within(toast).getByRole('button', {name: 'UNDO'}));
+    const refused = await screen.findByText(Q25);
+    const box = refused.closest('.s10-undo-toast') as HTMLElement;
+    expect([box.getAttribute('role'), box.querySelector('.body')?.textContent, box.querySelector('.timer'), box.querySelector('.undo-btn'), within(box).queryAllByRole('button')]).toEqual(['status', Q25, null, null, []]);
+    expect(unstyledClasses(box, SELECTORS)).toEqual([]);
+    expect(screen.queryByText('Jupiter revoked')).toBeNull();
+    await waitFor(() => expect(screen.getByText('Blocked sites')).toBeTruthy());
+    expect(rows().map(r => r.querySelector('.name')?.textContent)).toEqual(['Tensor']);
+    expect(((await w.ext.local.get(GRANTS_KEY)) as Grant[]).map(g => g.origin)).toEqual(['https://tensor.trade']);
+  });
+
+  it('every refusal the background names, and a failed call, show Q25', async () => {
+    for (const error of ['unknown-token', 'blocked', 'granted', 'unknown-account', 'cap', 'scope', 'malformed', 'failed'] as const) {
+      await withUndo(async () => ({ok: false, error}));
+      fireEvent.click(within((await revokeJupiter()).closest('.s10-undo-toast') as HTMLElement).getByRole('button', {name: 'UNDO'}));
+      expect([error, (await screen.findByText(Q25)).className]).toEqual([error, 'body']);
+      cleanup();
+    }
+  });
+
+  it('it lives five seconds on the clock, then goes', async () => {
+    let t = NOW;
+    await withUndo(async () => ({ok: false, error: 'unknown-token'}), {now: () => t});
+    fireEvent.click(within((await revokeJupiter()).closest('.s10-undo-toast') as HTMLElement).getByRole('button', {name: 'UNDO'}));
+    await screen.findByText(Q25);
+    t += 4_000;
+    await new Promise(r => setTimeout(r, 1_200));
+    expect(screen.getByText(Q25)).toBeTruthy();
+    t += 1_100;
+    await waitFor(() => expect(screen.queryByText(Q25)).toBeNull(), {timeout: 1_500});
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('locked: no Q25 — the popup reloads, as every other locked path does', async () => {
+    let stateReads = 0;
+    await withUndo(async () => ({ok: false, error: 'locked'}), {gate: m => void ((m as {type: string}).type === 'wallet.state' && stateReads++)});
+    fireEvent.click(within((await revokeJupiter()).closest('.s10-undo-toast') as HTMLElement).getByRole('button', {name: 'UNDO'}));
+    const before = stateReads;
+    await waitFor(() => expect(stateReads).toBeGreaterThan(before));
+    await new Promise(r => setTimeout(r, 50));
+    expect(screen.queryByText(Q25)).toBeNull();
+  });
+
+  it('a success still shows nothing (the row comes back), and a late refusal never replaces a newer revoke’s toast', async () => {
+    let release: (v: Awaited<ReturnType<Engine['dappUndo']>>) => void = () => undefined;
+    await withUndo(() => new Promise(r => (release = r)));
+    fireEvent.click(within((await revokeJupiter()).closest('.s10-undo-toast') as HTMLElement).getByRole('button', {name: 'UNDO'}));
+    await waitFor(() => expect(screen.queryByText('Jupiter revoked')).toBeNull());
+    fireEvent.click(within(rows()[0]!).getByRole('button', {name: 'Revoke'}));
+    await screen.findByText('Tensor revoked');
+    await act(async () => release({ok: false, error: 'unknown-token'}));
+    await new Promise(r => setTimeout(r, 50));
+    expect(screen.getByText('Tensor revoked')).toBeTruthy();
+    expect(screen.queryByText(Q25)).toBeNull();
+  });
+});
+
 describe('#49 disconnect all (49d) — the 600 ms hold', () => {
   it('while held: rows at .55, per-row Revoke off, "Hold to revoke all", the helper, the count in two places; released early nothing happens; held 600 ms every grant goes', async () => {
     const c = manualClock();

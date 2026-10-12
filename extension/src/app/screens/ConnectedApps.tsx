@@ -9,7 +9,7 @@ import {HoldButton, type HoldClock, realClock} from '../ui/HoldButton';
 import {useSheetFocus} from '../ui/Sheet';
 import type {DappBlocked, DappGrant, DappInteraction} from '../engine';
 
-/** #49's copy (B1c §4.4): the design's strings (ix:18705-19100) as the spec quotes them, Q10, Q13–Q15 and 2a's "Try again". */
+/** #49's copy (B1c §4.4): the design's strings (ix:18705-19100) as the spec quotes them, Q10, Q13–Q15, Q25 and 2a's "Try again". */
 export const CONNECTED_TEXT = {
   title: 'Connected apps',
   sort: 'Sort',
@@ -24,6 +24,8 @@ export const CONNECTED_TEXT = {
   revoked: (name: string): string => `${name} revoked`,
   undoIn: (s: number): string => `undo · ${s} s`,
   undo: 'UNDO',
+  /** Q25 (rev 3.2, owner-delegated): the background refused the undo (§2.7) — five seconds, no countdown, no UNDO. */
+  undoRefused: (name: string): string => `Could not undo — ${name} stays disconnected.`,
   close: 'Close',
   permissions: 'Permissions',
   readKeys: 'Read public keys',
@@ -253,7 +255,8 @@ export function ConnectedApps({onBack, clock = realClock}: {onBack: () => void; 
   const [holding, setHolding] = useState(false);
   /** Revoked here and not yet re-read: hidden at once (the design's optimistic remove). */
   const [gone, setGone] = useState<string[]>([]);
-  const [toast, setToast] = useState<{name: string; token: string; until: number} | null>(null);
+  /** 49e's undo toast; `refused` is Q25's (the token is spent: the toast carries no UNDO). */
+  const [toast, setToast] = useState<Toast | null>(null);
   /**
    * Review 1 I1: bumped after every completed hold, and passed to `HoldButton` as its `key` — a full remount, so its
    * internal `done` ref (the hold is rule 6's own lock: once sprung, never again on that instance) is thrown away with
@@ -301,15 +304,20 @@ export function ConnectedApps({onBack, clock = realClock}: {onBack: () => void; 
     const until = m.now() + UNDO_MS;
     const r = await engine.dappRevoke(g.origin);
     if (!alive.current) return;
-    if (r.ok) setToast({name: g.name, token: r.data.undoToken, until});
+    if (r.ok) setToast({name: g.name, token: r.data.undoToken, until, refused: false});
     await load();
   };
   const undo = async () => {
     if (toast === null) return;
-    const token = toast.token;
+    const {token, name} = toast;
     setToast(null);
-    await engine.dappUndo(token);
-    if (alive.current) await load();
+    const r = await engine.dappUndo(token);
+    if (!alive.current) return;
+    if (!r.ok && r.error === 'locked') return void reload();
+    // Rev 3.2 (Q25): any other refusal — or a failed call — says so for five seconds instead of vanishing. A newer
+    // revoke's toast (with its own live UNDO) is never replaced by this late answer.
+    if (!r.ok) setToast(t => t ?? {name, token: '', until: m.now() + UNDO_MS, refused: true});
+    await load();
   };
   const unblock = async (host: string) => {
     await engine.dappUnblock(host);
@@ -508,9 +516,21 @@ export function ConnectedApps({onBack, clock = realClock}: {onBack: () => void; 
   );
 }
 
-/** 49e's undo toast: "<name> revoked", "undo · <s> s", [UNDO] — single-shot, five seconds. */
-function UndoToast({toast, now, onUndo}: {toast: {name: string; until: number}; now: number; onUndo: () => Promise<void>}) {
+type Toast = {name: string; token: string; until: number; refused: boolean};
+
+/**
+ * 49e's undo toast: "<name> revoked", "undo · <s> s", [UNDO] — single-shot, five seconds. Refused (rev 3.2): Q25 alone
+ * in the same toast for five seconds — no countdown, no UNDO (there is nothing left to undo with).
+ */
+function UndoToast({toast, now, onUndo}: {toast: Toast; now: number; onUndo: () => Promise<void>}) {
   const left = Math.max(1, Math.ceil((toast.until - now) / 1000));
+  if (toast.refused)
+    return (
+      <div className="s10-undo-toast" role="status" aria-live="polite">
+        <ExtIcon name="trash" size={18} />
+        <span className="body">{CONNECTED_TEXT.undoRefused(toast.name)}</span>
+      </div>
+    );
   return (
     <div className="s10-undo-toast" role="status" aria-live="polite">
       <ExtIcon name="trash" size={18} />
