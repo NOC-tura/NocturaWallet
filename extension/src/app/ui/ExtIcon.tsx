@@ -54,9 +54,36 @@ export type ExtIconName =
   | 'users'
   | 'link'
   | 'book'
-  | 'bookmark';
+  | 'bookmark'
+  // B1c plan 1: #31's Connected dApps row (#i-plug), #49's sort button and empty state (inline in the mockup, ix:18718, 18801).
+  | 'plug'
+  | 'sort'
+  | 'unlink';
 
 const PATHS: Record<ExtIconName, ReactNode> = {
+  // B1c plan 1, from the design: #i-plug (the sprite), #49's sort lines (ix:18718) and its chain-broken glyph (ix:18801).
+  plug: (
+    <>
+      <path d="M12 22v-5" />
+      <path d="M9 7V2" />
+      <path d="M15 7V2" />
+      <path d="M6 13V8a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4Z" />
+    </>
+  ),
+  sort: (
+    <>
+      <line x1="4" y1="6" x2="20" y2="6" />
+      <line x1="6" y1="12" x2="18" y2="12" />
+      <line x1="9" y1="18" x2="15" y2="18" />
+    </>
+  ),
+  unlink: (
+    <>
+      <path d="M9 17H7A5 5 0 0 1 7 7h2" />
+      <path d="M15 7h2a5 5 0 0 1 4.6 7" />
+      <line x1="3" y1="3" x2="21" y2="21" />
+    </>
+  ),
   // B1b-2b plan 2, from the design's sprite: #i-search, #i-users, #i-link, #i-book, #i-bookmark.
   search: (
     <>

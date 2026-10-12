@@ -21,7 +21,14 @@ describe('design-ext.css (B1b-2b plan 1)', () => {
     }
   });
 
+  // B1c plan 1 re-ran the extraction with #46's, #47's and #49's classes added (ix:3786-3950, 4067-4084), and re-pins the hash.
+  it('carries #46’s, #47’s and #49’s classes (B1c plan 1)', () => {
+    for (const sel of ['.s9-origin-card .badge.verified', '.s9-msg-preview mark', '.s9-domain-warn .body code', '.s9-struct-alert .head', '.s9-perm-row .badge', '.s9-scope-row.sel .radio::after', '.s9-flag-banner .ack.is-acked .box', '.s9-ack-row.is-acked .lbl', '.s9-gate-status.is-ready .dot', '.s10-app-row .verified-dot', '.s10-undo-toast .undo-btn', '.s10-sheet .head-row .name', '.s10-skel-row .ico', '.s10-empty .ill']) {
+      expect(CSS).toContain(`${sel} `);
+    }
+  });
+
   it('is the extraction output, byte for byte (the hash the plan pins)', () => {
-    expect(createHash('sha256').update(CSS).digest('hex')).toBe('3092abb5608035c82f58c9097cdd23bc8b49f8d77f12c1622d8a304414caa4d7');
+    expect(createHash('sha256').update(CSS).digest('hex')).toBe('b01d1aa0273497f2510a43e614f700baad277384cb6d3b65f554fdfed3070b11');
   });
 });

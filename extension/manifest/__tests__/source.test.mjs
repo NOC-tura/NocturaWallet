@@ -1,4 +1,4 @@
-import {render, PERMISSIONS, HOST_PERMISSIONS, EXTENSION_CSP} from '../source.mjs';
+import {render, PERMISSIONS, HOST_PERMISSIONS, EXTENSION_CSP, CONTENT_SCRIPTS} from '../source.mjs';
 
 describe('manifest source', () => {
   it('asks for exactly storage and alarms, each with a reason', () => {
@@ -43,10 +43,21 @@ describe('manifest source', () => {
     expect(m.browser_specific_settings.gecko.data_collection_permissions.required.length).toBeGreaterThan(0);
   });
 
-  it('gives both browsers the same permissions, hosts, CSP and pages', () => {
+  // B1c §1.7: the provider (MAIN) and the relay (ISOLATED), every page, top frame only, at document_start — with the reason.
+  it('declares exactly the two B1c content scripts, with the reason a reviewer is owed', () => {
+    expect(render('chrome').content_scripts).toEqual([
+      {matches: ['<all_urls>'], js: ['provider.js'], run_at: 'document_start', all_frames: false, world: 'MAIN'},
+      {matches: ['<all_urls>'], js: ['relay.js'], run_at: 'document_start', all_frames: false, world: 'ISOLATED'},
+    ]);
+    expect(CONTENT_SCRIPTS.reason).toBe(
+      'Sites find the wallet through Wallet Standard, which must be present on every page; the scripts read nothing from the page and send nothing unless the site asks the wallet.',
+    );
+  });
+
+  it('gives both browsers the same permissions, hosts, CSP, pages and content scripts', () => {
     const c = render('chrome');
     const f = render('firefox');
-    for (const k of ['permissions', 'host_permissions', 'content_security_policy', 'action', 'name', 'version']) {
+    for (const k of ['permissions', 'host_permissions', 'content_security_policy', 'action', 'name', 'version', 'content_scripts']) {
       expect(f[k]).toEqual(c[k]);
     }
   });

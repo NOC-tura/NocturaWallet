@@ -53,8 +53,8 @@ export interface Harness {
 }
 
 /** The contained browser (noc-tura.io and solscan.io unresolvable, both routed), the fake, a popup opener at 412 × 600. */
-export async function launchPopup(prefix: string): Promise<Harness> {
-  const {ctx, profile} = await launchContained(prefix);
+export async function launchPopup(prefix: string, o: {hosts?: readonly string[]} = {}): Promise<Harness> {
+  const {ctx, profile} = await launchContained(prefix, o);
   // First, so the fake's own route (registered after it, so run before it) answers api.noc-tura.io.
   const nocTura = await containNocTura(ctx);
   const fake = await installFakeCoordinator(ctx);

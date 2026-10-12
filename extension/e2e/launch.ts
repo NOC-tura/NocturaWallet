@@ -50,16 +50,21 @@ export async function containNocTura(ctx: BrowserContext): Promise<{hits: string
   return {hits};
 }
 
-/** Chromium with the built extension loaded and noc-tura.io and solscan.io unresolvable, in a fresh profile. */
-export async function launchContained(profilePrefix: string): Promise<{ctx: BrowserContext; profile: string}> {
+/**
+ * Chromium with the built extension loaded and noc-tura.io and solscan.io unresolvable, in a fresh profile. B1c: `hosts`
+ * adds more names to the same resolver map (the test dApp's hosts, e2e/dappPage.ts DAPP_HOSTS) — each answered by a
+ * route, and unresolvable should a request slip past it.
+ */
+export async function launchContained(profilePrefix: string, o: {hosts?: readonly string[]} = {}): Promise<{ctx: BrowserContext; profile: string}> {
   const profile = mkdtempSync(join(tmpdir(), profilePrefix));
+  const extra = (o.hosts ?? []).map(h => `, MAP ${h} ~NOTFOUND`).join('');
   const ctx = await chromium.launchPersistentContext(profile, {
     // The default headless browser is chrome-headless-shell, which does not load extensions
     // (the service worker never starts). channel 'chromium' is Playwright's full Chromium build
     // in new headless mode, which does.
     channel: 'chromium',
     headless: true,
-    args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, HOST_RESOLVER_RULES],
+    args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, `${HOST_RESOLVER_RULES}${extra}`],
   });
   return {ctx, profile};
 }

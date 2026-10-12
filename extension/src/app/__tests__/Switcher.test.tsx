@@ -36,6 +36,12 @@ function stubEngine(accounts: Account[], selected: number): Engine {
     contacts: async () => ({ok: true, data: {contacts: [], max: 200}}),
     contactSet: async () => ({ok: false, error: 'failed'}),
     contactRemove: async () => ({ok: false, error: 'failed'}),
+    dappGrants: async () => ({ok: true, data: []}),
+    dappRevoke: async () => ({ok: false, error: 'failed'}),
+    dappUndo: async () => ({ok: false, error: 'failed'}),
+    dappRevokeAll: async () => ({ok: false, error: 'failed'}),
+    dappBlocked: async () => ({ok: true, data: []}),
+    dappUnblock: async () => ({ok: false, error: 'failed'}),
     lock: async () => ({ok: true, data: null}),
     ping: async () => ({ok: true, data: null}),
   };

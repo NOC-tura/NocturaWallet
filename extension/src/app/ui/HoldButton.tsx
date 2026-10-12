@@ -23,11 +23,14 @@ export const HOLD_TICK_MS = 30;
  * it; pointer up, leave or cancel, keyup and blur release it — back to the rest label, the fill reset. `disabled` (the
  * prop, not the DOM attribute) refuses a press and releases a hold in progress. Held for `holdMs` it calls `onHeld` once:
  * the hold itself is rule 6's lock (one call per completed hold, none after, and a second press while held neither
- * restarts nor doubles it). While held the label counts the seconds left with one decimal ("Hold to delete · 0.4 s");
+ * restarts nor doubles it). While held the label counts the seconds left with `decimals` places — #37's one ("Hold to delete · 0.4 s"),
+ * #49's two;
  * `prefers-reduced-motion` hides the fill (app.css), the count still runs.
  */
 export function HoldButton({
   label,
+  heldLabel = label,
+  decimals = 1,
   holdMs,
   disabled,
   onHeld,
@@ -35,6 +38,10 @@ export function HoldButton({
   clock = realClock,
 }: {
   label: string;
+  /** B1c (#49d, ix:18902): the words before the count while held, when they differ from the rest label. */
+  heldLabel?: string;
+  /** Places of the count: #37 draws one ("0.4 s"), #49 two ("0.24 s"). */
+  decimals?: number;
   holdMs: number;
   disabled: boolean;
   onHeld: () => void;
@@ -131,8 +138,8 @@ export function HoldButton({
         <ExtIcon name="trash" size={18} />
         {/* One run beside the icon (ix:15089): the label's flex gap is for the icon, never between the words and the count. */}
         <span>
-          {left === null ? label : `${label} · `}
-          {left === null ? null : <span className="noc-numeral">{`${left.toFixed(1)} s`}</span>}
+          {left === null ? label : `${heldLabel} · `}
+          {left === null ? null : <span className="noc-numeral">{`${left.toFixed(decimals)} s`}</span>}
         </span>
       </span>
     </button>

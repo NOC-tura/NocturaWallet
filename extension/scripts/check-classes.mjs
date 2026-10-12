@@ -152,11 +152,13 @@ function walk(root, dir, out) {
   }
 }
 
-/** Every .tsx under src/app/ except the tests, relative to the package. */
+/** Every .tsx under src/app/ and src/approve/ (B1c: the approval window loads the same three sheets) except the tests. */
 export function listScreens(root = ROOT) {
   const out = [];
-  const dir = join(root, 'src', 'app');
-  if (existsSync(dir)) walk(root, dir, out);
+  for (const d of ['app', 'approve']) {
+    const dir = join(root, 'src', d);
+    if (existsSync(dir)) walk(root, dir, out);
+  }
   return out.sort();
 }
 
@@ -275,5 +277,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     for (const p of problems) console.error(p);
     process.exit(1);
   }
-  console.log(`classes ok: every class in ${files.length} src/app files is defined by ${SHEETS.join(', ')}; every class in ${vaultFiles.length} vault-page files by ${VAULT_SHEETS.join(', ')}`);
+  console.log(`classes ok: every class in ${files.length} src/app and src/approve files is defined by ${SHEETS.join(', ')}; every class in ${vaultFiles.length} vault-page files by ${VAULT_SHEETS.join(', ')}`);
 }

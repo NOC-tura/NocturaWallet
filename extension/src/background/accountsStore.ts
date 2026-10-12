@@ -8,6 +8,10 @@ import {KNOWN_RECIPIENTS_KEY} from './knownRecipients';
 import {SETTINGS_KEY, updateSettings} from './settings';
 import {CONTACTS_KEY} from './contacts';
 import {clearCaches} from './balanceCache';
+import {GRANTS_KEY} from './dapp/grants';
+import {BLOCKED_KEY} from './dapp/blocked';
+import {LIMITS_KEY} from './dapp/limits';
+import {wipeDappStores} from './dapp/store';
 import {ENVELOPE_BYTES, ENVELOPE_KDF_MAX, ENVELOPE_KDF_MIN, MAX_ACCOUNTS, accountsPolicyOk, b64Length, cleanName} from '../shared/envelopeRules';
 import {envelopeRevision} from '../shared/envelopeRevision';
 import {readWalletBalances} from '../../../core/solana/balances';
@@ -39,12 +43,17 @@ const serial = createMutex();
 /**
  * Everything a wallet owns in storage.local besides its envelope and the balance caches — removed together by a
  * delete (vault.forgetWallet without a replacement, E5 step 7 / B1b-2b E11) and by a first write. The one list, with
- * the address book (B1b-2b E17, D20: wiped on delete, kept on restore — a replacement does not come here).
+ * the address book (B1b-2b E17, D20: wiped on delete, kept on restore — a replacement does not come here), and B1c's
+ * dApp grants, blocked sites and rejection limits (spec C11, C14: wiped by a delete, kept by a restore).
  * `v1_forbidden_until` is not the wallet's (the coordinator's verdict) and is kept.
  */
-const WALLET_DATA_KEYS: readonly string[] = [KNOWN_RECIPIENTS_KEY, SETTINGS_KEY, CONTACTS_KEY];
+export const WALLET_DATA_KEYS: readonly string[] = [KNOWN_RECIPIENTS_KEY, SETTINGS_KEY, CONTACTS_KEY, GRANTS_KEY, BLOCKED_KEY, LIMITS_KEY];
+/** The three dApp keys among WALLET_DATA_KEYS: removed only through wipeDappStores (fix round 1, IMPORTANT 1) —
+ * never by a plain ext.local.remove, which an in-flight dappSection's write-back could undo. */
+const DAPP_DATA_KEYS: ReadonlySet<string> = new Set([GRANTS_KEY, BLOCKED_KEY, LIMITS_KEY]);
 async function removeWalletData(ext: Ext): Promise<void> {
-  for (const key of WALLET_DATA_KEYS) await ext.local.remove(key);
+  for (const key of WALLET_DATA_KEYS) if (!DAPP_DATA_KEYS.has(key)) await ext.local.remove(key);
+  await wipeDappStores(ext);
 }
 
 type Json = Record<string, unknown>;
@@ -204,14 +213,15 @@ function sameWallet(current: StoredEnvelope, next: StoredEnvelope): boolean {
  * (every name is then new, so every name is cleaned); with anything stored, 'wallet-exists' and
  * nothing is written — onboarding never overwrites a wallet, nor a damaged value in its place. A
  * revision with no v1_vault stored is 'no-wallet'; with a value that is not an envelope (an array, a
- * string, null), 'stored-invalid'.
+ * string, null), 'stored-invalid'. B1c: `onDropped` hears the public keys of the accounts a stored change removed.
  */
-export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelope: unknown): Promise<StoreResult> {
+export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelope: unknown, onDropped?: (publicKeys: string[]) => void): Promise<StoreResult> {
   const first = expectedRevision === null;
   if (!first && !(isStr(expectedRevision) && REVISION.test(expectedRevision))) return 'malformed';
   const next = envelopeShape(envelope);
   if (next === null) return 'malformed';
-  return serial(async () => {
+  let droppedKeys: string[] = [];
+  const out = await serial(async (): Promise<StoreResult> => {
     const stored = await ext.local.get(VAULT_KEY);
     const names = new Map<number, string>();
     if (first) {
@@ -232,6 +242,7 @@ export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelop
       const dropped = new Set(current.accounts.filter(a => !kept.has(a.index)).map(a => a.publicKey));
       if (dropped.size > 0 && (await readPending(ext)).some(r => isOpen(r) && dropped.has(r.account))) return 'send-open';
       for (const a of current.accounts) names.set(a.index, a.name);
+      droppedKeys = [...dropped];
     }
     const accounts: AccountView[] = [];
     for (const a of next.accounts) {
@@ -249,6 +260,9 @@ export async function storeEnvelope(ext: Ext, expectedRevision: unknown, envelop
     await ext.local.set(VAULT_KEY, {...next, accounts});
     return 'stored';
   });
+  // B1c §2.1: the accounts this change removed, for their dApp grants (messages.ts).
+  if (out === 'stored' && droppedKeys.length > 0) onDropped?.(droppedKeys);
+  return out;
 }
 
 /**
@@ -339,8 +353,8 @@ export async function changePassword(ext: Ext, now: number, expectedRevision: un
   const next = envelopeShape(envelope);
   if (next === null) return 'malformed';
   // Lock order serial → sessionMutex, as forgetWallet takes them (no path takes them the other way round). The
-  // session check and the write share one sessionMutex section (fix round 1): a lock (clearSession takes
-  // sessionMutex) is ordered wholly before the check — `locked` — or wholly after the write, never between them.
+  // session check and the write share one sessionMutex section (fix round 1): a lock (lock() clears the
+  // session inside one sessionMutex section) is ordered wholly before the check — `locked` — or wholly after the write, never between them.
   const out = await serial(() =>
     sessionMutex(async (): Promise<ChangePasswordResult> => {
       if ((await getSession(ext)) === null) return 'locked';

@@ -10,6 +10,15 @@ export interface KV {
   clear(): Promise<void>;
 }
 
+/** B1c (spec §2.3): the approval window — the one window the background opens. */
+export interface WindowsApi {
+  /** A focused popup window showing this extension page at this size; its id, or null when the browser gave none. */
+  create(o: {page: string; width: number; height: number}): Promise<number | null>;
+  /** Whether the window with this id still exists (windows.get rejects for a closed one). */
+  exists(id: number): Promise<boolean>;
+  remove(id: number): Promise<void>;
+}
+
 export interface Ext {
   runtimeId: string;
   extensionOrigin: string;
@@ -17,6 +26,7 @@ export interface Ext {
   local: KV;
   alarms: {create(name: string, o: {delayInMinutes: number}): Promise<void> | void; clear(name: string): Promise<boolean>};
   windowCount(): Promise<number>;
+  dappWindows: WindowsApi;
   /** Restrict storage.session to trusted (extension) contexts where the browser supports it. */
   pinSessionAccess(): Promise<void>;
 }
@@ -35,7 +45,12 @@ interface BrowserLike {
   runtime: {id: string; getURL(path: string): string};
   storage: {session: SessionArea; local: StorageArea};
   alarms: {create(name: string, o: {delayInMinutes: number}): Promise<void> | void; clear(name: string): Promise<boolean>};
-  windows: {getAll(): Promise<unknown[]>};
+  windows: {
+    getAll(): Promise<unknown[]>;
+    create(o: {type: 'popup'; url: string; width: number; height: number; focused: boolean}): Promise<{id?: number} | undefined>;
+    get(id: number): Promise<unknown>;
+    remove(id: number): Promise<void>;
+  };
 }
 
 function kv(area: StorageArea): KV {
@@ -84,6 +99,21 @@ export function browserExt(): Ext {
     local: kv(b.storage.local),
     alarms: b.alarms,
     windowCount: async () => (await b.windows.getAll()).length,
+    dappWindows: {
+      create: async o => {
+        const w = await b.windows.create({type: 'popup', url: b.runtime.getURL(o.page), width: o.width, height: o.height, focused: true});
+        return typeof w?.id === 'number' ? w.id : null;
+      },
+      exists: async id => {
+        try {
+          await b.windows.get(id);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      remove: id => b.windows.remove(id),
+    },
     // TRUSTED_CONTEXTS is Chrome's default today; pinning it means a future default (or another
     // piece of code) cannot open the signing keys to content scripts. Where the API is absent
     // (Firefox), there is nothing to pin and the call is a no-op.

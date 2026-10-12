@@ -44,7 +44,7 @@ const VAULT_ALLOWED = /^src\/(unlock|vault)\//;
 // they are vault code too, and only the vault page itself may import them.
 const UNLOCK_ALLOWED = /^src\/unlock\//;
 // The one entry each HTML page at the package root may load.
-export const ENTRIES = {'popup.html': 'src/app/popup.tsx', 'wallet.html': 'src/app/tab.tsx', 'unlock.html': 'src/unlock/main.ts'};
+export const ENTRIES = {'popup.html': 'src/app/popup.tsx', 'wallet.html': 'src/app/tab.tsx', 'unlock.html': 'src/unlock/main.ts', 'approve.html': 'src/approve/main.tsx'};
 // node_modules/, dist/, e2e/ and scripts/ are skipped only at the package ROOT — a nested
 // src/popup/scripts/ is ordinary source a page can bundle, not this package's own tooling.
 // __tests__/ is skipped at any depth (never bundled, wherever it sits). See the header.
@@ -84,11 +84,22 @@ const TOUCHES_STORAGE = /(?:\?\.|\.)\s*storage\b|\[\s*['"`]storage['"`]\s*\]|[{,
 // lowercase `onmessage` and `sendMessage` are different identifiers.
 const LISTENS_RUNTIME = /\bon(?:Message|Connect)(?:External)?\b/;
 const LISTEN_ALLOWED = /^src\/background\//;
+// B1c §1.2: the relay holds its own runtime.connect port — a port's listener hears only what is posted on THAT port,
+// never a runtime.sendMessage broadcast (how vault.setKeys travels). So src/relay may name onMessage in exactly two
+// spellings: its PortLike member and the listener on the port it connected (`p.onMessage.addListener(`). Everything
+// else — runtime.onMessage, onConnect, the External variants, any other spelling — stays refused there too.
+const PORT_LISTEN_ALLOWED = /^src\/relay\//;
+const PORT_LISTENER_SPELLINGS = [/^ {2}onMessage: \{addListener\(cb: \(m: unknown\) => void\): void\};$/gm, /\bp\.onMessage\.addListener\(/g];
+const withoutPortListeners = text => PORT_LISTENER_SPELLINGS.reduce((t, re) => t.replace(re, ' '), text);
 // storage.local keys only the background writes (plan B1b-1): no other file may even name them —
 // a popup writing v1_settings could undo a re-authenticated setting without re-authenticating.
 // B1b-2a E4 adds the two caches: a popup writing one could show a balance the chain never had.
 // B1b-2b E17: the address book (v1_contacts) is the background's too — the popup reaches it only through contacts.*.
-export const BACKGROUND_OWNED_KEYS = ['v1_settings', 'v1_known_recipients', 'v1_pending', 'v1_forbidden_until', 'v1_balance_cache', 'v1_price_cache', 'v1_contacts'];
+// B1c (spec §2.1, review 1 L4): the dApp grants, blocked sites and limits — a page writing a grant would connect a site.
+export const BACKGROUND_OWNED_KEYS = [
+  'v1_settings', 'v1_known_recipients', 'v1_pending', 'v1_forbidden_until', 'v1_balance_cache', 'v1_price_cache', 'v1_contacts',
+  'v1_dapp_grants', 'v1_dapp_blocked', 'v1_dapp_limits',
+];
 const BACKGROUND_OWNED_ALLOWED = /^src\/background\//;
 // The vault page renders only fixed strings and the user's own words, as text (B1b-2a §1.2 item 3):
 // no file in src/unlock may parse or write markup, so nothing it shows can become an element.
@@ -640,7 +651,8 @@ export function sourceViolations(files) {
     if (!LOCAL_READER_ALLOWED.test(path) && values.some(r => namesLocalReader(path, r.spec))) {
       out.push(`${path}: imports ${LOCAL_READER}, the vault page's storage reader`);
     }
-    if (!LISTEN_ALLOWED.test(path) && LISTENS_RUNTIME.test(text)) out.push(`${path}: listens for runtime messages outside the background`);
+    const listenText = PORT_LISTEN_ALLOWED.test(path) ? withoutPortListeners(text) : text;
+    if (!LISTEN_ALLOWED.test(path) && LISTENS_RUNTIME.test(listenText)) out.push(`${path}: listens for runtime messages outside the background`);
     if (UNLOCK_ALLOWED.test(path)) {
       if (SETS_MARKUP.test(text)) out.push(`${path}: writes markup — the vault page sets text only (textContent)`);
       for (const [re, what] of MARKUP_EVASIONS) if (re.test(text)) out.push(`${path}: ${what} — the vault page sets text only (textContent)`);

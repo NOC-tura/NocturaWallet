@@ -1,4 +1,4 @@
-import {REQUIRED_CONNECT_SRC, REQUIRED_CSP, comparePermissions, connectSrcViolations, cspViolations} from '../check-permissions.mjs';
+import {REQUIRED_CONNECT_SRC, REQUIRED_CONTENT_SCRIPTS, REQUIRED_CSP, comparePermissions, connectSrcViolations, contentScriptViolations, cspViolations} from '../check-permissions.mjs';
 import {EXTENSION_CSP, MIN_CHROME_VERSION, MIN_FIREFOX_VERSION, render} from '../../manifest/source.mjs';
 
 describe('permissions gate', () => {
@@ -17,6 +17,30 @@ describe('permissions gate', () => {
     const m = render('firefox');
     m.host_permissions = [...m.host_permissions, '<all_urls>'];
     expect(comparePermissions(m, 'firefox')[0]).toMatch(/^host_permissions differ/);
+  });
+
+  // B1c §6.2 (review L4): both content-script entries pinned in place of B1b's "no content_scripts" line.
+  it('pins the two content scripts — matches, world, run_at, all_frames — and refuses any change, extra or missing entry', () => {
+    expect(REQUIRED_CONTENT_SCRIPTS).toEqual([
+      {matches: ['<all_urls>'], js: ['provider.js'], run_at: 'document_start', all_frames: false, world: 'MAIN'},
+      {matches: ['<all_urls>'], js: ['relay.js'], run_at: 'document_start', all_frames: false, world: 'ISOLATED'},
+    ]);
+    const changed = [
+      m => (m.content_scripts[0].all_frames = true),
+      m => (m.content_scripts[1].world = 'MAIN'),
+      m => (m.content_scripts[0].run_at = 'document_idle'),
+      m => (m.content_scripts[1].matches = ['<all_urls>', 'file:///*']),
+      m => m.content_scripts.push({matches: ['<all_urls>'], js: ['x.js']}),
+      m => m.content_scripts.pop(),
+      m => (m.content_scripts[0].match_about_blank = true),
+      m => delete m.content_scripts,
+    ];
+    for (const change of changed) {
+      const m = render('chrome');
+      change(m);
+      expect(comparePermissions(m, 'chrome').some(p => p.startsWith('content_scripts'))).toBe(true);
+    }
+    expect(contentScriptViolations(render('firefox').content_scripts)).toEqual([]);
   });
 
   it('refuses a loosened CSP', () => {

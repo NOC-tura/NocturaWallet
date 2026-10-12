@@ -1,3 +1,6 @@
+import {AUTOLOCK_ALARM} from '../autolock';
+import {DAPP_SESSION_KEY} from '../dapp/store';
+
 // The background's start-up, run against a fake chrome.*: before anything else, storage.session
 // is pinned to trusted contexts (Fable review, Minor 10), and the listeners are registered.
 describe('background start', () => {
@@ -12,7 +15,7 @@ describe('background start', () => {
     const on = (name: string) => ({addListener: () => void listeners.push(name)});
     const area = () => ({get: async () => ({}), set: async () => undefined, remove: async () => undefined, clear: async () => undefined});
     vi.stubGlobal('chrome', {
-      runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on('onMessage'), onStartup: on('onStartup'), onInstalled: on('onInstalled')},
+      runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on('onMessage'), onConnect: on('onConnect'), onStartup: on('onStartup'), onInstalled: on('onInstalled')},
       tabs: {create: async () => undefined},
       storage: {session: {...area(), setAccessLevel: async (o: unknown) => void accessLevels.push(o)}, local: area()},
       alarms: {create: () => undefined, clear: async () => true, onAlarm: on('onAlarm')},
@@ -20,7 +23,7 @@ describe('background start', () => {
     });
     await import('../index');
     expect(accessLevels).toEqual([{accessLevel: 'TRUSTED_CONTEXTS'}]);
-    expect(listeners.sort()).toEqual(['onAlarm', 'onInstalled', 'onMessage', 'onRemoved', 'onStartup']);
+    expect(listeners.sort()).toEqual(['onAlarm', 'onConnect', 'onInstalled', 'onMessage', 'onRemoved', 'onStartup']);
   });
 
   // Fable re-review: pinSessionAccess() was fired with `void`, not awaited or caught — a
@@ -34,7 +37,7 @@ describe('background start', () => {
     const warnings: unknown[] = [];
     vi.spyOn(console, 'warn').mockImplementation((...args) => void warnings.push(args));
     vi.stubGlobal('chrome', {
-      runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on('onMessage'), onStartup: on('onStartup'), onInstalled: on('onInstalled')},
+      runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on('onMessage'), onConnect: on('onConnect'), onStartup: on('onStartup'), onInstalled: on('onInstalled')},
       tabs: {create: async () => undefined},
       storage: {
         session: {
@@ -52,7 +55,7 @@ describe('background start', () => {
     // Let the rejected pinSessionAccess() promise's .catch handler run.
     await Promise.resolve();
     await Promise.resolve();
-    expect(listeners.sort()).toEqual(['onAlarm', 'onInstalled', 'onMessage', 'onRemoved', 'onStartup']);
+    expect(listeners.sort()).toEqual(['onAlarm', 'onConnect', 'onInstalled', 'onMessage', 'onRemoved', 'onStartup']);
     expect(warnings).toEqual([['storage.session access level not pinned', expect.any(Error)]]);
   });
 
@@ -85,7 +88,7 @@ describe('background start', () => {
       });
       const on = () => ({addListener: () => undefined});
       vi.stubGlobal('chrome', {
-        runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on(), onStartup: on(), onInstalled: on()},
+        runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on(), onConnect: on(), onStartup: on(), onInstalled: on()},
         tabs: {create: async () => undefined},
         storage: {
           session: {get: async () => ({}), set: async () => undefined, remove: async () => undefined, clear: async () => undefined, setAccessLevel: async () => undefined},
@@ -131,7 +134,7 @@ describe('background start', () => {
     const on = () => ({addListener: () => undefined});
     const area = () => ({get: async () => ({}), set: async () => undefined, remove: async () => undefined, clear: async () => undefined});
     vi.stubGlobal('chrome', {
-      runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on(), onStartup: on(), onInstalled: on()},
+      runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on(), onConnect: on(), onStartup: on(), onInstalled: on()},
       tabs: {create: async () => undefined},
       storage: {session: {...area(), setAccessLevel: async () => undefined}, local: area()},
       alarms: {create: (name: string) => void created.push(name), clear: async () => true, onAlarm: on()},
@@ -155,6 +158,7 @@ describe('background start', () => {
         id: 'x',
         getURL: (p: string) => `https://ext.example/${p}`,
         onMessage: on(),
+        onConnect: on(),
         onStartup: on(),
         onInstalled: {addListener: (cb: (d: {reason: string}) => void) => void (installed = cb)},
       },
@@ -169,5 +173,45 @@ describe('background start', () => {
     expect(opened).toEqual([]);
     installed?.({reason: 'install'});
     expect(opened).toEqual(['https://ext.example/unlock.html?mode=welcome']);
+  });
+
+  // Fix round 2, Important 1(a): the browser-closed lock must still fire when the dApp window-removed path itself
+  // throws (a storage error, a quota failure, a bad stored shape) — that must never read as "it was ours, nothing
+  // else to do". The lock has to happen whenever windowCount is zero, whatever the dApp path did.
+  it('the browser-closed lock still fires when the dApp window-removed path throws', async () => {
+    const on = () => ({addListener: () => undefined});
+    const area = () => ({get: async () => ({}), set: async () => undefined, remove: async () => undefined, clear: async () => undefined});
+    let sessionCleared = false;
+    const alarmsCleared: string[] = [];
+    let onRemoved: ((id: number) => void) | undefined;
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.stubGlobal('chrome', {
+      runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on(), onConnect: on(), onStartup: on(), onInstalled: on()},
+      tabs: {create: async () => undefined},
+      storage: {
+        session: {
+          // The dApp queue's own key explodes (storage error); every other read behaves normally.
+          get: async (key: string) => {
+            if (key === DAPP_SESSION_KEY) throw new Error('storage exploded');
+            return {};
+          },
+          set: async () => undefined,
+          remove: async () => undefined,
+          clear: async () => void (sessionCleared = true),
+          setAccessLevel: async () => undefined,
+        },
+        local: area(),
+      },
+      alarms: {create: () => undefined, clear: async (name: string) => (alarmsCleared.push(name), true), onAlarm: on()},
+      // No windows left open: the browser-closed check must lock.
+      windows: {getAll: async () => [], onRemoved: {addListener: (cb: (id: number) => void) => void (onRemoved = cb)}},
+    });
+    await import('../index');
+    onRemoved?.(999);
+    // Let the rejected dApp path's fallback run: several mutex / Promise.all hops, all microtasks, no real timers.
+    for (let i = 0; i < 20; i++) await new Promise<void>(r => setTimeout(r, 0));
+    expect(sessionCleared).toBe(true);
+    expect(alarmsCleared).toContain(AUTOLOCK_ALARM);
+    warnSpy.mockRestore();
   });
 });

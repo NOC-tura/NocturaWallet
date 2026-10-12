@@ -4,17 +4,23 @@ import {AUTOLOCK_ALARM, lock, onWindowRemoved} from './autolock';
 import {browserDeps} from './deps';
 import {isOpen, readPending} from './pendingStore';
 import {PENDING_ALARM, armPendingAlarm, onPendingAlarm, startPoller} from './pending';
+import {acceptPagePort} from './dapp/pageApi';
+import {QUEUE_ALARM} from './dapp/queue';
+import {onApprovalWindowRemoved, onQueueAlarm} from './dapp/window';
+import type {PortLike} from './dapp/ports';
 
 interface BgApi {
   runtime: {
     getURL(path: string): string;
     onMessage: {addListener(cb: (m: unknown, s: Sender, reply: (r: unknown) => void) => boolean): void};
+    /** B1c §1.3: the relay's `noctura-page` ports. */
+    onConnect: {addListener(cb: (port: PortLike) => void): void};
     onStartup: {addListener(cb: () => void): void};
     onInstalled: {addListener(cb: (details: {reason: string}) => void): void};
   };
   tabs: {create(o: {url: string}): Promise<unknown> | void};
   alarms: {onAlarm: {addListener(cb: (a: {name: string}) => void): void}};
-  windows: {onRemoved: {addListener(cb: () => void): void}};
+  windows: {onRemoved: {addListener(cb: (windowId: number) => void): void}};
 }
 
 const g = globalThis as unknown as {browser?: BgApi; chrome?: BgApi};
@@ -31,12 +37,26 @@ api.runtime.onMessage.addListener((msg, sender, reply) => {
   handleMessage(ext, msg, sender, deps).then(reply, () => reply({ok: false, error: 'internal'}));
   return true; // reply asynchronously
 });
+api.runtime.onConnect.addListener(port => acceptPagePort(ext, deps, port));
 api.alarms.onAlarm.addListener(a => {
   if (a.name === AUTOLOCK_ALARM) void lock(ext);
   if (a.name === PENDING_ALARM) void onPendingAlarm(ext, deps).catch(e => console.warn('pending alarm tick failed', e));
+  if (a.name === QUEUE_ALARM) void onQueueAlarm(ext, deps).catch(e => console.warn('dApp queue tick failed', e));
 });
-api.windows.onRemoved.addListener(() => {
-  void onWindowRemoved(ext);
+// The approval window first: it decides for itself whether to lock (and drain the queue) or reopen, from
+// ext.windowCount() as of right after the reject — before anything here could change that count (fix round 1,
+// Important 1; §2.4, review 2 L9). Only when the closed window was not ours does the plain browser-closed check run
+// — and it also runs when onApprovalWindowRemoved itself rejects (fix round 2, Important 1): a storage error there
+// must never read as "it was ours, so nothing else to do" — the browser-closed lock has to fire whenever
+// windowCount is zero, whatever the dApp path did. Fail closed, not open.
+api.windows.onRemoved.addListener(windowId => {
+  void onApprovalWindowRemoved(ext, deps, windowId).then(
+    ours => (ours ? undefined : onWindowRemoved(ext)),
+    e => {
+      console.warn('dApp window removal failed', e);
+      return onWindowRemoved(ext);
+    },
+  );
 });
 api.runtime.onStartup.addListener(() => {
   void lock(ext);

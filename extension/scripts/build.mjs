@@ -13,6 +13,10 @@ const outRoot = process.argv[2] ? resolve(process.argv[2]) : join(ROOT, 'dist');
 const app = join(outRoot, 'app');
 
 execFileSync('npx', ['vite', 'build', '--outDir', app, '--emptyOutDir'], {cwd: ROOT, stdio: 'inherit'});
+// B1c §1.7: the two content scripts, each a classic script, into the same directory (vite.content.config.ts).
+for (const content of ['provider', 'relay']) {
+  execFileSync('npx', ['vite', 'build', '--config', 'vite.content.config.ts', '--outDir', app], {cwd: ROOT, stdio: 'inherit', env: {...process.env, NOCTURA_CONTENT: content}});
+}
 
 for (const browser of ['chrome', 'firefox']) {
   const dir = join(outRoot, browser);

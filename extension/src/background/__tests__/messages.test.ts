@@ -200,6 +200,8 @@ describe('message partitions (B1b-1 types)', () => {
     'wallet.state', 'wallet.balances', 'wallet.probeBalances', 'wallet.prepareSend', 'wallet.send', 'wallet.resend',
     'wallet.pending', 'wallet.preparedFor', 'wallet.history', 'wallet.prices', 'wallet.cached', 'wallet.recipientInfo', 'wallet.discardPrepared', 'accounts.rename', 'accounts.select', 'accounts.order', 'settings.get', 'settings.set',
     'contacts.list', 'contacts.set', 'contacts.remove',
+    // B1c §1.4: the approval window's and #49's.
+    'dapp.pending', 'dapp.decide', 'dapp.grants.list', 'dapp.grants.revoke', 'dapp.grants.undo', 'dapp.grants.revokeAll', 'dapp.blocked.list', 'dapp.blocked.remove',
   ];
 
   it('every privileged type is refused from a web page and from another extension', async () => {

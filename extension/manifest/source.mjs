@@ -13,6 +13,19 @@ export const HOST_PERMISSIONS = [
   {value: 'https://wallet.noc-tura.io/*', reason: 'The passkey relying-party ID: an extension may claim an RP ID only for a host it has permission for.'},
 ];
 
+// B1c §1.7: the two content scripts — the MAIN-world provider and the isolated-world relay — on every page, top frame
+// only, at document_start. No new permission: content scripts declared here need none beyond their match pattern, and
+// windows.create / runtime.connect need none either (no `tabs`, no `webNavigation`). check-permissions.mjs pins both
+// entries independently of this list.
+export const CONTENT_SCRIPTS = {
+  reason:
+    'Sites find the wallet through Wallet Standard, which must be present on every page; the scripts read nothing from the page and send nothing unless the site asks the wallet.',
+  entries: [
+    {matches: ['<all_urls>'], js: ['provider.js'], run_at: 'document_start', all_frames: false, world: 'MAIN'},
+    {matches: ['<all_urls>'], js: ['relay.js'], run_at: 'document_start', all_frames: false, world: 'ISOLATED'},
+  ],
+};
+
 // connect-src is the one runtime backstop for extension/scripts/check-rpc-methods.mjs's text-based
 // checks: even a bypass that check misses cannot reach the network from an extension page or the
 // background, because Chrome/Firefox enforce this at the fetch/XHR/WebSocket layer regardless of
@@ -54,6 +67,7 @@ function base() {
     host_permissions: HOST_PERMISSIONS.map(p => p.value),
     content_security_policy: {extension_pages: EXTENSION_CSP},
     action: {default_popup: 'popup.html', default_title: 'Noctura'},
+    content_scripts: CONTENT_SCRIPTS.entries.map(e => ({...e, matches: [...e.matches], js: [...e.js]})),
   };
 }
 

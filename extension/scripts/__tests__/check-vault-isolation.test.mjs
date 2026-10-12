@@ -3,6 +3,7 @@ import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
+  ENTRIES,
   bundleViolations, htmlViolations, listSourceFiles, manifestViolations, nonVaultModuleViolations, bundledWebAuthnViolations, sourceViolations, vaultPageModuleViolations, vaultPageViolations, webAuthnViolations,
   BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, REACT_MARKER, VAULT_MARKER, WEBAUTHN_MARKER, WORDLIST_MARKER,
 } from '../check-vault-isolation.mjs';
@@ -397,6 +398,39 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
     expect(sourceViolations([f('src/background/contacts.ts', "export const CONTACTS_KEY = 'v1_contacts';")])).toEqual([]);
     expect(sourceViolations([f('src/app/screens/Contacts.tsx', "const k = 'v1_contacts';")])).toEqual([OWNED('src/app/screens/Contacts.tsx', 'v1_contacts')]);
     expect(sourceViolations([f('src/unlock/main.ts', '// v1_contacts')])).toEqual([OWNED('src/unlock/main.ts', 'v1_contacts')]);
+  });
+  // B1c §1.7 (review L13): src/approve is held like src/app — no storage, no runtime listener, no ext.ts — and its page
+  // may load only its own entry.
+  it('holds src/approve like src/app: no storage, no runtime listener, no ext.ts; approve.html loads only src/approve/main.tsx', () => {
+    expect(ENTRIES['approve.html']).toBe('src/approve/main.tsx');
+    expect(sourceViolations([f('src/approve/Approve.tsx', 'chrome.storage.local.get("x");')])).toEqual(['src/approve/Approve.tsx: touches storage outside src/ext.ts and the background']);
+    expect(sourceViolations([f('src/approve/Approve.tsx', 'chrome.runtime.onMessage.addListener(x);')])).toEqual(['src/approve/Approve.tsx: listens for runtime messages outside the background']);
+    expect(sourceViolations([f('src/approve/Approve.tsx', "import {browserExt} from '../ext';")])).toEqual(['src/approve/Approve.tsx: imports src/ext.ts (storage.session) outside the background']);
+    expect(sourceViolations([f('src/approve/Approve.tsx', "import {send} from '../ui/send';")])).toEqual([]);
+    expect(htmlViolations([{path: 'approve.html', text: '<script type="module" src="./src/approve/main.tsx"></script>'}])).toEqual([]);
+    expect(htmlViolations([{path: 'approve.html', text: '<script type="module" src="./src/app/popup.tsx"></script>'}])).toEqual(['approve.html: loads ./src/app/popup.tsx — only src/approve/main.tsx may be its entry']);
+  });
+
+  // B1c §1.2: the relay may listen on the port it connected — and in no other way; nobody else may.
+  it('lets the relay listen on its own port only: p.onMessage and its PortLike member; runtime.onMessage and onConnect stay refused', () => {
+    const LISTENS = path => `${path}: listens for runtime messages outside the background`;
+    const member = 'export interface PortLike {\n  onMessage: {addListener(cb: (m: unknown) => void): void};\n}';
+    expect(sourceViolations([f('src/relay/relay.ts', `${member}\np.onMessage.addListener(onPortMessage);`)])).toEqual([]);
+    expect(sourceViolations([f('src/relay/relay.ts', 'chrome.runtime.onMessage.addListener(x);')])).toEqual([LISTENS('src/relay/relay.ts')]);
+    expect(sourceViolations([f('src/relay/relay.ts', 'chrome.runtime.onConnect.addListener(x);')])).toEqual([LISTENS('src/relay/relay.ts')]);
+    expect(sourceViolations([f('src/relay/relay.ts', 'port.onMessageExternal.addListener(x);')])).toEqual([LISTENS('src/relay/relay.ts')]);
+    expect(sourceViolations([f('src/app/x.ts', 'p.onMessage.addListener(x);')])).toEqual([LISTENS('src/app/x.ts')]);
+    expect(sourceViolations([f('src/approve/x.ts', 'p.onMessage.addListener(x);')])).toEqual([LISTENS('src/approve/x.ts')]);
+  });
+
+  // B1c (spec §2.1, review 1 L4): the dApp grants, blocked sites and limits are the background's — the approval window,
+  // the popup and the vault page reach them only through dapp.* messages.
+  it('lets only the background name the three dApp keys (v1_dapp_grants, v1_dapp_blocked, v1_dapp_limits)', () => {
+    const OWNED = (path, key) => `${path}: names ${key}, which only the background may write`;
+    expect(sourceViolations([f('src/background/dapp/grants.ts', "export const GRANTS_KEY = 'v1_dapp_grants';")])).toEqual([]);
+    expect(sourceViolations([f('src/approve/Approve.tsx', "const k = 'v1_dapp_grants';")])).toEqual([OWNED('src/approve/Approve.tsx', 'v1_dapp_grants')]);
+    expect(sourceViolations([f('src/app/screens/ConnectedApps.tsx', "const k = 'v1_dapp_blocked';")])).toEqual([OWNED('src/app/screens/ConnectedApps.tsx', 'v1_dapp_blocked')]);
+    expect(sourceViolations([f('src/unlock/main.ts', '// v1_dapp_limits')])).toEqual([OWNED('src/unlock/main.ts', 'v1_dapp_limits')]);
   });
   // B1b-2a E4: the balance and price caches are the background's too.
   it('lets only the background name the two cache keys', () => {

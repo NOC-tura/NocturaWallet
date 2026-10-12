@@ -11,6 +11,10 @@ import {changePassword, forgetWallet, provenRevisionIsStored, readWalletView, re
 import {isOpen, readPending} from './pendingStore';
 import {startPoller} from './pending';
 import {WALLET_TYPES, applySettingsChallenge, handleWallet, isWalletType, type Result} from './walletApi';
+import {PAGE_TYPES} from './dapp/pageApi';
+import {decide, decideRequestOf, pending} from './dapp/decide';
+import {runUnlockHook} from './dapp/queue';
+import {dropAccountGrants, listBlocked, listGrants, revokeAll, revokeGrant, undoRevoke, unblock} from './dapp/grantsApi';
 
 /** What the browser reports about a message's origin (runtime.MessageSender). */
 export interface Sender {
@@ -19,13 +23,17 @@ export interface Sender {
   url?: string;
   tab?: unknown;
   frameId?: number;
+  /** B1c: Chrome 106+ (§2.3) — the document, and its lifecycle (C16). */
+  documentId?: string;
+  documentLifecycle?: string;
 }
 
 /**
  * Two partitions (spec §1). Privileged types come only from this extension's own pages;
- * page types (none until B1c) only from https top frames. `sender.origin` is what the browser
- * sets — never the URL the message claims, and never "has a tab", which a full-tab
- * extension page also has.
+ * page types only from https top frames, and only on the `noctura-page` port (B1c §1.3, §1.4:
+ * dapp/pageApi.ts) — never through runtime.sendMessage, so here a page type is refused from
+ * anyone, an extension page included. `sender.origin` is what the browser sets — never the URL
+ * the message claims, and never "has a tab", which a full-tab extension page also has.
  */
 export const PRIVILEGED = [
   'vault.setKeys',
@@ -40,6 +48,15 @@ export const PRIVILEGED = [
   'vault.phraseVerified',
   'activity.ping',
   ...WALLET_TYPES,
+  // B1c §1.4: the approval window's two, and #49's.
+  'dapp.pending',
+  'dapp.decide',
+  'dapp.grants.list',
+  'dapp.grants.revoke',
+  'dapp.grants.undo',
+  'dapp.grants.revokeAll',
+  'dapp.blocked.list',
+  'dapp.blocked.remove',
 ] as const;
 /**
  * Only the vault page itself may hand over keys, report a re-authentication it proved, hand over
@@ -59,7 +76,18 @@ const VAULT_PAGE_ONLY: readonly string[] = [
   'vault.removePasskey',
   'vault.phraseVerified',
 ];
-export const PAGE: readonly string[] = [];
+/** B1c §1.4: the approval window's messages come from approve.html only (sender.origin ours, the path /approve.html). */
+const APPROVE_PAGE_ONLY: readonly string[] = ['dapp.pending', 'dapp.decide'];
+/**
+ * Final review I2 — and approve.html may send nothing else: an INCLUSIVE list for that sender (the plan's trust-boundary
+ * table: the window shows what dapp.pending says and sends dapp.decide). It is the one extension page a site can cause
+ * to exist; if a rendering bug ever let it run script, it must not keep the wallet unlocked (activity.ping), read or
+ * change the vault's state (vault.status, vault.lock) or reach the popup's routes (wallet.*, contacts.*, accounts.*).
+ */
+const APPROVE_PAGE_ALLOWED: readonly string[] = APPROVE_PAGE_ONLY;
+/** …and #49's from the popup or the UI tab only — never the approval window a site caused, nor the vault page. */
+const WALLET_UI_ONLY: readonly string[] = ['dapp.grants.list', 'dapp.grants.revoke', 'dapp.grants.undo', 'dapp.grants.revokeAll', 'dapp.blocked.list', 'dapp.blocked.remove'];
+export const PAGE: readonly string[] = PAGE_TYPES;
 
 function isOwnPage(ext: Ext, s: Sender): boolean {
   return s.id === ext.runtimeId && s.origin === ext.extensionOrigin;
@@ -124,8 +152,13 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
   const type = (msg as {type: string}).type;
   const privileged = (PRIVILEGED as readonly string[]).includes(type);
   if (!privileged && !PAGE.includes(type)) return {ok: false, error: 'unknown type'};
-  if (privileged && !isOwnPage(ext, sender)) return {ok: false, error: 'forbidden'};
+  // B1c §1.4: page types travel on the page port only.
+  if (!privileged) return {ok: false, error: 'forbidden'};
+  if (!isOwnPage(ext, sender)) return {ok: false, error: 'forbidden'};
+  if (pagePath(ext, sender) === '/approve.html' && !APPROVE_PAGE_ALLOWED.includes(type)) return {ok: false, error: 'forbidden'};
   if (VAULT_PAGE_ONLY.includes(type) && pagePath(ext, sender) !== '/unlock.html') return {ok: false, error: 'forbidden'};
+  if (APPROVE_PAGE_ONLY.includes(type) && pagePath(ext, sender) !== '/approve.html') return {ok: false, error: 'forbidden'};
+  if (WALLET_UI_ONLY.includes(type) && pagePath(ext, sender) !== '/popup.html' && pagePath(ext, sender) !== '/wallet.html') return {ok: false, error: 'forbidden'};
 
   switch (type) {
     case 'vault.setKeys': {
@@ -152,6 +185,8 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
         await lock(ext);
         throw e;
       }
+      // B1c §2.4: the unlock hook. If it throws, the session stays unlocked and the next queue access runs it again.
+      await runUnlockHook(ext, deps ?? {now: Date.now}).catch(e => console.warn('dApp unlock hook failed; the next queue access runs it again', e));
       return {ok: true};
     }
     case 'vault.lock':
@@ -252,9 +287,31 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
         return {ok: false, error: 'failed'};
       }
     }
+    case 'dapp.pending':
+      return deps === undefined ? {ok: false, error: 'unavailable'} : {ok: true, data: await pending(ext, deps)};
+    case 'dapp.decide': {
+      if (deps === undefined) return {ok: false, error: 'unavailable'};
+      const d = decideRequestOf(msg as Record<string, unknown>);
+      return d === null ? {ok: false, error: 'malformed'} : decide(ext, deps, d);
+    }
+    case 'dapp.grants.list':
+      return deps === undefined ? {ok: false, error: 'unavailable'} : listGrants(ext, deps);
+    case 'dapp.grants.revoke':
+      return deps === undefined ? {ok: false, error: 'unavailable'} : revokeGrant(ext, deps, (msg as {origin?: unknown}).origin);
+    case 'dapp.grants.undo':
+      return deps === undefined ? {ok: false, error: 'unavailable'} : undoRevoke(ext, deps, (msg as {undoToken?: unknown}).undoToken);
+    case 'dapp.grants.revokeAll':
+      return deps === undefined ? {ok: false, error: 'unavailable'} : revokeAll(ext, deps);
+    case 'dapp.blocked.list':
+      return deps === undefined ? {ok: false, error: 'unavailable'} : listBlocked(ext, deps);
+    case 'dapp.blocked.remove':
+      return deps === undefined ? {ok: false, error: 'unavailable'} : unblock(ext, deps, (msg as {host?: unknown}).host);
     case 'vault.storeEnvelope': {
       const {expectedRevision, envelope} = msg as {expectedRevision?: unknown; envelope?: unknown};
-      const r = await storeEnvelope(ext, expectedRevision, envelope);
+      const dropped: string[] = [];
+      const r = await storeEnvelope(ext, expectedRevision, envelope, keys => void dropped.push(...keys));
+      // B1c §2.1 (review 2 M9): a removed account's dApp grants go with it.
+      if (r === 'stored' && dropped.length > 0) await dropAccountGrants(ext, deps ?? {now: Date.now}, dropped).catch(e => console.warn('dApp grants of a removed account not removed', e));
       return r === 'stored' ? {ok: true} : {ok: false, error: r};
     }
     default:
