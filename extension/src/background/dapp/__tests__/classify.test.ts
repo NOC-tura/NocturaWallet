@@ -79,8 +79,38 @@ describe('the origin classifier', () => {
     expect(imitates('xn--phntom-app-0qi.com')).toEqual(['embedded', 'phantom.app']);
   });
 
-  it('unknown: everything else — including jupp.ag (the 4-character floor) and a two-label public suffix', () => {
-    for (const h of ['example.com', 'solana-mint-hub.xyz', 'jupiter.com', 'orchard.so', 'notcoin.io', 'jupp.ag', 'orca.co.uk', 'dapp.test']) {
+  it('lookalike rule e (rev 3.2, owner-delegated 2026-10-12): a listed brand as a subdomain label, left of the last two labels', () => {
+    // Free hosting: the brand is the whole subdomain label (equality).
+    expect(imitates('phantom.vercel.app')).toEqual(['subdomain', 'phantom.app']);
+    expect(imitates('raydium.pages.dev')).toEqual(['subdomain', 'raydium.io']);
+    // Equality reaches a 3-character label (jup): the 4-character floor is rule b's and only gates the edit distance.
+    expect(imitates('jup.netlify.app')).toEqual(['subdomain', 'jup.ag']);
+    // A swap (0→o) or one edit on a 4+-character listed label, under someone else's domain.
+    expect(imitates('phant0m.app.evil.com')).toEqual(['subdomain', 'phantom.app']);
+    expect(imitates('tensr.trade.evil.com')).toEqual(['subdomain', 'tensor.trade']);
+    // Every label left of the last two is checked, not only the leftmost.
+    expect(imitates('login.kamino.example.com')).toEqual(['subdomain', 'kamino.finance']);
+    // On the skeleton too for an xn-- label (the Task 1 ruling): xn--rydium-3nf decodes to r + Cyrillic a + ydium.
+    expect(imitates('xn--rydium-3nf.vercel.app')).toEqual(['subdomain', 'raydium.io']);
+    // Rule 1 still wins first: a listed domain's own subdomains stay verified.
+    expect(kind('app.noc-tura.io')).toBe('verified');
+    expect(kind('www.jup.ag')).toBe('verified');
+    expect(kind('phantom.phantom.app')).toBe('verified');
+    // Stated, accepted false positive (spec §2.5): a two-label public suffix puts the brand left of the last two labels.
+    expect(imitates('orca.co.uk')).toEqual(['subdomain', 'orca.so']);
+  });
+
+  it('rule e is whole-label: a brand inside a longer label, or past the 1-edit reach, stays unknown', () => {
+    for (const h of ['example.vercel.app', 'mydrift-notes.com', 'mydrift-notes.vercel.app', 'drift-notes.vercel.app', 'phantomwallet.vercel.app', 'jupi.netlify.app', 'www.example.com', 'app.dapp.test']) {
+      expect([h, classify(h)]).toEqual([h, {kind: 'unknown', international: false}]);
+    }
+    // The label LEFT of the TLD is rule b's, not rule e's: a 2-label host never reaches rule e.
+    expect(kind('orchard.so')).toBe('unknown');
+    expect(classify('xn--bcher-kva.vercel.app')).toEqual({kind: 'unknown', international: true});
+  });
+
+  it('unknown: everything else — including jupp.ag (the 4-character floor)', () => {
+    for (const h of ['example.com', 'solana-mint-hub.xyz', 'jupiter.com', 'orchard.so', 'notcoin.io', 'jupp.ag', 'dapp.test']) {
       expect([h, classify(h)]).toEqual([h, {kind: 'unknown', international: false}]);
     }
     expect(siteName('solana-mint-hub.xyz')).toBe('solana-mint-hub');

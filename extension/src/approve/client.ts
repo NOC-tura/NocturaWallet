@@ -18,7 +18,7 @@ export interface Site {
   kind: SiteKind;
   name: string;
   imitates: string | null;
-  rule: 'idn' | 'edit' | 'embedded' | 'swap' | null;
+  rule: 'idn' | 'edit' | 'embedded' | 'swap' | 'subdomain' | null;
   idn: IdnDetail | null;
   international: boolean;
 }
@@ -71,7 +71,7 @@ function siteOf(x: unknown): Site | undefined {
   const o = obj(x);
   if (o === undefined || (o.kind !== 'verified' && o.kind !== 'unknown' && o.kind !== 'lookalike') || !isStr(o.name) || !isBool(o.international)) return undefined;
   const imitates = nullOr(o.imitates, v => (isStr(v) ? v : undefined));
-  const rule = nullOr(o.rule, v => (v === 'idn' || v === 'edit' || v === 'embedded' || v === 'swap' ? v : undefined));
+  const rule = nullOr(o.rule, v => (v === 'idn' || v === 'edit' || v === 'embedded' || v === 'swap' || v === 'subdomain' ? v : undefined));
   const idn = nullOr(o.idn, idnOf);
   if (imitates === undefined || rule === undefined || idn === undefined) return undefined;
   return {kind: o.kind, name: o.name, imitates, rule, idn, international: o.international};

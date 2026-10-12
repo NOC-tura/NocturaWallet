@@ -64,7 +64,7 @@ export function OriginCard({site, origin, host}: {site: Site; origin: string; ho
 
 /**
  * The lookalike banner (§3.1): "This domain is not <listed domain>", then rule a's sentence — the character, its script
- * and code point, the Latin one it imitates, and the Punycode form — or Q05 for rules b–d. The decoded Unicode appears
+ * and code point, the Latin one it imitates, and the Punycode form — or Q05 for rules b–e. The decoded Unicode appears
  * here only (§2.5 Display: the background stripped every format character from it).
  */
 export function LookalikeBanner({site, host}: {site: Site; host: string}) {

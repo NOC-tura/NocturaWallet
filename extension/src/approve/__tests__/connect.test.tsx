@@ -192,6 +192,21 @@ describe('#47 lookalike — the flipped bar, the 2-second confirm, 47b’s gates
     expect(text('.s9-origin-card .name')).toBe('xn--phntom-4nf');
   });
 
+  it('rule e (rev 3.2): a brand as a subdomain label — the lookalike chrome, the host’s own label on the card, Q05; Reject and report blocks the host', async () => {
+    const w = await openWindow();
+    const {page, requestId} = await w.connect('https://phantom.vercel.app');
+    w.show();
+    await screen.findByText('Connect to this app?');
+    expect(text('.top-bar .title')).toBe('Suspicious origin');
+    expect([text('.s9-origin-card .name'), text('.s9-origin-card .dom'), text('.s9-origin-card .badge')]).toEqual(['vercel', 'phantom.vercel.app', 'Lookalike']);
+    expect(text('.s9-domain-warn .body')).toBe('This domain is not phantom.appIt looks like phantom.app but is a different site.');
+    expect(document.querySelector('.s9-ack-row')).toBeNull();
+    fireEvent.click(cta('Reject and report'));
+    await waitFor(() => expect(w.closed.n).toBe(1));
+    expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
+    expect(await w.ext.local.get(BLOCKED_KEY)).toEqual([{host: 'phantom.vercel.app', blockedAt: w.deps.clock.t, imitates: 'phantom.app'}]);
+  });
+
   it('Connect anyway → the confirm (I understand the risk held 2 s; Cancel goes back) → 47b’s two gates, session only', async () => {
     const w = await openWindow();
     await w.connect('https://tensr.trade');

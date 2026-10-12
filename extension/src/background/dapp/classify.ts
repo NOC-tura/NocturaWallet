@@ -4,10 +4,11 @@ import {decodeLabel} from './punycode';
 
 /**
  * The classifier (spec §2.5): a pure function of the host the browser reports (lower-case ASCII / punycode). Rules in
- * order, so rule 1 wins: verified, then lookalike by rule a (IDN), b (edit distance), c (embedded), d (swaps) — the
- * first hit names the listed domain it imitates — else unknown. Nothing here fetches anything (C6).
+ * order, so rule 1 wins: verified, then lookalike by rule a (IDN), b (edit distance), c (embedded), d (swaps), e (a
+ * brand as a subdomain label, rev 3.2) — the first hit names the listed domain it imitates — else unknown. Nothing
+ * here fetches anything (C6).
  */
-export type LookalikeRule = 'idn' | 'edit' | 'embedded' | 'swap';
+export type LookalikeRule = 'idn' | 'edit' | 'embedded' | 'swap' | 'subdomain';
 
 /** Rule a's banner facts: the first character that is not what it looks like, and the Latin one it imitates. */
 export interface IdnDetail {
@@ -150,6 +151,19 @@ export function classify(host: string): Classification {
   if (sld !== '' && (sldSwapped !== sld || (international && sldSkelSwapped !== sldSkel))) {
     const hit = KNOWN.find(k => k.label === sldSwapped || (international && (k.label === sldSkelSwapped || k.labelSkeleton === sldSkelSwapped)));
     if (hit !== undefined) return {kind: 'lookalike', rule: 'swap', imitates: hit.domain, idn: null};
+  }
+  // 2e. A brand as a subdomain label (rev 3.2, owner-delegated 2026-10-12): every label LEFT of the host's last two
+  // (`phantom.vercel.app`, `tensr.trade.evil.com`) is held against every listed second-level label — equal, or (a
+  // listed label of 4+ characters) within edit distance 1, or equal after rule d's swaps. Whole labels only:
+  // `mydrift-notes.vercel.app` is unknown. On the skeleton too for an `xn--` host, as rules b–d (Task 1 ruling).
+  const near = (f: string, target: string): boolean => {
+    const sw = swapped(f);
+    return f === target || (target.length >= 4 && editDistance(f, target) <= 1) || (sw !== f && sw === target);
+  };
+  for (const label of labels.slice(0, -2)) {
+    const labelSkel = international ? skel(label) : label;
+    const hit = KNOWN.find(k => near(label, k.label) || (international && (near(labelSkel, k.label) || near(labelSkel, k.labelSkeleton))));
+    if (hit !== undefined) return {kind: 'lookalike', rule: 'subdomain', imitates: hit.domain, idn: null};
   }
   return {kind: 'unknown', international};
 }
