@@ -65,6 +65,12 @@ export function editDistance(a: string, b: string): number {
   return at(a.length, b.length);
 }
 
+/**
+ * Within distance 1 — the lengths compared first: the distance is never below the length difference, so this answers
+ * exactly as `editDistance(a, b) <= 1` does, without building a (|a|+1)×(|b|+1) table for a 10 000-character label.
+ */
+const within1 = (a: string, b: string): boolean => Math.abs(a.length - b.length) <= 1 && editDistance(a, b) <= 1;
+
 /** The scripts rule a's banner can name; anything else is "a non-Latin letter" on screen. */
 const SCRIPTS = ['Latin', 'Cyrillic', 'Greek', 'Armenian', 'Cherokee', 'Georgian', 'Hebrew', 'Arabic', 'Coptic', 'Lisu', 'Vai', 'Thai', 'Devanagari', 'Han', 'Hiragana', 'Katakana', 'Hangul'];
 function scriptOf(ch: string): string | null {
@@ -132,7 +138,7 @@ export function classify(host: string): Classification {
   // matches (controller ruling, fix round 1: rules b, c, d run on the skeleton too, not only the raw host).
   if (sld !== '') {
     const hit = KNOWN.find(
-      k => k.label.length >= 4 && (editDistance(sld, k.label) <= 1 || (international && editDistance(sldSkel, k.labelSkeleton) <= 1)),
+      k => k.label.length >= 4 && (within1(sld, k.label) || (international && within1(sldSkel, k.labelSkeleton))),
     );
     if (hit !== undefined) return {kind: 'lookalike', rule: 'edit', imitates: hit.domain, idn: null};
   }
@@ -158,7 +164,7 @@ export function classify(host: string): Classification {
   // `mydrift-notes.vercel.app` is unknown. On the skeleton too for an `xn--` host, as rules b–d (Task 1 ruling).
   const near = (f: string, target: string): boolean => {
     const sw = swapped(f);
-    return f === target || (target.length >= 4 && editDistance(f, target) <= 1) || (sw !== f && sw === target);
+    return f === target || (target.length >= 4 && within1(f, target)) || (sw !== f && sw === target);
   };
   for (const label of labels.slice(0, -2)) {
     const labelSkel = international ? skel(label) : label;

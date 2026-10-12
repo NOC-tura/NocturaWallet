@@ -243,7 +243,7 @@ describe('#49 an undo the background refuses (rev 3.2, Q25 — owner-delegated 2
     expect(screen.queryByText(Q25)).toBeNull();
   });
 
-  it('a success still shows nothing (the row comes back), and a late refusal never replaces a newer revoke’s toast', async () => {
+  it('a late refusal never replaces a newer revoke’s toast (the newer toast and its UNDO stay; no Q25)', async () => {
     let release: (v: Awaited<ReturnType<Engine['dappUndo']>>) => void = () => undefined;
     await withUndo(() => new Promise(r => (release = r)));
     fireEvent.click(within((await revokeJupiter()).closest('.s10-undo-toast') as HTMLElement).getByRole('button', {name: 'UNDO'}));
@@ -253,6 +253,7 @@ describe('#49 an undo the background refuses (rev 3.2, Q25 — owner-delegated 2
     await act(async () => release({ok: false, error: 'unknown-token'}));
     await new Promise(r => setTimeout(r, 50));
     expect(screen.getByText('Tensor revoked')).toBeTruthy();
+    expect(within(screen.getByRole('status')).getByRole('button', {name: 'UNDO'})).toBeTruthy();
     expect(screen.queryByText(Q25)).toBeNull();
   });
 });

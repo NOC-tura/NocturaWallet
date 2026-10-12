@@ -92,6 +92,12 @@ describe('the origin classifier', () => {
     expect(imitates('login.kamino.example.com')).toEqual(['subdomain', 'kamino.finance']);
     // On the skeleton too for an xn-- label (the Task 1 ruling): xn--rydium-3nf decodes to r + Cyrillic a + ydium.
     expect(imitates('xn--rydium-3nf.vercel.app')).toEqual(['subdomain', 'raydium.io']);
+    // Rule d's swaps on a subdomain label (rn→m): two edits from magiceden, so only the swap clause reaches it.
+    expect(imitates('rnagiceden.vercel.app')).toEqual(['subdomain', 'magiceden.io']);
+    // A homoglyph AND one edit: xn--mgicedem-16g decodes to m + Cyrillic a + gicedem. Its skeleton (rnagicedern) is one
+    // edit from magiceden's own skeleton (rnagiceden) — and from nothing else — so only that comparison reaches it.
+    expect(decodedForDisplay('xn--mgicedem-16g.vercel.app')).toBe('m\u0430gicedem.vercel.app');
+    expect(imitates('xn--mgicedem-16g.vercel.app')).toEqual(['subdomain', 'magiceden.io']);
     // Rule 1 still wins first: a listed domain's own subdomains stay verified.
     expect(kind('app.noc-tura.io')).toBe('verified');
     expect(kind('www.jup.ag')).toBe('verified');
@@ -107,6 +113,14 @@ describe('the origin classifier', () => {
     // The label LEFT of the TLD is rule b's, not rule e's: a 2-label host never reaches rule e.
     expect(kind('orchard.so')).toBe('unknown');
     expect(classify('xn--bcher-kva.vercel.app')).toEqual({kind: 'unknown', international: true});
+  });
+
+  it('a very long label is answered at once (unknown): rules b and e compare lengths before any edit distance', () => {
+    const long = 'a'.repeat(10_000);
+    const t0 = performance.now();
+    expect(classify(`${long}.${long}.example.com`)).toEqual({kind: 'unknown', international: false});
+    expect(classify(`${long}.com`)).toEqual({kind: 'unknown', international: false});
+    expect(performance.now() - t0).toBeLessThan(50);
   });
 
   it('unknown: everything else — including jupp.ag (the 4-character floor)', () => {
