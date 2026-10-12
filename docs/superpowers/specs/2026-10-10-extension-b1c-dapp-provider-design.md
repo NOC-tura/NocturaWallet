@@ -7,6 +7,10 @@ M1–M12, L1–L13); M1 and M2 were the owner's decisions D10 and D11. **Rev 3**
 landed: §11. **Rev 3.1** (plan 1's Fable review 1, L7): two text corrections the plan's rulings R2 and R9 showed —
 §2.5/§6.1's IDN example (`xn--phntom-4nf.app`; the design's `xn--phntom-ezv.app` is not a Cyrillic "phantom") and §1.4's
 `dapp.blocked.remove {host}`. No rule changed. Next: owner review of this spec → one plan per part, each with its own Fable review.
+**Rev 3.2 (owner-delegated decisions 2026-10-12):** three decisions the owner delegated to the controller, after plan 1
+was built — §2.5 rule e (a listed brand as a subdomain label, with its accepted false-positive class; `orca.co.uk`
+moves from unknown to lookalike), §4.4's refused-undo toast (Q25) and §3.2's line for a request that can no longer be
+signed (Q26); §10 gains Q25 and Q26.
 
 **What this is.** The extension becomes a wallet any Solana site can use through Wallet Standard: connect, disconnect,
 events, `signMessage`, `signTransaction`, `signAndSendTransaction`, on `solana:mainnet` only. It builds the design's
@@ -385,7 +389,20 @@ each character through `confusables.ts` (Unicode `confusables.txt`, entries whos
      as a substring, and is not verified (`jup.ag.evil.com`, `jup-ag.io`, `app-noc-tura-io.com`; also
      `jup.agency.com` — stated, accepted: a false positive costs a click on "Connect anyway");
    - d. **Swaps:** `0→o`, `1→l`, `rn→m`, `vv→w` applied to the second-level label give a listed label (`n0c-tura.io`,
-     `rnagiceden.io`).
+     `rnagiceden.io`);
+   - e. **Brand as a subdomain label** (rev 3.2, owner-delegated 2026-10-12): every label of `h` **left of its last two
+     labels**, if it equals a listed domain's second-level label, or (that listed label of 4+ characters, as rule b) is
+     within Damerau–Levenshtein distance 1 of it, or rule d's swaps applied to it (at least one) give it — imitating
+     that listed domain (rule id `subdomain`; the banner is Q05). Also on the label's skeleton for a host with an
+     `xn--` label, as rules b–d (plan 1, Task 1 ruling). Whole labels only: `mydrift-notes.vercel.app` is unknown.
+     Rule 1 still wins first (`app.noc-tura.io`, `www.jup.ag` stay verified). Catches `phantom.vercel.app`,
+     `raydium.pages.dev`, `jup.netlify.app`, `phant0m.app.evil.com`, `tensr.trade.evil.com`,
+     `xn--rydium-3nf.vercel.app`. **Stated, accepted false positives:** any host whose subdomain label is a listed
+     brand's label, one edit from it or one swap from it — `meteor.example.com` (meteora), `draft.example.com`
+     (drift), `camino.example.com` (kamino), `dump.example.com` (pump), `orcas.example.org` (orca) — and a host under a
+     two-label public suffix, where the site's own name sits left of the last two labels (`orca.co.uk` is now a
+     lookalike of `orca.so`, no longer unknown). Each costs a click on "Connect anyway"; the banner's "looks like …
+     but is a different site" stays true.
 3. **Unknown:** everything else. **An unknown `h` with any `xn--` label** gets 47b's extra line *"This address uses
    international characters: <h>"* (Q18), keeping B1 §3's IDN warning (review M4.2).
 
@@ -470,7 +487,7 @@ active one; placed above "Stay connected".
   `h`'s second-level label, **never the imitated brand's name** (the design prints "Phantom"; a brand name on the card
   lends the site credit — §9). The brand appears only in the banner.
 - Banner "This domain is not <listed domain>" + for rule a: *"The "<char>" in this URL is <script name> letter
-  (U+XXXX), not a Latin "<latin>" (U+XXXX). The Punycode form is <h>."*; for rules b–d: Q05 *"It looks like <listed
+  (U+XXXX), not a Latin "<latin>" (U+XXXX). The Punycode form is <h>."*; for rules b–e (e: rev 3.2): Q05 *"It looks like <listed
   domain> but is a different site."* The design's "— a known phishing domain." is dropped (§9).
 - Sticky bar flipped: primary `.btn-destructive` **"Reject and report"**, tertiary "Connect anyway (not recommended)"
   (Q06). "Connect anyway" leads to the same 2-second confirm as #46 (§3.2 step 5), then to 47b's two gates;
@@ -503,7 +520,10 @@ cannot mask an earlier one (review M5):
    state, "Message · with structured-approval flag" when a keyword fired (review 2 M10.2); the message in mono,
    scrollable, as text; the footer
    *"This won't broadcast or move funds. <name> will use the signature only to verify you own this wallet."*;
-   [Reject] + [Sign]. Top-bar ✕ = Reject; disabled while signing.
+   [Reject] + [Sign]. Top-bar ✕ = Reject; disabled while signing. **Can no longer be signed** (rev 3.2): when the
+   request is live but its signing detail is gone (the account is unlocked no more, or the message is now refused), #46
+   keeps the overline, ✕ and the title, shows Q26 *"This request can no longer be signed. Reject it and ask the site to
+   try again."* under the title in the lede's body tier, and offers only [Reject] (the design does not draw this state).
 5. **Lookalike:** overline "Suspicious origin"; the short lede "A signature proves you control this wallet."; the banner
    (§3.1); in the preview, every non-ASCII character that `skel` maps to Latin is `<mark>`ed (as the design marks "а"
    in "Domain: phаntom.app"); primary "Reject and report"; tertiary "Sign anyway (not recommended)" → the design's
@@ -589,6 +609,9 @@ no back. It holds no state and no listener; it polls `dapp.pending` as §2.3 say
   pill on session grants (Q10), [Revoke].
 - **Revoke** (no confirmation, the design's safe direction): the row leaves; the design's **undo toast**: "<name>
   revoked", countdown "undo · <s> s", [UNDO], single-shot, 5 s (review M10.3); Undo → `dapp.grants.undo` (§2.7).
+  **A refused undo** (rev 3.2; any refusal of §2.7, or a failed call): the toast reads Q25 *"Could not undo — <name>
+  stays disconnected."* for 5 s, with no countdown and no [UNDO], then goes; a `locked` refusal reloads the popup as
+  every other locked path does. A newer revoke's toast is never replaced by a late refusal.
 - **Detail sheet** (row tap): Permissions — "Read public keys · Granted at connect — view-only", "Sign transactions
   (with prompt) · Each request asks before signing", "Sign messages (with prompt)", each with the grant date; Session —
   Connected <date>, Last used <relative>, "Until revoked" / "This session only"; **Last 3 interactions** (type, time,
@@ -661,9 +684,11 @@ Each item has a **named mutation** that must turn a test red, and a positive con
   marker cleared on failure and when stale.
 - **Classifier (§2.5):** a table — verified (`app.noc-tura.io`, `www.jup.ag`); lookalike by each rule
   (`xn--phntom-4nf.app`, `xn--phntom-4nf.app.evil.com`, a combining-mark `xn--` form of `jup.ag`, `tensr.trade`,
-  `orcaa.so`, `orca.io`, `jup.ag.evil.com`, `jup-ag.io`, `app-noc-tura-io.com`, `n0c-tura.io`, `rnagiceden.io`); unknown
-  (`example.com`, `solana-mint-hub.xyz`, `jupiter.com`, `orchard.so`, `notcoin.io`, `jupp.ag` — the 4-char floor,
-  `orca.co.uk`); verified wins over IDN (`xn--….jup.ag`); an unknown `xn--` host gets Q18;
+  `orcaa.so`, `orca.io`, `jup.ag.evil.com`, `jup-ag.io`, `app-noc-tura-io.com`, `n0c-tura.io`, `rnagiceden.io`; rule e,
+  rev 3.2: `phantom.vercel.app`, `raydium.pages.dev`, `jup.netlify.app`, `phant0m.app.evil.com`, `tensr.trade.evil.com`,
+  `xn--rydium-3nf.vercel.app`, `orca.co.uk`); unknown (`example.com`, `solana-mint-hub.xyz`, `jupiter.com`, `orchard.so`,
+  `notcoin.io`, `jupp.ag` — the 4-char floor; rule e's controls `example.vercel.app`, `mydrift-notes.com`,
+  `mydrift-notes.vercel.app`); verified wins over IDN (`xn--….jup.ag`); an unknown `xn--` host gets Q18;
   an invalid punycode label → unknown, no throw; the decoder against RFC 3492's sample strings; display strips bidi
   controls.
 - **signMessage (§3.2):** each refusal asserts its reason; the printable legacy-message artifact; CRLF SIWS accepted, a
@@ -798,7 +823,7 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
 | Q02 | #47 session option | "Disconnects when the wallet locks or the browser closes" |
 | Q03 | #47 persistent option | "Saved in Settings → Connected dApps · revoke any time" |
 | Q04 | #47b ack 1 | "I understand this domain is not on the verified list" |
-| Q05 | lookalike, rules b–d | "It looks like <listed domain> but is a different site." |
+| Q05 | lookalike, rules b–e (e: rev 3.2) | "It looks like <listed domain> but is a different site." |
 | Q06 | #47 lookalike tertiary | "Connect anyway (not recommended)" |
 | Q07 | #31 row meta | "<n> connected" |
 | Q08 | #37 bullet | "dApp connections and blocked sites" |
@@ -816,6 +841,8 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
 | Q22 | locked window title | "Noctura is locked" |
 | Q23 | locked window body | "Click the Noctura icon in your browser's toolbar and unlock. This request will wait here." |
 | Q24 | window budget notice | "Too many requests from sites in the last few minutes — some were declined without asking you." |
+| Q25 | #49 undo refused (rev 3.2, owner-delegated 2026-10-12) | "Could not undo — <name> stays disconnected." |
+| Q26 | #46 request can no longer be signed (rev 3.2, owner-delegated 2026-10-12) | "This request can no longer be signed. Reject it and ask the site to try again." |
 
 (Q09 and Q11 of rev 1 are gone: the window no longer shows "expired" for a request it did not show, and the undo toast
 uses the design's drawn strings.)

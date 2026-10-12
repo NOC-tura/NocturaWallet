@@ -21,7 +21,7 @@ import {shot} from './visualTab';
 // those shots already show the committed behaviour with no code change needed here.
 declare const chrome: {
   runtime: {sendMessage(m: unknown): Promise<unknown>};
-  storage: {local: {set(o: object): Promise<void>}; session: {set(o: object): Promise<void>}};
+  storage: {local: {set(o: object): Promise<void>}; session: {set(o: object): Promise<void>; get(k: string): Promise<Record<string, unknown>>}};
 };
 const DAY = 86_400_000;
 const set = (sw: Worker, o: object) => sw.evaluate(x => chrome.storage.local.set(x), o);
@@ -256,6 +256,8 @@ test('visual · #46: verified (SIWS), unknown, keyword alert, lookalike and its 
     await h.sw.evaluate(a => chrome.storage.session.set({v1_session: {accounts: [a]}}), {index: SAVINGS.index, publicKey: SAVINGS.publicKey, secretKey: SAVINGS.secretKey});
     await win.evaluate(() => void window.dispatchEvent(new Event('focus')));
     await expect(win.getByRole('button', {name: 'Sign', exact: true})).toHaveCount(0);
+    // Rev 3.2 (Q26, owner-delegated 2026-10-12): the line under the title says why; asserted before the shot.
+    await expect(win.getByText('This request can no longer be signed. Reject it and ask the site to try again.')).toBeVisible();
     await still(win, '46-sign-null', win.getByRole('button', {name: 'Reject'}));
     await dismiss(win);
     await seedUnlockedWallet(h.sw);
@@ -310,7 +312,7 @@ test('visual · #46: verified (SIWS), unknown, keyword alert, lookalike and its 
   }
 });
 
-test('visual · #49 and #31: populated, sorted by name, detail, hold, undo toast, blocked section, empty; #31’s Connected dApps row', async () => {
+test('visual · #49 and #31: populated, sorted by name, detail, hold, undo toast, undo refused, blocked section, empty; #31’s Connected dApps row', async () => {
   test.setTimeout(240_000);
   const {h, server} = await scene();
   try {
@@ -388,6 +390,20 @@ test('visual · #49 and #31: populated, sorted by name, detail, hold, undo toast
     await p.locator('.s10-app-row', {hasText: 'magiceden.io'}).getByRole('button', {name: 'Revoke'}).click();
     await still(p, '49e-undo-toast', p.getByText('Magic Eden revoked'));
     await expect(p.locator('.s10-undo-toast .timer')).toHaveText('undo · 5 s');
+    // New shot (rev 3.2, Q25, owner-delegated 2026-10-12): the background refuses the undo — here its token is gone
+    // from the session's undo buffer (`unknown-token`, the same answer an expired one gets). The toast says so, with no
+    // countdown and no UNDO, for five seconds (held on the page's paused clock for the shot).
+    await h.sw.evaluate(async () => {
+      const k = 'v1_dapp_session';
+      const cur = ((await chrome.storage.session.get(k))[k] ?? {}) as object;
+      await chrome.storage.session.set({[k]: {...cur, undo: []}});
+    });
+    await p.locator('.s10-undo-toast').getByRole('button', {name: 'UNDO'}).click();
+    const refused = p.getByText('Could not undo — Magic Eden stays disconnected.');
+    await expect(refused).toBeVisible();
+    await expect(p.locator('.s10-undo-toast .timer')).toHaveCount(0);
+    await expect(p.locator('.s10-undo-toast').getByRole('button')).toHaveCount(0);
+    await still(p, '49e-undo-refused', refused);
     await p.clock.resume();
     // 49b: empty (the blocked section stays below it).
     await p.evaluate(() => chrome.runtime.sendMessage({type: 'dapp.grants.revokeAll'}));
