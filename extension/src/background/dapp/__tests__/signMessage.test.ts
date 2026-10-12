@@ -157,6 +157,19 @@ describe('page.signMessage → #46 → the signature (§3.2 steps 1, 4, 7)', () 
     expect(c.ext.approval.created).toEqual([]);
   });
 
+  // Spec §9 (final review, declared): a MALFORMED payload is invalid-request before rule 1 — the page learns only that
+  // its own payload was malformed, never whether a grant exists; a well-formed one from the same page is unauthorized.
+  it('no grant: a malformed payload is invalid-request (before rule 1), a well-formed one unauthorized — no grant leaks either way', async () => {
+    const none = await setup({grant: null});
+    expect(await none.page.ask({type: 'page.signMessage', id: 'm1', account: ACCOUNT.publicKey, message: '%%%'})).toEqual({id: 'm1', error: 'invalid-request'});
+    expect(await none.page.ask({type: 'page.signMessage', id: 'm2', account: 'not-a-key', message: base64.encode(enc('hello'))})).toEqual({id: 'm2', error: 'invalid-request'});
+    expect(await none.sign('m3', 'hello')).toEqual({id: 'm3', error: 'unauthorized'});
+    // The same answers with a grant: the malformed refusal does not depend on the grant.
+    const c = await setup();
+    expect(await c.page.ask({type: 'page.signMessage', id: 'm1', account: ACCOUNT.publicKey, message: '%%%'})).toEqual({id: 'm1', error: 'invalid-request'});
+    expect(await c.page.ask({type: 'page.signMessage', id: 'm2', account: 'not-a-key', message: base64.encode(enc('hello'))})).toEqual({id: 'm2', error: 'invalid-request'});
+  });
+
   it('rule 2 and 3 refusals open no window: a transaction as a message, SIWS for another address, malformed base64', async () => {
     const c = await setup();
     expect(await c.sign('t', printableLegacyMessage())).toEqual({id: 't', error: 'invalid-request'});

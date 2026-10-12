@@ -130,7 +130,9 @@ A third partition beside the existing privileged ones (`messages.ts`).
 
 - **The origin rule, for messages and for ports** (B1 §3 + review M3): accepted only if `sender.id === runtime.id`,
   `sender.tab` present, `sender.frameId === 0`, `sender.origin` an `https:` origin, and `sender.documentLifecycle`
-  absent or `'active'` (C16). Opaque / `null` origins refused; **no fallback to `sender.url`**. `onConnect` applies the
+  absent or `'active'` (C16). Opaque / `null` origins refused, and a trailing-dot host (`https://dapp.test.` — a distinct
+  origin to the browser, the same site to blocks, cooldowns and C3's per-host cap) refused (final review I3); **no
+  fallback to `sender.url`**. `onConnect` applies the
   same rule to `port.sender`; a port that fails it is disconnected at once. Each port is keyed `(tabId, origin)` from
   `port.sender` — never from anything the page sends.
 - A development build (`NOCTURA_DEV`) may accept `http://localhost` and `http://127.0.0.1`; a store build never (gated,
@@ -164,7 +166,9 @@ M3), so an ungranted page learns nothing about lock timing.
 `/approve.html`; for an extension's own page the browser sets both): `dapp.pending` → the head request as the window
 shows it (a `deciding` head is returned as `{deciding: true}` with its origin, never as a decidable request), or
 `{locked: true}`, or `{none: true}`, plus `{windowNotice?}` (Q24) and `{waiting: n}`; `dapp.decide {requestId,
-decision: 'approve' | 'reject' | 'report' | 'block', account?, scope?}` (review 2 L4).
+decision: 'approve' | 'reject' | 'report' | 'block', account?, scope?}` (review 2 L4). **And `approve.html` may send
+nothing else** — an inclusive list for that sender (final review I2): it is the one extension page a site can cause
+to exist, so every other privileged type from it (`activity.ping`, `vault.*`, `wallet.*`, …) is refused `forbidden`.
 **Privileged, from the popup/tab:** `dapp.grants.list`, `dapp.grants.revoke {origin}` → `{undoToken}`,
 `dapp.grants.undo {undoToken}`, `dapp.grants.revokeAll`, `dapp.blocked.list`, `dapp.blocked.remove {host}` (blocks are by host, §2.6; rev 3.1).
 
@@ -187,7 +191,10 @@ decision: 'approve' | 'reject' | 'report' | 'block', account?, scope?}` (review 
 3. The background delivers an answer on every live port keyed to that `(tabId, origin)`.
 4. The relay posts it to the page and sends `page.ack`; the entry is then deleted. An answered entry that is never acked
    is deleted 10 minutes after it was answered.
-5. If the port was down, the relay's `page.resume` after reconnecting returns the stored answer. **A decided request is
+5. If the port was down, the relay's `page.resume` after reconnecting returns the stored answer. A request the relay
+   re-sends (the same `id`: its `accepted` was lost with the port) that was answered meanwhile is answered inline,
+   `{id, result | error}` — never `{accepted}` plus a delivery, which the relay would drop as an answer to a
+   `requestId` it does not yet await (final review I1); the entry is then dropped by the 10-minute rule below. **A decided request is
    never re-run** (tests: worker restart between `deciding` and `answered` → exactly one signature, mutation "no
    `deciding` state" → red; a restart after "shown" → the page gets the one answer, mutation "drop the re-delivery" → red;
    a second `dapp.decide` for a `deciding` entry refused).
@@ -779,6 +786,7 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
 | design frame 916 px high | the window is 720 px; the body scrolls, the sticky bar stays |
 | unlock inside the flow (implied by the design's modal stack) | the locked window points to the toolbar (D11) |
 | first six / last six highlighted on review screens | B1 §3 (owner): labels + first-send warning, unchanged |
+| §3.2's order: rule 1 (`unauthorized`) before any other check | a **malformed** `page.signMessage` payload (`message` not a string, not base64 or over the size bound; `account` not a base58 32-byte key) is answered `invalid-request` before rule 1 runs (plan-mandated, Task 6). No leak: a page without a grant learns only that its own payload was malformed, never whether a grant exists; a well-formed request keeps rule 1's order |
 
 ---
 
