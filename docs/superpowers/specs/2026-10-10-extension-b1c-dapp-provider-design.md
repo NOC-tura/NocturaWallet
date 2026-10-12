@@ -611,7 +611,9 @@ no back. It holds no state and no listener; it polls `dapp.pending` as §2.3 say
   revoked", countdown "undo · <s> s", [UNDO], single-shot, 5 s (review M10.3); Undo → `dapp.grants.undo` (§2.7).
   **A refused undo** (rev 3.2; any refusal of §2.7, or a failed call): the toast reads Q25 *"Could not undo — <name>
   stays disconnected."* for 5 s, with no countdown and no [UNDO], then goes; a `locked` refusal reloads the popup as
-  every other locked path does. A newer revoke's toast is never replaced by a late refusal.
+  every other locked path does; a `granted` refusal (the site was approved again meanwhile, so it is not disconnected)
+  shows no Q25 — the toast closes and the list re-reads, bringing the row back. A newer revoke's toast is never
+  replaced by a late refusal.
 - **Detail sheet** (row tap): Permissions — "Read public keys · Granted at connect — view-only", "Sign transactions
   (with prompt) · Each request asks before signing", "Sign messages (with prompt)", each with the grant date; Session —
   Connected <date>, Last used <relative>, "Until revoked" / "This session only"; **Last 3 interactions** (type, time,

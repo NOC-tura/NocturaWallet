@@ -315,8 +315,9 @@ export function ConnectedApps({onBack, clock = realClock}: {onBack: () => void; 
     if (!alive.current) return;
     if (!r.ok && r.error === 'locked') return void reload();
     // Rev 3.2 (Q25): any other refusal — or a failed call — says so for five seconds instead of vanishing. A newer
-    // revoke's toast (with its own live UNDO) is never replaced by this late answer.
-    if (!r.ok) setToast(t => t ?? {name, token: '', until: m.now() + UNDO_MS, refused: true});
+    // revoke's toast (with its own live UNDO) is never replaced by this late answer. Controller ruling: `granted` (the
+    // site was approved again meanwhile) is not shown — "stays disconnected" would be untrue; the re-read brings the row back.
+    if (!r.ok && r.error !== 'granted') setToast(t => t ?? {name, token: '', until: m.now() + UNDO_MS, refused: true});
     await load();
   };
   const unblock = async (host: string) => {

@@ -197,8 +197,22 @@ describe('#49 an undo the background refuses (rev 3.2, Q25 — owner-delegated 2
     expect(((await w.ext.local.get(GRANTS_KEY)) as Grant[]).map(g => g.origin)).toEqual(['https://tensor.trade']);
   });
 
-  it('every refusal the background names, and a failed call, show Q25', async () => {
-    for (const error of ['unknown-token', 'blocked', 'granted', 'unknown-account', 'cap', 'scope', 'malformed', 'failed'] as const) {
+  it('controller ruling: a `granted` refusal (the site was re-approved meanwhile) shows no Q25 — the toast closes, the re-read brings the row back', async () => {
+    const w = await show();
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    fireEvent.click(within(rows()[0]!).getByRole('button', {name: 'Revoke'}));
+    const toast = await screen.findByRole('status');
+    // Approved again in the window meanwhile: the grant is back before UNDO is pressed (§2.7's `granted`).
+    await w.ext.local.set(GRANTS_KEY, GRANTS);
+    fireEvent.click(within(toast).getByRole('button', {name: 'UNDO'}));
+    await waitFor(() => expect(rows().map(r => r.querySelector('.name')?.textContent)).toEqual(['Jupiter', 'Tensor']));
+    await new Promise(r => setTimeout(r, 50));
+    expect(screen.queryByText(Q25)).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('every other refusal the background names, and a failed call, show Q25', async () => {
+    for (const error of ['unknown-token', 'blocked', 'unknown-account', 'cap', 'scope', 'malformed', 'failed'] as const) {
       await withUndo(async () => ({ok: false, error}));
       fireEvent.click(within((await revokeJupiter()).closest('.s10-undo-toast') as HTMLElement).getByRole('button', {name: 'UNDO'}));
       expect([error, (await screen.findByText(Q25)).className]).toEqual([error, 'body']);
