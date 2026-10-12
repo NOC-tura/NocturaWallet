@@ -352,6 +352,34 @@ describe('the effect section’s own re-checks (review 1 M4)', () => {
     expect(await ext.local.get(GRANTS_KEY)).toBeUndefined();
     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
   });
+
+  // Final-fix item 2 (§2.1's cap is a hard invariant): an undo landing in the gap at 199 makes it 200 — the effect
+  // section must refuse the 201st, never write it and silently evict the oldest.
+  it('the cap reached between deciding and the grant (an undo in the gap): rejected, no 201st grant, the oldest kept', async () => {
+    const {ext, deps, decide} = await setup();
+    const many = Array.from({length: MAX_GRANTS}, (_, i) => grant(`https://s${i}.test`, {connectedAt: 1 + i}));
+    await ext.local.set(GRANTS_KEY, many.slice(1));
+    const {page, requestId} = await request(ext, deps, JUP);
+    // Once, at the first alarm (the deciding section's queue tick, before the effect): later ticks must not overwrite
+    // what the effect wrote, or the grants assertion below could never fail.
+    let gap = true;
+    ext.alarms.create = async () => {
+      if (gap) await ext.local.set(GRANTS_KEY, many);
+      gap = false;
+    };
+    expect(await decide({requestId, decision: 'approve', account: ACCOUNT.publicKey, scope: 'persistent'})).toEqual({ok: true});
+    expect(((await ext.local.get(GRANTS_KEY)) as Grant[]).map(g => g.origin)).toEqual(many.map(g => g.origin));
+    expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
+  });
+
+  it('positive control: at 199 with nothing in the gap, the 200th grant is written', async () => {
+    const {ext, deps, decide} = await setup();
+    await ext.local.set(GRANTS_KEY, Array.from({length: MAX_GRANTS - 1}, (_, i) => grant(`https://s${i}.test`)));
+    const {page, requestId} = await request(ext, deps, JUP);
+    expect(await decide({requestId, decision: 'approve', account: ACCOUNT.publicKey, scope: 'persistent'})).toEqual({ok: true});
+    expect((await ext.local.get(GRANTS_KEY)) as Grant[]).toHaveLength(MAX_GRANTS);
+    expect(page.answersFor(requestId)).toEqual([{requestId, result: {accounts: [ACCOUNT.publicKey]}}]);
+  });
 });
 
 // Task 4's own controller checks (impl prompt), each with its own test since the brief has none:

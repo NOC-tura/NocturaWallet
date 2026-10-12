@@ -229,7 +229,10 @@ async function finishConnect(ext: Ext, deps: Pick<WalletDeps, 'now'>, requestId:
     // The section's own checks again: a block or an account removed since `deciding` was written end it here (each
     // tested, review 1 M4). A lock cannot reach this line — the lock hook answers a `deciding` entry first — so
     // `tx.session === null` is the type's narrowing and a second line of defence.
-    if (account === null || scope === null || tx.session === null || !tx.session.some(a => a.publicKey === account) || isBlocked(tx.blocked, e.host)) {
+    // Final-fix item 2: and §2.1's cap — an undo between the sections can restore the 200th grant meanwhile; the
+    // 201st is refused here, never written over the oldest (the same condition as approvalRefused's `cap` row).
+    const capped = grantIn(tx, e.origin) === null && tx.grants.length >= MAX_GRANTS;
+    if (account === null || scope === null || tx.session === null || !tx.session.some(a => a.publicKey === account) || isBlocked(tx.blocked, e.host) || capped) {
       answer(fx, e, {error: 'rejected'}, tx.now);
       return;
     }
