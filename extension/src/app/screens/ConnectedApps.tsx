@@ -526,7 +526,7 @@ function UndoToast({toast, now, onUndo}: {toast: Toast; now: number; onUndo: () 
   const left = Math.max(1, Math.ceil((toast.until - now) / 1000));
   if (toast.refused)
     return (
-      <div className="s10-undo-toast" role="status" aria-live="polite">
+      <div className="s10-undo-toast app-undo-refused" role="status" aria-live="polite">
         <ExtIcon name="trash" size={18} />
         <span className="body">{CONNECTED_TEXT.undoRefused(toast.name)}</span>
       </div>

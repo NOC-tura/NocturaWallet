@@ -188,6 +188,7 @@ describe('#49 an undo the background refuses (rev 3.2, Q25 — owner-delegated 2
     fireEvent.click(within(toast).getByRole('button', {name: 'UNDO'}));
     const refused = await screen.findByText(Q25);
     const box = refused.closest('.s10-undo-toast') as HTMLElement;
+    expect(box.className).toBe('s10-undo-toast app-undo-refused');
     expect([box.getAttribute('role'), box.querySelector('.body')?.textContent, box.querySelector('.timer'), box.querySelector('.undo-btn'), within(box).queryAllByRole('button')]).toEqual(['status', Q25, null, null, []]);
     expect(unstyledClasses(box, SELECTORS)).toEqual([]);
     expect(screen.queryByText('Jupiter revoked')).toBeNull();

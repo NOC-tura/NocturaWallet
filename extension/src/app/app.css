@@ -1879,3 +1879,11 @@ body:has(.app-window) {
 .s10-undo-toast .undo-btn {
   cursor: pointer;
 }
+/* Rev 3.2 (Q25): the refused toast's sentence carries the site's name (C7: up to a whole DNS label), so it wraps inside
+   the popup instead of running off both edges as the design's one-line `white-space: nowrap` would; a short name
+   still sits on one line (max-content under the cap). */
+.s10-undo-toast.app-undo-refused {
+  white-space: normal;
+  width: max-content;
+  max-width: calc(100% - 2 * var(--space-4));
+}
