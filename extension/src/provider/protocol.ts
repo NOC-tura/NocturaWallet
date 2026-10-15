@@ -9,5 +9,6 @@ export const FROM_RELAY = 'noctura-relay';
 export const METHOD_TYPES = ['page.connect', 'page.disconnect', 'page.signMessage', 'page.signTransaction', 'page.signAndSendTransaction'] as const;
 export type MethodType = (typeof METHOD_TYPES)[number];
 /** The stable codes a page can get (§1.6, C10). */
-export const ERROR_CODES = ['rejected', 'unauthorized', 'request-pending', 'busy', 'timeout', 'invalid-request'] as const;
+/** Spec §1.6; `send-failed` is B1c-2's (rev 3.3: a broadcast the user approved that never reached the network). */
+export const ERROR_CODES = ['rejected', 'unauthorized', 'request-pending', 'busy', 'timeout', 'invalid-request', 'send-failed'] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

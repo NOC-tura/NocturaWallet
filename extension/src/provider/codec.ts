@@ -17,6 +17,17 @@ const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 /** A Solana address's 32 bytes, or null for anything that is not one. */
 export function addressBytes(address: string): Uint8Array | null {
   if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) return null;
+  return base58Bytes(address, 32);
+}
+
+/** B1c-2: a transaction signature's 64 bytes (base58, 64–88 characters), or null for anything that is not one. */
+export function signatureBytes(signature: string): Uint8Array | null {
+  if (!/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(signature)) return null;
+  return base58Bytes(signature, 64);
+}
+
+/** base58 → exactly `length` bytes (leading '1's are zero bytes), or null. The caller checked the alphabet. */
+function base58Bytes(address: string, length: number): Uint8Array | null {
   let n = 0n;
   for (const c of address) n = n * 58n + BigInt(ALPHABET.indexOf(c));
   const bytes: number[] = [];
@@ -28,5 +39,5 @@ export function addressBytes(address: string): Uint8Array | null {
     if (c !== '1') break;
     bytes.unshift(0);
   }
-  return bytes.length === 32 ? Uint8Array.from(bytes) : null;
+  return bytes.length === length ? Uint8Array.from(bytes) : null;
 }

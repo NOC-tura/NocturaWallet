@@ -60,7 +60,8 @@ export function userRejected(tx: Tx, fx: Effects, e: Entry): void {
   answer(fx, e, {error: 'rejected'}, tx.now);
   tx.limits = withRejection(tx.limits, e.host, e.tabId, tx.now);
   const g = grantIn(tx, e.origin);
-  if (g !== null) putGrant(tx, withRecent(g, e.type, tx.now, 'rejected'));
+  // A mismatch notice was never this origin's request with its grant (B1c-2): nothing to record on it.
+  if (g !== null && e.type !== 'mismatch') putGrant(tx, withRecent(g, e.type, tx.now, 'rejected'));
 }
 
 /** Answers an origin's `queued` entries (never a `deciding` one: its effect is running) with this error. */

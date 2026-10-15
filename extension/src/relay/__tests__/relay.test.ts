@@ -194,7 +194,7 @@ describe('the relay', () => {
     expect(relayProtocol.METHOD_TYPES).toEqual(providerProtocol.METHOD_TYPES);
     expect([relayProtocol.FROM_PROVIDER, relayProtocol.FROM_RELAY]).toEqual([providerProtocol.FROM_PROVIDER, providerProtocol.FROM_RELAY]);
     expect(relayProtocol.PAGE_PORT).toBe(PAGE_PORT);
-    // Plan 1's background serves the three method types it implements plus the relay's own three; B1c-2 adds the rest.
-    expect([...PAGE_TYPES].sort()).toEqual(['page.ack', 'page.connect', 'page.disconnect', 'page.ping', 'page.resume', 'page.signMessage']);
+    // B1c-2: the background serves all five method types the relay forwards, plus the relay's own three.
+    expect([...PAGE_TYPES].sort()).toEqual([...relayProtocol.METHOD_TYPES, 'page.ack', 'page.ping', 'page.resume'].sort());
   });
 });

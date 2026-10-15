@@ -19,10 +19,17 @@ import {LIMITS_KEY, limitsOf, type Limits} from './limits';
  */
 export const DAPP_SESSION_KEY = 'v1_dapp_session';
 
-export type ErrorCode = 'rejected' | 'unauthorized' | 'request-pending' | 'busy' | 'timeout' | 'invalid-request';
-export const ERROR_CODES: readonly ErrorCode[] = ['rejected', 'unauthorized', 'request-pending', 'busy', 'timeout', 'invalid-request'];
+/** Spec §1.6. `send-failed` (B1c-2, rev 3.3): an approved `signAndSendTransaction` whose bytes never reached the network. */
+export type ErrorCode = 'rejected' | 'unauthorized' | 'request-pending' | 'busy' | 'timeout' | 'invalid-request' | 'send-failed';
+export const ERROR_CODES: readonly ErrorCode[] = ['rejected', 'unauthorized', 'request-pending', 'busy', 'timeout', 'invalid-request', 'send-failed'];
 export type Answer = {result: Record<string, unknown>} | {error: ErrorCode};
-export type EntryType = 'connect' | 'signMessage';
+/**
+ * B1c-2: the two transaction requests, and `mismatch` — the window's notice that a site asked to sign with an account
+ * granted to another origin (#48 "origin-mismatch · auto-reject"): the page was answered `unauthorized` at once; the
+ * entry only shows the user what was refused, and never has a decidable approval.
+ */
+export type EntryType = 'connect' | 'signMessage' | 'signTransaction' | 'signAndSendTransaction' | 'mismatch';
+export const ENTRY_TYPES: readonly EntryType[] = ['connect', 'signMessage', 'signTransaction', 'signAndSendTransaction', 'mismatch'];
 export type Decision = 'approve' | 'reject' | 'report' | 'block';
 
 /** One request that needs the user (§1.5 step 1). */
@@ -40,6 +47,10 @@ export interface Entry {
   /** signMessage: the account it names and the message, base64. */
   account: string | null;
   message: string | null;
+  /** signTransaction / signAndSendTransaction (B1c-2): the transactions exactly as the page sent them, base64; else null. */
+  transactions: string[] | null;
+  /** mismatch (B1c-2): the origin the named account is granted to; else null. */
+  granted: string | null;
   arrivedAt: number;
   state: 'queued' | 'deciding' | 'answered';
   /** The worker instance that wrote `deciding` (C17): another instance's `deciding` entry is a restart. */
@@ -108,7 +119,11 @@ export function entryOf(x: unknown): Entry | null {
   if (typeof x !== 'object' || x === null) return null;
   const o = x as Record<string, unknown>;
   if (!isStr(o.requestId) || !isStr(o.pageId) || !isStr(o.origin) || !isStr(o.host) || !isTime(o.tabId) || !isNullStr(o.documentId)) return null;
-  if ((o.type !== 'connect' && o.type !== 'signMessage') || !isNullStr(o.account) || !isNullStr(o.message) || !isTime(o.arrivedAt)) return null;
+  if (typeof o.type !== 'string' || !(ENTRY_TYPES as readonly string[]).includes(o.type) || !isNullStr(o.account) || !isNullStr(o.message) || !isTime(o.arrivedAt)) return null;
+  // B1c-2's fields: absent on an entry an older background wrote (read as null), else exactly their shape.
+  const transactions = o.transactions === undefined || o.transactions === null ? null : Array.isArray(o.transactions) && o.transactions.every(isStr) ? (o.transactions as string[]).slice() : undefined;
+  const granted = o.granted === undefined ? null : isNullStr(o.granted) ? o.granted : undefined;
+  if (transactions === undefined || granted === undefined) return null;
   if (!isStr(o.state) || !STATES.includes(o.state) || !isNullStr(o.decidedBy) || (o.answeredAt !== null && !isTime(o.answeredAt))) return null;
   if (o.decidingAt !== null && !isTime(o.decidingAt)) return null;
   const decision = decisionOf(o.decision);
@@ -121,9 +136,11 @@ export function entryOf(x: unknown): Entry | null {
     host: o.host,
     tabId: o.tabId,
     documentId: o.documentId,
-    type: o.type,
+    type: o.type as EntryType,
     account: o.account,
     message: o.message,
+    transactions,
+    granted,
     arrivedAt: o.arrivedAt,
     state: o.state as Entry['state'],
     decidedBy: o.decidedBy,

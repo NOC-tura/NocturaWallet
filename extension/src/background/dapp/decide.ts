@@ -250,6 +250,8 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
     if (e?.state === 'answered' && e.answer !== null && 'error' in e.answer && e.answer.error === 'timeout') return 'expired';
     // head: only the queue head, and only while `queued` (a `deciding` one is never decided twice).
     if (e === undefined || headOf(tx) !== e || e.state !== 'queued') return 'not-head';
+    // B1c-2: a mismatch notice is only ever dismissed (#48 "origin-mismatch · auto-reject" has no approval path).
+    if (e.type === 'mismatch' && d.decision !== 'reject') return 'malformed';
     if (d.decision === 'reject') {
       userRejected(tx, fx, e);
       return 'done';
@@ -262,6 +264,8 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
       blockHost(tx, fx, e.host);
       return 'done';
     }
+    // Task 4 gives a transaction request its approval path.
+    if (e.type !== 'connect' && e.type !== 'signMessage') return 'malformed';
     const refused = approvalRefused(tx, e, d);
     if (refused !== null) return refused;
     e.state = 'deciding';
