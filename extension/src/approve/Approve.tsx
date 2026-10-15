@@ -3,6 +3,8 @@ import type {ApproveClient, Decision, PendingView} from './client';
 import {Connect} from './Connect';
 import {Locked} from './Locked';
 import {Sign} from './Sign';
+import {Tx} from './Tx';
+import {Mismatch} from './Mismatch';
 
 /** §2.3 (review 2 M3, review 1 L1): the window polls this often while it shows anything — so an unlock, an expiry or a new head reaches it. */
 export const POLL_MS = 1_000;
@@ -79,10 +81,11 @@ export function Approve({client, close}: {client: ApproveClient; close: () => vo
 
   const decide = useCallback(
     async (d: Decision) => {
-      if (request === null) return;
+      if (request === null) return null;
       setBusy(d.decision === 'approve');
       try {
-        await client.decide(request.requestId, d);
+        // B1c-2 (plan 2 review 1 L4): the reply goes back to the screen — #48 says why a `stale` approval did nothing.
+        return await client.decide(request.requestId, d);
       } finally {
         // M2 (fix round 1, C15): the refresh that can promote the next head (or close the window) must land before
         // busy clears — clearing it first re-enables Connect for one tick on the request that was just decided
@@ -99,5 +102,8 @@ export function Approve({client, close}: {client: ApproveClient; close: () => vo
   const inProgress = busy || view.state === 'deciding';
   // A new head is a new screen: its gates, scope, account and confirm start over (keyed by request).
   if (request.type === 'signMessage') return <Sign key={request.requestId} request={request} waiting={view.waiting} notice={noticeSeen} busy={inProgress} onDecide={decide} />;
+  // B1c-2: #48 for a transaction request; its origin-mismatch notice.
+  if (request.type === 'signTransaction' || request.type === 'signAndSendTransaction') return <Tx key={request.requestId} request={request} waiting={view.waiting} notice={noticeSeen} busy={inProgress} onDecide={decide} />;
+  if (request.type === 'mismatch') return <Mismatch key={request.requestId} request={request} waiting={view.waiting} notice={noticeSeen} busy={inProgress} onDecide={decide} />;
   return <Connect key={request.requestId} request={request} waiting={view.waiting} notice={noticeSeen} busy={inProgress} onDecide={decide} />;
 }

@@ -45,7 +45,8 @@ export interface Chain {
   down: boolean;
 }
 
-function chainReader(chain: Chain): SolanaReader {
+/** The steered chain (exported for the approval window's tests). */
+export function chainReader(chain: Chain): SolanaReader {
   const count = (m: string) => chain.calls.set(m, (chain.calls.get(m) ?? 0) + 1);
   const up = (m: string) => {
     count(m);
@@ -92,9 +93,11 @@ export async function until(done: () => Promise<boolean>, turns = 400): Promise<
   throw new Error('never settled');
 }
 
+export const newChain = (): Chain => ({err: null, calls: new Map(), down: false});
+
 export async function txScene(o: {grant?: Partial<Grant> | null; known?: string[]} = {}) {
   const ext = fakeExt();
-  const chain: Chain = {err: null, calls: new Map(), down: false};
+  const chain = newChain();
   const deps = fakeDeps({reader: chainReader(chain)});
   await ext.local.set(VAULT_KEY, {v: 1, scheme: 'slip10', accounts: [{index: 0, name: 'Main', publicKey: ACCOUNT.publicKey}]});
   await setSession(ext, [ACCOUNT]);
