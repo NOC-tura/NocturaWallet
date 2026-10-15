@@ -105,6 +105,8 @@ export interface HistoryItem {
   counterparty: string | null;
   feeLamports: bigint;
   failed: boolean;
+  /** B1c-2: a transaction a site had this wallet sign ("Dapp · simulated", #26b/#27b), else null. */
+  origin: 'dapp' | null;
 }
 /**
  * `next` is the cursor for the next `history()` call (the getSignaturesForAddress page's own last
@@ -435,8 +437,10 @@ function historyOf(x: unknown): HistoryItem | undefined {
   const blockTime = o.blockTime === null ? null : isInt(o.blockTime) ? o.blockTime : undefined;
   const mint = o.mint === null ? null : isAddress(o.mint) ? o.mint : undefined;
   const counterparty = o.counterparty === null ? null : isAddress(o.counterparty) ? o.counterparty : undefined;
-  if (kind === undefined || token === undefined || amount === undefined || feeLamports === undefined || blockTime === undefined || mint === undefined || counterparty === undefined || typeof o.failed !== 'boolean') return undefined;
-  return {signature: o.signature, blockTime, kind, token, mint, amount, counterparty, feeLamports, failed: o.failed};
+  // B1c-2: absent from an older background — read as none.
+  const origin = o.origin === 'dapp' ? 'dapp' : o.origin === undefined || o.origin === null ? null : undefined;
+  if (kind === undefined || token === undefined || amount === undefined || feeLamports === undefined || blockTime === undefined || mint === undefined || counterparty === undefined || typeof o.failed !== 'boolean' || origin === undefined) return undefined;
+  return {signature: o.signature, blockTime, kind, token, mint, amount, counterparty, feeLamports, failed: o.failed, origin};
 }
 
 /** `next`: null, or a string that passes the same signature check as an item's own `signature` (review fix round 1 #1). */

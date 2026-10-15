@@ -31,6 +31,7 @@ const item = (over: Partial<HistoryItem>): HistoryItem => ({
   counterparty: RECIPIENT,
   feeLamports: 5_000n,
   failed: false,
+  origin: null,
   ...over,
 });
 const show = async (i: HistoryItem) => {
@@ -176,7 +177,7 @@ describe('#27 tx-detail', () => {
       transaction: {message: {accountKeys: [ACCOUNT.publicKey, COUNTERPARTY, RECIPIENT, MAINNET_FEE_TREASURY].map(k => ({pubkey: k, signer: false, writable: true})), instructions: [transfer(COUNTERPARTY, 1_000_000_000), transfer(RECIPIENT, 1_000_000_000)]}},
     });
     expect(decoded).toMatchObject({kind: 'other', failed: true});
-    await renderInWallet(<TxDetail signature={sig(6)} account={ACCOUNT.publicKey} item={decoded} onBack={() => undefined} canRetry onTryAgain={tryAgain} />);
+    await renderInWallet(<TxDetail signature={sig(6)} account={ACCOUNT.publicKey} item={{...decoded, origin: null}} onBack={() => undefined} canRetry onTryAgain={tryAgain} />);
     expect(await screen.findByText('FAILED')).toBeTruthy();
     expect(screen.queryByText('FAILED · SENT')).toBeNull();
     expect(screen.queryByRole('button', {name: 'Try again'})).toBeNull();
@@ -952,5 +953,18 @@ describe('#27 and the address book', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(screen.queryByRole('button', {name: 'Save'})).toBeNull();
     expect(screen.getByText('Noctura treasury')).toBeTruthy();
+  });
+});
+
+// B1c-2 (#27b ix:12163): the badge in the title, 8 px after "Transaction".
+describe('#27 tx-detail: the OriginBadge (B1c-2)', () => {
+  it('a site’s transaction: "Transaction" then "Dapp · simulated" in the title; the wallet’s own: no badge', async () => {
+    await show(item({origin: 'dapp'}));
+    const title = document.querySelector('.top-bar .title') as HTMLElement;
+    expect([title.className, title.firstChild?.textContent, title.querySelector('.origin-badge')?.textContent]).toEqual(['title noc-h3 app-title-badge', 'Transaction', 'Dapp · simulated']);
+    cleanup();
+    await show(item({origin: null}));
+    expect(document.querySelector('.top-bar .title')?.className).toBe('title noc-h3');
+    expect(document.querySelector('.origin-badge')).toBeNull();
   });
 });

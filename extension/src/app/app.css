@@ -1960,3 +1960,9 @@ body:has(.app-window) {
 .s9-payload-card .row .v.noc-danger {
   color: var(--danger);
 }
+/* B1c-2: #27b's title with its OriginBadge, inline at the design's 8 px gap (ix:12163). */
+.top-bar .title.app-title-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}

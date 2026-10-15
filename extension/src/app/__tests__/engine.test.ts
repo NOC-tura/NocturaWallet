@@ -232,6 +232,17 @@ describe('shape checks: a reply of the wrong shape is failed', () => {
     expect(await engineAnswering({ok: true, data: {...good, next: undefined}}).history(acc)).toEqual({ok: false, error: 'failed'});
   });
 
+  // B1c-2: an item's origin — 'dapp', null, or absent (an older background) — and nothing else.
+  it('history: an item’s origin is "dapp" or null (absent reads as null); any other value refuses the page', async () => {
+    const one = {signature: '5'.repeat(88), blockTime: null, kind: 'other', token: null, mint: null, amount: null, counterparty: null, feeLamports: '5000', failed: false};
+    const items = async (origin: unknown) => {
+      const r = await engineAnswering({ok: true, data: {items: [origin === 'absent' ? one : {...one, origin}], next: null}}).history(acc);
+      return r.ok ? r.data.items.map(i => i.origin) : r;
+    };
+    expect([await items('dapp'), await items(null), await items('absent')]).toEqual([['dapp'], [null], [null]]);
+    for (const bad of ['wallet', 1, {}]) expect(await items(bad)).toEqual({ok: false, error: 'failed'});
+  });
+
   it('pending: an unknown state or failure value', async () => {
     const p = {
       id: 'r1', account: acc, signature: '5'.repeat(88), lastValidBlockHeight: 1, createdAt: 1, lastSentAt: 1, state: 'pending', detail: null, detailCode: null,
