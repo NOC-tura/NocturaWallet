@@ -6,8 +6,8 @@ import {lock} from '../../autolock';
 import {VAULT_KEY} from '../../accountsStore';
 import {BLOCKED_KEY} from '../blocked';
 import {GRANTS_KEY, type Grant} from '../grants';
-import {LIMITS_KEY, NOTICE_WINDOW_BUDGET, budgetLeft} from '../limits';
-import {MAX_OPEN, runUnlockHook} from '../queue';
+import {LIMITS_KEY, WINDOW_BUDGET, limitsOf} from '../limits';
+import {MAX_OPEN, REQUEST_TTL_MS, runUnlockHook} from '../queue';
 import {readDappSession} from '../store';
 import {WINDOW_HEIGHT, WINDOW_WIDTH} from '../window';
 import {MAX_TX_BYTES} from '../decode/wire';
@@ -155,12 +155,12 @@ describe('page.signTransaction and page.signAndSendTransaction — the page side
 
 // #48 "origin-mismatch · auto-reject" (B1 §3: no override): the account another origin was granted.
 describe('the origin-mismatch notice', () => {
-  it('a request naming an account granted to ANOTHER origin: unauthorized at once, and a notice entry the window shows', async () => {
+  it('a request naming an account granted to ANOTHER origin: unauthorized at once, and a notice entry queued for the window to show (once one exists — fix round 3: alone, it opens none)', async () => {
     const c = await setup({grant: null, others: [grant(OTHER)]});
     expect(await c.signTx('m', [v0()])).toEqual({id: 'm', error: 'unauthorized'});
     const [notice] = await c.queue();
     expect(notice).toMatchObject({type: 'mismatch', pageId: '', origin: DAPP, account: ACCOUNT.publicKey, granted: OTHER, transactions: null, state: 'queued'});
-    expect(c.ext.approval.created).toHaveLength(1);
+    expect(c.ext.approval.created).toEqual([]);
     // The page is never answered from it: a re-send of the same id is a new request (unauthorized again), not the notice.
     expect(await c.signTx('m', [v0()])).toEqual({id: 'm', error: 'unauthorized'});
     expect(c.page.answersFor(String(notice?.requestId))).toEqual([]);
@@ -207,7 +207,10 @@ describe('the origin-mismatch notice', () => {
     }
     expect(await handleMessage(c.ext, {type: 'dapp.decide', requestId, decision: 'reject'}, approve, c.deps)).toEqual({ok: true});
     expect((await c.queue())[0]).toMatchObject({state: 'answered', answer: {error: 'rejected'}});
-    expect(((await c.ext.local.get(LIMITS_KEY)) as {rejections: unknown[]}).rejections).toEqual([]);
+    // Fix round 3: with no real request ever queued alongside it, nothing ever writes LIMITS_KEY in this flow at
+    // all (no window opens, so WINDOW_BUDGET's own write never runs either) — `limitsOf` normalizes "nothing
+    // stored" the same way the background itself reads it, rather than assuming the key exists.
+    expect(limitsOf(await c.ext.local.get(LIMITS_KEY), c.deps.clock.t).rejections).toEqual([]);
     expect(base58.decode(ACCOUNT.publicKey)).toHaveLength(32);
   });
 
@@ -254,38 +257,85 @@ describe('the origin-mismatch notice', () => {
     expect((await c.queue()).filter(e => e.type === 'mismatch')).toEqual([]);
   });
 
-  // Fix round 2, controller ruling channel 1: a window opened BECAUSE a mismatch notice is the head is created
-  // unfocused — the page must never learn, from a focus change right after its `unauthorized` reply, that its
-  // request was the one that opened a window (only true when the named account is held elsewhere). A window for a
-  // real request stays focused, exactly as before.
-  it('a window opened because of a mismatch notice is unfocused; the window for a real request stays focused', async () => {
-    const real = await setup({grant: null});
-    expect(await real.page.ask({type: 'page.connect', id: 'c1', silent: false})).toMatchObject({accepted: true});
-    expect(real.ext.approval.created).toEqual([{page: 'approve.html', width: WINDOW_WIDTH, height: WINDOW_HEIGHT, focused: true}]);
-
-    const notice = await setup({grant: null, others: [grant(OTHER)]});
-    expect(await notice.signTx('m', [v0()])).toEqual({id: 'm', error: 'unauthorized'});
-    expect(notice.ext.approval.created).toEqual([{page: 'approve.html', width: WINDOW_WIDTH, height: WINDOW_HEIGHT, focused: false}]);
+  // Fix round 3, controller ruling (STRUCTURAL): a mismatch notice never by itself opens a window — only a REAL
+  // request does, identically whether or not a notice happens to be queued too. (a) a follow-up real request from
+  // the same page opens its own focused window, whether or not the preceding signTransaction matched a grant held
+  // elsewhere.
+  it('a follow-up real request opens its own focused window, identically whether an earlier signTransaction on the same page matched or not', async () => {
+    for (const matched of [true, false]) {
+      const c = await setup(matched ? {grant: null, others: [grant(OTHER)]} : {grant: null});
+      expect(await c.signTx('m', [v0()])).toEqual({id: 'm', error: 'unauthorized'});
+      // No window yet — a notice (matched or not) never opens one by itself.
+      expect(c.ext.approval.created).toEqual([]);
+      expect(await c.page.ask({type: 'page.connect', id: 'c1', silent: false})).toMatchObject({accepted: true});
+      expect(c.ext.approval.created).toEqual([{page: 'approve.html', width: WINDOW_WIDTH, height: WINDOW_HEIGHT}]);
+    }
   });
 
-  // Fix round 2, controller ruling channel 2: the notice has its OWN window budget (3 per ten minutes), entirely
-  // apart from the real WINDOW_BUDGET a genuine request's window draws from — so a page cannot spend that shared
-  // budget (meant for real requests) by triggering notices the user dismisses. Exhausting it is silent: no new
-  // notice entry at all, never the `rejected`-with-Q24 behaviour a spent WINDOW_BUDGET uses.
-  it('the notice has its own window budget, separate from WINDOW_BUDGET: a 4th notice within ten minutes is silently not queued, and none of it ever touches the real budget', async () => {
-    const c = await setup({grant: null, others: [grant(OTHER)]});
-    // Ten distinct origins (and tabs), each a would-be notice for the same account X, all within the same instant.
-    for (let i = 0; i < 10; i++) {
-      const site = openPage(c.ext, c.deps, `https://notice${i}.test`, {tab: {id: 300 + i}, documentId: `doc-n${i}`});
-      expect(await site.ask({type: 'page.signTransaction', id: `m${i}`, account: ACCOUNT.publicKey, transactions: [v0()]})).toEqual({id: `m${i}`, error: 'unauthorized'});
+  // (b) with the real window budget already spent, a second tab's genuinely real connect is rejected (Q24), with no
+  // window — identically whether an earlier tab's signTransaction matched a grant held elsewhere or not. Before the
+  // structural fix, a notice-headed open skipped this gate entirely, making the outcome depend on the match.
+  it('with the real window budget spent, a second tabs real connect is rejected (Q24) with no window, identically whether an earlier tabs signTransaction matched or not', async () => {
+    for (const matched of [true, false]) {
+      const c = await setup(matched ? {grant: null, others: [grant(OTHER)]} : {grant: null});
+      await c.ext.local.set(LIMITS_KEY, {rejections: [], cooldowns: [], windows: Array.from({length: WINDOW_BUDGET}, () => c.deps.clock.t), notice: false});
+      // tab1: a signTransaction naming X — never opens a window, matched or not.
+      expect(await c.signTx('m', [v0()])).toEqual({id: 'm', error: 'unauthorized'});
+      expect(c.ext.approval.created).toEqual([]);
+      // tab2: a genuinely real connect — accepted inline, then rejected once the budget gate runs; no window.
+      const tab2 = openPage(c.ext, c.deps, DAPP, {tab: {id: TAB + 1}, documentId: 'doc-tab2'});
+      const r = await tab2.ask({type: 'page.connect', id: 'c1', silent: false});
+      expect(r).toMatchObject({accepted: true});
+      expect(c.ext.approval.created).toEqual([]);
+      expect(tab2.answersFor(String(r?.requestId))).toEqual([{requestId: r?.requestId, error: 'rejected'}]);
+      expect(((await c.ext.local.get(LIMITS_KEY)) as {notice: boolean}).notice).toBe(true);
     }
-    // Only NOTICE_WINDOW_BUDGET became real entries — the rest were silently refused (no entry, no extra error).
-    expect((await c.queue()).filter(e => e.type === 'mismatch')).toHaveLength(NOTICE_WINDOW_BUDGET);
-    // Exactly one window ever opened (the first notice; later ones found one already open) — and it is unfocused.
-    expect(c.ext.approval.created).toEqual([{page: 'approve.html', width: WINDOW_WIDTH, height: WINDOW_HEIGHT, focused: false}]);
-    // None of this spent the real window budget: it reads back empty, and a real request's budget is still full.
-    const stored = (await c.ext.local.get(LIMITS_KEY)) as {windows: unknown[]};
-    expect(stored.windows).toEqual([]);
-    expect(budgetLeft({rejections: [], cooldowns: [], windows: stored.windows as number[], noticeWindows: [], notice: false}, c.deps.clock.t)).toBe(true);
+  });
+
+  // (c) a mismatch notice alone — nothing else ever queued — never opens a window.
+  it('a mismatch notice alone never opens a window', async () => {
+    const c = await setup({grant: null, others: [grant(OTHER)]});
+    expect(await c.signTx('m', [v0()])).toEqual({id: 'm', error: 'unauthorized'});
+    expect((await c.queue()).filter(e => e.type === 'mismatch')).toHaveLength(1);
+    expect(c.ext.approval.created).toEqual([]);
+  });
+
+  // (d) a notice queued while a real request's window is already open rides along in it (shown in FIFO turn,
+  // dismiss-only) — it never opens a second window, and dismissing it changes nothing about the first.
+  it('a notice queued while a real requests window is already open rides along in it, in turn, and stays dismissable', async () => {
+    const c = await setup({grant: null, others: [grant(OTHER)]});
+    const real = await c.page.ask({type: 'page.connect', id: 'real', silent: false});
+    expect(real).toMatchObject({accepted: true});
+    expect(c.ext.approval.created).toHaveLength(1);
+    // A different page (different host/tab — the real connect's own host/tab is already open, which would itself
+    // cap a notice) sends a signTransaction naming the same account X, granted to OTHER.
+    const visitor = openPage(c.ext, c.deps, 'https://evil.test', {tab: {id: TAB + 5}, documentId: 'doc-visitor'});
+    expect(await visitor.ask({type: 'page.signTransaction', id: 'm', account: ACCOUNT.publicKey, transactions: [v0()]})).toEqual({id: 'm', error: 'unauthorized'});
+    // Still just the one window — the notice rode along; no second one opened for it.
+    expect(c.ext.approval.created).toHaveLength(1);
+    const notice = (await c.queue()).find(e => e.type === 'mismatch');
+    expect(notice).toBeDefined();
+    const approve = {id: c.ext.runtimeId, origin: c.ext.extensionOrigin, url: `${c.ext.extensionOrigin}/approve.html`};
+    const {handleMessage} = await import('../../messages');
+    // FIFO: the real connect was queued first, so it is head — dismiss it first, which makes the notice head.
+    expect(await handleMessage(c.ext, {type: 'dapp.decide', requestId: String(real?.requestId), decision: 'reject'}, approve, c.deps)).toEqual({ok: true});
+    expect(await handleMessage(c.ext, {type: 'dapp.decide', requestId: String(notice?.requestId), decision: 'reject'}, approve, c.deps)).toEqual({ok: true});
+    expect((await c.queue()).find(e => e.requestId === notice?.requestId)).toMatchObject({state: 'answered', answer: {error: 'rejected'}});
+    // Dismissing it never opened (or needed) a second window.
+    expect(c.ext.approval.created).toHaveLength(1);
+  });
+
+  // (e) a notice with no real request ever queued is never shown, and simply expires at C4 (REQUEST_TTL_MS) like any
+  // undecided entry — no window, nothing special on timeout (the page already got `unauthorized` synchronously).
+  it('a mismatch notice with no real request ever queued expires silently at C4, no window at any point', async () => {
+    const c = await setup({grant: null, others: [grant(OTHER)]});
+    expect(await c.signTx('m', [v0()])).toEqual({id: 'm', error: 'unauthorized'});
+    const notice = (await c.queue()).find(e => e.type === 'mismatch');
+    expect(notice).toBeDefined();
+    expect(c.ext.approval.created).toEqual([]);
+    c.deps.clock.t += REQUEST_TTL_MS;
+    await runUnlockHook(c.ext, c.deps);
+    expect((await c.queue()).find(e => e.requestId === notice?.requestId)).toMatchObject({state: 'answered', answer: {error: 'timeout'}});
+    expect(c.ext.approval.created).toEqual([]);
   });
 });

@@ -91,7 +91,6 @@ describe('limits (C14)', () => {
       rejections: [{key: 'host:a.test', at: T}],
       cooldowns: [],
       windows: [T],
-      noticeWindows: [],
       notice: true,
     });
   });
@@ -166,7 +165,7 @@ describe('fix round 1', () => {
     l1.rejections.push({key: 'host:evil.test', at: T});
     // A fresh literal, not EMPTY_LIMITS: under the bug, l1 IS EMPTY_LIMITS, so comparing the next read against the
     // module constant would (wrongly) pass — both sides are the same, now-polluted object.
-    expect(limitsOf(undefined, T)).toEqual({rejections: [], cooldowns: [], windows: [], noticeWindows: [], notice: false});
+    expect(limitsOf(undefined, T)).toEqual({rejections: [], cooldowns: [], windows: [], notice: false});
   });
 
   // IMPORTANT 1: removeWalletData used to remove the three dApp keys with a plain ext.local.remove, outside
