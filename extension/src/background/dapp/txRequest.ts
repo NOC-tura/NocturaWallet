@@ -66,7 +66,12 @@ export const slotOf = (tx: ParsedTx, account: string): number => tx.signers.inde
 
 /**
  * signAndSend only: every OTHER required signature is present and valid over the message — the broadcast route takes
- * only a fully signed transaction (B1 §4), and the wallet sends nothing it would have to send incomplete.
+ * only a fully signed transaction (B1 §4), and the wallet sends nothing it would have to send incomplete. Fix round
+ * 1, Minor 4 (promoted): `{zip215: false}` — @noble/curves' default (ZIP-215) accepts non-canonical point encodings
+ * and, critically, never rejects a small-order public key; `zip215: false` matches Solana's own (RFC 8032 / strict)
+ * runtime verification, which does reject one — without it, a co-signer address that happens to be small-order (the
+ * identity point and its seven siblings; well-known, not secret) accepts a trivially forged "signature" for ANY
+ * message, from anyone, with no private key at all.
  */
 export function othersSigned(tx: ParsedTx, account: string): boolean {
   return tx.signers.every((signer, i) => {
@@ -74,7 +79,7 @@ export function othersSigned(tx: ParsedTx, account: string): boolean {
     const sig = tx.signatures[i];
     if (sig === undefined || sig.every(b => b === 0)) return false;
     try {
-      return ed25519.verify(sig, tx.message, base58.decode(signer));
+      return ed25519.verify(sig, tx.message, base58.decode(signer), {zip215: false});
     } catch {
       return false;
     }

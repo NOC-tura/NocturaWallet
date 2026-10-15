@@ -54,14 +54,18 @@ export function answer(fx: Effects, e: Entry, a: Answer, now: number): void {
 /**
  * The user said no (Reject, the window's ✕, closing the window — C4): answered `rejected`, counted for C14 per host and
  * per tab, and recorded on the origin's grant when it holds one (§2.1: a rejected first connect has no grant, so it is
- * not recorded).
+ * not recorded). Fix round 1, controller ruling: a `mismatch` notice is never this origin's request — dismissing it
+ * records NO rejection at all (no C14 cooldown for the host or tab): the notice already answers the page `unauthorized`
+ * without revealing the other origin's grant, and a later cooldown-gated silent `rejected` for this host or tab would
+ * leak that same bit back to the page through a side channel the notice exists to avoid. Nor is there a grant of its
+ * own to record anything on.
  */
 export function userRejected(tx: Tx, fx: Effects, e: Entry): void {
   answer(fx, e, {error: 'rejected'}, tx.now);
+  if (e.type === 'mismatch') return;
   tx.limits = withRejection(tx.limits, e.host, e.tabId, tx.now);
   const g = grantIn(tx, e.origin);
-  // A mismatch notice was never this origin's request with its grant (B1c-2): nothing to record on it.
-  if (g !== null && e.type !== 'mismatch') putGrant(tx, withRecent(g, e.type, tx.now, 'rejected'));
+  if (g !== null) putGrant(tx, withRecent(g, e.type, tx.now, 'rejected'));
 }
 
 /** Answers an origin's `queued` entries (never a `deciding` one: its effect is running) with this error. */

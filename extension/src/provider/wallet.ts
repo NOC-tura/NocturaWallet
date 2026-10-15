@@ -100,6 +100,9 @@ export class NocturaWallet implements Wallet {
     // Plan 2 review 1 L8: an input without an account (a hostile or broken caller) is invalid-request, never a TypeError.
     const first = inputs[0]?.account?.address;
     if (typeof first !== 'string' || !inputs.every(i => i?.account?.address === first)) throw new NocturaError('invalid-request');
+    // Fix round 1, Minor 1 (promoted): an input without transaction bytes (or of the wrong type) is invalid-request
+    // too, never a bare TypeError out of toBase64 once this returns.
+    if (!inputs.every(i => i?.transaction instanceof Uint8Array)) throw new NocturaError('invalid-request');
     if (!this.#accounts.some(a => a.address === first)) throw new NocturaError('unauthorized');
     if (inputs.some(i => i.chain !== undefined && i.chain !== CHAINS[0])) throw new NocturaError('invalid-request');
     return first;

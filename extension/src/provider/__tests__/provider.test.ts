@@ -176,6 +176,13 @@ describe('the Noctura wallet (Wallet Standard)', () => {
     await expect(sign(noAccount)).rejects.toMatchObject({name: 'NocturaError', code: 'invalid-request'});
     await expect(sign({account: account!, transaction: Uint8Array.of(1)}, noAccount)).rejects.toMatchObject({name: 'NocturaError', code: 'invalid-request'});
     await expect(wallet.features['solana:signAndSendTransaction'].signAndSendTransaction(noAccount)).rejects.toMatchObject({name: 'NocturaError', code: 'invalid-request'});
+    // Fix round 1, Minor 1 (promoted): an input with no transaction bytes (or of the wrong type) is a NocturaError
+    // too, never a bare TypeError out of toBase64 once #checked returns.
+    const noTransaction = {account: account!} as unknown as Parameters<typeof sign>[0];
+    await expect(sign(noTransaction)).rejects.toMatchObject({name: 'NocturaError', code: 'invalid-request'});
+    const wrongType = {account: account!, transaction: 'not-bytes'} as unknown as Parameters<typeof sign>[0];
+    await expect(sign(wrongType)).rejects.toMatchObject({name: 'NocturaError', code: 'invalid-request'});
+    await expect(wallet.features['solana:signAndSendTransaction'].signAndSendTransaction(noTransaction)).rejects.toMatchObject({name: 'NocturaError', code: 'invalid-request'});
     expect(w.posted).toHaveLength(1);
     const s = sign({account: account!, transaction: Uint8Array.of(1)});
     answerLast(w, {result: {signed: []}});

@@ -7,7 +7,7 @@ import {VAULT_KEY} from '../../accountsStore';
 import {BLOCKED_KEY} from '../blocked';
 import {GRANTS_KEY, type Grant} from '../grants';
 import {LIMITS_KEY} from '../limits';
-import {runUnlockHook} from '../queue';
+import {MAX_OPEN, runUnlockHook} from '../queue';
 import {readDappSession} from '../store';
 import {MAX_TX_BYTES} from '../decode/wire';
 import {fakeExt} from '../../__tests__/fakeExt';
@@ -195,7 +195,7 @@ describe('the origin-mismatch notice', () => {
     expect((await capped.queue()).filter(e => e.type === 'mismatch')).toHaveLength(1);
   });
 
-  it('a notice is only ever dismissed: approve, report and block are refused; reject answers it (and counts toward C14)', async () => {
+  it('a notice is only ever dismissed: approve, report and block are refused; reject answers it, and records NO rejection (fix round 1: the cooldown would leak the same bit after a user action)', async () => {
     const c = await setup({grant: null, others: [grant(OTHER)]});
     await c.signTx('m', [v0()]);
     const requestId = String((await c.queue())[0]?.requestId);
@@ -206,7 +206,39 @@ describe('the origin-mismatch notice', () => {
     }
     expect(await handleMessage(c.ext, {type: 'dapp.decide', requestId, decision: 'reject'}, approve, c.deps)).toEqual({ok: true});
     expect((await c.queue())[0]).toMatchObject({state: 'answered', answer: {error: 'rejected'}});
-    expect(((await c.ext.local.get(LIMITS_KEY)) as {rejections: unknown[]}).rejections).toHaveLength(2);
+    expect(((await c.ext.local.get(LIMITS_KEY)) as {rejections: unknown[]}).rejections).toEqual([]);
     expect(base58.decode(ACCOUNT.publicKey)).toHaveLength(32);
+  });
+
+  // Fix round 1, controller ruling: a mismatch notice is a two-message oracle otherwise — admit() must never count it
+  // against the host's own real requests, or a site could learn (from a later request-pending) that its named
+  // account is held elsewhere.
+  it('a queued notice never blocks a later request from this host: an explicit connect after it is accepted, exactly as when there was no notice at all', async () => {
+    const withNotice = await setup({grant: null, others: [grant(OTHER)]});
+    expect(await withNotice.signTx('m', [v0()])).toEqual({id: 'm', error: 'unauthorized'});
+    expect((await withNotice.queue()).filter(e => e.type === 'mismatch')).toHaveLength(1);
+    const afterNotice = await withNotice.page.ask({type: 'page.connect', id: 'c1', silent: false});
+    expect(afterNotice).toMatchObject({accepted: true});
+    const noNotice = await setup({grant: null});
+    expect(await noNotice.signTx('m', [v0()])).toEqual({id: 'm', error: 'unauthorized'});
+    expect(await noNotice.queue()).toEqual([]);
+    const baseline = await noNotice.page.ask({type: 'page.connect', id: 'c1', silent: false});
+    expect(baseline).toMatchObject({accepted: true});
+    // Identical shape either way — the notice changed nothing a page can observe.
+    expect(Object.keys(afterNotice ?? {}).sort()).toEqual(Object.keys(baseline ?? {}).sort());
+  });
+
+  // Fix round 1: the notice gets its OWN cap (any type, this host or tab; and the global window budget) — it never
+  // borrows admit()'s (now mismatch-excluding) count, or it could stack past the budget unnoticed.
+  it('the notice cap: the global window budget still bounds it (admit now excludes a mismatch from its own checks, but the notice carries its own cap)', async () => {
+    const c = await setup({grant: null, others: [grant(OTHER)]});
+    for (let i = 0; i < MAX_OPEN; i++) {
+      const filler = openPage(c.ext, c.deps, `https://filler${i}.test`, {tab: {id: 100 + i}, documentId: `doc-f${i}`});
+      expect(await filler.ask({type: 'page.connect', id: `f${i}`, silent: false})).toMatchObject({accepted: true});
+    }
+    expect((await c.queue()).length).toBe(MAX_OPEN);
+    // X is granted to OTHER — ordinarily a notice — but the budget is already spent: silent, no entry at all.
+    expect(await c.signTx('capped-budget', [v0()])).toEqual({id: 'capped-budget', error: 'unauthorized'});
+    expect((await c.queue()).filter(e => e.type === 'mismatch')).toEqual([]);
   });
 });

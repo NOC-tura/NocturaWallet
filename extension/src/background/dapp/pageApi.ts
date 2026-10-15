@@ -54,9 +54,14 @@ function touch(tx: Tx, origin: string): void {
   if (g !== null && tx.now - g.lastUsedAt >= LAST_USED_STEP_MS) putGrant(tx, {...g, lastUsedAt: tx.now});
 }
 
-/** A request the user must answer, after C3's caps; null when it was queued, else the immediate refusal. */
+/**
+ * A request the user must answer, after C3's caps; null when it was queued, else the immediate refusal. Fix round 1,
+ * controller ruling: a `mismatch` entry never counts here — for this host's own real requests, NOR for the total —
+ * or a site could learn, from a later `request-pending`, that the account it named is held elsewhere (the notice
+ * would be a two-message oracle otherwise). A notice's own cap (mismatchNotice, below) uses the unfiltered count.
+ */
 function admit(tx: Tx, live: LivePort): ErrorCode | null {
-  const open = tx.s.queue.filter(isOpenEntry);
+  const open = tx.s.queue.filter(isOpenEntry).filter(e => e.type !== 'mismatch');
   if (open.some(e => e.host === live.host || e.tabId === live.tabId)) return 'request-pending';
   if (open.length >= MAX_OPEN) return 'busy';
   return null;
@@ -177,13 +182,20 @@ const hostOf = (origin: string): string => {
  * override"): a sign request naming an account of this unlocked wallet that ANOTHER origin holds a grant for. The page
  * is answered `unauthorized` at once, exactly as any ungranted request (§2.2 — it learns nothing more), and the window
  * shows the user what was refused: a notice entry, with no approval path. Only when this host is not blocked or cooling
- * down and C3's caps admit it (one per host and tab, five open), so a site cannot stack notices; its dismissal counts
- * toward C14 like any rejection. The notice's relay id is '' — never a page's (PAGE_ID needs a character), so a re-sent
- * request can never be answered from it. Returns true when a notice was queued.
+ * down, and its OWN cap admits it — at most one open entry of ANY type for this host or tab (so a site cannot stack
+ * notices), and the total open strictly under C3's budget (fix round 1: this check is deliberately NOT `admit()`,
+ * which now excludes a `mismatch` from its own counts — the notice must still respect the shared budget, or it could
+ * stack past it unnoticed). Past either cap the notice is silent: no entry, nothing new for the page to see. The
+ * notice's relay id is '' — never a page's (PAGE_ID needs a character), so a re-sent request can never be answered
+ * from it. Fix round 1: its dismissal records NO rejection (see queue.ts userRejected) — a C14 cooldown keyed on this
+ * host or tab would leak, through a later silent `rejected`, the very bit the notice already answers without leaking.
+ * Returns true when a notice was queued.
  */
 function mismatchNotice(tx: Tx, deps: Pick<WalletDeps, 'randomBytes'>, live: LivePort, account: string): boolean {
   if (tx.session === null || !tx.session.some(a => a.publicKey === account)) return false;
-  if (isBlocked(tx.blocked, live.host) || inCooldown(tx.limits, live.host, live.tabId, tx.now) || admit(tx, live) !== null) return false;
+  if (isBlocked(tx.blocked, live.host) || inCooldown(tx.limits, live.host, live.tabId, tx.now)) return false;
+  const open = tx.s.queue.filter(isOpenEntry);
+  if (open.some(e => e.host === live.host || e.tabId === live.tabId) || open.length >= MAX_OPEN) return false;
   const other = [...tx.s.grants, ...tx.grants].find(g => g.account === account && g.origin !== live.origin && !isBlocked(tx.blocked, hostOf(g.origin)));
   if (other === undefined) return false;
   enqueue(tx, deps, live, '', {type: 'mismatch', account, message: null, granted: other.origin});
