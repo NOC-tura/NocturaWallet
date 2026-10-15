@@ -1,4 +1,4 @@
-import {sendReauthReasons, usdMicros} from '../reauthPolicy';
+import {dappReauthReasons, sendReauthReasons, usdMicros} from '../reauthPolicy';
 
 const base = {knownRecipient: true, amount: 10n, balance: 1_000n, usdMicros: 1_000_000n, thresholdCents: 10_000};
 
@@ -62,5 +62,32 @@ describe('sendReauthReasons (spec §2, §3)', () => {
   it('the whole balance to a first-time address', () => {
     expect(sendReauthReasons({...base, knownRecipient: false, amount: 990n})).toEqual(['first-send', 'over-5-percent', 'whole-balance-to-new']);
     expect(sendReauthReasons({...base, knownRecipient: true, amount: 1_000n})).toEqual(['over-5-percent']);
+  });
+});
+
+// B1c-2 (spec B1c §3.3, B1 §3): B1b's rules for a dApp's transaction, from its balance changes and its instructions.
+describe('dappReauthReasons', () => {
+  const quiet = {outgoing: [{amount: 10n, balance: 1_000n, usdMicros: 1_000_000n}], firstSend: false, approval: false, thresholdCents: 10_000};
+  it('positive control: a small outgoing amount, known recipients, no approval, a known price under the threshold — nothing', () => {
+    expect(dappReauthReasons(quiet)).toEqual([]);
+    expect(dappReauthReasons({...quiet, outgoing: []})).toEqual([]);
+  });
+  it('each rule by itself', () => {
+    expect(dappReauthReasons({...quiet, firstSend: true})).toEqual(['first-send']);
+    expect(dappReauthReasons({...quiet, outgoing: [{amount: 51n, balance: 1_000n, usdMicros: 1n}]})).toEqual(['over-5-percent']);
+    expect(dappReauthReasons({...quiet, outgoing: [{amount: 50n, balance: 1_000n, usdMicros: 1n}]})).toEqual([]);
+    expect(dappReauthReasons({...quiet, outgoing: [{amount: 1n, balance: 1_000n, usdMicros: 100_000_001n}]})).toEqual(['over-usd-threshold']);
+    expect(dappReauthReasons({...quiet, approval: true})).toEqual(['approval']);
+  });
+  it('fails closed: no price is above the threshold, a zero balance is above 5 %', () => {
+    expect(dappReauthReasons({...quiet, outgoing: [{amount: 1n, balance: 1_000n, usdMicros: null}]})).toEqual(['over-usd-threshold']);
+    expect(dappReauthReasons({...quiet, outgoing: [{amount: 1n, balance: 0n, usdMicros: 1n}]})).toEqual(['over-5-percent']);
+  });
+  it('the whole balance to a first-time address adds its own reason', () => {
+    expect(dappReauthReasons({...quiet, firstSend: true, outgoing: [{amount: 990n, balance: 1_000n, usdMicros: 1n}]})).toEqual(['first-send', 'over-5-percent', 'whole-balance-to-new']);
+    expect(dappReauthReasons({...quiet, firstSend: false, outgoing: [{amount: 990n, balance: 1_000n, usdMicros: 1n}]})).toEqual(['over-5-percent']);
+  });
+  it('a zero or incoming amount is not outgoing', () => {
+    expect(dappReauthReasons({...quiet, outgoing: [{amount: 0n, balance: 0n, usdMicros: null}]})).toEqual([]);
   });
 });

@@ -38,3 +38,25 @@ export function sendReauthReasons(i: {knownRecipient: boolean; amount: bigint; b
   if (!i.knownRecipient && i.balance > 0n && i.amount * 100n >= i.balance * WHOLE_BALANCE_PERCENT) out.push('whole-balance-to-new');
   return out;
 }
+
+/**
+ * B1c-2 (spec B1c §3.3, B1 §3 "Re-authentication"): B1b's rules for a dApp's transaction, read from what it does —
+ * the simulation's balance changes and the decoded instructions — instead of a send's intent. `outgoing`: each mint
+ * this account loses (SOL with the fee), with the account's balance of it before and its dollar value (null: no price,
+ * which counts as above the threshold — fail closed, as B1b). `firstSend`: a transfer from this account to an address
+ * it never sent to (the same facts as B1b's first-send rule). `approval`: an Approve / ApproveChecked by this account
+ * (B1 §3 "bounded approvals"; the whole-balance and u64-max ones are B1c-3's blocks — until then they re-authenticate
+ * too). Every rule fails closed, as sendReauthReasons.
+ */
+export type DappReauthReason = SendReauthReason | 'approval';
+
+export function dappReauthReasons(i: {outgoing: readonly {amount: bigint; balance: bigint; usdMicros: bigint | null}[]; firstSend: boolean; approval: boolean; thresholdCents: number}): DappReauthReason[] {
+  const out: DappReauthReason[] = [];
+  const moving = i.outgoing.filter(o => o.amount > 0n);
+  if (i.firstSend) out.push('first-send');
+  if (moving.some(o => o.balance <= 0n || o.amount * 100n > o.balance * REAUTH_PERCENT)) out.push('over-5-percent');
+  if (moving.some(o => o.usdMicros === null || o.usdMicros > BigInt(i.thresholdCents) * 10_000n)) out.push('over-usd-threshold');
+  if (i.firstSend && moving.some(o => o.balance > 0n && o.amount * 100n >= o.balance * WHOLE_BALANCE_PERCENT)) out.push('whole-balance-to-new');
+  if (i.approval) out.push('approval');
+  return out;
+}
