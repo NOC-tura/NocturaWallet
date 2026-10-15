@@ -183,7 +183,8 @@ function Payload({item, labels}: {item: TxItem; labels: readonly AddressLabel[]}
 }
 
 type TxState = 'simulating' | 'ready' | 'failed' | 'expired' | 'unreachable';
-function stateOf(d: TxDetail): TxState {
+function stateOf(d: TxDetail | null): TxState | null {
+  if (d === null) return null;
   if (d.simulation.status === 'simulating') return 'simulating';
   if (d.simulation.status === 'unreachable') return 'unreachable';
   const outcomes = d.transactions.map(t => t.outcome);
@@ -231,6 +232,24 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
       alive.current = false;
     };
   }, []);
+  /**
+   * Fix round 2 (Rules of Hooks): every hook — and anything a hook below depends on — runs on EVERY render, in the
+   * same order, whether or not `detail` is null this time; `Tx` is keyed by `requestId` (Approve.tsx), so the SAME
+   * mounted instance can see its `tx` go null → non-null or non-null → null (Q26: the account leaves the session,
+   * or rejoins it) without remounting. `stateOf`, `ready` and `reauthWaiting` are therefore null-safe here, computed
+   * before the early return below, not after it.
+   */
+  const state = stateOf(detail);
+  const simulating = state === 'simulating';
+  const ready = state === 'ready';
+  const reauthWaiting = detail?.reauth?.state === 'waiting';
+  const canApprove = ready && !reauthWaiting && !busy;
+  // Fix round 1, I2: the sheet is for exactly the simulation it opened on — a refresh that lands while it is open
+  // (simId no longer matches what was captured, or canApprove itself goes false) closes it; a captured click that
+  // still slips past that (the background is the final, fail-closed word) is refused `stale`, never signed.
+  useEffect(() => {
+    if (confirming && (simId !== confirmSimId || !canApprove)) setConfirming(false);
+  }, [confirming, simId, confirmSimId, canApprove]);
   if (detail === null) {
     return (
       <div className="screen app-approve">
@@ -251,17 +270,6 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
       </div>
     );
   }
-  const state = stateOf(detail);
-  const simulating = state === 'simulating';
-  const ready = state === 'ready';
-  const reauthWaiting = detail.reauth?.state === 'waiting';
-  const canApprove = ready && !reauthWaiting && !busy;
-  // Fix round 1, I2: the sheet is for exactly the simulation it opened on — a refresh that lands while it is open
-  // (simId no longer matches what was captured, or canApprove itself goes false) closes it; a captured click that
-  // still slips past that (the background is the final, fail-closed word) is refused `stale`, never signed.
-  useEffect(() => {
-    if (confirming && (simId !== confirmSimId || !canApprove)) setConfirming(false);
-  }, [confirming, simId, confirmSimId, canApprove]);
   const approve = async (overrideSimId?: string) => {
     setStale(false);
     const sentSimId = overrideSimId ?? (detail.simulation.status === 'ok' ? detail.simulation.id : undefined);

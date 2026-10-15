@@ -383,6 +383,40 @@ describe('#48 dapp-tx-approval', () => {
     render(<Tx request={request} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
     expect(screen.getByText('Instructions appear once the transaction is simulated.')).toBeTruthy();
   });
+
+  // Fix round 2 (Rules of Hooks): the I2 effect used to sit after the early `detail === null` return. `Tx` is keyed
+  // by `requestId` (Approve.tsx) — the SAME mounted instance sees its `tx` go null → non-null or back, on the head's
+  // own account leaving or rejoining the session (Q26), never a remount — so a hook after that return threw
+  // "Rendered fewer/more hooks than expected" the moment it did, with nothing under src/approve to catch it: a blank
+  // window. `rerender` on the same instance (never a fresh `render`) is what actually exercises this.
+  it('the same <Tx> instance’s tx going non-null → null and back: no "Rendered fewer/more hooks" throw (fix round 2)', () => {
+    const withTx: RequestView = {
+      requestId: 'q26',
+      type: 'signTransaction',
+      origin: 'https://jup.ag',
+      host: 'jup.ag',
+      site: {kind: 'verified', name: 'Jupiter', imitates: null, rule: null, idn: null, international: false},
+      offerBlock: false,
+      connect: null,
+      sign: null,
+      mismatch: null,
+      tx: {
+        kind: 'signTransaction',
+        account: {index: 0, name: 'Main', publicKey: ACCOUNT.publicKey},
+        simulation: {status: 'simulating'},
+        reauth: null,
+        labels: [],
+        transactions: [{version: 0, feePayer: ACCOUNT.publicKey, instructions: null, unitLimit: null, feeLamports: null, outcome: null}],
+      },
+    };
+    const withoutTx: RequestView = {...withTx, tx: null};
+    const view = render(<Tx request={withTx} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
+    expect(screen.getByText('Simulating transaction…')).toBeTruthy();
+    expect(() => view.rerender(<Tx request={withoutTx} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />)).not.toThrow();
+    expect(screen.getByText('This request can no longer be signed. Reject it and ask the site to try again.')).toBeTruthy();
+    expect(() => view.rerender(<Tx request={withTx} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />)).not.toThrow();
+    expect(screen.getByText('Simulating transaction…')).toBeTruthy();
+  });
 });
 
 // #48 "origin-mismatch · auto-reject" (ix:18484-18521).
