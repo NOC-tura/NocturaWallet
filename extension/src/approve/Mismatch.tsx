@@ -4,15 +4,6 @@ import type {Decision, RequestView} from './client';
 import {BudgetNotice, Waiting, WindowTop, siteLabel} from './ui';
 import {MISMATCH_TEXT} from './strings';
 
-/** The host the granted origin shows (with its port when it has one, review 1 L5). */
-function grantedSite(origin: string): string {
-  try {
-    return new URL(origin).host;
-  } catch {
-    return origin;
-  }
-}
-
 /**
  * #48 "origin-mismatch · auto-reject" (index.html ix:18484-18521; B1 §3: "request origin differs from the granted origin
  * → blocked, no override"): a site asked to sign with an account another origin was granted. The page was answered
@@ -22,7 +13,9 @@ function grantedSite(origin: string): string {
  * Connected dApps (Q03, D1).
  */
 export function Mismatch({request, waiting, notice, busy, onDecide}: {request: RequestView; waiting: number; notice: boolean; busy: boolean; onDecide: (d: Decision) => Promise<unknown>}) {
-  const granted = request.mismatch === null ? '—' : grantedSite(request.mismatch.granted);
+  // Fix round 1 (promoted minor 4): the same host-display source as the popup's strip and #10 (siteLabel) — never a
+  // second, slightly different implementation of the same idea.
+  const granted = request.mismatch === null ? '—' : siteLabel(request.mismatch.granted, request.mismatch.granted);
   const here = siteLabel(request.origin, request.host);
   const dismiss = () => onDecide({decision: 'reject'});
   const body = MISMATCH_TEXT.flagBody(granted, here);

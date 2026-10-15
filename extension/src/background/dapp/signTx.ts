@@ -18,7 +18,7 @@ import {firstSignature} from '../../../../core/solana/broadcast';
 import {tokenForMint, WALLET_TOKENS} from '../../../../core/solana/balances';
 import {runtimeFor} from './ports';
 import {answer, queueAccess} from './queue';
-import {simulateTransactions, type SimState, type TxOutcome} from './simulate';
+import {feeOf, simulateTransactions, type SimState, type TxOutcome} from './simulate';
 import {grantIn, putGrant, type Entry, type Tx} from './store';
 import {slotOf} from './txRequest';
 import type {DappReauthReason} from '../reauthPolicy';
@@ -115,6 +115,15 @@ export interface TxItemView {
   feePayer: string;
   /** Null while a lookup table is not yet resolved (before the first simulation of a v0 transaction that uses one). */
   instructions: DecodedInstruction[] | null;
+  /**
+   * Fix round 1 (promoted minor 3, R5): the unit limit and this account's own fee, computed LOCALLY from the decoded
+   * instructions (`simulate.ts`'s `feeOf` — 5 000 lamports per required signature plus the priority fee, no RPC
+   * round trip) — so #48 can show them while still simulating, not only once `outcome` answers. `unitLimit` is null
+   * only when `instructions` is (a lookup table not yet resolved); `feeLamports` is also null when this account is
+   * not the transaction's own fee payer.
+   */
+  unitLimit: number | null;
+  feeLamports: string | null;
   /** This transaction's simulated outcome, or null while simulating. */
   outcome: TxOutcome | null;
 }
@@ -138,7 +147,15 @@ export async function txDetail(ext: Ext, e: Entry, session: readonly {publicKey:
   const transactions = parsed.txs.map((p, i): TxItemView => {
     const keys = sim?.keys[i];
     const instructions = keys !== undefined ? decodeInstructions(p, {keys}) : p.lookups.length === 0 ? decodeInstructions(p, resolveKeys(p, new Map())) : null;
-    return {version: p.version, feePayer: p.signers[0] ?? '', instructions, outcome: sim?.outcomes[i] ?? null};
+    const local = instructions === null ? null : feeOf(p, instructions);
+    return {
+      version: p.version,
+      feePayer: p.signers[0] ?? '',
+      instructions,
+      unitLimit: local?.unitLimit ?? null,
+      feeLamports: local !== null && p.signers[0] === e.account ? local.feeLamports.toString() : null,
+      outcome: sim?.outcomes[i] ?? null,
+    };
   });
   const simulation: SimulationView =
     sim !== null ? {status: 'ok', id: sim.id, slot: sim.slot, elapsedMs: sim.elapsedMs, at: sim.at} : e.sim?.status === 'unreachable' && !running ? {status: 'unreachable'} : {status: 'simulating'};

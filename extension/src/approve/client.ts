@@ -43,7 +43,13 @@ export interface SignDetail {
 /** B1c-2 (#48): what the background decoded, as decode.ts builds it — re-checked here like everything else it sends. */
 export type ProgramKey = 'system' | 'token' | 'token-2022' | 'associated-token' | 'compute-budget' | 'presale';
 export type FieldValue =
-  | {kind: 'address'; value: string | null}
+  | {kind: 'address'; value: string}
+  /**
+   * Fix round 1, I1: a legitimate protocol-level absence (setAuthority's new authority when the Option tag is 0,
+   * Token-2022's OptionalNonZeroPubkey of all zero bytes) — decode.ts's own distinct value, never the same shape as
+   * a resolution failure (which makes the whole instruction unknown instead — `address` is never null here).
+   */
+  | {kind: 'none'}
   | {kind: 'lamports'; value: string}
   | {kind: 'amount'; value: string; decimals: number | null}
   | {kind: 'number'; value: string}
@@ -71,6 +77,9 @@ export interface TxItem {
   version: 'legacy' | 0;
   feePayer: string;
   instructions: DecodedInstruction[] | null;
+  /** Fix round 1 (promoted minor 3, R5): computed locally (signTx.ts's `feeOf`) — present before any simulation answers. */
+  unitLimit: number | null;
+  feeLamports: string | null;
   outcome: TxOutcome | null;
 }
 export type SimulationView = {status: 'simulating'} | {status: 'unreachable'} | {status: 'ok'; id: string; slot: number; elapsedMs: number; at: number};
@@ -160,7 +169,9 @@ const SIGNED = /^-?\d{1,40}$/;
 function fieldValueOf(x: unknown): FieldValue | undefined {
   const o = obj(x);
   if (o === undefined) return undefined;
-  if (o.kind === 'address') return o.value === null || isStr(o.value) ? {kind: 'address', value: o.value} : undefined;
+  // Fix round 1, I1: `address` is never null (the background never sends it); a legitimate absence is its own `none`.
+  if (o.kind === 'address') return isStr(o.value) ? {kind: 'address', value: o.value} : undefined;
+  if (o.kind === 'none') return {kind: 'none'};
   if (o.kind === 'lamports') return isStr(o.value) && DIGITS.test(o.value) ? {kind: 'lamports', value: o.value} : undefined;
   // An i64 argument (the presale program's) may be negative.
   if (o.kind === 'number') return isStr(o.value) && SIGNED.test(o.value) ? {kind: 'number', value: o.value} : undefined;
@@ -211,9 +222,11 @@ function txItemOf(x: unknown): TxItem | undefined {
     if (list.some(i => i === undefined)) return undefined;
     instructions = list as DecodedInstruction[];
   }
+  if (!(o.unitLimit === null || isInt(o.unitLimit))) return undefined;
+  if (!(o.feeLamports === null || (isStr(o.feeLamports) && DIGITS.test(o.feeLamports)))) return undefined;
   const outcome = nullOr(o.outcome, outcomeOf);
   if (outcome === undefined) return undefined;
-  return {version: o.version, feePayer: o.feePayer, instructions, outcome};
+  return {version: o.version, feePayer: o.feePayer, instructions, unitLimit: o.unitLimit, feeLamports: o.feeLamports, outcome};
 }
 
 function simulationOf(x: unknown): SimulationView | undefined {

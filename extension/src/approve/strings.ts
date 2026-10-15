@@ -138,11 +138,17 @@ export const TX_TEXT = {
   /** Owner-delegated (controller, 2026-10-15; review 1 L4): an approval refused `stale` — a refresh landed between the read and the click. */
   stale: 'The transaction changed while you were reviewing. Review it again before approving.',
   instructions: 'Instructions',
+  /** Fix round 1 (promoted minor 2): a v0 transaction whose lookup table is not yet resolved — instructions decode only once the first simulation answers. */
+  instructionsPending: 'Instructions appear once the transaction is simulated.',
   program: (n: number): string => `Program ${n}`,
   /** B1 §3: "a program not in the decoded set → unknown program". */
   unknownProgram: 'unknown program',
   /** Controller (owner copy): an instruction of a decoded program whose tag the wallet does not know. */
   unknownInstruction: 'unknown instruction',
+  /** Fix round 1, I3 (controller ruling, overrides plan R2's display): a known program's instruction the decoder names but
+   * does not decode the fields of (mintTo, transferWithSeed, createAccountWithSeed, withdrawNonceAccount, Token-2022
+   * extension instructions, recoverNested, …) must never look fully decoded. */
+  notDecoded: 'Details not decoded — check them on the site before approving.',
   computeUnits: 'Compute units',
   networkFee: 'Network fee',
   mandatory: 'Simulation runs against the current slot before you see Approve. This is mandatory — no skip.',

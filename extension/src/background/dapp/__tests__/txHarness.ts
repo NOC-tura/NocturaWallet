@@ -8,6 +8,7 @@ import {VAULT_KEY} from '../../accountsStore';
 import {GRANTS_KEY, type Grant} from '../grants';
 import {runUnlockHook} from '../queue';
 import {readDappSession, type Entry} from '../store';
+import {TOKEN_PROGRAM} from '../decode/decode';
 import {fakeExt} from '../../__tests__/fakeExt';
 import {fakeDeps, fakeReader} from '../../__tests__/fakeDeps';
 import {ACCOUNT, BLOCKHASH, RECIPIENT} from '../../__tests__/fixtures';
@@ -35,6 +36,35 @@ export function coSigned(instructions: TransactionInstruction[] = [transfer(1, M
   tx.addSignature(CO, ed25519.sign(tx.message.serialize(), CO_SEED));
   return base64.encode(tx.serialize());
 }
+
+/**
+ * Fix round 1, I1: a Token setAuthority to None — the Option tag is 0, decode.ts's own `{kind: 'none'}` field, not a
+ * resolution failure. Data `[6, 3, 0]`: tag 6 (setAuthority), authorityType 3 (closeAccount), Option tag 0 (none).
+ */
+export const setAuthorityToNone = (account = TO, currentAuthority = ME): TransactionInstruction =>
+  new TransactionInstruction({
+    programId: new PublicKey(TOKEN_PROGRAM),
+    data: Buffer.from([6, 3, 0]),
+    keys: [
+      {pubkey: account, isSigner: false, isWritable: true},
+      {pubkey: currentAuthority, isSigner: true, isWritable: false},
+    ],
+  });
+
+/** u64 LE, byte by byte (never `writeBigUInt64LE` — the buffer polyfill on-device lacks it, project convention). */
+const u64le = (n: bigint): number[] => Array.from({length: 8}, (_, i) => Number((n >> BigInt(8 * i)) & 0xffn));
+
+/** Fix round 1, I3: a Token mintTo — a known tag outside the decoded list, named with no fields (decode.ts). */
+export const mintTo = (mint = TO, destination = ME, authority = ME, amount = 1n): TransactionInstruction =>
+  new TransactionInstruction({
+    programId: new PublicKey(TOKEN_PROGRAM),
+    data: Buffer.from([7, ...u64le(amount)]),
+    keys: [
+      {pubkey: mint, isSigner: false, isWritable: true},
+      {pubkey: destination, isSigner: false, isWritable: true},
+      {pubkey: authority, isSigner: true, isWritable: false},
+    ],
+  });
 
 export interface Chain {
   /** simulateTransaction's error (null: it runs). */

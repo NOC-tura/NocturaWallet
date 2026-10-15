@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {act, cleanup, fireEvent, screen, waitFor, within} from '@testing-library/react';
+import {act, cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
 import {ed25519} from '@noble/curves/ed25519.js';
 import {base64} from '@scure/base';
 import {VersionedTransaction} from '@solana/web3.js';
@@ -10,7 +10,9 @@ import {readDappSession} from '../../background/dapp/store';
 import {GRANTS_KEY} from '../../background/dapp/grants';
 import {openPage} from '../../background/dapp/__tests__/pageHarness';
 import {ACCOUNT, RECIPIENT} from '../../background/__tests__/fixtures';
-import {ME, coSigned, transfer, v0} from '../../background/dapp/__tests__/txHarness';
+import {ME, coSigned, mintTo, setAuthorityToNone, transfer, v0} from '../../background/dapp/__tests__/txHarness';
+import {pendingOf, type RequestView} from '../client';
+import {Tx} from '../Tx';
 import {ARM_MS} from '../useArmed';
 import {CONFIRM_DELAY_MS} from '../ui';
 import {SECOND, openWindow} from './windowHarness';
@@ -58,6 +60,10 @@ describe('#48 dapp-tx-approval', () => {
     expect(document.querySelector('.s9-bal-card')?.className).toBe('s9-bal-card app-busy-dim');
     // The instructions are shown while simulating (decoded locally).
     expect(texts('.s9-payload-card > .app-tx-ix .row .k')).toEqual(['Program 1', 'instruction', 'from', 'to', 'lamports']);
+    // Fix round 1 (promoted minor 3, R5): Compute units / Network fee are computed locally — shown while still
+    // simulating too (the limit and the fee do not need a live answer; only "consumed" does, so it reads "—").
+    expect(texts('.s9-payload-card > .row .k')).toEqual(['Compute units', 'Network fee']);
+    expect(texts('.s9-payload-card > .row .v')).toEqual(['— / 200 000', '0.000 005 SOL']);
     expect(text('.app-tx-caption')).toBe('Simulation runs against the current slot before you see Approve. This is mandatory — no skip.');
     // Review 1 L7: who broadcasts — for signTransaction, the site.
     expect(text('.app-tx-sends')).toBe('The site sends this transaction itself after you approve.');
@@ -264,6 +270,118 @@ describe('#48 dapp-tx-approval', () => {
     w.show();
     await screen.findByText('This request can no longer be signed. Reject it and ask the site to try again.');
     expect(screen.getAllByRole('button').map(b => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Close', 'Reject']);
+  });
+
+  // Fix round 1, I1: `{kind: 'none'}` (a legitimate protocol-level absence) used to be rejected by the window's own
+  // parser (it only knew `{kind: 'address', value: null}`), so pendingOf returned null and the window stayed blank
+  // (aria-busy) forever for any setAuthority-to-None, Token-2022 transfer-hook init/update, or similar instruction.
+  it('a setAuthority to None renders — the window’s own "none" field is not an unresolved address (I1)', async () => {
+    const w = await openWindow();
+    await known(w);
+    await w.signTx('https://jup.ag', [v0([setAuthorityToNone()])]);
+    w.show();
+    await simulated(w, 'Balance changes (post-simulation)');
+    expect(texts('.s9-payload-card .row .k')).toEqual(['Program 1', 'instruction', 'account', 'currentAuthority', 'authorityType', 'newAuthority', 'Compute units', 'Network fee']);
+    expect(text('.s9-payload-card .row:last-of-type .v')).not.toBeNull();
+    const rows = [...document.querySelectorAll('.s9-payload-card .row')];
+    const newAuthorityRow = rows.find(r => r.querySelector('.k')?.textContent === 'newAuthority');
+    expect(newAuthorityRow?.querySelector('.v')?.textContent).toBe('—');
+    expect(cta('Reject').disabled).toBe(false);
+    expect(unstyled()).toEqual([]);
+  });
+
+  // Negative control (I1): a field value of a kind the parser does not recognize at all is still refused — the fix
+  // for `none` did not loosen the fail-closed default branch next to it.
+  it('a malformed field value (an unrecognized kind) is still refused — pendingOf fails closed (I1 negative control)', () => {
+    const request = {
+      requestId: 'x',
+      type: 'signTransaction',
+      origin: 'https://jup.ag',
+      host: 'jup.ag',
+      site: {kind: 'verified', name: 'Jupiter', imitates: null, rule: null, idn: null, international: false},
+      offerBlock: false,
+      connect: null,
+      sign: null,
+      mismatch: null,
+      tx: {
+        kind: 'signTransaction',
+        account: {index: 0, name: 'Main', publicKey: ACCOUNT.publicKey},
+        simulation: {status: 'simulating'},
+        reauth: null,
+        labels: [],
+        transactions: [
+          {
+            version: 'legacy',
+            feePayer: ACCOUNT.publicKey,
+            unitLimit: null,
+            feeLamports: null,
+            outcome: null,
+            instructions: [{programId: null, program: null, name: null, fields: [{name: 'x', value: {kind: 'bogus'}}]}],
+          },
+        ],
+      },
+    };
+    expect(pendingOf({state: 'request', waiting: 0, windowNotice: false, request})).toBeNull();
+  });
+
+  // Fix round 1, I2: the sheet is for exactly the simulation it opened on; a refresh landing while it is open must
+  // close it (or, if a captured click still slips in, the background refuses it `stale`) — never sign effects the
+  // user never saw.
+  it('a lookalike’s risk-confirm sheet closes when a refresh lands while it is open — nothing signed (I2)', async () => {
+    const w = await openWindow();
+    await known(w);
+    const {page, requestId} = await w.signTx('https://tensr.trade', [v0()]);
+    w.show();
+    await simulated(w, 'Balance changes (post-simulation)');
+    await armedAfter();
+    fireEvent.click(cta('Approve anyway (not recommended)'));
+    await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
+    // A refresh lands while the sheet is open (the window's own read starts it in the background).
+    const first = (await readDappSession(w.ext)).queue[0]?.sim;
+    w.deps.clock.t += 30_000;
+    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+    await waitFor(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
+    await waitFor(() => expect(screen.queryByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'})).toBeNull());
+    expect(page.answersFor(requestId)).toEqual([]);
+    expect(w.closed.n).toBe(0);
+  });
+
+  // Fix round 1, I3 (controller ruling, overrides plan R2's display): a known program's instruction the decoder
+  // names but does not decode the fields of must never look fully decoded.
+  it('mintTo (a known tag outside the decoded list): named, but marked "not decoded" (I3)', async () => {
+    const w = await openWindow();
+    await known(w);
+    await w.signTx('https://jup.ag', [v0([mintTo()])]);
+    w.show();
+    await simulated(w, 'Balance changes (post-simulation)');
+    expect(texts('.app-tx-ix .row .v')[1]).toBe('mintTo · Details not decoded — check them on the site before approving.');
+    expect(texts('.s9-payload-card .row .k')).toEqual(['Program 1', 'instruction', 'Compute units', 'Network fee']);
+  });
+
+  // Fix round 1 (promoted minor 2): a v0 transaction whose lookup table is not yet resolved used to make the whole
+  // instructions card vanish; it now says why, instead.
+  it('a v0 transaction whose lookup table is not yet resolved: the card says why, instead of vanishing (promoted minor 2)', () => {
+    const request: RequestView = {
+      requestId: 'p',
+      type: 'signTransaction',
+      origin: 'https://jup.ag',
+      host: 'jup.ag',
+      site: {kind: 'verified', name: 'Jupiter', imitates: null, rule: null, idn: null, international: false},
+      offerBlock: false,
+      connect: null,
+      sign: null,
+      mismatch: null,
+      tx: {
+        kind: 'signTransaction',
+        account: {index: 0, name: 'Main', publicKey: ACCOUNT.publicKey},
+        simulation: {status: 'simulating'},
+        reauth: null,
+        labels: [],
+        transactions: [{version: 0, feePayer: ACCOUNT.publicKey, instructions: null, unitLimit: null, feeLamports: null, outcome: null}],
+      },
+    };
+    render(<Tx request={request} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
+    expect(screen.getByText('Instructions appear once the transaction is simulated.')).toBeTruthy();
   });
 });
 

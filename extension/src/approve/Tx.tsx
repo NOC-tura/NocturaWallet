@@ -1,4 +1,4 @@
-import {useState, type ReactNode} from 'react';
+import {useEffect, useRef, useState, type ReactNode} from 'react';
 import {AddressGroups} from '../../../web/src/ui/AddressGroups';
 import {ExtIcon} from '../app/ui/ExtIcon';
 import {LockedButton} from '../app/ui/LockedButton';
@@ -92,7 +92,6 @@ function BalanceCard({item, simulating}: {item: TxItem; simulating: boolean}) {
 function FieldValueView({value, labels}: {value: FieldValue; labels: readonly AddressLabel[]}): ReactNode {
   switch (value.kind) {
     case 'address': {
-      if (value.value === null) return '—';
       const label = labels.find(l => l.address === value.value);
       return (
         <>
@@ -101,6 +100,9 @@ function FieldValueView({value, labels}: {value: FieldValue; labels: readonly Ad
         </>
       );
     }
+    // Fix round 1, I1: a legitimate protocol-level absence (decode.ts's own `none`), never a resolution failure.
+    case 'none':
+      return '—';
     case 'lamports':
       return `${showSol(BigInt(value.value))} SOL`;
     case 'amount':
@@ -113,11 +115,21 @@ function FieldValueView({value, labels}: {value: FieldValue; labels: readonly Ad
 }
 
 function Payload({item, labels}: {item: TxItem; labels: readonly AddressLabel[]}) {
-  const outcome = item.outcome !== null && item.outcome.ok ? item.outcome : null;
+  // Fix round 1 (promoted minor 2): a v0 transaction whose lookup table is not yet resolved shows the card, with a line
+  // saying why, instead of vanishing entirely.
+  if (item.instructions === null) {
+    return (
+      <div className="s9-payload-card">
+        <span className="label">{TX_TEXT.instructions}</span>
+        <p className="noc-body-sm app-dim">{TX_TEXT.instructionsPending}</p>
+      </div>
+    );
+  }
+  const consumed = item.outcome !== null && item.outcome.ok ? item.outcome.unitsConsumed : null;
   return (
     <div className="s9-payload-card">
       <span className="label">{TX_TEXT.instructions}</span>
-      {(item.instructions ?? []).map((ix: DecodedInstruction, i) => (
+      {item.instructions.map((ix: DecodedInstruction, i) => (
         <div className="app-tx-ix" key={i}>
           <div className="row">
             <span className="k">{TX_TEXT.program(i + 1)}</span>
@@ -135,11 +147,16 @@ function Payload({item, labels}: {item: TxItem; labels: readonly AddressLabel[]}
           {ix.program === null ? null : (
             <div className="row app-tx-field">
               <span className="k noc-mono">instruction</span>
-              <span className="v mono">{ix.name ?? TX_TEXT.unknownInstruction}</span>
+              <span className="v mono">
+                {ix.name ?? TX_TEXT.unknownInstruction}
+                {/* Fix round 1, I3 (controller ruling): a known program's instruction the decoder names but did not
+                    decode the fields of (mintTo, withdrawNonceAccount, transferWithSeed, …) never looks fully decoded. */}
+                {ix.fields.length === 0 ? <span className="noc-caption"> · {TX_TEXT.notDecoded}</span> : null}
+              </span>
             </div>
           )}
-          {ix.fields.map(f => (
-            <div className="row app-tx-field" key={f.name}>
+          {ix.fields.map((f, fi) => (
+            <div className="row app-tx-field" key={fi}>
               <span className="k noc-mono">{f.name}</span>
               <span className={f.value.kind === 'address' ? 'v app-tx-addr' : 'v mono'}>
                 <FieldValueView value={f.value} labels={labels} />
@@ -148,16 +165,17 @@ function Payload({item, labels}: {item: TxItem; labels: readonly AddressLabel[]}
           ))}
         </div>
       ))}
-      {outcome === null ? null : (
+      {/* Fix round 1 (promoted minor 3, R5): computed locally — shown while still simulating too (consumed is "—" until then). */}
+      {item.unitLimit === null ? null : (
         <div className="row">
           <span className="k">{TX_TEXT.computeUnits}</span>
-          <span className="v noc-numeral">{`${outcome.unitsConsumed === null ? '—' : grouped(outcome.unitsConsumed)} / ${grouped(outcome.unitLimit)}`}</span>
+          <span className="v noc-numeral">{`${consumed === null ? '—' : grouped(consumed)} / ${grouped(item.unitLimit)}`}</span>
         </div>
       )}
-      {outcome === null || outcome.feeLamports === null ? null : (
+      {item.feeLamports === null ? null : (
         <div className="row">
           <span className="k">{TX_TEXT.networkFee}</span>
-          <span className="v noc-numeral">{showFee(BigInt(outcome.feeLamports))} SOL</span>
+          <span className="v noc-numeral">{showFee(BigInt(item.feeLamports))} SOL</span>
         </div>
       )}
     </div>
@@ -197,11 +215,22 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
   const detail = request.tx;
   const lookalike = request.site.kind === 'lookalike';
   const [confirming, setConfirming] = useState(false);
+  // Fix round 1, I2: the simulation the sheet was opened against — sent explicitly on proceed, never whatever is
+  // current by then (the background answers `stale` for a newer one; §2.3's own fail-closed check, named twice).
+  const [confirmSimId, setConfirmSimId] = useState<string | null>(null);
   // Review 1 L4: the last approval was refused `stale` (a refresh landed): say why the click did nothing, until the next one.
   const [stale, setStale] = useState(false);
   const simId = detail !== null && detail.simulation.status === 'ok' ? detail.simulation.id : 'none';
   const armed = useArmed([request.requestId, simId, detail?.reauth?.state ?? 'none', confirming, busy].join('|'));
   const reject = () => onDecide({decision: 'reject'});
+  // Promoted minor 1: a reply arriving after this screen is gone (a new head replaced it, or it closed) sets nothing.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   if (detail === null) {
     return (
       <div className="screen app-approve">
@@ -227,9 +256,17 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
   const ready = state === 'ready';
   const reauthWaiting = detail.reauth?.state === 'waiting';
   const canApprove = ready && !reauthWaiting && !busy;
-  const approve = async () => {
+  // Fix round 1, I2: the sheet is for exactly the simulation it opened on — a refresh that lands while it is open
+  // (simId no longer matches what was captured, or canApprove itself goes false) closes it; a captured click that
+  // still slips past that (the background is the final, fail-closed word) is refused `stale`, never signed.
+  useEffect(() => {
+    if (confirming && (simId !== confirmSimId || !canApprove)) setConfirming(false);
+  }, [confirming, simId, confirmSimId, canApprove]);
+  const approve = async (overrideSimId?: string) => {
     setStale(false);
-    const reply = await onDecide({decision: 'approve', account: detail.account.publicKey, ...(detail.simulation.status === 'ok' ? {simulation: detail.simulation.id} : {})});
+    const sentSimId = overrideSimId ?? (detail.simulation.status === 'ok' ? detail.simulation.id : undefined);
+    const reply = await onDecide({decision: 'approve', account: detail.account.publicKey, ...(sentSimId !== undefined ? {simulation: sentSimId} : {})});
+    if (!alive.current) return;
     if (typeof reply === 'object' && reply !== null && 'error' in reply && reply.error === 'stale') setStale(true);
   };
   const n = detail.transactions.length;
@@ -296,7 +333,7 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
           <section className="app-tx-item" key={i}>
             {n > 1 ? <h2 className="noc-overline app-tx-batch">{TX_TEXT.batchItem(i + 1, n)}</h2> : null}
             {state === 'failed' || state === 'expired' || state === 'unreachable' ? null : <BalanceCard item={t} simulating={simulating} />}
-            {t.instructions === null ? null : <Payload item={t} labels={detail.labels} />}
+            <Payload item={t} labels={detail.labels} />
           </section>
         ))}
         {simulating ? <p className="noc-caption app-dim app-tx-caption">{TX_TEXT.mandatory}</p> : null}
@@ -331,7 +368,15 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
             <ExtIcon name="close" size={18} />
             {WINDOW_TEXT.rejectAndReport}
           </LockedButton>
-          <ConfirmButton armed={armed && canApprove} className="btn btn-tertiary noc-body-sm app-dim" onPress={() => setConfirming(true)}>
+          <ConfirmButton
+            armed={armed && canApprove}
+            className="btn btn-tertiary noc-body-sm app-dim"
+            onPress={() => {
+              // I2: captured now — what the sheet is for, and what proceeding sends, however long it stays open.
+              setConfirmSimId(simId);
+              setConfirming(true);
+            }}
+          >
             {TX_TEXT.approveAnyway}
           </ConfirmButton>
         </div>
@@ -357,8 +402,14 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
         <RiskConfirm
           onCancel={() => setConfirming(false)}
           onProceed={async () => {
+            // I2: the effect above already closes this sheet the instant either goes stale; this is the backstop —
+            // onProceed itself never bypasses canApprove, and never sends anything but the id it was captured for.
+            if (confirmSimId === null || simId !== confirmSimId || !canApprove) {
+              setConfirming(false);
+              return;
+            }
             setConfirming(false);
-            await approve();
+            await approve(confirmSimId);
           }}
         />
       ) : null}
