@@ -287,8 +287,11 @@ function headRefused(tx: Tx, e: Entry | undefined): DecideError | null {
 export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Promise<{ok: true} | {ok: false; error: DecideError}> {
   const instance = runtimeFor(ext).instance;
   // B1c-2: a transaction request's approval first passes every check, then the re-authentication gate (outside any
-  // section: the challenge store takes sessionMutex), then writes `deciding` in a second section that checks it all again.
-  // A peek without a section only routes: every check below runs again inside the sections. A connect or a
+  // section: the challenge store takes sessionMutex), then writes `deciding` in a second section that checks it all
+  // again — INCLUDING, fail-closed, that a simulation needing re-auth carries a proof bound to it (R9/R11, fix round 1
+  // item 1): the peek below only decides whether the gate runs at all; it is never trusted on its own, because an
+  // unsectioned read can miss the entry (a race, a malformed stored value) and leave `proof` null while the entry
+  // still needs one — the deciding section's own check below is what actually enforces it. A connect or a
   // signMessage decision takes the one section it always took.
   const peek = (await readDappSession(ext)).queue.find(x => x.requestId === d.requestId);
   // A proven challenge to consume after `deciding` is written (review 1 L1): its id and what it is bound to.
@@ -330,6 +333,10 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
     if (e.type === 'signAndSendTransaction') return 'malformed';
     const refused = approvalRefused(tx, e, d) ?? (isTxType(e.type) ? txRefused(e, d.simulation, tx.now) : null);
     if (refused !== null) return refused;
+    // Fix round 1 item 1: fail closed even when the peek above missed this entry (the pre-section and the gate never
+    // ran, so `proof` is still null here) — a simulation that names reasons may proceed only with a proof bound to
+    // EXACTLY this entry's current challenge; a proof for a challenge the entry no longer points at does not count.
+    if (isTxType(e.type) && e.sim?.status === 'ok' && e.sim.sim.reasons.length > 0 && (proof === null || proof.id !== e.challengeId)) return 'reauth-required';
     e.state = 'deciding';
     e.decidedBy = instance;
     e.decidingAt = tx.now;

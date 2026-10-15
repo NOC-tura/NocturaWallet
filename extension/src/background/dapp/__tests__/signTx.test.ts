@@ -5,11 +5,11 @@ import {AUTOLOCK_ALARM, lock} from '../../autolock';
 import {GRANTS_KEY, type Grant} from '../grants';
 import {runtimeFor} from '../ports';
 import {DAPP_SESSION_KEY, readDappSession} from '../store';
-import {SIM_REFRESH_MS, SIM_RETRY_MS, SIM_VALID_MS, dappAbout, withSignature} from '../signTx';
-import {MAX_DAPP_OUTGOING} from '../../reauthChallenges';
+import {SIM_REFRESH_MS, SIM_RETRY_MS, SIM_VALID_MS, dappAbout, dappDigest, withSignature} from '../signTx';
+import {MAX_DAPP_OUTGOING, issueChallenge} from '../../reauthChallenges';
 import {REAUTH_KEY} from '../../session';
 import {ACCOUNT, RECIPIENT} from '../../__tests__/fixtures';
-import {CO, ME, SOL, coSigned, transfer, txScene, until, v0} from './txHarness';
+import {CO, ME, coSigned, transfer, txScene, until, v0} from './txHarness';
 
 const sigs = (b64: string) => VersionedTransaction.deserialize(base64.decode(b64)).signatures;
 const verifies = (b64: string, slot: number, key: Uint8Array) => {
@@ -259,7 +259,6 @@ describe('re-authentication for a transaction request', () => {
     const id2 = (await c.simulated(id)).request?.tx?.simulation.id;
     expect(await c.approve(requestId, id2)).toEqual({ok: false, error: 'reauth-required'});
     expect((await c.entry(requestId))?.challengeId).not.toBe(first);
-    expect(SOL).toBe(10_000_000_000n);
   });
 
   /** A proven request, and a hook on the challenge store's reads during the next Approve (the gate reads it twice, the consume once more). */
@@ -339,10 +338,138 @@ describe('re-authentication for a transaction request', () => {
     e.sim = {status: 'ok', sim: {...e.sim.sim, outcomes: [{...first, changes: changes.slice(17)}]}};
     expect(dappAbout(e, 'dapp.test', 10_000)).toMatchObject({outgoing: [{mint: null}, {mint: mint(27)}], omitted: 0});
   });
+
+  // Fix round 1 item 2: simulate.ts's decimals field is untrusted mint data (a hostile or merely unusual token can
+  // report any u8 value); reauthChallenges.ts's isOutgoing only ever accepts 0–18. Out of range must show as base
+  // units (decimals: null), never reach issueChallenge raw and make it throw an uncaught TypeError — a dApp-triggerable
+  // unexpected error in the window.
+  it('dappAbout clamps an out-of-range decimals (untrusted mint data) to null — issueChallenge never throws on it', async () => {
+    const c = await txScene();
+    const r = await c.signTx('t', [v0([transfer(1_000_000)])]);
+    await c.simulated();
+    const e = structuredClone(await c.entry(String(r?.requestId)));
+    if (e === undefined || e.sim?.status !== 'ok') throw new Error('not simulated');
+    const [first] = e.sim.sim.outcomes;
+    if (first === undefined || !first.ok) throw new Error('no outcome');
+    const weird = base58.encode(new Uint8Array(32).fill(9));
+    e.sim = {status: 'ok', sim: {...e.sim.sim, outcomes: [{...first, changes: [...first.changes, {mint: weird, amount: '-5', decimals: 19, usdMicros: null}]}]}};
+    const about = dappAbout(e, 'dapp.test', 10_000);
+    expect(about?.outgoing.find(o => o.mint === weird)?.decimals).toBeNull();
+    if (about === null) throw new Error('no about');
+    await expect(issueChallenge(c.ext, c.deps, dappDigest(e), about)).resolves.toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  // Fix round 1 item 3: a live (even proven) challenge is frozen from the simulation that issued it — #10 described
+  // that one. A refresh that grows an outgoing amount makes that description stale even when the reasons it named
+  // are unchanged; the old proof must not stand for a bigger send than it ever described.
+  it('a refresh that grows an outgoing amount (reasons unchanged) re-issues the challenge — the old proof no longer applies', async () => {
+    const c = await txScene();
+    const r = await c.signTx('t', [v0([transfer(1_000_000)])]);
+    const requestId = String(r?.requestId);
+    const id = String((await c.simulated()).request?.tx?.simulation.id);
+    await c.approve(requestId, id);
+    const first = String((await c.entry(requestId))?.challengeId);
+    await c.reauthOk(first);
+    expect(await c.challengeInfo(first)).toMatchObject({ok: true, data: {reasons: ['first-send']}});
+    // A refresh lands with a far larger outflow (still well under the USD threshold, so still only 'first-send') —
+    // written directly onto the stored simulation, as other tests in this file do.
+    const s = await readDappSession(c.ext);
+    const e = s.queue.find(x => x.requestId === requestId);
+    if (e === undefined || e.sim?.status !== 'ok') throw new Error('not simulated');
+    const [outcome] = e.sim.sim.outcomes;
+    if (outcome === undefined || !outcome.ok) throw new Error('no outcome');
+    const grown = {...outcome, changes: outcome.changes.map(ch => (ch.mint === null ? {...ch, amount: (BigInt(ch.amount) * 100n).toString()} : ch))};
+    const freshId = 'G'.repeat(22);
+    await c.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(x => (x.requestId === requestId && x.sim?.status === 'ok' ? {...x, sim: {status: 'ok', sim: {...x.sim.sim, id: freshId, outcomes: [grown]}}} : x))});
+    expect(await c.approve(requestId, freshId)).toEqual({ok: false, error: 'reauth-required'});
+    const second = String((await c.entry(requestId))?.challengeId);
+    expect(second).not.toBe(first);
+    expect(await c.challengeInfo(second)).toMatchObject({ok: true, data: {reasons: ['first-send']}});
+  });
+
+  // The other half of item 3: amounts unchanged, but the refresh names a reason the issued challenge never did
+  // (chain state can surface 'approval' only once a simulation actually sees the delegation/authority change).
+  it('a refresh that adds a reason (amounts unchanged) re-issues the challenge', async () => {
+    const c = await txScene();
+    const r = await c.signTx('t', [v0([transfer(1_000_000)])]);
+    const requestId = String(r?.requestId);
+    const id = String((await c.simulated()).request?.tx?.simulation.id);
+    await c.approve(requestId, id);
+    const first = String((await c.entry(requestId))?.challengeId);
+    await c.reauthOk(first);
+    const s = await readDappSession(c.ext);
+    const freshId = 'H'.repeat(22);
+    await c.ext.session.set(DAPP_SESSION_KEY, {
+      ...s,
+      queue: s.queue.map(x => (x.requestId === requestId && x.sim?.status === 'ok' ? {...x, sim: {status: 'ok', sim: {...x.sim.sim, id: freshId, reasons: [...x.sim.sim.reasons, 'approval']}}} : x)),
+    });
+    expect(await c.approve(requestId, freshId)).toEqual({ok: false, error: 'reauth-required'});
+    const second = String((await c.entry(requestId))?.challengeId);
+    expect(second).not.toBe(first);
+    expect(await c.challengeInfo(second)).toMatchObject({ok: true, data: {reasons: ['first-send', 'approval']}});
+  });
+
+  // Fix round 1 item 4 (promoted), negative control: dappDigest binds the challenge to THIS request, not just to the
+  // account and the bytes — two distinct requests can carry byte-identical transactions (a dApp resending the same
+  // batch under a new id), and the earlier one's proof must never satisfy the later one.
+  it('negative control: request A’s proven challenge cannot approve request B, even with byte-identical transactions', async () => {
+    const c = await txScene();
+    const rA = await c.signTx('a', [v0([transfer(1_000_000)])]);
+    const requestIdA = String(rA?.requestId);
+    const idA = (await c.simulated()).request?.tx?.simulation.id;
+    await c.approve(requestIdA, idA);
+    const challengeIdA = String((await c.entry(requestIdA))?.challengeId);
+    await c.reauthOk(challengeIdA);
+    expect(await c.challengeInfo(challengeIdA)).toMatchObject({ok: true});
+    // A rejects: the dApp challenge store is untouched by a reject — only its own clock retires it.
+    expect(await c.decide({requestId: requestIdA, decision: 'reject'})).toEqual({ok: true});
+    expect(await c.challengeInfo(challengeIdA)).toMatchObject({ok: true});
+
+    const rB = await c.signTx('b', [v0([transfer(1_000_000)])]);
+    const requestIdB = String(rB?.requestId);
+    const idB = String((await c.simulated()).request?.tx?.simulation.id);
+    // The one way B's own challengeId field could ever point at A's record (a forged or raced write) — the real
+    // defence below is the digest binding, not that this cannot happen structurally.
+    const s = await readDappSession(c.ext);
+    await c.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => (e.requestId === requestIdB ? {...e, challengeId: challengeIdA} : e))});
+    expect(await c.approve(requestIdB, idB)).toEqual({ok: false, error: 'reauth-required'});
+    expect(c.page.answersFor(requestIdB)).toEqual([]);
+  });
+
+  // Fix round 1 item 1: the gate only ever runs after a `peek` that found this entry; if that unsectioned read misses
+  // it (a race, a malformed stored value — readDappSession silently drops what it cannot validate), the gate never
+  // ran and `proof` stays null. The deciding section itself must still refuse a transaction that needs re-auth in
+  // that case — it cannot lean on the gate having run at all.
+  it('the peek misses the entry (an empty queue read): the deciding section itself still requires the proof — reauth-required, nothing answered, nothing signed', async () => {
+    const c = await txScene();
+    const r = await c.signTx('t', [v0([transfer(1_000_000)])]);
+    const requestId = String(r?.requestId);
+    const id = (await c.simulated()).request?.tx?.simulation.id;
+    const get = c.ext.session.get;
+    let calls = 0;
+    c.ext.session.get = async k => {
+      if (k === DAPP_SESSION_KEY) {
+        calls++;
+        if (calls === 1) return undefined; // the peek's own read: an empty queue, as if the entry were not there yet.
+      }
+      return get(k);
+    };
+    expect(await c.approve(requestId, id)).toEqual({ok: false, error: 'reauth-required'});
+    c.ext.session.get = get;
+    expect(c.page.answersFor(requestId)).toEqual([]);
+    expect((await c.entry(requestId))?.state).toBe('queued');
+    expect((await c.entry(requestId))?.challengeId).toBeNull();
+  });
 });
 
 describe('#48’s other views', () => {
-  it('the mismatch notice names the origin the account is granted to; locked, a transaction request shows only its origin (D11)', async () => {
+  // Fix round 1, test hygiene item 5: retitled to what this actually checks — a queued signTransaction request is
+  // swept the same way a connect/signMessage one is (there is no reachable "locked, a queued tx shows only its
+  // origin" case for a transaction request: page.signTransaction itself refuses `unauthorized` while locked, before
+  // any entry is ever queued — grantedAccount returns none while locked, so the request never reaches the queue to
+  // be shown locked in the first place). The unrelated `runtimeFor(...).simulating.size` cleanup assertion (not a
+  // view at all) is dropped.
+  it('the mismatch notice names the origin the account is granted to; a lock sweeps a queued transaction request too — nothing left to show', async () => {
     const c = await txScene({grant: {origin: 'https://jup.ag'}});
     expect(await c.signTx('m', [v0()])).toEqual({id: 'm', error: 'unauthorized'});
     const view = (await c.pend()) as unknown as {state: string; request: {type: string; mismatch: unknown; tx: unknown}};
@@ -352,9 +479,5 @@ describe('#48’s other views', () => {
     await lock(d.ext);
     // A lock answers the queue: nothing left to show.
     expect((await d.pend()).state).toBe('none');
-    const e = await txScene();
-    await e.signTx('t', [v0()]);
-    await e.simulated();
-    expect(runtimeFor(e.ext).simulating.size).toBe(0);
   });
 });

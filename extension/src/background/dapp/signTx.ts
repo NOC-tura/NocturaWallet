@@ -172,6 +172,14 @@ export function txRefused(e: Entry, simulation: string | null, now: number): TxR
   return null;
 }
 
+/**
+ * Fix round 1 item 2: `simulate.ts`'s `BalanceChange.decimals` is untrusted mint data (a hostile or merely unusual
+ * token can report any u8); `reauthChallenges.ts`'s `isOutgoing` only ever accepted 0–18. Clamped to null (shown in
+ * base units) here, at the one place a dApp challenge's `about` is built, so an out-of-range value can never reach
+ * `issueChallenge` and make it throw (uncaught, an unexpected error reaching the window) — never a thrown exception.
+ */
+const dappDecimals = (d: number | null): number | null => (d !== null && d >= 0 && d <= 18 ? d : null);
+
 /** What #10 says about a dApp challenge: the site, the batch's size, what leaves the account per mint, the reasons. */
 export function dappAbout(e: Entry, site: string, thresholdCents: number): Extract<ChallengeAbout, {kind: 'dapp'}> | null {
   if (e.sim?.status !== 'ok' || e.account === null || e.transactions === null) return null;
@@ -184,7 +192,7 @@ export function dappAbout(e: Entry, site: string, thresholdCents: number): Extra
       if (a >= 0n) continue;
       const prev = out.get(c.mint);
       const usd = c.usdMicros === null ? null : -BigInt(c.usdMicros);
-      out.set(c.mint, {amount: (prev?.amount ?? 0n) - a, decimals: c.decimals, usd: prev !== undefined && prev.usd === null ? null : usd === null ? null : (prev?.usd ?? 0n) + usd});
+      out.set(c.mint, {amount: (prev?.amount ?? 0n) - a, decimals: dappDecimals(c.decimals), usd: prev !== undefined && prev.usd === null ? null : usd === null ? null : (prev?.usd ?? 0n) + usd});
     }
   }
   // Review 1 L9: more mints than #10 lists is cut, not refused — SOL first, then the largest in USD, then the unpriced
@@ -198,6 +206,21 @@ export function dappAbout(e: Entry, site: string, thresholdCents: number): Extra
   return {kind: 'dapp', account: e.account, site, transactions: e.transactions.length, outgoing, omitted: all.length - outgoing.length, reasons: e.sim.sim.reasons.slice(), thresholdCents};
 }
 
+/** Whether every reason the fresh simulation gives was already named in the challenge issued for it. */
+function reasonsCovered(fresh: readonly DappReauthReason[], issued: readonly DappReauthReason[]): boolean {
+  const have = new Set(issued);
+  return fresh.every(r => have.has(r));
+}
+
+/**
+ * Whether any mint's fresh outgoing amount exceeds what the issued challenge described — a mint absent from the
+ * issued list (new since the challenge was issued) counts as having had 0.
+ */
+function outgoingGrew(fresh: readonly DappOutgoing[], issued: readonly DappOutgoing[]): boolean {
+  const had = new Map(issued.map(o => [o.mint, BigInt(o.amount)]));
+  return fresh.some(o => BigInt(o.amount) > (had.get(o.mint) ?? 0n));
+}
+
 /**
  * B1b's re-authentication for a transaction request (spec §3.3): when the simulation gave reasons, Approve first asks
  * for a challenge — issued once, kept on the entry, described by #10 (reached from the Noctura icon, never from the
@@ -206,16 +229,22 @@ export function dappAbout(e: Entry, site: string, thresholdCents: number): Extra
  * consumes it right after the `deciding` section (plan 2 review 1 L1: a refusal in that section — a refresh landed,
  * the request is no longer the head — leaves the proof standing, so the user is not asked again for it). Still single
  * use: a `deciding` entry is never decided twice, and a failed consume ends the request `rejected` before any key is read.
+ * Fix round 1 item 3: a live, even proven, challenge is frozen from the simulation that issued it (#10 described that
+ * one) — a 30 s refresh that grows an outgoing amount, or adds a reason, makes that description stale: it no longer
+ * speaks for what Approve is about to sign. Re-issued (a new id; the old proof, proven or not, is simply replaced and
+ * never consulted again) whenever the fresh simulation's reasons are not all already named, or any mint's outgoing
+ * amount grew past what was described.
  */
 export async function reauthGate(ext: Ext, deps: Pick<WalletDeps, 'now' | 'randomBytes'>, e: Entry, site: string): Promise<'ready' | 'proven' | 'reauth-required' | 'stale'> {
   if (e.sim?.status !== 'ok' || e.sim.sim.reasons.length === 0) return 'ready';
   const digest = dappDigest(e);
   const now = deps.now();
-  const live = e.challengeId !== null && (await challengeInfo(ext, now, e.challengeId)) !== null;
-  if (!live) {
-    const about = dappAbout(e, site, (await readSettings(ext)).reauthUsdCents);
-    if (about === null) return 'stale';
-    const id = await issueChallenge(ext, deps, digest, about);
+  const current = e.challengeId !== null ? await challengeInfo(ext, now, e.challengeId) : null;
+  const fresh = dappAbout(e, site, (await readSettings(ext)).reauthUsdCents);
+  if (fresh === null) return 'stale';
+  const stillCovers = current !== null && current.kind === 'dapp' && reasonsCovered(fresh.reasons, current.reasons) && !outgoingGrew(fresh.outgoing, current.outgoing);
+  if (!stillCovers) {
+    const id = await issueChallenge(ext, deps, digest, fresh);
     await queueAccess(ext, deps, tx => {
       const x = tx.s.queue.find(q => q.requestId === e.requestId);
       if (x !== undefined && x.state === 'queued') x.challengeId = id;
