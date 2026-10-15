@@ -4,7 +4,7 @@ import {base58, base64} from '@scure/base';
 import {contained, launchPopup, type Harness} from './popupHarness';
 import {E2E_ACCOUNTS, E2E_PASSWORD, makeEnvelope} from './makeEnvelope';
 import {unlockWith} from './vaultPage';
-import {DAPP_HOSTS, adapter, approvalWindow, connect, features, noWindow, openDapp, rawSignTx, sendTx, serveDapp, signTx, windowClosed, type DappServer} from './dappPage';
+import {DAPP_HOSTS, adapter, approvalWindow, connect, features, noWindow, openDapp, rawSignTx, relayed, sendTx, serveDapp, signTx, windowClosed, type DappServer} from './dappPage';
 import {parseV0} from './fakeCoordinator';
 
 // Spec B1c §6.3 (B1c-2), §3.3, §1.4: the transaction features against the real extension — the provider, the relay,
@@ -12,7 +12,10 @@ import {parseV0} from './fakeCoordinator';
 // broadcast route — with the test dApp's own @solana/web3.js transactions, driven raw and through
 // @solana/wallet-adapter's StandardWalletAdapter (review-1 M1). Titles "B1c-NN · " as B1c-1's. Chromium only (B1c-1's
 // note: Firefox's port.sender.origin is a line of B1e's manual run).
-declare const chrome: {storage: {local: {set(o: object): Promise<void>; get(k: string): Promise<Record<string, unknown>>}}};
+declare const chrome: {
+  storage: {local: {set(o: object): Promise<void>; get(k: string): Promise<Record<string, unknown>>}};
+  runtime: {sendMessage(m: unknown): Promise<unknown>};
+};
 
 const ACCOUNT = E2E_ACCOUNTS[0];
 const DAPP = 'https://dapp.test';
@@ -60,10 +63,25 @@ const signedBy = (wireB64: string, slot = 0): boolean => {
   const {message, signatures} = wireParts(base64.decode(wireB64));
   return ed25519.verify(signatures[slot] ?? new Uint8Array(64), message, base58.decode(ACCOUNT));
 };
+/**
+ * Review fix I3: asserts the signed wire carries EXACTLY the page's own message bytes (not merely a validly-signed
+ * one), with exactly one signature slot (every transaction here has exactly one signer, the fee payer — a second
+ * slot would mean the wallet or the adapter altered what the page asked it to sign).
+ */
+function expectOwnMessage(signedB64: string, expectedMessageB64: string): void {
+  const {message, signatures} = wireParts(base64.decode(signedB64));
+  expect(base64.encode(message)).toBe(expectedMessageB64);
+  expect(signatures).toHaveLength(1);
+}
 /** #48 simulated (the balance changes shown), then Approve — held 500 ms by C15, which Playwright waits out. */
 async function approve(win: Page): Promise<void> {
   await expect(win.getByText('Balance changes (post-simulation)').first()).toBeVisible({timeout: 10_000});
   await win.getByRole('button', {name: 'Approve', exact: true}).click();
+}
+/** Review fix I2: gives pending.ts's POLL_INTERVAL_MS (2 s) background poller at least one full round to run before
+ * re-asserting exactly-once broadcast — not a flake workaround, a deliberate window for the thing under test. */
+async function pollerRound(): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, 2_500));
 }
 
 test('B1c-25 · signTransaction: the six features; one transaction → #48 → Approve → signed; a batch of five on one screen → five signed; six refused with no window', async () => {
@@ -79,10 +97,12 @@ test('B1c-25 · signTransaction: the six features; one transaction → #48 → A
     await expect(win.locator('.top-bar .title')).toHaveText('Approve transaction');
     await expect(win.locator('.s9-payload-card .row .v.mono').first()).toHaveText('1111…1111 · system_program');
     await approve(win);
-    const r1 = (await one) as {ok: true; value: string[]};
+    const r1 = (await one) as {ok: true; value: {signed: string; message: string}[]};
     expect(r1.ok).toBe(true);
     expect(r1.value).toHaveLength(1);
-    expect(signedBy(r1.value[0] ?? '')).toBe(true);
+    expect(signedBy(r1.value[0]?.signed ?? '')).toBe(true);
+    // Review fix I3: the wallet signed exactly the page's own message bytes.
+    expectOwnMessage(r1.value[0]?.signed ?? '', r1.value[0]?.message ?? '');
     // The simulation the window showed asked the proxy for the account and the transaction's writable accounts.
     expect(h.fake.simulations.at(-1)).toEqual([ACCOUNT, RECIPIENT]);
     await windowClosed(win);
@@ -91,9 +111,11 @@ test('B1c-25 · signTransaction: the six features; one transaction → #48 → A
     const w5 = await approvalWindow(h.ctx, () => (five = signTx(page, 5, BLOCKHASH)));
     await expect(w5.locator('.app-tx-batch')).toHaveText(['Transaction 1 of 5', 'Transaction 2 of 5', 'Transaction 3 of 5', 'Transaction 4 of 5', 'Transaction 5 of 5']);
     await approve(w5);
-    const r5 = (await five) as {ok: true; value: string[]};
+    const r5 = (await five) as {ok: true; value: {signed: string; message: string}[]};
     expect(r5.value).toHaveLength(5);
-    expect(r5.value.every(w => signedBy(w))).toBe(true);
+    expect(r5.value.every(w => signedBy(w.signed))).toBe(true);
+    // Review fix I3: every item in the batch, not only its signature — its own message, unmixed with any other's.
+    for (const item of r5.value) expectOwnMessage(item.signed, item.message);
     await windowClosed(w5);
     // D8: more than five is refused in the background, before any window.
     expect(await noWindow(h.ctx, () => signTx(page, 6, BLOCKHASH))).toEqual({ok: false, code: 'invalid-request', message: 'The request is not valid.'});
@@ -112,22 +134,39 @@ test('B1c-26 · signAndSendTransaction: #48 → Approve → the route gets the s
     let sent!: Promise<unknown>;
     const win = await approvalWindow(h.ctx, () => (sent = sendTx(page, BLOCKHASH, 2_000_000)));
     await approve(win);
-    const r = (await sent) as {ok: true; value: string};
+    const r = (await sent) as {ok: true; value: {signature: string; message: string}};
     expect(r.ok).toBe(true);
-    const signature = base58.encode(base64.decode(r.value));
+    const signature = base58.encode(base64.decode(r.value.signature));
     expect(h.fake.broadcasts).toStrictEqual([signature]);
     const wire = h.fake.broadcastWires[0] ?? '';
     expect(signedBy(wire)).toBe(true);
     expect(parseV0(base64.decode(wire)).keys).toEqual([ACCOUNT, RECIPIENT, '11111111111111111111111111111111']);
+    // Review fix I3: the broadcast wire's message is the page's own bytes, exactly.
+    expectOwnMessage(wire, r.value.message);
     // The pending record, the dApp's (B1b's v1_pending pattern) — the popup's own pending list omits it.
     const pending = (await h.sw.evaluate(() => chrome.storage.local.get('v1_pending'))).v1_pending as {signature: string; origin: string | null; intent: unknown}[];
     expect(pending.map(x => [x.signature, x.origin, x.intent])).toEqual([[signature, DAPP, null]]);
-    // The transaction lands in the account's history: #26 badges it.
-    h.fake.history.set(ACCOUNT, [{signature, tx: {blockTime: Math.floor(Date.now() / 1000), meta: {err: null, fee: 5000, preBalances: [10_000_000_000, 0, 1], postBalances: [9_997_995_000, 2_000_000, 1], preTokenBalances: [], postTokenBalances: []}, transaction: {message: {accountKeys: [{pubkey: ACCOUNT, signer: true, writable: true}, {pubkey: RECIPIENT, signer: false, writable: true}, {pubkey: '11111111111111111111111111111111', signer: false, writable: false}], instructions: [{programId: '11111111111111111111111111111111', parsed: {type: 'transfer', info: {source: ACCOUNT, destination: RECIPIENT, lamports: 2_000_000}}, program: 'system'}]}}}}]);
+    // The transaction lands in the account's history: #26 badges it. A second, unrelated signature with no dApp
+    // record (review fix minor: the negative control) is the "wallet-sent" look — it must carry no badge at all.
+    const WALLET_SIG = '4'.repeat(88);
+    h.fake.history.set(ACCOUNT, [
+      {signature, tx: {blockTime: Math.floor(Date.now() / 1000), meta: {err: null, fee: 5000, preBalances: [10_000_000_000, 0, 1], postBalances: [9_997_995_000, 2_000_000, 1], preTokenBalances: [], postTokenBalances: []}, transaction: {message: {accountKeys: [{pubkey: ACCOUNT, signer: true, writable: true}, {pubkey: RECIPIENT, signer: false, writable: true}, {pubkey: '11111111111111111111111111111111', signer: false, writable: false}], instructions: [{programId: '11111111111111111111111111111111', parsed: {type: 'transfer', info: {source: ACCOUNT, destination: RECIPIENT, lamports: 2_000_000}}, program: 'system'}]}}}},
+      {signature: WALLET_SIG, tx: {blockTime: Math.floor(Date.now() / 1000) - 5, meta: {err: null, fee: 5000, preBalances: [9_997_995_000, 0, 1], postBalances: [9_993_990_000, 3_000_000, 1], preTokenBalances: [], postTokenBalances: []}, transaction: {message: {accountKeys: [{pubkey: ACCOUNT, signer: true, writable: true}, {pubkey: RECIPIENT, signer: false, writable: true}, {pubkey: '11111111111111111111111111111111', signer: false, writable: false}], instructions: [{programId: '11111111111111111111111111111111', parsed: {type: 'transfer', info: {source: ACCOUNT, destination: RECIPIENT, lamports: 3_000_000}}, program: 'system'}]}}}},
+    ]);
     await p.getByRole('button', {name: 'Activity'}).click();
-    const row = p.locator('.tx-row', {hasText: 'Sent SOL'});
-    await expect(row.locator('.origin-badge')).toHaveText('Dapp · simulated');
-    await expect(row.locator('.origin-badge')).toHaveAttribute('aria-label', 'dApp-originated transaction · simulated');
+    const rows = p.locator('.tx-row', {hasText: 'Sent SOL'});
+    const dappRow = rows.filter({hasText: 'Dapp · simulated'});
+    const walletRow = rows.filter({hasNotText: 'Dapp · simulated'});
+    await expect(dappRow.locator('.origin-badge')).toHaveText('Dapp · simulated');
+    await expect(dappRow.locator('.origin-badge')).toHaveAttribute('aria-label', 'dApp-originated transaction · simulated');
+    // Negative control (review fix minor): a row whose signature has no dApp record carries no badge at all.
+    await expect(walletRow).toHaveCount(1);
+    await expect(walletRow.locator('.origin-badge')).toHaveCount(0);
+    // Review fix I2: re-assert exactly-once broadcast AFTER the badge assertion, giving the background's pending
+    // poller rounds to run — proves it never re-broadcasts behind the UI's back once the row is confirmed and shown.
+    await pollerRound();
+    expect(h.fake.broadcasts).toStrictEqual([signature]);
+    expect(h.fake.broadcastWires).toHaveLength(1);
     done(h, server);
   } finally {
     await h.close();
@@ -153,33 +192,48 @@ test('B1c-27 · through StandardWalletAdapter: compatible; connect; signTransact
     let one!: Promise<unknown>;
     const w1 = await approvalWindow(h.ctx, () => (one = adapter.sign(page, BLOCKHASH)));
     await approve(w1);
-    const r1 = (await one) as {ok: true; value: string};
-    expect(signedBy(r1.value)).toBe(true);
+    const r1 = (await one) as {ok: true; value: {signed: string; message: string}};
+    expect(signedBy(r1.value.signed)).toBe(true);
+    // Review fix I3: the adapter's own signed bytes carry the page's exact message.
+    expectOwnMessage(r1.value.signed, r1.value.message);
     await windowClosed(w1);
 
     let all!: Promise<unknown>;
     const w5 = await approvalWindow(h.ctx, () => (all = adapter.signAll(page, 5, BLOCKHASH)));
     await expect(w5.locator('.app-tx-batch')).toHaveCount(5);
     await approve(w5);
-    const r5 = (await all) as {ok: true; value: string[]};
-    expect(r5.value).toHaveLength(5);
-    expect(r5.value.every(w => signedBy(w))).toBe(true);
+    const r5 = (await all) as {ok: true; value: {signed: string[]; messages: string[]}};
+    expect(r5.value.signed).toHaveLength(5);
+    expect(r5.value.signed.every(w => signedBy(w))).toBe(true);
+    r5.value.signed.forEach((wire, i) => expectOwnMessage(wire, r5.value.messages[i] ?? ''));
     await windowClosed(w5);
     // Six: the background refuses (D8) — the adapter reports its own WalletSignTransactionError, nothing opens.
-    const six = (await noWindow(h.ctx, () => adapter.signAll(page, 6, BLOCKHASH))) as {ok: false; message: string};
+    const six = (await noWindow(h.ctx, () => adapter.signAll(page, 6, BLOCKHASH))) as {ok: false; message: string; name: string | undefined};
     expect(six.ok).toBe(false);
     expect(six.message).toBe('The request is not valid.');
+    // Review fix minor: the adapter's own error TYPE, not only its message string.
+    expect(six.name).toBe('WalletSignTransactionError');
 
     let send!: Promise<unknown>;
     const ws = await approvalWindow(h.ctx, () => (send = adapter.send(page, BLOCKHASH)));
     await approve(ws);
-    const rs = (await send) as {ok: true; value: string};
+    const rs = (await send) as {ok: true; value: {signature: string; message: string}};
     expect(rs.ok).toBe(true);
-    expect(h.fake.broadcasts).toStrictEqual([rs.value]);
+    expect(h.fake.broadcasts).toStrictEqual([rs.value.signature]);
+    // Review fix minor: run signedBy/parseV0 on the adapter's own broadcast wire too (B1c-26 already does for the
+    // raw path) — and the message is the page's exact bytes.
+    const sendWire = h.fake.broadcastWires[0] ?? '';
+    expect(signedBy(sendWire)).toBe(true);
+    expect(parseV0(base64.decode(sendWire)).keys).toEqual([ACCOUNT, RECIPIENT, '11111111111111111111111111111111']);
+    expectOwnMessage(sendWire, rs.value.message);
     // Through signAndSendTransaction — the dApp's record (the adapter's fallback, signTransaction then its own
     // Connection, would leave none and reach the dApp's RPC, which done() refuses).
     const pending = (await h.sw.evaluate(() => chrome.storage.local.get('v1_pending'))).v1_pending as {signature: string; origin: string | null}[];
-    expect(pending.map(x => [x.signature, x.origin])).toStrictEqual([[rs.value, DAPP]]);
+    expect(pending.map(x => [x.signature, x.origin])).toStrictEqual([[rs.value.signature, DAPP]]);
+    // Review fix I2: re-assert exactly-once broadcast after giving the background's pending poller rounds to run.
+    await pollerRound();
+    expect(h.fake.broadcasts).toStrictEqual([rs.value.signature]);
+    expect(h.fake.broadcastWires).toHaveLength(1);
     done(h, server);
   } finally {
     await h.close();
@@ -192,24 +246,35 @@ test('B1c-28 · re-authentication through the toolbar (D11): a first send → Ap
   try {
     await popup(h);
     const page = await connected(h);
-    let pending!: Promise<unknown>;
-    const win = await approvalWindow(h.ctx, () => (pending = signTx(page, 1, BLOCKHASH)));
-    await expect(win.getByText("Approving asks you to confirm with your password (or passkey) — you'll start it from the Noctura icon.")).toBeVisible({timeout: 10_000});
 
-    // ADAPTATION (review fix round 3/4, controller ruling — window.ts's ensureWindow and pageApi.ts's mismatchNotice):
-    // a mismatch notice never opens a window of its own; it only ever rides along inside a real request's ALREADY
-    // open window, shown once the real request ahead of it in the queue is answered — or, with no real request ever
-    // queued, it expires silently. The brief's original form (its own approvalWindow()) assumed the notice opened a
-    // window by itself; it is fired here instead, queued behind `win`'s still-open real request (so it sits behind it
-    // in FIFO order), and asserted to open no window of its own (noWindow) while `win` is the one already showing.
+    // Review fix I1: the real negative control for "a mismatch notice never opens a window of its own"
+    // (window.ts's ensureWindow, pageApi.ts's mismatchNotice — controller ruling, fix rounds 3-4). Fired here, with
+    // NO window open at all (connected() already closed its own), this actually exercises window.ts:49's gate — it
+    // returns null only because the queue holds no REAL (non-mismatch) open entry yet, not because some other
+    // window happens to already be open. (The earlier form fired this while a real request's window was ALREADY
+    // open: window.ts:49 short-circuits on `tx.s.window !== null` before it ever reaches the notice-specific check,
+    // so that version could not fail under any build — fixed.)
     const other = await openDapp(h.ctx, 'https://jup.ag');
-    // A site asking with the account dapp.test holds: refused at once, and the ALREADY-OPEN window (once it gets to
-    // this entry) says what was refused. The provider itself refuses an account it was not given; a script posting
-    // straight to the relay is what reaches the background (§1.1: every script on the page has the page's authority
-    // over the provider).
+    // A site asking with the account dapp.test holds: refused at once (the provider itself refuses an account it
+    // was not given; a script posting straight to the relay is what reaches the background — §1.1: every script on
+    // the page has the page's authority over the provider), and it opens no window of its own.
     const refused = await noWindow(h.ctx, () => rawSignTx(other, ACCOUNT, BLOCKHASH));
     expect(refused).toEqual({error: 'unauthorized'});
+    // The dApp's own page got exactly one relay reply — its own, and nothing else's.
+    expect(await relayed(other)).toHaveLength(1);
 
+    // That notice is now queued (silently, no window) AHEAD of the next real request in FIFO order — so once a real
+    // request opens a window, the notice rides along inside it and is shown FIRST, dismiss-only (window.ts fix
+    // round 4: "a mismatch notice rides along in a real request's window").
+    let pending!: Promise<unknown>;
+    const win = await approvalWindow(h.ctx, () => (pending = signTx(page, 1, BLOCKHASH)));
+    await expect(win.getByText('Request blocked automatically')).toBeVisible();
+    await expect(win.locator('.s9-payload-card .row .v')).toHaveText(['dapp.test', 'jup.ag', 'false', 'REJECT_NO_PROMPT']);
+    await win.getByRole('button', {name: 'OK, return to dApp'}).click();
+
+    // Dismissing it reveals the real request behind it, in the SAME window (it never closed — the notice rode
+    // along rather than opening one of its own).
+    await expect(win.getByText("Approving asks you to confirm with your password (or passkey) — you'll start it from the Noctura icon.")).toBeVisible({timeout: 10_000});
     await win.getByRole('button', {name: 'Approve', exact: true}).click();
     await expect(win.getByText("Confirm it's you")).toBeVisible();
     await expect(win.locator('a, input, select, textarea')).toHaveCount(0);
@@ -217,25 +282,53 @@ test('B1c-28 · re-authentication through the toolbar (D11): a first send → Ap
     // The toolbar: the popup offers #10 for the site's transaction.
     const toolbar = await h.openPopup();
     const strip = toolbar.getByRole('button', {name: 'A transaction from dapp.test waits for your confirmation'});
-    const [tab] = await Promise.all([h.ctx.waitForEvent('page'), strip.click()]);
+    const [tab] = await Promise.all([h.ctx.waitForEvent('page', {predicate: p => /unlock\.html/.test(p.url())}), strip.click()]);
     await expect(tab).toHaveURL(/unlock\.html\?mode=reauth&challenge=[0-9a-f]{32}$/);
     await expect(tab.locator('#ra-about')).toHaveText('You are about to approve');
     await tab.locator('#ra-password').fill(E2E_PASSWORD);
     await tab.locator('#ra-confirm').click();
     await expect(tab.locator('#ra-notice-line')).toHaveText('Confirmed. Go back to the approval window and approve the transaction.', {timeout: 60_000});
-    // The window learns it on its next poll (one a second).
-    await expect(win.getByText("Confirm it's you")).toHaveCount(0, {timeout: 3_000});
+    // Review fix I4: poll the background's own state (dapp.reauth's `data`, null once the challenge is consumed) —
+    // never a UI assertion bounded by the window's 1 s wall-clock poll — then give the window an explicit reason to
+    // re-read it (a focus event) before asserting, rather than racing its own timer. Sent from `toolbar` (an
+    // ordinary extension page, stays open throughout), never `h.sw` directly: by this point in the test the service
+    // worker may have gone idle and restarted (B1c-24), and a direct `Worker` handle to the old one answers "Could
+    // not establish connection" rather than waking the new one the way chrome.runtime's own messaging does.
+    await expect
+      .poll(async () => {
+        const reply = (await toolbar.evaluate(() => chrome.runtime.sendMessage({type: 'dapp.reauth'}))) as {ok: true; data: unknown} | {ok: false; error: string};
+        return reply.ok ? reply.data : 'not-ok';
+      })
+      .toBeNull();
+    await win.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(win.getByText("Confirm it's you")).toHaveCount(0);
     await win.getByRole('button', {name: 'Approve', exact: true}).click();
-    const r = (await pending) as {ok: true; value: string[]};
-    expect(signedBy(r.value[0] ?? '')).toBe(true);
-
-    // The window does NOT close here: the mismatch notice queued behind the real request is shown next, in the SAME
-    // window (it rode along rather than opening one of its own).
-    await expect(win.getByText('Request blocked automatically')).toBeVisible();
-    await expect(win.locator('.s9-payload-card .row .v')).toHaveText(['dapp.test', 'jup.ag', 'false', 'REJECT_NO_PROMPT']);
-    await win.getByRole('button', {name: 'OK, return to dApp'}).click();
+    const r = (await pending) as {ok: true; value: {signed: string; message: string}[]};
+    expect(signedBy(r.value[0]?.signed ?? '')).toBe(true);
     await windowClosed(win);
     done(h, server);
+  } finally {
+    await h.close();
+  }
+});
+
+// Review fix minor — the positive control for this file's own containment counter (the pattern containment.spec.ts
+// already uses for Solscan/noc-tura.io: "a zero means nothing was asked only if a request, when made, IS counted").
+// serveDapp's DAPP_RPC_HOST route (dappPage.ts) answers the test dApp's own RPC host by aborting and pushing to
+// `server.unexpected` — this proves that recording actually happens, so every other test's empty `server.unexpected`
+// (asserted by `done()`) means what it claims. Deliberately does not call `done()`: `server.unexpected` is non-empty
+// by design here.
+test('containment positive control · a request to the test dApp\'s own RPC host is recorded as unexpected', async () => {
+  test.setTimeout(60_000);
+  const {h, server} = await scene('noctura-e2e-dapptx-rpc-control-');
+  try {
+    await popup(h);
+    const page = await openDapp(h.ctx, DAPP);
+    const url = 'https://api.mainnet-beta.solana.com/';
+    const outcome = await page.evaluate(u => fetch(u).then(() => 'resolved', (e: unknown) => String(e)), url);
+    expect(outcome).not.toBe('resolved');
+    expect(server.unexpected).toEqual([url]);
+    contained(h);
   } finally {
     await h.close();
   }

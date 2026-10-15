@@ -10,6 +10,11 @@ import {Connection, PublicKey, SystemProgram, TransactionMessage, VersionedTrans
  * through its standard features only. Built into one classic script by e2e/dappPage.ts; never part of the extension.
  */
 type Result = {ok: true; value: unknown} | {ok: false; code: unknown; message: string};
+/** Review fix I3 minor, scoped (NOT the shared Result — a real provider rejection's own `.name` is a defined
+ * `'NocturaError'`, so adding this to `run()`'s shared catch broke every other call's strict-equality assertion that
+ * never expected a `name` field at all): only `adapterSignAll` below needs the wallet-adapter's own error TYPE
+ * (`WalletSignTransactionError`, not the provider's `NocturaError` it wraps). */
+type NamedFailure = {ok: false; message: string; name: string | undefined};
 interface Connect {
   connect(input?: {silent?: boolean}): Promise<{accounts: readonly WalletAccount[]}>;
 }
@@ -104,35 +109,52 @@ const dapp = {
       const [out] = await (w.features['solana:signMessage'] as SignMessage).signMessage({account, message});
       return {signature: b64(out?.signature ?? new Uint8Array()), signedMessage: b64(out?.signedMessage ?? new Uint8Array())};
     }),
-  /** B1c-2: `count` transfers (1 + i lamports each) in ONE signTransaction call; the signed bytes, base64. */
+  /**
+   * B1c-2: `count` transfers (1 + i lamports each) in ONE signTransaction call. Review fix I3: returns, per
+   * transaction, both the signed wire (base64) AND the exact message bytes the page itself built (base64, from the
+   * same `VersionedTransaction` before signing) — so a caller can assert the wallet preserved the page's own bytes
+   * byte for byte, rather than merely that SOME valid signature came back.
+   */
   signTx: (count: number, blockhash: string): Promise<Result> =>
     run(async () => {
       const w = noctura();
       const account = w.accounts[0];
       if (account === undefined) throw new Error('not connected');
-      const inputs = Array.from({length: count}, (_, i) => ({account, chain: 'solana:mainnet', transaction: transferTx(account.address, blockhash, 1 + i).serialize()}));
+      const txs = Array.from({length: count}, (_, i) => transferTx(account.address, blockhash, 1 + i));
+      const inputs = txs.map(t => ({account, chain: 'solana:mainnet', transaction: t.serialize()}));
       const out = await (w.features['solana:signTransaction'] as SignTransaction).signTransaction(...inputs);
-      return out.map(o => b64(o.signedTransaction));
+      return txs.map((t, i) => ({signed: b64(out[i]?.signedTransaction ?? new Uint8Array()), message: b64(t.message.serialize())}));
     }),
-  /** B1c-2: one transfer through signAndSendTransaction; the signature's 64 bytes, base64. */
+  /**
+   * B1c-2: one transfer through signAndSendTransaction; the signature's 64 bytes, base64, AND (review fix I3) the
+   * exact message bytes this page built, base64, for the same byte-for-byte check as `signTx`.
+   */
   send: (blockhash: string, lamports: number): Promise<Result> =>
     run(async () => {
       const w = noctura();
       const account = w.accounts[0];
       if (account === undefined) throw new Error('not connected');
-      const [out] = await (w.features['solana:signAndSendTransaction'] as SignAndSend).signAndSendTransaction({account, chain: 'solana:mainnet', transaction: transferTx(account.address, blockhash, lamports).serialize()});
-      return b64(out?.signature ?? new Uint8Array());
+      const tx = transferTx(account.address, blockhash, lamports);
+      const [out] = await (w.features['solana:signAndSendTransaction'] as SignAndSend).signAndSendTransaction({account, chain: 'solana:mainnet', transaction: tx.serialize()});
+      return {signature: b64(out?.signature ?? new Uint8Array()), message: b64(tx.message.serialize())};
     }),
   /**
    * B1c-2: a request posted straight to the relay, as any script on a page can (spec §1.1's stated limit) — past the
-   * provider's own checks; the relay's reply for it (`{result}` or `{error}`).
+   * provider's own checks; the relay's reply for it (`{result}` or `{error}`). Review fix minor: a bounded timeout
+   * that rejects with a named reason — an unanswered raw request used to hang this promise forever, so a real
+   * regression surfaced only as the whole test's own blunt timeout, with nothing saying why.
    */
   raw: (type: string, payload: Record<string, unknown>): Promise<unknown> =>
-    new Promise(resolve => {
+    new Promise((resolve, reject) => {
       const id = `raw${Math.random().toString(36).slice(2)}`;
+      const timer = setTimeout(() => {
+        window.removeEventListener('message', on);
+        reject(new Error(`raw ${type} (${id}) got no relay reply within 15s`));
+      }, 15_000);
       const on = (e: MessageEvent) => {
         const d = e.data as {source?: unknown; id?: unknown; error?: unknown; result?: unknown} | null;
         if (e.source !== window || d === null || typeof d !== 'object' || d.source !== 'noctura-relay' || d.id !== id) return;
+        clearTimeout(timer);
         window.removeEventListener('message', on);
         resolve('error' in d ? {error: d.error} : {result: d.result});
       };
@@ -149,6 +171,7 @@ const dapp = {
       await a.connect();
       return a.publicKey?.toBase58() ?? null;
     }),
+  /** Review fix I3: returns the original message bytes (base64) alongside the signed wire, as `signTx` does. */
   adapterSign: (blockhash: string): Promise<Result> =>
     run(async () => {
       const a = theAdapter();
@@ -156,24 +179,39 @@ const dapp = {
       if (from === undefined) throw new Error('not connected');
       // The adapter offers signTransaction only for a wallet that has the feature (it does: B1c-2).
       if (a.signTransaction === undefined) throw new Error('no signTransaction');
-      const signed = await a.signTransaction(transferTx(from, blockhash, 7));
-      return b64(signed.serialize());
+      const tx = transferTx(from, blockhash, 7);
+      const signed = await a.signTransaction(tx);
+      return {signed: b64(signed.serialize()), message: b64(tx.message.serialize())};
     }),
-  adapterSignAll: (count: number, blockhash: string): Promise<Result> =>
-    run(async () => {
+  /**
+   * Review fix I3: one message per transaction, in the same order as the signed wires. Review fix minor: unlike
+   * every other call here, its failure path does NOT go through the shared `run()` — it returns the adapter's own
+   * thrown error's `name` (e.g. `WalletSignTransactionError`, the TYPE the adapter reports, distinct from the
+   * provider's own `NocturaError` it wraps), which only this one assertion (B1c-27's six-refused) needs.
+   */
+  adapterSignAll: async (count: number, blockhash: string): Promise<Result | NamedFailure> => {
+    try {
       const a = theAdapter();
       const from = a.publicKey?.toBase58();
       if (from === undefined) throw new Error('not connected');
       if (a.signAllTransactions === undefined) throw new Error('no signAllTransactions');
-      const signed = await a.signAllTransactions(Array.from({length: count}, (_, i) => transferTx(from, blockhash, 10 + i)));
-      return signed.map(t => b64(t.serialize()));
-    }),
+      const txs = Array.from({length: count}, (_, i) => transferTx(from, blockhash, 10 + i));
+      const signed = await a.signAllTransactions(txs);
+      return {ok: true, value: {signed: signed.map(t => b64(t.serialize())), messages: txs.map(t => b64(t.message.serialize()))}};
+    } catch (e) {
+      const err = e as {message?: unknown; name?: unknown};
+      return {ok: false, message: String(err.message), name: typeof err.name === 'string' ? err.name : undefined};
+    }
+  },
+  /** Review fix I3: the signature AND the original message bytes (base64) this page built before sending. */
   adapterSend: (blockhash: string): Promise<Result> =>
     run(async () => {
       const a = theAdapter();
       const from = a.publicKey?.toBase58();
       if (from === undefined) throw new Error('not connected');
-      return a.sendTransaction(transferTx(from, blockhash, 9), CONNECTION);
+      const tx = transferTx(from, blockhash, 9);
+      const signature = await a.sendTransaction(tx, CONNECTION);
+      return {signature, message: b64(tx.message.serialize())};
     }),
 };
 (window as unknown as {dapp: typeof dapp}).dapp = dapp;

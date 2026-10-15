@@ -72,6 +72,8 @@ export async function serveDapp(ctx: BrowserContext): Promise<DappServer> {
 }
 
 type Result = {ok: true; value: unknown} | {ok: false; code: unknown; message: string};
+/** adapterSignAll's own failure shape (review fix minor): the adapter's error TYPE, not the shared Result's. */
+type NamedFailure = {ok: false; message: string; name: string | undefined};
 declare const dapp: {
   names(): string[];
   features(): string[];
@@ -86,7 +88,7 @@ declare const dapp: {
   adapterCompatible(): boolean;
   adapterConnect(): Promise<Result>;
   adapterSign(blockhash: string): Promise<Result>;
-  adapterSignAll(count: number, blockhash: string): Promise<Result>;
+  adapterSignAll(count: number, blockhash: string): Promise<Result | NamedFailure>;
   adapterSend(blockhash: string): Promise<Result>;
   raw(type: string, payload: Record<string, unknown>): Promise<unknown>;
   rawTx(account: string, blockhash: string): string;
