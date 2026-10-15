@@ -338,4 +338,66 @@ describe('the origin-mismatch notice', () => {
     expect((await c.queue()).find(e => e.requestId === notice?.requestId)).toMatchObject({state: 'answered', answer: {error: 'timeout'}});
     expect(c.ext.approval.created).toEqual([]);
   });
+
+  // Fix round 4, controller ruling 1 (probe P1): a notice never calls ensureWindow. ensureWindow opens a window for ANY
+  // real entry left without one — here tab2's connect, whose windows.create failed — so calling it on a notice opened
+  // a focused, budget-charged window (or, with the budget spent, ran rejectQueued + Q24 on tab2's entry) only when X
+  // was granted elsewhere. Every observable here must be identical, matched or not, with the budget free or spent.
+  it('a stranded real entry (its windows.create failed): a later signTransaction naming X changes nothing observable, identically whether X is granted elsewhere or not', async () => {
+    for (const spent of [false, true]) {
+      const seen: unknown[] = [];
+      for (const matched of [true, false]) {
+        const c = await setup(matched ? {grant: null, others: [grant(OTHER)]} : {grant: null});
+        const tab2 = openPage(c.ext, c.deps, 'https://second.test', {tab: {id: TAB + 1}, documentId: 'doc-tab2'});
+        c.ext.approval.failNext = true;
+        await expect(tab2.ask({type: 'page.connect', id: 'c2', silent: false})).rejects.toThrow('windows.create failed');
+        const stranded = (await c.queue()).find(e => e.type === 'connect');
+        expect(stranded).toMatchObject({state: 'queued'});
+        expect((await readDappSession(c.ext)).window).toBeNull();
+        if (spent) await c.ext.local.set(LIMITS_KEY, {rejections: [], cooldowns: [], windows: Array.from({length: WINDOW_BUDGET}, () => c.deps.clock.t), notice: false});
+        expect(await c.signTx('m', [v0()])).toEqual({id: 'm', error: 'unauthorized'});
+        // The precondition that makes the pair meaningful: a notice was queued only in the matched case.
+        expect((await c.queue()).filter(e => e.type === 'mismatch')).toHaveLength(matched ? 1 : 0);
+        const limits = limitsOf(await c.ext.local.get(LIMITS_KEY), c.deps.clock.t);
+        const obs = {
+          created: c.ext.approval.created.length,
+          window: (await readDappSession(c.ext)).window,
+          budget: {windows: limits.windows.length, notice: limits.notice},
+          stranded: (await c.queue()).find(e => e.requestId === stranded?.requestId)?.state,
+          tab2: tab2.port.posted.filter(x => !('accepted' in x)),
+          page: c.page.port.posted.filter(x => x.id !== 'm'),
+        };
+        expect(obs).toMatchObject({created: 0, window: null, stranded: 'queued', tab2: [], page: []});
+        seen.push(obs);
+      }
+      expect(seen[0]).toEqual(seen[1]);
+    }
+  });
+
+  // Fix round 4, controller ruling 2: deliver never posts a notice's answer to any port — not on its dismissal, not
+  // at its C4 timeout. Positive control: the same page's real request, rejected the same way, is delivered.
+  it('a notice answer is never posted to any port (dismissed or timed out); positive control: a real request of the same page is', async () => {
+    const c = await setup({grant: null, others: [grant(OTHER)]});
+    expect(await c.signTx('m', [v0()])).toEqual({id: 'm', error: 'unauthorized'});
+    const real = await c.page.ask({type: 'page.connect', id: 'c1', silent: false});
+    expect(real).toMatchObject({accepted: true});
+    const notice = (await c.queue()).find(e => e.type === 'mismatch');
+    expect(notice).toMatchObject({tabId: TAB, origin: DAPP});
+    const approve = {id: c.ext.runtimeId, origin: c.ext.extensionOrigin, url: `${c.ext.extensionOrigin}/approve.html`};
+    const {handleMessage} = await import('../../messages');
+    expect(await handleMessage(c.ext, {type: 'dapp.decide', requestId: String(notice?.requestId), decision: 'reject'}, approve, c.deps)).toEqual({ok: true});
+    expect((await c.queue()).find(e => e.requestId === notice?.requestId)).toMatchObject({state: 'answered', answer: {error: 'rejected'}});
+    expect(c.page.answersFor(String(notice?.requestId))).toEqual([]);
+    expect(await handleMessage(c.ext, {type: 'dapp.decide', requestId: String(real?.requestId), decision: 'reject'}, approve, c.deps)).toEqual({ok: true});
+    expect(c.page.answersFor(String(real?.requestId))).toEqual([{requestId: real?.requestId, error: 'rejected'}]);
+
+    const expired = await setup({grant: null, others: [grant(OTHER)]});
+    expect(await expired.signTx('m', [v0()])).toEqual({id: 'm', error: 'unauthorized'});
+    const late = (await expired.queue()).find(e => e.type === 'mismatch');
+    expired.deps.clock.t += REQUEST_TTL_MS;
+    await runUnlockHook(expired.ext, expired.deps);
+    expect((await expired.queue()).find(e => e.requestId === late?.requestId)).toMatchObject({state: 'answered', answer: {error: 'timeout'}});
+    expect(expired.page.answersFor(String(late?.requestId))).toEqual([]);
+    expect(expired.page.port.posted.filter(x => x.id !== 'm')).toEqual([]);
+  });
 });

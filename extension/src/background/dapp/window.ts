@@ -95,6 +95,12 @@ export async function ensureWindow(ext: Ext, deps: Pick<WalletDeps, 'now'>): Pro
  * Fix round 2 (Important 1): the lock must happen whenever the count is zero, whatever the drain did — a storage
  * error, a quota failure or a bad stored shape there must never leave the wallet unlocked after its last window
  * closed. The drain's own failure is only logged; it is not this call's reason to skip the lock.
+ *
+ * Fix round 4, ACCEPTED LIMIT (controller ruling; spec §7): a mismatch notice rides along in a real request's window
+ * (fix round 3). If the user closes that window (✕) while the notice is the entry shown, only the notice is
+ * rejected; the real request behind it is still queued, so the window reopens for it here and charges WINDOW_BUDGET
+ * a second time (or, with the budget spent, rejects it with Q24). That cost depends on a user action — which entry
+ * was on screen when ✕ was pressed — not on anything a page sends alone; it is accepted rather than special-cased.
  */
 export async function onApprovalWindowRemoved(ext: Ext, deps: Pick<WalletDeps, 'now'>, id: number): Promise<boolean> {
   const ours = await queueAccess(ext, deps, (tx, fx) => {
