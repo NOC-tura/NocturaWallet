@@ -4,6 +4,7 @@ import {REAUTH_KEY, getSession, sessionMutex} from './session';
 import {randomId} from './digest';
 import type {DappReauthReason, SendReauthReason} from './reauthPolicy';
 import type {FeeReason} from '../../../core/fees/transferMarkup';
+import {WALLET_TOKENS} from '../../../core/solana/balances';
 
 /** How long the vault page has to prove the factor (brief decision 6), counted from the last prepare of the same intent. */
 export const CHALLENGE_TTL_MS = 120_000;
@@ -135,13 +136,25 @@ function isAbout(x: unknown): x is ChallengeAbout {
   );
 }
 
+/**
+ * Fix round 1 item 4: a symbol names a real token only when its decimals match this wallet's own table
+ * (WALLET_TOKENS) exactly — simulate.ts's decimals are untrusted mint data (a hostile or merely unusual token, or an
+ * RPC that lies about a legitimate mint's account, can report anything), so a mismatch must never reach the store
+ * labelled with a name it does not back. dappAbout applies the same rule when it builds `symbol` in the first place;
+ * this is the store's own defense, never trusting its caller alone.
+ */
 function isOutgoing(x: unknown): x is DappOutgoing {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
   const o = x as Record<string, unknown>;
   const decimals = o.decimals;
+  const symbolOk =
+    o.mint === null
+      ? o.symbol === 'SOL' && decimals === WALLET_TOKENS.SOL.decimals
+      : o.symbol === null ||
+        (typeof o.symbol === 'string' && o.symbol !== 'SOL' && TOKENS.includes(o.symbol) && decimals === WALLET_TOKENS[o.symbol as 'NOC' | 'USDC' | 'USDT'].decimals);
   return (
     (o.mint === null || (typeof o.mint === 'string' && ADDRESS.test(o.mint))) &&
-    (o.mint === null ? o.symbol === 'SOL' : o.symbol === null || (typeof o.symbol === 'string' && TOKENS.includes(o.symbol) && o.symbol !== 'SOL')) &&
+    symbolOk &&
     typeof o.amount === 'string' &&
     DIGITS.test(o.amount) &&
     (decimals === null || (isInt(decimals) && decimals >= 0 && decimals <= 18)) &&
@@ -268,6 +281,22 @@ export async function consumeChallenge(ext: Ext, now: number, id: string, digest
     store.delete(id);
     await save(ext, store);
     return c.digest === digest;
+  });
+}
+
+/**
+ * Fix round 1 item 1: remove exactly this id, whatever its digest or satisfied state — reauthGate calls this right
+ * after issuing the id that supersedes it, so a tab already open on the old id reads back `unknown-challenge` instead
+ * of silently going on proving a stale description (R9/R11: the old proof must never stand for what Approve is about
+ * to sign once a fresh simulation outgrew it). Never `dropChallengesFor` by digest here: the new challenge is issued
+ * for the SAME digest (the request's bytes), so a digest-keyed drop could not tell the superseded id from the one
+ * replacing it — only the id does. A no-op for an id already gone.
+ */
+export async function dropChallenge(ext: Ext, id: string): Promise<void> {
+  if (!CHALLENGE_ID.test(id)) return;
+  await sessionMutex(async () => {
+    const store = await load(ext);
+    if (store.delete(id)) await save(ext, store);
   });
 }
 

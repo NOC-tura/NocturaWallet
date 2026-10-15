@@ -366,12 +366,17 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
       if (read.state === 'undescribable') {
         // Fail closed: what cannot be described is never offered for confirmation — only Cancel, which
         // discards the send by its own re-validated account; without one, only Close (plan review H1).
+        // Fix round 1 item 2: `orphan` (a send's own account, re-validated) is the only thing that tells us the kind
+        // is a send — only then is the send-specific line used; otherwise the kind is not known to be anything, and
+        // the copy says only what is true of a "request" (never that it was sent, never that it was a send).
         orphan = read.account;
         closeOnly = orphan === null;
         setText(cancel, closeOnly ? REAUTH.close : REAUTH.cancelSend);
-        return notice(REAUTH.undescribable, {cancel: true, help: closeOnly ? REAUTH.nothingSent : ''});
+        return closeOnly ? notice(REAUTH.requestUndescribable, {cancel: true}) : notice(REAUTH.undescribable, {cancel: true});
       }
-      if (read.state !== 'described') return read.state === 'expired' ? notice(REAUTH.expired) : notice(REAUTH.notUnlocked, {unlock: true});
+      // Fix round 1 item 2: no description was ever read here — the kind is not known to be a send (or anything
+      // else) — so #10 says only what is true of a "request", never claiming it was a send.
+      if (read.state !== 'described') return read.state === 'expired' ? notice(REAUTH.requestExpired) : notice(REAUTH.requestNotUnlocked, {unlock: true});
       described = read.description;
       describe(read.description);
       view = 'entry';

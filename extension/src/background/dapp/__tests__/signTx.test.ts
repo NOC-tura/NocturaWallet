@@ -9,6 +9,7 @@ import {SIM_REFRESH_MS, SIM_RETRY_MS, SIM_VALID_MS, dappAbout, dappDigest, withS
 import {MAX_DAPP_OUTGOING, issueChallenge} from '../../reauthChallenges';
 import {REAUTH_KEY} from '../../session';
 import {ACCOUNT, RECIPIENT} from '../../__tests__/fixtures';
+import {MAINNET_USDC_MINT} from '../../../../../core/presale/addresses';
 import {CO, ME, coSigned, transfer, txScene, until, v0} from './txHarness';
 
 const sigs = (b64: string) => VersionedTransaction.deserialize(base64.decode(b64)).signatures;
@@ -359,6 +360,30 @@ describe('re-authentication for a transaction request', () => {
     await expect(issueChallenge(c.ext, c.deps, dappDigest(e), about)).resolves.toMatch(/^[0-9a-f]{32}$/);
   });
 
+  // Fix round 1 item 4 (promoted): the real USDC mint, but the simulation's own decimals for it (untrusted mint data —
+  // an RPC can lie even about a legitimate mint's account) do not match this wallet's table (6) — named no more:
+  // dappAbout names it `symbol: null`, shown unnamed in base units, never refused as undescribable for it; and
+  // issueChallenge/isOutgoing refuses a mismatched symbol/decimals pair raw, so one can never reach the store even if
+  // some other caller tried to build it directly (defense in depth, not only dappAbout's).
+  it('dappAbout: a named token whose decimals do not match this wallet’s table is shown unnamed, never refused', async () => {
+    const c = await txScene();
+    const r = await c.signTx('t', [v0([transfer(1_000_000)])]);
+    await c.simulated();
+    const e = structuredClone(await c.entry(String(r?.requestId)));
+    if (e === undefined || e.sim?.status !== 'ok') throw new Error('not simulated');
+    const [first] = e.sim.sim.outcomes;
+    if (first === undefined || !first.ok) throw new Error('no outcome');
+    e.sim = {status: 'ok', sim: {...e.sim.sim, outcomes: [{...first, changes: [...first.changes, {mint: MAINNET_USDC_MINT, amount: '-5', decimals: 9, usdMicros: null}]}]}};
+    const about = dappAbout(e, 'dapp.test', 10_000);
+    const row = about?.outgoing.find(o => o.mint === MAINNET_USDC_MINT);
+    expect(row).toMatchObject({symbol: null, decimals: 9});
+    if (about === null) throw new Error('no about');
+    await expect(issueChallenge(c.ext, c.deps, dappDigest(e), about)).resolves.toMatch(/^[0-9a-f]{32}$/);
+    // Defense in depth: issueChallenge itself refuses a mismatched symbol/decimals pair raw, whoever builds it.
+    const mismatched = {...about, outgoing: [{mint: MAINNET_USDC_MINT, symbol: 'USDC' as const, amount: '5', decimals: 9}]};
+    await expect(issueChallenge(c.ext, c.deps, 'd-mismatched', mismatched)).rejects.toThrow();
+  });
+
   // Fix round 1 item 3: a live (even proven) challenge is frozen from the simulation that issued it — #10 described
   // that one. A refresh that grows an outgoing amount makes that description stale even when the reasons it named
   // are unchanged; the old proof must not stand for a bigger send than it ever described.
@@ -385,6 +410,11 @@ describe('re-authentication for a transaction request', () => {
     const second = String((await c.entry(requestId))?.challengeId);
     expect(second).not.toBe(first);
     expect(await c.challengeInfo(second)).toMatchObject({ok: true, data: {reasons: ['first-send']}});
+    // Fix round 1 item 1: the superseded id is gone — a #10 tab left open on it reads back unknown-challenge
+    // (dappExpired, never dappConfirmed, since reauthFlow.ts maps that error to 'expired'); the new id still proves
+    // normally (positive control).
+    expect(await c.reauthOk(first)).toEqual({ok: false, error: 'unknown-challenge'});
+    expect(await c.reauthOk(second)).toEqual({ok: true});
   });
 
   // The other half of item 3: amounts unchanged, but the refresh names a reason the issued challenge never did
@@ -407,6 +437,9 @@ describe('re-authentication for a transaction request', () => {
     const second = String((await c.entry(requestId))?.challengeId);
     expect(second).not.toBe(first);
     expect(await c.challengeInfo(second)).toMatchObject({ok: true, data: {reasons: ['first-send', 'approval']}});
+    // Fix round 1 item 1: the old id is gone too (unknown-challenge), the new one still proves (positive control).
+    expect(await c.reauthOk(first)).toEqual({ok: false, error: 'unknown-challenge'});
+    expect(await c.reauthOk(second)).toEqual({ok: true});
   });
 
   // Fix round 1 item 4 (promoted), negative control: dappDigest binds the challenge to THIS request, not just to the
@@ -501,5 +534,33 @@ describe('dapp.reauth (the popup’s offer of #10)', () => {
     expect(await ask()).toEqual({ok: true, data: null});
     await lock(c.ext);
     expect(await ask()).toEqual({ok: false, error: 'locked'});
+  });
+
+  // Fix round 1 item 3: the site is the challenge's own stored about.site, read by the challengeInfo call this
+  // already makes — not recomputed from the entry's origin/host — so the strip and #10 can never disagree about
+  // which site a request names (the one source constructed here differs on purpose from what `new URL(origin).host`
+  // would produce, to prove it is not consulted).
+  it('the site is the challenge’s own about.site — never recomputed from the entry’s origin/host', async () => {
+    const {handleMessage} = await import('../../messages');
+    const c = await txScene();
+    const entry = {
+      requestId: 'BBBBBBBBBBBBBBBBBBBBBB', pageId: 'p1', origin: 'https://jup.ag', host: 'jup.ag', tabId: 7, documentId: null, type: 'signTransaction', account: ACCOUNT.publicKey,
+      message: null, transactions: ['AQ=='], granted: null, sim: null, challengeId: null as string | null, sent: null, arrivedAt: c.deps.now(), state: 'queued', decidedBy: null, decidingAt: null,
+      decision: null, answer: null, answeredAt: null,
+    };
+    const about = {
+      kind: 'dapp' as const,
+      account: ACCOUNT.publicKey,
+      site: 'not-jup.ag-at-all.example',
+      transactions: 1,
+      outgoing: [{mint: null, symbol: 'SOL' as const, amount: '1', decimals: 9}],
+      omitted: 0,
+      reasons: ['first-send' as const],
+      thresholdCents: 10_000,
+    };
+    entry.challengeId = await issueChallenge(c.ext, c.deps, dappDigest(entry), about);
+    await c.ext.session.set(DAPP_SESSION_KEY, {queue: [entry], grants: [], window: null, opening: null, undo: []});
+    const popup = {id: c.ext.runtimeId, origin: c.ext.extensionOrigin, url: `${c.ext.extensionOrigin}/popup.html`};
+    expect(await handleMessage(c.ext, {type: 'dapp.reauth'}, popup, c.deps)).toEqual({ok: true, data: {challengeId: entry.challengeId, site: 'not-jup.ag-at-all.example'}});
   });
 });

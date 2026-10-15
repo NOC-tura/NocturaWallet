@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
-import {act, cleanup, fireEvent, screen, waitFor, within} from '@testing-library/react';
-import {renderInWallet, walletReader, type WalletOptions} from './harness';
+import {act, cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
+import {renderInWallet, setupWallet, walletReader, type WalletOptions} from './harness';
 import {BALANCES_FAILED_TEXT, Home} from '../screens/Home';
 import {ago, stamp} from '../format';
-import {useWallet, type WalletModel} from '../WalletContext';
+import {useWallet, WalletProvider, type WalletModel} from '../WalletContext';
+import type {Engine} from '../engine';
 import {BALANCE_CACHE_KEY, PRICE_CACHE_KEY} from '../../background/balanceCache';
 import {PENDING_KEY} from '../../background/pendingStore';
 import {HIDE_BALANCES_KEY} from '../prefs';
@@ -678,5 +679,89 @@ describe('#11: a site’s transaction waiting for its confirmation (B1c-2)', () 
     await renderHome();
     await screen.findByText('62.4821 SOL');
     expect(screen.queryByText(/waits for your confirmation/)).toBeNull();
+  });
+
+  // Fix round 1 item 5 (rule 6): the strip is a LockedButton — a second click before `disabled` is lifted opens #10
+  // no second time. happy-dom drops `disabled` before React re-renders it, so the test lifts it itself (as Send's).
+  it('the strip is a LockedButton: a double click opens #10 once', async () => {
+    let challengeId = '';
+    const w = await renderHome({before: async ext => void (challengeId = await waitingDapp(ext))});
+    const strip = (await screen.findByRole('button', {name: 'A transaction from jup.ag waits for your confirmation'})) as HTMLButtonElement;
+    fireEvent.click(strip);
+    strip.disabled = false;
+    fireEvent.click(strip);
+    await waitFor(() => expect(w.platform.opened).toEqual([`unlock.html?mode=reauth&challenge=${challengeId}`]));
+  });
+
+  // Fix round 1 item 5 (global constraints: "the Home hook's focus re-read"): a request that starts waiting only
+  // after the popup already mounted is still shown — not by a poll, but by the window regaining focus (the user's
+  // own click back into the popup, or re-opening it).
+  it('reads again on focus: a request that starts waiting after mount is shown once the window regains focus', async () => {
+    const w = await renderHome();
+    await screen.findByText('62.4821 SOL');
+    expect(screen.queryByText(/waits for your confirmation/)).toBeNull();
+    await waitingDapp(w.ext);
+    // Nothing re-reads it on its own — the popup is not polling.
+    await new Promise(r => setTimeout(r, 30));
+    expect(screen.queryByText(/waits for your confirmation/)).toBeNull();
+    window.dispatchEvent(new Event('focus'));
+    await screen.findByText('A transaction from jup.ag waits for your confirmation');
+  });
+
+  // Fix round 1 item 5 (global constraints: "newest-answer-wins", "every async path checks its generation / alive
+  // after each await"): a read the focus handler started, held past a second, fresher read landing before it
+  // resolves, must never overwrite what the fresher read already set once it finally answers.
+  it('newest answer wins: a stale read released after a fresher one landed sets nothing', async () => {
+    const w0 = await setupWallet();
+    let callNum = 0;
+    let releaseStale: () => void = () => undefined;
+    const engine: Engine = {
+      ...w0.engine,
+      dappReauth: () => {
+        callNum += 1;
+        if (callNum === 2) {
+          // Asked now (nothing waiting yet) — held, so it must not land ahead of or overwrite the third read.
+          const stale = w0.engine.dappReauth();
+          return new Promise(resolve => (releaseStale = () => void stale.then(resolve)));
+        }
+        return w0.engine.dappReauth();
+      },
+    };
+    render(
+      <WalletProvider engine={engine} platform={w0.platform} surface="popup">
+        <Home {...nav} />
+      </WalletProvider>,
+    );
+    await screen.findByText('62.4821 SOL'); // the mount's own read: call 1, answers null at once
+    window.dispatchEvent(new Event('focus')); // call 2, held
+    await waitFor(() => expect(callNum).toBe(2));
+    await waitingDapp(w0.ext);
+    window.dispatchEvent(new Event('focus')); // call 3, fresh — overtakes the still-pending call 2
+    await screen.findByText('A transaction from jup.ag waits for your confirmation');
+    releaseStale(); // call 2 answers last, with the OLD (nothing waiting) snapshot — must be dropped
+    await new Promise(r => setTimeout(r, 30));
+    expect(screen.queryByText('A transaction from jup.ag waits for your confirmation')).toBeTruthy();
+  });
+
+  // Fix round 1 item 5 (global constraints: "no update after unmount"): a read in flight when the screen is torn
+  // down must set nothing when it finally answers — not a stale strip, not a React "state update on an unmounted
+  // component" warning.
+  it('no update after unmount: a held read answering after the screen is gone sets nothing', async () => {
+    const w0 = await setupWallet();
+    let release: (v: Awaited<ReturnType<Engine['dappReauth']>>) => void = () => undefined;
+    const held = new Promise<Awaited<ReturnType<Engine['dappReauth']>>>(r => (release = r));
+    const engine: Engine = {...w0.engine, dappReauth: () => held};
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const {unmount} = render(
+      <WalletProvider engine={engine} platform={w0.platform} surface="popup">
+        <Home {...nav} />
+      </WalletProvider>,
+    );
+    await screen.findByText('62.4821 SOL');
+    unmount();
+    release({ok: true, data: {challengeId: 'f'.repeat(32), site: 'jup.ag'}});
+    await new Promise(r => setTimeout(r, 30));
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });

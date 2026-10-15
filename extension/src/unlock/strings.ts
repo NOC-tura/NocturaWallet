@@ -373,6 +373,15 @@ export const REAUTH = {
   undescribable: 'The details of this action could not be shown.',
   notUnlocked: 'The wallet locked while you were confirming. Unlock it and start the send again.',
   expired: 'This confirmation has expired. Start the send again from the Noctura icon.',
+  /**
+   * Fix round 1 item 2 — controller copy (owner-delegated): at the first read, before a description of ANY kind is
+   * known (the challenge is gone, or the vault is locked, or the one field a send could be recognized by is itself
+   * invalid), #10 cannot claim this was a send — only the send-specific lines above may say that, and only once
+   * `described.kind === 'send'` is actually known (settle(), after a description loaded).
+   */
+  requestExpired: 'This confirmation has expired. Start again from where you began.',
+  requestNotUnlocked: 'Noctura is locked. Unlock it from the Noctura icon and start again.',
+  requestUndescribable: 'This request could not be shown. Nothing was approved.',
   checking: 'Checking…',
   cancelled: 'Send cancelled. Nothing was sent.',
   /** O39 (B1b-2b E9, §3.7): the background applied the setting on this proof — replaces 2a's "Confirmed. You can close this tab." */

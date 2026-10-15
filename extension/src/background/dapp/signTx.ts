@@ -6,7 +6,7 @@ import {digestOf} from '../digest';
 import {getSession} from '../session';
 import {readSettings} from '../settings';
 import {recipientFacts} from '../knownRecipients';
-import {MAX_DAPP_OUTGOING, challengeInfo, challengeSatisfied, issueChallenge, type ChallengeAbout, type DappOutgoing} from '../reauthChallenges';
+import {MAX_DAPP_OUTGOING, challengeInfo, challengeSatisfied, dropChallenge, issueChallenge, type ChallengeAbout, type DappOutgoing} from '../reauthChallenges';
 import {readContacts} from '../contacts';
 import {decodeInstructions, type DecodedInstruction} from './decode/decode';
 import {resolveKeys} from './decode/keys';
@@ -15,7 +15,7 @@ import {withRecent} from './grants';
 import {withDappTxs} from './dappTxs';
 import {broadcastFirst, dropDappSend, recordDappSend} from '../pending';
 import {firstSignature} from '../../../../core/solana/broadcast';
-import {tokenForMint} from '../../../../core/solana/balances';
+import {tokenForMint, WALLET_TOKENS} from '../../../../core/solana/balances';
 import {runtimeFor} from './ports';
 import {answer, queueAccess} from './queue';
 import {simulateTransactions, type SimState, type TxOutcome} from './simulate';
@@ -206,7 +206,15 @@ export function dappAbout(e: Entry, site: string, thresholdCents: number): Extra
     const [a, b] = [rank(x.mint, x.v.usd), rank(y.mint, y.v.usd)];
     return a[0] - b[0] || (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0) || x.i - y.i;
   });
-  const outgoing: DappOutgoing[] = all.slice(0, MAX_DAPP_OUTGOING).map(({mint, v}) => ({mint, symbol: mint === null ? 'SOL' : tokenForMint(mint), amount: v.amount.toString(), decimals: v.decimals}));
+  // Fix round 1 item 4: a mint this wallet knows is named only when the simulation's own decimals for it still match
+  // this wallet's table — simulate.ts's decimals are untrusted mint data (a hostile token, or an RPC that lies about
+  // even a legitimate mint's account, can report anything); a mismatch names no real token and is shown unnamed, in
+  // base units, never refused as undescribable for it.
+  const outgoing: DappOutgoing[] = all.slice(0, MAX_DAPP_OUTGOING).map(({mint, v}) => {
+    const candidate = mint === null ? 'SOL' : tokenForMint(mint);
+    const symbol = candidate !== null && v.decimals === WALLET_TOKENS[candidate].decimals ? candidate : null;
+    return {mint, symbol, amount: v.amount.toString(), decimals: v.decimals};
+  });
   return {kind: 'dapp', account: e.account, site, transactions: e.transactions.length, outgoing, omitted: all.length - outgoing.length, reasons: e.sim.sim.reasons.slice(), thresholdCents};
 }
 
@@ -235,9 +243,11 @@ function outgoingGrew(fresh: readonly DappOutgoing[], issued: readonly DappOutgo
  * use: a `deciding` entry is never decided twice, and a failed consume ends the request `rejected` before any key is read.
  * Fix round 1 item 3: a live, even proven, challenge is frozen from the simulation that issued it (#10 described that
  * one) — a 30 s refresh that grows an outgoing amount, or adds a reason, makes that description stale: it no longer
- * speaks for what Approve is about to sign. Re-issued (a new id; the old proof, proven or not, is simply replaced and
- * never consulted again) whenever the fresh simulation's reasons are not all already named, or any mint's outgoing
- * amount grew past what was described.
+ * speaks for what Approve is about to sign. Re-issued (a new id) whenever the fresh simulation's reasons are not all
+ * already named, or any mint's outgoing amount grew past what was described. Fix round 1 item 1: the superseded id is
+ * then DELETED (dropChallenge, by id — never dropChallengesFor by digest, since the new one is issued for the same
+ * digest and a digest-keyed drop could not tell the two apart), so a #10 tab already open on it reads back
+ * `unknown-challenge` (dappExpired) instead of still showing "Confirmed" for a description Approve no longer honors.
  */
 export async function reauthGate(ext: Ext, deps: Pick<WalletDeps, 'now' | 'randomBytes'>, e: Entry, site: string): Promise<'ready' | 'proven' | 'reauth-required' | 'stale'> {
   if (e.sim?.status !== 'ok' || e.sim.sim.reasons.length === 0) return 'ready';
@@ -249,6 +259,8 @@ export async function reauthGate(ext: Ext, deps: Pick<WalletDeps, 'now' | 'rando
   const stillCovers = current !== null && current.kind === 'dapp' && reasonsCovered(fresh.reasons, current.reasons) && !outgoingGrew(fresh.outgoing, current.outgoing);
   if (!stillCovers) {
     const id = await issueChallenge(ext, deps, digest, fresh);
+    const superseded = e.challengeId;
+    if (superseded !== null && superseded !== id) await dropChallenge(ext, superseded);
     await queueAccess(ext, deps, tx => {
       const x = tx.s.queue.find(q => q.requestId === e.requestId);
       if (x !== undefined && x.state === 'queued') x.challengeId = id;
@@ -399,6 +411,10 @@ export async function finishSend(ext: Ext, deps: WalletDeps, requestId: string, 
  * it when they open; the approval window never links into the vault page. The head request's challenge, while it is
  * live and not yet proven, with the site as the window shows it — the popup then offers #10 for it. Refused while
  * locked, as #49's messages.
+ *
+ * Fix round 1 item 3: the site comes from the challenge's own stored `about.site` — the same value #10 describes,
+ * read by the one challengeInfo call this already makes — never recomputed here from the entry's origin/host (that
+ * duplicated siteOf's own URL parsing and could, in principle, read back something #10 does not say).
  */
 export async function reauthWaiting(ext: Ext, deps: Pick<WalletDeps, 'now'>): Promise<{ok: true; data: {challengeId: string; site: string} | null} | {ok: false; error: 'locked'}> {
   return queueAccess(ext, deps, async tx => {
@@ -406,14 +422,9 @@ export async function reauthWaiting(ext: Ext, deps: Pick<WalletDeps, 'now'>): Pr
     const h = tx.s.queue.find(e => e.state === 'queued' || e.state === 'deciding');
     if (h === undefined || h.state !== 'queued' || !isTxType(h.type) || h.challengeId === null) return {ok: true as const, data: null};
     // Read-only loads of the challenge store (no mutex of their own): safe inside the section.
-    const live = (await challengeInfo(ext, tx.now, h.challengeId)) !== null && !(await challengeSatisfied(ext, tx.now, h.challengeId, dappDigest(h)));
-    if (!live) return {ok: true as const, data: null};
-    let site = h.host;
-    try {
-      site = new URL(h.origin).host;
-    } catch {
-      // The stored origin always parses (ports.ts accepted it); the host alone otherwise.
-    }
-    return {ok: true as const, data: {challengeId: h.challengeId, site}};
+    const about = await challengeInfo(ext, tx.now, h.challengeId);
+    if (about === null || about.kind !== 'dapp') return {ok: true as const, data: null};
+    if (await challengeSatisfied(ext, tx.now, h.challengeId, dappDigest(h))) return {ok: true as const, data: null};
+    return {ok: true as const, data: {challengeId: h.challengeId, site: about.site}};
   });
 }
