@@ -15,6 +15,7 @@ import {PAGE_TYPES} from './dapp/pageApi';
 import {decide, decideRequestOf, pending} from './dapp/decide';
 import {runUnlockHook} from './dapp/queue';
 import {dropAccountGrants, listBlocked, listGrants, revokeAll, revokeGrant, undoRevoke, unblock} from './dapp/grantsApi';
+import {reauthWaiting} from './dapp/signTx';
 
 /** What the browser reports about a message's origin (runtime.MessageSender). */
 export interface Sender {
@@ -57,6 +58,8 @@ export const PRIVILEGED = [
   'dapp.grants.revokeAll',
   'dapp.blocked.list',
   'dapp.blocked.remove',
+  // B1c-2 (D11): the popup's offer of #10 for a site's transaction.
+  'dapp.reauth',
 ] as const;
 /**
  * Only the vault page itself may hand over keys, report a re-authentication it proved, hand over
@@ -86,7 +89,7 @@ const APPROVE_PAGE_ONLY: readonly string[] = ['dapp.pending', 'dapp.decide'];
  */
 const APPROVE_PAGE_ALLOWED: readonly string[] = APPROVE_PAGE_ONLY;
 /** …and #49's from the popup or the UI tab only — never the approval window a site caused, nor the vault page. */
-const WALLET_UI_ONLY: readonly string[] = ['dapp.grants.list', 'dapp.grants.revoke', 'dapp.grants.undo', 'dapp.grants.revokeAll', 'dapp.blocked.list', 'dapp.blocked.remove'];
+const WALLET_UI_ONLY: readonly string[] = ['dapp.grants.list', 'dapp.grants.revoke', 'dapp.grants.undo', 'dapp.grants.revokeAll', 'dapp.blocked.list', 'dapp.blocked.remove', 'dapp.reauth'];
 export const PAGE: readonly string[] = PAGE_TYPES;
 
 function isOwnPage(ext: Ext, s: Sender): boolean {
@@ -306,6 +309,8 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       return deps === undefined ? {ok: false, error: 'unavailable'} : listBlocked(ext, deps);
     case 'dapp.blocked.remove':
       return deps === undefined ? {ok: false, error: 'unavailable'} : unblock(ext, deps, (msg as {host?: unknown}).host);
+    case 'dapp.reauth':
+      return deps === undefined ? {ok: false, error: 'unavailable'} : reauthWaiting(ext, deps);
     case 'vault.storeEnvelope': {
       const {expectedRevision, envelope} = msg as {expectedRevision?: unknown; envelope?: unknown};
       const dropped: string[] = [];

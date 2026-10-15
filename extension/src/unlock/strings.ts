@@ -412,6 +412,18 @@ export const REAUTH = {
     'whole-balance-to-new': 'Re-auth required to send your whole balance to a new address.',
   },
   overUsd: (dollars: string): string => `Re-auth required for transactions over $${dollars}.`,
+  /** B1c-2 — controller copy, owner to confirm (Scope): a dApp's transaction, described in #10. */
+  aboutDapp: 'You are about to approve',
+  site: 'Site',
+  transactions: 'Transactions',
+  token: 'Token',
+  baseUnits: (amount: string): string => `${amount} (base units)`,
+  /** Plan 2 review 1 L9 — controller copy, owner to confirm (Scope R28): the tokens past the sixteen #10 lists. */
+  omitted: (n: number): string => `and ${n} more ${n === 1 ? 'token' : 'tokens'}`,
+  approval: 'Re-auth required to approve a token allowance.',
+  dappConfirmed: 'Confirmed. Go back to the approval window and approve the transaction.',
+  dappExpired: 'This confirmation has expired. Approve the transaction again in the approval window.',
+  dappNotUnlocked: "The wallet locked while you were confirming. The site's request was declined — ask the site to try again.",
   autoLock: (minutes: number): string => `Auto-lock → ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`,
   threshold: (dollars: string): string => `Re-authentication threshold → $${dollars}`,
 } as const;

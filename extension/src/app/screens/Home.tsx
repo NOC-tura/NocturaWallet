@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {useWallet, sustained, type NetMode} from '../WalletContext';
 import {valuation} from '../valuation';
 import {TOKEN_INFO, approxSol, ago, agoLong, showAmount, showUsd, stamp, usdParts} from '../format';
@@ -10,7 +10,8 @@ import {LockedButton} from '../ui/LockedButton';
 import {RefusedBanner} from '../ui/Banner';
 import {SkelCircle, SkelLine} from '../ui/Skeleton';
 import {TokenTile} from '../ui/TokenTile';
-import type {Pending, Token} from '../engine';
+import type {DappReauth, Pending, Token} from '../engine';
+import {reauthPage} from '../platform';
 
 /** #42's banner: offline is navigator's word; unreachable says the server did not answer (review L3). */
 function NetBanner({mode, sustainedNow, lastSync, failures, now}: {mode: NetMode; sustainedNow: boolean; lastSync: number | null; failures: number; now: number}) {
@@ -59,6 +60,48 @@ function PendingStrip({p, now, onOpen}: {p: Pending; now: number; onOpen: () => 
   );
 }
 
+/**
+ * B1c-2 (spec B1c §3.3 "Re-authentication (B1b's rules through #10)"; D11): a site's transaction waits for #10. The
+ * approval window never links into the vault page — it tells the user to click the Noctura icon — so the offer is
+ * here, where the user's own click on the toolbar brought them. It opens #10 for that challenge (a new tab; the popup
+ * closes itself after). Controller ruling (owner copy, Scope).
+ */
+export const DAPP_REAUTH_TEXT = (site: string): string => `A transaction from ${site} waits for your confirmation`;
+function DappReauthStrip({waiting, onOpen}: {waiting: DappReauth; onOpen: () => void}) {
+  return (
+    <LockedButton className="banner info app-banner app-strip" onPress={onOpen}>
+      <ExtIcon name="link" size={18} />
+      <span className="noc-body-sm">{DAPP_REAUTH_TEXT(waiting.site)}</span>
+    </LockedButton>
+  );
+}
+
+/**
+ * dapp.reauth, read when Home mounts and whenever the window regains focus; only the newest answer counts, and nothing
+ * is set after unmount (the generation and `alive` checks of every async path).
+ */
+function useDappReauth(engine: {dappReauth(): Promise<{ok: true; data: DappReauth | null} | {ok: false}>}): DappReauth | null {
+  const [waiting, setWaiting] = useState<DappReauth | null>(null);
+  const reads = useRef(0);
+  useEffect(() => {
+    let alive = true;
+    const read = async () => {
+      const n = ++reads.current;
+      const r = await engine.dappReauth();
+      if (!alive || n !== reads.current) return;
+      setWaiting(r.ok ? r.data : null);
+    };
+    void read();
+    const again = () => void read();
+    window.addEventListener('focus', again);
+    return () => {
+      alive = false;
+      window.removeEventListener('focus', again);
+    };
+  }, [engine]);
+  return waiting;
+}
+
 /** A balance read that failed with 'failed' (final review I1; over shown balances, owner decision 2026-10-01) — copy confirmed by the owner 2026-10-01. */
 export const BALANCES_FAILED_TEXT = 'Could not read your balances. Try again.';
 const HIDDEN_ROW = '••••••';
@@ -81,6 +124,11 @@ export function Home({onSend, onReceive, onPending, onAccounts}: {onSend: () => 
     });
   };
   const account = m.account;
+  const dappWaiting = useDappReauth(m.engine);
+  const openDappReauth = () => {
+    const page = dappWaiting === null ? null : reauthPage(dappWaiting.challengeId);
+    if (page !== null) m.platform.openPage(page);
+  };
   const mode = m.net.mode;
   const refused = mode === 'refused';
   const away = mode === 'offline' || mode === 'unreachable';
@@ -125,6 +173,7 @@ export function Home({onSend, onReceive, onPending, onAccounts}: {onSend: () => 
       <div className="screen s-dash" aria-busy="true">
         {top}
         {banner}
+        {dappWaiting === null ? null : <DappReauthStrip waiting={dappWaiting} onOpen={openDappReauth} />}
         <div className="hero">
           <SkelLine width={90} height={14} />
           <SkelLine width={200} height={44} />
@@ -188,6 +237,7 @@ export function Home({onSend, onReceive, onPending, onAccounts}: {onSend: () => 
     <div className="screen s-dash">
       {top}
       {banner}
+      {dappWaiting === null ? null : <DappReauthStrip waiting={dappWaiting} onOpen={openDappReauth} />}
       {open === undefined ? null : <PendingStrip p={open} now={now} onOpen={() => onPending(open)} />}
       <section className={`hero${heroStale ? ' s8-stale' : ''}`}>
         {heroStale ? <div className="s8-stale-mark" /> : null}

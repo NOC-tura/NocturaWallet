@@ -18,6 +18,10 @@ export type TokenSymbol = keyof typeof TOKENS;
 const DIGITS = /^\d{1,20}$/;
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const SEND_KEYS = ['account', 'amount', 'kind', 'markupLamports', 'markupReason', 'networkLamports', 'priorityLamports', 'reasons', 'recipient', 'rentLamports', 'thresholdCents', 'token'];
+const DAPP_KEYS = ['account', 'kind', 'omitted', 'outgoing', 'reasons', 'site', 'thresholdCents', 'transactions'];
+const OUTGOING_KEYS = ['amount', 'decimals', 'mint', 'symbol'];
+/** A site as the approval window shows it: a host (ASCII / punycode, or an IP literal), with a port when it has one. */
+const SITE = /^[A-Za-z0-9.\-[\]:]{1,262}$/;
 const SETTINGS_KEYS = ['autoLockMinutes', 'kind', 'reauthUsdCents'];
 const own = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
 
@@ -40,7 +44,18 @@ export interface SettingsDescription {
   kind: 'settings';
   lines: string[];
 }
-export type Description = SendDescription | SettingsDescription;
+/** B1c-2: a dApp's transaction request (spec B1c §3.3): the site, how many transactions, what leaves the account, why. */
+export interface DappDescription {
+  kind: 'dapp';
+  site: string;
+  transactions: number;
+  /** One row per token leaving the account: the label (a symbol, or "Token") and the exact amount (never rounded). */
+  outgoing: {label: string; amount: string; mint: string | null}[];
+  /** How many more tokens leave the account than the rows show (plan 2 review 1 L9: the background lists at most 16). */
+  omitted: number;
+  reasons: string[];
+}
+export type Description = SendDescription | SettingsDescription | DappDescription;
 
 const sol = (lamports: string): string => `${formatAmount(BigInt(lamports), 9, {min: 0, max: 9})} SOL`;
 const dollars = (cents: number): string => formatAmount(BigInt(cents), 2, cents % 100 === 0 ? {min: 0, max: 0} : {min: 2, max: 2});
@@ -112,12 +127,56 @@ function describeSettings(a: Record<string, unknown>): SettingsDescription | nul
   return lines.length === 0 ? null : {kind: 'settings', lines};
 }
 
+/** One reason's line (#10's own table; `approval` is B1c-2's). */
+function reasonLine(r: unknown, thresholdCents: number): string | null {
+  if (r === 'over-usd-threshold') return REAUTH.overUsd(dollars(thresholdCents));
+  if (r === 'approval') return REAUTH.approval;
+  return typeof r === 'string' && own(REAUTH.reason, r) ? REAUTH.reason[r as keyof typeof REAUTH.reason] : null;
+}
+
+function describeDapp(a: Record<string, unknown>): DappDescription | null {
+  if (!hasExactly(a, DAPP_KEYS)) return null;
+  const {account, site, transactions, outgoing, omitted, reasons, thresholdCents} = a;
+  if (typeof account !== 'string' || !ADDRESS.test(account) || typeof site !== 'string' || !SITE.test(site) || !isInt(transactions, 1, 5) || !isInt(thresholdCents, 100, 100_000) || !isInt(omitted, 0, 10_000)) return null;
+  if (!Array.isArray(outgoing) || outgoing.length > 16 || !Array.isArray(reasons) || reasons.length === 0 || new Set(reasons).size !== reasons.length) return null;
+  const rows: DappDescription['outgoing'] = [];
+  for (const x of outgoing as unknown[]) {
+    if (typeof x !== 'object' || x === null || Array.isArray(x) || !hasExactly(x as Record<string, unknown>, OUTGOING_KEYS)) return null;
+    const {mint, symbol, amount, decimals} = x as Record<string, unknown>;
+    if (typeof amount !== 'string' || !DIGITS.test(amount)) return null;
+    if (mint === null) {
+      // SOL: its own name and nine decimals, nothing else.
+      if (symbol !== 'SOL' || decimals !== 9) return null;
+      rows.push({label: 'SOL', amount: `−${formatAmount(BigInt(amount), 9, {min: 0, max: 9})}`, mint: null});
+      continue;
+    }
+    if (typeof mint !== 'string' || !ADDRESS.test(mint)) return null;
+    if (symbol !== null) {
+      // A named token must carry its own decimals (this page's table): anything else describes no real token.
+      if (typeof symbol !== 'string' || !own(TOKENS, symbol) || symbol === 'SOL' || decimals !== TOKENS[symbol as TokenSymbol]) return null;
+      const d = TOKENS[symbol as TokenSymbol];
+      rows.push({label: symbol, amount: `−${formatAmount(BigInt(amount), d, {min: 0, max: d})}`, mint});
+      continue;
+    }
+    if (decimals !== null && !isInt(decimals, 0, 18)) return null;
+    rows.push({label: REAUTH.token, amount: decimals === null ? `−${REAUTH.baseUnits(amount)}` : `−${formatAmount(BigInt(amount), decimals, {min: 0, max: decimals})}`, mint});
+  }
+  const lines: string[] = [];
+  for (const r of reasons as unknown[]) {
+    const line = reasonLine(r, thresholdCents);
+    if (line === null) return null;
+    lines.push(line);
+  }
+  return {kind: 'dapp', site, transactions, outgoing: rows, omitted, reasons: lines};
+}
+
 /** The closed-alphabet renderer: a description built only from fixed strings and validated values, or null. */
 export function describeChallenge(about: unknown): Description | null {
   if (typeof about !== 'object' || about === null || Array.isArray(about)) return null;
   const a = about as Record<string, unknown>;
   if (a.kind === 'send') return describeSend(a);
   if (a.kind === 'settings') return describeSettings(a);
+  if (a.kind === 'dapp') return describeDapp(a);
   return null;
 }
 

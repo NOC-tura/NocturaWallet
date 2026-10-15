@@ -227,6 +227,8 @@ export interface Engine {
   dappRevokeAll(): Promise<Reply<null, 'locked'>>;
   dappBlocked(): Promise<Reply<DappBlocked[], 'locked'>>;
   dappUnblock(host: string): Promise<Reply<null, 'malformed' | 'locked'>>;
+  /** B1c-2 (D11): a site's transaction waiting for #10 — its challenge and the site — or null; refused while locked. */
+  dappReauth(): Promise<Reply<DappReauth | null, 'locked'>>;
   lock(): Promise<Reply<null, never>>;
   ping(): Promise<Reply<null, never>>;
 }
@@ -518,6 +520,18 @@ function dappGrantOf(x: unknown): DappGrant | undefined {
   if (typeof o.verified !== 'boolean' || !isAddress(o.account) || !isTime(o.connectedAt) || !isTime(o.lastUsedAt)) return undefined;
   return {origin: o.origin, host: o.host, name: o.name, verified: o.verified, account: o.account, scope, connectedAt: o.connectedAt, lastUsedAt: o.lastUsedAt, recent};
 }
+/** B1c-2: what dapp.reauth answers — a 32-hex challenge (the only kind reauthPage() opens) and the site, as the window shows it. */
+export interface DappReauth {
+  challengeId: string;
+  site: string;
+}
+function dappReauthOf(x: unknown): DappReauth | null | undefined {
+  if (x === null) return null;
+  const o = obj(x);
+  if (o === undefined || typeof o.challengeId !== 'string' || !/^[0-9a-f]{32}$/.test(o.challengeId) || typeof o.site !== 'string' || !/^[A-Za-z0-9.\-[\]:]{1,262}$/.test(o.site)) return undefined;
+  return {challengeId: o.challengeId, site: o.site};
+}
+
 function dappBlockedOf(x: unknown): DappBlocked | undefined {
   const o = obj(x);
   if (o === undefined || typeof o.host !== 'string' || o.host === '' || !isTime(o.blockedAt) || !(o.imitates === null || typeof o.imitates === 'string')) return undefined;
@@ -600,6 +614,7 @@ export function createEngine(transport: Transport = runtimeSend, sleep: (ms: num
     dappRevokeAll: () => call({type: 'dapp.grants.revokeAll'}, ['locked'], nothing),
     dappBlocked: () => call({type: 'dapp.blocked.list'}, ['locked'], d => all(obj(d)?.blocked, dappBlockedOf)),
     dappUnblock: host => call({type: 'dapp.blocked.remove', host}, ['malformed', 'locked'], nothing),
+    dappReauth: () => call({type: 'dapp.reauth'}, ['locked'], dappReauthOf),
     lock: () => call({type: 'vault.lock'}, [], nothing),
     ping: () => call({type: 'activity.ping'}, [], nothing),
   };

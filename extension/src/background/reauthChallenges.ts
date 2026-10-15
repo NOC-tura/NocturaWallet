@@ -50,6 +50,8 @@ export type ChallengeAbout =
 
 export interface DappOutgoing {
   mint: string | null;
+  /** The wallet's own name for the token (SOL for `mint` null; NOC, USDC, USDT by their mints), else null. */
+  symbol: 'SOL' | 'NOC' | 'USDC' | 'USDT' | null;
   amount: string;
   decimals: number | null;
 }
@@ -139,10 +141,11 @@ function isOutgoing(x: unknown): x is DappOutgoing {
   const decimals = o.decimals;
   return (
     (o.mint === null || (typeof o.mint === 'string' && ADDRESS.test(o.mint))) &&
+    (o.mint === null ? o.symbol === 'SOL' : o.symbol === null || (typeof o.symbol === 'string' && TOKENS.includes(o.symbol) && o.symbol !== 'SOL')) &&
     typeof o.amount === 'string' &&
     DIGITS.test(o.amount) &&
     (decimals === null || (isInt(decimals) && decimals >= 0 && decimals <= 18)) &&
-    Object.keys(o).length === 3
+    Object.keys(o).length === 4
   );
 }
 

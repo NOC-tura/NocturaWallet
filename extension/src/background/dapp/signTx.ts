@@ -15,6 +15,7 @@ import {withRecent} from './grants';
 import {withDappTxs} from './dappTxs';
 import {broadcastFirst, dropDappSend, recordDappSend} from '../pending';
 import {firstSignature} from '../../../../core/solana/broadcast';
+import {tokenForMint} from '../../../../core/solana/balances';
 import {runtimeFor} from './ports';
 import {answer, queueAccess} from './queue';
 import {simulateTransactions, type SimState, type TxOutcome} from './simulate';
@@ -205,7 +206,7 @@ export function dappAbout(e: Entry, site: string, thresholdCents: number): Extra
     const [a, b] = [rank(x.mint, x.v.usd), rank(y.mint, y.v.usd)];
     return a[0] - b[0] || (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0) || x.i - y.i;
   });
-  const outgoing: DappOutgoing[] = all.slice(0, MAX_DAPP_OUTGOING).map(({mint, v}) => ({mint, amount: v.amount.toString(), decimals: v.decimals}));
+  const outgoing: DappOutgoing[] = all.slice(0, MAX_DAPP_OUTGOING).map(({mint, v}) => ({mint, symbol: mint === null ? 'SOL' : tokenForMint(mint), amount: v.amount.toString(), decimals: v.decimals}));
   return {kind: 'dapp', account: e.account, site, transactions: e.transactions.length, outgoing, omitted: all.length - outgoing.length, reasons: e.sim.sim.reasons.slice(), thresholdCents};
 }
 
@@ -390,5 +391,29 @@ export async function finishSend(ext: Ext, deps: WalletDeps, requestId: string, 
     const e = tx.s.queue.find(x => x.requestId === requestId);
     if (e === undefined || e.state !== 'deciding' || e.decidedBy !== instance || e.sent === null) return;
     answer(fx, e, outcome === 'sent' ? {result: {signature: e.sent.signature}} : {error: 'send-failed'}, tx.now);
+  });
+}
+
+/**
+ * dapp.reauth (B1c-2; D11 — "the password is typed only after clicking the Noctura icon"): the popup and the UI tab ask
+ * it when they open; the approval window never links into the vault page. The head request's challenge, while it is
+ * live and not yet proven, with the site as the window shows it — the popup then offers #10 for it. Refused while
+ * locked, as #49's messages.
+ */
+export async function reauthWaiting(ext: Ext, deps: Pick<WalletDeps, 'now'>): Promise<{ok: true; data: {challengeId: string; site: string} | null} | {ok: false; error: 'locked'}> {
+  return queueAccess(ext, deps, async tx => {
+    if (tx.session === null) return {ok: false as const, error: 'locked' as const};
+    const h = tx.s.queue.find(e => e.state === 'queued' || e.state === 'deciding');
+    if (h === undefined || h.state !== 'queued' || !isTxType(h.type) || h.challengeId === null) return {ok: true as const, data: null};
+    // Read-only loads of the challenge store (no mutex of their own): safe inside the section.
+    const live = (await challengeInfo(ext, tx.now, h.challengeId)) !== null && !(await challengeSatisfied(ext, tx.now, h.challengeId, dappDigest(h)));
+    if (!live) return {ok: true as const, data: null};
+    let site = h.host;
+    try {
+      site = new URL(h.origin).host;
+    } catch {
+      // The stored origin always parses (ports.ts accepted it); the host alone otherwise.
+    }
+    return {ok: true as const, data: {challengeId: h.challengeId, site}};
   });
 }

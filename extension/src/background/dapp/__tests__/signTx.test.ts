@@ -235,7 +235,7 @@ describe('re-authentication for a transaction request', () => {
     expect((await c.pend()).request?.tx?.reauth).toEqual({reasons: ['first-send'], state: 'waiting'});
     expect(await c.challengeInfo(challengeId)).toEqual({
       ok: true,
-      data: {kind: 'dapp', account: ACCOUNT.publicKey, site: 'dapp.test', transactions: 1, outgoing: [{mint: null, amount: '1005000', decimals: 9}], omitted: 0, reasons: ['first-send'], thresholdCents: 10_000},
+      data: {kind: 'dapp', account: ACCOUNT.publicKey, site: 'dapp.test', transactions: 1, outgoing: [{mint: null, symbol: 'SOL', amount: '1005000', decimals: 9}], omitted: 0, reasons: ['first-send'], thresholdCents: 10_000},
     });
     // Still refused while unproven; the challenge is not reissued.
     expect(await c.approve(requestId, id)).toEqual({ok: false, error: 'reauth-required'});
@@ -479,5 +479,27 @@ describe('#48’s other views', () => {
     await lock(d.ext);
     // A lock answers the queue: nothing left to show.
     expect((await d.pend()).state).toBe('none');
+  });
+});
+
+// D11: the approval window never links into the vault page; the popup (opened from the toolbar) offers #10.
+describe('dapp.reauth (the popup’s offer of #10)', () => {
+  it('the head’s live, unproven challenge with its site; null before Approve asked and once proven; locked refused; never from the window', async () => {
+    const {handleMessage} = await import('../../messages');
+    const c = await txScene();
+    const popup = {id: c.ext.runtimeId, origin: c.ext.extensionOrigin, url: `${c.ext.extensionOrigin}/popup.html`};
+    const ask = (sender = popup) => handleMessage(c.ext, {type: 'dapp.reauth'}, sender, c.deps);
+    const r = await c.signTx('t', [v0([transfer(1_000_000)])]);
+    const requestId = String(r?.requestId);
+    const id = (await c.simulated()).request?.tx?.simulation.id;
+    expect(await ask()).toEqual({ok: true, data: null});
+    await c.approve(requestId, id);
+    const challengeId = String((await c.entry(requestId))?.challengeId);
+    expect(await ask()).toEqual({ok: true, data: {challengeId, site: 'dapp.test'}});
+    expect(await ask({id: c.ext.runtimeId, origin: c.ext.extensionOrigin, url: `${c.ext.extensionOrigin}/approve.html`})).toEqual({ok: false, error: 'forbidden'});
+    await c.reauthOk(challengeId);
+    expect(await ask()).toEqual({ok: true, data: null});
+    await lock(c.ext);
+    expect(await ask()).toEqual({ok: false, error: 'locked'});
   });
 });

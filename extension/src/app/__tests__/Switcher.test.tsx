@@ -42,6 +42,7 @@ function stubEngine(accounts: Account[], selected: number): Engine {
     dappRevokeAll: async () => ({ok: false, error: 'failed'}),
     dappBlocked: async () => ({ok: true, data: []}),
     dappUnblock: async () => ({ok: false, error: 'failed'}),
+    dappReauth: async () => ({ok: false, error: 'failed'}),
     lock: async () => ({ok: true, data: null}),
     ping: async () => ({ok: true, data: null}),
   };

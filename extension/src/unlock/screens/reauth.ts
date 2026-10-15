@@ -106,7 +106,7 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
     cancel.disabled = (busy && !cooling) || !canCancel;
     unlock.disabled = busy || !offerUnlock;
     x.disabled = (busy && !(cooling && canCancel)) || !(canCancel || view === 'notice');
-    x.setAttribute('aria-label', canCancel && !closeOnly && described?.kind !== 'settings' ? REAUTH.cancel : REAUTH.close);
+    x.setAttribute('aria-label', canCancel && !closeOnly && described?.kind !== 'settings' && described?.kind !== 'dapp' ? REAUTH.cancel : REAUTH.close);
   };
   const helper = (text: string, error: boolean) => {
     setText(byId('ra-helper'), text);
@@ -149,6 +149,27 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
       byId('ra-rows').replaceChildren(row(REAUTH.to, addressGroups(d.recipient)), ...d.fees.map(f => row(f.label, f.value)));
       byId('ra-reasons').replaceChildren(...d.reasons.map(r => h('p', 'noc-body-sm vlt-lede', r)));
       setText(cancel, REAUTH.cancelSend);
+    } else if (d.kind === 'dapp') {
+      // B1c-2: a site's transaction — the site, the batch's size when more than one, each token leaving the account
+      // (an unnamed token by its whole mint address, in groups), and why. Nothing here is sent: the approval window
+      // signs once this proof is in (and the user approves there again).
+      setText(byId('ra-about'), REAUTH.aboutDapp);
+      shown(byId('ra-amount-row'), false);
+      const rows = [row(REAUTH.site, d.site)];
+      if (d.transactions > 1) rows.push(row(REAUTH.transactions, String(d.transactions)));
+      for (const o of d.outgoing) {
+        if (o.mint === null || o.label !== REAUTH.token) rows.push(row(o.label, o.amount));
+        else {
+          const value = h('span');
+          value.append(o.amount, ' · ', addressGroups(o.mint));
+          rows.push(row(o.label, value));
+        }
+      }
+      // Review 1 L9: past the sixteen rows the background lists, the count of the rest.
+      if (d.omitted > 0) rows.push(row(REAUTH.omitted(d.omitted), null));
+      byId('ra-rows').replaceChildren(...rows);
+      byId('ra-reasons').replaceChildren(...d.reasons.map(r => h('p', 'noc-body-sm vlt-lede', r)));
+      setText(cancel, REAUTH.cancel);
     } else {
       setText(byId('ra-about'), REAUTH.aboutChange);
       shown(byId('ra-amount-row'), false);
@@ -173,6 +194,13 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
     endCooldown();
     field.value = '';
     // B1b-2b E9 (§3.7): a settings description has its own end states — applied by the background, or nothing changed.
+    // B1c-2: a dApp's transaction — the proof is all #10 does; the approval window signs on the user's next Approve.
+    if (described?.kind === 'dapp') {
+      if (out === 'confirmed') return notice(REAUTH.dappConfirmed);
+      if (out === 'expired') return notice(REAUTH.dappExpired);
+      if (out === 'not-unlocked') return notice(REAUTH.dappNotUnlocked, {unlock: true});
+      if (out === 'refused' || out === 'applied') return helper(COMMON.failedTryAgain, false);
+    }
     if (described?.kind === 'settings') {
       if (out === 'applied') return notice(REAUTH.settingsApplied);
       if (out === 'expired') return notice(REAUTH.settingsExpired, {help: REAUTH.settingsExpiredHelp});
@@ -251,7 +279,8 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
     if (stopCooldown !== null) return cancelInCooldown();
     void exclusive(deps, render, async () => {
       if (!canCancel) return;
-      if (described?.kind === 'settings' || closeOnly) return deps.closeTab();
+      // A setting, or a site's transaction (B1c-2: its request stays in the approval window, which can still reject it).
+      if (described?.kind === 'settings' || described?.kind === 'dapp' || closeOnly) return deps.closeTab();
       // E7: nothing of this send may outlive the cancel — its prepared send and its challenge go. The account is
       // the one challenge.ts validated (the description's, or the undescribable record's own).
       const account = described?.kind === 'send' ? described.account : orphan;

@@ -648,3 +648,35 @@ describe('#42 offline and the D26 refused state', () => {
     expect(screen.queryByText('Sending 2.48 SOL · pending')).toBeNull();
   });
 });
+
+// B1c-2 (spec B1c §3.3 "Re-authentication through #10"; D11): the approval window points to the toolbar icon; the popup
+// it opens offers #10 for the site's waiting challenge.
+describe('#11: a site’s transaction waiting for its confirmation (B1c-2)', () => {
+  const T = 1_000_000;
+  async function waitingDapp(ext: Parameters<NonNullable<WalletOptions['before']>>[0]): Promise<string> {
+    const {issueChallenge} = await import('../../background/reauthChallenges');
+    const {dappDigest} = await import('../../background/dapp/signTx');
+    const {DAPP_SESSION_KEY} = await import('../../background/dapp/store');
+    const entry = {
+      requestId: 'AAAAAAAAAAAAAAAAAAAAAA', pageId: 'p1', origin: 'https://jup.ag', host: 'jup.ag', tabId: 7, documentId: null, type: 'signTransaction', account: ACCOUNT.publicKey,
+      message: null, transactions: ['AQ=='], granted: null, sim: null, challengeId: null as string | null, sent: null, arrivedAt: T, state: 'queued', decidedBy: null, decidingAt: null,
+      decision: null, answer: null, answeredAt: null,
+    };
+    const about = {kind: 'dapp' as const, account: ACCOUNT.publicKey, site: 'jup.ag', transactions: 1, outgoing: [{mint: null, symbol: 'SOL' as const, amount: '1', decimals: 9}], omitted: 0, reasons: ['first-send' as const], thresholdCents: 10_000};
+    entry.challengeId = await issueChallenge(ext, {now: () => T, randomBytes: n => new Uint8Array(n).fill(4)}, dappDigest(entry), about);
+    await ext.session.set(DAPP_SESSION_KEY, {queue: [entry], grants: [], window: null, opening: null, undo: []});
+    return entry.challengeId;
+  }
+
+  it('the strip names the site and opens #10 for that challenge (a LockedButton); with nothing waiting there is no strip', async () => {
+    let challengeId = '';
+    const w = await renderHome({before: async ext => void (challengeId = await waitingDapp(ext))});
+    const strip = await screen.findByRole('button', {name: 'A transaction from jup.ag waits for your confirmation'});
+    fireEvent.click(strip);
+    await waitFor(() => expect(w.platform.opened).toEqual([`unlock.html?mode=reauth&challenge=${challengeId}`]));
+    cleanup();
+    await renderHome();
+    await screen.findByText('62.4821 SOL');
+    expect(screen.queryByText(/waits for your confirmation/)).toBeNull();
+  });
+});
