@@ -59,6 +59,17 @@ const wsolAccount = (amount: bigint, rent: bigint, owner = ME.toBase58()): Simul
   view.setBigUint64(113, rent, true);
   return {lamports: amount + rent, owner: TOKEN_PROGRAM, data};
 };
+/** Token-2022's OWN native mint (fix round 3, IMPORTANT) — distinct from WRAPPED_SOL_MINT, same is_native invariant. */
+const T22_NATIVE_MINT = '9pan9bMn5HatX4EJdBwg9VgCa7Uz5HL8N1m5D3NdXejP';
+/** `wsolAccount`, under Token-2022's program and its own native mint — proves native status is decided by the
+ * is_native tag, not by comparing against WRAPPED_SOL_MINT specifically. */
+const t22NativeAccount = (amount: bigint, rent: bigint, owner = ME.toBase58()): SimulatedAccount => {
+  const data = tokenAccountData(T22_NATIVE_MINT, owner, amount);
+  const view = new DataView(data.buffer);
+  view.setUint32(109, 1, true);
+  view.setBigUint64(113, rent, true);
+  return {lamports: amount + rent, owner: TOKEN_2022_PROGRAM, data};
+};
 /**
  * A 355-byte Multisig struct (SPL Token's own size: m, n, is_initialized, 11 signers) shaped to also pass as an
  * extended Token-2022 account if length alone were trusted: mint/owner fields and an amount planted at the classic
@@ -316,6 +327,37 @@ describe('simulateTransactions', () => {
       const out = sim.outcomes[0];
       // 5 000 000 (inflow) − 5 000 (fee) = 4 995 000; a doubled count would show 9 995 000 (the synced `amount` also added).
       expect(out?.ok === true ? out.changes.map(c => [c.mint, c.amount]) : null).toEqual([[null, '4995000']]);
+    });
+
+    // Fix round 3 (IMPORTANT, still open after round 2): Token-2022 has its OWN native mint, distinct from
+    // WRAPPED_SOL_MINT, carrying the identical is_native / lamports = amount + rent invariant — native status must be
+    // decided from the is_native tag itself (pre OR post), never the mint address alone, or these would double-count
+    // exactly like classic wSOL did before round 2.
+    it('a Token-2022 native account (its own native mint, not WRAPPED_SOL_MINT) also counts the gain once, not twice', async () => {
+      const inflow = 5_000_000n;
+      const s = scene({
+        accounts: new Map([[SRC, t22NativeAccount(A, RENT)]]),
+        post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : a === SRC ? t22NativeAccount(A + inflow, RENT) : null),
+      });
+      const syncIx = new TransactionInstruction({programId: new PublicKey(TOKEN_2022_PROGRAM), data: Buffer.from([17]), keys: [{pubkey: new PublicKey(SRC), isSigner: false, isWritable: true}]});
+      const sim = await run(s, [wire([unknownIx([SRC]), syncIx])]);
+      const out = sim.outcomes[0];
+      expect(out?.ok === true ? out.changes.map(c => [c.mint, c.amount]) : null).toEqual([[null, '4995000']]);
+    });
+
+    it('a Token-2022 native account closed to a foreign destination shows its lamports as a SOL loss only, once', async () => {
+      const s = scene({
+        accounts: new Map([[SRC, t22NativeAccount(A, RENT)]]),
+        post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : null),
+      });
+      const closeIx = new TransactionInstruction({
+        programId: new PublicKey(TOKEN_2022_PROGRAM),
+        data: Buffer.from([9]),
+        keys: [SRC, RECIPIENT, ME.toBase58()].map((k, i) => ({pubkey: new PublicKey(k), isSigner: i === 2, isWritable: i !== 2})),
+      });
+      const sim = await run(s, [wire([closeIx])]);
+      const out = sim.outcomes[0];
+      expect(out?.ok === true ? out.changes : null).toEqual([{mint: null, amount: '-52044280', decimals: 9, usdMicros: '-7806642'}]);
     });
   });
 

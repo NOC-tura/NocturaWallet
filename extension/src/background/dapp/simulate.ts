@@ -18,9 +18,11 @@ import {isWritableIndex, type ParsedTx} from './decode/wire';
  * accounts, pre AND post read from CHAIN STATE (getAccountsData, fresh immediately before each transaction's own
  * simulation, for exactly the addresses that simulation returns post state for — fix round 1, I1/I2; getTokenAccountsByOwner's
  * one-time batch snapshot is used only for the reauth rules' balance denominator and the known-recipient check, never
- * for a per-transaction pre amount). A native-mint (wSOL) account produces NO token line at all (fix round 2, IMPORTANT):
- * its lamports already are its value (the Token program enforces lamports = amount + rent for every is_native account),
- * so counting both would show every wrapped lamport moved twice. The transactions of a batch are simulated one by one
+ * for a per-transaction pre amount). A native-mint account — is_native itself (fix round 3: both SOL's own wSOL mint
+ * AND Token-2022's own, distinct native mint carry the identical invariant), never just WRAPPED_SOL_MINT — produces NO
+ * token line at all (fix round 2, IMPORTANT): its lamports already are its value (the Token program enforces
+ * lamports = amount + rent for every is_native account), so counting both would show every wrapped lamport moved
+ * twice. The transactions of a batch are simulated one by one
  * against the current state (a node cannot chain them). The re-authentication reasons (B1b's rules) are computed here —
  * `approval` from chain state too (a new or raised delegation, a changed close authority, or an own account's owner
  * reassigned away — fix round 2, ruled-in: a dApp program can CPI an Approve, a SetAuthority close-authority change or a
@@ -91,7 +93,9 @@ function isTokenAccountLayout(a: AccountData): boolean {
  * owner field is not `owner`. `delegate`/`delegatedAmount` (COption<Pubkey> at 72..108, u64 at 121..129) and
  * `closeAuthority` (COption<Pubkey> at 129..165) are read as the runtime does; `lamports` is `a`'s own, for Promoted
  * Minor 3 (a close to a foreign destination moves them out of the wallet's custody without ever touching the wallet's
- * own system account).
+ * own system account). `isNative` is the `is_native` COption's own tag (u32 LE at 109) — fix round 3, IMPORTANT: this,
+ * not the mint address, is what decides native status (below), since Token-2022 has its OWN native mint
+ * (`9pan9bMn5HatX4EJdBwg9VgCa7Uz5HL8N1m5D3NdXejP`) carrying the identical invariant at the identical offset.
  */
 interface OwnTokenAccount {
   mint: string;
@@ -100,6 +104,7 @@ interface OwnTokenAccount {
   delegate: string | null;
   delegatedAmount: bigint;
   closeAuthority: string | null;
+  isNative: boolean;
 }
 function ownTokenAccountOf(a: AccountData | null, owner: string): OwnTokenAccount | null {
   if (a === null || !isTokenAccountLayout(a)) return null;
@@ -111,6 +116,7 @@ function ownTokenAccountOf(a: AccountData | null, owner: string): OwnTokenAccoun
     lamports: a.lamports,
     delegate: view.getUint32(72, true) === 1 ? base58.encode(a.data.subarray(76, 108)) : null,
     delegatedAmount: view.getBigUint64(121, true),
+    isNative: view.getUint32(109, true) === 1,
     closeAuthority: view.getUint32(129, true) === 1 ? base58.encode(a.data.subarray(133, 165)) : null,
   };
 }
@@ -250,7 +256,12 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
       // `amount` delta AND the lamports delta would show every wrapped lamport moved twice (and, for an inflow, let a
       // dApp show the user receiving double what arrived). A native-mint account therefore produces NO token line at
       // all; its lamports delta (below) is its entire economic change, as SOL.
-      const nativeMint = postOwn?.mint === WRAPPED_SOL_MINT || preOwn?.mint === WRAPPED_SOL_MINT;
+      // Fix round 3 (IMPORTANT, still open after round 2): native status is decided from the is_native COption tag
+      // itself (pre OR post), never the mint address alone — Token-2022 has its own native mint
+      // (9pan9bMn5HatX4EJdBwg9VgCa7Uz5HL8N1m5D3NdXejP) carrying the identical invariant at the identical offset, so a
+      // WRAPPED_SOL_MINT-only check would miss it (a dApp could fund a wallet-owned Token-2022 native account by CPI
+      // and show the gain twice). The mint check stays, but only as an extra — never the sole test.
+      const nativeMint = preOwn?.isNative === true || postOwn?.isNative === true || postOwn?.mint === WRAPPED_SOL_MINT || preOwn?.mint === WRAPPED_SOL_MINT;
       if (!nativeMint) {
         if (postOwn !== null) add(postOwn.mint, postOwn.amount - (preOwn?.mint === postOwn.mint ? preOwn.amount : 0n));
         else if (preOwn !== null) add(preOwn.mint, -preOwn.amount);
