@@ -202,7 +202,10 @@ export async function resend(ext: Ext, deps: WalletDeps, id: string): Promise<Pe
   const out: {record?: PendingRecord; refusal?: ResendRefusal} = {};
   await updatePending(ext, records =>
     records.map(r => {
-      if (r.id !== id) return r;
+      // B1c-2 (controller ruling on Task 5): a dApp's record is never re-sent from here — its bytes reach the route only
+      // through the held→due→done claim (broadcastFirst, the poller's sendDue); a `held` one (its page answered
+      // `rejected`) must never be sent by any path. Refused exactly as an unknown id.
+      if (r.id !== id || r.origin !== null) return r;
       if (!isOpen(r)) {
         out.refusal = 'not-open';
         return r;

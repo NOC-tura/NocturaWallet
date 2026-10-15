@@ -3,8 +3,8 @@ import {base58, base64} from '@scure/base';
 import {VersionedTransaction} from '@solana/web3.js';
 import {AUTOLOCK_ALARM, lock} from '../../autolock';
 import {handleMessage} from '../../messages';
-import {inFlightFor, readPending} from '../../pendingStore';
-import {pollOnce, recordDappSend} from '../../pending';
+import {inFlightFor, markDue, readPending, updatePending} from '../../pendingStore';
+import {RESEND_MIN_INTERVAL_MS, pollOnce, recordDappSend} from '../../pending';
 import {parseWire} from '../decode/wire';
 import {signAll} from '../signTx';
 import {BROADCAST_TIMEOUT_MS} from '../../deps';
@@ -14,7 +14,7 @@ import {runtimeFor} from '../ports';
 import {DAPP_SESSION_KEY, readDappSession} from '../store';
 import {DECIDING_TTL_MS, REQUEST_TTL_MS, SEND_DECIDING_TTL_MS, promised} from '../queue';
 import {BroadcastRejected, BroadcastUnavailable, firstSignature} from '../../../../../core/solana/broadcast';
-import {ACCOUNT, RECIPIENT} from '../../__tests__/fixtures';
+import {ACCOUNT, RECIPIENT, pendingRecord, signedWire} from '../../__tests__/fixtures';
 import {DAPP, ME, coSigned, transfer, txScene, v0} from './txHarness';
 
 /** A scene with a signAndSend request simulated and ready to approve; `broadcast` is what the route does. */
@@ -301,6 +301,26 @@ describe('page.signAndSendTransaction — the effect', () => {
     await pollOnce(c.ext, c.deps);
     expect(broadcasts).toBe(1);
     expect((await readPending(c.ext))[0]?.firstBroadcast).toBe('done');
+  });
+
+  // Controller ruling on Task 5: "Send again" (wallet.resend) never sends a dApp's record, whatever its first-broadcast state.
+  it('wallet.resend refuses a dApp record — held (its page answered rejected) and due (the poller owns it); a wallet send re-sends as before', async () => {
+    const c = await stoppedAt(false);
+    const popup = {id: c.ext.runtimeId, origin: c.ext.extensionOrigin, url: `${c.ext.extensionOrigin}/popup.html`};
+    c.deps.clock.t += RESEND_MIN_INTERVAL_MS;
+    expect((await readPending(c.ext))[0]?.firstBroadcast).toBe('held');
+    expect(await handleMessage(c.ext, {type: 'wallet.resend', id: c.record.id}, popup, c.deps)).toEqual({ok: false, error: 'unknown'});
+    expect(c.wires).toEqual([]);
+    await markDue(c.ext, [c.record.signature]);
+    expect((await readPending(c.ext))[0]?.firstBroadcast).toBe('due');
+    expect(await handleMessage(c.ext, {type: 'wallet.resend', id: c.record.id}, popup, c.deps)).toEqual({ok: false, error: 'unknown'});
+    expect(c.wires).toEqual([]);
+    // Positive control: the wallet's own open send (origin null) is re-sent, its own bytes, once.
+    const own = base64.encode(signedWire(7n));
+    await updatePending(c.ext, rs => [...rs, pendingRecord({id: 'own', account: ACCOUNT.publicKey, signature: '6'.repeat(88), wire: own})]);
+    expect(await handleMessage(c.ext, {type: 'wallet.resend', id: 'own'}, popup, c.deps)).toMatchObject({ok: true});
+    expect(c.wires.filter(w => base64.encode(w) === own)).toHaveLength(1);
+    expect(c.wires.filter(w => base64.encode(w) === c.record.wire).length).toBeLessThanOrEqual(1);
   });
 });
 
