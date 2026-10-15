@@ -2,7 +2,7 @@ import type {Ext} from '../ext';
 import type {WalletDeps} from './deps';
 import {REAUTH_KEY, getSession, sessionMutex} from './session';
 import {randomId} from './digest';
-import type {SendReauthReason} from './reauthPolicy';
+import type {DappReauthReason, SendReauthReason} from './reauthPolicy';
 import type {FeeReason} from '../../../core/fees/transferMarkup';
 
 /** How long the vault page has to prove the factor (brief decision 6), counted from the last prepare of the same intent. */
@@ -38,7 +38,21 @@ export type ChallengeAbout =
       reasons: SendReauthReason[];
       thresholdCents: number;
     }
-  | {kind: 'settings'; autoLockMinutes: number | null; reauthUsdCents: number | null};
+  | {kind: 'settings'; autoLockMinutes: number | null; reauthUsdCents: number | null}
+  /**
+   * B1c-2 (spec B1c §3.3): a dApp's transaction request — the site as the window shows it (host, or host:port), how
+   * many transactions it signs, what leaves the account per mint (null = SOL; positive base units; decimals when known)
+   * and why. Bound to the request and its exact bytes (signTx.ts dappDigest). #10 describes it; the approval window
+   * signs only once the challenge is proven and consumed. `outgoing` holds at most MAX_DAPP_OUTGOING mints (SOL first,
+   * then the largest in USD); `omitted` counts the mints left out (plan 2 review 1 L9: a long list is cut, never refused).
+   */
+  | {kind: 'dapp'; account: string; site: string; transactions: number; outgoing: DappOutgoing[]; omitted: number; reasons: DappReauthReason[]; thresholdCents: number};
+
+export interface DappOutgoing {
+  mint: string | null;
+  amount: string;
+  decimals: number | null;
+}
 
 /** The fields a re-prepare of the same intent may refresh; the identity fields (account, token, recipient, amount) never change. */
 export type SendAboutRefresh = Pick<
@@ -59,6 +73,11 @@ type Store = Map<string, Challenge>;
 const TOKENS: readonly string[] = ['SOL', 'NOC', 'USDC', 'USDT'];
 const REASONS: readonly string[] = ['first-send', 'over-5-percent', 'over-usd-threshold', 'whole-balance-to-new'];
 const FEE_REASONS: readonly string[] = ['pre-tge', 'zero-fee-eligible', 'status-unknown', 'charged'];
+const DAPP_REASONS: readonly string[] = [...REASONS, 'approval'];
+/** At most this many mints in a dApp challenge's description (more than a five-transaction batch can name sensibly; the rest are counted in `omitted`). */
+export const MAX_DAPP_OUTGOING = 16;
+/** A site as the window shows it: a host (ASCII / punycode, or an IP literal), with a port when the origin has one. */
+const SITE = /^[A-Za-z0-9.\-[\]:]{1,262}$/;
 const DIGITS = /^\d{1,20}$/;
 /** A base58 Solana address's shape (32–44 characters). */
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -70,6 +89,30 @@ function isAbout(x: unknown): x is ChallengeAbout {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
   const a = x as Record<string, unknown>;
   if (a.kind === 'settings') return isIntOrNull(a.autoLockMinutes) && isIntOrNull(a.reauthUsdCents) && Object.keys(a).length === 3;
+  if (a.kind === 'dapp') {
+    const outgoing = a.outgoing;
+    const reasons = a.reasons;
+    return (
+      typeof a.account === 'string' &&
+      ADDRESS.test(a.account) &&
+      typeof a.site === 'string' &&
+      SITE.test(a.site) &&
+      isInt(a.transactions) &&
+      a.transactions >= 1 &&
+      a.transactions <= 5 &&
+      Array.isArray(outgoing) &&
+      outgoing.length <= MAX_DAPP_OUTGOING &&
+      (outgoing as unknown[]).every(isOutgoing) &&
+      isInt(a.omitted) &&
+      a.omitted >= 0 &&
+      Array.isArray(reasons) &&
+      reasons.length > 0 &&
+      new Set(reasons).size === reasons.length &&
+      (reasons as unknown[]).every(r => typeof r === 'string' && DAPP_REASONS.includes(r)) &&
+      isInt(a.thresholdCents) &&
+      Object.keys(a).length === 8
+    );
+  }
   if (a.kind !== 'send') return false;
   return (
     typeof a.account === 'string' &&
@@ -87,6 +130,19 @@ function isAbout(x: unknown): x is ChallengeAbout {
     (a.reasons as unknown[]).every(r => typeof r === 'string' && REASONS.includes(r)) &&
     isInt(a.thresholdCents) &&
     Object.keys(a).length === 12
+  );
+}
+
+function isOutgoing(x: unknown): x is DappOutgoing {
+  if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
+  const o = x as Record<string, unknown>;
+  const decimals = o.decimals;
+  return (
+    (o.mint === null || (typeof o.mint === 'string' && ADDRESS.test(o.mint))) &&
+    typeof o.amount === 'string' &&
+    DIGITS.test(o.amount) &&
+    (decimals === null || (isInt(decimals) && decimals >= 0 && decimals <= 18)) &&
+    Object.keys(o).length === 3
   );
 }
 

@@ -345,3 +345,57 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
     lastValidBlockHeight: latest.lastValidBlockHeight,
   };
 }
+
+/** What an entry holds (store.ts): the newest simulation, or that the last attempt could not reach the proxy. */
+export type SimState = {status: 'ok'; sim: TxSimulation} | {status: 'unreachable'; at: number};
+
+const REASONS: readonly string[] = ['first-send', 'over-5-percent', 'over-usd-threshold', 'whole-balance-to-new', 'approval'];
+const isInt = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0;
+const isIntOrNull = (x: unknown): x is number | null => x === null || isInt(x);
+const SIGNED = /^-?\d{1,40}$/;
+const DIGITS = /^\d{1,40}$/;
+const SIM_ID = /^[A-Za-z0-9_-]{22}$/;
+const obj = (x: unknown): Record<string, unknown> | null => (typeof x === 'object' && x !== null && !Array.isArray(x) ? (x as Record<string, unknown>) : null);
+
+function changeOf(x: unknown): BalanceChange | null {
+  const o = obj(x);
+  if (o === null || !(o.mint === null || typeof o.mint === 'string') || typeof o.amount !== 'string' || !SIGNED.test(o.amount) || !isIntOrNull(o.decimals)) return null;
+  if (!(o.usdMicros === null || (typeof o.usdMicros === 'string' && SIGNED.test(o.usdMicros)))) return null;
+  return {mint: o.mint, amount: o.amount, decimals: o.decimals, usdMicros: o.usdMicros};
+}
+
+function outcomeOf(x: unknown): TxOutcome | null {
+  const o = obj(x);
+  if (o === null) return null;
+  if (o.ok === false) return (o.error === 'expired' || o.error === 'failed') && typeof o.detail === 'string' ? {ok: false, error: o.error, detail: o.detail} : null;
+  if (o.ok !== true || !Array.isArray(o.changes) || !isIntOrNull(o.unitsConsumed) || !isInt(o.unitLimit) || !(o.feeLamports === null || (typeof o.feeLamports === 'string' && DIGITS.test(o.feeLamports)))) return null;
+  const changes = (o.changes as unknown[]).map(changeOf);
+  if (changes.some(c => c === null)) return null;
+  return {ok: true, changes: changes as BalanceChange[], unitsConsumed: o.unitsConsumed, unitLimit: o.unitLimit, feeLamports: o.feeLamports};
+}
+
+/** A stored SimState, rebuilt field by field (fresh objects, never the stored ones); null when anything is off — it is then simulated again. */
+export function simStateOf(x: unknown): SimState | null {
+  const o = obj(x);
+  if (o === null) return null;
+  if (o.status === 'unreachable') return isInt(o.at) ? {status: 'unreachable', at: o.at} : null;
+  const s = o.status === 'ok' ? obj(o.sim) : null;
+  if (s === null || typeof s.id !== 'string' || !SIM_ID.test(s.id) || !isInt(s.at) || !isInt(s.slot) || !isInt(s.elapsedMs) || !isInt(s.lastValidBlockHeight)) return null;
+  if (!Array.isArray(s.keys) || !(s.keys as unknown[]).every(k => Array.isArray(k) && (k as unknown[]).every(a => a === null || typeof a === 'string'))) return null;
+  if (!Array.isArray(s.outcomes) || !Array.isArray(s.reasons) || !(s.reasons as unknown[]).every(r => typeof r === 'string' && REASONS.includes(r))) return null;
+  const outcomes = (s.outcomes as unknown[]).map(outcomeOf);
+  if (outcomes.some(x => x === null) || outcomes.length !== s.keys.length) return null;
+  return {
+    status: 'ok',
+    sim: {
+      id: s.id,
+      at: s.at,
+      slot: s.slot,
+      elapsedMs: s.elapsedMs,
+      keys: (s.keys as (string | null)[][]).map(k => k.slice()),
+      outcomes: outcomes as TxOutcome[],
+      reasons: (s.reasons as DappReauthReason[]).slice(),
+      lastValidBlockHeight: s.lastValidBlockHeight,
+    },
+  };
+}

@@ -81,6 +81,8 @@ export interface Runtime {
    * already have.
    */
   hooked: boolean;
+  /** B1c-2: the requests whose simulation is running in this instance (signTx.ts) — one at a time per request. */
+  simulating: Set<string>;
 }
 
 const runtimes = new WeakMap<Pick<Ext, 'runtimeId'>, Runtime>();
@@ -93,7 +95,7 @@ function randomHex(n: number): string {
 export function runtimeFor(ext: Pick<Ext, 'runtimeId'>): Runtime {
   let r = runtimes.get(ext);
   if (r === undefined) {
-    r = {instance: randomHex(16), ports: new Set(), hooked: false};
+    r = {instance: randomHex(16), ports: new Set(), hooked: false, simulating: new Set()};
     runtimes.set(ext, r);
   }
   return r;

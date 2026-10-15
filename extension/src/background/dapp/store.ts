@@ -5,6 +5,7 @@ import {getSession, sessionMutex} from '../session';
 import {BLOCKED_KEY, blockedOf, type Blocked} from './blocked';
 import {GRANTS_KEY, MAX_GRANTS, grantOf, grantsOf, type Grant} from './grants';
 import {LIMITS_KEY, limitsOf, type Limits} from './limits';
+import {simStateOf, type SimState} from './simulate';
 
 /**
  * The dApp provider's state (spec §1.5, §2). storage.session holds what dies with the session — the request queue,
@@ -51,6 +52,10 @@ export interface Entry {
   transactions: string[] | null;
   /** mismatch (B1c-2): the origin the named account is granted to; else null. */
   granted: string | null;
+  /** A transaction request's newest simulation (simulate.ts) — null before the first one answers. */
+  sim: SimState | null;
+  /** A transaction request's re-authentication challenge (signTx.ts), once Approve asked for one; else null. */
+  challengeId: string | null;
   arrivedAt: number;
   state: 'queued' | 'deciding' | 'answered';
   /** The worker instance that wrote `deciding` (C17): another instance's `deciding` entry is a restart. */
@@ -123,7 +128,10 @@ export function entryOf(x: unknown): Entry | null {
   // B1c-2's fields: absent on an entry an older background wrote (read as null), else exactly their shape.
   const transactions = o.transactions === undefined || o.transactions === null ? null : Array.isArray(o.transactions) && o.transactions.every(isStr) ? (o.transactions as string[]).slice() : undefined;
   const granted = o.granted === undefined ? null : isNullStr(o.granted) ? o.granted : undefined;
-  if (transactions === undefined || granted === undefined) return null;
+  const challengeId = o.challengeId === undefined ? null : isNullStr(o.challengeId) ? o.challengeId : undefined;
+  if (transactions === undefined || granted === undefined || challengeId === undefined) return null;
+  // A simulation that does not read back is simply simulated again (never trusted half-read).
+  const sim = o.sim === undefined || o.sim === null ? null : simStateOf(o.sim);
   if (!isStr(o.state) || !STATES.includes(o.state) || !isNullStr(o.decidedBy) || (o.answeredAt !== null && !isTime(o.answeredAt))) return null;
   if (o.decidingAt !== null && !isTime(o.decidingAt)) return null;
   const decision = decisionOf(o.decision);
@@ -141,6 +149,8 @@ export function entryOf(x: unknown): Entry | null {
     message: o.message,
     transactions,
     granted,
+    sim,
+    challengeId,
     arrivedAt: o.arrivedAt,
     state: o.state as Entry['state'],
     decidedBy: o.decidedBy,
