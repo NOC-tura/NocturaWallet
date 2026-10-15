@@ -16,6 +16,12 @@ signed (Q26); §10 gains Q25 and Q26.
 `invalid-request`); §9 gains two rows — dependent batches are unapprovable in B1c-2 and B1c-3 must solve them (M4), and
 the transactions' malformed-before-`unauthorized` order (L6); §7's accepted limits gain the mismatch notice (L10). No
 other rule changed.
+**Rev 3.4 (controller, owner-delegated wording, 2026-10-15, from plan 2's Fable review 2 —
+`.superpowers/sdd/b1c-plan2-review-2.md`):** §1.5 step 2 and §5 say what plan 2's send does — the poller may make the
+first broadcast of recorded bytes, exactly once; never a re-signature, never a second broadcast — and that C4's expiry
+answers a recorded send its signature (L1, L2); §9 gains two rows: a signature answered from the record is a promise
+that the bytes reach the route, not that they land (L3), and every SPL transfer to a token account that is not the
+account's own re-authenticates (plan 2 R10). No other rule changed.
 
 **What this is.** The extension becomes a wallet any Solana site can use through Wallet Standard: connect, disconnect,
 events, `signMessage`, `signTransaction`, `signAndSendTransaction`, on `solana:mainnet` only. It builds the design's
@@ -195,7 +201,10 @@ to exist, so every other privileged type from it (`activity.ping`, `vault.*`, `w
      `rejected` (nothing left the extension: the result was never delivered; a connect's grant, if written, is removed
      in the same section). A `signAndSendTransaction` entry follows B1b's `v1_pending` pattern: the signed bytes and the
      signature are written into the entry **before** the broadcast; on restart an entry with a recorded signature is
-     answered `{signature}` and handed to the existing confirmation poller — never signed or broadcast again.
+     answered `{signature}` and handed to the existing confirmation poller, which makes the **first** broadcast if the
+     effect never did (the record's `firstBroadcast` `held` → `due` → `done`, claimed once — rev 3.4) — never signed
+     again, never broadcast twice. An entry with a recorded signature is answered `{signature}` by every path that ends
+     it, C4's five-minute expiry included (rev 3.4).
    - Expiry, a lock, a cooldown or a revoke answers a `queued` entry directly (`answered`, an error).
 3. The background delivers an answer on every live port keyed to that `(tabId, origin)`.
 4. The relay posts it to the page and sends `page.ack`; the entry is then deleted. An answered entry that is never acked
@@ -650,7 +659,7 @@ no back. It holds no state and no listener; it polls `dapp.pending` as §2.3 say
 | one tab hops across subdomains or ports | 1 open request per tab; the per-tab cooldown; on Chrome the old document's requests are cancelled (§2.3) |
 | a page re-asks after every rejection | the cooldown (C14), per host and per tab |
 | many sites ask at once | the window budget (C14, Q24) |
-| the worker dies mid-signature | `deciding` → rejected on restart; a send with a recorded signature is resumed, never re-sent (§1.5) |
+| the worker dies mid-signature | `deciding` → rejected on restart; a send with a recorded signature is answered `{signature}` and resumed by the poller — never re-signed, never sent twice; its first broadcast, if the effect never made it, is the poller's, exactly once (§1.5, rev 3.4) |
 | `windows.create` fails | the marker is cleared; the next request retries (§2.3) |
 | a prerendered page asks | refused (C16) |
 | a page calls `connect` from an iframe | refused by the origin rule (`frameId ≠ 0`); with `all_frames: false` no script runs there anyway |
@@ -823,6 +832,8 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
 | first six / last six highlighted on review screens | B1 §3 (owner): labels + first-send warning, unchanged |
 | a `signTransaction` batch whose later transactions depend on earlier ones (create a token account, then transfer to it; a swap's setup / swap / cleanup) | **unapprovable in B1c-2** (owner, 2026-10-15; plan 2 review 1 M4): a batch is simulated transaction by transaction against the current slot — a node cannot chain them — so a transaction that needs an earlier one's effect simulates as failed, and a failed simulation offers only [Reject] (plan 2 R6, R8). **B1c-3 must solve dependent batches** — e.g. a per-transaction override for a failure attributable to an earlier transaction of the same batch (one that creates the account the failure names), under B1 §3's override rule — rather than leave them to the typed override of every failed simulation |
 | §1.6 / §3.3's order for transactions: `unauthorized` before any other check | a **malformed** `page.signTransaction` / `page.signAndSendTransaction` payload (`transactions` / `transaction` not base64 strings, a batch of 0 or more than 5, a transaction over 1 232 bytes or not one canonical transaction; `account` not a base58 32-byte key; another chain; `options` present and not an object) is answered `invalid-request` before the grant is read (plan 2, Task 3) — the same reasoning as the `signMessage` row below: a page without a grant learns only that its own payload was malformed, never whether a grant exists; a well-formed request keeps the grant check first (rev 3.3, plan 2 review 1 L6) |
+| §1.5 / C17 "answered once" for `signAndSendTransaction` | a `{signature}` answered from the entry's recorded bytes (a restart, a dead effect, a lock, C4's expiry) is a promise that the bytes reach the route, **not that they land** (rev 3.4, plan 2 review 2 L3): accepted limits — the route may refuse the poller's first broadcast (the dApp's blockhash died while the worker was down: `failed not-sent`), the record may have expired before any sweep answered (nothing is sent: it could not land), or the lock hook's `due` mark may fail to write (logged; the effect still running sends it). In each, nothing lands and no funds move; a dApp told a signature confirms it (B1 §3), and since a dApp's record is hidden from the popup, only the site tells the user |
+| B1 §3 re-authentication "first send to a new address" for a token transfer | the destination of an SPL `transfer` / `transferChecked` is a token account, not the owner the user knows: **every SPL transfer to a token account that is not the account's own re-authenticates** (fail closed — plan 2 R10; rev 3.4) until B1c-3 or later resolves a token account to its owner |
 | §3.2's order: rule 1 (`unauthorized`) before any other check | a **malformed** `page.signMessage` payload (`message` not a string, not base64 or over the size bound; `account` not a base58 32-byte key) is answered `invalid-request` before rule 1 runs (plan-mandated, Task 6). No leak: a page without a grant learns only that its own payload was malformed, never whether a grant exists; a well-formed request keeps rule 1's order |
 
 ---
