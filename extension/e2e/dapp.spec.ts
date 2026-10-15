@@ -58,8 +58,8 @@ test('B1c-19 · connect: Noctura found → #47b → both gates → the account; 
     const p = await popup(h);
     const page = await openDapp(h.ctx, DAPP);
     expect(await names(page)).toContain('Noctura');
-    // D10: plan 1 advertises exactly what it implements.
-    expect(await features(page)).toEqual(['solana:signMessage', 'standard:connect', 'standard:disconnect', 'standard:events']);
+    // D10: the provider advertises exactly what it implements — B1c-2 adds the two transaction features.
+    expect(await features(page)).toEqual(['solana:signAndSendTransaction', 'solana:signMessage', 'solana:signTransaction', 'standard:connect', 'standard:disconnect', 'standard:events']);
     // A silent connect never opens a window.
     expect(await connect(page, true)).toEqual({ok: true, value: []});
     let pending!: Promise<unknown>;

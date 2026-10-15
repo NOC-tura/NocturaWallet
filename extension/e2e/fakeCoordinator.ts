@@ -50,6 +50,8 @@ export interface FakeCoordinator {
   accountKinds: Map<string, 'wallet' | 'program' | 'other'>;
   /** The simulation's error switch (E2): err set and accounts null, as the real RPC answers. */
   simulateError: boolean;
+  /** B1c-2: the err a switched-on simulation answers — an InstructionError unless set (the node's 'BlockhashNotFound', Q21). */
+  simulateErr: unknown;
   /** Every simulateTransaction's requested addresses (null = the field was missing). */
   simulations: (string[] | null)[];
   /** Plan 3: the payer's lamports after each simulated transaction, fee included — what the node answered. */
@@ -152,6 +154,7 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     defaultLamports: 10_000_000_000,
     accountKinds: new Map(),
     simulateError: false,
+    simulateErr: {InstructionError: [2, {Custom: 1}]},
     simulations: [],
     simulatedPayerAfter: [],
     tokenAccounts: new Map(),
@@ -201,7 +204,7 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     const addresses = Array.isArray(config?.accounts?.addresses) ? (config.accounts.addresses as string[]) : null;
     fake.simulations.push(addresses);
     if (addresses === null || config?.accounts?.encoding !== 'base64') fake.unexpected.push('simulateTransaction without accounts {encoding: base64, addresses}');
-    if (fake.simulateError) return {context: context(), value: {err: {InstructionError: [2, {Custom: 1}]}, logs: [], accounts: null, unitsConsumed: 0, returnData: null}};
+    if (fake.simulateError) return {context: context(), value: {err: fake.simulateErr, logs: [], accounts: null, unitsConsumed: 0, returnData: null}};
     const {signers, keys, instructions} = parseV0(base64.decode(params[0] as string));
     const payer = keys[0] ?? '';
     let out = 0;
