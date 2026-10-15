@@ -46,6 +46,20 @@ const tokenWithCloseAuthority = (mint: string, amount: bigint, authority: string
   return {lamports: 2_039_280n, owner: TOKEN_PROGRAM, data};
 };
 /**
+ * A realistic native-mint (wSOL) token account (fix round 2, IMPORTANT): is_native Some(rent) (COption<u64> at
+ * 109..121 — tag u32 at 109, the rent-exempt reserve as u64 at 113), `amount` = lamports − rent, and the account's own
+ * `lamports` = amount + rent — the Token program's own invariant for every is_native account. The round 1 test this
+ * replaces (`{amount: 0n, lamports: 52_039_280n, is_native unset}`) hid the double-counting bug the review found:
+ * no real native account looks like that.
+ */
+const wsolAccount = (amount: bigint, rent: bigint, owner = ME.toBase58()): SimulatedAccount => {
+  const data = tokenAccountData(WRAPPED_SOL_MINT, owner, amount);
+  const view = new DataView(data.buffer);
+  view.setUint32(109, 1, true);
+  view.setBigUint64(113, rent, true);
+  return {lamports: amount + rent, owner: TOKEN_PROGRAM, data};
+};
+/**
  * A 355-byte Multisig struct (SPL Token's own size: m, n, is_initialized, 11 signers) shaped to also pass as an
  * extended Token-2022 account if length alone were trusted: mint/owner fields and an amount planted at the classic
  * Account offsets, Initialized at 108, and byte 165 forged to 2 (AccountType::Account) — I2's attack, closed by
@@ -241,21 +255,123 @@ describe('simulateTransactions', () => {
     ]);
   });
 
-  it('closing an own wSOL account to a foreign destination shows its lamports as a SOL loss (Promoted Minor 3)', async () => {
-    const preWsol: SimulatedAccount = {lamports: 52_039_280n, owner: TOKEN_PROGRAM, data: tokenAccountData(WRAPPED_SOL_MINT, ME.toBase58(), 0n)};
+  // Fix round 2 (IMPORTANT): a native-mint account's lamports are its value (lamports = amount + rent, enforced by
+  // the Token program for every is_native account) — it must count ONCE, as SOL, never also as a wSOL token line.
+  describe('a native-mint (wSOL) account counts only as SOL, never also as a token line', () => {
+    const A = 50_000_000n;
+    const RENT = 2_039_280n;
+
+    it('closing to a foreign destination shows its lamports (amount + rent) as a SOL loss only', async () => {
+      const s = scene({
+        accounts: new Map([[SRC, wsolAccount(A, RENT)]]),
+        post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : null),
+      });
+      const closeIx = new TransactionInstruction({
+        programId: new PublicKey(TOKEN_PROGRAM),
+        data: Buffer.from([9]),
+        keys: [SRC, RECIPIENT, ME.toBase58()].map((k, i) => ({pubkey: new PublicKey(k), isSigner: i === 2, isWritable: i !== 2})),
+      });
+      const sim = await run(s, [wire([closeIx])]);
+      const out = sim.outcomes[0];
+      // 5 000 (fee) + 50 000 000 (amount) + 2 039 280 (rent) = 52 044 280 — one line, never also a wSOL "-50000000".
+      expect(out?.ok === true ? out.changes : null).toEqual([{mint: null, amount: '-52044280', decimals: 9, usdMicros: '-7806642'}]);
+    });
+
+    it('unwrapping to self nets to just the fee — the rent cancels, no stray wSOL or rent line', async () => {
+      const s = scene({
+        accounts: new Map([[SRC, wsolAccount(A, RENT)]]),
+        post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n + A + RENT, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : null),
+      });
+      const closeIx = new TransactionInstruction({
+        programId: new PublicKey(TOKEN_PROGRAM),
+        data: Buffer.from([9]),
+        keys: [SRC, ME.toBase58(), ME.toBase58()].map((k, i) => ({pubkey: new PublicKey(k), isSigner: i === 2, isWritable: i !== 2})),
+      });
+      const sim = await run(s, [wire([closeIx])]);
+      const out = sim.outcomes[0];
+      expect(out?.ok === true ? out.changes : null).toEqual([{mint: null, amount: '-5000', decimals: 9, usdMicros: '-750'}]);
+    });
+
+    it('a wSOL transfer out loses the moved amount once, not twice', async () => {
+      const moved = 10_000_000n;
+      const s = scene({
+        accounts: new Map([[SRC, wsolAccount(A, RENT)]]),
+        post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : a === SRC ? wsolAccount(A - moved, RENT) : null),
+      });
+      const sim = await run(s, [wire([tokenIx([3, ...u64(moved)], [SRC, NEW_ATA, ME.toBase58()])])]);
+      const out = sim.outcomes[0];
+      // -10 005 000 = -(moved + fee); a doubled count would show -20 005 000 (moved subtracted again as a wSOL line).
+      expect(out?.ok === true ? out.changes.map(c => [c.mint, c.amount]) : null).toEqual([[null, '-10005000']]);
+    });
+
+    it('lamports arriving and SyncNative count the gain once, not twice', async () => {
+      const inflow = 5_000_000n;
+      const s = scene({
+        accounts: new Map([[SRC, wsolAccount(A, RENT)]]),
+        post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : a === SRC ? wsolAccount(A + inflow, RENT) : null),
+      });
+      // An unknown program (the dApp) funds SRC by CPI (real lamports, not from ME); SyncNative reconciles `amount`.
+      const syncIx = new TransactionInstruction({programId: new PublicKey(TOKEN_PROGRAM), data: Buffer.from([17]), keys: [{pubkey: new PublicKey(SRC), isSigner: false, isWritable: true}]});
+      const sim = await run(s, [wire([unknownIx([SRC]), syncIx])]);
+      const out = sim.outcomes[0];
+      // 5 000 000 (inflow) − 5 000 (fee) = 4 995 000; a doubled count would show 9 995 000 (the synced `amount` also added).
+      expect(out?.ok === true ? out.changes.map(c => [c.mint, c.amount]) : null).toEqual([[null, '4995000']]);
+    });
+  });
+
+  it('a 355-byte same-length impostor is never read for a mint’s decimals either (Minor, consistent with I2)', async () => {
+    const forgedMint: AccountData = {
+      lamports: 1n,
+      owner: TOKEN_2022_PROGRAM,
+      data: (() => {
+        const d = new Uint8Array(355);
+        d[44] = 99; // a forged decimals byte — if read, this would wrongly show decimals: 99
+        d[165] = 1; // forged AccountType::Mint
+        return d;
+      })(),
+    };
     const s = scene({
-      accounts: new Map([[SRC, preWsol]]),
-      post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : null),
+      accounts: new Map([
+        [SRC, tokenAfter(ODD_MINT, 1_000_000n)],
+        [ODD_MINT, forgedMint],
+      ]),
+      post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : a === SRC ? tokenAfter(ODD_MINT, 900_000n) : null),
     });
-    const closeIx = new TransactionInstruction({
-      programId: new PublicKey(TOKEN_PROGRAM),
-      data: Buffer.from([9]),
-      keys: [SRC, RECIPIENT, ME.toBase58()].map((k, i) => ({pubkey: new PublicKey(k), isSigner: i === 2, isWritable: i !== 2})),
-    });
-    const sim = await run(s, [wire([closeIx])]);
+    const sim = await run(s, [wire([unknownIx([SRC])])]);
     const out = sim.outcomes[0];
-    // 5 000 (fee) + 52 039 280 (the closed wSOL account's own lamports, gone to a foreign address) = 52 044 280.
-    expect(out?.ok === true ? out.changes : null).toEqual([{mint: null, amount: '-52044280', decimals: 9, usdMicros: '-7806642'}]);
+    const line = out?.ok === true ? out.changes.find(c => c.mint === ODD_MINT) : undefined;
+    // Rejected: decimals stay unknown (null, shown in base units) rather than the forged 99.
+    expect(line).toMatchObject({mint: ODD_MINT, amount: '-100000', decimals: null, usdMicros: null});
+  });
+
+  it('an own account reassigned to someone else (a CPI SetAuthority AccountOwner) re-authenticates too, on top of the −all loss already shown', async () => {
+    const s = scene({
+      // A large enough holdings balance that losing SRC's 100 is under the unrelated 5 % rule — isolates this test to
+      // the owner-change reason alone.
+      holdings: [holding(SRC, MAINNET_NOC_MINT, 10_000n)],
+      accounts: new Map([[SRC, tokenAfter(MAINNET_NOC_MINT, 100n)]]),
+      post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : a === SRC ? tokenAfter(MAINNET_NOC_MINT, 100n, NEW_ATA) : null),
+    });
+    const sim = await run(s, [wire([unknownIx([SRC])])], () => true);
+    const out = sim.outcomes[0];
+    expect(sim.reasons).toEqual(['approval']);
+    // The fee, plus SRC's rent (2 039 280) — no longer ours to attribute lamports to once its owner field isn't ours.
+    expect(out?.ok === true ? out.changes.map(c => [c.mint, c.amount]) : null).toEqual([
+      [null, '-2044280'],
+      [MAINNET_NOC_MINT, '-100'],
+    ]);
+  });
+
+  it('an owner change on an otherwise-empty account (only its rent moves) still re-authenticates', async () => {
+    const s = scene({
+      accounts: new Map([[SRC, tokenAfter(MAINNET_NOC_MINT, 0n)]]),
+      post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : a === SRC ? tokenAfter(MAINNET_NOC_MINT, 0n, NEW_ATA) : null),
+    });
+    const sim = await run(s, [wire([unknownIx([SRC])])], () => true);
+    expect(sim.reasons).toEqual(['approval']);
+    // Empty (amount 0 both sides, so no token line at all) — only the rent, treated as lost along with control, shows.
+    const out = sim.outcomes[0];
+    expect(out?.ok === true ? out.changes : null).toEqual([{mint: null, amount: '-2044280', decimals: 9, usdMicros: '-306642'}]);
   });
 
   it('a null post for the wallet account is a full SOL loss', async () => {

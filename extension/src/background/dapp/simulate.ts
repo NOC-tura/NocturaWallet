@@ -14,14 +14,17 @@ import {isWritableIndex, type ParsedTx} from './decode/wire';
  * one it creates, one it closes — come back in their post-state. A balance change is post − pre per mint, in base units
  * (bigint, rule 2): SOL from the wallet account (the fee included, as the node reports it) PLUS the lamports of the
  * account's own token accounts (fix round 1, Promoted Minor 3 — a close to a foreign destination moves those lamports
- * out of custody without ever touching the wallet's own system account); each token from the account's token accounts,
- * pre AND post read from CHAIN STATE (getAccountsData, fresh immediately before each transaction's own simulation, for
- * exactly the addresses that simulation returns post state for — fix round 1, I1/I2; getTokenAccountsByOwner's one-time
- * batch snapshot is used only for the reauth rules' balance denominator and the known-recipient check, never for a
- * per-transaction pre amount). The transactions of a batch are simulated one by one against the current state (a node
- * cannot chain them). The re-authentication reasons (B1b's rules) are computed here — `approval` from chain state too
- * (a new or raised delegation, or a changed close authority: a dApp program can CPI an Approve or SetAuthority with no
- * top-level instruction that names it) — so `dapp.decide` needs no read of its own.
+ * out of custody without ever touching the wallet's own system account); each NON-native token from the account's token
+ * accounts, pre AND post read from CHAIN STATE (getAccountsData, fresh immediately before each transaction's own
+ * simulation, for exactly the addresses that simulation returns post state for — fix round 1, I1/I2; getTokenAccountsByOwner's
+ * one-time batch snapshot is used only for the reauth rules' balance denominator and the known-recipient check, never
+ * for a per-transaction pre amount). A native-mint (wSOL) account produces NO token line at all (fix round 2, IMPORTANT):
+ * its lamports already are its value (the Token program enforces lamports = amount + rent for every is_native account),
+ * so counting both would show every wrapped lamport moved twice. The transactions of a batch are simulated one by one
+ * against the current state (a node cannot chain them). The re-authentication reasons (B1b's rules) are computed here —
+ * `approval` from chain state too (a new or raised delegation, a changed close authority, or an own account's owner
+ * reassigned away — fix round 2, ruled-in: a dApp program can CPI an Approve, a SetAuthority close-authority change or a
+ * SetAuthority AccountOwner with no top-level instruction that names it) — so `dapp.decide` needs no read of its own.
  */
 export const DEFAULT_UNITS_PER_INSTRUCTION = 200_000;
 export const MAX_COMPUTE_UNITS = 1_400_000;
@@ -112,14 +115,27 @@ function ownTokenAccountOf(a: AccountData | null, owner: string): OwnTokenAccoun
   };
 }
 
+/**
+ * The raw owner field (32..64) of any real token-account-layout account, whoever it names — unlike `ownTokenAccountOf`,
+ * which already requires the owner to match and so cannot see what it changed TO. Fix round 2, ruled-in: an own
+ * account's owner reassigned away (a CPI SetAuthority AccountOwner) is its own re-authentication signal, on top of the
+ * −all loss `ownTokenAccountOf`'s owner mismatch already produces (the post side no longer reads as "ours" at all).
+ */
+function rawTokenOwner(a: AccountData | null): string | null {
+  if (a === null || !isTokenAccountLayout(a)) return null;
+  return base58.encode(a.data.subarray(32, 64));
+}
+
 /** A mint account's decimals (byte 44 of the base layout — 82 bytes classic, or Token-2022 with the same AccountType
- * discriminator at 165, this time marking a Mint (1) rather than an Account (2)), or null. */
+ * discriminator at 165, this time marking a Mint (1) rather than an Account (2)), or null. Fix round 2 (Minor,
+ * consistent with I2): the same 355-byte exclusion as `isTokenAccountLayout` — a Multisig that happens to be 355 bytes
+ * with byte 165 equal to 1 is not an extended Mint either. */
 function mintDecimals(a: AccountData | null): number | null {
   if (a === null) return null;
   if (a.owner === TOKEN_PROGRAM) {
     if (a.data.length !== 82) return null;
   } else if (a.owner === TOKEN_2022_PROGRAM) {
-    if (!(a.data.length === 82 || (a.data.length > 165 && a.data[165] === 1))) return null;
+    if (!(a.data.length === 82 || (a.data.length > 165 && a.data.length !== 355 && a.data[165] === 1))) return null;
   } else {
     return null;
   }
@@ -228,10 +244,20 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
     for (const [j] of writable.entries()) {
       const preOwn = ownTokenAccountOf(preAccounts[j + 1] ?? null, account);
       const postOwn = ownTokenAccountOf(post[j + 1] ?? null, account);
-      if (postOwn !== null) add(postOwn.mint, postOwn.amount - (preOwn?.mint === postOwn.mint ? preOwn.amount : 0n));
-      else if (preOwn !== null) add(preOwn.mint, -preOwn.amount);
-      // Promoted Minor 3: lamports of the wallet's own token accounts (incl. wSOL) are SOL too — a close to a foreign
-      // destination moves them out of custody without ever touching the wallet's own system account (`self`, above).
+      // Fix round 2 (IMPORTANT): a native-mint (wSOL) account's lamports ARE its value — the Token program enforces
+      // lamports = amount + the rent-exempt reserve for every is_native account, moving real lamports alongside every
+      // change to `amount` (a Transfer, a close, a SyncNative after a raw lamport transfer-in). Counting the token
+      // `amount` delta AND the lamports delta would show every wrapped lamport moved twice (and, for an inflow, let a
+      // dApp show the user receiving double what arrived). A native-mint account therefore produces NO token line at
+      // all; its lamports delta (below) is its entire economic change, as SOL.
+      const nativeMint = postOwn?.mint === WRAPPED_SOL_MINT || preOwn?.mint === WRAPPED_SOL_MINT;
+      if (!nativeMint) {
+        if (postOwn !== null) add(postOwn.mint, postOwn.amount - (preOwn?.mint === postOwn.mint ? preOwn.amount : 0n));
+        else if (preOwn !== null) add(preOwn.mint, -preOwn.amount);
+      }
+      // Promoted Minor 3 (and, for a native mint, its whole change): lamports of the wallet's own token accounts
+      // (incl. wSOL) are SOL too — a close to a foreign destination moves them out of custody without ever touching
+      // the wallet's own system account (`self`, above).
       if (preOwn !== null || postOwn !== null) add(null, (postOwn?.lamports ?? 0n) - (preOwn?.lamports ?? 0n));
       // I1: approval is decided from chain state, not the decoded instruction (a dApp program can raise a delegation,
       // or change the close authority, via CPI with no decodable top-level Approve). A new delegate, or the same
@@ -243,6 +269,14 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
         const priorAmount = preOwn?.delegatedAmount ?? 0n;
         if (postOwn.delegate !== null && (postOwn.delegate !== priorDelegate || postOwn.delegatedAmount > priorAmount)) approvalFromChain = true;
         if (postOwn.closeAuthority !== (preOwn?.closeAuthority ?? null)) approvalFromChain = true;
+      }
+      // Fix round 2, ruled-in: an own account's owner reassigned away (a CPI SetAuthority AccountOwner) also
+      // re-authenticates, on top of the −all loss `ownTokenAccountOf`'s own owner-mismatch already produces above
+      // (`postOwn` reads null once the owner no longer matches) — including an otherwise-empty account where only its
+      // rent moves and no balance line would otherwise say anything happened at all.
+      if (preOwn !== null) {
+        const postOwnerField = rawTokenOwner(post[j + 1] ?? null);
+        if (postOwnerField !== null && postOwnerField !== account) approvalFromChain = true;
       }
     }
     const {feeLamports, unitLimit} = feeOf(p, decoded);
