@@ -15,7 +15,7 @@ import {buildSolPurchaseInstruction, findAssociatedTokenAddress} from '../../../
 import {buildCreateAtaIdempotentInstruction, buildTransferCheckedInstruction} from '../../../../../../core/solana/transfer';
 import {PUB, RECIPIENT, BLOCKHASH} from '../../../__tests__/fixtures';
 import {ADDRESS_LOOKUP_TABLE_PROGRAM, resolveKeys, tableAddresses, tablesOf} from '../keys';
-import {ATA_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, decodeInstructions, type DecodedInstruction} from '../decode';
+import {ATA_PROGRAM, COMPUTE_BUDGET_PROGRAM, PRESALE_PROGRAM, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, decodeInstructions, type DecodedInstruction} from '../decode';
 import {MAX_TX_BYTES, isWritableIndex, parseWire, type ParsedTx} from '../wire';
 
 const ME = new PublicKey(PUB);
@@ -114,11 +114,13 @@ describe('decodeInstructions — System', () => {
     expect(NONCE_ACCOUNT_LENGTH).toBe(80);
   });
 
-  it('a System instruction outside the decoded list is named, with no fields; a truncated one keeps only its name', () => {
+  it('a System instruction outside the decoded list is named, with no fields; a truncated one is an unknown program (fail closed — fix round 1)', () => {
     const withdraw = one(SystemProgram.nonceWithdraw({noncePubkey: TO, authorizedPubkey: ME, toPubkey: ME, lamports: 1}));
     expect(withdraw).toMatchObject({program: 'system', name: 'withdrawNonceAccount', fields: []});
+    // System's bincode deserialiser allows trailing bytes and would still execute a transfer from this prefix — the
+    // wallet must never show "transfer" with the amount hidden; it is wholly unknown instead.
     const truncated = one(new TransactionInstruction({programId: SystemProgram.programId, keys: [], data: Buffer.from([2, 0, 0, 0, 1])}));
-    expect(truncated).toMatchObject({program: 'system', name: 'transfer', fields: []});
+    expect(truncated).toEqual({programId: SYSTEM_PROGRAM, program: null, name: null, fields: []});
   });
 });
 
@@ -167,7 +169,9 @@ describe('decodeInstructions — SPL Token and Token-2022', () => {
           {name: 'newAuthority', value: {kind: 'address', value: DST.toBase58()}},
         ],
       });
-      expect(one(tokenIx(program, [6, 3, 0], [SRC, ME])).fields[3]).toEqual({name: 'newAuthority', value: {kind: 'address', value: null}});
+      // A legitimate "none" (the Option tag is 0) is its own distinct value — never the same shape a resolution
+      // failure would produce (fix round 1, IMPORTANT).
+      expect(one(tokenIx(program, [6, 3, 0], [SRC, ME])).fields[3]).toEqual({name: 'newAuthority', value: {kind: 'none'}});
     });
   }
 
@@ -181,8 +185,8 @@ describe('decodeInstructions — SPL Token and Token-2022', () => {
         {name: 'programId', value: {kind: 'address', value: hook.toBase58()}},
       ],
     });
-    // An OptionalNonZeroPubkey of zeros is "none".
-    expect(one(tokenIx(TOKEN_2022_PROGRAM, [36, 1, ...new Uint8Array(32)], [MINT, ME])).fields[2]).toEqual({name: 'programId', value: {kind: 'address', value: null}});
+    // An OptionalNonZeroPubkey of zeros is "none" — its own distinct value (fix round 1, IMPORTANT).
+    expect(one(tokenIx(TOKEN_2022_PROGRAM, [36, 1, ...new Uint8Array(32)], [MINT, ME])).fields[2]).toEqual({name: 'programId', value: {kind: 'none'}});
     expect(one(tokenIx(TOKEN_2022_PROGRAM, [35, ...DST.toBytes()], [MINT]))).toMatchObject({name: 'initializePermanentDelegate', fields: [{name: 'mint'}, {name: 'delegate', value: {kind: 'address', value: DST.toBase58()}}]});
     expect(one(tokenIx(TOKEN_2022_PROGRAM, [6, 8, 1, ...DST.toBytes()], [MINT, ME])).fields[2]).toEqual({name: 'authorityType', value: {kind: 'text', value: 'permanentDelegate'}});
     // The same tags on the classic program are not those instructions.
@@ -190,9 +194,11 @@ describe('decodeInstructions — SPL Token and Token-2022', () => {
     expect(one(tokenIx(TOKEN_PROGRAM, [6, 8, 1, ...DST.toBytes()], [MINT, ME]))).toMatchObject({program: 'token', name: 'setAuthority', fields: []});
   });
 
-  it('a known tag outside the decoded list is named with no fields (mintTo); trailing data is not decoded', () => {
+  it('a known tag outside the decoded list is named with no fields (mintTo); a trailing byte on a decoded instruction is an unknown program (fail closed — fix round 1)', () => {
     expect(one(tokenIx(TOKEN_PROGRAM, [7, ...u64(1n)], [MINT, DST, ME]))).toMatchObject({program: 'token', name: 'mintTo', fields: []});
-    expect(one(tokenIx(TOKEN_PROGRAM, [3, ...u64(1n), 0], [SRC, DST, ME]))).toMatchObject({name: 'transfer', fields: []});
+    // SPL Token's unpack ignores trailing bytes and would still execute this transfer — never shown as "transfer" with
+    // the amount hidden.
+    expect(one(tokenIx(TOKEN_PROGRAM, [3, ...u64(1n), 0], [SRC, DST, ME]))).toEqual({programId: TOKEN_PROGRAM, program: null, name: null, fields: []});
   });
 
   it('core’s own TransferChecked decodes as it is built', () => {
@@ -276,5 +282,63 @@ describe('address lookup tables (spec §3.3)', () => {
 
   it('base58 round trip of a key in a table (sanity of the fixture)', () => {
     expect(base58.encode(tableData([DST]).subarray(56))).toBe(DST.toBase58());
+  });
+});
+
+// Fix round 1 (controller ruling, CRITICAL): on-chain, SPL Token/Token-2022's unpack, System's bincode
+// (allow_trailing_bytes), Anchor's deserialize and Compute Budget's try_from_slice_unchecked all ignore trailing bytes
+// and STILL EXECUTE the instruction from its valid prefix. A dApp can append one byte to any of these and the wallet
+// must never show a known name with the amount, destination, delegate or new owner hidden — the whole instruction is
+// an unknown program instead. Positive controls (a plain, well-formed instruction of each kind) are covered by the
+// describes above and are unchanged by this fix.
+describe('a trailing byte after a decoded instruction is an unknown program, never a known name with empty fields (fail closed — fix round 1, CRITICAL)', () => {
+  it('Token transfer + 1 byte', () => {
+    expect(one(tokenIx(TOKEN_PROGRAM, [3, ...u64(7n), 0], [SRC, DST, ME]))).toEqual({programId: TOKEN_PROGRAM, program: null, name: null, fields: []});
+  });
+
+  it('Token-2022 setAuthority + 1 byte', () => {
+    expect(one(tokenIx(TOKEN_2022_PROGRAM, [6, 2, 1, ...DST.toBytes(), 0], [SRC, ME]))).toEqual({programId: TOKEN_2022_PROGRAM, program: null, name: null, fields: []});
+  });
+
+  it('System transfer + 1 byte', () => {
+    const ix = new TransactionInstruction({programId: SystemProgram.programId, keys: [{pubkey: ME, isSigner: true, isWritable: true}, {pubkey: TO, isSigner: false, isWritable: true}], data: Buffer.from([2, 0, 0, 0, ...u64(5n), 9])});
+    expect(one(ix)).toEqual({programId: SYSTEM_PROGRAM, program: null, name: null, fields: []});
+  });
+
+  it('a presale instruction (presale_purchase_with_sol) + 1 byte', () => {
+    const presaleIx = buildSolPurchaseInstruction(ME, 1_000_000_000n, ME, new PublicKey('6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd'));
+    const plus1 = new TransactionInstruction({programId: presaleIx.programId, keys: presaleIx.keys, data: Buffer.concat([presaleIx.data, Buffer.from([0])])});
+    expect(one(plus1)).toEqual({programId: PRESALE_PROGRAM, program: null, name: null, fields: []});
+  });
+
+  it('ComputeBudget setComputeUnitPrice + 1 byte', () => {
+    const priceIx = ComputeBudgetProgram.setComputeUnitPrice({microLamports: 10_000});
+    const plus1 = new TransactionInstruction({programId: priceIx.programId, keys: priceIx.keys, data: Buffer.concat([priceIx.data, Buffer.from([0])])});
+    expect(one(plus1)).toEqual({programId: COMPUTE_BUDGET_PROGRAM, program: null, name: null, fields: []});
+  });
+});
+
+// Fix round 1 (controller ruling, IMPORTANT): `{kind: 'address', value: null}` used to mean both "too few accounts"
+// and a legitimate protocol-level "none" — indistinguishable. They are now distinct: `none` is its own FieldValue kind,
+// and too few accounts makes the whole instruction unknown (never a named instruction with a guessed-absent field).
+describe('too few accounts is an unknown program, distinct from an explicit none (fail closed — fix round 1, IMPORTANT)', () => {
+  it('setAuthority to none (the Option tag is 0) vs setAuthority with too few accounts (only 1 of the 2 it needs)', () => {
+    // The legitimate none: covered already by the positive-control describes above
+    // (`{name: 'newAuthority', value: {kind: 'none'}}`); repeated here for contrast with the failure case below.
+    expect(one(tokenIx(TOKEN_PROGRAM, [6, 3, 0], [SRC, ME])).fields[3]).toEqual({name: 'newAuthority', value: {kind: 'none'}});
+    // setAuthority decodes `account` (index 0) and `currentAuthority` (index 1); only one account is supplied here.
+    const tooFew = new TransactionInstruction({programId: new PublicKey(TOKEN_PROGRAM), data: Buffer.from([6, 3, 0]), keys: [{pubkey: SRC, isSigner: false, isWritable: true}]});
+    expect(one(tooFew)).toEqual({programId: TOKEN_PROGRAM, program: null, name: null, fields: []});
+  });
+
+  it('transferHookUpdate with too few accounts (only the mint, missing the authority) is unknown, not a guessed authority', () => {
+    const tooFew = new TransactionInstruction({programId: new PublicKey(TOKEN_2022_PROGRAM), data: Buffer.from([36, 1, ...new Uint8Array(32)]), keys: [{pubkey: MINT, isSigner: false, isWritable: false}]});
+    expect(one(tooFew)).toEqual({programId: TOKEN_2022_PROGRAM, program: null, name: null, fields: []});
+  });
+
+  it('the presale program with one fewer account than its IDL declares is unknown, not a guess', () => {
+    const presaleIx = buildSolPurchaseInstruction(ME, 1_000_000_000n, ME, new PublicKey('6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd'));
+    const tooFew = new TransactionInstruction({programId: presaleIx.programId, keys: presaleIx.keys.slice(0, -1), data: presaleIx.data});
+    expect(one(tooFew)).toEqual({programId: PRESALE_PROGRAM, program: null, name: null, fields: []});
   });
 });
