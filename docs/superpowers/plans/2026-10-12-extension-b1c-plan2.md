@@ -4,13 +4,15 @@
 
 **Revision 1 (2026-10-12):** first issue, dry-run in full (every task replayed red → green on its predecessor, the whole suite, the build and every gate at every task; 59 named mutations; the E2E and visual end state in a normal launch and under `unshare -rn`). Next: the owner reads Scope §3 (every controller ruling, listed again at the end — the copy rulings marked), then a Fable 5.1 review (owner rule: every plan goes to a Fable review before execution).
 
+**Revision 2 (2026-10-15):** applies every finding of Fable 5.1 review 1 (`.superpowers/sdd/b1c-plan2-review-1.md`, verdict "approve after fixes": M1–M4, L1–L11) with the owner's decisions of 2026-10-15 — M3 a new page code `send-failed` (spec rev 3.3 §1.6), M4 dependent batches accepted as unapprovable in B1c-2 (spec §9 row; B1c-3 must solve them), the copy rulings accepted as proposed except L3, L4 and L7 (owner-delegated wording, Scope §3). Where each finding landed: "Review 1 (Fable 5.1) — how each finding was applied", after Scope. The dry run was re-run in full on the revised tasks: every task red on its predecessor and green on its own tree with `tsc`, the whole suite, the build and the gates; every named mutation, new and changed ones included (78 in all); the end state's `verify` and the E2E in a normal launch and under `unshare -rn` (Dry-run record). Spec: rev 3.3 (the items above only). Next: the controller's check of this revision (owner rule: the Fable review is applied before execution).
+
 **Goal:** Build B1c spec plan 2 ("B1c-2 — transactions", the spec's header table): the decoder (System, SPL Token and Token-2022 with the extensions B1 §3 names, the Associated Token Account program, Compute Budget, the presale program by Anchor discriminator), address-lookup-table resolution through the proxy, the simulation through the proxy with balance changes per mint in `bigint` base units, #48 in every state B1c-2 owns (simulating-blocking, simulated, a batch, re-authentication, approving, couldn't simulate, unreachable, Q21's expired blockhash, a lookalike origin, the request that can no longer be signed, origin-mismatch · auto-reject), `page.signTransaction` (1–5 transactions) and `page.signAndSendTransaction` through the existing coordinator broadcast route and B1b's `v1_pending` pattern (signed bytes and signature recorded before the broadcast; answered once), B1b's re-authentication rules through #10 (reached from the toolbar icon — D11), the provider advertising `solana:signTransaction` and `solana:signAndSendTransaction`, the "Dapp · simulated" badge on #26 and #27, E2E through `StandardWalletAdapter` (batch of five signed, six refused) and the visual pass of #48. **No red-flag block, no typed-confirm override, no unlimited-spend state** — those are B1c-3's (Scope §3, "Deferred to B1c-3"). D10: B1c-2 is a merge-to-`main` milestone; no store build until B1c-3 is on `main` too.
 
-**Architecture:** Spec §1's layers are unchanged; B1c-2 adds the transaction path inside them. **[1] The provider** gains the two transaction features (`supportedTransactionVersions: ['legacy', 0]`): a batch is one `page.signTransaction`, each sign-and-send its own request; it refuses only what it can see is not this wallet's (another account, another chain). **[3] The background** (`src/background/dapp/`) parses each transaction with the web3.js parser it already carries and accepts it only if re-serialising gives back exactly the bytes received (`decode/wire.ts`), resolves its lookup tables through `getMultipleAccounts` (`decode/keys.ts`), decodes it with its own decoders (`decode/decode.ts`, `decode/presaleIdl.ts` generated from the presale program's IDL), and — when the window asks (`dapp.pending`), outside every queue section — simulates it through the proxy (`simulate.ts`: post − pre per mint, the fee computed locally, B1b's re-authentication reasons). `dapp.decide` approves only the simulation the window showed, still fresh and without error (C13), after B1b's re-authentication when the simulation gave reasons — a challenge the vault page (#10) proves, reached from the toolbar icon's popup, never from the window (D11). The effects (`signTx.ts`) run after `deciding` (C17): `signTransaction` signs each transaction at the account's slot; `signAndSendTransaction` signs, writes a `v1_pending` record (`origin` set, no intent), writes `sent {wire, signature}` into the entry in a section that re-checks state, instance, lock, account and grant, then broadcasts through the coordinator's route and answers the signature — a restart or a lock answers a recorded send its signature and never signs or broadcasts again. **[4] The approval window** gains #48 (`Tx.tsx`) and the mismatch notice (`Mismatch.tsx`) on the design's `.s9-*` classes (re-extracted). The popup gains the re-authentication strip on #11 and the OriginBadge on #26/#27 (`v1_dapp_txs`). No new permission; CSP unchanged.
+**Architecture:** Spec §1's layers are unchanged; B1c-2 adds the transaction path inside them. **[1] The provider** gains the two transaction features (`supportedTransactionVersions: ['legacy', 0]`): a batch is one `page.signTransaction`, each sign-and-send its own request; it refuses only what it can see is not this wallet's (another account, another chain). **[3] The background** (`src/background/dapp/`) parses each transaction with the web3.js parser it already carries and accepts it only if re-serialising gives back exactly the bytes received (`decode/wire.ts`), resolves its lookup tables through `getMultipleAccounts` (`decode/keys.ts`), decodes it with its own decoders (`decode/decode.ts`, `decode/presaleIdl.ts` generated from the presale program's IDL), and — when the window asks (`dapp.pending`), outside every queue section — simulates it through the proxy (`simulate.ts`: post − pre per mint, the fee computed locally, B1b's re-authentication reasons). `dapp.decide` approves only the simulation the window showed, still fresh and without error (C13), after B1b's re-authentication when the simulation gave reasons — a challenge the vault page (#10) proves, reached from the toolbar icon's popup, never from the window (D11). The effects (`signTx.ts`) run after `deciding` (C17): `signTransaction` signs each transaction at the account's slot; `signAndSendTransaction` signs, writes a `v1_pending` record (`origin` set, no intent), writes `sent {wire, signature}` into the entry in a section that re-checks state, instance, lock, account and grant, then broadcasts through the coordinator's route and answers the signature (or `send-failed` when the route refused it before forwarding) — a restart or a lock answers a recorded send its signature and never signs it again; the record's `firstBroadcast` (`held` → `due` → `done`, claimed atomically) makes the bytes reach the route exactly once even when the worker stopped between the entry's record and the route (review 1 M1). **[4] The approval window** gains #48 (`Tx.tsx`) and the mismatch notice (`Mismatch.tsx`) on the design's `.s9-*` classes (re-extracted). The popup gains the re-authentication strip on #11 and the OriginBadge on #26/#27 (`v1_dapp_txs`). No new permission; CSP unchanged.
 
 **Tech Stack:** TypeScript 5 strict, React 18, Vite 8, Vitest 5 + happy-dom + Testing Library, Playwright 1.63 (contained), `@solana/web3.js` 1.99 (already — the parser, the only third-party code in the path), `@noble/curves` (ed25519, already), `@scure/base` (already). New devDependencies, E2E only (the test dApp page): `@solana/wallet-adapter-base` 0.9.28, `@solana/wallet-standard-wallet-adapter-base` 1.1.6, `bs58` 6.0.0 (Apache-2.0 / MIT).
 
-**Spec:** `docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md` (approved rev 3.2) — the header table's second row; §1.3 (B1c-2's modules), §1.4 (the two transaction messages), §1.5 step 2 (the send's restart rule, C17), §1.6, §2.3 (`dapp.decide`'s table, extended), §3.3 (all), §4.3, §5 ("the worker dies mid-signature"), §6.1, §6.3 (B1c-2), §6.4 (#48), §7, §9 (#48 rows), §10 (Q21, Q26). Parent: B1 spec §3 (`docs/superpowers/specs/2026-09-27-extension-b1-design.md`) and §4's broadcast route, binding where B1c does not refine them. Design (binding): `/home/user/Downloads/index.html` — #48 ix:18261-18705 (its DS class map, states and navigation at ix:18522-18565), its CSS ix:3824-3859; #26b ix:11813 and #27b ix:12163 (the OriginBadge, CSS ix:4080-4089); `screen.md` §48. Template: `docs/superpowers/plans/2026-10-10-extension-b1c-plan1.md` (its conventions are this plan's).
+**Spec:** `docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md` (approved rev 3.2; rev 3.3 adds `send-failed` to §1.6, two §9 rows and a §7 line — owner, 2026-10-15) — the header table's second row; §1.3 (B1c-2's modules), §1.4 (the two transaction messages), §1.5 step 2 (the send's restart rule, C17), §1.6, §2.3 (`dapp.decide`'s table, extended), §3.3 (all), §4.3, §5 ("the worker dies mid-signature"), §6.1, §6.3 (B1c-2), §6.4 (#48), §7, §9 (#48 rows), §10 (Q21, Q26). Parent: B1 spec §3 (`docs/superpowers/specs/2026-09-27-extension-b1-design.md`) and §4's broadcast route, binding where B1c does not refine them. Design (binding): `/home/user/Downloads/index.html` — #48 ix:18261-18705 (its DS class map, states and navigation at ix:18522-18565), its CSS ix:3824-3859; #26b ix:11813 and #27b ix:12163 (the OriginBadge, CSS ix:4080-4089); `screen.md` §48. Template: `docs/superpowers/plans/2026-10-10-extension-b1c-plan1.md` (its conventions are this plan's).
 
 ## Global Constraints
 
@@ -31,14 +33,14 @@ And, from B1c-1's plan (verbatim where it applies) and the lessons of executing 
 - **Mutations:** `git archive HEAD | tar -x -C "$(mktemp -d <scratch>/mut.XXXXXX)"`, `node_modules` linked FROM the copy (`ln -s <repo>/extension/node_modules <copy>/extension/node_modules`, the same for `web/` and the root), every run under `timeout 300`. Linked is right for unit mutations and for the E2E ones (they need only the build); anything that runs `npm run gates` or reads the build's module maps needs `extension/node_modules` COPIED (`cp -a`). **A mutation is judged by `tsc`'s own exit code first** (`npx tsc --noEmit; echo $?` — never piped through `tail`, which reports `tail`'s): a mutant that does not compile is INVALID, not red. Never `git worktree`, never the repository's own files or its `node_modules`, never `pkill` with a pattern — kill by task id or exact PID only.
 - **Rule 6:** every confirming, rejecting, revoking, blocking and opening control is a `LockedButton` (popup and approval window) — #48's Approve and its demoted form, Reject, Reject and report, the mismatch notice's [OK, return to dApp], the popup's re-authentication strip. Tests lift `disabled` before a second click where happy-dom drops it.
 - **C15 on top of rule 6 in the approval window:** no CTA focused at open; Approve (and "Approve anyway (not recommended)", "I understand the risk") held 500 ms after the window gains focus and after each state change — the request, **a new simulation (its id)**, the re-authentication's state, busy, the confirm — via `useArmed`, which compares its key in the same render (never a boolean an effect resets: a confirming CTA is never enabled for even one render before the hold); Reject never held; Enter never confirms.
-- **Effects happen once (C17), and only from `deciding`.** `deciding` is written in the section that passed every check; each effect section re-checks `state === 'deciding' && decidedBy === instance`, the session unlocked, the account still in it and the grant still held (`signTx.ts` `stillDeciding`). For `signAndSendTransaction` the signed bytes and the signature are recorded in the entry BEFORE the broadcast; a restart, a dead effect or a lock answers a recorded send `{signature}` (queue.ts `restartAnswer`) and never signs or broadcasts again; an unrecorded one is answered `rejected`.
+- **Effects happen once (C17), and only from `deciding`.** `deciding` is written in the section that passed every check; each effect section re-checks `state === 'deciding' && decidedBy === instance`, the session unlocked, the account still in it and the grant still held (`signTx.ts` `stillDeciding`). For `signAndSendTransaction` the signed bytes and the signature are recorded in the entry BEFORE the broadcast; a restart, a dead effect or a lock answers a recorded send `{signature}` (queue.ts `restartAnswer`) and never signs or broadcasts again; an unrecorded one is answered `rejected`. **Exactly-once first broadcast (review 1 M1):** a dApp record is written `held`; whatever answers a page `{signature}` from the entry's recorded bytes marks the record `due` inside the same section, before the answer is stored (`queueAccess`, the lock hook); the effect (`broadcastFirst`) and the poller's first round each claim the record `→ done` in one `updatePending` before handing the bytes to the route — whoever claims, sends; nobody else. A `held` record whose request ended otherwise is never sent.
 - **Every write to a dApp key runs inside `dappSection`** (dappMutex → sessionMutex): the queue (with the simulation and the challenge id written onto an entry), the grants, the blocks, the limits and the new `v1_dapp_txs`; `wipeDappStores` removes all four storage.local keys under the same lock order. No section awaits the network: the simulation's reads run between two sections, and a result is stored only if its entry is still `queued`. The challenge store takes sessionMutex itself, so the re-authentication gate runs outside every section (its reads inside a section are read-only loads).
 - **Readers return fresh objects** (B1c-1's shared-default lesson): `simStateOf`, `dappTxsOf`, `entryOf`, `txsOf` rebuild every value; nothing hands out a module-level default to mutate.
 - **Fail closed, never open:** a read that throws during a simulation is stored as `unreachable` (only Reject); a missing price is above the dollar threshold; a token whose decimals cannot be read is shown in base units; an account a lookup table does not resolve makes its instruction an unknown program; a request whose bytes or account no longer read back is Q26 (only Reject); a blocked host's lingering grant never reaches a window, a notice or an answer but `rejected`.
 - **Answers never reach a page before its `accepted`** (the relay drops them): the mismatch notice's entry has the relay id `''` — no page's — and its page is answered `unauthorized` inline.
 - **Every async path checks its generation / `alive` after each await**: the window's poll (B1c-1's), the popup's `dapp.reauth` read (Home), and in the background every effect section re-checks its own state.
 - **UI:** danger buttons `btn btn-destructive`; the busy primary `app-cta-busy`; nothing that vouches for a site on a warning screen (#48's origin pill only for a verified or unknown origin, never a lookalike); every control visible at 412 × 720 (the visual pass asserts the sticky bar's buttons wholly in the viewport); the design's own classes (`design-ext.css` regenerated, never edited).
-- **`extension/src/styles/design-ext.css` is generated only** (Task 7 regenerates it with the extraction script and re-pins the hash); `src/background/dapp/decode/presaleIdl.ts` is generated only (Task 1 gives the script; a test pins its output and recomputes every discriminator); `src/app/app.css` is hand-written.
+- **Generated files and their generators** (review 1 M2, B1c-1's `gen-icon.mjs` ruling): `extension/src/styles/design-ext.css` is generated only, by `extension/scripts/extract-design-css.mjs` (committed in Task 7; `--check` compares against the design file; a test checks, without the design, that the file is the script's header and only rules the script keeps; the hash is re-pinned); `src/background/dapp/decode/presaleIdl.ts` is generated only, by `extension/scripts/gen-presale-idl.mjs` (committed in Task 1, the IDL path as its argument; a test checks, without the ICO repository, that the file hashes to the generator's pinned `OUTPUT_SHA256` and is byte for byte the generator's output for its own content; another recomputes every discriminator). A generator is never kept outside the repository; CI never runs one. `src/app/app.css` is hand-written.
 - **Tests:** positive AND negative controls; a "flake" in a security UI is a finding, never fixed with `waitFor`/timeouts — a window test waits on the background's own state, then gives the window the read it would make on its next poll (a focus or `visibilitychange`), never on the wall clock; visual shots assert their own copy and are taken after holds (the coordinator's answers or a `dapp.decide` held by the test), clear of sticky bars (`pop`).
 - **The page is untrusted, the window is untrusted, the port's sender is the browser's** (B1c-1). Every transaction is parsed from the page's own bytes, re-parsed from storage whenever it is shown or signed, and signed exactly as received (one slot written).
 - **Copy:** only the strings the spec quotes (§3, §10 — Q21, Q26), the design's own (#48, #26b, #27b), B1 §3's ("unknown program") and B1b's (#19's "Couldn't simulate" and its server line, #20's labels, #10's reasons); anything else is a controller ruling flagged to the owner (Scope §3 R22).
@@ -47,13 +49,14 @@ And, from B1c-1's plan (verbatim where it applies) and the lessons of executing 
 
 ## Review Focus
 
-Five inputs the spec implies that a person will meet and no first draft of a task exercised — each now has its test in the owning task (named there).
+Six inputs the spec implies that a person will meet and no first draft of a task exercised — each now has its test in the owning task (named there).
 
-1. **A refresh that lands between the window's read and the click** (the 30 s re-simulation, §3.3): the user approves what they saw — the background must refuse the click as `stale` and the window must show the new effects and hold Approve again, never approve effects the user did not see. Tests: Task 4 (`signTx.test.ts`, "a refresh that lands between the window's read and its click"), Task 7 (`tx.test.tsx`, "C15: a new simulation re-holds Approve").
+1. **A refresh that lands between the window's read and the click** (the 30 s re-simulation, §3.3): the user approves what they saw — the background must refuse the click as `stale` and the window must show the new effects and hold Approve again, never approve effects the user did not see. The window also says why the click did nothing (review 1 L4), and the user's proof of re-authentication is not spent by that refusal (review 1 L1). Tests: Task 4 (`signTx.test.ts`, "a refresh that lands between the window's read and its click", "a refresh that lands while the gate reads the proof"), Task 7 (`tx.test.tsx`, "C15: a new simulation re-holds Approve", "a refresh that lands between the read and the click (stale)").
 2. **A transaction someone else pays for** (the dApp is the fee payer and has signed; the account is a required signer): no fee row (the account pays none), its id is the dApp's signature (not listed for the badge on a sign-only request), the dApp's own signature kept byte for byte. Tests: Task 4 ("approve: every transaction of a batch signed at the account's slot, the co-signer's signature kept"), Task 5 ("a co-signed transaction: broadcast with both signatures"), Task 2 ("the fee: … none of the account's when another account pays").
 3. **A writable token account that is not the user's** (the recipient's): its amount moves in the simulation, but it is not the user's balance change — only accounts whose owner field is the user's count; a token account the transaction creates for the user, and one it closes, do. Tests: Task 2 (`simulate.test.ts`, "a writable token account of SOMEONE ELSE …", "tokens: … a new account … gains … a closed account loses all").
 4. **A legacy (not v0) transaction**: half the dApps still send them — parsed, decoded, simulated and signed at its slot with every other byte the dApp's. Tests: Task 3 (`txPage.test.ts` positive controls), Task 4 (`signTx.test.ts`, "a legacy transaction").
 5. **A durable-nonce transaction through sign-and-send**: it never expires, so B1b's pending record would one day say "not confirmed — no funds moved" about a transaction that can still land — refused for sign-and-send (R12), signed for sign-only. Test: Task 3 (`txPage.test.ts`, "signAndSend: … no durable nonce").
+6. **A worker stopped between the entry's record and the route** (review 1 M1 — Chrome idles the worker, the browser crashes, a lock closes the window): the restart answers the page `{signature}` from the entry, so the bytes must still reach the route — once, never twice, and never when the page was answered `rejected`. Tests: Task 5 (`signSend.test.ts`, "a restart after the entry recorded the bytes and before the route", "a lock after the entry recorded the bytes, the effect stopped", "a stop between the record and the entry's `sent`", "the effect and the poller never both send").
 
 ---
 
@@ -61,23 +64,24 @@ Five inputs the spec implies that a person will meet and no first draft of a tas
 
 ### 1. Plan 2 builds
 
-- **The decoder (Task 1):** `decode/wire.ts` (one canonical legacy or v0 transaction of at most 1 232 bytes, or nothing), `decode/keys.ts` (lookup tables), `decode/decode.ts` (System, SPL Token, Token-2022 with its transfer hook and permanent delegate, ATA, Compute Budget, the presale program), `decode/presaleIdl.ts` (generated from the presale program's IDL — see R1).
+- **The decoder (Task 1):** `decode/wire.ts` (one canonical legacy or v0 transaction of at most 1 232 bytes, or nothing), `decode/keys.ts` (lookup tables), `decode/decode.ts` (System, SPL Token, Token-2022 with its transfer hook and permanent delegate, ATA, Compute Budget, the presale program), `decode/presaleIdl.ts` (generated from the presale program's IDL by the committed `scripts/gen-presale-idl.mjs` — see R1).
 - **The simulation (Task 2):** `simulate.ts` (lookup tables read once, the account's state before, each transaction simulated with the wallet account and every writable account it names, balance changes per mint, the fee computed locally, B1b's re-authentication reasons), `reauthPolicy.ts`'s `dappReauthReasons`, and `core/solana/rpc.ts`'s `getAccountsData` (getMultipleAccounts with data — allowed on the proxy).
 - **The page side (Task 3):** `txRequest.ts`, `page.signTransaction` and `page.signAndSendTransaction` in `pageApi.ts` (every refusal by its reason and in its order), the origin-mismatch notice entry, and the provider's two transaction features.
-- **Pending and decide for transactions, and the `signTransaction` effect (Task 4):** `signTx.ts` (the simulation run when the window asks and refreshed every 30 s, #48's view, the decision's checks — the simulation shown, fresh, without error — the re-authentication gate, the signature), the `dapp` challenge kind in `reauthChallenges.ts`.
-- **The `signAndSendTransaction` effect (Task 5):** the signed bytes recorded (v1_pending, then the entry) before the broadcast through the existing route; the restart / dead-effect / lock answer for a recorded send; `v1_dapp_txs` (the history badge's list, a dApp key, wiped by a delete) and `wallet.history`'s `origin`.
+- **Pending and decide for transactions, and the `signTransaction` effect (Task 4):** `signTx.ts` (the simulation run when the window asks and refreshed every 30 s, #48's view, the decision's checks — the simulation shown, fresh, without error — the re-authentication gate, the signature), the `dapp` challenge kind in `reauthChallenges.ts` (at most 16 mints listed, the rest counted — R28).
+- **The `signAndSendTransaction` effect (Task 5):** the signed bytes recorded (v1_pending, then the entry) before the broadcast through the existing route; the restart / dead-effect / lock answer for a recorded send and the record's exactly-once first broadcast (`firstBroadcast`, R13); `send-failed` for a refused broadcast (R14); `v1_dapp_txs` (the history badge's list, a dApp key, wiped by a delete) and `wallet.history`'s `origin`.
 - **Re-authentication through the toolbar (Task 6):** `dapp.reauth` (popup and UI tab only), the strip on #11, #10 describing a site's transaction (`unlock/challenge.ts`, `unlock/screens/reauth.ts`).
-- **#48 in the approval window (Task 7)** with the mismatch notice; **the badge on #26 and #27 (Task 8)**; **E2E B1c-25 … B1c-28 (Task 9)**; **the visual pass (Task 10)**.
+- **#48 in the approval window (Task 7)** with the mismatch notice and the committed `scripts/extract-design-css.mjs`; **the badge on #26 and #27 (Task 8)**; **E2E B1c-25 … B1c-28 (Task 9)**; **the visual pass (Task 10)**.
 
 ### 2. The seams it uses, as B1b and B1c-1 laid them
 
 - **The queue entry** (`store.ts` `Entry`) gains `transactions`, `granted` (Task 3), `sim`, `challengeId` (Task 4) and `sent` (Task 5) — each read back field by field (`entryOf`), absent on an entry an older background wrote (read as null). `dappSection`'s `Tx` gains `txs` (`v1_dapp_txs`).
 - **`dapp.decide`'s table** (§2.3) runs as in B1c-1 for every row; a transaction request adds the simulation rows (R7) and, outside the section, the re-authentication gate (R9); the `deciding` section then re-checks everything. A connect or a `signMessage` decision takes exactly the one section it took in B1c-1 (the routing peek reads without a section and decides nothing).
-- **B1b's pending store and poller** (`pendingStore.ts`, `pending.ts`): a record gains `origin` (null for the wallet's own send) and its `intent` becomes nullable (a dApp's record has none); `recordDappSend`, `broadcastFirst` and `dropDappSend` reuse `deliver` and `startPoller` unchanged. `inFlightFor` and `wallet.pending` see the wallet's own sends only.
+- **B1b's pending store and poller** (`pendingStore.ts`, `pending.ts`): a record gains `origin` (null for the wallet's own send) and `firstBroadcast` (`done` for the wallet's own, never in a view), and its `intent` becomes nullable (a dApp's record has none); `recordDappSend`, `broadcastFirst` and `dropDappSend` reuse `deliver` and `startPoller` unchanged; `pollOnce` first hands any `due` dApp record to the route (review 1 M1), then polls as before. `inFlightFor` and `wallet.pending` see the wallet's own sends only.
 - **B1b's re-authentication** (`reauthChallenges.ts`, #10): a third challenge kind, `dapp`, issued / proven / consumed through the existing functions; `vault.reauthOk` satisfies it as a send's (only `settings` is applied there).
-- **The lock hook and the sweep** answer a `deciding` entry through one function, `restartAnswer` (queue.ts).
+- **The lock hook and the sweep** answer a `deciding` entry through one function, `restartAnswer` (queue.ts); both mark the record of a send answered its signature `due` (`markDue`, `promised`) before the answer is stored. A send's dead-effect TTL is 45 s (`SEND_DECIDING_TTL_MS`, above the route's 30 s — R29).
+- **The page error codes** (`store.ts` `ERROR_CODES`, the provider's `protocol.ts` and `bridge.ts`) gain `send-failed` (spec rev 3.3 §1.6, R14).
 - **The popup's engine** gains `dappReauth()`; `HistoryItem` gains `origin`; `Switcher.test.tsx`'s full stub engine gains the call.
-- **The design-ext pin** (`designExt2b.test.ts`) is re-pinned in the task that regenerates the file (Task 7).
+- **The design-ext pin** (`designExt2b.test.ts`) is re-pinned in the task that regenerates the file (Task 7); the file's header now names the committed script.
 
 ### 3. Departures and controller rulings (each loud; R-numbers are listed again for the owner at the end)
 
@@ -94,35 +98,44 @@ The spec leaves these open or the dry run found them; each is the most secure de
 
 The states the design does not draw and B1c-2 needs are built and listed in R19–R21: simulated (state 2's body without its flag), a batch, re-authentication, couldn't simulate, unreachable, Q21's expired blockhash, a lookalike origin, Q26.
 
-**Deferred to B1c-3, loudly (the spec's header table, §3.3 last bullet):** B1 §3's whole red-flag table — the "unknown program" and "not a transfer" warning banners (B1c-2 shows the decoded rows, `unknown program` in mono, with no banner), the blocks (System Assign/Allocate on the account, SetAuthority on an account the user owns, an Approve of the whole balance or u64::MAX), the override (typed symbol or word + re-authentication), the Token-2022 extension warnings (transfer hook, permanent delegate, freeze authority on a held token), the durable-nonce warning, "whole or nearly whole balance to a first-time address" as a warning, "simulation failed and the user continues", and the 1.5 s Confirm hold on any red-flag screen.
+**Owner-delegated decisions (2026-10-15).** The owner delegated the copy to the controller and accepted R2, R9, R10, R18 and R22 as proposed, except three lines, now worded as the owner decided: **L3** — the empty balance-changes line reads "No SOL or token balance changes — review the instructions below."; **L4** — a `stale` refusal shows "The transaction changed while you were reviewing. Review it again before approving."; **L7** — #48 says who sends: sign-only "The site sends this transaction itself after you approve.", sign-and-send "Noctura sends this transaction as soon as you approve.". The owner also decided **M3** (`send-failed`, R14) and **M4** (dependent batches unapprovable in B1c-2 — R6, spec §9). One new string is the controller's and still the owner's to confirm: R28's "and <n> more tokens" (#10).
 
-- **R1 — the presale IDL is not in this repository.** It lives in the ICO repository (`Solana-Multi-Currency-USDC_USDC_SOL-ICO-DApp`, `lib/idl.json` at 75450df, sha256 `f31122758227e59673ad165aea75856d2ebb37be03a70d4c7e72c36c5e53c86a`, program `6nTTJwtD…LXJvt`, 36 instructions; its `target/idl/ico.json` has the same instructions with another hash). Task 1's script generates `decode/presaleIdl.ts` from it — names, discriminators, argument types, account names — refusing any other file; the test recomputes every discriminator as `sha256("global:" + name)[0..8]` (Anchor's rule) and pins the output's hash, so the wallet needs no copy of the IDL. A later IDL change is a re-run of the script.
+**Dependent batches — unapprovable in B1c-2 (owner, 2026-10-15; review 1 M4; spec §9's new row):** a `signTransaction` batch whose later transactions need an earlier one's effect (create a token account, then transfer to it; a swap's setup / swap / cleanup) simulates those later transactions as failed (R6) and so offers only [Reject] (R8). This is the commonest real batch shape: B1c-2 cannot approve it. **B1c-3 must solve dependent batches** — e.g. a per-transaction override for a failure attributable to an earlier transaction of the same batch (the decoder knows ATA `create` / `createIdempotent` and System `createAccount`) — not leave them to the typed override of every failed simulation. The PR says so.
+
+**Deferred to B1c-3, loudly (the spec's header table, §3.3 last bullet):** B1 §3's whole red-flag table — the "unknown program" and "not a transfer" warning banners (B1c-2 shows the decoded rows, `unknown program` in mono, with no banner), the blocks (System Assign/Allocate on the account, SetAuthority on an account the user owns, an Approve of the whole balance or u64::MAX), the override (typed symbol or word + re-authentication), the Token-2022 extension warnings (transfer hook, permanent delegate, freeze authority on a held token), the durable-nonce warning, "whole or nearly whole balance to a first-time address" as a warning, "simulation failed and the user continues", and the 1.5 s Confirm hold on any red-flag screen. Also for B1c-3's plan (review 1 L3): the "No SOL or token balance changes — review the instructions below." line must be replaced on any screen with a decoded `assign`, `setAuthority`, `approve` / `approveChecked` or `closeAccount` by the account — an instruction that moves no balance can still hand the account away; B1c-2 has no blocks (D10), and its PR names this.
+
+- **R1 — the presale IDL is not in this repository.** It lives in the ICO repository (`Solana-Multi-Currency-USDC_USDC_SOL-ICO-DApp`, `lib/idl.json` at 75450df, sha256 `f31122758227e59673ad165aea75856d2ebb37be03a70d4c7e72c36c5e53c86a`, program `6nTTJwtD…LXJvt`, 36 instructions; its `target/idl/ico.json` has the same instructions with another hash). Task 1's generator, **committed** as `extension/scripts/gen-presale-idl.mjs` (review 1 M2), writes `decode/presaleIdl.ts` from it — names, discriminators, argument types, account names — refusing any file but the pinned IDL (`IDL_SHA256`) and any output but the pinned one (`OUTPUT_SHA256`). The tests need no copy of the IDL: `presaleIdl.test.ts` recomputes every discriminator as `sha256("global:" + name)[0..8]` (Anchor's rule); `scripts/__tests__/gen-presale-idl.test.mjs` checks the file hashes to `OUTPUT_SHA256` and is byte for byte `presaleSource()` of its own content (with negative controls). A later IDL change is a re-run with the new hashes pinned. Run from `extension/`: `node scripts/gen-presale-idl.mjs ../../../Solana-Multi-Currency-USDC_USDC_SOL-ICO-DApp/Solana-Multi-Currency-USDC_USDC_SOL-ICO-DApp/lib/idl.json` (the ICO repository is `/home/user/Solana/Solana-Multi-Currency-USDC_USDC_SOL-ICO-DApp/…`, beside `/home/user/Solana/Project/` — rev 1's `../Solana-Multi-…` was wrong).
 - **R2 — what a decoded instruction shows.** Every tag of a decoded program is named (`mintTo`, `withdrawNonceAccount`, …); fields only for the spec's list (§3.3) — a known program's tag the wallet does not know is `unknown instruction` **(copy)**; a program outside the set is B1 §3's `unknown program`, its whole address in groups of four (B1 §3 "addresses in full" — a phisher's program is not shortened); a decoded program's address short with the design's mono name (`1111…1111 · system_program`, as #48 draws `TokenkegQ…iU · spl_token`). Field names are the programs' own identifiers, in mono (no prose to confirm). (R2a: the simulating banner's meta line is #19's `Noctura server · simulateTransaction` — the design's "helius-mainnet · slot … · 487 / 900 ms" names an RPC the wallet does not see and a budget §9 dropped.)
 - **R3 — every address in an instruction is shown whole, in groups of four, with a label where known** (B1 §3): "Your account: <name>" for one of the wallet's accounts, the address-book name (`fromBook`) for a contact — #20's own labels.
 - **R4 — the simulated accounts** are the wallet account and **every writable account the transaction names** (resolved through its lookup tables), not only the token accounts the user held before (§3.3's wording): a token account the transaction creates for the user (a swap's output) or closes is then seen. Only accounts whose owner field is the user's count as the user's (Review Focus 3).
 - **R5 — the SOL change is what the node reports** (post − pre of the wallet account, the fee included, as the coordinator measured a real node answer — B1b §11.5); the Network fee row is computed locally (B1 §4: 5 000 per signature plus the priority fee the transaction itself sets; without a limit instruction, 200 000 units per other instruction, at most 1 400 000) and shown only when the account is the fee payer (Review Focus 2).
-- **R6 — a batch's transactions are simulated one by one against the current state** (a node cannot chain them); each section shows its own effects (B1 §3).
+- **R6 — a batch's transactions are simulated one by one against the current state** (a node cannot chain them); each section shows its own effects (B1 §3). Consequence (review 1 M4, **owner: accepted**, spec §9): a dependent batch is unapprovable in B1c-2 — see "Dependent batches" above.
 - **R7 — the simulation shown is the one approved.** `dapp.decide` for a transaction names the simulation's id; another (a refresh landed), one 40 s old (`SIM_VALID_MS`: the 30 s refresh plus ten seconds to land) or none is `stale` / `not-simulated`, and the window re-reads (C13; Review Focus 1). The refresh runs when the window asks after 30 s (§3.3); an unreachable proxy is retried after 5 s.
 - **R8 — couldn't simulate, unreachable, expired (Q21): only Reject in B1c-2** (B1 §3 makes "approve anyway" a red flag — B1c-3 adds that path with its override).
-- **R9 — re-authentication is reached from the toolbar icon, never from the window** (D11: "the password is typed only after clicking the Noctura icon"; §4.3: the window holds "no link into the vault page"). The spec's §3.3 says "B1b's rules through #10" without saying how #10 is reached: B1b's #20 opens #10 in a new tab, which from a window a site caused would teach the one thing D11 forbids. So: Approve asks the background, which issues the challenge and answers `reauth-required`; the window says "Confirm it's you · Click the Noctura icon in your browser's toolbar and confirm with your password (or passkey). This request will wait here." **(copy)**; the popup (#11) shows a strip "A transaction from <site> waits for your confirmation" **(copy)** that opens #10; #10 describes the site's transaction ("You are about to approve", "Site", each token leaving the account, the reasons) and only proves — "Confirmed. Go back to the approval window and approve the transaction." **(copy)**; the user approves again in the window. Before the first Approve the window says "Approving asks you to confirm with your password (or passkey) — you'll start it from the Noctura icon." **(copy)**. #10's own expired and locked lines for a site's request: "This confirmation has expired. Approve the transaction again in the approval window." / "The wallet locked while you were confirming. The site's request was declined — ask the site to try again." **(copy)**; its Cancel only closes the tab (the request stays in the window, which can still reject it).
-- **R10 — B1b's rules for a transaction** (`dappReauthReasons`): from the simulation, each mint the account loses (SOL with its fee) against the account's balance of it before (over 5 %) and its dollar value (over the threshold; no price — any token but SOL, NOC, USDC, USDT — is above it, fail closed); from the decoded instructions, a System transfer or a Token transfer / transferChecked by the account to an address it never sent to and that is not one of its own token accounts (first send; a token account recipient is otherwise always "new" — fail closed), the whole balance to such an address, and any Approve / ApproveChecked by the account (`approval` — B1 §3 "bounded approvals"; the whole-balance and u64::MAX ones are B1c-3's blocks and re-authenticate until then). #10's line for it: "Re-auth required to approve a token allowance." **(copy)**. The prices are read when the simulation runs, so `dapp.decide` reads nothing.
-- **R11 — the challenge's binding:** the request id, its exact bytes and its account (`dappDigest`), so a re-simulation does not void a proof but another transaction cannot use it; issued on the first Approve that needs it (never at simulation — a user who rejects is never asked), stored on the entry, single use (consumed by the approval), an expired one replaced at the next Approve and never revived.
+- **R9 — re-authentication is reached from the toolbar icon, never from the window** (D11: "the password is typed only after clicking the Noctura icon"; §4.3: the window holds "no link into the vault page"). The spec's §3.3 says "B1b's rules through #10" without saying how #10 is reached: B1b's #20 opens #10 in a new tab, which from a window a site caused would teach the one thing D11 forbids. So: Approve asks the background, which issues the challenge and answers `reauth-required`; the window says "Confirm it's you · Click the Noctura icon in your browser's toolbar and confirm with your password (or passkey). This request will wait here." **(copy — accepted, owner-delegated 2026-10-15)**; the popup (#11) shows a strip "A transaction from <site> waits for your confirmation" **(copy — accepted, owner-delegated 2026-10-15)** that opens #10; #10 describes the site's transaction ("You are about to approve", "Site", each token leaving the account, the reasons) and only proves — "Confirmed. Go back to the approval window and approve the transaction." **(copy — accepted, owner-delegated 2026-10-15)**; the user approves again in the window. Before the first Approve the window says "Approving asks you to confirm with your password (or passkey) — you'll start it from the Noctura icon." **(copy — accepted, owner-delegated 2026-10-15)**. #10's own expired and locked lines for a site's request: "This confirmation has expired. Approve the transaction again in the approval window." / "The wallet locked while you were confirming. The site's request was declined — ask the site to try again." **(copy — accepted, owner-delegated 2026-10-15)**; its Cancel only closes the tab (the request stays in the window, which can still reject it).
+- **R10 — B1b's rules for a transaction** (`dappReauthReasons`): from the simulation, each mint the account loses (SOL with its fee) against the account's balance of it before (over 5 %) and its dollar value (over the threshold; no price — any token but SOL, NOC, USDC, USDT — is above it, fail closed); from the decoded instructions, a System transfer or a Token transfer / transferChecked by the account to an address it never sent to and that is not one of its own token accounts (first send; a token account recipient is otherwise always "new" — fail closed), the whole balance to such an address, and any Approve / ApproveChecked by the account (`approval` — B1 §3 "bounded approvals"; the whole-balance and u64::MAX ones are B1c-3's blocks and re-authenticate until then). #10's line for it: "Re-auth required to approve a token allowance." **(copy — accepted, owner-delegated 2026-10-15)**. Raised by review 1 (its R10 view) and flagged here, not written into the spec (the owner allowed spec edits only for M3, M4, L6 and L10): the token-account consequence — every SPL transfer to a token account that is not the account's own re-authenticates — is a candidate §9 row for the owner. The prices are read when the simulation runs, so `dapp.decide` reads nothing.
+- **R11 — the challenge's binding:** the request id, its exact bytes and its account (`dappDigest`), so a re-simulation does not void a proof but another transaction cannot use it; issued on the first Approve that needs it (never at simulation — a user who rejects is never asked), stored on the entry, single use, an expired one replaced at the next Approve and never revived. **Consumed after `deciding` (review 1 L1):** the gate only checks the proof (`proven`); `dapp.decide` consumes it right after the `deciding` section, before any key is read — so a refusal in that section (a refresh landed: `stale`; `not-head`) leaves the proof standing and the user is not asked for the password again; a consume that fails (expired, spent) ends the request `rejected` with nothing signed. Still single use: a `deciding` entry is never decided twice.
 - **R12 — `signAndSendTransaction` takes only what it can send and watch:** every other required signature present and valid over the message (the route takes only a fully signed transaction — B1 §4 — and the wallet never sends one incomplete), and **no durable-nonce transaction** (its first instruction System AdvanceNonceAccount): B1b's pending record calls a send "Not confirmed — no funds moved" once its blockhash's life is over, which would be false for one that can still land (Review Focus 5). `signTransaction` (the dApp sends) signs both. `options` is accepted and ignored (the route has none).
-- **R13 — the pending record of a dApp's send:** `v1_pending` with `origin` and no intent (B1b's pattern: written before anything else happens to the signed bytes); never in the popup's pending list (the transaction is the site's — #26 shows it once it lands, badged), never blocking a send of the wallet's own (`inFlightFor`); its `lastValidBlockHeight` is the latest blockhash's at simulation — an upper bound of the dApp's, so expiry is waited for at least that long, never declared early.
-- **R14 — what the page gets after the broadcast:** acknowledged, or not acknowledged (it may land) → `{signature}` (B1 §3: the dApp confirms); refused before forwarding (the route's 400 with a contract reason, or the 403 cool-down refusing to try — nothing reached the network) → `invalid-request` (§1.6 has no "send failed" code; the transaction was not sendable as given). **Owner/spec:** a dedicated code would be a §1.6 change.
+- **R13 — the pending record of a dApp's send:** `v1_pending` with `origin` and no intent (B1b's pattern: written before anything else happens to the signed bytes); never in the popup's pending list (the transaction is the site's — #26 shows it once it lands, badged), never blocking a send of the wallet's own (`inFlightFor`); its `lastValidBlockHeight` is the latest blockhash's at simulation — an upper bound of the dApp's, so expiry is waited for at least that long, never declared early. **Its first broadcast happens exactly once (review 1 M1):** `firstBroadcast` is `held` when written; the section that answers the page `{signature}` from the entry's record (a restart's or dead effect's sweep, a lock) marks it `due` before storing the answer; the effect and the poller's first round each claim it `→ done` in one `updatePending` before handing the bytes to the route. A worker stopped between the entry's `sent` and the route: the page gets the signature and the poller sends the bytes once. A worker stopped between the record and the entry's `sent` (the review's sibling gap): the page is answered `rejected` and the `held` record is never sent — it polls to `expired` ("Not confirmed — no funds moved", true). Why not the review's literal form (a `broadcastAttemptedAt` the poller sends whenever it is null): that sends the sibling gap's bytes too — a page told `rejected` whose transaction then lands, the one direction worse than the gap (the dApp may ask again, the user approve twice). Stated limits: a browser restart wipes storage.session (the queue), so a record still `held` then is never sent (its tab is gone with the browser); a failed storage write in the lock hook's `markDue` is logged and the signature answer kept (the effect still running sends it, R15).
+- **R14 — what the page gets after the broadcast (owner, 2026-10-15; review 1 M3; spec rev 3.3 §1.6):** acknowledged, or not acknowledged (it may land) → `{signature}` (B1 §3: the dApp confirms); refused before forwarding (the route's 400 with a contract reason, or the 403 cool-down refusing to try — nothing reached the network) → **`send-failed`**, the provider's fixed message "The transaction could not be sent." (rev 1's `invalid-request` said "The request is not valid.", false for the cool-down). The code is in `ERROR_CODES` on both sides and the provider's map (Task 3).
 - **R15 — a lock after the bytes are recorded** answers the page `{signature}` and the broadcast still runs (the user approved it; B1b: a send in flight is not cancelled by a lock); a lock before it answers `rejected`, and bytes already written to v1_pending are marked never sent (`dropDappSend`).
 - **R16 — origin mismatch** (B1 §3: "request origin differs from the granted origin → blocked, no override"; #48 state 4): a transaction request naming an account of this unlocked wallet that ANOTHER origin holds a grant for. The page is answered `unauthorized` at once — the same answer, at the same time, as any ungranted request (§2.2: it learns nothing more) — and a notice entry shows the user what was refused, only when this host is not blocked or cooling down and C3's caps admit it; its dismissal counts toward C14 like any rejection; transaction requests only (a `signMessage` is plain `unauthorized`). The provider itself refuses an account it was not given, so the notice is what a script posting straight to the relay meets (§1.1's stated limit; E2E B1c-28 does exactly that).
 - **R17 — the mismatch screen** keeps the design's hero, banner, detail rows and caption, with two departures: no "Review session in Settings" (the approval window never opens a wallet page — D11/§4.3, as the locked screen), and the caption's "Settings → dApps" reads "Settings → Connected dApps" (Q03; #34 is out, D1). [OK, return to dApp] dismisses; the background refuses any other decision for a notice.
-- **R18 — #48 for a lookalike origin** (granted through "Connect anyway"): the lookalike banner, no origin pill, and #46's flipped bar — [Reject and report] (`btn-destructive`), "Approve anyway (not recommended)" **(copy)** → the design's 2-second confirm, where only "I understand the risk" approves.
+- **R18 — #48 for a lookalike origin** (granted through "Connect anyway"): the lookalike banner, no origin pill, and #46's flipped bar — [Reject and report] (`btn-destructive`), "Approve anyway (not recommended)" **(copy — accepted, owner-delegated 2026-10-15)** → the design's 2-second confirm, where only "I understand the risk" approves.
 - **R19 — the origin pill** ("Request from <host> · matches active session", the design's state 2) is shown once simulated, for a verified or unknown origin — never a lookalike's (a warning screen vouches for nothing).
 - **R20 — ✕ is disabled while simulating** (the design: "Close button → equivalent to Reject · disabled during simulation and approving"); [Reject] stays open (C4).
 - **R21 — Q26 is #48's line too** when the request can no longer be signed (its account left the session, its bytes no longer read back): the origin card, Q26, only Reject.
-- **R22 — new strings (copy, owner to confirm):** "No balance changes"; `unknown instruction`; "Transaction <i> of <n>" (a batch's section); R9's window, strip and #10 lines; R10's reason line; "Approve anyway (not recommended)"; "Token" and "<n> (base units)" (#10, a token the wallet does not name, decimals unknown); the badge's aria-label "dApp-originated transaction · simulated" (the design's provenance without its milliseconds — the wallet keeps no past simulation's timing).
+- **R22 — new strings (copy — accepted, owner-delegated 2026-10-15, with L3/L4/L7 worded as the owner decided):** "No SOL or token balance changes — review the instructions below." (L3); "The transaction changed while you were reviewing. Review it again before approving." (L4); "The site sends this transaction itself after you approve." / "Noctura sends this transaction as soon as you approve." (L7); `unknown instruction`; "Transaction <i> of <n>" (a batch's section); R9's window, strip and #10 lines; R10's reason line; "Approve anyway (not recommended)"; "Token" and "<n> (base units)" (#10, a token the wallet does not name, decimals unknown); the badge's aria-label "dApp-originated transaction · simulated" (the design's provenance without its milliseconds — the wallet keeps no past simulation's timing).
 - **R23 — the history badge:** `v1_dapp_txs` (background-owned, at most 500, newest first; wiped by a delete, kept by a restore — C11, as the grants) lists each transaction a site had this wallet sign by its id: every sign-and-send, and a sign-only transaction when the account pays its fee (its id is then the account's own signature — the dApp may broadcast it). Only "Dapp · simulated" is drawn: the first-party "Wallet" pill is not (the wallet knows only the transactions sites had it sign — calling every other row "Wallet" would be false for a received payment); #27b's Simulation row is not built (it reports checks B1c-3 makes and a timing the wallet does not keep).
 - **R24 — the provider:** a batch is one `page.signTransaction`; `signAndSendTransaction` with several inputs sends them one request each, in turn (each its own approval); inputs naming two accounts → `invalid-request`; `chain` checked in the provider and again in the background.
-- **R25 — the E2E stack:** `StandardWalletAdapter` is exported by `@solana/wallet-standard-wallet-adapter-base` (1.1.6, as `web/`'s lockfile), not by `@solana/wallet-adapter-base` (0.9.28, which has the type and `isWalletAdapterCompatibleStandardWallet`) as §3.3's wording has it — both are devDependencies, bundled only into the test dApp page (never an extension bundle: the page-bundle gate is unchanged), with `bs58` 6.0.0 their peer. `npm audit` on the result: 6 moderate (main: 4 — R32 of plan 1); the two new ones are the adapters "depending on" the same `@solana/web3.js` → `jayson` chain. Recorded, not fixed here.
+- **R25 — the E2E stack:** `StandardWalletAdapter` is exported by `@solana/wallet-standard-wallet-adapter-base` (1.1.6, as `web/`'s lockfile), not by `@solana/wallet-adapter-base` (0.9.28, which has the type and `isWalletAdapterCompatibleStandardWallet`) as §3.3's wording has it — both are devDependencies, bundled only into the test dApp page (never an extension bundle: the page-bundle gate is unchanged), with `bs58` 6.0.0 their peer. `npm audit` on the result: 6 moderate (main: 4 — R32 of plan 1); the two new ones are the adapters "depending on" the same `@solana/web3.js` → `jayson` chain. Recorded, not fixed here: the extension CI's audit gate is `npm audit --audit-level=high` (`.github/workflows/extension.yml`), so the two moderates do not trip it; the PR records them beside plan 1's R32 (review 1, R25 view).
 - **R26 — the window polls once a second** (B1c-1's R33): a simulation's answer reaches it on the next poll — no faster poll while simulating.
 - **R27 — Firefox:** as B1c-1's R39 — the E2E run Chromium only; B1e's manual run adds "B1c-25 … B1c-28 by hand".
+- **R28 — at most 16 mints in #10's description, the rest counted (review 1 L9):** a batch that loses more mints than `MAX_DAPP_OUTGOING` (16) is no longer unapprovable (rev 1's `issueChallenge` threw): `dappAbout` keeps SOL first, then the largest in USD, then the unpriced ones in the order the batch names them, and the challenge's `omitted` counts the rest; #10 adds the row "and <n> more tokens" **(copy — the controller's, owner to confirm)**.
+- **R29 — a send's dead-effect TTL is 45 s (review 1 L2):** `SEND_DECIDING_TTL_MS` is above the route's `BROADCAST_TIMEOUT_MS` (30 s), so the sweep never answers a `signAndSendTransaction` while its route call may still be running (a test pins the inequality); every other type keeps `DECIDING_TTL_MS` (30 s).
+- **R30 — the window says why a `stale` approval did nothing (review 1 L4):** `Approve.tsx` hands `dapp.decide`'s reply back to the screen; on `stale`, #48 shows the owner's line (L4) in a warn banner under the origin card until the next Approve click, with the refreshed effects shown and Approve held again (C15). Not shot in the visual pass (it needs a refresh landing between the window's poll and the click — a real-browser race); the window test covers it.
+- **R31 — who sends, on every #48 state (review 1 L7):** the owner's line for the request's kind (L7), a caption under the origin card (`app-tx-sends`), from simulating on — in every #48 shot.
+- **R32 — the provider's input check (review 1 L8):** an input with no `account` is `invalid-request` (a `NocturaError`), never a `TypeError`.
 
 Spec items built as written and declared in its §9 are not repeated here (the ~900 ms skeleton dropped, approving · shielded is B2).
 
@@ -137,10 +150,34 @@ Spec items built as written and declared in its §9 are not repeated here (the ~
 | the popup | offer #10 for the head's waiting challenge (`dapp.reauth`) | decide a request |
 | #10 (the vault page) | prove the factor for a `dapp` challenge (`vault.reauthOk`) | sign or send anything |
 
+## Review 1 (Fable 5.1) — how each finding was applied
+
+`.superpowers/sdd/b1c-plan2-review-1.md` (2026-10-12, verdict "approve after fixes"). Owner decisions of 2026-10-15 are marked **owner**; the copy decisions the owner delegated, **owner-delegated**. Every changed task was replayed (red on its predecessor, green on its own tree, `tsc`'s own exit code, the whole suite, the build, the gates), every new or changed mutation run, and the end state verified and run end to end again (Dry-run record).
+
+| finding | status | where |
+|---|---|---|
+| **M1** — a worker stop between the entry's `sent` and the broadcast loses an approved send while the page holds its signature | **fixed**, as the owner ruled ("the poller's first round broadcasts an unattempted dApp record exactly once — same bytes, same signature"), in the form that also closes the review's sibling gap safely: the record's `firstBroadcast` `held` → `due` → `done`; `due` written by whatever promises the page the signature, before the promise is stored; `done` claimed atomically by the effect or the poller's first round, the claimant alone sending. The literal `broadcastAttemptedAt` form would send a sibling-gap record whose page was told `rejected` (R13 says why that direction is worse). Tests: "a restart after the entry recorded the bytes and before the route" (positive control inside: never sent twice), "a lock after the entry recorded the bytes, the effect stopped", "a stop between the record and the entry's `sent`", "the effect and the poller never both send"; mutations M5k–M5o, M5q | Task 5; Scope R13; Global Constraints (effects once); Review Focus 6 |
+| **M2** — the two generators kept outside the repository; the IDL path wrong | **fixed**: `extension/scripts/gen-presale-idl.mjs` (IDL path as argv, `IDL_SHA256` and `OUTPUT_SHA256` pinned in it) with `scripts/__tests__/gen-presale-idl.test.mjs` — needs no ICO repository: the file hashes to `OUTPUT_SHA256` and equals `presaleSource()` of its own content (negative controls; M1g); `extension/scripts/extract-design-css.mjs` (the design path from argv, `$NOCTURA_DESIGN_HTML` or the default; `--check`) with `scripts/__tests__/extract-design-css.test.mjs` (the header, and only kept rules; M7i); each header says when to re-run and that CI never runs it; the path is `../../../Solana-Multi-…` from `extension/` (absolute path given) | Tasks 1, 7; Scope R1; Global Constraints |
+| **M3** — R14's `invalid-request` for a refused broadcast | **owner**: a page code `send-failed`, "The transaction could not be sent."; spec rev 3.3 §1.6's row; `ERROR_CODES` on both sides and the provider's map (Task 3, M3k); `finishSend` answers it (Task 5, M5j) | Tasks 3, 5; Scope R14; spec §1.6 |
+| **M4** — dependent batches cannot be approved in B1c-2 | **owner: accepted**; spec §9 row (unapprovable in B1c-2; B1c-3 must solve dependent batches, e.g. a per-transaction override for a failure attributable to an earlier transaction of the same batch); Scope "Dependent batches"; the PR says so | Scope §3, R6; spec §9 |
+| **L1** — the proof consumed before `deciding` | **fixed**: the gate checks (`proven`), `dapp.decide` consumes right after the `deciding` section; a failed consume answers `rejected` before any key is read. Tests: "a refresh that lands while the gate reads the proof: stale — the proof is not spent…", "the proof gone between the gate and the consume"; M4e (rewritten), M4k | Task 4; Scope R11 |
+| **L2** — `DECIDING_TTL_MS` equals the route's timeout | **fixed**: `SEND_DECIDING_TTL_MS = 45_000` for `signAndSendTransaction`; a test pins it above `BROADCAST_TIMEOUT_MS` and checks the entry is still `deciding` at 30 s; M5p | Task 5; Scope R29 |
+| **L3** — "No balance changes" reads as benign | **owner-delegated**: "No SOL or token balance changes — review the instructions below."; B1c-3's plan told to replace it on a screen with `assign` / `setAuthority` / `approve*` / `closeAccount` (Scope, Deferred); the PR names it. Test: tx.test.tsx "no balance change of the account's" | Task 7; Scope §3 |
+| **L4** — a `stale` refusal re-renders silently | **owner-delegated**: "The transaction changed while you were reviewing. Review it again before approving." in a warn banner until the next click. Test: tx.test.tsx "a refresh that lands between the read and the click (stale)"; M7g | Task 7; Scope R30 |
+| **L5** — two test titles claim what their scene does not do | **fixed**: signSend.test.ts "a lock between the deciding section and the effect (the auto-lock arm): rejected, nothing signed into v1_pending, nothing broadcast"; signTx.test.ts "the grant moved to another account, or revoked, while queued: no-grant both times — never a signature" (it now exercises both, and asserts no answer) | Tasks 4, 5 |
+| **L6** — §9 needs the transactions' malformed-before-`unauthorized` row | **fixed**: spec rev 3.3 §9 row; `txRequest.ts`'s comment cites it | spec §9; Task 3 |
+| **L7** — sign-only and sign-and-send indistinguishable on #48 | **owner-delegated**: "The site sends this transaction itself after you approve." / "Noctura sends this transaction as soon as you approve." under the origin card, every state. Tests: tx.test.tsx (both kinds); M7h | Task 7; Scope R31 |
+| **L8** — the provider's `#checked` throws a `TypeError` for an input without `account` | **fixed**: `inputs[0]?.account?.address`, `invalid-request`. Test: provider.test.ts (single, in a batch, sign-and-send); M3j | Task 3; Scope R32 |
+| **L9** — more than 16 lost mints made the request unapprovable | **fixed**: `dappAbout` keeps SOL, then the largest in USD, then the unpriced in order, 16 in all, and `omitted` counts the rest; #10 shows "and <n> more tokens" (controller copy, owner to confirm — R28). Tests: signTx.test.ts "dappAbout: at most MAX_DAPP_OUTGOING mints…" (with a positive control), challenge.test.ts (fail-closed `omitted`), reauthScreen.test.ts (the row); M4l, M4m, M6f, M6g | Tasks 4, 6; Scope R28 |
+| **L10** — the mismatch notice can be opened by any site that knows the address | **fixed**: spec rev 3.3 §7 accepted-limits line | spec §7 |
+| **L11** — test counts in the Task 4 mutation table | **fixed**: every mutation table now says its counts are from the end state's tree and that red, not the count, is the check | every task's mutation step |
+
+The review's R-table: R1 (M2, done), R10 (the token-account consequence flagged for the owner as a candidate §9 row — not written into the spec, which the owner opened only for M3, M4, L6, L10), R14 (M3, done), R22 (L3/L4/L7, done), R25 (the CI audit gate is `--audit-level=high`; recorded in R25 and the PR) — every other ruling accepted as written.
+
 ## How to read the steps
 
 - A **new file** is given in full. A **changed file** is a unified diff against the file as the previous task left it; save the block and apply it with `git apply --recount` from the repository root (or by hand — every hunk is exact). Several files grow task by task (`signTx.ts`, `decide.ts`, `store.ts`, `pageApi.ts`, `app.css`, some test files), so their diffs apply in task order.
-- Two files are **generated**, never typed: `src/background/dapp/decode/presaleIdl.ts` (Task 1's script; the file follows in full as well, and its test pins the hash) and `src/styles/design-ext.css` (Task 7's script; the diff is given for review). `package-lock.json` is written by npm 11.6.2 (Task 9's command), never by hand.
+- Two files are **generated**, never typed: `src/background/dapp/decode/presaleIdl.ts` (by `scripts/gen-presale-idl.mjs`, committed in Task 1; the file follows in full as well, and its tests pin it) and `src/styles/design-ext.css` (by `scripts/extract-design-css.mjs`, committed in Task 7; the diff is given for review). Neither generator runs in CI. `package-lock.json` is written by npm 11.6.2 (Task 9's command), never by hand.
 - Commands run from `extension/` unless they start with `cd`. "Whole suite" is `npx tsc --noEmit && npx vitest run`. The expected totals are the dry run's task-by-task replay: each task's own test files on its predecessor's tree (red), then on its own tree (green), with `tsc`, the whole suite, `node scripts/build.mjs` and `npm run gates` at every task. A reviewer-added test raises the totals; that is not a defect.
 - Background tests drive the real handlers over `fakeExt` and fake ports (`pageHarness.ts`) and a steered chain (`txHarness.ts`, Task 4); window tests render `approve.html`'s `Approve` against the real background (`windowHarness.tsx`); popup tests use B1b's `renderInWallet`. Each screen test asserts `unstyledClasses(…)` is empty.
 - Task 2 touches `core/solana/rpc.ts` (a new reader method); nothing touches the repository root's `src/` or `web/`. The dry run ran web's `npm run verify` and the root `tsc` + `jest` on the end state anyway (Dry-run record).
@@ -153,6 +190,8 @@ Spec items built as written and declared in its §9 are not repeated here (the ~
 **Spec:** §3.3 (Lookup tables; Decoder), §1.4 (each ≤ 1 232 bytes), D6, B1 §3 (decoded programs; "unknown program"); Scope R1, R2
 
 **Files:**
+- Test (new): `extension/scripts/__tests__/gen-presale-idl.test.mjs`
+- Create: `extension/scripts/gen-presale-idl.mjs`
 - Test (new): `extension/src/background/dapp/decode/__tests__/decode.test.ts`
 - Test (new): `extension/src/background/dapp/decode/__tests__/presaleIdl.test.ts`
 - Create: `extension/src/background/dapp/decode/decode.ts`
@@ -167,12 +206,55 @@ Spec items built as written and declared in its §9 are not repeated here (the ~
   - `decode/keys.ts`: `ADDRESS_LOOKUP_TABLE_PROGRAM`; `tableAddresses(data: Uint8Array): string[] | null`; `interface ResolvedKeys {keys: (string | null)[]}`; `resolveKeys(p: ParsedTx, tables: ReadonlyMap<string, readonly string[] | null>): ResolvedKeys`; `tablesOf(p: ParsedTx): string[]`.
   - `decode/decode.ts`: `SYSTEM_PROGRAM`, `TOKEN_PROGRAM`, `TOKEN_2022_PROGRAM`, `ATA_PROGRAM`, `COMPUTE_BUDGET_PROGRAM`, `PRESALE_PROGRAM`; `type ProgramKey = 'system' | 'token' | 'token-2022' | 'associated-token' | 'compute-budget' | 'presale'`; `PROGRAMS: ReadonlyMap<string, ProgramKey>`; `type FieldValue = {kind: 'address'; value: string | null} | {kind: 'lamports'; value: string} | {kind: 'amount'; value: string; decimals: number | null} | {kind: 'number'; value: string} | {kind: 'bool'; value: boolean} | {kind: 'text'; value: string} | {kind: 'hex'; value: string}`; `interface Field {name: string; value: FieldValue}`; `interface DecodedInstruction {programId: string | null; program: ProgramKey | null; name: string | null; fields: Field[]}`; `AUTHORITY_TYPES`; `decodeInstructions(p: ParsedTx, r: ResolvedKeys): DecodedInstruction[]`; `addressField(ix: DecodedInstruction, name: string): string | null`.
   - `decode/presaleIdl.ts` (generated): `type PresaleArgType`; `interface PresaleInstruction {name; discriminator; args; accounts}`; `STAKE_TIERS`; `PRESALE_INSTRUCTIONS` (36).
+  - `scripts/gen-presale-idl.mjs` (committed): `OUT_PATH`, `PROGRAM_ID`, `IDL_SHA256`, `OUTPUT_SHA256`, `presaleSource(idl, idlSha): string`.
 
 A pure module, no reads. `parseWire` accepts the page's bytes only when they are exactly one canonical legacy or v0 transaction of at most 1 232 bytes — the web3.js parser the background already carries, then re-serialised and compared byte for byte, so trailing bytes, a non-canonical length or a signature count that disagrees with the header are refused, and what is shown, simulated and signed is one thing. `resolveKeys` builds the full key list in the runtime's order (static keys, then each lookup's writable, then each lookup's readonly) from the tables as read (Task 2 reads them); an index a table does not hold is null. `decodeInstructions` names every instruction of the six programs and decodes the spec's list with exact field names and values (amounts as base-unit strings — u64::MAX survives); an instruction that touches an unresolved account is an unknown program, whatever its program (§3.3). The presale program is decoded by its Anchor discriminators from `presaleIdl.ts`, generated from the program's IDL (R1).
 
-`presaleIdl.ts` is generated, never typed: save this one-off script **outside the repository** and run it from the repository root with the IDL's path (the ICO repository's `lib/idl.json` at 75450df; the script refuses any other file). Its output's sha256 is `48651d64226625871caa39d79b42028e0e129c0d8e1cac3b9dafcb4541512886` (pinned by `presaleIdl.test.ts`). The file follows in full as well, for review.
+`presaleIdl.ts` is generated, never typed, by `scripts/gen-presale-idl.mjs` — **committed** with this task (review 1 M2; B1c-1's `gen-icon.mjs` ruling), given in full below. Run it from `extension/` with the IDL's path (the ICO repository's `lib/idl.json` at 75450df; it refuses any other file and any output but the pinned one): `node scripts/gen-presale-idl.mjs ../../../Solana-Multi-Currency-USDC_USDC_SOL-ICO-DApp/Solana-Multi-Currency-USDC_USDC_SOL-ICO-DApp/lib/idl.json` (absolute: `/home/user/Solana/Solana-Multi-Currency-USDC_USDC_SOL-ICO-DApp/Solana-Multi-Currency-USDC_USDC_SOL-ICO-DApp/lib/idl.json`) — it prints the output's sha256, `48651d64226625871caa39d79b42028e0e129c0d8e1cac3b9dafcb4541512886`, and 36. CI never runs it: `scripts/__tests__/gen-presale-idl.test.mjs` checks without the IDL that the file hashes to the generator's `OUTPUT_SHA256` and is byte for byte `presaleSource()` of its own content. The file follows in full as well, for review.
 
 - [ ] **Step 1: Write the failing tests.**
+
+Create `extension/scripts/__tests__/gen-presale-idl.test.mjs`:
+
+````js
+import {createHash} from 'node:crypto';
+import {readFileSync} from 'node:fs';
+import {IDL_SHA256, OUTPUT_SHA256, OUT_PATH, PROGRAM_ID, presaleSource} from '../gen-presale-idl.mjs';
+import {PRESALE_INSTRUCTIONS, STAKE_TIERS} from '../../src/background/dapp/decode/presaleIdl';
+
+// Global constraints (plan 2 review 1 M2): presaleIdl.ts is generated only — it must be exactly what the committed
+// generator writes. The IDL itself is in the ICO repository, which CI does not have: the table's own content, turned
+// back into the IDL's shape, must give the committed file byte for byte, and the file must hash to the pinned output.
+const idlOf = (instructions, tiers) => ({
+  address: PROGRAM_ID,
+  instructions: instructions.map(ix => ({
+    name: ix.name,
+    discriminator: [...ix.discriminator],
+    args: ix.args.map(a => ({name: a.name, type: a.type === 'tier' ? {defined: {name: 'StakeTier'}} : typeof a.type === 'object' ? {array: ['u8', a.type.bytes]} : a.type})),
+    accounts: ix.accounts.map(name => ({name})),
+  })),
+  types: [{name: 'StakeTier', type: {kind: 'enum', variants: tiers.map(name => ({name}))}}],
+});
+
+describe('the presale IDL generator', () => {
+  it('presaleIdl.ts hashes to the generator’s pinned OUTPUT_SHA256', () => {
+    expect(createHash('sha256').update(readFileSync(OUT_PATH)).digest('hex')).toBe(OUTPUT_SHA256);
+  });
+
+  it('presaleIdl.ts is byte for byte presaleSource() of its own content (no IDL file needed)', () => {
+    expect(presaleSource(idlOf(PRESALE_INSTRUCTIONS, STAKE_TIERS), IDL_SHA256)).toBe(readFileSync(OUT_PATH, 'utf8'));
+  });
+
+  // Negative controls: a changed table gives a different file; another program and a wrong discriminator are refused.
+  it('a changed instruction gives a different presaleIdl.ts; another program or a wrong discriminator is refused (negative controls)', () => {
+    const renamed = PRESALE_INSTRUCTIONS.map((ix, i) => (i === 0 ? {...ix, accounts: [...ix.accounts, 'extra']} : ix));
+    expect(presaleSource(idlOf(renamed, STAKE_TIERS), IDL_SHA256)).not.toBe(readFileSync(OUT_PATH, 'utf8'));
+    expect(() => presaleSource({...idlOf(PRESALE_INSTRUCTIONS, STAKE_TIERS), address: '11111111111111111111111111111111'}, IDL_SHA256)).toThrow('another program');
+    const wrong = PRESALE_INSTRUCTIONS.map((ix, i) => (i === 0 ? {...ix, discriminator: ix.discriminator.map((b, j) => (j === 0 ? b ^ 1 : b))} : ix));
+    expect(() => presaleSource(idlOf(wrong, STAKE_TIERS), IDL_SHA256)).toThrow('discriminator of');
+  });
+});
+````
 
 Create `extension/src/background/dapp/decode/__tests__/decode.test.ts`:
 
@@ -463,12 +545,11 @@ Create `extension/src/background/dapp/decode/__tests__/presaleIdl.test.ts`:
 
 ````ts
 import {createHash} from 'node:crypto';
-import {readFileSync} from 'node:fs';
-import {join} from 'node:path';
 import {PRESALE_INSTRUCTIONS, STAKE_TIERS} from '../presaleIdl';
 
 // Spec B1c §3.3: the presale program is decoded by its Anchor discriminators, from the program's IDL (generated,
-// never typed — the plan's script, from the ICO repository's lib/idl.json).
+// never typed — scripts/gen-presale-idl.mjs, from the ICO repository's lib/idl.json; scripts/__tests__/gen-presale-idl.test.mjs
+// checks the file is that script's output).
 describe('presaleIdl.ts', () => {
   it('every discriminator is sha256("global:" + name)[0..8] (Anchor’s rule), each name once', () => {
     for (const ix of PRESALE_INSTRUCTIONS) {
@@ -485,38 +566,54 @@ describe('presaleIdl.ts', () => {
     expect(sol?.discriminator).toEqual([161, 153, 65, 238, 160, 236, 43, 165]);
     expect(PRESALE_INSTRUCTIONS.find(i => i.name === 'register_referrer')?.discriminator).toEqual([122, 229, 215, 169, 100, 145, 198, 120]);
   });
-
-  it('is the generator output, byte for byte (the hash the plan pins)', () => {
-    const text = readFileSync(join(__dirname, '..', 'presaleIdl.ts'), 'utf8');
-    expect(createHash('sha256').update(text).digest('hex')).toBe('48651d64226625871caa39d79b42028e0e129c0d8e1cac3b9dafcb4541512886');
-  });
 });
 ````
 
 - [ ] **Step 2: Run them on the previous task's tree — red.**
 
-Run: `npx vitest run src/background/dapp/decode/__tests__/decode.test.ts src/background/dapp/decode/__tests__/presaleIdl.test.ts`
+Run: `npx vitest run scripts/__tests__/gen-presale-idl.test.mjs src/background/dapp/decode/__tests__/decode.test.ts src/background/dapp/decode/__tests__/presaleIdl.test.ts`
 
-Expected (the dry run): Test Files  2 failed (2) · Tests  no tests
+Expected (the dry run): Test Files  3 failed (3) · Tests  no tests
 
 - [ ] **Step 3: Implement.**
 
-The generator (outside the repository):
+After saving the files below (the generator among them), regenerate the table — from `extension/`:
+
+```bash
+node scripts/gen-presale-idl.mjs ../../../Solana-Multi-Currency-USDC_USDC_SOL-ICO-DApp/Solana-Multi-Currency-USDC_USDC_SOL-ICO-DApp/lib/idl.json
+# prints 48651d64226625871caa39d79b42028e0e129c0d8e1cac3b9dafcb4541512886 36 — and the file equals the one below
+```
+
+Create `extension/scripts/gen-presale-idl.mjs`:
 
 ````js
-// One-off (B1c plan 2, Task 1): the presale program's instruction table, from the program's Anchor IDL in the ICO
-// repository (Solana-Multi-Currency-USDC_USDC_SOL-ICO-DApp, lib/idl.json at 75450df, sha256 f3112275…5c53c86a).
-// Writes extension/src/background/dapp/decode/presaleIdl.ts. Run from the wallet repository root; not committed.
+// B1c plan 2, Task 1 (committed: plan 2 review 1 M2): writes src/background/dapp/decode/presaleIdl.ts — the presale
+// program's instruction table — from the program's Anchor IDL. The IDL lives in the ICO repository
+// (Solana-Multi-Currency-USDC_USDC_SOL-ICO-DApp, lib/idl.json at 75450df); the wallet repository has no copy.
+//
+//   node extension/scripts/gen-presale-idl.mjs <path to the ICO repository's lib/idl.json>
+//
+// Re-run it only when the presale program's IDL changes (a program upgrade that adds or changes an instruction): pin the
+// new IDL's sha256 in IDL_SHA256 and the new output's in OUTPUT_SHA256, in the same commit as the regenerated table.
+// It refuses any other IDL file. CI never runs it (CI has no ICO repository): scripts/__tests__/gen-presale-idl.test.mjs
+// checks, without the IDL, that presaleIdl.ts is this script's output — its hash is OUTPUT_SHA256, and presaleSource()
+// rebuilt from the table's own content gives the file byte for byte.
 import {createHash} from 'node:crypto';
 import {readFileSync, writeFileSync} from 'node:fs';
+import {dirname, join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 
-const SOURCE = process.argv[2];
-const text = readFileSync(SOURCE);
-const sha = createHash('sha256').update(text).digest('hex');
-if (sha !== 'f31122758227e59673ad165aea75856d2ebb37be03a70d4c7e72c36c5e53c86a') throw new Error(`not the pinned IDL: ${sha}`);
-const idl = JSON.parse(text.toString('utf8'));
-if (idl.address !== '6nTTJwtDuxjv8C1JMsajYQapmPAGrC3QF1w5nu9LXJvt') throw new Error('another program');
-const type = t => {
+const here = dirname(fileURLToPath(import.meta.url));
+export const OUT_PATH = join(here, '..', 'src', 'background', 'dapp', 'decode', 'presaleIdl.ts');
+export const PROGRAM_ID = '6nTTJwtDuxjv8C1JMsajYQapmPAGrC3QF1w5nu9LXJvt';
+/** lib/idl.json at the ICO repository's 75450df (after the 2026-09-21 program upgrade). */
+export const IDL_SHA256 = 'f31122758227e59673ad165aea75856d2ebb37be03a70d4c7e72c36c5e53c86a';
+/** presaleIdl.ts as this script writes it from that IDL. */
+export const OUTPUT_SHA256 = '48651d64226625871caa39d79b42028e0e129c0d8e1cac3b9dafcb4541512886';
+
+const sha256 = b => createHash('sha256').update(b).digest('hex');
+
+const typeOf = t => {
   if (typeof t === 'string') {
     if (!['u8', 'u64', 'i64', 'bool', 'pubkey'].includes(t)) throw new Error(`type ${t}`);
     return `'${t}'`;
@@ -525,19 +622,23 @@ const type = t => {
   if (t.defined && t.defined.name === 'StakeTier') return `'tier'`;
   throw new Error(`type ${JSON.stringify(t)}`);
 };
-const rows = idl.instructions.map(ix => {
-  const disc = ix.discriminator;
-  const check = [...createHash('sha256').update(`global:${ix.name}`).digest().subarray(0, 8)];
-  if (JSON.stringify(check) !== JSON.stringify(disc)) throw new Error(`discriminator of ${ix.name}`);
-  const args = ix.args.map(a => `{name: '${a.name}', type: ${type(a.type)}}`).join(', ');
-  const accounts = ix.accounts.map(a => `'${a.name}'`).join(', ');
-  return `  {name: '${ix.name}', discriminator: [${disc.join(', ')}], args: [${args}], accounts: [${accounts}]},`;
-});
-const tiers = idl.types.find(t => t.name === 'StakeTier').type.variants.map(v => `'${v.name}'`).join(', ');
-const out = `/**
+
+/** presaleIdl.ts's full text for a parsed IDL whose file hashes to `idlSha` (every discriminator checked against Anchor's rule). */
+export function presaleSource(idl, idlSha) {
+  if (idl.address !== PROGRAM_ID) throw new Error('another program');
+  const rows = idl.instructions.map(ix => {
+    const disc = ix.discriminator;
+    const check = [...createHash('sha256').update(`global:${ix.name}`).digest().subarray(0, 8)];
+    if (JSON.stringify(check) !== JSON.stringify(disc)) throw new Error(`discriminator of ${ix.name}`);
+    const args = ix.args.map(a => `{name: '${a.name}', type: ${typeOf(a.type)}}`).join(', ');
+    const accounts = ix.accounts.map(a => `'${a.name}'`).join(', ');
+    return `  {name: '${ix.name}', discriminator: [${disc.join(', ')}], args: [${args}], accounts: [${accounts}]},`;
+  });
+  const tiers = idl.types.find(t => t.name === 'StakeTier').type.variants.map(v => `'${v.name}'`).join(', ');
+  return `/**
  * The presale program's instructions (program ${idl.address}), generated from its Anchor IDL — never edited by hand
  * (spec B1c §3.3: "the presale program, by Anchor discriminator from the IDL"). The IDL lives in the ICO repository
- * (Solana-Multi-Currency-USDC_USDC_SOL-ICO-DApp, lib/idl.json at 75450df, sha256 ${sha}); the wallet repository has no
+ * (Solana-Multi-Currency-USDC_USDC_SOL-ICO-DApp, lib/idl.json at 75450df, sha256 ${idlSha}); the wallet repository has no
  * copy, so this table is the wallet's own. Each discriminator is sha256("global:" + name)[0..8], which
  * __tests__/presaleIdl.test.ts recomputes; the argument and account lists are the IDL's, in order.
  */
@@ -556,14 +657,20 @@ export const PRESALE_INSTRUCTIONS: readonly PresaleInstruction[] = [
 ${rows.join('\n')}
 ];
 `;
-writeFileSync('extension/src/background/dapp/decode/presaleIdl.ts', out);
-console.log(createHash('sha256').update(out).digest('hex'), rows.length);
-````
+}
 
-```bash
-node /path/outside/the/repo/gen-presale-idl.mjs ../Solana-Multi-Currency-USDC_USDC_SOL-ICO-DApp/Solana-Multi-Currency-USDC_USDC_SOL-ICO-DApp/lib/idl.json
-# prints the output's sha256 and 36
-```
+if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {
+  const source = process.argv[2];
+  if (source === undefined) throw new Error('usage: node extension/scripts/gen-presale-idl.mjs <lib/idl.json>');
+  const text = readFileSync(source);
+  const sha = sha256(text);
+  if (sha !== IDL_SHA256) throw new Error(`not the pinned IDL: ${sha}`);
+  const out = presaleSource(JSON.parse(text.toString('utf8')), sha);
+  if (sha256(out) !== OUTPUT_SHA256) throw new Error(`the output is not the pinned one: ${sha256(out)}`);
+  writeFileSync(OUT_PATH, out);
+  console.log(sha256(out), out.split('\n').filter(l => l.startsWith('  {name:')).length);
+}
+````
 
 Create `extension/src/background/dapp/decode/decode.ts`:
 
@@ -1110,9 +1217,9 @@ export function isWritableIndex(p: ParsedTx, i: number): boolean {
 
 - [ ] **Step 4: Run — green, and the whole suite, the build and the gates.**
 
-Run: `npx vitest run src/background/dapp/decode/__tests__/decode.test.ts src/background/dapp/decode/__tests__/presaleIdl.test.ts` — expected: Test Files  2 passed (2) · Tests  22 passed (22)
+Run: `npx vitest run scripts/__tests__/gen-presale-idl.test.mjs src/background/dapp/decode/__tests__/decode.test.ts src/background/dapp/decode/__tests__/presaleIdl.test.ts` — expected: Test Files  3 passed (3) · Tests  24 passed (24)
 
-Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  158 passed (158) · Tests  3132 passed (3132). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
+Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  159 passed (159) · Tests  3134 passed (3134). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
 
 - [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy; `tsc`'s own exit code first (0), then the named test: red.**
 
@@ -1124,6 +1231,9 @@ Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected
 | M1d | `decode.ts`: the transfer hook decoded on the classic program too | decode.test.ts "Token-2022 only" — RED Tests  1 failed \| 18 passed (19) |
 | M1e | `decode.ts`: Token-2022's authority types accepted on the classic program | decode.test.ts "Token-2022 only" — RED Tests  1 failed \| 18 passed (19) |
 | M1f | `keys.ts`: an uninitialized table account read as a table | decode.test.ts "a table account parses to its addresses" — RED Tests  1 failed \| 18 passed (19) |
+| M1g | `scripts/gen-presale-idl.mjs`: each instruction's accounts written in reverse | gen-presale-idl.test.mjs "presaleIdl.ts is byte for byte presaleSource() of its own content" — RED Tests  1 failed \| 2 passed (3) |
+
+The counts in the last column are the dry run's, each mutant built from the END state (Task 10's tree): on this task's own tree a test file can hold fewer tests (a later task adds some), so the counts differ — red is the check, not the count (review 1 L11).
 
 - [ ] **Step 6: Commit.**
 
@@ -1770,7 +1880,7 @@ index 164bc25..d7f2d74 100644
 
 Run: `npx vitest run ../core/solana/__tests__/rpc.test.ts src/background/__tests__/reauthPolicy.test.ts src/background/dapp/__tests__/simulate.test.ts` — expected: Test Files  3 passed (3) · Tests  60 passed (60)
 
-Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  159 passed (159) · Tests  3151 passed (3151). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
+Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  160 passed (160) · Tests  3153 passed (3153). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
 
 - [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy; `tsc`'s own exit code first (0), then the named test: red.**
 
@@ -1783,6 +1893,8 @@ Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected
 | M2e | `simulate.ts`: the fee shown when another account pays it | simulate.test.ts "the fee" — RED Tests  1 failed \| 11 passed (12) |
 | M2f | `reauthPolicy.ts`: no `approval` reason | reauthPolicy.test.ts "each rule by itself" — RED Tests  1 failed \| 16 passed (17) |
 | M2g | `core/solana/rpc.ts`: getAccountsData's length check dropped | rpc.test.ts "getAccountsData refuses a reply of the wrong length" — RED Tests  1 failed \| 30 passed (31) |
+
+The counts in the last column are the dry run's, each mutant built from the END state (Task 10's tree): on this task's own tree a test file can hold fewer tests (a later task adds some), so the counts differ — red is the check, not the count (review 1 L11).
 
 - [ ] **Step 6: Commit.**
 
@@ -1804,7 +1916,9 @@ git commit -m "feat(extension,core): B1c-2 the simulation — lookup tables, bal
 - Modify: `extension/src/background/dapp/store.ts`
 - Create: `extension/src/background/dapp/txRequest.ts`
 - Test: `extension/src/provider/__tests__/provider.test.ts`
+- Modify: `extension/src/provider/bridge.ts`
 - Modify: `extension/src/provider/codec.ts`
+- Modify: `extension/src/provider/protocol.ts`
 - Modify: `extension/src/provider/wallet.ts`
 - Test: `extension/src/relay/__tests__/relay.test.ts`
 
@@ -1816,8 +1930,9 @@ git commit -m "feat(extension,core): B1c-2 the simulation — lookup tables, bal
   - `pageApi.ts`: `PAGE_TYPES` gains the two transaction types; the handlers answer as the table below.
   - `decide.ts`: a `mismatch` entry takes only `reject` (`malformed` otherwise); a transaction request's approval is `malformed` until Task 4.
   - The provider (`wallet.ts`): `solana:signTransaction` and `solana:signAndSendTransaction`, version `1.0.0`, `supportedTransactionVersions: ['legacy', 0]`; the account features list both. `codec.ts`: `signatureBytes(signature: string): Uint8Array | null`.
+  - The page codes (spec rev 3.3 §1.6, review 1 M3): `store.ts` `ErrorCode` / `ERROR_CODES` and the provider's `protocol.ts` `ERROR_CODES` gain `send-failed`; `bridge.ts` `ERROR_TEXT['send-failed'] = {code: 'send-failed', message: 'The transaction could not be sent.'}` (Task 5 answers it).
 
-The order of the refusals (each asserted by its reason, before any window): the payload's shape — 1–5 transactions (a sixth is D8's refusal), each ≤ 1 232 bytes and canonical, `chain` absent or `solana:mainnet`, a base58 account — `invalid-request` (as §9's last row for signMessage: a page without a grant learns only that its payload was malformed); the grant — `unauthorized` unless this origin holds one for exactly this account while unlocked, **and** the mismatch notice (R16) when another origin holds it; the account must be the fee payer or a required signer of every transaction — `invalid-request`; sign-and-send only: every other signature present and valid, no durable nonce (R12) — `invalid-request`, and the same message already open — `rejected` (§3.3); a blocked or cooling-down host — `rejected`, no entry; C3's caps; then queued with the bytes exactly as sent. The provider sends a batch as one request and each sign-and-send input as its own, in turn (R24).
+The order of the refusals (each asserted by its reason, before any window): the payload's shape — 1–5 transactions (a sixth is D8's refusal), each ≤ 1 232 bytes and canonical, `chain` absent or `solana:mainnet`, a base58 account — `invalid-request` (as §9's last row for signMessage: a page without a grant learns only that its payload was malformed); the grant — `unauthorized` unless this origin holds one for exactly this account while unlocked, **and** the mismatch notice (R16) when another origin holds it; the account must be the fee payer or a required signer of every transaction — `invalid-request`; sign-and-send only: every other signature present and valid, no durable nonce (R12) — `invalid-request`, and the same message already open — `rejected` (§3.3); a blocked or cooling-down host — `rejected`, no entry; C3's caps; then queued with the bytes exactly as sent. The provider sends a batch as one request and each sign-and-send input as its own, in turn (R24); an input with no `account` is `invalid-request`, never a `TypeError` (R32, review 1 L8). The page codes gain `send-failed` on both sides with its fixed message (R14, review 1 M3) — Task 5 is its one user.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -2060,7 +2175,7 @@ Change `extension/src/provider/__tests__/provider.test.ts`:
 
 ````diff
 diff --git a/extension/src/provider/__tests__/provider.test.ts b/extension/src/provider/__tests__/provider.test.ts
-index 2e28d84..27d6af0 100644
+index 2e28d84..36990a5 100644
 --- a/extension/src/provider/__tests__/provider.test.ts
 +++ b/extension/src/provider/__tests__/provider.test.ts
 @@ -3,7 +3,7 @@ import {join} from 'node:path';
@@ -2102,7 +2217,26 @@ index 2e28d84..27d6af0 100644
      expect(changes).toEqual([[A]]);
      // A silent connect says so.
      void wallet.features['standard:connect'].connect({silent: true});
-@@ -128,6 +132,59 @@ describe('the Noctura wallet (Wallet Standard)', () => {
+@@ -111,6 +115,18 @@ describe('the Noctura wallet (Wallet Standard)', () => {
+     expect(new NocturaError('unauthorized').code).toBe(4100);
+   });
+ 
++  // B1c-2 (spec §1.6, rev 3.3): a broadcast the user approved that never reached the network has its own code.
++  it('send-failed: its own code and fixed message, "The transaction could not be sent." — not invalid-request', async () => {
++    const w = fakeWindow();
++    const wallet = new NocturaWallet(createBridge(w.win));
++    const c = wallet.features['standard:connect'].connect();
++    answerLast(w, {result: {accounts: [A]}});
++    const [account] = (await c).accounts;
++    const s = wallet.features['solana:signAndSendTransaction'].signAndSendTransaction({account: account!, transaction: Uint8Array.of(1)});
++    answerLast(w, {error: 'send-failed'});
++    await expect(s).rejects.toMatchObject({name: 'NocturaError', code: 'send-failed', message: 'The transaction could not be sent.'});
++  });
++
+   it('signMessage: refused for an account it was not given (no message posted); for the connected one, the bytes come back', async () => {
+     const w = fakeWindow();
+     const wallet = new NocturaWallet(createBridge(w.win));
+@@ -128,6 +144,64 @@ describe('the Noctura wallet (Wallet Standard)', () => {
      expect(await s).toEqual([{signedMessage: message, signature: sig, signatureType: 'ed25519'}]);
    });
  
@@ -2122,7 +2256,7 @@ index 2e28d84..27d6af0 100644
 +    expect(w.posted).toHaveLength(2);
 +  });
 +
-+  it('signTransaction: refused before posting — an account it was not given, two accounts in one batch, another chain; a reply of the wrong length', async () => {
++  it('signTransaction: refused before posting — an account it was not given, two accounts in one batch, another chain, an input with no account; a reply of the wrong length', async () => {
 +    const w = fakeWindow();
 +    const wallet = new NocturaWallet(createBridge(w.win));
 +    const c = wallet.features['standard:connect'].connect();
@@ -2133,6 +2267,11 @@ index 2e28d84..27d6af0 100644
 +    await expect(sign({account: stranger, transaction: Uint8Array.of(1)})).rejects.toMatchObject({code: 4100});
 +    await expect(sign({account: account!, transaction: Uint8Array.of(1)}, {account: stranger, transaction: Uint8Array.of(1)})).rejects.toMatchObject({code: 'invalid-request'});
 +    await expect(sign({account: account!, transaction: Uint8Array.of(1), chain: 'solana:devnet'})).rejects.toMatchObject({code: 'invalid-request'});
++    // Review 1 L8: an input with no account is a NocturaError (invalid-request), never a TypeError.
++    const noAccount = {transaction: Uint8Array.of(1)} as unknown as Parameters<typeof sign>[0];
++    await expect(sign(noAccount)).rejects.toMatchObject({name: 'NocturaError', code: 'invalid-request'});
++    await expect(sign({account: account!, transaction: Uint8Array.of(1)}, noAccount)).rejects.toMatchObject({name: 'NocturaError', code: 'invalid-request'});
++    await expect(wallet.features['solana:signAndSendTransaction'].signAndSendTransaction(noAccount)).rejects.toMatchObject({name: 'NocturaError', code: 'invalid-request'});
 +    expect(w.posted).toHaveLength(1);
 +    const s = sign({account: account!, transaction: Uint8Array.of(1)});
 +    answerLast(w, {result: {signed: []}});
@@ -2162,7 +2301,7 @@ index 2e28d84..27d6af0 100644
    it('a change event from the background updates the accounts; the same accounts again announce nothing; off() stops the listener', async () => {
      const w = fakeWindow();
      const wallet = new NocturaWallet(createBridge(w.win));
-@@ -154,6 +211,12 @@ describe('the Noctura wallet (Wallet Standard)', () => {
+@@ -154,6 +228,12 @@ describe('the Noctura wallet (Wallet Standard)', () => {
      expect(wallet.accounts).toEqual([]);
    });
  
@@ -2200,7 +2339,7 @@ index 58a5c16..13f2e49 100644
 
 Run: `npx vitest run src/background/dapp/__tests__/store.test.ts src/background/dapp/__tests__/txPage.test.ts src/provider/__tests__/provider.test.ts src/relay/__tests__/relay.test.ts`
 
-Expected (the dry run): Test Files  4 failed (4) · Tests  19 failed | 31 passed (50)
+Expected (the dry run): Test Files  4 failed (4) · Tests  20 failed | 31 passed (51)
 
 - [ ] **Step 3: Implement.**
 
@@ -2381,12 +2520,18 @@ Change `extension/src/background/dapp/store.ts`:
 
 ````diff
 diff --git a/extension/src/background/dapp/store.ts b/extension/src/background/dapp/store.ts
-index 4977000..f8aa7e5 100644
+index 4977000..1184c57 100644
 --- a/extension/src/background/dapp/store.ts
 +++ b/extension/src/background/dapp/store.ts
-@@ -22,7 +22,13 @@ export const DAPP_SESSION_KEY = 'v1_dapp_session';
- export type ErrorCode = 'rejected' | 'unauthorized' | 'request-pending' | 'busy' | 'timeout' | 'invalid-request';
- export const ERROR_CODES: readonly ErrorCode[] = ['rejected', 'unauthorized', 'request-pending', 'busy', 'timeout', 'invalid-request'];
+@@ -19,10 +19,17 @@ import {LIMITS_KEY, limitsOf, type Limits} from './limits';
+  */
+ export const DAPP_SESSION_KEY = 'v1_dapp_session';
+ 
+-export type ErrorCode = 'rejected' | 'unauthorized' | 'request-pending' | 'busy' | 'timeout' | 'invalid-request';
+-export const ERROR_CODES: readonly ErrorCode[] = ['rejected', 'unauthorized', 'request-pending', 'busy', 'timeout', 'invalid-request'];
++/** Spec §1.6. `send-failed` (B1c-2, rev 3.3): an approved `signAndSendTransaction` whose bytes never reached the network. */
++export type ErrorCode = 'rejected' | 'unauthorized' | 'request-pending' | 'busy' | 'timeout' | 'invalid-request' | 'send-failed';
++export const ERROR_CODES: readonly ErrorCode[] = ['rejected', 'unauthorized', 'request-pending', 'busy', 'timeout', 'invalid-request', 'send-failed'];
  export type Answer = {result: Record<string, unknown>} | {error: ErrorCode};
 -export type EntryType = 'connect' | 'signMessage';
 +/**
@@ -2399,7 +2544,7 @@ index 4977000..f8aa7e5 100644
  export type Decision = 'approve' | 'reject' | 'report' | 'block';
  
  /** One request that needs the user (§1.5 step 1). */
-@@ -40,6 +46,10 @@ export interface Entry {
+@@ -40,6 +47,10 @@ export interface Entry {
    /** signMessage: the account it names and the message, base64. */
    account: string | null;
    message: string | null;
@@ -2410,7 +2555,7 @@ index 4977000..f8aa7e5 100644
    arrivedAt: number;
    state: 'queued' | 'deciding' | 'answered';
    /** The worker instance that wrote `deciding` (C17): another instance's `deciding` entry is a restart. */
-@@ -108,7 +118,11 @@ export function entryOf(x: unknown): Entry | null {
+@@ -108,7 +119,11 @@ export function entryOf(x: unknown): Entry | null {
    if (typeof x !== 'object' || x === null) return null;
    const o = x as Record<string, unknown>;
    if (!isStr(o.requestId) || !isStr(o.pageId) || !isStr(o.origin) || !isStr(o.host) || !isTime(o.tabId) || !isNullStr(o.documentId)) return null;
@@ -2423,7 +2568,7 @@ index 4977000..f8aa7e5 100644
    if (!isStr(o.state) || !STATES.includes(o.state) || !isNullStr(o.decidedBy) || (o.answeredAt !== null && !isTime(o.answeredAt))) return null;
    if (o.decidingAt !== null && !isTime(o.decidingAt)) return null;
    const decision = decisionOf(o.decision);
-@@ -121,9 +135,11 @@ export function entryOf(x: unknown): Entry | null {
+@@ -121,9 +136,11 @@ export function entryOf(x: unknown): Entry | null {
      host: o.host,
      tabId: o.tabId,
      documentId: o.documentId,
@@ -2487,7 +2632,7 @@ function one(x: unknown): {wire: string; tx: ParsedTx} | null {
   return tx === null ? null : {wire: base64.encode(bytes), tx};
 }
 
-/** The payload's shape — or null: `invalid-request` before anything else is read (as §9's last row for signMessage). */
+/** The payload's shape — or null: `invalid-request` before anything else is read (spec §9's row for transactions, rev 3.3). */
 export function txRequestOf(m: Record<string, unknown>, kind: 'signTransaction' | 'signAndSendTransaction'): TxRequest | null {
   if (!isAccount(m.account) || (m.chain !== undefined && m.chain !== CHAIN)) return null;
   let list: unknown[];
@@ -2546,6 +2691,24 @@ export function sameMessage(a: readonly string[], b: readonly string[]): boolean
 }
 ````
 
+Change `extension/src/provider/bridge.ts`:
+
+````diff
+diff --git a/extension/src/provider/bridge.ts b/extension/src/provider/bridge.ts
+index def3cf2..1efda0b 100644
+--- a/extension/src/provider/bridge.ts
++++ b/extension/src/provider/bridge.ts
+@@ -13,6 +13,8 @@ export const ERROR_TEXT: Record<ErrorCode, {code: number | ErrorCode; message: s
+   busy: {code: 'busy', message: 'The wallet is busy with other requests. Try again later.'},
+   timeout: {code: 'timeout', message: 'The request timed out.'},
+   'invalid-request': {code: 'invalid-request', message: 'The request is not valid.'},
++  /** B1c-2 (spec §1.6, rev 3.3; owner, 2026-10-15): the wallet's route refused the broadcast, or would not try — nothing was sent. */
++  'send-failed': {code: 'send-failed', message: 'The transaction could not be sent.'},
+ };
+ 
+ /** What a page sees for a refusal: a fixed English message and a stable code, never internal text (C10). */
+````
+
 Change `extension/src/provider/codec.ts`:
 
 ````diff
@@ -2580,11 +2743,28 @@ index da73b21..618ad21 100644
  }
 ````
 
+Change `extension/src/provider/protocol.ts`:
+
+````diff
+diff --git a/extension/src/provider/protocol.ts b/extension/src/provider/protocol.ts
+index 9c72651..39fd154 100644
+--- a/extension/src/provider/protocol.ts
++++ b/extension/src/provider/protocol.ts
+@@ -9,5 +9,6 @@ export const FROM_RELAY = 'noctura-relay';
+ export const METHOD_TYPES = ['page.connect', 'page.disconnect', 'page.signMessage', 'page.signTransaction', 'page.signAndSendTransaction'] as const;
+ export type MethodType = (typeof METHOD_TYPES)[number];
+ /** The stable codes a page can get (§1.6, C10). */
+-export const ERROR_CODES = ['rejected', 'unauthorized', 'request-pending', 'busy', 'timeout', 'invalid-request'] as const;
++/** Spec §1.6; `send-failed` is B1c-2's (rev 3.3: a broadcast the user approved that never reached the network). */
++export const ERROR_CODES = ['rejected', 'unauthorized', 'request-pending', 'busy', 'timeout', 'invalid-request', 'send-failed'] as const;
+ export type ErrorCode = (typeof ERROR_CODES)[number];
+````
+
 Change `extension/src/provider/wallet.ts`:
 
 ````diff
 diff --git a/extension/src/provider/wallet.ts b/extension/src/provider/wallet.ts
-index 0b11592..5b96e41 100644
+index 0b11592..5eb3f15 100644
 --- a/extension/src/provider/wallet.ts
 +++ b/extension/src/provider/wallet.ts
 @@ -1,17 +1,21 @@
@@ -2637,14 +2817,15 @@ index 0b11592..5b96e41 100644
      };
    }
  
-@@ -83,6 +95,38 @@ export class NocturaWallet implements Wallet {
+@@ -83,6 +95,39 @@ export class NocturaWallet implements Wallet {
      };
    };
  
 +  /** Only this wallet's account (the one connected), only solana:mainnet — refused here before anything is posted. */
 +  #checked(inputs: readonly TransactionInput[]): string {
-+    const first = inputs[0]?.account.address;
-+    if (first === undefined || !inputs.every(i => i.account.address === first)) throw new NocturaError('invalid-request');
++    // Plan 2 review 1 L8: an input without an account (a hostile or broken caller) is invalid-request, never a TypeError.
++    const first = inputs[0]?.account?.address;
++    if (typeof first !== 'string' || !inputs.every(i => i?.account?.address === first)) throw new NocturaError('invalid-request');
 +    if (!this.#accounts.some(a => a.address === first)) throw new NocturaError('unauthorized');
 +    if (inputs.some(i => i.chain !== undefined && i.chain !== CHAINS[0])) throw new NocturaError('invalid-request');
 +    return first;
@@ -2680,9 +2861,9 @@ index 0b11592..5b96e41 100644
 
 - [ ] **Step 4: Run — green, and the whole suite, the build and the gates.**
 
-Run: `npx vitest run src/background/dapp/__tests__/store.test.ts src/background/dapp/__tests__/txPage.test.ts src/provider/__tests__/provider.test.ts src/relay/__tests__/relay.test.ts` — expected: Test Files  4 passed (4) · Tests  50 passed (50)
+Run: `npx vitest run src/background/dapp/__tests__/store.test.ts src/background/dapp/__tests__/txPage.test.ts src/provider/__tests__/provider.test.ts src/relay/__tests__/relay.test.ts` — expected: Test Files  4 passed (4) · Tests  51 passed (51)
 
-Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  160 passed (160) · Tests  3165 passed (3165). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
+Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  161 passed (161) · Tests  3168 passed (3168). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
 
 - [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy; `tsc`'s own exit code first (0), then the named test: red.**
 
@@ -2695,8 +2876,12 @@ Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected
 | M3e | `pageApi.ts`: the identical-message rule off | txPage.test.ts "the same message while the first is unanswered is rejected" — RED Tests  1 failed \| 9 passed (10) |
 | M3f | `pageApi.ts`: a blocked host still gets a mismatch notice | txPage.test.ts "negative controls — no notice" (blocked) — RED Tests  1 failed \| 9 passed (10) |
 | M3g | `decide.ts`: a notice approvable | txPage.test.ts "a notice is only ever dismissed" — RED Tests  1 failed \| 9 passed (10) |
-| M3h | `wallet.ts`: another chain not refused by the provider | provider.test.ts "signTransaction: refused before posting" — RED Tests  1 failed \| 13 passed (14) |
-| M3i | `wallet.ts`: two accounts in one batch not refused | provider.test.ts "signTransaction: refused before posting" — RED Tests  1 failed \| 13 passed (14) |
+| M3h | `wallet.ts`: another chain not refused by the provider | provider.test.ts "signTransaction: refused before posting" — RED Tests  1 failed \| 14 passed (15) |
+| M3i | `wallet.ts`: two accounts in one batch not refused | provider.test.ts "signTransaction: refused before posting" — RED Tests  1 failed \| 14 passed (15) |
+| M3j | `wallet.ts`: an input's missing `account` dereferenced | provider.test.ts "signTransaction: refused before posting — … an input with no account" — RED Tests  1 failed \| 14 passed (15) |
+| M3k | `bridge.ts`: `send-failed` read as an unknown code | provider.test.ts "send-failed: its own code and fixed message" — RED Tests  1 failed \| 14 passed (15) |
+
+The counts in the last column are the dry run's, each mutant built from the END state (Task 10's tree): on this task's own tree a test file can hold fewer tests (a later task adds some), so the counts differ — red is the check, not the count (review 1 L11).
 
 - [ ] **Step 6: Commit.**
 
@@ -2727,12 +2912,12 @@ git commit -m "feat(extension): B1c-2 the page side — signTransaction and sign
 - Produces:
   - `simulate.ts`: `type SimState = {status: 'ok'; sim: TxSimulation} | {status: 'unreachable'; at: number}`; `simStateOf(x: unknown): SimState | null` (fresh objects).
   - `store.ts`: `Entry` gains `sim: SimState | null`, `challengeId: string | null`. `ports.ts`: `Runtime.simulating: Set<string>`.
-  - `reauthChallenges.ts`: `ChallengeAbout` gains `{kind: 'dapp'; account; site; transactions; outgoing: DappOutgoing[]; reasons: DappReauthReason[]; thresholdCents}`, `interface DappOutgoing {mint: string | null; amount: string; decimals: number | null}` (Task 6 adds `symbol`), `MAX_DAPP_OUTGOING = 16`.
-  - `dapp/signTx.ts`: `SIM_REFRESH_MS = 30_000`, `SIM_VALID_MS = 40_000`, `SIM_RETRY_MS = 5_000`; `isTxType`; `txsOf(e)`; `needsSimulation(e, now)`; `runSimulation(ext, deps, requestId)`; `interface AddressLabel {address; kind: 'account' | 'contact'; name}`; `interface TxItemView {version; feePayer; instructions: DecodedInstruction[] | null; outcome: TxOutcome | null}`; `type SimulationView`; `interface TxDetail {transactions; simulation; reauth: {reasons; state: 'needed' | 'waiting' | 'proven'} | null; labels}`; `txDetail(...)`; `dappDigest(e)`; `type TxRefusal = 'not-simulated' | 'stale' | 'simulation-failed' | 'blockhash-expired'`; `txRefused(e, simulation, now)`; `dappAbout(e, site, thresholdCents)`; `reauthGate(ext, deps, e, site): Promise<'ready' | 'reauth-required' | 'stale'>`; `withSignature(wire, slot, signature)`; `signAll(wires, txs, account)`; `stillDeciding(tx, e, instance, account)`; `finishSignTx(ext, deps, requestId, instance)`.
-  - `decide.ts`: `RequestView` gains `tx: (TxDetail & {account: AccountChoice; kind}) | null` and `mismatch: {granted: string} | null`; `pending(ext, deps: WalletDeps)`; `DecideRequest.simulation: string | null`; `DecideError` gains `TxRefusal | 'reauth-required'`; the effects by type (`effects[out.approved]`).
+  - `reauthChallenges.ts`: `ChallengeAbout` gains `{kind: 'dapp'; account; site; transactions; outgoing: DappOutgoing[]; omitted: number; reasons: DappReauthReason[]; thresholdCents}`, `interface DappOutgoing {mint: string | null; amount: string; decimals: number | null}` (Task 6 adds `symbol`), `MAX_DAPP_OUTGOING = 16` (the rest counted in `omitted` — R28).
+  - `dapp/signTx.ts`: `SIM_REFRESH_MS = 30_000`, `SIM_VALID_MS = 40_000`, `SIM_RETRY_MS = 5_000`; `isTxType`; `txsOf(e)`; `needsSimulation(e, now)`; `runSimulation(ext, deps, requestId)`; `interface AddressLabel {address; kind: 'account' | 'contact'; name}`; `interface TxItemView {version; feePayer; instructions: DecodedInstruction[] | null; outcome: TxOutcome | null}`; `type SimulationView`; `interface TxDetail {transactions; simulation; reauth: {reasons; state: 'needed' | 'waiting' | 'proven'} | null; labels}`; `txDetail(...)`; `dappDigest(e)`; `type TxRefusal = 'not-simulated' | 'stale' | 'simulation-failed' | 'blockhash-expired'`; `txRefused(e, simulation, now)`; `dappAbout(e, site, thresholdCents)` (SOL first, then the largest in USD, at most 16, `omitted` the rest); `reauthGate(ext, deps, e, site): Promise<'ready' | 'proven' | 'reauth-required' | 'stale'>` (checks the proof, never consumes it); `withSignature(wire, slot, signature)`; `signAll(wires, txs, account)`; `stillDeciding(tx, e, instance, account)`; `finishSignTx(ext, deps, requestId, instance)`.
+  - `decide.ts`: `RequestView` gains `tx: (TxDetail & {account: AccountChoice; kind}) | null` and `mismatch: {granted: string} | null`; `pending(ext, deps: WalletDeps)`; `DecideRequest.simulation: string | null`; `DecideError` gains `TxRefusal | 'reauth-required'`; a `proven` challenge consumed right after the `deciding` section (`consumeChallenge`), the request answered `rejected` if that fails; the effects by type (`effects[out.approved]`).
   - `__tests__/txHarness.ts`: `txScene()`, `until()`, `chainReader`, `v0`, `transfer`, `coSigned`, `ME`, `TO`, `CO`, `SOL`, `DAPP`.
 
-`dapp.pending` starts the head's simulation after its section — the first one, the refresh 30 s after the last, a retry 5 s after an unreachable proxy — at most one at a time per request (`Runtime.simulating`); the result is stored only if the entry is still `queued`. #48's view carries each transaction's decoded instructions (with the simulation's resolved keys, or the static keys when it uses no lookup table), its outcome, the simulation's id and slot, the re-authentication's state and the labels of every address shown. `dapp.decide` for a transaction runs §2.3's table, then the simulation rows (R7), then — outside every section — the re-authentication gate (R9, R11), then the `deciding` section with every check again. The `signTransaction` effect signs each transaction at the account's slot (every other signature kept) and answers `{signed}` only from a section where the entry is still this instance's `deciding` one, unlocked, its account in the session and its grant held; otherwise `rejected`. A connect or a `signMessage` decision takes exactly the section it took in B1c-1 (a routing peek reads without a section). Each effect is chosen by name: a type without one (a mismatch notice) never falls into another's.
+`dapp.pending` starts the head's simulation after its section — the first one, the refresh 30 s after the last, a retry 5 s after an unreachable proxy — at most one at a time per request (`Runtime.simulating`); the result is stored only if the entry is still `queued`. #48's view carries each transaction's decoded instructions (with the simulation's resolved keys, or the static keys when it uses no lookup table), its outcome, the simulation's id and slot, the re-authentication's state and the labels of every address shown. `dapp.decide` for a transaction runs §2.3's table, then the simulation rows (R7), then — outside every section — the re-authentication gate (R9, R11), then the `deciding` section with every check again, then — still before any key is read — the proof's consumption (R11, review 1 L1: a `stale` or `not-head` in the `deciding` section no longer spends the user's proof; a consume that fails ends the request `rejected`, nothing signed). #10's description lists at most 16 mints, SOL first then the largest in USD, and counts the rest (R28, review 1 L9 — rev 1 refused such a batch with an unexpected error). The `signTransaction` effect signs each transaction at the account's slot (every other signature kept) and answers `{signed}` only from a section where the entry is still this instance's `deciding` one, unlocked, its account in the session and its grant held; otherwise `rejected`. A connect or a `signMessage` decision takes exactly the section it took in B1c-1 (a routing peek reads without a section). Each effect is chosen by name: a type without one (a mismatch notice) never falls into another's.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -2765,7 +2950,9 @@ import {AUTOLOCK_ALARM, lock} from '../../autolock';
 import {GRANTS_KEY, type Grant} from '../grants';
 import {runtimeFor} from '../ports';
 import {DAPP_SESSION_KEY, readDappSession} from '../store';
-import {SIM_REFRESH_MS, SIM_RETRY_MS, SIM_VALID_MS, withSignature} from '../signTx';
+import {SIM_REFRESH_MS, SIM_RETRY_MS, SIM_VALID_MS, dappAbout, withSignature} from '../signTx';
+import {MAX_DAPP_OUTGOING} from '../../reauthChallenges';
+import {REAUTH_KEY} from '../../session';
 import {ACCOUNT, RECIPIENT} from '../../__tests__/fixtures';
 import {CO, ME, SOL, coSigned, transfer, txScene, until, v0} from './txHarness';
 
@@ -2918,12 +3105,15 @@ describe('dapp.decide for a transaction request', () => {
     expect(await c.approve(requestId, fresh)).toEqual({ok: true});
   });
 
-  it('the grant revoked, or granted to another account, while queued: no-grant / unknown — never a signature', async () => {
+  it('the grant moved to another account, or revoked, while queued: no-grant both times — never a signature', async () => {
     const c = await txScene({known: [RECIPIENT]});
     const r = await c.signTx('t', [v0()]);
     const id = (await c.simulated()).request?.tx?.simulation.id;
     await c.ext.local.set(GRANTS_KEY, [{origin: 'https://dapp.test', account: RECIPIENT, scope: 'persistent', connectedAt: 1, lastUsedAt: 1, recent: []}]);
     expect(await c.approve(String(r?.requestId), id)).toEqual({ok: false, error: 'no-grant'});
+    await c.ext.local.set(GRANTS_KEY, []);
+    expect(await c.approve(String(r?.requestId), id)).toEqual({ok: false, error: 'no-grant'});
+    expect(c.page.answersFor(String(r?.requestId))).toEqual([]);
   });
 
   it('a lock between deciding and the signature answers rejected; a restart with a deciding entry answers rejected — never re-signed (C17)', async () => {
@@ -2990,7 +3180,7 @@ describe('re-authentication for a transaction request', () => {
     expect((await c.pend()).request?.tx?.reauth).toEqual({reasons: ['first-send'], state: 'waiting'});
     expect(await c.challengeInfo(challengeId)).toEqual({
       ok: true,
-      data: {kind: 'dapp', account: ACCOUNT.publicKey, site: 'dapp.test', transactions: 1, outgoing: [{mint: null, amount: '1005000', decimals: 9}], reasons: ['first-send'], thresholdCents: 10_000},
+      data: {kind: 'dapp', account: ACCOUNT.publicKey, site: 'dapp.test', transactions: 1, outgoing: [{mint: null, amount: '1005000', decimals: 9}], omitted: 0, reasons: ['first-send'], thresholdCents: 10_000},
     });
     // Still refused while unproven; the challenge is not reissued.
     expect(await c.approve(requestId, id)).toEqual({ok: false, error: 'reauth-required'});
@@ -3015,6 +3205,83 @@ describe('re-authentication for a transaction request', () => {
     expect(await c.approve(requestId, id2)).toEqual({ok: false, error: 'reauth-required'});
     expect((await c.entry(requestId))?.challengeId).not.toBe(first);
     expect(SOL).toBe(10_000_000_000n);
+  });
+
+  /** A proven request, and a hook on the challenge store's reads during the next Approve (the gate reads it twice, the consume once more). */
+  async function proven() {
+    const c = await txScene();
+    const r = await c.signTx('t', [v0([transfer(1_000_000)])]);
+    const requestId = String(r?.requestId);
+    const id = String((await c.simulated()).request?.tx?.simulation.id);
+    await c.approve(requestId, id);
+    const challengeId = String((await c.entry(requestId))?.challengeId);
+    await c.reauthOk(challengeId);
+    const get = c.ext.session.get;
+    const hook: {onRead: ((n: number) => Promise<unknown | undefined>) | null; reads: number} = {onRead: null, reads: 0};
+    c.ext.session.get = async k => {
+      if (k !== REAUTH_KEY || hook.onRead === null) return get(k);
+      hook.reads++;
+      const replaced = await hook.onRead(hook.reads);
+      return replaced === undefined ? get(k) : replaced;
+    };
+    return {...c, requestId, id, challengeId, hook};
+  }
+
+  // Review 1 L1: the proof is consumed after `deciding` is written, so a refusal there does not spend it.
+  it('a refresh that lands while the gate reads the proof: stale — the proof is not spent; the new simulation’s approval signs with it, once', async () => {
+    const c = await proven();
+    const fresh = 'R'.repeat(22);
+    c.hook.onRead = async n => {
+      // The gate's first read: a refresh lands now (a new simulation id on the entry), before the deciding section.
+      if (n === 1) {
+        const s = await readDappSession(c.ext);
+        await c.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => (e.sim?.status === 'ok' ? {...e, sim: {status: 'ok', sim: {...e.sim.sim, id: fresh}}} : e))});
+      }
+      return undefined;
+    };
+    expect(await c.approve(c.requestId, c.id)).toEqual({ok: false, error: 'stale'});
+    c.hook.onRead = null;
+    expect(c.page.answersFor(c.requestId)).toEqual([]);
+    expect((await c.pend()).request?.tx?.reauth?.state).toBe('proven');
+    expect(await c.approve(c.requestId, fresh)).toEqual({ok: true});
+    expect(c.page.answersFor(c.requestId)).toHaveLength(1);
+    expect(c.page.answersFor(c.requestId)[0]?.result).toBeDefined();
+    expect(await c.challengeInfo(c.challengeId)).toEqual({ok: false, error: 'unknown-challenge'});
+  });
+
+  it('the proof gone between the gate and the consume (spent elsewhere): rejected, nothing signed — never signed on a proof not consumed', async () => {
+    const c = await proven();
+    // Reads 1–2 are the gate's (live, satisfied); read 3 is the consume's: the challenge is no longer in the store.
+    c.hook.onRead = async n => (n === 3 ? {} : undefined);
+    expect(await c.approve(c.requestId, c.id)).toEqual({ok: false, error: 'reauth-required'});
+    expect(c.hook.reads).toBe(3);
+    expect(c.page.answersFor(c.requestId)).toEqual([{requestId: c.requestId, error: 'rejected'}]);
+  });
+
+  // Review 1 L9: a batch that loses more mints than #10 lists is cut and counted, never refused.
+  it('dappAbout: at most MAX_DAPP_OUTGOING mints — SOL first, then the largest in USD, then the unpriced in order — and the rest counted', async () => {
+    const c = await txScene();
+    const r = await c.signTx('t', [v0([transfer(1_000_000)])]);
+    await c.simulated();
+    const e = structuredClone(await c.entry(String(r?.requestId)));
+    if (e === undefined || e.sim?.status !== 'ok') throw new Error('not simulated');
+    const mint = (i: number) => base58.encode(new Uint8Array(32).fill(i + 1));
+    const changes = [
+      ...Array.from({length: 10}, (_, i) => ({mint: mint(i), amount: '-5', decimals: 0, usdMicros: null})),
+      ...Array.from({length: 8}, (_, i) => ({mint: mint(20 + i), amount: '-5', decimals: 0, usdMicros: String(-(i + 1) * 1_000_000)})),
+      {mint: null, amount: '-7', decimals: 9, usdMicros: null},
+      {mint: mint(40), amount: '3', decimals: 0, usdMicros: '9000000000'},
+    ];
+    const [first] = e.sim.sim.outcomes;
+    if (first === undefined || !first.ok) throw new Error('no outcome');
+    e.sim = {status: 'ok', sim: {...e.sim.sim, outcomes: [{...first, changes}]}};
+    const about = dappAbout(e, 'dapp.test', 10_000);
+    expect(MAX_DAPP_OUTGOING).toBe(16);
+    expect(about?.outgoing.map(o => o.mint)).toEqual([null, ...[7, 6, 5, 4, 3, 2, 1, 0].map(i => mint(20 + i)), ...[0, 1, 2, 3, 4, 5, 6].map(mint)]);
+    expect(about?.omitted).toBe(3);
+    // Positive control: a short list is whole, nothing omitted.
+    e.sim = {status: 'ok', sim: {...e.sim.sim, outcomes: [{...first, changes: changes.slice(17)}]}};
+    expect(dappAbout(e, 'dapp.test', 10_000)).toMatchObject({outgoing: [{mint: null}, {mint: mint(27)}], omitted: 0});
   });
 });
 
@@ -3200,10 +3467,10 @@ Change `extension/src/background/dapp/decide.ts`:
 
 ````diff
 diff --git a/extension/src/background/dapp/decide.ts b/extension/src/background/dapp/decide.ts
-index db536b0..b4f01c8 100644
+index db536b0..c372f8b 100644
 --- a/extension/src/background/dapp/decide.ts
 +++ b/extension/src/background/dapp/decide.ts
-@@ -11,9 +11,10 @@ import {MAX_GRANTS, type Grant} from './grants';
+@@ -11,9 +11,11 @@ import {MAX_GRANTS, type Grant} from './grants';
  import {inCooldown, rejectionsOf, REJECTIONS_FOR_COOLDOWN} from './limits';
  import {runtimeFor} from './ports';
  import {answer, headOf, isOpenEntry, queueAccess, rejectQueued, userRejected, type Effects} from './queue';
@@ -3211,11 +3478,12 @@ index db536b0..b4f01c8 100644
 +import {dropGrant, grantIn, putGrant, readDappSession, type Decision, type Entry, type Tx} from './store';
  import {base64} from '@scure/base';
  import {checkMessage, checkSiws, finishSign, homoglyphRanges, keywordIn} from './signMessage';
-+import {finishSignTx, isTxType, needsSimulation, reauthGate, runSimulation, txDetail, txRefused, type TxDetail, type TxRefusal} from './signTx';
++import {dappDigest, finishSignTx, isTxType, needsSimulation, reauthGate, runSimulation, txDetail, txRefused, type TxDetail, type TxRefusal} from './signTx';
++import {consumeChallenge} from '../reauthChallenges';
  
  /**
   * The approval window's two messages (spec §1.4, §2.3, C13, C17): `dapp.pending` — what the window shows — and
-@@ -86,6 +87,10 @@ export interface RequestView {
+@@ -86,6 +88,10 @@ export interface RequestView {
    /** Null while locked: the locked screen shows the origin card only (D11). */
    connect: ConnectDetail | null;
    sign: SignDetail | null;
@@ -3226,7 +3494,7 @@ index db536b0..b4f01c8 100644
  }
  
  export type PendingView =
-@@ -117,11 +122,17 @@ async function viewOf(ext: Ext, tx: Tx, e: Entry): Promise<RequestView> {
+@@ -117,11 +123,17 @@ async function viewOf(ext: Ext, tx: Tx, e: Entry): Promise<RequestView> {
    const site = siteView(e.host);
    let connect: ConnectDetail | null = null;
    let sign: SignDetail | null = null;
@@ -3244,7 +3512,7 @@ index db536b0..b4f01c8 100644
    }
    return {
      requestId: e.requestId,
-@@ -132,6 +143,8 @@ async function viewOf(ext: Ext, tx: Tx, e: Entry): Promise<RequestView> {
+@@ -132,6 +144,8 @@ async function viewOf(ext: Ext, tx: Tx, e: Entry): Promise<RequestView> {
      offerBlock: rejectionsOf(tx.limits, e.host, e.tabId) >= REJECTIONS_FOR_COOLDOWN - 1,
      connect,
      sign,
@@ -3253,7 +3521,7 @@ index db536b0..b4f01c8 100644
    };
  }
  
-@@ -140,8 +153,9 @@ async function viewOf(ext: Ext, tx: Tx, e: Entry): Promise<RequestView> {
+@@ -140,8 +154,9 @@ async function viewOf(ext: Ext, tx: Tx, e: Entry): Promise<RequestView> {
   * `locked` while locked (D11), `none` when the queue is empty (the window closes itself) — with how many more wait (Q12)
   * and the budget notice (Q24, once). Records which request the window shows: closing the window rejects that one.
   */
@@ -3265,7 +3533,7 @@ index db536b0..b4f01c8 100644
      const h = headOf(tx);
      if (h === null) return {state: 'none'};
      if (tx.s.window !== null) tx.s.window = {...tx.s.window, showing: h.requestId};
-@@ -149,27 +163,34 @@ export async function pending(ext: Ext, deps: Pick<WalletDeps, 'now'>): Promise<
+@@ -149,27 +164,34 @@ export async function pending(ext: Ext, deps: Pick<WalletDeps, 'now'>): Promise<
      if (windowNotice) tx.limits = {...tx.limits, notice: false};
      const waiting = tx.s.queue.filter(isOpenEntry).length - 1;
      const state = tx.session === null ? 'locked' : h.state === 'deciding' ? 'deciding' : 'request';
@@ -3303,7 +3571,7 @@ index db536b0..b4f01c8 100644
  }
  
  /** Blocking a host (§2.6): every grant of that host (both scopes, every port and scheme) revoked, its queued requests rejected. */
-@@ -205,10 +226,12 @@ function approvalRefused(tx: Tx, e: Entry, d: DecideRequest): DecideError | null
+@@ -205,10 +227,12 @@ function approvalRefused(tx: Tx, e: Entry, d: DecideRequest): DecideError | null
    if (isBlocked(tx.blocked, e.host) || inCooldown(tx.limits, e.host, e.tabId, tx.now)) return 'blocked';
    // §2.1: beyond 200 persistent grants a connect has only [Reject] (Q16).
    if (e.type === 'connect' && grantIn(tx, e.origin) === null && tx.grants.length >= MAX_GRANTS) return 'cap';
@@ -3317,7 +3585,7 @@ index db536b0..b4f01c8 100644
      // §3.2 rule 3: a sign-in message for another domain has no Sign (C13: the window's missing button is not the check).
      if (e.message !== null) {
        const checked = checkMessage(base64.decode(e.message));
-@@ -241,15 +264,50 @@ async function finishConnect(ext: Ext, deps: Pick<WalletDeps, 'now'>, requestId:
+@@ -241,15 +265,53 @@ async function finishConnect(ext: Ext, deps: Pick<WalletDeps, 'now'>, requestId:
    });
  }
  
@@ -3347,6 +3615,8 @@ index db536b0..b4f01c8 100644
 +  // A peek without a section only routes: every check below runs again inside the sections. A connect or a
 +  // signMessage decision takes the one section it always took.
 +  const peek = (await readDappSession(ext)).queue.find(x => x.requestId === d.requestId);
++  // A proven challenge to consume after `deciding` is written (review 1 L1): its id and what it is bound to.
++  let proof: {id: string; digest: string} | null = null;
 +  if (d.decision === 'approve' && peek !== undefined && isTxType(peek.type)) {
 +    const pre = await queueAccess(ext, deps, (tx): DecideError | Entry | 'other' => {
 +      const e = tx.s.queue.find(x => x.requestId === d.requestId);
@@ -3358,7 +3628,8 @@ index db536b0..b4f01c8 100644
 +    if (typeof pre === 'string' && pre !== 'other') return {ok: false, error: pre};
 +    if (typeof pre === 'object') {
 +      const gate = await reauthGate(ext, deps, pre, siteOf(pre.origin, pre.host));
-+      if (gate !== 'ready') return {ok: false, error: gate};
++      if (gate === 'proven' && pre.challengeId !== null) proof = {id: pre.challengeId, digest: dappDigest(pre)};
++      else if (gate !== 'ready') return {ok: false, error: gate === 'proven' ? 'reauth-required' : gate};
 +    }
 +  }
    const out = await queueAccess(ext, deps, (tx, fx): DecideError | {approved: Entry['type']} | 'done' => {
@@ -3372,7 +3643,7 @@ index db536b0..b4f01c8 100644
      // B1c-2: a mismatch notice is only ever dismissed (#48 "origin-mismatch · auto-reject" has no approval path).
      if (e.type === 'mismatch' && d.decision !== 'reject') return 'malformed';
      if (d.decision === 'reject') {
-@@ -264,9 +322,9 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
+@@ -264,9 +326,9 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
        blockHost(tx, fx, e.host);
        return 'done';
      }
@@ -3385,8 +3656,19 @@ index db536b0..b4f01c8 100644
      if (refused !== null) return refused;
      e.state = 'deciding';
      e.decidedBy = instance;
-@@ -277,6 +335,10 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
+@@ -275,8 +337,21 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
+     return {approved: e.type};
+   });
    if (typeof out === 'string' && out !== 'done') return {ok: false, error: out};
++  // Review 1 L1: the proof is spent here — after `deciding` (never decided twice), before any key is read. If it is gone
++  // (expired, or spent by another approval), the request ends `rejected`: nothing was signed.
++  if (proof !== null && typeof out === 'object' && !(await consumeChallenge(ext, deps.now(), proof.id, proof.digest))) {
++    await queueAccess(ext, deps, (tx, fx) => {
++      const e = tx.s.queue.find(x => x.requestId === d.requestId);
++      if (e !== undefined && e.state === 'deciding' && e.decidedBy === instance) answer(fx, e, {error: 'rejected'}, tx.now);
++    });
++    return {ok: false, error: 'reauth-required'};
++  }
    // §2.2: a decision in the window is a user action — it arms the auto-lock timer (page requests never do).
    if ((await getSession(ext)) !== null) await armAutolock(ext).catch(e => console.warn('dApp decide: the idle timer was not re-armed', e));
 -  if (typeof out === 'object') await (out.approved === 'connect' ? finishConnect : finishSign)(ext, deps, d.requestId, instance);
@@ -3455,7 +3737,7 @@ import {digestOf} from '../digest';
 import {getSession} from '../session';
 import {readSettings} from '../settings';
 import {recipientFacts} from '../knownRecipients';
-import {challengeInfo, challengeSatisfied, consumeChallenge, issueChallenge, type ChallengeAbout, type DappOutgoing} from '../reauthChallenges';
+import {MAX_DAPP_OUTGOING, challengeInfo, challengeSatisfied, issueChallenge, type ChallengeAbout, type DappOutgoing} from '../reauthChallenges';
 import {readContacts} from '../contacts';
 import {decodeInstructions, type DecodedInstruction} from './decode/decode';
 import {resolveKeys} from './decode/keys';
@@ -3624,27 +3906,39 @@ export function txRefused(e: Entry, simulation: string | null, now: number): TxR
 /** What #10 says about a dApp challenge: the site, the batch's size, what leaves the account per mint, the reasons. */
 export function dappAbout(e: Entry, site: string, thresholdCents: number): Extract<ChallengeAbout, {kind: 'dapp'}> | null {
   if (e.sim?.status !== 'ok' || e.account === null || e.transactions === null) return null;
-  const out = new Map<string | null, {amount: bigint; decimals: number | null}>();
+  // Per mint: what leaves, and its USD value when every part of it has a price (null otherwise).
+  const out = new Map<string | null, {amount: bigint; decimals: number | null; usd: bigint | null}>();
   for (const o of e.sim.sim.outcomes) {
     if (!o.ok) continue;
     for (const c of o.changes) {
       const a = BigInt(c.amount);
       if (a >= 0n) continue;
       const prev = out.get(c.mint);
-      out.set(c.mint, {amount: (prev?.amount ?? 0n) - a, decimals: c.decimals});
+      const usd = c.usdMicros === null ? null : -BigInt(c.usdMicros);
+      out.set(c.mint, {amount: (prev?.amount ?? 0n) - a, decimals: c.decimals, usd: prev !== undefined && prev.usd === null ? null : usd === null ? null : (prev?.usd ?? 0n) + usd});
     }
   }
-  const outgoing: DappOutgoing[] = [...out].map(([mint, v]) => ({mint, amount: v.amount.toString(), decimals: v.decimals}));
-  return {kind: 'dapp', account: e.account, site, transactions: e.transactions.length, outgoing, reasons: e.sim.sim.reasons.slice(), thresholdCents};
+  // Review 1 L9: more mints than #10 lists is cut, not refused — SOL first, then the largest in USD, then the unpriced
+  // ones in the order the batch names them; the rest are counted.
+  const rank = (m: string | null, usd: bigint | null): [number, bigint] => (m === null ? [0, 0n] : usd === null ? [2, 0n] : [1, -usd]);
+  const all = [...out].map(([mint, v], i) => ({mint, v, i})).sort((x, y) => {
+    const [a, b] = [rank(x.mint, x.v.usd), rank(y.mint, y.v.usd)];
+    return a[0] - b[0] || (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0) || x.i - y.i;
+  });
+  const outgoing: DappOutgoing[] = all.slice(0, MAX_DAPP_OUTGOING).map(({mint, v}) => ({mint, amount: v.amount.toString(), decimals: v.decimals}));
+  return {kind: 'dapp', account: e.account, site, transactions: e.transactions.length, outgoing, omitted: all.length - outgoing.length, reasons: e.sim.sim.reasons.slice(), thresholdCents};
 }
 
 /**
  * B1b's re-authentication for a transaction request (spec §3.3): when the simulation gave reasons, Approve first asks
  * for a challenge — issued once, kept on the entry, described by #10 (reached from the Noctura icon, never from the
- * window: D11) — and signs only once it is proven, consuming it (single use). Runs outside every queue section (the
- * challenge store takes sessionMutex). `ready`: approvable now (the challenge consumed, or none needed).
+ * window: D11) — and signs only once it is proven. Runs outside every queue section (the challenge store takes
+ * sessionMutex). `ready`: no challenge needed; `proven`: approvable once the challenge is consumed — dapp.decide
+ * consumes it right after the `deciding` section (plan 2 review 1 L1: a refusal in that section — a refresh landed,
+ * the request is no longer the head — leaves the proof standing, so the user is not asked again for it). Still single
+ * use: a `deciding` entry is never decided twice, and a failed consume ends the request `rejected` before any key is read.
  */
-export async function reauthGate(ext: Ext, deps: Pick<WalletDeps, 'now' | 'randomBytes'>, e: Entry, site: string): Promise<'ready' | 'reauth-required' | 'stale'> {
+export async function reauthGate(ext: Ext, deps: Pick<WalletDeps, 'now' | 'randomBytes'>, e: Entry, site: string): Promise<'ready' | 'proven' | 'reauth-required' | 'stale'> {
   if (e.sim?.status !== 'ok' || e.sim.sim.reasons.length === 0) return 'ready';
   const digest = dappDigest(e);
   const now = deps.now();
@@ -3660,8 +3954,7 @@ export async function reauthGate(ext: Ext, deps: Pick<WalletDeps, 'now' | 'rando
     return 'reauth-required';
   }
   const id = e.challengeId as string;
-  if (!(await challengeSatisfied(ext, now, id, digest))) return 'reauth-required';
-  return (await consumeChallenge(ext, now, id, digest)) ? 'ready' : 'reauth-required';
+  return (await challengeSatisfied(ext, now, id, digest)) ? 'proven' : 'reauth-required';
 }
 
 /** The wire with this signature written into slot `slot` (every other byte as the dApp sent it). */
@@ -3804,7 +4097,7 @@ Change `extension/src/background/dapp/store.ts`:
 
 ````diff
 diff --git a/extension/src/background/dapp/store.ts b/extension/src/background/dapp/store.ts
-index f8aa7e5..38cd43b 100644
+index 1184c57..663a30d 100644
 --- a/extension/src/background/dapp/store.ts
 +++ b/extension/src/background/dapp/store.ts
 @@ -5,6 +5,7 @@ import {getSession, sessionMutex} from '../session';
@@ -3815,7 +4108,7 @@ index f8aa7e5..38cd43b 100644
  
  /**
   * The dApp provider's state (spec §1.5, §2). storage.session holds what dies with the session — the request queue,
-@@ -50,6 +51,10 @@ export interface Entry {
+@@ -51,6 +52,10 @@ export interface Entry {
    transactions: string[] | null;
    /** mismatch (B1c-2): the origin the named account is granted to; else null. */
    granted: string | null;
@@ -3826,7 +4119,7 @@ index f8aa7e5..38cd43b 100644
    arrivedAt: number;
    state: 'queued' | 'deciding' | 'answered';
    /** The worker instance that wrote `deciding` (C17): another instance's `deciding` entry is a restart. */
-@@ -122,7 +127,10 @@ export function entryOf(x: unknown): Entry | null {
+@@ -123,7 +128,10 @@ export function entryOf(x: unknown): Entry | null {
    // B1c-2's fields: absent on an entry an older background wrote (read as null), else exactly their shape.
    const transactions = o.transactions === undefined || o.transactions === null ? null : Array.isArray(o.transactions) && o.transactions.every(isStr) ? (o.transactions as string[]).slice() : undefined;
    const granted = o.granted === undefined ? null : isNullStr(o.granted) ? o.granted : undefined;
@@ -3838,7 +4131,7 @@ index f8aa7e5..38cd43b 100644
    if (!isStr(o.state) || !STATES.includes(o.state) || !isNullStr(o.decidedBy) || (o.answeredAt !== null && !isTime(o.answeredAt))) return null;
    if (o.decidingAt !== null && !isTime(o.decidingAt)) return null;
    const decision = decisionOf(o.decision);
-@@ -140,6 +148,8 @@ export function entryOf(x: unknown): Entry | null {
+@@ -141,6 +149,8 @@ export function entryOf(x: unknown): Entry | null {
      message: o.message,
      transactions,
      granted,
@@ -3853,7 +4146,7 @@ Change `extension/src/background/reauthChallenges.ts`:
 
 ````diff
 diff --git a/extension/src/background/reauthChallenges.ts b/extension/src/background/reauthChallenges.ts
-index af81732..edde904 100644
+index af81732..e410f30 100644
 --- a/extension/src/background/reauthChallenges.ts
 +++ b/extension/src/background/reauthChallenges.ts
 @@ -2,7 +2,7 @@ import type {Ext} from '../ext';
@@ -3865,7 +4158,7 @@ index af81732..edde904 100644
  import type {FeeReason} from '../../../core/fees/transferMarkup';
  
  /** How long the vault page has to prove the factor (brief decision 6), counted from the last prepare of the same intent. */
-@@ -38,7 +38,20 @@ export type ChallengeAbout =
+@@ -38,7 +38,21 @@ export type ChallengeAbout =
        reasons: SendReauthReason[];
        thresholdCents: number;
      }
@@ -3875,9 +4168,10 @@ index af81732..edde904 100644
 +   * B1c-2 (spec B1c §3.3): a dApp's transaction request — the site as the window shows it (host, or host:port), how
 +   * many transactions it signs, what leaves the account per mint (null = SOL; positive base units; decimals when known)
 +   * and why. Bound to the request and its exact bytes (signTx.ts dappDigest). #10 describes it; the approval window
-+   * signs only once the challenge is proven and consumed.
++   * signs only once the challenge is proven and consumed. `outgoing` holds at most MAX_DAPP_OUTGOING mints (SOL first,
++   * then the largest in USD); `omitted` counts the mints left out (plan 2 review 1 L9: a long list is cut, never refused).
 +   */
-+  | {kind: 'dapp'; account: string; site: string; transactions: number; outgoing: DappOutgoing[]; reasons: DappReauthReason[]; thresholdCents: number};
++  | {kind: 'dapp'; account: string; site: string; transactions: number; outgoing: DappOutgoing[]; omitted: number; reasons: DappReauthReason[]; thresholdCents: number};
 +
 +export interface DappOutgoing {
 +  mint: string | null;
@@ -3887,19 +4181,19 @@ index af81732..edde904 100644
  
  /** The fields a re-prepare of the same intent may refresh; the identity fields (account, token, recipient, amount) never change. */
  export type SendAboutRefresh = Pick<
-@@ -59,6 +72,11 @@ type Store = Map<string, Challenge>;
+@@ -59,6 +73,11 @@ type Store = Map<string, Challenge>;
  const TOKENS: readonly string[] = ['SOL', 'NOC', 'USDC', 'USDT'];
  const REASONS: readonly string[] = ['first-send', 'over-5-percent', 'over-usd-threshold', 'whole-balance-to-new'];
  const FEE_REASONS: readonly string[] = ['pre-tge', 'zero-fee-eligible', 'status-unknown', 'charged'];
 +const DAPP_REASONS: readonly string[] = [...REASONS, 'approval'];
-+/** At most this many mints in a dApp challenge's description (more than a five-transaction batch can name sensibly). */
++/** At most this many mints in a dApp challenge's description (more than a five-transaction batch can name sensibly; the rest are counted in `omitted`). */
 +export const MAX_DAPP_OUTGOING = 16;
 +/** A site as the window shows it: a host (ASCII / punycode, or an IP literal), with a port when the origin has one. */
 +const SITE = /^[A-Za-z0-9.\-[\]:]{1,262}$/;
  const DIGITS = /^\d{1,20}$/;
  /** A base58 Solana address's shape (32–44 characters). */
  const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-@@ -70,6 +88,28 @@ function isAbout(x: unknown): x is ChallengeAbout {
+@@ -70,6 +89,30 @@ function isAbout(x: unknown): x is ChallengeAbout {
    if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
    const a = x as Record<string, unknown>;
    if (a.kind === 'settings') return isIntOrNull(a.autoLockMinutes) && isIntOrNull(a.reauthUsdCents) && Object.keys(a).length === 3;
@@ -3917,18 +4211,20 @@ index af81732..edde904 100644
 +      Array.isArray(outgoing) &&
 +      outgoing.length <= MAX_DAPP_OUTGOING &&
 +      (outgoing as unknown[]).every(isOutgoing) &&
++      isInt(a.omitted) &&
++      a.omitted >= 0 &&
 +      Array.isArray(reasons) &&
 +      reasons.length > 0 &&
 +      new Set(reasons).size === reasons.length &&
 +      (reasons as unknown[]).every(r => typeof r === 'string' && DAPP_REASONS.includes(r)) &&
 +      isInt(a.thresholdCents) &&
-+      Object.keys(a).length === 7
++      Object.keys(a).length === 8
 +    );
 +  }
    if (a.kind !== 'send') return false;
    return (
      typeof a.account === 'string' &&
-@@ -90,6 +130,19 @@ function isAbout(x: unknown): x is ChallengeAbout {
+@@ -90,6 +133,19 @@ function isAbout(x: unknown): x is ChallengeAbout {
    );
  }
  
@@ -3952,24 +4248,29 @@ index af81732..edde904 100644
 
 - [ ] **Step 4: Run — green, and the whole suite, the build and the gates.**
 
-Run: `npx vitest run src/background/dapp/__tests__/decide.test.ts src/background/dapp/__tests__/signTx.test.ts src/background/dapp/__tests__/store.test.ts` — expected: Test Files  3 passed (3) · Tests  67 passed (67)
+Run: `npx vitest run src/background/dapp/__tests__/decide.test.ts src/background/dapp/__tests__/signTx.test.ts src/background/dapp/__tests__/store.test.ts` — expected: Test Files  3 passed (3) · Tests  70 passed (70)
 
-Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  161 passed (161) · Tests  3180 passed (3180). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
+Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  162 passed (162) · Tests  3186 passed (3186). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
 
 - [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy; `tsc`'s own exit code first (0), then the named test: red.**
 
 | id | the change | red |
 |---|---|---|
-| M4a | `signTx.ts`: the simulation's id not compared | signTx.test.ts "refused … for another simulation than the newest" and "a refresh that lands between the window's read and its click" — RED Tests  2 failed \| 14 passed (16) |
-| M4b | `signTx.ts`: a simulation's age not checked | signTx.test.ts "… for one SIM_VALID_MS old" — RED Tests  1 failed \| 15 passed (16) |
-| M4c | `signTx.ts`: a failed simulation approvable | signTx.test.ts "a failed simulation has no approval" — RED Tests  1 failed \| 15 passed (16) |
-| M4d | `signTx.ts`: the re-authentication gate always ready | signTx.test.ts "a first send: Approve asks for a challenge" — RED Tests  3 failed \| 13 passed (16) |
-| M4e | `signTx.ts`: a challenge not consumed (always ready once proven) | signTx.test.ts "a first send" (single use) — RED Tests  1 failed \| 15 passed (16) |
-| M4f | `signTx.ts`: a simulation stored on a decided entry | signTx.test.ts "a simulation that answers after the request was decided is not stored" — RED Tests  1 failed \| 15 passed (16) |
-| M4g | `signTx.ts`: no one-at-a-time per request | signTx.test.ts "… one simulation, however many reads" — RED Tests  2 failed \| 14 passed (16) |
-| M4h | `signTx.ts`: the effect section checks only the lock (not the account, not the grant) | signTx.test.ts "the account removed from the session while its key is read" — RED Tests  1 failed \| 15 passed (16) |
-| M4i | `signTx.ts`: every signature written at slot 0 | signTx.test.ts "… the co-signer's signature kept" and "withSignature writes only the slot it is given" — RED Tests  2 failed \| 14 passed (16) |
-| M4j | `decide.ts`: a transaction approval routed past the pre-section (no simulation rows, no gate) | signTx.test.ts "re-authentication …" — RED Tests  3 failed \| 13 passed (16) |
+| M4a | `signTx.ts`: the simulation's id not compared | signTx.test.ts "refused … for another simulation than the newest" and "a refresh that lands between the window's read and its click" — RED Tests  3 failed \| 16 passed (19) |
+| M4b | `signTx.ts`: a simulation's age not checked | signTx.test.ts "… for one SIM_VALID_MS old" — RED Tests  1 failed \| 18 passed (19) |
+| M4c | `signTx.ts`: a failed simulation approvable | signTx.test.ts "a failed simulation has no approval" — RED Tests  1 failed \| 18 passed (19) |
+| M4d | `signTx.ts`: the re-authentication gate always ready | signTx.test.ts "a first send: Approve asks for a challenge" — RED Tests  5 failed \| 14 passed (19) |
+| M4e | `decide.ts`: the proof not consumed after `deciding` (the consume replaced by a constant) | signTx.test.ts "a first send" (single use) and "the proof gone between the gate and the consume" — RED Tests  3 failed \| 16 passed (19) |
+| M4f | `signTx.ts`: a simulation stored on a decided entry | signTx.test.ts "a simulation that answers after the request was decided is not stored" — RED Tests  1 failed \| 18 passed (19) |
+| M4g | `signTx.ts`: no one-at-a-time per request | signTx.test.ts "… one simulation, however many reads" — RED Tests  2 failed \| 17 passed (19) |
+| M4h | `signTx.ts`: the effect section checks only the lock (not the account, not the grant) | signTx.test.ts "the account removed from the session while its key is read" — RED Tests  1 failed \| 18 passed (19) |
+| M4i | `signTx.ts`: every signature written at slot 0 | signTx.test.ts "… the co-signer's signature kept" and "withSignature writes only the slot it is given" — RED Tests  2 failed \| 17 passed (19) |
+| M4j | `decide.ts`: a transaction approval routed past the pre-section (no simulation rows, no gate) | signTx.test.ts "re-authentication …" — RED Tests  5 failed \| 14 passed (19) |
+| M4k | `signTx.ts`: the gate consumes the proof itself (rev 1's consume point) | signTx.test.ts "a refresh that lands while the gate reads the proof: stale — the proof is not spent" — RED Tests  3 failed \| 16 passed (19) |
+| M4l | `signTx.ts`: `omitted` always 0 | signTx.test.ts "dappAbout: at most MAX_DAPP_OUTGOING mints" — RED Tests  1 failed \| 18 passed (19) |
+| M4m | `signTx.ts`: the list not cut at 16 | signTx.test.ts "dappAbout: at most MAX_DAPP_OUTGOING mints" — RED Tests  1 failed \| 18 passed (19) |
+
+The counts in the last column are the dry run's, each mutant built from the END state (Task 10's tree): on this task's own tree a test file can hold fewer tests (a later task adds some), so the counts differ — red is the check, not the count (review 1 L11).
 
 - [ ] **Step 6: Commit.**
 
@@ -4004,16 +4305,18 @@ git commit -m "feat(extension): B1c-2 pending and decide for transactions — th
 **Interfaces:**
 - Consumes: Task 4's `signAll`, `stillDeciding`, `txsOf`; B1b's `updatePending`, `deliver`, `startPoller`, `armPendingAlarm`, `firstSignature`, `randomId`.
 - Produces:
-  - `pendingStore.ts`: `PendingRecord.intent: SendIntent | null`, `PendingRecord.origin: string | null`; `inFlightFor` sees the wallet's own sends only.
-  - `pending.ts`: `recordDappSend(ext, deps, {account, wire, lastValidBlockHeight, origin}): Promise<PendingRecord>`; `broadcastFirst(ext, deps, record): Promise<'sent' | 'not-sent'>`; `dropDappSend(ext, id)`.
+  - `pendingStore.ts`: `PendingRecord.intent: SendIntent | null`, `PendingRecord.origin: string | null`, `type FirstBroadcast = 'held' | 'due' | 'done'`, `PendingRecord.firstBroadcast: FirstBroadcast` (read as `done` unless a dApp record says `held` / `due`; `PendingView` omits it); `markDue(ext, signatures)`; `inFlightFor` sees the wallet's own sends only.
+  - `pending.ts`: `recordDappSend(ext, deps, {account, wire, lastValidBlockHeight, origin}): Promise<PendingRecord>` (`held`); `broadcastFirst(ext, deps, record): Promise<'sent' | 'not-sent'>` (claims `held`/`due` → `done`, then delivers); `dropDappSend(ext, id)`; `pollOnce` first sends every `due` record once (claimed `due` → `done`).
   - `dapp/dappTxs.ts`: `DAPP_TXS_KEY = 'v1_dapp_txs'`, `MAX_DAPP_TXS = 500`, `interface DappTx {signature; origin; at}`, `dappTxsOf`, `withDappTxs`, `dappTxSignatures(ext)`.
   - `store.ts`: `Entry.sent: {wire: string; signature: string} | null`; `Tx.txs: DappTx[]`; `wipeDappStores` removes `v1_dapp_txs` too.
-  - `queue.ts`: `restartAnswer(e: Entry): Answer` (the sweep's and the lock hook's answer for a `deciding` entry).
+  - `queue.ts`: `restartAnswer(e: Entry): Answer` (the sweep's and the lock hook's answer for a `deciding` entry); `promised(answered): string[]`; `SEND_DECIDING_TTL_MS = 45_000`; `queueAccess` marks the records of the signatures it answers `due` before its commit; the lock hook (`lockHook.ts`) does too before its write-back.
   - `signTx.ts`: `finishSend(ext, deps: WalletDeps, requestId, instance)`; `finishSignTx` lists a transaction the account pays for.
   - `walletApi.ts`: `wallet.history`'s items carry `origin: 'dapp' | null`; `wallet.pending` lists the wallet's own sends only.
   - `accountsStore.ts`: `WALLET_DATA_KEYS` gains `v1_dapp_txs`; the vault-isolation gate's `BACKGROUND_OWNED_KEYS` gains it; E2E spec 15's `WIPED` gains it.
 
-The order is the safety (C17): sign; write the v1_pending record (B1b's pattern — from here the poller watches the bytes); in one section — still this instance's `deciding` entry, unlocked, the account in the session, the grant held — write `sent {wire, signature}` into the entry, list it for the badge and record it on the grant; only then broadcast through the coordinator's route (B1b's `deliver`, its outcome rules unchanged), and answer from a last section that finds the entry still `deciding`. A restart, a dead effect (30 s) or a lock answers a recorded send `{signature}` — never `rejected`, never signed or broadcast again — and an unrecorded one `rejected`; bytes written to v1_pending whose request then ended are marked never sent. The page gets `{signature}` once the route accepted it or did not answer (it may land; the dApp confirms), `invalid-request` when the route refused it before forwarding (R14).
+The order is the safety (C17): sign; write the v1_pending record (B1b's pattern — from here the poller watches the bytes); in one section — still this instance's `deciding` entry, unlocked, the account in the session, the grant held — write `sent {wire, signature}` into the entry, list it for the badge and record it on the grant; only then broadcast through the coordinator's route (B1b's `deliver`, its outcome rules unchanged), and answer from a last section that finds the entry still `deciding`. A restart, a dead effect (45 s for a send — above the route's 30 s, R29, review 1 L2) or a lock answers a recorded send `{signature}` — never `rejected`, never signed again — and an unrecorded one `rejected`; bytes written to v1_pending whose request then ended are marked never sent. The page gets `{signature}` once the route accepted it or did not answer (it may land; the dApp confirms), `send-failed` when the route refused it before forwarding (R14, spec rev 3.3 §1.6, review 1 M3).
+
+**Exactly once to the route (review 1 M1, R13).** Rev 1 lost an approved send for good when the worker stopped between the entry's `sent` and the broadcast: the restart answered the page `{signature}`, but nothing ever handed the bytes to the route, and a dApp's record has no "Send again". The record now carries `firstBroadcast`: `held` when written; `due` once a page is promised the signature from the entry's record — `queueAccess` (the sweep's restart and dead-effect answers) and the lock hook mark it inside their section, BEFORE the answer is stored; `done` when claimed — `broadcastFirst` claims `held`/`due`, the poller's first round claims `due`, each in one `updatePending`, and only the claimant delivers. So the bytes reach the route exactly once whoever gets there first, and a record whose request ended any other way (the review's sibling gap: a stop between the record and the entry's `sent`, answered `rejected`) stays `held` and is never sent — it polls to `expired`, "no funds moved", true. The review proposed a `broadcastAttemptedAt` the poller would send whenever it is null; that form would also send the sibling gap's bytes after its page was told `rejected` — the direction worse than the gap (a dApp told "rejected" may ask again, and the user approve twice) — hence the explicit `due`.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -4055,14 +4358,15 @@ Change `extension/src/background/__tests__/fixtures.ts`:
 
 ````diff
 diff --git a/extension/src/background/__tests__/fixtures.ts b/extension/src/background/__tests__/fixtures.ts
-index 3ef5b00..4335935 100644
+index 3ef5b00..a35452e 100644
 --- a/extension/src/background/__tests__/fixtures.ts
 +++ b/extension/src/background/__tests__/fixtures.ts
-@@ -107,6 +107,7 @@ export const pendingRecord = (over: Partial<PendingRecord> = {}): PendingRecord
+@@ -107,6 +107,8 @@ export const pendingRecord = (over: Partial<PendingRecord> = {}): PendingRecord
    detail: null,
    detailCode: null,
    intent: {token: 'SOL', recipient: 'R', amount: '1'},
 +  origin: null,
++  firstBroadcast: 'done',
    expiryNullSeenAt: null,
    failure: null,
    fee: null,
@@ -4144,11 +4448,15 @@ import {VersionedTransaction} from '@solana/web3.js';
 import {AUTOLOCK_ALARM, lock} from '../../autolock';
 import {handleMessage} from '../../messages';
 import {inFlightFor, readPending} from '../../pendingStore';
+import {pollOnce, recordDappSend} from '../../pending';
+import {parseWire} from '../decode/wire';
+import {signAll} from '../signTx';
+import {BROADCAST_TIMEOUT_MS} from '../../deps';
 import {GRANTS_KEY, type Grant} from '../grants';
 import {DAPP_TXS_KEY} from '../dappTxs';
 import {runtimeFor} from '../ports';
 import {DAPP_SESSION_KEY, readDappSession} from '../store';
-import {DECIDING_TTL_MS} from '../queue';
+import {DECIDING_TTL_MS, SEND_DECIDING_TTL_MS} from '../queue';
 import {BroadcastRejected, BroadcastUnavailable, firstSignature} from '../../../../../core/solana/broadcast';
 import {ACCOUNT, RECIPIENT} from '../../__tests__/fixtures';
 import {DAPP, ME, coSigned, transfer, txScene, v0} from './txHarness';
@@ -4197,12 +4505,12 @@ describe('page.signAndSendTransaction — the effect', () => {
     expect(await handleMessage(c.ext, {type: 'wallet.pending'}, popup, c.deps)).toEqual({ok: true, data: []});
   });
 
-  it('the route refuses before forwarding (nothing reached the network): invalid-request, the record failed not-sent', async () => {
+  it('the route refuses before forwarding (nothing reached the network): send-failed (§1.6, rev 3.3), the record failed not-sent', async () => {
     const c = await ready(async () => {
       throw new BroadcastRejected('rejected', 'Blockhash not found');
     });
     await c.go();
-    expect(c.page.answersFor(c.requestId)).toEqual([{requestId: c.requestId, error: 'invalid-request'}]);
+    expect(c.page.answersFor(c.requestId)).toEqual([{requestId: c.requestId, error: 'send-failed'}]);
     expect((await readPending(c.ext))[0]).toMatchObject({state: 'failed', failure: 'not-sent'});
   });
 
@@ -4267,7 +4575,7 @@ describe('page.signAndSendTransaction — the effect', () => {
     expect(c.page.answersFor(c.requestId)).toEqual([{requestId: c.requestId, result: {signature: record?.signature}}]);
   });
 
-  it('a lock before the record (the deciding section, then the auto-lock arm): rejected, nothing broadcast, the recorded bytes marked never sent', async () => {
+  it('a lock between the deciding section and the effect (the auto-lock arm): rejected, nothing signed into v1_pending, nothing broadcast', async () => {
     let broadcasts = 0;
     const c = await ready(async wire => {
       broadcasts++;
@@ -4304,13 +4612,91 @@ describe('page.signAndSendTransaction — the effect', () => {
     expect((await readPending(c.ext))[0]).toMatchObject({state: 'failed', failure: 'not-sent'});
   });
 
-  it('a dead effect (this instance, DECIDING_TTL_MS) with its bytes recorded: the signature, not rejected', async () => {
+  it('a dead send effect (this instance) with its bytes recorded: still deciding at DECIDING_TTL_MS, answered the signature at SEND_DECIDING_TTL_MS — above the route’s 30 s (review 1 L2)', async () => {
+    expect(SEND_DECIDING_TTL_MS).toBeGreaterThan(BROADCAST_TIMEOUT_MS);
     const c = await ready(async wire => firstSignature(wire));
     const s = await readDappSession(c.ext);
     const sent = {wire: 'AQ==', signature: '4'.repeat(88)};
     await c.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => ({...e, state: 'deciding', decidedBy: runtimeFor(c.ext).instance, decidingAt: c.deps.clock.t, decision: {kind: 'approve', account: ACCOUNT.publicKey, scope: null}, sent}))});
     c.deps.clock.t += DECIDING_TTL_MS;
+    // A route call may still be running (BROADCAST_TIMEOUT_MS): not yet a dead effect.
+    expect(await c.page.ask({type: 'page.resume', requestIds: [c.requestId]})).toEqual({resume: [{requestId: c.requestId, pending: true}]});
+    c.deps.clock.t += SEND_DECIDING_TTL_MS - DECIDING_TTL_MS;
     expect(await c.page.ask({type: 'page.resume', requestIds: [c.requestId]})).toEqual({resume: [{requestId: c.requestId, result: {signature: sent.signature}}]});
+  });
+
+  /**
+   * Review 1 M1: the state a worker stopped at, built from the real pieces — the bytes recorded in v1_pending
+   * (recordDappSend), the entry `deciding` by an instance that no longer runs, with or without its `sent` record.
+   */
+  async function stoppedAt(withSent: boolean) {
+    const wires: Uint8Array[] = [];
+    const c = await ready(async wire => {
+      wires.push(wire);
+      return firstSignature(wire);
+    });
+    const unsigned = base64.decode(String((await readDappSession(c.ext)).queue[0]?.transactions?.[0]));
+    const parsed = parseWire(unsigned);
+    if (parsed === null) throw new Error('the scene’s transaction does not parse');
+    // Signed as the effect signs it (the account's slot), then recorded as the effect records it.
+    const [wire = new Uint8Array()] = signAll([unsigned], [parsed], ACCOUNT);
+    const record = await recordDappSend(c.ext, c.deps, {account: ACCOUNT.publicKey, wire, lastValidBlockHeight: 5_000, origin: DAPP});
+    const s = await readDappSession(c.ext);
+    const sent = withSent ? {wire: record.wire, signature: record.signature} : null;
+    await c.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => ({...e, state: 'deciding', decidedBy: 'the-dead-instance', decidingAt: c.deps.clock.t, decision: {kind: 'approve', account: ACCOUNT.publicKey, scope: null}, sent}))});
+    return {...c, wires, record};
+  }
+
+  it('a restart after the entry recorded the bytes and before the route: the page is answered the signature, and the bytes reach the route exactly once (the poller’s next round)', async () => {
+    const c = await stoppedAt(true);
+    expect((await readPending(c.ext))[0]?.firstBroadcast).toBe('held');
+    expect(await c.page.ask({type: 'page.resume', requestIds: [c.requestId]})).toEqual({resume: [{requestId: c.requestId, result: {signature: c.record.signature}}]});
+    // Marked owed before the answer was stored; nothing sent yet.
+    expect((await readPending(c.ext))[0]?.firstBroadcast).toBe('due');
+    expect(c.wires).toEqual([]);
+    await pollOnce(c.ext, c.deps);
+    expect(c.wires.map(w => base64.encode(w))).toEqual([c.record.wire]);
+    expect((await readPending(c.ext))[0]).toMatchObject({firstBroadcast: 'done', state: 'pending'});
+    // Positive control: a record already handed over is never sent again.
+    await pollOnce(c.ext, c.deps);
+    await pollOnce(c.ext, c.deps);
+    expect(c.wires).toHaveLength(1);
+  });
+
+  it('a lock after the entry recorded the bytes, the effect stopped: the lock answers the signature, marks the record due, and the poller sends the bytes once', async () => {
+    const c = await stoppedAt(true);
+    await lock(c.ext);
+    expect(await c.page.ask({type: 'page.resume', requestIds: [c.requestId]})).toEqual({resume: [{requestId: c.requestId, result: {signature: c.record.signature}}]});
+    expect((await readPending(c.ext))[0]?.firstBroadcast).toBe('due');
+    await pollOnce(c.ext, c.deps);
+    await pollOnce(c.ext, c.deps);
+    expect(c.wires.map(w => base64.encode(w))).toEqual([c.record.wire]);
+  });
+
+  it('a stop between the record and the entry’s `sent`: the page is answered rejected, and the recorded bytes never reach the route', async () => {
+    const c = await stoppedAt(false);
+    expect(await c.page.ask({type: 'page.resume', requestIds: [c.requestId]})).toEqual({resume: [{requestId: c.requestId, error: 'rejected'}]});
+    await pollOnce(c.ext, c.deps);
+    await pollOnce(c.ext, c.deps);
+    expect(c.wires).toEqual([]);
+    // Held, never owed: it polls until it expires ("Not confirmed — no funds moved", true).
+    expect((await readPending(c.ext))[0]).toMatchObject({firstBroadcast: 'held', state: 'pending'});
+  });
+
+  it('the effect and the poller never both send: a normal approval hands the bytes over once, and a lock’s `due` during the broadcast adds no second one', async () => {
+    let c!: Awaited<ReturnType<typeof ready>>;
+    let broadcasts = 0;
+    c = await ready(async wire => {
+      broadcasts++;
+      // The lock marks the record due while the effect's broadcast runs; the poller runs too.
+      await lock(c.ext);
+      await pollOnce(c.ext, c.deps);
+      return firstSignature(wire);
+    });
+    expect(await c.go()).toEqual({ok: true});
+    await pollOnce(c.ext, c.deps);
+    expect(broadcasts).toBe(1);
+    expect((await readPending(c.ext))[0]?.firstBroadcast).toBe('done');
   });
 });
 
@@ -4484,19 +4870,19 @@ Change `extension/src/background/dapp/decide.ts`:
 
 ````diff
 diff --git a/extension/src/background/dapp/decide.ts b/extension/src/background/dapp/decide.ts
-index b4f01c8..d34bcb6 100644
+index c372f8b..970f514 100644
 --- a/extension/src/background/dapp/decide.ts
 +++ b/extension/src/background/dapp/decide.ts
 @@ -14,7 +14,7 @@ import {answer, headOf, isOpenEntry, queueAccess, rejectQueued, userRejected, ty
  import {dropGrant, grantIn, putGrant, readDappSession, type Decision, type Entry, type Tx} from './store';
  import {base64} from '@scure/base';
  import {checkMessage, checkSiws, finishSign, homoglyphRanges, keywordIn} from './signMessage';
--import {finishSignTx, isTxType, needsSimulation, reauthGate, runSimulation, txDetail, txRefused, type TxDetail, type TxRefusal} from './signTx';
-+import {finishSend, finishSignTx, isTxType, needsSimulation, reauthGate, runSimulation, txDetail, txRefused, type TxDetail, type TxRefusal} from './signTx';
+-import {dappDigest, finishSignTx, isTxType, needsSimulation, reauthGate, runSimulation, txDetail, txRefused, type TxDetail, type TxRefusal} from './signTx';
++import {dappDigest, finishSend, finishSignTx, isTxType, needsSimulation, reauthGate, runSimulation, txDetail, txRefused, type TxDetail, type TxRefusal} from './signTx';
+ import {consumeChallenge} from '../reauthChallenges';
  
  /**
-  * The approval window's two messages (spec §1.4, §2.3, C13, C17): `dapp.pending` — what the window shows — and
-@@ -322,8 +322,6 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
+@@ -326,8 +326,6 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
        blockHost(tx, fx, e.host);
        return 'done';
      }
@@ -4505,7 +4891,7 @@ index b4f01c8..d34bcb6 100644
      const refused = approvalRefused(tx, e, d) ?? (isTxType(e.type) ? txRefused(e, d.simulation, tx.now) : null);
      if (refused !== null) return refused;
      e.state = 'deciding';
-@@ -337,7 +335,12 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
+@@ -350,7 +348,12 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
    if ((await getSession(ext)) !== null) await armAutolock(ext).catch(e => console.warn('dApp decide: the idle timer was not re-armed', e));
    if (typeof out === 'object') {
      // Each approvable type's effect, by name: a type with none (a mismatch notice — refused above) can never fall into another's.
@@ -4525,18 +4911,19 @@ Change `extension/src/background/dapp/lockHook.ts`:
 
 ````diff
 diff --git a/extension/src/background/dapp/lockHook.ts b/extension/src/background/dapp/lockHook.ts
-index 2da195c..6d198b9 100644
+index 2da195c..f90d6b6 100644
 --- a/extension/src/background/dapp/lockHook.ts
 +++ b/extension/src/background/dapp/lockHook.ts
-@@ -3,6 +3,7 @@ import {BLOCKED_KEY, blockedOf, isBlocked} from './blocked';
+@@ -3,6 +3,8 @@ import {BLOCKED_KEY, blockedOf, isBlocked} from './blocked';
  import {GRANTS_KEY, MAX_GRANTS, grantsOf} from './grants';
  import {deliver, liveOrigins, runtimeFor, sendChange} from './ports';
  import {DAPP_SESSION_KEY, EMPTY_SESSION, readDappSession, type Entry} from './store';
-+import {restartAnswer} from './queue';
++import {promised, restartAnswer} from './queue';
++import {markDue} from '../pendingStore';
  
  /**
   * The lock hook (spec §2.4, review H3, review 2 M6). autolock.ts's lock() IS the hook: every lock — the auto-lock
-@@ -11,7 +12,8 @@ import {DAPP_SESSION_KEY, EMPTY_SESSION, readDappSession, type Entry} from './st
+@@ -11,7 +13,8 @@ import {DAPP_SESSION_KEY, EMPTY_SESSION, readDappSession, type Entry} from './st
   *  1. read the queue, the recorded window and which open ports' origins hold a grant;
   *  2. clear the session (keys, session grants, queue, undo buffer);
   *  3. write back the answered entries plus every formerly open entry answered `rejected` (a `deciding` one as a
@@ -4546,7 +4933,7 @@ index 2da195c..6d198b9 100644
   * then, outside it: 4. close the approval window (errors ignored); 5. deliver the answers and send `change []` to the
   * ports of origins that held a grant — and only to those (review M3: an ungranted page learns nothing of lock timing),
   * never a blocked host's (final review m1).
-@@ -59,7 +61,8 @@ export async function lockInSection(ext: Ext, now: number): Promise<LockOutcome>
+@@ -59,10 +62,14 @@ export async function lockInSection(ext: Ext, now: number): Promise<LockOutcome>
    const answered: Entry[] = [];
    const kept = s.queue.map(e => {
      if (e.state === 'answered') return e;
@@ -4556,6 +4943,12 @@ index 2da195c..6d198b9 100644
      answered.push(done);
      return done;
    });
++  // Review 1 M1: a send answered its signature here is owed to the route before the answer is written back. A failed
++  // write is logged and the answer kept: the effect still running broadcasts it (R15); only a stopped one leaves it unsent.
++  await markDue(ext, promised(answered)).catch(e => console.warn('dApp lock hook: a promised send was not marked due', e));
+   if (kept.length > 0) await ext.session.set(DAPP_SESSION_KEY, {...EMPTY_SESSION, queue: kept});
+   return {windowId: s.window?.id ?? null, answered, notify};
+ }
 ````
 
 Change `extension/src/background/dapp/pageApi.ts`:
@@ -4579,20 +4972,45 @@ Change `extension/src/background/dapp/queue.ts`:
 
 ````diff
 diff --git a/extension/src/background/dapp/queue.ts b/extension/src/background/dapp/queue.ts
-index 1515537..f1036e1 100644
+index 1515537..85bf18a 100644
 --- a/extension/src/background/dapp/queue.ts
 +++ b/extension/src/background/dapp/queue.ts
-@@ -64,6 +64,9 @@ export function userRejected(tx: Tx, fx: Effects, e: Entry): void {
+@@ -5,6 +5,7 @@ import {deliver, runtimeFor, sendChange, type PageOrigin, type Runtime} from './
+ import {withRecent} from './grants';
+ import {withRejection} from './limits';
+ import {dappSection, grantIn, putGrant, type Answer, type Entry, type Tx} from './store';
++import {markDue} from '../pendingStore';
+ import {unlockWork} from './unlockHook';
+ 
+ /**
+@@ -21,6 +22,12 @@ export const REQUEST_TTL_MS = 5 * 60_000;
+  * answered `rejected` (nothing left the extension), so the queue, the window and the page move on.
+  */
+ export const DECIDING_TTL_MS = 30_000;
++/**
++ * B1c-2 (plan 2 review 1 L2): a `signAndSendTransaction` effect waits on the broadcast route, which may take up to
++ * BROADCAST_TIMEOUT_MS (30 s): its dead-effect TTL is above that, so the sweep never answers a send while its route call
++ * may still be running.
++ */
++export const SEND_DECIDING_TTL_MS = 45_000;
+ export const ANSWER_TTL_MS = 10 * 60_000;
+ /** "Open" = queued or deciding (C3); at most this many in total — the next gets `busy`. */
+ export const MAX_OPEN = 5;
+@@ -64,6 +71,13 @@ export function userRejected(tx: Tx, fx: Effects, e: Entry): void {
    if (g !== null && e.type !== 'mismatch') putGrant(tx, withRecent(g, e.type, tx.now, 'rejected'));
  }
  
 +/** What a `deciding` entry that will never finish is answered (a restart, a dead effect, a lock — C17). */
 +export const restartAnswer = (e: Entry): Answer => (e.sent !== null ? {result: {signature: e.sent.signature}} : {error: 'rejected'});
 +
++/** The signatures these answers promise a page: a send answered from the bytes its entry recorded (review 1 M1). */
++export const promised = (answered: readonly Entry[]): string[] =>
++  answered.flatMap(e => (e.sent !== null && e.answer !== null && 'result' in e.answer && e.answer.result.signature === e.sent.signature ? [e.sent.signature] : []));
++
  /** Answers an origin's `queued` entries (never a `deciding` one: its effect is running) with this error. */
  export function rejectQueued(tx: Tx, fx: Effects, match: (e: Entry) => boolean, code: 'rejected' = 'rejected'): void {
    for (const e of tx.s.queue) if (e.state === 'queued' && match(e)) answer(fx, e, {error: code}, tx.now);
-@@ -86,8 +89,11 @@ export function sweep(tx: Tx, fx: Effects, rt: Pick<Runtime, 'instance' | 'hooke
+@@ -86,8 +100,11 @@ export function sweep(tx: Tx, fx: Effects, rt: Pick<Runtime, 'instance' | 'hooke
    for (const e of tx.s.queue) {
      // C4 "queued or shown": five minutes from arrivedAt, whatever the open state (review 1 M1).
      if (isOpenEntry(e) && tx.now - e.arrivedAt >= REQUEST_TTL_MS) answer(fx, e, {error: 'timeout'}, tx.now);
@@ -4602,17 +5020,27 @@ index 1515537..f1036e1 100644
 +    // effect — answered `rejected` (nothing left the extension), except a send whose signed bytes are recorded (B1c-2,
 +    // §1.5 step 2): it is answered its signature, and the poller watches its pending record — never signed or
 +    // broadcast again.
-+    else if (e.state === 'deciding' && (e.decidedBy !== instance || e.decidingAt === null || tx.now - e.decidingAt >= DECIDING_TTL_MS)) answer(fx, e, restartAnswer(e), tx.now);
++    else if (e.state === 'deciding' && (e.decidedBy !== instance || e.decidingAt === null || tx.now - e.decidingAt >= (e.type === 'signAndSendTransaction' ? SEND_DECIDING_TTL_MS : DECIDING_TTL_MS))) answer(fx, e, restartAnswer(e), tx.now);
    }
    // §2.4: the unlock hook, on the first access of an unlocked session (again if it threw last time) — after expiry
    // above, so it never grants a connect the sweep just timed out.
+@@ -124,6 +141,9 @@ export async function queueAccess<T>(ext: Ext, deps: Pick<WalletDeps, 'now'>, fn
+     out = await dappSection(ext, deps.now(), async tx => {
+       hooked = sweep(tx, fx, rt);
+       const r = await fn(tx, fx);
++      // Review 1 M1: a send answered its signature here (the sweep's restart or dead effect, or the effect itself) —
++      // its pending record becomes owed to the route BEFORE the answer is stored (the poller sends a `due` one, once).
++      await markDue(ext, promised(fx.answered));
+       queued = tx.s.queue.length > 0;
+       // Review 1 L6: inside the section (under sessionMutex), so a lock — which clears the flag in its own section —
+       // can never run between the hook's commit and this write.
 ````
 
 Change `extension/src/background/dapp/signTx.ts`:
 
 ````diff
 diff --git a/extension/src/background/dapp/signTx.ts b/extension/src/background/dapp/signTx.ts
-index 7eba6cc..9516e76 100644
+index 5eeea39..2225213 100644
 --- a/extension/src/background/dapp/signTx.ts
 +++ b/extension/src/background/dapp/signTx.ts
 @@ -12,6 +12,9 @@ import {decodeInstructions, type DecodedInstruction} from './decode/decode';
@@ -4625,7 +5053,7 @@ index 7eba6cc..9516e76 100644
  import {runtimeFor} from './ports';
  import {answer, queueAccess} from './queue';
  import {simulateTransactions, type SimState, type TxOutcome} from './simulate';
-@@ -279,6 +282,71 @@ export async function finishSignTx(ext: Ext, deps: Pick<WalletDeps, 'now'>, requ
+@@ -290,6 +293,73 @@ export async function finishSignTx(ext: Ext, deps: Pick<WalletDeps, 'now'>, requ
      }
      const g = grantIn(tx, e.origin);
      if (g !== null) putGrant(tx, withRecent(g, 'signTransaction', tx.now, 'approved'));
@@ -4651,8 +5079,10 @@ index 7eba6cc..9516e76 100644
 + *  4. broadcast through the coordinator's route (pending.ts broadcastFirst) — even if a lock landed after step 3: the
 + *     user approved it, the dApp may already hold the signature (B1b: a send in flight is not cancelled by a lock);
 + *  5. answer `{signature}` — or, when the route refused it before forwarding (nothing reached the network),
-+ *     `invalid-request` — only if the entry is still this instance's `deciding` one (a lock or the dead-effect sweep
-+ *     may have answered `{signature}` already: answered once).
++ *     `send-failed` (spec §1.6, rev 3.3) — only if the entry is still this instance's `deciding` one (a lock or the
++ *     dead-effect sweep may have answered `{signature}` already: answered once).
++ * A worker stopped between steps 3 and 4 (review 1 M1): the restart answers `{signature}` from the entry, marking the
++ * record `due` first, and the poller's next round hands the bytes to the route — once (pending.ts claimFirst).
 + */
 +export async function finishSend(ext: Ext, deps: WalletDeps, requestId: string, instance: string): Promise<void> {
 +  const work = await queueAccess(ext, deps, tx => {
@@ -4694,7 +5124,7 @@ index 7eba6cc..9516e76 100644
 +  await queueAccess(ext, deps, (tx, fx) => {
 +    const e = tx.s.queue.find(x => x.requestId === requestId);
 +    if (e === undefined || e.state !== 'deciding' || e.decidedBy !== instance || e.sent === null) return;
-+    answer(fx, e, outcome === 'sent' ? {result: {signature: e.sent.signature}} : {error: 'invalid-request'}, tx.now);
++    answer(fx, e, outcome === 'sent' ? {result: {signature: e.sent.signature}} : {error: 'send-failed'}, tx.now);
 +  });
 +}
 ````
@@ -4703,7 +5133,7 @@ Change `extension/src/background/dapp/store.ts`:
 
 ````diff
 diff --git a/extension/src/background/dapp/store.ts b/extension/src/background/dapp/store.ts
-index 38cd43b..3bb325a 100644
+index 663a30d..88e8f5b 100644
 --- a/extension/src/background/dapp/store.ts
 +++ b/extension/src/background/dapp/store.ts
 @@ -6,6 +6,7 @@ import {BLOCKED_KEY, blockedOf, type Blocked} from './blocked';
@@ -4714,7 +5144,7 @@ index 38cd43b..3bb325a 100644
  
  /**
   * The dApp provider's state (spec §1.5, §2). storage.session holds what dies with the session — the request queue,
-@@ -55,6 +56,8 @@ export interface Entry {
+@@ -56,6 +57,8 @@ export interface Entry {
    sim: SimState | null;
    /** A transaction request's re-authentication challenge (signTx.ts), once Approve asked for one; else null. */
    challengeId: string | null;
@@ -4723,7 +5153,7 @@ index 38cd43b..3bb325a 100644
    arrivedAt: number;
    state: 'queued' | 'deciding' | 'answered';
    /** The worker instance that wrote `deciding` (C17): another instance's `deciding` entry is a restart. */
-@@ -118,6 +121,13 @@ function decisionOf(x: unknown): Entry['decision'] | undefined {
+@@ -119,6 +122,13 @@ function decisionOf(x: unknown): Entry['decision'] | undefined {
    return {kind: o.kind as Decision, account: o.account, scope: o.scope};
  }
  
@@ -4737,7 +5167,7 @@ index 38cd43b..3bb325a 100644
  /** A stored entry, rebuilt field by field; null when anything is off (it is dropped, never "repaired"). */
  export function entryOf(x: unknown): Entry | null {
    if (typeof x !== 'object' || x === null) return null;
-@@ -131,6 +141,8 @@ export function entryOf(x: unknown): Entry | null {
+@@ -132,6 +142,8 @@ export function entryOf(x: unknown): Entry | null {
    if (transactions === undefined || granted === undefined || challengeId === undefined) return null;
    // A simulation that does not read back is simply simulated again (never trusted half-read).
    const sim = o.sim === undefined || o.sim === null ? null : simStateOf(o.sim);
@@ -4746,7 +5176,7 @@ index 38cd43b..3bb325a 100644
    if (!isStr(o.state) || !STATES.includes(o.state) || !isNullStr(o.decidedBy) || (o.answeredAt !== null && !isTime(o.answeredAt))) return null;
    if (o.decidingAt !== null && !isTime(o.decidingAt)) return null;
    const decision = decisionOf(o.decision);
-@@ -150,6 +162,7 @@ export function entryOf(x: unknown): Entry | null {
+@@ -151,6 +163,7 @@ export function entryOf(x: unknown): Entry | null {
      granted,
      sim,
      challengeId,
@@ -4754,7 +5184,7 @@ index 38cd43b..3bb325a 100644
      arrivedAt: o.arrivedAt,
      state: o.state as Entry['state'],
      decidedBy: o.decidedBy,
-@@ -190,6 +203,8 @@ export interface Tx {
+@@ -191,6 +204,8 @@ export interface Tx {
    grants: Grant[];
    blocked: Blocked[];
    limits: Limits;
@@ -4763,7 +5193,7 @@ index 38cd43b..3bb325a 100644
    /** The unlocked session's accounts, or null while locked — as of this section. */
    session: SessionAccount[] | null;
    now: number;
-@@ -200,27 +215,29 @@ const dappMutex = createMutex();
+@@ -201,27 +216,29 @@ const dappMutex = createMutex();
  export async function dappSection<T>(ext: Ext, now: number, fn: (tx: Tx) => Promise<T> | T): Promise<T> {
    return dappMutex(() =>
      sessionMutex(async () => {
@@ -4797,7 +5227,7 @@ index 38cd43b..3bb325a 100644
   * IMPORTANT 1): accountsStore's removeWalletData (forgetWallet step 7, and storeEnvelope's first-write backstop)
   * used to remove them with a plain `ext.local.remove`, outside dappMutex and sessionMutex — a dappSection already
   * in flight reads the old lists before the remove and writes them back (unchanged, or changed by the caller's own
-@@ -236,6 +253,7 @@ export async function wipeDappStores(ext: Ext): Promise<void> {
+@@ -237,6 +254,7 @@ export async function wipeDappStores(ext: Ext): Promise<void> {
        await ext.local.remove(GRANTS_KEY);
        await ext.local.remove(BLOCKED_KEY);
        await ext.local.remove(LIMITS_KEY);
@@ -4811,18 +5241,28 @@ Change `extension/src/background/pending.ts`:
 
 ````diff
 diff --git a/extension/src/background/pending.ts b/extension/src/background/pending.ts
-index 9b74f0e..1af13bc 100644
+index 9b74f0e..80c181e 100644
 --- a/extension/src/background/pending.ts
 +++ b/extension/src/background/pending.ts
-@@ -81,6 +81,7 @@ export async function submitSigned(
+@@ -4,7 +4,7 @@ import type {WalletDeps} from './deps';
+ import {addKnownRecipient} from './knownRecipients';
+ import {readWalletView} from './accountsStore';
+ import {randomId} from './digest';
+-import {inFlightFor, isOpen, readPending, updatePending, viewOf, type PendingFee, type PendingRecord, type PendingView} from './pendingStore';
++import {inFlightFor, isOpen, readPending, updatePending, viewOf, type FirstBroadcast, type PendingFee, type PendingRecord, type PendingView} from './pendingStore';
+ import {COOLING_AGAIN_DETAIL, FORBIDDEN_DETAIL, ResendRefused, SendRefused, SentUnconfirmed, type ResendRefusal, type SendIntent} from './sendTypes';
+ import {BroadcastRejected, BroadcastSubstituted, firstSignature} from '../../../core/solana/broadcast';
+ import {RpcCoolingDown, RpcForbidden, type SignatureStatus} from '../../../core/solana/rpc';
+@@ -81,6 +81,8 @@ export async function submitSigned(
      detail: null,
      detailCode: null,
      intent: input.intent,
 +    origin: null,
++    firstBroadcast: 'done',
      expiryNullSeenAt: null,
      failure: null,
      fee: input.fee,
-@@ -114,6 +115,57 @@ export async function submitSigned(
+@@ -114,6 +116,87 @@ export async function submitSigned(
    }
  }
  
@@ -4847,6 +5287,8 @@ index 9b74f0e..1af13bc 100644
 +    detailCode: null,
 +    intent: null,
 +    origin: input.origin,
++    // Review 1 M1: held until the queue entry records these bytes and the page is promised the signature.
++    firstBroadcast: 'held',
 +    expiryNullSeenAt: null,
 +    failure: null,
 +    fee: null,
@@ -4857,19 +5299,47 @@ index 9b74f0e..1af13bc 100644
 +}
 +
 +/**
++ * Review 1 M1: the one hand-over of a dApp record's bytes to the route, claimed in one updatePending — `held` or `due`
++ * (or only `due`) becomes `done` — so the effect (broadcastFirst) and the poller's first round can never both send it.
++ * The claimed record, or null when it is not open or already `done`.
++ */
++async function claimFirst(ext: Ext, id: string, from: readonly FirstBroadcast[]): Promise<PendingRecord | null> {
++  const out: {claimed: PendingRecord | null} = {claimed: null};
++  await updatePending(ext, records =>
++    records.map(r => {
++      if (r.id !== id || !isOpen(r) || r.origin === null || !from.includes(r.firstBroadcast)) return r;
++      out.claimed = {...r, firstBroadcast: 'done'};
++      return out.claimed;
++    }),
++  );
++  return out.claimed;
++}
++
++/**
 + * B1c-2: the first broadcast of a recorded dApp send, through the same route and the same outcome rules as the wallet's
 + * own (deliver): `not-sent` only when the route refused it before forwarding, or the 403 cool-down refused to try —
 + * nothing reached the network. Anything else (acknowledged, or not acknowledged: it may land) is `sent`, and the
-+ * poller watches it.
++ * poller watches it. Claimed first (review 1 M1): if the poller already handed these bytes over, nothing is sent again
++ * and the record's state says what happened.
 + */
 +export async function broadcastFirst(ext: Ext, deps: WalletDeps, record: PendingRecord): Promise<'sent' | 'not-sent'> {
 +  try {
-+    await deliver(ext, deps, record, 'first');
++    const claimed = await claimFirst(ext, record.id, ['held', 'due']);
++    if (claimed !== null) await deliver(ext, deps, claimed, 'first');
 +  } finally {
 +    void startPoller(ext, deps);
 +  }
 +  const now = (await readPending(ext)).find(r => r.id === record.id);
 +  return now?.state === 'failed' && now.failure === 'not-sent' ? 'not-sent' : 'sent';
++}
++
++/** Review 1 M1: the poller's first step — every `due` dApp record handed to the route exactly once (claimed `due` → `done`). */
++async function sendDue(ext: Ext, deps: WalletDeps, open: readonly PendingRecord[]): Promise<void> {
++  for (const r of open) {
++    if (r.origin === null || r.firstBroadcast !== 'due') continue;
++    const claimed = await claimFirst(ext, r.id, ['due']);
++    if (claimed !== null) await deliver(ext, deps, claimed, 'first');
++  }
 +}
 +
 +/** B1c-2: a recorded dApp send that will never be broadcast (its request was answered meanwhile): failed, nothing sent. */
@@ -4880,7 +5350,23 @@ index 9b74f0e..1af13bc 100644
  /** "Send again": the same signed bytes, so the same signature — it can land at most once. */
  export async function resend(ext: Ext, deps: WalletDeps, id: string): Promise<PendingView> {
    const out: {record?: PendingRecord; refusal?: ResendRefusal} = {};
-@@ -212,7 +264,8 @@ export async function pollOnce(ext: Ext, deps: WalletDeps): Promise<boolean> {
+@@ -154,8 +237,14 @@ const failedDetail = (err: unknown): string => `Landed but failed (${JSON.string
+ 
+ /** One polling round over every open record. True while anything is still open. */
+ export async function pollOnce(ext: Ext, deps: WalletDeps): Promise<boolean> {
+-  const open = (await readPending(ext)).filter(isOpen);
++  let open = (await readPending(ext)).filter(isOpen);
+   if (open.length === 0) return false;
++  // Review 1 M1: a dApp send the page was promised but no one handed to the route (the worker stopped in between).
++  if (open.some(r => r.origin !== null && r.firstBroadcast === 'due')) {
++    await sendDue(ext, deps, open);
++    open = (await readPending(ext)).filter(isOpen);
++    if (open.length === 0) return false;
++  }
+   let statuses: (SignatureStatus | null)[];
+   try {
+     statuses = await deps.reader.getSignatureStatuses(open.map(r => r.signature));
+@@ -212,7 +301,8 @@ export async function pollOnce(ext: Ext, deps: WalletDeps): Promise<boolean> {
      // before a forget's vault write can still add one after the forget's cleanup; the next wallet's
      // first write (storeEnvelope with expectedRevision null) removes v1_known_recipients (L1).
      const own = new Set((await readWalletView(ext))?.accounts.map(a => a.publicKey) ?? []);
@@ -4896,10 +5382,19 @@ Change `extension/src/background/pendingStore.ts`:
 
 ````diff
 diff --git a/extension/src/background/pendingStore.ts b/extension/src/background/pendingStore.ts
-index 0a20cdf..205b5ae 100644
+index 0a20cdf..5fa7ee6 100644
 --- a/extension/src/background/pendingStore.ts
 +++ b/extension/src/background/pendingStore.ts
-@@ -41,7 +41,14 @@ export interface PendingRecord {
+@@ -25,6 +25,8 @@ export type PendingFailure = 'landed' | 'not-sent';
+  * first broadcast by the route). Written beside `detail` every time; screens choose on this, never on the text.
+  */
+ export type DetailCode = 'forbidden' | 'cooling' | 'unacked' | 'substituted';
++/** See PendingRecord.firstBroadcast. */
++export type FirstBroadcast = 'held' | 'due' | 'done';
+ export const DETAIL_CODES: readonly DetailCode[] = ['forbidden', 'cooling', 'unacked', 'substituted'];
+ 
+ /** A signed send, from before its broadcast until confirmed, failed or expired (spec §4 "No double spend"). */
+@@ -41,7 +43,23 @@ export interface PendingRecord {
    detail: string | null;
    /** See DetailCode. A stored value that is missing (a record from before it) or unknown reads as null; the record is kept. */
    detailCode: DetailCode | null;
@@ -4912,10 +5407,30 @@ index 0a20cdf..205b5ae 100644
 +   * record never reaches the popup (wallet.pending lists the wallet's own sends) and never blocks one (inFlightFor).
 +   */
 +  origin: string | null;
++  /**
++   * B1c-2 (plan 2 review 1 M1): a dApp record's first broadcast. `held` — recorded, the page not yet promised the
++   * signature (if the request ends otherwise the bytes are never sent); `due` — the page is promised it (a restart, a
++   * lock or a dead effect answered it from the entry's recorded bytes) and nobody has handed the bytes to the route yet:
++   * the poller's next round does, once; `done` — handed to the route (claimed atomically, so exactly once). The
++   * wallet's own send is `done` from the start (submitSigned broadcasts at once). A stored value that is missing or
++   * unknown reads as `done`: nothing is ever broadcast on a record that does not say it is owed.
++   */
++  firstBroadcast: FirstBroadcast;
    /** When a full-history status check past expiry first came back null; `expired` needs a second one ≥ 2 s later. */
    expiryNullSeenAt: number | null;
    failure: PendingFailure | null;
-@@ -75,11 +82,16 @@ const serial = createMutex();
+@@ -63,8 +81,8 @@ export interface PendingFee {
+   markupLamports: string;
+ }
+ 
+-/** What leaves the background: everything but the signed bytes. */
+-export type PendingView = Omit<PendingRecord, 'wire'>;
++/** What leaves the background: everything but the signed bytes (and the first-broadcast bookkeeping, which is the background's). */
++export type PendingView = Omit<PendingRecord, 'wire' | 'firstBroadcast'>;
+ 
+ export const MAX_RECORDS = 20;
+ 
+@@ -75,11 +93,16 @@ const serial = createMutex();
  const STATES: readonly string[] = ['pending', 'stuck', 'confirmed', 'failed', 'expired'];
  const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
  
@@ -4925,7 +5440,7 @@ index 0a20cdf..205b5ae 100644
 +
  /** A stored element is a claim: only an exact record shape is read; anything else is dropped. `failure` and `fee` are checked by recordOf. */
 -function isRecord(x: unknown): x is Omit<PendingRecord, 'failure' | 'fee' | 'detailCode'> & {failure?: unknown; fee?: unknown; detailCode?: unknown} {
-+function isRecord(x: unknown): x is Omit<PendingRecord, 'failure' | 'fee' | 'detailCode' | 'origin'> & {failure?: unknown; fee?: unknown; detailCode?: unknown; origin?: unknown} {
++function isRecord(x: unknown): x is Omit<PendingRecord, 'failure' | 'fee' | 'detailCode' | 'origin' | 'firstBroadcast'> & {failure?: unknown; fee?: unknown; detailCode?: unknown; origin?: unknown; firstBroadcast?: unknown} {
    if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
    const r = x as Record<string, unknown>;
    const i = r.intent as Record<string, unknown> | null;
@@ -4933,7 +5448,7 @@ index 0a20cdf..205b5ae 100644
    return (
      typeof r.id === 'string' &&
      typeof r.account === 'string' &&
-@@ -92,11 +104,7 @@ function isRecord(x: unknown): x is Omit<PendingRecord, 'failure' | 'fee' | 'det
+@@ -92,11 +115,7 @@ function isRecord(x: unknown): x is Omit<PendingRecord, 'failure' | 'fee' | 'det
      isNum(r.lastSentAt) &&
      (r.detail === null || typeof r.detail === 'string') &&
      (r.expiryNullSeenAt === null || isNum(r.expiryNullSeenAt)) &&
@@ -4946,20 +5461,22 @@ index 0a20cdf..205b5ae 100644
    );
  }
  
-@@ -108,9 +116,10 @@ function recordOf(x: unknown): PendingRecord | null {
+@@ -108,9 +127,12 @@ function recordOf(x: unknown): PendingRecord | null {
    if (!isRecord(x)) return null;
    const fee = feeOf(x.fee);
    const detailCode = DETAIL_CODES.find(c => c === x.detailCode) ?? null;
 +  const origin = isDappOrigin(x.origin) ? x.origin : null;
++  // Only a dApp record can be owed a first broadcast; anything else (the wallet's own, missing, unknown) is `done`.
++  const firstBroadcast: FirstBroadcast = origin !== null && (x.firstBroadcast === 'held' || x.firstBroadcast === 'due') ? x.firstBroadcast : 'done';
    const f = x.failure;
 -  if (f === undefined || f === null) return {...x, failure: null, fee, detailCode};
 -  return f === 'landed' || f === 'not-sent' ? {...x, failure: f, fee, detailCode} : null;
-+  if (f === undefined || f === null) return {...x, failure: null, fee, detailCode, origin};
-+  return f === 'landed' || f === 'not-sent' ? {...x, failure: f, fee, detailCode, origin} : null;
++  if (f === undefined || f === null) return {...x, failure: null, fee, detailCode, origin, firstBroadcast};
++  return f === 'landed' || f === 'not-sent' ? {...x, failure: f, fee, detailCode, origin, firstBroadcast} : null;
  }
  
  const DIGITS = /^\d{1,20}$/;
-@@ -134,8 +143,9 @@ export async function readPending(ext: Ext): Promise<PendingRecord[]> {
+@@ -134,8 +156,9 @@ export async function readPending(ext: Ext): Promise<PendingRecord[]> {
    return out;
  }
  
@@ -4970,7 +5487,7 @@ index 0a20cdf..205b5ae 100644
  }
  
  export function viewOf(r: PendingRecord): PendingView {
-@@ -150,6 +160,7 @@ export function viewOf(r: PendingRecord): PendingView {
+@@ -150,6 +173,7 @@ export function viewOf(r: PendingRecord): PendingView {
      detail: r.detail,
      detailCode: r.detailCode,
      intent: r.intent,
@@ -4978,6 +5495,21 @@ index 0a20cdf..205b5ae 100644
      expiryNullSeenAt: r.expiryNullSeenAt,
      failure: r.failure,
      fee: r.fee === null ? null : {networkLamports: r.fee.networkLamports, markupLamports: r.fee.markupLamports},
+@@ -176,3 +200,14 @@ export async function updatePending(ext: Ext, change: (records: PendingRecord[])
+     return next;
+   });
+ }
++
++/**
++ * Review 1 M1: the page is being promised these signatures (a restart, a lock or a dead effect answers a send from the
++ * entry's recorded bytes): each one's record, while still `held`, becomes `due` — written BEFORE the answer is stored
++ * (the callers run it inside their section), so a page never holds a signature whose bytes no one will send. The
++ * poller's next round hands a `due` record to the route, once.
++ */
++export async function markDue(ext: Ext, signatures: readonly string[]): Promise<void> {
++  if (signatures.length === 0) return;
++  await updatePending(ext, records => records.map(r => (r.origin !== null && r.firstBroadcast === 'held' && isOpen(r) && signatures.includes(r.signature) ? {...r, firstBroadcast: 'due'} : r)));
++}
 ````
 
 Change `extension/src/background/walletApi.ts`:
@@ -5017,9 +5549,9 @@ index 4fc68cd..0fbd94d 100644
 
 - [ ] **Step 4: Run — green, and the whole suite, the build and the gates.**
 
-Run: `npx vitest run src/background/__tests__/forgetWallet.test.ts src/background/dapp/__tests__/signSend.test.ts src/background/dapp/__tests__/store.test.ts` — expected: Test Files  3 passed (3) · Tests  57 passed (57)
+Run: `npx vitest run src/background/__tests__/forgetWallet.test.ts src/background/dapp/__tests__/signSend.test.ts src/background/dapp/__tests__/store.test.ts` — expected: Test Files  3 passed (3) · Tests  61 passed (61)
 
-Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  162 passed (162) · Tests  3193 passed (3193). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
+Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  163 passed (163) · Tests  3203 passed (3203). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
 
 Then B1b's spec 15, whose wipe list gains `v1_dapp_txs`: `node scripts/build.mjs && npx playwright test e2e/settings.spec.ts -g '15 · '` — expected: every `15 · ` test passes (the dry run ran it in the whole E2E suite — Dry-run record).
 
@@ -5027,16 +5559,25 @@ Then B1b's spec 15, whose wipe list gains `v1_dapp_txs`: `node scripts/build.mjs
 
 | id | the change | red |
 |---|---|---|
-| M5a | `signTx.ts`: the signed bytes not recorded in the entry before the broadcast | signSend.test.ts "… recorded (v1_pending, then the entry) BEFORE the broadcast" — RED Tests  4 failed \| 9 passed (13) |
-| M5b | `queue.ts`: a recorded send answered `rejected` on a restart | signSend.test.ts "a restart with the signed bytes recorded" — RED Tests  3 failed \| 10 passed (13) |
-| M5c | `lockHook.ts`: a recorded send answered `rejected` by a lock | signSend.test.ts "a lock after the record, during the broadcast" — RED Tests  1 failed \| 12 passed (13) |
-| M5d | `pendingStore.ts`: a dApp's record blocks the wallet's own sends | signSend.test.ts "a dApp's record is not the wallet's send" — RED Tests  1 failed \| 12 passed (13) |
-| M5e | `walletApi.ts`: wallet.pending lists dApp records | signSend.test.ts "a dApp's record is not the wallet's send" — RED Tests  1 failed \| 12 passed (13) |
-| M5f | `signTx.ts`: bytes of an ended request not marked never sent | signSend.test.ts "the grant revoked while the key is read" — RED Tests  1 failed \| 12 passed (13) |
-| M5g | `signTx.ts`: a sign-only transaction listed whoever pays | signSend.test.ts "signTransaction: a transaction the account pays for is listed" — RED Tests  1 failed \| 12 passed (13) |
-| M5h | `walletApi.ts`: no row marked | signSend.test.ts "wallet.history marks a listed signature" — RED Tests  1 failed \| 12 passed (13) |
+| M5a | `signTx.ts`: the signed bytes not recorded in the entry before the broadcast | signSend.test.ts "… recorded (v1_pending, then the entry) BEFORE the broadcast" — RED Tests  4 failed \| 13 passed (17) |
+| M5b | `queue.ts`: a recorded send answered `rejected` on a restart | signSend.test.ts "a restart with the signed bytes recorded" — RED Tests  5 failed \| 12 passed (17) |
+| M5c | `lockHook.ts`: a recorded send answered `rejected` by a lock | signSend.test.ts "a lock after the record, during the broadcast" — RED Tests  2 failed \| 15 passed (17) |
+| M5d | `pendingStore.ts`: a dApp's record blocks the wallet's own sends | signSend.test.ts "a dApp's record is not the wallet's send" — RED Tests  1 failed \| 16 passed (17) |
+| M5e | `walletApi.ts`: wallet.pending lists dApp records | signSend.test.ts "a dApp's record is not the wallet's send" — RED Tests  1 failed \| 16 passed (17) |
+| M5f | `signTx.ts`: bytes of an ended request not marked never sent | signSend.test.ts "the grant revoked while the key is read" — RED Tests  1 failed \| 16 passed (17) |
+| M5g | `signTx.ts`: a sign-only transaction listed whoever pays | signSend.test.ts "signTransaction: a transaction the account pays for is listed" — RED Tests  1 failed \| 16 passed (17) |
+| M5h | `walletApi.ts`: no row marked | signSend.test.ts "wallet.history marks a listed signature" — RED Tests  1 failed \| 16 passed (17) |
 | M5i | `store.ts`: `wipeDappStores` keeps v1_dapp_txs | forgetWallet.test.ts (the delete and the first write) — RED Tests  2 failed \| 28 passed (30) |
-| M5j | `signTx.ts`: a send the route refused answered its signature | signSend.test.ts "the route refuses before forwarding" — RED Tests  1 failed \| 12 passed (13) |
+| M5j | `signTx.ts`: a send the route refused answered its signature | signSend.test.ts "the route refuses before forwarding … send-failed" — RED Tests  1 failed \| 16 passed (17) |
+| M5k | `pending.ts`: the poller's first round skips `due` records | signSend.test.ts "a restart after the entry recorded the bytes and before the route" — RED Tests  2 failed \| 15 passed (17) |
+| M5l | `queue.ts`: a signature answered without marking its record `due` | signSend.test.ts "a restart after the entry recorded the bytes and before the route" — RED Tests  1 failed \| 16 passed (17) |
+| M5m | `pending.ts`: a dApp record written `due` instead of `held` | signSend.test.ts "a stop between the record and the entry's `sent`" — RED Tests  2 failed \| 15 passed (17) |
+| M5n | `pending.ts`: `broadcastFirst` delivers without claiming | signSend.test.ts "the effect and the poller never both send" — RED Tests  1 failed \| 16 passed (17) |
+| M5o | `pending.ts`: a claim that does not mark the record `done` | signSend.test.ts "a restart after the entry recorded the bytes…" (never sent twice) — RED Tests  8 passed (17) |
+| M5p | `queue.ts`: `SEND_DECIDING_TTL_MS = 30_000` | signSend.test.ts "a dead send effect … SEND_DECIDING_TTL_MS" — RED Tests  1 failed \| 16 passed (17) |
+| M5q | `lockHook.ts`: the lock's signature answers not marked `due` | signSend.test.ts "a lock after the entry recorded the bytes, the effect stopped" — RED Tests  1 failed \| 16 passed (17) |
+
+The counts in the last column are the dry run's, each mutant built from the END state (Task 10's tree): on this task's own tree a test file can hold fewer tests (a later task adds some), so the counts differ — red is the check, not the count (review 1 L11).
 
 - [ ] **Step 6: Commit.**
 
@@ -5073,10 +5614,10 @@ git commit -m "feat(extension): B1c-2 signAndSendTransaction — recorded before
   - `reauthChallenges.ts`: `DappOutgoing.symbol: 'SOL' | 'NOC' | 'USDC' | 'USDT' | null` (the vault page names a token by its own table, never by a mint it would have to import).
   - `app/engine.ts`: `interface DappReauth {challengeId: string; site: string}`; `Engine.dappReauth(): Promise<Reply<DappReauth | null, 'locked'>>`.
   - `app/screens/Home.tsx`: `DAPP_REAUTH_TEXT(site)`; the strip.
-  - `unlock/challenge.ts`: `interface DappDescription {kind: 'dapp'; site; transactions; outgoing: {label; amount; mint}[]; reasons}`; `Description` gains it.
-  - `unlock/strings.ts`: `REAUTH.aboutDapp`, `site`, `transactions`, `token`, `baseUnits`, `approval`, `dappConfirmed`, `dappExpired`, `dappNotUnlocked`.
+  - `unlock/challenge.ts`: `interface DappDescription {kind: 'dapp'; site; transactions; outgoing: {label; amount; mint}[]; omitted: number; reasons}`; `Description` gains it.
+  - `unlock/strings.ts`: `REAUTH.aboutDapp`, `site`, `transactions`, `token`, `baseUnits`, `omitted(n)`, `approval`, `dappConfirmed`, `dappExpired`, `dappNotUnlocked`.
 
-The approval window never opens the vault page; the popup does, when the user's own click on the toolbar opened it (R9). `dapp.reauth` answers the head's challenge while it is live and unproven, with the site as the window shows it; Home reads it on mount and on focus (only the newest answer counts, nothing after unmount) and shows the strip — a `LockedButton` in the pending strip's pattern — which opens #10 for that challenge. #10 renders a `dapp` challenge only after re-validating every field against its closed alphabet (as a send's): the site's characters, one to five transactions, each token's amount exact, a named token's decimals its own, the reasons from its table; anything else is "could not be shown". The proof is all #10 does: "Confirmed. Go back to the approval window and approve the transaction."; its expired and locked lines say what is true for a site's request; Cancel closes the tab.
+The approval window never opens the vault page; the popup does, when the user's own click on the toolbar opened it (R9). `dapp.reauth` answers the head's challenge while it is live and unproven, with the site as the window shows it; Home reads it on mount and on focus (only the newest answer counts, nothing after unmount) and shows the strip — a `LockedButton` in the pending strip's pattern — which opens #10 for that challenge. #10 renders a `dapp` challenge only after re-validating every field against its closed alphabet (as a send's): the site's characters, one to five transactions, each token's amount exact, a named token's decimals its own, the reasons from its table, the count of tokens past the sixteen listed a whole number (shown as "and <n> more tokens" — R28); anything else is "could not be shown". The proof is all #10 does: "Confirmed. Go back to the approval window and approve the transaction."; its expired and locked lines say what is true for a site's request; Cancel closes the tab.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -5084,7 +5625,7 @@ Change `extension/src/app/__tests__/Home.test.tsx`:
 
 ````diff
 diff --git a/extension/src/app/__tests__/Home.test.tsx b/extension/src/app/__tests__/Home.test.tsx
-index 926a564..461f019 100644
+index 926a564..3a4e040 100644
 --- a/extension/src/app/__tests__/Home.test.tsx
 +++ b/extension/src/app/__tests__/Home.test.tsx
 @@ -648,3 +648,35 @@ describe('#42 offline and the D26 refused state', () => {
@@ -5105,7 +5646,7 @@ index 926a564..461f019 100644
 +      message: null, transactions: ['AQ=='], granted: null, sim: null, challengeId: null as string | null, sent: null, arrivedAt: T, state: 'queued', decidedBy: null, decidingAt: null,
 +      decision: null, answer: null, answeredAt: null,
 +    };
-+    const about = {kind: 'dapp' as const, account: ACCOUNT.publicKey, site: 'jup.ag', transactions: 1, outgoing: [{mint: null, symbol: 'SOL' as const, amount: '1', decimals: 9}], reasons: ['first-send' as const], thresholdCents: 10_000};
++    const about = {kind: 'dapp' as const, account: ACCOUNT.publicKey, site: 'jup.ag', transactions: 1, outgoing: [{mint: null, symbol: 'SOL' as const, amount: '1', decimals: 9}], omitted: 0, reasons: ['first-send' as const], thresholdCents: 10_000};
 +    entry.challengeId = await issueChallenge(ext, {now: () => T, randomBytes: n => new Uint8Array(n).fill(4)}, dappDigest(entry), about);
 +    await ext.session.set(DAPP_SESSION_KEY, {queue: [entry], grants: [], window: null, opening: null, undo: []});
 +    return entry.challengeId;
@@ -5166,19 +5707,19 @@ Change `extension/src/background/dapp/__tests__/signTx.test.ts`:
 
 ````diff
 diff --git a/extension/src/background/dapp/__tests__/signTx.test.ts b/extension/src/background/dapp/__tests__/signTx.test.ts
-index 6189972..1a777a4 100644
+index 47ca8c6..8548d82 100644
 --- a/extension/src/background/dapp/__tests__/signTx.test.ts
 +++ b/extension/src/background/dapp/__tests__/signTx.test.ts
-@@ -230,7 +230,7 @@ describe('re-authentication for a transaction request', () => {
+@@ -235,7 +235,7 @@ describe('re-authentication for a transaction request', () => {
      expect((await c.pend()).request?.tx?.reauth).toEqual({reasons: ['first-send'], state: 'waiting'});
      expect(await c.challengeInfo(challengeId)).toEqual({
        ok: true,
--      data: {kind: 'dapp', account: ACCOUNT.publicKey, site: 'dapp.test', transactions: 1, outgoing: [{mint: null, amount: '1005000', decimals: 9}], reasons: ['first-send'], thresholdCents: 10_000},
-+      data: {kind: 'dapp', account: ACCOUNT.publicKey, site: 'dapp.test', transactions: 1, outgoing: [{mint: null, symbol: 'SOL', amount: '1005000', decimals: 9}], reasons: ['first-send'], thresholdCents: 10_000},
+-      data: {kind: 'dapp', account: ACCOUNT.publicKey, site: 'dapp.test', transactions: 1, outgoing: [{mint: null, amount: '1005000', decimals: 9}], omitted: 0, reasons: ['first-send'], thresholdCents: 10_000},
++      data: {kind: 'dapp', account: ACCOUNT.publicKey, site: 'dapp.test', transactions: 1, outgoing: [{mint: null, symbol: 'SOL', amount: '1005000', decimals: 9}], omitted: 0, reasons: ['first-send'], thresholdCents: 10_000},
      });
      // Still refused while unproven; the challenge is not reissued.
      expect(await c.approve(requestId, id)).toEqual({ok: false, error: 'reauth-required'});
-@@ -275,3 +275,25 @@ describe('#48’s other views', () => {
+@@ -357,3 +357,25 @@ describe('#48’s other views', () => {
      expect(runtimeFor(e.ext).simulating.size).toBe(0);
    });
  });
@@ -5210,10 +5751,10 @@ Change `extension/src/unlock/__tests__/challenge.test.ts`:
 
 ````diff
 diff --git a/extension/src/unlock/__tests__/challenge.test.ts b/extension/src/unlock/__tests__/challenge.test.ts
-index f8e753f..741f238 100644
+index f8e753f..01c3d0a 100644
 --- a/extension/src/unlock/__tests__/challenge.test.ts
 +++ b/extension/src/unlock/__tests__/challenge.test.ts
-@@ -24,6 +24,54 @@ const SEND: ChallengeAbout = {
+@@ -24,6 +24,65 @@ const SEND: ChallengeAbout = {
    thresholdCents: 10_000,
  };
  
@@ -5228,6 +5769,7 @@ index f8e753f..741f238 100644
 +    {mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', symbol: 'USDC', amount: '250000000', decimals: 6},
 +    {mint: RECIPIENT, symbol: null, amount: '777', decimals: null},
 +  ],
++  omitted: 0,
 +  reasons: ['first-send', 'approval'],
 +  thresholdCents: 10_000,
 +};
@@ -5243,11 +5785,12 @@ index f8e753f..741f238 100644
 +        {label: 'USDC', amount: '−250', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'},
 +        {label: 'Token', amount: '−777 (base units)', mint: RECIPIENT},
 +      ],
++      omitted: 0,
 +      reasons: ['Re-auth required for the first send to a new address.', 'Re-auth required to approve a token allowance.'],
 +    });
 +  });
 +
-+  it('fails closed: a key more or less, a site with a path, a named token with other decimals, SOL with a mint, an unknown reason, no reason', () => {
++  it('fails closed: a key more or less, a site with a path, a named token with other decimals, SOL with a mint, an unknown reason, no reason, a count of omitted tokens that is not a whole number ≥ 0', () => {
 +    const outgoing = DAPP.kind === 'dapp' ? DAPP.outgoing : [];
 +    for (const bad of [
 +      {...DAPP, extra: 1},
@@ -5259,9 +5802,18 @@ index f8e753f..741f238 100644
 +      {...DAPP, outgoing: [{...outgoing[0], amount: '-5'}]},
 +      {...DAPP, reasons: ['drain']},
 +      {...DAPP, reasons: []},
++      {...DAPP, omitted: -1},
++      {...DAPP, omitted: 1.5},
++      {...DAPP, omitted: '2'},
 +    ]) {
 +      expect([bad, describeChallenge(bad)]).toEqual([bad, null]);
 +    }
++  });
++});
++
++describe('describeChallenge: a dApp’s omitted tokens (review 1 L9)', () => {
++  it('the count of the tokens past the listed ones is carried to #10', () => {
++    expect(describeChallenge({...DAPP, omitted: 3})).toMatchObject({kind: 'dapp', omitted: 3});
 +  });
 +});
 +
@@ -5274,15 +5826,15 @@ Change `extension/src/unlock/__tests__/reauthScreen.test.ts`:
 
 ````diff
 diff --git a/extension/src/unlock/__tests__/reauthScreen.test.ts b/extension/src/unlock/__tests__/reauthScreen.test.ts
-index 95d3eec..7f5a41b 100644
+index 95d3eec..22fa0dd 100644
 --- a/extension/src/unlock/__tests__/reauthScreen.test.ts
 +++ b/extension/src/unlock/__tests__/reauthScreen.test.ts
-@@ -614,6 +614,46 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
+@@ -614,6 +614,51 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
      expect(text(el('ra-notice-line'))).toBe('Something went wrong. Nothing was changed.');
    });
  
 +  // B1c-2 (spec B1c §3.3, D11): a site's transaction, reached from the popup's strip — #10 proves; the window signs.
-+  const DAPP: ChallengeAbout = {kind: 'dapp', account: K0, site: 'jup.ag', transactions: 1, outgoing: [{mint: null, symbol: 'SOL', amount: '1005000', decimals: 9}], reasons: ['first-send'], thresholdCents: 10_000};
++  const DAPP: ChallengeAbout = {kind: 'dapp', account: K0, site: 'jup.ag', transactions: 1, outgoing: [{mint: null, symbol: 'SOL', amount: '1005000', decimals: 9}], omitted: 0, reasons: ['first-send'], thresholdCents: 10_000};
 +  it('a dApp’s transaction: "You are about to approve", the site and what leaves the account; confirmed → back to the approval window, nothing sent here', async () => {
 +    const {h, broadcast} = await shown(DAPP);
 +    expect(text(el('ra-about'))).toBe('You are about to approve');
@@ -5298,6 +5850,11 @@ index 95d3eec..7f5a41b 100644
 +    expect(h.sent.filter(m => m.type === 'vault.reauthOk')).toHaveLength(1);
 +    expect(h.went).toEqual([]);
 +    nothingSent(h, broadcast);
++  });
++
++  it('a dApp’s transaction losing more tokens than #10 lists: the rows, then "and 2 more tokens" (review 1 L9)', async () => {
++    await shown({...DAPP, omitted: 2});
++    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'SOL−0.001005', 'and 2 more tokens']);
 +  });
 +
 +  it('a dApp’s transaction: expired and locked say what is true for a site’s request; Cancel only closes the tab', async () => {
@@ -5330,7 +5887,7 @@ index 95d3eec..7f5a41b 100644
 
 Run: `npx vitest run src/app/__tests__/Home.test.tsx src/app/__tests__/Switcher.test.tsx src/background/__tests__/messages.test.ts src/background/dapp/__tests__/signTx.test.ts src/unlock/__tests__/challenge.test.ts src/unlock/__tests__/reauthScreen.test.ts`
 
-Expected (the dry run): Test Files  5 failed | 1 passed (6) · Tests  7 failed | 165 passed (172)
+Expected (the dry run): Test Files  5 failed | 1 passed (6) · Tests  9 failed | 168 passed (177)
 
 - [ ] **Step 3: Implement.**
 
@@ -5485,7 +6042,7 @@ Change `extension/src/background/dapp/signTx.ts`:
 
 ````diff
 diff --git a/extension/src/background/dapp/signTx.ts b/extension/src/background/dapp/signTx.ts
-index 9516e76..e2c92c6 100644
+index 2225213..fff544a 100644
 --- a/extension/src/background/dapp/signTx.ts
 +++ b/extension/src/background/dapp/signTx.ts
 @@ -15,6 +15,7 @@ import {withRecent} from './grants';
@@ -5496,17 +6053,17 @@ index 9516e76..e2c92c6 100644
  import {runtimeFor} from './ports';
  import {answer, queueAccess} from './queue';
  import {simulateTransactions, type SimState, type TxOutcome} from './simulate';
-@@ -188,7 +189,7 @@ export function dappAbout(e: Entry, site: string, thresholdCents: number): Extra
-       out.set(c.mint, {amount: (prev?.amount ?? 0n) - a, decimals: c.decimals});
-     }
-   }
--  const outgoing: DappOutgoing[] = [...out].map(([mint, v]) => ({mint, amount: v.amount.toString(), decimals: v.decimals}));
-+  const outgoing: DappOutgoing[] = [...out].map(([mint, v]) => ({mint, symbol: mint === null ? 'SOL' : tokenForMint(mint), amount: v.amount.toString(), decimals: v.decimals}));
-   return {kind: 'dapp', account: e.account, site, transactions: e.transactions.length, outgoing, reasons: e.sim.sim.reasons.slice(), thresholdCents};
+@@ -197,7 +198,7 @@ export function dappAbout(e: Entry, site: string, thresholdCents: number): Extra
+     const [a, b] = [rank(x.mint, x.v.usd), rank(y.mint, y.v.usd)];
+     return a[0] - b[0] || (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0) || x.i - y.i;
+   });
+-  const outgoing: DappOutgoing[] = all.slice(0, MAX_DAPP_OUTGOING).map(({mint, v}) => ({mint, amount: v.amount.toString(), decimals: v.decimals}));
++  const outgoing: DappOutgoing[] = all.slice(0, MAX_DAPP_OUTGOING).map(({mint, v}) => ({mint, symbol: mint === null ? 'SOL' : tokenForMint(mint), amount: v.amount.toString(), decimals: v.decimals}));
+   return {kind: 'dapp', account: e.account, site, transactions: e.transactions.length, outgoing, omitted: all.length - outgoing.length, reasons: e.sim.sim.reasons.slice(), thresholdCents};
  }
  
-@@ -350,3 +351,27 @@ export async function finishSend(ext: Ext, deps: WalletDeps, requestId: string,
-     answer(fx, e, outcome === 'sent' ? {result: {signature: e.sent.signature}} : {error: 'invalid-request'}, tx.now);
+@@ -363,3 +364,27 @@ export async function finishSend(ext: Ext, deps: WalletDeps, requestId: string,
+     answer(fx, e, outcome === 'sent' ? {result: {signature: e.sent.signature}} : {error: 'send-failed'}, tx.now);
    });
  }
 +
@@ -5583,10 +6140,10 @@ Change `extension/src/background/reauthChallenges.ts`:
 
 ````diff
 diff --git a/extension/src/background/reauthChallenges.ts b/extension/src/background/reauthChallenges.ts
-index edde904..00db340 100644
+index e410f30..2ed18eb 100644
 --- a/extension/src/background/reauthChallenges.ts
 +++ b/extension/src/background/reauthChallenges.ts
-@@ -49,6 +49,8 @@ export type ChallengeAbout =
+@@ -50,6 +50,8 @@ export type ChallengeAbout =
  
  export interface DappOutgoing {
    mint: string | null;
@@ -5595,7 +6152,7 @@ index edde904..00db340 100644
    amount: string;
    decimals: number | null;
  }
-@@ -136,10 +138,11 @@ function isOutgoing(x: unknown): x is DappOutgoing {
+@@ -139,10 +141,11 @@ function isOutgoing(x: unknown): x is DappOutgoing {
    const decimals = o.decimals;
    return (
      (o.mint === null || (typeof o.mint === 'string' && ADDRESS.test(o.mint))) &&
@@ -5613,21 +6170,21 @@ Change `extension/src/unlock/challenge.ts`:
 
 ````diff
 diff --git a/extension/src/unlock/challenge.ts b/extension/src/unlock/challenge.ts
-index 0ddf1df..2aace71 100644
+index 0ddf1df..f62003f 100644
 --- a/extension/src/unlock/challenge.ts
 +++ b/extension/src/unlock/challenge.ts
 @@ -18,6 +18,10 @@ export type TokenSymbol = keyof typeof TOKENS;
  const DIGITS = /^\d{1,20}$/;
  const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
  const SEND_KEYS = ['account', 'amount', 'kind', 'markupLamports', 'markupReason', 'networkLamports', 'priorityLamports', 'reasons', 'recipient', 'rentLamports', 'thresholdCents', 'token'];
-+const DAPP_KEYS = ['account', 'kind', 'outgoing', 'reasons', 'site', 'thresholdCents', 'transactions'];
++const DAPP_KEYS = ['account', 'kind', 'omitted', 'outgoing', 'reasons', 'site', 'thresholdCents', 'transactions'];
 +const OUTGOING_KEYS = ['amount', 'decimals', 'mint', 'symbol'];
 +/** A site as the approval window shows it: a host (ASCII / punycode, or an IP literal), with a port when it has one. */
 +const SITE = /^[A-Za-z0-9.\-[\]:]{1,262}$/;
  const SETTINGS_KEYS = ['autoLockMinutes', 'kind', 'reauthUsdCents'];
  const own = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
  
-@@ -40,7 +44,16 @@ export interface SettingsDescription {
+@@ -40,7 +44,18 @@ export interface SettingsDescription {
    kind: 'settings';
    lines: string[];
  }
@@ -5639,13 +6196,15 @@ index 0ddf1df..2aace71 100644
 +  transactions: number;
 +  /** One row per token leaving the account: the label (a symbol, or "Token") and the exact amount (never rounded). */
 +  outgoing: {label: string; amount: string; mint: string | null}[];
++  /** How many more tokens leave the account than the rows show (plan 2 review 1 L9: the background lists at most 16). */
++  omitted: number;
 +  reasons: string[];
 +}
 +export type Description = SendDescription | SettingsDescription | DappDescription;
  
  const sol = (lamports: string): string => `${formatAmount(BigInt(lamports), 9, {min: 0, max: 9})} SOL`;
  const dollars = (cents: number): string => formatAmount(BigInt(cents), 2, cents % 100 === 0 ? {min: 0, max: 0} : {min: 2, max: 2});
-@@ -112,12 +125,56 @@ function describeSettings(a: Record<string, unknown>): SettingsDescription | nul
+@@ -112,12 +127,56 @@ function describeSettings(a: Record<string, unknown>): SettingsDescription | nul
    return lines.length === 0 ? null : {kind: 'settings', lines};
  }
  
@@ -5658,8 +6217,8 @@ index 0ddf1df..2aace71 100644
 +
 +function describeDapp(a: Record<string, unknown>): DappDescription | null {
 +  if (!hasExactly(a, DAPP_KEYS)) return null;
-+  const {account, site, transactions, outgoing, reasons, thresholdCents} = a;
-+  if (typeof account !== 'string' || !ADDRESS.test(account) || typeof site !== 'string' || !SITE.test(site) || !isInt(transactions, 1, 5) || !isInt(thresholdCents, 100, 100_000)) return null;
++  const {account, site, transactions, outgoing, omitted, reasons, thresholdCents} = a;
++  if (typeof account !== 'string' || !ADDRESS.test(account) || typeof site !== 'string' || !SITE.test(site) || !isInt(transactions, 1, 5) || !isInt(thresholdCents, 100, 100_000) || !isInt(omitted, 0, 10_000)) return null;
 +  if (!Array.isArray(outgoing) || outgoing.length > 16 || !Array.isArray(reasons) || reasons.length === 0 || new Set(reasons).size !== reasons.length) return null;
 +  const rows: DappDescription['outgoing'] = [];
 +  for (const x of outgoing as unknown[]) {
@@ -5689,7 +6248,7 @@ index 0ddf1df..2aace71 100644
 +    if (line === null) return null;
 +    lines.push(line);
 +  }
-+  return {kind: 'dapp', site, transactions, outgoing: rows, reasons: lines};
++  return {kind: 'dapp', site, transactions, outgoing: rows, omitted, reasons: lines};
 +}
 +
  /** The closed-alphabet renderer: a description built only from fixed strings and validated values, or null. */
@@ -5707,7 +6266,7 @@ Change `extension/src/unlock/screens/reauth.ts`:
 
 ````diff
 diff --git a/extension/src/unlock/screens/reauth.ts b/extension/src/unlock/screens/reauth.ts
-index 3339225..27d2741 100644
+index 3339225..509c356 100644
 --- a/extension/src/unlock/screens/reauth.ts
 +++ b/extension/src/unlock/screens/reauth.ts
 @@ -106,7 +106,7 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
@@ -5719,7 +6278,7 @@ index 3339225..27d2741 100644
    };
    const helper = (text: string, error: boolean) => {
      setText(byId('ra-helper'), text);
-@@ -149,6 +149,25 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
+@@ -149,6 +149,27 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
        byId('ra-rows').replaceChildren(row(REAUTH.to, addressGroups(d.recipient)), ...d.fees.map(f => row(f.label, f.value)));
        byId('ra-reasons').replaceChildren(...d.reasons.map(r => h('p', 'noc-body-sm vlt-lede', r)));
        setText(cancel, REAUTH.cancelSend);
@@ -5739,13 +6298,15 @@ index 3339225..27d2741 100644
 +          rows.push(row(o.label, value));
 +        }
 +      }
++      // Review 1 L9: past the sixteen rows the background lists, the count of the rest.
++      if (d.omitted > 0) rows.push(row(REAUTH.omitted(d.omitted), null));
 +      byId('ra-rows').replaceChildren(...rows);
 +      byId('ra-reasons').replaceChildren(...d.reasons.map(r => h('p', 'noc-body-sm vlt-lede', r)));
 +      setText(cancel, REAUTH.cancel);
      } else {
        setText(byId('ra-about'), REAUTH.aboutChange);
        shown(byId('ra-amount-row'), false);
-@@ -173,6 +192,13 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
+@@ -173,6 +194,13 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
      endCooldown();
      field.value = '';
      // B1b-2b E9 (§3.7): a settings description has its own end states — applied by the background, or nothing changed.
@@ -5759,7 +6320,7 @@ index 3339225..27d2741 100644
      if (described?.kind === 'settings') {
        if (out === 'applied') return notice(REAUTH.settingsApplied);
        if (out === 'expired') return notice(REAUTH.settingsExpired, {help: REAUTH.settingsExpiredHelp});
-@@ -251,7 +277,8 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
+@@ -251,7 +279,8 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
      if (stopCooldown !== null) return cancelInCooldown();
      void exclusive(deps, render, async () => {
        if (!canCancel) return;
@@ -5775,10 +6336,10 @@ Change `extension/src/unlock/strings.ts`:
 
 ````diff
 diff --git a/extension/src/unlock/strings.ts b/extension/src/unlock/strings.ts
-index a9e67a3..10ab6ab 100644
+index a9e67a3..80ae1f6 100644
 --- a/extension/src/unlock/strings.ts
 +++ b/extension/src/unlock/strings.ts
-@@ -412,6 +412,16 @@ export const REAUTH = {
+@@ -412,6 +412,18 @@ export const REAUTH = {
      'whole-balance-to-new': 'Re-auth required to send your whole balance to a new address.',
    },
    overUsd: (dollars: string): string => `Re-auth required for transactions over $${dollars}.`,
@@ -5788,6 +6349,8 @@ index a9e67a3..10ab6ab 100644
 +  transactions: 'Transactions',
 +  token: 'Token',
 +  baseUnits: (amount: string): string => `${amount} (base units)`,
++  /** Plan 2 review 1 L9 — controller copy, owner to confirm (Scope R28): the tokens past the sixteen #10 lists. */
++  omitted: (n: number): string => `and ${n} more ${n === 1 ? 'token' : 'tokens'}`,
 +  approval: 'Re-auth required to approve a token allowance.',
 +  dappConfirmed: 'Confirmed. Go back to the approval window and approve the transaction.',
 +  dappExpired: 'This confirmation has expired. Approve the transaction again in the approval window.',
@@ -5799,19 +6362,23 @@ index a9e67a3..10ab6ab 100644
 
 - [ ] **Step 4: Run — green, and the whole suite, the build and the gates.**
 
-Run: `npx vitest run src/app/__tests__/Home.test.tsx src/app/__tests__/Switcher.test.tsx src/background/__tests__/messages.test.ts src/background/dapp/__tests__/signTx.test.ts src/unlock/__tests__/challenge.test.ts src/unlock/__tests__/reauthScreen.test.ts` — expected: Test Files  6 passed (6) · Tests  172 passed (172)
+Run: `npx vitest run src/app/__tests__/Home.test.tsx src/app/__tests__/Switcher.test.tsx src/background/__tests__/messages.test.ts src/background/dapp/__tests__/signTx.test.ts src/unlock/__tests__/challenge.test.ts src/unlock/__tests__/reauthScreen.test.ts` — expected: Test Files  6 passed (6) · Tests  177 passed (177)
 
-Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  162 passed (162) · Tests  3199 passed (3199). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
+Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  163 passed (163) · Tests  3211 passed (3211). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
 
 - [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy; `tsc`'s own exit code first (0), then the named test: red.**
 
 | id | the change | red |
 |---|---|---|
-| M6a | `signTx.ts`: dapp.reauth offers a proven challenge | signTx.test.ts "dapp.reauth …" (null once proven) — RED Tests  1 failed \| 15 passed (16) |
-| M6b | `unlock/challenge.ts`: a named token's decimals not checked | challenge.test.ts "fails closed" — RED Tests  1 failed \| 34 passed (35) |
-| M6c | `unlock/screens/reauth.ts`: a proven dApp challenge reported as failed | reauthScreen.test.ts "a dApp's transaction: …confirmed" — RED Tests  1 failed \| 48 passed (49) |
+| M6a | `signTx.ts`: dapp.reauth offers a proven challenge | signTx.test.ts "dapp.reauth …" (null once proven) — RED Tests  1 failed \| 18 passed (19) |
+| M6b | `unlock/challenge.ts`: a named token's decimals not checked | challenge.test.ts "fails closed" — RED Tests  1 failed \| 35 passed (36) |
+| M6c | `unlock/screens/reauth.ts`: a proven dApp challenge reported as failed | reauthScreen.test.ts "a dApp's transaction: …confirmed" — RED Tests  1 failed \| 49 passed (50) |
 | M6d | `Home.tsx`: the strip opens another challenge | Home.test.tsx "the strip names the site and opens #10 for that challenge" — RED Tests  1 failed \| 31 passed (32) |
-| M6e | `reauthChallenges.ts`: a `dapp` outgoing of four keys refused | signTx.test.ts "a first send" (the challenge is not issued) — RED Tests  3 failed \| 13 passed (16) |
+| M6e | `reauthChallenges.ts`: a `dapp` outgoing of four keys refused | signTx.test.ts "a first send" (the challenge is not issued) — RED Tests  5 failed \| 14 passed (19) |
+| M6f | `unlock/screens/reauth.ts`: the omitted count never shown | reauthScreen.test.ts "…and 2 more tokens" — RED Tests  1 failed \| 49 passed (50) |
+| M6g | `unlock/challenge.ts`: `omitted` accepted as any number | challenge.test.ts "fails closed: … a count of omitted tokens that is not a whole number ≥ 0" — RED Tests  1 failed \| 35 passed (36) |
+
+The counts in the last column are the dry run's, each mutant built from the END state (Task 10's tree): on this task's own tree a test file can hold fewer tests (a later task adds some), so the counts differ — red is the check, not the count (review 1 L11).
 
 - [ ] **Step 6: Commit.**
 
@@ -5825,6 +6392,8 @@ git commit -m "feat(extension): B1c-2 re-authentication through the toolbar — 
 **Spec:** §3.3 (#48), §4.3 (the window), C13, C15, §9 (#48 rows), Q21, Q26; design ix:18261-18705; Scope R2, R3, R17–R22, R26; Review Focus 1
 
 **Files:**
+- Test (new): `extension/scripts/__tests__/extract-design-css.test.mjs`
+- Create: `extension/scripts/extract-design-css.mjs`
 - Test: `extension/src/__tests__/designExt2b.test.ts`
 - Modify: `extension/src/app/app.css`
 - Modify: `extension/src/approve/Approve.tsx`
@@ -5841,28 +6410,59 @@ git commit -m "feat(extension): B1c-2 re-authentication through the toolbar — 
 - Consumes: Task 4's `dapp.pending` view (`request.tx`, `request.mismatch`) and `dapp.decide`'s `simulation`; B1c-1's `WindowTop`, `OriginCard`, `LookalikeBanner`, `ConfirmButton`, `RiskConfirm`, `BudgetNotice`, `Waiting`, `BlockSite`, `Spinner`, `siteLabel`, `useArmed`; `AddressGroups`, `fromBook`, `showFee`, `feeUsd`, `formatAmount`.
 - Produces:
   - `approve/client.ts`: `ProgramKey`, `FieldValue`, `Field`, `DecodedInstruction`, `BalanceChange`, `TxOutcome`, `TxItem`, `SimulationView`, `AddressLabel`, `TxDetail`; `RequestView.type` gains the three types, `RequestView.tx`, `RequestView.mismatch`; `Decision`'s approve gains `simulation?: string` — every reply re-validated (`txDetailOf`).
-  - `approve/strings.ts`: `TX_TEXT`, `MISMATCH_TEXT`.
+  - `approve/strings.ts`: `TX_TEXT` (with the owner-delegated `noChanges`, `sendsSite`, `sendsNoctura`, `stale` — L3, L7, L4), `MISMATCH_TEXT`. `Approve.tsx`'s `decide` returns `dapp.decide`'s reply to the screen (R30).
+  - `scripts/extract-design-css.mjs` (committed): `OUT_PATH`, `DEFAULT_DESIGN`, `PREFIXES`, `KEYFRAMES`, `rulesOf(css)`, `kept(rule)`, `HEADER`, `extractDesignCss(html)`; `--check`.
   - `approve/Tx.tsx`: `Tx`; `approve/Mismatch.tsx`: `Mismatch`; `Approve.tsx` routes the three types.
   - `styles/design-ext.css` (regenerated): `.s9-sim-banner`, `.s9-bal-card`, `.s9-bal-row`, `.s9-origin-pill`, `.origin-badge`; `app.css`: `.app-tx-*`.
   - `approve/__tests__/windowHarness.tsx`: `openWindow({chain})`, `signTx(origin, transactions, {send})`; `txHarness.ts` exports `chainReader`, `newChain`.
 
-#48 on the design's own classes. Simulating: the origin card, the banner with #19's server line, the balance card in skeleton at .55 ("Balance changes (waiting…)"), the decoded instructions already shown, "This is mandatory — no skip", Approve disabled ("Approve · simulating") and ✕ disabled (R20). Simulated: "Balance changes (post-simulation)" with a row per mint (the token tile, the signed amount exact in `--danger` / `--success`, the dollars when priced), the instructions ("Program n" → the program and its name, the instruction, every field — addresses whole in groups with their labels, R3), "Compute units" consumed / limit, "Network fee" when the account pays it, and the origin pill (R19). A batch: a section per transaction. Re-authentication (R9): the line before Approve; after Approve, the banner pointing to the toolbar, Approve held until the background says the challenge is proven. Couldn't simulate (the node's error in mono), unreachable, Q21: only Reject (R8). Lookalike: the banner, the flipped bar, the 2-second confirm (R18). Approving: "Approving", the body at .65, "Approving…" with the ring, everything disabled. Q26 when the request can no longer be signed (R21). The mismatch notice keeps the design's hero, banner, detail rows (the session in `--success`, the request and the verdict in `--danger`) and caption (R17). Approve is a `ConfirmButton`: held 500 ms after focus and after every state change — the request, the simulation's id, the re-authentication's state, busy, the confirm (C15).
+#48 on the design's own classes. Simulating: the origin card, the banner with #19's server line, the balance card in skeleton at .55 ("Balance changes (waiting…)"), the decoded instructions already shown, "This is mandatory — no skip", Approve disabled ("Approve · simulating") and ✕ disabled (R20). Simulated: "Balance changes (post-simulation)" with a row per mint (the token tile, the signed amount exact in `--danger` / `--success`, the dollars when priced), the instructions ("Program n" → the program and its name, the instruction, every field — addresses whole in groups with their labels, R3), "Compute units" consumed / limit, "Network fee" when the account pays it, and the origin pill (R19). A batch: a section per transaction. Re-authentication (R9): the line before Approve; after Approve, the banner pointing to the toolbar, Approve held until the background says the challenge is proven. Couldn't simulate (the node's error in mono), unreachable, Q21: only Reject (R8). Lookalike: the banner, the flipped bar, the 2-second confirm (R18). Approving: "Approving", the body at .65, "Approving…" with the ring, everything disabled. Q26 when the request can no longer be signed (R21). Under the origin card on every state, who sends (R31, L7); after an approval refused `stale`, the owner's line in a warn banner until the next click, the refreshed effects shown and Approve held again (R30, L4); a simulation that moves none of the account's balances says "No SOL or token balance changes — review the instructions below." (L3). The mismatch notice keeps the design's hero, banner, detail rows (the session in `--success`, the request and the verdict in `--danger`) and caption (R17). Approve is a `ConfirmButton`: held 500 ms after focus and after every state change — the request, the simulation's id, the re-authentication's state, busy, the confirm (C15).
 
-Regenerate `extension/src/styles/design-ext.css` — never edit it by hand. Save this one-off script **outside the repository** (B1c plan 1's extraction script with one line of prefixes added — the line marked "B1c plan 2") and run it from the repository root. Before adding the line, the script must reproduce the current file (`sha256sum extension/src/styles/design-ext.css` = `b01d1aa0273497f2510a43e614f700baad277384cb6d3b65f554fdfed3070b11`); a different hash means `/home/user/Downloads/index.html` changed — stop and ask the controller. With the line, the output is 1 920 lines, 25 more, sha256 `1a1c5cd8004bd298f31bb8069a204dbb071a24fa0a2f4e8957829b35054ca388` (pinned by `designExt2b.test.ts`, re-pinned in this task). The resulting diff is in the blocks below, for review.
+Regenerate `extension/src/styles/design-ext.css` — never edit it by hand — with `scripts/extract-design-css.mjs`, **committed** with this task (review 1 M2; B1c plan 1's extraction script, until now kept outside the repository, with one line of prefixes added — the line marked "B1c plan 2" — and the header naming the script), given in full below. Run it from `extension/`: `node scripts/extract-design-css.mjs` (the design file: an argument, else `$NOCTURA_DESIGN_HTML`, else `/home/user/Downloads/index.html`), then `node scripts/extract-design-css.mjs --check` — expected `design-ext.css is the extraction output`. A sanity check first: plan 1's script (the "B1c plan 2" line removed, plan 1's header) reproduces the current file, `b01d1aa0273497f2510a43e614f700baad277384cb6d3b65f554fdfed3070b11`; a different hash means `/home/user/Downloads/index.html` changed — stop and ask the controller. The output is 1 920 lines (25 more; the header's lines are reworded, not added), sha256 `c91f92205f2d033d27dfe578e7d7515db37a0e240ddb0aca4752834c9551da44` (pinned by `designExt2b.test.ts`, re-pinned in this task; `scripts/__tests__/extract-design-css.test.mjs` checks, without the design, that the file is the script's header and only rules the script keeps). The resulting diff is in the blocks below, for review.
 
 - [ ] **Step 1: Write the failing tests.**
+
+Create `extension/scripts/__tests__/extract-design-css.test.mjs`:
+
+````js
+import {readFileSync} from 'node:fs';
+import {HEADER, OUT_PATH, kept, rulesOf} from '../extract-design-css.mjs';
+
+// Global constraints (plan 2 review 1 M2): design-ext.css is generated only. CI has no design file, so this checks
+// what it can without one: the file is the script's header and then only rules the script keeps — a rule typed in by
+// hand under any other selector fails here. The byte-for-byte check against the design is `--check` (Task 7 Step 3).
+describe('the design CSS extraction', () => {
+  const css = readFileSync(OUT_PATH, 'utf8');
+
+  it('design-ext.css starts with the script’s HEADER, and every rule after it is one the extraction keeps', () => {
+    expect(css.startsWith(HEADER)).toBe(true);
+    const rules = rulesOf(css.slice(HEADER.length));
+    expect(rules.length).toBeGreaterThan(800);
+    expect(rules.filter(r => !kept(r))).toEqual([]);
+  });
+
+  // Negative controls: a rule under a prefix the script does not list, and an at-rule, are not kept.
+  it('a hand-added rule outside the listed prefixes, or an @media block, is not kept (negative controls)', () => {
+    expect(kept('.app-mine { color: red; }')).toBe(false);
+    expect(kept('@media (max-width: 400px) { .screen { padding: 0; } }')).toBe(false);
+    expect(kept('.s9-bal-card .label { color: red; }')).toBe(true);
+  });
+});
+````
 
 Change `extension/src/__tests__/designExt2b.test.ts`:
 
 ````diff
 diff --git a/extension/src/__tests__/designExt2b.test.ts b/extension/src/__tests__/designExt2b.test.ts
-index 7a58c0f..8e31f5f 100644
+index 7a58c0f..0b76ad0 100644
 --- a/extension/src/__tests__/designExt2b.test.ts
 +++ b/extension/src/__tests__/designExt2b.test.ts
 @@ -28,7 +28,14 @@ describe('design-ext.css (B1b-2b plan 1)', () => {
      }
    });
  
+-  it('is the extraction output, byte for byte (the hash the plan pins)', () => {
+-    expect(createHash('sha256').update(CSS).digest('hex')).toBe('b01d1aa0273497f2510a43e614f700baad277384cb6d3b65f554fdfed3070b11');
 +  // B1c plan 2 re-ran the extraction with #48's classes and #26/#27's OriginBadge added (ix:3824-3859, 4080-4084).
 +  it('carries #48’s classes and the OriginBadge (B1c plan 2)', () => {
 +    for (const sel of ['.s9-sim-banner .m3', '.s9-bal-card .label', '.s9-bal-row .delta.neg', '.s9-bal-row .fiat', '.s9-origin-pill .dot.ok', '.origin-badge[data-origin="dapp"]']) {
@@ -5870,9 +6470,8 @@ index 7a58c0f..8e31f5f 100644
 +    }
 +  });
 +
-   it('is the extraction output, byte for byte (the hash the plan pins)', () => {
--    expect(createHash('sha256').update(CSS).digest('hex')).toBe('b01d1aa0273497f2510a43e614f700baad277384cb6d3b65f554fdfed3070b11');
-+    expect(createHash('sha256').update(CSS).digest('hex')).toBe('1a1c5cd8004bd298f31bb8069a204dbb071a24fa0a2f4e8957829b35054ca388');
++  it('is the extraction output, byte for byte (the hash the plan pins; scripts/extract-design-css.mjs --check against the design)', () => {
++    expect(createHash('sha256').update(CSS).digest('hex')).toBe('c91f92205f2d033d27dfe578e7d7515db37a0e240ddb0aca4752834c9551da44');
    });
  });
 ````
@@ -5941,6 +6540,8 @@ describe('#48 dapp-tx-approval', () => {
     // The instructions are shown while simulating (decoded locally).
     expect(texts('.s9-payload-card > .app-tx-ix .row .k')).toEqual(['Program 1', 'instruction', 'from', 'to', 'lamports']);
     expect(text('.app-tx-caption')).toBe('Simulation runs against the current slot before you see Approve. This is mandatory — no skip.');
+    // Review 1 L7: who broadcasts — for signTransaction, the site.
+    expect(text('.app-tx-sends')).toBe('The site sends this transaction itself after you approve.');
     const pending = cta(/Approve/);
     expect([pending.textContent, pending.disabled]).toEqual(['Approve· simulating', true]);
     // ✕ disabled during the simulation, as drawn; Reject open.
@@ -5964,6 +6565,9 @@ describe('#48 dapp-tx-approval', () => {
     const signed = (page.answersFor(requestId)[0]?.result as {signed: string[]}).signed;
     const tx = VersionedTransaction.deserialize(base64.decode(signed[0] ?? ''));
     expect(ed25519.verify(tx.signatures[0] ?? new Uint8Array(), tx.message.serialize(), ME.toBytes())).toBe(true);
+    // The harness's closed window reads nothing more (rev 2 dry run): a later focus never counts a second close.
+    await act(async () => void window.dispatchEvent(new Event('focus')));
+    expect(w.closed.n).toBe(1);
   });
 
   it('a batch: each transaction’s section on one screen, approved as a whole; a co-signer’s fee is not this account’s', async () => {
@@ -6046,6 +6650,53 @@ describe('#48 dapp-tx-approval', () => {
     expect(unstyled()).toEqual([]);
   });
 
+  it('signAndSendTransaction: "Noctura sends this transaction as soon as you approve." under the origin (review 1 L7)', async () => {
+    const w = await openWindow();
+    await known(w);
+    await w.signTx('https://jup.ag', [v0()], {send: true});
+    w.show();
+    await simulated(w, 'Balance changes (post-simulation)');
+    expect(text('.app-tx-sends')).toBe('Noctura sends this transaction as soon as you approve.');
+    expect(unstyled()).toEqual([]);
+  });
+
+  it('no balance change of the account’s: "No SOL or token balance changes — review the instructions below." (review 1 L3)', async () => {
+    const w = await openWindow();
+    await known(w);
+    // The dApp pays the fee; the account signs a transfer of nothing.
+    await w.signTx('https://jup.ag', [coSigned([transfer(0, ME)])]);
+    w.show();
+    await simulated(w, 'Balance changes (post-simulation)');
+    expect(text('.app-tx-none')).toBe('No SOL or token balance changes — review the instructions below.');
+    expect(texts('.s9-bal-row')).toEqual([]);
+  });
+
+  it('a refresh that lands between the read and the click (stale): the line says why, the new effects are shown, Approve is held again (review 1 L4)', async () => {
+    const STALE = 'The transaction changed while you were reviewing. Review it again before approving.';
+    const w = await openWindow();
+    await known(w);
+    const {page, requestId} = await w.signTx('https://jup.ag', [v0()]);
+    w.show();
+    await simulated(w, 'Balance changes (post-simulation)');
+    await armedAfter();
+    const first = (await readDappSession(w.ext)).queue[0]?.sim;
+    w.deps.clock.t += 30_000;
+    // The window's read starts the refresh in the background; the window still shows the first simulation.
+    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+    await waitFor(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
+    expect(screen.queryByText(STALE)).toBeNull();
+    fireEvent.click(cta('Approve'));
+    await screen.findByText(STALE);
+    expect(page.answersFor(requestId)).toEqual([]);
+    expect(cta('Approve').disabled).toBe(true);
+    expect(unstyled()).toEqual([]);
+    // The next click (after the hold) approves the simulation now shown, and the line goes.
+    await armedAfter();
+    fireEvent.click(cta('Approve'));
+    await waitFor(() => expect(w.closed.n).toBe(1));
+    expect(page.answersFor(requestId)).toHaveLength(1);
+  });
+
   it('C15: a new simulation re-holds Approve; Enter never approves', async () => {
     const w = await openWindow();
     await known(w);
@@ -6126,7 +6777,7 @@ Change `extension/src/approve/__tests__/windowHarness.tsx`:
 
 ````diff
 diff --git a/extension/src/approve/__tests__/windowHarness.tsx b/extension/src/approve/__tests__/windowHarness.tsx
-index 459e991..38b7d86 100644
+index 459e991..cc2bca1 100644
 --- a/extension/src/approve/__tests__/windowHarness.tsx
 +++ b/extension/src/approve/__tests__/windowHarness.tsx
 @@ -12,6 +12,7 @@ import {fakeExt} from '../../background/__tests__/fakeExt';
@@ -6151,7 +6802,23 @@ index 459e991..38b7d86 100644
    await ext.local.set(VAULT_KEY, ENV);
    if (o.unlocked !== false) {
      await setSession(ext, [ACCOUNT, SECOND]);
-@@ -61,11 +64,24 @@ export async function openWindow(o: {unlocked?: boolean} = {}) {
+@@ -40,11 +43,14 @@ export async function openWindow(o: {unlocked?: boolean} = {}) {
+   }
+   const approve = {id: ext.runtimeId, origin: ext.extensionOrigin, url: `${ext.extensionOrigin}/approve.html`};
+   const sent: unknown[] = [];
++  const closed = {n: 0};
++  // B1c-2 (plan 2 rev 2, dry-run item): a closed window is gone — it reads nothing more. Without this, a still-mounted
++  // window's next 1 s poll read `none` again and counted a second close, so `closed.n === 1` was a race under load.
+   const client: ApproveClient = createClient(m => {
++    if (closed.n > 0) return Promise.reject(new Error('the window is closed'));
+     sent.push(m);
+     return handleMessage(ext, m, approve, deps);
+   });
+-  const closed = {n: 0};
+   let tab = 10;
+   /** A page on its own tab that asks to connect; the request's id and the page. */
+   const connect = async (origin: string): Promise<{page: Page; requestId: string}> => {
+@@ -61,11 +67,24 @@ export async function openWindow(o: {unlocked?: boolean} = {}) {
      if (r?.accepted !== true) throw new Error(`sign request not queued: ${JSON.stringify(r)}`);
      return {page, requestId: String(r.requestId)};
    };
@@ -6213,38 +6880,44 @@ index 9bfd3ad..4e3db66 100644
 
 - [ ] **Step 2: Run them on the previous task's tree — red.**
 
-Run: `npx vitest run src/__tests__/designExt2b.test.ts src/approve/__tests__/tx.test.tsx`
+Run: `npx vitest run scripts/__tests__/extract-design-css.test.mjs src/__tests__/designExt2b.test.ts src/approve/__tests__/tx.test.tsx`
 
-Expected (the dry run): Test Files  2 failed (2) · Tests  11 failed | 3 passed (14)
+Expected (the dry run): Test Files  3 failed (3) · Tests  14 failed | 3 passed (17)
 
 - [ ] **Step 3: Implement.**
 
-The extraction script (outside the repository):
+After saving the files below (the extraction script among them), regenerate the stylesheet — from `extension/`:
+
+```bash
+node scripts/extract-design-css.mjs
+node scripts/extract-design-css.mjs --check   # design-ext.css is the extraction output
+sha256sum src/styles/design-ext.css            # c91f9220…9551da44
+```
+
+Create `extension/scripts/extract-design-css.mjs`:
 
 ````js
-// One-off (B1c plan 2: B1c plan 1's script with the #48 and #26/#27 prefixes added): copy the design classes web/'s design-system.css lacks out of the owner's design file,
-// under the same class names (spec B1b-2a §1.2, §1.7). Reads /home/user/Downloads/index.html,
-// writes extension/src/styles/design-ext.css. Run from the repository root; not committed.
+// The design classes web/src/styles/design-system.css lacks, copied out of the owner's design file under the same class
+// names (spec B1b-2a §1.2, §1.7): writes extension/src/styles/design-ext.css from the design file's first <style> block.
+// Committed by B1c plan 2 (review 1 M2; until then each plan ran a copy from outside the repository).
+//
+//   node extension/scripts/extract-design-css.mjs [<index.html>]          # writes design-ext.css
+//   node extension/scripts/extract-design-css.mjs --check [<index.html>]  # exits 1 if design-ext.css is not its output
+//
+// The design file: the argument, else $NOCTURA_DESIGN_HTML, else /home/user/Downloads/index.html (the owner's file —
+// CLAUDE.md, "Design — Source of Truth"). Re-run it when a plan adds a prefix below (and say so in its commit), or when
+// the owner's design changes a class this extension uses; then re-pin the hash in src/__tests__/designExt2b.test.ts.
+// CI never runs it (CI has no design file): src/__tests__/designExt2b.test.ts checks, without it, that every rule in
+// design-ext.css is one this script keeps and that the file starts with HEADER.
 import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {dirname, join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 
-const lines = readFileSync('/home/user/Downloads/index.html', 'utf8').split('\n');
-// The first <style> block: line 10 opens it, line 4306 closes it; its body is lines 11–4305.
-if (!lines[9].startsWith('<style>') || !lines[4305].includes('</style>')) throw new Error('index.html changed: re-check the <style> block bounds');
-const css = lines.slice(10, 4305).join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
+const here = dirname(fileURLToPath(import.meta.url));
+export const OUT_PATH = join(here, '..', 'src', 'styles', 'design-ext.css');
+export const DEFAULT_DESIGN = '/home/user/Downloads/index.html';
 
-// Top-level rules, split on brace depth.
-const rules = [];
-let depth = 0;
-let start = 0;
-for (let i = 0; i < css.length; i++) {
-  if (css[i] === '{') depth++;
-  else if (css[i] === '}' && --depth === 0) {
-    rules.push(css.slice(start, i + 1).trim());
-    start = i + 1;
-  }
-}
-
-const PREFIXES = ['.screen', '.top-bar', '.sticky-bar', '.scroll-area', '.banner', '.s-dash', '.s-recv', '.s-act', '.s-txd', '.s-vi-top', '.tx-row',
+export const PREFIXES = ['.screen', '.top-bar', '.sticky-bar', '.scroll-area', '.banner', '.s-dash', '.s-recv', '.s-act', '.s-txd', '.s-vi-top', '.tx-row',
   '.s7-list', '.s7-group-label', '.s7-row', '.s7-wordmark', '.s8-sheet', '.s8-sheet-overlay', '.s8-token-row', '.s8-tok', '.s8-offline-banner',
   '.s8-stale', '.s8-stale-mark', '.s8-empty-illust', '.s8-empty-copy', '.tab-bar', '.chip-row', '.copy-toast', '.skel-line', '.skel-circle', '.skel-tile', '.skel-block',
   // Plan 2 (B1b-2a-2): the vault-page screens #1–#6, #8–#10, #39 and the UI tab's #7 and #40.
@@ -6262,48 +6935,81 @@ const PREFIXES = ['.screen', '.top-bar', '.sticky-bar', '.scroll-area', '.banner
   // B1c plan 2: #48 (ix:3824-3837, 3854-3859) and the OriginBadge of #26/#27 (ix:4080-4084).
   '.s9-sim-banner', '.s9-bal-card', '.s9-bal-row', '.s9-origin-pill', '.origin-badge',
 ];
-const KEYFRAMES = ['shimmer', 'spin', 'shake',
+export const KEYFRAMES = ['shimmer', 'spin', 'shake',
   // Plan 3: what the send-flow rules animate with (#19's progress strip and skeleton, #21's ring and status dot, #54's ring; #20's caret — its rule comes with .s-conf, the typed field does not, D22).
   'm3-slide', 'shimmer-bg', 'zk-spin', 'zk-pulse', 'stk-spin', 'caret'];
 const selectorOf = r => r.slice(0, r.indexOf('{')).trim();
 const matches = s => PREFIXES.some(p => s === p || [' ', '.', ':', '[', '>'].some(c => s.startsWith(p + c)) || (p.endsWith('-') && s.startsWith(p)));
 
-let out = rules.filter(r => {
-  const sel = selectorOf(r);
+/** Top-level rules of a stylesheet without comments, split on brace depth. */
+export function rulesOf(css) {
+  const rules = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < css.length; i++) {
+    if (css[i] === '{') depth++;
+    else if (css[i] === '}' && --depth === 0) {
+      rules.push(css.slice(start, i + 1).trim());
+      start = i + 1;
+    }
+  }
+  return rules;
+}
+
+/** Whether the extraction keeps this rule: a listed @keyframes, or a rule whose every selector has a listed prefix. */
+export function kept(rule) {
+  const sel = selectorOf(rule);
   if (sel.startsWith('@keyframes')) return KEYFRAMES.includes(sel.split(/\s+/)[1]);
   if (sel.startsWith('@')) return false;
   return sel.split(',').map(x => x.trim()).every(matches);
-});
-// One @keyframes per name: the last wins in CSS, so keep only that one.
-const lastKeyframe = new Map(out.map((r, i) => [selectorOf(r), i]).filter(([s]) => s.startsWith('@keyframes')));
-out = out.filter((r, i) => !selectorOf(r).startsWith('@keyframes') || lastKeyframe.get(selectorOf(r)) === i).map(r => r.replace(/\n\s*\n/g, '\n'));
+}
 
-const header = `/*
- * The design classes web/src/styles/design-system.css lacks, copied from the owner's design file
- * (/home/user/Downloads/index.html, its first <style> block) under the SAME class names, rule for
- * rule, comments and blank lines removed (spec B1b-2a §1.2, §1.7). Generated once by the plan's
- * extraction step; edit by re-running it against the design, never by hand, so the two cannot drift.
+export const HEADER = `/*
+ * GENERATED by extension/scripts/extract-design-css.mjs — never edit by hand: the design classes
+ * web/src/styles/design-system.css lacks, copied from the owner's design file (/home/user/Downloads/index.html,
+ * its first <style> block) under the SAME class names, rule for rule, comments and blank lines removed
+ * (spec B1b-2a §1.2, §1.7). Re-run the script against the design, so the two cannot drift.
  * Tokens come from design-system.css, which every page imports first.
  */
 :root { --inset-top: 0px; --inset-bottom: 0px; }
 `;
-mkdirSync('extension/src/styles', {recursive: true});
-writeFileSync('extension/src/styles/design-ext.css', `${header}${out.join('\n')}\n`);
-````
 
-```bash
-node /path/outside/the/repo/extract-design-css-b1c2.mjs
-sha256sum extension/src/styles/design-ext.css   # 1a1c5cd8…054ca388
-```
+/** design-ext.css's full text for the design file's text. */
+export function extractDesignCss(html) {
+  const lines = html.split('\n');
+  // The first <style> block: line 10 opens it, line 4306 closes it; its body is lines 11–4305.
+  if (!lines[9].startsWith('<style>') || !lines[4305].includes('</style>')) throw new Error('index.html changed: re-check the <style> block bounds');
+  const css = lines.slice(10, 4305).join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
+  let out = rulesOf(css).filter(kept);
+  // One @keyframes per name: the last wins in CSS, so keep only that one.
+  const lastKeyframe = new Map(out.map((r, i) => [selectorOf(r), i]).filter(([s]) => s.startsWith('@keyframes')));
+  out = out.filter((r, i) => !selectorOf(r).startsWith('@keyframes') || lastKeyframe.get(selectorOf(r)) === i).map(r => r.replace(/\n\s*\n/g, '\n'));
+  return `${HEADER}${out.join('\n')}\n`;
+}
+
+if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {
+  const args = process.argv.slice(2);
+  const check = args[0] === '--check';
+  const design = (check ? args[1] : args[0]) ?? process.env.NOCTURA_DESIGN_HTML ?? DEFAULT_DESIGN;
+  const out = extractDesignCss(readFileSync(design, 'utf8'));
+  if (check) {
+    const same = readFileSync(OUT_PATH, 'utf8') === out;
+    console.log(same ? 'design-ext.css is the extraction output' : 'design-ext.css differs from the extraction output');
+    process.exit(same ? 0 : 1);
+  }
+  mkdirSync(dirname(OUT_PATH), {recursive: true});
+  writeFileSync(OUT_PATH, out);
+}
+````
 
 Change `extension/src/app/app.css`:
 
 ````diff
 diff --git a/extension/src/app/app.css b/extension/src/app/app.css
-index 6a30246..f047c65 100644
+index 6a30246..96d3e17 100644
 --- a/extension/src/app/app.css
 +++ b/extension/src/app/app.css
-@@ -1887,3 +1887,72 @@ body:has(.app-window) {
+@@ -1887,3 +1887,76 @@ body:has(.app-window) {
    width: max-content;
    max-width: calc(100% - 2 * var(--space-4));
  }
@@ -6329,6 +7035,10 @@ index 6a30246..f047c65 100644
 +  color: var(--fg-tertiary);
 +}
 +.app-tx-caption {
++  margin: 0 0 var(--space-4);
++}
++/* Review 1 L7: who broadcasts, under the origin card. */
++.app-tx-sends {
 +  margin: 0 0 var(--space-4);
 +}
 +.app-tx-none {
@@ -6382,7 +7092,7 @@ Change `extension/src/approve/Approve.tsx`:
 
 ````diff
 diff --git a/extension/src/approve/Approve.tsx b/extension/src/approve/Approve.tsx
-index 5a94ba0..42c4432 100644
+index 5a94ba0..4f3c3cf 100644
 --- a/extension/src/approve/Approve.tsx
 +++ b/extension/src/approve/Approve.tsx
 @@ -3,6 +3,8 @@ import type {ApproveClient, Decision, PendingView} from './client';
@@ -6394,7 +7104,21 @@ index 5a94ba0..42c4432 100644
  
  /** §2.3 (review 2 M3, review 1 L1): the window polls this often while it shows anything — so an unlock, an expiry or a new head reaches it. */
  export const POLL_MS = 1_000;
-@@ -99,5 +101,8 @@ export function Approve({client, close}: {client: ApproveClient; close: () => vo
+@@ -79,10 +81,11 @@ export function Approve({client, close}: {client: ApproveClient; close: () => vo
+ 
+   const decide = useCallback(
+     async (d: Decision) => {
+-      if (request === null) return;
++      if (request === null) return null;
+       setBusy(d.decision === 'approve');
+       try {
+-        await client.decide(request.requestId, d);
++        // B1c-2 (plan 2 review 1 L4): the reply goes back to the screen — #48 says why a `stale` approval did nothing.
++        return await client.decide(request.requestId, d);
+       } finally {
+         // M2 (fix round 1, C15): the refresh that can promote the next head (or close the window) must land before
+         // busy clears — clearing it first re-enables Connect for one tick on the request that was just decided
+@@ -99,5 +102,8 @@ export function Approve({client, close}: {client: ApproveClient; close: () => vo
    const inProgress = busy || view.state === 'deciding';
    // A new head is a new screen: its gates, scope, account and confirm start over (keyed by request).
    if (request.type === 'signMessage') return <Sign key={request.requestId} request={request} waiting={view.waiting} notice={noticeSeen} busy={inProgress} onDecide={decide} />;
@@ -6703,6 +7427,8 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
   const detail = request.tx;
   const lookalike = request.site.kind === 'lookalike';
   const [confirming, setConfirming] = useState(false);
+  // Review 1 L4: the last approval was refused `stale` (a refresh landed): say why the click did nothing, until the next one.
+  const [stale, setStale] = useState(false);
   const simId = detail !== null && detail.simulation.status === 'ok' ? detail.simulation.id : 'none';
   const armed = useArmed([request.requestId, simId, detail?.reauth?.state ?? 'none', confirming, busy].join('|'));
   const reject = () => onDecide({decision: 'reject'});
@@ -6731,7 +7457,11 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
   const ready = state === 'ready';
   const reauthWaiting = detail.reauth?.state === 'waiting';
   const canApprove = ready && !reauthWaiting && !busy;
-  const approve = () => onDecide({decision: 'approve', account: detail.account.publicKey, ...(detail.simulation.status === 'ok' ? {simulation: detail.simulation.id} : {})});
+  const approve = async () => {
+    setStale(false);
+    const reply = await onDecide({decision: 'approve', account: detail.account.publicKey, ...(detail.simulation.status === 'ok' ? {simulation: detail.simulation.id} : {})});
+    if (typeof reply === 'object' && reply !== null && 'error' in reply && reply.error === 'stale') setStale(true);
+  };
   const n = detail.transactions.length;
   const overline = busy ? TX_TEXT.overlineApproving : lookalike ? TX_TEXT.overlineLookalike : TX_TEXT.overline;
   return (
@@ -6743,6 +7473,16 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
           <OriginCard site={request.site} origin={request.origin} host={request.host} />
         </div>
         {lookalike ? <LookalikeBanner site={request.site} host={request.host} /> : null}
+        {/* Review 1 L7: who broadcasts — the design draws one screen for both requests. */}
+        <p className="noc-caption app-muted app-tx-sends">{detail.kind === 'signAndSendTransaction' ? TX_TEXT.sendsNoctura : TX_TEXT.sendsSite}</p>
+        {stale && ready ? (
+          <div className="s9-flag-banner warn app-tx-block" role="status">
+            <ExtIcon name="alert-triangle" size={18} />
+            <div>
+              <p className="head">{TX_TEXT.stale}</p>
+            </div>
+          </div>
+        ) : null}
         {/* Re-authentication first, under the origin: the one thing the user must do before Approve (seen without scrolling). */}
         {ready && detail.reauth !== null && detail.reauth.state === 'needed' ? <p className="noc-caption app-muted app-tx-caption">{TX_TEXT.reauthNeeded}</p> : null}
         {ready && reauthWaiting ? (
@@ -7055,10 +7795,10 @@ Change `extension/src/approve/strings.ts`:
 
 ````diff
 diff --git a/extension/src/approve/strings.ts b/extension/src/approve/strings.ts
-index 039edff..f739379 100644
+index 039edff..e2f2559 100644
 --- a/extension/src/approve/strings.ts
 +++ b/extension/src/approve/strings.ts
-@@ -111,3 +111,73 @@ export const SIGN_TEXT = {
+@@ -111,3 +111,82 @@ export const SIGN_TEXT = {
    /** Q26 (rev 3.2): `request.sign === null` — the Reject-only exit says why. */
    cannotSign: 'This request can no longer be signed. Reject it and ask the site to try again.',
  } as const;
@@ -7077,8 +7817,17 @@ index 039edff..f739379 100644
 +  simulatingMeta: 'Noctura server · simulateTransaction',
 +  balanceWaiting: 'Balance changes (waiting…)',
 +  balancePost: 'Balance changes (post-simulation)',
-+  /** Controller (owner copy): a simulation that moves nothing of this account's. */
-+  noChanges: 'No balance changes',
++  /**
++   * Owner-delegated (controller, 2026-10-15; plan 2 review 1 L3): a simulation that moves nothing of this account's — it
++   * points at the instructions, since an instruction that moves no balance (an authority change, an allowance) can still
++   * matter; B1c-3 replaces the line on a screen with such an instruction.
++   */
++  noChanges: 'No SOL or token balance changes — review the instructions below.',
++  /** Owner-delegated (controller, 2026-10-15; review 1 L7): who broadcasts — page.signTransaction / page.signAndSendTransaction. */
++  sendsSite: 'The site sends this transaction itself after you approve.',
++  sendsNoctura: 'Noctura sends this transaction as soon as you approve.',
++  /** Owner-delegated (controller, 2026-10-15; review 1 L4): an approval refused `stale` — a refresh landed between the read and the click. */
++  stale: 'The transaction changed while you were reviewing. Review it again before approving.',
 +  instructions: 'Instructions',
 +  program: (n: number): string => `Program ${n}`,
 +  /** B1 §3: "a program not in the decoded set → unknown program". */
@@ -7138,9 +7887,22 @@ Change `extension/src/styles/design-ext.css`:
 
 ````diff
 diff --git a/extension/src/styles/design-ext.css b/extension/src/styles/design-ext.css
-index 14c5128..5644823 100644
+index 14c5128..434e742 100644
 --- a/extension/src/styles/design-ext.css
 +++ b/extension/src/styles/design-ext.css
+@@ -1,8 +1,8 @@
+ /*
+- * The design classes web/src/styles/design-system.css lacks, copied from the owner's design file
+- * (/home/user/Downloads/index.html, its first <style> block) under the SAME class names, rule for
+- * rule, comments and blank lines removed (spec B1b-2a §1.2, §1.7). Generated once by the plan's
+- * extraction step; edit by re-running it against the design, never by hand, so the two cannot drift.
++ * GENERATED by extension/scripts/extract-design-css.mjs — never edit by hand: the design classes
++ * web/src/styles/design-system.css lacks, copied from the owner's design file (/home/user/Downloads/index.html,
++ * its first <style> block) under the SAME class names, rule for rule, comments and blank lines removed
++ * (spec B1b-2a §1.2, §1.7). Re-run the script against the design, so the two cannot drift.
+  * Tokens come from design-system.css, which every page imports first.
+  */
+ :root { --inset-top: 0px; --inset-bottom: 0px; }
 @@ -1714,6 +1714,20 @@
  .s9-scope-row.sel .radio::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--accent); }
  .s9-scope-row .pri { font-size: 14px; line-height: 18px; font-weight: 500; color: var(--fg-primary); }
@@ -7191,20 +7953,25 @@ index 14c5128..5644823 100644
 
 - [ ] **Step 4: Run — green, and the whole suite, the build and the gates.**
 
-Run: `npx vitest run src/__tests__/designExt2b.test.ts src/approve/__tests__/tx.test.tsx` — expected: Test Files  2 passed (2) · Tests  14 passed (14)
+Run: `npx vitest run scripts/__tests__/extract-design-css.test.mjs src/__tests__/designExt2b.test.ts src/approve/__tests__/tx.test.tsx` — expected: Test Files  3 passed (3) · Tests  19 passed (19)
 
-Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  163 passed (163) · Tests  3209 passed (3209). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
+Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  165 passed (165) · Tests  3226 passed (3226). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
 
 - [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy; `tsc`'s own exit code first (0), then the named test: red.**
 
 | id | the change | red |
 |---|---|---|
-| M7a | `Tx.tsx`: Approve enabled while the re-authentication waits | tx.test.tsx "re-authentication" — RED Tests  1 failed \| 8 passed (9) |
-| M7b | `Tx.tsx`: the simulation's id not in the C15 key | tx.test.tsx "C15: a new simulation re-holds Approve" — RED Tests  1 failed \| 8 passed (9) |
-| M7c | `Tx.tsx`: the origin pill on a lookalike | tx.test.tsx "a lookalike origin" — RED Tests  1 failed \| 8 passed (9) |
-| M7d | `Tx.tsx`: ✕ open while simulating | tx.test.tsx "simulating-blocking, then simulated" — RED Tests  1 failed \| 8 passed (9) |
-| M7e | `Mismatch.tsx`: [OK] sends an approval | tx.test.tsx "#48 origin-mismatch" — RED Tests  1 failed \| 8 passed (9) |
-| M7f | `Tx.tsx`: a failed outcome shown as approvable | tx.test.tsx "couldn't simulate …" — RED Tests  1 failed \| 8 passed (9) |
+| M7a | `Tx.tsx`: Approve enabled while the re-authentication waits | tx.test.tsx "re-authentication" — RED Tests  1 failed \| 11 passed (12) |
+| M7b | `Tx.tsx`: the simulation's id not in the C15 key | tx.test.tsx "C15: a new simulation re-holds Approve" — RED Tests  1 failed \| 11 passed (12) |
+| M7c | `Tx.tsx`: the origin pill on a lookalike | tx.test.tsx "a lookalike origin" — RED Tests  1 failed \| 11 passed (12) |
+| M7d | `Tx.tsx`: ✕ open while simulating | tx.test.tsx "simulating-blocking, then simulated" — RED Tests  1 failed \| 11 passed (12) |
+| M7e | `Mismatch.tsx`: [OK] sends an approval | tx.test.tsx "#48 origin-mismatch" — RED Tests  1 failed \| 11 passed (12) |
+| M7f | `Tx.tsx`: a failed outcome shown as approvable | tx.test.tsx "couldn't simulate …" — RED Tests  1 failed \| 11 passed (12) |
+| M7g | `Tx.tsx`: a `stale` reply never shown | tx.test.tsx "a refresh that lands between the read and the click (stale)" — RED Tests  1 failed \| 11 passed (12) |
+| M7h | `Tx.tsx`: who sends chosen by the wrong kind | tx.test.tsx "signAndSendTransaction: "Noctura sends this transaction…"" — RED Tests  2 failed \| 10 passed (12) |
+| M7i | `design-ext.css`: a rule added by hand | extract-design-css.test.mjs "…every rule after it is one the extraction keeps" — RED Tests  1 failed \| 1 passed (2) |
+
+The counts in the last column are the dry run's, each mutant built from the END state (Task 10's tree): on this task's own tree a test file can hold fewer tests (a later task adds some), so the counts differ — red is the check, not the count (review 1 L11).
 
 - [ ] **Step 6: Commit.**
 
@@ -7363,10 +8130,10 @@ Change `extension/src/app/app.css`:
 
 ````diff
 diff --git a/extension/src/app/app.css b/extension/src/app/app.css
-index f047c65..1192b06 100644
+index 96d3e17..2f98d47 100644
 --- a/extension/src/app/app.css
 +++ b/extension/src/app/app.css
-@@ -1956,3 +1956,9 @@ body:has(.app-window) {
+@@ -1960,3 +1960,9 @@ body:has(.app-window) {
  .s9-payload-card .row .v.noc-danger {
    color: var(--danger);
  }
@@ -7536,7 +8303,7 @@ index a003e17..f1ccca2 100644
 
 Run: `npx vitest run src/app/__tests__/Activity.test.tsx src/app/__tests__/TxDetail.test.tsx src/app/__tests__/engine.test.ts` — expected: Test Files  3 passed (3) · Tests  111 passed (111)
 
-Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  163 passed (163) · Tests  3212 passed (3212). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
+Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  165 passed (165) · Tests  3229 passed (3229). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
 
 - [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy; `tsc`'s own exit code first (0), then the named test: red.**
 
@@ -7545,6 +8312,8 @@ Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected
 | M8a | `Activity.tsx`: no badge | Activity.test.tsx "the OriginBadge" — RED Tests  1 failed \| 28 passed (29) |
 | M8b | `engine.ts`: any origin value read as none | engine.test.ts "history: an item's origin" — RED Tests  1 failed \| 26 passed (27) |
 | M8c | `TxDetail.tsx`: no badge in the title | TxDetail.test.tsx "the OriginBadge" — RED Tests  1 failed \| 54 passed (55) |
+
+The counts in the last column are the dry run's, each mutant built from the END state (Task 10's tree): on this task's own tree a test file can hold fewer tests (a later task adds some), so the counts differ — red is the check, not the count (review 1 L11).
 
 - [ ] **Step 6: Commit.**
 
@@ -8126,7 +8895,7 @@ index 0a6109c..18b7346 100644
 
 - [ ] **Step 4: Run — green, and the whole suite, the build and the gates.**
 
-Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  163 passed (163) · Tests  3212 passed (3212). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
+Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  165 passed (165) · Tests  3229 passed (3229). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
 
 Then the new spec and B1c-1's (B1c-19's features line changed), contained: `node scripts/build.mjs && npx playwright test e2e/dappTx.spec.ts e2e/dapp.spec.ts` — expected: 10 passed (B1c-19 … B1c-28).
 
@@ -8136,6 +8905,8 @@ Then the new spec and B1c-1's (B1c-19's features line changed), contained: `node
 |---|---|---|
 | M9a | `txRequest.ts`: `MAX_BATCH = 6` (built) | E2E B1c-25 (six open a window) and B1c-27 — RED (E2E: 2 failed) |
 | M9b | `wallet.ts`: the account's features without `solana:signAndSendTransaction` (built) — the adapter falls back to signing and sending itself | E2E B1c-27 (no dApp pending record; the dApp's own RPC reached — refused by the containment) — RED (E2E: 1 failed) |
+
+The counts in the last column are the dry run's, each mutant built from the END state (Task 10's tree): on this task's own tree a test file can hold fewer tests (a later task adds some), so the counts differ — red is the check, not the count (review 1 L11).
 
 - [ ] **Step 6: Commit.**
 
@@ -8436,7 +9207,7 @@ Nothing to implement: the spec shoots what Tasks 7 and 8 built (Step 1 is the wh
 
 - [ ] **Step 4: Run — green, and the whole suite, the build and the gates.**
 
-Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  163 passed (163) · Tests  3212 passed (3212). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
+Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  165 passed (165) · Tests  3229 passed (3229). `node scripts/build.mjs && npm run gates` — expected: every gate ok.
 
 Then: `npx playwright test e2e/visual-dapp-tx.spec.ts` — expected: 2 passed; the shots in `test-results/visual/` (48-*, 11-dapp-reauth-strip, 10-dapp, 26-dapp-badge, 27-dapp-badge).
 
@@ -8446,6 +9217,8 @@ Then: `npx playwright test e2e/visual-dapp-tx.spec.ts` — expected: 2 passed; t
 |---|---|---|
 | M10a | `app.css`: the mismatch detail's tone rules removed (built) | visual-dapp-tx.spec.ts (the tones in Chromium) — RED (E2E: 1 failed) |
 
+The counts in the last column are the dry run's, each mutant built from the END state (Task 10's tree): on this task's own tree a test file can hold fewer tests (a later task adds some), so the counts differ — red is the check, not the count (review 1 L11).
+
 - [ ] **Step 6: Commit.**
 
 ```bash
@@ -8453,29 +9226,29 @@ git add -A
 git commit -m "test(extension): B1c-2 the visual pass — #48's states, the mismatch notice, the toolbar strip, #10 for a site's transaction, the badge" -m "Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 ```
 
-## Dry-run record (each finding fixed in the code above)
+## Dry-run record (each finding fixed in the code above; revision 2 re-ran all of it)
 
 The end state was built task by task in a scratch git repository outside the checkout (a `git archive` of `main` at 269f0aa), one commit per task; the plan's code blocks are generated from those commits (new files in full, changes as the commit's own diff), so applying them in order to `main` reproduces the end state byte for byte. Every fix the dry run found was folded back into the task that owns its file (and every later task carries it). Then:
 
-- **Per-task replay** (each task's tree from `git archive`, `extension/node_modules` copied): each task's own test files on its predecessor's tree, then on its own tree, with `tsc`, the whole suite, `node scripts/build.mjs` and `npm run gates` at every task. Red for every task 1–8 (Tasks 9–10 add E2E specs over built behaviour, made failable by their mutations); `tsc` 0, own tests green, whole suite green, the build and every gate green at every task. The starting tree: Test Files  156 passed (156) · Tests  3110 passed (3110). The end state: Test Files  163 passed (163) · Tests  3212 passed (3212).
+- **Per-task replay** (each task's tree from `git archive`, `extension/node_modules` copied): each task's own test files on its predecessor's tree, then on its own tree, with `tsc`, the whole suite, `node scripts/build.mjs` and `npm run gates` at every task. Red for every task 1–8 (Tasks 9–10 add E2E specs over built behaviour, made failable by their mutations); `tsc` 0, own tests green, whole suite green, the build and every gate green at every task. The starting tree: Test Files  156 passed (156) · Tests  3110 passed (3110). The end state: Test Files  165 passed (165) · Tests  3229 passed (3229).
 
 | task | own tests on the previous tree | own tests | whole suite |
 |---|---|---|---|
-| 1 | red: Test Files  2 failed (2) · Tests  no tests | Test Files  2 passed (2) · Tests  22 passed (22) | Test Files  158 passed (158) · Tests  3132 passed (3132) |
-| 2 | red: Test Files  3 failed (3) · Tests  7 failed \| 41 passed (48) | Test Files  3 passed (3) · Tests  60 passed (60) | Test Files  159 passed (159) · Tests  3151 passed (3151) |
-| 3 | red: Test Files  4 failed (4) · Tests  19 failed \| 31 passed (50) | Test Files  4 passed (4) · Tests  50 passed (50) | Test Files  160 passed (160) · Tests  3165 passed (3165) |
-| 4 | red: Test Files  3 failed (3) · Tests  4 failed \| 48 passed (52) | Test Files  3 passed (3) · Tests  67 passed (67) | Test Files  161 passed (161) · Tests  3180 passed (3180) |
-| 5 | red: Test Files  3 failed (3) · Tests  3 failed \| 11 passed (14) | Test Files  3 passed (3) · Tests  57 passed (57) | Test Files  162 passed (162) · Tests  3193 passed (3193) |
-| 6 | red: Test Files  5 failed \| 1 passed (6) · Tests  7 failed \| 165 passed (172) | Test Files  6 passed (6) · Tests  172 passed (172) | Test Files  162 passed (162) · Tests  3199 passed (3199) |
-| 7 | red: Test Files  2 failed (2) · Tests  11 failed \| 3 passed (14) | Test Files  2 passed (2) · Tests  14 passed (14) | Test Files  163 passed (163) · Tests  3209 passed (3209) |
-| 8 | red: Test Files  3 failed (3) · Tests  3 failed \| 108 passed (111) | Test Files  3 passed (3) · Tests  111 passed (111) | Test Files  163 passed (163) · Tests  3212 passed (3212) |
-| 9 | — (E2E: red under its mutations) | — | Test Files  163 passed (163) · Tests  3212 passed (3212) |
-| 10 | — (E2E: red under its mutations) | — | Test Files  163 passed (163) · Tests  3212 passed (3212) |
+| 1 | red: Test Files  3 failed (3) · Tests  no tests | Test Files  3 passed (3) · Tests  24 passed (24) | Test Files  159 passed (159) · Tests  3134 passed (3134) |
+| 2 | red: Test Files  3 failed (3) · Tests  7 failed \| 41 passed (48) | Test Files  3 passed (3) · Tests  60 passed (60) | Test Files  160 passed (160) · Tests  3153 passed (3153) |
+| 3 | red: Test Files  4 failed (4) · Tests  20 failed \| 31 passed (51) | Test Files  4 passed (4) · Tests  51 passed (51) | Test Files  161 passed (161) · Tests  3168 passed (3168) |
+| 4 | red: Test Files  3 failed (3) · Tests  4 failed \| 48 passed (52) | Test Files  3 passed (3) · Tests  70 passed (70) | Test Files  162 passed (162) · Tests  3186 passed (3186) |
+| 5 | red: Test Files  3 failed (3) · Tests  3 failed \| 11 passed (14) | Test Files  3 passed (3) · Tests  61 passed (61) | Test Files  163 passed (163) · Tests  3203 passed (3203) |
+| 6 | red: Test Files  5 failed \| 1 passed (6) · Tests  9 failed \| 168 passed (177) | Test Files  6 passed (6) · Tests  177 passed (177) | Test Files  163 passed (163) · Tests  3211 passed (3211) |
+| 7 | red: Test Files  3 failed (3) · Tests  14 failed \| 3 passed (17) | Test Files  3 passed (3) · Tests  19 passed (19) | Test Files  165 passed (165) · Tests  3226 passed (3226) |
+| 8 | red: Test Files  3 failed (3) · Tests  3 failed \| 108 passed (111) | Test Files  3 passed (3) · Tests  111 passed (111) | Test Files  165 passed (165) · Tests  3229 passed (3229) |
+| 9 | — (E2E: red under its mutations) | — | Test Files  165 passed (165) · Tests  3229 passed (3229) |
+| 10 | — (E2E: red under its mutations) | — | Test Files  165 passed (165) · Tests  3229 passed (3229) |
 
-- **Extension `npm run verify`** on the end state (build, vitest, CSP, secrets, every gate, reproducible): green — 163 files, 3212 tests; chrome 25 files `sha256:188cfd2e…d279207055`, firefox 25 files `sha256:c582f6e1…2e87f95c`.
-- **E2E, contained, normal launch (the whole suite):** 64 passed (16.6m). **Under `unshare -rn`:** 64 passed (16.5m) — the same specs with no network namespace route out.
-- **Root and web:** web's `npm run verify` (its vitest runs core/'s tests — Task 2 changed `core/solana/rpc.ts`): Tests  550 passed (550) and Tests  3 passed (3) — green; the root `npx tsc --noEmit` clean; the root `npx jest`: Tests:       1 skipped, 1234 passed, 1235 total. Not done in the dry run: the CI reproduction on Node 22.12 with only `web/` and `extension/` installed — it stays in "Before the PR".
-- **Mutations:** every named mutation above was run alone in a fresh `git archive` copy of the end state (`node_modules` linked), `tsc`'s own exit code first, unit mutations under `timeout 300`, the E2E ones (M9a, M9b, M10a) with the build: **59 of 59 red**.
+- **Extension `npm run verify`** on the end state (build, vitest, CSP, secrets, every gate, reproducible): green — 165 files, 3229 tests; chrome 25 files `sha256:880fc6ae…eb6d2bdc`, firefox 25 files `sha256:fc95d106…2b570509`.
+- **E2E, contained, normal launch (the whole suite):** 64 passed (17.4m). **Under `unshare -rn`:** 64 passed (17.2m) — the same specs with no network namespace route out.
+- **Root and web:** web's `npm run verify` (its vitest runs core/'s tests — Task 2 changed `core/solana/rpc.ts`): Tests  550 passed (550) and Tests  3 passed (3) — green; the root `npx tsc --noEmit` clean; the root `npx jest`: Tests:       1 skipped, 1234 passed, 1235 total; the repository's TGE-date gate (`node scripts/check-no-tge-date.mjs`): no TGE date in 1215 tracked text files. Not done in the dry run: the CI reproduction on Node 22.12 with only `web/` and `extension/` installed — it stays in "Before the PR".
+- **Mutations:** every named mutation above was run alone in a fresh `git archive` copy of the end state (`node_modules` linked), `tsc`'s own exit code first, unit mutations under `timeout 300`, the E2E ones (M9a, M9b, M10a) with the build: **78 of 78 red**.
 
 What the dry run caught:
 
@@ -8496,24 +9269,35 @@ What the dry run caught:
 15. **Thirteen mutations did not compile on their first form** (`noUnusedLocals`, a narrowing lost to `&& false`, an incomparable literal) — `tsc`'s own exit code refused them before any test ran; each now neutralises its check in place so the mutant compiles and the test is what turns red.
 16. **`npm audit`:** 6 moderate (main: 4) — R25.
 
+**Revision 2's dry run** (every changed task replayed; all 78 mutations again — the unit ones on the end state, the E2E ones built; the end state's `verify` and the E2E twice) caught:
+
+17. **Review 1's M1, taken literally, would trade a silent loss for a double approval.** A `broadcastAttemptedAt` that the poller sends whenever it is null also sends the record of a worker stopped between `recordDappSend` and the entry's `sent` — whose page the restart answers `rejected`. The record now says whether a page was promised its signature (`held` → `due`), written before the promise is stored, and only a `due` one is ever sent by the poller (R13; mutations M5k–M5o, M5q).
+18. **A window-test flake, found by running the whole suite again and again under load, and its cause.** Four of 27 whole-suite runs had one failing test (the replay's Task 7 and Task 10 trees among them); the two whose names were captured failed `expected 2 to be 1` on `w.closed.n` — this plan's `tx.test.tsx` "re-authentication …" and B1c-1's `sign.test.tsx` "idle · verified …". The harness's `close()` only counted; the window stayed mounted, so its next 1 s poll read `none` again and counted a second close before `waitFor` saw the first. A real window is gone after `close()`: the harness's client now refuses every read once the window has closed, and the first #48 test checks deterministically that a later focus counts no second close (M7j: with the old harness that check is red). After the fix, 10 more whole-suite runs on the end state, one after another with nothing else running: every one green — weaker evidence than the load the failures needed, which is why the deterministic check (M7j) carries the fix, not these runs. B1c-1's `connect.test.tsx` flake (item 13) asserts the same `closed.n` with its own timeout and is plausibly the same race; it was not seen again.
+19. **The replay's "own tests" pattern looked only under `src/`** — the generators' tests (`scripts/__tests__/*.test.mjs`, new in Tasks 1 and 7) were run in the whole suite but not red-checked on the predecessor's tree. Tasks 1 and 7–10 were replayed again after item 18's fix, with them (the rows above for those tasks are that run): red where the script does not yet exist.
+20. **The stopped-worker scenes need a signed wire:** `recordDappSend` takes its id from the wire's first signature and an unsigned wire is refused there — the tests sign it with `signAll` at the account's slot, as the effect does.
+21. **`markDue` lives in `pendingStore.ts`**, not `pending.ts`: the queue (`queue.ts`) and the lock hook take only the store's write, never the poller's network path.
+22. **Two mutations were re-formed before they ran:** M3i (L8 rewrote its line) and M7g (a first form comparing a narrowed object with `null` would not compile). M4e was rewritten because the consume moved (L1). Every mutant compiled; 78 of 78 red (M7a–M7j re-run on the tree with item 18's fix).
+23. **The first normal-launch E2E run of revision 2 had two failures under the load of concurrent vitest loops** (item 18's hunt): B1c-19 while Playwright wrote its trace zip ("file data stream has unexpected number of bytes") and B1c-25 at its 4-minute timeout. The `unshare -rn` run right after was 64 / 64; the normal launch was then run again on a quiet machine — the figure above is that run.
+
 ## Before the PR (the standing rules)
 
 - [ ] Reproduce CI with **only** `web/` and `extension/` installed, on Node 22.12 (`PATH="$(dirname $(npx -y -p node@22.12.0 node -e 'console.log(process.execPath)')):$PATH"`), npm 11.6.2: `npm ci --ignore-scripts` in both, `npm run verify` in both, `npm run e2e` in `extension/` — in a normal launch and under `unshare -rn`.
 - [ ] Task 2 touches `core/solana/rpc.ts`: run web's `npm run verify` (its vitest runs core/'s tests) and the root `npx tsc --noEmit` and `npx jest`.
 - [ ] `node scripts/check-no-tge-date.mjs` from the repository root — this plan and every file it adds are clean.
 - [ ] The opus-tier visual review of Task 10's shots against index.html (#48 ix:18261-18705 with its DS class map, #26b ix:11813, #27b ix:12163), then an independent opus review of that review; each finding fixed or declared in the spec's §9; the result in the PR description.
-- [ ] The owner has read Scope §3 (R1–R27) — in particular the copy rulings (R2, R9, R10, R18, R22), the re-authentication path through the toolbar (R9), the broadcast-refusal code (R14, a §1.6 question) and the IDL's home (R1) — and the Fable 5.1 review of this plan is applied (owner rule).
+- [ ] The owner's decisions of 2026-10-15 are in (M3 `send-failed`, M4 dependent batches, the copy — R2, R9, R10, R18, R22 accepted, L3/L4/L7 owner-delegated) and the Fable 5.1 review 1 is applied (this revision); still open for the owner: R28's "and <n> more tokens" (copy) and the candidate §9 row of R10 (every SPL transfer to a token account that is not the account's own re-authenticates).
 - [ ] The controller has looked at the dry run's one unexplained failure (item 13 below: B1c-1's `connect.test.tsx` C15 test, once, under full-suite load) — a timing flake in a security UI is a finding.
-- [ ] The PR says loudly: B1c-2 is a merge-to-`main` milestone, not a release (D10); it signs with **no red-flag block** — no store build carries B1c until B1c-3 is merged; the `<all_urls>` update consequences are B1e gates (§6.5).
+- [ ] The PR says loudly: B1c-2 is a merge-to-`main` milestone, not a release (D10); it signs with **no red-flag block** — no store build carries B1c until B1c-3 is merged; **a dependent batch (create an account, then use it; a swap's setup / swap / cleanup) cannot be approved in B1c-2, and B1c-3 must solve it** (owner, M4); "No SOL or token balance changes — review the instructions below." is shown even beside an `assign` / `setAuthority` / `approve*` / `closeAccount` until B1c-3 replaces it (L3); the `<all_urls>` update consequences are B1e gates (§6.5); `npm audit` 6 moderate, none high (R25).
 
 ## Self-review
 
-- **Spec coverage.** §1.3 (B1c-2's modules: `decode/`, `simulate.ts`, `signTx.ts`); §1.4 (both transaction messages, their payloads and answers — Tasks 3–5); §1.5 step 2 (`deciding` before every effect; the send's restart rule — Tasks 4, 5); §1.6 (`invalid-request` for a batch over five and a wrong chain; R14); §2.3 (the table extended — Task 4); §3.3 bullet by bullet: 1–5 and fee payer or signer (Task 3), lookup tables through `getMultipleAccounts` and "unknown program" (Tasks 1, 2), the decoder's whole list (Task 1), the simulation with post − pre per mint in `bigint` and "simulating" holding Approve with no minimum (Tasks 2, 4, 7), the 30 s refresh and Q21 (Tasks 2, 4, 7), #48's states (Task 7; the deferred ones listed in Scope §3), B1b's re-authentication rules through #10 (Tasks 2, 4, 6 — R9), sign-and-send through the existing route, answered once, a second identical request rejected, the history badge (Tasks 3, 5, 8), StandardWalletAdapter (Task 9); §4.3 (the window's `{deciding}` state as "Approving…"); §5 ("the worker dies mid-signature": Task 5); §6.1 (every behaviour with its named mutation); §6.3 B1c-2 (Task 9); §6.4 #48 (Task 10); §7 (simulation has one source, stated in `simulate.ts`); §9 (#48 rows: no artificial minimum, approving · shielded is B2); §10 (Q21, Q26).
+- **Spec coverage.** §1.3 (B1c-2's modules: `decode/`, `simulate.ts`, `signTx.ts`); §1.4 (both transaction messages, their payloads and answers — Tasks 3–5); §1.5 step 2 (`deciding` before every effect; the send's restart rule, the bytes reaching the route exactly once — Tasks 4, 5); §1.6 (`invalid-request` for a batch over five and a wrong chain; `send-failed`, rev 3.3 — R14); §2.3 (the table extended — Task 4); §3.3 bullet by bullet: 1–5 and fee payer or signer (Task 3), lookup tables through `getMultipleAccounts` and "unknown program" (Tasks 1, 2), the decoder's whole list (Task 1), the simulation with post − pre per mint in `bigint` and "simulating" holding Approve with no minimum (Tasks 2, 4, 7), the 30 s refresh and Q21 (Tasks 2, 4, 7), #48's states (Task 7; the deferred ones listed in Scope §3), B1b's re-authentication rules through #10 (Tasks 2, 4, 6 — R9), sign-and-send through the existing route, answered once, a second identical request rejected, the history badge (Tasks 3, 5, 8), StandardWalletAdapter (Task 9); §4.3 (the window's `{deciding}` state as "Approving…"); §5 ("the worker dies mid-signature": Task 5); §6.1 (every behaviour with its named mutation); §6.3 B1c-2 (Task 9); §6.4 #48 (Task 10); §7 (simulation has one source, stated in `simulate.ts`; the mismatch notice's limit, rev 3.3); §9 (#48 rows: no artificial minimum, approving · shielded is B2; rev 3.3's dependent batches and the transactions' malformed-first order); §10 (Q21, Q26).
 - **Rule 6 and C15.** Approve and its demoted form are `ConfirmButton`s (held 500 ms, Enter prevented) keyed on the request, the simulation's id, the re-authentication's state, busy and the confirm; Reject, Reject and report, [OK, return to dApp] and the popup's strip are `LockedButton`s.
 - **Generation checks.** The window's poll is B1c-1's; Home's `dapp.reauth` read checks `alive` and its generation; every effect section re-checks its entry (`stillDeciding`); a simulation result is stored only on a still-queued entry.
 - **Placeholders.** None: every step has its code (new files in full, changes as exact diffs, the two generated files with their scripts and pinned hashes), its command and the dry run's expected output.
 - **Type consistency.** The Interfaces blocks are the exports as they compile; the replay compiled and tested every task on its own predecessor.
-- **Copy.** Every visible string is the spec's (Q21, Q26), the design's (#48, #26b, #27b), B1 §3's or B1b's, except the rulings flagged for the owner (R2, R9, R10, R18, R22).
+- **Copy.** Every visible string is the spec's (Q21, Q26), the design's (#48, #26b, #27b), B1 §3's or B1b's, or a ruling the owner decided or delegated on 2026-10-15 (R2, R9, R10, R18, R22 accepted; L3, L4, L7 worded as decided), except R28's "and <n> more tokens", flagged for the owner.
+- **Review 1.** Every finding (M1–M4, L1–L11) has its row in "Review 1 (Fable 5.1) — how each finding was applied", with the test or the text that carries it.
 
 ## Execution handoff
 
@@ -8521,5 +9305,5 @@ Plan complete. Execute with superpowers:subagent-driven-development (a fresh imp
 
 ## The controller's rulings, for the owner (Scope §3)
 
-R1 the presale IDL lives in the ICO repository (generated table, pinned) · R2 decoded rows; `unknown instruction` **(copy)** · R3 addresses whole with labels · R4 the simulated accounts · R5 the SOL change as the node reports it, the fee row only for the payer · R6 a batch simulated one by one · R7 the simulation shown is the one approved (40 s) · R8 failures: only Reject until B1c-3 · R9 re-authentication through the toolbar, never from the window **(copy: the window's two lines, the strip, #10's three lines)** · R10 B1b's rules for a transaction, `approval` **(copy: its #10 line)** · R11 the challenge's binding · R12 sign-and-send: fully co-signed, no durable nonce · R13 the dApp's pending record · R14 a refused broadcast is `invalid-request` **(spec §1.6 question)** · R15 a lock after the record still broadcasts · R16 origin mismatch: what and when · R17 the mismatch screen's two departures · R18 a lookalike's #48 **(copy: "Approve anyway (not recommended)")** · R19 the origin pill · R20 ✕ while simulating · R21 Q26 on #48 · R22 the new strings **(copy)** · R23 the badge's list; no "Wallet" pill; no #27b Simulation row · R24 the provider's batching · R25 the E2E packages (StandardWalletAdapter's real package), `npm audit` 6 moderate · R26 the window's 1 s poll · R27 Firefox.
+R1 the presale IDL lives in the ICO repository (generated table, pinned; the generator committed — M2) · R2 decoded rows; `unknown instruction` **(copy — accepted, owner-delegated)** · R3 addresses whole with labels · R4 the simulated accounts · R5 the SOL change as the node reports it, the fee row only for the payer · R6 a batch simulated one by one; **dependent batches unapprovable in B1c-2 (owner, M4)** · R7 the simulation shown is the one approved (40 s) · R8 failures: only Reject until B1c-3 · R9 re-authentication through the toolbar, never from the window **(copy — accepted, owner-delegated)** · R10 B1b's rules for a transaction, `approval` **(copy — accepted, owner-delegated; a candidate §9 row for the owner)** · R11 the challenge's binding; consumed after `deciding` (L1) · R12 sign-and-send: fully co-signed, no durable nonce · R13 the dApp's pending record; the first broadcast exactly once (M1) · R14 a refused broadcast is `send-failed` **(owner, M3; spec rev 3.3)** · R15 a lock after the record still broadcasts · R16 origin mismatch: what and when · R17 the mismatch screen's two departures · R18 a lookalike's #48 **(copy — accepted, owner-delegated)** · R19 the origin pill · R20 ✕ while simulating · R21 Q26 on #48 · R22 the new strings **(copy — accepted, owner-delegated; L3, L4, L7 as decided)** · R23 the badge's list; no "Wallet" pill; no #27b Simulation row · R24 the provider's batching · R25 the E2E packages (StandardWalletAdapter's real package), `npm audit` 6 moderate, none high · R26 the window's 1 s poll · R27 Firefox · R28 #10 lists 16 mints and counts the rest **(copy — the controller's, owner to confirm)** · R29 a send's dead-effect TTL 45 s · R30 the `stale` line · R31 who sends · R32 the provider's input check.
 

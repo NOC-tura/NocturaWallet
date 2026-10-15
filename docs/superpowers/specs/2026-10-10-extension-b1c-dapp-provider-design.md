@@ -11,6 +11,11 @@ landed: §11. **Rev 3.1** (plan 1's Fable review 1, L7): two text corrections th
 was built — §2.5 rule e (a listed brand as a subdomain label, with its accepted false-positive class; `orca.co.uk`
 moves from unknown to lookalike), §4.4's refused-undo toast (Q25) and §3.2's line for a request that can no longer be
 signed (Q26); §10 gains Q25 and Q26.
+**Rev 3.3 (owner decisions 2026-10-15, from plan 2's Fable review 1 — `.superpowers/sdd/b1c-plan2-review-1.md`):**
+§1.6 gains `send-failed` (M3: a broadcast the user approved that never reached the network is no longer
+`invalid-request`); §9 gains two rows — dependent batches are unapprovable in B1c-2 and B1c-3 must solve them (M4), and
+the transactions' malformed-before-`unauthorized` order (L6); §7's accepted limits gain the mismatch notice (L10). No
+other rule changed.
 
 **What this is.** The extension becomes a wallet any Solana site can use through Wallet Standard: connect, disconnect,
 events, `signMessage`, `signTransaction`, `signAndSendTransaction`, on `solana:mainnet` only. It builds the design's
@@ -214,6 +219,7 @@ to exist, so every other privileged type from it (`activity.ping`, `vault.*`, `w
 | `busy` | the queue holds 5 requests (a site can infer that others are queued; accepted, review L9) |
 | `timeout` | 5 minutes passed (C4) |
 | `invalid-request` | malformed payload, wrong chain, batch > 5, a message refused by §3.2 rules 2 and 6 |
+| `send-failed` (B1c-2, rev 3.3) | an approved `signAndSendTransaction` whose bytes never reached the network: the coordinator's broadcast route refused them before forwarding (its 400), or the wallet's 403 cool-down refused to try. The provider's message: "The transaction could not be sent." A broadcast that may have landed (no acknowledgement) is answered the signature, never this |
 
 A blocked or cooling-down origin cannot tell from the error that it is blocked; it can by timing (answered in
 milliseconds, not seconds) — accepted (review L1). The provider turns codes into `Error` objects with `code` and a fixed
@@ -758,7 +764,9 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
   (§1.6); `busy` reveals that others are queued (§1.6); scripts on the page share its authority over the provider and
   another extension can impersonate the wallet's name (§1.1); simulation has one source, the coordinator (B1 §3);
   rule b/c false positives on real brand domains, `jupp.ag` and two-label suffixes unknown (§2.5); wildcard-subdomain
-  phishers are never fully blocked (§2.6); homoglyphs inside a message body are not detected (§3.2).
+  phishers are never fully blocked (§2.6); homoglyphs inside a message body are not detected (§3.2); any site that knows
+  a user's public address can open the origin-mismatch notice (#48) on them by asking to sign with that address — bounded
+  by C3 and C14 exactly as a connect request (#47) is, so no new capacity (rev 3.3, plan 2 review 1 L10).
 
 ---
 
@@ -813,6 +821,8 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
 | design frame 916 px high | the window is 720 px; the body scrolls, the sticky bar stays |
 | unlock inside the flow (implied by the design's modal stack) | the locked window points to the toolbar (D11) |
 | first six / last six highlighted on review screens | B1 §3 (owner): labels + first-send warning, unchanged |
+| a `signTransaction` batch whose later transactions depend on earlier ones (create a token account, then transfer to it; a swap's setup / swap / cleanup) | **unapprovable in B1c-2** (owner, 2026-10-15; plan 2 review 1 M4): a batch is simulated transaction by transaction against the current slot — a node cannot chain them — so a transaction that needs an earlier one's effect simulates as failed, and a failed simulation offers only [Reject] (plan 2 R6, R8). **B1c-3 must solve dependent batches** — e.g. a per-transaction override for a failure attributable to an earlier transaction of the same batch (one that creates the account the failure names), under B1 §3's override rule — rather than leave them to the typed override of every failed simulation |
+| §1.6 / §3.3's order for transactions: `unauthorized` before any other check | a **malformed** `page.signTransaction` / `page.signAndSendTransaction` payload (`transactions` / `transaction` not base64 strings, a batch of 0 or more than 5, a transaction over 1 232 bytes or not one canonical transaction; `account` not a base58 32-byte key; another chain; `options` present and not an object) is answered `invalid-request` before the grant is read (plan 2, Task 3) — the same reasoning as the `signMessage` row below: a page without a grant learns only that its own payload was malformed, never whether a grant exists; a well-formed request keeps the grant check first (rev 3.3, plan 2 review 1 L6) |
 | §3.2's order: rule 1 (`unauthorized`) before any other check | a **malformed** `page.signMessage` payload (`message` not a string, not base64 or over the size bound; `account` not a base58 32-byte key) is answered `invalid-request` before rule 1 runs (plan-mandated, Task 6). No leak: a page without a grant learns only that its own payload was malformed, never whether a grant exists; a well-formed request keeps rule 1's order |
 
 ---
