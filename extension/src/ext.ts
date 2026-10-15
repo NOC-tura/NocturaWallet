@@ -12,8 +12,13 @@ export interface KV {
 
 /** B1c (spec §2.3): the approval window — the one window the background opens. */
 export interface WindowsApi {
-  /** A focused popup window showing this extension page at this size; its id, or null when the browser gave none. */
-  create(o: {page: string; width: number; height: number}): Promise<number | null>;
+  /**
+   * A popup window showing this extension page at this size; its id, or null when the browser gave none. `focused`
+   * (fix round 2, B1c-2): false for a window opened to show a mismatch notice — the page that triggered it must
+   * never learn, from a focus change, that its request was the one that opened a window; true for every real
+   * request's window (unchanged from before).
+   */
+  create(o: {page: string; width: number; height: number; focused: boolean}): Promise<number | null>;
   /** Whether the window with this id still exists (windows.get rejects for a closed one). */
   exists(id: number): Promise<boolean>;
   remove(id: number): Promise<void>;
@@ -101,7 +106,7 @@ export function browserExt(): Ext {
     windowCount: async () => (await b.windows.getAll()).length,
     dappWindows: {
       create: async o => {
-        const w = await b.windows.create({type: 'popup', url: b.runtime.getURL(o.page), width: o.width, height: o.height, focused: true});
+        const w = await b.windows.create({type: 'popup', url: b.runtime.getURL(o.page), width: o.width, height: o.height, focused: o.focused});
         return typeof w?.id === 'number' ? w.id : null;
       },
       exists: async id => {

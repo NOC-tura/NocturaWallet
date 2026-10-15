@@ -12,6 +12,15 @@ export const REJECTIONS_FOR_COOLDOWN = 3;
 export const COOLDOWN_MS = 10 * 60_000;
 /** At most this many approval windows in LIMIT_WINDOW_MS, across all sites. */
 export const WINDOW_BUDGET = 10;
+/**
+ * Fix round 2 (controller ruling, channel 2): a mismatch notice's OWN window budget — separate from WINDOW_BUDGET.
+ * A real request's window budget must never be spendable by a page that repeatedly triggers (and the user
+ * dismisses) notices for accounts granted elsewhere; nor may a flood of notices ever be answered `rejected` the way
+ * an exhausted WINDOW_BUDGET answers a real request (that would be a new, visible side channel) — exhausting this
+ * one instead silently stops new notices from being queued at all (pageApi.ts mismatchNotice), same as its other
+ * caps. Smaller than WINDOW_BUDGET: a notice is never itself something the user asked for.
+ */
+export const NOTICE_WINDOW_BUDGET = 3;
 
 export interface Limits {
   /** One per rejection and key (`host:<h>` and `tab:<id>`), at UTC ms. */
@@ -19,6 +28,8 @@ export interface Limits {
   cooldowns: {key: string; until: number}[];
   /** When each approval window was opened. */
   windows: number[];
+  /** Fix round 2: when each mismatch notice was queued (reserving its own budget slot) — kept apart from `windows`. */
+  noticeWindows: number[];
   /** A request was declined because the budget was spent: the next window shows Q24, once. */
   notice: boolean;
 }
@@ -27,7 +38,7 @@ export interface Limits {
  * comparisons, never a value a caller may mutate — `limitsOf`'s "nothing stored" branch must not hand out
  * this same instance, or a section that mutates its `limits` in place pollutes every future "no limits". */
 function emptyLimits(): Limits {
-  return {rejections: [], cooldowns: [], windows: [], notice: false};
+  return {rejections: [], cooldowns: [], windows: [], noticeWindows: [], notice: false};
 }
 
 export const EMPTY_LIMITS: Limits = emptyLimits();
@@ -52,7 +63,8 @@ export function limitsOf(x: unknown, now: number): Limits {
     .filter((c): c is {key: string; until: number} => typeof c === 'object' && c !== null && typeof (c as {key?: unknown}).key === 'string' && KEY.test((c as {key: string}).key) && isTime((c as {until?: unknown}).until))
     .map(c => ({key: c.key, until: c.until}));
   const windows = list(o.windows).filter(isTime);
-  return prune({rejections, cooldowns, windows, notice: o.notice === true}, now);
+  const noticeWindows = list(o.noticeWindows).filter(isTime);
+  return prune({rejections, cooldowns, windows, noticeWindows, notice: o.notice === true}, now);
 }
 
 /** Only what still counts: rejections and windows of the last ten minutes, cooldowns not yet over. */
@@ -62,6 +74,7 @@ export function prune(l: Limits, now: number): Limits {
     rejections: l.rejections.filter(r => r.at > since && r.at <= now).slice(-MAX_ENTRIES),
     cooldowns: l.cooldowns.filter(c => c.until > now).slice(-MAX_ENTRIES),
     windows: l.windows.filter(t => t > since && t <= now).slice(-MAX_ENTRIES),
+    noticeWindows: l.noticeWindows.filter(t => t > since && t <= now).slice(-MAX_ENTRIES),
     notice: l.notice,
   };
 }
@@ -89,3 +102,8 @@ export function inCooldown(l: Limits, host: string, tabId: number, now: number):
 export const budgetLeft = (l: Limits, now: number): boolean => prune(l, now).windows.length < WINDOW_BUDGET;
 
 export const withWindow = (l: Limits, now: number): Limits => prune({...l, windows: [...l.windows, now]}, now);
+
+/** Fix round 2: the mismatch notice's own budget — independent of `budgetLeft`/`withWindow` above. */
+export const noticeBudgetLeft = (l: Limits, now: number): boolean => prune(l, now).noticeWindows.length < NOTICE_WINDOW_BUDGET;
+
+export const withNoticeWindow = (l: Limits, now: number): Limits => prune({...l, noticeWindows: [...l.noticeWindows, now]}, now);

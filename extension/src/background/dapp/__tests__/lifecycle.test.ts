@@ -157,7 +157,7 @@ describe('connect (§2.2) — silent and explicit, with and without a grant, loc
     const r = await openPage(ext, deps, DAPP).ask(connect('c1'));
     expect(r).toEqual({id: 'c1', accepted: true, requestId: expect.stringMatching(/^[A-Za-z0-9_-]{22}$/)});
     expect(await queue(ext)).toMatchObject([{requestId: r?.requestId, pageId: 'c1', origin: DAPP, host: 'dapp.test', tabId: TAB, documentId: 'doc-1', type: 'connect', state: 'queued', arrivedAt: deps.clock.t}]);
-    expect(ext.approval.created).toEqual([{page: 'approve.html', width: WINDOW_WIDTH, height: WINDOW_HEIGHT}]);
+    expect(ext.approval.created).toEqual([{page: 'approve.html', width: WINDOW_WIDTH, height: WINDOW_HEIGHT, focused: true}]);
     expect([WINDOW_WIDTH, WINDOW_HEIGHT]).toEqual([412, 720]);
     expect((await readDappSession(ext)).window).toEqual({id: 100, showing: null});
     expect(ext.alarmsSet.has(QUEUE_ALARM)).toBe(true);

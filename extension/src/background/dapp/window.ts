@@ -27,28 +27,40 @@ export async function ensureWindow(ext: Ext, deps: Pick<WalletDeps, 'now'>): Pro
       if (tx.s.window?.id === recorded.id) tx.s.window = null;
     });
   }
-  const marker = await queueAccess(ext, deps, (tx, fx) => {
+  const decision = await queueAccess(ext, deps, (tx, fx) => {
     if (tx.s.window !== null || headOf(tx) === null) return null;
     if (tx.s.opening !== null && tx.now - tx.s.opening < OPENING_STALE_MS) return null;
-    if (!budgetLeft(tx.limits, tx.now)) {
-      // C14: beyond the budget every request that would need this window is declined with no window; the next one
-      // that opens says so (Q24).
-      rejectQueued(tx, fx, () => true);
-      tx.limits = {...tx.limits, notice: true};
-      return null;
+    /**
+     * Fix round 2, controller ruling channel 1: a window opened because the head is a mismatch notice is `focused:
+     * false` — a page that triggered a notice must never learn, from `blur`/`document.hasFocus()` right after its
+     * own `unauthorized` reply, that its request was the one that opened a window (which only happens when the
+     * named account is this wallet's and granted elsewhere). A window for any real request stays `focused: true`,
+     * exactly as before. Channel 2: a notice-caused open never checks or consumes the real WINDOW_BUDGET — its own
+     * budget was already reserved when the notice was queued (pageApi.ts mismatchNotice, limits.ts
+     * NOTICE_WINDOW_BUDGET); by the time it is head, it always opens.
+     */
+    const focused = headOf(tx)?.type !== 'mismatch';
+    if (focused) {
+      if (!budgetLeft(tx.limits, tx.now)) {
+        // C14: beyond the budget every request that would need this window is declined with no window; the next one
+        // that opens says so (Q24).
+        rejectQueued(tx, fx, () => true);
+        tx.limits = {...tx.limits, notice: true};
+        return null;
+      }
+      tx.limits = withWindow(tx.limits, tx.now);
     }
-    tx.limits = withWindow(tx.limits, tx.now);
     tx.s.opening = tx.now;
-    return tx.now;
+    return {marker: tx.now, focused};
   });
-  if (marker === null) return;
+  if (decision === null) return;
   let id: number | null = null;
   try {
-    id = await ext.dappWindows.create({page: APPROVE_PAGE, width: WINDOW_WIDTH, height: WINDOW_HEIGHT});
+    id = await ext.dappWindows.create({page: APPROVE_PAGE, width: WINDOW_WIDTH, height: WINDOW_HEIGHT, focused: decision.focused});
   } finally {
     const orphan = await queueAccess(ext, deps, tx => {
       // The marker is gone (a lock cleared it, or a stale-marker retry replaced it): this window is nobody's.
-      if (tx.s.opening !== marker) return true;
+      if (tx.s.opening !== decision.marker) return true;
       tx.s.opening = null;
       if (id !== null) tx.s.window = {id, showing: null};
       return false;

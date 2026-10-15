@@ -6,9 +6,10 @@ import {lock} from '../../autolock';
 import {VAULT_KEY} from '../../accountsStore';
 import {BLOCKED_KEY} from '../blocked';
 import {GRANTS_KEY, type Grant} from '../grants';
-import {LIMITS_KEY} from '../limits';
+import {LIMITS_KEY, NOTICE_WINDOW_BUDGET, budgetLeft} from '../limits';
 import {MAX_OPEN, runUnlockHook} from '../queue';
 import {readDappSession} from '../store';
+import {WINDOW_HEIGHT, WINDOW_WIDTH} from '../window';
 import {MAX_TX_BYTES} from '../decode/wire';
 import {fakeExt} from '../../__tests__/fakeExt';
 import {fakeDeps} from '../../__tests__/fakeDeps';
@@ -240,5 +241,51 @@ describe('the origin-mismatch notice', () => {
     // X is granted to OTHER — ordinarily a notice — but the budget is already spent: silent, no entry at all.
     expect(await c.signTx('capped-budget', [v0()])).toEqual({id: 'capped-budget', error: 'unauthorized'});
     expect((await c.queue()).filter(e => e.type === 'mismatch')).toEqual([]);
+  });
+
+  // Fix round 2, controller ruling, Minor test gap: the "any type" clause of the notice's own cap (pageApi.ts, the
+  // `open.some(e => e.host === live.host || e.tabId === live.tabId)` line) must count a REAL open entry too, not
+  // only another notice — otherwise a site with one real request already open could still stack a notice beside it.
+  it('the notice cap counts an open entry of ANY type for this host or tab: a real request already open blocks a new notice too', async () => {
+    const c = await setup({grant: null, others: [grant(OTHER)]});
+    expect(await c.page.ask({type: 'page.connect', id: 'real', silent: false})).toMatchObject({accepted: true});
+    // X is granted to OTHER — ordinarily a notice — but this host/tab already has an open entry (the connect above).
+    expect(await c.signTx('m', [v0()])).toEqual({id: 'm', error: 'unauthorized'});
+    expect((await c.queue()).filter(e => e.type === 'mismatch')).toEqual([]);
+  });
+
+  // Fix round 2, controller ruling channel 1: a window opened BECAUSE a mismatch notice is the head is created
+  // unfocused — the page must never learn, from a focus change right after its `unauthorized` reply, that its
+  // request was the one that opened a window (only true when the named account is held elsewhere). A window for a
+  // real request stays focused, exactly as before.
+  it('a window opened because of a mismatch notice is unfocused; the window for a real request stays focused', async () => {
+    const real = await setup({grant: null});
+    expect(await real.page.ask({type: 'page.connect', id: 'c1', silent: false})).toMatchObject({accepted: true});
+    expect(real.ext.approval.created).toEqual([{page: 'approve.html', width: WINDOW_WIDTH, height: WINDOW_HEIGHT, focused: true}]);
+
+    const notice = await setup({grant: null, others: [grant(OTHER)]});
+    expect(await notice.signTx('m', [v0()])).toEqual({id: 'm', error: 'unauthorized'});
+    expect(notice.ext.approval.created).toEqual([{page: 'approve.html', width: WINDOW_WIDTH, height: WINDOW_HEIGHT, focused: false}]);
+  });
+
+  // Fix round 2, controller ruling channel 2: the notice has its OWN window budget (3 per ten minutes), entirely
+  // apart from the real WINDOW_BUDGET a genuine request's window draws from — so a page cannot spend that shared
+  // budget (meant for real requests) by triggering notices the user dismisses. Exhausting it is silent: no new
+  // notice entry at all, never the `rejected`-with-Q24 behaviour a spent WINDOW_BUDGET uses.
+  it('the notice has its own window budget, separate from WINDOW_BUDGET: a 4th notice within ten minutes is silently not queued, and none of it ever touches the real budget', async () => {
+    const c = await setup({grant: null, others: [grant(OTHER)]});
+    // Ten distinct origins (and tabs), each a would-be notice for the same account X, all within the same instant.
+    for (let i = 0; i < 10; i++) {
+      const site = openPage(c.ext, c.deps, `https://notice${i}.test`, {tab: {id: 300 + i}, documentId: `doc-n${i}`});
+      expect(await site.ask({type: 'page.signTransaction', id: `m${i}`, account: ACCOUNT.publicKey, transactions: [v0()]})).toEqual({id: `m${i}`, error: 'unauthorized'});
+    }
+    // Only NOTICE_WINDOW_BUDGET became real entries — the rest were silently refused (no entry, no extra error).
+    expect((await c.queue()).filter(e => e.type === 'mismatch')).toHaveLength(NOTICE_WINDOW_BUDGET);
+    // Exactly one window ever opened (the first notice; later ones found one already open) — and it is unfocused.
+    expect(c.ext.approval.created).toEqual([{page: 'approve.html', width: WINDOW_WIDTH, height: WINDOW_HEIGHT, focused: false}]);
+    // None of this spent the real window budget: it reads back empty, and a real request's budget is still full.
+    const stored = (await c.ext.local.get(LIMITS_KEY)) as {windows: unknown[]};
+    expect(stored.windows).toEqual([]);
+    expect(budgetLeft({rejections: [], cooldowns: [], windows: stored.windows as number[], noticeWindows: [], notice: false}, c.deps.clock.t)).toBe(true);
   });
 });

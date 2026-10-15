@@ -23,7 +23,7 @@ export function memKV(): KV & {data: Map<string, unknown>} {
  * windows.get would find; `created` and `removed` record every call.
  */
 export interface FakeWindows {
-  created: {page: string; width: number; height: number}[];
+  created: {page: string; width: number; height: number; focused: boolean}[];
   removed: number[];
   open: Set<number>;
   failNext: boolean;

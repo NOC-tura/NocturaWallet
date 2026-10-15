@@ -1,7 +1,7 @@
 import type {Ext} from '../../ext';
 import type {WalletDeps} from '../deps';
 import {isBlocked} from './blocked';
-import {inCooldown} from './limits';
+import {inCooldown, noticeBudgetLeft, withNoticeWindow} from './limits';
 import {PAGE_PORT, owns, pageOrigin, runtimeFor, type LivePort, type PortLike} from './ports';
 import {MAX_OPEN, documentChanged, isOpenEntry, newRequestId, queueAccess, rejectQueued} from './queue';
 import {dropGrant, grantIn, putGrant, type Entry, type ErrorCode, type Tx} from './store';
@@ -182,22 +182,29 @@ const hostOf = (origin: string): string => {
  * override"): a sign request naming an account of this unlocked wallet that ANOTHER origin holds a grant for. The page
  * is answered `unauthorized` at once, exactly as any ungranted request (§2.2 — it learns nothing more), and the window
  * shows the user what was refused: a notice entry, with no approval path. Only when this host is not blocked or cooling
- * down, and its OWN cap admits it — at most one open entry of ANY type for this host or tab (so a site cannot stack
- * notices), and the total open strictly under C3's budget (fix round 1: this check is deliberately NOT `admit()`,
- * which now excludes a `mismatch` from its own counts — the notice must still respect the shared budget, or it could
- * stack past it unnoticed). Past either cap the notice is silent: no entry, nothing new for the page to see. The
- * notice's relay id is '' — never a page's (PAGE_ID needs a character), so a re-sent request can never be answered
- * from it. Fix round 1: its dismissal records NO rejection (see queue.ts userRejected) — a C14 cooldown keyed on this
- * host or tab would leak, through a later silent `rejected`, the very bit the notice already answers without leaking.
- * Returns true when a notice was queued.
+ * down, and its OWN caps admit it — at most one open entry of ANY type for this host or tab (so a site cannot stack
+ * notices), the total open strictly under C3's budget (fix round 1: this check is deliberately NOT `admit()`, which
+ * now excludes a `mismatch` from its own counts — the notice must still respect the shared queue budget, or it could
+ * stack past it unnoticed), and — fix round 2, controller ruling channel 2 — the notice's OWN window budget
+ * (`noticeBudgetLeft`/`withNoticeWindow`, limits.ts): spent here, at the moment a notice would be queued, never
+ * the real `WINDOW_BUDGET` a genuine request's window draws from. A page cannot spend a real account's budget by
+ * triggering (and having the user dismiss) notices, and exhausting the notice budget never falls back to the
+ * `rejected`-with-Q24 behaviour WINDOW_BUDGET's exhaustion uses for real requests (window.ts) — it only stops this
+ * and further notices from being queued at all, silently, same as every other cap here. Past any cap the notice is
+ * silent: no entry, nothing new for the page to see. The notice's relay id is '' — never a page's (PAGE_ID needs a
+ * character), so a re-sent request can never be answered from it. Fix round 1: its dismissal records NO rejection
+ * (see queue.ts userRejected) — a C14 cooldown keyed on this host or tab would leak, through a later silent
+ * `rejected`, the very bit the notice already answers without leaking. Returns true when a notice was queued.
  */
 function mismatchNotice(tx: Tx, deps: Pick<WalletDeps, 'randomBytes'>, live: LivePort, account: string): boolean {
   if (tx.session === null || !tx.session.some(a => a.publicKey === account)) return false;
   if (isBlocked(tx.blocked, live.host) || inCooldown(tx.limits, live.host, live.tabId, tx.now)) return false;
   const open = tx.s.queue.filter(isOpenEntry);
   if (open.some(e => e.host === live.host || e.tabId === live.tabId) || open.length >= MAX_OPEN) return false;
+  if (!noticeBudgetLeft(tx.limits, tx.now)) return false;
   const other = [...tx.s.grants, ...tx.grants].find(g => g.account === account && g.origin !== live.origin && !isBlocked(tx.blocked, hostOf(g.origin)));
   if (other === undefined) return false;
+  tx.limits = withNoticeWindow(tx.limits, tx.now);
   enqueue(tx, deps, live, '', {type: 'mismatch', account, message: null, granted: other.origin});
   return true;
 }
