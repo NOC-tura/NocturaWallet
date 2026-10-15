@@ -4,7 +4,7 @@ import type {WalletDeps} from './deps';
 import {addKnownRecipient} from './knownRecipients';
 import {readWalletView} from './accountsStore';
 import {randomId} from './digest';
-import {inFlightFor, isOpen, readPending, updatePending, viewOf, type PendingFee, type PendingRecord, type PendingView} from './pendingStore';
+import {inFlightFor, isOpen, readPending, updatePending, viewOf, type FirstBroadcast, type PendingFee, type PendingRecord, type PendingView} from './pendingStore';
 import {COOLING_AGAIN_DETAIL, FORBIDDEN_DETAIL, ResendRefused, SendRefused, SentUnconfirmed, type ResendRefusal, type SendIntent} from './sendTypes';
 import {BroadcastRejected, BroadcastSubstituted, firstSignature} from '../../../core/solana/broadcast';
 import {RpcCoolingDown, RpcForbidden, type SignatureStatus} from '../../../core/solana/rpc';
@@ -81,6 +81,8 @@ export async function submitSigned(
     detail: null,
     detailCode: null,
     intent: input.intent,
+    origin: null,
+    firstBroadcast: 'done',
     expiryNullSeenAt: null,
     failure: null,
     fee: input.fee,
@@ -112,6 +114,87 @@ export async function submitSigned(
     console.warn('send recorded, but its state could not be read back', e);
     throw new SentUnconfirmed(record.id, record.signature);
   }
+}
+
+/**
+ * B1c-2 (spec B1c §1.5 step 2, C17): a dApp's `signAndSendTransaction`, recorded BEFORE anything else happens to its
+ * signed bytes — the queue entry records them next (signTx.ts), then `broadcastFirst` hands them to the route. No
+ * in-flight guard: the dApp built this transaction and the user approved it; the wallet's own one-send-per-account rule
+ * guards the wallet's own sends (inFlightFor). The alarm is armed so a stopped worker still polls it.
+ */
+export async function recordDappSend(ext: Ext, deps: WalletDeps, input: {account: string; wire: Uint8Array; lastValidBlockHeight: number; origin: string}): Promise<PendingRecord> {
+  const now = deps.now();
+  const record: PendingRecord = {
+    id: randomId(deps.randomBytes),
+    account: input.account,
+    signature: firstSignature(input.wire),
+    wire: base64.encode(input.wire),
+    lastValidBlockHeight: input.lastValidBlockHeight,
+    createdAt: now,
+    lastSentAt: now,
+    state: 'pending',
+    detail: null,
+    detailCode: null,
+    intent: null,
+    origin: input.origin,
+    // Review 1 M1: held until the queue entry records these bytes and the page is promised the signature.
+    firstBroadcast: 'held',
+    expiryNullSeenAt: null,
+    failure: null,
+    fee: null,
+  };
+  await updatePending(ext, records => [...records, record]);
+  await armPendingAlarm(ext).catch((e: unknown) => console.warn('pending alarm not armed; the poller still runs', e));
+  return record;
+}
+
+/**
+ * Review 1 M1: the one hand-over of a dApp record's bytes to the route, claimed in one updatePending — `held` or `due`
+ * (or only `due`) becomes `done` — so the effect (broadcastFirst) and the poller's first round can never both send it.
+ * The claimed record, or null when it is not open or already `done`.
+ */
+async function claimFirst(ext: Ext, id: string, from: readonly FirstBroadcast[]): Promise<PendingRecord | null> {
+  const out: {claimed: PendingRecord | null} = {claimed: null};
+  await updatePending(ext, records =>
+    records.map(r => {
+      if (r.id !== id || !isOpen(r) || r.origin === null || !from.includes(r.firstBroadcast)) return r;
+      out.claimed = {...r, firstBroadcast: 'done'};
+      return out.claimed;
+    }),
+  );
+  return out.claimed;
+}
+
+/**
+ * B1c-2: the first broadcast of a recorded dApp send, through the same route and the same outcome rules as the wallet's
+ * own (deliver): `not-sent` only when the route refused it before forwarding, or the 403 cool-down refused to try —
+ * nothing reached the network. Anything else (acknowledged, or not acknowledged: it may land) is `sent`, and the
+ * poller watches it. Claimed first (review 1 M1): if the poller already handed these bytes over, nothing is sent again
+ * and the record's state says what happened.
+ */
+export async function broadcastFirst(ext: Ext, deps: WalletDeps, record: PendingRecord): Promise<'sent' | 'not-sent'> {
+  try {
+    const claimed = await claimFirst(ext, record.id, ['held', 'due']);
+    if (claimed !== null) await deliver(ext, deps, claimed, 'first');
+  } finally {
+    void startPoller(ext, deps);
+  }
+  const now = (await readPending(ext)).find(r => r.id === record.id);
+  return now?.state === 'failed' && now.failure === 'not-sent' ? 'not-sent' : 'sent';
+}
+
+/** Review 1 M1: the poller's first step — every `due` dApp record handed to the route exactly once (claimed `due` → `done`). */
+async function sendDue(ext: Ext, deps: WalletDeps, open: readonly PendingRecord[]): Promise<void> {
+  for (const r of open) {
+    if (r.origin === null || r.firstBroadcast !== 'due') continue;
+    const claimed = await claimFirst(ext, r.id, ['due']);
+    if (claimed !== null) await deliver(ext, deps, claimed, 'first');
+  }
+}
+
+/** B1c-2: a recorded dApp send that will never be broadcast (its request was answered meanwhile): failed, nothing sent. */
+export async function dropDappSend(ext: Ext, id: string): Promise<void> {
+  await patch(ext, id, r => ({...r, state: 'failed', failure: 'not-sent', detail: 'Not sent: the request ended before it was broadcast. No funds moved.', detailCode: null}));
 }
 
 /** "Send again": the same signed bytes, so the same signature — it can land at most once. */
@@ -154,8 +237,14 @@ const failedDetail = (err: unknown): string => `Landed but failed (${JSON.string
 
 /** One polling round over every open record. True while anything is still open. */
 export async function pollOnce(ext: Ext, deps: WalletDeps): Promise<boolean> {
-  const open = (await readPending(ext)).filter(isOpen);
+  let open = (await readPending(ext)).filter(isOpen);
   if (open.length === 0) return false;
+  // Review 1 M1: a dApp send the page was promised but no one handed to the route (the worker stopped in between).
+  if (open.some(r => r.origin !== null && r.firstBroadcast === 'due')) {
+    await sendDue(ext, deps, open);
+    open = (await readPending(ext)).filter(isOpen);
+    if (open.length === 0) return false;
+  }
   let statuses: (SignatureStatus | null)[];
   try {
     statuses = await deps.reader.getSignatureStatuses(open.map(r => r.signature));
@@ -212,7 +301,8 @@ export async function pollOnce(ext: Ext, deps: WalletDeps): Promise<boolean> {
     // before a forget's vault write can still add one after the forget's cleanup; the next wallet's
     // first write (storeEnvelope with expectedRevision null) removes v1_known_recipients (L1).
     const own = new Set((await readWalletView(ext))?.accounts.map(a => a.publicKey) ?? []);
-    for (const r of confirmed) if (own.has(r.account)) await addKnownRecipient(ext, r.intent.recipient, now);
+    // A dApp's transaction (B1c-2: no intent) names no recipient of the wallet's own.
+    for (const r of confirmed) if (own.has(r.account) && r.intent !== null) await addKnownRecipient(ext, r.intent.recipient, now);
   }
   return after.some(isOpen);
 }

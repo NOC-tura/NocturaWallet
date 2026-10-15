@@ -14,7 +14,7 @@ import {answer, headOf, isOpenEntry, queueAccess, rejectQueued, userRejected, ty
 import {dropGrant, grantIn, putGrant, readDappSession, type Decision, type Entry, type Tx} from './store';
 import {base64} from '@scure/base';
 import {checkMessage, checkSiws, finishSign, homoglyphRanges, keywordIn} from './signMessage';
-import {dappDigest, finishSignTx, isTxType, needsSimulation, reauthGate, runSimulation, txDetail, txRefused, type TxDetail, type TxRefusal} from './signTx';
+import {dappDigest, finishSend, finishSignTx, isTxType, needsSimulation, reauthGate, runSimulation, txDetail, txRefused, type TxDetail, type TxRefusal} from './signTx';
 import {consumeChallenge} from '../reauthChallenges';
 
 /**
@@ -329,8 +329,6 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
       blockHost(tx, fx, e.host);
       return 'done';
     }
-    // Task 5 gives signAndSendTransaction its effect.
-    if (e.type === 'signAndSendTransaction') return 'malformed';
     const refused = approvalRefused(tx, e, d) ?? (isTxType(e.type) ? txRefused(e, d.simulation, tx.now) : null);
     if (refused !== null) return refused;
     // Fix round 1 item 1: fail closed even when the peek above missed this entry (the pre-section and the gate never
@@ -359,7 +357,12 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
   if ((await getSession(ext)) !== null) await armAutolock(ext).catch(e => console.warn('dApp decide: the idle timer was not re-armed', e));
   if (typeof out === 'object') {
     // Each approvable type's effect, by name: a type with none (a mismatch notice — refused above) can never fall into another's.
-    const effects: Partial<Record<Entry['type'], (ext: Ext, deps: WalletDeps, requestId: string, instance: string) => Promise<void>>> = {connect: finishConnect, signMessage: finishSign, signTransaction: finishSignTx};
+    const effects: Partial<Record<Entry['type'], (ext: Ext, deps: WalletDeps, requestId: string, instance: string) => Promise<void>>> = {
+      connect: finishConnect,
+      signMessage: finishSign,
+      signTransaction: finishSignTx,
+      signAndSendTransaction: finishSend,
+    };
     await effects[out.approved]?.(ext, deps, d.requestId, instance);
   }
   return {ok: true};

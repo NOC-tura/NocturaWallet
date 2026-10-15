@@ -19,6 +19,7 @@ import {ResendRefused, SendRefused, SentUnconfirmed} from './sendTypes';
 import {readCachedBalances, readCachedPrices, writeCachedBalances, writeCachedPrices, type PriceView} from './balanceCache';
 import {readWalletBalances, WALLET_TOKENS} from '../../../core/solana/balances';
 import {RequestUnreachable, RpcForbidden} from '../../../core/solana/rpc';
+import {dappTxSignatures} from './dapp/dappTxs';
 
 export type Result = {ok: true; data?: unknown} | {ok: false; error: string; data?: unknown};
 
@@ -392,12 +393,15 @@ export async function handleWallet(ext: Ext, deps: WalletDeps, type: WalletType,
       }
       case 'wallet.pending':
         // Polling was resumed above if anything is open.
-        return {ok: true, data: (await readPending(ext)).map(viewOf)};
+        // The wallet's own sends only (B1c-2: a dApp's transaction is the site's — the popup shows it once it lands).
+        return {ok: true, data: (await readPending(ext)).filter(r => r.origin === null).map(viewOf)};
       case 'wallet.history': {
         const {account, before} = msg;
         if (!isAddress(account) || (before !== undefined && !isSignature(before))) return MALFORMED;
         const {items, next} = await historyFor(deps).page(account, before);
-        return {ok: true, data: {items, next}};
+        // B1c-2 (#26b, #27b): a transaction a site had this wallet sign carries the "Dapp · simulated" badge.
+        const fromDapps = await dappTxSignatures(ext);
+        return {ok: true, data: {items: items.map(i => ({...i, origin: fromDapps.has(i.signature) ? ('dapp' as const) : null})), next}};
       }
       case 'accounts.rename': {
         const {index} = msg;

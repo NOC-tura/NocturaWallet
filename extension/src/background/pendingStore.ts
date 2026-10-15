@@ -25,6 +25,8 @@ export type PendingFailure = 'landed' | 'not-sent';
  * first broadcast by the route). Written beside `detail` every time; screens choose on this, never on the text.
  */
 export type DetailCode = 'forbidden' | 'cooling' | 'unacked' | 'substituted';
+/** See PendingRecord.firstBroadcast. */
+export type FirstBroadcast = 'held' | 'due' | 'done';
 export const DETAIL_CODES: readonly DetailCode[] = ['forbidden', 'cooling', 'unacked', 'substituted'];
 
 /** A signed send, from before its broadcast until confirmed, failed or expired (spec §4 "No double spend"). */
@@ -41,7 +43,23 @@ export interface PendingRecord {
   detail: string | null;
   /** See DetailCode. A stored value that is missing (a record from before it) or unknown reads as null; the record is kept. */
   detailCode: DetailCode | null;
-  intent: SendIntent;
+  /** What the user sent (#12's intent); null only for a dApp's transaction (B1c-2: `origin` set — the dApp built it). */
+  intent: SendIntent | null;
+  /**
+   * B1c-2 (spec B1c §1.5, §3.3): the site whose `signAndSendTransaction` this is — its signed bytes recorded here before
+   * the broadcast, watched by the same poller, re-sent as the same bytes — or null for the wallet's own send. A dApp's
+   * record never reaches the popup (wallet.pending lists the wallet's own sends) and never blocks one (inFlightFor).
+   */
+  origin: string | null;
+  /**
+   * B1c-2 (plan 2 review 1 M1): a dApp record's first broadcast. `held` — recorded, the page not yet promised the
+   * signature (if the request ends otherwise the bytes are never sent); `due` — the page is promised it (a restart, a
+   * lock or a dead effect answered it from the entry's recorded bytes) and nobody has handed the bytes to the route yet:
+   * the poller's next round does, once; `done` — handed to the route (claimed atomically, so exactly once). The
+   * wallet's own send is `done` from the start (submitSigned broadcasts at once). A stored value that is missing or
+   * unknown reads as `done`: nothing is ever broadcast on a record that does not say it is owed.
+   */
+  firstBroadcast: FirstBroadcast;
   /** When a full-history status check past expiry first came back null; `expired` needs a second one ≥ 2 s later. */
   expiryNullSeenAt: number | null;
   failure: PendingFailure | null;
@@ -63,8 +81,8 @@ export interface PendingFee {
   markupLamports: string;
 }
 
-/** What leaves the background: everything but the signed bytes. */
-export type PendingView = Omit<PendingRecord, 'wire'>;
+/** What leaves the background: everything but the signed bytes (and the first-broadcast bookkeeping, which is the background's). */
+export type PendingView = Omit<PendingRecord, 'wire' | 'firstBroadcast'>;
 
 export const MAX_RECORDS = 20;
 
@@ -75,11 +93,16 @@ const serial = createMutex();
 const STATES: readonly string[] = ['pending', 'stuck', 'confirmed', 'failed', 'expired'];
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 
+const ORIGIN = /^https:\/\/[^\s/?#@]+$/;
+/** A dApp record's origin (B1c-2): an https origin, with its intent null; the wallet's own send has no origin and an intent. */
+const isDappOrigin = (x: unknown): x is string => typeof x === 'string' && ORIGIN.test(x);
+
 /** A stored element is a claim: only an exact record shape is read; anything else is dropped. `failure` and `fee` are checked by recordOf. */
-function isRecord(x: unknown): x is Omit<PendingRecord, 'failure' | 'fee' | 'detailCode'> & {failure?: unknown; fee?: unknown; detailCode?: unknown} {
+function isRecord(x: unknown): x is Omit<PendingRecord, 'failure' | 'fee' | 'detailCode' | 'origin' | 'firstBroadcast'> & {failure?: unknown; fee?: unknown; detailCode?: unknown; origin?: unknown; firstBroadcast?: unknown} {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
   const r = x as Record<string, unknown>;
   const i = r.intent as Record<string, unknown> | null;
+  const dapp = isDappOrigin(r.origin) && i === null;
   return (
     typeof r.id === 'string' &&
     typeof r.account === 'string' &&
@@ -92,11 +115,7 @@ function isRecord(x: unknown): x is Omit<PendingRecord, 'failure' | 'fee' | 'det
     isNum(r.lastSentAt) &&
     (r.detail === null || typeof r.detail === 'string') &&
     (r.expiryNullSeenAt === null || isNum(r.expiryNullSeenAt)) &&
-    typeof i === 'object' &&
-    i !== null &&
-    typeof i.token === 'string' &&
-    typeof i.recipient === 'string' &&
-    typeof i.amount === 'string'
+    (dapp || ((r.origin === undefined || r.origin === null) && typeof i === 'object' && i !== null && typeof i.token === 'string' && typeof i.recipient === 'string' && typeof i.amount === 'string'))
   );
 }
 
@@ -108,9 +127,12 @@ function recordOf(x: unknown): PendingRecord | null {
   if (!isRecord(x)) return null;
   const fee = feeOf(x.fee);
   const detailCode = DETAIL_CODES.find(c => c === x.detailCode) ?? null;
+  const origin = isDappOrigin(x.origin) ? x.origin : null;
+  // Only a dApp record can be owed a first broadcast; anything else (the wallet's own, missing, unknown) is `done`.
+  const firstBroadcast: FirstBroadcast = origin !== null && (x.firstBroadcast === 'held' || x.firstBroadcast === 'due') ? x.firstBroadcast : 'done';
   const f = x.failure;
-  if (f === undefined || f === null) return {...x, failure: null, fee, detailCode};
-  return f === 'landed' || f === 'not-sent' ? {...x, failure: f, fee, detailCode} : null;
+  if (f === undefined || f === null) return {...x, failure: null, fee, detailCode, origin, firstBroadcast};
+  return f === 'landed' || f === 'not-sent' ? {...x, failure: f, fee, detailCode, origin, firstBroadcast} : null;
 }
 
 const DIGITS = /^\d{1,20}$/;
@@ -134,8 +156,9 @@ export async function readPending(ext: Ext): Promise<PendingRecord[]> {
   return out;
 }
 
+/** The wallet's own open send of this account (B1c-2: a dApp's transaction, origin set, is not the wallet's send to guard). */
 export function inFlightFor(records: readonly PendingRecord[], account: string): PendingRecord | undefined {
-  return records.find(r => r.account === account && isOpen(r));
+  return records.find(r => r.account === account && isOpen(r) && r.origin === null);
 }
 
 export function viewOf(r: PendingRecord): PendingView {
@@ -150,6 +173,7 @@ export function viewOf(r: PendingRecord): PendingView {
     detail: r.detail,
     detailCode: r.detailCode,
     intent: r.intent,
+    origin: r.origin,
     expiryNullSeenAt: r.expiryNullSeenAt,
     failure: r.failure,
     fee: r.fee === null ? null : {networkLamports: r.fee.networkLamports, markupLamports: r.fee.markupLamports},
@@ -175,4 +199,15 @@ export async function updatePending(ext: Ext, change: (records: PendingRecord[])
     await ext.local.set(PENDING_KEY, next);
     return next;
   });
+}
+
+/**
+ * Review 1 M1: the page is being promised these signatures (a restart, a lock or a dead effect answers a send from the
+ * entry's recorded bytes): each one's record, while still `held`, becomes `due` — written BEFORE the answer is stored
+ * (the callers run it inside their section), so a page never holds a signature whose bytes no one will send. The
+ * poller's next round hands a `due` record to the route, once.
+ */
+export async function markDue(ext: Ext, signatures: readonly string[]): Promise<void> {
+  if (signatures.length === 0) return;
+  await updatePending(ext, records => records.map(r => (r.origin !== null && r.firstBroadcast === 'held' && isOpen(r) && signatures.includes(r.signature) ? {...r, firstBroadcast: 'due'} : r)));
 }

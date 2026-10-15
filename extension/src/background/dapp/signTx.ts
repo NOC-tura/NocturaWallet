@@ -12,6 +12,9 @@ import {decodeInstructions, type DecodedInstruction} from './decode/decode';
 import {resolveKeys} from './decode/keys';
 import {parseWire, type ParsedTx} from './decode/wire';
 import {withRecent} from './grants';
+import {withDappTxs} from './dappTxs';
+import {broadcastFirst, dropDappSend, recordDappSend} from '../pending';
+import {firstSignature} from '../../../../core/solana/broadcast';
 import {runtimeFor} from './ports';
 import {answer, queueAccess} from './queue';
 import {simulateTransactions, type SimState, type TxOutcome} from './simulate';
@@ -319,6 +322,73 @@ export async function finishSignTx(ext: Ext, deps: Pick<WalletDeps, 'now'>, requ
     }
     const g = grantIn(tx, e.origin);
     if (g !== null) putGrant(tx, withRecent(g, 'signTransaction', tx.now, 'approved'));
+    // The history badge (#26): a transaction the account pays for is identified by the account's own signature.
+    const paid = work.txs.flatMap((p, i) => {
+      const w = signed?.[i];
+      return p.signers[0] === work.account && w !== undefined ? [{signature: firstSignature(base64.decode(w)), origin: e.origin, at: tx.now}] : [];
+    });
+    if (paid.length > 0) tx.txs = withDappTxs(tx.txs, paid);
     answer(fx, e, {result: {signed}}, tx.now);
+  });
+}
+
+/**
+ * page.signAndSendTransaction's effect (spec §1.5 step 2, §3.3; C17 — real funds: no double signature, no double
+ * broadcast), after the `deciding` section:
+ *  1. read the key and sign (the dApp's bytes, the account's slot);
+ *  2. record the signed bytes in v1_pending (B1b's pattern: the confirmation poller watches them from here on);
+ *  3. in one section, still this instance's `deciding` entry, unlocked, the account in the session, the grant held:
+ *     write `sent {wire, signature}` into the entry — from here a lock or a restart answers `{signature}` and never
+ *     signs or broadcasts again (lockHook.ts, queue.ts sweep) — and badge the transaction for #26. If that section
+ *     refuses, the entry is answered `rejected` and the recorded bytes are marked never sent;
+ *  4. broadcast through the coordinator's route (pending.ts broadcastFirst) — even if a lock landed after step 3: the
+ *     user approved it, the dApp may already hold the signature (B1b: a send in flight is not cancelled by a lock);
+ *  5. answer `{signature}` — or, when the route refused it before forwarding (nothing reached the network),
+ *     `send-failed` (spec §1.6, rev 3.3) — only if the entry is still this instance's `deciding` one (a lock or the
+ *     dead-effect sweep may have answered `{signature}` already: answered once).
+ * A worker stopped between steps 3 and 4 (review 1 M1): the restart answers `{signature}` from the entry, marking the
+ * record `due` first, and the poller's next round hands the bytes to the route — once (pending.ts claimFirst).
+ */
+export async function finishSend(ext: Ext, deps: WalletDeps, requestId: string, instance: string): Promise<void> {
+  const work = await queueAccess(ext, deps, tx => {
+    const e = tx.s.queue.find(x => x.requestId === requestId);
+    if (e === undefined || e.state !== 'deciding' || e.decidedBy !== instance || e.type !== 'signAndSendTransaction' || e.account === null || e.sim?.status !== 'ok') return null;
+    const parsed = txsOf(e);
+    return parsed === null || parsed.wires.length !== 1 ? null : {account: e.account, origin: e.origin, lastValidBlockHeight: e.sim.sim.lastValidBlockHeight, ...parsed};
+  });
+  if (work === null) return;
+  const key = (await getSession(ext))?.find(a => a.publicKey === work.account);
+  let wire: Uint8Array | null = null;
+  if (key !== undefined) {
+    try {
+      wire = signAll(work.wires, work.txs, key)[0] ?? null;
+    } catch {
+      wire = null;
+    }
+  }
+  const signed = wire;
+  const record = signed === null ? null : await recordDappSend(ext, deps, {account: work.account, wire: signed, lastValidBlockHeight: work.lastValidBlockHeight, origin: work.origin});
+  const recorded = await queueAccess(ext, deps, (tx, fx) => {
+    const e = tx.s.queue.find(x => x.requestId === requestId);
+    if (e === undefined || e.state !== 'deciding' || e.decidedBy !== instance) return false;
+    if (signed === null || record === null || !stillDeciding(tx, e, instance, work.account)) {
+      answer(fx, e, {error: 'rejected'}, tx.now);
+      return false;
+    }
+    e.sent = {wire: base64.encode(signed), signature: record.signature};
+    const g = grantIn(tx, e.origin);
+    if (g !== null) putGrant(tx, withRecent(g, 'signAndSendTransaction', tx.now, 'approved'));
+    tx.txs = withDappTxs(tx.txs, [{signature: record.signature, origin: e.origin, at: tx.now}]);
+    return true;
+  });
+  if (!recorded) {
+    if (record !== null) await dropDappSend(ext, record.id);
+    return;
+  }
+  const outcome = record === null ? 'not-sent' : await broadcastFirst(ext, deps, record);
+  await queueAccess(ext, deps, (tx, fx) => {
+    const e = tx.s.queue.find(x => x.requestId === requestId);
+    if (e === undefined || e.state !== 'deciding' || e.decidedBy !== instance || e.sent === null) return;
+    answer(fx, e, outcome === 'sent' ? {result: {signature: e.sent.signature}} : {error: 'send-failed'}, tx.now);
   });
 }

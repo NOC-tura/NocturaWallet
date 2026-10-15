@@ -108,6 +108,8 @@ export const pendingRecord = (over: Partial<PendingRecord> = {}): PendingRecord 
   detail: null,
   detailCode: null,
   intent: {token: 'SOL', recipient: 'R', amount: '1'},
+  origin: null,
+  firstBroadcast: 'done',
   expiryNullSeenAt: null,
   failure: null,
   fee: null,

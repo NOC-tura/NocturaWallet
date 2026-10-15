@@ -11,6 +11,7 @@ import {BALANCE_CACHE_KEY, PRICE_CACHE_KEY} from '../balanceCache';
 import {GRANTS_KEY} from '../dapp/grants';
 import {BLOCKED_KEY} from '../dapp/blocked';
 import {LIMITS_KEY} from '../dapp/limits';
+import {DAPP_TXS_KEY} from '../dapp/dappTxs';
 import {FORBIDDEN_UNTIL_KEY} from '../deps';
 import {AUTOLOCK_ALARM} from '../autolock';
 import {envelopeRevision} from '../../shared/envelopeRevision';
@@ -46,6 +47,7 @@ const REPLACEMENT = {...STORED, kdf: {...STORED.kdf, salt: B(16, 9)}, seed: {iv:
 const GRANT = {origin: 'https://jup.ag', account: ACCOUNT.publicKey, scope: 'persistent', connectedAt: 1, lastUsedAt: 1, recent: []};
 const BLOCK = {host: 'tensr.trade', blockedAt: 1, imitates: 'tensor.trade'};
 const LIMITS = {rejections: [], cooldowns: [{key: 'host:tensr.trade', until: 9e12}], windows: [], notice: false};
+const DAPP_TXS = [{signature: '5'.repeat(88), origin: 'https://jup.ag', at: 1}];
 const zero = () => fakeReader({getBalance: async () => 0n, getTokenAccountsByOwner: async () => []});
 
 async function setup(reader: SolanaReader = zero()) {
@@ -58,6 +60,7 @@ async function setup(reader: SolanaReader = zero()) {
   await ext.local.set(GRANTS_KEY, [GRANT]);
   await ext.local.set(BLOCKED_KEY, [BLOCK]);
   await ext.local.set(LIMITS_KEY, LIMITS);
+  await ext.local.set(DAPP_TXS_KEY, DAPP_TXS);
   await ext.local.set(BALANCE_CACHE_KEY, {});
   await ext.local.set(PRICE_CACHE_KEY, {});
   await ext.local.set(FORBIDDEN_UNTIL_KEY, 123);
@@ -143,8 +146,9 @@ describe('vault.forgetWallet — a delete (no replacement)', () => {
     expect(await vault(ext)).toBeUndefined();
     expect(await ext.session.get(SESSION_KEY)).toBeUndefined();
     expect(ext.alarmsSet.has(AUTOLOCK_ALARM)).toBe(false);
-    // B1b-2b E17 (D20): the address book goes with the wallet; B1c (C11, C14): so do the dApp grants, blocks and limits.
-    for (const key of [KNOWN_RECIPIENTS_KEY, SETTINGS_KEY, CONTACTS_KEY, GRANTS_KEY, BLOCKED_KEY, LIMITS_KEY, BALANCE_CACHE_KEY, PRICE_CACHE_KEY]) expect(await ext.local.get(key)).toBeUndefined();
+    // B1b-2b E17 (D20): the address book goes with the wallet; B1c (C11, C14): so do the dApp grants, blocks and limits;
+    // B1c-2: and the transactions sites had signed here.
+    for (const key of [KNOWN_RECIPIENTS_KEY, SETTINGS_KEY, CONTACTS_KEY, GRANTS_KEY, BLOCKED_KEY, LIMITS_KEY, DAPP_TXS_KEY, BALANCE_CACHE_KEY, PRICE_CACHE_KEY]) expect(await ext.local.get(key)).toBeUndefined();
     expect(await ext.local.get(FORBIDDEN_UNTIL_KEY)).toBe(123);
   });
 
@@ -166,7 +170,7 @@ describe('vault.forgetWallet — a restore (replacement, C4, D40)', () => {
     expect(await ext.local.get(SETTINGS_KEY)).toEqual({autoLockMinutes: 2, reauthUsdCents: 5000, selectedAccount: 1});
     // B1b-2b E17 (D20): a restore keeps the address book; B1c (C11): and the dApp grants, blocks and limits.
     expect(await ext.local.get(CONTACTS_KEY)).toEqual([{address: RECIPIENT, name: 'Marko'}]);
-    expect([await ext.local.get(GRANTS_KEY), await ext.local.get(BLOCKED_KEY), await ext.local.get(LIMITS_KEY)]).toEqual([[GRANT], [BLOCK], LIMITS]);
+    expect([await ext.local.get(GRANTS_KEY), await ext.local.get(BLOCKED_KEY), await ext.local.get(LIMITS_KEY), await ext.local.get(DAPP_TXS_KEY)]).toEqual([[GRANT], [BLOCK], LIMITS, DAPP_TXS]);
     expect(await ext.local.get(BALANCE_CACHE_KEY)).toBeUndefined();
     expect(await ext.local.get(FORBIDDEN_UNTIL_KEY)).toBe(123);
     expect(await getSession(ext)).toBeNull();
@@ -355,9 +359,10 @@ describe('a first write clears what a crashed delete left behind', () => {
     await ext.local.set(GRANTS_KEY, [GRANT]);
     await ext.local.set(BLOCKED_KEY, [BLOCK]);
     await ext.local.set(LIMITS_KEY, LIMITS);
+    await ext.local.set(DAPP_TXS_KEY, DAPP_TXS);
     expect(await storeEnvelope(ext, null, STORED)).toBe('stored');
-    // B1c: a grant a crashed delete left behind never connects a site to the next wallet.
-    for (const key of [GRANTS_KEY, BLOCKED_KEY, LIMITS_KEY]) expect(await ext.local.get(key)).toBeUndefined();
+    // B1c: a grant a crashed delete left behind never connects a site to the next wallet (B1c-2: nor badges its history).
+    for (const key of [GRANTS_KEY, BLOCKED_KEY, LIMITS_KEY, DAPP_TXS_KEY]) expect(await ext.local.get(key)).toBeUndefined();
     expect(await ext.local.get(KNOWN_RECIPIENTS_KEY)).toBeUndefined();
     expect(await ext.local.get(SETTINGS_KEY)).toBeUndefined();
     // B1b-2b E17: a book a crashed delete left behind never reaches the next wallet.

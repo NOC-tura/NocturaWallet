@@ -6,6 +6,7 @@ import {BLOCKED_KEY, blockedOf, type Blocked} from './blocked';
 import {GRANTS_KEY, MAX_GRANTS, grantOf, grantsOf, type Grant} from './grants';
 import {LIMITS_KEY, limitsOf, type Limits} from './limits';
 import {simStateOf, type SimState} from './simulate';
+import {DAPP_TXS_KEY, dappTxsOf, type DappTx} from './dappTxs';
 
 /**
  * The dApp provider's state (spec §1.5, §2). storage.session holds what dies with the session — the request queue,
@@ -56,6 +57,8 @@ export interface Entry {
   sim: SimState | null;
   /** A transaction request's re-authentication challenge (signTx.ts), once Approve asked for one; else null. */
   challengeId: string | null;
+  /** signAndSendTransaction: the signed bytes and their signature, recorded BEFORE the broadcast (C17, §1.5 step 2); else null. */
+  sent: {wire: string; signature: string} | null;
   arrivedAt: number;
   state: 'queued' | 'deciding' | 'answered';
   /** The worker instance that wrote `deciding` (C17): another instance's `deciding` entry is a restart. */
@@ -119,6 +122,13 @@ function decisionOf(x: unknown): Entry['decision'] | undefined {
   return {kind: o.kind as Decision, account: o.account, scope: o.scope};
 }
 
+/** A recorded send: exactly two strings (undefined: anything else — the entry is then dropped, never half-read). */
+function sentOf(x: unknown): Entry['sent'] | undefined {
+  if (typeof x !== 'object' || x === null) return undefined;
+  const {wire, signature} = x as Record<string, unknown>;
+  return isStr(wire) && isStr(signature) ? {wire, signature} : undefined;
+}
+
 /** A stored entry, rebuilt field by field; null when anything is off (it is dropped, never "repaired"). */
 export function entryOf(x: unknown): Entry | null {
   if (typeof x !== 'object' || x === null) return null;
@@ -132,6 +142,8 @@ export function entryOf(x: unknown): Entry | null {
   if (transactions === undefined || granted === undefined || challengeId === undefined) return null;
   // A simulation that does not read back is simply simulated again (never trusted half-read).
   const sim = o.sim === undefined || o.sim === null ? null : simStateOf(o.sim);
+  const sent = o.sent === undefined || o.sent === null ? null : sentOf(o.sent);
+  if (sent === undefined) return null;
   if (!isStr(o.state) || !STATES.includes(o.state) || !isNullStr(o.decidedBy) || (o.answeredAt !== null && !isTime(o.answeredAt))) return null;
   if (o.decidingAt !== null && !isTime(o.decidingAt)) return null;
   const decision = decisionOf(o.decision);
@@ -151,6 +163,7 @@ export function entryOf(x: unknown): Entry | null {
     granted,
     sim,
     challengeId,
+    sent,
     arrivedAt: o.arrivedAt,
     state: o.state as Entry['state'],
     decidedBy: o.decidedBy,
@@ -191,6 +204,8 @@ export interface Tx {
   grants: Grant[];
   blocked: Blocked[];
   limits: Limits;
+  /** B1c-2: the transactions sites had signed here (dappTxs.ts), newest first. */
+  txs: DappTx[];
   /** The unlocked session's accounts, or null while locked — as of this section. */
   session: SessionAccount[] | null;
   now: number;
@@ -201,27 +216,29 @@ const dappMutex = createMutex();
 export async function dappSection<T>(ext: Ext, now: number, fn: (tx: Tx) => Promise<T> | T): Promise<T> {
   return dappMutex(() =>
     sessionMutex(async () => {
-      const [s, grants, blocked, limits, session] = await Promise.all([
+      const [s, grants, blocked, limits, txs, session] = await Promise.all([
         readDappSession(ext),
         ext.local.get(GRANTS_KEY),
         ext.local.get(BLOCKED_KEY),
         ext.local.get(LIMITS_KEY),
+        ext.local.get(DAPP_TXS_KEY),
         getSession(ext),
       ]);
-      const tx: Tx = {s, grants: grantsOf(grants, 'persistent', MAX_GRANTS), blocked: blockedOf(blocked), limits: limitsOf(limits, now), session, now};
-      const before = {s: JSON.stringify(tx.s), grants: JSON.stringify(tx.grants), blocked: JSON.stringify(tx.blocked), limits: JSON.stringify(tx.limits)};
+      const tx: Tx = {s, grants: grantsOf(grants, 'persistent', MAX_GRANTS), blocked: blockedOf(blocked), limits: limitsOf(limits, now), txs: dappTxsOf(txs), session, now};
+      const before = {s: JSON.stringify(tx.s), grants: JSON.stringify(tx.grants), blocked: JSON.stringify(tx.blocked), limits: JSON.stringify(tx.limits), txs: JSON.stringify(tx.txs)};
       const out = await fn(tx);
       if (JSON.stringify(tx.s) !== before.s) await ext.session.set(DAPP_SESSION_KEY, tx.s);
       if (JSON.stringify(tx.grants) !== before.grants) await ext.local.set(GRANTS_KEY, tx.grants);
       if (JSON.stringify(tx.blocked) !== before.blocked) await ext.local.set(BLOCKED_KEY, tx.blocked);
       if (JSON.stringify(tx.limits) !== before.limits) await ext.local.set(LIMITS_KEY, tx.limits);
+      if (JSON.stringify(tx.txs) !== before.txs) await ext.local.set(DAPP_TXS_KEY, tx.txs);
       return out;
     }),
   );
 }
 
 /**
- * Removes the three dApp-owned storage.local keys, under the same lock order a dappSection uses (fix round 1,
+ * Removes the dApp-owned storage.local keys (B1c-2: four — v1_dapp_txs too), under the same lock order a dappSection uses (fix round 1,
  * IMPORTANT 1): accountsStore's removeWalletData (forgetWallet step 7, and storeEnvelope's first-write backstop)
  * used to remove them with a plain `ext.local.remove`, outside dappMutex and sessionMutex — a dappSection already
  * in flight reads the old lists before the remove and writes them back (unchanged, or changed by the caller's own
@@ -237,6 +254,7 @@ export async function wipeDappStores(ext: Ext): Promise<void> {
       await ext.local.remove(GRANTS_KEY);
       await ext.local.remove(BLOCKED_KEY);
       await ext.local.remove(LIMITS_KEY);
+      await ext.local.remove(DAPP_TXS_KEY);
     }),
   );
 }
