@@ -12,11 +12,16 @@ import {isWritableIndex, type ParsedTx} from './decode/wire';
  * source — the coordinator, stated), with `accounts` = the signer's wallet account and every writable account the
  * transaction names (resolved through its lookup tables), so the account's token accounts it touches — an existing one,
  * one it creates, one it closes — come back in their post-state. A balance change is post − pre per mint, in base units
- * (bigint, rule 2): SOL from the wallet account (the fee included, as the node reports it), each token from the
- * account's token accounts (pre: getTokenAccountsByOwner for both token programs; post: the simulated 165-byte layout
- * whose owner field is this account). The transactions of a batch are simulated one by one against the current state
- * (a node cannot chain them). The re-authentication reasons (B1b's rules) are computed here, from the changes and the
- * decoded instructions, so `dapp.decide` needs no read of its own.
+ * (bigint, rule 2): SOL from the wallet account (the fee included, as the node reports it) PLUS the lamports of the
+ * account's own token accounts (fix round 1, Promoted Minor 3 — a close to a foreign destination moves those lamports
+ * out of custody without ever touching the wallet's own system account); each token from the account's token accounts,
+ * pre AND post read from CHAIN STATE (getAccountsData, fresh immediately before each transaction's own simulation, for
+ * exactly the addresses that simulation returns post state for — fix round 1, I1/I2; getTokenAccountsByOwner's one-time
+ * batch snapshot is used only for the reauth rules' balance denominator and the known-recipient check, never for a
+ * per-transaction pre amount). The transactions of a batch are simulated one by one against the current state (a node
+ * cannot chain them). The re-authentication reasons (B1b's rules) are computed here — `approval` from chain state too
+ * (a new or raised delegation, or a changed close authority: a dApp program can CPI an Approve or SetAuthority with no
+ * top-level instruction that names it) — so `dapp.decide` needs no read of its own.
  */
 export const DEFAULT_UNITS_PER_INSTRUCTION = 200_000;
 export const MAX_COMPUTE_UNITS = 1_400_000;
@@ -56,18 +61,68 @@ export interface TxSimulation {
   lastValidBlockHeight: number;
 }
 
-const TOKEN_PROGRAMS: ReadonlySet<string> = new Set([TOKEN_PROGRAM, TOKEN_2022_PROGRAM]);
-
-/** A token account of `owner` in its post-state: mint and amount, or null when it is not one (or no longer exists). */
-function tokenAccountOf(a: AccountData | null, owner: string): {mint: string; amount: bigint} | null {
-  if (a === null || !TOKEN_PROGRAMS.has(a.owner) || a.data.length < 165) return null;
-  if (base58.encode(a.data.subarray(32, 64)) !== owner) return null;
-  return {mint: base58.encode(a.data.subarray(0, 32)), amount: new DataView(a.data.buffer, a.data.byteOffset, a.data.byteLength).getBigUint64(64, true)};
+/**
+ * Whether `a`'s bytes are a real SPL Token / Token-2022 account — never by length alone (fix round 1, I2: a 355-byte
+ * Multisig, or any other same-length impostor, must never be read as a token account just because it is long enough).
+ * Classic Token accounts are exactly 165 bytes; Token-2022 accounts are the same 165 bytes, or longer with an
+ * AccountType::Account discriminator (2) at a fixed offset 165 (its TLV extensions follow) — EXCEPT 355 bytes
+ * specifically, the Multisig struct's own size, which collides with that discriminator's position by coincidence and
+ * must stay excluded even when byte 165 happens to equal 2. Either way, the state byte (108) must be Initialized (1)
+ * or Frozen (2) — never Uninitialized (0), which carries no meaning at all.
+ */
+function isTokenAccountLayout(a: AccountData): boolean {
+  if (a.owner === TOKEN_PROGRAM) {
+    if (a.data.length !== 165) return false;
+  } else if (a.owner === TOKEN_2022_PROGRAM) {
+    if (!(a.data.length === 165 || (a.data.length > 165 && a.data.length !== 355 && a.data[165] === 2))) return false;
+  } else {
+    return false;
+  }
+  return a.data[108] === 1 || a.data[108] === 2;
 }
 
-/** A mint account's decimals (byte 44 of the base layout), or null. */
+/**
+ * `a`'s state as a token account owned by `owner` — read from CHAIN STATE alone (fix round 1, I1: never the decoded
+ * instruction, which a dApp program can route an Approve or a close-authority change through by CPI without any
+ * top-level instruction that names it). Null when `a` is not a real token account (`isTokenAccountLayout`, I2) or its
+ * owner field is not `owner`. `delegate`/`delegatedAmount` (COption<Pubkey> at 72..108, u64 at 121..129) and
+ * `closeAuthority` (COption<Pubkey> at 129..165) are read as the runtime does; `lamports` is `a`'s own, for Promoted
+ * Minor 3 (a close to a foreign destination moves them out of the wallet's custody without ever touching the wallet's
+ * own system account).
+ */
+interface OwnTokenAccount {
+  mint: string;
+  amount: bigint;
+  lamports: bigint;
+  delegate: string | null;
+  delegatedAmount: bigint;
+  closeAuthority: string | null;
+}
+function ownTokenAccountOf(a: AccountData | null, owner: string): OwnTokenAccount | null {
+  if (a === null || !isTokenAccountLayout(a)) return null;
+  if (base58.encode(a.data.subarray(32, 64)) !== owner) return null;
+  const view = new DataView(a.data.buffer, a.data.byteOffset, a.data.byteLength);
+  return {
+    mint: base58.encode(a.data.subarray(0, 32)),
+    amount: view.getBigUint64(64, true),
+    lamports: a.lamports,
+    delegate: view.getUint32(72, true) === 1 ? base58.encode(a.data.subarray(76, 108)) : null,
+    delegatedAmount: view.getBigUint64(121, true),
+    closeAuthority: view.getUint32(129, true) === 1 ? base58.encode(a.data.subarray(133, 165)) : null,
+  };
+}
+
+/** A mint account's decimals (byte 44 of the base layout — 82 bytes classic, or Token-2022 with the same AccountType
+ * discriminator at 165, this time marking a Mint (1) rather than an Account (2)), or null. */
 function mintDecimals(a: AccountData | null): number | null {
-  if (a === null || !TOKEN_PROGRAMS.has(a.owner) || a.data.length < 82) return null;
+  if (a === null) return null;
+  if (a.owner === TOKEN_PROGRAM) {
+    if (a.data.length !== 82) return null;
+  } else if (a.owner === TOKEN_2022_PROGRAM) {
+    if (!(a.data.length === 82 || (a.data.length > 165 && a.data[165] === 1))) return null;
+  } else {
+    return null;
+  }
   return a.data[44] ?? null;
 }
 
@@ -145,12 +200,19 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
   let slot = 0;
   const outcomes: TxOutcome[] = [];
   const decodedAll: DecodedInstruction[][] = [];
+  let approvalFromChain = false;
   for (const [i, p] of input.txs.entries()) {
     const keys = resolved[i]?.keys ?? [];
     const decoded = decodeInstructions(p, {keys});
     decodedAll.push(decoded);
     const writable = [...new Set(keys.filter((k, j): k is string => k !== null && k !== account && isWritableIndex(p, j)))];
     const addresses = [account, ...writable];
+    // Fix round 1 (I1, I2): the pre state is read fresh, immediately before THIS transaction's own simulation, for
+    // exactly the addresses the simulation returns post state for — never the batch's one-time getTokenAccountsByOwner
+    // snapshot (`before`, below), which can be stale by the time this transaction simulates (slot skew) and cannot be
+    // paired index-for-index with a transaction's own writable set (an own account the snapshot does not cover would
+    // otherwise show +post instead of post − pre).
+    const preAccounts = await deps.reader.getAccountsData(addresses);
     const sim = await deps.reader.simulateTransaction(base64.encode(input.wires[i] ?? new Uint8Array()), {accounts: addresses});
     slot = Math.max(slot, sim.slot);
     if (sim.err !== null) {
@@ -160,13 +222,28 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
     const post = sim.accounts ?? [];
     const delta = new Map<string | null, bigint>();
     const add = (mint: string | null, d: bigint) => delta.set(mint, (delta.get(mint) ?? 0n) + d);
+    const selfPre = preAccounts[0] ?? null;
     const self = post[0] ?? null;
-    add(null, (self?.lamports ?? 0n) - lamportsBefore);
-    for (const [j, address] of writable.entries()) {
-      const after = tokenAccountOf(post[j + 1] ?? null, account);
-      const pre = before.get(address);
-      if (after !== null) add(after.mint, after.amount - (pre?.mint === after.mint ? pre.amount : 0n));
-      else if (pre !== undefined) add(pre.mint, -pre.amount);
+    add(null, (self?.lamports ?? 0n) - (selfPre?.lamports ?? lamportsBefore));
+    for (const [j] of writable.entries()) {
+      const preOwn = ownTokenAccountOf(preAccounts[j + 1] ?? null, account);
+      const postOwn = ownTokenAccountOf(post[j + 1] ?? null, account);
+      if (postOwn !== null) add(postOwn.mint, postOwn.amount - (preOwn?.mint === postOwn.mint ? preOwn.amount : 0n));
+      else if (preOwn !== null) add(preOwn.mint, -preOwn.amount);
+      // Promoted Minor 3: lamports of the wallet's own token accounts (incl. wSOL) are SOL too — a close to a foreign
+      // destination moves them out of custody without ever touching the wallet's own system account (`self`, above).
+      if (preOwn !== null || postOwn !== null) add(null, (postOwn?.lamports ?? 0n) - (preOwn?.lamports ?? 0n));
+      // I1: approval is decided from chain state, not the decoded instruction (a dApp program can raise a delegation,
+      // or change the close authority, via CPI with no decodable top-level Approve). A new delegate, or the same
+      // delegate with a raised amount, is `approval`; a changed close authority re-authenticates too — the controller
+      // ruling leaves the choice of reason to us: documented choice, the same `approval` (no separate copy exists for
+      // it yet, and both are "someone else gained a claim on this account" in substance).
+      if (postOwn !== null) {
+        const priorDelegate = preOwn?.delegate ?? null;
+        const priorAmount = preOwn?.delegatedAmount ?? 0n;
+        if (postOwn.delegate !== null && (postOwn.delegate !== priorDelegate || postOwn.delegatedAmount > priorAmount)) approvalFromChain = true;
+        if (postOwn.closeAuthority !== (preOwn?.closeAuthority ?? null)) approvalFromChain = true;
+      }
     }
     const {feeLamports, unitLimit} = feeOf(p, decoded);
     const changes: {mint: string | null; amount: bigint}[] = [...delta].filter(([, d]) => d !== 0n).map(([mint, amount]) => ({mint, amount}));
@@ -203,14 +280,13 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
       return from === account && to !== null && !input.known(to) && !before.has(to);
     }),
   );
-  const approval = decodedAll.some(list => list.some(ix => (ix.program === 'token' || ix.program === 'token-2022') && (ix.name === 'approve' || ix.name === 'approveChecked') && addressField(ix, 'owner') === account));
   const reasons = dappReauthReasons({
     outgoing: [...outgoing].map(([mint, amount]) => {
       const d = mint === null ? 9 : (decimals.get(mint) ?? null);
       return {amount, balance: balanceOf(mint), usdMicros: d === null ? null : usdMicros(amount, d, priceOf(mint))};
     }),
     firstSend,
-    approval,
+    approval: approvalFromChain,
     thresholdCents: input.thresholdCents,
   });
   return {

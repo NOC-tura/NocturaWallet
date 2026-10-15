@@ -29,12 +29,13 @@ const ATA = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
 export const SIMULATED_SLOT = 271_408_921;
 const u64 = (d: Uint8Array, at: number) => new DataView(d.buffer, d.byteOffset, d.byteLength).getBigUint64(at, true);
 
-/** An SPL token account's 165 bytes: mint, owner, amount (u64 LE at 64). */
+/** An SPL token account's 165 bytes: mint, owner, amount (u64 LE at 64), state Initialized (byte 108) — no delegate, no close authority. */
 export function tokenAccountData(mint: string, owner: string, amount: bigint): Uint8Array {
   const d = new Uint8Array(165);
   d.set(base58.decode(mint), 0);
   d.set(base58.decode(owner), 32);
   new DataView(d.buffer).setBigUint64(64, amount, true);
+  d[108] = 1;
   return d;
 }
 

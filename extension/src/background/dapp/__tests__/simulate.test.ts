@@ -5,15 +5,17 @@ import {MAINNET_NOC_MINT, MAINNET_USDC_MINT} from '../../../../../core/presale/a
 import {fakeDeps, fakeReader} from '../../__tests__/fakeDeps';
 import {BLOCKHASH, PUB, RECIPIENT, tokenAccountData} from '../../__tests__/fixtures';
 import {ADDRESS_LOOKUP_TABLE_PROGRAM} from '../decode/keys';
-import {TOKEN_PROGRAM} from '../decode/decode';
+import {TOKEN_2022_PROGRAM, TOKEN_PROGRAM} from '../decode/decode';
 import {parseWire} from '../decode/wire';
-import {simulateTransactions, type TxSimulation} from '../simulate';
+import {simulateTransactions, WRAPPED_SOL_MINT, type TxSimulation} from '../simulate';
 
 const ME = new PublicKey(PUB);
 const TO = new PublicKey(RECIPIENT);
 const SRC = '4G8U5nQtNciNaEL7Zimb4DhqeanDMevXp7MLtFvUojwF';
 const NEW_ATA = 'FpV5mr137k3GfLJqqWnZer12v2KxZfEEQzxXb6sJLABU';
 const ODD_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYC';
+/** A second holding, distinct from SRC — used wherever a test needs two of the wallet's own accounts at once. */
+const T22_SRC = new PublicKey(new Uint8Array(32).fill(7)).toBase58();
 const DEX = new PublicKey('JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4');
 const SOL = 10_000_000_000n;
 
@@ -22,8 +24,42 @@ const wire = (instructions: TransactionInstruction[], o: {payer?: PublicKey; tab
 const u64 = (n: bigint): number[] => Array.from({length: 8}, (_, i) => Number((n >> BigInt(8 * i)) & 0xffn));
 const tokenIx = (data: number[], keys: string[], signer = ME.toBase58()) =>
   new TransactionInstruction({programId: new PublicKey(TOKEN_PROGRAM), data: Buffer.from(data), keys: keys.map(k => ({pubkey: new PublicKey(k), isSigner: k === signer, isWritable: k !== signer}))});
+/** An unknown-program instruction touching `keys` (plus ME as the fee payer) — stands in for a dApp's own CPI-heavy program, whose own instruction never decodes as a known one (I1: approval must still be read from chain state). */
+const unknownIx = (keys: string[]) => new TransactionInstruction({programId: DEX, data: Buffer.from([1]), keys: keys.map(k => ({pubkey: new PublicKey(k), isSigner: false, isWritable: true})).concat([{pubkey: ME, isSigner: true, isWritable: true}])});
 const holding = (pubkey: string, mint: string, amount: bigint, decimals = 9): TokenAccountEntry => ({pubkey, mint, owner: ME.toBase58(), amount, decimals});
 const tokenAfter = (mint: string, amount: bigint, owner = ME.toBase58()): SimulatedAccount => ({lamports: 2_039_280n, owner: TOKEN_PROGRAM, data: tokenAccountData(mint, owner, amount)});
+/** The same 165 bytes under Token-2022's program id instead of classic Token's (I2 positive control: a real Token-2022 account is tracked exactly like a classic one). */
+const t22After = (mint: string, amount: bigint, owner = ME.toBase58()): SimulatedAccount => ({lamports: 2_039_280n, owner: TOKEN_2022_PROGRAM, data: tokenAccountData(mint, owner, amount)});
+/** `tokenAfter`'s bytes, with a delegate and its approved amount set (COption<Pubkey> at 72, u64 at 121) — the chain state a real Approve (or a CPI'd one, I1) leaves behind. */
+const tokenDelegated = (mint: string, amount: bigint, delegate: string, delegatedAmount: bigint, owner = ME.toBase58()): SimulatedAccount => {
+  const data = tokenAccountData(mint, owner, amount);
+  new DataView(data.buffer).setUint32(72, 1, true);
+  data.set(new PublicKey(delegate).toBytes(), 76);
+  new DataView(data.buffer).setBigUint64(121, delegatedAmount, true);
+  return {lamports: 2_039_280n, owner: TOKEN_PROGRAM, data};
+};
+/** `tokenAfter`'s bytes, with a close authority set (COption<Pubkey> at 129) — I1's other chain-state signal. */
+const tokenWithCloseAuthority = (mint: string, amount: bigint, authority: string, owner = ME.toBase58()): SimulatedAccount => {
+  const data = tokenAccountData(mint, owner, amount);
+  new DataView(data.buffer).setUint32(129, 1, true);
+  data.set(new PublicKey(authority).toBytes(), 133);
+  return {lamports: 2_039_280n, owner: TOKEN_PROGRAM, data};
+};
+/**
+ * A 355-byte Multisig struct (SPL Token's own size: m, n, is_initialized, 11 signers) shaped to also pass as an
+ * extended Token-2022 account if length alone were trusted: mint/owner fields and an amount planted at the classic
+ * Account offsets, Initialized at 108, and byte 165 forged to 2 (AccountType::Account) — I2's attack, closed by
+ * `isTokenAccountLayout`'s explicit `length !== 355` exclusion.
+ */
+const forgedMultisig = (ownerField: string, amount: bigint): SimulatedAccount => {
+  const data = new Uint8Array(355);
+  data.set(base58.decode(MAINNET_NOC_MINT), 0);
+  data.set(base58.decode(ownerField), 32);
+  new DataView(data.buffer).setBigUint64(64, amount, true);
+  data[108] = 1;
+  data[165] = 2;
+  return {lamports: 2_039_280n, owner: TOKEN_2022_PROGRAM, data};
+};
 
 /**
  * A reader for one request: the wallet's SOL and token accounts before, and per simulateTransaction call the post-state
@@ -84,24 +120,34 @@ describe('simulateTransactions', () => {
     const s = scene({
       holdings: [holding(SRC, MAINNET_NOC_MINT, 100_000_000_000n), holding(closing, MAINNET_USDC_MINT, 2_000_000n, 6)],
       post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : a === SRC ? tokenAfter(MAINNET_NOC_MINT, 90_000_000_000n) : a === NEW_ATA ? tokenAfter(ODD_MINT, 777n) : null),
-      accounts: new Map([[ODD_MINT, {lamports: 1n, owner: TOKEN_PROGRAM, data: Uint8Array.from({length: 82}, (_, i) => (i === 44 ? 4 : 0))}]]),
+      // Fix round 1 (I1/I2): the per-transaction delta now reads SRC's and closing's PRE state fresh, through
+      // getAccountsData, not from the holdings snapshot above (which still feeds only the decimals map and the
+      // reauth balance denominator) — so the scene must say what those addresses held right before this transaction.
+      accounts: new Map([
+        [ODD_MINT, {lamports: 1n, owner: TOKEN_PROGRAM, data: Uint8Array.from({length: 82}, (_, i) => (i === 44 ? 4 : 0))}],
+        [SRC, tokenAfter(MAINNET_NOC_MINT, 100_000_000_000n)],
+        [closing, tokenAfter(MAINNET_USDC_MINT, 2_000_000n)],
+      ]),
     });
     const dexIx = new TransactionInstruction({programId: DEX, data: Buffer.from([1]), keys: [SRC, NEW_ATA, closing].map(k => ({pubkey: new PublicKey(k), isSigner: false, isWritable: true})).concat([{pubkey: ME, isSigner: true, isWritable: true}])});
     const sim = await run(s, [wire([dexIx])]);
     const out = sim.outcomes[0];
     expect(out?.ok).toBe(true);
+    // closing's own rent (2 039 280 lamports) leaves as SOL (Promoted Minor 3); NEW_ATA's own rent arrives the same
+    // way — the two cancel, so the SOL line is still exactly the fee, as before the fix.
     expect(out?.ok === true ? out.changes : null).toEqual([
       {mint: null, amount: '-5000', decimals: 9, usdMicros: '-750'},
       {mint: MAINNET_NOC_MINT, amount: '-10000000000', decimals: 9, usdMicros: '-1501000'},
       {mint: ODD_MINT, amount: '777', decimals: 4, usdMicros: null},
       {mint: MAINNET_USDC_MINT, amount: '-2000000', decimals: 6, usdMicros: '-2000000'},
     ]);
-    expect(s.reads).toEqual([[], [ODD_MINT]]);
+    expect(s.reads).toEqual([[], [ME.toBase58(), SRC, NEW_ATA, closing], [ODD_MINT]]);
   });
 
   it('a writable token account of SOMEONE ELSE (a recipient’s) is not the account’s change, however its amount moves', async () => {
     const s = scene({
       holdings: [holding(SRC, MAINNET_NOC_MINT, 100n)],
+      accounts: new Map([[SRC, tokenAfter(MAINNET_NOC_MINT, 100n)]]),
       post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : a === SRC ? tokenAfter(MAINNET_NOC_MINT, 90n) : a === NEW_ATA ? tokenAfter(MAINNET_NOC_MINT, 10n, TO.toBase58()) : null),
     });
     const sim = await run(s, [wire([tokenIx([3, ...u64(10n)], [SRC, NEW_ATA, ME.toBase58()])])]);
@@ -121,17 +167,102 @@ describe('simulateTransactions', () => {
     expect(away.reasons).toContain('first-send');
   });
 
-  it('an approval by the account re-authenticates (B1 §3 "bounded approvals")', async () => {
-    // The approval moves nothing: the source keeps its 100.
-    const s = scene({holdings: [holding(SRC, MAINNET_NOC_MINT, 100n)], post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : a === SRC ? tokenAfter(MAINNET_NOC_MINT, 100n) : null)});
+  it('an approval by the account re-authenticates (B1 §3 "bounded approvals"), decided from the chain state it leaves (I1)', async () => {
+    // The approval moves nothing: the source keeps its 100, but its post-state now carries a real delegate.
+    const s = scene({
+      holdings: [holding(SRC, MAINNET_NOC_MINT, 100n)],
+      accounts: new Map([[SRC, tokenAfter(MAINNET_NOC_MINT, 100n)]]),
+      post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : a === SRC ? tokenDelegated(MAINNET_NOC_MINT, 100n, NEW_ATA, 50n) : null),
+    });
     const sim = await run(s, [wire([tokenIx([4, ...u64(50n)], [SRC, NEW_ATA, ME.toBase58()])])], () => true);
     expect(sim.reasons).toEqual(['approval']);
   });
 
+  it('a CPI approval (an unknown program raising a delegation) re-authenticates even with no top-level Approve to decode (I1)', async () => {
+    const s = scene({
+      accounts: new Map([[SRC, tokenAfter(MAINNET_NOC_MINT, 100n)]]),
+      post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : a === SRC ? tokenDelegated(MAINNET_NOC_MINT, 100n, NEW_ATA, 50n) : null),
+    });
+    const sim = await run(s, [wire([unknownIx([SRC])])], () => true);
+    expect(sim.reasons).toEqual(['approval']);
+  });
+
+  it('a raised delegated amount re-authenticates even when the delegate itself is unchanged (I1)', async () => {
+    const s = scene({
+      accounts: new Map([[SRC, tokenDelegated(MAINNET_NOC_MINT, 100n, NEW_ATA, 10n)]]),
+      post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : a === SRC ? tokenDelegated(MAINNET_NOC_MINT, 100n, NEW_ATA, 20n) : null),
+    });
+    const sim = await run(s, [wire([unknownIx([SRC])])], () => true);
+    expect(sim.reasons).toEqual(['approval']);
+  });
+
+  it('an unchanged delegation is not a re-authentication (I1 negative control)', async () => {
+    const s = scene({
+      accounts: new Map([[SRC, tokenDelegated(MAINNET_NOC_MINT, 100n, NEW_ATA, 10n)]]),
+      post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : a === SRC ? tokenDelegated(MAINNET_NOC_MINT, 100n, NEW_ATA, 10n) : null),
+    });
+    const sim = await run(s, [wire([unknownIx([SRC])])], () => true);
+    expect(sim.reasons).toEqual([]);
+  });
+
+  it('a changed close authority re-authenticates too (I1; documented choice: the same `approval` reason — no separate copy exists for it)', async () => {
+    const s = scene({
+      accounts: new Map([[SRC, tokenAfter(MAINNET_NOC_MINT, 100n)]]),
+      post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : a === SRC ? tokenWithCloseAuthority(MAINNET_NOC_MINT, 100n, NEW_ATA) : null),
+    });
+    const sim = await run(s, [wire([unknownIx([SRC])])], () => true);
+    expect(sim.reasons).toEqual(['approval']);
+  });
+
   it('an outgoing token with no price is above the dollar threshold (fail closed)', async () => {
-    const s = scene({holdings: [holding(SRC, ODD_MINT, 1_000_000n, 6)], post: a => (a === SRC ? tokenAfter(ODD_MINT, 999_999n) : a === ME.toBase58() ? {lamports: SOL, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : null)});
+    const s = scene({
+      holdings: [holding(SRC, ODD_MINT, 1_000_000n, 6)],
+      accounts: new Map([[SRC, tokenAfter(ODD_MINT, 1_000_000n)]]),
+      post: a => (a === SRC ? tokenAfter(ODD_MINT, 999_999n) : a === ME.toBase58() ? {lamports: SOL, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : null),
+    });
     const sim = await run(s, [wire([new TransactionInstruction({programId: DEX, data: Buffer.from([1]), keys: [{pubkey: new PublicKey(SRC), isSigner: false, isWritable: true}, {pubkey: ME, isSigner: true, isWritable: true}]})])], () => true);
     expect(sim.reasons).toEqual(['over-usd-threshold']);
+  });
+
+  it('a Token-2022 token account is tracked like a classic one; a 355-byte same-length impostor is never read as the wallet’s own account instead (I2)', async () => {
+    const s = scene({
+      accounts: new Map([[T22_SRC, t22After(MAINNET_NOC_MINT, 50n)]]),
+      post: a =>
+        a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : a === T22_SRC ? t22After(MAINNET_NOC_MINT, 40n) : a === SRC ? forgedMultisig(ME.toBase58(), 999_999_999n) : null,
+    });
+    const sim = await run(s, [wire([unknownIx([T22_SRC, SRC])])]);
+    const out = sim.outcomes[0];
+    // The real Token-2022 account's loss shows; the forged 355-byte account (owner field crafted to be ME, an
+    // Initialized state byte, byte 165 forged to look like an extended account's AccountType::Account) contributes
+    // nothing at all — not the huge amount planted in it, not even a zero line.
+    expect(out?.ok === true ? out.changes.map(c => [c.mint, c.amount]) : null).toEqual([
+      [null, '-5000'],
+      [MAINNET_NOC_MINT, '-10'],
+    ]);
+  });
+
+  it('closing an own wSOL account to a foreign destination shows its lamports as a SOL loss (Promoted Minor 3)', async () => {
+    const preWsol: SimulatedAccount = {lamports: 52_039_280n, owner: TOKEN_PROGRAM, data: tokenAccountData(WRAPPED_SOL_MINT, ME.toBase58(), 0n)};
+    const s = scene({
+      accounts: new Map([[SRC, preWsol]]),
+      post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : null),
+    });
+    const closeIx = new TransactionInstruction({
+      programId: new PublicKey(TOKEN_PROGRAM),
+      data: Buffer.from([9]),
+      keys: [SRC, RECIPIENT, ME.toBase58()].map((k, i) => ({pubkey: new PublicKey(k), isSigner: i === 2, isWritable: i !== 2})),
+    });
+    const sim = await run(s, [wire([closeIx])]);
+    const out = sim.outcomes[0];
+    // 5 000 (fee) + 52 039 280 (the closed wSOL account's own lamports, gone to a foreign address) = 52 044 280.
+    expect(out?.ok === true ? out.changes : null).toEqual([{mint: null, amount: '-52044280', decimals: 9, usdMicros: '-7806642'}]);
+  });
+
+  it('a null post for the wallet account is a full SOL loss', async () => {
+    const s = scene({post: () => null});
+    const sim = await run(s, [wire([SystemProgram.transfer({fromPubkey: ME, toPubkey: TO, lamports: 1})])]);
+    const out = sim.outcomes[0];
+    expect(out?.ok === true ? out.changes : null).toEqual([{mint: null, amount: '-10000000000', decimals: 9, usdMicros: '-1500000000'}]);
   });
 
   it('the fee: the transaction’s own unit limit and price; none of the account’s when another account pays', async () => {
@@ -181,6 +312,5 @@ describe('simulateTransactions', () => {
       throw new Error('unreachable');
     };
     await expect(run(s, [wire([SystemProgram.transfer({fromPubkey: ME, toPubkey: TO, lamports: 1})])])).rejects.toThrow('unreachable');
-    expect(base58.decode(ME.toBase58())).toHaveLength(32);
   });
 });
