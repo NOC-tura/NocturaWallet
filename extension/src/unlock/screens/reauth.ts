@@ -154,14 +154,15 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
       // (an unnamed token by its whole mint address, in groups), and why. Nothing here is sent: the approval window
       // signs once this proof is in (and the user approves there again).
       setText(byId('ra-about'), REAUTH.aboutDapp);
-      // Final review MUST-FIX 2: the intent card leads with the headline amount, as #10 draws it (ix:6061-6064). The
-      // design draws one; a site's batch can move several tokens, so the headline is the FIRST outflow as the background
-      // ranks them (signTx.ts dappAbout: SOL first, then the largest in USD, then the unpriced) — the largest SOL/token
-      // outflow it can name — when that is SOL or a named token. Its minus sign stays: what leaves the account. Every
-      // other outflow stays a row below. An unnamed token first gets no headline: its amount means nothing without the
-      // mint, which only its row shows whole.
-      const first = d.outgoing[0];
-      const head = first !== undefined && (first.mint === null || first.label !== REAUTH.token) ? first : null;
+      // Final review MUST-FIX 2 (re-review N1): the intent card leads with the headline amount, as #10 draws it
+      // (ix:6061-6064) — but only when exactly ONE asset leaves the account and it is SOL or a named token. The design
+      // draws one send; a site's batch can move several tokens, and the background ranks them SOL first (signTx.ts
+      // dappAbout), where SOL is usually only the network fee, and carries no USD value for SOL to rank by. A headline
+      // there would put the fee, not what is sent, in the largest type — so several outflows (or any cut by `omitted`)
+      // get no headline and every outflow is a row. An unnamed token gets none either: its amount means nothing without
+      // the mint, which only its row shows whole. The minus sign stays: what leaves the account.
+      const only = d.outgoing.length === 1 && d.omitted === 0 ? d.outgoing[0] : undefined;
+      const head = only !== undefined && (only.mint === null || only.label !== REAUTH.token) ? only : null;
       if (head !== null) {
         setText(byId('ra-amount'), head.amount);
         setText(byId('ra-symbol'), head.label);

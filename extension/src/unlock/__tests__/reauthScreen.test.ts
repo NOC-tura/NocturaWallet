@@ -643,18 +643,22 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
 
   it('a dApp’s transaction losing more tokens than #10 lists: the rows, then "and 2 more tokens" (review 1 L9)', async () => {
     await shown({...DAPP, omitted: 2});
-    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'and 2 more tokens']);
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'SOL−0.001005', 'and 2 more tokens']);
   });
 
-  // Final review MUST-FIX 2: #10 draws one headline amount; a site's batch can move several tokens. The headline is the
-  // first outflow as the background ranks them (SOL first, then the largest in USD — signTx.ts dappAbout), when it is
-  // SOL or a named token; the rest stay rows. An unnamed token first has no headline (its amount means nothing without
-  // the mint, which only a row shows in full).
-  it('a dApp’s transaction moving several tokens: the headline is the first-ranked outflow, the others rows; an unnamed token first, no headline', async () => {
+  // Final review MUST-FIX 2 (re-review N1): #10 draws one headline amount, shown only when exactly one asset leaves.
+  // Several outflows in the order signTx.ts dappAbout produces them (SOL — here the fee — first, then USDC): no
+  // headline, so the fee never stands in the large type for what is sent; every outflow is a row. One outflow cut by
+  // `omitted` has none either. An unnamed token alone has none (its amount means nothing without the mint).
+  it('a dApp’s transaction moving several tokens: no headline, every outflow a row; an unnamed token alone, no headline', async () => {
     const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
-    await shown({...DAPP, transactions: 2, outgoing: [{mint: USDC, symbol: 'USDC', amount: '250000000', decimals: 6}, {mint: null, symbol: 'SOL', amount: '1005000', decimals: 9}]});
-    expect([visible(el('ra-amount-row')), text(el('ra-amount')), text(el('ra-symbol'))]).toEqual([true, '−250', 'USDC']);
-    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'Transactions2', 'SOL−0.001005']);
+    await shown({...DAPP, transactions: 2, outgoing: [{mint: null, symbol: 'SOL', amount: '5001', decimals: 9}, {mint: USDC, symbol: 'USDC', amount: '250000000', decimals: 6}]});
+    expect(visible(el('ra-amount-row'))).toBe(false);
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'Transactions2', 'SOL−0.000005001', 'USDC−250']);
+    loadPage();
+    await shown({...DAPP, omitted: 1});
+    expect(visible(el('ra-amount-row'))).toBe(false);
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'SOL−0.001005', 'and 1 more token']);
     loadPage();
     await shown({...DAPP, outgoing: [{mint: K0, symbol: null, amount: '777', decimals: null}]});
     expect(visible(el('ra-amount-row'))).toBe(false);
