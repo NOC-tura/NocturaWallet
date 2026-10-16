@@ -170,7 +170,7 @@ async function claimFirst(ext: Ext, id: string, from: readonly FirstBroadcast[])
  * own (deliver): `not-sent` only when the route refused it before forwarding, or the 403 cool-down refused to try —
  * nothing reached the network. Anything else (acknowledged, or not acknowledged: it may land) is `sent`, and the
  * poller watches it. Claimed first (review 1 M1): if the poller already handed these bytes over, nothing is sent again
- * and the record's state says what happened.
+ * and the record's state says what happened (final review I1: signSend.test "the poller claims first").
  */
 export async function broadcastFirst(ext: Ext, deps: WalletDeps, record: PendingRecord): Promise<'sent' | 'not-sent'> {
   try {
@@ -180,7 +180,11 @@ export async function broadcastFirst(ext: Ext, deps: WalletDeps, record: Pending
     void startPoller(ext, deps);
   }
   const now = (await readPending(ext)).find(r => r.id === record.id);
-  return now?.state === 'failed' && now.failure === 'not-sent' ? 'not-sent' : 'sent';
+  // Final review m8: 'sent' only as the explicit positive case — the record is stored, its bytes were handed to the
+  // route (by this claim or the poller's: `done`), and the route did not refuse them before forwarding. A record that
+  // cannot be found, or one that ended while still `held`/`due` (never handed over), is 'not-sent' (fail closed).
+  if (now === undefined || now.firstBroadcast !== 'done') return 'not-sent';
+  return now.state === 'failed' && now.failure === 'not-sent' ? 'not-sent' : 'sent';
 }
 
 /** Review 1 M1: the poller's first step — every `due` dApp record handed to the route exactly once (claimed `due` → `done`). */

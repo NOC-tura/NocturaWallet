@@ -4,7 +4,7 @@ import {VersionedTransaction} from '@solana/web3.js';
 import {AUTOLOCK_ALARM, lock} from '../../autolock';
 import {handleMessage} from '../../messages';
 import {inFlightFor, markDue, readPending, updatePending} from '../../pendingStore';
-import {RESEND_MIN_INTERVAL_MS, pollOnce, recordDappSend} from '../../pending';
+import {RESEND_MIN_INTERVAL_MS, broadcastFirst, pollOnce, recordDappSend} from '../../pending';
 import {parseWire} from '../decode/wire';
 import {signAll} from '../signTx';
 import {BROADCAST_TIMEOUT_MS} from '../../deps';
@@ -301,6 +301,33 @@ describe('page.signAndSendTransaction — the effect', () => {
     await pollOnce(c.ext, c.deps);
     expect(broadcasts).toBe(1);
     expect((await readPending(c.ext))[0]?.firstBroadcast).toBe('done');
+  });
+
+  // Final review I1: the exactly-once guard (`claimed !== null`) with the poller claiming FIRST — a lock answered the page
+  // the signature (due), the 30 s alarm's round handed the bytes over, and only then does the still-alive effect reach
+  // broadcastFirst. It must not deliver again. Mutation-backed: delivering `claimed ?? record` turns this red.
+  it('the poller claims first (lock → due → its round sends), then the effect’s broadcastFirst: nothing is sent again, and it answers sent', async () => {
+    const c = await stoppedAt(true);
+    await markDue(c.ext, [c.record.signature]);
+    await pollOnce(c.ext, c.deps);
+    expect(c.wires.map(w => base64.encode(w))).toEqual([c.record.wire]);
+    expect((await readPending(c.ext))[0]?.firstBroadcast).toBe('done');
+    expect(await broadcastFirst(c.ext, c.deps, c.record)).toBe('sent');
+    expect(c.wires).toHaveLength(1);
+    // Negative control: with nobody having claimed, the same call is the one that hands the bytes over.
+    const d = await stoppedAt(true);
+    expect(await broadcastFirst(d.ext, d.deps, d.record)).toBe('sent');
+    expect(d.wires.map(w => base64.encode(w))).toEqual([d.record.wire]);
+  });
+
+  // Final review m8: 'sent' only as the explicit positive case — a record broadcastFirst cannot find, or one that ended
+  // without ever being handed over, is 'not-sent' (fail closed: the page is never told a signature for bytes nobody sent).
+  it('broadcastFirst: a record that is not stored, or one that ended while still held, is not-sent, and nothing reaches the route', async () => {
+    const c = await stoppedAt(true);
+    expect(await broadcastFirst(c.ext, c.deps, {...c.record, id: 'not-stored'})).toBe('not-sent');
+    await updatePending(c.ext, rs => rs.map(r => (r.id === c.record.id ? {...r, state: 'expired'} : r)));
+    expect(await broadcastFirst(c.ext, c.deps, c.record)).toBe('not-sent');
+    expect(c.wires).toEqual([]);
   });
 
   // Controller ruling on Task 5: "Send again" (wallet.resend) never sends a dApp's record, whatever its first-broadcast state.
