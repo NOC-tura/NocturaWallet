@@ -219,7 +219,7 @@ describe('#47 lookalike — the flipped bar, the 2-second confirm, 47b’s gates
     expect(understandBtn.disabled).toBe(true);
     // Fix round 1, M1: btn-destructive (design-system.css), not the duplicate app-btn-danger class — the duplicate's
     // specificity tied .btn[disabled] and so lost to source order, leaving it looking live while held/disabled.
-    expect(understandBtn.className).toBe('btn btn-destructive');
+    expect(understandBtn.className).toBe('btn btn-destructive app-nowrap');
     fireEvent.click(within(sheet).getByRole('button', {name: 'Cancel'}));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await armedAfter();

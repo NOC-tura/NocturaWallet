@@ -413,7 +413,8 @@ test('visual: #10 — the action from the background, and each of its states', a
     await p.clock.resume();
 
     await p.goto(`chrome-extension://${h.id}/unlock.html?mode=reauth&challenge=${'ab'.repeat(16)}`);
-    await expect(text(p, '#ra-notice-line')).toHaveText('This confirmation has expired. Start the send again from the Noctura icon.');
+    // B1c-2 (Task 6 fix round 1): an unknown id at load — the kind is unknown, so the neutral line.
+    await expect(text(p, '#ra-notice-line')).toHaveText('This confirmation has expired. Start again from where you began.');
     await shot(p, '10-expired');
     const bad = 'cd'.repeat(16);
     await h.sw.evaluate(
@@ -439,7 +440,8 @@ test('visual: #10 — the action from the background, and each of its states', a
 
     await ui.evaluate(() => chrome.runtime.sendMessage({type: 'vault.lock'}));
     await p.goto(`chrome-extension://${h.id}/unlock.html?mode=reauth&challenge=${live}`);
-    await expect(text(p, '#ra-notice-line')).toHaveText('The wallet locked while you were confirming. Unlock it and start the send again.');
+    // B1c-2 (Task 6 fix round 1): loaded while locked, the kind is unknown — the neutral line (REAUTH.requestNotUnlocked).
+    await expect(text(p, '#ra-notice-line')).toHaveText('Noctura is locked. Unlock it from the Noctura icon and start again.');
     await shot(p, '10-not-unlocked', {ready: p.locator('#ra-unlock')});
     contained(h);
   } finally {

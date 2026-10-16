@@ -2,7 +2,7 @@ import type {Ext} from '../../ext';
 import type {WalletDeps} from '../deps';
 import {lock} from '../autolock';
 import {budgetLeft, withWindow} from './limits';
-import {headOf, queueAccess, rejectQueued, userRejected} from './queue';
+import {isOpenEntry, queueAccess, rejectQueued, userRejected} from './queue';
 import {readDappSession} from './store';
 
 /**
@@ -28,7 +28,25 @@ export async function ensureWindow(ext: Ext, deps: Pick<WalletDeps, 'now'>): Pro
     });
   }
   const marker = await queueAccess(ext, deps, (tx, fx) => {
-    if (tx.s.window !== null || headOf(tx) === null) return null;
+    /**
+     * Fix round 3, controller ruling (STRUCTURAL — replaces fix round 2 entirely): a mismatch notice never by
+     * itself causes a window to open. Only a REAL (non-mismatch) open entry does — anywhere in the queue, not only
+     * at its head: a notice may sit ahead of one in FIFO order (`headOf`) and is simply shown first, dismiss-only,
+     * once the window opens for the real request behind it (B1c-1's existing path, unchanged below: `focused` is
+     * always true, WINDOW_BUDGET is always checked and charged, a spent budget always rejects the whole queue with
+     * Q24 — identically whether or not a notice also happens to be queued). Round 2's `focused: false` path and its
+     * separate window budget leaked the very thing they were meant to hide, two different ways: (1) once a notice's
+     * unfocused window was open, a FOLLOW-UP real request from the same page found `tx.s.window !== null` here and
+     * sat inside that already-unfocused window, never regaining focus — a page could still tell a match from a
+     * no-match by whether its own later request's window had focus; (2) a notice-headed open skipped the real
+     * WINDOW_BUDGET gate entirely, so a second tab's real request could still be shown (match) or rejected (no
+     * match) depending on budget state alone, and notices could spend up to 3 extra windows past C14's accounting.
+     * Gating the window's very existence on a real entry removes both channels structurally: a notice-only queue
+     * never has a window to be unfocused, upgraded, or budget-exempt in the first place. A notice with no real
+     * request ever queued is simply never shown; it expires silently at C4 (REQUEST_TTL_MS) like any entry nobody
+     * decided — the page already got `unauthorized` synchronously, under an empty pageId nothing is listening on.
+     */
+    if (tx.s.window !== null || !tx.s.queue.some(e => isOpenEntry(e) && e.type !== 'mismatch')) return null;
     if (tx.s.opening !== null && tx.now - tx.s.opening < OPENING_STALE_MS) return null;
     if (!budgetLeft(tx.limits, tx.now)) {
       // C14: beyond the budget every request that would need this window is declined with no window; the next one
@@ -77,6 +95,12 @@ export async function ensureWindow(ext: Ext, deps: Pick<WalletDeps, 'now'>): Pro
  * Fix round 2 (Important 1): the lock must happen whenever the count is zero, whatever the drain did — a storage
  * error, a quota failure or a bad stored shape there must never leave the wallet unlocked after its last window
  * closed. The drain's own failure is only logged; it is not this call's reason to skip the lock.
+ *
+ * Fix round 4, ACCEPTED LIMIT (controller ruling; spec §7): a mismatch notice rides along in a real request's window
+ * (fix round 3). If the user closes that window (✕) while the notice is the entry shown, only the notice is
+ * rejected; the real request behind it is still queued, so the window reopens for it here and charges WINDOW_BUDGET
+ * a second time (or, with the budget spent, rejects it with Q24). That cost depends on a user action — which entry
+ * was on screen when ✕ was pressed — not on anything a page sends alone; it is accepted rather than special-cased.
  */
 export async function onApprovalWindowRemoved(ext: Ext, deps: Pick<WalletDeps, 'now'>, id: number): Promise<boolean> {
   const ours = await queueAccess(ext, deps, (tx, fx) => {

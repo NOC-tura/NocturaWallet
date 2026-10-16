@@ -13,6 +13,8 @@ export const ERROR_TEXT: Record<ErrorCode, {code: number | ErrorCode; message: s
   busy: {code: 'busy', message: 'The wallet is busy with other requests. Try again later.'},
   timeout: {code: 'timeout', message: 'The request timed out.'},
   'invalid-request': {code: 'invalid-request', message: 'The request is not valid.'},
+  /** B1c-2 (spec §1.6, rev 3.3; owner, 2026-10-15): the wallet's route refused the broadcast, or would not try — nothing was sent. */
+  'send-failed': {code: 'send-failed', message: 'The transaction could not be sent.'},
 };
 
 /** What a page sees for a refusal: a fixed English message and a stable code, never internal text (C10). */

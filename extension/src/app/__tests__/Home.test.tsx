@@ -1,15 +1,26 @@
 // @vitest-environment happy-dom
-import {act, cleanup, fireEvent, screen, waitFor, within} from '@testing-library/react';
-import {renderInWallet, walletReader, type WalletOptions} from './harness';
+import {act, cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
+import {renderInWallet, setupWallet, walletReader, type WalletOptions} from './harness';
 import {BALANCES_FAILED_TEXT, Home} from '../screens/Home';
 import {ago, stamp} from '../format';
-import {useWallet, type WalletModel} from '../WalletContext';
+import {useWallet, WalletProvider, type WalletModel} from '../WalletContext';
+import type {Engine} from '../engine';
 import {BALANCE_CACHE_KEY, PRICE_CACHE_KEY} from '../../background/balanceCache';
 import {PENDING_KEY} from '../../background/pendingStore';
 import {HIDE_BALANCES_KEY} from '../prefs';
 import {REFUSED_TEXT} from '../ui/Banner';
 import {RequestUnreachable, RpcForbidden, RpcMalformed} from '../../../../core/solana/rpc';
 import {ACCOUNT, RECIPIENT, pendingRecord} from '../../background/__tests__/fixtures';
+import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
+import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
+
+/** A rule's declarations in the hand-written app.css (its exact selector). */
+const cssRule = (selector: string): string => {
+  const css = readFileSync(join(__dirname, '..', 'app.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const at = css.split('}').find(r => r.split('{')[0]?.split(',').some(sel => sel.trim() === selector));
+  return at === undefined ? '' : (at.split('{')[1] ?? '').replace(/\s+/g, ' ').trim();
+};
 
 // Spec §5.1 (#11) and §5.4 (#42 and the D26 refused state). Totals from walletReader: SOL
 // 62.4821 × $150 + USDC 740.21 × $1 = $10,112.52 (NOC at the stage price is outside it).
@@ -646,5 +657,131 @@ describe('#42 offline and the D26 refused state', () => {
     expect(model().phase).toBe('locked');
     expect(model().pending).toEqual([]);
     expect(screen.queryByText('Sending 2.48 SOL · pending')).toBeNull();
+  });
+});
+
+// B1c-2 (spec B1c §3.3 "Re-authentication through #10"; D11): the approval window points to the toolbar icon; the popup
+// it opens offers #10 for the site's waiting challenge.
+describe('#11: a site’s transaction waiting for its confirmation (B1c-2)', () => {
+  const T = 1_000_000;
+  async function waitingDapp(ext: Parameters<NonNullable<WalletOptions['before']>>[0]): Promise<string> {
+    const {issueChallenge} = await import('../../background/reauthChallenges');
+    const {dappDigest} = await import('../../background/dapp/signTx');
+    const {DAPP_SESSION_KEY} = await import('../../background/dapp/store');
+    const entry = {
+      requestId: 'AAAAAAAAAAAAAAAAAAAAAA', pageId: 'p1', origin: 'https://jup.ag', host: 'jup.ag', tabId: 7, documentId: null, type: 'signTransaction', account: ACCOUNT.publicKey,
+      message: null, transactions: ['AQ=='], granted: null, sim: null, challengeId: null as string | null, sent: null, arrivedAt: T, state: 'queued', decidedBy: null, decidingAt: null,
+      decision: null, answer: null, answeredAt: null,
+    };
+    const about = {kind: 'dapp' as const, account: ACCOUNT.publicKey, site: 'jup.ag', transactions: 1, outgoing: [{mint: null, symbol: 'SOL' as const, amount: '1', decimals: 9}], omitted: 0, reasons: ['first-send' as const], thresholdCents: 10_000};
+    entry.challengeId = await issueChallenge(ext, {now: () => T, randomBytes: n => new Uint8Array(n).fill(4)}, dappDigest(entry), about);
+    await ext.session.set(DAPP_SESSION_KEY, {queue: [entry], grants: [], window: null, opening: null, undo: []});
+    return entry.challengeId;
+  }
+
+  it('the strip names the site and opens #10 for that challenge (a LockedButton); with nothing waiting there is no strip', async () => {
+    let challengeId = '';
+    const w = await renderHome({before: async ext => void (challengeId = await waitingDapp(ext))});
+    const strip = await screen.findByRole('button', {name: 'A transaction from jup.ag waits for your confirmation'});
+    // Final review MUST-FIX 2: on the hero's gutter with a gap below it, and the design's trailing chevron (#11's own
+    // strip, ix:6374) — a strip that opens something says so.
+    expect(strip.className).toBe('banner info app-banner app-strip app-dapp-strip');
+    expect(strip.querySelectorAll('.app-strip-chev svg')).toHaveLength(1);
+    expect(unstyledClasses(strip, selectorsOf(UI_SHEETS))).toEqual([]);
+    const rule = cssRule('.s-dash .app-banner.app-dapp-strip');
+    expect([rule.includes('margin: var(--space-3) var(--space-5) var(--space-4)'), rule.includes('align-items: center'), rule.includes('width: auto')]).toEqual([true, true, true]);
+    expect(cssRule('.banner.info .app-strip-chev svg')).toContain('color: var(--fg-secondary)');
+    fireEvent.click(strip);
+    await waitFor(() => expect(w.platform.opened).toEqual([`unlock.html?mode=reauth&challenge=${challengeId}`]));
+    cleanup();
+    await renderHome();
+    await screen.findByText('62.4821 SOL');
+    expect(screen.queryByText(/waits for your confirmation/)).toBeNull();
+  });
+
+  // Fix round 1 item 5 (rule 6): the strip is a LockedButton — a second click before `disabled` is lifted opens #10
+  // no second time. happy-dom drops `disabled` before React re-renders it, so the test lifts it itself (as Send's).
+  it('the strip is a LockedButton: a double click opens #10 once', async () => {
+    let challengeId = '';
+    const w = await renderHome({before: async ext => void (challengeId = await waitingDapp(ext))});
+    const strip = (await screen.findByRole('button', {name: 'A transaction from jup.ag waits for your confirmation'})) as HTMLButtonElement;
+    fireEvent.click(strip);
+    strip.disabled = false;
+    fireEvent.click(strip);
+    await waitFor(() => expect(w.platform.opened).toEqual([`unlock.html?mode=reauth&challenge=${challengeId}`]));
+  });
+
+  // Fix round 1 item 5 (global constraints: "the Home hook's focus re-read"): a request that starts waiting only
+  // after the popup already mounted is still shown — not by a poll, but by the window regaining focus (the user's
+  // own click back into the popup, or re-opening it).
+  it('reads again on focus: a request that starts waiting after mount is shown once the window regains focus', async () => {
+    const w = await renderHome();
+    await screen.findByText('62.4821 SOL');
+    expect(screen.queryByText(/waits for your confirmation/)).toBeNull();
+    await waitingDapp(w.ext);
+    // Nothing re-reads it on its own — the popup is not polling.
+    await new Promise(r => setTimeout(r, 30));
+    expect(screen.queryByText(/waits for your confirmation/)).toBeNull();
+    window.dispatchEvent(new Event('focus'));
+    await screen.findByText('A transaction from jup.ag waits for your confirmation');
+  });
+
+  // Fix round 1 item 5 (global constraints: "newest-answer-wins", "every async path checks its generation / alive
+  // after each await"): a read the focus handler started, held past a second, fresher read landing before it
+  // resolves, must never overwrite what the fresher read already set once it finally answers.
+  it('newest answer wins: a stale read released after a fresher one landed sets nothing', async () => {
+    const w0 = await setupWallet();
+    let callNum = 0;
+    let releaseStale: () => void = () => undefined;
+    const engine: Engine = {
+      ...w0.engine,
+      dappReauth: () => {
+        callNum += 1;
+        if (callNum === 2) {
+          // Asked now (nothing waiting yet) — held, so it must not land ahead of or overwrite the third read.
+          const stale = w0.engine.dappReauth();
+          return new Promise(resolve => (releaseStale = () => void stale.then(resolve)));
+        }
+        return w0.engine.dappReauth();
+      },
+    };
+    render(
+      <WalletProvider engine={engine} platform={w0.platform} surface="popup">
+        <Home {...nav} />
+      </WalletProvider>,
+    );
+    await screen.findByText('62.4821 SOL'); // the mount's own read: call 1, answers null at once
+    window.dispatchEvent(new Event('focus')); // call 2, held
+    await waitFor(() => expect(callNum).toBe(2));
+    await waitingDapp(w0.ext);
+    window.dispatchEvent(new Event('focus')); // call 3, fresh — overtakes the still-pending call 2
+    await screen.findByText('A transaction from jup.ag waits for your confirmation');
+    releaseStale(); // call 2 answers last, with the OLD (nothing waiting) snapshot — must be dropped
+    await new Promise(r => setTimeout(r, 30));
+    expect(screen.queryByText('A transaction from jup.ag waits for your confirmation')).toBeTruthy();
+  });
+
+  // Fix round 1 item 5 (global constraints: "no update after unmount"): a read in flight when the screen is torn
+  // down, answering after it is gone. A SMOKE TEST, not mutation-backed (final review MUST-FIX 4): React 18+ no longer
+  // warns about a state update on an unmounted component, and nothing is rendered to observe, so this passes with
+  // Home's `alive` check removed too (M-FR1h stayed green). It only shows that such an answer throws nothing and logs
+  // no console error.
+  it('no update after unmount (smoke test): a held read answering after the screen is gone throws nothing and logs no error', async () => {
+    const w0 = await setupWallet();
+    let release: (v: Awaited<ReturnType<Engine['dappReauth']>>) => void = () => undefined;
+    const held = new Promise<Awaited<ReturnType<Engine['dappReauth']>>>(r => (release = r));
+    const engine: Engine = {...w0.engine, dappReauth: () => held};
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const {unmount} = render(
+      <WalletProvider engine={engine} platform={w0.platform} surface="popup">
+        <Home {...nav} />
+      </WalletProvider>,
+    );
+    await screen.findByText('62.4821 SOL');
+    unmount();
+    release({ok: true, data: {challengeId: 'f'.repeat(32), site: 'jup.ag'}});
+    await new Promise(r => setTimeout(r, 30));
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });

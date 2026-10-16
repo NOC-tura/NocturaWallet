@@ -28,7 +28,14 @@ describe('design-ext.css (B1b-2b plan 1)', () => {
     }
   });
 
-  it('is the extraction output, byte for byte (the hash the plan pins)', () => {
-    expect(createHash('sha256').update(CSS).digest('hex')).toBe('b01d1aa0273497f2510a43e614f700baad277384cb6d3b65f554fdfed3070b11');
+  // B1c plan 2 re-ran the extraction with #48's classes and #26/#27's OriginBadge added (ix:3824-3859, 4080-4084).
+  it('carries #48’s classes and the OriginBadge (B1c plan 2)', () => {
+    for (const sel of ['.s9-sim-banner .m3', '.s9-bal-card .label', '.s9-bal-row .delta.neg', '.s9-bal-row .fiat', '.s9-origin-pill .dot.ok', '.origin-badge[data-origin="dapp"]']) {
+      expect(CSS).toContain(`${sel} `);
+    }
+  });
+
+  it('is the extraction output, byte for byte (the hash the plan pins; scripts/extract-design-css.mjs --check against the design)', () => {
+    expect(createHash('sha256').update(CSS).digest('hex')).toBe('c91f92205f2d033d27dfe578e7d7515db37a0e240ddb0aca4752834c9551da44');
   });
 });

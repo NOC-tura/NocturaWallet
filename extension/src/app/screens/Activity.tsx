@@ -8,6 +8,7 @@ import {useNow} from '../useNow';
 import {ChipRow} from '../ui/Chip';
 import {ExtIcon} from '../ui/ExtIcon';
 import {Banner, RefusedBanner} from '../ui/Banner';
+import {OriginBadge} from '../ui/OriginBadge';
 import type {HistoryItem, Pending} from '../engine';
 
 /** wallet.history answers 10 per page (background HISTORY_PAGE_SIZE); "Load more" follows the reply's own `next` cursor (review fix round 1 #1), not this count. */
@@ -68,8 +69,9 @@ function Empty({refreshing, onReceive}: {refreshing: boolean; onReceive: () => v
 
 /**
  * #26 activity (spec §6.2) and #41 when there is nothing. Rows from wallet.history (10 a page, paced by
- * the background), open sends on top. No fiat per row (it would need historical prices), no origin
- * badge (B1c), counterparties short at equal weight (a list is a scanning aid; #27 shows the whole address).
+ * the background), open sends on top. No fiat per row (it would need historical prices); the origin badge only on a
+ * site's transaction (B1c-2: "Dapp · simulated" — the "Wallet" pill is not drawn, Scope); counterparties short at equal
+ * weight (a list is a scanning aid; #27 shows the whole address).
  */
 export function Activity({onTx, onReceive, onPending}: {onTx: (item: HistoryItem) => void; onReceive: () => void; onPending: (p: Pending) => void}) {
   const m = useWallet();
@@ -250,7 +252,10 @@ export function Activity({onTx, onReceive, onPending}: {onTx: (item: HistoryItem
                     <ExtIcon name={t.tone === 'fail' ? 'close' : t.tone === 'plain' ? 'doc' : t.tone === 'swap' ? 'swap' : 'arrow-up-right'} size={20} />
                   </span>
                   <span className="meta">
-                    <span className="pri noc-body-lg">{t.title}</span>
+                    <span className="pri noc-body-lg">
+                      {t.title}
+                      {item.origin === 'dapp' ? <OriginBadge /> : null}
+                    </span>
                     <span className={`sec noc-body-sm${t.mono ? ' noc-mono' : ''}`}>
                       {t.meta}
                       {time}

@@ -81,6 +81,8 @@ export interface Runtime {
    * already have.
    */
   hooked: boolean;
+  /** B1c-2: the requests whose simulation is running in this instance (signTx.ts) — one at a time per request. */
+  simulating: Set<string>;
 }
 
 const runtimes = new WeakMap<Pick<Ext, 'runtimeId'>, Runtime>();
@@ -93,7 +95,7 @@ function randomHex(n: number): string {
 export function runtimeFor(ext: Pick<Ext, 'runtimeId'>): Runtime {
   let r = runtimes.get(ext);
   if (r === undefined) {
-    r = {instance: randomHex(16), ports: new Set(), hooked: false};
+    r = {instance: randomHex(16), ports: new Set(), hooked: false, simulating: new Set()};
     runtimes.set(ext, r);
   }
   return r;
@@ -118,10 +120,15 @@ function post(p: LivePort, m: unknown): void {
 
 const owns = (p: PageOrigin, e: Pick<Entry, 'tabId' | 'origin'>): boolean => p.tabId === e.tabId && p.origin === e.origin;
 
-/** §1.5 step 3: every answered entry, on every live port keyed to its (tabId, origin). */
+/**
+ * §1.5 step 3: every answered entry, on every live port keyed to its (tabId, origin). Fix round 4, controller ruling:
+ * a mismatch notice's answer (its dismissal, its C4 timeout, a lock's rejection) is never posted to any port — the
+ * page was answered `unauthorized` inline, and the relay's request-id filter must not be the only thing keeping the
+ * notice's existence (and so "X is this wallet's, granted elsewhere") off the page's port.
+ */
 export function deliver(ext: Pick<Ext, 'runtimeId'>, entries: readonly Entry[]): void {
   for (const e of entries) {
-    if (e.answer === null) continue;
+    if (e.answer === null || e.type === 'mismatch') continue;
     for (const p of runtimeFor(ext).ports) if (owns(p, e)) post(p, {requestId: e.requestId, ...e.answer});
   }
 }

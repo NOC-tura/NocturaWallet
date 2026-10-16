@@ -2,8 +2,10 @@ import type {Ext} from '../ext';
 import type {WalletDeps} from './deps';
 import {REAUTH_KEY, getSession, sessionMutex} from './session';
 import {randomId} from './digest';
-import type {SendReauthReason} from './reauthPolicy';
+import type {DappReauthReason, SendReauthReason} from './reauthPolicy';
 import type {FeeReason} from '../../../core/fees/transferMarkup';
+import {WALLET_TOKENS} from '../../../core/solana/balances';
+import {SITE} from '../shared/site';
 
 /** How long the vault page has to prove the factor (brief decision 6), counted from the last prepare of the same intent. */
 export const CHALLENGE_TTL_MS = 120_000;
@@ -38,7 +40,23 @@ export type ChallengeAbout =
       reasons: SendReauthReason[];
       thresholdCents: number;
     }
-  | {kind: 'settings'; autoLockMinutes: number | null; reauthUsdCents: number | null};
+  | {kind: 'settings'; autoLockMinutes: number | null; reauthUsdCents: number | null}
+  /**
+   * B1c-2 (spec B1c §3.3): a dApp's transaction request — the site as the window shows it (host, or host:port), how
+   * many transactions it signs, what leaves the account per mint (null = SOL; positive base units; decimals when known)
+   * and why. Bound to the request and its exact bytes (signTx.ts dappDigest). #10 describes it; the approval window
+   * signs only once the challenge is proven and consumed. `outgoing` holds at most MAX_DAPP_OUTGOING mints (SOL first,
+   * then the largest in USD); `omitted` counts the mints left out (plan 2 review 1 L9: a long list is cut, never refused).
+   */
+  | {kind: 'dapp'; account: string; site: string; transactions: number; outgoing: DappOutgoing[]; omitted: number; reasons: DappReauthReason[]; thresholdCents: number};
+
+export interface DappOutgoing {
+  mint: string | null;
+  /** The wallet's own name for the token (SOL for `mint` null; NOC, USDC, USDT by their mints), else null. */
+  symbol: 'SOL' | 'NOC' | 'USDC' | 'USDT' | null;
+  amount: string;
+  decimals: number | null;
+}
 
 /** The fields a re-prepare of the same intent may refresh; the identity fields (account, token, recipient, amount) never change. */
 export type SendAboutRefresh = Pick<
@@ -59,6 +77,9 @@ type Store = Map<string, Challenge>;
 const TOKENS: readonly string[] = ['SOL', 'NOC', 'USDC', 'USDT'];
 const REASONS: readonly string[] = ['first-send', 'over-5-percent', 'over-usd-threshold', 'whole-balance-to-new'];
 const FEE_REASONS: readonly string[] = ['pre-tge', 'zero-fee-eligible', 'status-unknown', 'charged'];
+const DAPP_REASONS: readonly string[] = [...REASONS, 'approval'];
+/** At most this many mints in a dApp challenge's description (more than a five-transaction batch can name sensibly; the rest are counted in `omitted`). */
+export const MAX_DAPP_OUTGOING = 16;
 const DIGITS = /^\d{1,20}$/;
 /** A base58 Solana address's shape (32–44 characters). */
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -70,6 +91,30 @@ function isAbout(x: unknown): x is ChallengeAbout {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
   const a = x as Record<string, unknown>;
   if (a.kind === 'settings') return isIntOrNull(a.autoLockMinutes) && isIntOrNull(a.reauthUsdCents) && Object.keys(a).length === 3;
+  if (a.kind === 'dapp') {
+    const outgoing = a.outgoing;
+    const reasons = a.reasons;
+    return (
+      typeof a.account === 'string' &&
+      ADDRESS.test(a.account) &&
+      typeof a.site === 'string' &&
+      SITE.test(a.site) &&
+      isInt(a.transactions) &&
+      a.transactions >= 1 &&
+      a.transactions <= 5 &&
+      Array.isArray(outgoing) &&
+      outgoing.length <= MAX_DAPP_OUTGOING &&
+      (outgoing as unknown[]).every(isOutgoing) &&
+      isInt(a.omitted) &&
+      a.omitted >= 0 &&
+      Array.isArray(reasons) &&
+      reasons.length > 0 &&
+      new Set(reasons).size === reasons.length &&
+      (reasons as unknown[]).every(r => typeof r === 'string' && DAPP_REASONS.includes(r)) &&
+      isInt(a.thresholdCents) &&
+      Object.keys(a).length === 8
+    );
+  }
   if (a.kind !== 'send') return false;
   return (
     typeof a.account === 'string' &&
@@ -87,6 +132,32 @@ function isAbout(x: unknown): x is ChallengeAbout {
     (a.reasons as unknown[]).every(r => typeof r === 'string' && REASONS.includes(r)) &&
     isInt(a.thresholdCents) &&
     Object.keys(a).length === 12
+  );
+}
+
+/**
+ * Fix round 1 item 4: a symbol names a real token only when its decimals match this wallet's own table
+ * (WALLET_TOKENS) exactly — simulate.ts's decimals are untrusted mint data (a hostile or merely unusual token, or an
+ * RPC that lies about a legitimate mint's account, can report anything), so a mismatch must never reach the store
+ * labelled with a name it does not back. dappAbout applies the same rule when it builds `symbol` in the first place;
+ * this is the store's own defense, never trusting its caller alone.
+ */
+function isOutgoing(x: unknown): x is DappOutgoing {
+  if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
+  const o = x as Record<string, unknown>;
+  const decimals = o.decimals;
+  const symbolOk =
+    o.mint === null
+      ? o.symbol === 'SOL' && decimals === WALLET_TOKENS.SOL.decimals
+      : o.symbol === null ||
+        (typeof o.symbol === 'string' && o.symbol !== 'SOL' && TOKENS.includes(o.symbol) && decimals === WALLET_TOKENS[o.symbol as 'NOC' | 'USDC' | 'USDT'].decimals);
+  return (
+    (o.mint === null || (typeof o.mint === 'string' && ADDRESS.test(o.mint))) &&
+    symbolOk &&
+    typeof o.amount === 'string' &&
+    DIGITS.test(o.amount) &&
+    (decimals === null || (isInt(decimals) && decimals >= 0 && decimals <= 18)) &&
+    Object.keys(o).length === 4
   );
 }
 
@@ -209,6 +280,22 @@ export async function consumeChallenge(ext: Ext, now: number, id: string, digest
     store.delete(id);
     await save(ext, store);
     return c.digest === digest;
+  });
+}
+
+/**
+ * Fix round 1 item 1: remove exactly this id, whatever its digest or satisfied state — reauthGate calls this right
+ * after issuing the id that supersedes it, so a tab already open on the old id reads back `unknown-challenge` instead
+ * of silently going on proving a stale description (R9/R11: the old proof must never stand for what Approve is about
+ * to sign once a fresh simulation outgrew it). Never `dropChallengesFor` by digest here: the new challenge is issued
+ * for the SAME digest (the request's bytes), so a digest-keyed drop could not tell the superseded id from the one
+ * replacing it — only the id does. A no-op for an id already gone.
+ */
+export async function dropChallenge(ext: Ext, id: string): Promise<void> {
+  if (!CHALLENGE_ID.test(id)) return;
+  await sessionMutex(async () => {
+    const store = await load(ext);
+    if (store.delete(id)) await save(ext, store);
   });
 }
 

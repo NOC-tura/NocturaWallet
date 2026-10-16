@@ -4,6 +4,7 @@ import {TOKEN_INFO, ago, feeUsd, fullDate, showAmount, showFee, showUsd} from '.
 import {explorerUrl} from '../explorer';
 import {AddressGroups} from '../../../../web/src/ui/AddressGroups';
 import {TopBar} from '../ui/TopBar';
+import {OriginBadge} from '../ui/OriginBadge';
 import {StatusPill} from '../ui/StatusPill';
 import {ExtIcon} from '../ui/ExtIcon';
 import {useCopy} from '../ui/useCopy';
@@ -187,7 +188,7 @@ export function TxDetail({
     };
   }, [given, ready, owner, signature, m.engine]);
 
-  const top = <TopBar title="Transaction" onBack={onBack} titleClass="noc-h3" />;
+  const top = <TopBar title="Transaction" onBack={onBack} titleClass="noc-h3" badge={item !== null && item !== undefined && item.origin === 'dapp' ? <OriginBadge /> : undefined} />;
   if (item === undefined) {
     if (searchError !== null) {
       // #42/D26 banner over the search, exactly as Activity shows it — never the not-in-history line.

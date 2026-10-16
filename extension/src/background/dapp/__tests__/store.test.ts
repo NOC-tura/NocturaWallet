@@ -10,7 +10,7 @@ const T = 1_000_000_000;
 const grant = (origin: string, over: Partial<Grant> = {}): Grant => ({origin, account: ACCOUNT.publicKey, scope: 'persistent', connectedAt: T, lastUsedAt: T, recent: [], ...over});
 const entry = (over: Partial<Entry> = {}): Entry => ({
   requestId: 'r1', pageId: 'p1', origin: 'https://dapp.test', host: 'dapp.test', tabId: 7, documentId: null, type: 'connect', account: null,
-  message: null, arrivedAt: T, state: 'queued', decidedBy: null, decidingAt: null, decision: null, answer: null, answeredAt: null, ...over,
+  message: null, transactions: null, granted: null, sim: null, challengeId: null, sent: null, arrivedAt: T, state: 'queued', decidedBy: null, decidingAt: null, decision: null, answer: null, answeredAt: null, ...over,
 });
 
 // Spec §2.1, §2.6, C14 — the stores the request lifecycle writes, and the one section that writes them.

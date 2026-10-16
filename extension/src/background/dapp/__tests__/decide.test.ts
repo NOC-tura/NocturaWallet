@@ -107,6 +107,9 @@ describe('dapp.pending (§2.3, §4.3)', () => {
           cap: false,
         },
         sign: null,
+        // B1c-2: a connect carries neither a transaction nor a mismatch.
+        tx: null,
+        mismatch: null,
       },
     });
     // The window now shows it: closing the window rejects this one.

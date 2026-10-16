@@ -199,6 +199,25 @@ describe('solanaReader', () => {
     expect(calls[0]?.body.params).toEqual([['a', 'b'], {encoding: 'base64', dataSlice: {offset: 0, length: 0}, commitment: 'confirmed'}]);
   });
 
+  // B1c-2 (spec B1c §3.3): lookup tables and mints are read with their data, through getMultipleAccounts (allowed).
+  it('getAccountsData reads each account with its base64 data; a missing one is null; no call for none; more than 100 refused', async () => {
+    const {r, calls} = reader(() => ok({context: {slot: 1}, value: [null, {lamports: 17, owner: 'AddressLookupTab1e1111111111111111111111111', data: ['AQID', 'base64'], executable: false, rentEpoch: 18446744073709552000}]}));
+    expect(await r.getAccountsData(['a', 'b'])).toEqual([null, {lamports: 17n, owner: 'AddressLookupTab1e1111111111111111111111111', data: Uint8Array.of(1, 2, 3)}]);
+    expect(calls[0]?.body.params).toEqual([['a', 'b'], {encoding: 'base64', commitment: 'confirmed'}]);
+    expect(await r.getAccountsData([])).toEqual([]);
+    expect(calls).toHaveLength(1);
+    await expect(r.getAccountsData(Array.from({length: 101}, (_, i) => `k${i}`))).rejects.toThrow(RangeError);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('getAccountsData refuses a reply of the wrong length or with data in another encoding', async () => {
+    let value: unknown = [null];
+    const {r} = reader(() => ok({context: {slot: 1}, value}));
+    await expect(r.getAccountsData(['a', 'b'])).rejects.toThrow('wrong length');
+    value = [{lamports: 1, owner: 'x', data: ['AQID', 'base58']}];
+    await expect(r.getAccountsData(['a'])).rejects.toThrow('encoding');
+  });
+
   it('getAccountExists distinguishes null from an account', async () => {
     let value: unknown = null;
     const {r} = reader(() => ok({context: {slot: 1}, value}));

@@ -5,6 +5,7 @@ import {deliver, runtimeFor, sendChange, type PageOrigin, type Runtime} from './
 import {withRecent} from './grants';
 import {withRejection} from './limits';
 import {dappSection, grantIn, putGrant, type Answer, type Entry, type Tx} from './store';
+import {markDue} from '../pendingStore';
 import {unlockWork} from './unlockHook';
 
 /**
@@ -21,6 +22,12 @@ export const REQUEST_TTL_MS = 5 * 60_000;
  * answered `rejected` (nothing left the extension), so the queue, the window and the page move on.
  */
 export const DECIDING_TTL_MS = 30_000;
+/**
+ * B1c-2 (plan 2 review 1 L2): a `signAndSendTransaction` effect waits on the broadcast route, which may take up to
+ * BROADCAST_TIMEOUT_MS (30 s): its dead-effect TTL is above that, so the sweep never answers a send while its route call
+ * may still be running.
+ */
+export const SEND_DECIDING_TTL_MS = 45_000;
 export const ANSWER_TTL_MS = 10 * 60_000;
 /** "Open" = queued or deciding (C3); at most this many in total — the next gets `busy`. */
 export const MAX_OPEN = 5;
@@ -54,14 +61,26 @@ export function answer(fx: Effects, e: Entry, a: Answer, now: number): void {
 /**
  * The user said no (Reject, the window's ✕, closing the window — C4): answered `rejected`, counted for C14 per host and
  * per tab, and recorded on the origin's grant when it holds one (§2.1: a rejected first connect has no grant, so it is
- * not recorded).
+ * not recorded). Fix round 1, controller ruling: a `mismatch` notice is never this origin's request — dismissing it
+ * records NO rejection at all (no C14 cooldown for the host or tab): the notice already answers the page `unauthorized`
+ * without revealing the other origin's grant, and a later cooldown-gated silent `rejected` for this host or tab would
+ * leak that same bit back to the page through a side channel the notice exists to avoid. Nor is there a grant of its
+ * own to record anything on.
  */
 export function userRejected(tx: Tx, fx: Effects, e: Entry): void {
   answer(fx, e, {error: 'rejected'}, tx.now);
+  if (e.type === 'mismatch') return;
   tx.limits = withRejection(tx.limits, e.host, e.tabId, tx.now);
   const g = grantIn(tx, e.origin);
   if (g !== null) putGrant(tx, withRecent(g, e.type, tx.now, 'rejected'));
 }
+
+/** What a `deciding` entry that will never finish is answered (a restart, a dead effect, a lock — C17). */
+export const restartAnswer = (e: Entry): Answer => (e.sent !== null ? {result: {signature: e.sent.signature}} : {error: 'rejected'});
+
+/** The signatures these answers promise a page: a send answered from the bytes its entry recorded (review 1 M1). */
+export const promised = (answered: readonly Entry[]): string[] =>
+  answered.flatMap(e => (e.sent !== null && e.answer !== null && 'result' in e.answer && e.answer.result.signature === e.sent.signature ? [e.sent.signature] : []));
 
 /** Answers an origin's `queued` entries (never a `deciding` one: its effect is running) with this error. */
 export function rejectQueued(tx: Tx, fx: Effects, match: (e: Entry) => boolean, code: 'rejected' = 'rejected'): void {
@@ -84,9 +103,14 @@ export function sweep(tx: Tx, fx: Effects, rt: Pick<Runtime, 'instance' | 'hooke
   const instance = rt.instance;
   for (const e of tx.s.queue) {
     // C4 "queued or shown": five minutes from arrivedAt, whatever the open state (review 1 M1).
-    if (isOpenEntry(e) && tx.now - e.arrivedAt >= REQUEST_TTL_MS) answer(fx, e, {error: 'timeout'}, tx.now);
-    // C17: another instance's `deciding` is a restart; this instance's, DECIDING_TTL_MS after it was written, a dead effect.
-    else if (e.state === 'deciding' && (e.decidedBy !== instance || e.decidingAt === null || tx.now - e.decidingAt >= DECIDING_TTL_MS)) answer(fx, e, {error: 'rejected'}, tx.now);
+    // Plan 2 review 2 L1: a send whose signed bytes the entry recorded is never `timeout` — its page is promised its
+    // signature (and the record marked `due`), as by every other path that ends it; C4's expiry answers the rest.
+    if (isOpenEntry(e) && tx.now - e.arrivedAt >= REQUEST_TTL_MS) answer(fx, e, e.state === 'deciding' && e.sent !== null ? restartAnswer(e) : {error: 'timeout'}, tx.now);
+    // C17: another instance's `deciding` is a restart; this instance's, DECIDING_TTL_MS after it was written, a dead
+    // effect — answered `rejected` (nothing left the extension), except a send whose signed bytes are recorded (B1c-2,
+    // §1.5 step 2): it is answered its signature, and the poller watches its pending record — never signed or
+    // broadcast again.
+    else if (e.state === 'deciding' && (e.decidedBy !== instance || e.decidingAt === null || tx.now - e.decidingAt >= (e.type === 'signAndSendTransaction' ? SEND_DECIDING_TTL_MS : DECIDING_TTL_MS))) answer(fx, e, restartAnswer(e), tx.now);
   }
   // §2.4: the unlock hook, on the first access of an unlocked session (again if it threw last time) — after expiry
   // above, so it never grants a connect the sweep just timed out.
@@ -123,6 +147,9 @@ export async function queueAccess<T>(ext: Ext, deps: Pick<WalletDeps, 'now'>, fn
     out = await dappSection(ext, deps.now(), async tx => {
       hooked = sweep(tx, fx, rt);
       const r = await fn(tx, fx);
+      // Review 1 M1: a send answered its signature here (the sweep's restart or dead effect, or the effect itself) —
+      // its pending record becomes owed to the route BEFORE the answer is stored (the poller sends a `due` one, once).
+      await markDue(ext, promised(fx.answered));
       queued = tx.s.queue.length > 0;
       // Review 1 L6: inside the section (under sessionMutex), so a lock — which clears the flag in its own section —
       // can never run between the hook's commit and this write.

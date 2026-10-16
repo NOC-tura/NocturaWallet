@@ -10,7 +10,13 @@ export const LIMIT_WINDOW_MS = 10 * 60_000;
 export const REJECTIONS_FOR_COOLDOWN = 3;
 /** … of ten minutes, in which its requests are answered `rejected` with no window. */
 export const COOLDOWN_MS = 10 * 60_000;
-/** At most this many approval windows in LIMIT_WINDOW_MS, across all sites. */
+/**
+ * At most this many approval windows in LIMIT_WINDOW_MS, across all sites. Fix round 3, controller ruling
+ * (STRUCTURAL): this is the ONLY window budget — round 2's separate `NOTICE_WINDOW_BUDGET` is removed. A mismatch
+ * notice never by itself opens a window or spends this budget (pageApi.ts mismatchNotice, window.ts ensureWindow):
+ * it rides along in a window a REAL request already opened, or — with no real request queued — is never shown at
+ * all and expires silently at C4. There is nothing left for a notice-only budget to gate.
+ */
 export const WINDOW_BUDGET = 10;
 
 export interface Limits {

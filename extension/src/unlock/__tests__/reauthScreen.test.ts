@@ -227,17 +227,21 @@ describe('#10 unlock-send (spec §3.10)', () => {
     expect(visible(el('ra-confirm'))).toBe(false);
   });
 
-  it('a challenge id the background does not know (or expired) shows "expired" at once', async () => {
+  // Fix round 1 item 2: at this first read the kind is not known to be a send (or anything) — the challenge is
+  // simply gone — so the copy says only what is true of a "request", never claiming a send specifically.
+  it('a challenge id the background does not know (or expired) shows "expired" at once — neutral, the kind was never known', async () => {
     const h = await harness({vault: await wallet()});
     await setSession(h.ext, await deriveSessionAccounts(M, 'slip10', [0]));
     await mountReauth(h.deps).show('cd'.repeat(16));
-    expect(text(el('ra-notice-line'))).toBe('This confirmation has expired. Start the send again from the Noctura icon.');
+    expect(text(el('ra-notice-line'))).toBe('This confirmation has expired. Start again from where you began.');
     expect(visible(el('ra-intent'))).toBe(false);
   });
 
-  it('locked: "The wallet locked while you were confirming…" + [Unlock] → ?mode=unlock (no return target, M7)', async () => {
+  // Fix round 1 item 2: locked at the first read, before any description — the background refuses vault.challengeInfo
+  // itself for `locked`, so #10 never even learns this was a send; neutral copy, never "start the send again".
+  it('locked at the first read: "Noctura is locked…" + [Unlock] → ?mode=unlock (no return target, M7) — neutral, the kind was never known', async () => {
     const {h} = await shown(SEND(K0), {unlocked: false});
-    expect(text(el('ra-notice-line'))).toBe('The wallet locked while you were confirming. Unlock it and start the send again.');
+    expect(text(el('ra-notice-line'))).toBe('Noctura is locked. Unlock it from the Noctura icon and start again.');
     click(el('ra-unlock'));
     expect(h.went).toEqual(['unlock.html?mode=unlock']);
   });
@@ -331,11 +335,13 @@ describe('#10 [Cancel send] discards the prepared send (E7), against the real ba
     expect(text(el('ra-notice-line'))).toBe('Send cancelled. Nothing was sent.');
   });
 
-  it('undescribable with no valid account: [Close] and a true line — nothing is sent and nothing says "cancelled"', async () => {
+  // Fix round 1 item 2: the one field that would have told #10 this was a send (its account) is itself invalid, so
+  // the kind is not known to be anything — a single neutral line, never claiming nothing was "sent".
+  it('undescribable with no valid account: [Close] and a true, neutral line — the kind was never known, nothing says "cancelled"', async () => {
     const {h, id} = await prepared({...SEND(ACCOUNT.publicKey), account: 'not an address', token: 'BONK'});
     await mountReauth(h.deps).show(id);
-    expect(text(el('ra-notice-line'))).toBe('The details of this action could not be shown.');
-    expect(text(el('ra-notice-help'))).toBe('Nothing was sent. Start the send again from the Noctura icon.');
+    expect(text(el('ra-notice-line'))).toBe('This request could not be shown. Nothing was approved.');
+    expect(visible(el('ra-notice-help'))).toBe(false);
     expect(text(el('ra-cancel'))).toBe('Close');
     expect(el('ra-x').getAttribute('aria-label')).toBe('Close');
     click(el('ra-cancel'));
@@ -357,11 +363,12 @@ describe('#10 [Cancel send] discards the prepared send (E7), against the real ba
   });
 
   // L4 (plan review): a notice with nothing to cancel still has a way out — the X closes, claiming nothing.
+  // Fix round 1 item 2: already expired at this first read — the kind was never known — neutral copy.
   it('expired, locked or mismatch: the top bar’s X closes the tab, sends nothing and says nothing was cancelled', async () => {
     const {h, id} = await prepared();
     h.wallet.clock.t += CHALLENGE_TTL_MS + 1;
     await mountReauth(h.deps).show(id);
-    expect(text(el('ra-notice-line'))).toBe('This confirmation has expired. Start the send again from the Noctura icon.');
+    expect(text(el('ra-notice-line'))).toBe('This confirmation has expired. Start again from where you began.');
     expect(el<HTMLButtonElement>('ra-x').disabled).toBe(false);
     expect(el('ra-x').getAttribute('aria-label')).toBe('Close');
     click(el('ra-x'));
@@ -612,6 +619,89 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
     confirmWith(PW);
     await h.until(() => visible(el('ra-notice')));
     expect(text(el('ra-notice-line'))).toBe('Something went wrong. Nothing was changed.');
+  });
+
+  // B1c-2 (spec B1c §3.3, D11): a site's transaction, reached from the popup's strip — #10 proves; the window signs.
+  const DAPP: ChallengeAbout = {kind: 'dapp', account: K0, site: 'jup.ag', transactions: 1, outgoing: [{mint: null, symbol: 'SOL', amount: '1005000', decimals: 9}], omitted: 0, reasons: ['first-send'], thresholdCents: 10_000};
+  it('a dApp’s transaction: "You are about to approve", the site and what leaves the account; confirmed → back to the approval window, nothing sent here', async () => {
+    const {h, broadcast} = await shown(DAPP);
+    expect(text(el('ra-about'))).toBe('You are about to approve');
+    // Final review MUST-FIX 2: the intent card leads with the headline amount, as #10 draws it (ix:6061-6064).
+    expect([visible(el('ra-amount-row')), text(el('ra-amount')), text(el('ra-symbol'))]).toEqual([true, '−0.001005', 'SOL']);
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag']);
+    expect([...el('ra-reasons').children].map(text)).toEqual(['Re-auth required for the first send to a new address.']);
+    expect(text(el('ra-cancel'))).toBe('Cancel');
+    expect(el('ra-x').getAttribute('aria-label')).toBe('Close');
+    expect(unstyled('v-reauth')).toEqual([]);
+    confirmWith(PW);
+    await h.until(() => visible(el('ra-notice')));
+    expect(text(el('ra-notice-line'))).toBe('Confirmed. Go back to the approval window and approve the transaction.');
+    expect(h.sent.filter(m => m.type === 'vault.reauthOk')).toHaveLength(1);
+    expect(h.went).toEqual([]);
+    nothingSent(h, broadcast);
+  });
+
+  it('a dApp’s transaction losing more tokens than #10 lists: the rows, then "and 2 more tokens" (review 1 L9)', async () => {
+    await shown({...DAPP, omitted: 2});
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'SOL−0.001005', 'and 2 more tokens']);
+  });
+
+  // Final review MUST-FIX 2 (re-review N1): #10 draws one headline amount, shown only when exactly one asset leaves.
+  // Several outflows in the order signTx.ts dappAbout produces them (SOL — here the fee — first, then USDC): no
+  // headline, so the fee never stands in the large type for what is sent; every outflow is a row. One outflow cut by
+  // `omitted` has none either. An unnamed token alone has none (its amount means nothing without the mint).
+  it('a dApp’s transaction moving several tokens: no headline, every outflow a row; an unnamed token alone, no headline', async () => {
+    const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+    await shown({...DAPP, transactions: 2, outgoing: [{mint: null, symbol: 'SOL', amount: '5001', decimals: 9}, {mint: USDC, symbol: 'USDC', amount: '250000000', decimals: 6}]});
+    expect(visible(el('ra-amount-row'))).toBe(false);
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'Transactions2', 'SOL−0.000005001', 'USDC−250']);
+    loadPage();
+    await shown({...DAPP, omitted: 1});
+    expect(visible(el('ra-amount-row'))).toBe(false);
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'SOL−0.001005', 'and 1 more token']);
+    loadPage();
+    await shown({...DAPP, outgoing: [{mint: K0, symbol: null, amount: '777', decimals: null}]});
+    expect(visible(el('ra-amount-row'))).toBe(false);
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)[1]).toMatch(/^Token−777/);
+    loadPage();
+    await shown({...DAPP, outgoing: [], reasons: ['approval']});
+    expect(visible(el('ra-amount-row'))).toBe(false);
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag']);
+  });
+
+  it('a dApp’s transaction: expired and locked say what is true for a site’s request; Cancel only closes the tab', async () => {
+    const one = await shown(DAPP);
+    one.h.wallet.clock.t += CHALLENGE_TTL_MS;
+    confirmWith(PW);
+    await one.h.until(() => visible(el('ra-notice')));
+    expect(text(el('ra-notice-line'))).toBe('This confirmation has expired. Approve the transaction again in the approval window.');
+    loadPage();
+    const two = await shown(DAPP);
+    const inner = two.h.deps.send;
+    two.h.deps.send = async m => ((m as {type: string}).type === 'vault.reauthOk' ? {ok: false, error: 'locked'} : inner(m));
+    confirmWith(PW);
+    await two.h.until(() => visible(el('ra-notice')));
+    expect(text(el('ra-notice-line'))).toBe("The wallet locked while you were confirming. The site's request was declined — ask the site to try again.");
+    expect(visible(el('ra-unlock'))).toBe(true);
+    loadPage();
+    const three = await shown(DAPP);
+    click(el('ra-cancel'));
+    await three.h.until(() => three.h.closed > 0);
+    expect(three.h.sent.map(m => m.type)).toEqual(['vault.challengeInfo']);
+  });
+
+  // Fix round 1 item 5 (global constraints: "#10's dApp refused/applied branch"): vault.reauthOk refusing for any
+  // reason other than unknown-challenge/locked is the generic failure — never a notice, never "Confirmed" — the
+  // entry stays up so the user can try the password again, same as every other kind's unnamed refusal.
+  it('a dApp’s transaction: vault.reauthOk refused for an unnamed reason stays on the entry — the generic helper, not a notice', async () => {
+    const {h} = await shown(DAPP);
+    const inner = h.deps.send;
+    h.deps.send = async m => ((m as {type: string}).type === 'vault.reauthOk' ? {ok: false, error: 'malformed'} : inner(m));
+    confirmWith(PW);
+    await h.until(() => text(el('ra-helper')) === 'Something went wrong. Try again.');
+    expect(visible(el('ra-notice'))).toBe(false);
+    expect(visible(el('ra-entry'))).toBe(true);
+    expect(h.went).toEqual([]);
   });
 
   it('a settings challenge’s Cancel only closes the tab: no discard, no "cancelled"', async () => {

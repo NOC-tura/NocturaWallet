@@ -1,4 +1,5 @@
 import {send as runtimeSend} from '../ui/send';
+import {SITE} from '../shared/site';
 
 /**
  * The popup's and the tab's one way to the background (spec B1b-2a §1.5): one typed function per
@@ -105,6 +106,8 @@ export interface HistoryItem {
   counterparty: string | null;
   feeLamports: bigint;
   failed: boolean;
+  /** B1c-2: a transaction a site had this wallet sign ("Dapp · simulated", #26b/#27b), else null. */
+  origin: 'dapp' | null;
 }
 /**
  * `next` is the cursor for the next `history()` call (the getSignaturesForAddress page's own last
@@ -227,6 +230,8 @@ export interface Engine {
   dappRevokeAll(): Promise<Reply<null, 'locked'>>;
   dappBlocked(): Promise<Reply<DappBlocked[], 'locked'>>;
   dappUnblock(host: string): Promise<Reply<null, 'malformed' | 'locked'>>;
+  /** B1c-2 (D11): a site's transaction waiting for #10 — its challenge and the site — or null; refused while locked. */
+  dappReauth(): Promise<Reply<DappReauth | null, 'locked'>>;
   lock(): Promise<Reply<null, never>>;
   ping(): Promise<Reply<null, never>>;
 }
@@ -433,8 +438,10 @@ function historyOf(x: unknown): HistoryItem | undefined {
   const blockTime = o.blockTime === null ? null : isInt(o.blockTime) ? o.blockTime : undefined;
   const mint = o.mint === null ? null : isAddress(o.mint) ? o.mint : undefined;
   const counterparty = o.counterparty === null ? null : isAddress(o.counterparty) ? o.counterparty : undefined;
-  if (kind === undefined || token === undefined || amount === undefined || feeLamports === undefined || blockTime === undefined || mint === undefined || counterparty === undefined || typeof o.failed !== 'boolean') return undefined;
-  return {signature: o.signature, blockTime, kind, token, mint, amount, counterparty, feeLamports, failed: o.failed};
+  // B1c-2: absent from an older background — read as none.
+  const origin = o.origin === 'dapp' ? 'dapp' : o.origin === undefined || o.origin === null ? null : undefined;
+  if (kind === undefined || token === undefined || amount === undefined || feeLamports === undefined || blockTime === undefined || mint === undefined || counterparty === undefined || typeof o.failed !== 'boolean' || origin === undefined) return undefined;
+  return {signature: o.signature, blockTime, kind, token, mint, amount, counterparty, feeLamports, failed: o.failed, origin};
 }
 
 /** `next`: null, or a string that passes the same signature check as an item's own `signature` (review fix round 1 #1). */
@@ -518,6 +525,18 @@ function dappGrantOf(x: unknown): DappGrant | undefined {
   if (typeof o.verified !== 'boolean' || !isAddress(o.account) || !isTime(o.connectedAt) || !isTime(o.lastUsedAt)) return undefined;
   return {origin: o.origin, host: o.host, name: o.name, verified: o.verified, account: o.account, scope, connectedAt: o.connectedAt, lastUsedAt: o.lastUsedAt, recent};
 }
+/** B1c-2: what dapp.reauth answers — a 32-hex challenge (the only kind reauthPage() opens) and the site, as the window shows it. */
+export interface DappReauth {
+  challengeId: string;
+  site: string;
+}
+function dappReauthOf(x: unknown): DappReauth | null | undefined {
+  if (x === null) return null;
+  const o = obj(x);
+  if (o === undefined || typeof o.challengeId !== 'string' || !/^[0-9a-f]{32}$/.test(o.challengeId) || typeof o.site !== 'string' || !SITE.test(o.site)) return undefined;
+  return {challengeId: o.challengeId, site: o.site};
+}
+
 function dappBlockedOf(x: unknown): DappBlocked | undefined {
   const o = obj(x);
   if (o === undefined || typeof o.host !== 'string' || o.host === '' || !isTime(o.blockedAt) || !(o.imitates === null || typeof o.imitates === 'string')) return undefined;
@@ -600,6 +619,7 @@ export function createEngine(transport: Transport = runtimeSend, sleep: (ms: num
     dappRevokeAll: () => call({type: 'dapp.grants.revokeAll'}, ['locked'], nothing),
     dappBlocked: () => call({type: 'dapp.blocked.list'}, ['locked'], d => all(obj(d)?.blocked, dappBlockedOf)),
     dappUnblock: host => call({type: 'dapp.blocked.remove', host}, ['malformed', 'locked'], nothing),
+    dappReauth: () => call({type: 'dapp.reauth'}, ['locked'], dappReauthOf),
     lock: () => call({type: 'vault.lock'}, [], nothing),
     ping: () => call({type: 'activity.ping'}, [], nothing),
   };

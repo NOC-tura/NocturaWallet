@@ -118,6 +118,27 @@ body:has(.app-popup) {
 .app-banner {
   margin: var(--space-3) var(--space-4) 0;
 }
+/* Final review MUST-FIX 2: #11's dApp re-authentication strip — on the hero's gutter (--space-5, the hero's own
+   margin), a gap before the hero below it, the line centred on the icons, and the design's trailing chevron (#11's
+   own strip, ix:6374: 18 px in --fg-secondary; four classes outrank `.banner.info svg`'s --info). */
+.s-dash .app-banner.app-dapp-strip {
+  /* `.app-strip`'s width: 100% plus side margins ran the strip past the popup's right edge (its chevron clipped). */
+  width: auto;
+  margin: var(--space-3) var(--space-5) var(--space-4);
+  align-items: center;
+}
+.app-dapp-strip > .noc-body-sm {
+  flex: 1;
+  min-width: 0;
+}
+.app-strip-chev {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.banner.info .app-strip-chev svg {
+  color: var(--fg-secondary);
+  margin-top: 0;
+}
 /* The design's two-line banner (index.html #20 first-time recipient, the public-withdraw banners):
    a 600 title in --fg-primary with 2 px below it, then a --fg-secondary line. */
 .banner .banner-title {
@@ -1485,6 +1506,26 @@ body:has(.app-window) {
 .s9-origin-card .ico.app-ico-verified {
   background: linear-gradient(135deg, var(--accent), var(--accent-shielded));
 }
+/* Final review MUST-FIX 2: a verified brand's own tile, as the design draws it (approve/ui.tsx BRAND_TILES says where
+   each comes from): the window's mockups for Jupiter, Magic Eden, Tensor and Noctura, #49's tiles for Drift and Kamino. */
+.s9-origin-card .ico.app-brand-jupiter {
+  background: linear-gradient(135deg, #FFC800, #FF7A00);
+}
+.s9-origin-card .ico.app-brand-magic-eden {
+  background: linear-gradient(135deg, #14F195, #9945FF);
+}
+.s9-origin-card .ico.app-brand-tensor {
+  background: linear-gradient(135deg, #00DBFF, #0066FF);
+}
+.s9-origin-card .ico.app-brand-noctura {
+  background: linear-gradient(135deg, #B084FC, #5BE3C2);
+}
+.s9-origin-card .ico.app-brand-drift {
+  background: linear-gradient(135deg, oklch(80% 0.14 180), oklch(72% 0.16 220));
+}
+.s9-origin-card .ico.app-brand-kamino {
+  background: linear-gradient(135deg, oklch(72% 0.16 200), oklch(64% 0.14 240));
+}
 .s9-origin-card .ico.app-ico-unknown {
   background: var(--bg-surface-3);
   color: var(--fg-secondary);
@@ -1670,6 +1711,10 @@ body:has(.app-window) {
 }
 .app-risk-actions .btn {
   flex: 1;
+}
+/* Final review MUST-FIX 2: "I understand the risk" never wraps inside its half of the sheet's bar. */
+.app-risk-actions .btn.app-nowrap {
+  white-space: nowrap;
 }
 /*
  * D11's locked window: the mark, the two lines and the origin card, centred — but Q24 (when shown) is a sibling in
@@ -1886,4 +1931,87 @@ body:has(.app-window) {
   white-space: normal;
   width: max-content;
   max-width: calc(100% - 2 * var(--space-4));
+}
+/*
+ * B1c-2: #48 dapp-tx-approval (ix:18261-18705). The cards stack with the design's --space-4 (ix:18293-18320); the
+ * approving state reads the body at .65 (ix:18412, the shielded mockup's "in-flight" opacity, transparent here).
+ */
+.app-tx-busy {
+  opacity: 0.65;
+}
+.app-tx-block {
+  margin-bottom: var(--space-4);
+}
+.app-tx-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+/* A batch's section header (B1 §3: each transaction's effects on one screen). */
+.app-tx-batch {
+  margin: 0;
+  color: var(--fg-tertiary);
+}
+.app-tx-caption {
+  margin: 0 0 var(--space-4);
+}
+/* Review 1 L7: who broadcasts, under the origin card. */
+.app-tx-sends {
+  margin: 0 0 var(--space-4);
+}
+.app-tx-none {
+  margin: 0;
+}
+/* A token the wallet does not name: a neutral tile ("?"), the mint beside it in mono. */
+.s9-bal-row .ico.app-tok-other {
+  background: var(--bg-surface-3);
+  color: var(--fg-secondary);
+}
+/* One instruction: its program row, its name and its fields, the card's own rows inside a group of their own. */
+.app-tx-ix {
+  display: flex;
+  flex-direction: column;
+}
+.s9-payload-card .app-tx-ix + .app-tx-ix > .row:first-of-type {
+  border-top: 1px solid color-mix(in oklab, var(--fg-disabled) 60%, transparent);
+}
+.s9-payload-card .row.app-tx-field .k {
+  font-size: 11px;
+  line-height: 14px;
+}
+/* An address in full, in groups of four (B1 §3), its label under it; an unknown program's whole address likewise. */
+.s9-payload-card .row .v.app-tx-addr,
+.s9-payload-card .row .v.app-tx-unknown {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  max-width: 75%;
+}
+.app-tx-addr-label {
+  color: var(--fg-tertiary);
+}
+/* "Approve · simulating" (ix:18333), on one line. */
+/* Final review MUST-FIX 2: #48's Approve while simulating, at the design's .4 (ix:18318: `opacity:.4` on the disabled CTA). */
+.sticky-bar .btn.app-cta-simulating[disabled] {
+  opacity: 0.4;
+}
+.app-tx-sim-tag {
+  opacity: 0.7;
+  margin-inline-start: 4px;
+  white-space: nowrap;
+}
+/* #48 mismatch detail (ix:18504-18507): the session in --success, the request and the verdict in --danger — the card's
+   own `.row .v` colour (three classes) outranks the one-class tone. */
+.s9-payload-card .row .v.noc-success {
+  color: var(--success);
+}
+.s9-payload-card .row .v.noc-danger {
+  color: var(--danger);
+}
+/* B1c-2: #27b's title with its OriginBadge, inline at the design's 8 px gap (ix:12163). */
+.top-bar .title.app-title-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
 }

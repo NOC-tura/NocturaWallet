@@ -160,6 +160,18 @@ describe('shape checks: a reply of the wrong shape is failed', () => {
     expect(await engineAnswering(reply).balances(acc)).toEqual({ok: false, error: 'failed'});
   });
 
+  // Final review I2: the strip's site is whatever `new URL(origin).host` gives an https origin (shared/site.ts) — an
+  // underscore, an IPv6 literal with a port — and never a path, a space or credentials.
+  it('dappReauth: a URL-legal site (an underscore host, an IPv6 literal with a port) is read; a path, a space, credentials are failed', async () => {
+    const id = 'a'.repeat(32);
+    for (const site of ['my_site.example.com', '[::1]:8443', 'xn--80ak6aa92e.com', "a!$&'()*+,;=~b.test"]) {
+      expect(await engineAnswering({ok: true, data: {challengeId: id, site}}).dappReauth()).toEqual({ok: true, data: {challengeId: id, site}});
+    }
+    for (const site of ['jup.ag/x', 'jup ag', 'user@jup.ag', 'jup.ag?x', 'jup.ag#x', '']) {
+      expect([site, await engineAnswering({ok: true, data: {challengeId: id, site}}).dappReauth()]).toEqual([site, {ok: false, error: 'failed'}]);
+    }
+  });
+
   it('state: an address outside base58, an unknown scheme', async () => {
     const good = {hasWallet: true, unlocked: true, scheme: 'slip10', accounts: [{index: 0, name: 'A', publicKey: acc}], selected: 0, passkey: false};
     expect((await engineAnswering({ok: true, data: good}).state()).ok).toBe(true);
@@ -230,6 +242,17 @@ describe('shape checks: a reply of the wrong shape is failed', () => {
     expect(await engineAnswering({ok: true, data: {...good, next: 'not-a-signature'}}).history(acc)).toEqual({ok: false, error: 'failed'});
     expect(await engineAnswering({ok: true, data: {...good, next: 42}}).history(acc)).toEqual({ok: false, error: 'failed'});
     expect(await engineAnswering({ok: true, data: {...good, next: undefined}}).history(acc)).toEqual({ok: false, error: 'failed'});
+  });
+
+  // B1c-2: an item's origin — 'dapp', null, or absent (an older background) — and nothing else.
+  it('history: an item’s origin is "dapp" or null (absent reads as null); any other value refuses the page', async () => {
+    const one = {signature: '5'.repeat(88), blockTime: null, kind: 'other', token: null, mint: null, amount: null, counterparty: null, feeLamports: '5000', failed: false};
+    const items = async (origin: unknown) => {
+      const r = await engineAnswering({ok: true, data: {items: [origin === 'absent' ? one : {...one, origin}], next: null}}).history(acc);
+      return r.ok ? r.data.items.map(i => i.origin) : r;
+    };
+    expect([await items('dapp'), await items(null), await items('absent')]).toEqual([['dapp'], [null], [null]]);
+    for (const bad of ['wallet', 1, {}]) expect(await items(bad)).toEqual({ok: false, error: 'failed'});
   });
 
   it('pending: an unknown state or failure value', async () => {

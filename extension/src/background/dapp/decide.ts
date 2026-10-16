@@ -11,9 +11,11 @@ import {MAX_GRANTS, type Grant} from './grants';
 import {inCooldown, rejectionsOf, REJECTIONS_FOR_COOLDOWN} from './limits';
 import {runtimeFor} from './ports';
 import {answer, headOf, isOpenEntry, queueAccess, rejectQueued, userRejected, type Effects} from './queue';
-import {dropGrant, grantIn, putGrant, type Decision, type Entry, type Tx} from './store';
+import {dropGrant, grantIn, putGrant, readDappSession, type Decision, type Entry, type Tx} from './store';
 import {base64} from '@scure/base';
 import {checkMessage, checkSiws, finishSign, homoglyphRanges, keywordIn} from './signMessage';
+import {dappDigest, finishSend, finishSignTx, isTxType, needsSimulation, reauthGate, runSimulation, txDetail, txRefused, type TxDetail, type TxRefusal} from './signTx';
+import {consumeChallenge} from '../reauthChallenges';
 
 /**
  * The approval window's two messages (spec §1.4, §2.3, C13, C17): `dapp.pending` — what the window shows — and
@@ -86,6 +88,10 @@ export interface RequestView {
   /** Null while locked: the locked screen shows the origin card only (D11). */
   connect: ConnectDetail | null;
   sign: SignDetail | null;
+  /** B1c-2, #48: a transaction request's account and detail (null while locked, or when it can no longer be signed — Q26). */
+  tx: (TxDetail & {account: AccountChoice; kind: 'signTransaction' | 'signAndSendTransaction'}) | null;
+  /** B1c-2, #48 "origin-mismatch · auto-reject": the origin the named account is granted to. */
+  mismatch: {granted: string} | null;
 }
 
 export type PendingView =
@@ -117,11 +123,17 @@ async function viewOf(ext: Ext, tx: Tx, e: Entry): Promise<RequestView> {
   const site = siteView(e.host);
   let connect: ConnectDetail | null = null;
   let sign: SignDetail | null = null;
+  let txView: RequestView['tx'] = null;
   if (unlocked) {
     const c = await choices(ext, tx);
     if (e.type === 'connect') connect = {...c, cap: grantIn(tx, e.origin) === null && tx.grants.length >= MAX_GRANTS};
     const named = c.accounts.find(a => a.publicKey === e.account);
     if (e.type === 'signMessage' && named !== undefined) sign = signDetail(e, site, named);
+    if (isTxType(e.type) && named !== undefined && tx.session !== null) {
+      const names = new Map(c.accounts.map(a => [a.publicKey, a.name]));
+      const detail = await txDetail(ext, e, tx.session, names, tx.now, runtimeFor(ext).simulating.has(e.requestId));
+      if (detail !== null) txView = {...detail, account: named, kind: e.type};
+    }
   }
   return {
     requestId: e.requestId,
@@ -132,6 +144,8 @@ async function viewOf(ext: Ext, tx: Tx, e: Entry): Promise<RequestView> {
     offerBlock: rejectionsOf(tx.limits, e.host, e.tabId) >= REJECTIONS_FOR_COOLDOWN - 1,
     connect,
     sign,
+    tx: txView,
+    mismatch: e.type === 'mismatch' && e.granted !== null ? {granted: e.granted} : null,
   };
 }
 
@@ -140,8 +154,9 @@ async function viewOf(ext: Ext, tx: Tx, e: Entry): Promise<RequestView> {
  * `locked` while locked (D11), `none` when the queue is empty (the window closes itself) — with how many more wait (Q12)
  * and the budget notice (Q24, once). Records which request the window shows: closing the window rejects that one.
  */
-export async function pending(ext: Ext, deps: Pick<WalletDeps, 'now'>): Promise<PendingView> {
-  return queueAccess(ext, deps, async (tx): Promise<PendingView> => {
+export async function pending(ext: Ext, deps: WalletDeps): Promise<PendingView> {
+  let simulate: string | null = null;
+  const view = await queueAccess(ext, deps, async (tx): Promise<PendingView> => {
     const h = headOf(tx);
     if (h === null) return {state: 'none'};
     if (tx.s.window !== null) tx.s.window = {...tx.s.window, showing: h.requestId};
@@ -149,27 +164,34 @@ export async function pending(ext: Ext, deps: Pick<WalletDeps, 'now'>): Promise<
     if (windowNotice) tx.limits = {...tx.limits, notice: false};
     const waiting = tx.s.queue.filter(isOpenEntry).length - 1;
     const state = tx.session === null ? 'locked' : h.state === 'deciding' ? 'deciding' : 'request';
+    // B1c-2 (§3.3): the head's simulation — the first, the 30 s refresh, a retry — starts after this section.
+    if (tx.session !== null && needsSimulation(h, tx.now)) simulate = h.requestId;
     return {state, request: await viewOf(ext, tx, h), waiting, windowNotice};
   });
+  if (simulate !== null) void runSimulation(ext, deps, simulate).catch(e => console.warn('dApp: a simulation failed to run', e));
+  return view;
 }
 
-export type DecideError = 'malformed' | 'not-head' | 'expired' | 'locked' | 'unknown-account' | 'scope' | 'blocked' | 'cap' | 'no-grant' | 'account' | 'siws-mismatch';
+export type DecideError = 'malformed' | 'not-head' | 'expired' | 'locked' | 'unknown-account' | 'scope' | 'blocked' | 'cap' | 'no-grant' | 'account' | 'siws-mismatch' | TxRefusal | 'reauth-required';
 export interface DecideRequest {
   requestId: string;
   decision: Decision;
   account: string | null;
   scope: Grant['scope'] | null;
+  /** B1c-2: a transaction request's approval names the simulation the window showed (C13). */
+  simulation: string | null;
 }
 
 const DECISIONS: readonly string[] = ['approve', 'reject', 'report', 'block'];
 
 /** dapp.decide's shape: a request id, a decision, and — for an approval — the account (and a connect's scope). */
 export function decideRequestOf(msg: Record<string, unknown>): DecideRequest | null {
-  const {requestId, decision, account, scope} = msg;
+  const {requestId, decision, account, scope, simulation} = msg;
   if (typeof requestId !== 'string' || typeof decision !== 'string' || !DECISIONS.includes(decision)) return null;
   if (account !== undefined && typeof account !== 'string') return null;
   if (scope !== undefined && scope !== 'session' && scope !== 'persistent') return null;
-  return {requestId, decision: decision as Decision, account: account ?? null, scope: scope ?? null};
+  if (simulation !== undefined && typeof simulation !== 'string') return null;
+  return {requestId, decision: decision as Decision, account: account ?? null, scope: scope ?? null, simulation: simulation ?? null};
 }
 
 /** Blocking a host (§2.6): every grant of that host (both scopes, every port and scheme) revoked, its queued requests rejected. */
@@ -205,10 +227,12 @@ function approvalRefused(tx: Tx, e: Entry, d: DecideRequest): DecideError | null
   if (isBlocked(tx.blocked, e.host) || inCooldown(tx.limits, e.host, e.tabId, tx.now)) return 'blocked';
   // §2.1: beyond 200 persistent grants a connect has only [Reject] (Q16).
   if (e.type === 'connect' && grantIn(tx, e.origin) === null && tx.grants.length >= MAX_GRANTS) return 'cap';
-  if (e.type === 'signMessage') {
+  if (e.type === 'signMessage' || isTxType(e.type)) {
     // review 2 M9: the grant must still be held for the request's account.
     if (grantIn(tx, e.origin)?.account !== e.account) return 'no-grant';
     if (d.account !== e.account) return 'account';
+  }
+  if (e.type === 'signMessage') {
     // §3.2 rule 3: a sign-in message for another domain has no Sign (C13: the window's missing button is not the check).
     if (e.message !== null) {
       const checked = checkMessage(base64.decode(e.message));
@@ -241,15 +265,58 @@ async function finishConnect(ext: Ext, deps: Pick<WalletDeps, 'now'>, requestId:
   });
 }
 
+/** The site as the window shows it (host, or host:port — review 1 L5, R35), for #10's description. */
+function siteOf(origin: string, host: string): string {
+  try {
+    return new URL(origin).host;
+  } catch {
+    return host;
+  }
+}
+
+/** expiry, head: the first two rows of §2.3's table, for any decision. */
+function headRefused(tx: Tx, e: Entry | undefined): DecideError | null {
+  // expiry: the sweep at the top of this section has answered an expired request `timeout`.
+  if (e?.state === 'answered' && e.answer !== null && 'error' in e.answer && e.answer.error === 'timeout') return 'expired';
+  // head: only the queue head, and only while `queued` (a `deciding` one is never decided twice).
+  if (e === undefined || headOf(tx) !== e || e.state !== 'queued') return 'not-head';
+  return null;
+}
+
 /** dapp.decide (§2.3): one refusal per row of the table, else the decision — a reject at once, an approval through `deciding`. */
 export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Promise<{ok: true} | {ok: false; error: DecideError}> {
   const instance = runtimeFor(ext).instance;
+  // B1c-2: a transaction request's approval first passes every check, then the re-authentication gate (outside any
+  // section: the challenge store takes sessionMutex), then writes `deciding` in a second section that checks it all
+  // again — INCLUDING, fail-closed, that a simulation needing re-auth carries a proof bound to it (R9/R11, fix round 1
+  // item 1): the peek below only decides whether the gate runs at all; it is never trusted on its own, because an
+  // unsectioned read can miss the entry (a race, a malformed stored value) and leave `proof` null while the entry
+  // still needs one — the deciding section's own check below is what actually enforces it. A connect or a
+  // signMessage decision takes the one section it always took.
+  const peek = (await readDappSession(ext)).queue.find(x => x.requestId === d.requestId);
+  // A proven challenge to consume after `deciding` is written (review 1 L1): its id and what it is bound to.
+  let proof: {id: string; digest: string} | null = null;
+  if (d.decision === 'approve' && peek !== undefined && isTxType(peek.type)) {
+    const pre = await queueAccess(ext, deps, (tx): DecideError | Entry | 'other' => {
+      const e = tx.s.queue.find(x => x.requestId === d.requestId);
+      const head = headRefused(tx, e);
+      if (head !== null) return head;
+      if (e === undefined || !isTxType(e.type)) return 'other';
+      return approvalRefused(tx, e, d) ?? txRefused(e, d.simulation, tx.now) ?? structuredClone(e);
+    });
+    if (typeof pre === 'string' && pre !== 'other') return {ok: false, error: pre};
+    if (typeof pre === 'object') {
+      const gate = await reauthGate(ext, deps, pre, siteOf(pre.origin, pre.host));
+      if (gate === 'proven' && pre.challengeId !== null) proof = {id: pre.challengeId, digest: dappDigest(pre)};
+      else if (gate !== 'ready') return {ok: false, error: gate === 'proven' ? 'reauth-required' : gate};
+    }
+  }
   const out = await queueAccess(ext, deps, (tx, fx): DecideError | {approved: Entry['type']} | 'done' => {
     const e = tx.s.queue.find(x => x.requestId === d.requestId);
-    // expiry: the sweep at the top of this section has answered an expired request `timeout`.
-    if (e?.state === 'answered' && e.answer !== null && 'error' in e.answer && e.answer.error === 'timeout') return 'expired';
-    // head: only the queue head, and only while `queued` (a `deciding` one is never decided twice).
-    if (e === undefined || headOf(tx) !== e || e.state !== 'queued') return 'not-head';
+    const head = headRefused(tx, e);
+    if (head !== null || e === undefined) return head ?? 'not-head';
+    // B1c-2: a mismatch notice is only ever dismissed (#48 "origin-mismatch · auto-reject" has no approval path).
+    if (e.type === 'mismatch' && d.decision !== 'reject') return 'malformed';
     if (d.decision === 'reject') {
       userRejected(tx, fx, e);
       return 'done';
@@ -262,8 +329,12 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
       blockHost(tx, fx, e.host);
       return 'done';
     }
-    const refused = approvalRefused(tx, e, d);
+    const refused = approvalRefused(tx, e, d) ?? (isTxType(e.type) ? txRefused(e, d.simulation, tx.now) : null);
     if (refused !== null) return refused;
+    // Fix round 1 item 1: fail closed even when the peek above missed this entry (the pre-section and the gate never
+    // ran, so `proof` is still null here) — a simulation that names reasons may proceed only with a proof bound to
+    // EXACTLY this entry's current challenge; a proof for a challenge the entry no longer points at does not count.
+    if (isTxType(e.type) && e.sim?.status === 'ok' && e.sim.sim.reasons.length > 0 && (proof === null || proof.id !== e.challengeId)) return 'reauth-required';
     e.state = 'deciding';
     e.decidedBy = instance;
     e.decidingAt = tx.now;
@@ -271,8 +342,28 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
     return {approved: e.type};
   });
   if (typeof out === 'string' && out !== 'done') return {ok: false, error: out};
+  // Review 1 L1: the proof is spent here — after `deciding` (never decided twice), before any key is read. If it is gone
+  // (expired, or spent by another approval), the request ends `rejected`: nothing was signed. The window is told what
+  // happened to the request — it is no longer the head (plan 2 review 2 L4), not "re-authenticate", which it can no
+  // longer do for an answered request.
+  if (proof !== null && typeof out === 'object' && !(await consumeChallenge(ext, deps.now(), proof.id, proof.digest))) {
+    await queueAccess(ext, deps, (tx, fx) => {
+      const e = tx.s.queue.find(x => x.requestId === d.requestId);
+      if (e !== undefined && e.state === 'deciding' && e.decidedBy === instance) answer(fx, e, {error: 'rejected'}, tx.now);
+    });
+    return {ok: false, error: 'not-head'};
+  }
   // §2.2: a decision in the window is a user action — it arms the auto-lock timer (page requests never do).
   if ((await getSession(ext)) !== null) await armAutolock(ext).catch(e => console.warn('dApp decide: the idle timer was not re-armed', e));
-  if (typeof out === 'object') await (out.approved === 'connect' ? finishConnect : finishSign)(ext, deps, d.requestId, instance);
+  if (typeof out === 'object') {
+    // Each approvable type's effect, by name: a type with none (a mismatch notice — refused above) can never fall into another's.
+    const effects: Partial<Record<Entry['type'], (ext: Ext, deps: WalletDeps, requestId: string, instance: string) => Promise<void>>> = {
+      connect: finishConnect,
+      signMessage: finishSign,
+      signTransaction: finishSignTx,
+      signAndSendTransaction: finishSend,
+    };
+    await effects[out.approved]?.(ext, deps, d.requestId, instance);
+  }
   return {ok: true};
 }

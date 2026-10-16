@@ -111,3 +111,94 @@ export const SIGN_TEXT = {
   /** Q26 (rev 3.2): `request.sign === null` — the Reject-only exit says why. */
   cannotSign: 'This request can no longer be signed. Reject it and ask the site to try again.',
 } as const;
+
+/**
+ * #48 dapp-tx-approval (index.html ix:18261-18705): the design's own strings as drawn, B1 §3's ("unknown program"),
+ * B1b's (#19's "Couldn't simulate" and its server line, #20's address labels), Q21 and Q26 — and the controller's
+ * lines the design does not draw, each flagged for the owner in the plan's Scope (R-numbers there).
+ */
+export const TX_TEXT = {
+  overline: 'Approve transaction',
+  overlineApproving: 'Approving',
+  overlineLookalike: 'Suspicious origin',
+  simulating: 'Simulating transaction…',
+  /** #19's own server line (B1b-2a §4.4): what answers, as the design's meta names its RPC. */
+  simulatingMeta: 'Noctura server · simulateTransaction',
+  balanceWaiting: 'Balance changes (waiting…)',
+  balancePost: 'Balance changes (post-simulation)',
+  /**
+   * Owner-delegated (controller, 2026-10-15; plan 2 review 1 L3): a simulation that moves nothing of this account's — it
+   * points at the instructions, since an instruction that moves no balance (an authority change, an allowance) can still
+   * matter; B1c-3 replaces the line on a screen with such an instruction.
+   */
+  noChanges: 'No SOL or token balance changes — review the instructions below.',
+  /** Owner-delegated (controller, 2026-10-15; review 1 L7): who broadcasts — page.signTransaction / page.signAndSendTransaction. */
+  sendsSite: 'The site sends this transaction itself after you approve.',
+  sendsNoctura: 'Noctura sends this transaction as soon as you approve.',
+  /** Owner-delegated (controller, 2026-10-15; review 1 L4): an approval refused `stale` — a refresh landed between the read and the click. */
+  stale: 'The transaction changed while you were reviewing. Review it again before approving.',
+  /**
+   * Controller copy (final review I3, 2026-10-16; flagged to the owner): an approval refused `out-of-date` — the window
+   * named the newest simulation, but it is 40 s old and its refresh has not landed (a slow proxy). Nothing changed, so
+   * the `stale` line above would be untrue.
+   */
+  outOfDate: 'This simulation is out of date. Wait a moment for it to refresh.',
+  instructions: 'Instructions',
+  /** Fix round 1 (promoted minor 2): a v0 transaction whose lookup table is not yet resolved — instructions decode only once the first simulation answers. */
+  instructionsPending: 'Instructions appear once the transaction is simulated.',
+  program: (n: number): string => `Program ${n}`,
+  /** B1 §3: "a program not in the decoded set → unknown program". */
+  unknownProgram: 'unknown program',
+  /** Controller (owner copy): an instruction of a decoded program whose tag the wallet does not know. */
+  unknownInstruction: 'unknown instruction',
+  /** Fix round 1, I3 (controller ruling, overrides plan R2's display): a known program's instruction the decoder names but
+   * does not decode the fields of (mintTo, transferWithSeed, createAccountWithSeed, withdrawNonceAccount, Token-2022
+   * extension instructions, recoverNested, …) must never look fully decoded. */
+  notDecoded: 'Details not decoded — check them on the site before approving.',
+  computeUnits: 'Compute units',
+  networkFee: 'Network fee',
+  mandatory: 'Simulation runs against the current slot before you see Approve. This is mandatory — no skip.',
+  approve: 'Approve',
+  approveSimulating: '· simulating',
+  approving: 'Approving…',
+  /** Controller (owner copy, as #46's and #47's): a lookalike origin's demoted path. */
+  approveAnyway: 'Approve anyway (not recommended)',
+  /** #19's (B1b): the simulation's own refusal, and a proxy that did not answer. */
+  couldNot: "Couldn't simulate",
+  unreachable: 'Could not reach the Noctura server.',
+  /** Q21. */
+  expired: 'This request has expired. Ask the site to try again.',
+  originPill: (host: string): [string, string, string] => ['Request from ', host, ' · matches active session'],
+  /** Controller (owner copy): a batch's section, B1 §3 "shown on one screen with each transaction's effects". */
+  batchItem: (i: number, n: number): string => `Transaction ${i} of ${n}`,
+  /** Controller (owner copy), D11: re-authentication is reached from the Noctura icon, never from this window. */
+  reauthNeeded: "Approving asks you to confirm with your password (or passkey) — you'll start it from the Noctura icon.",
+  reauthHead: "Confirm it's you",
+  reauthWaiting: "Click the Noctura icon in your browser's toolbar and confirm with your password (or passkey). This request will wait here.",
+  /** #20's labels (B1b; spec §3 "with a label where known"). */
+  ownAccount: (name: string): string => `Your account: ${name}`,
+} as const;
+
+/** #48's origin-mismatch · auto-reject (ix:18484-18521), as drawn — "Settings → dApps" reads Settings → Connected dApps (Q03, D1). */
+export const MISMATCH_TEXT = {
+  overline: 'Auto-rejected · Origin mismatch',
+  head: 'Request blocked automatically',
+  sub: 'A transaction came from a different origin than the one you connected. We rejected it without showing Approve.',
+  flagHead: 'Origin mismatch · auto-reject',
+  flagBody: (session: string, request: string): [string, string, string, string, string] => [
+    'A connected session for ',
+    session,
+    ' received a transaction request from ',
+    request,
+    '. This is almost always a man-in-the-middle attempt. The request was dropped without prompting.',
+  ],
+  detail: 'Mismatch detail',
+  activeSession: 'Active session',
+  requestOrigin: 'Request origin',
+  match: 'Match',
+  matchValue: 'false',
+  action: 'Action',
+  actionValue: 'REJECT_NO_PROMPT',
+  caption: (session: string): [string, string, string] => ['If you believe this is legitimate, disconnect the existing ', session, ' session in Settings → Connected dApps and reconnect through the new domain explicitly. Never approve cross-origin transactions.'],
+  ok: 'OK, return to dApp',
+} as const;

@@ -24,6 +24,77 @@ const SEND: ChallengeAbout = {
   thresholdCents: 10_000,
 };
 
+// B1c-2: a dApp's transaction request.
+const DAPP: ChallengeAbout = {
+  kind: 'dapp',
+  account: ACCOUNT.publicKey,
+  site: 'jup.ag',
+  transactions: 2,
+  outgoing: [
+    {mint: null, symbol: 'SOL', amount: '1005000', decimals: 9},
+    {mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', symbol: 'USDC', amount: '250000000', decimals: 6},
+    {mint: RECIPIENT, symbol: null, amount: '777', decimals: null},
+  ],
+  omitted: 0,
+  reasons: ['first-send', 'approval'],
+  thresholdCents: 10_000,
+};
+
+describe('describeChallenge: a dApp’s transaction (B1c-2)', () => {
+  it('the site, the batch’s size, each token leaving the account (exact, never rounded), the reasons (positive control)', () => {
+    expect(describeChallenge(DAPP)).toEqual({
+      kind: 'dapp',
+      site: 'jup.ag',
+      transactions: 2,
+      outgoing: [
+        {label: 'SOL', amount: '−0.001005', mint: null},
+        {label: 'USDC', amount: '−250', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'},
+        {label: 'Token', amount: '−777 (base units)', mint: RECIPIENT},
+      ],
+      omitted: 0,
+      reasons: ['Re-auth required for the first send to a new address.', 'Re-auth required to approve a token allowance.'],
+    });
+  });
+
+  it('fails closed: a key more or less, a site with a path, a named token with other decimals, SOL with a mint, an unknown reason, no reason, a count of omitted tokens that is not a whole number ≥ 0', () => {
+    const outgoing = DAPP.kind === 'dapp' ? DAPP.outgoing : [];
+    for (const bad of [
+      {...DAPP, extra: 1},
+      {...DAPP, site: 'jup.ag/x'},
+      {...DAPP, transactions: 6},
+      {...DAPP, outgoing: [{...outgoing[1], decimals: 9}]},
+      {...DAPP, outgoing: [{...outgoing[0], mint: RECIPIENT}]},
+      {...DAPP, outgoing: [{...outgoing[2], symbol: 'BONK'}]},
+      {...DAPP, outgoing: [{...outgoing[0], amount: '-5'}]},
+      {...DAPP, reasons: ['drain']},
+      {...DAPP, reasons: []},
+      {...DAPP, omitted: -1},
+      {...DAPP, omitted: 1.5},
+      {...DAPP, omitted: '2'},
+    ]) {
+      expect([bad, describeChallenge(bad)]).toEqual([bad, null]);
+    }
+  });
+});
+
+// Final review I2: #10 accepts every site the background can issue (shared/site.ts — the same shape on all three sides).
+describe('describeChallenge: a dApp’s site is any host `new URL` gives an https origin', () => {
+  it('an underscore host, an IPv6 literal with a port, punycode: described; a path, a space, credentials, a query: refused', () => {
+    for (const site of ['my_site.example.com', '[::1]:8443', 'xn--80ak6aa92e.com']) {
+      expect(describeChallenge({...DAPP, site})).toMatchObject({kind: 'dapp', site});
+    }
+    for (const site of ['jup.ag/x', 'jup ag', 'user@jup.ag', 'jup.ag?x', '']) {
+      expect([site, describeChallenge({...DAPP, site})]).toEqual([site, null]);
+    }
+  });
+});
+
+describe('describeChallenge: a dApp’s omitted tokens (review 1 L9)', () => {
+  it('the count of the tokens past the listed ones is carried to #10', () => {
+    expect(describeChallenge({...DAPP, omitted: 3})).toMatchObject({kind: 'dapp', omitted: 3});
+  });
+});
+
 describe('describeChallenge: the closed-alphabet renderer', () => {
   it('describes a send from fixed strings and validated values only (positive control)', () => {
     expect(describeChallenge(SEND)).toEqual({

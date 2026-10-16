@@ -47,6 +47,17 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+// B1c-2 (spec B1c §3.3; #26b ix:11813): a transaction a site had this wallet sign carries "Dapp · simulated".
+describe('#26 activity: the OriginBadge (B1c-2)', () => {
+  it('a row whose transaction a site had signed carries the design’s badge (chain-link glyph, its provenance label); the others none', async () => {
+    await openActivity(historyReader(), async ext => ext.local.set('v1_dapp_txs', [{signature: sig(2), origin: 'https://jup.ag', at: 1}]), AT_NOW);
+    await screen.findByText('Sent SOL');
+    const badges = [...document.querySelectorAll('.tx-row .meta .pri .origin-badge')];
+    expect(badges.map(b => [b.textContent, b.getAttribute('data-origin'), b.getAttribute('aria-label'), b.querySelector('svg') !== null])).toEqual([['Dapp · simulated', 'dapp', 'dApp-originated transaction · simulated', true]]);
+    expect(badges[0]?.closest('.tx-row')?.querySelector('.pri')?.firstChild?.textContent).toBe('Received USDC');
+  });
+});
+
 describe('#26 activity', () => {
   it('rows per kind: sent (own account label), received, purchase, other, failed — no fiat, no origin badge', async () => {
     await openActivity(historyReader(), undefined, AT_NOW);
@@ -77,7 +88,7 @@ describe('#26 activity', () => {
     // "from H4qZ…m2N1" is an address; "to Your account: Savings" is a label (it would clip in mono).
     expect(sec('Received USDC').classList.contains('noc-mono')).toBe(true);
     expect(sec('Sent SOL').classList.contains('noc-mono')).toBe(false);
-    const base = {signature: sig(9), blockTime: null, mint: null, feeLamports: 5_000n, failed: false} as const;
+    const base = {signature: sig(9), blockTime: null, mint: null, feeLamports: 5_000n, failed: false, origin: null} as const;
     expect(rowText({...base, kind: 'sent', token: 'SOL', amount: 1n, counterparty: COUNTERPARTY}, []).mono).toBe(true);
     expect(rowText({...base, kind: 'sent', token: 'SOL', amount: 1n, counterparty: null}, []).mono).toBe(false);
     expect(sec('Presale purchase').classList.contains('noc-mono')).toBe(false);
@@ -88,7 +99,7 @@ describe('#26 activity', () => {
   // Plan 3, owner question 1 (option A): only a failed SEND names what it tried; any other failed transaction
   // keeps the generic row, and shows under "All" only.
   it('a failed transaction that is not a send stays "Failed · transaction" with a dash, and is not a send', () => {
-    const failedOther = {signature: sig(9), blockTime: null, kind: 'other', token: null, mint: null, amount: null, counterparty: null, feeLamports: 5_000n, failed: true} as const;
+    const failedOther = {signature: sig(9), blockTime: null, kind: 'other', token: null, mint: null, amount: null, counterparty: null, feeLamports: 5_000n, failed: true, origin: null} as const;
     expect(rowText(failedOther, [])).toMatchObject({title: 'Failed · transaction', amount: '—', tone: 'fail'});
     expect([matches(failedOther, 'all'), matches(failedOther, 'sent'), matches(failedOther, 'received'), matches(failedOther, 'purchases')]).toEqual([true, false, false, false]);
     const failedSend = {...failedOther, kind: 'sent', token: 'USDC', amount: 12_000_000n, counterparty: COUNTERPARTY} as const;

@@ -225,6 +225,13 @@ export interface SimulationOutcome {
    */
   accounts: (SimulatedAccount | null)[] | null;
 }
+/**
+ * An account as getMultipleAccounts reports it (B1c-2: an address lookup table, a mint): lamports exact, its owner and
+ * its base64 data — read as a simulated account is (never rentEpoch).
+ */
+export type AccountData = SimulatedAccount;
+/** getMultipleAccounts answers at most this many addresses per call. */
+export const MAX_MULTIPLE_ACCOUNTS = 100;
 /** What an address holds: nothing, a plain wallet (System-owned), a program (executable), or anything else. */
 export type AccountKind = 'missing' | 'wallet' | 'program' | 'other';
 
@@ -236,6 +243,8 @@ export interface SolanaReader {
   getAccountExists(address: string): Promise<boolean>;
   getAccountKind(address: string): Promise<AccountKind>;
   getMultipleLamports(addresses: readonly string[]): Promise<bigint[]>;
+  /** B1c-2: each address's account with its data (null when it holds none), at most MAX_MULTIPLE_ACCOUNTS per call. */
+  getAccountsData(addresses: readonly string[]): Promise<(AccountData | null)[]>;
   getLatestBlockhash(): Promise<{blockhash: string; lastValidBlockHeight: number}>;
   getBlockHeight(): Promise<number>;
   getSignatureStatuses(signatures: readonly string[], searchTransactionHistory?: boolean): Promise<(SignatureStatus | null)[]>;
@@ -337,6 +346,13 @@ export function solanaReader(rpc: Rpc): SolanaReader {
       const v = list(valueOf(await rpc.call('getMultipleAccounts', params), 'getMultipleAccounts'), 'getMultipleAccounts.value');
       if (v.length !== addresses.length) throw new RpcMalformed('getMultipleAccounts: wrong length');
       return v.map(a => (a === null ? 0n : BigInt(count(obj(a, 'account').lamports, 'lamports'))));
+    },
+    async getAccountsData(addresses) {
+      if (addresses.length === 0) return [];
+      if (addresses.length > MAX_MULTIPLE_ACCOUNTS) throw new RangeError(`getAccountsData: at most ${MAX_MULTIPLE_ACCOUNTS} addresses`);
+      const v = list(valueOf(await rpc.call('getMultipleAccounts', [addresses, {encoding: 'base64', ...COMMITMENT}]), 'getMultipleAccounts'), 'getMultipleAccounts.value');
+      if (v.length !== addresses.length) throw new RpcMalformed('getMultipleAccounts: wrong length');
+      return v.map(simulatedAccount);
     },
     async getLatestBlockhash() {
       const v = obj(valueOf(await rpc.call('getLatestBlockhash', [COMMITMENT]), 'getLatestBlockhash'), 'getLatestBlockhash.value');

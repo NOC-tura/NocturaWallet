@@ -6,6 +6,7 @@ import {PAGE_PORT, owns, pageOrigin, runtimeFor, type LivePort, type PortLike} f
 import {MAX_OPEN, documentChanged, isOpenEntry, newRequestId, queueAccess, rejectQueued} from './queue';
 import {dropGrant, grantIn, putGrant, type Entry, type ErrorCode, type Tx} from './store';
 import {checkMessage, checkSiws, signRequestOf} from './signMessage';
+import {othersSigned, sameMessage, slotOf, txRequestOf, usesDurableNonce} from './txRequest';
 import {ensureWindow} from './window';
 
 /**
@@ -14,7 +15,7 @@ import {ensureWindow} from './window';
  * from that report — never from anything the page sends. The relay forwards exactly the method types and originates
  * resume / ack / ping itself (§1.2); a privileged type on a port is refused like any unknown one.
  */
-export const PAGE_TYPES = ['page.connect', 'page.disconnect', 'page.signMessage', 'page.resume', 'page.ack', 'page.ping'] as const;
+export const PAGE_TYPES = ['page.connect', 'page.disconnect', 'page.signMessage', 'page.signTransaction', 'page.signAndSendTransaction', 'page.resume', 'page.ack', 'page.ping'] as const;
 export type PageType = (typeof PAGE_TYPES)[number];
 
 /** The relay's own request id (it adds nothing else, §1.2). */
@@ -53,15 +54,21 @@ function touch(tx: Tx, origin: string): void {
   if (g !== null && tx.now - g.lastUsedAt >= LAST_USED_STEP_MS) putGrant(tx, {...g, lastUsedAt: tx.now});
 }
 
-/** A request the user must answer, after C3's caps; null when it was queued, else the immediate refusal. */
+/**
+ * A request the user must answer, after C3's caps; null when it was queued, else the immediate refusal. Fix round 1,
+ * controller ruling: a `mismatch` entry never counts here — for this host's own real requests, NOR for the total —
+ * or a site could learn, from a later `request-pending`, that the account it named is held elsewhere (the notice
+ * would be a two-message oracle otherwise). A notice's own cap (mismatchNotice, below) uses the unfiltered count.
+ */
 function admit(tx: Tx, live: LivePort): ErrorCode | null {
-  const open = tx.s.queue.filter(isOpenEntry);
+  const open = tx.s.queue.filter(isOpenEntry).filter(e => e.type !== 'mismatch');
   if (open.some(e => e.host === live.host || e.tabId === live.tabId)) return 'request-pending';
   if (open.length >= MAX_OPEN) return 'busy';
   return null;
 }
 
-function enqueue(tx: Tx, deps: Pick<WalletDeps, 'randomBytes'>, live: LivePort, id: string, fields: Pick<Entry, 'type' | 'account' | 'message'>): Entry {
+type EntryFields = Pick<Entry, 'type' | 'account' | 'message'> & Partial<Pick<Entry, 'transactions' | 'granted'>>;
+function enqueue(tx: Tx, deps: Pick<WalletDeps, 'randomBytes'>, live: LivePort, id: string, fields: EntryFields): Entry {
   const e: Entry = {
     requestId: newRequestId(deps),
     pageId: id,
@@ -69,6 +76,11 @@ function enqueue(tx: Tx, deps: Pick<WalletDeps, 'randomBytes'>, live: LivePort, 
     host: live.host,
     tabId: live.tabId,
     documentId: live.documentId,
+    transactions: null,
+    granted: null,
+    sim: null,
+    challengeId: null,
+    sent: null,
     ...fields,
     arrivedAt: tx.now,
     state: 'queued',
@@ -160,6 +172,79 @@ async function signMessage(ext: Ext, deps: WalletDeps, live: LivePort, id: strin
   });
 }
 
+const hostOf = (origin: string): string => {
+  try {
+    return new URL(origin).hostname;
+  } catch {
+    return '';
+  }
+};
+
+/**
+ * B1c-2, #48 "origin-mismatch · auto-reject" (B1 §3: "request origin differs from the granted origin → blocked, no
+ * override"): a sign request naming an account of this unlocked wallet that ANOTHER origin holds a grant for. The page
+ * is answered `unauthorized` at once, exactly as any ungranted request (§2.2 — it learns nothing more), and the window
+ * shows the user what was refused: a notice entry, with no approval path. Only when this host is not blocked or cooling
+ * down, and its OWN cap admits it — at most one open entry of ANY type for this host or tab (so a site cannot stack
+ * notices), and the total open strictly under C3's budget (fix round 1: this check is deliberately NOT `admit()`,
+ * which now excludes a `mismatch` from its own counts — the notice must still respect the shared budget, or it could
+ * stack past it unnoticed). Past either cap the notice is silent: no entry, nothing new for the page to see. The
+ * notice's relay id is '' — never a page's (PAGE_ID needs a character), so a re-sent request can never be answered
+ * from it. Fix round 1: its dismissal records NO rejection (see queue.ts userRejected) — a C14 cooldown keyed on this
+ * host or tab would leak, through a later silent `rejected`, the very bit the notice already answers without leaking.
+ * Fix round 3, controller ruling (STRUCTURAL): a notice never opens or charges a window of its own — window.ts
+ * `ensureWindow` only ever opens one for a REAL request; a queued notice rides along in whatever window a real
+ * request opens (shown first if it happens to be ahead in FIFO order, dismiss-only), or — with no real request ever
+ * queued — is simply never shown and expires silently at C4 (REQUEST_TTL_MS). Round 2's separate notice window
+ * budget is removed along with it: there is nothing left for it to gate. Fix round 4: it returns nothing — whether a
+ * notice was queued never leaves the queue section, so no caller can act on it (see onPageMessage).
+ */
+function mismatchNotice(tx: Tx, deps: Pick<WalletDeps, 'randomBytes'>, live: LivePort, account: string): void {
+  if (tx.session === null || !tx.session.some(a => a.publicKey === account)) return;
+  if (isBlocked(tx.blocked, live.host) || inCooldown(tx.limits, live.host, live.tabId, tx.now)) return;
+  const open = tx.s.queue.filter(isOpenEntry);
+  if (open.some(e => e.host === live.host || e.tabId === live.tabId) || open.length >= MAX_OPEN) return;
+  const other = [...tx.s.grants, ...tx.grants].find(g => g.account === account && g.origin !== live.origin && !isBlocked(tx.blocked, hostOf(g.origin)));
+  if (other === undefined) return;
+  enqueue(tx, deps, live, '', {type: 'mismatch', account, message: null, granted: other.origin});
+}
+
+/**
+ * page.signTransaction / page.signAndSendTransaction (spec §1.4, §3.3; D8, C3, C14, C17), in this order, each refusal
+ * before any window: the payload's shape (txRequest.ts: 1–5 transactions, each ≤ 1 232 bytes, canonical, the chain) →
+ * `invalid-request`; the grant (`unauthorized` unless this origin holds one for exactly this account, while unlocked —
+ * and the mismatch notice above); the account must sign every transaction (fee payer or a required signer) →
+ * `invalid-request`; signAndSend only: every other signature present and valid, no durable nonce → `invalid-request`,
+ * and the same message already open → `rejected` (§3.3: a second identical request while the first is unanswered);
+ * a blocked or cooling-down host → `rejected`; C3's caps; then queued.
+ */
+async function signTx(ext: Ext, deps: WalletDeps, live: LivePort, id: string, m: Record<string, unknown>, kind: 'signTransaction' | 'signAndSendTransaction'): Promise<Reply> {
+  const req = txRequestOf(m, kind);
+  return queueAccess(ext, deps, (tx, fx): Reply => {
+    documentChanged(tx, fx, live);
+    const again = resent(tx, live, id);
+    if (again !== null) return resentReply(again, id);
+    if (req === null) return {id, error: 'invalid-request'};
+    if (grantedAccount(tx, live.origin) !== req.account) {
+      // Fix round 4: the notice is queued for its side effect only — nothing about it is returned (see onPageMessage).
+      mismatchNotice(tx, deps, live, req.account);
+      return {id, error: 'unauthorized'};
+    }
+    if (req.txs.some(t => slotOf(t, req.account) < 0)) return {id, error: 'invalid-request'};
+    if (kind === 'signAndSendTransaction') {
+      const t = req.txs[0];
+      if (t === undefined || !othersSigned(t, req.account) || usesDurableNonce(t)) return {id, error: 'invalid-request'};
+      if (tx.s.queue.some(e => isOpenEntry(e) && e.type === 'signAndSendTransaction' && e.transactions !== null && sameMessage(e.transactions, req.wires))) return {id, error: 'rejected'};
+    }
+    if (isBlocked(tx.blocked, live.host) || inCooldown(tx.limits, live.host, live.tabId, tx.now)) return {id, error: 'rejected'};
+    const refused = admit(tx, live);
+    if (refused !== null) return {id, error: refused};
+    touch(tx, live.origin);
+    const e = enqueue(tx, deps, live, id, {type: kind, account: req.account, message: null, transactions: req.wires});
+    return {id, accepted: true, requestId: e.requestId};
+  });
+}
+
 /** C2: a dApp's disconnect removes its grant, whichever the scope; its queued requests are answered `rejected`. */
 async function disconnect(ext: Ext, deps: WalletDeps, live: LivePort, id: string): Promise<Reply> {
   return queueAccess(ext, deps, (tx, fx): Reply => {
@@ -220,6 +305,19 @@ export async function onPageMessage(ext: Ext, deps: WalletDeps, live: LivePort, 
       if (id === null) return invalid();
       const r = await signMessage(ext, deps, live, id, m);
       reply(live, r);
+      if ('accepted' in r) await ensureWindow(ext, deps);
+      return;
+    }
+    case 'page.signTransaction':
+    case 'page.signAndSendTransaction': {
+      if (id === null) return invalid();
+      const r = await signTx(ext, deps, live, id, m, m.type === 'page.signTransaction' ? 'signTransaction' : 'signAndSendTransaction');
+      reply(live, r);
+      // Fix round 4, controller ruling: only an ACCEPTED request ever calls ensureWindow — never a queued mismatch
+      // notice (signTx does not even return whether one was queued). ensureWindow opens a window for ANY real entry
+      // left without one (a failed or null-id create, a recorded window lost across a restart, until the 30 s alarm
+      // retries), focused and charged to WINDOW_BUDGET — or, with the budget spent, rejects it with Q24. Calling it on
+      // a notice made that happen on "X granted elsewhere" and not on "X unknown": an observable difference (P1).
       if ('accepted' in r) await ensureWindow(ext, deps);
       return;
     }

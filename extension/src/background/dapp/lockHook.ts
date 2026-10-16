@@ -3,6 +3,8 @@ import {BLOCKED_KEY, blockedOf, isBlocked} from './blocked';
 import {GRANTS_KEY, MAX_GRANTS, grantsOf} from './grants';
 import {deliver, liveOrigins, runtimeFor, sendChange} from './ports';
 import {DAPP_SESSION_KEY, EMPTY_SESSION, readDappSession, type Entry} from './store';
+import {promised, restartAnswer} from './queue';
+import {markDue} from '../pendingStore';
 
 /**
  * The lock hook (spec §2.4, review H3, review 2 M6). autolock.ts's lock() IS the hook: every lock — the auto-lock
@@ -11,7 +13,8 @@ import {DAPP_SESSION_KEY, EMPTY_SESSION, readDappSession, type Entry} from './st
  *  1. read the queue, the recorded window and which open ports' origins hold a grant;
  *  2. clear the session (keys, session grants, queue, undo buffer);
  *  3. write back the answered entries plus every formerly open entry answered `rejected` (a `deciding` one as a
- *     restart, §1.5 — nothing has left the extension), so a relay's resume still finds them;
+ *     restart, §1.5 — nothing has left the extension; B1c-2: a send with its signed bytes recorded is answered its
+ *     signature instead), so a relay's resume still finds them;
  * then, outside it: 4. close the approval window (errors ignored); 5. deliver the answers and send `change []` to the
  * ports of origins that held a grant — and only to those (review M3: an ungranted page learns nothing of lock timing),
  * never a blocked host's (final review m1).
@@ -59,10 +62,14 @@ export async function lockInSection(ext: Ext, now: number): Promise<LockOutcome>
   const answered: Entry[] = [];
   const kept = s.queue.map(e => {
     if (e.state === 'answered') return e;
-    const done: Entry = {...e, state: 'answered', answer: {error: 'rejected'}, answeredAt: now};
+    // A send whose signed bytes are recorded is answered its signature (B1c-2, C17): the broadcast still runs.
+    const done: Entry = {...e, state: 'answered', answer: e.state === 'deciding' ? restartAnswer(e) : {error: 'rejected'}, answeredAt: now};
     answered.push(done);
     return done;
   });
+  // Review 1 M1: a send answered its signature here is owed to the route before the answer is written back. A failed
+  // write is logged and the answer kept: the effect still running broadcasts it (R15); only a stopped one leaves it unsent.
+  await markDue(ext, promised(answered)).catch(e => console.warn('dApp lock hook: a promised send was not marked due', e));
   if (kept.length > 0) await ext.session.set(DAPP_SESSION_KEY, {...EMPTY_SESSION, queue: kept});
   return {windowId: s.window?.id ?? null, answered, notify};
 }
