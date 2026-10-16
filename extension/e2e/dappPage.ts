@@ -74,6 +74,12 @@ export async function serveDapp(ctx: BrowserContext): Promise<DappServer> {
 type Result = {ok: true; value: unknown} | {ok: false; code: unknown; message: string};
 /** adapterSignAll's own failure shape (review fix minor): the adapter's error TYPE, not the shared Result's. */
 type NamedFailure = {ok: false; message: string; name: string | undefined};
+/** B1c-2 Task 10 fix round 1 (I1): one instruction of a custom transaction (`customSignTx`, below). */
+export interface RawIx {
+  programId: string;
+  keys: {pubkey: string; isSigner: boolean; isWritable: boolean}[];
+  data: number[];
+}
 declare const dapp: {
   names(): string[];
   features(): string[];
@@ -92,6 +98,7 @@ declare const dapp: {
   adapterSend(blockhash: string): Promise<Result>;
   raw(type: string, payload: Record<string, unknown>): Promise<unknown>;
   rawTx(account: string, blockhash: string): string;
+  customSign(blockhash: string, payer: string, ixs: RawIx[]): Promise<Result>;
 };
 
 /** A dApp tab at `origin`, its Wallet Standard registry ready (Noctura found, or not). */
@@ -113,6 +120,10 @@ export const sign = (p: Page, text: string, o: {base64?: boolean} = {}) => p.eva
 /** B1c-2: the test dApp's transaction calls (e2e/fixtures/dapp/page.ts), each a v0 transfer at `blockhash`. */
 export const signTx = (p: Page, count: number, blockhash: string) => p.evaluate(({n, b}) => dapp.signTx(n, b), {n: count, b: blockhash});
 export const sendTx = (p: Page, blockhash: string, lamports: number) => p.evaluate(({b, l}) => dapp.send(b, l), {b: blockhash, l: lamports});
+/** B1c-2 Task 10 fix round 1 (I1): a transaction from arbitrary instructions, through the real solana:signTransaction
+ * feature — the decoder's own-safety-relevant states (an unknown program, a known program's undecoded instruction,
+ * an SPL token transfer, a no-balance-change approve); `payer` need not be the connected account. */
+export const customSignTx = (p: Page, blockhash: string, payer: string, ixs: RawIx[]) => p.evaluate(({b, pk, i}) => dapp.customSign(b, pk, i), {b: blockhash, pk: payer, i: ixs});
 /** A transaction request posted straight to the relay (any script on a page can), naming `account`. */
 export const rawSignTx = (p: Page, account: string, blockhash: string) => p.evaluate(({a, b}) => dapp.raw('page.signTransaction', {account: a, transactions: [dapp.rawTx(a, b)]}), {a: account, b: blockhash});
 export const adapter = {

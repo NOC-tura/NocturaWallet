@@ -248,9 +248,18 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     const accounts = (addresses ?? []).map(a => {
       if (a === payer) return {lamports: after, owner: SYSTEM_PROGRAM, data: ['', 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 0};
       const t = tokenAccountAt(a);
-      if (t === null) return null;
-      const amount = BigInt(t.amount) - (tokenOut.get(a) ?? 0n);
-      return {lamports: TOKEN_ACCOUNT_RENT, owner: TOKEN_PROGRAM, data: [base64.encode(tokenAccountData(t.mint, t.owner, amount)), 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 165};
+      if (t !== null) {
+        const amount = BigInt(t.amount) - (tokenOut.get(a) ?? 0n);
+        return {lamports: TOKEN_ACCOUNT_RENT, owner: TOKEN_PROGRAM, data: [base64.encode(tokenAccountData(t.mint, t.owner, amount)), 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 165};
+      }
+      // B1c-2 Task 10 fix round 1 (test-only, additive): a requested address this transaction's own instructions
+      // never touch — not the payer, not a seeded token account (a connected account that merely co-signs a
+      // transaction it does not pay for, e.g. a sponsored approve) — keeps its current lamports, exactly as
+      // getMultipleAccounts already reports it, never null (null reads, one level up in simulateTransactions.ts,
+      // as the whole account having vanished). No existing spec requests simulateTransaction.accounts for a
+      // non-payer, non-token address, so this adds coverage without changing any address's existing response.
+      const lamports = lamportsOf(a);
+      return lamports > 0 ? {lamports, owner: SYSTEM_PROGRAM, data: ['', 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 0} : null;
     });
     return {context: context(), value: {err: null, logs: ['Program 11111111111111111111111111111111 success'], accounts, unitsConsumed: 450, returnData: null}};
   };
@@ -307,11 +316,19 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
         return {context: context(), value: tokenAccountsOf(params[0] as string, params[1] as {mint?: string; programId?: string} | undefined)};
       }
       case 'getMultipleAccounts':
-        // Each address as the node reports it: a system account holding its lamports, or null when it holds
-        // none (the import probe reads balances this way — the same `lamports` table as getBalance).
+        // Each address as the node reports it: a token account listed in `tokenAccounts` (B1c-2 Task 10 fix round
+        // 1, test-only, additive — getAccountInfo already does this below; getAccountsData is simulateTransactions'
+        // OWN pre-state read, immediately before a dApp approval's simulation — mirrored here so a seeded token
+        // account's PRE amount is real, not the generic empty-data shape, for a balance delta to come out correct.
+        // No existing spec requests a seeded token-account address through getMultipleAccounts/getMultipleLamports —
+        // only getAccountsData does, and only from background/dapp/simulate.ts — so this is additive only), else a
+        // system account holding its lamports, or null when it holds none (the import probe reads balances this
+        // way — the same `lamports` table as getBalance).
         return {
           context: context(),
           value: (params[0] as string[]).map(a => {
+            const t = tokenAccountAt(a);
+            if (t !== null) return {lamports: TOKEN_ACCOUNT_RENT, owner: TOKEN_PROGRAM, data: [base64.encode(tokenAccountData(t.mint, t.owner, BigInt(t.amount))), 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 165};
             const lamports = lamportsOf(a);
             return lamports > 0 ? {lamports, owner: '11111111111111111111111111111111', data: ['', 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 0} : null;
           }),

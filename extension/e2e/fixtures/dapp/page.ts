@@ -2,7 +2,7 @@ import {getWallets} from '@wallet-standard/app';
 import type {Wallet, WalletAccount} from '@wallet-standard/base';
 import {isWalletAdapterCompatibleStandardWallet, type WalletAdapterCompatibleStandardWallet} from '@solana/wallet-adapter-base';
 import {StandardWalletAdapter} from '@solana/wallet-standard-wallet-adapter-base';
-import {Connection, PublicKey, SystemProgram, TransactionMessage, VersionedTransaction} from '@solana/web3.js';
+import {Connection, PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction} from '@solana/web3.js';
 
 /**
  * The test dApp (B1c §6.3): the script of the page E2E serves at https://dapp.test (and the other fixture hosts) through
@@ -72,6 +72,32 @@ const RECIPIENT = '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4';
 function transferTx(from: string, blockhash: string, lamports: number, to = RECIPIENT): VersionedTransaction {
   const payer = new PublicKey(from);
   const message = new TransactionMessage({payerKey: payer, recentBlockhash: blockhash, instructions: [SystemProgram.transfer({fromPubkey: payer, toPubkey: new PublicKey(to), lamports})]}).compileToV0Message();
+  return new VersionedTransaction(message);
+}
+
+/**
+ * B1c-2 Task 10 fix round 1 (I1): a transaction built from arbitrary instructions, for the decoder's own
+ * safety-relevant shots (an unknown program, a known program's instruction the decoder does not decode the
+ * fields of, an SPL token transfer, a no-balance-change approve) — `payer` is a parameter, never `from`, so the
+ * no-balance-change case can name a fee payer other than the connected account (the one thing this fixture's
+ * other builders never need).
+ */
+interface RawIx {
+  programId: string;
+  keys: {pubkey: string; isSigner: boolean; isWritable: boolean}[];
+  data: number[];
+}
+function customTx(payer: string, blockhash: string, ixs: readonly RawIx[]): VersionedTransaction {
+  const payerKey = new PublicKey(payer);
+  const instructions = ixs.map(
+    ix =>
+      new TransactionInstruction({
+        programId: new PublicKey(ix.programId),
+        keys: ix.keys.map(k => ({pubkey: new PublicKey(k.pubkey), isSigner: k.isSigner, isWritable: k.isWritable})),
+        data: Uint8Array.from(ix.data) as unknown as Buffer,
+      }),
+  );
+  const message = new TransactionMessage({payerKey, recentBlockhash: blockhash, instructions}).compileToV0Message();
   return new VersionedTransaction(message);
 }
 
@@ -207,6 +233,20 @@ const dapp = {
       return {ok: false, message: String(err.message), name: typeof err.name === 'string' ? err.name : undefined};
     }
   },
+  /**
+   * B1c-2 Task 10 fix round 1 (I1): one transaction from arbitrary instructions, through the real
+   * solana:signTransaction feature (never the raw relay — these are the decoder's own states, reached the way a
+   * real dApp reaches them). `payer` names the fee payer; the connected account need only be a required signer.
+   */
+  customSign: (blockhash: string, payer: string, ixs: RawIx[]): Promise<Result> =>
+    run(async () => {
+      const w = noctura();
+      const account = w.accounts[0];
+      if (account === undefined) throw new Error('not connected');
+      const tx = customTx(payer, blockhash, ixs);
+      const [out] = await (w.features['solana:signTransaction'] as SignTransaction).signTransaction({account, transaction: tx.serialize(), chain: 'solana:mainnet'});
+      return b64(out?.signedTransaction ?? new Uint8Array());
+    }),
   /** Review fix I3: the signature AND the original message bytes (base64) this page built before sending. */
   adapterSend: (blockhash: string): Promise<Result> =>
     run(async () => {

@@ -1,7 +1,7 @@
 import {test, expect, type Locator, type Page, type Worker} from '@playwright/test';
 import {base58} from '@scure/base';
 import {contained, launchPopup, seedUnlockedWallet, MAIN, SAVINGS, type Harness} from './popupHarness';
-import {DAPP_HOSTS, approvalWindow, connect, noWindow, openDapp, rawSignTx, sendTx, serveDapp, signTx, type DappServer} from './dappPage';
+import {DAPP_HOSTS, approvalWindow, connect, customSignTx, noWindow, openDapp, rawSignTx, sendTx, serveDapp, signTx, type DappServer} from './dappPage';
 import {shot} from './visualTab';
 
 // Spec B1c §6.4 (B1c-2): every #48 state B1c-2 builds, the origin-mismatch notice, the popup's re-authentication strip
@@ -18,9 +18,29 @@ const set = (sw: Worker, o: object) => sw.evaluate(x => chrome.storage.local.set
 const fresh = (sw: Worker) => set(sw, {v1_dapp_limits: {rejections: [], cooldowns: [], windows: [], notice: false}});
 const grant = (origin: string) => ({origin, account: MAIN.publicKey, scope: 'persistent', connectedAt: Date.now() - 86_400_000, lastUsedAt: Date.now(), recent: []});
 
-/** A window state: its own copy first, then the shot (the pointer off the column; `ready`, a held CTA, awaited enabled). */
+// Fix round 1 (I1): fixed, deterministic addresses for the decoder's own-safety-relevant shots — the same style as
+// BLOCKHASH above (a fixed byte fill, never a randomly generated string that might not decode as a pubkey).
+const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+const NOC_MINT = 'B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW';
+const UNKNOWN_PROGRAM = base58.encode(new Uint8Array(32).fill(6));
+const MINT_ADDR = base58.encode(new Uint8Array(32).fill(3));
+const SOURCE_TOKEN_ACCT = base58.encode(new Uint8Array(32).fill(4));
+const DEST_TOKEN_ACCT = base58.encode(new Uint8Array(32).fill(5));
+/** An instruction's amount field, 8 bytes little-endian (SPL Token's own layout). */
+const u64le = (n: bigint): number[] => {
+  const b = new Uint8Array(8);
+  new DataView(b.buffer).setBigUint64(0, n, true);
+  return Array.from(b);
+};
+
+/**
+ * A window state: its own copy first, every sticky-bar button wholly in the 412 × 720 viewport (fix round 1, I2:
+ * every window shot, not only some), then the shot (the pointer off the column; `ready`, a held CTA, awaited
+ * enabled).
+ */
 async function still(win: Page, name: string, visible: Locator, ready?: Locator): Promise<void> {
   await expect(visible).toBeVisible();
+  await barInView(win);
   await win.mouse.move(0, 0);
   await shot(win, name, {fullPage: false, ...(ready === undefined ? {} : {ready})});
 }
@@ -102,9 +122,11 @@ test('visual · #48: simulating, simulated, a batch, re-authentication, approvin
     release();
     // simulated: the changes, the decoded instructions, the fee, the origin pill.
     await expect(win.getByText('Balance changes (post-simulation)')).toBeVisible({timeout: 10_000});
-    await barInView(win);
-    await still(win, '48-simulated', win.getByText('Request from jup.ag · matches active session'), win.getByRole('button', {name: 'Approve', exact: true}));
+    await still(win, '48-simulated', win.getByText('Balance changes (post-simulation)'), win.getByRole('button', {name: 'Approve', exact: true}));
     await win.locator('.s9-origin-pill').evaluate(e => e.scrollIntoView({block: 'end'}));
+    // Fix round 1 (minor): the origin pill is below the fold in 48-simulated (`toBeVisible` does not require the
+    // viewport); asserted here, scrolled into view, where it is actually part of the shot.
+    await expect(win.getByText('Request from jup.ag · matches active session')).toBeInViewport();
     await still(win, '48-simulated-instructions', win.getByText('Network fee'));
     // approving: the decision held.
     await win.evaluate(() => void ((window as unknown as {__holdDecide: boolean}).__holdDecide = true));
@@ -118,7 +140,6 @@ test('visual · #48: simulating, simulated, a batch, re-authentication, approvin
     win = await windowFor(h, () => signTx(jup, 3, BLOCKHASH));
     await expect(win.getByText('Transaction 3 of 3')).toBeAttached({timeout: 10_000});
     await expect(win.getByText('Balance changes (post-simulation)').first()).toBeVisible({timeout: 10_000});
-    await barInView(win);
     await still(win, '48-batch', win.getByText('Transaction 1 of 3'), win.getByRole('button', {name: 'Approve', exact: true}));
     await dismiss(win);
 
@@ -154,7 +175,6 @@ test('visual · #48: simulating, simulated, a batch, re-authentication, approvin
     await fresh(h.sw);
     win = await windowFor(h, () => signTx(jup, 1, BLOCKHASH));
     await expect(win.getByText("Couldn't simulate")).toBeVisible({timeout: 10_000});
-    await barInView(win);
     await still(win, '48-couldnt-simulate', win.getByText('{"InstructionError":[2,{"Custom":1}]}'));
     await dismiss(win);
     h.fake.simulateErr = 'BlockhashNotFound';
@@ -175,12 +195,102 @@ test('visual · #48: simulating, simulated, a batch, re-authentication, approvin
     h.fake.network = 'ok';
     await dismiss(win);
 
-    // A lookalike origin (granted through "Connect anyway"): the banner, the flipped bar, the confirm.
+    // The decoder's most safety-relevant displays (fix round 1, I1): an unknown program, a known program's
+    // instruction with no decoded fields, an SPL token transfer, a transaction moving no SOL or token balance at
+    // all, signAndSendTransaction's own copy, the Q17 "Block this site" offer, and a lookalike whose simulation
+    // failed.
     const tensr = await granted(h, 'https://tensr.trade');
+
+    // An unknown program (B1 §3): the whole address in groups of four, "unknown program".
+    await fresh(h.sw);
+    win = await windowFor(h, () => customSignTx(jup, BLOCKHASH, MAIN.publicKey, [{programId: UNKNOWN_PROGRAM, keys: [{pubkey: MAIN.publicKey, isSigner: true, isWritable: true}], data: [9, 9, 9, 9]}]));
+    await expect(win.getByText('Balance changes (post-simulation)')).toBeVisible({timeout: 10_000});
+    const unknownProgram = win.getByText('unknown program');
+    await expect(unknownProgram).toBeVisible();
+    await still(win, '48-unknown-program', unknownProgram, win.getByRole('button', {name: 'Approve', exact: true}));
+    await dismiss(win);
+
+    // A known program's instruction the decoder names but does not decode the fields of (fix round 1, I3: mintTo).
+    await fresh(h.sw);
+    win = await windowFor(h, () =>
+      customSignTx(jup, BLOCKHASH, MAIN.publicKey, [
+        {programId: TOKEN_PROGRAM, keys: [{pubkey: MINT_ADDR, isSigner: false, isWritable: true}, {pubkey: DEST_TOKEN_ACCT, isSigner: false, isWritable: true}, {pubkey: MAIN.publicKey, isSigner: true, isWritable: false}], data: [7]},
+      ]),
+    );
+    await expect(win.getByText('Balance changes (post-simulation)')).toBeVisible({timeout: 10_000});
+    const notDecoded = win.getByText('Details not decoded — check them on the site before approving.');
+    await expect(notDecoded).toBeVisible();
+    await still(win, '48-not-decoded', notDecoded, win.getByRole('button', {name: 'Approve', exact: true}));
+    await dismiss(win);
+
+    // An SPL token transfer: the token row, its known decimals (NOC).
+    await fresh(h.sw);
+    h.fake.tokenAccounts.set(MAIN.publicKey, [{pubkey: SOURCE_TOKEN_ACCT, mint: NOC_MINT, amount: '5000000000', decimals: 9}]);
+    h.fake.tokenAccounts.set(RECIPIENT, [{pubkey: DEST_TOKEN_ACCT, mint: NOC_MINT, amount: '1000000000', decimals: 9}]);
+    win = await windowFor(h, () =>
+      customSignTx(jup, BLOCKHASH, MAIN.publicKey, [
+        {programId: TOKEN_PROGRAM, keys: [{pubkey: SOURCE_TOKEN_ACCT, isSigner: false, isWritable: true}, {pubkey: DEST_TOKEN_ACCT, isSigner: false, isWritable: true}, {pubkey: MAIN.publicKey, isSigner: true, isWritable: false}], data: [3, ...u64le(1_000_000_000n)]},
+      ]),
+    );
+    await expect(win.getByText('Balance changes (post-simulation)')).toBeVisible({timeout: 10_000});
+    const nocRow = win.locator('.s9-bal-row', {hasText: 'NOC'});
+    await expect(nocRow).toBeVisible();
+    await still(win, '48-token-transfer', nocRow, win.getByRole('button', {name: 'Approve', exact: true}));
+    await dismiss(win);
+
+    // No SOL or token balance change at all (R2, owner-delegated): an allowance (approve), paid for by another
+    // signer — the connected account only co-signs, so its own balance holds still.
+    await fresh(h.sw);
+    win = await windowFor(h, () =>
+      customSignTx(jup, BLOCKHASH, SAVINGS.publicKey, [
+        {programId: TOKEN_PROGRAM, keys: [{pubkey: SOURCE_TOKEN_ACCT, isSigner: false, isWritable: true}, {pubkey: RECIPIENT, isSigner: false, isWritable: false}, {pubkey: MAIN.publicKey, isSigner: true, isWritable: false}], data: [4, ...u64le(500_000_000n)]},
+      ]),
+    );
+    const noChanges = win.getByText('No SOL or token balance changes — review the instructions below.');
+    await expect(noChanges).toBeVisible({timeout: 10_000});
+    await still(win, '48-no-balance-change', noChanges, win.getByRole('button', {name: 'Approve', exact: true}));
+    await dismiss(win);
+
+    // signAndSendTransaction's own copy: Noctura broadcasts, never the site.
+    await fresh(h.sw);
+    win = await windowFor(h, () => sendTx(jup, BLOCKHASH, 5));
+    const sendsNoctura = win.getByText('Noctura sends this transaction as soon as you approve.');
+    await expect(sendsNoctura).toBeVisible({timeout: 10_000});
+    await still(win, '48-sign-and-send', sendsNoctura, win.getByRole('button', {name: 'Approve', exact: true}));
+    await dismiss(win);
+
+    // Q17: "Block this site", offered on the third request after two rejections from this host.
+    await fresh(h.sw);
+    win = await windowFor(h, () => signTx(jup, 1, BLOCKHASH));
+    await expect(win.getByText('Balance changes (post-simulation)')).toBeVisible({timeout: 10_000});
+    await dismiss(win);
+    win = await windowFor(h, () => signTx(jup, 1, BLOCKHASH));
+    await expect(win.getByText('Balance changes (post-simulation)')).toBeVisible({timeout: 10_000});
+    await dismiss(win);
+    win = await windowFor(h, () => signTx(jup, 1, BLOCKHASH));
+    const blockOffer = win.getByRole('button', {name: 'Block this site'});
+    await expect(blockOffer).toBeVisible({timeout: 10_000});
+    await still(win, '48-block-offer', blockOffer, win.getByRole('button', {name: 'Approve', exact: true}));
+    await dismiss(win);
+
+    // A lookalike whose simulation failed: Reject and report + Reject only — never Approve anyway. (The earlier
+    // Q21 block left `simulateErr` at 'BlockhashNotFound' — reset to the default failure here, or this reads as
+    // expired, not failed.)
+    h.fake.simulateErr = {InstructionError: [2, {Custom: 1}]};
+    h.fake.simulateError = true;
+    await fresh(h.sw);
+    win = await windowFor(h, () => signTx(tensr, 1, BLOCKHASH));
+    await expect(win.getByText("Couldn't simulate")).toBeVisible({timeout: 10_000});
+    await expect(win.getByText('It looks like tensor.trade but is a different site.')).toBeVisible();
+    await expect(win.getByRole('button', {name: 'Approve anyway (not recommended)'})).toHaveCount(0);
+    await still(win, '48-lookalike-sim-failed', win.getByRole('button', {name: 'Reject and report'}));
+    await dismiss(win);
+    h.fake.simulateError = false;
+
+    // A lookalike origin (granted through "Connect anyway"): the banner, the flipped bar, the confirm.
     await fresh(h.sw);
     win = await windowFor(h, () => signTx(tensr, 1, BLOCKHASH));
     await expect(win.getByText('Balance changes (post-simulation)')).toBeVisible({timeout: 10_000});
-    await barInView(win);
     await still(win, '48-lookalike', win.getByText('It looks like tensor.trade but is a different site.'), win.getByRole('button', {name: 'Approve anyway (not recommended)'}));
     await win.getByRole('button', {name: 'Approve anyway (not recommended)'}).click();
     await still(win, '48-lookalike-confirm', win.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
@@ -215,7 +325,6 @@ test('visual · #48: simulating, simulated, a batch, re-authentication, approvin
     await win.getByRole('button', {name: 'Reject', exact: true}).click();
     await expect(disposable).resolves.toEqual({ok: false, code: 4001, message: 'The user rejected the request.'});
     await expect(win.getByText('Request blocked automatically')).toBeVisible({timeout: 10_000});
-    await barInView(win);
     // The detail's tones in a real browser (the card's own `.v` colour must not win): the session green, the request red.
     const tone = (i: number) => win.locator('.s9-payload-card .row .v').nth(i).evaluate(e => getComputedStyle(e).color);
     // The design-system's own tones, read from a probe element of each class (positive references).
