@@ -220,7 +220,9 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
   // current by then (the background answers `stale` for a newer one; §2.3's own fail-closed check, named twice).
   const [confirmSimId, setConfirmSimId] = useState<string | null>(null);
   // Review 1 L4: the last approval was refused `stale` (a refresh landed): say why the click did nothing, until the next one.
-  const [stale, setStale] = useState(false);
+  // Final review I3: or refused `out-of-date` (the simulation it named is the newest, but old; its refresh has not
+  // landed) — that line is true only while that simulation is the one shown, so it goes when the refresh lands.
+  const [refused, setRefused] = useState<{kind: 'stale' | 'out-of-date'; simId: string} | null>(null);
   const simId = detail !== null && detail.simulation.status === 'ok' ? detail.simulation.id : 'none';
   const armed = useArmed([request.requestId, simId, detail?.reauth?.state ?? 'none', confirming, busy].join('|'));
   const reject = () => onDecide({decision: 'reject'});
@@ -271,12 +273,15 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
     );
   }
   const approve = async (overrideSimId?: string) => {
-    setStale(false);
+    setRefused(null);
     const sentSimId = overrideSimId ?? (detail.simulation.status === 'ok' ? detail.simulation.id : undefined);
     const reply = await onDecide({decision: 'approve', account: detail.account.publicKey, ...(sentSimId !== undefined ? {simulation: sentSimId} : {})});
     if (!alive.current) return;
-    if (typeof reply === 'object' && reply !== null && 'error' in reply && reply.error === 'stale') setStale(true);
+    const error = typeof reply === 'object' && reply !== null && 'error' in reply ? reply.error : null;
+    if (error === 'stale' || error === 'out-of-date') setRefused({kind: error, simId: sentSimId ?? 'none'});
   };
+  const stale = refused !== null && refused.kind === 'stale';
+  const outOfDate = refused !== null && refused.kind === 'out-of-date' && refused.simId === simId;
   const n = detail.transactions.length;
   const overline = busy ? TX_TEXT.overlineApproving : lookalike ? TX_TEXT.overlineLookalike : TX_TEXT.overline;
   return (
@@ -290,11 +295,11 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
         {lookalike ? <LookalikeBanner site={request.site} host={request.host} /> : null}
         {/* Review 1 L7: who broadcasts — the design draws one screen for both requests. */}
         <p className="noc-caption app-muted app-tx-sends">{detail.kind === 'signAndSendTransaction' ? TX_TEXT.sendsNoctura : TX_TEXT.sendsSite}</p>
-        {stale && ready ? (
+        {(stale || outOfDate) && ready ? (
           <div className="s9-flag-banner warn app-tx-block" role="status">
             <ExtIcon name="alert-triangle" size={18} />
             <div>
-              <p className="head">{TX_TEXT.stale}</p>
+              <p className="head">{stale ? TX_TEXT.stale : TX_TEXT.outOfDate}</p>
             </div>
           </div>
         ) : null}

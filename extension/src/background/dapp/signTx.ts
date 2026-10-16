@@ -182,12 +182,18 @@ export async function txDetail(ext: Ext, e: Entry, session: readonly {publicKey:
 export const dappDigest = (e: Pick<Entry, 'requestId' | 'account' | 'transactions'>): string => digestOf('dapp', {requestId: e.requestId, account: e.account, transactions: e.transactions});
 
 /** The decision's checks for a transaction request (§2.3's table, extended by §3.3): null when approvable. */
-export type TxRefusal = 'not-simulated' | 'stale' | 'simulation-failed' | 'blockhash-expired';
+export type TxRefusal = 'not-simulated' | 'stale' | 'out-of-date' | 'simulation-failed' | 'blockhash-expired';
 export function txRefused(e: Entry, simulation: string | null, now: number): TxRefusal | null {
   if (e.sim?.status !== 'ok') return 'not-simulated';
   const sim = e.sim.sim;
   // C13: the window names the simulation it showed; another one (a refresh landed) or an old one is not approvable.
-  if (simulation !== sim.id || now - sim.at >= SIM_VALID_MS) return 'stale';
+  // Final review I3: two refusals, so the window's line stays true — `stale` when the window named another simulation
+  // than the newest (what it showed is no longer what would be signed: "The transaction changed…"); `out-of-date` when
+  // it named the newest one but that is SIM_VALID_MS old (its refresh has not landed yet — nothing changed: "This
+  // simulation is out of date. Wait a moment for it to refresh."). The id is checked first: another id is `stale`
+  // whatever its age.
+  if (simulation !== sim.id) return 'stale';
+  if (now - sim.at >= SIM_VALID_MS) return 'out-of-date';
   if (sim.outcomes.some(o => !o.ok && o.error === 'expired')) return 'blockhash-expired';
   if (sim.outcomes.some(o => !o.ok)) return 'simulation-failed';
   return null;

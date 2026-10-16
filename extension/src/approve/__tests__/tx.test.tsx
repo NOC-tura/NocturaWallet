@@ -222,6 +222,48 @@ describe('#48 dapp-tx-approval', () => {
     expect(page.answersFor(requestId)).toHaveLength(1);
   });
 
+  // Final review I3: a simulation that is merely SIM_VALID_MS old (its refresh has not landed — the proxy is slow) is
+  // refused `out-of-date`, and the window says so truthfully — never "the transaction changed". The line goes once the
+  // refreshed simulation is shown; that one then approves.
+  it('the newest simulation grown old while its refresh is slow (out-of-date): its own line, never the “changed” one; the refresh lands, the line goes, Approve signs', async () => {
+    const STALE = 'The transaction changed while you were reviewing. Review it again before approving.';
+    const OLD = 'This simulation is out of date. Wait a moment for it to refresh.';
+    const w = await openWindow();
+    await known(w);
+    const {page, requestId} = await w.signTx('https://jup.ag', [v0()]);
+    w.show();
+    await simulated(w, 'Balance changes (post-simulation)');
+    await armedAfter();
+    const first = (await readDappSession(w.ext)).queue[0]?.sim;
+    // The refresh is held (a slow proxy): the stored simulation stays the first one while the clock passes 40 s.
+    let release!: () => void;
+    const gate = new Promise<void>(r => (release = r));
+    const simulate = w.deps.reader.simulateTransaction;
+    w.deps.reader.simulateTransaction = async (...a) => {
+      await gate;
+      return simulate(...a);
+    };
+    w.deps.clock.t += 40_000;
+    fireEvent.click(cta('Approve'));
+    await screen.findByText(OLD);
+    expect(screen.queryByText(STALE)).toBeNull();
+    expect(page.answersFor(requestId)).toEqual([]);
+    expect((await readDappSession(w.ext)).queue[0]?.sim).toEqual(first);
+    expect(unstyled()).toEqual([]);
+    // The window's read starts the (held) refresh; it lands; the window's next read shows it: the line goes, Approve
+    // is held, then signs.
+    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+    release();
+    await waitFor(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
+    await act(async () => void window.dispatchEvent(new Event('focus')));
+    await waitFor(() => expect(screen.queryByText(OLD)).toBeNull());
+    expect(screen.queryByText(STALE)).toBeNull();
+    await armedAfter();
+    fireEvent.click(cta('Approve'));
+    await waitFor(() => expect(w.closed.n).toBe(1));
+    expect(page.answersFor(requestId)).toHaveLength(1);
+  });
+
   it('C15: a new simulation re-holds Approve; Enter never approves', async () => {
     const w = await openWindow();
     await known(w);

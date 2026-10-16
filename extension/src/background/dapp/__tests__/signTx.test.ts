@@ -79,7 +79,9 @@ describe('a transaction request’s simulation (dapp.pending)', () => {
 
 // §2.3's table, extended by §3.3 (C13): the window names the simulation it showed.
 describe('dapp.decide for a transaction request', () => {
-  it('refused before a simulation answered, for another simulation than the newest, for one SIM_VALID_MS old; positive control: approved', async () => {
+  // Final review I3: `stale` only when the window named another simulation than the newest (the transaction's review
+  // changed under it); the newest one merely SIM_VALID_MS old is `out-of-date` (nothing changed — a refresh is due).
+  it('refused before a simulation answered, for another simulation than the newest (stale), for the newest one SIM_VALID_MS old (out-of-date); positive control: approved', async () => {
     const c = await txScene({known: [RECIPIENT]});
     const r = await c.signTx('t', [v0()]);
     const requestId = String(r?.requestId);
@@ -87,8 +89,13 @@ describe('dapp.decide for a transaction request', () => {
     const id = String((await c.simulated()).request?.tx?.simulation.id);
     expect(await c.approve(requestId)).toEqual({ok: false, error: 'stale'});
     expect(await c.approve(requestId, 'AAAAAAAAAAAAAAAAAAAAAA')).toEqual({ok: false, error: 'stale'});
-    c.deps.clock.t += SIM_VALID_MS;
-    expect(await c.approve(requestId, id)).toEqual({ok: false, error: 'stale'});
+    c.deps.clock.t += SIM_VALID_MS - 1;
+    expect(await c.approve(requestId, 'AAAAAAAAAAAAAAAAAAAAAA')).toEqual({ok: false, error: 'stale'});
+    c.deps.clock.t += 1;
+    expect(await c.approve(requestId, id)).toEqual({ok: false, error: 'out-of-date'});
+    // Another id AND old: the id decides — the window showed something other than the newest simulation.
+    expect(await c.approve(requestId, 'AAAAAAAAAAAAAAAAAAAAAA')).toEqual({ok: false, error: 'stale'});
+    expect(c.page.answersFor(requestId)).toEqual([]);
     c.deps.clock.t -= SIM_VALID_MS;
     expect(await c.approve(requestId, id)).toEqual({ok: true});
     expect(c.page.answersFor(requestId)).toHaveLength(1);

@@ -137,6 +137,12 @@ export const TX_TEXT = {
   sendsNoctura: 'Noctura sends this transaction as soon as you approve.',
   /** Owner-delegated (controller, 2026-10-15; review 1 L4): an approval refused `stale` — a refresh landed between the read and the click. */
   stale: 'The transaction changed while you were reviewing. Review it again before approving.',
+  /**
+   * Controller copy (final review I3, 2026-10-16; flagged to the owner): an approval refused `out-of-date` — the window
+   * named the newest simulation, but it is 40 s old and its refresh has not landed (a slow proxy). Nothing changed, so
+   * the `stale` line above would be untrue.
+   */
+  outOfDate: 'This simulation is out of date. Wait a moment for it to refresh.',
   instructions: 'Instructions',
   /** Fix round 1 (promoted minor 2): a v0 transaction whose lookup table is not yet resolved — instructions decode only once the first simulation answers. */
   instructionsPending: 'Instructions appear once the transaction is simulated.',
