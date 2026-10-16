@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {act, cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
 import {ed25519} from '@noble/curves/ed25519.js';
 import {base64} from '@scure/base';
@@ -23,6 +25,12 @@ const texts = (sel: string) => [...document.querySelectorAll(sel)].map(e => e.te
 const cta = (name: string | RegExp) => screen.getByRole('button', {name}) as HTMLButtonElement;
 const armedAfter = () => new Promise(r => setTimeout(r, ARM_MS + 50));
 const unstyled = () => unstyledClasses(document.querySelector('.app-approve')!, SELECTORS);
+/** A rule's declarations in the hand-written app.css (its exact selector), for the values the design draws. */
+const cssRule = (selector: string): string => {
+  const css = readFileSync(join(__dirname, '..', '..', 'app', 'app.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const at = css.split('}').find(r => r.split('{')[0]?.split(',').some(sel => sel.trim() === selector));
+  return at === undefined ? '' : (at.split('{')[1] ?? '').replace(/\s+/g, ' ').trim();
+};
 /** The recipient is known (no first-send re-authentication) unless a test says otherwise. */
 const known = (w: Awaited<ReturnType<typeof openWindow>>) => w.ext.local.set('v1_known_recipients', [{address: RECIPIENT, at: 1}]);
 afterEach(() => cleanup());
@@ -63,23 +71,26 @@ describe('#48 dapp-tx-approval', () => {
     // Fix round 1 (promoted minor 3, R5): Compute units / Network fee are computed locally — shown while still
     // simulating too (the limit and the fee do not need a live answer; only "consumed" does, so it reads "—").
     expect(texts('.s9-payload-card > .row .k')).toEqual(['Compute units', 'Network fee']);
-    expect(texts('.s9-payload-card > .row .v')).toEqual(['— / 200 000', '0.000 005 SOL']);
+    expect(texts('.s9-payload-card > .row .v')).toEqual(['— / 200 000', '0.000005 SOL']);
     expect(text('.app-tx-caption')).toBe('Simulation runs against the current slot before you see Approve. This is mandatory — no skip.');
     // Review 1 L7: who broadcasts — for signTransaction, the site.
     expect(text('.app-tx-sends')).toBe('The site sends this transaction itself after you approve.');
     const pending = cta(/Approve/);
     expect([pending.textContent, pending.disabled]).toEqual(['Approve· simulating', true]);
+    // Final review MUST-FIX 2: drawn at .4 while simulating (ix:18318) — its own class, only in this state.
+    expect(pending.className).toBe('btn btn-primary app-cta-wide app-cta-simulating');
     // ✕ disabled during the simulation, as drawn; Reject open.
     expect([cta('Close').disabled, cta('Reject').disabled]).toEqual([true, false]);
     expect(unstyled()).toEqual([]);
     release();
     await simulated(w, 'Balance changes (post-simulation)');
+    expect(cta('Approve').className).toBe('btn btn-primary app-cta-wide');
     expect(texts('.s9-bal-row .pri')).toEqual(['SOL']);
     expect(texts('.s9-bal-row .delta')).toEqual(['−0.001005']);
     expect(texts('.s9-bal-row .fiat')).toEqual(['$0.15']);
     expect(texts('.s9-payload-card .row .k')).toEqual(['Program 1', 'instruction', 'from', 'to', 'lamports', 'Compute units', 'Network fee']);
     expect(text('.s9-payload-card .app-tx-addr-label')).toBe('Your account: Main');
-    expect(texts('.s9-payload-card > .row .v')).toEqual(['450 / 200 000', '0.000 005 SOL']);
+    expect(texts('.s9-payload-card > .row .v')).toEqual(['450 / 200 000', '0.000005 SOL']);
     expect(text('.s9-origin-pill .body')).toBe('Request from jup.ag · matches active session');
     expect(document.querySelector('.s9-sim-banner')).toBeNull();
     expect(unstyled()).toEqual([]);
@@ -312,6 +323,47 @@ describe('#48 dapp-tx-approval', () => {
     w.show();
     await screen.findByText('This request can no longer be signed. Reject it and ask the site to try again.');
     expect(screen.getAllByRole('button').map(b => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Close', 'Reject']);
+    // Final review MUST-FIX 2: Q26 is a danger flag banner, as Q21 is — never a plain lede.
+    expect([text('.s9-flag-banner.danger .head'), document.querySelector('.s9-flag-banner.danger')?.getAttribute('role')]).toEqual(['This request can no longer be signed. Reject it and ask the site to try again.', 'alert']);
+    expect(document.querySelector('.app-approve-lede')).toBeNull();
+    expect(unstyled()).toEqual([]);
+  });
+
+  // Final review MUST-FIX 2 (design binding): the origin tile of a verified site in the brand gradient the design draws
+  // for it (#48 ix:18283 Jupiter, #46/#47 Magic Eden, Tensor; #49's own for Drift and Kamino); any other verified site
+  // keeps the accent tile, and an unknown or lookalike host never gets a brand's colours (nothing vouches for it).
+  it('origin tiles: Jupiter in its drawn gradient; another verified site the accent tile; a lookalike no brand', async () => {
+    const tile = () => document.querySelector('.s9-origin-card .ico')?.className;
+    for (const [origin, cls] of [
+      ['https://jup.ag', 'ico app-ico-verified app-brand-jupiter'],
+      ['https://raydium.io', 'ico app-ico-verified'],
+      ['https://tensr.trade', 'ico app-ico-lookalike'],
+      ['https://dapp.test', 'ico app-ico-unknown'],
+    ] as const) {
+      const w = await openWindow();
+      await known(w);
+      await w.signTx(origin, [v0()]);
+      w.show();
+      await simulated(w, 'Balance changes (post-simulation)');
+      expect([origin, tile()]).toEqual([origin, cls]);
+      expect(unstyled()).toEqual([]);
+      cleanup();
+    }
+    expect(cssRule('.s9-origin-card .ico.app-brand-jupiter')).toContain('linear-gradient(135deg, #FFC800, #FF7A00)');
+  });
+
+  it('the design minors’ own rules: Approve at .4 while simulating; "I understand the risk" never wraps', async () => {
+    expect(cssRule('.sticky-bar .btn.app-cta-simulating[disabled]')).toContain('opacity: 0.4');
+    expect(cssRule('.app-risk-actions .btn.app-nowrap')).toContain('white-space: nowrap');
+    const w = await openWindow();
+    await known(w);
+    await w.signTx('https://tensr.trade', [v0()]);
+    w.show();
+    await simulated(w, 'Balance changes (post-simulation)');
+    await armedAfter();
+    fireEvent.click(cta('Approve anyway (not recommended)'));
+    const sheet = await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
+    expect(within(sheet).getByRole('button', {name: 'I understand the risk'}).className).toBe('btn btn-destructive app-nowrap');
   });
 
   // Fix round 1, I1: `{kind: 'none'}` (a legitimate protocol-level absence) used to be rejected by the window's own

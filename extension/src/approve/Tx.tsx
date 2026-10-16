@@ -3,7 +3,7 @@ import {AddressGroups} from '../../../web/src/ui/AddressGroups';
 import {ExtIcon} from '../app/ui/ExtIcon';
 import {LockedButton} from '../app/ui/LockedButton';
 import {SkelCircle, SkelLine} from '../app/ui/Skeleton';
-import {feeUsd, shortAddress, showFee, showSol} from '../app/format';
+import {feeUsd, shortAddress, showSol} from '../app/format';
 import {fromBook} from '../app/addressBook';
 import {formatAmount} from '../shared/amount';
 import type {AddressLabel, BalanceChange, Decision, DecodedInstruction, FieldValue, ProgramKey, RequestView, TxDetail, TxItem} from './client';
@@ -175,7 +175,9 @@ function Payload({item, labels}: {item: TxItem; labels: readonly AddressLabel[]}
       {item.feeLamports === null ? null : (
         <div className="row">
           <span className="k">{TX_TEXT.networkFee}</span>
-          <span className="v noc-numeral">{showFee(BigInt(item.feeLamports))} SOL</span>
+          {/* Final review MUST-FIX 2: one numeral style on #48 — the design's (ix:18302 "0.000050 SOL", the deltas'
+              "−0.0000050"): ungrouped digits for the fee as for the balance changes, never #27's grouped fee line. */}
+          <span className="v noc-numeral">{showSol(BigInt(item.feeLamports))} SOL</span>
         </div>
       )}
     </div>
@@ -261,7 +263,13 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
           <div className="app-origin-slot">
             <OriginCard site={request.site} origin={request.origin} host={request.host} />
           </div>
-          <p className="noc-body-sm app-muted app-approve-lede">{SIGN_TEXT.cannotSign}</p>
+          {/* Final review MUST-FIX 2: Q26 is drawn as Q21 is — a danger flag banner (#48's own `.s9-flag-banner danger`). */}
+          <div className="s9-flag-banner danger app-tx-block" role="alert">
+            <ExtIcon name="alert-triangle" size={18} />
+            <div>
+              <p className="head">{SIGN_TEXT.cannotSign}</p>
+            </div>
+          </div>
         </div>
         <Waiting n={waiting} />
         <div className="sticky-bar">
@@ -404,7 +412,8 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
               {TX_TEXT.approving}
             </button>
           ) : (
-            <ConfirmButton armed={armed && canApprove} className="btn btn-primary app-cta-wide" onPress={approve}>
+            // Final review MUST-FIX 2: drawn at .4 while simulating (ix:18318) — its own class, in that state only.
+            <ConfirmButton armed={armed && canApprove} className={simulating ? 'btn btn-primary app-cta-wide app-cta-simulating' : 'btn btn-primary app-cta-wide'} onPress={approve}>
               {TX_TEXT.approve}
               {simulating ? <span className="app-tx-sim-tag">{TX_TEXT.approveSimulating}</span> : null}
             </ConfirmButton>

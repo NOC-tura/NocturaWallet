@@ -37,6 +37,28 @@ export function siteLabel(origin: string, host: string): string {
   }
 }
 
+/**
+ * Final review MUST-FIX 2 (design binding): a verified site's tile in the brand gradient the design draws for it — the
+ * approval window's own mockups (#48 ix:18283 and #47 ix:17578 Jupiter, #46 ix:17467 Magic Eden, #47 ix:17711 Tensor,
+ * #48 ix:18414 Noctura) and, for the brands only #49 draws (Drift, Kamino), #49's tiles (ix:3885-3889), so a brand keeps
+ * one colour across the screens that draw it; where two screens draw one brand differently (Tensor), each keeps its
+ * own, as §9 rules for #37's and #49's holds. Keyed by the known list's name, which the background gives only for a
+ * verified host (C7) — an unknown or lookalike host never gets a brand's colours. Any other verified site keeps the
+ * accent tile.
+ */
+const BRAND_TILES: Readonly<Partial<Record<string, string>>> = {
+  Jupiter: 'app-brand-jupiter',
+  'Magic Eden': 'app-brand-magic-eden',
+  Tensor: 'app-brand-tensor',
+  Noctura: 'app-brand-noctura',
+  Drift: 'app-brand-drift',
+  Kamino: 'app-brand-kamino',
+};
+const verifiedTile = (name: string): string => {
+  const brand = BRAND_TILES[name];
+  return brand === undefined ? 'ico app-ico-verified' : `ico app-ico-verified ${brand}`;
+};
+
 /** The name's first character (C6: no favicon — the domain's initial; "?" for an unknown origin, as 47b draws it). */
 const initial = (name: string): string => (Array.from(name)[0] ?? '?').toUpperCase();
 
@@ -47,7 +69,7 @@ const initial = (name: string): string => (Array.from(name)[0] ?? '?').toUpperCa
 export function OriginCard({site, origin, host}: {site: Site; origin: string; host: string}) {
   return (
     <div className={site.kind === 'verified' ? 's9-origin-card' : site.kind === 'unknown' ? 's9-origin-card app-origin-unknown' : 's9-origin-card app-origin-lookalike'}>
-      <div className={site.kind === 'verified' ? 'ico app-ico-verified' : site.kind === 'unknown' ? 'ico app-ico-unknown' : 'ico app-ico-lookalike'} aria-hidden="true">
+      <div className={site.kind === 'verified' ? verifiedTile(site.name) : site.kind === 'unknown' ? 'ico app-ico-unknown' : 'ico app-ico-lookalike'} aria-hidden="true">
         {site.kind === 'unknown' ? '?' : initial(site.name)}
       </div>
       <div className="app-origin-text">
@@ -138,7 +160,8 @@ export function RiskConfirm({onCancel, onProceed, delay = CONFIRM_DELAY_MS}: {on
         <LockedButton className="btn btn-secondary" onPress={onCancel}>
           {WINDOW_TEXT.cancel}
         </LockedButton>
-        <ConfirmButton armed={ready && armed} className="btn btn-destructive" onPress={onProceed}>
+        {/* Final review MUST-FIX 2: "I understand the risk" on one line (app-nowrap), at every width the window has. */}
+        <ConfirmButton armed={ready && armed} className="btn btn-destructive app-nowrap" onPress={onProceed}>
           {WINDOW_TEXT.understand}
         </ConfirmButton>
       </div>

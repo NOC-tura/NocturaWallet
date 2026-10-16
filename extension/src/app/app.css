@@ -118,6 +118,27 @@ body:has(.app-popup) {
 .app-banner {
   margin: var(--space-3) var(--space-4) 0;
 }
+/* Final review MUST-FIX 2: #11's dApp re-authentication strip — on the hero's gutter (--space-5, the hero's own
+   margin), a gap before the hero below it, the line centred on the icons, and the design's trailing chevron (#11's
+   own strip, ix:6374: 18 px in --fg-secondary; four classes outrank `.banner.info svg`'s --info). */
+.s-dash .app-banner.app-dapp-strip {
+  /* `.app-strip`'s width: 100% plus side margins ran the strip past the popup's right edge (its chevron clipped). */
+  width: auto;
+  margin: var(--space-3) var(--space-5) var(--space-4);
+  align-items: center;
+}
+.app-dapp-strip > .noc-body-sm {
+  flex: 1;
+  min-width: 0;
+}
+.app-strip-chev {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.banner.info .app-strip-chev svg {
+  color: var(--fg-secondary);
+  margin-top: 0;
+}
 /* The design's two-line banner (index.html #20 first-time recipient, the public-withdraw banners):
    a 600 title in --fg-primary with 2 px below it, then a --fg-secondary line. */
 .banner .banner-title {
@@ -1485,6 +1506,26 @@ body:has(.app-window) {
 .s9-origin-card .ico.app-ico-verified {
   background: linear-gradient(135deg, var(--accent), var(--accent-shielded));
 }
+/* Final review MUST-FIX 2: a verified brand's own tile, as the design draws it (approve/ui.tsx BRAND_TILES says where
+   each comes from): the window's mockups for Jupiter, Magic Eden, Tensor and Noctura, #49's tiles for Drift and Kamino. */
+.s9-origin-card .ico.app-brand-jupiter {
+  background: linear-gradient(135deg, #FFC800, #FF7A00);
+}
+.s9-origin-card .ico.app-brand-magic-eden {
+  background: linear-gradient(135deg, #14F195, #9945FF);
+}
+.s9-origin-card .ico.app-brand-tensor {
+  background: linear-gradient(135deg, #00DBFF, #0066FF);
+}
+.s9-origin-card .ico.app-brand-noctura {
+  background: linear-gradient(135deg, #B084FC, #5BE3C2);
+}
+.s9-origin-card .ico.app-brand-drift {
+  background: linear-gradient(135deg, oklch(80% 0.14 180), oklch(72% 0.16 220));
+}
+.s9-origin-card .ico.app-brand-kamino {
+  background: linear-gradient(135deg, oklch(72% 0.16 200), oklch(64% 0.14 240));
+}
 .s9-origin-card .ico.app-ico-unknown {
   background: var(--bg-surface-3);
   color: var(--fg-secondary);
@@ -1670,6 +1711,10 @@ body:has(.app-window) {
 }
 .app-risk-actions .btn {
   flex: 1;
+}
+/* Final review MUST-FIX 2: "I understand the risk" never wraps inside its half of the sheet's bar. */
+.app-risk-actions .btn.app-nowrap {
+  white-space: nowrap;
 }
 /*
  * D11's locked window: the mark, the two lines and the origin card, centred — but Q24 (when shown) is a sibling in
@@ -1947,6 +1992,10 @@ body:has(.app-window) {
   color: var(--fg-tertiary);
 }
 /* "Approve · simulating" (ix:18333), on one line. */
+/* Final review MUST-FIX 2: #48's Approve while simulating, at the design's .4 (ix:18318: `opacity:.4` on the disabled CTA). */
+.sticky-bar .btn.app-cta-simulating[disabled] {
+  opacity: 0.4;
+}
 .app-tx-sim-tag {
   opacity: 0.7;
   margin-inline-start: 4px;

@@ -69,9 +69,14 @@ function PendingStrip({p, now, onOpen}: {p: Pending; now: number; onOpen: () => 
 export const DAPP_REAUTH_TEXT = (site: string): string => `A transaction from ${site} waits for your confirmation`;
 function DappReauthStrip({waiting, onOpen}: {waiting: DappReauth; onOpen: () => void}) {
   return (
-    <LockedButton className="banner info app-banner app-strip" onPress={onOpen}>
+    // Final review MUST-FIX 2: on the hero's gutter with a gap below it (app-dapp-strip), and the design's trailing
+    // chevron (#11's own strip, ix:6374: 18 px, --fg-secondary) — it opens #10.
+    <LockedButton className="banner info app-banner app-strip app-dapp-strip" onPress={onOpen}>
       <ExtIcon name="link" size={18} />
       <span className="noc-body-sm">{DAPP_REAUTH_TEXT(waiting.site)}</span>
+      <span className="app-strip-chev">
+        <ExtIcon name="chevron-right" size={18} />
+      </span>
     </LockedButton>
   );
 }

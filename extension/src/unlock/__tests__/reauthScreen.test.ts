@@ -626,8 +626,9 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
   it('a dApp’s transaction: "You are about to approve", the site and what leaves the account; confirmed → back to the approval window, nothing sent here', async () => {
     const {h, broadcast} = await shown(DAPP);
     expect(text(el('ra-about'))).toBe('You are about to approve');
-    expect(visible(el('ra-amount-row'))).toBe(false);
-    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'SOL−0.001005']);
+    // Final review MUST-FIX 2: the intent card leads with the headline amount, as #10 draws it (ix:6061-6064).
+    expect([visible(el('ra-amount-row')), text(el('ra-amount')), text(el('ra-symbol'))]).toEqual([true, '−0.001005', 'SOL']);
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag']);
     expect([...el('ra-reasons').children].map(text)).toEqual(['Re-auth required for the first send to a new address.']);
     expect(text(el('ra-cancel'))).toBe('Cancel');
     expect(el('ra-x').getAttribute('aria-label')).toBe('Close');
@@ -642,7 +643,26 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
 
   it('a dApp’s transaction losing more tokens than #10 lists: the rows, then "and 2 more tokens" (review 1 L9)', async () => {
     await shown({...DAPP, omitted: 2});
-    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'SOL−0.001005', 'and 2 more tokens']);
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'and 2 more tokens']);
+  });
+
+  // Final review MUST-FIX 2: #10 draws one headline amount; a site's batch can move several tokens. The headline is the
+  // first outflow as the background ranks them (SOL first, then the largest in USD — signTx.ts dappAbout), when it is
+  // SOL or a named token; the rest stay rows. An unnamed token first has no headline (its amount means nothing without
+  // the mint, which only a row shows in full).
+  it('a dApp’s transaction moving several tokens: the headline is the first-ranked outflow, the others rows; an unnamed token first, no headline', async () => {
+    const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+    await shown({...DAPP, transactions: 2, outgoing: [{mint: USDC, symbol: 'USDC', amount: '250000000', decimals: 6}, {mint: null, symbol: 'SOL', amount: '1005000', decimals: 9}]});
+    expect([visible(el('ra-amount-row')), text(el('ra-amount')), text(el('ra-symbol'))]).toEqual([true, '−250', 'USDC']);
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'Transactions2', 'SOL−0.001005']);
+    loadPage();
+    await shown({...DAPP, outgoing: [{mint: K0, symbol: null, amount: '777', decimals: null}]});
+    expect(visible(el('ra-amount-row'))).toBe(false);
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)[1]).toMatch(/^Token−777/);
+    loadPage();
+    await shown({...DAPP, outgoing: [], reasons: ['approval']});
+    expect(visible(el('ra-amount-row'))).toBe(false);
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag']);
   });
 
   it('a dApp’s transaction: expired and locked say what is true for a site’s request; Cancel only closes the tab', async () => {

@@ -11,6 +11,16 @@ import {HIDE_BALANCES_KEY} from '../prefs';
 import {REFUSED_TEXT} from '../ui/Banner';
 import {RequestUnreachable, RpcForbidden, RpcMalformed} from '../../../../core/solana/rpc';
 import {ACCOUNT, RECIPIENT, pendingRecord} from '../../background/__tests__/fixtures';
+import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
+import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
+
+/** A rule's declarations in the hand-written app.css (its exact selector). */
+const cssRule = (selector: string): string => {
+  const css = readFileSync(join(__dirname, '..', 'app.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const at = css.split('}').find(r => r.split('{')[0]?.split(',').some(sel => sel.trim() === selector));
+  return at === undefined ? '' : (at.split('{')[1] ?? '').replace(/\s+/g, ' ').trim();
+};
 
 // Spec §5.1 (#11) and §5.4 (#42 and the D26 refused state). Totals from walletReader: SOL
 // 62.4821 × $150 + USDC 740.21 × $1 = $10,112.52 (NOC at the stage price is outside it).
@@ -673,6 +683,14 @@ describe('#11: a site’s transaction waiting for its confirmation (B1c-2)', () 
     let challengeId = '';
     const w = await renderHome({before: async ext => void (challengeId = await waitingDapp(ext))});
     const strip = await screen.findByRole('button', {name: 'A transaction from jup.ag waits for your confirmation'});
+    // Final review MUST-FIX 2: on the hero's gutter with a gap below it, and the design's trailing chevron (#11's own
+    // strip, ix:6374) — a strip that opens something says so.
+    expect(strip.className).toBe('banner info app-banner app-strip app-dapp-strip');
+    expect(strip.querySelectorAll('.app-strip-chev svg')).toHaveLength(1);
+    expect(unstyledClasses(strip, selectorsOf(UI_SHEETS))).toEqual([]);
+    const rule = cssRule('.s-dash .app-banner.app-dapp-strip');
+    expect([rule.includes('margin: var(--space-3) var(--space-5) var(--space-4)'), rule.includes('align-items: center'), rule.includes('width: auto')]).toEqual([true, true, true]);
+    expect(cssRule('.banner.info .app-strip-chev svg')).toContain('color: var(--fg-secondary)');
     fireEvent.click(strip);
     await waitFor(() => expect(w.platform.opened).toEqual([`unlock.html?mode=reauth&challenge=${challengeId}`]));
     cleanup();

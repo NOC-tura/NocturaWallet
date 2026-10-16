@@ -162,11 +162,18 @@ test('visual · #48: simulating, simulated, a batch, re-authentication, approvin
     const toolbar = await h.openPopup();
     const strip = toolbar.getByRole('button', {name: 'A transaction from jup.ag waits for your confirmation'});
     await expect(toolbar.getByText('10.0000 SOL', {exact: true}).first()).toBeVisible({timeout: 30_000});
+    // Final review MUST-FIX 2: the strip and its chevron wholly inside the popup (it ran past the right edge before).
+    await expect(strip.locator('.app-strip-chev')).toBeInViewport({ratio: 1});
+    await expect(strip).toBeInViewport({ratio: 1});
     await pop(toolbar, '11-dapp-reauth-strip', strip);
     const [tab] = await Promise.all([h.ctx.waitForEvent('page'), strip.click()]);
     await tab.setViewportSize({width: 412, height: 916});
     await expect(tab.locator('#ra-about')).toHaveText('You are about to approve');
     await expect(tab.locator('#ra-rows')).toContainText('jup.ag');
+    // Final review MUST-FIX 2: the intent card's headline amount (#10 ix:6061-6064) — what leaves the account.
+    await expect(tab.locator('#ra-amount-row')).toBeVisible();
+    await expect(tab.locator('#ra-amount')).toHaveText(new RegExp(`^${MINUS}0\\.\\d+$`));
+    await expect(tab.locator('#ra-symbol')).toHaveText('SOL');
     await shot(tab, '10-dapp', {fullPage: false});
     await tab.close();
     await dismiss(win);

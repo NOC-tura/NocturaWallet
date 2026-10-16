@@ -154,10 +154,23 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
       // (an unnamed token by its whole mint address, in groups), and why. Nothing here is sent: the approval window
       // signs once this proof is in (and the user approves there again).
       setText(byId('ra-about'), REAUTH.aboutDapp);
-      shown(byId('ra-amount-row'), false);
+      // Final review MUST-FIX 2: the intent card leads with the headline amount, as #10 draws it (ix:6061-6064). The
+      // design draws one; a site's batch can move several tokens, so the headline is the FIRST outflow as the background
+      // ranks them (signTx.ts dappAbout: SOL first, then the largest in USD, then the unpriced) — the largest SOL/token
+      // outflow it can name — when that is SOL or a named token. Its minus sign stays: what leaves the account. Every
+      // other outflow stays a row below. An unnamed token first gets no headline: its amount means nothing without the
+      // mint, which only its row shows whole.
+      const first = d.outgoing[0];
+      const head = first !== undefined && (first.mint === null || first.label !== REAUTH.token) ? first : null;
+      if (head !== null) {
+        setText(byId('ra-amount'), head.amount);
+        setText(byId('ra-symbol'), head.label);
+      }
+      shown(byId('ra-amount-row'), head !== null);
       const rows = [row(REAUTH.site, d.site)];
       if (d.transactions > 1) rows.push(row(REAUTH.transactions, String(d.transactions)));
       for (const o of d.outgoing) {
+        if (o === head) continue;
         if (o.mint === null || o.label !== REAUTH.token) rows.push(row(o.label, o.amount));
         else {
           const value = h('span');
