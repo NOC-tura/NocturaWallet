@@ -32,6 +32,8 @@ const u64le = (n: bigint): number[] => {
   new DataView(b.buffer).setBigUint64(0, n, true);
   return Array.from(b);
 };
+/** Tx.tsx's own MINUS (U+2212, not a hyphen) — built from its code point, never typed literally. */
+const MINUS = String.fromCharCode(0x2212);
 
 /**
  * A window state: its own copy first, every sticky-bar button wholly in the 412 × 720 viewport (fix round 1, I2:
@@ -234,21 +236,40 @@ test('visual · #48: simulating, simulated, a batch, re-authentication, approvin
     );
     await expect(win.getByText('Balance changes (post-simulation)')).toBeVisible({timeout: 10_000});
     const nocRow = win.locator('.s9-bal-row', {hasText: 'NOC'});
-    await expect(nocRow).toBeVisible();
+    // Fix round 2 (minor): the row's own delta, not merely that a row naming NOC exists.
+    await expect(nocRow).toContainText(`${MINUS}1`);
     await still(win, '48-token-transfer', nocRow, win.getByRole('button', {name: 'Approve', exact: true}));
     await dismiss(win);
 
-    // No SOL or token balance change at all (R2, owner-delegated): an allowance (approve), paid for by another
+    // No SOL or token balance change at all (R2, owner-delegated; fix round 2, controller ruling: never an
+    // approve here — see 48-approval-reauth below for why): an unknown-program instruction, paid for by another
     // signer — the connected account only co-signs, so its own balance holds still.
+    await fresh(h.sw);
+    win = await windowFor(h, () => customSignTx(jup, BLOCKHASH, SAVINGS.publicKey, [{programId: UNKNOWN_PROGRAM, keys: [{pubkey: MAIN.publicKey, isSigner: true, isWritable: false}], data: [1]}]));
+    const noChanges = win.getByText('No SOL or token balance changes — review the instructions below.');
+    await expect(noChanges).toBeVisible({timeout: 10_000});
+    await still(win, '48-no-balance-change', noChanges, win.getByRole('button', {name: 'Approve', exact: true}));
+    await dismiss(win);
+
+    // Fix round 2, IMPORTANT (controller ruling): an approve that moves no SOL or token balance STILL sets a new
+    // or raised delegate on chain — simulate.ts's own `approvalFromChain` reads exactly that from the
+    // post-simulation account data and re-authenticates it (the "Approving asks you to confirm…" line), the same
+    // as any other claim-raising instruction. The fake now models Approve's resulting delegate (fakeCoordinator.ts,
+    // `tokenAccountData`/`approvals`) so this shot — "No SOL or token balance changes" TOGETHER with the
+    // re-authentication line — is what the product actually renders for an approve, never the misleadingly quiet
+    // screen a delegate-blind fake drew before. Another signer (`SAVINGS`) pays, as 48-no-balance-change does —
+    // MAIN only co-signs, so the SOL side genuinely holds still too; the delegate comes from chain state alone.
     await fresh(h.sw);
     win = await windowFor(h, () =>
       customSignTx(jup, BLOCKHASH, SAVINGS.publicKey, [
         {programId: TOKEN_PROGRAM, keys: [{pubkey: SOURCE_TOKEN_ACCT, isSigner: false, isWritable: true}, {pubkey: RECIPIENT, isSigner: false, isWritable: false}, {pubkey: MAIN.publicKey, isSigner: true, isWritable: false}], data: [4, ...u64le(500_000_000n)]},
       ]),
     );
-    const noChanges = win.getByText('No SOL or token balance changes — review the instructions below.');
-    await expect(noChanges).toBeVisible({timeout: 10_000});
-    await still(win, '48-no-balance-change', noChanges, win.getByRole('button', {name: 'Approve', exact: true}));
+    const noChangesApproval = win.getByText('No SOL or token balance changes — review the instructions below.');
+    const reauthLine = win.getByText("Approving asks you to confirm with your password (or passkey) — you'll start it from the Noctura icon.");
+    await expect(noChangesApproval).toBeVisible({timeout: 10_000});
+    await expect(reauthLine).toBeVisible();
+    await still(win, '48-approval-reauth', noChangesApproval, win.getByRole('button', {name: 'Approve', exact: true}));
     await dismiss(win);
 
     // signAndSendTransaction's own copy: Noctura broadcasts, never the site.

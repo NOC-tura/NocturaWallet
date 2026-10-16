@@ -74,14 +74,22 @@ export interface FakeCoordinator {
 
 /**
  * An initialized SPL token account's 165 bytes, as the node returns them in base64: mint (0–32), owner (32–64),
- * amount u64 LE (64–72), no delegate, state 1 (initialized) at 108, not native, no close authority.
+ * amount u64 LE (64–72); the delegate COption (tag u32 at 72, pubkey at 76–108) when `delegate` is given, else
+ * none; state 1 (initialized) at 108, not native; the delegated amount u64 LE at 121 (B1c-2 Task 10 fix round 2:
+ * modeled so a real validator's own re-authentication-triggering layout — simulate.ts's `ownTokenAccountOf` reads
+ * a new or raised delegate from exactly these bytes — is what the fake reports too); no close authority.
  */
-function tokenAccountData(mint: string, owner: string, amount: bigint): Uint8Array {
+function tokenAccountData(mint: string, owner: string, amount: bigint, delegate: {address: string; amount: bigint} | null = null): Uint8Array {
   const data = new Uint8Array(165);
   data.set(base58.decode(mint), 0);
   data.set(base58.decode(owner), 32);
   new DataView(data.buffer).setBigUint64(64, amount, true);
+  if (delegate !== null) {
+    new DataView(data.buffer).setUint32(72, 1, true);
+    data.set(base58.decode(delegate.address), 76);
+  }
   data[108] = 1;
+  if (delegate !== null) new DataView(data.buffer).setBigUint64(121, delegate.amount, true);
   return data;
 }
 
@@ -214,6 +222,11 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     const tokenOut = new Map<string, bigint>();
     /** The token accounts an associated-token-account Create made earlier in this transaction. */
     const created = new Set<string>();
+    /** B1c-2 Task 10 fix round 2: an SPL Token Approve (tag 4)'s own resulting delegate, per source account — a
+     * real validator's simulateTransaction reports the POST state, delegate included; without this the fake
+     * depicted an approve as moving nothing at all, which the engine's own re-authentication rule (simulate.ts,
+     * `approvalFromChain`) would never agree with on mainnet. */
+    const approvals = new Map<string, {address: string; amount: bigint}>();
     for (const [i, ix] of instructions.entries()) {
       const data = ix.data;
       const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -241,6 +254,12 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
         if (held === null || taken > BigInt(held.amount)) return failed({Custom: 1});
         tokenOut.set(source, taken);
       }
+      // Approve (4): the delegate and amount (u64 LE at 1) the source account's post-state now carries.
+      if (program === TOKEN_PROGRAM && data[0] === 4) {
+        const source = keys[ix.accounts[0] ?? -1] ?? '';
+        const delegate = keys[ix.accounts[1] ?? -1] ?? '';
+        approvals.set(source, {address: delegate, amount: view.getBigUint64(1, true)});
+      }
     }
     const fee = 5_000 * signers + Number((price * limit + 999_999n) / 1_000_000n);
     const after = lamportsOf(payer) - out - fee;
@@ -250,14 +269,17 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       const t = tokenAccountAt(a);
       if (t !== null) {
         const amount = BigInt(t.amount) - (tokenOut.get(a) ?? 0n);
-        return {lamports: TOKEN_ACCOUNT_RENT, owner: TOKEN_PROGRAM, data: [base64.encode(tokenAccountData(t.mint, t.owner, amount)), 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 165};
+        return {lamports: TOKEN_ACCOUNT_RENT, owner: TOKEN_PROGRAM, data: [base64.encode(tokenAccountData(t.mint, t.owner, amount, approvals.get(a) ?? null)), 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 165};
       }
-      // B1c-2 Task 10 fix round 1 (test-only, additive): a requested address this transaction's own instructions
-      // never touch — not the payer, not a seeded token account (a connected account that merely co-signs a
-      // transaction it does not pay for, e.g. a sponsored approve) — keeps its current lamports, exactly as
-      // getMultipleAccounts already reports it, never null (null reads, one level up in simulateTransactions.ts,
-      // as the whole account having vanished). No existing spec requests simulateTransaction.accounts for a
-      // non-payer, non-token address, so this adds coverage without changing any address's existing response.
+      // B1c-2 Task 10 fix round 1 (test-only, additive — LIMITATION, fix round 2 L1: this models an unaffected
+      // address correctly, but if a FUTURE spec ever requested simulateTransaction.accounts for a non-payer,
+      // non-token address whose lamports genuinely changed by this transaction — e.g. a System transfer INTO it,
+      // which the fake does not credit at all — this fallback would wrongly report it unchanged; no instruction
+      // this fake models can do that today, so the limitation is latent, not exercised): every address the
+      // transaction's own instructions never touch — not the payer, not a seeded token account (a connected
+      // account that merely co-signs a transaction it does not pay for) — reads its current, unchanged lamports,
+      // exactly as getMultipleAccounts already reports it, never null (null reads, one level up in
+      // simulateTransactions.ts, as the whole account having vanished).
       const lamports = lamportsOf(a);
       return lamports > 0 ? {lamports, owner: SYSTEM_PROGRAM, data: ['', 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 0} : null;
     });
