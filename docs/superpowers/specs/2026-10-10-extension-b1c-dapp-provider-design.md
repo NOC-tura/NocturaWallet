@@ -1,6 +1,6 @@
 # Noctura Extension B1c — the dApp provider (connect, sign, approve)
 
-**Status:** **approved rev 3**, 2026-10-10 — the owner approved this spec, the strings of §10 (Q01–Q24) and the known list of §2.5. The owner approved the design in conversation (sections 1–3) and took
+**Status:** **approved rev 3**, 2026-10-10 (current text: **rev 3.5**, 2026-10-16) — the owner approved this spec, the strings of §10 (Q01–Q24) and the known list of §2.5. The owner approved the design in conversation (sections 1–3) and took
 decisions D1–D11. Rev 2 applied every finding of Fable 5.1 review 1 (`.superpowers/sdd/b1c-spec-review-1.md`: H1–H3,
 M1–M12, L1–L13); M1 and M2 were the owner's decisions D10 and D11. **Rev 3** applies every finding of Fable review 2
 (`.superpowers/sdd/b1c-spec-review-2.md`: H1–H2, M1–M10, L1–L13; verdict "approve after fixes"). Where each finding
@@ -22,6 +22,13 @@ first broadcast of recorded bytes, exactly once; never a re-signature, never a s
 answers a recorded send its signature (L1, L2); §9 gains two rows: a signature answered from the record is a promise
 that the bytes reach the route, not that they land (L3), and every SPL transfer to a token account that is not the
 account's own re-authenticates (plan 2 R10). No other rule changed.
+**Rev 3.5 (controller, 2026-10-16, from plan 2's final whole-branch Fable review —
+`.superpowers/sdd/2026-10-12-extension-b1c-plan2/final-review.md`, and the plan-2 ledger's rulings on Tasks 3 and 5):**
+§9 gains a row for the crash window between a dApp record's first-broadcast claim (`done` written) and the route call
+leaving the worker (Task 5 ruling: "never sent twice" kept over at-least-once; no funds move); §7's accepted limits
+gain ✕ on a window while a riding mismatch notice is shown (Task 3 ruling, round 4); §10 gains Q27, the line for an
+approval refused because its simulation is merely old (final review I3 — controller copy, flagged to the owner). No
+other rule changed.
 
 **What this is.** The extension becomes a wallet any Solana site can use through Wallet Standard: connect, disconnect,
 events, `signMessage`, `signTransaction`, `signAndSendTransaction`, on `solana:mainnet` only. It builds the design's
@@ -776,6 +783,10 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
   phishers are never fully blocked (§2.6); homoglyphs inside a message body are not detected (§3.2); any site that knows
   a user's public address can open the origin-mismatch notice (#48) on them by asking to sign with that address — bounded
   by C3 and C14 exactly as a connect request (#47) is, so no new capacity (rev 3.3, plan 2 review 1 L10).
+- **Accepted limit (rev 3.5, plan 2 Task 3 ruling):** ✕ on the approval window while a mismatch notice riding in it is
+  shown dismisses only the notice (a notice never opens a window of its own); the window then reopens for the real
+  request still queued, and that reopen is charged against WINDOW_BUDGET (C14) again. It depends on the user's action,
+  not the page's, so a page cannot use it to spend the budget; the cost is one extra budget window per such ✕.
 
 ---
 
@@ -833,6 +844,7 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
 | a `signTransaction` batch whose later transactions depend on earlier ones (create a token account, then transfer to it; a swap's setup / swap / cleanup) | **unapprovable in B1c-2** (owner, 2026-10-15; plan 2 review 1 M4): a batch is simulated transaction by transaction against the current slot — a node cannot chain them — so a transaction that needs an earlier one's effect simulates as failed, and a failed simulation offers only [Reject] (plan 2 R6, R8). **B1c-3 must solve dependent batches** — e.g. a per-transaction override for a failure attributable to an earlier transaction of the same batch (one that creates the account the failure names), under B1 §3's override rule — rather than leave them to the typed override of every failed simulation |
 | §1.6 / §3.3's order for transactions: `unauthorized` before any other check | a **malformed** `page.signTransaction` / `page.signAndSendTransaction` payload (`transactions` / `transaction` not base64 strings, a batch of 0 or more than 5, a transaction over 1 232 bytes or not one canonical transaction; `account` not a base58 32-byte key; another chain; `options` present and not an object) is answered `invalid-request` before the grant is read (plan 2, Task 3) — the same reasoning as the `signMessage` row below: a page without a grant learns only that its own payload was malformed, never whether a grant exists; a well-formed request keeps the grant check first (rev 3.3, plan 2 review 1 L6) |
 | §1.5 / C17 "answered once" for `signAndSendTransaction` | a `{signature}` answered from the entry's recorded bytes (a restart, a dead effect, a lock, C4's expiry) is a promise that the bytes reach the route, **not that they land** (rev 3.4, plan 2 review 2 L3): accepted limits — the route may refuse the poller's first broadcast (the dApp's blockhash died while the worker was down: `failed not-sent`), the record may have expired before any sweep answered (nothing is sent: it could not land), or the lock hook's `due` mark may fail to write (logged; the effect still running sends it). In each, nothing lands and no funds move; a dApp told a signature confirms it (B1 §3), and since a dApp's record is hidden from the popup, only the site tells the user |
+| §1.5 / C17 "never sent twice" for `signAndSendTransaction` — the claim before the route call | a fourth accepted limit beside the row above (rev 3.5, plan 2 Task 5 ruling): the first broadcast of a dApp's recorded bytes is claimed `held`/`due` → `done` in one write **before** the bytes are handed to the route, so whoever claims sends and nobody sends again. If the service worker stops in the window between that write and the route call actually leaving it, the bytes never reach the route, yet the record reads `done` and is never handed over again; the page — answered `{signature}` from the entry's recorded bytes by the restart's sweep, a lock or C4's expiry — is told a signature for bytes the network never received. Nothing lands and **no funds move**: the record polls until its blockhash expires ("Not confirmed — no funds moved.") and the dApp's own confirmation of the signature fails. Kept deliberately: re-sending on doubt would trade this window for an at-least-once rule, and "never sent twice" (rev 3.4) is the binding one |
 | B1 §3 re-authentication "first send to a new address" for a token transfer | the destination of an SPL `transfer` / `transferChecked` is a token account, not the owner the user knows: **every SPL transfer to a token account that is not the account's own re-authenticates** (fail closed — plan 2 R10; rev 3.4) until B1c-3 or later resolves a token account to its owner |
 | §3.2's order: rule 1 (`unauthorized`) before any other check | a **malformed** `page.signMessage` payload (`message` not a string, not base64 or over the size bound; `account` not a base58 32-byte key) is answered `invalid-request` before rule 1 runs (plan-mandated, Task 6). No leak: a page without a grant learns only that its own payload was malformed, never whether a grant exists; a well-formed request keeps rule 1's order |
 
@@ -866,6 +878,7 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
 | Q24 | window budget notice | "Too many requests from sites in the last few minutes — some were declined without asking you." |
 | Q25 | #49 undo refused (rev 3.2, owner-delegated 2026-10-12) | "Could not undo — <name> stays disconnected." |
 | Q26 | #46 request can no longer be signed (rev 3.2, owner-delegated 2026-10-12) | "This request can no longer be signed. Reject it and ask the site to try again." |
+| Q27 | #48 an approval refused because the simulation it named, still the newest, is 40 s old — its refresh has not landed (rev 3.5, controller copy, flagged to the owner; final review I3) | "This simulation is out of date. Wait a moment for it to refresh." — never "The transaction changed while you were reviewing…", which is said only when the window named another simulation than the newest |
 
 (Q09 and Q11 of rev 1 are gone: the window no longer shows "expired" for a request it did not show, and the undo toast
 uses the design's drawn strings.)
