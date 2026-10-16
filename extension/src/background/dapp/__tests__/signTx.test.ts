@@ -11,6 +11,9 @@ import {REAUTH_KEY} from '../../session';
 import {ACCOUNT, RECIPIENT} from '../../__tests__/fixtures';
 import {MAINNET_USDC_MINT} from '../../../../../core/presale/addresses';
 import {CO, ME, coSigned, transfer, txScene, until, v0} from './txHarness';
+import {handleMessage} from '../../messages';
+import {describeChallenge} from '../../../unlock/challenge';
+import {createEngine} from '../../../app/engine';
 
 const sigs = (b64: string) => VersionedTransaction.deserialize(base64.decode(b64)).signatures;
 const verifies = (b64: string, slot: number, key: Uint8Array) => {
@@ -223,6 +226,29 @@ describe('dapp.decide for a transaction request', () => {
 
 // B1b's re-authentication (spec §3.3, B1 §3) through #10 — reached from the toolbar icon (D11), never from the window.
 describe('re-authentication for a transaction request', () => {
+  // Final review I2: a host URL-legal to the browser (an underscore — pageOrigin accepts any `https:` origin `new URL`
+  // parses) used to fail the SITE shape on issue: issueChallenge threw, `dapp.decide` answered `internal`. End to end
+  // over the three sides' one shape (shared/site.ts): the challenge is issued, #10's describeChallenge describes it, and
+  // the popup's strip (engine.dappReauth) reads it — each with the site exactly as `new URL(origin).host` gives it.
+  it('a site whose host has an underscore (my_site.example.com): the challenge is issued, #10 describes the site, the popup’s strip reads it', async () => {
+    const c = await txScene({origin: 'https://my_site.example.com'});
+    const r = await c.signTx('t', [v0([transfer(1_000_000)])]);
+    const requestId = String(r?.requestId);
+    const id = (await c.simulated()).request?.tx?.simulation.id;
+    expect(await c.approve(requestId, id)).toEqual({ok: false, error: 'reauth-required'});
+    const challengeId = String((await c.entry(requestId))?.challengeId);
+    expect(challengeId).toMatch(/^[0-9a-f]{32}$/);
+    const info = (await c.challengeInfo(challengeId)) as {ok: true; data: unknown};
+    expect(info).toMatchObject({ok: true, data: {kind: 'dapp', site: 'my_site.example.com'}});
+    expect(describeChallenge(info.data)).toMatchObject({kind: 'dapp', site: 'my_site.example.com'});
+    const popup = {id: c.ext.runtimeId, origin: c.ext.extensionOrigin, url: `${c.ext.extensionOrigin}/popup.html`};
+    const engine = createEngine(m => handleMessage(c.ext, m, popup, c.deps), async () => undefined);
+    expect(await engine.dappReauth()).toEqual({ok: true, data: {challengeId, site: 'my_site.example.com'}});
+    // Positive control: proven, the same request signs.
+    expect(await c.reauthOk(challengeId)).toEqual({ok: true});
+    expect(await c.approve(requestId, id)).toEqual({ok: true});
+  });
+
   it('a first send: Approve asks for a challenge (reauth-required), #10 describes it, the proof makes it proven, Approve then signs — once', async () => {
     const c = await txScene();
     const r = await c.signTx('t', [v0([transfer(1_000_000)])]);

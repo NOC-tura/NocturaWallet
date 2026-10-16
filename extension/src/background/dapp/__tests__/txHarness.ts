@@ -125,18 +125,19 @@ export async function until(done: () => Promise<boolean>, turns = 400): Promise<
 
 export const newChain = (): Chain => ({err: null, calls: new Map(), down: false});
 
-export async function txScene(o: {grant?: Partial<Grant> | null; known?: string[]} = {}) {
+export async function txScene(o: {grant?: Partial<Grant> | null; known?: string[]; origin?: string} = {}) {
+  const origin = o.origin ?? DAPP;
   const ext = fakeExt();
   const chain = newChain();
   const deps = fakeDeps({reader: chainReader(chain)});
   await ext.local.set(VAULT_KEY, {v: 1, scheme: 'slip10', accounts: [{index: 0, name: 'Main', publicKey: ACCOUNT.publicKey}]});
   await setSession(ext, [ACCOUNT]);
   await runUnlockHook(ext, deps);
-  if (o.grant !== null) await ext.local.set(GRANTS_KEY, [{origin: DAPP, account: ACCOUNT.publicKey, scope: 'persistent', connectedAt: 1, lastUsedAt: 1, recent: [], ...o.grant}]);
+  if (o.grant !== null) await ext.local.set(GRANTS_KEY, [{origin, account: ACCOUNT.publicKey, scope: 'persistent', connectedAt: 1, lastUsedAt: 1, recent: [], ...o.grant}]);
   if (o.known !== undefined) await ext.local.set('v1_known_recipients', o.known.map(address => ({address, at: 1})));
   const approveSender = {id: ext.runtimeId, origin: ext.extensionOrigin, url: `${ext.extensionOrigin}/approve.html`};
   const vaultSender = {id: ext.runtimeId, origin: ext.extensionOrigin, url: `${ext.extensionOrigin}/unlock.html`};
-  const page: Page = openPage(ext, deps, DAPP);
+  const page: Page = openPage(ext, deps, origin);
   const queue = async (): Promise<Entry[]> => (await readDappSession(ext)).queue;
   const entry = async (requestId: string): Promise<Entry | undefined> => (await queue()).find(e => e.requestId === requestId);
   type View = {state: string; request: {tx: Record<string, unknown> & {simulation: {status: string; id?: string}; reauth: {state: string} | null}} | null};

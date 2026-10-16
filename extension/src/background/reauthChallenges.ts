@@ -5,6 +5,7 @@ import {randomId} from './digest';
 import type {DappReauthReason, SendReauthReason} from './reauthPolicy';
 import type {FeeReason} from '../../../core/fees/transferMarkup';
 import {WALLET_TOKENS} from '../../../core/solana/balances';
+import {SITE} from '../shared/site';
 
 /** How long the vault page has to prove the factor (brief decision 6), counted from the last prepare of the same intent. */
 export const CHALLENGE_TTL_MS = 120_000;
@@ -79,8 +80,6 @@ const FEE_REASONS: readonly string[] = ['pre-tge', 'zero-fee-eligible', 'status-
 const DAPP_REASONS: readonly string[] = [...REASONS, 'approval'];
 /** At most this many mints in a dApp challenge's description (more than a five-transaction batch can name sensibly; the rest are counted in `omitted`). */
 export const MAX_DAPP_OUTGOING = 16;
-/** A site as the window shows it: a host (ASCII / punycode, or an IP literal), with a port when the origin has one. */
-const SITE = /^[A-Za-z0-9.\-[\]:]{1,262}$/;
 const DIGITS = /^\d{1,20}$/;
 /** A base58 Solana address's shape (32–44 characters). */
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;

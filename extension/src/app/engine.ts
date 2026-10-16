@@ -1,4 +1,5 @@
 import {send as runtimeSend} from '../ui/send';
+import {SITE} from '../shared/site';
 
 /**
  * The popup's and the tab's one way to the background (spec B1b-2a §1.5): one typed function per
@@ -532,7 +533,7 @@ export interface DappReauth {
 function dappReauthOf(x: unknown): DappReauth | null | undefined {
   if (x === null) return null;
   const o = obj(x);
-  if (o === undefined || typeof o.challengeId !== 'string' || !/^[0-9a-f]{32}$/.test(o.challengeId) || typeof o.site !== 'string' || !/^[A-Za-z0-9.\-[\]:]{1,262}$/.test(o.site)) return undefined;
+  if (o === undefined || typeof o.challengeId !== 'string' || !/^[0-9a-f]{32}$/.test(o.challengeId) || typeof o.site !== 'string' || !SITE.test(o.site)) return undefined;
   return {challengeId: o.challengeId, site: o.site};
 }
 

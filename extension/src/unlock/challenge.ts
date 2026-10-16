@@ -1,4 +1,5 @@
 import {formatAmount} from '../shared/amount';
+import {SITE} from '../shared/site';
 import {REAUTH} from './strings';
 import type {Send} from './types';
 
@@ -20,8 +21,6 @@ const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const SEND_KEYS = ['account', 'amount', 'kind', 'markupLamports', 'markupReason', 'networkLamports', 'priorityLamports', 'reasons', 'recipient', 'rentLamports', 'thresholdCents', 'token'];
 const DAPP_KEYS = ['account', 'kind', 'omitted', 'outgoing', 'reasons', 'site', 'thresholdCents', 'transactions'];
 const OUTGOING_KEYS = ['amount', 'decimals', 'mint', 'symbol'];
-/** A site as the approval window shows it: a host (ASCII / punycode, or an IP literal), with a port when it has one. */
-const SITE = /^[A-Za-z0-9.\-[\]:]{1,262}$/;
 const SETTINGS_KEYS = ['autoLockMinutes', 'kind', 'reauthUsdCents'];
 const own = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
 

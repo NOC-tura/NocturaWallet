@@ -77,6 +77,18 @@ describe('describeChallenge: a dApp’s transaction (B1c-2)', () => {
   });
 });
 
+// Final review I2: #10 accepts every site the background can issue (shared/site.ts — the same shape on all three sides).
+describe('describeChallenge: a dApp’s site is any host `new URL` gives an https origin', () => {
+  it('an underscore host, an IPv6 literal with a port, punycode: described; a path, a space, credentials, a query: refused', () => {
+    for (const site of ['my_site.example.com', '[::1]:8443', 'xn--80ak6aa92e.com']) {
+      expect(describeChallenge({...DAPP, site})).toMatchObject({kind: 'dapp', site});
+    }
+    for (const site of ['jup.ag/x', 'jup ag', 'user@jup.ag', 'jup.ag?x', '']) {
+      expect([site, describeChallenge({...DAPP, site})]).toEqual([site, null]);
+    }
+  });
+});
+
 describe('describeChallenge: a dApp’s omitted tokens (review 1 L9)', () => {
   it('the count of the tokens past the listed ones is carried to #10', () => {
     expect(describeChallenge({...DAPP, omitted: 3})).toMatchObject({kind: 'dapp', omitted: 3});

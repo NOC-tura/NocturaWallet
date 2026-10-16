@@ -340,6 +340,50 @@ test('B1c-28 · re-authentication through the toolbar (D11): a first send → Ap
   }
 });
 
+// Final review I2: a site whose host is URL-legal but outside the old SITE shape (an underscore). Before the fix, Approve
+// made issueChallenge throw and `dapp.decide` answer `internal` — the click did nothing and the request could only be
+// rejected. Now: the challenge is issued, the window points to the icon, the popup's strip names the site exactly as
+// Chrome serialised the page's origin, #10 describes it, and the window then signs.
+test('B1c-29 · an underscore host (my_site.test): a first send → Approve → the strip names the site → #10 describes it → the window signs', async () => {
+  test.setTimeout(240_000);
+  const site = 'my_site.test';
+  const {h, server} = await scene('noctura-e2e-dapptx-underscore-', {knownRecipient: false});
+  try {
+    await popup(h);
+    const page = await connected(h, `https://${site}`);
+    let pending!: Promise<unknown>;
+    const win = await approvalWindow(h.ctx, () => (pending = signTx(page, 1, BLOCKHASH)));
+    await expect(win.getByText("Approving asks you to confirm with your password (or passkey) — you'll start it from the Noctura icon.")).toBeVisible({timeout: 10_000});
+    await win.getByRole('button', {name: 'Approve', exact: true}).click();
+    await expect(win.getByText("Confirm it's you")).toBeVisible();
+    const toolbar = await h.openPopup();
+    const strip = toolbar.getByRole('button', {name: `A transaction from ${site} waits for your confirmation`});
+    const [tab] = await Promise.all([h.ctx.waitForEvent('page', {predicate: p => /unlock\.html/.test(p.url())}), strip.click()]);
+    await expect(tab.locator('#ra-about')).toHaveText('You are about to approve');
+    await expect(tab.locator('#ra-rows .intent-row').first()).toHaveText(`Site${site}`);
+    await tab.locator('#ra-password').fill(E2E_PASSWORD);
+    await tab.locator('#ra-confirm').click();
+    await expect(tab.locator('#ra-notice-line')).toHaveText('Confirmed. Go back to the approval window and approve the transaction.', {timeout: 60_000});
+    await expect
+      .poll(async () => {
+        const reply = (await toolbar.evaluate(() => chrome.runtime.sendMessage({type: 'dapp.reauth'}))) as {ok: true; data: unknown} | {ok: false; error: string};
+        return reply.ok ? reply.data : 'not-ok';
+      })
+      .toBeNull();
+    await win.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(win.getByText("Confirm it's you")).toHaveCount(0);
+    await win.getByRole('button', {name: 'Approve', exact: true}).click();
+    const r = (await pending) as {ok: true; value: {items: {signed: string; message: string}[]; walletCount: number}};
+    expect(r.ok).toBe(true);
+    expect(signedBy(r.value.items[0]?.signed ?? '')).toBe(true);
+    expectOwnMessage(r.value.items[0]?.signed ?? '', r.value.items[0]?.message ?? '');
+    await windowClosed(win);
+    done(h, server);
+  } finally {
+    await h.close();
+  }
+});
+
 // Review fix minor — the positive control for this file's own containment counter (the pattern containment.spec.ts
 // already uses for Solscan/noc-tura.io: "a zero means nothing was asked only if a request, when made, IS counted").
 // serveDapp's DAPP_RPC_HOST route (dappPage.ts) answers the test dApp's own RPC host by aborting and pushing to

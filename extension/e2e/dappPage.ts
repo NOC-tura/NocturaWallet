@@ -9,7 +9,8 @@ import {fileURLToPath} from 'node:url';
  * so a request the route misses fails locally. `hits` counts what the route served; `unexpected` any path it does not
  * serve (asserted empty).
  */
-export const DAPP_HOSTS = ['dapp.test', 'jup.ag', 'tensr.trade', 'xn--phntom-4nf.app', 'xn--bcher-kva.example', 'api.mainnet-beta.solana.com'] as const;
+// Final review I2: `my_site.test` — a host URL-legal to the browser (an underscore) outside the old SITE shape (B1c-29).
+export const DAPP_HOSTS = ['dapp.test', 'jup.ag', 'tensr.trade', 'xn--phntom-4nf.app', 'xn--bcher-kva.example', 'my_site.test', 'api.mainnet-beta.solana.com'] as const;
 /**
  * B1c-2: the test dApp's own RPC endpoint (its @solana/web3.js Connection — a wallet-adapter dApp's). The adapter never
  * calls it while the wallet sends through signAndSendTransaction; a call would mean it fell back to sending itself.
