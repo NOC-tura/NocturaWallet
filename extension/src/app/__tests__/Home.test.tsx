@@ -744,9 +744,11 @@ describe('#11: a site’s transaction waiting for its confirmation (B1c-2)', () 
   });
 
   // Fix round 1 item 5 (global constraints: "no update after unmount"): a read in flight when the screen is torn
-  // down must set nothing when it finally answers — not a stale strip, not a React "state update on an unmounted
-  // component" warning.
-  it('no update after unmount: a held read answering after the screen is gone sets nothing', async () => {
+  // down, answering after it is gone. A SMOKE TEST, not mutation-backed (final review MUST-FIX 4): React 18+ no longer
+  // warns about a state update on an unmounted component, and nothing is rendered to observe, so this passes with
+  // Home's `alive` check removed too (M-FR1h stayed green). It only shows that such an answer throws nothing and logs
+  // no console error.
+  it('no update after unmount (smoke test): a held read answering after the screen is gone throws nothing and logs no error', async () => {
     const w0 = await setupWallet();
     let release: (v: Awaited<ReturnType<Engine['dappReauth']>>) => void = () => undefined;
     const held = new Promise<Awaited<ReturnType<Engine['dappReauth']>>>(r => (release = r));

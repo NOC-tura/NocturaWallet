@@ -34,7 +34,8 @@ test('4 · send with re-authentication: #11 → #12 → #43 → #19 → #20 → 
     // A crafted link with another (valid-looking) challenge id describes nothing.
     const crafted = await h.ctx.newPage();
     await crafted.goto(`chrome-extension://${h.id}/unlock.html?mode=reauth&challenge=${OTHER_CHALLENGE}`);
-    await expect(crafted.locator('#ra-notice-line')).toHaveText('This confirmation has expired. Start the send again from the Noctura icon.', {timeout: 30_000});
+    // B1c-2 (Task 6 fix round 1): at load the kind is unknown — an unknown id says the neutral line, never "the send".
+    await expect(crafted.locator('#ra-notice-line')).toHaveText('This confirmation has expired. Start again from where you began.', {timeout: 30_000});
     await crafted.close();
     expect(h.fake.broadcasts).toEqual([]);
     await tab.fill('#ra-password', E2E_PASSWORD);
