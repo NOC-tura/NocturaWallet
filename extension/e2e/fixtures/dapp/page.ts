@@ -113,7 +113,11 @@ const dapp = {
    * B1c-2: `count` transfers (1 + i lamports each) in ONE signTransaction call. Review fix I3: returns, per
    * transaction, both the signed wire (base64) AND the exact message bytes the page itself built (base64, from the
    * same `VersionedTransaction` before signing) — so a caller can assert the wallet preserved the page's own bytes
-   * byte for byte, rather than merely that SOME valid signature came back.
+   * byte for byte, rather than merely that SOME valid signature came back. Review fix minor (round 2): also returns
+   * `walletCount`, the wallet's own `out.length` — `txs.map((t, i) => ...)` always produces exactly `count` items
+   * regardless of what the wallet actually returned (a missing `out[i]` silently falls back to an empty array, and
+   * anything past `txs.length` is silently dropped), so `items`'s own length is tautological; `walletCount` is the
+   * one number that actually reflects what the wallet handed back.
    */
   signTx: (count: number, blockhash: string): Promise<Result> =>
     run(async () => {
@@ -123,7 +127,7 @@ const dapp = {
       const txs = Array.from({length: count}, (_, i) => transferTx(account.address, blockhash, 1 + i));
       const inputs = txs.map(t => ({account, chain: 'solana:mainnet', transaction: t.serialize()}));
       const out = await (w.features['solana:signTransaction'] as SignTransaction).signTransaction(...inputs);
-      return txs.map((t, i) => ({signed: b64(out[i]?.signedTransaction ?? new Uint8Array()), message: b64(t.message.serialize())}));
+      return {items: txs.map((t, i) => ({signed: b64(out[i]?.signedTransaction ?? new Uint8Array()), message: b64(t.message.serialize())})), walletCount: out.length};
     }),
   /**
    * B1c-2: one transfer through signAndSendTransaction; the signature's 64 bytes, base64, AND (review fix I3) the

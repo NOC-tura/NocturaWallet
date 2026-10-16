@@ -5,7 +5,7 @@ import {contained, launchPopup, type Harness} from './popupHarness';
 import {E2E_ACCOUNTS, E2E_PASSWORD, makeEnvelope} from './makeEnvelope';
 import {unlockWith} from './vaultPage';
 import {DAPP_HOSTS, adapter, approvalWindow, connect, features, noWindow, openDapp, rawSignTx, relayed, sendTx, serveDapp, signTx, windowClosed, type DappServer} from './dappPage';
-import {parseV0} from './fakeCoordinator';
+import {parseV0, type FakeCoordinator} from './fakeCoordinator';
 
 // Spec B1c §6.3 (B1c-2), §3.3, §1.4: the transaction features against the real extension — the provider, the relay,
 // the background's decoder and simulation (through the fake coordinator's proxy), #48 in the approval window, the
@@ -78,10 +78,14 @@ async function approve(win: Page): Promise<void> {
   await expect(win.getByText('Balance changes (post-simulation)').first()).toBeVisible({timeout: 10_000});
   await win.getByRole('button', {name: 'Approve', exact: true}).click();
 }
-/** Review fix I2: gives pending.ts's POLL_INTERVAL_MS (2 s) background poller at least one full round to run before
- * re-asserting exactly-once broadcast — not a flake workaround, a deliberate window for the thing under test. */
-async function pollerRound(): Promise<void> {
-  await new Promise(resolve => setTimeout(resolve, 2_500));
+/**
+ * Review fix I2 (round 2 minor): waits for pending.ts's background poller to actually poll THIS signature's status —
+ * a real event the fake coordinator records (`fake.hits`'s `rpcMethod`), not a fixed sleep. `sinceIndex` is the
+ * `hits.length` captured right after the broadcast, so a getSignatureStatuses hit recorded anywhere after it proves
+ * the poller ran at least once since the send — the point of re-asserting exactly-once broadcast afterward.
+ */
+async function pollerRan(fake: FakeCoordinator, sinceIndex: number): Promise<void> {
+  await expect.poll(() => fake.hits.slice(sinceIndex).some(x => x.rpcMethod === 'getSignatureStatuses'), {timeout: 15_000}).toBe(true);
 }
 
 test('B1c-25 · signTransaction: the six features; one transaction → #48 → Approve → signed; a batch of five on one screen → five signed; six refused with no window', async () => {
@@ -97,12 +101,15 @@ test('B1c-25 · signTransaction: the six features; one transaction → #48 → A
     await expect(win.locator('.top-bar .title')).toHaveText('Approve transaction');
     await expect(win.locator('.s9-payload-card .row .v.mono').first()).toHaveText('1111…1111 · system_program');
     await approve(win);
-    const r1 = (await one) as {ok: true; value: {signed: string; message: string}[]};
+    const r1 = (await one) as {ok: true; value: {items: {signed: string; message: string}[]; walletCount: number}};
     expect(r1.ok).toBe(true);
-    expect(r1.value).toHaveLength(1);
-    expect(signedBy(r1.value[0]?.signed ?? '')).toBe(true);
+    // Review fix minor (round 2): `items.length` alone is tautological (the page's own map always produces exactly
+    // 1/5 regardless of what the wallet returned) — `walletCount` is the wallet's own `out.length`.
+    expect(r1.value.walletCount).toBe(1);
+    expect(r1.value.items).toHaveLength(1);
+    expect(signedBy(r1.value.items[0]?.signed ?? '')).toBe(true);
     // Review fix I3: the wallet signed exactly the page's own message bytes.
-    expectOwnMessage(r1.value[0]?.signed ?? '', r1.value[0]?.message ?? '');
+    expectOwnMessage(r1.value.items[0]?.signed ?? '', r1.value.items[0]?.message ?? '');
     // The simulation the window showed asked the proxy for the account and the transaction's writable accounts.
     expect(h.fake.simulations.at(-1)).toEqual([ACCOUNT, RECIPIENT]);
     await windowClosed(win);
@@ -111,11 +118,12 @@ test('B1c-25 · signTransaction: the six features; one transaction → #48 → A
     const w5 = await approvalWindow(h.ctx, () => (five = signTx(page, 5, BLOCKHASH)));
     await expect(w5.locator('.app-tx-batch')).toHaveText(['Transaction 1 of 5', 'Transaction 2 of 5', 'Transaction 3 of 5', 'Transaction 4 of 5', 'Transaction 5 of 5']);
     await approve(w5);
-    const r5 = (await five) as {ok: true; value: {signed: string; message: string}[]};
-    expect(r5.value).toHaveLength(5);
-    expect(r5.value.every(w => signedBy(w.signed))).toBe(true);
+    const r5 = (await five) as {ok: true; value: {items: {signed: string; message: string}[]; walletCount: number}};
+    expect(r5.value.walletCount).toBe(5);
+    expect(r5.value.items).toHaveLength(5);
+    expect(r5.value.items.every(w => signedBy(w.signed))).toBe(true);
     // Review fix I3: every item in the batch, not only its signature — its own message, unmixed with any other's.
-    for (const item of r5.value) expectOwnMessage(item.signed, item.message);
+    for (const item of r5.value.items) expectOwnMessage(item.signed, item.message);
     await windowClosed(w5);
     // D8: more than five is refused in the background, before any window.
     expect(await noWindow(h.ctx, () => signTx(page, 6, BLOCKHASH))).toEqual({ok: false, code: 'invalid-request', message: 'The request is not valid.'});
@@ -137,6 +145,7 @@ test('B1c-26 · signAndSendTransaction: #48 → Approve → the route gets the s
     const r = (await sent) as {ok: true; value: {signature: string; message: string}};
     expect(r.ok).toBe(true);
     const signature = base58.encode(base64.decode(r.value.signature));
+    const hitsAtBroadcast = h.fake.hits.length;
     expect(h.fake.broadcasts).toStrictEqual([signature]);
     const wire = h.fake.broadcastWires[0] ?? '';
     expect(signedBy(wire)).toBe(true);
@@ -162,9 +171,10 @@ test('B1c-26 · signAndSendTransaction: #48 → Approve → the route gets the s
     // Negative control (review fix minor): a row whose signature has no dApp record carries no badge at all.
     await expect(walletRow).toHaveCount(1);
     await expect(walletRow.locator('.origin-badge')).toHaveCount(0);
-    // Review fix I2: re-assert exactly-once broadcast AFTER the badge assertion, giving the background's pending
-    // poller rounds to run — proves it never re-broadcasts behind the UI's back once the row is confirmed and shown.
-    await pollerRound();
+    // Review fix I2: re-assert exactly-once broadcast AFTER the badge assertion, having waited for the background's
+    // pending poller to actually poll this signature's status (not a fixed sleep) — proves it never re-broadcasts
+    // behind the UI's back once the row is confirmed and shown.
+    await pollerRan(h.fake, hitsAtBroadcast);
     expect(h.fake.broadcasts).toStrictEqual([signature]);
     expect(h.fake.broadcastWires).toHaveLength(1);
     done(h, server);
@@ -219,6 +229,7 @@ test('B1c-27 · through StandardWalletAdapter: compatible; connect; signTransact
     await approve(ws);
     const rs = (await send) as {ok: true; value: {signature: string; message: string}};
     expect(rs.ok).toBe(true);
+    const hitsAtBroadcast = h.fake.hits.length;
     expect(h.fake.broadcasts).toStrictEqual([rs.value.signature]);
     // Review fix minor: run signedBy/parseV0 on the adapter's own broadcast wire too (B1c-26 already does for the
     // raw path) — and the message is the page's exact bytes.
@@ -230,8 +241,9 @@ test('B1c-27 · through StandardWalletAdapter: compatible; connect; signTransact
     // Connection, would leave none and reach the dApp's RPC, which done() refuses).
     const pending = (await h.sw.evaluate(() => chrome.storage.local.get('v1_pending'))).v1_pending as {signature: string; origin: string | null}[];
     expect(pending.map(x => [x.signature, x.origin])).toStrictEqual([[rs.value.signature, DAPP]]);
-    // Review fix I2: re-assert exactly-once broadcast after giving the background's pending poller rounds to run.
-    await pollerRound();
+    // Review fix I2: re-assert exactly-once broadcast after waiting for the background's pending poller to actually
+    // poll this signature's status (not a fixed sleep).
+    await pollerRan(h.fake, hitsAtBroadcast);
     expect(h.fake.broadcasts).toStrictEqual([rs.value.signature]);
     expect(h.fake.broadcastWires).toHaveLength(1);
     done(h, server);
@@ -246,26 +258,40 @@ test('B1c-28 · re-authentication through the toolbar (D11): a first send → Ap
   try {
     await popup(h);
     const page = await connected(h);
-
-    // Review fix I1: the real negative control for "a mismatch notice never opens a window of its own"
-    // (window.ts's ensureWindow, pageApi.ts's mismatchNotice — controller ruling, fix rounds 3-4). Fired here, with
-    // NO window open at all (connected() already closed its own), this actually exercises window.ts:49's gate — it
-    // returns null only because the queue holds no REAL (non-mismatch) open entry yet, not because some other
-    // window happens to already be open. (The earlier form fired this while a real request's window was ALREADY
-    // open: window.ts:49 short-circuits on `tx.s.window !== null` before it ever reaches the notice-specific check,
-    // so that version could not fail under any build — fixed.)
     const other = await openDapp(h.ctx, 'https://jup.ag');
-    // A site asking with the account dapp.test holds: refused at once (the provider itself refuses an account it
-    // was not given; a script posting straight to the relay is what reaches the background — §1.1: every script on
-    // the page has the page's authority over the provider), and it opens no window of its own.
+
+    // Review fix I1, round 2 (controller ruling — the real E2E path). Round 1's form fired the raw mismatch request
+    // with no window open at all and asserted `noWindow` — but ensureWindow is never even CALLED on that path
+    // (pageApi.ts only calls it after an ACCEPTED request; a mismatch is answered `unauthorized` and queued with no
+    // call to ensureWindow at all), so that assertion never actually ran window.ts:49's gate — mutating the gate's
+    // mismatch exclusion (confirmed: removing `&& e.type !== 'mismatch'`, rebuilding, re-running) left B1c-28 green.
+    // The one path that DOES call ensureWindow with a notice-only queue is onApprovalWindowRemoved's "reopen for
+    // what remains": close the approval window (✕) while it is showing a REAL request that is still `queued` (not
+    // yet decided) → the real request is rejected, and — since other extension windows (this context's own tabs)
+    // are still open — ensureWindow runs again with ONLY the mismatch notice left in the queue. That run must NOT
+    // open a window (the notice has no window of its own to ride in now that the real request is gone).
+    let disposable!: Promise<unknown>;
+    const w0 = await approvalWindow(h.ctx, () => (disposable = signTx(page, 1, BLOCKHASH)));
+    await expect(w0.getByText("Approving asks you to confirm with your password (or passkey) — you'll start it from the Noctura icon.")).toBeVisible({timeout: 10_000});
+    // The mismatch notice, queued BEHIND this real request (w0's window is already open and showing it) — answered
+    // `unauthorized` at once, no window of its own, exactly as a notice queued behind an open real request should be.
     const refused = await noWindow(h.ctx, () => rawSignTx(other, ACCOUNT, BLOCKHASH));
     expect(refused).toEqual({error: 'unauthorized'});
-    // The dApp's own page got exactly one relay reply — its own, and nothing else's.
+    // ✕ while the real request is still queued (never approved): rejects it, then re-opens for "what remains" — a
+    // notice-only queue. Asserts that reopen attempt opens NO window (the mutation's target), over the bounded,
+    // event-driven wait `noWindow` already gives: the disposable request's own promise settling (the background's
+    // rejection section, which runs — and so IS guaranteed complete — strictly before the ensureWindow call this
+    // is testing) plus noWindow's trailing 1 s with no new 'page' event.
+    const afterClose = await noWindow(h.ctx, async () => {
+      await w0.close();
+      return await disposable;
+    });
+    expect(afterClose).toEqual({ok: false, code: 4001, message: 'The user rejected the request.'});
+    // The dApp's own page still saw exactly one relay reply throughout — the notice sat quietly the whole time.
     expect(await relayed(other)).toHaveLength(1);
 
-    // That notice is now queued (silently, no window) AHEAD of the next real request in FIFO order — so once a real
-    // request opens a window, the notice rides along inside it and is shown FIRST, dismiss-only (window.ts fix
-    // round 4: "a mismatch notice rides along in a real request's window").
+    // The notice, still queued, now rides along in the NEXT real request's window — shown FIRST, dismiss-only
+    // (window.ts fix round 4: "a mismatch notice rides along in a real request's window").
     let pending!: Promise<unknown>;
     const win = await approvalWindow(h.ctx, () => (pending = signTx(page, 1, BLOCKHASH)));
     await expect(win.getByText('Request blocked automatically')).toBeVisible();
@@ -303,8 +329,10 @@ test('B1c-28 · re-authentication through the toolbar (D11): a first send → Ap
     await win.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect(win.getByText("Confirm it's you")).toHaveCount(0);
     await win.getByRole('button', {name: 'Approve', exact: true}).click();
-    const r = (await pending) as {ok: true; value: {signed: string; message: string}[]};
-    expect(signedBy(r.value[0]?.signed ?? '')).toBe(true);
+    const r = (await pending) as {ok: true; value: {items: {signed: string; message: string}[]; walletCount: number}};
+    expect(signedBy(r.value.items[0]?.signed ?? '')).toBe(true);
+    // Review fix minor (round 2): the final signed wire's message is the page's own bytes too.
+    expectOwnMessage(r.value.items[0]?.signed ?? '', r.value.items[0]?.message ?? '');
     await windowClosed(win);
     done(h, server);
   } finally {
