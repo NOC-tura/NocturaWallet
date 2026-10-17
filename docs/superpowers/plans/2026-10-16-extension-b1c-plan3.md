@@ -2,7 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Revision 1 (2026-10-17):** first issue, dry-run in full — every task implemented for real on a scratch clone of `main` b13bbd1 (one commit per task: c1d98b4, f1f4a13, 82ffdf7, 614e54b, afb3e09, 05a1f32, fd3ebd6, 3c478d1), each red on its predecessor and green on its own tree with `tsc`, the whole suite, the build and the gates; 188 named mutations, every one compiling and red; the whole Playwright suite in a normal launch and under `unshare -rn` at Tasks 7 and 8; the end state's `verify`, the root `tsc` + `jest` and web's `verify`. Replaying task-1 … task-8's diffs onto `git archive b13bbd1` gives a tree identical to the dry run's end commit for every prefix (Dry-run record). Spec: rev 3.6 is written by Task 1 (owner decisions O1–O4 of 2026-10-16, the controller's rulings, Q28–Q55). Next: the owner reads the rulings at the end (the copy marked), then a Fable 5.1 review (owner rule: every plan goes to a Fable review before execution).
+**Revision 1 (2026-10-17):** first issue, dry-run in full — every task implemented for real on a scratch clone of `main` b13bbd1 (rev 1 commits: c1d98b4, f1f4a13, 82ffdf7, 614e54b, afb3e09, 05a1f32, fd3ebd6, 3c478d1), each red on its predecessor and green on its own tree with `tsc`, the whole suite, the build and the gates; 188 named mutations, every one compiling and red; the whole Playwright suite in a normal launch and under `unshare -rn` at Tasks 7 and 8; the end state's `verify`, the root `tsc` + `jest` and web's `verify`. Replaying task-1 … task-8's diffs onto `git archive b13bbd1` gives a tree identical to the dry run's end commit for every prefix (Dry-run record). Spec: rev 3.6 is written by Task 1 (owner decisions O1–O4 of 2026-10-16, the controller's rulings, Q28–Q55). Next: the owner reads the rulings at the end (the copy marked), then a Fable 5.1 review (owner rule: every plan goes to a Fable review before execution).
+
+**Revision 2 (2026-10-17):** applies every finding of Fable 5.1 review 1 (`.superpowers/sdd/b1c-plan3-review-1.md`, verdict "approve after fixes": H1, M1–M4, L1–L7) with the owner's decisions of 2026-10-17 — **O5** an approval of 99 % of the balance or more is F5's block (H1), **O6** dependent steps stay approvable with copy and a §9 row stating the residual risk (M2), **O7** F2 exempts only three self-rent instructions, the 1.5 s hold stays on every red-flag screen (M3). Where each finding landed: `.superpowers/sdd/b1c3-plan-parts/rev2-changes.md` (summarised in "Review 1 (Fable 5.1) — how each finding was applied", after Scope). The dry run was rebuilt from b13bbd1 (848e0fa, 5183c04, b1e50e4, 772cc3f, 6fb798a, 6191861, 17b6f81, d1456c8 — then Task 9): every changed task red on its predecessor and green on its own tree; 158 mutations re-run or new in rev 2, all red; Playwright at Tasks 7 and 8 in a normal launch and under `unshare -rn`; the replay of every prefix identical. **Task 9** (new) takes the four B1c-1/B1c-2 tests that failed once under CPU load off the wall clock.
 
 **Goal:** Build B1c spec plan 3 ("B1c-3 — red flags", the spec's header table): B1 §3's deterministic red-flag table on #48 exactly — warnings named (unknown program; every non-transfer instruction; Token-2022 transfer hook, permanent delegate and freeze authority on a token the request touches; a durable nonce; the whole balance to a first-time address; a bounded approval), **blocks** (System Assign / Allocate of the wallet account; SetAuthority on an account the user owns; an approval of the whole balance or u64::MAX; a step of a batch that depends on an earlier one — O2) that only a **one-transaction override** opens: the token symbol from the wallet's own table or the word shown, typed exactly, **plus re-authentication through #10** (D11, O1); no setting disables a block; every confirming CTA on a red-flag screen held 1.5 s on C15's triggers, no default focus, Enter never confirms. Plus B1c-2's carried items (R10's owner resolution, `outgoingGrew`'s `omitted`, non-Checked amounts with decimals, the ATA create's token program, four visual items) and #47's gate-line overlap. After this plan B1c is complete (D10: B1c-1, -2 and -3 on `main`); a store build is a B1e decision.
 
@@ -78,10 +80,10 @@ Six inputs a person will meet that the spec implies and no first draft exercised
 | # | condition (B1 §3) | severity | override word |
 |---|---|---|---|
 | F1 | a program not in the decoded set | warn, named by address | — |
-| F2 | an instruction of a decoded program that is not a transfer (Compute Budget exempt — it is the fee row; an instruction a more specific flag names is not repeated) | warn, named | — |
+| F2 | an instruction of a decoded program that is not a transfer (Compute Budget exempt — it is the fee row; an instruction a more specific flag names is not repeated; O7: an ATA create whose wallet and payer are the account, a syncNative of an own account, a closeAccount of an own account back to the account are not named) | warn, named | — |
 | F3 | System Assign / Allocate (or a `…WithSeed` form) of the wallet account — decoded, or the wallet account's owner or data changed in the simulation | **block** | `ASSIGN` (Q28) |
 | F4 | SetAuthority on an account the user owns — decoded, or an own account's owner / close authority, or an own mint's mint / freeze authority, moved in the simulation | **block** | `AUTHORITY` (Q29) |
-| F5 | Approve / ApproveChecked of the whole balance or u64::MAX — decoded, or a delegation raised to it in the simulation | **block** | the wallet table's symbol; `UNLIMITED` (Q30) |
+| F5 | Approve / ApproveChecked of the whole balance or u64::MAX, or 99 % of it or more (O5) — against the smaller of the balance before and after — decoded, or a delegation raised to it in the simulation | **block** | the wallet table's symbol; `UNLIMITED` (Q30) |
 | F6 | a bounded approval | warn + re-auth | — |
 | F7 | Token-2022 transfer hook, permanent delegate, freeze authority on a mint the request touches (O3: Token-2022 only) | warn, named per mint; Q36 when unreadable | — |
 | F8 | a durable nonce (AdvanceNonceAccount first) | warn "This transaction does not expire." | — (sign-and-send stays refused, plan 2 R12) |
@@ -109,23 +111,33 @@ Six inputs a person will meet that the spec implies and no first draft exercised
 
 Unchanged from plan 2 §4: the page and the window are untrusted, the coordinator is the simulation's one source (a lying coordinator can hide chain-state flags — the decoded rows do not depend on it, and every decoded block still fires), the port's sender is the browser's. New: the mints are read through the same proxy (a lying coordinator can hide F7 or misreport decimals — the same trust as every B1c-2 balance line; F5's word then falls to `UNLIMITED`, never to a wrong symbol, because the word needs the table's mint AND its decimals).
 
+## Review 1 (Fable 5.1) — how each finding was applied
+
+- **H1** (F5 bypassed by approving balance − 1) → O5: F5 at `amount × 100 ≥ balance × 99`, both branches (Task 2; spec §3.3, Task 1; copy Q42/Q43 "all or nearly all", Task 5).
+- **M1** (chain F5's baseline unpinned; the review's P12 survived) → the smaller of the before and after balance decides, both branches; P12 is M2ah, red (Task 2).
+- **M2** (O2's residual risk unsaid) → O6: Q48's second sentence "Approving it may move any of your balances." (Task 5), a §9 row (Task 1), a Before-the-PR line.
+- **M3** (alarm fatigue) → O7: three self-rent exemptions with a negative control per condition (Tasks 2, 6; E2E B1c-31/32, Task 7); the hold unchanged.
+- **M4** ("on top of C15") → the spec says what is built: 1.5 s instead of C15's 500 ms on every C15 trigger (Task 1).
+- **L1** typed words emptied when a new simulation lands (Task 5, M5w). **L2** a stored dependent step must name an earlier step (Task 3, M3ak). **L3** multisig-owned accounts: §9 accepted limit (Task 1). **L4** the two "Approve anyway" strings: put to the owner with Q34. **L5** every task's commit trailer names `<the executing model>` (Tasks 5–8). **L6** "How to read the steps". **L7** the balance card's SOL row: §9 kept deviation (Task 1).
+
 ## How to read the steps
 
 - A **new file** is given in full. A **changed file** is a unified diff against the file as the previous task left it; save the block and apply it with `git apply --recount` from the repository root. Several files grow task by task (`redFlags.ts`, `simulate.ts`, `signTx.ts`, `Tx.tsx`, `strings.ts`, `app.css`, the spec, some test files), so their diffs apply in task order.
 - One file is **generated**, never typed: `src/styles/design-ext.css` (by `scripts/extract-design-css.mjs`; Task 5 adds `.s9-typed-confirm` to its allowlist and re-pins the hash).
 - Commands run from `extension/` unless they start with `cd`. "Whole suite" is `npx tsc --noEmit; echo $?` then `npx vitest run`. The expected totals are the dry run's: each task's own test files on its predecessor's tree (red), then on its own tree (green), with `tsc`, the whole suite, `node scripts/build.mjs` and `npm run gates` at every task. A reviewer-added test raises the totals; that is not a defect.
 - Background tests drive the real handlers over `fakeExt` and fake ports (`pageHarness.ts`) and a steered chain (`txHarness.ts`); window tests render `approve.html`'s `Approve` against the real background (`windowHarness.tsx`); popup tests use B1b's `renderInWallet`. Each screen test asserts `unstyledClasses(…)` is empty.
+- Apply each ````diff block on its own, in order, with `git apply --recount` (a task's blocks after the previous task's) — never concatenate blocks into one patch: one block can hold several files and later tasks change the same files again, and `git apply` refuses a patch with two `diff --git` sections for one file (review 1 L6).
 - **Each task ends with its named mutations** — each one alone, in a fresh `git archive` copy, `tsc`'s own exit code first; every one must turn the named test red.
 - Each task ends with **"Dry-run notes"**: the rulings its dry run made beyond this header and what the next task relies on. They are part of the plan.
 
 ## Tasks
 
-### Task 1: Spec rev 3.6 (the red-flag table as built, O1–O4, §9 rows, Q28–Q36); the token-state parsers (one source of truth for the simulation and the red flags); System's four `…WithSeed` instructions decoded
+### Task 1: Spec rev 3.6 (the red-flag table as built, O1–O7, §9 rows, Q28–Q36); the token-state parsers (one source of truth for the simulation and the red flags); System's four `…WithSeed` instructions decoded
 
-**Spec:** B1c §3.3 (rev 3.6, written by this task), §9, §10; B1 §3 (the red-flag table, binding); owner decisions O1–O4 (`.superpowers/sdd/b1c3-owner-decisions.md`); brief "The red-flag table as built" (F3's R2, F7, F10's creators)
+**Spec:** B1c §3.3 (rev 3.6, written by this task), §9, §10; B1 §3 (the red-flag table, binding); owner decisions O1–O7 (`.superpowers/sdd/b1c3-owner-decisions.md`; O5–O7 from plan review 1, rev 2 of this plan); brief "The red-flag table as built" (F3's R2, F7, F10's creators)
 
 **Files:**
-- Modify: `docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md` (rev 3.6)
+- Modify: `docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md` (rev 3.6; rev 2 of this plan adds O5–O7 and review 1's M2, M4, L1, L3, L7 to it)
 - Test (new): `extension/src/background/dapp/__tests__/tokenBytes.ts` (byte builders + the USDC-like and PYUSD-like fixtures; later tasks import it)
 - Test (new): `extension/src/background/dapp/__tests__/tokenState.test.ts`
 - Test: `extension/src/background/dapp/__tests__/simulate.test.ts` (one test added; B1c-2's tests unchanged)
@@ -654,11 +666,11 @@ Expected (the dry run): Test Files  3 failed (3) · Tests  4 failed | 54 passed 
 
 - [ ] **Step 3: Implement.**
 
-Change the spec (rev 3.6 — the status paragraph, §3.3's decoder line and its new "Red flags as B1c-3 builds them", §8's row, §9's two updated and five new rows, §10's Q28–Q36):
+Change the spec (rev 3.6 — the status paragraph, §3.3's decoder line and its new "Red flags as B1c-3 builds them", §8's row, §9's two updated and five new rows, §10's Q28–Q36; **(rev 2)** the status paragraph's plan-review-1 sentence, F2's O7 exemptions, F5's 99 % and its pre/post balance (O5, M1), the hold "instead of C15's 500 ms" in both places (M4), the typed field emptied by a new simulation (L1), and §9's three new rows — the dependent step's residual risk (O6/M2), multisig-owned token accounts (L3), the balance card's SOL row (L7)):
 
 ````diff
 diff --git a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-index 6a03a6e..7c03645 100644
+index 6a03a6e..c41e9be 100644
 --- a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
 +++ b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
 @@ -1,6 +1,6 @@
@@ -669,7 +681,7 @@ index 6a03a6e..7c03645 100644
  decisions D1–D11. Rev 2 applied every finding of Fable 5.1 review 1 (`.superpowers/sdd/b1c-spec-review-1.md`: H1–H3,
  M1–M12, L1–L13); M1 and M2 were the owner's decisions D10 and D11. **Rev 3** applies every finding of Fable review 2
  (`.superpowers/sdd/b1c-spec-review-2.md`: H1–H2, M1–M10, L1–L13; verdict "approve after fixes"). Where each finding
-@@ -29,6 +29,17 @@ leaving the worker (Task 5 ruling: "never sent twice" kept over at-least-once; n
+@@ -29,6 +29,23 @@ leaving the worker (Task 5 ruling: "never sent twice" kept over at-least-once; n
  gain ✕ on a window while a riding mismatch notice is shown (Task 3 ruling, round 4); §10 gains Q27, the line for an
  approval refused because its simulation is merely old (final review I3 — controller copy, flagged to the owner). No
  other rule changed.
@@ -683,11 +695,17 @@ index 6a03a6e..7c03645 100644
 +approvable under the override rule; every other failed simulation stays Reject-only. **O3:** the Token-2022 warnings
 +are for Token-2022 mints only; a classic SPL mint's freeze authority is not flagged. **O4:** a first send to a new
 +address through a CPI is an accepted limit. §9 gains five rows (the declared omissions, O3, O4) and updates two (R10,
-+dependent batches); §10 gains Q28–Q36 (controller copy, flagged to the owner). No other rule changed.
++dependent batches); §10 gains Q28–Q36 (controller copy, flagged to the owner). **Plan 3 review 1 (Fable, 2026-10-17;
++owner decisions O5–O7, `.superpowers/sdd/b1c-plan3-review-1.md`):** **O5:** F5 also blocks an approval of 99 % or
++more of the source's balance (stricter than B1 §3's "whole balance", which is allowed), read against the balance both
++before and after the transaction; **O6:** F10's banner says plainly that approving an unchecked step may move any of
++the account's balances, and §9 states the residual risk; **O7:** F2 exempts three self-rent instructions, each in one
++exact shape; the hold is 1.5 s instead of C15's 500 ms; a new simulation clears the typed words; §9 gains three rows
++(the dependent step's residual risk, multisig-owned token accounts, the balance card's SOL row). No other rule changed.
  
  **What this is.** The extension becomes a wallet any Solana site can use through Wallet Standard: connect, disconnect,
  events, `signMessage`, `signTransaction`, `signAndSendTransaction`, on `solana:mainnet` only. It builds the design's
-@@ -570,7 +581,8 @@ cannot mask an earlier one (review M5):
+@@ -570,7 +587,8 @@ cannot mask an earlier one (review M5):
    payer or signer; otherwise `invalid-request`.
  - Lookup tables resolved with `getMultipleAccounts` through the proxy before decoding; unresolvable → that instruction is
    "unknown program".
@@ -697,10 +715,14 @@ index 6a03a6e..7c03645 100644
    (transfer, transferChecked, approve, approveChecked, revoke, setAuthority, closeAccount, burn, burnChecked,
    initializeAccount*, syncNative) and the Token-2022 extensions B1 §3 names, ATA (create, createIdempotent), Compute
    Budget (limit, price), the presale program (by Anchor discriminator from the IDL in the repo).
-@@ -592,6 +604,61 @@ cannot mask an earlier one (review M5):
+@@ -590,7 +608,66 @@ cannot mask an earlier one (review M5):
+ - **E2E through `StandardWalletAdapter`** (`@solana/wallet-adapter-base`), so the adapter's compatibility predicate is
+   exercised (review M1).
  - **B1c-3** builds B1 §3's red-flag table exactly, with its override rule (typed symbol or word + re-authentication,
-   one transaction, no setting disables a block) and B1 §3's Confirm hold of 1.5 s on any red-flag screen (on top of C15).
- 
+-  one transaction, no setting disables a block) and B1 §3's Confirm hold of 1.5 s on any red-flag screen (on top of C15).
++  one transaction, no setting disables a block) and B1 §3's Confirm hold of 1.5 s on any red-flag screen (instead of
++  C15's 500 ms, on every C15 trigger — rev 3.6).
++
 +#### Red flags as B1c-3 builds them (rev 3.6)
 +
 +Flags are computed in the **background** (`src/background/dapp/redFlags.ts`), per transaction of the request, from the
@@ -710,10 +732,10 @@ index 6a03a6e..7c03645 100644
 +| # | condition (B1 §3) | how it is detected | severity | override word |
 +|---|---|---|---|---|
 +| F1 | a program not in the decoded set — also an instruction that touches an account no lookup table resolved, and a known program's instruction that does not parse strictly | the decoded instruction's program is unknown | warning, named by the program's address (one banner per transaction listing every unknown program, each address whole, in groups of four) | — |
-+| F2 | an instruction of a decoded program that is not a transfer | the decoded name is none of System `transfer`, Token / Token-2022 `transfer`, `transferChecked`. **Compute Budget is exempt** — it is the fee, already shown as the fee row; the only exemption | warning, one banner per transaction naming the instructions | — |
++| F2 | an instruction of a decoded program that is not a transfer | the decoded name is none of System `transfer`, Token / Token-2022 `transfer`, `transferChecked`. **Compute Budget is exempt** — it is the fee, already shown as the fee row. **O7: three self-rent instructions are exempt**, each only in exactly this shape, because none can take value from the account: an ATA `create` / `createIdempotent` whose `wallet` **and** `payer` are both the account (its own token account, the rent paid by itself); `syncNative` of a token account whose pre-state owner field is the account; `closeAccount` of a token account whose pre-state owner field is the account, with the account itself as the destination (the rent comes back to it). Every other instruction stays named — another wallet's ATA or one another payer funds, a sync or close of an account that is not the user's or that the wallet cannot read, a close to any other destination | warning, one banner per transaction naming the instructions | — |
 +| F3 | System `Assign` / `Allocate` on the user's own wallet account | a decoded `assign`, `allocate`, `assignWithSeed` or `allocateWithSeed` (tags 1, 8, 10, 9) whose target account (index 0) is the wallet account; **and** chain state: the simulation's post-state of the wallet account has an owner other than the System program, or any data (a CPI names no top-level instruction) | **blocked** | `ASSIGN` (Q28) — one word for all four; the banner names which |
 +| F4 | SPL / Token-2022 `SetAuthority` (any authority type) on an account the user owns | a decoded `setAuthority` whose account is a token account whose pre-state owner field is the wallet account, or a mint whose pre-state mint authority or freeze authority is the wallet account; **and** chain state (a CPI): an own token account's owner reassigned away, or its close authority changed | **blocked** | `AUTHORITY` (Q29) |
-+| F5 | `Approve` / `ApproveChecked` of the whole balance or u64 max | a decoded approve whose amount is u64::MAX or at least the source's pre-state amount; **and** chain state (a CPI): an own account's post-state delegated amount is u64::MAX or at least its pre-state amount | **blocked** | the token's symbol from **the wallet's own token table**, exact and case-sensitive — only when the simulation's decimals match the table's; a mint the wallet cannot name → `UNLIMITED` (Q30). Never a symbol a mint claims for itself (a fake mint can call itself USDC) |
++| F5 | `Approve` / `ApproveChecked` of the whole balance or u64 max — **O5: or nearly all of it, 99 % or more** (stricter, allowed) | a decoded approve whose amount is at least 99 % of the source's balance (`amount × 100 ≥ balance × 99`, B1c-2's whole-balance percent; u64::MAX and the whole balance always are); **and** chain state (a CPI): an own account's post-state delegation, new or raised, of at least 99 % of its balance. **The balance** is the source's amount before the transaction (pre-state) **and** after it (post-state, when that is still the account's own token account): the rule blocks when either meets the threshold — it compares with the smaller (review 1 M1) — so a transaction that moves tokens out and approves what is left, or brings tokens in so the approval looks small beside the new balance, is still a block. A source the wallet cannot read as its own token account before the transaction is an empty balance (fail closed) | **blocked** | the token's symbol from **the wallet's own token table**, exact and case-sensitive — only when the simulation's decimals match the table's; a mint the wallet cannot name → `UNLIMITED` (Q30). Never a symbol a mint claims for itself (a fake mint can call itself USDC) |
 +| F6 | a bounded `Approve` / `ApproveChecked` | as B1c-2 (the `approval` reason, from chain state) | warning + re-authentication | — |
 +| F7 | Token-2022 transfer hook, permanent delegate or freeze authority on a token the user holds (**O3: Token-2022 mints only**) | every mint of an own token account the transaction touches (pre- or post-state) and every mint a decoded instruction names, read through the proxy. A Token-2022 mint (owner = the Token-2022 program): its base layout's freeze authority (COption, tag at 46), and its TLV extensions from byte 166 (byte 165 = 1, Mint) — extension 12 PermanentDelegate with a non-zero key, extension 14 TransferHook with a non-zero program id (32 zero bytes are "none"). A mint that cannot be read or parsed → "Could not read this token's settings" (Q36; fail closed — a warning, never silence) | warning, named per mint (which of the three, with the authority's or the program's address) | — |
 +| F8 | durable nonce (`AdvanceNonceAccount` first) | B1c-2's `usesDurableNonce` | warning: "This transaction does not expire." (B1 §3's copy, capitalised) | — (`signAndSendTransaction` stays refused for it, B1c-2) |
@@ -738,14 +760,17 @@ index 6a03a6e..7c03645 100644
 +  overridden, and a refresh that adds a block asks for a new re-authentication. The re-authentication stays bound to
 +  the exact bytes (B1c-2); the words are not secrets and are bound only by the background recomputing them. No setting
 +  disables a block.
-+- **Holds (B1 §3).** On any screen with a flag (warning or block) every confirming CTA is held **1.5 s** — on top of
-+  C15's hold after focus and after each state change, a typed field's match changing included. No control is focused
++- **Holds (B1 §3).** On any screen with a flag (warning or block) every confirming CTA is held **1.5 s instead of
++  C15's 500 ms**, on every one of C15's triggers — at open, after focus and after each state change, a typed field's
++  match changing included (never 2 s: the hold replaces C15's, it is not added to it). No control is focused
 +  at open, the typed field included; Enter never confirms, and Enter in a typed field never submits. Reject is never
 +  held.
 +- **The typed field** is the design's `.s9-typed-confirm`: the label "Type <code>WORD</code> to enable Approve" (the
 +  design's), the word shown in its true case; the input with `autocapitalize`, `autocomplete`, `autocorrect` and
 +  `spellcheck` off, an exact, case-sensitive match with no trimming (a trailing space does not match), the design's
-+  `.input.match` border on a match, and #37's helper "Case-sensitive · must match exactly.". Never pre-filled. The
++  `.input.match` border on a match, and #37's helper "Case-sensitive · must match exactly.". Never pre-filled, and
++  emptied when a new simulation lands (review 1 L1: a chain-state block's details can change between simulations, so
++  the user types the word again for what the screen now shows). The
 +  CTA: for an unlimited approve the design's red "Approve unlimited" with the alert icon; for any other block "Approve
 +  anyway" (Q34), red; drawn as #37's gated CTA (greyed, full label) until every field matches.
 +- **Banners.** `.s9-flag-banner danger` for a block (head, body, meta — the design's state 2; for F5 the design's own
@@ -755,11 +780,10 @@ index 6a03a6e..7c03645 100644
 +  gains the design's synthesized row ("<SYM> delegated · unlimited · ≈ all current + future"; a bounded approve
 +  "<SYM> delegated · <amount>"): an approve changes no balance, so the "No balance changes" line is replaced wherever an
 +  authority or approve flag exists.
-+
+ 
  The plans for B1c-2 and B1c-3 refine this section; they may not loosen it.
  
- ---
-@@ -796,7 +863,7 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
+@@ -796,7 +873,7 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
  |---|---|
  | `extension/src/provider/` | the MAIN-world provider (bundle `provider.js`) |
  | `extension/src/relay/` | the ISOLATED relay (bundle `relay.js`) |
@@ -768,7 +792,7 @@ index 6a03a6e..7c03645 100644
  | `extension/src/background/autolock.ts`, `session.ts`, `index.ts` | every lock caller routed through the lock hook |
  | `extension/src/approve/` + `approve.html` | the approval window (#46, #47, #48, locked) |
  | `extension/src/app/screens/ConnectedApps.tsx` | #49 |
-@@ -841,12 +908,17 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
+@@ -841,12 +918,20 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
  | design frame 916 px high | the window is 720 px; the body scrolls, the sticky bar stays |
  | unlock inside the flow (implied by the design's modal stack) | the locked window points to the toolbar (D11) |
  | first six / last six highlighted on review screens | B1 §3 (owner): labels + first-send warning, unchanged |
@@ -785,10 +809,13 @@ index 6a03a6e..7c03645 100644
 +| the design's Section IX summary: "red destructive primary Reject + tertiary-demoted" Approve on unlimited spend | **the drawn mockup is built** (rev 3.6): secondary Reject and the red "Approve unlimited" with the alert icon (ix:18388-18391); the summary line contradicts the state it describes |
 +| B1 §3 "freeze authority on a token the user holds" for a **classic SPL** mint | **not flagged** (owner, O3, rev 3.6): the Token-2022 warnings are for Token-2022 mints only. USDC and USDT are classic mints with a freeze authority; flagging it would warn on nearly every dApp transaction that moves them |
 +| B1 §3 "first send to a new address" for a transfer a dApp program makes by **CPI** | **accepted limit** (owner, O4, rev 3.6): first send is read from the top-level decoded System `transfer` and SPL `transfer` / `transferChecked`. A transfer made inside another program's instruction names no top-level instruction; it is bounded only by the 5 % and dollar rules on the simulated outflow (B1c-2), which still apply. The other moving shapes the first-send rule does not read (System `transferWithSeed`, Token-2022's `transferCheckedWithFee`, a close to a foreign destination, a burn) carry F1's or F2's warning and the same amount rules |
++| a dependent step (F10, O2): what approving it gives up | **accepted residual risk** (owner, O6, rev 3.6; plan 3 review 1 M2): a dependent step was simulated without the changes the earlier step makes, so its chain-state flags (F3, F4, F5 by a CPI) never run and its balance changes are unknown — only what its top-level decoded instructions show is checked (F1, F2 and the decoded forms of F3–F9). An attacker can pad a batch with one create step so that a draining step fails at the account that step creates and is shown as dependent; a legitimate swap batch (setup / swap / cleanup) looks exactly the same, so there is no cheap discriminator. Typing `UNCHECKED` and re-authenticating through #10 is the user's acceptance that the step's effects are unseen, and Q48 says plainly that approving it may move any of the account's balances |
++| B1 §3 "an account the user owns" for a token account owned by an SPL **multisig** the wallet signs for | **accepted limit** (rev 3.6, plan 3 review 1 L3): F4 and F5 / F6 recognise an account as the user's by its owner field being the wallet account (or by the wallet as the instruction's `currentAuthority` / `owner`); an account owned by a multisig is not the user's to the wallet, and its `setAuthority` or `approve` carries F2's warning only |
++| #48 state 2's balance card row "Network fee −0.0000050 $0.0008" | **kept deviation** (rev 3.6, plan 3 Task 8; review 1 L7): the card's rows are B1c-2's balance changes (post − pre), so its second row is the simulation's SOL change ("SOL −0.000005 $0.0007", the fee included); the fee itself is the instructions card's row |
  
  ---
  
-@@ -879,6 +951,15 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
+@@ -879,6 +964,15 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
  | Q25 | #49 undo refused (rev 3.2, owner-delegated 2026-10-12) | "Could not undo — <name> stays disconnected." |
  | Q26 | #46 request can no longer be signed (rev 3.2, owner-delegated 2026-10-12) | "This request can no longer be signed. Reject it and ask the site to try again." |
  | Q27 | #48 an approval refused because the simulation it named, still the newest, is 40 s old — its refresh has not landed (rev 3.5, controller copy, flagged to the owner; final review I3) | "This simulation is out of date. Wait a moment for it to refresh." — never "The transaction changed while you were reviewing…", which is said only when the window named another simulation than the newest |
@@ -1236,6 +1263,8 @@ Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected
 
 16 mutations, all red, every one compiling (`tsc` 0). Three first drafts did not compile and were replaced (INVALID, not red): M1c, M1k and M1l as first written left `MULTISIG_SIZE`, `mintInfo` or `MAX_SEED_LEN` unused (`noUnusedLocals`, tsc 2). Counts are on this task's own tree (the named file's tests), each mutant alone in a fresh `git archive` copy with `node_modules` linked, under `timeout 300`.
 
+**(rev 2)** Task 1's code and tests are unchanged by rev 2 (only its spec text changed), so these mutations were not re-run; the totals above stand (rebuilt tree: tsc 0, 168 files / 3322 tests, build and gates ok).
+
 - [ ] **Step 6: Commit.**
 
 ```bash
@@ -1255,19 +1284,20 @@ git commit -m "feat(extension): B1c-3 spec rev 3.6, the token-state parsers (one
 - **For Task 5 (copy not yet in the spec):** the heads/bodies of F1–F4, F7 (per kind), F9 and F10's banners, and the line that replaces "No balance changes" beside an authority/approve flag, are not in the spec, the design or B1 §3 beyond what §3.3 now quotes ("unknown program", "This transaction does not expire.", the F5 design copy, Q32, Q36). Task 1 did not invent them: Task 5 adds them as Q37+ (controller copy, flagged) with a spec touch.
 - **For every later task:** the dry-run clone has no git identity configured — commit with `git -c user.name=… -c user.email=… commit …`. Mint and token-account fixtures come from `__tests__/tokenBytes.ts` (`mintBytes`, `tokenAccountBytes`, `usdcLikeMint`, `pyusdLikeMint`, `withU32`/`withByte`); never hand-typed bytes. `decodeInstructions` now returns fields for `transferWithSeed`; simulate's first-send is unchanged (it reads `from` only for a System `transfer`), as O4 accepts.
 - **Prettier:** the surrounding files are not `prettier --check`-clean at HEAD~1 (the repo's long-line style); the new code follows the surrounding style, as plan 2 did.
+- **(rev 2) The spec text only** (plan review 1, owner O5–O7): §3.3's F2 row gains O7's three self-rent exemptions (each in one exact shape — an ATA `create` / `createIdempotent` whose `wallet` and `payer` are the account, `syncNative` / `closeAccount` of a token account whose pre-state owner field is the account, the close's destination the account); F5's row blocks at 99 % (`amount × 100 ≥ balance × 99`, B1c-2's `WHOLE_BALANCE_PERCENT`) against the smaller of the source's pre- and post-state balance (O5, M1 — the review's recommendation: either one meeting it blocks); the Holds bullet and §3.3's B1c-3 summary say "1.5 s instead of C15's 500 ms, on every C15 trigger" (M4); the typed field is emptied by a new simulation (L1, built in Task 5); §9 gains the dependent step's residual risk (O6/M2), multisig-owned token accounts as an accepted limit (L3) and the balance card's SOL row as a kept deviation (L7). The Q42/Q43/Q48 copy changes live where those rows are written (Task 5). No code or test of this task changed.
 
 ---
 
 ### Task 2: `redFlags.ts` — B1 §3's red-flag table, F1–F10, as a pure function over the simulation's reads; the override words and their check
 
-**Spec:** B1c §3.3 rev 3.6 "Red flags as B1c-3 builds them" (F1–F10, the override rule), B1 §3 (the table, binding); owner decisions O1–O3; brief "The red-flag table as built", R1–R4
+**Spec:** B1c §3.3 rev 3.6 "Red flags as B1c-3 builds them" (F1–F10, the override rule), B1 §3 (the table, binding); owner decisions O1–O3, and (rev 2) O5 (F5 at 99 %, pre and post) and O7 (F2's self-rent exemptions); brief "The red-flag table as built", R1–R4
 
 **Files:**
 - Test (new): `extension/src/background/dapp/__tests__/redFlags.test.ts`
 - Create: `extension/src/background/dapp/redFlags.ts`
 
 **Interfaces:**
-- Consumes: Task 1's `mintInfo`, `tokenAccountInfo`, `TokenAccountInfo` (`dapp/tokenState.ts`), the decoder's `…WithSeed` fields (`account` for `assignWithSeed` / `allocateWithSeed`), `__tests__/tokenBytes.ts` (`keyOf`, `mintBytes`, `tokenAccountBytes`, `usdcLikeMint`, `pyusdLikeMint`, `permanentDelegateExt`, `transferHookExt`, `U64_MAX`, the issuer keys); B1c-2's `decodeInstructions`, `addressField`, `DecodedInstruction`, `ProgramKey`, the program ids (`decode/decode.ts`), `ParsedTx`/`parseWire` (`decode/wire.ts`), `resolveKeys` (`decode/keys.ts`), `usesDurableNonce` (`txRequest.ts`), `DappReauthReason` (`reauthPolicy.ts`), `AccountData` (`core/solana/rpc.ts`), `WALLET_TOKENS`, `tokenForMint`, `WalletToken` (`core/solana/balances.ts`).
+- Consumes: Task 1's `mintInfo`, `tokenAccountInfo`, `TokenAccountInfo` (`dapp/tokenState.ts`), the decoder's `…WithSeed` fields (`account` for `assignWithSeed` / `allocateWithSeed`), `__tests__/tokenBytes.ts` (`keyOf`, `mintBytes`, `tokenAccountBytes`, `usdcLikeMint`, `pyusdLikeMint`, `permanentDelegateExt`, `transferHookExt`, `U64_MAX`, the issuer keys); B1c-2's `decodeInstructions`, `addressField`, `DecodedInstruction`, `ProgramKey`, the program ids (`decode/decode.ts`), `ParsedTx`/`parseWire` (`decode/wire.ts`), `resolveKeys` (`decode/keys.ts`), `usesDurableNonce` (`txRequest.ts`), `DappReauthReason` and (rev 2) `WHOLE_BALANCE_PERCENT` (`reauthPolicy.ts`), `AccountData` (`core/solana/rpc.ts`), `WALLET_TOKENS`, `tokenForMint`, `WalletToken` (`core/solana/balances.ts`).
 - Produces (`dapp/redFlags.ts`):
   ```ts
   export const OVERRIDE_WORDS = {assign: 'ASSIGN', setAuthority: 'AUTHORITY', unlimited: 'UNLIMITED', dependent: 'UNCHECKED'} as const;
@@ -1297,6 +1327,7 @@ git commit -m "feat(extension): B1c-3 spec rev 3.6, the token-state parsers (one
   export function expectedOverrides(flags: readonly (readonly RedFlag[])[]): {tx: number; word: string}[];
   export function overridesMatch(flags: readonly (readonly RedFlag[])[], given: readonly {tx: number; word: string}[]): 'ok' | 'missing' | 'mismatch';
   ```
+  **(rev 2)** `Approval.balance` is the balance F5 compared with: the smaller of the source's own token amount before and after the transaction (0 when it could not be read as the wallet's own before); F5 ⇔ `amount × 100 ≥ balance × WHOLE_BALANCE_PERCENT` (99 — u64::MAX and the whole balance always are). F2 skips O7's three self-rent instructions.
   At most one flag per (transaction, kind), except `token-2022` (one per mint) — so `expectedOverrides` is one word per (transaction, block kind). `at` is the index of the first instruction a flag concerns, null for chain state and whole-transaction flags. Amounts are base-unit decimal strings. Each transaction's list is ordered: blocks, then warnings; within each by `at` (null last), then by the table's row, then as found.
 
 The table is computed in one place, in the background, from what the simulation reads (spec §3.3: the window only renders it). `redFlagsOf` is pure: Task 3 gathers its input — per transaction the raw transaction and its decoded instructions, the pre-state it already reads immediately before that transaction's simulation (the wallet account and every writable account), the simulation's post-state for the same addresses, whether that transaction is a first send, and whether it simulated, failed, or depends on an earlier step (Task 3's attribution) — plus the mints `flagMints` names, read through the proxy, and the request's re-authentication reasons. Each block rule reads both the decoded instruction and chain state, because a dApp program can do by CPI what no top-level instruction names (B1c-2's fix round 1, I1). Token accounts and mints are read only through Task 1's parsers. `expectedOverrides` and `overridesMatch` are what Task 4's decide gate runs on the stored flags (C13: the background recomputes every word; the window's are only compared).
@@ -1355,8 +1386,11 @@ const approveIx = (amount: bigint, source = SRC, owner = ME, program = TOKEN_PRO
 const approveCheckedIx = (amount: bigint, mint: string, source = SRC) => tokenIx([13, ...u64(amount), 6], [meta(source, false, true), meta(new PublicKey(mint)), meta(DELEGATE), meta(ME, true)]);
 /** SetAuthority: `type` 0 MintTokens, 1 FreezeAccount, 2 AccountOwner, 3 CloseAccount; the new authority TO. */
 const setAuthorityIx = (account: PublicKey, current: PublicKey, type = 2) => tokenIx([6, type, 1, ...TO.toBytes()], [meta(account, false, true), meta(current, true)]);
-const ataCreateIx = (mint: string) =>
-  new TransactionInstruction({programId: new PublicKey(ATA_PROGRAM), data: Buffer.from([1]), keys: [meta(ME, true, true), meta(SRC2, false, true), meta(ME), meta(new PublicKey(mint)), meta(SystemProgram.programId), meta(new PublicKey(TOKEN_PROGRAM))]});
+/** ATA create (tag 0) / createIdempotent (tag 1) of SRC2: `payer` funds it for `wallet`. */
+const ataCreateIx = (mint: string, wallet = ME, payer = ME, tag = 1) =>
+  new TransactionInstruction({programId: new PublicKey(ATA_PROGRAM), data: Buffer.from([tag]), keys: [meta(payer, true, true), meta(SRC2, false, true), meta(wallet), meta(new PublicKey(mint)), meta(SystemProgram.programId), meta(new PublicKey(TOKEN_PROGRAM))]});
+const syncNativeIx = (account: PublicKey) => tokenIx([17], [meta(account, false, true)]);
+const closeAccountIx = (account: PublicKey, destination: PublicKey, owner = ME) => tokenIx([9], [meta(account, false, true), meta(destination, false, true), meta(owner, true)]);
 const unknownIx = (program = UNKNOWN, keys: PublicKey[] = [SRC]) => new TransactionInstruction({programId: program, data: Buffer.from([1]), keys: keys.map(k => meta(k, false, true))});
 
 const plain = (lamports = SOL): AccountData => ({lamports, owner: SYSTEM_PROGRAM, data: new Uint8Array()});
@@ -1419,7 +1453,7 @@ describe('redFlagsOf — F2 non-transfer', () => {
   it('every instruction of a decoded program that is not a transfer, named, in one warning — an unknown tag too', () => {
     const unknownTag = tokenIx([99], [meta(SRC, false, true)]);
     const transferWithSeed = SystemProgram.transfer({fromPubkey: SRC, basePubkey: ME, toPubkey: TO, lamports: 1, seed: 's', programId: SystemProgram.programId});
-    const flags = one({ixs: [SystemProgram.assign({accountPubkey: THEIRS, programId: UNKNOWN}), ataCreateIx(MAINNET_USDC_MINT), unknownTag, transferWithSeed]});
+    const flags = one({ixs: [SystemProgram.assign({accountPubkey: THEIRS, programId: UNKNOWN}), ataCreateIx(MAINNET_USDC_MINT, THEIRS), unknownTag, transferWithSeed]});
     expect(find(flags, 'non-transfer')).toEqual({
       kind: 'non-transfer',
       severity: 'warn',
@@ -1447,6 +1481,32 @@ describe('redFlagsOf — F2 non-transfer', () => {
     // Positive control: a revoke beside them is named.
     const revoke = tokenIx([5], [meta(SRC, false, true), meta(ME, true)]);
     expect(find(one({ixs: [...ixs, revoke]}), 'non-transfer')?.instructions).toEqual([{index: 6, program: 'token', name: 'revoke'}]);
+  });
+
+  it('O7: never for the three self-rent instructions — an own ATA created and paid by the account, syncNative and closeAccount (to the account) of an own token account', () => {
+    const wsol = [[SRC, tokenAcc({mint: keyOf(45), amount: 0n})]] as [PublicKey, AccountData][];
+    const ixs = [ataCreateIx(MAINNET_USDC_MINT, ME, ME, 0), ataCreateIx(MAINNET_USDC_MINT), syncNativeIx(SRC), closeAccountIx(SRC, ME)];
+    expect(kinds(one({ixs, pre: wsol}))).not.toContain('non-transfer');
+    // Positive control: a revoke beside them is still named, alone.
+    const revoke = tokenIx([5], [meta(SRC, false, true), meta(ME, true)]);
+    expect(find(one({ixs: [...ixs, revoke], pre: wsol}), 'non-transfer')?.instructions).toEqual([{index: 4, program: 'token', name: 'revoke'}]);
+  });
+
+  it('O7 negative controls: another wallet’s ATA, one another payer funds, a sync or close of an account not the user’s (or unreadable), a close elsewhere — each named', () => {
+    const mine = [SRC, tokenAcc({mint: keyOf(45), amount: 0n})] as [PublicKey, AccountData];
+    const theirs = [THEIRS, tokenAcc({mint: keyOf(45), owner: TO, amount: 0n})] as [PublicKey, AccountData];
+    const cases: [TransactionInstruction, string, [PublicKey, AccountData | null][]][] = [
+      [ataCreateIx(MAINNET_USDC_MINT, THEIRS), 'createIdempotent', []],
+      [ataCreateIx(MAINNET_USDC_MINT, ME, THEIRS, 0), 'create', []],
+      [syncNativeIx(THEIRS), 'syncNative', [theirs]],
+      [syncNativeIx(SRC), 'syncNative', [[SRC, null]]],
+      [closeAccountIx(SRC, TO), 'closeAccount', [mine]],
+      [closeAccountIx(THEIRS, ME, TO), 'closeAccount', [theirs]],
+      [closeAccountIx(SRC, ME), 'closeAccount', [[SRC, null]]],
+    ];
+    for (const [ix, name, pre] of cases) {
+      expect(find(one({ixs: [ix], pre}), 'non-transfer')?.instructions.map(x => x.name)).toEqual([name]);
+    }
   });
 });
 
@@ -1554,7 +1614,7 @@ describe('redFlagsOf — F4 setAuthority on an account the user owns', () => {
 describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
   const held = (amount = 1_000n) => [[SRC, tokenAcc({mint: MAINNET_USDC_MINT, amount})]] as [PublicKey, AccountData][];
 
-  it('u64::MAX, or at least the source’s whole pre-state balance: a block whose word is the wallet’s own symbol', () => {
+  it('u64::MAX, or at least the source’s whole balance: a block whose word is the wallet’s own symbol', () => {
     const flags = one({ixs: [approveIx(U64_MAX)], pre: held()});
     expect(kinds(flags)).toEqual(['unlimited-approve', 'non-transfer']);
     expect(find(flags, 'unlimited-approve')).toEqual({
@@ -1568,17 +1628,40 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
     expect(find(one({ixs: [approveCheckedIx(5_000n, MAINNET_USDC_MINT)], pre: held()}), 'unlimited-approve')?.word).toBe('USDC');
   });
 
-  it('balance − 1 is bounded: a warning, no block', () => {
-    const flags = one({ixs: [approveIx(999n)], pre: held()});
+  it('O5: 99 % of the balance or more is a block — the threshold’s both edges; below it is bounded (F6)', () => {
+    // Balance 1 000: 990 is exactly 99 % and 999 is the balance − 1 — blocks; 989, just under 99 %, is a warning.
+    for (const amount of [990n, 999n]) expect(kinds(one({ixs: [approveIx(amount)], pre: held()}))).toEqual(['unlimited-approve', 'non-transfer']);
+    expect(find(one({ixs: [approveCheckedIx(990n, MAINNET_USDC_MINT)], pre: held()}), 'unlimited-approve')?.word).toBe('USDC');
+    const flags = one({ixs: [approveIx(989n)], pre: held()});
     expect(kinds(flags)).toEqual(['non-transfer', 'bounded-approve']);
     expect(find(flags, 'bounded-approve')).toEqual({
       kind: 'bounded-approve',
       severity: 'warn',
       word: null,
       at: 0,
-      approvals: [{at: 0, source: SRC.toBase58(), mint: MAINNET_USDC_MINT, symbol: 'USDC', decimals: 6, delegate: DELEGATE.toBase58(), amount: '999', balance: '1000'}],
+      approvals: [{at: 0, source: SRC.toBase58(), mint: MAINNET_USDC_MINT, symbol: 'USDC', decimals: 6, delegate: DELEGATE.toBase58(), amount: '989', balance: '1000'}],
     });
-    expect(kinds(one({ixs: [approveCheckedIx(999n, MAINNET_USDC_MINT)], pre: held()}))).toEqual(['non-transfer', 'bounded-approve']);
+    expect(kinds(one({ixs: [approveCheckedIx(989n, MAINNET_USDC_MINT)], pre: held()}))).toEqual(['non-transfer', 'bounded-approve']);
+    expect(kinds(one({ixs: [approveIx(500n)], pre: held()}))).toEqual(['non-transfer', 'bounded-approve']);
+    // A balance whose 99 % is no whole number (7 → 6.93): 7 blocks, 6 does not.
+    expect(kinds(one({ixs: [approveIx(7n)], pre: held(7n)}))).toEqual(['unlimited-approve', 'non-transfer']);
+    expect(kinds(one({ixs: [approveIx(6n)], pre: held(7n)}))).toEqual(['non-transfer', 'bounded-approve']);
+  });
+
+  it('M1: the balance before and after the transaction — the smaller decides, in chain state and decoded', () => {
+    const mine = (amount: bigint, delegatedAmount = 0n) => tokenAcc({mint: MAINNET_USDC_MINT, amount, delegate: delegatedAmount > 0n ? DELEGATE : null, delegatedAmount});
+    const viaCpi = (pre: bigint, post: bigint, delegated: bigint) => one({ixs: [unknownIx(UNKNOWN, [SRC])], pre: [[SRC, mine(pre)]], post: [[SRC, mine(post, delegated)]]});
+    // 90 % moved out and 150 of the 100 left delegated; the old balance delegated after tokens came in: both blocks.
+    expect(kinds(viaCpi(1_000n, 100n, 150n))).toEqual(['unlimited-approve', 'unknown-program']);
+    expect(find(viaCpi(1_000n, 100n, 150n), 'unlimited-approve')?.approvals[0]?.balance).toBe('100');
+    expect(kinds(viaCpi(100n, 1_000n, 150n))).toEqual(['unlimited-approve', 'unknown-program']);
+    // Negative control: below 99 % of both.
+    expect(kinds(viaCpi(1_000n, 1_000n, 150n))).toEqual(['unknown-program', 'bounded-approve']);
+    // Decoded (a post-state without the delegation, so only the decoded approve decides): out, then in; neither.
+    const decoded = (pre: bigint, post: bigint) => kinds(one({ixs: [transferIx(900n), approveIx(150n)], pre: [[SRC, mine(pre)]], post: [[SRC, mine(post)]]}));
+    expect(decoded(1_000n, 100n)).toEqual(['unlimited-approve', 'non-transfer']);
+    expect(decoded(100n, 1_000n)).toEqual(['unlimited-approve', 'non-transfer']);
+    expect(decoded(1_000n, 1_000n)).toEqual(['non-transfer', 'bounded-approve']);
   });
 
   it('a source the wallet cannot read, approved by the wallet, counts as an empty balance (fail closed)', () => {
@@ -1589,7 +1672,7 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
     expect(kinds(one({ixs: [approveIx(U64_MAX, THEIRS, TO)], pre: [[THEIRS, tokenAcc({mint: MAINNET_USDC_MINT, owner: TO, amount: 5n})]]}))).toEqual(['non-transfer']);
   });
 
-  it('chain state (a CPI): an own account’s delegation new or raised to u64::MAX or its whole balance is a block; less is bounded', () => {
+  it('chain state (a CPI): an own account’s delegation new or raised to u64::MAX, its whole balance or 99 % of it is a block; less is bounded', () => {
     const viaCpi = (delegatedAmount: bigint, pre = tokenAcc({mint: MAINNET_USDC_MINT, amount: 1_000n})) =>
       one({ixs: [unknownIx(UNKNOWN, [SRC])], pre: [[SRC, pre]], post: [[SRC, tokenAcc({mint: MAINNET_USDC_MINT, amount: 1_000n, delegate: DELEGATE, delegatedAmount})]]});
     expect(find(viaCpi(U64_MAX), 'unlimited-approve')).toEqual({
@@ -1600,7 +1683,8 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
       approvals: [{at: null, source: SRC.toBase58(), mint: MAINNET_USDC_MINT, symbol: 'USDC', decimals: 6, delegate: DELEGATE.toBase58(), amount: U64_MAX.toString(), balance: '1000'}],
     });
     expect(kinds(viaCpi(1_000n))).toEqual(['unlimited-approve', 'unknown-program']);
-    expect(kinds(viaCpi(999n))).toEqual(['unknown-program', 'bounded-approve']);
+    expect(kinds(viaCpi(990n))).toEqual(['unlimited-approve', 'unknown-program']);
+    expect(kinds(viaCpi(989n))).toEqual(['unknown-program', 'bounded-approve']);
     // Negative control: a delegation already there, unchanged by this transaction.
     const already = tokenAcc({mint: MAINNET_USDC_MINT, amount: 1_000n, delegate: DELEGATE, delegatedAmount: U64_MAX});
     expect(kinds(viaCpi(U64_MAX, already))).toEqual(['unknown-program']);
@@ -1767,7 +1851,7 @@ Create `extension/src/background/dapp/redFlags.ts`:
 ````ts
 import {tokenForMint, WALLET_TOKENS, type WalletToken} from '../../../../core/solana/balances';
 import type {AccountData} from '../../../../core/solana/rpc';
-import type {DappReauthReason} from '../reauthPolicy';
+import {WHOLE_BALANCE_PERCENT, type DappReauthReason} from '../reauthPolicy';
 import {SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, addressField, type DecodedInstruction, type ProgramKey} from './decode/decode';
 import type {ParsedTx} from './decode/wire';
 import {mintInfo, tokenAccountInfo, type TokenAccountInfo} from './tokenState';
@@ -1779,12 +1863,14 @@ import {usesDurableNonce} from './txRequest';
  * proxy. Pure — the simulation (Task 3) gathers the reads and stores the result; the window only renders it (C13).
  *
  * F1 unknown program (warn) · F2 an instruction of a decoded program that is not a transfer (warn; Compute Budget is
- * the fee — the only exemption) · F3 System assign / allocate (and their …WithSeed forms) of the wallet account, or the
+ * the fee, and O7's three self-rent instructions — an ATA created for and paid by the account, syncNative of an own
+ * token account, closeAccount of one to the account — are exempt) · F3 System assign / allocate (and their …WithSeed forms) of the wallet account, or the
  * wallet account owned by another program or holding data after the simulation (block, ASSIGN) · F4 SetAuthority on a
  * token account whose owner field is the wallet, on a mint whose mint or freeze authority is the wallet, or signed by
  * the wallet as the current authority; or, in chain state, an own token account's owner or close authority changed, a
- * mint authority of the wallet's moved (block, AUTHORITY) · F5 an approve of u64::MAX or at least the source's whole
- * balance, decoded or in chain state (block, the wallet's own symbol or UNLIMITED) · F6 any other approve (warn) · F7 a
+ * mint authority of the wallet's moved (block, AUTHORITY) · F5 an approve of 99 % or more of the source's balance
+ * before or after the transaction (O5; u64::MAX and the whole balance always are), decoded or in chain state (block,
+ * the wallet's own symbol or UNLIMITED) · F6 any other approve (warn) · F7 a
  * Token-2022 mint's freeze authority, permanent delegate or transfer hook, or a mint that cannot be read (warn; a
  * classic mint never, O3) · F8 a durable nonce (warn) · F9 the whole balance to a first-time address (warn) · F10 a
  * step that depends on an earlier one (block, UNCHECKED). F11 (origin mismatch) is B1c-1/2's and never reaches here.
@@ -1922,8 +2008,13 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
   const first = unknown[0];
   if (first !== undefined) out.push({kind: 'unknown-program', severity: 'warn', word: null, at: first.index, programs: [...new Set(unknown.map(x => x.ix.programId))]});
 
-  // F2
-  const named = indexed.flatMap(({ix, index}) => (ix.program === null || ix.program === 'compute-budget' || isTransfer(ix) ? [] : [{index, program: ix.program, name: ix.name}]));
+  // F2 — O7: an own token account created and paid for by the account, synced, or closed to the account is rent only.
+  const ownTokenAccount = (address: string | null): boolean => address !== null && tokenOf(pre.get(address))?.owner === account;
+  const selfRent = (ix: DecodedInstruction): boolean =>
+    (ix.program === 'associated-token' && (ix.name === 'create' || ix.name === 'createIdempotent') && addressField(ix, 'wallet') === account && addressField(ix, 'payer') === account) ||
+    (isToken(ix) && ix.name === 'syncNative' && ownTokenAccount(addressField(ix, 'account'))) ||
+    (isToken(ix) && ix.name === 'closeAccount' && ownTokenAccount(addressField(ix, 'account')) && addressField(ix, 'destination') === account);
+  const named = indexed.flatMap(({ix, index}) => (ix.program === null || ix.program === 'compute-budget' || isTransfer(ix) || selfRent(ix) ? [] : [{index, program: ix.program, name: ix.name}]));
   const firstNamed = named[0];
   if (firstNamed !== undefined) out.push({kind: 'non-transfer', severity: 'warn', word: null, at: firstNamed.index, instructions: named});
 
@@ -1979,12 +2070,18 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
     const candidate = mint === null ? null : tokenForMint(mint);
     return candidate !== null && decimals === WALLET_TOKENS[candidate].decimals ? candidate : null;
   };
-  // Unlimited: at least the source's whole balance before — u64::MAX always is.
+  // Unlimited (O5): 99 % or more of the balance — u64::MAX and the whole balance always are. The balance is the source's
+  // own amount before and after the transaction, the smaller of the two (review 1 M1: either one meeting it blocks).
   const found: {approval: Approval; unlimited: boolean}[] = [];
   const approval = (at: number | null, source: string, mint: string | null, delegate: string | null, amount: bigint, balance: bigint) => {
     const decimals = decimalsOf(mint);
-    found.push({approval: {at, source, mint, symbol: symbolOf(mint, decimals), decimals, delegate, amount: amount.toString(), balance: balance.toString()}, unlimited: amount >= balance});
+    found.push({approval: {at, source, mint, symbol: symbolOf(mint, decimals), decimals, delegate, amount: amount.toString(), balance: balance.toString()}, unlimited: amount * 100n >= balance * WHOLE_BALANCE_PERCENT});
   };
+  const ownAfter = (address: string): bigint | null => {
+    const a = tokenOf(post?.get(address));
+    return a !== null && a.owner === account ? a.amount : null;
+  };
+  const smaller = (before: bigint, after: bigint | null): bigint => (after !== null && after < before ? after : before);
   for (const {ix, index} of indexed) {
     if (!isToken(ix) || (ix.name !== 'approve' && ix.name !== 'approveChecked')) continue;
     const source = addressField(ix, 'source');
@@ -1993,7 +2090,7 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
     const src = tokenOf(pre.get(source));
     const own = src !== null && src.owner === account;
     if (!own && addressField(ix, 'owner') !== account) continue;
-    approval(index, source, src?.mint ?? addressField(ix, 'mint'), addressField(ix, 'delegate'), BigInt(value.value), own ? src.amount : 0n);
+    approval(index, source, src?.mint ?? addressField(ix, 'mint'), addressField(ix, 'delegate'), BigInt(value.value), smaller(own ? src.amount : 0n, ownAfter(source)));
   }
   for (const [address, after] of post ?? []) {
     const postToken = tokenOf(after);
@@ -2001,7 +2098,7 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
     const preToken = tokenOf(pre.get(address));
     const preOwn = preToken?.owner === account ? preToken : null;
     if (postToken.delegate === (preOwn?.delegate ?? null) && postToken.delegatedAmount <= (preOwn?.delegatedAmount ?? 0n)) continue;
-    approval(null, address, postToken.mint, postToken.delegate, postToken.delegatedAmount, preOwn?.amount ?? 0n);
+    approval(null, address, postToken.mint, postToken.delegate, postToken.delegatedAmount, smaller(preOwn?.amount ?? 0n, postToken.amount));
   }
   const approvals = found.filter(x => x.approval.at !== null || !found.some(y => y.approval.at !== null && y.approval.source === x.approval.source && y.unlimited === x.unlimited));
   const unlimited = approvals.filter(x => x.unlimited).map(x => x.approval);
@@ -2057,50 +2154,61 @@ export function overridesMatch(flags: readonly (readonly RedFlag[])[], given: re
 
 - [ ] **Step 4: Run — green, and the whole suite, the build and the gates.**
 
-Run: `npx vitest run src/background/dapp/__tests__/redFlags.test.ts` — expected: Test Files  1 passed (1) · Tests  30 passed (30)
+Run: `npx vitest run src/background/dapp/__tests__/redFlags.test.ts` — expected: Test Files  1 passed (1) · Tests  33 passed (33)
 
-Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  169 passed (169) · Tests  3352 passed (3352) (Task 1's end state: 168 files, 3322 tests). `node scripts/build.mjs && npm run gates` — expected: every gate ok (permissions, page bundles, vault isolation, rpc methods, no TGE date, fonts, classes). Nothing imports `redFlags.ts` yet (Task 3 does), so the bundles are unchanged. Nothing touches the repository root's `src/` or `core/`.
+Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  169 passed (169) · Tests  3355 passed (3355) (Task 1's end state: 168 files, 3322 tests). `node scripts/build.mjs && npm run gates` — expected: every gate ok (permissions, page bundles, vault isolation, rpc methods, no TGE date, fonts, classes). Nothing imports `redFlags.ts` yet (Task 3 does), so the bundles are unchanged. Nothing touches the repository root's `src/` or `core/`.
 
 - [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy; `tsc`'s own exit code first (0), then the named test: red.**
 
-Every mutation is in `extension/src/background/dapp/redFlags.ts`; every named test is in `redFlags.test.ts`. Each block rule is dropped once (M2a, M2b, M2e–M2k, M2m, M2s), the F5 word's three rules once each (M2p, M2q, M2r), and the override check's three refusals once each (M2ac–M2ae).
+Every mutation is in `extension/src/background/dapp/redFlags.ts`; every named test is in `redFlags.test.ts`. Each block rule is dropped once (M2a, M2b, M2e–M2k, M2m, M2s), the F5 word's three rules once each (M2p, M2q, M2r), and the override check's three refusals once each (M2ac–M2ae). **(rev 2)** H1/O5: the 99 % comparison's edge (M2l, now on it) and its percent term (M2ag); M1: each balance alone (M2ah — the review's P12 —, M2ai, M2aj) and the larger instead of the smaller (M2ak); O7: the exemption dropped (M2al) and each of its five conditions (M2am–M2aq). The 32 rev-1 mutations were re-run on the rev-2 tree (M2l and M2o on their new lines).
 
 | id | the change | named test → observed (`tsc` exit, then the named test file) |
 |---|---|---|
-| M2a | F3 decoded dropped: `if (assigns.length > 0 \|\| assignedChain !== null)` → `if (assignedChain !== null)` | “assign, allocate, assignWithSeed, allocateWithSeed of the wallet ac…”; “a step that depends on an earlier one: a block, UNCHECKED; any othe…”; “blocks first, then warnings; within each by instruction index (chai…”; … — tsc 0 · RED Tests  5 failed \| 25 passed (30) |
-| M2b | F3 chain dropped: `if (assigns.length > 0 \|\| assignedChain !== null)` → `if (assigns.length > 0)` | “chain state: the wallet account owned by another program, or holdin…” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2c | F3 chain: any non-plain post, changed or not: `(selfPre === null \|\| selfPre.owner !== selfPost.owner \|\| selfPre.data.length !== selfPost.data.length)` → `(selfPre === null \|\| selfPre.owner !== selfPost.owner \|\| selfPre.data.length !== selfPost.data.length \|\| selfPre !== null)` | “chain state: the wallet account owned by another program, or holdin…” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2d | F3 by base, not target: `ASSIGNS.includes(ix.name) && addressField(ix, 'account') === account` → `ASSIGNS.includes(ix.name) && (addressField(ix, 'base') ?? addressField(ix, 'account')) === account` | “assign, allocate, assignWithSeed, allocateWithSeed of the wallet ac…”; “another account assigned or allocated is F2 only — the …WithSeed fo…” — tsc 0 · RED Tests  2 failed \| 28 passed (30) |
-| M2e | F4 own token account dropped: `asAccount?.owner === account ? 'token-account' :` → `asAccount?.owner === '' ? 'token-account' :` | “an own token account (its pre-state owner field is the wallet): a b…” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2f | F4 mint authorities dropped: `asMint !== null && (asMint.mintAuthority === account \|\| asMint.freezeAuthority === account)` → `asMint !== null && asMint.decimals < 0 && (asMint.mintAuthority === account \|\| asMint.freezeAuthority === account)` | “a mint whose mint or freeze authority is the wallet — even when som…” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2g | F4 current authority dropped: `addressField(ix, 'currentAuthority') === account ? 'current-authority' : null` → `addressField(ix, 'currentAuthority') === '' ? 'current-authority' : null` | “the wallet signing as the current authority of an account it cannot…” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2h | F4 chain owner reassigned dropped: `if (preOwn !== null && postToken !== null && postToken.owner !== account) changes` → `if (preOwn !== null && postToken !== null && postToken.owner === '') changes` | “chain state (a CPI): an own account’s owner reassigned, its close a…” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2i | F4 chain close authority dropped: `postToken.closeAuthority !== (preOwn?.closeAuthority ?? null)) {` → `postToken.closeAuthority !== (preOwn?.closeAuthority ?? null) && address === '') {` | “chain state (a CPI): an own account’s owner reassigned, its close a…” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2j | F4 chain mint authority dropped: `if (preMint !== null && postMint !== null) {` → `if (preMint !== null && postMint !== null && address === '') {` | “chain state (a CPI): an own account’s owner reassigned, its close a…” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2k | F5 decoded approves dropped: `(ix.name !== 'approve' && ix.name !== 'approveChecked')) continue;` → `(ix.name !== 'approve-' && ix.name !== 'approveChecked-')) continue;` | “u64::MAX, or at least the source’s whole pre-state balance: a block…”; “balance − 1 is bounded: a warning, no block”; “a source the wallet cannot read, approved by the wallet, counts as …”; … — tsc 0 · RED Tests  9 failed \| 21 passed (30) |
-| M2l | F5 whole balance strictly above (>=  ->  >): `unlimited: amount >= balance});` → `unlimited: amount > balance});` | “u64::MAX, or at least the source’s whole pre-state balance: a block…”; “chain state (a CPI): an own account’s delegation new or raised to u…” — tsc 0 · RED Tests  2 failed \| 28 passed (30) |
-| M2m | F5/F6 chain-state approvals dropped: `if (postToken === null \|\| postToken.owner !== account \|\| postToken.delegate === null) continue;` → `if (postToken === null \|\| postToken.owner !== account \|\| postToken.delegate === null \|\| address !== '') continue;` | “chain state (a CPI): an own account’s delegation new or raised to u…” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2n | F5 chain: new-or-raised gate dropped: `if (postToken.delegate === (preOwn?.delegate ?? null) && postToken.delegatedAmount <= (preOwn?.delegatedAmount ?? 0n)) continue;` → `if (postToken.delegate === '' && postToken.delegatedAmount <= (preOwn?.delegatedAmount ?? 0n)) continue;` | “chain state (a CPI): an own account’s delegation new or raised to u…” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2o | F5 an unreadable own source read as bounded: `own ? src.amount : 0n);` → `own ? src.amount : 1n << 64n);` | “a source the wallet cannot read, approved by the wallet, counts as …” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2p | word: decimals match dropped: `return candidate !== null && decimals === WALLET_TOKENS[candidate].decimals ? candidate : null;` → `return candidate !== null && (decimals ?? WALLET_TOKENS[candidate].decimals) >= 0 ? candidate : null;` | “the word: the wallet table’s symbol only when the mint’s decimals m…” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2q | word: an unreadable mint assumed to match: `return a === null ? null : (mintInfo(a.data, a.owner)?.decimals ?? null);   };   const symbolOf` → `return a === null ? 6 : (mintInfo(a.data, a.owner)?.decimals ?? null);   };   const symbolOf` | “the word: the wallet table’s symbol only when the mint’s decimals m…” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2r | word: first symbol, not one-for-all: `const only = symbols.length === 1 ? symbols[0] : null;` → `const only = symbols[0] ?? null;` | “one word per transaction: one symbol for every unlimited approval, …” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2s | F10 dropped: `if (t.outcome.status === 'dependent') out.push` → `if (t.outcome.status === 'dependent' && t.outcome.on < 0) out.push` | “a step that depends on an earlier one: a block, UNCHECKED; any othe…”; “blocks first, then warnings; within each by instruction index (chai…”; “one word per (transaction, block kind), in order; none for warnings”; … — tsc 0 · RED Tests  4 failed \| 26 passed (30) |
-| M2t | F2 Compute Budget not exempt: `ix.program === null \|\| ix.program === 'compute-budget' \|\| isTransfer(ix)` → `ix.program === null \|\| isTransfer(ix)` | “never for Compute Budget (the fee) and never for System transfer, T…” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2u | F2 transferChecked not a transfer: `(ix.name === 'transfer' \|\| ix.name === 'transferChecked'))` → `ix.name === 'transfer')` | “never for Compute Budget (the fee) and never for System transfer, T…” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2v | F7 classic mints flagged: `if (a !== null && a.owner === TOKEN_PROGRAM) continue;` → `if (a !== null && a.owner === TOKEN_PROGRAM && mint === '') continue;` | “never for Compute Budget (the fee) and never for System transfer, T…”; “an own token account (its pre-state owner field is the wallet): a b…”; “chain state (a CPI): an own account’s owner reassigned, its close a…”; … — tsc 0 · RED Tests  9 failed \| 21 passed (30) |
-| M2w | F7 unreadable mint silent: `out.push({kind: 'token-2022', severity: 'warn', word: null, at, mint, settings: null});` → `if (mint === '') out.push({kind: 'token-2022', severity: 'warn', word: null, at, mint, settings: null});` | “a mint that cannot be read — not read at all, absent, another owner…”; “the mints: own token accounts pre and post, and every mint a decode…” — tsc 0 · RED Tests  2 failed \| 28 passed (30) |
-| M2x | F7 permanent delegate ignored: `info.freezeAuthority !== null \|\| info.permanentDelegate !== null \|\| info.transferHookProgram !== null` → `info.freezeAuthority !== null \|\| info.transferHookProgram !== null` | “no flag: a Token-2022 mint whose delegate is the zero key and with …” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2y | F7 someone else's token accounts counted: `if (own !== null && own.owner === account && !out.has(own.mint))` → `if (own !== null && !out.has(own.mint))` | “the mints: own token accounts pre and post, and every mint a decode…” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2z | F8 from any decoded advanceNonceAccount: `if (usesDurableNonce(t.tx)) out.push` → `if (usesDurableNonce(t.tx) \|\| t.decoded.some(ix => ix.name === 'advanceNonceAccount')) out.push` | “AdvanceNonceAccount first: "does not expire" (and it is named among…” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2aa | F9 without the first-send gate: `if (t.firstSend && input.reasons.includes('whole-balance-to-new'))` → `if (input.reasons.includes('whole-balance-to-new'))` | “whole balance to a first-time address: on each transaction that sen…” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2ab | order: blocks not first: `(x.f.severity === y.f.severity ? 0 : x.f.severity === 'block' ? -1 : 1) \|\|` → `` | “assign, allocate, assignWithSeed, allocateWithSeed of the wallet ac…”; “an own token account (its pre-state owner field is the wallet): a b…”; “u64::MAX, or at least the source’s whole pre-state balance: a block…”; … — tsc 0 · RED Tests  7 failed \| 23 passed (30) |
-| M2ac | overrides: duplicates accepted: `if (!expected.has(k) \|\| seen.has(k)) return 'mismatch';` → `if (!expected.has(k)) return 'mismatch';` | “ok only for exactly the expected words, in any order; missing when …” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2ad | overrides: extra entries accepted: `if (!expected.has(k) \|\| seen.has(k)) return 'mismatch';` → `if (seen.has(k)) return 'mismatch';` | “ok only for exactly the expected words, in any order; missing when …” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2ae | overrides: case-insensitive: `JSON.stringify([o.tx, o.word])` → `JSON.stringify([o.tx, o.word.toUpperCase()])` | “ok only for exactly the expected words, in any order; missing when …” — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-| M2af | expectedOverrides: warnings too: `(f.severity === 'block' ? [{tx, word: f.word}] : [])` → `[{tx, word: f.word ?? ''}]` | “one word per (transaction, block kind), in order; none for warnings”; “ok only for exactly the expected words, in any order; missing when …” — tsc 0 · RED Tests  2 failed \| 28 passed (30) |
+| M2a | F3 decoded dropped: `if (assigns.length > 0 \|\| assignedChain !== null)` → `if (assignedChain !== null)` | “assign, allocate, assignWithSeed, allocateWithSeed of the wallet acc…”; “a step that depends on an earlier one: a block, UNCHECKED; any other…”; “blocks first, then warnings; within each by instruction index (chain…”; … — tsc 0 · RED Tests  5 failed \| 28 passed (33) |
+| M2b | F3 chain dropped: `if (assigns.length > 0 \|\| assignedChain !== null)` → `if (assigns.length > 0)` | “chain state: the wallet account owned by another program, or holding…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2c | F3 chain: any non-plain post, changed or not: `(selfPre === null \|\| selfPre.owner !== selfPost.owner \|\| selfPre.data.length !== selfPost.data.length)` → `(selfPre === null \|\| selfPre.owner !== selfPost.owner \|\| selfPre.data.length !== selfPost.data.length \|\| selfPre !== null)` | “chain state: the wallet account owned by another program, or holding…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2d | F3 by base, not target: `ASSIGNS.includes(ix.name) && addressField(ix, 'account') === account` → `ASSIGNS.includes(ix.name) && (addressField(ix, 'base') ?? addressField(ix, 'account')) === account` | “assign, allocate, assignWithSeed, allocateWithSeed of the wallet acc…”; “another account assigned or allocated is F2 only — the …WithSeed for…” — tsc 0 · RED Tests  2 failed \| 31 passed (33) |
+| M2e | F4 own token account dropped: `asAccount?.owner === account ? 'token-account' :` → `asAccount?.owner === '' ? 'token-account' :` | “an own token account (its pre-state owner field is the wallet): a bl…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2f | F4 mint authorities dropped: `asMint !== null && (asMint.mintAuthority === account \|\| asMint.freezeAuthority === account)` → `asMint !== null && asMint.decimals < 0 && (asMint.mintAuthority === account \|\| asMint.freezeAuthority === account)` | “a mint whose mint or freeze authority is the wallet — even when some…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2g | F4 current authority dropped: `addressField(ix, 'currentAuthority') === account ? 'current-authority' : null` → `addressField(ix, 'currentAuthority') === '' ? 'current-authority' : null` | “the wallet signing as the current authority of an account it cannot …” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2h | F4 chain owner reassigned dropped: `if (preOwn !== null && postToken !== null && postToken.owner !== account) changes` → `if (preOwn !== null && postToken !== null && postToken.owner === '') changes` | “chain state (a CPI): an own account’s owner reassigned, its close au…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2i | F4 chain close authority dropped: `postToken.closeAuthority !== (preOwn?.closeAuthority ?? null)) {` → `postToken.closeAuthority !== (preOwn?.closeAuthority ?? null) && address === '') {` | “chain state (a CPI): an own account’s owner reassigned, its close au…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2j | F4 chain mint authority dropped: `if (preMint !== null && postMint !== null) {` → `if (preMint !== null && postMint !== null && address === '') {` | “chain state (a CPI): an own account’s owner reassigned, its close au…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2k | F5 decoded approves dropped: `(ix.name !== 'approve' && ix.name !== 'approveChecked')) continue;` → `(ix.name !== 'approve-' && ix.name !== 'approveChecked-')) continue;` | “u64::MAX, or at least the source’s whole balance: a block whose word…”; “O5: 99 % of the balance or more is a block — the threshold’s both ed…”; “M1: the balance before and after the transaction — the smaller decid…”; … — tsc 0 · RED Tests  10 failed \| 23 passed (33) |
+| M2l | (rev 2) F5 at 99 % strictly above (>= → >): `unlimited: amount * 100n >= balance * WHOLE_BALANCE_PERCENT});` → `unlimited: amount * 100n > balance * WHOLE_BALANCE_PERCENT});` | “O5: 99 % of the balance or more is a block — the threshold’s both ed…”; “chain state (a CPI): an own account’s delegation new or raised to u6…” — tsc 0 · RED Tests  2 failed \| 31 passed (33) |
+| M2m | F5/F6 chain-state approvals dropped: `if (postToken === null \|\| postToken.owner !== account \|\| postToken.delegate === null) continue;` → `if (postToken === null \|\| postToken.owner !== account \|\| postToken.delegate === null \|\| address !== '') continue;` | “M1: the balance before and after the transaction — the smaller decid…”; “chain state (a CPI): an own account’s delegation new or raised to u6…” — tsc 0 · RED Tests  2 failed \| 31 passed (33) |
+| M2n | F5 chain: new-or-raised gate dropped: `if (postToken.delegate === (preOwn?.delegate ?? null) && postToken.delegatedAmount <= (preOwn?.delegatedAmount ?? 0n)) continue;` → `if (postToken.delegate === '' && postToken.delegatedAmount <= (preOwn?.delegatedAmount ?? 0n)) continue;` | “chain state (a CPI): an own account’s delegation new or raised to u6…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2o | (rev 2, the new line) F5 an unreadable own source read as bounded: `smaller(own ? src.amount : 0n,` → `smaller(own ? src.amount : 1n << 64n,` | “a source the wallet cannot read, approved by the wallet, counts as a…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2p | word: decimals match dropped: `return candidate !== null && decimals === WALLET_TOKENS[candidate].decimals ? candidate : null;` → `return candidate !== null && (decimals ?? WALLET_TOKENS[candidate].decimals) >= 0 ? candidate : null;` | “the word: the wallet table’s symbol only when the mint’s decimals ma…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2q | word: an unreadable mint assumed to match: `return a === null ? null : (mintInfo(a.data, a.owner)?.decimals ?? null);     };     const symbolOf` → `return a === null ? 6 : (mintInfo(a.data, a.owner)?.decimals ?? null);     };     const symbolOf` | “the word: the wallet table’s symbol only when the mint’s decimals ma…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2r | word: first symbol, not one-for-all: `const only = symbols.length === 1 ? symbols[0] : null;` → `const only = symbols[0] ?? null;` | “one word per transaction: one symbol for every unlimited approval, e…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2s | F10 dropped: `if (t.outcome.status === 'dependent') out.push` → `if (t.outcome.status === 'dependent' && t.outcome.on < 0) out.push` | “a step that depends on an earlier one: a block, UNCHECKED; any other…”; “blocks first, then warnings; within each by instruction index (chain…”; “one word per (transaction, block kind), in order; none for warnings”; … — tsc 0 · RED Tests  4 failed \| 29 passed (33) |
+| M2t | F2 Compute Budget not exempt: `ix.program === null \|\| ix.program === 'compute-budget' \|\| isTransfer(ix)` → `ix.program === null \|\| isTransfer(ix)` | “never for Compute Budget (the fee) and never for System transfer, To…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2u | F2 transferChecked not a transfer: `(ix.name === 'transfer' \|\| ix.name === 'transferChecked'))` → `ix.name === 'transfer')` | “never for Compute Budget (the fee) and never for System transfer, To…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2v | F7 classic mints flagged: `if (a !== null && a.owner === TOKEN_PROGRAM) continue;` → `if (a !== null && a.owner === TOKEN_PROGRAM && mint === '') continue;` | “never for Compute Budget (the fee) and never for System transfer, To…”; “an own token account (its pre-state owner field is the wallet): a bl…”; “chain state (a CPI): an own account’s owner reassigned, its close au…”; … — tsc 0 · RED Tests  10 failed \| 23 passed (33) |
+| M2w | F7 unreadable mint silent: `out.push({kind: 'token-2022', severity: 'warn', word: null, at, mint, settings: null});` → `if (mint === '') out.push({kind: 'token-2022', severity: 'warn', word: null, at, mint, settings: null});` | “a mint that cannot be read — not read at all, absent, another owner,…”; “the mints: own token accounts pre and post, and every mint a decoded…” — tsc 0 · RED Tests  2 failed \| 31 passed (33) |
+| M2x | F7 permanent delegate ignored: `info.freezeAuthority !== null \|\| info.permanentDelegate !== null \|\| info.transferHookProgram !== null` → `info.freezeAuthority !== null \|\| info.transferHookProgram !== null` | “no flag: a Token-2022 mint whose delegate is the zero key and with n…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2y | F7 someone else's token accounts counted: `if (own !== null && own.owner === account && !out.has(own.mint))` → `if (own !== null && !out.has(own.mint))` | “the mints: own token accounts pre and post, and every mint a decoded…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2z | F8 from any decoded advanceNonceAccount: `if (usesDurableNonce(t.tx)) out.push` → `if (usesDurableNonce(t.tx) \|\| t.decoded.some(ix => ix.name === 'advanceNonceAccount')) out.push` | “AdvanceNonceAccount first: "does not expire" (and it is named among …” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2aa | F9 without the first-send gate: `if (t.firstSend && input.reasons.includes('whole-balance-to-new'))` → `if (input.reasons.includes('whole-balance-to-new'))` | “whole balance to a first-time address: on each transaction that send…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2ab | order: blocks not first: `(x.f.severity === y.f.severity ? 0 : x.f.severity === 'block' ? -1 : 1) \|\| ` → `` | “assign, allocate, assignWithSeed, allocateWithSeed of the wallet acc…”; “an own token account (its pre-state owner field is the wallet): a bl…”; “u64::MAX, or at least the source’s whole balance: a block whose word…”; … — tsc 0 · RED Tests  9 failed \| 24 passed (33) |
+| M2ac | overrides: duplicates accepted: `if (!expected.has(k) \|\| seen.has(k)) return 'mismatch';` → `if (!expected.has(k)) return 'mismatch';` | “ok only for exactly the expected words, in any order; missing when s…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2ad | overrides: extra entries accepted: `if (!expected.has(k) \|\| seen.has(k)) return 'mismatch';` → `if (seen.has(k)) return 'mismatch';` | “ok only for exactly the expected words, in any order; missing when s…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2ae | overrides: case-insensitive: `JSON.stringify([o.tx, o.word])` → `JSON.stringify([o.tx, o.word.toUpperCase()])` | “ok only for exactly the expected words, in any order; missing when s…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2af | expectedOverrides: warnings too: `(f.severity === 'block' ? [{tx, word: f.word}] : [])` → `[{tx, word: f.word ?? ''}]` | “one word per (transaction, block kind), in order; none for warnings”; “ok only for exactly the expected words, in any order; missing when s…” — tsc 0 · RED Tests  2 failed \| 31 passed (33) |
+| M2ag | (rev 2, H1) F5 the 99 % term dropped (whole balance only): `unlimited: amount * 100n >= balance * WHOLE_BALANCE_PERCENT});` → `unlimited: amount * 100n >= balance * (WHOLE_BALANCE_PERCENT + 1n)});` | “O5: 99 % of the balance or more is a block — the threshold’s both ed…”; “chain state (a CPI): an own account’s delegation new or raised to u6…” — tsc 0 · RED Tests  2 failed \| 31 passed (33) |
+| M2ah | (rev 2, M1 = review P12) chain F5 compares with the post balance only: `smaller(preOwn?.amount ?? 0n, postToken.amount));` → `postToken.amount);` | “M1: the balance before and after the transaction — the smaller decid…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2ai | (rev 2, M1) chain F5 compares with the pre balance only: `smaller(preOwn?.amount ?? 0n, postToken.amount));` → `preOwn?.amount ?? 0n);` | “M1: the balance before and after the transaction — the smaller decid…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2aj | (rev 2, M1) decoded F5 ignores the post balance: `smaller(own ? src.amount : 0n, ownAfter(source)));` → `smaller(own ? src.amount : 0n, ownAfter('')));` | “M1: the balance before and after the transaction — the smaller decid…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2ak | (rev 2, M1) the larger balance decides, not the smaller: `(after !== null && after < before ? after : before)` → `(after !== null && after > before ? after : before)` | “M1: the balance before and after the transaction — the smaller decid…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2al | (rev 2, O7) F2 self-rent exemption dropped: `isTransfer(ix) \|\| selfRent(ix) ?` → `isTransfer(ix) \|\| (selfRent(ix) && ix.name === '') ?` | “O7: never for the three self-rent instructions — an own ATA created …” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2am | (rev 2, O7) ATA: any wallet: `addressField(ix, 'wallet') === account && addressField(ix, 'payer') === account` → `addressField(ix, 'payer') === account` | “every instruction of a decoded program that is not a transfer, named…”; “O7 negative controls: another wallet’s ATA, one another payer funds,…” — tsc 0 · RED Tests  2 failed \| 31 passed (33) |
+| M2an | (rev 2, O7) ATA: any payer: `addressField(ix, 'wallet') === account && addressField(ix, 'payer') === account` → `addressField(ix, 'wallet') === account` | “O7 negative controls: another wallet’s ATA, one another payer funds,…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2ao | (rev 2, O7) syncNative of any account: `ix.name === 'syncNative' && ownTokenAccount(addressField(ix, 'account'))` → `ix.name === 'syncNative'` | “O7 negative controls: another wallet’s ATA, one another payer funds,…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2ap | (rev 2, O7) closeAccount to any destination: `ownTokenAccount(addressField(ix, 'account')) && addressField(ix, 'destination') === account)` → `ownTokenAccount(addressField(ix, 'account')))` | “O7 negative controls: another wallet’s ATA, one another payer funds,…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
+| M2aq | (rev 2, O7) closeAccount of any account: `ix.name === 'closeAccount' && ownTokenAccount(addressField(ix, 'account')) && ` → `ix.name === 'closeAccount' && ` | “O7 negative controls: another wallet’s ATA, one another payer funds,…” — tsc 0 · RED Tests  1 failed \| 32 passed (33) |
 
-32 mutations, all red, every one compiling (`tsc` 0). One first draft did not compile and was replaced (INVALID, not red): M2w as first written (`if (info === null && mint === '') {`) left `info` possibly null in the `else` branch (tsc 2). Counts are on this task's own tree (`redFlags.test.ts`, 30 tests), each mutant alone in a fresh `git archive` copy with `node_modules` linked, under `timeout 300`.
+43 mutations (rev 2: 32 + 11), all red, every one compiling (`tsc` 0). One first draft did not compile and was replaced (INVALID, not red): M2w as first written (`if (info === null && mint === '') {`) left `info` possibly null in the `else` branch (tsc 2). Counts are on this task's own tree (`redFlags.test.ts`, 33 tests), each mutant alone in a fresh `git archive` copy with `node_modules` linked, under `timeout 300`. **(rev 2)** Three first drafts of the new ones did not compile (INVALID, not red) and were replaced: M2ag as `amount >= balance`, M2aj as `own ? src.amount : 0n` and M2al with `selfRent(ix)` deleted each left a binding unused (tsc 2, TS6133); the replacements keep the binding and make the term inert.
 
 - [ ] **Step 6: Commit.**
 
@@ -2111,10 +2219,10 @@ git commit -m "feat(extension): B1c-3 red flags — B1 §3's table F1–F10 as a
 
 #### Dry-run notes (Task 2)
 
-- **Ruling: F2 is literal — it names every instruction of a decoded program that is not a System `transfer` or a Token / Token-2022 `transfer` / `transferChecked`, including those another row also flags (`assign`, `setAuthority`, `approve`, `advanceNonceAccount`, an unknown tag of a known program as `name: null`, `transferWithSeed`, ATA `create`, the presale's instructions)** — why: the brief makes Compute Budget "the only exemption", and Task 1's §9 O4 row says `transferWithSeed` / `transferCheckedWithFee` carry F2 (now true, tested) — cost if wrong: a redundant warning line beside a block (Task 5 may group them; it may not drop one).
+- **Ruling (rev 1; narrowed in rev 2 by O7, below): F2 is literal — it names every instruction of a decoded program that is not a System `transfer` or a Token / Token-2022 `transfer` / `transferChecked`, including those another row also flags (`assign`, `setAuthority`, `approve`, `advanceNonceAccount`, an unknown tag of a known program as `name: null`, `transferWithSeed`, ATA `create`, the presale's instructions)** — why: the brief makes Compute Budget "the only exemption", and Task 1's §9 O4 row says `transferWithSeed` / `transferCheckedWithFee` carry F2 (now true, tested) — cost if wrong: a redundant warning line beside a block (Task 5 may group them; it may not drop one).
 - **Ruling: F4 is stricter than the brief in two places** — (c) the wallet signing as `currentAuthority` of an account it cannot read or does not own blocks (`owned: 'current-authority'`; the user is giving away an authority it holds); and chain state also blocks a pre-state mint whose mint or freeze authority was the wallet and is not after (B1 §3's row names "mint, freeze") — why: fail closed, never loosening — cost if wrong: a typed override on a transaction that hands off an authority the user holds without owning the account (e.g. a close authority granted to the user).
 - **Ruling: F3's chain rule fires only when the wallet account's post-state is not plain (owner ≠ System or data) AND differs from its pre-state in owner or data length** — why: an account already so before this transaction would otherwise block every transaction it signs — cost if wrong: a wallet account already assigned away before the request is not re-flagged (its funds were already gone; F3's decoded rule still fires on any assign of it).
-- **Ruling: F5 is `amount ≥ balance`, where balance is the source's pre-state amount when its pre-state is a token account owned by the wallet, else 0** — u64::MAX is always ≥ any balance, so the brief's "=== u64::MAX" is the same comparison (tested both ways: u64::MAX and exactly the balance; M2l). A decoded approve counts when the source's owner field is the wallet or the instruction's `owner` is the wallet; a source the wallet cannot read (absent, created in the same transaction, not a token account) is an empty balance → a block (fail closed; an approve of 0 on an empty account blocks too) — cost if wrong: a typed override for an approve on a fresh account. Someone else's account approved by its own owner is F2 only.
+- **Ruling (rev 1; replaced in rev 2 by O5/M1, below): F5 is `amount ≥ balance`, where balance is the source's pre-state amount when its pre-state is a token account owned by the wallet, else 0** — u64::MAX is always ≥ any balance, so the brief's "=== u64::MAX" is the same comparison (tested both ways: u64::MAX and exactly the balance; M2l). A decoded approve counts when the source's owner field is the wallet or the instruction's `owner` is the wallet; a source the wallet cannot read (absent, created in the same transaction, not a token account) is an empty balance → a block (fail closed; an approve of 0 on an empty account blocks too) — cost if wrong: a typed override for an approve on a fresh account. Someone else's account approved by its own owner is F2 only.
 - **Ruling: F5/F6 from chain state keep B1c-2's gate** — only a delegation that is new or raised (`approvalFromChain` case 1) is an approval; one already there and unchanged is no flag — why: otherwise every transaction touching an account with a standing delegation would block. An approve seen both decoded and in chain state with the same severity is listed once (decoded); when chain state shows unlimited and the decoded instruction bounded, the account is F5 only.
 - **Ruling: F5's word is one per transaction** — the one wallet symbol every unlimited approval of that transaction shares, else `UNLIMITED` (two different tokens, or any unnamed one) — why: the override is one field per (transaction, kind) (O1/R4) — cost if wrong: a user unlimited-approving USDC and USDT in one transaction types `UNLIMITED`, not a symbol. The symbol is the wallet table's (`tokenForMint`) only when the **mint's own decimals as read through the proxy** (the `mints` map) equal the table's; an unreadable mint → `UNLIMITED`. Never anything the mint's bytes claim (a Token-2022 TokenMetadata naming itself USDC is tested). **Task 3 must read every mint `flagMints` names, the wallet's own tokens included** — today's `KNOWN_DECIMALS` shortcut (no read) would leave them unnamed → `UNLIMITED` (fail closed, but not what the design draws).
 - **Ruling: F7's mints are the `mint` field of decoded Token / Token-2022 / ATA instructions (not other programs' account names) and the mints of the wallet's own token accounts in pre- and post-state; someone else's token account adds none.** A mint owned by classic Token is never flagged, even if its bytes do not parse (O3: no Token-2022 setting can exist on it); not in the map, null, owned by any other program, or Token-2022 bytes that do not parse → `settings: null` (Q36). One F7 flag per mint.
@@ -2126,6 +2234,11 @@ git commit -m "feat(extension): B1c-3 red flags — B1 §3's table F1–F10 as a
 - **Deviation (additive): `flagMints` is exported** — Task 3 reads exactly these mints (one `getAccountsData`; past the 100 cap, the ones left out are simply absent from the map and warn Q36 — fail closed). `TxFlags` is `RedFlag[]` (the brief's `TxFlags[]` return, indexed by transaction), not an object.
 - **For Task 3:** `pre` must be the map of the addresses `getAccountsData` read before that transaction (the wallet account first); `post` the simulation's `accounts` for the same addresses; `mints` the read of `flagMints(...)`; `reasons` the final reasons (computed before the flags, then `override` added when `expectedOverrides(flags).length > 0`). `redFlags.ts` imports `txRequest.ts` (`usesDurableNonce`) — no cycle today.
 - **For Task 5 (copy):** the meta each banner needs is in the flag (instruction names and indices, addresses, `authorityType`, the approval's amount/balance/decimals/symbol/delegate, the T22 settings, `on`). No new string was invented here; F1–F4, F7, F9, F10 banner heads/bodies remain Task 5's Q37+ (Task 1's note).
+- **(rev 2) O5 / H1 — F5 blocks at 99 %:** `unlimited` is `amount × 100 ≥ balance × WHOLE_BALANCE_PERCENT` (B1c-2's own constant, `reauthPolicy.ts`, now imported as a value — `reauthPolicy.ts` imports nothing, no cycle); u64::MAX and the whole balance are inside it, so they are not separate terms. rev 1's "balance − 1 is bounded" test is now the block test with both edges of the threshold (990 of 1 000 = 99 % → F5, 989 → F6, 999 → F5, 500 → F6; a balance of 7: 7 → F5, 6 → F6). Stricter than B1 §3, allowed (O5).
+- **(rev 2) M1 — which balance:** the smaller of the source's own amount before (pre-state; 0 when not the wallet's own token account) and after (post-state, only when it is still the wallet's own token account) — in **both** the decoded and the chain-state branch, so either balance meeting 99 % blocks (the review's recommendation). Tested both ways with pre ≠ post: 90 % moved out then 150 of the 100 left delegated, and tokens brought in with the old balance delegated, each a block in chain state and decoded (the decoded fixtures carry no delegation in their post-state, so only the decoded branch decides); the negative control below 99 % of both stays F6. The review's P12 (chain state compares with the post balance only) is M2ah, red. `Approval.balance` stores the compared (smaller) balance.
+- **(rev 2) O7 / M3 — F2's self-rent exemptions:** an ATA `create` / `createIdempotent` whose `wallet` **and** `payer` are the account; `syncNative` of a token account whose **pre-state** owner field is the account; `closeAccount` of such an account whose destination is the account. Each has a negative control naming it (another wallet; another payer; a sync of someone else's or an unreadable account; a close to another address; a close of someone else's or an unreadable account) and a mutation (M2am–M2aq); M2al drops the exemption. The ATA's `name` is checked too (`recoverNested` is not decoded field by field, so no test can tell; the check is kept for clarity, no mutation claims it). The first F2 test now uses another wallet's ATA to stay named. F7 still reads the mint of an own ATA create (Task 6's test pins it). The 1.5 s hold is unchanged — any flag (Task 5).
+- **(rev 2) For Task 3 and later:** a bounded approve fixture must stay below 99 % of its balance (every existing one did — `approveScene(50n)` etc.; nothing downstream changed for O5); a fixture whose ATA create, sync or close is the account's own no longer shows F2 (Task 6's two ATA tests and E2E B1c-31/B1c-32, the visual F7 state changed for that).
+
 
 ---
 
@@ -2188,7 +2301,7 @@ The scene gains `errAt` (one error per simulateTransaction call), `readFails` an
 
 ````diff
 diff --git a/extension/src/background/dapp/__tests__/simulate.test.ts b/extension/src/background/dapp/__tests__/simulate.test.ts
-index 46c0c84..1213840 100644
+index 46c0c84..ca49c92 100644
 --- a/extension/src/background/dapp/__tests__/simulate.test.ts
 +++ b/extension/src/background/dapp/__tests__/simulate.test.ts
 @@ -1,14 +1,14 @@
@@ -2322,7 +2435,7 @@ index 46c0c84..1213840 100644
      // Empty (amount 0 both sides, so no token line at all) — only the rent, treated as lost along with control, shows.
      const out = sim.outcomes[0];
      expect(out?.ok === true ? out.changes : null).toEqual([{mint: null, amount: '-2044280', decimals: 9, usdMicros: '-306642'}]);
-@@ -499,3 +518,277 @@ describe('simulateTransactions', () => {
+@@ -499,3 +518,285 @@ describe('simulateTransactions', () => {
      await expect(run(s, [wire([SystemProgram.transfer({fromPubkey: ME, toPubkey: TO, lamports: 1})])])).rejects.toThrow('unreachable');
    });
  });
@@ -2537,6 +2650,14 @@ index 46c0c84..1213840 100644
 +      expect(simStateOf(storedWith(sim, s => (flag(s, 'dependent', 1).on = 1)))).toBeNull();
 +      expect(simStateOf(storedWith(sim, s => ((s.outcomes as Json[])[1] = {...(s.outcomes as Json[])[1], on: 0})))).toBeNull();
 +      expect(simStateOf(storedWith(sim, s => ((s.outcomes as Json[])[1] = {...(s.outcomes as Json[])[1], error: 'failed'})))).toBeNull();
++      // Review 1 L2: a step depends only on an earlier one — on itself or a later step, flag and outcome agreeing, it is invalid.
++      for (const on of [1, 2]) {
++        const later = (s: Json) => {
++          flag(s, 'dependent', 1).on = on;
++          (s.outcomes as Json[])[1] = {...(s.outcomes as Json[])[1], on: on + 1};
++        };
++        expect(simStateOf(storedWith(sim, later))).toBeNull();
++      }
 +    });
 +
 +    it('never dependent: a failure in step 1 (nor on itself); one naming an account only a LATER step creates; an unrelated one; an expired blockhash stays expired', async () => {
@@ -2804,7 +2925,7 @@ index d72d86d..adede35 100644
 
 - [ ] **Step 2: Run them on the previous task's tree — red.**
 
-Run: `npx vitest run src/background/dapp/__tests__/simulate.test.ts src/background/dapp/__tests__/signTx.test.ts src/background/__tests__/reauthChallenges.test.ts src/unlock/__tests__/challenge.test.ts src/approve/__tests__/tx.test.tsx` — expected: Test Files  5 failed (5) · Tests  23 failed | 124 passed (147). The 23: the 14 new simulate tests and the 4 updated ones (reads, close authority, two owner reassignments — `override` missing / no mint read), `outgoingGrew is not a function`, the nonce refresh test (`flags` undefined), `issueChallenge: malformed about`, the #10 line (undefined), `pendingOf` → null. The second nonce test (the node's BlockhashNotFound → expired) passes on the old tree: it pins behaviour this task must keep. `npx tsc --noEmit; echo $?` → `2` (the tests name `outgoingGrew`, `flags`, `'override'`, not yet there).
+Run: `npx vitest run src/background/dapp/__tests__/simulate.test.ts src/background/dapp/__tests__/signTx.test.ts src/background/__tests__/reauthChallenges.test.ts src/unlock/__tests__/challenge.test.ts src/approve/__tests__/tx.test.tsx` — expected: Test Files  5 failed (5) · Tests  23 failed | 124 passed (147). The 23: the 14 new simulate tests and the 4 updated ones (reads, close authority, two owner reassignments — `override` missing / no mint read), `outgoingGrew is not a function`, the nonce refresh test (`flags` undefined), `issueChallenge: malformed about`, the #10 line (undefined), `pendingOf` → null. The second nonce test (the node's BlockhashNotFound → expired) passes on the old tree: it pins behaviour this task must keep. `npx tsc --noEmit; echo $?` → `2` (the tests name `outgoingGrew`, `flags`, `'override'`, not yet there). **(rev 2)** Re-run on the rev-2 Task 2 tree: the same — Tests 23 failed | 124 passed (147), tsc 2 (22 errors).
 
 - [ ] **Step 3: Implement.**
 
@@ -2814,10 +2935,10 @@ Run: `npx vitest run src/background/dapp/__tests__/simulate.test.ts src/backgrou
 
 ````diff
 diff --git a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-index 7c03645..6e7b723 100644
+index c41e9be..3d625f2 100644
 --- a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
 +++ b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-@@ -624,12 +624,14 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
+@@ -631,12 +631,14 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
  | F10 | simulation failed and the user continues | **O2:** only a failure attributable to an earlier transaction of the same batch (below) has a continue path; every other failure stays Reject-only — stricter than B1 §3's warning, which is allowed. An expired blockhash anywhere: Reject only | **blocked** | `UNCHECKED` (Q31) |
  | F11 | request origin differs from the granted origin | built in B1c-1 / B1c-2 | **blocked, no override** | — |
  
@@ -2843,7 +2964,7 @@ index 7c03645..6e7b723 100644
 
 ````diff
 diff --git a/extension/src/background/dapp/simulate.ts b/extension/src/background/dapp/simulate.ts
-index 47961aa..c59ab53 100644
+index 47961aa..45f4256 100644
 --- a/extension/src/background/dapp/simulate.ts
 +++ b/extension/src/background/dapp/simulate.ts
 @@ -2,10 +2,11 @@ import {base64, base64urlnopad} from '@scure/base';
@@ -3082,7 +3203,7 @@ index 47961aa..c59ab53 100644
 +  if (lists.some(l => l.some(f => f.severity === 'block')) !== (s.reasons as unknown[]).includes('override')) return null;
 +  const stepsAgree = (outcomes as TxOutcome[]).every((o, i) => {
 +    const on = lists[i]?.find(f => f.kind === 'dependent')?.on;
-+    return !o.ok && o.error === 'dependent' ? on === o.on - 1 : on === undefined;
++    return !o.ok && o.error === 'dependent' ? on === o.on - 1 && on < i : on === undefined;
 +  });
 +  if (!stepsAgree) return null;
    return {
@@ -3102,19 +3223,19 @@ index 47961aa..c59ab53 100644
 
 ````diff
 diff --git a/extension/src/background/dapp/redFlags.ts b/extension/src/background/dapp/redFlags.ts
-index 74a28ad..0df74da 100644
+index 403f205..a906756 100644
 --- a/extension/src/background/dapp/redFlags.ts
 +++ b/extension/src/background/dapp/redFlags.ts
 @@ -1,7 +1,7 @@
  import {tokenForMint, WALLET_TOKENS, type WalletToken} from '../../../../core/solana/balances';
  import type {AccountData} from '../../../../core/solana/rpc';
- import type {DappReauthReason} from '../reauthPolicy';
+ import {WHOLE_BALANCE_PERCENT, type DappReauthReason} from '../reauthPolicy';
 -import {SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, addressField, type DecodedInstruction, type ProgramKey} from './decode/decode';
 +import {AUTHORITY_TYPES, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, addressField, type DecodedInstruction, type ProgramKey} from './decode/decode';
  import type {ParsedTx} from './decode/wire';
  import {mintInfo, tokenAccountInfo, type TokenAccountInfo} from './tokenState';
  import {usesDurableNonce} from './txRequest';
-@@ -286,3 +286,149 @@ export function overridesMatch(flags: readonly (readonly RedFlag[])[], given: re
+@@ -299,3 +299,149 @@ export function overridesMatch(flags: readonly (readonly RedFlag[])[], given: re
    }
    return seen.size === expected.size ? 'ok' : 'missing';
  }
@@ -3446,7 +3567,7 @@ index 103875d..bcac35b 100644
 
 Run: the five files of Step 2 — expected: Test Files  5 passed (5) · Tests  147 passed (147) (simulate 42, signTx 30, reauthChallenges 15, challenge 38, tx 22).
 
-Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  169 passed (169) · Tests  3372 passed (3372) (Task 2's end state: 169 files, 3352 tests; +20). `node scripts/build.mjs && npm run gates` — expected: every gate ok (permissions, page bundles, vault isolation, rpc methods — no new method: the mint read is B1c-2's `getMultipleAccounts` —, no TGE date, fonts, classes). Nothing touches the repository root's `src/` or `core/` (core's `MAX_MULTIPLE_ACCOUNTS` is only imported).
+Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  169 passed (169) · Tests  3375 passed (3375) (Task 2's end state: 169 files, 3355 tests; +20). `node scripts/build.mjs && npm run gates` — expected: every gate ok (permissions, page bundles, vault isolation, rpc methods — no new method: the mint read is B1c-2's `getMultipleAccounts` —, no TGE date, fonts, classes). Nothing touches the repository root's `src/` or `core/` (core's `MAX_MULTIPLE_ACCOUNTS` is only imported).
 
 - [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy; `tsc`'s own exit code first (0), then the named test: red.**
 
@@ -3477,7 +3598,7 @@ Every block-adding rule, every F10 attribution rule (earlier-only, the index, ea
 | M3u | `simulate.ts`: `{ok: false, error: 'dependent', on: on + 1, detail}` → `{ok: false, error: 'dependent', on, detail}` | “create the token account, then transfer to it: step 2 depends on step …”; “the instruction the error names decides — its own resolved accounts, n…”; “only the shapes Agave’s TransactionError takes for it: InstructionErro…”; … (`simulate.test.ts`) — tsc 0 · RED Tests  4 failed \| 38 passed (42) |
 | M3v | `simulate.ts`: `if (lists.some(l => l.some(f => f.severity === 'block')) !== (s.reasons as unknown[]).includes('override')) return null;` → `if (lists.some(l => l.some(f => f.severity === 'block')) && !(s.reasons as unknown[]).includes('override')) return null;` | “simStateOf: an invalid stored flag makes the stored simulation invalid…” (`simulate.test.ts`) — tsc 0 · RED Tests  1 failed \| 41 passed (42) |
 | M3v2 | `simulate.ts`: `if (lists.some(l => l.some(f => f.severity === 'block')) !== (s.reasons as unknown[]).includes('override')) return null;` → `if (!lists.some(l => l.some(f => f.severity === 'block')) && (s.reasons as unknown[]).includes('override')) return null;` | “simStateOf: an invalid stored flag makes the stored simulation invalid…” (`simulate.test.ts`) — tsc 0 · RED Tests  1 failed \| 41 passed (42) |
-| M3w | `simulate.ts`: `return !o.ok && o.error === 'dependent' ? on === o.on - 1 : on === undefined;` → `return !o.ok && o.error === 'dependent' ? on !== undefined : true;` | “create the token account, then transfer to it: step 2 depends on step …” (`simulate.test.ts`) — tsc 0 · RED Tests  1 failed \| 41 passed (42) |
+| M3w | `simulate.ts`: `return !o.ok && o.error === 'dependent' ? on === o.on - 1 && on < i : on === undefined;` → `return !o.ok && o.error === 'dependent' ? on !== undefined : true;` (rev 2: the line now ends `&& on < i`) | “create the token account, then transfer to it: step 2 depends on step …” (`simulate.test.ts`) — tsc 0 · RED Tests  1 failed \| 41 passed (42) |
 | M3x | `simulate.ts`: `'whole-balance-to-new', 'approval', 'override'];⏎const isInt` → `'whole-balance-to-new', 'approval'];⏎const isInt` | “simStateOf: the stored flags are read back strictly — a stored `overri…”; “create the token account, then transfer to it: step 2 depends on step …” (`simulate.test.ts`) — tsc 0 · RED Tests  2 failed \| 40 passed (42) |
 | M3y | `redFlags.ts`: `return o.severity === 'block' && o.word === word ?` → `return o.severity === 'block' && typeof o.word === 'string' ?` | “simStateOf: an invalid stored flag makes the stored simulation invalid…” (`simulate.test.ts`) — tsc 0 · RED Tests  1 failed \| 41 passed (42) |
 | M3z | `redFlags.ts`: `return o.severity === 'block' && o.word === word ?` → `return o.word === word ?` | “simStateOf: an invalid stored flag makes the stored simulation invalid…” (`simulate.test.ts`) — tsc 0 · RED Tests  1 failed \| 41 passed (42) |
@@ -3491,7 +3612,8 @@ Every block-adding rule, every F10 attribution rule (earlier-only, the index, ea
 | M3ah | `client.ts`: `.every(x => isStr(x) && REAUTH_REASONS.includes(x))` → `.every(x => isStr(x) && (REAUTH_REASONS.includes(x) \|\| x.length > 0))` | “pendingOf: `override` and a dependent step’s outcome are read; an unkn…” (`tx.test.tsx`) — tsc 0 · RED Tests  1 failed \| 21 passed (22) |
 | M3ai | `client.ts`: `return isInt(o.on) && o.on >= 1 && isStr(o.detail) ?` → `return isInt(o.on) && isStr(o.detail) ?` | “pendingOf: `override` and a dependent step’s outcome are read; an unkn…” (`tx.test.tsx`) — tsc 0 · RED Tests  1 failed \| 21 passed (22) |
 | M3aj | `signTx.ts`: `if (fresh.omitted > issued.omitted) return true;` → `if (fresh.omitted > issued.omitted + 1) return true;` | “a mint more cut from the list (omitted grew) is growth; the same count…” (`signTx.test.ts`) — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
-37 mutations, all red, every one compiling (`tsc` 0). One first run was GREEN and the test was strengthened (not the code): M3ab (the approval's `tokenForMint(mint) === symbol` check dropped) survived because the only variant, `symbol: 'USDT'` on a USDC approval, was also caught by the word check (the word `USDC` no longer agreed with its approvals). The variant "an approval's symbol not its mint's, its word made to agree" (`symbol` and `word` both `USDT`) was added; M3ab then turned red (`Tests  1 failed | 41 passed (42)`), and it is in the code above. Not mutated, stated: `outcomeOf`'s `o.on >= 1` in `simStateOf` is implied by the step-agreement check (a flag's `on` is ≥ 0 and must equal the outcome's − 1), so no test can separate it — kept as the shape check of the outcome itself; the expired-before-dependent order (`isExpired(sim.err) ? null : accountsNamed(…)`) cannot be mutated observably because `accountsNamed` never names an account for `"BlockhashNotFound"` — the expired test is a negative control of the outcome. M3ag also turned the B1c-2 test "a setAuthority to None renders" red: that request now carries `override` (F4 — the wallet signs as the current authority), and a window that did not know the reason would stay blank.
+| M3ak | **(rev 2, L2)** `simulate.ts`: `on === o.on - 1 && on < i :` → `on === o.on - 1 :` (a stored dependent step may name itself or a later step) | “create the token account, then transfer to it: step 2 depends on step …” (`simulate.test.ts`, its L2 lines) — tsc 0 · RED Tests  1 failed \| 41 passed (42) |
+38 mutations (rev 2: 37 + M3ak), all red, every one compiling (`tsc` 0). One first run was GREEN and the test was strengthened (not the code): M3ab (the approval's `tokenForMint(mint) === symbol` check dropped) survived because the only variant, `symbol: 'USDT'` on a USDC approval, was also caught by the word check (the word `USDC` no longer agreed with its approvals). The variant "an approval's symbol not its mint's, its word made to agree" (`symbol` and `word` both `USDT`) was added; M3ab then turned red (`Tests  1 failed | 41 passed (42)`), and it is in the code above. Not mutated, stated: `outcomeOf`'s `o.on >= 1` in `simStateOf` is implied by the step-agreement check (a flag's `on` is ≥ 0 and must equal the outcome's − 1), so no test can separate it — kept as the shape check of the outcome itself; the expired-before-dependent order (`isExpired(sim.err) ? null : accountsNamed(…)`) cannot be mutated observably because `accountsNamed` never names an account for `"BlockhashNotFound"` — the expired test is a negative control of the outcome. M3ag also turned the B1c-2 test "a setAuthority to None renders" red: that request now carries `override` (F4 — the wallet signs as the current authority), and a window that did not know the reason would stay blank. **(rev 2)** All 38 re-run on the rev-2 Task 3 tree (counts on its own files: simulate 42, reauthChallenges 15, challenge 38, tx 22, signTx 30).
 
 - [ ] **Step 6: Commit.**
 
@@ -3515,6 +3637,9 @@ git commit -m "feat(extension): B1c-3 simulation — the flags' mints read in on
 - **For Task 4:** `sim.flags` is what `expectedOverrides` / `overridesMatch` run on; `override` is already in `sim.reasons`, so the deciding fail-closed check needs no change to demand a proof; `dappAbout` must add the flags to `about` (and `isAbout` both sides, `reasonsCovered`); `outgoingGrew(fresh, current)` now takes the whole abouts.
 - **For Task 5:** `outcome.error === 'dependent'` (Q32 with `outcome.on`), the flags per transaction in redFlagsOf's order; the two B1c-2 window tests touched by reasons stay green (M3ag shows the setAuthority one now carries `override`).
 - **E2E not run** (as Tasks 1–2): Task 7 should expect `override` (and #10's Q33 line) on any existing E2E request that F4/F5 now block, and the mint read in fakeCoordinator's `getMultipleAccounts` counts.
+- **(rev 2) L2 — a stored dependent step names an earlier step only:** `simStateOf`'s `stepsAgree` now also requires the F10 flag's `on` (0-based) to be below the transaction's own index (`on < i`) — besides agreeing with the outcome's 1-based `on`. Storage is the extension's own (hygiene, not a bypass: the window's `txDetailOf` already refused `step > i`). The F10 read-back test gains the lines: a step stored as depending on itself or on a later step, flag and outcome agreeing, is invalid. M3ak.
+- **(rev 2) Nothing else here changed.** O5's 99 % and O7's exemptions (Task 2) left every Task 3 fixture green: the bounded approvals in `simulate.test.ts` are well below 99 % of their balances, and its ATA creates are for another wallet (`ataIx(…, TO, …)`). The redFlags.ts import line merges Task 2's `WHOLE_BALANCE_PERCENT` with this task's `AUTHORITY_TYPES`. Under heavy load (three mutation runners at once) the whole suite once failed four timing-based B1c-1/B1c-2 UI tests (`connect`'s busy, `sign`'s 500 ms hold, `tx`'s origin tiles, the accounts manager's lock) — not this task's; re-run on an idle machine: 3375 passed.
+
 
 ---
 
@@ -4520,10 +4645,10 @@ The spec: §3.3's override rule says what #10 names and what re-issues; §10 gai
 
 ````diff
 diff --git a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-index 6e7b723..5d55641 100644
+index 3d625f2..608b6c6 100644
 --- a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
 +++ b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-@@ -640,7 +640,8 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
+@@ -647,7 +647,8 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
    recomputes every expected word from its stored simulation and refuses the approval unless every block has its exact
    word, and refuses it when any block has none. A request with any block always re-authenticates through #10 (the
    reason line: "Re-auth required to override a blocked transaction.", Q33); #10's description names what is
@@ -4532,8 +4657,8 @@ index 6e7b723..5d55641 100644
 +  flag (a block or a warning) or changes a block's word or step asks for a new re-authentication. The re-authentication stays bound to
    the exact bytes (B1c-2); the words are not secrets and are bound only by the background recomputing them. No setting
    disables a block.
- - **Holds (B1 §3).** On any screen with a flag (warning or block) every confirming CTA is held **1.5 s** — on top of
-@@ -962,6 +963,10 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
+ - **Holds (B1 §3).** On any screen with a flag (warning or block) every confirming CTA is held **1.5 s instead of
+@@ -975,6 +976,10 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
  | Q34 | #48 red CTA for a block other than an unlimited approve (rev 3.6, controller copy, flagged to the owner) | "Approve anyway" |
  | Q35 | #48 top-bar eyebrow for a block other than an unlimited approve (rev 3.6, controller copy, flagged to the owner) | "Critical · Blocked transaction" |
  | Q36 | #48 F7 warning, a mint that cannot be read or parsed (rev 3.6, controller copy, flagged to the owner) | "Could not read this token's settings" |
@@ -5290,7 +5415,7 @@ index 0335fab..87ba836 100644
 
 Run: the seven files of Step 2 — expected: Test Files  7 passed (7) · Tests  214 passed (214) (overrides 14, reauthChallenges 17, challenge 40, reauthScreen 53, tx 24, signTx 30, Home 36).
 
-Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  170 passed (170) · Tests  3393 passed (3393) (Task 3's end state: 169 files, 3372 tests; +1 file, +21). `node scripts/build.mjs && npm run gates` — expected: every gate ok (permissions, page bundles, vault isolation — see Step 3's note on `assign` —, rpc methods, no TGE date, fonts, classes). Nothing touches the repository root's `src/` or `core/`.
+Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  170 passed (170) · Tests  3396 passed (3396) (Task 3's end state: 169 files, 3375 tests; +1 file, +21; rev 2: +3 from Task 2's new tests, none here). `node scripts/build.mjs && npm run gates` — expected: every gate ok (permissions, page bundles, vault isolation — see Step 3's note on `assign` —, rpc methods, no TGE date, fonts, classes). Nothing touches the repository root's `src/` or `core/`.
 
 - [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy; `tsc`'s own exit code first (0), then the named test: red.**
 
@@ -5331,7 +5456,7 @@ Every shape check of the decision's words, each new refusal, the dependent exemp
 | M4ad | `client.ts`: ` \|\| (outcome === null) !== (flags === null)) return undefined;` → `) return undefined;` | “pendingOf refuses the whole detail…” (`tx.test.tsx`) — tsc 0 · RED Tests  1 failed \| 23 passed (24) |
 | M4ae | `client.ts`: `if (o === undefined \|\| o.severity !== 'block' \|\| o.word !== 'ASSIGN' \|\| ` → `if (o === undefined \|\| o.severity !== 'block' \|\| ` | “pendingOf refuses the whole detail…” (`tx.test.tsx`) — tsc 0 · RED Tests  1 failed \| 23 passed (24) |
 
-32 mutations, all red, every one compiling (`tsc` 0), each turning its named test red.
+32 mutations, all red, every one compiling (`tsc` 0), each turning its named test red. **(rev 2)** Task 4's code and tests are unchanged by rev 2 (its commit re-applies without a conflict; only its spec hunk's context moved), so these were not re-run.
 
 Dry-run history, stated: five first variants did not compile — M4b and M4d (deleting the check left `rest` / `MAX_WORD` unused), M4l (deleting the call left `flagsCovered` unused), M4t and M4aa (likewise `UNLIMITED_WORDS`, the `dependent`/`on` locals) — `tsc` 2, INVALID, not counted; each was replaced by the compiling variant in the table (a bound moved by one, the issued list compared with itself, a case-folded word, one half of the cross-check). M4g's first run reported nothing red because the runner filtered with `vitest -t`, which reads a regular expression — "(F10)" in the name matched nothing and no test ran; the runner now runs each named file whole and checks the named test is among the failed ones (the table's counts are those whole-file runs). One first run was GREEN and the test was strengthened (not the code): M4ag (the flag's `step` no longer compared with the outcome's `on`) survived because the only disagreeing case, `step: 2` beside `on: 1` on the second transaction, was also refused by the earlier-step rule (2 > index 1); the case `on: 2` beside `step: 1` (an earlier step, but not the outcome's) was added, and M4ag then turned red (`Tests  1 failed | 23 passed (24)`) — it is in the code above. Not mutated, stated: the exact-key checks of a challenge flag (`Object.keys(f).length !== 4` in `isDappFlags`, `hasExactly(…, FLAG_KEYS)` on #10) — a key more and a key less are cases of both refusal tests, but no mutant was run on them; and `flagView`'s pass-through of the nine kinds other than `dependent` — the window's strict reader is what checks them (M4z–M4ag).
 
@@ -5357,13 +5482,13 @@ git commit -m "feat(extension): B1c-3 decide gate — typed overrides checked ag
 - **Deviation (additive): the spec is touched** (§3.3's override rule: two lines on #10's rows and what re-issues; §10 Q37–Q40) — Task 1 owns rev 3.6. **Deviation (additive): `txHarness.ts` gains `Chain.errFor` and `assign` / `ataCreate` / `tokenTransfer`** — Task 5's window tests and Task 7 can reuse them.
 - **For Task 5:** each transaction's `flags` (null while simulating, as `outcome`) is the background's list in redFlags.ts's order (blocks first); the typed fields are its `severity === 'block'` entries (at most one per kind per transaction — Task 2), each field's word the flag's `word`; send `overrides: [{tx: <0-based index of the transaction's section>, word: <typed>}]` for every field — only matched fields, or Approve stays disabled. Q32's <N> is `dependsOnStep(item)` only (never `outcome.on`, never a flag's index). A dependent outcome still renders as B1c-2's failure (Tx.tsx `stateOf` → `failed`) until Task 5 gives it its own section; the background now accepts it overridden.
 - **E2E not run** (as Tasks 1–3): any existing E2E request that F3/F4/F5 now blocks will be refused `override-missing` at Approve until Task 5's window sends the words — Task 7 must expect it.
-
+- **(rev 2) Nothing of this task changed** — its diff re-applies unchanged on the rev-2 Task 3 (the spec hunk's context lines carry rev 2's new F2/F5 wording, which is why that block was regenerated). Rebuilt tree: tsc 0, 170 files / 3396 tests, build and gates ok; the seven files of Step 2: 214 passed. An incidental observation from a mis-addressed run (Task 3's mutations first ran on this task's tree by mistake, then again on Task 3's own): Task 3's M3ai (`client.ts` without `o.on >= 1`) survives on this tree — this task rewrote the `pendingOf` test that killed it, and on this tree the mutant is equivalent, not a gap: `txDetailOf` requires a dependent outcome's `on` to equal its F10 flag's `step`, and `flagOf` refuses a step below 1 (client.ts), so an `on` of 0 is still refused; M3ai stays red on Task 3's tree, where it belongs.
 
 ---
 
 ### Task 5: #48 renders the red flags — the banners in each transaction's section (blocks, then warnings), one typed field per (transaction, block kind), the red CTAs behind #37's gate, the synthesized "delegated" rows, the dependent step's own section, the eyebrows, and the 1.5 s hold
 
-**Spec:** B1c §3.3 rev 3.6 "Holds", "The typed field", "Banners", "Attribution (F10)" (this task adds two lines: the typed field is in no form, and a lookalike's order of gates; and the banners' copy index); §10 (Q41–Q55 added here, controller copy, flagged); B1 §3 (Confirm disabled 1.5 s on any red-flag screen, no default focus, Enter does not confirm; "by typing the token symbol … or the word shown"); the design, BINDING: `/home/user/Downloads/index.html` #48 ix:18261-18705, state 2 "unlimited-spend · typed-confirm" ix:18325-18396, CSS ix:3847-3860 (the design map `.superpowers/sdd/b1c3-context-design.md` §1); #37's typed gate (ix:~15000); brief "Override rule" (R4), "Holds" (R5), "Typed field" (R6), "Banners" (R7); C13, C15, rule 6
+**Spec:** B1c §3.3 rev 3.6 "Holds", "The typed field", "Banners", "Attribution (F10)" (this task adds two lines: the typed field is in no form, and a lookalike's order of gates; and the banners' copy index); §10 (Q41–Q55 added here, controller copy, flagged; **rev 2:** Q42 and Q43 say "all or nearly all" below u64::MAX (O5), Q48 gains "Approving it may move any of your balances." (O6), the typed field is emptied by a new simulation (review 1 L1)); B1 §3 (Confirm disabled 1.5 s on any red-flag screen, no default focus, Enter does not confirm; "by typing the token symbol … or the word shown"); the design, BINDING: `/home/user/Downloads/index.html` #48 ix:18261-18705, state 2 "unlimited-spend · typed-confirm" ix:18325-18396, CSS ix:3847-3860 (the design map `.superpowers/sdd/b1c3-context-design.md` §1); #37's typed gate (ix:~15000); brief "Override rule" (R4), "Holds" (R5), "Typed field" (R6), "Banners" (R7); C13, C15, rule 6
 
 **Files:**
 - Modify: `docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md` (§3.3: the typed field in no form, a lookalike's order of gates, the banners' copy index; §10: Q41–Q55)
@@ -5494,7 +5619,7 @@ The window tests: the design's state 2 against the real background end to end (b
 
 ````diff
 diff --git a/extension/src/approve/__tests__/tx.test.tsx b/extension/src/approve/__tests__/tx.test.tsx
-index 96ed97e..378a09d 100644
+index 96ed97e..58c98c1 100644
 --- a/extension/src/approve/__tests__/tx.test.tsx
 +++ b/extension/src/approve/__tests__/tx.test.tsx
 @@ -4,7 +4,7 @@ import {join} from 'node:path';
@@ -5522,7 +5647,7 @@ index 96ed97e..378a09d 100644
  import {CONFIRM_DELAY_MS} from '../ui';
  import {SECOND, openWindow} from './windowHarness';
  
-@@ -643,3 +645,379 @@ describe('#48 origin-mismatch · auto-reject', () => {
+@@ -643,3 +645,408 @@ describe('#48 origin-mismatch · auto-reject', () => {
      await waitFor(() => expect(w.closed.n).toBe(1));
    });
  });
@@ -5615,7 +5740,7 @@ index 96ed97e..378a09d 100644
 +    expect((page.answersFor(requestId)[0]?.result as {signed: string[]}).signed).toHaveLength(1);
 +  }, 15_000);
 +
-+  it('holds (fake timers, the real background): any flag holds the CTA 1.49 s, enables it at 1.5 s — after a match change, a focus, a new simulation; Reject never held; an unflagged screen 500 ms (negative control)', async () => {
++  it('holds (fake timers, the real background): any flag holds the CTA 1.49 s, enables it at 1.5 s — after a match change, a focus, a new simulation (which empties the field: the word typed again); Reject never held; an unflagged screen 500 ms (negative control)', async () => {
 +    const w = await openWindow();
 +    holdUsdc(w);
 +    await w.signTx('https://jup.ag', [v0([tokenApprove(SRC, DELEGATE, U64_MAX)])]);
@@ -5652,6 +5777,10 @@ index 96ed97e..378a09d 100644
 +      for (let i = 0; i < 400 && JSON.stringify((await readDappSession(w.ext)).queue[0]?.sim) === JSON.stringify(first); i++) await at(0);
 +      expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first);
 +      await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
++      expect([field('USDC').value, cta('Approve unlimited').disabled]).toEqual(['', true]);
++      await at(FLAG_HOLD_MS * 2);
++      expect(cta('Approve unlimited').disabled).toBe(true);
++      await act(async () => void type('USDC', 'USDC'));
 +      expect(cta('Approve unlimited').disabled).toBe(true);
 +      await held();
 +    } finally {
@@ -5675,6 +5804,31 @@ index 96ed97e..378a09d 100644
 +      vi.useRealTimers();
 +    }
 +  });
++
++  it('a new simulation empties every typed field (review 1 L1) — the word is typed again for what the screen now shows; a focus or another render keeps it (negative control)', async () => {
++    const w = await openWindow();
++    holdUsdc(w);
++    await w.signTx('https://jup.ag', [v0([tokenApprove(SRC, DELEGATE, U64_MAX)])]);
++    w.show();
++    await simulated(w, 'Unlimited USDC spend approval');
++    type('USDC', 'USDC');
++    // Negative control: a focus and a read of the same simulation keep the word.
++    await act(async () => void window.dispatchEvent(new Event('focus')));
++    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
++    await holdAfter();
++    expect([field('USDC').value, field('USDC').className, cta('Approve unlimited').disabled]).toEqual(['USDC', 'input match', false]);
++    // A new simulation (the 30 s refresh) lands: the field is empty again and the CTA gated.
++    const first = (await readDappSession(w.ext)).queue[0]?.sim;
++    w.deps.clock.t += 30_000;
++    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
++    await waitFor(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
++    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
++    await waitFor(() => expect(field('USDC').value).toBe(''));
++    expect([field('USDC').className, cta('Approve unlimited').className, cta('Approve unlimited').disabled]).toEqual(['input', 'btn btn-destructive app-cta-wide app-cta-gated', true]);
++    type('USDC', 'USDC');
++    await holdAfter();
++    expect(cta('Approve unlimited').disabled).toBe(false);
++  }, 15_000);
 +
 +  it('System assign of the wallet account (F3) and an unlimited approve in one transaction: "Critical · Blocked transaction", both banners, one field per block — "Approve anyway" only when both match; the L3 line replaced beside an authority flag', async () => {
 +    const w = await openWindow();
@@ -5725,7 +5879,7 @@ index 96ed97e..378a09d 100644
 +    ]);
 +    expect(heads(three)).toEqual(['This step depends on step 2 and could not be checked on its own.']);
 +    expect([...(three?.querySelectorAll('.s9-flag-banner .body, .s9-flag-banner .meta') ?? [])].map(e => e.textContent)).toEqual([
-+      'Its effects are unknown: it was simulated without the changes step 2 makes, which it needs.',
++      'Its effects are unknown: it was simulated without the changes step 2 makes, which it needs. Approving it may move any of your balances.',
 +      '{"InstructionError":[0,"InvalidAccountData"]}',
 +    ]);
 +    expect([three?.querySelector('.s9-bal-card .label')?.textContent, three?.querySelector('.s9-bal-card .app-tx-none')?.textContent, three?.querySelectorAll('.s9-bal-row').length]).toEqual([
@@ -5855,7 +6009,7 @@ index 96ed97e..378a09d 100644
 +        head: 'Unlimited token spend approval',
 +        body: [
 +          'This transaction includes a spl_token::Approve instruction with amount = u64::MAX (~18.4 quintillion units). Even verified dApps can be exploited; this lets the program move all your USDC, now and in the future, until you revoke.',
-+          "This transaction includes a spl_token_2022::ApproveChecked instruction for amount = 250000000, at least this account's whole balance. Even verified dApps can be exploited; this lets the program move all of this token until you revoke.",
++          "This transaction includes a spl_token_2022::ApproveChecked instruction for amount = 250000000, all or nearly all of this account's balance. Even verified dApps can be exploited; this lets the program move all or nearly all of this token until you revoke.",
 +          'The simulation shows a program call — not an instruction listed here — that lets a delegate move all of this token, now and in the future, until you revoke. Even verified dApps can be exploited.',
 +        ],
 +        meta: [`delegate: ${del} · token: USDC mint ${USDC} · scope: u64::MAX`, `delegate: ${del} · token: mint ${MINT} · scope: 250000000`, `delegate: ${del} · token: mint — · scope: u64::MAX`],
@@ -5933,7 +6087,7 @@ index 0b76ad0..24bdbd4 100644
 
 - [ ] **Step 2: Run them on the previous task's tree — red.**
 
-Run: `npx tsc --noEmit; echo $?` → `2` (one error: `src/approve/__tests__/tx.test.tsx(20,17): error TS2305: Module '"../useArmed"' has no exported member 'FLAG_HOLD_MS'.`). `npx vitest run src/approve/__tests__/tx.test.tsx src/__tests__/designExt2b.test.ts` → **Tests 9 failed | 28 passed (37)**: the seven new #48 tests (no banner: `Unable to find an element with the text: Unlimited USDC spend approval` / `Assign / Allocate on your wallet account` / `This step depends on step 2 …`; the every-kind test `expected [] to deeply equal [ { tone: 'danger', …(3) }, …(9) ]`; the CSS test `expected '' to contain 'background: var(--bg-surface-2)'`), and designExt2b's two (`to contain '\n.s9-typed-confirm {'`, the hash `c91f9220…` ≠ `ccbae441…`).
+Run: `npx tsc --noEmit; echo $?` → `2` (one error: `src/approve/__tests__/tx.test.tsx(20,17): error TS2305: Module '"../useArmed"' has no exported member 'FLAG_HOLD_MS'.`). `npx vitest run src/approve/__tests__/tx.test.tsx src/__tests__/designExt2b.test.ts` → **Tests 10 failed | 28 passed (38)** (rev 2; rev 1: 9 | 28 (37)): the eight new #48 tests — rev 2's L1 test the eighth — (no banner: `Unable to find an element with the text: Unlimited USDC spend approval` / `Assign / Allocate on your wallet account` / `This step depends on step 2 …`; the every-kind test `expected [] to deeply equal [ { tone: 'danger', …(3) }, …(9) ]`; the CSS test `expected '' to contain 'background: var(--bg-surface-2)'`), and designExt2b's two (`to contain '\n.s9-typed-confirm {'`, the hash `c91f9220…` ≠ `ccbae441…`).
 
 - [ ] **Step 3: Implement.**
 
@@ -5943,10 +6097,10 @@ The copy — every string the design, #37, B1 §3 or screen.md does not draw is 
 
 ````diff
 diff --git a/extension/src/approve/strings.ts b/extension/src/approve/strings.ts
-index ea76c85..282f24f 100644
+index ea76c85..b35209a 100644
 --- a/extension/src/approve/strings.ts
 +++ b/extension/src/approve/strings.ts
-@@ -179,6 +179,81 @@ export const TX_TEXT = {
+@@ -179,6 +179,83 @@ export const TX_TEXT = {
    ownAccount: (name: string): string => `Your account: ${name}`,
  } as const;
  
@@ -5972,10 +6126,12 @@ index ea76c85..282f24f 100644
 +  unlimitedHead: (symbol: string | null): string => (symbol === null ? 'Unlimited token spend approval' : `Unlimited ${symbol} spend approval`),
 +  /** The design's "all your USDC" (ix:18352); Q41: "all of this token" when the wallet's table names no symbol. */
 +  all: (symbol: string | null): string => (symbol === null ? 'all of this token' : `all your ${symbol}`),
++  /** Q42, Q43 below u64::MAX (O5: 99 % of the balance or more): "all or nearly all". */
++  nearlyAll: (symbol: string | null): string => (symbol === null ? 'all or nearly all of this token' : `all or nearly all your ${symbol}`),
 +  /** F5, a decoded approve of u64::MAX: the design's body (ix:18352), the code span the real instruction (Q41). */
 +  unlimitedMax: ['This transaction includes a ', ' instruction with ', 'amount = u64::MAX', ' (~18.4 quintillion units). Even verified dApps can be exploited; this lets the program move ', ', now and in the future, until you revoke.'],
-+  /** Q42: F5, a decoded approve below u64::MAX that is at least the account's whole balance. */
-+  unlimitedWhole: ['This transaction includes a ', ' instruction for ', ", at least this account's whole balance. Even verified dApps can be exploited; this lets the program move ", ' until you revoke.'],
++  /** Q42: F5, a decoded approve below u64::MAX of 99 % or more of the account's balance (O5). */
++  unlimitedWhole: ['This transaction includes a ', ' instruction for ', ", all or nearly all of this account's balance. Even verified dApps can be exploited; this lets the program move ", ' until you revoke.'],
 +  /** Q43: F5 seen only in the simulation's chain state (a program call, no instruction listed). */
 +  unlimitedChain: ['The simulation shows a program call — not an instruction listed here — that lets a delegate move ', ', now and in the future, until you revoke.', ' until you revoke.', ' Even verified dApps can be exploited.'],
 +  /** Q44: F6's head. */
@@ -5997,7 +6153,7 @@ index ea76c85..282f24f 100644
 +  /** Q32: F10's head. */
 +  dependsOn: (step: number): string => `This step depends on step ${step} and could not be checked on its own.`,
 +  /** Q48: F10's body. */
-+  dependent: (step: number): string => `Its effects are unknown: it was simulated without the changes step ${step} makes, which it needs.`,
++  dependent: (step: number): string => `Its effects are unknown: it was simulated without the changes step ${step} makes, which it needs. Approving it may move any of your balances.`,
 +  /** Q49: F10's balance card. */
 +  balanceUnknown: 'Balance changes (unknown)',
 +  balanceUnknownLine: 'This step was not simulated on its own, so its effects are unknown.',
@@ -6087,7 +6243,7 @@ index fa5b85f..498bf32 100644
 
 ````diff
 diff --git a/extension/src/approve/Tx.tsx b/extension/src/approve/Tx.tsx
-index b973b8a..aec9f92 100644
+index b973b8a..0022f7a 100644
 --- a/extension/src/approve/Tx.tsx
 +++ b/extension/src/approve/Tx.tsx
 @@ -1,4 +1,4 @@
@@ -6226,9 +6382,9 @@ index b973b8a..aec9f92 100644
 +  </>
 +);
 +
-+/** F5's body: the design's at u64::MAX (decoded), Q42 below it, Q43 when only the chain state shows it. */
++/** F5's body: the design's at u64::MAX (decoded), Q42 below it, Q43 when only the chain state shows it — "all or nearly all" below u64::MAX (O5). */
 +function unlimitedBody(item: TxItem, a: Approval): ReactNode {
-+  const all = <i>{FLAG_TEXT.all(a.symbol)}</i>;
++  const all = <i>{a.amount === U64_MAX ? FLAG_TEXT.all(a.symbol) : FLAG_TEXT.nearlyAll(a.symbol)}</i>;
 +  const ix = instructionName(item, a.at);
 +  if (ix === null) {
 +    const [lead, future, untilRevoke, exploited] = FLAG_TEXT.unlimitedChain;
@@ -6451,13 +6607,15 @@ index b973b8a..aec9f92 100644
   */
  export function Tx({request, waiting, notice, busy, onDecide}: {request: RequestView; waiting: number; notice: boolean; busy: boolean; onDecide: (d: Decision) => Promise<unknown>}) {
    const detail = request.tx;
-@@ -226,7 +505,13 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
+@@ -226,7 +505,15 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
    // landed) — that line is true only while that simulation is the one shown, so it goes when the refresh lands.
    const [refused, setRefused] = useState<{kind: 'stale' | 'out-of-date'; simId: string} | null>(null);
    const simId = detail !== null && detail.simulation.status === 'ok' ? detail.simulation.id : 'none';
 -  const armed = useArmed([request.requestId, simId, detail?.reauth?.state ?? 'none', confirming, busy].join('|'));
-+  // B1c-3: what the user typed per (transaction, kind); a match is exact — `===`, no trimming, no case folding.
-+  const [typed, setTyped] = useState<Readonly<Record<string, string>>>({});
++  // B1c-3: what the user typed per (transaction, kind), for the simulation it was typed against — a new one empties every
++  // field (review 1 L1); a match is exact — `===`, no trimming, no case folding.
++  const [typedFor, setTypedFor] = useState<{simId: string; words: Readonly<Record<string, string>>}>({simId: 'none', words: {}});
++  const typed = typedFor.simId === simId ? typedFor.words : {};
 +  const fields = typedFieldsOf(detail);
 +  const matches = fields.map(f => typed[f.key] === f.word);
 +  const allMatch = matches.every(m => m);
@@ -6466,7 +6624,7 @@ index b973b8a..aec9f92 100644
    const reject = () => onDecide({decision: 'reject'});
    // Promoted minor 1: a reply arriving after this screen is gone (a new head replaced it, or it closed) sets nothing.
    const alive = useRef(true);
-@@ -247,7 +532,7 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
+@@ -247,7 +534,7 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
    const simulating = state === 'simulating';
    const ready = state === 'ready';
    const reauthWaiting = detail?.reauth?.state === 'waiting';
@@ -6475,7 +6633,7 @@ index b973b8a..aec9f92 100644
    // Fix round 1, I2: the sheet is for exactly the simulation it opened on — a refresh that lands while it is open
    // (simId no longer matches what was captured, or canApprove itself goes false) closes it; a captured click that
    // still slips past that (the background is the final, fail-closed word) is refused `stale`, never signed.
-@@ -283,7 +568,9 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
+@@ -283,7 +570,9 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
    const approve = async (overrideSimId?: string) => {
      setRefused(null);
      const sentSimId = overrideSimId ?? (detail.simulation.status === 'ok' ? detail.simulation.id : undefined);
@@ -6486,7 +6644,7 @@ index b973b8a..aec9f92 100644
      if (!alive.current) return;
      const error = typeof reply === 'object' && reply !== null && 'error' in reply ? reply.error : null;
      if (error === 'stale' || error === 'out-of-date') setRefused({kind: error, simId: sentSimId ?? 'none'});
-@@ -291,10 +578,13 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
+@@ -291,10 +580,13 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
    const stale = refused !== null && refused.kind === 'stale';
    const outOfDate = refused !== null && refused.kind === 'out-of-date' && refused.simId === simId;
    const n = detail.transactions.length;
@@ -6502,7 +6660,7 @@ index b973b8a..aec9f92 100644
        <div className={busy ? 'scroll-area app-approve-scroll app-tx-busy' : 'scroll-area app-approve-scroll'}>
          {notice ? <BudgetNotice /> : null}
          <div className="app-origin-slot">
-@@ -353,8 +643,14 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
+@@ -353,8 +645,14 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
          {detail.transactions.map((t, i) => (
            <section className="app-tx-item" key={i}>
              {n > 1 ? <h2 className="noc-overline app-tx-batch">{TX_TEXT.batchItem(i + 1, n)}</h2> : null}
@@ -6512,12 +6670,12 @@ index b973b8a..aec9f92 100644
 +            {ready
 +              ? fields
 +                  .filter(f => f.tx === i)
-+                  .map(f => <TypedConfirm key={f.key} field={f} value={typed[f.key] ?? ''} onChange={v => setTyped(prev => ({...prev, [f.key]: v}))} />)
++                  .map(f => <TypedConfirm key={f.key} field={f} value={typed[f.key] ?? ''} onChange={v => setTypedFor(prev => ({simId, words: {...(prev.simId === simId ? prev.words : {}), [f.key]: v}}))} />)
 +              : null}
            </section>
          ))}
          {simulating ? <p className="noc-caption app-dim app-tx-caption">{TX_TEXT.mandatory}</p> : null}
-@@ -411,6 +707,13 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
+@@ -411,6 +709,13 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
                <Spinner />
                {TX_TEXT.approving}
              </button>
@@ -6531,7 +6689,7 @@ index b973b8a..aec9f92 100644
            ) : (
              // Final review MUST-FIX 2: drawn at .4 while simulating (ix:18318) — its own class, in that state only.
              <ConfirmButton armed={armed && canApprove} className={simulating ? 'btn btn-primary app-cta-wide app-cta-simulating' : 'btn btn-primary app-cta-wide'} onPress={approve}>
-@@ -422,6 +725,7 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
+@@ -422,6 +727,7 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
        )}
        {confirming ? (
          <RiskConfirm
@@ -6638,21 +6796,21 @@ The spec — §3.3 (two lines) and §10 (Q41–Q55):
 
 ````diff
 diff --git a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-index 5d55641..c679008 100644
+index 608b6c6..1659d74 100644
 --- a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
 +++ b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-@@ -651,7 +651,9 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
- - **The typed field** is the design's `.s9-typed-confirm`: the label "Type <code>WORD</code> to enable Approve" (the
-   design's), the word shown in its true case; the input with `autocapitalize`, `autocomplete`, `autocorrect` and
+@@ -661,7 +661,9 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
    `spellcheck` off, an exact, case-sensitive match with no trimming (a trailing space does not match), the design's
--  `.input.match` border on a match, and #37's helper "Case-sensitive · must match exactly.". Never pre-filled. The
-+  `.input.match` border on a match, and #37's helper "Case-sensitive · must match exactly.". Never pre-filled, not
-+  in a form (Enter in it has nothing to submit). A lookalike origin with a block passes both gates in this order: the
-+  typed fields enable its demoted "Approve anyway (not recommended)", which opens the 2-second confirm. The
+   `.input.match` border on a match, and #37's helper "Case-sensitive · must match exactly.". Never pre-filled, and
+   emptied when a new simulation lands (review 1 L1: a chain-state block's details can change between simulations, so
+-  the user types the word again for what the screen now shows). The
++  the user types the word again for what the screen now shows); not in a form (Enter in it has nothing to submit). A
++  lookalike origin with a block passes both gates in this order: the typed fields enable its demoted "Approve anyway
++  (not recommended)", which opens the 2-second confirm. The
    CTA: for an unlimited approve the design's red "Approve unlimited" with the alert icon; for any other block "Approve
    anyway" (Q34), red; drawn as #37's gated CTA (greyed, full label) until every field matches.
  - **Banners.** `.s9-flag-banner danger` for a block (head, body, meta — the design's state 2; for F5 the design's own
-@@ -660,7 +662,7 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
+@@ -670,7 +672,7 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
    design's), "Critical · Blocked transaction" (Q35) for any other block, unchanged otherwise. An approve's balance card
    gains the design's synthesized row ("<SYM> delegated · unlimited · ≈ all current + future"; a bounded approve
    "<SYM> delegated · <amount>"): an approve changes no balance, so the "No balance changes" line is replaced wherever an
@@ -6661,18 +6819,18 @@ index 5d55641..c679008 100644
  
  The plans for B1c-2 and B1c-3 refine this section; they may not loosen it.
  
-@@ -967,6 +969,21 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
+@@ -980,6 +982,21 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
  | Q38 | #10 row for an overridden F4 block (rev 3.6, plan 3 Task 4, controller copy, flagged to the owner — B1 §3's row) | "SetAuthority on an account you own" |
  | Q39 | #10 row for an overridden F5 block (rev 3.6, plan 3 Task 4, controller copy, flagged to the owner — the design's F5 head) | "Unlimited <SYM> spend approval"; "Unlimited token spend approval" when the wallet's table names no symbol (`UNLIMITED`) |
  | Q40 | #10 row for an overridden F10 block (rev 3.6, plan 3 Task 4, controller copy, flagged to the owner — Q32 as a row) | "Depends on step <N> — not checked on its own" |
 +| Q41 | #48 F5 banner body, adapted (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | the design's body with its code span naming the real instruction (`spl_token::Approve`, `spl_token::ApproveChecked`, `spl_token_2022::Approve`, `spl_token_2022::ApproveChecked`), and "all of this token" for "all your <SYM>" when the wallet's table names no symbol |
-+| Q42 | #48 F5 body, a decoded approve below u64::MAX that is at least the whole balance (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "This transaction includes a `<instruction>` instruction for `amount = <base units>`, at least this account's whole balance. Even verified dApps can be exploited; this lets the program move *all your <SYM>* until you revoke." |
-+| Q43 | #48 F5 body, seen only in the simulation's chain state (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "The simulation shows a program call — not an instruction listed here — that lets a delegate move *all your <SYM>*, now and in the future, until you revoke. Even verified dApps can be exploited." (", now and in the future," only at u64::MAX) |
++| Q42 | #48 F5 body, a decoded approve below u64::MAX of 99 % or more of the balance (O5; rev 3.6, plan 3 Task 5, controller copy, flagged to the owner; rev 2 of plan 3: "nearly all", review 1 H1) | "This transaction includes a `<instruction>` instruction for `amount = <base units>`, all or nearly all of this account's balance. Even verified dApps can be exploited; this lets the program move *all or nearly all your <SYM>* until you revoke." ("of this token" for "your <SYM>" when unnamed) |
++| Q43 | #48 F5 body, seen only in the simulation's chain state (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "The simulation shows a program call — not an instruction listed here — that lets a delegate move *all your <SYM>*, now and in the future, until you revoke. Even verified dApps can be exploited." (", now and in the future," only at u64::MAX; below it *all or nearly all your <SYM>* — O5, plan 3 rev 2) |
 +| Q44 | #48 F6 banner head (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "<SYM> spend approval"; "Token spend approval" when the wallet's table names no symbol |
 +| Q45 | #48 F6 banner body (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "This lets a delegate move up to <amount> of your <SYM> until you revoke." ("of this token" when unnamed) |
 +| Q46 | #48 F3 banner body; its head is Q37 (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "This changes your wallet account itself. Assigned to another program, it is that program's to control; given data, it can no longer pay fees or send SOL." |
 +| Q47 | #48 F4 banner body; its head is Q38 (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "This gives an authority over an account you own to another address, or removes it. You cannot take it back yourself." |
-+| Q48 | #48 F10 banner body; its head is Q32 (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "Its effects are unknown: it was simulated without the changes step <N> makes, which it needs." |
++| Q48 | #48 F10 banner body; its head is Q32 (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner; plan 3 rev 2: the second sentence, O6) | "Its effects are unknown: it was simulated without the changes step <N> makes, which it needs. Approving it may move any of your balances." |
 +| Q49 | #48 F10 balance card (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | label "Balance changes (unknown)"; line "This step was not simulated on its own, so its effects are unknown." |
 +| Q50 | #48 F1 banner (head "Unknown program", screen.md §48; rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | body "The wallet cannot decode what this program does — only the simulation shows its effects."; a program index that is no static key: "a program the transaction does not name in its own keys" |
 +| Q51 | #48 F2 banner (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | head "Instructions that are not transfers"; body "Each can do more than move a balance. Check what it does before approving." |
@@ -6687,36 +6845,39 @@ index 5d55641..c679008 100644
 
 - [ ] **Step 4: Run — green, and the whole suite, the build and the gates.**
 
-`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3401 passed (3401)** (Task 4: 170 / 3393; +7 in `tx.test.tsx`, +1 in `designExt2b.test.ts`; `tx.test.tsx` takes ~28 s — two tests wait out real 1.5 s holds and carry a 15 s timeout). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (`classes ok: every class in 56 src/app and src/approve files is defined by …`). `node scripts/extract-design-css.mjs --check` → `design-ext.css is the extraction output`. Nothing under the repository root's `src/` or `core/` is touched (root `tsc`/`jest` and web's `verify` not needed). The `act(...)` warnings `tx.test.tsx` prints come from the window's own 1 s poll landing between the test's steps, as in B1c-2's tests; no assertion depends on them.
+`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3405 passed (3405)** (Task 4: 170 / 3396; +8 in `tx.test.tsx` — rev 2's L1 test the eighth —, +1 in `designExt2b.test.ts`; `tx.test.tsx` takes ~28 s — two tests wait out real 1.5 s holds and carry a 15 s timeout). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (`classes ok: every class in 56 src/app and src/approve files is defined by …`). `node scripts/extract-design-css.mjs --check` → `design-ext.css is the extraction output`. Nothing under the repository root's `src/` or `core/` is touched (root `tsc`/`jest` and web's `verify` not needed). The `act(...)` warnings `tx.test.tsx` prints come from the window's own 1 s poll landing between the test's steps, as in B1c-2's tests; no assertion depends on them.
 
 - [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy; `tsc`'s own exit code first (0), then the named test: red.**
 
-All in `extension/src/approve/Tx.tsx` unless named; tests in `src/approve/__tests__/tx.test.tsx` ("#48 red flags (B1c-3)") unless named. Observed in the dry run: every mutant `tsc` exit 0, the named test red (`Tests 1 failed`).
+All in `extension/src/approve/Tx.tsx` unless named; tests in `src/approve/__tests__/tx.test.tsx` ("#48 red flags (B1c-3)") unless named. Observed in the dry run: every mutant `tsc` exit 0, the named test red. **(rev 2)** All 25 (the 22 of rev 1 and M5w–M5y) re-run on the rev-2 tree, each against its whole named file (rev 1 ran each with `-t`, hence its `1 failed`); the named test is among the failures in every row.
 
 | id | the change | the test that turns red | observed |
 |---|---|---|---|
-| M5a | `matches`: `typed[f.key]?.trim() === f.word` (trims) | "an unlimited USDC approve …" (`'USDC '` enables) | tsc 0, 1 failed |
-| M5b | `matches`: `typed[f.key]?.toUpperCase() === f.word` (case folding) | "an unlimited USDC approve …" (`'usdc'` enables) | tsc 0, 1 failed |
-| M5c | `useArmed(…, ARM_MS)` always (no 1.5 s) | "holds (fake timers …)" (`[false, false]` at 1.49 s) | tsc 0, 1 failed |
-| M5d | the key without the match state (`busy].join('|')`) | "holds (fake timers …)" (no re-hold on a match change) | tsc 0, 1 failed |
-| M5e | `canApprove` without `&& allMatch` | "System assign … and an unlimited approve …" (enabled with one word) | tsc 0, 1 failed |
-| M5f | `overrides` never sent (`overrides.length > 99`) | "an unlimited USDC approve …" (refused `override-missing`; no #10) | tsc 0, 1 failed |
-| M5g | `overrides`' `tx` always `0` | "a dependent step (F10) …" (refused `override-mismatch`) | tsc 0, 1 failed |
-| M5h | Q32's step `dependsOnStep(item) === null ? null : f.step - 1` (a 0-based slip) | "a dependent step (F10) …" ("step 1") | tsc 0, 1 failed |
-| M5i | `stateOf` counts a dependent outcome as failed (B1c-2's rule) | "a dependent step (F10) …" (Couldn't simulate shown) | tsc 0, 1 failed |
-| M5j | `FlagBanners`: the background's order as given (no blocks-first split) | "every kind of flag …" (the warning first) | tsc 0, 1 failed |
-| M5k | `autoFocus` on the typed input | "an unlimited USDC approve …" (`activeElement` is the input) | tsc 0, 1 failed |
-| M5l | the typed field inside a `<form onSubmit>` | "an unlimited USDC approve …" (`input.form` not null) | tsc 0, 1 failed |
-| M5m | `unlimitedOnly = blocks.length > 0` | "System assign …" ("Critical · Unlimited spend approval") | tsc 0, 1 failed |
-| M5n | the eyebrow without Q35 (a block falls through to "Approve transaction") | "System assign …" | tsc 0, 1 failed |
-| M5o | the red CTA's class without `app-cta-gated` | "an unlimited USDC approve …" | tsc 0, 1 failed |
-| M5p | `RiskConfirm` without `holdMs` (500 ms in the sheet) | "a lookalike origin with a block …" (enabled 1 s after focus) | tsc 0, 1 failed |
-| M5q | the lookalike's demoted CTA armed without the typed gate (`ready && !reauthWaiting && !busy`) | "a lookalike origin with a block …" (enabled before typing) | tsc 0, 1 failed |
-| M5r | the delegated row's delta never "unlimited" | "an unlimited USDC approve …" (`18,446,744,073,709.551615`) | tsc 0, 1 failed |
-| M5s | L3's line never replaced beside an authority flag | "System assign …" (Q54) | tsc 0, 1 failed |
-| M5t | `scripts/extract-design-css.mjs`: `.s9-typed-confirm` dropped from PREFIXES | `scripts/__tests__/extract-design-css.test.mjs` "design-ext.css starts with the script's HEADER, and every rule after it is one the extraction keeps" (5 rules not kept) | tsc 0, 1 failed |
-| M5u | `instructionName` always `spl_token::…` (the design's span, not the real program) | "every kind of flag …" (`spl_token_2022::ApproveChecked`) | tsc 0, 1 failed |
-| M5v | `Addr` shows `shortAddress` (the design's truncation) | "an unlimited USDC approve …" (meta `6YME…GKSy`) | tsc 0, 1 failed |
+| M5a | `matches`: `typed[f.key]?.trim() === f.word` (trims) | "an unlimited USDC approve …" (`'USDC '` enables) | tsc 0, 1 failed \| 31 passed (32) |
+| M5b | `matches`: `typed[f.key]?.toUpperCase() === f.word` (case folding) | "an unlimited USDC approve …" (`'usdc'` enables) | tsc 0, 1 failed \| 31 passed (32) |
+| M5c | `useArmed(…, ARM_MS)` always (no 1.5 s) | "holds (fake timers …)" (`[false, false]` at 1.49 s) | tsc 0, 1 failed \| 31 passed (32) |
+| M5d | the key without the match state (`busy].join('|')`) | "holds (fake timers …)" (no re-hold on a match change) | tsc 0, 2 failed \| 30 passed (32) |
+| M5e | `canApprove` without `&& allMatch` | "System assign … and an unlimited approve …" (enabled with one word) | tsc 0, 4 failed \| 28 passed (32) |
+| M5f | `overrides` never sent (`overrides.length > 99`) | "an unlimited USDC approve …" (refused `override-missing`; no #10) | tsc 0, 4 failed \| 28 passed (32) |
+| M5g | `overrides`' `tx` always `0` | "a dependent step (F10) …" (refused `override-mismatch`) | tsc 0, 1 failed \| 31 passed (32) |
+| M5h | Q32's step `dependsOnStep(item) === null ? null : f.step - 1` (a 0-based slip) | "a dependent step (F10) …" ("step 1") | tsc 0, 1 failed \| 31 passed (32) |
+| M5i | `stateOf` counts a dependent outcome as failed (B1c-2's rule) | "a dependent step (F10) …" (Couldn't simulate shown) | tsc 0, 1 failed \| 31 passed (32) |
+| M5j | `FlagBanners`: the background's order as given (no blocks-first split) | "every kind of flag …" (the warning first) | tsc 0, 1 failed \| 31 passed (32) |
+| M5k | `autoFocus` on the typed input | "an unlimited USDC approve …" (`activeElement` is the input) | tsc 0, 1 failed \| 31 passed (32) |
+| M5l | the typed field inside a `<form onSubmit>` | "an unlimited USDC approve …" (`input.form` not null) | tsc 0, 1 failed \| 31 passed (32) |
+| M5m | `unlimitedOnly = blocks.length > 0` | "System assign …" ("Critical · Unlimited spend approval") | tsc 0, 3 failed \| 29 passed (32) |
+| M5n | the eyebrow without Q35 (a block falls through to "Approve transaction") | "System assign …" | tsc 0, 3 failed \| 29 passed (32) |
+| M5o | the red CTA's class without `app-cta-gated` | "an unlimited USDC approve …" | tsc 0, 3 failed \| 29 passed (32) |
+| M5p | `RiskConfirm` without `holdMs` (500 ms in the sheet) | "a lookalike origin with a block …" (enabled 1 s after focus) | tsc 0, 1 failed \| 31 passed (32) |
+| M5q | the lookalike's demoted CTA armed without the typed gate (`ready && !reauthWaiting && !busy`) | "a lookalike origin with a block …" (enabled before typing) | tsc 0, 1 failed \| 31 passed (32) |
+| M5r | the delegated row's delta never "unlimited" | "an unlimited USDC approve …" (`18,446,744,073,709.551615`) | tsc 0, 2 failed \| 30 passed (32) |
+| M5s | L3's line never replaced beside an authority flag | "System assign …" (Q54) | tsc 0, 1 failed \| 31 passed (32) |
+| M5t | `scripts/extract-design-css.mjs`: `.s9-typed-confirm` dropped from PREFIXES | `scripts/__tests__/extract-design-css.test.mjs` "design-ext.css starts with the script's HEADER, and every rule after it is one the extraction keeps" (5 rules not kept) | tsc 0, 1 failed \| 1 passed (2) |
+| M5u | `instructionName` always `spl_token::…` (the design's span, not the real program) | "every kind of flag …" (`spl_token_2022::ApproveChecked`) | tsc 0, 2 failed \| 30 passed (32) |
+| M5v | `Addr` shows `shortAddress` (the design's truncation) | "an unlimited USDC approve …" (meta `6YME…GKSy`) | tsc 0, 3 failed \| 29 passed (32) |
+| M5w | **(rev 2, L1)** the typed words kept across simulations (`const typed = typedFor.words;`) | "a new simulation empties every typed field (review 1 L1) …" (the field still `USDC`); "holds (fake timers …)" (the field not emptied by the new simulation) | tsc 0, 2 failed \| 30 passed (32) |
+| M5x | **(rev 2, O5)** "all your <SYM>" below u64::MAX too (`<i>{FLAG_TEXT.all(a.symbol)}</i>`) | "every kind of flag …" (Q42's "all or nearly all of this token") | tsc 0, 1 failed \| 31 passed (32) |
+| M5y | **(rev 2, O6)** Q48 without its second sentence (`strings.ts` `dependent`) | "a dependent step (F10) …" ("Approving it may move any of your balances.") | tsc 0, 1 failed \| 31 passed (32) |
 
 - [ ] **Step 6: Commit.**
 
@@ -6724,10 +6885,10 @@ All in `extension/src/approve/Tx.tsx` unless named; tests in `src/approve/__test
 git add docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md extension/scripts/extract-design-css.mjs extension/src/__tests__/designExt2b.test.ts extension/src/app/app.css extension/src/approve/Tx.tsx extension/src/approve/__tests__/tx.test.tsx extension/src/approve/strings.ts extension/src/approve/ui.tsx extension/src/approve/useArmed.ts extension/src/background/dapp/__tests__/txHarness.ts extension/src/styles/design-ext.css
 git commit -m "feat(extension): B1c-3 Task 5 — #48 renders the red flags: banners, typed fields, red CTAs, delegated rows, the 1.5 s hold, the dependent step's section
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 ```
 
-(Dry run: clone commit `afb3e09` on Task 4's `614e54b`.)
+(Dry run: clone commit `6fb798a` on Task 4's `772cc3f` — rev 2, branch `dry/b1c3-r2`; rev 1: `afb3e09` on `614e54b`.)
 
 #### Dry-run notes (Task 5)
 
@@ -6750,6 +6911,12 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - **Copy (flagged, written into §10):** Q41 (F5 body adapted: the real instruction, "all of this token"), Q42 (F5 whole balance), Q43 (F5 chain only), Q44–Q45 (F6), Q46 (F3 body), Q47 (F4 body), Q48 (F10 body), Q49 (F10 card), Q50 (F1 body + a non-static program), Q51 (F2), Q52 (F7), Q53 (F9), Q54 (L3 replacement), Q55 (meta vocabulary). **Task 6 / 8's copy starts at Q56.**
 - **For Task 6:** Tx.tsx's `PROGRAM_NAMES` / `KNOWN_MINTS` and `BalanceCard` grew here (the delegated rows come before the simulation's rows); the non-Checked decimals and ATA token-program rows go into `Payload`. **For Task 7 (E2E):** an unlimited approve now needs the typed symbol in the field (`getByLabelText('Type USDC to enable Approve')`), then the 1.5 s hold, then #10; Enter never confirms. **For Task 8 (visual):** new states — USDC unlimited typed empty / matched (gated vs red CTA), Assign + approve (two fields, Q35, "Approve anyway"), a dependent batch (step 3 on 2), every warning banner (the "every kind" view), a lookalike with a block; take shots after `FLAG_HOLD_MS`.
 - **E2E not run** (as Tasks 1–4).
+- **(rev 2) L1 — a new simulation empties the typed fields:** the words are kept with the simulation id they were typed against (`typedFor = {simId, words}`) and read as empty when the id is not the current one — in the same render, so no frame matches against a stale word (an effect clearing them would leave one). New test "a new simulation empties every typed field (review 1 L1) …" with its negative control (a focus and a re-read of the same simulation keep the word); M5w. The holds test's last segment changed with it: after the new simulation the field is empty and the CTA stays disabled past 3 s; re-typing holds 1.49 s / enables at 1.5 s. So on a block screen the new simulation's own re-hold now coincides with the re-typed match's; the re-hold on a new simulation stays proven by B1c-2's C15 test (the same `useArmed` key carries the simulation id) — said here, not claimed by the holds test.
+- **(rev 2) O5 copy (H1):** Q42's body for a decoded approve below u64::MAX now says "…, all or nearly all of this account's balance. … this lets the program move *all or nearly all your <SYM>* until you revoke." and Q43 below u64::MAX "*all or nearly all your <SYM>*" (`FLAG_TEXT.nearlyAll`); at u64::MAX both keep the design's "all your <SYM>, now and in the future". M5x. **Flagged to the owner (not changed):** F5's head "Unlimited <SYM> spend approval", the eyebrow "Critical · Unlimited spend approval", the CTA "Approve unlimited", #10's Q39 and the delegated row's amount are the design's names for state 2; for a 99 %-of-balance approve below u64::MAX they still say "unlimited" (the row shows the amount, not "unlimited") — the bodies say the truth; the owner may want a head of its own for "nearly all".
+- **(rev 2) O6 copy (M2):** Q48 = "Its effects are unknown: it was simulated without the changes step <N> makes, which it needs. Approving it may move any of your balances." (controller copy, Q number kept, flagged to the owner); spec §10's row says so; M5y. The residual risk itself is spec §9's new row (Task 1).
+- **(rev 2) L4 (owner to confirm, not changed):** two "Approve anyway" strings exist in this screen family — a block's red CTA (Q34) and a lookalike's demoted "Approve anyway (not recommended)"; on a lookalike with a block only the demoted one shows, so they never meet on one screen. Put to the owner with Q34.
+- **(rev 2) L5:** this task's commit command named a model; it now carries the plan's convention, `Co-Authored-By: <the executing model>` — the executor writes its own model's name (Tasks 6, 7 and 8 named the same model too and were changed the same way).
+
 
 ---
 
@@ -6812,10 +6979,10 @@ The ruling's tests, in `redFlags.test.ts` — a new describe with the brief's th
 
 ````diff
 diff --git a/extension/src/background/dapp/__tests__/redFlags.test.ts b/extension/src/background/dapp/__tests__/redFlags.test.ts
-index a51ec03..95b6270 100644
+index 4fcf02e..e59e95e 100644
 --- a/extension/src/background/dapp/__tests__/redFlags.test.ts
 +++ b/extension/src/background/dapp/__tests__/redFlags.test.ts
-@@ -142,6 +142,56 @@ describe('redFlagsOf — F2 non-transfer', () => {
+@@ -171,6 +171,58 @@ describe('redFlagsOf — F2 non-transfer', () => {
    });
  });
  
@@ -6826,9 +6993,9 @@ index a51ec03..95b6270 100644
 +  const held = [[SRC, tokenAcc({mint: MAINNET_USDC_MINT, amount: 1_000n})]] as [PublicKey, AccountData][];
 +  const closeIx = tokenIx([9], [meta(SRC, false, true), meta(TO, false, true), meta(ME, true)]);
 +
-+  it('an unlimited approve alone is F5 only; beside an ATA create, F2 names only the create', () => {
++  it('an unlimited approve alone is F5 only; beside an ATA create for another wallet, F2 names only the create', () => {
 +    expect(kinds(one({ixs: [approveIx(U64_MAX)], pre: held}))).toEqual(['unlimited-approve']);
-+    const flags = one({ixs: [approveIx(U64_MAX), ataCreateIx(MAINNET_USDC_MINT)], pre: held});
++    const flags = one({ixs: [approveIx(U64_MAX), ataCreateIx(MAINNET_USDC_MINT, THEIRS)], pre: held});
 +    expect(kinds(flags)).toEqual(['unlimited-approve', 'non-transfer']);
 +    expect(find(flags, 'non-transfer')).toEqual({kind: 'non-transfer', severity: 'warn', word: null, at: 1, instructions: [{index: 1, program: 'associated-token', name: 'createIdempotent'}]});
 +  });
@@ -6862,8 +7029,10 @@ index a51ec03..95b6270 100644
 +    expect(find(flags, 'non-transfer')?.instructions).toEqual([{index: 0, program: 'token', name: 'approve'}]);
 +  });
 +
-+  it('F7 is not among them: an ATA create of a Token-2022 mint with settings is F7 and F2', () => {
-+    const flags = one({ixs: [ataCreateIx(T22_MINT)]}, {mints: [[T22_MINT, mintAcc(pyusdLikeMint(), TOKEN_2022_PROGRAM)]]});
++  it('F7 is not among them: an ATA create (for another wallet) of a Token-2022 mint with settings is F7 and F2', () => {
++    const flags = one({ixs: [ataCreateIx(T22_MINT, THEIRS)]}, {mints: [[T22_MINT, mintAcc(pyusdLikeMint(), TOKEN_2022_PROGRAM)]]});
++    // O7: the account's own ATA of the same mint is no F2 — F7 still names the mint.
++    expect(kinds(one({ixs: [ataCreateIx(T22_MINT)]}, {mints: [[T22_MINT, mintAcc(pyusdLikeMint(), TOKEN_2022_PROGRAM)]]}))).toEqual(['token-2022']);
 +    expect(kinds(flags)).toEqual(['non-transfer', 'token-2022']);
 +    expect(flags.map(f => f.at)).toEqual([0, 0]);
 +  });
@@ -6872,7 +7041,7 @@ index a51ec03..95b6270 100644
  describe('redFlagsOf — F3 assign / allocate on the wallet account', () => {
    it('assign, allocate, assignWithSeed, allocateWithSeed of the wallet account: one block, ASSIGN, naming each', () => {
      const ixs = [
-@@ -151,7 +201,7 @@ describe('redFlagsOf — F3 assign / allocate on the wallet account', () => {
+@@ -180,7 +232,7 @@ describe('redFlagsOf — F3 assign / allocate on the wallet account', () => {
        SystemProgram.allocate({accountPubkey: ME, basePubkey: SRC, seed: 'x', space: 64, programId: UNKNOWN}),
      ];
      const flags = one({ixs});
@@ -6881,7 +7050,7 @@ index a51ec03..95b6270 100644
      expect(find(flags, 'assign')).toEqual({
        kind: 'assign',
        severity: 'block',
-@@ -193,7 +243,7 @@ describe('redFlagsOf — F3 assign / allocate on the wallet account', () => {
+@@ -222,7 +274,7 @@ describe('redFlagsOf — F3 assign / allocate on the wallet account', () => {
  describe('redFlagsOf — F4 setAuthority on an account the user owns', () => {
    it('an own token account (its pre-state owner field is the wallet): a block, AUTHORITY', () => {
      const flags = one({ixs: [setAuthorityIx(SRC, ME, 3)], pre: [[SRC, tokenAcc({mint: MAINNET_USDC_MINT, amount: 5n})]]});
@@ -6890,30 +7059,54 @@ index a51ec03..95b6270 100644
      expect(find(flags, 'set-authority')).toEqual({
        kind: 'set-authority',
        severity: 'block',
-@@ -248,7 +298,7 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
+@@ -277,7 +329,7 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
  
-   it('u64::MAX, or at least the source’s whole pre-state balance: a block whose word is the wallet’s own symbol', () => {
+   it('u64::MAX, or at least the source’s whole balance: a block whose word is the wallet’s own symbol', () => {
      const flags = one({ixs: [approveIx(U64_MAX)], pre: held()});
 -    expect(kinds(flags)).toEqual(['unlimited-approve', 'non-transfer']);
 +    expect(kinds(flags)).toEqual(['unlimited-approve']);
      expect(find(flags, 'unlimited-approve')).toEqual({
        kind: 'unlimited-approve',
        severity: 'block',
-@@ -262,7 +312,7 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
+@@ -291,10 +343,10 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
  
-   it('balance − 1 is bounded: a warning, no block', () => {
-     const flags = one({ixs: [approveIx(999n)], pre: held()});
+   it('O5: 99 % of the balance or more is a block — the threshold’s both edges; below it is bounded (F6)', () => {
+     // Balance 1 000: 990 is exactly 99 % and 999 is the balance − 1 — blocks; 989, just under 99 %, is a warning.
+-    for (const amount of [990n, 999n]) expect(kinds(one({ixs: [approveIx(amount)], pre: held()}))).toEqual(['unlimited-approve', 'non-transfer']);
++    for (const amount of [990n, 999n]) expect(kinds(one({ixs: [approveIx(amount)], pre: held()}))).toEqual(['unlimited-approve']);
+     expect(find(one({ixs: [approveCheckedIx(990n, MAINNET_USDC_MINT)], pre: held()}), 'unlimited-approve')?.word).toBe('USDC');
+     const flags = one({ixs: [approveIx(989n)], pre: held()});
 -    expect(kinds(flags)).toEqual(['non-transfer', 'bounded-approve']);
 +    expect(kinds(flags)).toEqual(['bounded-approve']);
      expect(find(flags, 'bounded-approve')).toEqual({
        kind: 'bounded-approve',
        severity: 'warn',
-@@ -270,11 +320,11 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
+@@ -302,11 +354,11 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
        at: 0,
-       approvals: [{at: 0, source: SRC.toBase58(), mint: MAINNET_USDC_MINT, symbol: 'USDC', decimals: 6, delegate: DELEGATE.toBase58(), amount: '999', balance: '1000'}],
+       approvals: [{at: 0, source: SRC.toBase58(), mint: MAINNET_USDC_MINT, symbol: 'USDC', decimals: 6, delegate: DELEGATE.toBase58(), amount: '989', balance: '1000'}],
      });
--    expect(kinds(one({ixs: [approveCheckedIx(999n, MAINNET_USDC_MINT)], pre: held()}))).toEqual(['non-transfer', 'bounded-approve']);
-+    expect(kinds(one({ixs: [approveCheckedIx(999n, MAINNET_USDC_MINT)], pre: held()}))).toEqual(['bounded-approve']);
+-    expect(kinds(one({ixs: [approveCheckedIx(989n, MAINNET_USDC_MINT)], pre: held()}))).toEqual(['non-transfer', 'bounded-approve']);
+-    expect(kinds(one({ixs: [approveIx(500n)], pre: held()}))).toEqual(['non-transfer', 'bounded-approve']);
++    expect(kinds(one({ixs: [approveCheckedIx(989n, MAINNET_USDC_MINT)], pre: held()}))).toEqual(['bounded-approve']);
++    expect(kinds(one({ixs: [approveIx(500n)], pre: held()}))).toEqual(['bounded-approve']);
+     // A balance whose 99 % is no whole number (7 → 6.93): 7 blocks, 6 does not.
+-    expect(kinds(one({ixs: [approveIx(7n)], pre: held(7n)}))).toEqual(['unlimited-approve', 'non-transfer']);
+-    expect(kinds(one({ixs: [approveIx(6n)], pre: held(7n)}))).toEqual(['non-transfer', 'bounded-approve']);
++    expect(kinds(one({ixs: [approveIx(7n)], pre: held(7n)}))).toEqual(['unlimited-approve']);
++    expect(kinds(one({ixs: [approveIx(6n)], pre: held(7n)}))).toEqual(['bounded-approve']);
+   });
+ 
+   it('M1: the balance before and after the transaction — the smaller decides, in chain state and decoded', () => {
+@@ -320,13 +372,13 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
+     expect(kinds(viaCpi(1_000n, 1_000n, 150n))).toEqual(['unknown-program', 'bounded-approve']);
+     // Decoded (a post-state without the delegation, so only the decoded approve decides): out, then in; neither.
+     const decoded = (pre: bigint, post: bigint) => kinds(one({ixs: [transferIx(900n), approveIx(150n)], pre: [[SRC, mine(pre)]], post: [[SRC, mine(post)]]}));
+-    expect(decoded(1_000n, 100n)).toEqual(['unlimited-approve', 'non-transfer']);
+-    expect(decoded(100n, 1_000n)).toEqual(['unlimited-approve', 'non-transfer']);
+-    expect(decoded(1_000n, 1_000n)).toEqual(['non-transfer', 'bounded-approve']);
++    expect(decoded(1_000n, 100n)).toEqual(['unlimited-approve']);
++    expect(decoded(100n, 1_000n)).toEqual(['unlimited-approve']);
++    expect(decoded(1_000n, 1_000n)).toEqual(['bounded-approve']);
    });
  
    it('a source the wallet cannot read, approved by the wallet, counts as an empty balance (fail closed)', () => {
@@ -6922,7 +7115,7 @@ index a51ec03..95b6270 100644
    });
  
    it('someone else’s account approved by its own owner is F2 only', () => {
-@@ -365,13 +415,10 @@ describe('redFlagsOf — F7 Token-2022 mint settings', () => {
+@@ -418,13 +470,10 @@ describe('redFlagsOf — F7 Token-2022 mint settings', () => {
  });
  
  describe('redFlagsOf — F8 durable nonce, F9 whole balance, F10 dependent step', () => {
@@ -6938,7 +7131,7 @@ index a51ec03..95b6270 100644
      expect(kinds(one({ixs: [transfer, nonce]}))).toEqual(['non-transfer']);
    });
  
-@@ -386,7 +433,7 @@ describe('redFlagsOf — F8 durable nonce, F9 whole balance, F10 dependent step'
+@@ -439,7 +488,7 @@ describe('redFlagsOf — F8 durable nonce, F9 whole balance, F10 dependent step'
      const assign = SystemProgram.assign({accountPubkey: ME, programId: UNKNOWN});
      expect(one({ixs: [transferIx(1n)], post: {dependentOn: 0}})).toEqual([{kind: 'dependent', severity: 'block', word: 'UNCHECKED', at: null, on: 0}]);
      expect(one({ixs: [transferIx(1n)], post: 'failed'})).toEqual([]);
@@ -6947,7 +7140,7 @@ index a51ec03..95b6270 100644
      // A failed step has no post-state: chain-state rules read nothing (the wallet's plain post is not consulted).
      expect(kinds(one({ixs: [unknownIx()], pre: [[ME, {lamports: SOL, owner: UNKNOWN.toBase58(), data: new Uint8Array(4)}]], post: 'failed'}))).toEqual(['unknown-program']);
    });
-@@ -395,19 +442,21 @@ describe('redFlagsOf — F8 durable nonce, F9 whole balance, F10 dependent step'
+@@ -448,19 +497,21 @@ describe('redFlagsOf — F8 durable nonce, F9 whole balance, F10 dependent step'
  describe('redFlagsOf — the order', () => {
    it('blocks first, then warnings; within each by instruction index (chain state and whole-transaction flags after), then by row', () => {
      const nonce = SystemProgram.nonceAdvance({noncePubkey: SRC2, authorizedPubkey: ME});
@@ -6973,6 +7166,7 @@ index a51ec03..95b6270 100644
 +    expect(find(flags, 'non-transfer')?.instructions.map(x => x.index)).toEqual([0, 1]);
    });
  });
+ 
 ````
 
 `simulate.test.ts` — Task 3's bounded approve is F6 alone now, and the two stored-flag edits that used the (now absent) `non-transfer` flag use the `unlimited-approve` one (same rule: a key less, an `at` not its first approval); the new describe for the decimals:
@@ -6981,7 +7175,7 @@ index a51ec03..95b6270 100644
 
 ````diff
 diff --git a/extension/src/background/dapp/__tests__/simulate.test.ts b/extension/src/background/dapp/__tests__/simulate.test.ts
-index 1213840..18acd47 100644
+index ca49c92..b5a7b84 100644
 --- a/extension/src/background/dapp/__tests__/simulate.test.ts
 +++ b/extension/src/background/dapp/__tests__/simulate.test.ts
 @@ -581,10 +581,8 @@ describe('simulateTransactions: the red flags (B1c-3)', () => {
@@ -7015,7 +7209,7 @@ index 1213840..18acd47 100644
        ['a block without the `override` reason', sim, s => (s.reasons = ['approval'])],
        ['an unknown reason', sim, s => (s.reasons = ['approval', 'override', 'drain'])],
        ['`override` with no block', bounded, s => (s.reasons = ['approval', 'override'])],
-@@ -792,3 +790,82 @@ describe('simulateTransactions: the red flags (B1c-3)', () => {
+@@ -800,3 +798,82 @@ describe('simulateTransactions: the red flags (B1c-3)', () => {
      });
    });
  });
@@ -7181,6 +7375,7 @@ index d135c13..32268ca 100644
 +      {pubkey: tokenProgram, isSigner: false, isWritable: false},
      ],
    });
+ 
 ````
 
 #48, against the real background — Task 5's unlimited-approve test now expects the design's one banner (F2's warning beside it was Task 5's declared deviation), the assign-and-approve test two danger banners and no warning; two tests added (the approve beside an ATA create; the instruction rows); the origin tiles gain Tensor and its colour:
@@ -7189,12 +7384,15 @@ index d135c13..32268ca 100644
 
 ````diff
 diff --git a/extension/src/approve/__tests__/tx.test.tsx b/extension/src/approve/__tests__/tx.test.tsx
-index 378a09d..b3406dc 100644
+index 58c98c1..c591cad 100644
 --- a/extension/src/approve/__tests__/tx.test.tsx
 +++ b/extension/src/approve/__tests__/tx.test.tsx
-@@ -14,7 +14,7 @@ import {openPage} from '../../background/dapp/__tests__/pageHarness';
+@@ -12,9 +12,9 @@ import {readDappSession} from '../../background/dapp/store';
+ import {GRANTS_KEY} from '../../background/dapp/grants';
+ import {openPage} from '../../background/dapp/__tests__/pageHarness';
  import {ACCOUNT, RECIPIENT} from '../../background/__tests__/fixtures';
- import {ME, assign, ataCreate, coSigned, mintTo, setAuthorityToNone, tokenApprove, tokenTransfer, transfer, v0} from '../../background/dapp/__tests__/txHarness';
+-import {ME, assign, ataCreate, coSigned, mintTo, setAuthorityToNone, tokenApprove, tokenTransfer, transfer, v0} from '../../background/dapp/__tests__/txHarness';
++import {ME, TO, assign, ataCreate, coSigned, mintTo, setAuthorityToNone, tokenApprove, tokenTransfer, transfer, v0} from '../../background/dapp/__tests__/txHarness';
  import {U64_MAX, tokenAccountBytes, usdcLikeMint} from '../../background/dapp/__tests__/tokenBytes';
 -import {ATA_PROGRAM, TOKEN_PROGRAM} from '../../background/dapp/decode/decode';
 +import {ATA_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM} from '../../background/dapp/decode/decode';
@@ -7245,19 +7443,27 @@ index 378a09d..b3406dc 100644
      // The synthesized row first (an approve changes no balance), then the simulation's own (the fee).
      expect(texts('.s9-bal-row .pri')).toEqual(['USDC delegated', 'SOL']);
      expect(texts('.s9-bal-row .delta')).toEqual(['unlimited', '−0.000005']);
-@@ -795,6 +803,40 @@ describe('#48 red flags (B1c-3)', () => {
-     }
-   });
+@@ -824,6 +832,48 @@ describe('#48 red flags (B1c-3)', () => {
+     expect(cta('Approve unlimited').disabled).toBe(false);
+   }, 15_000);
  
-+  it('an unlimited approve beside an ATA create: F5’s banner, and F2’s naming only the create', async () => {
++  it('an unlimited approve beside an ATA create for another wallet: F5’s banner, and F2’s naming only the create; the account’s own ATA (O7) is no F2', async () => {
 +    const w = await openWindow();
 +    holdUsdc(w);
-+    await w.signTx('https://jup.ag', [v0([tokenApprove(SRC, DELEGATE, U64_MAX), ataCreate(X, ME, new PublicKey(USDC))])]);
++    await w.signTx('https://jup.ag', [v0([tokenApprove(SRC, DELEGATE, U64_MAX), ataCreate(X, TO, new PublicKey(USDC))])]);
 +    w.show();
 +    await simulated(w, 'Unlimited USDC spend approval');
 +    expect(heads()).toEqual(['Unlimited USDC spend approval', 'Instructions that are not transfers']);
 +    expect(texts('.s9-flag-banner.warn .meta')).toEqual(['#2 spl_associated_token_account::CreateIdempotent']);
 +    expect(unstyled()).toEqual([]);
++    // O7: the account's own ATA, created and paid by the account — rent only, no F2 banner beside F5's.
++    cleanup();
++    const own = await openWindow();
++    holdUsdc(own);
++    await own.signTx('https://jup.ag', [v0([tokenApprove(SRC, DELEGATE, U64_MAX), ataCreate(X, ME, new PublicKey(USDC))])]);
++    own.show();
++    await simulated(own, 'Unlimited USDC spend approval');
++    expect(heads()).toEqual(['Unlimited USDC spend approval']);
 +  });
 +
 +  // B1c-3 (the final review's carried minors): a non-Checked amount with the mint's decimals, from the background's
@@ -7286,7 +7492,7 @@ index 378a09d..b3406dc 100644
    it('System assign of the wallet account (F3) and an unlimited approve in one transaction: "Critical · Blocked transaction", both banners, one field per block — "Approve anyway" only when both match; the L3 line replaced beside an authority flag', async () => {
      const w = await openWindow();
      holdUsdc(w);
-@@ -802,9 +844,9 @@ describe('#48 red flags (B1c-3)', () => {
+@@ -831,9 +881,9 @@ describe('#48 red flags (B1c-3)', () => {
      w.show();
      await simulated(w, 'Assign / Allocate on your wallet account');
      expect(text('.top-bar .title')).toBe('Critical · Blocked transaction');
@@ -7478,7 +7684,7 @@ index cb82233..f076edb 100644
 
 - [ ] **Step 2: Run them on the previous task's tree — red.**
 
-Run: `npx tsc --noEmit; echo $?` → `2` (eight errors, all `src/background/dapp/__tests__/simulate.test.ts(…): error TS2339: Property 'amountDecimals' does not exist on type 'TxSimulation'.`). `npx vitest run src/background/dapp/__tests__/redFlags.test.ts src/background/dapp/__tests__/simulate.test.ts src/background/dapp/decode/__tests__/decode.test.ts src/approve/__tests__/tx.test.tsx src/approve/__tests__/sign.test.tsx src/app/__tests__/Home.test.tsx src/unlock/__tests__/challenge.test.ts src/unlock/__tests__/reauthScreen.test.ts` → **Test Files 8 failed (8), Tests 28 failed | 260 passed (288)**: redFlags 10 (`expected [ 'unlimited-approve', 'non-transfer' ] to deeply equal [ 'unlimited-approve' ]`, `… [ 'assign', 'non-transfer' ] …`, the order test `expected [ +0, 1, 2, 4 ] to deeply equal [ +0, 1 ]` …; the closeAccount, bounded-plus-chain and F7 cases are controls and pass on both trees), simulate 6 (the bounded list; the five decimals tests `expected undefined to deeply equal [ [ { at: +0, decimals: 9 }, …(2) ] ]`, simStateOf `expected [ 'missing', …(1) ] to deeply equal [ 'missing', null ]`), decode 2 (`… [ 'payer', …(1) ], …(3) ] to deeply equal [ …(4) ]`, `expected { name: 'mint', … } to deeply equal { name: 'tokenProgram', … }`), tx 5 (one banner: `expected [ 's9-flag-banner danger', …(1) ] to deeply equal [ 's9-flag-banner danger' ]`; the ATA-create one `expected [ '#1 spl_token::Approve', …(1) ] …`; the rows `expected [ '1500000', '1500000' ] to deeply equal [ '1.5', '1500000' ]`; the assign one; the tiles), sign 1, Home 1 (`expected 'banner info app-banner app-strip' to be 'banner info app-banner app-strip app-…'`), challenge 1, reauthScreen 2 (`expected [ true, '−0.001005', 'SOL' ] to deeply equal [ true, '0.001005', 'SOL' ]`).
+Run: `npx tsc --noEmit; echo $?` → `2` (eight errors, all `src/background/dapp/__tests__/simulate.test.ts(…): error TS2339: Property 'amountDecimals' does not exist on type 'TxSimulation'.`). `npx vitest run src/background/dapp/__tests__/redFlags.test.ts src/background/dapp/__tests__/simulate.test.ts src/background/dapp/decode/__tests__/decode.test.ts src/approve/__tests__/tx.test.tsx src/approve/__tests__/sign.test.tsx src/app/__tests__/Home.test.tsx src/unlock/__tests__/challenge.test.ts src/unlock/__tests__/reauthScreen.test.ts` → **Test Files 8 failed (8), Tests 29 failed | 263 passed (292)** (rev 2; rev 1: 28 | 260 (288) — Task 2's three new tests and Task 5's L1 test are in these files; Task 2's M1 test is the one more red here, its kinds rewritten by this task): redFlags 11 (`expected [ 'unlimited-approve', 'non-transfer' ] to deeply equal [ 'unlimited-approve' ]`, `… [ 'assign', 'non-transfer' ] …`, the order test `expected [ +0, 1, 2, 4 ] to deeply equal [ +0, 1 ]` …; the closeAccount, bounded-plus-chain and F7 cases are controls and pass on both trees), simulate 6 (the bounded list; the five decimals tests `expected undefined to deeply equal [ [ { at: +0, decimals: 9 }, …(2) ] ]`, simStateOf `expected [ 'missing', …(1) ] to deeply equal [ 'missing', null ]`), decode 2 (`… [ 'payer', …(1) ], …(3) ] to deeply equal [ …(4) ]`, `expected { name: 'mint', … } to deeply equal { name: 'tokenProgram', … }`), tx 5 (one banner: `expected [ 's9-flag-banner danger', …(1) ] to deeply equal [ 's9-flag-banner danger' ]`; the ATA-create one `expected [ '#1 spl_token::Approve', …(1) ] …`; the rows `expected [ '1500000', '1500000' ] to deeply equal [ '1.5', '1500000' ]`; the assign one; the tiles), sign 1, Home 1 (`expected 'banner info app-banner app-strip' to be 'banner info app-banner app-strip app-…'`), challenge 1, reauthScreen 2 (`expected [ true, '−0.001005', 'SOL' ] to deeply equal [ true, '0.001005', 'SOL' ]`).
 
 - [ ] **Step 3: Implement.**
 
@@ -7488,38 +7694,50 @@ F2, last, without what a more specific flag names:
 
 ````diff
 diff --git a/extension/src/background/dapp/redFlags.ts b/extension/src/background/dapp/redFlags.ts
-index 0df74da..e1a5301 100644
+index a906756..639db4a 100644
 --- a/extension/src/background/dapp/redFlags.ts
 +++ b/extension/src/background/dapp/redFlags.ts
-@@ -12,7 +12,7 @@ import {usesDurableNonce} from './txRequest';
-  * proxy. Pure — the simulation (Task 3) gathers the reads and stores the result; the window only renders it (C13).
+@@ -13,7 +13,8 @@ import {usesDurableNonce} from './txRequest';
   *
   * F1 unknown program (warn) · F2 an instruction of a decoded program that is not a transfer (warn; Compute Budget is
-- * the fee — the only exemption) · F3 System assign / allocate (and their …WithSeed forms) of the wallet account, or the
-+ * the fee — the only exemption; an instruction F3, F4, F5, F6 or F8 already names is not repeated) · F3 System assign / allocate (and their …WithSeed forms) of the wallet account, or the
+  * the fee, and O7's three self-rent instructions — an ATA created for and paid by the account, syncNative of an own
+- * token account, closeAccount of one to the account — are exempt) · F3 System assign / allocate (and their …WithSeed forms) of the wallet account, or the
++ * token account, closeAccount of one to the account — are exempt; an instruction F3, F4, F5, F6 or F8 already names is
++ * not repeated) · F3 System assign / allocate (and their …WithSeed forms) of the wallet account, or the
   * wallet account owned by another program or holding data after the simulation (block, ASSIGN) · F4 SetAuthority on a
   * token account whose owner field is the wallet, on a mint whose mint or freeze authority is the wallet, or signed by
   * the wallet as the current authority; or, in chain state, an own token account's owner or close authority changed, a
-@@ -155,11 +155,6 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
+@@ -157,16 +158,6 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
    const first = unknown[0];
    if (first !== undefined) out.push({kind: 'unknown-program', severity: 'warn', word: null, at: first.index, programs: [...new Set(unknown.map(x => x.ix.programId))]});
  
--  // F2
--  const named = indexed.flatMap(({ix, index}) => (ix.program === null || ix.program === 'compute-budget' || isTransfer(ix) ? [] : [{index, program: ix.program, name: ix.name}]));
+-  // F2 — O7: an own token account created and paid for by the account, synced, or closed to the account is rent only.
+-  const ownTokenAccount = (address: string | null): boolean => address !== null && tokenOf(pre.get(address))?.owner === account;
+-  const selfRent = (ix: DecodedInstruction): boolean =>
+-    (ix.program === 'associated-token' && (ix.name === 'create' || ix.name === 'createIdempotent') && addressField(ix, 'wallet') === account && addressField(ix, 'payer') === account) ||
+-    (isToken(ix) && ix.name === 'syncNative' && ownTokenAccount(addressField(ix, 'account'))) ||
+-    (isToken(ix) && ix.name === 'closeAccount' && ownTokenAccount(addressField(ix, 'account')) && addressField(ix, 'destination') === account);
+-  const named = indexed.flatMap(({ix, index}) => (ix.program === null || ix.program === 'compute-budget' || isTransfer(ix) || selfRent(ix) ? [] : [{index, program: ix.program, name: ix.name}]));
 -  const firstNamed = named[0];
 -  if (firstNamed !== undefined) out.push({kind: 'non-transfer', severity: 'warn', word: null, at: firstNamed.index, instructions: named});
 -
    // F3
    const assigns = indexed.flatMap(({ix, index}) => (ix.program === 'system' && ix.name !== null && ASSIGNS.includes(ix.name) && addressField(ix, 'account') === account ? [{index, program: ix.program, name: ix.name}] : []));
    const selfPre = pre.get(account) ?? null;
-@@ -263,9 +258,31 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
+@@ -276,9 +267,37 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
    if (usesDurableNonce(t.tx)) out.push({kind: 'durable-nonce', severity: 'warn', word: null, at: 0});
    if (t.firstSend && input.reasons.includes('whole-balance-to-new')) out.push({kind: 'whole-balance', severity: 'warn', word: null, at: null});
    if (t.outcome.status === 'dependent') out.push({kind: 'dependent', severity: 'block', word: OVERRIDE_WORDS.dependent, at: null, on: t.outcome.on});
 +
-+  // F2, last: an instruction a more specific flag of this transaction already names (F3, F4, F5, F6, F8) is not repeated.
++  // F2, last: an instruction a more specific flag of this transaction already names (F3, F4, F5, F6, F8) is not repeated;
++  // O7: an own token account created and paid for by the account, synced, or closed to the account is rent only.
 +  const specific = new Set(out.flatMap(namedBy));
-+  const named = indexed.flatMap(({ix, index}) => (ix.program === null || ix.program === 'compute-budget' || isTransfer(ix) || specific.has(index) ? [] : [{index, program: ix.program, name: ix.name}]));
++  const ownTokenAccount = (address: string | null): boolean => address !== null && tokenOf(pre.get(address))?.owner === account;
++  const selfRent = (ix: DecodedInstruction): boolean =>
++    (ix.program === 'associated-token' && (ix.name === 'create' || ix.name === 'createIdempotent') && addressField(ix, 'wallet') === account && addressField(ix, 'payer') === account) ||
++    (isToken(ix) && ix.name === 'syncNative' && ownTokenAccount(addressField(ix, 'account'))) ||
++    (isToken(ix) && ix.name === 'closeAccount' && ownTokenAccount(addressField(ix, 'account')) && addressField(ix, 'destination') === account);
++  const named = indexed.flatMap(({ix, index}) => (ix.program === null || ix.program === 'compute-budget' || isTransfer(ix) || selfRent(ix) || specific.has(index) ? [] : [{index, program: ix.program, name: ix.name}]));
 +  const firstNamed = named[0];
 +  if (firstNamed !== undefined) out.push({kind: 'non-transfer', severity: 'warn', word: null, at: firstNamed.index, instructions: named});
    return out;
@@ -7552,7 +7770,7 @@ The decimals of a non-Checked amount — read from the pre-state the loop alread
 
 ````diff
 diff --git a/extension/src/background/dapp/simulate.ts b/extension/src/background/dapp/simulate.ts
-index c59ab53..3d41015 100644
+index 45f4256..6eaa135 100644
 --- a/extension/src/background/dapp/simulate.ts
 +++ b/extension/src/background/dapp/simulate.ts
 @@ -36,6 +36,8 @@ import {mintInfo, tokenAccountInfo} from './tokenState';
@@ -7682,7 +7900,7 @@ index c59ab53..3d41015 100644
  export function simStateOf(x: unknown): SimState | null {
    const o = obj(x);
 @@ -432,6 +496,8 @@ export function simStateOf(x: unknown): SimState | null {
-     return !o.ok && o.error === 'dependent' ? on === o.on - 1 : on === undefined;
+     return !o.ok && o.error === 'dependent' ? on === o.on - 1 && on < i : on === undefined;
    });
    if (!stepsAgree) return null;
 +  const amountDecimals = Array.isArray(s.amountDecimals) ? (s.amountDecimals as unknown[]).map(amountDecimalsOf) : null;
@@ -7760,7 +7978,7 @@ index 4014501..444b3e7 100644
 
 ````diff
 diff --git a/extension/src/approve/Tx.tsx b/extension/src/approve/Tx.tsx
-index aec9f92..30cbff8 100644
+index 0022f7a..ef17ae2 100644
 --- a/extension/src/approve/Tx.tsx
 +++ b/extension/src/approve/Tx.tsx
 @@ -20,6 +20,11 @@ const PROGRAM_NAMES: Record<ProgramKey, string> = {
@@ -8033,10 +8251,10 @@ The spec:
 
 ````diff
 diff --git a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-index c679008..2b3ac66 100644
+index 1659d74..fb0a849 100644
 --- a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
 +++ b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-@@ -556,7 +556,8 @@ cannot mask an earlier one (review M5):
+@@ -562,7 +562,8 @@ cannot mask an earlier one (review M5):
     [Reject] + [Sign]. Top-bar ✕ = Reject; disabled while signing. **Can no longer be signed** (rev 3.2): when the
     request is live but its signing detail is gone (the account is unlocked no more, or the message is now refused), #46
     keeps the overline, ✕ and the title, shows Q26 *"This request can no longer be signed. Reject it and ask the site to
@@ -8046,16 +8264,16 @@ index c679008..2b3ac66 100644
  5. **Lookalike:** overline "Suspicious origin"; the short lede "A signature proves you control this wallet."; the banner
     (§3.1); in the preview, every non-ASCII character that `skel` maps to Latin is `<mark>`ed (as the design marks "а"
     in "Domain: phаntom.app"); primary "Reject and report"; tertiary "Sign anyway (not recommended)" → the design's
-@@ -613,7 +614,7 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
+@@ -620,7 +621,7 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
  | # | condition (B1 §3) | how it is detected | severity | override word |
  |---|---|---|---|---|
  | F1 | a program not in the decoded set — also an instruction that touches an account no lookup table resolved, and a known program's instruction that does not parse strictly | the decoded instruction's program is unknown | warning, named by the program's address (one banner per transaction listing every unknown program, each address whole, in groups of four) | — |
--| F2 | an instruction of a decoded program that is not a transfer | the decoded name is none of System `transfer`, Token / Token-2022 `transfer`, `transferChecked`. **Compute Budget is exempt** — it is the fee, already shown as the fee row; the only exemption | warning, one banner per transaction naming the instructions | — |
-+| F2 | an instruction of a decoded program that is not a transfer | the decoded name is none of System `transfer`, Token / Token-2022 `transfer`, `transferChecked`. **Compute Budget is exempt** — it is the fee, already shown as the fee row; the only exemption. An instruction a more specific flag of the same transaction already names (F3's assign, F4's setAuthority, F5's or F6's approve, F8's `AdvanceNonceAccount`) is not listed again — B1 §3's "named" is that flag's banner (controller ruling, plan 3: the design draws one banner for an unlimited approve); every other one stays listed | warning, one banner per transaction naming the instructions | — |
+-| F2 | an instruction of a decoded program that is not a transfer | the decoded name is none of System `transfer`, Token / Token-2022 `transfer`, `transferChecked`. **Compute Budget is exempt** — it is the fee, already shown as the fee row. **O7: three self-rent instructions are exempt**, each only in exactly this shape, because none can take value from the account: an ATA `create` / `createIdempotent` whose `wallet` **and** `payer` are both the account (its own token account, the rent paid by itself); `syncNative` of a token account whose pre-state owner field is the account; `closeAccount` of a token account whose pre-state owner field is the account, with the account itself as the destination (the rent comes back to it). Every other instruction stays named — another wallet's ATA or one another payer funds, a sync or close of an account that is not the user's or that the wallet cannot read, a close to any other destination | warning, one banner per transaction naming the instructions | — |
++| F2 | an instruction of a decoded program that is not a transfer | the decoded name is none of System `transfer`, Token / Token-2022 `transfer`, `transferChecked`. **Compute Budget is exempt** — it is the fee, already shown as the fee row. **O7: three self-rent instructions are exempt**, each only in exactly this shape, because none can take value from the account: an ATA `create` / `createIdempotent` whose `wallet` **and** `payer` are both the account (its own token account, the rent paid by itself); `syncNative` of a token account whose pre-state owner field is the account; `closeAccount` of a token account whose pre-state owner field is the account, with the account itself as the destination (the rent comes back to it). Every other instruction stays named — another wallet's ATA or one another payer funds, a sync or close of an account that is not the user's or that the wallet cannot read, a close to any other destination. An instruction a more specific flag of the same transaction already names (F3's assign, F4's setAuthority, F5's or F6's approve, F8's `AdvanceNonceAccount`) is not listed again — B1 §3's "named" is that flag's banner (controller ruling, plan 3: the design draws one banner for an unlimited approve); every other one stays listed | warning, one banner per transaction naming the instructions | — |
  | F3 | System `Assign` / `Allocate` on the user's own wallet account | a decoded `assign`, `allocate`, `assignWithSeed` or `allocateWithSeed` (tags 1, 8, 10, 9) whose target account (index 0) is the wallet account; **and** chain state: the simulation's post-state of the wallet account has an owner other than the System program, or any data (a CPI names no top-level instruction) | **blocked** | `ASSIGN` (Q28) — one word for all four; the banner names which |
  | F4 | SPL / Token-2022 `SetAuthority` (any authority type) on an account the user owns | a decoded `setAuthority` whose account is a token account whose pre-state owner field is the wallet account, or a mint whose pre-state mint authority or freeze authority is the wallet account; **and** chain state (a CPI): an own token account's owner reassigned away, or its close authority changed | **blocked** | `AUTHORITY` (Q29) |
- | F5 | `Approve` / `ApproveChecked` of the whole balance or u64 max | a decoded approve whose amount is u64::MAX or at least the source's pre-state amount; **and** chain state (a CPI): an own account's post-state delegated amount is u64::MAX or at least its pre-state amount | **blocked** | the token's symbol from **the wallet's own token table**, exact and case-sensitive — only when the simulation's decimals match the table's; a mint the wallet cannot name → `UNLIMITED` (Q30). Never a symbol a mint claims for itself (a fake mint can call itself USDC) |
-@@ -663,6 +664,12 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
+ | F5 | `Approve` / `ApproveChecked` of the whole balance or u64 max — **O5: or nearly all of it, 99 % or more** (stricter, allowed) | a decoded approve whose amount is at least 99 % of the source's balance (`amount × 100 ≥ balance × 99`, B1c-2's whole-balance percent; u64::MAX and the whole balance always are); **and** chain state (a CPI): an own account's post-state delegation, new or raised, of at least 99 % of its balance. **The balance** is the source's amount before the transaction (pre-state) **and** after it (post-state, when that is still the account's own token account): the rule blocks when either meets the threshold — it compares with the smaller (review 1 M1) — so a transaction that moves tokens out and approves what is left, or brings tokens in so the approval looks small beside the new balance, is still a block. A source the wallet cannot read as its own token account before the transaction is an empty balance (fail closed) | **blocked** | the token's symbol from **the wallet's own token table**, exact and case-sensitive — only when the simulation's decimals match the table's; a mint the wallet cannot name → `UNLIMITED` (Q30). Never a symbol a mint claims for itself (a fake mint can call itself USDC) |
+@@ -673,6 +674,12 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
    gains the design's synthesized row ("<SYM> delegated · unlimited · ≈ all current + future"; a bounded approve
    "<SYM> delegated · <amount>"): an approve changes no balance, so the "No balance changes" line is replaced wherever an
    authority or approve flag exists. Every banner's copy is the design's, B1 §3's or §10's (Q32, Q36–Q39, Q41–Q55).
@@ -8067,46 +8285,48 @@ index c679008..2b3ac66 100644
 +  program): the whole address, with `spl_token` or `spl_token_2022` beside it when it is one of the two.
  
  The plans for B1c-2 and B1c-3 refine this section; they may not loosen it.
+ 
 ````
 
 - [ ] **Step 4: Run — green, and the whole suite, the build and the gates.**
 
-`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3415 passed (3415)** (Task 5: 170 / 3401; +5 `redFlags.test.ts`, +5 `simulate.test.ts`, +1 `decode.test.ts`, +2 `tx.test.tsx`, +1 `Home.test.tsx`). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (`classes ok: every class in 56 src/app and src/approve files is defined by …` — `app-pending-strip` is app.css's; the vault-isolation gate passes reauth.ts's `MINUS`). `node scripts/extract-design-css.mjs --check` → `design-ext.css is the extraction output` (unchanged). Nothing under the repository root's `src/` or `core/` is touched (root `tsc`/`jest` and web's `verify` not needed). The e2e change is not run here (Task 8).
+`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3419 passed (3419)** (Task 5: 170 / 3405; +5 `redFlags.test.ts`, +5 `simulate.test.ts`, +1 `decode.test.ts`, +2 `tx.test.tsx`, +1 `Home.test.tsx`). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (`classes ok: every class in 56 src/app and src/approve files is defined by …` — `app-pending-strip` is app.css's; the vault-isolation gate passes reauth.ts's `MINUS`). `node scripts/extract-design-css.mjs --check` → `design-ext.css is the extraction output` (unchanged). Nothing under the repository root's `src/` or `core/` is touched (root `tsc`/`jest` and web's `verify` not needed). The e2e change is not run here (Task 8).
 
 - [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy; `tsc`'s own exit code first (0), then the named test: red.**
 
-Observed in the dry run: every mutant `tsc` exit 0, the named test red. (`-t` is a regex: the filters below are written without parentheses.)
+Observed in the dry run: every mutant `tsc` exit 0, the named test red. (`-t` is a regex: the filters below are written without parentheses.) **(rev 2)** All 29 (rev 1's 28 and M6ac) re-run on the rev-2 tree against each named file whole (rev 1 ran them with `-t`, hence its `1 failed`); M6a's line now reads `isTransfer(ix) || selfRent(ix) || specific.has(index)`; the named test is among the failures in every row.
 
 | id | the change | the test that turns red | observed |
 |---|---|---|---|
-| M6a | F2's filter without the exclusion (`specific.has(-1)` for `specific.has(index)`) | redFlags "an unlimited approve alone is F5 only …" | tsc 0, 1 failed |
-| M6b | `namedBy` without F8 (`durable-nonce` names nothing) | redFlags "AdvanceNonceAccount first …" | tsc 0, 1 failed |
-| M6c | `namedBy`: a chain-only approval names instruction 0 (`a.at ?? 0`) | redFlags "a decoded approve no flag names stays F2 …" | tsc 0, 1 failed |
-| M6d | `namedBy` without F3 (`assign` names nothing) | redFlags "assign, allocate, assignWithSeed, allocateWithSeed of the wallet account …" | tsc 0, 1 failed |
-| M6e | `namedBy` without F4 (`set-authority` names nothing) | redFlags "an own token account …" | tsc 0, 1 failed |
-| M6f | `namedBy` also excludes F7's `at` | redFlags "F7 is not among them …" | tsc 0, 1 failed |
-| M6g | F2 excludes every `approve` / `assign` / `setAuthority` by name, whoever's | redFlags "only the instructions the specific flag names leave F2 …" | tsc 0, 1 failed |
-| M6h | F2 excludes every `closeAccount` (the negative control) | redFlags "negative control: a lone closeAccount …" | tsc 0, 1 failed |
-| M6i | `amountMintsOf` without the program check (`info.program !== ix.program`) | simulate "none when the pre-state does not name the mint …" | tsc 0, 1 failed |
-| M6j | `amountMintsOf` without the burn's mint check | simulate "none when the pre-state does not name the mint …" | tsc 0, 1 failed |
-| M6k | the amount decimals without the 0–18 bound | simulate "a mint the wallet does not know …" (19 named) | tsc 0, 1 failed |
-| M6l | the mint read without the amount mints (only the changes' unknown mints) | simulate "a mint the wallet does not know …" (no decimals for 4) | tsc 0, 1 failed |
-| M6m | a failed transaction's amount mints dropped (pushed only after a simulation) | simulate "a transaction that failed keeps them …" | tsc 0, 1 failed |
-| M6n | `amountDecimalsOf` accepts decimals above 18 | simulate "simStateOf: read back strictly …" ("above 18") | tsc 0, 1 failed |
-| M6o | `simStateOf` without `amountDecimals.length === outcomes.length` | simulate "simStateOf: read back strictly …" ("a list per transaction missing") | tsc 0, 1 failed |
-| M6p | `txDetail` applies no decimals (`withAmountDecimals(…, [])`) | tx "instruction rows …" (`1500000`) | tsc 0, 1 failed |
-| M6q | `decode.ts`: the ATA create without its `tokenProgram` field | decode "associated token account …" (both) | tsc 0, 2 failed |
-| M6r | `decode.ts`: a create with fewer than six accounts decodes (the mint standing in as `tokenProgram`) | decode "… fewer than the six accounts …" | tsc 0, 1 failed |
-| M6s | `Tx.tsx`: `TOKEN_PROGRAMS` without Token-2022 | tx "instruction rows …" (no `spl_token_2022`) | tsc 0, 1 failed |
-| M6t | `Sign.tsx`: Q26 back in the lede | sign "request.sign === null …" | tsc 0, 1 failed |
-| M6u | `Home.tsx`: the pending strip without `app-pending-strip` (chevron kept) | Home "the pending strip: on the dApp strip’s gutter …" (class) | tsc 0, 1 failed |
-| M6v | `app.css`: `.s-dash .app-banner.app-pending-strip` dropped from the gutter rule (class kept) | Home "the pending strip: on the dApp strip’s gutter …" (the computed style) | tsc 0, 1 failed |
-| M6w | `Home.tsx`: the pending strip without its chevron | Home "the pending strip: on the dApp strip’s gutter …" (no chevron) | tsc 0, 1 failed |
-| M6x | `reauth.ts`: the headline signed again | reauthScreen "a dApp’s transaction: “You are about to approve” …" | tsc 0, 1 failed |
-| M6y | `reauth.ts`: a named row unsigned | reauthScreen "a dApp’s transaction moving several tokens …" | tsc 0, 1 failed |
-| M6z | `challenge.ts`: SOL's row amount signed again | challenge "the site, the batch’s size …" | tsc 0, 1 failed |
-| M6aa | `app.css`: `.app-brand-tensor` back to the window mockups' cyan | tx "origin tiles …" | tsc 0, 1 failed |
-| M6ab | `ui.tsx`: `BRAND_TILES` without Tensor | tx "origin tiles …" | tsc 0, 1 failed |
+| M6a | F2's filter without the exclusion (`specific.has(-1)` for `specific.has(index)`) | redFlags "an unlimited approve alone is F5 only …" | tsc 0, 11 failed \| 27 passed (38) |
+| M6b | `namedBy` without F8 (`durable-nonce` names nothing) | redFlags "AdvanceNonceAccount first …" | tsc 0, 2 failed \| 36 passed (38) |
+| M6c | `namedBy`: a chain-only approval names instruction 0 (`a.at ?? 0`) | redFlags "a decoded approve no flag names stays F2 …" | tsc 0, 1 failed \| 37 passed (38) |
+| M6d | `namedBy` without F3 (`assign` names nothing) | redFlags "assign, allocate, assignWithSeed, allocateWithSeed of the wallet account …" | tsc 0, 4 failed \| 34 passed (38) |
+| M6e | `namedBy` without F4 (`set-authority` names nothing) | redFlags "an own token account …" | tsc 0, 2 failed \| 36 passed (38) |
+| M6f | `namedBy` also excludes F7's `at` | redFlags "F7 is not among them …" | tsc 0, 1 failed \| 37 passed (38) |
+| M6g | F2 excludes every `approve` / `assign` / `setAuthority` by name, whoever's | redFlags "only the instructions the specific flag names leave F2 …" | tsc 0, 6 failed \| 32 passed (38) |
+| M6h | F2 excludes every `closeAccount` (the negative control) | redFlags "negative control: a lone closeAccount …" | tsc 0, 2 failed \| 36 passed (38) |
+| M6i | `amountMintsOf` without the program check (`info.program !== ix.program`) | simulate "none when the pre-state does not name the mint …" | tsc 0, 1 failed \| 46 passed (47) |
+| M6j | `amountMintsOf` without the burn's mint check | simulate "none when the pre-state does not name the mint …" | tsc 0, 1 failed \| 46 passed (47) |
+| M6k | the amount decimals without the 0–18 bound | simulate "a mint the wallet does not know …" (19 named) | tsc 0, 1 failed \| 46 passed (47) |
+| M6l | the mint read without the amount mints (only the changes' unknown mints) | simulate "a mint the wallet does not know …" (no decimals for 4) | tsc 0, 1 failed \| 46 passed (47) |
+| M6m | a failed transaction's amount mints dropped (pushed only after a simulation) | simulate "a transaction that failed keeps them …" | tsc 0, 1 failed \| 46 passed (47) |
+| M6n | `amountDecimalsOf` accepts decimals above 18 | simulate "simStateOf: read back strictly …" ("above 18") | tsc 0, 1 failed \| 46 passed (47) |
+| M6o | `simStateOf` without `amountDecimals.length === outcomes.length` | simulate "simStateOf: read back strictly …" ("a list per transaction missing") | tsc 0, 1 failed \| 46 passed (47) |
+| M6p | `txDetail` applies no decimals (`withAmountDecimals(…, [])`) | tx "instruction rows …" (`1500000`) | tsc 0, 1 failed \| 33 passed (34) |
+| M6q | `decode.ts`: the ATA create without its `tokenProgram` field | decode "associated token account …" (both) | tsc 0, 2 failed \| 29 passed (31) |
+| M6r | `decode.ts`: a create with fewer than six accounts decodes (the mint standing in as `tokenProgram`) | decode "… fewer than the six accounts …" | tsc 0, 1 failed \| 30 passed (31) |
+| M6s | `Tx.tsx`: `TOKEN_PROGRAMS` without Token-2022 | tx "instruction rows …" (no `spl_token_2022`) | tsc 0, 1 failed \| 33 passed (34) |
+| M6t | `Sign.tsx`: Q26 back in the lede | sign "request.sign === null …" | tsc 0, 1 failed \| 11 passed (12) |
+| M6u | `Home.tsx`: the pending strip without `app-pending-strip` (chevron kept) | Home "the pending strip: on the dApp strip’s gutter …" (class) | tsc 0, 1 failed \| 36 passed (37) |
+| M6v | `app.css`: `.s-dash .app-banner.app-pending-strip` dropped from the gutter rule (class kept) | Home "the pending strip: on the dApp strip’s gutter …" (the computed style) | tsc 0, 1 failed \| 36 passed (37) |
+| M6w | `Home.tsx`: the pending strip without its chevron | Home "the pending strip: on the dApp strip’s gutter …" (no chevron) | tsc 0, 1 failed \| 36 passed (37) |
+| M6x | `reauth.ts`: the headline signed again | reauthScreen "a dApp’s transaction: “You are about to approve” …" | tsc 0, 2 failed \| 51 passed (53) |
+| M6y | `reauth.ts`: a named row unsigned | reauthScreen "a dApp’s transaction moving several tokens …" | tsc 0, 2 failed \| 51 passed (53) |
+| M6z | `challenge.ts`: SOL's row amount signed again | challenge "the site, the batch’s size …" | tsc 0, 1 failed \| 39 passed (40) |
+| M6aa | `app.css`: `.app-brand-tensor` back to the window mockups' cyan | tx "origin tiles …" | tsc 0, 1 failed \| 33 passed (34) |
+| M6ab | `ui.tsx`: `BRAND_TILES` without Tensor | tx "origin tiles …" | tsc 0, 1 failed \| 33 passed (34) |
+| M6ac | **(rev 2, O7)** the self-rent exemption dropped where F2 now runs (`(selfRent(ix) && ix.name === '')`) | redFlags "O7: never for the three self-rent instructions …", "F7 is not among them …" (its own-ATA line) | tsc 0, 2 failed \| 36 passed (38) |
 
 - [ ] **Step 6: Commit.**
 
@@ -8114,10 +8334,10 @@ Observed in the dry run: every mutant `tsc` exit 0, the named test red. (`-t` is
 git add docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md extension/e2e/visual-dapp-tx.spec.ts extension/src/app/__tests__/Home.test.tsx extension/src/app/app.css extension/src/app/screens/Home.tsx extension/src/approve/Sign.tsx extension/src/approve/Tx.tsx extension/src/approve/__tests__/sign.test.tsx extension/src/approve/__tests__/tx.test.tsx extension/src/approve/ui.tsx extension/src/background/dapp/__tests__/redFlags.test.ts extension/src/background/dapp/__tests__/simulate.test.ts extension/src/background/dapp/__tests__/txHarness.ts extension/src/background/dapp/decode/__tests__/decode.test.ts extension/src/background/dapp/decode/decode.ts extension/src/background/dapp/redFlags.ts extension/src/background/dapp/signTx.ts extension/src/background/dapp/simulate.ts extension/src/unlock/__tests__/challenge.test.ts extension/src/unlock/__tests__/reauthScreen.test.ts extension/src/unlock/challenge.ts extension/src/unlock/screens/reauth.ts
 git commit -m "feat(extension): B1c-3 Task 6 — F2 beside a more specific flag, non-Checked decimals, the ATA token program, the four carried visual items
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 ```
 
-(Dry run: clone commit `05a1f32` on Task 5's `afb3e09`.)
+(Dry run: clone commit `6191861` on Task 5's `6fb798a` — rev 2, branch `dry/b1c3-r2`; rev 1: `05a1f32` on `afb3e09`.)
 
 #### Dry-run notes (Task 6)
 
@@ -8134,10 +8354,13 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - **Deviation (additive): `txHarness.ataCreate` gains a `tokenProgram` parameter** (default classic; every existing call unchanged). **Deviation: `client.ts` untouched** (a field's `amount.decimals` already exists and is validated).
 - **Finding (not this task's, flagged): B1b's `Home.test.tsx` #42 tests fail when the run crosses local midnight** — "just disconnected", "sustained …" and "sustained after 30 s" failed once in this dry run's red run at 23:59→00:00 CEST and passed on every rerun (three runs on Task 6's tree, two on Task 5's); the file's own comment says it stamps "a few seconds ago, today" for the clock-time captions. Not a security UI; not fixed here (out of scope) — the next writer should not mistake it for a regression.
 - **For Task 7 (E2E):** an unlimited approve's #48 has ONE banner (no F2 warning) — any E2E or visual assertion expecting "Instructions that are not transfers" beside F3/F4/F5/F6/F8 must drop it; an ATA create row now has a `tokenProgram` field (fakeCoordinator's ATA instructions must carry six accounts or they decode as unknown programs); non-Checked approve/transfer/burn amounts show decimals once simulated. **For Task 8 (visual):** new shots — #46's Q26 banner (`48-cannot-sign`'s sibling on #46, `visual-dapp.spec.ts:260`), #11 with the pending strip (assert the strip and its chevron `toBeInViewport({ratio: 1})` as the dApp strip's shot does), #10's dapp headline unsigned (the regex is already updated), a Tensor origin tile (#47) in #49's violet, a #48 instruction card with an ATA create and a non-Checked approve.
+- **(rev 2) F2 last, with O7:** this task moves F2 after the specific flags; rev 2's self-rent exemption (Task 2) moves with it — the same `ownTokenAccount` / `selfRent` helpers, now beside `specific`; the filter is `program === null || compute-budget || isTransfer || selfRent || specific.has(index)`. M6ac drops the exemption here.
+- **(rev 2) Tests touched by O7:** "an unlimited approve alone is F5 only; beside an ATA create, F2 names only the create" and "F7 is not among them" used the account's own ATA — exempt now — so they create one for another wallet (`ataCreateIx(mint, THEIRS)`); the F7 test adds the own-ATA line as O7's positive control (F7 still names the mint, no F2). In tx.test the ATA-create test makes its create another wallet's (`ataCreate(X, TO, …)`) and adds the account's own ATA beside F5 → F5's banner only. The kinds of Task 2's rev-2 tests (O5, M1) lose F2's approve line here, as the rev-1 tests did.
+
 
 ---
 
-### Task 7: E2E B1c-30 … B1c-34 — the red flags against the real extension through StandardWalletAdapter (an unlimited approve, an Assign of the wallet account, a lone closeAccount, a Token-2022 mint, a dependent batch, a durable nonce); the fake coordinator models what they need; B1b's Home #42 tests on the harness's clock
+### Task 7: E2E B1c-30 … B1c-34 — the red flags against the real extension through StandardWalletAdapter (an unlimited approve, an Assign of the wallet account, a lone closeAccount to another address and one to the account itself, a Token-2022 mint, a dependent batch, a durable nonce); the fake coordinator models what they need; B1b's Home #42 tests on the harness's clock
 
 **Spec:** B1c §3.3 rev 3.6 (the red-flag table F1–F10, the override rule, the typed field, the holds, the banners), §6.3 (E2E against the fake coordinator, contained), D11 (re-authentication through the toolbar), R12 (no durable nonce through sign-and-send); B1 §3 l.276-322; owner decisions O1 (typed symbol AND #10), O2 (dependent batches), O3 (Token-2022 only); the plan-3 ledger's Task 6 ruling (Home.test #42's midnight dependence is a finding → fixed here with the harness's clock); C13 (the background is the gate)
 
@@ -8171,7 +8394,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 The red flags are the background's (C13), so each one is driven the way a wallet-adapter dApp sends it — `StandardWalletAdapter`'s `signTransaction`, `signAllTransactions` and `sendTransaction` over the provider — through the relay, the decoder, the simulation against the fake node and #48, and every block is asked of the background directly too: the window's own `dapp.decide`, sent from the window's page (approve.html, the one sender the background takes it from), without the word, with a wrong one, and with the right one before #10 (`decideRaw`). What the fake now answers is what a node answers for these transactions: a Token-2022 token account owned by its program, a mint's bytes in the programs' own layout (the classic 82 bytes; Token-2022's padded base, AccountType 1 and TLV — the builders' logic copied into e2e, which imports nothing from core/ or src/), the wallet's three mints by default (classic, their decimals — without them the wallet could name no token, and every approve of NOC or USDC warned "Could not read this token's settings": the first full visual run showed exactly that on `48-approval-reauth`), ApproveChecked's delegate in the source's post-state, a closed token account, and the wallet account's new owner program / data after Assign / Allocate. A dependent step needed nothing new: the fake already simulates each transaction on its own against the current state, so a transfer into a token account only an earlier transaction creates fails as uninitialized — exactly Task 3's attribution input.
 
-B1c-30 (F5, O1): an ApproveChecked of u64::MAX of the wallet's USDC — the design's eyebrow and one danger banner (Task 6: no F2 beside it) with the real instruction, delegate and mint, the synthesized "USDC delegated" row, "Approve unlimited" greyed and disabled; the background answers `override-missing` and, for `usdc`, `override-mismatch`; typing `usdc` and then `USDC ` leaves it gated AND disabled after the 1.5 s hold has passed (so it is the match, not the hold); `USDC` un-gates it, Enter submits nothing, the click asks for #10 — the page has no answer, and the right word without the proof is `reauth-required`; #10 (from the popup's strip) lists "Unlimited USDC spend approval" with both reasons (the allowance from chain state, Q33); then the window signs the page's own bytes. B1c-31 (F3): an Assign of the wallet account to a dApp program — Q35's eyebrow, F3's banner with the decoded instruction AND the fake node's post-state owner, `ASSIGN` (not `Assign`) and #10 → signed; a lone CloseAccount of the wallet's empty USDC account is F2's warning only — no field, no #10, Approve held ≥ 1 s (1.5 s, measured from the moment the state is seen), signed; the negative control of that measure: a plain transfer is held < 1 s (C15's 500 ms). B1c-32 (F7, O3): a dApp's CreateIdempotent preamble for a Token-2022 PYUSD-shaped mint and for USDC — one F7 banner, naming the freeze authority and the permanent delegate (and no transfer-hook line: its program is unset), nothing naming USDC's mint though it has a freeze authority; F2 names both creates; Approve signs. B1c-33 (O2, F10): a batch of two (create the recipient's ATA; transfer USDC into it) — step 2's section says "This step depends on step 1 …" with the node's error, "Balance changes (unknown)", one `UNCHECKED` field in that section, `override-missing` / `override-mismatch` (the word on transaction 0), then #10 with "Depends on step 1 — not checked on its own · Transaction 2 of 2" and first-send's line → both signed; then step 2 failing for a reason of its own (more USDC than held, into an existing account) is "Couldn't simulate", Reject only, no field, and the word is refused `simulation-failed`; the adapter reports the rejection. B1c-34 (F8, R12): AdvanceNonceAccount + a transfer through `signTransaction` — "This transaction does not expire." alone, held ≥ 1 s, signed; the same through `sendTransaction` — no window, the adapter's `WalletSendTransactionError` "The request is not valid.", nothing broadcast, no fallback to the dApp's own RPC. Every B1c-3 test also watches the whole context's console for a Content Security Policy line (each document's `securitypolicyviolation` logged to it) and asserts none; B1c-34 ends with the watch's positive control (an inline `<style>` added to the popup is refused and heard).
+B1c-30 (F5, O1): an ApproveChecked of u64::MAX of the wallet's USDC — the design's eyebrow and one danger banner (Task 6: no F2 beside it) with the real instruction, delegate and mint, the synthesized "USDC delegated" row, "Approve unlimited" greyed and disabled; the background answers `override-missing` and, for `usdc`, `override-mismatch`; typing `usdc` and then `USDC ` leaves it gated AND disabled after the 1.5 s hold has passed (so it is the match, not the hold); `USDC` un-gates it, Enter submits nothing, the click asks for #10 — the page has no answer, and the right word without the proof is `reauth-required`; #10 (from the popup's strip) lists "Unlimited USDC spend approval" with both reasons (the allowance from chain state, Q33); then the window signs the page's own bytes. B1c-31 (F3): an Assign of the wallet account to a dApp program — Q35's eyebrow, F3's banner with the decoded instruction AND the fake node's post-state owner, `ASSIGN` (not `Assign`) and #10 → signed; a lone CloseAccount of the wallet's empty USDC account with its rent to another address is F2's warning only — no field, no #10, Approve held ≥ 1 s (1.5 s, measured from the moment the state is seen), signed; **(rev 2, O7)** the same close with the rent back to the account itself is rent only — no banner, held < 1 s, signed; the negative control of that measure: a plain transfer is held < 1 s (C15's 500 ms). B1c-32 (F7, O3): a dApp's CreateIdempotent preamble for a Token-2022 PYUSD-shaped mint and for USDC — one F7 banner, naming the freeze authority and the permanent delegate (and no transfer-hook line: its program is unset), nothing naming USDC's mint though it has a freeze authority; **(rev 2, O7)** the two creates are the account's own token accounts, paid by it — no F2 banner (rev 1: F2 named both), the F7 banner the only one; Approve signs. B1c-33 (O2, F10): a batch of two (create the recipient's ATA; transfer USDC into it) — step 2's section says "This step depends on step 1 …" with the node's error, "Balance changes (unknown)", one `UNCHECKED` field in that section, `override-missing` / `override-mismatch` (the word on transaction 0), then #10 with "Depends on step 1 — not checked on its own · Transaction 2 of 2" and first-send's line → both signed; then step 2 failing for a reason of its own (more USDC than held, into an existing account) is "Couldn't simulate", Reject only, no field, and the word is refused `simulation-failed`; the adapter reports the rejection. B1c-34 (F8, R12): AdvanceNonceAccount + a transfer through `signTransaction` — "This transaction does not expire." alone, held ≥ 1 s, signed; the same through `sendTransaction` — no window, the adapter's `WalletSendTransactionError` "The request is not valid.", nothing broadcast, no fallback to the dApp's own RPC. Every B1c-3 test also watches the whole context's console for a Content Security Policy line (each document's `securitypolicyviolation` logged to it) and asserts none; B1c-34 ends with the watch's positive control (an inline `<style>` added to the popup is refused and heard).
 
 B1b's #42 tests (the ledger's Task 6 finding): "just disconnected", "sustained (two failed refreshes)" and "sustained after 30 s" read clock-time captions ("last synced 09:41:13", "Stale · …", "price …") whose day part appears when the stamp is not today — so a run crossing local midnight failed. They now run on the harness's clock: the provider's `now` and the background's `deps.now` at a fixed local noon, the cache stamped from it.
 
@@ -8545,7 +8768,7 @@ Change `extension/e2e/dappTx.spec.ts` (B1c-30 … B1c-34 appended):
 
 ````diff
 diff --git a/extension/e2e/dappTx.spec.ts b/extension/e2e/dappTx.spec.ts
-index 98fb1eb..2ceb7f5 100644
+index 98fb1eb..79cff84 100644
 --- a/extension/e2e/dappTx.spec.ts
 +++ b/extension/e2e/dappTx.spec.ts
 @@ -1,11 +1,11 @@
@@ -8563,7 +8786,7 @@ index 98fb1eb..2ceb7f5 100644
  
  // Spec B1c §6.3 (B1c-2), §3.3, §1.4: the transaction features against the real extension — the provider, the relay,
  // the background's decoder and simulation (through the fake coordinator's proxy), #48 in the approval window, the
-@@ -405,3 +405,418 @@ test('containment positive control · a request to the test dApp\'s own RPC host
+@@ -405,3 +405,431 @@ test('containment positive control · a request to the test dApp\'s own RPC host
      await h.close();
    }
  });
@@ -8609,8 +8832,8 @@ index 98fb1eb..2ceb7f5 100644
 +  approveChecked: (source: string, mint: string, delegate: string, amount: bigint, decimals: number): RawIx => ({programId: TOKEN_PROGRAM, keys: [writable(source), readonly(mint), readonly(delegate), signer(ACCOUNT, false)], data: [13, ...u64le(amount), decimals]}),
 +  /** SPL Token TransferChecked (12): source, mint, destination, owner; amount, decimals. */
 +  transferChecked: (source: string, mint: string, destination: string, amount: bigint, decimals: number): RawIx => ({programId: TOKEN_PROGRAM, keys: [writable(source), readonly(mint), writable(destination), signer(ACCOUNT, false)], data: [12, ...u64le(amount), decimals]}),
-+  /** SPL Token CloseAccount (9): account, destination, owner. */
-+  closeAccount: (account: string): RawIx => ({programId: TOKEN_PROGRAM, keys: [writable(account), writable(ACCOUNT), signer(ACCOUNT, false)], data: [9]}),
++  /** SPL Token CloseAccount (9): account, destination (the wallet account by default), owner. */
++  closeAccount: (account: string, destination: string = ACCOUNT): RawIx => ({programId: TOKEN_PROGRAM, keys: [writable(account), writable(destination), signer(ACCOUNT, false)], data: [9]}),
 +  /** System Assign (1) of the wallet account to `owner`. */
 +  assign: (owner: string): RawIx => ({programId: SYSTEM_PROGRAM, keys: [signer(ACCOUNT)], data: [1, 0, 0, 0, ...base58.decode(owner)]}),
 +  /** System Transfer (2) from the wallet account. */
@@ -8780,7 +9003,7 @@ index 98fb1eb..2ceb7f5 100644
 +  }
 +});
 +
-+test('B1c-31 · Assign of the wallet account (F3): blocked, "ASSIGN" overrides it end to end; a lone closeAccount is a warning only — held 1.5 s, no typed field; a plain transfer is held only C15’s 500 ms', async () => {
++test('B1c-31 · Assign of the wallet account (F3): blocked, "ASSIGN" overrides it end to end; a lone closeAccount to another address is a warning only — held 1.5 s, no typed field; closed to the account itself (O7) and a plain transfer are held only C15’s 500 ms', async () => {
 +  test.setTimeout(300_000);
 +  const {h, server} = await scene('noctura-e2e-dapptx-assign-');
 +  try {
@@ -8813,9 +9036,10 @@ index 98fb1eb..2ceb7f5 100644
 +    expectOwnMessage(r.value.signed, r.value.message);
 +    await windowClosed(win);
 +
-+    // A lone closeAccount of the wallet's empty USDC account: F2's warning names it; nothing to type, no #10.
++    // A lone closeAccount of the wallet's empty USDC account, its rent to another address: F2's warning names it;
++    // nothing to type, no #10.
 +    let closed!: Promise<unknown>;
-+    const wc = await approvalWindow(h.ctx, () => (closed = adapter.customSign(page, BLOCKHASH, [ix.closeAccount(OWN_EMPTY)])));
++    const wc = await approvalWindow(h.ctx, () => (closed = adapter.customSign(page, BLOCKHASH, [ix.closeAccount(OWN_EMPTY, RECIPIENT)])));
 +    const warn = wc.locator('.s9-flag-banner.warn');
 +    await expect(warn).toHaveCount(1, {timeout: 10_000});
 +    const approveClose = wc.getByRole('button', {name: 'Approve', exact: true});
@@ -8829,6 +9053,16 @@ index 98fb1eb..2ceb7f5 100644
 +    expect(signedBy(rc.value.signed)).toBe(true);
 +    expectOwnMessage(rc.value.signed, rc.value.message);
 +    await windowClosed(wc);
++
++    // O7: the same close with the rent back to the account itself is rent only — no flag, C15's 500 ms only.
++    let selfClosed!: Promise<unknown>;
++    const ws = await approvalWindow(h.ctx, () => (selfClosed = adapter.customSign(page, BLOCKHASH, [ix.closeAccount(OWN_EMPTY)])));
++    await expect(ws.getByText('Balance changes (post-simulation)')).toBeVisible({timeout: 10_000});
++    expect(await heldFor(ws.getByRole('button', {name: 'Approve', exact: true}))).toBeLessThan(1_000);
++    await expect(ws.locator('.s9-flag-banner')).toHaveCount(0);
++    await ws.getByRole('button', {name: 'Approve', exact: true}).click();
++    expect(((await selfClosed) as {ok: boolean}).ok).toBe(true);
++    await windowClosed(ws);
 +
 +    // The negative control of that measure: a plain transfer to a known recipient has no flag — C15's 500 ms only.
 +    let plain!: Promise<unknown>;
@@ -8868,8 +9102,10 @@ index 98fb1eb..2ceb7f5 100644
 +    await expect(win.getByText(/Transfer hook/)).toHaveCount(0);
 +    await expect(win.locator('.s9-flag-banner', {hasText: USDC_MINT})).toHaveCount(0);
 +    await expect(win.locator('.s9-flag-banner', {hasText: FREEZER})).toHaveCount(1);
-+    // F2 names the two creates; warnings only: no block, no field — Approve after the 1.5 s hold.
-+    await expect(win.locator('.s9-flag-banner.warn', {hasText: 'Instructions that are not transfers'}).locator('.meta')).toHaveText(['#1 spl_associated_token_account::CreateIdempotent', '#2 spl_associated_token_account::CreateIdempotent']);
++    // O7: the two creates are the account's own token accounts, paid by it — rent only, no F2 banner; F7's warning
++    // only: no block, no field — Approve after the 1.5 s hold.
++    await expect(win.locator('.s9-flag-banner.warn', {hasText: 'Instructions that are not transfers'})).toHaveCount(0);
++    await expect(win.locator('.s9-flag-banner')).toHaveCount(1);
 +    await expect(win.locator('.s9-flag-banner.danger, .s9-typed-confirm')).toHaveCount(0);
 +    await win.getByRole('button', {name: 'Approve', exact: true}).click();
 +    const r = (await signed) as {ok: true; value: {signed: string; message: string}};
@@ -9134,7 +9370,7 @@ index f076edb..e38c6d6 100644
 
 - [ ] **Step 4: Run — green, the whole suite, the build, the gates, and the whole Playwright suite twice.**
 
-`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3415 passed (3415)** (unchanged: three Home tests rewritten, none added). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (every gate's ok line, `classes ok: every class in 56 src/app and src/approve files …`). Nothing under `core/` or the repository root's `src/` is touched (root `tsc`/`jest`, web's `verify` not needed).
+`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3419 passed (3419)** (unchanged from Task 6's 3419: three Home tests rewritten, none added). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (every gate's ok line, `classes ok: every class in 56 src/app and src/approve files …`). Nothing under `core/` or the repository root's `src/` is touched (root `tsc`/`jest`, web's `verify` not needed).
 
 Home.test on the harness's clock, under the same shifted wall clock: `CLOCK_AT` = 23:59:59.900, 23:59:58.000, 23:59:56.000, 23:59:54.000, 23:59:52.000, 23:59:50.000 with `-t '#42'` → **18 passed** each time; the whole file at 23:59:59.900 → 37 passed.
 
@@ -9148,25 +9384,27 @@ rm -rf test-results && npx playwright test $(ls e2e/visual*.spec.ts)
 # then the same two under: unshare -rn npx playwright test …
 ```
 
-Observed: normally **51 passed** (11.8 min) + **20 passed** (6.9 min); under `unshare -rn` **51 passed** (12.0 min) + **20 passed** (6.9 min) — the first pair before the CSP watch was added; after it (the final commit) again normally 51 + 20 passed (12.2 / 6.8 min) and under `unshare -rn` 51 + 20 passed (11.9 / 6.9 min). Every test ends with `contained(h)` / `done(h, server)` (the fake's `unexpected`, the Solscan and other-noc-tura.io counters, the test dApp's `server.unexpected` — empty), containment's positive controls pass, `csp.spec.ts` (zero violations on every vault-page mode, its positive control reported) passes, and each B1c-3 test's own CSP watch is empty (B1c-34's positive control heard).
+Observed: normally **51 passed** (11.8 min) + **20 passed** (6.9 min); under `unshare -rn` **51 passed** (12.0 min) + **20 passed** (6.9 min) — the first pair before the CSP watch was added; after it (the final commit) again normally 51 + 20 passed (12.2 / 6.8 min) and under `unshare -rn` 51 + 20 passed (11.9 / 6.9 min). **(rev 2)** On the rev-2 tree: normally **51 passed** (12.2 min) + **20 passed** (6.8 min); under `unshare -rn` **51 passed** (11.9 min) + **20 passed** (6.9 min) — B1c-31 and B1c-32 as rev 2 changed them (O7), every test's containment and CSP watch empty as before. Every test ends with `contained(h)` / `done(h, server)` (the fake's `unexpected`, the Solscan and other-noc-tura.io counters, the test dApp's `server.unexpected` — empty), containment's positive controls pass, `csp.spec.ts` (zero violations on every vault-page mode, its positive control reported) passes, and each B1c-3 test's own CSP watch is empty (B1c-34's positive control heard).
 
 - [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy (node_modules linked), built (`node scripts/build.mjs`); `tsc`'s own exit code first (0), then the named spec: red.**
 
 | id | the change | the test that turns red | observed |
 |---|---|---|---|
-| M7a | `signTx.ts` `txRefused`: the `override-missing` row dropped (a block without its word passes the background — the typed-free approve goes on to the re-authentication and would sign once proven) | B1c-30: `decideRaw(win, {})` → `override-missing` | tsc 0, 1 failed (l. 583) |
-| M7b | `Tx.tsx`: `canApprove` without `allMatch` (the CTA still looks gated) | B1c-30: `usdc` typed, the hold passed → still disabled | tsc 0, 1 failed (l. 592, `Received: enabled`) |
-| M7c | `Tx.tsx`: the window's match case-folded (`toUpperCase()` both sides) | B1c-30: `usdc` typed → still `app-cta-gated` | tsc 0, 1 failed (l. 590) |
-| M7d | `redFlags.ts`: F5 dropped (`unlimited: false` — every approve bounded, a warning) | B1c-30: the eyebrow | tsc 0, 1 failed (`Received: "Approve transaction"`) |
-| M7e | `redFlags.ts`: F7 reads classic mints too (O3 dropped: the TOKEN_PROGRAM skip made dead) | B1c-32: no banner names USDC's mint | tsc 0, 1 failed (`Expected: 0, Received: 1`) |
-| M7f | `simulate.ts`: F10's attribution consults no earlier step (`created.slice(0, 0)`) | B1c-33: the eyebrow (a plain failure instead) | tsc 0, 1 failed (`Received: "Approve transaction"`) |
-| M7g | `useArmed.ts`: `FLAG_HOLD_MS = 500` | B1c-31 (closeAccount) and B1c-34 (nonce): held ≥ 1 000 ms | tsc 0, 2 failed (`Received: 184`) |
-| M7h | `redFlags.ts`: F3 dropped (decoded and chain) | B1c-31: the eyebrow | tsc 0, 1 failed |
-| M7i | `redFlags.ts`: F8 dropped | B1c-34: the banner's head (`Received: "Instructions that are not transfers"` — F2 then names AdvanceNonceAccount) | tsc 0, 1 failed |
-| M7j | `fakeCoordinator.ts` (test-side): ApproveChecked's delegate not modeled | B1c-30: #10's reasons (no allowance line — the chain state the fake must report is load-bearing) | tsc 0, 1 failed (l. 516) |
-| M7k | `Home.test.tsx`: Task 6's version (the wall clock) | Home #42 under `CLOCK_AT=23:59:55.000` (whole file) / the `-t '#42'` settings of Step 2 | tsc 0, 1 failed ("sustained after 30 s"); the whole file at 23:59:59.900 passes (the #42 tests run seconds after the anchor — the `-t '#42'` runs are the ones that land on midnight) |
+| M7a | `signTx.ts` `txRefused`: the `override-missing` row dropped (a block without its word passes the background — the typed-free approve goes on to the re-authentication and would sign once proven) | B1c-30: `decideRaw(win, {})` → `override-missing` | tsc 0, 1 failed (l. 583) — **rev 2:** tsc 0, 1 failed (l. 583) |
+| M7b | `Tx.tsx`: `canApprove` without `allMatch` (the CTA still looks gated) | B1c-30: `usdc` typed, the hold passed → still disabled | tsc 0, 1 failed (l. 592, `Received: enabled`) — **rev 2:** tsc 0, 1 failed (l. 592) |
+| M7c | `Tx.tsx`: the window's match case-folded (`toUpperCase()` both sides) | B1c-30: `usdc` typed → still `app-cta-gated` | tsc 0, 1 failed (l. 590) — **rev 2:** tsc 0, 1 failed (l. 590) |
+| M7d | `redFlags.ts`: F5 dropped (`unlimited: false && …` on rev 2's 99 % line — every approve bounded, a warning) | B1c-30: the eyebrow | tsc 0, 1 failed (`Received: "Approve transaction"`) — **rev 2:** tsc 0, 1 failed (l. 565) |
+| M7e | `redFlags.ts`: F7 reads classic mints too (O3 dropped: the TOKEN_PROGRAM skip made dead) | B1c-32: no banner names USDC's mint | tsc 0, 1 failed (`Expected: 0, Received: 1`) — **rev 2:** tsc 0, 1 failed (l. 718) |
+| M7f | `simulate.ts`: F10's attribution consults no earlier step (`created.slice(0, 0)`) | B1c-33: the eyebrow (a plain failure instead) | tsc 0, 1 failed (`Received: "Approve transaction"`) — **rev 2:** tsc 0, 1 failed (l. 749) |
+| M7g | `useArmed.ts`: `FLAG_HOLD_MS = 500` | B1c-31 (closeAccount) and B1c-34 (nonce): held ≥ 1 000 ms | tsc 0, 2 failed (`Received: 184`) — **rev 2:** tsc 0, 2 failed (l. 661, 809) |
+| M7h | `redFlags.ts`: F3 dropped (decoded and chain) | B1c-31: the eyebrow | tsc 0, 1 failed — **rev 2:** tsc 0, 1 failed (l. 631) |
+| M7i | `redFlags.ts`: F8 dropped | B1c-34: the banner's head (`Received: "Instructions that are not transfers"` — F2 then names AdvanceNonceAccount) | tsc 0, 1 failed — **rev 2:** tsc 0, 1 failed (l. 810) |
+| M7j | `fakeCoordinator.ts` (test-side): ApproveChecked's delegate not modeled | B1c-30: #10's reasons (no allowance line — the chain state the fake must report is load-bearing) | tsc 0, 1 failed (l. 516) — **rev 2:** tsc 0, 1 failed (l. 516) |
+| M7l | **(rev 2, O7)** `redFlags.ts`: the self-rent exemption dropped (`(selfRent(ix) && ix.name === '')`) | B1c-31: the close to the account itself held < 1 000 ms; B1c-32: no F2 banner beside F7 | tsc 0, 2 failed (l. 676, 722) |
+| M7m | **(rev 2, O7)** `redFlags.ts`: a close to any destination exempt (the destination check dropped) | B1c-31: the close to another address shows F2's warning | tsc 0, 1 failed (l. 659) |
+| M7k | `Home.test.tsx`: Task 6's version (the wall clock) | Home #42 under `CLOCK_AT=23:59:55.000` (whole file) / the `-t '#42'` settings of Step 2 | tsc 0, 1 failed ("sustained after 30 s"); the whole file at 23:59:59.900 passes (the #42 tests run seconds after the anchor — the `-t '#42'` runs are the ones that land on midnight) — **rev 2:** tsc 0; `-t '#42'` at `23:59:55.000` 1 failed ("sustained after 30 s"), at `23:59:59.900` 2 failed ("just disconnected", "sustained (two failed refreshes)"); this task's own Home.test under both clocks: 18 passed |
 
-Each E2E mutant was built from this task's end tree and its spec run alone (`npx playwright test e2e/dappTx.spec.ts -g '<B1c-NN>'`).
+Each E2E mutant was built from this task's end tree and its spec run alone (`npx playwright test e2e/dappTx.spec.ts -g '<B1c-NN>'`). **(rev 2)** M7a–M7j re-run on the rev-2 tree (M7d on rev 2's 99 % line), plus M7l and M7m for O7: all red; the line numbers moved with B1c-31's new O7 step.
 
 - [ ] **Step 6: Commit.**
 
@@ -9174,10 +9412,10 @@ Each E2E mutant was built from this task's end tree and its spec run alone (`npx
 git add extension/e2e/fakeCoordinator.ts extension/e2e/fixtures/dapp/page.ts extension/e2e/dappPage.ts extension/e2e/dappTx.spec.ts extension/e2e/visual-dapp-tx.spec.ts extension/src/app/__tests__/Home.test.tsx
 git commit -m "test(extension): B1c-3 Task 7 — E2E B1c-30 … B1c-34: the red flags through StandardWalletAdapter; the fake models them; Home #42 on the harness's clock
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 ```
 
-(Dry run: clone commit `fd3ebd6` on Task 6's `05a1f32`.)
+(Dry run: clone commit `17b6f81` on Task 6's `6191861` — rev 2, branch `dry/b1c3-r2`; rev 1: `fd3ebd6` on `05a1f32`.)
 
 #### Dry-run notes (Task 7)
 
@@ -9191,6 +9429,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - **Deviation: no red run of the new specs on Task 6's tree** — this task adds no product code (they are green there by design); their red runs are M7a–M7j. Home.test's red run is Step 2's shifted clock (the harness's clock is the fix; there is no other implementation).
 - **Finding for the owner (not changed):** a dependent batch carries first-send's reason as well as `override` (Task 3's ruling — the destination is created by another transaction); #10 shows both lines (B1c-33 pins it).
 - **For Task 8 (visual):** the new states are reachable with these builders (`ix.*`, `holdUsdc`, `fake.mints`, `mintData`); `48-unknown-program` now shows F1's banner and `48-approval-reauth` F6's banner and the delegated row (the shots themselves not re-reviewed here); `visual-dapp-tx.spec.ts`'s header line "B1c-3's states … are not shot" is Task 8's to change.
+- **(rev 2) O7 in the E2E:** B1c-31's lone CloseAccount now sends its rent to another address (F2's warning, held ≥ 1 s, signed) and gains O7's control — the same close with the rent back to the account: no banner, held < 1 s, signed (M7l, M7m red); `ix.closeAccount` takes the destination (`destination: string = ACCOUNT` — the literal type of `ACCOUNT` would refuse another address). B1c-32's two CreateIdempotent are the account's own token accounts paid by it, so F2 no longer names them: the F7 banner is the only one (asserted; M7l red). M7d's mutant sits on rev 2's 99 % line. Playwright on the rev-2 tree: normally 51 + 20, under `unshare -rn` 51 + 20, all passed.
+
 
 ---
 
@@ -9248,7 +9488,7 @@ Change `extension/e2e/visual-dapp-tx.spec.ts`:
 
 ````diff
 diff --git a/extension/e2e/visual-dapp-tx.spec.ts b/extension/e2e/visual-dapp-tx.spec.ts
-index e38c6d6..0d304bb 100644
+index e38c6d6..886c8ab 100644
 --- a/extension/e2e/visual-dapp-tx.spec.ts
 +++ b/extension/e2e/visual-dapp-tx.spec.ts
 @@ -1,16 +1,21 @@
@@ -9278,7 +9518,7 @@ index e38c6d6..0d304bb 100644
  
  const RECIPIENT = '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4';
  const BLOCKHASH = base58.encode(new Uint8Array(32).fill(7));
-@@ -387,6 +392,384 @@ test('visual · #48: simulating, simulated, a batch, re-authentication, approvin
+@@ -387,6 +392,386 @@ test('visual · #48: simulating, simulated, a batch, re-authentication, approvin
    }
  });
  
@@ -9321,7 +9561,7 @@ index e38c6d6..0d304bb 100644
 +  /** SPL Token SetAuthority (6) of a token account: AccountOwner (2) to `to`. */
 +  setOwner: (account: string, to: string): RawIx => ({programId: TOKEN_PROGRAM, keys: [writable(account), signer(MAIN.publicKey, false)], data: [6, 2, 1, ...base58.decode(to)]}),
 +  /** SPL Token CloseAccount (9): account, destination, owner. */
-+  closeAccount: (account: string): RawIx => ({programId: TOKEN_PROGRAM, keys: [writable(account), writable(MAIN.publicKey), signer(MAIN.publicKey, false)], data: [9]}),
++  closeAccount: (account: string, destination: string): RawIx => ({programId: TOKEN_PROGRAM, keys: [writable(account), writable(destination), signer(MAIN.publicKey, false)], data: [9]}),
 +  /** System Assign (1) of the wallet account to `owner`. */
 +  assign: (owner: string): RawIx => ({programId: SYSTEM_PROGRAM, keys: [signer(MAIN.publicKey)], data: [1, 0, 0, 0, ...base58.decode(owner)]}),
 +  /** System Transfer (2) from the wallet account. */
@@ -9500,9 +9740,10 @@ index e38c6d6..0d304bb 100644
 +    await still(win, '48-batch-one-blocked-section', sections.nth(1).locator('.s9-flag-banner.danger'));
 +    await dismiss(win);
 +
-+    // F2: a lone closeAccount — a warning only, no field; Approve after the 1.5 s hold.
++    // F2: a lone closeAccount, its rent to another address (to the account itself it is O7's rent only) — a warning
++    // only, no field; Approve after the 1.5 s hold.
 +    await fresh(h.sw);
-+    win = await windowFor(h, () => customSignTx(jup, BLOCKHASH, MAIN.publicKey, [ix.closeAccount(OWN_EMPTY)]));
++    win = await windowFor(h, () => customSignTx(jup, BLOCKHASH, MAIN.publicKey, [ix.closeAccount(OWN_EMPTY, RECIPIENT)]));
 +    const nonTransfer = win.locator('.s9-flag-banner.warn');
 +    await expect(nonTransfer.locator('.head')).toHaveText('Instructions that are not transfers', {timeout: 10_000});
 +    await expect(nonTransfer.locator('.body')).toHaveText('Each can do more than move a balance. Check what it does before approving.');
@@ -9513,7 +9754,7 @@ index e38c6d6..0d304bb 100644
 +    await dismiss(win);
 +
 +    // F7 (O3): two Token-2022 accounts' mints — one with a freeze authority, a permanent delegate and a transfer hook,
-+    // one the wallet cannot read (Q36); F2 names the two creates.
++    // one the wallet cannot read (Q36); the two creates are the account's own, paid by it — no F2 (O7).
 +    await fresh(h.sw);
 +    win = await windowFor(h, () => customSignTx(jup, BLOCKHASH, MAIN.publicKey, [ix.ataCreate(OWN_T22, MAIN.publicKey, T22_MINT, TOKEN_2022_PROGRAM, true), ix.ataCreate(OWN_UNREAD, MAIN.publicKey, UNREAD_MINT, TOKEN_2022_PROGRAM, true)]));
 +    const t22 = win.locator('.s9-flag-banner.warn', {hasText: 'Token-2022 settings on a token you hold'});
@@ -9525,6 +9766,7 @@ index e38c6d6..0d304bb 100644
 +    const unreadable = win.locator('.s9-flag-banner.warn', {hasText: "Could not read this token's settings"});
 +    await expect(unreadable.locator('.meta')).toHaveText(`mint: ${UNREAD_MINT}`);
 +    await expect(win.locator('.s9-flag-banner.danger, .s9-typed-confirm')).toHaveCount(0);
++    await expect(win.locator('.s9-flag-banner')).toHaveCount(2);
 +    await metaInline(t22);
 +    // "Program 1" on one line beside the associated-token program's long value (its value wraps instead).
 +    expect(await lines(win.locator('.app-tx-ix > .row > .k').first())).toBe(1);
@@ -9559,7 +9801,7 @@ index e38c6d6..0d304bb 100644
 +    const step2 = win.locator('section.app-tx-item').nth(1);
 +    const dependent = step2.locator('.s9-flag-banner.danger');
 +    await expect(dependent.locator('.head')).toHaveText('This step depends on step 1 and could not be checked on its own.');
-+    await expect(dependent.locator('.body')).toHaveText('Its effects are unknown: it was simulated without the changes step 1 makes, which it needs.');
++    await expect(dependent.locator('.body')).toHaveText('Its effects are unknown: it was simulated without the changes step 1 makes, which it needs. Approving it may move any of your balances.');
 +    await expect(dependent.locator('.meta')).toHaveText('{"InstructionError":[0,"UninitializedAccount"]}');
 +    await expect(step2.getByText('Balance changes (unknown)')).toBeVisible();
 +    await expect(step2.getByText('This step was not simulated on its own, so its effects are unknown.')).toBeVisible();
@@ -9867,7 +10109,7 @@ index 2e49f15..daacd3e 100644
 
 - [ ] **Step 2: Run them on the previous task's tree — red.**
 
-The visual pass is a review: its first run was on Task 7's tree (`fd3ebd6`) with these specs minus the four findings' assertions, and the shots themselves showed F-1 … F-4 (described above). With the assertions in, on Task 7's product: `npx vitest run src/unlock/__tests__/reauthScreen.test.ts` → **2 failed | 52 passed (54)** ("a dApp’s override: Q33’s line …" — `Received` has no `SOL−0.001005` row; "a dApp’s override or allowance: no headline amount …" — the headline visible); `npx playwright test e2e/visual-dapp-tx.spec.ts -g 'B1c-3'` → 1 failed at the first finding asserted (`oneLine(approveUnlimited)`: `Expected: 1, Received: 2` — the label on two lines). `npx vitest run src/approve/__tests__/connect.test.tsx` → **1 failed | 26 passed (27)** (`expected [ '0px', '', '' ]` — F-5's rule absent). Each finding's own red run, alone, is its named mutation (Step 5: M8a–M8f, M8j); the carried items' assertions are proven on Task 6's product changes by M8g–M8i.
+The visual pass is a review: its first run was on Task 7's tree (`fd3ebd6`) with these specs minus the four findings' assertions, and the shots themselves showed F-1 … F-4 (described above). With the assertions in, on Task 7's product: `npx vitest run src/unlock/__tests__/reauthScreen.test.ts` → **2 failed | 52 passed (54)** ("a dApp’s override: Q33’s line …" — `Received` has no `SOL−0.001005` row; "a dApp’s override or allowance: no headline amount …" — the headline visible); `npx playwright test e2e/visual-dapp-tx.spec.ts -g 'B1c-3'` → 1 failed at the first finding asserted (`oneLine(approveUnlimited)`: `Expected: 1, Received: 2` — the label on two lines). `npx vitest run src/approve/__tests__/connect.test.tsx` → **1 failed | 26 passed (27)** (`expected [ '0px', '', '' ]` — F-5's rule absent). **(rev 2)** Re-run with these files on the rev-2 Task 7 tree (`17b6f81`): reauthScreen + connect → **3 failed | 78 passed (81)** — the same three; `-g 'B1c-3'` → **2 failed** — the B1c-3 test at the same first finding (`oneLine`, l. 473) and the carried test at F-5's gate-line assertion (rev 1's sentence predates F-5's assertion in that test). Each finding's own red run, alone, is its named mutation (Step 5: M8a–M8f, M8j); the carried items' assertions are proven on Task 6's product changes by M8g–M8i.
 
 - [ ] **Step 3: Implement.**
 
@@ -9965,10 +10207,10 @@ Change `docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md`
 
 ````diff
 diff --git a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-index 2b3ac66..a2e9fb2 100644
+index fb0a849..83f7bc4 100644
 --- a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
 +++ b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-@@ -641,7 +641,9 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
+@@ -648,7 +648,9 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
    recomputes every expected word from its stored simulation and refuses the approval unless every block has its exact
    word, and refuses it when any block has none. A request with any block always re-authenticates through #10 (the
    reason line: "Re-auth required to override a blocked transaction.", Q33); #10's description names what is
@@ -9983,7 +10225,7 @@ index 2b3ac66..a2e9fb2 100644
 
 - [ ] **Step 4: Run — green, the whole suite, the build, the gates, verify, and the whole Playwright suite twice.**
 
-`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3417 passed (3417)** (Task 7's 3415 + the new #10 test + the #47 gate-line test). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (`classes ok: every class in 56 src/app and src/approve files …`). `npm run verify` (extension) → exit 0 (3417 passed, CSP ok, secrets, gates, reproducible: chrome 26 files / firefox 26 files). The repository root: `npx tsc --noEmit` → 0, `npx jest` → **Test Suites 180 passed, 1 skipped; Tests 1234 passed, 1 skipped**. `web`: `npm run verify` → exit 0 (**43 files / 550 tests**, then 1 / 3). (Nothing under core/, root src/ or web/ is touched; run because the brief asks for the whole tree at the end of the plan.)
+`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3421 passed (3421)** (Task 7's 3419 + the new #10 test + the #47 gate-line test; rev 1: 3417). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (`classes ok: every class in 56 src/app and src/approve files …`). `npm run verify` (extension) → exit 0 (3417 passed, CSP ok, secrets, gates, reproducible: chrome 26 files / firefox 26 files). The repository root: `npx tsc --noEmit` → 0, `npx jest` → **Test Suites 180 passed, 1 skipped; Tests 1234 passed, 1 skipped**. `web`: `npm run verify` → exit 0 (**43 files / 550 tests**, then 1 / 3). (Nothing under core/, root src/ or web/ is touched; run because the brief asks for the whole tree at the end of the plan.)
 
 The new tests alone: `npx playwright test e2e/visual-dapp-tx.spec.ts` → **4 passed** (B1c-2's #48 test 54 s, the B1c-3 test ~51 s, the carried test ~7 s, #26/#27 5 s).
 
@@ -9996,7 +10238,7 @@ rm -rf test-results && unshare -rn npx playwright test $(ls e2e/*.spec.ts | grep
 rm -rf test-results && unshare -rn npx playwright test $(ls e2e/visual*.spec.ts)
 ```
 
-Observed: normally **51 passed** (12.1 min) + **22 passed** (7.9 min); under `unshare -rn` **51 passed** (11.9 min) + **22 passed** (7.9 min). After F-5 (the controller's ruling; no non-visual file changed) the visual specs again: normally **22 passed** (7.8 min), under `unshare -rn` **22 passed** (7.9 min); `npm run verify` exit 0 (3417). Every test ends with `contained(h)` and the test dApp's `server.unexpected` empty (`tensor.trade` is routed and unresolvable like every test host).
+Observed: normally **51 passed** (12.1 min) + **22 passed** (7.9 min); under `unshare -rn` **51 passed** (11.9 min) + **22 passed** (7.9 min). After F-5 (the controller's ruling; no non-visual file changed) the visual specs again: normally **22 passed** (7.8 min), under `unshare -rn` **22 passed** (7.9 min); `npm run verify` exit 0 (3417). **(rev 2)** On the rev-2 tree (`d1456c8`): normally **51 passed** (12.6 min) + **22 passed** (8.0 min); under `unshare -rn` **51 passed** (12.4 min) + **22 passed** (7.7 min); `npm run verify` exit 0 (**3421 passed**, CSP ok, secrets, gates, reproducible: chrome 26 files / firefox 26 files); the repository root `npx tsc --noEmit` → 0, `npx jest` → 180 passed, 1 skipped; 1234 passed, 1 skipped; `web` `npm run verify` → exit 0 (43 files / 550 tests, then 1 / 3). Every test ends with `contained(h)` and the test dApp's `server.unexpected` empty (`tensor.trade` is routed and unresolvable like every test host).
 
 Every shot was opened and compared (the B1c-3 ones beside the design's state 2 rendered from index.html; the carried ones beside #11 ix:6374, #49 ix:3885 and B1c-2's own shots): the findings F-1 … F-5 above are fixed; the kept deviations are listed above. Re-reviewed B1c-2 shots that B1c-3 changes: `48-unknown-program` (F1's banner — its address now inline, F-1), `48-approval-reauth` (F6's banner, "NOC delegated · 0.5"), `10-dapp` (the unsigned headline "0.000005001 SOL" — the positive control of F-4), `46-sign-null` (Q26 as a danger banner under #46's title — Task 6's ruling kept), and all eighteen #47 shots after F-5 (the gate line 8 px clear of the cut row on each).
 
@@ -10004,18 +10246,18 @@ Every shot was opened and compared (the B1c-3 ones beside the design's state 2 r
 
 | id | the change | the test that turns red | observed |
 |---|---|---|---|
-| M8a | app.css: the `.s9-flag-banner .meta .addr-groups` rule dropped (F-1) | visual B1c-3: `metaInline(unlimited)` | tsc 0; 1 failed (`toEqual(['inline', '11px'])`, l. 479) |
-| M8b | app.css: the red CTA's nowrap rule dropped (F-2) | visual B1c-3: `oneLine(approveUnlimited)` | tsc 0; 1 failed (`Expected: 1, Received: 2`, l. 473) |
-| M8c | app.css: `.app-tx-ix > .row > .k` dropped (F-3) | visual B1c-3: "Program 1" on one line | tsc 0; 1 failed (`Expected: 1, Received: 2`, l. 640) |
-| M8d | reauth.ts: `const plain = d.overrides.length >= 0` (F-4 dropped whole) | reauthScreen: both override tests; visual B1c-3: `#ra-amount-row` hidden | tsc 0; vitest 2 failed / 52 passed; playwright 1 failed (`Received: visible`, l. 555) |
-| M8e | reauth.ts: the allowance condition dropped (`plain` = no override only) | reauthScreen: "a dApp’s override or allowance …" (the `approval`-only case) | tsc 0; 1 failed / 53 passed |
-| M8f | reauth.ts: the override condition dropped (`plain` = no allowance only) | reauthScreen: "a dApp’s override: Q33’s line …" (the `override`-only F4 case) | tsc 0; 1 failed / 53 passed |
-| M8g | app.css: `.app-pending-strip` dropped from the strip gutter selector (Task 6's carried item) | visual carried: the strip wholly in the popup | tsc 0; 1 failed (`viewport ratio 0.961…`, l. 726) |
-| M8h | app.css: Tensor's `.s9-origin-card` tile back to Task 5's cyan (`#00DBFF → #0066FF`) | visual carried: `[on47, on48]` equal to #49's | tsc 0; 1 failed (l. 764) |
-| M8i | Sign.tsx: Q26 back to the lede `<p>` (Task 5's) | visual #46: `46-sign-null`'s banner head | tsc 0; 1 failed (element not found, l. 261) |
-| M8j | app.css: the `.app-approve > .s9-gate-status` rule dropped (F-5, the overlap back) | connect.test.tsx: the gate line's computed style; visual #47 and carried: `gateClear` | tsc 0; vitest 1 failed / 26 passed (`expected [ '0px', '', '' ]`); playwright 2 failed (`the gate line's text 609 below the scroll area's last painted text 609`, `Received: 0`) |
+| M8a | app.css: the `.s9-flag-banner .meta .addr-groups` rule dropped (F-1) | visual B1c-3: `metaInline(unlimited)` | tsc 0; 1 failed (`toEqual(['inline', '11px'])`, l. 479) — **rev 2:** tsc 0; 1 failed (l. 479) |
+| M8b | app.css: the red CTA's nowrap rule dropped (F-2) | visual B1c-3: `oneLine(approveUnlimited)` | tsc 0; 1 failed (`Expected: 1, Received: 2`, l. 473) — **rev 2:** tsc 0; 1 failed (l. 473) |
+| M8c | app.css: `.app-tx-ix > .row > .k` dropped (F-3) | visual B1c-3: "Program 1" on one line | tsc 0; 1 failed (`Expected: 1, Received: 2`, l. 640) — **rev 2:** tsc 0; 1 failed (l. 642) |
+| M8d | reauth.ts: `const plain = d.overrides.length >= 0` (F-4 dropped whole) | reauthScreen: both override tests; visual B1c-3: `#ra-amount-row` hidden | tsc 0; vitest 2 failed / 52 passed; playwright 1 failed (`Received: visible`, l. 555) — **rev 2:** tsc 0; vitest 2 failed / 52 passed; playwright 1 failed (l. 555) |
+| M8e | reauth.ts: the allowance condition dropped (`plain` = no override only) | reauthScreen: "a dApp’s override or allowance …" (the `approval`-only case) | tsc 0; 1 failed / 53 passed — **rev 2:** tsc 0; 1 failed / 53 passed |
+| M8f | reauth.ts: the override condition dropped (`plain` = no allowance only) | reauthScreen: "a dApp’s override: Q33’s line …" (the `override`-only F4 case) | tsc 0; 1 failed / 53 passed — **rev 2:** tsc 0; 1 failed / 53 passed |
+| M8g | app.css: `.app-pending-strip` dropped from the strip gutter selector (Task 6's carried item) | visual carried: the strip wholly in the popup | tsc 0; 1 failed (`viewport ratio 0.961…`, l. 726) — **rev 2:** tsc 0; 1 failed (l. 728, ratio 0.961…) |
+| M8h | app.css: Tensor's `.s9-origin-card` tile back to Task 5's cyan (`#00DBFF → #0066FF`) | visual carried: `[on47, on48]` equal to #49's | tsc 0; 1 failed (l. 764) — **rev 2:** tsc 0; 1 failed (l. 767) |
+| M8i | Sign.tsx: Q26 back to the lede `<p>` (Task 5's) | visual #46: `46-sign-null`'s banner head | tsc 0; 1 failed (element not found, l. 261) — **rev 2:** tsc 0; 1 failed (l. 265) |
+| M8j | app.css: the `.app-approve > .s9-gate-status` rule dropped (F-5, the overlap back) | connect.test.tsx: the gate line's computed style; visual #47 and carried: `gateClear` | tsc 0; vitest 1 failed / 26 passed (`expected [ '0px', '', '' ]`); playwright 2 failed (`the gate line's text 609 below the scroll area's last painted text 609`, `Received: 0`) — **rev 2:** tsc 0; vitest 1 failed / 26 passed; playwright 2 failed (the gate line 0 px below the painted text) |
 
-Each E2E mutant was built from this task's end tree (`node scripts/build.mjs`) and its test run alone (`npx playwright test <spec> -g '<B1c-3 | carried | #46>'`); the other visual tests in the same run passed.
+Each E2E mutant was built from this task's end tree (`node scripts/build.mjs`) and its test run alone (`npx playwright test <spec> -g '<B1c-3 | carried | #46>'`); the other visual tests in the same run passed. **(rev 2)** All ten re-run on the rev-2 tree: all red, M8c's line moved by two (the visual spec's rev-2 lines).
 
 - [ ] **Step 6: Commit.**
 
@@ -10023,12 +10265,12 @@ Each E2E mutant was built from this task's end tree (`node scripts/build.mjs`) a
 git add docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md extension/e2e/dappPage.ts extension/e2e/visualTab.ts extension/e2e/visual-dapp-tx.spec.ts extension/e2e/visual-dapp.spec.ts extension/src/app/app.css extension/src/approve/__tests__/connect.test.tsx extension/src/unlock/screens/reauth.ts extension/src/unlock/__tests__/reauthScreen.test.ts
 git commit -m "test(extension): B1c-3 Task 8 — the visual pass: every red-flag state of #48, #10 for an override, the carried items; banner meta addresses inline, the red CTA on one line, payload keys unwrapped, no #10 headline for an override or an allowance, #47's gate line clear of the scroll area
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 ```
 
-(Dry run: clone commit `3c478d1` on Task 7's `fd3ebd6`.)
+(Dry run: clone commit `d1456c8` on Task 7's `17b6f81` — rev 2, branch `dry/b1c3-r2`; rev 1: `3c478d1` on `fd3ebd6`.)
 
-**The dry run's consistency pass (the whole plan).** A script (`replay.py`, scratch) extracts every part's blocks in document order — each ````diff block applied with `git apply --recount`, each "Create `path`:" block written whole — onto a fresh `git archive b13bbd1`, and compares the tree with `git archive` of the clone's commit (`diff -r`). Result: tasks 1…N give a tree **identical** to the clone's commit for every N — 1 → `c1d98b4`, 2 → `f1f4a13`, 3 → `82ffdf7`, 4 → `614e54b`, 5 → `afb3e09`, 6 → `05a1f32`, 7 → `fd3ebd6`, 8 → `3c478d1`. (Block counts: task-1 3 diffs + 3 created files; task-2 2 created; task-3 14 diffs; task-4 14 diffs + 1 created; task-5 11; task-6 22; task-7 6; task-8 9.) No part needed fixing.
+**The dry run's consistency pass (the whole plan).** A script (`replay.py`, scratch) extracts every part's blocks in document order — each ````diff block applied with `git apply --recount`, each "Create `path`:" block written whole — onto a fresh `git archive b13bbd1`, and compares the tree with `git archive` of the clone's commit (`diff -r`). Result: tasks 1…N give a tree **identical** to the clone's commit for every N — rev 1: 1 → `c1d98b4`, 2 → `f1f4a13`, 3 → `82ffdf7`, 4 → `614e54b`, 5 → `afb3e09`, 6 → `05a1f32`, 7 → `fd3ebd6`, 8 → `3c478d1`; **rev 2** (branch `dry/b1c3-r2`, the parts regenerated from these commits): 1 → `848e0fa`, 2 → `5183c04`, 3 → `b1e50e4`, 4 → `772cc3f`, 5 → `6fb798a`, 6 → `6191861`, 7 → `17b6f81`, 8 → `d1456c8`, each identical. (Block counts: task-1 3 diffs + 3 created files; task-2 2 created; task-3 14 diffs; task-4 14 diffs + 1 created; task-5 11; task-6 22; task-7 6; task-8 9.) No part needed fixing.
 
 #### Dry-run notes (Task 8)
 
@@ -10044,26 +10286,1650 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - **Flagged to the owner (not changed):** the design file's own `.sticky-bar` CSS renders #48 state 2's bar stacked although its markup is a row.
 - **Deviation: no separate red run of the whole visual pass on Task 7's tree beyond Step 2** — the pass is a review; each finding's red run is its mutation (M8a–M8f).
 - **For the final review:** 25 new shots, 10 mutations; the B1c-3 test is ~51 s. The `lines()` helper counts distinct text-box tops — a label with an icon counts only text.
+- **(rev 2) What changed here:** the visual spec only. F2's lone closeAccount state (`48-warn-non-transfer`) now sends the rent to another address — a close to the account itself is O7's rent only, no banner (E2E B1c-31 pins that side); the shot's destination row and its balance card changed with it (SOL −0.00204428: the fee and the closed account's rent, which now leaves — the truthful number). The F7 state (`48-warn-token-2022`) creates the account's own token accounts, so F2's banner is gone and the state shows two banners (asserted: F7's and Q36's). F10's state (`48-dependent`) asserts Q48's new body ("… Approving it may move any of your balances."); the shot wraps it in the banner without clipping. `ix.closeAccount` takes the destination.
+- **(rev 2) The shots, opened:** all 337 rev-2 shots were compared pixel by pixel with rev 1's end shots; the three #48 states above changed as intended (opened side by side). The other differences are run-to-run and in no file rev 2 touched: random mnemonics and keys (#03/#04/#05), relative dates and clock captions against the wall clock ("last used today" / "yesterday" in #49, #26/#27 times, #42 captions, #54 ages), spinner phases (`48-simulating`, `48-approving`, `46-signing`, `47-connecting`), the transient "Connected · syncing" strip caught or not on #11's shots, and a scroll offset in `47a-acknowledged` — the larger ones opened (`11-pending-strip`, `47a-acknowledged`, `49a-populated`). Between the normal and the `unshare -rn` runs only the two spinner shots of #48 differ.
+
+
+---
+
+### Task 9: The load-sensitive window and popup tests — B1c-1 / B1c-2's approval-window tests (and Task 5's) on the harness's clock, the accounts manager's lock on fake timers; every failure under load reproduced and classified, no product bug
+
+**Spec:** C15 (a confirming CTA held 500 ms after mount, focus and every state change; Reject never held), B1 §3 / spec §3.3 rev 3.6 "Holds" (1.5 s on a red-flag screen), §2.3 (the window polls once a second, R33), §3.1–§3.3 (#46 / #47 / #48), cardinal rule 6 (LockedButton: 500 ms at least); the plan-3 ledger's observation ("Load-sensitive UI tests (B1c-1 / B1c-2, not B1c-3's) … a flake in security UI is a finding: these four depend on real time under load", rev2-changes.md); Task 7's Home #42 fix (a test on the harness's clock, proved by shifting the clock); WRITER.md's standing rule (no waitFor / timeouts to paper over a flake).
+
+**Files:**
+- Test: `extension/src/approve/__tests__/windowHarness.tsx` (the harness's clock: `onHarnessClock`, `elapse`, `nextTimer`, `settled`, `SETTLE_TURNS`)
+- Test: `extension/src/approve/__tests__/connect.test.tsx` (on the harness's clock; M2's call count, I3's and the expiry's poll, ruling (a)'s stale poll made explicit)
+- Test: `extension/src/approve/__tests__/sign.test.tsx` (on the harness's clock; idle · verified and ruling (a) held to the millisecond)
+- Test: `extension/src/approve/__tests__/tx.test.tsx` (on the harness's clock, its async acts through `acted`; I2's poll made explicit; "origin tiles" split into one test per window and one for the brand rules; Task 5's tests without their 15 s timeouts, its holds test without its own timer switching)
+- Test: `extension/src/app/__tests__/AccountsManager.test.tsx` (the trash's lock on fake timers, with its positive control)
+- Not modified: any product file (no product bug — Step 2), `locked.test.tsx`, `useArmed.test.tsx` (already fake timers), the background's harnesses (`pageHarness.ts`, `txHarness.ts`), `core/`, the repository root's `src/`. No new devDependency.
+
+**Interfaces:**
+- Consumes: the approval window's harness (`openWindow`, B1c-1/B1c-2), `POLL_MS` (Approve.tsx), `ARM_MS` / `FLAG_HOLD_MS` (useArmed.ts), `CONFIRM_DELAY_MS` (ui.tsx), `LOCK_MS` (app/ui/LockedButton.tsx); vitest's `vi.useFakeTimers` / `advanceTimersByTimeAsync` / `advanceTimersToNextTimerAsync`.
+- Produces (test code only):
+  ```ts
+  // src/approve/__tests__/windowHarness.tsx
+  export function onHarnessClock(): void;                    // a file's beforeEach: the test's mark, fake setTimeout/clearTimeout/setInterval/clearInterval; afterEach: the mark ended, wait for an open harness act() to close, cleanup(), real timers
+  export const elapse: (ms: number) => Promise<void>;        // the harness's clock moves ms on, inside act
+  export const nextTimer: () => Promise<void>;               // to the next window timer due, that one alone, inside act
+  export const SETTLE_TURNS = 20;                            // real event-loop turns, a count
+  export function settled<T>(check: () => T | Promise<T>): Promise<T>;   // check until it does not throw, the clock still; its last error after SETTLE_TURNS turns
+  export const acted: (fire: () => unknown) => Promise<void>;   // fire (an event, a typed word) inside the harness's act()
+  // openWindow(…).show(), elapse, nextTimer, acted and each settled turn throw once their test has ended (timed out)
+  ```
+  `settled(() => screen.getByText(x))` replaces `screen.findByText(x)`, `settled(fn)` replaces `waitFor(fn)`, `elapse(ARM_MS)` replaces `armedAfter()` (a real 550 ms sleep), `elapse(FLAG_HOLD_MS)` replaces `holdAfter()` (1 550 ms), `elapse(CONFIRM_DELAY_MS)` the real 2 050 ms sleep; a test that needs the window's poll says so (`elapse(POLL_MS)` or `nextTimer()`).
+
+Under CPU load the plan's rev-2 run once failed four approval-window / popup tests that pass idle (`connect.test` M2's busy, `sign.test` idle · verified's 500 ms hold, `tx.test` origin tiles, the accounts manager's "the trash" lock). A flake in security UI is a finding, so each was reproduced on Task 8's tree under an induced load (Step 1) and classified (Step 2): is the product wrong — a hold that can be bypassed or released early under load — or does the test measure the wall clock? The reproduction found the four and sixteen more in the same three window files, all of one kind: **every failure was a hold, the 2-second confirm or the 1 s poll landing *later* in wall time than the test's own real sleep (`ARM_MS + 50`, `FLAG_HOLD_MS + 50`, `CONFIRM_DELAY_MS + 50`, `POLL_MS + 50`, 100 ms) or than an RTL deadline (`waitFor` / `findBy`'s 1 s, re-checked on a 50 ms real interval), or the test's real sleeps and waits adding up past vitest's 5 s budget.** No assertion that a CTA is disabled ever saw it enabled, in any run. The product's holds cannot release early: `useArmed` enables only when the key the timer finished for equals the current key, its `setTimeout(ms)` is started by the effect of the commit that shows that key, and a timer never fires early; `LockedButton` sets its ref and starts `wait(LOCK_MS)` synchronously in the click; the background is the gate for anything a stale window sends (C13). So the tests are wrong, and they are fixed the way Task 7 fixed Home #42: on the harness's clock. One of the four is wrong differently: "origin tiles" waits out no hold — it did five windows' work against the real background in one test, and a starved CPU took it past vitest's 5 s budget (alone at 10 % CPU it timed out on Task 8's tree and, unchanged, on the harness's clock too), so it is split into one test per window.
+
+The approval window's timers — the 1 s poll, C15's 500 ms hold, the red-flag screen's 1.5 s hold, the 2-second confirm, RiskConfirm's hold — are faked for the whole of each window test file (`onHarnessClock`: `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`; `Date` stays real, the background's own clock is `deps.clock` as before). Time moves only when a test says so (`elapse`, `nextTimer`), so a hold is measured exactly: tests that said "held 500 ms" / "held 1.5 s" now click at `ARM_MS − 1` / `FLAG_HOLD_MS − 1` (nothing happens) and at the hold (it does). Waiting for the background and React is `settled`: it re-runs the check after each **real** event-loop turn (a `setTimeout(0)` captured before the fake, inside `act`) with the clock standing still, up to `SETTLE_TURNS` = 20 turns — a count, not a duration: the background in these tests is promise chains (the fake chrome.*, the steered chain, `fakeDeps` whose sleep never resolves), drained whole within a turn however slow the CPU; instrumented, the 172 `settled` calls of the three files passed at turn 0 (64) or 1 (108), idle and under 64 busy loops alike. Tests that relied on the poll implicitly (a `findBy` that waited out the window's next read) now advance to it: `elapse(POLL_MS)` (#47's "2 more requests waiting", the expiry, I3's recovery, I2's sheet) or `nextTimer()` where the next timer must be the poll alone (ruling (a)'s stale poll in #46 and #47: the poll at 2 000 ms, the busy hold already done at 1 500 ms — so the 500 ms re-arm is then measured from that render, exactly). Two tests changed shape slightly: M2 no longer sleeps 100 ms for "decide has long since settled" — it waits (`settled`) for exactly what that meant, the refresh asked and not answered (`[pendingCalls, release === undefined]` = `[2, false]`), and no poll can be call 2 because the window's clock has not reached it; the expiry test says "within one poll" (`elapse(POLL_MS)`) instead of "within two seconds" of real time. The accounts manager's trash test runs its lock part on fake timers (its harness's `drainInFlight` already uses a captured real `setTimeout`): pressed again at `LOCK_MS − 1` (the latest moment inside the lock) nothing opens; at `LOCK_MS` the button is enabled and a press opens the sheet (the positive control the old test lacked). Task 5's two tests that "wait out real 1.5 s holds and carry a 15 s timeout" (and the third carrying `15_000`, "a new simulation empties every typed field") measured the wall clock (real `holdAfter` / confirm / 1 s sleeps): on the harness's clock they need no timeout of their own, and the unlimited-approve test now proves its hold exactly (1 499 ms disabled, 1 500 enabled). Task 5's holds test, which switched fake timers on and off itself around a 400-turn `at(0)` loop, now runs on the file's clock with `settled`.
+
+More harness rules came out of the load proof (Step 4), each found by a deterministic probe and proven by removing it: a test vitest times out **goes on running** (nothing cancels it), and React cannot overlap `act()` scopes — an async `act` holds its scope across a real macrotask (its callback's, then React's own `setImmediate` flush), which is exactly where a timeout lands. (1) `onHarnessClock`'s `afterEach` waits until no harness `act` is open before `cleanup()` (its own `act`). (2) The harness marks each test (an `AsyncLocalStorage` entered in `beforeEach`, the current mark moved on in `afterEach`); `show()`, `elapse`, `nextTimer`, every `settled` turn and the end of every harness `act` throw for an ended test ("this test has already ended (it timed out): stopped here"), so its body cannot show its window into, move the clock of, or open an `act` over the next test. (3) The window files' own async acts go through the harness too: `await act(async () => void x)` became `await acted(() => x)` (23 in `tx.test.tsx`; `connect.test.tsx`'s two synchronous `act(() => …)` hold no macrotask and stay). A file that does not use `onHarnessClock` (`locked.test.tsx`) carries no mark and is not checked. Without them, one CPU-starved test failed up to 30 of the 34 tests of `tx.test.tsx` after it; with them it fails alone.
+
+Nothing waits on the wall clock in these files any more except vitest's own per-test budget (5 s), which now bounds only CPU: idle, the four files together run in 17.1 s instead of 36.1 s (`tx.test.tsx` alone 4.0 s, `connect.test.tsx` 2.6 s, `sign.test.tsx` 2.1 s, wall time with transforms).
+
+- [ ] **Step 1: Reproduce on Task 8's tree — the red run is the induced load.**
+
+There is no product change, so the red run is the old tests on Task 8's tree (`d1456c8`, a `git archive` with `node_modules` linked) under a load that slows the test process's CPU while its timers keep wall time. Two loads, both dry-run aids in the scratch directory (never committed), every process started by them killed by its exact PID / process group afterwards:
+
+```bash
+# load.sh start N / stop: N unpinned busy loops (8 CPUs here), their PIDs recorded and killed by PID.
+for i in $(seq 1 $N); do node -e 'for(;;){}' & echo $! >> load.pids; done      # stop: kill $(cat load.pids)
+# throttled.sh RUN STOP -- cmd: cmd in its own process group, SIGSTOPped STOP ms of every RUN+STOP ms —
+# a CPU starved to RUN/(RUN+STOP) of wall time; an overdue timer fires on resume (it is never early).
+setsid "$@" & leader=$!
+while kill -0 $leader; do kill -STOP -$leader; sleep 0.080; kill -CONT -$leader; sleep 0.020; done
+```
+
+The four files in one run (`npx vitest run src/approve/__tests__/connect.test.tsx src/approve/__tests__/sign.test.tsx src/approve/__tests__/tx.test.tsx src/app/__tests__/AccountsManager.test.tsx`, 122 tests):
+
+| load | Task 8's tree (the old tests) |
+|---|---|
+| idle | 122 passed (35.7 s) |
+| 16 busy loops ×2, 32 ×3 | all passed (the scheduler gives the worker enough; 3 or 8 loops pinned to the worker's CPU with `taskset` also passed) |
+| 48 busy loops ×3 | 1, 1, 2 failed — F3 + approve (5 s timeout) each time, simulating-blocking (5 s timeout) once |
+| 64 busy loops ×5 | 5, 3, 5, 5, 4 failed — M2 (`expected 1 to be +0`, l. 479) ×3, simulating-blocking (5 s timeout) ×5, C15 (`expected true to be false`, l. 297) ×3, F3 + approve (5 s timeout) ×5, F10 ("This step depends on step 2 …" not found, l. 916) ×5, stale (its line not found, l. 227) ×1 |
+| **throttled 20 / 80 ms ×3** | **8, 8, 13 failed** — M2 and the trash among them (below) |
+| throttled 10 / 90 ms, one file alone ×3 | `sign.test.tsx`: 1 failed each run (idle · verified ×2, ruling (a) ×1); `tx.test.tsx -t 'origin tiles'`: timed out ×3 (5.3–5.5 s) |
+
+What each failure measured (from the logs; the line numbers are Task 8's):
+
+| test | failure under load | what depended on real time |
+|---|---|---|
+| **connect "M2: busy … until the post-decide refresh resolves"** (the ledger's `connect.test` busy) | `closed.n` 1, expected 0 (l. 479); once "Connecting…" never seen (l. 473) | the gate holds dApp.pending call **2**, assumed to be `decide`'s refresh; ≥ 1 s of wall time passed between mount and the click (the find, the real 550 ms sleep, renders), so the window's **real 1 s poll** was call 2 — gated — and the real refresh (call 3) went straight through: busy cleared and the window closed, correctly for what it was given |
+| **sign "idle · verified … Sign held 500 ms"** (the ledger's 500 ms hold) | `closed.n` 0, expected 1 (l. 43) — the ledger's run; alone, throttled 10 / 90 ms: 2 of 3 runs (the third failed ruling (a) instead) | `armedAfter()` = a real 550 ms sleep racing the 500 ms hold, which starts in `useArmed`'s effect after the commit; under load the hold's timer and React's render of `armed` landed after the test's timer, so the click hit a still-disabled Sign and did nothing |
+| **tx "origin tiles"** | 5 s timeout (l. 335, the ledger's run); alone, throttled 10 / 90 ms: timed out 3 of 3 (5.3–5.5 s) | five windows against the real background in one test — the work of five tests — past vitest's 5 s budget on a starved CPU. No hold is involved: the same test on the harness's clock alone still timed out 3 of 3 (5.2–5.8 s) |
+| **AccountsManager "the trash … pressed again inside the lock, no sheet"** (the ledger's lock test) | the sheet open (`expected <div class="s8-sheet" …> to be null`, l. 469) | "inside the lock" assumed the two presses fall within 500 ms of wall time; between them the test awaited `findByRole` and `waitFor`; under load more than `LOCK_MS` passed, the lock had ended, and the second press opened the sheet as it should |
+| the other sixteen (connect "Connect anyway …", "the 2-second confirm … regains focus", ruling (a); sign ruling (a); tx simulating-blocking, re-authentication, C15, stale, out-of-date, design minors, I2, F3 + approve, F10, the unlimited approve, a new simulation empties the field, the lookalike with a block) | a dialog / "Confirm it's you" not found after a click, a CTA still disabled after the sleep, `closed.n` 0, or the 5 s timeout | the same: a real sleep shorter (by 50 ms) than the hold / confirm it waits out once renders are slow, a `waitFor` deadline (1 s real) racing the 1 s poll, or ~3–7 s of real sleeps (`holdAfter` ×2–3, the 2 s confirm) leaving no CPU headroom in a 5 s budget |
+
+- [ ] **Step 2: Classify — product or test.**
+
+No failure, in any of the twenty-two loaded runs of the old tests (sixteen of the four files, six of one file alone), was a CTA enabled where the test expected it disabled (no `expected false to be true` on a `disabled`): under load every hold, the 2-second confirm and the poll arrived **late**, never early. The product cannot release them early, by construction and by its own tests: `useArmed` returns `armedFor === state`, where `armedFor` is set only by a `setTimeout(ms)` that the effect for that very key started — after the commit that shows the key — and a timer never fires early; a focus restarts it; the comparison is made in the render itself (fix round 2; `useArmed.test.tsx` proves the same-render disarm deterministically). `LockedButton` sets its ref and starts `wait(LOCK_MS)` synchronously in the click and re-enables only after both the floor and the action settle. Whatever a late window sends is judged by the background (C13: `stale`, not-head). So **all four are test bugs** (and the sixteen with them): three measured the wall clock — a real sleep waiting out a real hold, a call count that assumed no poll could happen in time, "inside the lock" assumed of the time between two awaited presses — as did the sixteen (a `waitFor` / `findBy` deadline racing the poll or the background, real sleeps filling a 5 s budget); the fourth, origin tiles, was five tests' work in one. They are fixed on the harness's clock and by splitting origin tiles (Step 3), never by a longer timeout or another `waitFor`.
+
+(One product observation, not changed — Writer notes: under load a poll can supersede `decide`'s own refresh; busy then clears before the newer read lands, and the CTA re-arms after its 500 ms. A click on it then is the background's to refuse, and it does.)
+
+- [ ] **Step 3: The tests on the harness's clock (no product file changes).**
+
+Each block on its own, in order, with `git apply --recount`, onto Task 8's tree. Every `screen.findBy…(x)` became `settled(() => screen.getBy…(x))` and every `waitFor(f)` became `settled(f)` (a balanced-parenthesis rewrite, then the call sites below edited by hand: the polls, the sleeps, M2, I3, the expiry, I2, ruling (a), Task 5's holds test, origin tiles).
+
+Change `extension/src/approve/__tests__/windowHarness.tsx` (the harness's clock and its rules against a timed-out test):
+
+````diff
+diff --git a/extension/src/approve/__tests__/windowHarness.tsx b/extension/src/approve/__tests__/windowHarness.tsx
+index cc2bca1..b4b1f2d 100644
+--- a/extension/src/approve/__tests__/windowHarness.tsx
++++ b/extension/src/approve/__tests__/windowHarness.tsx
+@@ -1,4 +1,5 @@
+-import {render} from '@testing-library/react';
++import {AsyncLocalStorage} from 'node:async_hooks';
++import {act, cleanup, render} from '@testing-library/react';
+ import {ed25519} from '@noble/curves/ed25519.js';
+ import {base58, base64} from '@scure/base';
+ import {GRANTS_KEY} from '../../background/dapp/grants';
+@@ -14,6 +15,74 @@ import {ACCOUNT} from '../../background/__tests__/fixtures';
+ import {openPage, type Page} from '../../background/dapp/__tests__/pageHarness';
+ import {chainReader, newChain, type Chain} from '../../background/dapp/__tests__/txHarness';
+ 
++/**
++ * B1c-3 (plan 3 Task 9): the window's timers — the 1 s poll, C15's 500 ms hold, the red-flag screen's 1.5 s hold, the
++ * 2-second confirm — run on the harness's clock, never the wall clock: a test that slept through a hold in real time
++ * lost the race to it under CPU load (the window's timer and React's render landing after the test's own timer). Time
++ * moves only by `elapse`; `settled` waits for the background and React by real event-loop turns with the clock still.
++ */
++export function onHarnessClock(): void {
++  beforeEach(() => {
++    current += 1;
++    running.enterWith(current);
++    vi.useFakeTimers({toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval']});
++  });
++  afterEach(async () => {
++    current += 1;
++    // React does not support overlapping act() scopes: one still open (a timed-out test's) closes before cleanup's.
++    while (acting > 0) await new Promise<void>(r => realSetTimeout(r, 0));
++    cleanup();
++    vi.useRealTimers();
++  });
++}
++/**
++ * A test vitest timed out goes on running — nothing cancels it. Its next step here (a window shown, the clock moved, a
++ * turn waited), or the end of the act() it was in, throws instead of acting on the tests after it (its own act() scopes
++ * included, which React cannot overlap); without this, one CPU-starved test failed the tests after it in its file.
++ */
++const running = new AsyncLocalStorage<number>();
++let current = 0;
++function stillRunning(): void {
++  const test = running.getStore();
++  if (test !== undefined && test !== current) throw new Error('this test has already ended (it timed out): stopped here');
++}
++let acting = 0;
++const realSetTimeout = globalThis.setTimeout;
++async function inAct(step: () => Promise<unknown>): Promise<void> {
++  stillRunning();
++  acting += 1;
++  try {
++    await act(async () => void (await step()));
++  } finally {
++    acting -= 1;
++  }
++  stillRunning();
++}
++/** `fire` (an event, a typed word) inside act(), its renders flushed — the harness's act, so a timed-out test's one is known. */
++export const acted = (fire: () => unknown): Promise<void> => inAct(async () => void fire());
++/** The harness's clock moves `ms` on: every window timer due by then fires, in order, each render flushed. */
++export const elapse = (ms: number): Promise<void> => inAct(() => vi.advanceTimersByTimeAsync(ms));
++/** The harness's clock moves to the next window timer due and fires it alone (the poll, when no hold is pending). */
++export const nextTimer = (): Promise<void> => inAct(() => vi.advanceTimersToNextTimerAsync());
++/**
++ * Real event-loop turns `settled` gives a check — a count, not a duration: the background's work here is promise chains
++ * (the fake chrome.*, the steered chain), each drained whole in one turn; every check in these files passes within one.
++ */
++export const SETTLE_TURNS = 20;
++/** `check` once it passes (returns without throwing), the clock standing still; its last failure after SETTLE_TURNS turns. */
++export async function settled<T>(check: () => T | Promise<T>): Promise<T> {
++  let last: unknown = new Error('never checked');
++  for (let turn = 0; turn < SETTLE_TURNS; turn++) {
++    try {
++      return await check();
++    } catch (e) {
++      last = e;
++    }
++    await inAct(() => new Promise<void>(r => realSetTimeout(r, 0)));
++  }
++  throw last;
++}
++
+ /** A second real keypair (32 × 0x02): vault.setKeys checks every key. */
+ const SEED2 = new Uint8Array(32).fill(2);
+ const PUB2 = ed25519.getPublicKey(SEED2);
+@@ -80,11 +149,13 @@ export async function openWindow(o: {unlocked?: boolean; chain?: Chain} = {}) {
+     if (r?.accepted !== true) throw new Error(`transaction request not queued: ${JSON.stringify(r)}`);
+     return {page, requestId: String(r.requestId)};
+   };
+-  const show = () =>
+-    render(
++  const show = () => {
++    stillRunning();
++    return render(
+       <div className="app app-window">
+         <Approve client={client} close={() => void (closed.n += 1)} />
+       </div>,
+     );
++  };
+   return {ext, deps, chain, client, closed, sent, connect, sign, signTx, show, unlock: () => handleMessage(ext, {type: 'vault.setKeys', accounts: [ACCOUNT, SECOND]}, {...approve, url: `${ext.extensionOrigin}/unlock.html`}, deps)};
+ }
+````
+
+Change `extension/src/approve/__tests__/connect.test.tsx` (#47 on the harness's clock):
+
+````diff
+diff --git a/extension/src/approve/__tests__/connect.test.tsx b/extension/src/approve/__tests__/connect.test.tsx
+index daacd3e..4d24192 100644
+--- a/extension/src/approve/__tests__/connect.test.tsx
++++ b/extension/src/approve/__tests__/connect.test.tsx
+@@ -1,5 +1,5 @@
+ // @vitest-environment happy-dom
+-import {act, cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
++import {act, cleanup, fireEvent, render, screen, within} from '@testing-library/react';
+ import {readFileSync} from 'node:fs';
+ import {join} from 'node:path';
+ import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
+@@ -14,13 +14,12 @@ import {Approve, POLL_MS} from '../Approve';
+ import {ARM_MS} from '../useArmed';
+ import {CONFIRM_DELAY_MS} from '../ui';
+ import {pendingOf, type ApproveClient} from '../client';
+-import {SECOND, openWindow} from './windowHarness';
++import {SECOND, elapse, nextTimer, onHarnessClock, openWindow, settled} from './windowHarness';
+ 
+ const SELECTORS = selectorsOf(UI_SHEETS);
+ const text = (sel: string) => document.querySelector(sel)?.textContent ?? null;
+ const cta = (name: string | RegExp) => screen.getByRole('button', {name});
+-const armedAfter = () => new Promise(r => setTimeout(r, ARM_MS + 50));
+-afterEach(() => cleanup());
++onHarnessClock();
+ 
+ // Spec §3.1 (#47, index.html ix:17686-18261), §4.3 and C12, C15 — the approval window against the real background.
+ describe('#47 47a — a verified origin', () => {
+@@ -29,7 +28,7 @@ describe('#47 47a — a verified origin', () => {
+     await w.ext.local.set(SETTINGS_KEY, {selectedAccount: 1});
+     await w.connect('https://jup.ag');
+     w.show();
+-    await screen.findByText('Connect to Jupiter?');
++    await settled(() => screen.getByText('Connect to Jupiter?'));
+     expect(text('.top-bar .title')).toBe('Connection request');
+     expect(document.querySelector('.top-bar .title')?.className).toBe('title noc-overline app-dim');
+     expect(screen.getByText('Connecting lets the dApp see your public address. It does not move funds. Every transaction will still ask for your approval.')).toBeTruthy();
+@@ -66,7 +65,7 @@ describe('#47 47a — a verified origin', () => {
+     const w = await openWindow();
+     const {requestId} = await w.connect('https://jup.ag');
+     w.show();
+-    await screen.findByText('Connect to Jupiter?');
++    await settled(() => screen.getByText('Connect to Jupiter?'));
+     fireEvent.click(cta('Connect'));
+     expect(screen.getByText('Read the permissions above before connecting')).toBeTruthy();
+     expect(screen.getByRole('checkbox').className).toBe('s9-ack-row app-shake');
+@@ -80,17 +79,17 @@ describe('#47 47a — a verified origin', () => {
+     const w = await openWindow();
+     const {page, requestId} = await w.connect('https://jup.ag');
+     w.show();
+-    await screen.findByText('Connect to Jupiter?');
++    await settled(() => screen.getByText('Connect to Jupiter?'));
+     fireEvent.click(screen.getByRole('checkbox'));
+     expect(screen.getByRole('checkbox').textContent).toBe('Permissions acknowledgedConnect is now enabled');
+     expect(document.querySelector('.s9-gate-status')?.className).toBe('s9-gate-status is-ready');
+     expect(text('.s9-gate-status')).toBe('Ready to connect');
+     const connect = cta('Connect');
+     expect([connect.className, (connect as HTMLButtonElement).disabled]).toEqual(['btn btn-primary app-cta-wide', true]);
+-    await armedAfter();
++    await elapse(ARM_MS);
+     expect((cta('Connect') as HTMLButtonElement).disabled).toBe(false);
+     fireEvent.click(cta('Connect'));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect(page.answersFor(requestId)).toEqual([{requestId, result: {accounts: [ACCOUNT.publicKey]}}]);
+     expect((await readDappSession(w.ext)).grants.map(g => [g.origin, g.scope])).toEqual([['https://jup.ag', 'session']]);
+   });
+@@ -99,14 +98,14 @@ describe('#47 47a — a verified origin', () => {
+     const w = await openWindow();
+     await w.connect('https://jup.ag');
+     w.show();
+-    await screen.findByText('Connect to Jupiter?');
++    await settled(() => screen.getByText('Connect to Jupiter?'));
+     fireEvent.change(screen.getByRole('combobox'), {target: {value: '1'}});
+     expect(document.querySelector('.s9-perm-row .sec')?.textContent).toBe(`${SECOND.publicKey.slice(0, 4)}…${SECOND.publicKey.slice(-4)} — never your seed or private key`);
+     fireEvent.click(screen.getAllByRole('radio')[1]!);
+     fireEvent.click(screen.getByRole('checkbox'));
+-    await armedAfter();
++    await elapse(ARM_MS);
+     fireEvent.click(cta('Connect'));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect(((await w.ext.local.get(GRANTS_KEY)) as Grant[]).map(g => [g.origin, g.account, g.scope])).toEqual([['https://jup.ag', SECOND.publicKey, 'persistent']]);
+   });
+ });
+@@ -116,7 +115,7 @@ describe('#47 47b — an unknown origin: two gates, in order; session only (C12)
+     const w = await openWindow();
+     await w.connect('https://solana-mint-hub.xyz');
+     w.show();
+-    await screen.findByText('Connect to this app?');
++    await settled(() => screen.getByText('Connect to this app?'));
+     expect([text('.top-bar .title'), document.querySelector('.top-bar .title')?.className]).toEqual(['Unknown origin', 'title noc-overline noc-warning']);
+     expect(screen.getByText("We don't recognize this domain. That doesn't always mean it's bad — but proceed with care.")).toBeTruthy();
+     expect([text('.s9-origin-card .ico'), text('.s9-origin-card .name'), text('.s9-origin-card .dom'), text('.s9-origin-card .badge')]).toEqual(['?', 'solana-mint-hub', 'solana-mint-hub.xyz', 'Unknown']);
+@@ -147,9 +146,9 @@ describe('#47 47b — an unknown origin: two gates, in order; session only (C12)
+     expect(document.querySelector('.app-approve-lede i')?.textContent).toBe('for this session only');
+     expect(text('.s9-gate-status')).toBe('Ready to connect · for this session');
+     expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
+-    await armedAfter();
++    await elapse(ARM_MS);
+     fireEvent.click(cta('Connect for this session'));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect((await readDappSession(w.ext)).grants.map(g => [g.origin, g.scope])).toEqual([['https://solana-mint-hub.xyz', 'session']]);
+   });
+ 
+@@ -157,7 +156,7 @@ describe('#47 47b — an unknown origin: two gates, in order; session only (C12)
+     const w = await openWindow();
+     await w.connect('https://xn--bcher-kva.example');
+     w.show();
+-    expect(await screen.findByText('This address uses international characters: xn--bcher-kva.example')).toBeTruthy();
++    expect(await settled(() => screen.getByText('This address uses international characters: xn--bcher-kva.example'))).toBeTruthy();
+   });
+ });
+ 
+@@ -166,7 +165,7 @@ describe('#47 lookalike — the flipped bar, the 2-second confirm, 47b’s gates
+     const w = await openWindow();
+     const {page, requestId} = await w.connect('https://tensr.trade');
+     w.show();
+-    await screen.findByText('Connect to this app?');
++    await settled(() => screen.getByText('Connect to this app?'));
+     expect([text('.top-bar .title'), document.querySelector('.top-bar .title')?.className]).toEqual(['Suspicious origin', 'title noc-overline noc-danger']);
+     expect(text('.app-approve-lede')).toBe('Connecting lets the dApp see your public address.');
+     expect([text('.s9-origin-card .name'), text('.s9-origin-card .dom'), text('.s9-origin-card .badge')]).toEqual(['tensr', 'tensr.trade', 'Lookalike']);
+@@ -179,7 +178,7 @@ describe('#47 lookalike — the flipped bar, the 2-second confirm, 47b’s gates
+     expect(cta('Connect anyway (not recommended)').className).toBe('btn btn-tertiary noc-body-sm app-dim');
+     expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
+     fireEvent.click(report);
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
+     expect(await w.ext.local.get(BLOCKED_KEY)).toEqual([{host: 'tensr.trade', blockedAt: w.deps.clock.t, imitates: 'tensor.trade'}]);
+   });
+@@ -188,7 +187,7 @@ describe('#47 lookalike — the flipped bar, the 2-second confirm, 47b’s gates
+     const w = await openWindow();
+     await w.connect('https://xn--phntom-4nf.app');
+     w.show();
+-    await screen.findByText('Connect to this app?');
++    await settled(() => screen.getByText('Connect to this app?'));
+     expect(text('.s9-domain-warn .body')).toBe('This domain is not phantom.appThe "\u0430" in this URL is a Cyrillic letter (U+0430), not a Latin "a" (U+0061). The Punycode form is xn--phntom-4nf.app.');
+     expect([...document.querySelectorAll('.s9-domain-warn code')].map(c => c.textContent)).toEqual(['\u0430', 'xn--phntom-4nf.app']);
+     expect(text('.s9-origin-card .name')).toBe('xn--phntom-4nf');
+@@ -198,13 +197,13 @@ describe('#47 lookalike — the flipped bar, the 2-second confirm, 47b’s gates
+     const w = await openWindow();
+     const {page, requestId} = await w.connect('https://phantom.vercel.app');
+     w.show();
+-    await screen.findByText('Connect to this app?');
++    await settled(() => screen.getByText('Connect to this app?'));
+     expect(text('.top-bar .title')).toBe('Suspicious origin');
+     expect([text('.s9-origin-card .name'), text('.s9-origin-card .dom'), text('.s9-origin-card .badge')]).toEqual(['vercel', 'phantom.vercel.app', 'Lookalike']);
+     expect(text('.s9-domain-warn .body')).toBe('This domain is not phantom.appIt looks like phantom.app but is a different site.');
+     expect(document.querySelector('.s9-ack-row')).toBeNull();
+     fireEvent.click(cta('Reject and report'));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
+     expect(await w.ext.local.get(BLOCKED_KEY)).toEqual([{host: 'phantom.vercel.app', blockedAt: w.deps.clock.t, imitates: 'phantom.app'}]);
+   });
+@@ -213,23 +212,23 @@ describe('#47 lookalike — the flipped bar, the 2-second confirm, 47b’s gates
+     const w = await openWindow();
+     await w.connect('https://tensr.trade');
+     w.show();
+-    await screen.findByText('Connect to this app?');
+-    await armedAfter();
++    await settled(() => screen.getByText('Connect to this app?'));
++    await elapse(ARM_MS);
+     fireEvent.click(cta('Connect anyway (not recommended)'));
+-    const sheet = await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
++    const sheet = await settled(() => screen.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
+     const understandBtn = within(sheet).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement;
+     expect(understandBtn.disabled).toBe(true);
+     // Fix round 1, M1: btn-destructive (design-system.css), not the duplicate app-btn-danger class — the duplicate's
+     // specificity tied .btn[disabled] and so lost to source order, leaving it looking live while held/disabled.
+     expect(understandBtn.className).toBe('btn btn-destructive app-nowrap');
+     fireEvent.click(within(sheet).getByRole('button', {name: 'Cancel'}));
+-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+-    await armedAfter();
++    await settled(() => expect(screen.queryByRole('dialog')).toBeNull());
++    await elapse(ARM_MS);
+     fireEvent.click(cta('Connect anyway (not recommended)'));
+-    const again = await screen.findByRole('dialog');
+-    await new Promise(r => setTimeout(r, CONFIRM_DELAY_MS + 50));
++    const again = await settled(() => screen.getByRole('dialog'));
++    await elapse(CONFIRM_DELAY_MS);
+     fireEvent.click(within(again).getByRole('button', {name: 'I understand the risk'}));
+-    await waitFor(() => expect(screen.getAllByRole('checkbox')).toHaveLength(2));
++    await settled(() => expect(screen.getAllByRole('checkbox')).toHaveLength(2));
+     expect(text('.top-bar .title')).toBe('Suspicious origin');
+     expect(document.querySelector('.s9-domain-warn')).not.toBeNull();
+     expect(text('.s9-flag-banner.warn .head')).toBe("This domain isn't on the verified list");
+@@ -244,7 +243,7 @@ describe('#47 — the cap, the cooldown offer, the window chrome (§2.1, C14, Q1
+     await w.ext.local.set(GRANTS_KEY, Array.from({length: MAX_GRANTS}, (_, i) => ({origin: `https://s${i}.test`, account: ACCOUNT.publicKey, scope: 'persistent', connectedAt: 1, lastUsedAt: 1, recent: []})));
+     await w.connect('https://jup.ag');
+     w.show();
+-    expect(await screen.findByText('You have 200 connected apps. Revoke one in Settings first.')).toBeTruthy();
++    expect(await settled(() => screen.getByText('You have 200 connected apps. Revoke one in Settings first.'))).toBeTruthy();
+     expect(screen.queryByRole('button', {name: /Connect/})).toBeNull();
+     expect(document.querySelectorAll('.sticky-bar button')).toHaveLength(1);
+     expect(cta('Reject')).toBeTruthy();
+@@ -255,8 +254,8 @@ describe('#47 — the cap, the cooldown offer, the window chrome (§2.1, C14, Q1
+     await w.ext.local.set(LIMITS_KEY, {rejections: [{key: 'host:dapp.test', at: w.deps.clock.t}, {key: 'host:dapp.test', at: w.deps.clock.t}], cooldowns: [], windows: [], notice: false});
+     await w.connect('https://dapp.test');
+     w.show();
+-    fireEvent.click(await screen.findByRole('button', {name: 'Block this site'}));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    fireEvent.click(await settled(() => screen.getByRole('button', {name: 'Block this site'})));
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect(((await w.ext.local.get(BLOCKED_KEY)) as {host: string}[]).map(b => b.host)).toEqual(['dapp.test']);
+   });
+ 
+@@ -266,10 +265,12 @@ describe('#47 — the cap, the cooldown offer, the window chrome (§2.1, C14, Q1
+     await w.connect('https://a.test');
+     await w.ext.local.set(LIMITS_KEY, {rejections: [], cooldowns: [], windows: [], notice: true});
+     w.show();
+-    expect(await screen.findByText('1 more request waiting')).toBeTruthy();
++    expect(await settled(() => screen.getByText('1 more request waiting'))).toBeTruthy();
+     expect(screen.getByText('Too many requests from sites in the last few minutes — some were declined without asking you.')).toBeTruthy();
+     await w.connect('https://b.test');
+-    expect(await screen.findByText('2 more requests waiting', {}, {timeout: 2500})).toBeTruthy();
++    // The window's next poll (B1c-3 Task 9: on the harness's clock).
++    await elapse(POLL_MS);
++    expect(await settled(() => screen.getByText('2 more requests waiting'))).toBeTruthy();
+     // The background's own flag is one-shot (cleared on the read that first saw it); this is still the same head
+     // (jup.ag), so the window must still be showing it — not only on the poll that first saw it.
+     expect(screen.getByText('Too many requests from sites in the last few minutes — some were declined without asking you.')).toBeTruthy();
+@@ -283,10 +284,10 @@ describe('#47 — the cap, the cooldown offer, the window chrome (§2.1, C14, Q1
+     await w.connect('https://a.test');
+     await w.ext.local.set(LIMITS_KEY, {rejections: [], cooldowns: [], windows: [], notice: true});
+     w.show();
+-    await screen.findByText('Connect to Jupiter?');
++    await settled(() => screen.getByText('Connect to Jupiter?'));
+     expect(screen.getByText('Too many requests from sites in the last few minutes — some were declined without asking you.')).toBeTruthy();
+     fireEvent.click(cta('Reject'));
+-    await screen.findByText('Connect to this app?');
++    await settled(() => screen.getByText('Connect to this app?'));
+     expect(screen.queryByText('Too many requests from sites in the last few minutes — some were declined without asking you.')).toBeNull();
+   });
+ 
+@@ -295,13 +296,13 @@ describe('#47 — the cap, the cooldown offer, the window chrome (§2.1, C14, Q1
+     const w = await openWindow();
+     const {page, requestId} = await w.connect('https://jup.ag');
+     w.show();
+-    await screen.findByText('Connect to Jupiter?');
++    await settled(() => screen.getByText('Connect to Jupiter?'));
+     await page.ask({type: 'page.disconnect', id: 'd1'});
+     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
+     fireEvent.click(screen.getByRole('checkbox'));
+-    await armedAfter();
++    await elapse(ARM_MS);
+     fireEvent.click(cta('Connect'));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
+     expect((await readDappSession(w.ext)).grants).toEqual([]);
+   });
+@@ -311,12 +312,12 @@ describe('#47 — the cap, the cooldown offer, the window chrome (§2.1, C14, Q1
+     const first = await w.connect('https://jup.ag');
+     const second = await w.connect('https://a.test');
+     w.show();
+-    await screen.findByText('Connect to Jupiter?');
++    await settled(() => screen.getByText('Connect to Jupiter?'));
+     fireEvent.click(screen.getByRole('button', {name: 'Close'}));
+-    await screen.findByText('Connect to this app?');
++    await settled(() => screen.getByText('Connect to this app?'));
+     expect(first.page.answersFor(first.requestId)).toEqual([{requestId: first.requestId, error: 'rejected'}]);
+     fireEvent.click(cta('Reject'));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect(second.page.answersFor(second.requestId)).toEqual([{requestId: second.requestId, error: 'rejected'}]);
+   });
+ });
+@@ -326,20 +327,20 @@ describe('C15 — no CTA focused, held 500 ms after focus and each state change,
+     const w = await openWindow();
+     await w.connect('https://jup.ag');
+     w.show();
+-    await screen.findByText('Connect to Jupiter?');
++    await settled(() => screen.getByText('Connect to Jupiter?'));
+     expect(document.activeElement).toBe(document.body);
+     expect((cta('Reject') as HTMLButtonElement).disabled).toBe(false);
+     fireEvent.click(screen.getByRole('checkbox'));
+     expect((cta('Connect') as HTMLButtonElement).disabled).toBe(true);
+-    await armedAfter();
++    await elapse(ARM_MS);
+     expect((cta('Connect') as HTMLButtonElement).disabled).toBe(false);
+     act(() => void window.dispatchEvent(new Event('focus')));
+     expect((cta('Connect') as HTMLButtonElement).disabled).toBe(true);
+-    await armedAfter();
++    await elapse(ARM_MS);
+     // A scope change is a state change too.
+     fireEvent.click(screen.getAllByRole('radio')[1]!);
+     expect((cta('Connect') as HTMLButtonElement).disabled).toBe(true);
+-    await armedAfter();
++    await elapse(ARM_MS);
+     // Enter on the focused Connect: its default action (the click) is prevented.
+     cta('Connect').focus();
+     expect(fireEvent.keyDown(cta('Connect'), {key: 'Enter'})).toBe(false);
+@@ -358,17 +359,17 @@ describe('review 1: the confirm sheet (L4), the port on the card (L5), an expiry
+     const w = await openWindow();
+     await w.connect('https://tensr.trade');
+     w.show();
+-    await screen.findByText('Connect to this app?');
+-    await armedAfter();
++    await settled(() => screen.getByText('Connect to this app?'));
++    await elapse(ARM_MS);
+     fireEvent.click(cta('Connect anyway (not recommended)'));
+-    const sheet = await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
++    const sheet = await settled(() => screen.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
+     expect(document.activeElement).toBe(sheet);
+-    await new Promise(r => setTimeout(r, CONFIRM_DELAY_MS + 50));
++    await elapse(CONFIRM_DELAY_MS);
+     const understand = () => within(sheet).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement;
+     expect(understand().disabled).toBe(false);
+     act(() => void window.dispatchEvent(new Event('focus')));
+     expect(understand().disabled).toBe(true);
+-    await armedAfter();
++    await elapse(ARM_MS);
+     expect(understand().disabled).toBe(false);
+   });
+ 
+@@ -376,13 +377,13 @@ describe('review 1: the confirm sheet (L4), the port on the card (L5), an expiry
+     const w = await openWindow();
+     await w.connect('https://dapp.test:8443');
+     w.show();
+-    await screen.findByText('Connect to this app?');
++    await settled(() => screen.getByText('Connect to this app?'));
+     expect(text('.s9-origin-card .dom')).toBe('dapp.test:8443');
+     cleanup();
+     const v = await openWindow();
+     await v.connect('https://dapp.test');
+     v.show();
+-    await screen.findByText('Connect to this app?');
++    await settled(() => screen.getByText('Connect to this app?'));
+     expect(text('.s9-origin-card .dom')).toBe('dapp.test');
+   });
+ 
+@@ -390,9 +391,11 @@ describe('review 1: the confirm sheet (L4), the port on the card (L5), an expiry
+     const w = await openWindow();
+     const {page, requestId} = await w.connect('https://jup.ag');
+     w.show();
+-    await screen.findByText('Connect to Jupiter?');
++    await settled(() => screen.getByText('Connect to Jupiter?'));
+     w.deps.clock.t += REQUEST_TTL_MS;
+-    await waitFor(() => expect(w.closed.n).toBe(1), {timeout: 2_000});
++    // Within one poll (B1c-3 Task 9: the window's poll on the harness's clock).
++    await elapse(POLL_MS);
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'timeout'}]);
+   });
+ });
+@@ -406,7 +409,7 @@ describe('the in-progress state and the client’s shape check', () => {
+     const {runtimeFor} = await import('../../background/dapp/ports');
+     await w.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => (e.requestId === requestId ? {...e, state: 'deciding', decidedBy: runtimeFor(w.ext).instance, decidingAt: w.deps.clock.t} : e))});
+     w.show();
+-    const busy = await screen.findByRole('button', {name: 'Connecting…'});
++    const busy = await settled(() => screen.getByRole('button', {name: 'Connecting…'}));
+     expect((busy as HTMLButtonElement).disabled).toBe(true);
+     // Fix round 1, I2: the busy-CTA class that keeps the accent fill against design-system.css's `.btn[disabled]`
+     // (happy-dom cannot compute the cascade itself — the class is the assertion; Task 12's visual pass shoots it).
+@@ -442,8 +445,12 @@ describe('fix round 1 — I3: a null first read still polls; M2: busy clears onl
+         <Approve client={flaky} close={() => undefined} />
+       </div>,
+     );
+-    expect(await screen.findByText('Connect to Jupiter?', {}, {timeout: 2_000})).toBeTruthy();
+-    expect(calls).toBeGreaterThanOrEqual(2);
++    // The first read answered null: blank, until the window's own poll (B1c-3 Task 9: on the harness's clock).
++    await settled(() => expect(calls).toBe(1));
++    expect(document.querySelector('.app-approve')?.getAttribute('aria-busy')).toBe('true');
++    await elapse(POLL_MS);
++    expect(await settled(() => screen.getByText('Connect to Jupiter?'))).toBeTruthy();
++    expect(calls).toBe(2);
+   });
+ 
+   it('M2: busy (Connect shows "Connecting…", disabled) stays true until the post-decide refresh resolves — not as soon as dapp.decide itself does', async () => {
+@@ -466,19 +473,20 @@ describe('fix round 1 — I3: a null first read still polls; M2: busy clears onl
+         <Approve client={gated} close={() => void (closed.n += 1)} />
+       </div>,
+     );
+-    await screen.findByText('Connect to Jupiter?');
++    await settled(() => screen.getByText('Connect to Jupiter?'));
+     fireEvent.click(screen.getByRole('checkbox'));
+-    await armedAfter();
++    await elapse(ARM_MS);
+     fireEvent.click(cta('Connect'));
+-    await waitFor(() => expect(screen.queryByRole('button', {name: 'Connecting…'})).not.toBeNull());
+-    // client.decide() itself (not gated) has long since settled; the gated refresh has not — busy must still hold.
+-    await new Promise(r => setTimeout(r, 100));
++    await settled(() => expect(screen.queryByRole('button', {name: 'Connecting…'})).not.toBeNull());
++    // client.decide() itself (not gated) has settled and its refresh is asked; that refresh has not answered — busy must
++    // still hold. (B1c-3 Task 9: no poll can be call 2 — the window's clock has not reached its first poll.)
++    await settled(() => expect([pendingCalls, release === undefined]).toEqual([2, false]));
+     const busy = screen.getByRole('button', {name: 'Connecting…'});
+     expect((busy as HTMLButtonElement).disabled).toBe(true);
+     expect((cta('Reject') as HTMLButtonElement).disabled).toBe(true);
+     expect(closed.n).toBe(0);
+     release?.();
+-    await waitFor(() => expect(closed.n).toBe(1));
++    await settled(() => expect(closed.n).toBe(1));
+   });
+ });
+ 
+@@ -489,28 +497,33 @@ describe('controller ruling (a): busy is in the C15 key for #47', () => {
+     const w = await openWindow();
+     const {requestId} = await w.connect('https://jup.ag');
+     w.show();
+-    await screen.findByText('Connect to Jupiter?');
++    await settled(() => screen.getByText('Connect to Jupiter?'));
+     fireEvent.click(screen.getByRole('checkbox'));
+-    await armedAfter();
++    await elapse(ARM_MS);
+     expect((cta('Connect') as HTMLButtonElement).disabled).toBe(false);
+     const s = await readDappSession(w.ext);
+     const {DAPP_SESSION_KEY} = await import('../../background/dapp/store');
+     const {runtimeFor} = await import('../../background/dapp/ports');
+     await w.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => (e.requestId === requestId ? {...e, state: 'deciding', decidedBy: runtimeFor(w.ext).instance, decidingAt: w.deps.clock.t} : e))});
+-    await new Promise(r => setTimeout(r, POLL_MS + 50));
+-    await screen.findByRole('button', {name: 'Connecting…'});
++    await elapse(POLL_MS);
++    await settled(() => screen.getByRole('button', {name: 'Connecting…'}));
+     // The stale poll: the background's own state goes back to a plain request (not deciding) with no action from the
+     // user — exactly what a slow, outdated `dapp.pending` resolving late would show. Assert the instant the button
+     // reappears (not after a further sleep): the 500 ms re-arm must not have had time to finish by then.
+     await w.ext.session.set(DAPP_SESSION_KEY, s);
++    // B1c-3 Task 9: the window's own next poll (its only timer left), on the harness's clock.
++    await nextTimer();
+     // Fix round 2: useArmed derives `armed` by comparing the current key to the key the hold last finished for, so
+     // the busy→false key change disarms in the SAME render as the commit. This window-level check is NOT the proof of
+-    // that: findByRole resolves after React has flushed, so FR2-M1 (the old effect-only reset) turns it red only
+-    // about 1 run in 10 (task 9 report). The deterministic proof is useArmed.test.tsx, which FR2-M1 turns red
++    // that: the check runs after React has flushed, so FR2-M1 (the old effect-only reset) turned it red only about
++    // 1 run in 10 on the wall clock (task 9 report) and never on the harness's clock (B1c-3 plan 3 Task 9: 0 of 3
++    // runs). The deterministic proof is useArmed.test.tsx, which FR2-M1 turns red
+     // every run (8/8); this test pins the outcome the window must keep — disabled at once, then re-armed after the hold.
+-    const connect = await screen.findByRole('button', {name: 'Connect'}, {timeout: POLL_MS + 500});
++    const connect = await settled(() => screen.getByRole('button', {name: 'Connect'}));
+     expect((connect as HTMLButtonElement).disabled).toBe(true);
+-    await armedAfter();
++    await elapse(ARM_MS - 1);
++    expect((cta('Connect') as HTMLButtonElement).disabled).toBe(true);
++    await elapse(1);
+     expect((cta('Connect') as HTMLButtonElement).disabled).toBe(false);
+   });
+ });
+@@ -534,7 +547,7 @@ describe('fix round 1, I2: the unacked domain-ack box carries no `.is-acked` (it
+     const w = await openWindow();
+     await w.connect('https://dapp.test');
+     w.show();
+-    await screen.findByText('0 of 2 acknowledgments');
++    await settled(() => screen.getByText('0 of 2 acknowledgments'));
+     const domainAck = screen.getByRole('checkbox', {name: 'I understand this domain is not on the verified list'});
+     expect(domainAck.className).toBe('ack');
+     expect(domainAck.querySelector('.box svg')).toBeTruthy();
+@@ -558,7 +571,7 @@ describe('B1c-3: #47’s gate line keeps a gap below the scroll area’s clip ed
+       const w = await openWindow();
+       await w.connect('https://jup.ag');
+       w.show();
+-      await screen.findByText('Connect to Jupiter?');
++      await settled(() => screen.getByText('Connect to Jupiter?'));
+       const gate = document.querySelector('.s9-gate-status') as HTMLElement;
+       expect(gate.parentElement?.classList.contains('app-approve')).toBe(true);
+       expect(gate.previousElementSibling?.classList.contains('app-approve-scroll')).toBe(true);
+````
+
+Change `extension/src/approve/__tests__/sign.test.tsx` (#46 on the harness's clock):
+
+````diff
+diff --git a/extension/src/approve/__tests__/sign.test.tsx b/extension/src/approve/__tests__/sign.test.tsx
+index 6cd9902..e2b7fb8 100644
+--- a/extension/src/approve/__tests__/sign.test.tsx
++++ b/extension/src/approve/__tests__/sign.test.tsx
+@@ -1,5 +1,5 @@
+ // @vitest-environment happy-dom
+-import {cleanup, fireEvent, screen, waitFor, within} from '@testing-library/react';
++import {fireEvent, screen, within} from '@testing-library/react';
+ import {ed25519} from '@noble/curves/ed25519.js';
+ import {base58, base64} from '@scure/base';
+ import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
+@@ -9,15 +9,14 @@ import {ACCOUNT} from '../../background/__tests__/fixtures';
+ import {POLL_MS} from '../Approve';
+ import {ARM_MS} from '../useArmed';
+ import {CONFIRM_DELAY_MS} from '../ui';
+-import {openWindow} from './windowHarness';
++import {elapse, nextTimer, onHarnessClock, openWindow, settled} from './windowHarness';
+ 
+ const SELECTORS = selectorsOf(UI_SHEETS);
+ const text = (sel: string) => document.querySelector(sel)?.textContent ?? null;
+ const cta = (name: string | RegExp) => screen.getByRole('button', {name});
+-const armedAfter = () => new Promise(r => setTimeout(r, ARM_MS + 50));
+ const siws = (domain: string) =>
+   [`${domain} wants you to sign in with your Solana account:`, ACCOUNT.publicKey, '', 'Sign in to Jupiter.', '', `URI: https://${domain}`, 'Version: 1', 'Chain ID: solana:mainnet', 'Nonce: 4f3a92ceb1d8', 'Issued At: 2026-10-10T09:40:23Z'].join('\n');
+-afterEach(() => cleanup());
++onHarnessClock();
+ 
+ // Spec §3.2 steps 4–7 (#46, index.html ix:17442-17686) and C15, against the real background.
+ describe('#46 sign-message', () => {
+@@ -26,7 +25,7 @@ describe('#46 sign-message', () => {
+     const message = siws('jup.ag');
+     const {page, requestId} = await w.sign('https://jup.ag', message);
+     w.show();
+-    await screen.findByText('Sign this message?');
++    await settled(() => screen.getByText('Sign this message?'));
+     expect([text('.top-bar .title'), document.querySelector('.top-bar .title')?.className]).toEqual(['Signature request', 'title noc-overline app-dim']);
+     expect(text('.app-approve-lede')).toBe('A signature proves you control this wallet. It does not move funds and does not broadcast a transaction.');
+     expect([text('.s9-origin-card .name'), text('.s9-origin-card .dom'), text('.s9-origin-card .badge')]).toEqual(['Jupiter', 'jup.ag', 'Verified']);
+@@ -38,9 +37,13 @@ describe('#46 sign-message', () => {
+     expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
+     const sign = cta('Sign');
+     expect([sign.className, (sign as HTMLButtonElement).disabled, sign.querySelector('svg') !== null]).toEqual(['btn btn-primary app-cta-wide', true, true]);
+-    await armedAfter();
++    // On the harness's clock (B1c-3 Task 9): held to the millisecond, a click inside the hold signs nothing.
++    await elapse(ARM_MS - 1);
+     fireEvent.click(cta('Sign'));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    expect([(cta('Sign') as HTMLButtonElement).disabled, page.answersFor(requestId)]).toEqual([true, []]);
++    await elapse(1);
++    fireEvent.click(cta('Sign'));
++    await settled(() => expect(w.closed.n).toBe(1));
+     const [answer] = page.answersFor(requestId);
+     const {signature, signedMessage} = answer?.result as {signature: string; signedMessage: string};
+     expect(signedMessage).toBe(base64.encode(new TextEncoder().encode(message)));
+@@ -51,7 +54,7 @@ describe('#46 sign-message', () => {
+     const w = await openWindow();
+     await w.sign('https://jup.ag', 'jup.ag asks you to approve the following terms.');
+     w.show();
+-    await screen.findByText('This message includes an authorization');
++    await settled(() => screen.getByText('This message includes an authorization'));
+     expect(text('.s9-struct-alert .body')).toBe("Detected keyword: approve. Even though signing won't broadcast, the dApp may use this signature off-chain to authorize a future action. Read the full message before signing.");
+     expect(text('.s9-struct-alert code')).toBe('approve');
+     expect(text('.s9-msg-card .label')).toBe('Message · with structured-approval flag');
+@@ -64,7 +67,7 @@ describe('#46 sign-message', () => {
+     const w = await openWindow();
+     await w.sign('https://dapp.test', 'Sign in to the test dApp.');
+     w.show();
+-    await screen.findByText('Sign this message?');
++    await settled(() => screen.getByText('Sign this message?'));
+     expect([text('.s9-origin-card .name'), text('.s9-origin-card .badge')]).toEqual(['dapp', 'Unknown']);
+     expect(text('.s9-disclaimer p')).toBe("This won't broadcast or move funds. dapp will use the signature only to verify you own this wallet.");
+   });
+@@ -73,7 +76,7 @@ describe('#46 sign-message', () => {
+     const w = await openWindow();
+     const {page, requestId} = await w.sign('https://tensr.trade', 'Welcome back!\nDomain: ph\u0430ntom.app');
+     w.show();
+-    await screen.findByText('Sign this message?');
++    await settled(() => screen.getByText('Sign this message?'));
+     expect([text('.top-bar .title'), document.querySelector('.top-bar .title')?.className]).toEqual(['Suspicious origin', 'title noc-overline noc-danger']);
+     expect(text('.app-approve-lede')).toBe('A signature proves you control this wallet.');
+     expect(text('.s9-domain-warn .body')).toBe('This domain is not tensor.tradeIt looks like tensor.trade but is a different site.');
+@@ -88,14 +91,14 @@ describe('#46 sign-message', () => {
+     // tests above are the positive control: the same disclaimer does show there).
+     expect(document.querySelector('.s9-disclaimer')).toBeNull();
+     expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
+-    await armedAfter();
++    await elapse(ARM_MS);
+     fireEvent.click(cta('Sign anyway (not recommended)'));
+-    const sheet = await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
++    const sheet = await settled(() => screen.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
+     const understand = within(sheet).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement;
+     expect(understand.disabled).toBe(true);
+-    await new Promise(r => setTimeout(r, CONFIRM_DELAY_MS + 50));
++    await elapse(CONFIRM_DELAY_MS);
+     fireEvent.click(within(sheet).getByRole('button', {name: 'I understand the risk'}));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect(page.answersFor(requestId)[0]).toHaveProperty('result');
+   });
+ 
+@@ -103,10 +106,10 @@ describe('#46 sign-message', () => {
+     const w = await openWindow();
+     const {page, requestId} = await w.sign('https://dapp.test', siws('jup.ag'));
+     w.show();
+-    expect(await screen.findByText('This sign-in message names jup.ag, not this site (dapp.test).')).toBeTruthy();
++    expect(await settled(() => screen.getByText('This sign-in message names jup.ag, not this site (dapp.test).'))).toBeTruthy();
+     expect(screen.getAllByRole('button').map(b => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Close', 'Reject']);
+     fireEvent.click(cta('Reject'));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
+   });
+ 
+@@ -119,7 +122,7 @@ describe('#46 sign-message', () => {
+     const s = await readDappSession(w.ext);
+     await w.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => (e.requestId === requestId ? {...e, state: 'deciding', decidedBy: runtimeFor(w.ext).instance, decidingAt: w.deps.clock.t} : e))});
+     w.show();
+-    await screen.findByText('This sign-in message names jup.ag, not this site (dapp.test).');
++    await settled(() => screen.getByText('This sign-in message names jup.ag, not this site (dapp.test).'));
+     expect((cta('Reject') as HTMLButtonElement).disabled).toBe(true);
+     expect((screen.getByRole('button', {name: 'Close'}) as HTMLButtonElement).disabled).toBe(true);
+   });
+@@ -131,7 +134,7 @@ describe('#46 sign-message', () => {
+     const w = await openWindow();
+     const {page, requestId} = await w.sign('https://tensr.trade', siws('jup.ag'));
+     w.show();
+-    await screen.findByText('Sign this message?');
++    await settled(() => screen.getByText('Sign this message?'));
+     // Both banners show (the lookalike's own, then Q20) — neither one silently wins over the other.
+     expect([...document.querySelectorAll('.s9-domain-warn .body')].map(e => e.textContent)).toEqual([
+       'This domain is not tensor.tradeIt looks like tensor.trade but is a different site.',
+@@ -143,7 +146,7 @@ describe('#46 sign-message', () => {
+     expect(screen.queryByRole('button', {name: 'Sign anyway (not recommended)'})).toBeNull();
+     expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
+     fireEvent.click(cta('Reject and report'));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
+   });
+ 
+@@ -156,7 +159,7 @@ describe('#46 sign-message', () => {
+     const {SECOND} = await import('./windowHarness');
+     await setSession(w.ext, [SECOND]);
+     w.show();
+-    await screen.findByText('Sign this message?');
++    await settled(() => screen.getByText('Sign this message?'));
+     expect(screen.getAllByRole('button').map(b => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Close', 'Reject']);
+     expect(document.querySelector('.s9-msg-preview')).toBeNull();
+     // Rev 3.2 (Q26, owner-delegated 2026-10-12), drawn as #48 draws it (B1c-3, the carried visual item): a danger flag
+@@ -171,7 +174,7 @@ describe('#46 sign-message', () => {
+     expect(document.querySelector('.app-approve-lede')).toBeNull();
+     expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
+     fireEvent.click(cta('Reject'));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
+   });
+ 
+@@ -183,7 +186,7 @@ describe('#46 sign-message', () => {
+     const message = '<img src=x onerror=alert(1)>';
+     await w.sign('https://jup.ag', message);
+     w.show();
+-    await screen.findByText('Sign this message?');
++    await settled(() => screen.getByText('Sign this message?'));
+     const preview = document.querySelector('.s9-msg-preview')!;
+     expect([...preview.children].every(el => el.tagName === 'MARK')).toBe(true);
+     expect(preview.querySelector('img')).toBeNull();
+@@ -196,7 +199,7 @@ describe('#46 sign-message', () => {
+     const s = await readDappSession(w.ext);
+     await w.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => (e.requestId === requestId ? {...e, state: 'deciding', decidedBy: runtimeFor(w.ext).instance, decidingAt: w.deps.clock.t} : e))});
+     w.show();
+-    const busy = await screen.findByRole('button', {name: 'Signing…'});
++    const busy = await settled(() => screen.getByRole('button', {name: 'Signing…'}));
+     expect(text('.top-bar .title')).toBe('Signing');
+     expect([(busy as HTMLButtonElement).disabled, busy.querySelector('.app-ring-spinner') !== null]).toEqual([true, true]);
+     expect((cta('Reject') as HTMLButtonElement).disabled).toBe(true);
+@@ -214,11 +217,11 @@ describe('#46 sign-message', () => {
+     const a = await w.sign('https://jup.ag', 'one');
+     const b = await w.sign('https://dapp.test', 'two');
+     w.show();
+-    await screen.findByText('Sign this message?');
++    await settled(() => screen.getByText('Sign this message?'));
+     fireEvent.click(screen.getByRole('button', {name: 'Close'}));
+-    await waitFor(() => expect(text('.s9-msg-preview')).toBe('two'));
++    await settled(() => expect(text('.s9-msg-preview')).toBe('two'));
+     fireEvent.click(cta('Reject'));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect([a.page.answersFor(a.requestId), b.page.answersFor(b.requestId)]).toEqual([[{requestId: a.requestId, error: 'rejected'}], [{requestId: b.requestId, error: 'rejected'}]]);
+   });
+ });
+@@ -230,26 +233,30 @@ describe('controller ruling (a): busy is in the C15 key for #46', () => {
+     const w = await openWindow();
+     const {requestId} = await w.sign('https://jup.ag', 'hello');
+     w.show();
+-    await screen.findByText('Sign this message?');
+-    await armedAfter();
++    await settled(() => screen.getByText('Sign this message?'));
++    await elapse(ARM_MS);
+     expect((cta('Sign') as HTMLButtonElement).disabled).toBe(false);
+     const s = await readDappSession(w.ext);
+     await w.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => (e.requestId === requestId ? {...e, state: 'deciding', decidedBy: runtimeFor(w.ext).instance, decidingAt: w.deps.clock.t} : e))});
+-    await new Promise(r => setTimeout(r, POLL_MS + 50));
+-    await screen.findByRole('button', {name: 'Signing…'});
++    await elapse(POLL_MS);
++    await settled(() => screen.getByRole('button', {name: 'Signing…'}));
+     // The stale poll: the background's own state goes back to a plain request (not deciding) with no action from the
+     // user — exactly what a slow, outdated `dapp.pending` resolving late would show. Assert the instant the button
+     // reappears (not after a further sleep): the 500 ms re-arm must not have had time to finish by then.
+     await w.ext.session.set(DAPP_SESSION_KEY, s);
++    // B1c-3 Task 9: the window's own next poll (its only timer left), on the harness's clock.
++    await nextTimer();
+     // Fix round 2: useArmed derives `armed` by comparing the current key to the key the hold last finished for, so
+     // the busy→false key change disarms in the SAME render as the commit. Mutation M9e (busy dropped from the key)
+-    // turns this red, but this window-level check is NOT the proof of the same-render disarm: findByRole resolves
+-    // after React has flushed, so FR2-M1 (the old effect-only reset) turns it red only about 1 run in 10 (task 9
+-    // report). The deterministic proof is useArmed.test.tsx, which FR2-M1 turns red every run (8/8); this test
++    // turns this red, but this window-level check is NOT the proof of the same-render disarm: the check runs after
++    // React has flushed, so FR2-M1 (the old effect-only reset) turned it red only about 1 run in 10 on the wall clock
++    // (task 9 report) and never on the harness's clock (B1c-3 plan 3 Task 9: 0 of 3 runs). The deterministic proof is useArmed.test.tsx, which FR2-M1 turns red every run (8/8); this test
+     // pins the outcome the window must keep — disabled at once, then re-armed after the hold.
+-    const sign = await screen.findByRole('button', {name: 'Sign'}, {timeout: POLL_MS + 500});
++    const sign = await settled(() => screen.getByRole('button', {name: 'Sign'}));
+     expect((sign as HTMLButtonElement).disabled).toBe(true);
+-    await armedAfter();
++    await elapse(ARM_MS - 1);
++    expect((cta('Sign') as HTMLButtonElement).disabled).toBe(true);
++    await elapse(1);
+     expect((cta('Sign') as HTMLButtonElement).disabled).toBe(false);
+   });
+ });
+````
+
+Change `extension/src/approve/__tests__/tx.test.tsx` (#48 on the harness's clock; origin tiles split; Task 5's tests without their timeouts):
+
+````diff
+diff --git a/extension/src/approve/__tests__/tx.test.tsx b/extension/src/approve/__tests__/tx.test.tsx
+index c591cad..4f35cbd 100644
+--- a/extension/src/approve/__tests__/tx.test.tsx
++++ b/extension/src/approve/__tests__/tx.test.tsx
+@@ -1,7 +1,7 @@
+ // @vitest-environment happy-dom
+ import {readFileSync} from 'node:fs';
+ import {join} from 'node:path';
+-import {act, cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
++import {cleanup, fireEvent, render, screen, within} from '@testing-library/react';
+ import {ed25519} from '@noble/curves/ed25519.js';
+ import {base64} from '@scure/base';
+ import {PublicKey, VersionedTransaction} from '@solana/web3.js';
+@@ -16,16 +16,16 @@ import {ME, TO, assign, ataCreate, coSigned, mintTo, setAuthorityToNone, tokenAp
+ import {U64_MAX, tokenAccountBytes, usdcLikeMint} from '../../background/dapp/__tests__/tokenBytes';
+ import {ATA_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM} from '../../background/dapp/decode/decode';
+ import {dependsOnStep, pendingOf, type Flag, type RequestView} from '../client';
++import {POLL_MS} from '../Approve';
+ import {Tx} from '../Tx';
+ import {ARM_MS, FLAG_HOLD_MS} from '../useArmed';
+ import {CONFIRM_DELAY_MS} from '../ui';
+-import {SECOND, openWindow} from './windowHarness';
++import {SECOND, acted, elapse, onHarnessClock, openWindow, settled} from './windowHarness';
+ 
+ const SELECTORS = selectorsOf(UI_SHEETS);
+ const text = (sel: string) => document.querySelector(sel)?.textContent ?? null;
+ const texts = (sel: string) => [...document.querySelectorAll(sel)].map(e => e.textContent);
+ const cta = (name: string | RegExp) => screen.getByRole('button', {name}) as HTMLButtonElement;
+-const armedAfter = () => new Promise(r => setTimeout(r, ARM_MS + 50));
+ const unstyled = () => unstyledClasses(document.querySelector('.app-approve')!, SELECTORS);
+ /** A rule's declarations in the hand-written app.css (its exact selector), for the values the design draws. */
+ const cssRule = (selector: string): string => {
+@@ -35,16 +35,16 @@ const cssRule = (selector: string): string => {
+ };
+ /** The recipient is known (no first-send re-authentication) unless a test says otherwise. */
+ const known = (w: Awaited<ReturnType<typeof openWindow>>) => w.ext.local.set('v1_known_recipients', [{address: RECIPIENT, at: 1}]);
+-afterEach(() => cleanup());
++onHarnessClock();
+ /**
+  * The window learns by polling (§2.3): its first read starts the simulation (the background runs it outside the read);
+  * this waits — deterministically, on the background's own state — until the simulation is stored, then gives the window
+  * the read it would make on its next poll (a focus, as a user returning to the window), and waits for it to render.
+  */
+ async function simulated(w: Awaited<ReturnType<typeof openWindow>>, shows: string): Promise<void> {
+-  await waitFor(async () => expect((await readDappSession(w.ext)).queue[0]?.sim ?? null).not.toBeNull());
+-  await act(async () => void window.dispatchEvent(new Event('focus')));
+-  await screen.findAllByText(shows);
++  await settled(async () => expect((await readDappSession(w.ext)).queue[0]?.sim ?? null).not.toBeNull());
++  await acted(() => window.dispatchEvent(new Event('focus')));
++  await settled(() => screen.getAllByText(shows));
+ }
+ 
+ // Spec B1c §3.3, #48 (index.html ix:18261-18705), against the real background.
+@@ -64,7 +64,7 @@ describe('#48 dapp-tx-approval', () => {
+     // 0.001 SOL to a known recipient: no re-authentication rule fires (under 5 %, under $100).
+     const {page, requestId} = await w.signTx('https://jup.ag', [v0([transfer(1_000_000)])]);
+     w.show();
+-    await screen.findByText('Simulating transaction…');
++    await settled(() => screen.getByText('Simulating transaction…'));
+     expect([text('.top-bar .title'), text('.s9-sim-banner .meta')]).toEqual(['Approve transaction', 'Noctura server · simulateTransaction']);
+     expect(text('.s9-bal-card .label')).toBe('Balance changes (waiting…)');
+     expect(document.querySelector('.s9-bal-card')?.className).toBe('s9-bal-card app-busy-dim');
+@@ -97,14 +97,14 @@ describe('#48 dapp-tx-approval', () => {
+     expect(document.querySelector('.s9-sim-banner')).toBeNull();
+     expect(unstyled()).toEqual([]);
+     expect(cta('Approve').disabled).toBe(true);
+-    await armedAfter();
++    await elapse(ARM_MS);
+     fireEvent.click(cta('Approve'));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+     const signed = (page.answersFor(requestId)[0]?.result as {signed: string[]}).signed;
+     const tx = VersionedTransaction.deserialize(base64.decode(signed[0] ?? ''));
+     expect(ed25519.verify(tx.signatures[0] ?? new Uint8Array(), tx.message.serialize(), ME.toBytes())).toBe(true);
+     // The harness's closed window reads nothing more (rev 2 dry run): a later focus never counts a second close.
+-    await act(async () => void window.dispatchEvent(new Event('focus')));
++    await acted(() => window.dispatchEvent(new Event('focus')));
+     expect(w.closed.n).toBe(1);
+   });
+ 
+@@ -150,21 +150,21 @@ describe('#48 dapp-tx-approval', () => {
+     const {page, requestId} = await w.signTx('https://jup.ag', [v0([transfer(1_000_000)])]);
+     w.show();
+     await simulated(w, "Approving asks you to confirm with your password (or passkey) — you'll start it from the Noctura icon.");
+-    await armedAfter();
++    await elapse(ARM_MS);
+     fireEvent.click(cta('Approve'));
+-    await screen.findByText("Confirm it's you");
++    await settled(() => screen.getByText("Confirm it's you"));
+     expect(text('.s9-flag-banner.warn .body')).toBe("Click the Noctura icon in your browser's toolbar and confirm with your password (or passkey). This request will wait here.");
+     // The window never links into the vault page: no link, no input of any kind.
+     expect(document.querySelectorAll('a, input, select, textarea')).toHaveLength(0);
+-    await armedAfter();
++    await elapse(ARM_MS);
+     expect(cta('Approve').disabled).toBe(true);
+     const challengeId = String((await readDappSession(w.ext)).queue[0]?.challengeId);
+     await handleMessage(w.ext, {type: 'vault.reauthOk', challengeId}, {id: w.ext.runtimeId, origin: w.ext.extensionOrigin, url: `${w.ext.extensionOrigin}/unlock.html`}, w.deps);
+-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+-    await waitFor(() => expect(screen.queryByText("Confirm it's you")).toBeNull());
+-    await armedAfter();
++    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
++    await settled(() => expect(screen.queryByText("Confirm it's you")).toBeNull());
++    await elapse(ARM_MS);
+     fireEvent.click(cta('Approve'));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect(page.answersFor(requestId)).toHaveLength(1);
+   });
+ 
+@@ -178,12 +178,12 @@ describe('#48 dapp-tx-approval', () => {
+     expect(document.querySelector('.s9-origin-pill')).toBeNull();
+     expect(text('.s9-domain-warn .body b')).toBe('This domain is not tensor.trade');
+     expect(cta('Reject and report').className).toBe('btn btn-destructive');
+-    await armedAfter();
++    await elapse(ARM_MS);
+     fireEvent.click(cta('Approve anyway (not recommended)'));
+-    const sheet = await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
+-    await new Promise(r => setTimeout(r, CONFIRM_DELAY_MS + 50));
++    const sheet = await settled(() => screen.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
++    await elapse(CONFIRM_DELAY_MS);
+     fireEvent.click(within(sheet).getByRole('button', {name: 'I understand the risk'}));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect((page.answersFor(requestId)[0]?.result as {signed: string[]}).signed).toHaveLength(1);
+     expect(unstyled()).toEqual([]);
+   });
+@@ -216,22 +216,22 @@ describe('#48 dapp-tx-approval', () => {
+     const {page, requestId} = await w.signTx('https://jup.ag', [v0()]);
+     w.show();
+     await simulated(w, 'Balance changes (post-simulation)');
+-    await armedAfter();
++    await elapse(ARM_MS);
+     const first = (await readDappSession(w.ext)).queue[0]?.sim;
+     w.deps.clock.t += 30_000;
+     // The window's read starts the refresh in the background; the window still shows the first simulation.
+-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+-    await waitFor(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
++    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
++    await settled(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
+     expect(screen.queryByText(STALE)).toBeNull();
+     fireEvent.click(cta('Approve'));
+-    await screen.findByText(STALE);
++    await settled(() => screen.getByText(STALE));
+     expect(page.answersFor(requestId)).toEqual([]);
+     expect(cta('Approve').disabled).toBe(true);
+     expect(unstyled()).toEqual([]);
+     // The next click (after the hold) approves the simulation now shown, and the line goes.
+-    await armedAfter();
++    await elapse(ARM_MS);
+     fireEvent.click(cta('Approve'));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect(page.answersFor(requestId)).toHaveLength(1);
+   });
+ 
+@@ -246,7 +246,7 @@ describe('#48 dapp-tx-approval', () => {
+     const {page, requestId} = await w.signTx('https://jup.ag', [v0()]);
+     w.show();
+     await simulated(w, 'Balance changes (post-simulation)');
+-    await armedAfter();
++    await elapse(ARM_MS);
+     const first = (await readDappSession(w.ext)).queue[0]?.sim;
+     // The refresh is held (a slow proxy): the stored simulation stays the first one while the clock passes 40 s.
+     let release!: () => void;
+@@ -258,22 +258,22 @@ describe('#48 dapp-tx-approval', () => {
+     };
+     w.deps.clock.t += 40_000;
+     fireEvent.click(cta('Approve'));
+-    await screen.findByText(OLD);
++    await settled(() => screen.getByText(OLD));
+     expect(screen.queryByText(STALE)).toBeNull();
+     expect(page.answersFor(requestId)).toEqual([]);
+     expect((await readDappSession(w.ext)).queue[0]?.sim).toEqual(first);
+     expect(unstyled()).toEqual([]);
+     // The window's read starts the (held) refresh; it lands; the window's next read shows it: the line goes, Approve
+     // is held, then signs.
+-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
++    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
+     release();
+-    await waitFor(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
+-    await act(async () => void window.dispatchEvent(new Event('focus')));
+-    await waitFor(() => expect(screen.queryByText(OLD)).toBeNull());
++    await settled(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
++    await acted(() => window.dispatchEvent(new Event('focus')));
++    await settled(() => expect(screen.queryByText(OLD)).toBeNull());
+     expect(screen.queryByText(STALE)).toBeNull();
+-    await armedAfter();
++    await elapse(ARM_MS);
+     fireEvent.click(cta('Approve'));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect(page.answersFor(requestId)).toHaveLength(1);
+   });
+ 
+@@ -283,7 +283,7 @@ describe('#48 dapp-tx-approval', () => {
+     const {page, requestId} = await w.signTx('https://jup.ag', [v0()]);
+     w.show();
+     await simulated(w, 'Balance changes (post-simulation)');
+-    await armedAfter();
++    await elapse(ARM_MS);
+     expect(cta('Approve').disabled).toBe(false);
+     fireEvent.keyDown(cta('Approve'), {key: 'Enter'});
+     expect(page.answersFor(requestId)).toEqual([]);
+@@ -291,12 +291,12 @@ describe('#48 dapp-tx-approval', () => {
+     const first = (await readDappSession(w.ext)).queue[0]?.sim;
+     w.deps.clock.t += 30_000;
+     // The window's read (a visibilitychange: no re-hold of its own) starts the refresh in the background.
+-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+-    await waitFor(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
++    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
++    await settled(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
+     // A read that is not a focus (focus alone re-holds, C15): the window's own poll, run now.
+     expect(cta('Approve').disabled).toBe(false);
+-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+-    await waitFor(() => expect(cta('Approve').disabled).toBe(true));
++    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
++    await settled(() => expect(cta('Approve').disabled).toBe(true));
+   });
+ 
+   it('approving: "Approving", the body at .65, "Approving…" with the ring, every CTA and ✕ disabled', async () => {
+@@ -307,9 +307,9 @@ describe('#48 dapp-tx-approval', () => {
+     w.client.decide = () => new Promise(() => undefined);
+     w.show();
+     await simulated(w, 'Balance changes (post-simulation)');
+-    await armedAfter();
++    await elapse(ARM_MS);
+     fireEvent.click(cta('Approve'));
+-    await screen.findByRole('button', {name: 'Approving…'});
++    await settled(() => screen.getByRole('button', {name: 'Approving…'}));
+     expect(text('.top-bar .title')).toBe('Approving');
+     expect(document.querySelector('.app-approve-scroll')?.className).toContain('app-tx-busy');
+     expect([cta('Approving…').disabled, cta('Reject').disabled, cta('Close').disabled]).toEqual([true, true, true]);
+@@ -323,7 +323,7 @@ describe('#48 dapp-tx-approval', () => {
+     // The granted account leaves the unlocked session (the other account stays): its detail cannot be built.
+     await setSession(w.ext, [SECOND]);
+     w.show();
+-    await screen.findByText('This request can no longer be signed. Reject it and ask the site to try again.');
++    await settled(() => screen.getByText('This request can no longer be signed. Reject it and ask the site to try again.'));
+     expect(screen.getAllByRole('button').map(b => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Close', 'Reject']);
+     // Final review MUST-FIX 2: Q26 is a danger flag banner, as Q21 is — never a plain lede.
+     expect([text('.s9-flag-banner.danger .head'), document.querySelector('.s9-flag-banner.danger')?.getAttribute('role')]).toEqual(['This request can no longer be signed. Reject it and ask the site to try again.', 'alert']);
+@@ -334,24 +334,25 @@ describe('#48 dapp-tx-approval', () => {
+   // Final review MUST-FIX 2 (design binding): the origin tile of a verified site in the brand gradient the design draws
+   // for it (#48 ix:18283 Jupiter, #46/#47 Magic Eden, Tensor; #49's own for Drift and Kamino); any other verified site
+   // keeps the accent tile, and an unknown or lookalike host never gets a brand's colours (nothing vouches for it).
+-  it('origin tiles: Jupiter in its drawn gradient; another verified site the accent tile; a lookalike no brand', async () => {
+-    const tile = () => document.querySelector('.s9-origin-card .ico')?.className;
+-    for (const [origin, cls] of [
+-      ['https://jup.ag', 'ico app-ico-verified app-brand-jupiter'],
+-      ['https://tensor.trade', 'ico app-ico-verified app-brand-tensor'],
+-      ['https://raydium.io', 'ico app-ico-verified'],
+-      ['https://tensr.trade', 'ico app-ico-lookalike'],
+-      ['https://dapp.test', 'ico app-ico-unknown'],
+-    ] as const) {
+-      const w = await openWindow();
+-      await known(w);
+-      await w.signTx(origin, [v0()]);
+-      w.show();
+-      await simulated(w, 'Balance changes (post-simulation)');
+-      expect([origin, tile()]).toEqual([origin, cls]);
+-      expect(unstyled()).toEqual([]);
+-      cleanup();
+-    }
++  // B1c-3 (plan 3 Task 9): one window per test — five windows against the real background in one test outran vitest's 5 s
++  // budget on a CPU-starved runner (the work of five tests in one).
++  it.each([
++    ['https://jup.ag', 'ico app-ico-verified app-brand-jupiter'],
++    ['https://tensor.trade', 'ico app-ico-verified app-brand-tensor'],
++    ['https://raydium.io', 'ico app-ico-verified'],
++    ['https://tensr.trade', 'ico app-ico-lookalike'],
++    ['https://dapp.test', 'ico app-ico-unknown'],
++  ] as const)('origin tiles: %s → %s (Jupiter in its drawn gradient; another verified site the accent tile; a lookalike no brand)', async (origin, cls) => {
++    const w = await openWindow();
++    await known(w);
++    await w.signTx(origin, [v0()]);
++    w.show();
++    await simulated(w, 'Balance changes (post-simulation)');
++    expect(document.querySelector('.s9-origin-card .ico')?.className).toBe(cls);
++    expect(unstyled()).toEqual([]);
++  });
++
++  it('origin tiles: the brand rules — Jupiter’s drawn gradient, Tensor in one colour', () => {
+     expect(cssRule('.s9-origin-card .ico.app-brand-jupiter')).toContain('linear-gradient(135deg, #FFC800, #FF7A00)');
+     // B1c-3 (R9, controller): Tensor in one colour — #49's (the design's latest), on #46/#47/#48's tile too, never the
+     // window mockups' cyan; #49's own two tiles keep it.
+@@ -370,9 +371,9 @@ describe('#48 dapp-tx-approval', () => {
+     await w.signTx('https://tensr.trade', [v0()]);
+     w.show();
+     await simulated(w, 'Balance changes (post-simulation)');
+-    await armedAfter();
++    await elapse(ARM_MS);
+     fireEvent.click(cta('Approve anyway (not recommended)'));
+-    const sheet = await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
++    const sheet = await settled(() => screen.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
+     expect(within(sheet).getByRole('button', {name: 'I understand the risk'}).className).toBe('btn btn-destructive app-nowrap');
+   });
+ 
+@@ -544,15 +545,18 @@ describe('#48 dapp-tx-approval', () => {
+     const {page, requestId} = await w.signTx('https://tensr.trade', [v0()]);
+     w.show();
+     await simulated(w, 'Balance changes (post-simulation)');
+-    await armedAfter();
++    await elapse(ARM_MS);
+     fireEvent.click(cta('Approve anyway (not recommended)'));
+-    await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
++    await settled(() => screen.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
+     // A refresh lands while the sheet is open (the window's own read starts it in the background).
+     const first = (await readDappSession(w.ext)).queue[0]?.sim;
+     w.deps.clock.t += 30_000;
+-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+-    await waitFor(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
+-    await waitFor(() => expect(screen.queryByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'})).toBeNull());
++    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
++    await settled(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
++    // The window reads it on its next poll (B1c-3 Task 9: on the harness's clock).
++    expect(screen.queryByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'})).not.toBeNull();
++    await elapse(POLL_MS);
++    await settled(() => expect(screen.queryByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'})).toBeNull());
+     expect(page.answersFor(requestId)).toEqual([]);
+     expect(w.closed.n).toBe(0);
+   });
+@@ -639,7 +643,7 @@ describe('#48 origin-mismatch · auto-reject', () => {
+     const page = openPage(w.ext, w.deps, 'https://dapp.test', {tab: {id: 99}});
+     expect(await page.ask({type: 'page.signTransaction', id: 'm', account: ACCOUNT.publicKey, transactions: [v0()]})).toEqual({id: 'm', error: 'unauthorized'});
+     w.show();
+-    await screen.findByText('Request blocked automatically');
++    await settled(() => screen.getByText('Request blocked automatically'));
+     expect([text('.top-bar .title'), document.querySelector('.top-bar .title')?.className]).toEqual(['Auto-rejected · Origin mismatch', 'title noc-overline noc-danger']);
+     expect(text('.s9-fail-hero .sub')).toBe('A transaction came from a different origin than the one you connected. We rejected it without showing Approve.');
+     expect(text('.s9-flag-banner .head')).toBe('Origin mismatch · auto-reject');
+@@ -650,7 +654,7 @@ describe('#48 origin-mismatch · auto-reject', () => {
+     expect(screen.queryByRole('button', {name: /Approve|Review session/})).toBeNull();
+     expect(unstyled()).toEqual([]);
+     fireEvent.click(cta('OK, return to dApp'));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+   });
+ });
+ 
+@@ -668,7 +672,6 @@ describe('#48 red flags (B1c-3)', () => {
+     w.chain.accounts.set(SRC.toBase58(), {lamports: 2_039_280n, owner: TOKEN_PROGRAM, data: tokenAccountBytes({mint: USDC, owner: ACCOUNT.publicKey, amount: 250_000_000n})});
+     w.chain.accounts.set(USDC, {lamports: 1_461_600n, owner: TOKEN_PROGRAM, data: usdcLikeMint()});
+   };
+-  const holdAfter = () => new Promise(r => setTimeout(r, FLAG_HOLD_MS + 50));
+   const decided = (w: W) => w.sent.filter((m): m is Record<string, unknown> => typeof m === 'object' && m !== null && (m as {type?: unknown}).type === 'dapp.decide');
+   const field = (word: string) => screen.getByLabelText(`Type ${word} to enable Approve`) as HTMLInputElement;
+   const type = (word: string, value: string) => fireEvent.change(field(word), {target: {value}});
+@@ -713,7 +716,7 @@ describe('#48 red flags (B1c-3)', () => {
+     expect([gated.className, gated.disabled, gated.querySelector('svg') !== null]).toEqual(['btn btn-destructive app-cta-wide app-cta-gated', true, true]);
+     expect(unstyled()).toEqual([]);
+     // Exact and case-sensitive: no trimming, no case folding — past the hold, so only the match gates.
+-    await holdAfter();
++    await elapse(FLAG_HOLD_MS);
+     for (const wrong of ['usdc', 'USDC ', ' USDC', 'USD', 'USDCC']) {
+       type('USDC', wrong);
+       expect([wrong, field('USDC').className, cta('Approve unlimited').className, cta('Approve unlimited').disabled]).toEqual([wrong, 'input', 'btn btn-destructive app-cta-wide app-cta-gated', true]);
+@@ -721,7 +724,9 @@ describe('#48 red flags (B1c-3)', () => {
+     type('USDC', 'USDC');
+     expect([field('USDC').className, cta('Approve unlimited').className, cta('Approve unlimited').disabled]).toEqual(['input match', 'btn btn-destructive app-cta-wide', true]);
+     expect(unstyled()).toEqual([]);
+-    await holdAfter();
++    await elapse(FLAG_HOLD_MS - 1);
++    expect(cta('Approve unlimited').disabled).toBe(true);
++    await elapse(1);
+     expect(cta('Approve unlimited').disabled).toBe(false);
+     // Enter never confirms: neither in the field nor on the CTA.
+     fireEvent.keyDown(field('USDC'), {key: 'Enter'});
+@@ -729,18 +734,18 @@ describe('#48 red flags (B1c-3)', () => {
+     expect(decided(w)).toEqual([]);
+     fireEvent.click(cta('Approve unlimited'));
+     // The override re-authenticates (Q33, O1): the words went with the approval; the window points to the toolbar.
+-    await screen.findByText("Confirm it's you");
++    await settled(() => screen.getByText("Confirm it's you"));
+     expect(decided(w).map(m => m.overrides)).toEqual([[{tx: 0, word: 'USDC'}]]);
+     const challengeId = String((await readDappSession(w.ext)).queue[0]?.challengeId);
+     await handleMessage(w.ext, {type: 'vault.reauthOk', challengeId}, {id: w.ext.runtimeId, origin: w.ext.extensionOrigin, url: `${w.ext.extensionOrigin}/unlock.html`}, w.deps);
+-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+-    await waitFor(() => expect(screen.queryByText("Confirm it's you")).toBeNull());
+-    await holdAfter();
++    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
++    await settled(() => expect(screen.queryByText("Confirm it's you")).toBeNull());
++    await elapse(FLAG_HOLD_MS);
+     fireEvent.click(cta('Approve unlimited'));
+-    await waitFor(() => expect(w.closed.n).toBe(1));
++    await settled(() => expect(w.closed.n).toBe(1));
+     expect(decided(w).map(m => m.overrides)).toEqual([[{tx: 0, word: 'USDC'}], [{tx: 0, word: 'USDC'}]]);
+     expect((page.answersFor(requestId)[0]?.result as {signed: string[]}).signed).toHaveLength(1);
+-  }, 15_000);
++  });
+ 
+   it('holds (fake timers, the real background): any flag holds the CTA 1.49 s, enables it at 1.5 s — after a match change, a focus, a new simulation (which empties the field: the word typed again); Reject never held; an unflagged screen 500 ms (negative control)', async () => {
+     const w = await openWindow();
+@@ -748,46 +753,39 @@ describe('#48 red flags (B1c-3)', () => {
+     await w.signTx('https://jup.ag', [v0([tokenApprove(SRC, DELEGATE, U64_MAX)])]);
+     w.show();
+     await simulated(w, 'Unlimited USDC spend approval');
+-    vi.useFakeTimers({toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval']});
+-    try {
+-      const at = async (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
+-      const held = async () => {
+-        await at(FLAG_HOLD_MS - 10);
+-        expect([cta('Approve unlimited').disabled, cta('Reject').disabled]).toEqual([true, false]);
+-        await at(10);
+-        expect(cta('Approve unlimited').disabled).toBe(false);
+-      };
+-      // A match change (the field now matches): held from here.
+-      await act(async () => void type('USDC', 'USDC'));
++    const held = async () => {
++      await elapse(FLAG_HOLD_MS - 10);
+       expect([cta('Approve unlimited').disabled, cta('Reject').disabled]).toEqual([true, false]);
+-      await held();
+-      // A focus re-holds.
+-      await act(async () => void window.dispatchEvent(new Event('focus')));
+-      expect(cta('Approve unlimited').disabled).toBe(true);
+-      await held();
+-      // The match lost, then regained: held again from the regain.
+-      await act(async () => void type('USDC', 'USDCx'));
+-      await at(FLAG_HOLD_MS * 2);
+-      expect(cta('Approve unlimited').disabled).toBe(true);
+-      await act(async () => void type('USDC', 'USDC'));
+-      expect(cta('Approve unlimited').disabled).toBe(true);
+-      await held();
+-      // A new simulation (the 30 s refresh): the background stores it; the window's next read (no focus) re-holds.
+-      const first = (await readDappSession(w.ext)).queue[0]?.sim;
+-      w.deps.clock.t += 30_000;
+-      await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+-      for (let i = 0; i < 400 && JSON.stringify((await readDappSession(w.ext)).queue[0]?.sim) === JSON.stringify(first); i++) await at(0);
+-      expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first);
+-      await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+-      expect([field('USDC').value, cta('Approve unlimited').disabled]).toEqual(['', true]);
+-      await at(FLAG_HOLD_MS * 2);
+-      expect(cta('Approve unlimited').disabled).toBe(true);
+-      await act(async () => void type('USDC', 'USDC'));
+-      expect(cta('Approve unlimited').disabled).toBe(true);
+-      await held();
+-    } finally {
+-      vi.useRealTimers();
+-    }
++      await elapse(10);
++      expect(cta('Approve unlimited').disabled).toBe(false);
++    };
++    // A match change (the field now matches): held from here.
++    await acted(() => type('USDC', 'USDC'));
++    expect([cta('Approve unlimited').disabled, cta('Reject').disabled]).toEqual([true, false]);
++    await held();
++    // A focus re-holds.
++    await acted(() => window.dispatchEvent(new Event('focus')));
++    expect(cta('Approve unlimited').disabled).toBe(true);
++    await held();
++    // The match lost, then regained: held again from the regain.
++    await acted(() => type('USDC', 'USDCx'));
++    await elapse(FLAG_HOLD_MS * 2);
++    expect(cta('Approve unlimited').disabled).toBe(true);
++    await acted(() => type('USDC', 'USDC'));
++    expect(cta('Approve unlimited').disabled).toBe(true);
++    await held();
++    // A new simulation (the 30 s refresh): the background stores it; the window's next read (no focus) re-holds.
++    const first = (await readDappSession(w.ext)).queue[0]?.sim;
++    w.deps.clock.t += 30_000;
++    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
++    await settled(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
++    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
++    expect([field('USDC').value, cta('Approve unlimited').disabled]).toEqual(['', true]);
++    await elapse(FLAG_HOLD_MS * 2);
++    expect(cta('Approve unlimited').disabled).toBe(true);
++    await acted(() => type('USDC', 'USDC'));
++    expect(cta('Approve unlimited').disabled).toBe(true);
++    await held();
+     // Negative control: a screen with no flag keeps C15's 500 ms.
+     cleanup();
+     const plain = await openWindow();
+@@ -795,16 +793,11 @@ describe('#48 red flags (B1c-3)', () => {
+     await plain.signTx('https://jup.ag', [v0()]);
+     plain.show();
+     await simulated(plain, 'Balance changes (post-simulation)');
+-    vi.useFakeTimers({toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval']});
+-    try {
+-      await act(async () => void window.dispatchEvent(new Event('focus')));
+-      await act(async () => void (await vi.advanceTimersByTimeAsync(ARM_MS - 10)));
+-      expect(cta('Approve').disabled).toBe(true);
+-      await act(async () => void (await vi.advanceTimersByTimeAsync(10)));
+-      expect(cta('Approve').disabled).toBe(false);
+-    } finally {
+-      vi.useRealTimers();
+-    }
++    await acted(() => window.dispatchEvent(new Event('focus')));
++    await elapse(ARM_MS - 10);
++    expect(cta('Approve').disabled).toBe(true);
++    await elapse(10);
++    expect(cta('Approve').disabled).toBe(false);
+   });
+ 
+   it('a new simulation empties every typed field (review 1 L1) — the word is typed again for what the screen now shows; a focus or another render keeps it (negative control)', async () => {
+@@ -815,22 +808,22 @@ describe('#48 red flags (B1c-3)', () => {
+     await simulated(w, 'Unlimited USDC spend approval');
+     type('USDC', 'USDC');
+     // Negative control: a focus and a read of the same simulation keep the word.
+-    await act(async () => void window.dispatchEvent(new Event('focus')));
+-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+-    await holdAfter();
++    await acted(() => window.dispatchEvent(new Event('focus')));
++    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
++    await elapse(FLAG_HOLD_MS);
+     expect([field('USDC').value, field('USDC').className, cta('Approve unlimited').disabled]).toEqual(['USDC', 'input match', false]);
+     // A new simulation (the 30 s refresh) lands: the field is empty again and the CTA gated.
+     const first = (await readDappSession(w.ext)).queue[0]?.sim;
+     w.deps.clock.t += 30_000;
+-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+-    await waitFor(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
+-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+-    await waitFor(() => expect(field('USDC').value).toBe(''));
++    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
++    await settled(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
++    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
++    await settled(() => expect(field('USDC').value).toBe(''));
+     expect([field('USDC').className, cta('Approve unlimited').className, cta('Approve unlimited').disabled]).toEqual(['input', 'btn btn-destructive app-cta-wide app-cta-gated', true]);
+     type('USDC', 'USDC');
+-    await holdAfter();
++    await elapse(FLAG_HOLD_MS);
+     expect(cta('Approve unlimited').disabled).toBe(false);
+-  }, 15_000);
++  });
+ 
+   it('an unlimited approve beside an ATA create for another wallet: F5’s banner, and F2’s naming only the create; the account’s own ATA (O7) is no F2', async () => {
+     const w = await openWindow();
+@@ -889,14 +882,14 @@ describe('#48 red flags (B1c-3)', () => {
+     expect([anyway().className, anyway().querySelector('svg')]).toEqual(['btn btn-destructive app-cta-wide app-cta-gated', null]);
+     expect(screen.queryByRole('button', {name: 'Approve unlimited'})).toBeNull();
+     type('ASSIGN', 'ASSIGN');
+-    await holdAfter();
++    await elapse(FLAG_HOLD_MS);
+     expect([anyway().className, anyway().disabled]).toEqual(['btn btn-destructive app-cta-wide app-cta-gated', true]);
+     type('USDC', 'USDC');
+-    await holdAfter();
++    await elapse(FLAG_HOLD_MS);
+     expect([anyway().className, anyway().disabled]).toEqual(['btn btn-destructive app-cta-wide', false]);
+     expect(unstyled()).toEqual([]);
+     fireEvent.click(anyway());
+-    await screen.findByText("Confirm it's you");
++    await settled(() => screen.getByText("Confirm it's you"));
+     expect(decided(w).map(m => m.overrides)).toEqual([[{tx: 0, word: 'ASSIGN'}, {tx: 0, word: 'USDC'}]]);
+     // The assign alone, paid by the dApp: nothing of the account's moves — L3's line is replaced (Q54).
+     cleanup();
+@@ -934,9 +927,9 @@ describe('#48 red flags (B1c-3)', () => {
+     expect(sections().map(sec => [...sec.querySelectorAll('.s9-typed-confirm .label')].map(l => l.textContent))).toEqual([[], [], ['Type UNCHECKED to enable Approve']]);
+     expect(unstyled()).toEqual([]);
+     type('UNCHECKED', 'UNCHECKED');
+-    await holdAfter();
++    await elapse(FLAG_HOLD_MS);
+     fireEvent.click(cta('Approve anyway'));
+-    await screen.findByText("Confirm it's you");
++    await settled(() => screen.getByText("Confirm it's you"));
+     expect(decided(w).map(m => m.overrides)).toEqual([[{tx: 2, word: 'UNCHECKED'}]]);
+   });
+ 
+@@ -949,28 +942,28 @@ describe('#48 red flags (B1c-3)', () => {
+     expect(text('.top-bar .title')).toBe('Critical · Blocked transaction');
+     expect(document.querySelector('.s9-origin-pill')).toBeNull();
+     const demoted = () => cta('Approve anyway (not recommended)');
+-    await holdAfter();
++    await elapse(FLAG_HOLD_MS);
+     expect(demoted().disabled).toBe(true);
+     fireEvent.click(demoted());
+     expect(screen.queryByRole('dialog')).toBeNull();
+     type('ASSIGN', 'ASSIGN');
+-    await holdAfter();
++    await elapse(FLAG_HOLD_MS);
+     fireEvent.click(demoted());
+-    const sheet = await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
+-    await new Promise(r => setTimeout(r, CONFIRM_DELAY_MS + 50));
++    const sheet = await settled(() => screen.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
++    await elapse(CONFIRM_DELAY_MS);
+     const understand = () => within(sheet).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement;
+     expect(understand().disabled).toBe(false);
+     // C15 inside the sheet, at the red-flag screen's 1.5 s: still held 1 s after a focus (500 ms would have released it).
+-    await act(async () => void window.dispatchEvent(new Event('focus')));
+-    await new Promise(r => setTimeout(r, 1_000));
++    await acted(() => window.dispatchEvent(new Event('focus')));
++    await elapse(FLAG_HOLD_MS - 1);
+     expect(understand().disabled).toBe(true);
+-    await new Promise(r => setTimeout(r, FLAG_HOLD_MS - 1_000 + 50));
++    await elapse(1);
+     expect(understand().disabled).toBe(false);
+     fireEvent.click(understand());
+-    await screen.findByText("Confirm it's you");
++    await settled(() => screen.getByText("Confirm it's you"));
+     expect(decided(w).map(m => m.overrides)).toEqual([[{tx: 0, word: 'ASSIGN'}]]);
+     expect(unstyled()).toEqual([]);
+-  }, 15_000);
++  });
+ 
+   /** One transaction carrying every kind of flag (as the background sends them), rendered from its view. */
+   const P1 = new PublicKey(new Uint8Array(32).fill(91)).toBase58();
+````
+
+Change `extension/src/app/__tests__/AccountsManager.test.tsx` (the trash's lock on fake timers):
+
+````diff
+diff --git a/extension/src/app/__tests__/AccountsManager.test.tsx b/extension/src/app/__tests__/AccountsManager.test.tsx
+index 8985e35..14ecbd5 100644
+--- a/extension/src/app/__tests__/AccountsManager.test.tsx
++++ b/extension/src/app/__tests__/AccountsManager.test.tsx
+@@ -1,6 +1,7 @@
+ // @vitest-environment happy-dom
+ import {act, cleanup, fireEvent, screen, waitFor, within} from '@testing-library/react';
+ import {AccountsManager} from '../screens/AccountsManager';
++import {LOCK_MS} from '../ui/LockedButton';
+ import {ENV, renderInWallet, walletReader} from './harness';
+ import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
+ import {VAULT_KEY} from '../../background/accountsStore';
+@@ -455,18 +456,34 @@ describe('the accounts manager', () => {
+       expect(renames).toBe(1);
+     });
+ 
+-    it('the trash (remove): locked when pressed; pressed again inside the lock, no sheet', async () => {
++    // B1c-3 (plan 3 Task 9): the lock on the harness's clock — under CPU load the wall clock ran past LOCK_MS between the
++    // two presses, and the second one opened the sheet as it should, after the lock.
++    it('the trash (remove): locked when pressed; pressed again inside the lock (at 499 ms), no sheet; at 500 ms it opens again', async () => {
+       await shown();
+       await waitFor(() => expect(names()).toHaveLength(3));
+-      const trash = screen.getByRole('button', {name: 'Remove Savings'}) as HTMLButtonElement;
+-      fireEvent.click(trash);
+-      expect(trash.disabled).toBe(true);
+-      fireEvent.click(within(await screen.findByRole('dialog', {name: 'Remove Savings?'})).getByRole('button', {name: 'Cancel'}));
+-      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+-      trash.disabled = false;
+-      fireEvent.click(trash);
+-      await settle();
+-      expect(screen.queryByRole('dialog')).toBeNull();
++      vi.useFakeTimers({toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval']});
++      try {
++        const elapse = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
++        const trash = screen.getByRole('button', {name: 'Remove Savings'}) as HTMLButtonElement;
++        fireEvent.click(trash);
++        expect(trash.disabled).toBe(true);
++        fireEvent.click(within(screen.getByRole('dialog', {name: 'Remove Savings?'})).getByRole('button', {name: 'Cancel'}));
++        expect(screen.queryByRole('dialog')).toBeNull();
++        await elapse(LOCK_MS - 1);
++        expect(trash.disabled).toBe(true);
++        trash.disabled = false;
++        fireEvent.click(trash);
++        await elapse(0);
++        expect(screen.queryByRole('dialog')).toBeNull();
++        await elapse(1);
++        expect(trash.disabled).toBe(false);
++        fireEvent.click(trash);
++        expect(screen.getByRole('dialog', {name: 'Remove Savings?'})).toBeTruthy();
++        // The sheet's own wallet.pending read lands inside act.
++        await elapse(0);
++      } finally {
++        vi.useRealTimers();
++      }
+     });
+ 
+     it('[Continue to remove]: one page opened', async () => {
+````
+
+
+- [ ] **Step 4: Run — green idle, the whole suite, the build, the gates; then the same induced loads on this tree.**
+
+`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3426 passed (3426)** (Task 8: 3421; origin tiles became five tests, one per window, and one for its brand rules: +5; everything else rewritten in place). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (`classes ok: every class in 56 src/app and src/approve files …`). Nothing under `core/` or the repository root's `src/` is touched (root `tsc` / `jest`, web's `verify` not needed). Idle, the four files together: 17.1 s (Task 8: 36.1 s); alone, wall time with transforms: `tx.test.tsx` 4.0 s, `connect.test.tsx` 2.6 s, `sign.test.tsx` 2.1 s; Task 5's three tests that carried 15 s: the unlimited approve 5 164 → 126 ms, the lookalike with a block 7 068 → 79 ms, a new simulation empties the field 3 212 → 39 ms; origin tiles 165 ms for five windows → 21–33 ms per window (+ 3 ms for the brand rules).
+
+The same four files under the same loads, on this task's commit (a fresh `git archive`, nothing else running):
+
+| load | Task 8's tree (Step 1) | this task |
+|---|---|---|
+| throttled 20 / 80 ms | 3 runs: 8, 8, 13 failed | **5 runs: 127 passed ×5** |
+| 48 busy loops | 3 runs: 1, 1, 2 failed | **5 runs: 127 passed ×5** |
+| 64 busy loops | 5 runs: 5, 3, 5, 5, 4 failed | 3 runs: 1 failed each — the first test, timed out (5 438 / 5 498 / 5 694 ms); nothing else |
+| throttled 10 / 90 ms, one file alone ×3 | sign: 1 failed each run; origin tiles: timed out ×3 | sign: 12 passed ×3; origin tiles (split): 6 passed ×3, the first window 3.2–3.6 s (it carries the file's cold start), the others 0.5–1.4 s; on the harness's clock but not yet split it still timed out ×3 (5.2–5.8 s) |
+
+**The residual, not a timing dependency:** on this tree the only failure, in the 64-loop runs, is `tx.test.tsx`'s first test, "simulating-blocking …", `Test timed out in 5000ms` — and nothing after it in the file (the draft before origin tiles was split, with the same harness, also lost it once at 20 % CPU, 5 865 ms, and once at 48 loops, 5 327 ms). It is the file's first window: it carries the file's cold start (idle 181 ms, against ~50 ms for the same work later), ~20–25× slower on these runners, and vitest's 5 s per-test budget is wall time. Task 8's tree fails it the same way (all five 64-loop runs, one of three at 48). No assertion of it depends on time any more; raising its timeout, or warming the file in a `beforeAll`, would only move the budget — left to the controller (Writer notes). Every one of the twenty tests that failed on Task 8's tree passed in all 13 loaded runs here.
+
+The harness's rules against a timed-out test, each shown by a probe (a scratch edit of `tx.test.tsx`'s first test, never committed) and by removing the rule — the whole `tx.test.tsx` run idle:
+
+| probe (the first test made to time out) | with the rules | the `afterEach` wait for an open act removed | the ended-test mark (`stillRunning`) removed | the check after an act removed |
+|---|---|---|---|---|
+| a 5.2 s busy loop inside a `settled` check after `release()` (the timeout lands inside a `settled` turn's act) | 1 failed / 33 passed | 28 failed / 6 passed | 1 failed | — |
+| a 5.2 s busy loop right after `openWindow()` (the timed-out body goes on to `show()` its window and wait in the next test's time) | 1 failed / 33 passed | — | 30 failed / 4 passed (Task 8's tree, the same probe: 4 failed) | — |
+| every harness act of the first test preceded by a 2.6 s busy loop (a CPU-starved test, the timeout at a random act) | 1 failed / 33 passed | 28 failed / 6 passed | — | 2 failed / 32 passed ("a batch" — the timed-out body's next act overlapping the next test's render) |
+| a 5.2 s busy loop inside an async act of the test's own before `release()` (the timeout lands in its `setImmediate` flush) | 1 failed / 33 passed (through `acted`) | — | — | 2 failed / 32 passed with a raw `act(async …)` there — the reason the files' own async acts go through `acted` (rule 3); this is what the load proof of the previous draft kept hitting ("a batch" after the first test's timeout) |
+
+- [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy of this task's commit (node_modules linked), `tsc`'s own exit code first (0), then the named file: red.**
+
+All product mutants (no product file changes in this task; each mutant is a product defect the rewritten test must still catch, on the harness's clock):
+
+| id | the change | the test that turns red | observed |
+|---|---|---|---|
+| M9a | `Approve.tsx` `decide`'s finally: `setBusy(false)` before `await refresh()` (M2's defect: busy clears before the refresh that can promote the next head) | connect "M2: busy … until the post-decide refresh resolves" | tsc 0, 1 failed \| 26 passed (27) — "Connecting…" gone while the refresh is held (l. 484) |
+| M9b | `Sign.tsx`: `useArmed(key, 499)` (C15's hold 1 ms short) | sign "idle · verified … Sign held 500 ms" (the click at 499 ms signs) | tsc 0, 2 failed \| 10 passed (12) — l. 43 (and ruling (a), l. 255) |
+| M9c | `Sign.tsx`: busy dropped from the C15 key (ruling (a)) | sign "Sign goes disabled the instant a stale poll clears busy …" | tsc 0, 1 failed \| 11 passed (12) — l. 256 (`expected false to be true`) |
+| M9d | `ui.tsx` `OriginCard`: a lookalike host given the verified tile (`site.kind !== 'unknown' ? verifiedTile(site.name) : …`) | tx "origin tiles: https://tensr.trade → ico app-ico-lookalike …" | tsc 0, 1 failed \| 38 passed (39) — `expected 'ico app-ico-verified' to be 'ico app-ico-lookalike'` (l. 351) |
+| M9e | `LockedButton.tsx`: `wait(LOCK_MS - 1)` (rule 6's lock 1 ms short) | AccountsManager "the trash (remove): … pressed again inside the lock (at 499 ms), no sheet; at 500 ms it opens again" | tsc 0, 1 failed \| 48 passed (49) — still locked at 499 ms (l. 473) |
+| M9l | `LockedButton.tsx`: `wait(LOCK_MS + 1)` (the positive control: the test measures the lock's end, not only its start) | the same | tsc 0, 1 failed \| 48 passed (49) — no sheet at 500 ms (l. 481) |
+| M9g | `Tx.tsx`: the red-flag hold `FLAG_HOLD_MS - 1` | tx "an unlimited USDC approve (the design's state 2) … held 1.5 s …" (Task 5's, now exact) | tsc 0, 1 failed \| 38 passed (39) — enabled at 1 499 ms (l. 728) |
+| M9h | `Tx.tsx`: `RiskConfirm`'s `holdMs={ARM_MS}` on a flagged screen | tx "a lookalike origin with a block: both gates … (held 1.5 s on a focus) …" (Task 5's) | tsc 0, 1 failed \| 38 passed (39) — the sheet's CTA enabled before 1 500 ms after the focus (l. 959) |
+| M9i | `Tx.tsx`: the typed words kept across simulations (`const typed = typedFor.words;`, Task 5's M5w) | tx "a new simulation empties every typed field …" (Task 5's, its 15 s timeout gone) and the holds test | tsc 0, 2 failed \| 37 passed (39) — the field still `USDC` (l. 783, 821) |
+| M9j | `Approve.tsx`: the poll every `POLL_MS + 1` (R33's one read a second missed by 1 ms) | connect "a single shown request that expires: … within one poll …", "2 more requests waiting", I3, ruling (a) — the tests that now name the poll | tsc 0, 4 failed \| 23 passed (27) — l. 273, 398, 452, 522 |
+| M9k | `Connect.tsx`: busy dropped from the C15 key (ruling (a)) | connect "Connect goes disabled the instant a stale poll clears busy …" | tsc 0, 1 failed \| 26 passed (27) — l. 523 |
+| M9f | `LockedButton.tsx`: the ref guard dropped (`if (disabled) return;`) | — **not this task's**: the trash test stays green (49 passed), on Task 8's tree too — React refuses a click on a button whose `disabled` *prop* is true whatever the DOM property says, so only two clicks in one frame reach the ref; `src/app` kills it 8 times (LockedButton.test's same-frame test, Failed, Stuck, ConnectedApps) | tsc 0, 49 passed (49) — recorded so the trash test is not read as the ref's proof |
+
+The harness's own rules are proven by the probes above (Step 4's second table) — a test that times out cannot be committed, so their red runs are the probes, as Task 7's M7k ran under a scratch clock.
+
+- [ ] **Step 6: Commit.**
+
+```bash
+git add extension/src/approve/__tests__/windowHarness.tsx extension/src/approve/__tests__/connect.test.tsx extension/src/approve/__tests__/sign.test.tsx extension/src/approve/__tests__/tx.test.tsx extension/src/app/__tests__/AccountsManager.test.tsx
+git commit -m "test(extension): B1c-3 Task 9 — the approval window's tests on the harness's clock (the poll, C15's hold, the 1.5 s hold, the 2-second confirm), the accounts manager's lock on fake timers; no wall-clock sleep or waitFor deadline left
+
+Co-Authored-By: <the executing model> <noreply@anthropic.com>"
+```
+
+(Dry run: clone commit `229eed9` on Task 8's `d1456c8`, branch `dry/b1c3-r2`.)
+
+#### Dry-run notes (Task 9)
+
+- **Finding: no product bug.** Twenty-two loaded runs of the old tests, twenty distinct failing tests, every failure a hold / the confirm / the poll arriving *late* relative to a real sleep or an RTL deadline, or real sleeps exhausting the 5 s budget; never a CTA enabled early. The holds' code cannot release early (`useArmed`'s key comparison and a never-early `setTimeout` started after the commit; `LockedButton`'s synchronous ref and floor; C13 behind both). The four the ledger named: connect M2 — test (a call count that assumed no real poll could fire before the click); sign idle · verified — test (a 550 ms real sleep racing the 500 ms hold); tx origin tiles — test (RTL's 50 ms real re-check interval ×5 windows plus CPU past 5 s); AccountsManager trash — test ("inside the lock" assumed of the wall clock between two awaited presses).
+- **Ruling: the window test files run entirely on the harness's clock (`onHarnessClock`), not only the four tests** — why: the reproduction found sixteen more failing the same way in the same files, and "a flake in security UI is a finding"; one rule per file is simpler to keep than per test — cost if wrong: none for the product (test code only); a future window test must say when it wants the poll (`elapse(POLL_MS)` / `nextTimer()`), which is what it should say anyway.
+- **Ruling: `settled` waits by real event-loop turns (20), not by a deadline** — a count, so the CPU's speed cannot change its verdict: the background in these tests is promise chains, each check passed within 1 turn idle and under 64 busy loops (instrumented: 64 at turn 0, 108 at turn 1). It is not a `waitFor`: the clock stands still while it waits, so it can never wait a hold out — cost if wrong: a future background path that needs real I/O (WebCrypto, a real timer) would fail `settled` deterministically, at once, and must be made a promise chain or faked — never given more turns to paper over a race.
+- **Ruling: the stale-poll tests (ruling (a), #46 and #47) advance to "the window's own next poll" with `nextTimer()`**, and their re-arm is measured exactly (499 ms disabled, 500 ms enabled) — on the harness's clock the poll is at 2 000 ms and the busy hold already done at 1 500 ms, so the next timer is the poll alone. The window-level test still cannot catch FR2-M1 (the effect-only reset; 0 of 3 runs here, ~1 in 10 on the wall clock): `useArmed.test.tsx` remains the deterministic proof, and both comments now say so.
+- **Ruling: M2's 100 ms "long since settled" sleep becomes `settled(() => [pendingCalls, release === undefined] = [2, false])`** — what the sleep meant (the decide answered, its refresh asked and held); and I3's "≥ 2 calls" becomes exactly 2 after one poll, with the blank window asserted before it.
+- **Ruling: Task 5's tests lose their `15_000` timeouts** (three tests, not two: "a new simulation empties every typed field" carried one too) and the unlimited approve's hold is now exact (1 499 / 1 500 ms) — they no longer sleep. Task 5's holds test no longer switches fake timers on and off itself.
+- **Finding (harness): a test that times out goes on running, and under this harness it broke the tests after it** (React's act scopes cannot overlap) until the harness's rules (Step 3's `windowHarness.tsx`: the `afterEach` wait for an open act, the ended-test mark, the check at the end of every harness act, the files' own async acts through `acted`) were added — found only by the load proofs of this task's first drafts (28 of 34 `tx.test.tsx` tests failed after one CPU timeout; then "a batch" alone, until `acted`). Each rule is shown necessary by a probe with it removed. B1c-1/B1c-2's wall-clock version had the same weakness to a lesser degree (the second probe: 4 failed on Task 8's tree).
+- **Residual (not fixed, flagged): vitest's 5 s per-test budget is wall time, so a CPU-starved enough runner can still time out a test.** On this tree, under the loads of Step 4, that is `tx.test.tsx`'s first test only (0 of 10 runs at 20 % CPU or 48 busy loops — 2 of 10 on the previous draft —, 3 of 3 at 64 loops, 5.4–5.7 s), the file's cold start; earlier drafts' collateral failures after it are gone (the harness rules). Raising the timeout or warming the file up in a `beforeAll` would only move that budget; the controller decides whether the plan wants either.
+- **Observation (product, not changed): under load a poll can supersede `decide`'s own refresh** (`Approve.refresh` keeps only the newest read); busy then clears before the newer read lands, and the decided request's CTA re-arms after C15's 500 ms if that read takes longer. A click on it is a `dapp.decide` for a request that is no longer the head, which the background refuses (C13; "a request answered elsewhere while shown" pins the refusal). Harmless, but the owner may want busy held until a read newer than the decision lands.
+- **For the controller (E2E, not in this task's scope): Task 7's `heldFor` measures the 1.5 s hold in a real browser with 50 ms polling and asserts an upper bound (< 1 000 ms) on the unflagged screen** — a wall-clock measure a loaded runner can stretch (Task 7's own note); the lower bounds (≥ 1 000 ms) cannot fail early. Real-browser E2E cannot run on fake timers; if it flakes, the upper bound is the one to drop.
+- **Process note:** two of my load-proof runs were contaminated (a probe and a mutant run on the same machine during them); both were discarded and re-run on an idle machine, and each loaded run reported here ran alone. A `pkill -f` pattern was used once to stop my own runner scripts (the standing rule is exact PIDs); every other stop was by exact PID / process group.
 
 ---
 
 
 ## Dry-run record
 
-| task | dry-run commit | red on the predecessor | green (whole suite) | mutations |
+| task | dry-run commit (rev 2) | red on the predecessor (rev 2) | green (whole suite) | mutations (rev 1 → rev 2) |
 |---|---|---|---|---|
-| 1 | c1d98b4 | 3 files, 4 failed / 54 passed; `tokenState.test.ts` does not load | 168 files / 3322 | 16, all red |
-| 2 | f1f4a13 | `redFlags.test.ts` does not load (`Cannot find module '../redFlags'`) | 169 / 3352 | 32, all red |
-| 3 | 82ffdf7 | `tsc` 2; 5 files, 23 failed / 124 passed | 169 / 3372 | 37, all red |
-| 4 | 614e54b | `tsc` 2 (24 errors); 7 files, 38 failed / 176 passed | 170 / 3393 | 32, all red |
-| 5 | afb3e09 | `tsc` 2 (`FLAG_HOLD_MS` not exported); 2 files, 9 failed / 28 passed | 170 / 3401 | 22, all red |
-| 6 | 05a1f32 | `tsc` 2 (8 × TS2339 `amountDecimals`); 8 files, 28 failed / 260 passed | 170 / 3415 | 28, all red |
-| 7 | fd3ebd6 | no product code (red evidence = M7a–M7k); Home #42 red at six wall-clock times 23:59:50–23:59:59.9 before the fix | 170 / 3415; Playwright 51 + 20 normal and under `unshare -rn` (twice) | 11, all red |
-| 8 | 3c478d1 | (visual; its findings F-1 … F-5 each with a red test) | 170 / 3417; Playwright 51 + 22 normal and under `unshare -rn`; `npm run verify` 0; root `tsc` 0, `jest` 1234 + 1 skipped; web `verify` 0 (550, then 3) | 10, all red |
+| 1 | 848e0fa | (rev 1: 3 files, 4 failed / 54 passed; spec-only change in rev 2) | 168 / 3322 | 16, all red (unchanged) |
+| 2 | 5183c04 | module missing; `tsc` 2 | 169 / 3355 | 32 → 43, all red |
+| 3 | b1e50e4 | `tsc` 2; 23 failed / 124 passed | 169 / 3375 | 37 → 38, all red |
+| 4 | 772cc3f | (unchanged; rev 1: `tsc` 2, 38 failed / 176 passed) | 170 / 3396 | 32, all red (unchanged) |
+| 5 | 6fb798a | `tsc` 2; 10 failed / 28 passed | 170 / 3405 | 22 → 25, all red |
+| 6 | 6191861 | `tsc` 2; 29 failed / 263 passed | 170 / 3419 | 28 → 29, all red |
+| 7 | 17b6f81 | no product code (red = its mutations); Home #42 red under a shifted clock before the fix | 170 / 3419; Playwright 51 + 20, normal and `unshare -rn` | 11 → 13, all red |
+| 8 | d1456c8 | 3 vitest + 2 Playwright failed | 170 / 3421; Playwright 51 + 22, normal and `unshare -rn`; `npm run verify` 0; root `tsc` 0, `jest` 1234 + 1 skipped; web `verify` 0 | 10, all red |
+| 9 | 229eed9 | each of the four failed under induced CPU load on Task 8's tree (and 16 more tests of the same files) | 170 / 3426; the four files pass under the same loads ×5 | 12 (11 red; M9f equivalent — LockedButton's guard is also React's `disabled`, caught by 8 other tests) |
 
 - Every mutant compiled (`tsc` 0) before it counted; the first drafts that did not compile (Task 1: 3, Task 2: 1, Task 4: 5) were replaced, never counted as red. Three survivors were found and closed by strengthening the TEST, never the code (Task 3 M3ab, Task 4 M4ag; Task 7's M7b is caught only by the post-hold "still disabled" assertion, which is why it exists).
 - Consistency: task-1 … task-N's blocks applied in order to `git archive b13bbd1` reproduce the dry run's commit N byte for byte, for every N from 1 to 8.
 - One wall-clock dependence was found in B1b's tests (Home #42 across local midnight) and fixed in Task 7 — not a B1c-3 regression.
+- Task 9's residual: under extreme load (64 busy loops) `tx.test.tsx`'s first test can exceed vitest's 5 s budget on cold start — Task 8's tree fails it the same way; no hold involved. Task 7's E2E `heldFor` upper bound (< 1 000 ms on an unflagged screen) is wall-clock sensitive by nature.
 - Not run in the dry run: CI itself (the Before-the-PR repro is the executor's).
 
 ## Before the PR (the standing rules)
@@ -10072,6 +11938,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] `node scripts/check-no-tge-date.mjs` from the repository root — this plan and every file it adds are clean.
 - [ ] The opus-tier visual review of Task 8's shots against index.html (#48 ix:18261-18705, state 2 ix:18325-18396; #37's gate ix:14949-15147), then an independent opus review of that review; each finding fixed or declared in the spec's §9; the result in the PR description.
 - [ ] The owner has read the rulings below (copy Q28–Q55 marked) and the Fable 5.1 review is applied.
+- [ ] The PR says (owner decision O6, review 1 M2): "A dependent step (F10) is approved without its effects being seen: it was simulated without the changes the earlier step makes, so its chain-state checks never run and its balance changes are unknown — typing `UNCHECKED` and re-authenticating is the user's acceptance of that. An attacker can reach this by padding a batch with one create step, and a legitimate swap batch looks the same (spec §9, owner decision O6)."
 - [ ] The PR says loudly: with B1c-3 on `main`, B1c is complete (D10) — a store build is B1e's decision, with its release gates (§6.5); the declared omissions (Scope §3); first send through a program call is an accepted limit (O4).
 
 ## Self-review
@@ -10087,7 +11954,7 @@ The owner chose subagent-driven development for B1c-1 and B1c-2; plan 3 is meant
 
 ## The controller's rulings, for the owner
 
-Owner decisions applied: **O1** unlimited approve = the design's typed symbol AND re-authentication through #10; **O2** dependent batches open under `UNCHECKED` + re-authentication, every other failure stays Reject-only; **O3** Token-2022 mint warnings only (classic freeze authority not flagged); **O4** first send through a program call is an accepted limit (spec §9).
+Owner decisions applied: **O5** an approval of 99 % of the balance or more is F5's block; **O6** dependent steps approvable with the residual risk stated; **O7** F2 exempts three self-rent instructions only; **O1** unlimited approve = the design's typed symbol AND re-authentication through #10; **O2** dependent batches open under `UNCHECKED` + re-authentication, every other failure stays Reject-only; **O3** Token-2022 mint warnings only (classic freeze authority not flagged); **O4** first send through a program call is an accepted limit (spec §9).
 
 Controller copy to confirm (spec §10, rev 3.6 — all flagged): Q28 `ASSIGN`, Q29 `AUTHORITY`, Q30 `UNLIMITED`, Q31 `UNCHECKED` (the override words); Q32 "This step depends on step <N> and could not be checked on its own."; Q33 "Re-auth required to override a blocked transaction."; Q34 "Approve anyway"; Q35 "Critical · Blocked transaction"; Q36 "Could not read this token's settings"; Q37–Q40 (#10's override rows); Q41–Q55 (#48's banner heads and bodies, the F10 balance card, the line replacing "No balance changes" beside a block, the banner meta vocabulary — Q55 uses technical wording, e.g. `#1 spl_token::Approve`; the owner may prefer prose). Still open from plan 2: **Q27** ("This simulation is out of date. Wait a moment for it to refresh.").
 
@@ -10104,4 +11971,6 @@ Rulings beyond the spec, each loud (detail in the tasks' Dry-run notes):
 - R10 banner addresses whole, in groups of four (never the design's `JUP6L…vRet9`).
 - R11 #10 shows no headline amount for an override or an allowance (the headline was the network fee — Task 8, F-4).
 - R12 #47's gate line moved clear of the account label at 412 × 720 (B1c-1's layout bug — Task 8, F-5).
+- **For the owner:** F5's head, eyebrow, "Approve unlimited" and #10's Q39 still say "unlimited" for an approval of 99 %–100 % below u64::MAX (the bodies say "all or nearly all") — the owner may want a head of its own.
+- **For the owner (L4):** the block's red "Approve anyway" (Q34) and the lookalike's demoted "Approve anyway (not recommended)" (B1c-1) never share a screen; confirm both.
 - **For the owner:** the design file's own CSS stacks state 2's sticky bar although its markup is a row; the markup (a row) is built.
