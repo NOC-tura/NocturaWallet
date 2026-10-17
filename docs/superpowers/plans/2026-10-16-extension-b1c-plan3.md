@@ -6,6 +6,8 @@
 
 **Revision 2 (2026-10-17):** applies every finding of Fable 5.1 review 1 (`.superpowers/sdd/b1c-plan3-review-1.md`, verdict "approve after fixes": H1, M1–M4, L1–L7) with the owner's decisions of 2026-10-17 — **O5** an approval of 99 % of the balance or more is F5's block (H1), **O6** dependent steps stay approvable with copy and a §9 row stating the residual risk (M2), **O7** F2 exempts only three self-rent instructions, the 1.5 s hold stays on every red-flag screen (M3). Where each finding landed: `.superpowers/sdd/b1c3-plan-parts/rev2-changes.md` (summarised in "Review 1 (Fable 5.1) — how each finding was applied", after Scope). The dry run was rebuilt from b13bbd1 (848e0fa, 5183c04, b1e50e4, 772cc3f, 6fb798a, 6191861, 17b6f81, d1456c8 — then Task 9): every changed task red on its predecessor and green on its own tree; 158 mutations re-run or new in rev 2, all red; Playwright at Tasks 7 and 8 in a normal launch and under `unshare -rn`; the replay of every prefix identical. **Task 9** (new) takes the four B1c-1/B1c-2 tests that failed once under CPU load off the wall clock.
 
+**Revision 2.2 (2026-10-17):** Fable 5.1's scoped check of rev 2.1 (`.superpowers/sdd/b1c-plan3-review-3.md`) — verdict **approve**; its four Low items applied by the controller's rulings: L12 the decoded leftover delegation counts only when the post-state delegate is the instruction's; L13 a decoded approve on a source with no balance before stays F5 (fail closed), stated in §3.3; L14 an unnamed token below u64::MAX is overridden with `ALLOWANCE` (Q58, flagged), `UNLIMITED` only with u64::MAX, the word checked against its scope on both challenge sides and in the window reader; L15 the replay sentence. Where each landed: `.superpowers/sdd/b1c3-plan-parts/rev22-changes.md`. Dry run: 75da654, 6e202bd, 8c7eb00, 5192583, a7c7aed, 38eb715, e61419f, bbd2536, 10c9b15 (branch `dry/b1c3-r22`); Tasks 2–5's mutations re-run (158, all red; new M2at–M2av, M3al, M4an–M4aq, M5ac); no E2E- or visual-visible change (B1c-30 and the B1c-3 visual test re-run green).
+
 **Revision 2.1 (2026-10-17):** applies Fable 5.1's focused review 2 of rev 2 (`.superpowers/sdd/b1c-plan3-review-2.md`, "approve after fixes": M5, L8–L11; every rev-1 finding verified FIXED) with the owner's decisions of 2026-10-17 — **O8** F5 reads each balance where it is exact: a decoded approve against the balance before the transaction, the remaining delegation after it against the balance after it (a delegation the same transaction consumes, and a small one after an inflow, are F6 with true copy); **O9** "unlimited" only for u64::MAX — 99 %–100 % below it has its own head (Q56), eyebrow (Q57) and "Approve anyway"; L9 a poll superseding `decide`'s refresh is a §9 accepted behaviour (the background refuses the stale click); L11 `tx.test.tsx` warms up in `beforeAll`. Where each landed: `.superpowers/sdd/b1c3-plan-parts/rev21-changes.md`. Dry run rebuilt on b13bbd1: 646c4e6, 66f2ef5, 95804f3, d8f6201, 713cce5, 2d08074, 012133c, 7ee367b, 08eeeed; 164 mutations run, all red but M9f (equivalent, recorded); Playwright at Tasks 7 and 8 normal and under `unshare -rn`; replay identical at every prefix 1…9.
 
 **Goal:** Build B1c spec plan 3 ("B1c-3 — red flags", the spec's header table): B1 §3's deterministic red-flag table on #48 exactly — warnings named (unknown program; every non-transfer instruction; Token-2022 transfer hook, permanent delegate and freeze authority on a token the request touches; a durable nonce; the whole balance to a first-time address; a bounded approval), **blocks** (System Assign / Allocate of the wallet account; SetAuthority on an account the user owns; an approval of the whole balance or u64::MAX; a step of a batch that depends on an earlier one — O2) that only a **one-transaction override** opens: the token symbol from the wallet's own table or the word shown, typed exactly, **plus re-authentication through #10** (D11, O1); no setting disables a block; every confirming CTA on a red-flag screen held 1.5 s on C15's triggers, no default focus, Enter never confirms. Plus B1c-2's carried items (R10's owner resolution, `outgoingGrew`'s `omitted`, non-Checked amounts with decimals, the ATA create's token program, four visual items) and #47's gate-line overlap. After this plan B1c is complete (D10: B1c-1, -2 and -3 on `main`); a store build is a B1e decision.
@@ -672,7 +674,7 @@ Change the spec (rev 3.6 — the status paragraph, §3.3's decoder line and its 
 
 ````diff
 diff --git a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-index 6a03a6e..789c60a 100644
+index 6a03a6e..b19447e 100644
 --- a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
 +++ b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
 @@ -1,6 +1,6 @@
@@ -683,7 +685,7 @@ index 6a03a6e..789c60a 100644
  decisions D1–D11. Rev 2 applied every finding of Fable 5.1 review 1 (`.superpowers/sdd/b1c-spec-review-1.md`: H1–H3,
  M1–M12, L1–L13); M1 and M2 were the owner's decisions D10 and D11. **Rev 3** applies every finding of Fable review 2
  (`.superpowers/sdd/b1c-spec-review-2.md`: H1–H2, M1–M10, L1–L13; verdict "approve after fixes"). Where each finding
-@@ -29,6 +29,29 @@ leaving the worker (Task 5 ruling: "never sent twice" kept over at-least-once; n
+@@ -29,6 +29,32 @@ leaving the worker (Task 5 ruling: "never sent twice" kept over at-least-once; n
  gain ✕ on a window while a riding mismatch notice is shown (Task 3 ruling, round 4); §10 gains Q27, the line for an
  approval refused because its simulation is merely old (final review I3 — controller copy, flagged to the owner). No
  other rule changed.
@@ -709,11 +711,14 @@ index 6a03a6e..789c60a 100644
 +after it against its balance after it (a delegation the same transaction consumes, and a small delegation after an
 +inflow, are F6); **O9:** "unlimited" is said only of u64::MAX — an approval of 99 % up to the whole balance has its own
 +head, eyebrow and #10 row and the CTA "Approve anyway"; §9 gains a row for a poll that supersedes the window's own
-+refresh. No other rule changed.
++refresh. **Plan 3 review 3 (Fable, 2026-10-17; controller rulings L12–L14):** the delegation a decoded approve leaves is
++its own only with its own delegate (L12); a decoded approve of a source holding nothing before the transaction stays a
++block (L13, fail closed); a token the wallet cannot name has the override word `ALLOWANCE` below u64::MAX (Q58),
++`UNLIMITED` only at it (L14). No other rule changed.
  
  **What this is.** The extension becomes a wallet any Solana site can use through Wallet Standard: connect, disconnect,
  events, `signMessage`, `signTransaction`, `signAndSendTransaction`, on `solana:mainnet` only. It builds the design's
-@@ -570,7 +593,8 @@ cannot mask an earlier one (review M5):
+@@ -570,7 +596,8 @@ cannot mask an earlier one (review M5):
    payer or signer; otherwise `invalid-request`.
  - Lookup tables resolved with `getMultipleAccounts` through the proxy before decoding; unresolvable → that instruction is
    "unknown program".
@@ -723,7 +728,7 @@ index 6a03a6e..789c60a 100644
    (transfer, transferChecked, approve, approveChecked, revoke, setAuthority, closeAccount, burn, burnChecked,
    initializeAccount*, syncNative) and the Token-2022 extensions B1 §3 names, ATA (create, createIdempotent), Compute
    Budget (limit, price), the presale program (by Anchor discriminator from the IDL in the repo).
-@@ -590,7 +614,69 @@ cannot mask an earlier one (review M5):
+@@ -590,7 +617,69 @@ cannot mask an earlier one (review M5):
  - **E2E through `StandardWalletAdapter`** (`@solana/wallet-adapter-base`), so the adapter's compatibility predicate is
    exercised (review M1).
  - **B1c-3** builds B1 §3's red-flag table exactly, with its override rule (typed symbol or word + re-authentication,
@@ -743,7 +748,7 @@ index 6a03a6e..789c60a 100644
 +| F2 | an instruction of a decoded program that is not a transfer | the decoded name is none of System `transfer`, Token / Token-2022 `transfer`, `transferChecked`. **Compute Budget is exempt** — it is the fee, already shown as the fee row. **O7: three self-rent instructions are exempt**, each only in exactly this shape, because none can take value from the account: an ATA `create` / `createIdempotent` whose `wallet` **and** `payer` are both the account (its own token account, the rent paid by itself); `syncNative` of a token account whose pre-state owner field is the account; `closeAccount` of a token account whose pre-state owner field is the account, with the account itself as the destination (the rent comes back to it). Every other instruction stays named — another wallet's ATA or one another payer funds, a sync or close of an account that is not the user's or that the wallet cannot read, a close to any other destination | warning, one banner per transaction naming the instructions | — |
 +| F3 | System `Assign` / `Allocate` on the user's own wallet account | a decoded `assign`, `allocate`, `assignWithSeed` or `allocateWithSeed` (tags 1, 8, 10, 9) whose target account (index 0) is the wallet account; **and** chain state: the simulation's post-state of the wallet account has an owner other than the System program, or any data (a CPI names no top-level instruction) | **blocked** | `ASSIGN` (Q28) — one word for all four; the banner names which |
 +| F4 | SPL / Token-2022 `SetAuthority` (any authority type) on an account the user owns | a decoded `setAuthority` whose account is a token account whose pre-state owner field is the wallet account, or a mint whose pre-state mint authority or freeze authority is the wallet account; **and** chain state (a CPI): an own token account's owner reassigned away, or its close authority changed | **blocked** | `AUTHORITY` (Q29) |
-+| F5 | `Approve` / `ApproveChecked` of the whole balance or u64 max — **O5: or nearly all of it, 99 % or more** (stricter, allowed) | "at least 99 %" is `amount × 100 ≥ balance × 99` (B1c-2's whole-balance percent; u64::MAX and the whole balance always are). **O8 — each balance where it is exact:** a decoded approve whose amount is at least 99 % of the source's balance **before** the transaction (pre-state; a source the wallet cannot read as its own token account then is an empty balance — fail closed), **or** whose source **after** the transaction (post-state, still the account's own token account with a delegate) holds a remaining delegation of at least 99 % of its balance after it; **and** chain state (a CPI): an own account's post-state delegation, new or raised, of at least 99 % of its balance **after** the transaction. So a transaction that moves tokens out and delegates what is left is a block (review 1 M1), while a delegation the same transaction consumes (nothing remains delegated) and a delegation small beside the balance after an inflow are F6 — their copy then true (review 2 M5) | **blocked** | the token's symbol from **the wallet's own token table**, exact and case-sensitive — only when the simulation's decimals match the table's; a mint the wallet cannot name → `UNLIMITED` (Q30). Never a symbol a mint claims for itself (a fake mint can call itself USDC) |
++| F5 | `Approve` / `ApproveChecked` of the whole balance or u64 max — **O5: or nearly all of it, 99 % or more** (stricter, allowed) | "at least 99 %" is `amount × 100 ≥ balance × 99` (B1c-2's whole-balance percent; u64::MAX and the whole balance always are). **O8 — each balance where it is exact:** a decoded approve whose amount is at least 99 % of the source's balance **before** the transaction (pre-state; a source the wallet cannot read as its own token account then is an empty balance — fail closed), **or** whose source **after** the transaction (post-state, still the account's own token account, its delegate the instruction's own — review 3 L12: another delegate left there is the chain state's to name) holds a remaining delegation, no larger than the instruction granted, of at least 99 % of its balance after it. **A source holding nothing before** — an empty token account, one the same transaction creates, or one the wallet cannot read — **makes any decoded approve of it a block** (review 3 L13, fail closed: an approval of an account whose balance the user cannot see is not "bounded"; the test "L13: a source holding nothing before …"); **and** chain state (a CPI): an own account's post-state delegation, new or raised, of at least 99 % of its balance **after** the transaction. So a transaction that moves tokens out and delegates what is left is a block (review 1 M1), while a delegation the same transaction consumes (nothing remains delegated) and a delegation small beside the balance after an inflow into a source that held something before are F6 — their copy then true (review 2 M5) | **blocked** | the token's symbol from **the wallet's own token table**, exact and case-sensitive — only when the simulation's decimals match the table's; a mint the wallet cannot name → `UNLIMITED` (Q30) when an approval of it is u64::MAX, else `ALLOWANCE` (Q58, review 3 L14) — "unlimited" only of u64::MAX, as O9 says of the copy. Never a symbol a mint claims for itself (a fake mint can call itself USDC) |
 +| F6 | a bounded `Approve` / `ApproveChecked` | as B1c-2 (the `approval` reason, from chain state) | warning + re-authentication | — |
 +| F7 | Token-2022 transfer hook, permanent delegate or freeze authority on a token the user holds (**O3: Token-2022 mints only**) | every mint of an own token account the transaction touches (pre- or post-state) and every mint a decoded instruction names, read through the proxy. A Token-2022 mint (owner = the Token-2022 program): its base layout's freeze authority (COption, tag at 46), and its TLV extensions from byte 166 (byte 165 = 1, Mint) — extension 12 PermanentDelegate with a non-zero key, extension 14 TransferHook with a non-zero program id (32 zero bytes are "none"). A mint that cannot be read or parsed → "Could not read this token's settings" (Q36; fail closed — a warning, never silence) | warning, named per mint (which of the three, with the authority's or the program's address) | — |
 +| F8 | durable nonce (`AdvanceNonceAccount` first) | B1c-2's `usesDurableNonce` | warning: "This transaction does not expire." (B1 §3's copy, capitalised) | — (`signAndSendTransaction` stays refused for it, B1c-2) |
@@ -794,7 +799,7 @@ index 6a03a6e..789c60a 100644
  
  The plans for B1c-2 and B1c-3 refine this section; they may not loosen it.
  
-@@ -796,7 +882,7 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
+@@ -796,7 +885,7 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
  |---|---|
  | `extension/src/provider/` | the MAIN-world provider (bundle `provider.js`) |
  | `extension/src/relay/` | the ISOLATED relay (bundle `relay.js`) |
@@ -803,7 +808,7 @@ index 6a03a6e..789c60a 100644
  | `extension/src/background/autolock.ts`, `session.ts`, `index.ts` | every lock caller routed through the lock hook |
  | `extension/src/approve/` + `approve.html` | the approval window (#46, #47, #48, locked) |
  | `extension/src/app/screens/ConnectedApps.tsx` | #49 |
-@@ -841,12 +927,21 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
+@@ -841,12 +930,21 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
  | design frame 916 px high | the window is 720 px; the body scrolls, the sticky bar stays |
  | unlock inside the flow (implied by the design's modal stack) | the locked window points to the toolbar (D11) |
  | first six / last six highlighted on review screens | B1 §3 (owner): labels + first-send warning, unchanged |
@@ -827,7 +832,7 @@ index 6a03a6e..789c60a 100644
  
  ---
  
-@@ -879,6 +974,15 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
+@@ -879,6 +977,15 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
  | Q25 | #49 undo refused (rev 3.2, owner-delegated 2026-10-12) | "Could not undo — <name> stays disconnected." |
  | Q26 | #46 request can no longer be signed (rev 3.2, owner-delegated 2026-10-12) | "This request can no longer be signed. Reject it and ask the site to try again." |
  | Q27 | #48 an approval refused because the simulation it named, still the newest, is 40 s old — its refresh has not landed (rev 3.5, controller copy, flagged to the owner; final review I3) | "This simulation is out of date. Wait a moment for it to refresh." — never "The transaction changed while you were reviewing…", which is said only when the window named another simulation than the newest |
@@ -1298,6 +1303,7 @@ git commit -m "feat(extension): B1c-3 spec rev 3.6, the token-state parsers (one
 - **Prettier:** the surrounding files are not `prettier --check`-clean at HEAD~1 (the repo's long-line style); the new code follows the surrounding style, as plan 2 did.
 - **(rev 2) The spec text only** (plan review 1, owner O5–O7): §3.3's F2 row gains O7's three self-rent exemptions (each in one exact shape — an ATA `create` / `createIdempotent` whose `wallet` and `payer` are the account, `syncNative` / `closeAccount` of a token account whose pre-state owner field is the account, the close's destination the account); F5's row blocks at 99 % (`amount × 100 ≥ balance × 99`, B1c-2's `WHOLE_BALANCE_PERCENT`) against the smaller of the source's pre- and post-state balance (O5, M1 — the review's recommendation: either one meeting it blocks); the Holds bullet and §3.3's B1c-3 summary say "1.5 s instead of C15's 500 ms, on every C15 trigger" (M4); the typed field is emptied by a new simulation (L1, built in Task 5); §9 gains the dependent step's residual risk (O6/M2), multisig-owned token accounts as an accepted limit (L3) and the balance card's SOL row as a kept deviation (L7). The Q42/Q43/Q48 copy changes live where those rows are written (Task 5). No code or test of this task changed.
 - **(rev 2.1) The spec text only** (plan review 2, owner O8, O9; L9): the status paragraph gains review 2's sentence; §3.3's F5 row reads each balance where it is exact (O8 — a decoded approve against the balance before, or the delegation it leaves against the balance after; chain state against the balance after; a consumed delegation and a small delegation after an inflow are F6); the CTA sentence and the Banners bullet say "unlimited" only of u64::MAX (O9: Q56's head and #10 row, Q57's eyebrow, Q34's "Approve anyway" below it — Q56 and Q57 are written where their strings are, Tasks 4 and 5); §9 gains L9's row — a poll that supersedes the window's own refresh is accepted behaviour (the background refuses a decision for a request no longer the head, C13; not a security problem: nothing signs, nothing is sent twice). No code or test of this task changed.
+- **(rev 2.2) The spec text only** (plan review 3; controller rulings L12–L14): the status paragraph gains review 3's sentence; §3.3's F5 row says the delegation a decoded approve leaves counts only with the instruction's own delegate (L12 — another delegate left there is the chain state's F5, named by Q43), that a source holding nothing before (empty, created by the same transaction, or unreadable) makes any decoded approve of it a block (L13, fail closed — the test "L13: a source holding nothing before …"), and that the word for a token the wallet cannot name is `UNLIMITED` (Q30) at u64::MAX and `ALLOWANCE` (Q58, written with the window's strings in Task 5) below it (L14). The inflow sentence now says "into a source that held something before".
 
 ---
 
@@ -1694,6 +1700,24 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
     }
   });
 
+  it('L12 (review 3): the delegation an approve leaves is its own only with its own delegate — another left there is the chain state’s F5, naming it', () => {
+    const mine = (amount: bigint, delegate: PublicKey | null = null, delegatedAmount = 0n) => tokenAcc({mint: MAINNET_USDC_MINT, amount, delegate, delegatedAmount});
+    // Approve 500 to DELEGATE, 500 sent out; after it THEIRS holds 495 of the 500 left: F5 from chain state, naming THEIRS.
+    const px1 = (delegate: PublicKey) => one({ixs: [approveIx(500n), transferIx(500n)], pre: [[SRC, mine(1_000n)]], post: [[SRC, mine(500n, delegate, 495n)]]});
+    expect(find(px1(THEIRS), 'unlimited-approve')?.approvals.map(a => [a.at, a.delegate])).toEqual([[null, THEIRS.toBase58()]]);
+    // Positive control: the instruction's own delegate left with it — the decoded approve's F5, naming DELEGATE.
+    expect(find(px1(DELEGATE), 'unlimited-approve')?.approvals.map(a => [a.at, a.delegate])).toEqual([[0, DELEGATE.toBase58()]]);
+  });
+
+  it('L13 (review 3): a source holding nothing before — empty, even with tokens arriving in the same transaction — makes any decoded approve of it a block (fail closed)', () => {
+    const mine = (amount: bigint, delegatedAmount = 0n) => tokenAcc({mint: MAINNET_USDC_MINT, amount, delegate: delegatedAmount > 0n ? DELEGATE : null, delegatedAmount});
+    const px2 = (pre: bigint) => one({ixs: [approveIx(150n), unknownIx(UNKNOWN, [SRC])], pre: [[SRC, mine(pre)]], post: [[SRC, mine(1_000n, 150n)]]});
+    expect(find(px2(0n), 'unlimited-approve')?.approvals.map(a => [a.at, a.balance])).toEqual([[0, '0']]);
+    // Negative control: the same with 500 held before — 150 of 500 before, of 1 000 after: F6.
+    expect(find(px2(500n), 'unlimited-approve')).toBeUndefined();
+    expect(find(px2(500n), 'bounded-approve')?.approvals.map(a => [a.at, a.amount])).toEqual([[0, '150']]);
+  });
+
   it('a source the wallet cannot read, approved by the wallet, counts as an empty balance (fail closed)', () => {
     expect(kinds(one({ixs: [approveIx(1n)], pre: [[SRC, null]]}))).toEqual(['unlimited-approve', 'non-transfer']);
   });
@@ -1741,6 +1765,20 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
     const usdt = mintAcc(mintBytes({decimals: 6}));
     expect(find(one({ixs: [approveIx(U64_MAX), approveIx(U64_MAX, SRC2)], pre: both}, {mints: [[MAINNET_USDT_MINT, usdt]]}), 'unlimited-approve')?.word).toBe('UNLIMITED');
     expect(find(one({ixs: [approveIx(U64_MAX), approveIx(10n)], pre: both}), 'unlimited-approve')?.word).toBe('USDC');
+  });
+
+  it('L14 (review 3): a token the wallet cannot name — UNLIMITED only at u64::MAX, ALLOWANCE below it; a named token keeps its symbol either way', () => {
+    const odd = mintAcc(mintBytes({decimals: 9}));
+    const word = (amounts: bigint[], mints: [string, AccountData | null][] = [[MAINNET_USDC_MINT, odd]]) =>
+      find(one({ixs: amounts.map((a, i) => approveIx(a, i === 0 ? SRC : SRC2)), pre: [[SRC, tokenAcc({mint: MAINNET_USDC_MINT, amount: 1_000n})], [SRC2, tokenAcc({mint: MAINNET_USDT_MINT, amount: 1_000n})]]}, {mints}), 'unlimited-approve')?.word;
+    expect(word([U64_MAX])).toBe('UNLIMITED');
+    expect(word([995n])).toBe('ALLOWANCE');
+    expect(word([995n], [])).toBe('USDC');
+    expect(word([U64_MAX], [])).toBe('USDC');
+    // Two tokens: UNLIMITED when one of them is u64::MAX, else ALLOWANCE.
+    const usdt = mintAcc(mintBytes({decimals: 6}));
+    expect(word([995n, 999n], [[MAINNET_USDT_MINT, usdt]])).toBe('ALLOWANCE');
+    expect(word([995n, U64_MAX], [[MAINNET_USDT_MINT, usdt]])).toBe('UNLIMITED');
   });
 });
 
@@ -1901,12 +1939,16 @@ import {usesDurableNonce} from './txRequest';
  * mint authority of the wallet's moved (block, AUTHORITY) · F5 an approve of 99 % or more of the source's balance
  * (O5; u64::MAX and the whole balance always are) — decoded against the balance before, or the delegation it leaves
  * against the balance after; in chain state against the balance after (O8) — (block, the wallet's own symbol or
- * UNLIMITED) · F6 any other approve (warn) · F7 a
+ * UNLIMITED at u64::MAX, ALLOWANCE below it) · F6 any other approve (warn) · F7 a
  * Token-2022 mint's freeze authority, permanent delegate or transfer hook, or a mint that cannot be read (warn; a
  * classic mint never, O3) · F8 a durable nonce (warn) · F9 the whole balance to a first-time address (warn) · F10 a
  * step that depends on an earlier one (block, UNCHECKED). F11 (origin mismatch) is B1c-1/2's and never reaches here.
  */
 export const OVERRIDE_WORDS = {assign: 'ASSIGN', setAuthority: 'AUTHORITY', unlimited: 'UNLIMITED', dependent: 'UNCHECKED'} as const;
+/** F5's word for a token the wallet cannot name below u64::MAX (review 3 L14) — a second word for the same block kind, so not in OVERRIDE_WORDS (one per kind). */
+export const ALLOWANCE_WORD = 'ALLOWANCE';
+/** u64::MAX as an approval's base-unit amount (review 3 L14: `UNLIMITED` only for it). */
+const U64_MAX = ((1n << 64n) - 1n).toString();
 
 /** What the simulation says of one transaction: its post-state by address, a failure, or that it depends on transaction `on` (0-based). */
 export type FlagOutcome = {status: 'simulated'; post: ReadonlyMap<string, AccountData | null>} | {status: 'failed'} | {status: 'dependent'; on: number};
@@ -2102,8 +2144,9 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
     return candidate !== null && decimals === WALLET_TOKENS[candidate].decimals ? candidate : null;
   };
   // Unlimited (O5): 99 % or more of the balance — u64::MAX and the whole balance always are. O8: each balance where it is
-  // exact — a decoded approve's amount against the source's balance before, or the delegation it leaves (no more than it
-  // granted) against the balance after; a delegation seen in chain state against the balance after.
+  // exact — a decoded approve's amount against the source's balance before (0 when it held nothing or could not be read:
+  // a block, review 3 L13), or the delegation it leaves (its own delegate's, no more than it granted — L12) against the
+  // balance after; a delegation seen in chain state against the balance after.
   const nearlyAll = (amount: bigint, balance: bigint): boolean => amount * 100n >= balance * WHOLE_BALANCE_PERCENT;
   const found: {approval: Approval; unlimited: boolean}[] = [];
   const approval = (at: number | null, source: string, mint: string | null, delegate: string | null, amount: bigint, balance: bigint, unlimited: boolean) => {
@@ -2125,8 +2168,9 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
     const amount = BigInt(value.value);
     const before = own ? src.amount : 0n;
     const after = ownAfter(source);
-    const left = after !== null && after.delegate !== null && after.delegatedAmount <= amount && nearlyAll(after.delegatedAmount, after.amount);
-    approval(index, source, src?.mint ?? addressField(ix, 'mint'), addressField(ix, 'delegate'), amount, before, nearlyAll(amount, before) || left);
+    const delegate = addressField(ix, 'delegate');
+    const left = after !== null && after.delegate !== null && after.delegate === delegate && after.delegatedAmount <= amount && nearlyAll(after.delegatedAmount, after.amount);
+    approval(index, source, src?.mint ?? addressField(ix, 'mint'), delegate, amount, before, nearlyAll(amount, before) || left);
   }
   for (const [address, after] of post ?? []) {
     const postToken = tokenOf(after);
@@ -2143,7 +2187,8 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
   if (unlimited.length > 0) {
     const symbols = [...new Set(unlimited.map(a => a.symbol))];
     const only = symbols.length === 1 ? symbols[0] : null;
-    out.push({kind: 'unlimited-approve', severity: 'block', word: only ?? OVERRIDE_WORDS.unlimited, at: unlimited.find(a => a.at !== null)?.at ?? null, approvals: unlimited});
+    const unnamed = unlimited.some(a => a.amount === U64_MAX) ? OVERRIDE_WORDS.unlimited : ALLOWANCE_WORD;
+    out.push({kind: 'unlimited-approve', severity: 'block', word: only ?? unnamed, at: unlimited.find(a => a.at !== null)?.at ?? null, approvals: unlimited});
   }
   if (bounded.length > 0) out.push({kind: 'bounded-approve', severity: 'warn', word: null, at: bounded.find(a => a.at !== null)?.at ?? null, approvals: bounded});
 
@@ -2190,9 +2235,9 @@ export function overridesMatch(flags: readonly (readonly RedFlag[])[], given: re
 
 - [ ] **Step 4: Run — green, and the whole suite, the build and the gates.**
 
-Run: `npx vitest run src/background/dapp/__tests__/redFlags.test.ts` — expected: Test Files  1 passed (1) · Tests  34 passed (34)
+Run: `npx vitest run src/background/dapp/__tests__/redFlags.test.ts` — expected: Test Files  1 passed (1) · Tests  37 passed (37)
 
-Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  169 passed (169) · Tests  3356 passed (3356) (Task 1's end state: 168 files, 3322 tests). `node scripts/build.mjs && npm run gates` — expected: every gate ok (permissions, page bundles, vault isolation, rpc methods, no TGE date, fonts, classes). Nothing imports `redFlags.ts` yet (Task 3 does), so the bundles are unchanged. Nothing touches the repository root's `src/` or `core/`.
+Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  169 passed (169) · Tests  3359 passed (3359) (rev 2.2; Task 1's end state: 168 files, 3322 tests). `node scripts/build.mjs && npm run gates` — expected: every gate ok (permissions, page bundles, vault isolation, rpc methods, no TGE date, fonts, classes). Nothing imports `redFlags.ts` yet (Task 3 does), so the bundles are unchanged. Nothing touches the repository root's `src/` or `core/`.
 
 - [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy; `tsc`'s own exit code first (0), then the named test: red.**
 
@@ -2200,53 +2245,56 @@ Every mutation is in `extension/src/background/dapp/redFlags.ts`; every named te
 
 | id | the change | named test → observed (`tsc` exit, then the named test file) |
 |---|---|---|
-| M2a | F3 decoded dropped: `if (assigns.length > 0 \|\| assignedChain !== null)` → `if (assignedChain !== null)` | “assign, allocate, assignWithSeed, allocateWithSeed of the wallet acc…”; “a step that depends on an earlier one: a block, UNCHECKED; any other…”; “blocks first, then warnings; within each by instruction index (chain…”; … — tsc 0 · RED Tests  5 failed \| 29 passed (34) |
-| M2b | F3 chain dropped: `if (assigns.length > 0 \|\| assignedChain !== null)` → `if (assigns.length > 0)` | “chain state: the wallet account owned by another program, or holding…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2c | F3 chain: any non-plain post, changed or not: `(selfPre === null \|\| selfPre.owner !== selfPost.owner \|\| selfPre.data.length !== selfPost.data.length)` → `(selfPre === null \|\| selfPre.owner !== selfPost.owner \|\| selfPre.data.length !== selfPost.data.length \|\| selfPre !== null)` | “chain state: the wallet account owned by another program, or holding…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2d | F3 by base, not target: `ASSIGNS.includes(ix.name) && addressField(ix, 'account') === account` → `ASSIGNS.includes(ix.name) && (addressField(ix, 'base') ?? addressField(ix, 'account')) === account` | “assign, allocate, assignWithSeed, allocateWithSeed of the wallet acc…”; “another account assigned or allocated is F2 only — the …WithSeed for…” — tsc 0 · RED Tests  2 failed \| 32 passed (34) |
-| M2e | F4 own token account dropped: `asAccount?.owner === account ? 'token-account' :` → `asAccount?.owner === '' ? 'token-account' :` | “an own token account (its pre-state owner field is the wallet): a bl…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2f | F4 mint authorities dropped: `asMint !== null && (asMint.mintAuthority === account \|\| asMint.freezeAuthority === account)` → `asMint !== null && asMint.decimals < 0 && (asMint.mintAuthority === account \|\| asMint.freezeAuthority === account)` | “a mint whose mint or freeze authority is the wallet — even when some…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2g | F4 current authority dropped: `addressField(ix, 'currentAuthority') === account ? 'current-authority' : null` → `addressField(ix, 'currentAuthority') === '' ? 'current-authority' : null` | “the wallet signing as the current authority of an account it cannot …” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2h | F4 chain owner reassigned dropped: `if (preOwn !== null && postToken !== null && postToken.owner !== account) changes` → `if (preOwn !== null && postToken !== null && postToken.owner === '') changes` | “chain state (a CPI): an own account’s owner reassigned, its close au…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2i | F4 chain close authority dropped: `postToken.closeAuthority !== (preOwn?.closeAuthority ?? null)) {` → `postToken.closeAuthority !== (preOwn?.closeAuthority ?? null) && address === '') {` | “chain state (a CPI): an own account’s owner reassigned, its close au…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2j | F4 chain mint authority dropped: `if (preMint !== null && postMint !== null) {` → `if (preMint !== null && postMint !== null && address === '') {` | “chain state (a CPI): an own account’s owner reassigned, its close au…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2k | F5 decoded approves dropped: `(ix.name !== 'approve' && ix.name !== 'approveChecked')) continue;` → `(ix.name !== 'approve-' && ix.name !== 'approveChecked-')) continue;` | “u64::MAX, or at least the source’s whole balance: a block whose word…”; “O5: 99 % of the balance or more is a block — the threshold’s both ed…”; “O8 (review 2 M5): each balance where it is exact — chain state again…”; … — tsc 0 · RED Tests  11 failed \| 23 passed (34) |
-| M2l | (rev 2.1) F5 at 99 % strictly above (>= → >): `const nearlyAll = (amount: bigint, balance: bigint): boolean => amount * 100n >= balance * WHOLE_BALANCE_PERCENT;` → `const nearlyAll = (amount: bigint, balance: bigint): boolean => amount * 100n > balance * WHOLE_BALANCE_PERCENT;` | “O5: 99 % of the balance or more is a block — the threshold’s both ed…”; “chain state (a CPI): an own account’s delegation new or raised to u6…” — tsc 0 · RED Tests  2 failed \| 32 passed (34) |
-| M2m | F5/F6 chain-state approvals dropped: `if (postToken === null \|\| postToken.owner !== account \|\| postToken.delegate === null) continue;` → `if (postToken === null \|\| postToken.owner !== account \|\| postToken.delegate === null \|\| address !== '') continue;` | “O8 (review 2 M5): each balance where it is exact — chain state again…”; “chain state (a CPI): an own account’s delegation new or raised to u6…” — tsc 0 · RED Tests  2 failed \| 32 passed (34) |
-| M2n | F5 chain: new-or-raised gate dropped: `if (postToken.delegate === (preOwn?.delegate ?? null) && postToken.delegatedAmount <= (preOwn?.delegatedAmount ?? 0n)) continue;` → `if (postToken.delegate === '' && postToken.delegatedAmount <= (preOwn?.delegatedAmount ?? 0n)) continue;` | “chain state (a CPI): an own account’s delegation new or raised to u6…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2o | (rev 2.1 line) F5 an unreadable own source read as bounded: `const before = own ? src.amount : 0n;` → `const before = own ? src.amount : 1n << 64n;` | “a source the wallet cannot read, approved by the wallet, counts as a…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2p | word: decimals match dropped: `return candidate !== null && decimals === WALLET_TOKENS[candidate].decimals ? candidate : null;` → `return candidate !== null && (decimals ?? WALLET_TOKENS[candidate].decimals) >= 0 ? candidate : null;` | “the word: the wallet table’s symbol only when the mint’s decimals ma…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2q | word: an unreadable mint assumed to match: `return a === null ? null : (mintInfo(a.data, a.owner)?.decimals ?? null);     };     const symbolOf` → `return a === null ? 6 : (mintInfo(a.data, a.owner)?.decimals ?? null);     };     const symbolOf` | “the word: the wallet table’s symbol only when the mint’s decimals ma…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2r | word: first symbol, not one-for-all: `const only = symbols.length === 1 ? symbols[0] : null;` → `const only = symbols[0] ?? null;` | “one word per transaction: one symbol for every unlimited approval, e…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2s | F10 dropped: `if (t.outcome.status === 'dependent') out.push` → `if (t.outcome.status === 'dependent' && t.outcome.on < 0) out.push` | “a step that depends on an earlier one: a block, UNCHECKED; any other…”; “blocks first, then warnings; within each by instruction index (chain…”; “one word per (transaction, block kind), in order; none for warnings”; … — tsc 0 · RED Tests  4 failed \| 30 passed (34) |
-| M2t | F2 Compute Budget not exempt: `ix.program === null \|\| ix.program === 'compute-budget' \|\| isTransfer(ix)` → `ix.program === null \|\| isTransfer(ix)` | “never for Compute Budget (the fee) and never for System transfer, To…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2u | F2 transferChecked not a transfer: `(ix.name === 'transfer' \|\| ix.name === 'transferChecked'))` → `ix.name === 'transfer')` | “never for Compute Budget (the fee) and never for System transfer, To…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2v | F7 classic mints flagged: `if (a !== null && a.owner === TOKEN_PROGRAM) continue;` → `if (a !== null && a.owner === TOKEN_PROGRAM && mint === '') continue;` | “never for Compute Budget (the fee) and never for System transfer, To…”; “an own token account (its pre-state owner field is the wallet): a bl…”; “chain state (a CPI): an own account’s owner reassigned, its close au…”; … — tsc 0 · RED Tests  11 failed \| 23 passed (34) |
-| M2w | F7 unreadable mint silent: `out.push({kind: 'token-2022', severity: 'warn', word: null, at, mint, settings: null});` → `if (mint === '') out.push({kind: 'token-2022', severity: 'warn', word: null, at, mint, settings: null});` | “a mint that cannot be read — not read at all, absent, another owner,…”; “the mints: own token accounts pre and post, and every mint a decoded…” — tsc 0 · RED Tests  2 failed \| 32 passed (34) |
-| M2x | F7 permanent delegate ignored: `info.freezeAuthority !== null \|\| info.permanentDelegate !== null \|\| info.transferHookProgram !== null` → `info.freezeAuthority !== null \|\| info.transferHookProgram !== null` | “no flag: a Token-2022 mint whose delegate is the zero key and with n…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2y | F7 someone else's token accounts counted: `if (own !== null && own.owner === account && !out.has(own.mint))` → `if (own !== null && !out.has(own.mint))` | “the mints: own token accounts pre and post, and every mint a decoded…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2z | F8 from any decoded advanceNonceAccount: `if (usesDurableNonce(t.tx)) out.push` → `if (usesDurableNonce(t.tx) \|\| t.decoded.some(ix => ix.name === 'advanceNonceAccount')) out.push` | “AdvanceNonceAccount first: "does not expire" (and it is named among …” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2aa | F9 without the first-send gate: `if (t.firstSend && input.reasons.includes('whole-balance-to-new'))` → `if (input.reasons.includes('whole-balance-to-new'))` | “whole balance to a first-time address: on each transaction that send…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2ab | order: blocks not first: `(x.f.severity === y.f.severity ? 0 : x.f.severity === 'block' ? -1 : 1) \|\| ` → `` | “assign, allocate, assignWithSeed, allocateWithSeed of the wallet acc…”; “an own token account (its pre-state owner field is the wallet): a bl…”; “u64::MAX, or at least the source’s whole balance: a block whose word…”; … — tsc 0 · RED Tests  9 failed \| 25 passed (34) |
-| M2ac | overrides: duplicates accepted: `if (!expected.has(k) \|\| seen.has(k)) return 'mismatch';` → `if (!expected.has(k)) return 'mismatch';` | “ok only for exactly the expected words, in any order; missing when s…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2ad | overrides: extra entries accepted: `if (!expected.has(k) \|\| seen.has(k)) return 'mismatch';` → `if (seen.has(k)) return 'mismatch';` | “ok only for exactly the expected words, in any order; missing when s…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2ae | overrides: case-insensitive: `JSON.stringify([o.tx, o.word])` → `JSON.stringify([o.tx, o.word.toUpperCase()])` | “ok only for exactly the expected words, in any order; missing when s…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2af | expectedOverrides: warnings too: `(f.severity === 'block' ? [{tx, word: f.word}] : [])` → `[{tx, word: f.word ?? ''}]` | “one word per (transaction, block kind), in order; none for warnings”; “ok only for exactly the expected words, in any order; missing when s…” — tsc 0 · RED Tests  2 failed \| 32 passed (34) |
-| M2ag | (rev 2, H1) F5 the 99 % term dropped (whole balance only): `amount * 100n >= balance * WHOLE_BALANCE_PERCENT;` → `amount * WHOLE_BALANCE_PERCENT >= balance * WHOLE_BALANCE_PERCENT;` | “O5: 99 % of the balance or more is a block — the threshold’s both ed…”; “chain state (a CPI): an own account’s delegation new or raised to u6…” — tsc 0 · RED Tests  2 failed \| 32 passed (34) |
-| M2ah | (rev 2.1, O8; review 1 P12 inverted) chain state against the balance before, not after: `postToken.delegatedAmount, postToken.amount, nearlyAll(postToken.delegatedAmount, postToken.amount));` → `postToken.delegatedAmount, postToken.amount, nearlyAll(postToken.delegatedAmount, preOwn?.amount ?? 0n));` | “O8 (review 2 M5): each balance where it is exact — chain state again…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2ai | (rev 2.1, O8) chain state against the smaller of before and after (rev 2's rule): `nearlyAll(postToken.delegatedAmount, postToken.amount));` → `nearlyAll(postToken.delegatedAmount, postToken.amount < (preOwn?.amount ?? 0n) ? postToken.amount : (preOwn?.amount ?? 0n)));` | “O8 (review 2 M5): each balance where it is exact — chain state again…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2aj | (rev 2.1, O8) decoded: the delegation it leaves not read: `approval(index, source, src?.mint ?? addressField(ix, 'mint'), addressField(ix, 'delegate'), amount, before, nearlyAll(amount, before) \|\| left);` → `approval(index, source, src?.mint ?? addressField(ix, 'mint'), addressField(ix, 'delegate'), amount, before, nearlyAll(amount, before) \|\| (left && amount < 0n));` | “O8 (review 2 M5): each balance where it is exact — chain state again…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2ak | (rev 2.1, O8) decoded: the instruction's amount against the balance after (rev 2's reading), not the delegation it leaves: `after.delegate !== null && after.delegatedAmount <= amount && nearlyAll(after.delegatedAmount, after.amount);` → `nearlyAll(amount, after.amount);` | “O8: a delegation the same transaction consumes is F6 — approve 500 o…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2al | (rev 2, O7) F2 self-rent exemption dropped: `isTransfer(ix) \|\| selfRent(ix) ?` → `isTransfer(ix) \|\| (selfRent(ix) && ix.name === '') ?` | “O7: never for the three self-rent instructions — an own ATA created …” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2am | (rev 2, O7) ATA: any wallet: `addressField(ix, 'wallet') === account && addressField(ix, 'payer') === account` → `addressField(ix, 'payer') === account` | “every instruction of a decoded program that is not a transfer, named…”; “O7 negative controls: another wallet’s ATA, one another payer funds,…” — tsc 0 · RED Tests  2 failed \| 32 passed (34) |
-| M2an | (rev 2, O7) ATA: any payer: `addressField(ix, 'wallet') === account && addressField(ix, 'payer') === account` → `addressField(ix, 'wallet') === account` | “O7 negative controls: another wallet’s ATA, one another payer funds,…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2ao | (rev 2, O7) syncNative of any account: `ix.name === 'syncNative' && ownTokenAccount(addressField(ix, 'account'))` → `ix.name === 'syncNative'` | “O7 negative controls: another wallet’s ATA, one another payer funds,…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2ap | (rev 2, O7) closeAccount to any destination: `ownTokenAccount(addressField(ix, 'account')) && addressField(ix, 'destination') === account)` → `ownTokenAccount(addressField(ix, 'account')))` | “O7 negative controls: another wallet’s ATA, one another payer funds,…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2aq | (rev 2, O7) closeAccount of any account: `ix.name === 'closeAccount' && ownTokenAccount(addressField(ix, 'account')) && ` → `ix.name === 'closeAccount' && ` | “O7 negative controls: another wallet’s ATA, one another payer funds,…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2ar | (rev 2.1, O8) decoded: a remaining delegation without a delegate (consumed) read as one: `after.delegate !== null && after.delegatedAmount <= amount` → `after.delegatedAmount <= amount` | “O8: a delegation the same transaction consumes is F6 — approve 500 o…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
-| M2as | (rev 2.1, O8) decoded: a delegation raised past the instruction's grant credited to it: `after.delegatedAmount <= amount && nearlyAll` → `after.delegatedAmount >= 0n && nearlyAll` | “O8 (review 2 M5): each balance where it is exact — chain state again…” — tsc 0 · RED Tests  1 failed \| 33 passed (34) |
+| M2a | F3 decoded dropped: `if (assigns.length > 0 \|\| assignedChain !== null)` → `if (assignedChain !== null)` | “assign, allocate, assignWithSeed, allocateWithSeed of the wallet acc…”; “a step that depends on an earlier one: a block, UNCHECKED; any other…”; “blocks first, then warnings; within each by instruction index (chain…”; … — tsc 0 · RED Tests  5 failed \| 32 passed (37) |
+| M2b | F3 chain dropped: `if (assigns.length > 0 \|\| assignedChain !== null)` → `if (assigns.length > 0)` | “chain state: the wallet account owned by another program, or holding…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2c | F3 chain: any non-plain post, changed or not: `(selfPre === null \|\| selfPre.owner !== selfPost.owner \|\| selfPre.data.length !== selfPost.data.length)` → `(selfPre === null \|\| selfPre.owner !== selfPost.owner \|\| selfPre.data.length !== selfPost.data.length \|\| selfPre !== null)` | “chain state: the wallet account owned by another program, or holding…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2d | F3 by base, not target: `ASSIGNS.includes(ix.name) && addressField(ix, 'account') === account` → `ASSIGNS.includes(ix.name) && (addressField(ix, 'base') ?? addressField(ix, 'account')) === account` | “assign, allocate, assignWithSeed, allocateWithSeed of the wallet acc…”; “another account assigned or allocated is F2 only — the …WithSeed for…” — tsc 0 · RED Tests  2 failed \| 35 passed (37) |
+| M2e | F4 own token account dropped: `asAccount?.owner === account ? 'token-account' :` → `asAccount?.owner === '' ? 'token-account' :` | “an own token account (its pre-state owner field is the wallet): a bl…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2f | F4 mint authorities dropped: `asMint !== null && (asMint.mintAuthority === account \|\| asMint.freezeAuthority === account)` → `asMint !== null && asMint.decimals < 0 && (asMint.mintAuthority === account \|\| asMint.freezeAuthority === account)` | “a mint whose mint or freeze authority is the wallet — even when some…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2g | F4 current authority dropped: `addressField(ix, 'currentAuthority') === account ? 'current-authority' : null` → `addressField(ix, 'currentAuthority') === '' ? 'current-authority' : null` | “the wallet signing as the current authority of an account it cannot …” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2h | F4 chain owner reassigned dropped: `if (preOwn !== null && postToken !== null && postToken.owner !== account) changes` → `if (preOwn !== null && postToken !== null && postToken.owner === '') changes` | “chain state (a CPI): an own account’s owner reassigned, its close au…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2i | F4 chain close authority dropped: `postToken.closeAuthority !== (preOwn?.closeAuthority ?? null)) {` → `postToken.closeAuthority !== (preOwn?.closeAuthority ?? null) && address === '') {` | “chain state (a CPI): an own account’s owner reassigned, its close au…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2j | F4 chain mint authority dropped: `if (preMint !== null && postMint !== null) {` → `if (preMint !== null && postMint !== null && address === '') {` | “chain state (a CPI): an own account’s owner reassigned, its close au…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2k | F5 decoded approves dropped: `(ix.name !== 'approve' && ix.name !== 'approveChecked')) continue;` → `(ix.name !== 'approve-' && ix.name !== 'approveChecked-')) continue;` | “u64::MAX, or at least the source’s whole balance: a block whose word…”; “O5: 99 % of the balance or more is a block — the threshold’s both ed…”; “O8 (review 2 M5): each balance where it is exact — chain state again…”; … — tsc 0 · RED Tests  14 failed \| 23 passed (37) |
+| M2l | (rev 2.1) F5 at 99 % strictly above (>= → >): `const nearlyAll = (amount: bigint, balance: bigint): boolean => amount * 100n >= balance * WHOLE_BALANCE_PERCENT;` → `const nearlyAll = (amount: bigint, balance: bigint): boolean => amount * 100n > balance * WHOLE_BALANCE_PERCENT;` | “O5: 99 % of the balance or more is a block — the threshold’s both ed…”; “L12 (review 3): the delegation an approve leaves is its own only wit…”; “chain state (a CPI): an own account’s delegation new or raised to u6…” — tsc 0 · RED Tests  3 failed \| 34 passed (37) |
+| M2m | F5/F6 chain-state approvals dropped: `if (postToken === null \|\| postToken.owner !== account \|\| postToken.delegate === null) continue;` → `if (postToken === null \|\| postToken.owner !== account \|\| postToken.delegate === null \|\| address !== '') continue;` | “O8 (review 2 M5): each balance where it is exact — chain state again…”; “L12 (review 3): the delegation an approve leaves is its own only wit…”; “chain state (a CPI): an own account’s delegation new or raised to u6…” — tsc 0 · RED Tests  3 failed \| 34 passed (37) |
+| M2n | F5 chain: new-or-raised gate dropped: `if (postToken.delegate === (preOwn?.delegate ?? null) && postToken.delegatedAmount <= (preOwn?.delegatedAmount ?? 0n)) continue;` → `if (postToken.delegate === '' && postToken.delegatedAmount <= (preOwn?.delegatedAmount ?? 0n)) continue;` | “chain state (a CPI): an own account’s delegation new or raised to u6…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2o | (rev 2.1 line) F5 an unreadable own source read as bounded: `const before = own ? src.amount : 0n;` → `const before = own ? src.amount : 1n << 64n;` | “a source the wallet cannot read, approved by the wallet, counts as a…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2p | word: decimals match dropped: `return candidate !== null && decimals === WALLET_TOKENS[candidate].decimals ? candidate : null;` → `return candidate !== null && (decimals ?? WALLET_TOKENS[candidate].decimals) >= 0 ? candidate : null;` | “the word: the wallet table’s symbol only when the mint’s decimals ma…”; “L14 (review 3): a token the wallet cannot name — UNLIMITED only at u…” — tsc 0 · RED Tests  2 failed \| 35 passed (37) |
+| M2q | word: an unreadable mint assumed to match: `return a === null ? null : (mintInfo(a.data, a.owner)?.decimals ?? null);     };     const symbolOf` → `return a === null ? 6 : (mintInfo(a.data, a.owner)?.decimals ?? null);     };     const symbolOf` | “the word: the wallet table’s symbol only when the mint’s decimals ma…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2r | word: first symbol, not one-for-all: `const only = symbols.length === 1 ? symbols[0] : null;` → `const only = symbols[0] ?? null;` | “one word per transaction: one symbol for every unlimited approval, e…”; “L14 (review 3): a token the wallet cannot name — UNLIMITED only at u…” — tsc 0 · RED Tests  2 failed \| 35 passed (37) |
+| M2s | F10 dropped: `if (t.outcome.status === 'dependent') out.push` → `if (t.outcome.status === 'dependent' && t.outcome.on < 0) out.push` | “a step that depends on an earlier one: a block, UNCHECKED; any other…”; “blocks first, then warnings; within each by instruction index (chain…”; “one word per (transaction, block kind), in order; none for warnings”; … — tsc 0 · RED Tests  4 failed \| 33 passed (37) |
+| M2t | F2 Compute Budget not exempt: `ix.program === null \|\| ix.program === 'compute-budget' \|\| isTransfer(ix)` → `ix.program === null \|\| isTransfer(ix)` | “never for Compute Budget (the fee) and never for System transfer, To…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2u | F2 transferChecked not a transfer: `(ix.name === 'transfer' \|\| ix.name === 'transferChecked'))` → `ix.name === 'transfer')` | “never for Compute Budget (the fee) and never for System transfer, To…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2v | F7 classic mints flagged: `if (a !== null && a.owner === TOKEN_PROGRAM) continue;` → `if (a !== null && a.owner === TOKEN_PROGRAM && mint === '') continue;` | “never for Compute Budget (the fee) and never for System transfer, To…”; “an own token account (its pre-state owner field is the wallet): a bl…”; “chain state (a CPI): an own account’s owner reassigned, its close au…”; … — tsc 0 · RED Tests  11 failed \| 26 passed (37) |
+| M2w | F7 unreadable mint silent: `out.push({kind: 'token-2022', severity: 'warn', word: null, at, mint, settings: null});` → `if (mint === '') out.push({kind: 'token-2022', severity: 'warn', word: null, at, mint, settings: null});` | “a mint that cannot be read — not read at all, absent, another owner,…”; “the mints: own token accounts pre and post, and every mint a decoded…” — tsc 0 · RED Tests  2 failed \| 35 passed (37) |
+| M2x | F7 permanent delegate ignored: `info.freezeAuthority !== null \|\| info.permanentDelegate !== null \|\| info.transferHookProgram !== null` → `info.freezeAuthority !== null \|\| info.transferHookProgram !== null` | “no flag: a Token-2022 mint whose delegate is the zero key and with n…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2y | F7 someone else's token accounts counted: `if (own !== null && own.owner === account && !out.has(own.mint))` → `if (own !== null && !out.has(own.mint))` | “the mints: own token accounts pre and post, and every mint a decoded…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2z | F8 from any decoded advanceNonceAccount: `if (usesDurableNonce(t.tx)) out.push` → `if (usesDurableNonce(t.tx) \|\| t.decoded.some(ix => ix.name === 'advanceNonceAccount')) out.push` | “AdvanceNonceAccount first: "does not expire" (and it is named among …” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2aa | F9 without the first-send gate: `if (t.firstSend && input.reasons.includes('whole-balance-to-new'))` → `if (input.reasons.includes('whole-balance-to-new'))` | “whole balance to a first-time address: on each transaction that send…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2ab | order: blocks not first: `(x.f.severity === y.f.severity ? 0 : x.f.severity === 'block' ? -1 : 1) \|\| ` → `` | “assign, allocate, assignWithSeed, allocateWithSeed of the wallet acc…”; “an own token account (its pre-state owner field is the wallet): a bl…”; “u64::MAX, or at least the source’s whole balance: a block whose word…”; … — tsc 0 · RED Tests  9 failed \| 28 passed (37) |
+| M2ac | overrides: duplicates accepted: `if (!expected.has(k) \|\| seen.has(k)) return 'mismatch';` → `if (!expected.has(k)) return 'mismatch';` | “ok only for exactly the expected words, in any order; missing when s…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2ad | overrides: extra entries accepted: `if (!expected.has(k) \|\| seen.has(k)) return 'mismatch';` → `if (seen.has(k)) return 'mismatch';` | “ok only for exactly the expected words, in any order; missing when s…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2ae | overrides: case-insensitive: `JSON.stringify([o.tx, o.word])` → `JSON.stringify([o.tx, o.word.toUpperCase()])` | “ok only for exactly the expected words, in any order; missing when s…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2af | expectedOverrides: warnings too: `(f.severity === 'block' ? [{tx, word: f.word}] : [])` → `[{tx, word: f.word ?? ''}]` | “one word per (transaction, block kind), in order; none for warnings”; “ok only for exactly the expected words, in any order; missing when s…” — tsc 0 · RED Tests  2 failed \| 35 passed (37) |
+| M2ag | (rev 2, H1) F5 the 99 % term dropped (whole balance only): `amount * 100n >= balance * WHOLE_BALANCE_PERCENT;` → `amount * WHOLE_BALANCE_PERCENT >= balance * WHOLE_BALANCE_PERCENT;` | “O5: 99 % of the balance or more is a block — the threshold’s both ed…”; “L12 (review 3): the delegation an approve leaves is its own only wit…”; “chain state (a CPI): an own account’s delegation new or raised to u6…”; … — tsc 0 · RED Tests  4 failed \| 33 passed (37) |
+| M2ah | (rev 2.1, O8; review 1 P12 inverted) chain state against the balance before, not after: `postToken.delegatedAmount, postToken.amount, nearlyAll(postToken.delegatedAmount, postToken.amount));` → `postToken.delegatedAmount, postToken.amount, nearlyAll(postToken.delegatedAmount, preOwn?.amount ?? 0n));` | “O8 (review 2 M5): each balance where it is exact — chain state again…”; “L12 (review 3): the delegation an approve leaves is its own only wit…” — tsc 0 · RED Tests  2 failed \| 35 passed (37) |
+| M2ai | (rev 2.1, O8) chain state against the smaller of before and after (rev 2's rule): `nearlyAll(postToken.delegatedAmount, postToken.amount));` → `nearlyAll(postToken.delegatedAmount, postToken.amount < (preOwn?.amount ?? 0n) ? postToken.amount : (preOwn?.amount ?? 0n)));` | “O8 (review 2 M5): each balance where it is exact — chain state again…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2aj | (rev 2.1, O8) decoded: the delegation it leaves not read: `approval(index, source, src?.mint ?? addressField(ix, 'mint'), delegate, amount, before, nearlyAll(amount, before) \|\| left);` → `approval(index, source, src?.mint ?? addressField(ix, 'mint'), delegate, amount, before, nearlyAll(amount, before) \|\| (left && amount < 0n));` | “O8 (review 2 M5): each balance where it is exact — chain state again…”; “L12 (review 3): the delegation an approve leaves is its own only wit…” — tsc 0 · RED Tests  2 failed \| 35 passed (37) |
+| M2ak | (rev 2.1, O8) decoded: the instruction's amount against the balance after (rev 2's reading), not the delegation it leaves: `after.delegate !== null && after.delegate === delegate && after.delegatedAmount <= amount && nearlyAll(after.delegatedAmount, after.amount);` → `nearlyAll(amount, after.amount);` | “O8: a delegation the same transaction consumes is F6 — approve 500 o…”; “L12 (review 3): the delegation an approve leaves is its own only wit…” — tsc 0 · RED Tests  2 failed \| 35 passed (37) |
+| M2al | (rev 2, O7) F2 self-rent exemption dropped: `isTransfer(ix) \|\| selfRent(ix) ?` → `isTransfer(ix) \|\| (selfRent(ix) && ix.name === '') ?` | “O7: never for the three self-rent instructions — an own ATA created …” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2am | (rev 2, O7) ATA: any wallet: `addressField(ix, 'wallet') === account && addressField(ix, 'payer') === account` → `addressField(ix, 'payer') === account` | “every instruction of a decoded program that is not a transfer, named…”; “O7 negative controls: another wallet’s ATA, one another payer funds,…” — tsc 0 · RED Tests  2 failed \| 35 passed (37) |
+| M2an | (rev 2, O7) ATA: any payer: `addressField(ix, 'wallet') === account && addressField(ix, 'payer') === account` → `addressField(ix, 'wallet') === account` | “O7 negative controls: another wallet’s ATA, one another payer funds,…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2ao | (rev 2, O7) syncNative of any account: `ix.name === 'syncNative' && ownTokenAccount(addressField(ix, 'account'))` → `ix.name === 'syncNative'` | “O7 negative controls: another wallet’s ATA, one another payer funds,…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2ap | (rev 2, O7) closeAccount to any destination: `ownTokenAccount(addressField(ix, 'account')) && addressField(ix, 'destination') === account)` → `ownTokenAccount(addressField(ix, 'account')))` | “O7 negative controls: another wallet’s ATA, one another payer funds,…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2aq | (rev 2, O7) closeAccount of any account: `ix.name === 'closeAccount' && ownTokenAccount(addressField(ix, 'account')) && ` → `ix.name === 'closeAccount' && ` | “O7 negative controls: another wallet’s ATA, one another payer funds,…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2ar | (rev 2.2) decoded: a remaining delegation without a delegate (consumed) read as one — both delegate checks dropped: `after.delegate !== null && after.delegate === delegate && after.delegatedAmount <= amount` → `after.delegatedAmount <= amount` | “O8: a delegation the same transaction consumes is F6 — approve 500 o…”; “L12 (review 3): the delegation an approve leaves is its own only wit…” — tsc 0 · RED Tests  2 failed \| 35 passed (37) |
+| M2as | (rev 2.1, O8) decoded: a delegation raised past the instruction's grant credited to it: `after.delegatedAmount <= amount && nearlyAll` → `after.delegatedAmount >= 0n && nearlyAll` | “O8 (review 2 M5): each balance where it is exact — chain state again…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2at | (rev 2.2, L12) decoded: any delegate left counts as the instruction's: `after.delegate !== null && after.delegate === delegate && ` → `after.delegate !== null && ` | “L12 (review 3): the delegation an approve leaves is its own only wit…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2au | (rev 2.2, L13) decoded: an own source holding nothing before carved out: `before, nearlyAll(amount, before) \|\| left);` → `before, ((before > 0n \|\| !own) && nearlyAll(amount, before)) \|\| left);` | “L13 (review 3): a source holding nothing before — empty, even with t…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
+| M2av | (rev 2.2, L14) an unnamed token's word UNLIMITED below u64::MAX too: `unlimited.some(a => a.amount === U64_MAX) ? OVERRIDE_WORDS.unlimited : ALLOWANCE_WORD` → `unlimited.some(a => a.amount === U64_MAX) \|\| true ? OVERRIDE_WORDS.unlimited : ALLOWANCE_WORD` | “L14 (review 3): a token the wallet cannot name — UNLIMITED only at u…” — tsc 0 · RED Tests  1 failed \| 36 passed (37) |
 
-45 mutations (rev 2.1: 43 + M2ar, M2as; M2ah–M2ak redefined on O8's terms), all red, every one compiling (`tsc` 0). One first draft did not compile and was replaced (INVALID, not red): M2w as first written (`if (info === null && mint === '') {`) left `info` possibly null in the `else` branch (tsc 2). Counts are on this task's own tree (`redFlags.test.ts`, 34 tests in rev 2.1), each mutant alone in a fresh `git archive` copy with `node_modules` linked, under `timeout 300`. **(rev 2)** Three first drafts of the new ones did not compile (INVALID, not red) and were replaced: M2ag as `amount >= balance`, M2aj as `own ? src.amount : 0n` and M2al with `selfRent(ix)` deleted each left a binding unused (tsc 2, TS6133); the replacements keep the binding and make the term inert.
+48 mutations (rev 2.2: 45 + M2at, M2au, M2av; rev 2.1: 43 + M2ar, M2as), all red, every one compiling (`tsc` 0). One first draft did not compile and was replaced (INVALID, not red): M2w as first written (`if (info === null && mint === '') {`) left `info` possibly null in the `else` branch (tsc 2). Counts are on this task's own tree (`redFlags.test.ts`, 37 tests in rev 2.2), each mutant alone in a fresh `git archive` copy with `node_modules` linked, under `timeout 300`. **(rev 2)** Three first drafts of the new ones did not compile (INVALID, not red) and were replaced: M2ag as `amount >= balance`, M2aj as `own ? src.amount : 0n` and M2al with `selfRent(ix)` deleted each left a binding unused (tsc 2, TS6133); the replacements keep the binding and make the term inert.
 
 - [ ] **Step 6: Commit.**
 
@@ -2279,6 +2327,9 @@ git commit -m "feat(extension): B1c-3 red flags — B1 §3's table F1–F10 as a
 - **(rev 2.1) O8 / review 2 M5 — each balance where it is exact:** a decoded approve is F5 when its amount is ≥ 99 % of the source's balance **before** the transaction, or when the delegation it **leaves** is ≥ 99 % of the balance **after** it; a chain-state delegation (new or raised) when it is ≥ 99 % of the balance **after**. rev 2's "smaller of before and after" blocked two shapes whose bodies were then false (review 2): a delegation the same transaction consumes (approve 500 of 1 000, the program pulls the 500 — the Token program clears the delegate) and a small delegation after an inflow (150 of the 1 000 held after 900 came in); both are now F6, and their F6 copy is true ("move up to <amount>"; the stored approval carries the approved amount). Review 1 M1's example (90 % moved out, 150 delegated of the 100 left) still blocks, in chain state and decoded. Tests: "O8 (review 2 M5): each balance where it is exact …" (the M1 rows rewritten) and "O8: a delegation the same transaction consumes is F6 …" (post 500 and 0).
 - **Ruling (rev 2.1): the decoded "delegation it leaves" term counts only a remaining delegation with a delegate set and no larger than what the instruction granted** — why: a delegation a program raised past the decoded approve (approve 5, a CPI leaves u64::MAX) is the chain state's to name (F5 at null, Q43 "a program call — not an instruction listed here"); crediting it to the instruction would make Q42 say "for amount = 5, all or nearly all of this account's balance" — false. A delegate cleared (consumed) is no remaining delegation (M2ar), and a raised one is the chain state's (M2as). Cost if wrong: a delegation re-approved back to its unchanged pre-state value inside one transaction is F6 (the chain rule's B1c-2 gate: an unchanged delegation is no flag) — the user's standing delegation, not this transaction's grant.
 - **(rev 2.1) Mutations on the new terms:** M2ah (chain state against the balance before — the reading review 1 rejected), M2ai (chain state against the smaller, rev 2's rule — red on the inflow row), M2aj (decoded without the delegation it leaves — red on review 1's decoded example), M2ak (decoded: the instruction's amount against the balance after, rev 2's reading — red on the consumed delegation), M2ar, M2as (the two guards); M2l, M2ag, M2o on their rev-2.1 lines. `Approval.balance` is the balance before (decoded) or after (chain state) — the window shows none of it.
+- **(rev 2.2) L12 — the delegation an approve leaves is its own only with its own delegate:** `left` also requires the post-state delegate to equal the instruction's (`addressField(ix, 'delegate')`); otherwise the chain-state branch decides and names the real delegate. Review 3's PX1 is the test "L12 (review 3): …" (approve 500 to DELEGATE, 500 sent out, THEIRS holding 495 of the 500 left after it → F5 at `null`, delegate THEIRS; positive control with DELEGATE left → the decoded F5 at 0); M2at.
+- **(rev 2.2) L13 — kept, and said:** a source holding nothing before (an empty account; one the transaction creates or the wallet cannot read already counted 0) makes any decoded approve of it a block, inflow or not — fail closed: the user cannot see a balance the approval is bounded by. Test "L13 (review 3): a source holding nothing before …" (review 3's PX2: 0 before, 150 approved, 1 000 arriving → F5 at 0, balance '0'; negative control: 500 before → F6, 150); M2au (the carve review 3 offered as (b)) red.
+- **(rev 2.2) L14 — `ALLOWANCE`:** F5's word for a token the wallet cannot name is `UNLIMITED` only when one of the flag's approvals is u64::MAX, else `ALLOWANCE_WORD` = `ALLOWANCE` (exported beside `OVERRIDE_WORDS`, not in it: `OVERRIDE_WORDS` is one word per block kind, and decide's `MAX_OVERRIDES` = batch × kinds counts it — adding a key there grew the cap to 25, which `overrides.test.ts` caught). A named token keeps its symbol at and below u64::MAX. Test "L14 (review 3): …"; M2av. M2aj, M2ak and M2ar moved to their rev-2.2 lines (M2ar now drops both delegate checks).
 
 ---
 
@@ -2341,7 +2392,7 @@ The scene gains `errAt` (one error per simulateTransaction call), `readFails` an
 
 ````diff
 diff --git a/extension/src/background/dapp/__tests__/simulate.test.ts b/extension/src/background/dapp/__tests__/simulate.test.ts
-index 46c0c84..ca49c92 100644
+index 46c0c84..cb2f2cf 100644
 --- a/extension/src/background/dapp/__tests__/simulate.test.ts
 +++ b/extension/src/background/dapp/__tests__/simulate.test.ts
 @@ -1,14 +1,14 @@
@@ -2475,7 +2526,7 @@ index 46c0c84..ca49c92 100644
      // Empty (amount 0 both sides, so no token line at all) — only the rent, treated as lost along with control, shows.
      const out = sim.outcomes[0];
      expect(out?.ok === true ? out.changes : null).toEqual([{mint: null, amount: '-2044280', decimals: 9, usdMicros: '-306642'}]);
-@@ -499,3 +518,285 @@ describe('simulateTransactions', () => {
+@@ -499,3 +518,295 @@ describe('simulateTransactions', () => {
      await expect(run(s, [wire([SystemProgram.transfer({fromPubkey: ME, toPubkey: TO, lamports: 1})])])).rejects.toThrow('unreachable');
    });
  });
@@ -2583,6 +2634,16 @@ index 46c0c84..ca49c92 100644
 +    expect(back?.status === 'ok' ? back.sim.flags[0]?.[0] : null).not.toBe(((stored as {sim: Json}).sim.flags as Json[][])[0]?.[0]);
 +    const bounded = await run(approveScene(50n, USDC_MINT), [approve(50n)], () => true);
 +    expect(simStateOf(storedWith(bounded))).toEqual({status: 'ok', sim: bounded});
++    // Review 3 L14: an unnamed token's word is read back with its rule — UNLIMITED at u64::MAX, ALLOWANCE below it.
++    const unnamed = (amount: string, word: string) => (s: Json) => {
++      const f = flag(s, 'unlimited-approve');
++      f.approvals = [{...(f.approvals as Json[])[0], symbol: null, amount}];
++      f.word = word;
++    };
++    expect(simStateOf(storedWith(sim, unnamed(U64_MAX.toString(), 'UNLIMITED')))?.status).toBe('ok');
++    expect(simStateOf(storedWith(sim, unnamed('18446744073709551614', 'ALLOWANCE')))?.status).toBe('ok');
++    expect(simStateOf(storedWith(sim, unnamed(U64_MAX.toString(), 'ALLOWANCE')))).toBeNull();
++    expect(simStateOf(storedWith(sim, unnamed('18446744073709551614', 'UNLIMITED')))).toBeNull();
 +  });
 +
 +  it('simStateOf: an invalid stored flag makes the stored simulation invalid (it is simulated again, never approvable)', async () => {
@@ -2975,10 +3036,10 @@ Run: `npx vitest run src/background/dapp/__tests__/simulate.test.ts src/backgrou
 
 ````diff
 diff --git a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-index 789c60a..04d957f 100644
+index b19447e..62c0f01 100644
 --- a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
 +++ b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-@@ -637,12 +637,14 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
+@@ -640,12 +640,14 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
  | F10 | simulation failed and the user continues | **O2:** only a failure attributable to an earlier transaction of the same batch (below) has a continue path; every other failure stays Reject-only — stricter than B1 §3's warning, which is allowed. An expired blockhash anywhere: Reject only | **blocked** | `UNCHECKED` (Q31) |
  | F11 | request origin differs from the granted origin | built in B1c-1 / B1c-2 | **blocked, no override** | — |
  
@@ -3263,7 +3324,7 @@ index 47961aa..45f4256 100644
 
 ````diff
 diff --git a/extension/src/background/dapp/redFlags.ts b/extension/src/background/dapp/redFlags.ts
-index bdb059a..d27456a 100644
+index aaa97c0..d15e064 100644
 --- a/extension/src/background/dapp/redFlags.ts
 +++ b/extension/src/background/dapp/redFlags.ts
 @@ -1,7 +1,7 @@
@@ -3275,7 +3336,7 @@ index bdb059a..d27456a 100644
  import type {ParsedTx} from './decode/wire';
  import {mintInfo, tokenAccountInfo, type TokenAccountInfo} from './tokenState';
  import {usesDurableNonce} from './txRequest';
-@@ -305,3 +305,149 @@ export function overridesMatch(flags: readonly (readonly RedFlag[])[], given: re
+@@ -312,3 +312,149 @@ export function overridesMatch(flags: readonly (readonly RedFlag[])[], given: re
    }
    return seen.size === expected.size ? 'ok' : 'missing';
  }
@@ -3395,7 +3456,7 @@ index bdb059a..d27456a 100644
 +      if (o === null || approvals === null || o.at !== firstAt(approvals)) return null;
 +      if (head.kind === 'bounded-approve') return o.severity === 'warn' && o.word === null ? {kind: 'bounded-approve', severity: 'warn', word: null, at: firstAt(approvals), approvals} : null;
 +      const symbols = [...new Set(approvals.map(a => a.symbol))];
-+      const word = (symbols.length === 1 ? symbols[0] : null) ?? OVERRIDE_WORDS.unlimited;
++      const word = (symbols.length === 1 ? symbols[0] : null) ?? (approvals.some(a => a.amount === U64_MAX) ? OVERRIDE_WORDS.unlimited : ALLOWANCE_WORD);
 +      return o.severity === 'block' && o.word === word ? {kind: 'unlimited-approve', severity: 'block', word, at: firstAt(approvals), approvals} : null;
 +    }
 +    case 'token-2022': {
@@ -3607,7 +3668,7 @@ index 103875d..bcac35b 100644
 
 Run: the five files of Step 2 — expected: Test Files  5 passed (5) · Tests  147 passed (147) (simulate 42, signTx 30, reauthChallenges 15, challenge 38, tx 22).
 
-Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  169 passed (169) · Tests  3376 passed (3376) (Task 2's end state: 169 files, 3356 tests; +20). `node scripts/build.mjs && npm run gates` — expected: every gate ok (permissions, page bundles, vault isolation, rpc methods — no new method: the mint read is B1c-2's `getMultipleAccounts` —, no TGE date, fonts, classes). Nothing touches the repository root's `src/` or `core/` (core's `MAX_MULTIPLE_ACCOUNTS` is only imported).
+Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  169 passed (169) · Tests  3379 passed (3379) (rev 2.2; Task 2's end state: 169 files, 3359 tests; +20). `node scripts/build.mjs && npm run gates` — expected: every gate ok (permissions, page bundles, vault isolation, rpc methods — no new method: the mint read is B1c-2's `getMultipleAccounts` —, no TGE date, fonts, classes). Nothing touches the repository root's `src/` or `core/` (core's `MAX_MULTIPLE_ACCOUNTS` is only imported).
 
 - [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy; `tsc`'s own exit code first (0), then the named test: red.**
 
@@ -3640,7 +3701,7 @@ Every block-adding rule, every F10 attribution rule (earlier-only, the index, ea
 | M3v2 | `simulate.ts`: `if (lists.some(l => l.some(f => f.severity === 'block')) !== (s.reasons as unknown[]).includes('override')) return null;` → `if (!lists.some(l => l.some(f => f.severity === 'block')) && (s.reasons as unknown[]).includes('override')) return null;` | “simStateOf: an invalid stored flag makes the stored simulation invalid…” (`simulate.test.ts`) — tsc 0 · RED Tests  1 failed \| 41 passed (42) |
 | M3w | `simulate.ts`: `return !o.ok && o.error === 'dependent' ? on === o.on - 1 && on < i : on === undefined;` → `return !o.ok && o.error === 'dependent' ? on !== undefined : true;` (rev 2: the line now ends `&& on < i`) | “create the token account, then transfer to it: step 2 depends on step …” (`simulate.test.ts`) — tsc 0 · RED Tests  1 failed \| 41 passed (42) |
 | M3x | `simulate.ts`: `'whole-balance-to-new', 'approval', 'override'];⏎const isInt` → `'whole-balance-to-new', 'approval'];⏎const isInt` | “simStateOf: the stored flags are read back strictly — a stored `overri…”; “create the token account, then transfer to it: step 2 depends on step …” (`simulate.test.ts`) — tsc 0 · RED Tests  2 failed \| 40 passed (42) |
-| M3y | `redFlags.ts`: `return o.severity === 'block' && o.word === word ?` → `return o.severity === 'block' && typeof o.word === 'string' ?` | “simStateOf: an invalid stored flag makes the stored simulation invalid…” (`simulate.test.ts`) — tsc 0 · RED Tests  1 failed \| 41 passed (42) |
+| M3y | `redFlags.ts`: `return o.severity === 'block' && o.word === word ?` → `return o.severity === 'block' && typeof o.word === 'string' ?` | “simStateOf: an invalid stored flag makes the stored simulation invalid…” (`simulate.test.ts`) — tsc 0 · RED Tests  2 failed \| 40 passed (42) |
 | M3z | `redFlags.ts`: `return o.severity === 'block' && o.word === word ?` → `return o.word === word ?` | “simStateOf: an invalid stored flag makes the stored simulation invalid…” (`simulate.test.ts`) — tsc 0 · RED Tests  1 failed \| 41 passed (42) |
 | M3aa | `redFlags.ts`: `return Object.keys(o).length === keys.length && keys.every(k => Object.hasOwn(o, k)) ? o : null;` → `return keys.every(k => Object.hasOwn(o, k)) ? o : null;` | “simStateOf: an invalid stored flag makes the stored simulation invalid…” (`simulate.test.ts`) — tsc 0 · RED Tests  1 failed \| 41 passed (42) |
 | M3ab | `redFlags.ts`: `if (o.symbol !== null && (typeof o.symbol !== 'string' \|\| !TOKENS.includes(o.symbol) \|\| o.mint === null \|\| tokenForMint(o.mint) !== o.symbol \|\|` → `if (o.symbol !== null && (typeof o.symbol !== 'string' \|\| !TOKENS.includes(o.symbol) \|\| o.mint === null \|\|` | “simStateOf: an invalid stored flag makes the stored simulation invalid…” (`simulate.test.ts`) — tsc 0 · RED Tests  1 failed \| 41 passed (42) |
@@ -3653,7 +3714,8 @@ Every block-adding rule, every F10 attribution rule (earlier-only, the index, ea
 | M3ai | `client.ts`: `return isInt(o.on) && o.on >= 1 && isStr(o.detail) ?` → `return isInt(o.on) && isStr(o.detail) ?` | “pendingOf: `override` and a dependent step’s outcome are read; an unkn…” (`tx.test.tsx`) — tsc 0 · RED Tests  1 failed \| 21 passed (22) |
 | M3aj | `signTx.ts`: `if (fresh.omitted > issued.omitted) return true;` → `if (fresh.omitted > issued.omitted + 1) return true;` | “a mint more cut from the list (omitted grew) is growth; the same count…” (`signTx.test.ts`) — tsc 0 · RED Tests  1 failed \| 29 passed (30) |
 | M3ak | **(rev 2, L2)** `simulate.ts`: `on === o.on - 1 && on < i :` → `on === o.on - 1 :` (a stored dependent step may name itself or a later step) | “create the token account, then transfer to it: step 2 depends on step …” (`simulate.test.ts`, its L2 lines) — tsc 0 · RED Tests  1 failed \| 41 passed (42) |
-38 mutations (rev 2: 37 + M3ak), all red, every one compiling (`tsc` 0). One first run was GREEN and the test was strengthened (not the code): M3ab (the approval's `tokenForMint(mint) === symbol` check dropped) survived because the only variant, `symbol: 'USDT'` on a USDC approval, was also caught by the word check (the word `USDC` no longer agreed with its approvals). The variant "an approval's symbol not its mint's, its word made to agree" (`symbol` and `word` both `USDT`) was added; M3ab then turned red (`Tests  1 failed | 41 passed (42)`), and it is in the code above. Not mutated, stated: `outcomeOf`'s `o.on >= 1` in `simStateOf` is implied by the step-agreement check (a flag's `on` is ≥ 0 and must equal the outcome's − 1), so no test can separate it — kept as the shape check of the outcome itself; the expired-before-dependent order (`isExpired(sim.err) ? null : accountsNamed(…)`) cannot be mutated observably because `accountsNamed` never names an account for `"BlockhashNotFound"` — the expired test is a negative control of the outcome. M3ag also turned the B1c-2 test "a setAuthority to None renders" red: that request now carries `override` (F4 — the wallet signs as the current authority), and a window that did not know the reason would stay blank. **(rev 2)** All 38 re-run on the rev-2 Task 3 tree (counts on its own files: simulate 42, reauthChallenges 15, challenge 38, tx 22, signTx 30).
+| M3al | **(rev 2.2, L14)** `redFlags.ts` `storedFlagOf`: an unnamed word ignores u64::MAX (`… || true ? OVERRIDE_WORDS.unlimited : ALLOWANCE_WORD`) | “simStateOf: the stored flags are read back strictly …” (`simulate.test.ts`) — tsc 0 · RED Tests  1 failed \| 41 passed (42) |
+39 mutations (rev 2.2: 38 + M3al; rev 2: 37 + M3ak), all red, every one compiling (`tsc` 0). One first run was GREEN and the test was strengthened (not the code): M3ab (the approval's `tokenForMint(mint) === symbol` check dropped) survived because the only variant, `symbol: 'USDT'` on a USDC approval, was also caught by the word check (the word `USDC` no longer agreed with its approvals). The variant "an approval's symbol not its mint's, its word made to agree" (`symbol` and `word` both `USDT`) was added; M3ab then turned red (`Tests  1 failed | 41 passed (42)`), and it is in the code above. Not mutated, stated: `outcomeOf`'s `o.on >= 1` in `simStateOf` is implied by the step-agreement check (a flag's `on` is ≥ 0 and must equal the outcome's − 1), so no test can separate it — kept as the shape check of the outcome itself; the expired-before-dependent order (`isExpired(sim.err) ? null : accountsNamed(…)`) cannot be mutated observably because `accountsNamed` never names an account for `"BlockhashNotFound"` — the expired test is a negative control of the outcome. M3ag also turned the B1c-2 test "a setAuthority to None renders" red: that request now carries `override` (F4 — the wallet signs as the current authority), and a window that did not know the reason would stay blank. **(rev 2.2)** All 39 re-run on the rev-2.2 Task 3 tree (all red). **(rev 2)** All 38 re-run on the rev-2 Task 3 tree (counts on its own files: simulate 42, reauthChallenges 15, challenge 38, tx 22, signTx 30).
 
 - [ ] **Step 6: Commit.**
 
@@ -3680,6 +3742,7 @@ git commit -m "feat(extension): B1c-3 simulation — the flags' mints read in on
 - **(rev 2) L2 — a stored dependent step names an earlier step only:** `simStateOf`'s `stepsAgree` now also requires the F10 flag's `on` (0-based) to be below the transaction's own index (`on < i`) — besides agreeing with the outcome's 1-based `on`. Storage is the extension's own (hygiene, not a bypass: the window's `txDetailOf` already refused `step > i`). The F10 read-back test gains the lines: a step stored as depending on itself or on a later step, flag and outcome agreeing, is invalid. M3ak.
 - **(rev 2) Nothing else here changed.** O5's 99 % and O7's exemptions (Task 2) left every Task 3 fixture green: the bounded approvals in `simulate.test.ts` are well below 99 % of their balances, and its ATA creates are for another wallet (`ataIx(…, TO, …)`). The redFlags.ts import line merges Task 2's `WHOLE_BALANCE_PERCENT` with this task's `AUTHORITY_TYPES`. Under heavy load (three mutation runners at once) the whole suite once failed four timing-based B1c-1/B1c-2 UI tests (`connect`'s busy, `sign`'s 500 ms hold, `tx`'s origin tiles, the accounts manager's lock) — not this task's; re-run on an idle machine: 3375 passed.
 - **(rev 2.1) Unchanged** — this task's commit re-applies as it was on Task 2's O8 code (its redFlags.ts hunk is the import line and the read-back, untouched by O8); rebuilt tree green (3376), so its 38 mutations were not re-run.
+- **(rev 2.2) L14 in the read-back:** `storedFlagOf` recomputes an unnamed F5's word with the same rule (`UNLIMITED` at u64::MAX, `ALLOWANCE` below); the strict read-back test gains four rows (each word with its own amount reads back; each with the other's is invalid); M3al. The redFlags.ts hunk now imports nothing new (`U64_MAX` and `ALLOWANCE_WORD` are Task 2's).
 
 ---
 
@@ -4209,7 +4272,7 @@ The challenge store's flags, both sides (B1c-2's helper and Task 3's `override` 
 
 ````diff
 diff --git a/extension/src/background/__tests__/reauthChallenges.test.ts b/extension/src/background/__tests__/reauthChallenges.test.ts
-index 89d9f1d..744f1c5 100644
+index 89d9f1d..7d8141d 100644
 --- a/extension/src/background/__tests__/reauthChallenges.test.ts
 +++ b/extension/src/background/__tests__/reauthChallenges.test.ts
 @@ -1,21 +1,22 @@
@@ -4238,7 +4301,7 @@ index 89d9f1d..744f1c5 100644
  });
  
  describe('re-auth challenges', () => {
-@@ -206,9 +207,80 @@ describe('re-auth challenges', () => {
+@@ -206,9 +207,85 @@ describe('re-auth challenges', () => {
      const ext = fakeExt();
      const deps = fakeDeps();
      const sol: DappOutgoing = {mint: null, symbol: 'SOL', amount: '1', decimals: WALLET_TOKENS.SOL.decimals};
@@ -4259,7 +4322,7 @@ index 89d9f1d..744f1c5 100644
 +    {tx: 1, row: 'F4', word: 'AUTHORITY', step: null},
 +    {tx: 2, row: 'F10', word: 'UNCHECKED', step: 2},
 +    {tx: 2, row: 'F3', word: 'ASSIGN', step: null},
-+    {tx: 2, row: 'F5', word: 'UNLIMITED', step: null, scope: 'nearly-all'},
++    {tx: 2, row: 'F5', word: 'ALLOWANCE', step: null, scope: 'nearly-all'},
 +    {tx: 2, row: 'F2', word: null, step: null},
 +  ];
 +  const about = (flags: unknown[], reasons: DappReauthReason[] = ['override']) => dappAbout([sol], reasons, flags as DappFlag[], 3);
@@ -4301,6 +4364,9 @@ index 89d9f1d..744f1c5 100644
 +      one({row: 'F5', word: 'NOC', scope: 'all'}),
 +      one({row: 'F5', word: 'NOC', scope: null}),
 +      one({scope: 'unlimited'}),
++      // Review 3 L14: UNLIMITED only with the scope `unlimited`, ALLOWANCE only with `nearly-all`.
++      one({row: 'F5', word: 'UNLIMITED', scope: 'nearly-all'}),
++      one({row: 'F5', word: 'ALLOWANCE', scope: 'unlimited'}),
 +      one({row: 'F10', word: 'UNCHECKED', step: null}),
 +      one({row: 'F10', word: 'UNCHECKED', step: 0}),
 +      one({row: 'F10', word: 'UNCHECKED', step: 2}),
@@ -4318,6 +4384,8 @@ index 89d9f1d..744f1c5 100644
 +    await expect(issueChallenge(ext, deps, 'b', about(one({row: 'F10', word: 'UNCHECKED', step: 1})))).resolves.toMatch(/^[0-9a-f]{32}$/);
 +    await expect(issueChallenge(ext, deps, 'b', about(one({row: 'F5', word: 'NOC', scope: 'unlimited'})))).resolves.toMatch(/^[0-9a-f]{32}$/);
 +    await expect(issueChallenge(ext, deps, 'b', about(one({row: 'F5', word: 'NOC', scope: 'nearly-all'})))).resolves.toMatch(/^[0-9a-f]{32}$/);
++    await expect(issueChallenge(ext, deps, 'b', about(one({row: 'F5', word: 'UNLIMITED', scope: 'unlimited'})))).resolves.toMatch(/^[0-9a-f]{32}$/);
++    await expect(issueChallenge(ext, deps, 'b', about(one({row: 'F5', word: 'ALLOWANCE', scope: 'nearly-all'})))).resolves.toMatch(/^[0-9a-f]{32}$/);
 +  });
 +});
 ````
@@ -4326,7 +4394,7 @@ index 89d9f1d..744f1c5 100644
 
 ````diff
 diff --git a/extension/src/unlock/__tests__/challenge.test.ts b/extension/src/unlock/__tests__/challenge.test.ts
-index ceec0e2..bc5920c 100644
+index ceec0e2..a897a29 100644
 --- a/extension/src/unlock/__tests__/challenge.test.ts
 +++ b/extension/src/unlock/__tests__/challenge.test.ts
 @@ -38,6 +38,7 @@ const DAPP: ChallengeAbout = {
@@ -4345,7 +4413,7 @@ index ceec0e2..bc5920c 100644
      });
    });
  
-@@ -80,8 +82,79 @@ describe('describeChallenge: a dApp’s transaction (B1c-2)', () => {
+@@ -80,8 +82,83 @@ describe('describeChallenge: a dApp’s transaction (B1c-2)', () => {
  // B1c-3 (spec §3.3 rev 3.6): a request with a block re-authenticates with the reason `override` (Q33).
  describe('describeChallenge: the override reason (B1c-3)', () => {
    it('`override` reads Q33’s line; an unknown reason still makes the whole description unshowable', () => {
@@ -4387,7 +4455,9 @@ index ceec0e2..bc5920c 100644
 +    // O9: 99 % of the balance up to the whole of it, below u64::MAX — its own row (Q56), never "Unlimited".
 +    const nearlyAll = (word: string) => ({...OVERRIDE, transactions: 1, flags: [{tx: 0, row: 'F5', word, step: null, scope: 'nearly-all'}]});
 +    expect(describeChallenge(nearlyAll('USDC'))).toMatchObject({overrides: [{label: 'Spend approval for nearly all your USDC', transaction: null}]});
-+    expect(describeChallenge(nearlyAll('UNLIMITED'))).toMatchObject({overrides: [{label: 'Spend approval for nearly all of this token', transaction: null}]});
++    // Review 3 L14: an unnamed token's word below u64::MAX is ALLOWANCE (Q58) — UNLIMITED there is refused.
++    expect(describeChallenge(nearlyAll('ALLOWANCE'))).toMatchObject({overrides: [{label: 'Spend approval for nearly all of this token', transaction: null}]});
++    expect(describeChallenge(nearlyAll('UNLIMITED'))).toBeNull();
 +    // Warnings only: no rows, and no `override` reason.
 +    expect(describeChallenge({...DAPP, flags: [{tx: 1, row: 'F8', word: null, step: null}]})).toMatchObject({overrides: []});
 +  });
@@ -4409,6 +4479,8 @@ index ceec0e2..bc5920c 100644
 +      one({row: 'F5', word: 'USDC'}),
 +      one({row: 'F5', word: 'USDC', scope: 'all'}),
 +      one({scope: 'unlimited'}),
++      one({row: 'F5', word: 'ALLOWANCE', scope: 'unlimited'}),
++      one({row: 'F5', word: 'UNLIMITED', scope: 'nearly-all'}),
 +      one({row: 'F10', word: 'UNCHECKED', step: 2}),
 +      one({row: 'F10', word: 'UNCHECKED', step: 0}),
 +      one({row: 'F10', word: 'UNCHECKED', step: null}),
@@ -4488,7 +4560,7 @@ The window: the `TxItem` fixtures gain `flags: null` (simulating); B1c-2's I1 ne
 
 ````diff
 diff --git a/extension/src/approve/__tests__/tx.test.tsx b/extension/src/approve/__tests__/tx.test.tsx
-index adede35..96ed97e 100644
+index adede35..d0da9de 100644
 --- a/extension/src/approve/__tests__/tx.test.tsx
 +++ b/extension/src/approve/__tests__/tx.test.tsx
 @@ -13,7 +13,7 @@ import {GRANTS_KEY} from '../../background/dapp/grants';
@@ -4500,7 +4572,7 @@ index adede35..96ed97e 100644
  import {Tx} from '../Tx';
  import {ARM_MS} from '../useArmed';
  import {CONFIRM_DELAY_MS} from '../ui';
-@@ -410,47 +410,119 @@ describe('#48 dapp-tx-approval', () => {
+@@ -410,47 +410,122 @@ describe('#48 dapp-tx-approval', () => {
              unitLimit: null,
              feeLamports: null,
              outcome: null,
@@ -4553,7 +4625,7 @@ index adede35..96ed97e 100644
 +    {kind: 'assign', severity: 'block', word: 'ASSIGN', at: 0, instructions: [{index: 0, program: 'system', name: 'assign'}], chain: {owner: RECIPIENT, space: 0}},
 +    {kind: 'set-authority', severity: 'block', word: 'AUTHORITY', at: 1, instructions: [{index: 1, program: 'token', account: RECIPIENT, owned: 'token-account', authorityType: 'accountOwner', newAuthority: null}], chain: [{account: RECIPIENT, change: 'owner', from: ACCOUNT.publicKey, to: RECIPIENT}]},
 +    {kind: 'unlimited-approve', severity: 'block', word: 'USDC', at: 2, approvals: [{at: 2, source: RECIPIENT, mint: USDC_MINT, symbol: 'USDC', decimals: 6, delegate: RECIPIENT, amount: '18446744073709551615', balance: '5'}]},
-+    {kind: 'unlimited-approve', severity: 'block', word: 'UNLIMITED', at: null, approvals: [{at: null, source: RECIPIENT, mint: null, symbol: null, decimals: null, delegate: null, amount: '5', balance: '5'}]},
++    {kind: 'unlimited-approve', severity: 'block', word: 'ALLOWANCE', at: null, approvals: [{at: null, source: RECIPIENT, mint: null, symbol: null, decimals: null, delegate: null, amount: '5', balance: '5'}]},
 +    {kind: 'unknown-program', severity: 'warn', word: null, at: 0, programs: [RECIPIENT, null]},
 +    {kind: 'non-transfer', severity: 'warn', word: null, at: 0, instructions: [{index: 0, program: 'system', name: 'assign'}, {index: 3, program: 'token', name: null}]},
 +    {kind: 'bounded-approve', severity: 'warn', word: null, at: 2, approvals: [{at: 2, source: RECIPIENT, mint: RECIPIENT, symbol: null, decimals: 0, delegate: RECIPIENT, amount: '4', balance: '5'}]},
@@ -4625,6 +4697,9 @@ index adede35..96ed97e 100644
 +      batchView({first: [{...assign, severity: 'warn'}]}),
 +      batchView({first: [{...(EVERY_FLAG[2] as Record<string, unknown>), word: 'BONK'}]}),
 +      batchView({first: [{...(EVERY_FLAG[4] as Record<string, unknown>), word: 'X'}]}),
++      // Review 3 L14: UNLIMITED only when an approval is u64::MAX, ALLOWANCE only when none is.
++      batchView({first: [{...(EVERY_FLAG[3] as Record<string, unknown>), word: 'UNLIMITED'}]}),
++      batchView({first: [{...(EVERY_FLAG[2] as Record<string, unknown>), word: 'ALLOWANCE'}]}),
 +      batchView({first: [{...(EVERY_FLAG[9] as Record<string, unknown>), at: null}]}),
 +      batchView({first: [{...(EVERY_FLAG[7] as Record<string, unknown>), settings: {freezeAuthority: 'x'}}]}),
 +      batchView({first: 'none'}),
@@ -4653,7 +4728,7 @@ index adede35..96ed97e 100644
    });
  
    // Fix round 1, I2: the sheet is for exactly the simulation it opened on; a refresh landing while it is open must
-@@ -506,7 +578,7 @@ describe('#48 dapp-tx-approval', () => {
+@@ -506,7 +581,7 @@ describe('#48 dapp-tx-approval', () => {
          simulation: {status: 'simulating'},
          reauth: null,
          labels: [],
@@ -4662,7 +4737,7 @@ index adede35..96ed97e 100644
        },
      };
      render(<Tx request={request} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
-@@ -535,7 +607,7 @@ describe('#48 dapp-tx-approval', () => {
+@@ -535,7 +610,7 @@ describe('#48 dapp-tx-approval', () => {
          simulation: {status: 'simulating'},
          reauth: null,
          labels: [],
@@ -4724,10 +4799,10 @@ The spec: §3.3's override rule says what #10 names and what re-issues; §10 gai
 
 ````diff
 diff --git a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-index 04d957f..85496a9 100644
+index 62c0f01..322819b 100644
 --- a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
 +++ b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-@@ -653,7 +653,8 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
+@@ -656,7 +656,8 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
    recomputes every expected word from its stored simulation and refuses the approval unless every block has its exact
    word, and refuses it when any block has none. A request with any block always re-authenticates through #10 (the
    reason line: "Re-auth required to override a blocked transaction.", Q33); #10's description names what is
@@ -4737,7 +4812,7 @@ index 04d957f..85496a9 100644
    the exact bytes (B1c-2); the words are not secrets and are bound only by the background recomputing them. No setting
    disables a block.
  - **Holds (B1 §3).** On any screen with a flag (warning or block) every confirming CTA is held **1.5 s instead of
-@@ -985,6 +986,11 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
+@@ -988,6 +989,11 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
  | Q34 | #48 red CTA for a block other than an unlimited approve (rev 3.6, controller copy, flagged to the owner) | "Approve anyway" |
  | Q35 | #48 top-bar eyebrow for a block other than an unlimited approve (rev 3.6, controller copy, flagged to the owner) | "Critical · Blocked transaction" |
  | Q36 | #48 F7 warning, a mint that cannot be read or parsed (rev 3.6, controller copy, flagged to the owner) | "Could not read this token's settings" |
@@ -4993,14 +5068,14 @@ The challenge store's flags. A flag is named by its row of the red-flag table (F
 
 ````diff
 diff --git a/extension/src/background/reauthChallenges.ts b/extension/src/background/reauthChallenges.ts
-index d1b95f5..59f0569 100644
+index d1b95f5..0560641 100644
 --- a/extension/src/background/reauthChallenges.ts
 +++ b/extension/src/background/reauthChallenges.ts
 @@ -6,6 +6,7 @@ import type {DappReauthReason, SendReauthReason} from './reauthPolicy';
  import type {FeeReason} from '../../../core/fees/transferMarkup';
  import {WALLET_TOKENS} from '../../../core/solana/balances';
  import {SITE} from '../shared/site';
-+import {OVERRIDE_WORDS, type RedFlagKind} from './dapp/redFlags';
++import {ALLOWANCE_WORD, OVERRIDE_WORDS, type RedFlagKind} from './dapp/redFlags';
  
  /** How long the vault page has to prove the factor (brief decision 6), counted from the last prepare of the same intent. */
  export const CHALLENGE_TTL_MS = 120_000;
@@ -5053,7 +5128,7 @@ index d1b95f5..59f0569 100644
  /** The fields a re-prepare of the same intent may refresh; the identity fields (account, token, recipient, amount) never change. */
  export type SendAboutRefresh = Pick<
    Extract<ChallengeAbout, {kind: 'send'}>,
-@@ -80,6 +113,23 @@ const FEE_REASONS: readonly string[] = ['pre-tge', 'zero-fee-eligible', 'status-
+@@ -80,6 +113,26 @@ const FEE_REASONS: readonly string[] = ['pre-tge', 'zero-fee-eligible', 'status-
  const DAPP_REASONS: readonly string[] = [...REASONS, 'approval', 'override'];
  /** At most this many mints in a dApp challenge's description (more than a five-transaction batch can name sensibly; the rest are counted in `omitted`). */
  export const MAX_DAPP_OUTGOING = 16;
@@ -5072,12 +5147,15 @@ index d1b95f5..59f0569 100644
 +  F9: null,
 +  F10: OVERRIDE_WORDS.dependent,
 +};
-+/** F5's word: the wallet's own symbol for a token it names (never SOL — an approve is of a token account), else UNLIMITED. */
-+const UNLIMITED_WORDS: readonly string[] = ['NOC', 'USDC', 'USDT', OVERRIDE_WORDS.unlimited];
++/**
++ * F5's word: the wallet's own symbol for a token it names (never SOL — an approve is of a token account), else UNLIMITED
++ * at u64::MAX and ALLOWANCE below it (review 3 L14) — each only with its own scope.
++ */
++const UNLIMITED_WORDS: readonly string[] = ['NOC', 'USDC', 'USDT', OVERRIDE_WORDS.unlimited, ALLOWANCE_WORD];
  const DIGITS = /^\d{1,20}$/;
  /** A base58 Solana address's shape (32–44 characters). */
  const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-@@ -112,7 +162,8 @@ function isAbout(x: unknown): x is ChallengeAbout {
+@@ -112,7 +165,8 @@ function isAbout(x: unknown): x is ChallengeAbout {
        new Set(reasons).size === reasons.length &&
        (reasons as unknown[]).every(r => typeof r === 'string' && DAPP_REASONS.includes(r)) &&
        isInt(a.thresholdCents) &&
@@ -5087,7 +5165,7 @@ index d1b95f5..59f0569 100644
      );
    }
    if (a.kind !== 'send') return false;
-@@ -161,6 +212,33 @@ function isOutgoing(x: unknown): x is DappOutgoing {
+@@ -161,6 +215,34 @@ function isOutgoing(x: unknown): x is DappOutgoing {
    );
  }
  
@@ -5109,6 +5187,7 @@ index d1b95f5..59f0569 100644
 +    if (Object.keys(f).length !== (row === 'F5' ? 5 : 4) || (row === 'F5' && f.scope !== 'unlimited' && f.scope !== 'nearly-all')) return false;
 +    const word = ROW_WORDS[row];
 +    if (word === null ? f.word !== null : row === 'F5' ? typeof f.word !== 'string' || !UNLIMITED_WORDS.includes(f.word) : f.word !== word) return false;
++    if ((f.word === OVERRIDE_WORDS.unlimited && f.scope !== 'unlimited') || (f.word === ALLOWANCE_WORD && f.scope !== 'nearly-all')) return false;
 +    if (row === 'F10' ? !isInt(f.step) || f.step < 1 || f.step > f.tx : f.step !== null) return false;
 +    const key = `${f.tx}:${row}`;
 +    if (seen.has(key)) return false;
@@ -5161,7 +5240,7 @@ index 9bd5be6..bcb0ddd 100644
 
 ````diff
 diff --git a/extension/src/unlock/challenge.ts b/extension/src/unlock/challenge.ts
-index 29c629b..12b010b 100644
+index 29c629b..d1af7aa 100644
 --- a/extension/src/unlock/challenge.ts
 +++ b/extension/src/unlock/challenge.ts
 @@ -19,7 +19,18 @@ export type TokenSymbol = keyof typeof TOKENS;
@@ -5176,10 +5255,10 @@ index 29c629b..12b010b 100644
 +/**
 + * B1c-3: each row of the red-flag table (spec §3.3, F1–F10) and its override word (a block) or null (a warning) — this
 + * page's own copy of the background's table (reauthChallenges.ts); F5's word is the wallet's own symbol for the token,
-+ * or UNLIMITED.
++ * or UNLIMITED at u64::MAX and ALLOWANCE below it (review 3 L14), each only with its own scope.
 + */
 +const ROW_WORDS: Record<string, string | null> = {F1: null, F2: null, F3: 'ASSIGN', F4: 'AUTHORITY', F5: 'UNLIMITED', F6: null, F7: null, F8: null, F9: null, F10: 'UNCHECKED'};
-+const UNLIMITED_WORDS: readonly string[] = ['NOC', 'USDC', 'USDT', 'UNLIMITED'];
++const UNLIMITED_WORDS: readonly string[] = ['NOC', 'USDC', 'USDT', 'UNLIMITED', 'ALLOWANCE'];
 +const MAX_FLAGS = 50;
  const OUTGOING_KEYS = ['amount', 'decimals', 'mint', 'symbol'];
  const SETTINGS_KEYS = ['autoLockMinutes', 'kind', 'reauthUsdCents'];
@@ -5193,7 +5272,7 @@ index 29c629b..12b010b 100644
  }
  export type Description = SendDescription | SettingsDescription | DappDescription;
  
-@@ -167,7 +180,35 @@ function describeDapp(a: Record<string, unknown>): DappDescription | null {
+@@ -167,7 +180,36 @@ function describeDapp(a: Record<string, unknown>): DappDescription | null {
      if (line === null) return null;
      lines.push(line);
    }
@@ -5221,9 +5300,10 @@ index 29c629b..12b010b 100644
 +    seen.add(`${tx}:${row}`);
 +    const expected = ROW_WORDS[row] ?? null;
 +    if (expected === null ? word !== null : row === 'F5' ? typeof word !== 'string' || !UNLIMITED_WORDS.includes(word) : word !== expected) return null;
++    if ((word === 'UNLIMITED' && scope !== 'unlimited') || (word === 'ALLOWANCE' && scope !== 'nearly-all')) return null;
 +    if (row === 'F10' ? !isInt(step, 1, tx) : step !== null) return null;
 +    if (expected === null) continue;
-+    const label = row === 'F3' ? REAUTH.overridden.F3 : row === 'F4' ? REAUTH.overridden.F4 : row === 'F10' ? REAUTH.overridden.F10(step as number) : (scope === 'unlimited' ? REAUTH.overridden.F5 : REAUTH.overridden.F5NearlyAll)(word === 'UNLIMITED' ? null : (word as string));
++    const label = row === 'F3' ? REAUTH.overridden.F3 : row === 'F4' ? REAUTH.overridden.F4 : row === 'F10' ? REAUTH.overridden.F10(step as number) : (scope === 'unlimited' ? REAUTH.overridden.F5 : REAUTH.overridden.F5NearlyAll)(word === 'UNLIMITED' || word === 'ALLOWANCE' ? null : (word as string));
 +    rows.push({label, transaction: transactions > 1 ? REAUTH.transactionOf(tx + 1, transactions) : null});
 +  }
 +  return (rows.length > 0) === reasons.includes('override') ? rows : null;
@@ -5256,7 +5336,7 @@ The window: the flags, read exactly; a detail it cannot read is none:
 
 ````diff
 diff --git a/extension/src/approve/client.ts b/extension/src/approve/client.ts
-index 0335fab..87ba836 100644
+index 0335fab..ec6f67e 100644
 --- a/extension/src/approve/client.ts
 +++ b/extension/src/approve/client.ts
 @@ -77,6 +77,58 @@ export type TxOutcome =
@@ -5308,7 +5388,7 @@ index 0335fab..87ba836 100644
 +  | {kind: 'non-transfer'; severity: 'warn'; word: null; at: number; instructions: FlaggedInstruction[]}
 +  | {kind: 'assign'; severity: 'block'; word: 'ASSIGN'; at: number | null; instructions: FlaggedInstruction[]; chain: {owner: string; space: number} | null}
 +  | {kind: 'set-authority'; severity: 'block'; word: 'AUTHORITY'; at: number | null; instructions: AuthorityInstruction[]; chain: AuthorityChange[]}
-+  | {kind: 'unlimited-approve'; severity: 'block'; word: FlagSymbol | 'UNLIMITED'; at: number | null; approvals: Approval[]}
++  | {kind: 'unlimited-approve'; severity: 'block'; word: FlagSymbol | 'UNLIMITED' | 'ALLOWANCE'; at: number | null; approvals: Approval[]}
 +  | {kind: 'bounded-approve'; severity: 'warn'; word: null; at: number | null; approvals: Approval[]}
 +  /** settings null: the mint could not be read (Q36). */
 +  | {kind: 'token-2022'; severity: 'warn'; word: null; at: number | null; mint: string; settings: Token2022Settings | null}
@@ -5343,7 +5423,7 @@ index 0335fab..87ba836 100644
  export type DecideReply = {ok: true} | {ok: false; error: string};
  
  type J = Record<string, unknown>;
-@@ -217,6 +277,125 @@ function outcomeOf(x: unknown): TxOutcome | undefined {
+@@ -217,6 +277,128 @@ function outcomeOf(x: unknown): TxOutcome | undefined {
    return {ok: true, changes: changes as BalanceChange[], unitsConsumed: o.unitsConsumed, unitLimit: o.unitLimit, feeLamports: o.feeLamports};
  }
  
@@ -5442,7 +5522,10 @@ index 0335fab..87ba836 100644
 +      if (o === undefined || !isIntOrNull(o.at) || approvals === undefined) return undefined;
 +      if (kind === 'bounded-approve') return warn(o) ? {kind, severity: 'warn', word: null, at: o.at, approvals} : undefined;
 +      const word = o.word;
-+      return o.severity === 'block' && isStr(word) && (word === 'UNLIMITED' || SYMBOLS.includes(word)) ? {kind, severity: 'block', word: word as FlagSymbol | 'UNLIMITED', at: o.at, approvals} : undefined;
++      // Review 3 L14: UNLIMITED only when an approval is u64::MAX, ALLOWANCE only when none is — the background's own rule.
++      const max = approvals.some(a => a.amount === '18446744073709551615');
++      const named = isStr(word) && (SYMBOLS.includes(word) || (word === 'UNLIMITED' && max) || (word === 'ALLOWANCE' && !max));
++      return o.severity === 'block' && named ? {kind, severity: 'block', word: word as FlagSymbol | 'UNLIMITED' | 'ALLOWANCE', at: o.at, approvals} : undefined;
 +    }
 +    case 'token-2022': {
 +      const o = exactly(x, ['kind', 'severity', 'word', 'at', 'mint', 'settings']);
@@ -5469,7 +5552,7 @@ index 0335fab..87ba836 100644
  function txItemOf(x: unknown): TxItem | undefined {
    const o = obj(x);
    if (o === undefined || (o.version !== 'legacy' && o.version !== 0) || !isStr(o.feePayer)) return undefined;
-@@ -230,8 +409,14 @@ function txItemOf(x: unknown): TxItem | undefined {
+@@ -230,8 +412,14 @@ function txItemOf(x: unknown): TxItem | undefined {
    if (!(o.unitLimit === null || isInt(o.unitLimit))) return undefined;
    if (!(o.feeLamports === null || (isStr(o.feeLamports) && DIGITS.test(o.feeLamports)))) return undefined;
    const outcome = nullOr(o.outcome, outcomeOf);
@@ -5486,7 +5569,7 @@ index 0335fab..87ba836 100644
  }
  
  function simulationOf(x: unknown): SimulationView | undefined {
-@@ -251,6 +436,8 @@ function txDetailOf(x: unknown): TxDetail | undefined {
+@@ -251,6 +439,8 @@ function txDetailOf(x: unknown): TxDetail | undefined {
    if (o === undefined || account === undefined || simulation === undefined || (o.kind !== 'signTransaction' && o.kind !== 'signAndSendTransaction') || !Array.isArray(o.transactions) || !Array.isArray(o.labels)) return undefined;
    const transactions = (o.transactions as unknown[]).map(txItemOf);
    if (transactions.length === 0 || transactions.some(t => t === undefined)) return undefined;
@@ -5495,7 +5578,7 @@ index 0335fab..87ba836 100644
    const labels: AddressLabel[] = [];
    for (const l of o.labels as unknown[]) {
      const lo = obj(l);
-@@ -274,8 +461,9 @@ function requestOf(x: unknown): RequestView | undefined {
+@@ -274,8 +464,9 @@ function requestOf(x: unknown): RequestView | undefined {
    if (o === undefined || site === undefined || !isStr(o.requestId) || !isStr(o.type) || !TYPES.includes(o.type) || !isStr(o.origin) || !isStr(o.host) || !isBool(o.offerBlock)) return undefined;
    const connect = nullOr(o.connect, connectOf);
    const sign = nullOr(o.sign, signOf);
@@ -5513,7 +5596,7 @@ index 0335fab..87ba836 100644
 
 Run: the seven files of Step 2 — expected: Test Files  7 passed (7) · Tests  215 passed (215) (overrides 15, reauthChallenges 17, challenge 40, reauthScreen 53, tx 24, signTx 30, Home 36).
 
-Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  170 passed (170) · Tests  3398 passed (3398) (Task 3's end state: 169 files, 3376 tests; +1 file, +22 — rev 2.1's scope test the 22nd). `node scripts/build.mjs && npm run gates` — expected: every gate ok (permissions, page bundles, vault isolation — see Step 3's note on `assign` —, rpc methods, no TGE date, fonts, classes). Nothing touches the repository root's `src/` or `core/`.
+Run: `npx tsc --noEmit; echo $?` — expected `0`. `npx vitest run` — expected: Test Files  170 passed (170) · Tests  3401 passed (3401) (rev 2.2; Task 3's end state: 169 files, 3379 tests; +1 file, +22 — rev 2.1's scope test the 22nd). `node scripts/build.mjs && npm run gates` — expected: every gate ok (permissions, page bundles, vault isolation — see Step 3's note on `assign` —, rpc methods, no TGE date, fonts, classes). Nothing touches the repository root's `src/` or `core/`.
 
 - [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy; `tsc`'s own exit code first (0), then the named test: red.**
 
@@ -5559,8 +5642,12 @@ Every shape check of the decision's words, each new refusal, the dependent exemp
 | M4ak | **(rev 2.1, O9) flagsCovered without the scope** — `signTx.ts`: `JSON.stringify([f.tx, f.row, f.word, f.step, f.scope ?? null])` → `JSON.stringify([f.tx, f.row, f.word, f.step])` | “a refresh that turns a nearly-all approval unlimited (O9: the same w…” (`overrides.test.ts`) — tsc 0 · RED Tests  1 failed \| 14 passed (15) |
 | M4al | **(rev 2.1, O9) #10: F5's row ignores the scope** — `challenge.ts`: `(scope === 'unlimited' ? REAUTH.overridden.F5 : REAUTH.overridden.F5NearlyAll)` → `REAUTH.overridden.F5` | “one row per block, in the order given: the label and “Transaction <n…” (`challenge.test.ts`) — tsc 0 · RED Tests  1 failed \| 39 passed (40) |
 | M4am | **(rev 2.1, O9) #10: F5's scope value not checked** — `challenge.ts`: ` \|\| (row === 'F5' && scope !== 'unlimited' && scope !== 'nearly-all')) return null;` → `) return null;` | “fails closed on anything the background never issues: the flags miss…” (`challenge.test.ts`) — tsc 0 · RED Tests  1 failed \| 39 passed (40) |
+| M4an | **(rev 2.2, L14) background: the word and its scope not paired** — `reauthChallenges.ts`: `if ((f.word === OVERRIDE_WORDS.unlimited && f.scope !== 'unlimited') \|\| (f.word === ALLOWANCE_WORD && f.scope !== 'nearly-all')) return false;` → `(the line removed)` | “refused: a key more or less, an unknown row (F11 never reaches a cha…” (`reauthChallenges.test.ts`) — tsc 0 · RED Tests  1 failed \| 16 passed (17) |
+| M4ao | **(rev 2.2, L14) #10: the word and its scope not paired** — `challenge.ts`: `if ((word === 'UNLIMITED' && scope !== 'unlimited') \|\| (word === 'ALLOWANCE' && scope !== 'nearly-all')) return null;` → `(the line removed)` | “one row per block, in the order given: the label and “Transaction <n…”; “fails closed on anything the background never issues: the flags miss…” (`challenge.test.ts`) — tsc 0 · RED Tests  2 failed \| 38 passed (40) |
+| M4ap | **(rev 2.2, L14) the window: UNLIMITED / ALLOWANCE accepted whatever the amounts** — `client.ts`: `(word === 'UNLIMITED' && max) \|\| (word === 'ALLOWANCE' && !max)` → `(word === 'UNLIMITED' && (max \|\| true)) \|\| (word === 'ALLOWANCE' && (!max \|\| true))` | “pendingOf refuses the whole detail (tx null → Q26) for an unknown re…” (`tx.test.tsx`) — tsc 0 · RED Tests  1 failed \| 23 passed (24) |
+| M4aq | **(rev 2.2, L14) #10: ALLOWANCE read as a symbol** — `challenge.ts`: `(word === 'UNLIMITED' \|\| word === 'ALLOWANCE' ? null : (word as string))` → `(word === 'UNLIMITED' ? null : (word as string))` | “one row per block, in the order given: the label and “Transaction <n…” (`challenge.test.ts`) — tsc 0 · RED Tests  1 failed \| 39 passed (40) |
 
-38 mutations (rev 2.1: 32 + M4ah–M4am), all red, every one compiling (`tsc` 0), each turning its named test red — all re-run on the rev-2.1 tree (M4m, M4o on their new lines; counts on this task's own files: overrides 15, reauthChallenges 17, challenge 40, reauthScreen 53, tx 24). (rev 2: not re-run, unchanged then.)
+42 mutations (rev 2.2: 38 + M4an–M4aq; rev 2.1: 32 + M4ah–M4am), all red, every one compiling (`tsc` 0), each turning its named test red — all re-run on the rev-2.2 tree (M4m, M4o on their rev-2.1 lines; counts on this task's own files: overrides 15, reauthChallenges 17, challenge 40, reauthScreen 53, tx 24). (rev 2: not re-run, unchanged then.)
 
 Dry-run history, stated: five first variants did not compile — M4b and M4d (deleting the check left `rest` / `MAX_WORD` unused), M4l (deleting the call left `flagsCovered` unused), M4t and M4aa (likewise `UNLIMITED_WORDS`, the `dependent`/`on` locals) — `tsc` 2, INVALID, not counted; each was replaced by the compiling variant in the table (a bound moved by one, the issued list compared with itself, a case-folded word, one half of the cross-check). M4g's first run reported nothing red because the runner filtered with `vitest -t`, which reads a regular expression — "(F10)" in the name matched nothing and no test ran; the runner now runs each named file whole and checks the named test is among the failed ones (the table's counts are those whole-file runs). One first run was GREEN and the test was strengthened (not the code): M4ag (the flag's `step` no longer compared with the outcome's `on`) survived because the only disagreeing case, `step: 2` beside `on: 1` on the second transaction, was also refused by the earlier-step rule (2 > index 1); the case `on: 2` beside `step: 1` (an earlier step, but not the outcome's) was added, and M4ag then turned red (`Tests  1 failed | 23 passed (24)`) — it is in the code above. Not mutated, stated: the exact-key checks of a challenge flag (`Object.keys(f).length !== 4` in `isDappFlags`, `hasExactly(…, FLAG_KEYS)` on #10) — a key more and a key less are cases of both refusal tests, but no mutant was run on them; and `flagView`'s pass-through of the nine kinds other than `dependent` — the window's strict reader is what checks them (M4z–M4ag).
 
@@ -5588,6 +5675,7 @@ git commit -m "feat(extension): B1c-3 decide gate — typed overrides checked ag
 - **E2E not run** (as Tasks 1–3): any existing E2E request that F3/F4/F5 now blocks will be refused `override-missing` at Approve until Task 5's window sends the words — Task 7 must expect it.
 - **(rev 2) Nothing of this task changed** — its diff re-applies unchanged on the rev-2 Task 3 (the spec hunk's context lines carry rev 2's new F2/F5 wording, which is why that block was regenerated). Rebuilt tree: tsc 0, 170 files / 3396 tests, build and gates ok; the seven files of Step 2: 214 passed. An incidental observation from a mis-addressed run (Task 3's mutations first ran on this task's tree by mistake, then again on Task 3's own): Task 3's M3ai (`client.ts` without `o.on >= 1`) survives on this tree — this task rewrote the `pendingOf` test that killed it, and on this tree the mutant is equivalent, not a gap: `txDetailOf` requires a dependent outcome's `on` to equal its F10 flag's `step`, and `flagOf` refuses a step below 1 (client.ts), so an `on` of 0 is still refused; M3ai stays red on Task 3's tree, where it belongs.
 - **(rev 2.1) O9 — #10's F5 row says "unlimited" only of u64::MAX:** the challenge's F5 entry carries `scope` (`unlimited` when an approval of it is u64::MAX, else `nearly-all`), and only F5 does (5 keys; every other row keeps exactly 4, so B1c-3's other fixtures are untouched). Both sides validate it (`isDappFlags`; the vault page's own copy in `challenge.ts`), and #10 labels a `nearly-all` row with Q56 "Spend approval for nearly all your <SYM>" ("… of this token" unnamed — the reviser's reading of the owner's "token when unnamed", flagged; Q39's "Unlimited token …" read "token" as a noun, which "nearly all your token" would not be). `flagsCovered` compares the scope, so a refresh that turns a nearly-all approval unlimited re-issues the challenge (#10 named the scope) — new test in `overrides.test.ts` with its negative control (995 of 1 000 stays nearly all: signed on the old proof). Spec §10 gains Q56 after Q40. Mutations M4ah–M4am (the scope on both sides, `dappAbout`'s scope, `flagsCovered`'s key, #10's label); M4m and M4o moved to their rev-2.1 lines.
+- **(rev 2.2) L14 on both sides and in the window:** F5's words are the wallet's symbols, `UNLIMITED` and `ALLOWANCE`; the background (`isDappFlags`) and the vault page (`overridesOf`) refuse `UNLIMITED` without the scope `unlimited` and `ALLOWANCE` without `nearly-all`, and #10 reads `ALLOWANCE` as an unnamed token (Q56's "… of this token"); the window's strict reader (`client.ts`) accepts `UNLIMITED` only beside an approval of u64::MAX and `ALLOWANCE` only beside none — a word that disagrees with its amounts refuses the whole detail (Q26). `flagsCovered` already keys on the word, so a refresh that changes it re-issues the challenge. Tests: the scope/word pairs refused and issued (reauthChallenges), the `ALLOWANCE` row and the `UNLIMITED` + `nearly-all` refusal (challenge), `pendingOf` refusing both mismatches (tx; the EVERY_FLAG fixture's unnamed 5-of-5 approval now carries `ALLOWANCE`). Mutations M4an–M4aq.
 
 ---
 
@@ -5724,7 +5812,7 @@ The window tests: the design's state 2 against the real background end to end (b
 
 ````diff
 diff --git a/extension/src/approve/__tests__/tx.test.tsx b/extension/src/approve/__tests__/tx.test.tsx
-index 96ed97e..f93955d 100644
+index d0da9de..60eacfa 100644
 --- a/extension/src/approve/__tests__/tx.test.tsx
 +++ b/extension/src/approve/__tests__/tx.test.tsx
 @@ -4,7 +4,7 @@ import {join} from 'node:path';
@@ -5752,7 +5840,7 @@ index 96ed97e..f93955d 100644
  import {CONFIRM_DELAY_MS} from '../ui';
  import {SECOND, openWindow} from './windowHarness';
  
-@@ -643,3 +645,427 @@ describe('#48 origin-mismatch · auto-reject', () => {
+@@ -646,3 +648,436 @@ describe('#48 origin-mismatch · auto-reject', () => {
      await waitFor(() => expect(w.closed.n).toBe(1));
    });
  });
@@ -6161,6 +6249,15 @@ index 96ed97e..f93955d 100644
 +    expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
 +  });
 +
++  it('L14 (review 3): a token the wallet cannot name, nearly all of it below u64::MAX — its head says "of this token", the word to type is ALLOWANCE (Q58), never UNLIMITED', () => {
++    const flags: Flag[] = [{kind: 'unlimited-approve', severity: 'block', word: 'ALLOWANCE', at: null, approvals: [approval({at: null, symbol: null, decimals: null, mint: MINT, amount: '995'})]}];
++    render(<Tx request={flagged(flags)} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
++    expect(text('.top-bar .title')).toBe('Critical · Large spend approval');
++    expect(text('.s9-flag-banner.danger .head')).toBe('Spend approval for nearly all of this token');
++    expect(text('.s9-typed-confirm .label')).toBe('Type ALLOWANCE to enable Approve');
++    expect(document.querySelector('.app-approve')?.textContent).not.toMatch(/unlimited/i);
++  });
++
 +  it('the design’s typed-confirm and flag-banner rules, as extracted (design-ext.css), and the hand-written ones (app.css)', () => {
 +    const designRule = (selector: string): string => {
 +      const css = readFileSync(join(__dirname, '..', '..', 'styles', 'design-ext.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ');
@@ -6211,7 +6308,7 @@ index 0b76ad0..24bdbd4 100644
 
 - [ ] **Step 2: Run them on the previous task's tree — red.**
 
-Run: `npx tsc --noEmit; echo $?` → `2` (one error: `src/approve/__tests__/tx.test.tsx(20,17): error TS2305: Module '"../useArmed"' has no exported member 'FLAG_HOLD_MS'.`). `npx vitest run src/approve/__tests__/tx.test.tsx src/__tests__/designExt2b.test.ts` → **Tests 11 failed | 28 passed (39)** (rev 2.1; rev 2: 10 | 28 (38); rev 1: 9 | 28 (37)): the nine new #48 tests — rev 2's L1 test the eighth, rev 2.1's O9 test the ninth — (no banner: `Unable to find an element with the text: Unlimited USDC spend approval` / `Assign / Allocate on your wallet account` / `This step depends on step 2 …`; the every-kind test `expected [] to deeply equal [ { tone: 'danger', …(3) }, …(9) ]`; the CSS test `expected '' to contain 'background: var(--bg-surface-2)'`), and designExt2b's two (`to contain '\n.s9-typed-confirm {'`, the hash `c91f9220…` ≠ `ccbae441…`).
+Run: `npx tsc --noEmit; echo $?` → `2` (one error: `src/approve/__tests__/tx.test.tsx(20,17): error TS2305: Module '"../useArmed"' has no exported member 'FLAG_HOLD_MS'.`). `npx vitest run src/approve/__tests__/tx.test.tsx src/__tests__/designExt2b.test.ts` → **Tests 12 failed | 28 passed (40)** (rev 2.2 — its L14 test the tenth new; rev 2.1: 11 | 28 (39); rev 2: 10 | 28 (38); rev 1: 9 | 28 (37)): the nine new #48 tests — rev 2's L1 test the eighth, rev 2.1's O9 test the ninth — (no banner: `Unable to find an element with the text: Unlimited USDC spend approval` / `Assign / Allocate on your wallet account` / `This step depends on step 2 …`; the every-kind test `expected [] to deeply equal [ { tone: 'danger', …(3) }, …(9) ]`; the CSS test `expected '' to contain 'background: var(--bg-surface-2)'`), and designExt2b's two (`to contain '\n.s9-typed-confirm {'`, the hash `c91f9220…` ≠ `ccbae441…`).
 
 - [ ] **Step 3: Implement.**
 
@@ -6371,7 +6468,7 @@ index fa5b85f..498bf32 100644
 
 ````diff
 diff --git a/extension/src/approve/Tx.tsx b/extension/src/approve/Tx.tsx
-index b973b8a..310f181 100644
+index b973b8a..d656f4d 100644
 --- a/extension/src/approve/Tx.tsx
 +++ b/extension/src/approve/Tx.tsx
 @@ -1,4 +1,4 @@
@@ -6561,7 +6658,7 @@ index b973b8a..310f181 100644
 +  switch (f.kind) {
 +    case 'unlimited-approve':
 +      return (
-+        <FlagBanner key={key} tone="danger" head={(unlimitedMax(f) ? FLAG_TEXT.unlimitedHead : FLAG_TEXT.nearlyAllHead)(f.word === 'UNLIMITED' ? null : f.word)} body={f.approvals.map(a => unlimitedBody(item, a))} meta={f.approvals.map(approvalMeta)} />
++        <FlagBanner key={key} tone="danger" head={(unlimitedMax(f) ? FLAG_TEXT.unlimitedHead : FLAG_TEXT.nearlyAllHead)(f.word === 'UNLIMITED' || f.word === 'ALLOWANCE' ? null : f.word)} body={f.approvals.map(a => unlimitedBody(item, a))} meta={f.approvals.map(approvalMeta)} />
 +      );
 +    case 'bounded-approve':
 +      return (
@@ -6929,10 +7026,10 @@ The spec — §3.3 (two lines) and §10 (Q41–Q55):
 
 ````diff
 diff --git a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-index 85496a9..79963f0 100644
+index 322819b..2444509 100644
 --- a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
 +++ b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-@@ -667,7 +667,9 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
+@@ -670,7 +670,9 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
    `spellcheck` off, an exact, case-sensitive match with no trimming (a trailing space does not match), the design's
    `.input.match` border on a match, and #37's helper "Case-sensitive · must match exactly.". Never pre-filled, and
    emptied when a new simulation lands (review 1 L1: a chain-state block's details can change between simulations, so
@@ -6943,7 +7040,7 @@ index 85496a9..79963f0 100644
    CTA: for an unlimited approve (u64::MAX) the design's red "Approve unlimited" with the alert icon; for any other block —
    an F5 of 99 % up to the whole balance below u64::MAX included (O9) — "Approve anyway" (Q34), red; drawn as #37's gated
    CTA (greyed, full label) until every field matches.
-@@ -679,7 +681,7 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
+@@ -682,7 +684,7 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
    approval" only at u64::MAX; below it "Spend approval for nearly all your <SYM>" (Q56, O9; #10's row the same). An approve's balance card
    gains the design's synthesized row ("<SYM> delegated · unlimited · ≈ all current + future"; a bounded approve
    "<SYM> delegated · <amount>"): an approve changes no balance, so the "No balance changes" line is replaced wherever an
@@ -6952,7 +7049,7 @@ index 85496a9..79963f0 100644
  
  The plans for B1c-2 and B1c-3 refine this section; they may not loosen it.
  
-@@ -990,7 +992,23 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
+@@ -993,7 +995,24 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
  | Q38 | #10 row for an overridden F4 block (rev 3.6, plan 3 Task 4, controller copy, flagged to the owner — B1 §3's row) | "SetAuthority on an account you own" |
  | Q39 | #10 row for an overridden F5 block (rev 3.6, plan 3 Task 4, controller copy, flagged to the owner — the design's F5 head) | "Unlimited <SYM> spend approval"; "Unlimited token spend approval" when the wallet's table names no symbol (`UNLIMITED`) |
  | Q40 | #10 row for an overridden F10 block (rev 3.6, plan 3 Task 4, controller copy, flagged to the owner — Q32 as a row) | "Depends on step <N> — not checked on its own" |
@@ -6973,6 +7070,7 @@ index 85496a9..79963f0 100644
 +| Q55 | #48 banner meta lines (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | the design's "delegate: … · token: <SYM> mint … · scope: u64::MAX" (the scope otherwise the amount); an instruction as "#<n> <program>::<Instruction>" (the design's `spl_token::Approve` form, n as "Program <n>" counts); the decoder's own field names (`authorityType`, `account`, `newAuthority`, `owner`, `space`, `mint`, `freezeAuthority`, `permanentDelegate`, `transferHookProgram`); "post-simulation" for chain state; every address whole, in groups of four — never the design's `JUP6L…vRet9` truncation (a poisoned address matches on exactly those ends) |
  | Q56 | #10 row for an overridden F5 block of 99 % up to the whole balance below u64::MAX — and #48's F5 head for it (plan 3 rev 2.1, O9: "unlimited" only for u64::MAX; owner copy, "of this token" for an unnamed token the reviser's reading of the owner's "token when unnamed" — flagged) | "Spend approval for nearly all your <SYM>"; "Spend approval for nearly all of this token" when the wallet's table names no symbol |
 +| Q57 | #48 top-bar eyebrow when every block is an F5 below u64::MAX — 99 % up to the whole balance (plan 3 rev 2.1, O9, owner copy) | "Critical · Large spend approval" |
++| Q58 | #48 typed override word: an F5 of a token the wallet's own table cannot name, below u64::MAX — 99 % up to the whole balance (plan 3 rev 2.2, review 3 L14; controller copy, flagged to the owner) | `ALLOWANCE` — `UNLIMITED` (Q30) stays for u64::MAX only |
  
  (Q09 and Q11 of rev 1 are gone: the window no longer shows "expired" for a request it did not show, and the undo toast
  uses the design's drawn strings.)
@@ -6980,42 +7078,43 @@ index 85496a9..79963f0 100644
 
 - [ ] **Step 4: Run — green, and the whole suite, the build and the gates.**
 
-`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3408 passed (3408)** (Task 4: 170 / 3398; +9 in `tx.test.tsx` — rev 2's L1 test the eighth, rev 2.1's O9 test the ninth —, +1 in `designExt2b.test.ts`; `tx.test.tsx` takes ~28 s — two tests wait out real 1.5 s holds and carry a 15 s timeout). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (`classes ok: every class in 56 src/app and src/approve files is defined by …`). `node scripts/extract-design-css.mjs --check` → `design-ext.css is the extraction output`. Nothing under the repository root's `src/` or `core/` is touched (root `tsc`/`jest` and web's `verify` not needed). The `act(...)` warnings `tx.test.tsx` prints come from the window's own 1 s poll landing between the test's steps, as in B1c-2's tests; no assertion depends on them.
+`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3412 passed (3412)** (rev 2.2; Task 4: 170 / 3401; +10 in `tx.test.tsx` — rev 2's L1 test the eighth, rev 2.1's O9 test the ninth, rev 2.2's L14 test the tenth —, +1 in `designExt2b.test.ts`; `tx.test.tsx` takes ~28 s — two tests wait out real 1.5 s holds and carry a 15 s timeout). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (`classes ok: every class in 56 src/app and src/approve files is defined by …`). `node scripts/extract-design-css.mjs --check` → `design-ext.css is the extraction output`. Nothing under the repository root's `src/` or `core/` is touched (root `tsc`/`jest` and web's `verify` not needed). The `act(...)` warnings `tx.test.tsx` prints come from the window's own 1 s poll landing between the test's steps, as in B1c-2's tests; no assertion depends on them.
 
 - [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy; `tsc`'s own exit code first (0), then the named test: red.**
 
-All in `extension/src/approve/Tx.tsx` unless named; tests in `src/approve/__tests__/tx.test.tsx` ("#48 red flags (B1c-3)") unless named. Observed in the dry run: every mutant `tsc` exit 0, the named test red. **(rev 2.1)** All 28 (rev 2's 25 and M5z–M5ab; M5m, M5n on their rev-2.1 lines) re-run on the rev-2.1 tree; (rev 2) all 25 re-run on the rev-2 tree, each against its whole named file (rev 1 ran each with `-t`, hence its `1 failed`); the named test is among the failures in every row.
+All in `extension/src/approve/Tx.tsx` unless named; tests in `src/approve/__tests__/tx.test.tsx` ("#48 red flags (B1c-3)") unless named. Observed in the dry run: every mutant `tsc` exit 0, the named test red. **(rev 2.2)** All 29 (and M5ac) re-run on the rev-2.2 tree, all red; **(rev 2.1)** all 28 (rev 2's 25 and M5z–M5ab; M5m, M5n on their rev-2.1 lines) re-run on the rev-2.1 tree; (rev 2) all 25 re-run on the rev-2 tree, each against its whole named file (rev 1 ran each with `-t`, hence its `1 failed`); the named test is among the failures in every row.
 
 | id | the change | the test that turns red | observed |
 |---|---|---|---|
-| M5a | `matches`: `typed[f.key]?.trim() === f.word` (trims) | "an unlimited USDC approve …" (`'USDC '` enables) | tsc 0, 1 failed \| 32 passed (33) |
-| M5b | `matches`: `typed[f.key]?.toUpperCase() === f.word` (case folding) | "an unlimited USDC approve …" (`'usdc'` enables) | tsc 0, 1 failed \| 32 passed (33) |
-| M5c | `useArmed(…, ARM_MS)` always (no 1.5 s) | "holds (fake timers …)" (`[false, false]` at 1.49 s) | tsc 0, 1 failed \| 32 passed (33) |
-| M5d | the key without the match state (`busy].join('|')`) | "holds (fake timers …)" (no re-hold on a match change) | tsc 0, 2 failed \| 31 passed (33) |
-| M5e | `canApprove` without `&& allMatch` | "System assign … and an unlimited approve …" (enabled with one word) | tsc 0, 4 failed \| 29 passed (33) |
-| M5f | `overrides` never sent (`overrides.length > 99`) | "an unlimited USDC approve …" (refused `override-missing`; no #10) | tsc 0, 4 failed \| 29 passed (33) |
-| M5g | `overrides`' `tx` always `0` | "a dependent step (F10) …" (refused `override-mismatch`) | tsc 0, 1 failed \| 32 passed (33) |
-| M5h | Q32's step `dependsOnStep(item) === null ? null : f.step - 1` (a 0-based slip) | "a dependent step (F10) …" ("step 1") | tsc 0, 1 failed \| 32 passed (33) |
-| M5i | `stateOf` counts a dependent outcome as failed (B1c-2's rule) | "a dependent step (F10) …" (Couldn't simulate shown) | tsc 0, 1 failed \| 32 passed (33) |
-| M5j | `FlagBanners`: the background's order as given (no blocks-first split) | "every kind of flag …" (the warning first) | tsc 0, 1 failed \| 32 passed (33) |
-| M5k | `autoFocus` on the typed input | "an unlimited USDC approve …" (`activeElement` is the input) | tsc 0, 1 failed \| 32 passed (33) |
-| M5l | the typed field inside a `<form onSubmit>` | "an unlimited USDC approve …" (`input.form` not null) | tsc 0, 1 failed \| 32 passed (33) |
-| M5m | `unlimitedOnly = blocks.length > 0` | "System assign …" ("Critical · Unlimited spend approval") | tsc 0, 3 failed \| 30 passed (33) |
-| M5n | the eyebrow without Q35 (a block falls through to "Approve transaction") | "System assign …" | tsc 0, 3 failed \| 30 passed (33) |
-| M5o | the red CTA's class without `app-cta-gated` | "an unlimited USDC approve …" | tsc 0, 4 failed \| 29 passed (33) |
-| M5p | `RiskConfirm` without `holdMs` (500 ms in the sheet) | "a lookalike origin with a block …" (enabled 1 s after focus) | tsc 0, 1 failed \| 32 passed (33) |
-| M5q | the lookalike's demoted CTA armed without the typed gate (`ready && !reauthWaiting && !busy`) | "a lookalike origin with a block …" (enabled before typing) | tsc 0, 1 failed \| 32 passed (33) |
-| M5r | the delegated row's delta never "unlimited" | "an unlimited USDC approve …" (`18,446,744,073,709.551615`) | tsc 0, 2 failed \| 31 passed (33) |
-| M5s | L3's line never replaced beside an authority flag | "System assign …" (Q54) | tsc 0, 1 failed \| 32 passed (33) |
+| M5a | `matches`: `typed[f.key]?.trim() === f.word` (trims) | "an unlimited USDC approve …" (`'USDC '` enables) | tsc 0, 1 failed \| 33 passed (34) |
+| M5b | `matches`: `typed[f.key]?.toUpperCase() === f.word` (case folding) | "an unlimited USDC approve …" (`'usdc'` enables) | tsc 0, 1 failed \| 33 passed (34) |
+| M5c | `useArmed(…, ARM_MS)` always (no 1.5 s) | "holds (fake timers …)" (`[false, false]` at 1.49 s) | tsc 0, 1 failed \| 33 passed (34) |
+| M5d | the key without the match state (`busy].join('|')`) | "holds (fake timers …)" (no re-hold on a match change) | tsc 0, 2 failed \| 32 passed (34) |
+| M5e | `canApprove` without `&& allMatch` | "System assign … and an unlimited approve …" (enabled with one word) | tsc 0, 4 failed \| 30 passed (34) |
+| M5f | `overrides` never sent (`overrides.length > 99`) | "an unlimited USDC approve …" (refused `override-missing`; no #10) | tsc 0, 4 failed \| 30 passed (34) |
+| M5g | `overrides`' `tx` always `0` | "a dependent step (F10) …" (refused `override-mismatch`) | tsc 0, 1 failed \| 33 passed (34) |
+| M5h | Q32's step `dependsOnStep(item) === null ? null : f.step - 1` (a 0-based slip) | "a dependent step (F10) …" ("step 1") | tsc 0, 1 failed \| 33 passed (34) |
+| M5i | `stateOf` counts a dependent outcome as failed (B1c-2's rule) | "a dependent step (F10) …" (Couldn't simulate shown) | tsc 0, 1 failed \| 33 passed (34) |
+| M5j | `FlagBanners`: the background's order as given (no blocks-first split) | "every kind of flag …" (the warning first) | tsc 0, 1 failed \| 33 passed (34) |
+| M5k | `autoFocus` on the typed input | "an unlimited USDC approve …" (`activeElement` is the input) | tsc 0, 1 failed \| 33 passed (34) |
+| M5l | the typed field inside a `<form onSubmit>` | "an unlimited USDC approve …" (`input.form` not null) | tsc 0, 1 failed \| 33 passed (34) |
+| M5m | `unlimitedOnly = blocks.length > 0` | "System assign …" ("Critical · Unlimited spend approval") | tsc 0, 3 failed \| 31 passed (34) |
+| M5n | the eyebrow without Q35 (a block falls through to "Approve transaction") | "System assign …" | tsc 0, 3 failed \| 31 passed (34) |
+| M5o | the red CTA's class without `app-cta-gated` | "an unlimited USDC approve …" | tsc 0, 4 failed \| 30 passed (34) |
+| M5p | `RiskConfirm` without `holdMs` (500 ms in the sheet) | "a lookalike origin with a block …" (enabled 1 s after focus) | tsc 0, 1 failed \| 33 passed (34) |
+| M5q | the lookalike's demoted CTA armed without the typed gate (`ready && !reauthWaiting && !busy`) | "a lookalike origin with a block …" (enabled before typing) | tsc 0, 1 failed \| 33 passed (34) |
+| M5r | the delegated row's delta never "unlimited" | "an unlimited USDC approve …" (`18,446,744,073,709.551615`) | tsc 0, 2 failed \| 32 passed (34) |
+| M5s | L3's line never replaced beside an authority flag | "System assign …" (Q54) | tsc 0, 1 failed \| 33 passed (34) |
 | M5t | `scripts/extract-design-css.mjs`: `.s9-typed-confirm` dropped from PREFIXES | `scripts/__tests__/extract-design-css.test.mjs` "design-ext.css starts with the script's HEADER, and every rule after it is one the extraction keeps" (5 rules not kept) | tsc 0, 1 failed \| 1 passed (2) |
-| M5u | `instructionName` always `spl_token::…` (the design's span, not the real program) | "every kind of flag …" (`spl_token_2022::ApproveChecked`) | tsc 0, 2 failed \| 31 passed (33) |
-| M5v | `Addr` shows `shortAddress` (the design's truncation) | "an unlimited USDC approve …" (meta `6YME…GKSy`) | tsc 0, 3 failed \| 30 passed (33) |
-| M5w | **(rev 2, L1)** the typed words kept across simulations (`const typed = typedFor.words;`) | "a new simulation empties every typed field (review 1 L1) …" (the field still `USDC`); "holds (fake timers …)" (the field not emptied by the new simulation) | tsc 0, 2 failed \| 31 passed (33) |
-| M5x | **(rev 2, O5)** "all your <SYM>" below u64::MAX too (`<i>{FLAG_TEXT.all(a.symbol)}</i>`) | "every kind of flag …" (Q42's "all or nearly all of this token") | tsc 0, 2 failed \| 31 passed (33) |
-| M5y | **(rev 2, O6)** Q48 without its second sentence (`strings.ts` `dependent`) | "a dependent step (F10) …" ("Approving it may move any of your balances.") | tsc 0, 1 failed \| 32 passed (33) |
-| M5z | **(rev 2.1, O9)** F5's head "Unlimited" below u64::MAX too (`FLAG_TEXT.unlimitedHead` for the head choice) | "O9: an approve of nearly the whole balance below u64::MAX …" | tsc 0, 1 failed \| 32 passed (33) |
-| M5aa | **(rev 2.1, O9)** the eyebrow "Critical · Unlimited spend approval" below u64::MAX too | "O9: …" | tsc 0, 1 failed \| 32 passed (33) |
-| M5ab | **(rev 2.1, O9)** "Approve unlimited" whenever every block is an F5 (`approvalsOnly && blocks.length > 0`) | "O9: …" | tsc 0, 1 failed \| 32 passed (33) |
+| M5u | `instructionName` always `spl_token::…` (the design's span, not the real program) | "every kind of flag …" (`spl_token_2022::ApproveChecked`) | tsc 0, 2 failed \| 32 passed (34) |
+| M5v | `Addr` shows `shortAddress` (the design's truncation) | "an unlimited USDC approve …" (meta `6YME…GKSy`) | tsc 0, 3 failed \| 31 passed (34) |
+| M5w | **(rev 2, L1)** the typed words kept across simulations (`const typed = typedFor.words;`) | "a new simulation empties every typed field (review 1 L1) …" (the field still `USDC`); "holds (fake timers …)" (the field not emptied by the new simulation) | tsc 0, 2 failed \| 32 passed (34) |
+| M5x | **(rev 2, O5)** "all your <SYM>" below u64::MAX too (`<i>{FLAG_TEXT.all(a.symbol)}</i>`) | "every kind of flag …" (Q42's "all or nearly all of this token") | tsc 0, 2 failed \| 32 passed (34) |
+| M5y | **(rev 2, O6)** Q48 without its second sentence (`strings.ts` `dependent`) | "a dependent step (F10) …" ("Approving it may move any of your balances.") | tsc 0, 1 failed \| 33 passed (34) |
+| M5z | **(rev 2.1, O9)** F5's head "Unlimited" below u64::MAX too (`FLAG_TEXT.unlimitedHead` for the head choice) | "O9: an approve of nearly the whole balance below u64::MAX …" | tsc 0, 2 failed \| 32 passed (34) |
+| M5aa | **(rev 2.1, O9)** the eyebrow "Critical · Unlimited spend approval" below u64::MAX too | "O9: …" | tsc 0, 2 failed \| 32 passed (34) |
+| M5ab | **(rev 2.1, O9)** "Approve unlimited" whenever every block is an F5 (`approvalsOnly && blocks.length > 0`) | "O9: …" | tsc 0, 2 failed \| 32 passed (34) |
+| M5ac | **(rev 2.2, L14)** F5's head reads `ALLOWANCE` as a symbol (`f.word === 'UNLIMITED' ? null : f.word`) | "L14 (review 3): …" (the head "Spend approval for nearly all your ALLOWANCE") | tsc 0, 1 failed \| 33 passed (34) |
 
 - [ ] **Step 6: Commit.**
 
@@ -7026,7 +7125,7 @@ git commit -m "feat(extension): B1c-3 Task 5 — #48 renders the red flags: bann
 Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 ```
 
-(Dry run: clone commit `713cce5` on Task 4's `d8f6201` — rev 2.1, branch `dry/b1c3-r21`; rev 2: `6fb798a` on `772cc3f`; rev 1: `afb3e09` on `614e54b`.)
+(Dry run: clone commit `a7c7aed` on Task 4's `5192583` — rev 2.2, branch `dry/b1c3-r22`; rev 2.1: `713cce5` on `d8f6201`; rev 2: `6fb798a` on `772cc3f`; rev 1: `afb3e09` on `614e54b`.)
 
 #### Dry-run notes (Task 5)
 
@@ -7055,6 +7154,7 @@ Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 - **(rev 2) L4 (owner to confirm, not changed):** two "Approve anyway" strings exist in this screen family — a block's red CTA (Q34) and a lookalike's demoted "Approve anyway (not recommended)"; on a lookalike with a block only the demoted one shows, so they never meet on one screen. Put to the owner with Q34.
 - **(rev 2) L5:** this task's commit command named a model; it now carries the plan's convention, `Co-Authored-By: <the executing model>` — the executor writes its own model's name (Tasks 6, 7 and 8 named the same model too and were changed the same way).
 - **(rev 2.1) O9 — "unlimited" only of u64::MAX on #48:** an F5 banner whose approvals are all below u64::MAX has the head Q56 ("Spend approval for nearly all your <SYM>", "… of this token" unnamed); when every block is such an F5 the eyebrow is Q57 "Critical · Large spend approval" and the CTA Q34 "Approve anyway" without the alert icon. "Approve unlimited" and "Critical · Unlimited spend approval" need every block an F5 **and** one of them of u64::MAX (a mixed batch says "unlimited": one approval is). The bodies were already true ("all or nearly all", rev 2). New test "O9: an approve of nearly the whole balance below u64::MAX …" (248 of 250 USDC: head, eyebrow, body, the delegated row "248", the CTA without its icon, and "unlimited" nowhere on the screen); mutations M5z (head), M5aa (eyebrow), M5ab (CTA); M5m and M5n moved to the rev-2.1 lines. Spec §10 gains Q57.
+- **(rev 2.2) L14 on #48:** F5's head reads `ALLOWANCE` as an unnamed token (Q56's "Spend approval for nearly all of this token"); the typed label shows the word as given — "Type ALLOWANCE to enable Approve". New test "L14 (review 3): …" (eyebrow Q57, head, label, "unlimited" nowhere); M5ac. Spec §10 gains Q58 (`ALLOWANCE`, controller copy, flagged).
 
 ---
 
@@ -7117,7 +7217,7 @@ The ruling's tests, in `redFlags.test.ts` — a new describe with the brief's th
 
 ````diff
 diff --git a/extension/src/background/dapp/__tests__/redFlags.test.ts b/extension/src/background/dapp/__tests__/redFlags.test.ts
-index d3131c0..3b3a487 100644
+index 761bb91..885a323 100644
 --- a/extension/src/background/dapp/__tests__/redFlags.test.ts
 +++ b/extension/src/background/dapp/__tests__/redFlags.test.ts
 @@ -171,6 +171,58 @@ describe('redFlagsOf — F2 non-transfer', () => {
@@ -7253,7 +7353,7 @@ index d3131c0..3b3a487 100644
        // Q45's body: "This lets a delegate move up to 0.0005 USDC of your USDC until you revoke." — the approved amount.
        expect(find(consumed(post), 'bounded-approve')?.approvals).toEqual([
          {at: 0, source: SRC.toBase58(), mint: MAINNET_USDC_MINT, symbol: 'USDC', decimals: 6, delegate: DELEGATE.toBase58(), amount: '500', balance: '1000'},
-@@ -343,7 +395,7 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
+@@ -361,7 +413,7 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
    });
  
    it('a source the wallet cannot read, approved by the wallet, counts as an empty balance (fail closed)', () => {
@@ -7262,7 +7362,7 @@ index d3131c0..3b3a487 100644
    });
  
    it('someone else’s account approved by its own owner is F2 only', () => {
-@@ -435,13 +487,10 @@ describe('redFlagsOf — F7 Token-2022 mint settings', () => {
+@@ -467,13 +519,10 @@ describe('redFlagsOf — F7 Token-2022 mint settings', () => {
  });
  
  describe('redFlagsOf — F8 durable nonce, F9 whole balance, F10 dependent step', () => {
@@ -7278,7 +7378,7 @@ index d3131c0..3b3a487 100644
      expect(kinds(one({ixs: [transfer, nonce]}))).toEqual(['non-transfer']);
    });
  
-@@ -456,7 +505,7 @@ describe('redFlagsOf — F8 durable nonce, F9 whole balance, F10 dependent step'
+@@ -488,7 +537,7 @@ describe('redFlagsOf — F8 durable nonce, F9 whole balance, F10 dependent step'
      const assign = SystemProgram.assign({accountPubkey: ME, programId: UNKNOWN});
      expect(one({ixs: [transferIx(1n)], post: {dependentOn: 0}})).toEqual([{kind: 'dependent', severity: 'block', word: 'UNCHECKED', at: null, on: 0}]);
      expect(one({ixs: [transferIx(1n)], post: 'failed'})).toEqual([]);
@@ -7287,7 +7387,7 @@ index d3131c0..3b3a487 100644
      // A failed step has no post-state: chain-state rules read nothing (the wallet's plain post is not consulted).
      expect(kinds(one({ixs: [unknownIx()], pre: [[ME, {lamports: SOL, owner: UNKNOWN.toBase58(), data: new Uint8Array(4)}]], post: 'failed'}))).toEqual(['unknown-program']);
    });
-@@ -465,19 +514,21 @@ describe('redFlagsOf — F8 durable nonce, F9 whole balance, F10 dependent step'
+@@ -497,19 +546,21 @@ describe('redFlagsOf — F8 durable nonce, F9 whole balance, F10 dependent step'
  describe('redFlagsOf — the order', () => {
    it('blocks first, then warnings; within each by instruction index (chain state and whole-transaction flags after), then by row', () => {
      const nonce = SystemProgram.nonceAdvance({noncePubkey: SRC2, authorizedPubkey: ME});
@@ -7322,7 +7422,7 @@ index d3131c0..3b3a487 100644
 
 ````diff
 diff --git a/extension/src/background/dapp/__tests__/simulate.test.ts b/extension/src/background/dapp/__tests__/simulate.test.ts
-index ca49c92..b5a7b84 100644
+index cb2f2cf..c5d0373 100644
 --- a/extension/src/background/dapp/__tests__/simulate.test.ts
 +++ b/extension/src/background/dapp/__tests__/simulate.test.ts
 @@ -581,10 +581,8 @@ describe('simulateTransactions: the red flags (B1c-3)', () => {
@@ -7338,7 +7438,7 @@ index ca49c92..b5a7b84 100644
      expect(bounded.reasons).toEqual(['approval']);
    });
  
-@@ -635,7 +633,7 @@ describe('simulateTransactions: the red flags (B1c-3)', () => {
+@@ -645,7 +643,7 @@ describe('simulateTransactions: the red flags (B1c-3)', () => {
        ['a word not the one its approvals give', sim, s => (flag(s, 'unlimited-approve').word = 'UNLIMITED')],
        ['a block stored as a warning', sim, s => (flag(s, 'unlimited-approve').severity = 'warn')],
        ['a key more', sim, s => (flag(s, 'unlimited-approve').extra = 1)],
@@ -7347,7 +7447,7 @@ index ca49c92..b5a7b84 100644
        ['an approval’s symbol not its mint’s', sim, s => ((flag(s, 'unlimited-approve').approvals as Json[])[0] = {...(flag(s, 'unlimited-approve').approvals as Json[])[0], symbol: 'USDT'})],
        [
          'an approval’s symbol not its mint’s, its word made to agree',
-@@ -647,7 +645,7 @@ describe('simulateTransactions: the red flags (B1c-3)', () => {
+@@ -657,7 +655,7 @@ describe('simulateTransactions: the red flags (B1c-3)', () => {
          },
        ],
        ['an approval’s amount not base units', sim, s => ((flag(s, 'unlimited-approve').approvals as Json[])[0] = {...(flag(s, 'unlimited-approve').approvals as Json[])[0], amount: '-1'})],
@@ -7356,7 +7456,7 @@ index ca49c92..b5a7b84 100644
        ['a block without the `override` reason', sim, s => (s.reasons = ['approval'])],
        ['an unknown reason', sim, s => (s.reasons = ['approval', 'override', 'drain'])],
        ['`override` with no block', bounded, s => (s.reasons = ['approval', 'override'])],
-@@ -800,3 +798,82 @@ describe('simulateTransactions: the red flags (B1c-3)', () => {
+@@ -810,3 +808,82 @@ describe('simulateTransactions: the red flags (B1c-3)', () => {
      });
    });
  });
@@ -7531,7 +7631,7 @@ index d135c13..32268ca 100644
 
 ````diff
 diff --git a/extension/src/approve/__tests__/tx.test.tsx b/extension/src/approve/__tests__/tx.test.tsx
-index f93955d..762ca63 100644
+index 60eacfa..8732f27 100644
 --- a/extension/src/approve/__tests__/tx.test.tsx
 +++ b/extension/src/approve/__tests__/tx.test.tsx
 @@ -12,9 +12,9 @@ import {readDappSession} from '../../background/dapp/store';
@@ -7568,7 +7668,7 @@ index f93955d..762ca63 100644
    });
  
    it('the design minors’ own rules: Approve at .4 while simulating; "I understand the risk" never wraps', async () => {
-@@ -676,9 +684,10 @@ describe('#48 red flags (B1c-3)', () => {
+@@ -679,9 +687,10 @@ describe('#48 red flags (B1c-3)', () => {
      w.show();
      await simulated(w, 'Unlimited USDC spend approval');
      expect([text('.top-bar .title'), document.querySelector('.top-bar .title')?.className]).toEqual(['Critical · Unlimited spend approval', 'title noc-overline noc-danger']);
@@ -7582,7 +7682,7 @@ index f93955d..762ca63 100644
      const danger = document.querySelector('.s9-flag-banner.danger') as HTMLElement;
      expect(within(danger).getByText(/This transaction includes/).textContent).toBe(
        'This transaction includes a spl_token::Approve instruction with amount = u64::MAX (~18.4 quintillion units). Even verified dApps can be exploited; this lets the program move all your USDC, now and in the future, until you revoke.',
-@@ -686,7 +695,6 @@ describe('#48 red flags (B1c-3)', () => {
+@@ -689,7 +698,6 @@ describe('#48 red flags (B1c-3)', () => {
      expect([...danger.querySelectorAll('.body code')].map(c => c.textContent)).toEqual(['spl_token::Approve', 'amount = u64::MAX']);
      expect(danger.querySelector('.body i')?.textContent).toBe('all your USDC');
      expect(danger.querySelector('.meta')?.textContent).toBe(`delegate: ${DELEGATE.toBase58()} · token: USDC mint ${USDC} · scope: u64::MAX`);
@@ -7590,7 +7690,7 @@ index f93955d..762ca63 100644
      // The synthesized row first (an approve changes no balance), then the simulation's own (the fee).
      expect(texts('.s9-bal-row .pri')).toEqual(['USDC delegated', 'SOL']);
      expect(texts('.s9-bal-row .delta')).toEqual(['unlimited', '−0.000005']);
-@@ -843,6 +851,48 @@ describe('#48 red flags (B1c-3)', () => {
+@@ -846,6 +854,48 @@ describe('#48 red flags (B1c-3)', () => {
      expect(cta('Approve unlimited').disabled).toBe(false);
    }, 15_000);
  
@@ -7639,7 +7739,7 @@ index f93955d..762ca63 100644
    it('System assign of the wallet account (F3) and an unlimited approve in one transaction: "Critical · Blocked transaction", both banners, one field per block — "Approve anyway" only when both match; the L3 line replaced beside an authority flag', async () => {
      const w = await openWindow();
      holdUsdc(w);
-@@ -850,9 +900,9 @@ describe('#48 red flags (B1c-3)', () => {
+@@ -853,9 +903,9 @@ describe('#48 red flags (B1c-3)', () => {
      w.show();
      await simulated(w, 'Assign / Allocate on your wallet account');
      expect(text('.top-bar .title')).toBe('Critical · Blocked transaction');
@@ -7747,7 +7847,7 @@ index f35a32a..3063c64 100644
 
 ````diff
 diff --git a/extension/src/unlock/__tests__/challenge.test.ts b/extension/src/unlock/__tests__/challenge.test.ts
-index bc5920c..3011019 100644
+index a897a29..0399256 100644
 --- a/extension/src/unlock/__tests__/challenge.test.ts
 +++ b/extension/src/unlock/__tests__/challenge.test.ts
 @@ -48,9 +48,10 @@ describe('describeChallenge: a dApp’s transaction (B1c-2)', () => {
@@ -7841,7 +7941,7 @@ F2, last, without what a more specific flag names:
 
 ````diff
 diff --git a/extension/src/background/dapp/redFlags.ts b/extension/src/background/dapp/redFlags.ts
-index d27456a..5142d6e 100644
+index d15e064..d2f323b 100644
 --- a/extension/src/background/dapp/redFlags.ts
 +++ b/extension/src/background/dapp/redFlags.ts
 @@ -13,7 +13,8 @@ import {usesDurableNonce} from './txRequest';
@@ -7854,7 +7954,7 @@ index d27456a..5142d6e 100644
   * wallet account owned by another program or holding data after the simulation (block, ASSIGN) · F4 SetAuthority on a
   * token account whose owner field is the wallet, on a mint whose mint or freeze authority is the wallet, or signed by
   * the wallet as the current authority; or, in chain state, an own token account's owner or close authority changed, a
-@@ -158,16 +159,6 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
+@@ -162,16 +163,6 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
    const first = unknown[0];
    if (first !== undefined) out.push({kind: 'unknown-program', severity: 'warn', word: null, at: first.index, programs: [...new Set(unknown.map(x => x.ix.programId))]});
  
@@ -7871,7 +7971,7 @@ index d27456a..5142d6e 100644
    // F3
    const assigns = indexed.flatMap(({ix, index}) => (ix.program === 'system' && ix.name !== null && ASSIGNS.includes(ix.name) && addressField(ix, 'account') === account ? [{index, program: ix.program, name: ix.name}] : []));
    const selfPre = pre.get(account) ?? null;
-@@ -282,9 +273,37 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
+@@ -289,9 +280,37 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
    if (usesDurableNonce(t.tx)) out.push({kind: 'durable-nonce', severity: 'warn', word: null, at: 0});
    if (t.firstSend && input.reasons.includes('whole-balance-to-new')) out.push({kind: 'whole-balance', severity: 'warn', word: null, at: null});
    if (t.outcome.status === 'dependent') out.push({kind: 'dependent', severity: 'block', word: OVERRIDE_WORDS.dependent, at: null, on: t.outcome.on});
@@ -8125,7 +8225,7 @@ index 4014501..444b3e7 100644
 
 ````diff
 diff --git a/extension/src/approve/Tx.tsx b/extension/src/approve/Tx.tsx
-index 310f181..21ea549 100644
+index d656f4d..9022ba9 100644
 --- a/extension/src/approve/Tx.tsx
 +++ b/extension/src/approve/Tx.tsx
 @@ -20,6 +20,11 @@ const PROGRAM_NAMES: Record<ProgramKey, string> = {
@@ -8310,7 +8410,7 @@ index 498bf32..9e813d3 100644
 
 ````diff
 diff --git a/extension/src/unlock/challenge.ts b/extension/src/unlock/challenge.ts
-index 12b010b..6c33646 100644
+index d1af7aa..75ac024 100644
 --- a/extension/src/unlock/challenge.ts
 +++ b/extension/src/unlock/challenge.ts
 @@ -59,7 +59,10 @@ export interface DappDescription {
@@ -8398,10 +8498,10 @@ The spec:
 
 ````diff
 diff --git a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-index 79963f0..b4d448d 100644
+index 2444509..e9b3299 100644
 --- a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
 +++ b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-@@ -568,7 +568,8 @@ cannot mask an earlier one (review M5):
+@@ -571,7 +571,8 @@ cannot mask an earlier one (review M5):
     [Reject] + [Sign]. Top-bar ✕ = Reject; disabled while signing. **Can no longer be signed** (rev 3.2): when the
     request is live but its signing detail is gone (the account is unlocked no more, or the message is now refused), #46
     keeps the overline, ✕ and the title, shows Q26 *"This request can no longer be signed. Reject it and ask the site to
@@ -8411,7 +8511,7 @@ index 79963f0..b4d448d 100644
  5. **Lookalike:** overline "Suspicious origin"; the short lede "A signature proves you control this wallet."; the banner
     (§3.1); in the preview, every non-ASCII character that `skel` maps to Latin is `<mark>`ed (as the design marks "а"
     in "Domain: phаntom.app"); primary "Reject and report"; tertiary "Sign anyway (not recommended)" → the design's
-@@ -626,7 +627,7 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
+@@ -629,7 +630,7 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
  | # | condition (B1 §3) | how it is detected | severity | override word |
  |---|---|---|---|---|
  | F1 | a program not in the decoded set — also an instruction that touches an account no lookup table resolved, and a known program's instruction that does not parse strictly | the decoded instruction's program is unknown | warning, named by the program's address (one banner per transaction listing every unknown program, each address whole, in groups of four) | — |
@@ -8419,8 +8519,8 @@ index 79963f0..b4d448d 100644
 +| F2 | an instruction of a decoded program that is not a transfer | the decoded name is none of System `transfer`, Token / Token-2022 `transfer`, `transferChecked`. **Compute Budget is exempt** — it is the fee, already shown as the fee row. **O7: three self-rent instructions are exempt**, each only in exactly this shape, because none can take value from the account: an ATA `create` / `createIdempotent` whose `wallet` **and** `payer` are both the account (its own token account, the rent paid by itself); `syncNative` of a token account whose pre-state owner field is the account; `closeAccount` of a token account whose pre-state owner field is the account, with the account itself as the destination (the rent comes back to it). Every other instruction stays named — another wallet's ATA or one another payer funds, a sync or close of an account that is not the user's or that the wallet cannot read, a close to any other destination. An instruction a more specific flag of the same transaction already names (F3's assign, F4's setAuthority, F5's or F6's approve, F8's `AdvanceNonceAccount`) is not listed again — B1 §3's "named" is that flag's banner (controller ruling, plan 3: the design draws one banner for an unlimited approve); every other one stays listed | warning, one banner per transaction naming the instructions | — |
  | F3 | System `Assign` / `Allocate` on the user's own wallet account | a decoded `assign`, `allocate`, `assignWithSeed` or `allocateWithSeed` (tags 1, 8, 10, 9) whose target account (index 0) is the wallet account; **and** chain state: the simulation's post-state of the wallet account has an owner other than the System program, or any data (a CPI names no top-level instruction) | **blocked** | `ASSIGN` (Q28) — one word for all four; the banner names which |
  | F4 | SPL / Token-2022 `SetAuthority` (any authority type) on an account the user owns | a decoded `setAuthority` whose account is a token account whose pre-state owner field is the wallet account, or a mint whose pre-state mint authority or freeze authority is the wallet account; **and** chain state (a CPI): an own token account's owner reassigned away, or its close authority changed | **blocked** | `AUTHORITY` (Q29) |
- | F5 | `Approve` / `ApproveChecked` of the whole balance or u64 max — **O5: or nearly all of it, 99 % or more** (stricter, allowed) | "at least 99 %" is `amount × 100 ≥ balance × 99` (B1c-2's whole-balance percent; u64::MAX and the whole balance always are). **O8 — each balance where it is exact:** a decoded approve whose amount is at least 99 % of the source's balance **before** the transaction (pre-state; a source the wallet cannot read as its own token account then is an empty balance — fail closed), **or** whose source **after** the transaction (post-state, still the account's own token account with a delegate) holds a remaining delegation of at least 99 % of its balance after it; **and** chain state (a CPI): an own account's post-state delegation, new or raised, of at least 99 % of its balance **after** the transaction. So a transaction that moves tokens out and delegates what is left is a block (review 1 M1), while a delegation the same transaction consumes (nothing remains delegated) and a delegation small beside the balance after an inflow are F6 — their copy then true (review 2 M5) | **blocked** | the token's symbol from **the wallet's own token table**, exact and case-sensitive — only when the simulation's decimals match the table's; a mint the wallet cannot name → `UNLIMITED` (Q30). Never a symbol a mint claims for itself (a fake mint can call itself USDC) |
-@@ -682,6 +683,12 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
+ | F5 | `Approve` / `ApproveChecked` of the whole balance or u64 max — **O5: or nearly all of it, 99 % or more** (stricter, allowed) | "at least 99 %" is `amount × 100 ≥ balance × 99` (B1c-2's whole-balance percent; u64::MAX and the whole balance always are). **O8 — each balance where it is exact:** a decoded approve whose amount is at least 99 % of the source's balance **before** the transaction (pre-state; a source the wallet cannot read as its own token account then is an empty balance — fail closed), **or** whose source **after** the transaction (post-state, still the account's own token account, its delegate the instruction's own — review 3 L12: another delegate left there is the chain state's to name) holds a remaining delegation, no larger than the instruction granted, of at least 99 % of its balance after it. **A source holding nothing before** — an empty token account, one the same transaction creates, or one the wallet cannot read — **makes any decoded approve of it a block** (review 3 L13, fail closed: an approval of an account whose balance the user cannot see is not "bounded"; the test "L13: a source holding nothing before …"); **and** chain state (a CPI): an own account's post-state delegation, new or raised, of at least 99 % of its balance **after** the transaction. So a transaction that moves tokens out and delegates what is left is a block (review 1 M1), while a delegation the same transaction consumes (nothing remains delegated) and a delegation small beside the balance after an inflow into a source that held something before are F6 — their copy then true (review 2 M5) | **blocked** | the token's symbol from **the wallet's own token table**, exact and case-sensitive — only when the simulation's decimals match the table's; a mint the wallet cannot name → `UNLIMITED` (Q30) when an approval of it is u64::MAX, else `ALLOWANCE` (Q58, review 3 L14) — "unlimited" only of u64::MAX, as O9 says of the copy. Never a symbol a mint claims for itself (a fake mint can call itself USDC) |
+@@ -685,6 +686,12 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
    gains the design's synthesized row ("<SYM> delegated · unlimited · ≈ all current + future"; a bounded approve
    "<SYM> delegated · <amount>"): an approve changes no balance, so the "No balance changes" line is replaced wherever an
    authority or approve flag exists. Every banner's copy is the design's, B1 §3's or §10's (Q32, Q36–Q39, Q41–Q55).
@@ -8437,7 +8537,7 @@ index 79963f0..b4d448d 100644
 
 - [ ] **Step 4: Run — green, and the whole suite, the build and the gates.**
 
-`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3422 passed (3422)** (Task 5: 170 / 3408; +5 `redFlags.test.ts`, +5 `simulate.test.ts`, +1 `decode.test.ts`, +2 `tx.test.tsx`, +1 `Home.test.tsx`). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (`classes ok: every class in 56 src/app and src/approve files is defined by …` — `app-pending-strip` is app.css's; the vault-isolation gate passes reauth.ts's `MINUS`). `node scripts/extract-design-css.mjs --check` → `design-ext.css is the extraction output` (unchanged). Nothing under the repository root's `src/` or `core/` is touched (root `tsc`/`jest` and web's `verify` not needed). The e2e change is not run here (Task 8).
+`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3426 passed (3426)** (rev 2.2; Task 5: 170 / 3412; +5 `redFlags.test.ts`, +5 `simulate.test.ts`, +1 `decode.test.ts`, +2 `tx.test.tsx`, +1 `Home.test.tsx`). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (`classes ok: every class in 56 src/app and src/approve files is defined by …` — `app-pending-strip` is app.css's; the vault-isolation gate passes reauth.ts's `MINUS`). `node scripts/extract-design-css.mjs --check` → `design-ext.css is the extraction output` (unchanged). Nothing under the repository root's `src/` or `core/` is touched (root `tsc`/`jest` and web's `verify` not needed). The e2e change is not run here (Task 8).
 
 - [ ] **Step 5: The named mutations — each alone, in a fresh `git archive` copy; `tsc`'s own exit code first (0), then the named test: red.**
 
@@ -8484,7 +8584,7 @@ git commit -m "feat(extension): B1c-3 Task 6 — F2 beside a more specific flag,
 Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 ```
 
-(Dry run: clone commit `2d08074` on Task 5's `713cce5` — rev 2.1, branch `dry/b1c3-r21`; rev 2: `6191861` on `6fb798a`; rev 1: `05a1f32` on `afb3e09`.)
+(Dry run: clone commit `38eb715` on Task 5's `a7c7aed` — rev 2.2, branch `dry/b1c3-r22`; rev 2.1: `2d08074` on `713cce5`; rev 2: `6191861` on `6fb798a`; rev 1: `05a1f32` on `afb3e09`.)
 
 #### Dry-run notes (Task 6)
 
@@ -8504,6 +8604,7 @@ Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 - **(rev 2) F2 last, with O7:** this task moves F2 after the specific flags; rev 2's self-rent exemption (Task 2) moves with it — the same `ownTokenAccount` / `selfRent` helpers, now beside `specific`; the filter is `program === null || compute-budget || isTransfer || selfRent || specific.has(index)`. M6ac drops the exemption here.
 - **(rev 2) Tests touched by O7:** "an unlimited approve alone is F5 only; beside an ATA create, F2 names only the create" and "F7 is not among them" used the account's own ATA — exempt now — so they create one for another wallet (`ataCreateIx(mint, THEIRS)`); the F7 test adds the own-ATA line as O7's positive control (F7 still names the mint, no F2). In tx.test the ATA-create test makes its create another wallet's (`ataCreate(X, TO, …)`) and adds the account's own ATA beside F5 → F5's banner only. The kinds of Task 2's rev-2 tests (O5, M1) lose F2's approve line here, as the rev-1 tests did.
 - **(rev 2.1) Only the rebase:** this task's own code is unchanged; its redFlags.test.ts hunk re-applies onto Task 2's O8 tests (their kinds lose F2's approve line here, as before), so the 29 mutations were re-run on the rev-2.1 tree.
+- **(rev 2.2) Unchanged** — this task's commit re-applies as it was on rev 2.2's Tasks 1–5; its tree is green (totals above). No E2E- or visual-visible behaviour changed in rev 2.2 (every E2E and visual F5 is of a named token), so the Playwright suites were not re-run in full; B1c-30 and the visual B1c-3 test were run once on the rev-2.2 tip as a check (below in rev22-changes.md).
 
 ---
 
@@ -9517,7 +9618,7 @@ index f076edb..e38c6d6 100644
 
 - [ ] **Step 4: Run — green, the whole suite, the build, the gates, and the whole Playwright suite twice.**
 
-`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3422 passed (3422)** (rev 2.1; unchanged from Task 6's 3422: three Home tests rewritten, none added). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (every gate's ok line, `classes ok: every class in 56 src/app and src/approve files …`). Nothing under `core/` or the repository root's `src/` is touched (root `tsc`/`jest`, web's `verify` not needed).
+`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3426 passed (3426)** (rev 2.2; unchanged from Task 6's 3426: three Home tests rewritten, none added). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (every gate's ok line, `classes ok: every class in 56 src/app and src/approve files …`). Nothing under `core/` or the repository root's `src/` is touched (root `tsc`/`jest`, web's `verify` not needed).
 
 Home.test on the harness's clock, under the same shifted wall clock: `CLOCK_AT` = 23:59:59.900, 23:59:58.000, 23:59:56.000, 23:59:54.000, 23:59:52.000, 23:59:50.000 with `-t '#42'` → **18 passed** each time; the whole file at 23:59:59.900 → 37 passed.
 
@@ -9562,7 +9663,7 @@ git commit -m "test(extension): B1c-3 Task 7 — E2E B1c-30 … B1c-34: the red 
 Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 ```
 
-(Dry run: clone commit `012133c` on Task 6's `2d08074` — rev 2.1, branch `dry/b1c3-r21`; rev 2: `17b6f81` on `6191861`; rev 1: `fd3ebd6` on `05a1f32`.)
+(Dry run: clone commit `e61419f` on Task 6's `38eb715` — rev 2.2, branch `dry/b1c3-r22`; rev 2.1: `012133c` on `2d08074`; rev 2: `17b6f81` on `6191861`; rev 1: `fd3ebd6` on `05a1f32`.)
 
 #### Dry-run notes (Task 7)
 
@@ -9578,6 +9679,7 @@ Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 - **For Task 8 (visual):** the new states are reachable with these builders (`ix.*`, `holdUsdc`, `fake.mints`, `mintData`); `48-unknown-program` now shows F1's banner and `48-approval-reauth` F6's banner and the delegated row (the shots themselves not re-reviewed here); `visual-dapp-tx.spec.ts`'s header line "B1c-3's states … are not shot" is Task 8's to change.
 - **(rev 2) O7 in the E2E:** B1c-31's lone CloseAccount now sends its rent to another address (F2's warning, held ≥ 1 s, signed) and gains O7's control — the same close with the rent back to the account: no banner, held < 1 s, signed (M7l, M7m red); `ix.closeAccount` takes the destination (`destination: string = ACCOUNT` — the literal type of `ACCOUNT` would refuse another address). B1c-32's two CreateIdempotent are the account's own token accounts paid by it, so F2 no longer names them: the F7 banner is the only one (asserted; M7l red). M7d's mutant sits on rev 2's 99 % line. Playwright on the rev-2 tree: normally 51 + 20, under `unshare -rn` 51 + 20, all passed.
 - **(rev 2.1) Unchanged** — this task's commit re-applies as it was. Its E2E path carries F5's new `scope` (B1c-30's #10 still lists "Unlimited USDC spend approval": a u64::MAX approve), so the whole Playwright suite was re-run on the rev-2.1 tree, both ways; M7d was re-run on its rev-2.1 line (`nearlyAll` made `false && …`).
+- **(rev 2.2) Unchanged** — this task's commit re-applies as it was on rev 2.2's Tasks 1–5; its tree is green (totals above). No E2E- or visual-visible behaviour changed in rev 2.2 (every E2E and visual F5 is of a named token), so the Playwright suites were not re-run in full; B1c-30 and the visual B1c-3 test were run once on the rev-2.2 tip as a check (below in rev22-changes.md).
 
 ---
 
@@ -10373,10 +10475,10 @@ Change `docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md`
 
 ````diff
 diff --git a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-index b4d448d..ad8a79c 100644
+index e9b3299..af17472 100644
 --- a/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
 +++ b/docs/superpowers/specs/2026-10-10-extension-b1c-dapp-provider-design.md
-@@ -654,7 +654,9 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
+@@ -657,7 +657,9 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
    recomputes every expected word from its stored simulation and refuses the approval unless every block has its exact
    word, and refuses it when any block has none. A request with any block always re-authenticates through #10 (the
    reason line: "Re-auth required to override a blocked transaction.", Q33); #10's description names what is
@@ -10391,7 +10493,7 @@ index b4d448d..ad8a79c 100644
 
 - [ ] **Step 4: Run — green, the whole suite, the build, the gates, verify, and the whole Playwright suite twice.**
 
-`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3424 passed (3424)** (Task 7's 3422 + the new #10 test + the #47 gate-line test; rev 2: 3421, rev 1: 3417). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (`classes ok: every class in 56 src/app and src/approve files …`). `npm run verify` (extension) → exit 0 (3417 passed, CSP ok, secrets, gates, reproducible: chrome 26 files / firefox 26 files). The repository root: `npx tsc --noEmit` → 0, `npx jest` → **Test Suites 180 passed, 1 skipped; Tests 1234 passed, 1 skipped**. `web`: `npm run verify` → exit 0 (**43 files / 550 tests**, then 1 / 3). (Nothing under core/, root src/ or web/ is touched; run because the brief asks for the whole tree at the end of the plan.)
+`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3428 passed (3428)** (rev 2.2; Task 7's 3426 + the new #10 test + the #47 gate-line test; rev 2: 3421, rev 1: 3417). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (`classes ok: every class in 56 src/app and src/approve files …`). `npm run verify` (extension) → exit 0 (3417 passed, CSP ok, secrets, gates, reproducible: chrome 26 files / firefox 26 files). The repository root: `npx tsc --noEmit` → 0, `npx jest` → **Test Suites 180 passed, 1 skipped; Tests 1234 passed, 1 skipped**. `web`: `npm run verify` → exit 0 (**43 files / 550 tests**, then 1 / 3). (Nothing under core/, root src/ or web/ is touched; run because the brief asks for the whole tree at the end of the plan.)
 
 The new tests alone: `npx playwright test e2e/visual-dapp-tx.spec.ts` → **4 passed** (B1c-2's #48 test 54 s, the B1c-3 test ~51 s, the carried test ~7 s, #26/#27 5 s).
 
@@ -10435,9 +10537,9 @@ git commit -m "test(extension): B1c-3 Task 8 — the visual pass: every red-flag
 Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 ```
 
-(Dry run: clone commit `7ee367b` on Task 7's `012133c` — rev 2.1, branch `dry/b1c3-r21`; rev 2: `d1456c8` on `17b6f81`; rev 1: `3c478d1` on `fd3ebd6`.)
+(Dry run: clone commit `bbd2536` on Task 7's `e61419f` — rev 2.2, branch `dry/b1c3-r22`; rev 2.1: `7ee367b` on `012133c`; rev 2: `d1456c8` on `17b6f81`; rev 1: `3c478d1` on `fd3ebd6`.)
 
-**The dry run's consistency pass (the whole plan).** A script (`replay.py`, scratch) extracts every part's blocks in document order — each ````diff block applied with `git apply --recount`, each "Create `path`:" block written whole — onto a fresh `git archive b13bbd1`, and compares the tree with `git archive` of the clone's commit (`diff -r`). Result: tasks 1…N give a tree **identical** to the clone's commit for every N — rev 1: 1 → `c1d98b4`, 2 → `f1f4a13`, 3 → `82ffdf7`, 4 → `614e54b`, 5 → `afb3e09`, 6 → `05a1f32`, 7 → `fd3ebd6`, 8 → `3c478d1`; **rev 2** (branch `dry/b1c3-r2`, the parts regenerated from these commits): 1 → `848e0fa`, 2 → `5183c04`, 3 → `b1e50e4`, 4 → `772cc3f`, 5 → `6fb798a`, 6 → `6191861`, 7 → `17b6f81`, 8 → `d1456c8`, each identical; **rev 2.1** (branch `dry/b1c3-r21`, task-1 … task-9): 1 → `646c4e6`, 2 → `66f2ef5`, 3 → `95804f3`, 4 → `d8f6201`, 5 → `713cce5`, 6 → `2d08074`, 7 → `012133c`, 8 → `7ee367b`, 9 → `08eeeed`, each identical. (Block counts: task-1 3 diffs + 3 created files; task-2 2 created; task-3 14 diffs; task-4 14 diffs + 1 created; task-5 11; task-6 22; task-7 6; task-8 9.) No part needed fixing.
+**The dry run's consistency pass (the whole plan).** A script (`replay.py`, scratch) extracts every part's blocks in document order — each ````diff block applied with `git apply --recount`, each "Create `path`:" block written whole — onto a fresh `git archive b13bbd1`, and compares the tree with `git archive` of the clone's commit (`diff -r`). Result: tasks 1…N give a tree **identical** to the clone's commit for every N — rev 1: 1 → `c1d98b4`, 2 → `f1f4a13`, 3 → `82ffdf7`, 4 → `614e54b`, 5 → `afb3e09`, 6 → `05a1f32`, 7 → `fd3ebd6`, 8 → `3c478d1`; **rev 2** (branch `dry/b1c3-r2`, the parts regenerated from these commits): 1 → `848e0fa`, 2 → `5183c04`, 3 → `b1e50e4`, 4 → `772cc3f`, 5 → `6fb798a`, 6 → `6191861`, 7 → `17b6f81`, 8 → `d1456c8`, each identical; **rev 2.1** (branch `dry/b1c3-r21`, task-1 … task-9): 1 → `646c4e6`, 2 → `66f2ef5`, 3 → `95804f3`, 4 → `d8f6201`, 5 → `713cce5`, 6 → `2d08074`, 7 → `012133c`, 8 → `7ee367b`, 9 → `08eeeed`, each identical; **rev 2.2** (branch `dry/b1c3-r22`): 1 → `75da654`, 2 → `6e202bd`, 3 → `8c7eb00`, 4 → `5192583`, 5 → `a7c7aed`, 6 → `38eb715`, 7 → `e61419f`, 8 → `bbd2536`, 9 → `10c9b15`, each identical. (Block counts: task-1 3 diffs + 3 created files; task-2 2 created; task-3 14 diffs; task-4 14 diffs + 1 created; task-5 11; task-6 22; task-7 6; task-8 9.) No part needed fixing.
 
 #### Dry-run notes (Task 8)
 
@@ -10456,6 +10558,7 @@ Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 - **(rev 2) What changed here:** the visual spec only. F2's lone closeAccount state (`48-warn-non-transfer`) now sends the rent to another address — a close to the account itself is O7's rent only, no banner (E2E B1c-31 pins that side); the shot's destination row and its balance card changed with it (SOL −0.00204428: the fee and the closed account's rent, which now leaves — the truthful number). The F7 state (`48-warn-token-2022`) creates the account's own token accounts, so F2's banner is gone and the state shows two banners (asserted: F7's and Q36's). F10's state (`48-dependent`) asserts Q48's new body ("… Approving it may move any of your balances."); the shot wraps it in the banner without clipping. `ix.closeAccount` takes the destination.
 - **(rev 2) The shots, opened:** all 337 rev-2 shots were compared pixel by pixel with rev 1's end shots; the three #48 states above changed as intended (opened side by side). The other differences are run-to-run and in no file rev 2 touched: random mnemonics and keys (#03/#04/#05), relative dates and clock captions against the wall clock ("last used today" / "yesterday" in #49, #26/#27 times, #42 captions, #54 ages), spinner phases (`48-simulating`, `48-approving`, `46-signing`, `47-connecting`), the transient "Connected · syncing" strip caught or not on #11's shots, and a scroll offset in `47a-acknowledged` — the larger ones opened (`11-pending-strip`, `47a-acknowledged`, `49a-populated`). Between the normal and the `unshare -rn` runs only the two spinner shots of #48 differ.
 - **(rev 2.1) A new state shot, `48-large-approval` (O9):** 740 of the wallet's 740.21 USDC approved below u64::MAX — the eyebrow "Critical · Large spend approval" (Q57), the head "Spend approval for nearly all your USDC" (Q56), Q42's body ("all or nearly all"), the delegated row "740", "Approve anyway" on one line without the icon, and no "unlimited" anywhere in the window. Opened and compared with the design's state 2 (ix:18325-18396): the same layout as `48-unlimited` with the owner's head and eyebrow; nothing clipped. M8k (the eyebrow "Unlimited" below u64::MAX) red. The spec hunk re-applies onto rev 2.1's "Q37–Q40 and Q56" sentence. `reauthScreen.test.ts`'s override-or-allowance test builds a real challenge with an F5 entry, which now carries its scope (`scope: 'unlimited'`) — without it the background refuses the `about` as malformed (the first rev-2.1 run of this tree caught exactly that).
+- **(rev 2.2) Unchanged** — this task's commit re-applies as it was on rev 2.2's Tasks 1–5; its tree is green (totals above). No E2E- or visual-visible behaviour changed in rev 2.2 (every E2E and visual F5 is of a named token), so the Playwright suites were not re-run in full; B1c-30 and the visual B1c-3 test were run once on the rev-2.2 tip as a check (below in rev22-changes.md).
 
 ---
 
@@ -11349,7 +11452,7 @@ Change `extension/src/approve/__tests__/tx.test.tsx` (#48 on the harness's clock
 
 ````diff
 diff --git a/extension/src/approve/__tests__/tx.test.tsx b/extension/src/approve/__tests__/tx.test.tsx
-index 762ca63..556d7ee 100644
+index 8732f27..2e4302b 100644
 --- a/extension/src/approve/__tests__/tx.test.tsx
 +++ b/extension/src/approve/__tests__/tx.test.tsx
 @@ -1,7 +1,7 @@
@@ -11663,7 +11766,7 @@ index 762ca63..556d7ee 100644
      expect(within(sheet).getByRole('button', {name: 'I understand the risk'}).className).toBe('btn btn-destructive app-nowrap');
    });
  
-@@ -544,15 +561,18 @@ describe('#48 dapp-tx-approval', () => {
+@@ -547,15 +564,18 @@ describe('#48 dapp-tx-approval', () => {
      const {page, requestId} = await w.signTx('https://tensr.trade', [v0()]);
      w.show();
      await simulated(w, 'Balance changes (post-simulation)');
@@ -11687,7 +11790,7 @@ index 762ca63..556d7ee 100644
      expect(page.answersFor(requestId)).toEqual([]);
      expect(w.closed.n).toBe(0);
    });
-@@ -639,7 +659,7 @@ describe('#48 origin-mismatch · auto-reject', () => {
+@@ -642,7 +662,7 @@ describe('#48 origin-mismatch · auto-reject', () => {
      const page = openPage(w.ext, w.deps, 'https://dapp.test', {tab: {id: 99}});
      expect(await page.ask({type: 'page.signTransaction', id: 'm', account: ACCOUNT.publicKey, transactions: [v0()]})).toEqual({id: 'm', error: 'unauthorized'});
      w.show();
@@ -11696,7 +11799,7 @@ index 762ca63..556d7ee 100644
      expect([text('.top-bar .title'), document.querySelector('.top-bar .title')?.className]).toEqual(['Auto-rejected · Origin mismatch', 'title noc-overline noc-danger']);
      expect(text('.s9-fail-hero .sub')).toBe('A transaction came from a different origin than the one you connected. We rejected it without showing Approve.');
      expect(text('.s9-flag-banner .head')).toBe('Origin mismatch · auto-reject');
-@@ -650,7 +670,7 @@ describe('#48 origin-mismatch · auto-reject', () => {
+@@ -653,7 +673,7 @@ describe('#48 origin-mismatch · auto-reject', () => {
      expect(screen.queryByRole('button', {name: /Approve|Review session/})).toBeNull();
      expect(unstyled()).toEqual([]);
      fireEvent.click(cta('OK, return to dApp'));
@@ -11705,7 +11808,7 @@ index 762ca63..556d7ee 100644
    });
  });
  
-@@ -668,7 +688,6 @@ describe('#48 red flags (B1c-3)', () => {
+@@ -671,7 +691,6 @@ describe('#48 red flags (B1c-3)', () => {
      w.chain.accounts.set(SRC.toBase58(), {lamports: 2_039_280n, owner: TOKEN_PROGRAM, data: tokenAccountBytes({mint: USDC, owner: ACCOUNT.publicKey, amount: 250_000_000n})});
      w.chain.accounts.set(USDC, {lamports: 1_461_600n, owner: TOKEN_PROGRAM, data: usdcLikeMint()});
    };
@@ -11713,7 +11816,7 @@ index 762ca63..556d7ee 100644
    const decided = (w: W) => w.sent.filter((m): m is Record<string, unknown> => typeof m === 'object' && m !== null && (m as {type?: unknown}).type === 'dapp.decide');
    const field = (word: string) => screen.getByLabelText(`Type ${word} to enable Approve`) as HTMLInputElement;
    const type = (word: string, value: string) => fireEvent.change(field(word), {target: {value}});
-@@ -713,7 +732,7 @@ describe('#48 red flags (B1c-3)', () => {
+@@ -716,7 +735,7 @@ describe('#48 red flags (B1c-3)', () => {
      expect([gated.className, gated.disabled, gated.querySelector('svg') !== null]).toEqual(['btn btn-destructive app-cta-wide app-cta-gated', true, true]);
      expect(unstyled()).toEqual([]);
      // Exact and case-sensitive: no trimming, no case folding — past the hold, so only the match gates.
@@ -11722,7 +11825,7 @@ index 762ca63..556d7ee 100644
      for (const wrong of ['usdc', 'USDC ', ' USDC', 'USD', 'USDCC']) {
        type('USDC', wrong);
        expect([wrong, field('USDC').className, cta('Approve unlimited').className, cta('Approve unlimited').disabled]).toEqual([wrong, 'input', 'btn btn-destructive app-cta-wide app-cta-gated', true]);
-@@ -721,7 +740,9 @@ describe('#48 red flags (B1c-3)', () => {
+@@ -724,7 +743,9 @@ describe('#48 red flags (B1c-3)', () => {
      type('USDC', 'USDC');
      expect([field('USDC').className, cta('Approve unlimited').className, cta('Approve unlimited').disabled]).toEqual(['input match', 'btn btn-destructive app-cta-wide', true]);
      expect(unstyled()).toEqual([]);
@@ -11733,7 +11836,7 @@ index 762ca63..556d7ee 100644
      expect(cta('Approve unlimited').disabled).toBe(false);
      // Enter never confirms: neither in the field nor on the CTA.
      fireEvent.keyDown(field('USDC'), {key: 'Enter'});
-@@ -729,18 +750,18 @@ describe('#48 red flags (B1c-3)', () => {
+@@ -732,18 +753,18 @@ describe('#48 red flags (B1c-3)', () => {
      expect(decided(w)).toEqual([]);
      fireEvent.click(cta('Approve unlimited'));
      // The override re-authenticates (Q33, O1): the words went with the approval; the window points to the toolbar.
@@ -11758,7 +11861,7 @@ index 762ca63..556d7ee 100644
  
    it('O9: an approve of nearly the whole balance below u64::MAX — its own head (Q56), "Critical · Large spend approval" (Q57), "Approve anyway" (Q34) without the alert icon, the body "all or nearly all" (Q42); "unlimited" nowhere', async () => {
      const w = await openWindow();
-@@ -767,46 +788,39 @@ describe('#48 red flags (B1c-3)', () => {
+@@ -770,46 +791,39 @@ describe('#48 red flags (B1c-3)', () => {
      await w.signTx('https://jup.ag', [v0([tokenApprove(SRC, DELEGATE, U64_MAX)])]);
      w.show();
      await simulated(w, 'Unlimited USDC spend approval');
@@ -11837,7 +11940,7 @@ index 762ca63..556d7ee 100644
      // Negative control: a screen with no flag keeps C15's 500 ms.
      cleanup();
      const plain = await openWindow();
-@@ -814,16 +828,11 @@ describe('#48 red flags (B1c-3)', () => {
+@@ -817,16 +831,11 @@ describe('#48 red flags (B1c-3)', () => {
      await plain.signTx('https://jup.ag', [v0()]);
      plain.show();
      await simulated(plain, 'Balance changes (post-simulation)');
@@ -11859,7 +11962,7 @@ index 762ca63..556d7ee 100644
    });
  
    it('a new simulation empties every typed field (review 1 L1) — the word is typed again for what the screen now shows; a focus or another render keeps it (negative control)', async () => {
-@@ -834,22 +843,22 @@ describe('#48 red flags (B1c-3)', () => {
+@@ -837,22 +846,22 @@ describe('#48 red flags (B1c-3)', () => {
      await simulated(w, 'Unlimited USDC spend approval');
      type('USDC', 'USDC');
      // Negative control: a focus and a read of the same simulation keep the word.
@@ -11891,7 +11994,7 @@ index 762ca63..556d7ee 100644
  
    it('an unlimited approve beside an ATA create for another wallet: F5’s banner, and F2’s naming only the create; the account’s own ATA (O7) is no F2', async () => {
      const w = await openWindow();
-@@ -908,14 +917,14 @@ describe('#48 red flags (B1c-3)', () => {
+@@ -911,14 +920,14 @@ describe('#48 red flags (B1c-3)', () => {
      expect([anyway().className, anyway().querySelector('svg')]).toEqual(['btn btn-destructive app-cta-wide app-cta-gated', null]);
      expect(screen.queryByRole('button', {name: 'Approve unlimited'})).toBeNull();
      type('ASSIGN', 'ASSIGN');
@@ -11909,7 +12012,7 @@ index 762ca63..556d7ee 100644
      expect(decided(w).map(m => m.overrides)).toEqual([[{tx: 0, word: 'ASSIGN'}, {tx: 0, word: 'USDC'}]]);
      // The assign alone, paid by the dApp: nothing of the account's moves — L3's line is replaced (Q54).
      cleanup();
-@@ -953,9 +962,9 @@ describe('#48 red flags (B1c-3)', () => {
+@@ -956,9 +965,9 @@ describe('#48 red flags (B1c-3)', () => {
      expect(sections().map(sec => [...sec.querySelectorAll('.s9-typed-confirm .label')].map(l => l.textContent))).toEqual([[], [], ['Type UNCHECKED to enable Approve']]);
      expect(unstyled()).toEqual([]);
      type('UNCHECKED', 'UNCHECKED');
@@ -11921,7 +12024,7 @@ index 762ca63..556d7ee 100644
      expect(decided(w).map(m => m.overrides)).toEqual([[{tx: 2, word: 'UNCHECKED'}]]);
    });
  
-@@ -968,28 +977,28 @@ describe('#48 red flags (B1c-3)', () => {
+@@ -971,28 +980,28 @@ describe('#48 red flags (B1c-3)', () => {
      expect(text('.top-bar .title')).toBe('Critical · Blocked transaction');
      expect(document.querySelector('.s9-origin-pill')).toBeNull();
      const demoted = () => cta('Approve anyway (not recommended)');
@@ -12026,7 +12129,7 @@ index 8985e35..14ecbd5 100644
 
 - [ ] **Step 4: Run — green idle, the whole suite, the build, the gates; then the same induced loads on this tree.**
 
-`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3429 passed (3429)** (Task 8: 3424 — rev 2.1; rev 2: 3426 on 3421; origin tiles became five tests, one per window, and one for its brand rules: +5; everything else rewritten in place). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (`classes ok: every class in 56 src/app and src/approve files …`). Nothing under `core/` or the repository root's `src/` is touched (root `tsc` / `jest`, web's `verify` not needed). Idle, the four files together: 17.1 s (Task 8: 36.1 s); alone, wall time with transforms: `tx.test.tsx` 4.0 s, `connect.test.tsx` 2.6 s, `sign.test.tsx` 2.1 s; Task 5's three tests that carried 15 s: the unlimited approve 5 164 → 126 ms, the lookalike with a block 7 068 → 79 ms, a new simulation empties the field 3 212 → 39 ms; origin tiles 165 ms for five windows → 21–33 ms per window (+ 3 ms for the brand rules).
+`npx tsc --noEmit; echo $?` → `0`. `npx vitest run` → **Test Files 170 passed (170), Tests 3433 passed (3433)** (Task 8: 3428 — rev 2.2; rev 2.1: 3429 on 3424; rev 2: 3426 on 3421; origin tiles became five tests, one per window, and one for its brand rules: +5; everything else rewritten in place). `node scripts/build.mjs` → exit 0. `npm run gates` → exit 0 (`classes ok: every class in 56 src/app and src/approve files …`). Nothing under `core/` or the repository root's `src/` is touched (root `tsc` / `jest`, web's `verify` not needed). Idle, the four files together: 17.1 s (Task 8: 36.1 s); alone, wall time with transforms: `tx.test.tsx` 4.0 s, `connect.test.tsx` 2.6 s, `sign.test.tsx` 2.1 s; Task 5's three tests that carried 15 s: the unlimited approve 5 164 → 126 ms, the lookalike with a block 7 068 → 79 ms, a new simulation empties the field 3 212 → 39 ms; origin tiles 165 ms for five windows → 21–33 ms per window (+ 3 ms for the brand rules).
 
 The same four files under the same loads, on this task's commit (a fresh `git archive`, nothing else running):
 
@@ -12078,7 +12181,7 @@ git commit -m "test(extension): B1c-3 Task 9 — the approval window's tests on 
 Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 ```
 
-(Dry run: clone commit `08eeeed` on Task 8's `7ee367b`, branch `dry/b1c3-r21` — rev 2.1; rev 2: `229eed9` on `d1456c8`.)
+(Dry run: clone commit `10c9b15` on Task 8's `bbd2536`, branch `dry/b1c3-r22` — rev 2.2; rev 2.1: `08eeeed` on `7ee367b`; rev 2: `229eed9` on `d1456c8`.)
 
 #### Dry-run notes (Task 9)
 
@@ -12094,26 +12197,27 @@ Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 - **For the controller (E2E, not in this task's scope): Task 7's `heldFor` measures the 1.5 s hold in a real browser with 50 ms polling and asserts an upper bound (< 1 000 ms) on the unflagged screen** — a wall-clock measure a loaded runner can stretch (Task 7's own note); the lower bounds (≥ 1 000 ms) cannot fail early. Real-browser E2E cannot run on fake timers; if it flakes, the upper bound is the one to drop.
 - **Process note:** two of my load-proof runs were contaminated (a probe and a mutant run on the same machine during them); both were discarded and re-run on an idle machine, and each loaded run reported here ran alone. A `pkill -f` pattern was used once to stop my own runner scripts (the standing rule is exact PIDs); every other stop was by exact PID / process group.
 - **(rev 2.1) L11 — the cold start warmed in a `beforeAll` (decided, implemented):** `tx.test.tsx` opens one window once before its tests — a plain transfer to a known recipient, shown until simulated, then unmounted — so the file's first evaluation and first renders run in a hook (vitest's 10 s hook budget), not in the first test's 5 s. It is not a timeout and not a `waitFor`: it adds no wait to any test and no assertion depends on it; each test still opens its own window against a fresh background, on the harness's clock (the hook runs before `beforeEach` fakes the timers). Measured on this task's tree, the same run with and without it (`tx.test.tsx` alone): idle, the first test 116 / 152 ms with it, 190 / 207 ms without; under 64 busy loops (Step 4's heaviest load, the loops killed by PID), **3 runs with it: 40 passed each, the first test 3.5–3.7 s; 3 runs without: the first test timed out each time (5.6–5.8 s)**. A runner starved further could still reach 5 s — the budget is not raised (WRITER.md); if a CI run ever times out there, the warm-up is what to extend, never the test's timeout.
+- **(rev 2.2) Unchanged** — this task's commit re-applies as it was on rev 2.2's Tasks 1–5; its tree is green (totals above). No E2E- or visual-visible behaviour changed in rev 2.2 (every E2E and visual F5 is of a named token), so the Playwright suites were not re-run in full; B1c-30 and the visual B1c-3 test were run once on the rev-2.2 tip as a check (below in rev22-changes.md).
 
 ---
 
 
 ## Dry-run record
 
-| task | dry-run commit (rev 2.1) | red on the predecessor | green (whole suite) | mutations (latest run) |
+| task | dry-run commit (rev 2.2) | red on the predecessor | green (whole suite) | mutations (latest run) |
 |---|---|---|---|---|
-| 1 | 646c4e6 | (spec only in rev 2/2.1; rev 1: 3 files, 4 failed / 54 passed) | 168 / 3322 | 16, all red (rev 1) |
-| 2 | 66f2ef5 | module missing; `tsc` 2 | 169 / 3356 | 45, all red |
-| 3 | 95804f3 | (rev 2: `tsc` 2; 23 failed / 124 passed) | 169 / 3376 | 38, all red (rev 2) |
-| 4 | d8f6201 | `tsc` 2; 39 failed / 176 passed | 170 / 3398 | 38, all red |
-| 5 | 713cce5 | `tsc` 2; 11 failed / 28 passed | 170 / 3408 | 28, all red |
-| 6 | 2d08074 | `tsc` 2; 30 failed / 264 passed | 170 / 3422 | 29, all red |
-| 7 | 012133c | no product code (red = its mutations); Home #42 red under a shifted clock before the fix | 170 / 3422; Playwright 51 + 20, normal and `unshare -rn` | 13, all red |
-| 8 | 7ee367b | 3 vitest + 2 Playwright failed | 170 / 3424; Playwright 51 + 22, normal and `unshare -rn` | 11, all red |
-| 9 | 08eeeed | each of the four failed under induced CPU load on Task 8's tree | 170 / 3429; extension `verify` 0; root `tsc` 0, `jest` 1234 + 1 skipped; web `verify` 0 | 12 (11 red; M9f equivalent — React refuses a click on a `disabled` button; 8 other tests catch LockedButton's guard) |
+| 1 | 75da654 | (spec only since rev 2; rev 1: 3 files, 4 failed / 54 passed) | 168 / 3322 | 16, all red (rev 1) |
+| 2 | 6e202bd | module missing; `tsc` 2 | 169 / 3359 | 48, all red |
+| 3 | 8c7eb00 | `tsc` 2; 23 failed / 124 passed | 169 / 3379 | 39, all red |
+| 4 | 5192583 | `tsc` 2; 39 failed / 176 passed | 170 / 3401 | 42, all red |
+| 5 | a7c7aed | `tsc` 2; 12 failed / 28 passed | 170 / 3412 | 29, all red |
+| 6 | 38eb715 | (rev 2.1: `tsc` 2; 30 failed / 264 passed) | 170 / 3426 | 29, all red (rev 2.1) |
+| 7 | e61419f | no product code (red = its mutations); Home #42 red under a shifted clock before the fix | 170 / 3426; Playwright 51 + 20, normal and `unshare -rn` (rev 2.1) | 13, all red (rev 2.1) |
+| 8 | bbd2536 | 3 vitest + 2 Playwright failed (rev 2.1) | 170 / 3428; Playwright 51 + 22, normal and `unshare -rn` (rev 2.1) | 11, all red (rev 2.1) |
+| 9 | 10c9b15 | each of the four failed under induced CPU load on Task 8's tree | 170 / 3433; extension `verify` 0; root `tsc` 0, `jest` 1234 + 1 skipped; web `verify` 0 | 12 (11 red; M9f equivalent — React refuses a click on a `disabled` button; 8 other tests catch LockedButton's guard) |
 
 - Every mutant compiled (`tsc` 0) before it counted; the first drafts that did not compile (Task 1: 3, Task 2: 1, Task 4: 5) were replaced, never counted as red. Three survivors were found and closed by strengthening the TEST, never the code (Task 3 M3ab, Task 4 M4ag; Task 7's M7b is caught only by the post-hold "still disabled" assertion, which is why it exists).
-- Consistency: task-1 … task-N's blocks applied in order to `git archive b13bbd1` reproduce the dry run's commit N byte for byte, for every N from 1 to 8.
+- Consistency: task-1 … task-N's blocks, applied one block at a time with `git apply --recount` onto `git archive b13bbd1`, reproduce the dry run's commit N byte for byte, for every N from 1 to 9 (rev 2.2: 1 → `75da654` … 9 → `10c9b15`, branch `dry/b1c3-r22`).
 - One wall-clock dependence was found in B1b's tests (Home #42 across local midnight) and fixed in Task 7 — not a B1c-3 regression.
 - Task 9's residual: under extreme load (64 busy loops) `tx.test.tsx`'s first test can exceed vitest's 5 s budget on cold start — Task 8's tree fails it the same way; no hold involved. Task 7's E2E `heldFor` upper bound (< 1 000 ms on an unflagged screen) is wall-clock sensitive by nature.
 - Not run in the dry run: CI itself (the Before-the-PR repro is the executor's).
@@ -12142,7 +12246,7 @@ The owner chose subagent-driven development for B1c-1 and B1c-2; plan 3 is meant
 
 Owner decisions applied: **O8** F5's balances read where exact; **O9** "unlimited" only for u64::MAX; **O5** an approval of 99 % of the balance or more is F5's block; **O6** dependent steps approvable with the residual risk stated; **O7** F2 exempts three self-rent instructions only; **O1** unlimited approve = the design's typed symbol AND re-authentication through #10; **O2** dependent batches open under `UNCHECKED` + re-authentication, every other failure stays Reject-only; **O3** Token-2022 mint warnings only (classic freeze authority not flagged); **O4** first send through a program call is an accepted limit (spec §9).
 
-Controller copy to confirm (spec §10, rev 3.6 — all flagged): Q28 `ASSIGN`, Q29 `AUTHORITY`, Q30 `UNLIMITED`, Q31 `UNCHECKED` (the override words); Q32 "This step depends on step <N> and could not be checked on its own."; Q33 "Re-auth required to override a blocked transaction."; Q34 "Approve anyway"; Q35 "Critical · Blocked transaction"; Q36 "Could not read this token's settings"; Q37–Q40 (#10's override rows); Q56–Q57 (the 99 % head and eyebrow); Q41–Q55 (#48's banner heads and bodies, the F10 balance card, the line replacing "No balance changes" beside a block, the banner meta vocabulary — Q55 uses technical wording, e.g. `#1 spl_token::Approve`; the owner may prefer prose). Still open from plan 2: **Q27** ("This simulation is out of date. Wait a moment for it to refresh.").
+Controller copy to confirm (spec §10, rev 3.6 — all flagged): Q28 `ASSIGN`, Q29 `AUTHORITY`, Q30 `UNLIMITED`, Q31 `UNCHECKED` (the override words); Q32 "This step depends on step <N> and could not be checked on its own."; Q33 "Re-auth required to override a blocked transaction."; Q34 "Approve anyway"; Q35 "Critical · Blocked transaction"; Q36 "Could not read this token's settings"; Q37–Q40 (#10's override rows); Q56–Q57 (the 99 % head and eyebrow); Q58 `ALLOWANCE` (the override word for an unnamed token below u64::MAX); Q41–Q55 (#48's banner heads and bodies, the F10 balance card, the line replacing "No balance changes" beside a block, the banner meta vocabulary — Q55 uses technical wording, e.g. `#1 spl_token::Approve`; the owner may prefer prose). Still open from plan 2: **Q27** ("This simulation is out of date. Wait a moment for it to refresh.").
 
 Rulings beyond the spec, each loud (detail in the tasks' Dry-run notes):
 - R1 Compute Budget is F2's only exemption; an instruction a more specific flag names is not repeated in F2 (the design draws one banner for an unlimited approve).
