@@ -35,6 +35,7 @@ const DELEGATE = new PublicKey(keyOf(34));
 const T22_MINT = keyOf(35);
 const ODD_MINT = keyOf(36);
 const MINT_ACCT = new PublicKey(keyOf(37));
+const OTHER_DELEGATE = new PublicKey(keyOf(38));
 const SOL = 10_000_000_000n;
 
 const u64 = (n: bigint): number[] => Array.from({length: 8}, (_, i) => Number((n >> BigInt(8 * i)) & 0xffn));
@@ -421,8 +422,8 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
   });
 
   it('chain state (a CPI): an own account’s delegation new or raised to u64::MAX, its whole balance or 99 % of it is a block; less is bounded', () => {
-    const viaCpi = (delegatedAmount: bigint, pre = tokenAcc({mint: MAINNET_USDC_MINT, amount: 1_000n})) =>
-      one({ixs: [unknownIx(UNKNOWN, [SRC])], pre: [[SRC, pre]], post: [[SRC, tokenAcc({mint: MAINNET_USDC_MINT, amount: 1_000n, delegate: DELEGATE, delegatedAmount})]]});
+    const viaCpi = (delegatedAmount: bigint, pre = tokenAcc({mint: MAINNET_USDC_MINT, amount: 1_000n}), delegate = DELEGATE) =>
+      one({ixs: [unknownIx(UNKNOWN, [SRC])], pre: [[SRC, pre]], post: [[SRC, tokenAcc({mint: MAINNET_USDC_MINT, amount: 1_000n, delegate, delegatedAmount})]]});
     expect(find(viaCpi(U64_MAX), 'unlimited-approve')).toEqual({
       kind: 'unlimited-approve',
       severity: 'block',
@@ -436,6 +437,16 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
     // Negative control: a delegation already there, unchanged by this transaction.
     const already = tokenAcc({mint: MAINNET_USDC_MINT, amount: 1_000n, delegate: DELEGATE, delegatedAmount: U64_MAX});
     expect(kinds(viaCpi(U64_MAX, already))).toEqual(['unknown-program']);
+    // Final review I2: a delegation already there (10 to DELEGATE) RAISED by the CPI, or moved to another delegate at the
+    // same amount, is a new approval — never "unchanged" (redFlags.ts's skip needs the same delegate AND no more than before).
+    const small = tokenAcc({mint: MAINNET_USDC_MINT, amount: 1_000n, delegate: DELEGATE, delegatedAmount: 10n});
+    expect(kinds(viaCpi(U64_MAX, small))).toEqual(['unlimited-approve', 'unknown-program']);
+    expect(kinds(viaCpi(500n, small))).toEqual(['unknown-program', 'bounded-approve']);
+    const moved = viaCpi(10n, small, OTHER_DELEGATE);
+    expect(kinds(moved)).toEqual(['unknown-program', 'bounded-approve']);
+    expect(find(moved, 'bounded-approve')?.approvals.map(a => [a.delegate, a.amount])).toEqual([[OTHER_DELEGATE.toBase58(), '10']]);
+    // Its negative control: the same 10 to the same delegate is unchanged.
+    expect(kinds(viaCpi(10n, small))).toEqual(['unknown-program']);
   });
 
   it('an approve seen both decoded and in chain state is listed once', () => {
