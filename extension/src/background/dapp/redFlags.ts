@@ -20,8 +20,8 @@ import {usesDurableNonce} from './txRequest';
  * the wallet as the current authority; or, in chain state, an own token account's owner or close authority changed, a
  * mint authority of the wallet's moved (block, AUTHORITY) · F5 an approve of 99 % or more of the source's balance
  * (O5; u64::MAX and the whole balance always are) — decoded against the balance before, or the delegation it leaves
- * against the balance after; in chain state against the balance after (O8); each balance less what earlier transactions
- * of the batch send out of the source (final review I1) — (block, the wallet's own symbol or
+ * against the balance after; in chain state against the balance after (O8); each balance less what the batch's other
+ * transactions send out of the source (final review I1) — (block, the wallet's own symbol or
  * UNLIMITED at u64::MAX, ALLOWANCE below it) · F6 any other approve (warn) · F7 a
  * Token-2022 mint's freeze authority, permanent delegate or transfer hook, or a mint that cannot be read (warn; a
  * classic mint never, O3) · F8 a durable nonce (warn) · F9 the whole balance to a first-time address (warn) · F10 a
@@ -242,12 +242,14 @@ function txFlags(input: RedFlagInput, t: TxFlagInput, k: number): RedFlag[] {
   // balance after; a delegation seen in chain state against the balance after.
   const nearlyAll = (amount: bigint, balance: bigint): boolean => amount * 100n >= balance * WHOLE_BALANCE_PERCENT;
   // Final review I1: every transaction of a batch is simulated against the state as it is now, so an approve in step k
-  // would be judged against a balance steps 1 … k−1 have already moved out. What an EARLIER simulated step sends out of
-  // an own source (its pre-state's amount minus its post-state's; an account it closes or hands to another owner counts
-  // as all of it) is taken off that source's balances here — fail closed only: an inflow never raises them.
+  // would be judged against a balance other steps of the batch move out, before it or after it. What EVERY OTHER
+  // simulated step sends out of an own source (its pre-state's amount minus its post-state's; an account it closes or
+  // hands to another owner counts as all of it) is taken off that source's balances here (the controller's ruling on
+  // the I1 fix: earlier and later steps alike) — fail closed only: an inflow never raises them. A failed or dependent
+  // step has no post-state and drains nothing (spec §9).
   const drained = (source: string): bigint => {
     let out = 0n;
-    for (const earlier of input.txs.slice(0, k)) {
+    for (const earlier of input.txs.filter((_, j) => j !== k)) {
       if (earlier.outcome.status !== 'simulated' || !earlier.outcome.post.has(source)) continue;
       const was = tokenOf(earlier.pre.get(source));
       if (was === null || was.owner !== account) continue;

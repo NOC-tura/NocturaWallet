@@ -449,7 +449,7 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
     expect(kinds(viaCpi(10n, small))).toEqual(['unknown-program']);
   });
 
-  it('final review I1: an earlier transaction of the batch sending tokens out of the source lowers the balance a later approve of it is judged against — never raises it', () => {
+  it('final review I1: another transaction of the batch — earlier or later — sending tokens out of the source lowers the balance an approve of it is judged against — never raises it', () => {
     const mine = (amount: bigint, delegatedAmount = 0n) => tokenAcc({mint: MAINNET_USDC_MINT, amount, delegate: delegatedAmount > 0n ? DELEGATE : null, delegatedAmount});
     const send600: Spec = {ixs: [transferIx(600n)], pre: [[SRC, mine(1_000n)]], post: [[SRC, mine(400n)]]};
     // Every transaction is simulated against the state as it is now: step 2 sees 1 000, the batch leaves 400.
@@ -467,8 +467,15 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
     // Negative controls: 300 of the 400 left is bounded; alone, 400 of 1 000 is bounded.
     expect(kinds(flagsOf([send600, approve(300n)])[1] ?? [])).toEqual(['bounded-approve']);
     expect(kinds(flagsOf([approve(400n)])[0] ?? [])).toEqual(['bounded-approve']);
-    // The limit as built (the ruling: EARLIER steps drain): an approve BEFORE the outflow is judged without it.
-    expect(kinds(flagsOf([approve(400n), send600])[0] ?? [])).toEqual(['bounded-approve']);
+    // A LATER outflow counts too (the controller's ruling): approve 400 in step 1, send 600 of 1 000 in step 2 — a block;
+    // its negative control: 300 with the same later send is bounded.
+    expect(kinds(flagsOf([approve(400n), send600])[0] ?? [])).toEqual(['unlimited-approve']);
+    expect(find(flagsOf([approve(400n), send600])[0] ?? [], 'unlimited-approve')?.approvals[0]?.balance).toBe('400');
+    expect(kinds(flagsOf([approve(300n), send600])[0] ?? [])).toEqual(['bounded-approve']);
+    // A later inflow never lowers (or raises) the bar either: 400 of 1 000 stays bounded, 990 stays a block.
+    const receiveLater: Spec = {ixs: [unknownIx(UNKNOWN, [SRC])], pre: [[SRC, mine(1_000n)]], post: [[SRC, mine(1_600n)]]};
+    expect(kinds(flagsOf([approve(400n), receiveLater])[0] ?? [])).toEqual(['bounded-approve']);
+    expect(kinds(flagsOf([approve(990n), receiveLater])[0] ?? [])).toEqual(['unlimited-approve']);
     // An earlier step that RECEIVES tokens does not raise the bar: 400 of 1 000 stays bounded, 990 of 1 000 stays a block.
     const receive600: Spec = {ixs: [unknownIx(UNKNOWN, [SRC])], pre: [[SRC, mine(1_000n)]], post: [[SRC, mine(1_600n)]]};
     expect(kinds(flagsOf([receive600, approve(400n)])[1] ?? [])).toEqual(['bounded-approve']);
@@ -478,6 +485,9 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
     const sendOther: Spec = {ixs: [unknownIx(UNKNOWN, [SRC2])], pre: [[SRC2, mine(1_000n)]], post: [[SRC2, mine(400n)]]};
     expect(kinds(flagsOf([sendOther, approve(400n)])[1] ?? [])).toEqual(['bounded-approve']);
     expect(kinds(flagsOf([{...send600, post: 'failed'}, approve(400n)])[1] ?? [])).toEqual(['bounded-approve']);
+    // Nor does a dependent one (no post-state; spec §9) — before or after the approve.
+    expect(kinds(flagsOf([{...send600, post: {dependentOn: 1}}, approve(400n)])[1] ?? [])).toEqual(['bounded-approve']);
+    expect(kinds(flagsOf([approve(400n), {...send600, post: {dependentOn: 0}}])[0] ?? [])).toEqual(['bounded-approve']);
   });
 
   it('an approve seen both decoded and in chain state is listed once', () => {
