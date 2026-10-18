@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {cleanup, fireEvent, screen, waitFor, within} from '@testing-library/react';
+import {fireEvent, screen, within} from '@testing-library/react';
 import {ed25519} from '@noble/curves/ed25519.js';
 import {base58, base64} from '@scure/base';
 import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
@@ -9,15 +9,14 @@ import {ACCOUNT} from '../../background/__tests__/fixtures';
 import {POLL_MS} from '../Approve';
 import {ARM_MS} from '../useArmed';
 import {CONFIRM_DELAY_MS} from '../ui';
-import {openWindow} from './windowHarness';
+import {elapse, nextTimer, onHarnessClock, openWindow, settled} from './windowHarness';
 
 const SELECTORS = selectorsOf(UI_SHEETS);
 const text = (sel: string) => document.querySelector(sel)?.textContent ?? null;
 const cta = (name: string | RegExp) => screen.getByRole('button', {name});
-const armedAfter = () => new Promise(r => setTimeout(r, ARM_MS + 50));
 const siws = (domain: string) =>
   [`${domain} wants you to sign in with your Solana account:`, ACCOUNT.publicKey, '', 'Sign in to Jupiter.', '', `URI: https://${domain}`, 'Version: 1', 'Chain ID: solana:mainnet', 'Nonce: 4f3a92ceb1d8', 'Issued At: 2026-10-10T09:40:23Z'].join('\n');
-afterEach(() => cleanup());
+onHarnessClock();
 
 // Spec §3.2 steps 4–7 (#46, index.html ix:17442-17686) and C15, against the real background.
 describe('#46 sign-message', () => {
@@ -26,7 +25,7 @@ describe('#46 sign-message', () => {
     const message = siws('jup.ag');
     const {page, requestId} = await w.sign('https://jup.ag', message);
     w.show();
-    await screen.findByText('Sign this message?');
+    await settled(() => screen.getByText('Sign this message?'));
     expect([text('.top-bar .title'), document.querySelector('.top-bar .title')?.className]).toEqual(['Signature request', 'title noc-overline app-dim']);
     expect(text('.app-approve-lede')).toBe('A signature proves you control this wallet. It does not move funds and does not broadcast a transaction.');
     expect([text('.s9-origin-card .name'), text('.s9-origin-card .dom'), text('.s9-origin-card .badge')]).toEqual(['Jupiter', 'jup.ag', 'Verified']);
@@ -38,9 +37,13 @@ describe('#46 sign-message', () => {
     expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
     const sign = cta('Sign');
     expect([sign.className, (sign as HTMLButtonElement).disabled, sign.querySelector('svg') !== null]).toEqual(['btn btn-primary app-cta-wide', true, true]);
-    await armedAfter();
+    // On the harness's clock (B1c-3 Task 9): held to the millisecond, a click inside the hold signs nothing.
+    await elapse(ARM_MS - 1);
     fireEvent.click(cta('Sign'));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    expect([(cta('Sign') as HTMLButtonElement).disabled, page.answersFor(requestId)]).toEqual([true, []]);
+    await elapse(1);
+    fireEvent.click(cta('Sign'));
+    await settled(() => expect(w.closed.n).toBe(1));
     const [answer] = page.answersFor(requestId);
     const {signature, signedMessage} = answer?.result as {signature: string; signedMessage: string};
     expect(signedMessage).toBe(base64.encode(new TextEncoder().encode(message)));
@@ -51,7 +54,7 @@ describe('#46 sign-message', () => {
     const w = await openWindow();
     await w.sign('https://jup.ag', 'jup.ag asks you to approve the following terms.');
     w.show();
-    await screen.findByText('This message includes an authorization');
+    await settled(() => screen.getByText('This message includes an authorization'));
     expect(text('.s9-struct-alert .body')).toBe("Detected keyword: approve. Even though signing won't broadcast, the dApp may use this signature off-chain to authorize a future action. Read the full message before signing.");
     expect(text('.s9-struct-alert code')).toBe('approve');
     expect(text('.s9-msg-card .label')).toBe('Message · with structured-approval flag');
@@ -64,7 +67,7 @@ describe('#46 sign-message', () => {
     const w = await openWindow();
     await w.sign('https://dapp.test', 'Sign in to the test dApp.');
     w.show();
-    await screen.findByText('Sign this message?');
+    await settled(() => screen.getByText('Sign this message?'));
     expect([text('.s9-origin-card .name'), text('.s9-origin-card .badge')]).toEqual(['dapp', 'Unknown']);
     expect(text('.s9-disclaimer p')).toBe("This won't broadcast or move funds. dapp will use the signature only to verify you own this wallet.");
   });
@@ -73,7 +76,7 @@ describe('#46 sign-message', () => {
     const w = await openWindow();
     const {page, requestId} = await w.sign('https://tensr.trade', 'Welcome back!\nDomain: ph\u0430ntom.app');
     w.show();
-    await screen.findByText('Sign this message?');
+    await settled(() => screen.getByText('Sign this message?'));
     expect([text('.top-bar .title'), document.querySelector('.top-bar .title')?.className]).toEqual(['Suspicious origin', 'title noc-overline noc-danger']);
     expect(text('.app-approve-lede')).toBe('A signature proves you control this wallet.');
     expect(text('.s9-domain-warn .body')).toBe('This domain is not tensor.tradeIt looks like tensor.trade but is a different site.');
@@ -88,14 +91,14 @@ describe('#46 sign-message', () => {
     // tests above are the positive control: the same disclaimer does show there).
     expect(document.querySelector('.s9-disclaimer')).toBeNull();
     expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
-    await armedAfter();
+    await elapse(ARM_MS);
     fireEvent.click(cta('Sign anyway (not recommended)'));
-    const sheet = await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
+    const sheet = await settled(() => screen.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
     const understand = within(sheet).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement;
     expect(understand.disabled).toBe(true);
-    await new Promise(r => setTimeout(r, CONFIRM_DELAY_MS + 50));
+    await elapse(CONFIRM_DELAY_MS);
     fireEvent.click(within(sheet).getByRole('button', {name: 'I understand the risk'}));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
     expect(page.answersFor(requestId)[0]).toHaveProperty('result');
   });
 
@@ -103,10 +106,10 @@ describe('#46 sign-message', () => {
     const w = await openWindow();
     const {page, requestId} = await w.sign('https://dapp.test', siws('jup.ag'));
     w.show();
-    expect(await screen.findByText('This sign-in message names jup.ag, not this site (dapp.test).')).toBeTruthy();
+    expect(await settled(() => screen.getByText('This sign-in message names jup.ag, not this site (dapp.test).'))).toBeTruthy();
     expect(screen.getAllByRole('button').map(b => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Close', 'Reject']);
     fireEvent.click(cta('Reject'));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
   });
 
@@ -119,7 +122,7 @@ describe('#46 sign-message', () => {
     const s = await readDappSession(w.ext);
     await w.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => (e.requestId === requestId ? {...e, state: 'deciding', decidedBy: runtimeFor(w.ext).instance, decidingAt: w.deps.clock.t} : e))});
     w.show();
-    await screen.findByText('This sign-in message names jup.ag, not this site (dapp.test).');
+    await settled(() => screen.getByText('This sign-in message names jup.ag, not this site (dapp.test).'));
     expect((cta('Reject') as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', {name: 'Close'}) as HTMLButtonElement).disabled).toBe(true);
   });
@@ -131,7 +134,7 @@ describe('#46 sign-message', () => {
     const w = await openWindow();
     const {page, requestId} = await w.sign('https://tensr.trade', siws('jup.ag'));
     w.show();
-    await screen.findByText('Sign this message?');
+    await settled(() => screen.getByText('Sign this message?'));
     // Both banners show (the lookalike's own, then Q20) — neither one silently wins over the other.
     expect([...document.querySelectorAll('.s9-domain-warn .body')].map(e => e.textContent)).toEqual([
       'This domain is not tensor.tradeIt looks like tensor.trade but is a different site.',
@@ -143,7 +146,7 @@ describe('#46 sign-message', () => {
     expect(screen.queryByRole('button', {name: 'Sign anyway (not recommended)'})).toBeNull();
     expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
     fireEvent.click(cta('Reject and report'));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
   });
 
@@ -156,7 +159,7 @@ describe('#46 sign-message', () => {
     const {SECOND} = await import('./windowHarness');
     await setSession(w.ext, [SECOND]);
     w.show();
-    await screen.findByText('Sign this message?');
+    await settled(() => screen.getByText('Sign this message?'));
     expect(screen.getAllByRole('button').map(b => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Close', 'Reject']);
     expect(document.querySelector('.s9-msg-preview')).toBeNull();
     // Rev 3.2 (Q26, owner-delegated 2026-10-12), drawn as #48 draws it (B1c-3, the carried visual item): a danger flag
@@ -171,7 +174,7 @@ describe('#46 sign-message', () => {
     expect(document.querySelector('.app-approve-lede')).toBeNull();
     expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
     fireEvent.click(cta('Reject'));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
   });
 
@@ -183,7 +186,7 @@ describe('#46 sign-message', () => {
     const message = '<img src=x onerror=alert(1)>';
     await w.sign('https://jup.ag', message);
     w.show();
-    await screen.findByText('Sign this message?');
+    await settled(() => screen.getByText('Sign this message?'));
     const preview = document.querySelector('.s9-msg-preview')!;
     expect([...preview.children].every(el => el.tagName === 'MARK')).toBe(true);
     expect(preview.querySelector('img')).toBeNull();
@@ -196,7 +199,7 @@ describe('#46 sign-message', () => {
     const s = await readDappSession(w.ext);
     await w.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => (e.requestId === requestId ? {...e, state: 'deciding', decidedBy: runtimeFor(w.ext).instance, decidingAt: w.deps.clock.t} : e))});
     w.show();
-    const busy = await screen.findByRole('button', {name: 'Signing…'});
+    const busy = await settled(() => screen.getByRole('button', {name: 'Signing…'}));
     expect(text('.top-bar .title')).toBe('Signing');
     expect([(busy as HTMLButtonElement).disabled, busy.querySelector('.app-ring-spinner') !== null]).toEqual([true, true]);
     expect((cta('Reject') as HTMLButtonElement).disabled).toBe(true);
@@ -214,11 +217,11 @@ describe('#46 sign-message', () => {
     const a = await w.sign('https://jup.ag', 'one');
     const b = await w.sign('https://dapp.test', 'two');
     w.show();
-    await screen.findByText('Sign this message?');
+    await settled(() => screen.getByText('Sign this message?'));
     fireEvent.click(screen.getByRole('button', {name: 'Close'}));
-    await waitFor(() => expect(text('.s9-msg-preview')).toBe('two'));
+    await settled(() => expect(text('.s9-msg-preview')).toBe('two'));
     fireEvent.click(cta('Reject'));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
     expect([a.page.answersFor(a.requestId), b.page.answersFor(b.requestId)]).toEqual([[{requestId: a.requestId, error: 'rejected'}], [{requestId: b.requestId, error: 'rejected'}]]);
   });
 });
@@ -230,26 +233,30 @@ describe('controller ruling (a): busy is in the C15 key for #46', () => {
     const w = await openWindow();
     const {requestId} = await w.sign('https://jup.ag', 'hello');
     w.show();
-    await screen.findByText('Sign this message?');
-    await armedAfter();
+    await settled(() => screen.getByText('Sign this message?'));
+    await elapse(ARM_MS);
     expect((cta('Sign') as HTMLButtonElement).disabled).toBe(false);
     const s = await readDappSession(w.ext);
     await w.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => (e.requestId === requestId ? {...e, state: 'deciding', decidedBy: runtimeFor(w.ext).instance, decidingAt: w.deps.clock.t} : e))});
-    await new Promise(r => setTimeout(r, POLL_MS + 50));
-    await screen.findByRole('button', {name: 'Signing…'});
+    await elapse(POLL_MS);
+    await settled(() => screen.getByRole('button', {name: 'Signing…'}));
     // The stale poll: the background's own state goes back to a plain request (not deciding) with no action from the
     // user — exactly what a slow, outdated `dapp.pending` resolving late would show. Assert the instant the button
     // reappears (not after a further sleep): the 500 ms re-arm must not have had time to finish by then.
     await w.ext.session.set(DAPP_SESSION_KEY, s);
+    // B1c-3 Task 9: the window's own next poll (its only timer left), on the harness's clock.
+    await nextTimer();
     // Fix round 2: useArmed derives `armed` by comparing the current key to the key the hold last finished for, so
     // the busy→false key change disarms in the SAME render as the commit. Mutation M9e (busy dropped from the key)
-    // turns this red, but this window-level check is NOT the proof of the same-render disarm: findByRole resolves
-    // after React has flushed, so FR2-M1 (the old effect-only reset) turns it red only about 1 run in 10 (task 9
-    // report). The deterministic proof is useArmed.test.tsx, which FR2-M1 turns red every run (8/8); this test
+    // turns this red, but this window-level check is NOT the proof of the same-render disarm: the check runs after
+    // React has flushed, so FR2-M1 (the old effect-only reset) turned it red only about 1 run in 10 on the wall clock
+    // (task 9 report) and never on the harness's clock (B1c-3 plan 3 Task 9: 0 of 3 runs). The deterministic proof is useArmed.test.tsx, which FR2-M1 turns red every run (8/8); this test
     // pins the outcome the window must keep — disabled at once, then re-armed after the hold.
-    const sign = await screen.findByRole('button', {name: 'Sign'}, {timeout: POLL_MS + 500});
+    const sign = await settled(() => screen.getByRole('button', {name: 'Sign'}));
     expect((sign as HTMLButtonElement).disabled).toBe(true);
-    await armedAfter();
+    await elapse(ARM_MS - 1);
+    expect((cta('Sign') as HTMLButtonElement).disabled).toBe(true);
+    await elapse(1);
     expect((cta('Sign') as HTMLButtonElement).disabled).toBe(false);
   });
 });

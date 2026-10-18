@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {act, cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
+import {cleanup, fireEvent, render, screen, within} from '@testing-library/react';
 import {ed25519} from '@noble/curves/ed25519.js';
 import {base64} from '@scure/base';
 import {PublicKey, VersionedTransaction} from '@solana/web3.js';
@@ -16,16 +16,16 @@ import {ME, TO, assign, ataCreate, coSigned, mintTo, setAuthorityToNone, tokenAp
 import {U64_MAX, tokenAccountBytes, usdcLikeMint} from '../../background/dapp/__tests__/tokenBytes';
 import {ATA_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM} from '../../background/dapp/decode/decode';
 import {dependsOnStep, pendingOf, type Flag, type RequestView} from '../client';
+import {POLL_MS} from '../Approve';
 import {Tx} from '../Tx';
 import {ARM_MS, FLAG_HOLD_MS} from '../useArmed';
 import {CONFIRM_DELAY_MS} from '../ui';
-import {SECOND, openWindow} from './windowHarness';
+import {SECOND, acted, elapse, onHarnessClock, openWindow, settled} from './windowHarness';
 
 const SELECTORS = selectorsOf(UI_SHEETS);
 const text = (sel: string) => document.querySelector(sel)?.textContent ?? null;
 const texts = (sel: string) => [...document.querySelectorAll(sel)].map(e => e.textContent);
 const cta = (name: string | RegExp) => screen.getByRole('button', {name}) as HTMLButtonElement;
-const armedAfter = () => new Promise(r => setTimeout(r, ARM_MS + 50));
 const unstyled = () => unstyledClasses(document.querySelector('.app-approve')!, SELECTORS);
 /** A rule's declarations in the hand-written app.css (its exact selector), for the values the design draws. */
 const cssRule = (selector: string): string => {
@@ -35,17 +35,33 @@ const cssRule = (selector: string): string => {
 };
 /** The recipient is known (no first-send re-authentication) unless a test says otherwise. */
 const known = (w: Awaited<ReturnType<typeof openWindow>>) => w.ext.local.set('v1_known_recipients', [{address: RECIPIENT, at: 1}]);
-afterEach(() => cleanup());
+onHarnessClock();
 /**
  * The window learns by polling (§2.3): its first read starts the simulation (the background runs it outside the read);
  * this waits — deterministically, on the background's own state — until the simulation is stored, then gives the window
  * the read it would make on its next poll (a focus, as a user returning to the window), and waits for it to render.
  */
 async function simulated(w: Awaited<ReturnType<typeof openWindow>>, shows: string): Promise<void> {
-  await waitFor(async () => expect((await readDappSession(w.ext)).queue[0]?.sim ?? null).not.toBeNull());
-  await act(async () => void window.dispatchEvent(new Event('focus')));
-  await screen.findAllByText(shows);
+  await settled(async () => expect((await readDappSession(w.ext)).queue[0]?.sim ?? null).not.toBeNull());
+  await acted(() => window.dispatchEvent(new Event('focus')));
+  await settled(() => screen.getAllByText(shows));
 }
+
+/**
+ * Review 2 L11: the file's cold start — its module graph's first evaluation and the window's first renders — runs once
+ * here, in a hook of its own (vitest's hook budget), not inside the first test's 5 s. A plain transfer to a known
+ * recipient, shown until it is simulated and then unmounted: no assertion of any test depends on it, and each test still
+ * opens its own window against its own fresh background. It runs before the file's clock is faked (beforeEach), on real
+ * timers, and waits only on what the window renders (`settled`, a count of real turns).
+ */
+beforeAll(async () => {
+  const w = await openWindow();
+  await known(w);
+  await w.signTx('https://jup.ag', [v0([transfer(1_000_000)])]);
+  w.show();
+  await simulated(w, 'Balance changes (post-simulation)');
+  cleanup();
+});
 
 // Spec B1c §3.3, #48 (index.html ix:18261-18705), against the real background.
 describe('#48 dapp-tx-approval', () => {
@@ -64,7 +80,7 @@ describe('#48 dapp-tx-approval', () => {
     // 0.001 SOL to a known recipient: no re-authentication rule fires (under 5 %, under $100).
     const {page, requestId} = await w.signTx('https://jup.ag', [v0([transfer(1_000_000)])]);
     w.show();
-    await screen.findByText('Simulating transaction…');
+    await settled(() => screen.getByText('Simulating transaction…'));
     expect([text('.top-bar .title'), text('.s9-sim-banner .meta')]).toEqual(['Approve transaction', 'Noctura server · simulateTransaction']);
     expect(text('.s9-bal-card .label')).toBe('Balance changes (waiting…)');
     expect(document.querySelector('.s9-bal-card')?.className).toBe('s9-bal-card app-busy-dim');
@@ -97,14 +113,14 @@ describe('#48 dapp-tx-approval', () => {
     expect(document.querySelector('.s9-sim-banner')).toBeNull();
     expect(unstyled()).toEqual([]);
     expect(cta('Approve').disabled).toBe(true);
-    await armedAfter();
+    await elapse(ARM_MS);
     fireEvent.click(cta('Approve'));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
     const signed = (page.answersFor(requestId)[0]?.result as {signed: string[]}).signed;
     const tx = VersionedTransaction.deserialize(base64.decode(signed[0] ?? ''));
     expect(ed25519.verify(tx.signatures[0] ?? new Uint8Array(), tx.message.serialize(), ME.toBytes())).toBe(true);
     // The harness's closed window reads nothing more (rev 2 dry run): a later focus never counts a second close.
-    await act(async () => void window.dispatchEvent(new Event('focus')));
+    await acted(() => window.dispatchEvent(new Event('focus')));
     expect(w.closed.n).toBe(1);
   });
 
@@ -150,21 +166,21 @@ describe('#48 dapp-tx-approval', () => {
     const {page, requestId} = await w.signTx('https://jup.ag', [v0([transfer(1_000_000)])]);
     w.show();
     await simulated(w, "Approving asks you to confirm with your password (or passkey) — you'll start it from the Noctura icon.");
-    await armedAfter();
+    await elapse(ARM_MS);
     fireEvent.click(cta('Approve'));
-    await screen.findByText("Confirm it's you");
+    await settled(() => screen.getByText("Confirm it's you"));
     expect(text('.s9-flag-banner.warn .body')).toBe("Click the Noctura icon in your browser's toolbar and confirm with your password (or passkey). This request will wait here.");
     // The window never links into the vault page: no link, no input of any kind.
     expect(document.querySelectorAll('a, input, select, textarea')).toHaveLength(0);
-    await armedAfter();
+    await elapse(ARM_MS);
     expect(cta('Approve').disabled).toBe(true);
     const challengeId = String((await readDappSession(w.ext)).queue[0]?.challengeId);
     await handleMessage(w.ext, {type: 'vault.reauthOk', challengeId}, {id: w.ext.runtimeId, origin: w.ext.extensionOrigin, url: `${w.ext.extensionOrigin}/unlock.html`}, w.deps);
-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
-    await waitFor(() => expect(screen.queryByText("Confirm it's you")).toBeNull());
-    await armedAfter();
+    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
+    await settled(() => expect(screen.queryByText("Confirm it's you")).toBeNull());
+    await elapse(ARM_MS);
     fireEvent.click(cta('Approve'));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
     expect(page.answersFor(requestId)).toHaveLength(1);
   });
 
@@ -178,12 +194,12 @@ describe('#48 dapp-tx-approval', () => {
     expect(document.querySelector('.s9-origin-pill')).toBeNull();
     expect(text('.s9-domain-warn .body b')).toBe('This domain is not tensor.trade');
     expect(cta('Reject and report').className).toBe('btn btn-destructive');
-    await armedAfter();
+    await elapse(ARM_MS);
     fireEvent.click(cta('Approve anyway (not recommended)'));
-    const sheet = await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
-    await new Promise(r => setTimeout(r, CONFIRM_DELAY_MS + 50));
+    const sheet = await settled(() => screen.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
+    await elapse(CONFIRM_DELAY_MS);
     fireEvent.click(within(sheet).getByRole('button', {name: 'I understand the risk'}));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
     expect((page.answersFor(requestId)[0]?.result as {signed: string[]}).signed).toHaveLength(1);
     expect(unstyled()).toEqual([]);
   });
@@ -216,22 +232,22 @@ describe('#48 dapp-tx-approval', () => {
     const {page, requestId} = await w.signTx('https://jup.ag', [v0()]);
     w.show();
     await simulated(w, 'Balance changes (post-simulation)');
-    await armedAfter();
+    await elapse(ARM_MS);
     const first = (await readDappSession(w.ext)).queue[0]?.sim;
     w.deps.clock.t += 30_000;
     // The window's read starts the refresh in the background; the window still shows the first simulation.
-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
-    await waitFor(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
+    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
+    await settled(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
     expect(screen.queryByText(STALE)).toBeNull();
     fireEvent.click(cta('Approve'));
-    await screen.findByText(STALE);
+    await settled(() => screen.getByText(STALE));
     expect(page.answersFor(requestId)).toEqual([]);
     expect(cta('Approve').disabled).toBe(true);
     expect(unstyled()).toEqual([]);
     // The next click (after the hold) approves the simulation now shown, and the line goes.
-    await armedAfter();
+    await elapse(ARM_MS);
     fireEvent.click(cta('Approve'));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
     expect(page.answersFor(requestId)).toHaveLength(1);
   });
 
@@ -246,7 +262,7 @@ describe('#48 dapp-tx-approval', () => {
     const {page, requestId} = await w.signTx('https://jup.ag', [v0()]);
     w.show();
     await simulated(w, 'Balance changes (post-simulation)');
-    await armedAfter();
+    await elapse(ARM_MS);
     const first = (await readDappSession(w.ext)).queue[0]?.sim;
     // The refresh is held (a slow proxy): the stored simulation stays the first one while the clock passes 40 s.
     let release!: () => void;
@@ -258,22 +274,22 @@ describe('#48 dapp-tx-approval', () => {
     };
     w.deps.clock.t += 40_000;
     fireEvent.click(cta('Approve'));
-    await screen.findByText(OLD);
+    await settled(() => screen.getByText(OLD));
     expect(screen.queryByText(STALE)).toBeNull();
     expect(page.answersFor(requestId)).toEqual([]);
     expect((await readDappSession(w.ext)).queue[0]?.sim).toEqual(first);
     expect(unstyled()).toEqual([]);
     // The window's read starts the (held) refresh; it lands; the window's next read shows it: the line goes, Approve
     // is held, then signs.
-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
     release();
-    await waitFor(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
-    await act(async () => void window.dispatchEvent(new Event('focus')));
-    await waitFor(() => expect(screen.queryByText(OLD)).toBeNull());
+    await settled(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
+    await acted(() => window.dispatchEvent(new Event('focus')));
+    await settled(() => expect(screen.queryByText(OLD)).toBeNull());
     expect(screen.queryByText(STALE)).toBeNull();
-    await armedAfter();
+    await elapse(ARM_MS);
     fireEvent.click(cta('Approve'));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
     expect(page.answersFor(requestId)).toHaveLength(1);
   });
 
@@ -283,7 +299,7 @@ describe('#48 dapp-tx-approval', () => {
     const {page, requestId} = await w.signTx('https://jup.ag', [v0()]);
     w.show();
     await simulated(w, 'Balance changes (post-simulation)');
-    await armedAfter();
+    await elapse(ARM_MS);
     expect(cta('Approve').disabled).toBe(false);
     fireEvent.keyDown(cta('Approve'), {key: 'Enter'});
     expect(page.answersFor(requestId)).toEqual([]);
@@ -291,12 +307,12 @@ describe('#48 dapp-tx-approval', () => {
     const first = (await readDappSession(w.ext)).queue[0]?.sim;
     w.deps.clock.t += 30_000;
     // The window's read (a visibilitychange: no re-hold of its own) starts the refresh in the background.
-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
-    await waitFor(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
+    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
+    await settled(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
     // A read that is not a focus (focus alone re-holds, C15): the window's own poll, run now.
     expect(cta('Approve').disabled).toBe(false);
-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
-    await waitFor(() => expect(cta('Approve').disabled).toBe(true));
+    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
+    await settled(() => expect(cta('Approve').disabled).toBe(true));
   });
 
   it('approving: "Approving", the body at .65, "Approving…" with the ring, every CTA and ✕ disabled', async () => {
@@ -307,9 +323,9 @@ describe('#48 dapp-tx-approval', () => {
     w.client.decide = () => new Promise(() => undefined);
     w.show();
     await simulated(w, 'Balance changes (post-simulation)');
-    await armedAfter();
+    await elapse(ARM_MS);
     fireEvent.click(cta('Approve'));
-    await screen.findByRole('button', {name: 'Approving…'});
+    await settled(() => screen.getByRole('button', {name: 'Approving…'}));
     expect(text('.top-bar .title')).toBe('Approving');
     expect(document.querySelector('.app-approve-scroll')?.className).toContain('app-tx-busy');
     expect([cta('Approving…').disabled, cta('Reject').disabled, cta('Close').disabled]).toEqual([true, true, true]);
@@ -323,7 +339,7 @@ describe('#48 dapp-tx-approval', () => {
     // The granted account leaves the unlocked session (the other account stays): its detail cannot be built.
     await setSession(w.ext, [SECOND]);
     w.show();
-    await screen.findByText('This request can no longer be signed. Reject it and ask the site to try again.');
+    await settled(() => screen.getByText('This request can no longer be signed. Reject it and ask the site to try again.'));
     expect(screen.getAllByRole('button').map(b => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Close', 'Reject']);
     // Final review MUST-FIX 2: Q26 is a danger flag banner, as Q21 is — never a plain lede.
     expect([text('.s9-flag-banner.danger .head'), document.querySelector('.s9-flag-banner.danger')?.getAttribute('role')]).toEqual(['This request can no longer be signed. Reject it and ask the site to try again.', 'alert']);
@@ -334,24 +350,25 @@ describe('#48 dapp-tx-approval', () => {
   // Final review MUST-FIX 2 (design binding): the origin tile of a verified site in the brand gradient the design draws
   // for it (#48 ix:18283 Jupiter, #46/#47 Magic Eden, Tensor; #49's own for Drift and Kamino); any other verified site
   // keeps the accent tile, and an unknown or lookalike host never gets a brand's colours (nothing vouches for it).
-  it('origin tiles: Jupiter in its drawn gradient; another verified site the accent tile; a lookalike no brand', async () => {
-    const tile = () => document.querySelector('.s9-origin-card .ico')?.className;
-    for (const [origin, cls] of [
-      ['https://jup.ag', 'ico app-ico-verified app-brand-jupiter'],
-      ['https://tensor.trade', 'ico app-ico-verified app-brand-tensor'],
-      ['https://raydium.io', 'ico app-ico-verified'],
-      ['https://tensr.trade', 'ico app-ico-lookalike'],
-      ['https://dapp.test', 'ico app-ico-unknown'],
-    ] as const) {
-      const w = await openWindow();
-      await known(w);
-      await w.signTx(origin, [v0()]);
-      w.show();
-      await simulated(w, 'Balance changes (post-simulation)');
-      expect([origin, tile()]).toEqual([origin, cls]);
-      expect(unstyled()).toEqual([]);
-      cleanup();
-    }
+  // B1c-3 (plan 3 Task 9): one window per test — five windows against the real background in one test outran vitest's 5 s
+  // budget on a CPU-starved runner (the work of five tests in one).
+  it.each([
+    ['https://jup.ag', 'ico app-ico-verified app-brand-jupiter'],
+    ['https://tensor.trade', 'ico app-ico-verified app-brand-tensor'],
+    ['https://raydium.io', 'ico app-ico-verified'],
+    ['https://tensr.trade', 'ico app-ico-lookalike'],
+    ['https://dapp.test', 'ico app-ico-unknown'],
+  ] as const)('origin tiles: %s → %s (Jupiter in its drawn gradient; another verified site the accent tile; a lookalike no brand)', async (origin, cls) => {
+    const w = await openWindow();
+    await known(w);
+    await w.signTx(origin, [v0()]);
+    w.show();
+    await simulated(w, 'Balance changes (post-simulation)');
+    expect(document.querySelector('.s9-origin-card .ico')?.className).toBe(cls);
+    expect(unstyled()).toEqual([]);
+  });
+
+  it('origin tiles: the brand rules — Jupiter’s drawn gradient, Tensor in one colour', () => {
     expect(cssRule('.s9-origin-card .ico.app-brand-jupiter')).toContain('linear-gradient(135deg, #FFC800, #FF7A00)');
     // B1c-3 (R9, controller): Tensor in one colour — #49's (the design's latest), on #46/#47/#48's tile too, never the
     // window mockups' cyan; #49's own two tiles keep it.
@@ -370,9 +387,9 @@ describe('#48 dapp-tx-approval', () => {
     await w.signTx('https://tensr.trade', [v0()]);
     w.show();
     await simulated(w, 'Balance changes (post-simulation)');
-    await armedAfter();
+    await elapse(ARM_MS);
     fireEvent.click(cta('Approve anyway (not recommended)'));
-    const sheet = await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
+    const sheet = await settled(() => screen.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
     expect(within(sheet).getByRole('button', {name: 'I understand the risk'}).className).toBe('btn btn-destructive app-nowrap');
   });
 
@@ -547,15 +564,18 @@ describe('#48 dapp-tx-approval', () => {
     const {page, requestId} = await w.signTx('https://tensr.trade', [v0()]);
     w.show();
     await simulated(w, 'Balance changes (post-simulation)');
-    await armedAfter();
+    await elapse(ARM_MS);
     fireEvent.click(cta('Approve anyway (not recommended)'));
-    await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
+    await settled(() => screen.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
     // A refresh lands while the sheet is open (the window's own read starts it in the background).
     const first = (await readDappSession(w.ext)).queue[0]?.sim;
     w.deps.clock.t += 30_000;
-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
-    await waitFor(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
-    await waitFor(() => expect(screen.queryByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'})).toBeNull());
+    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
+    await settled(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
+    // The window reads it on its next poll (B1c-3 Task 9: on the harness's clock).
+    expect(screen.queryByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'})).not.toBeNull();
+    await elapse(POLL_MS);
+    await settled(() => expect(screen.queryByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'})).toBeNull());
     expect(page.answersFor(requestId)).toEqual([]);
     expect(w.closed.n).toBe(0);
   });
@@ -642,7 +662,7 @@ describe('#48 origin-mismatch · auto-reject', () => {
     const page = openPage(w.ext, w.deps, 'https://dapp.test', {tab: {id: 99}});
     expect(await page.ask({type: 'page.signTransaction', id: 'm', account: ACCOUNT.publicKey, transactions: [v0()]})).toEqual({id: 'm', error: 'unauthorized'});
     w.show();
-    await screen.findByText('Request blocked automatically');
+    await settled(() => screen.getByText('Request blocked automatically'));
     expect([text('.top-bar .title'), document.querySelector('.top-bar .title')?.className]).toEqual(['Auto-rejected · Origin mismatch', 'title noc-overline noc-danger']);
     expect(text('.s9-fail-hero .sub')).toBe('A transaction came from a different origin than the one you connected. We rejected it without showing Approve.');
     expect(text('.s9-flag-banner .head')).toBe('Origin mismatch · auto-reject');
@@ -653,7 +673,7 @@ describe('#48 origin-mismatch · auto-reject', () => {
     expect(screen.queryByRole('button', {name: /Approve|Review session/})).toBeNull();
     expect(unstyled()).toEqual([]);
     fireEvent.click(cta('OK, return to dApp'));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
   });
 });
 
@@ -671,7 +691,6 @@ describe('#48 red flags (B1c-3)', () => {
     w.chain.accounts.set(SRC.toBase58(), {lamports: 2_039_280n, owner: TOKEN_PROGRAM, data: tokenAccountBytes({mint: USDC, owner: ACCOUNT.publicKey, amount: 250_000_000n})});
     w.chain.accounts.set(USDC, {lamports: 1_461_600n, owner: TOKEN_PROGRAM, data: usdcLikeMint()});
   };
-  const holdAfter = () => new Promise(r => setTimeout(r, FLAG_HOLD_MS + 50));
   const decided = (w: W) => w.sent.filter((m): m is Record<string, unknown> => typeof m === 'object' && m !== null && (m as {type?: unknown}).type === 'dapp.decide');
   const field = (word: string) => screen.getByLabelText(`Type ${word} to enable Approve`) as HTMLInputElement;
   const type = (word: string, value: string) => fireEvent.change(field(word), {target: {value}});
@@ -716,7 +735,7 @@ describe('#48 red flags (B1c-3)', () => {
     expect([gated.className, gated.disabled, gated.querySelector('svg') !== null]).toEqual(['btn btn-destructive app-cta-wide app-cta-gated', true, true]);
     expect(unstyled()).toEqual([]);
     // Exact and case-sensitive: no trimming, no case folding — past the hold, so only the match gates.
-    await holdAfter();
+    await elapse(FLAG_HOLD_MS);
     for (const wrong of ['usdc', 'USDC ', ' USDC', 'USD', 'USDCC']) {
       type('USDC', wrong);
       expect([wrong, field('USDC').className, cta('Approve unlimited').className, cta('Approve unlimited').disabled]).toEqual([wrong, 'input', 'btn btn-destructive app-cta-wide app-cta-gated', true]);
@@ -724,7 +743,9 @@ describe('#48 red flags (B1c-3)', () => {
     type('USDC', 'USDC');
     expect([field('USDC').className, cta('Approve unlimited').className, cta('Approve unlimited').disabled]).toEqual(['input match', 'btn btn-destructive app-cta-wide', true]);
     expect(unstyled()).toEqual([]);
-    await holdAfter();
+    await elapse(FLAG_HOLD_MS - 1);
+    expect(cta('Approve unlimited').disabled).toBe(true);
+    await elapse(1);
     expect(cta('Approve unlimited').disabled).toBe(false);
     // Enter never confirms: neither in the field nor on the CTA.
     fireEvent.keyDown(field('USDC'), {key: 'Enter'});
@@ -732,18 +753,18 @@ describe('#48 red flags (B1c-3)', () => {
     expect(decided(w)).toEqual([]);
     fireEvent.click(cta('Approve unlimited'));
     // The override re-authenticates (Q33, O1): the words went with the approval; the window points to the toolbar.
-    await screen.findByText("Confirm it's you");
+    await settled(() => screen.getByText("Confirm it's you"));
     expect(decided(w).map(m => m.overrides)).toEqual([[{tx: 0, word: 'USDC'}]]);
     const challengeId = String((await readDappSession(w.ext)).queue[0]?.challengeId);
     await handleMessage(w.ext, {type: 'vault.reauthOk', challengeId}, {id: w.ext.runtimeId, origin: w.ext.extensionOrigin, url: `${w.ext.extensionOrigin}/unlock.html`}, w.deps);
-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
-    await waitFor(() => expect(screen.queryByText("Confirm it's you")).toBeNull());
-    await holdAfter();
+    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
+    await settled(() => expect(screen.queryByText("Confirm it's you")).toBeNull());
+    await elapse(FLAG_HOLD_MS);
     fireEvent.click(cta('Approve unlimited'));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
     expect(decided(w).map(m => m.overrides)).toEqual([[{tx: 0, word: 'USDC'}], [{tx: 0, word: 'USDC'}]]);
     expect((page.answersFor(requestId)[0]?.result as {signed: string[]}).signed).toHaveLength(1);
-  }, 15_000);
+  });
 
   it('O9: an approve of nearly the whole balance below u64::MAX — its own head (Q56), "Critical · Large spend approval" (Q57), "Approve anyway" (Q34) without the alert icon, the body "all or nearly all" (Q42); "unlimited" nowhere', async () => {
     const w = await openWindow();
@@ -770,46 +791,39 @@ describe('#48 red flags (B1c-3)', () => {
     await w.signTx('https://jup.ag', [v0([tokenApprove(SRC, DELEGATE, U64_MAX)])]);
     w.show();
     await simulated(w, 'Unlimited USDC spend approval');
-    vi.useFakeTimers({toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval']});
-    try {
-      const at = async (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
-      const held = async () => {
-        await at(FLAG_HOLD_MS - 10);
-        expect([cta('Approve unlimited').disabled, cta('Reject').disabled]).toEqual([true, false]);
-        await at(10);
-        expect(cta('Approve unlimited').disabled).toBe(false);
-      };
-      // A match change (the field now matches): held from here.
-      await act(async () => void type('USDC', 'USDC'));
+    const held = async () => {
+      await elapse(FLAG_HOLD_MS - 10);
       expect([cta('Approve unlimited').disabled, cta('Reject').disabled]).toEqual([true, false]);
-      await held();
-      // A focus re-holds.
-      await act(async () => void window.dispatchEvent(new Event('focus')));
-      expect(cta('Approve unlimited').disabled).toBe(true);
-      await held();
-      // The match lost, then regained: held again from the regain.
-      await act(async () => void type('USDC', 'USDCx'));
-      await at(FLAG_HOLD_MS * 2);
-      expect(cta('Approve unlimited').disabled).toBe(true);
-      await act(async () => void type('USDC', 'USDC'));
-      expect(cta('Approve unlimited').disabled).toBe(true);
-      await held();
-      // A new simulation (the 30 s refresh): the background stores it; the window's next read (no focus) re-holds.
-      const first = (await readDappSession(w.ext)).queue[0]?.sim;
-      w.deps.clock.t += 30_000;
-      await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
-      for (let i = 0; i < 400 && JSON.stringify((await readDappSession(w.ext)).queue[0]?.sim) === JSON.stringify(first); i++) await at(0);
-      expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first);
-      await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
-      expect([field('USDC').value, cta('Approve unlimited').disabled]).toEqual(['', true]);
-      await at(FLAG_HOLD_MS * 2);
-      expect(cta('Approve unlimited').disabled).toBe(true);
-      await act(async () => void type('USDC', 'USDC'));
-      expect(cta('Approve unlimited').disabled).toBe(true);
-      await held();
-    } finally {
-      vi.useRealTimers();
-    }
+      await elapse(10);
+      expect(cta('Approve unlimited').disabled).toBe(false);
+    };
+    // A match change (the field now matches): held from here.
+    await acted(() => type('USDC', 'USDC'));
+    expect([cta('Approve unlimited').disabled, cta('Reject').disabled]).toEqual([true, false]);
+    await held();
+    // A focus re-holds.
+    await acted(() => window.dispatchEvent(new Event('focus')));
+    expect(cta('Approve unlimited').disabled).toBe(true);
+    await held();
+    // The match lost, then regained: held again from the regain.
+    await acted(() => type('USDC', 'USDCx'));
+    await elapse(FLAG_HOLD_MS * 2);
+    expect(cta('Approve unlimited').disabled).toBe(true);
+    await acted(() => type('USDC', 'USDC'));
+    expect(cta('Approve unlimited').disabled).toBe(true);
+    await held();
+    // A new simulation (the 30 s refresh): the background stores it; the window's next read (no focus) re-holds.
+    const first = (await readDappSession(w.ext)).queue[0]?.sim;
+    w.deps.clock.t += 30_000;
+    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
+    await settled(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
+    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
+    expect([field('USDC').value, cta('Approve unlimited').disabled]).toEqual(['', true]);
+    await elapse(FLAG_HOLD_MS * 2);
+    expect(cta('Approve unlimited').disabled).toBe(true);
+    await acted(() => type('USDC', 'USDC'));
+    expect(cta('Approve unlimited').disabled).toBe(true);
+    await held();
     // Negative control: a screen with no flag keeps C15's 500 ms.
     cleanup();
     const plain = await openWindow();
@@ -817,16 +831,11 @@ describe('#48 red flags (B1c-3)', () => {
     await plain.signTx('https://jup.ag', [v0()]);
     plain.show();
     await simulated(plain, 'Balance changes (post-simulation)');
-    vi.useFakeTimers({toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval']});
-    try {
-      await act(async () => void window.dispatchEvent(new Event('focus')));
-      await act(async () => void (await vi.advanceTimersByTimeAsync(ARM_MS - 10)));
-      expect(cta('Approve').disabled).toBe(true);
-      await act(async () => void (await vi.advanceTimersByTimeAsync(10)));
-      expect(cta('Approve').disabled).toBe(false);
-    } finally {
-      vi.useRealTimers();
-    }
+    await acted(() => window.dispatchEvent(new Event('focus')));
+    await elapse(ARM_MS - 10);
+    expect(cta('Approve').disabled).toBe(true);
+    await elapse(10);
+    expect(cta('Approve').disabled).toBe(false);
   });
 
   it('a new simulation empties every typed field (review 1 L1) — the word is typed again for what the screen now shows; a focus or another render keeps it (negative control)', async () => {
@@ -837,20 +846,20 @@ describe('#48 red flags (B1c-3)', () => {
     await simulated(w, 'Unlimited USDC spend approval');
     type('USDC', 'USDC');
     // Negative control: a focus and a read of the same simulation keep the word.
-    await act(async () => void window.dispatchEvent(new Event('focus')));
-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
-    await holdAfter();
+    await acted(() => window.dispatchEvent(new Event('focus')));
+    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
+    await elapse(FLAG_HOLD_MS);
     expect([field('USDC').value, field('USDC').className, cta('Approve unlimited').disabled]).toEqual(['USDC', 'input match', false]);
     // A new simulation (the 30 s refresh) lands: the field is empty again and the CTA gated.
     const first = (await readDappSession(w.ext)).queue[0]?.sim;
     w.deps.clock.t += 30_000;
-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
-    await waitFor(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
-    await waitFor(() => expect(field('USDC').value).toBe(''));
+    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
+    await settled(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
+    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
+    await settled(() => expect(field('USDC').value).toBe(''));
     expect([field('USDC').className, cta('Approve unlimited').className, cta('Approve unlimited').disabled]).toEqual(['input', 'btn btn-destructive app-cta-wide app-cta-gated', true]);
     type('USDC', 'USDC');
-    await holdAfter();
+    await elapse(FLAG_HOLD_MS);
     expect(cta('Approve unlimited').disabled).toBe(false);
     // Review 1 I1: a two-field screen — both words typed, a new simulation lands (both fields empty, as above), then
     // only ONE is typed again. The other field must stay empty and unmatched, not read back the word typed against the
@@ -863,20 +872,20 @@ describe('#48 red flags (B1c-3)', () => {
     await simulated(two, 'Assign / Allocate on your wallet account');
     type('ASSIGN', 'ASSIGN');
     type('USDC', 'USDC');
-    await holdAfter();
+    await elapse(FLAG_HOLD_MS);
     expect([field('ASSIGN').value, field('USDC').value, cta('Approve anyway').disabled]).toEqual(['ASSIGN', 'USDC', false]);
     const firstTwo = (await readDappSession(two.ext)).queue[0]?.sim;
     two.deps.clock.t += 30_000;
-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
-    await waitFor(async () => expect((await readDappSession(two.ext)).queue[0]?.sim).not.toEqual(firstTwo));
-    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
-    await waitFor(() => expect(field('ASSIGN').value).toBe(''));
+    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
+    await settled(async () => expect((await readDappSession(two.ext)).queue[0]?.sim).not.toEqual(firstTwo));
+    await acted(() => document.dispatchEvent(new Event('visibilitychange')));
+    await settled(() => expect(field('ASSIGN').value).toBe(''));
     expect([field('ASSIGN').value, field('USDC').value, cta('Approve anyway').disabled]).toEqual(['', '', true]);
     // Only ASSIGN is typed again — USDC must not silently read back as matched from the old simulation's word.
     type('ASSIGN', 'ASSIGN');
-    await holdAfter();
+    await elapse(FLAG_HOLD_MS);
     expect([field('ASSIGN').className, field('USDC').value, field('USDC').className, cta('Approve anyway').disabled]).toEqual(['input match', '', 'input', true]);
-  }, 15_000);
+  });
 
   it('an unlimited approve beside an ATA create for another wallet: F5’s banner, and F2’s naming only the create; the account’s own ATA (O7) is no F2', async () => {
     const w = await openWindow();
@@ -935,14 +944,14 @@ describe('#48 red flags (B1c-3)', () => {
     expect([anyway().className, anyway().querySelector('svg')]).toEqual(['btn btn-destructive app-cta-wide app-cta-gated', null]);
     expect(screen.queryByRole('button', {name: 'Approve unlimited'})).toBeNull();
     type('ASSIGN', 'ASSIGN');
-    await holdAfter();
+    await elapse(FLAG_HOLD_MS);
     expect([anyway().className, anyway().disabled]).toEqual(['btn btn-destructive app-cta-wide app-cta-gated', true]);
     type('USDC', 'USDC');
-    await holdAfter();
+    await elapse(FLAG_HOLD_MS);
     expect([anyway().className, anyway().disabled]).toEqual(['btn btn-destructive app-cta-wide', false]);
     expect(unstyled()).toEqual([]);
     fireEvent.click(anyway());
-    await screen.findByText("Confirm it's you");
+    await settled(() => screen.getByText("Confirm it's you"));
     expect(decided(w).map(m => m.overrides)).toEqual([[{tx: 0, word: 'ASSIGN'}, {tx: 0, word: 'USDC'}]]);
     // The assign alone, paid by the dApp: nothing of the account's moves — L3's line is replaced (Q54).
     cleanup();
@@ -980,9 +989,9 @@ describe('#48 red flags (B1c-3)', () => {
     expect(sections().map(sec => [...sec.querySelectorAll('.s9-typed-confirm .label')].map(l => l.textContent))).toEqual([[], [], ['Type UNCHECKED to enable Approve']]);
     expect(unstyled()).toEqual([]);
     type('UNCHECKED', 'UNCHECKED');
-    await holdAfter();
+    await elapse(FLAG_HOLD_MS);
     fireEvent.click(cta('Approve anyway'));
-    await screen.findByText("Confirm it's you");
+    await settled(() => screen.getByText("Confirm it's you"));
     expect(decided(w).map(m => m.overrides)).toEqual([[{tx: 2, word: 'UNCHECKED'}]]);
   });
 
@@ -995,28 +1004,28 @@ describe('#48 red flags (B1c-3)', () => {
     expect(text('.top-bar .title')).toBe('Critical · Blocked transaction');
     expect(document.querySelector('.s9-origin-pill')).toBeNull();
     const demoted = () => cta('Approve anyway (not recommended)');
-    await holdAfter();
+    await elapse(FLAG_HOLD_MS);
     expect(demoted().disabled).toBe(true);
     fireEvent.click(demoted());
     expect(screen.queryByRole('dialog')).toBeNull();
     type('ASSIGN', 'ASSIGN');
-    await holdAfter();
+    await elapse(FLAG_HOLD_MS);
     fireEvent.click(demoted());
-    const sheet = await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
-    await new Promise(r => setTimeout(r, CONFIRM_DELAY_MS + 50));
+    const sheet = await settled(() => screen.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
+    await elapse(CONFIRM_DELAY_MS);
     const understand = () => within(sheet).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement;
     expect(understand().disabled).toBe(false);
     // C15 inside the sheet, at the red-flag screen's 1.5 s: still held 1 s after a focus (500 ms would have released it).
-    await act(async () => void window.dispatchEvent(new Event('focus')));
-    await new Promise(r => setTimeout(r, 1_000));
+    await acted(() => window.dispatchEvent(new Event('focus')));
+    await elapse(FLAG_HOLD_MS - 1);
     expect(understand().disabled).toBe(true);
-    await new Promise(r => setTimeout(r, FLAG_HOLD_MS - 1_000 + 50));
+    await elapse(1);
     expect(understand().disabled).toBe(false);
     fireEvent.click(understand());
-    await screen.findByText("Confirm it's you");
+    await settled(() => screen.getByText("Confirm it's you"));
     expect(decided(w).map(m => m.overrides)).toEqual([[{tx: 0, word: 'ASSIGN'}]]);
     expect(unstyled()).toEqual([]);
-  }, 15_000);
+  });
 
   /** One transaction carrying every kind of flag (as the background sends them), rendered from its view. */
   const P1 = new PublicKey(new Uint8Array(32).fill(91)).toBase58();

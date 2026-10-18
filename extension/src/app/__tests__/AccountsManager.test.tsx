@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {act, cleanup, fireEvent, screen, waitFor, within} from '@testing-library/react';
 import {AccountsManager} from '../screens/AccountsManager';
+import {LOCK_MS} from '../ui/LockedButton';
 import {ENV, renderInWallet, walletReader} from './harness';
 import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {VAULT_KEY} from '../../background/accountsStore';
@@ -455,18 +456,34 @@ describe('the accounts manager', () => {
       expect(renames).toBe(1);
     });
 
-    it('the trash (remove): locked when pressed; pressed again inside the lock, no sheet', async () => {
+    // B1c-3 (plan 3 Task 9): the lock on the harness's clock — under CPU load the wall clock ran past LOCK_MS between the
+    // two presses, and the second one opened the sheet as it should, after the lock.
+    it('the trash (remove): locked when pressed; pressed again inside the lock (at 499 ms), no sheet; at 500 ms it opens again', async () => {
       await shown();
       await waitFor(() => expect(names()).toHaveLength(3));
-      const trash = screen.getByRole('button', {name: 'Remove Savings'}) as HTMLButtonElement;
-      fireEvent.click(trash);
-      expect(trash.disabled).toBe(true);
-      fireEvent.click(within(await screen.findByRole('dialog', {name: 'Remove Savings?'})).getByRole('button', {name: 'Cancel'}));
-      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-      trash.disabled = false;
-      fireEvent.click(trash);
-      await settle();
-      expect(screen.queryByRole('dialog')).toBeNull();
+      vi.useFakeTimers({toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval']});
+      try {
+        const elapse = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
+        const trash = screen.getByRole('button', {name: 'Remove Savings'}) as HTMLButtonElement;
+        fireEvent.click(trash);
+        expect(trash.disabled).toBe(true);
+        fireEvent.click(within(screen.getByRole('dialog', {name: 'Remove Savings?'})).getByRole('button', {name: 'Cancel'}));
+        expect(screen.queryByRole('dialog')).toBeNull();
+        await elapse(LOCK_MS - 1);
+        expect(trash.disabled).toBe(true);
+        trash.disabled = false;
+        fireEvent.click(trash);
+        await elapse(0);
+        expect(screen.queryByRole('dialog')).toBeNull();
+        await elapse(1);
+        expect(trash.disabled).toBe(false);
+        fireEvent.click(trash);
+        expect(screen.getByRole('dialog', {name: 'Remove Savings?'})).toBeTruthy();
+        // The sheet's own wallet.pending read lands inside act.
+        await elapse(0);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('[Continue to remove]: one page opened', async () => {
