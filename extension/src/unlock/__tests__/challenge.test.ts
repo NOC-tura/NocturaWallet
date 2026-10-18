@@ -48,9 +48,10 @@ describe('describeChallenge: a dApp’s transaction (B1c-2)', () => {
       site: 'jup.ag',
       transactions: 2,
       outgoing: [
-        {label: 'SOL', amount: '−0.001005', mint: null},
-        {label: 'USDC', amount: '−250', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'},
-        {label: 'Token', amount: '−777 (base units)', mint: RECIPIENT},
+        // B1c-3: unsigned — what leaves; #10's rows add the minus, its headline does not (reauth.ts).
+        {label: 'SOL', amount: '0.001005', mint: null},
+        {label: 'USDC', amount: '250', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'},
+        {label: 'Token', amount: '777 (base units)', mint: RECIPIENT},
       ],
       omitted: 0,
       reasons: ['Re-auth required for the first send to a new address.', 'Re-auth required to approve a token allowance.'],

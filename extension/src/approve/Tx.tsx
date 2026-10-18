@@ -20,6 +20,11 @@ const PROGRAM_NAMES: Record<ProgramKey, string> = {
   'compute-budget': 'compute_budget',
   presale: 'noctura_presale',
 };
+/** B1c-3: the token programs an address field can name (an ATA create's `tokenProgram`), shown by their mono name beside the address. */
+const TOKEN_PROGRAMS: Readonly<Partial<Record<string, ProgramKey>>> = {
+  TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA: 'token',
+  TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb: 'token-2022',
+};
 /** The wallet's own tokens by mint (core/presale/addresses.ts; the approval window imports no core): symbol, tile and decimals. */
 const KNOWN_MINTS: Record<string, {symbol: string; tile: string}> = {
   B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW: {symbol: 'NOC', tile: 'noc'},
@@ -131,10 +136,15 @@ function FieldValueView({value, labels}: {value: FieldValue; labels: readonly Ad
   switch (value.kind) {
     case 'address': {
       const label = labels.find(l => l.address === value.value);
+      const program = TOKEN_PROGRAMS[value.value];
       return (
         <>
           <AddressGroups address={value.value} />
-          {label === undefined ? null : <span className="app-tx-addr-label noc-caption">{label.kind === 'account' ? TX_TEXT.ownAccount(label.name) : fromBook(label.name)}</span>}
+          {label !== undefined ? (
+            <span className="app-tx-addr-label noc-caption">{label.kind === 'account' ? TX_TEXT.ownAccount(label.name) : fromBook(label.name)}</span>
+          ) : program !== undefined ? (
+            <span className="app-tx-addr-label noc-caption">{PROGRAM_NAMES[program]}</span>
+          ) : null}
         </>
       );
     }

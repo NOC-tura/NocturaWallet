@@ -159,9 +159,16 @@ describe('#46 sign-message', () => {
     await screen.findByText('Sign this message?');
     expect(screen.getAllByRole('button').map(b => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Close', 'Reject']);
     expect(document.querySelector('.s9-msg-preview')).toBeNull();
-    // Rev 3.2 (Q26, owner-delegated 2026-10-12): the line under the title says why, in the lede's body tier.
-    const why = document.querySelector('.app-approve-title + p');
-    expect([why?.textContent, why?.className]).toEqual(['This request can no longer be signed. Reject it and ask the site to try again.', 'noc-body-sm app-muted app-approve-lede']);
+    // Rev 3.2 (Q26, owner-delegated 2026-10-12), drawn as #48 draws it (B1c-3, the carried visual item): a danger flag
+    // banner under the title, the alert icon, the role — never the lede's plain line.
+    const why = document.querySelector('.app-approve-title + .s9-flag-banner');
+    expect([why?.className, why?.getAttribute('role'), why?.querySelector('.head')?.textContent, why?.querySelectorAll('svg').length]).toEqual([
+      's9-flag-banner danger app-tx-block',
+      'alert',
+      'This request can no longer be signed. Reject it and ask the site to try again.',
+      1,
+    ]);
+    expect(document.querySelector('.app-approve-lede')).toBeNull();
     expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
     fireEvent.click(cta('Reject'));
     await waitFor(() => expect(w.closed.n).toBe(1));

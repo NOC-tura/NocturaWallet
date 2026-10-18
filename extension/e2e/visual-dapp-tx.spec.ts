@@ -170,9 +170,10 @@ test('visual · #48: simulating, simulated, a batch, re-authentication, approvin
     await tab.setViewportSize({width: 412, height: 916});
     await expect(tab.locator('#ra-about')).toHaveText('You are about to approve');
     await expect(tab.locator('#ra-rows')).toContainText('jup.ag');
-    // Final review MUST-FIX 2: the intent card's headline amount (#10 ix:6061-6064) — what leaves the account.
+    // Final review MUST-FIX 2: the intent card's headline amount (#10 ix:6061-6064) — what leaves the account; B1c-3:
+    // unsigned, as the design's send headline (the minus stays on the rows).
     await expect(tab.locator('#ra-amount-row')).toBeVisible();
-    await expect(tab.locator('#ra-amount')).toHaveText(new RegExp(`^${MINUS}0\\.\\d+$`));
+    await expect(tab.locator('#ra-amount')).toHaveText(/^0\.\d+$/);
     await expect(tab.locator('#ra-symbol')).toHaveText('SOL');
     await shot(tab, '10-dapp', {fullPage: false});
     await tab.close();

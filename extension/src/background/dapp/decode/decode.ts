@@ -395,9 +395,11 @@ function token(r: Reader, acc: Acc, names: readonly string[]): Known | null {
 function ata(r: Reader, acc: Acc): Known | null {
   const tag = r.data.length === 0 ? 0 : r.u8();
   if (tag === 0 || tag === 1) {
+    // B1c-3: the token program (account 5, after the System program) is named — the program reads all six accounts.
     const accs = acc4(acc, 0, 1, 2, 3);
-    if (accs === null || !r.done()) return null;
-    const fields = [addr('payer', accs[0]), addr('account', accs[1]), addr('wallet', accs[2]), addr('mint', accs[3])];
+    const tokenProgram = acc2(acc, 4, 5);
+    if (accs === null || tokenProgram === null || !r.done()) return null;
+    const fields = [addr('payer', accs[0]), addr('account', accs[1]), addr('wallet', accs[2]), addr('mint', accs[3]), addr('tokenProgram', tokenProgram[1])];
     return {name: tag === 0 ? 'create' : 'createIdempotent', fields};
   }
   if (tag === 2) {

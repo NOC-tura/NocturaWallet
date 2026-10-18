@@ -72,8 +72,8 @@ export const mintTo = (mint = TO, destination = ME, authority = ME, amount = 1n)
  */
 export const assign = (account = ME, programId = new PublicKey(new Uint8Array(32).fill(71))): TransactionInstruction => SystemProgram.assign({accountPubkey: account, programId});
 
-/** B1c-3: an associated-token-account createIdempotent (tag 1) of `account` for `wallet`, paid by the account — one of F10's creators. */
-export const ataCreate = (account: PublicKey, wallet = TO, mint = new PublicKey(new Uint8Array(32).fill(72))): TransactionInstruction =>
+/** B1c-3: an associated-token-account createIdempotent (tag 1) of `account` for `wallet`, paid by the account — one of F10's creators; `tokenProgram` its account 5. */
+export const ataCreate = (account: PublicKey, wallet = TO, mint = new PublicKey(new Uint8Array(32).fill(72)), tokenProgram = new PublicKey(TOKEN_PROGRAM)): TransactionInstruction =>
   new TransactionInstruction({
     programId: new PublicKey(ATA_PROGRAM),
     data: Buffer.from([1]),
@@ -83,7 +83,7 @@ export const ataCreate = (account: PublicKey, wallet = TO, mint = new PublicKey(
       {pubkey: wallet, isSigner: false, isWritable: false},
       {pubkey: mint, isSigner: false, isWritable: false},
       {pubkey: SystemProgram.programId, isSigner: false, isWritable: false},
-      {pubkey: new PublicKey(TOKEN_PROGRAM), isSigner: false, isWritable: false},
+      {pubkey: tokenProgram, isSigner: false, isWritable: false},
     ],
   });
 

@@ -4,6 +4,7 @@ import {
   Keypair,
   NONCE_ACCOUNT_LENGTH,
   PublicKey,
+  SYSVAR_RENT_PUBKEY,
   SystemProgram,
   Transaction,
   TransactionInstruction,
@@ -306,14 +307,30 @@ describe('decodeInstructions — ATA, Compute Budget, the presale program', () =
     const ata = findAssociatedTokenAddress(TO, MINT);
     const idem = one(buildCreateAtaIdempotentInstruction(ME, ata, TO, MINT));
     expect(idem).toMatchObject({programId: ATA_PROGRAM, program: 'associated-token', name: 'createIdempotent'});
+    // B1c-3 (the final review's triage row 1): the token program (account 5) is named too — classic or Token-2022.
     expect(idem.fields.map(f => [f.name, f.value.kind === 'address' ? f.value.value : null])).toEqual([
       ['payer', ME.toBase58()],
       ['account', ata.toBase58()],
       ['wallet', TO.toBase58()],
       ['mint', MINT.toBase58()],
+      ['tokenProgram', TOKEN_PROGRAM],
     ]);
-    const create = one(new TransactionInstruction({programId: new PublicKey(ATA_PROGRAM), keys: idem.fields.map(f => ({pubkey: new PublicKey(f.value.kind === 'address' ? (f.value.value ?? '') : ''), isSigner: false, isWritable: true})), data: Buffer.alloc(0)}));
+    const built = buildCreateAtaIdempotentInstruction(ME, ata, TO, MINT);
+    const create = one(new TransactionInstruction({programId: new PublicKey(ATA_PROGRAM), keys: built.keys, data: Buffer.alloc(0)}));
     expect(create.name).toBe('create');
+  });
+
+  it('associated token account (B1c-3): a Token-2022 create names Token-2022’s program; fewer than the six accounts the program reads is unknown (fail closed)', () => {
+    const built = buildCreateAtaIdempotentInstruction(ME, TO, ME, MINT);
+    const keys = built.keys.map((k, i) => (i === 5 ? {...k, pubkey: new PublicKey(TOKEN_2022_PROGRAM)} : k));
+    const t22 = one(new TransactionInstruction({programId: new PublicKey(ATA_PROGRAM), keys, data: Buffer.from([1])}));
+    expect(t22.fields.at(-1)).toEqual({name: 'tokenProgram', value: {kind: 'address', value: TOKEN_2022_PROGRAM}});
+    for (const n of [4, 5]) {
+      const short = one(new TransactionInstruction({programId: new PublicKey(ATA_PROGRAM), keys: built.keys.slice(0, n), data: Buffer.from([1])}));
+      expect([n, short.program, short.name, short.fields]).toEqual([n, null, null, []]);
+    }
+    // Positive control: exactly six decode; a seventh (the legacy rent sysvar) is not read.
+    expect(one(new TransactionInstruction({programId: new PublicKey(ATA_PROGRAM), keys: [...built.keys, {pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false}], data: Buffer.from([1])})).name).toBe('createIdempotent');
   });
 
   it('compute budget: the unit limit and price', () => {

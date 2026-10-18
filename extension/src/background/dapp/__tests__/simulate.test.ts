@@ -583,10 +583,8 @@ describe('simulateTransactions: the red flags (B1c-3)', () => {
     expect(unread.reasons).toEqual(['approval', 'override']);
     // Negative control: a bounded approve is a warning — no block, no `override`.
     const bounded = await run(approveScene(50n, USDC_MINT), [approve(50n)], () => true);
-    expect(bounded.flags[0]?.map(f => [f.kind, f.severity])).toEqual([
-      ['non-transfer', 'warn'],
-      ['bounded-approve', 'warn'],
-    ]);
+    // (F6 names the approve, so F2 does not repeat it — the controller's ruling.)
+    expect(bounded.flags[0]?.map(f => [f.kind, f.severity])).toEqual([['bounded-approve', 'warn']]);
     expect(bounded.reasons).toEqual(['approval']);
   });
 
@@ -647,7 +645,7 @@ describe('simulateTransactions: the red flags (B1c-3)', () => {
       ['a word not the one its approvals give', sim, s => (flag(s, 'unlimited-approve').word = 'UNLIMITED')],
       ['a block stored as a warning', sim, s => (flag(s, 'unlimited-approve').severity = 'warn')],
       ['a key more', sim, s => (flag(s, 'unlimited-approve').extra = 1)],
-      ['a key less', sim, s => delete flag(s, 'non-transfer').at],
+      ['a key less', sim, s => delete flag(s, 'unlimited-approve').at],
       ['an approval’s symbol not its mint’s', sim, s => ((flag(s, 'unlimited-approve').approvals as Json[])[0] = {...(flag(s, 'unlimited-approve').approvals as Json[])[0], symbol: 'USDT'})],
       [
         'an approval’s symbol not its mint’s, its word made to agree',
@@ -659,7 +657,7 @@ describe('simulateTransactions: the red flags (B1c-3)', () => {
         },
       ],
       ['an approval’s amount not base units', sim, s => ((flag(s, 'unlimited-approve').approvals as Json[])[0] = {...(flag(s, 'unlimited-approve').approvals as Json[])[0], amount: '-1'})],
-      ['a flag’s position not its first instruction', sim, s => (flag(s, 'non-transfer').at = 3)],
+      ['a flag’s position not its first instruction', sim, s => (flag(s, 'unlimited-approve').at = 3)],
       ['a block without the `override` reason', sim, s => (s.reasons = ['approval'])],
       ['an unknown reason', sim, s => (s.reasons = ['approval', 'override', 'drain'])],
       ['`override` with no block', bounded, s => (s.reasons = ['approval', 'override'])],
@@ -810,5 +808,84 @@ describe('simulateTransactions: the red flags (B1c-3)', () => {
       const pays = await batch([[SystemProgram.transfer({fromPubkey: ME, toPubkey: dest, lamports: 2_039_280})], [tokenTransfer(DEST)]], call => (call === 2 ? invalid : null));
       expect(pays.outcomes[1]).toMatchObject({error: 'failed'});
     });
+  });
+});
+
+// B1c-3 (the final review's carried minor): a non-Checked Token / Token-2022 transfer, approve or burn carries no
+// decimals of its own; the simulation names the mint's when the source account's pre-state is a token account of the
+// instruction's own program — #48 then shows the amount with them, else in base units as before.
+describe('simulateTransactions: the decimals of a non-Checked amount (B1c-3)', () => {
+  const NOC = MAINNET_NOC_MINT;
+  const DELEGATE = keyOf(52);
+  const plain = (lamports: bigint): SimulatedAccount => ({lamports, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()});
+  const t22Ix = (data: number[], keys: string[]) =>
+    new TransactionInstruction({programId: new PublicKey(TOKEN_2022_PROGRAM), data: Buffer.from(data), keys: keys.map(k => ({pubkey: new PublicKey(k), isSigner: k === ME.toBase58(), isWritable: k !== ME.toBase58()}))});
+  const transferIx = (source = SRC, amount = 5n) => tokenIx([3, ...u64(amount)], [source, TO.toBase58(), ME.toBase58()]);
+  const approveIx = (source = SRC) => tokenIx([4, ...u64(5n)], [source, DELEGATE, ME.toBase58()]);
+  const burnIx = (mint: string, source = SRC) => tokenIx([8, ...u64(5n)], [source, mint, ME.toBase58()]);
+  const checkedIx = (mint: string) => tokenIx([12, ...u64(5n), 9], [SRC, mint, TO.toBase58(), ME.toBase58()]);
+  /** The source's pre-state `src`, unchanged by the simulation (so no balance change names its mint: only the amount does). */
+  const decimalsScene = (src: AccountData | null, o: {mints?: [string, AccountData | null][]; err?: unknown} = {}) => {
+    const accounts = new Map<string, AccountData | null>([[SRC, src], ...(o.mints ?? [])]);
+    return scene({accounts, post: a => (a === ME.toBase58() ? plain(SOL - 5_000n) : (accounts.get(a) ?? null)), err: o.err});
+  };
+
+  it('a transfer, an approve and a burn from a token account the pre-state reads: the mint’s decimals, per instruction; a Checked one carries its own', async () => {
+    const sim = await run(decimalsScene(tokenAfter(NOC, 1_000n)), [wire([transferIx(), approveIx(), burnIx(NOC), checkedIx(NOC)])]);
+    expect(sim.amountDecimals).toEqual([
+      [
+        {at: 0, decimals: 9},
+        {at: 1, decimals: 9},
+        {at: 2, decimals: 9},
+      ],
+    ]);
+    // Someone else's token account (a delegate's transfer) names its mint as well: the decimals are the mint's, not the owner's.
+    const theirs = await run(decimalsScene(tokenAfter(NOC, 1_000n, TO.toBase58())), [wire([transferIx()])]);
+    expect(theirs.amountDecimals).toEqual([[{at: 0, decimals: 9}]]);
+  });
+
+  it('a mint the wallet does not know: its decimals from the one mint read; unreadable, or above 18, none (base units)', async () => {
+    const odd = (decimals: number | null) => decimalsScene(tokenAfter(ODD_MINT, 1_000n), {mints: [[ODD_MINT, decimals === null ? null : {lamports: 1n, owner: TOKEN_PROGRAM, data: mintBytes({decimals})}]]});
+    const s = odd(4);
+    expect((await run(s, [wire([transferIx()])])).amountDecimals).toEqual([[{at: 0, decimals: 4}]]);
+    expect(s.reads.at(-1)).toEqual([ODD_MINT]);
+    expect((await run(odd(null), [wire([transferIx()])])).amountDecimals).toEqual([[]]);
+    expect((await run(odd(19), [wire([transferIx()])])).amountDecimals).toEqual([[]]);
+    expect((await run(odd(18), [wire([transferIx()])])).amountDecimals).toEqual([[{at: 0, decimals: 18}]]);
+  });
+
+  it('none when the pre-state does not name the mint: absent, not a token account, another token program’s account, a burn of another mint', async () => {
+    const none = async (src: AccountData | null, ix: TransactionInstruction = transferIx()) => (await run(decimalsScene(src), [wire([ix])])).amountDecimals;
+    expect(await none(null)).toEqual([[]]);
+    expect(await none(plain(SOL))).toEqual([[]]);
+    expect(await none(t22After(NOC, 1_000n))).toEqual([[]]);
+    expect(await none(tokenAfter(NOC, 1_000n), burnIx(MAINNET_USDC_MINT))).toEqual([[]]);
+    // Positive controls: the Token-2022 account under Token-2022's own instruction; the burn of its own mint.
+    expect(await none(t22After(NOC, 1_000n), t22Ix([3, ...u64(5n)], [SRC, TO.toBase58(), ME.toBase58()]))).toEqual([[{at: 0, decimals: 9}]]);
+    expect(await none(tokenAfter(NOC, 1_000n), burnIx(NOC))).toEqual([[{at: 0, decimals: 9}]]);
+  });
+
+  it('a transaction that failed keeps them (its instructions are still shown); one list per transaction', async () => {
+    const failed = await run(decimalsScene(tokenAfter(NOC, 1_000n), {err: {InstructionError: [0, 'InsufficientFunds']}}), [wire([transferIx()]), wire([SystemProgram.transfer({fromPubkey: ME, toPubkey: TO, lamports: 1})])]);
+    expect(failed.amountDecimals).toEqual([[{at: 0, decimals: 9}], []]);
+  });
+
+  it('simStateOf: read back strictly — any other shape makes the stored simulation invalid', async () => {
+    const sim = await run(decimalsScene(tokenAfter(NOC, 1_000n)), [wire([transferIx()])]);
+    const stored = JSON.parse(JSON.stringify({status: 'ok', sim})) as {status: string; sim: Record<string, unknown>};
+    expect(simStateOf(stored)).toEqual({status: 'ok', sim});
+    const edits: [string, (s: Record<string, unknown>) => void][] = [
+      ['missing', s => delete s.amountDecimals],
+      ['a list per transaction missing', s => (s.amountDecimals = [])],
+      ['above 18', s => (s.amountDecimals = [[{at: 0, decimals: 19}]])],
+      ['a negative index', s => (s.amountDecimals = [[{at: -1, decimals: 9}]])],
+      ['a key more', s => (s.amountDecimals = [[{at: 0, decimals: 9, mint: NOC}]])],
+      ['not a number', s => (s.amountDecimals = [[{at: 0, decimals: '9'}]])],
+    ];
+    for (const [name, edit] of edits) {
+      const copy = JSON.parse(JSON.stringify(stored)) as typeof stored;
+      edit(copy.sim);
+      expect([name, simStateOf(copy)]).toEqual([name, null]);
+    }
   });
 });

@@ -59,7 +59,10 @@ export interface DappDescription {
   kind: 'dapp';
   site: string;
   transactions: number;
-  /** One row per token leaving the account: the label (a symbol, or "Token") and the exact amount (never rounded). */
+  /**
+   * One row per token leaving the account: the label (a symbol, or "Token") and the exact amount (never rounded), unsigned
+   * — B1c-3: #10's rows show it with a minus, its headline without one, as the design's send headline (reauth.ts).
+   */
   outgoing: {label: string; amount: string; mint: string | null}[];
   /** How many more tokens leave the account than the rows show (plan 2 review 1 L9: the background lists at most 16). */
   omitted: number;
@@ -160,7 +163,7 @@ function describeDapp(a: Record<string, unknown>): DappDescription | null {
     if (mint === null) {
       // SOL: its own name and nine decimals, nothing else.
       if (symbol !== 'SOL' || decimals !== 9) return null;
-      rows.push({label: 'SOL', amount: `−${formatAmount(BigInt(amount), 9, {min: 0, max: 9})}`, mint: null});
+      rows.push({label: 'SOL', amount: formatAmount(BigInt(amount), 9, {min: 0, max: 9}), mint: null});
       continue;
     }
     if (typeof mint !== 'string' || !ADDRESS.test(mint)) return null;
@@ -168,11 +171,11 @@ function describeDapp(a: Record<string, unknown>): DappDescription | null {
       // A named token must carry its own decimals (this page's table): anything else describes no real token.
       if (typeof symbol !== 'string' || !own(TOKENS, symbol) || symbol === 'SOL' || decimals !== TOKENS[symbol as TokenSymbol]) return null;
       const d = TOKENS[symbol as TokenSymbol];
-      rows.push({label: symbol, amount: `−${formatAmount(BigInt(amount), d, {min: 0, max: d})}`, mint});
+      rows.push({label: symbol, amount: formatAmount(BigInt(amount), d, {min: 0, max: d}), mint});
       continue;
     }
     if (decimals !== null && !isInt(decimals, 0, 18)) return null;
-    rows.push({label: REAUTH.token, amount: decimals === null ? `−${REAUTH.baseUnits(amount)}` : `−${formatAmount(BigInt(amount), decimals, {min: 0, max: decimals})}`, mint});
+    rows.push({label: REAUTH.token, amount: decimals === null ? REAUTH.baseUnits(amount) : formatAmount(BigInt(amount), decimals, {min: 0, max: decimals}), mint});
   }
   const lines: string[] = [];
   for (const r of reasons as unknown[]) {

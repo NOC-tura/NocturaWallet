@@ -171,6 +171,58 @@ describe('redFlagsOf — F2 non-transfer', () => {
   });
 });
 
+// Controller ruling (plan 3, Task 5's ledger): F2 does not repeat an instruction a more specific flag of the same
+// transaction already names (F3, F4, F5, F6, F8) — the design draws one banner for an unlimited approve; every other
+// instruction F2 named stays named.
+describe('redFlagsOf — F2 beside a more specific flag', () => {
+  const held = [[SRC, tokenAcc({mint: MAINNET_USDC_MINT, amount: 1_000n})]] as [PublicKey, AccountData][];
+  const closeIx = tokenIx([9], [meta(SRC, false, true), meta(TO, false, true), meta(ME, true)]);
+
+  it('an unlimited approve alone is F5 only; beside an ATA create for another wallet, F2 names only the create', () => {
+    expect(kinds(one({ixs: [approveIx(U64_MAX)], pre: held}))).toEqual(['unlimited-approve']);
+    const flags = one({ixs: [approveIx(U64_MAX), ataCreateIx(MAINNET_USDC_MINT, THEIRS)], pre: held});
+    expect(kinds(flags)).toEqual(['unlimited-approve', 'non-transfer']);
+    expect(find(flags, 'non-transfer')).toEqual({kind: 'non-transfer', severity: 'warn', word: null, at: 1, instructions: [{index: 1, program: 'associated-token', name: 'createIdempotent'}]});
+  });
+
+  it('negative control: a lone closeAccount, or a revoke, is still F2', () => {
+    expect(one({ixs: [closeIx], pre: held})).toEqual([{kind: 'non-transfer', severity: 'warn', word: null, at: 0, instructions: [{index: 0, program: 'token', name: 'closeAccount'}]}]);
+    const revoke = tokenIx([5], [meta(SRC, false, true), meta(ME, true)]);
+    expect(kinds(one({ixs: [revoke], pre: held}))).toEqual(['non-transfer']);
+  });
+
+  it('only the instructions the specific flag names leave F2 — the same instruction on someone else’s account stays', () => {
+    const named = (spec: Spec): number[] => find(one(spec), 'non-transfer')?.instructions.map(x => x.index) ?? [];
+    // F3: the wallet's assign is F3's, another account's stays F2's.
+    expect(named({ixs: [SystemProgram.assign({accountPubkey: THEIRS, programId: UNKNOWN}), SystemProgram.assign({accountPubkey: ME, programId: UNKNOWN})]})).toEqual([0]);
+    // F4: the own account's setAuthority is F4's, someone else's stays F2's.
+    const theirs = tokenAcc({mint: MAINNET_USDC_MINT, owner: TO, amount: 5n});
+    expect(named({ixs: [setAuthorityIx(THEIRS, TO), setAuthorityIx(SRC, ME, 3)], pre: [...held, [THEIRS, theirs]]})).toEqual([0]);
+    // F5 / F6: the wallet's approves are theirs; an approve by someone else of their own account stays F2's.
+    expect(named({ixs: [approveIx(U64_MAX, THEIRS, TO), approveIx(U64_MAX)], pre: [...held, [THEIRS, theirs]]})).toEqual([0]);
+    expect(named({ixs: [approveIx(U64_MAX, THEIRS, TO), approveIx(5n)], pre: [...held, [THEIRS, theirs]]})).toEqual([0]);
+    // F8 names instruction 0 only: a second AdvanceNonceAccount stays F2's.
+    const nonce = SystemProgram.nonceAdvance({noncePubkey: SRC, authorizedPubkey: ME});
+    expect(named({ixs: [nonce, SystemProgram.nonceAdvance({noncePubkey: SRC2, authorizedPubkey: ME})]})).toEqual([1]);
+  });
+
+  it('a decoded approve no flag names stays F2: bounded, while the chain state shows the account unlimited (F5 is the chain’s)', () => {
+    const post: [PublicKey, AccountData][] = [[SRC, tokenAcc({mint: MAINNET_USDC_MINT, amount: 1_000n, delegate: DELEGATE, delegatedAmount: U64_MAX})]];
+    const flags = one({ixs: [approveIx(5n)], pre: held, post});
+    expect(kinds(flags)).toEqual(['unlimited-approve', 'non-transfer']);
+    expect(find(flags, 'unlimited-approve')?.approvals.map(a => a.at)).toEqual([null]);
+    expect(find(flags, 'non-transfer')?.instructions).toEqual([{index: 0, program: 'token', name: 'approve'}]);
+  });
+
+  it('F7 is not among them: an ATA create (for another wallet) of a Token-2022 mint with settings is F7 and F2', () => {
+    const flags = one({ixs: [ataCreateIx(T22_MINT, THEIRS)]}, {mints: [[T22_MINT, mintAcc(pyusdLikeMint(), TOKEN_2022_PROGRAM)]]});
+    // O7: the account's own ATA of the same mint is no F2 — F7 still names the mint.
+    expect(kinds(one({ixs: [ataCreateIx(T22_MINT)]}, {mints: [[T22_MINT, mintAcc(pyusdLikeMint(), TOKEN_2022_PROGRAM)]]}))).toEqual(['token-2022']);
+    expect(kinds(flags)).toEqual(['non-transfer', 'token-2022']);
+    expect(flags.map(f => f.at)).toEqual([0, 0]);
+  });
+});
+
 describe('redFlagsOf — F3 assign / allocate on the wallet account', () => {
   it('assign, allocate, assignWithSeed, allocateWithSeed of the wallet account: one block, ASSIGN, naming each', () => {
     const ixs = [
@@ -180,7 +232,7 @@ describe('redFlagsOf — F3 assign / allocate on the wallet account', () => {
       SystemProgram.allocate({accountPubkey: ME, basePubkey: SRC, seed: 'x', space: 64, programId: UNKNOWN}),
     ];
     const flags = one({ixs});
-    expect(kinds(flags)).toEqual(['assign', 'non-transfer']);
+    expect(kinds(flags)).toEqual(['assign']);
     expect(find(flags, 'assign')).toEqual({
       kind: 'assign',
       severity: 'block',
@@ -222,7 +274,7 @@ describe('redFlagsOf — F3 assign / allocate on the wallet account', () => {
 describe('redFlagsOf — F4 setAuthority on an account the user owns', () => {
   it('an own token account (its pre-state owner field is the wallet): a block, AUTHORITY', () => {
     const flags = one({ixs: [setAuthorityIx(SRC, ME, 3)], pre: [[SRC, tokenAcc({mint: MAINNET_USDC_MINT, amount: 5n})]]});
-    expect(kinds(flags)).toEqual(['set-authority', 'non-transfer']);
+    expect(kinds(flags)).toEqual(['set-authority']);
     expect(find(flags, 'set-authority')).toEqual({
       kind: 'set-authority',
       severity: 'block',
@@ -277,7 +329,7 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
 
   it('u64::MAX, or at least the source’s whole balance: a block whose word is the wallet’s own symbol', () => {
     const flags = one({ixs: [approveIx(U64_MAX)], pre: held()});
-    expect(kinds(flags)).toEqual(['unlimited-approve', 'non-transfer']);
+    expect(kinds(flags)).toEqual(['unlimited-approve']);
     expect(find(flags, 'unlimited-approve')).toEqual({
       kind: 'unlimited-approve',
       severity: 'block',
@@ -291,10 +343,10 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
 
   it('O5: 99 % of the balance or more is a block — the threshold’s both edges; below it is bounded (F6)', () => {
     // Balance 1 000: 990 is exactly 99 % and 999 is the balance − 1 — blocks; 989, just under 99 %, is a warning.
-    for (const amount of [990n, 999n]) expect(kinds(one({ixs: [approveIx(amount)], pre: held()}))).toEqual(['unlimited-approve', 'non-transfer']);
+    for (const amount of [990n, 999n]) expect(kinds(one({ixs: [approveIx(amount)], pre: held()}))).toEqual(['unlimited-approve']);
     expect(find(one({ixs: [approveCheckedIx(990n, MAINNET_USDC_MINT)], pre: held()}), 'unlimited-approve')?.word).toBe('USDC');
     const flags = one({ixs: [approveIx(989n)], pre: held()});
-    expect(kinds(flags)).toEqual(['non-transfer', 'bounded-approve']);
+    expect(kinds(flags)).toEqual(['bounded-approve']);
     expect(find(flags, 'bounded-approve')).toEqual({
       kind: 'bounded-approve',
       severity: 'warn',
@@ -302,11 +354,11 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
       at: 0,
       approvals: [{at: 0, source: SRC.toBase58(), mint: MAINNET_USDC_MINT, symbol: 'USDC', decimals: 6, delegate: DELEGATE.toBase58(), amount: '989', balance: '1000'}],
     });
-    expect(kinds(one({ixs: [approveCheckedIx(989n, MAINNET_USDC_MINT)], pre: held()}))).toEqual(['non-transfer', 'bounded-approve']);
-    expect(kinds(one({ixs: [approveIx(500n)], pre: held()}))).toEqual(['non-transfer', 'bounded-approve']);
+    expect(kinds(one({ixs: [approveCheckedIx(989n, MAINNET_USDC_MINT)], pre: held()}))).toEqual(['bounded-approve']);
+    expect(kinds(one({ixs: [approveIx(500n)], pre: held()}))).toEqual(['bounded-approve']);
     // A balance whose 99 % is no whole number (7 → 6.93): 7 blocks, 6 does not.
-    expect(kinds(one({ixs: [approveIx(7n)], pre: held(7n)}))).toEqual(['unlimited-approve', 'non-transfer']);
-    expect(kinds(one({ixs: [approveIx(6n)], pre: held(7n)}))).toEqual(['non-transfer', 'bounded-approve']);
+    expect(kinds(one({ixs: [approveIx(7n)], pre: held(7n)}))).toEqual(['unlimited-approve']);
+    expect(kinds(one({ixs: [approveIx(6n)], pre: held(7n)}))).toEqual(['bounded-approve']);
   });
 
   it('O8 (review 2 M5): each balance where it is exact — chain state against the balance after; a decoded approve against the balance before, or the delegation it leaves against the balance after', () => {
@@ -326,7 +378,7 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
     // chain state's sighting of the same delegation folded into it), its balance the one before.
     const decoded = (post: bigint, delegated: bigint) => one({ixs: [transferIx(900n), approveIx(150n)], pre: [[SRC, mine(1_000n)]], post: [[SRC, mine(post, delegated)]]});
     expect(find(decoded(100n, 150n), 'unlimited-approve')?.approvals.map(a => [a.at, a.balance])).toEqual([[1, '1000']]);
-    expect(kinds(decoded(1_000n, 150n))).toEqual(['non-transfer', 'bounded-approve']);
+    expect(kinds(decoded(1_000n, 150n))).toEqual(['bounded-approve']);
     // A delegation a program raised past what the decoded approve granted is the chain state's F5 (Q43), not the instruction's.
     expect(find(one({ixs: [approveIx(5n)], pre: held(), post: [[SRC, mine(1_000n, U64_MAX)]]}), 'unlimited-approve')?.approvals.map(a => a.at)).toEqual([null]);
   });
@@ -334,7 +386,7 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
   it('O8: a delegation the same transaction consumes is F6 — approve 500 of 1 000, a program pulls the 500 (the delegate cleared), the rest kept or sent away', () => {
     const consumed = (post: bigint) => one({ixs: [approveIx(500n), unknownIx(UNKNOWN, [SRC])], pre: held(), post: [[SRC, tokenAcc({mint: MAINNET_USDC_MINT, amount: post})]]});
     for (const post of [500n, 0n]) {
-      expect(kinds(consumed(post))).toEqual(['non-transfer', 'bounded-approve', 'unknown-program']);
+      expect(kinds(consumed(post))).toEqual(['bounded-approve', 'unknown-program']);
       // Q45's body: "This lets a delegate move up to 0.0005 USDC of your USDC until you revoke." — the approved amount.
       expect(find(consumed(post), 'bounded-approve')?.approvals).toEqual([
         {at: 0, source: SRC.toBase58(), mint: MAINNET_USDC_MINT, symbol: 'USDC', decimals: 6, delegate: DELEGATE.toBase58(), amount: '500', balance: '1000'},
@@ -361,7 +413,7 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
   });
 
   it('a source the wallet cannot read, approved by the wallet, counts as an empty balance (fail closed)', () => {
-    expect(kinds(one({ixs: [approveIx(1n)], pre: [[SRC, null]]}))).toEqual(['unlimited-approve', 'non-transfer']);
+    expect(kinds(one({ixs: [approveIx(1n)], pre: [[SRC, null]]}))).toEqual(['unlimited-approve']);
   });
 
   it('someone else’s account approved by its own owner is F2 only', () => {
@@ -504,13 +556,10 @@ describe('redFlagsOf — F7 Token-2022 mint settings', () => {
 });
 
 describe('redFlagsOf — F8 durable nonce, F9 whole balance, F10 dependent step', () => {
-  it('AdvanceNonceAccount first: "does not expire" (and it is named among the non-transfers); at index 1 it is F2 only', () => {
+  it('AdvanceNonceAccount first: "does not expire" (F8 names it, so F2 does not); at index 1 it is F2 only', () => {
     const nonce = SystemProgram.nonceAdvance({noncePubkey: SRC, authorizedPubkey: ME});
     const transfer = SystemProgram.transfer({fromPubkey: ME, toPubkey: TO, lamports: 1});
-    expect(one({ixs: [nonce, transfer]})).toEqual([
-      {kind: 'non-transfer', severity: 'warn', word: null, at: 0, instructions: [{index: 0, program: 'system', name: 'advanceNonceAccount'}]},
-      {kind: 'durable-nonce', severity: 'warn', word: null, at: 0},
-    ]);
+    expect(one({ixs: [nonce, transfer]})).toEqual([{kind: 'durable-nonce', severity: 'warn', word: null, at: 0}]);
     expect(kinds(one({ixs: [transfer, nonce]}))).toEqual(['non-transfer']);
   });
 
@@ -525,7 +574,7 @@ describe('redFlagsOf — F8 durable nonce, F9 whole balance, F10 dependent step'
     const assign = SystemProgram.assign({accountPubkey: ME, programId: UNKNOWN});
     expect(one({ixs: [transferIx(1n)], post: {dependentOn: 0}})).toEqual([{kind: 'dependent', severity: 'block', word: 'UNCHECKED', at: null, on: 0}]);
     expect(one({ixs: [transferIx(1n)], post: 'failed'})).toEqual([]);
-    expect(kinds(one({ixs: [assign], post: 'failed'}))).toEqual(['assign', 'non-transfer']);
+    expect(kinds(one({ixs: [assign], post: 'failed'}))).toEqual(['assign']);
     // A failed step has no post-state: chain-state rules read nothing (the wallet's plain post is not consulted).
     expect(kinds(one({ixs: [unknownIx()], pre: [[ME, {lamports: SOL, owner: UNKNOWN.toBase58(), data: new Uint8Array(4)}]], post: 'failed'}))).toEqual(['unknown-program']);
   });
@@ -534,19 +583,21 @@ describe('redFlagsOf — F8 durable nonce, F9 whole balance, F10 dependent step'
 describe('redFlagsOf — the order', () => {
   it('blocks first, then warnings; within each by instruction index (chain state and whole-transaction flags after), then by row', () => {
     const nonce = SystemProgram.nonceAdvance({noncePubkey: SRC2, authorizedPubkey: ME});
+    const revoke = tokenIx([5], [meta(SRC, false, true), meta(ME, true)]);
     const flags = one(
-      {ixs: [nonce, SystemProgram.assign({accountPubkey: ME, programId: UNKNOWN}), unknownIx(), approveIx(U64_MAX)], pre: [[SRC, tokenAcc({mint: MAINNET_USDC_MINT, amount: 1n})]], post: {dependentOn: 0}, firstSend: true},
+      {ixs: [revoke, nonce, SystemProgram.assign({accountPubkey: ME, programId: UNKNOWN}), unknownIx(), approveIx(U64_MAX)], pre: [[SRC, tokenAcc({mint: MAINNET_USDC_MINT, amount: 1n})]], post: {dependentOn: 0}, firstSend: true},
       {reasons: ['whole-balance-to-new']},
     );
+    // The nonce is not first, so it is no F8: F2 names it beside the revoke.
     expect(flags.map(f => [f.kind, f.at])).toEqual([
-      ['assign', 1],
-      ['unlimited-approve', 3],
+      ['assign', 2],
+      ['unlimited-approve', 4],
       ['dependent', null],
       ['non-transfer', 0],
-      ['durable-nonce', 0],
-      ['unknown-program', 2],
+      ['unknown-program', 3],
       ['whole-balance', null],
     ]);
+    expect(find(flags, 'non-transfer')?.instructions.map(x => x.index)).toEqual([0, 1]);
   });
 });
 

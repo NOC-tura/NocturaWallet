@@ -12,9 +12,9 @@ import {readDappSession} from '../../background/dapp/store';
 import {GRANTS_KEY} from '../../background/dapp/grants';
 import {openPage} from '../../background/dapp/__tests__/pageHarness';
 import {ACCOUNT, RECIPIENT} from '../../background/__tests__/fixtures';
-import {ME, assign, ataCreate, coSigned, mintTo, setAuthorityToNone, tokenApprove, tokenTransfer, transfer, v0} from '../../background/dapp/__tests__/txHarness';
+import {ME, TO, assign, ataCreate, coSigned, mintTo, setAuthorityToNone, tokenApprove, tokenTransfer, transfer, v0} from '../../background/dapp/__tests__/txHarness';
 import {U64_MAX, tokenAccountBytes, usdcLikeMint} from '../../background/dapp/__tests__/tokenBytes';
-import {ATA_PROGRAM, TOKEN_PROGRAM} from '../../background/dapp/decode/decode';
+import {ATA_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM} from '../../background/dapp/decode/decode';
 import {dependsOnStep, pendingOf, type Flag, type RequestView} from '../client';
 import {Tx} from '../Tx';
 import {ARM_MS, FLAG_HOLD_MS} from '../useArmed';
@@ -338,6 +338,7 @@ describe('#48 dapp-tx-approval', () => {
     const tile = () => document.querySelector('.s9-origin-card .ico')?.className;
     for (const [origin, cls] of [
       ['https://jup.ag', 'ico app-ico-verified app-brand-jupiter'],
+      ['https://tensor.trade', 'ico app-ico-verified app-brand-tensor'],
       ['https://raydium.io', 'ico app-ico-verified'],
       ['https://tensr.trade', 'ico app-ico-lookalike'],
       ['https://dapp.test', 'ico app-ico-unknown'],
@@ -352,6 +353,13 @@ describe('#48 dapp-tx-approval', () => {
       cleanup();
     }
     expect(cssRule('.s9-origin-card .ico.app-brand-jupiter')).toContain('linear-gradient(135deg, #FFC800, #FF7A00)');
+    // B1c-3 (R9, controller): Tensor in one colour — #49's (the design's latest), on #46/#47/#48's tile too, never the
+    // window mockups' cyan; #49's own two tiles keep it.
+    const tensor = 'background: linear-gradient(135deg, oklch(72% 0.18 295), oklch(65% 0.16 320));';
+    expect([cssRule('.s9-origin-card .ico.app-brand-tensor'), cssRule('.s10-sheet .head-row .ico.app-tile-tensor')]).toEqual([tensor, tensor]);
+    const ext = readFileSync(join(__dirname, '..', '..', 'styles', 'design-ext.css'), 'utf8');
+    expect(ext).toContain(`.s10-app-row .ico.tensor { ${tensor} }`);
+    expect(cssRule('.s9-origin-card .ico.app-brand-tensor')).not.toContain('#00DBFF');
   });
 
   it('the design minors’ own rules: Approve at .4 while simulating; "I understand the risk" never wraps', async () => {
@@ -679,9 +687,10 @@ describe('#48 red flags (B1c-3)', () => {
     w.show();
     await simulated(w, 'Unlimited USDC spend approval');
     expect([text('.top-bar .title'), document.querySelector('.top-bar .title')?.className]).toEqual(['Critical · Unlimited spend approval', 'title noc-overline noc-danger']);
-    // Blocks first, then warnings (F2 names the approve), in the transaction's section.
-    expect([...document.querySelectorAll('.app-tx-item .s9-flag-banner')].map(b => b.className)).toEqual(['s9-flag-banner danger', 's9-flag-banner warn']);
-    expect(heads()).toEqual(['Unlimited USDC spend approval', 'Instructions that are not transfers']);
+    // One banner, as the design draws it, in the transaction's section: F5 names the approve, so F2 does not repeat it
+    // (the controller's ruling, plan 3 Task 6).
+    expect([...document.querySelectorAll('.app-tx-item .s9-flag-banner')].map(b => b.className)).toEqual(['s9-flag-banner danger']);
+    expect(heads()).toEqual(['Unlimited USDC spend approval']);
     const danger = document.querySelector('.s9-flag-banner.danger') as HTMLElement;
     expect(within(danger).getByText(/This transaction includes/).textContent).toBe(
       'This transaction includes a spl_token::Approve instruction with amount = u64::MAX (~18.4 quintillion units). Even verified dApps can be exploited; this lets the program move all your USDC, now and in the future, until you revoke.',
@@ -689,7 +698,6 @@ describe('#48 red flags (B1c-3)', () => {
     expect([...danger.querySelectorAll('.body code')].map(c => c.textContent)).toEqual(['spl_token::Approve', 'amount = u64::MAX']);
     expect(danger.querySelector('.body i')?.textContent).toBe('all your USDC');
     expect(danger.querySelector('.meta')?.textContent).toBe(`delegate: ${DELEGATE.toBase58()} · token: USDC mint ${USDC} · scope: u64::MAX`);
-    expect(texts('.s9-flag-banner.warn .meta')).toEqual(['#1 spl_token::Approve']);
     // The synthesized row first (an approve changes no balance), then the simulation's own (the fee).
     expect(texts('.s9-bal-row .pri')).toEqual(['USDC delegated', 'SOL']);
     expect(texts('.s9-bal-row .delta')).toEqual(['unlimited', '−0.000005']);
@@ -870,6 +878,48 @@ describe('#48 red flags (B1c-3)', () => {
     expect([field('ASSIGN').className, field('USDC').value, field('USDC').className, cta('Approve anyway').disabled]).toEqual(['input match', '', 'input', true]);
   }, 15_000);
 
+  it('an unlimited approve beside an ATA create for another wallet: F5’s banner, and F2’s naming only the create; the account’s own ATA (O7) is no F2', async () => {
+    const w = await openWindow();
+    holdUsdc(w);
+    await w.signTx('https://jup.ag', [v0([tokenApprove(SRC, DELEGATE, U64_MAX), ataCreate(X, TO, new PublicKey(USDC))])]);
+    w.show();
+    await simulated(w, 'Unlimited USDC spend approval');
+    expect(heads()).toEqual(['Unlimited USDC spend approval', 'Instructions that are not transfers']);
+    expect(texts('.s9-flag-banner.warn .meta')).toEqual(['#2 spl_associated_token_account::CreateIdempotent']);
+    expect(unstyled()).toEqual([]);
+    // O7: the account's own ATA, created and paid by the account — rent only, no F2 banner beside F5's.
+    cleanup();
+    const own = await openWindow();
+    holdUsdc(own);
+    await own.signTx('https://jup.ag', [v0([tokenApprove(SRC, DELEGATE, U64_MAX), ataCreate(X, ME, new PublicKey(USDC))])]);
+    own.show();
+    await simulated(own, 'Unlimited USDC spend approval');
+    expect(heads()).toEqual(['Unlimited USDC spend approval']);
+  });
+
+  // B1c-3 (the final review's carried minors): a non-Checked amount with the mint's decimals, from the background's
+  // read of its source account (the window computes none); an ATA create's token program named.
+  it('instruction rows: a non-Checked approve with the mint’s decimals, a transfer from an unreadable account in base units; an ATA create names its token program', async () => {
+    const w = await openWindow();
+    holdUsdc(w);
+    const unread = new PublicKey(new Uint8Array(32).fill(86));
+    const odd = new PublicKey(new Uint8Array(32).fill(87));
+    const usdc = new PublicKey(USDC);
+    await w.signTx('https://jup.ag', [
+      v0([tokenApprove(SRC, DELEGATE, 1_500_000n), tokenTransfer(X, unread, 1_500_000n), ataCreate(X, ME, usdc), ataCreate(Y, ME, usdc, new PublicKey(TOKEN_2022_PROGRAM)), ataCreate(odd, ME, usdc, DELEGATE)]),
+    ]);
+    w.show();
+    await simulated(w, 'USDC spend approval');
+    const values = (name: string) => [...document.querySelectorAll('.s9-payload-card .app-tx-field')].filter(r => r.querySelector('.k')?.textContent === name).map(r => r.querySelector('.v'));
+    expect(values('amount').map(v => v?.textContent)).toEqual(['1.5', '1500000']);
+    expect(values('tokenProgram').map(v => [v?.querySelector('.addr-groups')?.textContent, v?.querySelector('.app-tx-addr-label')?.textContent ?? null])).toEqual([
+      [TOKEN_PROGRAM, 'spl_token'],
+      [TOKEN_2022_PROGRAM, 'spl_token_2022'],
+      [DELEGATE.toBase58(), null],
+    ]);
+    expect(unstyled()).toEqual([]);
+  });
+
   it('System assign of the wallet account (F3) and an unlimited approve in one transaction: "Critical · Blocked transaction", both banners, one field per block — "Approve anyway" only when both match; the L3 line replaced beside an authority flag', async () => {
     const w = await openWindow();
     holdUsdc(w);
@@ -877,9 +927,9 @@ describe('#48 red flags (B1c-3)', () => {
     w.show();
     await simulated(w, 'Assign / Allocate on your wallet account');
     expect(text('.top-bar .title')).toBe('Critical · Blocked transaction');
-    expect(heads()).toEqual(['Assign / Allocate on your wallet account', 'Unlimited USDC spend approval', 'Instructions that are not transfers']);
+    expect(heads()).toEqual(['Assign / Allocate on your wallet account', 'Unlimited USDC spend approval']);
     expect(texts('.s9-flag-banner.danger .body')[0]).toBe("This changes your wallet account itself. Assigned to another program, it is that program's to control; given data, it can no longer pay fees or send SOL.");
-    expect(texts('.s9-flag-banner .meta')).toEqual(['#1 system_program::Assign', `delegate: ${DELEGATE.toBase58()} · token: USDC mint ${USDC} · scope: u64::MAX`, '#1 system_program::Assign', '#2 spl_token::Approve']);
+    expect(texts('.s9-flag-banner .meta')).toEqual(['#1 system_program::Assign', `delegate: ${DELEGATE.toBase58()} · token: USDC mint ${USDC} · scope: u64::MAX`]);
     expect(texts('.s9-typed-confirm .label')).toEqual(['Type ASSIGN to enable Approve', 'Type USDC to enable Approve']);
     const anyway = () => cta('Approve anyway');
     expect([anyway().className, anyway().querySelector('svg')]).toEqual(['btn btn-destructive app-cta-wide app-cta-gated', null]);

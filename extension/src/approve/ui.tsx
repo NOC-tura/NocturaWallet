@@ -39,10 +39,10 @@ export function siteLabel(origin: string, host: string): string {
 
 /**
  * Final review MUST-FIX 2 (design binding): a verified site's tile in the brand gradient the design draws for it — the
- * approval window's own mockups (#48 ix:18283 and #47 ix:17578 Jupiter, #46 ix:17467 Magic Eden, #47 ix:17711 Tensor,
- * #48 ix:18414 Noctura) and, for the brands only #49 draws (Drift, Kamino), #49's tiles (ix:3885-3889), so a brand keeps
- * one colour across the screens that draw it; where two screens draw one brand differently (Tensor), each keeps its
- * own, as §9 rules for #37's and #49's holds. Keyed by the known list's name, which the background gives only for a
+ * approval window's own mockups (#48 ix:18283 and #47 ix:17578 Jupiter, #46 ix:17467 Magic Eden, #48 ix:18414 Noctura)
+ * and, for the brands only #49 draws (Drift, Kamino), #49's tiles (ix:3885-3889), so a brand keeps one colour across the
+ * screens that draw it. Tensor, which the design draws differently (#47 ix:17711 cyan, #49 ix:3885 violet), takes #49's — the
+ * design's latest — on every screen (B1c-3, R9, controller ruling). Keyed by the known list's name, which the background gives only for a
  * verified host (C7) — an unknown or lookalike host never gets a brand's colours. Any other verified site keeps the
  * accent tile.
  */

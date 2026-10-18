@@ -36,6 +36,8 @@ import {mintInfo, tokenAccountInfo} from './tokenState';
 export const DEFAULT_UNITS_PER_INSTRUCTION = 200_000;
 export const MAX_COMPUTE_UNITS = 1_400_000;
 export const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
+/** The most decimals #48 formats an amount with (the window's own bound); a mint with more stays in base units. */
+const MAX_DECIMALS = 18;
 /** Decimals the wallet knows without a read (SOL's own and its wrapped mint, NOC, USDC, USDT). */
 const KNOWN_DECIMALS: ReadonlyMap<string, number> = new Map([
   [WRAPPED_SOL_MINT, 9],
@@ -71,8 +73,47 @@ export interface TxSimulation {
   reasons: DappReauthReason[];
   /** B1c-3: per transaction, its red flags (redFlags.ts), in the order the window shows them. */
   flags: RedFlag[][];
+  /**
+   * B1c-3: per transaction, the decimals of each non-Checked Token / Token-2022 `transfer`, `approve` or `burn` (by its
+   * instruction index) whose source account the pre-state reads as a token account of that instruction's program —
+   * its mint's, as the simulation knows them (0–18); #48 shows that amount with them, every other one in base units.
+   */
+  amountDecimals: AmountDecimals[][];
   /** An upper bound of the dApp blockhash's last valid height (the latest blockhash's, read now): a pending send's expiry check waits at least this long. */
   lastValidBlockHeight: number;
+}
+
+export interface AmountDecimals {
+  at: number;
+  decimals: number;
+}
+
+/** The non-Checked amounts a token instruction carries without decimals, and the account its amount leaves. */
+const NON_CHECKED: Readonly<Record<string, string>> = {transfer: 'source', approve: 'source', burn: 'account'};
+
+/**
+ * B1c-3: the mint of each non-Checked transfer / approve / burn's source account, by instruction index — only when
+ * the pre-state reads it as a token account of the instruction's own program (a burn: of the mint it names); the
+ * token program refuses any other, so no other mint is named.
+ */
+function amountMintsOf(decoded: readonly DecodedInstruction[], pre: ReadonlyMap<string, AccountData | null>): {at: number; mint: string}[] {
+  return decoded.flatMap((ix, at) => {
+    const role = (ix.program === 'token' || ix.program === 'token-2022') && ix.name !== null ? NON_CHECKED[ix.name] : undefined;
+    const source = role === undefined ? null : addressField(ix, role);
+    const state = source === null ? null : (pre.get(source) ?? null);
+    const info = state === null ? null : tokenAccountInfo(state.data, state.owner);
+    if (info === null || info.program !== ix.program || (ix.name === 'burn' && addressField(ix, 'mint') !== info.mint)) return [];
+    return [{at, mint: info.mint}];
+  });
+}
+
+/** `decoded` with each non-Checked amount `list` names given its decimals (txDetail, for #48); every other field as decoded. */
+export function withAmountDecimals(decoded: DecodedInstruction[], list: readonly AmountDecimals[]): DecodedInstruction[] {
+  return decoded.map((ix, at) => {
+    const decimals = list.find(x => x.at === at)?.decimals;
+    if (decimals === undefined) return ix;
+    return {...ix, fields: ix.fields.map(f => (f.name === 'amount' && f.value.kind === 'amount' && f.value.decimals === null ? {name: f.name, value: {kind: 'amount', value: f.value.value, decimals}} : f))};
+  });
 }
 
 /**
@@ -224,6 +265,8 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
   let slot = 0;
   const outcomes: TxOutcome[] = [];
   const flagInputs: TxFlagInput[] = [];
+  /** Per transaction, its non-Checked amounts' mints (B1c-3). */
+  const amountMints: {at: number; mint: string}[][] = [];
   /** Per transaction, the accounts it creates (F10). */
   const created: Set<string>[] = [];
   let approvalFromChain = false;
@@ -240,6 +283,7 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
     // otherwise show +post instead of post − pre).
     const preAccounts = await deps.reader.getAccountsData(addresses);
     const pre = new Map(addresses.map((a, j) => [a, preAccounts[j] ?? null]));
+    amountMints.push(amountMintsOf(decoded, pre));
     const firstSend = firstSendOf(decoded, pre, account, input.known, a => before.has(a));
     const sim = await deps.reader.simulateTransaction(base64.encode(input.wires[i] ?? new Uint8Array()), {accounts: addresses});
     slot = Math.max(slot, sim.slot);
@@ -318,7 +362,8 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
   // own decimals with the wallet's table) and the decimals the holdings did not tell (a mint the account did not hold
   // before). At most one read's worth: a mint past MAX_MULTIPLE_ACCOUNTS is not read — it warns that it could not be
   // read (Q36) and its amounts stay in base units (fail closed, never an unreachable proxy).
-  const unknownMints = [...new Set(outcomes.flatMap(o => (o.ok ? o.changes.map(c => c.mint) : [])).filter((m): m is string => m !== null && !decimals.has(m)))];
+  const changed = outcomes.flatMap(o => (o.ok ? o.changes.map(c => c.mint) : []));
+  const unknownMints = [...new Set([...changed, ...amountMints.flat().map(x => x.mint)].filter((m): m is string => m !== null && !decimals.has(m)))];
   const wanted = [...new Set([...flagMints({account, txs: flagInputs}), ...unknownMints])].slice(0, MAX_MULTIPLE_ACCOUNTS);
   const mintData = wanted.length > 0 ? await deps.reader.getAccountsData(wanted) : [];
   const mints = new Map(wanted.map((m, i) => [m, mintData[i] ?? null]));
@@ -351,6 +396,12 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
     thresholdCents: input.thresholdCents,
   });
   const flags = redFlagsOf({account, txs: flagInputs, mints, reasons: base});
+  const amountDecimals = amountMints.map(list =>
+    list.flatMap(({at, mint}) => {
+      const d = decimals.get(mint);
+      return d !== undefined && d <= MAX_DECIMALS ? [{at, decimals: d}] : [];
+    }),
+  );
   // The override rule (spec §3.3): a request with any block re-authenticates — a dependent step is always one.
   const reasons: DappReauthReason[] = expectedOverrides(flags).length > 0 ? [...base, 'override'] : base;
   return {
@@ -362,6 +413,7 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
     outcomes,
     reasons,
     flags,
+    amountDecimals,
     lastValidBlockHeight: latest.lastValidBlockHeight,
   };
 }
@@ -425,6 +477,18 @@ function outcomeOf(x: unknown): TxOutcome | null {
   return {ok: true, changes: changes as BalanceChange[], unitsConsumed: o.unitsConsumed, unitLimit: o.unitLimit, feeLamports: o.feeLamports};
 }
 
+/** One transaction's stored non-Checked decimals, rebuilt; null when any entry is not exactly {at, decimals ≤ 18}. */
+function amountDecimalsOf(x: unknown): AmountDecimals[] | null {
+  if (!Array.isArray(x)) return null;
+  const out: AmountDecimals[] = [];
+  for (const v of x as unknown[]) {
+    const o = obj(v);
+    if (o === null || Object.keys(o).length !== 2 || !isInt(o.at) || !isInt(o.decimals) || o.decimals > MAX_DECIMALS) return null;
+    out.push({at: o.at, decimals: o.decimals});
+  }
+  return out;
+}
+
 /** A stored SimState, rebuilt field by field (fresh objects, never the stored ones); null when anything is off — it is then simulated again. */
 export function simStateOf(x: unknown): SimState | null {
   const o = obj(x);
@@ -449,6 +513,8 @@ export function simStateOf(x: unknown): SimState | null {
     return !o.ok && o.error === 'dependent' ? on === o.on - 1 && on < i : on === undefined;
   });
   if (!stepsAgree) return null;
+  const amountDecimals = Array.isArray(s.amountDecimals) ? (s.amountDecimals as unknown[]).map(amountDecimalsOf) : null;
+  if (amountDecimals === null || amountDecimals.length !== outcomes.length || amountDecimals.some(a => a === null)) return null;
   return {
     status: 'ok',
     sim: {
@@ -460,6 +526,7 @@ export function simStateOf(x: unknown): SimState | null {
       outcomes: outcomes as TxOutcome[],
       reasons: (s.reasons as DappReauthReason[]).slice(),
       flags: lists,
+      amountDecimals: amountDecimals as AmountDecimals[][],
       lastValidBlockHeight: s.lastValidBlockHeight,
     },
   };

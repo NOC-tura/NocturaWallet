@@ -13,7 +13,8 @@ import {usesDurableNonce} from './txRequest';
  *
  * F1 unknown program (warn) · F2 an instruction of a decoded program that is not a transfer (warn; Compute Budget is
  * the fee, and O7's three self-rent instructions — an ATA created for and paid by the account, syncNative of an own
- * token account, closeAccount of one to the account — are exempt) · F3 System assign / allocate (and their …WithSeed forms) of the wallet account, or the
+ * token account, closeAccount of one to the account — are exempt; an instruction F3, F4, F5, F6 or F8 already names is
+ * not repeated) · F3 System assign / allocate (and their …WithSeed forms) of the wallet account, or the
  * wallet account owned by another program or holding data after the simulation (block, ASSIGN) · F4 SetAuthority on a
  * token account whose owner field is the wallet, on a mint whose mint or freeze authority is the wallet, or signed by
  * the wallet as the current authority; or, in chain state, an own token account's owner or close authority changed, a
@@ -174,16 +175,6 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
   const first = unknown[0];
   if (first !== undefined) out.push({kind: 'unknown-program', severity: 'warn', word: null, at: first.index, programs: [...new Set(unknown.map(x => x.ix.programId))]});
 
-  // F2 — O7: an own token account created and paid for by the account, synced, or closed to the account is rent only.
-  const ownTokenAccount = (address: string | null): boolean => address !== null && tokenOf(pre.get(address))?.owner === account;
-  const selfRent = (ix: DecodedInstruction): boolean =>
-    (ix.program === 'associated-token' && (ix.name === 'create' || ix.name === 'createIdempotent') && addressField(ix, 'wallet') === account && addressField(ix, 'payer') === account) ||
-    (isToken(ix) && ix.name === 'syncNative' && ownTokenAccount(addressField(ix, 'account'))) ||
-    (isToken(ix) && ix.name === 'closeAccount' && ownTokenAccount(addressField(ix, 'account')) && addressField(ix, 'destination') === account);
-  const named = indexed.flatMap(({ix, index}) => (ix.program === null || ix.program === 'compute-budget' || isTransfer(ix) || selfRent(ix) ? [] : [{index, program: ix.program, name: ix.name}]));
-  const firstNamed = named[0];
-  if (firstNamed !== undefined) out.push({kind: 'non-transfer', severity: 'warn', word: null, at: firstNamed.index, instructions: named});
-
   // F3
   const assigns = indexed.flatMap(({ix, index}) => (ix.program === 'system' && ix.name !== null && ASSIGNS.includes(ix.name) && addressField(ix, 'account') === account ? [{index, program: ix.program, name: ix.name}] : []));
   const selfPre = pre.get(account) ?? null;
@@ -307,7 +298,35 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
   if (usesDurableNonce(t.tx)) out.push({kind: 'durable-nonce', severity: 'warn', word: null, at: 0});
   if (t.firstSend && input.reasons.includes('whole-balance-to-new')) out.push({kind: 'whole-balance', severity: 'warn', word: null, at: null});
   if (t.outcome.status === 'dependent') out.push({kind: 'dependent', severity: 'block', word: OVERRIDE_WORDS.dependent, at: null, on: t.outcome.on});
+
+  // F2, last: an instruction a more specific flag of this transaction already names (F3, F4, F5, F6, F8) is not repeated;
+  // O7: an own token account created and paid for by the account, synced, or closed to the account is rent only.
+  const specific = new Set(out.flatMap(namedBy));
+  const ownTokenAccount = (address: string | null): boolean => address !== null && tokenOf(pre.get(address))?.owner === account;
+  const selfRent = (ix: DecodedInstruction): boolean =>
+    (ix.program === 'associated-token' && (ix.name === 'create' || ix.name === 'createIdempotent') && addressField(ix, 'wallet') === account && addressField(ix, 'payer') === account) ||
+    (isToken(ix) && ix.name === 'syncNative' && ownTokenAccount(addressField(ix, 'account'))) ||
+    (isToken(ix) && ix.name === 'closeAccount' && ownTokenAccount(addressField(ix, 'account')) && addressField(ix, 'destination') === account);
+  const named = indexed.flatMap(({ix, index}) => (ix.program === null || ix.program === 'compute-budget' || isTransfer(ix) || selfRent(ix) || specific.has(index) ? [] : [{index, program: ix.program, name: ix.name}]));
+  const firstNamed = named[0];
+  if (firstNamed !== undefined) out.push({kind: 'non-transfer', severity: 'warn', word: null, at: firstNamed.index, instructions: named});
   return out;
+}
+
+/** The instructions a flag names by index — F3's and F4's, F5's and F6's decoded approvals, F8's first instruction. */
+function namedBy(f: RedFlag): number[] {
+  switch (f.kind) {
+    case 'assign':
+    case 'set-authority':
+      return f.instructions.map(x => x.index);
+    case 'unlimited-approve':
+    case 'bounded-approve':
+      return f.approvals.flatMap(a => (a.at === null ? [] : [a.at]));
+    case 'durable-nonce':
+      return [f.at];
+    default:
+      return [];
+  }
 }
 
 /** The words the user must type: one per (transaction, block kind), in the transactions' order and each one's flag order. */

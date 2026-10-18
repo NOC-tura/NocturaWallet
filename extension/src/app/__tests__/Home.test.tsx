@@ -699,6 +699,45 @@ describe('#11: a site’s transaction waiting for its confirmation (B1c-2)', () 
     expect(screen.queryByText(/waits for your confirmation/)).toBeNull();
   });
 
+  // B1c-3 (the carried visual item): B1b's pending-send strip sits on the dApp strip's gutter with its trailing
+  // chevron — before, `.app-strip`'s width: 100% beside `.app-banner`'s side margins ran it past the popup's right edge.
+  // Computed in happy-dom from the real sheets (the design system's tokens resolve the margins); the visual pass
+  // measures the viewport.
+  it('the pending strip: on the dApp strip’s gutter, its own chevron, never wider than the popup (computed style)', async () => {
+    const sheets = UI_SHEETS.map(sheet => {
+      const style = document.createElement('style');
+      style.textContent = readFileSync(join(__dirname, '..', '..', '..', sheet), 'utf8');
+      return document.head.appendChild(style);
+    });
+    try {
+      await renderHome({
+        before: async ext => {
+          await waitingDapp(ext);
+          await ext.local.set(PENDING_KEY, [pendingRecord({id: 'p1', account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '2480000000'}, createdAt: Date.now()})]);
+        },
+      });
+      const dapp = await screen.findByRole('button', {name: 'A transaction from jup.ag waits for your confirmation'});
+      const pending = (await screen.findByText('Sending 2.48 SOL · pending')).closest('button') as HTMLButtonElement;
+      expect(pending.className).toBe('banner info app-banner app-strip app-pending-strip');
+      expect(pending.querySelectorAll('.app-strip-chev svg')).toHaveLength(1);
+      expect(unstyledClasses(pending, selectorsOf(UI_SHEETS))).toEqual([]);
+      const box = (el: Element) => {
+        const cs = getComputedStyle(el);
+        return {width: cs.width, marginLeft: cs.marginLeft, marginRight: cs.marginRight, alignItems: cs.alignItems};
+      };
+      expect(box(pending)).toEqual({width: 'auto', marginLeft: '20px', marginRight: '20px', alignItems: 'center'});
+      expect(box(pending)).toEqual(box(dapp));
+      expect(getComputedStyle(pending.querySelector('.app-strip-chev') as Element).flexShrink).toBe('0');
+      // Negative control: the strip as B1b drew it — width 100% and side margins, wider than its container.
+      const bare = document.createElement('button');
+      bare.className = 'banner info app-banner app-strip';
+      document.querySelector('.s-dash')?.append(bare);
+      expect(box(bare)).toEqual({width: '100%', marginLeft: '16px', marginRight: '16px', alignItems: 'flex-start'});
+    } finally {
+      for (const s of sheets) s.remove();
+    }
+  });
+
   // Fix round 1 item 5 (rule 6): the strip is a LockedButton — a second click before `disabled` is lifted opens #10
   // no second time. happy-dom drops `disabled` before React re-renders it, so the test lifts it itself (as Send's).
   it('the strip is a LockedButton: a double click opens #10 once', async () => {

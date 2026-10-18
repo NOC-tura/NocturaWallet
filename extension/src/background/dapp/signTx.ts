@@ -18,7 +18,7 @@ import {firstSignature} from '../../../../core/solana/broadcast';
 import {tokenForMint, WALLET_TOKENS} from '../../../../core/solana/balances';
 import {runtimeFor} from './ports';
 import {answer, queueAccess} from './queue';
-import {feeOf, simulateTransactions, type SimState, type TxOutcome} from './simulate';
+import {feeOf, simulateTransactions, withAmountDecimals, type SimState, type TxOutcome} from './simulate';
 import {overridesMatch, type RedFlag} from './redFlags';
 import {grantIn, putGrant, type Entry, type Tx} from './store';
 import {slotOf} from './txRequest';
@@ -160,7 +160,7 @@ export async function txDetail(ext: Ext, e: Entry, session: readonly {publicKey:
   const sim = e.sim?.status === 'ok' ? e.sim.sim : null;
   const transactions = parsed.txs.map((p, i): TxItemView => {
     const keys = sim?.keys[i];
-    const instructions = keys !== undefined ? decodeInstructions(p, {keys}) : p.lookups.length === 0 ? decodeInstructions(p, resolveKeys(p, new Map())) : null;
+    const instructions = keys !== undefined ? withAmountDecimals(decodeInstructions(p, {keys}), sim?.amountDecimals[i] ?? []) : p.lookups.length === 0 ? decodeInstructions(p, resolveKeys(p, new Map())) : null;
     const local = instructions === null ? null : feeOf(p, instructions);
     return {
       version: p.version,

@@ -120,14 +120,17 @@ body:has(.app-popup) {
 }
 /* Final review MUST-FIX 2: #11's dApp re-authentication strip — on the hero's gutter (--space-5, the hero's own
    margin), a gap before the hero below it, the line centred on the icons, and the design's trailing chevron (#11's
-   own strip, ix:6374: 18 px in --fg-secondary; four classes outrank `.banner.info svg`'s --info). */
-.s-dash .app-banner.app-dapp-strip {
+   own strip, ix:6374: 18 px in --fg-secondary; four classes outrank `.banner.info svg`'s --info). B1c-3: B1b's
+   pending-send strip (app-pending-strip) the same. */
+.s-dash .app-banner.app-dapp-strip,
+.s-dash .app-banner.app-pending-strip {
   /* `.app-strip`'s width: 100% plus side margins ran the strip past the popup's right edge (its chevron clipped). */
   width: auto;
   margin: var(--space-3) var(--space-5) var(--space-4);
   align-items: center;
 }
-.app-dapp-strip > .noc-body-sm {
+.app-dapp-strip > .noc-body-sm,
+.app-pending-strip > .noc-body-sm {
   flex: 1;
   min-width: 0;
 }
@@ -1509,7 +1512,8 @@ body:has(.app-window) {
   background: linear-gradient(135deg, var(--accent), var(--accent-shielded));
 }
 /* Final review MUST-FIX 2: a verified brand's own tile, as the design draws it (approve/ui.tsx BRAND_TILES says where
-   each comes from): the window's mockups for Jupiter, Magic Eden, Tensor and Noctura, #49's tiles for Drift and Kamino. */
+   each comes from): the window's mockups for Jupiter, Magic Eden and Noctura, #49's tiles for Drift and Kamino — and,
+   B1c-3 (R9), for Tensor, which the design draws differently (#47 cyan, #49 violet): #49's (its latest), on every screen. */
 .s9-origin-card .ico.app-brand-jupiter {
   background: linear-gradient(135deg, #FFC800, #FF7A00);
 }
@@ -1517,7 +1521,7 @@ body:has(.app-window) {
   background: linear-gradient(135deg, #14F195, #9945FF);
 }
 .s9-origin-card .ico.app-brand-tensor {
-  background: linear-gradient(135deg, #00DBFF, #0066FF);
+  background: linear-gradient(135deg, oklch(72% 0.18 295), oklch(65% 0.16 320));
 }
 .s9-origin-card .ico.app-brand-noctura {
   background: linear-gradient(135deg, #B084FC, #5BE3C2);

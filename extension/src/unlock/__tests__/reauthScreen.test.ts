@@ -626,8 +626,9 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
   it('a dApp’s transaction: "You are about to approve", the site and what leaves the account; confirmed → back to the approval window, nothing sent here', async () => {
     const {h, broadcast} = await shown(DAPP);
     expect(text(el('ra-about'))).toBe('You are about to approve');
-    // Final review MUST-FIX 2: the intent card leads with the headline amount, as #10 draws it (ix:6061-6064).
-    expect([visible(el('ra-amount-row')), text(el('ra-amount')), text(el('ra-symbol'))]).toEqual([true, '−0.001005', 'SOL']);
+    // Final review MUST-FIX 2: the intent card leads with the headline amount, as #10 draws it (ix:6061-6064) — B1c-3:
+    // unsigned, like the design's send headline (ix:6062); the minus stays on the rows (below, and the next tests).
+    expect([visible(el('ra-amount-row')), text(el('ra-amount')), text(el('ra-symbol'))]).toEqual([true, '0.001005', 'SOL']);
     expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag']);
     expect([...el('ra-reasons').children].map(text)).toEqual(['Re-auth required for the first send to a new address.']);
     expect(text(el('ra-cancel'))).toBe('Cancel');
@@ -654,7 +655,7 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
     const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
     await shown({...DAPP, transactions: 2, outgoing: [{mint: null, symbol: 'SOL', amount: '5001', decimals: 9}, {mint: USDC, symbol: 'USDC', amount: '250000000', decimals: 6}]});
     expect(visible(el('ra-amount-row'))).toBe(false);
-    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'Transactions2', 'SOL−0.000005001', 'USDC−250']);
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'Transactions2', 'SOL\u22120.000005001', 'USDC\u2212250']);
     loadPage();
     await shown({...DAPP, omitted: 1});
     expect(visible(el('ra-amount-row'))).toBe(false);
@@ -694,7 +695,7 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
     await shown({...DAPP, reasons: ['override'], flags: [{tx: 0, row: 'F4', word: 'AUTHORITY', step: null}]});
     // A single transaction: the row names what, the headline is still the one asset leaving.
     expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'SetAuthority on an account you own']);
-    expect([visible(el('ra-amount-row')), text(el('ra-amount'))]).toEqual([true, '−0.001005']);
+    expect([visible(el('ra-amount-row')), text(el('ra-amount'))]).toEqual([true, '0.001005']);
   });
 
   it('a dApp’s transaction: expired and locked say what is true for a site’s request; Cancel only closes the tab', async () => {
