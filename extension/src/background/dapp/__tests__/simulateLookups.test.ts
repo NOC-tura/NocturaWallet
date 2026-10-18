@@ -105,8 +105,11 @@ describe('an address a lookup table does not resolve (controller ruling): Reject
   const tx = wire([approveIx(U64_MAX)], {tables: [altOf(SRC)]});
 
   it('an unlimited approve whose source comes through an unresolved index: failed, refused `simulation-failed`; F1 still names it', async () => {
-    const sim = await run(approveScene([]), [tx]);
+    const s = approveScene([]);
+    const sim = await run(s, [tx]);
     expect(sim.keys[0]).toContain(null);
+    // Final review M2: a transaction the wallet refuses is never sent to the proxy's simulateTransaction.
+    expect(s.simulations).toEqual([]);
     expect(UNRESOLVED_LOOKUP_DETAIL).toBe('unresolved-lookup-table-address');
     expect(sim.outcomes).toEqual([{ok: false, error: 'failed', detail: UNRESOLVED_LOOKUP_DETAIL}]);
     expect(sim.flags[0]?.map(f => f.kind)).toContain('unknown-program');
@@ -117,8 +120,17 @@ describe('an address a lookup table does not resolve (controller ruling): Reject
   });
 
   it('control: the same index resolved — simulated, F5 blocks it (not a failure)', async () => {
-    const sim = await run(approveScene([SRC]), [tx]);
+    const s = approveScene([SRC]);
+    const sim = await run(s, [tx]);
     expect(sim.keys[0]).not.toContain(null);
+    expect(s.simulations).toHaveLength(1);
+    // In a batch, only the resolved transaction is simulated (final review M2).
+    const batch = approveScene([SRC]);
+    // The first transaction's table is one the chain does not hold: its index resolves to nothing.
+    const missing = {...altOf(SRC), key: new PublicKey(new Uint8Array(32).fill(97))} as AddressLookupTableAccount;
+    const both = await run(batch, [wire([approveIx(U64_MAX)], {tables: [missing]}), tx]);
+    expect([both.keys[0]?.includes(null), both.keys[1]?.includes(null)]).toEqual([true, false]);
+    expect(batch.simulations).toHaveLength(1);
     expect(sim.outcomes[0]).toMatchObject({ok: true});
     expect(sim.flags[0]?.find(f => f.kind === 'unlimited-approve')).toMatchObject({severity: 'block', word: 'USDC'});
     expect(sim.reasons).toContain('override');

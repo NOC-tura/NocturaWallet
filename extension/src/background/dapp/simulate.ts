@@ -285,13 +285,15 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
     const pre = new Map(addresses.map((a, j) => [a, preAccounts[j] ?? null]));
     amountMints.push(amountMintsOf(decoded, pre));
     const firstSend = firstSendOf(decoded, pre, account, input.known, a => before.has(a));
-    const sim = await deps.reader.simulateTransaction(base64.encode(input.wires[i] ?? new Uint8Array()), {accounts: addresses});
-    slot = Math.max(slot, sim.slot);
+    // An address a lookup table does not resolve: Reject only whatever the node would say — and (final review M2) the
+    // node is not asked: no simulateTransaction for a transaction the wallet already refuses.
     if (keys.includes(null)) {
       outcomes.push({ok: false, error: 'failed', detail: UNRESOLVED_LOOKUP_DETAIL});
       flagInputs.push({tx: p, decoded, pre, outcome: {status: 'failed'}, firstSend});
       continue;
     }
+    const sim = await deps.reader.simulateTransaction(base64.encode(input.wires[i] ?? new Uint8Array()), {accounts: addresses});
+    slot = Math.max(slot, sim.slot);
     if (sim.err !== null) {
       const detail = JSON.stringify(sim.err);
       // F10 (O2): a transaction k ≥ 2 whose error names an account an earlier transaction of the batch creates — the
