@@ -68,6 +68,15 @@ describe('mintInfo', () => {
     expect(mintInfo(withU32(base, 0, 0), TOKEN_PROGRAM)).toMatchObject({mintAuthority: null, freezeAuthority: FREEZER});
   });
 
+  // Fix round 1, I2: both programs' Mint::unpack refuse is_initialized !== 1 (UninitializedAccount / InvalidAccountData).
+  it('I2: is_initialized must be 1 — an all-zero mint, or byte 45 = 2, is no mint, matching Mint::unpack', () => {
+    expect(mintInfo(new Uint8Array(MINT_SIZE), TOKEN_PROGRAM)).toBeNull();
+    expect(mintInfo(withByte(mintBytes({mintAuthority: ISSUER}), 45, 2), TOKEN_PROGRAM)).toBeNull();
+    expect(mintInfo(withByte(mintBytes({mintAuthority: ISSUER}), 45, 0), TOKEN_PROGRAM)).toBeNull();
+    // Positive control: byte 45 = 1 (mintBytes' own default) still reads.
+    expect(mintInfo(mintBytes({mintAuthority: ISSUER}), TOKEN_PROGRAM)).toMatchObject({mintAuthority: ISSUER});
+  });
+
   it('the extended layout: the AccountType byte must be Mint (1) — an Account’s (2) or Uninitialized (0) is no mint', () => {
     const ext = [permanentDelegateExt(PERMANENT_DELEGATE)];
     expect(mintInfo(mintBytes({extensions: ext}), TOKEN_2022_PROGRAM)).toMatchObject({permanentDelegate: PERMANENT_DELEGATE});
@@ -112,6 +121,18 @@ describe('mintInfo', () => {
     expect(mintInfo(forged, TOKEN_2022_PROGRAM)).toBeNull();
     // Positive control: one byte longer reads.
     expect(mintInfo(mintBytes({extensions: [permanentDelegateExt(PERMANENT_DELEGATE), otherExt(3, filler + 1)]}), TOKEN_2022_PROGRAM)).toMatchObject({permanentDelegate: PERMANENT_DELEGATE});
+  });
+
+  // Fix round 1, I1: Token-2022's own `adjust_len_for_multisig` pads a mint that would otherwise land at exactly 355
+  // bytes (a Multisig's size) with 2 extra zero bytes — a real mint can end in a short `[0, 0]` tail, and it must read.
+  it('I1: a Multisig-size pad (357 bytes, a [0, 0] tail) is a real mint, matching Token-2022’s own TLV walk', () => {
+    const padded = mintBytes({extensions: [permanentDelegateExt(PERMANENT_DELEGATE), otherExt(3, 149)], tail: [0, 0]});
+    expect(padded.length).toBe(MULTISIG_SIZE + 2);
+    expect(mintInfo(padded, TOKEN_2022_PROGRAM)).toMatchObject({permanentDelegate: PERMANENT_DELEGATE});
+    // Negative control: a non-zero type with only 2 or 3 bytes left — too little for even its own length field —
+    // stays malformed, never read as the pad's clean end (the same shapes the "TLV that overruns" test above pins).
+    expect(mintInfo(mintBytes({extensions: [permanentDelegateExt(PERMANENT_DELEGATE)], tail: [14, 0]}), TOKEN_2022_PROGRAM)).toBeNull();
+    expect(mintInfo(mintBytes({extensions: [permanentDelegateExt(PERMANENT_DELEGATE)], tail: [14, 0, 64]}), TOKEN_2022_PROGRAM)).toBeNull();
   });
 });
 
@@ -167,5 +188,14 @@ describe('tokenAccountInfo', () => {
     expect(forged.length).toBe(MULTISIG_SIZE);
     expect(tokenAccountInfo(forged, TOKEN_2022_PROGRAM)).toBeNull();
     expect(tokenAccountInfo(tokenAccountBytes({mint: MINT, owner: OWNER, amount: 1n, extensions: [otherExt(3, MULTISIG_SIZE - (ACCOUNT_SIZE + 1) - 3)]}), TOKEN_2022_PROGRAM)).toMatchObject({amount: 1n});
+  });
+
+  // Fix round 1, I1: the account twin of the mint pad above — a real token account can end in the same `[0, 0]` tail.
+  it('I1: a Multisig-size pad (357 bytes, a [0, 0] tail) is a real token account; a non-zero type with 2–3 bytes left is not', () => {
+    const padded = tokenAccountBytes({mint: MINT, owner: OWNER, amount: 1n, extensions: [otherExt(7, 185)], tail: [0, 0]});
+    expect(padded.length).toBe(MULTISIG_SIZE + 2);
+    expect(tokenAccountInfo(padded, TOKEN_2022_PROGRAM)).toMatchObject({amount: 1n});
+    expect(tokenAccountInfo(tokenAccountBytes({mint: MINT, owner: OWNER, extensions: [otherExt(7, 0)], tail: [9, 0]}), TOKEN_2022_PROGRAM)).toBeNull();
+    expect(tokenAccountInfo(tokenAccountBytes({mint: MINT, owner: OWNER, extensions: [otherExt(7, 0)], tail: [9, 0, 1]}), TOKEN_2022_PROGRAM)).toBeNull();
   });
 });

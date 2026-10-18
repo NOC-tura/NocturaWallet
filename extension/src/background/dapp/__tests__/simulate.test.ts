@@ -150,7 +150,9 @@ describe('simulateTransactions', () => {
       // getAccountsData, not from the holdings snapshot above (which still feeds only the decimals map and the
       // reauth balance denominator) — so the scene must say what those addresses held right before this transaction.
       accounts: new Map([
-        [ODD_MINT, {lamports: 1n, owner: TOKEN_PROGRAM, data: Uint8Array.from({length: 82}, (_, i) => (i === 44 ? 4 : 0))}],
+        // B1c-3 fix round 1 (I2): byte 45 (is_initialized) must be 1 — tokenState's mintInfo now refuses an
+        // uninitialized mint — alongside byte 44's decimals; every other byte stays 0 (no authorities).
+        [ODD_MINT, {lamports: 1n, owner: TOKEN_PROGRAM, data: Uint8Array.from({length: 82}, (_, i) => (i === 44 ? 4 : i === 45 ? 1 : 0))}],
         [SRC, tokenAfter(MAINNET_NOC_MINT, 100_000_000_000n)],
         [closing, tokenAfter(MAINNET_USDC_MINT, 2_000_000n)],
       ]),
