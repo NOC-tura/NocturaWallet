@@ -150,7 +150,7 @@ function Payload({item, labels}: {item: TxItem; labels: readonly AddressLabel[]}
               <span className="v mono">
                 {ix.name ?? TX_TEXT.unknownInstruction}
                 {/* Fix round 1, I3 (controller ruling): a known program's instruction the decoder names but did not
-                    decode the fields of (mintTo, withdrawNonceAccount, transferWithSeed, …) never looks fully decoded. */}
+                    decode the fields of (mintTo, withdrawNonceAccount, initializeMint, …) never looks fully decoded. */}
                 {ix.fields.length === 0 ? <span className="noc-caption"> · {TX_TEXT.notDecoded}</span> : null}
               </span>
             </div>

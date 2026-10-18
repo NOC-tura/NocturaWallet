@@ -8,6 +8,7 @@ import {ADDRESS_LOOKUP_TABLE_PROGRAM} from '../decode/keys';
 import {TOKEN_2022_PROGRAM, TOKEN_PROGRAM} from '../decode/decode';
 import {parseWire} from '../decode/wire';
 import {simulateTransactions, WRAPPED_SOL_MINT, type TxSimulation} from '../simulate';
+import {ACCOUNT_SIZE, mintBytes, otherExt, tokenAccountBytes, withByte} from './tokenBytes';
 
 const ME = new PublicKey(PUB);
 const TO = new PublicKey(RECIPIENT);
@@ -384,6 +385,32 @@ describe('simulateTransactions', () => {
     const line = out?.ok === true ? out.changes.find(c => c.mint === ODD_MINT) : undefined;
     // Rejected: decimals stay unknown (null, shown in base units) rather than the forged 99.
     expect(line).toMatchObject({mint: ODD_MINT, amount: '-100000', decimals: null, usdMicros: null});
+  });
+
+  // B1c-3 (spec B1c §3.3 rev 3.6): token accounts and mints are read through tokenState's parsers — one source of truth.
+  it('one parser: an extended Token-2022 account and mint are read; a TLV that overruns, or a mint’s padding not zero, is not', async () => {
+    const t22 = (amount: bigint, tail: readonly number[] = []): SimulatedAccount => ({
+      lamports: 2_039_280n,
+      owner: TOKEN_2022_PROGRAM,
+      data: tokenAccountBytes({mint: ODD_MINT, owner: ME.toBase58(), amount, extensions: [otherExt(7, 0)], tail}),
+    });
+    const mint = mintBytes({decimals: 4, extended: true});
+    const lineFor = async (post: SimulatedAccount, mintData: Uint8Array) => {
+      const s = scene({
+        accounts: new Map<string, AccountData | null>([
+          [SRC, t22(1_000_000n)],
+          [ODD_MINT, {lamports: 1n, owner: TOKEN_2022_PROGRAM, data: mintData}],
+        ]),
+        post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : a === SRC ? post : null),
+      });
+      const out = (await run(s, [wire([unknownIx([SRC])])])).outcomes[0];
+      return out?.ok === true ? out.changes.find(c => c.mint === ODD_MINT) : undefined;
+    };
+    expect(await lineFor(t22(900_000n), mint)).toMatchObject({amount: '-100000', decimals: 4});
+    // The post-state's TLV cut short: not a token account of the wallet's any more — the whole pre amount shows as lost.
+    expect(await lineFor(t22(900_000n, [7]), mint)).toMatchObject({amount: '-1000000', decimals: 4});
+    // The mint's padding before its AccountType byte not zero: no mint — its decimals unknown (base units).
+    expect(await lineFor(t22(900_000n), withByte(mint, ACCOUNT_SIZE - 1, 1))).toMatchObject({amount: '-100000', decimals: null});
   });
 
   it('an own account reassigned to someone else (a CPI SetAuthority AccountOwner) re-authenticates too, on top of the −all loss already shown', async () => {

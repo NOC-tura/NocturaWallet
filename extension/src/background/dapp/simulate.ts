@@ -1,4 +1,4 @@
-import {base58, base64, base64urlnopad} from '@scure/base';
+import {base64, base64urlnopad} from '@scure/base';
 import type {WalletDeps} from '../deps';
 import {dappReauthReasons, usdMicros, type DappReauthReason} from '../reauthPolicy';
 import {MAINNET_NOC_MINT, MAINNET_USDC_MINT, MAINNET_USDT_MINT} from '../../../../core/presale/addresses';
@@ -6,6 +6,7 @@ import type {AccountData} from '../../../../core/solana/rpc';
 import {COMPUTE_BUDGET_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, addressField, decodeInstructions, type DecodedInstruction} from './decode/decode';
 import {ADDRESS_LOOKUP_TABLE_PROGRAM, resolveKeys, tableAddresses, tablesOf} from './decode/keys';
 import {isWritableIndex, type ParsedTx} from './decode/wire';
+import {mintInfo, tokenAccountInfo} from './tokenState';
 
 /**
  * The simulation (spec B1c §3.3, B1 §3): a dApp's transactions are run through the proxy (`simulateTransaction`, one
@@ -67,35 +68,15 @@ export interface TxSimulation {
 }
 
 /**
- * Whether `a`'s bytes are a real SPL Token / Token-2022 account — never by length alone (fix round 1, I2: a 355-byte
- * Multisig, or any other same-length impostor, must never be read as a token account just because it is long enough).
- * Classic Token accounts are exactly 165 bytes; Token-2022 accounts are the same 165 bytes, or longer with an
- * AccountType::Account discriminator (2) at a fixed offset 165 (its TLV extensions follow) — EXCEPT 355 bytes
- * specifically, the Multisig struct's own size, which collides with that discriminator's position by coincidence and
- * must stay excluded even when byte 165 happens to equal 2. Either way, the state byte (108) must be Initialized (1)
- * or Frozen (2) — never Uninitialized (0), which carries no meaning at all.
- */
-function isTokenAccountLayout(a: AccountData): boolean {
-  if (a.owner === TOKEN_PROGRAM) {
-    if (a.data.length !== 165) return false;
-  } else if (a.owner === TOKEN_2022_PROGRAM) {
-    if (!(a.data.length === 165 || (a.data.length > 165 && a.data.length !== 355 && a.data[165] === 2))) return false;
-  } else {
-    return false;
-  }
-  return a.data[108] === 1 || a.data[108] === 2;
-}
-
-/**
  * `a`'s state as a token account owned by `owner` — read from CHAIN STATE alone (fix round 1, I1: never the decoded
  * instruction, which a dApp program can route an Approve or a close-authority change through by CPI without any
- * top-level instruction that names it). Null when `a` is not a real token account (`isTokenAccountLayout`, I2) or its
- * owner field is not `owner`. `delegate`/`delegatedAmount` (COption<Pubkey> at 72..108, u64 at 121..129) and
- * `closeAuthority` (COption<Pubkey> at 129..165) are read as the runtime does; `lamports` is `a`'s own, for Promoted
- * Minor 3 (a close to a foreign destination moves them out of the wallet's custody without ever touching the wallet's
- * own system account). `isNative` is the `is_native` COption's own tag (u32 LE at 109) — fix round 3, IMPORTANT: this,
- * not the mint address, is what decides native status (below), since Token-2022 has its OWN native mint
- * (`9pan9bMn5HatX4EJdBwg9VgCa7Uz5HL8N1m5D3NdXejP`) carrying the identical invariant at the identical offset.
+ * top-level instruction that names it). Null when `a` is not a real token account (tokenState's `tokenAccountInfo` — I2:
+ * never by length alone, a 355-byte Multisig excluded; B1c-3: one parser for the simulation and the red flags) or its
+ * owner field is not `owner`. `lamports` is `a`'s own, for Promoted Minor 3 (a close to a foreign destination moves them
+ * out of the wallet's custody without ever touching the wallet's own system account). `isNative` is the `is_native`
+ * COption's own tag — fix round 3, IMPORTANT: this, not the mint address, is what decides native status (below), since
+ * Token-2022 has its OWN native mint (`9pan9bMn5HatX4EJdBwg9VgCa7Uz5HL8N1m5D3NdXejP`) carrying the identical invariant at
+ * the identical offset.
  */
 interface OwnTokenAccount {
   mint: string;
@@ -107,45 +88,25 @@ interface OwnTokenAccount {
   isNative: boolean;
 }
 function ownTokenAccountOf(a: AccountData | null, owner: string): OwnTokenAccount | null {
-  if (a === null || !isTokenAccountLayout(a)) return null;
-  if (base58.encode(a.data.subarray(32, 64)) !== owner) return null;
-  const view = new DataView(a.data.buffer, a.data.byteOffset, a.data.byteLength);
-  return {
-    mint: base58.encode(a.data.subarray(0, 32)),
-    amount: view.getBigUint64(64, true),
-    lamports: a.lamports,
-    delegate: view.getUint32(72, true) === 1 ? base58.encode(a.data.subarray(76, 108)) : null,
-    delegatedAmount: view.getBigUint64(121, true),
-    isNative: view.getUint32(109, true) === 1,
-    closeAuthority: view.getUint32(129, true) === 1 ? base58.encode(a.data.subarray(133, 165)) : null,
-  };
+  const t = a === null ? null : tokenAccountInfo(a.data, a.owner);
+  if (a === null || t === null || t.owner !== owner) return null;
+  return {mint: t.mint, amount: t.amount, lamports: a.lamports, delegate: t.delegate, delegatedAmount: t.delegatedAmount, closeAuthority: t.closeAuthority, isNative: t.isNative};
 }
 
 /**
- * The raw owner field (32..64) of any real token-account-layout account, whoever it names — unlike `ownTokenAccountOf`,
- * which already requires the owner to match and so cannot see what it changed TO. Fix round 2, ruled-in: an own
- * account's owner reassigned away (a CPI SetAuthority AccountOwner) is its own re-authentication signal, on top of the
- * −all loss `ownTokenAccountOf`'s owner mismatch already produces (the post side no longer reads as "ours" at all).
+ * The raw owner field of any real token account, whoever it names — unlike `ownTokenAccountOf`, which already requires
+ * the owner to match and so cannot see what it changed TO. Fix round 2, ruled-in: an own account's owner reassigned
+ * away (a CPI SetAuthority AccountOwner) is its own re-authentication signal, on top of the −all loss
+ * `ownTokenAccountOf`'s owner mismatch already produces (the post side no longer reads as "ours" at all).
  */
 function rawTokenOwner(a: AccountData | null): string | null {
-  if (a === null || !isTokenAccountLayout(a)) return null;
-  return base58.encode(a.data.subarray(32, 64));
+  return a === null ? null : (tokenAccountInfo(a.data, a.owner)?.owner ?? null);
 }
 
-/** A mint account's decimals (byte 44 of the base layout — 82 bytes classic, or Token-2022 with the same AccountType
- * discriminator at 165, this time marking a Mint (1) rather than an Account (2)), or null. Fix round 2 (Minor,
- * consistent with I2): the same 355-byte exclusion as `isTokenAccountLayout` — a Multisig that happens to be 355 bytes
- * with byte 165 equal to 1 is not an extended Mint either. */
+/** A mint account's decimals (tokenState's `mintInfo`: either program's mint, never a 355-byte Multisig — fix round 2,
+ * Minor, consistent with I2), or null. */
 function mintDecimals(a: AccountData | null): number | null {
-  if (a === null) return null;
-  if (a.owner === TOKEN_PROGRAM) {
-    if (a.data.length !== 82) return null;
-  } else if (a.owner === TOKEN_2022_PROGRAM) {
-    if (!(a.data.length === 82 || (a.data.length > 165 && a.data.length !== 355 && a.data[165] === 1))) return null;
-  } else {
-    return null;
-  }
-  return a.data[44] ?? null;
+  return a === null ? null : (mintInfo(a.data, a.owner)?.decimals ?? null);
 }
 
 /**

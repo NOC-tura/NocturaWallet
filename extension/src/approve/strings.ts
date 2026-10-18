@@ -152,7 +152,7 @@ export const TX_TEXT = {
   /** Controller (owner copy): an instruction of a decoded program whose tag the wallet does not know. */
   unknownInstruction: 'unknown instruction',
   /** Fix round 1, I3 (controller ruling, overrides plan R2's display): a known program's instruction the decoder names but
-   * does not decode the fields of (mintTo, transferWithSeed, createAccountWithSeed, withdrawNonceAccount, Token-2022
+   * does not decode the fields of (mintTo, initializeMint, initializeNonceAccount, withdrawNonceAccount, Token-2022
    * extension instructions, recoverNested, …) must never look fully decoded. */
   notDecoded: 'Details not decoded — check them on the site before approving.',
   computeUnits: 'Compute units',
