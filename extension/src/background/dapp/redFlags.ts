@@ -20,7 +20,8 @@ import {usesDurableNonce} from './txRequest';
  * the wallet as the current authority; or, in chain state, an own token account's owner or close authority changed, a
  * mint authority of the wallet's moved (block, AUTHORITY) · F5 an approve of 99 % or more of the source's balance
  * (O5; u64::MAX and the whole balance always are) — decoded against the balance before, or the delegation it leaves
- * against the balance after; in chain state against the balance after (O8) — (block, the wallet's own symbol or
+ * against the balance after; in chain state against the balance after (O8); each balance less what earlier transactions
+ * of the batch send out of the source (final review I1) — (block, the wallet's own symbol or
  * UNLIMITED at u64::MAX, ALLOWANCE below it) · F6 any other approve (warn) · F7 a
  * Token-2022 mint's freeze authority, permanent delegate or transfer hook, or a mint that cannot be read (warn; a
  * classic mint never, O3) · F8 a durable nonce (warn) · F9 the whole balance to a first-time address (warn) · F10 a
@@ -152,7 +153,7 @@ function mintsOf(account: string, t: TxFlagInput): Map<string, number | null> {
 
 /** The flags of every transaction of the request, each list in the order the window shows them. */
 export function redFlagsOf(input: RedFlagInput): TxFlags[] {
-  return input.txs.map(t => ordered(txFlags(input, t)));
+  return input.txs.map((t, k) => ordered(txFlags(input, t, k)));
 }
 
 function ordered(flags: RedFlag[]): RedFlag[] {
@@ -163,7 +164,7 @@ function ordered(flags: RedFlag[]): RedFlag[] {
     .map(x => x.f);
 }
 
-function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
+function txFlags(input: RedFlagInput, t: TxFlagInput, k: number): RedFlag[] {
   const {account, mints} = input;
   const {decoded, pre} = t;
   const post = t.outcome.status === 'simulated' ? t.outcome.post : null;
@@ -234,6 +235,26 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
   // a block, review 3 L13), or the delegation it leaves (its own delegate's, no more than it granted — L12) against the
   // balance after; a delegation seen in chain state against the balance after.
   const nearlyAll = (amount: bigint, balance: bigint): boolean => amount * 100n >= balance * WHOLE_BALANCE_PERCENT;
+  // Final review I1: every transaction of a batch is simulated against the state as it is now, so an approve in step k
+  // would be judged against a balance steps 1 … k−1 have already moved out. What an EARLIER simulated step sends out of
+  // an own source (its pre-state's amount minus its post-state's; an account it closes or hands to another owner counts
+  // as all of it) is taken off that source's balances here — fail closed only: an inflow never raises them.
+  const drained = (source: string): bigint => {
+    let out = 0n;
+    for (const earlier of input.txs.slice(0, k)) {
+      if (earlier.outcome.status !== 'simulated' || !earlier.outcome.post.has(source)) continue;
+      const was = tokenOf(earlier.pre.get(source));
+      if (was === null || was.owner !== account) continue;
+      const now = tokenOf(earlier.outcome.post.get(source));
+      const left = now !== null && now.owner === account ? now.amount : 0n;
+      if (was.amount > left) out += was.amount - left;
+    }
+    return out;
+  };
+  const lessDrained = (source: string, balance: bigint): bigint => {
+    const d = drained(source);
+    return balance > d ? balance - d : 0n;
+  };
   const found: {approval: Approval; unlimited: boolean}[] = [];
   const approval = (at: number | null, source: string, mint: string | null, delegate: string | null, amount: bigint, balance: bigint, unlimited: boolean) => {
     const decimals = decimalsOf(mint);
@@ -252,10 +273,10 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
     const own = src !== null && src.owner === account;
     if (!own && addressField(ix, 'owner') !== account) continue;
     const amount = BigInt(value.value);
-    const before = own ? src.amount : 0n;
+    const before = lessDrained(source, own ? src.amount : 0n);
     const after = ownAfter(source);
     const delegate = addressField(ix, 'delegate');
-    const left = after !== null && after.delegate !== null && after.delegate === delegate && after.delegatedAmount <= amount && nearlyAll(after.delegatedAmount, after.amount);
+    const left = after !== null && after.delegate !== null && after.delegate === delegate && after.delegatedAmount <= amount && nearlyAll(after.delegatedAmount, lessDrained(source, after.amount));
     approval(index, source, src?.mint ?? addressField(ix, 'mint'), delegate, amount, before, nearlyAll(amount, before) || left);
   }
   for (const [address, after] of post ?? []) {
@@ -264,7 +285,8 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
     const preToken = tokenOf(pre.get(address));
     const preOwn = preToken?.owner === account ? preToken : null;
     if (postToken.delegate === (preOwn?.delegate ?? null) && postToken.delegatedAmount <= (preOwn?.delegatedAmount ?? 0n)) continue;
-    approval(null, address, postToken.mint, postToken.delegate, postToken.delegatedAmount, postToken.amount, nearlyAll(postToken.delegatedAmount, postToken.amount));
+    const balance = lessDrained(address, postToken.amount);
+    approval(null, address, postToken.mint, postToken.delegate, postToken.delegatedAmount, balance, nearlyAll(postToken.delegatedAmount, balance));
   }
   // A chain-state delegation is folded into a decoded approve only when it is that approve's own (Task 2 review I1): the
   // same source and severity, the same delegate, and no more than it granted — otherwise it is listed with its own

@@ -449,6 +449,37 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
     expect(kinds(viaCpi(10n, small))).toEqual(['unknown-program']);
   });
 
+  it('final review I1: an earlier transaction of the batch sending tokens out of the source lowers the balance a later approve of it is judged against — never raises it', () => {
+    const mine = (amount: bigint, delegatedAmount = 0n) => tokenAcc({mint: MAINNET_USDC_MINT, amount, delegate: delegatedAmount > 0n ? DELEGATE : null, delegatedAmount});
+    const send600: Spec = {ixs: [transferIx(600n)], pre: [[SRC, mine(1_000n)]], post: [[SRC, mine(400n)]]};
+    // Every transaction is simulated against the state as it is now: step 2 sees 1 000, the batch leaves 400.
+    const approve = (amount: bigint): Spec => ({ixs: [approveIx(amount)], pre: [[SRC, mine(1_000n)]], post: [[SRC, mine(1_000n, amount)]]});
+    const [s1, s2] = flagsOf([send600, approve(400n)]);
+    expect(s1).toEqual([]);
+    expect(kinds(s2 ?? [])).toEqual(['unlimited-approve']);
+    expect(find(s2 ?? [], 'unlimited-approve')?.approvals.map(a => [a.at, a.amount, a.balance])).toEqual([[0, '400', '400']]);
+    // The decoded rule alone (no delegation in step 2's post-state), and the chain state's (a CPI in step 2): the same.
+    expect(kinds(flagsOf([send600, {ixs: [approveIx(400n)], pre: [[SRC, mine(1_000n)]]}])[1] ?? [])).toEqual(['unlimited-approve']);
+    expect(kinds(flagsOf([send600, {ixs: [unknownIx(UNKNOWN, [SRC])], pre: [[SRC, mine(1_000n)]], post: [[SRC, mine(1_000n, 400n)]]}])[1] ?? [])).toEqual(['unlimited-approve', 'unknown-program']);
+    // Sending all of it first: any approve of the source is a block (an empty balance, L13's rule).
+    const sendAll: Spec = {ixs: [transferIx(1_000n)], pre: [[SRC, mine(1_000n)]], post: [[SRC, mine(0n)]]};
+    expect(kinds(flagsOf([sendAll, approve(1n)])[1] ?? [])).toEqual(['unlimited-approve']);
+    // Negative controls: 300 of the 400 left is bounded; alone, 400 of 1 000 is bounded.
+    expect(kinds(flagsOf([send600, approve(300n)])[1] ?? [])).toEqual(['bounded-approve']);
+    expect(kinds(flagsOf([approve(400n)])[0] ?? [])).toEqual(['bounded-approve']);
+    // The limit as built (the ruling: EARLIER steps drain): an approve BEFORE the outflow is judged without it.
+    expect(kinds(flagsOf([approve(400n), send600])[0] ?? [])).toEqual(['bounded-approve']);
+    // An earlier step that RECEIVES tokens does not raise the bar: 400 of 1 000 stays bounded, 990 of 1 000 stays a block.
+    const receive600: Spec = {ixs: [unknownIx(UNKNOWN, [SRC])], pre: [[SRC, mine(1_000n)]], post: [[SRC, mine(1_600n)]]};
+    expect(kinds(flagsOf([receive600, approve(400n)])[1] ?? [])).toEqual(['bounded-approve']);
+    expect(find(flagsOf([receive600, approve(400n)])[1] ?? [], 'bounded-approve')?.approvals[0]?.balance).toBe('1000');
+    expect(kinds(flagsOf([receive600, approve(990n)])[1] ?? [])).toEqual(['unlimited-approve']);
+    // Another source's outflow, or a step that did not simulate, drains nothing from this one.
+    const sendOther: Spec = {ixs: [unknownIx(UNKNOWN, [SRC2])], pre: [[SRC2, mine(1_000n)]], post: [[SRC2, mine(400n)]]};
+    expect(kinds(flagsOf([sendOther, approve(400n)])[1] ?? [])).toEqual(['bounded-approve']);
+    expect(kinds(flagsOf([{...send600, post: 'failed'}, approve(400n)])[1] ?? [])).toEqual(['bounded-approve']);
+  });
+
   it('an approve seen both decoded and in chain state is listed once', () => {
     const post: [PublicKey, AccountData][] = [[SRC, tokenAcc({mint: MAINNET_USDC_MINT, amount: 1_000n, delegate: DELEGATE, delegatedAmount: U64_MAX})]];
     expect(find(one({ixs: [approveIx(U64_MAX)], pre: held(), post}), 'unlimited-approve')?.approvals.map(a => a.at)).toEqual([0]);
