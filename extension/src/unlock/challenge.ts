@@ -19,7 +19,18 @@ export type TokenSymbol = keyof typeof TOKENS;
 const DIGITS = /^\d{1,20}$/;
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const SEND_KEYS = ['account', 'amount', 'kind', 'markupLamports', 'markupReason', 'networkLamports', 'priorityLamports', 'reasons', 'recipient', 'rentLamports', 'thresholdCents', 'token'];
-const DAPP_KEYS = ['account', 'kind', 'omitted', 'outgoing', 'reasons', 'site', 'thresholdCents', 'transactions'];
+const DAPP_KEYS = ['account', 'flags', 'kind', 'omitted', 'outgoing', 'reasons', 'site', 'thresholdCents', 'transactions'];
+const FLAG_KEYS = ['row', 'step', 'tx', 'word'];
+/** F5's keys: its scope too (O9 — `unlimited` at u64::MAX, else `nearly-all`). */
+const F5_KEYS = ['row', 'scope', 'step', 'tx', 'word'];
+/**
+ * B1c-3: each row of the red-flag table (spec §3.3, F1–F10) and its override word (a block) or null (a warning) — this
+ * page's own copy of the background's table (reauthChallenges.ts); F5's word is the wallet's own symbol for the token,
+ * or UNLIMITED at u64::MAX and ALLOWANCE below it (review 3 L14), each only with its own scope.
+ */
+const ROW_WORDS: Record<string, string | null> = {F1: null, F2: null, F3: 'ASSIGN', F4: 'AUTHORITY', F5: 'UNLIMITED', F6: null, F7: null, F8: null, F9: null, F10: 'UNCHECKED'};
+const UNLIMITED_WORDS: readonly string[] = ['NOC', 'USDC', 'USDT', 'UNLIMITED', 'ALLOWANCE'];
+const MAX_FLAGS = 50;
 const OUTGOING_KEYS = ['amount', 'decimals', 'mint', 'symbol'];
 const SETTINGS_KEYS = ['autoLockMinutes', 'kind', 'reauthUsdCents'];
 const own = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
@@ -53,6 +64,8 @@ export interface DappDescription {
   /** How many more tokens leave the account than the rows show (plan 2 review 1 L9: the background lists at most 16). */
   omitted: number;
   reasons: string[];
+  /** B1c-3: one row per block — what is overridden and, in a batch, on which transaction ("Transaction 2 of 3"). */
+  overrides: {label: string; transaction: string | null}[];
 }
 export type Description = SendDescription | SettingsDescription | DappDescription;
 
@@ -167,7 +180,36 @@ function describeDapp(a: Record<string, unknown>): DappDescription | null {
     if (line === null) return null;
     lines.push(line);
   }
-  return {kind: 'dapp', site, transactions, outgoing: rows, omitted, reasons: lines};
+  const overrides = overridesOf(a.flags, transactions, reasons as unknown[]);
+  if (overrides === null) return null;
+  return {kind: 'dapp', site, transactions, outgoing: rows, omitted, reasons: lines, overrides};
+}
+
+/**
+ * B1c-3: the rows for what is overridden, from the challenge's flags — each re-validated as the background issues it
+ * (a known row on a transaction of the batch, a block with its own word and a warning with none, a dependent step
+ * naming an earlier one, F5 with its scope and no other row with one, one per (transaction, row), a block exactly when a
+ * reason is `override`); null for anything else. A warning is no row: #10 names what the typed words override.
+ */
+function overridesOf(flags: unknown, transactions: number, reasons: readonly unknown[]): DappDescription['overrides'] | null {
+  if (!Array.isArray(flags) || flags.length > MAX_FLAGS) return null;
+  const seen = new Set<string>();
+  const rows: DappDescription['overrides'] = [];
+  for (const x of flags as unknown[]) {
+    if (typeof x !== 'object' || x === null || Array.isArray(x)) return null;
+    const {row, tx, word, step, scope} = x as Record<string, unknown>;
+    if (!hasExactly(x as Record<string, unknown>, row === 'F5' ? F5_KEYS : FLAG_KEYS) || (row === 'F5' && scope !== 'unlimited' && scope !== 'nearly-all')) return null;
+    if (typeof row !== 'string' || !own(ROW_WORDS, row) || !isInt(tx, 0, transactions - 1) || seen.has(`${tx}:${row}`)) return null;
+    seen.add(`${tx}:${row}`);
+    const expected = ROW_WORDS[row] ?? null;
+    if (expected === null ? word !== null : row === 'F5' ? typeof word !== 'string' || !UNLIMITED_WORDS.includes(word) : word !== expected) return null;
+    if ((word === 'UNLIMITED' && scope !== 'unlimited') || (word === 'ALLOWANCE' && scope !== 'nearly-all')) return null;
+    if (row === 'F10' ? !isInt(step, 1, tx) : step !== null) return null;
+    if (expected === null) continue;
+    const label = row === 'F3' ? REAUTH.overridden.F3 : row === 'F4' ? REAUTH.overridden.F4 : row === 'F10' ? REAUTH.overridden.F10(step as number) : (scope === 'unlimited' ? REAUTH.overridden.F5 : REAUTH.overridden.F5NearlyAll)(word === 'UNLIMITED' || word === 'ALLOWANCE' ? null : (word as string));
+    rows.push({label, transaction: transactions > 1 ? REAUTH.transactionOf(tx + 1, transactions) : null});
+  }
+  return (rows.length > 0) === reasons.includes('override') ? rows : null;
 }
 
 /** The closed-alphabet renderer: a description built only from fixed strings and validated values, or null. */

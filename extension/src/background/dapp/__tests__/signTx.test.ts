@@ -269,7 +269,7 @@ describe('re-authentication for a transaction request', () => {
     expect((await c.pend()).request?.tx?.reauth).toEqual({reasons: ['first-send'], state: 'waiting'});
     expect(await c.challengeInfo(challengeId)).toEqual({
       ok: true,
-      data: {kind: 'dapp', account: ACCOUNT.publicKey, site: 'dapp.test', transactions: 1, outgoing: [{mint: null, symbol: 'SOL', amount: '1005000', decimals: 9}], omitted: 0, reasons: ['first-send'], thresholdCents: 10_000},
+      data: {kind: 'dapp', account: ACCOUNT.publicKey, site: 'dapp.test', transactions: 1, outgoing: [{mint: null, symbol: 'SOL', amount: '1005000', decimals: 9}], omitted: 0, reasons: ['first-send'], thresholdCents: 10_000, flags: []},
     });
     // Still refused while unproven; the challenge is not reissued.
     expect(await c.approve(requestId, id)).toEqual({ok: false, error: 'reauth-required'});
@@ -639,6 +639,7 @@ describe('dapp.reauth (the popup’s offer of #10)', () => {
       omitted: 0,
       reasons: ['first-send' as const],
       thresholdCents: 10_000,
+      flags: [],
     };
     entry.challengeId = await issueChallenge(c.ext, c.deps, dappDigest(entry), about);
     await c.ext.session.set(DAPP_SESSION_KEY, {queue: [entry], grants: [], window: null, opening: null, undo: []});

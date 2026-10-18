@@ -8,7 +8,7 @@ import {VAULT_KEY} from '../../accountsStore';
 import {GRANTS_KEY, type Grant} from '../grants';
 import {runUnlockHook} from '../queue';
 import {readDappSession, type Entry} from '../store';
-import {TOKEN_PROGRAM} from '../decode/decode';
+import {ATA_PROGRAM, TOKEN_PROGRAM} from '../decode/decode';
 import {fakeExt} from '../../__tests__/fakeExt';
 import {fakeDeps, fakeReader} from '../../__tests__/fakeDeps';
 import {ACCOUNT, BLOCKHASH, RECIPIENT} from '../../__tests__/fixtures';
@@ -66,9 +66,44 @@ export const mintTo = (mint = TO, destination = ME, authority = ME, amount = 1n)
     ],
   });
 
+/**
+ * B1c-3: System assign of `account` (the wallet's, by default) to another program — F3, a block (ASSIGN) decoded from
+ * the instruction alone, whatever the chain says.
+ */
+export const assign = (account = ME, programId = new PublicKey(new Uint8Array(32).fill(71))): TransactionInstruction => SystemProgram.assign({accountPubkey: account, programId});
+
+/** B1c-3: an associated-token-account createIdempotent (tag 1) of `account` for `wallet`, paid by the account — one of F10's creators. */
+export const ataCreate = (account: PublicKey, wallet = TO, mint = new PublicKey(new Uint8Array(32).fill(72))): TransactionInstruction =>
+  new TransactionInstruction({
+    programId: new PublicKey(ATA_PROGRAM),
+    data: Buffer.from([1]),
+    keys: [
+      {pubkey: ME, isSigner: true, isWritable: true},
+      {pubkey: account, isSigner: false, isWritable: true},
+      {pubkey: wallet, isSigner: false, isWritable: false},
+      {pubkey: mint, isSigner: false, isWritable: false},
+      {pubkey: SystemProgram.programId, isSigner: false, isWritable: false},
+      {pubkey: new PublicKey(TOKEN_PROGRAM), isSigner: false, isWritable: false},
+    ],
+  });
+
+/** B1c-3: a Token transfer (tag 3) from `source` to `destination`, the account its authority. */
+export const tokenTransfer = (destination: PublicKey, source = new PublicKey(new Uint8Array(32).fill(73)), amount = 1n): TransactionInstruction =>
+  new TransactionInstruction({
+    programId: new PublicKey(TOKEN_PROGRAM),
+    data: Buffer.from([3, ...u64le(amount)]),
+    keys: [
+      {pubkey: source, isSigner: false, isWritable: true},
+      {pubkey: destination, isSigner: false, isWritable: true},
+      {pubkey: ME, isSigner: true, isWritable: false},
+    ],
+  });
+
 export interface Chain {
   /** simulateTransaction's error (null: it runs). */
   err: unknown;
+  /** B1c-3: an error for one transaction by its static keys (null: it runs) — a batch whose later step fails alone. */
+  errFor: ((keys: string[]) => unknown) | null;
   /** Calls per method. */
   calls: Map<string, number>;
   /** getBalance throws while set. */
@@ -101,9 +136,10 @@ export function chainReader(chain: Chain): SolanaReader {
     },
     simulateTransaction: async (txBase64, opts): Promise<SimulationOutcome> => {
       count('simulateTransaction');
-      if (chain.err !== null) return {err: chain.err, logs: [], unitsConsumed: 0, slot: 777, accounts: null};
       const m = VersionedTransaction.deserialize(base64.decode(txBase64)).message;
       const keys = m.staticAccountKeys.map(k => k.toBase58());
+      const err = chain.err !== null ? chain.err : (chain.errFor?.(keys) ?? null);
+      if (err !== null) return {err, logs: [], unitsConsumed: 0, slot: 777, accounts: null};
       let out = 0n;
       for (const ix of m.compiledInstructions) {
         if (keys[ix.programIdIndex] === SystemProgram.programId.toBase58() && ix.data[0] === 2 && keys[ix.accountKeyIndexes[0] ?? -1] === ME.toBase58()) out += new DataView(ix.data.buffer, ix.data.byteOffset + 4, 8).getBigUint64(0, true);
@@ -123,7 +159,7 @@ export async function until(done: () => Promise<boolean>, turns = 400): Promise<
   throw new Error('never settled');
 }
 
-export const newChain = (): Chain => ({err: null, calls: new Map(), down: false});
+export const newChain = (): Chain => ({err: null, errFor: null, calls: new Map(), down: false});
 
 export async function txScene(o: {grant?: Partial<Grant> | null; known?: string[]; origin?: string} = {}) {
   const origin = o.origin ?? DAPP;

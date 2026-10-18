@@ -13,7 +13,7 @@ import {GRANTS_KEY} from '../../background/dapp/grants';
 import {openPage} from '../../background/dapp/__tests__/pageHarness';
 import {ACCOUNT, RECIPIENT} from '../../background/__tests__/fixtures';
 import {ME, coSigned, mintTo, setAuthorityToNone, transfer, v0} from '../../background/dapp/__tests__/txHarness';
-import {pendingOf, type RequestView} from '../client';
+import {dependsOnStep, pendingOf, type RequestView} from '../client';
 import {Tx} from '../Tx';
 import {ARM_MS} from '../useArmed';
 import {CONFIRM_DELAY_MS} from '../ui';
@@ -410,47 +410,122 @@ describe('#48 dapp-tx-approval', () => {
             unitLimit: null,
             feeLamports: null,
             outcome: null,
+            flags: null,
             instructions: [{programId: null, program: null, name: null, fields: [{name: 'x', value: {kind: 'bogus'}}]}],
           },
         ],
       },
     };
-    expect(pendingOf({state: 'request', waiting: 0, windowNotice: false, request})).toBeNull();
+    // B1c-3: a transaction detail the window cannot read is no detail — Q26 and only Reject, never a blank window.
+    const read = pendingOf({state: 'request', waiting: 0, windowNotice: false, request});
+    expect(read?.state === 'request' ? read.request.tx : 'unread').toBeNull();
   });
 
-  // B1c-3: the window's own list of re-authentication reasons (one of the four places a reason is named) and the
-  // dependent step's outcome (F10) — read strictly, like everything else the background sends.
-  it('pendingOf: `override` and a dependent step’s outcome are read; an unknown reason, or a dependent outcome naming no earlier step, is refused', () => {
-    const view = (reasons: unknown[], outcome: unknown) => ({
-      state: 'request',
-      waiting: 0,
-      windowNotice: false,
-      request: {
-        requestId: 'x',
-        type: 'signTransaction',
-        origin: 'https://jup.ag',
-        host: 'jup.ag',
-        site: {kind: 'verified', name: 'Jupiter', imitates: null, rule: null, idn: null, international: false},
-        offerBlock: false,
-        connect: null,
-        sign: null,
-        mismatch: null,
-        tx: {
-          kind: 'signTransaction',
-          account: {index: 0, name: 'Main', publicKey: ACCOUNT.publicKey},
-          simulation: {status: 'ok', id: 'AAAAAAAAAAAAAAAAAAAAAA', slot: 1, elapsedMs: 1, at: 1},
-          reauth: {reasons, state: 'needed'},
-          labels: [],
-          transactions: [{version: 0, feePayer: ACCOUNT.publicKey, unitLimit: null, feeLamports: null, outcome, instructions: []}],
-        },
+  // B1c-3: the window's own list of re-authentication reasons (one of the four places a reason is named), the
+  // dependent step's outcome (F10) and every red flag — read strictly, like everything else the background sends; a
+  // detail it cannot read is refused whole (Q26, only Reject), never shown with a flag or a reason dropped.
+  const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+  const ok = {ok: true, changes: [], unitsConsumed: 1, unitLimit: 200_000, feeLamports: '5000'};
+  const dependentOutcome = {ok: false, error: 'dependent', on: 1, detail: '{"InstructionError":[0,"InvalidAccountData"]}'};
+  const DEPENDENT = {kind: 'dependent', severity: 'block', word: 'UNCHECKED', at: null, step: 1};
+  /** Every kind redFlagsOf gives, as the background's view sends it (signTx.ts txDetail). */
+  const EVERY_FLAG = [
+    {kind: 'assign', severity: 'block', word: 'ASSIGN', at: 0, instructions: [{index: 0, program: 'system', name: 'assign'}], chain: {owner: RECIPIENT, space: 0}},
+    {kind: 'set-authority', severity: 'block', word: 'AUTHORITY', at: 1, instructions: [{index: 1, program: 'token', account: RECIPIENT, owned: 'token-account', authorityType: 'accountOwner', newAuthority: null}], chain: [{account: RECIPIENT, change: 'owner', from: ACCOUNT.publicKey, to: RECIPIENT}]},
+    {kind: 'unlimited-approve', severity: 'block', word: 'USDC', at: 2, approvals: [{at: 2, source: RECIPIENT, mint: USDC_MINT, symbol: 'USDC', decimals: 6, delegate: RECIPIENT, amount: '18446744073709551615', balance: '5'}]},
+    {kind: 'unlimited-approve', severity: 'block', word: 'ALLOWANCE', at: null, approvals: [{at: null, source: RECIPIENT, mint: null, symbol: null, decimals: null, delegate: null, amount: '5', balance: '5'}]},
+    {kind: 'unknown-program', severity: 'warn', word: null, at: 0, programs: [RECIPIENT, null]},
+    {kind: 'non-transfer', severity: 'warn', word: null, at: 0, instructions: [{index: 0, program: 'system', name: 'assign'}, {index: 3, program: 'token', name: null}]},
+    {kind: 'bounded-approve', severity: 'warn', word: null, at: 2, approvals: [{at: 2, source: RECIPIENT, mint: RECIPIENT, symbol: null, decimals: 0, delegate: RECIPIENT, amount: '4', balance: '5'}]},
+    {kind: 'token-2022', severity: 'warn', word: null, at: null, mint: RECIPIENT, settings: {freezeAuthority: RECIPIENT, permanentDelegate: null, transferHookProgram: RECIPIENT}},
+    {kind: 'token-2022', severity: 'warn', word: null, at: 4, mint: USDC_MINT, settings: null},
+    {kind: 'durable-nonce', severity: 'warn', word: null, at: 0},
+    {kind: 'whole-balance', severity: 'warn', word: null, at: null},
+  ];
+  /** A two-step batch: step 1 as given, step 2 (dependent on step 1 unless said otherwise) with its flags. */
+  const batchView = (o: {reasons?: unknown[]; first?: unknown; second?: unknown; outcome?: unknown; firstOutcome?: unknown}) => ({
+    state: 'request',
+    waiting: 0,
+    windowNotice: false,
+    request: {
+      requestId: 'x',
+      type: 'signTransaction',
+      origin: 'https://jup.ag',
+      host: 'jup.ag',
+      site: {kind: 'verified', name: 'Jupiter', imitates: null, rule: null, idn: null, international: false},
+      offerBlock: false,
+      connect: null,
+      sign: null,
+      mismatch: null,
+      tx: {
+        kind: 'signTransaction',
+        account: {index: 0, name: 'Main', publicKey: ACCOUNT.publicKey},
+        simulation: {status: 'ok', id: 'AAAAAAAAAAAAAAAAAAAAAA', slot: 1, elapsedMs: 1, at: 1},
+        reauth: {reasons: o.reasons ?? ['first-send', 'override'], state: 'needed'},
+        labels: [],
+        transactions: [
+          {version: 0, feePayer: ACCOUNT.publicKey, unitLimit: null, feeLamports: null, outcome: 'firstOutcome' in o ? o.firstOutcome : ok, instructions: [], flags: 'first' in o ? o.first : []},
+          {version: 0, feePayer: ACCOUNT.publicKey, unitLimit: null, feeLamports: null, outcome: 'outcome' in o ? o.outcome : dependentOutcome, instructions: [], flags: 'second' in o ? o.second : [DEPENDENT]},
+        ],
       },
-    });
-    const dependent = {ok: false, error: 'dependent', on: 1, detail: '{"InstructionError":[0,"InvalidAccountData"]}'};
-    const read = pendingOf(view(['first-send', 'override'], dependent));
-    expect(read?.state === 'request' ? [read.request.tx?.reauth?.reasons, read.request.tx?.transactions[0]?.outcome] : null).toEqual([['first-send', 'override'], dependent]);
-    expect(pendingOf(view(['overrides'], null))).toBeNull();
-    expect(pendingOf(view(['override'], {...dependent, on: 0}))).toBeNull();
-    expect(pendingOf(view(['override'], {ok: false, error: 'dependent', detail: 'x'}))).toBeNull();
+    },
+  });
+  const txOf = (x: unknown) => {
+    const read = pendingOf(x);
+    return read?.state === 'request' ? read.request.tx : 'unread';
+  };
+
+  it('pendingOf: `override`, a dependent step’s outcome and every kind of flag are read exactly; dependsOnStep names the 1-based step', () => {
+    const tx = txOf(batchView({first: EVERY_FLAG}));
+    expect(tx === null || tx === 'unread' ? null : [tx.reauth?.reasons, tx.transactions.map(t => t.outcome), tx.transactions.map(t => t.flags)]).toEqual([
+      ['first-send', 'override'],
+      [ok, dependentOutcome],
+      [EVERY_FLAG, [DEPENDENT]],
+    ]);
+    expect(tx === null || tx === 'unread' ? null : tx.transactions.map(dependsOnStep)).toEqual([null, 1]);
+    // While simulating: no outcome, no flags.
+    expect(txOf(batchView({first: null, firstOutcome: null, second: null, outcome: null}))).toMatchObject({transactions: [{flags: null}, {flags: null}]});
+  });
+
+  it('pendingOf refuses the whole detail (tx null → Q26) for an unknown reason, an unknown flag kind, a key more or less, a block’s wrong word, or a dependent step that disagrees with its outcome or names no earlier step', () => {
+    const assign = EVERY_FLAG[0] as Record<string, unknown>;
+    for (const bad of [
+      batchView({reasons: ['overrides']}),
+      batchView({first: [{kind: 'drain', severity: 'warn', word: null, at: 0}]}),
+      batchView({first: [{...assign, extra: 1}]}),
+      batchView({first: [Object.fromEntries(Object.entries(assign).filter(([k]) => k !== 'chain'))]}),
+      batchView({first: [{...assign, word: 'assign'}]}),
+      batchView({first: [{...assign, severity: 'warn'}]}),
+      batchView({first: [{...(EVERY_FLAG[2] as Record<string, unknown>), word: 'BONK'}]}),
+      batchView({first: [{...(EVERY_FLAG[4] as Record<string, unknown>), word: 'X'}]}),
+      // Review 3 L14: UNLIMITED only when an approval is u64::MAX, ALLOWANCE only when none is.
+      batchView({first: [{...(EVERY_FLAG[3] as Record<string, unknown>), word: 'UNLIMITED'}]}),
+      batchView({first: [{...(EVERY_FLAG[2] as Record<string, unknown>), word: 'ALLOWANCE'}]}),
+      batchView({first: [{...(EVERY_FLAG[9] as Record<string, unknown>), at: null}]}),
+      batchView({first: [{...(EVERY_FLAG[7] as Record<string, unknown>), settings: {freezeAuthority: 'x'}}]}),
+      batchView({first: 'none'}),
+      batchView({second: [{...DEPENDENT, on: 0}]}),
+      batchView({second: [{...DEPENDENT, step: 2}]}),
+      batchView({second: []}),
+      batchView({second: [DEPENDENT], outcome: ok}),
+      batchView({second: [DEPENDENT, DEPENDENT]}),
+      batchView({outcome: {...dependentOutcome, on: 2}}),
+      batchView({outcome: {...dependentOutcome, on: 0}}),
+      batchView({outcome: {ok: false, error: 'dependent', detail: 'x'}}),
+      batchView({first: [{...DEPENDENT}], firstOutcome: {...dependentOutcome}}),
+      batchView({second: null}),
+      batchView({first: [], firstOutcome: null}),
+    ]) {
+      expect([bad, txOf(bad)]).toEqual([bad, null]);
+    }
+  });
+
+  it('a detail refused for an unknown flag kind: Q26 and only Reject — never the request with the flag dropped', () => {
+    const read = pendingOf(batchView({first: [{kind: 'drain', severity: 'warn', word: null, at: 0}]}));
+    if (read?.state !== 'request') throw new Error('unread');
+    render(<Tx request={read.request} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
+    expect(screen.getByText('This request can no longer be signed. Reject it and ask the site to try again.')).toBeTruthy();
+    expect(screen.getAllByRole('button').map(b => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Close', 'Reject']);
   });
 
   // Fix round 1, I2: the sheet is for exactly the simulation it opened on; a refresh landing while it is open must
@@ -506,7 +581,7 @@ describe('#48 dapp-tx-approval', () => {
         simulation: {status: 'simulating'},
         reauth: null,
         labels: [],
-        transactions: [{version: 0, feePayer: ACCOUNT.publicKey, instructions: null, unitLimit: null, feeLamports: null, outcome: null}],
+        transactions: [{version: 0, feePayer: ACCOUNT.publicKey, instructions: null, unitLimit: null, feeLamports: null, outcome: null, flags: null}],
       },
     };
     render(<Tx request={request} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
@@ -535,7 +610,7 @@ describe('#48 dapp-tx-approval', () => {
         simulation: {status: 'simulating'},
         reauth: null,
         labels: [],
-        transactions: [{version: 0, feePayer: ACCOUNT.publicKey, instructions: null, unitLimit: null, feeLamports: null, outcome: null}],
+        transactions: [{version: 0, feePayer: ACCOUNT.publicKey, instructions: null, unitLimit: null, feeLamports: null, outcome: null, flags: null}],
       },
     };
     const withoutTx: RequestView = {...withTx, tx: null};

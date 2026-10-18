@@ -673,7 +673,7 @@ describe('#11: a site’s transaction waiting for its confirmation (B1c-2)', () 
       message: null, transactions: ['AQ=='], granted: null, sim: null, challengeId: null as string | null, sent: null, arrivedAt: T, state: 'queued', decidedBy: null, decidingAt: null,
       decision: null, answer: null, answeredAt: null,
     };
-    const about = {kind: 'dapp' as const, account: ACCOUNT.publicKey, site: 'jup.ag', transactions: 1, outgoing: [{mint: null, symbol: 'SOL' as const, amount: '1', decimals: 9}], omitted: 0, reasons: ['first-send' as const], thresholdCents: 10_000};
+    const about = {kind: 'dapp' as const, account: ACCOUNT.publicKey, site: 'jup.ag', transactions: 1, outgoing: [{mint: null, symbol: 'SOL' as const, amount: '1', decimals: 9}], omitted: 0, reasons: ['first-send' as const], thresholdCents: 10_000, flags: []};
     entry.challengeId = await issueChallenge(ext, {now: () => T, randomBytes: n => new Uint8Array(n).fill(4)}, dappDigest(entry), about);
     await ext.session.set(DAPP_SESSION_KEY, {queue: [entry], grants: [], window: null, opening: null, undo: []});
     return entry.challengeId;

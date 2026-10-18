@@ -6,6 +6,7 @@ import type {DappReauthReason, SendReauthReason} from './reauthPolicy';
 import type {FeeReason} from '../../../core/fees/transferMarkup';
 import {WALLET_TOKENS} from '../../../core/solana/balances';
 import {SITE} from '../shared/site';
+import {ALLOWANCE_WORD, OVERRIDE_WORDS, type RedFlagKind} from './dapp/redFlags';
 
 /** How long the vault page has to prove the factor (brief decision 6), counted from the last prepare of the same intent. */
 export const CHALLENGE_TTL_MS = 120_000;
@@ -47,8 +48,10 @@ export type ChallengeAbout =
    * and why. Bound to the request and its exact bytes (signTx.ts dappDigest). #10 describes it; the approval window
    * signs only once the challenge is proven and consumed. `outgoing` holds at most MAX_DAPP_OUTGOING mints (SOL first,
    * then the largest in USD); `omitted` counts the mints left out (plan 2 review 1 L9: a long list is cut, never refused).
+   * B1c-3: `flags` — the red flags of every transaction, one per (transaction, row), so #10 names what is overridden
+   * and a refresh that adds one asks again (signTx.ts reauthGate).
    */
-  | {kind: 'dapp'; account: string; site: string; transactions: number; outgoing: DappOutgoing[]; omitted: number; reasons: DappReauthReason[]; thresholdCents: number};
+  | {kind: 'dapp'; account: string; site: string; transactions: number; outgoing: DappOutgoing[]; omitted: number; reasons: DappReauthReason[]; thresholdCents: number; flags: DappFlag[]};
 
 export interface DappOutgoing {
   mint: string | null;
@@ -57,6 +60,36 @@ export interface DappOutgoing {
   amount: string;
   decimals: number | null;
 }
+
+/**
+ * B1c-3 (spec §3.3 rev 3.6): one red flag of a dApp challenge — `tx` the transaction's index in the batch (0-based, as
+ * the decision's overrides name it), its row of the red-flag table (F1–F10, the spec's own numbers: #10 needs no other
+ * name for it), the typed word for a block (null for a warning), and for a dependent step the step it depends on
+ * (`step`, 1-based, as the copy says it; null for every other row). F5 alone carries `scope` (O9): `unlimited` when an
+ * approval of it is u64::MAX, else `nearly-all` (99 % of the balance up to the whole of it) — #10 names the two apart.
+ */
+export type FlagRow = 'F1' | 'F2' | 'F3' | 'F4' | 'F5' | 'F6' | 'F7' | 'F8' | 'F9' | 'F10';
+export type F5Scope = 'unlimited' | 'nearly-all';
+export interface DappFlag {
+  tx: number;
+  row: FlagRow;
+  word: string | null;
+  step: number | null;
+  scope?: F5Scope;
+}
+/** Each red flag's row of the table (spec §3.3; F11, the origin mismatch, never reaches a challenge). */
+export const FLAG_ROW: Record<RedFlagKind, FlagRow> = {
+  'unknown-program': 'F1',
+  'non-transfer': 'F2',
+  assign: 'F3',
+  'set-authority': 'F4',
+  'unlimited-approve': 'F5',
+  'bounded-approve': 'F6',
+  'token-2022': 'F7',
+  'durable-nonce': 'F8',
+  'whole-balance': 'F9',
+  dependent: 'F10',
+};
 
 /** The fields a re-prepare of the same intent may refresh; the identity fields (account, token, recipient, amount) never change. */
 export type SendAboutRefresh = Pick<
@@ -80,6 +113,26 @@ const FEE_REASONS: readonly string[] = ['pre-tge', 'zero-fee-eligible', 'status-
 const DAPP_REASONS: readonly string[] = [...REASONS, 'approval', 'override'];
 /** At most this many mints in a dApp challenge's description (more than a five-transaction batch can name sensibly; the rest are counted in `omitted`). */
 export const MAX_DAPP_OUTGOING = 16;
+/** At most one flag per (transaction, row): ten rows over a five-transaction batch. */
+export const MAX_DAPP_FLAGS = 50;
+/** Each row's override word (a block), or null (a warning) — F5's is checked against its own list. */
+const ROW_WORDS: Record<FlagRow, string | null> = {
+  F1: null,
+  F2: null,
+  F3: OVERRIDE_WORDS.assign,
+  F4: OVERRIDE_WORDS.setAuthority,
+  F5: OVERRIDE_WORDS.unlimited,
+  F6: null,
+  F7: null,
+  F8: null,
+  F9: null,
+  F10: OVERRIDE_WORDS.dependent,
+};
+/**
+ * F5's word: the wallet's own symbol for a token it names (never SOL — an approve is of a token account), else UNLIMITED
+ * at u64::MAX and ALLOWANCE below it (review 3 L14) — each only with its own scope.
+ */
+const UNLIMITED_WORDS: readonly string[] = ['NOC', 'USDC', 'USDT', OVERRIDE_WORDS.unlimited, ALLOWANCE_WORD];
 const DIGITS = /^\d{1,20}$/;
 /** A base58 Solana address's shape (32–44 characters). */
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -112,7 +165,8 @@ function isAbout(x: unknown): x is ChallengeAbout {
       new Set(reasons).size === reasons.length &&
       (reasons as unknown[]).every(r => typeof r === 'string' && DAPP_REASONS.includes(r)) &&
       isInt(a.thresholdCents) &&
-      Object.keys(a).length === 8
+      isDappFlags(a.flags, a.transactions, reasons as unknown[]) &&
+      Object.keys(a).length === 9
     );
   }
   if (a.kind !== 'send') return false;
@@ -159,6 +213,34 @@ function isOutgoing(x: unknown): x is DappOutgoing {
     (decimals === null || (isInt(decimals) && decimals >= 0 && decimals <= 18)) &&
     Object.keys(o).length === 4
   );
+}
+
+/**
+ * B1c-3: a dApp challenge's flags, exactly as signTx.ts dappAbout builds them — each row known, on a transaction of the
+ * batch, a block with its own word and a warning with none, a dependent step naming an earlier one, F5 with its scope
+ * and no other row with one, one per (transaction, row); and a block present exactly when the reasons name `override`
+ * (simulate.ts adds it for one).
+ */
+function isDappFlags(x: unknown, transactions: number, reasons: readonly unknown[]): x is DappFlag[] {
+  if (!Array.isArray(x) || x.length > MAX_DAPP_FLAGS) return false;
+  const seen = new Set<string>();
+  let blocks = 0;
+  for (const v of x as unknown[]) {
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+    const f = v as Record<string, unknown>;
+    if (!isInt(f.tx) || f.tx < 0 || f.tx >= transactions || typeof f.row !== 'string' || !Object.hasOwn(ROW_WORDS, f.row)) return false;
+    const row = f.row as FlagRow;
+    if (Object.keys(f).length !== (row === 'F5' ? 5 : 4) || (row === 'F5' && f.scope !== 'unlimited' && f.scope !== 'nearly-all')) return false;
+    const word = ROW_WORDS[row];
+    if (word === null ? f.word !== null : row === 'F5' ? typeof f.word !== 'string' || !UNLIMITED_WORDS.includes(f.word) : f.word !== word) return false;
+    if ((f.word === OVERRIDE_WORDS.unlimited && f.scope !== 'unlimited') || (f.word === ALLOWANCE_WORD && f.scope !== 'nearly-all')) return false;
+    if (row === 'F10' ? !isInt(f.step) || f.step < 1 || f.step > f.tx : f.step !== null) return false;
+    const key = `${f.tx}:${row}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    if (word !== null) blocks++;
+  }
+  return (blocks > 0) === reasons.includes('override');
 }
 
 function isChallenge(x: unknown): x is Challenge {

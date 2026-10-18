@@ -656,7 +656,8 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
   recomputes every expected word from its stored simulation and refuses the approval unless every block has its exact
   word, and refuses it when any block has none. A request with any block always re-authenticates through #10 (the
   reason line: "Re-auth required to override a blocked transaction.", Q33); #10's description names what is
-  overridden, and a refresh that adds a block asks for a new re-authentication. The re-authentication stays bound to
+  overridden — one row per block, Q37–Q40 and Q56 (the challenge's F5 carries its scope: u64::MAX or nearly all), with "Transaction <n> of <m>" in a batch — and a refresh that adds a
+  flag (a block or a warning) or changes a block's word or step asks for a new re-authentication. The re-authentication stays bound to
   the exact bytes (B1c-2); the words are not secrets and are bound only by the background recomputing them. No setting
   disables a block.
 - **Holds (B1 §3).** On any screen with a flag (warning or block) every confirming CTA is held **1.5 s instead of
@@ -988,6 +989,11 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
 | Q34 | #48 red CTA for a block other than an unlimited approve (rev 3.6, controller copy, flagged to the owner) | "Approve anyway" |
 | Q35 | #48 top-bar eyebrow for a block other than an unlimited approve (rev 3.6, controller copy, flagged to the owner) | "Critical · Blocked transaction" |
 | Q36 | #48 F7 warning, a mint that cannot be read or parsed (rev 3.6, controller copy, flagged to the owner) | "Could not read this token's settings" |
+| Q37 | #10 row for an overridden F3 block (rev 3.6, plan 3 Task 4, controller copy, flagged to the owner — B1 §3's row) | "Assign / Allocate on your wallet account" |
+| Q38 | #10 row for an overridden F4 block (rev 3.6, plan 3 Task 4, controller copy, flagged to the owner — B1 §3's row) | "SetAuthority on an account you own" |
+| Q39 | #10 row for an overridden F5 block (rev 3.6, plan 3 Task 4, controller copy, flagged to the owner — the design's F5 head) | "Unlimited <SYM> spend approval"; "Unlimited token spend approval" when the wallet's table names no symbol (`UNLIMITED`) |
+| Q40 | #10 row for an overridden F10 block (rev 3.6, plan 3 Task 4, controller copy, flagged to the owner — Q32 as a row) | "Depends on step <N> — not checked on its own" |
+| Q56 | #10 row for an overridden F5 block of 99 % up to the whole balance below u64::MAX — and #48's F5 head for it (plan 3 rev 2.1, O9: "unlimited" only for u64::MAX; owner copy, "of this token" for an unnamed token the reviser's reading of the owner's "token when unnamed" — flagged) | "Spend approval for nearly all your <SYM>"; "Spend approval for nearly all of this token" when the wallet's table names no symbol |
 
 (Q09 and Q11 of rev 1 are gone: the window no longer shows "expired" for a request it did not show, and the undo toast
 uses the design's drawn strings.)

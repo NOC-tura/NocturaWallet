@@ -181,6 +181,8 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
       }
       // Review 1 L9: past the sixteen rows the background lists, the count of the rest.
       if (d.omitted > 0) rows.push(row(REAUTH.omitted(d.omitted), null));
+      // B1c-3: what the typed words override, one row per block — on which transaction, in a batch.
+      for (const o of d.overrides) rows.push(row(o.label, o.transaction));
       byId('ra-rows').replaceChildren(...rows);
       byId('ra-reasons').replaceChildren(...d.reasons.map(r => h('p', 'noc-body-sm vlt-lede', r)));
       setText(cancel, REAUTH.cancel);

@@ -622,7 +622,7 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
   });
 
   // B1c-2 (spec B1c §3.3, D11): a site's transaction, reached from the popup's strip — #10 proves; the window signs.
-  const DAPP: ChallengeAbout = {kind: 'dapp', account: K0, site: 'jup.ag', transactions: 1, outgoing: [{mint: null, symbol: 'SOL', amount: '1005000', decimals: 9}], omitted: 0, reasons: ['first-send'], thresholdCents: 10_000};
+  const DAPP: ChallengeAbout = {kind: 'dapp', account: K0, site: 'jup.ag', transactions: 1, outgoing: [{mint: null, symbol: 'SOL', amount: '1005000', decimals: 9}], omitted: 0, reasons: ['first-send'], thresholdCents: 10_000, flags: []};
   it('a dApp’s transaction: "You are about to approve", the site and what leaves the account; confirmed → back to the approval window, nothing sent here', async () => {
     const {h, broadcast} = await shown(DAPP);
     expect(text(el('ra-about'))).toBe('You are about to approve');
@@ -667,6 +667,34 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
     await shown({...DAPP, outgoing: [], reasons: ['approval']});
     expect(visible(el('ra-amount-row'))).toBe(false);
     expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag']);
+  });
+
+  // B1c-3 (spec §3.3 rev 3.6): an override — Q33's reason line, and one row per block after what leaves the account:
+  // what is overridden and, in a batch, on which transaction. A warning is no row.
+  it('a dApp’s override: Q33’s line and one row per block (what, and on which transaction of a batch); a warning is no row', async () => {
+    await shown({
+      ...DAPP,
+      transactions: 2,
+      reasons: ['first-send', 'override'],
+      flags: [
+        {tx: 0, row: 'F2', word: null, step: null},
+        {tx: 1, row: 'F10', word: 'UNCHECKED', step: 1},
+        {tx: 1, row: 'F5', word: 'USDC', step: null, scope: 'unlimited'},
+      ],
+    });
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual([
+      'Sitejup.ag',
+      'Transactions2',
+      'Depends on step 1 — not checked on its ownTransaction 2 of 2',
+      'Unlimited USDC spend approvalTransaction 2 of 2',
+    ]);
+    expect([...el('ra-reasons').children].map(text)).toEqual(['Re-auth required for the first send to a new address.', 'Re-auth required to override a blocked transaction.']);
+    expect(unstyled('v-reauth')).toEqual([]);
+    loadPage();
+    await shown({...DAPP, reasons: ['override'], flags: [{tx: 0, row: 'F4', word: 'AUTHORITY', step: null}]});
+    // A single transaction: the row names what, the headline is still the one asset leaving.
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'SetAuthority on an account you own']);
+    expect([visible(el('ra-amount-row')), text(el('ra-amount'))]).toEqual([true, '−0.001005']);
   });
 
   it('a dApp’s transaction: expired and locked say what is true for a site’s request; Cancel only closes the tab', async () => {

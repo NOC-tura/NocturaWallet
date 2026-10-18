@@ -57,7 +57,7 @@ const approveIx = (amount: bigint) =>
     ],
   });
 
-function scene(o: {accounts: Map<string, AccountData | null>; holdings?: TokenAccountEntry[]; post: (address: string) => SimulatedAccount | null}) {
+function scene(o: {accounts: Map<string, AccountData | null>; holdings?: TokenAccountEntry[]; post: (address: string) => SimulatedAccount | null; err?: unknown}) {
   const simulations: {accounts: readonly string[] | undefined}[] = [];
   const reads: string[][] = [];
   const reader = fakeReader({
@@ -70,6 +70,8 @@ function scene(o: {accounts: Map<string, AccountData | null>; holdings?: TokenAc
     },
     simulateTransaction: async (_tx, opts): Promise<SimulationOutcome> => {
       simulations.push({accounts: opts?.accounts});
+      // Task 4 (ledger b): the node may answer an error too — the unresolved-lookup rule must not depend on it.
+      if (o.err !== undefined) return {err: o.err, logs: [], unitsConsumed: 0, slot: 300 + simulations.length, accounts: null};
       return {err: null, logs: [], unitsConsumed: 1_234, slot: 300 + simulations.length, accounts: (opts?.accounts ?? []).map(a => o.post(a))};
     },
   });
@@ -86,7 +88,7 @@ async function run(s: ReturnType<typeof scene>, wires: Uint8Array[]): Promise<Tx
 }
 
 /** What dapp.decide would answer for this simulation, the window naming it while fresh (signTx.ts). */
-const refusal = (sim: TxSimulation) => txRefused({sim: {status: 'ok', sim}} as unknown as Entry, sim.id, sim.at);
+const refusal = (sim: TxSimulation) => txRefused({sim: {status: 'ok', sim}} as unknown as Entry, sim.id, [], sim.at);
 const stored = (sim: TxSimulation): unknown => ({status: 'ok', sim: JSON.parse(JSON.stringify(sim)) as unknown});
 
 describe('an address a lookup table does not resolve (controller ruling): Reject only', () => {
@@ -143,6 +145,40 @@ describe('an address a lookup table does not resolve (controller ruling): Reject
     const otherFailure = JSON.parse(JSON.stringify(sim)) as {outcomes: unknown[]};
     otherFailure.outcomes = [{ok: false, error: 'failed', detail: '"InvalidAccountData"'}];
     expect(simStateOf({status: 'ok', sim: otherFailure})).toBeNull();
+  });
+});
+
+// Controller ruling, Task 4 (ledger b): the two gaps of Task 3's tests — the node answering an error beside an unresolved
+// key, and a batch in which only one transaction has one.
+describe('the unresolved-lookup rule, whatever the node answers and wherever in the batch', () => {
+  const transferVia = (to: string) => wire([SystemProgram.transfer({fromPubkey: ME, toPubkey: new PublicKey(to), lamports: 1})], {tables: [altOf(to)]});
+  const post = (a: string) => (a === ME.toBase58() ? plain(SOL - 5_001n) : a === TO.toBase58() ? plain(1n) : null);
+
+  it('the node also returns an error (an instruction error, an expired blockhash): the outcome is still the unresolved-lookup failure, refused `simulation-failed`', async () => {
+    for (const err of [{InstructionError: [0, 'InvalidAccountData']}, 'BlockhashNotFound']) {
+      const sim = await run(scene({accounts: new Map([[TABLE.toBase58(), tableAccount([])]]), post, err}), [transferVia(TO.toBase58())]);
+      expect(sim.keys[0]).toContain(null);
+      expect([err, sim.outcomes]).toEqual([err, [{ok: false, error: 'failed', detail: UNRESOLVED_LOOKUP_DETAIL}]]);
+      expect([err, refusal(sim)]).toEqual([err, 'simulation-failed']);
+    }
+    // Control: resolved, the node's own error is what the outcome carries (expired → blockhash-expired).
+    const resolved = await run(scene({accounts: new Map([[TABLE.toBase58(), tableAccount([TO.toBase58()])]]), post, err: 'BlockhashNotFound'}), [transferVia(TO.toBase58())]);
+    expect(resolved.outcomes).toEqual([{ok: false, error: 'expired', detail: '"BlockhashNotFound"'}]);
+    expect(refusal(resolved)).toBe('blockhash-expired');
+  });
+
+  it('a batch of three, only the second with an unresolved key: that one is the failure, the others simulate, and the whole request is Reject-only', async () => {
+    const OTHER = keyOf(75);
+    const plainTransfer = wire([SystemProgram.transfer({fromPubkey: ME, toPubkey: TO, lamports: 1})]);
+    const accounts = (holds: string[]) => new Map([[TABLE.toBase58(), tableAccount(holds)]]);
+    const sim = await run(scene({accounts: accounts([]), post}), [plainTransfer, transferVia(OTHER), plainTransfer]);
+    expect(sim.keys.map(k => k.includes(null))).toEqual([false, true, false]);
+    expect(sim.outcomes.map(o => (o.ok ? 'ok' : o.detail))).toEqual(['ok', UNRESOLVED_LOOKUP_DETAIL, 'ok']);
+    expect(refusal(sim)).toBe('simulation-failed');
+    // Control: the same batch with the index resolved is approvable.
+    const resolved = await run(scene({accounts: accounts([OTHER]), post}), [plainTransfer, transferVia(OTHER), plainTransfer]);
+    expect(resolved.outcomes.map(o => o.ok)).toEqual([true, true, true]);
+    expect(refusal(resolved)).toBeNull();
   });
 });
 

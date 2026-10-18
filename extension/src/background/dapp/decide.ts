@@ -16,6 +16,8 @@ import {base64} from '@scure/base';
 import {checkMessage, checkSiws, finishSign, homoglyphRanges, keywordIn} from './signMessage';
 import {dappDigest, finishSend, finishSignTx, isTxType, needsSimulation, reauthGate, runSimulation, txDetail, txRefused, type TxDetail, type TxRefusal} from './signTx';
 import {consumeChallenge} from '../reauthChallenges';
+import {OVERRIDE_WORDS} from './redFlags';
+import {MAX_BATCH} from './txRequest';
 
 /**
  * The approval window's two messages (spec §1.4, §2.3, C13, C17): `dapp.pending` — what the window shows — and
@@ -180,18 +182,43 @@ export interface DecideRequest {
   scope: Grant['scope'] | null;
   /** B1c-2: a transaction request's approval names the simulation the window showed (C13). */
   simulation: string | null;
+  /**
+   * B1c-3 (the override rule): the words typed, one per blocked (transaction, kind) — `tx` the transaction's index in
+   * the batch. Never trusted: txRefused compares them with the words the stored simulation's flags give.
+   */
+  overrides: {tx: number; word: string}[];
 }
 
 const DECISIONS: readonly string[] = ['approve', 'reject', 'report', 'block'];
+/** One word per (transaction, block kind), at most: four kinds of block over a five-transaction batch. */
+export const MAX_OVERRIDES = MAX_BATCH * Object.keys(OVERRIDE_WORDS).length;
+/** No override word is near this long (the longest is UNCHECKED / UNLIMITED); a longer string is not a typed word. */
+const MAX_WORD = 32;
 
-/** dapp.decide's shape: a request id, a decision, and — for an approval — the account (and a connect's scope). */
+/** The overrides' exact shape — absent is none; anything else than at most MAX_OVERRIDES `{tx, word}` is null (malformed). */
+function overridesOf(x: unknown): {tx: number; word: string}[] | null {
+  if (x === undefined) return [];
+  if (!Array.isArray(x) || x.length > MAX_OVERRIDES) return null;
+  const out: {tx: number; word: string}[] = [];
+  for (const v of x as unknown[]) {
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) return null;
+    const {tx, word, ...rest} = v as Record<string, unknown>;
+    if (Object.keys(rest).length > 0 || typeof tx !== 'number' || !Number.isSafeInteger(tx) || tx < 0 || tx >= MAX_BATCH || typeof word !== 'string' || word.length > MAX_WORD) return null;
+    out.push({tx, word});
+  }
+  return out;
+}
+
+/** dapp.decide's shape: a request id, a decision, and — for an approval — the account (and a connect's scope, a transaction's simulation and overrides). */
 export function decideRequestOf(msg: Record<string, unknown>): DecideRequest | null {
   const {requestId, decision, account, scope, simulation} = msg;
   if (typeof requestId !== 'string' || typeof decision !== 'string' || !DECISIONS.includes(decision)) return null;
   if (account !== undefined && typeof account !== 'string') return null;
   if (scope !== undefined && scope !== 'session' && scope !== 'persistent') return null;
   if (simulation !== undefined && typeof simulation !== 'string') return null;
-  return {requestId, decision: decision as Decision, account: account ?? null, scope: scope ?? null, simulation: simulation ?? null};
+  const overrides = overridesOf(msg.overrides);
+  if (overrides === null) return null;
+  return {requestId, decision: decision as Decision, account: account ?? null, scope: scope ?? null, simulation: simulation ?? null, overrides};
 }
 
 /** Blocking a host (§2.6): every grant of that host (both scopes, every port and scheme) revoked, its queued requests rejected. */
@@ -302,7 +329,7 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
       const head = headRefused(tx, e);
       if (head !== null) return head;
       if (e === undefined || !isTxType(e.type)) return 'other';
-      return approvalRefused(tx, e, d) ?? txRefused(e, d.simulation, tx.now) ?? structuredClone(e);
+      return approvalRefused(tx, e, d) ?? txRefused(e, d.simulation, d.overrides, tx.now) ?? structuredClone(e);
     });
     if (typeof pre === 'string' && pre !== 'other') return {ok: false, error: pre};
     if (typeof pre === 'object') {
@@ -329,7 +356,8 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
       blockHost(tx, fx, e.host);
       return 'done';
     }
-    const refused = approvalRefused(tx, e, d) ?? (isTxType(e.type) ? txRefused(e, d.simulation, tx.now) : null);
+    // B1c-3: the words again, against the entry as this section reads it (a block stored since the pre-section counts).
+    const refused = approvalRefused(tx, e, d) ?? (isTxType(e.type) ? txRefused(e, d.simulation, d.overrides, tx.now) : null);
     if (refused !== null) return refused;
     // Fix round 1 item 1: fail closed even when the peek above missed this entry (the pre-section and the gate never
     // ran, so `proof` is still null here) — a simulation that names reasons may proceed only with a proof bound to
