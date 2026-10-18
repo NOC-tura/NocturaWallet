@@ -657,7 +657,9 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
   recomputes every expected word from its stored simulation and refuses the approval unless every block has its exact
   word, and refuses it when any block has none. A request with any block always re-authenticates through #10 (the
   reason line: "Re-auth required to override a blocked transaction.", Q33); #10's description names what is
-  overridden — one row per block, Q37–Q40 and Q56 (the challenge's F5 carries its scope: u64::MAX or nearly all), with "Transaction <n> of <m>" in a batch — and a refresh that adds a
+  overridden — one row per block, Q37–Q40 and Q56 (the challenge's F5 carries its scope: u64::MAX or nearly all), with "Transaction <n> of <m>" in a batch; with an override (or an allowance,
+  the `approval` reason) #10 draws no headline amount, what leaves the account is a row (the visual pass: the network
+  fee alone stood in the largest type above "Unlimited USDC spend approval") — and a refresh that adds a
   flag (a block or a warning) or changes a block's word or step asks for a new re-authentication. The re-authentication stays bound to
   the exact bytes (B1c-2); the words are not secrets and are bound only by the background recomputing them. No setting
   disables a block.

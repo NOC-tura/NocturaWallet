@@ -1,7 +1,7 @@
 import {test, expect, type Locator, type Page, type Worker} from '@playwright/test';
 import {contained, launchPopup, seedUnlockedWallet, MAIN, SAVINGS, type Harness} from './popupHarness';
 import {DAPP_HOSTS, approvalWindow, connect, openDapp, serveDapp, sign, windowClosed, type DappServer} from './dappPage';
-import {shot} from './visualTab';
+import {gateClear, shot} from './visualTab';
 
 // Spec B1c §6.4: every B1c-1 state the real extension can be put in, saved for the opus-tier review against index.html
 // (#46 ix:17442-17686, #47 ix:17686-18261, #49 ix:18705-19100, #31 ix:13552) — not a pixel diff. The approval window at
@@ -38,9 +38,13 @@ const grant = (origin: string, o: {scope?: string; lastUsedAt?: number; connecte
 /** A computed style of the element (the `css()` helper pattern, visual-settings.spec.ts:50) — real Chromium, not happy-dom. */
 const css = (l: Locator, prop: string) => l.evaluate((e, x) => getComputedStyle(e).getPropertyValue(x), prop);
 
-/** A window state: its own copy first, then the shot (the pointer off the column; `ready`, a held CTA, awaited enabled). */
+/**
+ * A window state: its own copy first, then the shot (the pointer off the column; `ready`, a held CTA, awaited enabled).
+ * B1c-3: a #47 state (one with the gate line) also proves the line clear of the scroll area (`gateClear`).
+ */
 async function still(win: Page, name: string, visible: Locator, ready?: Locator): Promise<void> {
   await expect(visible).toBeVisible();
+  if ((await win.locator('.app-approve > .s9-gate-status').count()) > 0) await gateClear(win);
   await win.mouse.move(0, 0);
   await shot(win, name, {fullPage: false, ...(ready === undefined ? {} : {ready})});
 }
@@ -256,8 +260,9 @@ test('visual · #46: verified (SIWS), unknown, keyword alert, lookalike and its 
     await h.sw.evaluate(a => chrome.storage.session.set({v1_session: {accounts: [a]}}), {index: SAVINGS.index, publicKey: SAVINGS.publicKey, secretKey: SAVINGS.secretKey});
     await win.evaluate(() => void window.dispatchEvent(new Event('focus')));
     await expect(win.getByRole('button', {name: 'Sign', exact: true})).toHaveCount(0);
-    // Rev 3.2 (Q26, owner-delegated 2026-10-12): the line under the title says why; asserted before the shot.
-    await expect(win.getByText('This request can no longer be signed. Reject it and ask the site to try again.')).toBeVisible();
+    // Rev 3.2 (Q26, owner-delegated 2026-10-12): the line under the title says why; asserted before the shot. B1c-3: drawn
+    // as #48 draws it — a danger flag banner, its head.
+    await expect(win.locator('.s9-flag-banner.danger .head')).toHaveText('This request can no longer be signed. Reject it and ask the site to try again.');
     await still(win, '46-sign-null', win.getByRole('button', {name: 'Reject'}));
     await dismiss(win);
     await seedUnlockedWallet(h.sw);

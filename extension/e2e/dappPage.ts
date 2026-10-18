@@ -10,7 +10,8 @@ import {fileURLToPath} from 'node:url';
  * serve (asserted empty).
  */
 // Final review I2: `my_site.test` — a host URL-legal to the browser (an underscore) outside the old SITE shape (B1c-29).
-export const DAPP_HOSTS = ['dapp.test', 'jup.ag', 'tensr.trade', 'xn--phntom-4nf.app', 'xn--bcher-kva.example', 'my_site.test', 'api.mainnet-beta.solana.com'] as const;
+// B1c-3 (the visual pass): `tensor.trade` — the verified Tensor, whose tile #47 and #48 draw in #49's colours (R9).
+export const DAPP_HOSTS = ['dapp.test', 'jup.ag', 'tensr.trade', 'tensor.trade', 'xn--phntom-4nf.app', 'xn--bcher-kva.example', 'my_site.test', 'api.mainnet-beta.solana.com'] as const;
 /**
  * B1c-2: the test dApp's own RPC endpoint (its @solana/web3.js Connection — a wallet-adapter dApp's). The adapter never
  * calls it while the wallet sends through signAndSendTransaction; a call would mean it fell back to sending itself.

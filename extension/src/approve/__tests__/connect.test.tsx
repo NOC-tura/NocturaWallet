@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import {act, cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
+import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {GRANTS_KEY, MAX_GRANTS, type Grant} from '../../background/dapp/grants';
 import {BLOCKED_KEY} from '../../background/dapp/blocked';
@@ -540,5 +542,30 @@ describe('fix round 1, I2: the unacked domain-ack box carries no `.is-acked` (it
     expect(domainAck.className).toBe('ack is-acked');
     fireEvent.click(domainAck);
     expect(domainAck.className).toBe('ack');
+  });
+});
+
+// B1c-3 visual pass (controller ruling): #47's gate line sat flush against the card the scroll area cuts at its edge
+// ("ACCOUNT" at 412 × 720, 47a). happy-dom lays nothing out, so this proves the rule that keeps them apart — on the
+// rendered window, with both sheets loaded — and visual-dapp.spec.ts measures the gap in Chromium.
+describe('B1c-3: #47’s gate line keeps a gap below the scroll area’s clip edge', () => {
+  it('the rendered gate line: a --space-2 top padding, never shrunk, on the bar’s background', async () => {
+    const style = document.createElement('style');
+    const sheet = (p: string) => readFileSync(join(__dirname, ...p.split('/')), 'utf8');
+    style.textContent = `:root { --space-2: 8px; --bg-base: rgb(1, 2, 3); }\n${sheet('../../styles/design-ext.css')}\n${sheet('../../app/app.css')}`;
+    document.head.append(style);
+    try {
+      const w = await openWindow();
+      await w.connect('https://jup.ag');
+      w.show();
+      await screen.findByText('Connect to Jupiter?');
+      const gate = document.querySelector('.s9-gate-status') as HTMLElement;
+      expect(gate.parentElement?.classList.contains('app-approve')).toBe(true);
+      expect(gate.previousElementSibling?.classList.contains('app-approve-scroll')).toBe(true);
+      const cs = getComputedStyle(gate);
+      expect([cs.paddingTop, cs.flexShrink, cs.backgroundColor]).toEqual(['8px', '0', 'rgb(1, 2, 3)']);
+    } finally {
+      style.remove();
+    }
   });
 });

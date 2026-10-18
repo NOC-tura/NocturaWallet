@@ -1662,6 +1662,18 @@ body:has(.app-window) {
   background: var(--bg-base);
   padding-top: var(--space-1);
 }
+/*
+ * B1c-3 visual pass (controller ruling): #47's gate line (`.s9-gate-status`, "between scroll-area and sticky-bar",
+ * ix:18192) is in normal flow right after `.app-approve-scroll`, as Q12's line is — and like it read as drawn over the
+ * card it follows: the design's own padding is `0 … --space-2` (no top), so at 412 × 720, where the body scrolls, the
+ * row cut at the scroll area's clip edge ("ACCOUNT", 47a) sat flush against the line's text. Q12's guard: a gap
+ * (`padding-top`) between that edge and the text, never shrunk (`flex: 0 0 auto`), on the bar's own background.
+ */
+.app-approve > .s9-gate-status {
+  flex: 0 0 auto;
+  padding-top: var(--space-2);
+  background: var(--bg-base);
+}
 .app-approve-block {
   display: flex;
   justify-content: center;
@@ -1986,6 +1998,10 @@ body:has(.app-window) {
   font-size: 11px;
   line-height: 14px;
 }
+/* B1c-3 visual pass: "Program 1" on one line beside a long program value (the design's keys never wrap); the value wraps. */
+.app-tx-ix > .row > .k {
+  white-space: nowrap;
+}
 /* An address in full, in groups of four (B1 §3), its label under it; an unknown program's whole address likewise. */
 .s9-payload-card .row .v.app-tx-addr,
 .s9-payload-card .row .v.app-tx-unknown {
@@ -2025,6 +2041,27 @@ body:has(.app-window) {
 }
 .app-typed-help {
   margin: 0;
+}
+/*
+ * B1c-3 visual pass: the design's meta is one flowing line in its own 11 px mono and --fg-tertiary (ix:18353) — an
+ * address in it (whole, in groups: Q55) flows in that line, not as web's 12/20 primary inline-flex block that broke
+ * the line before and after it. Each group an atomic inline box (#20's recipient rule), so a line breaks only
+ * between groups under the meta's `word-break: break-all`.
+ */
+.s9-flag-banner .meta .addr-groups {
+  display: inline;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+.s9-flag-banner .meta .addr-groups > span {
+  display: inline-block;
+  margin-inline-end: 0.6ch;
+}
+/* B1c-3 visual pass: the red CTA's label on one line, as drawn (ix:18390 "Approve unlimited" beside its icon). */
+.sticky-bar.row .btn.btn-destructive.app-cta-wide {
+  white-space: nowrap;
+  padding-inline: var(--space-4);
 }
 /* #48 mismatch detail (ix:18504-18507): the session in --success, the request and the verdict in --danger — the card's
    own `.row .v` colour (three classes) outranks the one-class tone. */

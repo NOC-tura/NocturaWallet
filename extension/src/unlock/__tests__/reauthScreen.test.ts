@@ -686,6 +686,7 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
     expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual([
       'Sitejup.ag',
       'Transactions2',
+      'SOL\u22120.001005',
       'Depends on step 1 — not checked on its ownTransaction 2 of 2',
       'Unlimited USDC spend approvalTransaction 2 of 2',
     ]);
@@ -693,9 +694,28 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
     expect(unstyled('v-reauth')).toEqual([]);
     loadPage();
     await shown({...DAPP, reasons: ['override'], flags: [{tx: 0, row: 'F4', word: 'AUTHORITY', step: null}]});
-    // A single transaction: the row names what, the headline is still the one asset leaving.
-    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'SetAuthority on an account you own']);
-    expect([visible(el('ra-amount-row')), text(el('ra-amount'))]).toEqual([true, '0.001005']);
+    // A single transaction: the row names what is overridden; no headline (B1c-3 visual pass: the one asset leaving is
+    // not what is approved) — it is a row, with its minus.
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'SOL\u22120.001005', 'SetAuthority on an account you own']);
+    expect(visible(el('ra-amount-row'))).toBe(false);
+  });
+
+  // B1c-3 visual pass (10-dapp-override): an unlimited approve paid by the account itself — its one outflow is the
+  // network fee. The headline would have read "0.000005 SOL" above "Unlimited USDC spend approval". Neither an override
+  // nor an allowance (a bounded approve's `approval`) gets a headline; the plain send beside them still does.
+  it('a dApp’s override or allowance: no headline amount, the outflow a row; the same outflow alone keeps it', async () => {
+    const fee = {mint: null, symbol: 'SOL' as const, amount: '5000', decimals: 9};
+    await shown({...DAPP, outgoing: [fee], reasons: ['approval', 'override'], flags: [{tx: 0, row: 'F5', word: 'USDC', step: null, scope: 'unlimited'}]});
+    expect(visible(el('ra-amount-row'))).toBe(false);
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'SOL\u22120.000005', 'Unlimited USDC spend approval']);
+    loadPage();
+    await shown({...DAPP, outgoing: [fee], reasons: ['approval']});
+    expect(visible(el('ra-amount-row'))).toBe(false);
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag', 'SOL\u22120.000005']);
+    loadPage();
+    await shown({...DAPP, outgoing: [fee], reasons: ['first-send']});
+    expect([visible(el('ra-amount-row')), text(el('ra-amount')), text(el('ra-symbol'))]).toEqual([true, '0.000005', 'SOL']);
+    expect([...el('ra-rows').querySelectorAll('.intent-row')].map(text)).toEqual(['Sitejup.ag']);
   });
 
   it('a dApp’s transaction: expired and locked say what is true for a site’s request; Cancel only closes the tab', async () => {
