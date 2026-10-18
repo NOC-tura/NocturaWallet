@@ -60,7 +60,9 @@ export interface FlaggedInstruction {
 }
 export interface AuthorityInstruction {
   index: number;
-  program: ProgramKey;
+  /** Fix round 1 (Task 4 ⚠️, type parity): narrowed from `ProgramKey` — `isToken` below is the only producer, and it
+   * is now a type predicate, so this matches `approve/client.ts`'s own `AuthorityInstruction.program` at compile time. */
+  program: 'token' | 'token-2022';
   account: string;
   /** Why the account is the user's: a token account's owner field, a mint's mint or freeze authority, or the wallet signing as its current authority. */
   owned: 'token-account' | 'mint' | 'current-authority';
@@ -73,13 +75,21 @@ export interface AuthorityChange {
   from: string | null;
   to: string | null;
 }
+/**
+ * Fix round 1 (Task 4 ⚠️, type parity): the symbols F5's word and an approval's `symbol` can actually carry — never
+ * 'SOL', despite `WalletToken`'s wider declared type. `tokenForMint` (core/solana/balances.ts) loops only these three;
+ * it can never return 'SOL'. This is the union `approve/client.ts`'s `FlagSymbol` already uses on the window side —
+ * narrowing it here makes the background and the window agree at compile time, with no change to either's behaviour.
+ */
+export type ApprovalSymbol = Exclude<WalletToken, 'SOL'>;
+
 export interface Approval {
   /** The approving instruction's index; null when it is seen only in chain state (a CPI). */
   at: number | null;
   source: string;
   mint: string | null;
   /** The wallet's own symbol for the mint, only when the mint's decimals match the wallet's table. */
-  symbol: WalletToken | null;
+  symbol: ApprovalSymbol | null;
   decimals: number | null;
   delegate: string | null;
   /** Base units, decimal strings. */
@@ -98,7 +108,7 @@ export type RedFlag =
   | {kind: 'non-transfer'; severity: 'warn'; word: null; at: number; instructions: FlaggedInstruction[]}
   | {kind: 'assign'; severity: 'block'; word: 'ASSIGN'; at: number | null; instructions: FlaggedInstruction[]; chain: {owner: string; space: number} | null}
   | {kind: 'set-authority'; severity: 'block'; word: 'AUTHORITY'; at: number | null; instructions: AuthorityInstruction[]; chain: AuthorityChange[]}
-  | {kind: 'unlimited-approve'; severity: 'block'; word: string; at: number | null; approvals: Approval[]}
+  | {kind: 'unlimited-approve'; severity: 'block'; word: ApprovalSymbol | 'UNLIMITED' | 'ALLOWANCE'; at: number | null; approvals: Approval[]}
   | {kind: 'bounded-approve'; severity: 'warn'; word: null; at: number | null; approvals: Approval[]}
   /** settings null: the mint could not be read (Q36). */
   | {kind: 'token-2022'; severity: 'warn'; word: null; at: number | null; mint: string; settings: Token2022Settings | null}
@@ -111,7 +121,9 @@ export type TxFlags = RedFlag[];
 const KIND_ORDER: readonly RedFlagKind[] = ['unknown-program', 'non-transfer', 'assign', 'set-authority', 'unlimited-approve', 'bounded-approve', 'token-2022', 'durable-nonce', 'whole-balance', 'dependent'];
 const ASSIGNS: readonly string[] = ['assign', 'allocate', 'assignWithSeed', 'allocateWithSeed'];
 
-const isToken = (ix: DecodedInstruction): boolean => ix.program === 'token' || ix.program === 'token-2022';
+// Fix round 1 (Task 4 ⚠️, type parity): a type predicate, not a plain boolean — the only producer of F4's
+// `AuthorityInstruction.program`, so its narrowing is what proves that field's type below; no behaviour change.
+const isToken = (ix: DecodedInstruction): ix is DecodedInstruction & {program: 'token' | 'token-2022'} => ix.program === 'token' || ix.program === 'token-2022';
 const isTransfer = (ix: DecodedInstruction): boolean => (ix.program === 'system' && ix.name === 'transfer') || (isToken(ix) && (ix.name === 'transfer' || ix.name === 'transferChecked'));
 const tokenOf = (a: AccountData | null | undefined): TokenAccountInfo | null => (a === null || a === undefined ? null : tokenAccountInfo(a.data, a.owner));
 const plainAccount = (a: AccountData): boolean => a.owner === SYSTEM_PROGRAM && a.data.length === 0;
@@ -220,9 +232,11 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
     const a = mint === null ? null : (mints.get(mint) ?? null);
     return a === null ? null : (mintInfo(a.data, a.owner)?.decimals ?? null);
   };
-  const symbolOf = (mint: string | null, decimals: number | null): WalletToken | null => {
+  const symbolOf = (mint: string | null, decimals: number | null): ApprovalSymbol | null => {
     const candidate = mint === null ? null : tokenForMint(mint);
-    return candidate !== null && decimals === WALLET_TOKENS[candidate].decimals ? candidate : null;
+    // `candidate !== 'SOL'` is always true here (tokenForMint never returns it) — it only narrows the type, proving
+    // F5's word can never be 'SOL' without changing which mints are recognised.
+    return candidate !== null && candidate !== 'SOL' && decimals === WALLET_TOKENS[candidate].decimals ? candidate : null;
   };
   // Unlimited (O5): 99 % or more of the balance — u64::MAX and the whole balance always are. O8: each balance where it is
   // exact — a decoded approve's amount against the source's balance before (0 when it held nothing or could not be read:
@@ -371,7 +385,8 @@ function approvalOf(x: unknown): Approval | null {
   if (typeof o.amount !== 'string' || !DIGITS.test(o.amount) || typeof o.balance !== 'string' || !DIGITS.test(o.balance)) return null;
   // The symbol is the wallet's own name for the mint, only at its own decimals (redFlagsOf's rule) — never another.
   if (o.symbol !== null && (typeof o.symbol !== 'string' || !TOKENS.includes(o.symbol) || o.mint === null || tokenForMint(o.mint) !== o.symbol || o.decimals !== WALLET_TOKENS[o.symbol as WalletToken].decimals)) return null;
-  return {at: o.at, source: o.source, mint: o.mint, symbol: o.symbol as WalletToken | null, decimals: o.decimals, delegate: o.delegate, amount: o.amount, balance: o.balance};
+  // `tokenForMint(o.mint) !== o.symbol` above already rejects 'SOL' (tokenForMint never returns it), so this narrows safely.
+  return {at: o.at, source: o.source, mint: o.mint, symbol: o.symbol as ApprovalSymbol | null, decimals: o.decimals, delegate: o.delegate, amount: o.amount, balance: o.balance};
 }
 
 function settingsOf(x: unknown): Token2022Settings | null {

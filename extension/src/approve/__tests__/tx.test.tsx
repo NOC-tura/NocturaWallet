@@ -844,6 +844,30 @@ describe('#48 red flags (B1c-3)', () => {
     type('USDC', 'USDC');
     await holdAfter();
     expect(cta('Approve unlimited').disabled).toBe(false);
+    // Review 1 I1: a two-field screen — both words typed, a new simulation lands (both fields empty, as above), then
+    // only ONE is typed again. The other field must stay empty and unmatched, not read back the word typed against the
+    // simulation before this one (`setTypedFor`'s merge must drop every word that is not for `simId`, not just add).
+    cleanup();
+    const two = await openWindow();
+    holdUsdc(two);
+    await two.signTx('https://jup.ag', [v0([assign(), tokenApprove(SRC, DELEGATE, U64_MAX)])]);
+    two.show();
+    await simulated(two, 'Assign / Allocate on your wallet account');
+    type('ASSIGN', 'ASSIGN');
+    type('USDC', 'USDC');
+    await holdAfter();
+    expect([field('ASSIGN').value, field('USDC').value, cta('Approve anyway').disabled]).toEqual(['ASSIGN', 'USDC', false]);
+    const firstTwo = (await readDappSession(two.ext)).queue[0]?.sim;
+    two.deps.clock.t += 30_000;
+    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+    await waitFor(async () => expect((await readDappSession(two.ext)).queue[0]?.sim).not.toEqual(firstTwo));
+    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+    await waitFor(() => expect(field('ASSIGN').value).toBe(''));
+    expect([field('ASSIGN').value, field('USDC').value, cta('Approve anyway').disabled]).toEqual(['', '', true]);
+    // Only ASSIGN is typed again — USDC must not silently read back as matched from the old simulation's word.
+    type('ASSIGN', 'ASSIGN');
+    await holdAfter();
+    expect([field('ASSIGN').className, field('USDC').value, field('USDC').className, cta('Approve anyway').disabled]).toEqual(['input match', '', 'input', true]);
   }, 15_000);
 
   it('System assign of the wallet account (F3) and an unlimited approve in one transaction: "Critical · Blocked transaction", both banners, one field per block — "Approve anyway" only when both match; the L3 line replaced beside an authority flag', async () => {
@@ -1031,7 +1055,7 @@ describe('#48 red flags (B1c-3)', () => {
         meta: [`delegate: ${del} · token: USDC mint ${USDC} · scope: u64::MAX`, `delegate: ${del} · token: mint ${MINT} · scope: 250000000`, `delegate: ${del} · token: mint — · scope: u64::MAX`],
       },
       {tone: 'warn', head: 'This transaction does not expire.', body: [], meta: ['#1 system_program::AdvanceNonceAccount']},
-      {tone: 'warn', head: 'USDC spend approval', body: ['This lets a delegate move up to 5 USDC of your USDC until you revoke.'], meta: [`delegate: ${del} · token: USDC mint ${USDC} · scope: 5 USDC`]},
+      {tone: 'warn', head: 'USDC spend approval', body: ['This lets a delegate move up to 5 of your USDC until you revoke.'], meta: [`delegate: ${del} · token: USDC mint ${USDC} · scope: 5 USDC`]},
       {tone: 'warn', head: 'Unknown program', body: ['The wallet cannot decode what this program does — only the simulation shows its effects.'], meta: [P1, 'a program the transaction does not name in its own keys']},
       {tone: 'warn', head: 'Instructions that are not transfers', body: ['Each can do more than move a balance. Check what it does before approving.'], meta: ['#1 system_program::AdvanceNonceAccount', '#7 spl_token::unknown instruction']},
       {
@@ -1060,6 +1084,16 @@ describe('#48 red flags (B1c-3)', () => {
     expect(text('.s9-flag-banner.danger .head')).toBe('Spend approval for nearly all of this token');
     expect(text('.s9-typed-confirm .label')).toBe('Type ALLOWANCE to enable Approve');
     expect(document.querySelector('.app-approve')?.textContent).not.toMatch(/unlimited/i);
+  });
+
+  it('fix round 1 Minor 1: F6’s body (Q45) never doubles the symbol — a named token says the bare amount, an unnamed one "of this token"', () => {
+    const named: Flag[] = [{kind: 'bounded-approve', severity: 'warn', word: null, at: null, approvals: [approval({symbol: 'USDC', decimals: 6, amount: '5000000'})]}];
+    render(<Tx request={flagged(named)} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
+    expect(text('.s9-flag-banner.warn .body')).toBe('This lets a delegate move up to 5 of your USDC until you revoke.');
+    cleanup();
+    const unnamed: Flag[] = [{kind: 'bounded-approve', severity: 'warn', word: null, at: null, approvals: [approval({symbol: null, decimals: null, mint: MINT, amount: '5000000'})]}];
+    render(<Tx request={flagged(unnamed)} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
+    expect(text('.s9-flag-banner.warn .body')).toBe('This lets a delegate move up to 5000000 of this token until you revoke.');
   });
 
   it('the design’s typed-confirm and flag-banner rules, as extracted (design-ext.css), and the hand-written ones (app.css)', () => {

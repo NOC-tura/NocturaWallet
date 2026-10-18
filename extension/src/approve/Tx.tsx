@@ -53,9 +53,11 @@ function changeRow(c: BalanceChange): {key: string; tile: string; tileText: stri
 
 const U64_MAX = '18446744073709551615';
 const TILES: Readonly<Record<string, string>> = {NOC: 'noc', USDC: 'usdc', USDT: 'usdt'};
-/** An approval's amount as the user reads it: with the mint's decimals and the wallet's symbol when known, else base units. */
+/** An approval's amount with the mint's decimals, bare — no symbol (fix round 1 Minor 1: `FLAG_TEXT.bounded` appends its own). */
+const approvalValue = (a: Approval): string => (a.decimals === null ? a.amount : formatAmount(BigInt(a.amount), a.decimals, {min: 0, max: a.decimals}));
+/** An approval's amount as the user reads it: the bare value, with the wallet's symbol appended when known. */
 const approvalAmount = (a: Approval): string => {
-  const value = a.decimals === null ? a.amount : formatAmount(BigInt(a.amount), a.decimals, {min: 0, max: a.decimals});
+  const value = approvalValue(a);
   return a.symbol === null ? value : `${value} ${a.symbol}`;
 };
 const approvalsOf = (item: TxItem): Approval[] => (item.flags ?? []).flatMap(f => (f.kind === 'unlimited-approve' || f.kind === 'bounded-approve' ? f.approvals : []));
@@ -323,7 +325,7 @@ function flagBanner(item: TxItem, f: Flag, key: number): ReactNode {
       );
     case 'bounded-approve':
       return (
-        <FlagBanner key={key} tone="warn" head={FLAG_TEXT.boundedHead(f.approvals.length === 1 ? (f.approvals[0]?.symbol ?? null) : null)} body={f.approvals.map(a => FLAG_TEXT.bounded(approvalAmount(a), a.symbol))} meta={f.approvals.map(approvalMeta)} />
+        <FlagBanner key={key} tone="warn" head={FLAG_TEXT.boundedHead(f.approvals.length === 1 ? (f.approvals[0]?.symbol ?? null) : null)} body={f.approvals.map(a => FLAG_TEXT.bounded(approvalValue(a), a.symbol))} meta={f.approvals.map(approvalMeta)} />
       );
     case 'assign':
       return (
@@ -422,6 +424,12 @@ function flagBanner(item: TxItem, f: Flag, key: number): ReactNode {
       return <FlagBanner key={key} tone="warn" head={FLAG_TEXT.nonce} meta={[instructionMeta(item, f.at)]} />;
     case 'whole-balance':
       return <FlagBanner key={key} tone="warn" head={FLAG_TEXT.wholeHead} body={[FLAG_TEXT.whole]} />;
+    // Fix round 1 Minor 2: exhaustive at compile time — a new Flag kind fails to build here, rather than rendering
+    // silently as no banner (`ReactNode` includes `undefined`, so a missing case would otherwise compile clean).
+    default: {
+      const exhaustive: never = f;
+      return exhaustive;
+    }
   }
 }
 
