@@ -1,6 +1,6 @@
 # Noctura Extension B1d — presale in the extension (buy, allocation, referral, jurisdiction gate)
 
-**Status:** **rev 3 — Fable reviews 1–2 applied with owner decisions D7–D15; next: owner review.** The owner approved
+**Status:** **approved rev 3**, 2026-10-19 (owner: "ok je") — Fable reviews 1–2 applied with owner decisions D7–D15; next: plan B1d-1a →  Fable review. The owner approved
 the design in conversation section by section (`.superpowers/sdd/b1d-approved-design.md`, approach A) and took
 decisions D1–D6, then D7–D14 on Fable's review 1 and D15 on review 2 (`.superpowers/sdd/b1d-owner-decisions.md`,
 `.superpowers/sdd/b1d-spec-review-1.md`, `.superpowers/sdd/b1d-spec-review-2.md`).
