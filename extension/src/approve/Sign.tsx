@@ -50,7 +50,7 @@ export function Sign({request, waiting, notice, busy, onDecide}: {request: Reque
    * Fix round 1, item 2 (promoted): `sign` is null when the account is no longer unlocked, or the message was
    * refused (decide.ts's viewOf/signDetail) — the request itself is still live. A blank window with no ✕ and no
    * Reject would trap the user; show the bare top bar and a Reject-only exit. The design never drew this state: its
-   * one line, Q26, is the owner-delegated string of rev 3.2, set in the lede's own body tier under the title.
+   * one line, Q26, is the owner-delegated string of rev 3.2 — B1c-3: drawn as #48 draws it, a danger flag banner.
    */
   if (detail === null) {
     return (
@@ -59,7 +59,12 @@ export function Sign({request, waiting, notice, busy, onDecide}: {request: Reque
         <div className="scroll-area app-approve-scroll">
           {notice ? <BudgetNotice /> : null}
           <h1 className="noc-h1 app-approve-title">{SIGN_TEXT.title}</h1>
-          <p className="noc-body-sm app-muted app-approve-lede">{SIGN_TEXT.cannotSign}</p>
+          <div className="s9-flag-banner danger app-tx-block" role="alert">
+            <ExtIcon name="alert-triangle" size={18} />
+            <div>
+              <p className="head">{SIGN_TEXT.cannotSign}</p>
+            </div>
+          </div>
         </div>
         <Waiting n={waiting} />
         <div className="sticky-bar">

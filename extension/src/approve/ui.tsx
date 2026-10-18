@@ -4,7 +4,7 @@ import {LockedButton} from '../app/ui/LockedButton';
 import {Sheet} from '../app/ui/Sheet';
 import type {Site} from './client';
 import {WINDOW_TEXT} from './strings';
-import {useArmed} from './useArmed';
+import {ARM_MS, useArmed} from './useArmed';
 
 /**
  * The approval window's shared pieces (spec §3.1, §3.2, §4.3): the top bar (✕ = Reject), the origin card, the lookalike
@@ -39,10 +39,10 @@ export function siteLabel(origin: string, host: string): string {
 
 /**
  * Final review MUST-FIX 2 (design binding): a verified site's tile in the brand gradient the design draws for it — the
- * approval window's own mockups (#48 ix:18283 and #47 ix:17578 Jupiter, #46 ix:17467 Magic Eden, #47 ix:17711 Tensor,
- * #48 ix:18414 Noctura) and, for the brands only #49 draws (Drift, Kamino), #49's tiles (ix:3885-3889), so a brand keeps
- * one colour across the screens that draw it; where two screens draw one brand differently (Tensor), each keeps its
- * own, as §9 rules for #37's and #49's holds. Keyed by the known list's name, which the background gives only for a
+ * approval window's own mockups (#48 ix:18283 and #47 ix:17578 Jupiter, #46 ix:17467 Magic Eden, #48 ix:18414 Noctura)
+ * and, for the brands only #49 draws (Drift, Kamino), #49's tiles (ix:3885-3889), so a brand keeps one colour across the
+ * screens that draw it. Tensor, which the design draws differently (#47 ix:17711 cyan, #49 ix:3885 violet), takes #49's — the
+ * design's latest — on every screen (B1c-3, R9, controller ruling). Keyed by the known list's name, which the background gives only for a
  * verified host (C7) — an unknown or lookalike host never gets a brand's colours. Any other verified site keeps the
  * accent tile.
  */
@@ -141,10 +141,11 @@ export function ConfirmButton({armed, onPress, className, children}: {armed: boo
 
 /** The design's 2-second confirm (#46 E; §3.1, §3.2 step 5): only "I understand the risk" proceeds, enabled after 2 s. */
 export const CONFIRM_DELAY_MS = 2_000;
-export function RiskConfirm({onCancel, onProceed, delay = CONFIRM_DELAY_MS}: {onCancel: () => void; onProceed: () => Promise<unknown> | void; delay?: number}) {
+export function RiskConfirm({onCancel, onProceed, delay = CONFIRM_DELAY_MS, holdMs = ARM_MS}: {onCancel: () => void; onProceed: () => Promise<unknown> | void; delay?: number; holdMs?: number}) {
   const [ready, setReady] = useState(false);
-  // C15 inside the sheet too (review 1 L4): held 500 ms again whenever the window regains focus.
-  const armed = useArmed('risk-confirm');
+  // C15 inside the sheet too (review 1 L4): held 500 ms again whenever the window regains focus — B1c-3: 1.5 s on a
+  // screen with a red flag (`holdMs`, the caller's).
+  const armed = useArmed('risk-confirm', holdMs);
   useEffect(() => {
     const t = setTimeout(() => setReady(true), delay);
     return () => clearTimeout(t);

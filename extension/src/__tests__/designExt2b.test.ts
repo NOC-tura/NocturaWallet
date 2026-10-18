@@ -35,7 +35,14 @@ describe('design-ext.css (B1b-2b plan 1)', () => {
     }
   });
 
+  // B1c plan 3 re-ran the extraction with #48's typed-confirm added (ix:3856-3860).
+  it('carries #48’s typed-confirm (B1c plan 3)', () => {
+    for (const sel of ['.s9-typed-confirm', '.s9-typed-confirm .label', '.s9-typed-confirm .input', '.s9-typed-confirm .input.match', '.s9-typed-confirm .input.empty']) {
+      expect(CSS).toContain(`\n${sel} {`);
+    }
+  });
+
   it('is the extraction output, byte for byte (the hash the plan pins; scripts/extract-design-css.mjs --check against the design)', () => {
-    expect(createHash('sha256').update(CSS).digest('hex')).toBe('c91f92205f2d033d27dfe578e7d7515db37a0e240ddb0aca4752834c9551da44');
+    expect(createHash('sha256').update(CSS).digest('hex')).toBe('ccbae441c059119e3bc32e5b88909e2974dd4d374bdc4f89bff13a475de72f8a');
   });
 });

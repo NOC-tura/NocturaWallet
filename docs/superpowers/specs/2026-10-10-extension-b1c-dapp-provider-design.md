@@ -1,6 +1,6 @@
 # Noctura Extension B1c — the dApp provider (connect, sign, approve)
 
-**Status:** **approved rev 3**, 2026-10-10 (current text: **rev 3.5**, 2026-10-16) — the owner approved this spec, the strings of §10 (Q01–Q24) and the known list of §2.5. The owner approved the design in conversation (sections 1–3) and took
+**Status:** **approved rev 3**, 2026-10-10 (current text: **rev 3.6**, 2026-10-16) — the owner approved this spec, the strings of §10 (Q01–Q24) and the known list of §2.5. The owner approved the design in conversation (sections 1–3) and took
 decisions D1–D11. Rev 2 applied every finding of Fable 5.1 review 1 (`.superpowers/sdd/b1c-spec-review-1.md`: H1–H3,
 M1–M12, L1–L13); M1 and M2 were the owner's decisions D10 and D11. **Rev 3** applies every finding of Fable review 2
 (`.superpowers/sdd/b1c-spec-review-2.md`: H1–H2, M1–M10, L1–L13; verdict "approve after fixes"). Where each finding
@@ -29,6 +29,32 @@ leaving the worker (Task 5 ruling: "never sent twice" kept over at-least-once; n
 gain ✕ on a window while a riding mismatch notice is shown (Task 3 ruling, round 4); §10 gains Q27, the line for an
 approval refused because its simulation is merely old (final review I3 — controller copy, flagged to the owner). No
 other rule changed.
+**Rev 3.6 (owner decisions O1–O4 of 2026-10-16 and the controller's rulings for plan 3 —
+`.superpowers/sdd/b1c3-owner-decisions.md`, `.superpowers/sdd/b1c3-plan-brief.md`):** §3.3 gains B1 §3's red-flag
+table as plan 3 builds it (F1–F11: how each is detected, its severity, its override word), the override rule (one typed
+field per blocked transaction and kind, plus re-authentication through #10; the background recomputes every word), the
+1.5 s hold, the typed field and the banners; the decoder gains System's four `…WithSeed` instructions. **O1:** an
+unlimited approve needs the typed symbol **and** re-authentication through #10 (not typed-only). **O2:** a later
+transaction of a batch whose simulation fails on an account an earlier transaction of the same batch creates is
+approvable under the override rule; every other failed simulation stays Reject-only. **O3:** the Token-2022 warnings
+are for Token-2022 mints only; a classic SPL mint's freeze authority is not flagged. **O4:** a first send to a new
+address through a CPI is an accepted limit. §9 gains five rows (the declared omissions, O3, O4) and updates two (R10,
+dependent batches); §10 gains Q28–Q36 (controller copy, flagged to the owner). **Plan 3 review 1 (Fable, 2026-10-17;
+owner decisions O5–O7, `.superpowers/sdd/b1c-plan3-review-1.md`):** **O5:** F5 also blocks an approval of 99 % or
+more of the source's balance (stricter than B1 §3's "whole balance", which is allowed), read against the balance both
+before and after the transaction; **O6:** F10's banner says plainly that approving an unchecked step may move any of
+the account's balances, and §9 states the residual risk; **O7:** F2 exempts three self-rent instructions, each in one
+exact shape; the hold is 1.5 s instead of C15's 500 ms; a new simulation clears the typed words; §9 gains three rows
+(the dependent step's residual risk, multisig-owned token accounts, the balance card's SOL row). **Plan 3 review 2
+(Fable, 2026-10-17; owner decisions O8, O9, `.superpowers/sdd/b1c-plan3-review-2.md`):** **O8:** F5's balances are
+exact — a decoded approve against the source's balance before the transaction, and the source's remaining delegation
+after it against its balance after it (a delegation the same transaction consumes, and a small delegation after an
+inflow, are F6); **O9:** "unlimited" is said only of u64::MAX — an approval of 99 % up to the whole balance has its own
+head, eyebrow and #10 row and the CTA "Approve anyway"; §9 gains a row for a poll that supersedes the window's own
+refresh. **Plan 3 review 3 (Fable, 2026-10-17; controller rulings L12–L14):** the delegation a decoded approve leaves is
+its own only with its own delegate (L12); a decoded approve of a source holding nothing before the transaction stays a
+block (L13, fail closed); a token the wallet cannot name has the override word `ALLOWANCE` below u64::MAX (Q58),
+`UNLIMITED` only at it (L14). No other rule changed.
 
 **What this is.** The extension becomes a wallet any Solana site can use through Wallet Standard: connect, disconnect,
 events, `signMessage`, `signTransaction`, `signAndSendTransaction`, on `solana:mainnet` only. It builds the design's
@@ -545,7 +571,8 @@ cannot mask an earlier one (review M5):
    [Reject] + [Sign]. Top-bar ✕ = Reject; disabled while signing. **Can no longer be signed** (rev 3.2): when the
    request is live but its signing detail is gone (the account is unlocked no more, or the message is now refused), #46
    keeps the overline, ✕ and the title, shows Q26 *"This request can no longer be signed. Reject it and ask the site to
-   try again."* under the title in the lede's body tier, and offers only [Reject] (the design does not draw this state).
+   try again."* under the title as #48 shows it — a danger flag banner (B1c-3; B1c-1 set it in the lede's body tier) —
+   and offers only [Reject] (the design does not draw this state).
 5. **Lookalike:** overline "Suspicious origin"; the short lede "A signature proves you control this wallet."; the banner
    (§3.1); in the preview, every non-ASCII character that `skel` maps to Latin is `<mark>`ed (as the design marks "а"
    in "Domain: phаntom.app"); primary "Reject and report"; tertiary "Sign anyway (not recommended)" → the design's
@@ -570,7 +597,8 @@ cannot mask an earlier one (review M5):
   payer or signer; otherwise `invalid-request`.
 - Lookup tables resolved with `getMultipleAccounts` through the proxy before decoding; unresolvable → that instruction is
   "unknown program".
-- **Decoder:** System (transfer, createAccount, assign, allocate, advanceNonceAccount), SPL Token and Token-2022
+- **Decoder:** System (transfer, createAccount, assign, allocate, advanceNonceAccount; rev 3.6: createAccountWithSeed,
+  allocateWithSeed, assignWithSeed, transferWithSeed, each with its target account), SPL Token and Token-2022
   (transfer, transferChecked, approve, approveChecked, revoke, setAuthority, closeAccount, burn, burnChecked,
   initializeAccount*, syncNative) and the Token-2022 extensions B1 §3 names, ATA (create, createIdempotent), Compute
   Budget (limit, price), the presale program (by Anchor discriminator from the IDL in the repo).
@@ -590,7 +618,82 @@ cannot mask an earlier one (review M5):
 - **E2E through `StandardWalletAdapter`** (`@solana/wallet-adapter-base`), so the adapter's compatibility predicate is
   exercised (review M1).
 - **B1c-3** builds B1 §3's red-flag table exactly, with its override rule (typed symbol or word + re-authentication,
-  one transaction, no setting disables a block) and B1 §3's Confirm hold of 1.5 s on any red-flag screen (on top of C15).
+  one transaction, no setting disables a block) and B1 §3's Confirm hold of 1.5 s on any red-flag screen (instead of
+  C15's 500 ms, on every C15 trigger — rev 3.6).
+
+#### Red flags as B1c-3 builds them (rev 3.6)
+
+Flags are computed in the **background** (`src/background/dapp/redFlags.ts`), per transaction of the request, from the
+decoded instructions, the simulation's pre- and post-state, the account's holdings and the mints read through the
+proxy (`getMultipleAccounts`). The window only renders the flags stored with the simulation; it computes none (C13).
+
+| # | condition (B1 §3) | how it is detected | severity | override word |
+|---|---|---|---|---|
+| F1 | a program not in the decoded set — also an instruction that touches an account no lookup table resolved, and a known program's instruction that does not parse strictly | the decoded instruction's program is unknown | warning, named by the program's address (one banner per transaction listing every unknown program, each address whole, in groups of four) | — |
+| F2 | an instruction of a decoded program that is not a transfer | the decoded name is none of System `transfer`, Token / Token-2022 `transfer`, `transferChecked`. **Compute Budget is exempt** — it is the fee, already shown as the fee row. **O7: three self-rent instructions are exempt**, each only in exactly this shape, because none can take value from the account: an ATA `create` / `createIdempotent` whose `wallet` **and** `payer` are both the account (its own token account, the rent paid by itself); `syncNative` of a token account whose pre-state owner field is the account; `closeAccount` of a token account whose pre-state owner field is the account, with the account itself as the destination (the rent comes back to it). Every other instruction stays named — another wallet's ATA or one another payer funds, a sync or close of an account that is not the user's or that the wallet cannot read, a close to any other destination. An instruction a more specific flag of the same transaction already names (F3's assign, F4's setAuthority, F5's or F6's approve, F8's `AdvanceNonceAccount`) is not listed again — B1 §3's "named" is that flag's banner (controller ruling, plan 3: the design draws one banner for an unlimited approve); every other one stays listed | warning, one banner per transaction naming the instructions | — |
+| F3 | System `Assign` / `Allocate` on the user's own wallet account | a decoded `assign`, `allocate`, `assignWithSeed` or `allocateWithSeed` (tags 1, 8, 10, 9) whose target account (index 0) is the wallet account; **or, from chain state** (a CPI, no top-level instruction naming it): the simulation's post-state of the wallet account has an owner other than the System program, or any data — either signal alone fires the flag (fix round 1, Minor 3) | **blocked** | `ASSIGN` (Q28) — one word for all four; the banner names which |
+| F4 | SPL / Token-2022 `SetAuthority` (any authority type) on an account the user owns | a decoded `setAuthority` whose account is a token account whose pre-state owner field is the wallet account, or a mint whose pre-state mint authority or freeze authority is the wallet account; **or, from chain state** (a CPI): an own token account's owner reassigned away, or its close authority changed — either signal alone fires the flag (fix round 1, Minor 3) | **blocked** | `AUTHORITY` (Q29) |
+| F5 | `Approve` / `ApproveChecked` of the whole balance or u64 max — **O5: or nearly all of it, 99 % or more** (stricter, allowed) | "at least 99 %" is `amount × 100 ≥ balance × 99` (B1c-2's whole-balance percent; u64::MAX and the whole balance always are). **O8 — each balance where it is exact:** a decoded approve whose amount is at least 99 % of the source's balance **before** the transaction (pre-state; a source the wallet cannot read as its own token account then is an empty balance — fail closed), **or** whose source **after** the transaction (post-state, still the account's own token account, its delegate the instruction's own — review 3 L12: another delegate left there is the chain state's to name) holds a remaining delegation, no larger than the instruction granted, of at least 99 % of its balance after it. **A source holding nothing before** — an empty token account, one the same transaction creates, or one the wallet cannot read — **makes any decoded approve of it a block** (review 3 L13, fail closed: an approval of an account whose balance the user cannot see is not "bounded"; the test "L13: a source holding nothing before …"); **or, from chain state** (a CPI): an own account's post-state delegation, new or raised, of at least 99 % of its balance **after** the transaction — either signal alone fires the flag (fix round 1, Minor 3). So a transaction that moves tokens out and delegates what is left is a block (review 1 M1), while a delegation the same transaction consumes (nothing remains delegated) and a delegation small beside the balance after an inflow into a source that held something before are F6 — their copy then true (review 2 M5). **In a batch** (final review I1, controller ruling), each of these balances is first reduced by what every other transaction of the batch — earlier or later — as simulated, sends out of the same source (an account it closes or hands to another owner: all of it), never raised by what any brings in — so sending 600 of 1 000 in one step and approving the 400 left in another, in either order, is a block | **blocked** | the token's symbol from **the wallet's own token table**, exact and case-sensitive — only when the simulation's decimals match the table's; a mint the wallet cannot name → `UNLIMITED` (Q30) when an approval of it is u64::MAX, else `ALLOWANCE` (Q58, review 3 L14) — "unlimited" only of u64::MAX, as O9 says of the copy. Never a symbol a mint claims for itself (a fake mint can call itself USDC) |
+| F6 | a bounded `Approve` / `ApproveChecked` | as B1c-2 (the `approval` reason, from chain state) | warning + re-authentication | — |
+| F7 | Token-2022 transfer hook, permanent delegate or freeze authority on a token the user holds (**O3: Token-2022 mints only**) | every mint of an own token account the transaction touches (pre- or post-state) and every mint a decoded instruction names, read through the proxy. A Token-2022 mint (owner = the Token-2022 program): its base layout's freeze authority (COption, tag at 46), and its TLV extensions from byte 166 (byte 165 = 1, Mint) — extension 12 PermanentDelegate with a non-zero key, extension 14 TransferHook with a non-zero program id (32 zero bytes are "none"). A mint that cannot be read or parsed → "Could not read this token's settings" (Q36; fail closed — a warning, never silence) | warning, named per mint (which of the three, with the authority's or the program's address) | — |
+| F8 | durable nonce (`AdvanceNonceAccount` first) | B1c-2's `usesDurableNonce` | warning: "This transaction does not expire." (B1 §3's copy, capitalised) | — (`signAndSendTransaction` stays refused for it, B1c-2) |
+| F9 | whole or nearly whole balance to a first-time address | as B1c-2 (`whole-balance-to-new`) | warning + re-authentication, now with a banner | — |
+| F10 | simulation failed and the user continues | **O2:** only a failure attributable to an earlier transaction of the same batch (below) has a continue path; every other failure stays Reject-only — stricter than B1 §3's warning, which is allowed. An expired blockhash anywhere: Reject only | **blocked** | `UNCHECKED` (Q31) |
+| F11 | request origin differs from the granted origin | built in B1c-1 / B1c-2 | **blocked, no override** | — |
+
+- **Attribution (F10, O2).** Transaction *k* (*k* ≥ 2) of a batch failed with exactly one of two errors of Agave's
+  `TransactionError`, in the JSON the RPC returns — `{"InstructionError": [i, <any InstructionError>]}` (instruction
+  *i* of the message, an index of one of its instructions), whose named accounts are instruction *i*'s resolved
+  accounts; or `"AccountNotFound"` (the fee payer holds no lamports), whose named account is the fee payer — **and**
+  the named accounts intersect the accounts that transactions 1 … *k*−1 of the same batch create: System `createAccount` / `createAccountWithSeed` (the new account),
+  ATA `create` / `createIdempotent` (the account), Token / Token-2022 `initializeAccount`, `initializeAccount2`,
+  `initializeAccount3` (the account); *N* is the earliest such transaction. Any other error, or any other shape of
+  these two, is a plain failure. Then step *k* reads "This step depends on step <N> and could not be checked on
+  its own." (Q32), shows no balance changes (they are unknown, and it says so) and F10 blocks it. A dependent step's
+  effects are unknown, so the request always re-authenticates. Every other failure: Reject only, as B1c-2.
+- **The override rule (B1 §3, O1).** Each blocked transaction carries its own typed field, in its own section of the
+  screen; a transaction with two kinds of block needs both words — one field per (transaction, kind). Approve is
+  enabled only when every field matches. The window sends the words it was given with the approval; the background
+  recomputes every expected word from its stored simulation and refuses the approval unless every block has its exact
+  word, and refuses it when any block has none. A request with any block always re-authenticates through #10 (the
+  reason line: "Re-auth required to override a blocked transaction.", Q33); #10's description names what is
+  overridden — one row per block, Q37–Q40 and Q56 (the challenge's F5 carries its scope: u64::MAX or nearly all), with "Transaction <n> of <m>" in a batch; with an override (or an allowance,
+  the `approval` reason) #10 draws no headline amount, what leaves the account is a row (the visual pass: the network
+  fee alone stood in the largest type above "Unlimited USDC spend approval") — and a refresh that adds a
+  flag (a block or a warning) or changes a block's word or step asks for a new re-authentication. The re-authentication stays bound to
+  the exact bytes (B1c-2); the words are not secrets and are bound only by the background recomputing them. No setting
+  disables a block.
+- **Holds (B1 §3).** On any screen with a flag (warning or block) every confirming CTA is held **1.5 s instead of
+  C15's 500 ms**, on every one of C15's triggers — at open, after focus and after each state change, a typed field's
+  match changing included (never 2 s: the hold replaces C15's, it is not added to it). No control is focused
+  at open, the typed field included; Enter never confirms, and Enter in a typed field never submits. Reject is never
+  held.
+- **The typed field** is the design's `.s9-typed-confirm`: the label "Type <code>WORD</code> to enable Approve" (the
+  design's), the word shown in its true case; the input with `autocapitalize`, `autocomplete`, `autocorrect` and
+  `spellcheck` off, an exact, case-sensitive match with no trimming (a trailing space does not match), the design's
+  `.input.match` border on a match, and #37's helper "Case-sensitive · must match exactly.". Never pre-filled, and
+  emptied when a new simulation lands (review 1 L1: a chain-state block's details can change between simulations, so
+  the user types the word again for what the screen now shows); not in a form (Enter in it has nothing to submit). A
+  lookalike origin with a block passes both gates in this order: the typed fields enable its demoted "Approve anyway
+  (not recommended)", which opens the 2-second confirm. The
+  CTA: for an unlimited approve (u64::MAX) the design's red "Approve unlimited" with the alert icon; for any other block —
+  an F5 of 99 % up to the whole balance below u64::MAX included (O9) — "Approve anyway" (Q34), red; drawn as #37's gated
+  CTA (greyed, full label) until every field matches.
+- **Banners.** `.s9-flag-banner danger` for a block (head, body, meta — the design's state 2; for F5 the design's own
+  copy with the real token and delegate), `.s9-flag-banner warn` for a warning; blocks first, then warnings, per
+  transaction, in that transaction's section. The top-bar eyebrow: "Critical · Unlimited spend approval" for F5 of
+  u64::MAX (the design's), "Critical · Large spend approval" (Q57, O9) when every F5 is below u64::MAX, "Critical ·
+  Blocked transaction" (Q35) for any other block, unchanged otherwise. F5's head is the design's "Unlimited <SYM> spend
+  approval" only at u64::MAX; below it "Spend approval for nearly all your <SYM>" (Q56, O9; #10's row the same). An approve's balance card
+  gains the design's synthesized row ("<SYM> delegated · unlimited · ≈ all current + future"; a bounded approve
+  "<SYM> delegated · <amount>"): an approve changes no balance, so the "No balance changes" line is replaced wherever an
+  authority or approve flag exists. Every banner's copy is the design's, B1 §3's or §10's (Q32, Q36–Q39, Q41–Q55).
+- **Instruction rows (B1c-3, the final review's carried minors).** A non-Checked Token / Token-2022 `transfer`,
+  `approve` or `burn` carries no decimals: its amount is shown with the mint's decimals (0–18, as the simulation knows
+  them) when the background read the source account's pre-state as a token account of the instruction's own program
+  (a burn: of the mint it names) — otherwise in base units, as B1c-2; the window computes none. An ATA `create` /
+  `createIdempotent` names its token program (account 5; fewer than the six accounts the program reads is an unknown
+  program): the whole address, with `spl_token` or `spl_token_2022` beside it when it is one of the two.
 
 The plans for B1c-2 and B1c-3 refine this section; they may not loosen it.
 
@@ -796,7 +899,7 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
 |---|---|
 | `extension/src/provider/` | the MAIN-world provider (bundle `provider.js`) |
 | `extension/src/relay/` | the ISOLATED relay (bundle `relay.js`) |
-| `extension/src/background/dapp/` | ports, queue, grants, known list + classifier + confusables + punycode, blocked, pageApi, window, decide, lockHook, signMessage; B1c-2 decode/simulate/signTx; B1c-3 redFlags |
+| `extension/src/background/dapp/` | ports, queue, grants, known list + classifier + confusables + punycode, blocked, pageApi, window, decide, lockHook, signMessage; B1c-2 decode/simulate/signTx; B1c-3 redFlags, tokenState (the mint and token-account parsers) |
 | `extension/src/background/autolock.ts`, `session.ts`, `index.ts` | every lock caller routed through the lock hook |
 | `extension/src/approve/` + `approve.html` | the approval window (#46, #47, #48, locked) |
 | `extension/src/app/screens/ConnectedApps.tsx` | #49 |
@@ -841,12 +944,22 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
 | design frame 916 px high | the window is 720 px; the body scrolls, the sticky bar stays |
 | unlock inside the flow (implied by the design's modal stack) | the locked window points to the toolbar (D11) |
 | first six / last six highlighted on review screens | B1 §3 (owner): labels + first-send warning, unchanged |
-| a `signTransaction` batch whose later transactions depend on earlier ones (create a token account, then transfer to it; a swap's setup / swap / cleanup) | **unapprovable in B1c-2** (owner, 2026-10-15; plan 2 review 1 M4): a batch is simulated transaction by transaction against the current slot — a node cannot chain them — so a transaction that needs an earlier one's effect simulates as failed, and a failed simulation offers only [Reject] (plan 2 R6, R8). **B1c-3 must solve dependent batches** — e.g. a per-transaction override for a failure attributable to an earlier transaction of the same batch (one that creates the account the failure names), under B1 §3's override rule — rather than leave them to the typed override of every failed simulation |
+| a `signTransaction` batch whose later transactions depend on earlier ones (create a token account, then transfer to it; a swap's setup / swap / cleanup) | **unapprovable in B1c-2** (owner, 2026-10-15; plan 2 review 1 M4): a batch is simulated transaction by transaction against the current slot — a node cannot chain them — so a transaction that needs an earlier one's effect simulates as failed, and a failed simulation offered only [Reject] (plan 2 R6, R8). **Solved in B1c-3 under the override rule (O2, rev 3.6):** a step whose failure is attributable to an earlier transaction of the same batch (one that creates an account the failing instruction names — §3.3 "Attribution") says it depends on that step (Q32), its effects unknown, and is approvable only with the typed word `UNCHECKED` (Q31) and re-authentication. Every other failed simulation stays Reject-only — stricter than B1 §3's "warning", which is allowed |
 | §1.6 / §3.3's order for transactions: `unauthorized` before any other check | a **malformed** `page.signTransaction` / `page.signAndSendTransaction` payload (`transactions` / `transaction` not base64 strings, a batch of 0 or more than 5, a transaction over 1 232 bytes or not one canonical transaction; `account` not a base58 32-byte key; another chain; `options` present and not an object) is answered `invalid-request` before the grant is read (plan 2, Task 3) — the same reasoning as the `signMessage` row below: a page without a grant learns only that its own payload was malformed, never whether a grant exists; a well-formed request keeps the grant check first (rev 3.3, plan 2 review 1 L6) |
 | §1.5 / C17 "answered once" for `signAndSendTransaction` | a `{signature}` answered from the entry's recorded bytes (a restart, a dead effect, a lock, C4's expiry) is a promise that the bytes reach the route, **not that they land** (rev 3.4, plan 2 review 2 L3): accepted limits — the route may refuse the poller's first broadcast (the dApp's blockhash died while the worker was down: `failed not-sent`), the record may have expired before any sweep answered (nothing is sent: it could not land), or the lock hook's `due` mark may fail to write (logged; the effect still running sends it). In each, nothing lands and no funds move; a dApp told a signature confirms it (B1 §3), and since a dApp's record is hidden from the popup, only the site tells the user |
 | §1.5 / C17 "never sent twice" for `signAndSendTransaction` — the claim before the route call | a fourth accepted limit beside the row above (rev 3.5, plan 2 Task 5 ruling): the first broadcast of a dApp's recorded bytes is claimed `held`/`due` → `done` in one write **before** the bytes are handed to the route, so whoever claims sends and nobody sends again. If the service worker stops in the window between that write and the route call actually leaving it, the bytes never reach the route, yet the record reads `done` and is never handed over again; the page — answered `{signature}` from the entry's recorded bytes by the restart's sweep, a lock or C4's expiry — is told a signature for bytes the network never received. Nothing lands and **no funds move**: the record polls until its blockhash expires ("Not confirmed — no funds moved.") and the dApp's own confirmation of the signature fails. Kept deliberately: re-sending on doubt would trade this window for an at-least-once rule, and "never sent twice" (rev 3.4) is the binding one |
-| B1 §3 re-authentication "first send to a new address" for a token transfer | the destination of an SPL `transfer` / `transferChecked` is a token account, not the owner the user knows: **every SPL transfer to a token account that is not the account's own re-authenticates** (fail closed — plan 2 R10; rev 3.4) until B1c-3 or later resolves a token account to its owner |
+| B1 §3 re-authentication "first send to a new address" for a token transfer | the destination of an SPL `transfer` / `transferChecked` is a token account, not the owner the user knows; rev 3.4 re-authenticated every SPL transfer to a token account that is not the account's own (plan 2 R10). **Rev 3.6 (plan 3):** the destination is resolved to its owner — its pre-state read through the proxy, a token-account layout's owner field; absent before but created in the same transaction by an ATA `create` / `createIdempotent`, that instruction's wallet — and the transfer is a first send unless that owner is a known recipient or the account itself. Unreadable, not a token account, or not created by the transaction → a first send (fail closed, as before) |
 | §3.2's order: rule 1 (`unauthorized`) before any other check | a **malformed** `page.signMessage` payload (`message` not a string, not base64 or over the size bound; `account` not a base58 32-byte key) is answered `invalid-request` before rule 1 runs (plan-mandated, Task 6). No leak: a page without a grant learns only that its own payload was malformed, never whether a grant exists; a well-formed request keeps rule 1's order |
+| #48 "Recommended alternative · Approve only the swap amount ~ 250 USDC" card (state 2) | **omitted** (rev 3.6): a wallet cannot change a dApp's transaction (its bytes, its blockhash — §3.3), and any amount shown would be invented |
+| #48 annotation "approval: 'unlimited' … so #34 connected-apps can flag this session" | **omitted** (rev 3.6): #34 is out (D1), and #49 has no such flag |
+| the design's Section IX summary: "red destructive primary Reject + tertiary-demoted" Approve on unlimited spend | **the drawn mockup is built** (rev 3.6): secondary Reject and the red "Approve unlimited" with the alert icon (ix:18388-18391); the summary line contradicts the state it describes |
+| B1 §3 "freeze authority on a token the user holds" for a **classic SPL** mint | **not flagged** (owner, O3, rev 3.6): the Token-2022 warnings are for Token-2022 mints only. USDC and USDT are classic mints with a freeze authority; flagging it would warn on nearly every dApp transaction that moves them |
+| B1 §3 "first send to a new address" for a transfer a dApp program makes by **CPI** | **accepted limit** (owner, O4, rev 3.6): first send is read from the top-level decoded System `transfer` and SPL `transfer` / `transferChecked`. A transfer made inside another program's instruction names no top-level instruction; it is bounded only by the 5 % and dollar rules on the simulated outflow (B1c-2), which still apply. The other moving shapes the first-send rule does not read (System `transferWithSeed`, Token-2022's `transferCheckedWithFee`, a close to a foreign destination, a burn) carry F1's or F2's warning and the same amount rules |
+| a dependent step (F10, O2): what approving it gives up | **accepted residual risk** (owner, O6, rev 3.6; plan 3 review 1 M2): a dependent step was simulated without the changes the earlier step makes, so its chain-state flags (F3, F4, F5 by a CPI) never run and its balance changes are unknown — only what its top-level decoded instructions show is checked (F1, F2 and the decoded forms of F3–F9). An attacker can pad a batch with one create step so that a draining step fails at the account that step creates and is shown as dependent; a legitimate swap batch (setup / swap / cleanup) looks exactly the same, so there is no cheap discriminator. Typing `UNCHECKED` and re-authenticating through #10 is the user's acceptance that the step's effects are unseen, and Q48 says plainly that approving it may move any of the account's balances |
+| F5's batch baseline (final review I1): the outflows of a failed or dependent step | **accepted limit** (controller ruling, plan 3 final review): F5's balance in a batch is reduced only by the outflows of the batch's other **simulated** steps; a failed or dependent step has no post-state, so what it would send out of the source is not counted. A dependent step is already a block (F10, `UNCHECKED`, re-authenticated through #10) and a failed one is Reject only |
+| B1 §3 "an account the user owns" for a token account owned by an SPL **multisig** the wallet signs for | **accepted limit** (rev 3.6, plan 3 review 1 L3): F4 and F5 / F6 recognise an account as the user's by its owner field being the wallet account (or by the wallet as the instruction's `currentAuthority` / `owner`); an account owned by a multisig is not the user's to the wallet, and its `setAuthority` or `approve` carries F2's warning only |
+| #46 / #47 / #48 after an approval: a poll that supersedes the window's own refresh | **accepted behaviour** (B1c-1 / B1c-2's window, plan 3 review 2 L9): the window keeps only its newest read, so under load a poll can land after `decide`'s own refresh starts; busy then clears before the newer read arrives, and the decided request's CTA re-arms after C15's 500 ms until that read replaces the request. A click then is a `dapp.decide` for a request that is no longer the head, which the background refuses (C13) — nothing signs, nothing is sent twice. A glitch, not a gap; a later plan may hold busy until a read newer than the decision lands |
+| #48 state 2's balance card row "Network fee −0.0000050 $0.0008" | **kept deviation** (rev 3.6, plan 3 Task 8; review 1 L7): the card's rows are B1c-2's balance changes (post − pre), so its second row is the simulation's SOL change ("SOL −0.000005 $0.0007", the fee included); the fee itself is the instructions card's row |
 
 ---
 
@@ -879,6 +992,37 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
 | Q25 | #49 undo refused (rev 3.2, owner-delegated 2026-10-12) | "Could not undo — <name> stays disconnected." |
 | Q26 | #46 request can no longer be signed (rev 3.2, owner-delegated 2026-10-12) | "This request can no longer be signed. Reject it and ask the site to try again." |
 | Q27 | #48 an approval refused because the simulation it named, still the newest, is 40 s old — its refresh has not landed (rev 3.5, controller copy, flagged to the owner; final review I3) | "This simulation is out of date. Wait a moment for it to refresh." — never "The transaction changed while you were reviewing…", which is said only when the window named another simulation than the newest |
+| Q28 | #48 typed override word: System `Assign` / `Allocate` (or a `…WithSeed` form) on the wallet account, F3 (rev 3.6, controller copy, flagged to the owner) | `ASSIGN` |
+| Q29 | #48 typed override word: `SetAuthority` on an account the user owns, F4 (rev 3.6, controller copy, flagged to the owner) | `AUTHORITY` |
+| Q30 | #48 typed override word: an unlimited approve of a token the wallet's own table cannot name, F5 (rev 3.6, controller copy, flagged to the owner) | `UNLIMITED` |
+| Q31 | #48 typed override word: a step that depends on an earlier one, F10 (rev 3.6, controller copy, flagged to the owner) | `UNCHECKED` |
+| Q32 | #48 a dependent step's outcome, F10 (rev 3.6, controller copy, flagged to the owner) | "This step depends on step <N> and could not be checked on its own." |
+| Q33 | #10 reason line for an override (rev 3.6, controller copy, flagged to the owner) | "Re-auth required to override a blocked transaction." |
+| Q34 | #48 red CTA for a block other than an unlimited approve (rev 3.6, controller copy, flagged to the owner) | "Approve anyway" |
+| Q35 | #48 top-bar eyebrow for a block other than an unlimited approve (rev 3.6, controller copy, flagged to the owner) | "Critical · Blocked transaction" |
+| Q36 | #48 F7 warning, a mint that cannot be read or parsed (rev 3.6, controller copy, flagged to the owner) | "Could not read this token's settings" |
+| Q37 | #10 row for an overridden F3 block (rev 3.6, plan 3 Task 4, controller copy, flagged to the owner — B1 §3's row) | "Assign / Allocate on your wallet account" |
+| Q38 | #10 row for an overridden F4 block (rev 3.6, plan 3 Task 4, controller copy, flagged to the owner — B1 §3's row) | "SetAuthority on an account you own" |
+| Q39 | #10 row for an overridden F5 block (rev 3.6, plan 3 Task 4, controller copy, flagged to the owner — the design's F5 head) | "Unlimited <SYM> spend approval"; "Unlimited token spend approval" when the wallet's table names no symbol (`UNLIMITED`) |
+| Q40 | #10 row for an overridden F10 block (rev 3.6, plan 3 Task 4, controller copy, flagged to the owner — Q32 as a row) | "Depends on step <N> — not checked on its own" |
+| Q41 | #48 F5 banner body, adapted (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | the design's body with its code span naming the real instruction (`spl_token::Approve`, `spl_token::ApproveChecked`, `spl_token_2022::Approve`, `spl_token_2022::ApproveChecked`), and "all of this token" for "all your <SYM>" when the wallet's table names no symbol |
+| Q42 | #48 F5 body, a decoded approve below u64::MAX of 99 % or more of the balance (O5; rev 3.6, plan 3 Task 5, controller copy, flagged to the owner; rev 2 of plan 3: "nearly all", review 1 H1) | "This transaction includes a `<instruction>` instruction for `amount = <base units>`, all or nearly all of this account's balance. Even verified dApps can be exploited; this lets the program move *all or nearly all your <SYM>* until you revoke." ("of this token" for "your <SYM>" when unnamed) |
+| Q43 | #48 F5 body, seen only in the simulation's chain state (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "The simulation shows a program call — not an instruction listed here — that lets a delegate move *all your <SYM>*, now and in the future, until you revoke. Even verified dApps can be exploited." (", now and in the future," only at u64::MAX; below it *all or nearly all your <SYM>* — O5, plan 3 rev 2) |
+| Q44 | #48 F6 banner head (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "<SYM> spend approval"; "Token spend approval" when the wallet's table names no symbol |
+| Q45 | #48 F6 banner body (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "This lets a delegate move up to <amount> of your <SYM> until you revoke." ("of this token" when unnamed) |
+| Q46 | #48 F3 banner body; its head is Q37 (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "This changes your wallet account itself. Assigned to another program, it is that program's to control; given data, it can no longer pay fees or send SOL." |
+| Q47 | #48 F4 banner body; its head is Q38 (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "This gives an authority over an account you own to another address, or removes it. You cannot take it back yourself." |
+| Q48 | #48 F10 banner body; its head is Q32 (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner; plan 3 rev 2: the second sentence, O6) | "Its effects are unknown: it was simulated without the changes step <N> makes, which it needs. Approving it may move any of your balances." |
+| Q49 | #48 F10 balance card (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | label "Balance changes (unknown)"; line "This step was not simulated on its own, so its effects are unknown." |
+| Q50 | #48 F1 banner (head "Unknown program", screen.md §48; rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | body "The wallet cannot decode what this program does — only the simulation shows its effects."; a program index that is no static key: "a program the transaction does not name in its own keys" |
+| Q51 | #48 F2 banner (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | head "Instructions that are not transfers"; body "Each can do more than move a balance. Check what it does before approving." |
+| Q52 | #48 F7 banner, per mint (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner; Q36 when unreadable) | head "Token-2022 settings on a token you hold"; one body line per setting present: "Freeze authority — the issuer can freeze your account of this token." / "Permanent delegate — an address that can move or burn this token from any account, yours included." / "Transfer hook — a program that runs on every transfer of this token." |
+| Q53 | #48 F9 banner (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | head "Whole balance to a first-time address"; body "All or nearly all of a balance goes to an address you have not sent to before." |
+| Q54 | #48 the line replacing "No SOL or token balance changes — review the instructions below." beside an F3 / F4 block (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "No SOL or token balance changes — but this transaction changes who controls an account of yours (above)." |
+| Q55 | #48 banner meta lines (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | the design's "delegate: … · token: <SYM> mint … · scope: u64::MAX" (the scope otherwise the amount); an instruction as "#<n> <program>::<Instruction>" (the design's `spl_token::Approve` form, n as "Program <n>" counts); the decoder's own field names (`authorityType`, `account`, `newAuthority`, `owner`, `space`, `mint`, `freezeAuthority`, `permanentDelegate`, `transferHookProgram`); "post-simulation" for chain state; every address whole, in groups of four — never the design's `JUP6L…vRet9` truncation (a poisoned address matches on exactly those ends) |
+| Q56 | #10 row for an overridden F5 block of 99 % up to the whole balance below u64::MAX — and #48's F5 head for it (plan 3 rev 2.1, O9: "unlimited" only for u64::MAX; owner copy, "of this token" for an unnamed token the reviser's reading of the owner's "token when unnamed" — flagged) | "Spend approval for nearly all your <SYM>"; "Spend approval for nearly all of this token" when the wallet's table names no symbol |
+| Q57 | #48 top-bar eyebrow when every block is an F5 below u64::MAX — 99 % up to the whole balance (plan 3 rev 2.1, O9, owner copy) | "Critical · Large spend approval" |
+| Q58 | #48 typed override word: an F5 of a token the wallet's own table cannot name, below u64::MAX — 99 % up to the whole balance (plan 3 rev 2.2, review 3 L14; controller copy, flagged to the owner) | `ALLOWANCE` — `UNLIMITED` (Q30) stays for u64::MAX only |
 
 (Q09 and Q11 of rev 1 are gone: the window no longer shows "expired" for a request it did not show, and the undo toast
 uses the design's drawn strings.)

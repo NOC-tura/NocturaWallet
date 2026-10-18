@@ -1,20 +1,22 @@
 import {ACCOUNT, RECIPIENT, SETTINGS_ABOUT} from './fixtures';
 import {lock} from '../autolock';
 import {REAUTH_KEY} from '../session';
-import {CHALLENGE_TTL_MS, type ChallengeAbout, type DappOutgoing, challengeSatisfied, consumeChallenge, dropChallenge, issueChallenge, satisfyChallenge} from '../reauthChallenges';
+import {CHALLENGE_TTL_MS, MAX_DAPP_FLAGS, type ChallengeAbout, type DappFlag, type DappOutgoing, challengeInfo, challengeSatisfied, consumeChallenge, dropChallenge, issueChallenge, satisfyChallenge} from '../reauthChallenges';
 import {WALLET_TOKENS} from '../../../../core/solana/balances';
+import type {DappReauthReason} from '../reauthPolicy';
 import {fakeDeps} from './fakeDeps';
 import {fakeExt} from './fakeExt';
 
-const dappAbout = (outgoing: DappOutgoing[]): ChallengeAbout => ({
+const dappAbout = (outgoing: DappOutgoing[], reasons: DappReauthReason[] = ['first-send'], flags: DappFlag[] = [], transactions = 1): ChallengeAbout => ({
   kind: 'dapp',
   account: ACCOUNT.publicKey,
   site: 'dapp.test',
-  transactions: 1,
+  transactions,
   outgoing,
   omitted: 0,
-  reasons: ['first-send'],
+  reasons,
   thresholdCents: 10_000,
+  flags,
 });
 
 describe('re-auth challenges', () => {
@@ -198,5 +200,92 @@ describe('re-auth challenges', () => {
       await expect(issueChallenge(ext, deps, 'e3', dappAbout([{mint: WALLET_TOKENS.USDC.mint, symbol: 'USDC', amount: '1', decimals: null}]))).rejects.toThrow();
       await expect(issueChallenge(ext, deps, 'e4', dappAbout([{mint: WALLET_TOKENS.NOC.mint, symbol: 'NOC', amount: '1', decimals: WALLET_TOKENS.USDC.decimals}]))).rejects.toThrow();
     });
+  });
+
+  // B1c-3 (spec §3.3 rev 3.6, the override rule): `override` — a request with a block — is a dApp reason like the others.
+  it('a dApp challenge for `override` is issued and read back from the store; an unknown reason is never issued', async () => {
+    const ext = fakeExt();
+    const deps = fakeDeps();
+    const sol: DappOutgoing = {mint: null, symbol: 'SOL', amount: '1', decimals: WALLET_TOKENS.SOL.decimals};
+    const id = await issueChallenge(ext, deps, 'o1', dappAbout([sol], ['approval', 'override'], [{tx: 0, row: 'F3', word: 'ASSIGN', step: null}]));
+    expect(await satisfyChallenge(ext, deps.now(), id)).toBe(true);
+    expect(await challengeSatisfied(ext, deps.now(), id, 'o1')).toBe(true);
+    await expect(issueChallenge(ext, deps, 'o2', dappAbout([sol], ['overrides'] as unknown as DappReauthReason[]))).rejects.toThrow();
+  });
+});
+
+// B1c-3 (spec §3.3 rev 3.6): #10 names what is overridden — the flags travel in the challenge, compact and exact.
+describe('a dApp challenge’s flags', () => {
+  const sol: DappOutgoing = {mint: null, symbol: 'SOL', amount: '1', decimals: WALLET_TOKENS.SOL.decimals};
+  const FLAGS: DappFlag[] = [
+    {tx: 0, row: 'F5', word: 'USDC', step: null, scope: 'unlimited'},
+    {tx: 0, row: 'F7', word: null, step: null},
+    {tx: 1, row: 'F4', word: 'AUTHORITY', step: null},
+    {tx: 2, row: 'F10', word: 'UNCHECKED', step: 2},
+    {tx: 2, row: 'F3', word: 'ASSIGN', step: null},
+    {tx: 2, row: 'F5', word: 'ALLOWANCE', step: null, scope: 'nearly-all'},
+    {tx: 2, row: 'F2', word: null, step: null},
+  ];
+  const about = (flags: unknown[], reasons: DappReauthReason[] = ['override']) => dappAbout([sol], reasons, flags as DappFlag[], 3);
+
+  it('every row of the table (F1–F10), each block with its own word, a dependent step naming an earlier one: issued and read back exactly (positive control)', async () => {
+    const ext = fakeExt();
+    const deps = fakeDeps();
+    const warnings: DappFlag[] = (['F1', 'F2', 'F6', 'F7', 'F8', 'F9'] as const).map(row => ({tx: 1, row, word: null, step: null}));
+    for (const flags of [FLAGS, warnings]) {
+      const reasons: DappReauthReason[] = flags === FLAGS ? ['first-send', 'override'] : ['first-send'];
+      const id = await issueChallenge(ext, deps, 'f1', about(flags, reasons));
+      expect(await challengeInfo(ext, deps.now(), id)).toEqual(about(flags, reasons));
+    }
+    expect(MAX_DAPP_FLAGS).toBe(50);
+  });
+
+  it('refused: a key more or less, an unknown row (F11 never reaches a challenge), F5 without its scope or with another, a scope on another row, a transaction past the batch, a warning with a word, a block without its own word, a symbol the wallet does not name, a step not before its own, a row twice on one transaction, a block without `override` or `override` without a block, too many', async () => {
+    const ext = fakeExt();
+    const deps = fakeDeps();
+    const one = (f: Record<string, unknown>) => [{tx: 1, row: 'F3', word: 'ASSIGN', step: null, ...f}];
+    const bad: unknown[][] = [
+      [{tx: 1, row: 'F3', word: 'ASSIGN'}],
+      one({extra: 1}),
+      one({row: 'F11'}),
+      one({tx: 3}),
+      one({tx: -1}),
+      one({tx: 0.5}),
+      one({tx: '1'}),
+      one({row: 'F2'}),
+      one({word: null}),
+      one({word: 'AUTHORITY'}),
+      one({word: 'assign'}),
+      one({row: 'F4', word: 'ASSIGN'}),
+      one({row: 'F5', word: 'SOL', scope: 'unlimited'}),
+      one({row: 'F5', word: 'BONK', scope: 'unlimited'}),
+      one({row: 'F5', word: 'usdc', scope: 'unlimited'}),
+      // F5's scope (O9): present, and one of the two; no other row carries one.
+      one({row: 'F5', word: 'NOC'}),
+      one({row: 'F5', word: 'NOC', scope: 'all'}),
+      one({row: 'F5', word: 'NOC', scope: null}),
+      one({scope: 'unlimited'}),
+      // Review 3 L14: UNLIMITED only with the scope `unlimited`, ALLOWANCE only with `nearly-all`.
+      one({row: 'F5', word: 'UNLIMITED', scope: 'nearly-all'}),
+      one({row: 'F5', word: 'ALLOWANCE', scope: 'unlimited'}),
+      one({row: 'F10', word: 'UNCHECKED', step: null}),
+      one({row: 'F10', word: 'UNCHECKED', step: 0}),
+      one({row: 'F10', word: 'UNCHECKED', step: 2}),
+      one({step: 1}),
+      [...one({}), ...one({})],
+      [...one({}), ...one({word: 'ASSIGN'})],
+      Array.from({length: MAX_DAPP_FLAGS + 1}, (_, i) => ({tx: i % 3, row: 'F7', word: null, step: null})),
+    ];
+    for (const flags of bad) await expect(issueChallenge(ext, deps, 'b', about(flags))).rejects.toThrow();
+    await expect(issueChallenge(ext, deps, 'b', about(FLAGS, ['first-send']))).rejects.toThrow();
+    await expect(issueChallenge(ext, deps, 'b', about([{tx: 0, row: 'F7', word: null, step: null}], ['override']))).rejects.toThrow();
+    await expect(issueChallenge(ext, deps, 'b', {...about(FLAGS), flags: undefined} as unknown as ChallengeAbout)).rejects.toThrow();
+    // Positive control for the cases above: each one's valid form issues.
+    await expect(issueChallenge(ext, deps, 'b', about(one({})))).resolves.toMatch(/^[0-9a-f]{32}$/);
+    await expect(issueChallenge(ext, deps, 'b', about(one({row: 'F10', word: 'UNCHECKED', step: 1})))).resolves.toMatch(/^[0-9a-f]{32}$/);
+    await expect(issueChallenge(ext, deps, 'b', about(one({row: 'F5', word: 'NOC', scope: 'unlimited'})))).resolves.toMatch(/^[0-9a-f]{32}$/);
+    await expect(issueChallenge(ext, deps, 'b', about(one({row: 'F5', word: 'NOC', scope: 'nearly-all'})))).resolves.toMatch(/^[0-9a-f]{32}$/);
+    await expect(issueChallenge(ext, deps, 'b', about(one({row: 'F5', word: 'UNLIMITED', scope: 'unlimited'})))).resolves.toMatch(/^[0-9a-f]{32}$/);
+    await expect(issueChallenge(ext, deps, 'b', about(one({row: 'F5', word: 'ALLOWANCE', scope: 'nearly-all'})))).resolves.toMatch(/^[0-9a-f]{32}$/);
   });
 });

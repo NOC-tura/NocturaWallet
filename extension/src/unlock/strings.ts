@@ -430,6 +430,24 @@ export const REAUTH = {
   /** Plan 2 review 1 L9 — controller copy, owner to confirm (Scope R28): the tokens past the sixteen #10 lists. */
   omitted: (n: number): string => `and ${n} more ${n === 1 ? 'token' : 'tokens'}`,
   approval: 'Re-auth required to approve a token allowance.',
+  /** B1c-3 Q33 (spec §3.3 rev 3.6) — controller copy, flagged to the owner: a request with a block re-authenticates. */
+  override: 'Re-auth required to override a blocked transaction.',
+  /**
+   * B1c-3 Q37–Q40 — controller copy, flagged to the owner (spec §3.3 rev 3.6: "#10's description names what is
+   * overridden"): one row per block, by its row of the red-flag table. Q37 (F3) and Q38 (F4) are B1 §3's own rows;
+   * Q39 (F5) the design's F5 head ("Unlimited <SYM> spend approval", #48 state 2), "token" when the wallet's table
+   * names no symbol; Q40 (F10) is Q32 shortened to a row. Q56 (F5 of 99 % up to the whole balance below u64::MAX, O9 —
+   * "unlimited" only for u64::MAX): the owner's head, "of this token" when the wallet's table names no symbol.
+   */
+  overridden: {
+    F3: 'Assign / Allocate on your wallet account',
+    F4: 'SetAuthority on an account you own',
+    F5: (symbol: string | null): string => `Unlimited ${symbol ?? 'token'} spend approval`,
+    F5NearlyAll: (symbol: string | null): string => (symbol === null ? 'Spend approval for nearly all of this token' : `Spend approval for nearly all your ${symbol}`),
+    F10: (step: number): string => `Depends on step ${step} — not checked on its own`,
+  },
+  /** #48's batch label (owner copy, approve/strings.ts batchItem): which transaction of a batch a row is on. */
+  transactionOf: (k: number, n: number): string => `Transaction ${k} of ${n}`,
   dappConfirmed: 'Confirmed. Go back to the approval window and approve the transaction.',
   dappExpired: 'This confirmation has expired. Approve the transaction again in the approval window.',
   dappNotUnlocked: "The wallet locked while you were confirming. The site's request was declined — ask the site to try again.",

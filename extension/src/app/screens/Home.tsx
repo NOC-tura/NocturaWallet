@@ -46,15 +46,21 @@ function NetBanner({mode, sustainedNow, lastSync, failures, now}: {mode: NetMode
   );
 }
 
-/** #11's pending strip: an open send of this account, which opens #21 (or #54 once it is stuck). */
+/**
+ * #11's pending strip: an open send of this account, which opens #21 (or #54 once it is stuck). B1c-3: on the dApp
+ * strip's gutter, with the same trailing chevron — a strip that opens something says so.
+ */
 function PendingStrip({p, now, onOpen}: {p: Pending; now: number; onOpen: () => void}) {
   const slow = p.state === 'stuck' || now - p.createdAt > 80_000;
   const amount = formatAmount(p.intent.amount, TOKEN_INFO[p.intent.token].decimals, {min: 0, max: TOKEN_INFO[p.intent.token].decimals});
   return (
-    <button type="button" className="banner info app-banner app-strip" onClick={onOpen}>
+    <button type="button" className="banner info app-banner app-strip app-pending-strip" onClick={onOpen}>
       <ExtIcon name="send" size={18} />
       <span className="noc-body-sm">
         Sending {amount} {p.intent.token} · {slow ? 'taking longer than usual' : 'pending'}
+      </span>
+      <span className="app-strip-chev">
+        <ExtIcon name="chevron-right" size={18} />
       </span>
     </button>
   );

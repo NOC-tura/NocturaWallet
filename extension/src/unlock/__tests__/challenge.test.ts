@@ -38,6 +38,7 @@ const DAPP: ChallengeAbout = {
   omitted: 0,
   reasons: ['first-send', 'approval'],
   thresholdCents: 10_000,
+  flags: [],
 };
 
 describe('describeChallenge: a dApp’s transaction (B1c-2)', () => {
@@ -47,12 +48,14 @@ describe('describeChallenge: a dApp’s transaction (B1c-2)', () => {
       site: 'jup.ag',
       transactions: 2,
       outgoing: [
-        {label: 'SOL', amount: '−0.001005', mint: null},
-        {label: 'USDC', amount: '−250', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'},
-        {label: 'Token', amount: '−777 (base units)', mint: RECIPIENT},
+        // B1c-3: unsigned — what leaves; #10's rows add the minus, its headline does not (reauth.ts).
+        {label: 'SOL', amount: '0.001005', mint: null},
+        {label: 'USDC', amount: '250', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'},
+        {label: 'Token', amount: '777 (base units)', mint: RECIPIENT},
       ],
       omitted: 0,
       reasons: ['Re-auth required for the first send to a new address.', 'Re-auth required to approve a token allowance.'],
+      overrides: [],
     });
   });
 
@@ -74,6 +77,89 @@ describe('describeChallenge: a dApp’s transaction (B1c-2)', () => {
     ]) {
       expect([bad, describeChallenge(bad)]).toEqual([bad, null]);
     }
+  });
+});
+
+// B1c-3 (spec §3.3 rev 3.6): a request with a block re-authenticates with the reason `override` (Q33).
+describe('describeChallenge: the override reason (B1c-3)', () => {
+  it('`override` reads Q33’s line; an unknown reason still makes the whole description unshowable', () => {
+    const flags = [{tx: 0, row: 'F3', word: 'ASSIGN', step: null}];
+    expect(describeChallenge({...DAPP, reasons: ['approval', 'override'], flags})).toMatchObject({kind: 'dapp', reasons: ['Re-auth required to approve a token allowance.', 'Re-auth required to override a blocked transaction.']});
+    expect(describeChallenge({...DAPP, reasons: ['override', 'overrides'], flags})).toBeNull();
+  });
+});
+
+// B1c-3 (spec §3.3 rev 3.6, "#10's description names what is overridden"): one row per block — what is overridden and,
+// in a batch, on which transaction; the warnings travel too (the re-issue compares them) but are not rows here.
+describe('describeChallenge: what is overridden (B1c-3)', () => {
+  const FLAGS = [
+    {tx: 0, row: 'F5', word: 'USDC', step: null, scope: 'unlimited'},
+    {tx: 0, row: 'F2', word: null, step: null},
+    {tx: 1, row: 'F4', word: 'AUTHORITY', step: null},
+    {tx: 1, row: 'F10', word: 'UNCHECKED', step: 1},
+    {tx: 1, row: 'F3', word: 'ASSIGN', step: null},
+    {tx: 1, row: 'F5', word: 'UNLIMITED', step: null, scope: 'unlimited'},
+    {tx: 1, row: 'F7', word: null, step: null},
+  ];
+  const OVERRIDE = {...DAPP, reasons: ['first-send', 'override'], flags: FLAGS};
+
+  it('one row per block, in the order given: the label and “Transaction <n> of <m>” in a batch; a single transaction’s rows carry no transaction', () => {
+    expect(describeChallenge(OVERRIDE)).toMatchObject({
+      kind: 'dapp',
+      reasons: ['Re-auth required for the first send to a new address.', 'Re-auth required to override a blocked transaction.'],
+      overrides: [
+        {label: 'Unlimited USDC spend approval', transaction: 'Transaction 1 of 2'},
+        {label: 'SetAuthority on an account you own', transaction: 'Transaction 2 of 2'},
+        {label: 'Depends on step 1 — not checked on its own', transaction: 'Transaction 2 of 2'},
+        {label: 'Assign / Allocate on your wallet account', transaction: 'Transaction 2 of 2'},
+        {label: 'Unlimited token spend approval', transaction: 'Transaction 2 of 2'},
+      ],
+    });
+    expect(describeChallenge({...OVERRIDE, transactions: 1, flags: [{tx: 0, row: 'F3', word: 'ASSIGN', step: null}]})).toMatchObject({overrides: [{label: 'Assign / Allocate on your wallet account', transaction: null}]});
+    // O9: 99 % of the balance up to the whole of it, below u64::MAX — its own row (Q56), never "Unlimited".
+    const nearlyAll = (word: string) => ({...OVERRIDE, transactions: 1, flags: [{tx: 0, row: 'F5', word, step: null, scope: 'nearly-all'}]});
+    expect(describeChallenge(nearlyAll('USDC'))).toMatchObject({overrides: [{label: 'Spend approval for nearly all your USDC', transaction: null}]});
+    // Review 3 L14: an unnamed token's word below u64::MAX is ALLOWANCE (Q58) — UNLIMITED there is refused.
+    expect(describeChallenge(nearlyAll('ALLOWANCE'))).toMatchObject({overrides: [{label: 'Spend approval for nearly all of this token', transaction: null}]});
+    expect(describeChallenge(nearlyAll('UNLIMITED'))).toBeNull();
+    // Warnings only: no rows, and no `override` reason.
+    expect(describeChallenge({...DAPP, flags: [{tx: 1, row: 'F8', word: null, step: null}]})).toMatchObject({overrides: []});
+  });
+
+  it('fails closed on anything the background never issues: the flags missing, an unknown row, F5 without its scope or with another, a scope on another row, a transaction past the batch, a wrong word, a step not before its own, a row twice, a block without `override` or `override` without a block', () => {
+    const one = (f: Record<string, unknown>) => ({...OVERRIDE, flags: [{tx: 1, row: 'F3', word: 'ASSIGN', step: null, ...f}]});
+    for (const bad of [
+      Object.fromEntries(Object.entries(OVERRIDE).filter(([k]) => k !== 'flags')),
+      {...OVERRIDE, flags: null},
+      one({extra: 1}),
+      one({row: 'F11'}),
+      one({tx: 2}),
+      one({tx: -1}),
+      one({word: 'assign'}),
+      one({word: null}),
+      one({row: 'F2', word: 'ASSIGN'}),
+      one({row: 'F5', word: 'SOL', scope: 'unlimited'}),
+      one({row: 'F5', word: 'BONK', scope: 'unlimited'}),
+      one({row: 'F5', word: 'USDC'}),
+      one({row: 'F5', word: 'USDC', scope: 'all'}),
+      one({scope: 'unlimited'}),
+      one({row: 'F5', word: 'ALLOWANCE', scope: 'unlimited'}),
+      one({row: 'F5', word: 'UNLIMITED', scope: 'nearly-all'}),
+      one({row: 'F10', word: 'UNCHECKED', step: 2}),
+      one({row: 'F10', word: 'UNCHECKED', step: 0}),
+      one({row: 'F10', word: 'UNCHECKED', step: null}),
+      one({step: 1}),
+      {...OVERRIDE, flags: [...FLAGS, FLAGS[2]]},
+      {...OVERRIDE, reasons: ['first-send']},
+      {...DAPP, reasons: ['first-send', 'override']},
+      {...OVERRIDE, flags: Array.from({length: 51}, (_, i) => ({tx: i % 2, row: 'F7', word: null, step: null}))},
+    ]) {
+      expect([bad, describeChallenge(bad)]).toEqual([bad, null]);
+    }
+    // Positive control: each one's valid form.
+    expect(describeChallenge(one({}))).not.toBeNull();
+    expect(describeChallenge(one({row: 'F10', word: 'UNCHECKED', step: 1}))).not.toBeNull();
+    expect(describeChallenge(one({row: 'F5', word: 'USDC', scope: 'nearly-all'}))).not.toBeNull();
   });
 });
 

@@ -6,7 +6,7 @@ import {digestOf} from '../digest';
 import {getSession} from '../session';
 import {readSettings} from '../settings';
 import {recipientFacts} from '../knownRecipients';
-import {MAX_DAPP_OUTGOING, challengeInfo, challengeSatisfied, dropChallenge, issueChallenge, type ChallengeAbout, type DappOutgoing} from '../reauthChallenges';
+import {FLAG_ROW, MAX_DAPP_OUTGOING, challengeInfo, challengeSatisfied, dropChallenge, isAbout, issueChallenge, type ChallengeAbout, type DappFlag, type DappOutgoing} from '../reauthChallenges';
 import {readContacts} from '../contacts';
 import {decodeInstructions, type DecodedInstruction} from './decode/decode';
 import {resolveKeys} from './decode/keys';
@@ -18,10 +18,14 @@ import {firstSignature} from '../../../../core/solana/broadcast';
 import {tokenForMint, WALLET_TOKENS} from '../../../../core/solana/balances';
 import {runtimeFor} from './ports';
 import {answer, queueAccess} from './queue';
-import {feeOf, simulateTransactions, type SimState, type TxOutcome} from './simulate';
+import {feeOf, simulateTransactions, withAmountDecimals, type SimState, type TxOutcome} from './simulate';
+import {overridesMatch, type RedFlag} from './redFlags';
 import {grantIn, putGrant, type Entry, type Tx} from './store';
 import {slotOf} from './txRequest';
 import type {DappReauthReason} from '../reauthPolicy';
+
+/** u64::MAX as an approval's base-unit amount: F5's scope is `unlimited` only for it (O9). */
+const U64_MAX = '18446744073709551615';
 
 /**
  * A transaction request after it is queued (spec B1c §3.3, §1.5; C13, C15, C17): its simulation — run when the window
@@ -126,7 +130,17 @@ export interface TxItemView {
   feeLamports: string | null;
   /** This transaction's simulated outcome, or null while simulating. */
   outcome: TxOutcome | null;
+  /** B1c-3: this transaction's red flags as #48 renders them (redFlags.ts's order), or null while simulating. */
+  flags: FlagView[] | null;
 }
+
+/**
+ * B1c-3: a red flag as the window sees it — the background's own, except that a dependent step names the step it
+ * depends on as `step`, 1-based as Q32 says it ("depends on step <N>"), never redFlags.ts's 0-based `on`: the window
+ * gets one convention only, the same as its outcome's `on`.
+ */
+export type FlagView = Exclude<RedFlag, {kind: 'dependent'}> | {kind: 'dependent'; severity: 'block'; word: 'UNCHECKED'; at: null; step: number};
+export const flagView = (f: RedFlag): FlagView => (f.kind === 'dependent' ? {kind: 'dependent', severity: 'block', word: f.word, at: null, step: f.on + 1} : f);
 
 export type SimulationView = {status: 'simulating'} | {status: 'unreachable'} | {status: 'ok'; id: string; slot: number; elapsedMs: number; at: number};
 
@@ -146,7 +160,7 @@ export async function txDetail(ext: Ext, e: Entry, session: readonly {publicKey:
   const sim = e.sim?.status === 'ok' ? e.sim.sim : null;
   const transactions = parsed.txs.map((p, i): TxItemView => {
     const keys = sim?.keys[i];
-    const instructions = keys !== undefined ? decodeInstructions(p, {keys}) : p.lookups.length === 0 ? decodeInstructions(p, resolveKeys(p, new Map())) : null;
+    const instructions = keys !== undefined ? withAmountDecimals(decodeInstructions(p, {keys}), sim?.amountDecimals[i] ?? []) : p.lookups.length === 0 ? decodeInstructions(p, resolveKeys(p, new Map())) : null;
     const local = instructions === null ? null : feeOf(p, instructions);
     return {
       version: p.version,
@@ -155,6 +169,7 @@ export async function txDetail(ext: Ext, e: Entry, session: readonly {publicKey:
       unitLimit: local?.unitLimit ?? null,
       feeLamports: local !== null && p.signers[0] === e.account ? local.feeLamports.toString() : null,
       outcome: sim?.outcomes[i] ?? null,
+      flags: sim === null ? null : (sim.flags[i] ?? []).map(flagView),
     };
   });
   const simulation: SimulationView =
@@ -178,12 +193,19 @@ export async function txDetail(ext: Ext, e: Entry, session: readonly {publicKey:
   return {transactions, simulation, reauth, labels};
 }
 
+type DappAbout = Extract<ChallengeAbout, {kind: 'dapp'}>;
+
 /** What a dApp challenge is bound to: this request and its exact bytes, for this account. */
 export const dappDigest = (e: Pick<Entry, 'requestId' | 'account' | 'transactions'>): string => digestOf('dapp', {requestId: e.requestId, account: e.account, transactions: e.transactions});
 
-/** The decision's checks for a transaction request (§2.3's table, extended by §3.3): null when approvable. */
-export type TxRefusal = 'not-simulated' | 'stale' | 'out-of-date' | 'simulation-failed' | 'blockhash-expired';
-export function txRefused(e: Entry, simulation: string | null, now: number): TxRefusal | null {
+/**
+ * The decision's checks for a transaction request (§2.3's table, extended by §3.3): null when approvable. B1c-3 (the
+ * override rule): after every B1c-2 row, the typed words against the flags THIS stored simulation carries (C13: the
+ * background recomputes them; the window's are only compared) — `override-mismatch` for any word not expected or given
+ * twice, `override-missing` for a block with no word.
+ */
+export type TxRefusal = 'not-simulated' | 'stale' | 'out-of-date' | 'simulation-failed' | 'blockhash-expired' | 'override-mismatch' | 'override-missing';
+export function txRefused(e: Entry, simulation: string | null, overrides: readonly {tx: number; word: string}[], now: number): TxRefusal | null {
   if (e.sim?.status !== 'ok') return 'not-simulated';
   const sim = e.sim.sim;
   // C13: the window names the simulation it showed; another one (a refresh landed) or an old one is not approvable.
@@ -195,7 +217,12 @@ export function txRefused(e: Entry, simulation: string | null, now: number): TxR
   if (simulation !== sim.id) return 'stale';
   if (now - sim.at >= SIM_VALID_MS) return 'out-of-date';
   if (sim.outcomes.some(o => !o.ok && o.error === 'expired')) return 'blockhash-expired';
-  if (sim.outcomes.some(o => !o.ok)) return 'simulation-failed';
+  // O2: a step that depends on an earlier one is not a failure of its own only beside its F10 flag for that same step
+  // — a block, so approvable only with UNCHECKED (below). Every other failure stays Reject-only.
+  if (sim.outcomes.some((o, i) => !o.ok && !(o.error === 'dependent' && sim.flags[i]?.some(f => f.kind === 'dependent' && f.on === o.on - 1)))) return 'simulation-failed';
+  const words = overridesMatch(sim.flags, overrides);
+  if (words === 'mismatch') return 'override-mismatch';
+  if (words === 'missing') return 'override-missing';
   return null;
 }
 
@@ -238,7 +265,18 @@ export function dappAbout(e: Entry, site: string, thresholdCents: number): Extra
     const symbol = candidate !== null && v.decimals === WALLET_TOKENS[candidate].decimals ? candidate : null;
     return {mint, symbol, amount: v.amount.toString(), decimals: v.decimals};
   });
-  return {kind: 'dapp', account: e.account, site, transactions: e.transactions.length, outgoing, omitted: all.length - outgoing.length, reasons: e.sim.sim.reasons.slice(), thresholdCents};
+  // B1c-3: the flags, one per (transaction, row) — what #10 names (a block's word, a dependent step's step) and what
+  // a refresh is compared on; several Token-2022 mints of one transaction are one entry.
+  const flags: DappFlag[] = [];
+  e.sim.sim.flags.forEach((list, tx) => {
+    for (const f of list) {
+      const row = FLAG_ROW[f.kind];
+      if (flags.some(x => x.tx === tx && x.row === row)) continue;
+      const step = f.kind === 'dependent' ? f.on + 1 : null;
+      flags.push(f.kind === 'unlimited-approve' ? {tx, row, word: f.word, step, scope: f.approvals.some(a => a.amount === U64_MAX) ? 'unlimited' : 'nearly-all'} : {tx, row, word: f.severity === 'block' ? f.word : null, step});
+    }
+  });
+  return {kind: 'dapp', account: e.account, site, transactions: e.transactions.length, outgoing, omitted: all.length - outgoing.length, reasons: e.sim.sim.reasons.slice(), thresholdCents, flags};
 }
 
 /** Whether every reason the fresh simulation gives was already named in the challenge issued for it. */
@@ -248,12 +286,25 @@ function reasonsCovered(fresh: readonly DappReauthReason[], issued: readonly Dap
 }
 
 /**
- * Whether any mint's fresh outgoing amount exceeds what the issued challenge described — a mint absent from the
- * issued list (new since the challenge was issued) counts as having had 0.
+ * B1c-3: whether every flag of the fresh simulation — its transaction, row, word, step and F5's scope — was already
+ * named in the challenge issued for it (#10 described those); a refresh that adds a block, or a warning, or moves one to
+ * another transaction or step, or turns a nearly-all approval unlimited, is not covered.
  */
-function outgoingGrew(fresh: readonly DappOutgoing[], issued: readonly DappOutgoing[]): boolean {
-  const had = new Map(issued.map(o => [o.mint, BigInt(o.amount)]));
-  return fresh.some(o => BigInt(o.amount) > (had.get(o.mint) ?? 0n));
+function flagsCovered(fresh: readonly DappFlag[], issued: readonly DappFlag[]): boolean {
+  const key = (f: DappFlag): string => JSON.stringify([f.tx, f.row, f.word, f.step, f.scope ?? null]);
+  const have = new Set(issued.map(key));
+  return fresh.every(f => have.has(key(f)));
+}
+
+/**
+ * Whether any mint's fresh outgoing amount exceeds what the issued challenge described — a mint absent from the
+ * issued list (new since the challenge was issued) counts as having had 0 — or more mints are cut from the list than
+ * were (B1c-3, the final review's minor: a mint past MAX_DAPP_OUTGOING was never described either).
+ */
+export function outgoingGrew(fresh: Pick<DappAbout, 'outgoing' | 'omitted'>, issued: Pick<DappAbout, 'outgoing' | 'omitted'>): boolean {
+  if (fresh.omitted > issued.omitted) return true;
+  const had = new Map(issued.outgoing.map(o => [o.mint, BigInt(o.amount)]));
+  return fresh.outgoing.some(o => BigInt(o.amount) > (had.get(o.mint) ?? 0n));
 }
 
 /**
@@ -267,19 +318,24 @@ function outgoingGrew(fresh: readonly DappOutgoing[], issued: readonly DappOutgo
  * Fix round 1 item 3: a live, even proven, challenge is frozen from the simulation that issued it (#10 described that
  * one) — a 30 s refresh that grows an outgoing amount, or adds a reason, makes that description stale: it no longer
  * speaks for what Approve is about to sign. Re-issued (a new id) whenever the fresh simulation's reasons are not all
- * already named, or any mint's outgoing amount grew past what was described. Fix round 1 item 1: the superseded id is
+ * already named, or any mint's outgoing amount grew past what was described, or (B1c-3) it has a flag the issued
+ * challenge did not name. Fix round 1 item 1: the superseded id is
  * then DELETED (dropChallenge, by id — never dropChallengesFor by digest, since the new one is issued for the same
  * digest and a digest-keyed drop could not tell the two apart), so a #10 tab already open on it reads back
  * `unknown-challenge` (dappExpired) instead of still showing "Confirmed" for a description Approve no longer honors.
  */
-export async function reauthGate(ext: Ext, deps: Pick<WalletDeps, 'now' | 'randomBytes'>, e: Entry, site: string): Promise<'ready' | 'proven' | 'reauth-required' | 'stale'> {
+export async function reauthGate(ext: Ext, deps: Pick<WalletDeps, 'now' | 'randomBytes'>, e: Entry, site: string): Promise<'ready' | 'proven' | 'reauth-required' | 'stale' | 'malformed'> {
   if (e.sim?.status !== 'ok' || e.sim.sim.reasons.length === 0) return 'ready';
   const digest = dappDigest(e);
   const now = deps.now();
   const current = e.challengeId !== null ? await challengeInfo(ext, now, e.challengeId) : null;
   const fresh = dappAbout(e, site, (await readSettings(ext)).reauthUsdCents);
   if (fresh === null) return 'stale';
-  const stillCovers = current !== null && current.kind === 'dapp' && reasonsCovered(fresh.reasons, current.reasons) && !outgoingGrew(fresh.outgoing, current.outgoing);
+  // Final review M1: a description the challenge store would refuse (a flag word its F5 list does not hold — a token
+  // added to one list and not the other) is answered `malformed`, Reject only — never issueChallenge's TypeError
+  // escaping dapp.decide. The challenge's `about` is only ever this `fresh`, so this is the one place to ask.
+  if (!isAbout(fresh)) return 'malformed';
+  const stillCovers = current !== null && current.kind === 'dapp' && reasonsCovered(fresh.reasons, current.reasons) && !outgoingGrew(fresh, current) && flagsCovered(fresh.flags, current.flags);
   if (!stillCovers) {
     const id = await issueChallenge(ext, deps, digest, fresh);
     const superseded = e.challengeId;

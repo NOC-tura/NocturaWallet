@@ -27,7 +27,13 @@ const cssRule = (selector: string): string => {
 // Synced a few seconds ago, today: the clock-time captions ("last synced 09:41:13") read as clock times.
 // Stamped when each test writes it, not at module load (the final review's M2): under a loaded full
 // suite a module-load stamp aged past a minute before the later tests ran ("cached 1 min ago").
-const cache = () => ({[ACCOUNT.publicKey]: {sol: '62482100000', noc: '4200000000000', usdc: '740210000', usdt: '0', at: Date.now() - 5_000}});
+const cache = (now = Date.now()) => ({[ACCOUNT.publicKey]: {sol: '62482100000', noc: '4200000000000', usdc: '740210000', usdt: '0', at: now - 5_000}});
+/**
+ * B1c-3 (ledger Task 6): the tests that read a clock-time caption run on the harness's clock (the provider's `now` and
+ * the background's `deps.now`), never the wall clock — "today" is a fixed local noon, so a run that crosses local
+ * midnight cannot turn "last synced 23:59:57" into "Oct 16, 23:59:57".
+ */
+const NOON = new Date(2026, 4, 6, 12, 0, 0).getTime();
 const never = () => new Promise<never>(() => undefined);
 const setOnline = (value: boolean) => Object.defineProperty(navigator, 'onLine', {value, configurable: true});
 const nav = {onSend: vi.fn(), onReceive: vi.fn(), onPending: vi.fn(), onAccounts: vi.fn()};
@@ -420,8 +426,8 @@ describe('#42 offline and the D26 refused state', () => {
         throw new RequestUnreachable('u', 'offline');
       },
     });
-    // The background's clock at today's time, so the fresh prices' `at` reads as a clock time.
-    await renderHome({reader, deps: {now: () => Date.now()}, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache())});
+    // The background's clock and the provider's at today's noon, so the cache's and the fresh prices' `at` read as clock times.
+    await renderHome({reader, now: () => NOON, deps: {now: () => NOON}, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache(NOON))});
     expect(await screen.findByText("You're offline")).toBeTruthy();
     expect(screen.getByText('Network just dropped · the Noctura server is unreachable')).toBeTruthy();
     expect(screen.getByText('Sending needs a network connection. Receiving works — your address is on this device. Use the refresh button to retry.')).toBeTruthy();
@@ -444,7 +450,7 @@ describe('#42 offline and the D26 refused state', () => {
         throw new RequestUnreachable('u', 'offline');
       },
     });
-    await renderHome({reader, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache())});
+    await renderHome({reader, now: () => NOON, deps: {now: () => NOON}, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache(NOON))});
     await screen.findByText("You're offline");
     fireEvent.click(screen.getByRole('button', {name: 'Refresh'}));
     expect(await screen.findByText("You're offline · Showing cached data")).toBeTruthy();
@@ -630,13 +636,13 @@ describe('#42 offline and the D26 refused state', () => {
   });
 
   it('sustained after 30 s (the injected clock), with no retry made: no retry count, the stale label', async () => {
-    let t = Date.now();
+    let t = NOON;
     const reader = walletReader({
       getBalance: async () => {
         throw new RequestUnreachable('u', 'no answer');
       },
     });
-    await renderHome({reader, now: () => t, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache())});
+    await renderHome({reader, now: () => t, deps: {now: () => t}, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache(NOON))});
     expect(await screen.findByText('Showing your last synced balances.')).toBeTruthy();
     expect(screen.queryByText(/^Stale · /)).toBeNull();
     t += 31_000;
@@ -673,7 +679,7 @@ describe('#11: a site’s transaction waiting for its confirmation (B1c-2)', () 
       message: null, transactions: ['AQ=='], granted: null, sim: null, challengeId: null as string | null, sent: null, arrivedAt: T, state: 'queued', decidedBy: null, decidingAt: null,
       decision: null, answer: null, answeredAt: null,
     };
-    const about = {kind: 'dapp' as const, account: ACCOUNT.publicKey, site: 'jup.ag', transactions: 1, outgoing: [{mint: null, symbol: 'SOL' as const, amount: '1', decimals: 9}], omitted: 0, reasons: ['first-send' as const], thresholdCents: 10_000};
+    const about = {kind: 'dapp' as const, account: ACCOUNT.publicKey, site: 'jup.ag', transactions: 1, outgoing: [{mint: null, symbol: 'SOL' as const, amount: '1', decimals: 9}], omitted: 0, reasons: ['first-send' as const], thresholdCents: 10_000, flags: []};
     entry.challengeId = await issueChallenge(ext, {now: () => T, randomBytes: n => new Uint8Array(n).fill(4)}, dappDigest(entry), about);
     await ext.session.set(DAPP_SESSION_KEY, {queue: [entry], grants: [], window: null, opening: null, undo: []});
     return entry.challengeId;
@@ -697,6 +703,45 @@ describe('#11: a site’s transaction waiting for its confirmation (B1c-2)', () 
     await renderHome();
     await screen.findByText('62.4821 SOL');
     expect(screen.queryByText(/waits for your confirmation/)).toBeNull();
+  });
+
+  // B1c-3 (the carried visual item): B1b's pending-send strip sits on the dApp strip's gutter with its trailing
+  // chevron — before, `.app-strip`'s width: 100% beside `.app-banner`'s side margins ran it past the popup's right edge.
+  // Computed in happy-dom from the real sheets (the design system's tokens resolve the margins); the visual pass
+  // measures the viewport.
+  it('the pending strip: on the dApp strip’s gutter, its own chevron, never wider than the popup (computed style)', async () => {
+    const sheets = UI_SHEETS.map(sheet => {
+      const style = document.createElement('style');
+      style.textContent = readFileSync(join(__dirname, '..', '..', '..', sheet), 'utf8');
+      return document.head.appendChild(style);
+    });
+    try {
+      await renderHome({
+        before: async ext => {
+          await waitingDapp(ext);
+          await ext.local.set(PENDING_KEY, [pendingRecord({id: 'p1', account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '2480000000'}, createdAt: Date.now()})]);
+        },
+      });
+      const dapp = await screen.findByRole('button', {name: 'A transaction from jup.ag waits for your confirmation'});
+      const pending = (await screen.findByText('Sending 2.48 SOL · pending')).closest('button') as HTMLButtonElement;
+      expect(pending.className).toBe('banner info app-banner app-strip app-pending-strip');
+      expect(pending.querySelectorAll('.app-strip-chev svg')).toHaveLength(1);
+      expect(unstyledClasses(pending, selectorsOf(UI_SHEETS))).toEqual([]);
+      const box = (el: Element) => {
+        const cs = getComputedStyle(el);
+        return {width: cs.width, marginLeft: cs.marginLeft, marginRight: cs.marginRight, alignItems: cs.alignItems};
+      };
+      expect(box(pending)).toEqual({width: 'auto', marginLeft: '20px', marginRight: '20px', alignItems: 'center'});
+      expect(box(pending)).toEqual(box(dapp));
+      expect(getComputedStyle(pending.querySelector('.app-strip-chev') as Element).flexShrink).toBe('0');
+      // Negative control: the strip as B1b drew it — width 100% and side margins, wider than its container.
+      const bare = document.createElement('button');
+      bare.className = 'banner info app-banner app-strip';
+      document.querySelector('.s-dash')?.append(bare);
+      expect(box(bare)).toEqual({width: '100%', marginLeft: '16px', marginRight: '16px', alignItems: 'flex-start'});
+    } finally {
+      for (const s of sheets) s.remove();
+    }
   });
 
   // Fix round 1 item 5 (rule 6): the strip is a LockedButton — a second click before `disabled` is lifted opens #10

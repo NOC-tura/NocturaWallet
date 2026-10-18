@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
-import {act, cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
+import {act, cleanup, fireEvent, render, screen, within} from '@testing-library/react';
+import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {GRANTS_KEY, MAX_GRANTS, type Grant} from '../../background/dapp/grants';
 import {BLOCKED_KEY} from '../../background/dapp/blocked';
@@ -12,13 +14,12 @@ import {Approve, POLL_MS} from '../Approve';
 import {ARM_MS} from '../useArmed';
 import {CONFIRM_DELAY_MS} from '../ui';
 import {pendingOf, type ApproveClient} from '../client';
-import {SECOND, openWindow} from './windowHarness';
+import {SECOND, elapse, nextTimer, onHarnessClock, openWindow, settled} from './windowHarness';
 
 const SELECTORS = selectorsOf(UI_SHEETS);
 const text = (sel: string) => document.querySelector(sel)?.textContent ?? null;
 const cta = (name: string | RegExp) => screen.getByRole('button', {name});
-const armedAfter = () => new Promise(r => setTimeout(r, ARM_MS + 50));
-afterEach(() => cleanup());
+onHarnessClock();
 
 // Spec §3.1 (#47, index.html ix:17686-18261), §4.3 and C12, C15 — the approval window against the real background.
 describe('#47 47a — a verified origin', () => {
@@ -27,7 +28,7 @@ describe('#47 47a — a verified origin', () => {
     await w.ext.local.set(SETTINGS_KEY, {selectedAccount: 1});
     await w.connect('https://jup.ag');
     w.show();
-    await screen.findByText('Connect to Jupiter?');
+    await settled(() => screen.getByText('Connect to Jupiter?'));
     expect(text('.top-bar .title')).toBe('Connection request');
     expect(document.querySelector('.top-bar .title')?.className).toBe('title noc-overline app-dim');
     expect(screen.getByText('Connecting lets the dApp see your public address. It does not move funds. Every transaction will still ask for your approval.')).toBeTruthy();
@@ -64,7 +65,7 @@ describe('#47 47a — a verified origin', () => {
     const w = await openWindow();
     const {requestId} = await w.connect('https://jup.ag');
     w.show();
-    await screen.findByText('Connect to Jupiter?');
+    await settled(() => screen.getByText('Connect to Jupiter?'));
     fireEvent.click(cta('Connect'));
     expect(screen.getByText('Read the permissions above before connecting')).toBeTruthy();
     expect(screen.getByRole('checkbox').className).toBe('s9-ack-row app-shake');
@@ -78,17 +79,17 @@ describe('#47 47a — a verified origin', () => {
     const w = await openWindow();
     const {page, requestId} = await w.connect('https://jup.ag');
     w.show();
-    await screen.findByText('Connect to Jupiter?');
+    await settled(() => screen.getByText('Connect to Jupiter?'));
     fireEvent.click(screen.getByRole('checkbox'));
     expect(screen.getByRole('checkbox').textContent).toBe('Permissions acknowledgedConnect is now enabled');
     expect(document.querySelector('.s9-gate-status')?.className).toBe('s9-gate-status is-ready');
     expect(text('.s9-gate-status')).toBe('Ready to connect');
     const connect = cta('Connect');
     expect([connect.className, (connect as HTMLButtonElement).disabled]).toEqual(['btn btn-primary app-cta-wide', true]);
-    await armedAfter();
+    await elapse(ARM_MS);
     expect((cta('Connect') as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(cta('Connect'));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
     expect(page.answersFor(requestId)).toEqual([{requestId, result: {accounts: [ACCOUNT.publicKey]}}]);
     expect((await readDappSession(w.ext)).grants.map(g => [g.origin, g.scope])).toEqual([['https://jup.ag', 'session']]);
   });
@@ -97,14 +98,14 @@ describe('#47 47a — a verified origin', () => {
     const w = await openWindow();
     await w.connect('https://jup.ag');
     w.show();
-    await screen.findByText('Connect to Jupiter?');
+    await settled(() => screen.getByText('Connect to Jupiter?'));
     fireEvent.change(screen.getByRole('combobox'), {target: {value: '1'}});
     expect(document.querySelector('.s9-perm-row .sec')?.textContent).toBe(`${SECOND.publicKey.slice(0, 4)}…${SECOND.publicKey.slice(-4)} — never your seed or private key`);
     fireEvent.click(screen.getAllByRole('radio')[1]!);
     fireEvent.click(screen.getByRole('checkbox'));
-    await armedAfter();
+    await elapse(ARM_MS);
     fireEvent.click(cta('Connect'));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
     expect(((await w.ext.local.get(GRANTS_KEY)) as Grant[]).map(g => [g.origin, g.account, g.scope])).toEqual([['https://jup.ag', SECOND.publicKey, 'persistent']]);
   });
 });
@@ -114,7 +115,7 @@ describe('#47 47b — an unknown origin: two gates, in order; session only (C12)
     const w = await openWindow();
     await w.connect('https://solana-mint-hub.xyz');
     w.show();
-    await screen.findByText('Connect to this app?');
+    await settled(() => screen.getByText('Connect to this app?'));
     expect([text('.top-bar .title'), document.querySelector('.top-bar .title')?.className]).toEqual(['Unknown origin', 'title noc-overline noc-warning']);
     expect(screen.getByText("We don't recognize this domain. That doesn't always mean it's bad — but proceed with care.")).toBeTruthy();
     expect([text('.s9-origin-card .ico'), text('.s9-origin-card .name'), text('.s9-origin-card .dom'), text('.s9-origin-card .badge')]).toEqual(['?', 'solana-mint-hub', 'solana-mint-hub.xyz', 'Unknown']);
@@ -145,9 +146,9 @@ describe('#47 47b — an unknown origin: two gates, in order; session only (C12)
     expect(document.querySelector('.app-approve-lede i')?.textContent).toBe('for this session only');
     expect(text('.s9-gate-status')).toBe('Ready to connect · for this session');
     expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
-    await armedAfter();
+    await elapse(ARM_MS);
     fireEvent.click(cta('Connect for this session'));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
     expect((await readDappSession(w.ext)).grants.map(g => [g.origin, g.scope])).toEqual([['https://solana-mint-hub.xyz', 'session']]);
   });
 
@@ -155,7 +156,7 @@ describe('#47 47b — an unknown origin: two gates, in order; session only (C12)
     const w = await openWindow();
     await w.connect('https://xn--bcher-kva.example');
     w.show();
-    expect(await screen.findByText('This address uses international characters: xn--bcher-kva.example')).toBeTruthy();
+    expect(await settled(() => screen.getByText('This address uses international characters: xn--bcher-kva.example'))).toBeTruthy();
   });
 });
 
@@ -164,7 +165,7 @@ describe('#47 lookalike — the flipped bar, the 2-second confirm, 47b’s gates
     const w = await openWindow();
     const {page, requestId} = await w.connect('https://tensr.trade');
     w.show();
-    await screen.findByText('Connect to this app?');
+    await settled(() => screen.getByText('Connect to this app?'));
     expect([text('.top-bar .title'), document.querySelector('.top-bar .title')?.className]).toEqual(['Suspicious origin', 'title noc-overline noc-danger']);
     expect(text('.app-approve-lede')).toBe('Connecting lets the dApp see your public address.');
     expect([text('.s9-origin-card .name'), text('.s9-origin-card .dom'), text('.s9-origin-card .badge')]).toEqual(['tensr', 'tensr.trade', 'Lookalike']);
@@ -177,7 +178,7 @@ describe('#47 lookalike — the flipped bar, the 2-second confirm, 47b’s gates
     expect(cta('Connect anyway (not recommended)').className).toBe('btn btn-tertiary noc-body-sm app-dim');
     expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
     fireEvent.click(report);
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
     expect(await w.ext.local.get(BLOCKED_KEY)).toEqual([{host: 'tensr.trade', blockedAt: w.deps.clock.t, imitates: 'tensor.trade'}]);
   });
@@ -186,7 +187,7 @@ describe('#47 lookalike — the flipped bar, the 2-second confirm, 47b’s gates
     const w = await openWindow();
     await w.connect('https://xn--phntom-4nf.app');
     w.show();
-    await screen.findByText('Connect to this app?');
+    await settled(() => screen.getByText('Connect to this app?'));
     expect(text('.s9-domain-warn .body')).toBe('This domain is not phantom.appThe "\u0430" in this URL is a Cyrillic letter (U+0430), not a Latin "a" (U+0061). The Punycode form is xn--phntom-4nf.app.');
     expect([...document.querySelectorAll('.s9-domain-warn code')].map(c => c.textContent)).toEqual(['\u0430', 'xn--phntom-4nf.app']);
     expect(text('.s9-origin-card .name')).toBe('xn--phntom-4nf');
@@ -196,13 +197,13 @@ describe('#47 lookalike — the flipped bar, the 2-second confirm, 47b’s gates
     const w = await openWindow();
     const {page, requestId} = await w.connect('https://phantom.vercel.app');
     w.show();
-    await screen.findByText('Connect to this app?');
+    await settled(() => screen.getByText('Connect to this app?'));
     expect(text('.top-bar .title')).toBe('Suspicious origin');
     expect([text('.s9-origin-card .name'), text('.s9-origin-card .dom'), text('.s9-origin-card .badge')]).toEqual(['vercel', 'phantom.vercel.app', 'Lookalike']);
     expect(text('.s9-domain-warn .body')).toBe('This domain is not phantom.appIt looks like phantom.app but is a different site.');
     expect(document.querySelector('.s9-ack-row')).toBeNull();
     fireEvent.click(cta('Reject and report'));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
     expect(await w.ext.local.get(BLOCKED_KEY)).toEqual([{host: 'phantom.vercel.app', blockedAt: w.deps.clock.t, imitates: 'phantom.app'}]);
   });
@@ -211,23 +212,26 @@ describe('#47 lookalike — the flipped bar, the 2-second confirm, 47b’s gates
     const w = await openWindow();
     await w.connect('https://tensr.trade');
     w.show();
-    await screen.findByText('Connect to this app?');
-    await armedAfter();
+    await settled(() => screen.getByText('Connect to this app?'));
+    await elapse(ARM_MS);
     fireEvent.click(cta('Connect anyway (not recommended)'));
-    const sheet = await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
+    const sheet = await settled(() => screen.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
     const understandBtn = within(sheet).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement;
     expect(understandBtn.disabled).toBe(true);
     // Fix round 1, M1: btn-destructive (design-system.css), not the duplicate app-btn-danger class — the duplicate's
     // specificity tied .btn[disabled] and so lost to source order, leaving it looking live while held/disabled.
     expect(understandBtn.className).toBe('btn btn-destructive app-nowrap');
     fireEvent.click(within(sheet).getByRole('button', {name: 'Cancel'}));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    await armedAfter();
+    await settled(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await elapse(ARM_MS);
     fireEvent.click(cta('Connect anyway (not recommended)'));
-    const again = await screen.findByRole('dialog');
-    await new Promise(r => setTimeout(r, CONFIRM_DELAY_MS + 50));
+    const again = await settled(() => screen.getByRole('dialog'));
+    // The 2-second confirm itself (Task 9 fix round 1, I1): C15's hold is long past at 1 999 ms, so only the delay holds it.
+    await elapse(CONFIRM_DELAY_MS - 1);
+    expect((within(again).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement).disabled).toBe(true);
+    await elapse(1);
     fireEvent.click(within(again).getByRole('button', {name: 'I understand the risk'}));
-    await waitFor(() => expect(screen.getAllByRole('checkbox')).toHaveLength(2));
+    await settled(() => expect(screen.getAllByRole('checkbox')).toHaveLength(2));
     expect(text('.top-bar .title')).toBe('Suspicious origin');
     expect(document.querySelector('.s9-domain-warn')).not.toBeNull();
     expect(text('.s9-flag-banner.warn .head')).toBe("This domain isn't on the verified list");
@@ -242,7 +246,7 @@ describe('#47 — the cap, the cooldown offer, the window chrome (§2.1, C14, Q1
     await w.ext.local.set(GRANTS_KEY, Array.from({length: MAX_GRANTS}, (_, i) => ({origin: `https://s${i}.test`, account: ACCOUNT.publicKey, scope: 'persistent', connectedAt: 1, lastUsedAt: 1, recent: []})));
     await w.connect('https://jup.ag');
     w.show();
-    expect(await screen.findByText('You have 200 connected apps. Revoke one in Settings first.')).toBeTruthy();
+    expect(await settled(() => screen.getByText('You have 200 connected apps. Revoke one in Settings first.'))).toBeTruthy();
     expect(screen.queryByRole('button', {name: /Connect/})).toBeNull();
     expect(document.querySelectorAll('.sticky-bar button')).toHaveLength(1);
     expect(cta('Reject')).toBeTruthy();
@@ -253,8 +257,8 @@ describe('#47 — the cap, the cooldown offer, the window chrome (§2.1, C14, Q1
     await w.ext.local.set(LIMITS_KEY, {rejections: [{key: 'host:dapp.test', at: w.deps.clock.t}, {key: 'host:dapp.test', at: w.deps.clock.t}], cooldowns: [], windows: [], notice: false});
     await w.connect('https://dapp.test');
     w.show();
-    fireEvent.click(await screen.findByRole('button', {name: 'Block this site'}));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    fireEvent.click(await settled(() => screen.getByRole('button', {name: 'Block this site'})));
+    await settled(() => expect(w.closed.n).toBe(1));
     expect(((await w.ext.local.get(BLOCKED_KEY)) as {host: string}[]).map(b => b.host)).toEqual(['dapp.test']);
   });
 
@@ -264,10 +268,12 @@ describe('#47 — the cap, the cooldown offer, the window chrome (§2.1, C14, Q1
     await w.connect('https://a.test');
     await w.ext.local.set(LIMITS_KEY, {rejections: [], cooldowns: [], windows: [], notice: true});
     w.show();
-    expect(await screen.findByText('1 more request waiting')).toBeTruthy();
+    expect(await settled(() => screen.getByText('1 more request waiting'))).toBeTruthy();
     expect(screen.getByText('Too many requests from sites in the last few minutes — some were declined without asking you.')).toBeTruthy();
     await w.connect('https://b.test');
-    expect(await screen.findByText('2 more requests waiting', {}, {timeout: 2500})).toBeTruthy();
+    // The window's next poll (B1c-3 Task 9: on the harness's clock).
+    await elapse(POLL_MS);
+    expect(await settled(() => screen.getByText('2 more requests waiting'))).toBeTruthy();
     // The background's own flag is one-shot (cleared on the read that first saw it); this is still the same head
     // (jup.ag), so the window must still be showing it — not only on the poll that first saw it.
     expect(screen.getByText('Too many requests from sites in the last few minutes — some were declined without asking you.')).toBeTruthy();
@@ -281,10 +287,10 @@ describe('#47 — the cap, the cooldown offer, the window chrome (§2.1, C14, Q1
     await w.connect('https://a.test');
     await w.ext.local.set(LIMITS_KEY, {rejections: [], cooldowns: [], windows: [], notice: true});
     w.show();
-    await screen.findByText('Connect to Jupiter?');
+    await settled(() => screen.getByText('Connect to Jupiter?'));
     expect(screen.getByText('Too many requests from sites in the last few minutes — some were declined without asking you.')).toBeTruthy();
     fireEvent.click(cta('Reject'));
-    await screen.findByText('Connect to this app?');
+    await settled(() => screen.getByText('Connect to this app?'));
     expect(screen.queryByText('Too many requests from sites in the last few minutes — some were declined without asking you.')).toBeNull();
   });
 
@@ -293,13 +299,13 @@ describe('#47 — the cap, the cooldown offer, the window chrome (§2.1, C14, Q1
     const w = await openWindow();
     const {page, requestId} = await w.connect('https://jup.ag');
     w.show();
-    await screen.findByText('Connect to Jupiter?');
+    await settled(() => screen.getByText('Connect to Jupiter?'));
     await page.ask({type: 'page.disconnect', id: 'd1'});
     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
     fireEvent.click(screen.getByRole('checkbox'));
-    await armedAfter();
+    await elapse(ARM_MS);
     fireEvent.click(cta('Connect'));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'rejected'}]);
     expect((await readDappSession(w.ext)).grants).toEqual([]);
   });
@@ -309,12 +315,12 @@ describe('#47 — the cap, the cooldown offer, the window chrome (§2.1, C14, Q1
     const first = await w.connect('https://jup.ag');
     const second = await w.connect('https://a.test');
     w.show();
-    await screen.findByText('Connect to Jupiter?');
+    await settled(() => screen.getByText('Connect to Jupiter?'));
     fireEvent.click(screen.getByRole('button', {name: 'Close'}));
-    await screen.findByText('Connect to this app?');
+    await settled(() => screen.getByText('Connect to this app?'));
     expect(first.page.answersFor(first.requestId)).toEqual([{requestId: first.requestId, error: 'rejected'}]);
     fireEvent.click(cta('Reject'));
-    await waitFor(() => expect(w.closed.n).toBe(1));
+    await settled(() => expect(w.closed.n).toBe(1));
     expect(second.page.answersFor(second.requestId)).toEqual([{requestId: second.requestId, error: 'rejected'}]);
   });
 });
@@ -324,20 +330,20 @@ describe('C15 — no CTA focused, held 500 ms after focus and each state change,
     const w = await openWindow();
     await w.connect('https://jup.ag');
     w.show();
-    await screen.findByText('Connect to Jupiter?');
+    await settled(() => screen.getByText('Connect to Jupiter?'));
     expect(document.activeElement).toBe(document.body);
     expect((cta('Reject') as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(screen.getByRole('checkbox'));
     expect((cta('Connect') as HTMLButtonElement).disabled).toBe(true);
-    await armedAfter();
+    await elapse(ARM_MS);
     expect((cta('Connect') as HTMLButtonElement).disabled).toBe(false);
     act(() => void window.dispatchEvent(new Event('focus')));
     expect((cta('Connect') as HTMLButtonElement).disabled).toBe(true);
-    await armedAfter();
+    await elapse(ARM_MS);
     // A scope change is a state change too.
     fireEvent.click(screen.getAllByRole('radio')[1]!);
     expect((cta('Connect') as HTMLButtonElement).disabled).toBe(true);
-    await armedAfter();
+    await elapse(ARM_MS);
     // Enter on the focused Connect: its default action (the click) is prevented.
     cta('Connect').focus();
     expect(fireEvent.keyDown(cta('Connect'), {key: 'Enter'})).toBe(false);
@@ -356,17 +362,20 @@ describe('review 1: the confirm sheet (L4), the port on the card (L5), an expiry
     const w = await openWindow();
     await w.connect('https://tensr.trade');
     w.show();
-    await screen.findByText('Connect to this app?');
-    await armedAfter();
+    await settled(() => screen.getByText('Connect to this app?'));
+    await elapse(ARM_MS);
     fireEvent.click(cta('Connect anyway (not recommended)'));
-    const sheet = await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
+    const sheet = await settled(() => screen.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
     expect(document.activeElement).toBe(sheet);
-    await new Promise(r => setTimeout(r, CONFIRM_DELAY_MS + 50));
     const understand = () => within(sheet).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement;
+    // The 2-second confirm itself (Task 9 fix round 1, I1): C15's hold is long past at 1 999 ms, so only the delay holds it.
+    await elapse(CONFIRM_DELAY_MS - 1);
+    expect(understand().disabled).toBe(true);
+    await elapse(1);
     expect(understand().disabled).toBe(false);
     act(() => void window.dispatchEvent(new Event('focus')));
     expect(understand().disabled).toBe(true);
-    await armedAfter();
+    await elapse(ARM_MS);
     expect(understand().disabled).toBe(false);
   });
 
@@ -374,13 +383,13 @@ describe('review 1: the confirm sheet (L4), the port on the card (L5), an expiry
     const w = await openWindow();
     await w.connect('https://dapp.test:8443');
     w.show();
-    await screen.findByText('Connect to this app?');
+    await settled(() => screen.getByText('Connect to this app?'));
     expect(text('.s9-origin-card .dom')).toBe('dapp.test:8443');
     cleanup();
     const v = await openWindow();
     await v.connect('https://dapp.test');
     v.show();
-    await screen.findByText('Connect to this app?');
+    await settled(() => screen.getByText('Connect to this app?'));
     expect(text('.s9-origin-card .dom')).toBe('dapp.test');
   });
 
@@ -388,9 +397,11 @@ describe('review 1: the confirm sheet (L4), the port on the card (L5), an expiry
     const w = await openWindow();
     const {page, requestId} = await w.connect('https://jup.ag');
     w.show();
-    await screen.findByText('Connect to Jupiter?');
+    await settled(() => screen.getByText('Connect to Jupiter?'));
     w.deps.clock.t += REQUEST_TTL_MS;
-    await waitFor(() => expect(w.closed.n).toBe(1), {timeout: 2_000});
+    // Within one poll (B1c-3 Task 9: the window's poll on the harness's clock).
+    await elapse(POLL_MS);
+    await settled(() => expect(w.closed.n).toBe(1));
     expect(page.answersFor(requestId)).toEqual([{requestId, error: 'timeout'}]);
   });
 });
@@ -404,7 +415,7 @@ describe('the in-progress state and the client’s shape check', () => {
     const {runtimeFor} = await import('../../background/dapp/ports');
     await w.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => (e.requestId === requestId ? {...e, state: 'deciding', decidedBy: runtimeFor(w.ext).instance, decidingAt: w.deps.clock.t} : e))});
     w.show();
-    const busy = await screen.findByRole('button', {name: 'Connecting…'});
+    const busy = await settled(() => screen.getByRole('button', {name: 'Connecting…'}));
     expect((busy as HTMLButtonElement).disabled).toBe(true);
     // Fix round 1, I2: the busy-CTA class that keeps the accent fill against design-system.css's `.btn[disabled]`
     // (happy-dom cannot compute the cascade itself — the class is the assertion; Task 12's visual pass shoots it).
@@ -440,8 +451,12 @@ describe('fix round 1 — I3: a null first read still polls; M2: busy clears onl
         <Approve client={flaky} close={() => undefined} />
       </div>,
     );
-    expect(await screen.findByText('Connect to Jupiter?', {}, {timeout: 2_000})).toBeTruthy();
-    expect(calls).toBeGreaterThanOrEqual(2);
+    // The first read answered null: blank, until the window's own poll (B1c-3 Task 9: on the harness's clock).
+    await settled(() => expect(calls).toBe(1));
+    expect(document.querySelector('.app-approve')?.getAttribute('aria-busy')).toBe('true');
+    await elapse(POLL_MS);
+    expect(await settled(() => screen.getByText('Connect to Jupiter?'))).toBeTruthy();
+    expect(calls).toBe(2);
   });
 
   it('M2: busy (Connect shows "Connecting…", disabled) stays true until the post-decide refresh resolves — not as soon as dapp.decide itself does', async () => {
@@ -464,19 +479,20 @@ describe('fix round 1 — I3: a null first read still polls; M2: busy clears onl
         <Approve client={gated} close={() => void (closed.n += 1)} />
       </div>,
     );
-    await screen.findByText('Connect to Jupiter?');
+    await settled(() => screen.getByText('Connect to Jupiter?'));
     fireEvent.click(screen.getByRole('checkbox'));
-    await armedAfter();
+    await elapse(ARM_MS);
     fireEvent.click(cta('Connect'));
-    await waitFor(() => expect(screen.queryByRole('button', {name: 'Connecting…'})).not.toBeNull());
-    // client.decide() itself (not gated) has long since settled; the gated refresh has not — busy must still hold.
-    await new Promise(r => setTimeout(r, 100));
+    await settled(() => expect(screen.queryByRole('button', {name: 'Connecting…'})).not.toBeNull());
+    // client.decide() itself (not gated) has settled and its refresh is asked; that refresh has not answered — busy must
+    // still hold. (B1c-3 Task 9: no poll can be call 2 — the window's clock has not reached its first poll.)
+    await settled(() => expect([pendingCalls, release === undefined]).toEqual([2, false]));
     const busy = screen.getByRole('button', {name: 'Connecting…'});
     expect((busy as HTMLButtonElement).disabled).toBe(true);
     expect((cta('Reject') as HTMLButtonElement).disabled).toBe(true);
     expect(closed.n).toBe(0);
     release?.();
-    await waitFor(() => expect(closed.n).toBe(1));
+    await settled(() => expect(closed.n).toBe(1));
   });
 });
 
@@ -487,28 +503,33 @@ describe('controller ruling (a): busy is in the C15 key for #47', () => {
     const w = await openWindow();
     const {requestId} = await w.connect('https://jup.ag');
     w.show();
-    await screen.findByText('Connect to Jupiter?');
+    await settled(() => screen.getByText('Connect to Jupiter?'));
     fireEvent.click(screen.getByRole('checkbox'));
-    await armedAfter();
+    await elapse(ARM_MS);
     expect((cta('Connect') as HTMLButtonElement).disabled).toBe(false);
     const s = await readDappSession(w.ext);
     const {DAPP_SESSION_KEY} = await import('../../background/dapp/store');
     const {runtimeFor} = await import('../../background/dapp/ports');
     await w.ext.session.set(DAPP_SESSION_KEY, {...s, queue: s.queue.map(e => (e.requestId === requestId ? {...e, state: 'deciding', decidedBy: runtimeFor(w.ext).instance, decidingAt: w.deps.clock.t} : e))});
-    await new Promise(r => setTimeout(r, POLL_MS + 50));
-    await screen.findByRole('button', {name: 'Connecting…'});
+    await elapse(POLL_MS);
+    await settled(() => screen.getByRole('button', {name: 'Connecting…'}));
     // The stale poll: the background's own state goes back to a plain request (not deciding) with no action from the
     // user — exactly what a slow, outdated `dapp.pending` resolving late would show. Assert the instant the button
     // reappears (not after a further sleep): the 500 ms re-arm must not have had time to finish by then.
     await w.ext.session.set(DAPP_SESSION_KEY, s);
+    // B1c-3 Task 9: the window's own next poll (its only timer left), on the harness's clock.
+    await nextTimer();
     // Fix round 2: useArmed derives `armed` by comparing the current key to the key the hold last finished for, so
     // the busy→false key change disarms in the SAME render as the commit. This window-level check is NOT the proof of
-    // that: findByRole resolves after React has flushed, so FR2-M1 (the old effect-only reset) turns it red only
-    // about 1 run in 10 (task 9 report). The deterministic proof is useArmed.test.tsx, which FR2-M1 turns red
+    // that: the check runs after React has flushed, so FR2-M1 (the old effect-only reset) turned it red only about
+    // 1 run in 10 on the wall clock (task 9 report) and never on the harness's clock (B1c-3 plan 3 Task 9: 0 of 3
+    // runs). The deterministic proof is useArmed.test.tsx, which FR2-M1 turns red
     // every run (8/8); this test pins the outcome the window must keep — disabled at once, then re-armed after the hold.
-    const connect = await screen.findByRole('button', {name: 'Connect'}, {timeout: POLL_MS + 500});
+    const connect = await settled(() => screen.getByRole('button', {name: 'Connect'}));
     expect((connect as HTMLButtonElement).disabled).toBe(true);
-    await armedAfter();
+    await elapse(ARM_MS - 1);
+    expect((cta('Connect') as HTMLButtonElement).disabled).toBe(true);
+    await elapse(1);
     expect((cta('Connect') as HTMLButtonElement).disabled).toBe(false);
   });
 });
@@ -532,7 +553,7 @@ describe('fix round 1, I2: the unacked domain-ack box carries no `.is-acked` (it
     const w = await openWindow();
     await w.connect('https://dapp.test');
     w.show();
-    await screen.findByText('0 of 2 acknowledgments');
+    await settled(() => screen.getByText('0 of 2 acknowledgments'));
     const domainAck = screen.getByRole('checkbox', {name: 'I understand this domain is not on the verified list'});
     expect(domainAck.className).toBe('ack');
     expect(domainAck.querySelector('.box svg')).toBeTruthy();
@@ -540,5 +561,30 @@ describe('fix round 1, I2: the unacked domain-ack box carries no `.is-acked` (it
     expect(domainAck.className).toBe('ack is-acked');
     fireEvent.click(domainAck);
     expect(domainAck.className).toBe('ack');
+  });
+});
+
+// B1c-3 visual pass (controller ruling): #47's gate line sat flush against the card the scroll area cuts at its edge
+// ("ACCOUNT" at 412 × 720, 47a). happy-dom lays nothing out, so this proves the rule that keeps them apart — on the
+// rendered window, with both sheets loaded — and visual-dapp.spec.ts measures the gap in Chromium.
+describe('B1c-3: #47’s gate line keeps a gap below the scroll area’s clip edge', () => {
+  it('the rendered gate line: a --space-2 top padding, never shrunk, on the bar’s background', async () => {
+    const style = document.createElement('style');
+    const sheet = (p: string) => readFileSync(join(__dirname, ...p.split('/')), 'utf8');
+    style.textContent = `:root { --space-2: 8px; --bg-base: rgb(1, 2, 3); }\n${sheet('../../styles/design-ext.css')}\n${sheet('../../app/app.css')}`;
+    document.head.append(style);
+    try {
+      const w = await openWindow();
+      await w.connect('https://jup.ag');
+      w.show();
+      await settled(() => screen.getByText('Connect to Jupiter?'));
+      const gate = document.querySelector('.s9-gate-status') as HTMLElement;
+      expect(gate.parentElement?.classList.contains('app-approve')).toBe(true);
+      expect(gate.previousElementSibling?.classList.contains('app-approve-scroll')).toBe(true);
+      const cs = getComputedStyle(gate);
+      expect([cs.paddingTop, cs.flexShrink, cs.backgroundColor]).toEqual(['8px', '0', 'rgb(1, 2, 3)']);
+    } finally {
+      style.remove();
+    }
   });
 });

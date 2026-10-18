@@ -45,10 +45,11 @@ export function sendReauthReasons(i: {knownRecipient: boolean; amount: bigint; b
  * this account loses (SOL with the fee), with the account's balance of it before and its dollar value (null: no price,
  * which counts as above the threshold — fail closed, as B1b). `firstSend`: a transfer from this account to an address
  * it never sent to (the same facts as B1b's first-send rule). `approval`: an Approve / ApproveChecked by this account
- * (B1 §3 "bounded approvals"; the whole-balance and u64-max ones are B1c-3's blocks — until then they re-authenticate
- * too). Every rule fails closed, as sendReauthReasons.
+ * (B1 §3 "bounded approvals"; the whole-balance and u64-max ones are B1c-3's blocks, which re-authenticate as well).
+ * Every rule fails closed, as sendReauthReasons. `override` (B1c-3, spec §3.3's override rule): the request has a
+ * block — added by the simulation from its red flags, never by these rules.
  */
-export type DappReauthReason = SendReauthReason | 'approval';
+export type DappReauthReason = SendReauthReason | 'approval' | 'override';
 
 export function dappReauthReasons(i: {outgoing: readonly {amount: bigint; balance: bigint; usdMicros: bigint | null}[]; firstSend: boolean; approval: boolean; thresholdCents: number}): DappReauthReason[] {
   const out: DappReauthReason[] = [];

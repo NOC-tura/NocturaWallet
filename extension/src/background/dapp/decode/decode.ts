@@ -7,7 +7,8 @@ import type {ParsedTx} from './wire';
 /**
  * The decoder (spec B1c §3.3, B1 §3; D6 — our own, no new third-party code in the signing path): every instruction of a
  * dApp's transaction, named and with its fields, for the programs the wallet knows — System (transfer, createAccount,
- * assign, allocate, advanceNonceAccount), SPL Token and Token-2022 (transfer, transferChecked, approve, approveChecked,
+ * assign, allocate, advanceNonceAccount; B1c-3: createAccountWithSeed, allocateWithSeed, assignWithSeed,
+ * transferWithSeed), SPL Token and Token-2022 (transfer, transferChecked, approve, approveChecked,
  * revoke, setAuthority, closeAccount, burn, burnChecked, initializeAccount 1/2/3, syncNative, freezeAccount,
  * thawAccount, and the Token-2022 extensions B1 §3 names: the transfer hook and the permanent delegate), the Associated
  * Token Account program (create, createIdempotent), Compute Budget (the unit limit and price) and the presale program
@@ -129,11 +130,20 @@ class Reader {
     const b = this.bytes(32);
     return b === null ? null : base58.encode(b);
   }
+  /** A System seed: bincode's String (u64 length, then the bytes) of at most MAX_SEED_LEN bytes — longer, the runtime
+   * refuses the instruction. */
+  seed(): Uint8Array | null {
+    const n = this.u64();
+    return n === null || n > BigInt(MAX_SEED_LEN) ? null : this.bytes(Number(n));
+  }
   /** The bytes all read, none left over (a strict decode). */
   done(): boolean {
     return this.at === this.data.length;
   }
 }
+
+/** The runtime's MAX_SEED_LEN for an address derived with a seed. */
+const MAX_SEED_LEN = 32;
 
 /** An address field: `value` is always present — a resolution failure never reaches here (see `Acc`, below). */
 const addr = (name: string, value: string): Field => ({name, value: {kind: 'address', value}});
@@ -146,6 +156,16 @@ const amount = (name: string, v: bigint, decimals: number | null): Field => ({na
 const num = (name: string, v: number | bigint): Field => ({name, value: {kind: 'number', value: v.toString()}});
 const text = (name: string, v: string): Field => ({name, value: {kind: 'text', value: v}});
 const hex = (b: Uint8Array): string => Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+/** A seed as text when it is printable ASCII, else its bytes in hex (never an invisible or look-alike character shown as
+ * text); null when it is not UTF-8 — bincode's String refuses it, so the runtime never runs the instruction. */
+function seedField(name: string, b: Uint8Array): Field | null {
+  try {
+    new TextDecoder('utf-8', {fatal: true}).decode(b);
+  } catch {
+    return null;
+  }
+  return b.every(x => x >= 0x20 && x <= 0x7e) ? text(name, String.fromCharCode(...b)) : {name, value: {kind: 'hex', value: hex(b)}};
+}
 
 /** The instruction's own accounts, resolved by index — undefined when the instruction simply did not supply that many
  * accounts (never null: an account that failed lookup-table resolution already made the whole instruction unknown,
@@ -206,6 +226,18 @@ function system(r: Reader, acc: Acc): Known | null {
       const [from, to] = accs;
       return {name: 'transfer', fields: [addr('from', from), addr('to', to), lamports('lamports', l)]};
     }
+    case 3: {
+      const base = r.pubkey();
+      const seed = r.seed();
+      const l = r.u64();
+      const space = r.u64();
+      const owner = r.pubkey();
+      const accs = acc2(acc, 0, 1);
+      const seedF = seed === null ? null : seedField('seed', seed);
+      if (base === null || seedF === null || l === null || space === null || owner === null || accs === null || !r.done()) return null;
+      const [from, newAccount] = accs;
+      return {name: 'createAccountWithSeed', fields: [addr('from', from), addr('newAccount', newAccount), addr('base', base), seedF, lamports('lamports', l), num('space', space), addr('owner', owner)]};
+    }
     case 4: {
       const accs = acc2(acc, 0, 2);
       if (accs === null || !r.done()) return null;
@@ -217,6 +249,28 @@ function system(r: Reader, acc: Acc): Known | null {
       const account = acc(0);
       if (space === null || account === undefined || !r.done()) return null;
       return {name: 'allocate', fields: [addr('account', account), num('space', space)]};
+    }
+    case 9:
+    case 10: {
+      const base = r.pubkey();
+      const seed = r.seed();
+      const space = tag === 9 ? r.u64() : 0n;
+      const owner = r.pubkey();
+      const account = acc(0);
+      const seedF = seed === null ? null : seedField('seed', seed);
+      if (base === null || seedF === null || space === null || owner === null || account === undefined || !r.done()) return null;
+      const head = [addr('account', account), addr('base', base), seedF];
+      return tag === 9 ? {name: 'allocateWithSeed', fields: [...head, num('space', space), addr('owner', owner)]} : {name: 'assignWithSeed', fields: [...head, addr('owner', owner)]};
+    }
+    case 11: {
+      const l = r.u64();
+      const seed = r.seed();
+      const fromOwner = r.pubkey();
+      const accs = acc3(acc, 0, 1, 2);
+      const seedF = seed === null ? null : seedField('fromSeed', seed);
+      if (l === null || seedF === null || fromOwner === null || accs === null || !r.done()) return null;
+      const [from, fromBase, to] = accs;
+      return {name: 'transferWithSeed', fields: [addr('from', from), addr('fromBase', fromBase), addr('to', to), lamports('lamports', l), seedF, addr('fromOwner', fromOwner)]};
     }
     default:
       return nameOnly(SYSTEM_NAMES, tag);
@@ -341,9 +395,11 @@ function token(r: Reader, acc: Acc, names: readonly string[]): Known | null {
 function ata(r: Reader, acc: Acc): Known | null {
   const tag = r.data.length === 0 ? 0 : r.u8();
   if (tag === 0 || tag === 1) {
+    // B1c-3: the token program (account 5, after the System program) is named — the program reads all six accounts.
     const accs = acc4(acc, 0, 1, 2, 3);
-    if (accs === null || !r.done()) return null;
-    const fields = [addr('payer', accs[0]), addr('account', accs[1]), addr('wallet', accs[2]), addr('mint', accs[3])];
+    const tokenProgram = acc2(acc, 4, 5);
+    if (accs === null || tokenProgram === null || !r.done()) return null;
+    const fields = [addr('payer', accs[0]), addr('account', accs[1]), addr('wallet', accs[2]), addr('mint', accs[3]), addr('tokenProgram', tokenProgram[1])];
     return {name: tag === 0 ? 'create' : 'createIdempotent', fields};
   }
   if (tag === 2) {

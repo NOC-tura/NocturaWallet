@@ -10,7 +10,8 @@ import {fileURLToPath} from 'node:url';
  * serve (asserted empty).
  */
 // Final review I2: `my_site.test` — a host URL-legal to the browser (an underscore) outside the old SITE shape (B1c-29).
-export const DAPP_HOSTS = ['dapp.test', 'jup.ag', 'tensr.trade', 'xn--phntom-4nf.app', 'xn--bcher-kva.example', 'my_site.test', 'api.mainnet-beta.solana.com'] as const;
+// B1c-3 (the visual pass): `tensor.trade` — the verified Tensor, whose tile #47 and #48 draw in #49's colours (R9).
+export const DAPP_HOSTS = ['dapp.test', 'jup.ag', 'tensr.trade', 'tensor.trade', 'xn--phntom-4nf.app', 'xn--bcher-kva.example', 'my_site.test', 'api.mainnet-beta.solana.com'] as const;
 /**
  * B1c-2: the test dApp's own RPC endpoint (its @solana/web3.js Connection — a wallet-adapter dApp's). The adapter never
  * calls it while the wallet sends through signAndSendTransaction; a call would mean it fell back to sending itself.
@@ -100,6 +101,9 @@ declare const dapp: {
   raw(type: string, payload: Record<string, unknown>): Promise<unknown>;
   rawTx(account: string, blockhash: string): string;
   customSign(blockhash: string, payer: string, ixs: RawIx[]): Promise<Result>;
+  adapterCustomSign(blockhash: string, ixs: RawIx[]): Promise<Result>;
+  adapterCustomSignAll(blockhash: string, batch: RawIx[][]): Promise<Result | NamedFailure>;
+  adapterCustomSend(blockhash: string, ixs: RawIx[]): Promise<Result | NamedFailure>;
 };
 
 /** A dApp tab at `origin`, its Wallet Standard registry ready (Noctura found, or not). */
@@ -133,6 +137,10 @@ export const adapter = {
   sign: (p: Page, blockhash: string) => p.evaluate(b => dapp.adapterSign(b), blockhash),
   signAll: (p: Page, count: number, blockhash: string) => p.evaluate(({n, b}) => dapp.adapterSignAll(n, b), {n: count, b: blockhash}),
   send: (p: Page, blockhash: string) => p.evaluate(b => dapp.adapterSend(b), blockhash),
+  /** B1c-3: arbitrary instructions through the adapter — one transaction, a batch, and sendTransaction. */
+  customSign: (p: Page, blockhash: string, ixs: RawIx[]) => p.evaluate(({b, i}) => dapp.adapterCustomSign(b, i), {b: blockhash, i: ixs}),
+  customSignAll: (p: Page, blockhash: string, batch: RawIx[][]) => p.evaluate(({b, i}) => dapp.adapterCustomSignAll(b, i), {b: blockhash, i: batch}),
+  customSend: (p: Page, blockhash: string, ixs: RawIx[]) => p.evaluate(({b, i}) => dapp.adapterCustomSend(b, i), {b: blockhash, i: ixs}),
 };
 
 /**

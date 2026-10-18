@@ -35,6 +35,8 @@ export const PREFIXES = ['.screen', '.top-bar', '.sticky-bar', '.scroll-area', '
   '.s9-scope-card', '.s9-scope-row', '.s9-flag-banner', '.s9-ack-row', '.s9-gate-status', '.s10-',
   // B1c plan 2: #48 (ix:3824-3837, 3854-3859) and the OriginBadge of #26/#27 (ix:4080-4084).
   '.s9-sim-banner', '.s9-bal-card', '.s9-bal-row', '.s9-origin-pill', '.origin-badge',
+  // B1c plan 3: #48's typed-confirm (ix:3856-3860).
+  '.s9-typed-confirm',
 ];
 export const KEYFRAMES = ['shimmer', 'spin', 'shake',
   // Plan 3: what the send-flow rules animate with (#19's progress strip and skeleton, #21's ring and status dot, #54's ring; #20's caret — its rule comes with .s-conf, the typed field does not, D22).

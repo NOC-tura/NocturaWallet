@@ -1,7 +1,7 @@
 import {test, expect, type Locator, type Page, type Worker} from '@playwright/test';
 import {contained, launchPopup, seedUnlockedWallet, MAIN, SAVINGS, type Harness} from './popupHarness';
 import {DAPP_HOSTS, approvalWindow, connect, openDapp, serveDapp, sign, windowClosed, type DappServer} from './dappPage';
-import {shot} from './visualTab';
+import {gateClear, shot} from './visualTab';
 
 // Spec B1c §6.4: every B1c-1 state the real extension can be put in, saved for the opus-tier review against index.html
 // (#46 ix:17442-17686, #47 ix:17686-18261, #49 ix:18705-19100, #31 ix:13552) — not a pixel diff. The approval window at
@@ -38,9 +38,17 @@ const grant = (origin: string, o: {scope?: string; lastUsedAt?: number; connecte
 /** A computed style of the element (the `css()` helper pattern, visual-settings.spec.ts:50) — real Chromium, not happy-dom. */
 const css = (l: Locator, prop: string) => l.evaluate((e, x) => getComputedStyle(e).getPropertyValue(x), prop);
 
-/** A window state: its own copy first, then the shot (the pointer off the column; `ready`, a held CTA, awaited enabled). */
-async function still(win: Page, name: string, visible: Locator, ready?: Locator): Promise<void> {
+/**
+ * A window state: its own copy first, then the shot (the pointer off the column; `ready`, a held CTA, awaited enabled).
+ * B1c-3: a #47 state with the gate line (`'gate'`) also proves the line clear of the scroll area (`gateClear`).
+ */
+async function still(win: Page, name: string, visible: Locator, ready?: Locator, gate: 'gate' | 'no-gate' = 'no-gate'): Promise<void> {
   await expect(visible).toBeVisible();
+  // Final review (Task 8's deferred minor): whether the state draws #47's gate line is the caller's statement, checked
+  // both ways — a state named 'gate' whose line is absent fails here (never a silently skipped gateClear), and a state
+  // named 'no-gate' that draws one fails too.
+  await expect(win.locator('.app-approve > .s9-gate-status'), `${name}: ${gate === 'gate' ? 'the gate line drawn' : 'no gate line'}`).toHaveCount(gate === 'gate' ? 1 : 0);
+  if (gate === 'gate') await gateClear(win);
   await win.mouse.move(0, 0);
   await shot(win, name, {fullPage: false, ...(ready === undefined ? {} : {ready})});
 }
@@ -112,16 +120,16 @@ test('visual · #47: 47a ×3, 47b ×4, lookalike (and its confirm), cap, connect
     const jup = await openDapp(h.ctx, 'https://jup.ag');
     await fresh(h.sw);
     let win = await windowFor(h, () => connect(jup));
-    await still(win, '47a-initial', win.getByText('0 of 1 acknowledgments'), win.getByRole('button', {name: 'Reject'}));
+    await still(win, '47a-initial', win.getByText('0 of 1 acknowledgments'), win.getByRole('button', {name: 'Reject'}), 'gate');
     // aria-disabled, not disabled (#47 E: the tap shakes the unmet gate): Playwright's actionability check would wait for it.
     await win.getByRole('button', {name: 'Connect', exact: true}).click({force: true});
-    await still(win, '47a-locked-tap', win.getByText('Read the permissions above before connecting'));
+    await still(win, '47a-locked-tap', win.getByText('Read the permissions above before connecting'), undefined, 'gate');
     await win.getByRole('checkbox').click();
-    await still(win, '47a-acknowledged', win.getByText('Ready to connect'), win.getByRole('button', {name: 'Connect', exact: true}));
+    await still(win, '47a-acknowledged', win.getByText('Ready to connect'), win.getByRole('button', {name: 'Connect', exact: true}), 'gate');
     await win.getByRole('radio', {name: /Until I revoke/}).click();
     await win.evaluate(() => void ((window as unknown as {__holdDecide: boolean}).__holdDecide = true));
     await win.getByRole('button', {name: 'Connect', exact: true}).click();
-    await still(win, '47-connecting', win.getByRole('button', {name: 'Connecting…'}));
+    await still(win, '47-connecting', win.getByRole('button', {name: 'Connecting…'}), undefined, 'gate');
     await win.close();
 
     // 47b — unknown (dapp.test), then an international (xn--) unknown host for Q18.
@@ -135,11 +143,11 @@ test('visual · #47: 47a ×3, 47b ×4, lookalike (and its confirm), cap, connect
     const domainBoxSvg = win.locator('.s9-flag-banner .ack .box svg');
     await expect(domainBoxSvg).toBeVisible();
     expect(await css(domainBoxSvg, 'color')).toBe('rgba(0, 0, 0, 0)');
-    await still(win, '47b-initial', win.getByText('0 of 2 acknowledgments'), win.getByRole('button', {name: 'Reject'}));
+    await still(win, '47b-initial', win.getByText('0 of 2 acknowledgments'), win.getByRole('button', {name: 'Reject'}), 'gate');
 
     // New shot: 47b's own locked tap (two gates: the hint names both, unlike 47a's one-gate hint).
     await win.getByRole('button', {name: 'Connect for this session', exact: true}).click({force: true});
-    await still(win, '47b-locked-tap', win.getByText('Acknowledge both gates to connect'));
+    await still(win, '47b-locked-tap', win.getByText('Acknowledge both gates to connect'), undefined, 'gate');
 
     // New shot: the scope card, scrolled into view — "Recommended for unknown" (Q19), "Until I revoke" disabled.
     const scope = win.getByRole('radiogroup', {name: 'Recommended for unknown'});
@@ -147,20 +155,20 @@ test('visual · #47: 47a ×3, 47b ×4, lookalike (and its confirm), cap, connect
     await expect(win.getByText('Connection ends when the wallet locks · safest option for unknown domains')).toBeVisible();
     const persistentOption = win.getByRole('radio', {name: /Until I revoke/});
     await expect(persistentOption).toBeDisabled();
-    await still(win, '47b-scope-card', scope);
+    await still(win, '47b-scope-card', scope, undefined, 'gate');
 
     await win.getByRole('checkbox', {name: 'I understand this domain is not on the verified list'}).click();
     // Fix round 2, I2's positive control: acked, the same box's icon is no longer transparent (`.is-acked .box`'s
     // own `background`/`color` now wins — the same element, a different class, a different real colour).
     expect(await css(domainBoxSvg, 'color')).not.toBe('rgba(0, 0, 0, 0)');
-    await still(win, '47b-domain-acked', win.getByText('1 of 2 acknowledgments'));
+    await still(win, '47b-domain-acked', win.getByText('1 of 2 acknowledgments'), undefined, 'gate');
     await win.getByRole('checkbox', {name: /I've read these permissions/}).click();
-    await still(win, '47b-fully-acked', win.getByText('Ready to connect · for this session'), win.getByRole('button', {name: 'Connect for this session'}));
+    await still(win, '47b-fully-acked', win.getByText('Ready to connect · for this session'), win.getByRole('button', {name: 'Connect for this session'}), 'gate');
     await dismiss(win);
     const idn = await openDapp(h.ctx, 'https://xn--bcher-kva.example');
     await fresh(h.sw);
     win = await windowFor(h, () => connect(idn));
-    await still(win, '47b-international', win.getByText('This address uses international characters: xn--bcher-kva.example'));
+    await still(win, '47b-international', win.getByText('This address uses international characters: xn--bcher-kva.example'), undefined, 'gate');
     await dismiss(win);
 
     // Lookalike — rule b (tensr.trade) with its confirm and its gates; rule a (the Cyrillic phantom).
@@ -171,7 +179,7 @@ test('visual · #47: 47a ×3, 47b ×4, lookalike (and its confirm), cap, connect
     await win.getByRole('button', {name: 'Connect anyway (not recommended)'}).click();
     await still(win, '47-lookalike-confirm', win.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
     await win.getByRole('button', {name: 'I understand the risk'}).click();
-    await still(win, '47-lookalike-gates', win.getByText('0 of 2 acknowledgments'));
+    await still(win, '47-lookalike-gates', win.getByText('0 of 2 acknowledgments'), undefined, 'gate');
     await dismiss(win);
     const phantom = await openDapp(h.ctx, 'https://xn--phntom-4nf.app');
     await fresh(h.sw);
@@ -197,14 +205,14 @@ test('visual · #47: 47a ×3, 47b ×4, lookalike (and its confirm), cap, connect
       await win.evaluate(() => void window.dispatchEvent(new Event('focus')));
       return win.getByText('2 more requests waiting').count();
     }).toBe(1);
-    await still(win, '47-queue-and-notice', win.getByText('2 more requests waiting'));
+    await still(win, '47-queue-and-notice', win.getByText('2 more requests waiting'), undefined, 'gate');
     for (let i = 0; i < 3; i++) await win.getByRole('button', {name: 'Close'}).click();
     // Fix round 1: `waitForEvent('close')` registered AFTER the clicks races the window's own close() (dry-run
     // record item 5) — polled instead, same as `dismiss()`.
     await windowClosed(win);
     await set(h.sw, {v1_dapp_limits: {rejections: [{key: 'host:dapp.test', at: Date.now()}, {key: 'host:dapp.test', at: Date.now()}], cooldowns: [], windows: [], notice: false}});
     win = await windowFor(h, () => connect(dapp));
-    await still(win, '47-block-this-site', win.getByRole('button', {name: 'Block this site'}));
+    await still(win, '47-block-this-site', win.getByRole('button', {name: 'Block this site'}), undefined, 'gate');
     await dismiss(win);
 
     // The locked window (D11).
@@ -256,8 +264,9 @@ test('visual · #46: verified (SIWS), unknown, keyword alert, lookalike and its 
     await h.sw.evaluate(a => chrome.storage.session.set({v1_session: {accounts: [a]}}), {index: SAVINGS.index, publicKey: SAVINGS.publicKey, secretKey: SAVINGS.secretKey});
     await win.evaluate(() => void window.dispatchEvent(new Event('focus')));
     await expect(win.getByRole('button', {name: 'Sign', exact: true})).toHaveCount(0);
-    // Rev 3.2 (Q26, owner-delegated 2026-10-12): the line under the title says why; asserted before the shot.
-    await expect(win.getByText('This request can no longer be signed. Reject it and ask the site to try again.')).toBeVisible();
+    // Rev 3.2 (Q26, owner-delegated 2026-10-12): the line under the title says why; asserted before the shot. B1c-3: drawn
+    // as #48 draws it — a danger flag banner, its head.
+    await expect(win.locator('.s9-flag-banner.danger .head')).toHaveText('This request can no longer be signed. Reject it and ask the site to try again.');
     await still(win, '46-sign-null', win.getByRole('button', {name: 'Reject'}));
     await dismiss(win);
     await seedUnlockedWallet(h.sw);

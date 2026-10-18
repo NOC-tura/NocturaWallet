@@ -57,6 +57,16 @@ async function run(f: () => Promise<unknown>): Promise<Result> {
   }
 }
 
+/** B1c-3: `run`, but a failure keeps the adapter's own error TYPE (`adapterSignAll`'s NamedFailure shape). */
+async function named(f: () => Promise<unknown>): Promise<Result | NamedFailure> {
+  try {
+    return {ok: true, value: await f()};
+  } catch (e) {
+    const err = e as {message?: unknown; name?: unknown};
+    return {ok: false, message: String(err.message), name: typeof err.name === 'string' ? err.name : undefined};
+  }
+}
+
 interface SignTransaction {
   signTransaction(...inputs: {account: WalletAccount; transaction: Uint8Array; chain?: string}[]): Promise<{signedTransaction: Uint8Array}[]>;
 }
@@ -246,6 +256,40 @@ const dapp = {
       const tx = customTx(payer, blockhash, ixs);
       const [out] = await (w.features['solana:signTransaction'] as SignTransaction).signTransaction({account, transaction: tx.serialize(), chain: 'solana:mainnet'});
       return b64(out?.signedTransaction ?? new Uint8Array());
+    }),
+  /**
+   * B1c-3: a transaction from arbitrary instructions through the adapter's own signTransaction (the connected account
+   * its fee payer) — the red-flag states reached the way a wallet-adapter dApp reaches them; the signed wire and this
+   * page's message bytes, base64.
+   */
+  adapterCustomSign: (blockhash: string, ixs: RawIx[]): Promise<Result> =>
+    run(async () => {
+      const a = theAdapter();
+      const from = a.publicKey?.toBase58();
+      if (from === undefined) throw new Error('not connected');
+      if (a.signTransaction === undefined) throw new Error('no signTransaction');
+      const tx = customTx(from, blockhash, ixs);
+      const signed = await a.signTransaction(tx);
+      return {signed: b64(signed.serialize()), message: b64(tx.message.serialize())};
+    }),
+  /** B1c-3: a batch — one transaction per instruction list — through the adapter's signAllTransactions. */
+  adapterCustomSignAll: (blockhash: string, batch: RawIx[][]): Promise<Result | NamedFailure> =>
+    named(async () => {
+      const a = theAdapter();
+      const from = a.publicKey?.toBase58();
+      if (from === undefined) throw new Error('not connected');
+      if (a.signAllTransactions === undefined) throw new Error('no signAllTransactions');
+      const txs = batch.map(ixs => customTx(from, blockhash, ixs));
+      const signed = await a.signAllTransactions(txs);
+      return {signed: signed.map(t => b64(t.serialize())), messages: txs.map(t => b64(t.message.serialize()))};
+    }),
+  /** B1c-3: one transaction from arbitrary instructions through the adapter's sendTransaction (the wallet's signAndSend). */
+  adapterCustomSend: (blockhash: string, ixs: RawIx[]): Promise<Result | NamedFailure> =>
+    named(async () => {
+      const a = theAdapter();
+      const from = a.publicKey?.toBase58();
+      if (from === undefined) throw new Error('not connected');
+      return a.sendTransaction(customTx(from, blockhash, ixs), CONNECTION);
     }),
   /** Review fix I3: the signature AND the original message bytes (base64) this page built before sending. */
   adapterSend: (blockhash: string): Promise<Result> =>

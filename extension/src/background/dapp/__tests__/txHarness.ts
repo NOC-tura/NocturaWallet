@@ -1,14 +1,14 @@
 import {ed25519} from '@noble/curves/ed25519.js';
 import {base64} from '@scure/base';
 import {PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction} from '@solana/web3.js';
-import type {SimulationOutcome, SolanaReader} from '../../../../../core/solana/rpc';
+import type {AccountData, SimulationOutcome, SolanaReader} from '../../../../../core/solana/rpc';
 import {handleMessage} from '../../messages';
 import {setSession} from '../../session';
 import {VAULT_KEY} from '../../accountsStore';
 import {GRANTS_KEY, type Grant} from '../grants';
 import {runUnlockHook} from '../queue';
 import {readDappSession, type Entry} from '../store';
-import {TOKEN_PROGRAM} from '../decode/decode';
+import {ATA_PROGRAM, TOKEN_PROGRAM} from '../decode/decode';
 import {fakeExt} from '../../__tests__/fakeExt';
 import {fakeDeps, fakeReader} from '../../__tests__/fakeDeps';
 import {ACCOUNT, BLOCKHASH, RECIPIENT} from '../../__tests__/fixtures';
@@ -66,13 +66,65 @@ export const mintTo = (mint = TO, destination = ME, authority = ME, amount = 1n)
     ],
   });
 
+/**
+ * B1c-3: System assign of `account` (the wallet's, by default) to another program — F3, a block (ASSIGN) decoded from
+ * the instruction alone, whatever the chain says.
+ */
+export const assign = (account = ME, programId = new PublicKey(new Uint8Array(32).fill(71))): TransactionInstruction => SystemProgram.assign({accountPubkey: account, programId});
+
+/** B1c-3: an associated-token-account createIdempotent (tag 1) of `account` for `wallet`, paid by the account — one of F10's creators; `tokenProgram` its account 5. */
+export const ataCreate = (account: PublicKey, wallet = TO, mint = new PublicKey(new Uint8Array(32).fill(72)), tokenProgram = new PublicKey(TOKEN_PROGRAM)): TransactionInstruction =>
+  new TransactionInstruction({
+    programId: new PublicKey(ATA_PROGRAM),
+    data: Buffer.from([1]),
+    keys: [
+      {pubkey: ME, isSigner: true, isWritable: true},
+      {pubkey: account, isSigner: false, isWritable: true},
+      {pubkey: wallet, isSigner: false, isWritable: false},
+      {pubkey: mint, isSigner: false, isWritable: false},
+      {pubkey: SystemProgram.programId, isSigner: false, isWritable: false},
+      {pubkey: tokenProgram, isSigner: false, isWritable: false},
+    ],
+  });
+
+/** B1c-3: a Token transfer (tag 3) from `source` to `destination`, the account its authority. */
+export const tokenTransfer = (destination: PublicKey, source = new PublicKey(new Uint8Array(32).fill(73)), amount = 1n): TransactionInstruction =>
+  new TransactionInstruction({
+    programId: new PublicKey(TOKEN_PROGRAM),
+    data: Buffer.from([3, ...u64le(amount)]),
+    keys: [
+      {pubkey: source, isSigner: false, isWritable: true},
+      {pubkey: destination, isSigner: false, isWritable: true},
+      {pubkey: ME, isSigner: true, isWritable: false},
+    ],
+  });
+
+/** B1c-3 (Task 5): a Token approve (tag 4) of `amount` from `source` to `delegate`, the account its owner. */
+export const tokenApprove = (source: PublicKey, delegate: PublicKey, amount: bigint): TransactionInstruction =>
+  new TransactionInstruction({
+    programId: new PublicKey(TOKEN_PROGRAM),
+    data: Buffer.from([4, ...u64le(amount)]),
+    keys: [
+      {pubkey: source, isSigner: false, isWritable: true},
+      {pubkey: delegate, isSigner: false, isWritable: false},
+      {pubkey: ME, isSigner: true, isWritable: false},
+    ],
+  });
+
 export interface Chain {
   /** simulateTransaction's error (null: it runs). */
   err: unknown;
+  /** B1c-3: an error for one transaction by its static keys (null: it runs) — a batch whose later step fails alone. */
+  errFor: ((keys: string[]) => unknown) | null;
   /** Calls per method. */
   calls: Map<string, number>;
   /** getBalance throws while set. */
   down: boolean;
+  /**
+   * B1c-3 (Task 5): accounts besides the wallet's (a token account, a mint) — what getAccountsData reads, and each one's
+   * post-state in a simulation (unchanged by it).
+   */
+  accounts: Map<string, AccountData>;
 }
 
 /** The steered chain (exported for the approval window's tests). */
@@ -97,19 +149,20 @@ export function chainReader(chain: Chain): SolanaReader {
     },
     getAccountsData: async addresses => {
       count('getAccountsData');
-      return addresses.map(() => null);
+      return addresses.map(a => chain.accounts.get(a) ?? null);
     },
     simulateTransaction: async (txBase64, opts): Promise<SimulationOutcome> => {
       count('simulateTransaction');
-      if (chain.err !== null) return {err: chain.err, logs: [], unitsConsumed: 0, slot: 777, accounts: null};
       const m = VersionedTransaction.deserialize(base64.decode(txBase64)).message;
       const keys = m.staticAccountKeys.map(k => k.toBase58());
+      const err = chain.err !== null ? chain.err : (chain.errFor?.(keys) ?? null);
+      if (err !== null) return {err, logs: [], unitsConsumed: 0, slot: 777, accounts: null};
       let out = 0n;
       for (const ix of m.compiledInstructions) {
         if (keys[ix.programIdIndex] === SystemProgram.programId.toBase58() && ix.data[0] === 2 && keys[ix.accountKeyIndexes[0] ?? -1] === ME.toBase58()) out += new DataView(ix.data.buffer, ix.data.byteOffset + 4, 8).getBigUint64(0, true);
       }
       const fee = keys[0] === ME.toBase58() ? 5_000n * BigInt(m.header.numRequiredSignatures) : 0n;
-      return {err: null, logs: [], unitsConsumed: 450, slot: 777, accounts: (opts?.accounts ?? []).map(a => (a === ME.toBase58() ? {lamports: SOL - out - fee, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : null))};
+      return {err: null, logs: [], unitsConsumed: 450, slot: 777, accounts: (opts?.accounts ?? []).map(a => (a === ME.toBase58() ? {lamports: SOL - out - fee, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : (chain.accounts.get(a) ?? null)))};
     },
   });
 }
@@ -123,7 +176,7 @@ export async function until(done: () => Promise<boolean>, turns = 400): Promise<
   throw new Error('never settled');
 }
 
-export const newChain = (): Chain => ({err: null, calls: new Map(), down: false});
+export const newChain = (): Chain => ({err: null, errFor: null, calls: new Map(), down: false, accounts: new Map()});
 
 export async function txScene(o: {grant?: Partial<Grant> | null; known?: string[]; origin?: string} = {}) {
   const origin = o.origin ?? DAPP;

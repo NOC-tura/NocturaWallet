@@ -14,7 +14,15 @@ const METHOD_NOT_FOUND: unique symbol = Symbol('method not found');
 const SYSTEM_PROGRAM = '11111111111111111111111111111111';
 const COMPUTE_BUDGET = 'ComputeBudget111111111111111111111111111111';
 export const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+/** B1c-3: Token-2022 — its token accounts and mints the fake answers like the classic program's, with the extensions. */
+export const TOKEN_2022_PROGRAM = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
 export const ATA_PROGRAM = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
+/** B1c-3: the wallet's own tokens' mints (NOC, USDC, USDT) and their decimals — what the fake chain holds by default. */
+const WALLET_MINTS: [string, number][] = [
+  ['B61SyRxF2b8JwSLZHgEUF6rtn6NUikkrK1EMEgP6nhXW', 9],
+  ['EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 6],
+  ['Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', 6],
+];
 /** The rent-exempt minimum of a 165-byte token account: what an associated-token-account Create takes from its payer. */
 export const TOKEN_ACCOUNT_RENT = 2_039_280;
 
@@ -62,7 +70,15 @@ export interface FakeCoordinator {
    * decimals}}). They feed the balances #11 and #43 show, and (final review, carry d) a token send's simulation:
    * a requested token account comes back in its 165-byte layout after the transaction's transfers.
    */
-  tokenAccounts: Map<string, {pubkey: string; mint: string; amount: string; decimals: number}[]>;
+  tokenAccounts: Map<string, {pubkey: string; mint: string; amount: string; decimals: number; program?: 'token' | 'token-2022'}[]>;
+  /**
+   * B1c-3: mint accounts by address — their owner program and bytes (`mintData`), answered by getMultipleAccounts (the
+   * simulation's one mint read, for decimals and the red flags F5/F7) and getAccountInfo. It starts with the wallet's
+   * three tokens as the chain has them — classic SPL mints, NOC at 9 decimals, USDC and USDT at 6 (their authorities
+   * are not modeled: no flag reads a classic mint's, O3). An unlisted mint reads as every other unlisted address does:
+   * a system account (no mint data — the wallet cannot read it).
+   */
+  mints: Map<string, {program: 'token' | 'token-2022'; data: Uint8Array}>;
   /** Per owner, newest first: the signatures getSignaturesForAddress pages through, and each getTransaction result. */
   history: Map<string, {signature: string; tx: unknown}[]>;
   /**
@@ -90,6 +106,51 @@ function tokenAccountData(mint: string, owner: string, amount: bigint, delegate:
   }
   data[108] = 1;
   if (delegate !== null) new DataView(data.buffer).setBigUint64(121, delegate.amount, true);
+  return data;
+}
+
+/**
+ * B1c-3: a mint's bytes, the token programs' own layout (e2e copies the builder — it imports nothing from core/ or src/):
+ * mint authority COption<Pubkey> (u32 tag at 0, key at 4), supply u64 at 36, decimals at 44, is_initialized at 45,
+ * freeze authority COption<Pubkey> (tag at 46, key at 50) — 82 bytes. With `extensions` (Token-2022 only), zero padding
+ * to 165, the AccountType byte 1 (Mint) at 165, then each extension as TLV from 166: u16 LE type, u16 LE length, the
+ * value — PermanentDelegate (12: its delegate, 32 bytes) and TransferHook (14: its authority, then its program id; 64
+ * bytes), 32 zero bytes being "none" in both.
+ */
+export interface MintSpec {
+  decimals: number;
+  mintAuthority: string | null;
+  freezeAuthority: string | null;
+  extensions?: {permanentDelegate?: string | null; transferHook?: {authority: string | null; program: string | null}};
+}
+const keyBytes = (key: string | null): Uint8Array => (key === null ? new Uint8Array(32) : base58.decode(key));
+export function mintData(spec: MintSpec): Uint8Array {
+  const tlv: {type: number; value: Uint8Array}[] = [];
+  const ext = spec.extensions;
+  if (ext?.permanentDelegate !== undefined) tlv.push({type: 12, value: keyBytes(ext.permanentDelegate)});
+  if (ext?.transferHook !== undefined) tlv.push({type: 14, value: new Uint8Array([...keyBytes(ext.transferHook.authority), ...keyBytes(ext.transferHook.program)])});
+  const size = ext === undefined ? 82 : 166 + tlv.reduce((n, e) => n + 4 + e.value.length, 0);
+  const data = new Uint8Array(size);
+  const view = new DataView(data.buffer);
+  if (spec.mintAuthority !== null) {
+    view.setUint32(0, 1, true);
+    data.set(base58.decode(spec.mintAuthority), 4);
+  }
+  data[44] = spec.decimals;
+  data[45] = 1;
+  if (spec.freezeAuthority !== null) {
+    view.setUint32(46, 1, true);
+    data.set(base58.decode(spec.freezeAuthority), 50);
+  }
+  if (ext === undefined) return data;
+  data[165] = 1;
+  let at = 166;
+  for (const e of tlv) {
+    view.setUint16(at, e.type, true);
+    view.setUint16(at + 2, e.value.length, true);
+    data.set(e.value, at + 4);
+    at += 4 + e.value.length;
+  }
   return data;
 }
 
@@ -166,6 +227,7 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     simulations: [],
     simulatedPayerAfter: [],
     tokenAccounts: new Map(),
+    mints: new Map(WALLET_MINTS.map(([mint, decimals]) => [mint, {program: 'token' as const, data: mintData({decimals, mintAuthority: null, freezeAuthority: null})}])),
     history: new Map(),
     hold: () => {
       let release: () => void = () => undefined;
@@ -206,6 +268,13 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
    * than it holds, fails as the Token program does (Custom 1, InsufficientFunds), and one to an account that is
    * neither listed nor created earlier in the transaction fails as uninitialized. Its error switch answers err with
    * accounts: null, as the real RPC does (review H2).
+   * B1c-3: Token-2022 token accounts move the same way (their own program as the owner); Approve and ApproveChecked
+   * (both programs) leave the source account delegated in its post-state; CloseAccount closes the account (null, as
+   * every account holding no lamports reads here) and pays its rent to the destination when that is the payer; System
+   * Assign / Allocate (and their …WithSeed
+   * forms) give the account they name its new owner program / its zeroed data, as the post-state reports it. Each
+   * transaction is simulated on its own against the current state, as a node does — so a transfer into a token account
+   * that only an EARLIER transaction of a batch creates fails here as uninitialized (B1c-3's dependent step, F10).
    */
   const simulate = (params: unknown[]): unknown => {
     const config = params[1] as {accounts?: {encoding?: string; addresses?: unknown}} | undefined;
@@ -227,6 +296,11 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
      * depicted an approve as moving nothing at all, which the engine's own re-authentication rule (simulate.ts,
      * `approvalFromChain`) would never agree with on mainnet. */
     const approvals = new Map<string, {address: string; amount: bigint}>();
+    /** B1c-3: System Assign / Allocate (and …WithSeed): the account's new owner program, its new data size. */
+    const assigned = new Map<string, string>();
+    const allocated = new Map<string, number>();
+    /** B1c-3: the token accounts a CloseAccount closed. */
+    const closed = new Set<string>();
     for (const [i, ix] of instructions.entries()) {
       const data = ix.data;
       const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -241,8 +315,23 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
         if (data[0] !== 1 || tokenAccountAt(ata) === null) out += TOKEN_ACCOUNT_RENT;
         created.add(ata);
       }
+      // B1c-3: Assign (1: owner at 4), Allocate (8: space u64 at 4), AllocateWithSeed (9) and AssignWithSeed (10): base
+      // at 4, the seed (u64 length at 36, then its bytes), then AllocateWithSeed's space and owner, AssignWithSeed's owner.
+      if (program === SYSTEM_PROGRAM && data.length >= 4) {
+        const target = keys[ix.accounts[0] ?? -1] ?? '';
+        const tag = view.getUint32(0, true);
+        const seedEnd = data.length >= 44 ? 44 + Number(view.getBigUint64(36, true)) : 0;
+        if (tag === 1) assigned.set(target, base58.encode(data.subarray(4, 36)));
+        if (tag === 8) allocated.set(target, Number(view.getBigUint64(4, true)));
+        if (tag === 9) {
+          allocated.set(target, Number(view.getBigUint64(seedEnd, true)));
+          assigned.set(target, base58.encode(data.subarray(seedEnd + 8, seedEnd + 40)));
+        }
+        if (tag === 10) assigned.set(target, base58.encode(data.subarray(seedEnd, seedEnd + 32)));
+      }
+      const token = program === TOKEN_PROGRAM || program === TOKEN_2022_PROGRAM;
       // Transfer (3) and TransferChecked (12): the amount (u64 LE at 1) leaves the source (the first account).
-      if (program === TOKEN_PROGRAM && (data[0] === 3 || data[0] === 12)) {
+      if (token && (data[0] === 3 || data[0] === 12)) {
         const source = keys[ix.accounts[0] ?? -1] ?? '';
         const held = tokenAccountAt(source);
         const taken = (tokenOut.get(source) ?? 0n) + view.getBigUint64(1, true);
@@ -254,22 +343,34 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
         if (held === null || taken > BigInt(held.amount)) return failed({Custom: 1});
         tokenOut.set(source, taken);
       }
-      // Approve (4): the delegate and amount (u64 LE at 1) the source account's post-state now carries.
-      if (program === TOKEN_PROGRAM && data[0] === 4) {
+      // Approve (4): the delegate and amount (u64 LE at 1) the source account's post-state now carries. B1c-3:
+      // ApproveChecked (13) too — source, mint, delegate, owner; the amount at 1, the decimals after it.
+      if (token && (data[0] === 4 || data[0] === 13)) {
         const source = keys[ix.accounts[0] ?? -1] ?? '';
-        const delegate = keys[ix.accounts[1] ?? -1] ?? '';
+        const delegate = keys[ix.accounts[data[0] === 13 ? 2 : 1] ?? -1] ?? '';
         approvals.set(source, {address: delegate, amount: view.getBigUint64(1, true)});
+      }
+      // CloseAccount (9): account, destination, owner — the account's rent goes to the destination.
+      if (token && data[0] === 9) {
+        closed.add(keys[ix.accounts[0] ?? -1] ?? '');
+        if (keys[ix.accounts[1] ?? -1] === payer) out -= TOKEN_ACCOUNT_RENT;
       }
     }
     const fee = 5_000 * signers + Number((price * limit + 999_999n) / 1_000_000n);
     const after = lamportsOf(payer) - out - fee;
     fake.simulatedPayerAfter.push(after);
+    /** A system account's post-state: its owner program and data as Assign / Allocate left them (B1c-3). */
+    const systemAccount = (a: string, lamports: number) => {
+      const space = allocated.get(a) ?? 0;
+      return {lamports, owner: assigned.get(a) ?? SYSTEM_PROGRAM, data: [base64.encode(new Uint8Array(space)), 'base64'], executable: false, rentEpoch: 18446744073709552000, space};
+    };
     const accounts = (addresses ?? []).map(a => {
-      if (a === payer) return {lamports: after, owner: SYSTEM_PROGRAM, data: ['', 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 0};
+      if (a === payer) return systemAccount(a, after);
+      if (closed.has(a)) return null;
       const t = tokenAccountAt(a);
       if (t !== null) {
         const amount = BigInt(t.amount) - (tokenOut.get(a) ?? 0n);
-        return {lamports: TOKEN_ACCOUNT_RENT, owner: TOKEN_PROGRAM, data: [base64.encode(tokenAccountData(t.mint, t.owner, amount, approvals.get(a) ?? null)), 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 165};
+        return {lamports: TOKEN_ACCOUNT_RENT, owner: t.program, data: [base64.encode(tokenAccountData(t.mint, t.owner, amount, approvals.get(a) ?? null)), 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 165};
       }
       // B1c-2 Task 10 fix round 1 (test-only, additive — LIMITATION, fix round 2 L1: this models an unaffected
       // address correctly, but if a FUTURE spec ever requested simulateTransaction.accounts for a non-payer,
@@ -281,37 +382,42 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       // exactly as getMultipleAccounts already reports it, never null (null reads, one level up in
       // simulateTransactions.ts, as the whole account having vanished).
       const lamports = lamportsOf(a);
-      return lamports > 0 ? {lamports, owner: SYSTEM_PROGRAM, data: ['', 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 0} : null;
+      return lamports > 0 ? systemAccount(a, lamports) : null;
     });
     return {context: context(), value: {err: null, logs: ['Program 11111111111111111111111111111111 success'], accounts, unitsConsumed: 450, returnData: null}};
   };
 
-  /** A token account listed in `tokenAccounts`, with its owner, or null. */
-  const tokenAccountAt = (address: string): {mint: string; owner: string; amount: string} | null => {
+  /** A token account listed in `tokenAccounts`, with its owner and its program (B1c-3: classic unless listed Token-2022), or null. */
+  const tokenAccountAt = (address: string): {mint: string; owner: string; amount: string; program: string} | null => {
     for (const [owner, list] of fake.tokenAccounts) {
       const t = list.find(x => x.pubkey === address);
-      if (t !== undefined) return {mint: t.mint, owner, amount: t.amount};
+      if (t !== undefined) return {mint: t.mint, owner, amount: t.amount, program: t.program === 'token-2022' ? TOKEN_2022_PROGRAM : TOKEN_PROGRAM};
     }
     return null;
+  };
+  /** B1c-3: a mint listed in `mints`, as the node reports the account. */
+  const mintAt = (address: string): {lamports: number; owner: string; data: [string, 'base64']; executable: false; rentEpoch: number; space: number} | null => {
+    const m = fake.mints.get(address);
+    return m === undefined ? null : {lamports: 1_461_600, owner: m.program === 'token-2022' ? TOKEN_2022_PROGRAM : TOKEN_PROGRAM, data: [base64.encode(m.data), 'base64'], executable: false, rentEpoch: 18446744073709552000, space: m.data.length};
   };
 
   /** getTokenAccountsByOwner in the node's jsonParsed shape, filtered by `mint` or `programId` as a node filters. */
   const tokenAccountsOf = (owner: string, filter: {mint?: string; programId?: string} | undefined): unknown[] =>
     (fake.tokenAccounts.get(owner) ?? [])
       .filter(t => filter?.mint === undefined || t.mint === filter.mint)
-      // Every listed account is owned by the classic SPL Token program: another programId (Token-2022) matches none.
-      .filter(() => filter?.programId === undefined || filter.programId === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
+      // A listed account is owned by the classic SPL Token program unless listed as Token-2022 (B1c-3).
+      .filter(t => filter?.programId === undefined || filter.programId === (t.program === 'token-2022' ? TOKEN_2022_PROGRAM : TOKEN_PROGRAM))
       .map(t => ({
         pubkey: t.pubkey,
         account: {
           data: {
             parsed: {info: {isNative: false, mint: t.mint, owner, state: 'initialized', tokenAmount: {amount: t.amount, decimals: t.decimals, uiAmount: Number(t.amount) / 10 ** t.decimals, uiAmountString: String(Number(t.amount) / 10 ** t.decimals)}}, type: 'account'},
-            program: 'spl-token',
+            program: t.program === 'token-2022' ? 'spl-token-2022' : 'spl-token',
             space: 165,
           },
           executable: false,
           lamports: 2_039_280,
-          owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+          owner: t.program === 'token-2022' ? TOKEN_2022_PROGRAM : TOKEN_PROGRAM,
           rentEpoch: 18446744073709552000,
           space: 165,
         },
@@ -350,7 +456,9 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
           context: context(),
           value: (params[0] as string[]).map(a => {
             const t = tokenAccountAt(a);
-            if (t !== null) return {lamports: TOKEN_ACCOUNT_RENT, owner: TOKEN_PROGRAM, data: [base64.encode(tokenAccountData(t.mint, t.owner, BigInt(t.amount))), 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 165};
+            if (t !== null) return {lamports: TOKEN_ACCOUNT_RENT, owner: t.program, data: [base64.encode(tokenAccountData(t.mint, t.owner, BigInt(t.amount))), 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 165};
+            const mint = mintAt(a);
+            if (mint !== null) return mint;
             const lamports = lamportsOf(a);
             return lamports > 0 ? {lamports, owner: '11111111111111111111111111111111', data: ['', 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 0} : null;
           }),
@@ -361,8 +469,10 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
         const token = tokenAccountAt(params[0] as string);
         if (kind === undefined && token !== null) {
           const data = base64.encode(tokenAccountData(token.mint, token.owner, BigInt(token.amount)));
-          return {context: context(), value: {lamports: TOKEN_ACCOUNT_RENT, owner: TOKEN_PROGRAM, executable: false, data: [data, 'base64'], rentEpoch: 0, space: 165}};
+          return {context: context(), value: {lamports: TOKEN_ACCOUNT_RENT, owner: token.program, executable: false, data: [data, 'base64'], rentEpoch: 0, space: 165}};
         }
+        const mint = mintAt(params[0] as string);
+        if (kind === undefined && mint !== null) return {context: context(), value: mint};
         if (kind === undefined) return {context: context(), value: null};
         const owner = kind === 'wallet' ? '11111111111111111111111111111111' : 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
         return {context: context(), value: {lamports: 1_000_000, owner, executable: kind === 'program', data: ['', 'base64'], rentEpoch: 0, space: 0}};

@@ -4,6 +4,7 @@ import {
   Keypair,
   NONCE_ACCOUNT_LENGTH,
   PublicKey,
+  SYSVAR_RENT_PUBKEY,
   SystemProgram,
   Transaction,
   TransactionInstruction,
@@ -124,6 +125,99 @@ describe('decodeInstructions — System', () => {
   });
 });
 
+// B1c-3 (spec B1c §3.3 rev 3.6): System's four …WithSeed instructions, with their target account — F3 compares
+// allocateWithSeed / assignWithSeed's account with the wallet's, F10 counts createAccountWithSeed's new account.
+describe('decodeInstructions — System …WithSeed', () => {
+  const BASE = new PublicKey(new Uint8Array(32).fill(5));
+  const ascii = (t: string): number[] => Array.from(t, c => c.charCodeAt(0));
+  const seedOf = (bytes: number[], length = bytes.length): number[] => [...u64(BigInt(length)), ...bytes];
+  const sys = (tag: number, data: number[], keys: PublicKey[]) =>
+    new TransactionInstruction({programId: SystemProgram.programId, data: Buffer.from([tag, 0, 0, 0, ...data]), keys: keys.map((pubkey, i) => ({pubkey, isSigner: i === 1, isWritable: i !== 1}))});
+  const addressOf = (k: PublicKey | string) => ({kind: 'address', value: typeof k === 'string' ? k : k.toBase58()});
+
+  it('createAccountWithSeed, allocateWithSeed, assignWithSeed, transferWithSeed: every field, the target account included', () => {
+    expect(one(SystemProgram.createAccountWithSeed({fromPubkey: ME, newAccountPubkey: DST, basePubkey: BASE, seed: 'stake:0', lamports: 2_282_880, space: 200, programId: new PublicKey(TOKEN_PROGRAM)}))).toEqual({
+      programId: SYSTEM_PROGRAM,
+      program: 'system',
+      name: 'createAccountWithSeed',
+      fields: [
+        {name: 'from', value: addressOf(ME)},
+        {name: 'newAccount', value: addressOf(DST)},
+        {name: 'base', value: addressOf(BASE)},
+        {name: 'seed', value: {kind: 'text', value: 'stake:0'}},
+        {name: 'lamports', value: {kind: 'lamports', value: '2282880'}},
+        {name: 'space', value: {kind: 'number', value: '200'}},
+        {name: 'owner', value: addressOf(TOKEN_PROGRAM)},
+      ],
+    });
+    expect(one(SystemProgram.allocate({accountPubkey: ME, basePubkey: BASE, seed: 'x', space: 64, programId: UNKNOWN}))).toMatchObject({
+      program: 'system',
+      name: 'allocateWithSeed',
+      fields: [
+        {name: 'account', value: addressOf(ME)},
+        {name: 'base', value: addressOf(BASE)},
+        {name: 'seed', value: {kind: 'text', value: 'x'}},
+        {name: 'space', value: {kind: 'number', value: '64'}},
+        {name: 'owner', value: addressOf(UNKNOWN)},
+      ],
+    });
+    expect(one(SystemProgram.assign({accountPubkey: ME, basePubkey: BASE, seed: 'vault', programId: UNKNOWN}))).toMatchObject({
+      program: 'system',
+      name: 'assignWithSeed',
+      fields: [
+        {name: 'account', value: addressOf(ME)},
+        {name: 'base', value: addressOf(BASE)},
+        {name: 'seed', value: {kind: 'text', value: 'vault'}},
+        {name: 'owner', value: addressOf(UNKNOWN)},
+      ],
+    });
+    expect(one(SystemProgram.transfer({fromPubkey: SRC, basePubkey: ME, toPubkey: TO, lamports: 42, seed: 'pay', programId: SystemProgram.programId}))).toMatchObject({
+      program: 'system',
+      name: 'transferWithSeed',
+      fields: [
+        {name: 'from', value: addressOf(SRC)},
+        {name: 'fromBase', value: addressOf(ME)},
+        {name: 'to', value: addressOf(TO)},
+        {name: 'lamports', value: {kind: 'lamports', value: '42'}},
+        {name: 'fromSeed', value: {kind: 'text', value: 'pay'}},
+        {name: 'fromOwner', value: addressOf(SYSTEM_PROGRAM)},
+      ],
+    });
+  });
+
+  it('the seed: at most 32 bytes; printable ASCII is text, other UTF-8 hex; not UTF-8, cut short or a huge length is an unknown program', () => {
+    const assignWith = (seed: number[], length?: number) => one(sys(10, [...BASE.toBytes(), ...seedOf(seed, length), ...UNKNOWN.toBytes()], [ME, BASE]));
+    expect(assignWith(ascii('a'.repeat(32))).fields[2]).toEqual({name: 'seed', value: {kind: 'text', value: 'a'.repeat(32)}});
+    expect(assignWith(ascii('a'.repeat(33)))).toEqual({programId: SYSTEM_PROGRAM, program: null, name: null, fields: []});
+    const accented = Array.from(new TextEncoder().encode('caf\u00e9'));
+    expect(assignWith(accented).fields[2]).toEqual({name: 'seed', value: {kind: 'hex', value: '636166c3a9'}});
+    expect(assignWith(ascii('a\u0007b')).fields[2]).toEqual({name: 'seed', value: {kind: 'hex', value: '610762'}});
+    expect(assignWith([0x61, 0xff])).toMatchObject({program: null, name: null});
+    expect(assignWith(ascii('abc'), 5)).toMatchObject({program: null, name: null});
+    expect(assignWith(ascii('abc'), 2 ** 53)).toMatchObject({program: null, name: null});
+    expect(assignWith(ascii(''))).toMatchObject({program: 'system', name: 'assignWithSeed', fields: [{name: 'account'}, {name: 'base'}, {name: 'seed', value: {kind: 'text', value: ''}}, {name: 'owner'}]});
+  });
+
+  it('strict: a trailing byte, or fewer accounts than the instruction needs, is an unknown program', () => {
+    const unknown = {programId: SYSTEM_PROGRAM, program: null, name: null, fields: []};
+    const created = [...BASE.toBytes(), ...seedOf(ascii('s')), ...u64(1n), ...u64(0n), ...UNKNOWN.toBytes()];
+    expect(one(sys(3, created, [ME, DST]))).toMatchObject({name: 'createAccountWithSeed'});
+    expect(one(sys(3, [...created, 0], [ME, DST]))).toEqual(unknown);
+    expect(one(sys(3, created, [ME]))).toEqual(unknown);
+    const allocated = [...BASE.toBytes(), ...seedOf(ascii('s')), ...u64(10n), ...UNKNOWN.toBytes()];
+    expect(one(sys(9, allocated, [ME]))).toMatchObject({name: 'allocateWithSeed'});
+    expect(one(sys(9, [...allocated, 0], [ME, BASE]))).toEqual(unknown);
+    expect(one(sys(9, allocated, []))).toEqual(unknown);
+    const assigned = [...BASE.toBytes(), ...seedOf(ascii('s')), ...UNKNOWN.toBytes()];
+    expect(one(sys(10, [...assigned, 0], [ME, BASE]))).toEqual(unknown);
+    expect(one(sys(10, assigned, []))).toEqual(unknown);
+    const moved = [...u64(5n), ...seedOf(ascii('s')), ...SystemProgram.programId.toBytes()];
+    expect(one(sys(11, moved, [SRC, ME, TO]))).toMatchObject({name: 'transferWithSeed'});
+    expect(one(sys(11, [...moved, 0], [SRC, ME, TO]))).toEqual(unknown);
+    expect(one(sys(11, moved, [SRC, ME]))).toEqual(unknown);
+  });
+});
+
 describe('decodeInstructions — SPL Token and Token-2022', () => {
   for (const program of [TOKEN_PROGRAM, TOKEN_2022_PROGRAM]) {
     const key = program === TOKEN_PROGRAM ? 'token' : 'token-2022';
@@ -213,14 +307,30 @@ describe('decodeInstructions — ATA, Compute Budget, the presale program', () =
     const ata = findAssociatedTokenAddress(TO, MINT);
     const idem = one(buildCreateAtaIdempotentInstruction(ME, ata, TO, MINT));
     expect(idem).toMatchObject({programId: ATA_PROGRAM, program: 'associated-token', name: 'createIdempotent'});
+    // B1c-3 (the final review's triage row 1): the token program (account 5) is named too — classic or Token-2022.
     expect(idem.fields.map(f => [f.name, f.value.kind === 'address' ? f.value.value : null])).toEqual([
       ['payer', ME.toBase58()],
       ['account', ata.toBase58()],
       ['wallet', TO.toBase58()],
       ['mint', MINT.toBase58()],
+      ['tokenProgram', TOKEN_PROGRAM],
     ]);
-    const create = one(new TransactionInstruction({programId: new PublicKey(ATA_PROGRAM), keys: idem.fields.map(f => ({pubkey: new PublicKey(f.value.kind === 'address' ? (f.value.value ?? '') : ''), isSigner: false, isWritable: true})), data: Buffer.alloc(0)}));
+    const built = buildCreateAtaIdempotentInstruction(ME, ata, TO, MINT);
+    const create = one(new TransactionInstruction({programId: new PublicKey(ATA_PROGRAM), keys: built.keys, data: Buffer.alloc(0)}));
     expect(create.name).toBe('create');
+  });
+
+  it('associated token account (B1c-3): a Token-2022 create names Token-2022’s program; fewer than the six accounts the program reads is unknown (fail closed)', () => {
+    const built = buildCreateAtaIdempotentInstruction(ME, TO, ME, MINT);
+    const keys = built.keys.map((k, i) => (i === 5 ? {...k, pubkey: new PublicKey(TOKEN_2022_PROGRAM)} : k));
+    const t22 = one(new TransactionInstruction({programId: new PublicKey(ATA_PROGRAM), keys, data: Buffer.from([1])}));
+    expect(t22.fields.at(-1)).toEqual({name: 'tokenProgram', value: {kind: 'address', value: TOKEN_2022_PROGRAM}});
+    for (const n of [4, 5]) {
+      const short = one(new TransactionInstruction({programId: new PublicKey(ATA_PROGRAM), keys: built.keys.slice(0, n), data: Buffer.from([1])}));
+      expect([n, short.program, short.name, short.fields]).toEqual([n, null, null, []]);
+    }
+    // Positive control: exactly six decode; a seventh (the legacy rent sysvar) is not read.
+    expect(one(new TransactionInstruction({programId: new PublicKey(ATA_PROGRAM), keys: [...built.keys, {pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false}], data: Buffer.from([1])})).name).toBe('createIdempotent');
   });
 
   it('compute budget: the unit limit and price', () => {

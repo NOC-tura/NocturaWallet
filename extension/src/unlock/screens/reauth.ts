@@ -11,6 +11,9 @@ import {byId, h, setText, showScreen, shown} from '../view/dom';
 import {startCooldown} from '../view/cooldown';
 import {addressGroups} from '../view/words';
 
+/** What leaves the account, on #10's rows (U+2212, as #48's deltas). */
+const MINUS = '−';
+
 export interface ReauthScreen {
   show(challengeId: string): Promise<void>;
   /** Whether the screen still references a typed password (the field, or one not yet handed to the attempt). */
@@ -160,8 +163,12 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
       // dappAbout), where SOL is usually only the network fee, and carries no USD value for SOL to rank by. A headline
       // there would put the fee, not what is sent, in the largest type — so several outflows (or any cut by `omitted`)
       // get no headline and every outflow is a row. An unnamed token gets none either: its amount means nothing without
-      // the mint, which only its row shows whole. The minus sign stays: what leaves the account.
-      const only = d.outgoing.length === 1 && d.omitted === 0 ? d.outgoing[0] : undefined;
+      // the mint, which only its row shows whole. B1c-3: the headline is unsigned, as the design's send headline
+      // (ix:6062); every row keeps the minus — what leaves the account. B1c-3 visual pass: nor when the request sets an
+      // allowance or overrides a block — what is approved then is not an amount leaving, and the one outflow (most often
+      // only the network fee) in the largest type would read as the size of an unlimited approve; it is a row instead.
+      const plain = d.overrides.length === 0 && !d.reasons.includes(REAUTH.approval);
+      const only = plain && d.outgoing.length === 1 && d.omitted === 0 ? d.outgoing[0] : undefined;
       const head = only !== undefined && (only.mint === null || only.label !== REAUTH.token) ? only : null;
       if (head !== null) {
         setText(byId('ra-amount'), head.amount);
@@ -172,15 +179,17 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
       if (d.transactions > 1) rows.push(row(REAUTH.transactions, String(d.transactions)));
       for (const o of d.outgoing) {
         if (o === head) continue;
-        if (o.mint === null || o.label !== REAUTH.token) rows.push(row(o.label, o.amount));
+        if (o.mint === null || o.label !== REAUTH.token) rows.push(row(o.label, `${MINUS}${o.amount}`));
         else {
           const value = h('span');
-          value.append(o.amount, ' · ', addressGroups(o.mint));
+          value.append(`${MINUS}${o.amount}`, ' · ', addressGroups(o.mint));
           rows.push(row(o.label, value));
         }
       }
       // Review 1 L9: past the sixteen rows the background lists, the count of the rest.
       if (d.omitted > 0) rows.push(row(REAUTH.omitted(d.omitted), null));
+      // B1c-3: what the typed words override, one row per block — on which transaction, in a batch.
+      for (const o of d.overrides) rows.push(row(o.label, o.transaction));
       byId('ra-rows').replaceChildren(...rows);
       byId('ra-reasons').replaceChildren(...d.reasons.map(r => h('p', 'noc-body-sm vlt-lede', r)));
       setText(cancel, REAUTH.cancel);

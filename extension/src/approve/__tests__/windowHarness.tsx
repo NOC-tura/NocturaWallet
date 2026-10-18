@@ -1,4 +1,5 @@
-import {render} from '@testing-library/react';
+import {AsyncLocalStorage} from 'node:async_hooks';
+import {act, cleanup, render} from '@testing-library/react';
 import {ed25519} from '@noble/curves/ed25519.js';
 import {base58, base64} from '@scure/base';
 import {GRANTS_KEY} from '../../background/dapp/grants';
@@ -13,6 +14,74 @@ import {fakeDeps} from '../../background/__tests__/fakeDeps';
 import {ACCOUNT} from '../../background/__tests__/fixtures';
 import {openPage, type Page} from '../../background/dapp/__tests__/pageHarness';
 import {chainReader, newChain, type Chain} from '../../background/dapp/__tests__/txHarness';
+
+/**
+ * B1c-3 (plan 3 Task 9): the window's timers — the 1 s poll, C15's 500 ms hold, the red-flag screen's 1.5 s hold, the
+ * 2-second confirm — run on the harness's clock, never the wall clock: a test that slept through a hold in real time
+ * lost the race to it under CPU load (the window's timer and React's render landing after the test's own timer). Time
+ * moves only by `elapse`; `settled` waits for the background and React by real event-loop turns with the clock still.
+ */
+export function onHarnessClock(): void {
+  beforeEach(() => {
+    current += 1;
+    running.enterWith(current);
+    vi.useFakeTimers({toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval']});
+  });
+  afterEach(async () => {
+    current += 1;
+    // React does not support overlapping act() scopes: one still open (a timed-out test's) closes before cleanup's.
+    while (acting > 0) await new Promise<void>(r => realSetTimeout(r, 0));
+    cleanup();
+    vi.useRealTimers();
+  });
+}
+/**
+ * A test vitest timed out goes on running — nothing cancels it. Its next step here (a window shown, the clock moved, a
+ * turn waited), or the end of the act() it was in, throws instead of acting on the tests after it (its own act() scopes
+ * included, which React cannot overlap); without this, one CPU-starved test failed the tests after it in its file.
+ */
+const running = new AsyncLocalStorage<number>();
+let current = 0;
+function stillRunning(): void {
+  const test = running.getStore();
+  if (test !== undefined && test !== current) throw new Error('this test has already ended (it timed out): stopped here');
+}
+let acting = 0;
+const realSetTimeout = globalThis.setTimeout;
+async function inAct(step: () => Promise<unknown>): Promise<void> {
+  stillRunning();
+  acting += 1;
+  try {
+    await act(async () => void (await step()));
+  } finally {
+    acting -= 1;
+  }
+  stillRunning();
+}
+/** `fire` (an event, a typed word) inside act(), its renders flushed — the harness's act, so a timed-out test's one is known. */
+export const acted = (fire: () => unknown): Promise<void> => inAct(async () => void fire());
+/** The harness's clock moves `ms` on: every window timer due by then fires, in order, each render flushed. */
+export const elapse = (ms: number): Promise<void> => inAct(() => vi.advanceTimersByTimeAsync(ms));
+/** The harness's clock moves to the next window timer due and fires it alone (the poll, when no hold is pending). */
+export const nextTimer = (): Promise<void> => inAct(() => vi.advanceTimersToNextTimerAsync());
+/**
+ * Real event-loop turns `settled` gives a check — a count, not a duration: the background's work here is promise chains
+ * (the fake chrome.*, the steered chain), each drained whole in one turn; every check in these files passes within one.
+ */
+export const SETTLE_TURNS = 20;
+/** `check` once it passes (returns without throwing), the clock standing still; its last failure after SETTLE_TURNS turns. */
+export async function settled<T>(check: () => T | Promise<T>): Promise<T> {
+  let last: unknown = new Error('never checked');
+  for (let turn = 0; turn < SETTLE_TURNS; turn++) {
+    try {
+      return await check();
+    } catch (e) {
+      last = e;
+    }
+    await inAct(() => new Promise<void>(r => realSetTimeout(r, 0)));
+  }
+  throw last;
+}
 
 /** A second real keypair (32 × 0x02): vault.setKeys checks every key. */
 const SEED2 = new Uint8Array(32).fill(2);
@@ -80,11 +149,13 @@ export async function openWindow(o: {unlocked?: boolean; chain?: Chain} = {}) {
     if (r?.accepted !== true) throw new Error(`transaction request not queued: ${JSON.stringify(r)}`);
     return {page, requestId: String(r.requestId)};
   };
-  const show = () =>
-    render(
+  const show = () => {
+    stillRunning();
+    return render(
       <div className="app app-window">
         <Approve client={client} close={() => void (closed.n += 1)} />
       </div>,
     );
+  };
   return {ext, deps, chain, client, closed, sent, connect, sign, signTx, show, unlock: () => handleMessage(ext, {type: 'vault.setKeys', accounts: [ACCOUNT, SECOND]}, {...approve, url: `${ext.extensionOrigin}/unlock.html`}, deps)};
 }

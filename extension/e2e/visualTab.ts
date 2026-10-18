@@ -69,3 +69,31 @@ export const releaseKdf = async (p: Page) => {
     k.queue.splice(0).forEach(f => f());
   });
 };
+
+/**
+ * B1c-3 visual pass (controller ruling): #47's gate line never touches what the scroll area paints above it — the
+ * lowest text box inside `.app-approve-scroll`, clipped to its edge, and the gate line's own text box do not
+ * intersect, with at least the --space-2 gap between them (the row cut at the clip edge sat flush against it, 47a).
+ */
+export async function gateClear(win: Page): Promise<void> {
+  const r = await win.evaluate(() => {
+    const scroll = document.querySelector('.app-approve-scroll');
+    const gate = document.querySelector('.s9-gate-status');
+    if (scroll === null || gate === null) return null;
+    const edge = scroll.getBoundingClientRect().bottom;
+    let painted = -Infinity;
+    const walk = document.createTreeWalker(scroll, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n !== null; n = walk.nextNode()) {
+      const range = document.createRange();
+      range.selectNodeContents(n);
+      for (const b of range.getClientRects()) if (b.width > 0 && b.top < edge) painted = Math.max(painted, Math.min(b.bottom, edge));
+    }
+    const text = document.createRange();
+    text.selectNodeContents(gate);
+    return {painted, gateText: text.getBoundingClientRect().top, paddingBottom: getComputedStyle(gate).paddingBottom};
+  });
+  expect(r, 'a gate line on the screen').not.toBeNull();
+  if (r === null) return;
+  expect(r.gateText - r.painted, `the gate line's text ${r.gateText} below the scroll area's last painted text ${r.painted}`).toBeGreaterThanOrEqual(7.5);
+  expect(r.paddingBottom).toBe('8px');
+}
