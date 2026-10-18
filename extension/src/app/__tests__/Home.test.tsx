@@ -27,7 +27,13 @@ const cssRule = (selector: string): string => {
 // Synced a few seconds ago, today: the clock-time captions ("last synced 09:41:13") read as clock times.
 // Stamped when each test writes it, not at module load (the final review's M2): under a loaded full
 // suite a module-load stamp aged past a minute before the later tests ran ("cached 1 min ago").
-const cache = () => ({[ACCOUNT.publicKey]: {sol: '62482100000', noc: '4200000000000', usdc: '740210000', usdt: '0', at: Date.now() - 5_000}});
+const cache = (now = Date.now()) => ({[ACCOUNT.publicKey]: {sol: '62482100000', noc: '4200000000000', usdc: '740210000', usdt: '0', at: now - 5_000}});
+/**
+ * B1c-3 (ledger Task 6): the tests that read a clock-time caption run on the harness's clock (the provider's `now` and
+ * the background's `deps.now`), never the wall clock — "today" is a fixed local noon, so a run that crosses local
+ * midnight cannot turn "last synced 23:59:57" into "Oct 16, 23:59:57".
+ */
+const NOON = new Date(2026, 4, 6, 12, 0, 0).getTime();
 const never = () => new Promise<never>(() => undefined);
 const setOnline = (value: boolean) => Object.defineProperty(navigator, 'onLine', {value, configurable: true});
 const nav = {onSend: vi.fn(), onReceive: vi.fn(), onPending: vi.fn(), onAccounts: vi.fn()};
@@ -420,8 +426,8 @@ describe('#42 offline and the D26 refused state', () => {
         throw new RequestUnreachable('u', 'offline');
       },
     });
-    // The background's clock at today's time, so the fresh prices' `at` reads as a clock time.
-    await renderHome({reader, deps: {now: () => Date.now()}, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache())});
+    // The background's clock and the provider's at today's noon, so the cache's and the fresh prices' `at` read as clock times.
+    await renderHome({reader, now: () => NOON, deps: {now: () => NOON}, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache(NOON))});
     expect(await screen.findByText("You're offline")).toBeTruthy();
     expect(screen.getByText('Network just dropped · the Noctura server is unreachable')).toBeTruthy();
     expect(screen.getByText('Sending needs a network connection. Receiving works — your address is on this device. Use the refresh button to retry.')).toBeTruthy();
@@ -444,7 +450,7 @@ describe('#42 offline and the D26 refused state', () => {
         throw new RequestUnreachable('u', 'offline');
       },
     });
-    await renderHome({reader, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache())});
+    await renderHome({reader, now: () => NOON, deps: {now: () => NOON}, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache(NOON))});
     await screen.findByText("You're offline");
     fireEvent.click(screen.getByRole('button', {name: 'Refresh'}));
     expect(await screen.findByText("You're offline · Showing cached data")).toBeTruthy();
@@ -630,13 +636,13 @@ describe('#42 offline and the D26 refused state', () => {
   });
 
   it('sustained after 30 s (the injected clock), with no retry made: no retry count, the stale label', async () => {
-    let t = Date.now();
+    let t = NOON;
     const reader = walletReader({
       getBalance: async () => {
         throw new RequestUnreachable('u', 'no answer');
       },
     });
-    await renderHome({reader, now: () => t, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache())});
+    await renderHome({reader, now: () => t, deps: {now: () => t}, before: async ext => ext.local.set(BALANCE_CACHE_KEY, cache(NOON))});
     expect(await screen.findByText('Showing your last synced balances.')).toBeTruthy();
     expect(screen.queryByText(/^Stale · /)).toBeNull();
     t += 31_000;

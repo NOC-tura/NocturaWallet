@@ -215,8 +215,10 @@ test('visual · #48: simulating, simulated, a batch, re-authentication, approvin
     await fresh(h.sw);
     win = await windowFor(h, () => customSignTx(jup, BLOCKHASH, MAIN.publicKey, [{programId: UNKNOWN_PROGRAM, keys: [{pubkey: MAIN.publicKey, isSigner: true, isWritable: true}], data: [9, 9, 9, 9]}]));
     await expect(win.getByText('Balance changes (post-simulation)')).toBeVisible({timeout: 10_000});
-    const unknownProgram = win.getByText('unknown program');
+    // B1c-3: the instruction row's own "· unknown program" — F1's warning banner ("Unknown program") now stands above it.
+    const unknownProgram = win.getByText('· unknown program');
     await expect(unknownProgram).toBeVisible();
+    await expect(win.locator('.s9-flag-banner.warn .head')).toHaveText('Unknown program');
     await still(win, '48-unknown-program', unknownProgram, win.getByRole('button', {name: 'Approve', exact: true}));
     await dismiss(win);
 
@@ -273,11 +275,16 @@ test('visual · #48: simulating, simulated, a batch, re-authentication, approvin
         {programId: TOKEN_PROGRAM, keys: [{pubkey: SOURCE_TOKEN_ACCT, isSigner: false, isWritable: true}, {pubkey: RECIPIENT, isSigner: false, isWritable: false}, {pubkey: MAIN.publicKey, isSigner: true, isWritable: false}], data: [4, ...u64le(500_000_000n)]},
       ]),
     );
-    const noChangesApproval = win.getByText('No SOL or token balance changes — review the instructions below.');
+    // B1c-3: a bounded approve is F6 — its warning banner, and the design's synthesized "<SYM> delegated · <amount>" row
+    // in place of L3's "No SOL or token balance changes" line (spec §3.3 rev 3.6); still re-authenticated.
+    const delegatedRow = win.locator('.s9-bal-row', {hasText: 'NOC delegated'});
     const reauthLine = win.getByText("Approving asks you to confirm with your password (or passkey) — you'll start it from the Noctura icon.");
-    await expect(noChangesApproval).toBeVisible({timeout: 10_000});
+    await expect(delegatedRow).toBeVisible({timeout: 10_000});
+    await expect(delegatedRow).toContainText('0.5');
+    await expect(win.getByText('No SOL or token balance changes — review the instructions below.')).toHaveCount(0);
+    await expect(win.locator('.s9-flag-banner.warn .head')).toHaveText(['NOC spend approval']);
     await expect(reauthLine).toBeVisible();
-    await still(win, '48-approval-reauth', noChangesApproval, win.getByRole('button', {name: 'Approve', exact: true}));
+    await still(win, '48-approval-reauth', delegatedRow, win.getByRole('button', {name: 'Approve', exact: true}));
     await dismiss(win);
 
     // signAndSendTransaction's own copy: Noctura broadcasts, never the site.

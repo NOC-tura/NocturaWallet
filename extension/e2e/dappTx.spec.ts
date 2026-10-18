@@ -1,11 +1,11 @@
-import {test, expect, type Page} from '@playwright/test';
+import {test, expect, type Locator, type Page} from '@playwright/test';
 import {ed25519} from '@noble/curves/ed25519.js';
 import {base58, base64} from '@scure/base';
 import {contained, launchPopup, type Harness} from './popupHarness';
 import {E2E_ACCOUNTS, E2E_PASSWORD, makeEnvelope} from './makeEnvelope';
 import {unlockWith} from './vaultPage';
-import {DAPP_HOSTS, adapter, approvalWindow, connect, features, noWindow, openDapp, rawSignTx, relayed, sendTx, serveDapp, signTx, windowClosed, type DappServer} from './dappPage';
-import {parseV0, type FakeCoordinator} from './fakeCoordinator';
+import {DAPP_HOSTS, adapter, approvalWindow, connect, features, noWindow, openDapp, rawSignTx, relayed, sendTx, serveDapp, signTx, windowClosed, type DappServer, type RawIx} from './dappPage';
+import {ATA_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, mintData, parseV0, type FakeCoordinator} from './fakeCoordinator';
 
 // Spec B1c §6.3 (B1c-2), §3.3, §1.4: the transaction features against the real extension — the provider, the relay,
 // the background's decoder and simulation (through the fake coordinator's proxy), #48 in the approval window, the
@@ -401,6 +401,434 @@ test('containment positive control · a request to the test dApp\'s own RPC host
     expect(outcome).not.toBe('resolved');
     expect(server.unexpected).toEqual([url]);
     contained(h);
+  } finally {
+    await h.close();
+  }
+});
+
+// ——— B1c-3 (spec §3.3 rev 3.6, B1 §3's red-flag table): the flags computed in the background from the decoded
+// instructions and the fake node's pre/post state, rendered on #48, the blocks overridden only by the exact typed word
+// AND a re-authentication through the toolbar (O1, D11), each through StandardWalletAdapter as a wallet-adapter dApp
+// sends it. The background is the gate (C13): every block is also asked of it directly — the window's own dapp.decide,
+// sent from the window's page — without the word, with a wrong one, and with the right one before #10.
+
+const SYSTEM_PROGRAM = '11111111111111111111111111111111';
+const RECENT_BLOCKHASHES = 'SysvarRecentB1ockHashes11111111111111111111';
+const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+const U64_MAX = 2n ** 64n - 1n;
+/** Fixed, distinct keys (a byte fill, as BLOCKHASH): the accounts and authorities of B1c-30 … B1c-34. */
+const key = (fill: number): string => base58.encode(new Uint8Array(32).fill(fill));
+const OWN_USDC = key(31);
+const DELEGATE = key(32);
+const T22_MINT = key(33);
+const OWN_T22 = key(34);
+const ISSUER = key(35);
+const FREEZER = key(36);
+const PERMANENT_DELEGATE = key(37);
+const HOOK_AUTHORITY = key(38);
+const NEW_ATA = key(39);
+const RECIPIENT_USDC = key(40);
+const NONCE = key(41);
+const DAPP_PROGRAM = key(42);
+const OWN_EMPTY = key(43);
+/** B1 §3: Confirm held 1.5 s on any red-flag screen; C15's 500 ms elsewhere. */
+const FLAG_HOLD_MS = 1_500;
+
+const u64le = (n: bigint): number[] => {
+  const b = new Uint8Array(8);
+  new DataView(b.buffer).setBigUint64(0, n, true);
+  return Array.from(b);
+};
+const signer = (pubkey: string, isWritable = true) => ({pubkey, isSigner: true, isWritable});
+const writable = (pubkey: string) => ({pubkey, isSigner: false, isWritable: true});
+const readonly = (pubkey: string) => ({pubkey, isSigner: false, isWritable: false});
+const ix = {
+  /** SPL Token ApproveChecked (13): source, mint, delegate, owner; amount, decimals. */
+  approveChecked: (source: string, mint: string, delegate: string, amount: bigint, decimals: number): RawIx => ({programId: TOKEN_PROGRAM, keys: [writable(source), readonly(mint), readonly(delegate), signer(ACCOUNT, false)], data: [13, ...u64le(amount), decimals]}),
+  /** SPL Token TransferChecked (12): source, mint, destination, owner; amount, decimals. */
+  transferChecked: (source: string, mint: string, destination: string, amount: bigint, decimals: number): RawIx => ({programId: TOKEN_PROGRAM, keys: [writable(source), readonly(mint), writable(destination), signer(ACCOUNT, false)], data: [12, ...u64le(amount), decimals]}),
+  /** SPL Token CloseAccount (9): account, destination (the wallet account by default), owner. */
+  closeAccount: (account: string, destination: string = ACCOUNT): RawIx => ({programId: TOKEN_PROGRAM, keys: [writable(account), writable(destination), signer(ACCOUNT, false)], data: [9]}),
+  /** System Assign (1) of the wallet account to `owner`. */
+  assign: (owner: string): RawIx => ({programId: SYSTEM_PROGRAM, keys: [signer(ACCOUNT)], data: [1, 0, 0, 0, ...base58.decode(owner)]}),
+  /** System Transfer (2) from the wallet account. */
+  transfer: (to: string, lamports: bigint): RawIx => ({programId: SYSTEM_PROGRAM, keys: [signer(ACCOUNT), writable(to)], data: [2, 0, 0, 0, ...u64le(lamports)]}),
+  /** System AdvanceNonceAccount (4): nonce account, the recent-blockhashes sysvar, the nonce authority. */
+  advanceNonce: (nonce: string): RawIx => ({programId: SYSTEM_PROGRAM, keys: [writable(nonce), readonly(RECENT_BLOCKHASHES), signer(ACCOUNT, false)], data: [4, 0, 0, 0]}),
+  /** ATA Create (no data) / CreateIdempotent (1): payer, account, wallet, mint, System, the token program — six accounts. */
+  ataCreate: (account: string, wallet: string, mint: string, tokenProgram: string, idempotent: boolean): RawIx => ({
+    programId: ATA_PROGRAM,
+    keys: [signer(ACCOUNT), writable(account), readonly(wallet), readonly(mint), readonly(SYSTEM_PROGRAM), readonly(tokenProgram)],
+    data: idempotent ? [1] : [],
+  }),
+};
+
+/** The wallet holds 740.21 USDC in a (classic) token account; the USDC mint reads as Circle's does: 6 decimals, a mint and a freeze authority. */
+function holdUsdc(fake: FakeCoordinator, more: {pubkey: string; mint: string; amount: string; decimals: number; program?: 'token' | 'token-2022'}[] = []): void {
+  fake.tokenAccounts.set(ACCOUNT, [{pubkey: OWN_USDC, mint: USDC_MINT, amount: '740210000', decimals: 6}, ...more]);
+  fake.mints.set(USDC_MINT, {program: 'token', data: mintData({decimals: 6, mintAuthority: ISSUER, freezeAuthority: FREEZER})});
+}
+/** A page connected through StandardWalletAdapter (its own connect → #47b's two gates). */
+async function adapterConnected(h: Harness): Promise<Page> {
+  const page = await openDapp(h.ctx, DAPP);
+  let c!: Promise<unknown>;
+  const w47 = await approvalWindow(h.ctx, () => (c = adapter.connect(page)));
+  await w47.getByRole('checkbox', {name: 'I understand this domain is not on the verified list'}).click();
+  await w47.getByRole('checkbox', {name: /I've read these permissions/}).click();
+  await w47.getByRole('button', {name: 'Connect for this session'}).click();
+  expect(await c).toEqual({ok: true, value: ACCOUNT});
+  await windowClosed(w47);
+  return page;
+}
+/**
+ * The window's own dapp.decide, sent from the window's page (approve.html, the one sender the background takes it from)
+ * for the request it shows — an approval of the simulation it shows, with `extra` (the typed words). What the
+ * background answers is the gate's own word, whatever the window's buttons allow.
+ */
+async function decideRaw(win: Page, extra: {overrides?: {tx: number; word: string}[]}): Promise<unknown> {
+  return win.evaluate(async x => {
+    const view = (await chrome.runtime.sendMessage({type: 'dapp.pending'})) as {data: {request: {requestId: string; tx: {account: {publicKey: string}; simulation: {id?: string}}}}};
+    const r = view.data.request;
+    return chrome.runtime.sendMessage({type: 'dapp.decide', requestId: r.requestId, decision: 'approve', account: r.tx.account.publicKey, simulation: r.tx.simulation.id, ...x});
+  }, extra);
+}
+/**
+ * How long `cta` stays disabled from now (polled every 50 ms) — called the moment a state is seen, so it measures the
+ * hold that state's render started, less the time it took to see it (0 when it was already enabled).
+ */
+async function heldFor(cta: Locator): Promise<number> {
+  const from = Date.now();
+  await expect.poll(() => cta.isEnabled(), {intervals: [50], timeout: 10_000}).toBe(true);
+  return Date.now() - from;
+}
+/**
+ * The re-authentication (D11) a block always needs: the window asks for it, the popup's strip opens #10, which names
+ * what is overridden (`rows`) and why (`reasons`); the password; then the window, told by a focus (B1c-28's I4: the
+ * background's own state polled first, never the window's 1 s timer), no longer waits.
+ */
+async function reauthFromToolbar(h: Harness, win: Page, rows: string[], reasons: string[]): Promise<void> {
+  await expect(win.getByText("Confirm it's you")).toBeVisible();
+  const toolbar = await h.openPopup();
+  const strip = toolbar.getByRole('button', {name: 'A transaction from dapp.test waits for your confirmation'});
+  const [tab] = await Promise.all([h.ctx.waitForEvent('page', {predicate: p => /unlock\.html/.test(p.url())}), strip.click()]);
+  await expect(tab.locator('#ra-about')).toHaveText('You are about to approve');
+  for (const r of rows) await expect(tab.locator('#ra-rows .intent-row', {hasText: r})).toHaveCount(1);
+  await expect(tab.locator('#ra-reasons p')).toHaveText(reasons);
+  await tab.locator('#ra-password').fill(E2E_PASSWORD);
+  await tab.locator('#ra-confirm').click();
+  await expect(tab.locator('#ra-notice-line')).toHaveText('Confirmed. Go back to the approval window and approve the transaction.', {timeout: 60_000});
+  await expect
+    .poll(async () => {
+      const reply = (await toolbar.evaluate(() => chrome.runtime.sendMessage({type: 'dapp.reauth'}))) as {ok: true; data: unknown} | {ok: false; error: string};
+      return reply.ok ? reply.data : 'not-ok';
+    })
+    .toBeNull();
+  await win.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(win.getByText("Confirm it's you")).toHaveCount(0);
+  await toolbar.close();
+}
+/**
+ * Every Content Security Policy line any page of the context logs — the approval windows, #10's tab, the popup — with
+ * each document's `securitypolicyviolation` events logged to the same channel (csp.spec.ts watches the vault page the
+ * same two ways; B1c-34 ends with this watch's own positive control). Asserted empty by each B1c-3 test.
+ */
+async function watchCsp(h: Harness): Promise<string[]> {
+  const lines: string[] = [];
+  h.ctx.on('console', m => {
+    if (/Content Security Policy|Content-Security-Policy/i.test(m.text())) lines.push(m.text());
+  });
+  await h.ctx.addInitScript(() => {
+    document.addEventListener('securitypolicyviolation', e => console.error(`Content Security Policy violation: ${e.effectiveDirective} ${e.blockedURI}`));
+  });
+  return lines;
+}
+const APPROVAL_LINE = 'Re-auth required to approve a token allowance.';
+const OVERRIDE_LINE = 'Re-auth required to override a blocked transaction.';
+
+test('B1c-30 · unlimited approve (F5, USDC): blocked — the typed symbol, exact, case-sensitive, then #10 through the toolbar; the background refuses without the word, with a wrong one, and without the proof', async () => {
+  test.setTimeout(300_000);
+  const {h, server} = await scene('noctura-e2e-dapptx-unlimited-');
+  try {
+    const csp = await watchCsp(h);
+    holdUsdc(h.fake);
+    await popup(h);
+    const page = await adapterConnected(h);
+    let signed!: Promise<unknown>;
+    const win = await approvalWindow(h.ctx, () => (signed = adapter.customSign(page, BLOCKHASH, [ix.approveChecked(OWN_USDC, USDC_MINT, DELEGATE, U64_MAX, 6)])));
+    let answered = false;
+    // (A rejection is the test's teardown closing the page — never this test's verdict.)
+    void signed.then(
+      () => (answered = true),
+      () => undefined,
+    );
+    // The design's state 2: the eyebrow, ONE danger banner (Task 6: F2 does not repeat the approve), the synthesized row.
+    await expect(win.locator('.top-bar .title')).toHaveText('Critical · Unlimited spend approval', {timeout: 10_000});
+    const banner = win.locator('.s9-flag-banner.danger');
+    await expect(banner).toHaveCount(1);
+    await expect(banner.locator('.head')).toHaveText('Unlimited USDC spend approval');
+    await expect(banner.locator('.body')).toContainText('spl_token::ApproveChecked');
+    await expect(banner.locator('.body')).toContainText('amount = u64::MAX');
+    await expect(banner.locator('.meta')).toContainText(DELEGATE);
+    await expect(banner.locator('.meta')).toContainText(USDC_MINT);
+    await expect(win.locator('.s9-flag-banner.warn')).toHaveCount(0);
+    await expect(win.getByText('USDC delegated')).toBeVisible();
+    // Approve unlimited: red, gated (#37's look) and disabled until the field matches.
+    const cta = win.getByRole('button', {name: 'Approve unlimited'});
+    const field = win.getByLabel('Type USDC to enable Approve');
+    await expect(field).toHaveValue('');
+    await expect(field).not.toBeFocused();
+    await expect(cta).toHaveClass(/app-cta-gated/);
+    await expect(cta).toBeDisabled();
+    // The background, asked directly: no word → override-missing; a wrong case → override-mismatch. Nothing is issued.
+    expect(await decideRaw(win, {})).toEqual({ok: false, error: 'override-missing'});
+    expect(await decideRaw(win, {overrides: [{tx: 0, word: 'usdc'}]})).toEqual({ok: false, error: 'override-mismatch'});
+    // The wrong case, then a trailing space: still gated — and still disabled once the 1.5 s hold has passed, so it is
+    // the match that keeps it disabled, not the hold.
+    for (const wrong of ['usdc', 'USDC ']) {
+      await field.fill(wrong);
+      await expect(field).not.toHaveClass(/\bmatch\b/);
+      await expect(cta).toHaveClass(/app-cta-gated/);
+      await win.waitForTimeout(FLAG_HOLD_MS + 500);
+      await expect(cta).toBeDisabled();
+    }
+    // The exact symbol: the match, the red CTA un-gated, held 1.5 s again (a match change re-holds), then enabled.
+    await field.fill('USDC');
+    await expect(field).toHaveClass(/\bmatch\b/);
+    await expect(cta).not.toHaveClass(/app-cta-gated/);
+    await expect(cta).toBeEnabled();
+    // Enter in the field submits nothing, and the page has no answer.
+    await field.press('Enter');
+    await cta.click();
+    // The word alone is not enough: the background asks for #10 (the `override` reason), and the page still waits.
+    await expect(win.getByText("Confirm it's you")).toBeVisible();
+    expect(await decideRaw(win, {overrides: [{tx: 0, word: 'USDC'}]})).toEqual({ok: false, error: 'reauth-required'});
+    expect(answered).toBe(false);
+    await reauthFromToolbar(h, win, ['Sitedapp.test', 'Unlimited USDC spend approval'], [APPROVAL_LINE, OVERRIDE_LINE]);
+    expect(answered).toBe(false);
+    await cta.click();
+    const r = (await signed) as {ok: true; value: {signed: string; message: string}};
+    expect(r.ok).toBe(true);
+    expect(signedBy(r.value.signed)).toBe(true);
+    expectOwnMessage(r.value.signed, r.value.message);
+    await windowClosed(win);
+    expect(csp).toEqual([]);
+    done(h, server);
+  } finally {
+    await h.close();
+  }
+});
+
+test('B1c-31 · Assign of the wallet account (F3): blocked, "ASSIGN" overrides it end to end; a lone closeAccount to another address is a warning only — held 1.5 s, no typed field; closed to the account itself (O7) and a plain transfer are held only C15’s 500 ms', async () => {
+  test.setTimeout(300_000);
+  const {h, server} = await scene('noctura-e2e-dapptx-assign-');
+  try {
+    const csp = await watchCsp(h);
+    holdUsdc(h.fake, [{pubkey: OWN_EMPTY, mint: USDC_MINT, amount: '0', decimals: 6}]);
+    await popup(h);
+    const page = await adapterConnected(h);
+    let assigned!: Promise<unknown>;
+    const win = await approvalWindow(h.ctx, () => (assigned = adapter.customSign(page, BLOCKHASH, [ix.assign(DAPP_PROGRAM)])));
+    await expect(win.locator('.top-bar .title')).toHaveText('Critical · Blocked transaction', {timeout: 10_000});
+    const banner = win.locator('.s9-flag-banner.danger');
+    await expect(banner).toHaveCount(1);
+    await expect(banner.locator('.head')).toHaveText('Assign / Allocate on your wallet account');
+    // The decoded instruction AND the fake node's post-state (the wallet account now owned by the dApp's program).
+    await expect(banner.locator('.meta').first()).toHaveText('#1 system_program::Assign');
+    await expect(banner.locator('.meta').nth(1)).toHaveText(`post-simulation · owner: ${DAPP_PROGRAM} · space: 0`);
+    const cta = win.getByRole('button', {name: 'Approve anyway'});
+    const field = win.getByLabel('Type ASSIGN to enable Approve');
+    await expect(cta).toBeDisabled();
+    expect(await decideRaw(win, {})).toEqual({ok: false, error: 'override-missing'});
+    await field.fill('Assign');
+    await expect(cta).toHaveClass(/app-cta-gated/);
+    await field.fill('ASSIGN');
+    await expect(cta).not.toHaveClass(/app-cta-gated/);
+    await cta.click();
+    await reauthFromToolbar(h, win, ['Sitedapp.test', 'Assign / Allocate on your wallet account'], [OVERRIDE_LINE]);
+    await cta.click();
+    const r = (await assigned) as {ok: true; value: {signed: string; message: string}};
+    expect(signedBy(r.value.signed)).toBe(true);
+    expectOwnMessage(r.value.signed, r.value.message);
+    await windowClosed(win);
+
+    // A lone closeAccount of the wallet's empty USDC account, its rent to another address: F2's warning names it;
+    // nothing to type, no #10.
+    let closed!: Promise<unknown>;
+    const wc = await approvalWindow(h.ctx, () => (closed = adapter.customSign(page, BLOCKHASH, [ix.closeAccount(OWN_EMPTY, RECIPIENT)])));
+    const warn = wc.locator('.s9-flag-banner.warn');
+    await expect(warn).toHaveCount(1, {timeout: 10_000});
+    const approveClose = wc.getByRole('button', {name: 'Approve', exact: true});
+    expect(await heldFor(approveClose)).toBeGreaterThanOrEqual(1_000);
+    await expect(warn.locator('.head')).toHaveText('Instructions that are not transfers');
+    await expect(warn.locator('.meta')).toHaveText('#1 spl_token::CloseAccount');
+    await expect(wc.locator('.top-bar .title')).toHaveText('Approve transaction');
+    await expect(wc.locator('.s9-flag-banner.danger, .s9-typed-confirm, input')).toHaveCount(0);
+    await approveClose.click();
+    const rc = (await closed) as {ok: true; value: {signed: string; message: string}};
+    expect(signedBy(rc.value.signed)).toBe(true);
+    expectOwnMessage(rc.value.signed, rc.value.message);
+    await windowClosed(wc);
+
+    // O7: the same close with the rent back to the account itself is rent only — no flag, C15's 500 ms only.
+    let selfClosed!: Promise<unknown>;
+    const ws = await approvalWindow(h.ctx, () => (selfClosed = adapter.customSign(page, BLOCKHASH, [ix.closeAccount(OWN_EMPTY)])));
+    await expect(ws.getByText('Balance changes (post-simulation)')).toBeVisible({timeout: 10_000});
+    expect(await heldFor(ws.getByRole('button', {name: 'Approve', exact: true}))).toBeLessThan(1_000);
+    await expect(ws.locator('.s9-flag-banner')).toHaveCount(0);
+    await ws.getByRole('button', {name: 'Approve', exact: true}).click();
+    expect(((await selfClosed) as {ok: boolean}).ok).toBe(true);
+    await windowClosed(ws);
+
+    // The negative control of that measure: a plain transfer to a known recipient has no flag — C15's 500 ms only.
+    let plain!: Promise<unknown>;
+    const wp = await approvalWindow(h.ctx, () => (plain = adapter.sign(page, BLOCKHASH)));
+    await expect(wp.getByText('Balance changes (post-simulation)')).toBeVisible({timeout: 10_000});
+    expect(await heldFor(wp.getByRole('button', {name: 'Approve', exact: true}))).toBeLessThan(1_000);
+    await expect(wp.locator('.s9-flag-banner')).toHaveCount(0);
+    await wp.getByRole('button', {name: 'Approve', exact: true}).click();
+    expect(((await plain) as {ok: boolean}).ok).toBe(true);
+    await windowClosed(wp);
+    expect(csp).toEqual([]);
+    done(h, server);
+  } finally {
+    await h.close();
+  }
+});
+
+test('B1c-32 · Token-2022 (F7): a held mint with a permanent delegate and a freeze authority is named; classic USDC with a freeze authority is not (O3)', async () => {
+  test.setTimeout(240_000);
+  const {h, server} = await scene('noctura-e2e-dapptx-t22-');
+  try {
+    const csp = await watchCsp(h);
+    holdUsdc(h.fake, [{pubkey: OWN_T22, mint: T22_MINT, amount: '1000000', decimals: 6, program: 'token-2022'}]);
+    // PYUSD's shape: a mint and a freeze authority, a permanent delegate, a transfer hook whose program is unset.
+    h.fake.mints.set(T22_MINT, {program: 'token-2022', data: mintData({decimals: 6, mintAuthority: ISSUER, freezeAuthority: FREEZER, extensions: {permanentDelegate: PERMANENT_DELEGATE, transferHook: {authority: HOOK_AUTHORITY, program: null}}})});
+    await popup(h);
+    const page = await adapterConnected(h);
+    let signed!: Promise<unknown>;
+    // A dApp's usual preamble: its token accounts made sure of (CreateIdempotent of accounts that exist — nothing moves).
+    const win = await approvalWindow(h.ctx, () => (signed = adapter.customSign(page, BLOCKHASH, [ix.ataCreate(OWN_T22, ACCOUNT, T22_MINT, TOKEN_2022_PROGRAM, true), ix.ataCreate(OWN_USDC, ACCOUNT, USDC_MINT, TOKEN_PROGRAM, true)])));
+    await expect(win.getByText('Balance changes (post-simulation)')).toBeVisible({timeout: 10_000});
+    const t22 = win.locator('.s9-flag-banner.warn', {hasText: 'Token-2022 settings on a token you hold'});
+    await expect(t22).toHaveCount(1);
+    await expect(t22.locator('.body')).toHaveText(['Freeze authority — the issuer can freeze your account of this token.', 'Permanent delegate — an address that can move or burn this token from any account, yours included.']);
+    await expect(t22.locator('.meta')).toHaveText([`mint: ${T22_MINT}`, `freezeAuthority: ${FREEZER}`, `permanentDelegate: ${PERMANENT_DELEGATE}`]);
+    // The negative controls: no transfer-hook line (its program is unset), and USDC's freeze authority is no flag.
+    await expect(win.getByText(/Transfer hook/)).toHaveCount(0);
+    await expect(win.locator('.s9-flag-banner', {hasText: USDC_MINT})).toHaveCount(0);
+    await expect(win.locator('.s9-flag-banner', {hasText: FREEZER})).toHaveCount(1);
+    // O7: the two creates are the account's own token accounts, paid by it — rent only, no F2 banner; F7's warning
+    // only: no block, no field — Approve after the 1.5 s hold.
+    await expect(win.locator('.s9-flag-banner.warn', {hasText: 'Instructions that are not transfers'})).toHaveCount(0);
+    await expect(win.locator('.s9-flag-banner')).toHaveCount(1);
+    await expect(win.locator('.s9-flag-banner.danger, .s9-typed-confirm')).toHaveCount(0);
+    await win.getByRole('button', {name: 'Approve', exact: true}).click();
+    const r = (await signed) as {ok: true; value: {signed: string; message: string}};
+    expect(signedBy(r.value.signed)).toBe(true);
+    expectOwnMessage(r.value.signed, r.value.message);
+    await windowClosed(win);
+    expect(csp).toEqual([]);
+    done(h, server);
+  } finally {
+    await h.close();
+  }
+});
+
+test('B1c-33 · a dependent batch (O2): create an account, then transfer into it — step 2 "depends on step 1", UNCHECKED + #10 → both signed; an unrelated failure in step 2 stays Reject only', async () => {
+  test.setTimeout(300_000);
+  const {h, server} = await scene('noctura-e2e-dapptx-dependent-');
+  try {
+    const csp = await watchCsp(h);
+    holdUsdc(h.fake);
+    h.fake.tokenAccounts.set(RECIPIENT, [{pubkey: RECIPIENT_USDC, mint: USDC_MINT, amount: '1000000', decimals: 6}]);
+    await popup(h);
+    const page = await adapterConnected(h);
+    const create = ix.ataCreate(NEW_ATA, RECIPIENT, USDC_MINT, TOKEN_PROGRAM, false);
+    let both!: Promise<unknown>;
+    const win = await approvalWindow(h.ctx, () => (both = adapter.customSignAll(page, BLOCKHASH, [[create], [ix.transferChecked(OWN_USDC, USDC_MINT, NEW_ATA, 500_000n, 6)]])));
+    await expect(win.locator('.top-bar .title')).toHaveText('Critical · Blocked transaction', {timeout: 10_000});
+    const step2 = win.locator('section.app-tx-item').nth(1);
+    // The fake node simulated step 2 on its own: the account step 1 creates does not exist yet.
+    await expect(step2.locator('.s9-flag-banner.danger .head')).toHaveText('This step depends on step 1 and could not be checked on its own.');
+    await expect(step2.locator('.s9-flag-banner.danger .meta')).toHaveText('{"InstructionError":[0,"UninitializedAccount"]}');
+    await expect(step2.getByText('Balance changes (unknown)')).toBeVisible();
+    await expect(win.getByText("Couldn't simulate")).toHaveCount(0);
+    // One field, in step 2's section.
+    await expect(win.locator('.s9-typed-confirm')).toHaveCount(1);
+    const field = step2.getByLabel('Type UNCHECKED to enable Approve');
+    const cta = win.getByRole('button', {name: 'Approve anyway'});
+    expect(await decideRaw(win, {})).toEqual({ok: false, error: 'override-missing'});
+    expect(await decideRaw(win, {overrides: [{tx: 0, word: 'UNCHECKED'}]})).toEqual({ok: false, error: 'override-mismatch'});
+    await field.fill('unchecked');
+    await expect(cta).toHaveClass(/app-cta-gated/);
+    await field.fill('UNCHECKED');
+    await cta.click();
+    await reauthFromToolbar(h, win, ['Sitedapp.test', 'Transactions2', 'Depends on step 1 — not checked on its ownTransaction 2 of 2'], ['Re-auth required for the first send to a new address.', OVERRIDE_LINE]);
+    await cta.click();
+    const r = (await both) as {ok: true; value: {signed: string[]; messages: string[]}};
+    expect(r.ok).toBe(true);
+    expect(r.value.signed).toHaveLength(2);
+    r.value.signed.forEach((wire, i) => {
+      expect(signedBy(wire)).toBe(true);
+      expectOwnMessage(wire, r.value.messages[i] ?? '');
+    });
+    await windowClosed(win);
+
+    // Step 2 fails for a reason of its own (more USDC than the wallet holds, into an account that exists): no account
+    // step 1 creates is in its failing instruction — a plain failure, Reject only, and the background refuses the word.
+    let failed!: Promise<unknown>;
+    const wf = await approvalWindow(h.ctx, () => (failed = adapter.customSignAll(page, BLOCKHASH, [[create], [ix.transferChecked(OWN_USDC, USDC_MINT, RECIPIENT_USDC, 10_000_000_000n, 6)]])));
+    await expect(wf.getByText("Couldn't simulate")).toBeVisible({timeout: 10_000});
+    await expect(wf.locator('.s9-flag-banner.danger .meta')).toHaveText('Transaction 2 of 2: {"InstructionError":[0,{"Custom":1}]}');
+    await expect(wf.locator('.s9-typed-confirm')).toHaveCount(0);
+    await expect(wf.locator('.sticky-bar button')).toHaveText(['Reject']);
+    expect(await decideRaw(wf, {overrides: [{tx: 1, word: 'UNCHECKED'}]})).toEqual({ok: false, error: 'simulation-failed'});
+    await wf.getByRole('button', {name: 'Reject', exact: true}).click();
+    expect(await failed).toEqual({ok: false, message: 'The user rejected the request.', name: 'WalletSignTransactionError'});
+    await windowClosed(wf);
+    expect(csp).toEqual([]);
+    done(h, server);
+  } finally {
+    await h.close();
+  }
+});
+
+test('B1c-34 · durable nonce (F8): signTransaction shows "This transaction does not expire." and signs after the hold; signAndSendTransaction is still refused with no window (R12)', async () => {
+  test.setTimeout(240_000);
+  const {h, server} = await scene('noctura-e2e-dapptx-nonce-');
+  try {
+    const csp = await watchCsp(h);
+    await popup(h);
+    const page = await adapterConnected(h);
+    const ixs = [ix.advanceNonce(NONCE), ix.transfer(RECIPIENT, 5n)];
+    let signed!: Promise<unknown>;
+    const win = await approvalWindow(h.ctx, () => (signed = adapter.customSign(page, BLOCKHASH, ixs)));
+    const nonce = win.locator('.s9-flag-banner.warn');
+    await expect(nonce).toHaveCount(1, {timeout: 10_000});
+    const cta = win.getByRole('button', {name: 'Approve', exact: true});
+    expect(await heldFor(cta)).toBeGreaterThanOrEqual(1_000);
+    await expect(nonce.locator('.head')).toHaveText('This transaction does not expire.');
+    await expect(nonce.locator('.meta')).toHaveText('#1 system_program::AdvanceNonceAccount');
+    await expect(win.locator('.s9-flag-banner.danger, .s9-typed-confirm')).toHaveCount(0);
+    await cta.click();
+    const r = (await signed) as {ok: true; value: {signed: string; message: string}};
+    expect(signedBy(r.value.signed)).toBe(true);
+    expectOwnMessage(r.value.signed, r.value.message);
+    await windowClosed(win);
+    // The same transaction through sendTransaction (the wallet's signAndSendTransaction): refused at the page, no window,
+    // nothing broadcast — and the adapter does not fall back to its own Connection (done() checks the dApp's RPC).
+    expect(await noWindow(h.ctx, () => adapter.customSend(page, BLOCKHASH, ixs))).toEqual({ok: false, message: 'The request is not valid.', name: 'WalletSendTransactionError'});
+    expect(h.fake.broadcasts).toEqual([]);
+    expect(csp).toEqual([]);
+    // The watch's positive control: an inline <style> added to an extension page (the popup) is refused and heard.
+    const p = await h.openPopup();
+    await p.evaluate(() => {
+      const style = document.createElement('style');
+      style.textContent = 'body { outline: 0 }';
+      document.head.append(style);
+    });
+    await expect.poll(() => csp.length).toBeGreaterThan(0);
+    done(h, server);
   } finally {
     await h.close();
   }

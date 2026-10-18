@@ -100,6 +100,9 @@ declare const dapp: {
   raw(type: string, payload: Record<string, unknown>): Promise<unknown>;
   rawTx(account: string, blockhash: string): string;
   customSign(blockhash: string, payer: string, ixs: RawIx[]): Promise<Result>;
+  adapterCustomSign(blockhash: string, ixs: RawIx[]): Promise<Result>;
+  adapterCustomSignAll(blockhash: string, batch: RawIx[][]): Promise<Result | NamedFailure>;
+  adapterCustomSend(blockhash: string, ixs: RawIx[]): Promise<Result | NamedFailure>;
 };
 
 /** A dApp tab at `origin`, its Wallet Standard registry ready (Noctura found, or not). */
@@ -133,6 +136,10 @@ export const adapter = {
   sign: (p: Page, blockhash: string) => p.evaluate(b => dapp.adapterSign(b), blockhash),
   signAll: (p: Page, count: number, blockhash: string) => p.evaluate(({n, b}) => dapp.adapterSignAll(n, b), {n: count, b: blockhash}),
   send: (p: Page, blockhash: string) => p.evaluate(b => dapp.adapterSend(b), blockhash),
+  /** B1c-3: arbitrary instructions through the adapter — one transaction, a batch, and sendTransaction. */
+  customSign: (p: Page, blockhash: string, ixs: RawIx[]) => p.evaluate(({b, i}) => dapp.adapterCustomSign(b, i), {b: blockhash, i: ixs}),
+  customSignAll: (p: Page, blockhash: string, batch: RawIx[][]) => p.evaluate(({b, i}) => dapp.adapterCustomSignAll(b, i), {b: blockhash, i: batch}),
+  customSend: (p: Page, blockhash: string, ixs: RawIx[]) => p.evaluate(({b, i}) => dapp.adapterCustomSend(b, i), {b: blockhash, i: ixs}),
 };
 
 /**
