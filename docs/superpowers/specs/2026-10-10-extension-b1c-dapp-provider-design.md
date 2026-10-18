@@ -640,12 +640,14 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
 | F10 | simulation failed and the user continues | **O2:** only a failure attributable to an earlier transaction of the same batch (below) has a continue path; every other failure stays Reject-only — stricter than B1 §3's warning, which is allowed. An expired blockhash anywhere: Reject only | **blocked** | `UNCHECKED` (Q31) |
 | F11 | request origin differs from the granted origin | built in B1c-1 / B1c-2 | **blocked, no override** | — |
 
-- **Attribution (F10, O2).** Transaction *k* (*k* ≥ 2) of a batch failed with an `InstructionError` naming instruction
-  *i* — or with one of the top-level errors a node returns for an account that does not exist, exactly as plan 3
-  lists them from Agave's `TransactionError` — **and** instruction *i*'s resolved accounts intersect the accounts that
-  transactions 1 … *k*−1 of the same batch create: System `createAccount` / `createAccountWithSeed` (the new account),
+- **Attribution (F10, O2).** Transaction *k* (*k* ≥ 2) of a batch failed with exactly one of two errors of Agave's
+  `TransactionError`, in the JSON the RPC returns — `{"InstructionError": [i, <any InstructionError>]}` (instruction
+  *i* of the message, an index of one of its instructions), whose named accounts are instruction *i*'s resolved
+  accounts; or `"AccountNotFound"` (the fee payer holds no lamports), whose named account is the fee payer — **and**
+  the named accounts intersect the accounts that transactions 1 … *k*−1 of the same batch create: System `createAccount` / `createAccountWithSeed` (the new account),
   ATA `create` / `createIdempotent` (the account), Token / Token-2022 `initializeAccount`, `initializeAccount2`,
-  `initializeAccount3` (the account). Then step *k* reads "This step depends on step <N> and could not be checked on
+  `initializeAccount3` (the account); *N* is the earliest such transaction. Any other error, or any other shape of
+  these two, is a plain failure. Then step *k* reads "This step depends on step <N> and could not be checked on
   its own." (Q32), shows no balance changes (they are unknown, and it says so) and F10 blocks it. A dependent step's
   effects are unknown, so the request always re-authenticates. Every other failure: Reject only, as B1c-2.
 - **The override rule (B1 §3, O1).** Each blocked transaction carries its own typed field, in its own section of the

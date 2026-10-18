@@ -2,10 +2,11 @@ import {base64, base64urlnopad} from '@scure/base';
 import type {WalletDeps} from '../deps';
 import {dappReauthReasons, usdMicros, type DappReauthReason} from '../reauthPolicy';
 import {MAINNET_NOC_MINT, MAINNET_USDC_MINT, MAINNET_USDT_MINT} from '../../../../core/presale/addresses';
-import type {AccountData} from '../../../../core/solana/rpc';
+import {MAX_MULTIPLE_ACCOUNTS, type AccountData} from '../../../../core/solana/rpc';
 import {COMPUTE_BUDGET_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, addressField, decodeInstructions, type DecodedInstruction} from './decode/decode';
 import {ADDRESS_LOOKUP_TABLE_PROGRAM, resolveKeys, tableAddresses, tablesOf} from './decode/keys';
 import {isWritableIndex, type ParsedTx} from './decode/wire';
+import {expectedOverrides, flagMints, redFlagsOf, storedFlagsOf, type FlagOutcome, type RedFlag, type TxFlagInput} from './redFlags';
 import {mintInfo, tokenAccountInfo} from './tokenState';
 
 /**
@@ -28,6 +29,9 @@ import {mintInfo, tokenAccountInfo} from './tokenState';
  * `approval` from chain state too (a new or raised delegation, a changed close authority, or an own account's owner
  * reassigned away — fix round 2, ruled-in: a dApp program can CPI an Approve, a SetAuthority close-authority change or a
  * SetAuthority AccountOwner with no top-level instruction that names it) — so `dapp.decide` needs no read of its own.
+ * B1c-3 (spec §3.3 rev 3.6): the red flags (redFlags.ts) are computed here too, from the same reads plus one read of
+ * every mint they need, and stored with the simulation; a block adds the reason `override`. A failed transaction of a
+ * batch whose error names an account an earlier transaction creates is `dependent` (F10).
  */
 export const DEFAULT_UNITS_PER_INSTRUCTION = 200_000;
 export const MAX_COMPUTE_UNITS = 1_400_000;
@@ -51,7 +55,9 @@ export interface BalanceChange {
 export type TxOutcome =
   | {ok: true; changes: BalanceChange[]; unitsConsumed: number | null; unitLimit: number; feeLamports: string | null}
   /** `expired`: the node does not know the transaction's blockhash any more (Q21); `failed`: it ran and failed. */
-  | {ok: false; error: 'expired' | 'failed'; detail: string};
+  | {ok: false; error: 'expired' | 'failed'; detail: string}
+  /** B1c-3 (F10): it failed on an account transaction `on` (1-based) of the same batch creates — its effects unknown. */
+  | {ok: false; error: 'dependent'; on: number; detail: string};
 
 export interface TxSimulation {
   /** 128 random bits: `dapp.decide` names the simulation the window showed (stale → refused). */
@@ -63,6 +69,8 @@ export interface TxSimulation {
   keys: (string | null)[][];
   outcomes: TxOutcome[];
   reasons: DappReauthReason[];
+  /** B1c-3: per transaction, its red flags (redFlags.ts), in the order the window shows them. */
+  flags: RedFlag[][];
   /** An upper bound of the dApp blockhash's last valid height (the latest blockhash's, read now): a pending send's expiry check waits at least this long. */
   lastValidBlockHeight: number;
 }
@@ -132,6 +140,39 @@ export function feeOf(p: ParsedTx, decoded: readonly DecodedInstruction[]): {fee
 /** The node's own word for an unknown blockhash (Q21). */
 const isExpired = (err: unknown): boolean => err === 'BlockhashNotFound';
 
+/**
+ * Controller ruling (B1c-3 Task 3, ledger): a transaction naming an account a lookup table did not resolve (an index
+ * the tables the wallet read do not hold) is Reject only, exactly like a failed simulation — its outcome is `failed`
+ * with this detail whatever the node answers (the node resolves the table itself, perhaps to an account the wallet
+ * never showed). F1 still names every instruction touching it. The wallet's own detail, never a node error's name.
+ */
+export const UNRESOLVED_LOOKUP_DETAIL = 'unresolved-lookup-table-address';
+
+/** The account an instruction creates (F10's creators, spec §3.3 "Attribution"), or null. */
+function createdBy(ix: DecodedInstruction): string | null {
+  if (ix.program === 'system' && (ix.name === 'createAccount' || ix.name === 'createAccountWithSeed')) return addressField(ix, 'newAccount');
+  if (ix.program === 'associated-token' && (ix.name === 'create' || ix.name === 'createIdempotent')) return addressField(ix, 'account');
+  if ((ix.program === 'token' || ix.program === 'token-2022') && (ix.name === 'initializeAccount' || ix.name === 'initializeAccount2' || ix.name === 'initializeAccount3')) return addressField(ix, 'account');
+  return null;
+}
+
+/**
+ * The accounts a simulation's error names, for F10's attribution — null for every other error. Agave's
+ * `TransactionError` as the RPC returns it (serde's JSON; mirrored by @solana/errors' `transaction-error.ts`, "Keep
+ * synced with RPC source: agave/sdk/src/transaction/error.rs"): `{"InstructionError": [i, <InstructionError>]}` —
+ * instruction i of the message failed: its resolved accounts; `"AccountNotFound"` — the fee payer holds no lamports
+ * (Agave's fee-payer check): the fee payer. Nothing else names an account a transaction could have created.
+ */
+function accountsNamed(err: unknown, p: ParsedTx, keys: readonly (string | null)[]): string[] | null {
+  if (err === 'AccountNotFound') return p.staticKeys.slice(0, 1);
+  if (typeof err !== 'object' || err === null || Array.isArray(err) || Object.keys(err).length !== 1) return null;
+  const pair: unknown = (err as Record<string, unknown>).InstructionError;
+  if (!Array.isArray(pair) || pair.length !== 2) return null;
+  const i: unknown = pair[0];
+  const ix = typeof i === 'number' && Number.isSafeInteger(i) && i >= 0 ? p.instructions[i] : undefined;
+  return ix === undefined ? null : ix.accounts.map(a => keys[a] ?? null).filter((a): a is string => a !== null);
+}
+
 /** USD per whole token for a change's fiat line and the dollar rule: SOL (and wrapped SOL), USDC, USDT, NOC at the stage price; else none. */
 async function pricesFor(deps: Pick<WalletDeps, 'prices' | 'stagePrice'>): Promise<(mint: string | null) => number | undefined> {
   const [p, stage] = await Promise.all([deps.prices().catch(() => null), deps.stagePrice().catch(() => null)]);
@@ -182,12 +223,14 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
   // 3. Each transaction.
   let slot = 0;
   const outcomes: TxOutcome[] = [];
-  const decodedAll: DecodedInstruction[][] = [];
+  const flagInputs: TxFlagInput[] = [];
+  /** Per transaction, the accounts it creates (F10). */
+  const created: Set<string>[] = [];
   let approvalFromChain = false;
   for (const [i, p] of input.txs.entries()) {
     const keys = resolved[i]?.keys ?? [];
     const decoded = decodeInstructions(p, {keys});
-    decodedAll.push(decoded);
+    created.push(new Set(decoded.map(createdBy).filter((a): a is string => a !== null)));
     const writable = [...new Set(keys.filter((k, j): k is string => k !== null && k !== account && isWritableIndex(p, j)))];
     const addresses = [account, ...writable];
     // Fix round 1 (I1, I2): the pre state is read fresh, immediately before THIS transaction's own simulation, for
@@ -196,13 +239,29 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
     // paired index-for-index with a transaction's own writable set (an own account the snapshot does not cover would
     // otherwise show +post instead of post − pre).
     const preAccounts = await deps.reader.getAccountsData(addresses);
+    const pre = new Map(addresses.map((a, j) => [a, preAccounts[j] ?? null]));
+    const firstSend = firstSendOf(decoded, pre, account, input.known, a => before.has(a));
     const sim = await deps.reader.simulateTransaction(base64.encode(input.wires[i] ?? new Uint8Array()), {accounts: addresses});
     slot = Math.max(slot, sim.slot);
+    if (keys.includes(null)) {
+      outcomes.push({ok: false, error: 'failed', detail: UNRESOLVED_LOOKUP_DETAIL});
+      flagInputs.push({tx: p, decoded, pre, outcome: {status: 'failed'}, firstSend});
+      continue;
+    }
     if (sim.err !== null) {
-      outcomes.push({ok: false, error: isExpired(sim.err) ? 'expired' : 'failed', detail: JSON.stringify(sim.err)});
+      const detail = JSON.stringify(sim.err);
+      // F10 (O2): a transaction k ≥ 2 whose error names an account an earlier transaction of the batch creates — the
+      // earliest such step. An expired blockhash is never dependent.
+      const named = isExpired(sim.err) ? null : accountsNamed(sim.err, p, keys);
+      const on = named === null ? -1 : created.slice(0, i).findIndex(c => named.some(a => c.has(a)));
+      const outcome: TxOutcome = isExpired(sim.err) ? {ok: false, error: 'expired', detail} : on >= 0 ? {ok: false, error: 'dependent', on: on + 1, detail} : {ok: false, error: 'failed', detail};
+      outcomes.push(outcome);
+      flagInputs.push({tx: p, decoded, pre, outcome: on >= 0 ? {status: 'dependent', on} : {status: 'failed'}, firstSend});
       continue;
     }
     const post = sim.accounts ?? [];
+    const flagOutcome: FlagOutcome = {status: 'simulated', post: new Map(addresses.map((a, j) => [a, post[j] ?? null]))};
+    flagInputs.push({tx: p, decoded, pre, outcome: flagOutcome, firstSend});
     const delta = new Map<string | null, bigint>();
     const add = (mint: string | null, d: bigint) => delta.set(mint, (delta.get(mint) ?? 0n) + d);
     const selfPre = preAccounts[0] ?? null;
@@ -255,14 +314,17 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
     const changes: {mint: string | null; amount: bigint}[] = [...delta].filter(([, d]) => d !== 0n).map(([mint, amount]) => ({mint, amount}));
     outcomes.push({ok: true, changes: changes.map(c => ({mint: c.mint, amount: c.amount.toString(), decimals: null, usdMicros: null})), unitsConsumed: sim.unitsConsumed, unitLimit, feeLamports: p.signers[0] === account ? feeLamports.toString() : null});
   }
-  // 4. Decimals the holdings did not tell (a mint the account did not hold before), read once.
+  // 4. The mints, read once: every one the red flags need (the wallet's own tokens too — F5's word compares the mint's
+  // own decimals with the wallet's table) and the decimals the holdings did not tell (a mint the account did not hold
+  // before). At most one read's worth: a mint past MAX_MULTIPLE_ACCOUNTS is not read — it warns that it could not be
+  // read (Q36) and its amounts stay in base units (fail closed, never an unreachable proxy).
   const unknownMints = [...new Set(outcomes.flatMap(o => (o.ok ? o.changes.map(c => c.mint) : [])).filter((m): m is string => m !== null && !decimals.has(m)))];
-  if (unknownMints.length > 0) {
-    const mints = await deps.reader.getAccountsData(unknownMints);
-    unknownMints.forEach((m, i) => {
-      const d = mintDecimals(mints[i] ?? null);
-      if (d !== null) decimals.set(m, d);
-    });
+  const wanted = [...new Set([...flagMints({account, txs: flagInputs}), ...unknownMints])].slice(0, MAX_MULTIPLE_ACCOUNTS);
+  const mintData = wanted.length > 0 ? await deps.reader.getAccountsData(wanted) : [];
+  const mints = new Map(wanted.map((m, i) => [m, mintData[i] ?? null]));
+  for (const m of unknownMints) {
+    const d = mintDecimals(mints.get(m) ?? null);
+    if (d !== null) decimals.set(m, d);
   }
   // 5. Decimals and dollars on every change; the outgoing totals per mint for the rules.
   const outgoing = new Map<string | null, bigint>();
@@ -278,15 +340,8 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
       if (amount < 0n) outgoing.set(c.mint, (outgoing.get(c.mint) ?? 0n) - amount);
     }
   }
-  const firstSend = decodedAll.some(list =>
-    list.some(ix => {
-      const from = ix.program === 'system' && ix.name === 'transfer' ? addressField(ix, 'from') : (ix.program === 'token' || ix.program === 'token-2022') && (ix.name === 'transfer' || ix.name === 'transferChecked') ? addressField(ix, 'owner') : null;
-      const to = ix.program === 'system' ? addressField(ix, 'to') : addressField(ix, 'destination');
-      // An own token account (held before) is not a recipient.
-      return from === account && to !== null && !input.known(to) && !before.has(to);
-    }),
-  );
-  const reasons = dappReauthReasons({
+  const firstSend = flagInputs.some(t => t.firstSend);
+  const base = dappReauthReasons({
     outgoing: [...outgoing].map(([mint, amount]) => {
       const d = mint === null ? 9 : (decimals.get(mint) ?? null);
       return {amount, balance: balanceOf(mint), usdMicros: d === null ? null : usdMicros(amount, d, priceOf(mint))};
@@ -295,6 +350,9 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
     approval: approvalFromChain,
     thresholdCents: input.thresholdCents,
   });
+  const flags = redFlagsOf({account, txs: flagInputs, mints, reasons: base});
+  // The override rule (spec §3.3): a request with any block re-authenticates — a dependent step is always one.
+  const reasons: DappReauthReason[] = expectedOverrides(flags).length > 0 ? [...base, 'override'] : base;
   return {
     id: base64urlnopad.encode(deps.randomBytes(16)),
     at: deps.now(),
@@ -303,14 +361,43 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
     keys: resolved.map(r => r.keys),
     outcomes,
     reasons,
+    flags,
     lastValidBlockHeight: latest.lastValidBlockHeight,
   };
+}
+
+/**
+ * B1b's first-send rule for one transaction (F9 is per transaction): a decoded System transfer from the account to an
+ * address it never sent to, or a Token / Token-2022 transfer signed by the account whose destination's OWNER is not
+ * one (R10, spec §9): the destination's pre-state as a token account gives its owner field; absent before and created
+ * in the same transaction by an ATA create / createIdempotent, that instruction's wallet. A destination unreadable, not
+ * a token account, or not created by the transaction is a first send (fail closed). `known`: B1b's recipients; `held`:
+ * the account's own token accounts in the holdings snapshot (never a recipient).
+ */
+function firstSendOf(decoded: readonly DecodedInstruction[], pre: ReadonlyMap<string, AccountData | null>, account: string, known: (address: string) => boolean, held: (address: string) => boolean): boolean {
+  const ownerOf = (destination: string): string | null => {
+    const state = pre.get(destination) ?? null;
+    if (state !== null) return tokenAccountInfo(state.data, state.owner)?.owner ?? null;
+    const creating = decoded.find(ix => ix.program === 'associated-token' && (ix.name === 'create' || ix.name === 'createIdempotent') && addressField(ix, 'account') === destination);
+    return creating === undefined ? null : addressField(creating, 'wallet');
+  };
+  return decoded.some(ix => {
+    if (ix.program === 'system' && ix.name === 'transfer') {
+      const to = addressField(ix, 'to');
+      return addressField(ix, 'from') === account && to !== null && !known(to) && !held(to);
+    }
+    if ((ix.program !== 'token' && ix.program !== 'token-2022') || (ix.name !== 'transfer' && ix.name !== 'transferChecked') || addressField(ix, 'owner') !== account) return false;
+    const to = addressField(ix, 'destination');
+    if (to === null || held(to)) return false;
+    const owner = ownerOf(to);
+    return owner === null || !(owner === account || known(owner));
+  });
 }
 
 /** What an entry holds (store.ts): the newest simulation, or that the last attempt could not reach the proxy. */
 export type SimState = {status: 'ok'; sim: TxSimulation} | {status: 'unreachable'; at: number};
 
-const REASONS: readonly string[] = ['first-send', 'over-5-percent', 'over-usd-threshold', 'whole-balance-to-new', 'approval'];
+const REASONS: readonly string[] = ['first-send', 'over-5-percent', 'over-usd-threshold', 'whole-balance-to-new', 'approval', 'override'];
 const isInt = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0;
 const isIntOrNull = (x: unknown): x is number | null => x === null || isInt(x);
 const SIGNED = /^-?\d{1,40}$/;
@@ -325,9 +412,12 @@ function changeOf(x: unknown): BalanceChange | null {
   return {mint: o.mint, amount: o.amount, decimals: o.decimals, usdMicros: o.usdMicros};
 }
 
+const isUnresolvedFailure = (o: TxOutcome | null): boolean => o !== null && !o.ok && o.error === 'failed' && o.detail === UNRESOLVED_LOOKUP_DETAIL;
+
 function outcomeOf(x: unknown): TxOutcome | null {
   const o = obj(x);
   if (o === null) return null;
+  if (o.ok === false && o.error === 'dependent') return isInt(o.on) && o.on >= 1 && typeof o.detail === 'string' ? {ok: false, error: 'dependent', on: o.on, detail: o.detail} : null;
   if (o.ok === false) return (o.error === 'expired' || o.error === 'failed') && typeof o.detail === 'string' ? {ok: false, error: o.error, detail: o.detail} : null;
   if (o.ok !== true || !Array.isArray(o.changes) || !isIntOrNull(o.unitsConsumed) || !isInt(o.unitLimit) || !(o.feeLamports === null || (typeof o.feeLamports === 'string' && DIGITS.test(o.feeLamports)))) return null;
   const changes = (o.changes as unknown[]).map(changeOf);
@@ -346,6 +436,19 @@ export function simStateOf(x: unknown): SimState | null {
   if (!Array.isArray(s.outcomes) || !Array.isArray(s.reasons) || !(s.reasons as unknown[]).every(r => typeof r === 'string' && REASONS.includes(r))) return null;
   const outcomes = (s.outcomes as unknown[]).map(outcomeOf);
   if (outcomes.some(x => x === null) || outcomes.length !== s.keys.length) return null;
+  // The controller's lookup ruling: a transaction with an unresolved key is stored only as that failure.
+  if ((s.keys as (string | null)[][]).some((k, i) => k.includes(null) && !isUnresolvedFailure(outcomes[i] ?? null))) return null;
+  // B1c-3: the flags, one list per transaction, each flag exactly as redFlagsOf gives it; a block ⇔ the reason
+  // `override`; a dependent outcome ⇔ its transaction's F10 flag naming the same step (the flag's `on` is 0-based).
+  const flags = Array.isArray(s.flags) ? (s.flags as unknown[]).map(storedFlagsOf) : null;
+  if (flags === null || flags.length !== outcomes.length || flags.some(f => f === null)) return null;
+  const lists = flags as RedFlag[][];
+  if (lists.some(l => l.some(f => f.severity === 'block')) !== (s.reasons as unknown[]).includes('override')) return null;
+  const stepsAgree = (outcomes as TxOutcome[]).every((o, i) => {
+    const on = lists[i]?.find(f => f.kind === 'dependent')?.on;
+    return !o.ok && o.error === 'dependent' ? on === o.on - 1 && on < i : on === undefined;
+  });
+  if (!stepsAgree) return null;
   return {
     status: 'ok',
     sim: {
@@ -356,6 +459,7 @@ export function simStateOf(x: unknown): SimState | null {
       keys: (s.keys as (string | null)[][]).map(k => k.slice()),
       outcomes: outcomes as TxOutcome[],
       reasons: (s.reasons as DappReauthReason[]).slice(),
+      flags: lists,
       lastValidBlockHeight: s.lastValidBlockHeight,
     },
   };

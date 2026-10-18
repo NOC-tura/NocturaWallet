@@ -1,7 +1,7 @@
 import {tokenForMint, WALLET_TOKENS, type WalletToken} from '../../../../core/solana/balances';
 import type {AccountData} from '../../../../core/solana/rpc';
 import {WHOLE_BALANCE_PERCENT, type DappReauthReason} from '../reauthPolicy';
-import {SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, addressField, type DecodedInstruction, type ProgramKey} from './decode/decode';
+import {AUTHORITY_TYPES, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, addressField, type DecodedInstruction, type ProgramKey} from './decode/decode';
 import type {ParsedTx} from './decode/wire';
 import {mintInfo, tokenAccountInfo, type TokenAccountInfo} from './tokenState';
 import {usesDurableNonce} from './txRequest';
@@ -315,4 +315,150 @@ export function overridesMatch(flags: readonly (readonly RedFlag[])[], given: re
     seen.add(k);
   }
   return seen.size === expected.size ? 'ok' : 'missing';
+}
+
+type J = Record<string, unknown>;
+const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+const DIGITS = /^\d{1,20}$/;
+const PROGRAM_KEYS: readonly string[] = ['system', 'token', 'token-2022', 'associated-token', 'compute-budget', 'presale'];
+const AUTHORITY_TYPE_NAMES: readonly string[] = ['', ...AUTHORITY_TYPES];
+const TOKENS: readonly string[] = Object.keys(WALLET_TOKENS);
+/** `x` as an object with exactly these keys, or null. */
+const exactly = (x: unknown, keys: readonly string[]): J | null => {
+  if (typeof x !== 'object' || x === null || Array.isArray(x)) return null;
+  const o = x as J;
+  return Object.keys(o).length === keys.length && keys.every(k => Object.hasOwn(o, k)) ? o : null;
+};
+const isIndex = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0;
+const isIndexOrNull = (x: unknown): x is number | null => x === null || isIndex(x);
+const isAddress = (x: unknown): x is string => typeof x === 'string' && ADDRESS.test(x);
+const isAddressOrNull = (x: unknown): x is string | null => x === null || isAddress(x);
+/** Every item read by `f` (fresh), or null when any is not; `nonEmpty` refuses an empty list. */
+function listOf<T>(x: unknown, f: (v: unknown) => T | null, nonEmpty: boolean): T[] | null {
+  if (!Array.isArray(x) || (nonEmpty && x.length === 0)) return null;
+  const out: T[] = [];
+  for (const v of x as unknown[]) {
+    const r = f(v);
+    if (r === null) return null;
+    out.push(r);
+  }
+  return out;
+}
+
+function flaggedOf(x: unknown): FlaggedInstruction | null {
+  const o = exactly(x, ['index', 'program', 'name']);
+  if (o === null || !isIndex(o.index) || typeof o.program !== 'string' || !PROGRAM_KEYS.includes(o.program) || !(o.name === null || typeof o.name === 'string')) return null;
+  return {index: o.index, program: o.program as ProgramKey, name: o.name};
+}
+
+function authorityOf(x: unknown): AuthorityInstruction | null {
+  const o = exactly(x, ['index', 'program', 'account', 'owned', 'authorityType', 'newAuthority']);
+  if (o === null || !isIndex(o.index) || (o.program !== 'token' && o.program !== 'token-2022') || !isAddress(o.account) || !isAddressOrNull(o.newAuthority)) return null;
+  if ((o.owned !== 'token-account' && o.owned !== 'mint' && o.owned !== 'current-authority') || typeof o.authorityType !== 'string' || !AUTHORITY_TYPE_NAMES.includes(o.authorityType)) return null;
+  return {index: o.index, program: o.program, account: o.account, owned: o.owned, authorityType: o.authorityType, newAuthority: o.newAuthority};
+}
+
+function changeOf(x: unknown): AuthorityChange | null {
+  const o = exactly(x, ['account', 'change', 'from', 'to']);
+  if (o === null || !isAddress(o.account) || !isAddressOrNull(o.from) || !isAddressOrNull(o.to)) return null;
+  if (o.change !== 'owner' && o.change !== 'close-authority' && o.change !== 'mint-authority' && o.change !== 'freeze-authority') return null;
+  return {account: o.account, change: o.change, from: o.from, to: o.to};
+}
+
+function approvalOf(x: unknown): Approval | null {
+  const o = exactly(x, ['at', 'source', 'mint', 'symbol', 'decimals', 'delegate', 'amount', 'balance']);
+  if (o === null || !isIndexOrNull(o.at) || !isAddress(o.source) || !isAddressOrNull(o.mint) || !isAddressOrNull(o.delegate) || !(o.decimals === null || (isIndex(o.decimals) && o.decimals <= 255))) return null;
+  if (typeof o.amount !== 'string' || !DIGITS.test(o.amount) || typeof o.balance !== 'string' || !DIGITS.test(o.balance)) return null;
+  // The symbol is the wallet's own name for the mint, only at its own decimals (redFlagsOf's rule) — never another.
+  if (o.symbol !== null && (typeof o.symbol !== 'string' || !TOKENS.includes(o.symbol) || o.mint === null || tokenForMint(o.mint) !== o.symbol || o.decimals !== WALLET_TOKENS[o.symbol as WalletToken].decimals)) return null;
+  return {at: o.at, source: o.source, mint: o.mint, symbol: o.symbol as WalletToken | null, decimals: o.decimals, delegate: o.delegate, amount: o.amount, balance: o.balance};
+}
+
+function settingsOf(x: unknown): Token2022Settings | null {
+  const o = exactly(x, ['freezeAuthority', 'permanentDelegate', 'transferHookProgram']);
+  if (o === null || !isAddressOrNull(o.freezeAuthority) || !isAddressOrNull(o.permanentDelegate) || !isAddressOrNull(o.transferHookProgram)) return null;
+  if (o.freezeAuthority === null && o.permanentDelegate === null && o.transferHookProgram === null) return null;
+  return {freezeAuthority: o.freezeAuthority, permanentDelegate: o.permanentDelegate, transferHookProgram: o.transferHookProgram};
+}
+
+const firstAt = (approvals: readonly Approval[]): number | null => approvals.find(a => a.at !== null)?.at ?? null;
+
+/** One stored flag, rebuilt field by field (fresh objects) — null when its shape, its severity or its word is not what redFlagsOf gives. */
+function storedFlagOf(x: unknown): RedFlag | null {
+  const head = typeof x === 'object' && x !== null && !Array.isArray(x) ? (x as J) : null;
+  if (head === null) return null;
+  switch (head.kind) {
+    case 'unknown-program': {
+      const o = exactly(x, ['kind', 'severity', 'word', 'at', 'programs']);
+      const programs = listOf(o?.programs, v => (isAddressOrNull(v) ? {v} : null), true);
+      if (o === null || o.severity !== 'warn' || o.word !== null || !isIndex(o.at) || programs === null) return null;
+      return {kind: 'unknown-program', severity: 'warn', word: null, at: o.at, programs: programs.map(p => p.v)};
+    }
+    case 'non-transfer': {
+      const o = exactly(x, ['kind', 'severity', 'word', 'at', 'instructions']);
+      const instructions = listOf(o?.instructions, flaggedOf, true);
+      const first = instructions?.[0];
+      if (o === null || o.severity !== 'warn' || o.word !== null || first === undefined || o.at !== first.index || instructions === null) return null;
+      return {kind: 'non-transfer', severity: 'warn', word: null, at: first.index, instructions};
+    }
+    case 'assign': {
+      const o = exactly(x, ['kind', 'severity', 'word', 'at', 'instructions', 'chain']);
+      const instructions = listOf(o?.instructions, v => {
+        const f = flaggedOf(v);
+        return f !== null && f.program === 'system' && f.name !== null && ASSIGNS.includes(f.name) ? f : null;
+      }, false);
+      if (o === null || o.severity !== 'block' || o.word !== OVERRIDE_WORDS.assign || instructions === null) return null;
+      let chain: {owner: string; space: number} | null = null;
+      if (o.chain !== null) {
+        const c = exactly(o.chain, ['owner', 'space']);
+        if (c === null || !isAddress(c.owner) || !isIndex(c.space)) return null;
+        chain = {owner: c.owner, space: c.space};
+      }
+      if ((instructions.length === 0 && chain === null) || o.at !== (instructions[0]?.index ?? null)) return null;
+      return {kind: 'assign', severity: 'block', word: OVERRIDE_WORDS.assign, at: instructions[0]?.index ?? null, instructions, chain};
+    }
+    case 'set-authority': {
+      const o = exactly(x, ['kind', 'severity', 'word', 'at', 'instructions', 'chain']);
+      const instructions = listOf(o?.instructions, authorityOf, false);
+      const chain = listOf(o?.chain, changeOf, false);
+      if (o === null || o.severity !== 'block' || o.word !== OVERRIDE_WORDS.setAuthority || instructions === null || chain === null) return null;
+      if ((instructions.length === 0 && chain.length === 0) || o.at !== (instructions[0]?.index ?? null)) return null;
+      return {kind: 'set-authority', severity: 'block', word: OVERRIDE_WORDS.setAuthority, at: instructions[0]?.index ?? null, instructions, chain};
+    }
+    case 'unlimited-approve':
+    case 'bounded-approve': {
+      const o = exactly(x, ['kind', 'severity', 'word', 'at', 'approvals']);
+      const approvals = listOf(o?.approvals, approvalOf, true);
+      if (o === null || approvals === null || o.at !== firstAt(approvals)) return null;
+      if (head.kind === 'bounded-approve') return o.severity === 'warn' && o.word === null ? {kind: 'bounded-approve', severity: 'warn', word: null, at: firstAt(approvals), approvals} : null;
+      const symbols = [...new Set(approvals.map(a => a.symbol))];
+      const word = (symbols.length === 1 ? symbols[0] : null) ?? (approvals.some(a => a.amount === U64_MAX) ? OVERRIDE_WORDS.unlimited : ALLOWANCE_WORD);
+      return o.severity === 'block' && o.word === word ? {kind: 'unlimited-approve', severity: 'block', word, at: firstAt(approvals), approvals} : null;
+    }
+    case 'token-2022': {
+      const o = exactly(x, ['kind', 'severity', 'word', 'at', 'mint', 'settings']);
+      const settings = o?.settings === null ? null : settingsOf(o?.settings);
+      if (o === null || o.severity !== 'warn' || o.word !== null || !isIndexOrNull(o.at) || !isAddress(o.mint) || (o.settings !== null && settings === null)) return null;
+      return {kind: 'token-2022', severity: 'warn', word: null, at: o.at, mint: o.mint, settings};
+    }
+    case 'durable-nonce': {
+      const o = exactly(x, ['kind', 'severity', 'word', 'at']);
+      return o !== null && o.severity === 'warn' && o.word === null && o.at === 0 ? {kind: 'durable-nonce', severity: 'warn', word: null, at: 0} : null;
+    }
+    case 'whole-balance': {
+      const o = exactly(x, ['kind', 'severity', 'word', 'at']);
+      return o !== null && o.severity === 'warn' && o.word === null && o.at === null ? {kind: 'whole-balance', severity: 'warn', word: null, at: null} : null;
+    }
+    case 'dependent': {
+      const o = exactly(x, ['kind', 'severity', 'word', 'at', 'on']);
+      return o !== null && o.severity === 'block' && o.word === OVERRIDE_WORDS.dependent && o.at === null && isIndex(o.on) ? {kind: 'dependent', severity: 'block', word: OVERRIDE_WORDS.dependent, at: null, on: o.on} : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/** One transaction's stored flags (simulate.ts's simStateOf), rebuilt — null when any flag is off. */
+export function storedFlagsOf(x: unknown): TxFlags | null {
+  return listOf(x, storedFlagOf, false);
 }

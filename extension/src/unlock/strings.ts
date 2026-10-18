@@ -430,6 +430,8 @@ export const REAUTH = {
   /** Plan 2 review 1 L9 — controller copy, owner to confirm (Scope R28): the tokens past the sixteen #10 lists. */
   omitted: (n: number): string => `and ${n} more ${n === 1 ? 'token' : 'tokens'}`,
   approval: 'Re-auth required to approve a token allowance.',
+  /** B1c-3 Q33 (spec §3.3 rev 3.6) — controller copy, flagged to the owner: a request with a block re-authenticates. */
+  override: 'Re-auth required to override a blocked transaction.',
   dappConfirmed: 'Confirmed. Go back to the approval window and approve the transaction.',
   dappExpired: 'This confirmation has expired. Approve the transaction again in the approval window.',
   dappNotUnlocked: "The wallet locked while you were confirming. The site's request was declined — ask the site to try again.",

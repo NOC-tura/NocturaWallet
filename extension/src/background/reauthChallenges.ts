@@ -77,7 +77,7 @@ type Store = Map<string, Challenge>;
 const TOKENS: readonly string[] = ['SOL', 'NOC', 'USDC', 'USDT'];
 const REASONS: readonly string[] = ['first-send', 'over-5-percent', 'over-usd-threshold', 'whole-balance-to-new'];
 const FEE_REASONS: readonly string[] = ['pre-tge', 'zero-fee-eligible', 'status-unknown', 'charged'];
-const DAPP_REASONS: readonly string[] = [...REASONS, 'approval'];
+const DAPP_REASONS: readonly string[] = [...REASONS, 'approval', 'override'];
 /** At most this many mints in a dApp challenge's description (more than a five-transaction batch can name sensibly; the rest are counted in `omitted`). */
 export const MAX_DAPP_OUTGOING = 16;
 const DIGITS = /^\d{1,20}$/;

@@ -418,6 +418,41 @@ describe('#48 dapp-tx-approval', () => {
     expect(pendingOf({state: 'request', waiting: 0, windowNotice: false, request})).toBeNull();
   });
 
+  // B1c-3: the window's own list of re-authentication reasons (one of the four places a reason is named) and the
+  // dependent step's outcome (F10) — read strictly, like everything else the background sends.
+  it('pendingOf: `override` and a dependent step’s outcome are read; an unknown reason, or a dependent outcome naming no earlier step, is refused', () => {
+    const view = (reasons: unknown[], outcome: unknown) => ({
+      state: 'request',
+      waiting: 0,
+      windowNotice: false,
+      request: {
+        requestId: 'x',
+        type: 'signTransaction',
+        origin: 'https://jup.ag',
+        host: 'jup.ag',
+        site: {kind: 'verified', name: 'Jupiter', imitates: null, rule: null, idn: null, international: false},
+        offerBlock: false,
+        connect: null,
+        sign: null,
+        mismatch: null,
+        tx: {
+          kind: 'signTransaction',
+          account: {index: 0, name: 'Main', publicKey: ACCOUNT.publicKey},
+          simulation: {status: 'ok', id: 'AAAAAAAAAAAAAAAAAAAAAA', slot: 1, elapsedMs: 1, at: 1},
+          reauth: {reasons, state: 'needed'},
+          labels: [],
+          transactions: [{version: 0, feePayer: ACCOUNT.publicKey, unitLimit: null, feeLamports: null, outcome, instructions: []}],
+        },
+      },
+    });
+    const dependent = {ok: false, error: 'dependent', on: 1, detail: '{"InstructionError":[0,"InvalidAccountData"]}'};
+    const read = pendingOf(view(['first-send', 'override'], dependent));
+    expect(read?.state === 'request' ? [read.request.tx?.reauth?.reasons, read.request.tx?.transactions[0]?.outcome] : null).toEqual([['first-send', 'override'], dependent]);
+    expect(pendingOf(view(['overrides'], null))).toBeNull();
+    expect(pendingOf(view(['override'], {...dependent, on: 0}))).toBeNull();
+    expect(pendingOf(view(['override'], {ok: false, error: 'dependent', detail: 'x'}))).toBeNull();
+  });
+
   // Fix round 1, I2: the sheet is for exactly the simulation it opened on; a refresh landing while it is open must
   // close it (or, if a captured click still slips in, the background refuses it `stale`) — never sign effects the
   // user never saw.

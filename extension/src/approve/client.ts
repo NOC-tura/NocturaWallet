@@ -72,7 +72,11 @@ export interface BalanceChange {
   decimals: number | null;
   usdMicros: string | null;
 }
-export type TxOutcome = {ok: true; changes: BalanceChange[]; unitsConsumed: number | null; unitLimit: number; feeLamports: string | null} | {ok: false; error: 'expired' | 'failed'; detail: string};
+export type TxOutcome =
+  | {ok: true; changes: BalanceChange[]; unitsConsumed: number | null; unitLimit: number; feeLamports: string | null}
+  | {ok: false; error: 'expired' | 'failed'; detail: string}
+  /** B1c-3 (F10): it depends on step `on` (1-based) of the same batch. */
+  | {ok: false; error: 'dependent'; on: number; detail: string};
 export interface TxItem {
   version: 'legacy' | 0;
   feePayer: string;
@@ -205,6 +209,7 @@ function changeOf(x: unknown): BalanceChange | undefined {
 function outcomeOf(x: unknown): TxOutcome | undefined {
   const o = obj(x);
   if (o === undefined) return undefined;
+  if (o.ok === false && o.error === 'dependent') return isInt(o.on) && o.on >= 1 && isStr(o.detail) ? {ok: false, error: 'dependent', on: o.on, detail: o.detail} : undefined;
   if (o.ok === false) return (o.error === 'expired' || o.error === 'failed') && isStr(o.detail) ? {ok: false, error: o.error, detail: o.detail} : undefined;
   if (o.ok !== true || !Array.isArray(o.changes) || !(o.unitsConsumed === null || isInt(o.unitsConsumed)) || !isInt(o.unitLimit) || !(o.feeLamports === null || (isStr(o.feeLamports) && DIGITS.test(o.feeLamports)))) return undefined;
   const changes = (o.changes as unknown[]).map(changeOf);
@@ -236,6 +241,9 @@ function simulationOf(x: unknown): SimulationView | undefined {
   return {status: 'ok', id: o.id, slot: o.slot, elapsedMs: o.elapsedMs, at: o.at};
 }
 
+/** The background's dApp re-authentication reasons (reauthPolicy.ts `DappReauthReason`): anything else is refused. */
+const REAUTH_REASONS: readonly string[] = ['first-send', 'over-5-percent', 'over-usd-threshold', 'whole-balance-to-new', 'approval', 'override'];
+
 function txDetailOf(x: unknown): TxDetail | undefined {
   const o = obj(x);
   const account = accountOf(o?.account);
@@ -251,7 +259,7 @@ function txDetailOf(x: unknown): TxDetail | undefined {
   }
   const reauth = nullOr(o.reauth, v => {
     const r = obj(v);
-    if (r === undefined || !Array.isArray(r.reasons) || !(r.reasons as unknown[]).every(isStr) || (r.state !== 'needed' && r.state !== 'waiting' && r.state !== 'proven')) return undefined;
+    if (r === undefined || !Array.isArray(r.reasons) || !(r.reasons as unknown[]).every(x => isStr(x) && REAUTH_REASONS.includes(x)) || (r.state !== 'needed' && r.state !== 'waiting' && r.state !== 'proven')) return undefined;
     return {reasons: (r.reasons as string[]).slice(), state: r.state as 'needed' | 'waiting' | 'proven'};
   });
   if (reauth === undefined) return undefined;

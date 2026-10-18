@@ -77,6 +77,14 @@ describe('describeChallenge: a dApp’s transaction (B1c-2)', () => {
   });
 });
 
+// B1c-3 (spec §3.3 rev 3.6): a request with a block re-authenticates with the reason `override` (Q33).
+describe('describeChallenge: the override reason (B1c-3)', () => {
+  it('`override` reads Q33’s line; an unknown reason still makes the whole description unshowable', () => {
+    expect(describeChallenge({...DAPP, reasons: ['approval', 'override']})).toMatchObject({kind: 'dapp', reasons: ['Re-auth required to approve a token allowance.', 'Re-auth required to override a blocked transaction.']});
+    expect(describeChallenge({...DAPP, reasons: ['override', 'overrides']})).toBeNull();
+  });
+});
+
 // Final review I2: #10 accepts every site the background can issue (shared/site.ts — the same shape on all three sides).
 describe('describeChallenge: a dApp’s site is any host `new URL` gives an https origin', () => {
   it('an underscore host, an IPv6 literal with a port, punycode: described; a path, a space, credentials, a query: refused', () => {

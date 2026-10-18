@@ -126,10 +126,11 @@ function describeSettings(a: Record<string, unknown>): SettingsDescription | nul
   return lines.length === 0 ? null : {kind: 'settings', lines};
 }
 
-/** One reason's line (#10's own table; `approval` is B1c-2's). */
+/** One reason's line (#10's own table; `approval` is B1c-2's, `override` B1c-3's). */
 function reasonLine(r: unknown, thresholdCents: number): string | null {
   if (r === 'over-usd-threshold') return REAUTH.overUsd(dollars(thresholdCents));
   if (r === 'approval') return REAUTH.approval;
+  if (r === 'override') return REAUTH.override;
   return typeof r === 'string' && own(REAUTH.reason, r) ? REAUTH.reason[r as keyof typeof REAUTH.reason] : null;
 }
 

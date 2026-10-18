@@ -3,17 +3,18 @@ import {lock} from '../autolock';
 import {REAUTH_KEY} from '../session';
 import {CHALLENGE_TTL_MS, type ChallengeAbout, type DappOutgoing, challengeSatisfied, consumeChallenge, dropChallenge, issueChallenge, satisfyChallenge} from '../reauthChallenges';
 import {WALLET_TOKENS} from '../../../../core/solana/balances';
+import type {DappReauthReason} from '../reauthPolicy';
 import {fakeDeps} from './fakeDeps';
 import {fakeExt} from './fakeExt';
 
-const dappAbout = (outgoing: DappOutgoing[]): ChallengeAbout => ({
+const dappAbout = (outgoing: DappOutgoing[], reasons: DappReauthReason[] = ['first-send']): ChallengeAbout => ({
   kind: 'dapp',
   account: ACCOUNT.publicKey,
   site: 'dapp.test',
   transactions: 1,
   outgoing,
   omitted: 0,
-  reasons: ['first-send'],
+  reasons,
   thresholdCents: 10_000,
 });
 
@@ -198,5 +199,16 @@ describe('re-auth challenges', () => {
       await expect(issueChallenge(ext, deps, 'e3', dappAbout([{mint: WALLET_TOKENS.USDC.mint, symbol: 'USDC', amount: '1', decimals: null}]))).rejects.toThrow();
       await expect(issueChallenge(ext, deps, 'e4', dappAbout([{mint: WALLET_TOKENS.NOC.mint, symbol: 'NOC', amount: '1', decimals: WALLET_TOKENS.USDC.decimals}]))).rejects.toThrow();
     });
+  });
+
+  // B1c-3 (spec §3.3 rev 3.6, the override rule): `override` — a request with a block — is a dApp reason like the others.
+  it('a dApp challenge for `override` is issued and read back from the store; an unknown reason is never issued', async () => {
+    const ext = fakeExt();
+    const deps = fakeDeps();
+    const sol: DappOutgoing = {mint: null, symbol: 'SOL', amount: '1', decimals: WALLET_TOKENS.SOL.decimals};
+    const id = await issueChallenge(ext, deps, 'o1', dappAbout([sol], ['approval', 'override']));
+    expect(await satisfyChallenge(ext, deps.now(), id)).toBe(true);
+    expect(await challengeSatisfied(ext, deps.now(), id, 'o1')).toBe(true);
+    await expect(issueChallenge(ext, deps, 'o2', dappAbout([sol], ['overrides'] as unknown as DappReauthReason[]))).rejects.toThrow();
   });
 });

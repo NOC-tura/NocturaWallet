@@ -1,14 +1,14 @@
 import {base58} from '@scure/base';
-import {ComputeBudgetProgram, PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction, type AddressLookupTableAccount} from '@solana/web3.js';
-import type {AccountData, SimulatedAccount, SimulationOutcome, TokenAccountEntry} from '../../../../../core/solana/rpc';
+import {ComputeBudgetProgram, PublicKey, SYSVAR_RENT_PUBKEY, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction, type AddressLookupTableAccount} from '@solana/web3.js';
+import {MAX_MULTIPLE_ACCOUNTS, type AccountData, type SimulatedAccount, type SimulationOutcome, type TokenAccountEntry} from '../../../../../core/solana/rpc';
 import {MAINNET_NOC_MINT, MAINNET_USDC_MINT} from '../../../../../core/presale/addresses';
 import {fakeDeps, fakeReader} from '../../__tests__/fakeDeps';
 import {BLOCKHASH, PUB, RECIPIENT, tokenAccountData} from '../../__tests__/fixtures';
 import {ADDRESS_LOOKUP_TABLE_PROGRAM} from '../decode/keys';
-import {TOKEN_2022_PROGRAM, TOKEN_PROGRAM} from '../decode/decode';
+import {ATA_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM} from '../decode/decode';
 import {parseWire} from '../decode/wire';
-import {simulateTransactions, WRAPPED_SOL_MINT, type TxSimulation} from '../simulate';
-import {ACCOUNT_SIZE, mintBytes, otherExt, tokenAccountBytes, withByte} from './tokenBytes';
+import {simStateOf, simulateTransactions, WRAPPED_SOL_MINT, type TxSimulation} from '../simulate';
+import {ACCOUNT_SIZE, U64_MAX, keyOf, mintBytes, otherExt, tokenAccountBytes, usdcLikeMint, withByte} from './tokenBytes';
 
 const ME = new PublicKey(PUB);
 const TO = new PublicKey(RECIPIENT);
@@ -91,7 +91,17 @@ const forgedMultisig = (ownerField: string, amount: bigint): SimulatedAccount =>
  * A reader for one request: the wallet's SOL and token accounts before, and per simulateTransaction call the post-state
  * of each requested address (a function of the address) — or an error.
  */
-function scene(o: {holdings?: TokenAccountEntry[]; post?: (address: string, call: number) => SimulatedAccount | null; err?: unknown; accounts?: Map<string, AccountData | null>; lamports?: bigint}) {
+function scene(o: {
+  holdings?: TokenAccountEntry[];
+  post?: (address: string, call: number) => SimulatedAccount | null;
+  err?: unknown;
+  /** B1c-3: the error of simulateTransaction call `call` (1-based); null or undefined: it runs. */
+  errAt?: (call: number) => unknown;
+  accounts?: Map<string, AccountData | null>;
+  lamports?: bigint;
+  /** B1c-3: a getAccountsData call this answers true for throws (the proxy failing that read). */
+  readFails?: (addresses: readonly string[]) => boolean;
+}) {
   const simulations: {tx: string; accounts: readonly string[] | undefined}[] = [];
   const reads: string[][] = [];
   const reader = fakeReader({
@@ -99,13 +109,17 @@ function scene(o: {holdings?: TokenAccountEntry[]; post?: (address: string, call
     getTokenAccountsByOwner: async (_owner, filter) => ('programId' in filter && filter.programId === TOKEN_PROGRAM ? (o.holdings ?? []) : []),
     getLatestBlockhash: async () => ({blockhash: BLOCKHASH, lastValidBlockHeight: 4_242}),
     getAccountsData: async addresses => {
+      // The real reader's own cap (core/solana/rpc.ts): more than MAX_MULTIPLE_ACCOUNTS addresses in one call throws.
+      if (addresses.length > MAX_MULTIPLE_ACCOUNTS) throw new RangeError(`getAccountsData: at most ${MAX_MULTIPLE_ACCOUNTS} addresses`);
+      if (o.readFails?.(addresses) === true) throw new Error('the proxy is unreachable');
       reads.push([...addresses]);
       return addresses.map(a => o.accounts?.get(a) ?? null);
     },
     simulateTransaction: async (tx, opts): Promise<SimulationOutcome> => {
       simulations.push({tx, accounts: opts?.accounts});
       const call = simulations.length;
-      if (o.err !== undefined) return {err: o.err, logs: [], unitsConsumed: 0, slot: 300 + call, accounts: null};
+      const err = o.errAt !== undefined ? o.errAt(call) : o.err;
+      if (err !== undefined && err !== null) return {err, logs: [], unitsConsumed: 0, slot: 300 + call, accounts: null};
       return {err: null, logs: [], unitsConsumed: 1_234, slot: 300 + call, accounts: (opts?.accounts ?? []).map(a => o.post?.(a, call) ?? null)};
     },
   });
@@ -169,7 +183,9 @@ describe('simulateTransactions', () => {
       {mint: ODD_MINT, amount: '777', decimals: 4, usdMicros: null},
       {mint: MAINNET_USDC_MINT, amount: '-2000000', decimals: 6, usdMicros: '-2000000'},
     ]);
-    expect(s.reads).toEqual([[], [ME.toBase58(), SRC, NEW_ATA, closing], [ODD_MINT]]);
+    // B1c-3: one mint read for the batch — every mint the red flags need (each own token account's, pre and post: the
+    // wallet's own NOC and USDC too, whose decimals it already knows), which also gives ODD_MINT's decimals.
+    expect(s.reads).toEqual([[], [ME.toBase58(), SRC, NEW_ATA, closing], [MAINNET_NOC_MINT, MAINNET_USDC_MINT, ODD_MINT]]);
   });
 
   it('a writable token account of SOMEONE ELSE (a recipient’s) is not the account’s change, however its amount moves', async () => {
@@ -186,7 +202,9 @@ describe('simulateTransactions', () => {
     ]);
   });
 
-  it('a transfer between the account’s own token accounts is not a first send; a token transfer to anyone else is', async () => {
+  // B1c-3 (R10): an own token account the holdings name is still never a recipient; an unreadable destination is a first
+  // send (fail closed). The destination's owner rule is the describe below.
+  it('a transfer between the account’s own token accounts is not a first send; a token transfer to a destination it cannot read is', async () => {
     const other = 'CLoSE7RZXBqUBQuYuPxMjBwRGt6aMYn7nUykAmgdUCLu';
     const s = scene({holdings: [holding(SRC, MAINNET_NOC_MINT, 100n), holding(other, MAINNET_NOC_MINT, 0n)], post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : null)});
     const own = await run(s, [wire([tokenIx([3, ...u64(1n)], [SRC, other, ME.toBase58()])])]);
@@ -233,13 +251,14 @@ describe('simulateTransactions', () => {
     expect(sim.reasons).toEqual([]);
   });
 
-  it('a changed close authority re-authenticates too (I1; documented choice: the same `approval` reason — no separate copy exists for it)', async () => {
+  // B1c-3 (F4): a changed close authority of an own account is now also a block — the `override` reason follows it.
+  it('a changed close authority re-authenticates too (I1; documented choice: the same `approval` reason — no separate copy exists for it), and blocks (F4: override)', async () => {
     const s = scene({
       accounts: new Map([[SRC, tokenAfter(MAINNET_NOC_MINT, 100n)]]),
       post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : a === SRC ? tokenWithCloseAuthority(MAINNET_NOC_MINT, 100n, NEW_ATA) : null),
     });
     const sim = await run(s, [wire([unknownIx([SRC])])], () => true);
-    expect(sim.reasons).toEqual(['approval']);
+    expect(sim.reasons).toEqual(['approval', 'override']);
   });
 
   it('an outgoing token with no price is above the dollar threshold (fail closed)', async () => {
@@ -415,7 +434,7 @@ describe('simulateTransactions', () => {
     expect(await lineFor(t22(900_000n), withByte(mint, ACCOUNT_SIZE - 1, 1))).toMatchObject({amount: '-100000', decimals: null});
   });
 
-  it('an own account reassigned to someone else (a CPI SetAuthority AccountOwner) re-authenticates too, on top of the −all loss already shown', async () => {
+  it('an own account reassigned to someone else (a CPI SetAuthority AccountOwner) re-authenticates too, on top of the −all loss already shown — and blocks (F4: override)', async () => {
     const s = scene({
       // A large enough holdings balance that losing SRC's 100 is under the unrelated 5 % rule — isolates this test to
       // the owner-change reason alone.
@@ -425,7 +444,7 @@ describe('simulateTransactions', () => {
     });
     const sim = await run(s, [wire([unknownIx([SRC])])], () => true);
     const out = sim.outcomes[0];
-    expect(sim.reasons).toEqual(['approval']);
+    expect(sim.reasons).toEqual(['approval', 'override']);
     // The fee, plus SRC's rent (2 039 280) — no longer ours to attribute lamports to once its owner field isn't ours.
     expect(out?.ok === true ? out.changes.map(c => [c.mint, c.amount]) : null).toEqual([
       [null, '-2044280'],
@@ -433,13 +452,13 @@ describe('simulateTransactions', () => {
     ]);
   });
 
-  it('an owner change on an otherwise-empty account (only its rent moves) still re-authenticates', async () => {
+  it('an owner change on an otherwise-empty account (only its rent moves) still re-authenticates — and blocks (F4: override)', async () => {
     const s = scene({
       accounts: new Map([[SRC, tokenAfter(MAINNET_NOC_MINT, 0n)]]),
       post: a => (a === ME.toBase58() ? {lamports: SOL - 5_000n, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : a === SRC ? tokenAfter(MAINNET_NOC_MINT, 0n, NEW_ATA) : null),
     });
     const sim = await run(s, [wire([unknownIx([SRC])])], () => true);
-    expect(sim.reasons).toEqual(['approval']);
+    expect(sim.reasons).toEqual(['approval', 'override']);
     // Empty (amount 0 both sides, so no token line at all) — only the rent, treated as lost along with control, shows.
     const out = sim.outcomes[0];
     expect(out?.ok === true ? out.changes : null).toEqual([{mint: null, amount: '-2044280', decimals: 9, usdMicros: '-306642'}]);
@@ -499,5 +518,297 @@ describe('simulateTransactions', () => {
       throw new Error('unreachable');
     };
     await expect(run(s, [wire([SystemProgram.transfer({fromPubkey: ME, toPubkey: TO, lamports: 1})])])).rejects.toThrow('unreachable');
+  });
+});
+
+// B1c-3 (spec B1c §3.3 rev 3.6): the red flags are computed with the simulation, from its own reads, and stored with it.
+describe('simulateTransactions: the red flags (B1c-3)', () => {
+  type Json = Record<string, unknown>;
+  const SYSTEM = SystemProgram.programId.toBase58();
+  const NOC = MAINNET_NOC_MINT;
+  const DEST = NEW_ATA;
+  const DELEGATE = keyOf(51);
+  const plain = (lamports: bigint): SimulatedAccount => ({lamports, owner: SYSTEM, data: new Uint8Array()});
+  const meAfter = (a: string): SimulatedAccount | null => (a === ME.toBase58() ? plain(SOL - 5_000n) : null);
+  /** An associated-token-account create (tag 0) or createIdempotent (tag 1), paid by the account. */
+  const ataIx = (account: string, wallet: string, mint: string, tag: 0 | 1 = 1) =>
+    new TransactionInstruction({
+      programId: new PublicKey(ATA_PROGRAM),
+      data: Buffer.from([tag]),
+      keys: [
+        {pubkey: ME, isSigner: true, isWritable: true},
+        {pubkey: new PublicKey(account), isSigner: false, isWritable: true},
+        {pubkey: new PublicKey(wallet), isSigner: false, isWritable: false},
+        {pubkey: new PublicKey(mint), isSigner: false, isWritable: false},
+        {pubkey: SystemProgram.programId, isSigner: false, isWritable: false},
+        {pubkey: new PublicKey(TOKEN_PROGRAM), isSigner: false, isWritable: false},
+      ],
+    });
+  const tokenTransfer = (destination: string, amount = 1n) => tokenIx([3, ...u64(amount)], [SRC, destination, ME.toBase58()]);
+  const approve = (amount: bigint) => wire([tokenIx([4, ...u64(amount)], [SRC, DELEGATE, ME.toBase58()])]);
+  const USDC_MINT: AccountData = {lamports: 1n, owner: TOKEN_PROGRAM, data: usdcLikeMint()};
+  const approveScene = (delegated: bigint, mint: AccountData | null, o: {readFails?: (addresses: readonly string[]) => boolean} = {}) =>
+    scene({
+      holdings: [holding(SRC, MAINNET_USDC_MINT, 100n, 6)],
+      accounts: new Map<string, AccountData | null>([
+        [SRC, tokenAfter(MAINNET_USDC_MINT, 100n)],
+        [MAINNET_USDC_MINT, mint],
+      ]),
+      post: a => (a === SRC ? tokenDelegated(MAINNET_USDC_MINT, 100n, DELEGATE, delegated) : meAfter(a)),
+      ...o,
+    });
+  /** The stored form of a simulation (as storage.session gives it back), edited. */
+  const storedWith = (sim: TxSimulation, edit: (s: Json) => void = () => {}): unknown => {
+    const copy = JSON.parse(JSON.stringify(sim)) as Json;
+    edit(copy);
+    return {status: 'ok', sim: copy};
+  };
+  const flagsOf = (s: Json, tx = 0): Json[] => (s.flags as Json[][])[tx] ?? [];
+  const flag = (s: Json, kind: string, tx = 0): Json => {
+    const f = flagsOf(s, tx).find(x => x.kind === kind);
+    if (f === undefined) throw new Error(`no ${kind} flag`);
+    return f;
+  };
+
+  it('every mint the flags need is read in one batch, the wallet’s own tokens too: an unlimited USDC approve’s word is USDC, and the block adds `override`', async () => {
+    const s = approveScene(U64_MAX, USDC_MINT);
+    const sim = await run(s, [approve(U64_MAX)], () => true);
+    // USDC's decimals are known without a read (KNOWN_DECIMALS) — read anyway: F5's word needs the mint's own decimals.
+    expect(s.reads).toEqual([[], [ME.toBase58(), SRC, DELEGATE], [MAINNET_USDC_MINT]]);
+    expect(sim.flags[0]?.find(f => f.kind === 'unlimited-approve')).toMatchObject({severity: 'block', word: 'USDC'});
+    expect(sim.reasons).toEqual(['approval', 'override']);
+    // The mint unreadable: no symbol (fail closed) — the word is UNLIMITED, still a block.
+    const unread = await run(approveScene(U64_MAX, null), [approve(U64_MAX)], () => true);
+    expect(unread.flags[0]?.find(f => f.kind === 'unlimited-approve')?.word).toBe('UNLIMITED');
+    expect(unread.reasons).toEqual(['approval', 'override']);
+    // Negative control: a bounded approve is a warning — no block, no `override`.
+    const bounded = await run(approveScene(50n, USDC_MINT), [approve(50n)], () => true);
+    expect(bounded.flags[0]?.map(f => [f.kind, f.severity])).toEqual([
+      ['non-transfer', 'warn'],
+      ['bounded-approve', 'warn'],
+    ]);
+    expect(bounded.reasons).toEqual(['approval']);
+  });
+
+  it('the mint read failing is a failed read like any other: it throws (the caller records the simulation as unreachable)', async () => {
+    const s = approveScene(50n, USDC_MINT, {readFails: a => a.includes(MAINNET_USDC_MINT)});
+    await expect(run(s, [approve(50n)], () => true)).rejects.toThrow('unreachable');
+  });
+
+  it('more mints than one read may name: the first MAX_MULTIPLE_ACCOUNTS read in one call, every other one warns it could not be read (Q36) — never silence, never unreachable', async () => {
+    const k = (tag: number, n: number) => base58.encode(Uint8Array.from({length: 32}, (_, i) => (i === 0 ? tag : i === 1 ? n : 7)));
+    const owned = Array.from({length: 120}, (_, n) => k(201, n));
+    const mints = Array.from({length: 120}, (_, n) => k(202, n));
+    const table = new PublicKey(k(203, 0));
+    const data = new Uint8Array(56 + 32 * owned.length);
+    new DataView(data.buffer).setUint32(0, 1, true);
+    owned.forEach((a, n) => data.set(base58.decode(a), 56 + 32 * n));
+    const alt = {key: table, state: {deactivationSlot: 2n ** 64n - 1n, lastExtendedSlot: 0, lastExtendedSlotStartIndex: 0, authority: undefined, addresses: owned.map(a => new PublicKey(a))}, isActive: () => true} as unknown as AddressLookupTableAccount;
+    const accounts = new Map<string, AccountData | null>([[table.toBase58(), {lamports: 1n, owner: ADDRESS_LOOKUP_TABLE_PROGRAM, data}]]);
+    owned.forEach((a, n) => accounts.set(a, tokenAfter(mints[n] ?? '', 1n)));
+    // Every mint a classic one (never flagged, O3) — so a warning can only mean "not read".
+    for (const m of mints) accounts.set(m, {lamports: 1n, owner: TOKEN_PROGRAM, data: mintBytes({decimals: 0})});
+    const s = scene({accounts, post: a => (a === ME.toBase58() ? plain(SOL - 5_000n) : (accounts.get(a) ?? null))});
+    const sim = await run(s, [wire([unknownIx(owned.slice(0, 60))], {tables: [alt]}), wire([unknownIx(owned.slice(60))], {tables: [alt]})], () => true);
+    expect(s.reads.map(r => r.length)).toEqual([1, 61, 61, MAX_MULTIPLE_ACCOUNTS]);
+    expect(s.reads[3]).toEqual(mints.slice(0, MAX_MULTIPLE_ACCOUNTS));
+    expect(sim.flags[0]?.filter(f => f.kind === 'token-2022')).toEqual([]);
+    expect(sim.flags[1]?.filter(f => f.kind === 'token-2022')).toEqual(mints.slice(MAX_MULTIPLE_ACCOUNTS).map(mint => ({kind: 'token-2022', severity: 'warn', word: null, at: null, mint, settings: null})));
+  });
+
+  it('simStateOf: the stored flags are read back strictly — a stored `override` with its block passes, as fresh objects', async () => {
+    const sim = await run(approveScene(U64_MAX, USDC_MINT), [approve(U64_MAX)], () => true);
+    const stored = storedWith(sim);
+    const back = simStateOf(stored);
+    expect(back).toEqual({status: 'ok', sim});
+    expect(back?.status === 'ok' ? back.sim.flags[0]?.[0] : null).not.toBe(((stored as {sim: Json}).sim.flags as Json[][])[0]?.[0]);
+    const bounded = await run(approveScene(50n, USDC_MINT), [approve(50n)], () => true);
+    expect(simStateOf(storedWith(bounded))).toEqual({status: 'ok', sim: bounded});
+    // Review 3 L14: an unnamed token's word is read back with its rule — UNLIMITED at u64::MAX, ALLOWANCE below it.
+    const unnamed = (amount: string, word: string) => (s: Json) => {
+      const f = flag(s, 'unlimited-approve');
+      f.approvals = [{...(f.approvals as Json[])[0], symbol: null, amount}];
+      f.word = word;
+    };
+    expect(simStateOf(storedWith(sim, unnamed(U64_MAX.toString(), 'UNLIMITED')))?.status).toBe('ok');
+    expect(simStateOf(storedWith(sim, unnamed('18446744073709551614', 'ALLOWANCE')))?.status).toBe('ok');
+    expect(simStateOf(storedWith(sim, unnamed(U64_MAX.toString(), 'ALLOWANCE')))).toBeNull();
+    expect(simStateOf(storedWith(sim, unnamed('18446744073709551614', 'UNLIMITED')))).toBeNull();
+  });
+
+  it('simStateOf: an invalid stored flag makes the stored simulation invalid (it is simulated again, never approvable)', async () => {
+    const sim = await run(approveScene(U64_MAX, USDC_MINT), [approve(U64_MAX)], () => true);
+    const bounded = await run(approveScene(50n, USDC_MINT), [approve(50n)], () => true);
+    const edits: [string, TxSimulation, (s: Json) => void][] = [
+      ['no flags', sim, s => delete s.flags],
+      ['a list per transaction missing', sim, s => (s.flags = [])],
+      ['an unknown kind', sim, s => (flag(s, 'unlimited-approve').kind = 'drain')],
+      ['a word not the one its approvals give (case)', sim, s => (flag(s, 'unlimited-approve').word = 'usdc')],
+      ['a word not the one its approvals give', sim, s => (flag(s, 'unlimited-approve').word = 'UNLIMITED')],
+      ['a block stored as a warning', sim, s => (flag(s, 'unlimited-approve').severity = 'warn')],
+      ['a key more', sim, s => (flag(s, 'unlimited-approve').extra = 1)],
+      ['a key less', sim, s => delete flag(s, 'non-transfer').at],
+      ['an approval’s symbol not its mint’s', sim, s => ((flag(s, 'unlimited-approve').approvals as Json[])[0] = {...(flag(s, 'unlimited-approve').approvals as Json[])[0], symbol: 'USDT'})],
+      [
+        'an approval’s symbol not its mint’s, its word made to agree',
+        sim,
+        s => {
+          const f = flag(s, 'unlimited-approve');
+          f.approvals = [{...(f.approvals as Json[])[0], symbol: 'USDT'}];
+          f.word = 'USDT';
+        },
+      ],
+      ['an approval’s amount not base units', sim, s => ((flag(s, 'unlimited-approve').approvals as Json[])[0] = {...(flag(s, 'unlimited-approve').approvals as Json[])[0], amount: '-1'})],
+      ['a flag’s position not its first instruction', sim, s => (flag(s, 'non-transfer').at = 3)],
+      ['a block without the `override` reason', sim, s => (s.reasons = ['approval'])],
+      ['an unknown reason', sim, s => (s.reasons = ['approval', 'override', 'drain'])],
+      ['`override` with no block', bounded, s => (s.reasons = ['approval', 'override'])],
+      ['a warning stored as a block', bounded, s => (flag(s, 'bounded-approve').severity = 'block')],
+    ];
+    for (const [name, base, edit] of edits) expect([name, simStateOf(storedWith(base, edit))]).toEqual([name, null]);
+  });
+
+  describe('R10: an SPL transfer’s destination resolved to its owner', () => {
+    /** Whether the request re-authenticates as a first send; `dest` is the destination's pre-state. */
+    const firstSend = async (txs: TransactionInstruction[][], o: {dest?: AccountData | null; known?: string[]} = {}) => {
+      const s = scene({
+        holdings: [holding(SRC, NOC, 1_000n)],
+        accounts: new Map<string, AccountData | null>([
+          [SRC, tokenAfter(NOC, 1_000n)],
+          [DEST, o.dest ?? null],
+        ]),
+        post: a => (a === SRC ? tokenAfter(NOC, 999n) : meAfter(a)),
+      });
+      const sim = await run(s, txs.map(ixs => wire(ixs)), a => (o.known ?? []).includes(a));
+      return sim.reasons.includes('first-send');
+    };
+    const theirs = tokenAfter(NOC, 0n, TO.toBase58());
+
+    it('its pre-state, a token account: an owner the account sent to before, or the account itself, is no first send; anyone else is', async () => {
+      expect(await firstSend([[tokenTransfer(DEST)]], {dest: theirs, known: [TO.toBase58()]})).toBe(false);
+      expect(await firstSend([[tokenTransfer(DEST)]], {dest: t22After(NOC, 0n, TO.toBase58()), known: [TO.toBase58()]})).toBe(false);
+      expect(await firstSend([[tokenTransfer(DEST)]], {dest: theirs})).toBe(true);
+      // The account's own token account, though the holdings snapshot does not list it.
+      expect(await firstSend([[tokenTransfer(DEST)]], {dest: tokenAfter(NOC, 0n)})).toBe(false);
+    });
+
+    it('absent before and created in the same transaction by an ATA create / createIdempotent: that instruction’s wallet decides', async () => {
+      expect(await firstSend([[ataIx(DEST, TO.toBase58(), NOC), tokenTransfer(DEST)]], {known: [TO.toBase58()]})).toBe(false);
+      expect(await firstSend([[ataIx(DEST, TO.toBase58(), NOC, 0), tokenTransfer(DEST)]], {known: [TO.toBase58()]})).toBe(false);
+      expect(await firstSend([[ataIx(DEST, ME.toBase58(), NOC), tokenTransfer(DEST)]])).toBe(false);
+      expect(await firstSend([[ataIx(DEST, TO.toBase58(), NOC), tokenTransfer(DEST)]])).toBe(true);
+      // An ATA created for another account is not this destination's.
+      expect(await firstSend([[ataIx(keyOf(52), TO.toBase58(), NOC), tokenTransfer(DEST)]], {known: [TO.toBase58()]})).toBe(true);
+    });
+
+    it('fail closed: unreadable, not a token account, an existing account an ATA create names, or created by another transaction of the batch — a first send', async () => {
+      expect(await firstSend([[tokenTransfer(DEST)]], {known: [TO.toBase58(), DEST]})).toBe(true);
+      // A plain account at the destination (no token layout) — its own address "known" changes nothing.
+      expect(await firstSend([[tokenTransfer(DEST)]], {dest: plain(1n), known: [TO.toBase58(), DEST]})).toBe(true);
+      expect(await firstSend([[ataIx(DEST, TO.toBase58(), NOC), tokenTransfer(DEST)]], {dest: plain(1n), known: [TO.toBase58()]})).toBe(true);
+      expect(await firstSend([[ataIx(DEST, TO.toBase58(), NOC)], [tokenTransfer(DEST)]], {known: [TO.toBase58()]})).toBe(true);
+    });
+
+    it('per transaction (F9 is per transaction): the whole-balance warning only on the transaction that sends to a first-time address', async () => {
+      const s = scene({post: (a, call) => (a === ME.toBase58() ? plain(call === 1 ? SOL - 5_001n : SOL - 9_950_005_000n) : null)});
+      const sim = await run(s, [wire([SystemProgram.transfer({fromPubkey: ME, toPubkey: TO, lamports: 1})]), wire([SystemProgram.transfer({fromPubkey: ME, toPubkey: new PublicKey(keyOf(53)), lamports: 9_950_000_000})])], a => a === TO.toBase58());
+      expect(sim.reasons).toContain('whole-balance-to-new');
+      expect(sim.flags.map(list => list.some(f => f.kind === 'whole-balance'))).toEqual([false, true]);
+    });
+  });
+
+  describe('F10: a step that depends on an earlier one of the same batch', () => {
+    const invalid = {InstructionError: [0, 'InvalidAccountData']};
+    const batch = (txs: TransactionInstruction[][], errAt: (call: number) => unknown, payers: (PublicKey | undefined)[] = []) =>
+      run(
+        scene({holdings: [holding(SRC, NOC, 1_000n)], accounts: new Map([[SRC, tokenAfter(NOC, 1_000n)]]), post: a => (a === SRC ? tokenAfter(NOC, 1_000n) : meAfter(a)), errAt}),
+        txs.map((ixs, i) => wire(ixs, {payer: payers[i]})),
+        () => true,
+      );
+    const dependent = (sim: TxSimulation): boolean => sim.outcomes.some(o => !o.ok && o.error === 'dependent') || sim.flags.flat().some(f => f.kind === 'dependent');
+
+    it('create the token account, then transfer to it: step 2 depends on step 1 — said in its outcome, blocked (UNCHECKED), and the request re-authenticates (override)', async () => {
+      const sim = await batch([[ataIx(DEST, TO.toBase58(), NOC)], [tokenTransfer(DEST)]], call => (call === 2 ? invalid : null));
+      expect(sim.outcomes[0]).toMatchObject({ok: true});
+      expect(sim.outcomes[1]).toEqual({ok: false, error: 'dependent', on: 1, detail: '{"InstructionError":[0,"InvalidAccountData"]}'});
+      expect(sim.flags[1]).toContainEqual({kind: 'dependent', severity: 'block', word: 'UNCHECKED', at: null, on: 0});
+      // The transfer's destination is created by step 1, not by its own transaction: R10 cannot name its owner — a first send.
+      expect(sim.reasons).toEqual(['first-send', 'override']);
+      // Stored and read back; a stored dependent step without its flag, or with another step, is invalid.
+      expect(simStateOf(storedWith(sim))).toEqual({status: 'ok', sim});
+      const drop = (s: Json) => ((s.flags as Json[][])[1] = flagsOf(s, 1).filter(f => f.kind !== 'dependent'));
+      expect(simStateOf(storedWith(sim, drop))).toBeNull();
+      expect(simStateOf(storedWith(sim, s => (flag(s, 'dependent', 1).on = 1)))).toBeNull();
+      expect(simStateOf(storedWith(sim, s => ((s.outcomes as Json[])[1] = {...(s.outcomes as Json[])[1], on: 0})))).toBeNull();
+      expect(simStateOf(storedWith(sim, s => ((s.outcomes as Json[])[1] = {...(s.outcomes as Json[])[1], error: 'failed'})))).toBeNull();
+      // Review 1 L2: a step depends only on an earlier one — on itself or a later step, flag and outcome agreeing, it is invalid.
+      for (const on of [1, 2]) {
+        const later = (s: Json) => {
+          flag(s, 'dependent', 1).on = on;
+          (s.outcomes as Json[])[1] = {...(s.outcomes as Json[])[1], on: on + 1};
+        };
+        expect(simStateOf(storedWith(sim, later))).toBeNull();
+      }
+    });
+
+    it('never dependent: a failure in step 1 (nor on itself); one naming an account only a LATER step creates; an unrelated one; an expired blockhash stays expired', async () => {
+      const first = await batch([[tokenTransfer(DEST)], [ataIx(DEST, TO.toBase58(), NOC)]], call => (call === 1 ? invalid : null));
+      expect(first.outcomes[0]).toEqual({ok: false, error: 'failed', detail: '{"InstructionError":[0,"InvalidAccountData"]}'});
+      const itself = await batch([[ataIx(DEST, TO.toBase58(), NOC), tokenTransfer(DEST)]], () => ({InstructionError: [1, 'InvalidAccountData']}));
+      expect(itself.outcomes[0]).toMatchObject({ok: false, error: 'failed'});
+      const later = await batch([[SystemProgram.transfer({fromPubkey: ME, toPubkey: TO, lamports: 1})], [tokenTransfer(DEST)], [ataIx(DEST, TO.toBase58(), NOC)]], call => (call === 2 ? invalid : null));
+      expect(later.outcomes[1]).toMatchObject({ok: false, error: 'failed'});
+      const unrelated = await batch([[ataIx(DEST, TO.toBase58(), NOC)], [tokenTransfer(keyOf(54))]], call => (call === 2 ? invalid : null));
+      expect(unrelated.outcomes[1]).toMatchObject({ok: false, error: 'failed'});
+      const expired = await batch([[ataIx(DEST, TO.toBase58(), NOC)], [tokenTransfer(DEST)]], call => (call === 2 ? 'BlockhashNotFound' : null));
+      expect(expired.outcomes[1]).toEqual({ok: false, error: 'expired', detail: '"BlockhashNotFound"'});
+      for (const sim of [first, itself, later, unrelated, expired]) {
+        expect(dependent(sim)).toBe(false);
+        expect(sim.reasons).not.toContain('override');
+      }
+    });
+
+    it('the instruction the error names decides — its own resolved accounts, never another instruction’s', async () => {
+      const txs = [[ataIx(DEST, TO.toBase58(), NOC)], [SystemProgram.transfer({fromPubkey: ME, toPubkey: TO, lamports: 1}), tokenTransfer(DEST)]];
+      expect((await batch(txs, call => (call === 2 ? {InstructionError: [0, {Custom: 1}]} : null))).outcomes[1]).toMatchObject({error: 'failed'});
+      expect((await batch(txs, call => (call === 2 ? {InstructionError: [1, {Custom: 1}]} : null))).outcomes[1]).toMatchObject({error: 'dependent', on: 1});
+    });
+
+    it('only the shapes Agave’s TransactionError takes for it: InstructionError [index, error], and AccountNotFound for a fee payer an earlier step creates; anything else is a plain failure', async () => {
+      const txs = [[ataIx(DEST, TO.toBase58(), NOC)], [tokenTransfer(DEST)]];
+      for (const err of [{InstructionError: ['0', 'InvalidAccountData']}, {InstructionError: [0]}, {InstructionError: [0, 'X', 1]}, {InstructionError: [1, 'X']}, {InstructionError: [-1, 'X']}, {InstructionError: [0.5, 'X']}, {InstructionError: [0, 'X'], extra: 1}, 'InvalidAccountForFee', 'ProgramAccountNotFound', {InsufficientFundsForRent: {account_index: 1}}, 'AccountNotFound']) {
+        const sim = await batch(txs, call => (call === 2 ? err : null));
+        expect([err, sim.outcomes[1]]).toEqual([err, {ok: false, error: 'failed', detail: JSON.stringify(err)}]);
+      }
+      // AccountNotFound: the fee payer has no lamports — attributable when an earlier step creates it.
+      const payer = new PublicKey(keyOf(55));
+      const fund = SystemProgram.createAccount({fromPubkey: ME, newAccountPubkey: payer, lamports: 1_000_000, space: 0, programId: SystemProgram.programId});
+      const spend = SystemProgram.transfer({fromPubkey: payer, toPubkey: TO, lamports: 1});
+      const sim = await batch([[fund], [spend]], call => (call === 2 ? 'AccountNotFound' : null), [undefined, payer]);
+      expect(sim.outcomes[1]).toEqual({ok: false, error: 'dependent', on: 1, detail: '"AccountNotFound"'});
+      // The same error when no earlier step creates the fee payer: a plain failure.
+      const other = await batch([[SystemProgram.transfer({fromPubkey: ME, toPubkey: payer, lamports: 1})], [spend]], call => (call === 2 ? 'AccountNotFound' : null), [undefined, payer]);
+      expect(other.outcomes[1]).toMatchObject({error: 'failed'});
+    });
+
+    it('every creator counts — System createAccount / createAccountWithSeed, ATA create / createIdempotent, Token initializeAccount / 2 / 3; a step that only pays the account does not', async () => {
+      const dest = new PublicKey(DEST);
+      const owner = Array.from(ME.toBytes());
+      const creators: [string, TransactionInstruction][] = [
+        ['createAccount', SystemProgram.createAccount({fromPubkey: ME, newAccountPubkey: dest, lamports: 2_039_280, space: 165, programId: new PublicKey(TOKEN_PROGRAM)})],
+        ['createAccountWithSeed', SystemProgram.createAccountWithSeed({fromPubkey: ME, newAccountPubkey: dest, basePubkey: ME, seed: 'noc', lamports: 2_039_280, space: 165, programId: new PublicKey(TOKEN_PROGRAM)})],
+        ['create', ataIx(DEST, TO.toBase58(), NOC, 0)],
+        ['createIdempotent', ataIx(DEST, TO.toBase58(), NOC, 1)],
+        ['initializeAccount', tokenIx([1], [DEST, NOC, ME.toBase58(), SYSVAR_RENT_PUBKEY.toBase58()])],
+        ['initializeAccount2', tokenIx([16, ...owner], [DEST, NOC, SYSVAR_RENT_PUBKEY.toBase58()])],
+        ['initializeAccount3', tokenIx([18, ...owner], [DEST, NOC])],
+      ];
+      for (const [name, ix] of creators) {
+        const sim = await batch([[ix], [tokenTransfer(DEST)]], call => (call === 2 ? invalid : null));
+        expect([name, sim.outcomes[1]]).toEqual([name, {ok: false, error: 'dependent', on: 1, detail: '{"InstructionError":[0,"InvalidAccountData"]}'}]);
+      }
+      const pays = await batch([[SystemProgram.transfer({fromPubkey: ME, toPubkey: dest, lamports: 2_039_280})], [tokenTransfer(DEST)]], call => (call === 2 ? invalid : null));
+      expect(pays.outcomes[1]).toMatchObject({error: 'failed'});
+    });
   });
 });

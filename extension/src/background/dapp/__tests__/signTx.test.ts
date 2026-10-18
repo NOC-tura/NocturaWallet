@@ -1,11 +1,11 @@
 import {ed25519} from '@noble/curves/ed25519.js';
 import {base58, base64} from '@scure/base';
-import {VersionedTransaction} from '@solana/web3.js';
+import {PublicKey, SystemProgram, VersionedTransaction} from '@solana/web3.js';
 import {AUTOLOCK_ALARM, lock} from '../../autolock';
 import {GRANTS_KEY, type Grant} from '../grants';
 import {runtimeFor} from '../ports';
 import {DAPP_SESSION_KEY, readDappSession} from '../store';
-import {SIM_REFRESH_MS, SIM_RETRY_MS, SIM_VALID_MS, dappAbout, dappDigest, withSignature} from '../signTx';
+import {SIM_REFRESH_MS, SIM_RETRY_MS, SIM_VALID_MS, dappAbout, dappDigest, outgoingGrew, withSignature} from '../signTx';
 import {MAX_DAPP_OUTGOING, issueChallenge} from '../../reauthChallenges';
 import {REAUTH_KEY} from '../../session';
 import {ACCOUNT, RECIPIENT} from '../../__tests__/fixtures';
@@ -525,6 +525,55 @@ describe('re-authentication for a transaction request', () => {
     expect(c.page.answersFor(requestId)).toEqual([]);
     expect((await c.entry(requestId))?.state).toBe('queued');
     expect((await c.entry(requestId))?.challengeId).toBeNull();
+  });
+});
+
+// B1c-3 (the final review's minor): #10 lists at most MAX_DAPP_OUTGOING mints and counts the rest — a refresh that
+// adds a mint past the list moves nothing listed, but the description no longer covers it.
+describe('outgoingGrew', () => {
+  const row = {mint: null, symbol: 'SOL' as const, amount: '5', decimals: 9};
+  it('a mint more cut from the list (omitted grew) is growth; the same count, or fewer, is not', () => {
+    expect(outgoingGrew({outgoing: [row], omitted: 1}, {outgoing: [row], omitted: 0})).toBe(true);
+    expect(outgoingGrew({outgoing: [row], omitted: 1}, {outgoing: [row], omitted: 1})).toBe(false);
+    expect(outgoingGrew({outgoing: [row], omitted: 0}, {outgoing: [row], omitted: 1})).toBe(false);
+    // B1c-2's rule unchanged: a listed amount that grew.
+    expect(outgoingGrew({outgoing: [{...row, amount: '6'}], omitted: 0}, {outgoing: [row], omitted: 0})).toBe(true);
+  });
+});
+
+// Brief "Carried items" (B1c-3): a durable-nonce transaction against the 30 s refresh and Q21. The proxy simulates with
+// replaceRecentBlockhash: false (core/solana/rpc.ts; pinned by core's rpc.test.ts), so the node checks a nonce
+// transaction's blockhash against its nonce account, not against the recent-blockhash queue: its age never expires it,
+// and the wallet derives no expiry of its own. Only the node's BlockhashNotFound does — the nonce advanced or the
+// account closed, so the transaction can never land: Q21 is then the truth.
+describe('a durable-nonce transaction and the refresh (Q21)', () => {
+  const nonceTx = () => v0([SystemProgram.nonceAdvance({noncePubkey: new PublicKey(new Uint8Array(32).fill(61)), authorizedPubkey: ME}), transfer(1)]);
+
+  it('every refresh stays simulated — never expired by age; the warning is stored with each; approvable', async () => {
+    const c = await txScene({known: [RECIPIENT]});
+    const requestId = String((await c.signTx('t', [nonceTx()]))?.requestId);
+    let id = String((await c.simulated()).request?.tx?.simulation.id);
+    for (let n = 0; n < 3; n++) {
+      c.deps.clock.t += SIM_REFRESH_MS;
+      const view = await c.simulated(id);
+      id = String(view.request?.tx?.simulation.id);
+      expect((view.request?.tx?.transactions as {outcome: unknown}[])[0]?.outcome).toMatchObject({ok: true});
+      const e = await c.entry(requestId);
+      expect(e?.sim?.status === 'ok' ? e.sim.sim.flags[0]?.map(f => f.kind) : null).toContain('durable-nonce');
+    }
+    expect(c.chain.calls.get('simulateTransaction')).toBe(4);
+    expect(await c.approve(requestId, id)).toEqual({ok: true});
+  });
+
+  it('the node’s own BlockhashNotFound (the nonce advanced) is expired, as for any transaction: Reject only', async () => {
+    const c = await txScene({known: [RECIPIENT]});
+    const requestId = String((await c.signTx('t', [nonceTx()]))?.requestId);
+    const id = String((await c.simulated()).request?.tx?.simulation.id);
+    c.chain.err = 'BlockhashNotFound';
+    c.deps.clock.t += SIM_REFRESH_MS;
+    const view = await c.simulated(id);
+    expect((view.request?.tx?.transactions as {outcome: unknown}[])[0]?.outcome).toEqual({ok: false, error: 'expired', detail: '"BlockhashNotFound"'});
+    expect(await c.approve(requestId, view.request?.tx?.simulation.id)).toEqual({ok: false, error: 'blockhash-expired'});
   });
 });
 

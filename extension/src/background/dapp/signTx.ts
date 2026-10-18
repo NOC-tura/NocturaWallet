@@ -178,6 +178,8 @@ export async function txDetail(ext: Ext, e: Entry, session: readonly {publicKey:
   return {transactions, simulation, reauth, labels};
 }
 
+type DappAbout = Extract<ChallengeAbout, {kind: 'dapp'}>;
+
 /** What a dApp challenge is bound to: this request and its exact bytes, for this account. */
 export const dappDigest = (e: Pick<Entry, 'requestId' | 'account' | 'transactions'>): string => digestOf('dapp', {requestId: e.requestId, account: e.account, transactions: e.transactions});
 
@@ -249,11 +251,13 @@ function reasonsCovered(fresh: readonly DappReauthReason[], issued: readonly Dap
 
 /**
  * Whether any mint's fresh outgoing amount exceeds what the issued challenge described — a mint absent from the
- * issued list (new since the challenge was issued) counts as having had 0.
+ * issued list (new since the challenge was issued) counts as having had 0 — or more mints are cut from the list than
+ * were (B1c-3, the final review's minor: a mint past MAX_DAPP_OUTGOING was never described either).
  */
-function outgoingGrew(fresh: readonly DappOutgoing[], issued: readonly DappOutgoing[]): boolean {
-  const had = new Map(issued.map(o => [o.mint, BigInt(o.amount)]));
-  return fresh.some(o => BigInt(o.amount) > (had.get(o.mint) ?? 0n));
+export function outgoingGrew(fresh: Pick<DappAbout, 'outgoing' | 'omitted'>, issued: Pick<DappAbout, 'outgoing' | 'omitted'>): boolean {
+  if (fresh.omitted > issued.omitted) return true;
+  const had = new Map(issued.outgoing.map(o => [o.mint, BigInt(o.amount)]));
+  return fresh.outgoing.some(o => BigInt(o.amount) > (had.get(o.mint) ?? 0n));
 }
 
 /**
@@ -279,7 +283,7 @@ export async function reauthGate(ext: Ext, deps: Pick<WalletDeps, 'now' | 'rando
   const current = e.challengeId !== null ? await challengeInfo(ext, now, e.challengeId) : null;
   const fresh = dappAbout(e, site, (await readSettings(ext)).reauthUsdCents);
   if (fresh === null) return 'stale';
-  const stillCovers = current !== null && current.kind === 'dapp' && reasonsCovered(fresh.reasons, current.reasons) && !outgoingGrew(fresh.outgoing, current.outgoing);
+  const stillCovers = current !== null && current.kind === 'dapp' && reasonsCovered(fresh.reasons, current.reasons) && !outgoingGrew(fresh, current);
   if (!stillCovers) {
     const id = await issueChallenge(ext, deps, digest, fresh);
     const superseded = e.challengeId;
