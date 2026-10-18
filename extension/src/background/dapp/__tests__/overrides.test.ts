@@ -3,6 +3,7 @@ import {base64} from '@scure/base';
 import {PublicKey, TransactionMessage, VersionedTransaction, type AddressLookupTableAccount, type TransactionInstruction} from '@solana/web3.js';
 import {ATA_PROGRAM} from '../decode/decode';
 import {MAX_OVERRIDES, decideRequestOf} from '../decide';
+import {expectedOverrides} from '../redFlags';
 import {DAPP_SESSION_KEY, readDappSession, type Entry} from '../store';
 import {SIM_REFRESH_MS, SIM_VALID_MS, dappAbout, dappDigest, txRefused} from '../signTx';
 import {UNRESOLVED_LOOKUP_DETAIL} from '../simulate';
@@ -266,6 +267,57 @@ describe('the override’s re-authentication follows the flags (reauthGate)', ()
     expect(c.page.answersFor(c.requestId)).toEqual([]);
     expect(await c.reauthOk(second)).toEqual({ok: true});
     expect(await c.approve(both, fresh)).toEqual({ok: true});
+  });
+
+  // Fix round 1, I1: the transaction index is part of what #10 named ("Transaction <n> of <m>").
+  it('a refresh that moves a block to another transaction (same row, same word) re-issues it — #10 named the transaction; the block staying put keeps the proof (positive control)', async () => {
+    const two = () => scene({txs: [v0([assign()]), v0([transfer(1)])]});
+    // Positive control: a refresh (another id) with the block still on transaction 1 of 2 — the proof covers it, signed.
+    const kept = await two();
+    await proveWith(kept, WORDS);
+    const same = await kept.restore(() => undefined);
+    expect(await kept.approve(WORDS, same)).toEqual({ok: true});
+    // The block moved to transaction 2 of 2: the words follow it, and the old proof no longer speaks for it.
+    const c = await two();
+    const first = await proveWith(c, WORDS);
+    const moved = await c.restore(sim => {
+      sim.flags[1] = [...(sim.flags[0] ?? []), ...(sim.flags[1] ?? [])];
+      sim.flags[0] = [];
+    });
+    expect(await c.approve(WORDS, moved)).toEqual(REFUSED('override-mismatch'));
+    const words = [{tx: 1, word: 'ASSIGN'}];
+    expect(await c.approve(words, moved)).toEqual(REFUSED('reauth-required'));
+    const second = String(await c.challengeId());
+    expect(second).not.toBe(first);
+    expect(await c.reauthOk(first)).toEqual({ok: false, error: 'unknown-challenge'});
+    const flags = ((await c.challengeInfo(second)) as {data: {flags: unknown[]}}).data.flags;
+    expect(flags).toContainEqual({tx: 1, row: 'F3', word: 'ASSIGN', step: null});
+    expect(flags).not.toContainEqual({tx: 0, row: 'F3', word: 'ASSIGN', step: null});
+    expect(c.page.answersFor(c.requestId)).toEqual([]);
+    expect(await c.reauthOk(second)).toEqual({ok: true});
+    expect(await c.approve(words, moved)).toEqual({ok: true});
+  });
+
+  // Fix round 1, Minor 2: #10 has one entry per (transaction, row) while the expected words are one per block — two
+  // blocks of one row on one transaction carry one word, so both lists stay in step: one entry, one word, satisfiable.
+  it('two blocks of one row on one transaction (a stored simulation): one challenge entry, one expected word — given once it is satisfied; twice is a mismatch', async () => {
+    const c = await scene();
+    const both = await c.restore(sim => {
+      const own = (sim.flags[0] ?? []).find(f => f.kind === 'assign');
+      if (own === undefined) throw new Error('no F3');
+      sim.flags[0] = [own, structuredClone(own), ...(sim.flags[0] ?? []).filter(f => f !== own)];
+    });
+    const e = await c.entry(c.requestId);
+    if (e === undefined || e.sim?.status !== 'ok') throw new Error('not simulated');
+    expect(e.sim.sim.flags[0]?.filter(f => f.kind === 'assign')).toHaveLength(2);
+    expect(new Set(expectedOverrides(e.sim.sim.flags).map(o => JSON.stringify(o)))).toEqual(new Set([JSON.stringify({tx: 0, word: 'ASSIGN'})]));
+    expect(await c.approve([...WORDS, ...WORDS], both)).toEqual(REFUSED('override-mismatch'));
+    expect(await c.approve(WORDS, both)).toEqual(REFUSED('reauth-required'));
+    const id = String(await c.challengeId());
+    const flags = ((await c.challengeInfo(id)) as {data: {flags: {row: string}[]}}).data.flags;
+    expect(flags.filter(f => f.row === 'F3')).toEqual([{tx: 0, row: 'F3', word: 'ASSIGN', step: null}]);
+    expect(await c.reauthOk(id)).toEqual({ok: true});
+    expect(await c.approve(WORDS, both)).toEqual({ok: true});
   });
 
   it('a refresh that adds a warning re-issues it too — #10 described every flag it was shown', async () => {
