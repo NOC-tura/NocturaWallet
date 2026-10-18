@@ -1737,6 +1737,11 @@
 .s9-flag-banner.danger .head { color: var(--danger); }
 .s9-flag-banner .body { font-size: 12px; line-height: 16px; color: var(--fg-secondary); margin: 4px 0 0; }
 .s9-flag-banner .meta { font-family: var(--font-mono); font-size: 11px; color: var(--fg-tertiary); margin-top: 4px; word-break: break-all; }
+.s9-typed-confirm { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); background: var(--bg-surface-2); border-radius: var(--radius-md); margin-top: var(--space-2); }
+.s9-typed-confirm .label { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--danger); }
+.s9-typed-confirm .input { padding: 10px 14px; background: var(--bg-base); border: 1px solid color-mix(in oklab, var(--danger) 32%, transparent); border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 16px; line-height: 22px; font-weight: 600; color: var(--fg-primary); letter-spacing: 0.05em; min-height: 48px; display: flex; align-items: center; }
+.s9-typed-confirm .input.match { border-color: var(--success); }
+.s9-typed-confirm .input.empty { color: var(--fg-tertiary); font-weight: 400; }
 .s9-origin-pill { display: flex; align-items: center; gap: var(--space-2); padding: 8px 12px; background: var(--bg-surface-2); border-radius: var(--radius-md); }
 .s9-origin-pill .dot { width: 6px; height: 6px; border-radius: 50%; }
 .s9-origin-pill .dot.ok   { background: var(--success); }

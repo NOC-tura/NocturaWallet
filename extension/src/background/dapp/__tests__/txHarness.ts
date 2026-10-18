@@ -1,7 +1,7 @@
 import {ed25519} from '@noble/curves/ed25519.js';
 import {base64} from '@scure/base';
 import {PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction} from '@solana/web3.js';
-import type {SimulationOutcome, SolanaReader} from '../../../../../core/solana/rpc';
+import type {AccountData, SimulationOutcome, SolanaReader} from '../../../../../core/solana/rpc';
 import {handleMessage} from '../../messages';
 import {setSession} from '../../session';
 import {VAULT_KEY} from '../../accountsStore';
@@ -99,6 +99,18 @@ export const tokenTransfer = (destination: PublicKey, source = new PublicKey(new
     ],
   });
 
+/** B1c-3 (Task 5): a Token approve (tag 4) of `amount` from `source` to `delegate`, the account its owner. */
+export const tokenApprove = (source: PublicKey, delegate: PublicKey, amount: bigint): TransactionInstruction =>
+  new TransactionInstruction({
+    programId: new PublicKey(TOKEN_PROGRAM),
+    data: Buffer.from([4, ...u64le(amount)]),
+    keys: [
+      {pubkey: source, isSigner: false, isWritable: true},
+      {pubkey: delegate, isSigner: false, isWritable: false},
+      {pubkey: ME, isSigner: true, isWritable: false},
+    ],
+  });
+
 export interface Chain {
   /** simulateTransaction's error (null: it runs). */
   err: unknown;
@@ -108,6 +120,11 @@ export interface Chain {
   calls: Map<string, number>;
   /** getBalance throws while set. */
   down: boolean;
+  /**
+   * B1c-3 (Task 5): accounts besides the wallet's (a token account, a mint) — what getAccountsData reads, and each one's
+   * post-state in a simulation (unchanged by it).
+   */
+  accounts: Map<string, AccountData>;
 }
 
 /** The steered chain (exported for the approval window's tests). */
@@ -132,7 +149,7 @@ export function chainReader(chain: Chain): SolanaReader {
     },
     getAccountsData: async addresses => {
       count('getAccountsData');
-      return addresses.map(() => null);
+      return addresses.map(a => chain.accounts.get(a) ?? null);
     },
     simulateTransaction: async (txBase64, opts): Promise<SimulationOutcome> => {
       count('simulateTransaction');
@@ -145,7 +162,7 @@ export function chainReader(chain: Chain): SolanaReader {
         if (keys[ix.programIdIndex] === SystemProgram.programId.toBase58() && ix.data[0] === 2 && keys[ix.accountKeyIndexes[0] ?? -1] === ME.toBase58()) out += new DataView(ix.data.buffer, ix.data.byteOffset + 4, 8).getBigUint64(0, true);
       }
       const fee = keys[0] === ME.toBase58() ? 5_000n * BigInt(m.header.numRequiredSignatures) : 0n;
-      return {err: null, logs: [], unitsConsumed: 450, slot: 777, accounts: (opts?.accounts ?? []).map(a => (a === ME.toBase58() ? {lamports: SOL - out - fee, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : null))};
+      return {err: null, logs: [], unitsConsumed: 450, slot: 777, accounts: (opts?.accounts ?? []).map(a => (a === ME.toBase58() ? {lamports: SOL - out - fee, owner: SystemProgram.programId.toBase58(), data: new Uint8Array()} : (chain.accounts.get(a) ?? null)))};
     },
   });
 }
@@ -159,7 +176,7 @@ export async function until(done: () => Promise<boolean>, turns = 400): Promise<
   throw new Error('never settled');
 }
 
-export const newChain = (): Chain => ({err: null, errFor: null, calls: new Map(), down: false});
+export const newChain = (): Chain => ({err: null, errFor: null, calls: new Map(), down: false, accounts: new Map()});
 
 export async function txScene(o: {grant?: Partial<Grant> | null; known?: string[]; origin?: string} = {}) {
   const origin = o.origin ?? DAPP;

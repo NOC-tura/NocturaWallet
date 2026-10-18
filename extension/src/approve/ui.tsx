@@ -4,7 +4,7 @@ import {LockedButton} from '../app/ui/LockedButton';
 import {Sheet} from '../app/ui/Sheet';
 import type {Site} from './client';
 import {WINDOW_TEXT} from './strings';
-import {useArmed} from './useArmed';
+import {ARM_MS, useArmed} from './useArmed';
 
 /**
  * The approval window's shared pieces (spec §3.1, §3.2, §4.3): the top bar (✕ = Reject), the origin card, the lookalike
@@ -141,10 +141,11 @@ export function ConfirmButton({armed, onPress, className, children}: {armed: boo
 
 /** The design's 2-second confirm (#46 E; §3.1, §3.2 step 5): only "I understand the risk" proceeds, enabled after 2 s. */
 export const CONFIRM_DELAY_MS = 2_000;
-export function RiskConfirm({onCancel, onProceed, delay = CONFIRM_DELAY_MS}: {onCancel: () => void; onProceed: () => Promise<unknown> | void; delay?: number}) {
+export function RiskConfirm({onCancel, onProceed, delay = CONFIRM_DELAY_MS, holdMs = ARM_MS}: {onCancel: () => void; onProceed: () => Promise<unknown> | void; delay?: number; holdMs?: number}) {
   const [ready, setReady] = useState(false);
-  // C15 inside the sheet too (review 1 L4): held 500 ms again whenever the window regains focus.
-  const armed = useArmed('risk-confirm');
+  // C15 inside the sheet too (review 1 L4): held 500 ms again whenever the window regains focus — B1c-3: 1.5 s on a
+  // screen with a red flag (`holdMs`, the caller's).
+  const armed = useArmed('risk-confirm', holdMs);
   useEffect(() => {
     const t = setTimeout(() => setReady(true), delay);
     return () => clearTimeout(t);

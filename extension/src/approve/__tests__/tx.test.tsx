@@ -4,7 +4,7 @@ import {join} from 'node:path';
 import {act, cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
 import {ed25519} from '@noble/curves/ed25519.js';
 import {base64} from '@scure/base';
-import {VersionedTransaction} from '@solana/web3.js';
+import {PublicKey, VersionedTransaction} from '@solana/web3.js';
 import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {handleMessage} from '../../background/messages';
 import {setSession} from '../../background/session';
@@ -12,10 +12,12 @@ import {readDappSession} from '../../background/dapp/store';
 import {GRANTS_KEY} from '../../background/dapp/grants';
 import {openPage} from '../../background/dapp/__tests__/pageHarness';
 import {ACCOUNT, RECIPIENT} from '../../background/__tests__/fixtures';
-import {ME, coSigned, mintTo, setAuthorityToNone, transfer, v0} from '../../background/dapp/__tests__/txHarness';
-import {dependsOnStep, pendingOf, type RequestView} from '../client';
+import {ME, assign, ataCreate, coSigned, mintTo, setAuthorityToNone, tokenApprove, tokenTransfer, transfer, v0} from '../../background/dapp/__tests__/txHarness';
+import {U64_MAX, tokenAccountBytes, usdcLikeMint} from '../../background/dapp/__tests__/tokenBytes';
+import {ATA_PROGRAM, TOKEN_PROGRAM} from '../../background/dapp/decode/decode';
+import {dependsOnStep, pendingOf, type Flag, type RequestView} from '../client';
 import {Tx} from '../Tx';
-import {ARM_MS} from '../useArmed';
+import {ARM_MS, FLAG_HOLD_MS} from '../useArmed';
 import {CONFIRM_DELAY_MS} from '../ui';
 import {SECOND, openWindow} from './windowHarness';
 
@@ -644,5 +646,438 @@ describe('#48 origin-mismatch · auto-reject', () => {
     expect(unstyled()).toEqual([]);
     fireEvent.click(cta('OK, return to dApp'));
     await waitFor(() => expect(w.closed.n).toBe(1));
+  });
+});
+
+// B1c-3 (spec §3.3 rev 3.6; index.html #48 state 2 "unlimited-spend · typed-confirm", ix:18325-18396): the background's
+// red flags in each transaction's section, the typed fields, the red CTAs, the 1.5 s hold — against the real background.
+describe('#48 red flags (B1c-3)', () => {
+  const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+  const SRC = new PublicKey(new Uint8Array(32).fill(81));
+  const DELEGATE = new PublicKey(new Uint8Array(32).fill(82));
+  const X = new PublicKey(new Uint8Array(32).fill(83));
+  const Y = new PublicKey(new Uint8Array(32).fill(84));
+  type W = Awaited<ReturnType<typeof openWindow>>;
+  /** The account holds 250 USDC in SRC (a classic token account, owner field = the account); the USDC mint reads 6 decimals. */
+  const holdUsdc = (w: W) => {
+    w.chain.accounts.set(SRC.toBase58(), {lamports: 2_039_280n, owner: TOKEN_PROGRAM, data: tokenAccountBytes({mint: USDC, owner: ACCOUNT.publicKey, amount: 250_000_000n})});
+    w.chain.accounts.set(USDC, {lamports: 1_461_600n, owner: TOKEN_PROGRAM, data: usdcLikeMint()});
+  };
+  const holdAfter = () => new Promise(r => setTimeout(r, FLAG_HOLD_MS + 50));
+  const decided = (w: W) => w.sent.filter((m): m is Record<string, unknown> => typeof m === 'object' && m !== null && (m as {type?: unknown}).type === 'dapp.decide');
+  const field = (word: string) => screen.getByLabelText(`Type ${word} to enable Approve`) as HTMLInputElement;
+  const type = (word: string, value: string) => fireEvent.change(field(word), {target: {value}});
+  const heads = (root: ParentNode = document) => [...root.querySelectorAll('.s9-flag-banner .head')].map(e => e.textContent);
+  const sections = () => [...document.querySelectorAll('.app-tx-item')];
+  /** A batch whose later step fails on an account an earlier one creates (F10's attribution, Task 3). */
+  const dependentOn = (created: PublicKey) => (keys: string[]) => (keys.includes(created.toBase58()) && !keys.includes(ATA_PROGRAM) ? {InstructionError: [0, 'InvalidAccountData']} : null);
+
+  it('an unlimited USDC approve (the design’s state 2): the eyebrow, the danger banner with the design’s copy, the delegated row, the typed field — exact, case-sensitive, never focused — "Approve unlimited" gated, then held 1.5 s; the words go with the approval, then #10, then signed', async () => {
+    const w = await openWindow();
+    holdUsdc(w);
+    const {page, requestId} = await w.signTx('https://jup.ag', [v0([tokenApprove(SRC, DELEGATE, U64_MAX)])]);
+    w.show();
+    await simulated(w, 'Unlimited USDC spend approval');
+    expect([text('.top-bar .title'), document.querySelector('.top-bar .title')?.className]).toEqual(['Critical · Unlimited spend approval', 'title noc-overline noc-danger']);
+    // Blocks first, then warnings (F2 names the approve), in the transaction's section.
+    expect([...document.querySelectorAll('.app-tx-item .s9-flag-banner')].map(b => b.className)).toEqual(['s9-flag-banner danger', 's9-flag-banner warn']);
+    expect(heads()).toEqual(['Unlimited USDC spend approval', 'Instructions that are not transfers']);
+    const danger = document.querySelector('.s9-flag-banner.danger') as HTMLElement;
+    expect(within(danger).getByText(/This transaction includes/).textContent).toBe(
+      'This transaction includes a spl_token::Approve instruction with amount = u64::MAX (~18.4 quintillion units). Even verified dApps can be exploited; this lets the program move all your USDC, now and in the future, until you revoke.',
+    );
+    expect([...danger.querySelectorAll('.body code')].map(c => c.textContent)).toEqual(['spl_token::Approve', 'amount = u64::MAX']);
+    expect(danger.querySelector('.body i')?.textContent).toBe('all your USDC');
+    expect(danger.querySelector('.meta')?.textContent).toBe(`delegate: ${DELEGATE.toBase58()} · token: USDC mint ${USDC} · scope: u64::MAX`);
+    expect(texts('.s9-flag-banner.warn .meta')).toEqual(['#1 spl_token::Approve']);
+    // The synthesized row first (an approve changes no balance), then the simulation's own (the fee).
+    expect(texts('.s9-bal-row .pri')).toEqual(['USDC delegated', 'SOL']);
+    expect(texts('.s9-bal-row .delta')).toEqual(['unlimited', '−0.000005']);
+    expect(texts('.s9-bal-row .fiat')[0]).toBe('≈ all current + future');
+    expect(document.querySelector('.app-tx-none')).toBeNull();
+    // The typed field, in the section, after the instructions: the word in its true case, the attributes, #37's helper.
+    expect(text('.app-tx-item .s9-typed-confirm .label')).toBe('Type USDC to enable Approve');
+    expect(text('.s9-typed-confirm .label code')).toBe('USDC');
+    expect(text('.s9-typed-confirm .app-typed-help')).toBe('Case-sensitive · must match exactly.');
+    const input = field('USDC');
+    expect(['autocapitalize', 'autocomplete', 'autocorrect', 'spellcheck'].map(a => input.getAttribute(a))).toEqual(['off', 'off', 'off', 'false']);
+    expect([input.value, input.className, input.form]).toEqual(['', 'input', null]);
+    // No control is focused at open — the typed field included.
+    expect(document.activeElement).toBe(document.body);
+    const gated = cta('Approve unlimited');
+    expect([gated.className, gated.disabled, gated.querySelector('svg') !== null]).toEqual(['btn btn-destructive app-cta-wide app-cta-gated', true, true]);
+    expect(unstyled()).toEqual([]);
+    // Exact and case-sensitive: no trimming, no case folding — past the hold, so only the match gates.
+    await holdAfter();
+    for (const wrong of ['usdc', 'USDC ', ' USDC', 'USD', 'USDCC']) {
+      type('USDC', wrong);
+      expect([wrong, field('USDC').className, cta('Approve unlimited').className, cta('Approve unlimited').disabled]).toEqual([wrong, 'input', 'btn btn-destructive app-cta-wide app-cta-gated', true]);
+    }
+    type('USDC', 'USDC');
+    expect([field('USDC').className, cta('Approve unlimited').className, cta('Approve unlimited').disabled]).toEqual(['input match', 'btn btn-destructive app-cta-wide', true]);
+    expect(unstyled()).toEqual([]);
+    await holdAfter();
+    expect(cta('Approve unlimited').disabled).toBe(false);
+    // Enter never confirms: neither in the field nor on the CTA.
+    fireEvent.keyDown(field('USDC'), {key: 'Enter'});
+    fireEvent.keyDown(cta('Approve unlimited'), {key: 'Enter'});
+    expect(decided(w)).toEqual([]);
+    fireEvent.click(cta('Approve unlimited'));
+    // The override re-authenticates (Q33, O1): the words went with the approval; the window points to the toolbar.
+    await screen.findByText("Confirm it's you");
+    expect(decided(w).map(m => m.overrides)).toEqual([[{tx: 0, word: 'USDC'}]]);
+    const challengeId = String((await readDappSession(w.ext)).queue[0]?.challengeId);
+    await handleMessage(w.ext, {type: 'vault.reauthOk', challengeId}, {id: w.ext.runtimeId, origin: w.ext.extensionOrigin, url: `${w.ext.extensionOrigin}/unlock.html`}, w.deps);
+    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+    await waitFor(() => expect(screen.queryByText("Confirm it's you")).toBeNull());
+    await holdAfter();
+    fireEvent.click(cta('Approve unlimited'));
+    await waitFor(() => expect(w.closed.n).toBe(1));
+    expect(decided(w).map(m => m.overrides)).toEqual([[{tx: 0, word: 'USDC'}], [{tx: 0, word: 'USDC'}]]);
+    expect((page.answersFor(requestId)[0]?.result as {signed: string[]}).signed).toHaveLength(1);
+  }, 15_000);
+
+  it('O9: an approve of nearly the whole balance below u64::MAX — its own head (Q56), "Critical · Large spend approval" (Q57), "Approve anyway" (Q34) without the alert icon, the body "all or nearly all" (Q42); "unlimited" nowhere', async () => {
+    const w = await openWindow();
+    holdUsdc(w);
+    await w.signTx('https://jup.ag', [v0([tokenApprove(SRC, DELEGATE, 248_000_000n)])]);
+    w.show();
+    await simulated(w, 'Spend approval for nearly all your USDC');
+    expect(text('.top-bar .title')).toBe('Critical · Large spend approval');
+    expect(heads()[0]).toBe('Spend approval for nearly all your USDC');
+    const danger = document.querySelector('.s9-flag-banner.danger') as HTMLElement;
+    expect(danger.querySelector('.body')?.textContent).toBe(
+      "This transaction includes a spl_token::Approve instruction for amount = 248000000, all or nearly all of this account's balance. Even verified dApps can be exploited; this lets the program move all or nearly all your USDC until you revoke.",
+    );
+    expect(texts('.s9-bal-row .delta')[0]).toBe('248');
+    expect(text('.s9-typed-confirm .label')).toBe('Type USDC to enable Approve');
+    const anyway = cta('Approve anyway');
+    expect([anyway.className, anyway.querySelector('svg')]).toEqual(['btn btn-destructive app-cta-wide app-cta-gated', null]);
+    expect(document.querySelector('.app-approve')?.textContent).not.toMatch(/unlimited/i);
+  });
+
+  it('holds (fake timers, the real background): any flag holds the CTA 1.49 s, enables it at 1.5 s — after a match change, a focus, a new simulation (which empties the field: the word typed again); Reject never held; an unflagged screen 500 ms (negative control)', async () => {
+    const w = await openWindow();
+    holdUsdc(w);
+    await w.signTx('https://jup.ag', [v0([tokenApprove(SRC, DELEGATE, U64_MAX)])]);
+    w.show();
+    await simulated(w, 'Unlimited USDC spend approval');
+    vi.useFakeTimers({toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval']});
+    try {
+      const at = async (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
+      const held = async () => {
+        await at(FLAG_HOLD_MS - 10);
+        expect([cta('Approve unlimited').disabled, cta('Reject').disabled]).toEqual([true, false]);
+        await at(10);
+        expect(cta('Approve unlimited').disabled).toBe(false);
+      };
+      // A match change (the field now matches): held from here.
+      await act(async () => void type('USDC', 'USDC'));
+      expect([cta('Approve unlimited').disabled, cta('Reject').disabled]).toEqual([true, false]);
+      await held();
+      // A focus re-holds.
+      await act(async () => void window.dispatchEvent(new Event('focus')));
+      expect(cta('Approve unlimited').disabled).toBe(true);
+      await held();
+      // The match lost, then regained: held again from the regain.
+      await act(async () => void type('USDC', 'USDCx'));
+      await at(FLAG_HOLD_MS * 2);
+      expect(cta('Approve unlimited').disabled).toBe(true);
+      await act(async () => void type('USDC', 'USDC'));
+      expect(cta('Approve unlimited').disabled).toBe(true);
+      await held();
+      // A new simulation (the 30 s refresh): the background stores it; the window's next read (no focus) re-holds.
+      const first = (await readDappSession(w.ext)).queue[0]?.sim;
+      w.deps.clock.t += 30_000;
+      await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+      for (let i = 0; i < 400 && JSON.stringify((await readDappSession(w.ext)).queue[0]?.sim) === JSON.stringify(first); i++) await at(0);
+      expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first);
+      await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+      expect([field('USDC').value, cta('Approve unlimited').disabled]).toEqual(['', true]);
+      await at(FLAG_HOLD_MS * 2);
+      expect(cta('Approve unlimited').disabled).toBe(true);
+      await act(async () => void type('USDC', 'USDC'));
+      expect(cta('Approve unlimited').disabled).toBe(true);
+      await held();
+    } finally {
+      vi.useRealTimers();
+    }
+    // Negative control: a screen with no flag keeps C15's 500 ms.
+    cleanup();
+    const plain = await openWindow();
+    await known(plain);
+    await plain.signTx('https://jup.ag', [v0()]);
+    plain.show();
+    await simulated(plain, 'Balance changes (post-simulation)');
+    vi.useFakeTimers({toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval']});
+    try {
+      await act(async () => void window.dispatchEvent(new Event('focus')));
+      await act(async () => void (await vi.advanceTimersByTimeAsync(ARM_MS - 10)));
+      expect(cta('Approve').disabled).toBe(true);
+      await act(async () => void (await vi.advanceTimersByTimeAsync(10)));
+      expect(cta('Approve').disabled).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a new simulation empties every typed field (review 1 L1) — the word is typed again for what the screen now shows; a focus or another render keeps it (negative control)', async () => {
+    const w = await openWindow();
+    holdUsdc(w);
+    await w.signTx('https://jup.ag', [v0([tokenApprove(SRC, DELEGATE, U64_MAX)])]);
+    w.show();
+    await simulated(w, 'Unlimited USDC spend approval');
+    type('USDC', 'USDC');
+    // Negative control: a focus and a read of the same simulation keep the word.
+    await act(async () => void window.dispatchEvent(new Event('focus')));
+    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+    await holdAfter();
+    expect([field('USDC').value, field('USDC').className, cta('Approve unlimited').disabled]).toEqual(['USDC', 'input match', false]);
+    // A new simulation (the 30 s refresh) lands: the field is empty again and the CTA gated.
+    const first = (await readDappSession(w.ext)).queue[0]?.sim;
+    w.deps.clock.t += 30_000;
+    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+    await waitFor(async () => expect((await readDappSession(w.ext)).queue[0]?.sim).not.toEqual(first));
+    await act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+    await waitFor(() => expect(field('USDC').value).toBe(''));
+    expect([field('USDC').className, cta('Approve unlimited').className, cta('Approve unlimited').disabled]).toEqual(['input', 'btn btn-destructive app-cta-wide app-cta-gated', true]);
+    type('USDC', 'USDC');
+    await holdAfter();
+    expect(cta('Approve unlimited').disabled).toBe(false);
+  }, 15_000);
+
+  it('System assign of the wallet account (F3) and an unlimited approve in one transaction: "Critical · Blocked transaction", both banners, one field per block — "Approve anyway" only when both match; the L3 line replaced beside an authority flag', async () => {
+    const w = await openWindow();
+    holdUsdc(w);
+    await w.signTx('https://jup.ag', [v0([assign(), tokenApprove(SRC, DELEGATE, U64_MAX)])]);
+    w.show();
+    await simulated(w, 'Assign / Allocate on your wallet account');
+    expect(text('.top-bar .title')).toBe('Critical · Blocked transaction');
+    expect(heads()).toEqual(['Assign / Allocate on your wallet account', 'Unlimited USDC spend approval', 'Instructions that are not transfers']);
+    expect(texts('.s9-flag-banner.danger .body')[0]).toBe("This changes your wallet account itself. Assigned to another program, it is that program's to control; given data, it can no longer pay fees or send SOL.");
+    expect(texts('.s9-flag-banner .meta')).toEqual(['#1 system_program::Assign', `delegate: ${DELEGATE.toBase58()} · token: USDC mint ${USDC} · scope: u64::MAX`, '#1 system_program::Assign', '#2 spl_token::Approve']);
+    expect(texts('.s9-typed-confirm .label')).toEqual(['Type ASSIGN to enable Approve', 'Type USDC to enable Approve']);
+    const anyway = () => cta('Approve anyway');
+    expect([anyway().className, anyway().querySelector('svg')]).toEqual(['btn btn-destructive app-cta-wide app-cta-gated', null]);
+    expect(screen.queryByRole('button', {name: 'Approve unlimited'})).toBeNull();
+    type('ASSIGN', 'ASSIGN');
+    await holdAfter();
+    expect([anyway().className, anyway().disabled]).toEqual(['btn btn-destructive app-cta-wide app-cta-gated', true]);
+    type('USDC', 'USDC');
+    await holdAfter();
+    expect([anyway().className, anyway().disabled]).toEqual(['btn btn-destructive app-cta-wide', false]);
+    expect(unstyled()).toEqual([]);
+    fireEvent.click(anyway());
+    await screen.findByText("Confirm it's you");
+    expect(decided(w).map(m => m.overrides)).toEqual([[{tx: 0, word: 'ASSIGN'}, {tx: 0, word: 'USDC'}]]);
+    // The assign alone, paid by the dApp: nothing of the account's moves — L3's line is replaced (Q54).
+    cleanup();
+    const solo = await openWindow();
+    await solo.signTx('https://jup.ag', [coSigned([assign()])]);
+    solo.show();
+    await simulated(solo, 'Assign / Allocate on your wallet account');
+    expect([texts('.s9-bal-row'), text('.app-tx-none')]).toEqual([[], 'No SOL or token balance changes — but this transaction changes who controls an account of yours (above).']);
+    expect(unstyled()).toEqual([]);
+  });
+
+  it('a dependent step (F10): step 3 of a batch depending on step 2 — its own section with Q32 (step 2, never 1 or 3), effects unknown, the field UNCHECKED there only; no "Couldn’t simulate"; the word goes with tx 2', async () => {
+    const w = await openWindow();
+    w.chain.errFor = dependentOn(Y);
+    await w.signTx('https://jup.ag', [v0([ataCreate(X)]), v0([ataCreate(Y)]), v0([tokenTransfer(Y)])]);
+    w.show();
+    await simulated(w, 'This step depends on step 2 and could not be checked on its own.');
+    expect(screen.queryByText("Couldn't simulate")).toBeNull();
+    expect(text('.top-bar .title')).toBe('Critical · Blocked transaction');
+    const [one, two, three] = sections();
+    expect([heads(one), heads(two)]).toEqual([
+      ['Instructions that are not transfers', "Could not read this token's settings"],
+      ['Instructions that are not transfers', "Could not read this token's settings"],
+    ]);
+    expect(heads(three)).toEqual(['This step depends on step 2 and could not be checked on its own.']);
+    expect([...(three?.querySelectorAll('.s9-flag-banner .body, .s9-flag-banner .meta') ?? [])].map(e => e.textContent)).toEqual([
+      'Its effects are unknown: it was simulated without the changes step 2 makes, which it needs. Approving it may move any of your balances.',
+      '{"InstructionError":[0,"InvalidAccountData"]}',
+    ]);
+    expect([three?.querySelector('.s9-bal-card .label')?.textContent, three?.querySelector('.s9-bal-card .app-tx-none')?.textContent, three?.querySelectorAll('.s9-bal-row').length]).toEqual([
+      'Balance changes (unknown)',
+      'This step was not simulated on its own, so its effects are unknown.',
+      0,
+    ]);
+    expect(sections().map(sec => [...sec.querySelectorAll('.s9-typed-confirm .label')].map(l => l.textContent))).toEqual([[], [], ['Type UNCHECKED to enable Approve']]);
+    expect(unstyled()).toEqual([]);
+    type('UNCHECKED', 'UNCHECKED');
+    await holdAfter();
+    fireEvent.click(cta('Approve anyway'));
+    await screen.findByText("Confirm it's you");
+    expect(decided(w).map(m => m.overrides)).toEqual([[{tx: 2, word: 'UNCHECKED'}]]);
+  });
+
+  it('a lookalike origin with a block: both gates — the typed field first (the demoted "Approve anyway (not recommended)" stays disabled until it matches), then the 2-second confirm (held 1.5 s on a focus); the words go with the approval', async () => {
+    const w = await openWindow();
+    await w.signTx('https://tensr.trade', [coSigned([assign()])]);
+    w.show();
+    await simulated(w, 'Assign / Allocate on your wallet account');
+    expect(text('.s9-domain-warn .body b')).toBe('This domain is not tensor.trade');
+    expect(text('.top-bar .title')).toBe('Critical · Blocked transaction');
+    expect(document.querySelector('.s9-origin-pill')).toBeNull();
+    const demoted = () => cta('Approve anyway (not recommended)');
+    await holdAfter();
+    expect(demoted().disabled).toBe(true);
+    fireEvent.click(demoted());
+    expect(screen.queryByRole('dialog')).toBeNull();
+    type('ASSIGN', 'ASSIGN');
+    await holdAfter();
+    fireEvent.click(demoted());
+    const sheet = await screen.findByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'});
+    await new Promise(r => setTimeout(r, CONFIRM_DELAY_MS + 50));
+    const understand = () => within(sheet).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement;
+    expect(understand().disabled).toBe(false);
+    // C15 inside the sheet, at the red-flag screen's 1.5 s: still held 1 s after a focus (500 ms would have released it).
+    await act(async () => void window.dispatchEvent(new Event('focus')));
+    await new Promise(r => setTimeout(r, 1_000));
+    expect(understand().disabled).toBe(true);
+    await new Promise(r => setTimeout(r, FLAG_HOLD_MS - 1_000 + 50));
+    expect(understand().disabled).toBe(false);
+    fireEvent.click(understand());
+    await screen.findByText("Confirm it's you");
+    expect(decided(w).map(m => m.overrides)).toEqual([[{tx: 0, word: 'ASSIGN'}]]);
+    expect(unstyled()).toEqual([]);
+  }, 15_000);
+
+  /** One transaction carrying every kind of flag (as the background sends them), rendered from its view. */
+  const P1 = new PublicKey(new Uint8Array(32).fill(91)).toBase58();
+  const MINT = new PublicKey(new Uint8Array(32).fill(92)).toBase58();
+  const AUTH = new PublicKey(new Uint8Array(32).fill(93)).toBase58();
+  const ix = (program: 'system' | 'token' | 'token-2022' | null, name: string | null) => ({programId: program === null ? P1 : AUTH, program, name, fields: []});
+  const flagged = (flags: Flag[], changes: {mint: string | null; amount: string; decimals: number | null; usdMicros: string | null}[] = []): RequestView => ({
+    requestId: 'f',
+    type: 'signTransaction',
+    origin: 'https://jup.ag',
+    host: 'jup.ag',
+    site: {kind: 'verified', name: 'Jupiter', imitates: null, rule: null, idn: null, international: false},
+    offerBlock: false,
+    connect: null,
+    sign: null,
+    mismatch: null,
+    tx: {
+      kind: 'signTransaction',
+      account: {index: 0, name: 'Main', publicKey: ACCOUNT.publicKey},
+      simulation: {status: 'ok', id: 'AAAAAAAAAAAAAAAAAAAAAA', slot: 1, elapsedMs: 1, at: 1},
+      reauth: {reasons: ['override'], state: 'needed'},
+      labels: [],
+      transactions: [
+        {
+          version: 0,
+          feePayer: ACCOUNT.publicKey,
+          unitLimit: null,
+          feeLamports: null,
+          outcome: {ok: true, changes, unitsConsumed: 1, unitLimit: 200_000, feeLamports: null},
+          instructions: [ix('system', 'advanceNonceAccount'), ix('system', 'assign'), ix('token', 'setAuthority'), ix('token', 'approve'), ix('token-2022', 'approveChecked'), ix(null, null), ix('token', null)],
+          flags,
+        },
+      ],
+    },
+  });
+  const approval = (o: Partial<{at: number | null; symbol: 'USDC' | null; decimals: number | null; mint: string | null; amount: string}>) => ({
+    at: 3,
+    source: SRC.toBase58(),
+    mint: USDC,
+    symbol: 'USDC' as const,
+    decimals: 6,
+    delegate: DELEGATE.toBase58(),
+    amount: U64_MAX.toString(),
+    balance: '250000000',
+    ...o,
+  });
+
+  it('every kind of flag: its banner’s head, body and meta (the copy of spec §10), blocks before warnings, every address whole; the synthesized rows', () => {
+    const flags: Flag[] = [
+      {kind: 'durable-nonce', severity: 'warn', word: null, at: 0},
+      {kind: 'assign', severity: 'block', word: 'ASSIGN', at: 1, instructions: [{index: 1, program: 'system', name: 'assign'}], chain: {owner: P1, space: 8}},
+      {kind: 'set-authority', severity: 'block', word: 'AUTHORITY', at: 2, instructions: [{index: 2, program: 'token', account: SRC.toBase58(), owned: 'token-account', authorityType: 'accountOwner', newAuthority: null}], chain: [{account: SRC.toBase58(), change: 'close-authority', from: null, to: AUTH}]},
+      {kind: 'unlimited-approve', severity: 'block', word: 'UNLIMITED', at: 3, approvals: [approval({}), approval({at: 4, symbol: null, decimals: null, mint: MINT, amount: '250000000'}), approval({at: null, symbol: null, mint: null})]},
+      {kind: 'bounded-approve', severity: 'warn', word: null, at: 3, approvals: [approval({amount: '5000000'})]},
+      {kind: 'unknown-program', severity: 'warn', word: null, at: 5, programs: [P1, null]},
+      {kind: 'non-transfer', severity: 'warn', word: null, at: 0, instructions: [{index: 0, program: 'system', name: 'advanceNonceAccount'}, {index: 6, program: 'token', name: null}]},
+      {kind: 'token-2022', severity: 'warn', word: null, at: null, mint: MINT, settings: {freezeAuthority: AUTH, permanentDelegate: null, transferHookProgram: P1}},
+      {kind: 'token-2022', severity: 'warn', word: null, at: 4, mint: USDC, settings: null},
+      {kind: 'whole-balance', severity: 'warn', word: null, at: null},
+    ];
+    render(<Tx request={flagged(flags)} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
+    const banners = [...document.querySelectorAll('.s9-flag-banner')].map(b => ({
+      tone: b.className.replace('s9-flag-banner ', ''),
+      head: b.querySelector('.head')?.textContent,
+      body: [...b.querySelectorAll('.body')].map(e => e.textContent),
+      meta: [...b.querySelectorAll('.meta')].map(e => e.textContent),
+    }));
+    const src = SRC.toBase58();
+    const del = DELEGATE.toBase58();
+    expect(banners).toEqual([
+      {tone: 'danger', head: 'Assign / Allocate on your wallet account', body: ["This changes your wallet account itself. Assigned to another program, it is that program's to control; given data, it can no longer pay fees or send SOL."], meta: ['#2 system_program::Assign', `post-simulation · owner: ${P1} · space: 8`]},
+      {
+        tone: 'danger',
+        head: 'SetAuthority on an account you own',
+        body: ['This gives an authority over an account you own to another address, or removes it. You cannot take it back yourself.'],
+        meta: [`#3 spl_token::SetAuthority · authorityType: accountOwner · account: ${src} · newAuthority: —`, `post-simulation · close-authority: — → ${AUTH} · account: ${src}`],
+      },
+      {
+        tone: 'danger',
+        head: 'Unlimited token spend approval',
+        body: [
+          'This transaction includes a spl_token::Approve instruction with amount = u64::MAX (~18.4 quintillion units). Even verified dApps can be exploited; this lets the program move all your USDC, now and in the future, until you revoke.',
+          "This transaction includes a spl_token_2022::ApproveChecked instruction for amount = 250000000, all or nearly all of this account's balance. Even verified dApps can be exploited; this lets the program move all or nearly all of this token until you revoke.",
+          'The simulation shows a program call — not an instruction listed here — that lets a delegate move all of this token, now and in the future, until you revoke. Even verified dApps can be exploited.',
+        ],
+        meta: [`delegate: ${del} · token: USDC mint ${USDC} · scope: u64::MAX`, `delegate: ${del} · token: mint ${MINT} · scope: 250000000`, `delegate: ${del} · token: mint — · scope: u64::MAX`],
+      },
+      {tone: 'warn', head: 'This transaction does not expire.', body: [], meta: ['#1 system_program::AdvanceNonceAccount']},
+      {tone: 'warn', head: 'USDC spend approval', body: ['This lets a delegate move up to 5 USDC of your USDC until you revoke.'], meta: [`delegate: ${del} · token: USDC mint ${USDC} · scope: 5 USDC`]},
+      {tone: 'warn', head: 'Unknown program', body: ['The wallet cannot decode what this program does — only the simulation shows its effects.'], meta: [P1, 'a program the transaction does not name in its own keys']},
+      {tone: 'warn', head: 'Instructions that are not transfers', body: ['Each can do more than move a balance. Check what it does before approving.'], meta: ['#1 system_program::AdvanceNonceAccount', '#7 spl_token::unknown instruction']},
+      {
+        tone: 'warn',
+        head: 'Token-2022 settings on a token you hold',
+        body: ['Freeze authority — the issuer can freeze your account of this token.', 'Transfer hook — a program that runs on every transfer of this token.'],
+        meta: [`mint: ${MINT}`, `freezeAuthority: ${AUTH}`, `transferHookProgram: ${P1}`],
+      },
+      {tone: 'warn', head: "Could not read this token's settings", body: [], meta: [`mint: ${USDC}`]},
+      {tone: 'warn', head: 'Whole balance to a first-time address', body: ['All or nearly all of a balance goes to an address you have not sent to before.'], meta: []},
+    ]);
+    // The synthesized rows (an approve moves no balance): unlimited at u64::MAX, else the amount.
+    expect(texts('.s9-bal-row .pri')).toEqual(['USDC delegated', `${MINT.slice(0, 4)}…${MINT.slice(-4)} delegated`, `${src.slice(0, 4)}…${src.slice(-4)} delegated`, 'USDC delegated']);
+    expect(texts('.s9-bal-row .delta')).toEqual(['unlimited', '250000000', 'unlimited', '5']);
+    expect(texts('.s9-bal-row .fiat')).toEqual(['≈ all current + future', '≈ all current + future']);
+    expect(document.querySelector('.app-tx-none')).toBeNull();
+    // One field per block kind, in the flag order.
+    expect(texts('.s9-typed-confirm .label')).toEqual(['Type ASSIGN to enable Approve', 'Type AUTHORITY to enable Approve', 'Type UNLIMITED to enable Approve']);
+    expect(unstyledClasses(document.querySelector('.app-approve')!, SELECTORS)).toEqual([]);
+  });
+
+  it('L14 (review 3): a token the wallet cannot name, nearly all of it below u64::MAX — its head says "of this token", the word to type is ALLOWANCE (Q58), never UNLIMITED', () => {
+    const flags: Flag[] = [{kind: 'unlimited-approve', severity: 'block', word: 'ALLOWANCE', at: null, approvals: [approval({at: null, symbol: null, decimals: null, mint: MINT, amount: '995'})]}];
+    render(<Tx request={flagged(flags)} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
+    expect(text('.top-bar .title')).toBe('Critical · Large spend approval');
+    expect(text('.s9-flag-banner.danger .head')).toBe('Spend approval for nearly all of this token');
+    expect(text('.s9-typed-confirm .label')).toBe('Type ALLOWANCE to enable Approve');
+    expect(document.querySelector('.app-approve')?.textContent).not.toMatch(/unlimited/i);
+  });
+
+  it('the design’s typed-confirm and flag-banner rules, as extracted (design-ext.css), and the hand-written ones (app.css)', () => {
+    const designRule = (selector: string): string => {
+      const css = readFileSync(join(__dirname, '..', '..', 'styles', 'design-ext.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ');
+      const at = css.split('}').find(r => r.split('{')[0]?.split(',').some(sel => sel.trim() === selector));
+      return at === undefined ? '' : (at.split('{')[1] ?? '').replace(/\s+/g, ' ').trim();
+    };
+    expect(designRule('.s9-typed-confirm')).toContain('background: var(--bg-surface-2)');
+    expect(designRule('.s9-typed-confirm .label')).toContain('text-transform: uppercase');
+    expect(designRule('.s9-typed-confirm .input')).toContain('border: 1px solid color-mix(in oklab, var(--danger) 32%, transparent)');
+    expect(designRule('.s9-typed-confirm .input.match')).toBe('border-color: var(--success);');
+    expect(designRule('.s9-flag-banner.danger')).toContain('border: 1px solid color-mix(in oklab, var(--danger) 40%, transparent)');
+    expect(designRule('.s9-flag-banner.warn')).toContain('border-left: 3px solid var(--warning)');
+    expect(designRule('.s9-flag-banner .meta')).toContain('word-break: break-all');
+    expect(cssRule('.s9-typed-confirm .label code')).toContain('text-transform: none');
+    expect(cssRule('.s9-flag-banner.danger .body code')).toContain('color: var(--danger)');
+    expect(cssRule('.btn.app-cta-gated:disabled')).toContain('background: var(--bg-surface-3)');
+    expect(cssRule('.btn.app-cta-gated:disabled')).toContain('opacity: 1');
   });
 });

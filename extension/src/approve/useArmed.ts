@@ -2,6 +2,8 @@ import {useEffect, useState} from 'react';
 
 /** C15: a confirming CTA is held this long after the window gains focus and after each state change. */
 export const ARM_MS = 500;
+/** B1 §3 (spec §3.3 rev 3.6 "Holds"): on any screen with a red flag, a confirming CTA is held this long instead. */
+export const FLAG_HOLD_MS = 1_500;
 
 /**
  * C15 (review 1 M12, review 2 L8): false for ARM_MS after mount, after every change of `state` (an ack toggled, the

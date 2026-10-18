@@ -670,7 +670,9 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
   `spellcheck` off, an exact, case-sensitive match with no trimming (a trailing space does not match), the design's
   `.input.match` border on a match, and #37's helper "Case-sensitive · must match exactly.". Never pre-filled, and
   emptied when a new simulation lands (review 1 L1: a chain-state block's details can change between simulations, so
-  the user types the word again for what the screen now shows). The
+  the user types the word again for what the screen now shows); not in a form (Enter in it has nothing to submit). A
+  lookalike origin with a block passes both gates in this order: the typed fields enable its demoted "Approve anyway
+  (not recommended)", which opens the 2-second confirm. The
   CTA: for an unlimited approve (u64::MAX) the design's red "Approve unlimited" with the alert icon; for any other block —
   an F5 of 99 % up to the whole balance below u64::MAX included (O9) — "Approve anyway" (Q34), red; drawn as #37's gated
   CTA (greyed, full label) until every field matches.
@@ -682,7 +684,7 @@ proxy (`getMultipleAccounts`). The window only renders the flags stored with the
   approval" only at u64::MAX; below it "Spend approval for nearly all your <SYM>" (Q56, O9; #10's row the same). An approve's balance card
   gains the design's synthesized row ("<SYM> delegated · unlimited · ≈ all current + future"; a bounded approve
   "<SYM> delegated · <amount>"): an approve changes no balance, so the "No balance changes" line is replaced wherever an
-  authority or approve flag exists.
+  authority or approve flag exists. Every banner's copy is the design's, B1 §3's or §10's (Q32, Q36–Q39, Q41–Q55).
 
 The plans for B1c-2 and B1c-3 refine this section; they may not loosen it.
 
@@ -993,7 +995,24 @@ empty, detail, hold, undo toast, blocked section) at 412 px; the opus-tier revie
 | Q38 | #10 row for an overridden F4 block (rev 3.6, plan 3 Task 4, controller copy, flagged to the owner — B1 §3's row) | "SetAuthority on an account you own" |
 | Q39 | #10 row for an overridden F5 block (rev 3.6, plan 3 Task 4, controller copy, flagged to the owner — the design's F5 head) | "Unlimited <SYM> spend approval"; "Unlimited token spend approval" when the wallet's table names no symbol (`UNLIMITED`) |
 | Q40 | #10 row for an overridden F10 block (rev 3.6, plan 3 Task 4, controller copy, flagged to the owner — Q32 as a row) | "Depends on step <N> — not checked on its own" |
+| Q41 | #48 F5 banner body, adapted (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | the design's body with its code span naming the real instruction (`spl_token::Approve`, `spl_token::ApproveChecked`, `spl_token_2022::Approve`, `spl_token_2022::ApproveChecked`), and "all of this token" for "all your <SYM>" when the wallet's table names no symbol |
+| Q42 | #48 F5 body, a decoded approve below u64::MAX of 99 % or more of the balance (O5; rev 3.6, plan 3 Task 5, controller copy, flagged to the owner; rev 2 of plan 3: "nearly all", review 1 H1) | "This transaction includes a `<instruction>` instruction for `amount = <base units>`, all or nearly all of this account's balance. Even verified dApps can be exploited; this lets the program move *all or nearly all your <SYM>* until you revoke." ("of this token" for "your <SYM>" when unnamed) |
+| Q43 | #48 F5 body, seen only in the simulation's chain state (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "The simulation shows a program call — not an instruction listed here — that lets a delegate move *all your <SYM>*, now and in the future, until you revoke. Even verified dApps can be exploited." (", now and in the future," only at u64::MAX; below it *all or nearly all your <SYM>* — O5, plan 3 rev 2) |
+| Q44 | #48 F6 banner head (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "<SYM> spend approval"; "Token spend approval" when the wallet's table names no symbol |
+| Q45 | #48 F6 banner body (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "This lets a delegate move up to <amount> of your <SYM> until you revoke." ("of this token" when unnamed) |
+| Q46 | #48 F3 banner body; its head is Q37 (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "This changes your wallet account itself. Assigned to another program, it is that program's to control; given data, it can no longer pay fees or send SOL." |
+| Q47 | #48 F4 banner body; its head is Q38 (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "This gives an authority over an account you own to another address, or removes it. You cannot take it back yourself." |
+| Q48 | #48 F10 banner body; its head is Q32 (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner; plan 3 rev 2: the second sentence, O6) | "Its effects are unknown: it was simulated without the changes step <N> makes, which it needs. Approving it may move any of your balances." |
+| Q49 | #48 F10 balance card (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | label "Balance changes (unknown)"; line "This step was not simulated on its own, so its effects are unknown." |
+| Q50 | #48 F1 banner (head "Unknown program", screen.md §48; rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | body "The wallet cannot decode what this program does — only the simulation shows its effects."; a program index that is no static key: "a program the transaction does not name in its own keys" |
+| Q51 | #48 F2 banner (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | head "Instructions that are not transfers"; body "Each can do more than move a balance. Check what it does before approving." |
+| Q52 | #48 F7 banner, per mint (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner; Q36 when unreadable) | head "Token-2022 settings on a token you hold"; one body line per setting present: "Freeze authority — the issuer can freeze your account of this token." / "Permanent delegate — an address that can move or burn this token from any account, yours included." / "Transfer hook — a program that runs on every transfer of this token." |
+| Q53 | #48 F9 banner (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | head "Whole balance to a first-time address"; body "All or nearly all of a balance goes to an address you have not sent to before." |
+| Q54 | #48 the line replacing "No SOL or token balance changes — review the instructions below." beside an F3 / F4 block (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | "No SOL or token balance changes — but this transaction changes who controls an account of yours (above)." |
+| Q55 | #48 banner meta lines (rev 3.6, plan 3 Task 5, controller copy, flagged to the owner) | the design's "delegate: … · token: <SYM> mint … · scope: u64::MAX" (the scope otherwise the amount); an instruction as "#<n> <program>::<Instruction>" (the design's `spl_token::Approve` form, n as "Program <n>" counts); the decoder's own field names (`authorityType`, `account`, `newAuthority`, `owner`, `space`, `mint`, `freezeAuthority`, `permanentDelegate`, `transferHookProgram`); "post-simulation" for chain state; every address whole, in groups of four — never the design's `JUP6L…vRet9` truncation (a poisoned address matches on exactly those ends) |
 | Q56 | #10 row for an overridden F5 block of 99 % up to the whole balance below u64::MAX — and #48's F5 head for it (plan 3 rev 2.1, O9: "unlimited" only for u64::MAX; owner copy, "of this token" for an unnamed token the reviser's reading of the owner's "token when unnamed" — flagged) | "Spend approval for nearly all your <SYM>"; "Spend approval for nearly all of this token" when the wallet's table names no symbol |
+| Q57 | #48 top-bar eyebrow when every block is an F5 below u64::MAX — 99 % up to the whole balance (plan 3 rev 2.1, O9, owner copy) | "Critical · Large spend approval" |
+| Q58 | #48 typed override word: an F5 of a token the wallet's own table cannot name, below u64::MAX — 99 % up to the whole balance (plan 3 rev 2.2, review 3 L14; controller copy, flagged to the owner) | `ALLOWANCE` — `UNLIMITED` (Q30) stays for u64::MAX only |
 
 (Q09 and Q11 of rev 1 are gone: the window no longer shows "expired" for a request it did not show, and the undo toast
 uses the design's drawn strings.)

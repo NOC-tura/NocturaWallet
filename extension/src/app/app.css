@@ -1047,7 +1047,9 @@ a.btn {
   letter-spacing: 0.16em;
 }
 /* 37a/37b: the gated CTA greyed at full opacity (ix:15000: --bg-surface-3, --fg-disabled, opacity 1). */
-.btn.app-delete-gated:disabled {
+/* B1c-3: #48's red CTA behind its typed fields takes #37's gated look (spec §3.3 "The typed field"). */
+.btn.app-delete-gated:disabled,
+.btn.app-cta-gated:disabled {
   background: var(--bg-surface-3);
   color: var(--fg-disabled);
   opacity: 1;
@@ -2000,6 +2002,25 @@ body:has(.app-window) {
   opacity: 0.7;
   margin-inline-start: 4px;
   white-space: nowrap;
+}
+/*
+ * B1c-3: #48's red flags (spec §3.3 rev 3.6). The design's code spans (ix:18352, 18379: `font-family:var(--font-mono);
+ * color:var(--danger)` inline) as rules; the typed field's word keeps its true case under the label's uppercase.
+ */
+.s9-flag-banner .body code,
+.s9-flag-banner .meta code {
+  font-family: var(--font-mono);
+}
+.s9-flag-banner.danger .body code {
+  color: var(--danger);
+}
+.s9-typed-confirm .label code {
+  font-family: var(--font-mono);
+  color: var(--danger);
+  text-transform: none;
+}
+.app-typed-help {
+  margin: 0;
 }
 /* #48 mismatch detail (ix:18504-18507): the session in --success, the request and the verdict in --danger — the card's
    own `.row .v` colour (three classes) outranks the one-class tone. */

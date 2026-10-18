@@ -179,6 +179,87 @@ export const TX_TEXT = {
   ownAccount: (name: string): string => `Your account: ${name}`,
 } as const;
 
+/**
+ * B1c-3 (spec §3.3 rev 3.6 "The typed field", "Banners"; §10): #48's red flags — the design's own strings (state 2
+ * "unlimited-spend · typed-confirm", ix:18325-18396), #37's helper, B1 §3's ("This transaction does not expire."),
+ * screen.md §48's ("Unknown program"), Q32, Q34–Q39 and the controller's Q41–Q55 (each flagged to the owner in §10).
+ */
+export const FLAG_TEXT = {
+  /** The design's eyebrow (ix:18335). */
+  overlineUnlimited: 'Critical · Unlimited spend approval',
+  /** Q35. */
+  overlineBlocked: 'Critical · Blocked transaction',
+  /** Q57 (O9): every block an F5 below u64::MAX — 99 % of the balance up to the whole of it. */
+  overlineLarge: 'Critical · Large spend approval',
+  /** The design's red CTA (ix:18390). */
+  approveUnlimited: 'Approve unlimited',
+  /** Q34. */
+  approveBlocked: 'Approve anyway',
+  /** The design's label (ix:18379): the word between, in a code span, in its true case. */
+  typed: ['Type ', ' to enable Approve'],
+  /** #37's helper (ix:~15000). */
+  typedHelp: 'Case-sensitive · must match exactly.',
+  /** F5 head: the design's (ix:18351); Q39's "token" when the wallet's table names no symbol. */
+  unlimitedHead: (symbol: string | null): string => (symbol === null ? 'Unlimited token spend approval' : `Unlimited ${symbol} spend approval`),
+  /** Q56 (O9): F5's head below u64::MAX ("unlimited" only for u64::MAX) — #10's row the same. */
+  nearlyAllHead: (symbol: string | null): string => (symbol === null ? 'Spend approval for nearly all of this token' : `Spend approval for nearly all your ${symbol}`),
+  /** The design's "all your USDC" (ix:18352); Q41: "all of this token" when the wallet's table names no symbol. */
+  all: (symbol: string | null): string => (symbol === null ? 'all of this token' : `all your ${symbol}`),
+  /** Q42, Q43 below u64::MAX (O5: 99 % of the balance or more): "all or nearly all". */
+  nearlyAll: (symbol: string | null): string => (symbol === null ? 'all or nearly all of this token' : `all or nearly all your ${symbol}`),
+  /** F5, a decoded approve of u64::MAX: the design's body (ix:18352), the code span the real instruction (Q41). */
+  unlimitedMax: ['This transaction includes a ', ' instruction with ', 'amount = u64::MAX', ' (~18.4 quintillion units). Even verified dApps can be exploited; this lets the program move ', ', now and in the future, until you revoke.'],
+  /** Q42: F5, a decoded approve below u64::MAX of 99 % or more of the account's balance (O5). */
+  unlimitedWhole: ['This transaction includes a ', ' instruction for ', ", all or nearly all of this account's balance. Even verified dApps can be exploited; this lets the program move ", ' until you revoke.'],
+  /** Q43: F5 seen only in the simulation's chain state (a program call, no instruction listed). */
+  unlimitedChain: ['The simulation shows a program call — not an instruction listed here — that lets a delegate move ', ', now and in the future, until you revoke.', ' until you revoke.', ' Even verified dApps can be exploited.'],
+  /** Q44: F6's head. */
+  boundedHead: (symbol: string | null): string => (symbol === null ? 'Token spend approval' : `${symbol} spend approval`),
+  /** Q45: F6's body. */
+  bounded: (amount: string, symbol: string | null): string => `This lets a delegate move up to ${amount} ${symbol === null ? 'of this token' : `of your ${symbol}`} until you revoke.`,
+  /** The design's meta (ix:18353) — every address whole, in groups (Q55). */
+  meta: {delegate: 'delegate: ', token: ' · token: ', mint: 'mint ', scope: ' · scope: ', max: 'u64::MAX'},
+  /** The design's synthesized balance row (ix:18361-18363); a bounded amount as spec §3.3 says. */
+  delegated: (name: string): string => `${name} delegated`,
+  unlimited: 'unlimited',
+  allFuture: '≈ all current + future',
+  /** Q37 (F3's #10 row, reused as the banner head) and Q46. */
+  assignHead: 'Assign / Allocate on your wallet account',
+  assign: "This changes your wallet account itself. Assigned to another program, it is that program's to control; given data, it can no longer pay fees or send SOL.",
+  /** Q38 (F4's #10 row, reused as the banner head) and Q47. */
+  authorityHead: 'SetAuthority on an account you own',
+  authority: 'This gives an authority over an account you own to another address, or removes it. You cannot take it back yourself.',
+  /** Q32: F10's head. */
+  dependsOn: (step: number): string => `This step depends on step ${step} and could not be checked on its own.`,
+  /** Q48: F10's body. */
+  dependent: (step: number): string => `Its effects are unknown: it was simulated without the changes step ${step} makes, which it needs. Approving it may move any of your balances.`,
+  /** Q49: F10's balance card. */
+  balanceUnknown: 'Balance changes (unknown)',
+  balanceUnknownLine: 'This step was not simulated on its own, so its effects are unknown.',
+  /** screen.md §48 ("Unknown program") and Q50. */
+  unknownHead: 'Unknown program',
+  unknown: 'The wallet cannot decode what this program does — only the simulation shows its effects.',
+  unknownNull: 'a program the transaction does not name in its own keys',
+  /** Q51: F2. */
+  nonTransferHead: 'Instructions that are not transfers',
+  nonTransfer: 'Each can do more than move a balance. Check what it does before approving.',
+  /** Q52: F7, per mint; Q36 when the mint cannot be read. */
+  token2022Head: 'Token-2022 settings on a token you hold',
+  freeze: 'Freeze authority — the issuer can freeze your account of this token.',
+  permanentDelegate: 'Permanent delegate — an address that can move or burn this token from any account, yours included.',
+  transferHook: 'Transfer hook — a program that runs on every transfer of this token.',
+  unreadable: "Could not read this token's settings",
+  /** B1 §3 ("this transaction does not expire", capitalised). */
+  nonce: 'This transaction does not expire.',
+  /** Q53: F9. */
+  wholeHead: 'Whole balance to a first-time address',
+  whole: 'All or nearly all of a balance goes to an address you have not sent to before.',
+  /** Q54: L3's line, replaced beside an authority flag (F3, F4) when nothing else moves. */
+  noChangesAuthority: 'No SOL or token balance changes — but this transaction changes who controls an account of yours (above).',
+  /** Q55: the banners' meta — the instruction (`#<n> <program>::<Instruction>`), the simulation's chain state. */
+  postSimulation: 'post-simulation',
+} as const;
+
 /** #48's origin-mismatch · auto-reject (ix:18484-18521), as drawn — "Settings → dApps" reads Settings → Connected dApps (Q03, D1). */
 export const MISMATCH_TEXT = {
   overline: 'Auto-rejected · Origin mismatch',
