@@ -226,7 +226,10 @@ describe('#47 lookalike — the flipped bar, the 2-second confirm, 47b’s gates
     await elapse(ARM_MS);
     fireEvent.click(cta('Connect anyway (not recommended)'));
     const again = await settled(() => screen.getByRole('dialog'));
-    await elapse(CONFIRM_DELAY_MS);
+    // The 2-second confirm itself (Task 9 fix round 1, I1): C15's hold is long past at 1 999 ms, so only the delay holds it.
+    await elapse(CONFIRM_DELAY_MS - 1);
+    expect((within(again).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement).disabled).toBe(true);
+    await elapse(1);
     fireEvent.click(within(again).getByRole('button', {name: 'I understand the risk'}));
     await settled(() => expect(screen.getAllByRole('checkbox')).toHaveLength(2));
     expect(text('.top-bar .title')).toBe('Suspicious origin');
@@ -364,8 +367,11 @@ describe('review 1: the confirm sheet (L4), the port on the card (L5), an expiry
     fireEvent.click(cta('Connect anyway (not recommended)'));
     const sheet = await settled(() => screen.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
     expect(document.activeElement).toBe(sheet);
-    await elapse(CONFIRM_DELAY_MS);
     const understand = () => within(sheet).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement;
+    // The 2-second confirm itself (Task 9 fix round 1, I1): C15's hold is long past at 1 999 ms, so only the delay holds it.
+    await elapse(CONFIRM_DELAY_MS - 1);
+    expect(understand().disabled).toBe(true);
+    await elapse(1);
     expect(understand().disabled).toBe(false);
     act(() => void window.dispatchEvent(new Event('focus')));
     expect(understand().disabled).toBe(true);

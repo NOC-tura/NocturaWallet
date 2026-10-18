@@ -197,7 +197,10 @@ describe('#48 dapp-tx-approval', () => {
     await elapse(ARM_MS);
     fireEvent.click(cta('Approve anyway (not recommended)'));
     const sheet = await settled(() => screen.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
-    await elapse(CONFIRM_DELAY_MS);
+    // The 2-second confirm itself (Task 9 fix round 1, I1): C15's hold is long past at 1 999 ms, so only the delay holds it.
+    await elapse(CONFIRM_DELAY_MS - 1);
+    expect((within(sheet).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement).disabled).toBe(true);
+    await elapse(1);
     fireEvent.click(within(sheet).getByRole('button', {name: 'I understand the risk'}));
     await settled(() => expect(w.closed.n).toBe(1));
     expect((page.answersFor(requestId)[0]?.result as {signed: string[]}).signed).toHaveLength(1);
@@ -1012,8 +1015,11 @@ describe('#48 red flags (B1c-3)', () => {
     await elapse(FLAG_HOLD_MS);
     fireEvent.click(demoted());
     const sheet = await settled(() => screen.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
-    await elapse(CONFIRM_DELAY_MS);
     const understand = () => within(sheet).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement;
+    // The 2-second confirm itself (Task 9 fix round 1, I1): the red-flag screen's 1.5 s hold is past at 1 999 ms, so only the delay holds it.
+    await elapse(CONFIRM_DELAY_MS - 1);
+    expect(understand().disabled).toBe(true);
+    await elapse(1);
     expect(understand().disabled).toBe(false);
     // C15 inside the sheet, at the red-flag screen's 1.5 s: still held 1 s after a focus (500 ms would have released it).
     await acted(() => window.dispatchEvent(new Event('focus')));

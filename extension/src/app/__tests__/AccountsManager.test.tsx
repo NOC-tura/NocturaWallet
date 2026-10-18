@@ -471,6 +471,9 @@ describe('the accounts manager', () => {
         expect(screen.queryByRole('dialog')).toBeNull();
         await elapse(LOCK_MS - 1);
         expect(trash.disabled).toBe(true);
+        // This 499 ms click is refused by React's `disabled` prop (still true, whatever the DOM property says), not by
+        // LockedButton's ref guard: dropping that guard leaves this test green (the brief's M9f). The lock's lower bound
+        // is the `disabled` check just above, at LOCK_MS − 1; the ref guard is proven in src/app's LockedButton tests.
         trash.disabled = false;
         fireEvent.click(trash);
         await elapse(0);

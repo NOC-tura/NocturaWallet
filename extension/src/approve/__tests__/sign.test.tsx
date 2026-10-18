@@ -96,7 +96,10 @@ describe('#46 sign-message', () => {
     const sheet = await settled(() => screen.getByRole('dialog', {name: 'We strongly recommend rejecting. Continue?'}));
     const understand = within(sheet).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement;
     expect(understand.disabled).toBe(true);
-    await elapse(CONFIRM_DELAY_MS);
+    // The 2-second confirm itself (Task 9 fix round 1, I1): C15's hold is long past at 1 999 ms, so only the delay holds it.
+    await elapse(CONFIRM_DELAY_MS - 1);
+    expect((within(sheet).getByRole('button', {name: 'I understand the risk'}) as HTMLButtonElement).disabled).toBe(true);
+    await elapse(1);
     fireEvent.click(within(sheet).getByRole('button', {name: 'I understand the risk'}));
     await settled(() => expect(w.closed.n).toBe(1));
     expect(page.answersFor(requestId)[0]).toHaveProperty('result');
