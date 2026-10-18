@@ -1,15 +1,17 @@
 # Noctura Extension B1d — presale in the extension (buy, allocation, referral, jurisdiction gate)
 
-**Status:** **rev 2 — Fable review 1 applied with owner decisions D7–D14; next: Fable review 2.** The owner approved
+**Status:** **rev 3 — Fable reviews 1–2 applied with owner decisions D7–D15; next: owner review.** The owner approved
 the design in conversation section by section (`.superpowers/sdd/b1d-approved-design.md`, approach A) and took
-decisions D1–D6, then D7–D14 on Fable's review 1 (`.superpowers/sdd/b1d-owner-decisions.md`, `.superpowers/sdd/b1d-spec-review-1.md`).
-Everything this spec adds beyond that text is a controller ruling (C1–C38 below) or a string in §10 (Q01–Q51, final
+decisions D1–D6, then D7–D14 on Fable's review 1 and D15 on review 2 (`.superpowers/sdd/b1d-owner-decisions.md`,
+`.superpowers/sdd/b1d-spec-review-1.md`, `.superpowers/sdd/b1d-spec-review-2.md`).
+Everything this spec adds beyond that text is a controller ruling (C1–C39 below) or a string in §10 (Q01–Q52, final
 under D14). Research map: `.superpowers/sdd/b1d-context.md`. Where each review finding landed: §11.
 
 **Ledger (review L12).** The order, so nobody has to guess it: the facts were re-read from the code on 2026-10-18 (§8.2)
 and rev 1 was written from them; the owner's decisions D1–D6 and D7–D14 carry the date the decisions file records,
 2026-10-19, which is also the date in this file's name; rev 2 was written after both sets of decisions, and every
-rev 2 fix was checked again against the code it cites (wallet `main` at 0b79442, ICO at 75450df).
+rev 2 fix was checked again against the code it cites (wallet `main` at 0b79442, ICO at 75450df); rev 3 (review 2,
+D15, 2026-10-19) likewise.
 
 **Owner rule kept throughout:** no TGE date, no countdown and no relative time-to-TGE anywhere — not in a string, a
 test, a fixture, a comment or this document. The design files contain the date; nothing here was copied from those
@@ -33,13 +35,14 @@ every design element not built as drawn, is a row in §9.
 
 | plan | content |
 |---|---|
-| **B1d-1a — foundations (no presale UI in either build)** | the build-time switch: `__NOCTURA_PRESALE__`, the `presaleSwitch` Vite plugin and its three off-build stubs (§1.1); `check-no-presale.mjs` with the off-build allowlist and its fixture (§6.2); `core/solana/encoding.ts` (§6.2, M2); the intent-kind registry and the shared-shape changes — `PreparedSend.kind`, the kind in the integrity and the challenge digest, `sendPrepared`'s order with `beforeSign` (§1.3), `PendingRecord.extra` with the validator, `inFlightFor`, `viewOf` and the generic rendering of a null-intent record on #11 / #26 / #21 / #44 / #54 (Q42, the only visible change of 1a, in both builds); the account layouts from the pinned IDL (§2.1); `state.ts`; `core/geo/fetch.ts` + `geo.ts`; `core/presale/limits.ts`; their unit tests and gates |
-| **B1d-1b — the purchase** | `quote.ts`, `buy.ts`, `api.ts` and the `presale.*` messages (§1.4) through prepare (simulation with the destination check, §3.3), #20 purchase variant, #10, sign, `v1_pending`, broadcast and #21 (with the "Presale" badge); the resume paths (§4.2); #23a, #23b and the allocation row; #11 banner, Buy and pending row; #50b with every reason; #48's presale region block F12 (D9, §3.6); E2E 1–9 and the visual pass of these screens |
+| **B1d-1a — foundations (no presale UI in either build)** | the build-time switch: `__NOCTURA_PRESALE__`, the `presaleSwitch` Vite plugin and its three off-build stubs (§1.1); `check-no-presale.mjs` with the off-build allowlist and its fixture (§6.2); `core/solana/encoding.ts` (§6.2, M2); the intent-kind registry and the shared-shape changes — `PreparedSend.kind`, the kind in the integrity and the challenge digest, `sendPrepared`'s order with `beforeSign` (§1.3), `PendingRecord.extra` with the validator, `inFlightFor`, `viewOf` and the generic rendering of a null-intent record on #11 / #26 / #21 / #44 / #54 (Q42, the only visible change of 1a, in both builds); the account layouts from the pinned IDL (§2.1); `state.ts`; the shared jurisdiction gate `core/geo/fetch.ts` + `src/background/geo/gate.ts` (both builds, D15); `core/presale/limits.ts`; the three on-path entry modules as skeletons (§1.1, review 2 M2); their unit tests, the gates with 1a's positive-control list (§6.2) and E2E 7 (off build, review 2 L10) |
+| **B1d-1b — the purchase** | `quote.ts`, `buy.ts`, `api.ts` and the `presale.*` messages (§1.4) through prepare (simulation with the destination check, §3.3), #20 purchase variant, #10, sign, `v1_pending`, broadcast and #21 (with the "Presale" badge); the resume paths (§4.2); #23a, #23b and the allocation row; #11 banner, Buy and pending row; #50b with every reason; #48's presale region block F12 (D9, D15, §3.6 — controller ruling: stays in 1b); E2E 1–6, 8–9 and the visual pass of these screens |
 | **B1d-2 — referral and recording** | #24 and its #31 row; the optional referral address on #23 (D8, §3.5); `POST /solana/purchase` after confirmation with background retry (`v1_presale_records`, §2.4) — **blocked by ICO precondition P2a** (D11, §7); the "Presale" badge on #26 and the unrecorded line on #27; E2E 10–12; the remaining visual pass |
 
 **B1d-1a and B1d-1b are merge-to-`main` milestones, not releases (C26).** No build with presale on leaves the
 repository before B1d-2 is on `main` (1a buys nothing; 1b buys without recording the purchase for referral and stats).
-Whether a store build carries presale at all is B1e's decision (D2); F12 (§3.6) ships in every build from 1b on.
+Whether a store build carries presale at all is B1e's decision (D2); the jurisdiction gate (1a) and F12 (1b, §3.6)
+ship in every build (D15).
 
 ---
 
@@ -63,8 +66,9 @@ Whether a store build carries presale at all is B1e's decision (D2); F12 (§3.6)
 | D12 | **Web and the app keep their current geo behaviour in B1d;** adopting `core/geo` + `presaleGeoGate` there is a separate later task | C14, §8.1 |
 | D13 | **Q39 without numbers:** "Earn NOC when friends you invite buy in the presale." until the coordinator's tier rule is confirmed | §10 Q39 |
 | D14 | **Copy Q01–Q4x delegated to the controller** ("Odloči se ti") | §10 (every row: "controller copy, owner-delegated 2026-10-19") |
+| D15 | **The dApp-path jurisdiction gate ships in both builds as compliance code:** a no-presale build blocks a site's presale purchase exactly when the presale build would (gate closed or unreachable); Q50c disappears; `core/geo/**` joins the off-build allowlist. Controller ruling with it: F12 stays in B1d-1b | C31, C38, §1.1, §1.2, §2.2, §3.6, §6.2, §8.1, §10 Q50 |
 
-### Controller rulings (most secure default, stated; C1–C38)
+### Controller rulings (most secure default, stated; C1–C39)
 
 C1 and C2 are the two rulings recorded with the owner's decisions; the rest are this spec's. "B1c's C13" means B1c
 spec's ruling C13 ("the window decides nothing"), which the approved design cites as "the background decides".
@@ -101,14 +105,15 @@ spec's ruling C13 ("the window decides nothing"), which the approved design cite
 | C28 | **The money must arrive at the pinned destination** (review H2): the simulation includes the destination — the SOL treasury, or the pinned vault ATA — and its gain must equal the amount exactly, against a "before" from the same snapshot as the config (§3.3 step 5) | the pins make the *addresses* right; only the program binary makes the money land there, and its upgrade authority is one key on one laptop. One more account in the simulation closes the single-failure case: a lying program is then caught by an honest proxy, a lying proxy by an honest program |
 | C29 | **`beforeSign` runs after the challenge check and before the single-use take** (review M4): a sign-time refusal burns neither the prepared entry nor the re-authentication proof | the re-prepare that follows a refusal not caused by the user must not ask them to re-authenticate; a slow check is caught by `takePrepared`'s unchanged TTL (`prepared-expired` → #20's 30 s path) |
 | C30 | **An open purchase is never hidden** (review M3): `PresaleView.pending` is in every variant, read from `v1_pending` before any network call; on #23 an open `presale-buy` record shows 23b whatever the state read or the gate answers, the closed line (if any) beneath its rows; 23b itself polls only the record (`presale.pending`, no network) | B1b's rule "a pending send must never be hidden"; the design's 23b exists to be watched |
-| C31 | **#48 refuses a presale purchase when the gate is not open — F12, Reject only, no override** (D9, §3.6). In the off build the gate does not exist, so F12 always fires there | the same rule as #23, whichever site sends the purchase; a missing gate is an unreachable gate (fail closed). The consequence — an off (store) build cannot buy through a site either — is stated for the owner in §8.1 |
-| C32 | **The referral address (D8)** is validated by the background only: a 32-byte base58 key, not the default key, not the buyer, **not any account of this wallet**, whose `["allocation", referrer]` PDA exists as a valid PresaleAllocation; it is offered only when it can take effect (first purchase, no on-chain referrer) and is then registered by `register_referrer` in the purchase transaction (§3.5) | "never the buyer's own" made stricter (allowed): the program's legalese rejects self-referrals and a second account of the same wallet is one. A referrer with no allocation earns nothing (the program skips the bonus when `referrer_allocation` is empty, `lib.rs:378`) and the registration is permanent (`AlreadyHasReferrer`, `lib.rs:916`), so accepting it would spend the buyer's one chance for nothing |
+| C31 | **#48 refuses a presale purchase when the gate is not open — F12, Reject only, no override** (D9, §3.6). **The gate is the same in both builds** (D15): `src/background/geo/gate.ts` is shared compliance code, so a no-presale build blocks a site's purchase exactly when the presale build would — sanctioned, stale list, unknown country, no check, 403 | D9's "the same rule as #23, whichever site sends it", true in every build (D15); D2's switch is about the extension's *own* purchase, not about whether the wallet screens a site's. The cost: one `/geo/check` (and the cached list) in the off build when a site sends a purchase |
+| C32 | **The referral address (D8)** is validated by the background only: a 32-byte base58 key, not the default key, not the buyer, **not any account of this wallet**, whose `["allocation", referrer]` PDA exists as a valid PresaleAllocation; it is offered only when it can take effect (first purchase, no on-chain referrer) and is then registered by `register_referrer` in the purchase transaction (§3.5) | "never the buyer's own" made stricter (allowed): the program's legalese rejects self-referrals and a second account of the same wallet is one. A referrer with no allocation earns nothing (the program skips the bonus when `referrer_allocation` is empty, `lib.rs:378`) and the registration is permanent (`AlreadyHasReferrer`, `lib.rs:916`), so accepting it would spend the buyer's one chance for nothing. **No `total_referral_bonuses` rule** (review 2 L8, corrected): purchases alone cannot exhaust the bonus pool (12.8 M NOC, `COMMUNITY_REWARDS_ALLOCATION`, `lib.rs:39`, above 10 % of the whole presale, 10.24 M), but the pool counter is shared with the admin's giveaways (`lib.rs:723-770` add to `total_referral_bonuses`), so exhaustion is reachable by admin action only. Then the program pays no bonus and keeps the purchase (`lib.rs:372-375`); the buyer's own allocation is unaffected, so the wallet reads no pool state and adds no line |
 | C33 | **#19 is not shown for a purchase** (review M7): `index.html` #23 (E) goes to #20 directly; #20's purchase variant carries #19's facts (slot, programs, account setup) | the design's own chain for #23; screen.md's "tx-simulate" is satisfied by the simulation #20 already shows |
 | C34 | **Geo bodies are parsed for their required keys only** (review M8): unknown keys are ignored in both bodies; `GeoMalformed` only for a non-200, a non-object body, or a missing or wrongly typed required key | fail closed is about what the gate needs, not about fields the coordinator adds (it added three on 2026-09-21) |
-| C35 | **#23 re-reads `presale.view` every 25 s** while visible (review L9), inside `Quote`'s 30 s window | Buy never flickers off at the boundary; the window itself is unchanged |
+| C35 | **#23a re-reads every 25 s while visible, and only what the quote and the gate need** (review 1 L9, review 2 M3): the §2.1 snapshot and `/geo/check` — two requests; balances are read on mount, on focus, on a currency change and after a purchase confirms; the re-read pauses while `document.visibilityState !== 'visible'` | Buy never flickers off at `Quote`'s 30 s boundary, and the presale screen cannot spend the per-IP budget whose 403 trips the shared latch and so disables **Send** for the cool-down (B1b D36): a full view is ~5 requests, 12 a minute at this interval |
 | C36 | **The dollar re-auth rule takes the larger valuation** (review L6): `/wallet/prices`' or the simulation's `Δtotal_spent_cents` (the program's own Pyth valuation); unknown only when both are | fail closed; the program's number is the one that is actually charged |
 | C37 | **Account indices in this spec are 0-based** (review L2), as `buyInstructions.ts` counts them | one convention; the IDL order is listed once (§3.3) |
-| C38 | **The off build may contain, from `core/presale/**` and `core/geo/**`, only an explicit allowlist** (review M2): `core/presale/addresses.ts`, `allocation.ts`, `stagePrices.ts` | a denylist lets an unlisted module leak silently; today's off-build needs (B1b, B1c) are exactly these three once the two helpers move out of `buyInstructions.ts` |
+| C38 | **The off build may contain, from `core/presale/**`, only an explicit allowlist** (review 1 M2): `core/presale/addresses.ts`, `allocation.ts`, `stagePrices.ts`; **`core/geo/**` is allowed whole** (D15: the jurisdiction gate is compliance code in both builds) | a denylist lets an unlisted module leak silently; today's off-build needs (B1b, B1c) are exactly these three once the two helpers move out of `buyInstructions.ts`, plus the shared gate |
+| C39 | **The busy-destination retry re-runs everything** (review 2 M1): the same message bytes are simulated again (nothing rebuilt); the fresh snapshot replaces the first for every rule, pin, stage comparison, limit, `firstPurchase`, referrer and "before"; all of §3.3 step 5 runs on the second result; the entry stores the second snapshot's values; one retry per prepare, only for a destination-only mismatch whose simulation slot is not below the snapshot's | a retry that re-checks less than the first pass would widen what is accepted; a simulation older than the snapshot is a stale answer, not a race (review 2 L1) |
 
 ---
 
@@ -118,9 +123,9 @@ spec's ruling C13 ("the window decides nothing"), which the approved design cite
 popup (#11 #23 #24 #50b #20 #21 #26 #27)       — shows what the background answers; decides nothing (C3)
         │ runtime.sendMessage  presale.*  (privileged partition, popup/tab only)
 background
-  ├─ presale/  (entry api.ts; the off build resolves it to a stub)  state.ts · geo.ts · quote.ts · buy.ts · record.ts · referral.ts · layouts.ts
+  ├─ presale/  (entry api.ts; the off build resolves it to a stub)  state.ts · quote.ts · buy.ts · record.ts · referral.ts · layouts.ts
+  ├─ geo/gate.ts  the jurisdiction gate — shared compliance code, both builds (D15): #23's gate and F12's (§2.2, §3.6)
   ├─ intents.ts  kind registry  (send always; presale-buy registered by presale/api.ts)
-  ├─ dapp/presaleGate.ts  F12's region hook (both builds; presale/api.ts registers geo.ts into it, §3.6)
   └─ B1b pipeline: prepared entries (storage.session) → #10 challenge → beforeSign → sign → v1_pending → broadcast route → poller
         │ through the shared 403 latch (deps.ts): /rpc (getAccountsData, getTokenAccountsByOwner, simulateTransaction, …),
         │ /tx/broadcast, /geo/check, /geo/restricted-list, /referral-stats/:address, POST /solana/purchase
@@ -152,6 +157,9 @@ approve.html (#48) — renders F12 as stored with the simulation; computes nothi
   `presaleRoutes` / `presaleSlots`). No other shared module may import anything under a presale directory — the
   module rule of §6.2 proves it, so a fourth entry added without a stub fails the gate. A stub contains no marker
   string (§6.2). The plugin throws when `on` is not a boolean or a stub file is missing. When on, it resolves nothing.
+  **The three on-path entries exist from B1d-1a** (review 2 M2) as skeletons — `registerPresale` registers nothing,
+  `PRESALE_MESSAGE_TYPES = []`, `presaleRoutes = []`, `presaleSlots = null`, `describePresale(): null` — so the plugin
+  maps something real in both builds from 1a on and the module rule has something to prove; 1b and 2 fill them.
 - **Mechanism 2 — the constant (folds branches).** `__NOCTURA_PRESALE__: boolean`, declared once in
   `extension/src/features.d.ts`, substituted by `define` (`JSON.stringify(on)`) in both configs, for inline branches in
   shared code that need no module (e.g. a test of the build's own mode). It never guards an import.
@@ -162,10 +170,12 @@ approve.html (#48) — renders F12 as stored with the simulation; computes nothi
 - **What does not change with the switch:** the manifest (no new permission, host or CSP entry in either build); B1b's
   history row "Presale purchase" and #27's "PRESALE PURCHASE" (a website purchase must still read correctly in the
   off build); B1c's presale instruction decoder (`dapp/decode/presaleIdl.ts`) and its F2 treatment of the website's
-  purchases; F12 and `dapp/presaleGate.ts` (§3.6); the generic rendering of a null-intent record (Q42); `deps.stagePrice` (C13).
+  purchases; the jurisdiction gate `src/background/geo/gate.ts` with `core/geo/**` and F12 (D15, §2.2, §3.6); the
+  generic rendering of a null-intent record (Q42); `deps.stagePrice` (C13).
 - **Off build behaviour:** no #11 banner, no Buy, no #31 "Refer a friend" row, no presale routes; every `presale.*`
   message is refused as an unknown type (`messages.ts`: "Any message type outside both lists is refused"); every
-  presale purchase a site sends is F12, Reject only (C31).
+  presale purchase a site sends is decided by the same jurisdiction gate as in the on build — F12, Reject only, exactly
+  when the gate is closed or unreachable (C31, D15).
 
 ### 1.2 Background modules (`extension/src/background/presale/`)
 
@@ -173,12 +183,15 @@ approve.html (#48) — renders F12 as stored with the simulation; computes nothi
 |---|---|---|
 | `layouts.ts` (generated) | 1a | the three account layouts from the pinned IDL (§2.1) — written by `scripts/gen-presale-idl.mjs`, never by hand |
 | `state.ts` | 1a | one `getAccountsData` of the §2.1 snapshot through the proxy → `PresaleState`; every check fails closed |
-| `geo.ts` | 1a | `core/geo/fetch.ts` + `presaleGeoGate` → `GeoAnswer` (§2.2) |
 | `quote.ts` | 1b | the estimate, MAX and the limit line from the last snapshot (§3.2) — no network |
 | `buy.ts` | 1b | `presale-buy` intent kind: parse, digest, prepare (build + simulate + checks), `beforeSign`, #10 description (§3.3) |
-| `api.ts` | 1b (1a: the registration skeleton) | the entry module: `registerPresale` (the `presale-buy` kind, F12's region hook, the `presale.*` handlers, §1.4), `PRESALE_MESSAGE_TYPES` |
+| `api.ts` | 1a skeleton, 1b filled | the entry module: `registerPresale` (the `presale-buy` kind, the `presale.*` handlers, §1.4), `PRESALE_MESSAGE_TYPES` |
 | `record.ts` | 2 | the coordinator record and its retry (§2.4) |
 | `referral.ts` | 2 | #24's data and the referral-address check (§3.5) |
+
+**Shared, both builds (D15):** `src/background/geo/gate.ts` (1a) — `core/geo/fetch.ts` + `presaleGeoGate` →
+`GeoAnswer` (§2.2), the list cache; it imports nothing under a presale directory. #23 (through `presale/`) and F12
+(through `dapp/`) both call it.
 
 `core/` gains: `core/geo/fetch.ts` (`fetchGeoInputs(get: JsonGetter)`, §2.2), `core/presale/limits.ts` (bigint:
 `usdCentsForStable`, `tokensFor`, `checkLimits`, ticks, rents, §3.2) and `core/solana/encoding.ts` (`encodeU64LE`,
@@ -237,7 +250,7 @@ existing `vault.challengeInfo`).
 
 | type | payload | answer |
 |---|---|---|
-| `presale.view` | `{account}` | `PresaleView` (§2.5) — the account's open record first (no network), then a fresh state read **and** a fresh geo check (C12) |
+| `presale.view` | `{account, refresh?: 'gate'}` | `PresaleView` (§2.5) — the account's open record first (no network), then a fresh state read **and** a fresh geo check (C12), then balances and the SOL price; with `refresh: 'gate'` the balances and price are the last full view's (C35) — never older than that view, and a view without one answers in full |
 | `presale.pending` | `{account}` | `PendingView \| null` — the account's open `presale-buy` record from `v1_pending`; **no network call** (C30, 23b's poll) |
 | `presale.banner` | `{}` | `{stage, priceTicks, stagePercent}` or `null` — the last config snapshot ≤ 60 s old, else a config-only read (§2.1 rules 1–4); **no geo check**; `null` on any failure or an inactive sale |
 | `presale.quote` | `{account, currency, amount: string \| 'max'}` | `Quote` (§3.2) from the last `presale.view` snapshot of that account ≤ 30 s old; older → `{stale: true}` |
@@ -307,12 +320,20 @@ only when **all** hold; otherwise it is `{unavailable: <code>}` and the presale 
 4. `presale_active = 1`, `presale_start_time ≤ now` (UTC seconds) and `tokens_sold < 102 400 000 × 10⁹` (the
    program's hard-cap check) — else `{inactive}` (Q13), a valid read of a closed sale. While active,
    `stage_tokens_sold < 10 240 000 × 10⁹` (the program advances the stage before it could reach it) — else malformed.
+   **The order of these two sentences is load-bearing** (review 2 L9): the `inactive` test is evaluated first. Every
+   program path that adds to `stage_tokens_sold` runs the stage-advance loop and adds to `tokens_sold` with it
+   (`lib.rs` 439-460, 1138-1160, 2069-2095, 2284-2320), so at stage 9 a stage total at the cap happens only past the
+   hard cap — which the first sentence already answers `inactive`, never `malformed`.
 5. User account: absent, or owner = program, length 58, discriminator = UserAccount's, `is_blocked` 0 or 1;
    `is_blocked = 1` → `{blocked}` (Q14).
 6. Allocation: absent (`exists: false`, totals 0, no referrer), or owner = program, length 117, discriminator =
    PresaleAllocation's, `user@8 = account` (the positional control of `fetchOnChainAllocation`), `claimed` 0 or 1;
    `referrer@84` all zero → none.
-7. Treasury: present and owned by the System program (its lamports are C28's SOL "before").
+7. Treasury: present, owned by the System program, 0 bytes of data (its lamports are C28's SOL "before"). Verified from
+   the records (review 2 L4): the vault `6Zia…o6Vd` is an off-curve Squads v4 vault PDA, measured on mainnet as
+   System-owned with no data (memory "fee treasury placeholder", 2026-06-24, and "mainnet key exposure", with two
+   executed outbound Squads transfers); the program pays it with a System transfer. The rule stays; 1a re-reads the
+   account once, slowly, and records the owner and data length in its plan before the rule is enabled.
 8. Each vault ATA: present, owned by the SPL Token program, 165 bytes, mint@0 = its mint, owner@32 =
    `config.sol_treasury`, state@108 = 1 (initialized); its `amount@64` is C28's stablecoin "before".
 
@@ -342,7 +363,7 @@ the latch's cool-down); any other failed rule → `{unavailable: 'malformed'}`. 
   with that formula as its test (`getMinimumBalanceForRentExemption` stays off the proxy's allowlist).
 - `referrerAllocation` = `resolveReferrerWith(() => snapshotRef, account, captured)` — `captured` null before B1d-2 (C7).
 
-### 2.2 The jurisdiction gate (`geo.ts`, B1 §4, C12, C34; B1d-1a)
+### 2.2 The jurisdiction gate (`src/background/geo/gate.ts`, both builds — D15; B1 §4, C12, C34; B1d-1a)
 
 `core/geo/fetch.ts` — `fetchGeoInputs(get: JsonGetter): Promise<{location, list}>`. Both bodies: a non-200, a body
 that is not a JSON object, or a required key missing or of the wrong type → `GeoMalformed`; **every other key is
@@ -358,7 +379,7 @@ ignored** (C34):
   `reviewed_by`, `source`, `age_days` are ignored. Mapped to `ListMeta {source: 'server', updatedAt, reviewedAt,
   maxStalenessDays, serverStale}` (null → absent).
 
-`geo.ts` decides, in this order:
+`gate.ts` decides, in this order:
 
 | condition | `GeoAnswer.reason` |
 |---|---|
@@ -372,7 +393,8 @@ computed age, an unknown or empty country (not `^[A-Z]{2}$`, or `XX` / `ZZ`) clo
 whatever `isVpn` says (`sanctionedWinsOverVpn`; `isVpn` is always `false` today — B1 §5 coordinator answer 5 — and is
 read as nothing). A `restricted` country is open (OFAC-only policy, `classify.ts` `isPresaleBlocked`). The list is
 cached in the worker's memory ≤ 10 minutes; `/geo/check` is never cached. `GeoAnswer` = `{open, reason, countryCode | null}`.
-The same `geo.ts` answers #23 and F12 (§3.6).
+The same `gate.ts` answers #23 and F12 (§3.6), in both builds (D15): it is compliance code, not presale code, so it
+and `core/geo/**` are on the off-build allowlist (C38) and outside every presale directory.
 
 ### 2.3 The purchase in `v1_pending`
 
@@ -457,7 +479,9 @@ Integer arithmetic only (cardinal rule 2); every division floors, as the program
 - `Quote` = `{amount, cents, nocBase, line: LimitCode | BalanceCode | 'no-sol-price' | null}`; `amount: 'max'` answers
   C9's MAX (capped by `maxTxCents` and `userRemainingCents` converted back — for SOL at our price, floored, then
   re-checked), or `line` when even MAX is below the minimum.
-- Empty or zero input → `{line: null}` and Buy disabled (no nagging, as `canBuy`). `core/presale/purchaseGate.ts`'s
+- Empty or zero input: the popup never asks `presale.quote` for it — it renders `{line: null}` with Buy disabled itself
+  (no nagging, as `canBuy`; displaying nothing is no decision); the background answers `malformed` to `"0"` or `""`
+  like any amount outside `^[1-9]\d{0,19}$` (review 2 L2). `core/presale/purchaseGate.ts`'s
   float `canBuy` is not used by the extension (§9).
 
 ### 3.3 Prepare, simulate, sign (`buy.ts`, approach A; B1d-1b)
@@ -501,10 +525,18 @@ user, 8 token_program, 9 system_program. `register_referrer` (B1d-2): 0 user_acc
      `checkLimits`; `Δtotal_tokens = tokensFor(Δc, stage)` exactly — **except** that when `Δtotal_tokens =
      tokensFor(Δc, s')` for some stage `s' ≠ intent.stage`, the answer is `price-changed` (Q15, review L3: the stage
      moved between the read and the simulation); B1d-2 — when a referrer is registered, `referrer@84` after = it.
-   - **One retry for a busy destination:** when every other check passed and only the destination's Δ differs (another
-     buyer's purchase or a treasury movement landed between the snapshot and the simulation), prepare takes one fresh
-     snapshot and simulates once more; a second mismatch is final. No other failure is retried.
-   Any failure → `simulation-mismatch` (Q16), never offered with a warning (approved §3).
+   - **One retry for a busy destination (C39, review 2 M1):** when every other check passed and only the destination's
+     Δ differs (another buyer's purchase or a treasury movement landed between the snapshot and the simulation), and
+     the simulation's `context.slot` is **not below** the snapshot's (a lower slot is a stale proxy answer, not a race —
+     `simulation-mismatch` at once, no retry; review 2 L1), prepare takes one fresh snapshot and simulates **the same
+     message bytes** again (nothing rebuilt: same blockhash, fee and instructions). The fresh snapshot **replaces** the
+     first for everything — §2.1's rules and C5's pins, `intent.stage` against its stage (→ `price-changed`), the limits,
+     `firstPurchase` and `newPdaRent`, the referrer (B1d-2), and every "before" — and **all** of this step runs again on
+     the second result. If the fresh snapshot changes what the message was built from (`newPdaRent`, the referrer
+     resolution, the stage), prepare refuses with that check's code rather than simulating stale bytes. The entry stores
+     the second snapshot's values. One retry per prepare; no other failure is retried. A second destination-only
+     mismatch → `presale-busy` (Q52, "it was simulated, twice" — not Q16).
+   Any other failure → `simulation-mismatch` (Q16), never offered with a warning (approved §3).
 6. Re-auth reasons (§3.4); challenge issued / re-based exactly as `prepareSend` (bound to the intent digest, which
    includes `kind`, `account`, `currency`, `amount`, `stage` and — B1d-2 — `referrer`).
 7. Store the prepared entry (§1.3) and answer `PurchaseView = {id, currency, amount, stage, priceTicks, nocBase: Δtokens,
@@ -569,7 +601,7 @@ the first purchase, and `referrerAllocation` for the *effective* referrer; `buil
   registers it (permanent).
 - **The record** carries the effective referrer as `referrerAddress` (§2.4).
 
-### 3.6 Website purchases through #48 — F12, the presale region block (D9, C31; B1d-1b)
+### 3.6 Website purchases through #48 — F12, the presale region block (D9, D15, C31; B1d-1b)
 
 B1c's #48 shows a site's presale purchase today as F2 "non-transfer" (a warning, `redFlags.ts:386` — the presale is a
 decoded program), so a user in a sanctioned country can buy on any site through the extension, behind only the site's
@@ -581,33 +613,38 @@ own check. D9 closes it with the same rule as #23.
   `presale_purchase_and_vest_stake`, `presale_purchase_usdc_and_vest_stake`, `presale_purchase_usdt_and_vest_stake` —
   whether or not the rest of it parses strictly (an unparsable one is also F1, as today). A purchase reached only by a
   CPI from another program is not detected (that program is F1's named unknown program; §8.1).
-- **The hook.** `src/background/dapp/presaleGate.ts` (shared, both builds): `registerPresaleRegionCheck(check: () =>
-  Promise<GeoAnswer>)` and `presaleRegion(): Promise<GeoAnswer | {open: false, reason: 'not-in-build'}>` — unregistered,
-  it answers `not-in-build`. `registerPresale` (§1.1) registers `geo.ts`'s check. `presaleGate.ts` imports `GeoAnswer`
-  as a type only, so no `core/geo` module enters the off build (C38).
-- **Where it plugs in.** `runSimulation` (`dapp/signTx.ts:79`) asks `presaleRegion()` — fresh `/geo/check`, list from
-  the ≤ 10-minute cache (C12) — beside `recipientFacts`, only when a transaction of the request carries a purchase, and
+- **The gate (D15).** F12 calls the shared `src/background/geo/gate.ts` (§1.2, §2.2) directly — the same module, list
+  cache and rules as #23, present in both builds. There is no registration hook and no "not in this build" answer: a
+  no-presale build blocks a site's purchase exactly when the presale build would (C31).
+- **Where it plugs in.** `runSimulation` (`dapp/signTx.ts:79`) asks the gate — fresh `/geo/check`, list from the
+  ≤ 10-minute cache (C12) — beside `recipientFacts`, only when a transaction of the request carries a purchase, and
   stores the answer with the simulation (`sim.presaleRegion`, parsed back field by field like every stored flag). A
   failure of the check itself is `no_check`, never a missing answer. `redFlagsOf` (`dapp/redFlags.ts:161`) then emits,
   for each such transaction, **F12** `{kind: 'presale-region', severity: 'refuse', word: null, at: <the purchase
   instruction's index>, reason}` when the answer is not open (`sanctioned`, `stale_list`, `unknown_country`,
-  `no_check`, `refused`, `not-in-build`). `severity: 'refuse'` is new: it is neither a warning nor an overridable
-  block — `expectedOverrides` never asks a word for it and `overridesMatch` cannot satisfy it.
+  `no_check`, `refused`). `severity: 'refuse'` is new: it is neither a warning nor an overridable block —
+  `expectedOverrides` never asks a word for it and `overridesMatch` cannot satisfy it. Three places the plan must
+  change with it (review 2 L7): `redFlagsOf`'s sort (`redFlags.ts:169`) compares severity two ways today (block before
+  warn) — it becomes a three-way rank, `refuse` < `block` < `warn`, so F12 sorts first; the stored-flag parser
+  (`redFlags.ts:450` on, `exactly` with its kind and severity checks) gains the kind, accepting only `severity:
+  'refuse'`, `word: null`, a valid index and a known reason; `KIND_ORDER` gains it.
 - **Approval.** `txRefused` (`dapp/signTx.ts:208`) answers a new refusal `presale-region` for any request with an F12
-  in any transaction — checked right after `blockhash-expired` and before the override words, so no word, no
-  re-authentication and no setting can approve it (C31; "no setting disables a block", B1c §3.3). At the decision,
-  before the entry moves to `deciding` (B1c §1.5 step 2, so a refusal burns nothing), the background asks
-  `presaleRegion()` again for a request carrying a purchase ("before every signature", C12); not open → the refusal,
-  and the request is re-simulated so #48 shows the F12 it now has. An open answer adds nothing: the purchase stays
-  F2's warning, as today.
+  in any transaction — its row goes **right after the `simulation-failed` row** (the dependent-failure check) and before
+  the override words (`overridesMatch`), so no word, no re-authentication and no setting can approve it (C31; "no
+  setting disables a block", B1c §3.3). At the decision, before the entry moves to `deciding` (B1c §1.5 step 2, so a
+  refusal burns nothing), the background asks the gate again for a request carrying a purchase ("before every
+  signature", C12); not open → the refusal, and the request is re-simulated so #48 shows the F12 it now has. An open
+  answer adds nothing: the purchase stays F2's warning, as today.
 - **#48 (window).** F12 renders as `.s9-flag-banner danger` in its transaction's section, first among blocks: head Q49,
-  body Q50 (a — sanctioned, with the country name as #50b derives it; b — every fail-closed reason; c — `not-in-build`),
-  meta Q51. No typed field; Approve is not drawn — [Reject] only, as for a failed simulation; the top-bar eyebrow is
-  B1c's "Critical · Blocked transaction" (B1c Q35). The window computes nothing (B1c's C13); Q49–Q51 live in the
-  window bundle of both builds.
-- **Plan: B1d-1b.** It needs `geo.ts` (1a) and #48 copy (D10b keeps 1a free of UI); it is shared code that ships in
-  both builds, so it lands with the first plan whose builds can buy at all. No build carrying B1c's dApp path is
-  released without it (§6.5).
+  body Q50 (a — sanctioned, with the country name; b — every fail-closed reason), meta Q51. No typed field; Approve is
+  not drawn — [Reject] only, as for a failed simulation; the top-bar eyebrow is B1c's "Critical · Blocked transaction"
+  (B1c Q35). The window computes nothing (B1c's C13); Q49–Q51 live in the window bundle of both builds. **The country
+  name** comes from a shared UI helper, `src/app/ui/regionName.ts` (`Intl.DisplayNames(['en'], {type: 'region'})`, the code
+  itself when it throws or answers undefined, and the EU-27 table), imported by both `src/approve/Tx.tsx` and #50b, beside
+  the `app/ui` modules the approve window already imports (`ExtIcon`, `LockedButton`) — the approve bundle never
+  imports a presale directory (review 2 L6).
+- **Plan: B1d-1b** (controller ruling with D15; D10b keeps 1a free of UI). It needs the gate (1a) and #48 copy; it is
+  shared code that ships in both builds. No build carrying B1c's dApp path is released without it (§6.5).
 
 ---
 
@@ -654,8 +691,11 @@ B1d-2). #21 is the existing `status` route. Every CTA follows rule 6 (`LockedBut
     input (design F).
   - Sticky **[Buy <estimate> NOC]**, or **[Buy NOC]** while there is no estimate (screen.md §23). Disabled while a
     line shows or the quote is stale; tap → `presale.prepareBuy` → `presale-confirm` (`flow`).
-  - Typing calls `presale.quote` (debounced 250 ms); the popup re-reads `presale.view` **every 25 s** while #23 is
-    visible (C35: `Quote`'s 30 s window never lapses under the user) — each re-read includes the geo check.
+  - Typing calls `presale.quote` (debounced 250 ms). Mount and focus call `presale.view` in full (snapshot, geo,
+    balances, price — about five requests); the popup then re-reads **every 25 s** while #23 is visible with
+    `presale.view {account, refresh: 'gate'}` — the §2.1 snapshot and `/geo/check` only, two requests, the balances
+    of the last full view kept (C35, review 2 M3). A currency change and a confirmed purchase ask a full view; the
+    re-read pauses while `document.visibilityState !== 'visible'` and resumes with a full view.
 - **23b pending** (`pending` set, C17, C30): title "NOC presale"; the ring spinner (static under
   `prefers-reduced-motion`); **"Order pending"**; sub Q05 (replaces "Tokens will be claimable when stage 3 closes",
   D5); rows **Paid** "<amount> <CUR>", **Estimated NOC** "<nocBase> NOC", **Stage** "Stage N of 10 · @ $ 0.1501",
@@ -694,10 +734,14 @@ B1d-2). #21 is the existing `status` route. Every CTA follows rule 6 (`LockedBut
 
 ### 4.3 #50b region blocked (presale) — ix 19612-19906
 
-Route `geo`; on mount `presale.view` (a fresh geo check — "Re-checked at every presale screen mount"). Chrome as drawn:
+Route `geo`; on mount `presale.view` (a fresh geo check — "Re-checked at every presale screen mount"). When #50b
+**replaced** #23 (a closed answer, no open record), it renders first from the `PresaleView` it was routed with and its
+mount re-check replaces that answer when it lands — one view for the replacement, one for the mount, as approved
+(review 2 L3). Chrome as drawn:
 top bar **"Not available here"** (`.t-title`) with back and ✕ (→ #11); hero glyph (72 px circle, `--warning` + i-lock);
-headline; sub; region card; reason row; info banner; "What still works"; sticky **[Got it]** → back to the trigger
-(#23 or #11), never a dead end.
+headline; sub; region card; reason row; info banner; "What still works"; sticky **[Got it]** → back to the trigger:
+#23 when #50b was opened from #23's link (#23 is on the stack), **#11** when #50b replaced #23 or came from #11's
+Buy — never a dead end.
 
 | reason | headline | sub | region card | reason row (head · sub) |
 |---|---|---|---|---|
@@ -708,8 +752,8 @@ headline; sub; region card; reason row; info banner; "What still works"; sticky 
 | `refused` | Q23 | **"The presale service refused this network."** (approved) | the disclosure line only | Q24 · Q27 |
 | open (C18) | Q20 | — | as `sanctioned` | — |
 
-- Country name: `Intl.DisplayNames(['en'], {type: 'region'}).of(code)`; the code itself if that throws or answers
-  undefined. The EU-27 table is a static list in the screen module. The design's CSS flag tile is omitted (§9).
+- Country name and " · EU": the shared `src/app/ui/regionName.ts` (§3.6) — `Intl.DisplayNames(['en'], {type:
+  'region'}).of(code)`, the code itself if that throws or answers undefined; the EU-27 table is a static list there. The design's CSS flag tile is omitted (§9).
 - Info banner: head **"Why this matters"**, sub Q28 (replaces "we honor the program's restrictions"); line Q29
   (replaces "If the program updates its allowlist…"); **"Re-checked at every presale screen mount."** kept.
 - "What still works": **"Send / Receive NOC"** kept; Q30 replaces "View portfolio"; "Stake existing NOC" and the
@@ -768,6 +812,7 @@ translates; nothing internal is shown.
 | `insufficient-sol` / `insufficient-token` / `split-balance` / `sender-below-rent` | quote, prepare | the line (Q41 a–d) |
 | `no-sol-price` | quote | Q19; SOL disabled, stablecoins offered (C8) |
 | `simulation-failed` / `simulation-mismatch` | prepare | Q16 on #23; never offered with a warning |
+| `presale-busy` (the destination moved twice, C39) | prepare | Q52 on #23; Buy stays enabled (a later try is a new prepare) |
 | `referrer-invalid` / `referrer-self` / `referrer-no-allocation` (B1d-2) | checkReferrer, prepare | the line under the field (Q46 a/b/c); Buy disabled |
 | `referrer-not-applicable` (B1d-2) | checkReferrer, prepare | Q48; the view re-read (the field disappears) |
 | `in-flight` | prepare | #23 is 23b already (C17, C30); a second click while one is pending refused (C10) |
@@ -776,7 +821,8 @@ translates; nothing internal is shown.
 | a double click on Buy / on #20 | popup | `LockedButton` 500 ms + disable on tap; the prepared entry is single-use |
 | the worker stops between sign and broadcast | — | B1b: the record is written before the broadcast; never signed twice, never broadcast twice |
 | the stage advances between simulation and landing | — | accepted: the program prices at execution; "(est.)" on #23 / #20; the allocation row shows the real total after confirmation |
-| another purchase lands on the treasury between snapshot and simulation | prepare | one fresh snapshot and simulation (§3.3 step 5); a second mismatch → Q16 |
+| another purchase lands on the treasury between snapshot and simulation | prepare | one fresh snapshot and the same bytes simulated again, every check re-run (§3.3 step 5, C39); a second destination-only mismatch → `presale-busy` (Q52); a simulation slot below the snapshot's → Q16 at once |
+| a referrer registered from another device between signing and landing (B1d-2, review 2 L11) | on chain | the purchase fails on chain (`AlreadyHasReferrer`, 6016), the network fee paid, nothing bought — #44 `landed` with Q32; the next view re-reads (the field is gone, the on-chain referrer shown on #20) |
 | Pyth older than 120 s at simulation | prepare | the simulation fails → Q16 |
 | the coordinator is unreachable | — | presale closed (§3.1); F12 on #48; the wallet keeps working; a recorded purchase keeps retrying (§2.4) |
 | the record POST keeps failing | B1d-2 | the purchase stands; Q34 on #27; given up after 72 h |
@@ -841,6 +887,13 @@ does), and a positive control wherever a negative is asserted. The plan that bui
   ATA) uses it as account 4; account 5 equals the pinned vault ATA (mutation: derive from the admin → red); a split
   balance refuses; SOL and stablecoin account lists equal the IDL's (`presaleIdl.ts` rows) in order; only Compute
   Budget + presale programs; `register_referrer` never built in 1b; an on-chain referrer's allocation PDA passed.
+- **Retry (1b, C39, review 2 M1, L1):** a destination-only mismatch, then a fresh snapshot whose stage moved →
+  `price-changed` (mutation: the retry re-checks the destination only → passes → red); the second simulation's bytes
+  equal the first's (mutation: the retry rebuilds the message → red); a fresh snapshot with a new `newPdaRent` → its
+  code, not a simulation; a simulation slot below the snapshot's → Q16 without a retry; two destination-only
+  mismatches → `presale-busy`; the entry stores the second snapshot's values.
+- **#23 request budget (1b, C35, review 2 M3):** a request spy counts five requests on mount and exactly two per 25 s
+  re-read (mutation: balances in the re-read → red); no re-read while hidden; a currency change asks a full view.
 - **Simulation checks (1b, C11, C23, C28, review H2, L3):** a correct one passes (positive control); wrong SOL outflow,
   wrong token outflow, a token account of another owner, no allocation increase, `Δpurchase_count = 2`, `Δtokens =
   tokensFor(Δc) − 1`, a stablecoin `Δc` off by one, each Custom error → its code, an unknown error →
@@ -855,12 +908,15 @@ does), and a positive control wherever a negative is asserted. The plan that bui
   the price only → red); both missing → above; `first-send` never produced for a purchase.
 - **Resume (1b, review M5):** the popup hook and the tab's `resume` route push `presale-confirm` `resume` for a purchase
   entry and `confirm` `resume` for a send.
-- **F12 (1b, §3.6, D9):** for each of the six purchase discriminators, with the hook answering each closed reason → F12
-  and `txRefused` = `presale-region` with every override word given and the re-authentication proven (mutation: give
-  F12 a word → approvable → red); unregistered hook → `not-in-build`; the hook throwing → `no_check`; open → no F12, F2
-  as today (positive control); a non-purchase presale instruction (`register_referrer`) → no F12; a batch with one
-  purchase transaction → the request refused; the decision re-asks the hook (a spy) and a closed answer there refuses
-  before `deciding` is written; a stored F12 is parsed back and a malformed one is not.
+- **F12 (1b, §3.6, D9, D15):** for each of the six purchase discriminators, with the gate answering each closed reason
+  → F12 and `txRefused` = `presale-region` with every override word given and the re-authentication proven (mutation:
+  give F12 a word → approvable → red); the gate throwing → `no_check`; open → no F12, F2 as today (positive control); a
+  non-purchase presale instruction (`register_referrer`) → no F12; a batch with one purchase transaction → the request
+  refused; the decision re-asks the gate (a spy) and a closed answer there refuses before `deciding` is written; F12
+  sorts before every block and warning (mutation: the two-way sort → a block first → red); a stored F12 is parsed back
+  and a malformed one (a word, `severity: 'block'`, an unknown reason) is not; `txRefused`'s row order — a
+  non-dependent failed simulation is still `simulation-failed`. **The same tests run in `vitest.nopresale`** with the same
+  answers (D15: the off build blocks exactly when the on build does; mutation: stub the gate in the off build → red).
 - **Recording (2):** written on `confirmed` only; the payload's fields, `paymentAmount` a string; the schedule's slots
   on a fake clock; a 403 waits for the cool-down; given up at 72 h; one POST in flight; delete wipes, restore keeps.
 - **Referral address (2, §3.5, C32):** each `checkReferrer` code with its boundary (a 31-byte key, the default key, the
@@ -870,13 +926,15 @@ does), and a positive control wherever a negative is asserted. The plan that bui
   rather than dropping the input (mutation: drop silently → red); the simulation's `referrer@84` check.
 - **Switch, off build (`vitest.nopresale`):** `__NOCTURA_PRESALE__ === false` and the stub resolved (review L10);
   `PRIVILEGED` contains no `presale.*`; a `presale.view` is refused `unknown type`; `intents.ts` has no `presale-buy`; a
-  stored `presale-buy` pending record is polled and rendered with Q42 (C19); F12 answers `not-in-build`.
+  stored `presale-buy` pending record is polled and rendered with Q42 (C19); `src/background/geo/gate.ts` and
+  `core/geo/fetch.ts` are present and answer as in the on build (D15).
 - **Screens:** every state of §4 with its verbatim strings — 23a (SOL, USDC, below min, MAX), 23b, 23b with a closed
   line beneath (geo `no_check` with an open record → 23b rendered, nothing hidden; mutation: drop the precedence → #50b
   → red), the allocation row, each closed answer, #20 purchase rows with the simulation block, #21 badge, #44 and #54 for
-  a purchase, #50b × 6 and `Intl.DisplayNames` throwing → the code shown, #24 (populated, nulls, copied with the
+  a purchase, #50b × 6 (and Got it → #11 when #50b replaced #23, → #23 from the link) and `regionName` with
+  `Intl.DisplayNames` throwing → the code shown (in the popup and in the approve window), #24 (populated, nulls, copied with the
   checkmark, copy failed), #11 banner and Buy routing, the `presale.banner` null paths (403, malformed, inactive), #48
-  with F12 for each Q50 variant (Reject only), and in B1d-2 the referral field with each line, #26 badge, #27 line. TGE
+  with F12 for Q50a and Q50b (Reject only), and in B1d-2 the referral field with each line, #26 badge, #27 line. TGE
   assertions are boolean with neutral messages (public CI logs): no date pattern and no countdown appears in any
   rendered presale screen.
 
@@ -890,20 +948,25 @@ does), and a positive control wherever a negative is asserted. The plan that bui
   `dist-nopresale/` off; each `app.features.json` must say what its directory is, else the gate fails):
   1. **Modules:** the off build's module maps (`app.modules.json` and every other `*.modules.json`) contain no module
      under `src/background/presale/**`, `src/app/presale/**`, `src/unlock/presale.ts` or `core/referral/**`, and —
-     **allowlist (C38)** — from `core/presale/**` and `core/geo/**` only `core/presale/addresses.ts`,
-     `core/presale/allocation.ts` and `core/presale/stagePrices.ts`. **Positive control:** the on build contains every
-     B1d path (`presale/{state,geo,quote,buy,api,layouts}.ts`, B1d-2's `record.ts` and `referral.ts` from that plan on,
-     `src/app/presale/index.ts`, `src/unlock/presale.ts`, `core/geo/fetch.ts`, `core/presale/limits.ts`) — a renamed or
-     moved module fails the gate instead of passing it silently. **Self-test:** today's module map, committed as a
-     fixture (`scripts/__tests__/fixtures/app.modules.0b79442.json`), fails the gate naming exactly
+     **allowlist (C38)** — from `core/presale/**` only `core/presale/addresses.ts`, `core/presale/allocation.ts` and
+     `core/presale/stagePrices.ts`; `core/geo/**` is allowed (D15). **Both builds** contain `src/background/geo/gate.ts`
+     and `core/geo/fetch.ts` (D15's control: the off build did not lose the gate). **Positive control, staged per plan**
+     (review 2 M2) — the list lives in the gate file and each plan's PR extends it, so `verify` is green at the end of
+     every plan without loosening anything: **1a** — `presale/{layouts,state}.ts`, the three on-path entries
+     (`presale/api.ts`, `src/app/presale/index.ts`, `src/unlock/presale.ts`, skeletons from 1a, §1.1), `core/presale/limits.ts`;
+     **1b** adds `presale/{quote,buy}.ts`; **2** adds `presale/{record,referral}.ts` and `core/referral/index.ts`. A
+     renamed or moved module fails the gate instead of passing it silently. **Self-test:** a fixture module map
+     (`scripts/__tests__/fixtures/app.modules.0b79442.json`) produced by the 1a plan by building commit 0b79442 (`dist/`
+     is untracked — review 2 L5) and naming that commit in its first key, fails the gate naming exactly
      `core/presale/buyInstructions.ts`, and passes with that one entry removed.
   2. **Strings:** no file under the off build's `app/`, `chrome/`, `firefox/` contains a **marker** — every `presale.*`
      message type, the route names `presale-confirm` and `referral`, `presale-buy`, `v1_presale_records`, and the
      strings "NOC presale", "YOU RECEIVE (EST.)", "Claimable after TGE", "Refer a friend", "Not available here",
      "Order pending", and every §10 string whose source is "new", "approved" or "app" and whose build is "on" — each
-     literal part of at least 8 characters between placeholders. The list is explicit in the gate file. **Positive
-     control:** each marker is found in the on build; a marker that B1b or B1c already ships (found in the fixture
-     build's sources) is a gate bug and fails its self-test.
+     literal part of at least 8 characters between placeholders. The list is explicit in the gate file and staged like
+     item 1 (1a ships no marker — Q42 is "both" — so 1a's list is empty and the item is armed by 1b). **Positive
+     control:** each marker is found in the on build. A marker that also lives in a shared module shows up in the off
+     build and fails the scan itself — the author renames it; no separate self-test of sources is needed (review 2 L5).
   3. **Must stay:** the B1b/B1c presale strings ("Presale purchase", "PRESALE PURCHASE", the decoder's instruction
      names), Q42 and F12's Q49–Q51 are **found** in the off build (a control that the switch did not strip what both
      builds need).
@@ -924,7 +987,8 @@ arithmetic to the posted transaction (or a scripted error or a scripted wrong de
 `/geo/restricted-list` with scriptable answers, `/referral-stats`, and `POST /solana/purchase` with scriptable status.
 Every spec runs normally and under `unshare -rn` (containment: no real network).
 
-B1d-1b:
+B1d-1a: E2E 7 (it needs only a seeded record and B1b's fake signature statuses, not 1b's fake program state —
+review 2 L10). B1d-1b: the rest of 1–9.
 
 1. **SOL purchase end to end:** #11 Buy → #23a → amount → #20 (rows, the simulation block) → #10 (first purchase) →
    #21 → confirmed → #26 row (B1d-2 adds the badge assertion).
@@ -941,8 +1005,8 @@ B1d-1b:
 8. **Resume (review M5):** close the popup on #10 for a purchase, prove in the vault page, reopen → #20 purchase variant
    with `proven` true, Buy enabled; and the tab's hand-over lands on the same.
 9. **#48 F12 (D9):** a fake site sends a presale purchase through the provider (`StandardWalletAdapter`): geo
-   `sanctioned` → F12 with Q50a, Reject only; geo `no_check` → Q50b; the off build → Q50c; geo open → F2 warning,
-   approvable (positive control).
+   `sanctioned` → F12 with Q50a, Reject only; geo `no_check` → Q50b; the same two in the off build (D15); geo open →
+   F2 warning, approvable (positive control).
 
 B1d-2:
 
@@ -968,7 +1032,8 @@ against `index.html` as in B1b and B1c, every departure checked against §9.
   CrowdSec).
 - **F12 in every released build** (D9): no build carrying B1c's dApp path is released before B1d-1b is on `main`,
   whether presale is on or off.
-- B1e decides whether the store build is `--no-presale` (and so whether site purchases through it are refused, C31); if
+- B1e decides whether the store build is `--no-presale` (site purchases through it are screened by the same gate
+  either way, D15); if
   presale ships, the privacy disclosure lists presale (B1 §5: "public addresses (balances, history, presale,
   referral)"), the store listing describes the token sale, and the external security review covers §3.3 and §3.6.
 
@@ -1017,7 +1082,9 @@ amount, and a transaction whose log line comes from another program is refused.
 `/geo/restricted-list`, `/rpc`, `/referral-stats/:address` and `POST /solana/purchase` CrowdSec answers with 403 and
 which with silence, and that the coordinator itself never answers 403 to the extension's `Origin` (B1 §5 coordinator
 answer 2, measured for GETs only). Why: the extension shows "refused" (403 → Q12, `refused`) apart from "unavailable"
-(silence / timeout). Done when: one written answer per route.
+(silence / timeout). **And the per-IP rate budget per route** (review 2 M3): how many requests a minute CrowdSec allows
+from one IP before it answers 403 or silence, so 1b can size #23's 25 s re-read (C35) and the poller against a number.
+Done when: one written answer per route.
 
 Also asked, not blocking: whether `/referral-stats` counts referrals made through the extension's purchases (they carry
 `referrerAddress` whenever a referrer is effective, §2.4), and whether the stablecoin purchase path writes the same
@@ -1045,8 +1112,10 @@ Also asked, not blocking: whether `/referral-stats` counts referrals made throug
     program constrains. **With both the program and the proxy lying**, nothing client-side helps (review H2, L7);
   - F12 sees top-level instructions only: a purchase reached by a CPI from another program is F1's named unknown
     program, not F12 (§3.6);
-  - **an off build refuses every site's presale purchase** (C31) — if a store build is `--no-presale`, its users cannot
-    buy through noc-tura.io with the extension either; flagged to the owner for B1e;
+  - **an off build screens a site's presale purchase exactly as the on build does** (D15, C31): blocked when the gate
+    is closed or unreachable, allowed (as B1c's F2 warning) when it is open; the cost is one `/geo/check` (and the
+    cached list) when a site sends a purchase — so a `--no-presale` store build still contains the jurisdiction gate
+    and `core/geo/**`, as compliance code, never presale UI;
   - the coordinator stores what the record says until P2b; every input goes through one host (`api.noc-tura.io`) — an
     outage closes the presale (B1 §4, accepted by the owner).
 
@@ -1059,12 +1128,13 @@ Also asked, not blocking: whether `/referral-stats` counts referrals made throug
 | `extension/scripts/gen-presale-idl.mjs` | 1a | + `layouts.ts` output, `LAYOUTS_SHA256` |
 | `extension/src/background/intents.ts`; `prepare.ts`, `send.ts`, `pendingStore.ts`, `pending.ts`, `reauthChallenges.ts` | 1a | the kind registry and its uses (§1.3) |
 | `extension/src/app/screens/Home.tsx`, `Activity.tsx`, `Status.tsx`, `Failed.tsx`, `Stuck.tsx` | 1a (generic), 1b (kind) | null-intent rendering (Q42; Q32/Q33) |
-| `extension/src/background/presale/` | 1a: `layouts.ts`, `state.ts`, `geo.ts`; 1b: `quote.ts`, `buy.ts`, `api.ts`; 2: `record.ts`, `referral.ts` | the presale background |
-| `extension/src/background/dapp/presaleGate.ts`, `redFlags.ts`, `signTx.ts`, `decide.ts`; `src/approve/Tx.tsx` | 1b | F12 (§3.6) |
+| `extension/src/background/presale/` | 1a: `layouts.ts`, `state.ts`, `api.ts` (skeleton); 1b: `quote.ts`, `buy.ts`, `api.ts` filled; 2: `record.ts`, `referral.ts` | the presale background |
+| `extension/src/background/geo/gate.ts` | 1a | the jurisdiction gate, both builds (D15) |
+| `extension/src/background/dapp/redFlags.ts`, `signTx.ts`, `decide.ts`; `src/approve/Tx.tsx`; `src/app/ui/regionName.ts` | 1b | F12 (§3.6) and the shared country name |
 | `extension/src/background/deps.ts` | 2 | `createJsonPoster` |
-| `extension/src/app/presale/` | 1b, 2 | #23, #20 purchase variant, #50b, #24, the routes, `presaleSlots` |
+| `extension/src/app/presale/` | 1a (`index.ts` skeleton), 1b, 2 | #23, #20 purchase variant, #50b, #24, the routes, `presaleSlots` |
 | `extension/src/app/App.tsx`, `router.ts`, `screens/Settings.tsx`, `TxDetail.tsx` | 1b, 2 | resume, guarded routes, #31 row, #27 line |
-| `extension/src/unlock/presale.ts` | 1b | #10's purchase description |
+| `extension/src/unlock/presale.ts` | 1a (skeleton), 1b | #10's purchase description |
 | `core/geo/fetch.ts`, `core/presale/limits.ts`, `core/solana/encoding.ts` | 1a | fetcher; bigint limits, ticks, rents; the moved helpers |
 | `core/presale/addresses.ts`, `core/presale/buyInstructions.ts`, `core/presale/record.ts` | 1a, 1b, 2 | the vault ATAs; the `sourceTokenAccount` parameter and the re-exports; `paymentAmount: number \| string` |
 | `extension/e2e/presale*.spec.ts`, `visual-presale.spec.ts`, `fakeCoordinator.ts` | 1b, 2 | E2E, visual, fake program state |
@@ -1095,7 +1165,7 @@ and `RegisterReferrer`, `calculate_tokens_for_usd`, `SPACE`s, stablecoin constra
 | B1 §4 "a separate module behind one flag, switchable off" | a **build-time** switch (D2, C4) with its gate |
 | B1 re-auth "first send to a new address", "whole balance to a first-time address" | not applied to a purchase; **first purchase** instead (D3, C21) |
 | B1 fee policy (transparent markup) | not applied to a purchase (C25) |
-| B1c #48: a site's presale purchase shown as F2 (a warning) | **F12, Reject only, no override, when the gate is not open** (D9, §3.6) — an undrawn #48 state: banner Q49–Q51 in B1c's danger-banner style, no typed field, no Approve |
+| B1c #48: a site's presale purchase shown as F2 (a warning) | **F12, Reject only, no override, when the gate is not open, in both builds** (D9, D15, §3.6) — an undrawn #48 state: banner Q49–Q51 in B1c's danger-banner style, no typed field, no Approve |
 | #23 lede "Four backend-driven states: active · pending · claim · done" | active and pending built; **claim (23c) and done (23d) not built** (D1): no on-chain source before TGE, no vesting exists, untestable on mainnet |
 | screen.md §23 "[Buy NOC] → tx-simulate → tx-confirm → tx-status" vs `index.html` #23 (E) "→ #20" | **#19 is not shown for a purchase** (C33, index.html's (E)); #20's purchase variant shows #19's facts: "Simulated at slot <N>", "Programs · Compute Budget · Noctura presale" (Q44) and the account-setup row |
 | 23a "$ 1.55 M raised · $ 5.00 M stage cap" | "raised" from `total_usd_raised_cents` (the sale's total); the stage cap is 10 240 000 NOC, not dollars → progress and cap in NOC (Q01) |
@@ -1199,12 +1269,15 @@ carry it (§6.2's markers are the "on" rows of source new / approved / app). Non
 | Q47 | #20 / #10 referrer row | "Referred by" · note when this purchase registers it: "Saved to your presale account with this purchase. It can't be changed later." | new | on | controller copy, owner-delegated 2026-10-19 |
 | Q48 | #23, the referrer can no longer apply | "This account can no longer take a referrer — review again" | new | on | controller copy, owner-delegated 2026-10-19 |
 | Q49 | #48 F12 banner head (D9) | "Presale purchase blocked" | new | both | controller copy, owner-delegated 2026-10-19 |
-| Q50 | #48 F12 banner body | a (sanctioned) "This transaction buys NOC in the presale, which this wallet doesn't allow from your region (<Country>)." · b (any fail-closed reason) "This transaction buys NOC in the presale. The wallet's region check did not succeed, so it can't be approved — try again later." · c (`not-in-build`) "This transaction buys NOC in the presale, which this version of the wallet doesn't support." | new | both | controller copy, owner-delegated 2026-10-19 |
+| Q50 | #48 F12 banner body | a (sanctioned) "This transaction buys NOC in the presale, which this wallet doesn't allow from your region (<Country>)." · b (any fail-closed reason) "This transaction buys NOC in the presale. The wallet's region check did not succeed, so it can't be approved — try again later." (c removed in rev 3, D15) | new | both | controller copy, owner-delegated 2026-10-19 |
 | Q51 | #48 F12 banner meta | "Only Reject is available · no override" | new | both | controller copy, owner-delegated 2026-10-19 |
+| Q52 | #23, the destination moved twice during prepare (C39) | "The presale is busy right now — try again." | new | on | controller copy, owner-delegated 2026-10-19 |
 
 ---
 
-## 11. Review 1 (Fable 5.1) → rev 2
+## 11. Reviews
+
+### Review 1 (Fable 5.1) → rev 2
 
 | finding | where it landed |
 |---|---|
@@ -1237,4 +1310,25 @@ carry it (§6.2's markers are the "on" rows of source new / approved / app). Non
 | Owner Q5 → D10b three plans | header table, §1.2, §8.2, §6.1, §6.3, §6.5, C26, §9 |
 | Owner Q6 → D12 web/app unchanged | C14, §8.1 |
 | Owner Q7 → D13 Q39 | §10 Q39, §9 |
-| Owner Q8 → D14 copy | §10 (final, Q01–Q51 without gaps, every row "controller copy, owner-delegated 2026-10-19") |
+| Owner Q8 → D14 copy | §10 (final, Q01–Q51 without gaps (rev 3: Q01–Q52), every row "controller copy, owner-delegated 2026-10-19") |
+
+### Review 2 → rev 3 (Fable 5.1, with owner decision D15)
+
+| finding | where it landed |
+|---|---|
+| M1 the busy-destination retry underspecified | C39, §3.3 step 5 (same bytes, the fresh snapshot replaces the first for everything, all of step 5 re-run, the entry stores the second), §5, §6.1 "Retry" |
+| M2 the 1a gates cannot be green at the end of 1a | §1.1 (the three on-path entries as 1a skeletons), §6.2 items 1–2 (positive controls staged per plan), §8.2, header table |
+| M3 #23a's 25 s re-read through the Send-disabling latch | C35, §1.4 `presale.view {refresh: 'gate'}`, §4.1 (two requests per re-read, balances on mount / focus / currency change / confirmation, paused while hidden), §7 P3 (per-IP budget per route), §6.1 "#23 request budget" |
+| L1 Q16 untrue after two busy simulations; stale-slot answers | `presale-busy` + Q52, C39 (a simulation slot below the snapshot's is not retried), §5 |
+| L2 `presale.quote` empty/zero contradiction | §3.2 (the popup never asks; the background answers `malformed`) |
+| L3 #50b Got it after a replacement | §4.3 (→ #11 when #50b replaced #23; renders first from the routed view) |
+| L4 rule 7's System ownership | §2.1 rule 7 — verified from the records (System-owned, 0 bytes; Squads v4 vault with executed transfers), kept with a one-time live re-read in 1a |
+| L5 fixture provenance; the marker source self-test | §6.2 item 1 (built from 0b79442 by the 1a plan, commit named in the file), item 2 (the scan itself is the detector) |
+| L6 the country name in the approve window | §3.6, §4.3 — shared `src/app/ui/regionName.ts` |
+| L7 F12's sort, parser and `txRefused` row | §3.6 "Where it plugs in" (three-way severity rank, the parser, `KIND_ORDER`) and "Approval" (after `simulation-failed`), §6.1 "F12" |
+| L8 pool exhaustion | C32 — **corrected**: the pool counter is shared with admin giveaways (`lib.rs:723-770`), so exhaustion is reachable by admin action; still no rule (the bonus is skipped, the buyer is unaffected) |
+| L9 rule 4's order | §2.1 rule 4 (stated as load-bearing, with the write sites) |
+| L10 E2E 7 tests 1a's code | §6.3 (E2E 7 runs in 1a), header table |
+| L11 the sign-to-land referrer race | §5 row (`AlreadyHasReferrer`, #44 `landed`) |
+| Owner Q1 → D15 the gate in both builds | D15 row, C31, C38, §1.1, §1.2 (`src/background/geo/gate.ts`), §2.2, §3.6 (no hook, no `not-in-build`), §6.1 F12 in `vitest.nopresale`, §6.2 (`core/geo/**` allowed, present in both builds), §6.3 E2E 9, §6.5, §8.1, §8.2, §9, Q50c removed |
+| Owner Q2 → controller ruling: F12 in 1b | header table, §3.6 "Plan" |
