@@ -2,7 +2,7 @@ import {AddressLookupTableAccount, ComputeBudgetProgram, PublicKey, SystemProgra
 import {MAINNET_USDC_MINT, MAINNET_USDT_MINT} from '../../../../../core/presale/addresses';
 import type {AccountData} from '../../../../../core/solana/rpc';
 import {BLOCKHASH, PUB, RECIPIENT} from '../../__tests__/fixtures';
-import type {DappReauthReason} from '../../reauthPolicy';
+import {WHOLE_BALANCE_PERCENT, type DappReauthReason} from '../../reauthPolicy';
 import {ATA_PROGRAM, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, decodeInstructions} from '../decode/decode';
 import {resolveKeys} from '../decode/keys';
 import {parseWire} from '../decode/wire';
@@ -389,6 +389,43 @@ describe('redFlagsOf — F5 unlimited approve, F6 bounded approve', () => {
   it('an approve seen both decoded and in chain state is listed once', () => {
     const post: [PublicKey, AccountData][] = [[SRC, tokenAcc({mint: MAINNET_USDC_MINT, amount: 1_000n, delegate: DELEGATE, delegatedAmount: U64_MAX})]];
     expect(find(one({ixs: [approveIx(U64_MAX)], pre: held(), post}), 'unlimited-approve')?.approvals.map(a => a.at)).toEqual([0]);
+  });
+
+  it('Task 2 review I1: a chain-state delegation is folded into a decoded approve only when it is that approve’s own — same delegate, no more than it granted', () => {
+    const left = (delegate: PublicKey, delegatedAmount: bigint) => [[SRC, tokenAcc({mint: MAINNET_USDC_MINT, amount: 1_000n, delegate, delegatedAmount})]] as [PublicKey, AccountData][];
+    const view = (approvals: readonly {at: number | null; delegate: string | null; amount: string}[] | undefined) => approvals?.map(a => [a.at, a.delegate, a.amount]);
+    // P1: approve u64::MAX to DELEGATE, a program leaves THEIRS at u64::MAX — the block names THEIRS too.
+    const p1 = one({ixs: [approveIx(U64_MAX), unknownIx(UNKNOWN, [SRC])], pre: held(), post: left(THEIRS, U64_MAX)});
+    expect(view(find(p1, 'unlimited-approve')?.approvals)).toEqual([
+      [0, DELEGATE.toBase58(), U64_MAX.toString()],
+      [null, THEIRS.toBase58(), U64_MAX.toString()],
+    ]);
+    // P1b: approve 5 to DELEGATE, a program re-approves 900 of the 1 000 to THEIRS (90 %, below 99 %): F6 lists both, each with its own amount.
+    const p1b = one({ixs: [approveIx(5n), unknownIx(UNKNOWN, [SRC])], pre: held(), post: left(THEIRS, 900n)});
+    expect(find(p1b, 'unlimited-approve')).toBeUndefined();
+    expect(view(find(p1b, 'bounded-approve')?.approvals)).toEqual([
+      [0, DELEGATE.toBase58(), '5'],
+      [null, THEIRS.toBase58(), '900'],
+    ]);
+    // P1b at 99 % (THEIRS 990 of 1 000): F5 for THEIRS from chain state; the decoded approve's bounded entry for the same source folds into the block.
+    const p1b99 = one({ixs: [approveIx(5n), unknownIx(UNKNOWN, [SRC])], pre: held(), post: left(THEIRS, 990n)});
+    expect(view(find(p1b99, 'unlimited-approve')?.approvals)).toEqual([[null, THEIRS.toBase58(), '990']]);
+    // Negative controls: the approve's own delegate left with exactly what it granted — one entry, the decoded one.
+    expect(view(find(one({ixs: [approveIx(500n), unknownIx(UNKNOWN, [SRC])], pre: held(), post: left(DELEGATE, 500n)}), 'bounded-approve')?.approvals)).toEqual([[0, DELEGATE.toBase58(), '500']]);
+    expect(view(find(one({ixs: [approveIx(U64_MAX), unknownIx(UNKNOWN, [SRC])], pre: held(), post: left(DELEGATE, U64_MAX)}), 'unlimited-approve')?.approvals)).toEqual([[0, DELEGATE.toBase58(), U64_MAX.toString()]]);
+    // Positive control: the same delegate raised past the grant (500 → 600, still bounded) is listed from chain state too.
+    expect(view(find(one({ixs: [approveIx(500n), unknownIx(UNKNOWN, [SRC])], pre: held(), post: left(DELEGATE, 600n)}), 'bounded-approve')?.approvals)).toEqual([
+      [0, DELEGATE.toBase58(), '500'],
+      [null, DELEGATE.toBase58(), '600'],
+    ]);
+  });
+
+  it('Task 2 review minor 4: F5’s threshold is exactly 99 % (WHOLE_BALANCE_PERCENT) — a change to it is deliberate', () => {
+    expect(WHOLE_BALANCE_PERCENT).toBe(99n);
+    // Balance 10 000: 9 900 (99 %) blocks, 9 899 does not; 9 800 (98 %) does not; 9 999 (under 100 %) blocks.
+    const held10k = [[SRC, tokenAcc({mint: MAINNET_USDC_MINT, amount: 10_000n})]] as [PublicKey, AccountData][];
+    const blocks = (amount: bigint) => find(one({ixs: [approveIx(amount)], pre: held10k}), 'unlimited-approve') !== undefined;
+    expect([9_800n, 9_899n, 9_900n, 9_999n].map(blocks)).toEqual([false, false, true, true]);
   });
 
   it('the word: the wallet table’s symbol only when the mint’s decimals match it; else UNLIMITED — never a name the mint claims', () => {

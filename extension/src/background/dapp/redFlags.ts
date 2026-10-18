@@ -261,7 +261,11 @@ function txFlags(input: RedFlagInput, t: TxFlagInput): RedFlag[] {
     if (postToken.delegate === (preOwn?.delegate ?? null) && postToken.delegatedAmount <= (preOwn?.delegatedAmount ?? 0n)) continue;
     approval(null, address, postToken.mint, postToken.delegate, postToken.delegatedAmount, postToken.amount, nearlyAll(postToken.delegatedAmount, postToken.amount));
   }
-  const approvals = found.filter(x => x.approval.at !== null || !found.some(y => y.approval.at !== null && y.approval.source === x.approval.source && y.unlimited === x.unlimited));
+  // A chain-state delegation is folded into a decoded approve only when it is that approve's own (Task 2 review I1): the
+  // same source and severity, the same delegate, and no more than it granted — otherwise it is listed with its own
+  // delegate and amount (an account has one delegate: the post-state's is the one that exists after the transaction).
+  const ownDelegation = (x: Approval, y: Approval): boolean => y.source === x.source && y.delegate === x.delegate && BigInt(x.amount) <= BigInt(y.amount);
+  const approvals = found.filter(x => x.approval.at !== null || !found.some(y => y.approval.at !== null && y.unlimited === x.unlimited && ownDelegation(x.approval, y.approval)));
   const unlimited = approvals.filter(x => x.unlimited).map(x => x.approval);
   const unlimitedSources = new Set(unlimited.map(a => a.source));
   const bounded = approvals.filter(x => !x.unlimited && !unlimitedSources.has(x.approval.source)).map(x => x.approval);
