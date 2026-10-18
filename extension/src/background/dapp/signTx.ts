@@ -6,7 +6,7 @@ import {digestOf} from '../digest';
 import {getSession} from '../session';
 import {readSettings} from '../settings';
 import {recipientFacts} from '../knownRecipients';
-import {FLAG_ROW, MAX_DAPP_OUTGOING, challengeInfo, challengeSatisfied, dropChallenge, issueChallenge, type ChallengeAbout, type DappFlag, type DappOutgoing} from '../reauthChallenges';
+import {FLAG_ROW, MAX_DAPP_OUTGOING, challengeInfo, challengeSatisfied, dropChallenge, isAbout, issueChallenge, type ChallengeAbout, type DappFlag, type DappOutgoing} from '../reauthChallenges';
 import {readContacts} from '../contacts';
 import {decodeInstructions, type DecodedInstruction} from './decode/decode';
 import {resolveKeys} from './decode/keys';
@@ -324,13 +324,17 @@ export function outgoingGrew(fresh: Pick<DappAbout, 'outgoing' | 'omitted'>, iss
  * digest and a digest-keyed drop could not tell the two apart), so a #10 tab already open on it reads back
  * `unknown-challenge` (dappExpired) instead of still showing "Confirmed" for a description Approve no longer honors.
  */
-export async function reauthGate(ext: Ext, deps: Pick<WalletDeps, 'now' | 'randomBytes'>, e: Entry, site: string): Promise<'ready' | 'proven' | 'reauth-required' | 'stale'> {
+export async function reauthGate(ext: Ext, deps: Pick<WalletDeps, 'now' | 'randomBytes'>, e: Entry, site: string): Promise<'ready' | 'proven' | 'reauth-required' | 'stale' | 'malformed'> {
   if (e.sim?.status !== 'ok' || e.sim.sim.reasons.length === 0) return 'ready';
   const digest = dappDigest(e);
   const now = deps.now();
   const current = e.challengeId !== null ? await challengeInfo(ext, now, e.challengeId) : null;
   const fresh = dappAbout(e, site, (await readSettings(ext)).reauthUsdCents);
   if (fresh === null) return 'stale';
+  // Final review M1: a description the challenge store would refuse (a flag word its F5 list does not hold — a token
+  // added to one list and not the other) is answered `malformed`, Reject only — never issueChallenge's TypeError
+  // escaping dapp.decide. The challenge's `about` is only ever this `fresh`, so this is the one place to ask.
+  if (!isAbout(fresh)) return 'malformed';
   const stillCovers = current !== null && current.kind === 'dapp' && reasonsCovered(fresh.reasons, current.reasons) && !outgoingGrew(fresh, current) && flagsCovered(fresh.flags, current.flags);
   if (!stillCovers) {
     const id = await issueChallenge(ext, deps, digest, fresh);

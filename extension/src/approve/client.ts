@@ -279,7 +279,8 @@ function outcomeOf(x: unknown): TxOutcome | undefined {
 
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const AMOUNT = /^\d{1,20}$/;
-const SYMBOLS: readonly string[] = ['NOC', 'USDC', 'USDT'];
+/** F5's symbols — this window's copy of the background's APPROVAL_SYMBOLS (it imports no background code); f5Words.test.ts pins them equal (final review M1). */
+export const APPROVAL_SYMBOLS: readonly string[] = ['NOC', 'USDC', 'USDT'];
 const isAddress = (x: unknown): x is string => isStr(x) && ADDRESS.test(x);
 const isAddressOrNull = (x: unknown): x is string | null => x === null || isAddress(x);
 const isIntOrNull = (x: unknown): x is number | null => x === null || isInt(x);
@@ -322,7 +323,7 @@ function authorityChangeOf(x: unknown): AuthorityChange | undefined {
 function approvalOf(x: unknown): Approval | undefined {
   const o = exactly(x, ['at', 'source', 'mint', 'symbol', 'decimals', 'delegate', 'amount', 'balance']);
   if (o === undefined || !isIntOrNull(o.at) || !isAddress(o.source) || !isAddressOrNull(o.mint) || !isAddressOrNull(o.delegate) || !(o.decimals === null || (isInt(o.decimals) && o.decimals <= 255))) return undefined;
-  if (!isStr(o.amount) || !AMOUNT.test(o.amount) || !isStr(o.balance) || !AMOUNT.test(o.balance) || !(o.symbol === null || (isStr(o.symbol) && SYMBOLS.includes(o.symbol)))) return undefined;
+  if (!isStr(o.amount) || !AMOUNT.test(o.amount) || !isStr(o.balance) || !AMOUNT.test(o.balance) || !(o.symbol === null || (isStr(o.symbol) && APPROVAL_SYMBOLS.includes(o.symbol)))) return undefined;
   return {at: o.at, source: o.source, mint: o.mint, symbol: o.symbol as FlagSymbol | null, decimals: o.decimals, delegate: o.delegate, amount: o.amount, balance: o.balance};
 }
 
@@ -374,7 +375,7 @@ function flagOf(x: unknown): Flag | undefined {
       const word = o.word;
       // Review 3 L14: UNLIMITED only when an approval is u64::MAX, ALLOWANCE only when none is — the background's own rule.
       const max = approvals.some(a => a.amount === '18446744073709551615');
-      const named = isStr(word) && (SYMBOLS.includes(word) || (word === 'UNLIMITED' && max) || (word === 'ALLOWANCE' && !max));
+      const named = isStr(word) && (APPROVAL_SYMBOLS.includes(word) || (word === 'UNLIMITED' && max) || (word === 'ALLOWANCE' && !max));
       return o.severity === 'block' && named ? {kind, severity: 'block', word: word as FlagSymbol | 'UNLIMITED' | 'ALLOWANCE', at: o.at, approvals} : undefined;
     }
     case 'token-2022': {

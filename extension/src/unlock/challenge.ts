@@ -29,7 +29,8 @@ const F5_KEYS = ['row', 'scope', 'step', 'tx', 'word'];
  * or UNLIMITED at u64::MAX and ALLOWANCE below it (review 3 L14), each only with its own scope.
  */
 const ROW_WORDS: Record<string, string | null> = {F1: null, F2: null, F3: 'ASSIGN', F4: 'AUTHORITY', F5: 'UNLIMITED', F6: null, F7: null, F8: null, F9: null, F10: 'UNCHECKED'};
-const UNLIMITED_WORDS: readonly string[] = ['NOC', 'USDC', 'USDT', 'UNLIMITED', 'ALLOWANCE'];
+/** This page's copy of the background's F5_WORDS (the page imports nothing); f5Words.test.ts pins them equal (final review M1). */
+export const F5_WORDS: readonly string[] = ['NOC', 'USDC', 'USDT', 'UNLIMITED', 'ALLOWANCE'];
 const MAX_FLAGS = 50;
 const OUTGOING_KEYS = ['amount', 'decimals', 'mint', 'symbol'];
 const SETTINGS_KEYS = ['autoLockMinutes', 'kind', 'reauthUsdCents'];
@@ -205,7 +206,7 @@ function overridesOf(flags: unknown, transactions: number, reasons: readonly unk
     if (typeof row !== 'string' || !own(ROW_WORDS, row) || !isInt(tx, 0, transactions - 1) || seen.has(`${tx}:${row}`)) return null;
     seen.add(`${tx}:${row}`);
     const expected = ROW_WORDS[row] ?? null;
-    if (expected === null ? word !== null : row === 'F5' ? typeof word !== 'string' || !UNLIMITED_WORDS.includes(word) : word !== expected) return null;
+    if (expected === null ? word !== null : row === 'F5' ? typeof word !== 'string' || !F5_WORDS.includes(word) : word !== expected) return null;
     if ((word === 'UNLIMITED' && scope !== 'unlimited') || (word === 'ALLOWANCE' && scope !== 'nearly-all')) return null;
     if (row === 'F10' ? !isInt(step, 1, tx) : step !== null) return null;
     if (expected === null) continue;

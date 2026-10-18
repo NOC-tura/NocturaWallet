@@ -6,7 +6,7 @@ import type {DappReauthReason, SendReauthReason} from './reauthPolicy';
 import type {FeeReason} from '../../../core/fees/transferMarkup';
 import {WALLET_TOKENS} from '../../../core/solana/balances';
 import {SITE} from '../shared/site';
-import {ALLOWANCE_WORD, OVERRIDE_WORDS, type RedFlagKind} from './dapp/redFlags';
+import {ALLOWANCE_WORD, APPROVAL_SYMBOLS, OVERRIDE_WORDS, type RedFlagKind} from './dapp/redFlags';
 
 /** How long the vault page has to prove the factor (brief decision 6), counted from the last prepare of the same intent. */
 export const CHALLENGE_TTL_MS = 120_000;
@@ -130,17 +130,21 @@ const ROW_WORDS: Record<FlagRow, string | null> = {
 };
 /**
  * F5's word: the wallet's own symbol for a token it names (never SOL — an approve is of a token account), else UNLIMITED
- * at u64::MAX and ALLOWANCE below it (review 3 L14) — each only with its own scope.
+ * at u64::MAX and ALLOWANCE below it (review 3 L14) — each only with its own scope. Final review M1: the symbols are
+ * redFlags' APPROVAL_SYMBOLS (the wallet's table without SOL), never a hand-typed copy.
  */
-const UNLIMITED_WORDS: readonly string[] = ['NOC', 'USDC', 'USDT', OVERRIDE_WORDS.unlimited, ALLOWANCE_WORD];
+export const F5_WORDS: readonly string[] = [...APPROVAL_SYMBOLS, OVERRIDE_WORDS.unlimited, ALLOWANCE_WORD];
 const DIGITS = /^\d{1,20}$/;
 /** A base58 Solana address's shape (32–44 characters). */
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const isInt = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x);
 const isIntOrNull = (x: unknown): boolean => x === null || isInt(x);
 
-/** The exact shape of `about`: a stored record with any other shape is dropped. */
-function isAbout(x: unknown): x is ChallengeAbout {
+/**
+ * The exact shape of `about`: a stored record with any other shape is dropped, and `issueChallenge` throws for one
+ * (final review M1: signTx.ts's reauthGate asks this first, so dapp.decide answers a refusal instead).
+ */
+export function isAbout(x: unknown): x is ChallengeAbout {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
   const a = x as Record<string, unknown>;
   if (a.kind === 'settings') return isIntOrNull(a.autoLockMinutes) && isIntOrNull(a.reauthUsdCents) && Object.keys(a).length === 3;
@@ -232,7 +236,7 @@ function isDappFlags(x: unknown, transactions: number, reasons: readonly unknown
     const row = f.row as FlagRow;
     if (Object.keys(f).length !== (row === 'F5' ? 5 : 4) || (row === 'F5' && f.scope !== 'unlimited' && f.scope !== 'nearly-all')) return false;
     const word = ROW_WORDS[row];
-    if (word === null ? f.word !== null : row === 'F5' ? typeof f.word !== 'string' || !UNLIMITED_WORDS.includes(f.word) : f.word !== word) return false;
+    if (word === null ? f.word !== null : row === 'F5' ? typeof f.word !== 'string' || !F5_WORDS.includes(f.word) : f.word !== word) return false;
     if ((f.word === OVERRIDE_WORDS.unlimited && f.scope !== 'unlimited') || (f.word === ALLOWANCE_WORD && f.scope !== 'nearly-all')) return false;
     if (row === 'F10' ? !isInt(f.step) || f.step < 1 || f.step > f.tx : f.step !== null) return false;
     const key = `${f.tx}:${row}`;

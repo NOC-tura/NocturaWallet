@@ -84,6 +84,12 @@ export interface AuthorityChange {
  * narrowing it here makes the background and the window agree at compile time, with no change to either's behaviour.
  */
 export type ApprovalSymbol = Exclude<WalletToken, 'SOL'>;
+/**
+ * Final review M1: the symbols F5's word can be, derived from the wallet's own table (every token but SOL — an approve
+ * is of a token account) — the background's one list; the challenge store's F5 words are built from it, and a test
+ * (f5Words.test.ts) pins the approval window's and the vault page's copies, which import nothing, equal to it.
+ */
+export const APPROVAL_SYMBOLS: readonly ApprovalSymbol[] = (Object.keys(WALLET_TOKENS) as WalletToken[]).filter((t): t is ApprovalSymbol => t !== 'SOL');
 
 export interface Approval {
   /** The approving instruction's index; null when it is seen only in chain state (a CPI). */
