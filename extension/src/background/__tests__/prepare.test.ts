@@ -1,6 +1,6 @@
 import {base64} from '@scure/base';
 import {VersionedMessage} from '@solana/web3.js';
-import {PREPARED_TTL_MS, parseIntent, peekPrepared, preparedIntegrity, prepareSend, sendIntentDigest, takePrepared} from '../prepare';
+import {PREPARED_TTL_MS, parseIntent, peekPrepared, preparedIntegrity, prepareSend, sendIntentDigest, takePrepared, type PreparedSend} from '../prepare';
 import {PREPARED_KEY, REAUTH_KEY, SESSION_KEY, clearSession, getSession, setSession} from '../session';
 import {PENDING_KEY} from '../pendingStore';
 import {KNOWN_RECIPIENTS_KEY} from '../knownRecipients';
@@ -300,7 +300,7 @@ describe('prepareSend', () => {
     const ext = fakeExt();
     await unlocked(ext);
     const view = await prepareSend(ext, fakeDeps({reader: sendReader()}), ACCOUNT.publicKey, SOL_INTENT);
-    const p = (await peekPrepared(ext, view.id))!;
+    const p = (await peekPrepared(ext, view.id)) as PreparedSend;
     const {account, token, recipient, amount} = {account: p.account, ...p.intent};
     expect(p.intentDigest).toBe(digestOf('send', {account, token, recipient, amount}));
     expect(p.intentDigest).toBe(sendIntentDigest(account, p.intent));
@@ -314,7 +314,7 @@ describe('prepareSend', () => {
     const ext = fakeExt();
     await unlocked(ext);
     const view = await prepareSend(ext, fakeDeps({reader: sendReader()}), ACCOUNT.publicKey, SOL_INTENT);
-    const p = (await peekPrepared(ext, view.id))!;
+    const p = (await peekPrepared(ext, view.id)) as PreparedSend;
     for (const altered of [
       {...p, id: 'f'.repeat(32)},
       {...p, account: RECIPIENT},

@@ -26,7 +26,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const FIXTURE = JSON.parse(readFileSync(join(ROOT, 'scripts/__tests__/fixtures/app.modules.0b79442.json'), 'utf8'));
 const map = ids => ({chunks: {'background.js': ids}});
 const without = (m, id) => ({...m, chunks: Object.fromEntries(Object.entries(m.chunks).map(([f, ids]) => [f, ids.filter(i => i !== id)]))});
-const SHARED = ['src/background/index.ts', '../core/presale/addresses.ts', '../core/presale/allocation.ts', '../core/presale/stagePrices.ts', '../core/solana/encoding.ts'];
+const SHARED = ['src/background/index.ts', 'src/background/intents.ts', '../core/presale/addresses.ts', '../core/presale/allocation.ts', '../core/presale/stagePrices.ts', '../core/solana/encoding.ts'];
 
 // B1d §6.2 item 1 (C38, D15): the off build's module rule — an allowlist for core/presale/**, core/geo/** whole.
 describe('the off-build module rule', () => {
@@ -99,7 +99,7 @@ describe('the off-build module rule', () => {
 describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
   it('the on build must carry the three on-path entries — the plugin maps something real', () => {
     expect(ON_BUILD).toEqual(PRESALE_ENTRIES.map(e => e.entry));
-    expect(BOTH_BUILDS).toEqual([]);
+    expect(BOTH_BUILDS).toEqual(['src/background/intents.ts']);
   });
 
   it('missingModules names each required module a map does not carry', () => {
@@ -112,6 +112,10 @@ describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
 
   it('every ON_BUILD module is one the off build refuses (else its control proves nothing)', () => {
     for (const id of ON_BUILD) expect([id, offModuleViolations(new Set([id])).length]).toEqual([id, 1]);
+  });
+
+  it('every BOTH_BUILDS module is one the off build may carry (else the two rules contradict each other)', () => {
+    for (const id of BOTH_BUILDS) expect([id, offModuleViolations(new Set([id])).length]).toEqual([id, 0]);
   });
 });
 

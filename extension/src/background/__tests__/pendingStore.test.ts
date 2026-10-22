@@ -23,7 +23,9 @@ describe('pendingStore', () => {
   it('drops stored elements that are not a record, so nothing downstream throws on them', async () => {
     const ext = fakeExt();
     const good = record({account: 'A', state: 'stuck'});
-    const junk = [null, 7, 'x', [], {}, {...good, state: 'bogus'}, {...good, id: 1}, {...good, createdAt: 'x'}, {...good, intent: null}, {...good, detail: 3}];
+    // `{...good, intent: null}` is no longer junk (B1d §1.3, review H1): the wallet's own record of another kind than a
+    // send — kept, see pendingKinds.test.ts. A record without any intent still is.
+    const junk = [null, 7, 'x', [], {}, {...good, state: 'bogus'}, {...good, id: 1}, {...good, createdAt: 'x'}, {...good, intent: undefined}, {...good, detail: 3}];
     await ext.local.set(PENDING_KEY, [...junk, good]);
     const read = await readPending(ext);
     expect(read).toEqual([good]);

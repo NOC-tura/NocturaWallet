@@ -30,8 +30,9 @@ export const WEB_ALLOWED = ['../web/src/ui/', '../web/src/styles/'];
 // B1d-1a: the three on-path entries (§1.1); Task 5 adds presale/{layouts,state}.ts and core/presale/limits.ts;
 // 1b adds presale/{quote,buy}.ts; B1d-2 adds presale/{record,referral}.ts and core/referral/index.ts.
 export const ON_BUILD = ['src/background/presale/api.ts', 'src/app/presale/index.ts', 'src/unlock/presale.ts'];
-// Task 6 adds src/background/geo/gate.ts and core/geo/fetch.ts (D15: the off build did not lose the gate).
-export const BOTH_BUILDS = [];
+// Task 3: the intent-kind registry (C19 — both builds sign and read through it); Task 6 adds src/background/geo/gate.ts
+// and core/geo/fetch.ts (D15: the off build did not lose the gate).
+export const BOTH_BUILDS = ['src/background/intents.ts'];
 // Armed by B1d-1b: 1a ships no presale string (Q42 is "both").
 export const MARKERS = [];
 // Task 4 adds Q42; 1b adds F12's Q49–Q51. The decoder's instruction names are read from its source (DECODER).

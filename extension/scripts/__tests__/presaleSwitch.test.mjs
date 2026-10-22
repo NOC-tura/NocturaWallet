@@ -123,6 +123,10 @@ describe('both configs read the same flag (review L11)', () => {
     // The on run (vite.config.ts) is not marked: unset reads as on.
     expect(appConfig({}).test.env).toBeUndefined();
   });
+
+  it('the shared send pipeline is tested in the off run too: the intent-kind registry and a purchase record (B1d §6.1 "Switch, off build", C19)', () => {
+    expect(nopresale.test.include).toEqual(expect.arrayContaining(['src/background/__tests__/intents.test.ts', 'src/background/__tests__/pendingKinds.test.ts']));
+  });
 });
 
 // Why the plugin and not a guarded call (C4): a module whose top level has an effect stays in the bundle when only its

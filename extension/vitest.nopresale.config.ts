@@ -13,6 +13,8 @@ export const NOPRESALE_TESTS = [
   'src/app/__tests__/router.test.ts',
   'src/app/__tests__/App.test.tsx',
   'src/unlock/__tests__/challenge.test.ts',
+  'src/background/__tests__/intents.test.ts',
+  'src/background/__tests__/pendingKinds.test.ts',
 ];
 
 const base = appConfig({...process.env, NOCTURA_PRESALE: '0'});
