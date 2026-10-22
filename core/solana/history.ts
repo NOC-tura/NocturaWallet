@@ -1,6 +1,6 @@
 import {PublicKey} from '@solana/web3.js';
 import {MAINNET_PROGRAM_ID} from '../presale/addresses';
-import {findAssociatedTokenAddress} from '../presale/buyInstructions';
+import {findAssociatedTokenAddress} from './encoding';
 import {MAINNET_FEE_TREASURY} from '../fees/transferMarkup';
 import {WALLET_TOKENS, tokenForMint, type WalletToken} from './balances';
 

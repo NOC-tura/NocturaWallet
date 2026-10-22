@@ -38,6 +38,7 @@ import {dirname, join, posix, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import ts from 'typescript';
 import {isStylesheet, scanCss} from './css-scan.mjs';
+import {DIST_DIRS, distDir} from './distDir.mjs';
 
 const VAULT_ALLOWED = /^src\/(unlock|vault)\//;
 // The vault page's own modules (unlockFlow, orchestrate, main) hold the seed while they run:
@@ -45,10 +46,10 @@ const VAULT_ALLOWED = /^src\/(unlock|vault)\//;
 const UNLOCK_ALLOWED = /^src\/unlock\//;
 // The one entry each HTML page at the package root may load.
 export const ENTRIES = {'popup.html': 'src/app/popup.tsx', 'wallet.html': 'src/app/tab.tsx', 'unlock.html': 'src/unlock/main.ts', 'approve.html': 'src/approve/main.tsx'};
-// node_modules/, dist/, e2e/ and scripts/ are skipped only at the package ROOT — a nested
-// src/popup/scripts/ is ordinary source a page can bundle, not this package's own tooling.
+// node_modules/, both builds' dist/ and dist-nopresale/ (B1d §1.1), e2e/ and scripts/ are skipped only at the package
+// ROOT — a nested src/popup/scripts/ is ordinary source a page can bundle, not this package's own tooling.
 // __tests__/ is skipped at any depth (never bundled, wherever it sits). See the header.
-const SKIP_DIRS_ROOT = new Set(['node_modules', 'dist', 'e2e', 'scripts']);
+const SKIP_DIRS_ROOT = new Set(['node_modules', ...DIST_DIRS, 'e2e', 'scripts']);
 // Every extension a source file under the package can have: .ts/.tsx/.js/.jsx/.mjs/.cjs/.mts/.cts.
 const SOURCE_EXT = /\.[cm]?[jt]sx?$/;
 // The seed code the vault uses also lives in ../core/keys (mnemonic → seed, SLIP-0010), shared
@@ -470,6 +471,8 @@ const VAULT_PAGE_FILES = [
   /^src\/vault\//,
   /^src\/shared\//,
   /^src\/ui\/send\.ts$/,
+  // B1d §1.1: in the build without presale, src/unlock/presale.ts (vault-page code, above) resolves to this stub.
+  /^src\/presale-off\/unlock\.ts$/,
   /^\.\.\/core\/keys\//,
   /^\.\.\/core\/util\//,
 ];
@@ -1228,33 +1231,34 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const abs = join(ROOT, rel);
     return existsSync(abs) && statSync(abs).isFile() ? readFileSync(abs, 'utf8') : undefined;
   };
+  const DIST = distDir();
   const problems = [...sourceViolations(files), ...htmlViolations(pages), ...vaultPageViolations(readRel, rel => readRel(rel) !== undefined)];
   for (const d of ['app', 'chrome', 'firefox']) {
-    for (const p of bundleViolations(join(ROOT, 'dist', d))) problems.push(`dist/${d}: ${p}`);
+    for (const p of bundleViolations(join(ROOT, DIST, d))) problems.push(`${DIST}/${d}: ${p}`);
   }
   // dist/chrome and dist/firefox are copies of dist/app (scripts/build.mjs): one module map covers all three.
-  const mapPath = join(ROOT, 'dist', 'app.modules.json');
+  const mapPath = join(ROOT, DIST, 'app.modules.json');
   const modules = existsSync(mapPath) ? JSON.parse(readFileSync(mapPath, 'utf8')) : undefined;
-  for (const p of vaultPageModuleViolations(join(ROOT, 'dist', 'app'), modules)) problems.push(`dist/app: ${p}`);
-  for (const p of nonVaultModuleViolations(join(ROOT, 'dist', 'app'), modules)) problems.push(`dist/app: ${p}`);
+  for (const p of vaultPageModuleViolations(join(ROOT, DIST, 'app'), modules)) problems.push(`${DIST}/app: ${p}`);
+  for (const p of nonVaultModuleViolations(join(ROOT, DIST, 'app'), modules)) problems.push(`${DIST}/app: ${p}`);
   // Module ids are package-relative (vite.config.ts's moduleId), or absolute: both resolve against ROOT.
   const readSource = path => {
     const abs = resolve(ROOT, path);
     return existsSync(abs) && statSync(abs).isFile() ? readFileSync(abs, 'utf8') : undefined;
   };
-  for (const p of bundledWebAuthnViolations(join(ROOT, 'dist', 'app'), modules, readSource)) problems.push(`dist/app: ${p}`);
+  for (const p of bundledWebAuthnViolations(join(ROOT, DIST, 'app'), modules, readSource)) problems.push(`${DIST}/app: ${p}`);
   // ../core is bundled into the popup and the background: the WebAuthn rule reads it too (no core file is vault code).
   const CORE = resolve(ROOT, '..', 'core');
   const coreFiles = listSourceFiles(CORE).map(path => ({path: `../core/${path}`, text: readFileSync(join(CORE, path), 'utf8')}));
   if (coreFiles.length === 0) problems.push('INCONCLUSIVE: no ../core source file was read — the WebAuthn rule would pass trivially there');
   problems.push(...webAuthnViolations(coreFiles));
   for (const browser of ['chrome', 'firefox']) {
-    const m = JSON.parse(readFileSync(join(ROOT, 'dist', browser, 'manifest.json'), 'utf8'));
-    for (const p of manifestViolations(m)) problems.push(`dist/${browser}/manifest.json: ${p}`);
+    const m = JSON.parse(readFileSync(join(ROOT, DIST, browser, 'manifest.json'), 'utf8'));
+    for (const p of manifestViolations(m)) problems.push(`${DIST}/${browser}/manifest.json: ${p}`);
   }
   if (problems.length) {
     for (const p of problems) console.error(p);
     process.exit(1);
   }
-  console.log('vault isolation ok: sources, built popup/background and both manifests carry no path to the vault; no chunk outside the vault page carries src/vault, src/unlock or core/keys, and no module bundled outside it reads WebAuthn (module map); no page reaches storage.session; every module bundled into the vault page is vault-page code or one of its five packages, and its stylesheets are the three named sheets, importing nothing and loading only the Geist faces; its HTML carries no inline CSS and links only its built sheets, and its code builds no CSS at run time');
+  console.log(`vault isolation ok (${DIST}): sources, built popup/background and both manifests carry no path to the vault; no chunk outside the vault page carries src/vault, src/unlock or core/keys, and no module bundled outside it reads WebAuthn (module map); no page reaches storage.session; every module bundled into the vault page is vault-page code or one of its five packages, and its stylesheets are the three named sheets, importing nothing and loading only the Geist faces; its HTML carries no inline CSS and links only its built sheets, and its code builds no CSS at run time`);
 }

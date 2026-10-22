@@ -1,6 +1,7 @@
 import {formatAmount} from '../shared/amount';
 import {SITE} from '../shared/site';
 import {REAUTH} from './strings';
+import {describePresale} from './presale';
 import type {Send} from './types';
 
 /**
@@ -223,7 +224,7 @@ export function describeChallenge(about: unknown): Description | null {
   if (a.kind === 'send') return describeSend(a);
   if (a.kind === 'settings') return describeSettings(a);
   if (a.kind === 'dapp') return describeDapp(a);
-  return null;
+  return describePresale(a);
 }
 
 export type ChallengeRead =

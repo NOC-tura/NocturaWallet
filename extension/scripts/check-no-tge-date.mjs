@@ -9,6 +9,7 @@
 import {existsSync, readFileSync, readdirSync, statSync} from 'node:fs';
 import {dirname, join, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {distDir} from './distDir.mjs';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -82,8 +83,9 @@ export function listScanned(root) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-  if (!existsSync(join(ROOT, 'dist', 'app'))) {
-    console.error('INCONCLUSIVE: dist/app does not exist — build first, or the built files go unchecked');
+  const DIST = distDir();
+  if (!existsSync(join(ROOT, DIST, 'app'))) {
+    console.error(`INCONCLUSIVE: ${DIST}/app does not exist — build first, or the built files go unchecked`);
     process.exit(1);
   }
   const files = listScanned(ROOT).map(path => ({path, text: readFileSync(join(ROOT, path), 'utf8')}));
@@ -92,5 +94,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     for (const p of problems) console.error(p);
     process.exit(1);
   }
-  console.log(`no TGE date: ${files.length} source and built files checked`);
+  console.log(`no TGE date (${DIST} present): ${files.length} source and built files checked`);
 }

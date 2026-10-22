@@ -1,6 +1,8 @@
-import {defineConfig, type Plugin} from 'vite';
+import {defineConfig, type Plugin, type UserConfig} from 'vite';
 import {writeFileSync} from 'node:fs';
 import {relative, resolve, sep} from 'node:path';
+import {presaleFlag} from './scripts/presaleFlag.mjs';
+import {presaleSwitch} from './scripts/presaleSwitch.mjs';
 
 /**
  * B1c §1.7: the two content scripts, built one at a time as classic scripts (an IIFE — a content script cannot be an
@@ -9,9 +11,6 @@ import {relative, resolve, sep} from 'node:path';
  * (`dist/app.<name>.modules.json`), for the page-bundle gate (scripts/check-page-bundles.mjs): a content script runs in
  * every page, so it may carry only its own sources and @wallet-standard.
  */
-const NAME = process.env.NOCTURA_CONTENT;
-if (NAME !== 'provider' && NAME !== 'relay') throw new Error('NOCTURA_CONTENT must be provider or relay');
-
 const moduleId = (id: string) => (id.startsWith('\0') ? id : relative(__dirname, id).split(sep).join('/'));
 function contentModules(name: string): Plugin {
   const chunks = new Map<string, string[]>();
@@ -28,16 +27,28 @@ function contentModules(name: string): Plugin {
   };
 }
 
-export default defineConfig({
-  base: './',
-  publicDir: false,
-  plugins: [contentModules(NAME)],
-  build: {
-    outDir: 'dist/app',
-    emptyOutDir: false,
-    target: 'es2022',
-    modulePreload: false,
-    copyPublicDir: false,
-    lib: {entry: resolve(__dirname, `src/${NAME}/index.ts`), formats: ['iife'], name: `noctura_${NAME}`, fileName: () => `${NAME}.js`},
-  },
-});
+/**
+ * B1d §1.1: the same flag, the same two mechanisms as vite.config.ts — a content script imports no presale entry
+ * today, and the parity test (scripts/__tests__/presaleSwitch.test.mjs) keeps it so should one ever do.
+ */
+export function contentConfig(env: Record<string, string | undefined>): UserConfig {
+  const name = env.NOCTURA_CONTENT;
+  if (name !== 'provider' && name !== 'relay') throw new Error('NOCTURA_CONTENT must be provider or relay');
+  const presale = presaleFlag(env);
+  return {
+    base: './',
+    publicDir: false,
+    define: {__NOCTURA_PRESALE__: JSON.stringify(presale)},
+    plugins: [presaleSwitch(presale), contentModules(name)],
+    build: {
+      outDir: 'dist/app',
+      emptyOutDir: false,
+      target: 'es2022',
+      modulePreload: false,
+      copyPublicDir: false,
+      lib: {entry: resolve(__dirname, `src/${name}/index.ts`), formats: ['iife'], name: `noctura_${name}`, fileName: () => `${name}.js`},
+    },
+  };
+}
+
+export default defineConfig(() => contentConfig(process.env));

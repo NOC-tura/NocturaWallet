@@ -6,6 +6,8 @@ import {join} from 'node:path';
 
 // The package is an ES module ("type": "module"), where __dirname does not exist.
 export const EXT = fileURLToPath(new URL('../dist/chrome', import.meta.url));
+/** B1d §1.1: the build without presale (`node scripts/build.mjs --no-presale`). */
+export const EXT_NOPRESALE = fileURLToPath(new URL('../dist-nopresale/chrome', import.meta.url));
 
 /**
  * The safety net under any ctx.route: every noc-tura.io name fails to resolve inside this
@@ -53,18 +55,19 @@ export async function containNocTura(ctx: BrowserContext): Promise<{hits: string
 /**
  * Chromium with the built extension loaded and noc-tura.io and solscan.io unresolvable, in a fresh profile. B1c: `hosts`
  * adds more names to the same resolver map (the test dApp's hosts, e2e/dappPage.ts DAPP_HOSTS) — each answered by a
- * route, and unresolvable should a request slip past it.
+ * route, and unresolvable should a request slip past it. B1d: `ext` loads another build (EXT_NOPRESALE); EXT by default.
  */
-export async function launchContained(profilePrefix: string, o: {hosts?: readonly string[]} = {}): Promise<{ctx: BrowserContext; profile: string}> {
+export async function launchContained(profilePrefix: string, o: {hosts?: readonly string[]; ext?: string} = {}): Promise<{ctx: BrowserContext; profile: string}> {
   const profile = mkdtempSync(join(tmpdir(), profilePrefix));
   const extra = (o.hosts ?? []).map(h => `, MAP ${h} ~NOTFOUND`).join('');
+  const ext = o.ext ?? EXT;
   const ctx = await chromium.launchPersistentContext(profile, {
     // The default headless browser is chrome-headless-shell, which does not load extensions
     // (the service worker never starts). channel 'chromium' is Playwright's full Chromium build
     // in new headless mode, which does.
     channel: 'chromium',
     headless: true,
-    args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, `${HOST_RESOLVER_RULES}${extra}`],
+    args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`, `${HOST_RESOLVER_RULES}${extra}`],
   });
   return {ctx, profile};
 }

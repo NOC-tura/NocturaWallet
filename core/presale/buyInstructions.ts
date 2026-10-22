@@ -12,6 +12,10 @@ import {
   MAINNET_USDT_MINT,
 } from './addresses';
 import {derivePresalePdas} from './allocation';
+import {SPL_TOKEN_PROGRAM, encodeU64LE, findAssociatedTokenAddress} from '../solana/encoding';
+
+/** Moved to core/solana/encoding.ts (B1d §6.2); re-exported so the app, web and the tests keep these names. */
+export {SPL_TOKEN_PROGRAM, encodeU64LE, findAssociatedTokenAddress};
 
 const PROGRAM = new PublicKey(MAINNET_PROGRAM_ID);
 const PYTH = new PublicKey(PYTH_SOL_USD_ACCOUNT);
@@ -22,26 +26,6 @@ const PURCHASE_WITH_SOL_DISCRIMINATOR = [161, 153, 65, 238, 160, 236, 43, 165];
 export const REGISTER_REFERRER_DISCRIMINATOR = [122, 229, 215, 169, 100, 145, 198, 120];
 
 export const COMPUTE_UNIT_LIMIT = 120_000;
-
-/**
- * Encode a u64 little-endian by hand.
- *
- * `buffer@5.7.1`, which React Native ships, has no `writeBigUInt64LE` — the tidy call
- * works under Jest on Node and throws on a device.
- */
-export function encodeU64LE(value: bigint): Buffer {
-  const MAX_U64 = 18_446_744_073_709_551_615n;
-  if (value < 0n || value > MAX_U64) {
-    throw new Error(`presale buy: lamports out of u64 range: ${value}`);
-  }
-  const buf = Buffer.alloc(8);
-  let remaining = value;
-  for (let i = 0; i < 8; i++) {
-    buf.writeUInt8(Number(remaining & 0xffn), i);
-    remaining >>= 8n;
-  }
-  return buf;
-}
 
 /**
  * Hand-build the `presale_purchase_with_sol(sol_amount)` instruction.
@@ -129,24 +113,7 @@ export function estimateNocForSol(solAmount: number, solUsd: number, stagePriceU
 }
 
 
-/** SPL Token and Associated Token program ids — constants, not imports, so core stays dependency-free. */
-const SPL_TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-const SPL_ATA_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
-
-/**
- * Associated token address, derived by hand rather than with web3.js's
- * `getAssociatedTokenAddress`. Two reasons, and the second one bit the website: the
- * helper is async for no reason here, and it REFUSES an off-curve owner unless told
- * `allowOwnerOffCurve`. The treasury is a Squads PDA and therefore off-curve, so the
- * tidy call throws where this one simply works.
- */
-export function findAssociatedTokenAddress(owner: PublicKey, mint: PublicKey): PublicKey {
-  const [ata] = PublicKey.findProgramAddressSync(
-    [owner.toBytes(), SPL_TOKEN_PROGRAM_ID.toBytes(), mint.toBytes()],
-    SPL_ATA_PROGRAM_ID,
-  );
-  return ata;
-}
+const SPL_TOKEN_PROGRAM_ID = new PublicKey(SPL_TOKEN_PROGRAM);
 
 export type StablecoinToken = 'USDC' | 'USDT';
 
@@ -236,9 +203,6 @@ export function buildStablecoinBuyInstructions(
     buildStablecoinPurchaseInstruction(user, token, amountBaseUnits, resolved.referrerAllocation, treasury),
   ];
 }
-
-/** The SPL Token program, which a stablecoin purchase touches and a SOL one does not. */
-export const SPL_TOKEN_PROGRAM = SPL_TOKEN_PROGRAM_ID.toBase58();
 
 /** Base units per whole token: 9 for SOL, 6 for both stablecoins. */
 export const TOKEN_DECIMALS: Record<'SOL' | StablecoinToken, number> = {SOL: 9, USDC: 6, USDT: 6};
