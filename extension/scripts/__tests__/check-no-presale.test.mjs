@@ -97,8 +97,8 @@ describe('the off-build module rule', () => {
 
 // §6.2 item 1's positive control, staged per plan (review 2 M2): the lists only grow, and each plan's modules are named.
 describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
-  it('the on build must carry the three on-path entries — the plugin maps something real', () => {
-    expect(ON_BUILD).toEqual(PRESALE_ENTRIES.map(e => e.entry));
+  it('the on build must carry the three on-path entries — the plugin maps something real — and the program state (Task 5)', () => {
+    expect(ON_BUILD).toEqual([...PRESALE_ENTRIES.map(e => e.entry), 'src/background/presale/layouts.ts', 'src/background/presale/state.ts', 'core/presale/limits.ts']);
     expect(BOTH_BUILDS).toEqual(['src/background/intents.ts']);
   });
 

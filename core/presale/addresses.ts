@@ -18,3 +18,12 @@ export const NOC_DECIMALS = 9;
 /** Circle's USDC and Tether's USDT on Solana mainnet, both 6 decimals. */
 export const MAINNET_USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 export const MAINNET_USDT_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
+
+/**
+ * The treasury's associated token accounts for USDC and USDT — where a stablecoin purchase pays (B1d §2.1, C5):
+ * `findAssociatedTokenAddress(MAINNET_SOL_TREASURY, mint)`, whole addresses (a test re-derives both). The extension
+ * reads `config.sol_treasury` and refuses the presale unless it is the pinned treasury, so these are the only
+ * destinations it ever pays.
+ */
+export const MAINNET_VAULT_USDC_ATA = 'DNMn9dt7sqLoKZ27ms2U7kyBJPJUL9dvtqgTavVNDGW3';
+export const MAINNET_VAULT_USDT_ATA = '8mk9WSfsioRXUv2VtMjMmbGC3baXqTs4CZqseD8cvsRp';

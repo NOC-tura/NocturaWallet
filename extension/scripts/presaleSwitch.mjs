@@ -1,5 +1,5 @@
 import {existsSync} from 'node:fs';
-import {dirname, join, resolve} from 'node:path';
+import {dirname, join, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -19,7 +19,10 @@ export const PRESALE_ENTRIES = [
  * The Vite plugin that removes presale code from the off build: its `resolveId` resolves each entry, however it is
  * spelled (a query or a hash included), to its stub, so the entry's module — and every module only it imports, with
  * whatever their top level does — never enters the bundle. A guarded call site could not do that, and the background is
- * a module service worker, where an import cannot sit in an `if` and `import()` throws. On, it resolves nothing.
+ * a module service worker, where an import cannot sit in an `if` and `import()` throws. On, it resolves nothing, and
+ * every module under `src/background/presale/` is kept whole (`moduleSideEffects: 'no-treeshake'`): the on build
+ * carries each presale background module the entry imports, whether or not a caller uses it yet, so the module maps —
+ * the off-build gate's positive control (§6.2) — say what the build really holds, not what tree-shaking left of it.
  * `api.presale` says which mode it is in (the configs' parity test reads it).
  */
 export function presaleSwitch(on, root = ROOT) {
@@ -29,6 +32,7 @@ export function presaleSwitch(on, root = ROOT) {
     if (!existsSync(join(root, stub))) throw new Error(`presaleSwitch: the stub ${stub} is missing`);
     stubs.set(join(root, entry), join(root, stub));
   }
+  const keptWhole = join(root, 'src', 'background', 'presale') + sep;
   return {
     name: 'noctura:presale-switch',
     enforce: 'pre',
@@ -38,6 +42,10 @@ export function presaleSwitch(on, root = ROOT) {
       const resolved = await this.resolve(source, importer, {...options, skipSelf: true});
       if (resolved === null || resolved.external) return null;
       return stubs.get(resolved.id.replace(/[?#].*$/, '')) ?? null;
+    },
+    transform(code, id) {
+      if (!on || !id.replace(/[?#].*$/, '').startsWith(keptWhole)) return null;
+      return {code, map: null, moduleSideEffects: 'no-treeshake'};
     },
   };
 }

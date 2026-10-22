@@ -193,3 +193,57 @@ describe('the plugin removes a module with a side-effectful top level; a folded 
     expect(chunk.code).toContain(EFFECT);
   });
 });
+
+// B1d §6.2 item 1's positive control names presale background modules no B1d-1a code calls yet (layouts.ts, state.ts):
+// in the on build every module under src/background/presale/ is kept whole, so the module maps list what the entry
+// imports rather than what tree-shaking left of it.
+describe('on: the presale background modules are kept whole', () => {
+  it('transform marks a module under src/background/presale/ (a query included) no-treeshake, its code unchanged; nothing else, and nothing off', () => {
+    const on = presaleSwitch(true);
+    const off = presaleSwitch(false);
+    for (const id of [join(ROOT, 'src/background/presale/state.ts'), `${join(ROOT, 'src/background/presale/layouts.ts')}?v=1`]) {
+      expect(on.transform('const x = 1;', id)).toEqual({code: 'const x = 1;', map: null, moduleSideEffects: 'no-treeshake'});
+      expect(off.transform('const x = 1;', id)).toBeNull();
+    }
+    for (const path of ['src/background/presaleHost.ts', 'src/app/presale/index.ts', 'src/unlock/presale.ts', 'src/background/index.ts', '../core/presale/limits.ts']) {
+      expect([path, on.transform('const x = 1;', join(ROOT, path))]).toEqual([path, null]);
+    }
+  });
+
+  let root;
+  const PURE = 'a-pure-presale-module-no-caller-uses';
+  beforeAll(() => {
+    root = mkdtempSync(join(tmpdir(), 'presale-switch-whole-'));
+    for (const {entry, stub} of PRESALE_ENTRIES) {
+      mkdirSync(dirname(join(root, entry)), {recursive: true});
+      mkdirSync(dirname(join(root, stub)), {recursive: true});
+      writeFileSync(join(root, stub), 'export const run = () => 0;\n');
+    }
+    writeFileSync(join(root, 'src/background/presale/api.ts'), "import './pure.ts';\nexport const run = () => 1;\n");
+    writeFileSync(join(root, 'src/background/presale/pure.ts'), `export const PURE = {name: '${PURE}'};\n`);
+    writeFileSync(join(root, 'main.js'), "import {run} from './src/background/presale/api.ts';\nglobalThis.ran = run();\n");
+  });
+  afterAll(() => rmSync(root, {recursive: true, force: true}));
+
+  const bundle = async plugins => {
+    const out = await build({
+      root,
+      configFile: false,
+      logLevel: 'silent',
+      define: {__NOCTURA_PRESALE__: 'true'},
+      plugins,
+      build: {write: false, minify: false, lib: {entry: join(root, 'main.js'), formats: ['es'], fileName: 'out'}},
+    });
+    return (Array.isArray(out) ? out[0] : out).output[0].moduleIds.map(id => id.slice(root.length + 1));
+  };
+
+  it('a pure module the entry imports and nobody calls is in the on build’s module map', async () => {
+    expect(await bundle([presaleSwitch(true, root)])).toContain('src/background/presale/pure.ts');
+  });
+
+  it('negative control: without the plugin, tree-shaking drops it from the map', async () => {
+    const modules = await bundle([]);
+    expect(modules).toContain('src/background/presale/api.ts');
+    expect(modules).not.toContain('src/background/presale/pure.ts');
+  });
+});

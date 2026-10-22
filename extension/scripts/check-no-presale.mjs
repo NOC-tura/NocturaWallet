@@ -27,9 +27,16 @@ export const CORE_PRESALE_ALLOWED = ['core/presale/addresses.ts', 'core/presale/
 // modules can import nothing but erased `core/presale` types and so are never caught by rule 1's other branches.
 export const WEB_ALLOWED = ['../web/src/ui/', '../web/src/styles/'];
 
-// B1d-1a: the three on-path entries (§1.1); Task 5 adds presale/{layouts,state}.ts and core/presale/limits.ts;
-// 1b adds presale/{quote,buy}.ts; B1d-2 adds presale/{record,referral}.ts and core/referral/index.ts.
-export const ON_BUILD = ['src/background/presale/api.ts', 'src/app/presale/index.ts', 'src/unlock/presale.ts'];
+// B1d-1a: the three on-path entries (§1.1), the program state presale/{layouts,state}.ts and core/presale/limits.ts
+// (§2.1); 1b adds presale/{quote,buy}.ts; B1d-2 adds presale/{record,referral}.ts and core/referral/index.ts.
+export const ON_BUILD = [
+  'src/background/presale/api.ts',
+  'src/app/presale/index.ts',
+  'src/unlock/presale.ts',
+  'src/background/presale/layouts.ts',
+  'src/background/presale/state.ts',
+  'core/presale/limits.ts',
+];
 // Task 3: the intent-kind registry (C19 — both builds sign and read through it); Task 6 adds src/background/geo/gate.ts
 // and core/geo/fetch.ts (D15: the off build did not lose the gate).
 export const BOTH_BUILDS = ['src/background/intents.ts'];
