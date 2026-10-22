@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Revision 2 (2026-10-22):** Fable review 1 (approve after fixes: M1–M5, L1–L7) and owner decisions D16–D19 applied, dry-run again — rebuilt from Task 1 (4ec596b) on `dry/b1d1a-r2`: Tasks 2–6 are 1f6fe9b, 30626f6, 7333c87, a76655e, 45fa811, each green with `tsc`, both vitest runs, both builds, every gate, csp, secrets and reproducible; each changed task's new tests red on its predecessor (and, where they test new behaviour, on rev 1's code). M1 (Task 6: the expired-cache-plus-failed-re-read row, K6), M2 (Task 3: a send-shaped entry under an unregistered kind, K3), M3 (Task 5: the zero-referrer row and nine "every rule before any verdict" rows, S30–S33), M4 (every "byte-identical in 1a" statement reworded: plan, PR text, the gate's header comment), M5/D16 (the spec's **rev 3.1** paragraph lists every spec change this plan makes — see "Spec" below), D17 (`wallet.send` signs only a send, Task 3, D1–D2), D18 (min(server, 30), Task 6, D1–D4), D19 (no code; ruling), L1 (the capture adds a USDC send and a dApp record — regenerated from 0b79442's own code), L2, L3, L4 (popup `pendingOf`), L5, L6; every change marked "(rev 2)". 155 named mutations, all red; Playwright 77 normal and under `unshare -rn` on the end state; the consistency replay identical at every prefix. Change list: `.superpowers/sdd/b1d1a-plan-parts/rev2-changes.md`.
+
 **Revision 1 (2026-10-19):** first issue, dry-run in full — every task implemented for real on a scratch clone of `feat/extension-b1d-plan1a` at 923b714 (main 0b79442 + the approved spec), one commit per task (4ec596b, c5550a0, 9bed436, b436245, b523457, f941887), each red on its predecessor and green on its own tree with `tsc`, the whole suite, the off-build suite, both builds, every gate (both builds), csp, secrets and the reproducible check; 143 named mutations, every one compiling and red; Playwright (75 → 77) at Tasks 1, 3 and 4, E2E 7 normal and under `unshare -rn`; web `verify` and the root `tsc` + `jest` at every task touching `core/`. Replaying task-1 … task-6's 67 blocks onto `git archive 923b714` reproduces each task's commit for every prefix (two generated fixtures are produced by their commands, given in the tasks). Next: a Fable 5.1 review (owner rule), then the owner.
 
 **Goal:** Build B1d spec plan 1a (the header table's first row): the foundations for the presale with **no presale UI in either build** — the build-time switch (`__NOCTURA_PRESALE__`, the `presaleSwitch` Vite plugin and its off-build stubs, `--no-presale`), the off-build gate `check-no-presale.mjs`, `core/solana/encoding.ts`, the intent-kind registry with a purchase as a send kind in the shared pipeline (every existing send byte-for-byte unchanged), the generic rendering of a null-intent record on #11 / #26 / #21 / #44 / #54 (Q42, both builds), the program state from the pinned IDL (`layouts.ts`, `state.ts`, pins C5), `core/presale/limits.ts` (D7), and the shared jurisdiction gate (`core/geo/fetch.ts`, `src/background/geo/gate.ts`, both builds — D15). B1d-1a is a merge-to-`main` milestone, not a release (C26).
@@ -10,7 +12,7 @@
 
 **Tech Stack:** TypeScript 5 strict, React 18, Vite 8 (a new local plugin), Vitest 5 + happy-dom, Playwright 1.63 (contained), `@solana/web3.js` 1.99. No new dependency.
 
-**Spec:** `docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md` (approved rev 3; this plan's tasks correct three sentences — the three moved helpers, §1.3's challenge sentence for sends, the rent constants as upper bounds — each a diff in its task). Parent: B1 spec §4. Owner decisions: `.superpowers/sdd/b1d-owner-decisions.md` (D1–D15). Design (binding, contains the TGE date — never copy it): `/home/user/Downloads/index.html` (#11, #21, #26, #44, #54 rows). Template: `docs/superpowers/plans/2026-10-16-extension-b1c-plan3.md`.
+**Spec:** `docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md` (approved rev 3 → **rev 3.1**: the spec edits this plan's tasks make — Tasks 2, 4 and 6, each a diff in its task — are collected as rev 3.1 by owner decision D16, and Task 6 writes a status paragraph that lists **every** changed passage, one line each: C9, C11, C38, §1.2, §1.3, §1.4, §2.1, §2.2, §3.3 step 5, §3.3 step 7, §6.2, §8.2; rev 1 announced "three sentences", which undercounted them — review 1 M5). Parent: B1 spec §4. Owner decisions: `.superpowers/sdd/b1d-owner-decisions.md` (D1–D19; D16–D19 on this plan's review 1). Design (binding, contains the TGE date — never copy it): `/home/user/Downloads/index.html` (#11, #21, #26, #44, #54 rows). Template: `docs/superpowers/plans/2026-10-16-extension-b1c-plan3.md`.
 
 ## Global Constraints
 
@@ -60,10 +62,12 @@ And, for plan 3:
 And, for B1d-1a:
 
 - **Both builds at every task:** the on build and the off build (`node scripts/build.mjs --no-presale`, `dist-nopresale/`) are built, tested (`vitest` and the off-build run `vitest.nopresale.config.ts`) and gate-checked (`npm run gates` runs the gate list once per build via `NOCTURA_DIST`).
-- **Every existing send unchanged:** digests, integrity, stored prepared entries, challenges, pending records and validator verdicts equal the fixture captured from 0b79442's own code (Task 3).
-- **The off build carries no presale module:** `check-no-presale.mjs` reads the module maps (in 1a both packages are byte-identical — only the maps differ); each task appends its own modules to `ON_BUILD` / `BOTH_BUILDS` / `MUST_STAY` and the pinned rows.
+- **Every existing send unchanged:** digests, integrity, challenges, pending records (a SOL send with a challenge, a USDC send without one, a dApp record — sent and polled) and validator verdicts equal the fixture captured from 0b79442's own code byte for byte; stored prepared entries equal it **but for their new `kind` key** (Task 3). A prepared entry stored before the update has no `kind` and is not read (`isPreparedShape`, fail closed): it is prepared again, its challenge carrying over (rev 2, review 1 L2).
+- **The off build carries no presale module:** `check-no-presale.mjs` reads the module maps (the packages are byte-identical through Task 4; from Task 5 the on build carries the presale background modules, so the maps — not the files — remain the gate's evidence; rev 2, review 1 M4); each task appends its own modules to `ON_BUILD` / `BOTH_BUILDS` / `MUST_STAY` and the pinned rows.
 - **Fail closed:** an unreadable, short, malformed or unpinned program read → presale unavailable; a missing, stale or ill-typed list, an unknown country, a 403 or a timeout → the gate closed.
-- **Rent:** `PRESALE_*_RENT_LAMPORTS` and B1b's rent constants are upper bounds only; the exact outflow check (1b) uses the simulation's own rent (measured mainnet rate 5 080 lamports per byte).
+- **Rent:** `PRESALE_*_RENT_LAMPORTS` and B1b's rent constants are upper bounds only; the exact outflow check (1b) uses the simulation's own rent (measured mainnet rate 5 080 lamports per byte). B1b's `sender-below-rent` stays at 890 880 (D19: stricter is safe; re-pinning from the chain is a separate later task — no code in 1a).
+- **One kind per signer (D17):** `wallet.send` signs only `kind: 'send'`; a purchase is signed only through `presale.buy` (1b), which names its kind (Task 3).
+- **The staleness limit is the extension's too (D18):** the gate judges a list against min(the server's `max_staleness_days`, 30) (Task 6).
 
 ## Review Focus
 
@@ -72,6 +76,8 @@ And, for B1d-1a:
 3. **A config whose treasury or mint changed** (a single admin key could redirect buyers): the presale closes, never pays the new address. Tests: Task 5 (S6 and the pins).
 4. **A restricted-region list that grew a field, or lost one**: an added field changes nothing; a missing required one closes the gate. Tests: Task 6.
 5. **The off build quietly carrying presale code** (a new import path through shared code): the gate fails naming the module. Tests: Task 2 (fixture self-test, leak mutations), every later task's list rows.
+6. **(rev 2) A purchase id sent to `wallet.send`, or an entry of a kind this build does not know**: refused before anything is burned (D17, review 1 M2). Tests: Task 3 (K3, D1, D2).
+7. **(rev 2) An expired cached list whose re-read fails, and a coordinator that raises its own staleness limit**: closed, never the old list, never a list older than 30 days. Tests: Task 6 (K6, D1–D4).
 
 ---
 
@@ -128,7 +134,7 @@ And, for B1d-1a:
 
 **Why the plugin (C4), shown by a test:** the background is a module service worker — an import cannot sit in an `if`, and `import()` throws there. A three-module fixture built with Vite (`presaleSwitch.test.mjs`, last describe) shows the three cases: on, the entry and its top-level effect are in the bundle; off, the stub is bundled and the effect is gone; and with only the constant (the call site folded away, no plugin) **the effect stays** — the negative control that makes the plugin necessary rather than decorative.
 
-**What the dry run found about the bundles (read before Task 2):** in B1d-1a the two packages are **byte-identical** (`diff -rq dist/chrome dist-nopresale/chrome` is empty; the reproducible run prints the same digests for both variants) — the skeletons and the stubs compile to the same code, and module ids never reach the output. Only the module maps differ: on carries `src/background/presale/api.ts`, `src/app/presale/index.ts`, `src/unlock/presale.ts`; off carries `src/presale-off/{background,app,unlock}.ts` instead. So the module map is the only evidence the switch did anything in 1a — which is what the build test and Task 2's gate read. After the move, `core/presale/**` in **both** builds is exactly `addresses.ts` and `stagePrices.ts` (`allocation.ts` went with `buyInstructions.ts`: only it imported it) — inside C38's allowlist.
+**What the dry run found about the bundles (read before Task 2):** at this task the two packages are **byte-identical** (`diff -rq dist/chrome dist-nopresale/chrome` is empty; the reproducible run prints the same digests for both variants) — the skeletons and the stubs compile to the same code, and module ids never reach the output. They stay byte-identical through Task 4; from Task 5 the on build carries the presale background modules (kept whole), so the files differ and the maps remain the evidence (rev 2, review 1 M4: rev 1 said "in B1d-1a", which is false from Task 5). Only the module maps differ: on carries `src/background/presale/api.ts`, `src/app/presale/index.ts`, `src/unlock/presale.ts`; off carries `src/presale-off/{background,app,unlock}.ts` instead. So the module map is the only evidence the switch did anything in 1a — which is what the build test and Task 2's gate read. After the move, `core/presale/**` in **both** builds is exactly `addresses.ts` and `stagePrices.ts` (`allocation.ts` went with `buyInstructions.ts`: only it imported it) — inside C38's allowlist.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -1819,7 +1825,7 @@ git commit -m "feat(extension): B1d-1a build-time switch — presaleSwitch plugi
   ```
   CLI: `node scripts/check-no-presale.mjs <offDir> <onDir>` (package-relative or absolute), exit 1 with one line per problem, usage line + exit 1 without two arguments. `npm run gates` = `npm run gates:build && NOCTURA_DIST=dist-nopresale npm run gates:build && node scripts/check-no-presale.mjs dist-nopresale dist`.
 
-**What the gate can and cannot see in 1a (read before Tasks 4–6):** the two packages are byte-identical in 1a (Task 1), so rule 1 reads the module maps — the bundler's own account of what each chunk carries — and rule 2 (markers) has nothing to arm: any string in the on build is in the off build too, so a 1a marker would fail its own positive control or the off scan. The marker machinery is therefore proven on synthetic directories here and armed by 1b. A module whose only used export is a constant the bundler inlines does not appear in the map (observed: importing `MIN_PURCHASE_USD` from `core/presale/purchaseGate.ts` into shared code left the off map unchanged and the gate green) — the map reports what ships, which is the property the gate is about; a function import does ship the module and turns the gate red (M2b).
+**What the gate can and cannot see in 1a (read before Tasks 4–6):** the two packages are byte-identical through Task 4 (Task 1; checked again at Tasks 3 and 4 in rev 2: `diff -rq dist dist-nopresale` lists only `app.features.json` and `app.modules.json`); from Task 5 the on build carries the presale background modules (kept whole, Task 5), so the maps — not the files — remain the gate's evidence (rev 2, review 1 M4: rev 1 said "byte-identical in 1a", which is false from Task 5). Rule 1 therefore reads the module maps — the bundler's own account of what each chunk carries — and rule 2 (markers) has nothing to arm: any string in the on build is in the off build too, so a 1a marker would fail its own positive control or the off scan. The marker machinery is therefore proven on synthetic directories here and armed by 1b. A module whose only used export is a constant the bundler inlines does not appear in the map (observed: importing `MIN_PURCHASE_USD` from `core/presale/purchaseGate.ts` into shared code left the off map unchanged and the gate green) — the map reports what ships, which is the property the gate is about; a function import does ship the module and turns the gate red (M2b).
 
 - [ ] **Step 1: Generate the fixture from commit 0b79442, then write the failing tests.**
 
@@ -2127,7 +2133,8 @@ Create `extension/scripts/check-no-presale.mjs`:
 //     src/background/presale/, src/app/presale/, src/unlock/presale.ts or core/referral/, and of core/presale/ only
 //     CORE_PRESALE_ALLOWED; core/geo/ is allowed whole (D15). Positive control: the on build carries every ON_BUILD
 //     module and both carry every BOTH_BUILDS module, so a renamed or moved module fails instead of passing silently.
-//     The maps are the evidence, not the packages: in B1d-1a the two packages are byte-identical.
+//     The maps are the evidence, not the packages: the two packages were byte-identical through B1d-1a's Task 4; from
+//     Task 5 the on build carries the presale background modules, so the maps — not the files — remain the evidence.
 //  2. Strings: no file of the off build's app/, chrome/, firefox/ contains a MARKER; each marker is found in the on build.
 //  3. Must stay: B1b/B1c's presale copy and the decoder's instruction names are found in the off build.
 // ON_BUILD, BOTH_BUILDS, MARKERS and MUST_STAY are staged per plan (review 2 M2): each plan extends them, never loosens them.
@@ -2418,13 +2425,14 @@ Recorded, not a mutation: the first M2b (`MIN_PURCHASE_USD`, a constant, from `p
 - **For Task 4:** append Q42's literal (each part ≥ 8 characters between placeholders, as it appears in the bundle) to `MUST_STAY` and to the `MUST_STAY` `toEqual` row.
 - **For Task 5:** append `src/background/presale/layouts.ts`, `src/background/presale/state.ts`, `core/presale/limits.ts` to `ON_BUILD` and its test row (“the on build must carry …” then compares `ON_BUILD` to the entries plus these three). They must be reachable from the on-path entry (`presale/api.ts`) for the on map to carry them — a module only tests import is not in the bundle and the positive control would fail. `core/presale/limits.ts` is refused in the off build already (`it.each` row).
 - **For Task 6:** append `src/background/geo/gate.ts` and `core/geo/fetch.ts` to `BOTH_BUILDS` (and its `toEqual([])` row) — both builds are then required to carry them (D15's control). `core/geo/**` is already allowed off (G2).
-- **For 1b:** arm `MARKERS` (§6.2 item 2 list) and append F12's Q49–Q51 to `MUST_STAY`.
+- **(rev 2) The header comment of `check-no-presale.mjs`** says what is true at every task: the packages were byte-identical through Task 4, and from Task 5 the on build carries the presale background modules, so the maps remain the evidence (review 1 M4). Only the comment changed; no test or count moved.
+- **For 1b:** arm `MARKERS` (§6.2 item 2 list) and append F12's Q49–Q51 to `MUST_STAY`. **(rev 2, review 1 L3)** Rule 1 proves "no presale *code*", not "no presale *value*": a constant imported from a forbidden module is inlined and leaves the off map unchanged (recorded above). So when 1b arms `MARKERS` it must include **at least one marker per forbidden module that exports a constant** — a string literal that module alone defines — so that a const-folded leak turns rule 2 red; 1a has no such value.
 
 ---
 
-### Task 3: The intent-kind registry and the shared shapes — `PreparedEntry.kind`, the kind in the challenge digest (its domain) and in the integrity digest, `sendPrepared` in C29's order (`beforeSign` after `challengeSatisfied`, before `takePrepared` / `consumeChallenge`), `PendingRecord.extra` and the validator's third shape (a `presale-buy` record: `intent: null`, `origin: null`), `inFlightFor` across kinds, `viewOf` copying `extra` — every existing send byte-for-byte unchanged, proven against a capture of commit 0b79442's own code (FUNDS-CRITICAL)
+### Task 3: The intent-kind registry and the shared shapes — `PreparedEntry.kind`, the kind in the challenge digest (its domain) and in the integrity digest, `sendPrepared` in C29's order (`beforeSign` after `challengeSatisfied`, before `takePrepared` / `consumeChallenge`), `PendingRecord.extra` and the validator's third shape (a `presale-buy` record: `intent: null`, `origin: null`), `inFlightFor` across kinds, `viewOf` copying `extra` — every existing send byte-for-byte unchanged, proven against a capture of commit 0b79442's own code (a SOL send with a challenge, a USDC send without, a dApp record); `wallet.send` signs only a send (D17) (FUNDS-CRITICAL)
 
-**Spec:** B1d §1.3 (all), §2.3, §6.1 "Shared shapes (1a)" and "Pipeline order (1a)", "Switch, off build" (the registry and a stored purchase record in the off run); C10, C19, C29; review 1 H1, M4. Brief item 3: "Existing sends byte-for-byte unchanged (their digests/integrity must not change — prove with fixtures from today's code)".
+**Spec:** B1d §1.3 (all), §2.3, §6.1 "Shared shapes (1a)" and "Pipeline order (1a)", "Switch, off build" (the registry and a stored purchase record in the off run); C10, C19, C29; review 1 H1, M4; owner decision D17 (rev 2: `wallet.send` signs only `kind: 'send'` — the spec sentence lands in Task 6's rev 3.1 edit). Brief item 3: "Existing sends byte-for-byte unchanged (their digests/integrity must not change — prove with fixtures from today's code)".
 
 **Files:**
 - Create: `extension/src/background/intents.ts` (the registry)
@@ -2457,13 +2465,13 @@ Recorded, not a mutation: the first M2b (`MIN_PURCHASE_USD`, a constant, from `p
 - Produces (`src/background/prepare.ts`): `interface PreparedEntry {id; account; kind: string; intent: unknown; message; lastValidBlockHeight; createdAt; intentDigest; challengeId; integrity; shown: {fees: {networkLamports; markupLamports}; simulation: object}}`; `interface PreparedSend extends PreparedEntry {kind: 'send'; intent: SendIntent; shown: …B1b's…}`; `SEND_INTENT: IntentKind<SendIntent>` (registered when prepare.ts loads); `preparedIntegrity(p: Omit<PreparedEntry, 'integrity' | 'shown'>): string` (throws `SendRefused('prepared-invalid')` for an unregistered kind or an intent its kind does not read); `storePrepared(ext, deps: Pick<WalletDeps, 'now'>, entry: PreparedEntry): Promise<void>` (the lock check and the one-entry-per-account replacement, across kinds); `peekPrepared` / `takePrepared` → `PreparedEntry`; `preparedFor` → kind `send` only.
 - Produces (`src/background/pendingStore.ts`): `interface PendingExtra {kind: string; data: unknown}`; `PendingRecord.extra: PendingExtra | null` (and so `PendingView.extra`); the stored form omits `extra` when null.
 - Produces (`src/background/pending.ts`): `submitSigned(ext, deps, input: {account; wire; lastValidBlockHeight; fee} & ({intent: SendIntent; extra?: null} | {intent: null; extra: PendingExtra}))` — every existing call unchanged.
-- `sendPrepared(ext, deps, id)` — the signature unchanged, the order of §1.3: session (`locked`) → `peekPrepared` (`unknown-prepared`) → the kind registered and its `parseIntent` of the entry's intent (else `prepared-invalid`) → `challengeSatisfied` on `intentDigest(kind, …)` (`reauth-required` + id, nothing burned) → **`kind.beforeSign`** (a refusal burns nothing) → `takePrepared` (TTL: `prepared-expired`) → the taken entry's `integrity` and `kind` equal the peeked one's (else `prepared-invalid`) → integrity and digest recomputed (as B1b) → `consumeChallenge` → session → `signPrepared` → `submitSigned` with the send's intent, or `{intent: null, extra: {kind, data: pendingData(…) ?? null}}` for any other kind.
+- `sendPrepared(ext, deps, id, kindName: string = SEND_KIND)` — every existing call unchanged (the fourth argument defaults to `send`; `wallet.send` passes none), the order of §1.3: session (`locked`) → `peekPrepared` (`unknown-prepared`; **(rev 2, D17) also an entry whose `kind` is not `kindName` — nothing burned, so `wallet.send` signs only a send and 1b's `presale.buy` passes `'presale-buy'`**) → the kind registered and its `parseIntent` of the entry's intent (else `prepared-invalid`) → `challengeSatisfied` on `intentDigest(kind, …)` (`reauth-required` + id, nothing burned) → **`kind.beforeSign`** (a refusal burns nothing) → `takePrepared` (TTL: `prepared-expired`) → the taken entry's `integrity` and `kind` equal the peeked one's (else `prepared-invalid`) → integrity and digest recomputed (as B1b) → `consumeChallenge` → session → `signPrepared` → `submitSigned` with the send's intent, or `{intent: null, extra: {kind, data: pendingData(…) ?? null}}` for any other kind.
 
-**How "byte-for-byte unchanged" is reached (read before Step 3):** the challenge digest of a send was already `digestOf('send', {account, token, recipient, amount})` — the kind enters every digest as `digestOf`'s domain, so a send's is the same bytes and every other kind's is another binding. The integrity of a send keeps B1b's domain `prepared` and every other kind hashes under `prepared/<kind>` (both forms are injective: no kind maps to `prepared`). The send's intent in the integrity is `parseIntent`'s rebuild — token, recipient, amount in B1b's order. A pending record carries `extra` in memory (`| null`, required) but is written with it only when set, so a send's and a dApp's stored record is B1b's bytes. Each of these is compared with what commit 0b79442's own code computed and stored (the capture of Step 1), not with a hand-written expectation.
+**How "byte-for-byte unchanged" is reached (read before Step 3):** the challenge digest of a send was already `digestOf('send', {account, token, recipient, amount})` — the kind enters every digest as `digestOf`'s domain, so a send's is the same bytes and every other kind's is another binding. The integrity of a send keeps B1b's domain `prepared` and every other kind hashes under `prepared/<kind>` (both forms are injective: no kind maps to `prepared`). The send's intent in the integrity is `parseIntent`'s rebuild — token, recipient, amount in B1b's order. A pending record carries `extra` in memory (`| null`, required) but is written with it only when set, so a send's and a dApp's stored record is B1b's bytes. Each of these is compared with what commit 0b79442's own code computed and stored (the capture of Step 1), not with a hand-written expectation. **What "equal" means, exactly (rev 2, review 1 L2):** the digests, the integrity, the challenges, the pending records (sent and polled) and the validator's verdicts equal the capture byte for byte; a stored prepared entry equals it **but for its new `kind` key** (the replay compares the entry with `kind` removed, and asserts `kind: 'send'` separately). A prepared entry stored before the update (no `kind`) is not read (`isPreparedShape`, fail closed) — `sendPrepared` answers `unknown-prepared` and the popup prepares again, carrying the challenge, whose digest is unchanged (tested).
 
 - [ ] **Step 1: Capture commit 0b79442's send pipeline, then write the failing tests.**
 
-The fixture is the output of the program below, run once in a scratch copy of commit 0b79442 (main before B1d; its `prepare.ts`, `send.ts`, `pending.ts`, `pendingStore.ts`, `digest.ts`, `reauthChallenges.ts`, `session.ts`, `sendTypes.ts`, `fixtures.ts`, `fakeDeps.ts`, `fakeExt.ts`, `core/solana/rpc.ts` and `core/solana/broadcast.ts` are identical to Task 2's tree — `git diff --quiet 0b79442 HEAD -- <those>` exits 0). The program is not committed. From the repository root:
+The fixture is the output of the program below, run once in a scratch copy of commit 0b79442 (main before B1d; its `prepare.ts`, `send.ts`, `pending.ts`, `pendingStore.ts`, `digest.ts`, `reauthChallenges.ts`, `session.ts`, `sendTypes.ts`, `knownRecipients.ts`, `fixtures.ts`, `fakeDeps.ts`, `fakeExt.ts`, `core/solana/rpc.ts`, `core/solana/broadcast.ts` and `core/fees/transferMarkup.ts` are identical to Task 2's tree — `git diff --quiet 0b79442 HEAD -- <those>` exits 0; the USDC flow also runs `core/solana/transfer.ts` and `balances.ts`, which differ from Task 2's only by Task 1's import move to `encoding.ts` — the replay on the new tree is what shows the moved helpers build the same bytes). The program is not committed. From the repository root:
 
 ```bash
 F=$(mktemp -d)
@@ -2479,15 +2487,17 @@ import {sendPrepared} from '../send';
 import {preparedIntegrity, prepareSend, sendIntentDigest} from '../prepare';
 import {satisfyChallenge} from '../reauthChallenges';
 import {PREPARED_KEY, REAUTH_KEY} from '../session';
-import {PENDING_KEY, readPending, updatePending, type PendingRecord} from '../pendingStore';
-import {pollOnce} from '../pending';
+import {PENDING_KEY, markDue, readPending, updatePending, type PendingRecord} from '../pendingStore';
+import {pollOnce, recordDappSend} from '../pending';
+import {KNOWN_RECIPIENTS_KEY} from '../knownRecipients';
 import {firstSignature} from '../../../../core/solana/broadcast';
 import {fakeDeps} from './fakeDeps';
 import {fakeExt} from './fakeExt';
-import {ACCOUNT, HOLDING_LARGE, RECIPIENT, pendingRecord, sendReader, unlocked} from './fixtures';
+import {ACCOUNT, HOLDING_LARGE, RECIPIENT, pendingRecord, sendReader, signedWire, unlocked} from './fixtures';
 
 const text = (v: unknown): string => JSON.stringify(v);
 const without = (r: PendingRecord, key: keyof PendingRecord): Record<string, unknown> => Object.fromEntries(Object.entries(r).filter(([k]) => k !== key));
+const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
 it('captures the send pipeline of this commit', async () => {
   const out = process.env.CAPTURE_OUT;
@@ -2508,23 +2518,64 @@ it('captures the send pipeline of this commit', async () => {
     return {entry, integrity: preparedIntegrity(entry)};
   });
 
+  const confirm = (deps: ReturnType<typeof fakeDeps>) => {
+    deps.reader = {...deps.reader, getSignatureStatuses: async sigs => sigs.map(() => ({err: null, confirmationStatus: 'confirmed' as const})), getBlockHeight: async () => 900};
+  };
+  const engine = (reader = sendReader()) => {
+    const deps = fakeDeps({reader});
+    deps.broadcast = async wire => {
+      deps.broadcasts.push(wire);
+      return firstSignature(wire);
+    };
+    return deps;
+  };
+
   // 3. One real send through the engine: prepared (a new recipient, so a challenge), proven, sent, confirmed.
   const ext = fakeExt();
   await unlocked(ext);
-  const deps = fakeDeps({reader: sendReader()});
-  deps.broadcast = async wire => {
-    deps.broadcasts.push(wire);
-    return firstSignature(wire);
-  };
+  const deps = engine();
   const view = await prepareSend(ext, deps, ACCOUNT.publicKey, intents[0]!);
   const prepared = text(await ext.session.get(PREPARED_KEY));
   const challenges = text(await ext.session.get(REAUTH_KEY));
   await satisfyChallenge(ext, deps.now(), view.reauth!.challengeId);
   await sendPrepared(ext, deps, view.id);
   const sent = text(await ext.local.get(PENDING_KEY));
-  deps.reader = {...deps.reader, getSignatureStatuses: async sigs => sigs.map(() => ({err: null, confirmationStatus: 'confirmed' as const})), getBlockHeight: async () => 900};
+  confirm(deps);
   await pollOnce(ext, deps);
   const polled = text(await ext.local.get(PENDING_KEY));
+
+  // 3b. A token send through the engine (review 1 L1): USDC to a known recipient — no challenge, the SPL network fee.
+  const uext = fakeExt();
+  await unlocked(uext);
+  await uext.local.set(KNOWN_RECIPIENTS_KEY, [RECIPIENT]);
+  const udeps = engine(sendReader({getTokenAccountsByOwner: async () => [{pubkey: HOLDING_LARGE, mint: USDC_MINT, owner: ACCOUNT.publicKey, amount: 25_000_000n, decimals: 6}]}));
+  const usdcIntent = {token: 'USDC' as const, recipient: RECIPIENT, amount: '1000000'};
+  const uview = await prepareSend(uext, udeps, ACCOUNT.publicKey, usdcIntent);
+  if (uview.reauth !== null) throw new Error('the USDC send asked for a re-authentication');
+  const uprepared = text(await uext.session.get(PREPARED_KEY));
+  const ureauth = text((await uext.session.get(REAUTH_KEY)) ?? null);
+  await sendPrepared(uext, udeps, uview.id);
+  const usent = text(await uext.local.get(PENDING_KEY));
+  confirm(udeps);
+  await pollOnce(uext, udeps);
+  const upolled = text(await uext.local.get(PENDING_KEY));
+
+  // 3c. A dApp record through the engine (review 1 L1): recorded held, promised (due), handed to the route by the
+  // poller's first round and confirmed by the next.
+  const dext = fakeExt();
+  await unlocked(dext);
+  const ddeps = engine();
+  const wire = signedWire(11n);
+  await recordDappSend(dext, ddeps, {account: ACCOUNT.publicKey, wire, lastValidBlockHeight: 1000, origin: 'https://noc-tura.io'});
+  const held = text(await dext.local.get(PENDING_KEY));
+  await markDue(dext, [firstSignature(wire)]);
+  const due = text(await dext.local.get(PENDING_KEY));
+  await pollOnce(dext, ddeps);
+  const handed = text(await dext.local.get(PENDING_KEY));
+  const dappBroadcasts = ddeps.broadcasts.length;
+  confirm(ddeps);
+  await pollOnce(dext, ddeps);
+  const dpolled = text(await dext.local.get(PENDING_KEY));
 
   // 4. The validator's verdict on stored elements of every shape this commit knows, and its rewrite of them.
   const send = pendingRecord({id: 'send', account: ACCOUNT.publicKey, signature: 'sig-send', fee: {networkLamports: '5050', markupLamports: '0'}});
@@ -2569,6 +2620,8 @@ it('captures the send pipeline of this commit', async () => {
         digests,
         integrity,
         flow: {intent: intents[0], prepared, challenges, sent, polled},
+        usdcFlow: {intent: usdcIntent, holding: {pubkey: HOLDING_LARGE, mint: USDC_MINT, amount: '25000000', decimals: 6}, prepared: uprepared, challenges: ureauth, sent: usent, polled: upolled},
+        dappFlow: {wireLamports: '11', origin: 'https://noc-tura.io', held, due, handed, broadcasts: dappBroadcasts, polled: dpolled},
         validator: {input, read, rewritten, ownNullIntent},
       },
       null,
@@ -2582,7 +2635,7 @@ mkdir -p "$(dirname "$OUT")"
 rm -rf "$F"
 ```
 
-Expected (the dry run, twice — the capture is deterministic: fake clock, counting random bytes, Ed25519): `Tests  1 passed (1)`; the fixture is 28 736 bytes, sha256 `e6f680364db938dbff2f04d67c5a4078e45ac6b4904c9f9c24ddd4070210dae1`; keys `capturedFrom, digests (8 rows), integrity (2 rows), flow {intent, prepared, challenges, sent, polled}, validator {input (18 elements), read, rewritten, ownNullIntent}`; `validator.read` keeps 11 of the 18 (`send`, `before-e8`, `before-fee`, `before-code`, `before-origin`, `stuck`, `landed`, `dapp`, `dapp-due`, `dapp-old`, `own-held`); `ownNullIntent` is `"dropped"`.
+Expected (the dry run, twice — the capture is deterministic: fake clock, counting random bytes, Ed25519): `Tests  1 passed (1)`; the fixture is 35 990 bytes, sha256 `fed8cc8c630fe6845c0a3ccf17afb83a7ed586360dc0ea638bf122d5d24b805f` (rev 2; rev 1's 28 736-byte `e6f68036…dae1` had no `usdcFlow` / `dappFlow` — its five other keys are byte-identical in the rev 2 capture); keys `capturedFrom, digests (8 rows), integrity (2 rows), flow {intent, prepared, challenges, sent, polled}, usdcFlow {intent, holding, prepared, challenges (null: no challenge), sent, polled}, dappFlow {wireLamports, origin, held, due, handed, broadcasts (1), polled}, validator {input (18 elements), read, rewritten, ownNullIntent}`; the USDC record's `fee` is `{networkLamports: '7000', markupLamports: '0'}` (the SPL network fee, priority included); `validator.read` keeps 11 of the 18 (`send`, `before-e8`, `before-fee`, `before-code`, `before-origin`, `stuck`, `landed`, `dapp`, `dapp-due`, `dapp-old`, `own-held`); `ownNullIntent` is `"dropped"`.
 
 Create `extension/src/background/__tests__/intents.test.ts`:
 
@@ -2595,10 +2648,13 @@ import {PREPARED_TTL_MS, SEND_INTENT, parseIntent, peekPrepared, preparedFor, pr
 import {sendPrepared} from '../send';
 import {challengeSatisfied, issueChallenge, satisfyChallenge} from '../reauthChallenges';
 import {PREPARED_KEY, REAUTH_KEY, clearSession} from '../session';
-import {PENDING_KEY, readPending} from '../pendingStore';
-import {pollOnce} from '../pending';
+import {PENDING_KEY, markDue, readPending} from '../pendingStore';
+import {pollOnce, recordDappSend} from '../pending';
+import {KNOWN_RECIPIENTS_KEY} from '../knownRecipients';
+import {handleWallet} from '../walletApi';
 import {randomId} from '../digest';
 import {SendRefused, type SendIntent} from '../sendTypes';
+import {WALLET_TOKENS} from '../../../../core/solana/balances';
 import {registerPresale} from '../presale/api';
 import {firstSignature} from '../../../../core/solana/broadcast';
 import {fakeDeps} from './fakeDeps';
@@ -2611,6 +2667,8 @@ interface Captured {
   digests: {account: string; intent: SendIntent; digest: string}[];
   integrity: {entry: Omit<PreparedEntry, 'kind' | 'integrity' | 'shown'> & {intent: SendIntent}; integrity: string}[];
   flow: {intent: SendIntent; prepared: string; challenges: string; sent: string; polled: string};
+  usdcFlow: {intent: SendIntent; holding: {pubkey: string; mint: string; amount: string; decimals: number}; prepared: string; challenges: string; sent: string; polled: string};
+  dappFlow: {wireLamports: string; origin: string; held: string; due: string; handed: string; broadcasts: number; polled: string};
 }
 const CAPTURED = JSON.parse(readFileSync(new URL('./captured/sends.0b79442.json', import.meta.url), 'utf8')) as Captured;
 
@@ -2645,9 +2703,9 @@ const INTENT: SendIntent = {token: 'SOL', recipient: RECIPIENT, amount: '1000000
 /** The unsigned message of a real transfer from ACCOUNT (the payer is what signPrepared checks). */
 const MESSAGE = base64.encode(VersionedTransaction.deserialize(signedWire(3n)).message.serialize());
 
-function setup() {
+function setup(reader = sendReader()) {
   const ext = fakeExt();
-  const deps = fakeDeps({reader: sendReader()});
+  const deps = fakeDeps({reader});
   deps.broadcast = async wire => {
     deps.broadcasts.push(wire);
     return firstSignature(wire);
@@ -2743,6 +2801,41 @@ describe('a send is byte-for-byte what it was before kinds (captured from commit
     expect(JSON.stringify(await ext.local.get(PENDING_KEY))).toBe(CAPTURED.flow.polled);
   });
 
+  it('a token send, replayed (review 1 L1): USDC to a known recipient — no challenge, the SPL fee; the stored entry (but its kind), the pending record and its confirmed rewrite are the captured bytes', async () => {
+    const {intent, holding} = CAPTURED.usdcFlow;
+    expect(holding.mint).toBe(WALLET_TOKENS.USDC.mint);
+    const {ext, deps} = setup(sendReader({getTokenAccountsByOwner: async () => [{pubkey: holding.pubkey, mint: holding.mint, owner: ACCOUNT.publicKey, amount: BigInt(holding.amount), decimals: holding.decimals}]}));
+    await unlocked(ext);
+    await ext.local.set(KNOWN_RECIPIENTS_KEY, [RECIPIENT]);
+    const view = await prepareSend(ext, deps, ACCOUNT.publicKey, intent);
+    expect(view.reauth).toBeNull();
+    const stored = (await ext.session.get(PREPARED_KEY)) as Record<string, unknown>[];
+    expect(stored.map(e => e.kind)).toEqual(['send']);
+    expect(JSON.stringify(withoutKind(stored))).toBe(CAPTURED.usdcFlow.prepared);
+    expect(JSON.stringify((await ext.session.get(REAUTH_KEY)) ?? null)).toBe(CAPTURED.usdcFlow.challenges);
+    await sendPrepared(ext, deps, view.id);
+    expect(JSON.stringify(await ext.local.get(PENDING_KEY))).toBe(CAPTURED.usdcFlow.sent);
+    deps.reader = {...deps.reader, getSignatureStatuses: async sigs => sigs.map(() => ({err: null, confirmationStatus: 'confirmed' as const})), getBlockHeight: async () => 900};
+    await pollOnce(ext, deps);
+    expect(JSON.stringify(await ext.local.get(PENDING_KEY))).toBe(CAPTURED.usdcFlow.polled);
+  });
+
+  it('a dApp record, replayed (review 1 L1): recorded held, promised due, handed to the route once by the poller, confirmed — every stored form the captured bytes', async () => {
+    const {ext, deps} = setup();
+    await unlocked(ext);
+    const wire = signedWire(BigInt(CAPTURED.dappFlow.wireLamports));
+    await recordDappSend(ext, deps, {account: ACCOUNT.publicKey, wire, lastValidBlockHeight: 1000, origin: CAPTURED.dappFlow.origin});
+    expect(JSON.stringify(await ext.local.get(PENDING_KEY))).toBe(CAPTURED.dappFlow.held);
+    await markDue(ext, [firstSignature(wire)]);
+    expect(JSON.stringify(await ext.local.get(PENDING_KEY))).toBe(CAPTURED.dappFlow.due);
+    await pollOnce(ext, deps);
+    expect(JSON.stringify(await ext.local.get(PENDING_KEY))).toBe(CAPTURED.dappFlow.handed);
+    expect(deps.broadcasts).toHaveLength(CAPTURED.dappFlow.broadcasts);
+    deps.reader = {...deps.reader, getSignatureStatuses: async sigs => sigs.map(() => ({err: null, confirmationStatus: 'confirmed' as const})), getBlockHeight: async () => 900};
+    await pollOnce(ext, deps);
+    expect(JSON.stringify(await ext.local.get(PENDING_KEY))).toBe(CAPTURED.dappFlow.polled);
+  });
+
   it('an entry stored before kinds is not signed (fail closed) — but its challenge, bound to the same digest, carries over to the re-prepare', async () => {
     const {ext, deps} = setup();
     await unlocked(ext);
@@ -2773,7 +2866,7 @@ describe('the kind in the digest and in the integrity (B1d §1.3)', () => {
     const challengeId = send.reauth!.challengeId;
     await satisfyChallenge(ext, deps.now(), challengeId);
     const twin = await store(ext, deps, {kind: TWIN, intent: INTENT, challengeId});
-    await expect(sendPrepared(ext, deps, twin.id)).rejects.toMatchObject({code: 'reauth-required', detail: challengeId});
+    await expect(sendPrepared(ext, deps, twin.id, TWIN.kind)).rejects.toMatchObject({code: 'reauth-required', detail: challengeId});
     expect(deps.broadcasts).toHaveLength(0);
     // Positive control: the send itself, re-prepared carrying the proof, is signed with it.
     const again = await prepareSend(ext, deps, ACCOUNT.publicKey, INTENT, {challengeId});
@@ -2801,7 +2894,7 @@ describe('sendPrepared for any kind, in the order of C29 (review M4)', () => {
     const {ext, deps} = setup();
     await unlocked(ext);
     const entry = await store(ext, deps);
-    const view = await sendPrepared(ext, deps, entry.id);
+    const view = await sendPrepared(ext, deps, entry.id, TEST_BUY.kind);
     expect(gate.calls).toEqual([{entry, intent: {amount: '5'}}]);
     expect(deps.broadcasts).toHaveLength(1);
     expect(view).toMatchObject({state: 'pending', intent: null, origin: null, extra: {kind: 'test-buy', data: {amount: '5', preparedAt: entry.createdAt}}, fee: {networkLamports: '5000', markupLamports: '0'}});
@@ -2813,7 +2906,7 @@ describe('sendPrepared for any kind, in the order of C29 (review M4)', () => {
     await unlocked(ext);
     const challengeId = await issueChallenge(ext, deps, intentDigest(TEST_BUY, ACCOUNT.publicKey, {amount: '5'}), SETTINGS_ABOUT);
     const entry = await store(ext, deps, {challengeId});
-    await expect(sendPrepared(ext, deps, entry.id)).rejects.toMatchObject({code: 'reauth-required', detail: challengeId});
+    await expect(sendPrepared(ext, deps, entry.id, TEST_BUY.kind)).rejects.toMatchObject({code: 'reauth-required', detail: challengeId});
     expect(gate.calls).toHaveLength(0);
   });
 
@@ -2827,13 +2920,13 @@ describe('sendPrepared for any kind, in the order of C29 (review M4)', () => {
     gate.beforeSign = async () => {
       throw new SendRefused('simulation-mismatch', 'the state moved');
     };
-    await expect(sendPrepared(ext, deps, entry.id)).rejects.toMatchObject({code: 'simulation-mismatch'});
+    await expect(sendPrepared(ext, deps, entry.id, TEST_BUY.kind)).rejects.toMatchObject({code: 'simulation-mismatch'});
     expect(await peekPrepared(ext, entry.id)).toEqual(entry);
     expect(await challengeSatisfied(ext, deps.now(), challengeId, digest)).toBe(true);
     expect(deps.broadcasts).toHaveLength(0);
     expect(await ext.local.get(PENDING_KEY)).toBeUndefined();
     gate.beforeSign = async () => undefined;
-    expect((await sendPrepared(ext, deps, entry.id)).state).toBe('pending');
+    expect((await sendPrepared(ext, deps, entry.id, TEST_BUY.kind)).state).toBe('pending');
     expect(await challengeSatisfied(ext, deps.now(), challengeId, digest)).toBe(false);
   });
 
@@ -2847,7 +2940,7 @@ describe('sendPrepared for any kind, in the order of C29 (review M4)', () => {
     gate.beforeSign = async () => {
       deps.clock.t += PREPARED_TTL_MS;
     };
-    await expect(sendPrepared(ext, deps, entry.id)).rejects.toMatchObject({code: 'prepared-expired'});
+    await expect(sendPrepared(ext, deps, entry.id, TEST_BUY.kind)).rejects.toMatchObject({code: 'prepared-expired'});
     expect(await challengeSatisfied(ext, deps.now(), challengeId, digest)).toBe(true);
     expect(deps.broadcasts).toHaveLength(0);
   });
@@ -2861,20 +2954,40 @@ describe('sendPrepared for any kind, in the order of C29 (review M4)', () => {
       const changed = {...entry, message: other};
       await ext.session.set(PREPARED_KEY, [{...changed, integrity: preparedIntegrity(changed)}]);
     };
-    await expect(sendPrepared(ext, deps, entry.id)).rejects.toMatchObject({code: 'prepared-invalid'});
+    await expect(sendPrepared(ext, deps, entry.id, TEST_BUY.kind)).rejects.toMatchObject({code: 'prepared-invalid'});
     expect(deps.broadcasts).toHaveLength(0);
   });
 
-  it('an entry of a kind this build does not handle is refused before anything else, and stays', async () => {
+  it('an entry of a kind this build does not handle is refused before anything else, and stays — one whose intent reads as a send’s too (review 1 M2)', async () => {
     const {ext, deps} = setup();
     await unlocked(ext);
-    const entry = await store(ext, deps);
-    const gone = {...entry, kind: 'test-gone'};
-    await ext.session.set(PREPARED_KEY, [gone]);
-    await expect(sendPrepared(ext, deps, entry.id)).rejects.toMatchObject({code: 'prepared-invalid'});
-    expect(await peekPrepared(ext, entry.id)).toEqual(gone);
+    // The second entry carries a send-shaped intent, so only the registry lookup refuses it (not the intent's shape).
+    for (const o of [{}, {kind: TWIN, intent: INTENT}]) {
+      const entry = await store(ext, deps, o);
+      const gone = {...entry, kind: 'test-gone'};
+      await ext.session.set(PREPARED_KEY, [gone]);
+      await expect(sendPrepared(ext, deps, entry.id, 'test-gone')).rejects.toMatchObject({code: 'prepared-invalid'});
+      expect(await peekPrepared(ext, entry.id)).toEqual(gone);
+    }
     expect(gate.calls).toHaveLength(0);
     expect(deps.broadcasts).toHaveLength(0);
+  });
+
+  it('wallet.send signs only a send (D17): an entry of another kind is refused as unknown before anything, burning nothing — a send signs (positive control)', async () => {
+    const {ext, deps} = setup();
+    await unlocked(ext);
+    for (const o of [{}, {kind: TWIN, intent: INTENT}]) {
+      const entry = await store(ext, deps, o);
+      expect(await handleWallet(ext, deps, 'wallet.send', {id: entry.id})).toEqual({ok: false, error: 'unknown-prepared'});
+      await expect(sendPrepared(ext, deps, entry.id)).rejects.toMatchObject({code: 'unknown-prepared'});
+      expect(await peekPrepared(ext, entry.id)).toEqual(entry);
+    }
+    expect(gate.calls).toHaveLength(0);
+    expect(deps.broadcasts).toHaveLength(0);
+    const send = await prepareSend(ext, deps, ACCOUNT.publicKey, INTENT);
+    await satisfyChallenge(ext, deps.now(), send.reauth!.challengeId);
+    expect(await handleWallet(ext, deps, 'wallet.send', {id: send.id})).toMatchObject({ok: true, data: {state: 'pending', intent: INTENT}});
+    expect(deps.broadcasts).toHaveLength(1);
   });
 
   it('an entry whose intent its kind does not read is refused, nothing signed', async () => {
@@ -2882,7 +2995,7 @@ describe('sendPrepared for any kind, in the order of C29 (review M4)', () => {
     await unlocked(ext);
     const entry = await store(ext, deps);
     await ext.session.set(PREPARED_KEY, [{...entry, intent: {amount: '0'}}]);
-    await expect(sendPrepared(ext, deps, entry.id)).rejects.toMatchObject({code: 'prepared-invalid'});
+    await expect(sendPrepared(ext, deps, entry.id, TEST_BUY.kind)).rejects.toMatchObject({code: 'prepared-invalid'});
     expect(deps.broadcasts).toHaveLength(0);
   });
 });
@@ -2929,10 +3042,10 @@ describe('one in-flight transaction per account, a purchase included (C10)', () 
     await unlocked(ext);
     await ext.local.set(PENDING_KEY, [pendingRecord({id: 'other', account: RECIPIENT})]);
     const first = await store(ext, deps);
-    expect((await sendPrepared(ext, deps, first.id)).state).toBe('pending');
+    expect((await sendPrepared(ext, deps, first.id, TEST_BUY.kind)).state).toBe('pending');
     await ext.local.set(PENDING_KEY, [pendingRecord({account: ACCOUNT.publicKey})]);
     const second = await store(ext, deps);
-    await expect(sendPrepared(ext, deps, second.id)).rejects.toMatchObject({code: 'in-flight'});
+    await expect(sendPrepared(ext, deps, second.id, TEST_BUY.kind)).rejects.toMatchObject({code: 'in-flight'});
     expect(deps.broadcasts).toHaveLength(1);
   });
 
@@ -2940,9 +3053,9 @@ describe('one in-flight transaction per account, a purchase included (C10)', () 
     const {ext, deps} = setup();
     await unlocked(ext);
     const first = await store(ext, deps);
-    await sendPrepared(ext, deps, first.id);
+    await sendPrepared(ext, deps, first.id, TEST_BUY.kind);
     const second = await store(ext, deps, {intent: {amount: '6'}});
-    await expect(sendPrepared(ext, deps, second.id)).rejects.toMatchObject({code: 'in-flight'});
+    await expect(sendPrepared(ext, deps, second.id, TEST_BUY.kind)).rejects.toMatchObject({code: 'in-flight'});
     await expect(prepareSend(ext, deps, ACCOUNT.publicKey, INTENT)).rejects.toMatchObject({code: 'in-flight'});
     expect(deps.broadcasts).toHaveLength(1);
   });
@@ -3296,7 +3409,9 @@ index 2392ec1..ae484cd 100644
 
 Run (from `extension/`): `npx vitest run src/background/__tests__/intents.test.ts src/background/__tests__/pendingKinds.test.ts src/background/__tests__/prepare.test.ts src/background/__tests__/pendingStore.test.ts scripts/__tests__/check-no-presale.test.mjs scripts/__tests__/presaleSwitch.test.mjs`
 
-Expected (the dry run, on c5550a0 + the fixture and the test changes): `Test Files  4 failed | 2 passed (6)` · `Tests  26 failed | 88 passed (114)` — `intents.test.ts` fails as a file (`Error: Cannot find module '../intents'`); `pendingKinds.test.ts` 24 of 26 red — every row that reads `extra` or the third shape (e.g. `expected [] to deeply equal [ { id: 'buy', …(16) } ]`, `expected [ undefined, undefined, …(9) ] to deeply equal [ null, null, …(6) ]`); the two green are the fixture check and the negative controls "a record without an intent is still dropped when anything else is wrong", which hold on the old code too; `check-no-presale.test.mjs` 1 red (`expected [] to deeply equal [ 'src/background/intents.ts' ]`); `presaleSwitch.test.mjs` 1 red (the off-run list); `prepare.test.ts` and `pendingStore.test.ts` green (their changes are typings and a junk row that holds either way). `npx tsc --noEmit; echo $?` → `2` (41 errors: `../intents` missing, `extra` not on `PendingRecord` / `PendingView`).
+Expected (the dry run, on Task 2's tree + the fixture and the test changes — rev 2 re-ran it on 1f6fe9b with the same result): `Test Files  4 failed | 2 passed (6)` · `Tests  26 failed | 88 passed (114)` — `intents.test.ts` fails as a file (`Error: Cannot find module '../intents'`); `pendingKinds.test.ts` 24 of 26 red — every row that reads `extra` or the third shape (e.g. `expected [] to deeply equal [ { id: 'buy', …(16) } ]`, `expected [ undefined, undefined, …(9) ] to deeply equal [ null, null, …(6) ]`); the two green are the fixture check and the negative controls "a record without an intent is still dropped when anything else is wrong", which hold on the old code too; `check-no-presale.test.mjs` 1 red (`expected [] to deeply equal [ 'src/background/intents.ts' ]`); `presaleSwitch.test.mjs` 1 red (the off-run list); `prepare.test.ts` and `pendingStore.test.ts` green (their changes are typings and a junk row that holds either way). `npx tsc --noEmit; echo $?` → `2` (rev 2: 54 errors — 37 in `intents.test.ts`, 16 in `pendingKinds.test.ts`, 1 in `fixtures.ts`: `../intents` missing, `extra` not on `PendingRecord` / `PendingView`, `sendPrepared`'s fourth argument).
+
+**(rev 2) The new tests against rev 1's implementation** (9bed436 + rev 2's `intents.test.ts` and fixture): `Tests  1 failed | 25 passed (26)` — only the D17 row is red (`wallet.send` signs the `test-buy` entry: `expected { ok: true, … } to deeply equal { ok: false, error: 'unknown-prepared' }`); the M2 row and the two L1 replays pass, as they must — they are evidence for code that was already right (review 1's scenarios), and K3 below proves the M2 row now catches its mutant.
 
 - [ ] **Step 3: Implement.**
 
@@ -3722,7 +3837,7 @@ index 9d962f6..8338398 100644
      const all = await loadPrepared(ext);
      const found = all.find(p => p.id === id);
 diff --git a/extension/src/background/send.ts b/extension/src/background/send.ts
-index 8d2ac90..1c932dc 100644
+index 8d2ac90..490fd1d 100644
 --- a/extension/src/background/send.ts
 +++ b/extension/src/background/send.ts
 @@ -7,16 +7,17 @@ import type {WalletDeps} from './deps';
@@ -3747,10 +3862,11 @@ index 8d2ac90..1c932dc 100644
    const message = VersionedMessage.deserialize(base64.decode(prepared.message));
    const payer = message.staticAccountKeys[0];
    if (payer === undefined || payer.toBase58() !== account.publicKey) throw new SendRefused('unknown-account');
-@@ -30,22 +31,47 @@ export function signPrepared(prepared: PreparedSend, account: SessionAccount): U
+@@ -30,22 +31,49 @@ export function signPrepared(prepared: PreparedSend, account: SessionAccount): U
    }
  }
  
+-export async function sendPrepared(ext: Ext, deps: WalletDeps, id: string): Promise<PendingView> {
 +/** What the pending record says about a signed entry: a send carries its intent; any other kind its display data (B1d §1.3). */
 +function recordFields(kind: IntentKind<unknown>, prepared: PreparedEntry, intent: unknown): {intent: SendIntent} | {intent: null; extra: PendingExtra} {
 +  if (kind.kind !== SEND_KIND) return {intent: null, extra: {kind: kind.kind, data: kind.pendingData?.(prepared, intent) ?? null}};
@@ -3760,14 +3876,17 @@ index 8d2ac90..1c932dc 100644
 +}
 +
 +/**
-+ * Sign and submit a prepared entry of any kind (B1d §1.3, C29): the session, the entry and its kind; its challenge,
-+ * checked without consuming it; the kind's beforeSign; only then the single-use take, the integrity and the
-+ * challenge's consumption.
++ * Sign and submit a prepared entry of the caller's kind (B1d §1.3, C29): the session, the entry and its kind; its
++ * challenge, checked without consuming it; the kind's beforeSign; only then the single-use take, the integrity and the
++ * challenge's consumption. `kindName` is the one kind the caller signs — `send` unless it names another (D17: wallet.send
++ * signs only a send; a purchase is signed only through presale.buy, which names its own).
 + */
- export async function sendPrepared(ext: Ext, deps: WalletDeps, id: string): Promise<PendingView> {
++export async function sendPrepared(ext: Ext, deps: WalletDeps, id: string, kindName: string = SEND_KIND): Promise<PendingView> {
    if ((await getSession(ext)) === null) throw new SendRefused('locked');
    const peek = await peekPrepared(ext, id);
-   if (peek === null) throw new SendRefused('unknown-prepared');
+-  if (peek === null) throw new SendRefused('unknown-prepared');
++  // An entry of another kind is not this caller's to sign: refused as unknown, nothing burned.
++  if (peek === null || peek.kind !== kindName) throw new SendRefused('unknown-prepared');
 +  // A kind this build does not handle (an entry of a build with presale, signed in one without it) is never signed.
 +  const kind = intentKind(peek.kind);
 +  const peekIntent = kind === undefined ? null : kind.parseIntent(peek.intent);
@@ -3799,7 +3918,7 @@ index 8d2ac90..1c932dc 100644
      throw new SendRefused('reauth-required');
    }
    // The session as it is now (a lock or a changed account list since the start is honoured).
-@@ -57,7 +83,7 @@ export async function sendPrepared(ext: Ext, deps: WalletDeps, id: string): Prom
+@@ -57,7 +85,7 @@ export async function sendPrepared(ext: Ext, deps: WalletDeps, id: string): Prom
      account: prepared.account,
      wire: signPrepared(prepared, account),
      lastValidBlockHeight: prepared.lastValidBlockHeight,
@@ -3814,10 +3933,10 @@ Modify the gate's staged list (Task 2's ruling) and the off run (Task 1's ruling
 
 ````diff
 diff --git a/extension/scripts/check-no-presale.mjs b/extension/scripts/check-no-presale.mjs
-index 84832d1..d2a32b2 100644
+index 83a3ae0..dbe51bd 100644
 --- a/extension/scripts/check-no-presale.mjs
 +++ b/extension/scripts/check-no-presale.mjs
-@@ -23,8 +23,9 @@ export const CORE_PRESALE_ALLOWED = ['core/presale/addresses.ts', 'core/presale/
+@@ -24,8 +24,9 @@ export const CORE_PRESALE_ALLOWED = ['core/presale/addresses.ts', 'core/presale/
  // B1d-1a: the three on-path entries (§1.1); Task 5 adds presale/{layouts,state}.ts and core/presale/limits.ts;
  // 1b adds presale/{quote,buy}.ts; B1d-2 adds presale/{record,referral}.ts and core/referral/index.ts.
  export const ON_BUILD = ['src/background/presale/api.ts', 'src/app/presale/index.ts', 'src/unlock/presale.ts'];
@@ -3846,17 +3965,17 @@ index eb2cb13..a3210f2 100644
 
 - [ ] **Step 4: Run — green, the whole suite, both builds, the gates, the E2E.**
 
-Run: the Step 2 command — expected `Test Files  6 passed (6)` · `Tests  137 passed (137)` (intents 23, pendingKinds 26, prepare and pendingStore as before, check-no-presale 36, presaleSwitch 16).
+Run: the Step 2 command — expected `Test Files  6 passed (6)` · `Tests  140 passed (140)` (intents 26, pendingKinds 26, prepare and pendingStore as before, check-no-presale 36, presaleSwitch 16; rev 1: 137 with intents 23 — rev 2 adds the USDC and dApp replays (L1) and the D17 row).
 
-Run: `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  182 passed (182)` · `Tests  3585 passed (3585)` (previous tree 180 / 3534: +2 files, +51 tests — intents 23, pendingKinds 26, check-no-presale +1, presaleSwitch +1). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  7 passed (7)` · `Tests  169 passed (169)` (previous 5 / 120: the two new files run off too — the registry with only `send` after `registerPresale` resolved to its stub, and a stored purchase record read, counted, polled, re-sent and listed).
+Run: `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  182 passed (182)` · `Tests  3588 passed (3588)` (previous tree 180 / 3534: +2 files, +54 tests — intents 26, pendingKinds 26, check-no-presale +1, presaleSwitch +1; rev 1: 3585). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  7 passed (7)` · `Tests  172 passed (172)` (previous 5 / 120 (rev 1: 169): the two new files run off too — the registry with only `send` after `registerPresale` resolved to its stub, and a stored purchase record read, counted, polled, re-sent and listed).
 
-Run: `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale`, then `npm run gates` — exit 0, every gate ok once per build, the last line `no presale ok (dist-nopresale off, dist on): … the on build carries 4 required modules; …` (3 entries + `src/background/intents.ts`, which both builds carry). `npm run csp` — ok for both. `npm run reproducible` — four lines, the presale and no-presale digests equal (chrome `sha256:6a2fdb7b…c2e1`, firefox `sha256:6d015c27…30d4` in the dry run). `npx playwright test` — `75 passed` (unchanged count; the send, settings, dApp and visual flows run through the changed pipeline). Repository root `node scripts/check-no-tge-date.mjs` — `no TGE date in 1255 tracked text files`. No `core/` or root `src/` change: root `tsc`/`jest` and web `verify` not required.
+Run: `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale`, then `npm run gates` — exit 0, every gate ok once per build, the last line `no presale ok (dist-nopresale off, dist on): … the on build carries 4 required modules; …` (3 entries + `src/background/intents.ts`, which both builds carry). `npm run csp` — ok for both. `npm run reproducible` — four lines, the presale and no-presale digests equal (chrome `sha256:6a2fdb7b…c2e1`, firefox `sha256:6d015c27…30d4` in the dry run). `npx playwright test` — `75 passed` (unchanged count; the send, settings, dApp and visual flows run through the changed pipeline). Rev 2 did not re-run Playwright at this task (no E2E-visible change: D17 refuses only a non-send id at `wallet.send`, which no flow sends); the whole suite ran on the end state instead (Task 6). Repository root `node scripts/check-no-tge-date.mjs` — `no TGE date in 1255 tracked text files`. No `core/` or root `src/` change: root `tsc`/`jest` and web `verify` not required.
 
 - [ ] **Step 5: Commit.**
 
 ```bash
 git add extension/src/background/intents.ts extension/src/background/prepare.ts extension/src/background/send.ts extension/src/background/pending.ts extension/src/background/pendingStore.ts extension/src/background/__tests__/intents.test.ts extension/src/background/__tests__/pendingKinds.test.ts extension/src/background/__tests__/captured/sends.0b79442.json extension/src/background/__tests__/fixtures.ts extension/src/background/__tests__/prepare.test.ts extension/src/background/__tests__/pendingStore.test.ts extension/scripts/check-no-presale.mjs extension/scripts/__tests__/check-no-presale.test.mjs extension/scripts/__tests__/presaleSwitch.test.mjs extension/vitest.nopresale.config.ts
-git commit -m "feat(extension): B1d-1a — the intent-kind registry and the shared send/pending shapes (kind in the digest and the integrity, beforeSign before the single-use take, PendingRecord.extra and the validator's purchase shape, inFlightFor across kinds); sends byte-for-byte unchanged against a capture of 0b79442"
+git commit -m "feat(extension): B1d-1a — the intent-kind registry and the shared send/pending shapes (kind in the digest and the integrity, beforeSign before the single-use take, PendingRecord.extra and the validator's purchase shape, inFlightFor across kinds; wallet.send signs only a send, D17); sends byte-for-byte unchanged against a capture of 0b79442 (SOL with a challenge, USDC without, a dApp record)"
 ```
 (with the executing model's trailer.)
 
@@ -3864,26 +3983,29 @@ git commit -m "feat(extension): B1d-1a — the intent-kind registry and the shar
 
 | id | the change | named test → observed |
 |---|---|---|
-| K1 | `intents.ts` `intentDigest`: `digestOf(k.kind, …)` → `digestOf(SEND_KIND, …)` (the kind dropped from the challenge digest) | I “the kind is the challenge digest’s domain…”, “a send’s proven challenge does not sign an entry of another kind with the same values…” — tsc 0 · RED `Tests  2 failed \| 21 passed (23)` |
-| K2 | `prepare.ts` `preparedIntegrity`: the domain always `'prepared'` (the kind dropped from the integrity) | I “the integrity covers the kind…” — tsc 0 · RED `Tests  1 failed \| 22 passed (23)` |
-| O1 | `send.ts`: `beforeSign` moved after `takePrepared` (review M4's named mutation) | I “beforeSign refusing burns nothing…”, “a beforeSign slower than the prepared life…”, “an entry changed while beforeSign ran…” — tsc 0 · RED `Tests  3 failed \| 20 passed (23)` |
-| O2 | `send.ts`: the peeked-vs-taken comparison (`prepared.integrity !== peek.integrity \|\| prepared.kind !== peek.kind`) deleted | I “an entry changed while beforeSign ran (same id, its own valid integrity) is refused…” — tsc 0 · RED `Tests  1 failed \| 22 passed (23)` |
-| O3 | `send.ts`: `beforeSign` moved before the challenge check | I “an unproven challenge is refused before beforeSign runs”, “signs an entry of another kind: beforeSign sees the peeked entry…” — tsc 0 · RED `Tests  2 failed \| 21 passed (23)` |
-| V1 | `pendingStore.ts` `isRecord`: the third shape `(own && i === null)` deleted (review H1's named mutation: the record vanishes) | P (every purchase row), I (the two in-flight / record rows) — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  22 failed \| 27 passed (49)` |
-| V2 | `pendingStore.ts` `isRecord`: `r.extra !== undefined &&` required of every record (the validator too strict) | P “a send recorded by the old code, read after a restart…”, “the validator’s verdict on every captured shape is the old one…”, “the one verdict B1d changes…”, “a malformed extra (missing)…”, “pollOnce confirms it…”; I “the whole send, replayed…” — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  6 failed \| 43 passed (49)` |
+| K1 | `intents.ts` `intentDigest`: `digestOf(k.kind, …)` → `digestOf(SEND_KIND, …)` (the kind dropped from the challenge digest) | I “the kind is the challenge digest’s domain…”, “a send’s proven challenge does not sign an entry of another kind with the same values…” — tsc 0 · RED `Tests  2 failed \| 24 passed (26)` |
+| K2 | `prepare.ts` `preparedIntegrity`: the domain always `'prepared'` (the kind dropped from the integrity) | I “the integrity covers the kind…” — tsc 0 · RED `Tests  1 failed \| 25 passed (26)` |
+| K3 (rev 2, review 1 M2) | `send.ts`: `const kind = intentKind(peek.kind) ?? SEND_INTENT;` (an unregistered kind falls back to send; `SEND_INTENT` imported) — review 1's surviving T3-4 | I “an entry of a kind this build does not handle is refused before anything else, and stays — one whose intent reads as a send’s too” (the send-shaped entry is taken and burned: `expected null to deeply equal { …(11) }`) — tsc 0 · RED `Tests  1 failed \| 25 passed (26)` |
+| D1 (rev 2, D17) | `send.ts`: `peek.kind !== kindName` → `(peek.kind !== kindName && false)` (the comparison gone) | I “wallet.send signs only a send (D17)…” (`wallet.send` signs the `test-buy` entry) — tsc 0 · RED `Tests  1 failed \| 25 passed (26)` |
+| D2 (rev 2, D17) | `send.ts`: `kindName?: string` with the check only when given (`kindName !== undefined && peek.kind !== kindName` — rev 1's kind-agnostic `wallet.send`) | I the same row — tsc 0 · RED `Tests  1 failed \| 25 passed (26)` |
+| O1 | `send.ts`: `beforeSign` moved after `takePrepared` (review M4's named mutation) | I “beforeSign refusing burns nothing…”, “a beforeSign slower than the prepared life…”, “an entry changed while beforeSign ran…” — tsc 0 · RED `Tests  3 failed \| 23 passed (26)` |
+| O2 | `send.ts`: the peeked-vs-taken comparison (`prepared.integrity !== peek.integrity \|\| prepared.kind !== peek.kind`) deleted | I “an entry changed while beforeSign ran (same id, its own valid integrity) is refused…” — tsc 0 · RED `Tests  1 failed \| 25 passed (26)` |
+| O3 | `send.ts`: `beforeSign` moved before the challenge check | I “an unproven challenge is refused before beforeSign runs”, “signs an entry of another kind: beforeSign sees the peeked entry…” — tsc 0 · RED `Tests  2 failed \| 24 passed (26)` |
+| V1 | `pendingStore.ts` `isRecord`: the third shape `(own && i === null)` deleted (review H1's named mutation: the record vanishes) | P (every purchase row), I (the two in-flight / record rows) — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  22 failed \| 30 passed (52)` |
+| V2 | `pendingStore.ts` `isRecord`: `r.extra !== undefined &&` required of every record (the validator too strict) | P “a send recorded by the old code, read after a restart…”, “the validator’s verdict on every captured shape is the old one…”, “the one verdict B1d changes…”, “a malformed extra (missing)…”, “pollOnce confirms it…”; I “the whole send, replayed…”, (rev 2) “a token send, replayed…”, “a dApp record, replayed…” — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  8 failed \| 44 passed (52)` |
 | V3 | `pendingStore.ts` `extraOf`: the kind-name test reduced to “not empty” (`!KIND_NAME.test(kind) && kind === ''`) — a malformed extra accepted | P “a malformed extra (an upper-case kind / a kind with a space / starting with a digit / of 33 characters)…” — tsc 0 · RED `Tests  4 failed \| 22 passed (26)` |
-| V4 | `pendingStore.ts` `storedForm`: `if (r.extra !== null \|\| r.id !== '') return r;` (`extra: null` written into every stored record) | P “a send recorded by the old code…”, “the validator’s verdict … its rewrite is the old bytes”, “a send and a dApp record are written without extra…”; I “the whole send, replayed…” — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  4 failed \| 45 passed (49)` |
+| V4 | `pendingStore.ts` `storedForm`: `if (r.extra !== null \|\| r.id !== '') return r;` (`extra: null` written into every stored record) | P “a send recorded by the old code…”, “the validator’s verdict … its rewrite is the old bytes”, “a send and a dApp record are written without extra…”; I “the whole send, replayed…”, (rev 2) “a token send, replayed…”, “a dApp record, replayed…” — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  6 failed \| 46 passed (52)` |
 | V5 | `pendingStore.ts` `viewOf`: `extra: r.extra` (the stored object itself) | P “viewOf copies extra: a fresh object, data as stored” — tsc 0 · RED `Tests  1 failed \| 25 passed (26)` |
 | V6 | `pendingStore.ts` `recordOf`: `const extra = extraOf(x.extra);` (read on every record) | P “extra is read only on the wallet’s own record without an intent…” — tsc 0 · RED `Tests  1 failed \| 25 passed (26)` |
-| I1 | `pendingStore.ts` `inFlightFor`: `&& r.intent !== null` (a purchase not counted) | P “inFlightFor finds it; a send’s prepare and a send’s submit are then refused in-flight…”, “the one verdict B1d changes…”, every malformed-extra row (each asserts the record is in flight); I “a second entry of another kind is refused while the first one’s record is open” — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  14 failed \| 35 passed (49)` |
-| R1 | `prepare.ts`: `registerIntentKind({...SEND_INTENT, kind: 'send-b1b'})` (the send not registered under its kind) | I “send is registered by prepare.ts itself…”, “refuses … a kind registered twice (send included)” — tsc 0 · RED `Tests  2 failed \| 21 passed (23)` |
-| P1 | `prepare.ts` `isSend`: `p.kind.length > 0` (`preparedFor` returns any kind) | I “wallet.preparedFor never returns an entry of another kind” — tsc 0 · RED `Tests  1 failed \| 22 passed (23)` |
-| P2 | `prepare.ts` `storePrepared`: an entry replaced only by one of the same kind (`p.account !== prepared.account \|\| p.kind !== prepared.kind`) | I “a prepare of either kind replaces the account’s entry of the other…” — tsc 0 · RED `Tests  1 failed \| 22 passed (23)` |
-| S1 | `send.ts` `recordFields`: `data: null` (the kind’s `pendingData` not asked) | I “signs an entry of another kind: … the record has no intent and the kind’s extra (positive control)” — tsc 0 · RED `Tests  1 failed \| 22 passed (23)` |
+| I1 | `pendingStore.ts` `inFlightFor`: `&& r.intent !== null` (a purchase not counted) | P “inFlightFor finds it; a send’s prepare and a send’s submit are then refused in-flight…”, “the one verdict B1d changes…”, every malformed-extra row (each asserts the record is in flight); I “a second entry of another kind is refused while the first one’s record is open” — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  14 failed \| 38 passed (52)` |
+| R1 | `prepare.ts`: `registerIntentKind({...SEND_INTENT, kind: 'send-b1b'})` (the send not registered under its kind) | I “send is registered by prepare.ts itself…”, “refuses … a kind registered twice (send included)” — tsc 0 · RED `Tests  2 failed \| 24 passed (26)` |
+| P1 | `prepare.ts` `isSend`: `p.kind.length > 0` (`preparedFor` returns any kind) | I “wallet.preparedFor never returns an entry of another kind” — tsc 0 · RED `Tests  1 failed \| 25 passed (26)` |
+| P2 | `prepare.ts` `storePrepared`: an entry replaced only by one of the same kind (`p.account !== prepared.account \|\| p.kind !== prepared.kind`) | I “a prepare of either kind replaces the account’s entry of the other…” — tsc 0 · RED `Tests  1 failed \| 25 passed (26)` |
+| S1 | `send.ts` `recordFields`: `data: null` (the kind’s `pendingData` not asked) | I “signs an entry of another kind: … the record has no intent and the kind’s extra (positive control)” — tsc 0 · RED `Tests  1 failed \| 25 passed (26)` |
 | G1 | `check-no-presale.mjs`: `BOTH_BUILDS = []` (the staged list loosened) | `check-no-presale.test.mjs` “the on build must carry the three on-path entries…” — tsc 0 · RED `Tests  1 failed \| 35 passed (36)` |
 | G2 | `vitest.nopresale.config.ts`: the two appended files removed (the pipeline untested off) | `presaleSwitch.test.mjs` “the shared send pipeline is tested in the off run too…” — tsc 0 · RED `Tests  1 failed \| 15 passed (16)` |
 
-18 mutations, all red, every one compiling (`tsc` 0). Two first drafts would not have compiled and were written differently before running (not counted): V3 as "the `KIND_NAME` test deleted" leaves the import unused (TS6133), so the mutant keeps the import and lets every non-empty string through; R1 as "the registration deleted" leaves `registerIntentKind` unused, so the mutant registers the send under another name. V1's run lists 22 failures (the table names the first ones by file).
+21 mutations (rev 1's 18, re-run on rev 2's tree, plus K3, D1, D2), all red, every one compiling (`tsc` 0). Two first drafts would not have compiled and were written differently before running (not counted): V3 as "the `KIND_NAME` test deleted" leaves the import unused (TS6133), so the mutant keeps the import and lets every non-empty string through; R1 as "the registration deleted" leaves `registerIntentKind` unused, so the mutant registers the send under another name. V1's run lists 22 failures (the table names the first ones by file).
 
 Not covered by a mutation (stated): the `prepared-invalid` refusal of a taken entry whose `kind` differs from the peeked one's (`prepared.kind !== peek.kind`) — no test writes such an entry under the same id with a matching integrity, because the integrity covers the kind (K2) and the intent digest's domain is the kind (K1), so a changed kind is refused by either of those first; the extra comparison is a third binding, kept, and not claimed by a test.
 
@@ -3892,7 +4014,7 @@ Not covered by a mutation (stated): the `prepared-invalid` refusal of a taken en
 - **Ruling: the kind enters the challenge digest as `digestOf`'s domain, and the integrity as a per-kind domain (`prepared` for a send, `prepared/<kind>` for any other)** — why: the brief's hard requirement (a send's digest and integrity byte-for-byte unchanged) and §1.3's "include `kind`" are both met only this way; a send's digest was already `digestOf('send', …)` — cost if wrong: none found; K1/K2 prove the kind separates bindings. **Spec conflict, for the controller:** §1.3 says "a challenge issued before the update no longer matches and is asked again — fail closed". Under the brief's requirement that is false for a send (its digest is the same bytes; the test "an entry stored before kinds … its challenge … carries over to the re-prepare" shows it), and for no other kind did a challenge exist before. The sentence should be removed or reworded ("a send's challenge is unchanged; no other kind existed").
 - **Ruling: the registry entry has `digestValue`, not `intentDigest`; the registry's `intentDigest(kind, account, intent)` hashes it under the kind** — why: spec §1.3 lists `intentDigest` among the registered functions; a kind that computed its own digest could forget its domain, and then a send's proof could satisfy it (K1's failure mode). The spec's call form `intentDigest(kind, account, intent)` is the exported function — cost if wrong: a rename in 1b.
 - **Deviation (stated): `describe` and `onConfirmed` are not in 1a's `IntentKind`; `pendingData?` is added** — why: 1a has no consumer of either (`describe` is #10's description, written by 1b's `buy.ts` when it issues its challenge; `onConfirmed` is B1d-2's record, called by the poller). `pendingData` is not in §1.3's list, but `extra.data` (§2.3) must come from the kind at signing, and nothing else in the pipeline knows it — cost if wrong: 1b/2 add the two members (an interface widening, and one call in `pollOnce` for B1d-2 — a funds-adjacent change that plan must test, not this one).
-- **Ruling: a prepared entry stored before kinds (no `kind`) is not read** — fail closed: `sendPrepared` answers `unknown-prepared`, `preparedFor` null, the popup prepares again carrying the challenge id, whose digest is unchanged, so no second re-authentication (tested). In practice Chrome clears `storage.session` when an extension updates, so such an entry is not met — cost if wrong: one re-prepare.
+- **Ruling: a prepared entry stored before kinds (no `kind`) is not read** — fail closed: `sendPrepared` answers `unknown-prepared`, `preparedFor` null, the popup prepares again carrying the challenge id, whose digest is unchanged, so no second re-authentication (tested). Chrome is believed to clear `storage.session` when an extension updates, so such an entry would not be met — believed, not verified (rev 2, review 1 L5); the design does not depend on it — cost if wrong: one re-prepare.
 - **Ruling: `PendingRecord.extra` is required (`| null`) in memory and written only when set** (`storedForm` in `updatePending`) — why: the brief's "its stored record byte-for-byte unchanged"; the existing rule for display fields (`fee`: "required, typed | null, so no writer can leave it out") is kept for writers, and the stored bytes of a send and of a dApp record are B1b's (V4, against the capture) — cost if wrong: none; an older build reading a purchase record ignores the extra key.
 - **Ruling: the one validator verdict that changes is review H1's shape** — the wallet's own record with `intent: null` (no origin) was dropped by 0b79442 (`ownNullIntent: "dropped"` in the capture) and is now kept, `extra` read or null. `pendingStore.test.ts`'s junk row `{...good, intent: null}` therefore moves out of the junk list (replaced by `intent: undefined` — a record with no intent key, still dropped, and a negative control in `pendingKinds.test.ts`). Every other captured shape reads exactly as before (the verdict test compares the whole read and the rewrite with the capture).
 - **Ruling: `extra` is read only on the third shape; a send's or a dApp's stored `extra` reads as null** — why: their verdict and view stay B1b's/B1c's; nothing but the wallet's own non-send record has display data (V6) — cost if wrong: none.
@@ -3901,12 +4023,14 @@ Not covered by a mutation (stated): the `prepared-invalid` refusal of a taken en
 - **Ruling: `send` registers itself in `prepare.ts` at module load (`registerIntentKind(SEND_INTENT)`)** — §1.3 "B1b's send registers itself unconditionally"; `intents.ts` imports only types from `prepare.ts`, so there is no runtime cycle; every path that signs imports `prepare.ts` (R1 proves the registration is what makes a send signable).
 - **Ruling: `storePrepared` is extracted from `prepareSend` unchanged** (the lock check, the challenge clean-up, the 120 s / `MAX_PREPARED` keep rule, now keyed on the stored entry's account) — why: §1.3 "every prepare, of any kind, replaces every prepared entry of that account" needs one shared write that 1b's `buy.ts` calls; tested for both kinds and for the lock (P2).
 - **Ruling: `PreparedEntry.shown` requires `fees` (the two parts the record keeps) and `simulation` (an object) of every kind** — today's `isPreparedShape` rule ("an entry from before E2 has no simulation") generalised; 1b's purchase entry must carry both.
-- **Ruling: `wallet.send` stays kind-agnostic** (it signs whatever id it is given, through that kind's `beforeSign`) — §1.4 routes a purchase through `presale.buy`, but nothing in §1.3 says `wallet.send` must refuse other kinds — cost if wrong: a popup bug could sign a purchase id via `wallet.send`, with every presale check still run; **1b decides** whether `wallet.send` should refuse non-`send` ids (one comparison).
+- **(rev 2) Owner decision D17 replaces rev 1's ruling "`wallet.send` stays kind-agnostic":** `wallet.send` signs only `kind: 'send'`; a purchase is signed only through `presale.buy` (1b). Built as one comparison at the top of `sendPrepared` — `sendPrepared(ext, deps, id, kindName = SEND_KIND)` refuses an entry of any other kind as `unknown-prepared` before the registry, the challenge, `beforeSign` or the take, so nothing is burned; `wallet.send` passes no kind (the default), 1b's `presale.buy` passes `'presale-buy'`. Why the default and the code: the most restrictive default (a caller that forgets the argument signs only sends — fail closed for a purchase), and `unknown-prepared` matches `wallet.preparedFor`, which already returns only sends. Tested through `handleWallet('wallet.send', …)` with a `test-buy` entry and with a send-shaped `test-twin` entry (refused, entry kept, nothing broadcast), with a send through `wallet.send` as the positive control (D1, D2). Every `intents.test.ts` call that signs a non-send entry now names its kind.
+- **(rev 2, review 1 M2)** The unregistered-kind test now also stores a send-shaped entry (`TWIN`, `INTENT`) under the unregistered kind `test-gone` and calls `sendPrepared(…, 'test-gone')`, so only the registry lookup can refuse it before the take; K3 (review 1's surviving T3-4) is red.
+- **(rev 2, review 1 L1)** The capture covers three engine flows, not one: rev 1's SOL send to a new recipient (challenge), a USDC send to a known recipient (no challenge, `fee` with the SPL network fee 7 000) and a dApp record (`recordDappSend` → held, `markDue` → due, the poller's first round → handed once, then confirmed). The fixture was regenerated by the printed program from 0b79442's own code; rev 1's five keys are byte-identical in it.
 - **Ruling: the capture is of commit 0b79442 (main), not of Task 2's commit** — the pipeline files are identical between the two (`git diff --quiet` exits 0 for every file the capture touches), and 0b79442 exists in the real repository, while the dry run's commits do not.
 - **Gate lists (Task 2's ruling): `BOTH_BUILDS` gains `src/background/intents.ts`** (C19: both builds sign and read through the registry), with a new row "every BOTH_BUILDS module is one the off build may carry"; the synthetic `SHARED` list of the gate's tests gains it. `ON_BUILD` and `MUST_STAY` unchanged (Task 3 adds no presale module and no string). The `no presale ok` line now says "4 required modules".
 - **Off run (Task 1's ruling): `NOPRESALE_TESTS` gains `intents.test.ts` and `pendingKinds.test.ts`**, pinned by a row in `presaleSwitch.test.mjs` (G2) — no pin existed for the list.
 - **For Task 4:** the popup's `engine.ts` `pendingOf` requires an intent (`intentOf`) and so **drops a record with `intent: null` today** — the generic rendering (Q42) must start by accepting `intent: null` with `extra: {kind: string, data: unknown} | null` from `wallet.pending` / `wallet.send` / `wallet.resend` (every `PendingView` now carries `extra`). E2E 7's seeded record: the §2.3 shape exactly as `PURCHASE` in `pendingKinds.test.ts`, written to `v1_pending` (the background keeps, polls and lists it in both builds — tested here).
-- **For B1d-1b:** `registerPresale` calls `registerIntentKind({kind: 'presale-buy', parseIntent, digestValue, beforeSign, pendingData})`; `beforeSign` throws `SendRefused` with codes `SendRefusal` does not have yet (Q14, Q15, Q40c, Q43 — the union widens); the purchase's prepare calls `issueChallenge(ext, deps, intentDigest(kind, …), about)`, builds the entry with `kind: 'presale-buy'` and `preparedIntegrity`, and writes it with `storePrepared`; `presale.preparedFor` needs a kind-filtered reader beside `preparedFor` (`loadPrepared` is not exported — export a `preparedOfKind(ext, deps, account, kind)` then); the in-flight check at its prepare is `inFlightFor(await readPending(ext), account)` exactly as `prepareSend`'s. `describePresale` (Task 1) stays the #10 hook.
+- **For B1d-1b:** `registerPresale` calls `registerIntentKind({kind: 'presale-buy', parseIntent, digestValue, beforeSign, pendingData})`; `beforeSign` throws `SendRefused` with codes `SendRefusal` does not have yet (Q14, Q15, Q40c, Q43 — the union widens); the purchase's prepare calls `issueChallenge(ext, deps, intentDigest(kind, …), about)`, builds the entry with `kind: 'presale-buy'` and `preparedIntegrity`, and writes it with `storePrepared`; `presale.buy` signs with `sendPrepared(ext, deps, id, 'presale-buy')` (D17: without the kind it would refuse the entry as `unknown-prepared`); `presale.preparedFor` needs a kind-filtered reader beside `preparedFor` (`loadPrepared` is not exported — export a `preparedOfKind(ext, deps, account, kind)` then); the in-flight check at its prepare is `inFlightFor(await readPending(ext), account)` exactly as `prepareSend`'s. `describePresale` (Task 1) stays the #10 hook.
 
 ---
 
@@ -3918,7 +4042,7 @@ Not covered by a mutation (stated): the `prepared-invalid` refusal of a taken en
 - Create: `extension/src/app/generic.ts` (`GENERIC_TEXT`, Q42's three strings)
 - Create: `extension/src/app/__tests__/genericRecord.test.tsx` (the five screens, against the real background; runs in both vitest runs)
 - Create: `extension/e2e/presaleOff.spec.ts` (E2E 7 and its visual shots)
-- Modify: `extension/src/app/engine.ts` (`PendingExtra`; `Pending.intent: Intent | null`, `Pending.extra`; `pendingOf` reads them, `extraOf`)
+- Modify: `extension/src/app/engine.ts` (`PendingExtra`; `Pending.intent: Intent | null`, `Pending.extra`; `pendingOf` reads them, `extraOf` — (rev 2, review 1 L4) `extra` read only on a record without an intent, as the background reads it: a send's extra is null, whatever the wire carries, and the send is never dropped)
 - Modify: `extension/src/app/screens/Home.tsx` (#11 strip), `Activity.tsx` (#26 row), `Status.tsx` (#21), `Failed.tsx` (#44), `Stuck.tsx` (#54)
 - Modify (tests of the changed type): `extension/src/app/__tests__/engine.test.ts` (two new tests, one row of the existing shape test gains `extra: null`, one `p.intent.amount` → `p.intent?.amount`), `Failed.test.tsx`, `Status.test.tsx`, `Stuck.test.tsx` (their `Pending` builders gain `extra: null`)
 - Modify (Task 2's staged lists): `extension/scripts/check-no-presale.mjs` (`MUST_STAY` gains Q42a), `extension/scripts/__tests__/check-no-presale.test.mjs`
@@ -4236,7 +4360,7 @@ index ef5cc2c..3e2326b 100644
    failure: null,
    fee: {networkLamports: 5_000n, markupLamports: 50n},
 diff --git a/extension/src/app/__tests__/engine.test.ts b/extension/src/app/__tests__/engine.test.ts
-index 9b55ba8..6509525 100644
+index 9b55ba8..6018f52 100644
 --- a/extension/src/app/__tests__/engine.test.ts
 +++ b/extension/src/app/__tests__/engine.test.ts
 @@ -8,7 +8,8 @@ import {RequestUnreachable, RpcForbidden} from '../../../../core/solana/rpc';
@@ -4280,14 +4404,14 @@ index 9b55ba8..6509525 100644
      };
      expect((await engineAnswering({ok: true, data: [p]}).pending()).ok).toBe(true);
      expect(await engineAnswering({ok: true, data: [{...p, state: 'lost'}]}).pending()).toEqual({ok: false, error: 'failed'});
-@@ -283,6 +294,46 @@ describe('shape checks: a reply of the wrong shape is failed', () => {
+@@ -283,6 +294,49 @@ describe('shape checks: a reply of the wrong shape is failed', () => {
      expect(await engineAnswering({ok: true, data: {...p, detailCode: 'other'}}).resend('r1')).toEqual({ok: false, error: 'failed'});
    });
  
 +  // B1d §1.3 (review H1), Q42: the wallet's own record of another kind — no intent, its kind and display data in
-+  // `extra` (or null: the background kept a record whose extra it could not read). A send carries no extra; the field
-+  // must be there; anything else is failed, as every other field.
-+  it('pending: a record without an intent is read with its extra, copied as it came; a malformed one is failed', async () => {
++  // `extra` (or null: the background kept a record whose extra it could not read). On such a record the field must be
++  // there and anything else is failed, as every other field; a send's extra is never read (review 1 L4).
++  it('pending: a record without an intent is read with its extra, copied as it came; a malformed one is failed; a send’s extra is never read (review 1 L4)', async () => {
 +    const p = {
 +      id: 'r1', account: acc, signature: '5'.repeat(88), lastValidBlockHeight: 1, createdAt: 1, lastSentAt: 1, state: 'pending', detail: null, detailCode: null,
 +      intent: null, expiryNullSeenAt: null, failure: null, fee: {networkLamports: '5050', markupLamports: '0'},
@@ -4315,8 +4439,11 @@ index 9b55ba8..6509525 100644
 +    for (const extra of malformed) expect([extra, await engineAnswering({ok: true, data: [{...p, extra}]}).pending()]).toEqual([extra, {ok: false, error: 'failed'}]);
 +    const {extra: _omitted, ...withoutExtra} = p;
 +    expect(await engineAnswering({ok: true, data: [withoutExtra]}).pending()).toEqual({ok: false, error: 'failed'});
-+    // A send carries no extra; an intent that is neither null nor a send intent is failed.
-+    expect(await engineAnswering({ok: true, data: [{...send, extra: p.extra}]}).pending()).toEqual({ok: false, error: 'failed'});
++    // A send's extra is not read (review 1 L4): null whatever it carries — the send is shown, never dropped. An intent
++    // that is neither null nor a send intent is failed.
++    for (const extra of [p.extra, 'x', undefined]) {
++      expect(await engineAnswering({ok: true, data: [{...send, extra}]}).pending()).toMatchObject({ok: true, data: [{intent: {token: 'SOL', recipient: RECIPIENT, amount: 1n}, extra: null}]});
++    }
 +    for (const intent of [undefined, {}, {token: 'BONK', recipient: RECIPIENT, amount: '1'}, 'x']) expect(await engineAnswering({ok: true, data: [{...p, intent}]}).pending()).toEqual({ok: false, error: 'failed'});
 +    // One malformed record fails the whole list (it is never dropped silently).
 +    expect(await engineAnswering({ok: true, data: [send, {...p, extra: 'x'}]}).pending()).toEqual({ok: false, error: 'failed'});
@@ -4560,7 +4687,7 @@ test('7 · visual: #54 and #44 for a purchase record in the off build — generi
 
 Run (in `extension/`): `npx vitest run src/app/__tests__/genericRecord.test.tsx src/app/__tests__/engine.test.ts scripts/__tests__/check-no-presale.test.mjs scripts/__tests__/presaleSwitch.test.mjs src/app/__tests__/Failed.test.tsx src/app/__tests__/Status.test.tsx src/app/__tests__/Stuck.test.tsx`
 
-Expected (the dry run, on 9bed436 + the Step 1 files): `Test Files  4 failed | 3 passed (7)` · `Tests  18 failed | 146 passed (164)`:
+Expected (the dry run, on Task 3's tree + the Step 1 files; rev 2 re-ran it on 30626f6 with the same counts and `tsc` 2 with the same 5 errors): `Test Files  4 failed | 3 passed (7)` · `Tests  18 failed | 146 passed (164)`:
 - `genericRecord.test.tsx` 13 of 14 red — #11 and #26 never draw the row (`Unable to find an element with the text: Transaction · pending`, `Error: no pending row`: the old `pendingOf` refuses `intent: null`, so the whole `wallet.pending` reply is `failed` and the provider shows no open record), #21 stays on "Checking…" (`Unable to find … Broadcasting transaction…`), #44 shows [Try again] (`expected <button …> to be null`), #54 throws (`TypeError: Cannot read properties of null (reading 'token')` / `(reading 'recipient')` — the old screens dereference `intent.*`). The green one is the positive control "#11: a send is still "Sending 2.48 SOL · pending"".
 - `engine.test.ts` 3 red — the two new tests (`expected { ok: false, error: 'failed' } to match object { ok: true, … }`) and the round trip's new `extra` column (`expected [ [ 'pending', 1000000n, undefined ] ] to deeply equal [ [ 'pending', 1000000n, null ] ]`).
 - `check-no-presale.test.mjs` 1 red (`expected [ 'Presale purchase', …(1) ] to deeply equal [ 'Presale purchase', …(3) ]`); `presaleSwitch.test.mjs` 1 red (the off-run list).
@@ -4568,7 +4695,9 @@ Expected (the dry run, on 9bed436 + the Step 1 files): `Test Files  4 failed | 3
 
 `npx tsc --noEmit; echo $?` → `2` (5 errors: `'extra' does not exist in type 'Pending'` in the three builders and `engine.test.ts`, `Type 'null' is not assignable to type 'Intent'` in `genericRecord.test.tsx`).
 
-E2E red (the dry run: 9bed436 + `presaleOff.spec.ts`, both builds built): `npx playwright test e2e/presaleOff.spec.ts` → `2 failed` — both at their first #11 assertion (`Expected: "Transaction · pending"` / `"Transaction · taking longer than usual"`, `element(s) not found`): the off build keeps and polls the record (Task 3) but its popup cannot read it.
+**(rev 2) The changed engine test against rev 1's implementation** (b436245 + rev 2's `engine.test.ts`): `Tests  1 failed | 29 passed (30)` — the shape test, at the send carrying an `extra` (`expected { ok: false, error: 'failed' } to match object { ok: true, … }`): rev 1's popup failed the whole `wallet.pending` reply for it.
+
+E2E red (the dry run: 9bed436 + `presaleOff.spec.ts`, both builds built; not re-run in rev 2 — neither the spec file nor Task 3's popup changed): `npx playwright test e2e/presaleOff.spec.ts` → `2 failed` — both at their first #11 assertion (`Expected: "Transaction · pending"` / `"Transaction · taking longer than usual"`, `element(s) not found`): the off build keeps and polls the record (Task 3) but its popup cannot read it.
 
 - [ ] **Step 3: Implement.**
 
@@ -4591,7 +4720,7 @@ export const GENERIC_TEXT = {
 
 ````diff
 diff --git a/extension/src/app/engine.ts b/extension/src/app/engine.ts
-index 8cc2b44..b4d1d76 100644
+index 8cc2b44..63872bb 100644
 --- a/extension/src/app/engine.ts
 +++ b/extension/src/app/engine.ts
 @@ -86,7 +86,13 @@ export interface Pending {
@@ -4627,14 +4756,15 @@ index 8cc2b44..b4d1d76 100644
    const state = oneOf(o.state, STATES);
 -  const intent = intentOf(o.intent);
 +  const intent = o.intent === null ? null : intentOf(o.intent);
-+  const extra = extraOf(o.extra);
++  // Read only on a record without an intent, as the background reads it (pendingStore.ts): a send's extra is null,
++  // whatever was stored — never a reason to drop the send (review 1 L4).
++  const extra = intent === null ? extraOf(o.extra) : null;
    const failure = o.failure === null ? null : oneOf(o.failure, ['landed', 'not-sent'] as const);
    const expiry = o.expiryNullSeenAt === null ? null : isTime(o.expiryNullSeenAt) ? o.expiryNullSeenAt : undefined;
    const fee = feeOf(o.fee);
    const detailCode = o.detailCode === null ? null : oneOf(o.detailCode, DETAIL_CODES);
-   if (state === undefined || intent === undefined || failure === undefined || expiry === undefined || fee === undefined || detailCode === undefined) return undefined;
-+  // A send carries no extra (background pendingStore: extra is read only on a record without an intent).
-+  if (extra === undefined || (intent !== null && extra !== null)) return undefined;
+-  if (state === undefined || intent === undefined || failure === undefined || expiry === undefined || fee === undefined || detailCode === undefined) return undefined;
++  if (state === undefined || intent === undefined || extra === undefined || failure === undefined || expiry === undefined || fee === undefined || detailCode === undefined) return undefined;
    if (!isInt(o.lastValidBlockHeight) || !isTime(o.createdAt) || !isTime(o.lastSentAt) || !(o.detail === null || typeof o.detail === 'string')) return undefined;
    return {
      id: o.id,
@@ -5015,10 +5145,10 @@ The staged lists (`MUST_STAY` gains Q42a; the off run gains the two files):
 
 ````diff
 diff --git a/extension/scripts/check-no-presale.mjs b/extension/scripts/check-no-presale.mjs
-index d2a32b2..aac101c 100644
+index dbe51bd..33a722c 100644
 --- a/extension/scripts/check-no-presale.mjs
 +++ b/extension/scripts/check-no-presale.mjs
-@@ -28,8 +28,9 @@ export const ON_BUILD = ['src/background/presale/api.ts', 'src/app/presale/index
+@@ -29,8 +29,9 @@ export const ON_BUILD = ['src/background/presale/api.ts', 'src/app/presale/index
  export const BOTH_BUILDS = ['src/background/intents.ts'];
  // Armed by B1d-1b: 1a ships no presale string (Q42 is "both").
  export const MARKERS = [];
@@ -5071,11 +5201,11 @@ index 6cd2e20..0265b07 100644
 
 Run: the Step 2 command — `Test Files  7 passed (7)` · `Tests  164 passed (164)`.
 
-Run: `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  183 passed (183)` · `Tests  3602 passed (3602)` (previous tree 182 / 3585: +1 file, +17 tests — genericRecord 14, engine +2, presaleSwitch +1; check-no-presale's count unchanged). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  9 passed (9)` · `Tests  213 passed (213)` (previous 7 / 169: `genericRecord.test.tsx` 14 and `engine.test.ts` 30 now run off too — the popup reads and draws a purchase record with the presale entries resolved to their stubs).
+Run: `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  183 passed (183)` · `Tests  3605 passed (3605)` (previous tree 182 / 3588: +1 file, +17 tests — genericRecord 14, engine +2, presaleSwitch +1; check-no-presale's count unchanged; rev 1: 3602 on 3585). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  9 passed (9)` · `Tests  216 passed (216)` (previous 7 / 172 (rev 1: 213 on 169): `genericRecord.test.tsx` 14 and `engine.test.ts` 30 now run off too — the popup reads and draws a purchase record with the presale entries resolved to their stubs).
 
 Run: `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale`, then `npm run gates` — exit 0, every gate ok once per build, the last line `no presale ok (dist-nopresale off, dist on): … the on build carries 4 required modules; 0 markers (none in the off build, each in the on build); 4 strings and the decoder's instruction names stay in the off build`. `npm run csp`, `npm run secrets` — ok for both builds; `npm run reproducible` — ok, both variants. `node scripts/check-no-tge-date.mjs` (package) — `604 source and built files checked`; repository root — `no TGE date in 1259 tracked text files`. Classes: `classes ok` (the generic rows use B1b's classes only; `unstyledClasses` is asserted on #26's row and on #21, #44, #54 in `genericRecord.test.tsx`). No `core/` or root `src/` change: root `tsc`/`jest` and web `verify` not required.
 
-Run: `npx playwright test e2e/presaleOff.spec.ts` — `2 passed` (~21 s); `--repeat-each=3` — `6 passed`; under `unshare -rn` with `containment.spec.ts` — `4 passed`. The whole suite `npx playwright test` — `77 passed` (75 + the two new; 21 min on the dry-run machine).
+Run: `npx playwright test e2e/presaleOff.spec.ts` — `2 passed` (~21 s); `--repeat-each=3` — `6 passed`; under `unshare -rn` with `containment.spec.ts` — `4 passed`. The whole suite `npx playwright test` — `77 passed` (75 + the two new; 21 min on the dry-run machine). **(rev 2)** `presaleOff.spec.ts` re-run on rev 2's Task 4 (both builds built in a `git archive` copy): `2 passed`, and under `unshare -rn` with `containment.spec.ts` `4 passed`; the whole suite ran on the end state (Task 6). The two packages are still byte-identical at this task (`diff -rq dist dist-nopresale` lists only `app.features.json` and `app.modules.json`).
 
 Visual shots (opened and compared in the dry run; the design has no generic variant, so each is compared with B1b's own row/screen for a send, which is the design's): `q42-11-pending.png` / `q42-11-slow.png` — #11's info strip (send glyph, body-sm text, chevron) exactly as the send's, the text Q42a; `q42-26-pending.png` — #26's PENDING section, the `tx-row` with the arrow-up-right circle, Q42a primary and "waiting · 0 m 1 s" secondary, as the send's row; `q42-21-pending.png` / `q42-21-confirmed.png` — #21's ring, stage label and sub as for a send, the amount card holding "Transaction" at the amount's size and weight, Status / Tx hash / Fee paid rows; `q42-54-stuck.png` — the original's card with the pill "TRANSACTION", Tx hash with its Copy chip, Valid until block; `q42-54-expired.png` — "Not confirmed — no funds moved.", Tx hash, Done only; `q42-44-rejected.png` — the rejected hero and reason banner with its explorer link, [View details] only. No amount, address or presale word in any.
 
@@ -5091,7 +5221,7 @@ git commit -m "feat(extension): B1d-1a generic rendering of a record without an 
 | id | the change | named test → observed |
 |---|---|---|
 | E1 | `engine.ts` `pendingOf`: `const intent = intentOf(o.intent);` (null refused — the old reader) | G 9 rows — #11 ×3, #26 ×2, #21 ×3, #54 stuck: every row that reads the record through the engine (#44 and #54 expired are rendered from a view; the send row is the positive control); E “a record without an intent is read with its extra…”, “a stored record without an intent reaches the popup…” — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  11 failed \| 33 passed (44)` |
-| E2 | `engine.ts`: `if (extra === undefined) return undefined;` (a send carrying an extra accepted) | E “a record without an intent is read with its extra, copied as it came; a malformed one is failed” — tsc 0 · RED `Tests  1 failed \| 29 passed (30)` |
+| E2 (rev 2) | `engine.ts`: `const extra = extraOf(o.extra);` (a send's extra read — shown with it, or the whole reply failed for a malformed one; rev 1's E2, "a send carrying an extra accepted", is the behaviour rev 2 adopts, review 1 L4) | E “a record without an intent is read with its extra, copied as it came; a malformed one is failed; a send’s extra is never read (review 1 L4)” — tsc 0 · RED `Tests  1 failed \| 29 passed (30)` |
 | E3 | `engine.ts` `extraOf`: `!KIND.test(o.kind.toLowerCase().trim())` (an upper-case or padded kind accepted) | E the same test (`Presale-buy`) — tsc 0 · RED `Tests  1 failed \| 29 passed (30)` |
 | E4 | `engine.ts` `extraOf`: the `!('data' in o)` clause deleted (an extra without `data` accepted) | E the same test (`{kind: 'presale-buy'}`) — tsc 0 · RED `Tests  1 failed \| 29 passed (30)` |
 | E5 | `engine.ts` `pendingOf`: `extra: extra === null ? null : null` (the extra read, then dropped) | E “a record without an intent is read…”, “a stored record … reaches the popup with its extra…”; G “#11: "Transaction · pending" … it opens that record…” (the tap hands `extra`) — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  3 failed \| 41 passed (44)` |
@@ -5105,13 +5235,14 @@ git commit -m "feat(extension): B1d-1a generic rendering of a record without an 
 | G1 | `check-no-presale.mjs`: `MUST_STAY` back to the two B1b strings (Q42 no longer required in the off build) | `check-no-presale.test.mjs` “must stay: B1b/B1c presale copy, Q42 and the decoder instruction names…” — tsc 0 · RED `Tests  1 failed \| 35 passed (36)` |
 | G2 | `vitest.nopresale.config.ts`: `genericRecord.test.tsx` removed (the generic screens untested off) | `presaleSwitch.test.mjs` “the generic rendering of a record without an intent is tested in the off run too…” — tsc 0 · RED `Tests  1 failed \| 16 passed (17)` |
 
-14 mutations, all red, every one compiling (`tsc` 0). Not covered by a mutation, stated: the `intent !== null` guards on #44's and #54's [Try again] and on #44's `edit` — deleting any of them does not compile (`onTryAgain(intent)` / `draftOf(intent)` need an `Intent`), so the type checker is their test; the E2E's own red is Step 2's run on the previous tree (both tests red at their first #11 assertion), not a separate mutation.
+14 mutations (rev 2 re-ran all of them on 7333c87; E2 is rewritten for L4), all red, every one compiling (`tsc` 0). Not covered by a mutation, stated: the `intent !== null` guards on #44's and #54's [Try again] and on #44's `edit` — deleting any of them does not compile (`onTryAgain(intent)` / `draftOf(intent)` need an `Intent`), so the type checker is their test; the E2E's own red is Step 2's run on the previous tree (both tests red at their first #11 assertion), not a separate mutation.
 
 #### Dry-run notes (Task 4)
 
 - **Ruling: where Q42b goes on each screen** — the spec says "Transaction" (#21, #44, #54 amount line; no amount, no recipient). #21: the amount card holds only "Transaction" in `.amount` (no "Amount" eyebrow — it would label a word as an amount — no ticker, no fiat); #54: the original's card pill (B1b's "Send", the kind's label) reads "Transaction", and the Amount and Recipient rows are omitted (key/value rows: an "Amount · Transaction" row would be wrong); #44: its eyebrow is already B1b's "Transaction" and its kept payload card loses To and Amount (only "Valid until block") — why: each is the place a send names what it is; no new copy — cost if wrong: a markup move per screen (the visual shots show each).
 - **Ruling: #44 and #54 offer no [Try again] / [Edit transaction] for a record without an intent** — both need the intent (`onTryAgain(intent)` re-prepares it at #19, `draftOf(intent)` fills #12); a purchase cannot be re-prepared by B1b's send flow. #44 shows the explorer link in [Try again]'s place (except rejected-by-program, which keeps its banner link and [View details]), its back arrow and Esc close instead of opening #12, and the footer "Retry is a fresh transaction … same recipient, same amount." is not shown; #54's expired layout keeps Done only — cost if wrong: none for 1a; **1b's purchase renderer decides the purchase's own retry** (Q32/Q33 + #23's flow). **Known wording gap (B1b copy, not changed):** #54's expired line "…You can now make a new attempt." stays (STUCK_TEXT is B1b's, spec §4.8) though no [Try again] follows for a purchase; #21's titles stay B1b's "Sending…" / "Sent" / "Sent successfully", and #44's rejected sub "…the amount did not move" — all true of a purchase in substance; no new copy was written (rule: copy only from the spec or a numbered Q). If the owner wants different words for a purchase's #21/#54 titles in the off build, that is a new Q.
-- **Ruling: the popup refuses, rather than tolerates, a malformed `extra` / a missing `extra` / a send carrying an `extra`** — the background already maps every unreadable stored value to `null` (Task 3, "a display field never drops a record"), so anything else on the wire is a broken contract between our own two halves, handled as every other `pendingOf` field (`fee`, `detailCode`: the reply is `failed`). The record itself is never hidden by the background; only a malformed wire reply fails — cost if wrong: a reply failed that could have been shown (none possible from the real background; tested against it).
+- **Ruling: the popup refuses, rather than tolerates, a malformed or missing `extra` on a record without an intent** — the background already maps every unreadable stored value to `null` (Task 3, "a display field never drops a record"), so anything else on the wire is a broken contract between our own two halves, handled as every other `pendingOf` field (`fee`, `detailCode`: the reply is `failed`). The record itself is never hidden by the background; only a malformed wire reply fails — cost if wrong: a reply failed that could have been shown (none possible from the real background; tested against it).
+- **(rev 2, review 1 L4) A send's `extra` is never read by the popup** — rev 1 failed the whole `wallet.pending` reply when a record carried an intent **and** an extra, which would hide a pending send behind a display field (against B1b's rule). The background never writes one (it reads `extra` only on the third shape and `viewOf` gives every send `extra: null`), so this was unreachable, but the popup now reads exactly as the background does: `extra` is read only when `intent` is null; on a send it is `null` whatever the wire carries (an object, a malformed value, or no key at all). The test asserts the send shown with `extra: null` for those three; E2 is the mutant that reads it again.
 - **Ruling: Q42a's "taking longer than usual" on #26 uses #11's rule** (`stuck`, or older than 80 s) — #26's send row has no slow variant (it shows "waiting · m s"), but Q42 gives #26 both strings; #11's rule is the one B1b already uses for this exact pair of words.
 - **Ruling: the popup's `KIND` repeats the background's `KIND_NAME`** — the popup cannot import `src/background/` (vault isolation / page bundles); a divergence would only make the popup fail a reply the background produced, which E1–E4 and the real-background round trip would show.
 - **Ruling: `extra.data` is copied into `Pending.extra` but never read by any screen in 1a** — §1.3 "parsed by the presale renderer; never used to decide anything"; 1b's renderer must treat it as untrusted display input (it came from storage).
@@ -5493,6 +5624,14 @@ describe('readPresaleState — the valid read (positive control)', () => {
     expect(none.referrerAllocation.toBase58()).toBe('C6TE5HwdPxJhUcAdwt6DRr2ceoavWBPqfCqcyFVFAWkQ');
     expect(none.effectiveReferrerAddress).toBeNull();
   });
+
+  it('an existing allocation whose referrer@84 is all zero has no referrer (§2.1 rule 6, review 1 M3): null, and the default key’s PDA', async () => {
+    const zero = await openSnapshot({allocation: program(allocationData({referrer: null}))});
+    expect(zero.allocation).toMatchObject({exists: true, referrer: null});
+    const r = await referrerAllocationOf(zero, ACCOUNT);
+    expect(r.referrerAllocation.toBase58()).toBe('C6TE5HwdPxJhUcAdwt6DRr2ceoavWBPqfCqcyFVFAWkQ');
+    expect(r.effectiveReferrerAddress).toBeNull();
+  });
 });
 
 describe('readPresaleState — closed, a valid read of a closed sale (rule 4, rule 5)', () => {
@@ -5578,6 +5717,24 @@ describe('readPresaleState — every rule refuses on its own (never open on doub
     ['USDT vault uninitialised', {usdt: vault({mint: MAINNET_USDT_MINT, state: 0})}],
     ['USDC vault frozen', {usdc: vault({mint: MAINNET_USDC_MINT, state: 2})}],
     ['USDC vault under Token-2022', {usdc: vault({mint: MAINNET_USDC_MINT}, TOKEN_2022)}],
+  ])('%s → unavailable (malformed)', async (_name, o) => {
+    expect(await stateOf(o)).toEqual(MALFORMED);
+  });
+
+  // Every structural rule before any verdict (review 1 M3): a closed sale whose accounts break a rule is malformed, not
+  // inactive or blocked (the valid closed reads are the positive controls above).
+  const inactive = program(configData({active: 0}));
+  const blocked = program(userData({blocked: 1}));
+  it.each<[string, Partial<Chain>]>([
+    ['inactive, the user account not the program’s (rule 5)', {config: inactive, user: wrongOwner(program(userData()))}],
+    ['inactive, the allocation foreign (rule 6)', {config: inactive, allocation: program(allocationData({user: OTHER}))}],
+    ['inactive, the treasury absent (rule 7)', {config: inactive, treasury: null}],
+    ['inactive, the treasury holding data (rule 7)', {config: inactive, treasury: {...TREASURY, data: new Uint8Array(1)}}],
+    ['inactive, the USDC vault absent (rule 8)', {config: inactive, usdc: null}],
+    ['inactive, the USDT vault owned by someone else (rule 8)', {config: inactive, usdt: vault({mint: MAINNET_USDT_MINT, owner: MAINNET_ADMIN_ADDRESS})}],
+    ['blocked, the allocation claimed = 2 (rule 6)', {user: blocked, allocation: program(allocationData({claimed: 2}))}],
+    ['blocked, the treasury absent (rule 7)', {user: blocked, treasury: null}],
+    ['blocked, the USDC vault absent (rule 8)', {user: blocked, usdc: null}],
   ])('%s → unavailable (malformed)', async (_name, o) => {
     expect(await stateOf(o)).toEqual(MALFORMED);
   });
@@ -6028,7 +6185,7 @@ index 10d2452..c8f22c2 100644
 
 - [ ] **Step 2: Run them on the previous task's tree — red.**
 
-Run (in a `git archive` copy of Task 4's tree with only the test files above added): `cd extension && npx vitest run src/background/presale/__tests__ scripts/__tests__/gen-presale-idl.test.mjs scripts/__tests__/presaleSwitch.test.mjs scripts/__tests__/check-no-presale.test.mjs` — `Test Files  5 failed (5)` · `Tests  3 failed | 53 passed (56)`: `state.test.ts` and `layouts.test.ts` fail to load (`Cannot find module '../state'`, `'../layouts'`), `gen-presale-idl.test.mjs` fails to load (`Cannot find module '../../src/background/presale/layouts'`); `check-no-presale.test.mjs` “the on build must carry the three on-path entries … and the program state (Task 5)” (`expected [ …(3) ] to deeply equal [ …(6) ]`); `presaleSwitch.test.mjs` “transform marks a module … no-treeshake” (`on.transform is not a function`) and “a pure module the entry imports and nobody calls is in the on build’s module map” (`expected [ …(2) ] to include 'src/background/presale/pure.ts'`). `cd web && npx vitest run ../core/presale/__tests__/limits.test.ts ../core/presale/__tests__/vaultAtas.test.ts` — `Test Files  2 failed (2)` · `Tests  2 failed | 1 passed (3)`: `limits.test.ts` fails to load (`Failed to resolve import "../limits"`), `vaultAtas.test.ts` two rows (`expected undefined to be 'DNMn9dt7…'`); its admin-ATA negative control passes, as a negative control must.
+Run (in a `git archive` copy of Task 4's tree with only the test files above added; rev 2 re-ran it on rev 2's Task 4 with the same counts — `state.test.ts` fails to load either way): `cd extension && npx vitest run src/background/presale/__tests__ scripts/__tests__/gen-presale-idl.test.mjs scripts/__tests__/presaleSwitch.test.mjs scripts/__tests__/check-no-presale.test.mjs` — `Test Files  5 failed (5)` · `Tests  3 failed | 53 passed (56)`: `state.test.ts` and `layouts.test.ts` fail to load (`Cannot find module '../state'`, `'../layouts'`), `gen-presale-idl.test.mjs` fails to load (`Cannot find module '../../src/background/presale/layouts'`); `check-no-presale.test.mjs` “the on build must carry the three on-path entries … and the program state (Task 5)” (`expected [ …(3) ] to deeply equal [ …(6) ]`); `presaleSwitch.test.mjs` “transform marks a module … no-treeshake” (`on.transform is not a function`) and “a pure module the entry imports and nobody calls is in the on build’s module map” (`expected [ …(2) ] to include 'src/background/presale/pure.ts'`). `cd web && npx vitest run ../core/presale/__tests__/limits.test.ts ../core/presale/__tests__/vaultAtas.test.ts` — `Test Files  2 failed (2)` · `Tests  2 failed | 1 passed (3)`: `limits.test.ts` fails to load (`Failed to resolve import "../limits"`), `vaultAtas.test.ts` two rows (`expected undefined to be 'DNMn9dt7…'`); its admin-ATA negative control passes, as a negative control must.
 
 - [ ] **Step 3: Implement.**
 
@@ -6628,10 +6785,10 @@ index ef2a0d5..bb4d79d 100644
 
 ````diff
 diff --git a/extension/scripts/check-no-presale.mjs b/extension/scripts/check-no-presale.mjs
-index aac101c..2348250 100644
+index 33a722c..5ac9d48 100644
 --- a/extension/scripts/check-no-presale.mjs
 +++ b/extension/scripts/check-no-presale.mjs
-@@ -20,9 +20,16 @@ const DECODER = 'src/background/dapp/decode/presaleIdl.ts';
+@@ -21,9 +21,16 @@ const DECODER = 'src/background/dapp/decode/presaleIdl.ts';
  export const OFF_FORBIDDEN = ['src/background/presale/', 'src/app/presale/', 'src/unlock/presale.ts', 'core/referral/'];
  export const CORE_PRESALE_ALLOWED = ['core/presale/addresses.ts', 'core/presale/allocation.ts', 'core/presale/stagePrices.ts'];
  
@@ -6655,13 +6812,15 @@ index aac101c..2348250 100644
 
 - [ ] **Step 4: Run — green, the whole suite, both builds, the gates.**
 
-Run: the Step 2 commands — extension `Test Files  5 passed (5)` · `Tests  130 passed (130)` (state 61, layouts 5, generator 8, switch 20, gate 36); web `Test Files  2 passed (2)` · `Tests  17 passed (17)`.
+Run: the Step 2 commands — extension `Test Files  5 passed (5)` · `Tests  140 passed (140)` (state 71, layouts 5, generator 8, switch 20, gate 36; rev 1: 130 with state 61 — rev 2 adds the zero-referrer row and nine "every rule before any verdict" rows, review 1 M3); web `Test Files  2 passed (2)` · `Tests  17 passed (17)`.
 
-Run: `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  185 passed (185)` · `Tests  3676 passed (3676)` (previous tree 183 / 3602: +2 files, +74 tests — state 61, layouts 5, generator +5, presaleSwitch +3). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  9 passed (9)` · `Tests  213 passed (213)` (unchanged: nothing of this task is in the off build, so none of its files joins `NOPRESALE_TESTS`).
+Run: `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  185 passed (185)` · `Tests  3689 passed (3689)` (previous tree 183 / 3605: +2 files, +84 tests — state 71, layouts 5, generator +5, presaleSwitch +3; rev 1: 3676 on 3602). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  9 passed (9)` · `Tests  216 passed (216)` (rev 1: 213; unchanged from the previous tree: nothing of this task is in the off build, so none of its files joins `NOPRESALE_TESTS`).
 
 Run: `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale`, then `npm run gates` — exit 0, every gate ok once per build (rpc methods unchanged: `getAccountsData` is `getMultipleAccounts`), the last line `no presale ok (dist-nopresale off, dist on): the off build's module maps carry no presale module and of core/presale/ only 3 allowed; the on build carries 7 required modules; 0 markers (none in the off build, each in the on build); 4 strings and the decoder's instruction names stay in the off build`. `npm run csp`, `npm run secrets` — ok for both builds; `npm run reproducible` — ok, both variants. `node scripts/check-no-tge-date.mjs` (package) — `608 source and built files checked` per build; repository root (after the commit) — `no TGE date in 1269 tracked text files`.
 
-This task touches `core/`: `cd ../web && npm run verify` — green (`Test Files  46 passed (46)` · `Tests  571 passed (571)`, previous 44 / 554; the bundle test `3 passed`; reproducible); from the repository root `npx tsc --noEmit; echo $?` → `0`, `npx jest` → `Test Suites: 1 skipped, 180 passed` · `Tests: 1 skipped, 1234 passed, 1235 total` (the app imports neither new module).
+**(rev 2) Finding outside the plan:** the first rev 2 whole-suite run on this tree had one failure in B1b's `Confirm.test.tsx` “M4: while it stays open the block stays, and the re-reads stop once #20 is gone” (`expected 2 to be greater than 2` — the re-read count after `advanceTimersByTime` under `useFakeTimers({shouldAdvanceTime: true})`); the file then passed 5 of 5 alone and the whole suite passed on a rerun (3689 / 216). Nothing in it is touched by 1a; a timing-dependent test on a confirming screen is a finding for a later B1b task, not papered over here.
+
+This task touches `core/` (rev 2 changed nothing under `core/`, `web/` or `src/` at any task — `git diff --name-only` between each rev 1 commit and its rev 2 commit lists only `extension/` and the spec — so these results, rev 1's, stand): `cd ../web && npm run verify` — green (`Test Files  46 passed (46)` · `Tests  571 passed (571)`, previous 44 / 554; the bundle test `3 passed`; reproducible); from the repository root `npx tsc --noEmit; echo $?` → `0`, `npx jest` → `Test Suites: 1 skipped, 180 passed` · `Tests: 1 skipped, 1234 passed, 1235 total` (the app imports neither new module).
 
 - [ ] **Step 5: Commit.**
 
@@ -6680,36 +6839,40 @@ git commit -m "feat(extension): B1d-1a program state — account layouts generat
 | Y1 | `layouts.ts` hand-edited: `sol_treasury: {offset: 337,` | GT “hashes to the pinned LAYOUTS_SHA256”, byte-for-byte; `layouts.test.ts` “Config (370 bytes)…”, “two independent derivations agree…” — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  4 failed \| 9 passed (13)` |
 | P1 | `presaleSwitch.mjs` `transform`: `if (true \|\| …) return null` (nothing kept whole) | `presaleSwitch.test.mjs` “transform marks a module…”, “a pure module … is in the on build’s module map” — tsc 0 · RED `Tests  2 failed \| 18 passed (20)` |
 | L1 | `check-no-presale.mjs` `ON_BUILD` without `state.ts` | `check-no-presale.test.mjs` “the on build must carry … the program state (Task 5)” — tsc 0 · RED `Tests  1 failed \| 35 passed (36)` |
-| S1 | `state.ts` `isProgramAccount`: `(a.owner !== MAINNET_PROGRAM_ID && false) \|\|` | ST config / user account / allocation “not the program’s” — tsc 0 · RED `Tests  3 failed \| 58 passed (61)` |
-| S2 | `isProgramAccount`: `a.data.length < layout.length` (a longer account accepted) | ST “config 371 bytes”, “user account 59 bytes”, “allocation 118 bytes” — tsc 0 · RED `Tests  3 failed \| 58 passed (61)` |
-| S3 | `isProgramAccount`: `return layout.discriminator.length === 8;` (no discriminator check) | ST the three wrong-discriminator rows — tsc 0 · RED `Tests  3 failed \| 58 passed (61)` |
-| S4 | rule 1: `(pubkeyAt(c, C.admin) !== MAINNET_ADMIN_ADDRESS && false) \|\|` | ST “admin@8 moved” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S5 | rule 1: the `sale_token@40` control `&& false` | ST “sale_token@40 moved” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S6 | rule 2: the `sol_treasury` pin deleted | ST “sol_treasury changed, the vault ATAs claiming the new owner (the pin alone catches it)” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S7 | rule 2: the `usdc_address` pin deleted | ST “usdc_address changed” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S8 | rule 2: the `usdt_address` pin deleted | ST “usdt_address changed” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S9 | rule 3: `if (priceTicks === undefined)` (the bool byte unchecked) | ST “presale_active = 2” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S10 | rule 3: `STAGE_PRICE_TICKS[stage % 10]` (an unknown stage priced) | ST “stage 10”, “stage 255” — tsc 0 · RED `Tests  2 failed \| 59 passed (61)` |
-| S11 | rule 4: the start-time test `\|\| true` | ST “inactive: the start time one second ahead” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S12 | rule 4: the hard-cap test `\|\| true` | ST “inactive: tokens_sold at the hard cap”, “the inactive test comes first (review 2 L9)…” — tsc 0 · RED `Tests  2 failed \| 59 passed (61)` |
-| S13 | rule 4: the `stage_tokens_sold` check deleted | ST “the inactive test comes first…” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S14 | rule 4: `if (stageSold >= TOKENS_PER_STAGE_BASE)` (not only while active — the L9 order) | ST “the inactive test comes first…” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S15 | rule 5: `blocked = b === true;` (`is_blocked = 2` read as not blocked) | ST “is_blocked = 2” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S16 | the `blocked` verdict never returned | ST “blocked: is_blocked = 1 (Q14)…” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S17 | rule 6: the `user@8` control deleted | ST “allocation user@8 foreign” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S18 | rule 6: the `claimed` bool check deleted | ST “claimed = 2” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S19 | rule 7: `(treasury.owner !== SYSTEM_PROGRAM_ID && false) \|\|` | ST “treasury not System-owned” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S20 | rule 7: the data-length check deleted | ST “treasury holding data” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S21 | rule 8: `return info.owner === treasury ? …` (mint unchecked) | ST both “vault of the wrong mint” rows — tsc 0 · RED `Tests  2 failed \| 59 passed (61)` |
-| S22 | rule 8: `return info.mint === mint ? …` (owner unchecked) | ST both “vault owned by someone else” rows — tsc 0 · RED `Tests  2 failed \| 59 passed (61)` |
-| S23 | rule 8: `info.state !== 'initialized'` deleted (a frozen vault accepted) | ST “USDC vault frozen” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S24 | rule 8: `info.program !== 'token'` deleted | ST “USDC vault under Token-2022” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S25 | the catch: `e instanceof RpcForbidden && e.name === 'never' ? 'refused'` (a 403 reported as read-failed) | ST “a 403”, “the latch’s cool-down” — tsc 0 · RED `Tests  2 failed \| 59 passed (61)` |
-| S26 | the reply-length check deleted | ST “a reply of the wrong length is malformed — one short, or one extra” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S27 | `newPdaRent`: the user account's rent always counted | ST “an existing allocation and user account…”, “firstPurchase (C21)…” — tsc 0 · RED `Tests  2 failed \| 59 passed (61)` |
-| S28 | `firstPurchase: !facts.exists` (C21's `purchase_count = 0` dropped) | ST “firstPurchase (C21)…” — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| S29 | `u32At`: `\| (data[f.offset + 3] << 24)` (the high byte flips the sign) | ST “firstPurchase (C21)…” (`0x8000_0001`) — tsc 0 · RED `Tests  1 failed \| 60 passed (61)` |
-| A3 | `addresses.ts`: `MAINNET_VAULT_USDC_ATA` = the USDT vault's address (the state reads the wrong account) | ST 13 rows — every open and closed verdict (the USDC slot now holds a USDT account → malformed) — tsc 0 · RED `Tests  13 failed \| 48 passed (61)` |
+| S1 | `state.ts` `isProgramAccount`: `(a.owner !== MAINNET_PROGRAM_ID && false) \|\|` | ST config / user account / allocation “not the program’s” — tsc 0 · RED `Tests  4 failed \| 67 passed (71)` |
+| S2 | `isProgramAccount`: `a.data.length < layout.length` (a longer account accepted) | ST “config 371 bytes”, “user account 59 bytes”, “allocation 118 bytes” — tsc 0 · RED `Tests  3 failed \| 68 passed (71)` |
+| S3 | `isProgramAccount`: `return layout.discriminator.length === 8;` (no discriminator check) | ST the three wrong-discriminator rows — tsc 0 · RED `Tests  3 failed \| 68 passed (71)` |
+| S4 | rule 1: `(pubkeyAt(c, C.admin) !== MAINNET_ADMIN_ADDRESS && false) \|\|` | ST “admin@8 moved” — tsc 0 · RED `Tests  1 failed \| 70 passed (71)` |
+| S5 | rule 1: the `sale_token@40` control `&& false` | ST “sale_token@40 moved” — tsc 0 · RED `Tests  1 failed \| 70 passed (71)` |
+| S6 | rule 2: the `sol_treasury` pin deleted | ST “sol_treasury changed, the vault ATAs claiming the new owner (the pin alone catches it)” — tsc 0 · RED `Tests  1 failed \| 70 passed (71)` |
+| S7 | rule 2: the `usdc_address` pin deleted | ST “usdc_address changed” — tsc 0 · RED `Tests  1 failed \| 70 passed (71)` |
+| S8 | rule 2: the `usdt_address` pin deleted | ST “usdt_address changed” — tsc 0 · RED `Tests  1 failed \| 70 passed (71)` |
+| S9 | rule 3: `if (priceTicks === undefined)` (the bool byte unchecked) | ST “presale_active = 2” — tsc 0 · RED `Tests  1 failed \| 70 passed (71)` |
+| S10 | rule 3: `STAGE_PRICE_TICKS[stage % 10]` (an unknown stage priced) | ST “stage 10”, “stage 255” — tsc 0 · RED `Tests  2 failed \| 69 passed (71)` |
+| S11 | rule 4: the start-time test `\|\| true` | ST “inactive: the start time one second ahead” — tsc 0 · RED `Tests  1 failed \| 70 passed (71)` |
+| S12 | rule 4: the hard-cap test `\|\| true` | ST “inactive: tokens_sold at the hard cap”, “the inactive test comes first (review 2 L9)…” — tsc 0 · RED `Tests  2 failed \| 69 passed (71)` |
+| S13 | rule 4: the `stage_tokens_sold` check deleted | ST “the inactive test comes first…” — tsc 0 · RED `Tests  1 failed \| 70 passed (71)` |
+| S14 | rule 4: `if (stageSold >= TOKENS_PER_STAGE_BASE)` (not only while active — the L9 order) | ST “the inactive test comes first…” — tsc 0 · RED `Tests  1 failed \| 70 passed (71)` |
+| S15 | rule 5: `blocked = b === true;` (`is_blocked = 2` read as not blocked) | ST “is_blocked = 2” — tsc 0 · RED `Tests  1 failed \| 70 passed (71)` |
+| S16 | the `blocked` verdict never returned | ST “blocked: is_blocked = 1 (Q14)…” — tsc 0 · RED `Tests  1 failed \| 70 passed (71)` |
+| S17 | rule 6: the `user@8` control deleted | ST “allocation user@8 foreign” — tsc 0 · RED `Tests  2 failed \| 69 passed (71)` |
+| S18 | rule 6: the `claimed` bool check deleted | ST “claimed = 2” — tsc 0 · RED `Tests  2 failed \| 69 passed (71)` |
+| S19 | rule 7: `(treasury.owner !== SYSTEM_PROGRAM_ID && false) \|\|` | ST “treasury not System-owned” — tsc 0 · RED `Tests  1 failed \| 70 passed (71)` |
+| S20 | rule 7: the data-length check deleted | ST “treasury holding data” — tsc 0 · RED `Tests  2 failed \| 69 passed (71)` |
+| S21 | rule 8: `return info.owner === treasury ? …` (mint unchecked) | ST both “vault of the wrong mint” rows — tsc 0 · RED `Tests  2 failed \| 69 passed (71)` |
+| S22 | rule 8: `return info.mint === mint ? …` (owner unchecked) | ST both “vault owned by someone else” rows — tsc 0 · RED `Tests  3 failed \| 68 passed (71)` |
+| S23 | rule 8: `info.state !== 'initialized'` deleted (a frozen vault accepted) | ST “USDC vault frozen” — tsc 0 · RED `Tests  1 failed \| 70 passed (71)` |
+| S24 | rule 8: `info.program !== 'token'` deleted | ST “USDC vault under Token-2022” — tsc 0 · RED `Tests  1 failed \| 70 passed (71)` |
+| S25 | the catch: `e instanceof RpcForbidden && e.name === 'never' ? 'refused'` (a 403 reported as read-failed) | ST “a 403”, “the latch’s cool-down” — tsc 0 · RED `Tests  2 failed \| 69 passed (71)` |
+| S26 | the reply-length check deleted | ST “a reply of the wrong length is malformed — one short, or one extra” — tsc 0 · RED `Tests  1 failed \| 70 passed (71)` |
+| S27 | `newPdaRent`: the user account's rent always counted | ST “an existing allocation and user account…”, “firstPurchase (C21)…” — tsc 0 · RED `Tests  2 failed \| 69 passed (71)` |
+| S28 | `firstPurchase: !facts.exists` (C21's `purchase_count = 0` dropped) | ST “firstPurchase (C21)…” — tsc 0 · RED `Tests  1 failed \| 70 passed (71)` |
+| S29 | `u32At`: `\| (data[f.offset + 3] << 24)` (the high byte flips the sign) | ST “firstPurchase (C21)…” (`0x8000_0001`) — tsc 0 · RED `Tests  1 failed \| 70 passed (71)` |
+| S30 (rev 2, review 1 M3) | `referrer: isZero(referrer) && false ? null : base58.encode(referrer)` (the zero key reported) — review 1's surviving T5-1 | ST “an existing allocation whose referrer@84 is all zero has no referrer…” — tsc 0 · RED `Tests  1 failed \| 70 passed (71)` |
+| S31 (rev 2, review 1 M3) | the `inactive` return inserted above rule 7 — review 1's surviving T5-2 | ST the four `inactive, … (rule 7/8)` rows — tsc 0 · RED `Tests  4 failed \| 67 passed (71)` |
+| S32 (rev 2) | the `blocked` return (while active) inserted above rule 7 | ST “blocked, the treasury absent (rule 7)”, “blocked, the USDC vault absent (rule 8)” — tsc 0 · RED `Tests  2 failed \| 69 passed (71)` |
+| S33 (rev 2) | the `inactive` return inserted above rule 5 | ST the six `inactive, …` rows (rules 5–8) — tsc 0 · RED `Tests  6 failed \| 65 passed (71)` |
+| A3 | `addresses.ts`: `MAINNET_VAULT_USDC_ATA` = the USDT vault's address (the state reads the wrong account) | ST 13 rows — every open and closed verdict (the USDC slot now holds a USDT account → malformed) — tsc 0, root tsc 0 · RED `Tests  14 failed \| 57 passed (71)` |
 | A1 | `addresses.ts`: `MAINNET_VAULT_USDC_ATA` = the USDT vault's address | `vaultAtas.test.ts` re-derivation and literal rows — tsc 0, root tsc 0 · RED `Tests  2 failed \| 1 passed (3)` |
 | A2 | `addresses.ts`: `MAINNET_VAULT_USDT_ATA` = the USDC vault's address | `vaultAtas.test.ts` the same two rows — tsc 0, root tsc 0 · RED `Tests  2 failed \| 1 passed (3)` |
 | M1 | `limits.ts`: `config.minPurchaseUsd >= 0n ? …` (a 0 field kept as 0) | LT “a field of 0 is the program’s constant…”, “the program’s fallback minimum when the field is 0…” — tsc 0, root tsc 0 · RED `Tests  2 failed \| 12 passed (14)` |
@@ -6724,13 +6887,15 @@ git commit -m "feat(extension): B1d-1a program state — account layouts generat
 | M10 | `PRESALE_ALLOCATION_RENT_LAMPORTS = 1_294_560n` | LT “the new-PDA rents are (128 + length) × 6 960…” — tsc 0, root tsc 0 · RED `Tests  1 failed \| 13 passed (14)` |
 | M11 | `PRESALE_HARD_CAP_BASE = 102_400_001n * …` | LT “the hard cap and a stage’s size…” — tsc 0, root tsc 0 · RED `Tests  1 failed \| 13 passed (14)` |
 
-49 mutations, all red, every one compiling. **The first sweep found two greens, and both were fixed in the tests before the commit:** S6 (the treasury pin deleted) stayed green because the only row changing `sol_treasury` was also refused by rule 8 (the vault ATAs' owner is the pinned treasury, not the new one) — the row “the vault ATAs claiming the new owner” isolates the pin; A3 (the state asking for the wrong vault ATA) stayed green because the fake chain answered by position — it now answers by address, keyed by the spec's literals. Six mutants of that sweep did not compile (a removed check left an import unused: S1, S4, S5, S11, S12, S19) and were rewritten as the `&& false` / `|| true` forms above. Not covered by a mutation, stated: D7 (one minimum for every currency) — `core/presale/limits.ts` has no currency parameter, so a SOL-only floor is not expressible there; the mutation “a SOL-only floor” belongs to 1b's `quote.ts`, the first code that knows the currency.
+53 mutations (rev 1's 49, re-run on rev 2's tree with the counts above, plus S30–S33), all red, every one compiling. **The first sweep found two greens, and both were fixed in the tests before the commit:** S6 (the treasury pin deleted) stayed green because the only row changing `sol_treasury` was also refused by rule 8 (the vault ATAs' owner is the pinned treasury, not the new one) — the row “the vault ATAs claiming the new owner” isolates the pin; A3 (the state asking for the wrong vault ATA) stayed green because the fake chain answered by position — it now answers by address, keyed by the spec's literals. Six mutants of that sweep did not compile (a removed check left an import unused: S1, S4, S5, S11, S12, S19) and were rewritten as the `&& false` / `|| true` forms above. Not covered by a mutation, stated: D7 (one minimum for every currency) — `core/presale/limits.ts` has no currency parameter, so a SOL-only floor is not expressible there; the mutation “a SOL-only floor” belongs to 1b's `quote.ts`, the first code that knows the currency.
 
 #### Dry-run notes (Task 5)
 
 - **Ruling: the on build keeps every module under `src/background/presale/` whole (`presaleSwitch`'s `transform`, `moduleSideEffects: 'no-treeshake'`), and `api.ts` imports `./state`** — why: §6.2 makes 1a's on build carry `layouts.ts` and `state.ts`, which nothing calls before 1b; measured without it, `layouts.ts` is missing from `app.modules.json` while `state.ts` and `limits.ts` happen to be listed, so the control would depend on the bundler's side-effect analysis. A live caller would be new presale behaviour (1a registers nothing). Off build unaffected (the entries never resolve) — cost if wrong: 1b may drop the hook once its handlers make the modules live, or keep it (dead exports kept in the on build's module graph; the minifier still removes uncalled functions).
 - **Ruling: `layouts.ts` has its own size table (`FIELD_SIZES`, with `u32`), and `presaleIdl.ts`'s instruction type table is unchanged** — why: §2.1 "the type table gains `u32`" and "`presaleIdl.ts` (B1c) is unchanged" are only both true this way (adding `u32` to `typeOf` would change `PresaleArgType` in presaleIdl.ts's text and its `OUTPUT_SHA256`); an array or `defined` type in an account struct throws — cost if wrong: none.
-- **Ruling: every structural rule (1–8) is checked before any verdict; `inactive` and `blocked` are returned only on a read that is otherwise well-formed, inactive before blocked** — why: "never open on doubt", and a `{inactive, stage}` answer must carry facts from a valid read; §2.1's load-bearing order (the `inactive` test before the stage-total check) is kept and tested (S14) — cost if wrong: a closed sale with, say, a missing vault ATA shows Q11 (unavailable) instead of Q13 (closed); both are closed.
+- **Ruling: every structural rule (1–8) is checked before any verdict; `inactive` and `blocked` are returned only on a read that is otherwise well-formed, inactive before blocked** — why: "never open on doubt", and a `{inactive, stage}` answer must carry facts from a valid read; §2.1's load-bearing order (the `inactive` test before the stage-total check) is kept and tested (S14); **(rev 2, review 1 M3)** the order of every later rule is tested too — nine rows combine an inactive config or a blocked user with a broken rule 5, 6, 7 or 8 and expect `malformed` (S31–S33: the `inactive` or `blocked` return moved above rules 7–8 or above rule 5 turns them red; rev 1's S14 covered rule 4 only) — cost if wrong: a closed sale with, say, a missing vault ATA shows Q11 (unavailable) instead of Q13 (closed); both are closed.
+- **(rev 2, review 1 M3) `referrer@84` all zero on an existing allocation is pinned:** a row reads an allocation whose referrer bytes are zero and expects `referrer: null` and `referrerAllocationOf` → the default key's PDA `C6TE…AWkQ` (S30: reporting the zero key `1111…1111` turns it red). Without it, C21/C22's "referrer changed" comparison and B1d-2's "offered only when no on-chain referrer" (C32) would have seen a referrer.
+- **(rev 2) The new rows against rev 1's implementation** (b523457 + rev 2's `state.test.ts`): `Tests  71 passed (71)` — evidence for code that was already right (review 1's scenarios); S30–S33 prove the rows now catch their mutants.
 - **Ruling: `RpcMalformed` from the reader is `read-failed`, not `malformed`** — the read failed before any account was parsed (§2.1's "any failed read … an RPC error"); `malformed` is reserved for accounts that arrived and broke a rule — cost if wrong: Q11 either way.
 - **Ruling: rule 8 reads the vault through B1c's `tokenAccountInfo` (the one token-account reader) and additionally requires the SPL Token program (not Token-2022) and `initialized` (a frozen vault refused)** — §2.1 says "owned by the SPL Token program … state@108 = 1"; `tokenAccountInfo` also refuses a malformed COption tag — cost if wrong: none (stricter).
 - **Ruling: `readPresaleState` takes `(reader, account, nowMs)`, not the host** — 1b's `api.ts` passes `host.deps.reader` and `host.deps.now()`; the function stays pure for C22's sign-time re-read and C39's retry — cost if wrong: a wrapper in 1b.
@@ -6742,9 +6907,9 @@ git commit -m "feat(extension): B1d-1a program state — account layouts generat
 
 ---
 
-### Task 6: The shared jurisdiction gate, both builds (D15) — `core/geo/fetch.ts` (`/geo/check` and `/geo/restricted-list` through the shared getter; required keys only, unknown keys ignored; a 403 told apart from every other failure), `src/background/geo/gate.ts` on core's `presaleGeoGate` (fail closed; the list cached < 10 minutes and its age re-evaluated on every call; one request per answer, two when the list is due), `WalletDeps.geo()`; `BOTH_BUILDS` gains the gate and its fetcher; the spec's rent ruling and §2.2 as built (COMPLIANCE-RELEVANT)
+### Task 6: The shared jurisdiction gate, both builds (D15) — `core/geo/fetch.ts` (`/geo/check` and `/geo/restricted-list` through the shared getter; required keys only, unknown keys ignored; a 403 told apart from every other failure), `src/background/geo/gate.ts` on core's `presaleGeoGate` (fail closed; the list cached < 10 minutes and its age re-evaluated on every call, against the server's `max_staleness_days` capped at 30 — D18; one request per answer, two when the list is due), `WalletDeps.geo()`; `BOTH_BUILDS` gains the gate and its fetcher; the spec's rent ruling and §2.2 as built, collected with every other plan-1a spec edit as **spec rev 3.1** (D16; D17, D19) (COMPLIANCE-RELEVANT)
 
-**Spec:** B1d §2.2 (all), §1.2 "Shared, both builds", §3.6 "The gate (D15)" (the shape F12 consumes), §6.1 "Geo (1a)" and "Switch, off build" (the gate answers as in the on build), §6.2 item 1 ("both builds contain `src/background/geo/gate.ts` and `core/geo/fetch.ts`"), §8.2 rows `src/background/geo/gate.ts`, `core/geo/fetch.ts`; C12, C14, C31, C34, C38; D12, D15; review 1 M8, review 2 M3. The controller's rent ruling at Task 5 (ledger) — written into §2.1 / §3.3 here.
+**Spec:** B1d §2.2 (all), §1.2 "Shared, both builds", §3.6 "The gate (D15)" (the shape F12 consumes), §6.1 "Geo (1a)" and "Switch, off build" (the gate answers as in the on build), §6.2 item 1 ("both builds contain `src/background/geo/gate.ts` and `core/geo/fetch.ts`"), §8.2 rows `src/background/geo/gate.ts`, `core/geo/fetch.ts`; C12, C14, C31, C34, C38; D12, D15; review 1 M8, review 2 M3. The controller's rent ruling at Task 5 (ledger) — written into §2.1 / §3.3 here. **(rev 2)** Owner decisions D16 (the plan's spec edits collected as rev 3.1, with an explicit change list), D17 (`wallet.send` signs only a send — built in Task 3, the spec sentence here), D18 (the server's `max_staleness_days` capped at 30), D19 (B1b's `sender-below-rent` stays at 890 880); plan review 1 M1, M5.
 
 **Verified against the sources the spec cites (read-only, 2026-10-19):** ICO coordinator at 75450df — `server.js:1443-1446` (`/geo/check` answers `geoCheckHandler`'s body with status 200), `walletRoutes.js:97-100` (`{countryCode, isVpn}`, no envelope), `services/geoService.js` (`{countryCode: 'UNKNOWN', isVpn: false}` whenever it cannot place the IP; `isVpn` hard-coded false), `server.js:1457-1467` (`/geo/restricted-list` = `200 {success: true, data: buildRestrictedList(…)}`, a stale list still served), `restrictedList.js:44-69` (`data` = `countries` (each `{code, category, basis}`), `updated_at`, `reviewed_by`, `reviewed_at`, `source`, `max_staleness_days`, `age_days`, `stale` — every key present, a missing value reported as null). Core at 923b714: `presaleGeoGate` / `evaluateListFreshness` (`core/geo/freshness.ts`) had no non-test caller; `createJsonGetter` (`deps.ts`) throws `RpcHttpError` on any non-200 and the latch throws `RpcForbidden` on a 403 (and `RpcCoolingDown`, a subclass, during the cool-down) before the status check; `timedFetch` turns silence into `RequestTimedOut` (a `RequestUnreachable`).
 
@@ -6754,7 +6919,7 @@ git commit -m "feat(extension): B1d-1a program state — account layouts generat
 - Modify: `core/geo/freshness.ts` (`isKnownCountry` exported — no behaviour change), `extension/src/background/deps.ts` (`WalletDeps.geo`, one gate per `browserDeps`), `extension/src/background/__tests__/fakeDeps.ts` (a `geo` that fails loudly)
 - Modify (the runs): `extension/vite.config.ts` (the extension's vitest runs `../core/geo/**` too), `extension/vitest.nopresale.config.ts` (`NOPRESALE_TESTS` gains the gate test and `../core/geo/**`)
 - Modify (Task 2's staged list): `extension/scripts/check-no-presale.mjs` (`BOTH_BUILDS` gains the two modules), `extension/scripts/__tests__/check-no-presale.test.mjs` (the pinned row; the synthetic builds carry them)
-- Modify: `docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md` (C9, C11, §2.1 rent ruling, §3.3 step 5 and `PurchaseView.fees.rentLamports`; §1.2 and §2.2 as built)
+- Modify: `docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md` (C9, C11, §2.1 rent ruling (with D19), §3.3 step 5 and `PurchaseView.fees.rentLamports`; §1.2 and §2.2 as built (with D18); §1.3 and §1.4 for D17; **(rev 2)** the status line and the "Rev 3.1" paragraph listing every spec edit plan 1a makes — Tasks 2, 4 and 6 — one line per passage)
 - Unchanged, proved: everything under `web/` and the app's `src/` (D12) — `git diff --name-only HEAD~1 HEAD` lists neither; web `npm run verify` and the root `tsc` + `jest` green (Step 4).
 
 **Interfaces:**
@@ -6778,10 +6943,11 @@ git commit -m "feat(extension): B1d-1a program state — account layouts generat
   export type GeoReason = 'refused' | 'no_check' | 'stale_list' | 'unknown_country' | 'sanctioned';
   export interface GeoAnswer {open: boolean; reason: GeoReason | null; countryCode: string | null}
   export const GEO_LIST_CACHE_MS = 600_000;
+  export const GEO_MAX_STALENESS_DAYS = 30;           // (rev 2, D18) the gate evaluates min(server, 30); a missing limit stays missing
   export interface JurisdictionGate {check(): Promise<GeoAnswer>}
   export function createJurisdictionGate(io: {get: JsonGetter; now(): number}): JurisdictionGate;
   ```
-  `check()` never rejects. Order: `/geo/check` (every call) → the list (cache or one request) → `presaleGeoGate` with `evaluateListFreshness(meta, new Date(now()))`. Any failure of either read → `refused` when `isGeoRefusal`, else `no_check`; after a failed check the list is not requested. `countryCode` = the detected code when `isKnownCountry`, else null (also null for `refused` / `no_check`). The cache: used while `0 ≤ now − at < GEO_LIST_CACHE_MS` (`at` = the request's start); a failed or malformed list is not kept; concurrent callers share one list request.
+  `check()` never rejects. Order: `/geo/check` (every call) → the list (cache or one request) → `presaleGeoGate` with `evaluateListFreshness(meta, new Date(now()))`, where `meta` is the list's with `maxStalenessDays` = min(the server's, `GEO_MAX_STALENESS_DAYS`) when the server sent one (D18). Any failure of either read → `refused` when `isGeoRefusal`, else `no_check`; after a failed check the list is not requested. `countryCode` = the detected code when `isKnownCountry`, else null (also null for `refused` / `no_check`). The cache: used while `0 ≤ now − at < GEO_LIST_CACHE_MS` (`at` = the request's start); a failed or malformed list is not kept; concurrent callers share one list request.
 - Produces (`deps.ts`): `WalletDeps.geo(): Promise<GeoAnswer>`; `browserDeps(ext)` builds ONE gate on its shared `get` (the one latch, `REQUEST_TIMEOUT_MS`) and `now: Date.now`. **1b consumes it as `host.deps.geo()`** (`presale.view`, `prepareBuy`, `beforeSign` — §3.1, C12) **and as `deps.geo()` on the dApp path** (F12: `runSimulation` and the decision, §3.6); #50b renders `GeoAnswer` as returned. `fakeDeps().geo` throws `unexpected geo check` unless a test overrides it.
 - Produces (`check-no-presale.mjs`): `BOTH_BUILDS = ['src/background/intents.ts', 'src/background/geo/gate.ts', 'core/geo/fetch.ts']` — at the end of 1a every staged list equals §6.2's 1a text.
 
@@ -6952,7 +7118,7 @@ describe('isGeoRefusal (the 403 distinction, Q12 / Q27)', () => {
 `extension/src/background/geo/__tests__/gate.test.ts` (new — the gate over a scripted getter, then `browserDeps().geo` over a stubbed `fetch`; in `NOPRESALE_TESTS`, so it runs in both builds' runs):
 
 ````ts
-import {GEO_LIST_CACHE_MS, createJurisdictionGate, type GeoAnswer} from '../gate';
+import {GEO_LIST_CACHE_MS, GEO_MAX_STALENESS_DAYS, createJurisdictionGate, type GeoAnswer} from '../gate';
 import {REQUEST_TIMEOUT_MS, RequestTimedOut, browserDeps} from '../../deps';
 import {fakeExt} from '../../__tests__/fakeExt';
 import {RequestUnreachable, RpcCoolingDown, RpcForbidden, RpcHttpError} from '../../../../../core/solana/rpc';
@@ -7036,6 +7202,21 @@ describe('the jurisdiction gate — every reason (B1d §2.2, §6.1 "Geo")', () =
   it('a list 30 days old is fresh (the boundary); 31 days old → stale_list, the known country still reported', async () => {
     expect(await answer(CHECK('SI'), LIST({updated_at: '2026-09-19', reviewed_at: '2026-09-19'}))).toEqual({open: true, reason: null, countryCode: 'SI'});
     expect(await answer(CHECK('SI'), LIST({updated_at: '2026-09-18', reviewed_at: '2026-09-18'}))).toEqual({open: false, reason: 'stale_list', countryCode: 'SI'});
+  });
+
+  it.each<[string, number | undefined, string, boolean]>([
+    ['29: a list 29 days old is fresh', 29, '2026-09-20', true],
+    ['29: 30 days old → stale (the server’s stricter limit holds)', 29, '2026-09-19', false],
+    ['30: 30 days old is fresh', 30, '2026-09-19', true],
+    ['30: 31 days old → stale', 30, '2026-09-18', false],
+    ['31: 30 days old is fresh', 31, '2026-09-19', true],
+    ['31: 31 days old → stale (capped at 30)', 31, '2026-09-18', false],
+    ['365: 31 days old → stale (capped at 30)', 365, '2026-09-18', false],
+    ['missing: a list of today → stale (a missing limit is not capped into one)', undefined, '2026-10-19', false],
+  ])('D18: max_staleness_days %s', async (_, limit, day, open) => {
+    expect(GEO_MAX_STALENESS_DAYS).toBe(30);
+    const list = LIST({updated_at: day, reviewed_at: day, max_staleness_days: limit});
+    expect(await answer(CHECK('SI'), list)).toEqual(open ? {open: true, reason: null, countryCode: 'SI'} : {open: false, reason: 'stale_list', countryCode: 'SI'});
   });
 
   it('a stale list closes before the country is looked at: an unknown country is not reported', async () => {
@@ -7160,6 +7341,20 @@ describe('the cache and the request budget (C12, review 2 M3)', () => {
     expect(s.paths.filter(p => p === '/geo/restricted-list')).toHaveLength(3);
   });
 
+  it('a cached list past 10 minutes whose re-read fails → no_check (or refused), never the expired list; the next call reads it again (review 1 M1)', async () => {
+    const s = scripted(CHECK('SI'), LIST());
+    const gate = gateOf(s);
+    expect((await gate.check()).open).toBe(true);
+    clock.t = T0 + GEO_LIST_CACHE_MS;
+    s.answers['/geo/restricted-list'] = thrower(new RpcHttpError('/geo/restricted-list', 500));
+    expect(await gate.check()).toEqual({open: false, reason: 'no_check', countryCode: null});
+    s.answers['/geo/restricted-list'] = thrower(new RpcForbidden('/geo/restricted-list'));
+    expect(await gate.check()).toEqual({open: false, reason: 'refused', countryCode: null});
+    s.answers['/geo/restricted-list'] = LIST();
+    expect(await gate.check()).toEqual({open: true, reason: null, countryCode: 'SI'});
+    expect(s.paths.filter(p => p === '/geo/restricted-list')).toHaveLength(4);
+  });
+
   it('a cached list does not open a failed check', async () => {
     const s = scripted(CHECK('SI'), LIST());
     const gate = gateOf(s);
@@ -7261,13 +7456,15 @@ index c8f22c2..1abab41 100644
    it('missingModules names each required module a map does not carry', () => {
 ````
 
-- [ ] **Step 2: Run them on the previous task's tree (b523457) — red.**
+- [ ] **Step 2: Run them on the previous task's tree (rev 1: b523457; rev 2 re-ran it on a76655e with the same counts) — red.**
 
 Run (in `extension/`): `npx vitest run src/background/geo/__tests__/gate.test.ts scripts/__tests__/check-no-presale.test.mjs`
 Expected: `Test Files  2 failed (2)` · `Tests  1 failed | 36 passed (37)` — `gate.test.ts`: `Error: Cannot find module '../gate'`; `check-no-presale.test.mjs` › “both builds must carry the intent-kind registry (Task 3) and the jurisdiction gate with its fetcher (Task 6, D15)”: `expected [ 'src/background/intents.ts' ] to deeply equal [ 'src/background/intents.ts', …(2) ]`.
 
 Run (in `web/`): `npx vitest run ../core/geo/__tests__/fetch.test.ts`
 Expected: `Test Files  1 failed (1)` · `Tests  no tests` — `Failed to resolve import "../fetch"`.
+
+**(rev 2) The new gate tests against rev 1's implementation** (f941887 + rev 2's `gate.test.ts`): `Tests  8 failed | 57 passed (65)` — the eight D18 rows (rev 1 has no `GEO_MAX_STALENESS_DAYS`; D1 below shows that without the cap exactly the 31- and 365-day rows go red); the M1 row passes, as it must — evidence for code that was already right (review 1's scenario), and K6 proves it now catches its mutant.
 
 - [ ] **Step 3: Implement.**
 
@@ -7389,7 +7586,8 @@ import {evaluateListFreshness, isKnownCountry, presaleGeoGate} from '../../../..
  * It fails closed: a 403 (or the shared latch's cool-down) is `refused`; any other failed or malformed read is
  * `no_check`; otherwise core's `presaleGeoGate` decides — a stale list, an unknown or empty country, a sanctioned
  * country (whatever `isVpn` says). `/geo/check` is asked on every call; the list is kept in memory for less than
- * GEO_LIST_CACHE_MS and its age is evaluated against the clock on every call (C12). There is no bundled list.
+ * GEO_LIST_CACHE_MS and its age is evaluated against the clock on every call (C12), against the server's
+ * `max_staleness_days` capped at GEO_MAX_STALENESS_DAYS (D18). There is no bundled list.
  */
 export type GeoReason = 'refused' | 'no_check' | 'stale_list' | 'unknown_country' | 'sanctioned';
 
@@ -7401,6 +7599,8 @@ export interface GeoAnswer {
 }
 
 export const GEO_LIST_CACHE_MS = 10 * 60_000;
+/** D18: the gate judges a list's age against min(the server's `max_staleness_days`, 30); a missing limit stays missing (stale). */
+export const GEO_MAX_STALENESS_DAYS = 30;
 
 export interface JurisdictionGate {
   check(): Promise<GeoAnswer>;
@@ -7438,7 +7638,9 @@ export function createJurisdictionGate(io: {get: JsonGetter; now(): number}): Ju
       } catch (e) {
         return {open: false, reason: isGeoRefusal(e) ? 'refused' : 'no_check', countryCode: null};
       }
-      const g = presaleGeoGate({freshness: evaluateListFreshness(restricted.meta, new Date(io.now())), location, restricted: restricted.countries});
+      const limit = restricted.meta.maxStalenessDays;
+      const meta = limit === undefined ? restricted.meta : {...restricted.meta, maxStalenessDays: Math.min(limit, GEO_MAX_STALENESS_DAYS)};
+      const g = presaleGeoGate({freshness: evaluateListFreshness(meta, new Date(io.now())), location, restricted: restricted.countries});
       return {open: g.open, reason: g.reason, countryCode: isKnownCountry(location.countryCode) ? location.countryCode : null};
     },
   };
@@ -7462,10 +7664,10 @@ index 8471998..54386dc 100644
  }
  
 diff --git a/extension/scripts/check-no-presale.mjs b/extension/scripts/check-no-presale.mjs
-index 2348250..65af1c9 100644
+index 5ac9d48..2064c0d 100644
 --- a/extension/scripts/check-no-presale.mjs
 +++ b/extension/scripts/check-no-presale.mjs
-@@ -30,9 +30,9 @@ export const ON_BUILD = [
+@@ -31,9 +31,9 @@ export const ON_BUILD = [
    'src/background/presale/state.ts',
    'core/presale/limits.ts',
  ];
@@ -7571,10 +7773,51 @@ The spec — the controller's rent ruling (Task 5's finding) where the rents app
 
 ````diff
 diff --git a/docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md b/docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md
-index 0265b07..244a384 100644
+index 0265b07..9713172 100644
 --- a/docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md
 +++ b/docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md
-@@ -83,9 +83,9 @@ spec's ruling C13 ("the window decides nothing"), which the approved design cite
+@@ -1,12 +1,39 @@
+ # Noctura Extension B1d — presale in the extension (buy, allocation, referral, jurisdiction gate)
+ 
+-**Status:** **approved rev 3**, 2026-10-19 (owner: "ok je") — Fable reviews 1–2 applied with owner decisions D7–D15; next: plan B1d-1a →  Fable review. The owner approved
++**Status:** **approved rev 3**, 2026-10-19 (owner: "ok je") — Fable reviews 1–2 applied with owner decisions D7–D15; **rev 3.1**
++(D16): rev 3 plus plan B1d-1a's spec edits, listed below. The owner approved
+ the design in conversation section by section (`.superpowers/sdd/b1d-approved-design.md`, approach A) and took
+ decisions D1–D6, then D7–D14 on Fable's review 1 and D15 on review 2 (`.superpowers/sdd/b1d-owner-decisions.md`,
+ `.superpowers/sdd/b1d-spec-review-1.md`, `.superpowers/sdd/b1d-spec-review-2.md`).
+ Everything this spec adds beyond that text is a controller ruling (C1–C39 below) or a string in §10 (Q01–Q52, final
+ under D14). Research map: `.superpowers/sdd/b1d-context.md`. Where each review finding landed: §11.
+ 
++**Rev 3.1 (2026-10-19, owner decision D16): rev 3 plus the spec edits plan B1d-1a makes, collected here — no separate
++rev 4 pass.** Each is a diff in the plan task named (`docs/superpowers/plans/2026-10-19-extension-b1d-plan1a.md`); every
++other passage is rev 3 as approved:
++- C9 (Task 6): every rent in SOL MAX is §2.1's upper-bound constant (MAX reserves a little more than the runtime charges).
++- C11 (Task 6): the exact outflow check's new-PDA rent comes from the simulation's post-state, never from a constant.
++- C38 (Task 2): "the two helpers" → the three shared symbols of §6.2.
++- §1.2 (Tasks 2, 6): `core/geo/fetch.ts` exports `fetchGeoCheck`, `fetchRestrictedList` and `isGeoRefusal` (not
++  `fetchGeoInputs`); `core/solana/encoding.ts` takes three symbols (`SPL_TOKEN_PROGRAM` too), re-exported by
++  `buyInstructions.ts`.
++- §1.3 (Task 4): a send's challenge digest is unchanged by the kind (its domain was already `send`), so a challenge issued
++  before the update still matches for a send; only a non-send kind's challenge is bound to its kind.
++- §1.3, §1.4 (Task 6, D17): `sendPrepared` signs only the caller's kind — `wallet.send` only `kind: 'send'` (any other
++  kind is `unknown-prepared`, nothing burned), `presale.buy` only `presale-buy`.
++- §2.1 (Task 6): the rent ruling — mainnet rent 5 080 lamports per byte; every rent constant (the presale PDAs' and
++  B1b's) is an upper bound only; B1b's `sender-below-rent` stays at 890 880 (D19).
++- §2.2 (Task 6): as built — two fetch functions and `isGeoRefusal`; a non-200 is the getter's error; an absent age key
++  reads as null (stale); the list cached for less than 10 minutes from its request, a failed list not kept, one shared
++  request; the request budget (`/geo/check` first, no list after a failed check); `countryCode` only when known;
++  `WalletDeps.geo()`; and (D18) the server's `max_staleness_days` capped at 30.
++- §3.3 step 5 (Task 6): the simulation's accounts also carry `["user", account]` when the snapshot found it absent;
++  SOL spent uses `simulatedRent` (the created PDAs' post-state lamports, each owned by the program with its layout's
++  length, > 0 and ≤ its §2.1 bound) — a change to 1b's funds-critical outflow check.
++- §3.3 step 7 (Task 6): `PurchaseView.fees.rentLamports` = `simulatedRent`.
++- §6.2 (Task 2): the encoding bullet — three symbols, and the three core modules that import them.
++- §8.2 (Task 2): the `core/` rows name the three moved symbols and `core/solana/{transfer,history,balances}.ts`.
++
+ **Ledger (review L12).** The order, so nobody has to guess it: the facts were re-read from the code on 2026-10-18 (§8.2)
+ and rev 1 was written from them; the owner's decisions D1–D6 and D7–D14 carry the date the decisions file records,
+ 2026-10-19, which is also the date in this file's name; rev 2 was written after both sets of decisions, and every
+@@ -83,9 +110,9 @@ spec's ruling C13 ("the window decides nothing"), which the approved design cite
  | C6 | **The per-user cap is a pinned program constant:** `PRESALE_MAX_TOTAL_PER_USER_USD = 20_000_000` cents ($200 000, ICO `lib.rs:36`, checked against `total_spent_cents` at `lib.rs:344-351`). The config has no field for it | approved "max per user minus the existing allocation", made exact: the program's cumulative cap is on cents spent, not on NOC |
  | C7 | **Referrer (D8).** A referrer already registered on chain is always honoured from B1d-1b on (`resolveReferrerWith(ref, user, null)`: the purchase passes that referrer's allocation PDA, as the program requires). A new one is registered only through #23's optional field, in B1d-2, under C32's rules; there is no other capture channel (no deep link, no page reading) | D8; an extension has no capture channel, and the field is the owner's choice of one |
  | C8 | **Without a SOL price, SOL is not offered** (Buy disabled, Q19); USDC and USDT still are | a SOL purchase's limits and estimate need a price; the program prices at Pyth, but a wallet that cannot say what $ amount the user is spending must not offer it |
@@ -7586,7 +7829,7 @@ index 0265b07..244a384 100644
  | C12 | **Geo:** `/geo/check` is fetched on every #23 mount, every prepare, every signature, and for #48 on every simulation and approval of a request carrying a presale purchase (§3.6); the list is cached ≤ 10 minutes, its freshness evaluated against the clock every time; **either fetch failing is `no_check`**; the extension bundles no fallback list | approved "re-checked on every #23 mount and before every signature"; a bundled list always counts as stale (B1 §4), so carrying one buys nothing |
  | C13 | **The NOC valuation for B1b's dollar rule (`deps.stagePrice`, `/stats`) is unchanged.** It is not presale code and exists in both builds | moving it to `state.ts` would put presale code in the off build |
  | C14 | **`core/geo/fetch.ts` is used only by the extension in B1d** (D12). Moving web and the app onto it changes *their* purchase gates (web ignores staleness today, the app fails open) and is a separate later task | owner decision D12 |
-@@ -193,7 +193,7 @@ approve.html (#48) — renders F12 as stored with the simulation; computes nothi
+@@ -193,7 +220,7 @@ approve.html (#48) — renders F12 as stored with the simulation; computes nothi
  `GeoAnswer` (§2.2), the list cache; it imports nothing under a presale directory. #23 (through `presale/`) and F12
  (through `dapp/`) both call it.
  
@@ -7595,7 +7838,31 @@ index 0265b07..244a384 100644
  `usdCentsForStable`, `tokensFor`, `checkLimits`, ticks, rents, §3.2) and `core/solana/encoding.ts` (`SPL_TOKEN_PROGRAM`,
  `encodeU64LE`, `findAssociatedTokenAddress` moved out of `buyInstructions.ts`, which re-exports all three for the app and
  web, so no caller outside the extension changes; §6.2). `deps.ts` gains `createJsonPoster(fetch, latch)` (B1d-2) — generic, beside
-@@ -363,13 +363,25 @@ the latch's cool-down); any other failed rule → `{unavailable: 'malformed'}`.
+@@ -212,9 +239,11 @@ onConfirmed?})`. B1b's `send` registers itself unconditionally; `presale/api.ts`
+   `kind: 'send'` entries; `presale.preparedFor` only `presale-buy`. **Every prepare, of any kind, replaces every
+   prepared entry of that account** (today's rule in `prepareSend`, extended across kinds), so an account has at most
+   one prepared entry.
+-- **`sendPrepared` (sign + submit), kind-agnostic, in this order** (C29; today's order in `send.ts:33-70` with one step
+-  inserted):
+-  1. session (`locked`); `peekPrepared` (`unknown-prepared`); the kind is registered (else `prepared-invalid`);
++- **`sendPrepared` (sign + submit), for one kind per caller (D17), in this order** (C29; today's order in
++  `send.ts:33-70` with one step inserted):
++  1. session (`locked`); `peekPrepared` (`unknown-prepared` — also for an entry of another kind than the caller's:
++     `wallet.send` signs only `kind: 'send'`, `presale.buy` only `presale-buy`; nothing burned); the kind is registered
++     (else `prepared-invalid`);
+   2. `challengeSatisfied` on the peeked entry (`reauth-required` + the challenge id, as today — nothing burned);
+   3. **the kind's `beforeSign(peeked)`** (presale: C12's geo check and C22's state re-read) — a refusal here burns
+      nothing: the entry stays, the proof stays proven, and the popup re-prepares carrying the challenge id;
+@@ -258,7 +287,7 @@ existing `vault.challengeInfo`).
+ | `presale.quote` | `{account, currency, amount: string \| 'max'}` | `Quote` (§3.2) from the last `presale.view` snapshot of that account ≤ 30 s old; older → `{stale: true}` |
+ | `presale.prepareBuy` | `{account, intent: {currency, amount, stage}, challengeId?}` (B1d-2: `intent.referrer: string \| null`) | `PurchaseView` (§3.3) or a refusal code (§5) |
+ | `presale.preparedFor` | `{account}` | the account's `presale-buy` prepared entry's view, `expired` as B1b's `wallet.preparedFor` |
+-| `presale.buy` | `{id}` | `PendingView` or a refusal code; via the kind-agnostic `sendPrepared` (§1.3) |
++| `presale.buy` | `{id}` | `PendingView` or a refusal code; via `sendPrepared` for `presale-buy` only (§1.3, D17) |
+ | `presale.discardPrepared` | `{account}` | B1b's `discardPrepared` (all of the account's entries and their challenges) |
+ | `presale.checkReferrer` (B1d-2) | `{account, referrer}` | `{ok: true}` or `{ok: false, line: 'referrer-invalid' \| 'referrer-self' \| 'referrer-no-allocation' \| 'referrer-not-applicable'}` (§3.5); a read failure → `presale-unavailable` |
+ | `presale.referral` (B1d-2) | `{account}` | `ReferralView` (§3.5) |
+@@ -363,13 +392,26 @@ the latch's cool-down); any other failed rule → `{unavailable: 'malformed'}`.
    `SYSTEM_ACCOUNT_RENT_LAMPORTS` (890 880 for 0 bytes) and `TOKEN_ACCOUNT_RENT_LAMPORTS` (2 039 280 for 165). New
    constants `PRESALE_USER_ACCOUNT_RENT_LAMPORTS`, `PRESALE_ALLOCATION_RENT_LAMPORTS` in `core/presale/limits.ts`, each
    with that formula as its test (`getMinimumBalanceForRentExemption` stays off the proxy's allowlist).
@@ -7605,7 +7872,8 @@ index 0265b07..244a384 100644
 +  1 244 600 / 1 488 440** — not 6 960. So `PRESALE_USER_ACCOUNT_RENT_LAMPORTS`, `PRESALE_ALLOCATION_RENT_LAMPORTS` and
 +  `newPdaRent`, and likewise B1b's `SYSTEM_ACCOUNT_RENT_LAMPORTS` 890 880 and `TOKEN_ACCOUNT_RENT_LAMPORTS` 2 039 280
 +  (`core/solana/transfer.ts`), are **upper bounds**, used only where reserving more is safe: C9's MAX and §3.2's balance
-+  lines (and B1b's `sender-below-rent`, which is therefore slightly stricter than the runtime). **1b's exact outflow
++  lines (and B1b's `sender-below-rent`, which is therefore slightly stricter than the runtime — kept at 890 880 by D19;
++  re-pinning B1b's constants from the chain is a separate later task). **1b's exact outflow
 +  check (C11, §3.3 step 5) takes the new-PDA rent from the simulation's post-state**, never from these constants: the
 +  program pays the runtime's current rent, so an exact constant would refuse every first purchase. The constants and
 +  their tests stay as written (they are the bound, and a lower runtime rate keeps them one).
@@ -7624,7 +7892,7 @@ index 0265b07..244a384 100644
  
  - `GET /geo/check` → required `countryCode: string`, `isVpn: boolean`, at the top level (no envelope — the live
    contract, `walletRoutes.js:97-100`, `web/src/geo/useGeo.ts`).
-@@ -379,7 +391,9 @@ ignored** (C34):
+@@ -379,7 +421,9 @@ ignored** (C34):
    a boolean or null (the coordinator reports a missing value as null, `restrictedList.js:56-69`; a null is not
    malformed — it reaches `evaluateListFreshness` as an absent date or limit, which is stale). Envelope keys such as
    `reviewed_by`, `source`, `age_days` are ignored. Mapped to `ListMeta {source: 'server', updatedAt, reviewedAt,
@@ -7635,7 +7903,15 @@ index 0265b07..244a384 100644
  
  `gate.ts` decides, in this order:
  
-@@ -394,7 +408,14 @@ dates are stale, a date more than a day in the future is unparsable, a server `s
+@@ -389,12 +433,21 @@ ignored** (C34):
+ | either GET failed otherwise (timeout, unreachable, non-200, `GeoMalformed`) | `no_check` |
+ | `presaleGeoGate({freshness: evaluateListFreshness(meta, now), location, restricted})` | its own `stale_list` / `no_check` / `unknown_country` / `sanctioned` / `null` (open) |
+ 
+-`presaleGeoGate` (`core/geo/freshness.ts:132`, tested, unused until now) already encodes B1 §4: missing or unparsable
++**The extension caps the server's staleness limit (D18):** the `meta` the gate evaluates carries min(`max_staleness_days`,
++30) (`GEO_MAX_STALENESS_DAYS`), so a coordinator that sends a larger limit cannot make an older list fresh; a missing
++limit stays missing (stale). `presaleGeoGate` (`core/geo/freshness.ts:132`, tested, unused until now) already encodes B1 §4: missing or unparsable
+ dates are stale, a date more than a day in the future is unparsable, a server `stale: false` never overrides a locally
  computed age, an unknown or empty country (not `^[A-Z]{2}$`, or `XX` / `ZZ`) closes, and a sanctioned country closes
  whatever `isVpn` says (`sanctionedWinsOverVpn`; `isVpn` is always `false` today — B1 §5 coordinator answer 5 — and is
  read as nothing). A `restricted` country is open (OFAC-only policy, `classify.ts` `isPresaleBlocked`). The list is
@@ -7651,7 +7927,7 @@ index 0265b07..244a384 100644
  The same `gate.ts` answers #23 and F12 (§3.6), in both builds (D15): it is compliance code, not presale code, so it
  and `core/geo/**` are on the off-build allowlist (C38) and outside every presale directory.
  
-@@ -510,14 +531,18 @@ user, 8 token_program, 9 system_program. `register_referrer` (B1d-2): 0 user_acc
+@@ -510,14 +563,18 @@ user, 8 token_program, 9 system_program. `register_referrer` (B1d-2): 0 user_acc
     that the built instruction's account 5 equals `MAINNET_VAULT_USDC_ATA` / `_USDT_ATA` and account 4 the selected
     source; the vault ATA was already checked in the snapshot (§2.1 rule 8). Every compiled instruction's program is
     Compute Budget or the presale program; anything else is an engine bug (thrown, never shown).
@@ -7674,7 +7950,7 @@ index 0265b07..244a384 100644
     - **the destination (C28):** SOL — the treasury's lamports after − its lamports in the snapshot = `amount`
       exactly; stablecoin — the vault ATA after is a token account of that mint owned by `config.sol_treasury`, and its
       `amount` after − its amount in the snapshot = `amount` exactly;
-@@ -543,7 +568,7 @@ user, 8 token_program, 9 system_program. `register_referrer` (B1d-2): 0 user_acc
+@@ -543,7 +600,7 @@ user, 8 token_program, 9 system_program. `register_referrer` (B1d-2): 0 user_acc
     includes `kind`, `account`, `currency`, `amount`, `stage` and — B1d-2 — `referrer`).
  7. Store the prepared entry (§1.3) and answer `PurchaseView = {id, currency, amount, stage, priceTicks, nocBase: Δtokens,
     spentCents: Δc, destination, referrer: {address, registers: boolean} | null, fees: {networkLamports,
@@ -7687,52 +7963,59 @@ index 0265b07..244a384 100644
 
 - [ ] **Step 4: Run — green, the whole suite, both builds, the gates; web and the app unchanged (D12).**
 
-Run: the Step 2 commands — extension `Test Files  2 passed (2)` · `Tests  93 passed (93)` (gate 56, gate list 37); web `Test Files  1 passed (1)` · `Tests  45 passed (45)`.
+Run: the Step 2 commands — extension `Test Files  2 passed (2)` · `Tests  102 passed (102)` (gate 65, gate list 37; rev 1: 93 with gate 56 — rev 2 adds the eight D18 rows and the M1 row); web `Test Files  1 passed (1)` · `Tests  45 passed (45)`.
 
-Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  189 passed (189)` · `Tests  3829 passed (3829)` (previous tree 185 / 3676: +4 files, +153 tests — gate 56, fetch 45, and core's existing `freshness.test.ts` 43 and `classify.test.ts` 8, which the extension now runs too; `check-no-presale` +1). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  13 passed (13)` · `Tests  365 passed (365)` (previous 9 / 213: the same four files, +152 — the gate answers in the off run exactly as in the on run).
+Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  189 passed (189)` · `Tests  3851 passed (3851)` (previous tree 185 / 3689: +4 files, +162 tests — gate 65, fetch 45, and core's existing `freshness.test.ts` 43 and `classify.test.ts` 8, which the extension now runs too; `check-no-presale` +1). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  13 passed (13)` · `Tests  377 passed (377)` (previous 9 / 216: the same four files, +161 — the gate answers in the off run exactly as in the on run; rev 1: 3829 and 365).
 
 Run: `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale`, then `npm run gates` — exit 0, every gate ok once per build, the last line `no presale ok (dist-nopresale off, dist on): the off build's module maps carry no presale module and of core/presale/ only 3 allowed; the on build carries 9 required modules; 0 markers (none in the off build, each in the on build); 4 strings and the decoder's instruction names stay in the off build`. Both `app.modules.json` list `src/background/geo/gate.ts`, `../core/geo/fetch.ts`, `../core/geo/freshness.ts`, `../core/geo/classify.ts` (and no `restrictedList.ts`: only its type is imported, so the bundled list is in neither build). `npm run csp`, `npm run secrets` — ok for both builds; `npm run reproducible` — ok, both variants; `node scripts/check-no-tge-date.mjs` (package) — `610 source and built files checked` per build; repository root (after the commit) — `no TGE date in 1273 tracked text files`. Rpc methods unchanged (the gate uses no RPC).
 
 This task touches `core/`: `cd ../web && npm run verify` — green (`Test Files  47 passed (47)` · `Tests  616 passed (616)`, previous 46 / 571: +1 file, +45 — `fetch.test.ts`, the only new test web runs; no web test changed; the bundle test `3 passed`; reproducible). From the repository root `npx tsc --noEmit; echo $?` → `0`, `npx jest` → `Test Suites: 1 skipped, 180 passed` · `Tests: 1 skipped, 1234 passed, 1235 total` (unchanged: the app imports neither new module, and `isKnownCountry`'s export changes no caller). D12, shown: `git diff --name-only HEAD~1 HEAD | grep -E '^(web|src)/'` prints nothing.
 
+**(rev 2) Playwright on the end state** (45fa811, both builds built in a `git archive` copy): `npx playwright test` — `77 passed` (17.7 min); the same under `unshare -rn` — `77 passed` (17.6 min).
+
 - [ ] **Step 5: Commit.**
 
 ```bash
 git add -A core/geo extension docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md
-git commit -m "feat(extension): B1d-1a jurisdiction gate in both builds — core/geo/fetch.ts (required keys only, a 403 told apart), src/background/geo/gate.ts on presaleGeoGate (list cache under 10 min, re-evaluated every call; one request per answer), WalletDeps.geo; BOTH_BUILDS gains the gate; spec: the rent ruling, §2.2 as built" -m "Co-Authored-By: <the executing model> <noreply@anthropic.com>"
+git commit -m "feat(extension): B1d-1a jurisdiction gate in both builds — core/geo/fetch.ts (required keys only, a 403 told apart), src/background/geo/gate.ts on presaleGeoGate (list cache under 10 min, re-evaluated every call; the server's max_staleness_days capped at 30, D18; one request per answer), WalletDeps.geo; BOTH_BUILDS gains the gate; spec rev 3.1 (D16): every plan-1a spec edit listed — the rent ruling (D19), §2.2 as built, D17" -m "Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 ```
 
 - [ ] **Step 6: The named mutations — each alone, in a fresh `git archive HEAD` copy (node_modules linked), `timeout 300`; `tsc`'s own exit code first (0 for every one; for a `core/` mutation the repository root's `tsc` too), then the named test files.** `FT` = `core/geo/__tests__/fetch.test.ts` (45), `GT` = `gate.test.ts` (56) — run together where both are named (101); `NP` = `check-no-presale.test.mjs` (37); `PB` = `presaleBuilds.test.mjs` (two real builds).
 
 | id | the change | named test → observed |
 |---|---|---|
-| F1 | `parseGeoCheck`: the `isVpn` check deleted, `return {countryCode, isVpn: isVpn === true}` | FT “isVpn missing → GeoMalformed”, “isVpn a string”, “isVpn null”; GT “isVpn missing → no_check”, “isVpn a string” — tsc 0, root tsc 0 · RED `Test Files  2 failed (2)` · `Tests  5 failed \| 96 passed (101)` |
-| F2 | `parseRestrictedList`: `typeof code !== 'string'` only (the `^[A-Z]{2}$` test dropped) | FT “a lowercase code”, “a three-letter code” — tsc 0, root tsc 0 · RED `Tests  2 failed \| 99 passed (101)` |
-| F3 | `if (body.success === false) throw` (a missing or non-boolean `success` accepted) | FT “success missing”, “success "true"” — tsc 0, root tsc 0 · RED `Tests  2 failed \| 99 passed (101)` |
-| F4 | `!Array.isArray(raw)` only (an empty list accepted) | FT “countries empty”; GT “a failed or malformed list is not cached…” — tsc 0, root tsc 0 · RED `Test Files  2 failed (2)` · `Tests  2 failed \| 99 passed (101)` |
-| F5 | `optional`: `if (typeof v !== type && false) throw` (an ill-typed age key passes through) | FT “updated_at a number”, “reviewed_at an object”, “max_staleness_days a string”, “stale a string” — tsc 0, root tsc 0 · RED `Tests  4 failed \| 41 passed (45)` (FT alone) |
-| F6 | the category check deleted, `category: category === 'sanctioned' ? 'sanctioned' : 'restricted'` | FT “an unknown category”, “a category missing”, “one bad entry among good ones…”; GT “a list missing a required field (an entry without category)” — tsc 0, root tsc 0 · RED `Test Files  2 failed (2)` · `Tests  4 failed \| 97 passed (101)` |
-| R1 | `isGeoRefusal`: `(e instanceof RpcForbidden && e.name === 'never') \|\| …` (a 403 and the cool-down not refusals) | FT “a 403, the latch’s cool-down after one…”; GT “/geo/check 403 → refused”, “/geo/restricted-list 403”, “the latch cooling down”; the `browserDeps` 403 row — tsc 0, root tsc 0 · RED `Test Files  2 failed (2)` · `Tests  6 failed \| 95 passed (101)` |
-| R2 | gate: `reason: isGeoRefusal(e) && false ? 'refused' : 'no_check'` (the 403 distinction lost at the gate) | GT the four `→ refused (not no_check)` rows, “a cached list does not open a failed check”, the `browserDeps` 403 row — tsc 0 · RED `Tests  6 failed \| 50 passed (56)` |
-| R3 | `isGeoRefusal`: `\|\| e instanceof RpcHttpError` (any HTTP error a refusal) | FT “every other failure is not (negative controls)”; GT “/geo/check 500 → no_check”, “/geo/restricted-list 404”, the `browserDeps` 404 row, the not-cached row — tsc 0, root tsc 0 · RED `Test Files  2 failed (2)` · `Tests  5 failed \| 96 passed (101)` |
-| C1 | gate: `freshness: {...evaluateListFreshness(…), stale: false}` (`stale_list` never answered) | GT 13 rows — the 31-day boundary, the stale-before-country row, the nine `→ stale_list` rows, max_staleness_days null, the in-window staleness — tsc 0 · RED `Tests  13 failed \| 43 passed (56)` |
-| C2 | gate: the age evaluated at the cache time (`new Date(cached !== null ? cached.at : io.now())`) | GT “a cached list's age is evaluated against the clock every time…” — tsc 0 · RED `Tests  1 failed \| 55 passed (56)` |
-| U1 | core `presaleGeoGate`: `if (!isKnownCountry(…) && false) return` (`unknown_country` never answered) | GT the seven `countryCode … → unknown_country` rows — tsc 0, root tsc 0 · RED `Tests  7 failed \| 49 passed (56)` |
-| U2 | gate: `countryCode: isKnownCountry(…) \|\| true ? …` (an unknown code reported) | GT the seven unknown rows and “a stale list closes before the country is looked at…” — tsc 0 · RED `Tests  8 failed \| 48 passed (56)` |
-| S1 | core `presaleGeoGate`: `{sanctionedWinsOverVpn: false}` | GT “KP → sanctioned; KP behind a VPN flag → sanctioned” — tsc 0, root tsc 0 · RED `Tests  1 failed \| 55 passed (56)` |
-| S2 | gate: `restricted: restricted.countries.filter(c => c.category !== 'sanctioned')` (`sanctioned` never answered) | GT the KP row, the four `(sanctioned on the served list)` rows, “the served list decides…” — tsc 0 · RED `Tests  6 failed \| 50 passed (56)` |
-| N1 | gate: a failed list read falls back to a list of its own, dated today (`list().catch(() => ({countries: [KP], meta: {source: 'server', updatedAt: <today>, maxStalenessDays: 30}}))`) | GT “/geo/restricted-list 404 → no_check; there is no fallback list to open on”, the timeout row, the four parse rows of the list, “a failed or malformed list is not cached…”, the `browserDeps` 404 row — tsc 0 · RED `Tests  9 failed \| 47 passed (56)` |
-| B1 | gate: `[location, restricted] = await Promise.all([fetchGeoCheck(io.get), list()])` (the list asked even after a failed check) | GT “a failed /geo/check sends no list request…” — tsc 0 · RED `Tests  1 failed \| 55 passed (56)` |
-| K1 | `at - cached.at <= GEO_LIST_CACHE_MS` | GT “at exactly 10 minutes the list is read again (the boundary)” — tsc 0 · RED `Tests  1 failed \| 55 passed (56)` |
-| K2 | the `at >= cached.at` guard deleted | GT “a clock that went backwards does not make a cached list young…” — tsc 0 · RED `Tests  1 failed \| 55 passed (56)` |
-| K3 | `cached = at < 0 ? {at, list: l} : null;` (nothing cached). First draft (`cached !== null && false && …`) did not compile (tsc 2, TS18047) — INVALID, replaced | GT “/geo/check is asked on every call; the list once per 10 minutes”, the in-window staleness row — tsc 0 · RED `Tests  2 failed \| 54 passed (56)` |
-| K4 | `reading = fetchRestrictedList(…)` (no shared in-flight read) | GT “two callers at once (#23 and F12) share one list request” — tsc 0 · RED `Tests  1 failed \| 55 passed (56)` |
-| K5 | the rejection branch keeps `reading` (a failed read is kept) | GT “a failed or malformed list is not cached…” — tsc 0 · RED `Tests  1 failed \| 55 passed (56)` |
-| W1 | `browserDeps`: the gate on its own getter and latch (`createJsonGetter(fetch, createForbiddenLatch())`) | GT “a 403 on /geo/check → refused, and it trips the one latch…” — tsc 0 · RED `Tests  1 failed \| 55 passed (56)` |
+| F1 | `parseGeoCheck`: the `isVpn` check deleted, `return {countryCode, isVpn: isVpn === true}` | FT “isVpn missing → GeoMalformed”, “isVpn a string”, “isVpn null”; GT “isVpn missing → no_check”, “isVpn a string” — tsc 0, root tsc 0 · RED `Test Files  2 failed (2)` · `Tests  5 failed \| 105 passed (110)` |
+| F2 | `parseRestrictedList`: `typeof code !== 'string'` only (the `^[A-Z]{2}$` test dropped) | FT “a lowercase code”, “a three-letter code” — tsc 0, root tsc 0 · RED `Tests  2 failed \| 108 passed (110)` |
+| F3 | `if (body.success === false) throw` (a missing or non-boolean `success` accepted) | FT “success missing”, “success "true"” — tsc 0, root tsc 0 · RED `Tests  2 failed \| 108 passed (110)` |
+| F4 | `!Array.isArray(raw)` only (an empty list accepted) | FT “countries empty”; GT “a failed or malformed list is not cached…” — tsc 0, root tsc 0 · RED `Test Files  2 failed (2)` · `Tests  2 failed \| 108 passed (110)` |
+| F5 | `optional`: `if (typeof v !== type && false) throw` (an ill-typed age key passes through) | FT “updated_at a number”, “reviewed_at an object”, “max_staleness_days a string”, “stale a string” — tsc 0, root tsc 0 · RED `Tests  4 failed \| 41 passed (45)` |
+| F6 | the category check deleted, `category: category === 'sanctioned' ? 'sanctioned' : 'restricted'` | FT “an unknown category”, “a category missing”, “one bad entry among good ones…”; GT “a list missing a required field (an entry without category)” — tsc 0, root tsc 0 · RED `Test Files  2 failed (2)` · `Tests  4 failed \| 106 passed (110)` |
+| R1 | `isGeoRefusal`: `(e instanceof RpcForbidden && e.name === 'never') \|\| …` (a 403 and the cool-down not refusals) | FT “a 403, the latch’s cool-down after one…”; GT “/geo/check 403 → refused”, “/geo/restricted-list 403”, “the latch cooling down”; the `browserDeps` 403 row — tsc 0, root tsc 0 · RED `Test Files  2 failed (2)` · `Tests  7 failed \| 103 passed (110)` |
+| R2 | gate: `reason: isGeoRefusal(e) && false ? 'refused' : 'no_check'` (the 403 distinction lost at the gate) | GT the four `→ refused (not no_check)` rows, “a cached list does not open a failed check”, the `browserDeps` 403 row — tsc 0 · RED `Tests  7 failed \| 58 passed (65)` |
+| R3 | `isGeoRefusal`: `\|\| e instanceof RpcHttpError` (any HTTP error a refusal) | FT “every other failure is not (negative controls)”; GT “/geo/check 500 → no_check”, “/geo/restricted-list 404”, the `browserDeps` 404 row, the not-cached row — tsc 0, root tsc 0 · RED `Test Files  2 failed (2)` · `Tests  6 failed \| 104 passed (110)` |
+| C1 | gate: `freshness: {...evaluateListFreshness(…), stale: false}` (`stale_list` never answered) | GT 13 rows — the 31-day boundary, the stale-before-country row, the nine `→ stale_list` rows, max_staleness_days null, the in-window staleness — tsc 0 · RED `Tests  18 failed \| 47 passed (65)` |
+| C2 | gate: the age evaluated at the cache time (`new Date(cached !== null ? cached.at : io.now())`) | GT “a cached list's age is evaluated against the clock every time…” — tsc 0 · RED `Tests  1 failed \| 64 passed (65)` |
+| U1 | core `presaleGeoGate`: `if (!isKnownCountry(…) && false) return` (`unknown_country` never answered) | GT the seven `countryCode … → unknown_country` rows — tsc 0, root tsc 0 · RED `Tests  7 failed \| 58 passed (65)` |
+| U2 | gate: `countryCode: isKnownCountry(…) \|\| true ? …` (an unknown code reported) | GT the seven unknown rows and “a stale list closes before the country is looked at…” — tsc 0 · RED `Tests  8 failed \| 57 passed (65)` |
+| S1 | core `presaleGeoGate`: `{sanctionedWinsOverVpn: false}` | GT “KP → sanctioned; KP behind a VPN flag → sanctioned” — tsc 0, root tsc 0 · RED `Tests  1 failed \| 64 passed (65)` |
+| S2 | gate: `restricted: restricted.countries.filter(c => c.category !== 'sanctioned')` (`sanctioned` never answered) | GT the KP row, the four `(sanctioned on the served list)` rows, “the served list decides…” — tsc 0 · RED `Tests  6 failed \| 59 passed (65)` |
+| N1 | gate: a failed list read falls back to a list of its own, dated today (`list().catch(() => ({countries: [KP], meta: {source: 'server', updatedAt: <today>, maxStalenessDays: 30}}))`) | GT “/geo/restricted-list 404 → no_check; there is no fallback list to open on”, the timeout row, the four parse rows of the list, “a failed or malformed list is not cached…”, the `browserDeps` 404 row — tsc 0 · RED `Tests  10 failed \| 55 passed (65)` |
+| B1 | gate: `[location, restricted] = await Promise.all([fetchGeoCheck(io.get), list()])` (the list asked even after a failed check) | GT “a failed /geo/check sends no list request…” — tsc 0 · RED `Tests  1 failed \| 64 passed (65)` |
+| K1 | `at - cached.at <= GEO_LIST_CACHE_MS` | GT “at exactly 10 minutes the list is read again (the boundary)” — tsc 0 · RED `Tests  2 failed \| 63 passed (65)` |
+| K2 | the `at >= cached.at` guard deleted | GT “a clock that went backwards does not make a cached list young…” — tsc 0 · RED `Tests  1 failed \| 64 passed (65)` |
+| K3 | `cached = at < 0 ? {at, list: l} : null;` (nothing cached). First draft (`cached !== null && false && …`) did not compile (tsc 2, TS18047) — INVALID, replaced | GT “/geo/check is asked on every call; the list once per 10 minutes”, the in-window staleness row — tsc 0 · RED `Tests  2 failed \| 63 passed (65)` |
+| K4 | `reading = fetchRestrictedList(…)` (no shared in-flight read) | GT “two callers at once (#23 and F12) share one list request” — tsc 0 · RED `Tests  1 failed \| 64 passed (65)` |
+| K5 | the rejection branch keeps `reading` (a failed read is kept) | GT “a failed or malformed list is not cached…” — tsc 0 · RED `Tests  2 failed \| 63 passed (65)` |
+| W1 | `browserDeps`: the gate on its own getter and latch (`createJsonGetter(fetch, createForbiddenLatch())`) | GT “a 403 on /geo/check → refused, and it trips the one latch…” — tsc 0 · RED `Tests  1 failed \| 64 passed (65)` |
 | W2 | `BOTH_BUILDS` without `src/background/geo/gate.ts` | NP “both builds must carry the intent-kind registry (Task 3) and the jurisdiction gate…” — tsc 0 · RED `Tests  1 failed \| 36 passed (37)` |
-| W3 | `browserDeps` does not build the gate (`geo: async () => ({open: false, reason: 'no_check', countryCode: null})`, the import type-only) — the gate leaves both bundles | PB “the off-build gate (scripts/check-no-presale.mjs) passes on the two builds…” (`… build does not carry src/background/geo/gate.ts`, both builds); GT the three answering `browserDeps` rows — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  4 failed \| 64 passed (68)` |
+| W3 | `browserDeps` does not build the gate (`geo: async () => ({open: false, reason: 'no_check', countryCode: null})`, the import type-only) — the gate leaves both bundles | PB “the off-build gate (scripts/check-no-presale.mjs) passes on the two builds…” (`… build does not carry src/background/geo/gate.ts`, both builds); GT the three answering `browserDeps` rows — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  4 failed \| 73 passed (77)` |
+| K6 (rev 2, review 1 M1) | the list's rejection branch returns the expired cached list (`if (cached !== null) return cached.list;` before `throw e`) — review 1's surviving T6-1, which opens the gate | GT “a cached list past 10 minutes whose re-read fails → no_check (or refused), never the expired list…” — tsc 0 · RED `Tests  1 failed \| 64 passed (65)` |
+| D1 (rev 2, D18) | no cap (`maxStalenessDays: limit`) | GT “D18: … 31: 31 days old → stale (capped at 30)”, “… 365: 31 days old …” — tsc 0 · RED `Tests  2 failed \| 63 passed (65)` |
+| D2 (rev 2, D18) | `Math.max(limit, 30)` (the cap as a floor) | GT “D18: … 29: 30 days old → stale”, the 31 and 365 rows, and “max_staleness_days 0 → stale_list” — tsc 0 · RED `Tests  4 failed \| 61 passed (65)` |
+| D3 (rev 2, D18) | `GEO_MAX_STALENESS_DAYS = 31` | GT all eight D18 rows (each pins the constant, and the 31-day row decides) — tsc 0 · RED `Tests  8 failed \| 57 passed (65)` |
+| D4 (rev 2, D18) | a missing limit capped into 30 (`Math.min(limit ?? 30, 30)`) | GT “D18: … missing: a list of today → stale…” and the other missing-limit rows (`max_staleness_days null` / `missing` → stale_list) — tsc 0 · RED `Tests  4 failed \| 61 passed (65)` |
 
-Where a cell names several rows, they are the rows the change is aimed at (the first-reported failure is the first named); the red count is the observed total. 25 mutations, all red, every one compiling (`tsc` 0; root `tsc` 0 for the eight in `core/`). Two first drafts did not compile and were replaced (INVALID, not red): F1 and F6 as `… && false` lost TypeScript's narrowing (`unknown` not assignable, tsc 2), and K3 as above. Every closed reason has its own mutation (`refused` R1/R2, `no_check` F1–F6/N1, `stale_list` C1/C2, `unknown_country` U1, `sanctioned` S1/S2), and the 403 distinction three (R1–R3, both directions). Not covered by a mutation, stated: the `> 0, ≤ bound` simulated-rent clause and the rest of the rent ruling are spec text for 1b (no code here reads rent).
+Where a cell names several rows, they are the rows the change is aimed at (the first-reported failure is the first named); the red count is the observed total. 30 mutations (rev 1's 25, re-run on rev 2's tree with the counts above, plus K6 and D1–D4), all red, every one compiling (`tsc` 0; root `tsc` 0 for the eight in `core/`). Two first drafts did not compile and were replaced (INVALID, not red): F1 and F6 as `… && false` lost TypeScript's narrowing (`unknown` not assignable, tsc 2), and K3 as above. Every closed reason has its own mutation (`refused` R1/R2, `no_check` F1–F6/N1, `stale_list` C1/C2, `unknown_country` U1, `sanctioned` S1/S2), and the 403 distinction three (R1–R3, both directions). Not covered by a mutation, stated: the `> 0, ≤ bound` simulated-rent clause and the rest of the rent ruling are spec text for 1b (no code here reads rent).
 
 #### Dry-run notes (Task 6)
 
@@ -7745,56 +8028,61 @@ Where a cell names several rows, they are the rows the change is aimed at (the f
 - **Ruling: `GeoAnswer.countryCode` is the detected code only when `isKnownCountry` (exported from `core/geo/freshness.ts`), else null** — why: #50b shows the region card "as above when a country is known" for `stale_list`; a stale list closes before the country is looked at, so the gate must decide "known" itself; exporting core's existing predicate keeps one definition — cost if wrong: none (an export; web and the app call nothing new).
 - **Ruling: the gate reaches the background as `WalletDeps.geo()`, built once in `browserDeps` on the shared getter and latch** — see "Why `WalletDeps.geo`" above: it puts the gate in both module maps in 1a without inventing a caller, and it is the one place the shared latch lives (W1: a gate on its own latch would let a geo 403 leave Send's cool-down untouched — red). `fakeDeps().geo` throws unless overridden, like `broadcast` — cost if wrong: 1b moves it (one field).
 - **Ruling: the extension's vitest now runs `../core/geo/**` (both runs)** — why: core/geo is extension compliance code from this task (D15); web's vitest still runs the same files (web's count rises only by `fetch.test.ts`) — cost: ~1 s.
+- **(rev 2, D18) The server's `max_staleness_days` is capped at 30 in the gate, not in core** — `gate.ts` evaluates `{...meta, maxStalenessDays: Math.min(server, 30)}`; a missing limit stays missing (so stale — `evaluateListFreshness`'s rule), never capped into one. Why the gate: D12 keeps web and the app on their current geo behaviour, and `evaluateListFreshness` is theirs too; the cap is the extension's own compliance rule (both builds, D15). Tested at 29 / 30 / 31 / 365 and missing (a list 30 and 31 days old against each; the 31 and 365 rows are the ones the cap decides) — D1 (no cap), D2 (`Math.max`), D3 (a cap of 31) and D4 (a missing limit capped into 30) are red.
+- **(rev 2, review 1 M1) A cached list past 10 minutes whose re-read fails is `no_check` (a 403 `refused`), never the expired list**, and the next call reads it again — the one state rev 1's suite did not visit (cache filled → window passed → list route fails); K6 (the rejection branch returning the expired cached list — review 1's surviving T6-1, which opens the gate) is red.
+- **(rev 2, D16, review 1 M5) Spec rev 3.1:** the spec's status line now says rev 3.1, and a paragraph under it lists every passage plan 1a changes — C9, C11, C38, §1.2, §1.3 (Task 4's challenge sentence; D17), §1.4 (D17), §2.1 (the rent ruling, D19), §2.2 (as built, D18), §3.3 step 5, §3.3 step 7, §6.2, §8.2 — one line each, naming the task. §3.3 step 5's two clauses and C11 change 1b's funds-critical outflow check; they are called out as such there.
 - **No bundled list, by construction:** `gate.ts` imports only the `RestrictedCountry` type; neither build's module map lists `core/geo/restrictedList.ts`; every failed list read is `no_check` (N1 shows a fallback would be caught). "The bundled fallback always counts as stale" stays core's rule and test (`freshness.test.ts` “the bundled fallback is always stale”, now run by the extension too); the gate never builds a `bundled` meta.
 - **Rent ruling written into the spec** (the controller's, ledger Task 5): C9 (the constants as upper bounds for MAX), C11 and §3.3 step 5 (`simulatedRent` = the post-state lamports of the PDAs the snapshot found absent, each > 0 and ≤ its §2.1 bound; the simulation's accounts carry `["user", account]` when it is absent), `PurchaseView.fees.rentLamports = simulatedRent`, and §2.1's ruling paragraph with the measured rate (5 080 lamports per byte; 0 / 58 / 117 / 165 B → 650 240 / 944 880 / 1 244 600 / 1 488 440) and B1b's 890 880 / 2 039 280 as upper bounds. **For 1b:** the C11 mutation "rent from the constant" must turn a first-purchase simulation red. The two new clauses beyond the ledger text — the user-account PDA in the simulation's accounts, and the `> 0, ≤ bound` check on each created PDA — are mine (the post-state rent cannot be read otherwise, and an unbounded "rent" would let a lying simulation hide an outflow in it); flagged for the controller.
-- **D12 shown, not asserted:** no file under `web/` or `src/` changed; web verify 47 / 616 (+1 file, +45: `fetch.test.ts` only), root jest 1234 unchanged, root tsc 0.
+- **D12 shown, not asserted:** no file under `web/` or `src/` changed; web verify 47 / 616 (+1 file, +45: `fetch.test.ts` only), root jest 1234 unchanged, root tsc 0. (rev 2 changes nothing under `core/`, `web/` or `src/` — these are rev 1's results, and they stand.)
 - **For 1b:** `host.deps.geo()` for #23 (`presale.view`, `prepareBuy`, `beforeSign`) and `deps.geo()` for F12 (`runSimulation`, the decision) — the same gate instance, so the same list cache; `GeoReason` is exactly #50b's five reasons plus open; Q12/Q27 key on `refused`. The ledger's "an app-side wall-clock flake" (`PresaleActive.test.tsx`) did not recur in this task's root jest run.
 
 #### The consistency pass (Task 6 is the last task)
 
-Replayed every block of `task-1.md` … `task-6.md` onto `git archive 923b714`, in order (a ```` ```` ```` fence with `diff` → `git apply --recount`; any other language → the file in full at the path its label names), and compared the tree with `git archive` of the dry-run commit after each task (`diff -rq`):
+Replayed every block of `task-1.md` … `task-6.md` onto `git archive 923b714`, in order (a ```` ```` ```` fence with `diff` → `git apply --recount`; any other language → the file in full at the path its label names), and compared the tree with `git archive` of the dry-run commit after each task (`diff -rq`). **Rev 2** replayed the regenerated parts against rev 2's commits (branch `dry/b1d1a-r2`):
 
-| prefix | commit | blocks | applied | tree vs commit |
+| prefix | commit (rev 2) | blocks | applied | tree vs commit |
 |---|---|---|---|---|
 | Task 1 | 4ec596b | 25 | 25 | identical |
-| Task 1–2 | c5550a0 | 5 | 5 | identical once the generated fixture `extension/scripts/__tests__/fixtures/app.modules.0b79442.json` is added (the part generates it by a command from 0b79442 — not printed, by design) |
-| Task 1–3 | 9bed436 | 6 | 6 | identical once the generated capture `extension/src/background/__tests__/captured/sends.0b79442.json` is added (likewise generated, Step 1's capture program) |
-| Task 1–4 | b436245 | 9 | 9 | identical |
-| Task 1–5 | b523457 | 15 | 15 | identical (the generated `layouts.ts` is printed in full in the part) |
-| Task 1–6 | f941887 | 7 | 7 | identical |
+| Task 1–2 | 1f6fe9b | 5 | 5 | identical once the generated fixture `extension/scripts/__tests__/fixtures/app.modules.0b79442.json` is added (produced by the command printed in Task 2 Step 1, with its expected hash — not stored in a code block) |
+| Task 1–3 | 30626f6 | 6 | 6 | identical once the generated capture `extension/src/background/__tests__/captured/sends.0b79442.json` is added (produced by the capture program printed in Task 3 Step 1 — rev 2 ran the printed command as extracted from this part, in a scratch clone: `Tests  1 passed (1)`, 35 990 bytes, sha256 `fed8cc8c…805f`, byte-identical to the committed file) |
+| Task 1–4 | 7333c87 | 9 | 9 | identical |
+| Task 1–5 | a76655e | 15 | 15 | identical (the generated `layouts.ts` is printed in full in the part) |
+| Task 1–6 | 45fa811 | 7 | 7 | identical |
 
-67 blocks, none failed; every prefix equals its commit; the only files not produced by a block are the two generated fixtures, each with its generating command in its part. (The replay script: `scratchpad/replay-b1d1a.py <partsDir> <clone> <work> 923b714 <six commits>`.)
+67 blocks, none failed; every prefix equals its commit; the only files not produced by a block are the two generated fixtures, each produced by the command printed in its part (rev 2, review 1 L6: rev 1's "not printed, by design" meant "not stored in a code block"). (The replay script: `scratchpad/replay-b1d1a.py <partsDir> <clone> <work> 923b714 <six commits>`.)
 
 ---
 
 
 ## Dry-run record
 
-| task | dry-run commit | green (vitest on / off) | mutations |
+| task | dry-run commit (rev 2; rev 1) | green (vitest on / off) | mutations |
 |---|---|---|---|
-| 1 | 4ec596b | 179 / 3498 · 5 / 120; Playwright 75 | 21, all red |
-| 2 | c5550a0 | 180 / 3534 · 5 / 120 | 16, all red (+2 green controls) |
-| 3 | 9bed436 | 182 / 3585 · 7 / 169; Playwright 75 | 18, all red |
-| 4 | b436245 | 183 / 3602 · 9 / 213; Playwright 77, E2E 7 both ways | 14, all red |
-| 5 | b523457 | 185 / 3676 · 9 / 213; web 46 / 571; root jest 1234 | 49, all red |
-| 6 | f941887 | 189 / 3829 · 13 / 365; web 47 / 616; root jest 1234 | 25, all red |
+| 1 | 4ec596b (unchanged) | 179 / 3498 · 5 / 120; Playwright 75 | 21, all red (rev 1; not re-run — unchanged) |
+| 2 | 1f6fe9b (c5550a0) | 180 / 3534 · 5 / 120 | 16, all red (+2 green controls) (rev 1; rev 2 changed one comment) |
+| 3 | 30626f6 (9bed436) | 182 / 3588 · 7 / 172 | 21, all red (re-run + K3, D1, D2) |
+| 4 | 7333c87 (b436245) | 183 / 3605 · 9 / 216; E2E 7 both ways | 14, all red (re-run) |
+| 5 | a76655e (b523457) | 185 / 3689 · 9 / 216; web 46 / 571; root jest 1234 (rev 1) | 53, all red (re-run + S30–S33) |
+| 6 | 45fa811 (f941887) | 189 / 3851 · 13 / 377; Playwright 77 normal + 77 `unshare -rn`; web 47 / 616; root jest 1234 (rev 1) | 30, all red (re-run + K6, D1–D4) |
 
 - Every mutant compiled before it counted; non-compiling first drafts were replaced (Task 1: 1, Task 5: 6, Task 6: 3). Two survivors in Task 5 (S6, A3) were closed by strengthening the TEST.
-- Consistency: 67 blocks replayed onto `git archive 923b714` reproduce every task's commit (`diff -rq`), the two generated fixtures by their commands.
-- Findings outside the plan: the RN app's `PresaleActive.test.tsx` "blocks the buy CTA … sanctioned" timed out once under a full root `jest` run (an app-side wall-clock test; passed alone and on a rerun) — for a later app task.
+- Consistency (rev 2): 67 blocks replayed onto `git archive 923b714` reproduce every rev 2 commit (`diff -rq`), the two generated fixtures by their printed commands (the Task 3 capture re-run from this plan's text: sha256 `fed8cc8c…805f`).
+- 155 named mutations in rev 2 (rev 1: 143); the 118 of Tasks 3–6 re-run on rev 2's commits, every one compiling and red.
+- Findings outside the plan: B1b's `Confirm.test.tsx` M4 re-read row failed once in a rev 2 whole-suite run (Task 5's tree; passed 5/5 alone and on the rerun) — a timing-dependent test on #20, for a later B1b task. The RN app's `PresaleActive.test.tsx` "blocks the buy CTA … sanctioned" timed out once under a full root `jest` run (an app-side wall-clock test; passed alone and on a rerun) — for a later app task.
 
 ## Before the PR (the standing rules)
 
 - [ ] Reproduce CI with only `web/` and `extension/` installed on Node 22.12, npm 11.6.2: `npm ci --ignore-scripts` and `npm run verify` in both (both builds), `npm run e2e` in `extension/` normally and under `unshare -rn`.
 - [ ] Root `npx tsc --noEmit` + `npx jest`; `node scripts/check-no-tge-date.mjs`.
-- [ ] The PR says loudly: B1d-1a is a merge-to-`main` milestone with no presale UI (C26); the only visible change is the generic purchase row (Q42) in both builds; the off build is byte-identical to the on build in 1a (only the module maps differ).
+- [ ] The PR says loudly: B1d-1a is a merge-to-`main` milestone with no presale UI (C26); the only visible change is the generic purchase row (Q42) in both builds; the off build carries no presale module (`check-no-presale.mjs` reads the module maps). It does **not** claim the two packages are identical (from Task 5 they differ: the on build carries the presale background modules — review 1 M4).
+- [ ] The PR says what "every existing send unchanged" means: digests, integrity, challenges, pending records and validator verdicts equal the capture of 0b79442 byte for byte; a stored prepared entry equals it but for its new `kind` key, and an entry stored before the update (no `kind`) is not read — it is prepared again, its challenge carrying over (review 1 L2). And that `wallet.send` now signs only a send (D17).
 
 ## Self-review
 
 - **Spec coverage:** the header table's B1d-1a row item by item → Tasks 1 (switch, plugin, stubs, skeletons, encoding.ts), 2 (gate + fixture + lists), 3 (registry and shared shapes), 4 (generic rendering, E2E 7), 5 (layouts, state, limits), 6 (core/geo/fetch, background gate).
 - **Placeholders:** none — every step carries its code as committed in the dry run.
 - **Type consistency:** checked by the replay, which compiles at every prefix.
-- **Review Focus:** five lines, each with its tests named.
+- **Review Focus:** seven lines (rev 2 adds 6 and 7), each with its tests named.
 
 ## The controller's rulings, for the owner
 
@@ -7804,3 +8092,16 @@ Replayed every block of `task-1.md` … `task-6.md` onto `git archive 923b714`, 
 - The on build keeps every module of `src/background/presale/` whole (a no-treeshake transform), so the gate's positive controls do not depend on the bundler.
 - **Rent (funds-relevant):** mainnet rent measured at 5 080 lamports per byte; every rent constant is an upper bound only; B1d-1b's exact outflow check takes the new-PDA rent from the simulation, which must be > 0 and ≤ the bound (Task 6 writes it into the spec).
 - The jurisdiction gate's request budget: `/geo/check` first, the list only when due and never after a failed check, none during the 403 cool-down; the list cached 10 minutes.
+- **(rev 2) Every spec passage plan 1a changes**, collected as spec rev 3.1 (owner decision D16; the spec's own status paragraph lists them, and each is a diff in its task) — one line each:
+  - C9 (Task 6): SOL MAX's rents are §2.1's upper-bound constants.
+  - C11 (Task 6): the exact outflow check's new-PDA rent comes from the simulation, never a constant (**1b's funds-critical check**).
+  - C38 (Task 2): three shared symbols move, not two.
+  - §1.2 (Tasks 2, 6): `fetchGeoCheck` / `fetchRestrictedList` / `isGeoRefusal` instead of `fetchGeoInputs`; `encoding.ts` takes three symbols.
+  - §1.3 (Task 4): a send's challenge still matches after the update (its digest is unchanged).
+  - §1.3, §1.4 (Task 6, D17): `sendPrepared` signs only the caller's kind; `wallet.send` only a send, `presale.buy` only `presale-buy`.
+  - §2.1 (Task 6): the rent ruling (5 080 lamports per byte; every rent constant an upper bound; D19).
+  - §2.2 (Task 6): as built — two fetchers, absent age keys as null, the cache window, the request budget, `countryCode` only when known, `WalletDeps.geo()`, and D18's cap.
+  - **§3.3 step 5** (Task 6): the simulation's accounts gain `["user", account]` when absent; `simulatedRent` (> 0 and ≤ its bound per created PDA) replaces `newPdaRent` in the outflow check (**1b's funds-critical check**).
+  - §3.3 step 7 (Task 6): `PurchaseView.fees.rentLamports` = `simulatedRent`.
+  - §6.2, §8.2 (Task 2): the encoding bullet and the `core/` rows name the three symbols and their three importers.
+- **(rev 2) Owner decisions D16–D19, as built:** D16 — the list above, in the spec (Task 6); D17 — `sendPrepared(…, kindName = 'send')`, `wallet.send` signs only a send (Task 3); D18 — the gate's `GEO_MAX_STALENESS_DAYS = 30`, min(server, 30), a missing limit stays missing (Task 6); **D19 — needs no code:** B1b's `sender-below-rent` stays at 890 880 (stricter than the runtime's 650 240, which is the safe side); re-pinning B1b's constants from the chain is a separate later task (stated in §2.1).
