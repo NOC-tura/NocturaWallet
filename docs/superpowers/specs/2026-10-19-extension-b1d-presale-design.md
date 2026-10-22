@@ -13,7 +13,8 @@ rev 4 pass.** Each is a diff in the plan task named (`docs/superpowers/plans/202
 other passage is rev 3 as approved:
 - C9 (Task 6): every rent in SOL MAX is §2.1's upper-bound constant (MAX reserves a little more than the runtime charges).
 - C11 (Task 6): the exact outflow check's new-PDA rent comes from the simulation's post-state, never from a constant.
-- C38 (Task 2): "the two helpers" → the three shared symbols of §6.2.
+- C38 (Task 2; fix round 1, review I1): "the two helpers" → the three shared symbols of §6.2; the off build may
+  carry from `../web/**` only `web/src/ui/**` and `web/src/styles/**`.
 - §1.2 (Tasks 2, 6): `core/geo/fetch.ts` exports `fetchGeoCheck`, `fetchRestrictedList` and `isGeoRefusal` (not
   `fetchGeoInputs`); `core/solana/encoding.ts` takes three symbols (`SPL_TOKEN_PROGRAM` too), re-exported by
   `buyInstructions.ts`.

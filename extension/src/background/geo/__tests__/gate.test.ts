@@ -146,6 +146,23 @@ describe('the jurisdiction gate — every reason (B1d §2.2, §6.1 "Geo")', () =
   });
 });
 
+describe('a country entered more than once: the worst wins (review 1 M1)', () => {
+  it('KP restricted, then sanctioned (later entry worse) → sanctioned, closed', async () => {
+    const list = LIST({countries: [{code: 'KP', category: 'restricted'}, {code: 'KP', category: 'sanctioned'}]});
+    expect(await answer(CHECK('KP'), list)).toEqual({open: false, reason: 'sanctioned', countryCode: 'KP'});
+  });
+
+  it('KP sanctioned, then restricted (later entry milder) → still sanctioned: order does not matter', async () => {
+    const list = LIST({countries: [{code: 'KP', category: 'sanctioned'}, {code: 'KP', category: 'restricted'}]});
+    expect(await answer(CHECK('KP'), list)).toEqual({open: false, reason: 'sanctioned', countryCode: 'KP'});
+  });
+
+  it('a single entry is unchanged: CN restricted-only still opens (not sanctioned)', async () => {
+    const list = LIST({countries: [{code: 'CN', category: 'restricted'}]});
+    expect(await answer(CHECK('CN'), list)).toEqual({open: true, reason: null, countryCode: 'CN'});
+  });
+});
+
 describe('parsing at the gate (C34, review 1 M8)', () => {
   it('a check body with an extra key, a list entry with basis and the envelope extras → parsed, open', async () => {
     const list = LIST({countries: [...COUNTRIES, {code: 'BY', category: 'restricted', basis: 'x', since: '2022'}], reviewed_by: 'r', source: 's', age_days: 9, extra: true});
@@ -252,6 +269,35 @@ describe('the cache and the request budget (C12, review 2 M3)', () => {
     expect([a.open, b.open]).toEqual([true, true]);
     expect(s.paths.filter(p => p === '/geo/restricted-list')).toHaveLength(1);
     expect(s.paths.filter(p => p === '/geo/check')).toHaveLength(2);
+  });
+
+  it('the cache window is measured from the request start, not from when the list resolves (review 1 M2)', async () => {
+    const paths: string[] = [];
+    let resolveList: ((v: unknown) => void) | null = null;
+    let listReady = false;
+    const get: JsonGetter = {
+      async get<T>(path: string): Promise<T> {
+        paths.push(path);
+        if (path === '/geo/check') return CHECK('SI') as unknown as T;
+        if (!listReady) return new Promise<T>(resolve => (resolveList = resolve as (v: unknown) => void));
+        return LIST() as unknown as T;
+      },
+    };
+    const gate = createJurisdictionGate({get, now: () => clock.t});
+    const pending = gate.check();
+    // Drain every pending microtask (never a real delay) so the request's own `io.now()` read — taken
+    // synchronously before the list fetch is awaited — happens at T0, before the clock moves.
+    await new Promise(resolve => setImmediate(resolve));
+    clock.t = T0 + 9 * 60_000; // the list is slow to answer: 9 minutes pass while it is in flight
+    listReady = true;
+    resolveList!(LIST());
+    expect(await pending).toEqual({open: true, reason: null, countryCode: 'SI'});
+    // 10 minutes after the REQUEST started (only 1 minute after it resolved). Measured from the request
+    // start (as built), the cache is already due; measured from the resolve, it would still look fresh
+    // for ~9 more minutes.
+    clock.t = T0 + GEO_LIST_CACHE_MS;
+    await gate.check();
+    expect(paths.filter(p => p === '/geo/restricted-list')).toHaveLength(2);
   });
 });
 

@@ -29,6 +29,21 @@ export interface JurisdictionGate {
   check(): Promise<GeoAnswer>;
 }
 
+/**
+ * Review 1 M1: a list with several entries for the same code must fail closed on the worst one, not on whichever
+ * entry `classifyJurisdiction`'s `find` happens to hit first (which was the first entry, in list order — an
+ * ambiguous list opening on a lenient entry is a hole, not a shrug). The merge is here, in the extension's gate,
+ * not in `core/geo/classify.ts` (D12): web and the app read `classifyJurisdiction` unchanged.
+ */
+function worstPerCountry(countries: GeoList['countries']): GeoList['countries'] {
+  const worst = new Map<string, GeoList['countries'][number]>();
+  for (const c of countries) {
+    const seen = worst.get(c.code);
+    if (seen === undefined || (seen.category !== 'sanctioned' && c.category === 'sanctioned')) worst.set(c.code, c);
+  }
+  return [...worst.values()];
+}
+
 export function createJurisdictionGate(io: {get: JsonGetter; now(): number}): JurisdictionGate {
   let cached: {at: number; list: GeoList} | null = null;
   let reading: Promise<GeoList> | null = null;
@@ -63,7 +78,7 @@ export function createJurisdictionGate(io: {get: JsonGetter; now(): number}): Ju
       }
       const limit = restricted.meta.maxStalenessDays;
       const meta = limit === undefined ? restricted.meta : {...restricted.meta, maxStalenessDays: Math.min(limit, GEO_MAX_STALENESS_DAYS)};
-      const g = presaleGeoGate({freshness: evaluateListFreshness(meta, new Date(io.now())), location, restricted: restricted.countries});
+      const g = presaleGeoGate({freshness: evaluateListFreshness(meta, new Date(io.now())), location, restricted: worstPerCountry(restricted.countries)});
       return {open: g.open, reason: g.reason, countryCode: isKnownCountry(location.countryCode) ? location.countryCode : null};
     },
   };
