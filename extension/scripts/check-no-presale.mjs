@@ -3,8 +3,10 @@
 // dist-nopresale dist). Each directory's app.features.json must say what it is. Then three rules, each with its control:
 //  1. Modules: the off build's module maps (every *.modules.json next to its packages) carry nothing under
 //     src/background/presale/, src/app/presale/, src/unlock/presale.ts or core/referral/, and of core/presale/ only
-//     CORE_PRESALE_ALLOWED; core/geo/ is allowed whole (D15). Positive control: the on build carries every ON_BUILD
-//     module and both carry every BOTH_BUILDS module, so a renamed or moved module fails instead of passing silently.
+//     CORE_PRESALE_ALLOWED; core/geo/ is allowed whole (D15). Of ../web/ (fix round 1, review I1) only WEB_ALLOWED —
+//     web/src/presale/** imports only erased core/presale types, so a denylist would miss it; only an allowlist closes
+//     it, same as core/presale/. Positive control: the on build carries every ON_BUILD module and both carry every
+//     BOTH_BUILDS module, so a renamed or moved module fails instead of passing silently.
 //     The maps are the evidence, not the packages: the two packages were byte-identical through B1d-1a's Task 4; from
 //     Task 5 the on build carries the presale background modules, so the maps — not the files — remain the evidence.
 //  2. Strings: no file of the off build's app/, chrome/, firefox/ contains a MARKER; each marker is found in the on build.
@@ -13,6 +15,7 @@
 import {existsSync, readFileSync, readdirSync} from 'node:fs';
 import {dirname, join, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {isMain} from './isMain.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PACKAGES = ['app', 'chrome', 'firefox'];
@@ -20,6 +23,9 @@ const DECODER = 'src/background/dapp/decode/presaleIdl.ts';
 
 export const OFF_FORBIDDEN = ['src/background/presale/', 'src/app/presale/', 'src/unlock/presale.ts', 'core/referral/'];
 export const CORE_PRESALE_ALLOWED = ['core/presale/addresses.ts', 'core/presale/allocation.ts', 'core/presale/stagePrices.ts'];
+// Fix round 1 (review I1): of `../web/`, only its shared UI and stylesheets — never `web/src/presale/**`, whose
+// modules can import nothing but erased `core/presale` types and so are never caught by rule 1's other branches.
+export const WEB_ALLOWED = ['../web/src/ui/', '../web/src/styles/'];
 
 // B1d-1a: the three on-path entries (§1.1); Task 5 adds presale/{layouts,state}.ts and core/presale/limits.ts;
 // 1b adds presale/{quote,buy}.ts; B1d-2 adds presale/{record,referral}.ts and core/referral/index.ts.
@@ -36,12 +42,15 @@ const MIN_MARKER = 8;
 /** A module id as the maps write it (package-relative: `../core/…`), without query or hash, rooted at the repository's `core/`. */
 const normalize = id => String(id).replace(/[?#].*$/, '').replace(/^\.\.\/(?=core\/)/, '');
 
-/** Every module of the given parsed module maps; throws INCONCLUSIVE when there is none to read. */
+/** Every module of the given parsed module maps; throws INCONCLUSIVE when there is none to read, or a chunk's module list is not an array (a string is iterable character by character and would otherwise pass silently). */
 export function moduleIds(maps) {
   const out = new Set();
   for (const m of maps) {
     if (m === null || typeof m !== 'object' || m.chunks === null || typeof m.chunks !== 'object') throw new Error('INCONCLUSIVE: a module map has no chunks');
-    for (const ids of Object.values(m.chunks)) for (const id of ids) out.add(normalize(id));
+    for (const ids of Object.values(m.chunks)) {
+      if (!Array.isArray(ids)) throw new Error(`INCONCLUSIVE: a chunk's module list is not an array (${JSON.stringify(ids)})`);
+      for (const id of ids) out.add(normalize(id));
+    }
   }
   if (out.size === 0) throw new Error('INCONCLUSIVE: the module maps carry no module');
   return out;
@@ -53,6 +62,7 @@ export function offModuleViolations(ids) {
   for (const id of [...ids].sort()) {
     if (OFF_FORBIDDEN.some(f => (f.endsWith('/') ? id.startsWith(f) : id === f))) out.push(`off build carries ${id} — a presale module (${OFF_FORBIDDEN.join(', ')})`);
     else if (id.startsWith('core/presale/') && !CORE_PRESALE_ALLOWED.includes(id)) out.push(`off build carries ${id} — of core/presale/ it may carry only ${CORE_PRESALE_ALLOWED.join(', ')}`);
+    else if (id.startsWith('../web/') && !WEB_ALLOWED.some(w => id.startsWith(w))) out.push(`off build carries ${id} — of ../web/ it may carry only ${WEB_ALLOWED.join(', ')}`);
   }
   return out;
 }
@@ -136,7 +146,7 @@ export function checkNoPresale(offDir, onDir, o = {}) {
   return out;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const [offArg, onArg] = process.argv.slice(2);
   if (offArg === undefined || onArg === undefined) {
     console.error('usage: node scripts/check-no-presale.mjs <offDir> <onDir>');

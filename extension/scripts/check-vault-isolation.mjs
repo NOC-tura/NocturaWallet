@@ -36,6 +36,7 @@
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import {dirname, join, posix, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {isMain} from './isMain.mjs';
 import ts from 'typescript';
 import {isStylesheet, scanCss} from './css-scan.mjs';
 import {DIST_DIRS, distDir} from './distDir.mjs';
@@ -1223,7 +1224,7 @@ export function manifestViolations(manifest) {
   return resources.filter(coversPage).map(r => `web_accessible_resources exposes "${r}" — a web page could frame the vault page`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const files = listSourceFiles(ROOT).map(path => ({path, text: readFileSync(join(ROOT, path), 'utf8')}));
   const pages = readdirSync(ROOT).filter(e => /\.html?$/i.test(e)).map(path => ({path, text: readFileSync(join(ROOT, path), 'utf8')}));

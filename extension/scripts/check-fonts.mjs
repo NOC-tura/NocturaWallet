@@ -11,6 +11,7 @@
 import {existsSync, readdirSync, readFileSync} from 'node:fs';
 import {dirname, join, posix, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {isMain} from './isMain.mjs';
 import {distDir} from './distDir.mjs';
 
 export const FONTS = ['Geist-Variable.woff2', 'GeistMono-Variable.woff2'];
@@ -66,7 +67,7 @@ export function vaultPageFontViolations(distApp) {
   return out;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const DIST = distDir();
   const dist = join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), DIST, 'app');
   const problems = [...fontViolations(dist), ...vaultPageFontViolations(dist)];

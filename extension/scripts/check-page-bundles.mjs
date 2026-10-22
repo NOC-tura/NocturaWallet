@@ -12,6 +12,7 @@
 import {existsSync, readFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {isMain} from './isMain.mjs';
 import {distDir} from './distDir.mjs';
 
 export const CONTENT = {
@@ -54,7 +55,7 @@ export function devOriginViolations(backgroundJs) {
   return ['localhost', '127.0.0.1'].filter(h => backgroundJs.includes(h)).map(h => `background.js names ${h} — a store build accepts no development origin`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const DIST = distDir();
   const read = p => (existsSync(p) ? readFileSync(p, 'utf8') : undefined);

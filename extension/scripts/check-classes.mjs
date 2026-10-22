@@ -14,6 +14,7 @@
 import {existsSync, readFileSync, readdirSync} from 'node:fs';
 import {dirname, join, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {isMain} from './isMain.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -269,7 +270,7 @@ export function vaultClassViolations(files = listVaultFiles().map(path => ({path
   return out;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const files = listScreens();
   const vaultFiles = listVaultFiles();
   const problems = [...classViolations(), ...vaultClassViolations()];

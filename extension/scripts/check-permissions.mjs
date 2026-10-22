@@ -12,6 +12,7 @@
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {distDir} from './distDir.mjs';
+import {isMain} from './isMain.mjs';
 import {PERMISSIONS, HOST_PERMISSIONS, EXTENSION_CSP, MIN_CHROME_VERSION, MIN_FIREFOX_VERSION} from '../manifest/source.mjs';
 
 // The one host anything in the extension ever fetches (extension/src/background/deps.ts — RPC
@@ -109,7 +110,7 @@ export function comparePermissions(manifest, browser) {
   return problems;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const DIST = distDir();
   let bad = 0;
   for (const browser of ['chrome', 'firefox']) {

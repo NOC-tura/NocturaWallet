@@ -1,4 +1,5 @@
-import {mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -8,6 +9,7 @@ import {
   MARKERS,
   MUST_STAY,
   ON_BUILD,
+  WEB_ALLOWED,
   checkNoPresale,
   decoderInstructionNames,
   featureViolations,
@@ -46,6 +48,14 @@ describe('the off-build module rule', () => {
     expect(offModuleViolations(moduleIds([map([...SHARED, ...geo])]))).toEqual([]);
   });
 
+  // Fix round 1 (review I1): an allowlist for ../web/ too, not a denylist — web/src/presale/** imports only erased
+  // core/presale types, so no other branch of rule 1 would catch it.
+  it('allows exactly web/src/ui/** and web/src/styles/** of ../web/, and nothing else under ../web/', () => {
+    expect(WEB_ALLOWED).toEqual(['../web/src/ui/', '../web/src/styles/']);
+    const web = ['../web/src/ui/AddressGroups.tsx', '../web/src/ui/Icon.tsx', '../web/src/styles/design-system.css'];
+    expect(offModuleViolations(moduleIds([map([...SHARED, ...web])]))).toEqual([]);
+  });
+
   it.each([
     'src/background/presale/api.ts',
     'src/background/presale/state.ts',
@@ -60,6 +70,7 @@ describe('the off-build module rule', () => {
     '../core/presale/buyInstructions.ts?commonjs-proxy',
     'src/unlock/presale.ts?v=1',
     '../core/presale/limits.ts#x',
+    '../web/src/presale/PresalePanel.tsx',
   ])('refuses %s in the off build', id => {
     expect(offModuleViolations(moduleIds([map([...SHARED, id])]))).toHaveLength(1);
   });
@@ -70,6 +81,12 @@ describe('the off-build module rule', () => {
     expect(() => moduleIds([{}])).toThrow(/INCONCLUSIVE/);
     expect(() => moduleIds([])).toThrow(/INCONCLUSIVE/);
     expect(() => moduleIds([{chunks: {}}])).toThrow(/INCONCLUSIVE/);
+  });
+
+  // Minor (fix round 1): a chunk's value must be an array — a string is iterable character by character and would
+  // otherwise pass every rule silently (a bundler never writes this; hardening only).
+  it('a chunk whose value is a string, not an array, is INCONCLUSIVE', () => {
+    expect(() => moduleIds([{chunks: {'a.js': 'src/app/presale/index.ts'}}])).toThrow(/INCONCLUSIVE/);
   });
 
   it('a stub and a presale-named module outside the presale directories are not presale modules', () => {
@@ -228,5 +245,91 @@ describe('checkNoPresale(offDir, onDir)', () => {
     expect(run()).toHaveLength(1);
     good();
     expect(checkNoPresale(join(tmp, 'on'), join(tmp, 'off'), {decoderSource: IDL}).length).toBeGreaterThan(2);
+  });
+});
+
+// Fix round 1 (review I2): the CLI guard must actually run the gate, at any checkout path. The old
+// `import.meta.url === \`file://${process.argv[1]}\`` compares a percent-encoded left side against a
+// never-encoded right side, so it silently takes the else branch (prints nothing, exits 0) once the path contains
+// a space or another reserved character — `npm run gates` would then report this gate green without it having
+// run. `isMain` (pathToFileURL(argv[1]).href) must not have that hole, proven here by spawning the real CLI, not
+// by calling checkNoPresale() in-process.
+describe('the CLI, spawned as a real node process', () => {
+  let tmp;
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'no-presale-cli-'));
+  });
+  afterEach(() => rmSync(tmp, {recursive: true, force: true}));
+
+  const DECODER_NAMES = PRESALE_INSTRUCTIONS.map(i => i.name);
+  const writeCliBuild = (dir, {presale, modules}) => {
+    mkdirSync(dir, {recursive: true});
+    writeFileSync(join(dir, 'app.features.json'), `${JSON.stringify({presale})}\n`);
+    writeFileSync(join(dir, 'app.modules.json'), JSON.stringify(map(modules)));
+    const text = [...MUST_STAY, ...DECODER_NAMES].map(s => JSON.stringify(s)).join(';');
+    for (const p of ['app', 'chrome', 'firefox']) {
+      mkdirSync(join(dir, p), {recursive: true});
+      writeFileSync(join(dir, p, 'background.js'), text);
+    }
+  };
+  const buildGoodPair = () => {
+    const off = join(tmp, 'off');
+    const on = join(tmp, 'on');
+    writeCliBuild(off, {presale: false, modules: [...SHARED, 'src/presale-off/background.ts']});
+    writeCliBuild(on, {presale: true, modules: [...SHARED, ...ON_BUILD]});
+    return {off, on};
+  };
+  const runCli = (scriptPath, args) => {
+    try {
+      return {status: 0, stdout: execFileSync('node', [scriptPath, ...args], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']})};
+    } catch (e) {
+      return {status: e.status, stdout: e.stdout ?? '', stderr: e.stderr ?? ''};
+    }
+  };
+  // The real CLI's decoder read and must-stay check use the real presaleIdl.ts and the real on-repo path; only
+  // scripts/check-no-presale.mjs, scripts/isMain.mjs and the decoder source need to exist at the copy.
+  const copyToSpacePath = () => {
+    const spaceDir = join(tmp, 'a directory with a space');
+    mkdirSync(join(spaceDir, 'scripts'), {recursive: true});
+    mkdirSync(join(spaceDir, 'src/background/dapp/decode'), {recursive: true});
+    cpSync(join(ROOT, 'scripts/check-no-presale.mjs'), join(spaceDir, 'scripts/check-no-presale.mjs'));
+    cpSync(join(ROOT, 'scripts/isMain.mjs'), join(spaceDir, 'scripts/isMain.mjs'));
+    cpSync(join(ROOT, 'src/background/dapp/decode/presaleIdl.ts'), join(spaceDir, 'src/background/dapp/decode/presaleIdl.ts'));
+    return join(spaceDir, 'scripts/check-no-presale.mjs');
+  };
+
+  it.each([
+    ['its normal repository path', () => join(ROOT, 'scripts/check-no-presale.mjs')],
+    ['a path containing a space (review I2)', copyToSpacePath],
+  ])('passes a good pair (exit 0, the ok line) and fails a swapped one (exit 1), run from %s', (_label, scriptPathFor) => {
+    const scriptPath = scriptPathFor();
+    const {off, on} = buildGoodPair();
+    const good = runCli(scriptPath, [off, on]);
+    expect(good.status).toBe(0);
+    expect(good.stdout).toMatch(/^no presale ok \(/);
+    const swapped = runCli(scriptPath, [on, off]);
+    expect(swapped.status).toBe(1);
+  });
+});
+
+// Fix round 1 (review I2): every gate that has this CLI main-guard imports the shared helper — a gate whose guard
+// never fires passes `npm run gates` without having run at all.
+describe('every gate with a CLI main-guard imports isMain', () => {
+  const GATE_FILES = [
+    'check-no-presale.mjs',
+    'check-classes.mjs',
+    'check-fonts.mjs',
+    'check-no-tge-date.mjs',
+    'check-page-bundles.mjs',
+    'check-permissions.mjs',
+    'check-rpc-methods.mjs',
+    'check-vault-isolation.mjs',
+  ];
+
+  it.each(GATE_FILES)('%s imports isMain from ./isMain.mjs and guards on isMain(import.meta.url)', file => {
+    const source = readFileSync(join(ROOT, 'scripts', file), 'utf8');
+    expect(source).toMatch(/import \{isMain\} from '\.\/isMain\.mjs';/);
+    expect(source).toMatch(/if \(isMain\(import\.meta\.url\)\) \{/);
+    expect(source).not.toMatch(/file:\/\/\$\{process\.argv\[1\]\}/);
   });
 });
