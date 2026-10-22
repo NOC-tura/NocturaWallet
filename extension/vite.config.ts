@@ -125,6 +125,7 @@ export function appConfig(env: Record<string, string | undefined>): UserConfig {
         '../core/solana/**/*.test.ts',
         '../core/fees/**/*.test.ts',
         '../core/portfolio/**/*.test.ts',
+        '../core/geo/**/*.test.ts',
       ],
     },
   };

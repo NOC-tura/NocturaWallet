@@ -5,6 +5,7 @@ import {PRESALE_STAGE_PRICES} from '../../../core/presale/stagePrices';
 import {broadcastSigned} from '../../../core/solana/broadcast';
 import {fetchUsdPrices} from '../../../core/portfolio/prices';
 import type {Prices} from '../../../core/portfolio/value';
+import {createJurisdictionGate, type GeoAnswer} from './geo/gate';
 
 /**
  * Everything the wallet engine needs from outside: chain reads, the broadcast route, prices, time
@@ -19,6 +20,8 @@ export interface WalletDeps {
   prices(): Promise<Prices>;
   /** USD per NOC at the current presale stage (owner decision B), or null when /stats does not say it validly. */
   stagePrice(): Promise<number | null>;
+  /** B1d §2.2: the jurisdiction gate's answer now (both builds, D15) — #23 and F12 (B1d-1b) ask it; never throws. */
+  geo(): Promise<GeoAnswer>;
   now(): number;
   randomBytes(n: number): Uint8Array;
   sleep(ms: number): Promise<void>;
@@ -136,6 +139,7 @@ export function browserDeps(ext: Ext): WalletDeps {
   const broadcastFetch = timedFetch(BROADCAST_TIMEOUT_MS);
   const latch = createForbiddenLatch({store: latchStore(ext)});
   const get = createJsonGetter(fetch, latch);
+  const gate = createJurisdictionGate({get, now: () => Date.now()});
   let cache: {at: number; prices: Prices} | null = null;
   let stage: {at: number; price: number} | null = null;
   return {
@@ -156,6 +160,7 @@ export function browserDeps(ext: Ext): WalletDeps {
       if (price !== null) stage = {at: now, price};
       return price;
     },
+    geo: () => gate.check(),
     now: () => Date.now(),
     // A CSPRNG: ids for prepared sends, pending records and re-auth challenges.
     randomBytes: n => globalThis.crypto.getRandomValues(new Uint8Array(n)),

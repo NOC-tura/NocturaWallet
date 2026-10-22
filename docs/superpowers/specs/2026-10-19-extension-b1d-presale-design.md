@@ -1,11 +1,38 @@
 # Noctura Extension B1d — presale in the extension (buy, allocation, referral, jurisdiction gate)
 
-**Status:** **approved rev 3**, 2026-10-19 (owner: "ok je") — Fable reviews 1–2 applied with owner decisions D7–D15; next: plan B1d-1a →  Fable review. The owner approved
+**Status:** **approved rev 3**, 2026-10-19 (owner: "ok je") — Fable reviews 1–2 applied with owner decisions D7–D15; **rev 3.1**
+(D16): rev 3 plus plan B1d-1a's spec edits, listed below. The owner approved
 the design in conversation section by section (`.superpowers/sdd/b1d-approved-design.md`, approach A) and took
 decisions D1–D6, then D7–D14 on Fable's review 1 and D15 on review 2 (`.superpowers/sdd/b1d-owner-decisions.md`,
 `.superpowers/sdd/b1d-spec-review-1.md`, `.superpowers/sdd/b1d-spec-review-2.md`).
 Everything this spec adds beyond that text is a controller ruling (C1–C39 below) or a string in §10 (Q01–Q52, final
 under D14). Research map: `.superpowers/sdd/b1d-context.md`. Where each review finding landed: §11.
+
+**Rev 3.1 (2026-10-19, owner decision D16): rev 3 plus the spec edits plan B1d-1a makes, collected here — no separate
+rev 4 pass.** Each is a diff in the plan task named (`docs/superpowers/plans/2026-10-19-extension-b1d-plan1a.md`); every
+other passage is rev 3 as approved:
+- C9 (Task 6): every rent in SOL MAX is §2.1's upper-bound constant (MAX reserves a little more than the runtime charges).
+- C11 (Task 6): the exact outflow check's new-PDA rent comes from the simulation's post-state, never from a constant.
+- C38 (Task 2): "the two helpers" → the three shared symbols of §6.2.
+- §1.2 (Tasks 2, 6): `core/geo/fetch.ts` exports `fetchGeoCheck`, `fetchRestrictedList` and `isGeoRefusal` (not
+  `fetchGeoInputs`); `core/solana/encoding.ts` takes three symbols (`SPL_TOKEN_PROGRAM` too), re-exported by
+  `buyInstructions.ts`.
+- §1.3 (Task 4): a send's challenge digest is unchanged by the kind (its domain was already `send`), so a challenge issued
+  before the update still matches for a send; only a non-send kind's challenge is bound to its kind.
+- §1.3, §1.4 (Task 6, D17): `sendPrepared` signs only the caller's kind — `wallet.send` only `kind: 'send'` (any other
+  kind is `unknown-prepared`, nothing burned), `presale.buy` only `presale-buy`.
+- §2.1 (Task 6): the rent ruling — mainnet rent 5 080 lamports per byte; every rent constant (the presale PDAs' and
+  B1b's) is an upper bound only; B1b's `sender-below-rent` stays at 890 880 (D19).
+- §2.2 (Task 6): as built — two fetch functions and `isGeoRefusal`; a non-200 is the getter's error; an absent age key
+  reads as null (stale); the list cached for less than 10 minutes from its request, a failed list not kept, one shared
+  request; the request budget (`/geo/check` first, no list after a failed check); `countryCode` only when known;
+  `WalletDeps.geo()`; and (D18) the server's `max_staleness_days` capped at 30.
+- §3.3 step 5 (Task 6): the simulation's accounts also carry `["user", account]` when the snapshot found it absent;
+  SOL spent uses `simulatedRent` (the created PDAs' post-state lamports, each owned by the program with its layout's
+  length, > 0 and ≤ its §2.1 bound) — a change to 1b's funds-critical outflow check.
+- §3.3 step 7 (Task 6): `PurchaseView.fees.rentLamports` = `simulatedRent`.
+- §6.2 (Task 2): the encoding bullet — three symbols, and the three core modules that import them.
+- §8.2 (Task 2): the `core/` rows name the three moved symbols and `core/solana/{transfer,history,balances}.ts`.
 
 **Ledger (review L12).** The order, so nobody has to guess it: the facts were re-read from the code on 2026-10-18 (§8.2)
 and rev 1 was written from them; the owner's decisions D1–D6 and D7–D14 carry the date the decisions file records,
@@ -83,9 +110,9 @@ spec's ruling C13 ("the window decides nothing"), which the approved design cite
 | C6 | **The per-user cap is a pinned program constant:** `PRESALE_MAX_TOTAL_PER_USER_USD = 20_000_000` cents ($200 000, ICO `lib.rs:36`, checked against `total_spent_cents` at `lib.rs:344-351`). The config has no field for it | approved "max per user minus the existing allocation", made exact: the program's cumulative cap is on cents spent, not on NOC |
 | C7 | **Referrer (D8).** A referrer already registered on chain is always honoured from B1d-1b on (`resolveReferrerWith(ref, user, null)`: the purchase passes that referrer's allocation PDA, as the program requires). A new one is registered only through #23's optional field, in B1d-2, under C32's rules; there is no other capture channel (no deep link, no page reading) | D8; an extension has no capture channel, and the field is the owner's choice of one |
 | C8 | **Without a SOL price, SOL is not offered** (Buy disabled, Q19); USDC and USDT still are | a SOL purchase's limits and estimate need a price; the program prices at Pyth, but a wallet that cannot say what $ amount the user is spending must not offer it |
-| C9 | **MAX keeps the paying account rent-exempt:** SOL MAX = balance − network fee − rent of the PDAs this purchase creates − `SYSTEM_ACCOUNT_RENT_LAMPORTS` (890 880), then capped by the limits; stablecoin MAX = the largest holding account, capped by the limits | approved "MAX for SOL leaves fees and rent"; a wallet that empties itself cannot pay its next fee |
+| C9 | **MAX keeps the paying account rent-exempt:** SOL MAX = balance − network fee − rent of the PDAs this purchase creates − `SYSTEM_ACCOUNT_RENT_LAMPORTS` (890 880), then capped by the limits — every rent here is §2.1's upper-bound constant, so MAX reserves a little more than the runtime charges; stablecoin MAX = the largest holding account, capped by the limits | approved "MAX for SOL leaves fees and rent"; a wallet that empties itself cannot pay its next fee |
 | C10 | **One in-flight transaction per account, a purchase included.** B1b's `inFlightFor` counts a `presale-buy` record like a send — which needs the shared validator to read it at all (review H1, §1.3): neither a send nor a purchase is built while either is open | approved "one in-flight presale-buy per account", via the rule that already exists — stricter, one rule |
-| C11 | **The simulation is checked exactly** (§3.3): SOL out = amount + fee + new-PDA rent; the source token account loses exactly the amount; **the pinned destination gains exactly the amount** (C28); `total_spent_cents` rises by Δc and `total_tokens` by exactly `tokensFor(Δc, stage)`; `purchase_count` by 1 | approved "outflow equal to the entered amount (+ fee) and an allocation increase", made testable; rent is the refinement (two `init_if_needed` PDAs, ICO `lib.rs:2904-2919`) |
+| C11 | **The simulation is checked exactly** (§3.3): SOL out = amount + fee + new-PDA rent, the rent taken from the simulation's post-state (the created PDAs' lamports), never from a constant (§2.1, rent ruling); the source token account loses exactly the amount; **the pinned destination gains exactly the amount** (C28); `total_spent_cents` rises by Δc and `total_tokens` by exactly `tokensFor(Δc, stage)`; `purchase_count` by 1 | approved "outflow equal to the entered amount (+ fee) and an allocation increase", made testable; rent is the refinement (two `init_if_needed` PDAs, ICO `lib.rs:2904-2919`) |
 | C12 | **Geo:** `/geo/check` is fetched on every #23 mount, every prepare, every signature, and for #48 on every simulation and approval of a request carrying a presale purchase (§3.6); the list is cached ≤ 10 minutes, its freshness evaluated against the clock every time; **either fetch failing is `no_check`**; the extension bundles no fallback list | approved "re-checked on every #23 mount and before every signature"; a bundled list always counts as stale (B1 §4), so carrying one buys nothing |
 | C13 | **The NOC valuation for B1b's dollar rule (`deps.stagePrice`, `/stats`) is unchanged.** It is not presale code and exists in both builds | moving it to `state.ts` would put presale code in the off build |
 | C14 | **`core/geo/fetch.ts` is used only by the extension in B1d** (D12). Moving web and the app onto it changes *their* purchase gates (web ignores staleness today, the app fails open) and is a separate later task | owner decision D12 |
@@ -193,7 +220,7 @@ approve.html (#48) — renders F12 as stored with the simulation; computes nothi
 `GeoAnswer` (§2.2), the list cache; it imports nothing under a presale directory. #23 (through `presale/`) and F12
 (through `dapp/`) both call it.
 
-`core/` gains: `core/geo/fetch.ts` (`fetchGeoInputs(get: JsonGetter)`, §2.2), `core/presale/limits.ts` (bigint:
+`core/` gains: `core/geo/fetch.ts` (`fetchGeoCheck(get: JsonGetter)`, `fetchRestrictedList(get)`, `isGeoRefusal`, §2.2), `core/presale/limits.ts` (bigint:
 `usdCentsForStable`, `tokensFor`, `checkLimits`, ticks, rents, §3.2) and `core/solana/encoding.ts` (`SPL_TOKEN_PROGRAM`,
 `encodeU64LE`, `findAssociatedTokenAddress` moved out of `buyInstructions.ts`, which re-exports all three for the app and
 web, so no caller outside the extension changes; §6.2). `deps.ts` gains `createJsonPoster(fetch, latch)` (B1d-2) — generic, beside
@@ -212,9 +239,11 @@ onConfirmed?})`. B1b's `send` registers itself unconditionally; `presale/api.ts`
   `kind: 'send'` entries; `presale.preparedFor` only `presale-buy`. **Every prepare, of any kind, replaces every
   prepared entry of that account** (today's rule in `prepareSend`, extended across kinds), so an account has at most
   one prepared entry.
-- **`sendPrepared` (sign + submit), kind-agnostic, in this order** (C29; today's order in `send.ts:33-70` with one step
-  inserted):
-  1. session (`locked`); `peekPrepared` (`unknown-prepared`); the kind is registered (else `prepared-invalid`);
+- **`sendPrepared` (sign + submit), for one kind per caller (D17), in this order** (C29; today's order in
+  `send.ts:33-70` with one step inserted):
+  1. session (`locked`); `peekPrepared` (`unknown-prepared` — also for an entry of another kind than the caller's:
+     `wallet.send` signs only `kind: 'send'`, `presale.buy` only `presale-buy`; nothing burned); the kind is registered
+     (else `prepared-invalid`);
   2. `challengeSatisfied` on the peeked entry (`reauth-required` + the challenge id, as today — nothing burned);
   3. **the kind's `beforeSign(peeked)`** (presale: C12's geo check and C22's state re-read) — a refusal here burns
      nothing: the entry stays, the proof stays proven, and the popup re-prepares carrying the challenge id;
@@ -258,7 +287,7 @@ existing `vault.challengeInfo`).
 | `presale.quote` | `{account, currency, amount: string \| 'max'}` | `Quote` (§3.2) from the last `presale.view` snapshot of that account ≤ 30 s old; older → `{stale: true}` |
 | `presale.prepareBuy` | `{account, intent: {currency, amount, stage}, challengeId?}` (B1d-2: `intent.referrer: string \| null`) | `PurchaseView` (§3.3) or a refusal code (§5) |
 | `presale.preparedFor` | `{account}` | the account's `presale-buy` prepared entry's view, `expired` as B1b's `wallet.preparedFor` |
-| `presale.buy` | `{id}` | `PendingView` or a refusal code; via the kind-agnostic `sendPrepared` (§1.3) |
+| `presale.buy` | `{id}` | `PendingView` or a refusal code; via `sendPrepared` for `presale-buy` only (§1.3, D17) |
 | `presale.discardPrepared` | `{account}` | B1b's `discardPrepared` (all of the account's entries and their challenges) |
 | `presale.checkReferrer` (B1d-2) | `{account, referrer}` | `{ok: true}` or `{ok: false, line: 'referrer-invalid' \| 'referrer-self' \| 'referrer-no-allocation' \| 'referrer-not-applicable'}` (§3.5); a read failure → `presale-unavailable` |
 | `presale.referral` (B1d-2) | `{account}` | `ReferralView` (§3.5) |
@@ -363,13 +392,26 @@ the latch's cool-down); any other failed rule → `{unavailable: 'malformed'}`. 
   `SYSTEM_ACCOUNT_RENT_LAMPORTS` (890 880 for 0 bytes) and `TOKEN_ACCOUNT_RENT_LAMPORTS` (2 039 280 for 165). New
   constants `PRESALE_USER_ACCOUNT_RENT_LAMPORTS`, `PRESALE_ALLOCATION_RENT_LAMPORTS` in `core/presale/limits.ts`, each
   with that formula as its test (`getMinimumBalanceForRentExemption` stays off the proxy's allowlist).
+- **Rent ruling (B1d-1a plan, 2026-10-19): these rents are upper bounds, never exact values.** Measured on mainnet the
+  same day (`getMinimumBalanceForRentExemption`, public RPC; the vault ATAs created 2026-09-21 hold exactly the 165-byte
+  figure): **5 080 lamports per byte** of `(128 + length)` — 0 / 58 / 117 / 165 bytes → **650 240 / 944 880 /
+  1 244 600 / 1 488 440** — not 6 960. So `PRESALE_USER_ACCOUNT_RENT_LAMPORTS`, `PRESALE_ALLOCATION_RENT_LAMPORTS` and
+  `newPdaRent`, and likewise B1b's `SYSTEM_ACCOUNT_RENT_LAMPORTS` 890 880 and `TOKEN_ACCOUNT_RENT_LAMPORTS` 2 039 280
+  (`core/solana/transfer.ts`), are **upper bounds**, used only where reserving more is safe: C9's MAX and §3.2's balance
+  lines (and B1b's `sender-below-rent`, which is therefore slightly stricter than the runtime — kept at 890 880 by D19;
+  re-pinning B1b's constants from the chain is a separate later task). **1b's exact outflow
+  check (C11, §3.3 step 5) takes the new-PDA rent from the simulation's post-state**, never from these constants: the
+  program pays the runtime's current rent, so an exact constant would refuse every first purchase. The constants and
+  their tests stay as written (they are the bound, and a lower runtime rate keeps them one).
 - `referrerAllocation` = `resolveReferrerWith(() => snapshotRef, account, captured)` — `captured` null before B1d-2 (C7).
 
 ### 2.2 The jurisdiction gate (`src/background/geo/gate.ts`, both builds — D15; B1 §4, C12, C34; B1d-1a)
 
-`core/geo/fetch.ts` — `fetchGeoInputs(get: JsonGetter): Promise<{location, list}>`. Both bodies: a non-200, a body
-that is not a JSON object, or a required key missing or of the wrong type → `GeoMalformed`; **every other key is
-ignored** (C34):
+`core/geo/fetch.ts` — `fetchGeoCheck(get: JsonGetter): Promise<GeoLocation>` and `fetchRestrictedList(get):
+Promise<GeoList>` (two functions, B1d-1a plan: the gate caches the list and never the check), `isGeoRefusal(e)` (a 403
+— `RpcForbidden`, the latch's `RpcCoolingDown`, or a getter's HTTP 403 — against every other failure). A non-200 is the
+getter's error (the extension's `createJsonGetter` throws on it); a body that is not a JSON object, or a required key
+missing or of the wrong type → `GeoMalformed`; **every other key is ignored** (C34):
 
 - `GET /geo/check` → required `countryCode: string`, `isVpn: boolean`, at the top level (no envelope — the live
   contract, `walletRoutes.js:97-100`, `web/src/geo/useGeo.ts`).
@@ -379,7 +421,9 @@ ignored** (C34):
   a boolean or null (the coordinator reports a missing value as null, `restrictedList.js:56-69`; a null is not
   malformed — it reaches `evaluateListFreshness` as an absent date or limit, which is stale). Envelope keys such as
   `reviewed_by`, `source`, `age_days` are ignored. Mapped to `ListMeta {source: 'server', updatedAt, reviewedAt,
-  maxStalenessDays, serverStale}` (null → absent).
+  maxStalenessDays, serverStale}` (null → absent). The four age keys are read the same when absent as when null (B1d-1a
+plan: the coordinator always sends them; an absent one closes the gate as `stale_list` rather than `no_check` — closed
+either way); present with another type → `GeoMalformed`.
 
 `gate.ts` decides, in this order:
 
@@ -389,12 +433,21 @@ ignored** (C34):
 | either GET failed otherwise (timeout, unreachable, non-200, `GeoMalformed`) | `no_check` |
 | `presaleGeoGate({freshness: evaluateListFreshness(meta, now), location, restricted})` | its own `stale_list` / `no_check` / `unknown_country` / `sanctioned` / `null` (open) |
 
-`presaleGeoGate` (`core/geo/freshness.ts:132`, tested, unused until now) already encodes B1 §4: missing or unparsable
+**The extension caps the server's staleness limit (D18):** the `meta` the gate evaluates carries min(`max_staleness_days`,
+30) (`GEO_MAX_STALENESS_DAYS`), so a coordinator that sends a larger limit cannot make an older list fresh; a missing
+limit stays missing (stale). `presaleGeoGate` (`core/geo/freshness.ts:132`, tested, unused until now) already encodes B1 §4: missing or unparsable
 dates are stale, a date more than a day in the future is unparsable, a server `stale: false` never overrides a locally
 computed age, an unknown or empty country (not `^[A-Z]{2}$`, or `XX` / `ZZ`) closes, and a sanctioned country closes
 whatever `isVpn` says (`sanctionedWinsOverVpn`; `isVpn` is always `false` today — B1 §5 coordinator answer 5 — and is
 read as nothing). A `restricted` country is open (OFAC-only policy, `classify.ts` `isPresaleBlocked`). The list is
-cached in the worker's memory ≤ 10 minutes; `/geo/check` is never cached. `GeoAnswer` = `{open, reason, countryCode | null}`.
+cached in the worker's memory for less than 10 minutes from its request (`GEO_LIST_CACHE_MS`; at 10 minutes, or on a
+clock that went backwards, it is read again); a failed or malformed list is not kept; callers that arrive together share
+one list request; `/geo/check` is never cached. **Request budget (review 2 M3):** `/geo/check` first, and after a
+failed check the list is not requested — one request per answer, two when the list is due, none in the latch's
+cool-down. `GeoAnswer` = `{open, reason, countryCode | null}` — `countryCode` is the detected country only when it is a
+known one (`isKnownCountry`, exported from `freshness.ts`), else null. The background reaches it as `WalletDeps.geo()`
+(`browserDeps` builds one gate on the shared getter and latch), which never throws — #23 through `host.deps` and F12
+through the dApp path's `deps` (1b).
 The same `gate.ts` answers #23 and F12 (§3.6), in both builds (D15): it is compliance code, not presale code, so it
 and `core/geo/**` are on the off-build allowlist (C38) and outside every presale directory.
 
@@ -510,14 +563,18 @@ user, 8 token_program, 9 system_program. `register_referrer` (B1d-2): 0 user_acc
    that the built instruction's account 5 equals `MAINNET_VAULT_USDC_ATA` / `_USDT_ATA` and account 4 the selected
    source; the vault ATA was already checked in the snapshot (§2.1 rule 8). Every compiled instruction's program is
    Compute Budget or the presale program; anything else is an engine bug (thrown, never shown).
-5. Simulate with `accounts = [payer, userAllocation, destination, source token account?]` — payer first, as B1b's
-   `prepareSend`; `destination` = `MAINNET_SOL_TREASURY` for SOL, the pinned vault ATA for a stablecoin (C28).
+5. Simulate with `accounts = [payer, userAllocation, destination, source token account?, userAccount?]` — payer first, as B1b's
+   `prepareSend`; `userAccount` (`["user", account]`) only when the snapshot found it absent (its post-state is rent this
+   purchase pays, step 5's first check); `destination` = `MAINNET_SOL_TREASURY` for SOL, the pinned vault ATA for a stablecoin (C28).
    Decide on `err` first (B1b §11.5): `{InstructionError: [i, {Custom: n}]}` on the presale instruction maps to
    6022 → `below-min`, 6023 → `above-limit` (the program uses one code for the per-transaction and the per-user
    maximum), 6002 → `blocked`, 6020 / 6021 / 6024 → `presale-closed`; B1b's rent refusal → `sender-below-rent`; any
    other error → `simulation-failed` (Q16). Then, with `err === null`, **all** of:
-   - SOL spent by the payer = `(currency = SOL ? amount : 0) + newPdaRent + networkFee`, or that minus `networkFee`
-     (B1b's two accepted readings);
+   - SOL spent by the payer = `(currency = SOL ? amount : 0) + simulatedRent + networkFee`, or that minus `networkFee`
+     (B1b's two accepted readings), where `simulatedRent` is the sum of the post-state lamports of the PDAs the snapshot
+     found absent (§2.1 rent ruling: the rent comes from the simulation, never from a constant) — so the simulation's
+     accounts also carry `["user", account]` when the user account is absent; each created PDA's post-state is owned by
+     the program with its layout's length, and its lamports are > 0 and ≤ its §2.1 upper bound;
    - **the destination (C28):** SOL — the treasury's lamports after − its lamports in the snapshot = `amount`
      exactly; stablecoin — the vault ATA after is a token account of that mint owned by `config.sol_treasury`, and its
      `amount` after − its amount in the snapshot = `amount` exactly;
@@ -543,7 +600,7 @@ user, 8 token_program, 9 system_program. `register_referrer` (B1d-2): 0 user_acc
    includes `kind`, `account`, `currency`, `amount`, `stage` and — B1d-2 — `referrer`).
 7. Store the prepared entry (§1.3) and answer `PurchaseView = {id, currency, amount, stage, priceTicks, nocBase: Δtokens,
    spentCents: Δc, destination, referrer: {address, registers: boolean} | null, fees: {networkLamports,
-   priorityLamports, rentLamports: newPdaRent}, reauth, validUntil, simulation: {slot, elapsedMs, programs:
+   priorityLamports, rentLamports: simulatedRent}, reauth, validUntil, simulation: {slot, elapsedMs, programs:
    ['compute-budget', 'presale'], instructionCount}}` — `simulation` carries #19's facts for #20 (C33).
 
 `presale.buy {id}` → `sendPrepared` (§1.3, C29) with `beforeSign` = C12's geo check and C22's re-read of the §2.1

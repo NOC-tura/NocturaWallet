@@ -37,9 +37,9 @@ export const ON_BUILD = [
   'src/background/presale/state.ts',
   'core/presale/limits.ts',
 ];
-// Task 3: the intent-kind registry (C19 — both builds sign and read through it); Task 6 adds src/background/geo/gate.ts
-// and core/geo/fetch.ts (D15: the off build did not lose the gate).
-export const BOTH_BUILDS = ['src/background/intents.ts'];
+// The intent-kind registry (C19 — both builds sign and read through it); the jurisdiction gate and its fetcher (D15:
+// the off build did not lose the gate).
+export const BOTH_BUILDS = ['src/background/intents.ts', 'src/background/geo/gate.ts', 'core/geo/fetch.ts'];
 // Armed by B1d-1b: 1a ships no presale string (Q42 is "both").
 export const MARKERS = [];
 // Q42a (B1d-1a: the generic pending row, both builds); 1b adds F12's Q49–Q51. Q42b ("Transaction") is too short to

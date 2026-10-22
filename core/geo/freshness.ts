@@ -118,7 +118,7 @@ export interface GeoGate {
 }
 
 /** ISO 3166-1 alpha-2, and not the placeholders geolocation services use for "unknown". */
-function isKnownCountry(code: string): boolean {
+export function isKnownCountry(code: string): boolean {
   return /^[A-Z]{2}$/.test(code) && code !== 'XX' && code !== 'ZZ';
 }
 
