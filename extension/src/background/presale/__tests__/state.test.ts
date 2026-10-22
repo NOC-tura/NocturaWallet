@@ -228,6 +228,12 @@ const openSnapshot = async (o: Partial<Chain> = {}): Promise<PresaleSnapshot> =>
   return s.snapshot;
 };
 const MALFORMED = {kind: 'unavailable', code: 'malformed'};
+/** The discriminator with byte `k` flipped — one byte from the right one (review I1). */
+const flipped = (d: readonly number[], k: number): number[] => d.map((b, i) => (i === k ? b ^ 1 : b));
+// The rent-exempt minimums mainnet charges today (getMinimumBalanceForRentExemption, 5 080 lamports per byte: (128 +
+// length) × 5 080): the snapshot's newPdaRent is an UPPER BOUND at the old rate, never below these (review I2).
+const MEASURED_USER_ACCOUNT_RENT = 944_880n;
+const MEASURED_ALLOCATION_RENT = 1_244_600n;
 
 describe('readPresaleState — the valid read (positive control)', () => {
   it('opens, with every derived value from the program’s numbers', async () => {
@@ -236,10 +242,16 @@ describe('readPresaleState — the valid read (positive control)', () => {
       limits: {minCents: 1_000n, maxTxCents: 5_000_000n, userRemainingCents: 20_000_000n, firstPurchase: true},
       allocation: {exists: false, totalBase: 0n, bonusBase: 0n, spentCents: 0n, purchaseCount: 0, referrer: null},
       userAccountExists: false,
-      newPdaRent: 1_294_560n + 1_705_200n,
+      newPdaRent: 1_294_560n + 1_705_200n, // an upper bound — see the row below
       treasuryLamports: 48_288_800_000n,
       vaults: {USDC: {address: MAINNET_VAULT_USDC_ATA, amount: 172_099_207n}, USDT: {address: MAINNET_VAULT_USDT_ATA, amount: 0n}},
     });
+  });
+
+  it('newPdaRent is an upper bound (the old rate), never below what mainnet charges for the absent PDAs (review I2)', async () => {
+    expect((await openSnapshot()).newPdaRent >= MEASURED_USER_ACCOUNT_RENT + MEASURED_ALLOCATION_RENT).toBe(true);
+    expect((await openSnapshot({user: program(userData())})).newPdaRent >= MEASURED_ALLOCATION_RENT).toBe(true);
+    expect((await openSnapshot({allocation: program(allocationData())})).newPdaRent >= MEASURED_USER_ACCOUNT_RENT).toBe(true);
   });
 
   it('one getAccountsData for the six accounts, in order: config, user, allocation, treasury, the two vault ATAs', async () => {
@@ -339,6 +351,8 @@ describe('readPresaleState — every rule refuses on its own (never open on doub
     ['config 369 bytes', {config: program(configData({length: 369}))}],
     ['config 371 bytes', {config: program(configData({length: 371}))}],
     ['config with PresaleAllocation’s discriminator', {config: program(configData({discriminator: PRESALE_ALLOCATION_LAYOUT.discriminator}))}],
+    ['config’s discriminator but its last byte', {config: program(configData({discriminator: flipped(CONFIG_LAYOUT.discriminator, 7)}))}],
+    ['config’s discriminator but its first byte', {config: program(configData({discriminator: flipped(CONFIG_LAYOUT.discriminator, 0)}))}],
     ['admin@8 moved', {config: program(configData({admin: OTHER}))}],
     ['sale_token@40 moved', {config: program(configData({saleToken: OTHER}))}],
     // 2. C5's pins
@@ -363,12 +377,16 @@ describe('readPresaleState — every rule refuses on its own (never open on doub
     ['user account 57 bytes', {user: program(userData({length: 57}))}],
     ['user account 59 bytes', {user: program(userData({length: 59}))}],
     ['user account with Config’s discriminator', {user: program(userData({discriminator: CONFIG_LAYOUT.discriminator}))}],
+    ['user account’s discriminator but its last byte', {user: program(userData({discriminator: flipped(USER_ACCOUNT_LAYOUT.discriminator, 7)}))}],
+    ['user account’s discriminator but its first byte', {user: program(userData({discriminator: flipped(USER_ACCOUNT_LAYOUT.discriminator, 0)}))}],
     ['is_blocked = 2', {user: program(userData({blocked: 2}))}],
     // 6. the allocation
     ['allocation not the program’s', {allocation: wrongOwner(program(allocationData()))}],
     ['allocation 116 bytes', {allocation: program(allocationData({length: 116}))}],
     ['allocation 118 bytes', {allocation: program(allocationData({length: 118}))}],
     ['allocation with UserAccount’s discriminator', {allocation: program(allocationData({discriminator: USER_ACCOUNT_LAYOUT.discriminator}))}],
+    ['allocation’s discriminator but its last byte', {allocation: program(allocationData({discriminator: flipped(PRESALE_ALLOCATION_LAYOUT.discriminator, 7)}))}],
+    ['allocation’s discriminator but its first byte', {allocation: program(allocationData({discriminator: flipped(PRESALE_ALLOCATION_LAYOUT.discriminator, 0)}))}],
     ['allocation user@8 foreign', {allocation: program(allocationData({user: OTHER}))}],
     ['claimed = 2', {allocation: program(allocationData({claimed: 2}))}],
     // 7. the treasury
@@ -406,6 +424,20 @@ describe('readPresaleState — every rule refuses on its own (never open on doub
     ['blocked, the USDC vault absent (rule 8)', {user: blocked, usdc: null}],
   ])('%s → unavailable (malformed)', async (_name, o) => {
     expect(await stateOf(o)).toEqual(MALFORMED);
+  });
+
+  it('an account that is not a key is malformed, never an exception out of the reader — and nothing is read (fail closed)', async () => {
+    for (const account of ['', 'not a key', '0OIl', 'abc', `${ACCOUNT}1`]) {
+      const calls: string[][] = [];
+      const reader = fakeReader({
+        getAccountsData: async addresses => {
+          calls.push([...addresses]);
+          return addresses.map(() => null);
+        },
+      });
+      await expect(readPresaleState(reader, account, NOW_MS)).resolves.toEqual(MALFORMED);
+      expect([account, calls]).toEqual([account, []]);
+    }
   });
 
   it('a reply of the wrong length is malformed — one short, or one extra', async () => {

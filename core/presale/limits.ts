@@ -26,9 +26,11 @@ export const TOKENS_PER_STAGE_BASE = 10_240_000n * NOC_BASE_PER_NOC;
 export const STAGE_PRICE_TICKS: readonly bigint[] = [1501n, 1723n, 1945n, 2167n, 2389n, 2611n, 2833n, 3055n, 3277n, 3499n];
 
 /**
- * Rent-exempt minimums of the two PDAs a first purchase creates (`init_if_needed`, lib.rs:2904-2919): `(128 + length) ×
- * 6 960` for a UserAccount (58 bytes) and a PresaleAllocation (117), the formula of `SYSTEM_ACCOUNT_RENT_LAMPORTS` and
- * `TOKEN_ACCOUNT_RENT_LAMPORTS` (core/solana/transfer.ts).
+ * UPPER BOUNDS — never the exact rent — of the two PDAs a first purchase creates (`init_if_needed`, lib.rs:2904-2919):
+ * `(128 + length) × 6 960` for a UserAccount (58 bytes) and a PresaleAllocation (117), the old rate behind
+ * `SYSTEM_ACCOUNT_RENT_LAMPORTS` and `TOKEN_ACCOUNT_RENT_LAMPORTS` (core/solana/transfer.ts). Mainnet charges less today
+ * (5 080 lamports per byte: 944 880 and 1 244 600; a test pins that these bounds stay at or above it). Safe for a
+ * reserve or a balance line; NOT for an exact outflow check — that takes the rent the simulation shows.
  */
 export const PRESALE_USER_ACCOUNT_RENT_LAMPORTS = 1_294_560n;
 export const PRESALE_ALLOCATION_RENT_LAMPORTS = 1_705_200n;

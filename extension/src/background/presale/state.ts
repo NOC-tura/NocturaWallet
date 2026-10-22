@@ -58,7 +58,11 @@ export interface PresaleSnapshot {
   limits: PurchaseLimits & {firstPurchase: boolean};
   allocation: AllocationFacts;
   userAccountExists: boolean;
-  /** Rent of the PDAs a purchase now would create (`init_if_needed`): the user account and the allocation, each if absent. */
+  /**
+   * An UPPER BOUND, never the exact value, on the rent of the PDAs a purchase now would create (`init_if_needed`): the
+   * user account and the allocation, each if absent, at core's old-rate constants (mainnet charges less; limits.ts).
+   * Never use it for an exact outflow check.
+   */
   newPdaRent: bigint;
   /** C28's "before" of each destination, from this same read. */
   treasuryLamports: bigint;
@@ -106,8 +110,15 @@ const unavailable = (code: UnavailableCode): PresaleState => ({kind: 'unavailabl
  * accounts: config, the user account and the allocation of `account`, the treasury and its two vault ATAs.
  */
 export async function readPresaleState(reader: SolanaReader, account: string, nowMs: number): Promise<PresaleState> {
-  const me = new PublicKey(account);
-  const pdas = derivePresalePdas(me);
+  // A key that does not parse is a doubtful read like any other: unavailable, never an exception (fail closed).
+  let me: PublicKey;
+  let pdas: ReturnType<typeof derivePresalePdas>;
+  try {
+    me = new PublicKey(account);
+    pdas = derivePresalePdas(me);
+  } catch {
+    return unavailable('malformed');
+  }
   const addresses = [
     pdas.config.toBase58(),
     pdas.userAccount.toBase58(),

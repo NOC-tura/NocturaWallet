@@ -40,13 +40,23 @@ describe('the program constants', () => {
     expect(PRESALE_HARD_CAP_BASE).toBe(102_400_000_000_000_000n);
   });
 
-  it('the new-PDA rents are (128 + length) × 6 960 — the formula that gives core’s system and token account rents', () => {
+  it('the new-PDA rents are UPPER BOUNDS at the old rate, (128 + length) × 6 960 — the formula of core’s system and token account rents', () => {
     const rent = (length: number) => BigInt((128 + length) * 6_960);
     expect(rent(0)).toBe(SYSTEM_ACCOUNT_RENT_LAMPORTS);
     expect(rent(TOKEN_ACCOUNT_SIZE)).toBe(TOKEN_ACCOUNT_RENT_LAMPORTS);
     expect(PRESALE_USER_ACCOUNT_RENT_LAMPORTS).toBe(rent(58));
     expect(PRESALE_ALLOCATION_RENT_LAMPORTS).toBe(rent(ALLOCATION_ACCOUNT_LENGTH));
     expect([PRESALE_USER_ACCOUNT_RENT_LAMPORTS, PRESALE_ALLOCATION_RENT_LAMPORTS]).toEqual([1_294_560n, 1_705_200n]);
+  });
+
+  it('they are NOT the exact rent: each is at least — and here above — what mainnet charges today (5 080 lamports per byte; review I2)', () => {
+    // getMinimumBalanceForRentExemption on mainnet: 944 880 (58 bytes), 1 244 600 (117 bytes) = (128 + length) × 5 080.
+    const measured = (length: number) => BigInt((128 + length) * 5_080);
+    expect([measured(58), measured(ALLOCATION_ACCOUNT_LENGTH)]).toEqual([944_880n, 1_244_600n]);
+    expect(PRESALE_USER_ACCOUNT_RENT_LAMPORTS >= measured(58)).toBe(true);
+    expect(PRESALE_ALLOCATION_RENT_LAMPORTS >= measured(ALLOCATION_ACCOUNT_LENGTH)).toBe(true);
+    expect(PRESALE_USER_ACCOUNT_RENT_LAMPORTS).not.toBe(measured(58));
+    expect(PRESALE_ALLOCATION_RENT_LAMPORTS).not.toBe(measured(ALLOCATION_ACCOUNT_LENGTH));
   });
 });
 
