@@ -1847,6 +1847,8 @@ fs.writeFileSync("extension/scripts/__tests__/fixtures/app.modules.0b79442.json"
 rm -rf "$F"
 ```
 
+Expected (review 2 N1): the fixture is 14 451 bytes, sha256 `d3eb2975…`. A file of another size (25 035 bytes with a symlinked `extension/node_modules`) means the copy step was skipped — regenerate it; never commit it.
+
 Expected (the dry run): the built map is 14 254 bytes, sha256 `d7df522003ddb7c2a039d0a165072d2c7fdb0a8f3af571622cd3d5025df8503e`; the fixture 14 451 bytes, sha256 `d3eb2975e402b168c607610ddfccae133f4472342ab9106f45e4efa9c086bb8b`; keys `builtFrom, chunks, css, chunkCss, cssRefs`; 14 chunks, 288 modules, of `core/presale/**` exactly `addresses.ts`, `allocation.ts`, `buyInstructions.ts`, `stagePrices.ts`, no `core/geo/**`, no `core/referral/**`.
 
 Create `extension/scripts/__tests__/check-no-presale.test.mjs`:
