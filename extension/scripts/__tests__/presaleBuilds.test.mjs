@@ -3,6 +3,7 @@ import {existsSync, mkdtempSync, readFileSync, readdirSync, rmSync} from 'node:f
 import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {checkNoPresale} from '../check-no-presale.mjs';
 import {PRESALE_ENTRIES} from '../presaleSwitch.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -59,6 +60,11 @@ describe('the two builds', () => {
       expect(b.modules.has('../core/solana/encoding.ts')).toBe(true);
       expect(b.modules.has('../core/presale/buyInstructions.ts')).toBe(false);
     }
+  });
+
+  it('the off-build gate (scripts/check-no-presale.mjs) passes on the two builds, and fails with them swapped', () => {
+    expect(checkNoPresale(builds.off.dir, builds.on.dir)).toEqual([]);
+    expect(checkNoPresale(builds.on.dir, builds.off.dir).length).toBeGreaterThan(0);
   });
 
   it('both: the same manifest — the switch adds no permission, host or CSP entry', () => {

@@ -112,7 +112,7 @@ spec's ruling C13 ("the window decides nothing"), which the approved design cite
 | C35 | **#23a re-reads every 25 s while visible, and only what the quote and the gate need** (review 1 L9, review 2 M3): the §2.1 snapshot and `/geo/check` — two requests; balances are read on mount, on focus, on a currency change and after a purchase confirms; the re-read pauses while `document.visibilityState !== 'visible'` | Buy never flickers off at `Quote`'s 30 s boundary, and the presale screen cannot spend the per-IP budget whose 403 trips the shared latch and so disables **Send** for the cool-down (B1b D36): a full view is ~5 requests, 12 a minute at this interval |
 | C36 | **The dollar re-auth rule takes the larger valuation** (review L6): `/wallet/prices`' or the simulation's `Δtotal_spent_cents` (the program's own Pyth valuation); unknown only when both are | fail closed; the program's number is the one that is actually charged |
 | C37 | **Account indices in this spec are 0-based** (review L2), as `buyInstructions.ts` counts them | one convention; the IDL order is listed once (§3.3) |
-| C38 | **The off build may contain, from `core/presale/**`, only an explicit allowlist** (review 1 M2): `core/presale/addresses.ts`, `allocation.ts`, `stagePrices.ts`; **`core/geo/**` is allowed whole** (D15: the jurisdiction gate is compliance code in both builds) | a denylist lets an unlisted module leak silently; today's off-build needs (B1b, B1c) are exactly these three once the two helpers move out of `buyInstructions.ts`, plus the shared gate |
+| C38 | **The off build may contain, from `core/presale/**`, only an explicit allowlist** (review 1 M2): `core/presale/addresses.ts`, `allocation.ts`, `stagePrices.ts`; **`core/geo/**` is allowed whole** (D15: the jurisdiction gate is compliance code in both builds) | a denylist lets an unlisted module leak silently; today's off-build needs (B1b, B1c) are exactly these three once the three shared symbols move out of `buyInstructions.ts` (§6.2), plus the shared gate |
 | C39 | **The busy-destination retry re-runs everything** (review 2 M1): the same message bytes are simulated again (nothing rebuilt); the fresh snapshot replaces the first for every rule, pin, stage comparison, limit, `firstPurchase`, referrer and "before"; all of §3.3 step 5 runs on the second result; the entry stores the second snapshot's values; one retry per prepare, only for a destination-only mismatch whose simulation slot is not below the snapshot's | a retry that re-checks less than the first pass would widen what is accepted; a simulation older than the snapshot is a stale answer, not a race (review 2 L1) |
 
 ---
@@ -194,9 +194,9 @@ approve.html (#48) — renders F12 as stored with the simulation; computes nothi
 (through `dapp/`) both call it.
 
 `core/` gains: `core/geo/fetch.ts` (`fetchGeoInputs(get: JsonGetter)`, §2.2), `core/presale/limits.ts` (bigint:
-`usdCentsForStable`, `tokensFor`, `checkLimits`, ticks, rents, §3.2) and `core/solana/encoding.ts` (`encodeU64LE`,
-`findAssociatedTokenAddress` moved out of `buyInstructions.ts`, which re-exports both for the app and web, so no caller
-outside the extension changes; §6.2). `deps.ts` gains `createJsonPoster(fetch, latch)` (B1d-2) — generic, beside
+`usdCentsForStable`, `tokensFor`, `checkLimits`, ticks, rents, §3.2) and `core/solana/encoding.ts` (`SPL_TOKEN_PROGRAM`,
+`encodeU64LE`, `findAssociatedTokenAddress` moved out of `buyInstructions.ts`, which re-exports all three for the app and
+web, so no caller outside the extension changes; §6.2). `deps.ts` gains `createJsonPoster(fetch, latch)` (B1d-2) — generic, beside
 `createJsonGetter`, the one place allowed to call the global fetch (`check-rpc-methods.mjs`).
 
 ### 1.3 The intent-kind registry and the shared shapes (C19; B1d-1a)
@@ -940,10 +940,13 @@ does), and a positive control wherever a negative is asserted. The plan that bui
 
 ### 6.2 Gates
 
-- **`core/solana/encoding.ts` (1a, review M2):** `encodeU64LE` and `findAssociatedTokenAddress` move there;
-  `core/solana/transfer.ts` imports them from it; `core/presale/buyInstructions.ts` re-exports both, so web and the app
-  are unchanged. Today `transfer.ts:3` imports both from `buyInstructions.ts`, which is why that module is in today's
-  off-build-to-be bundle (`dist/app.modules.json` at 0b79442).
+- **`core/solana/encoding.ts` (1a, review M2):** three symbols move there — `SPL_TOKEN_PROGRAM`, `encodeU64LE` and
+  `findAssociatedTokenAddress`; `core/solana/transfer.ts` (`encodeU64LE`, `findAssociatedTokenAddress`),
+  `core/solana/history.ts` (`findAssociatedTokenAddress`) and `core/solana/balances.ts` (`SPL_TOKEN_PROGRAM`) import them
+  from it; `core/presale/buyInstructions.ts` re-exports all three, so web and the app are unchanged. Today those three
+  modules import them from `buyInstructions.ts` (`transfer.ts:3`, `history.ts:3`, `balances.ts:3`), which is why that
+  module is in today's off-build-to-be bundle (`dist/app.modules.json` at 0b79442); moving only two would leave it there
+  (B1d-1a plan, Task 1).
 - **`check-no-presale.mjs <offDir> <onDir>`** (1a, in `npm run verify`, which builds both: `dist/` on and
   `dist-nopresale/` off; each `app.features.json` must say what its directory is, else the gate fails):
   1. **Modules:** the off build's module maps (`app.modules.json` and every other `*.modules.json`) contain no module
@@ -1135,8 +1138,8 @@ Also asked, not blocking: whether `/referral-stats` counts referrals made throug
 | `extension/src/app/presale/` | 1a (`index.ts` skeleton), 1b, 2 | #23, #20 purchase variant, #50b, #24, the routes, `presaleSlots` |
 | `extension/src/app/App.tsx`, `router.ts`, `screens/Settings.tsx`, `TxDetail.tsx` | 1b, 2 | resume, guarded routes, #31 row, #27 line |
 | `extension/src/unlock/presale.ts` | 1a (skeleton), 1b | #10's purchase description |
-| `core/geo/fetch.ts`, `core/presale/limits.ts`, `core/solana/encoding.ts` | 1a | fetcher; bigint limits, ticks, rents; the moved helpers |
-| `core/presale/addresses.ts`, `core/presale/buyInstructions.ts`, `core/presale/record.ts` | 1a, 1b, 2 | the vault ATAs; the `sourceTokenAccount` parameter and the re-exports; `paymentAmount: number \| string` |
+| `core/geo/fetch.ts`, `core/presale/limits.ts`, `core/solana/encoding.ts` | 1a | fetcher; bigint limits, ticks, rents; the three moved symbols (`SPL_TOKEN_PROGRAM`, `encodeU64LE`, `findAssociatedTokenAddress`) |
+| `core/presale/addresses.ts`, `core/presale/buyInstructions.ts`, `core/presale/record.ts`; `core/solana/{transfer,history,balances}.ts` | 1a, 1b, 2 | the vault ATAs; the `sourceTokenAccount` parameter and the three re-exports; `paymentAmount: number \| string`; the imports from `encoding.ts` (1a) |
 | `extension/e2e/presale*.spec.ts`, `visual-presale.spec.ts`, `fakeCoordinator.ts` | 1b, 2 | E2E, visual, fake program state |
 
 Facts re-read for this spec: `core/presale/{addresses,allocation,buyInstructions,purchaseGate,record,referrer,stats,stagePrices}.ts`,
