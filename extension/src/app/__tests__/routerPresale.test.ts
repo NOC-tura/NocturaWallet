@@ -7,6 +7,9 @@ vi.mock('../presale', (): {presaleRoutes: readonly PresaleRoute[]; presaleSlots:
   presaleRoutes: [
     {screen: 'x-presale', isRoute: o => Object.keys(o).length === 2 && o.n === 1},
     {screen: 'security', isRoute: () => true},
+    {screen: 'resume', isRoute: () => true},
+    {screen: 'created', isRoute: () => true},
+    {screen: 'imported', isRoute: () => true},
   ],
   presaleSlots: null,
 }));
@@ -25,5 +28,12 @@ describe('the router with presale routes', () => {
     expect(push({screen: 'security', extra: true})).toBe(HOME);
     expect(push({screen: 'security'})).toEqual([...HOME, {screen: 'security'}]);
     expect(push({screen: 'x-other'})).toBe(HOME);
+  });
+
+  it('a presale route cannot make a TAB_ONLY hand-over screen pushable (final review I1)', () => {
+    expect(push({screen: 'resume'})).toBe(HOME);
+    expect(push({screen: 'resume', account: 'x'})).toBe(HOME);
+    expect(push({screen: 'created'})).toBe(HOME);
+    expect(push({screen: 'imported'})).toBe(HOME);
   });
 });

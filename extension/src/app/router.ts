@@ -45,7 +45,9 @@ export type Route =
 /**
  * B1d §1.1: a route the presale entry adds (src/app/presale/index.ts — none in B1d-1a, none in the build without
  * presale). Its screen is outside the closed list below, and its own validator decides it: exactly its keys, each one
- * checked. It can only add a screen — a name the list already holds is decided by the list, never by it.
+ * checked. It can only add a screen — a name the list already holds, or a TAB_ONLY hand-over name, is decided by
+ * that list, never by it (final review I1): `created`/`imported`/`resume` are first routes from the tab's hash only,
+ * and a presale route cannot make them pushable.
  */
 export interface PresaleRoute {
   screen: string;
@@ -72,7 +74,7 @@ function isRoute(r: unknown): r is Route {
   if (typeof r !== 'object' || r === null) return false;
   const o = r as Record<string, unknown>;
   if (typeof o.screen !== 'string') return false;
-  if (!SCREENS.has(o.screen)) return presaleRoutes.some(p => p.screen === o.screen && p.isRoute(o));
+  if (!SCREENS.has(o.screen)) return !TAB_ONLY.has(o.screen) && presaleRoutes.some(p => p.screen === o.screen && p.isRoute(o));
   if (o.screen === 'tab') return typeof o.tab === 'string' && TABS.has(o.tab);
   if (BARE.has(o.screen)) return only(o, ['screen']);
   if (o.screen === 'contacts') return only(o, ['screen', 'pick']) && typeof o.pick === 'boolean';

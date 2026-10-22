@@ -123,6 +123,17 @@ describe('the intent-kind registry (B1d §1.3, C19)', () => {
     registerIntentKind({...TEST_BUY, kind: longest});
     expect(registeredKinds()).toContain(longest);
   });
+
+  it('refuses a kind named after a digest domain already in use elsewhere (final review I2), one row per domain', () => {
+    // send: already covered by the already-registered check (prepare.ts owns it unconditionally at load).
+    expect(() => registerIntentKind({...TEST_BUY, kind: SEND_KIND})).toThrow(/registered already/);
+    // settings (walletApi.ts), dapp (dapp/signTx.ts), prepared (prepare.ts's own-kind integrity domain): none of
+    // these is registered as a kind, so only the reserved-domain check refuses them.
+    for (const kind of ['settings', 'dapp', 'prepared']) {
+      expect(() => registerIntentKind({...TEST_BUY, kind})).toThrow(/reserved digest domain/);
+      expect(registeredKinds()).not.toContain(kind);
+    }
+  });
 });
 
 // The hard requirement: every existing send is byte-for-byte unchanged — compared with what commit 0b79442 computed.

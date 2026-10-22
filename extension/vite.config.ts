@@ -126,6 +126,9 @@ export function appConfig(env: Record<string, string | undefined>): UserConfig {
         '../core/fees/**/*.test.ts',
         '../core/portfolio/**/*.test.ts',
         '../core/geo/**/*.test.ts',
+        // Final review Minor 3: core/presale/limits.ts is an ON_BUILD module the extension ships (the only funds
+        // arithmetic in 1a) — its own test must run through the extension's runner too, not only web's.
+        '../core/presale/**/*.test.ts',
       ],
     },
   };
