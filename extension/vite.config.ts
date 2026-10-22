@@ -85,6 +85,15 @@ export function appConfig(env: Record<string, string | undefined>): UserConfig {
   const presale = presaleFlag(env);
   return {
     base: './',
+    // CI repro fix: pin the oxc transform's tsconfig to this package's own file. Left unpinned, a file whose own
+    // directory's tsconfig.json does not list it in `include` (this file, among extension/'s own config files)
+    // falls through to the auto-discovered NEAREST covering tsconfig — which walks up past extension/'s and finds
+    // the repo root's, `extends`ing `@react-native/typescript-config`: present in a full local install (masking
+    // the bug) but absent when CI installs only web/ and extension/. Pinning here is transform-only — it does not
+    // change what `npx tsc --noEmit` type-checks (a separate, unrelated resolution), so tsconfig.json's own
+    // `include` stays untouched (adding these config files there surfaces real pre-existing strict-mode errors
+    // in them, unrelated to this bug).
+    tsconfig: resolve(__dirname, 'tsconfig.json'),
     define: {__NOCTURA_PRESALE__: JSON.stringify(presale)},
     plugins: [sharedResolvesFromHere(), presaleSwitch(presale), react(), chunkModules(true)],
     server: {fs: {allow: [resolve(__dirname, '..')]}},

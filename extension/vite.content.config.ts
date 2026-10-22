@@ -37,6 +37,10 @@ export function contentConfig(env: Record<string, string | undefined>): UserConf
   const presale = presaleFlag(env);
   return {
     base: './',
+    // CI repro fix, mirrors vite.config.ts: pin the oxc transform's tsconfig to this package's own file so it is
+    // never auto-discovered up to the repo root's (which `extends @react-native/typescript-config`, absent when
+    // CI installs only web/ and extension/).
+    tsconfig: resolve(__dirname, 'tsconfig.json'),
     publicDir: false,
     define: {__NOCTURA_PRESALE__: JSON.stringify(presale)},
     plugins: [presaleSwitch(presale), contentModules(name)],
