@@ -127,6 +127,10 @@ describe('both configs read the same flag (review L11)', () => {
   it('the shared send pipeline is tested in the off run too: the intent-kind registry and a purchase record (B1d §6.1 "Switch, off build", C19)', () => {
     expect(nopresale.test.include).toEqual(expect.arrayContaining(['src/background/__tests__/intents.test.ts', 'src/background/__tests__/pendingKinds.test.ts']));
   });
+
+  it('the generic rendering of a record without an intent is tested in the off run too: #11, #26, #21, #44, #54 (B1d Q42, C19)', () => {
+    expect(nopresale.test.include).toEqual(expect.arrayContaining(['src/app/__tests__/genericRecord.test.tsx', 'src/app/__tests__/engine.test.ts']));
+  });
 });
 
 // Why the plugin and not a guarded call (C4): a module whose top level has an effect stays in the bundle when only its

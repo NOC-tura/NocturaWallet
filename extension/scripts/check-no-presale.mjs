@@ -35,8 +35,9 @@ export const ON_BUILD = ['src/background/presale/api.ts', 'src/app/presale/index
 export const BOTH_BUILDS = ['src/background/intents.ts'];
 // Armed by B1d-1b: 1a ships no presale string (Q42 is "both").
 export const MARKERS = [];
-// Task 4 adds Q42; 1b adds F12's Q49–Q51. The decoder's instruction names are read from its source (DECODER).
-export const MUST_STAY = ['Presale purchase', 'PRESALE PURCHASE'];
+// Q42a (B1d-1a: the generic pending row, both builds); 1b adds F12's Q49–Q51. Q42b ("Transaction") is too short to
+// be a string search. The decoder's instruction names are read from its source (DECODER).
+export const MUST_STAY = ['Presale purchase', 'PRESALE PURCHASE', 'Transaction · pending', 'Transaction · taking longer than usual'];
 
 const MIN_MARKER = 8;
 

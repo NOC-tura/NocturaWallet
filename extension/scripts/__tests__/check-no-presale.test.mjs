@@ -161,10 +161,17 @@ describe('strings', () => {
     expect(() => markerViolations([], [file('app/a.js', 'presale')], ['presale'])).toThrow(/at least 8/);
   });
 
-  it('must stay: B1b/B1c presale copy and the decoder instruction names are found in the off build', () => {
-    expect(MUST_STAY).toEqual(['Presale purchase', 'PRESALE PURCHASE']);
-    expect(missingStrings('off', [file('app/a.js', '"Presale purchase"'), file('app/b.js', 'PRESALE PURCHASE')], MUST_STAY)).toEqual([]);
-    expect(missingStrings('off', [file('app/a.js', '"Presale purchase"')], MUST_STAY)).toEqual(['off build: no file contains "PRESALE PURCHASE" — the switch stripped what both builds need']);
+  it('must stay: B1b/B1c presale copy, Q42 and the decoder instruction names are found in the off build', () => {
+    // Q42a (B1d §10, both builds): the generic pending row of a record the build cannot show (B1d-1a Task 4). Q42b
+    // ("Transaction") is too short to mean anything as a string search; its screens are tested in both vitest runs.
+    expect(MUST_STAY).toEqual(['Presale purchase', 'PRESALE PURCHASE', 'Transaction · pending', 'Transaction · taking longer than usual']);
+    const all = [file('app/a.js', '"Presale purchase"'), file('app/b.js', 'PRESALE PURCHASE'), file('app/c.js', '`Transaction · pending`,`Transaction · taking longer than usual`')];
+    expect(missingStrings('off', all, MUST_STAY)).toEqual([]);
+    expect(missingStrings('off', [file('app/a.js', '"Presale purchase"')], MUST_STAY)).toEqual([
+      'off build: no file contains "PRESALE PURCHASE" — the switch stripped what both builds need',
+      'off build: no file contains "Transaction · pending" — the switch stripped what both builds need',
+      'off build: no file contains "Transaction · taking longer than usual" — the switch stripped what both builds need',
+    ]);
   });
 
   it('the decoder names are read from presaleIdl.ts exactly as the module exports them', () => {
@@ -195,7 +202,7 @@ describe('checkNoPresale(offDir, onDir)', () => {
     writeFileSync(join(tmp, dir, 'app.relay.modules.json'), JSON.stringify({chunks: {'relay.js': ['src/relay/index.ts']}}));
     for (const p of ['app', 'chrome', 'firefox']) {
       mkdirSync(join(tmp, dir, p, 'assets'), {recursive: true});
-      writeFileSync(join(tmp, dir, p, 'background.js'), `"Presale purchase";"PRESALE PURCHASE";"presale_purchase_with_sol";"register_referrer";${text}`);
+      writeFileSync(join(tmp, dir, p, 'background.js'), `"Presale purchase";"PRESALE PURCHASE";"Transaction · pending";"Transaction · taking longer than usual";"presale_purchase_with_sol";"register_referrer";${text}`);
     }
   };
   const good = () => {
@@ -231,7 +238,7 @@ describe('checkNoPresale(offDir, onDir)', () => {
 
   it('fails when a must-stay string or a decoder name is missing from the off build', () => {
     good();
-    writeFileSync(join(tmp, 'off', 'app', 'background.js'), '"Presale purchase";"PRESALE PURCHASE";"presale_purchase_with_sol"');
+    writeFileSync(join(tmp, 'off', 'app', 'background.js'), '"Presale purchase";"PRESALE PURCHASE";"Transaction · pending";"Transaction · taking longer than usual";"presale_purchase_with_sol"');
     for (const p of ['chrome', 'firefox']) rmSync(join(tmp, 'off', p, 'background.js'));
     expect(run()).toEqual(['off build: no file contains "register_referrer" — the switch stripped what both builds need']);
   });

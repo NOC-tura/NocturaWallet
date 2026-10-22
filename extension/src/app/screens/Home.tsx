@@ -12,6 +12,7 @@ import {SkelCircle, SkelLine} from '../ui/Skeleton';
 import {TokenTile} from '../ui/TokenTile';
 import type {DappReauth, Pending, Token} from '../engine';
 import {reauthPage} from '../platform';
+import {GENERIC_TEXT} from '../generic';
 
 /** #42's banner: offline is navigator's word; unreachable says the server did not answer (review L3). */
 function NetBanner({mode, sustainedNow, lastSync, failures, now}: {mode: NetMode; sustainedNow: boolean; lastSync: number | null; failures: number; now: number}) {
@@ -48,17 +49,22 @@ function NetBanner({mode, sustainedNow, lastSync, failures, now}: {mode: NetMode
 
 /**
  * #11's pending strip: an open send of this account, which opens #21 (or #54 once it is stuck). B1c-3: on the dApp
- * strip's gutter, with the same trailing chevron — a strip that opens something says so.
+ * strip's gutter, with the same trailing chevron — a strip that opens something says so. A record without an intent
+ * (B1d §1.3: another kind) reads Q42.
  */
 function PendingStrip({p, now, onOpen}: {p: Pending; now: number; onOpen: () => void}) {
   const slow = p.state === 'stuck' || now - p.createdAt > 80_000;
-  const amount = formatAmount(p.intent.amount, TOKEN_INFO[p.intent.token].decimals, {min: 0, max: TOKEN_INFO[p.intent.token].decimals});
+  const intent = p.intent;
   return (
     <button type="button" className="banner info app-banner app-strip app-pending-strip" onClick={onOpen}>
       <ExtIcon name="send" size={18} />
-      <span className="noc-body-sm">
-        Sending {amount} {p.intent.token} · {slow ? 'taking longer than usual' : 'pending'}
-      </span>
+      {intent === null ? (
+        <span className="noc-body-sm">{slow ? GENERIC_TEXT.slow : GENERIC_TEXT.pending}</span>
+      ) : (
+        <span className="noc-body-sm">
+          Sending {formatAmount(intent.amount, TOKEN_INFO[intent.token].decimals, {min: 0, max: TOKEN_INFO[intent.token].decimals})} {intent.token} · {slow ? 'taking longer than usual' : 'pending'}
+        </span>
+      )}
       <span className="app-strip-chev">
         <ExtIcon name="chevron-right" size={18} />
       </span>

@@ -10,13 +10,21 @@ import {ExtIcon} from '../ui/ExtIcon';
 import {Banner, RefusedBanner} from '../ui/Banner';
 import {OriginBadge} from '../ui/OriginBadge';
 import type {HistoryItem, Pending} from '../engine';
+import {GENERIC_TEXT} from '../generic';
 
 /** wallet.history answers 10 per page (background HISTORY_PAGE_SIZE); "Load more" follows the reply's own `next` cursor (review fix round 1 #1), not this count. */
 export const PAGE_SIZE = 10;
 
 function PendingRow({p, now, onOpen}: {p: Pending; now: number; onOpen: () => void}) {
   const secs = Math.max(0, Math.floor((now - p.createdAt) / 1000));
-  const amount = formatAmount(p.intent.amount, TOKEN_INFO[p.intent.token].decimals, {min: 0, max: TOKEN_INFO[p.intent.token].decimals});
+  const intent = p.intent;
+  // A record without an intent (B1d §1.3: another kind) reads Q42, with #11's rule for "taking longer than usual".
+  const title =
+    intent === null
+      ? p.state === 'stuck' || now - p.createdAt > 80_000
+        ? GENERIC_TEXT.slow
+        : GENERIC_TEXT.pending
+      : `Sending ${formatAmount(intent.amount, TOKEN_INFO[intent.token].decimals, {min: 0, max: TOKEN_INFO[intent.token].decimals})} ${intent.token}`;
   // An open send opens #21 (or #54 once it is stuck).
   return (
     <button type="button" className="tx-row" data-pending={p.id} onClick={onOpen}>
@@ -24,9 +32,7 @@ function PendingRow({p, now, onOpen}: {p: Pending; now: number; onOpen: () => vo
         <ExtIcon name="arrow-up-right" size={20} />
       </span>
       <div className="meta">
-        <span className="pri noc-body-lg">
-          Sending {amount} {p.intent.token}
-        </span>
+        <span className="pri noc-body-lg">{title}</span>
         <span className="sec noc-body-sm">
           waiting · {Math.floor(secs / 60)} m {secs % 60} s
         </span>

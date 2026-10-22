@@ -205,8 +205,10 @@ web, so no caller outside the extension changes; §6.2). `deps.ts` gains `create
 onConfirmed?})`. B1b's `send` registers itself unconditionally; `presale/api.ts` registers `presale-buy`.
 
 - **Prepared entries.** `PreparedSend` gains `kind: string`; `intent` becomes the kind's parsed intent.
-  `preparedIntegrity` and the challenge digest include `kind` (`intentDigest(kind, account, intent)`; a challenge
-  issued before the update no longer matches and is asked again — fail closed). `wallet.preparedFor` returns only
+  `preparedIntegrity` and the challenge digest include `kind` (`intentDigest(kind, account, intent)`: the kind is the
+  digest's domain). A send's domain was already `send`, so a send's digest is unchanged and a challenge issued before
+  the update still matches for a send (no second re-authentication); only a non-send kind's challenge is bound to its
+  kind — a send's proof never satisfies it, and the other way round (fail closed). `wallet.preparedFor` returns only
   `kind: 'send'` entries; `presale.preparedFor` only `presale-buy`. **Every prepare, of any kind, replaces every
   prepared entry of that account** (today's rule in `prepareSend`, extended across kinds), so an account has at most
   one prepared entry.

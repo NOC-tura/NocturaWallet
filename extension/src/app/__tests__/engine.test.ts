@@ -8,7 +8,8 @@ import {RequestUnreachable, RpcForbidden} from '../../../../core/solana/rpc';
 import {WALLET_TOKENS} from '../../../../core/solana/balances';
 import {fakeDeps, fakeReader} from '../../background/__tests__/fakeDeps';
 import {fakeExt} from '../../background/__tests__/fakeExt';
-import {ACCOUNT, RECIPIENT, sendReader} from '../../background/__tests__/fixtures';
+import {ACCOUNT, RECIPIENT, pendingRecord, sendReader} from '../../background/__tests__/fixtures';
+import {PENDING_KEY} from '../../background/pendingStore';
 
 // Spec B1b-2a §8.3: the client wired to the REAL handleMessage, a fake Ext and fake deps, sent from
 // /popup.html — the real background logic with no browser.
@@ -125,8 +126,18 @@ describe('the message client against the real background', () => {
     const sent = await engine.send(again.data.id);
     expect(sent.ok && sent.data.state).toBe('pending');
     const pending = await engine.pending();
-    expect(pending.ok && pending.data.map(p => [p.state, p.intent.amount])).toEqual([['pending', 1_000_000n]]);
+    expect(pending.ok && pending.data.map(p => [p.state, p.intent?.amount, p.extra])).toEqual([['pending', 1_000_000n, null]]);
     expect(await engine.send(again.data.id)).toEqual({ok: false, error: 'unknown-prepared'});
+  });
+
+  // B1d §1.3, Q42: a purchase record (B1d §2.3) as the real background lists it — kept, its extra copied, a send's
+  // prepare refused in-flight while it is open.
+  it('pending: a stored record without an intent reaches the popup with its extra; a send is then in-flight', async () => {
+    const {engine, ext} = await wired({reader: sendReader()});
+    const extra = {kind: 'presale-buy', data: {currency: 'SOL', amount: '2000000000', stage: '2', priceTicks: '1501', nocBase: '1998667554963357', spentCents: '30000', destination: RECIPIENT, referrer: null}};
+    await ext.local.set(PENDING_KEY, [pendingRecord({id: 'b1', account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: null, fee: {networkLamports: '5050', markupLamports: '0'}, extra})]);
+    expect(await engine.pending()).toEqual({ok: true, data: [expect.objectContaining({id: 'b1', intent: null, extra, fee: {networkLamports: 5050n, markupLamports: 0n}})]});
+    expect(await engine.prepareSend(ACCOUNT.publicKey, {token: 'SOL', recipient: RECIPIENT, amount: 1n})).toMatchObject({ok: false, error: 'in-flight'});
   });
 
   it('recipientInfo, discardPrepared, rename, select, history', async () => {
@@ -258,7 +269,7 @@ describe('shape checks: a reply of the wrong shape is failed', () => {
   it('pending: an unknown state or failure value', async () => {
     const p = {
       id: 'r1', account: acc, signature: '5'.repeat(88), lastValidBlockHeight: 1, createdAt: 1, lastSentAt: 1, state: 'pending', detail: null, detailCode: null,
-      intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}, expiryNullSeenAt: null, failure: null, fee: {networkLamports: '5050', markupLamports: '0'},
+      intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}, expiryNullSeenAt: null, failure: null, fee: {networkLamports: '5050', markupLamports: '0'}, extra: null,
     };
     expect((await engineAnswering({ok: true, data: [p]}).pending()).ok).toBe(true);
     expect(await engineAnswering({ok: true, data: [{...p, state: 'lost'}]}).pending()).toEqual({ok: false, error: 'failed'});
@@ -281,6 +292,49 @@ describe('shape checks: a reply of the wrong shape is failed', () => {
     const {detailCode: _code, ...withoutCode} = p;
     expect(await engineAnswering({ok: true, data: [withoutCode]}).pending()).toEqual({ok: false, error: 'failed'});
     expect(await engineAnswering({ok: true, data: {...p, detailCode: 'other'}}).resend('r1')).toEqual({ok: false, error: 'failed'});
+  });
+
+  // B1d §1.3 (review H1), Q42: the wallet's own record of another kind — no intent, its kind and display data in
+  // `extra` (or null: the background kept a record whose extra it could not read). On such a record the field must be
+  // there and anything else is failed, as every other field; a send's extra is never read (review 1 L4).
+  it('pending: a record without an intent is read with its extra, copied as it came; a malformed one is failed; a send’s extra is never read (review 1 L4)', async () => {
+    const p = {
+      id: 'r1', account: acc, signature: '5'.repeat(88), lastValidBlockHeight: 1, createdAt: 1, lastSentAt: 1, state: 'pending', detail: null, detailCode: null,
+      intent: null, expiryNullSeenAt: null, failure: null, fee: {networkLamports: '5050', markupLamports: '0'},
+      extra: {kind: 'presale-buy', data: {currency: 'SOL', amount: '2000000000', referrer: null, nested: [1, {a: 'b'}]}},
+    };
+    expect(await engineAnswering({ok: true, data: [p]}).pending()).toMatchObject({ok: true, data: [{id: 'r1', intent: null, extra: p.extra}]});
+    for (const data of [null, 0, 'x', [], {}]) expect(await engineAnswering({ok: true, data: [{...p, extra: {kind: 'k', data}}]}).pending()).toMatchObject({ok: true, data: [{extra: {kind: 'k', data}}]});
+    expect(await engineAnswering({ok: true, data: [{...p, extra: null}]}).pending()).toMatchObject({ok: true, data: [{intent: null, extra: null}]});
+    // wallet.send and wallet.resend answer the same view.
+    expect(await engineAnswering({ok: true, data: p}).resend('r1')).toMatchObject({ok: true, data: {intent: null, extra: p.extra}});
+    expect(await engineAnswering({ok: true, data: p}).send('ab'.repeat(16))).toMatchObject({ok: true, data: {intent: null, extra: p.extra}});
+    // A send with its extra null (positive control): read as before.
+    const send = {...p, intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}, extra: null};
+    expect(await engineAnswering({ok: true, data: [send]}).pending()).toMatchObject({ok: true, data: [{intent: {token: 'SOL', recipient: RECIPIENT, amount: 1n}, extra: null}]});
+    const kinds = ['Presale-buy', 'presale buy', '1kind', '', 'k'.repeat(33), 'kind\u200b'];
+    const malformed: unknown[] = [
+      undefined,
+      'presale-buy',
+      [],
+      {data: {}},
+      {kind: 7, data: {}},
+      {kind: 'presale-buy'},
+      ...kinds.map(kind => ({kind, data: {}})),
+    ];
+    for (const extra of malformed) expect([extra, await engineAnswering({ok: true, data: [{...p, extra}]}).pending()]).toEqual([extra, {ok: false, error: 'failed'}]);
+    const {extra: _omitted, ...withoutExtra} = p;
+    expect(await engineAnswering({ok: true, data: [withoutExtra]}).pending()).toEqual({ok: false, error: 'failed'});
+    // A send's extra is not read (review 1 L4): null whatever it carries — the send is shown, never dropped. An intent
+    // that is neither null nor a send intent is failed.
+    for (const extra of [p.extra, 'x', undefined]) {
+      expect(await engineAnswering({ok: true, data: [{...send, extra}]}).pending()).toMatchObject({ok: true, data: [{intent: {token: 'SOL', recipient: RECIPIENT, amount: 1n}, extra: null}]});
+    }
+    for (const intent of [undefined, {}, {token: 'BONK', recipient: RECIPIENT, amount: '1'}, 'x']) expect(await engineAnswering({ok: true, data: [{...p, intent}]}).pending()).toEqual({ok: false, error: 'failed'});
+    // One malformed record fails the whole list (it is never dropped silently).
+    expect(await engineAnswering({ok: true, data: [send, {...p, extra: 'x'}]}).pending()).toEqual({ok: false, error: 'failed'});
+    // A kind of 32 characters is a kind (the upper bound, positive control of the 33 above).
+    expect((await engineAnswering({ok: true, data: [{...p, extra: {kind: 'k'.repeat(32), data: null}}]}).pending()).ok).toBe(true);
   });
 
   // Plan 3 follow-up ruling: what is shown as paid follows the state — a landed-but-failed send paid the network
